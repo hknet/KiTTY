@@ -75,7 +75,7 @@ Conf *conf = NULL;                  /* the app's active-seat global */
 bool conf_launchable(Conf *c) { return true; }
 char *get_username(void) { return dupstr("selftest"); }
 void burnwcs(wchar_t *s) { if (s) { while (*s) *s++ = 0; } }
-char *GetValueData(HKEY k, char *sub, const char *name, char *out)
+char *GetValueData(HKEY k, const char *sub, const char *name, char *out)
 { return NULL; }                    /* "no such registry value" */
 int readINI(const char *f, const char *sec, const char *key, char *p, size_t n)
 { return 0; }                       /* "no such ini key" */

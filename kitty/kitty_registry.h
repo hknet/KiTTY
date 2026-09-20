@@ -24,8 +24,8 @@
  * at least cstMaxRegLength+2 bytes -- a bare [cstMaxRegLength] is one short. */
 #define cstMaxRegLength 1024
 
-char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
+char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
+char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
 
 // Extension for session files in portable mode (may be ktx)
 extern char FileExtension[15] ;
@@ -50,7 +50,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  ) ;
 
 // Delete a registry key value
-BOOL RegDelValue (HKEY hKeyRoot, LPTSTR lpSubKey, LPTSTR lpValue ) ;
+BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) ;
 
 // Delete a registry key and its subkeys
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;

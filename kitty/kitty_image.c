@@ -827,47 +827,6 @@ static void color_opacity_gradient( HDC destDc, int x, int y, int width, int hei
         DeleteDC(tmpdc);
 	}
 
-void CreateBlankBitmap( HBITMAP * rawImage, const int width, const int height ) {
-	HDC dc= CreateCompatibleDC(NULL);
-	BITMAPINFO bi;
-	ZeroMemory( &bi.bmiHeader, sizeof(BITMAPINFOHEADER) );
-	bi.bmiHeader.biWidth=width;     // Set size you need
-	bi.bmiHeader.biHeight=height;    // Set size you need
-	bi.bmiHeader.biPlanes=1;
-	bi.bmiHeader.biBitCount=24; // Can be 8, 16, 32 bpp or
-	bi.bmiHeader.biSizeImage=0;
-	bi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
-	bi.bmiHeader.biClrUsed= 0;
-	bi.bmiHeader.biClrImportant= 0;
-	VOID *pvBits;
-	
-	if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
-	*rawImage = CreateDIBSection( dc,&bi,DIB_RGB_COLORS,&pvBits,NULL,0 );
-	ReleaseDC(NULL, dc) ;
-
-	HDC hDC = GetDC(MainHwnd);
-	HDC hDCDst = CreateCompatibleDC(hDC); // memory device context for dest	bitmap
-	ReleaseDC(NULL, hDC);
-
-	// hdcMem contains your rendered particle
-	
-	HBRUSH hBrush = CreateSolidBrush(RGB(255,0,0));
-	// Paints the rectangular band with the brush
-	RECT Rect = {0, 0, width-1, height-1};
-	FillRect(hDCDst, &Rect, hBrush);
-	// Deletes the brush
-	DeleteObject(hBrush);
-
-	HGDIOBJ holdDIBDst = SelectObject(hDCDst, *rawImage);	
-	
-	// transfer the image to your DIB bitmap
-	BitBlt(hDCDst, 0, 0 ,width, height, hDC, 0, 0, SRCCOPY);
-
-	// clean up
-	SelectObject(hDCDst, holdDIBDst);
-	DeleteDC(hDCDst);
-	}
-	
 BOOL load_bg_bmp(void)
 {
     HBITMAP rawImage = NULL;

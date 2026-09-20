@@ -15,6 +15,7 @@
  */
 
 #include <stdbool.h>   /* kitty_config_select_root_folder returns bool */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>   /* the themed-box stubs fall back to MessageBoxA */
 #include "../kitty/kitty_config.h"
 
@@ -82,10 +83,7 @@ void kitty_cfgtree_set_fold(const char *path, int expanded, int default_expanded
 int kitty_cfgtree_get_fold(const char *path) { (void)path; return -1; }
 void kitty_cfgtree_folds_save(void) { }
 
-/* The stock variants have no named-proxy pre-set loader to pin. */
-void kitty_config_proxy_pin_presets(void) { }
-
-/* ...and nothing pinned to the panel bottom at all. */
+/* The stock variants pin nothing to the panel bottom. */
 void kitty_config_pin_bottoms(void) { }
 
 /* The stock variants carry no KiTTY theme engine and no IDD_CONFIRMBOX

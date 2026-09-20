@@ -73,8 +73,8 @@ char * GetConfigDirectory( void ) ;
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
 #endif
-char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
+char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
+char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 

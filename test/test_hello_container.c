@@ -7,6 +7,7 @@
  * A parsed-but-refused open and an absent field are distinct results, so
  * callers can tell "no recovery wrap" from "wrong recovery passphrase".
  */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>

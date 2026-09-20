@@ -30,6 +30,7 @@
 #include "kitty_gui.h"
 #include "kitty_osc52.h"
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
+#include "kitty_win.h"     /* kitty_theme_app_dark */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 

@@ -17,6 +17,7 @@
  * a "cannot check" out of thin air; what is left is the own file not being
  * openable, which for a running program means its path is gone or unreadable.
  */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>

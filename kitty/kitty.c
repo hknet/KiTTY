@@ -1093,11 +1093,6 @@ int NextBgImage( HWND hwnd ) {
 /* The InfoBox / InputBox dialog family (F8 send-text, SHIFT+F8 multiline,
  * password prompt, InfoBox progress popup) lives in kitty_inputbox.c. */
 
-// Start the auto-command timer at connection time
-void CreateTimerInit( void ) {
-	SetTimer(MainHwnd, TIMER_INIT, init_delay, NULL) ; 
-	}
-
 // Set the directory the configuration is kept in
 void SetConfigDirectory( const char * Directory ) {
 	char *buf ;

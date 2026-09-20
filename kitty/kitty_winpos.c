@@ -28,6 +28,7 @@
  * different thing and is left alone here.
  */
 
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>

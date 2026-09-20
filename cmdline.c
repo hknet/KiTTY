@@ -17,6 +17,7 @@
 #ifdef MOD_PERSO
 #include "kitty/kitty_storage.h"
 #endif
+#include "kitty/kitty_secretstore.h"   /* -masterpwfile: the store mode and the passphrase */
 #endif
 
 /*

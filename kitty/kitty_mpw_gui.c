@@ -16,6 +16,7 @@
  * (plink/pscp/...) don't link it, so they never pop a modal -> MPW is simply
  * unavailable there (matches the "-batch must fail-fast, no modal" rule).
  */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <string.h>
 #include "kitty_rc_additions.h"   /* IDD_MASTERPW, IDC_MPW_* */

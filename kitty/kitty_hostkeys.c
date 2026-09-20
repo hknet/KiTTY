@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 
 #include "putty.h"

@@ -91,7 +91,7 @@ Internet Explorer 5.0, 5.0a, 5.0b	_WIN32_IE_IE50 (0x0500)
 
 typedef BOOL (WINAPI *LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
 LPFN_ISWOW64PROCESS fnIsWow64Process;
-BOOL IsWow64() {
+BOOL IsWow64(void) {
     BOOL bIsWow64 = FALSE;
     //IsWow64Process is not available on all supported versions of Windows.
     //Use GetModuleHandle to get a handle to the DLL that contains the function

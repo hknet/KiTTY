@@ -30,6 +30,7 @@
  * and from the config box, none of which should have to agree on headers.
  */
 
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>

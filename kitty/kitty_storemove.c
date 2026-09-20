@@ -25,6 +25,7 @@
  * The no-UI cores also serve the -portablecopy / -takefolder command-line
  * switches (windows/putty.c), which is how the harness drives them.
  */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>

@@ -14,7 +14,7 @@
 
 void SetTransparency( HWND hwnd, int value ) ;
 void GetOSInfo( char * version ) ;
-BOOL IsWow64() ; // Test whether we are on 64-bit Windows
+BOOL IsWow64(void) ; // Test whether we are on 64-bit Windows
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 /* The same picker opened in a given folder (NULL or empty = wherever
  * Windows would open it). */

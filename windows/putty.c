@@ -3,6 +3,11 @@
 #include "../kitty/kitty_msgbox.h"   /* themed MessageBox routing */
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+#ifdef KITTY_TEST_BUILD_LABEL
+/* -demo-templates, below. Declared here because the variants built without
+ * MOD_PERSO take it from their stubs and include no KiTTY dialog header. */
+void kitty_demo_templates(void);
+#endif
 
 #ifdef MOD_PERSO
 /* KiTTY helpers (putty.c does not include kitty.h) */

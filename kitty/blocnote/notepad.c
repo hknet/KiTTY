@@ -9,6 +9,7 @@
  */
 #include <stdio.h>
 #include <stdbool.h>
+#include <winsock2.h>   /* before notepad.h's windows.h: putty.h pulls it in further down */
 #include "notepad.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 

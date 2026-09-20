@@ -4,6 +4,7 @@
  * (which has this same fallback for putty/puttytel/pterm). Currently that is
  * puttygen alone. The call stays a real MessageBox there.
  */
+#include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include "kitty_gui.h"
 

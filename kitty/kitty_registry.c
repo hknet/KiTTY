@@ -8,6 +8,7 @@
  * the shell integration: registering and removing the URL protocol handlers
  * and the file association, with their console-or-message-box reports.
  */
+#include <winsock2.h>   /* before kitty_registry.h's windows.h: putty.h pulls it in further down */
 #include "kitty_registry.h"
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
@@ -27,7 +28,7 @@
 #endif
 // Bounded variant: never writes more than `rsize` bytes (final NUL included)
 // into rValue; a value that is too long is truncated instead of overflowing.
-char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
+char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
     HKEY hkKey;
     DWORD lpType, dwDataSize = cstMaxRegLength;
 
@@ -83,7 +84,7 @@ char * GetValueDataN(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, c
 
 /* Compat: the old unbounded signature -- the destination buffer MUST be at
  * least cstMaxRegLength+2 bytes. Prefer GetValueDataN( ..., sizeof(buf) ). */
-char * GetValueData(HKEY hkTopKey, char * lpSubKey, const char * lpValueName, char * rValue){
+char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue){
     return GetValueDataN( hkTopKey, lpSubKey, lpValueName, rValue, cstMaxRegLength+2 ) ;
 }
 
@@ -267,7 +268,7 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 	}
 	
 // Delete a registry key value
-BOOL RegDelValue (HKEY hKeyRoot, LPTSTR lpSubKey, LPTSTR lpValue ) {
+BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
 	HKEY hKey;
 	LONG lResult;
 	if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
