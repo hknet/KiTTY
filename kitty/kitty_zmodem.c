@@ -376,7 +376,7 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
     char dir[4096];
     kitty_zmodem_state *zm;
 
-    /* The session's download folder, or the global one (Connection > Transfers). */
+    /* The session's download folder, or the global one (Connection > File-Transfer-Settings). */
     kitty_xfer_download_dir(conf, dir, sizeof(dir));
 
     if (kitty_zmodem_active()) return 0;

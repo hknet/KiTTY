@@ -268,11 +268,11 @@ historical `pscp` spelling; the program is kscp. Beside it on the same panel:
 | key | meaning |
 |---|---|
 | `pscpport` | the port kscp transfers on; unset or `*` = the session's port |
-| `downloaddir` | where received files land - Get File (kscp), ZModem and transfers over the session - unless the session sets its own folder on *Connection > Transfers*; unset = your Downloads folder |
-| `uploaddir` | the local folder files are sent from: the Send File (kscp) picker opens in it, and a file the far end asks to read over the session (kitten transfer) is looked up in it - unless the session sets its own folder on *Connection > Transfers*; unset = your Documents folder |
+| `downloaddir` | where received files land - Get File (kscp), ZModem and transfers over the session - unless the session sets its own folder on *Connection > File-Transfer-Settings*; unset = your Downloads folder |
+| `uploaddir` | the local folder files are sent from: the Send File (kscp) picker opens in it, and a file the far end asks to read over the session (kitten transfer) is looked up in it - unless the session sets its own folder on *Connection > File-Transfer-Settings*; unset = your Documents folder |
 | `transfernotification` | `yes` (default) / `no`: a system notification (tray balloon) when a transfer finishes - kscp Send File, Get File and drag-and-drop, ZModem receive and upload, and transfers over the session (kitten transfer) in both directions |
-| `transfermaxmb` | the global default of *Max transfer size (MB)* for files arriving over the session (kitten transfer), per file; `0` = no limit; default `1024`; a session can set its own on *Connection > Transfers* |
-| `transferfullpath` | the global default of *Allow full path Upload-Requests*: may the far end ask for a file by full local path (`/C:/...`)? `no` (default) = only names inside the upload folder are resolved, a full path is refused per file; a session can set its own on *Connection > Transfers* |
+| `transfermaxmb` | the global default of *Max transfer size (MB)* for files arriving over the session (kitten transfer), per file; `0` = no limit; default `1024`; a session can set its own on *Connection > File-Transfer-Settings* |
+| `transferfullpath` | the global default of *Allow full path Upload-Requests*: may the far end ask for a file by full local path (`/C:/...`)? `no` (default) = only names inside the upload folder are resolved, a full path is refused per file; a session can set its own on *Connection > File-Transfer-Settings* |
 | `notes` | the application notification: one note this installation shows to whoever starts KiTTY. The first window every KiTTY process opens - terminal, launcher or configuration window - raises it in the notice window near the clock, with no timeout, until it is clicked; only one copy is on the desktop at a time. Another notice from the same process borrows the screen and hands it back, so the note is not lost. ONE line here, with `\n` for a line break (`\r`, `\t` and `\\` likewise, and no other escapes); leading and trailing spaces are kept by wrapping the value in double quotes; empty (the default) displays nothing. Editable at *Application > Security > Application Notification*. Outside portable mode it is the registry value `Notes` under KiTTY's own key, where older versions kept the note they showed in a message box at every start |
 | `notesonce` | `no` (default) / `yes`: what clicking the application notification away means. `no` takes it off this desktop and the next KiTTY started shows it again; `yes` records that the note has been READ - the process that clicked remembers, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there. Editing the note makes it a different note, shown again. The checkbox is *"Show once while the launcher runs"* on the same panel |
 | `pscpdir` | legacy: a folder to search for `kscp.exe` / `pscp.exe`; prefer `PSCPPath` |
@@ -284,7 +284,7 @@ WinSCP's SFTP connect string and extra options on *Connection > SSH > WinSCP*,
 FileZilla's options and password hand-over on *Connection > SSH > FileZilla*,
 the ZModem options on *Connection > ZModem*, and the download and upload
 folders, the kitten transfer limits and the Tools menu entries on
-*Connection > Transfers*.
+*Connection > File-Transfer-Settings*.
 
 ⚠️ `rzcommand` and `szcommand` used to be per-session settings
 (`rzCommand` / `szCommand` in a saved session). Those values are no longer

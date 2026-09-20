@@ -286,13 +286,13 @@ char default_init_file_content[] =
 \n\
 ; downloaddir: the local folder where received files land - Get File (kscp),\n\
 ;    ZModem and transfers over the session - unless the session sets its own\n\
-;    on Connection > Transfers\n\
+;    on Connection > File-Transfer-Settings\n\
 ;downloaddir=\n\
 \n\
 ; uploaddir: the local folder files are sent from - the Send File (kscp)\n\
 ;    picker opens in it, and a file the far end asks to read over the\n\
 ;    session (kitten transfer) is looked up in it - unless the session sets\n\
-;    its own on Connection > Transfers; unset = your Documents folder\n\
+;    its own on Connection > File-Transfer-Settings; unset = your Documents folder\n\
 ;uploaddir=\n\
 \n\
 ; transfernotification: a system notification (tray balloon) when a\n\
@@ -302,12 +302,12 @@ char default_init_file_content[] =
 \n\
 ; transfermaxmb: per-file size limit, in MB, for files arriving over the\n\
 ;    session (kitten transfer); 0 = no limit; a session can set its own on\n\
-;    Connection > Transfers\n\
+;    Connection > File-Transfer-Settings\n\
 ;transfermaxmb=1024\n\
 \n\
 ; transferfullpath: may the far end ask for a file by full local path\n\
 ;    (/C:/...) over the session (kitten transfer)? no = only names inside\n\
-;    the upload folder; a session can set its own on Connection > Transfers\n\
+;    the upload folder; a session can set its own on Connection > File-Transfer-Settings\n\
 ;transferfullpath=no\n\
 \n\
 ; fileextension: the extension for session settings files in portable mode\n\
@@ -799,7 +799,7 @@ char default_init_file_content[] =
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
 ;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS stay\n\
-;    per session on Connection > ZModem; the download folder is on Connection > Transfers.\n\
+;    per session on Connection > ZModem; the download folder is on Connection > File-Transfer-Settings.\n\
 ;rzcommand=\n\
 ;szcommand=\n\
 \n\
@@ -815,8 +815,10 @@ char default_init_file_content[] =
 \n\
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both\n\
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and\n\
-;   the Connection > ZModem configuration panel: with it off, neither appears.\n\
-;   On by default; set it to no to hide both.\n\
+;   the session settings on the Connection > ZModem panel: with it off, neither\n\
+;   appears. In the configuration window the switch is on Application >\n\
+;   KiTTY++ Settings > Transfers & Tools > ZModem. On by default; set it to no\n\
+;   to hide both.\n\
 ;zmodem=yes\n\
 \n\
 \n\

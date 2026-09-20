@@ -1310,7 +1310,7 @@ void SendFile( HWND hwnd ) {
 		return ;
 		}
 
-	/* The picker opens in the upload folder (Connection > Transfers, else
+	/* The picker opens in the upload folder (Connection > File-Transfer-Settings, else
 	 * the global one, else Documents). */
 	char updir[4096] ;
 	kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
@@ -1485,7 +1485,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
 
 /* --- Where received files go ------------------------------------------------
  * ONE answer for kscp Get file, ZModem receives and file transfers over the
- * session: the session's local download folder (Connection > Transfers), else
+ * session: the session's local download folder (Connection > File-Transfer-Settings), else
  * the global Download folder (Transfers & Tools), else the user's Downloads
  * folder, else the folder KiTTY started in. A configured folder that does not
  * exist is skipped, not created. Returns the buffer. */
@@ -1509,7 +1509,7 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
 }
 
 /* The mirror of kitty_xfer_download_dir for files LEAVING this PC: the
- * session's upload folder (Connection > Transfers), else the global Default
+ * session's upload folder (Connection > File-Transfer-Settings), else the global Default
  * Upload Folder (Transfers & Tools, [KiTTY] uploaddir), else the user's
  * Documents folder, else the folder KiTTY started in. Where the Send File
  * picker opens, and where a plain name the far end asks to read (kitten
@@ -2517,7 +2517,7 @@ void StartFileZilla( HWND hwnd ) {
 	port = kitty_xfer_port_field( conf_get_str( conf, CONF_filezilla_port ) ) ;
 	if( port <= 0 ) port = kitty_xfer_default_port( conf, 2, fzprot ) ;
 
-	/* target: the override (Connection > Transfers), else the session */
+	/* target: the override (Connection > File-Transfer-Settings), else the session */
 	user[0] = '\0' ; host[0] = '\0' ;
 	if( strlen( conf_get_str( conf, CONF_sftpconnect ) ) > 0 ) {
 		char b1[1024] ;

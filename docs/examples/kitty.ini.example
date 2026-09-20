@@ -283,13 +283,13 @@
 
 ; downloaddir: the local folder where received files land - Get File (kscp),
 ;    ZModem and transfers over the session - unless the session sets its own
-;    on Connection > Transfers
+;    on Connection > File-Transfer-Settings
 ;downloaddir=
 
 ; uploaddir: the local folder files are sent from - the Send File (kscp)
 ;    picker opens in it, and a file the far end asks to read over the
 ;    session (kitten transfer) is looked up in it - unless the session sets
-;    its own on Connection > Transfers; unset = your Documents folder
+;    its own on Connection > File-Transfer-Settings; unset = your Documents folder
 ;uploaddir=
 
 ; transfernotification: a system notification (tray balloon) when a
@@ -299,12 +299,12 @@
 
 ; transfermaxmb: per-file size limit, in MB, for files arriving over the
 ;    session (kitten transfer); 0 = no limit; a session can set its own on
-;    Connection > Transfers
+;    Connection > File-Transfer-Settings
 ;transfermaxmb=1024
 
 ; transferfullpath: may the far end ask for a file by full local path
 ;    (/C:/...) over the session (kitten transfer)? no = only names inside
-;    the upload folder; a session can set its own on Connection > Transfers
+;    the upload folder; a session can set its own on Connection > File-Transfer-Settings
 ;transferfullpath=no
 
 ; fileextension: the extension for session settings files in portable mode
@@ -796,7 +796,7 @@
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,
 ;    so they live here rather than in each saved session; set them on
 ;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS stay
-;    per session on Connection > ZModem; the download folder is on Connection > Transfers.
+;    per session on Connection > ZModem; the download folder is on Connection > File-Transfer-Settings.
 ;rzcommand=
 ;szcommand=
 
@@ -812,8 +812,10 @@
 
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and
-;   the Connection > ZModem configuration panel: with it off, neither appears.
-;   On by default; set it to no to hide both.
+;   the session settings on the Connection > ZModem panel: with it off, neither
+;   appears. In the configuration window the switch is on Application >
+;   KiTTY++ Settings > Transfers & Tools > ZModem. On by default; set it to no
+;   to hide both.
 ;zmodem=yes
 
 

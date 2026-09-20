@@ -17,7 +17,7 @@ title-scan "local command" mechanism.)
 
 ## 1. Turn it on in KiTTY
 
-Per session: **Connection → Transfers → “Track remote directory
+Per session: **Connection → File-Transfer-Settings → “Track remote directory
 (OSC 7 shell integration)”**, then **Save**. It is **off by default**.
 
 ## 2. Make your remote shell emit OSC 7

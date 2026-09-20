@@ -544,7 +544,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		RunPuttyEd( hwnd, "1" ) ; 
 		return 1 ; 
 	/* The four Tools menu keys below do nothing while the session hides the
-	 * entry (Connection > Transfers, "Tools menu"): the key then reaches the
+	 * entry (Connection > File-Transfer-Settings, "Tools menu"): the key then reaches the
 	 * terminal as if it were no shortcut. */
 	} else if( ( key == shortcuts_tab.winscp ) && kitty_xfer_tool_shown( conf, 1 ) ) {	// Start WinSCP
 		SendMessage( hwnd, WM_COMMAND, IDM_WINSCP, 0 ) ; return 1 ;

@@ -4503,7 +4503,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         /* The external-tool entries are rebuilt every time the Tools menu
          * opens: the session decides which of the four it shows at all
-         * (Connection > Transfers, "Tools menu"), and one whose executable
+         * (Connection > File-Transfer-Settings, "Tools menu"), and one whose executable
          * is not there is greyed. Both can change while the window is open
          * (Change Settings), so neither is decided when the menu is built.
          * The menu is recognised by "Port forwardings", its first entry, which

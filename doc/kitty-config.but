@@ -822,9 +822,11 @@ password prompt) and FileZilla, whose SFTP engine takes keys
 from a Pageant-compatible agent, needs no password. A proxy is not handed over - FileZilla has a global proxy
 setting only.
 
-\S{kitty-cfg-transfers-panel} The Transfers panel
+\S{kitty-cfg-transfers-panel} The File-Transfer-Settings panel
 
-One place for what every way of moving a file through this session has
+\q{File-Transfer Settings for this Session}, the
+\q{File-Transfer-Settings} leaf under Connection, is one
+place for what every way of moving a file through this session has
 in common: where received files land on this PC and where files are
 sent from, which directory on the far end uploads go to, and the
 settings for transfers over the session. Which entries the \q{Tools}
@@ -1124,7 +1126,7 @@ refused with \q{Does not exist}, exactly as it was before the dialog
 listed it.
 
 How often the dialog appears for files \e{arriving} is set on
-Connection > Transfers (\k{kitty-cfg-transfers-kitten}): every time, once per
+Connection > File-Transfer-Settings (\k{kitty-cfg-transfers-kitten}): every time, once per
 terminal session, or never. A request to \e{read} files from this PC
 always shows the dialog, whatever that setting is. \q{Always open Save Dialog} opens the folder picker before the first file of a
 transfer, unless \q{Change folder...} already chose one; cancelling it
@@ -1164,10 +1166,13 @@ final path and size, and the end or cancellation.
 
 \S{kitty-cfg-zmodem-session} The ZModem panel
 
-The panel opens with the global switch, \q{Enable ZModem transfers in
-every session}: off, the Tools menu loses its ZModem entries and the
-session settings below are not shown until the switch is on again and
-the configuration window reopened.
+The global switch, \q{Enable ZModem transfers in every session}, is an
+application setting: Application > KiTTY++ Settings > Transfers & Tools >
+ZModem. Off, the Tools menu loses its ZModem entries, and this panel
+holds one line that says so, with \q{Open App Settings} beside it to
+get to the switch; the session settings
+are shown again once the switch is on and the configuration window
+reopened.
 
 \i{ZModem} transfers files through the terminal session itself, with no
 second connection - which is what makes it work through a jump host
@@ -2643,7 +2648,7 @@ in the \c{[Shortcuts]} section of \c{kitty.ini} does nothing - the key
 reaches the terminal instead. \q{Start WinSCP} and \q{Start FileZilla}
 additionally need the executable, as before
 (\k{kitty-cfg-external-tools}). It decides what the MENU holds, not how
-a file moves, which is why it lives here and not on the Transfers panel.
+a file moves, which is why it lives here and not on the File-Transfer-Settings panel.
 Stored as \c{ToolsMenuSendFile}, \c{ToolsMenuGetFile},
 \c{ToolsMenuWinSCP} and \c{ToolsMenuFileZilla}. \q{Get File (kscp)}
 fetches the path on the clipboard into the download folder:

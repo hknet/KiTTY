@@ -95,7 +95,7 @@ static const KittyTreeLabel kitty_tree_labels[] = {
     { "Tunnels",                 "Tunnels" },
     { "System",                  "System" },
     { "Updates",                 "Updates" },
-    { "Transfers",               "Transfers" },
+    { "Transfers",               "File-Transfer-Settings" },
     { "WinSCP",                  "WinSCP" },
     { "Window",                  "Window" },
     { "Workplace Proxy",         "Workplace Proxy" },

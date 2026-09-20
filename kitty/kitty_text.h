@@ -797,7 +797,7 @@
 
 /* Connection/Transfers - one destination and one permission model for kscp
  * Get file, ZModem and file transfers over the session (kitten transfer). */
-#define KT_TRANSFERS_TITLE                           "Transfers"
+#define KT_TRANSFERS_TITLE                           "File-Transfer Settings for this Session"
 /* The target override serves WinSCP AND FileZilla, so it sits here and not on
  * one of the two leaves. Stored as SFTPConnect. */
 #define KT_TRANSFERS_TARGET_GROUP                    "Remote target"
@@ -822,8 +822,11 @@
 #define KT_TRANSFERS_GLOBAL_MAX_MB                   "Global: %d MB"
 #define KT_TRANSFERS_GLOBAL_MAX_MB_NONE              "Global: no limit"
 #define KT_TRANSFERS_FULL_PATH                       "Allow full path Upload-Requests"
-#define KT_KSCP_DIRS_ON_TRANSFERS                    "Download folder and remote directory: Connection > Transfers."
-#define KT_ZMODEM_FOLDER_ON_TRANSFERS                "Downloads saves to the folder set on Connection > Transfers."
+#define KT_KSCP_DIRS_ON_TRANSFERS                    "Download folder and remote directory: Connection > File-Transfer-Settings."
+#define KT_ZMODEM_FOLDER_ON_TRANSFERS                "Downloads are saved to the session's download folder."
+#define KT_ZMODEM_OPEN_TRANSFERS_PANEL               "Open File-Transfer-Settings"
+#define KT_ZMODEM_GLOBAL_OFF_SHORT                   "ZModem is switched off. The switch is a global setting."
+#define KT_ZMODEM_OPEN_GLOBAL_PANEL                  "Open App Settings"
 #define KT_KSET_TT_DOWNLOADDIR_NOTE                  "Where Get file, ZModem and transfers over the session save, unless the session sets its own folder."
 #define KT_XFER_KSCP_NOT_FOUND                       "kscp was not found. Set its path on KiTTY++ Settings > Transfers & Tools."
 #define KT_XFER_GETFILE_NO_PATH                      "Copy the remote file's name or path to the clipboard first (select it in the terminal)."
@@ -895,7 +898,7 @@
 
 /* FileZilla - Connection/SSH/FileZilla and Transfers & Tools/FileZilla */
 #define KT_FZ_INTEGRATION                            "FileZilla integration"
-#define KT_FZ_TARGET_NOTE                            "Target: as set on Connection > Transfers (Target override)."
+#define KT_FZ_TARGET_NOTE                            "Target: as set on Connection > File-Transfer-Settings (Target override)."
 #define KT_FZ_ADDITIONAL_OPTIONS                     "FileZilla additional options"
 #define KT_FZ_PASSWORD_GROUP                         "Session password"
 #define KT_FZ_PASSWORD_HOW                           "How the session password reaches FileZilla:"
@@ -924,7 +927,7 @@
 #define KT_ZMODEM_SEND_COMMAND_SZ_2                  "Send command (sz):"
 #define KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM      "Select command to send zmodem data"
 #define KT_ZMODEM_NOTE_OPTIONS                       "Options for rz/sz are session-specific: Session > Connection > ZModem."
-#define KT_ZMODEM_NOTE_RECEIVED                      "Received Files are saved to the download folder: Session > Connection > Transfers"
+#define KT_ZMODEM_NOTE_RECEIVED                      "Received Files are saved to the download folder: Session > Connection > File-Transfer-Settings"
 
 /* Application/KiTTY++ Settings */
 #define KT_KSET_TITLE                                "KiTTY++ Settings"
@@ -1370,7 +1373,7 @@
 #define KT_KSET_KITTEN_TITLE                         "Transfers over the session (kitten transfer): global defaults"
 #define KT_KSET_KITTEN_DEFAULTS                      "Defaults for every session"
 #define KT_KSET_KITTEN_MAX_NOTE                      "Per arriving file; 0 = no limit."
-#define KT_KSET_KITTEN_NOTE                          "A session can set its own on Connection > Transfers."
+#define KT_KSET_KITTEN_NOTE                          "A session can set its own on Connection > File-Transfer-Settings."
 
 /* Application/KiTTY++ Settings/Launcher */
 #define KT_KSET_LA_TITLE                             "The launcher"
@@ -1389,8 +1392,8 @@
 #define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Switched off for every session, on Application > KiTTY " \
         "Settings > Reconnect & Prompts."
 #define KT_ZMODEM_GLOBAL_ENABLE                      "Enable ZModem transfers in every session"
-#define KT_ZMODEM_GLOBAL_OFF_NOTE                    "Switch it on and reopen the configuration window for the " \
-        "settings."
+#define KT_ZMODEM_GLOBAL_OFF_NOTE                    "ZModem is switched off: Application > KiTTY++ Settings > " \
+        "Transfers & Tools > ZModem."
 #define KT_NAMED_PROXIES_DEFAULTS_TITLE              "Defaults for the proxy Host field"
 #define KT_NAMED_PROXIES_HOSTFIELD_GROUP             "What the Host field of a named proxy means"
 #define KT_NAMED_PROXIES_HOSTFIELD_INTRO             "It can hold a host name, or the name of a saved session whose " \

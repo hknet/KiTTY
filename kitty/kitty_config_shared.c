@@ -746,7 +746,7 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_UPLOADDIR,     KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0 },   /* a folder row too: the local Default Upload Folder */
     { INIT_SECTION, KI_TRANSFERNOTIFICATION, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     /* Transfers & Tools > OSC 5113 (kitten): the global defaults a session
-     * follows until it sets its own (Connection > Transfers) */
+     * follows until it sets its own (Connection > File-Transfer-Settings) */
     { INIT_SECTION, KI_TRANSFERMAXMB, KSET_INT, false, NULL, NULL, NULL, 0, 0, 1024 },   /* max 0 = unbounded; 0 = no limit */
     { INIT_SECTION, KI_TRANSFERFULLPATH, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Launcher: a separate process reads these from the store when it starts */

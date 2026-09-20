@@ -277,10 +277,10 @@ void GetOneFileToPath( HWND hwnd, char * directory, const char * filename, const
 void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile, const char * final_dir, HANDLE lock ) ;
 void kitty_xfer_sweep_downloads( void ) ;   /* remove stale staging folders at startup */
 void GetFile( HWND hwnd ) ;
-/* The session's download folder, resolved (Connection > Transfers, else the
+/* The session's download folder, resolved (Connection > File-Transfer-Settings, else the
  * global one, else Downloads). kitty_xfer.c */
 char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) ;
-/* The session's upload folder, resolved (Connection > Transfers, else the
+/* The session's upload folder, resolved (Connection > File-Transfer-Settings, else the
  * global Default Upload Folder, else Documents): where Send File opens and
  * where a plain name the far end asks to read is looked up. kitty_xfer.c */
 char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
@@ -298,7 +298,7 @@ int kitty_xfer_notify_enabled( void ) ;
 /* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
 int kitty_xfer_tool_ready( int which ) ;
 /* Does the session show the Tools menu entry? 0 = Send File, 1 = WinSCP,
- * 2 = FileZilla, 3 = Get File (Connection > Transfers). kitty_xfer.c */
+ * 2 = FileZilla, 3 = Get File (Connection > File-Transfer-Settings). kitty_xfer.c */
 int kitty_xfer_tool_shown( Conf * cf, int which ) ;
 /* The port a transfer tool WILL use when its Port field is empty, so that a
  * panel can show it as a hint and the command builders can use it as the

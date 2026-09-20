@@ -1500,7 +1500,7 @@ CONF_OPTION(rzcommand, VALUE_TYPE(FILENAME), SAVE_KEYWORD("rzCommand"),)
 CONF_OPTION(rzoptions, VALUE_TYPE(STR), DEFAULT_STR("-e -v"), SAVE_KEYWORD("rzOptions"),)
 CONF_OPTION(szcommand, VALUE_TYPE(FILENAME), SAVE_KEYWORD("szCommand"),)
 CONF_OPTION(szoptions, VALUE_TYPE(STR), DEFAULT_STR("-e -v"), SAVE_KEYWORD("szOptions"),)
-/* The session's local download folder (Connection > Transfers): where kscp
+/* The session's local download folder (Connection > File-Transfer-Settings): where kscp
  * Get file, ZModem receives and file transfers over the session save. Empty
  * = the global Download folder (kitty.ini downloaddir). Started life as
  * ZModem's own folder, hence the keyword; saved sessions keep their value. */
@@ -1511,7 +1511,7 @@ CONF_OPTION(xfer_ask_destination, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KE
 /* Permission for transfers the far end starts (OSC 5113, kitten transfer):
  * 0 = ask every time, 1 = ask once per session, 2 = never ask. */
 CONF_OPTION(xfer_permission, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("TransferPermission"),)
-/* The session's local upload folder (Connection > Transfers): where the
+/* The session's local upload folder (Connection > File-Transfer-Settings): where the
  * Send File picker opens and where a file the far end asks to read
  * (kitten transfer, files leaving) is looked up. Empty = the global one
  * (kitty.ini uploaddir), else the user's Documents folder. */

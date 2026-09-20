@@ -2672,7 +2672,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_TT_NOTIFY, KI_TRANSFERNOTIFICATION, kitty_helper_paths);
 
     /* The global defaults of the two kitten transfer limits; the session's
-     * OSC 5113 (kitten transfer) group on Connection > Transfers overrides
+     * OSC 5113 (kitten transfer) group on Connection > File-Transfer-Settings overrides
      * them per session. */
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/OSC 5113 (kitten)"), KT_KSET_KITTEN_TITLE);
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/OSC 5113 (kitten)"), "defaults", KT_KSET_KITTEN_DEFAULTS);
@@ -2698,6 +2698,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_text(s, KT_FZ_THE_OTHER_SETTINGS_BELONG, HELPCTX(kitty_helper_paths));
 
     ctrl_settitle(b, KSET_PATH("Transfers & Tools/ZModem"), KT_ZMODEM_ZMODEM);
+    /* The installation-wide switch ([KiTTY] zmodem) sits on this leaf, which
+     * is always built. A session's ZModem panel is not built with the switch
+     * off and points here instead. */
+    s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "global", NULL);
+    ctrl_checkbox(s, KT_ZMODEM_GLOBAL_ENABLE, NO_SHORTCUT,
+                  HELPCTX(kitty_zmodem), kitty_kset_handler,
+                  P((void *)kset_find(KI_ZMODEM)));
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
     ctrl_filesel(s, KT_ZMODEM_RECEIVE_COMMAND_RZ_2, NO_SHORTCUT,
                  FILTER_ALL_FILES, false,

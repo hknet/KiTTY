@@ -6945,7 +6945,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                           HELPCTX(kitty_winscp),
                           conf_checkbox_handler, I(CONF_kscp_dragdrop));
             /* The remote directory (OSC 7 / fixed) and the download folder
-             * live on Connection > Transfers: they serve ZModem and transfers
+             * live on Connection > File-Transfer-Settings: they serve ZModem and transfers
              * over the session too, which are not SSH-only. */
             ctrl_text(s, KT_KSCP_DIRS_ON_TRANSFERS, HELPCTX(kitty_winscp));
             ctrl_editbox(s, KT_KSCP_KSCP_OPTIONS, NO_SHORTCUT, 100,
@@ -6989,7 +6989,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
              * now. It never belonged here - it is a property of this PC, which
              * is why it needed a bold "not a session setting" note to itself.
              * The target override left too: it serves FileZilla as well, so it
-             * cannot live on one of the two leaves (Connection > Transfers,
+             * cannot live on one of the two leaves (Connection > File-Transfer-Settings,
              * "Remote target"). Everything in this group IS per session and
              * WinSCP's alone. */
             ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
@@ -7235,7 +7235,7 @@ struct kset_key;
 static dlgcontrol *g_xfer_global_ctrl = NULL;         /* download */
 static dlgcontrol *g_xfer_global_upload_ctrl = NULL;  /* upload */
 
-/* ==== Connection > Transfers: the installation-wide lines =============== */
+/* ==== Connection > File-Transfer-Settings: the installation-wide lines =============== */
 
 static void xfer_global_line(char *buf, size_t len)
 {
@@ -7468,29 +7468,59 @@ void scb_panel_zmodem(struct controlbox *b)
 #ifdef MOD_ZMODEM
     struct controlset *s;
 
-    /* The panel is ALWAYS there, and opens with the global switch
-     * ([KiTTY] zmodem): the switch used to hide the very panel it would sit
-     * on, which left no place to turn it back on. With the switch off the
-     * session settings below are not built - they are declared into the
-     * controlbox once, so the next configuration window shows them. */
+    /* The panel is ALWAYS there. The installation-wide switch ([KiTTY]
+     * zmodem) is an application setting and sits on the application's ZModem
+     * leaf; with it off the session settings below are not built - they are
+     * declared into the controlbox once - and the panel says where the
+     * switch is, so it is never a dead end. */
     if (!GetPuttyFlag()) {
         ctrl_settitle(b, "Connection/ZModem",
                       KT_ZMODEM_OPTIONS_CONTROLLING_Z_MODEM_TRANSFERS);
-        s = ctrl_getset(b, "Connection/ZModem", "global", NULL);
-        ctrl_checkbox(s, KT_ZMODEM_GLOBAL_ENABLE, NO_SHORTCUT,
-                      HELPCTX(kitty_zmodem), kitty_kset_handler,
-                      P((void *)kset_find(KI_ZMODEM)));
-        if (!GetZModemFlag())
-            ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_NOTE, HELPCTX(kitty_zmodem));
+        if (!GetZModemFlag()) {
+            s = ctrl_getset(b, "Connection/ZModem", "global", NULL);
+            if (GetConfigBoxApplicationSettingsFlag()) {
+                /* The note and the way there, as on the KSCP, WinSCP and
+                 * FileZilla panels. */
+                dlgcontrol *note, *btn;
+                ctrl_columns(s, 2, 55, 45);
+                note = ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_SHORT, HELPCTX(kitty_zmodem));
+                note->column = 0;
+                note->text.lines = 2;
+                btn = ctrl_pushbutton(s, KT_ZMODEM_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                      HELPCTX(kitty_zmodem),
+                                      kitty_global_jump_handler,
+                                      P(KSET_PATH("Transfers & Tools/ZModem")));
+                btn->column = 1;
+                ctrl_columns(s, 1, 100);
+            } else {
+                /* No Application tab to jump to: the path in words. */
+                ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_NOTE,
+                          HELPCTX(kitty_zmodem))->text.lines = 2;
+            }
+        }
     }
 
     /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
     if ((!GetPuttyFlag()) && GetZModemFlag()) {
-        /* The download folder moved to Connection > Transfers, where every
+        /* The download folder moved to Connection > File-Transfer-Settings, where every
          * receiving feature reads it (same key, zDownloadDir). */
         s = ctrl_getset(b, "Connection/ZModem", "download",
                         KT_ZMODEM_DOWNLOAD_FOLDER);
-        ctrl_text(s, KT_ZMODEM_FOLDER_ON_TRANSFERS, HELPCTX(kitty_zmodem));
+        {
+            /* A session panel, so the jump works with or without the
+             * Application tab. */
+            dlgcontrol *note, *btn;
+            ctrl_columns(s, 2, 55, 45);
+            note = ctrl_text(s, KT_ZMODEM_FOLDER_ON_TRANSFERS, HELPCTX(kitty_zmodem));
+            note->column = 0;
+            note->text.lines = 2;
+            btn = ctrl_pushbutton(s, KT_ZMODEM_OPEN_TRANSFERS_PANEL, NO_SHORTCUT,
+                                  HELPCTX(kitty_zmodem),
+                                  kitty_global_jump_handler,
+                                  P("Connection/Transfers"));
+            btn->column = 1;
+            ctrl_columns(s, 1, 100);
+        }
 
         s = ctrl_getset(b, "Connection/ZModem", "receive",
                         KT_ZMODEM_RECEIVE_COMMAND_RZ);
