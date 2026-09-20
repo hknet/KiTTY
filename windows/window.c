@@ -2605,6 +2605,52 @@ void cleanup_exit(int code)
     exit(code);
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the folders of the Saved Sessions menu, as a tree. A folder name
+ * carries its parents, separated by a backslash ("prod\web"), and the
+ * launcher's tray menu has always shown that as a submenu inside a submenu;
+ * this menu showed one flat entry literally called "prod\web" beside "prod".
+ * Same shape in both now: a folder is created with its parents first, so a
+ * parent's index is always lower than its children's.
+ */
+#define KITTY_MENU_FOLDERS_MAX 64
+struct kitty_menu_folders {
+    HMENU menu[KITTY_MENU_FOLDERS_MAX];
+    char *path[KITTY_MENU_FOLDERS_MAX];
+    int parent[KITTY_MENU_FOLDERS_MAX];    /* -1 = directly in the menu */
+    int nsub[KITTY_MENU_FOLDERS_MAX];      /* subfolders already put in front */
+    int n;
+};
+
+/* The slot of folder `path`, made on demand; -1 when the table is full. */
+static int kitty_menu_folder_slot(struct kitty_menu_folders *f, const char *path)
+{
+    const char *sep;
+    int j, parent = -1;
+
+    for (j = 0; j < f->n; j++)
+        if (!strcmp(f->path[j], path))
+            return j;
+    sep = strrchr(path, '\\');
+    if (sep && sep != path) {
+        char *up = dupprintf("%.*s", (int)(sep - path), path);
+        parent = kitty_menu_folder_slot(f, up);
+        sfree(up);
+        if (parent < 0)
+            return -1;
+    }
+    if (f->n >= KITTY_MENU_FOLDERS_MAX)
+        return -1;
+    j = f->n++;
+    f->path[j] = dupstr(path);
+    f->menu[j] = CreateMenu();
+    f->parent[j] = parent;
+    f->nsub[j] = 0;
+    return j;
+}
+#endif
+
 /*
  * Refresh the saved-session submenu from `sesslist'.
  */
@@ -2631,29 +2677,25 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
      * where an item sits in the menu does not affect what it opens.
      */
     {
-#define KITTY_MENU_FOLDERS_MAX 64
-        HMENU fmenu[KITTY_MENU_FOLDERS_MAX];
-        char *fname[KITTY_MENU_FOLDERS_MAX];
+        struct kitty_menu_folders f;
         int nfolders = 0, j;
         int *unfiled = (limit > 1) ? snewn(limit, int) : NULL;
         int nunfiled = 0;
 
+        f.n = 0;
         /* skip sesslist.sessions[0] == Default Settings */
         for (i = 1; i < limit; i++) {
             char *fld = kitty_read_session_folder_cached(sesslist.sessions[i]);
-            bool filed = (fld && *fld && strcmp(fld, "Default") != 0);
+            bool filed;
             int slot = -1;
-            if (filed) {
-                for (j = 0; j < nfolders; j++)
-                    if (!strcmp(fname[j], fld)) { slot = j; break; }
-                if (slot < 0 && nfolders < KITTY_MENU_FOLDERS_MAX) {
-                    slot = nfolders++;
-                    fname[slot] = dupstr(fld);
-                    fmenu[slot] = CreateMenu();
-                }
-            }
+            /* the launcher's own tidying: '/' reads as '\', no blanks around it */
+            if (fld)
+                CleanFolderName(fld);
+            filed = (fld && *fld && strcmp(fld, "Default") != 0);
+            if (filed)
+                slot = kitty_menu_folder_slot(&f, fld);
             if (slot >= 0) {
-                AppendMenu(fmenu[slot], MF_ENABLED,
+                AppendMenu(f.menu[slot], MF_ENABLED,
                            IDM_SAVED_MIN + (i-1)*MENU_SAVED_STEP,
                            sesslist.sessions[i]);
             } else if (unfiled) {
@@ -2665,11 +2707,26 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
             sfree(fld);
         }
 
-        for (j = 0; j < nfolders; j++) {
-            AppendMenu(wgs->savedsess_menu, MF_POPUP | MF_ENABLED,
-                       (UINT_PTR)fmenu[j], fname[j]);
-            sfree(fname[j]);
+        /* Hang every folder where it belongs: a top-level one on the menu, a
+         * nested one in FRONT of its parent's sessions, under its last name
+         * component - subfolders first, then sessions, as the launcher has it.
+         * Parents come before their children in the table, so a parent's menu
+         * exists (and is itself placed) by the time a child is inserted. */
+        for (j = 0; j < f.n; j++) {
+            const char *sep = strrchr(f.path[j], '\\');
+            const char *label = (f.parent[j] >= 0 && sep) ? sep + 1 : f.path[j];
+            if (f.parent[j] < 0) {
+                AppendMenu(wgs->savedsess_menu, MF_POPUP | MF_ENABLED,
+                           (UINT_PTR)f.menu[j], label);
+                nfolders++;
+            } else {
+                InsertMenu(f.menu[f.parent[j]], f.nsub[f.parent[j]]++,
+                           MF_BYPOSITION | MF_POPUP | MF_ENABLED,
+                           (UINT_PTR)f.menu[j], label);
+            }
         }
+        for (j = 0; j < f.n; j++)
+            sfree(f.path[j]);
         if (nfolders && nunfiled)
             AppendMenu(wgs->savedsess_menu, MF_SEPARATOR, 0, 0);
         for (j = 0; j < nunfiled; j++)
