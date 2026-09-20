@@ -1149,6 +1149,478 @@ void listbox(struct ctlpos *cp, const char *stext,
 }
 
 /*
+ * KiTTY: the columns of a header-row list, fitted to what the list holds.
+ *
+ * One table of column edges per list, kept by a subclass of the list box and
+ * read by the drawer for the header and for every row, so the two cannot
+ * disagree. The control's percentages are the starting point, and a list
+ * whose text they do not cut keeps them. A column whose widest cell (the
+ * header's included) is cut takes the width it lacks from the columns that
+ * have some to spare - see kt_hl_fit for who is served first when the spare
+ * width does not cover every need.
+ *
+ * The table is recomputed lazily: whatever changes the contents, the size or
+ * the font only marks it stale, and the next paint measures. A recomputation
+ * that MOVES an edge invalidates the whole list - a single repainted row in
+ * the new columns under rows still in the old ones is the fault to avoid.
+ *
+ * A cell that is cut all the same shows its whole text in a tooltip laid
+ * over the cell, as a list view does. The tip is tracked by hand from the
+ * subclass's own WM_MOUSEMOVE: a tip that asks for its text does so through a
+ * WM_NOTIFY to its parent, and the parent of a panel's controls is not a
+ * window whose procedure this file owns. TTF_TRANSPARENT keeps the mouse
+ * MESSAGES with the list while the tip covers the cell; the tip coming up
+ * under the cursor is still reported as WM_MOUSELEAVE, which is why a timer
+ * and not that message ends a tip that is up (see kt_hl_proc).
+ */
+#define KT_HL_MAXCOLS 8
+#define KT_HL_SUBCLASS_ID 0x4B48
+#define KT_HL_TIMER_ID 0x4B48   /* clear of the list box's own system timers */
+#define KT_HL_PAD 2             /* the drawer's inset of a cell's text */
+#define KT_HL_GAP 10            /* between a column's widest text and the next */
+#define KT_HL_GAP_TIGHT 4       /* the same, in a list whose texts do not all fit */
+
+struct kt_hl {
+    dlgcontrol *ctrl;
+    HWND list;
+    HWND dlg;                   /* the themed dialog; known from the first draw */
+    int ncols;
+    bool plain;                 /* drawn by the system: one column, the tip only */
+    int edge[KT_HL_MAXCOLS];    /* each column's right edge, from the row's left */
+    int width;                  /* the client width the edges were fitted to */
+    bool dirty;
+    HWND tip;
+    bool tip_added, tip_shown, mouse_tracked;
+    int tip_row, tip_col;
+    char *tip_text;
+};
+
+static char *kt_hl_row_text(HWND list, int row)
+{
+    int len = (int)SendMessage(list, LB_GETTEXTLEN, row, 0);
+    char *text;
+    if (len < 0)
+        return NULL;
+    text = snewn(len + 1, char);
+    text[0] = '\0';
+    SendMessage(list, LB_GETTEXT, row, (LPARAM)text);
+    return text;
+}
+
+/* Measure every cell and lay the edges out. true = an edge moved. */
+static bool kt_hl_fit(HWND list, struct kt_hl *st)
+{
+    int want[KT_HL_MAXCOLS], edge[KT_HL_MAXCOLS], base[KT_HL_MAXCOLS];
+    int head[KT_HL_MAXCOLS];
+    int n = st->ncols, rows, row, i, total = 0, headtotal = 0, x = 0;
+    int gap, tight;
+    RECT rc;
+    HDC hdc;
+    HFONT font, old = NULL;
+    bool moved;
+
+    memset(want, 0, sizeof(want));
+    memset(head, 0, sizeof(head));
+    GetClientRect(list, &rc);
+    if (st->plain) {
+        st->edge[0] = st->width = rc.right;
+        st->dirty = false;
+        return false;
+    }
+    hdc = GetDC(list);
+    if (!hdc)
+        return false;
+    /* The gaps are in 96-dpi pixels; the text they sit between is not. */
+    gap = MulDiv(KT_HL_GAP, GetDeviceCaps(hdc, LOGPIXELSX), 96);
+    tight = MulDiv(KT_HL_GAP_TIGHT, GetDeviceCaps(hdc, LOGPIXELSX), 96);
+    font = (HFONT)SendMessage(list, WM_GETFONT, 0, 0);
+    if (font)
+        old = SelectObject(hdc, font);
+    rows = (int)SendMessage(list, LB_GETCOUNT, 0, 0);
+    for (row = 0; row < rows; row++) {
+        char *text = kt_hl_row_text(list, row), *p = text;
+        for (i = 0; i < n && p; i++) {
+            char *tab = strchr(p, '\t');
+            SIZE sz;
+            int w;
+            if (tab) *tab = '\0';
+            if (GetTextExtentPoint32(hdc, p, (int)strlen(p), &sz)) {
+                w = sz.cx + 2 * KT_HL_PAD + (i < n - 1 ? gap : 0);
+                if (row == 0) head[i] = w;
+                if (w > want[i]) want[i] = w;
+            }
+            p = tab ? tab + 1 : NULL;
+        }
+        sfree(text);
+    }
+    if (old) SelectObject(hdc, old);
+    ReleaseDC(list, hdc);
+
+    for (i = 0; i < n; i++) {
+        base[i] = rc.right * st->ctrl->listbox.percentages[i] / 100;
+        total += want[i];
+    }
+    if (total > rc.right) {
+        /* Too tight for comfort: the air between the columns goes before
+         * any text does. */
+        total = 0;
+        for (i = 0; i < n; i++) {
+            if (i < n - 1 && want[i] > 0) {
+                want[i] -= gap - tight;
+                if (head[i] > 0) head[i] -= gap - tight;
+            }
+            total += want[i];
+            headtotal += head[i];
+        }
+    }
+    if (total > rc.right && headtotal > rc.right) {
+        /* Not even the headers fit: the percentages, as before. */
+        for (i = 0; i < n; i++)
+            want[i] = base[i];
+    } else if (total > rc.right) {
+        /*
+         * The texts do not all fit. As many columns as possible are made
+         * whole, the narrowest first, for as long as every column still
+         * waiting keeps a floor: its header, and half its percentage unless
+         * it needs less. The columns left over - the long ones - share the
+         * rest under one common cap. So a short value is never cut to make
+         * room for a long one, and no column is squeezed to nothing.
+         */
+        bool whole[KT_HL_MAXCOLS];
+        int low[KT_HL_MAXCOLS];
+        int lows = 0, rest = rc.right, lo = 0, hi = rc.right;
+        memset(whole, 0, sizeof(whole));
+        for (i = 0; i < n; i++) {
+            low[i] = want[i] < base[i] / 2 ? want[i] : base[i] / 2;
+            if (low[i] < head[i]) low[i] = head[i];
+            lows += low[i];
+        }
+        if (lows > rc.right) {
+            lows = 0;
+            for (i = 0; i < n; i++)
+                lows += low[i] = head[i];
+        }
+        for (;;) {
+            int pick = -1;
+            for (i = 0; i < n; i++)
+                if (!whole[i] && (pick < 0 || want[i] < want[pick]))
+                    pick = i;
+            if (pick < 0 || want[pick] > rest - (lows - low[pick]))
+                break;
+            whole[pick] = true;
+            rest -= want[pick];
+            lows -= low[pick];
+        }
+        while (lo < hi) {
+            int mid = (lo + hi + 1) / 2, sum = 0;
+            for (i = 0; i < n; i++) {
+                int w = want[i] < mid ? want[i] : mid;
+                if (!whole[i])
+                    sum += w > low[i] ? w : low[i];
+            }
+            if (sum <= rest) lo = mid; else hi = mid - 1;
+        }
+        for (i = 0; i < n; i++)
+            if (!whole[i] && want[i] > lo)
+                want[i] = lo > low[i] ? lo : low[i];
+    } else {
+        /*
+         * Everything fits. Every column starts from its percentage, or from
+         * what it needs when that is less; what those leave over covers the
+         * columns whose text the percentage would cut, and the rest goes
+         * back to the columns that gave it, in proportion: a list that was
+         * never cut keeps its percentages.
+         */
+        int grant[KT_HL_MAXCOLS], need[KT_HL_MAXCOLS];
+        int spare = rc.right, slack = 0, needy = 0;
+        for (i = 0; i < n; i++) {
+            grant[i] = want[i] < base[i] ? want[i] : base[i];
+            need[i] = want[i] - grant[i];
+            spare -= grant[i];
+            if (need[i] > 0) needy++;
+            else slack += base[i] - want[i];
+        }
+        while (needy > 0 && spare > 0) {
+            int least = -1, give;
+            for (i = 0; i < n; i++)
+                if (need[i] > 0 && (least < 0 || need[i] < need[least]))
+                    least = i;
+            if (need[least] > spare) {
+                /* Nobody left can be made whole: equal shares of the rest. */
+                give = spare / needy;
+                for (i = 0; i < n; i++)
+                    if (need[i] > 0) grant[i] += give;
+                spare = 0;
+                break;
+            }
+            give = need[least];
+            grant[least] += give;
+            spare -= give;
+            need[least] = 0;
+            needy--;
+        }
+        if (spare > slack) spare = slack;
+        for (i = 0; i < n; i++) {
+            if (want[i] <= base[i] && slack > 0)
+                grant[i] += (base[i] - want[i]) * spare / slack;
+            want[i] = grant[i];
+        }
+    }
+    for (i = 0; i < n; i++) {
+        x += want[i];
+        edge[i] = (i == n - 1 || x > rc.right) ? rc.right : x;
+    }
+    moved = st->width != rc.right ||
+        memcmp(edge, st->edge, n * sizeof(int)) != 0;
+    memcpy(st->edge, edge, n * sizeof(int));
+    st->width = rc.right;
+    st->dirty = false;
+    return moved;
+}
+
+static void kt_hl_ensure(HWND list, struct kt_hl *st)
+{
+    if (st->dirty && kt_hl_fit(list, st))
+        InvalidateRect(list, NULL, FALSE);
+}
+
+static void kt_hl_tip_hide(struct kt_hl *st)
+{
+    if (st->tip && st->tip_shown) {
+        TOOLINFO ti;
+        memset(&ti, 0, sizeof(ti));
+        ti.cbSize = TTTOOLINFOA_V1_SIZE;
+        ti.hwnd = st->list;
+        SendMessage(st->tip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
+        KillTimer(st->list, KT_HL_TIMER_ID);
+    }
+    st->tip_shown = false;
+    st->tip_row = st->tip_col = -1;
+}
+
+/* The mouse is at (x,y) in the list: show the cell's text if it is cut. */
+static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
+{
+    DWORD hit = (DWORD)SendMessage(list, LB_ITEMFROMPOINT, 0, MAKELPARAM(x, y));
+    int row = HIWORD(hit) ? -1 : (int)LOWORD(hit), col = -1, i, left, avail;
+    char *text, *p;
+    SIZE sz;
+    HDC hdc;
+    HFONT font, old = NULL;
+    RECT ir, rc;
+    TOOLINFO ti;
+
+    if (!st->mouse_tracked) {
+        TRACKMOUSEEVENT t;
+        t.cbSize = sizeof(t);
+        t.dwFlags = TME_LEAVE;
+        t.hwndTrack = list;
+        t.dwHoverTime = 0;
+        st->mouse_tracked = TrackMouseEvent(&t);
+    }
+    if (st->dirty || x < 0)
+        row = -1;                      /* no edges to trust until the paint */
+    for (i = 0; row >= 0 && i < st->ncols; i++) {
+        if (x < st->edge[i]) {
+            col = i;
+            break;
+        }
+    }
+    if (col < 0)
+        row = -1;
+    if (row == st->tip_row && col == st->tip_col)
+        return;
+    kt_hl_tip_hide(st);
+    st->tip_row = row;
+    st->tip_col = col;
+    if (row < 0)
+        return;
+
+    text = kt_hl_row_text(list, row);
+    for (p = text, i = 0; p && i < col; i++) {
+        p = strchr(p, '\t');
+        if (p) p++;
+    }
+    if (!p || !*p) {
+        sfree(text);
+        return;
+    }
+    p[strcspn(p, "\t")] = '\0';
+    left = col ? st->edge[col - 1] : 0;
+    avail = st->edge[col] - left - 2 * KT_HL_PAD;
+    sz.cx = 0;
+    hdc = GetDC(list);
+    if (hdc) {
+        font = (HFONT)SendMessage(list, WM_GETFONT, 0, 0);
+        if (font) old = SelectObject(hdc, font);
+        GetTextExtentPoint32(hdc, p, (int)strlen(p), &sz);
+        if (old) SelectObject(hdc, old);
+        ReleaseDC(list, hdc);
+    }
+    if (sz.cx <= avail ||
+        SendMessage(list, LB_GETITEMRECT, row, (LPARAM)&ir) == LB_ERR) {
+        sfree(text);
+        return;
+    }
+
+    if (!st->tip) {
+        st->tip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+                                 WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                                 CW_USEDEFAULT, CW_USEDEFAULT,
+                                 CW_USEDEFAULT, CW_USEDEFAULT,
+                                 list, NULL, hinst, NULL);
+        if (!st->tip) {
+            sfree(text);
+            return;
+        }
+    }
+    sfree(st->tip_text);
+    st->tip_text = dupstr(p);
+    sfree(text);
+
+    memset(&ti, 0, sizeof(ti));
+    ti.cbSize = TTTOOLINFOA_V1_SIZE;
+    ti.uFlags = TTF_TRACK | TTF_ABSOLUTE | TTF_TRANSPARENT;
+    ti.hwnd = list;
+    ti.lpszText = st->tip_text;
+    if (!st->tip_added) {
+        if (!SendMessage(st->tip, TTM_ADDTOOL, 0, (LPARAM)&ti))
+            return;
+        st->tip_added = true;
+    } else {
+        SendMessage(st->tip, TTM_UPDATETIPTEXT, 0, (LPARAM)&ti);
+    }
+    SendMessage(st->tip, WM_SETFONT,
+                (WPARAM)SendMessage(list, WM_GETFONT, 0, 0), FALSE);
+    kitty_theme_tooltip(st->tip, st->dlg && kitty_theme_window_dark(st->dlg));
+
+    /* The tip's TEXT goes where the cell's text is: the rectangle of the text
+     * is turned into the rectangle of the window around it. */
+    rc.left = ir.left + left + KT_HL_PAD;
+    rc.top = ir.top + 1;
+    rc.right = rc.left + sz.cx;
+    rc.bottom = rc.top + sz.cy;
+    MapWindowPoints(list, NULL, (LPPOINT)&rc, 2);
+    SendMessage(st->tip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
+    SendMessage(st->tip, TTM_TRACKPOSITION, 0, MAKELPARAM(rc.left, rc.top));
+    SendMessage(st->tip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+    st->tip_shown = true;
+    SetTimer(list, KT_HL_TIMER_ID, 100, NULL);
+}
+
+/* Is the cursor still over the cell the tip was shown for? */
+static bool kt_hl_cursor_on_tip_cell(HWND list, struct kt_hl *st)
+{
+    POINT pt;
+    RECT rc;
+    DWORD hit;
+    int left;
+
+    if (!GetCursorPos(&pt) || !ScreenToClient(list, &pt) ||
+        !GetClientRect(list, &rc) || !PtInRect(&rc, pt))
+        return false;
+    hit = (DWORD)SendMessage(list, LB_ITEMFROMPOINT, 0, MAKELPARAM(pt.x, pt.y));
+    if (HIWORD(hit) || (int)LOWORD(hit) != st->tip_row ||
+        st->tip_col < 0 || st->tip_col >= st->ncols)
+        return false;
+    left = st->tip_col ? st->edge[st->tip_col - 1] : 0;
+    return pt.x >= left && pt.x < st->edge[st->tip_col];
+}
+
+static LRESULT CALLBACK kt_hl_proc(HWND hwnd, UINT msg, WPARAM wParam,
+                                   LPARAM lParam, UINT_PTR id, DWORD_PTR ref)
+{
+    struct kt_hl *st = (struct kt_hl *)ref;
+
+    switch (msg) {
+      case LB_ADDSTRING:
+      case LB_INSERTSTRING:
+      case LB_DELETESTRING:
+      case LB_RESETCONTENT:
+      case WM_SETFONT:
+      case WM_SIZE:
+        st->dirty = true;
+        kt_hl_tip_hide(st);
+        break;
+      case WM_PAINT:
+        kt_hl_ensure(hwnd, st);
+        break;
+      case WM_MOUSEMOVE:
+        kt_hl_hover(hwnd, st, (short)LOWORD(lParam), (short)HIWORD(lParam));
+        break;
+      case WM_MOUSELEAVE:
+        /* The tip comes up UNDER the cursor, and that alone is reported as
+         * the mouse leaving the list: hiding the tip on it brings the mouse
+         * "back", which shows the tip again - a flicker with the cursor at
+         * rest. While the tip is up the timer decides, from where the cursor
+         * really is. */
+        st->mouse_tracked = false;
+        if (!st->tip_shown || !kt_hl_cursor_on_tip_cell(hwnd, st))
+            kt_hl_tip_hide(st);
+        break;
+      case WM_TIMER:
+        if (wParam == KT_HL_TIMER_ID) {
+            if (st->tip_shown && !kt_hl_cursor_on_tip_cell(hwnd, st))
+                kt_hl_tip_hide(st);
+            return 0;
+        }
+        break;
+      case WM_SHOWWINDOW:
+        /* A cached panel is hidden, not destroyed: its tip must not stay
+         * over the panel that replaces it. */
+        if (!wParam)
+            kt_hl_tip_hide(st);
+        break;
+      case WM_VSCROLL:
+      case WM_MOUSEWHEEL:
+      case WM_KEYDOWN:
+      case WM_LBUTTONDOWN:
+      case WM_KILLFOCUS:
+        kt_hl_tip_hide(st);
+        break;
+      case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, kt_hl_proc, id);
+        /* The tip's owner is the dialog, not this list: it outlives the
+         * list unless it is destroyed here. */
+        if (st->tip && IsWindow(st->tip))
+            DestroyWindow(st->tip);
+        sfree(st->tip_text);
+        sfree(st);
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+static void kt_hl_attach(HWND list, dlgcontrol *ctrl)
+{
+    struct kt_hl *st;
+
+    bool plain = !ctrl->listbox.headerrow;
+
+    /* A header-row list has its columns fitted and a tip per cut cell. A
+     * plain list of one column only gets the tip, for a cut row; one with
+     * tab stops is drawn by the system on stops this code does not know. */
+    if (!list)
+        return;
+    if (plain ? ctrl->listbox.ncols > 1
+              : (ctrl->listbox.ncols < 2 ||
+                 ctrl->listbox.ncols > KT_HL_MAXCOLS ||
+                 !ctrl->listbox.percentages))
+        return;
+    st = snew(struct kt_hl);
+    memset(st, 0, sizeof(*st));
+    st->ctrl = ctrl;
+    st->list = list;
+    st->plain = plain;
+    st->dlg = GetAncestor(list, GA_ROOT);
+    st->ncols = plain ? 1 : ctrl->listbox.ncols;
+    st->dirty = true;
+    st->tip_row = st->tip_col = -1;
+    if (!SetWindowSubclass(list, kt_hl_proc, KT_HL_SUBCLASS_ID, (DWORD_PTR)st))
+        sfree(st);
+}
+
+/*
  * KiTTY: draw one row of a header-row list (dlgcontrol.listbox.headerrow).
  * Row 0 is the column header: its own background, never shown selected.
  * Every row is laid out with TabbedTextOut on the SAME tab positions, so the
@@ -1204,12 +1676,24 @@ static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
          */
         int width = r.right - r.left, percent = 0, i, x = r.left;
         char *p = text;
+        struct kt_hl *st = NULL;
+        DWORD_PTR ref = 0;
+        /* The fitted edges, shared by the header and the rows; the
+         * percentages only for a list that could not be subclassed. */
+        if (GetWindowSubclass(di->hwndItem, kt_hl_proc, KT_HL_SUBCLASS_ID,
+                              &ref) && ref) {
+            st = (struct kt_hl *)ref;
+            st->dlg = dp->hwnd;
+            kt_hl_ensure(di->hwndItem, st);
+        }
         for (i = 0; i < ctrl->listbox.ncols && p; i++) {
             char *tab = strchr(p, '\t');
             int right;
             RECT cell;
             if (i == ctrl->listbox.ncols - 1)
                 right = r.right;
+            else if (st)
+                right = r.left + st->edge[i];
             else {
                 percent += ctrl->listbox.percentages[i];
                 right = r.left + width * percent / 100;
@@ -2095,6 +2579,7 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                 listbox(&pos, escaped, base_id, base_id+1,
                         ctrl->listbox.height, ctrl->listbox.multisel,
                         ctrl->listbox.headerrow);
+                kt_hl_attach(GetDlgItem(cp->hwnd, base_id+1), ctrl);
             }
             if (ctrl->listbox.ncols) {
                 /*

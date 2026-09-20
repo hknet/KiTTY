@@ -63,6 +63,10 @@ void kitty_theme_apply(HWND dlg, bool dark);
  * its controls hidden and wants its FIRST frame themed: called at the end of
  * WM_INITDIALOG, before the window is shown. Does nothing without a hook. */
 void kitty_theme_apply_hooked(HWND dlg);
+/* A tooltip in the theme. It is a top-level popup that kitty_theme_apply's
+ * pass over the children never reaches: its creator calls this, again
+ * whenever the tip is about to be shown, so it follows a live theme change. */
+void kitty_theme_tooltip(HWND tip, bool dark);
 /* A non-dialog window's title bar and border in the theme (the terminal):
  * dark = the theme's caption colours, light = the system's default. */
 void kitty_theme_frame(HWND w, bool dark);

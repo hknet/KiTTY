@@ -400,6 +400,23 @@ bool kitty_theme_window_dark(HWND w)
 }
 
 /*
+ * A tooltip is a top-level popup, so the pass over a dialog's children never
+ * reaches it and it has to be themed by whoever created it. The dark Explorer
+ * theme class gives it the system's own dark tip. Where the theme entry
+ * points are missing no window is dark, and the tip stays as it is.
+ */
+void kitty_theme_tooltip(HWND tip, bool dark)
+{
+    if (!tip)
+        return;
+    kt_init();
+    if (!kt_usable || !p_SetWindowTheme)
+        return;
+    p_AllowDarkModeForWindow(tip, dark);
+    p_SetWindowTheme(tip, dark ? L"DarkMode_Explorer" : NULL, NULL);
+}
+
+/*
  * The dark inks are not the light ones inverted: a colour picked to be legible
  * as dark-on-white is close to unreadable as the same dark-on-near-black. Each
  * pair was chosen for contrast against its own background, which is why they
