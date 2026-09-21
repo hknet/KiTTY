@@ -155,10 +155,16 @@ static int LauncherIgnoreUp = 0 ;
 static int LauncherUpdateKnown = 0 ;
 static char LauncherUpdateLatest[64] = "" ;
 static int LauncherUpdateBeta = 0 ;
-/* The update balloon is shown at most once per launcher run: the check runs
- * twice (the cached answer at startup, then the async fetch) and each used to
- * raise its own balloon. */
-static int LauncherUpdateBalloonShown = 0 ;
+/* The update balloon is raised once per RELEASE, not once per check: the check
+ * runs twice at startup (the cached answer, then the async fetch) and then
+ * once a day for as long as the launcher sits in the tray. This is the version
+ * the balloon last announced; another one raises it again. */
+static char LauncherUpdateAnnounced[64] = "" ;
+/* A launcher runs for days: ask again once a day. A TEST BUILD takes the
+ * interval in ms from KITTY_LAUNCHER_UPDATE_RECHECK_MS, so a harness need not
+ * wait a day. */
+#define LAUNCHER_UPDATECHECK_TIMER	106
+#define LAUNCHER_UPDATECHECK_MS		( 24u * 60u * 60u * 1000u )
 
 /* The proxy the "mode is OFF" notice offered to switch back on, so a click on
  * that notice knows which one it meant. */
@@ -1092,6 +1098,9 @@ void ManageSwitch( const int n ) {
 
 static void ShowLauncherUpdateBalloon( void ) {
 	char ulatest[64]="" ; int ubeta=0 ;
+	/* "Check for updates" off: nothing is asked and nothing is announced, not
+	 * even an answer another program stored earlier. */
+	if( !kitty_check_update_enabled() ) return ;
 	if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
 		char umsg[256] ;
 		LauncherUpdateKnown = 1 ;
@@ -1105,7 +1114,7 @@ static void ShowLauncherUpdateBalloon( void ) {
 		 * raised once. This function runs twice per launcher run - once on the
 		 * cached answer, once when the async check returns - and used to pop a
 		 * second balloon for the same news. */
-		if( LauncherUpdateBalloonShown ) {
+		if( !strcmp( LauncherUpdateAnnounced, ulatest ) ) {
 			snprintf( TrayIcone.szTip, sizeof(TrayIcone.szTip),
 			          KT_LAUNCHER_TIP_UPDATE,
 			          ulatest, ubeta ? KT_UPD_BETA_WORD : "" ) ;
@@ -1114,7 +1123,8 @@ static void ShowLauncherUpdateBalloon( void ) {
 			TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
 			return ;
 		}
-		LauncherUpdateBalloonShown = 1 ;
+		strncpy( LauncherUpdateAnnounced, ulatest, sizeof(LauncherUpdateAnnounced)-1 ) ;
+		LauncherUpdateAnnounced[sizeof(LauncherUpdateAnnounced)-1] = '\0' ;
 		/* This balloon replaces whatever balloon was showing, so a click from
 		 * now on means the update - not a hotkey-conflict notice. */
 		LauncherHotkeyBalloonArmed = 0 ;
@@ -1511,7 +1521,17 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		 * first run after a new release instead of only after a previous process has
 		 * populated the cache. Also check the existing cache immediately. */
 		{
-			kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
+			UINT recheck = LAUNCHER_UPDATECHECK_MS ;
+#ifdef KITTY_TEST_BUILD_LABEL
+			{ const char *ms = getenv( "KITTY_LAUNCHER_UPDATE_RECHECK_MS" ) ;
+			  if( ms && atoi( ms ) >= 1000 ) recheck = (UINT)atoi( ms ) ; }
+#endif
+			/* The setting is read each time, not once: switching "Check for
+			 * updates" on or off takes effect at the next tick without a
+			 * launcher restart. */
+			if( kitty_check_update_enabled() )
+				kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
+			SetTimer( hwnd, LAUNCHER_UPDATECHECK_TIMER, recheck, NULL ) ;
 			/* POSTED, not called: this is still WM_CREATE. A balloon raised
 			 * from inside window creation is displayed, but a click on it does
 			 * not come back to us - the icon's callback only reaches a window
@@ -1694,6 +1714,14 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				LauncherMenuPoint = LauncherClickPoint ;
 				LauncherMenuPointValid = 1 ;
 				DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
+			}
+			if( wParam == LAUNCHER_UPDATECHECK_TIMER ) {
+				/* Once a day: the same background check the start makes. Its
+				 * answer comes back as KLWM_UPDATECHECKDONE and is announced as
+				 * at the start, once per release; a check that fails is not
+				 * heard from and the next tick asks again. */
+				if( kitty_check_update_enabled() )
+					kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
 			}
 			break ;
 		case WM_SETTINGCHANGE:

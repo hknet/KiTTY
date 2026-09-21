@@ -2452,13 +2452,38 @@ holds the folder's store on top of what it held before.
 
 \S{kitty-cfg-updates} The Updates panel
 
-\b \q{Check for updates when KiTTY starts} looks for a newer release
-and shows a one-line notice in the terminal when a session opens. It is
-a property of the installation - \c{checkupdate} in \c{kitty.ini} - not
-of a session.
+\b \q{Check for updates of KiTTY++} is one switch for the whole suite, a
+property of the installation - \c{checkupdate} in \c{kitty.ini} - not of
+a session. With it on:
+
+\lcont{
+
+\b the terminal looks for a newer release when a session opens and shows
+a one-line notice at the top of the terminal when there is one;
+
+\b the launcher looks when it starts and again after every 24 hours in
+the tray, and announces a newer release with a balloon, in its tooltip
+and with an \q{Update available} entry in its menu;
+
+\b kageant never asks the network - it holds your private keys. Shortly
+after its start and then once a day it reads the answer the terminal or
+the launcher stored, and tells of a newer release in a notice, in its
+tooltip and with an \q{Update available} entry in its tray menu.
+Choosing that starts the \c{kitty.exe} beside it, which runs the update;
+a \c{kitty.exe} that is not of kageant's own release is questioned
+first. An agent that runs alone, with no terminal and no launcher ever
+started, therefore learns nothing.
+
+}
+
+A check that fails - no network, a proxy in the way - is not reported
+and is simply made again next time. With the switch off none of the
+three looks, and none announces an answer stored earlier.
 
 \b \q{Check for updates now} asks immediately and reports either way,
 which is also how you confirm the check can reach the network at all.
+It works with the switch off. The same updater opens from the command
+line with \c{kitty.exe -update}, which does that and exits.
 
 \H{kitty-cfg-more-session} Further session settings
 

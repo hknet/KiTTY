@@ -1432,7 +1432,7 @@
 /* Application/Updates */
 #define KT_UPDATES_KEEPING_KITTY_UP_TO_DATE          "Keeping KiTTY up to date"
 #define KT_UPDATES_UPDATE_CHECK                      "Update check"
-#define KT_UPDATES_CHECK_FOR_UPDATES_WHEN_KITTY      "Check for updates when KiTTY starts"
+#define KT_UPDATES_CHECK_FOR_UPDATES_WHEN_KITTY      "Check for updates of KiTTY++"
 #define KT_UPDATES_CHECK_FOR_UPDATES_NOW             "Check for updates now"
 
 /* Comment */
@@ -2246,6 +2246,20 @@
         "It may simply be a different version, or it may " \
         "have been replaced with something else.\n\n" \
         "Start it anyway?"
+/* kageant: a newer KiTTY++ release. kageant asks no network - it reads what
+ * kitty.exe or the launcher stored - and "install" starts kitty.exe -update. */
+#define KT_KA_MENU_UPDATE_FMT                        "&Update available: KiTTY++ %s%s - install..."
+#define KT_KA_TIP_UPDATE_FMT                         "%.*s\r\nupdate %s available%s"
+#define KT_KA_NOTICE_UPDATE                          "kageant: KiTTY++ update available"
+#define KT_KA_NOTICE_UPDATE_TEXT_FMT                 "KiTTY++ %s%s is available.\nClick here to install it."
+#define KT_KA_NOTICE_UPDATE_NOKITTY_FMT              "KiTTY++ %s%s is available."
+#define KT_CAP_KA_UPDATER_UNVERIFIED                 "kageant - updater not verified"
+#define KT_KA_UPDATER_UNVERIFIED_Q                   "The kitty.exe next to kageant could not be " \
+        "verified as a genuine, matching KiTTY++ build - its " \
+        "signature or version did not check out.\n\n" \
+        "It may simply be a different version, or it may " \
+        "have been replaced with something else.\n\n" \
+        "Start it to run the update anyway?"
 #define KT_KA_STOP_AGENT_Q                           "Stop the kageant agent?\n\n" \
         "Every loaded key is unloaded, and any program using " \
         "the agent (PuTTY sessions, ssh, WinSCP...) loses " \

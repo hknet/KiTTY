@@ -259,6 +259,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_update_state.c  # KiTTY: the STORED update answer - kageant asks no network (no wininet here, on purpose)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries

@@ -47,6 +47,10 @@ static char *kitty_cli_takefolder = NULL;
 /* -backupnow: write the store backup (kitty*.sav / Backups\) and exit -
  * the same backup the config box makes, on demand for scripts. */
 static int kitty_cli_backupnow = 0;
+/* -update: open the updater and exit. What kageant's "Update available" entry
+ * starts - the agent holds the keys and has no network code of its own. */
+static int kitty_cli_update = 0;
+void kitty_update_run_standalone(void);      /* kitty/kitty_updater.c */
 /* Bundle transport protection for the do-and-exit paths above. The password is
  * taken from a FILE, never from argv: a command-line password is visible in the
  * process list, in Task Manager and in shell history. (A password sitting in a
@@ -392,6 +396,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-backupnow")) {
                 kitty_cli_backupnow = 1;
+            } else if (!strcmp(p, "-update")) {
+                kitty_cli_update = 1;
             } else if (!strcmp(p, "-portablecopy")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_DIR, p);
@@ -767,6 +773,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * the command-line form of Application > Migration > KiTTY.ini
      * migration. Same password rules as above: the copy's master password
      * comes from -bundlepwfile, or -bundlethispc chooses DPAPI. */
+    if (kitty_cli_update) {
+        kitty_update_run_standalone();
+        cleanup_exit(0);
+    }
     if (kitty_cli_backupnow) {
         char msg[600];
         SaveRegistryKeyNow();

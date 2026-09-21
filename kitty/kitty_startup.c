@@ -181,6 +181,7 @@ void kitty_netdbg_ts( const char *msg ) {
 static int kitty_cli_do_and_exit( void ) {
 	static const char * const batch[] = {
 		"-importdir", "-exportall", "-portablecopy", "-takefolder", "-backupnow",
+		"-update",          /* someone asked for the updater, not for startup questions */
 		"-mungestr", "-sendcmd", "-edit", "-ed", "-edb",
 		"-fileassoc", "-sshhandler", "-cleanup", "-pgpfp",
 		/* Deliberately NOT "-h"/"-?": this scan has no notion of quoting, so a

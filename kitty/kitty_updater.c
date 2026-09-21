@@ -15,6 +15,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin - a STATIC RegGetValueA import kills the loader there */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -183,6 +184,27 @@ static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *pat
  * (no asset URLs needed). */
 static int kitty_fetch_latest_version( char *ver, int verlen, int *is_beta ) {
 	char *body = NULL ; DWORD bodylen = 0 ; int ok = 0 ;
+#ifdef KITTY_TEST_BUILD_LABEL
+	/* A TEST BUILD answers from a file beside the program when there is one
+	 * (update_test_latest.txt, one line: the version), so a harness can prove
+	 * the re-check of a long-running launcher without a release to find and
+	 * without a network. A release build has no such door. */
+	{
+		char path[MAX_PATH+40], *slash ; FILE *fp ;
+		if( GetModuleFileNameA( NULL, path, MAX_PATH ) && ( slash = strrchr( path, '\\' ) ) != NULL ) {
+			strcpy( slash+1, "update_test_latest.txt" ) ;
+			if( ( fp = fopen( path, "r" ) ) != NULL ) {
+				char line[64] = "" ; int k = 0 ; const char *d ;
+				if( fgets( line, sizeof(line), fp ) == NULL ) line[0] = '\0' ;
+				fclose( fp ) ;
+				for( d = line ; *d && ( ( *d>='0' && *d<='9' ) || *d=='.' ) && k < verlen-1 ; d++ ) ver[k++] = *d ;
+				ver[k] = '\0' ;
+				if( is_beta != NULL ) *is_beta = 0 ;
+				return ( ver[0] != '\0' ) ;
+			}
+		}
+	}
+#endif
 	HINTERNET hi = InternetOpenA( "KiTTY-UpdateCheck",
 	                              INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0 ) ;
 	if( hi == NULL ) return 0 ;
@@ -232,6 +254,9 @@ struct kitty_update_notify {
 	HWND hwnd ;
 	UINT msg ;
 } ;
+/* One notifying check at a time: set by kitty_start_update_check_notify,
+ * cleared by the worker when it has posted its answer. */
+static volatile LONG kitty_update_notify_running = 0 ;
 
 static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 	struct kitty_update_notify *notify = (struct kitty_update_notify *)param ;
@@ -253,6 +278,7 @@ static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 		if( notify->hwnd != NULL && notify->msg != 0 )
 			PostMessage( notify->hwnd, notify->msg, 0, 0 ) ;
 		free( notify ) ;
+		InterlockedExchange( &kitty_update_notify_running, 0 ) ;
 		}
 	return 0 ;
 }
@@ -267,18 +293,20 @@ void kitty_start_update_check( void ) {
 
 /* Launcher variant: notify a window after the async cache refresh, so the tray
  * balloon can appear on the first launcher run after a new release instead of
- * only after a previous process has already populated the cache. */
+ * only after a previous process has already populated the cache.
+ * Callable again: a launcher sits in the tray for days and asks once a day.
+ * One check at a time - a call made while one is running does nothing, and a
+ * check that fails is simply not heard from. */
 void kitty_start_update_check_notify( HWND hwnd, UINT msg ) {
-	static int started = 0 ;
 	struct kitty_update_notify *notify ;
-	if( started ) return ; started = 1 ;
+	if( InterlockedCompareExchange( &kitty_update_notify_running, 1, 0 ) != 0 ) return ;
 	notify = (struct kitty_update_notify *)malloc( sizeof(*notify) ) ;
-	if( notify == NULL ) return ;
+	if( notify == NULL ) { InterlockedExchange( &kitty_update_notify_running, 0 ) ; return ; }
 	notify->hwnd = hwnd ;
 	notify->msg = msg ;
 	HANDLE th = CreateThread( NULL, 0, kitty_update_worker, notify, 0, NULL ) ;
 	if( th != NULL ) CloseHandle( th ) ;
-	else free( notify ) ;
+	else { free( notify ) ; InterlockedExchange( &kitty_update_notify_running, 0 ) ; }
 }
 
 /* If the cached latest version is newer than this build and the channel rule
@@ -517,6 +545,31 @@ static void kitty_show_update_popup( HWND owner, const char *text, int action,
 	HWND h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_UPDATEBOX),
 		owner, kitty_upd_dlgproc, (LPARAM)c ) ;
 	if( !h ) free( c ) ;
+}
+
+/*
+ * "kitty.exe -update": the updater as a run of its own, for a program that
+ * has no updater and must not get one - the agent holds the private keys and
+ * stays free of network code, so its "Update available" entry starts this.
+ * The same dialog the launcher and the terminal's menu open, then a message
+ * loop for as long as this thread shows a window (the popup is modeless, and
+ * "Update now" downloads and verifies before it starts the installer); then
+ * the caller exits.
+ */
+static BOOL CALLBACK kitty_upd_first_visible( HWND h, LPARAM lp ) {
+	if( IsWindowVisible( h ) ) { *(HWND *)lp = h ; return FALSE ; }
+	return TRUE ;
+}
+
+void kitty_update_run_standalone( void ) {
+	CheckVersionFromWebSite( NULL, 0 ) ;
+	for( ;; ) {
+		HWND w = NULL ; MSG m ;
+		EnumThreadWindows( GetCurrentThreadId(), kitty_upd_first_visible, (LPARAM)&w ) ;
+		if( w == NULL ) break ;
+		if( GetMessage( &m, NULL, 0, 0 ) <= 0 ) break ;
+		if( !IsDialogMessage( w, &m ) ) { TranslateMessage( &m ) ; DispatchMessage( &m ) ; }
+	}
 }
 
 /* Transient terminal-title notice: show `text` for `ms`, then restore the title.

@@ -53,6 +53,7 @@
 #include "../kitty/kitty_notice.h"   /* KiTTY: kitty_notice_show */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+#include "../kitty/kitty_update_state.h"   /* KiTTY: the STORED update answer - no network here */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
@@ -5408,6 +5409,119 @@ int kageant_keylist_open(void)
 }
 
 /*
+ * KiTTY: a newer KiTTY++ release, told by an agent that asks no network.
+ *
+ * kageant holds the private keys, so it has no update check of its own and
+ * gets none. kitty.exe and the launcher ask for the latest release and STORE
+ * the answer; once a day (and shortly after its start) kageant reads that
+ * answer and compares it with its own version (kitty_update_state.c). A newer
+ * one is announced once per release in a notice, stays in the tray tip, and
+ * adds a menu entry - and "install" starts the kitty.exe beside us with
+ * -update, which opens the suite's updater. No kitty.exe there: the notice and
+ * the tip line, nothing to click. "Check for updates" off: none of it.
+ */
+#define IDM_UPDATE               0x0120
+#define TID_UPDATE_LOOK          8
+#define KAGEANT_WM_UPDATE_CLICK  (WM_APP + 13)
+#define KAGEANT_UPDATE_FIRST_MS  10000u                        /* after the start */
+#define KAGEANT_UPDATE_LOOK_MS   (24u * 60u * 60u * 1000u)     /* then once a day */
+static char kageant_update_latest[64];       /* "" = nothing newer is known */
+static char kageant_update_announced[64];    /* the release the notice last named */
+static int kageant_update_beta;
+
+/* the suite's main program beside us - kitty.exe in a release, putty.exe in a
+ * dev build. A malloc'd path, or NULL. */
+static char *find_kitty_exe(void)
+{
+    char b[2048], *r, *p, *q;
+    static const char *const names[] = { "kitty.exe", "putty.exe" };
+    DWORD n = GetModuleFileNameA(NULL, b, sizeof(b) - 32);
+    if (!n || n >= sizeof(b) - 32)
+        return NULL;
+    r = b;
+    p = strrchr(b, '\\'); if (p && p >= r) r = p + 1;
+    q = strrchr(b, ':');  if (q && q >= r) r = q + 1;
+    for (size_t i = 0; i < lenof(names); i++) {
+        strcpy(r, names[i]);
+        if (GetFileAttributesA(b) != INVALID_FILE_ATTRIBUTES)
+            return dupstr(b);
+    }
+    return NULL;
+}
+
+void kageant_refresh_tray_tip(void);
+
+static void kageant_update_menu(bool have_kitty)
+{
+    char item[160];
+    if (!systray_menu)
+        return;
+    /* one entry at the top, with its separator: rebuilt rather than edited */
+    if (GetMenuState(systray_menu, IDM_UPDATE, MF_BYCOMMAND) != (UINT)-1) {
+        DeleteMenu(systray_menu, 1, MF_BYPOSITION);          /* its separator */
+        DeleteMenu(systray_menu, IDM_UPDATE, MF_BYCOMMAND);
+    }
+    if (!kageant_update_latest[0] || !have_kitty)
+        return;
+    snprintf(item, sizeof(item), KT_KA_MENU_UPDATE_FMT, kageant_update_latest,
+             kageant_update_beta ? KT_UPD_BETA_SUFFIX : "");
+    InsertMenu(systray_menu, 0, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+    InsertMenu(systray_menu, 0, MF_BYPOSITION | MF_STRING | MF_ENABLED,
+               IDM_UPDATE, item);
+}
+
+static void kageant_update_look(void)
+{
+    char latest[64] = "", *kitty;
+    int beta = 0;
+    bool newer = kitty_update_state_enabled() &&
+                 kitty_update_state_newer(latest, sizeof(latest), &beta);
+
+    if (!newer)
+        latest[0] = '\0';
+    if (!strcmp(latest, kageant_update_latest) && beta == kageant_update_beta)
+        return;                              /* nothing changed since the last look */
+    strcpy(kageant_update_latest, latest);
+    kageant_update_beta = beta;
+
+    kitty = find_kitty_exe();
+    kageant_update_menu(kitty != NULL);
+    kageant_refresh_tray_tip();
+    if (latest[0] && strcmp(latest, kageant_update_announced)) {
+        char text[200];
+        strcpy(kageant_update_announced, latest);
+        snprintf(text, sizeof(text),
+                 kitty ? KT_KA_NOTICE_UPDATE_TEXT_FMT : KT_KA_NOTICE_UPDATE_NOKITTY_FMT,
+                 latest, beta ? KT_UPD_BETA_SUFFIX : "");
+        kitty_notice_show(KT_KA_NOTICE_UPDATE, text, KAGEANT_NOTICE_INFO,
+                          kageant_notice_seconds(15),
+                          kitty ? traywindow : NULL,
+                          kitty ? KAGEANT_WM_UPDATE_CLICK : 0);
+    }
+    sfree(kitty);
+}
+
+/* "install": the kitty.exe beside us runs the updater. The same gate as the
+ * key generator's - our publisher's signature and our exact version, with the
+ * same overridable warning, default No. */
+static void kageant_update_run(HWND hwnd)
+{
+    char *kitty = find_kitty_exe();
+    int go = 1;
+    if (!kitty)
+        return;
+    if (!kitty_verify_sibling(kitty)) {
+        int r = MessageBox(hwnd, KT_KA_UPDATER_UNVERIFIED_Q,
+                           KT_CAP_KA_UPDATER_UNVERIFIED,
+                           MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+        go = (r == IDYES);
+    }
+    if (go)
+        ShellExecute(hwnd, NULL, kitty, "-update", NULL, SW_SHOWNORMAL);
+    sfree(kitty);
+}
+
+/*
  * KiTTY: re-compose the tray tooltip.
  *
  * The tooltip carries the state that is ALWAYS true, which is what answers
@@ -5451,6 +5565,17 @@ void kageant_refresh_tray_tip(void)
      * condition a user should be able to re-check any time. Composed into
      * the SAME second-line slot as the mismatch line (both can be present;
      * the mismatch stays first, it is the actionable one). */
+    /* KiTTY: a newer release, for as long as it is one. Merged in FIRST, so
+     * every line below - each more urgent than an update - lands above it. */
+    if (kageant_update_latest[0]) {
+        const char *rest = strstr(tip, "\r\n");
+        char merged[256];
+        snprintf(merged, sizeof(merged), KT_KA_TIP_UPDATE_FMT,
+                 rest ? (int)(rest - tip) : (int)strlen(tip), tip,
+                 kageant_update_latest, rest ? rest : "");
+        sfree(tip);
+        tip = dupstr(merged);
+    }
     if (!kitty_protkey_available()) {
         const char *rest = strstr(tip, "\r\n");
         char merged[256];
@@ -5555,6 +5680,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * opens the window that answers it, instead of doing nothing. */
             PostMessage(hwnd, WM_COMMAND, IDM_VIEWKEYS, 0);
         }
+        break;
+      case KAGEANT_WM_UPDATE_CLICK:
+        /* KiTTY: the update notice was clicked */
+        kageant_update_run(hwnd);
         break;
       case KAGEANT_WM_HELLO_UNLOCK: {
         /* KiTTY: answer a deferred-decryption prompt through Windows Hello
@@ -5682,6 +5811,18 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             KillTimer(hwnd, TID_PASSPHRASE_CACHE);
             pageant_forget_passphrases();
         }
+        /* KiTTY: look at the stored update answer - shortly after the start,
+         * then once a day. A TEST BUILD takes the interval in ms from
+         * KAGEANT_UPDATE_LOOK_MS so a harness need not wait a day. */
+        if (wParam == TID_UPDATE_LOOK) {
+            UINT again = KAGEANT_UPDATE_LOOK_MS;
+#ifdef KITTY_TEST_BUILD_LABEL
+            { const char *ms = getenv("KAGEANT_UPDATE_LOOK_MS");
+              if (ms && atoi(ms) >= 1000) again = (UINT)atoi(ms); }
+#endif
+            SetTimer(hwnd, TID_UPDATE_LOOK, again, NULL);
+            kageant_update_look();
+        }
         /* KiTTY: the Hello KEK cache expires lazily on use; this timer is
          * the hygiene half - the KEK must not sit in memory past its TTL
          * just because nothing asked again. */
@@ -5794,6 +5935,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 SetWindowPos(aboutbox, HWND_TOP, 0, 0, 0, 0,
                              SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
             }
+            break;
+          case IDM_UPDATE:
+            /* KiTTY: "Update available ... install" - kitty.exe runs it */
+            kageant_update_run(hwnd);
             break;
           case IDM_SETTINGS:
             /* KiTTY: the [Agent] settings dialog, straight from the tray.
@@ -6696,6 +6841,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* Open the visible key list window, if we've been asked to. */
     if (show_keylist_on_startup)
         create_keylist_window();
+
+    /* KiTTY: the first look at the stored update answer, a moment after the
+     * start (its own notices come first); the timer re-arms itself daily. */
+    if (traywindow)
+        SetTimer(traywindow, TID_UPDATE_LOOK, KAGEANT_UPDATE_FIRST_MS, NULL);
 
     /*
      * Main message loop.

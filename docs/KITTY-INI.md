@@ -162,6 +162,16 @@ session starts and print a one-line notice at the top of the terminal if there
 is one. The fetch is asynchronous and the terminal is touched once, at the
 clean top of the session, so a full-screen program is never corrupted by it.
 
+It is one switch for the whole suite. The launcher looks at its start and again
+after every 24 hours in the tray, and announces a newer release with a balloon,
+in its tooltip and with an "Update available" menu entry. kageant never asks the
+network - it holds the private keys - and reads, shortly after its start and then
+once a day, the answer the terminal or the launcher stored; its "Update
+available" entry starts the `kitty.exe` beside it with `-update`, which opens
+the updater and exits. With `checkupdate=no` none of the three looks, and none
+announces an answer stored earlier. "Check for updates now" in the configuration
+box works either way.
+
 It is an **application** setting, and it did not use to be: the answer lived in
 every saved session as `CheckUpdateStartup`, so which session you opened first
 decided whether KiTTY checked. Saving a session now deletes that key, and the

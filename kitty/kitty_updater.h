@@ -18,5 +18,7 @@ void kitty_start_update_check( void ) ;
 void kitty_start_update_check_notify( HWND hwnd, UINT msg ) ;
 int kitty_update_notice( char *buf, int n ) ;
 int kitty_update_available( char *latest_out, int latest_n, char *cur_out, int cur_n, int *beta_out ) ;
+// "kitty.exe -update": open the updater, run its windows to their end, return.
+void kitty_update_run_standalone( void ) ;
 
 #endif

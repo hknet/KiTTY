@@ -746,9 +746,13 @@ char default_init_file_content[] =
 ;    which then wins over this key.\n\
 ;showforeignsessions=auto\n\
 \n\
-; checkupdate: look for a newer KiTTY release when a session starts, and show\n\
-;    a one-line notice at the top of the terminal when there is one. Default\n\
-;    yes. The check is asynchronous and touches the terminal only once, at the\n\
+; checkupdate: look for a newer KiTTY++ release - one switch for the whole\n\
+;    suite. The terminal looks when a session starts and shows a one-line\n\
+;    notice at the top of the terminal; the launcher looks at its start and\n\
+;    again after every 24 hours in the tray; kageant never asks the network\n\
+;    and reads, once a day, the answer those two stored. Default yes; with no\n\
+;    none of them looks or announces anything.\n\
+;    The check is asynchronous and touches the terminal only once, at the\n\
 ;    clean top of a session, so a full-screen program is never corrupted by it.\n\
 ;    This is an APPLICATION setting. It used to be stored in every saved\n\
 ;    session as CheckUpdateStartup, which meant the answer depended on which\n\
