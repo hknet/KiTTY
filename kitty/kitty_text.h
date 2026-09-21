@@ -1378,7 +1378,7 @@
 /* Application/KiTTY++ Settings/Launcher */
 #define KT_KSET_LA_TITLE                             "The launcher"
 #define KT_KSET_LA_MENU                              "Menu"
-#define KT_KSET_LA_RELOAD                            "Rebuild the session list each time the menu opens"
+#define KT_KSET_LA_RELOAD                            "Keep my hand-edited launcher menu"
 #define KT_KSET_LA_SECOND                            "A second launcher:"
 #define KT_KSET_LA_SECOND_EXITS                      "Exits"
 #define KT_KSET_LA_SECOND_STARTS                     "Starts anyway"
@@ -1694,8 +1694,9 @@
 
 /* kitty_launcher.c: tray tip, balloons, notices, About, the Startup-folder shortcut */
 #define KT_LAUNCHER_UPDATE_BALLOON                   "KiTTY %s is available%s.\nClick here to install it."
-#define KT_LAUNCHER_TIP_UPDATE                       "KiTTY Launcher - update %s%s available"
-#define KT_LAUNCHER_TIP_PORTABLE                     "KiTTY Launcher\r\n(portable)"
+#define KT_LAUNCHER_TIP                              "KiTTY++ Launcher"
+#define KT_LAUNCHER_TIP_UPDATE                       "KiTTY++ Launcher - update %s%s available"
+#define KT_LAUNCHER_TIP_PORTABLE                     "KiTTY++ Launcher\r\n(portable)"
 #define KT_LAUNCHER_TIP_RESTRICTED                   "\r\n(RESTRICTED)"
 #define KT_LAUNCHER_TIP_WORKPLACE                    "\r\nWorkplace proxy: %.100s%s%s"
 #define KT_LAUNCHER_TIP_SWITCHES_OFF                 "\r\nSwitches off in "
@@ -2139,8 +2140,8 @@
 
 /* kageant: tray tip (128 chars; the state suffixes are composed in
  * kitty_title.c) */
-#define KT_KA_TIP                                    "kageant (KiTTY authentication agent)"
-#define KT_KA_TIP_INI                                "kageant (KiTTY authentication agent)\r\n(kitty.ini mode)"
+#define KT_KA_TIP                                    "kageant (KiTTY++ authentication agent)"
+#define KT_KA_TIP_INI                                "kageant (KiTTY++ authentication agent)\r\n(kitty.ini mode)"
 #define KT_KA_TIP_UNPROTECTED_FMT                    "%.*s\r\nkeys UNPROTECTED in memory%s"
 #define KT_KA_TIP_AUTOENC_FMT                        "%.*s\r\nidle re-encrypt enforced: %s%s"
 #define KT_KA_TIP_MISMATCH_ONE                       "1 key NOT loaded - fingerprint mismatch"

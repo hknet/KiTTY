@@ -867,6 +867,15 @@ int kset_get_int(const struct kset_key *k)
     return k->dflt;
 }
 
+/* A switch whose checkbox says the OPPOSITE of what its key stores.
+ * [Launcher] reload=yes lets the launcher rebuild its menu from the saved
+ * sessions, and is the default; the box is the exception a person chooses,
+ * "keep my hand-edited menu", so a tick stores reload=no. */
+static bool kset_shown_reversed(const struct kset_key *k)
+{
+    return !strcmp(k->key, KI_LAUNCHER_RELOAD);
+}
+
 static void kset_set_int(const struct kset_key *k, int v)
 {
     if (k->set) k->set(v);
@@ -884,7 +893,7 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
         cfgwin_refreshing = 1;      /* dlg_*_set fires VALCHANGE - never write a refresh */
         switch (k->kind) {
           case KSET_BOOL:
-            dlg_checkbox_set(ctrl, dlg, kset_get_int(k) != 0);
+            dlg_checkbox_set(ctrl, dlg, (kset_get_int(k) != 0) != kset_shown_reversed(k));
             break;
           case KSET_INT:
             sprintf(buf, "%d", kset_get_int(k));
@@ -962,7 +971,7 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
     } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
         switch (k->kind) {
           case KSET_BOOL: {
-            int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+            int on = (dlg_checkbox_get(ctrl, dlg) != 0) != kset_shown_reversed(k) ? 1 : 0;
             kset_write(k, on ? "yes" : "no");
             kset_set_int(k, on);
             break;

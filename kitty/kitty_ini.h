@@ -1077,9 +1077,11 @@ char default_init_file_content[] =
 ;    recognising each other as \"already running\".\n\
 ;classname=KiTTYLauncher\n\
 \n\
-; reload: rebuild the launcher's session list each time its menu is opened,\n\
-;    so sessions saved since it started appear. On by default; only the value\n\
-;    no turns it off, and then the list is the one read at launcher startup.\n\
+; reload: let the launcher rebuild its menu from the saved sessions - when it\n\
+;    starts, on Refresh, and when KiTTY++ saves, deletes or imports a session.\n\
+;    On by default. Only the value no turns it off: the launcher then never\n\
+;    touches its menu definition (the Launcher key or folder), which keeps a\n\
+;    hand-edited one - and new sessions out of the menu until added by hand.\n\
 ;reload=yes\n\
 \n\
 ; exitwithworkplace: close the launcher again when workplace proxy mode is\n\

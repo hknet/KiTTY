@@ -1781,8 +1781,8 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
 The launcher is a separate program: a change here applies the next
 time it starts.
 
-\b \q{Rebuild the session list each time the menu opens} shows sessions
-saved since the launcher started. \q{A second launcher} says whether a
+\b \q{Keep my hand-edited launcher menu} stops the launcher from
+rebuilding its menu; see below. \q{A second launcher} says whether a
 launcher started while one is running exits, the default, or starts
 anyway.
 
@@ -1799,7 +1799,36 @@ leaves it alone.
 
 The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
 \c{alreadyRunCheck}, \c{exitwithworkplace}, \c{noticeseconds} and the
-\c{classname} above.
+\c{classname} above. \q{Keep my hand-edited launcher menu} is
+\c{reload=no}; the default is \c{reload=yes}.
+
+\S2{kitty-cfg-kset-launcher-menu} Where the launcher's menu comes from
+
+The launcher does not read the saved sessions each time its menu opens.
+It keeps a menu definition of its own and builds the tray menu from
+that. It rebuilds the definition from the saved sessions, deleting
+what was there, when it starts, when you choose \q{Refresh}, and when
+KiTTY++ saves, deletes or imports a session or changes a folder. A
+session that reaches the store any other way - a \c{.reg} file, a
+session file copied into the \c{Sessions} folder - appears after
+\q{Refresh}.
+
+The definition can be edited by hand, to give the menu an order and
+folders of its own. With \q{Keep my hand-edited launcher menu} ticked
+the launcher never rebuilds it, so the edit stays - and a new session
+appears in the menu only when you add it yourself.
+
+\b With the settings in the registry the definition is the key
+\c{Launcher} beside \c{Sessions}, under
+\c{HKEY_CURRENT_USER\\Software\\kapper.net\\KiTTY}. A subkey is a submenu.
+A string value is an entry: its name is the text shown, its data the
+name of the session to start.
+
+\b With \c{savemode=dir} it is the folder \c{Launcher} beside
+\c{kitty.ini}, and the registry is not touched. A subfolder is a
+submenu. A file holds one entry per line, in the form
+\c{text\\session\\}: the text shown, a backslash, the session's name, a
+closing backslash.
 
 \S{kitty-launcher-menu} The launcher's tray menu
 

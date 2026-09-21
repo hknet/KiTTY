@@ -1254,7 +1254,7 @@ static void LauncherSetTrayTip( void ) {
 #ifdef MOD_PORTABLE
 	strcpy( TrayIcone.szTip, KT_LAUNCHER_TIP_PORTABLE ) ;
 #else
-	strcpy( TrayIcone.szTip, KT_CAP_LAUNCHER ) ;
+	strcpy( TrayIcone.szTip, KT_LAUNCHER_TIP ) ;
 #endif
 	/* KiTTY: say so when this launcher - and so every session it starts, via
 	 * the "&R" prefix - runs with the restricted ACL. */
