@@ -406,9 +406,13 @@ void InitWinMain( void ) {
 		 * ourselves rather than about the machine.
 		 * The second half of the condition is the old-hive case: when
 		 * MigrateOldKittyHive() has just copied 9bis.com\KiTTY across, the
-		 * sessions are already here and there is nothing to restore or adopt. */
+		 * sessions are already here and there is nothing to restore or adopt.
+		 * COUNTED, not tested: an old hive whose Sessions key is empty brings
+		 * that empty key along, and a machine in that state still has its
+		 * backup or its PuTTY sessions to take. */
+		int kitty_old_hive_came = RegTestKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) ;
 		if( !kitty_hive_existed
-		 && !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) ) {
+		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) == 0 ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			// ... load the most recent backup (kittynew-<timestamp>.sav),
 			// or the old fixed-name file if it is still there.
@@ -436,10 +440,19 @@ void InitWinMain( void ) {
 				 * And copy INTO the hive this run uses, not the compile-time one -
 				 * with KiClassName=PuTTY that hive IS PuTTY's, where there is by
 				 * definition nothing to adopt and copying a key onto itself is
-				 * the one thing worth refusing outright. */
+				 * the one thing worth refusing outright.
+				 *
+				 * An old hive that came across with no sessions is NOT markers
+				 * only: it holds that installation's host key cache and settings,
+				 * and the copy overwrites values of the same name. Then the
+				 * sessions alone are taken. */
 				if( stricmp( kitty_reg_live, "Software\\SimonTatham\\PuTTY" )
-				 && RegTestKey( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY" ) )
-					kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_reg_live ) ;
+				 && RegTestKey( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY" ) ) {
+					if( !kitty_old_hive_came )
+						kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", kitty_reg_live ) ;
+					else if( RegTestKey( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) )
+						kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions", kitty_reg_live_sess ) ;
+					}
 				InfoBoxClose( hdlg ) ;
 			}
 		}
