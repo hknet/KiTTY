@@ -105,6 +105,22 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   hotkey stayed registered. Both deletes tell it now, as saving and importing
   already did, and so do the `-importdir` and `-takefolder` command-line
   runs.
+- **The session's stored password is no longer sent to an SSH jump host.**
+  With a jump host that has no stored password of its own, the jump host's
+  password prompt was the first of the connection, and the automatic login
+  answered it with the session's stored password: the target's password went
+  to the jump host, was refused there, and the target's own prompt was then
+  left to be typed. The jump host's prompt is shown to be typed now and the
+  stored password goes to the session's host alone. The same holds for a
+  password given with `-pw`. A jump host that happened to share the session's
+  password is asked for once; store it as the proxy's password to avoid that.
+- **A first start beside an old KiTTY that never saved a session takes the
+  PuTTY sessions or the backup after all.** The settings of the old KiTTY
+  are copied on the first start, and its empty session list counted as
+  "sessions are there", so neither the newest backup was restored nor
+  PuTTY's sessions adopted. The sessions are counted now. With such old
+  settings present only PuTTY's sessions are taken, so the old host key
+  cache stays as it was.
 - **A theme previewed in kageant's settings stays while the dialog is
   open.** The droplist shows the choice before OK stores it; a Windows
   light/dark switch, or simply clicking away and back, put the stored theme

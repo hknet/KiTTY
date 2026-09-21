@@ -48,7 +48,9 @@ features are working and verified. Known limitations as of this release:
 - **A brand-new release is noticed one launch late.** The startup update check
   runs on a worker thread and only refreshes a cached answer, so the notice about
   a release published since your last start appears on the *next* start. *Check
-  for updates* in the system menu always asks the server there and then.
+  for updates* in the system menu always asks the server there and then. A
+  launcher left running looks again after every 24 hours; kageant never asks
+  the network and shows what the terminal or the launcher stored last.
 - **The update check looks at the newest release only.** A stable user is
   therefore told about the newest *beta* rather than the newest stable, and asked
   before anything is installed. Full stable-only channel filtering waits for
@@ -194,7 +196,9 @@ features are working and verified. Known limitations as of this release:
   with no KiTTY++ hive of its own copies stock PuTTY's sessions into KiTTY++'s
   store (or restores KiTTY++'s newest backup if one exists); PuTTY is not
   changed. It happens once per machine and only while KiTTY++ has no sessions
-  yet.
+  yet. The settings of an old KiTTY (`9bis.com`) are taken first; when they
+  came along without a session, only PuTTY's sessions are copied, not its
+  host key cache.
 - **A portable store whose sessions live in SUBDIRECTORIES is not read.** This
   version writes one flat file per session under `Sessions\` with its folder
   recorded inside, and lists only the files directly there; a classic
