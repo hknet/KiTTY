@@ -62,6 +62,10 @@ const char *kitty_theme_pref_to_string(int pref);
  * Safe to call again on the same window - that is how a live preview works.
  */
 void kitty_theme_apply(HWND dlg, bool dark);
+/* The same for a preference the dialog shows but has NOT stored yet (a theme
+ * droplist before OK). The window then follows THAT preference, not the stored
+ * one, on a system theme switch and on its activations, until it is gone. */
+void kitty_theme_preview(HWND dlg, int pref);
 /* The same, in the theme the dialog hook would give this window on its
  * activation (kitty_theme_hook_dialogs' resolver). For a dialog that builds
  * its controls hidden and wants its FIRST frame themed: called at the end of

@@ -133,6 +133,10 @@ static struct kt_window {
     HWND w;
     bool dark;
     bool msgbox;   /* a system message box, not one of our own templates */
+    /* The window shows a theme preference of its OWN that is not stored yet
+     * (kitty_theme_preview): it is that one it follows, not the stored one. */
+    bool has_preview;
+    int preview;
 } kt_windows[KT_MAX_WINDOWS];
 
 static struct kt_window *kt_find_window(HWND w)
@@ -181,6 +185,7 @@ static void kt_set_dark_window(HWND w, bool dark)
         if (!kt_windows[i].w) {
             kt_windows[i].w = w;
             kt_windows[i].dark = dark;
+            kt_windows[i].has_preview = false;
             return;
         }
     }
@@ -1170,6 +1175,19 @@ void kitty_theme_forget(HWND dlg)
     if (e) {
         e->w = NULL;
         e->dark = false;
+        e->has_preview = false;
+    }
+}
+
+void kitty_theme_preview(HWND dlg, int pref)
+{
+    struct kt_window *e;
+
+    kitty_theme_apply(dlg, kitty_theme_dark_for(pref));
+    e = kt_find_window(dlg);
+    if (e) {
+        e->has_preview = true;
+        e->preview = pref;
     }
 }
 
@@ -1836,6 +1854,15 @@ static LRESULT CALLBACK kt_lv_subclass(HWND lv, UINT msg, WPARAM wParam,
  * subclass asks it again when the system switches theme. */
 static bool (*kt_want_dark)(void);
 
+/* The theme a window should have NOW: its own unsaved preview if it shows
+ * one, the stored preference otherwise. */
+static bool kt_want_dark_for(const struct kt_window *known)
+{
+    if (known && known->has_preview)
+        return kitty_theme_dark_for(known->preview);
+    return kt_want_dark ? kt_want_dark() : false;
+}
+
 static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR id,
                                         DWORD_PTR ref)
@@ -1880,7 +1907,7 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
                  ? !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")
                  : !strcmp((const char *)lParam, "ImmersiveColorSet"))) {
             struct kt_window *known = kt_find_window(hwnd);
-            bool dark = kt_want_dark();
+            bool dark = kt_want_dark_for(known);
             if (known && known->dark != dark) {
                 kitty_theme_system_changed();
                 kitty_theme_apply(hwnd, dark);
@@ -2095,7 +2122,8 @@ static LRESULT CALLBACK kt_cbt_proc(int code, WPARAM wParam, LPARAM lParam)
          * need. */
         if (w && GetClassNameA(w, cls, sizeof(cls)) &&
             kt_is_dialog_class(cls)) {
-            bool dark = kt_want_dark ? kt_want_dark() : false;
+            /* a window showing an unsaved preview keeps it across activations */
+            bool dark = kt_want_dark_for(kt_find_window(w));
             bool msgbox = kt_looks_like_messagebox(w);
             /* Ours, or a message box. A file dialog is this window class too,
              * but it is full of list views and toolbars so it fails the

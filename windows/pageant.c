@@ -3711,7 +3711,9 @@ static void keysettings_apply_theme(HWND hwnd)
     int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME, CB_GETCURSEL, 0, 0);
     if (sel < KITTY_THEME_SYSTEM || sel > KITTY_THEME_DARK)
         sel = kitty_theme_pref_get();
-    kitty_theme_apply(hwnd, kitty_theme_dark_for(sel));
+    /* as this dialog's own, unsaved choice: a system theme switch and an
+     * activation must not put the stored theme back over it */
+    kitty_theme_preview(hwnd, sel);
 }
 
 /*
