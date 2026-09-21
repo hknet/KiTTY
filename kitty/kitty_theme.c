@@ -371,6 +371,22 @@ void kitty_theme_app_mode(int pref)
 }
 
 /*
+ * Is this WM_SETTINGCHANGE the system's light/dark switch? The area name in
+ * lParam arrives in the RECEIVING WINDOW's character set, whatever the program
+ * was compiled as: a Unicode window gets a wide string, and a narrow compare
+ * on that reads "I", stops at the zero byte and never matches. So the window
+ * is asked, not the build.
+ */
+bool kitty_theme_is_system_switch(HWND w, LPARAM lParam)
+{
+    if (!lParam)
+        return false;
+    return IsWindowUnicode(w)
+               ? !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")
+               : !strcmp((const char *)lParam, "ImmersiveColorSet");
+}
+
+/*
  * The SYSTEM switched between light and dark (WM_SETTINGCHANGE with
  * "ImmersiveColorSet"). The app mode does not change with it - "follow the
  * system" stays "follow the system" - so kitty_theme_app_mode() above sees the
@@ -1902,10 +1918,7 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
        * system" changes its answer with the system. Windows sends the
        * broadcast more than once per switch; the comparison absorbs that. */
       case WM_SETTINGCHANGE:
-        if (lParam && kt_want_dark &&
-            (IsWindowUnicode(hwnd)
-                 ? !wcscmp((const wchar_t *)lParam, L"ImmersiveColorSet")
-                 : !strcmp((const char *)lParam, "ImmersiveColorSet"))) {
+        if (kt_want_dark && kitty_theme_is_system_switch(hwnd, lParam)) {
             struct kt_window *known = kt_find_window(hwnd);
             bool dark = kt_want_dark_for(known);
             if (known && known->dark != dark) {

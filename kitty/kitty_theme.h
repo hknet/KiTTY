@@ -46,6 +46,10 @@ void kitty_theme_app_mode(int pref);
  * a long-lived process following the system follows it NOW. Call it on
  * WM_SETTINGCHANGE "ImmersiveColorSet". */
 void kitty_theme_system_changed(void);
+/* Is this WM_SETTINGCHANGE that switch? Compares the area name in lParam in
+ * the receiving window's own character set - a Unicode window gets a wide
+ * string whatever the program was compiled as. */
+bool kitty_theme_is_system_switch(HWND w, LPARAM lParam);
 
 /*
  * The preference's wire form, shared by every store so a value written by one

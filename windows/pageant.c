@@ -3989,7 +3989,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         /* Windows announces a light/dark switch this way. It only matters
          * while the preference is "follow the system", and applying it again
          * when it is not costs one repaint. */
-        if (lParam && !stricmp((const char *)lParam, "ImmersiveColorSet"))
+        if (kitty_theme_is_system_switch(hwnd, lParam))
             keysettings_apply_theme(hwnd);
         return 0;
       case WM_COMMAND:
@@ -5507,7 +5507,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
     switch (message) {
       case WM_SETTINGCHANGE:
         /* The taskbar switched colour: the glyph on it must follow. */
-        if (lParam && !stricmp((const char *)lParam, "ImmersiveColorSet"))
+        if (kitty_theme_is_system_switch(hwnd, lParam))
             kageant_tray_retheme(hwnd);
         break;
       case WM_CREATE:
