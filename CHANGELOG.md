@@ -1,8 +1,118 @@
 # KiTTY changelog
 
-KiTTY++ is basically the full KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is basically the full old KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
+
+## 0.85.1.12-beta — unreleased
+
+### New
+
+- **A cut list entry shows its whole text on mouse-over.** In
+  the configuration box's lists with columns - Applications, Host keys, the
+  shortcut editor, Broadcast, the old-folder import - that is the one cell
+  under the mouse; in a plain one-column list, such as the pinned host keys
+  on Connection > SSH > Host keys, it is the row. The text appears over the
+  entry itself, as it does in Explorer, and follows the dark theme.
+- **The launcher opens a whole folder of sessions.** A right click on a
+  session folder in the tray menu offers "Open all sessions in this folder";
+  it opens the sessions directly in that folder, one after the other, and
+  asks first when there are more than eight. It works on a folder inside a
+  folder too.
+- **Folders inside folders show as nested submenus in Saved Sessions.** A
+  folder name with a backslash in it - `work\customers` - was one flat entry
+  with the whole name in the terminal's Saved Sessions menu, while the
+  launcher already showed a submenu inside a submenu. Both menus have the
+  same shape now, subfolders before sessions.
+- **The programs follow a Windows light/dark switch while they run.** With
+  the colour theme on "follow the system", an open dialog of any program, the
+  terminal's menus and the launcher's tray menu change with Windows at once;
+  they used to keep the theme they started with until the next activation
+  or restart. A fixed dark or light theme stays as it is. The launcher also
+  follows a theme change made in the configuration box without a restart.
+- **The launcher and kageant tell of a new release while they run.** Both sit
+  in the tray for days, and the launcher looked for an update only when it
+  started. It now looks again after every 24 hours and announces a newer
+  release as it does at its start - balloon, tooltip, menu entry - once per
+  release. kageant holds the private keys and does no networking: shortly after
+  its start and then once a day it reads the answer the terminal or the
+  launcher stored, and shows a notice, a tooltip line and an "Update
+  available" entry in its tray menu. That entry starts the `kitty.exe` beside
+  it with the new switch **`-update`**, which opens the updater and exits; a
+  `kitty.exe` that is not one the agent can verify requires confirmation to start.
+
+### Changed
+
+- **The columns of the configuration box's lists fit their text.** The
+  columns had fixed shares of the list's width, which cut a short value
+  while the column beside it had room to spare: on Application > Security >
+  Applications the version number ran into the Signature column. A column
+  whose text is cut now takes the width it lacks from the columns that have
+  some left, and a list that was never cut looks as it did. Where the texts
+  do not all fit, the short columns stay whole and the long ones - a host
+  name, a fingerprint - are cut.
+- **Session > Connection > Transfers is now "File-Transfer-Settings",** and
+  its panel is titled "File-Transfer Settings for this Session". The notes
+  on other panels that point to it, the manual and the documents follow. The
+  panel's internal path is unchanged, so `-cfgpanel "Connection/Transfers"`
+  and a remembered panel keep working.
+- **"Enable ZModem transfers in every session" moved to Application >
+  KiTTY++ Settings > Transfers & Tools > ZModem.** It is a setting of the
+  application and sat on the session's ZModem panel. With ZModem switched
+  off, that panel says so beside an "Open App Settings" button that leads to
+  the switch; its Download folder note gained an "Open
+  File-Transfer-Settings" button.
+- **The launcher's Refresh no longer closes the menu.** The session list is
+  rebuilt behind the open tray menu, with a small spinner beside "Refresh"
+  while it runs, and the menu then shows the new list in place. It used to
+  close the menu and open it again.
+- **"Rebuild the session list each time the menu opens" is now "Keep my
+  hand-edited launcher menu".** The old text promised something the launcher
+  never did. The switch decides whether the launcher may rebuild its menu
+  from the saved sessions - at its start, on Refresh, and when KiTTY++ saves,
+  deletes or imports a session - and the box now names the one reason to
+  switch that off. The key is still `[Launcher] reload`; a ticked box is
+  `reload=no`. The manual gained "Where the launcher's menu comes from", with
+  the menu's place in the registry and in a `savemode=dir` folder and its
+  format.
+- **"Check for updates when KiTTY starts" is now "Check for updates of
+  KiTTY++",** because it is one switch for the terminal, the launcher and
+  kageant. "Check for updates now" works with it off.
+- **The tray tooltips say KiTTY++.** The launcher's reads "KiTTY++
+  Launcher", kageant's "kageant (KiTTY++ authentication agent)".
+- **"Window unique" in the launcher's menu is now "Show one window at a
+  time".** The manual says what it does: choosing a session in the list of
+  open windows hides all the others.
+
+### Fixed
+
+- **The configuration box no longer flickers white when it opens in dark
+  mode.** It was put on the screen before its category tree and its first
+  panel were built, so a dark box began with an unpainted light frame. It is
+  themed while still hidden and shown once, complete.
+- **The launcher's tray icon no longer ignores clicks for seconds after a
+  start or a Refresh with many sessions.** Registering the sessions' global
+  hotkeys loaded every session's whole configuration; it reads the two hotkey
+  settings alone now. With 200 sessions that took close to twelve seconds
+  and takes a fraction of one.
+- **The launcher respects "Check for updates".** With the switch off it
+  still asked for the latest release at every start and announced it. It
+  asks nothing and announces nothing now, and a change of the switch takes
+  effect without restarting the launcher.
+- **A running launcher follows a deleted session and a deleted folder.**
+  Deleting either in the configuration box did not tell the launcher: its
+  tray menu kept the entry until Refresh, and the deleted session's global
+  hotkey stayed registered. Both deletes tell it now, as saving and importing
+  already did, and so do the `-importdir` and `-takefolder` command-line
+  runs.
+- **A theme previewed in kageant's settings stays while the dialog is
+  open.** The droplist shows the choice before OK stores it; a Windows
+  light/dark switch, or simply clicking away and back, put the stored theme
+  back over it.
+- **kageant's own check for a Windows light/dark switch works.** In its
+  settings dialog it compared the switch's name in the wrong character set
+  and never matched; the tray icon's check was written the same way. Both use
+  one shared check now.
 
 ## 0.85.1.11-beta — 2026-09-19
 
