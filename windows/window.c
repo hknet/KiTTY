@@ -9457,6 +9457,7 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
      * produced by the now-stubbed RenewPassword). */
     if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() && !wgs->autopw_tried &&
         p->n_prompts == 1 && !p->prompts[0]->echo && p->to_server &&
+        !p->from_proxy_hop &&   /* a jump host's prompt is not this session's */
         !kitty_pw_empty(wgs->conf, CONF_password)) {
         /* Answer the stored password ONCE per connection. If the server rejects
          * it and re-prompts, do NOT auto-resend (that would burn the server's

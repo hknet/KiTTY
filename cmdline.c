@@ -110,6 +110,15 @@ SeatPromptResult cmdline_get_passwd_input(
     }
 
     /*
+     * KiTTY: -pw is the password of the host named on the command line.
+     * A prompt the SSH proxy code passed on is the jump host's; answering
+     * it would send that password to another machine and use up the one
+     * try before the real prompt arrives.
+     */
+    if (p->from_proxy_hop)
+        return SPR_INCOMPLETE;
+
+    /*
      * If we've tried once, return utter failure (no more passwords left
      * to try).
      */

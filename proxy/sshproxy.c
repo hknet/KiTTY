@@ -375,7 +375,11 @@ static SeatPromptResult sshproxy_get_userpass_input(Seat *seat, prompts_t *p)
         /*
          * If we have access to the outer Seat, pass this prompt
          * request on to it.
+         *
+         * KiTTY: marked as the jump host's, so that the outer seat does
+         * not answer it with the password of the session's own host.
          */
+        p->from_proxy_hop = true;
         return seat_get_userpass_input(wrap(sp->clientseat), p);
     }
 

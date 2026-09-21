@@ -960,6 +960,14 @@ struct prompts_t {
      */
     bool from_server;
 
+    /*
+     * KiTTY: set by the SSH proxy code when it hands a prompt of the
+     * JUMP HOST's connection on to the session's seat. A password stored
+     * or given for the session itself (the saved session password, -pw)
+     * belongs to the target host and must not answer such a prompt.
+     */
+    bool from_proxy_hop;
+
     char *name;         /* Short description, perhaps for dialog box title */
     bool name_reqd;     /* Display of `name' required or optional? */
     char *instruction;  /* Long description, maybe with embedded newlines */

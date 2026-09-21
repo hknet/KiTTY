@@ -13,6 +13,7 @@ prompts_t *new_prompts(void)
     p->data = NULL;
     p->spr = SPR_INCOMPLETE;
     p->to_server = true; /* to be on the safe side */
+    p->from_proxy_hop = false;
     p->name = p->instruction = NULL;
     p->name_reqd = p->instr_reqd = false;
     p->callback = NULL;
