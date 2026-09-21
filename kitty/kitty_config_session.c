@@ -2992,6 +2992,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 get_sesslist(&ssd->sesslist, true);
                 kitty_session_folder_cache_clear();
                 dlg_refresh(ssd->listbox, dlg);
+                /* A running launcher still lists the session, and still holds
+                 * its global hotkey, until it is told. */
+                kitty_notify_launcher_sessions_changed();
             }
         } else if (!ssd->midsession &&
                    ssd->createbutton && ctrl == ssd->createbutton) {
@@ -3117,6 +3120,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->editbox, dlg);
                 dlg_refresh(ssd->folderlist, dlg);
                 dlg_refresh(ssd->listbox, dlg);
+                /* Its sessions moved to the root list: a running launcher
+                 * still shows them in the folder's submenu until it is told. */
+                kitty_notify_launcher_sessions_changed();
             }
         } else if (ctrl == ssd->okbutton) {
             /* Enter with a folder row highlighted steps into it, exactly as a

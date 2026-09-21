@@ -36,6 +36,9 @@ void kitty_demo_templates(void);
  * exit. kitty_export_all_to_dir/kitty_import_dir are the no-UI cores. */
 static char *kitty_cli_exportdir = NULL;
 static char *kitty_cli_importdir = NULL;
+/* Both store-changing paths below tell a running launcher, as the config
+ * box's own import does (kitty_config_shared.c). */
+void kitty_notify_launcher_sessions_changed(void);
 /* -portablecopy <dir> / -takefolder <dir>: the two moves of
  * kitty_storemove.c, driven without their dialogs; the password rules
  * of -exportall / -importdir apply. */
@@ -752,6 +755,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
         n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
         kitty_clear_bundle_context();
+        /* before the box: a running launcher need not wait for its answer */
+        kitty_notify_launcher_sessions_changed();
         snprintf(msg, sizeof(msg), KT_CLI_IMPORT_DONE,
                  n, prox, fail, kitty_cli_importdir);
         MessageBoxA(NULL, msg, KT_CAP_SESSION_IMPORT,
@@ -798,6 +803,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
         kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
                                &r, msg, sizeof(msg));
+        kitty_notify_launcher_sessions_changed();
         MessageBoxA(NULL, msg, KT_CAP_TAKE_FOLDER,
                     MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
         cleanup_exit(r.fail ? 1 : 0);
