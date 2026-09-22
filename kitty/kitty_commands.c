@@ -619,13 +619,19 @@ static void help_box_layout( HWND hwnd ) {
 	MoveWindow( btn, rc.right - bw - m, btop, bw, bh, TRUE ) ;
 }
 
+/* The same window serves "kitty.exe -h" (kitty_cli_help_box below): a run
+ * that has no terminal and ends when the window closes. It remembers its place
+ * under a name of its own, and closing it ends that run's message loop. */
+static const char * kitty_help_poskey = "CmdHelp" ;
+static int kitty_help_cli = 0 ;
+
 static INT_PTR CALLBACK HelpBoxProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam ) {
 	switch( msg ) {
 		case WM_INITDIALOG: {
 			HWND edit = GetDlgItem( hwnd, IDC_HELPTEXT ) ;
 			kitty_help_edit_proc = (WNDPROC)SetWindowLongPtr( edit, GWLP_WNDPROC, (LONG_PTR)HelpEditProc ) ;
 			kitty_dialog_icon( hwnd, NULL ) ;   /* the terminal's own icon */
-			kitty_auxpos_apply( hwnd, "CmdHelp", GetWindow(hwnd, GW_OWNER), 0 ) ;
+			kitty_auxpos_apply( hwnd, kitty_help_poskey, GetWindow(hwnd, GW_OWNER), 0 ) ;
 			help_box_layout( hwnd ) ;
 			return 1 ;
 		}
@@ -649,12 +655,38 @@ static INT_PTR CALLBACK HelpBoxProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			DestroyWindow( hwnd ) ;
 			return 1 ;
 		case WM_DESTROY:
-			kitty_auxpos_save( hwnd, "CmdHelp" ) ;
+			kitty_auxpos_save( hwnd, kitty_help_poskey ) ;
 			ShinyRemoveAuxDialog( hwnd ) ;
 			kitty_help_dlg = NULL ;
+			if( kitty_help_cli ) PostQuitMessage( 0 ) ;
 			return 0 ;
 	}
 	return 0 ;
+}
+
+/* "kitty.exe -h" with no console to answer on: the option list is some eighty
+ * lines, and a message box grows to fit its text - taller than a small screen,
+ * its button out of reach. The command list's window scrolls and resizes, so
+ * the text goes there. Returns when the window has been closed; 0 when it
+ * could not be created, and the caller falls back to the message box. */
+int kitty_cli_help_box( const char * caption, const char * text ) {
+	MSG m ;
+	HWND d ;
+	kitty_help_poskey = "CliHelp" ;
+	kitty_help_cli = 1 ;
+	d = CreateDialog( hinst, MAKEINTRESOURCE(IDD_HELPBOX), NULL, HelpBoxProc ) ;
+	if( !d ) { kitty_help_cli = 0 ; kitty_help_poskey = "CmdHelp" ; return 0 ; }
+	kitty_help_dlg = d ;
+	SetWindowText( d, caption ) ;
+	SetDlgItemText( d, IDC_HELPTEXT, text ) ;
+	ShowWindow( d, SW_SHOW ) ;
+	SetForegroundWindow( d ) ;
+	while( GetMessage( &m, NULL, 0, 0 ) > 0 ) {
+		if( IsWindow( d ) && IsDialogMessage( d, &m ) ) continue ;
+		TranslateMessage( &m ) ;
+		DispatchMessage( &m ) ;
+	}
+	return 1 ;
 }
 
 static int cmd_help( HWND hwnd, char * arg ) {

@@ -583,9 +583,16 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * quit. There was no way to ask: a GUI program with three
                  * dozen switches and no -help is a program whose switches
                  * only their author knows. */
+                extern int kitty_cli_help_box(const char *caption,
+                                              const char *text);
                 char *help = dupprintf(
                     KT_CLI_HELP_FMT, appname, BUILD_VERSION, GetHelpMessage());
-                KittyCliReport(KT_CAP_CLI, help, 0);
+                /* At the prompt when there is one. Without a console the
+                 * list goes into the scrolling command-list window - a
+                 * message box would be taller than a small screen. */
+                if (!KittyCliPrint(help) &&
+                    !kitty_cli_help_box(KT_CAP_CLI_HELP, help))
+                    KittyCliReport(KT_CAP_CLI, help, 0);
                 sfree(help);
                 cleanup_exit(0);
             } else if (!strcmp(p, "-sshhandler")) {

@@ -2850,6 +2850,7 @@
 #define KT_CLI_BUNDLEPW_READ_FAILED                  "unable to read a password from file '%s'"
 #define KT_CLI_EDIT_FILE_NOT_FOUND                   "Unable to find requested file"
 #define KT_CAP_CLI                                   "KiTTY command line"
+#define KT_CAP_CLI_HELP                              "KiTTY++ command line options"
 #define KT_CLI_HELP_FMT                              "%s %s\r\n" \
         "\r\nUsage: kitty.exe [options] [user@]host[:port]" \
         "\r\n       kitty.exe [options] -load <saved session>" \
@@ -3461,7 +3462,7 @@
 #define KT_RC_OSC52READ_ALWAYSDENY                   "Always &deny for this host (saved in the session)"
 
 /* kitty.rc: IDD_HELPBOX */
-#define KT_RC_HELPBOX_CAPTION                        "KiTTY internal commands"
+#define KT_RC_HELPBOX_CAPTION                        "KiTTY++ internal commands"
 
 /* pageant.rc: IDD_LOAD_PASSPHRASE */
 #define KT_RC_LOAD_PASSPHRASE_CAPTION                "kageant: Loading Encrypted Key"

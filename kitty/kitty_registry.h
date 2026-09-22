@@ -74,6 +74,8 @@ BOOL RegCleanPuTTY( void ) ;
 // KiTTY: answer a command-line switch at the prompt that issued it (attaching
 // to the parent console); a message box only when there is no console at all
 void KittyCliReport( const char *title, const char *text, int warn ) ;
+// the console half alone: 1 = written to the parent console, 0 = there is none
+int KittyCliPrint( const char *text ) ;
 
 // Create the SSH handler
 // KiTTY: force = also take over protocols another program already handles;

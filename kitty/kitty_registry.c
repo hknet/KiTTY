@@ -752,6 +752,29 @@ BOOL RegCleanPuTTY( void ) {
  * terminal happens to have been started from. */
 static int g_report_gui = 0 ;
 
+/* The console half on its own: 1 when the text went to the console of the
+ * shell that started us, 0 when there is none. For a caller with a better
+ * fallback than a message box - the option list of -h is too long for one. */
+int KittyCliPrint( const char *text ) {
+	HANDLE h ;
+	DWORD written ;
+	int attached = kitty_attach_parent_console() ? 1 : 0 ;
+
+	h = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+			 NULL, OPEN_EXISTING, 0, NULL ) ;
+	if( h == INVALID_HANDLE_VALUE ) {
+		if( attached ) FreeConsole() ;
+		return 0 ;
+	}
+	/* the line breaks: see KittyCliReport below */
+	WriteFile( h, "\r\n", 2, &written, NULL ) ;
+	WriteFile( h, text, (DWORD)strlen(text), &written, NULL ) ;
+	WriteFile( h, "\r\n", 2, &written, NULL ) ;
+	CloseHandle( h ) ;
+	if( attached ) FreeConsole() ;
+	return 1 ;
+}
+
 void KittyCliReport( const char *title, const char *text, int warn ) {
 	if( g_report_gui ) {
 		MessageBoxA( NULL, text, title,
