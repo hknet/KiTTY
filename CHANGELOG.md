@@ -41,8 +41,22 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   it with the new switch **`-update`**, which opens the updater and exits; a
   `kitty.exe` that is not one the agent can verify requires confirmation to start.
 
+- **`-proxyuser` and `-proxypwfile` give the proxy's or the SSH jump host's
+  login on the command line.** kitty, klink, kscp and ksftp take them; the
+  password is read from the first line of the file, as `-pwfile` reads the
+  session's, and a line KiTTY++ wrote in one of its protected forms - a
+  master-password wrapped one included - is read through the same reader. A
+  jump host that has no stored password can so be passed from a script
+  without a prompt.
+
 ### Changed
 
+- **`kitty.exe -h` without a console opens a window that scrolls.** The
+  option list has grown to some eighty lines, and the message box that showed
+  it when there was no prompt to print to grew with it, beyond a small screen.
+  It comes in the window of the `/help` command list now - resizable, with a
+  scroll bar, its place remembered - and that window is titled "KiTTY++
+  internal commands".
 - **The columns of the configuration box's lists fit their text.** The
   columns had fixed shares of the list's width, which cut a short value
   while the column beside it had room to spare: on Application > Security >
