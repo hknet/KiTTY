@@ -49,9 +49,11 @@ Logging and passwords\r\n\
 * -sessionlog <file>: the same, with KiTTY's file-name placeholders expanded\r\n\
 * -masterpwfile <file>: read the master password from a file (scripted starts)\r\n\
 * -mpwkey <key>: hand an already-unlocked master password to this process\r\n\
-* -proxyuser <user> / -proxypwfile <file>: the proxy's or the SSH jump host's\r\n\
-    user and password for this run, the password read from a file (klink,\r\n\
-    kscp and ksftp take them too)\r\n\
+* -proxytype <none|socks4|socks5|http|telnet|cmd|ssh> -proxyhost <host>\r\n\
+    -proxyport <port> [-proxylocalhost]: connect through this proxy or SSH\r\n\
+    jump host for this run (klink, kscp and ksftp take them too)\r\n\
+* -proxyuser <user> / -proxypwfile <file>: its user and password, the\r\n\
+    password read from a file\r\n\
 * -codepage <name>: select the remote character set\r\n\
 \r\n\
 Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\

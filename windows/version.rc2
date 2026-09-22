@@ -75,6 +75,14 @@ BEGIN
 	     */
 	    VALUE "KiTTYPasswordFile",	"1"
 	    /*
+	     * The same shape for the proxy options (-proxytype, -proxyhost,
+	     * -proxyport, -proxylocalhost, -proxyuser, -proxypwfile): a helper
+	     * without them rejects the whole command line as an unknown option,
+	     * so Send File / Get File hands the connection's proxy only to a kscp
+	     * that declares it reads them. Reader: kx_helper_has_flag().
+	     */
+	    VALUE "KiTTYProxyOptions",	"1"
+	    /*
 	     * All three layers, because all three hold copyright in what ships:
 	     * PuTTY upstream, the original KiTTY features, and this port. The
 	     * SHORT_COPYRIGHT_DETAILS macro is derived by cmake/licence.cmake from

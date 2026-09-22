@@ -840,6 +840,50 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         SAVEABLE(1);
         conf_set_str(conf, CONF_proxy_username, value);
     }
+    /* KiTTY: the proxy itself, for a run with no saved session behind it -
+     * above all the kscp/klink the terminal starts for Send File and Get
+     * File, which must reach the host the way the terminal did: through the
+     * session's proxy, the named proxy, or workplace proxy mode. -proxycmd
+     * above is the one proxy option the tools had; these name the others.
+     * SAVEABLE(0), like -proxycmd: a proxy given here is the run's own. */
+    if (!strcmp(p, "-proxytype")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        int t = -1;
+        if (!strcmp(value, "none")) t = PROXY_NONE;
+        else if (!strcmp(value, "socks4")) t = PROXY_SOCKS4;
+        else if (!strcmp(value, "socks5") || !strcmp(value, "socks")) t = PROXY_SOCKS5;
+        else if (!strcmp(value, "http")) t = PROXY_HTTP;
+        else if (!strcmp(value, "telnet")) t = PROXY_TELNET;
+        else if (!strcmp(value, "cmd") || !strcmp(value, "local")) t = PROXY_CMD;
+        else if (!strcmp(value, "ssh")) t = PROXY_SSH_TCPIP;
+        else if (!strcmp(value, "sshexec")) t = PROXY_SSH_EXEC;
+        else if (!strcmp(value, "sshsubsys")) t = PROXY_SSH_SUBSYSTEM;
+        if (t < 0)
+            cmdline_error("unknown proxy type '%s' (none, socks4, socks5, "
+                          "http, telnet, cmd, ssh, sshexec, sshsubsys)", value);
+        else
+            conf_set_int(conf, CONF_proxy_type, t);
+    }
+    if (!strcmp(p, "-proxyhost")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        conf_set_str(conf, CONF_proxy_host, value);
+    }
+    if (!strcmp(p, "-proxyport")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        conf_set_int(conf, CONF_proxy_port, atoi(value));
+    }
+    if (!strcmp(p, "-proxylocalhost")) {
+        RETURN(1);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        conf_set_bool(conf, CONF_even_proxy_localhost, true);
+    }
     if (!strcmp(p, "-proxypwfile")) {
         RETURN(2);
         UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);

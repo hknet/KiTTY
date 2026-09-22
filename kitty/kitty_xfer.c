@@ -1110,9 +1110,116 @@ static void kx_pwfiles_release( int now ) {
 	kx_pw.n = 0 ;
 }
 
+/* The proxy of the CONNECTION, for a kscp the terminal starts. Send File and
+ * Get File used to hand kscp the host, the port and the login and nothing
+ * about the way there, so behind an SSH jump host, a SOCKS/HTTP proxy, a
+ * named proxy or workplace proxy mode the transfer dialled the host directly
+ * and failed wherever only the proxy reaches it. The WinSCP hand-off has
+ * taken the connection's proxy since it existed; this is the same snapshot
+ * (kitty_proxy_connection(): named and workplace proxies amend a throwaway
+ * Conf the session never sees) written as kscp's -proxy* options.
+ *
+ * Only for a helper that KNOWS the options: an older kscp - and stock pscp -
+ * rejects an unknown option outright, so the capability is read off the
+ * binary itself (KiTTYProxyOptions in its version resource, like the
+ * password-file flag), and an older helper gets the line it always got. The
+ * proxy password travels in a private file (-proxypwfile), as the session's
+ * does; a helper that reads the protected form gets it protected.
+ * Appends to `buffer`; the password's span is noted for the redacted log. */
+static int kx_helper_has_flag( const char *path, const char *flag ) ;
+static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
+                           size_t *px_at, size_t *px_len ) {
+	const struct kitty_proxy_snapshot *px = kitty_proxy_connection() ;
+	int          px_type = px ? px->type           : conf_get_int(conf,CONF_proxy_type) ;
+	int          px_port = px ? px->port           : conf_get_int(conf,CONF_proxy_port) ;
+	const char * px_host = px ? px->host           : conf_get_str(conf,CONF_proxy_host) ;
+	const char * px_user = px ? px->username       : conf_get_str(conf,CONF_proxy_username) ;
+	const char * px_tcmd = px ? px->telnet_command : conf_get_str(conf,CONF_proxy_telnet_command) ;
+	const char * tname = NULL ;
+	char px_pass[KITTY_PW_MAX+1] ; char b1[64] ;
+
+	*px_at = *px_len = 0 ;
+	if( px_type == PROXY_NONE ) return ;
+	/* an explicit -sftpconnect names its own way to the host */
+	if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) return ;
+	if( !kx_helper_has_flag( PSCPPath, "KiTTYProxyOptions" ) ) return ;
+
+	switch( px_type ) {
+		case PROXY_SOCKS4:        tname = "socks4" ; break ;
+		case PROXY_SOCKS5:        tname = "socks5" ; break ;
+		case PROXY_HTTP:          tname = "http" ; break ;
+		case PROXY_TELNET:        tname = "telnet" ; break ;
+		case PROXY_CMD:           tname = "cmd" ; break ;
+		case PROXY_SSH_TCPIP:     tname = "ssh" ; break ;
+		case PROXY_SSH_EXEC:      tname = "sshexec" ; break ;
+		case PROXY_SSH_SUBSYSTEM: tname = "sshsubsys" ; break ;
+		default: return ;
+	}
+	bcat( buffer, BC, "-proxytype " ) ; bcat( buffer, BC, tname ) ; bcat( buffer, BC, " " ) ;
+	if( px_type == PROXY_CMD ) {
+		/* the local command IS the proxy; -proxycmd carries it (and sets the type) */
+		if( px_tcmd && px_tcmd[0] ) { bcat( buffer, BC, "-proxycmd " ) ; qcat( buffer, BC, px_tcmd ) ; bcat( buffer, BC, " " ) ; }
+	} else {
+		if( px_host && px_host[0] ) { bcat( buffer, BC, "-proxyhost " ) ; qcat( buffer, BC, px_host ) ; bcat( buffer, BC, " " ) ; }
+		if( px_port > 0 ) { snprintf( b1, sizeof(b1), "-proxyport %d ", px_port ) ; bcat( buffer, BC, b1 ) ; }
+	}
+	if( conf_get_bool(conf, CONF_even_proxy_localhost) ) bcat( buffer, BC, "-proxylocalhost " ) ;
+	if( px_user && px_user[0] ) { bcat( buffer, BC, "-proxyuser " ) ; qcat( buffer, BC, px_user ) ; bcat( buffer, BC, " " ) ; }
+
+	/* Both sources hold the password WRAPPED (kitty_pwmem.c); unwrapped once
+	 * here, the buffer burned before this returns. Into a private file, the
+	 * protected form when the helper reads it - exactly as the session's
+	 * password goes (see the -pwfile block in SendOneFile). No file at all:
+	 * the option is left out rather than put a password on the command line;
+	 * the jump host then asks, which a transfer window can show. */
+	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
+	                     px_pass, sizeof(px_pass) ) ;
+	if( px_pass[0] ) {
+		char *line = NULL ; const char *pf ;
+		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( px_pass ) ;
+		pf = kx_password_file( line ? line : px_pass ) ;
+		if( pf ) {
+			bcat( buffer, BC, "-proxypwfile " ) ;
+			*px_at = strlen( buffer ) ;
+			qcat( buffer, BC, pf ) ;
+			*px_len = strlen( buffer ) - *px_at ;
+			bcat( buffer, BC, " " ) ;
+			(*pwfiles)++ ;
+		}
+		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+	}
+	smemclr( px_pass, sizeof(px_pass) ) ;
+}
+
+/* A capability flag in the helper's own version resource, in whichever
+ * translation the file declares; 0 on any doubt. kx_helper_reads_protected
+ * above is the same test for the password-file flag, kept as it is. */
+static int kx_helper_has_flag( const char *path, const char *flag ) {
+	DWORD dummy, sz ; void *buf ; int ok = 0 ;
+	if( path == NULL || path[0] == '\0' ) return 0 ;
+	sz = GetFileVersionInfoSizeA( path, &dummy ) ;
+	if( sz == 0 ) return 0 ;
+	if( (buf = malloc( sz )) == NULL ) return 0 ;
+	if( GetFileVersionInfoA( path, 0, sz, buf ) ) {
+		struct { WORD lang, cp ; } *xlat = NULL ; UINT n = 0 ;
+		if( VerQueryValueA( buf, "\\VarFileInfo\\Translation", (void **)&xlat, &n ) && xlat != NULL ) {
+			UINT i ;
+			for( i = 0 ; i < n / sizeof(*xlat) && !ok ; i++ ) {
+				char sub[96] ; char *val = NULL ; UINT vlen = 0 ;
+				snprintf( sub, sizeof(sub), "\\StringFileInfo\\%04x%04x\\%s", xlat[i].lang, xlat[i].cp, flag ) ;
+				if( VerQueryValueA( buf, sub, (void **)&val, &vlen ) && val != NULL && vlen > 0 && atoi( val ) >= 1 )
+					ok = 1 ;
+			}
+		}
+	}
+	free( buf ) ;
+	return ok ;
+}
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".", b1[256], tgt[4096] ;
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
+	size_t px_at = 0, px_len = 0 ;   /* ... and the proxy password file's path */
 	int pwfiles = 0 ;                /* password handed over as a file, to delete after the start */
 	int pw_mode = KX_PW_NONE ;       /* what the window will say about the hand-over */
 	int p ;
@@ -1217,6 +1324,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	{ const char *kf = kx_helper_keyfile(conf) ;
 	  if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
 	}
+	kx_proxy_args( buffer, BC, &pwfiles, &px_at, &px_len ) ;   /* the connection's proxy, if any */
 
 	/* source path (single quoted argument) */
 	{
@@ -1248,7 +1356,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	}
 
 	chdir( InitialDirectory ) ;
-	debug_logevent_redacted( "Run", buffer, pw_at, pw_len ) ;
+	debug_logevent_redacted2( "Run", buffer, pw_at, pw_len, px_at, px_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
 	{ char whatbuf[600], updir[4096] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
@@ -1352,6 +1460,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
     char buffer[4096], pscppath[4096]="", pscpport[4096]="22", dir[4096]=".", b1[256] ;
     int pwfiles = 0 ;   /* password handed over as a file, to delete after the start */
     int pw_mode = KX_PW_NONE ;   /* what the window will say about the hand-over */
+    size_t px_at = 0, px_len = 0 ;   /* the proxy password file's span, for the redacted log */
     int p;
 
     if( PSCPPath==NULL ) {
@@ -1419,6 +1528,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
     { const char *kf = kx_helper_keyfile(conf) ;
       if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
     }
+    kx_proxy_args( buffer, BC, &pwfiles, &px_at, &px_len ) ;   /* the connection's proxy, if any */
 
     /* remote source user@host:path (single quoted argument) */
     {

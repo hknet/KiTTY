@@ -858,17 +858,32 @@ The password given this way belongs to the host you are connecting to.
 A proxy or an SSH jump host in front of it asks for its own login,
 which these options do not answer; see \k{using-cmdline-proxypw}.
 
-\S2{using-cmdline-proxypw} \i\c{\-proxyuser} and \i\c{\-proxypwfile}:
-the proxy's or the jump host's login
+\S2{using-cmdline-proxypw} \i\c{\-proxytype}, \i\c{\-proxyhost},
+\i\c{\-proxyport}, \i\c{\-proxyuser}, \i\c{\-proxypwfile}: a proxy for
+this run
+
+These options name the proxy this connection goes through, as the
+Proxy panel does for a saved session (\k{config-proxy-type}), so that a
+script - or the \c{kscp} KiTTY++ starts for Send File and Get File -
+reaches a host the way a session would without a saved session behind
+it. \c{\-proxytype} takes \c{none}, \c{socks4}, \c{socks5}, \c{http},
+\c{telnet}, \c{cmd} (a local command, given with \c{\-proxycmd}) or
+\c{ssh} (an SSH jump host); \c{\-proxyhost} and \c{\-proxyport} name
+the proxy; \c{\-proxylocalhost} lets local connections go through it
+too.
 
 \c{\-proxyuser} gives the user name and \c{\-proxypwfile} the file
-whose first line is the password for the proxy of this connection - a
-SOCKS or HTTP proxy that asks for one, or an SSH jump host
-(\k{config-proxy-type}). They take the place of the proxy user name
-and password stored in the session, so a script can pass a jump host
-that has no stored password without a prompt. There is no option that
-takes the proxy password itself on the command line, for the reason
-given under \c{\-pw} above.
+whose first line is the password for that proxy - a SOCKS or HTTP
+proxy that asks for one, or the jump host. They take the place of the
+proxy user name and password stored in the session, so a jump host
+that has no stored password can be passed without a prompt. There is
+no option that takes the proxy password itself on the command line,
+for the reason given under \c{\-pw} above.
+
+Send File and Get File hand the terminal's own connection to
+\c{kscp} this way: the session's proxy, a named proxy or workplace
+proxy mode - whatever the terminal connected through, the transfer
+goes through as well.
 
 The file may hold the password as it is, or as KiTTY++ writes it in
 one of its protected forms: a line copied from a session file that is

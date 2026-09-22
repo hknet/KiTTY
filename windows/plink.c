@@ -154,9 +154,11 @@ static void usage(void)
     printf("            Specify the serial configuration (serial only)\n");
     printf("The following options only apply to SSH connections:\n");
     printf("  -pwfile file   login with password read from specified file\n");
+    printf("  -proxytype none|socks4|socks5|http|telnet|cmd|ssh\n");
+    printf("  -proxyhost host  -proxyport port  [-proxylocalhost]\n");
+    printf("            connect through this proxy or SSH jump host\n");
     printf("  -proxyuser user  -proxypwfile file\n");
-    printf("            user and password (read from file) for the proxy\n");
-    printf("            or the SSH jump host\n");
+    printf("            its user and password (read from file)\n");
     printf("  -D [listen-IP:]listen-port\n");
     printf("            Dynamic SOCKS-based port forwarding\n");
     printf("  -L [listen-IP:]listen-port:host:port\n");
