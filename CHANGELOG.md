@@ -118,6 +118,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **"Default Settings" no longer appears in the launcher's menu when it
+  carries a folder.** The launcher's copy of the sessions filed Default
+  Settings under its folder like any session, and the menu left it out at
+  the top level only, so a Default Settings saved with a folder came back
+  inside that folder's submenu - and a rebuild put it there again. It is
+  left out of the copy altogether now, and a copy an older version wrote is
+  filtered at every level (hknet/KiTTY#53).
 - **The configuration box no longer flickers white when it opens in dark
   mode.** It was put on the screen before its category tree and its first
   panel were built, so a dark box began with an unpainted light frame. It is

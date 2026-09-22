@@ -81,9 +81,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			achValue[0] = '\0';
 
 			if( RegEnumValue(hKey,i,achValue,&cchValue,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS ) {
+			/* Default Settings never appears in the launcher, at ANY level of
+			 * its copy: the writer skips it now (InitLauncherRegistry), this
+			 * keeps a copy an older build left behind out of the menu too. */
 			char launcherkey[1024] ;
 			snprintf( launcherkey, sizeof(launcherkey), "%s\\Launcher", kitty_registry_base() ) ;
-			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strcmp(KeyName,launcherkey) ) {
+			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || strncmp(KeyName,launcherkey,strlen(launcherkey)) ) {
 				if( ShortcutsFlag ) {
 					if( nb < 26 ) 
 						snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", achValue, ('A'+nb) ) ;
@@ -138,7 +141,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			nb = (*nbitem) ;
 			while( ( de = readdir(dir) ) != NULL ) { // look for keys
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-				if( strcmp(de->d_name,"Default%20Settings") || strcmp(KeyName,"Launcher") ) { // Default Settings must not show up in the Launcher
+				/* Default Settings must not show up in the launcher - at any
+				 * level of its copy, and by the unmunged name (the writer skips
+				 * it now; this covers a copy an older build left behind). */
+				char plain[MAX_PATH] ;
+				unmungestr( de->d_name, plain, MAX_PATH ) ;
+				if( strcmp(plain,KITTY_DEFAULT_SESSION) || strncmp(KeyName,"Launcher",8) ) {
 					
 					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
 					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {

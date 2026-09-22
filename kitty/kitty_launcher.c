@@ -427,6 +427,8 @@ static void InitLauncherDir( const char * directory ) {
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
 			snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
 			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
+				unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
+				if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
 				snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
 				if( (fp=fopen(buffer,"wb")) != NULL ) {
 					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
@@ -478,6 +480,13 @@ void InitLauncherRegistry( void ) {
 						if( RegGetValueA( HKEY_CURRENT_USER, skey, KR_LAUNCHERHIDE, RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
 							continue ;
 					}
+					/* Default Settings is the template, not a session to start.
+					 * Skipped HERE, where the copy is written: the menu reader
+					 * dropped it only at the top level, so one saved with a
+					 * Folder value came back inside that folder's submenu. */
+					strcpy( folder, "" ) ;
+					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
+					if( !strcmp( folder, KITTY_DEFAULT_SESSION ) ) continue ;
 					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
 					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, KR_FOLDER, folder, sizeof(folder) ) )
 						{ strcpy( folder, "Default" ) ; }
@@ -509,6 +518,7 @@ void InitLauncherRegistry( void ) {
 				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 					strcpy( folder, "" ) ;
 					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
+					if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it names */
 					GetSessionFolderName( buffer, folder ) ;
 					CleanFolderName( folder ) ;
 					snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, folder ) ;
