@@ -2210,6 +2210,9 @@ static void usage(void)
     printf("  -P port   connect to specified port\n");
     printf("  -l user   connect with specified username\n");
     printf("  -pwfile file   login with password read from specified file\n");
+    printf("  -proxyuser user  -proxypwfile file\n");
+    printf("            user and password (read from file) for the proxy\n");
+    printf("            or the SSH jump host\n");
     printf("  -1 -2     force use of particular SSH protocol version\n");
     printf("  -ssh -ssh-connection\n");
     printf("            force use of particular SSH protocol variant\n");

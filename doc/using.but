@@ -854,6 +854,27 @@ Note that these options only work when you are using the SSH protocol.
 Due to fundamental limitations of Telnet, Rlogin, and SUPDUP, these
 protocols do not support automated password authentication.
 
+The password given this way belongs to the host you are connecting to.
+A proxy or an SSH jump host in front of it asks for its own login,
+which these options do not answer; see \k{using-cmdline-proxypw}.
+
+\S2{using-cmdline-proxypw} \i\c{\-proxyuser} and \i\c{\-proxypwfile}:
+the proxy's or the jump host's login
+
+\c{\-proxyuser} gives the user name and \c{\-proxypwfile} the file
+whose first line is the password for the proxy of this connection - a
+SOCKS or HTTP proxy that asks for one, or an SSH jump host
+(\k{config-proxy-type}). They take the place of the proxy user name
+and password stored in the session, so a script can pass a jump host
+that has no stored password without a prompt. There is no option that
+takes the proxy password itself on the command line, for the reason
+given under \c{\-pw} above.
+
+The file may hold the password as it is, or as KiTTY++ writes it in
+one of its protected forms: a line copied from a session file that is
+wrapped with the master password is read once the master password has
+been given (\c{\-masterpwfile}, or the prompt).
+
 \S2{using-cmdline-agentauth} \i\c{\-agent} and \i\c{\-noagent}:
 control use of kageant for authentication
 

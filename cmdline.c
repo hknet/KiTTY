@@ -827,6 +827,42 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         }
     }
 
+    /* KiTTY: the proxy's user and password for this run - above all an SSH
+     * jump host's, whose password prompt -pw and -pwfile do not answer. They
+     * take the place of what the session stores. File form only, as for every
+     * password option added here: a password on the command line shows in the
+     * process list. The line goes through the same reader as -pwfile, so the
+     * protected forms are accepted too, and it is kept wrapped like a proxy
+     * password loaded from a session. */
+    if (!strcmp(p, "-proxyuser")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(1);
+        conf_set_str(conf, CONF_proxy_username, value);
+    }
+    if (!strcmp(p, "-proxypwfile")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(1);
+        Filename *fn = cmdline_arg_to_filename(nextarg);
+        FILE *fp = f_open(fn, "r", false);
+        if (!fp) {
+            cmdline_error("unable to open proxy password file '%s'", value);
+        } else {
+            char *pxpw = kitty_pwfile_decode(chomp(fgetline(fp)));
+            fclose(fp);
+            if (!pxpw) {
+                cmdline_error("unable to read a password from file '%s'",
+                              value);
+            } else {
+                kitty_pw_set(conf, CONF_proxy_password, pxpw);
+                smemclr(pxpw, strlen(pxpw));
+                sfree(pxpw);
+            }
+        }
+        filename_free(fn);
+    }
+
 #ifdef MOD_PERSO
     /* KiTTY: -masterpwfile <path> unlocks the master-password at-rest secret
      * store (windows/storage.c). File form only (a literal master password on

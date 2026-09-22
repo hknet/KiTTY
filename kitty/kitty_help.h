@@ -49,6 +49,9 @@ Logging and passwords\r\n\
 * -sessionlog <file>: the same, with KiTTY's file-name placeholders expanded\r\n\
 * -masterpwfile <file>: read the master password from a file (scripted starts)\r\n\
 * -mpwkey <key>: hand an already-unlocked master password to this process\r\n\
+* -proxyuser <user> / -proxypwfile <file>: the proxy's or the SSH jump host's\r\n\
+    user and password for this run, the password read from a file (klink,\r\n\
+    kscp and ksftp take them too)\r\n\
 * -codepage <name>: select the remote character set\r\n\
 \r\n\
 Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\
@@ -65,6 +68,7 @@ Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\
 Windows integration\r\n\
 \r\n\
 * -help (also --help, -h, -?): print this list and quit\r\n\
+* -update: look for a newer release, offer it, and quit\r\n\
 * -sshhandler: make KiTTY the program that opens telnet://, ssh:// and\r\n\
     kitty:// links. Machine-wide when run as administrator, for your account\r\n\
     otherwise; a protocol another program already opens is reported and left\r\n\
