@@ -49,8 +49,8 @@ features are working and verified. Known limitations as of this release:
   runs on a worker thread and only refreshes a cached answer, so the notice about
   a release published since your last start appears on the *next* start. *Check
   for updates* in the system menu always asks the server there and then. A
-  launcher left running looks again after every 24 hours; kageant never asks
-  the network and shows what the terminal or the launcher stored last.
+  launcher left running looks again after every 24 hours; kageant never
+  queries the network and shows what the terminal or the launcher stored last.
 - **The update check looks at the newest release only.** A stable user is
   therefore told about the newest *beta* rather than the newest stable, and asked
   before anything is installed. Full stable-only channel filtering waits for

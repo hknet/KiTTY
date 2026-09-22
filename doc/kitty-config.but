@@ -76,6 +76,30 @@ decides whether such a session still loads by name (\c{-load},
 \c{@name}, the launcher, the console tools) - see
 \k{kitty-cfg-migration}.
 
+\S{kitty-cfg-adb} \q{ADB} connections
+
+\q{ADB} in the \q{Connection type} controls opens a shell on an Android
+device through the \i{Android Debug Bridge}. KiTTY++ does not talk to
+the device itself: it connects to the \c{adb} server that the Android
+platform tools run on this computer (port 5037 - the \q{Port} box is
+that server's port, and 5037 unless you changed it), requests a
+device from it, and a shell on that device. The platform tools must be
+installed and the device authorised for debugging, as for \c{adb
+shell} on the command line.
+
+The \q{Host Name} box selects the device:
+
+\b empty, \c{-a} or \c{transport-any}: the only device, or any device;
+
+\b \c{-d} or \c{transport-usb}: the device on USB;
+
+\b \c{-e} or \c{transport-local}: the emulator;
+
+\b anything else is a device \e{serial}, as \c{adb devices} lists it.
+
+The ADB server's refusal - no device, an unauthorised one, an unknown
+serial - is shown as the connection error, in the server's own words.
+
 \H{kitty-cfg-logging} The Logging panel
 
 PuTTY's own logging options are described in \k{config-logging}. KiTTY
@@ -1835,14 +1859,14 @@ closing backslash.
 A left click on the launcher's icon in the system tray opens its menu:
 the saved sessions, a session folder as a submenu, and below them the
 entries of the launcher itself. A double click opens the configuration
-box instead, and a right click opens \q{Opened sessions} directly.
+box instead, and a right click opens \q{Open Sessions} directly.
 
 A right click on a session folder inside the open menu offers \q{Open
 all ... sessions in} that folder: the sessions directly in it, not those
 of its subfolders. More than eight sessions are asked about first, and
 the sessions start one after the other, a moment apart.
 
-\q{Opened sessions} lists every open KiTTY++ window, ticked while it
+\q{Open Sessions} lists every open KiTTY++ window, ticked while it
 is visible. Choosing a window hides it, or shows it again and brings it
 to the front; \q{Hide all} and \q{Unhide all} do that for all of them. A
 hidden window is gone from the desktop and from the taskbar, and its

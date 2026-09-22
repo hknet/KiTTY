@@ -16,9 +16,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   entry itself, as it does in Explorer, and follows the dark theme.
 - **The launcher opens a whole folder of sessions.** A right click on a
   session folder in the tray menu offers "Open all sessions in this folder";
-  it opens the sessions directly in that folder, one after the other, and
-  asks first when there are more than eight. It works on a folder inside a
-  folder too.
+  it opens the sessions directly in that folder, one after the other, after
+  a confirmation when there are more than eight. It works on a folder inside
+  a folder too.
 - **Folders inside folders show as nested submenus in Saved Sessions.** A
   folder name with a backslash in it - `work\customers` - was one flat entry
   with the whole name in the terminal's Saved Sessions menu, while the
@@ -83,8 +83,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **"Enable ZModem transfers in every session" moved to Application >
   KiTTY++ Settings > Transfers & Tools > ZModem.** It is a setting of the
   application and sat on the session's ZModem panel. With ZModem switched
-  off, that panel says so beside an "Open App Settings" button that leads to
-  the switch; its Download folder note gained an "Open
+  off, that panel states so beside an "Open App Settings" button that leads
+  to the switch; its Download folder note gained an "Open
   File-Transfer-Settings" button.
 - **The launcher's Refresh no longer closes the menu.** The session list is
   rebuilt behind the open tray menu, with a small spinner beside "Refresh"
@@ -102,11 +102,19 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **"Check for updates when KiTTY starts" is now "Check for updates of
   KiTTY++",** because it is one switch for the terminal, the launcher and
   kageant. "Check for updates now" works with it off.
-- **The tray tooltips say KiTTY++.** The launcher's reads "KiTTY++
+- **The tray tooltips read KiTTY++.** The launcher's reads "KiTTY++
   Launcher", kageant's "kageant (KiTTY++ authentication agent)".
+- **"Opened sessions" in the launcher's menu is now "Open Sessions".**
+- **The manual's "host name section" explains ADB and what "Bare
+  ssh-connection" is.** ADB (a shell on an Android device through the
+  local Android Debug Bridge server, the device chosen by the Host Name
+  box) had no manual page; "Bare ssh-connection" is described by its use -
+  a session into a WSL distribution, a container or a VM on this computer
+  through a local command that runs `psusan` there, with no sshd and no
+  keys - and by its limit: no encryption, no login, never over a network.
 - **"Window unique" in the launcher's menu is now "Show one window at a
-  time".** The manual says what it does: choosing a session in the list of
-  open windows hides all the others.
+  time".** The manual explains what it does: choosing a session in the list
+  of open windows hides all the others.
 
 ### Fixed
 

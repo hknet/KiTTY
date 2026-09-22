@@ -1542,7 +1542,7 @@
 #define KT_MENU_HIDE_ALL                             "&Hide all"
 #define KT_MENU_UNHIDE_ALL                           "&Unhide all"
 #define KT_MENU_WINDOW_UNIQUE                        "Show &one window at a time"
-#define KT_MENU_OPENED_SESSIONS                      "&Opened sessions"
+#define KT_MENU_OPENED_SESSIONS                      "&Open Sessions"
 /* The launcher's folder context menu (right click on a session folder) */
 #define KT_MENU_OPEN_FOLDER_ALL                      "Open all %d sessions in \"%.200s\""
 #define KT_LAUNCHER_OPEN_FOLDER_CONFIRM              "Open all %d sessions in \"%.200s\"?"

@@ -43,9 +43,19 @@ connections.
 
 \b See \k{using-supdup} for information about using SUPDUP.
 
-\b The \q{Bare ssh-connection} option in the \q{Connection type}
-control is intended for specialist uses not involving network
-connections. See \k{config-psusan} for some information about it.
+\b \q{Bare ssh-connection} is not a variant of SSH for the network. It
+is a KiTTY++ session into a WSL distribution, a container or a VM on
+this computer, through a local command that runs \c{psusan} there
+(\q{Connection > Proxy}, type \q{Local}, for example \c{wsl.exe -d
+Ubuntu psusan} or \c{docker exec -i mybox psusan}) - a full terminal
+session with logging and forwarding, with no sshd and no keys to set
+up, because the operating system already decided you may run that
+command. It carries no encryption and no login, so never over a
+network. See \k{config-psusan}.
+
+\b The \q{ADB} option connects to an Android device through the
+Android Debug Bridge server running on this computer. See
+\k{kitty-cfg-adb}.
 
 }
 

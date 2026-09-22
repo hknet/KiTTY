@@ -231,7 +231,7 @@ static HMENU InitLauncherMenu( char * Key ) {
 
 	// Build the left-button menu
 	/* Not while a Refresh builds the NEXT menu behind the one on the screen:
-	 * the old "Opened sessions" popup is a submenu of that open menu and goes
+	 * the "Open Sessions" popup is a submenu of that open menu and goes
 	 * with it when it is destroyed. */
 	if( !LauncherRefreshBusy ) DestroyMenu( HideMenu ) ;
 	HideMenu = CreatePopupMenu() ;
@@ -660,7 +660,7 @@ static int LauncherFolderNext = 0 ;
 static char LauncherFolderName[256] = "" ;
 
 /* The sessions directly in a folder's submenu: the items whose id is a
- * session's. 0 for a submenu that is not a session folder (Opened sessions,
+ * session's. 0 for a submenu that is not a session folder (Open Sessions,
  * the workplace proxies) - their items carry other ids. */
 static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, int max ) {
 	int i, n = 0, count = GetMenuItemCount( sub ) ;
