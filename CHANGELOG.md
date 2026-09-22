@@ -41,13 +41,23 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   it with the new switch **`-update`**, which opens the updater and exits; a
   `kitty.exe` that is not one the agent can verify requires confirmation to start.
 
-- **`-proxyuser` and `-proxypwfile` give the proxy's or the SSH jump host's
-  login on the command line.** kitty, klink, kscp and ksftp take them; the
-  password is read from the first line of the file, as `-pwfile` reads the
-  session's, and a line KiTTY++ wrote in one of its protected forms - a
-  master-password wrapped one included - is read through the same reader. A
-  jump host that has no stored password can so be passed from a script
-  without a prompt.
+- **A proxy for the run, on the command line: `-proxytype`, `-proxyhost`,
+  `-proxyport`, `-proxylocalhost`, `-proxyuser`, `-proxypwfile`.** kitty,
+  klink, kscp and ksftp take them; `-proxycmd` was the one proxy option the
+  tools had. The type is `socks4`, `socks5`, `http`, `telnet`, `cmd` or `ssh`
+  (a jump host); the password is read from the first line of the file, as
+  `-pwfile` reads the session's, and a line KiTTY++ wrote in one of its
+  protected forms - a master-password wrapped one included - is read through
+  the same reader. A jump host that has no stored password can so be passed
+  from a script without a prompt.
+- **Send File and Get File go through the connection's proxy.** The `kscp`
+  the terminal starts was given the host, the port and the login and nothing
+  about the way there, so behind an SSH jump host, a SOCKS or HTTP proxy, a
+  named proxy or workplace proxy mode it dialled the host directly and failed
+  wherever only the proxy reaches it. It is handed the terminal's own
+  connection now, with the options above, the proxy password in a private
+  file like the session's. An older `kscp` set as the helper is given the
+  line it always was.
 
 ### Changed
 
