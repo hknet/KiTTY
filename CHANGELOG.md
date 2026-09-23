@@ -4,6 +4,42 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.13-beta — 2026-09-23
+
+### New
+
+- **File and folder settings expand Windows environment variables.** A log
+  file name, a key file, the background image, the bell sound, the download
+  and upload folders and the helper-program paths can use `%OneDrive%`,
+  `%USERPROFILE%` and the like - `%OneDrive%\Kitty-Logs\Kitty.log`, for
+  instance. The variable is resolved when the file is used; the setting keeps
+  it as typed. An unknown `%name%` stays as it is, so nothing that worked
+  before changes (cyd01/KiTTY#472).
+- **Windows hidden from the launcher show themselves again when it ends.** A
+  window hidden from the launcher's menu has no taskbar button and no tray
+  icon; when the launcher is killed or crashes, it now shows itself again
+  after 3 seconds. Application > KiTTY++ Settings > Launcher sets the delay;
+  0 keeps hidden windows hidden until a launcher is started again
+  (`[Launcher] unhideafter`).
+- **The remote command can name an SSH subsystem.** A checkbox under Remote
+  command on Connection > SSH sends it as a subsystem request instead of a
+  command line; it is saved with the session, and the pty still follows the
+  TTY panel. klink's `-s` already did this; its help and the manual now say
+  that `-t` adds a pty to it (cyd01/KiTTY#493).
+
+### Fixed
+
+- **Non-ASCII text printed to the "Windows clipboard" printer is no longer
+  mangled.** The printed bytes were put on the clipboard as ANSI text, so
+  UTF-8 such as "£500" or "€100" pasted as "Â£500" / "â‚¬100". They are
+  converted from the session's character set now (cyd01/KiTTY#494).
+- **A window chosen in the launcher's Open Sessions list comes to the
+  front.** With "Show one window at a time" on, the chosen window could stay
+  behind other windows. The launcher now brings it forward itself, and
+  restores it if it was minimised.
+- **The launcher shows the windows it hid when it closes after the
+  workplace notice.** Its other ways of exiting already did.
+
 ## 0.85.1.12-beta — 2026-09-23
 
 ### New
