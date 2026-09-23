@@ -4,7 +4,7 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.12-beta — unreleased
+## 0.85.1.12-beta — 2026-09-23
 
 ### New
 
@@ -47,8 +47,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   tools had. The type is `socks4`, `socks5`, `http`, `telnet`, `cmd` or `ssh`
   (a jump host); the password is read from the first line of the file, as
   `-pwfile` reads the session's, and a line KiTTY++ wrote in one of its
-  protected forms - a master-password wrapped one included - is read through
-  the same reader. A jump host that has no stored password can so be passed
+  protected forms is read through the same reader - in `kitty.exe` a
+  master-password wrapped one included; klink, kscp and ksftp read the plain
+  and the DPAPI form and refuse a master-password wrapped line ("unable to
+  read a password from file"), since they have no way to be given the master
+  password. A jumphost/proxy that has no stored password can so be passed
   from a script without a prompt.
 - **Send File and Get File go through the connection's proxy.** The `kscp`
   the terminal starts was given the host, the port and the login and nothing
@@ -101,7 +104,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   format.
 - **"Check for updates when KiTTY starts" is now "Check for updates of
   KiTTY++",** because it is one switch for the terminal, the launcher and
-  kageant. "Check for updates now" works with it off.
+  kageant. "Check for updates now" works with the switch off anyways.
 - **The tray tooltips read KiTTY++.** The launcher's reads "KiTTY++
   Launcher", kageant's "kageant (KiTTY++ authentication agent)".
 - **"Opened sessions" in the launcher's menu is now "Open Sessions".**
@@ -138,13 +141,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   still asked for the latest release at every start and announced it. It
   asks nothing and announces nothing now, and a change of the switch takes
   effect without restarting the launcher.
-- **A running launcher follows a deleted session and a deleted folder.**
-  Deleting either in the configuration box did not tell the launcher: its
+- **A running launcher gets delete notifications.** Deleting in the
+  configuration box did not tell the launcher: its
   tray menu kept the entry until Refresh, and the deleted session's global
   hotkey stayed registered. Both deletes tell it now, as saving and importing
   already did, and so do the `-importdir` and `-takefolder` command-line
   runs.
-- **The session's stored password is no longer sent to an SSH jump host.**
+- **A session's stored password is no longer sent to an SSH jump host.**
   With a jump host that has no stored password of its own, the jump host's
   password prompt was the first of the connection, and the automatic login
   answered it with the session's stored password: the target's password went

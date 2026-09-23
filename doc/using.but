@@ -886,9 +886,12 @@ proxy mode - whatever the terminal connected through, the transfer
 goes through as well.
 
 The file may hold the password as it is, or as KiTTY++ writes it in
-one of its protected forms: a line copied from a session file that is
-wrapped with the master password is read once the master password has
-been given (\c{\-masterpwfile}, or the prompt).
+one of its protected forms. In \c{kitty.exe} a line copied from a
+session file that is wrapped with the master password is read once the
+master password has been given (\c{\-masterpwfile}, or the prompt);
+\c{klink}, \c{kscp} and \c{ksftp} cannot be given a master password and
+refuse such a line with \q{unable to read a password from file} - use
+the password itself, or the DPAPI form, in their files.
 
 \S2{using-cmdline-agentauth} \i\c{\-agent} and \i\c{\-noagent}:
 control use of kageant for authentication
