@@ -6325,7 +6325,15 @@ static void term_print_finish(Terminal *term)
             bufchain_consume(&term->printer_buf, 1);
         }
     }
+#ifdef _WINDOWS
+    /* KiTTY: hand the clipboard printer the session's line code page so it
+     * can convert the wire bytes instead of dumping them onto the clipboard
+     * under the ANSI code page (cyd01/KiTTY#494). A real printer ignores
+     * the code page. */
+    printer_finish_job_cp(term->print_job, term->ucsdata->line_codepage);
+#else
     printer_finish_job(term->print_job);
+#endif
     term->print_job = NULL;
     term->printing = term->only_printing = false;
 }

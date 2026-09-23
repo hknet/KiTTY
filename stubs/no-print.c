@@ -24,6 +24,10 @@ void printer_finish_job(printer_job *pj)
 {
 }
 
+void printer_finish_job_cp(printer_job *pj, int codepage)
+{
+}
+
 printer_enum *printer_start_enum(int *nprinters_ptr)
 {
     *nprinters_ptr = 0;

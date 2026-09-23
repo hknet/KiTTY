@@ -238,26 +238,69 @@ void printer_job_data(printer_job *pj, const void *data, size_t len)
     p_WritePrinter(pj->hprinter, (void *)data, len, &written);
 }
 
-void printer_finish_job(printer_job *pj)
+/* KiTTY: put the accumulated clipboard-printer bytes on the clipboard,
+ * converting from `codepage` to CF_UNICODETEXT so non-ASCII wire bytes
+ * (e.g. UTF-8 when the session's line code page is CP_UTF8) survive
+ * instead of being reinterpreted under the ANSI code page. codepage <= 0,
+ * an empty buffer, or a failed conversion all fall back to the historic
+ * behaviour of putting the raw bytes on the clipboard as CF_TEXT. */
+static void printer_clipboard_copy(printer_job *pj, int codepage)
+{
+    size_t len = pj->clipbuf->len;
+    const char *bytes = pj->clipbuf->s;
+    bool put_unicode = false;
+
+    if (!OpenClipboard(NULL))
+        return;
+    EmptyClipboard();
+
+    if (codepage > 0) {
+        DWORD flags = (codepage == CP_UTF8) ? MB_ERR_INVALID_CHARS : 0;
+        int wlen = len ?
+            MultiByteToWideChar(codepage, flags, bytes, (int)len, NULL, 0) : 0;
+        if (wlen > 0 || len == 0) {
+            HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE,
+                                       ((size_t)wlen + 1) * sizeof(wchar_t));
+            if (hmem) {
+                wchar_t *w = (wchar_t *)GlobalLock(hmem);
+                int converted = wlen ?
+                    MultiByteToWideChar(codepage, flags, bytes, (int)len,
+                                        w, wlen) : 0;
+                if (converted == wlen) {
+                    w[converted] = L'\0';
+                    GlobalUnlock(hmem);
+                    SetClipboardData(CF_UNICODETEXT, hmem);
+                    put_unicode = true;
+                } else {
+                    GlobalUnlock(hmem);
+                    GlobalFree(hmem);
+                }
+            }
+        }
+    }
+
+    if (!put_unicode) {
+        /* Historic fallback: raw wire bytes as CF_TEXT. */
+        HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+        if (hmem) {
+            char *p = (char *)GlobalLock(hmem);
+            memcpy(p, bytes, len);
+            p[len] = '\0';
+            GlobalUnlock(hmem);
+            SetClipboardData(CF_TEXT, hmem);
+        }
+    }
+
+    CloseClipboard();
+}
+
+void printer_finish_job_cp(printer_job *pj, int codepage)
 {
     if (!pj)
         return;
 
     if (pj->to_clipboard) {
-        /* Copy the accumulated remote output to the Windows clipboard. */
-        if (OpenClipboard(NULL)) {
-            size_t len = pj->clipbuf->len;
-            HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
-            if (hmem) {
-                char *p = (char *)GlobalLock(hmem);
-                memcpy(p, pj->clipbuf->s, len);
-                p[len] = '\0';
-                GlobalUnlock(hmem);
-                EmptyClipboard();
-                SetClipboardData(CF_TEXT, hmem);
-            }
-            CloseClipboard();
-        }
+        printer_clipboard_copy(pj, codepage);
         strbuf_free(pj->clipbuf);
         sfree(pj);
         return;
@@ -267,4 +310,11 @@ void printer_finish_job(printer_job *pj)
     p_EndDocPrinter(pj->hprinter);
     p_ClosePrinter(pj->hprinter);
     sfree(pj);
+}
+
+void printer_finish_job(printer_job *pj)
+{
+    /* No code page known here (e.g. a job torn down without ever reaching
+     * term_print_finish()): keep the historic CF_TEXT behaviour verbatim. */
+    printer_finish_job_cp(pj, 0);
 }

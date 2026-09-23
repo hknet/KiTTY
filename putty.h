@@ -2478,6 +2478,10 @@ void printer_finish_enum(printer_enum *);
 printer_job *printer_start_job(char *printer);
 void printer_job_data(printer_job *, const void *, size_t);
 void printer_finish_job(printer_job *);
+/* KiTTY: printer_finish_job() knowing the session's line code page, so the
+ * "Windows clipboard" printer can convert the wire bytes (windows/printing.c;
+ * the stub in stubs/no-printing.c ignores it). */
+void printer_finish_job_cp(printer_job *, int codepage);
 
 /*
  * Exports from cmdline.c (and also cmdline_error(), which is
