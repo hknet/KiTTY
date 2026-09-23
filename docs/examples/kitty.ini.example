@@ -1098,6 +1098,13 @@
 ; duration since Vista, and a balloon cannot carry the mode's colour.
 ;noticeseconds=15
 
+; unhideafter: a window hidden from the launcher's menu has no taskbar button
+;    and no tray icon. When that launcher ends - killed, crashed - the window
+;    shows itself again after this many seconds (default 3). 0 = never: hidden
+;    windows then stay hidden until a launcher is started again, which lists
+;    them. Read by each terminal window at the moment it is hidden.
+;unhideafter=3
+
 
 [Agent]
 

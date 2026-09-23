@@ -1043,13 +1043,36 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 // Hide/UnHide all handling
 static int CurrentVisibleWin = -1 ; /* -1 = all visible */
 
-void ManageHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_HIDE, 0 ) ; }
+/* A hide carries this launcher's window in lParam. The terminal keeps it and,
+ * while it stays hidden, checks on a timer that this window still exists: a
+ * launcher that is killed or crashes cannot unhide what it hid, so the
+ * terminal shows itself again (windows/window.c, TIMER_LAUNCHERWATCH). */
+void ManageHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_HIDE, (LPARAM)MainHwnd ) ; }
 void ManageUnHideOne( HWND hwnd ) { PostMessage( hwnd, WM_COMMAND, IDM_UNHIDE, 0 ) ; }
+
+/* Puts a shown terminal window in front of every other window.
+ * The terminal cannot do this for itself: activation from a process that did
+ * not receive the last input is refused by the foreground lock, so its window
+ * came up behind whatever was in front. The launcher did receive that input -
+ * the click in its menu - so it may set the foreground, and it hands that
+ * right on to the terminal's process as well. SW_RESTORE only for a minimised
+ * window: a maximised one keeps its state. */
+static void LauncherBringToFront( HWND target ) {
+	DWORD pid = 0 ;
+	if( !IsWindow( target ) || !IsWindowVisible( target ) ) return ;
+	GetWindowThreadProcessId( target, &pid ) ;
+	if( pid ) AllowSetForegroundWindow( pid ) ;
+	if( IsIconic( target ) ) ShowWindow( target, SW_RESTORE ) ;
+	SetForegroundWindow( target ) ;
+	BringWindowToTop( target ) ;
+}
 
 static BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
+	/* TabWin has room for 100; the menu ids IDM_GOHIDE+i assume the same. */
+	if( NbWin >= (int)(sizeof(TabWin)/sizeof(TabWin[0])) ) return FALSE ;
 	GetClassName( hwnd, buffer, 256 ) ;
-	
+
 	if( !strcmp( buffer, KiTTYClassName ) )
 	if( hwnd != MainHwnd ) {
 		TabWin[NbWin].hwnd=hwnd ;
@@ -1100,10 +1123,43 @@ static void ManageGoPrevious( HWND hwnd ) {
 	ManageUnHideOne( TabWin[CurrentVisibleWin].hwnd ) ;
 }
 	
-void ManageSwitch( const int n ) { 
-	SendMessage( TabWin[n].hwnd, WM_COMMAND, IDM_SWITCH_HIDE, 0 ) ; 
-	SetForegroundWindow( TabWin[n].hwnd ) ;
-	SetFocus( TabWin[n].hwnd ) ;
+/* A session entry with "Show one window at a time" off: toggle that window.
+ * Sent, not posted, so the window is shown (or hidden) by the time it is
+ * brought to the front; with a timeout, so a hung terminal cannot freeze the
+ * tray. A window the toggle hid is left where it is. */
+void ManageSwitch( const int n ) {
+	HWND target ;
+	DWORD_PTR res ;
+	if( n < 0 || n >= NbWin ) return ;
+	target = TabWin[n].hwnd ;
+	if( !IsWindow( target ) ) return ;
+	SendMessageTimeout( target, WM_COMMAND, IDM_SWITCH_HIDE, (LPARAM)MainHwnd,
+	                    SMTO_ABORTIFHUNG, 1000, &res ) ;
+	LauncherBringToFront( target ) ;
+}
+
+/* A session entry with "Show one window at a time" on: every other terminal
+ * is hidden and this one is shown and put in front.
+ * The target is named by its handle, taken from the list the menu was built
+ * from, BEFORE the list is enumerated again here: EnumWindows returns Z order,
+ * which changes, so the same index could name another window afterwards.
+ * The target is not hidden and shown again - a posted hide would arrive after
+ * the sent unhide (sent messages are handled before posted ones) and hide it
+ * for good. Its unhide is sent, so the terminal's visible flag is right and
+ * the window is shown before LauncherBringToFront looks at it. */
+static void ManageShowOnly( HWND target ) {
+	int i ;
+	DWORD_PTR res ;
+	if( !IsWindow( target ) ) return ;
+	CurrentVisibleWin = 0 ;
+	if( RefreshWinList( MainHwnd ) > 0 )
+		for( i=0 ; i<NbWin ; i++ ) {
+			if( TabWin[i].hwnd == target ) CurrentVisibleWin = i ;
+			else ManageHideOne( TabWin[i].hwnd ) ;
+		}
+	SendMessageTimeout( target, WM_COMMAND, IDM_UNHIDE, 0,
+	                    SMTO_ABORTIFHUNG, 1000, &res ) ;
+	LauncherBringToFront( target ) ;
 }
 
 static void ShowLauncherUpdateBalloon( void ) {
@@ -1686,6 +1742,9 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				 * asked for. */
 				if( !kitty_workplace_holding() ) {
 					Shell_NotifyIcon( NIM_DELETE, &TrayIcone ) ;
+					/* As Exit does: nothing this launcher hid stays hidden
+					 * with no way back once its menu is gone. */
+					ManageUnHideAll( hwnd ) ;
 					PostQuitMessage( 0 ) ;
 				}
 				break ;
@@ -1952,10 +2011,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				nb = LOWORD(wParam)-IDM_GOHIDE ;
 				if( ( nb >= 0 ) && ( nb<100 ) ) {
 					if( !IsUnique )	ManageSwitch( nb ) ;
-					else { 
-						ManageHideAll( hwnd ) ; 
-						ManageUnHideOne( TabWin[nb].hwnd ) ;
-						}
+					else if( nb < NbWin ) ManageShowOnly( TabWin[nb].hwnd ) ;
 					RefreshMenuLauncher() ;
 					break ;
 					}

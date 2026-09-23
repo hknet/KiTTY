@@ -202,6 +202,7 @@
 #define KI_LAUNCHER_EXITWITHWORKPLACE       "exitwithworkplace"
 #define KI_LAUNCHER_NOTICESECONDS           "noticeseconds"
 #define KI_LAUNCHER_RELOAD                  "reload"
+#define KI_LAUNCHER_UNHIDEAFTER             "unhideafter"
 
 /* [FontFallback] */
 #define KI_FONTFALLBACK_ACTIVE              "active"

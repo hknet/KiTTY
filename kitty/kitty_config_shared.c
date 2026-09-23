@@ -755,6 +755,8 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_NOTICESECONDS,    KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
+    /* read by the TERMINAL when a launcher hides it (windows/window.c) */
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_UNHIDEAFTER,      KSET_INT, false, NULL, NULL, NULL, 0, 3600, 3 },
     /* Connection > ZModem: the global switch (the panel borrows the handler) */
     { INIT_SECTION, KI_ZMODEM,         KSET_BOOL, false, GetZModemFlag, SetZModemFlag, NULL, 0, 0, 1 },
     /* Storage & Backup: the folder-store password policy, read at save time */

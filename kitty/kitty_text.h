@@ -1385,6 +1385,9 @@
 #define KT_KSET_LA_WORKPLACE                         "Workplace proxy mode"
 #define KT_KSET_LA_EXITWITH                          "Workplace mode closes the launcher it started"
 #define KT_KSET_LA_NOTICE                            "Workplace notice stays on screen, seconds:"
+#define KT_KSET_LA_UNHIDE                            "Show hidden windows again after the launcher ends, seconds:"
+#define KT_KSET_LA_UNHIDE_NEVER                      "0 = never: hidden windows stay hidden until a launcher is " \
+        "started again."
 #define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a change here applies " \
         "the next time it starts."
 

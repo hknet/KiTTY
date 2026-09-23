@@ -1101,6 +1101,13 @@ char default_init_file_content[] =
 ; duration since Vista, and a balloon cannot carry the mode's colour.\n\
 ;noticeseconds=15\n\
 \n\
+; unhideafter: a window hidden from the launcher's menu has no taskbar button\n\
+;    and no tray icon. When that launcher ends - killed, crashed - the window\n\
+;    shows itself again after this many seconds (default 3). 0 = never: hidden\n\
+;    windows then stay hidden until a launcher is started again, which lists\n\
+;    them. Read by each terminal window at the moment it is hidden.\n\
+;unhideafter=3\n\
+\n\
 \n\
 [Agent]\n\
 \n\

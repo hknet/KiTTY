@@ -255,6 +255,8 @@ A right click on a session folder inside the open menu offers **Open all ... ses
 
 The **Open Sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, ticked while it is visible: choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them. **Show one window at a time** changes what choosing a window does: while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. The setting lasts until the launcher exits.
 
+A hidden window has no taskbar button and no tray icon, so it does not depend on the launcher staying alive: when the launcher is killed or crashes, every window it hid shows itself again after 3 seconds. **Application > KiTTY++ Settings > Launcher** sets that delay (`[Launcher] unhideafter`); 0 keeps hidden windows hidden until a launcher is started again, which lists them.
+
 **How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions.
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** on the session's **Session > Startup** panel (Launcher configuration).

@@ -1810,6 +1810,14 @@ rebuilding its menu; see below. \q{A second launcher} says whether a
 launcher started while one is running exits, the default, or starts
 anyway.
 
+\b \q{Show hidden windows again after the launcher ends} is for windows
+hidden from the launcher's menu: they have no taskbar button and no
+tray icon, so when the launcher is killed or crashes, each one shows
+itself again after this many seconds (default 3). \c{0} means never:
+hidden windows then stay hidden until a launcher is started again,
+which lists them in its Open Sessions menu. Each window reads the value
+when it is hidden.
+
 \b \q{Workplace mode closes the launcher it started} applies only to a
 launcher the mode started by itself; one you started stays. The notice
 duration is how long the workplace mode notice stays on screen.
@@ -1822,7 +1830,8 @@ give one of them a different name in its \c{kitty.ini}. Everything else
 leaves it alone.
 
 The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
-\c{alreadyRunCheck}, \c{exitwithworkplace}, \c{noticeseconds} and the
+\c{alreadyRunCheck}, \c{unhideafter}, \c{exitwithworkplace},
+\c{noticeseconds} and the
 \c{classname} above. \q{Keep my hand-edited launcher menu} is
 \c{reload=no}; the default is \c{reload=yes}.
 

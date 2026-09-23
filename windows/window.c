@@ -288,6 +288,48 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 #define TIMER_LOGROTATION 8713
 #define TIMER_MODALPUMP   8714   /* KiTTY: pending work during a move or a menu */
 #endif
+#ifdef MOD_LAUNCHER
+/* A window the launcher hid has no taskbar button and no tray icon: only that
+ * launcher's menu brings it back. The launcher sends its own window with the
+ * hide (kitty_launcher.c ManageHideOne); while this window stays hidden, this
+ * timer checks every second that the launcher window still exists, and shows
+ * this window again once it has been gone for [Launcher] unhideafter seconds
+ * (default 3; 0 = never, no watch at all) - a launcher killed or crashed. The
+ * process id guards against the handle being reused by another window. */
+#define TIMER_LAUNCHERWATCH 8715
+#define LAUNCHERWATCH_MS    1000
+static HWND launcher_hider = NULL;
+static DWORD launcher_hider_pid = 0;
+static int launcher_unhide_after = 3;   /* seconds, read at the hide */
+static int launcher_gone_for = 0;       /* seconds the launcher has been gone */
+static void launcher_watch_set(HWND hwnd, bool was_visible, HWND launcher)
+{
+    int ReadParameterN(const char *, const char *, char *, size_t);
+    char buf[32] = "";
+    DWORD pid = 0;
+    if (IsWindowVisible(hwnd)) {
+        KillTimer(hwnd, TIMER_LAUNCHERWATCH);
+        launcher_hider = NULL;
+        return;
+    }
+    if (!was_visible || launcher == NULL || !IsWindow(launcher))
+        return;                     /* not hidden by this command */
+    launcher_unhide_after = 3;
+    if (ReadParameterN(KI_SECTION_LAUNCHER, KI_LAUNCHER_UNHIDEAFTER,
+                       buf, sizeof(buf)) && buf[0])
+        launcher_unhide_after = atoi(buf);
+    if (launcher_unhide_after <= 0) {  /* 0 = never: a new launcher lists it */
+        KillTimer(hwnd, TIMER_LAUNCHERWATCH);
+        launcher_hider = NULL;
+        return;
+    }
+    GetWindowThreadProcessId(launcher, &pid);
+    launcher_hider = launcher;
+    launcher_hider_pid = pid;
+    launcher_gone_for = 0;
+    SetTimer(hwnd, TIMER_LAUNCHERWATCH, LAUNCHERWATCH_MS, NULL);
+}
+#endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
 #endif
@@ -4216,6 +4258,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
             return 0;
         }
+#ifdef MOD_LAUNCHER
+        if ((UINT_PTR)wParam == TIMER_LAUNCHERWATCH) {
+            /* See launcher_watch_set. Shown again by other means (another
+             * launcher's Unhide all): nothing left to watch. */
+            DWORD pid = 0;
+            if (launcher_hider != NULL)
+                GetWindowThreadProcessId(launcher_hider, &pid);
+            if (IsWindowVisible(hwnd)) {
+                KillTimer(hwnd, TIMER_LAUNCHERWATCH);
+                launcher_hider = NULL;
+            } else if (launcher_hider == NULL || !IsWindow(launcher_hider) ||
+                       pid != launcher_hider_pid) {
+                if (++launcher_gone_for >= launcher_unhide_after) {
+                    KillTimer(hwnd, TIMER_LAUNCHERWATCH);
+                    launcher_hider = NULL;
+                    kitty_launcher_unhide(hwnd);
+                }
+            }
+            return 0;
+        }
+#endif
 #endif
         if ((UINT_PTR)wParam == TIMER_AUTOCOMMAND) {
             KillTimer(hwnd, TIMER_AUTOCOMMAND);
@@ -5216,14 +5279,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           /* Posted by the launcher (kitty_launcher.c ManageHideOne,
            * ManageUnHideOne, ManageSwitch). Nothing handled them after the
            * port, so Hide all, Unhide all and the session entries did nothing. */
+          /* lParam of a hide is the launcher's window (WM_COMMAND only: a
+           * WM_SYSCOMMAND lParam is a cursor position), watched by
+           * TIMER_LAUNCHERWATCH while this window stays hidden. */
           case IDM_HIDE:
-            kitty_launcher_hide(wgs->term_hwnd);
+          case IDM_SWITCH_HIDE: {
+            bool was_visible = IsWindowVisible(wgs->term_hwnd);
+            if ((wParam & ~0xF) == IDM_HIDE)
+                kitty_launcher_hide(wgs->term_hwnd);
+            else
+                kitty_launcher_switch_hide(wgs->term_hwnd);
+            launcher_watch_set(wgs->term_hwnd, was_visible,
+                               message == WM_COMMAND ? (HWND)lParam : NULL);
             break;
+          }
           case IDM_UNHIDE:
             kitty_launcher_unhide(wgs->term_hwnd);
-            break;
-          case IDM_SWITCH_HIDE:
-            kitty_launcher_switch_hide(wgs->term_hwnd);
+            launcher_watch_set(wgs->term_hwnd, false, NULL);
             break;
 #endif
           case IDM_WINROL:
