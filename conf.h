@@ -496,12 +496,21 @@ CONF_OPTION(ssh_gss_custom,
 )
 CONF_OPTION(ssh_subsys, /* run a subsystem rather than a command */
     /*
-     * Only set internally by PSCP and PSFTP; never set by user
-     * configuration, or loaded or saved.
+     * PSCP and PSFTP may load a saved session, which loads this like any
+     * other key, but they always overwrite it afterwards with their own
+     * fixed subsystem/command choice, so a value stored in that session
+     * never actually reaches them.
+     *
+     * Otherwise user-configurable as the "the command names a subsystem"
+     * checkbox under Remote command on the Connection/SSH panel
+     * (cyd01/KiTTY#493), saved per-session as RemoteCommandIsSubsystem;
+     * and settable on klink's command line with -s. The pty for such a
+     * subsystem, if wanted, still comes from CONF_nopty/-t, unchanged by
+     * this option.
      */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),
-    NOT_SAVED,
+    SAVE_KEYWORD("RemoteCommandIsSubsystem"),
 )
 CONF_OPTION(ssh_subsys2, /* fallback to go with remote_cmd2 */
     /*

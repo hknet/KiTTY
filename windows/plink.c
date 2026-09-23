@@ -196,6 +196,7 @@ static void usage(void)
     printf("  -json     -scan/-knownhosts output as one JSON array\n");
     printf("  -m file   read remote command(s) from file\n");
     printf("  -s        remote command is an SSH subsystem (SSH-2 only)\n");
+    printf("            combine with -t for a pty on the subsystem\n");
     printf("  -N        don't start a shell/command (SSH-2 only)\n");
     printf("  -nc host:port\n");
     printf("            open tunnel in place of session (SSH-2 only)\n");
@@ -447,6 +448,10 @@ int main(int argc, char **argv)
             conf_set_str(conf, CONF_remote_cmd, cmdbuf->s);
             conf_set_str(conf, CONF_remote_cmd2, "");
             conf_set_bool(conf, CONF_nopty, true);  /* command => no tty */
+            /* A positional command replaces whatever CONF_ssh_subsys a
+             * -load'ed session set; -s (applied after this loop) restores
+             * it when the same command line also carries -s. */
+            conf_set_bool(conf, CONF_ssh_subsys, false);
 
             strbuf_free(cmdbuf);
             break;                     /* done with cmdline */

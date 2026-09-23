@@ -95,6 +95,7 @@ use klink:
 \c   -json     -scan/-knownhosts output as one JSON array
 \c   -m file   read remote command(s) from file
 \c   -s        remote command is an SSH subsystem (SSH-2 only)
+\c             combine with -t for a pty on the subsystem
 \c   -N        don't start a shell/command (SSH-2 only)
 \c   -nc host:port
 \c             open tunnel in place of session (SSH-2 only)
@@ -261,6 +262,9 @@ as the name of an SSH \q{\i{subsystem}} rather than an ordinary command
 line.
 
 (This option is only meaningful with the SSH-2 protocol.)
+
+Combine it with \c{\-t} (see \k{using-cmdline-pty}) to also request a
+pseudo-terminal for the subsystem.
 
 \S2{plink-option-shareexists} \I{-shareexists-klink}\c{\-shareexists}:
 test for connection-sharing upstream

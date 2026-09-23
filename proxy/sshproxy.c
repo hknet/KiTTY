@@ -823,8 +823,13 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
 
         conf_set_bool(sp->conf, CONF_nopty, true);
 
-        if (proxy_type == PROXY_SSH_SUBSYSTEM)
-            conf_set_bool(sp->conf, CONF_ssh_subsys, true);
+        /* sp->conf is the jump host's OWN saved session, which may have
+         * "the command names a subsystem" ticked for unrelated reasons
+         * (its own Remote command); that has nothing to do with this
+         * synthesised tunnel command, so set it explicitly either way
+         * rather than leaving the jump host's own setting to leak through. */
+        conf_set_bool(sp->conf, CONF_ssh_subsys,
+                      proxy_type == PROXY_SSH_SUBSYSTEM);
 
         break;
       }

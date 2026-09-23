@@ -797,6 +797,10 @@ int main(int argc, char **argv)
             conf_set_str(conf, CONF_remote_cmd, cmdbuf->s);
             conf_set_str(conf, CONF_remote_cmd2, "");
             conf_set_bool(conf, CONF_nopty, true);  /* command => no tty */
+            /* A positional command replaces whatever CONF_ssh_subsys a
+             * -load'ed session set; -s (applied after this loop) restores
+             * it when the same command line also carries -s. */
+            conf_set_bool(conf, CONF_ssh_subsys, false);
 
             strbuf_free(cmdbuf);
             break;                     /* done with cmdline */

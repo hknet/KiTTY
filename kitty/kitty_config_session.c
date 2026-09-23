@@ -6328,6 +6328,14 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
             ctrl_editbox(s, KT_SSH_REMOTE_COMMAND, 'r', 100,
                          HELPCTX(ssh_command),
                          conf_editbox_handler, I(CONF_remote_cmd), ED_STR);
+            /* cyd01/KiTTY#493: the ssh/mainchan.c dispatch already knows how
+             * to start a subsystem instead of a command (CONF_ssh_subsys);
+             * this is its only GUI control. The pty for it, if wanted,
+             * still comes from the TTY panel's CONF_nopty, unchanged. */
+            ctrl_checkbox(s, KT_SSH_REMOTE_COMMAND_IS_SUBSYSTEM, 'b',
+                          HELPCTX(ssh_command),
+                          conf_checkbox_handler,
+                          I(CONF_ssh_subsys));
 
             s = ctrl_getset(b, "Connection/SSH", "protocol", KT_SSH_PROTOCOL_OPTIONS);
             ctrl_checkbox(s, KT_SSH_DON_T_START_A_SHELL, 'n',

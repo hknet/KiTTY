@@ -263,7 +263,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     versioninfo.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
     GetVersionEx(&versioninfo);
 #endif
-    conf_set_bool(conf, CONF_ssh_subsys, false); /* FIXME: load this properly */
+    conf_set_bool(conf, CONF_ssh_subsys, false); /* default until loaded below, with RemoteCommand */
     conf_set_str(conf, CONF_remote_cmd, "");
     conf_set_str(conf, CONF_remote_cmd2, "");
     conf_set_str(conf, CONF_ssh_nc_host, "");
@@ -497,6 +497,8 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "SshNoShell", conf, CONF_ssh_no_shell);
     gppfile_forced(sesskey, "PublicKeyFile", conf, CONF_keyfile);
     gpps_forced(sesskey, "RemoteCommand", conf, CONF_remote_cmd);
+    /* cyd01/KiTTY#493: whether the command above names an SSH subsystem. */
+    gppb_forced(sesskey, "RemoteCommandIsSubsystem", conf, CONF_ssh_subsys);
     gppb_forced(sesskey, "RFCEnviron", conf, CONF_rfc_environ);
     gppb_forced(sesskey, "PassiveTelnet", conf, CONF_passive_telnet);
     gppb_forced(sesskey, "BackspaceIsDelete", conf, CONF_bksp_is_delete);

@@ -513,6 +513,14 @@ Port knocking lets you hide a server's SSH port behind a secret sequence of conn
 
 (no screenshot)
 
+### Remote command as an SSH subsystem
+
+The **Remote command** box (Connection > SSH) can start a server-side SSH **subsystem** instead of an ordinary command line — the same mechanism SFTP uses internally, now available for any subsystem a server offers, such as one declared with `Subsystem` in `sshd_config`. Tick **The command names a subsystem** underneath the box to send the command that way; the command still runs without a pty unless you also ask for one (Connection > SSH > TTY). klink has the equivalent switch on the command line: `-s`, which can be combined with `-t` for a pty.
+
+**How to enable:** Configuration > **Connection > SSH**, tick **The command names a subsystem** below the Remote command box, or run klink with `-s` (add `-t` for a pty).
+
+(no screenshot)
+
 ### Proxy choice
 
 When you regularly reach hosts through a bastion, jump server, or a corporate HTTP/SOCKS proxy, Proxy choice saves you from setting up the same proxy by hand for every session. You define your proxies once as reusable **named proxies**, then use one of two controls: the **Proxy override options** dropdown in the Session panel amends the *next connection only* and never writes anything into the session, while **Load into this window** on the Connection/Proxy panel adopts a preset into the settings you are editing, so a Save keeps it. The caption of the dropdown changes to **PROXY OVERRIDE ACTIVE** in bold red whenever the choice would make the connection differ from what the stored session says — including picking *No proxy* for a session that has one. This is handy when you keep a SOCKS proxy open on a bastion (for example via a dynamic port forward), or route through a company HTTP proxy, and don't want to re-enter it on the Connection/Proxy panel every time.

@@ -339,6 +339,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_filename_forced(sesskey, "PublicKeyFile", conf_get_filename(conf, CONF_keyfile));
     /* CONF_remote_cmd is STR_AMBI in 0.84; must use conf_get_str_ambi */
     write_setting_s_forced(sesskey, "RemoteCommand", conf_get_str_ambi(conf, CONF_remote_cmd, NULL));
+    /* cyd01/KiTTY#493: whether the command above names an SSH subsystem. */
+    write_setting_b_forced(sesskey, "RemoteCommandIsSubsystem", conf_get_bool(conf, CONF_ssh_subsys));
     write_setting_b_forced(sesskey, "RFCEnviron", conf_get_bool(conf, CONF_rfc_environ));
     write_setting_b_forced(sesskey, "PassiveTelnet", conf_get_bool(conf, CONF_passive_telnet));
     write_setting_b_forced(sesskey, "BackspaceIsDelete", conf_get_bool(conf, CONF_bksp_is_delete));

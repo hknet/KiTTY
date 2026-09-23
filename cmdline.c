@@ -742,6 +742,10 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         conf_set_str(conf, CONF_remote_cmd, command->s);
         conf_set_str(conf, CONF_remote_cmd2, "");
         conf_set_bool(conf, CONF_nopty, true);   /* command => no terminal */
+        /* A command read from file replaces whatever CONF_ssh_subsys a
+         * -load'ed session set; -s (also SAVEABLE, replayed after -load in
+         * priority order) restores it when it is given as well. */
+        conf_set_bool(conf, CONF_ssh_subsys, false);
         strbuf_free(command);
     }
     if (!strcmp(p, "-P")) {

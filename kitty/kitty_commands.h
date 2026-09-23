@@ -10,4 +10,8 @@
 
 int InternalCommand( HWND hwnd, char * st ) ;
 
+/* "kitty.exe -h" without a console: the option list in the scrolling
+ * command-list window. 0 = the window could not be made. */
+int kitty_cli_help_box( const char * caption, const char * text ) ;
+
 #endif /* KITTY_COMMANDS_H */

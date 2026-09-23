@@ -29,6 +29,7 @@ void kitty_demo_templates(void);
 #include "../kitty/kitty_registry.h"
 #include "../kitty/kitty_storage.h"
 #include "../kitty/kitty_secretstore.h"
+#include "../kitty/kitty_commands.h"   /* kitty_cli_help_box */
 #include "kitty_gui.h"
 #endif
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
@@ -583,8 +584,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * quit. There was no way to ask: a GUI program with three
                  * dozen switches and no -help is a program whose switches
                  * only their author knows. */
-                extern int kitty_cli_help_box(const char *caption,
-                                              const char *text);
                 char *help = dupprintf(
                     KT_CLI_HELP_FMT, appname, BUILD_VERSION, GetHelpMessage());
                 /* At the prompt when there is one. Without a console the

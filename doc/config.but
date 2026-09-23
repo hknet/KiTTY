@@ -2408,6 +2408,13 @@ command in the \q{\ii{Remote command}} box.
 Note that most servers will close the session after executing the
 command.
 
+If the command names an SSH \i{subsystem} rather than an ordinary
+command line (for example, a server-side tool started via its
+\c{Subsystem} declaration in \c{sshd_config}), tick \q{The command
+names a subsystem} below the box. This is the GUI equivalent of
+klink's \c{\-s} option; combine it with a pty (\k{config-ssh-pty}) if
+the subsystem needs one.
+
 \S{config-ssh-noshell} \q{Don't start a \I{remote shell}shell or
 \I{remote command}command at all}
 

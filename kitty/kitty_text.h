@@ -590,6 +590,7 @@
         "session; it is only here so that sub-panels of it can " \
         "exist without looking strange."
 #define KT_SSH_REMOTE_COMMAND                        "Remote command:"
+#define KT_SSH_REMOTE_COMMAND_IS_SUBSYSTEM           "The command names a subsystem"
 #define KT_SSH_PROTOCOL_OPTIONS                      "Protocol options"
 #define KT_SSH_DON_T_START_A_SHELL                   "Don't start a shell or command at all"
 #define KT_SSH_ENABLE_COMPRESSION                    "Enable compression"
