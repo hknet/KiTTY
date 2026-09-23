@@ -392,7 +392,9 @@ void SetIconFile( const char * path ) {
 }
 void SetPSCPPath( const char * path ) {
 	if( PSCPPath != NULL ) { free( PSCPPath ) ; PSCPPath = NULL ; }
-	if( path && path[0] ) { PSCPPath = (char*) malloc( strlen(path)+1 ) ; strcpy( PSCPPath, path ) ; }
+	/* the panel hands over the text as stored; the runtime copy is the
+	 * expanded path, as at start-up (%VAR%, cyd01/KiTTY#472) */
+	if( path && path[0] ) PSCPPath = kitty_expand_env_dup( path ) ;
 }
 void SetTransparencyEnabled( const int flag ) { SetTransparencyIni( flag ) ; }
 
@@ -844,9 +846,14 @@ void LoadParameters( void ) {
 		else if( !stricmp( buffer, "sessionorhostname" ) ) SetNamedProxyHostnameOnly( 0 ) ;
 	}
 	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) ) {
-		if( existfile( buffer ) ) { 
+		/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - expand the stored text
+		 * before checking/adopting it; kitty.ini keeps the literal form. */
+		char *expanded = kitty_expand_env_dup( buffer ) ;
+		if( existfile( expanded ) ) {
 			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }
-			PSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( PSCPPath, buffer ) ;
+			PSCPPath = expanded ;
+		} else {
+			free( expanded ) ;
 		}
 	}
 	if( ReadParameterN( INIT_SECTION, KI_SAV, buffer, sizeof(buffer) ) ) {
@@ -854,20 +861,28 @@ void LoadParameters( void ) {
 			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
 			 * by an older KiTTY, so the current default (kittynew.sav) takes over
 			 * without the user having to edit kitty.ini. A genuinely custom path is
-			 * still honoured. */
+			 * still honoured. The legacy-name check is against the STORED text,
+			 * before %VAR% expansion (cyd01/KiTTY#472): a legacy filename never
+			 * contains a variable, and checking the raw text keeps this test
+			 * exactly as it always was. */
 			const char *bn = strrchr( buffer, '\\' ) ; bn = bn ? bn+1 : buffer ;
 			if( stricmp( bn, "kitty.sav" ) && stricmp( bn, "kitty084.sav" ) ) {
+				char *expanded = kitty_expand_env_dup( buffer ) ;
 				if( KittySavFile!=NULL ) free( KittySavFile ) ;
-				KittySavFile=(char*)malloc( strlen(buffer)+1 ) ;
-				strcpy( KittySavFile, buffer) ;
+				KittySavFile = expanded ;
 			}
 		}
 	}
 	if( ReadParameterN( INIT_SECTION, KI_SSHVERSION, buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
 	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) ) {
-		if( existfile( buffer ) ) { 
+		/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see the KI_PSCPPATH
+		 * load above. */
+		char *expanded = kitty_expand_env_dup( buffer ) ;
+		if( existfile( expanded ) ) {
 			if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
-			WinSCPPath = (char*) malloc( strlen(buffer) + 1 ) ; strcpy( WinSCPPath, buffer ) ;
+			WinSCPPath = expanded ;
+		} else {
+			free( expanded ) ;
 		}
 	}
 	/* ReadParameter, not readINI: the Session-panel group on Application >

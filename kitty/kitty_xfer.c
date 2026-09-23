@@ -1604,9 +1604,20 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
     out[0] = '\0' ;
     if( cf != NULL ) {
         s = conf_get_str( cf, CONF_zdownloaddir ) ;
-        if( s && s[0] && existdirectory( s ) ) { snprintf( out, outlen, "%s", s ) ; return out ; }
+        if( s && s[0] ) {
+            /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - the stored
+             * CONF_zdownloaddir stays literal; only this local copy, tested
+             * and returned, is expanded. */
+            char *expanded = kitty_expand_env_dup( s ) ;
+            if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
+            free( expanded ) ;
+        }
     }
-    if( ReadParameterN( INIT_SECTION, KI_DOWNLOADDIR, out, outlen ) && out[0] && existdirectory( out ) ) return out ;
+    if( ReadParameterN( INIT_SECTION, KI_DOWNLOADDIR, out, outlen ) && out[0] ) {
+        char *expanded = kitty_expand_env_dup( out ) ;
+        if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
+        free( expanded ) ;
+    }
     {
         const char * prof = getenv( "USERPROFILE" ) ;
         if( prof && prof[0] ) {
@@ -1629,9 +1640,19 @@ char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) {
     out[0] = '\0' ;
     if( cf != NULL ) {
         s = conf_get_str( cf, CONF_zuploaddir ) ;
-        if( s && s[0] && existdirectory( s ) ) { snprintf( out, outlen, "%s", s ) ; return out ; }
+        if( s && s[0] ) {
+            /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see
+             * kitty_xfer_download_dir() above. */
+            char *expanded = kitty_expand_env_dup( s ) ;
+            if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
+            free( expanded ) ;
+        }
     }
-    if( ReadParameterN( INIT_SECTION, KI_UPLOADDIR, out, outlen ) && out[0] && existdirectory( out ) ) return out ;
+    if( ReadParameterN( INIT_SECTION, KI_UPLOADDIR, out, outlen ) && out[0] ) {
+        char *expanded = kitty_expand_env_dup( out ) ;
+        if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
+        free( expanded ) ;
+    }
     {
         const char * prof = getenv( "USERPROFILE" ) ;
         if( prof && prof[0] ) {
@@ -2059,12 +2080,20 @@ dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
  * came from `param` itself (no need to write it back) and envname=NULL when the
  * tool has no associated environment variable. Generalises the former
  * per-tool malloc+strcpy+WriteParameter tails in the Search* helpers. */
+/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - `candidate` may be the literal
+ * text stored in kitty.ini (e.g. "%OneDrive%\pscp.exe"); expand it before
+ * the existfile() check so a %VAR% helper path is actually found, and adopt
+ * the EXPANDED path as the running value. None of this function's callers
+ * pass a non-NULL `param`, so the ini/registry text itself is never
+ * overwritten with the expansion. */
 static int adopt_tool_path_if_exists( char **out, const char *candidate,
                                       const char *param, const char *envname ) {
-	if( candidate == NULL || !existfile( candidate ) ) return 0 ;
+	char *expanded ;
+	if( candidate == NULL ) return 0 ;
+	expanded = kitty_expand_env_dup( candidate ) ;
+	if( !existfile( expanded ) ) { free( expanded ) ; return 0 ; }
 	if( *out != NULL ) free( *out ) ;
-	*out = (char*) malloc( strlen(candidate) + 1 ) ;
-	strcpy( *out, candidate ) ;
+	*out = expanded ;
 	if( envname != NULL ) set_env( (char*)envname, *out ) ;
 	if( param != NULL ) WriteParameter( INIT_SECTION, (char*)param, *out ) ;
 	return 1 ;
@@ -2072,12 +2101,17 @@ static int adopt_tool_path_if_exists( char **out, const char *candidate,
 
 static int set_winscp_path_if_exists(const char *path)
 {
-	if( path != NULL && path[0] && existfile(path) ) {
-		WinSCPPath = (char*) malloc( strlen(path) + 1 ) ;
-		strcpy( WinSCPPath, path ) ;
+	/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see
+	 * adopt_tool_path_if_exists() above. */
+	char *expanded ;
+	if( path == NULL || !path[0] ) return 0 ;
+	expanded = kitty_expand_env_dup( path ) ;
+	if( existfile(expanded) ) {
+		WinSCPPath = expanded ;
 		WriteParameter( INIT_SECTION, KI_WINSCPPATH, WinSCPPath ) ;
 		return 1 ;
 	}
+	free( expanded ) ;
 	return 0 ;
 }
 
@@ -2429,12 +2463,18 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 char * FileZillaPath = NULL ;
 
 static int set_filezilla_path_if_exists( const char *path ) {
-	if( path != NULL && path[0] && existfile( path ) ) {
+	/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see
+	 * adopt_tool_path_if_exists() above; this path is never written back to
+	 * the store, so the ini text (literal or not) is untouched either way. */
+	char *expanded ;
+	if( path == NULL || !path[0] ) return 0 ;
+	expanded = kitty_expand_env_dup( path ) ;
+	if( existfile( expanded ) ) {
 		if( FileZillaPath != NULL ) free( FileZillaPath ) ;
-		FileZillaPath = (char*) malloc( strlen(path) + 1 ) ;
-		strcpy( FileZillaPath, path ) ;
+		FileZillaPath = expanded ;
 		return 1 ;
 	}
+	free( expanded ) ;
 	return 0 ;
 }
 

@@ -520,8 +520,52 @@ bool IsPathAbsolute( const char * path ) {
 	bool test = false ;
 	if( path == NULL ) { return false ; }
 	if( strlen( path ) < 3 ) { return false ; }
-	if( ((path[0]>='a') && (path[0]<='z')) || ((path[0]>='A') && (path[0]<='Z')) ) 
+	if( ((path[0]>='a') && (path[0]<='z')) || ((path[0]>='A') && (path[0]<='Z')) )
 		if( path[1]==':' )
 			if( (path[2]=='/') || (path[2]=='\\') ) test = true ;
 	return test ;
+}
+
+/*
+ * KiTTY: %VAR% expansion (cyd01/KiTTY#472) for the plain-string (non-
+ * Filename) settings that hold a path: the download/upload folders, the
+ * PSCPPath/WinSCPPath/FileZillaPath helper-program paths, and the sav=
+ * override. These never round-trip through the Filename type - each is a
+ * char* read straight out of kitty.ini/the registry (ReadParameterN) into a
+ * running global or a local buffer.
+ *
+ * Called ONLY at the point the stored text is turned into a path a real
+ * Win32 API is about to use (existfile/existdirectory, GetShortPathName, the
+ * actual open) - never where it is loaded for display or written back, so
+ * the config box and the store keep showing/saving exactly what was typed,
+ * e.g. "%OneDrive%\Kitty-Logs". An unknown %name% is left literal, which is
+ * what ExpandEnvironmentStrings already does on its own.
+ *
+ * Returns a newly malloc'd string the caller frees with free() (matching
+ * the malloc/strcpy idiom every call site here already uses for these
+ * globals); never NULL, even if `in` is NULL (an empty string comes back).
+ */
+char *kitty_expand_env_dup(const char *in)
+{
+	DWORD need;
+	char *out;
+
+	if (in == NULL)
+		in = "";
+
+	need = ExpandEnvironmentStrings(in, NULL, 0);
+	if (!need) {
+		/* Expansion failed: fall back to the literal text, unchanged. */
+		out = (char*) malloc(strlen(in) + 1);
+		strcpy(out, in);
+		return out;
+	}
+
+	out = (char*) malloc(need);
+	if (!ExpandEnvironmentStrings(in, out, need)) {
+		free(out);
+		out = (char*) malloc(strlen(in) + 1);
+		strcpy(out, in);
+	}
+	return out;
 }

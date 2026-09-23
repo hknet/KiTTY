@@ -41,6 +41,13 @@ bool open_for_write_would_lose_data(const Filename *fn)
     static HMODULE kernel32_module;
     DECL_WINDOWS_FUNCTION(static, BOOL, GetFileAttributesExW,
                           (LPCWSTR, GET_FILEEX_INFO_LEVELS, LPVOID));
+    bool ret;
+    /* KiTTY: %VAR% expansion (cyd01/KiTTY#472). This check runs BEFORE
+     * f_open() (logging.c logfopen decides append/overwrite/ask from its
+     * answer), so it must look at the same expanded path f_open() will
+     * actually open - otherwise a %VAR% log path always looks like "no such
+     * file" here and silently skips the overwrite prompt. */
+    wchar_t *wpath = filename_expand_wstr(fn);
 
     if (!kernel32_module) {
         kernel32_module = load_system32_dll("kernel32.dll");
@@ -49,28 +56,32 @@ bool open_for_write_would_lose_data(const Filename *fn)
 
     if (p_GetFileAttributesExW) {
         WIN32_FILE_ATTRIBUTE_DATA attrs;
-        if (!p_GetFileAttributesExW(fn->wpath, GetFileExInfoStandard, &attrs)) {
+        if (!p_GetFileAttributesExW(wpath, GetFileExInfoStandard, &attrs)) {
             /*
              * Generally, if we don't identify a specific reason why we
              * should return true from this function, we return false, and
              * let the subsequent attempt to open the file for real give a
              * more useful error message.
              */
-            return false;
+            ret = false;
+        } else {
+            ret = open_for_write_would_lose_data_impl(
+                attrs.dwFileAttributes, attrs.nFileSizeHigh, attrs.nFileSizeLow);
         }
-        return open_for_write_would_lose_data_impl(
-            attrs.dwFileAttributes, attrs.nFileSizeHigh, attrs.nFileSizeLow);
     } else {
         WIN32_FIND_DATAW fd;
-        HANDLE h = FindFirstFileW(fn->wpath, &fd);
+        HANDLE h = FindFirstFileW(wpath, &fd);
         if (h == INVALID_HANDLE_VALUE) {
             /*
              * As above, if we can't find the file at all, return false.
              */
-            return false;
+            ret = false;
+        } else {
+            CloseHandle(h);
+            ret = open_for_write_would_lose_data_impl(
+                fd.dwFileAttributes, fd.nFileSizeHigh, fd.nFileSizeLow);
         }
-        CloseHandle(h);
-        return open_for_write_would_lose_data_impl(
-            fd.dwFileAttributes, fd.nFileSizeHigh, fd.nFileSizeLow);
     }
+    sfree(wpath);
+    return ret;
 }

@@ -69,6 +69,18 @@ Filename *filename_from_wstr(const wchar_t *str);
 const wchar_t *filename_to_wstr(const Filename *fn);
 FILE *f_open(const Filename *filename, const char *mode, bool isprivate);
 
+/*
+ * KiTTY: expand %VAR% Windows environment variables in a Filename, at the
+ * point its path turns into a real Win32 path used to open, stat or launch
+ * something - never at load/save, so the setting the user typed and the
+ * config box shows (e.g. "%OneDrive%\Kitty-Logs\Kitty.log") stays exactly
+ * that (cyd01/KiTTY#472). An unknown %name% is left literal, which is what
+ * ExpandEnvironmentStrings already does on its own. The caller frees the
+ * result (sfree for the wide form, sfree for the narrow form).
+ */
+wchar_t *filename_expand_wstr(const Filename *fn);
+char *filename_expand_str(const Filename *fn);
+
 #ifndef SUPERSEDE_FONTSPEC_FOR_TESTING
 struct FontSpec {
     char *name;

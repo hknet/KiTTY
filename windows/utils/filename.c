@@ -6,6 +6,53 @@
 
 #include "putty.h"
 
+/*
+ * KiTTY: %VAR% expansion (cyd01/KiTTY#472).
+ *
+ * A Filename's wpath/cpath/utf8path stay exactly what was typed or loaded -
+ * that is what write_setting_filename() saves and what the config box's
+ * file-select box displays (dlg_filesel_set() shows fn->wpath), so expanding
+ * here would turn the FIRST save after any edit into the resolved path,
+ * silently losing the %VAR% form. Expansion instead happens on demand, right
+ * before a path is handed to a real Win32 API - filename_expand_wstr() /
+ * filename_expand_str() below, used by f_open() and by every other place
+ * that opens, stats or launches a Filename-typed setting directly.
+ *
+ * ExpandEnvironmentStringsW leaves an unresolved %name% (and a lone '%')
+ * untouched, so a filename that never had a variable in it is unaffected;
+ * this is a single, non-recursive pass, so a '%' that arrives INSIDE an
+ * expanded value (e.g. a variable whose value itself contains '%') is never
+ * expanded again.
+ */
+static wchar_t *expand_env_wstr(const wchar_t *in)
+{
+    DWORD need = ExpandEnvironmentStringsW(in, NULL, 0);
+    wchar_t *out;
+
+    if (!need)
+        return dupwcs(in);             /* expansion failed: use it literally */
+
+    out = snewn(need, wchar_t);
+    if (!ExpandEnvironmentStringsW(in, out, need)) {
+        sfree(out);
+        return dupwcs(in);
+    }
+    return out;
+}
+
+wchar_t *filename_expand_wstr(const Filename *fn)
+{
+    return expand_env_wstr(fn->wpath);
+}
+
+char *filename_expand_str(const Filename *fn)
+{
+    wchar_t *w = expand_env_wstr(fn->wpath);
+    char *c = dup_wc_to_mb(DEFAULT_CODEPAGE, w, "?");
+    sfree(w);
+    return c;
+}
+
 Filename *filename_from_str(const char *str)
 {
     Filename *fn = snew(Filename);
@@ -101,7 +148,12 @@ FILE *f_open(const Filename *fn, const char *mode, bool isprivate)
 #endif
 
     wchar_t *wmode = dup_mb_to_wc(DEFAULT_CODEPAGE, mode);
-    FILE *fp = _wfopen(fn->wpath, wmode);
+    /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - expand right before the
+     * actual open, so the Filename itself (and anything saved from it)
+     * stays literal. */
+    wchar_t *wpath = expand_env_wstr(fn->wpath);
+    FILE *fp = _wfopen(wpath, wmode);
+    sfree(wpath);
     sfree(wmode);
     return fp;
 }

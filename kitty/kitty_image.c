@@ -375,9 +375,15 @@ static BOOL load_file_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
     *style = conf_get_int( conf,CONF_bg_image_style);
 
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
-    *rawImage = LoadImage(
-        NULL, filename_to_str(conf_get_filename( conf, CONF_bg_image_filename )), IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
-    );
+    /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - expand right before the
+     * real Win32 open; the stored CONF_bg_image_filename stays literal. */
+    {
+        char *expanded = filename_expand_str(conf_get_filename(conf, CONF_bg_image_filename));
+        *rawImage = LoadImage(
+            NULL, expanded, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
+        );
+        sfree(expanded);
+    }
     if(*rawImage == 0)
         return FALSE; // TODO: Should the error be reported to the user here?
 
@@ -597,8 +603,14 @@ static BOOL load_file_jpeg(HBITMAP* rawImage, int* style, int* x, int* y) {
     HGLOBAL LimageBitmap = NULL ;
 
 	
-    if(  ( fp=fopen( filename_to_str(conf_get_filename( conf,CONF_bg_image_filename)), "rb" ) ) == NULL ) return FALSE ;
-    
+    /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see load_file_bmp() above. */
+    {
+        char *expanded = filename_expand_str(conf_get_filename(conf, CONF_bg_image_filename));
+        fp = fopen(expanded, "rb");
+        sfree(expanded);
+    }
+    if( fp == NULL ) return FALSE ;
+
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
 *rawImage = loadJPEGimage(fp, &LimageBitmap,&LsizeX, &LsizeY) ;
 if( rawImage == NULL ) res =FALSE ;    

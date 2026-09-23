@@ -9091,11 +9091,17 @@ static void wintw_bell(TermWin *tw, int mode)
     } else if (mode == BELL_WAVEFILE) {
         Filename *bell_wavefile = conf_get_filename(
             wgs->conf, CONF_bell_wavefile);
+        /* KiTTY: %VAR% in the path is expanded here, where the file is
+         * played; the stored setting keeps the variable (cyd01/KiTTY#472). */
+        wchar_t *bell_wpath = filename_expand_wstr(bell_wavefile);
+        char *bell_cpath = filename_expand_str(bell_wavefile);
         bool success = (
-            p_PlaySoundW ? p_PlaySoundW(bell_wavefile->wpath, NULL,
+            p_PlaySoundW ? p_PlaySoundW(bell_wpath, NULL,
                                         SND_ASYNC | SND_FILENAME) :
-            p_PlaySoundA ? p_PlaySoundA(bell_wavefile->cpath, NULL,
+            p_PlaySoundA ? p_PlaySoundA(bell_cpath, NULL,
                                         SND_ASYNC | SND_FILENAME) : false);
+        sfree(bell_wpath);
+        sfree(bell_cpath);
         if (!success) {
             char *buf, *otherbuf;
             show_mouseptr(wgs, true);
