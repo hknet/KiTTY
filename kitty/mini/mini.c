@@ -8,6 +8,7 @@
  * file that is reloaded only when the file's timestamp changes.
  */
 #include "mini.h"
+#include <time.h>   /* time(): the cache compares the file's timestamp */
 
 #ifdef DEBUG_MODE
 #include "leaktracker.h"

@@ -117,6 +117,14 @@ if(STRICT)
   endif()
 endif()
 
+# KiTTY: a call to a function with no prototype in scope is an error in
+# every build, not only STRICT ones. C assumes such a function returns int,
+# which truncates a returned pointer on 64-bit and has hidden real bugs here
+# before; the warning class was brought to zero and must stay there.
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror=implicit-function-declaration")
+endif()
+
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
   # Switch back from MSVC-style error message format
   # "file.c(line,col)" to clang's native style "file.c:line:col:". I
