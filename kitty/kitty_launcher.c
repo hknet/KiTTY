@@ -170,6 +170,7 @@ static POINT LauncherClickPoint ;           /* where the tray click was */
 static DWORD LauncherTrayClickTick = 0 ;    /* when it was handled */
 static int LauncherTrayClickArmed = 0 ;     /* the next press in the menu may be the second click */
 static int LauncherTrayMenuUp = 0 ;         /* the menu of a tray left click is showing */
+static void LauncherTrayTrace( const char * what ) ;   /* test builds: launcher_tray.log */
 static int LauncherTrayDblPending = 0 ;     /* double click seen: run it once the menu is gone */
 static int LauncherTrayDblSwallowUp = 0 ;   /* the button-up of that second click is still due */
 /* The icon's own rectangle on the screen, read when its menu opens: a click
@@ -702,6 +703,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 		      m->message == WM_NCLBUTTONDOWN || m->message == WM_NCLBUTTONDBLCLK ) ) {
 			LauncherTrayClickArmed = 0 ;
 			if( LauncherTraySecondClick( m->pt, m->time ) ) {
+				LauncherTrayTrace( "menu hook: second click of a double click" ) ;
 				LauncherTrayDblPending = 1 ;
 				LauncherTrayDblSwallowUp = 1 ;
 				/* The menu may be gone before the button comes up; the
@@ -1205,6 +1207,45 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
  * after it: a new configuration box, as the tray double click always opened.
  * Only this menu is armed: the right-click menu and the menu reopened after a
  * Refresh do not come through here. */
+/* The tray double click's action - a new configuration box - reached from two
+ * places: the menu hook, which recognises the second click inside the open
+ * menu, and the shell's own WM_LBUTTONDBLCLK. On a real taskbar icon Windows
+ * can pass that same second press on to the icon after the menu is gone, so
+ * one double click arrived through BOTH and opened two boxes. One double click
+ * = one box: a second request within twice the double-click time is dropped.
+ * Test builds write every request and whether it ran to launcher_tray.log
+ * beside the exe, so a double click can be traced path by path. */
+static DWORD LauncherDblActionTick = 0 ;
+static void LauncherTrayTrace( const char * what ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	char path[MAX_PATH], *slash ;
+	FILE * f ;
+	if( !GetModuleFileNameA( NULL, path, sizeof(path) ) ) return ;
+	if( ( slash = strrchr( path, '\\' ) ) == NULL ) return ;
+	strcpy( slash + 1, "launcher_tray.log" ) ;
+	if( ( f = fopen( path, "a" ) ) != NULL ) {
+		fprintf( f, "%lu %s\n", (unsigned long)GetTickCount(), what ) ;
+		fclose( f ) ;
+	}
+#else
+	(void)what ;
+#endif
+}
+static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
+	DWORD now = GetTickCount() ;
+	char line[96] ;
+	if( LauncherDblActionTick && now - LauncherDblActionTick <= 2 * GetDoubleClickTime() ) {
+		snprintf( line, sizeof(line), "double click via %s: DROPPED (%lu ms after the last)",
+		          from, (unsigned long)( now - LauncherDblActionTick ) ) ;
+		LauncherTrayTrace( line ) ;
+		return ;
+	}
+	LauncherDblActionTick = now ;
+	snprintf( line, sizeof(line), "double click via %s: new configuration box", from ) ;
+	LauncherTrayTrace( line ) ;
+	RunPuTTY( hwnd, "" ) ;
+}
+
 static void LauncherTrayLeftClick( HWND hwnd ) {
 	int dbl ;
 	GetCursorPos( &LauncherClickPoint ) ;
@@ -1224,7 +1265,7 @@ static void LauncherTrayLeftClick( HWND hwnd ) {
 	LauncherTrayDblPending = 0 ;
 	LauncherTrayDblSwallowUp = 0 ;
 	if( dbl )
-		RunPuTTY( hwnd, "" ) ;
+		LauncherTrayDoubleAction( hwnd, "the menu hook" ) ;
 }
 	
 // Hide/UnHide all handling
@@ -1891,6 +1932,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * that same press, passed on by the shell once the menu
 					 * was gone, and its release is the one to ignore. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
+						LauncherTrayTrace( "tray WM_LBUTTONDOWN" ) ;
 						if( LauncherIgnoreUpFromMenu &&
 						    GetTickCount() - LauncherIgnoreUpTick <= GetDoubleClickTime() )
 							LauncherIgnoreUpFromMenu = 0 ;
@@ -1910,6 +1952,8 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * once. Without a tray left-click menu up it runs here. The
 					 * button-up that follows must not open the menu again. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
+						LauncherTrayTrace( LauncherTrayMenuUp ?
+							"tray WM_LBUTTONDBLCLK (menu up)" : "tray WM_LBUTTONDBLCLK (no menu)" ) ;
 						LauncherIgnoreUp = 1 ;
 						LauncherIgnoreUpFromMenu = 0 ;
 						LauncherIgnoreUpTick = GetTickCount() ;
@@ -1920,7 +1964,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 								EndMenu() ;
 							}
 						} else {
-							RunPuTTY( hwnd, "" ) ;
+							LauncherTrayDoubleAction( hwnd, "the shell" ) ;
 						}
 						}
 				break ;
@@ -1942,6 +1986,9 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * inside that menu's loop, and a second TrackPopupMenu
 					 * there would replace the menu filter of the first. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
+						LauncherTrayTrace( LauncherIgnoreUp ? "tray WM_LBUTTONUP (ignored)" :
+						                   g_launcher_menu_hook ? "tray WM_LBUTTONUP (menu already up)" :
+						                   "tray WM_LBUTTONUP: open the menu" ) ;
 						if( LauncherIgnoreUp &&
 						    GetTickCount() - LauncherIgnoreUpTick <= LAUNCHER_IGNOREUP_MS ) {
 							LauncherIgnoreUp = 0 ;
@@ -2099,6 +2146,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 					break ;
 				case IDM_LAUNCHER+1:
+					LauncherTrayTrace( "menu entry: new configuration box" ) ;
 					RunPuTTY( hwnd, "" ) ;
 					break ;
 				case IDM_LAUNCHER+2:
