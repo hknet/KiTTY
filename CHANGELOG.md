@@ -24,8 +24,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The remote command can name an SSH subsystem.** A checkbox under Remote
   command on Connection > SSH sends it as a subsystem request instead of a
   command line; it is saved with the session, and the pty still follows the
-  TTY panel. klink's `-s` already did this; its help and the manual now say
-  that `-t` adds a pty to it (cyd01/KiTTY#493).
+  TTY panel. klink's `-s` already did this; its help and the manual now
+  state that `-t` adds a pty to it (cyd01/KiTTY#493).
 - **Old session logs can be deleted automatically.** Session > Logging has
   two new settings under the rotation row, "Delete logs after [ ] days" and
   "Keep logsize below [ ] MB", both off by default. They delete only files

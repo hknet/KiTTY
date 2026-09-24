@@ -25,7 +25,7 @@
  *  - Never the log this session writes or is about to write, and never a
  *    file that anything else has open (see lk_delete).
  *  - The pattern must match the session's own current file name. If it does
- *    not - an environment variable whose value contains '&', say, so that the
+ *    not - for example an environment variable whose value contains '&', so that the
  *    two expansions disagree - the pattern is not this session's and nothing
  *    is touched.
  *
@@ -93,7 +93,7 @@ static void lk_add(lk_tok *t, size_t *n, int kind, wchar_t ch, int count)
  * &Y &M &D &T are the time codes. Only the part after the last literal path
  * separator is kept: a code's output never contains one (xlatlognam
  * sanitises it), so the separators that split folder from name are all
- * literal. *has_time says whether that name part holds a time code.
+ * literal. *has_time reports whether that name part holds a time code.
  */
 static lk_tok *lk_pattern(const wchar_t *s, size_t *ntok, bool *has_time)
 {
@@ -181,7 +181,7 @@ static char *lk_display(const wchar_t *folder, const lk_tok *t, size_t nt)
 /*
  * Delete one file, but only if nothing else has it open.
  *
- * The open asks for DELETE access and shares nothing but delete. That fails
+ * The open requests DELETE access and shares nothing but delete. That fails
  * with a sharing violation while any other handle has the file open for
  * reading or writing - another KiTTY still logging into it, a viewer, a copy
  * in progress - and a failure means the file is skipped. While the handle is

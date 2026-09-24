@@ -50,11 +50,12 @@ static Filename *xlatlognam(const Filename *s,
  * KiTTY: log retention (Session > Logging, "Delete logs after" / "Keep logsize
  * below", cyd01/KiTTY#439). `active` is the log this session writes or is
  * about to write; kitty_logkeep.c never deletes it and searches its folder.
- * The line it returns goes to the session's Event Log only when `tell` says
- * the session is still there to show it - it has already gone to the
- * Application event log either way.
+ * The line it returns goes to the session's Event Log only when
+ * `show_in_session` is true: the session is still there to show it - it has
+ * already gone to the Application event log either way.
  */
-static void kitty_log_keep(LogContext *ctx, const Filename *active, bool tell)
+static void kitty_log_keep(LogContext *ctx, const Filename *active,
+                           bool show_in_session)
 {
     char *msg;
     int days = conf_get_int(ctx->conf, CONF_logkeepdays);
@@ -64,7 +65,7 @@ static void kitty_log_keep(LogContext *ctx, const Filename *active, bool tell)
         return;
     msg = kitty_logkeep_run(conf_get_filename(ctx->conf, CONF_logfilename),
                             active, days, mb);
-    if (msg && tell && ctx->lp)
+    if (msg && show_in_session && ctx->lp)
         lp_eventlog(ctx->lp, msg);     /* not logevent(): see logfopen() */
     sfree(msg);
 }
@@ -670,7 +671,7 @@ LogContext *log_init(LogPolicy *lp, Conf *conf)
 void log_free(LogContext *ctx)
 {
 #ifdef MOD_PERSO
-    /* KiTTY: a context that IS freed (an SSH proxy hop's, say) gets the same
+    /* KiTTY: a context that IS freed (for example an SSH proxy hop's) gets the same
      * end-of-session retention pass as the terminal's; it runs once. */
     logfile_session_end(ctx);
 #endif

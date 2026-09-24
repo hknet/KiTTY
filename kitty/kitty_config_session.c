@@ -4202,7 +4202,7 @@ static void logtimestamp_button_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * logging_grey() works the whole panel's state out from the Conf, and both
  * masters' handlers call it on every change and when a session is loaded, so
  * neither master can undo what the other decided. The notes under the
- * controls stay readable either way, since they say why. */
+ * controls stay readable either way, since they explain why. */
 #define LOGTIME_ROW_CTRLS 9
 static dlgcontrol *logtime_rows[LOGTIME_ROW_CTRLS];
 static int logtime_nrows;
@@ -4232,7 +4232,7 @@ static void logfilename_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /* The logging-type radios: the stock handler first - on REFRESH it may fall
  * back to None when the saved type is not offered here, so the Conf is read
- * only after it has had its say. */
+ * only after that handler has run. */
 static void logtype_handler(dlgcontrol *ctrl, dlgparam *dlg,
                             void *data, int event)
 {

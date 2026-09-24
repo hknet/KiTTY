@@ -36,7 +36,7 @@ char *kitty_logkeep_run(const Filename *configured, const Filename *active,
 /*
  * Does the name part of a configured log file name hold a time code (&Y &M
  * &D &T)? Rotation and retention both do nothing without one; the Logging
- * panel greys their fields when it says no.
+ * panel greys their fields when it returns false.
  */
 bool kitty_logkeep_has_time_code(const Filename *configured);
 
