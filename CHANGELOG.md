@@ -79,6 +79,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `active=no` now turns it off there as well.** Windows' own font
   substitution still keeps drawing under both renderers regardless of the
   switch.
+- **kageant's tray menu follows a colour theme change made while it runs.**
+  Its key list did, but the menu kept the theme kageant started with until a
+  restart.
 
 ## 0.85.1.12-beta — 2026-09-23
 

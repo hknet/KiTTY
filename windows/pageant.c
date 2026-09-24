@@ -5860,6 +5860,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             EnableMenuItem(systray_menu, IDM_RESUME_CONFIRM, MF_BYCOMMAND |
                            (kageant_confirm_suppressed() ? MF_ENABLED
                                                          : MF_GRAYED));
+            /* KiTTY: the menu's colours come from the process-wide app mode,
+             * set at start. The theme can change in the configuration box
+             * while kageant runs for days (the key list follows it on its
+             * next activation), so it is read again before every menu, as
+             * the launcher does; nothing happens while it is unchanged. */
+            kitty_theme_app_mode(kitty_theme_pref_get());
             SetForegroundWindow(hwnd);
             TrackPopupMenu(systray_menu,
                            TPM_RIGHTALIGN | TPM_BOTTOMALIGN |
