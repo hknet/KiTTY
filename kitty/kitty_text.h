@@ -1277,8 +1277,9 @@
 #define KT_KSET_BC_SWITCH_NOTE                       "Switch to open Terminals to send."
 #define KT_KSET_BC_SENDING                           "Sending line %d of %d..."
 
-/* Application/KiTTY++ Settings/Window & display */
-#define KT_KSET_WD_TITLE                             "Terminal Windows and Printing"
+/* Application/KiTTY++ Settings/Terminal, with its Font Fallback and Printing
+ * leaves; the shared position and the icon library sit on Appearance */
+#define KT_KSET_WD_TITLE                             "Terminal Windows"
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
 #define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP, BROADCAST, RESTRICTED)"
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
@@ -1316,10 +1317,12 @@
 #define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Title & Icon panel picks one of its icons for " \
         "the terminal window. Read at the next start; blank = kitty.dll beside kitty.exe, else kitty.exe."
 #define KT_KSET_WD_ICONFILE_SELECT                   "Select the icon file"
+#define KT_KSET_WD_PRINTING_TITLE                    "Printing the clipboard and the whole buffer"
 #define KT_KSET_WD_PRINTING                          "Printing"
 #define KT_KSET_WD_PRINT_PITCH                       "Line pitch, printer units:"
 #define KT_KSET_WD_PRINT_LINES                       "Lines per page:"
 #define KT_KSET_WD_PRINT_CHARS                       "Characters per line:"
+#define KT_KSET_WD_FONTFB_TITLE                      "Characters the terminal font lacks"
 #define KT_KSET_WD_FONTFB                            "Font fallback"
 #define KT_KSET_WD_FONTFB_ACTIVE                     "Draw missing characters from fallback fonts"
 #define KT_KSET_WD_FONTFB_LIST                       "Fonts to try first (comma-separated):"

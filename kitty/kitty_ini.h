@@ -322,7 +322,7 @@ char default_init_file_content[] =
 ; differs slightly between the two. A translucent window works with both:\n\
 ;    Direct2D paints a dimmed window through a copy into the window's own\n\
 ;    surface, which the dimming applies to. Also on the configuration window,\n\
-;    Application > KiTTY++ Settings > Terminal & Printing.\n\
+;    Application > KiTTY++ Settings > Terminal.\n\
 ;renderer=gdi\n\
 \n\
 ; framepace: how often the window may repaint while output streams in.\n\

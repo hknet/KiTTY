@@ -319,7 +319,7 @@
 ; differs slightly between the two. A translucent window works with both:
 ;    Direct2D paints a dimmed window through a copy into the window's own
 ;    surface, which the dimming applies to. Also on the configuration window,
-;    Application > KiTTY++ Settings > Terminal & Printing.
+;    Application > KiTTY++ Settings > Terminal.
 ;renderer=gdi
 
 ; framepace: how often the window may repaint while output streams in.

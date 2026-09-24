@@ -1350,13 +1350,15 @@ under **Application > KiTTY++ Settings**: where settings are kept and how many
 backups are held (*Storage & Backup*, with a *KiTTY.ini* leaf that shows the
 configuration file read-only, follows it on disk, offers the shipped
 kitty.ini.example beside it for copying, and hands editing to your editor
-with a warning), the colour theme, title bar, icons and
-font fallback (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
-automation and broadcast (*Automation*), *Terminal & Printing* (the renderer, the frame pacing, the feature switches, printing), the
+with a warning), the colour theme, the shared window position and the icon
+library (*Appearance*), keys and mouse with a *Shortcuts* leaf, typing
+automation and broadcast (*Automation*), *Terminal* (the title bar, the
+renderer, the frame pacing, the feature switches) with a *Font Fallback* leaf
+for characters the terminal font lacks and a *Printing* leaf, the
 auto-reconnect master switch and in-line confirmations (*Reconnect & Prompts*),
 file-transfer helpers (*Transfers & Tools* with *WinSCP* and *ZModem*), the
-*Launcher*, and *System*. Each leaf says where its values are kept, and every
-change is saved as you make it - the footer line on each panel says so. Before
+*Launcher*, and *System*. Each leaf states where its values are kept, and every
+change is saved as you make it - the footer line on each panel states that. Before
 this, most of these could only be changed by editing `kitty.ini` or the
 registry by hand.
 

@@ -45,6 +45,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **"System menu (off hides all buttons)" is now "System menu",** and
   "Allow closing", "Minimize button" and "Maximize button" are greyed while
   it is off - Windows draws no caption button without a system menu.
+- **The Terminal & Printing leaf is now "Terminal", with Font Fallback and
+  Printing as leaves of their own.** Under Application > KiTTY++ Settings,
+  Terminal holds the title bar settings and the terminal features, and the
+  title bar and font fallback groups left Appearance for it. The stored keys
+  are unchanged; the manual's Font Fallback page now describes what GDI and
+  Direct2D each do with a character the terminal font lacks.
 
 ### Fixed
 

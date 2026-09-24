@@ -636,7 +636,7 @@ static int  kset_get_debug(void) { return debug_flag; }
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
 
-/* Terminal & Printing: the renderer and the frame pacing ([KiTTY] renderer /
+/* Terminal: the renderer and the frame pacing ([KiTTY] renderer /
  * framepace, read when a window is created / at startup). */
 static const struct kset_choice kset_renderer_choices[] = {
     { KT_KSET_WD_RENDERER_GDI, "gdi", 0 }, { KT_KSET_WD_RENDERER_D2D, "d2d", 1 } };

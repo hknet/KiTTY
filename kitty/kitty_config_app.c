@@ -2594,18 +2594,20 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * Application > Security (it traces more than the automation). */
     kbc_leaf(b);
 
-    /* ---- Features & Printing; the title bar, icons and font fallback
-     * groups are how the windows LOOK and go to Appearance (ctrl_getset
-     * appends to that panel wherever it is called from) ---- */
-    ctrl_settitle(b, KSET_PATH("Terminal & Printing"), KT_KSET_WD_TITLE);
-    s = ctrl_getset(b, KSET_PATH("Appearance"), "titlebar", KT_KSET_WD_TITLEBAR);
-    /* The group moved to Appearance and its help must follow: with the old
-     * context F1 opened "The Terminal & Printing panel". */
-    KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, KI_WINTITLE, kitty_appearance);
-    KSET_CHECKBOX(s, KT_KSET_WD_SIZE, KI_SIZE, kitty_appearance);
-    KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, KI_WINROLL, kitty_appearance);
-    /* The shared terminal-window position, directly after Title bar (groups
-     * appear in the order they are first created). Read-only, plus Reset. */
+    /* ---- Terminal: the title bar and the feature switches of the terminal
+     * window, with Font Fallback and Printing as leaves of their own. The
+     * shared position and the icon library stay on Appearance (ctrl_getset
+     * appends to that panel wherever it is called from). Groups appear in
+     * the order they are first created, so Title bar comes first here. ---- */
+    ctrl_settitle(b, KSET_PATH("Terminal"), KT_KSET_WD_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal"), "titlebar", KT_KSET_WD_TITLEBAR);
+    /* The help follows the panel the group sits on: F1 opens the Terminal
+     * panel's page, not the Appearance one. */
+    KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, KI_WINTITLE, kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_SIZE, KI_SIZE, kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, KI_WINROLL, kitty_kset_window);
+    /* The shared terminal-window position, after Colours on Appearance.
+     * Read-only, plus Reset. */
     {
         char lines[2][256];
         int i;
@@ -2616,7 +2618,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
         ctrl_pushbutton(s, KT_KSET_WD_SHAREDPOS_RESET, NO_SHORTCUT,
                         HELPCTX(kitty_appearance), kitty_sharedpos_reset_handler, I(0));
     }
-    s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "features", KT_KSET_WD_FEATURES);
+    s = ctrl_getset(b, KSET_PATH("Terminal"), "features", KT_KSET_WD_FEATURES);
     KSET_DROPLIST(s, KT_KSET_WD_RENDERER, KI_RENDERER, kitty_kset_window);
     KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_window));
@@ -2631,16 +2633,24 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, KI_ICONFILE, kitty_appearance);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));
-    s = ctrl_getset(b, KSET_PATH("Terminal & Printing"), "printing", KT_KSET_WD_PRINTING);
-    KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, KI_PRINT_HEIGHT, kitty_kset_window);
-    KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, KI_PRINT_MAXLINE, kitty_kset_window);
-    KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, KI_PRINT_MAXCHAR, kitty_kset_window);
-    ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_window));
-    s = ctrl_getset(b, KSET_PATH("Appearance"), "fontfb", KT_KSET_WD_FONTFB);
-    m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, KI_FONTFALLBACK_ACTIVE, kitty_appearance);
-    m->context2 = P(KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, KI_FONTFALLBACK_FALLBACK, kitty_appearance));
-    ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_appearance));
-    ctrl_text(s, KT_KSET_WD_FONTFB_FILEONLY, HELPCTX(kitty_appearance));
+
+    /* Terminal > Font Fallback: the master switch greys the list below it.
+     * Both keys live in [FontFallback] of kitty.ini in every store mode. */
+    ctrl_settitle(b, KSET_PATH("Terminal/Font Fallback"), KT_KSET_WD_FONTFB_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal/Font Fallback"), "fontfb", KT_KSET_WD_FONTFB);
+    m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, KI_FONTFALLBACK_ACTIVE, kitty_kset_fontfb);
+    m->context2 = P(KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, KI_FONTFALLBACK_FALLBACK, kitty_kset_fontfb));
+    ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_kset_fontfb));
+    ctrl_text(s, KT_KSET_WD_FONTFB_FILEONLY, HELPCTX(kitty_kset_fontfb));
+
+    /* Terminal > Printing: the layout of KiTTY's own text printout ([Print]
+     * in kitty.ini whatever the store mode). */
+    ctrl_settitle(b, KSET_PATH("Terminal/Printing"), KT_KSET_WD_PRINTING_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal/Printing"), "printing", KT_KSET_WD_PRINTING);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, KI_PRINT_HEIGHT, kitty_kset_printing);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, KI_PRINT_MAXLINE, kitty_kset_printing);
+    KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, KI_PRINT_MAXCHAR, kitty_kset_printing);
+    ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_printing));
 
     /* ---- Connection & reconnect ---- */
     ctrl_settitle(b, KSET_PATH("Reconnect & Prompts"), KT_KSET_CN_TITLE);

@@ -1420,11 +1420,6 @@ colours it opened with, because a theme is applied to a window when it
 is created. It colours the windows and dialogs; a terminal's own colours
 are a per-session setting and are not touched.
 
-\b \q{Title bar}: \q{Decorate the window title} enables the size suffix
-and the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers; \q{Show the terminal size in the
-title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
-the window up} is the roll-up feature.
-
 \b \q{\i{Shared window position}} shows the terminal-window position
 that windows without a session of their own keep - an unnamed session,
 or a window opened as \q{Default Settings} - for the monitor layout the
@@ -1447,33 +1442,12 @@ loaded when KiTTY starts, so a change shows in the next start. Blank
 means \c{kitty.dll} beside \c{kitty.exe} if there is one, otherwise
 \c{kitty.exe} itself, which carries the built-in set.
 
-\b \q{Font fallback} is the master switch for drawing a character the
-terminal font lacks - box drawing, Nerd Font icons, CJK, symbols - from
-another font that has it, and \q{Fonts to try first} is the list of
-fonts probed before the built-in ones (Cascadia Mono, Cascadia Code,
-Segoe UI Symbol, Segoe UI Emoji, Segoe UI Historic, Microsoft YaHei UI,
-Microsoft JhengHei UI, Yu Gothic UI, Malgun Gothic). Give font names as
-Windows shows them, separated by commas:
+The title bar settings are on \k{kitty-cfg-kset-window}, and the fonts
+that draw a character the terminal font lacks on
+\k{kitty-cfg-kset-fontfb}.
 
-\lcont{
-
-\c{Symbols Nerd Font Mono,JetBrains Mono} tries those two first, then
-falls through to the built-in list.
-
-\c{!MyOnlyFont1,MyOnlyFont2} - the leading \c{!} replaces the built-in
-list, so only those two are tried.
-
-}
-
-Fonts that are not installed are skipped. Both settings are kept in
-\c{kitty.ini} whatever the store mode, because the feature's other keys
-- the per-range \c{override} map and its \c{log} and \c{logfile} - live
-only there, and one feature belongs in one place; the
-\c{[FontFallback]} section of the sample \c{kitty.ini} describes those.
-
-The keys in \c{kitty.ini}: \c{theme} (the colours), \c{wintitle},
-\c{size}, \c{winroll} and \c{iconfile} under \c{[KiTTY]}; \c{active} and
-\c{fallback} under \c{[FontFallback]}.
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours)
+and \c{iconfile}.
 
 \S{kitty-cfg-kset-terminal} The Keys & Mouse panel
 
@@ -1766,12 +1740,21 @@ terminal of the chosen groups.
 
 }
 
-\S{kitty-cfg-kset-window} The Terminal & Printing panel
+\S{kitty-cfg-kset-window} The Terminal panel (KiTTY++ Settings)
+
+How the terminal windows look and behave, for every session. Two
+leaves below this panel hold the rest: \k{kitty-cfg-kset-fontfb} and
+\k{kitty-cfg-kset-printing}.
+
+\b \q{Title bar}: \q{Decorate the window title} enables the size suffix
+and the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers; \q{Show the terminal size in the
+title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
+the window up} is the roll-up feature.
 
 \b \q{Terminal Features} starts with how the terminal window is painted.
 \q{Renderer} is GDI, which every Windows has, or Direct2D, which draws on
 the graphics card and needs Windows 8.1 or newer; on an older Windows the
-entry says so and cannot be chosen. Direct2D works with \q{Window
+entry reads \q{Direct2D (Win8.1+ only)} and cannot be chosen. Direct2D works with \q{Window
 transparency} too: a window that may be dimmed presents through the
 desktop's copy of the window (the blit model), which the dimming applies
 to, and an opaque window uses the faster flip model. \q{Frame pacing} is
@@ -1787,14 +1770,94 @@ interval is the fallback for a session that sets none, and \q{Resample a
 large image for Stretch+} trades a little repaint time for a cleaner
 downscale.
 
-\b \q{Printing} sets the line pitch, the lines per page and where a long
-line wraps. These three are kept in \c{kitty.ini} whatever the store
-mode.
-
-The keys in \c{kitty.ini}: \c{renderer}, \c{framepace}, \c{ctrltab},
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{wintitle}, \c{size},
+\c{winroll}, \c{renderer}, \c{framepace}, \c{ctrltab},
 \c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay} and
-\c{shrinkbitmap} under \c{[KiTTY]}; \c{height}, \c{maxline} and
-\c{maxchar} under \c{[Print]}.
+\c{shrinkbitmap}.
+
+\S{kitty-cfg-kset-fontfb} The Font Fallback leaf (under Terminal)
+
+A terminal font rarely has every character a host sends: box drawing,
+Nerd Font icons, CJK, symbols. \i{Font fallback} draws such a character
+from another font that has it, in the same cell, so the columns stay
+where they are. How far it reaches depends on the renderer chosen on
+\k{kitty-cfg-kset-window}.
+
+\b With \e{GDI}, the default renderer, a missing character is looked
+up in \c{override} below, then a fixed built-in list of fonts, tried
+in this order: Cascadia Mono, Cascadia Code, Segoe UI Symbol, Segoe UI
+Emoji, Segoe UI Historic, Microsoft YaHei UI, Microsoft JhengHei UI,
+Yu Gothic UI, Malgun Gothic. The first font that has the character
+draws it; fonts that are not installed are skipped. When none of them
+has it, Windows' own font linking gets a turn - outside KiTTY's
+control and outside this page - and only when that also has nothing
+does the terminal font's own box for a missing character show.
+
+\b With \e{Direct2D}, \c{override} then the same list are tried first.
+A character none of those has then goes to Windows' own font fallback
+(DirectWrite, Windows 8.1 and later), which picks a font from
+everything installed. Windows makes that choice, not KiTTY, and it
+covers far more, so very few characters end as a box.
+
+\q{Draw missing characters from fallback fonts} is the master switch
+for KiTTY's \e{own} choices - \c{override} below and this list - on
+both renderers; the list field is greyed while it is off and keeps its
+value. It does not reach Windows' own font substitution (GDI's font
+linking, Direct2D's DirectWrite fallback), which is outside KiTTY's
+control and keeps drawing on both renderers whatever this switch is
+set to - so a missing character can still show, from a font KiTTY did
+not choose, with the switch off.
+
+\q{Fonts to try first} names fonts that are tried before the built-in
+list. Give the names as Windows shows them, separated by commas:
+
+\b \c{Symbols Nerd Font Mono,JetBrains Mono} tries those two first,
+then falls through to the built-in list. Naming a built-in font moves
+it to the front.
+
+\b \c{!MyOnlyFont1,MyOnlyFont2} - the leading \c{!} replaces the
+built-in list, so only those two are tried.
+
+A fallback glyph is drawn in one colour on both renderers, so colour
+emoji show as outlines. With a raster terminal font such as Terminal
+or Fixedsys, the fallback turns itself off for that window.
+
+Both settings are kept in \c{kitty.ini} whatever the store mode,
+because the feature's other keys live only there and one feature
+belongs in one place: \c{override}, a map that pins a Unicode range to
+one font ahead of the list on both renderers, whatever the probing
+would otherwise find; a font \c{override} names but that is not
+installed is skipped, as an unfound list font is. \c{override} does
+not reach plain Latin/ANSI text under GDI, which draws such text on a
+fast path that never consults it; under Direct2D it does. Also
+\c{log} and \c{logfile}, a troubleshooting log of the probing. The
+\c{[FontFallback]} section of the sample \c{kitty.ini} describes them.
+
+The keys in \c{kitty.ini}, under \c{[FontFallback]}: \c{active} and
+\c{fallback}.
+
+\S{kitty-cfg-kset-printing} The Printing leaf (under Terminal)
+
+The layout of KiTTY's own printout: \q{Print clipboard} on the Tools
+menu (Shift+F7) and \q{Print all} (F7), which copies the whole buffer
+and prints it. The text goes to the printer chosen in the Windows print
+dialog, one line at a time. The
+remote-controlled printing on a session's Terminal panel
+(\k{config-printing}) is a different path and is not affected.
+
+\b \q{Line pitch, printer units} is the vertical distance between
+printed lines, in the printer's device units: a line is drawn at its
+line number times this value. Raising it spaces the printout out,
+lowering it packs it. Default 100.
+
+\b \q{Lines per page} is how many lines go on a page before a new one
+starts. Default 60.
+
+\b \q{Characters per line} is where a long line wraps onto the next
+printed line; nothing is cut off. Default 85.
+
+The three are kept in \c{kitty.ini} whatever the store mode. The keys,
+under \c{[Print]}: \c{height}, \c{maxline} and \c{maxchar}.
 
 \S{kitty-cfg-kset-connection} The Reconnect & Prompts panel
 
