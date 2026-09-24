@@ -58,6 +58,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   restores it if it was minimised.
 - **The launcher shows the windows it hid when it closes after the
   workplace notice.** Its other ways of exiting already did.
+- **Choosing Direct2D no longer switches window transparency off.** The
+  renderer setting still stored `transparency=no` while the checkbox stayed
+  ticked, although a translucent window has been painted with Direct2D for
+  some time.
 - **The Session panel's Save button is greyed while the session name is
   empty, and the Broadcast console's Send button outside the Live view.**
   Both were meant to be greyed and never were.

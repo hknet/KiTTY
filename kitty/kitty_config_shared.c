@@ -670,14 +670,6 @@ static void kset_set_framepace(int v)
     if (v < 0) strcpy(buf, "auto"); else sprintf(buf, "%d", v);
     kitty_pace_set_setting(buf);
 }
-static void kset_set_renderer(int v)
-{
-    if (v == 1) {
-        /* the store-aware writer every [KiTTY] switch goes through */
-        SetTransparencyEnabled(0);
-        WriteParameter(INIT_SECTION, KI_TRANSPARENCY, "no");
-    }
-}
 static const struct kset_choice kset_funkeys_choices[] = {
     { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 },   /* the built-in default */
     { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
@@ -720,7 +712,10 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_WINROLL,        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_CTRLTAB,        KSET_BOOL, false, GetCtrlTabFlag, SetCtrlTabFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_TRANSPARENCY,   KSET_BOOL, false, GetTransparencyFlag, SetTransparencyEnabled, NULL, 0, 0, 1 },
-    { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, kset_set_renderer, NULL, 0, 0, 0,
+    /* No setter: the renderer is read when a window is created, and choosing
+     * Direct2D leaves window transparency alone - a layerable window gets the
+     * blit-model swap chain (windows/paint-d2d.c), so the two go together. */
+    { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
     { INIT_SECTION, KI_FRAMEPACE,      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },

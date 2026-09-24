@@ -315,10 +315,10 @@
 
 ; renderer: how the terminal window is painted. gdi (the default) is what
 ; every Windows has; d2d paints with Direct2D and DirectWrite on the GPU
-; (Windows 8.1 or newer, a window without transparency; anything else
-; falls back to gdi). Text rendering differs slightly between the two.
-;    Direct2D cannot paint a translucent window: with transparency=yes and
-;    renderer=d2d both set, GDI wins. Also on the configuration window,
+; (Windows 8.1 or newer; anything else falls back to gdi). Text rendering
+; differs slightly between the two. A translucent window works with both:
+;    Direct2D paints a dimmed window through a copy into the window's own
+;    surface, which the dimming applies to. Also on the configuration window,
 ;    Application > KiTTY++ Settings > Terminal & Printing.
 ;renderer=gdi
 
@@ -727,8 +727,7 @@
 ;    Set no and transparency is off everywhere, not merely out of reach: the
 ;    panel and the menu entries go, and a session that has a level saved opens
 ;    opaque anyway. The /transparency command cannot turn it back on either.
-;    A translucent window cannot be painted by Direct2D: with both this and
-;    renderer=d2d enabled, GDI wins.
+;    It works with renderer=d2d as well as with gdi.
 ;transparency=yes
 
 ; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the
