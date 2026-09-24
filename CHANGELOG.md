@@ -51,6 +51,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   title bar and font fallback groups left Appearance for it. The stored keys
   are unchanged; the manual's Font Fallback page now describes what GDI and
   Direct2D each do with a character the terminal font lacks.
+- **A left click on the launcher's tray icon opens its menu at once.** It
+  used to wait half a second in case a double click followed. A double click
+  still opens a new configuration box, and a click on the icon while its
+  menu is open now closes the menu.
 
 ### Fixed
 

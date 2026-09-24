@@ -106,9 +106,8 @@
 #define LAUNCHER_REFRESHSPIN_TIMER	104
 #define LAUNCHER_REFRESHSPIN_STEP_MS	80
 #define LAUNCHER_REFRESHSPIN_MIN_MS	300
-/* KiTTY: timer id for the delayed single-left-click tray menu (so a double
- * click - new default window - doesn't pop the menu up first) */
-#define LAUNCHER_TRAYCLICK_TIMER	100
+/* (Timer id 100 was the delayed single-left-click tray menu; the menu now
+ * opens at once, see LauncherTrayLeftClick.) */
 /* Workplace proxy mode: notices the arming's time running out, so the mode ends
  * visibly rather than only when the next connection is made. */
 #define LAUNCHER_WORKPLACE_TIMER	101
@@ -146,12 +145,52 @@ static HMENU LauncherPendingMenu = NULL ;
 static int LauncherConfReload = 1 ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
-/* KiTTY: cursor position of the single left click, used when the delayed
- * tray-menu timer fires */
-static POINT LauncherClickPoint ;
-/* KiTTY: a double click arrives as down/up/dblclk/up - swallow the trailing
- * button-up so it doesn't re-arm the single-click timer */
+/*
+ * KiTTY: the left click on the tray icon opens the menu AT ONCE, and a double
+ * click still opens a new configuration box. The two fit together like this:
+ *
+ * - The first button-up opens the menu at the cursor. Its point and time are
+ *   kept here, and the click is "armed" for as long as the menu is up.
+ * - A second click that comes quickly lands in the open menu, whose modal
+ *   loop has the mouse. The menu's message filter (LauncherMenuMsgFilter)
+ *   sees the first press there: within the double-click time of the tray
+ *   click and within the double-click rectangle around its point, it is the
+ *   second click of a double click. The press and its button-up are taken
+ *   away from the menu (no item acts on them), the menu is ended, and once
+ *   TrackPopupMenu has returned the double-click action runs.
+ * - A second click made while the menu is still being built reaches the
+ *   shell instead, which reports a double click on the icon; that report is
+ *   handled inside the menu loop the same way (the menu ends, the action runs
+ *   after it). Without such a menu up it runs the action directly.
+ *
+ * The action runs from one place per menu (after TrackPopupMenu), and only
+ * once: LauncherTrayDblPending is a flag, not a count.
+ */
+static POINT LauncherClickPoint ;           /* where the tray click was */
+static DWORD LauncherTrayClickTick = 0 ;    /* when it was handled */
+static int LauncherTrayClickArmed = 0 ;     /* the next press in the menu may be the second click */
+static int LauncherTrayMenuUp = 0 ;         /* the menu of a tray left click is showing */
+static int LauncherTrayDblPending = 0 ;     /* double click seen: run it once the menu is gone */
+static int LauncherTrayDblSwallowUp = 0 ;   /* the button-up of that second click is still due */
+/* The icon's own rectangle on the screen, read when its menu opens: a click
+ * anywhere on the icon while that menu is up closes the menu (see the menu
+ * filter). Not known on Windows before 7; the double-click rectangle around
+ * the click point stands in for it then. */
+static RECT LauncherTrayIconRc ;
+static int LauncherTrayIconRcValid = 0 ;
+/* The button-up that ends a double click, or the click on the icon that
+ * closed its menu, must not open the menu again. It comes back from the shell
+ * as a tray button-up, or never (when the menu loop took it). So it is
+ * ignored only until the next button-down on the icon, and for
+ * LAUNCHER_IGNOREUP_MS at most: a stale flag would otherwise eat the next real
+ * click. When the press itself was taken in the menu, the shell may still
+ * report that same press as a button-down on the icon once the menu is gone;
+ * LauncherIgnoreUpFromMenu lets that one button-down pass without clearing
+ * the flag. */
 static int LauncherIgnoreUp = 0 ;
+static int LauncherIgnoreUpFromMenu = 0 ;
+static DWORD LauncherIgnoreUpTick = 0 ;
+#define LAUNCHER_IGNOREUP_MS	2000
 static int LauncherUpdateKnown = 0 ;
 static char LauncherUpdateLatest[64] = "" ;
 static int LauncherUpdateBeta = 0 ;
@@ -570,10 +609,130 @@ static UINT LauncherMenuIdAt( POINT pt ) {
 	return ( id == (UINT)-1 ) ? 0 : id ;
 }
 
+/* Is a press at `pt`, made at `time` (GetTickCount clock, as MSG.time), the
+ * second click of a double click on the tray icon? Within the double-click
+ * time of the tray click, and inside the double-click rectangle centred on
+ * its point. A press stamped before the tray click was handled (it waited in
+ * the queue while the menu was built) counts as no time at all. */
+static int LauncherTraySecondClick( POINT pt, DWORD time ) {
+	LONG dt = (LONG)( time - LauncherTrayClickTick ) ;
+	int dx = pt.x - LauncherClickPoint.x, dy = pt.y - LauncherClickPoint.y ;
+	if( dt < 0 ) dt = 0 ;
+	if( (DWORD)dt > GetDoubleClickTime() ) return 0 ;
+	if( dx < 0 ) dx = -dx ;
+	if( dy < 0 ) dy = -dy ;
+	return dx <= GetSystemMetrics( SM_CXDOUBLECLK ) / 2 && dy <= GetSystemMetrics( SM_CYDOUBLECLK ) / 2 ;
+}
+
+/* The tray icon's rectangle in screen coordinates. Shell_NotifyIconGetRect
+ * exists from Windows 7 on, so it is looked up at run time: a static import
+ * would stop the launcher from loading on XP. The identifier structure is
+ * declared here for the same reason (older headers lack it). */
+typedef struct {
+	DWORD cbSize ;
+	HWND hWnd ;
+	UINT uID ;
+	GUID guidItem ;
+} LAUNCHER_NOTIFYICONIDENTIFIER ;
+typedef HRESULT (WINAPI *LauncherGetIconRectFn)( const LAUNCHER_NOTIFYICONIDENTIFIER *, RECT * ) ;
+
+static int LauncherTrayIconRectRead( RECT * rc ) {
+	static LauncherGetIconRectFn fn = NULL ;
+	static int looked = 0 ;
+	LAUNCHER_NOTIFYICONIDENTIFIER nii ;
+	if( !looked ) {
+		HMODULE sh = GetModuleHandleA( "shell32.dll" ) ;   /* linked already: Shell_NotifyIcon */
+		if( sh ) fn = (LauncherGetIconRectFn)(void (*)(void))GetProcAddress( sh, "Shell_NotifyIconGetRect" ) ;
+		looked = 1 ;
+	}
+	if( fn == NULL ) return 0 ;
+	memset( &nii, 0, sizeof(nii) ) ;
+	nii.cbSize = sizeof(nii) ;
+	nii.hWnd = TrayIcone.hWnd ;
+	nii.uID = TrayIcone.uID ;
+	if( FAILED( fn( &nii, rc ) ) ) return 0 ;
+	return rc->right > rc->left && rc->bottom > rc->top ;
+}
+
+/* Is `pt` on the tray icon? Its real rectangle when known (read when its
+ * menu opened), else the double-click rectangle around the click point. */
+static int LauncherTrayOnIcon( POINT pt ) {
+	int dx, dy ;
+	if( LauncherTrayIconRcValid )
+		return PtInRect( &LauncherTrayIconRc, pt ) ;
+	dx = pt.x - LauncherClickPoint.x ; dy = pt.y - LauncherClickPoint.y ;
+	if( dx < 0 ) dx = -dx ;
+	if( dy < 0 ) dy = -dy ;
+	return dx <= GetSystemMetrics( SM_CXDOUBLECLK ) / 2 && dy <= GetSystemMetrics( SM_CYDOUBLECLK ) / 2 ;
+}
+
+/* Is a menu window (the tray menu or one of its submenus) under `pt`? */
+static int LauncherPointOnMenu( POINT pt ) {
+	HWND under = WindowFromPoint( pt ) ;
+	char cls[16] = "" ;
+	return under && GetClassNameA( under, cls, sizeof(cls) ) && !strcmp( cls, "#32768" ) ;
+}
+
 static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM lParam )
 {
 	if( code == MSGF_MENU ) {
 		MSG *m = (MSG *)lParam ;
+		/*
+		 * The second click of a double click on the tray icon (see
+		 * LauncherTrayLeftClick). The menu loop holds the mouse capture, so
+		 * the press comes here whether it lands on the menu or beside it;
+		 * which of the client, non-client or double-click forms it takes
+		 * depends on the window under it, so all of them are looked at. Only
+		 * the FIRST press in the menu can be that second click: whatever it
+		 * turns out to be, the arming ends with it. A press outside the time
+		 * or the rectangle is an ordinary menu click and goes on unchanged.
+		 * Recognised, the press and its button-up are both kept from the
+		 * menu (a lone button-up would choose the item under it), and the
+		 * menu is ended; the action runs after TrackPopupMenu returns.
+		 */
+		if( m && LauncherTrayDblSwallowUp &&
+		    ( m->message == WM_LBUTTONUP || m->message == WM_NCLBUTTONUP ) ) {
+			LauncherTrayDblSwallowUp = 0 ;
+			LauncherIgnoreUp = 0 ;   /* taken here: the shell will not report it */
+			LauncherIgnoreUpFromMenu = 0 ;
+			return 1 ;
+		}
+		if( m && LauncherTrayClickArmed &&
+		    ( m->message == WM_LBUTTONDOWN || m->message == WM_LBUTTONDBLCLK ||
+		      m->message == WM_NCLBUTTONDOWN || m->message == WM_NCLBUTTONDBLCLK ) ) {
+			LauncherTrayClickArmed = 0 ;
+			if( LauncherTraySecondClick( m->pt, m->time ) ) {
+				LauncherTrayDblPending = 1 ;
+				LauncherTrayDblSwallowUp = 1 ;
+				/* The menu may be gone before the button comes up; the
+				 * release then reaches the icon as a tray button-up. */
+				LauncherIgnoreUp = 1 ;
+				LauncherIgnoreUpFromMenu = 0 ;
+				LauncherIgnoreUpTick = GetTickCount() ;
+				EndMenu() ;
+				return 1 ;
+			}
+		}
+		/*
+		 * A click on the tray icon while its left-click menu is up, and not a
+		 * double click: it closes the menu, and nothing more. The press is
+		 * left to the menu loop, which ends the menu on a press outside it as
+		 * always; but the release then reaches the icon as a tray button-up,
+		 * which would open the menu again at once. So that button-up is
+		 * marked to be ignored. Any press counts here, not only the first,
+		 * and anywhere on the icon (its rectangle, when Windows can give it),
+		 * as long as no menu window is under it: a press on a menu item that
+		 * overlaps the icon chooses the item, and its release stays in the
+		 * menu loop.
+		 */
+		if( m && LauncherTrayMenuUp && !LauncherTrayDblPending &&
+		    ( m->message == WM_LBUTTONDOWN || m->message == WM_LBUTTONDBLCLK ||
+		      m->message == WM_NCLBUTTONDOWN || m->message == WM_NCLBUTTONDBLCLK ) &&
+		    LauncherTrayOnIcon( m->pt ) && !LauncherPointOnMenu( m->pt ) ) {
+			LauncherIgnoreUp = 1 ;
+			LauncherIgnoreUpFromMenu = 1 ;
+			LauncherIgnoreUpTick = GetTickCount() ;
+		}
 		/*
 		 * Refresh. A menu closes the moment one of its items is chosen, and
 		 * the refresh used to run AFTER that: no menu on the screen for as long
@@ -1038,6 +1197,34 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 	GetCursorPos (&LauncherMenuPoint);
 	LauncherMenuPointValid = 1 ;
 	DisplayContextMenuAt( hwnd, menu, LauncherMenuPoint ) ;
+}
+
+/* A left click on the tray icon: the menu at once, at the point of the click,
+ * armed for the second click of a double click (see LauncherClickPoint). A
+ * double click recognised while the menu was up ended the menu and runs here,
+ * after it: a new configuration box, as the tray double click always opened.
+ * Only this menu is armed: the right-click menu and the menu reopened after a
+ * Refresh do not come through here. */
+static void LauncherTrayLeftClick( HWND hwnd ) {
+	int dbl ;
+	GetCursorPos( &LauncherClickPoint ) ;
+	LauncherTrayClickTick = GetTickCount() ;
+	LauncherTrayDblPending = 0 ;
+	LauncherTrayDblSwallowUp = 0 ;
+	LauncherTrayIconRcValid = LauncherTrayIconRectRead( &LauncherTrayIconRc ) ;
+	LauncherTrayClickArmed = 1 ;
+	LauncherTrayMenuUp = 1 ;
+	RefreshMenuLauncher() ;
+	LauncherMenuPoint = LauncherClickPoint ;
+	LauncherMenuPointValid = 1 ;
+	DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
+	dbl = LauncherTrayDblPending ;
+	LauncherTrayClickArmed = 0 ;
+	LauncherTrayMenuUp = 0 ;
+	LauncherTrayDblPending = 0 ;
+	LauncherTrayDblSwallowUp = 0 ;
+	if( dbl )
+		RunPuTTY( hwnd, "" ) ;
 }
 	
 // Hide/UnHide all handling
@@ -1696,14 +1883,45 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 						CheckVersionFromWebSite( hwnd, 0 ) ;
 					}
 				break ;
+				case WM_LBUTTONDOWN :
+					/* KiTTY: a new press on the icon: a button-up still
+					 * waiting to be ignored (see LauncherIgnoreUp) belonged
+					 * to an earlier click. Except once, right after a click
+					 * on the icon closed its menu: this button-down may be
+					 * that same press, passed on by the shell once the menu
+					 * was gone, and its release is the one to ignore. */
+					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
+						if( LauncherIgnoreUpFromMenu &&
+						    GetTickCount() - LauncherIgnoreUpTick <= GetDoubleClickTime() )
+							LauncherIgnoreUpFromMenu = 0 ;
+						else {
+							LauncherIgnoreUp = 0 ;
+							LauncherIgnoreUpFromMenu = 0 ;
+						}
+						}
+				break ;
 				case WM_LBUTTONDBLCLK :
 					/* KiTTY: double click opens a new default KiTTY window
-					 * (the configuration box); cancel the pending
-					 * single-click menu first */
+					 * (the configuration box). The shell reports it when the
+					 * second click reached the icon, not the menu: the menu of
+					 * the first click was still being built. That report is
+					 * handled inside the open menu's loop: the menu is ended
+					 * and LauncherTrayLeftClick runs the action after it,
+					 * once. Without a tray left-click menu up it runs here. The
+					 * button-up that follows must not open the menu again. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
 						LauncherIgnoreUp = 1 ;
-						RunPuTTY( hwnd, "" ) ;
+						LauncherIgnoreUpFromMenu = 0 ;
+						LauncherIgnoreUpTick = GetTickCount() ;
+						if( LauncherTrayMenuUp ) {
+							if( !LauncherTrayDblPending ) {
+								LauncherTrayDblPending = 1 ;
+								LauncherTrayClickArmed = 0 ;
+								EndMenu() ;
+							}
+						} else {
+							RunPuTTY( hwnd, "" ) ;
+						}
 						}
 				break ;
 				case WM_RBUTTONUP:
@@ -1716,15 +1934,23 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				break ;
 				case WM_LBUTTONUP:
 					{
-					/* KiTTY: delay the menu by the double-click time so the
-					 * first click of a double click doesn't pop it up under
-					 * the second click; remember where the click happened */
+					/* KiTTY: the menu opens at once, at the click (see
+					 * LauncherTrayLeftClick). Not for the button-up that ends
+					 * a double click or the click on the icon that closed its
+					 * menu, and not while a menu of this launcher is
+					 * already up: this notification can be delivered from
+					 * inside that menu's loop, and a second TrackPopupMenu
+					 * there would replace the menu filter of the first. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						if( LauncherIgnoreUp ) {
+						if( LauncherIgnoreUp &&
+						    GetTickCount() - LauncherIgnoreUpTick <= LAUNCHER_IGNOREUP_MS ) {
 							LauncherIgnoreUp = 0 ;
+							LauncherIgnoreUpFromMenu = 0 ;
 						} else {
-							GetCursorPos( &LauncherClickPoint ) ;
-							SetTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER, GetDoubleClickTime(), NULL ) ;
+							LauncherIgnoreUp = 0 ;
+							LauncherIgnoreUpFromMenu = 0 ;
+							if( g_launcher_menu_hook == NULL )
+								LauncherTrayLeftClick( hwnd ) ;
 						}
 						}
 					}
@@ -1733,8 +1959,6 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			break ;
 	
 		case WM_TIMER:
-			/* KiTTY: no double click arrived - deliver the left-click menu
-			 * at the position of the original click */
 			if( wParam == LAUNCHER_EXITAFTERNOTICE_TIMER ) {
 				KillTimer( hwnd, LAUNCHER_EXITAFTERNOTICE_TIMER ) ;
 				/* Unless the mode is back on - the user clicked the timeout
@@ -1776,13 +2000,6 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			if( wParam == LAUNCHER_REFRESHCOVER_TIMER ) {
 				LauncherCoverRemove( hwnd ) ;   /* the new menu is up: the picture goes */
 				break ;
-			}
-			if( wParam == LAUNCHER_TRAYCLICK_TIMER ) {
-				KillTimer( hwnd, LAUNCHER_TRAYCLICK_TIMER ) ;
-				RefreshMenuLauncher() ;
-				LauncherMenuPoint = LauncherClickPoint ;
-				LauncherMenuPointValid = 1 ;
-				DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
 			}
 			if( wParam == LAUNCHER_UPDATECHECK_TIMER ) {
 				/* Once a day: the same background check the start makes. Its
