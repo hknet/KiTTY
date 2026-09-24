@@ -4077,7 +4077,12 @@ static struct app_footer_pin {
 } *app_footers = NULL;
 static int n_app_footers = 0, app_footers_cap = 0;
 
-static void kitty_footer_pin_one(struct app_footer_pin *f)
+/* `scroll` is how far the host's children sit above their laid-out place:
+ * 0 right after a panel's layout (dialog.c shifts the panel by the scroll
+ * offset only afterwards), the host's current offset on a resize. Without it
+ * a resize of a SCROLLED panel put the footer that many pixels too low -
+ * below the visible area on a tall panel such as Appearance. */
+static void kitty_footer_pin_one(struct app_footer_pin *f, int scroll)
 {
     HWND host = kitty_cfg_panel_host, w, boxw = NULL;
     RECT hostr, gr, br;
@@ -4101,6 +4106,7 @@ static void kitty_footer_pin_one(struct app_footer_pin *f)
             boxw = NULL;
     }
     if (!f->have_natural) {
+        /* recorded right after the layout, so scroll is 0 here */
         POINT t = { 0, gr.top }, lb = { 0, gr.bottom };
         ScreenToClient(host, &t);
         ScreenToClient(host, &lb);
@@ -4125,7 +4131,7 @@ static void kitty_footer_pin_one(struct app_footer_pin *f)
     y = (hostr.bottom - 4) - f->natural_lowest;
     if (y < 0)
         y = 0;
-    y += f->natural_y;
+    y += f->natural_y - scroll;
     if (boxw) {
         p.x = br.left; p.y = 0;
         ScreenToClient(host, &p);
@@ -4144,17 +4150,19 @@ void kitty_config_footer_pin(const char *path)
     for (int i = 0; i < n_app_footers; i++) {
         if (!strcmp(app_footers[i].path, path)) {
             app_footers[i].have_natural = 0;
-            kitty_footer_pin_one(&app_footers[i]);
+            kitty_footer_pin_one(&app_footers[i], 0);
             return;
         }
     }
 }
 
-/* On every resize: everything pinned to the panel area's bottom edge. */
+/* On every resize: everything pinned to the panel area's bottom edge. The
+ * host may be scrolled then, and its children with it. */
 void kitty_config_pin_bottoms(void)
 {
+    int scroll = kitty_cfg_scroll_offset();
     for (int i = 0; i < n_app_footers; i++)
-        kitty_footer_pin_one(&app_footers[i]);
+        kitty_footer_pin_one(&app_footers[i], scroll);
 }
 
 void scb_app_footer(struct controlbox *b, const char *path)

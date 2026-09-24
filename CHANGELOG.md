@@ -62,6 +62,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   renderer setting still stored `transparency=no` while the checkbox stayed
   ticked, although a translucent window has been painted with Direct2D for
   some time.
+- **The "saved as you change them" footer of the KiTTY++ Settings panels no
+  longer disappears on a resize.** On a scrolled panel, such as Appearance, a
+  resize put it below the visible area. In dark mode its frame now fits the
+  sentence as it does in light mode.
 - **The Session panel's Save button is greyed while the session name is
   empty, and the Broadcast console's Send button outside the Live view.**
   Both were meant to be greyed and never were.

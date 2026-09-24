@@ -1024,6 +1024,14 @@ HWND kitty_cfg_item(HWND dlg, int id);
  */
 static int kitty_cfg_scroll_y = 0;
 
+/* For code that moves a control to an absolute place in the host after the
+ * layout - the application panels' footer pin: the host's children all sit
+ * this much higher than their laid-out position while it is scrolled. */
+int kitty_cfg_scroll_offset(void)
+{
+    return kitty_cfg_scroll_y;
+}
+
 /* Pixels one wheel notch scrolls: the user's own "lines to scroll" setting,
  * times a text line. SPI_GETWHEELSCROLLLINES returns WHEEL_PAGESCROLL when
  * they have asked for a page at a time. */

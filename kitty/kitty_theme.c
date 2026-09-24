@@ -1530,6 +1530,16 @@ static void kt_paint_groupbox(HWND btn, HDC dc)
     oldfont = font ? (HFONT)SelectObject(dc, font) : NULL;
     ts.cx = ts.cy = 0;
     GetTextExtentPoint32A(dc, label, (int)strlen(label), &ts);
+    if (!*label) {
+        /* A group box with no caption (an application panel's footer frame)
+         * still has its frame half a line down in the classic drawing: the
+         * offset comes from the FONT, not from the caption. Measured from an
+         * empty caption it was 0, and the dark frame started at the very top
+         * of the control - taller than the light one around the same text. */
+        TEXTMETRICA tm;
+        if (GetTextMetricsA(dc, &tm))
+            ts.cy = tm.tmHeight;
+    }
 
     /* The frame starts halfway down the caption, which is what leaves the
      * text sitting ON the line rather than above it. */

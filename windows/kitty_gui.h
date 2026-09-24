@@ -22,6 +22,7 @@ extern HWND kitty_cfg_panel_host;
 
 /* ---- exported from windows/dialog.c ---- */
 HWND kitty_cfg_ctrl_hwnd(struct dlgcontrol *ctrl);
+int kitty_cfg_scroll_offset(void);   /* how far the panel host is scrolled */
 void kitty_cfg_goto_panel(const char *path);
 void kitty_cfg_set_leave_guard(bool (*fn)(void));
 void kitty_cfg_show_aux_box(void (*setup)(struct controlbox *, void *), void *ctx, const char *caption, HWND owner, void (*closing)(void));
