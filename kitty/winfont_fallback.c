@@ -801,3 +801,19 @@ const char *winfb_slot_name(int i)
 {
     return (i >= 0 && i < g_n_slots) ? g_slots[i].name : "";
 }
+
+/* The override slot for `cp`, for a painter with its own text engine
+ * (windows/paint-d2d.c): same ranges, same priority (ahead of the
+ * configured list and of that painter's own system fallback) as step 1 of
+ * winfb_lookup_slot above -- an unconditional match, not a has-the-glyph
+ * check, exactly like GDI's. -1 = no override range covers `cp` (or the
+ * module is inactive/uninitialised). */
+int winfb_override_slot(uint32_t cp)
+{
+    if (!g_initialised) return -1;
+    for (int i = 0; i < g_n_ovr; i++) {
+        if (cp >= g_ovr[i].lo && cp <= g_ovr[i].hi)
+            return g_ovr[i].slot;
+    }
+    return -1;
+}

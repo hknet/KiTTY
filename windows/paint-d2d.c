@@ -22,9 +22,13 @@
  * the flip-model swap chain, and PrintWindow's PW_RENDERFULLCONTENT for the
  * harnesses that capture the window.
  *
- * Glyphs the primary font lacks come from the configured fallback list
- * ([FontFallback] in kitty.ini - the list the GDI painter's module uses)
- * and then from Windows' own DirectWrite fallback, monochrome.
+ * Glyphs the primary font lacks come from an [FontFallback] override= range
+ * first, then the configured fallback list, then Windows' own DirectWrite
+ * fallback, monochrome - the same override ranges and list the GDI
+ * painter's module (kitty/winfont_fallback.c) parses and owns. active=no
+ * turns off the override range and the list here too, as under GDI, but
+ * not Windows' own fallback: it keeps drawing, as GDI's own font linking
+ * does with the switch off there.
  *
  * Not yet: right-to-left shaping
  * (runs are placed glyph by glyph like the GDI exact_textout path, without
@@ -32,6 +36,7 @@
  */
 #define COBJMACROS
 #define INITGUID
+#include <stdint.h>
 #include "putty.h"
 #include <initguid.h>
 #include <d3d11.h>
@@ -85,6 +90,11 @@ typedef struct D2DFbEnt { UINT32 cp; short font; short face; bool valid; } D2DFb
  * GDI fallback module; the same names serve here. */
 int winfb_slot_count(void);
 const char *winfb_slot_name(int i);
+/* An override= range's slot for a code point (ahead of the list and of
+ * this file's own system_fallback), and the active= master switch --
+ * both owned by the same module, read fresh on every resolve_face call. */
+int winfb_override_slot(uint32_t cp);
+int GetFontFallbackFlag(void);
 
 /* IDWriteFontFallback::MapCharacters reads its text through this
  * interface; one code point at a time is all it is asked here. */
@@ -748,10 +758,29 @@ static int system_fallback(D2DPainter *d, D2DFont *pf, UINT32 cp)
     return idx;
 }
 
-/* Which fallback face draws `cp` for the primary font `pf`: the configured
- * list in order, then Windows' fallback; -1 = none (the primary's box). */
+/* Which fallback face draws `cp` for the primary font `pf`: an override=
+ * range first, then the configured list in order, then Windows' fallback;
+ * -1 = none (the primary's box). [FontFallback] active=no turns the first
+ * two off and leaves Windows' fallback, matching GDI, where Windows' font
+ * linking keeps drawing: GetFontFallbackFlag() is read fresh at the top of
+ * every call, ahead of the cache, so a switch flip takes effect on the
+ * next glyph drawn (GDI instead picks up active=no at the next font
+ * setup/reinit, when winfb_reinit_from_config runs winfb_cleanup(); this
+ * file has no equivalent reinit hook from the config box, so it checks the
+ * flag per lookup rather than per font setup). While off the cache is
+ * neither read nor written, so a flip is never served a stale cached face;
+ * cached entries from while the switch was on stay valid once it is on
+ * again, since neither the flag nor an override range changes what a
+ * cached (cp, font) pair resolves to. */
 static int resolve_face(D2DPainter *d, D2DFont *pf, UINT32 cp)
 {
+    /* [FontFallback] active=no turns off KiTTY's own list and override=,
+     * as under GDI; Windows' own fallback still draws, as GDI's font
+     * linking does there. Not cached: the switch can change while the
+     * window is open, and the system's answer is cheap next to a redraw. */
+    if (!GetFontFallbackFlag())
+        return (d->fallback && d->sysfonts) ? system_fallback(d, pf, cp) : -1;
+
     short fontidx = (short)(pf - d->fonts);
     D2DFbEnt *e = &d->fbmap[(cp * 2654435761u + (unsigned)fontidx * 40503u)
                             % D2D_FB_MAP];
@@ -759,6 +788,17 @@ static int resolve_face(D2DPainter *d, D2DFont *pf, UINT32 cp)
 
     if (e->valid && e->cp == cp && e->font == fontidx)
         return e->face;
+
+    /* override= (highest priority, same ranges as GDI's winfb_lookup_slot):
+     * an unconditional pin, not a has-the-glyph check, exactly as GDI
+     * trusts it; falls through to the list/system fallback only if the
+     * pinned font is not in Direct2D's own font enumeration. */
+    int ovr_slot = winfb_override_slot(cp);
+    if (ovr_slot >= 0) {
+        int fx = face_of_family(d, winfb_slot_name(ovr_slot), pf->weight, pf->style);
+        if (fx >= 0) found = fx;
+    }
+
     for (i = 0; i < n && found < 0; i++) {
         int fx = face_of_family(d, winfb_slot_name(i), pf->weight, pf->style);
         if (fx >= 0 && face_has(d->fbfaces[fx].face, cp))
@@ -844,13 +884,19 @@ static void draw_run(D2DPainter *d, int x, int y, const RECT *clip,
     ID2D1SolidColorBrush_SetColor(d->brush, &col);
     {
         /* Glyphs the primary face lacks (index 0) come from a fallback
-         * face; consecutive code points sharing a face draw as one run,
-         * each on its own cell advances, so the grid stays the terminal's. */
+         * face, and so does any code point in an override= range, even one
+         * the primary face has - the pin comes first, as in GDI's
+         * winfb_lookup_slot. Consecutive code points sharing a face draw as
+         * one run, each on its own cell advances, so the grid stays the
+         * terminal's. */
         short fi[512];
         bool any = false;
+        bool fb_on = GetFontFallbackFlag() != 0;
         for (i = 0; i < ncp; i++) {
             fi[i] = -1;
-            if (gi[i] == 0 && cps[i] > 0x20 && cps[i] != 0xFFFD) {
+            if (cps[i] > 0x20 && cps[i] != 0xFFFD &&
+                (gi[i] == 0 ||
+                 (fb_on && winfb_override_slot(cps[i]) >= 0))) {
                 fi[i] = (short)resolve_face(d, d->font, cps[i]);
                 if (fi[i] >= 0)
                     any = true;

@@ -19,6 +19,7 @@
 
 #include <windows.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /* Maximum per-font runs a single text chunk is split into; window.c sizes
  * its stack array with this. If a chunk needs more (pathological per-char
@@ -90,5 +91,13 @@ void winfb_draw_runs(HDC hdc, int x, int y, const RECT *line_box,
  * name of each in order. Empty until winfb_reinit_from_config ran. */
 int winfb_slot_count(void);
 const char *winfb_slot_name(int i);
+
+/* The override slot (index into the same list as winfb_slot_name) that a
+ * [FontFallback] override= range pins `cp` to, ahead of the configured list
+ * and of that painter's own system fallback -- -1 = no override covers
+ * `cp`. Same parsed ranges as winfb_lookup_slot's step 1 (GDI); a painter
+ * with its own text engine reuses them through this accessor rather than
+ * parsing override= a second time. */
+int winfb_override_slot(uint32_t cp);
 
 #endif /* WINFONT_FALLBACK_H */

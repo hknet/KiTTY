@@ -1271,11 +1271,21 @@ char default_init_file_content[] =
 ; Font fallback: when the terminal font is missing a character (box drawing,\n\
 ; Nerd Font icons, CJK, symbols...), KiTTY probes a list of fallback fonts\n\
 ; and draws that character from the first font that has it. Cell widths are\n\
-; unchanged; only the glyph's source font differs. Rendering is plain GDI,\n\
-; so emoji come out monochrome. NB: section and key names in this file are\n\
+; unchanged; only the glyph's source font differs. On both renderers,\n\
+; override below is tried first, then this list. If both miss, Windows' own\n\
+; font substitution takes over regardless of this section - GDI's own font\n\
+; linking, Direct2D's own DirectWrite system fallback - and picks from every\n\
+; font installed, so a Direct2D window and, for many common symbols and CJK\n\
+; characters, a GDI window too, show far fewer boxes than KiTTY's own list\n\
+; and override alone would explain. Both renderers draw fallback glyphs\n\
+; monochrome, no colour emoji. NB: section and key names in this file are\n\
 ; case-sensitive.\n\
 \n\
-; active: master switch for the whole feature\n\
+; active: master switch for KiTTY's OWN fallback - this section's override\n\
+; and fallback lists, on both renderers. It does not reach Windows' own font\n\
+; substitution, which is outside KiTTY's control and keeps drawing under\n\
+; both renderers regardless of this setting; active=no only means KiTTY\n\
+; stops adding its own choices ahead of Windows'.\n\
 ;active=yes\n\
 \n\
 ; fallback: comma-separated list of font names to try, in order, before the\n\
@@ -1293,7 +1303,11 @@ char default_init_file_content[] =
 ;fallback=\n\
 \n\
 ; override: force a Unicode range (or single codepoint, hex) to a specific\n\
-; font regardless of probe results; multiple entries separated by ;\n\
+; font regardless of probe results, ahead of the fallback= list on both\n\
+; renderers; multiple entries separated by ;. Same ranges under both\n\
+; renderers. A font that is not installed is skipped, as fallback= is.\n\
+; Does not reach plain Latin/ANSI text under GDI: GDI draws such text on a\n\
+; fast path that never consults this section; under Direct2D it does.\n\
 ;override=E000-F8FF:Symbols Nerd Font Mono;1F600-1F64F:Segoe UI Emoji\n\
 \n\
 ; log: off|error|warn|info|debug|trace - troubleshooting log for the fallback\n\

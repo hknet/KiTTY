@@ -69,6 +69,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The Session panel's Save button is greyed while the session name is
   empty, and the Broadcast console's Send button outside the Live view.**
   Both were meant to be greyed and never were.
+- **`[FontFallback] override=` now works with the Direct2D renderer too, and
+  `active=no` now turns it off there as well.** Windows' own font
+  substitution still keeps drawing under both renderers regardless of the
+  switch.
 
 ## 0.85.1.12-beta — 2026-09-23
 

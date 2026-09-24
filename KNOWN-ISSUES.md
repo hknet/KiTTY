@@ -165,9 +165,17 @@ features are working and verified. Known limitations as of this release:
   fallback draws with plain GDI or a plain DirectWrite glyph run, so emoji and
   other colour glyphs taken from a fallback font come out as monochrome
   outlines. Supplementary-plane emoji may additionally need an
-  explicit `override=` range in `[FontFallback]`. With a raster (non-TrueType)
-  primary font such as Terminal or Fixedsys, the fallback feature disables
-  itself for that session. `active=no` turns it off entirely.
+  explicit `override=` range in `[FontFallback]`, which works the same under
+  Direct2D as under GDI - same ranges, same priority ahead of the
+  `fallback=` list (plain Latin/ANSI text is the one exception: GDI draws it
+  on a fast path that never consults `override=`, so a range there only
+  reaches such text under Direct2D). With a raster (non-TrueType) primary
+  font such as Terminal or Fixedsys, the fallback feature disables itself
+  for that session. `active=no` turns off KiTTY's own fallback under both
+  renderers - the `fallback=` list and `override=` - but not Windows' own
+  fallback (GDI's font linking, Direct2D's DirectWrite system fallback),
+  which keeps drawing on both, so a character it recognises (many common
+  symbols and CJK) can still show with the switch off.
 - **Command-line tools use the registry session store.** `klink`/`kscp`/`ksftp`
   (plink/pscp/psftp) read saved sessions from the Windows **registry**, not from a
   portable (`savemode=dir`) store — so a portable install's sessions, and any
