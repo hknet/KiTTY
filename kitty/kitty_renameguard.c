@@ -77,8 +77,12 @@ static int kg_interactive(void)
  *
  * Best effort throughout - a refusal must not become a second failure because
  * the log was unavailable.
+ *
+ * Exported with the entry type as a parameter so other KiTTY code that has to
+ * leave a trace nobody may be watching for (log retention, kitty_logkeep.c)
+ * writes the same kind of line under the same source.
  */
-static void kg_eventlog(const char *msg)
+void kitty_eventlog_line(unsigned type, const char *msg)
 {
     HANDLE h = RegisterEventSourceA(NULL, KT_RENAME_GUARD_TITLE);
     const char *strings[1];
@@ -86,8 +90,13 @@ static void kg_eventlog(const char *msg)
     if (!h)
         return;
     strings[0] = msg;
-    ReportEventA(h, EVENTLOG_ERROR_TYPE, 0, 0, NULL, 1, 0, strings, NULL);
+    ReportEventA(h, (WORD)type, 0, 0, NULL, 1, 0, strings, NULL);
     DeregisterEventSource(h);
+}
+
+static void kg_eventlog(const char *msg)
+{
+    kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
 }
 
 /*

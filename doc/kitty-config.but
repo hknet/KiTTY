@@ -103,7 +103,8 @@ serial - is shown as the connection error, in the server's own words.
 \H{kitty-cfg-logging} The Logging panel
 
 PuTTY's own logging options are described in \k{config-logging}. KiTTY
-adds a timestamp for each logged line, and rotation.
+adds a timestamp for each logged line, rotation, and the deletion of
+old logs.
 
 \S{kitty-cfg-log-timestamp} \q{Timestamp (strftime format)}
 
@@ -143,6 +144,19 @@ port, \c{&Y} \c{&M} \c{&D} year/month/day, \c{&T} time as HHMMSS, and
 \c{&&} for a literal \c{&}. Characters that are illegal in a Windows
 file name are replaced automatically, so an IPv6 address in \c{&H}
 cannot produce an unusable name.
+
+\q{Delete logs after N days} and \q{Keep logsize below N MB} trim the
+files a time-varying name leaves behind (\c{0} switches each off): the
+first deletes this session's logs last written more than N days ago, the
+second deletes the oldest until their total is below N MB. Only files
+the log name could have produced are considered - the name with its date
+and time codes as digits and \c{&H} and \c{&P} as any text, in the log's
+own folder and no subfolder - so a name without \c{&Y}, \c{&M}, \c{&D}
+or \c{&T} deletes nothing. The log being written and any file another
+program has open are never deleted. It runs before the session's log
+opens and after it closes, never while the session runs; deletion is
+permanent, and each run that deleted anything leaves one line in the
+Windows Application event log.
 
 \H{kitty-cfg-scripting} The Scripting panel
 
@@ -2743,11 +2757,12 @@ of the way.
 from the keyboard. Turn it off if a program inside the terminal wants
 \c{Ctrl+Tab} for itself.
 
-\b \q{System menu (off hides all buttons)} and \q{Allow closing (also
-disables the X and Alt+F4)} remove the window's own controls. They are
-for a KiTTY embedded in something else, or on a kiosk, where the window
-must not be closed or moved by whoever is using it - not a security
-measure, since the process can still be ended.
+\b \q{System menu} and \q{Allow closing (also disables the X and
+Alt+F4)} remove the window's own controls. They are for a KiTTY embedded
+in something else, or on a kiosk, where the window must not be closed or
+moved by whoever is using it - not a security measure, since the process
+can still be ended. Without the system menu Windows draws no caption
+button at all, so the three button switches are greyed while it is off.
 
 \b \q{Minimize button} and \q{Maximize button} take away those buttons
 individually.

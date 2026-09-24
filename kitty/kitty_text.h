@@ -144,7 +144,16 @@
 #define KT_LOGGING_SEC                               "sec."
 #define KT_LOGGING_0_OFF_THE_LOG_FILE                "(0 = off. The file name needs &T in it, or rotation is " \
         "declined.)"
-#define KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT         "Timestamp (strftime format)"
+/* Log retention (cyd01/KiTTY#439): two rows shaped like the rotation row, and
+ * a note split over three texts because the panel takes no newline. */
+#define KT_LOGGING_DELETE_LOGS_AFTER                 "Delete logs after"
+#define KT_LOGGING_DAYS                              "days"
+#define KT_LOGGING_KEEP_LOGSIZE_BELOW                "Keep logsize below"
+#define KT_LOGGING_MB                                "MB"
+#define KT_LOGGING_KEEP_NOTE_1                       "0 = off. Only files matching the log name are deleted, oldest first,"
+#define KT_LOGGING_KEEP_NOTE_2                       "never an open log. Deletes happen before the session starts and"
+#define KT_LOGGING_KEEP_NOTE_3                       "after the session ends."
+#define KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT        "Timestamp (strftime format)"
 #define KT_LOGGING_USE_A_DEFAULT_TIMESTAMP           "Use a default timestamp"
 #define KT_LOGGING_WRITTEN_AT_THE_START              "(Starts each logged line, e.g. %Y-%m-%d %H:%M:%S. " \
         "Empty = none.)"
@@ -335,7 +344,7 @@
 #define KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL  "Switch KiTTY windows with Ctrl + TAB"
 #define KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR "Remember window position (per monitor layout)"
 #define KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK        "Window buttons (for kiosk or embedded use)"
-#define KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL       "System menu (off hides all buttons)"
+#define KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL       "System menu"
 #define KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES     "Allow closing (also disables the X and Alt+F4)"
 #define KT_BEHAVIOUR_MINIMIZE_BUTTON                 "Minimize button"
 #define KT_BEHAVIOUR_MAXIMIZE_BUTTON                 "Maximize button"
@@ -2904,6 +2913,15 @@
 #define KT_LOG_TIMESTAMP_EMPTY                       "Log timestamp: that strftime pattern produces nothing, " \
         "so lines are not being stamped - check the format in " \
         "Session > Logging"
+
+/* kitty/kitty_logkeep.c: log retention (cyd01/KiTTY#439). One line per run
+ * that deleted anything, in the Application event log and the session's own
+ * Event Log. %d = files deleted, %lu = kilobytes freed, first %s = the rule
+ * or rules that deleted them (the two RULE texts below, joined by ", "),
+ * second %s = the file pattern searched, folder included. */
+#define KT_LOGKEEP_DELETED                           "Log retention: deleted %d log file(s), %lu KB, %s - pattern %s"
+#define KT_LOGKEEP_RULE_DAYS                         "older than %d days"
+#define KT_LOGKEEP_RULE_MB                           "total over %d MB"
 
 /* terminal/terminal.c: remote clipboard (OSC 52, OSC 5522, far2l) */
 #define KT_CLIP_WHAT_FAR2L                           "A far2l clipboard payload"

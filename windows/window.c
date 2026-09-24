@@ -2474,6 +2474,13 @@ static void wgs_cleanup(WinGuiSeat *wgs)
      * about to end), which is exactly why the strings are cleared here rather
      * than left for conf_free, which does not clear what it frees. */
     kitty_pw_wipe(wgs->conf);
+    /* KiTTY: log retention's end-of-session pass (cyd01/KiTTY#439). Nothing
+     * else ever closes the session log - upstream leaves it to the process
+     * exit - so this is the one place where the log is known to be finished.
+     * The context itself is not freed: the terminal and backend still hold
+     * pointers to it, and logevent() on it stays safe. */
+    if (wgs->logctx)
+        logfile_session_end(wgs->logctx);
 #endif
     deinit_fonts(wgs);
     sfree(wgs->logpal);

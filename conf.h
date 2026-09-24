@@ -1607,6 +1607,13 @@ CONF_OPTION(failure_reconnect, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Fa
 CONF_OPTION(logtimestamp, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("LogTimestamp"),)
 CONF_OPTION(autocommandout, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AutocommandOut"),)
 CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogTimeRotation"),)
+/* KiTTY: log retention (cyd01/KiTTY#439), 0 = off. Delete this session's old
+ * log files - only names its log-name pattern could have produced - that are
+ * older than N days (LogKeepDays), and oldest first while their total is over
+ * N MB (LogKeepMB). Run before the log opens and after it closes, never on a
+ * timer; see kitty/kitty_logkeep.c. */
+CONF_OPTION(logkeepdays, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogKeepDays"),)
+CONF_OPTION(logkeepmb, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogKeepMB"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

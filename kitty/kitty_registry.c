@@ -701,6 +701,8 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "CtrlTabSwitch" ) ;
 					RegDeleteValue( hSubKey, KR_COMMENT ) ;
 					RegDeleteValue( hSubKey, "LogTimeRotation" ) ;
+					RegDeleteValue( hSubKey, "LogKeepDays" ) ;
+					RegDeleteValue( hSubKey, "LogKeepMB" ) ;
 					RegDeleteValue( hSubKey, "PortKnocking" ) ;
 					RegDeleteValue( hSubKey, "WindowClosable" ) ;
 					RegDeleteValue( hSubKey, "WindowMinimizable" ) ;

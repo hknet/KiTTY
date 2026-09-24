@@ -29,6 +29,11 @@ struct LogContext {
     /* LogTimestamp pattern already reported as unusable - report once per log,
      * not once per line. */
     bool ts_warned;
+    /* Log retention (cyd01/KiTTY#439) has run for this session: once before
+     * the first open, once after the last close. The first open is what
+     * matters - logfopen() also runs on every rotation reopen and after a
+     * reconfiguration, and retention must never become a timer. */
+    bool keep_start_done, keep_end_done;
 #endif
 };
 
@@ -39,6 +44,30 @@ static Filename *xlatlognam(const Filename *s,
 #ifdef MOD_PERSO
 #include <sys/time.h>                  /* gettimeofday, for the %f expansion */
 #include "kitty/kitty_text.h"          /* KiTTY: the Event Log wordings below */
+#include "kitty/kitty_logkeep.h"       /* KiTTY: log retention */
+
+/*
+ * KiTTY: log retention (Session > Logging, "Delete logs after" / "Keep logsize
+ * below", cyd01/KiTTY#439). `active` is the log this session writes or is
+ * about to write; kitty_logkeep.c never deletes it and searches its folder.
+ * The line it returns goes to the session's Event Log only when `tell` says
+ * the session is still there to show it - it has already gone to the
+ * Application event log either way.
+ */
+static void kitty_log_keep(LogContext *ctx, const Filename *active, bool tell)
+{
+    char *msg;
+    int days = conf_get_int(ctx->conf, CONF_logkeepdays);
+    int mb = conf_get_int(ctx->conf, CONF_logkeepmb);
+
+    if ((days <= 0 && mb <= 0) || !active)
+        return;
+    msg = kitty_logkeep_run(conf_get_filename(ctx->conf, CONF_logfilename),
+                            active, days, mb);
+    if (msg && tell && ctx->lp)
+        lp_eventlog(ctx->lp, msg);     /* not logevent(): see logfopen() */
+    sfree(msg);
+}
 
 /*
  * KiTTY: expand the LogTimestamp pattern (Session > Logging).
@@ -244,6 +273,19 @@ void logfopen(LogContext *ctx)
                    conf_dest(ctx->conf),    /* hostname or serial line */
                    conf_get_int(ctx->conf, CONF_port), &tm);
 
+#ifdef MOD_PERSO
+    /* KiTTY: log retention, once per session, BEFORE the new log opens - so a
+     * session that crashed last time, and never ran the end-of-session pass,
+     * is caught up now. The name just computed is the file about to be opened
+     * (and in append mode possibly continued), so it is the one kept.
+     * lp_eventlog rather than logevent: for a packet log logevent writes into
+     * the log file, and that write would re-enter this function. */
+    if (!ctx->keep_start_done) {
+        ctx->keep_start_done = true;
+        kitty_log_keep(ctx, ctx->currlogfilename, true);
+    }
+#endif
+
     if (open_for_write_would_lose_data(ctx->currlogfilename)) {
         int logxfovr = conf_get_int(ctx->conf, CONF_logxfovr);
         if (logxfovr != LGXF_ASK) {
@@ -343,6 +385,32 @@ void logfile_rotate(LogContext *ctx)
 
     logfclose(ctx);                    /* the next write reopens it */
     ctx->at_line_start = true;
+}
+
+/*
+ * KiTTY: the session is ending - close its log for good, then run log
+ * retention AFTER the close, so the file just finished is complete on disk
+ * and not held open by us.
+ *
+ * The terminal's window code never frees its LogContext (the process simply
+ * exits and the C library closes the file), so it calls this from its
+ * cleanup instead. The state is left at L_ERROR, not L_CLOSED: any late write
+ * is then dropped, where L_CLOSED would reopen the log and undo the close.
+ *
+ * Only a session that opened a log gets the pass, with that log as the one
+ * kept; one that never wrote a byte never ran the start pass either.
+ */
+void logfile_session_end(LogContext *ctx)
+{
+    if (!ctx)
+        return;
+    logfclose(ctx);
+    ctx->state = L_ERROR;
+    if (!ctx->keep_end_done && ctx->logtype && ctx->currlogfilename) {
+        ctx->keep_end_done = true;
+        /* No session Event Log line: nobody is left to read it. */
+        kitty_log_keep(ctx, ctx->currlogfilename, false);
+    }
 }
 #endif
 
@@ -592,6 +660,8 @@ LogContext *log_init(LogPolicy *lp, Conf *conf)
 #ifdef MOD_PERSO
     ctx->at_line_start = true;         /* KiTTY: stamp the first line too */
     ctx->ts_warned = false;
+    ctx->keep_start_done = false;
+    ctx->keep_end_done = false;
 #endif
     bufchain_init(&ctx->queue);
     return ctx;
@@ -599,6 +669,11 @@ LogContext *log_init(LogPolicy *lp, Conf *conf)
 
 void log_free(LogContext *ctx)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: a context that IS freed (an SSH proxy hop's, say) gets the same
+     * end-of-session retention pass as the terminal's; it runs once. */
+    logfile_session_end(ctx);
+#endif
     logfclose(ctx);
     bufchain_clear(&ctx->queue);
     if (ctx->currlogfilename)

@@ -664,6 +664,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_storemove.c
   ${KITTY_DIR}/kitty_settings_forced.c
   ${KITTY_DIR}/kitty_settings_load.c
+  ${KITTY_DIR}/kitty_logkeep.c   # KiTTY: log retention, called from logging.c (listed per terminal target below)
   ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c

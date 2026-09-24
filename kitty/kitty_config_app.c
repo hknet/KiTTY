@@ -67,10 +67,6 @@ static const struct { const char *label; unsigned int minutes; } wpmode_spans[] 
     { KT_CFG_WPMODE_LAUNCHER_EXIT,       0 },
 };
 
-/* The transparency checkbox of the same panel: Direct2D clears and greys it
- * (a translucent window cannot be painted by the GPU path; with both on,
- * GDI wins - the note on the panel and kitty.ini.example say so). */
-static dlgcontrol *kset_transparency_ctrl;
 #define KSET(key) P((void *)kset_find(key))
 
 /* ==== Workplace proxy mode: the switch, its labels, the arming ========== */
@@ -1827,6 +1823,34 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 #define KSET_FILESEL(s, label, title, key, hc) \
     ctrl_filesel(s, label, NO_SHORTCUT, FILTER_ALL_FILES, false, title, HELPCTX(hc), kitty_kset_handler, KSET(key))
 
+/*
+ * A switch with a field that means nothing while it is off: the field is
+ * greyed, never cleared - it keeps its value and is live again with it.
+ *
+ * The switch is an ordinary kset checkbox whose context2 holds the dependent
+ * control. kitty_kset_handler runs first, so on VALCHANGE the new state is
+ * already in the running value; the switch is then read with kset_get_int -
+ * the same source the checkbox is refreshed from, so the grey always agrees
+ * with the tick shown. None of these switches is shown reversed
+ * (kset_shown_reversed), so the value and the tick are the same thing.
+ */
+static void kset_master_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                void *data, int event)
+{
+    const struct kset_key *k = (const struct kset_key *)ctrl->context.p;
+    kitty_kset_handler(ctrl, dlg, data, event);
+    if (k && ctrl->context2.p &&
+        (event == EVENT_REFRESH || event == EVENT_VALCHANGE))
+        kitty_dlg_enable((dlgcontrol *)ctrl->context2.p, dlg,
+                         kset_get_int(k) != 0);
+}
+
+/* KSET_CHECKBOX for such a switch; the caller sets context2 to the field once
+ * the field is built. Both must be on the same panel, as kitty_dlg_enable
+ * only reaches a control that is laid out. */
+#define KSET_MASTER_CHECKBOX(s, label, key, hc) \
+    ctrl_checkbox(s, label, NO_SHORTCUT, HELPCTX(hc), kset_master_handler, KSET(key))
+
 /* Where the whole subtree lives. */
 
 /* KiTTY++ Settings > Appearance > Shared window position: the entry that
@@ -2522,6 +2546,7 @@ static void kbc_leaf(struct controlbox *b)
 static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
     struct controlset *s;
+    dlgcontrol *m;                     /* a switch whose field it greys */
     char line[1400];
     char buf[4096];
 
@@ -2561,8 +2586,8 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_NUMBER(s, KT_KSET_AU_INTERNALDELAY, KI_INTERNALDELAY, kitty_kset_automation);
     KSET_NUMBER(s, KT_KSET_AU_COMMANDDELAY, KI_COMMANDDELAY, kitty_kset_automation);
     s = ctrl_getset(b, KSET_PATH("Automation"), "scripts", KT_KSET_AU_SCRIPTS);
-    KSET_CHECKBOX(s, KT_KSET_AU_SCRIPTMODE, KI_SCRIPTMODE, kitty_kset_automation);
-    KSET_TEXTBOX(s, KT_KSET_AU_SCRIPTFILTER, KI_SCRIPTFILEFILTER, kitty_kset_automation);
+    m = KSET_MASTER_CHECKBOX(s, KT_KSET_AU_SCRIPTMODE, KI_SCRIPTMODE, kitty_kset_automation);
+    m->context2 = P(KSET_TEXTBOX(s, KT_KSET_AU_SCRIPTFILTER, KI_SCRIPTFILEFILTER, kitty_kset_automation));
     ctrl_text(s, KT_KSET_AU_SCRIPTFILTER_NOTE, HELPCTX(kitty_kset_automation));
     /* The broadcast group (master switch, group key) and the send console
      * are the Automation > Broadcast leaf now; the tracing switch went to
@@ -2596,11 +2621,10 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, KI_CTRLTAB, kitty_kset_window);
-    kset_transparency_ctrl =
-        KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, KI_TRANSPARENCY, kitty_kset_window);
-    KSET_CHECKBOX(s, KT_KSET_WD_BGIMAGE, KI_BGIMAGE, kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, KI_TRANSPARENCY, kitty_kset_window);
+    m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_BGIMAGE, KI_BGIMAGE, kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, KI_HYPERLINK, kitty_kset_window);
-    KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, KI_SLIDEDELAY, kitty_kset_window);
+    m->context2 = P(KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, KI_SLIDEDELAY, kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, KI_SHRINKBITMAP, kitty_kset_window);
     /* Not a feature: the library the per-session icon numbers index into
      * (kitty_startup.c loads it at startup, kitty.dll or the exe when unset). */
@@ -2613,17 +2637,17 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, KI_PRINT_MAXCHAR, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_window));
     s = ctrl_getset(b, KSET_PATH("Appearance"), "fontfb", KT_KSET_WD_FONTFB);
-    KSET_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, KI_FONTFALLBACK_ACTIVE, kitty_appearance);
-    KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, KI_FONTFALLBACK_FALLBACK, kitty_appearance);
+    m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, KI_FONTFALLBACK_ACTIVE, kitty_appearance);
+    m->context2 = P(KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, KI_FONTFALLBACK_FALLBACK, kitty_appearance));
     ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_appearance));
     ctrl_text(s, KT_KSET_WD_FONTFB_FILEONLY, HELPCTX(kitty_appearance));
 
     /* ---- Connection & reconnect ---- */
     ctrl_settitle(b, KSET_PATH("Reconnect & Prompts"), KT_KSET_CN_TITLE);
     s = ctrl_getset(b, KSET_PATH("Reconnect & Prompts"), "reconnect", KT_KSET_CN_RECONNECT);
-    KSET_CHECKBOX(s, KT_KSET_CN_AUTORECONNECT, KI_AUTORECONNECT, kitty_kset_connection);
+    m = KSET_MASTER_CHECKBOX(s, KT_KSET_CN_AUTORECONNECT, KI_AUTORECONNECT, kitty_kset_connection);
     ctrl_text(s, KT_KSET_CN_AUTORECONNECT_NOTE, HELPCTX(kitty_kset_connection));
-    KSET_NUMBER(s, KT_KSET_CN_DELAY, KI_RECONNECTDELAY, kitty_kset_connection);
+    m->context2 = P(KSET_NUMBER(s, KT_KSET_CN_DELAY, KI_RECONNECTDELAY, kitty_kset_connection));
     s = ctrl_getset(b, KSET_PATH("Reconnect & Prompts"), "confirm", KT_KSET_CN_CONFIRM);
     KSET_CHECKBOX(s, KT_KSET_CN_MODALERRORS, KI_MODALERRORS, kitty_kset_connection);
     KSET_DROPLIST(s, KT_KSET_CN_NEWKEY, KI_MODALNEWHOSTKEYCONFIRMATION, kitty_kset_connection);

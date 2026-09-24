@@ -26,6 +26,25 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   command line; it is saved with the session, and the pty still follows the
   TTY panel. klink's `-s` already did this; its help and the manual now say
   that `-t` adds a pty to it (cyd01/KiTTY#493).
+- **Old session logs can be deleted automatically.** Session > Logging has
+  two new settings under the rotation row, "Delete logs after [ ] days" and
+  "Keep logsize below [ ] MB", both off by default. They delete only files
+  this session's log name could have produced, in the log's own folder,
+  oldest first - never the open log or a file another program has open - and
+  run before the session starts and after it ends; each deletion is noted in
+  the Windows Application event log (cyd01/KiTTY#439).
+
+### Changed
+
+- **Settings that have no effect are greyed in the configuration box.** On
+  Session > Logging everything below the logging type is greyed while it is
+  None, and the rotation and retention rows while the log file name has no
+  time code. In KiTTY++ Settings the script file types, the fallback font
+  list, the slideshow interval and the reconnect wait are greyed while their
+  switch is off. A greyed field keeps its value.
+- **"System menu (off hides all buttons)" is now "System menu",** and
+  "Allow closing", "Minimize button" and "Maximize button" are greyed while
+  it is off - Windows draws no caption button without a system menu.
 
 ### Fixed
 
@@ -39,6 +58,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   restores it if it was minimised.
 - **The launcher shows the windows it hid when it closes after the
   workplace notice.** Its other ways of exiting already did.
+- **The Session panel's Save button is greyed while the session name is
+  empty, and the Broadcast console's Send button outside the Live view.**
+  Both were meant to be greyed and never were.
 
 ## 0.85.1.12-beta — 2026-09-23
 

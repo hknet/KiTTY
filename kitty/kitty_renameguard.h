@@ -110,4 +110,12 @@ int kitty_file_has_cert_table(const char *path);
 int kitty_guard_interactive(void);
 void kitty_guard_report(const char *msg, int gui, int allow_box);
 
+/*
+ * One line into the Application event log under the KiTTY++ source, the line
+ * the guards write. `type` is an EVENTLOG_*_TYPE value (windows.h is not
+ * included here, hence the plain unsigned). Best effort: nothing is reported
+ * if the log cannot be opened.
+ */
+void kitty_eventlog_line(unsigned type, const char *msg);
+
 #endif /* KITTY_RENAMEGUARD_H */

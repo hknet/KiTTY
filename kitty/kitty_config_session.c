@@ -49,6 +49,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_logkeep.h"      /* the Logging panel greys on its time-code test */
 
 #define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
 #define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
@@ -4185,10 +4186,65 @@ static void logtimestamp_button_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /* The Session/Logging panel. */
+/* Two masters grey the rest of this panel; greying never changes a value, so
+ * a greyed field keeps what it holds and is live again with it.
+ *
+ * - "Session logging" set to None greys every control below the radio group:
+ *   the file name, what to do with an existing file, flush, header, the
+ *   rotation and retention rows, the timestamp field and its button, and the
+ *   SSH packet-log options (lognone_rows). None of them does anything while
+ *   nothing is logged.
+ * - Rotation and log retention also do nothing unless the log file name holds
+ *   a time code (&Y &M &D &T): the rotation row and the two retention rows -
+ *   label, box and unit each - are live only while logging is on AND the name
+ *   has one (logtime_rows).
+ *
+ * logging_grey() works the whole panel's state out from the Conf, and both
+ * masters' handlers call it on every change and when a session is loaded, so
+ * neither master can undo what the other decided. The notes under the
+ * controls stay readable either way, since they say why. */
+#define LOGTIME_ROW_CTRLS 9
+static dlgcontrol *logtime_rows[LOGTIME_ROW_CTRLS];
+static int logtime_nrows;
+#define LOGNONE_ROW_CTRLS 12
+static dlgcontrol *lognone_rows[LOGNONE_ROW_CTRLS];
+static int lognone_nrows;
+
+static void logging_grey(Conf *conf, dlgparam *dlg)
+{
+    bool on = conf_get_int(conf, CONF_logtype) != LGTYP_NONE;
+    bool timed = on && kitty_logkeep_has_time_code(
+        conf_get_filename(conf, CONF_logfilename));
+    int i;
+    for (i = 0; i < lognone_nrows; i++)
+        kitty_dlg_enable(lognone_rows[i], dlg, on);
+    for (i = 0; i < logtime_nrows; i++)
+        kitty_dlg_enable(logtime_rows[i], dlg, timed);
+}
+
+static void logfilename_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                void *data, int event)
+{
+    conf_filesel_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE)
+        logging_grey((Conf *)data, dlg);
+}
+
+/* The logging-type radios: the stock handler first - on REFRESH it may fall
+ * back to None when the saved type is not offered here, so the Conf is read
+ * only after it has had its say. */
+static void logtype_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                            void *data, int event)
+{
+    loggingbuttons_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE)
+        logging_grey((Conf *)data, dlg);
+}
+
 void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
 {
     struct controlset *s;
-    dlgcontrol *c;                     /* the two-column rotation row */
+    dlgcontrol *c;                     /* each control logging_grey() drives */
 
     /*
      * The Session/Logging panel.
@@ -4212,7 +4268,7 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
         }
         ctrl_radiobuttons(s, KT_LOGGING_SESSION_LOGGING, NO_SHORTCUT, 2,
                           HELPCTX(logging_main),
-                          loggingbuttons_handler,
+                          logtype_handler,
                           I(CONF_logtype),
                           KT_LOGGING_NONE, 't', I(LGTYP_NONE),
                           KT_LOGGING_PRINTABLE_OUTPUT, 'p', I(LGTYP_ASCII),
@@ -4220,24 +4276,30 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
                           sshlogname, 's', I(LGTYP_PACKETS),
                           sshrawlogname, 'r', I(LGTYP_SSHRAW));
     }
-    ctrl_filesel(s, KT_LOGGING_LOG_FILE_NAME, 'f',
-                 FILTER_ALL_FILES, true, KT_LOGGING_SELECT_SESSION_LOG_FILE_NAME,
-                 HELPCTX(logging_filename),
-                 conf_filesel_handler, I(CONF_logfilename));
+    logtime_nrows = 0;
+    lognone_nrows = 0;
+    c = ctrl_filesel(s, KT_LOGGING_LOG_FILE_NAME, 'f',
+                     FILTER_ALL_FILES, true, KT_LOGGING_SELECT_SESSION_LOG_FILE_NAME,
+                     HELPCTX(logging_filename),
+                     logfilename_handler, I(CONF_logfilename));
+    lognone_rows[lognone_nrows++] = c;
     ctrl_text(s, KT_LOGGING_LOG_FILE_NAME_CAN_CONTAIN,
               HELPCTX(logging_filename));
-    ctrl_radiobuttons(s, KT_LOGGING_WHAT_TO_DO, 'e', 1,
-                      HELPCTX(logging_exists),
-                      conf_radiobutton_handler, I(CONF_logxfovr),
-                      KT_LOGGING_ALWAYS_OVERWRITE, I(LGXF_OVR),
-                      KT_LOGGING_ALWAYS_APPEND_TO_THE_END, I(LGXF_APN),
-                      KT_LOGGING_ASK_THE_USER_EVERY_TIME, I(LGXF_ASK));
-    ctrl_checkbox(s, KT_LOGGING_FLUSH_LOG_FILE_FREQUENTLY, 'u',
-                  HELPCTX(logging_flush),
-                  conf_checkbox_handler, I(CONF_logflush));
-    ctrl_checkbox(s, KT_LOGGING_INCLUDE_HEADER, 'i',
-                  HELPCTX(logging_header),
-                  conf_checkbox_handler, I(CONF_logheader));
+    c = ctrl_radiobuttons(s, KT_LOGGING_WHAT_TO_DO, 'e', 1,
+                          HELPCTX(logging_exists),
+                          conf_radiobutton_handler, I(CONF_logxfovr),
+                          KT_LOGGING_ALWAYS_OVERWRITE, I(LGXF_OVR),
+                          KT_LOGGING_ALWAYS_APPEND_TO_THE_END, I(LGXF_APN),
+                          KT_LOGGING_ASK_THE_USER_EVERY_TIME, I(LGXF_ASK));
+    lognone_rows[lognone_nrows++] = c;
+    c = ctrl_checkbox(s, KT_LOGGING_FLUSH_LOG_FILE_FREQUENTLY, 'u',
+                      HELPCTX(logging_flush),
+                      conf_checkbox_handler, I(CONF_logflush));
+    lognone_rows[lognone_nrows++] = c;
+    c = ctrl_checkbox(s, KT_LOGGING_INCLUDE_HEADER, 'i',
+                      HELPCTX(logging_header),
+                      conf_checkbox_handler, I(CONF_logheader));
+    lognone_rows[lognone_nrows++] = c;
     if (!GetPuttyFlag()) {
         /* Two columns so the unit sits AFTER the field, reading "every [ 0 ]
          * sec." The old one-line label "Log rotation delay (sec, 0=off)" was
@@ -4256,24 +4318,70 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
         c = ctrl_text(s, KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY, HELPCTX(kitty_log_rotation));
         c->column = 0;
         c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
         c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
                          HELPCTX(kitty_logging_stamps),
                          conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
         c->column = 1;
+        logtime_rows[logtime_nrows++] = c;
         c = ctrl_text(s, KT_LOGGING_SEC, HELPCTX(kitty_log_rotation));
         c->column = 2;
         c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
         ctrl_columns(s, 1, 100);
         ctrl_text(s, KT_LOGGING_0_OFF_THE_LOG_FILE,
                   HELPCTX(kitty_log_rotation));
-        ctrl_editbox(s, KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT, NO_SHORTCUT, 100,
-                     HELPCTX(kitty_logging_stamps),
-                     conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
+        /* Log retention (cyd01/KiTTY#439): "Delete logs after [ 0 ] days" and
+         * "Keep logsize below [ 0 ] MB", built exactly like the rotation row
+         * above and for the same reason - three same-kind boxes on one
+         * baseline. Each row closes its own columns: the layout refuses a
+         * three-column set that follows another without a one-column reset.
+         * Greyed with the rotation row while the name has no time code or
+         * nothing is logged (logging_grey above); kitty_logkeep.c refuses the
+         * rule at run time as well. */
+        ctrl_columns(s, 3, 52, 24, 24);
+        c = ctrl_text(s, KT_LOGGING_DELETE_LOGS_AFTER, HELPCTX(kitty_log_rotation));
+        c->column = 0;
+        c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
+        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_log_rotation),
+                         conf_editbox_handler, I(CONF_logkeepdays), ED_INT);
+        c->column = 1;
+        logtime_rows[logtime_nrows++] = c;
+        c = ctrl_text(s, KT_LOGGING_DAYS, HELPCTX(kitty_log_rotation));
+        c->column = 2;
+        c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
+        ctrl_columns(s, 1, 100);
+        ctrl_columns(s, 3, 52, 24, 24);
+        c = ctrl_text(s, KT_LOGGING_KEEP_LOGSIZE_BELOW, HELPCTX(kitty_log_rotation));
+        c->column = 0;
+        c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
+        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_log_rotation),
+                         conf_editbox_handler, I(CONF_logkeepmb), ED_INT);
+        c->column = 1;
+        logtime_rows[logtime_nrows++] = c;
+        c = ctrl_text(s, KT_LOGGING_MB, HELPCTX(kitty_log_rotation));
+        c->column = 2;
+        c->text.wrap = false;
+        logtime_rows[logtime_nrows++] = c;
+        ctrl_columns(s, 1, 100);
+        ctrl_text(s, KT_LOGGING_KEEP_NOTE_1, HELPCTX(kitty_log_rotation));
+        ctrl_text(s, KT_LOGGING_KEEP_NOTE_2, HELPCTX(kitty_log_rotation));
+        ctrl_text(s, KT_LOGGING_KEEP_NOTE_3, HELPCTX(kitty_log_rotation));
+        c = ctrl_editbox(s, KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_logging_stamps),
+                         conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
+        lognone_rows[lognone_nrows++] = c;
         /* One button, two jobs: fill in a working pattern when the field is
          * empty, clear it when it is not - so the feature can be tried, and
          * undone, without knowing strftime. Its label says which it will do. */
-        ctrl_pushbutton(s, KT_LOGGING_USE_A_DEFAULT_TIMESTAMP, NO_SHORTCUT,
-                        HELPCTX(kitty_logging_stamps), logtimestamp_button_handler, P(NULL));
+        c = ctrl_pushbutton(s, KT_LOGGING_USE_A_DEFAULT_TIMESTAMP, NO_SHORTCUT,
+                            HELPCTX(kitty_logging_stamps), logtimestamp_button_handler, P(NULL));
+        lognone_rows[lognone_nrows++] = c;
         /* The file-name field above says what its &-codes mean; this one said
          * nothing at all, so the only way to learn the format was to guess. */
         ctrl_text(s, KT_LOGGING_WRITTEN_AT_THE_START,
@@ -4284,12 +4392,16 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
         (!midsession && backend_vt_from_proto(PROT_SSH))) {
         s = ctrl_getset(b, "Session/Logging", "ssh",
                         KT_LOGGING_OPTIONS_SPECIFIC_TO_SSH_PACKET);
-        ctrl_checkbox(s, KT_LOGGING_OMIT_KNOWN_PASSWORD_FIELDS, 'k',
-                      HELPCTX(logging_ssh_omit_password),
-                      conf_checkbox_handler, I(CONF_logomitpass));
-        ctrl_checkbox(s, KT_LOGGING_OMIT_SESSION_DATA, 'd',
-                      HELPCTX(logging_ssh_omit_data),
-                      conf_checkbox_handler, I(CONF_logomitdata));
+        /* Greyed only by "None" (logging_grey above), not by the other
+         * logging types: they are kept as set whatever is logged. */
+        c = ctrl_checkbox(s, KT_LOGGING_OMIT_KNOWN_PASSWORD_FIELDS, 'k',
+                          HELPCTX(logging_ssh_omit_password),
+                          conf_checkbox_handler, I(CONF_logomitpass));
+        lognone_rows[lognone_nrows++] = c;
+        c = ctrl_checkbox(s, KT_LOGGING_OMIT_SESSION_DATA, 'd',
+                          HELPCTX(logging_ssh_omit_data),
+                          conf_checkbox_handler, I(CONF_logomitdata));
+        lognone_rows[lognone_nrows++] = c;
     }
 }
 
@@ -4924,6 +5036,28 @@ static void scb_window_tree(struct controlbox *b)
     ctrl_settitle(b, "Window/Title", KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS);
 }
 
+/* Window > Behaviour: Windows draws no caption button on a window without
+ * WS_SYSMENU, so while the "System menu" box is unticked the three caption
+ * boxes below it are greyed. The stock checkbox handler runs first - on
+ * VALCHANGE it writes the tick into the Conf, which is then read back - and
+ * the dependents are re-decided on every change and when a session is
+ * loaded. Only greyed: their ticks are kept and apply again with the menu. */
+#define SYSMENU_DEP_CTRLS 3
+static dlgcontrol *sysmenu_deps[SYSMENU_DEP_CTRLS];
+static int sysmenu_ndeps;
+
+static void sysmenu_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                            void *data, int event)
+{
+    conf_checkbox_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE) {
+        bool on = conf_get_bool((Conf *)data, CONF_window_has_sysmenu);
+        int i;
+        for (i = 0; i < sysmenu_ndeps; i++)
+            kitty_dlg_enable(sysmenu_deps[i], dlg, on);
+    }
+}
+
 void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 {
     const struct BackendVtable *backvt;
@@ -5139,29 +5273,31 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * embedding feature - KiTTY hosted in another application's tab has no use for
      * a Close button that would strand the host.
      *
-     * The system-menu box comes FIRST and says what it does to the others, because
-     * Windows will not draw any caption button without WS_SYSMENU. Classic KiTTY
-     * greyed the other three to show that dependency; this port has no dlg_enable()
-     * to grey a control with, so the label carries it instead - the behaviour is
-     * the same either way, since it is Windows enforcing it rather than us.
+     * The system-menu box comes FIRST because Windows will not draw any caption
+     * button without WS_SYSMENU. As in classic KiTTY, the other three are greyed
+     * while it is unticked (sysmenu_handler, through kitty_dlg_enable) - greyed
+     * only: each keeps its tick, and counts again once the system menu is back.
+     * The behaviour is Windows' own either way; the grey just shows it.
      */
     if (!GetPuttyFlag()) {
         s = ctrl_getset(b, "Window/Behaviour", "windowbuttons",
                         KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK);
-        /* Short enough to fit the panel. The dependency still has to be stated -
-         * Windows draws no caption button without WS_SYSMENU - and with no
-         * dlg_enable() to grey the other three, the label is the only place left
-         * to say it. */
+        /* The label still states the dependency, and the grey on the three
+         * boxes below shows it as well. */
         ctrl_checkbox(s, KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL,
                       NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_window_has_sysmenu));
-        ctrl_checkbox(s, KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES,
-                      NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_window_closable));
-        ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_window_minimizable));
-        ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_window_maximizable));
+                      sysmenu_handler, I(CONF_window_has_sysmenu));
+        sysmenu_ndeps = 0;
+        c = ctrl_checkbox(s, KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES,
+                          NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                          conf_checkbox_handler, I(CONF_window_closable));
+        sysmenu_deps[sysmenu_ndeps++] = c;
+        c = ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                          conf_checkbox_handler, I(CONF_window_minimizable));
+        sysmenu_deps[sysmenu_ndeps++] = c;
+        c = ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                          conf_checkbox_handler, I(CONF_window_maximizable));
+        sysmenu_deps[sysmenu_ndeps++] = c;
     }
 
     /*

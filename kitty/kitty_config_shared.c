@@ -311,21 +311,39 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
  * and windows/controls.c compiles into the shared library WITHOUT MOD_PERSO,
  * where a guarded addition would be silently dead code.
  *
- * Buttons only. A button's window id is its base_id; other control types split
- * into several ids and would each need their own rule, which nothing wants yet.
+ * Buttons only: kept for its callers, it is kitty_dlg_enable() below, which
+ * covers every control type.
  */
 void kitty_dlg_enable_button(dlgcontrol *ctrl, dlgparam *dlg,
                                     bool enabled)
 {
-    int i;
+    kitty_dlg_enable(ctrl, dlg, enabled);
+}
+
+/*
+ * KiTTY: enable or grey out a config-box control of ANY type - every window
+ * it is made of (an edit box with a label is a static plus the edit; a text
+ * line is one borderless edit), all ids from base_id for num_ids. Nothing
+ * happens for a control whose panel is not laid out.
+ *
+ * Resolved through kitty_cfg_item(), never a bare GetDlgItem on the dialog:
+ * a panel's controls are children of the panel host window, not of the
+ * dialog, and GetDlgItem does not look at grandchildren - so it found
+ * nothing and the grey silently did not happen.
+ */
+void kitty_dlg_enable(dlgcontrol *ctrl, dlgparam *dlg, bool enabled)
+{
+    int i, id;
     if (!ctrl || !dlg)
         return;
     for (i = 0; i < dlg->nctrltrees; i++) {
         struct winctrl *c = winctrl_findbyctrl(dlg->controltrees[i], ctrl);
         if (c) {
-            HWND h = GetDlgItem(dlg->hwnd, c->base_id);
-            if (h)
-                EnableWindow(h, enabled);
+            for (id = c->base_id; id < c->base_id + c->num_ids; id++) {
+                HWND h = kitty_cfg_item(dlg->hwnd, id);
+                if (h)
+                    EnableWindow(h, enabled);
+            }
             return;
         }
     }

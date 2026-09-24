@@ -562,6 +562,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "AutocommandOut", conf_get_str(conf, CONF_autocommandout));
     write_setting_s_forced(sesskey, "Folder", conf_get_str(conf, CONF_folder));
     write_setting_i_forced(sesskey, "LogTimeRotation", conf_get_int(conf, CONF_logtimerotation));
+    write_setting_i_forced(sesskey, "LogKeepDays", conf_get_int(conf, CONF_logkeepdays));
+    write_setting_i_forced(sesskey, "LogKeepMB", conf_get_int(conf, CONF_logkeepmb));
     write_setting_i_forced(sesskey, "TermXPos", conf_get_int(conf, CONF_xpos));
     write_setting_i_forced(sesskey, "TermYPos", conf_get_int(conf, CONF_ypos));
     write_setting_i_forced(sesskey, "WindowState", conf_get_int(conf, CONF_windowstate));

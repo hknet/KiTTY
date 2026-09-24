@@ -2232,6 +2232,9 @@ const char *logfile_current_name(LogContext *logctx);
 /* KiTTY: would a reopen land on a different file? Distinguishes "rotate" from
  * "clear", so a menu can say which it is about to do. */
 bool logfile_name_varies(LogContext *logctx);
+/* KiTTY: the session is ending - close the log for good (later writes are
+ * dropped) and run log retention after the close (cyd01/KiTTY#439). */
+void logfile_session_end(LogContext *logctx);
 #endif
 void logtraffic(LogContext *logctx, unsigned char c, int logmode);
 void logflush(LogContext *logctx);

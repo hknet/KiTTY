@@ -165,6 +165,7 @@ struct wpmode_data {
 #define KITTY_WORKPLACE_STATE_OFF "Workplace proxy mode is off."
 void kitty_dlg_droplist_fit(dlgcontrol *ctrl, dlgparam *dlg);   /* kitty_config_shared.c */
 void kitty_dlg_enable_button(dlgcontrol *ctrl, dlgparam *dlg, bool enabled);   /* kitty_config_shared.c */
+void kitty_dlg_enable(dlgcontrol *ctrl, dlgparam *dlg, bool enabled);          /* any control type */
 extern int cfgwin_refreshing;   /* kitty_config_shared.c */
 int kitty_kset_backupcount(const char *key);   /* kitty_config_shared.c */
 void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */
