@@ -1051,10 +1051,18 @@ int kitty_autocommand_tick(HWND hwnd)
     int i = 0;
     if (AutoCommand == NULL) {
         const char *src = conf_get_str(conf, CONF_autocommand);
+        char *ident;
         if (src == NULL || src[0] == '\0')
             return 0;
+        /* The window's %KITTY_...% tokens (cyd01/KiTTY#473, window.c):
+         * expanded into this copy, so once per connection - the rearm above
+         * drops it - and with the window's name as it is now. */
+        ident = kitty_winident_expand_typed(src);
+        if (ident)
+            src = ident;
         AutoCommand = (char *)malloc(strlen(src) + 10);
         strcpy(AutoCommand, src);
+        sfree(ident);
     }
     /* SECURITY: dest is written by the source index i, so bound i to the
      * buffer (leaving room for the 2-char appends + NUL) to stop a single

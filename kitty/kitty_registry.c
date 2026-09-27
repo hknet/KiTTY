@@ -700,6 +700,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "ForegroundOnBell" ) ;
 					RegDeleteValue( hSubKey, "CtrlTabSwitch" ) ;
 					RegDeleteValue( hSubKey, KR_COMMENT ) ;
+					RegDeleteValue( hSubKey, "WindowName" ) ;
 					RegDeleteValue( hSubKey, "LogTimeRotation" ) ;
 					RegDeleteValue( hSubKey, "LogKeepDays" ) ;
 					RegDeleteValue( hSubKey, "LogKeepMB" ) ;

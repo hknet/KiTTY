@@ -34,6 +34,8 @@ Starting a session\r\n\
 The window\r\n\
 \r\n\
 * -title <text>: set the window title\r\n\
+* -winname <name>: Terminal Name (Title, Launcher, %KITTY_WINDOW%)\r\n\
+* -winslot <n>: number in an unnamed window's %KITTY_WINDOW% (<base>, <base>-2, ...)\r\n\
 * -classname <name>: set the window class name (default KiTTY)\r\n\
 * -xpos <x> / -ypos <y>: set the initial window position\r\n\
 * -hwndparent <handle>: embed the terminal in another program's window, given\r\n\

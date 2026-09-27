@@ -92,6 +92,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_nofocusrep         "kitty-cfg-nofocusrep"
 #define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
 #define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
+#define WINHELP_CTX_kitty_window_name        "kitty-cfg-window-name"
 #define WINHELP_CTX_kitty_winpos_remember    "kitty-cfg-winpos-remember"
 #define WINHELP_CTX_kitty_clipcmd            "kitty-cfg-clipcmd"
 #define WINHELP_CTX_kitty_colour_extra       "kitty-cfg-colour-extra"

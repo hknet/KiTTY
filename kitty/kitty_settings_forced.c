@@ -592,6 +592,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "CtrlTabSwitch", conf_get_int(conf, CONF_ctrl_tab_switch));
     write_setting_s_forced(sesskey, "Comment", conf_get_str(conf, CONF_comment));
     write_setting_b_forced(sesskey, "CommentNotify", conf_get_bool(conf, CONF_comment_notify));
+    write_setting_s_forced(sesskey, "WindowName", conf_get_str(conf, CONF_window_name));
     /* SCPAutoPwd retired: the old "Send file in current directory"
      * option relied on the removed __pw title-scan (CVE-2024-23749) and is
      * replaced by opt-in OSC 7 cwd tracking. No longer persisted; a one-time

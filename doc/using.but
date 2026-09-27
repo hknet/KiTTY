@@ -650,7 +650,8 @@ straight into a session.
 
 To start a connection to a server called \c{host}:
 
-\c kitty.exe [-ssh | -ssh-connection | -telnet | -rlogin | -supdup | -raw] [user@]host
+\c kitty.exe [-ssh | -ssh-connection | -telnet | -rlogin |
+\c            -supdup | -raw] [user@]host
 
 If this syntax is used, settings are taken from the \i{Default Settings}
 (see \k{config-saving}); \c{user} overrides these settings if

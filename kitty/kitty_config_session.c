@@ -5235,6 +5235,10 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                   HELPCTX(appearance_title),
                   conf_checkbox_handler,
                   I(CHECKBOX_INVERT | CONF_win_name_always));
+    /* KiTTY: where the session's %KITTY_WINDOW% setting went - it lived here
+     * before it moved beside the variables that send it. */
+    if (!GetPuttyFlag())
+        ctrl_text(s, KT_TITLE_WINDOW_NAME_MOVED, HELPCTX(kitty_window_name));
 
     s = ctrl_getset(b, "Window/Behaviour", "main", NULL);
     /* KiTTY startup window state. All three are honoured in window.c (maximize
@@ -6037,6 +6041,19 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
 
             ctrl_settitle(b, "Connection/Login/Environment",
                           KT_DATA_ENVIRONMENT_VARIABLES_SENT);
+            /* KiTTY: the base of %KITTY_WINDOW% (cyd01/KiTTY#473) - here,
+             * above the variables that send it. Each window of the session
+             * adds its own number: <base>-1, <base>-2. Not displayed;
+             * -winname and "Terminal Name..." name one window instead. */
+            if (!GetPuttyFlag()) {
+                s = ctrl_getset(b, "Connection/Login/Environment", "ident",
+                                NULL);
+                /* 100 = label on its own line: it is too long to share one */
+                ctrl_editbox(s, KT_TITLE_WINDOW_NAME, NO_SHORTCUT, 100,
+                             HELPCTX(kitty_window_name),
+                             conf_editbox_handler, I(CONF_window_name),
+                             ED_STR);
+            }
             s = ctrl_getset(b, "Connection/Login/Environment", "env",
                             KT_DATA_ENVIRONMENT_VARIABLES);
             ctrl_columns(s, 2, 80, 20);

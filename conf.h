@@ -1626,6 +1626,13 @@ CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Ctrl
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)
 /* KiTTY: print the Comment into the terminal once the session is up. */
 CONF_OPTION(comment_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("CommentNotify"),)
+/* KiTTY: the base of %KITTY_WINDOW% for this session's unnamed windows -
+ * "<base>-<n>", n the window's number among the open windows of that base,
+ * the first window the base alone; Windows %VAR% in it are expanded, e.g.
+ * %USERNAME%-db (windows/window.c, kitty_win_ordinal_claim; cyd01/KiTTY#473). Empty = the
+ * session name. Not a window name: nothing is displayed; "-winname" and
+ * "Terminal Name..." name one window. */
+CONF_OPTION(window_name, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WindowName"),)
 CONF_OPTION(launcherhide, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("LauncherHide"),) /* KiTTY: exclude from kitty -launcher */
 /* KiTTY (classic parity): which of the window's own buttons exist.
  *

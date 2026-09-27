@@ -247,7 +247,7 @@ static int LauncherHotkeyBalloonArmed = 0 ;
  * about itself as window PROPERTIES (windows/window.c, kitty_winprops_publish):
  *   "KiTTY.session"  the saved session's name, else user@host (else the host)
  *   "KiTTY.folder"   the saved session's Folder; absent for "Default" or none
- *   "KiTTY.winname"  the name given with "Name this window..."; absent if none
+ *   "KiTTY.winname"  the name given with "Terminal Name..."; absent if none
  * Each property's value is a GLOBAL ATOM holding the string: a property value
  * is a plain number that any process can read, and the global atom table
  * turns it back into the text - no message goes to the terminal, so a hung
@@ -2585,7 +2585,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			break ;
 		case WM_MENURBUTTONUP: {
 			/* A right click inside the open tray menu: on a window's entry in
-			 * Open Sessions it offers "Name this window...", on a session folder
+			 * Open Sessions it offers "Terminal Name...", on a session folder
 			 * to open the folder's sessions, anywhere else it is nothing. */
 			UINT id = GetMenuItemID( (HMENU)lParam, (int)wParam ) ;
 			if( id != (UINT)-1 && id >= IDM_GOHIDE && id < IDM_GOHIDE + (UINT)NbWin )

@@ -254,7 +254,7 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 A right click on a session folder inside the open menu offers **Open all ... sessions in** that folder: the sessions directly in it, not those of its subfolders. More than eight sessions are asked about first, and they start one after the other.
 
-The **Open Sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, and its label counts them: **Open Sessions (12, 7 hidden)**. Each entry names the saved session (`user@host` for a window opened without one) with the live window title after it, `prod-db - root@db1: ~`; hidden windows come first, then the visible ones, alphabetical within each group. A visible window is ticked, a hidden one carries a round bullet - both drawn by Windows, so they follow the light or dark menu theme. Choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them; a window sent to its own tray icon is listed as hidden, and choosing it brings it back from the tray. A window whose session is over (connection closed or lost, window still open) shows **(disconnected)** after its entry and stays choosable, so it can be restarted. Above 25 windows, those of sessions filed in a folder move into one submenu per folder, and an entry whose first letter is unique in its menu has that letter as its keyboard key. **Name this window...** in a terminal's system menu (**Window**) gives one window a name of its own - shown in front of the window title, so on the taskbar too, and in front of its entry in Open Sessions: ten windows to one jump host read `db - jump - ...`, `web - jump - ...`. The name lives with the window and is not saved; a right click on a window's entry in Open Sessions offers the same **Name this window...**, which is how a hidden window gets one. **Show one window at a time** changes what choosing a window does: ticking it keeps the topmost visible window and hides the others at once, and while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. **Show next window on close**, under it, brings the window shown before up by itself when the current one is closed (or the first entry of Open Sessions). Both settings last until the launcher exits.
+The **Open Sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, and its label counts them: **Open Sessions (12, 7 hidden)**. Each entry names the saved session (`user@host` for a window opened without one) with the live window title after it, `prod-db - root@db1: ~`; hidden windows come first, then the visible ones, alphabetical within each group. A visible window is ticked, a hidden one carries a round bullet - both drawn by Windows, so they follow the light or dark menu theme. Choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them; a window sent to its own tray icon is listed as hidden, and choosing it brings it back from the tray. A window whose session is over (connection closed or lost, window still open) shows **(disconnected)** after its entry and stays choosable, so it can be restarted. Above 25 windows, those of sessions filed in a folder move into one submenu per folder, and an entry whose first letter is unique in its menu has that letter as its keyboard key. **Terminal Name...** in a terminal's system menu (**Window**) gives one window a name of its own - shown in front of the window title, so on the taskbar too, and in front of its entry in Open Sessions: ten windows to one jump host read `db - jump - ...`, `web - jump - ...`. The name lives with the window and is not saved; `-winname <name>` names one window from the command line, and the name reaches the far end as `%KITTY_WINDOW%`. An unnamed window sends the session name there instead - `db` for the first window, `db-2`, `db-3` for the next, the lowest number free among the session's open windows, kept across a Windows restart; the session's **Terminal Name base** (Connection > Login > Environment) replaces the session name in it, and is never displayed. How to make a window land back in its own tmux, screen, abduco or zellij session after a drop or a reboot - server side, KiTTY++ side, with or without changing `sshd_config` - is in **[docs/TERMINAL-REATTACH.md](docs/TERMINAL-REATTACH.md)**. A right click on a window's entry in Open Sessions offers the same **Terminal Name...**, which is how a hidden window gets one. **Show one window at a time** changes what choosing a window does: ticking it keeps the topmost visible window and hides the others at once, and while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. **Show next window on close**, under it, brings the window shown before up by itself when the current one is closed (or the first entry of Open Sessions). Both settings last until the launcher exits.
 
 A hidden window has no taskbar button and no tray icon, so it does not depend on the launcher staying alive: when the launcher is killed or crashes, every window it hid shows itself again after 3 seconds. **Application > KiTTY++ Settings > Launcher** sets that delay (`[Launcher] unhideafter`); 0 keeps hidden windows hidden until a launcher is started again, which lists them.
 
@@ -296,12 +296,12 @@ With **Use conditions from file** enabled, a line starting with a single `:`
 overrides the wait pattern for the following line only:
 
 ```
-:: minimal logon script: run two commands, each after a "$" prompt
+:: logon script: two commands, each after a "$" prompt
 uname -a
 df -h
 :password:
 secret123
-:: the line above is sent only after the server printed "password:"
+:: the line above waits for the server's "password:"
 ```
 
 ![Automatic logon script (RuTTY patch)](docs/features/img/config_rutty.jpg)
@@ -661,8 +661,8 @@ Both can be given keys in `kitty.ini`, which is worth doing if you check logs of
 
 ```ini
 [Shortcuts]
-openlogfile={CONTROL}{SHIFT}L      ; open this session's log file
-eventlog={CONTROL}{SHIFT}E         ; show the event log (KiTTY's own record)
+openlogfile={CONTROL}{SHIFT}L ; open this session's log file
+eventlog={CONTROL}{SHIFT}E    ; show KiTTY's event log
 ```
 
 **How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *Log rotation delay* and include `&T` in the file name.

@@ -7,7 +7,12 @@
 # Deliberate reductions, because Halibut is not Markdown:
 #   - images are dropped (Halibut has no image support; the screenshots stay
 #     in FEATURES.md / on the website),
-#   - tables are rendered verbatim as code paragraphs,
+#   - tables become description lists (Halibut has no tables): each row's
+#     first cell is the term, the other cells its text - with a table of
+#     three or more columns, each of those cells led by its column heading.
+#     (Until 2026-09-28 a table was copied verbatim as a code paragraph: the
+#     manual showed raw "| a | b |" lines, and every row wider than the text
+#     output's 64 columns was a build warning - 21 of them.)
 #   - internal #anchor links keep their text and lose the link, AND SO DO
 #     REPO-RELATIVE ONES (docs/FOO.md), because the CHM travels without the
 #     repo beside it. A document that has to be REACHABLE from the Help button
@@ -124,17 +129,29 @@ while ($i <= $#lines) {
         }
         print $OUT "\n";
     } elsif ($line =~ /^\|/) {
-        # table -> verbatim code paragraph (Halibut has no tables); the
-        # verbatim form would show ** and backticks literally, so those are
-        # stripped from the cells.
+        # table -> description list (see the header comment). Cells are split
+        # on '|' not escaped as '\|'; the |---| separator row is skipped.
+        my @rows;
         while ($i <= $#lines and $lines[$i] =~ /^\|/) {
             my $c = $lines[$i]; chomp $c;
-            $c =~ s/\*\*//g;
-            $c =~ s/`//g;
-            print $OUT "\\c $c\n";
+            $c =~ s/^\|//; $c =~ s/\|\s*$//;
+            my @cells = map { my $x = $_; $x =~ s/\\\|/|/g; $x =~ s/^\s+|\s+$//g; $x }
+                        split /(?<!\\)\|/, $c, -1;
+            push @rows, \@cells unless $c =~ /^[\s|:-]+$/;
             $i++;
         }
-        print $OUT "\n";
+        my $head = shift @rows;
+        for my $r (@rows) {
+            my @c = @$r;
+            print $OUT "\\dt ", inline($c[0] // ''), "\n\n";
+            my $text;
+            if (@c <= 2) {
+                $text = inline($c[1] // '');
+            } else {
+                $text = join '; ', map { inline($head->[$_] // '') . ': ' . inline($c[$_] // '') } 1 .. $#c;
+            }
+            print $OUT "\\dd ", $text, "\n\n";
+        }
         next;
     } elsif ($line =~ /^\s*[-*] (.*)$/) {
         # bullet item; continuation lines are folded into the same \b - and a

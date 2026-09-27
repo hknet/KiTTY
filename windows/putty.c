@@ -340,6 +340,31 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 conf_set_str(conf, CONF_wintitle,
                              cmdline_arg_to_str(arglist->args[arglistpos++]));
+            } else if (!strcmp(p, "-winname")) {
+                /* KiTTY: the window's name from the start (cyd01/KiTTY#473) -
+                 * the name "Terminal Name..." sets, and %KITTY_WINDOW%.
+                 * Set on the window rather than in conf, so a -load on either
+                 * side of it cannot undo it. The Restart Manager relaunches a
+                 * named window with this switch. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
+                {
+                    CmdlineArg *wa = arglist->args[arglistpos++];
+                    const char *u = cmdline_arg_to_utf8(wa);
+                    wchar_t *wn = u ? dup_mb_to_wc(CP_UTF8, u) :
+                        dup_mb_to_wc(CP_ACP, cmdline_arg_to_str(wa));
+                    kitty_window_name_set(wn);
+                    sfree(wn);
+                }
+            } else if (!strcmp(p, "-winslot")) {
+                /* KiTTY: the number an unnamed window asks for in its
+                 * %KITTY_WINDOW% (<base>-<n>), taken when no other open
+                 * window of the same base holds it. The Restart Manager
+                 * relaunches an unnamed window with this switch. */
+                if (!arglist->args[arglistpos])
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
+                kitty_window_slot_want(
+                    atoi(cmdline_arg_to_str(arglist->args[arglistpos++])));
             } else if (!strcmp(p, "-folder")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
@@ -978,12 +1003,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     {
         const char *sessname = conf_get_str(conf, CONF_sessionname);
         if (sessname && *sessname) {
-            char rcl[2048];
-            wchar_t wcl[2048];
-            snprintf(rcl, sizeof(rcl), "-load \"%s\"", sessname);
-            if (MultiByteToWideChar(CP_ACP, 0, rcl, -1, wcl,
-                                    sizeof(wcl)/sizeof(wcl[0])) > 0)
-                RegisterApplicationRestart(wcl, 0);
+            /* -load "NAME", and -winname "<name>" while the window has one,
+             * else -winslot <n> (window.c; re-registered there whenever the
+             * name or the number changes). */
+            kitty_restart_register_session(sessname);
         } else if (conf_launchable(conf)) {
             RegisterApplicationRestart(L"", 0);
         }

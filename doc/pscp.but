@@ -67,7 +67,8 @@ use kscp:
 \c   -hostkey keyid
 \c             manually specify a host key (may be repeated)
 \c   -batch    disable all interactive prompts
-\c   -no-sanitise-stderr  don't strip control chars from standard error
+\c   -no-sanitise-stderr
+\c             don't strip control chars from standard error
 \c   -proxycmd command
 \c             use 'command' as local proxy
 \c   -preconnectcommand command

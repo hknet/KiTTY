@@ -341,7 +341,7 @@ void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) {
 	}
 
 /*
- * "Name this window..." (system menu > Window, hknet/KiTTY#54): the send-text
+ * "Terminal Name..." (system menu > Window, hknet/KiTTY#54): the send-text
  * box's template (IDD_INPUTBOX) with its own caption and prompt, prefilled
  * with the current name. OK hands the text to kitty_window_name_set (window.c)
  * - empty clears the name - and closes the box; Esc or the close button

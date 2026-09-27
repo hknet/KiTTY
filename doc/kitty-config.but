@@ -934,12 +934,17 @@ not, add to the shell startup file of the remote account:
 
 bash, in \c{~/.bashrc}:
 
-\c __osc7_cwd() { printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD"; }
-\c PROMPT_COMMAND="__osc7_cwd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+\c __osc7_cwd() {
+\c     printf '\033]7;file://%s%s\007' "$HOSTNAME" "$PWD"
+\c }
+\c PROMPT_COMMAND="__osc7_cwd${PROMPT_COMMAND:+; }\
+\c $PROMPT_COMMAND"
 
 zsh, in \c{~/.zshrc}:
 
-\c __osc7_cwd() { printf '\033]7;file://%s%s\007' "$HOST" "$PWD"; }
+\c __osc7_cwd() {
+\c     printf '\033]7;file://%s%s\007' "$HOST" "$PWD"
+\c }
 \c autoload -Uz add-zsh-hook
 \c add-zsh-hook precmd __osc7_cwd
 
@@ -1074,14 +1079,16 @@ away. It does not need kitty itself, a graphical session, or the
 
 \lcont{
 
-\c curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin dest=$HOME/kitty-bin launch=n
+\c curl -L https://sw.kovidgoyal.net/kitty/installer.sh |
+\c     sh /dev/stdin dest=$HOME/kitty-bin launch=n
 
 leaves \c{~/kitty-bin/kitty.app/bin/kitten}. For your own account keep it
 under your home and put it on your \c{PATH}; for every user on the host
 copy the file, never link it (a link into a home directory is unreadable
 for other users):
 
-\c sudo install -m 755 ~/kitty-bin/kitty.app/bin/kitten /usr/local/bin/kitten
+\c sudo install -m 755 ~/kitty-bin/kitty.app/bin/kitten \
+\c     /usr/local/bin/kitten
 
 That one file is the whole requirement. It is a static executable and can
 be copied alone to any machine, for example with ZModem
@@ -1999,14 +2006,14 @@ after the folder's name; windows of sessions without a folder stay in
 the list itself. An entry whose first letter no other entry of its menu
 starts with has that letter as its keyboard key.
 
-\q{Name this window...} in a terminal's system menu, under
+\q{Terminal Name...} in a terminal's system menu, under
 \q{Window}, gives that window a name of its own: it is shown in front of
 the window title - and so on the taskbar button - and in front of the
 session name in \q{Open Sessions}, so ten windows to one jump host can
 read \q{db - jump - ...}, \q{web - jump - ...}. An empty name removes
-it. The name belongs to the window: it is not saved, and a new window of
-the same session starts without one. A right click on a window's entry
-in \q{Open Sessions} offers the same \q{Name this window...} - the way
+it. The name belongs to the window and is not saved; \c{-winname} names
+one window from the command line (\k{kitty-cfg-window-name}). A right click on a window's entry
+in \q{Open Sessions} offers the same \q{Terminal Name...} - the way
 to name a window that is hidden.
 
 \q{Show one window at a time} changes what choosing a window does.
@@ -2905,6 +2912,120 @@ Stored as \c{ToolsMenuSendFile}, \c{ToolsMenuGetFile},
 \c{ToolsMenuWinSCP} and \c{ToolsMenuFileZilla}. \q{Get File (kscp)}
 fetches the path on the clipboard into the download folder:
 \k{kitty-cfg-get-file} walks through it.
+
+\S{kitty-cfg-window-name} \q{\i{Terminal Name}} and \c{%KITTY_WINDOW%}
+
+\c{%KITTY_WINDOW%} tells the far end which window is connecting, so a
+\c{tmux} or \c{screen} session there can be re-attached after a
+dropped connection, a restart of KiTTY++ or a reboot of this machine.
+Every window has one without being named: the session's name for the
+first window, then a hyphen and the window's number - \c{db},
+\c{db-2}, \c{db-3}.
+
+\b The number is the lowest one no other open window with the same
+base holds, so closing \c{db} frees it for the next window. It stays
+with the window, and a Windows restart brings the window back with it.
+
+\b \q{Terminal Name base}, on Connection > Login > Environment, replaces
+the session's name: \c{mon} gives \c{mon}, \c{mon-2}. Windows
+variables in it are expanded: \c{%USERNAME%-mon} gives \c{hk-mon}, so
+several people using one account on the server each get their own
+remote sessions; an unknown \c{%name%} stays as written. Empty = the session's name as the launcher lists it (the
+saved session, else \c{user@host}). The base is not shown anywhere:
+title and launcher are unchanged. Stored as \c{WindowName}.
+
+\b A window \e{named} with \q{Terminal Name...} (system menu, or a right
+click on its launcher entry) or \c{-winname <name>} sends that name
+unchanged, without a number, and shows it in front of the window title
+and of its launcher entry. It gives its number up; clearing the name
+takes a new one.
+
+\b \c{-winslot <n>} asks for number \c{n}: taken when no other open
+window of the base holds it, else the lowest free one.
+
+These tokens carry the identity and what goes with it:
+
+\b \c{%KITTY_WINDOW%} - the window's name, else the base with its
+number as above.
+
+\b \c{%KITTY_SESSION%} - the saved session's name; empty for an unsaved
+session.
+
+\b \c{%KITTY_USER%}, \c{%KITTY_HOST%}, \c{%KITTY_PORT%} - the user name,
+host and port as configured.
+
+\b \c{%KITTY_HWND%} - the window's handle, in hexadecimal.
+
+They are replaced each time the window connects - a reconnect after a
+rename sends the new name - in three places:
+
+\b The values of the environment variables (Connection > Login >
+Environment), for
+example the variable \c{KITTY_WINDOW} with the value \c{%KITTY_WINDOW%}.
+An SSH server takes them only if it accepts them: \c{AcceptEnv KITTY_*}
+in \c{sshd_config}.
+
+\b The remote command (Connection > SSH), for example
+\c{tmux new -A -s '%KITTY_WINDOW%'}.
+
+\b The auto-command (Connection > Login). It is typed into the session,
+so it needs nothing from the server.
+
+The session keeps the tokens themselves: the settings show and save what
+was typed. Token names are matched ignoring case; any other \c{%...%}
+text is left as it is. In an inserted value, control characters (line
+breaks, tabs) are removed, a character the session's character set
+cannot hold becomes \c{_}, and in the auto-command a backslash is doubled
+so that it arrives as one. Spaces and quotes are kept, so quote the
+token in a shell command.
+
+A window of a saved session is registered with the Windows Restart
+Manager as \c{-load "<session>"}, plus \c{-winname "<name>"} while it
+has a name, else \c{-winslot <n>} once it has a number; the
+registration follows every change. After a Windows restart the window
+comes back as the same \c{%KITTY_WINDOW%} and reaches the same remote
+session. A window of a session that uses \c{%KITTY_WINDOW%} nowhere
+takes no number and is registered without one.
+
+\S2{kitty-cfg-window-name-attach} Re-attaching \c{tmux}, \c{screen},
+\c{abduco} or \c{zellij}
+
+With \c{AcceptEnv KITTY_*} in the server's \c{sshd_config}, set the
+environment variable \c{KITTY_WINDOW} to \c{%KITTY_WINDOW%} (Connection >
+Login > Environment) and add this to \c{~/.bashrc} of the remote account:
+
+\c if [ -n "$KITTY_WINDOW" ] && [ -z "$KITTY_ATTACHED" ] &&
+\c    [ -t 0 ]; then
+\c     case $- in *i*)
+\c         export KITTY_ATTACHED=1
+\c         exec tmux new -A -s "$KITTY_WINDOW" ;;
+\c     esac
+\c fi
+
+The \c{exec} line picks the manager; each one attaches to the session
+of that name, or creates it:
+
+\c exec tmux new -A -s "$KITTY_WINDOW"
+\c exec screen -D -R -S "$KITTY_WINDOW"
+\c exec abduco -A "$KITTY_WINDOW" "$SHELL"
+\c exec zellij attach --create "$KITTY_WINDOW"
+
+\c{KITTY_ATTACHED} is passed on to every shell inside the manager, so
+those shells do not try to attach again. The \c{-t 0} and interactive
+checks keep \c{scp}, \c{sftp} and remote commands away from it. A
+connection without \c{KITTY_WINDOW} - another client, a KiTTY++ session
+without the variable - gets an ordinary shell.
+
+Where \c{sshd_config} cannot be changed, the auto-command (Connection >
+Login) does the same without the server's help, for example:
+
+\c  exec tmux new -A -s '%KITTY_WINDOW%'
+
+It is typed into the shell after login. The leading space keeps it out
+of the shell history where \c{HISTCONTROL} contains \c{ignorespace} (the
+default of many systems). The remote command (Connection > SSH) is the
+third way: \c{tmux new -A -s '%KITTY_WINDOW%'} there replaces the login
+shell, so the session always opens in the manager.
 
 \S{kitty-cfg-save-on-exit} \q{\i{Save settings on exit}}
 

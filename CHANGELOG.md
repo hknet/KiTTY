@@ -27,6 +27,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   window's entry in Open Sessions, for a hidden window - puts a name in
   front of the window title and of its launcher entry; it lives with the
   window and is not saved (hknet/KiTTY#54).
+- **A window's name reaches the far end, to re-attach tmux or screen.**
+  `%KITTY_WINDOW%` (the window's name, else the session name, from the
+  second window on with a number: `db`, `db-2`), `%KITTY_SESSION%`, `%KITTY_USER%`, `%KITTY_HOST%`,
+  `%KITTY_PORT%` and `%KITTY_HWND%` are replaced on every connect in the
+  environment-variable values (the server needs `AcceptEnv KITTY_*`), the
+  SSH remote command and the auto-command. The number is the lowest free
+  one, never shared by two open windows, and survives a Windows restart
+  (`-winslot <n>`); the session's "Terminal Name base" (Connection > Login
+  > Environment) replaces the session name (`mon`, `mon-2`) and expands
+  Windows variables (`%USERNAME%-mon`). A
+  window named with `-winname <name>` or "Terminal Name..." sends its name
+  instead, and the Restart Manager brings it back under that name. The
+  setup, server side included, is in
+  [docs/TERMINAL-REATTACH.md](docs/TERMINAL-REATTACH.md) (cyd01/KiTTY#473).
 - **Start the launcher from the configuration box.** Application > KiTTY++
   Settings > Launcher ends with "Start Launcher at Login" - the same
   setting as the launcher menu's "Start at login" - and a "Start Launcher

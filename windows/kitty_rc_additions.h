@@ -372,7 +372,7 @@
 #ifndef IDM_IMPORTSETTINGS
 #define IDM_IMPORTSETTINGS 0xB1F0
 #endif
-/* System menu > Window > "Name this window..." (hknet/KiTTY#54). */
+/* System menu > Window > "Terminal Name..." (hknet/KiTTY#54). */
 #ifndef IDM_WINNAME
 #define IDM_WINNAME 0xB220
 #endif

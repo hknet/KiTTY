@@ -85,11 +85,12 @@ use klink:
 \c   -share    enable use of connection sharing
 \c   -hostkey keyid
 \c             manually specify a host key (may be repeated)
-\c   -sanitise-stderr, -sanitise-stdout, -no-sanitise-stderr, -no-sanitise-stdout
-\c             do/don't strip control chars from standard output/error
+\c   -sanitise-stderr, -sanitise-stdout,
+\c   -no-sanitise-stderr, -no-sanitise-stdout
+\c             do/don't strip control chars from stdout/stderr
 \c   -no-antispoof   omit anti-spoofing prompt after authentication
 \c   -scan [-t type,..] host[:port]
-\c             fetch the host's keys, no login; compare with the store
+\c             fetch the host's keys (no login), compare with store
 \c   -knownhosts [host[:port]]
 \c             list the stored host keys
 \c   -json     -scan/-knownhosts output as one JSON array

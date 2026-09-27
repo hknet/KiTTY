@@ -333,6 +333,8 @@
 #define KT_TITLE_WINDOW_TITLE                        "Window title:"
 #define KT_TITLE_PLACEHOLDERS_H_S                    "Placeholders (%h, %s, ...)"
 #define KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES     "Host may set window and taskbar titles separately"
+#define KT_TITLE_WINDOW_NAME                         "Terminal Name base (%KITTY_WINDOW%):"
+#define KT_TITLE_WINDOW_NAME_MOVED                   "Terminal Name base: Connection > Login > Environment"
 
 /* Window/Behaviour */
 #define KT_BEHAVIOUR_CLOSING_THE_WINDOW              "Closing the window"
@@ -2811,7 +2813,7 @@
 #define KT_SYSMENU_ROLLUP                            "Roll-u&p"
 #define KT_SYSMENU_SEND_TO_TRAY                      "Send to tra&y"
 #define KT_SYSMENU_PROTECT                           "Prote&ct"
-#define KT_SYSMENU_NAME_WINDOW                       "&Name this window..."
+#define KT_SYSMENU_NAME_WINDOW                       "Terminal &Name..."
 #define KT_SYSMENU_WINDOW                            "&Window"
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"
 #define KT_SYSMENU_START_WINSCP                      "Start Win&SCP"
@@ -3374,9 +3376,9 @@
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE                            "Text input - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE_SUFFIX                     " - Text input"
-/* The same box for "Name this window..." (system menu): the name goes in
+/* The same box for "Terminal Name..." (system menu): the name goes in
  * front of the window title and into the launcher's Open Sessions list. */
-#define KT_WINNAME_CAPTION                           "Name this window"
+#define KT_WINNAME_CAPTION                           "Terminal Name"
 #define KT_WINNAME_PROMPT                            "Window name (empty = no name):"
 
 /* kitty_storemove.c: portable copy out, folder store in (captions = the panel's group titles) */

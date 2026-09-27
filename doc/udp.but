@@ -460,20 +460,25 @@ implementation of the trait, in this kind of style:
 \c
 \c static void myimpl_free(MyAbstraction *myabs)
 \c {
-\c     MyImplementation *impl = container_of(myabs, MyImplementation, myabs);
+\c     MyImplementation *impl =
+\c         container_of(myabs, MyImplementation, myabs);
 \c     free_other_type(impl->dynamic_subthing);
 \c     sfree(impl);
 \c }
 \c
 \c static void myimpl_modify(MyAbstraction *myabs, unsigned param)
 \c {
-\c     MyImplementation *impl = container_of(myabs, MyImplementation, myabs);
-\c     impl->internal_data[param] += do_something_with(impl->dynamic_subthing);
+\c     MyImplementation *impl =
+\c         container_of(myabs, MyImplementation, myabs);
+\c     impl->internal_data[param] +=
+\c         do_something_with(impl->dynamic_subthing);
 \c }
 \c
-\c static unsigned myimpl_query(MyAbstraction *myabs, unsigned param)
+\c static unsigned myimpl_query(MyAbstraction *myabs,
+\c                              unsigned param)
 \c {
-\c     MyImplementation *impl = container_of(myabs, MyImplementation, myabs);
+\c     MyImplementation *impl =
+\c         container_of(myabs, MyImplementation, myabs);
 \c     return impl->internal_data[param];
 \c }
 
@@ -503,13 +508,16 @@ call sites. Instead, what we generally do in this code base is to
 write a set of \cw{static inline} wrapper functions in the same header
 file that defined the \cw{MyAbstraction} structure types, like this:
 
-\c static inline MyAbstraction *myabs_new(const MyAbstractionVtable *vt)
+\c static inline MyAbstraction *myabs_new(
+\c     const MyAbstractionVtable *vt)
 \c { return vt->new(vt); }
 \c static inline void myabs_free(MyAbstraction *myabs)
 \c { myabs->vt->free(myabs); }
-\c static inline void myabs_modify(MyAbstraction *myabs, unsigned param)
+\c static inline void myabs_modify(MyAbstraction *myabs,
+\c                                 unsigned param)
 \c { myabs->vt->modify(myabs, param); }
-\c static inline unsigned myabs_query(MyAbstraction *myabs, unsigned param)
+\c static inline unsigned myabs_query(MyAbstraction *myabs,
+\c                                   unsigned param)
 \c { return myabs->vt->query(myabs, param); }
 
 And now call sites can use those reasonably clean-looking wrapper

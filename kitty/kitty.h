@@ -122,11 +122,18 @@ void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) ;   /* modeless single-line 
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) ;
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) ;
 char * GetInputBoxResult( void ) ;
-/* "Name this window..." (hknet/KiTTY#54): the modeless box (kitty_inputbox.c)
+/* "Terminal Name..." (hknet/KiTTY#54): the modeless box (kitty_inputbox.c)
  * and the window's name it edits (window.c). */
 void kitty_winname_box( HWND owner ) ;
 const wchar_t * kitty_window_name_get( void ) ;
 void kitty_window_name_set( const wchar_t * name ) ;
+/* -winslot <n>: the number an unnamed window asks for in %KITTY_WINDOW%. */
+void kitty_window_slot_want( int n ) ;
+/* The window's identity for the far end (cyd01/KiTTY#473, window.c): the
+ * auto-command with its %KITTY_...% tokens expanded (NULL = none in it), and
+ * the Restart Manager line "-load <session> [-winname <name> | -winslot <n>]". */
+char * kitty_winident_expand_typed( const char * in ) ;
+void kitty_restart_register_session( const char * sessname ) ;
 void GetAndSendLine( HWND hwnd ) ;
 void GetAndSendMultiLine( HWND hwnd ) ;
 void routine_inputbox( void * phwnd ) ;

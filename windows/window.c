@@ -204,6 +204,7 @@ static void kitty_winprops_remove(HWND hwnd);   /* the launcher's properties (WM
 static void kitty_winprops_publish(WinGuiSeat *wgs);   /* ...and their values (title, reconfig) */
 static void kitty_winprop_closed(HWND hwnd, bool closed); /* the session is over, window open */
 static void kitty_window_leaving(HWND hwnd);    /* atoms + launcher notice, once */
+static Conf *kitty_winident_conf(WinGuiSeat *wgs, Conf *src); /* %KITTY_*% for the backend */
 #ifdef MOD_LAUNCHER
 #endif
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
@@ -753,6 +754,19 @@ static void start_backend(WinGuiSeat *wgs)
         if (sf && filename_to_str(sf)[0])
             kitty_script_stop();
     }
+
+    /*
+     * KiTTY: the window's identity for the far end (cyd01/KiTTY#473). The
+     * %KITTY_...% tokens in the environment-variable VALUES and in the SSH
+     * remote command are expanded here, once per connection attempt, into a
+     * throwaway copy handed to the backend - the same rule as the proxy
+     * override above: the stored session keeps the tokens, so Change
+     * Settings and Save show and write what was typed, and a reconnect after
+     * a rename sends the new name. NULL = nothing to expand.
+     */
+    Conf *identconf = kitty_winident_conf(wgs, connconf);
+    if (identconf)
+        connconf = identconf;
 #endif
 
     seat_set_trust_status(&wgs->seat, true);
@@ -765,6 +779,10 @@ static void start_backend(WinGuiSeat *wgs)
                          &realhost,
                          conf_get_bool(wgs->conf, CONF_tcp_nodelay),
                          conf_get_bool(wgs->conf, CONF_tcp_keepalives));
+#ifdef MOD_PERSO
+    /* The backend has taken its own copy by now. */
+    if (identconf) { conf_free(identconf); identconf = NULL; connconf = wgs->conf; }
+#endif
 #ifdef MOD_PROXY
     /* The backend has taken its own copy by now. */
     if (proxyconf) { conf_free(proxyconf); proxyconf = NULL; connconf = wgs->conf; }
@@ -5170,6 +5188,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* KiTTY: Session > Broadcast may have flipped Accept broadcast;
              * the (BROADCAST) title marker follows the new state. */
             kitty_refresh_title();
+            /* KiTTY: the %KITTY_WINDOW% base may have changed with the
+             * session; the next use claims a number under the new one. */
+            kitty_winprops_publish(wgs);
 #endif
 
             resize_action = conf_get_int(wgs->conf, CONF_resize_action);
@@ -5221,8 +5242,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             init_palette(wgs);
 
             /* Pass new config data to the back end */
+#ifdef MOD_PERSO
+            /* KiTTY: expanded like the copy start_backend hands over - an SSH
+             * main channel not yet opened (still authenticating) takes its
+             * environment and command from what arrives here. */
+            if (wgs->backend) {
+                Conf *identconf = kitty_winident_conf(wgs, wgs->conf);
+                backend_reconfig(wgs->backend, identconf ? identconf : wgs->conf);
+                if (identconf)
+                    conf_free(identconf);
+            }
+#else
             if (wgs->backend)
                 backend_reconfig(wgs->backend, wgs->conf);
+#endif
 
             /* Screen size changed ? */
             if (conf_get_int(wgs->conf, CONF_height) !=
@@ -8478,7 +8511,7 @@ void kitty_refresh_title(void)
 }
 
 /*
- * KiTTY: the window's NAME ("Name this window...", hknet/KiTTY#54) and what
+ * KiTTY: the window's NAME ("Terminal Name...", hknet/KiTTY#54) and what
  * this window publishes about itself for the launcher.
  *
  * The name belongs to the window, not to the session: it is not saved, and a
@@ -8532,8 +8565,13 @@ struct kitty_winprop {
     ATOM atom;               /* the atom this window holds, 0 = none */
     wchar_t value[256];      /* its text, to see a change */
 };
-static struct kitty_winprop kitty_winprops[3] = {
+/* The fourth is not the launcher's: "KiTTY.identbase" is the base of
+ * %KITTY_WINDOW% (the session's "Terminal Name base", else the session value
+ * of the first), which the windows compare to share out their numbers
+ * (kitty_win_ordinal_claim). */
+static struct kitty_winprop kitty_winprops[4] = {
     { L"KiTTY.session" }, { L"KiTTY.folder" }, { L"KiTTY.winname" },
+    { L"KiTTY.identbase" },
 };
 
 static void kitty_winprop_set(HWND hwnd, struct kitty_winprop *p,
@@ -8601,6 +8639,27 @@ static void kitty_winprops_publish(WinGuiSeat *wgs)
     kitty_winprop_set(hwnd, &kitty_winprops[0], wbase);
     kitty_winprop_set(hwnd, &kitty_winprops[1], wfolder);
     kitty_winprop_set(hwnd, &kitty_winprops[2], kitty_window_name_get());
+    {
+        /* The %KITTY_WINDOW% base: "Terminal Name base" with Windows'
+         * %VAR% expanded (%USERNAME%-db, so two people on one server account
+         * do not meet in one tmux session), else the session value. An
+         * unknown %name% stays as written, as in the #472 paths; a result
+         * that does not fit keeps the text as typed. */
+        const char *wn = conf_get_str(wgs->conf, CONF_window_name);
+        wchar_t wtyped[256], wident[256];
+        if (!wn || !*wn ||
+            !MultiByteToWideChar(CP_ACP, 0, wn, -1, wtyped, lenof(wtyped))) {
+            wcscpy(wident, wbase);
+        } else {
+            DWORD got;
+            wtyped[lenof(wtyped) - 1] = L'\0';
+            got = ExpandEnvironmentStringsW(wtyped, wident, lenof(wident));
+            if (!got || got > lenof(wident))
+                wcscpy(wident, wtyped);
+        }
+        wident[lenof(wident) - 1] = L'\0';
+        kitty_winprop_set(hwnd, &kitty_winprops[3], wident);
+    }
     /* Ctrl+Tab takes part in the switching only between windows that have it
      * on: the flag is what CtrlTabWindowProc looks for in the others. */
     if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag())
@@ -8617,6 +8676,9 @@ static void kitty_winprops_publish(WinGuiSeat *wgs)
  * wherever session_closed is set, cleared when a new connection starts.
  */
 #define KITTY_CLOSED_PROP L"KiTTY.closed"
+/* This window's number among the open windows of its session, for
+ * %KITTY_WINDOW% without a name (kitty_win_ordinal_claim). A plain number. */
+#define KITTY_ORDINAL_PROP L"KiTTY.ordinal"
 static void kitty_winprop_closed(HWND hwnd, bool closed)
 {
     if (!hwnd)
@@ -8635,6 +8697,7 @@ static void kitty_winprops_remove(HWND hwnd)
         kitty_winprop_set(hwnd, &kitty_winprops[i], L"");
     RemovePropW(hwnd, KITTY_CTRLTAB_PROP);
     RemovePropW(hwnd, KITTY_CLOSED_PROP);
+    RemovePropW(hwnd, KITTY_ORDINAL_PROP);
 }
 
 /* The window is about to go, for good: the global atoms are released (they
@@ -8656,8 +8719,89 @@ static void kitty_window_leaving(HWND hwnd)
         kitty_launcher_window_gone(hwnd);
 }
 
-/* Set (or, empty, clear) the window's name: from the "Name this window" box
- * (kitty_inputbox.c). Blanks around it are dropped. */
+/* This window's number for %KITTY_WINDOW% (kitty_win_ordinal_claim, below):
+ * 0 = none claimed; the number -winslot asks for, 0 = none. */
+#define KITTY_ORDINAL_MAX 1024
+static int kitty_win_ordinal = 0;
+static int kitty_win_ordinal_want = 0;
+
+void kitty_window_slot_want(int n)
+{
+    kitty_win_ordinal_want = (n >= 1 && n <= KITTY_ORDINAL_MAX) ? n : 0;
+}
+
+/*
+ * The Restart Manager command line of a window of a SAVED session: -load
+ * "<session>", plus -winname "<name>" while the window has a name, else
+ * -winslot <n> once it holds a number, so that a Windows restart or an
+ * in-place upgrade brings the window back as the same %KITTY_WINDOW% - and a
+ * remote session keyed on it re-attaches. Called at startup (windows/putty.c,
+ * before the window exists), on every change of the name and when a number
+ * is claimed. An unsaved session is not registered here: it keeps the bare
+ * relaunch putty.c gives it, which reopens the configuration box.
+ *
+ * The name is quoted by the rules the command line is split with
+ * (split_into_argv): a quote becomes \", and backslashes are doubled where
+ * they precede a quote or the closing quote. A line that would not fit the
+ * Restart Manager's limit is registered without the name.
+ */
+#ifndef RESTART_MAX_CMD_LINE
+#define RESTART_MAX_CMD_LINE 1024
+#endif
+void kitty_restart_register_session(const char *sessname)
+{
+    wchar_t wcl[RESTART_MAX_CMD_LINE];
+    char rcl[2048];
+    const wchar_t *name = kitty_window_name_get();
+
+    if (!sessname || !*sessname)
+        return;
+    snprintf(rcl, sizeof(rcl), "-load \"%s\"", sessname);
+    if (MultiByteToWideChar(CP_ACP, 0, rcl, -1, wcl, lenof(wcl)) <= 0)
+        return;
+    if (*name) {
+        size_t n = wcslen(name), i, j, bs = 0, k;
+        wchar_t *arg = snewn(2 * n + 16, wchar_t);
+        wcscpy(arg, L" -winname \"");
+        j = wcslen(arg);
+        for (i = 0; i < n; i++) {
+            if (name[i] == L'\\') {
+                bs++;
+                continue;
+            }
+            for (k = 0; k < (name[i] == L'"' ? 2 * bs + 1 : bs); k++)
+                arg[j++] = L'\\';
+            bs = 0;
+            arg[j++] = name[i];
+        }
+        for (k = 0; k < 2 * bs; k++)
+            arg[j++] = L'\\';
+        arg[j++] = L'"';
+        arg[j] = L'\0';
+        if (wcslen(wcl) + j < lenof(wcl))
+            wcscat(wcl, arg);
+        sfree(arg);
+    } else if (kitty_win_ordinal > 0 || kitty_win_ordinal_want > 0) {
+        /* before the claim: the number -winslot asked for */
+        wchar_t arg[32];
+        _snwprintf(arg, lenof(arg), L" -winslot %d", kitty_win_ordinal > 0 ?
+                   kitty_win_ordinal : kitty_win_ordinal_want);
+        arg[lenof(arg) - 1] = L'\0';
+        if (wcslen(wcl) + wcslen(arg) < lenof(wcl))
+            wcscat(wcl, arg);
+    }
+    RegisterApplicationRestart(wcl, 0);
+}
+
+/* Set (or, empty, clear) the window's name: from the "Terminal Name" box
+ * (kitty_inputbox.c) and -winname (windows/putty.c) - a name given to this
+ * one window. The session's "Terminal Name base" is not a name: it only
+ * changes the base of the numbered %KITTY_WINDOW%. Blanks around it are
+ * dropped, and it is cut at 245 characters - what the launcher's property can
+ * carry (kitty_winprop_set), so the title, the launcher and %KITTY_WINDOW%
+ * all see the same name. A named window gives up its number, so the next new
+ * window of its base can take it. */
+#define KITTY_WINNAME_MAX 245
 void kitty_window_name_set(const wchar_t *name)
 {
     WinGuiSeat *wgs;
@@ -8665,6 +8809,8 @@ void kitty_window_name_set(const wchar_t *name)
     while (name && (*name == L' ' || *name == L'\t'))
         name++;
     len = name ? wcslen(name) : 0;
+    if (len > KITTY_WINNAME_MAX)
+        len = KITTY_WINNAME_MAX;
     while (len && (name[len - 1] == L' ' || name[len - 1] == L'\t'))
         len--;
     sfree(kitty_winname);
@@ -8673,11 +8819,338 @@ void kitty_window_name_set(const wchar_t *name)
         kitty_winname = snewn(len + 1, wchar_t);
         memcpy(kitty_winname, name, len * sizeof(wchar_t));
         kitty_winname[len] = L'\0';
+        kitty_win_ordinal = 0;
+        if (MainHwnd)
+            RemovePropW(MainHwnd, KITTY_ORDINAL_PROP);
     }
     kitty_refresh_title();
     if (MainHwnd &&
-        (wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA)) != NULL)
+        (wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA)) != NULL) {
         kitty_winprops_publish(wgs);
+        /* the Restart Manager relaunches it under the new name */
+        kitty_restart_register_session(
+            conf_get_str(wgs->conf, CONF_sessionname));
+    }
+}
+
+/*
+ * KiTTY: the window's identity for the far end (cyd01/KiTTY#473).
+ *
+ * A remote tmux or screen session can be re-attached after a dropped
+ * connection, a restart of KiTTY++ or a reboot of this machine only if the
+ * far end is told WHICH window is asking. These tokens tell it:
+ *
+ *   %KITTY_WINDOW%   the window's name; without one, the base + "-" + the
+ *                    window's number among the open windows of that base:
+ *                    db, db-2 (number 1 is the base alone). The base is
+ *                    the session's "Terminal Name
+ *                    base" (WindowName), else the session as the launcher
+ *                    lists it (the saved session, else user@host)
+ *   %KITTY_SESSION%  the saved session's name; empty for an unsaved one
+ *   %KITTY_USER%     the configured user name (may be empty)
+ *   %KITTY_HOST%     the configured host
+ *   %KITTY_PORT%     the configured port
+ *   %KITTY_HWND%     this window's handle, in hex
+ *
+ * They are expanded for every connection attempt of this window, in three
+ * places: the VALUES of the environment variables (Connection > Login >
+ * Environment - sent
+ * as SSH "env" requests, so the server's sshd needs "AcceptEnv KITTY_*";
+ * telnet sends them too), the SSH remote command (both through
+ * kitty_winident_conf, into the copy start_backend hands the backend), and
+ * the auto-command (kitty_autocommand_tick, typed into the session, so it
+ * needs nothing from the server). The stored settings keep the tokens.
+ *
+ * Namespaced so they never meet the %VAR% expansion of paths
+ * (cyd01/KiTTY#472). A name matches ignoring case, like Windows' own %VAR%;
+ * an unknown %KITTY_...% and every other %...% stay exactly as they are.
+ *
+ * What an inserted value may contain (kitty_winident_put):
+ *  - control characters are dropped: C0 (tab, CR, LF ...), DEL, C1 and the
+ *    Unicode line and paragraph separators - a line break in a name would end
+ *    a typed command early;
+ *  - a character the target's code page cannot hold becomes '_', never '?'
+ *    (a shell wildcard), and no best-fit substitute is taken (that can turn a
+ *    look-alike into a real quote);
+ *  - in the auto-command only, a backslash is doubled: KiTTY reads that text
+ *    for its own \n, \p ... escapes, and the doubled one arrives as one.
+ * Spaces and quotes are left alone, so a name gives the same value by every
+ * route. The command decides the quoting: tmux new -A -s '%KITTY_WINDOW%'.
+ *
+ * The number is claimed the first time it is needed, published as
+ * KITTY_ORDINAL_PROP beside the base (KiTTY.identbase): the number -winslot
+ * asked for when no other open window of the same base holds it, else the
+ * smallest free one. A named mutex covers the scan and the publishing, so two
+ * windows starting together cannot take the same number. It is kept while the
+ * base stays the same; a changed base claims again, asking for the old
+ * number first. The Restart Manager line then carries it (-winslot), so a
+ * Windows restart brings the window back as the same %KITTY_WINDOW%.
+ */
+static wchar_t kitty_win_ordinal_base[256];   /* the base it was claimed for */
+
+struct kitty_ordinal_scan {
+    HWND self;
+    const wchar_t *base;
+    bool used[KITTY_ORDINAL_MAX + 1];
+};
+
+static BOOL CALLBACK kitty_ordinal_enum(HWND hwnd, LPARAM lp)
+{
+    struct kitty_ordinal_scan *s = (struct kitty_ordinal_scan *)lp;
+    wchar_t text[256];
+    const wchar_t *bar;
+    ATOM a;
+    int n;
+
+    if (hwnd == s->self)
+        return TRUE;
+    n = (int)(INT_PTR)GetPropW(hwnd, KITTY_ORDINAL_PROP);
+    if (n <= 0 || n > KITTY_ORDINAL_MAX)
+        return TRUE;
+    a = (ATOM)(ULONG_PTR)GetPropW(hwnd, L"KiTTY.identbase");
+    if (!a || !GlobalGetAtomNameW(a, text, lenof(text)))
+        return TRUE;
+    bar = wcschr(text, L'|');        /* "<hwnd>|<base>", see above */
+    if (bar && !_wcsicmp(bar + 1, s->base))
+        s->used[n] = true;
+    return TRUE;
+}
+
+static int kitty_win_ordinal_claim(WinGuiSeat *wgs)
+{
+    struct kitty_ordinal_scan *s;
+    const wchar_t *base = kitty_winprops[3].value;
+    HANDLE lock;
+    bool held = false;
+    int n;
+
+    if (kitty_win_ordinal) {
+        if (!_wcsicmp(base, kitty_win_ordinal_base))
+            return kitty_win_ordinal;
+        kitty_win_ordinal_want = kitty_win_ordinal;   /* base changed */
+        kitty_win_ordinal = 0;
+    }
+    lock = CreateMutexW(NULL, FALSE, L"Local\\KiTTY.winident.slot");
+    if (lock) {
+        DWORD r = WaitForSingleObject(lock, 2000);
+        held = (r == WAIT_OBJECT_0 || r == WAIT_ABANDONED);
+    }
+    s = snew(struct kitty_ordinal_scan);
+    memset(s, 0, sizeof(*s));
+    s->self = wgs->term_hwnd;
+    s->base = base;
+    EnumWindows(kitty_ordinal_enum, (LPARAM)s);
+    if (kitty_win_ordinal_want && !s->used[kitty_win_ordinal_want]) {
+        n = kitty_win_ordinal_want;
+    } else {
+        for (n = 1; n < KITTY_ORDINAL_MAX && s->used[n]; n++)
+            ;
+    }
+    sfree(s);
+    kitty_win_ordinal = n;
+    kitty_win_ordinal_want = 0;
+    wcsncpy(kitty_win_ordinal_base, base, lenof(kitty_win_ordinal_base) - 1);
+    kitty_win_ordinal_base[lenof(kitty_win_ordinal_base) - 1] = L'\0';
+    if (wgs->term_hwnd)
+        SetPropW(wgs->term_hwnd, KITTY_ORDINAL_PROP, (HANDLE)(INT_PTR)n);
+    if (held)
+        ReleaseMutex(lock);
+    if (lock)
+        CloseHandle(lock);
+    /* the Restart Manager brings it back with this number */
+    kitty_restart_register_session(conf_get_str(wgs->conf, CONF_sessionname));
+    return n;
+}
+
+enum { KWI_WINDOW, KWI_SESSION, KWI_USER, KWI_HOST, KWI_PORT, KWI_HWND };
+static const char *const kitty_winident_names[] = {
+    "KITTY_WINDOW", "KITTY_SESSION", "KITTY_USER",
+    "KITTY_HOST", "KITTY_PORT", "KITTY_HWND",
+};
+
+/* The text a token stands for, newly allocated. */
+static wchar_t *kitty_winident_value(WinGuiSeat *wgs, Conf *conf, int which)
+{
+    wchar_t w[300];
+    const char *s;
+    bool utf8 = false;
+
+    w[0] = L'\0';
+    switch (which) {
+      case KWI_WINDOW:
+        if (*kitty_window_name_get()) {
+            _snwprintf(w, lenof(w), L"%ls", kitty_window_name_get());
+        } else {
+            int n;
+            kitty_winprops_publish(wgs);     /* the base, current */
+            n = kitty_win_ordinal_claim(wgs);
+            /* the first window is the base alone: db, db-2, db-3 */
+            if (kitty_winprops[3].value[0] && n == 1)
+                _snwprintf(w, lenof(w), L"%ls", kitty_winprops[3].value);
+            else if (kitty_winprops[3].value[0])
+                _snwprintf(w, lenof(w), L"%ls-%d", kitty_winprops[3].value, n);
+            else
+                _snwprintf(w, lenof(w), L"%d", n);
+        }
+        w[lenof(w) - 1] = L'\0';
+        break;
+      case KWI_SESSION:
+        s = conf_get_str(conf, CONF_sessionname);
+        if (s && *s && strcmp(s, "Default Settings") != 0)
+            return dup_mb_to_wc(CP_ACP, s);
+        break;
+      case KWI_USER:
+        /* STR_AMBI: conf_get_str would assert, and it may be UTF-8 */
+        s = conf_get_str_ambi(conf, CONF_username, &utf8);
+        return dup_mb_to_wc(utf8 ? CP_UTF8 : CP_ACP, s ? s : "");
+      case KWI_HOST:
+        s = conf_get_str(conf, CONF_host);
+        return dup_mb_to_wc(CP_ACP, s ? s : "");
+      case KWI_PORT:
+        _snwprintf(w, lenof(w), L"%d", conf_get_int(conf, CONF_port));
+        w[lenof(w) - 1] = L'\0';
+        break;
+      case KWI_HWND:
+        _snwprintf(w, lenof(w), L"%lX",
+                   (unsigned long)(ULONG_PTR)wgs->term_hwnd);
+        w[lenof(w) - 1] = L'\0';
+        break;
+    }
+    {
+        size_t len = wcslen(w) + 1;
+        wchar_t *out = snewn(len, wchar_t);
+        memcpy(out, w, len * sizeof(wchar_t));
+        return out;
+    }
+}
+
+/* Append value `v` to `sb` in code page `cp`, cleaned as the block comment
+ * above says; `typed` = the auto-command (backslashes doubled). */
+static void kitty_winident_put(strbuf *sb, const wchar_t *v, UINT cp,
+                               bool typed)
+{
+    size_t n = wcslen(v), i, j = 0;
+    wchar_t *clean = snewn(2 * n + 1, wchar_t);
+    const char *defchar = "_";
+    DWORD flags = WC_NO_BEST_FIT_CHARS;
+    int len;
+
+    for (i = 0; i < n; i++) {
+        wchar_t c = v[i];
+        if (c < 0x20 || c == 0x7F || (c >= 0x80 && c <= 0x9F) ||
+            c == 0x2028 || c == 0x2029)
+            continue;
+        if (typed && c == L'\\')
+            clean[j++] = L'\\';
+        clean[j++] = c;
+    }
+    clean[j] = L'\0';
+    if (cp == CP_ACP)
+        cp = GetACP();              /* which may be UTF-8 on this system */
+    if (cp == CP_UTF8) {
+        defchar = NULL;             /* both refused for UTF-8 */
+        flags = 0;
+    }
+    if (j && (len = WideCharToMultiByte(cp, flags, clean, -1, NULL, 0,
+                                        defchar, NULL)) > 0) {
+        char *mb = snewn(len, char);
+        if (WideCharToMultiByte(cp, flags, clean, -1, mb, len,
+                                defchar, NULL) > 0)
+            put_dataz(sb, mb);
+        sfree(mb);
+    }
+    sfree(clean);
+}
+
+/* Expand the %KITTY_...% tokens of `in` (text in code page `cp`). Returns a
+ * new string, or NULL when there was nothing to expand - the caller keeps
+ * its own text then. */
+static char *kitty_winident_expand(WinGuiSeat *wgs, Conf *conf,
+                                   const char *in, UINT cp, bool typed)
+{
+    strbuf *sb = NULL;
+    const char *p, *done;
+
+    if (!wgs || !in || !strchr(in, '%'))
+        return NULL;
+    p = done = in;
+    while ((p = strchr(p, '%')) != NULL) {
+        const char *end = strchr(p + 1, '%');
+        size_t len;
+        int k, which = -1;
+        wchar_t *v;
+
+        if (!end)
+            break;
+        len = end - (p + 1);
+        for (k = 0; k < lenof(kitty_winident_names); k++)
+            if (strlen(kitty_winident_names[k]) == len &&
+                !_strnicmp(p + 1, kitty_winident_names[k], len)) {
+                which = k;
+                break;
+            }
+        if (which < 0) {
+            p++;       /* not ours: this '%' stays, the next may open one */
+            continue;
+        }
+        if (!sb)
+            sb = strbuf_new();
+        put_data(sb, done, p - done);
+        v = kitty_winident_value(wgs, conf, which);
+        kitty_winident_put(sb, v, cp, typed);
+        sfree(v);
+        p = done = end + 1;
+    }
+    if (!sb)
+        return NULL;
+    put_dataz(sb, done);
+    return strbuf_to_str(sb);
+}
+
+/* The session's Conf with the tokens expanded in the environment-variable
+ * values and the SSH remote command, for the backend; NULL = none there. */
+static Conf *kitty_winident_conf(WinGuiSeat *wgs, Conf *src)
+{
+    Conf *out = NULL;
+    char *key, *val, *x;
+    bool utf8 = false;
+
+    /* Walk `src`, write `out`: replacing an entry frees it, and `key`
+     * points into the Conf being walked. */
+    for (val = conf_get_str_strs(src, CONF_environmt, NULL, &key);
+         val != NULL;
+         val = conf_get_str_strs(src, CONF_environmt, key, &key)) {
+        if ((x = kitty_winident_expand(wgs, src, val, CP_ACP, false)) != NULL) {
+            if (!out)
+                out = conf_copy(src);
+            conf_set_str_str(out, CONF_environmt, key, x);
+            sfree(x);
+        }
+    }
+    /* STR_AMBI: stored back in the encoding it came in */
+    val = conf_get_str_ambi(src, CONF_remote_cmd, &utf8);
+    if ((x = kitty_winident_expand(wgs, src, val, utf8 ? CP_UTF8 : CP_ACP,
+                                   false)) != NULL) {
+        if (!out)
+            out = conf_copy(src);
+        if (utf8)
+            conf_set_utf8(out, CONF_remote_cmd, x);
+        else
+            conf_set_str(out, CONF_remote_cmd, x);
+        sfree(x);
+    }
+    return out;
+}
+
+/* The auto-command's text with the tokens expanded (kitty_bridge.c), for the
+ * active terminal window; NULL = nothing to expand. */
+char *kitty_winident_expand_typed(const char *in)
+{
+    WinGuiSeat *wgs = MainHwnd ?
+        (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA) : NULL;
+    if (!wgs)
+        return NULL;
+    return kitty_winident_expand(wgs, wgs->conf, in, CP_ACP, true);
 }
 #endif
 

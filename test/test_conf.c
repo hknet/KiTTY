@@ -787,6 +787,7 @@ void test_simple(void)
                         WORDNAV_ALT, 0, WORDNAV_CTRL, 1, WORDNAV_BOTH, 2, -1);
     test_bool_simple(CONF_check_update_startup, "CheckUpdateStartup", true);
     test_bool_simple(CONF_comment_notify, "CommentNotify", true);
+    test_str_simple(CONF_window_name, "WindowName", "");
     test_bool_simple(CONF_remember_winpos, "RememberWindowPos", true);
     /* KiTTY file-transfer settings: one protocol and one port per tool. */
     test_int_simple(CONF_winscpprot, "WinSCPProtocol", 1);

@@ -917,6 +917,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "CtrlTabSwitch", conf, CONF_ctrl_tab_switch);
     gpps_forced(sesskey, "Comment", conf, CONF_comment );
     gppb_forced(sesskey, "CommentNotify", conf, CONF_comment_notify );
+    gpps_forced(sesskey, "WindowName", conf, CONF_window_name );
     {
         /* A .ktx written by classic KiTTY can carry the retired per-session
          * "Notes" field - the send-text box's Shift+F2 / Shift+F3 value. There

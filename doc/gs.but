@@ -62,14 +62,17 @@ will probably see a message looking something like this:
 
 \c The host key is not cached for this server:
 \c  ssh.example.com (port 22)
-\c You have no guarantee that the server is the computer you think it is.
+\c You have no guarantee that the server is the computer you
+\c think it is.
 \c The server's ssh-ed25519 key fingerprint is:
-\c  ssh-ed25519 255 SHA256:TddlQk20DVs4LRcAsIfDN9pInKpY06D+h4kSHwWAj4w
+\c  ssh-ed25519 255
+\c  SHA256:TddlQk20DVs4LRcAsIfDN9pInKpY06D+h4kSHwWAj4w
 \c If you trust this host, press "Accept" to add the key to KiTTY's
 \c cache and carry on connecting.
-\c If you want to carry on connecting just once, without adding the key
-\c to the cache, press "Connect Once".
-\c If you do not trust this host, press "Cancel" to abandon the connection.
+\c If you want to carry on connecting just once, without adding
+\c the key to the cache, press "Connect Once".
+\c If you do not trust this host, press "Cancel" to abandon the
+\c connection.
 
 This is a feature of the SSH protocol. It is designed to protect you
 against a network attack known as \i\e{spoofing}: secretly
