@@ -145,11 +145,17 @@ static HMENU LauncherPendingMenu = NULL ;
 static int LauncherConfReload = 1 ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
+/* How the tray menu is placed at LauncherMenuPoint (see LauncherMenuAnchor);
+ * kept with the point so the menu reopened after a Refresh opens the same way. */
+static UINT LauncherMenuAlign = TPM_LEFTALIGN ;
+static RECT LauncherMenuExclude ;
+static int LauncherMenuExcludeValid = 0 ;
 /*
  * KiTTY: the left click on the tray icon opens the menu AT ONCE, and a double
  * click still opens a new configuration box. The two fit together like this:
  *
- * - The first button-up opens the menu at the cursor. Its point and time are
+ * - The first button-up opens the menu (at the icon, see LauncherMenuAnchor).
+ *   The cursor's point and the click's time are
  *   kept here, and the click is "armed" for as long as the menu is up.
  * - A second click that comes quickly lands in the open menu, whose modal
  *   loop has the mouse. The menu's message filter (LauncherMenuMsgFilter)
@@ -235,18 +241,349 @@ static char LauncherHotkeyWinner[256] = "" ;
 static int LauncherHotkeyBalloonArmed = 0 ;
 
 // Hide/UnHide all handling
-static struct THWin { HWND hwnd ; char name[128] ; } TabWin[100] ;
+/*
+ * One open terminal window, as the "Open Sessions" list shows it. Besides its
+ * handle, its title and whether it is visible, what the terminal publishes
+ * about itself as window PROPERTIES (windows/window.c, kitty_winprops_publish):
+ *   "KiTTY.session"  the saved session's name, else user@host (else the host)
+ *   "KiTTY.folder"   the saved session's Folder; absent for "Default" or none
+ *   "KiTTY.winname"  the name given with "Name this window..."; absent if none
+ * Each property's value is a GLOBAL ATOM holding the string: a property value
+ * is a plain number that any process can read, and the global atom table
+ * turns it back into the text - no message goes to the terminal, so a hung
+ * terminal cannot hold the menu up. A terminal without them (an older build)
+ * is listed by its title alone, as before.
+ */
+static struct THWin {
+	HWND hwnd ;
+	int visible ;
+	wchar_t title[128] ;
+	wchar_t session[256] ;
+	wchar_t folder[256] ;
+	wchar_t winname[256] ;
+	int closed ;          /* "KiTTY.closed": the session is over, the window open */
+} TabWin[100] ;
 static int oldIconFlag = 0 ;
 static int NbWin = 0 ;
 static int IsUnique = 0 ;
+/* "Show next window on close" (only offered while IsUnique): when the window
+ * "Show one window at a time" showed closes, the one shown before it comes up
+ * (UniqueHistory, most recent last), else the first entry of Open Sessions.
+ * Like IsUnique it lasts for this launcher's run. */
+static int ShowNextOnClose = 0 ;
+static HWND UniqueShown = NULL ;
+static HWND UniqueHistory[100] ;
+static int UniqueHistoryN = 0 ;
+static UINT LauncherWindowGoneMessage = 0 ;
+static UINT LauncherStateMessage = 0 ;
 int RefreshWinList( HWND hwnd ) ;
 
+/*
+ * The entries of "Open Sessions".
+ * - Label: the window's name (if it has one), the session, then the live title
+ *   as a second part - "db - prod-db - root@db1: ~". The title is left out
+ *   when it is the session name again, and the name is not repeated when the
+ *   title already starts with it (the terminal puts it there).
+ * - Order: HIDDEN windows first, then the visible ones, alphabetical within
+ *   each group, a separator between the two.
+ * - Mark: a visible window carries the tick, a hidden one the menu's radio
+ *   bullet. Both are drawn by Windows through the menu theme, so they take the
+ *   menu's own ink in light and dark mode alike (the popup menus have no
+ *   owner-draw path here: kitty_theme.c themes them through the app mode).
+ * - More than LAUNCHER_WINLIST_FOLD_ABOVE windows: the ones whose session has a
+ *   folder go into one submenu per folder (the same order inside); the rest
+ *   stay at the top level, after the folders.
+ * - A mnemonic (&) on the first character of a label when it is a letter or a
+ *   digit that no other entry of the same (sub)menu, and no fixed item there,
+ *   starts with. A literal & in a name is doubled.
+ * The command id stays IDM_GOHIDE + the window's index in TabWin, whatever the
+ * position in the menu: the WM_COMMAND handler and ManageSwitch read it so.
+ */
+#define LAUNCHER_WINLIST_FOLD_ABOVE	25
+#define LAUNCHER_WINLIST_TITLE_SHOWN	80	/* characters of the live title */
+#define LAUNCHER_WINLABEL_MAX		400
+
+struct LauncherWinEntry {
+	int idx ;                                /* into TabWin */
+	wchar_t label[LAUNCHER_WINLABEL_MAX] ;   /* raw: no & escaping yet */
+} ;
+static struct LauncherWinEntry LauncherWinEntries[100] ;
+
+static void LauncherWAppend( wchar_t * out, size_t n, const wchar_t * s ) {
+	size_t l = wcslen( out ) ;
+	while( *s && l + 1 < n ) out[l++] = *s++ ;
+	out[l] = L'\0' ;
+}
+
+static wchar_t LauncherWUpper( wchar_t c ) {
+	return (wchar_t)(ULONG_PTR)CharUpperW( (LPWSTR)(ULONG_PTR)(WORD)c ) ;
+}
+
+static void LauncherWinLabel( const struct THWin * w, wchar_t * out, size_t n ) {
+	const wchar_t * title = w->title ;
+	size_t nl = wcslen( w->winname ), sl = wcslen( KT_WINLABEL_SEP ) ;
+	wchar_t shown[LAUNCHER_WINLIST_TITLE_SHOWN + 4] ;
+	wchar_t * p ;
+
+	out[0] = L'\0' ;
+	if( nl && !wcsncmp( title, w->winname, nl ) && !wcsncmp( title + nl, KT_WINLABEL_SEP, sl ) )
+		title += nl + sl ;
+	if( wcslen( title ) > LAUNCHER_WINLIST_TITLE_SHOWN ) {
+		wcsncpy( shown, title, LAUNCHER_WINLIST_TITLE_SHOWN ) ;
+		wcscpy( shown + LAUNCHER_WINLIST_TITLE_SHOWN, L"..." ) ;
+	} else
+		wcscpy( shown, title ) ;
+	if( nl ) {
+		LauncherWAppend( out, n, w->winname ) ;
+		LauncherWAppend( out, n, KT_WINLABEL_SEP ) ;
+	}
+	if( w->session[0] ) {
+		LauncherWAppend( out, n, w->session ) ;
+		if( shown[0] && lstrcmpiW( shown, w->session ) ) {
+			LauncherWAppend( out, n, KT_WINLABEL_SEP ) ;
+			LauncherWAppend( out, n, shown ) ;
+		}
+	} else
+		LauncherWAppend( out, n, shown ) ;
+	/* A dead session says so. Text, not grey: a greyed menu item cannot be
+	 * chosen, and this is exactly the window one wants to open - to restart
+	 * it or to read why it dropped. */
+	if( w->closed )
+		LauncherWAppend( out, n, KT_WINLABEL_DISCONNECTED ) ;
+	/* a tab would start the menu's right-hand column */
+	for( p = out ; *p ; p++ ) if( *p == L'\t' ) *p = L' ' ;
+}
+
+/* Hidden first, then alphabetical (case-insensitive, the user's locale). */
+static int LauncherWinEntryCmp( const void * a, const void * b ) {
+	const struct LauncherWinEntry * x = (const struct LauncherWinEntry *)a ;
+	const struct LauncherWinEntry * y = (const struct LauncherWinEntry *)b ;
+	int c ;
+	if( TabWin[x->idx].visible != TabWin[y->idx].visible )
+		return TabWin[x->idx].visible ? 1 : -1 ;
+	c = CompareStringW( LOCALE_USER_DEFAULT, NORM_IGNORECASE, x->label, -1, y->label, -1 ) ;
+	if( c && c != CSTR_EQUAL ) return c == CSTR_LESS_THAN ? -1 : 1 ;
+	return x->idx - y->idx ;
+}
+
+/* The mnemonic key of a label: its first character, upper case, when it is a
+ * letter or a digit; 0 otherwise. */
+static wchar_t LauncherWinKey( const wchar_t * label ) {
+	if( label[0] && IsCharAlphaNumericW( label[0] ) ) return LauncherWUpper( label[0] ) ;
+	return 0 ;
+}
+
+/* The mnemonics the items already in `m` use (Hide all, Unhide all...). */
+static void LauncherMenuTakenKeys( HMENU m, wchar_t * taken, size_t n ) {
+	int i, count = GetMenuItemCount( m ) ;
+	size_t used = 0 ;
+	taken[0] = L'\0' ;
+	for( i = 0 ; i < count && used + 1 < n ; i++ ) {
+		wchar_t text[256] ;
+		const wchar_t * p ;
+		if( GetMenuStringW( m, i, text, 256, MF_BYPOSITION ) <= 0 ) continue ;
+		for( p = text ; *p ; p++ )
+			if( p[0] == L'&' ) {
+				if( p[1] == L'&' ) { p++ ; continue ; }
+				if( p[1] ) { taken[used++] = LauncherWUpper( p[1] ) ; taken[used] = L'\0' ; }
+				break ;
+			}
+	}
+}
+
+/* `raw` as menu text: & doubled, and a leading & when `mnemonic`. */
+static void LauncherMenuText( const wchar_t * raw, int mnemonic, wchar_t * out, size_t n ) {
+	size_t l = 0 ;
+	if( n < 3 ) { if( n ) out[0] = L'\0' ; return ; }
+	if( mnemonic ) out[l++] = L'&' ;
+	for( ; *raw && l + 2 < n ; raw++ ) {
+		if( *raw == L'&' ) out[l++] = L'&' ;
+		out[l++] = *raw ;
+	}
+	out[l] = L'\0' ;
+}
+
+/* Does `key` start exactly one of the `n` labels, and no fixed item? */
+static int LauncherKeyUnique( wchar_t key, const wchar_t * keys, int n, const wchar_t * taken ) {
+	int i, hits = 0 ;
+	if( !key || wcschr( taken, key ) ) return 0 ;
+	for( i = 0 ; i < n ; i++ ) if( keys[i] == key ) hits++ ;
+	return hits == 1 ;
+}
+
+/* " (12, 7 hidden)" / " (12)": the counts after "Open Sessions" and after a
+ * folder's name. */
+static void LauncherWinCounts( int total, int hidden, char * out, size_t n ) {
+	if( hidden ) snprintf( out, n, KT_MENU_OPENED_COUNTS, total, hidden ) ;
+	else snprintf( out, n, KT_MENU_OPENED_COUNTS_NONE_HIDDEN, total ) ;
+}
+
+static void LauncherWinAppendEntry( HMENU m, const struct LauncherWinEntry * e, int mnemonic ) {
+	MENUITEMINFOW mii ;
+	wchar_t text[2 * LAUNCHER_WINLABEL_MAX + 2] ;
+	LauncherMenuText( e->label, mnemonic, text, sizeof(text)/sizeof(text[0]) ) ;
+	memset( &mii, 0, sizeof(mii) ) ;
+	mii.cbSize = sizeof(mii) ;
+	mii.fMask = MIIM_ID | MIIM_STRING | MIIM_FTYPE | MIIM_STATE ;
+	/* Checked either way: the tick for a visible window, the radio bullet
+	 * (MFT_RADIOCHECK) for a hidden one. */
+	mii.fType = MFT_STRING | ( TabWin[e->idx].visible ? 0 : MFT_RADIOCHECK ) ;
+	mii.fState = MFS_ENABLED | MFS_CHECKED ;
+	mii.wID = IDM_GOHIDE + e->idx ;
+	mii.dwTypeData = text ;
+	InsertMenuItemW( m, (UINT)GetMenuItemCount( m ), TRUE, &mii ) ;
+}
+
+/*
+ * Fill `m`: first the folder submenus `fmenu` (names `fname`, counts `ftext`),
+ * then the entries `sel`, already in menu order (hidden, then visible).
+ * `taken`: the mnemonics of the items already in `m`.
+ */
+static void LauncherWinListFill( HMENU m, const wchar_t * taken,
+                                 struct LauncherWinEntry * const * sel, int nsel,
+                                 wchar_t (* fname)[256], HMENU * fmenu, char (* ftext)[48], int nf ) {
+	wchar_t keys[200] ;
+	int i, k = 0 ;
+	for( i = 0 ; i < nf ; i++ ) keys[k++] = LauncherWinKey( fname[i] ) ;
+	for( i = 0 ; i < nsel ; i++ ) keys[k++] = LauncherWinKey( sel[i]->label ) ;
+	k = 0 ;
+	for( i = 0 ; i < nf ; i++, k++ ) {
+		wchar_t text[600], counts[48] ;
+		LauncherMenuText( fname[i], LauncherKeyUnique( keys[k], keys, nf + nsel, taken ),
+		                  text, sizeof(text)/sizeof(text[0]) - 48 ) ;
+		if( !MultiByteToWideChar( CP_ACP, 0, ftext[i], -1, counts, 48 ) ) counts[0] = L'\0' ;
+		LauncherWAppend( text, sizeof(text)/sizeof(text[0]), counts ) ;
+		AppendMenuW( m, MF_POPUP, (UINT_PTR)fmenu[i], text ) ;
+	}
+	if( nf && nsel ) AppendMenu( m, MF_SEPARATOR, 0, 0 ) ;
+	for( i = 0 ; i < nsel ; i++, k++ ) {
+		/* the separator between the hidden and the visible group */
+		if( i > 0 && !TabWin[sel[i-1]->idx].visible && TabWin[sel[i]->idx].visible )
+			AppendMenu( m, MF_SEPARATOR, 0, 0 ) ;
+		LauncherWinAppendEntry( m, sel[i], LauncherKeyUnique( keys[k], keys, nf + nsel, taken ) ) ;
+	}
+}
+
+/* The window entries of "Open Sessions", appended to `menu` (which already
+ * holds Hide all / Unhide all / Show one window at a time), and the submenu's
+ * own label, with the counts, into `label`. */
+static void LauncherBuildWinList( HMENU menu, char * label, size_t lablen ) {
+	struct LauncherWinEntry * sel[100], * top[100], * inf[100] ;
+	wchar_t (* fname)[256] = NULL ;
+	char (* ftext)[48] = NULL ;
+	HMENU fmenu[100] ;
+	wchar_t taken[32] ;
+	char counts[48] ;
+	int i, j, n = RefreshWinList( MainHwnd ), hidden = 0, nf = 0, ntop = 0 ;
+
+	snprintf( label, lablen, "%s", KT_MENU_OPENED_SESSIONS ) ;
+	if( n <= 0 ) return ;
+	for( i = 0 ; i < n ; i++ ) {
+		LauncherWinEntries[i].idx = i ;
+		LauncherWinLabel( &TabWin[i], LauncherWinEntries[i].label, LAUNCHER_WINLABEL_MAX ) ;
+		if( !TabWin[i].visible ) hidden++ ;
+	}
+	qsort( LauncherWinEntries, n, sizeof(LauncherWinEntries[0]), LauncherWinEntryCmp ) ;
+	for( i = 0 ; i < n ; i++ ) sel[i] = &LauncherWinEntries[i] ;
+	LauncherWinCounts( n, hidden, counts, sizeof(counts) ) ;
+	snprintf( label, lablen, "%s%s", KT_MENU_OPENED_SESSIONS, counts ) ;
+
+	LauncherMenuTakenKeys( menu, taken, sizeof(taken)/sizeof(taken[0]) ) ;
+	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
+
+	if( n > LAUNCHER_WINLIST_FOLD_ABOVE ) {
+		fname = (wchar_t (*)[256])calloc( n, sizeof(*fname) ) ;
+		ftext = (char (*)[48])calloc( n, sizeof(*ftext) ) ;
+	}
+	/* Few enough windows (or no memory for the folders): one flat list. */
+	if( fname == NULL || ftext == NULL ) {
+		LauncherWinListFill( menu, taken, sel, n, NULL, NULL, NULL, 0 ) ;
+		free( fname ) ; free( ftext ) ;
+		return ;
+	}
+	/* The folders, alphabetical. */
+	for( i = 0 ; i < n ; i++ ) {
+		const wchar_t * f = TabWin[sel[i]->idx].folder ;
+		if( !f[0] ) continue ;
+		for( j = 0 ; j < nf && lstrcmpiW( fname[j], f ) ; j++ ) ;
+		if( j == nf ) wcscpy( fname[nf++], f ) ;
+	}
+	for( i = 1 ; i < nf ; i++ )   /* insertion sort: a handful of names */
+		for( j = i ; j > 0 && CompareStringW( LOCALE_USER_DEFAULT, NORM_IGNORECASE,
+		                                      fname[j-1], -1, fname[j], -1 ) == CSTR_GREATER_THAN ; j-- ) {
+			wchar_t t[256] ;
+			wcscpy( t, fname[j] ) ; wcscpy( fname[j], fname[j-1] ) ; wcscpy( fname[j-1], t ) ;
+		}
+	/* One submenu per folder, in the same order inside; the rest stay here. */
+	for( j = 0 ; j < nf ; j++ ) {
+		int nin = 0, hin = 0 ;
+		for( i = 0 ; i < n ; i++ )
+			if( !lstrcmpiW( TabWin[sel[i]->idx].folder, fname[j] ) ) {
+				inf[nin++] = sel[i] ;
+				if( !TabWin[sel[i]->idx].visible ) hin++ ;
+			}
+		fmenu[j] = CreatePopupMenu() ;
+		LauncherWinListFill( fmenu[j], L"", inf, nin, NULL, NULL, NULL, 0 ) ;
+		LauncherWinCounts( nin, hin, ftext[j], sizeof(ftext[j]) ) ;
+	}
+	for( i = 0 ; i < n ; i++ )
+		if( !TabWin[sel[i]->idx].folder[0] ) top[ntop++] = sel[i] ;
+	LauncherWinListFill( menu, taken, top, ntop, fname, fmenu, ftext, nf ) ;
+	free( fname ) ;
+	free( ftext ) ;
+}
+
 // Build a menu from a registry key
+/*
+ * "Start at login" for the launcher: a "KiTTY Launcher" shortcut (this exe
+ * -launcher) in the USER Startup folder. One implementation for the tray menu
+ * and the configuration box's Launcher panel (kitty_config_app.c), so the two
+ * can never behave differently. Everything keys off whether a shortcut
+ * targeting THIS exe exists, so the generic name never makes us act on
+ * another KiTTY's entry:
+ *  - our own per-user shortcut     -> remove it (turn off);
+ *  - an all-users shortcut for us  -> installer-managed, cannot be removed
+ *                                     without elevation, so just explain;
+ *  - none for us, but a per-user shortcut for a DIFFERENT KiTTY exists
+ *                                  -> leave it, explain;
+ *  - nothing                       -> create ours.
+ */
+int kitty_launcher_autostart_on( void ) {
+	char mx[MAX_PATH] ;
+	DWORD mn = GetModuleFileNameA( NULL, mx, sizeof(mx) ) ;
+	return mn && mn < sizeof(mx) &&
+	       ( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, mx)
+	         || kitty_startup_shortcut_points_to("KiTTY Launcher", 1, mx) ) ;
+}
+
+/* Toggles it; the explanations go to `owner`. Returns the state afterwards
+ * (unchanged when a refusal was explained). */
+int kitty_launcher_autostart_toggle( HWND owner ) {
+	char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+	DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
+	if( n && n < sizeof(exe) ) {
+		if( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, exe) ) {
+			kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
+		} else if( kitty_startup_shortcut_points_to("KiTTY Launcher", 1, exe) ) {
+			MessageBox( owner, KT_LAUNCHER_STARTUP_ALLUSERS,
+			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
+		} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+			MessageBox( owner, KT_LAUNCHER_STARTUP_OTHER_KITTY,
+			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
+		} else {
+			snprintf( dir, sizeof(dir), "%s", exe ) ;
+			slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
+			kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
+		}
+	}
+	return kitty_launcher_autostart_on() ;
+}
+
 static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
 	char KeyName[1024] ;
-	int nbitem = 0,i ;
+	int nbitem = 0 ;
 	
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
@@ -284,22 +621,18 @@ static HMENU InitLauncherMenu( char * Key ) {
 	} else {
 		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+6, KT_MENU_WINDOW_UNIQUE ) ;
 		CheckMenuItem( HideMenu, IDM_LAUNCHER+6, MF_BYCOMMAND | MF_CHECKED) ;
+		AppendMenu( HideMenu, MF_ENABLED, IDM_LAUNCHER+10, KT_MENU_SHOW_NEXT_ON_CLOSE ) ;
+		CheckMenuItem( HideMenu, IDM_LAUNCHER+10, MF_BYCOMMAND | (ShowNextOnClose ? MF_CHECKED : MF_UNCHECKED) ) ;
 	}
 	//AppendMenu( HideMenu, MF_ENABLED, IDM_GONEXT, "&Next" ) ;
 	//AppendMenu( HideMenu, MF_ENABLED, IDM_GOPREVIOUS, "&Previous" ) ;
-	if( RefreshWinList( MainHwnd ) > 0 ) {
-		AppendMenu( HideMenu, MF_SEPARATOR, 0, 0 ) ;
-		for( i=0 ; i<NbWin ; i++ ) {
-			AppendMenu( HideMenu, MF_ENABLED, IDM_GOHIDE+i, TabWin[i].name ) ;
-			if( IsWindowVisible( TabWin[i].hwnd ) ) 
-				CheckMenuItem( HideMenu, IDM_GOHIDE+i, MF_BYCOMMAND | MF_CHECKED) ;
-			else 
-				CheckMenuItem( HideMenu, IDM_GOHIDE+i, MF_BYCOMMAND | MF_UNCHECKED) ;
-		}
+	{
+		/* The open windows (see LauncherBuildWinList); the submenu's label
+		 * carries their counts. */
+		char opened[128] ;
+		LauncherBuildWinList( HideMenu, opened, sizeof(opened) ) ;
+		AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, opened ) ;
 	}
-
-	
-	AppendMenu( menu, MF_POPUP, (UINT_PTR)HideMenu, KT_MENU_OPENED_SESSIONS ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 
 	/* A blank right-hand column beside "Refresh": the spinner of a running
@@ -358,17 +691,10 @@ static HMENU InitLauncherMenu( char * Key ) {
 		}
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	}
-	/* KiTTY: user-Startup-folder shortcut for the launcher, on request.
-	 * Checked only when a "KiTTY Launcher" shortcut pointing at THIS exe
-	 * exists (user or all-users) - a same-named shortcut for a different
-	 * KiTTY (e.g. the installer's, targeting the installed kitty.exe) is not
-	 * this launcher's autostart. */
-	{ char mx[MAX_PATH] ; DWORD mn = GetModuleFileNameA( NULL, mx, sizeof(mx) ) ;
-	  int on = mn && mn < sizeof(mx) &&
-	           ( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, mx)
-	             || kitty_startup_shortcut_points_to("KiTTY Launcher", 1, mx) ) ;
-	  AppendMenu( menu, MF_ENABLED | (on ? MF_CHECKED : MF_UNCHECKED),
-	              IDM_LAUNCHER+8, KT_MENU_START_AT_LOGIN ) ; }
+	/* KiTTY: "Start at login" - ticked only when a "KiTTY Launcher" shortcut
+	 * pointing at THIS exe exists (kitty_launcher_autostart_on). */
+	AppendMenu( menu, MF_ENABLED | (kitty_launcher_autostart_on() ? MF_CHECKED : MF_UNCHECKED),
+	            IDM_LAUNCHER+8, KT_MENU_START_AT_LOGIN ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_QUIT, KT_MENU_EXIT ) ;
@@ -853,6 +1179,38 @@ static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, i
 	return n ;
 }
 
+/*
+ * KiTTY: a right click on a WINDOW's entry in Open Sessions offers "Name this
+ * window..." (hknet/KiTTY#54). The terminal's own system menu has the same
+ * command, but a window hidden in the launcher has no system menu anyone can
+ * reach - so the launcher asks the window to open its own name box
+ * (window.c IDM_WINNAME -> kitty_winname_box). The box brings itself to the
+ * front; the launcher, holding the user's click, lets that process do so.
+ */
+#ifndef IDM_WINNAME
+#define IDM_WINNAME 0xB220      /* windows/kitty_rc_additions.h */
+#endif
+static void LauncherWinContextMenu( HWND hwnd, int idx ) {
+	HMENU ctx ;
+	POINT pt ;
+	HWND target ;
+	DWORD pid = 0 ;
+	if( idx < 0 || idx >= NbWin ) return ;
+	target = TabWin[idx].hwnd ;
+	if( !IsWindow( target ) || (ctx = CreatePopupMenu()) == NULL ) return ;
+	AppendMenu( ctx, MF_ENABLED, 1, KT_SYSMENU_NAME_WINDOW ) ;
+	GetCursorPos( &pt ) ;
+	/* TPM_RECURSE: raised while the tray menu is still open. */
+	if( TrackPopupMenuEx( ctx, TPM_RECURSE | TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN,
+	                      pt.x, pt.y, hwnd, NULL ) == 1 ) {
+		EndMenu() ;              /* the tray menu: its job is done */
+		GetWindowThreadProcessId( target, &pid ) ;
+		if( pid ) AllowSetForegroundWindow( pid ) ;
+		PostMessage( target, WM_COMMAND, IDM_WINNAME, 0 ) ;
+	}
+	DestroyMenu( ctx ) ;
+}
+
 /* WM_MENURBUTTONUP: item `pos` of `parent` was right-clicked. */
 static void LauncherFolderContextMenu( HWND hwnd, HMENU parent, int pos ) {
 	HMENU sub = GetSubMenu( parent, pos ), ctx ;
@@ -1152,9 +1510,62 @@ static void LauncherRefreshSpinStep( HWND hwnd ) {
 	}
 }
 
+/* Where the tray menu opens: at the tray icon, as the shell's own menus do,
+ * wherever the pointer is. At the pointer, a menu opened from the keyboard
+ * or by a notification sent to the icon appeared anywhere on
+ * the screen. The menu opens away from the taskbar edge the icon sits on and
+ * keeps off the icon itself (TPMPARAMS.rcExclude); an icon inside the work
+ * area (the overflow flyout, a taskbar that hides itself) counts as a bottom
+ * one. Without an icon rectangle on a monitor it opens at the pointer. */
+static void LauncherTrayTrace( const char * what ) ;
+static void LauncherMenuAnchor( const RECT * icon ) {
+	HMONITOR mon = NULL ;
+	MONITORINFO mi ;
+	const char * edge ;
+	char line[128] ;
+	GetCursorPos( &LauncherMenuPoint ) ;
+	LauncherMenuPointValid = 1 ;
+	LauncherMenuAlign = TPM_LEFTALIGN ;
+	LauncherMenuExcludeValid = 0 ;
+	mi.cbSize = sizeof(mi) ;
+	if( icon ) mon = MonitorFromRect( icon, MONITOR_DEFAULTTONULL ) ;
+	if( mon == NULL || !GetMonitorInfo( mon, &mi ) ) {
+		snprintf( line, sizeof(line), "tray menu at pointer %ld,%ld (no icon rectangle on a monitor)",
+		          LauncherMenuPoint.x, LauncherMenuPoint.y ) ;
+		LauncherTrayTrace( line ) ;
+		return ;
+	}
+	LauncherMenuExclude = *icon ;
+	LauncherMenuExcludeValid = 1 ;
+	if( icon->bottom <= mi.rcWork.top ) {
+		edge = "top" ;
+		LauncherMenuPoint.x = icon->left ; LauncherMenuPoint.y = icon->bottom ;
+		LauncherMenuAlign = TPM_LEFTALIGN | TPM_TOPALIGN | TPM_VERTICAL ;
+	} else if( icon->right <= mi.rcWork.left ) {
+		edge = "left" ;
+		LauncherMenuPoint.x = icon->right ; LauncherMenuPoint.y = icon->top ;
+		LauncherMenuAlign = TPM_LEFTALIGN | TPM_TOPALIGN | TPM_HORIZONTAL ;
+	} else if( icon->left >= mi.rcWork.right ) {
+		edge = "right" ;
+		LauncherMenuPoint.x = icon->left ; LauncherMenuPoint.y = icon->top ;
+		LauncherMenuAlign = TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_HORIZONTAL ;
+	} else {
+		edge = "bottom" ;
+		LauncherMenuPoint.x = icon->left ; LauncherMenuPoint.y = icon->top ;
+		LauncherMenuAlign = TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_VERTICAL ;
+	}
+	snprintf( line, sizeof(line), "tray menu at icon %ld,%ld,%ld,%ld edge=%s",
+	          icon->left, icon->top, icon->right, icon->bottom, edge ) ;
+	LauncherTrayTrace( line ) ;
+}
+
 static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	HMENU hMenuPopup = menu ;
-	UINT flags = TPM_LEFTALIGN ;
+	UINT flags = LauncherMenuAlign ;
+	TPMPARAMS tp ;
+
+	tp.cbSize = sizeof(tp) ;
+	tp.rcExclude = LauncherMenuExclude ;
 
 	/* The colour theme is read when the process starts, and the launcher runs
 	 * for days: a change made in the configuration box reached it only after
@@ -1166,7 +1577,8 @@ static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	g_launcher_menu_hook = SetWindowsHookEx( WH_MSGFILTER, LauncherMenuMsgFilter,
 	                                         NULL, GetCurrentThreadId() ) ;
 	for( ;; ) {
-		TrackPopupMenu (hMenuPopup, flags, pt.x, pt.y, 0, hwnd, NULL);
+		TrackPopupMenuEx( hMenuPopup, flags, pt.x, pt.y, hwnd,
+		                  LauncherMenuExcludeValid ? &tp : NULL ) ;
 		/* A Refresh ended this menu to have the rebuilt one shown in its
 		 * place: same point, and no opening animation, so the swap is one
 		 * redraw and not a menu fading in a second time. */
@@ -1196,12 +1608,12 @@ static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 }
 
 static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
-	GetCursorPos (&LauncherMenuPoint);
-	LauncherMenuPointValid = 1 ;
+	RECT icon ;
+	LauncherMenuAnchor( LauncherTrayIconRectRead( &icon ) ? &icon : NULL ) ;
 	DisplayContextMenuAt( hwnd, menu, LauncherMenuPoint ) ;
 }
 
-/* A left click on the tray icon: the menu at once, at the point of the click,
+/* A left click on the tray icon: the menu at once, at the icon,
  * armed for the second click of a double click (see LauncherClickPoint). A
  * double click recognised while the menu was up ended the menu and runs here,
  * after it: a new configuration box, as the tray double click always opened.
@@ -1213,13 +1625,16 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
  * can pass that same second press on to the icon after the menu is gone, so
  * one double click arrived through BOTH and opened two boxes. One double click
  * = one box: a second request within twice the double-click time is dropped.
- * Test builds write every request and whether it ran to launcher_tray.log
- * beside the exe, so a double click can be traced path by path. */
+ * A test build started with KITTY_LAUNCHER_TRACE set writes every request and
+ * whether it ran to launcher_tray.log beside the exe, so a double click can be
+ * traced path by path. Without the variable a test build writes no log file:
+ * a trace is for a debug run, asked for, never a side effect of testing. */
 static DWORD LauncherDblActionTick = 0 ;
 static void LauncherTrayTrace( const char * what ) {
 #ifdef KITTY_TEST_BUILD_LABEL
 	char path[MAX_PATH], *slash ;
 	FILE * f ;
+	if( getenv( "KITTY_LAUNCHER_TRACE" ) == NULL ) return ;
 	if( !GetModuleFileNameA( NULL, path, sizeof(path) ) ) return ;
 	if( ( slash = strrchr( path, '\\' ) ) == NULL ) return ;
 	strcpy( slash + 1, "launcher_tray.log" ) ;
@@ -1256,9 +1671,9 @@ static void LauncherTrayLeftClick( HWND hwnd ) {
 	LauncherTrayClickArmed = 1 ;
 	LauncherTrayMenuUp = 1 ;
 	RefreshMenuLauncher() ;
-	LauncherMenuPoint = LauncherClickPoint ;
-	LauncherMenuPointValid = 1 ;
+	LauncherMenuAnchor( LauncherTrayIconRcValid ? &LauncherTrayIconRc : NULL ) ;
 	DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
+	LauncherTrayTrace( "tray menu closed" ) ;
 	dbl = LauncherTrayDblPending ;
 	LauncherTrayClickArmed = 0 ;
 	LauncherTrayMenuUp = 0 ;
@@ -1295,6 +1710,21 @@ static void LauncherBringToFront( HWND target ) {
 	BringWindowToTop( target ) ;
 }
 
+/* One of the properties a terminal publishes (see struct THWin): the string of
+ * the global atom it holds, empty when the property or the atom is not there.
+ * The atom reads "<window handle in hex>|<value>" (window.c kitty_winprop_set),
+ * so that no two windows share one: everything up to the first '|' goes. */
+static void LauncherWinProp( HWND hwnd, const wchar_t * name, wchar_t * out, int n ) {
+	ATOM a = (ATOM)(ULONG_PTR)GetPropW( hwnd, name ) ;
+	wchar_t buf[256], * bar ;
+	out[0] = L'\0' ;
+	if( !a || GlobalGetAtomNameW( a, buf, 256 ) == 0 ) return ;
+	buf[255] = L'\0' ;
+	if( ( bar = wcschr( buf, L'|' ) ) == NULL ) return ;
+	wcsncpy( out, bar + 1, n - 1 ) ;
+	out[n - 1] = L'\0' ;
+}
+
 static BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
 	/* TabWin has room for 100; the menu ids IDM_GOHIDE+i assume the same. */
@@ -1303,8 +1733,16 @@ static BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
 
 	if( !strcmp( buffer, KiTTYClassName ) )
 	if( hwnd != MainHwnd ) {
-		TabWin[NbWin].hwnd=hwnd ;
-		GetWindowText( hwnd, TabWin[NbWin].name, 127 ) ;
+		struct THWin * w = &TabWin[NbWin] ;
+		w->hwnd = hwnd ;
+		w->visible = IsWindowVisible( hwnd ) ? 1 : 0 ;
+		if( GetWindowTextW( hwnd, w->title, sizeof(w->title)/sizeof(w->title[0]) ) <= 0 )
+			w->title[0] = L'\0' ;
+		LauncherWinProp( hwnd, L"KiTTY.session", w->session, sizeof(w->session)/sizeof(w->session[0]) ) ;
+		LauncherWinProp( hwnd, L"KiTTY.folder", w->folder, sizeof(w->folder)/sizeof(w->folder[0]) ) ;
+		LauncherWinProp( hwnd, L"KiTTY.winname", w->winname, sizeof(w->winname)/sizeof(w->winname[0]) ) ;
+		/* a flag, not an atom (window.c kitty_winprop_closed) */
+		w->closed = GetPropW( hwnd, L"KiTTY.closed" ) != NULL ;
 		NbWin++ ;
 	}
 
@@ -1375,19 +1813,93 @@ void ManageSwitch( const int n ) {
  * the sent unhide (sent messages are handled before posted ones) and hide it
  * for good. Its unhide is sent, so the terminal's visible flag is right and
  * the window is shown before LauncherBringToFront looks at it. */
+static void UniqueHistoryDrop( HWND h ) {
+	int i, j = 0 ;
+	for( i = 0 ; i < UniqueHistoryN ; i++ )
+		if( UniqueHistory[i] != h ) UniqueHistory[j++] = UniqueHistory[i] ;
+	UniqueHistoryN = j ;
+}
+
 static void ManageShowOnly( HWND target ) {
 	int i ;
 	DWORD_PTR res ;
+	char tr[80] ;
 	if( !IsWindow( target ) ) return ;
+	snprintf( tr, sizeof(tr), "show only %p, menu up %d", (void *)target, LauncherTrayMenuUp ) ;
+	LauncherTrayTrace( tr ) ;
+	/* the one shown until now goes on the history, the target comes off it */
+	UniqueHistoryDrop( target ) ;
+	if( UniqueShown && UniqueShown != target && IsWindow( UniqueShown ) ) {
+		UniqueHistoryDrop( UniqueShown ) ;
+		if( UniqueHistoryN == (int)(sizeof(UniqueHistory)/sizeof(UniqueHistory[0])) ) {
+			memmove( UniqueHistory, UniqueHistory + 1, (UniqueHistoryN - 1) * sizeof(UniqueHistory[0]) ) ;
+			UniqueHistoryN-- ;
+		}
+		UniqueHistory[UniqueHistoryN++] = UniqueShown ;
+	}
+	UniqueShown = target ;
 	CurrentVisibleWin = 0 ;
 	if( RefreshWinList( MainHwnd ) > 0 )
 		for( i=0 ; i<NbWin ; i++ ) {
 			if( TabWin[i].hwnd == target ) CurrentVisibleWin = i ;
 			else ManageHideOne( TabWin[i].hwnd ) ;
 		}
-	SendMessageTimeout( target, WM_COMMAND, IDM_UNHIDE, 0,
+	/* lParam = this launcher's window: the terminal then knows the entry chose
+	 * it, and comes back from its own tray icon too (window.c, IDM_UNHIDE). */
+	SendMessageTimeout( target, WM_COMMAND, IDM_UNHIDE, (LPARAM)MainHwnd,
 	                    SMTO_ABORTIFHUNG, 1000, &res ) ;
 	LauncherBringToFront( target ) ;
+}
+
+/* A terminal window is closing (KITTY_LAUNCHER_WINDOW_GONE_MESSAGE). With "Show
+ * one window at a time" and "Show next window on close" on, and when it was
+ * the window on the screen (`visible`, from the terminal, or the one this
+ * launcher showed), the next one comes up: the one shown before it, else the
+ * first entry of Open Sessions. Nothing happens while another terminal is
+ * visible, and nothing while the tray menu is up: its entries are ids into
+ * TabWin, which a refresh here would renumber under it. The closing terminal
+ * allowed this process the foreground before it posted (kitty_bridge.c). */
+static void LauncherWindowGone( HWND gone, int visible ) {
+	int i, h, n, pick = -1, shown = ( gone == UniqueShown ) ;
+	char tr[160] ;
+	UniqueHistoryDrop( gone ) ;
+	if( shown ) UniqueShown = NULL ;
+	snprintf( tr, sizeof(tr), "window gone %p: visible %d, the one shown %d, one at a time %d, next on close %d, menu up %d",
+	          (void *)gone, visible, shown, IsUnique, ShowNextOnClose, LauncherTrayMenuUp ) ;
+	LauncherTrayTrace( tr ) ;
+	if( !visible && !shown ) return ;
+	/* A window that goes while the tray menu is up is dropped, not deferred
+	 * until the menu closes: keeping the menu open while a terminal closes
+	 * (its session ending in the same moment) is an edge case not worth a
+	 * queued "show next" and the harness leg it would need. */
+	if( !IsUnique || !ShowNextOnClose || LauncherTrayMenuUp ) return ;
+	n = RefreshWinList( MainHwnd ) ;
+	for( i = 0 ; i < n ; i++ )
+		if( TabWin[i].hwnd != gone && TabWin[i].visible ) {
+			LauncherTrayTrace( "window gone: another terminal is visible, nothing shown" ) ;
+			return ;
+		}
+	for( h = UniqueHistoryN - 1 ; h >= 0 && pick < 0 ; h-- )
+		for( i = 0 ; i < n ; i++ )
+			if( TabWin[i].hwnd == UniqueHistory[h] && TabWin[i].hwnd != gone ) { pick = i ; break ; }
+	if( pick < 0 ) {
+		int m = 0 ;
+		for( i = 0 ; i < n ; i++ ) {
+			if( TabWin[i].hwnd == gone ) continue ;
+			LauncherWinEntries[m].idx = i ;
+			LauncherWinLabel( &TabWin[i], LauncherWinEntries[m].label, LAUNCHER_WINLABEL_MAX ) ;
+			m++ ;
+		}
+		if( m > 0 ) {
+			qsort( LauncherWinEntries, m, sizeof(LauncherWinEntries[0]), LauncherWinEntryCmp ) ;
+			pick = LauncherWinEntries[0].idx ;
+		}
+	}
+	snprintf( tr, sizeof(tr), "window gone: %d terminals, showing %p (from the history: %s)",
+	          n, pick >= 0 ? (void *)TabWin[pick].hwnd : NULL,
+	          pick >= 0 && UniqueHistoryN && TabWin[pick].hwnd == UniqueHistory[UniqueHistoryN - 1] ? "yes" : "no" ) ;
+	LauncherTrayTrace( tr ) ;
+	if( pick >= 0 ) ManageShowOnly( TabWin[pick].hwnd ) ;
 }
 
 static void ShowLauncherUpdateBalloon( void ) {
@@ -1746,6 +2258,10 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		LauncherRefreshSessionsAndHotkeys( hwnd ) ;
 		return 0 ;
 	}
+	if( LauncherWindowGoneMessage != 0 && uMsg == LauncherWindowGoneMessage ) {
+		LauncherWindowGone( (HWND)wParam, (int)lParam ) ;
+		return 0 ;
+	}
 
 	/* KiTTY: somebody clicked the application notification away and [KiTTY]
 	 * notesonce is on. Take a share of the "seen" mark, so it lasts as long
@@ -1978,7 +2494,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				break ;
 				case WM_LBUTTONUP:
 					{
-					/* KiTTY: the menu opens at once, at the click (see
+					/* KiTTY: the menu opens at once, at the icon (see
 					 * LauncherTrayLeftClick). Not for the button-up that ends
 					 * a double click or the click on the icon that closed its
 					 * menu, and not while a menu of this launcher is
@@ -2067,11 +2583,16 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			        : !strcmp( (const char *)lParam, "ImmersiveColorSet" ) ) )
 				kitty_theme_system_changed() ;
 			break ;
-		case WM_MENURBUTTONUP:
-			/* A right click inside the open tray menu: on a session folder it
-			 * offers to open the folder's sessions, anywhere else it is nothing. */
-			LauncherFolderContextMenu( hwnd, (HMENU)lParam, (int)wParam ) ;
-			break ;
+		case WM_MENURBUTTONUP: {
+			/* A right click inside the open tray menu: on a window's entry in
+			 * Open Sessions it offers "Name this window...", on a session folder
+			 * to open the folder's sessions, anywhere else it is nothing. */
+			UINT id = GetMenuItemID( (HMENU)lParam, (int)wParam ) ;
+			if( id != (UINT)-1 && id >= IDM_GOHIDE && id < IDM_GOHIDE + (UINT)NbWin )
+				LauncherWinContextMenu( hwnd, (int)(id - IDM_GOHIDE) ) ;
+			else
+				LauncherFolderContextMenu( hwnd, (HMENU)lParam, (int)wParam ) ;
+			break ; }
 		case KLWM_REFRESHINPLACE:
 			/* Refresh was chosen in the open tray menu; the menu is still up. */
 			LauncherRefreshInPlace( hwnd ) ;
@@ -2165,38 +2686,31 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					break ;
 				case IDM_LAUNCHER+6:
 					IsUnique = abs( IsUnique -1 ) ;
+					/* Ticked: it applies at once - the top visible terminal
+					 * (EnumWindows lists them in Z order, the top first) stays,
+					 * every other one is hidden, and it counts as the one shown. */
+					UniqueShown = NULL ;
+					UniqueHistoryN = 0 ;
+					if( IsUnique ) {
+						int i, n = RefreshWinList( hwnd ) ;
+						HWND keep = NULL ;
+						for( i = 0 ; i < n && !keep ; i++ )
+							if( TabWin[i].visible ) keep = TabWin[i].hwnd ;
+						for( i = 0 ; i < n ; i++ )
+							if( TabWin[i].hwnd != keep ) ManageHideOne( TabWin[i].hwnd ) ;
+						UniqueShown = keep ;
+					}
+					RefreshMenuLauncher() ;
+					break ;
+				case IDM_LAUNCHER+10:
+					ShowNextOnClose = !ShowNextOnClose ;
 					RefreshMenuLauncher() ;
 					break ;
 				case IDM_LAUNCHER+8: {
-					/* KiTTY: toggle a "KiTTY Launcher" shortcut (kitty*.exe
-					 * -launcher) in the USER Startup folder. Everything keys off
-					 * whether a shortcut targeting THIS exe exists, so the
-					 * generic name never makes us act on another KiTTY's entry:
-					 *  - our own per-user shortcut     -> remove it (turn off);
-					 *  - an all-users shortcut for us  -> installer-managed,
-					 *    cannot remove without elevation, so just explain;
-					 *  - none for us, but a per-user shortcut for a DIFFERENT
-					 *    KiTTY exists                  -> leave it, explain;
-					 *  - nothing                       -> create ours. */
-					char exe[MAX_PATH], dir[MAX_PATH], *slash ;
-					DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
-					if( n && n < sizeof(exe) ) {
-						if( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, exe) ) {
-							kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
-						} else if( kitty_startup_shortcut_points_to("KiTTY Launcher", 1, exe) ) {
-							MessageBox( hwnd,
-							    KT_LAUNCHER_STARTUP_ALLUSERS,
-							    KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
-						} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
-							MessageBox( hwnd,
-							    KT_LAUNCHER_STARTUP_OTHER_KITTY,
-							    KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
-						} else {
-							snprintf( dir, sizeof(dir), "%s", exe ) ;
-							slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
-							kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
-						}
-					}
+					/* KiTTY: "Start at login" - the rules are in
+					 * kitty_launcher_autostart_toggle, shared with the
+					 * configuration box's Launcher panel. */
+					(void)kitty_launcher_autostart_toggle( hwnd ) ;
 					RefreshMenuLauncher() ;
 					break ; }
 				case IDM_LAUNCHER+9:
@@ -2375,6 +2889,8 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	}
 
 	LauncherRefreshMessage = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE) ;
+	LauncherWindowGoneMessage = RegisterWindowMessageA(KITTY_LAUNCHER_WINDOW_GONE_MESSAGE) ;
+	LauncherStateMessage = RegisterWindowMessageA(KITTY_LAUNCHER_STATE_MESSAGE) ;
 
 	wndclass.style = 0;
 	wndclass.lpfnWndProc = Launcher_WndProc;
@@ -2407,12 +2923,26 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	
 	//ShowWindow(hwnd, show) ; UpdateWindow(hwnd) ;
 
+	/* Tell open configuration boxes a launcher is running now: their "Start
+	 * Launcher Now" button greys. Posted, never sent - no window may hold up
+	 * the launcher's start. */
+	if( MainHwnd && LauncherStateMessage )
+		PostMessage( HWND_BROADCAST, LauncherStateMessage, 1, 0 ) ;
+
 	while (GetMessage(&msg, NULL, 0, 0)) {
 		//if(!TranslateAccelerator(hwnd, hAccel, &msg)){
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		//	}
 	}
+	/* ...and that it is gone. The window goes FIRST: Quit ends the loop with
+	 * the window still there, and a box that looks for the launcher on this
+	 * message must not find it. Its WM_DESTROY repeats nothing harmful (the
+	 * windows are already unhidden; the hotkeys are released). A killed
+	 * launcher never gets here - the box's own check covers that. */
+	if( MainHwnd && IsWindow( MainHwnd ) ) DestroyWindow( MainHwnd ) ;
+	if( LauncherStateMessage )
+		PostMessage( HWND_BROADCAST, LauncherStateMessage, 0, 0 ) ;
 	return msg.wParam;
 }
 

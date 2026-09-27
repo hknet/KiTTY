@@ -87,6 +87,9 @@
 #define KI_TRANSFERMAXMB                    "transfermaxmb"
 #define KI_TRANSFERNOTIFICATION             "transfernotification"
 #define KI_TRANSPARENCY                     "transparency"
+/* Where a window sent to the tray goes: auto | own | launcher
+ * (kitty_bridge.c kitty_send_to_tray, read at every send). */
+#define KI_TRAYMODE                         "traymode"
 #define KI_UPLOADDIR                        "uploaddir"
 #define KI_USERPASSSSHNOSAVE                "userpasssshnosave"
 #define KI_VERIFYAGENT                      "verifyagent"

@@ -21,4 +21,10 @@ void ManageUnHideOne( HWND hwnd );
 int RefreshWinList( HWND hwnd );
 void RunConfig( Conf * conf );
 
+/* "Start at login" for the launcher: a Startup-folder shortcut "KiTTY
+ * Launcher" that runs THIS exe with -launcher. Shared by the tray menu and the
+ * configuration box's Launcher panel, so both act the same. */
+int kitty_launcher_autostart_on( void );
+int kitty_launcher_autostart_toggle( HWND owner );
+
 #endif

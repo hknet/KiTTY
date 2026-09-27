@@ -200,6 +200,10 @@ int WINAPI Launcher_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* session launch
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
 static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd);
+static void kitty_winprops_remove(HWND hwnd);   /* the launcher's properties (WM_DESTROY) */
+static void kitty_winprops_publish(WinGuiSeat *wgs);   /* ...and their values (title, reconfig) */
+static void kitty_winprop_closed(HWND hwnd, bool closed); /* the session is over, window open */
+static void kitty_window_leaving(HWND hwnd);    /* atoms + launcher notice, once */
 #ifdef MOD_LAUNCHER
 #endif
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
@@ -328,6 +332,14 @@ static void launcher_watch_set(HWND hwnd, bool was_visible, HWND launcher)
     launcher_hider_pid = pid;
     launcher_gone_for = 0;
     SetTimer(hwnd, TIMER_LAUNCHERWATCH, LAUNCHERWATCH_MS, NULL);
+}
+/* Send to tray into the launcher ([KiTTY] traymode, kitty_bridge.c
+ * kitty_send_to_tray): the window hides itself the way the launcher's Hide
+ * does, and is watched the same way, so it comes back if that launcher dies.
+ * Called after the hide - launcher_watch_set ignores a visible window. */
+void kitty_launcher_watch_arm(HWND hwnd, HWND launcher)
+{
+    launcher_watch_set(hwnd, true, launcher);
 }
 #endif
 #ifdef MOD_RECONNECT
@@ -776,6 +788,9 @@ static void start_backend(WinGuiSeat *wgs)
             SetSSHConnected(0);
             SetConnBreakIcon(wgs->term_hwnd);
             wgs->session_closed = true;
+#ifdef MOD_PERSO
+            kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
             queue_toplevel_callback(close_session, wgs);
             lp_eventlog(&wgs->logpolicy,
                         KT_TWIN_LOG_CONNECT_FAILED_RECONNECT);
@@ -964,6 +979,9 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
     wgs->autopw_tried = false;   /* new connection: allow one auto-password answer */
     wgs->session_closed = false;
+#ifdef MOD_PERSO
+    kitty_winprop_closed(wgs->term_hwnd, false);   /* the launcher's "(disconnected)" */
+#endif
     wgs->error_close = false;    /* #548: new connection clears the error titlebar marker */
 }
 
@@ -1180,6 +1198,9 @@ static void close_session(void *vctx)
 #endif
 
     wgs->session_closed = true;
+#ifdef MOD_PERSO
+    kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
     int title_cp = DEFAULT_CODEPAGE;
 #ifdef MOD_PERSO
     /* KiTTY (upstream cyd01/KiTTY #548): a FATAL-error close gets a warning-glyph
@@ -2145,6 +2166,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       KT_SYSMENU_ROLLUP);
             AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       KT_SYSMENU_SEND_TO_TRAY);
             AppendMenu(winmenu, MF_ENABLED, IDM_PROTECT,      KT_SYSMENU_PROTECT);
+            /* A name in front of the title and in the launcher's list
+             * (kitty_window_name_set). */
+            AppendMenu(winmenu, MF_ENABLED, IDM_WINNAME,      KT_SYSMENU_NAME_WINDOW);
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)winmenu, KT_SYSMENU_WINDOW);
 
             /* ---- "Tools" submenu: transfer & integration ---- */
@@ -3017,6 +3041,9 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         int coe = conf_get_int(wgs->conf, CONF_close_on_exit);
         show_mouseptr(wgs, true);
         wgs->session_closed = true;
+#ifdef MOD_PERSO
+        kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
         if (coe == FORCE_ON || coe == AUTO) {
             /* KiTTY: defer while the user is reading the Event Log, exactly as
              * exit_callback and the fatal-error close below do. This path was
@@ -3061,6 +3088,9 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
         wgs->session_closed = true;
+#ifdef MOD_PERSO
+        kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
         /* KiTTY (hknet/KiTTY#22): the link was lost, so the titlebar gets the
          * warning marker here too. Without this the marker was unreachable
          * whenever auto-reconnect is enabled - i.e. in exactly the case that
@@ -4076,6 +4106,9 @@ static void exit_callback(void *vctx)
         } else {
             queue_toplevel_callback(close_session, wgs);
             wgs->session_closed = true;
+#ifdef MOD_PERSO
+            kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
             /* exitcode == INT_MAX indicates that the connection was closed
              * by a fatal error, so an error box will be coming our way and
              * we should not generate this informational one. */
@@ -4149,7 +4182,12 @@ static void wm_size_resize_term(WinGuiSeat *wgs, LPARAM lParam)
 
 #ifdef MOD_PERSO
 /* KiTTY Ctrl-Tab session switching: find the next/prev KiTTY window by the
- * per-window creation timestamp stored in the 8 extra window-class bytes. */
+ * per-window creation timestamp stored in the 8 extra window-class bytes.
+ * Only windows with Ctrl+Tab switching on are candidates (the property below,
+ * set in kitty_winprops_publish): a window with it off keeps Ctrl+Tab for the
+ * program inside it and could not be left with the key once reached.
+ * Windows of builds without the property are skipped too. */
+#define KITTY_CTRLTAB_PROP L"KiTTY.ctrltab"
 struct ctrl_tab_info {
     int direction;
     HWND  self;
@@ -4167,7 +4205,8 @@ static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
     if (info->self != hwnd
         && (wndExtra = GetClassLong(hwnd, GCL_CBWNDEXTRA)) >= 8
         && GetClassName(hwnd, class_name, sizeof class_name) >= 5
-        && memcmp(class_name, KiTTYClassName, 5) == 0) {
+        && memcmp(class_name, KiTTYClassName, 5) == 0
+        && GetPropW(hwnd, KITTY_CTRLTAB_PROP) != NULL) {
         DWORD hwnd_hi_date_time = GetWindowLong(hwnd, wndExtra - 8);
         DWORD hwnd_lo_date_time = GetWindowLong(hwnd, wndExtra - 4);
         int hwnd_self, hwnd_next;
@@ -4262,6 +4301,54 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (wgs && wgs->backend && wgs->ever_authenticated) {
                 KillTimer(hwnd, TIMER_SENDTOTRAY);
                 kitty_send_to_tray(hwnd);
+            }
+            return 0;
+        }
+        if ((UINT_PTR)wParam == TIMER_CLOSEGROUP) {
+            /* One confirmation for windows closed together (WM_CLOSE,
+             * kitty_bridge.c kitty_closegroup_*). */
+            int count = 1, yes;
+            char *title, *msg, *additional = NULL;
+            switch (kitty_closegroup_poll(hwnd, &count)) {
+              case KCG_CLOSE:
+                kitty_window_leaving(hwnd);
+                DestroyWindow(hwnd);
+                return 0;
+              case KCG_SHOWBOX:
+                break;
+              default:                           /* KCG_WAIT, KCG_STAY */
+                return 0;
+            }
+            if (wgs->session_closed) {             /* ended while it waited */
+                kitty_closegroup_answer(1);
+                kitty_window_leaving(hwnd);
+                DestroyWindow(hwnd);
+                return 0;
+            }
+            title = dupprintf("%s Exit Confirmation",
+                              GetPuttyFlag() ? appname : KT_CAP_KITTYPP);
+            if (count > 1)
+                msg = dupprintf(KT_CLOSE_GROUP_CONFIRM, count);
+            else {
+                if (wgs->backend && wgs->backend->vt->close_warn_text)
+                    additional = wgs->backend->vt->close_warn_text(wgs->backend);
+                msg = dupprintf("Are you sure you want to close this session?%s%s",
+                                additional ? "\n" : "",
+                                additional ? additional : "");
+            }
+            /* Raised from a timer, not from the click: the box is put on top
+             * of every window, or it could open unseen behind others. The
+             * windows of the group allowed this process the foreground when
+             * they joined (kitty_closegroup_request). */
+            SetForegroundWindow(hwnd);
+            yes = kitty_confirm_box_yes_front(hwnd, title, msg, NULL);
+            kitty_closegroup_answer(yes);
+            sfree(title);
+            sfree(msg);
+            sfree(additional);
+            if (yes) {
+                kitty_window_leaving(hwnd);
+                DestroyWindow(hwnd);
             }
             return 0;
         }
@@ -4394,6 +4481,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     lp_eventlog(&wgs->logpolicy,
                                 KT_TWIN_LOG_SUSPEND_DISCONNECT);
                     wgs->session_closed = true;
+#ifdef MOD_PERSO
+                    kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
+#endif
                     queue_toplevel_callback(close_session, wgs);
                 }
                 break;
@@ -4446,7 +4536,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #endif
         show_mouseptr(wgs, true);
+#ifdef MOD_PERSO
+        /* KiTTY: windows closed together (the taskbar's "Close all windows")
+         * share one confirmation: this one joins or leads a group and the
+         * answer arrives by TIMER_CLOSEGROUP (kitty_bridge.c). */
+        if (!wgs->session_closed &&
+            conf_get_bool(wgs->conf, CONF_warn_on_close) &&
+            kitty_closegroup_request(hwnd))
+            return 0;
+        /* KiTTY: the product name in the title; the class name in PuTTY mode. */
+        title = dupprintf("%s Exit Confirmation",
+                          GetPuttyFlag() ? appname : KT_CAP_KITTYPP);
+#else
         title = dupprintf("%s Exit Confirmation", appname);
+#endif
         if (wgs->backend && wgs->backend->vt->close_warn_text) {
             additional = wgs->backend->vt->close_warn_text(wgs->backend);
         }
@@ -4455,8 +4558,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                         additional ? additional : "");
         if (wgs->session_closed ||
             !conf_get_bool(wgs->conf, CONF_warn_on_close) ||
-            kitty_confirm_box_yes(hwnd, title, msg, NULL))
+            kitty_confirm_box_yes(hwnd, title, msg, NULL)) {
+#ifdef MOD_PERSO
+            /* KiTTY: while it is still in front (kitty_window_leaving) */
+            kitty_window_leaving(hwnd);
+#endif
             DestroyWindow(hwnd);
+        }
         sfree(title);
         sfree(msg);
         sfree(additional);
@@ -4600,6 +4708,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
         /* KiTTY: remember this window's position (topology-keyed) for next time. */
         kitty_on_window_closing(wgs, hwnd);
+        /* KiTTY: the launcher's atoms and its notice (hknet/KiTTY#54) - a
+         * no-op when an earlier route already did it. */
+        kitty_window_leaving(hwnd);
 #endif
         show_mouseptr(wgs, true);
         PostQuitMessage(0);
@@ -4761,6 +4872,31 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if (wParam == HTCAPTION && GetWinrolFlag()) {
             kitty_rollup(wgs->term_hwnd,
                          conf_get_int(wgs->conf, CONF_resize_action));
+            return 0;
+        }
+        break;
+      case WM_NCRBUTTONDOWN:
+      case WM_NCRBUTTONUP:
+        /* KiTTY: a right click on the minimize button sends the window to the
+         * tray (hknet/KiTTY#54). Both halves of the click are kept from
+         * DefWindowProc, which would otherwise turn the release into a
+         * WM_CONTEXTMENU and open the system menu over the button. Decided on
+         * wParam, the hit code Windows already worked out; every other part
+         * of the frame keeps its normal right click. */
+        if (wParam == HTMINBUTTON && !KITTY_EMBEDDED()) {
+            if (message == WM_NCRBUTTONUP)
+                kitty_send_to_tray(hwnd);
+            return 0;
+        }
+        break;
+      case WM_NCLBUTTONDOWN:
+        /* KiTTY: Ctrl + a left click on the minimize button sends the window
+         * to the tray as well. Acted on at the press and kept from
+         * DefWindowProc: its button tracking would minimize the window on the
+         * release. Without Ctrl the button minimizes as always. */
+        if (wParam == HTMINBUTTON && !KITTY_EMBEDDED() &&
+            (GetKeyState(VK_CONTROL) & 0x8000)) {
+            kitty_send_to_tray(hwnd);
             return 0;
         }
         break;
@@ -5070,6 +5206,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* Pass new config data to the terminal */
             term_reconfig(wgs->term, wgs->conf);
             setup_clipboards(wgs->term, wgs->conf);
+#ifdef MOD_PERSO
+            /* the Ctrl+Tab flag the other windows look for follows a change
+             * made here at once, not at the next title change */
+            kitty_winprops_publish(wgs);
+#endif
 
             /* Reinitialise the colour palette, in case the terminal
              * just read new settings out of Conf */
@@ -5294,6 +5435,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             bool was_visible = IsWindowVisible(wgs->term_hwnd);
             if ((wParam & ~0xF) == IDM_HIDE)
                 kitty_launcher_hide(wgs->term_hwnd);
+            else if (GetVisibleFlag() == VISIBLE_TRAY)
+                /* This window's entry in the launcher's Open Sessions was
+                 * chosen while it sits behind its own tray icon: the choice
+                 * brings it back as a click on that icon would. Hide all
+                 * and Unhide all still leave it where it is. */
+                RestoreFromTray(wgs->term_hwnd);
             else
                 kitty_launcher_switch_hide(wgs->term_hwnd);
             launcher_watch_set(wgs->term_hwnd, was_visible,
@@ -5301,7 +5448,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           }
           case IDM_UNHIDE:
-            kitty_launcher_unhide(wgs->term_hwnd);
+            /* lParam = the launcher's window: its entry chose THIS window
+             * with "Show one window at a time" on (ManageShowOnly), which
+             * brings it back from its own tray icon too. Unhide all sends
+             * no window, and leaves such a window where it is. */
+            if (message == WM_COMMAND && lParam &&
+                GetVisibleFlag() == VISIBLE_TRAY)
+                RestoreFromTray(wgs->term_hwnd);
+            else
+                kitty_launcher_unhide(wgs->term_hwnd);
             launcher_watch_set(wgs->term_hwnd, false, NULL);
             break;
 #endif
@@ -5362,6 +5517,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_PROTECT:
             kitty_protect(wgs->term_hwnd, &wgs->termwin, wgs->conf);
+            break;
+          case IDM_WINNAME:
+            /* the box calls kitty_window_name_set on OK */
+            kitty_winname_box(wgs->term_hwnd);
             break;
           case IDM_PRINT:
             kitty_print(wgs->term_hwnd);
@@ -5459,6 +5618,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             break;
           case IDM_QUIT:
             /* KiTTY: immediate exit without the close confirmation prompt */
+            kitty_window_leaving(hwnd);
             DestroyWindow(hwnd);
             break;
 #ifdef MOD_ZMODEM
@@ -6301,19 +6461,41 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #endif
         /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
+        if (wParam == VK_TAB)      /* KITTY_CTRLTAB_TRACE test runs: ctrltab.log (kitty_bridge.c) */
+            kitty_ctrltab_trace("hwnd %p %s Tab: ctrl key state %d, async %d, "
+                                "session switch %d, global %d, own flag %d, fg %p",
+                                (void *)hwnd,
+                                message == WM_KEYUP ? "UP" : "DOWN",
+                                (GetKeyState(VK_CONTROL) & 0x8000) != 0,
+                                (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0,
+                                conf_get_int(wgs->conf, CONF_ctrl_tab_switch),
+                                GetCtrlTabFlag(),
+                                GetPropW(hwnd, KITTY_CTRLTAB_PROP) != NULL,
+                                (void *)GetForegroundWindow());
         if (wParam == VK_TAB && (GetKeyState(VK_CONTROL) & 0x8000)) {
             if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag()) {
-                if (message == WM_KEYUP) {
+                /* Switch on the PRESS of Tab, once (not on auto-repeat, bit 30
+                 * of lParam): classic KiTTY switched on the release, and a
+                 * quick Ctrl+Tab whose Ctrl came up first did nothing. The
+                 * release is swallowed here, or in the window switched to. */
+                if (message == WM_KEYDOWN && !(lParam & (1 << 30))) {
                     int wx = GetClassLong(hwnd, GCL_CBWNDEXTRA);
                     struct ctrl_tab_info info = {
                         (GetKeyState(VK_SHIFT) & 0x8000) ? 1 : -1, hwnd, };
+                    BOOL fgok = FALSE;
                     info.next_hi_date_time = info.self_hi_date_time =
                         GetWindowLong(hwnd, wx - 8);
                     info.next_lo_date_time = info.self_lo_date_time =
                         GetWindowLong(hwnd, wx - 4);
                     EnumWindows(CtrlTabWindowProc, (LPARAM)&info);
                     if (info.next != NULL && info.next != hwnd)
-                        SetForegroundWindow(info.next);
+                        fgok = SetForegroundWindow(info.next);
+                    kitty_ctrltab_trace("hwnd %p switch: next %p (visible %d, "
+                                        "iconic %d), SetForegroundWindow %d, fg now %p",
+                                        (void *)hwnd, (void *)info.next,
+                                        info.next ? IsWindowVisible(info.next) : -1,
+                                        info.next ? IsIconic(info.next) : -1,
+                                        (int)fgok, (void *)GetForegroundWindow());
                     return 0;
                 }
                 return sw_DefWindowProc(hwnd, message, wParam, lParam);
@@ -8294,6 +8476,209 @@ void kitty_refresh_title(void)
     if (!wgs) return;
     win_set_title(&wgs->termwin, kitty_raw_title, kitty_raw_title_cp);
 }
+
+/*
+ * KiTTY: the window's NAME ("Name this window...", hknet/KiTTY#54) and what
+ * this window publishes about itself for the launcher.
+ *
+ * The name belongs to the window, not to the session: it is not saved, and a
+ * new window of the same session starts without one. It goes IN FRONT of the
+ * title, whatever [KiTTY] wintitle is set to (the user chose it, and the taskbar
+ * button keeps the first characters), and after the codepage conversion, for
+ * the reason the clipboard markers are: the name is Unicode, the raw title may
+ * be in any codepage.
+ *
+ * The launcher's "Open Sessions" list reads three window PROPERTIES of this
+ * window (kitty_launcher.c, struct THWin), each holding a GLOBAL ATOM with the
+ * text - a property value is a plain number any process can read, and the
+ * global atom table gives the text back, without a message to this window:
+ *   "KiTTY.session"  the saved session's name, else user@host (else the host)
+ *   "KiTTY.folder"   that session's Folder; absent for "Default" or none
+ *   "KiTTY.winname"  the name; absent when there is none
+ * Refreshed on every title change (a changed value only), removed with the
+ * window. Each atom's text is "<window handle in hex>|<value>": the atom table
+ * compares case-insensitively and shares equal strings, so without the handle
+ * two windows named "db" and "DB" would read back as the one added first, and
+ * a value like "#123" would be taken as an integer atom. The launcher drops
+ * everything up to the first '|'. An atom holds 255 characters at most, so a
+ * value is cut at 245.
+ */
+static wchar_t *kitty_winname = NULL;          /* NULL or "" = no name */
+
+const wchar_t *kitty_window_name_get(void)
+{
+    return kitty_winname ? kitty_winname : L"";
+}
+
+/* The name in front of the converted title. Takes `name`, returns the title
+ * to show (the same string when there is no window name). */
+static wchar_t *kitty_winname_decorate_wide(wchar_t *name)
+{
+    wchar_t *out;
+    size_t len;
+    if (!kitty_winname || !*kitty_winname)
+        return name;
+    len = wcslen(kitty_winname) + wcslen(KT_WINLABEL_SEP) + wcslen(name) + 1;
+    out = snewn(len, wchar_t);
+    wcscpy(out, kitty_winname);
+    wcscat(out, KT_WINLABEL_SEP);
+    wcscat(out, name);
+    sfree(name);
+    return out;
+}
+
+struct kitty_winprop {
+    const wchar_t *prop;     /* the property's name */
+    ATOM atom;               /* the atom this window holds, 0 = none */
+    wchar_t value[256];      /* its text, to see a change */
+};
+static struct kitty_winprop kitty_winprops[3] = {
+    { L"KiTTY.session" }, { L"KiTTY.folder" }, { L"KiTTY.winname" },
+};
+
+static void kitty_winprop_set(HWND hwnd, struct kitty_winprop *p,
+                              const wchar_t *value)
+{
+    wchar_t v[256], text[256];
+    ATOM a = 0;
+    wcsncpy(v, value ? value : L"", 245);
+    v[245] = L'\0';
+    if (p->atom && !wcscmp(v, p->value))
+        return;                                  /* unchanged */
+    /* The old atom goes first: were it still there, a new value differing
+     * only in case would get it back, with the old spelling. */
+    RemovePropW(hwnd, p->prop);
+    if (p->atom)
+        GlobalDeleteAtom(p->atom);
+    if (v[0]) {
+        _snwprintf(text, lenof(text), L"%lX|%ls",
+                   (unsigned long)(ULONG_PTR)hwnd, v);
+        text[lenof(text) - 1] = L'\0';
+        a = GlobalAddAtomW(text);
+    }
+    if (a)
+        SetPropW(hwnd, p->prop, (HANDLE)(ULONG_PTR)a);
+    p->atom = a;
+    wcscpy(p->value, a ? v : L"");
+}
+
+static void kitty_winprops_publish(WinGuiSeat *wgs)
+{
+    const char *sn, *folder, *host, *user;
+    char base[256];       /* no more wide characters than bytes: fits wbase */
+    wchar_t wbase[256], wfolder[256];
+    bool user_utf8 = false;
+    UINT base_cp = CP_ACP;
+    HWND hwnd = wgs ? wgs->term_hwnd : NULL;
+
+    if (!hwnd)
+        return;
+    sn = conf_get_str(wgs->conf, CONF_sessionname);
+    folder = conf_get_str(wgs->conf, CONF_folder);
+    host = conf_get_str(wgs->conf, CONF_host);
+    /* The user name is a STR_AMBI setting: conf_get_str refuses it (an
+     * assertion), and it may be UTF-8 rather than the ANSI codepage. */
+    user = conf_get_str_ambi(wgs->conf, CONF_username, &user_utf8);
+    if (sn && *sn && strcmp(sn, "Default Settings") != 0) {
+        snprintf(base, sizeof(base), "%s", sn);
+        if (!folder || !strcmp(folder, "Default"))
+            folder = "";
+    } else {
+        if (host && *host && user && *user) {
+            snprintf(base, sizeof(base), "%s@%s", user, host);
+            if (user_utf8)
+                base_cp = CP_UTF8;
+        } else
+            snprintf(base, sizeof(base), "%s", host ? host : "");
+        folder = "";
+    }
+    if (!MultiByteToWideChar(base_cp, 0, base, -1, wbase, lenof(wbase)))
+        wbase[0] = L'\0';
+    wbase[lenof(wbase) - 1] = L'\0';
+    if (!MultiByteToWideChar(CP_ACP, 0, folder, -1, wfolder, lenof(wfolder)))
+        wfolder[0] = L'\0';
+    wfolder[lenof(wfolder) - 1] = L'\0';
+    kitty_winprop_set(hwnd, &kitty_winprops[0], wbase);
+    kitty_winprop_set(hwnd, &kitty_winprops[1], wfolder);
+    kitty_winprop_set(hwnd, &kitty_winprops[2], kitty_window_name_get());
+    /* Ctrl+Tab takes part in the switching only between windows that have it
+     * on: the flag is what CtrlTabWindowProc looks for in the others. */
+    if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag())
+        SetPropW(hwnd, KITTY_CTRLTAB_PROP, (HANDLE)1);
+    else
+        RemovePropW(hwnd, KITTY_CTRLTAB_PROP);
+}
+
+/*
+ * "The session is over, the window is still open" (connection closed or
+ * lost, the window kept by close-on-exit or waiting to reconnect): the
+ * launcher's Open Sessions shows the entry with "(disconnected)". A plain
+ * flag property, no atom - the launcher only asks whether it is there. Set
+ * wherever session_closed is set, cleared when a new connection starts.
+ */
+#define KITTY_CLOSED_PROP L"KiTTY.closed"
+static void kitty_winprop_closed(HWND hwnd, bool closed)
+{
+    if (!hwnd)
+        return;
+    if (closed)
+        SetPropW(hwnd, KITTY_CLOSED_PROP, (HANDLE)1);
+    else
+        RemovePropW(hwnd, KITTY_CLOSED_PROP);
+}
+
+/* The window is going: its atoms with it. */
+static void kitty_winprops_remove(HWND hwnd)
+{
+    int i;
+    for (i = 0; i < lenof(kitty_winprops); i++)
+        kitty_winprop_set(hwnd, &kitty_winprops[i], L"");
+    RemovePropW(hwnd, KITTY_CTRLTAB_PROP);
+    RemovePropW(hwnd, KITTY_CLOSED_PROP);
+}
+
+/* The window is about to go, for good: the global atoms are released (they
+ * outlive the process otherwise, until the user logs off) and the launcher is
+ * notified (kitty_launcher_window_gone). Once per window, from whichever route
+ * gets there first - just before DestroyWindow (WM_CLOSE, TIMER_CLOSEGROUP),
+ * kitty_on_window_closing (the PostQuitMessage routes, which never see
+ * WM_DESTROY) and WM_DESTROY itself. The early calls matter: this window is
+ * still on the screen and in front, so the launcher may put the next one in
+ * front. */
+static void kitty_window_leaving(HWND hwnd)
+{
+    static bool left = false;
+    if (left || !hwnd)
+        return;
+    left = true;
+    kitty_winprops_remove(hwnd);
+    if (!KITTY_EMBEDDED())
+        kitty_launcher_window_gone(hwnd);
+}
+
+/* Set (or, empty, clear) the window's name: from the "Name this window" box
+ * (kitty_inputbox.c). Blanks around it are dropped. */
+void kitty_window_name_set(const wchar_t *name)
+{
+    WinGuiSeat *wgs;
+    size_t len;
+    while (name && (*name == L' ' || *name == L'\t'))
+        name++;
+    len = name ? wcslen(name) : 0;
+    while (len && (name[len - 1] == L' ' || name[len - 1] == L'\t'))
+        len--;
+    sfree(kitty_winname);
+    kitty_winname = NULL;
+    if (len) {
+        kitty_winname = snewn(len + 1, wchar_t);
+        memcpy(kitty_winname, name, len * sizeof(wchar_t));
+        kitty_winname[len] = L'\0';
+    }
+    kitty_refresh_title();
+    if (MainHwnd &&
+        (wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA)) != NULL)
+        kitty_winprops_publish(wgs);
+}
 #endif
 
 static void wintw_set_title(TermWin *tw, const char *title, int codepage)
@@ -8314,6 +8699,10 @@ static void wintw_set_title(TermWin *tw, const char *title, int codepage)
         /* Clipboard markers go on AFTER the codepage conversion: they are Unicode,
          * and the title itself may have arrived in any codepage. */
         new_window_name = kitty_clip_decorate_wide(wgs, new_window_name);
+        /* The window's name in front of everything (kitty_window_name_set),
+         * and the launcher's properties brought up to date. */
+        new_window_name = kitty_winname_decorate_wide(new_window_name);
+        kitty_winprops_publish(wgs);
     }
 #else
     wchar_t *new_window_name = dup_mb_to_wc(codepage, title);
@@ -9812,6 +10201,9 @@ static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
 {
     if (!wgs) return;
     if (!hwnd) hwnd = wgs->term_hwnd;
+
+    /* the launcher's atoms and its notice, while this window is still up */
+    kitty_window_leaving(hwnd);
 
     if (conf_get_bool(wgs->conf, CONF_remember_winpos))
         kitty_save_window_placement(wgs, hwnd);

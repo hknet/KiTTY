@@ -4,10 +4,44 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.13-beta — 2026-09-23
+## 0.85.1.13-beta
 
 ### New
 
+- **A right click or a Ctrl+click on the minimize button sends a window to
+  the tray, and the tray can be the launcher.** Application > KiTTY++ Settings > Terminal
+  chooses where a window sent to the tray goes: into the launcher while one
+  runs (the default), always its own tray icon, or always into the launcher,
+  where it is listed in Open Sessions instead of taking an icon of its own
+  (`[KiTTY] traymode`) (hknet/KiTTY#54, cyd01/KiTTY#467).
+- **The launcher's Open Sessions stays readable with many windows, and a
+  window can have a name.** Each entry shows the saved session (or
+  `user@host`) first and the live title after it; hidden windows come first
+  with a bullet, visible ones after them with a tick, alphabetical within
+  each group, and the label counts them - `Open Sessions (12, 7 hidden)`.
+  Above 25 windows the sessions of a folder share a submenu, and a unique
+  first letter is the entry's keyboard key. Choosing a window that sits
+  behind its own tray icon brings it back. A window whose connection closed
+  or dropped is marked "(disconnected)" and stays choosable. **Name this
+  window...** in the system menu's Window submenu - or a right click on the
+  window's entry in Open Sessions, for a hidden window - puts a name in
+  front of the window title and of its launcher entry; it lives with the
+  window and is not saved (hknet/KiTTY#54).
+- **Start the launcher from the configuration box.** Application > KiTTY++
+  Settings > Launcher ends with "Start Launcher at Login" - the same
+  setting as the launcher menu's "Start at login" - and a "Start Launcher
+  Now" button, greyed while a launcher runs (hknet/KiTTY#54).
+- **One exit confirmation for windows closed together.** The taskbar's
+  "Close all windows" used to raise one "Are you sure...?" per KiTTY++
+  window; now one box covers them all - "Are you sure you want to close
+  these 12 sessions?" - and its answer closes or keeps every one of them.
+  A window closed alone keeps its usual confirmation.
+- **"Show next window on close" in the launcher.** With "Show one window at
+  a time" ticked, a second entry under it brings the next window up by
+  itself when the shown one is closed: the one shown before it, else the
+  first entry of Open Sessions. Ticking "Show one window at a time" now
+  applies at once: the topmost visible window stays and the others are
+  hidden, where before it waited for the next choice from the list.
 - **File and folder settings expand Windows environment variables.** A log
   file name, a key file, the background image, the bell sound, the download
   and upload folders and the helper-program paths can use `%OneDrive%`,
@@ -36,6 +70,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Send to tray goes into the launcher while one runs.** Until now it always
+  gave the window a tray icon of its own; with a launcher running, the window
+  is now hidden into it and listed in its Open Sessions. Application > KiTTY++
+  Settings > Terminal > "Tray icon per window" (`[KiTTY] traymode=own`)
+  keeps the old behaviour (hknet/KiTTY#54).
 - **Settings that have no effect are greyed in the configuration box.** On
   Session > Logging everything below the logging type is greyed while it is
   None, and the rotation and retention rows while the log file name has no
@@ -55,6 +94,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   used to wait half a second in case a double click followed. A double click
   still opens a new configuration box, and a click on the icon while its
   menu is open now closes the menu.
+- **The launcher's tray menus open at the tray icon.** They opened at the
+  mouse pointer, so a menu opened from the keyboard appeared wherever the
+  pointer happened to be. Both menus now open beside the icon,
+  away from the taskbar edge; without a visible icon they still open at the
+  pointer.
 
 ### Fixed
 

@@ -269,6 +269,10 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
      * tick after the box exists; the flag settles itself, so a box opened
      * from a terminal that already showed the note shows nothing. */
     kitty_notes_show_pending(NULL);
+    /* Application > Launcher's "Start Launcher Now": greyed while a launcher
+     * runs. A killed launcher never says it has gone, so while that panel is
+     * ON SCREEN (and only then) this tick looks once (kitty_config_app.c). */
+    kitty_cfgbox_launcher_poll(dlg);
     now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
@@ -331,6 +335,28 @@ void kitty_dlg_enable_button(dlgcontrol *ctrl, dlgparam *dlg,
  * dialog, and GetDlgItem does not look at grandchildren - so it found
  * nothing and the grey silently did not happen.
  */
+/*
+ * KiTTY: is this control ON SCREEN right now? Stricter than
+ * kitty_dlg_ctrl_present ("laid out"): the panel cache keeps a visited panel
+ * laid out as a hidden window, and a check that runs on a timer must not do
+ * its work for a panel nobody is looking at. IsWindowVisible looks at the
+ * ancestors too, so a hidden panel host answers false.
+ */
+bool kitty_dlg_ctrl_shown(dlgcontrol *ctrl, dlgparam *dlg)
+{
+    int i;
+    if (!ctrl || !dlg)
+        return false;
+    for (i = 0; i < dlg->nctrltrees; i++) {
+        struct winctrl *c = winctrl_findbyctrl(dlg->controltrees[i], ctrl);
+        if (c) {
+            HWND h = kitty_cfg_item(dlg->hwnd, c->base_id);
+            return h && IsWindowVisible(h);
+        }
+    }
+    return false;
+}
+
 void kitty_dlg_enable(dlgcontrol *ctrl, dlgparam *dlg, bool enabled)
 {
     int i, id;
@@ -643,6 +669,11 @@ static const struct kset_choice kset_renderer_choices[] = {
 static const struct kset_choice kset_framepace_choices[] = {
     { KT_KSET_WD_FP_AUTO, "auto", -1 }, { KT_KSET_WD_FP_30, "33", 33 },
     { KT_KSET_WD_FP_20, "50", 50 },     { KT_KSET_WD_FP_FIXED, "0", 0 } };
+/* Terminal: where a window sent to the tray goes ([KiTTY] traymode, read by
+ * kitty_bridge.c kitty_send_to_tray at every send - no running copy). */
+static const struct kset_choice kset_traymode_choices[] = {
+    { KT_KSET_WD_TRAY_AUTO, "auto", 0 }, { KT_KSET_WD_TRAY_OWN, "own", 1 },
+    { KT_KSET_WD_TRAY_LAUNCHER, "launcher", 2 } };
 
 /* Direct2D needs Windows 8.1 (6.3); read from ntdll, which tells the truth
  * to a process whose manifest claims less. */
@@ -722,6 +753,8 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },
+    { INIT_SECTION, KI_TRAYMODE,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_traymode_choices, lenof(kset_traymode_choices) },
     { INIT_SECTION, KI_ICONFILE,       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, kset_get_iconfile, SetIconFile },
     { KI_SECTION_PRINT, KI_PRINT_HEIGHT,              KSET_INT, true, NULL, NULL, &PrintCharSize, 1, 10000, 100 },
     { KI_SECTION_PRINT, KI_PRINT_MAXLINE,             KSET_INT, true, NULL, NULL, &PrintMaxLinePerPage, 1, 1000, 60 },

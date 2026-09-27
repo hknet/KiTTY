@@ -334,6 +334,16 @@
 ;    window on a slow machine paces itself down instead of stalling.
 ;framepace=auto
 
+; traymode: where a window goes when it is sent to the tray (the system menu
+;    entry, its shortcut, Ctrl+middle-click, a right click or a Ctrl+click on
+;    the minimize button, Send to tray on startup). auto (the default): into the launcher while one runs, else
+;    its own tray icon. own: always its own tray icon. launcher: always into
+;    the launcher - hidden with no taskbar button and no icon of its own,
+;    listed in the launcher's Open Sessions, which brings it back; with no
+;    launcher running one is started first. Also on the configuration
+;    window, Application > KiTTY++ Settings > Terminal.
+;traymode=auto
+
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe
 

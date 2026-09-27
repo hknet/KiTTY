@@ -122,6 +122,11 @@ void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) ;   /* modeless single-line 
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) ;
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) ;
 char * GetInputBoxResult( void ) ;
+/* "Name this window..." (hknet/KiTTY#54): the modeless box (kitty_inputbox.c)
+ * and the window's name it edits (window.c). */
+void kitty_winname_box( HWND owner ) ;
+const wchar_t * kitty_window_name_get( void ) ;
+void kitty_window_name_set( const wchar_t * name ) ;
 void GetAndSendLine( HWND hwnd ) ;
 void GetAndSendMultiLine( HWND hwnd ) ;
 void routine_inputbox( void * phwnd ) ;
@@ -496,6 +501,16 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_LAUNCHER
 #define IDM_LAUNCHER	0xB130
 #endif
+/* Posted by a closing terminal to the running launcher, wParam = the
+ * terminal's window (kitty_bridge.c kitty_launcher_window_gone): with "Show
+ * next window on close" the launcher shows the next one. */
+#define KITTY_LAUNCHER_WINDOW_GONE_MESSAGE "KiTTYLauncherWindowGone"
+/* Posted by a launcher to every top-level window when it has started
+ * (wParam 1) and when it is exiting normally (wParam 0): an open
+ * configuration box greys or re-enables its "Start Launcher Now" button. A
+ * killed launcher posts nothing; the box also checks while its Launcher panel
+ * is on screen. */
+#define KITTY_LAUNCHER_STATE_MESSAGE "KiTTYLauncherStateChanged"
 
 // USERCMD must be the largest value, so that there can be as many shortcuts
 // as wanted

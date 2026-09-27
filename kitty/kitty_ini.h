@@ -337,6 +337,16 @@ char default_init_file_content[] =
 ;    window on a slow machine paces itself down instead of stalling.\n\
 ;framepace=auto\n\
 \n\
+; traymode: where a window goes when it is sent to the tray (the system menu\n\
+;    entry, its shortcut, Ctrl+middle-click, a right click or a Ctrl+click on\n\
+;    the minimize button, Send to tray on startup). auto (the default): into the launcher while one runs, else\n\
+;    its own tray icon. own: always its own tray icon. launcher: always into\n\
+;    the launcher - hidden with no taskbar button and no icon of its own,\n\
+;    listed in the launcher's Open Sessions, which brings it back; with no\n\
+;    launcher running one is started first. Also on the configuration\n\
+;    window, Application > KiTTY++ Settings > Terminal.\n\
+;traymode=auto\n\
+\n\
 ; iconfile: point to a file where internal icons are located\n\
 ;iconfile=kitty.exe\n\
 \n\

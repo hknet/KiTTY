@@ -2528,6 +2528,10 @@ dlgcontrol *kitty_config_session_filter_ctrl(void); /* kitty_config.c / stub */
 bool kitty_red_caption(const char *text);  /* kitty_config.c / stub */
 bool kitty_bold_caption(const char *text);           /* kitty_config.c / stub */
 void kitty_cfgbox_workplace_poll(dlgparam *dp);      /* kitty_config.c / stub */
+/* A launcher's start/exit notice: Application > Launcher's "Start Launcher
+ * Now" greys or comes back. 0 = no such notice in this variant. */
+UINT kitty_cfgbox_launcher_msg(void);                /* kitty_config_app.c / stub */
+void kitty_cfgbox_launcher_changed(dlgparam *dp);    /* kitty_config_app.c / stub */
 /* A settings field that holds its write back until the typing stops wants
  * writing before the panel changes under it, and before the box goes. */
 void kitty_cfgbox_flush_pending(void);               /* kitty_config.c / stub */
@@ -3132,6 +3136,16 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
     const int DEMO_SCREENSHOT_TIMER_ID = 1230;
     HWND treeview;
     struct treeview_faff tvfaff;
+
+    /* KiTTY: a registered message has no fixed id, so it cannot be a case
+     * label. Guarded against 0: that is WM_NULL, and the stub returns it. */
+    {
+        UINT lm = kitty_cfgbox_launcher_msg();
+        if (lm && msg == lm) {
+            kitty_cfgbox_launcher_changed(pds->dp);
+            return 0;
+        }
+    }
 
     switch (msg) {
       case WM_CTLCOLORSTATIC: {

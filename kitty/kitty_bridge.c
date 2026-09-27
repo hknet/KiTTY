@@ -10,6 +10,7 @@
  * TODO(no-global phase): replace the stubs below with real implementations
  * threaded through the seat, per the planned no-global integration.
  */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,6 +24,7 @@
 #include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+#include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
@@ -281,16 +283,376 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 
 /* ===== kitty menu-action wrappers (window.c calls these; they may use KiTTY
  * globals/APIs declared in kitty.h, which window.c does not include) ===== */
-void kitty_send_to_tray(HWND hwnd) {
+/* ---- Send to tray, and where the window goes ([KiTTY] traymode) ----
+ *
+ * The one function every send-to-tray goes through: the system menu entry,
+ * its shortcut and the Ctrl+middle-click chord (all IDM_TOTRAY), the right
+ * click on the minimize button (WM_NCRBUTTONUP), "Send to tray on startup"
+ * (TIMER_SENDTOTRAY) and a minimise while that option is on (WM_SIZE).
+ *
+ *   own       the window's own icon in the notification area (ManageToTray)
+ *   launcher  hidden the way the launcher's Hide hides it - no taskbar
+ *             button, no icon of its own - and listed in the launcher's Open
+ *             Sessions, which is the way back. No launcher running: one is
+ *             started first; if none comes up, the window's own icon after all.
+ *   auto      launcher while one runs, own otherwise; never starts one.
+ */
+#define KITTY_TRAYMODE_AUTO     0
+#define KITTY_TRAYMODE_OWN      1
+#define KITTY_TRAYMODE_LAUNCHER 2
+/* How long a launcher started here gets to show its window: it reads the
+ * registry hive and the session tree first (kitty_workplace.c allows the
+ * same). */
+#define KITTY_TRAY_LAUNCHER_WAIT_MS 4000
+
+static int kitty_traymode(void) {
+    char buf[32] = "";
+    if (ReadParameterN(INIT_SECTION, KI_TRAYMODE, buf, sizeof(buf)) && buf[0]) {
+        if (!stricmp(buf, "own")) return KITTY_TRAYMODE_OWN;
+        if (!stricmp(buf, "launcher")) return KITTY_TRAYMODE_LAUNCHER;
+    }
+    return KITTY_TRAYMODE_AUTO;
+}
+
+static void kitty_tray_own(HWND hwnd) {
     if (GetVisibleFlag() == VISIBLE_YES) {
         SetVisibleFlag(VISIBLE_TRAY);
         ManageToTray(hwnd);
     }
 }
+
+#ifdef MOD_LAUNCHER
+void kitty_launcher_watch_arm(HWND hwnd, HWND launcher);   /* windows/window.c */
+
+/* The running launcher's window, or NULL. The class is worked out exactly as
+ * Launcher_WinMain (kitty_launcher.c) registers it; the title is always
+ * "KiTTYLauncher". Matching the title too matters: with a KiClassName of
+ * its own the launcher's class IS the terminal class. */
+HWND kitty_launcher_window(void) {
+    char cls[1024] = "KiTTYLauncher", buf[1024] = "";
+    if (strcmp(KiTTYClassName, "KiTTY") && KiTTYClassName[0]) {
+        strncpy(cls, KiTTYClassName, sizeof(cls) - 1);
+        cls[sizeof(cls) - 1] = '\0';
+    }
+    if (ReadParameterN(KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME, buf, sizeof(buf))) {
+        buf[sizeof(buf) - 1] = '\0';
+        if (buf[0]) strcpy(cls, buf);
+    }
+    return FindWindowA(cls, "KiTTYLauncher");
+}
+
+/* Starts a launcher the way a user does - this kitty.exe with -launcher, in
+ * its own folder, restricted if this process is - and returns at once. The
+ * configuration box's "Start Launcher Now" uses it as it is: the launcher
+ * announces itself (KITTY_LAUNCHER_STATE_MESSAGE), so nothing has to wait. */
+BOOL kitty_launcher_spawn(void) {
+    char exe[MAX_PATH + 1], dir[MAX_PATH + 1], cmd[MAX_PATH + 64];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    DWORD n;
+    char *slash;
+    n = GetModuleFileNameA(NULL, exe, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH)
+        return FALSE;
+    exe[n] = '\0';
+    strcpy(dir, exe);
+    slash = strrchr(dir, '\\');
+    if (slash) *slash = '\0'; else dir[0] = '\0';
+    snprintf(cmd, sizeof(cmd), "\"%s\"%s -launcher", exe,
+             restricted_acl() ? " -restrict-acl" : "");
+    memset(&si, 0, sizeof(si));
+    si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL,
+                        dir[0] ? dir : NULL, &si, &pi))
+        return FALSE;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return TRUE;
+}
+
+/* The same, and waits for the launcher's window (the tray mode "Launcher
+ * (starts one if needed)" hands the window to it at once). Returns that
+ * window, or NULL if none came up in time. */
+static HWND kitty_launcher_start(void) {
+    DWORD waited = 0;
+    HWND l;
+    if (!kitty_launcher_spawn())
+        return NULL;
+    while ((l = kitty_launcher_window()) == NULL &&
+           waited < KITTY_TRAY_LAUNCHER_WAIT_MS) {
+        Sleep(50);
+        waited += 50;
+    }
+    return l;
+}
+#endif
+
+/* This terminal window is closing: notify a running launcher, which with "Show
+ * next window on close" shows the next one (kitty_launcher.c
+ * LauncherWindowGone). Called while this window is still on the screen and in
+ * front (window.c kitty_window_leaving: before DestroyWindow, or before the
+ * PostQuitMessage of "close window on exit") - once it is hidden, Windows
+ * has put another window in front and the right to the foreground passed
+ * here is worth nothing. SENT, not posted, for the same reason: the launcher
+ * shows the next window while this one still holds the foreground. */
+/* A test build started with KITTY_CTRLTAB_TRACE set: one line per Ctrl+Tab
+ * event to ctrltab.log beside the exe (window.c, the Ctrl+Tab switching), to
+ * tell "the key never arrived as Ctrl+Tab" from "the switch was refused".
+ * Without the variable - and in every release build - nothing is written. */
+void kitty_ctrltab_trace(const char *fmt, ...) {
+#ifdef KITTY_TEST_BUILD_LABEL
+    char path[MAX_PATH], *slash, line[400];
+    va_list ap;
+    FILE *f;
+    if (getenv("KITTY_CTRLTAB_TRACE") == NULL)
+        return;
+    if (!GetModuleFileNameA(NULL, path, sizeof(path)) ||
+        (slash = strrchr(path, '\\')) == NULL)
+        return;
+    strcpy(slash + 1, "ctrltab.log");
+    va_start(ap, fmt);
+    vsnprintf(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    if ((f = fopen(path, "a")) != NULL) {
+        fprintf(f, "%lu pid %lu %s\n", (unsigned long)GetTickCount(),
+                (unsigned long)GetCurrentProcessId(), line);
+        fclose(f);
+    }
+#else
+    (void)fmt;
+#endif
+}
+
+void kitty_launcher_window_gone(HWND hwnd) {
+#ifdef MOD_LAUNCHER
+    HWND l = kitty_launcher_window();
+    DWORD pid = 0;
+    static UINT msg = 0;
+    if (l == NULL)
+        return;
+    if (!msg)
+        msg = RegisterWindowMessageA(KITTY_LAUNCHER_WINDOW_GONE_MESSAGE);
+    GetWindowThreadProcessId(l, &pid);
+    if (pid)
+        AllowSetForegroundWindow(pid);
+    /* lParam 1: this window was on the screen - the one "Show one window at
+     * a time" shows, whether or not the launcher's list chose it */
+    if (msg) {
+        DWORD_PTR res;
+        SendMessageTimeout(l, msg, (WPARAM)hwnd,
+                           GetVisibleFlag() == VISIBLE_YES ? 1 : 0,
+                           SMTO_ABORTIFHUNG, 2000, &res);
+    }
+#else
+    (void)hwnd;
+#endif
+}
+
+/*
+ * One exit confirmation for many windows closed at once.
+ *
+ * The taskbar's "Close all windows" sends every window its close at nearly
+ * the same moment, and every kitty.exe is a process of its own, so each one
+ * showed its own "Are you sure...". Now the first window that needs the
+ * confirmation opens a GROUP in a small shared memory block (per install:
+ * named after the window class, as the launcher is found) and waits
+ * KCG_COLLECT_MS; every window whose close arrives within KCG_JOIN_MS of the
+ * first joins it and shows no box. The first one then shows ONE box for all
+ * of them - "these 12 sessions" - and writes the answer; the others read it
+ * on a timer (TIMER_CLOSEGROUP in window.c) and close or stay. Nothing
+ * blocks: a waiting window keeps painting and answering.
+ *   - A window alone gets its usual box and text.
+ *   - A close that arrives while the group's box is already up is not
+ *     joined: it shows its own box, as before.
+ *   - When the leading window's process is gone before it answered, the
+ *     others fall back to their own box.
+ *   - Windows without the confirmation (warn on close off, session ended)
+ *     close at once and are not counted.
+ * One terminal window per process, so this process's part is plain statics.
+ */
+#define KCG_COLLECT_MS 350
+#define KCG_JOIN_MS    1000
+#define KCG_STALE_MS   5000
+
+enum { KCG_IDLE, KCG_COLLECTING, KCG_BOXUP };
+struct kitty_closegroup {
+    LONG seq;            /* the current group's number */
+    LONG state;          /* KCG_IDLE / COLLECTING / BOXUP */
+    DWORD start;         /* GetTickCount of its first close */
+    LONG joined;         /* windows in it, the first included */
+    DWORD leader_pid;    /* the process that shows the box */
+    LONG answer_seq;     /* the group the answer belongs to */
+    LONG answer;         /* 1 = close, 0 = stay */
+};
+static HANDLE kcg_mutex = NULL;
+static struct kitty_closegroup *kcg = NULL;
+static LONG kcg_my_seq = 0;
+static int kcg_leader = 0;
+static int kcg_pending = 0;      /* this window waits on TIMER_CLOSEGROUP */
+
+static int kcg_open(void) {
+    char name[200];
+    HANDLE map;
+    if (kcg)
+        return 1;
+    snprintf(name, sizeof(name), "Local\\KiTTYCloseGroup-%s", KiTTYClassName);
+    map = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0,
+                             sizeof(struct kitty_closegroup), name);
+    if (map == NULL)
+        return 0;
+    kcg = (struct kitty_closegroup *)MapViewOfFile(map, FILE_MAP_ALL_ACCESS, 0, 0,
+                                                   sizeof(struct kitty_closegroup));
+    if (kcg == NULL) {
+        CloseHandle(map);
+        return 0;
+    }
+    /* the mapping stays open for the life of the process */
+    snprintf(name, sizeof(name), "Local\\KiTTYCloseGroupLock-%s", KiTTYClassName);
+    kcg_mutex = CreateMutexA(NULL, FALSE, name);
+    if (kcg_mutex == NULL) {
+        UnmapViewOfFile(kcg);
+        kcg = NULL;
+        CloseHandle(map);
+        return 0;
+    }
+    return 1;
+}
+
+static int kcg_lock(void) {
+    DWORD r = WaitForSingleObject(kcg_mutex, 1000);
+    return r == WAIT_OBJECT_0 || r == WAIT_ABANDONED;
+}
+
+static int kcg_pid_alive(DWORD pid) {
+    HANDLE h;
+    int alive;
+    if (pid == GetCurrentProcessId())
+        return 1;
+    h = OpenProcess(SYNCHRONIZE, FALSE, pid);
+    if (h == NULL)
+        return 0;
+    alive = WaitForSingleObject(h, 0) == WAIT_TIMEOUT;
+    CloseHandle(h);
+    return alive;
+}
+
+/* WM_CLOSE of a window that needs the confirmation. 1: it is in a group now
+ * - return, the answer comes through TIMER_CLOSEGROUP; 0: show the box as
+ * before, right away. */
+int kitty_closegroup_request(HWND hwnd) {
+    DWORD now = GetTickCount();
+    int joined = 0;
+    if (kcg_pending)
+        return 1;                    /* a second click on X: already waiting */
+    if (!kcg_open() || !kcg_lock())
+        return 0;
+    if (kcg->state != KCG_IDLE && !kcg_pid_alive(kcg->leader_pid))
+        kcg->state = KCG_IDLE;
+    if (kcg->state == KCG_COLLECTING && now - kcg->start > KCG_STALE_MS)
+        kcg->state = KCG_IDLE;
+    if (kcg->state == KCG_BOXUP) {
+        ReleaseMutex(kcg_mutex);
+        return 0;                                 /* its box is up: a box of our own */
+    }
+    if (kcg->state == KCG_COLLECTING && now - kcg->start <= KCG_JOIN_MS) {
+        kcg->joined++;
+        kcg_my_seq = kcg->seq;
+        kcg_leader = 0;
+        joined = 1;
+        /* the close came with the user's input behind it (the taskbar):
+         * pass the right to the foreground on to the window that shows the
+         * box, which does so from a timer */
+        AllowSetForegroundWindow(kcg->leader_pid);
+    } else {
+        kcg->seq++;
+        kcg->state = KCG_COLLECTING;
+        kcg->start = now;
+        kcg->joined = 1;
+        kcg->leader_pid = GetCurrentProcessId();
+        kcg_my_seq = kcg->seq;
+        kcg_leader = 1;
+    }
+    ReleaseMutex(kcg_mutex);
+    kcg_pending = 1;
+    SetTimer(hwnd, TIMER_CLOSEGROUP, joined ? 100 : KCG_COLLECT_MS, NULL);
+    return 1;
+}
+
+/* TIMER_CLOSEGROUP. KCG_WAIT: keep waiting; KCG_CLOSE / KCG_STAY: the group's
+ * answer; KCG_SHOWBOX: show the box now - for *count windows (1 = this one
+ * alone, the usual text), and when this window leads, pass the answer to
+ * kitty_closegroup_answer. */
+int kitty_closegroup_poll(HWND hwnd, int *count) {
+    int r = KCG_WAIT;
+    *count = 1;
+    if (!kcg || !kcg_lock()) {
+        KillTimer(hwnd, TIMER_CLOSEGROUP);
+        kcg_leader = 0;
+        kcg_pending = 0;
+        return KCG_SHOWBOX;
+    }
+    if (kcg_leader) {
+        if (kcg->seq == kcg_my_seq && kcg->state == KCG_COLLECTING) {
+            kcg->state = KCG_BOXUP;
+            *count = (int)kcg->joined;
+        }
+        r = KCG_SHOWBOX;
+    } else if (kcg->answer_seq == kcg_my_seq) {
+        r = kcg->answer ? KCG_CLOSE : KCG_STAY;
+    } else if (kcg->seq != kcg_my_seq || kcg->state == KCG_IDLE ||
+               !kcg_pid_alive(kcg->leader_pid)) {
+        r = KCG_SHOWBOX;                          /* the group is gone: alone */
+    }
+    ReleaseMutex(kcg_mutex);
+    if (r != KCG_WAIT) {
+        KillTimer(hwnd, TIMER_CLOSEGROUP);
+        kcg_pending = 0;
+    }
+    return r;
+}
+
+/* The leading window's answer, for the windows waiting on it. */
+void kitty_closegroup_answer(int yes) {
+    if (!kcg_leader || !kcg)
+        return;
+    kcg_leader = 0;
+    if (!kcg_lock())
+        return;
+    if (kcg->seq == kcg_my_seq) {
+        kcg->answer_seq = kcg_my_seq;
+        kcg->answer = yes ? 1 : 0;
+        kcg->state = KCG_IDLE;
+    }
+    ReleaseMutex(kcg_mutex);
+}
+
+void kitty_send_to_tray(HWND hwnd) {
+    int mode;
+    if (GetVisibleFlag() != VISIBLE_YES)
+        return;
+    mode = kitty_traymode();
+#ifdef MOD_LAUNCHER
+    if (mode != KITTY_TRAYMODE_OWN) {
+        HWND l = kitty_launcher_window();
+        if (l == NULL && mode == KITTY_TRAYMODE_LAUNCHER)
+            l = kitty_launcher_start();
+        if (l != NULL) {
+            kitty_launcher_hide(hwnd);
+            kitty_launcher_watch_arm(hwnd, l);
+            return;
+        }
+    }
+#else
+    (void)mode;
+#endif
+    kitty_tray_own(hwnd);
+}
 /* The launcher's Hide all, Unhide all and session entries (kitty_launcher.c
  * ManageHideOne, ManageUnHideOne, ManageSwitch) post IDM_HIDE, IDM_UNHIDE and
- * IDM_SWITCH_HIDE to every terminal window. A window sent to the tray
- * (VISIBLE_TRAY) is left alone: its tray icon is the way back. Showing uses
+ * IDM_SWITCH_HIDE to every terminal window. A window sent to its own tray
+ * icon (VISIBLE_TRAY) is left alone here: that icon is its way back, and so is
+ * its own session entry, which window.c answers with RestoreFromTray. Showing uses
  * SW_SHOW rather than SW_RESTORE, so a window hidden while maximized or
  * minimized comes back in that state. */
 void kitty_launcher_hide(HWND hwnd) {

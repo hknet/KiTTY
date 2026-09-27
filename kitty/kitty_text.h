@@ -341,7 +341,7 @@
 #define KT_BEHAVIOUR_SEND_TO_TRAY_ON_STARTUP         "Send to tray on startup"
 #define KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP             "Maximize on startup"
 #define KT_BEHAVIOUR_FULL_SCREEN_ON_STARTUP          "Full screen on startup"
-#define KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL  "Switch KiTTY windows with Ctrl + TAB"
+#define KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL  "Switch Terminal Windows using Ctrl+TAB"
 #define KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR "Remember window position (per monitor layout)"
 #define KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK        "Window buttons (for kiosk or embedded use)"
 #define KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL       "System menu"
@@ -1307,12 +1307,16 @@
 #define KT_KSET_WD_FP_20                             "20fps"
 #define KT_KSET_WD_FP_FIXED                          "PuTTY's fixed (20ms)"
 #define KT_KSET_WD_RENDERER_NOTE                     "Renderer and frame pacing apply to new terminal windows only."
-#define KT_KSET_WD_CTRLTAB                           "Ctrl+Tab window switching"
+#define KT_KSET_WD_CTRLTAB                           "Ctrl+Tab window switching (needs per Session Setting too)"
 #define KT_KSET_WD_TRANSPARENCY                      "Window transparency"
 #define KT_KSET_WD_BGIMAGE                           "Background images"
 #define KT_KSET_WD_ICONS                             "Icons"
 #define KT_KSET_WD_SLIDEDELAY                        "Slideshow interval fallback, seconds (0 = none):"
 #define KT_KSET_WD_SHRINK                            "Resample a large image for Stretch+"
+#define KT_KSET_WD_TRAYMODE                          "Terminal minimize to Tray/Launcher:"
+#define KT_KSET_WD_TRAY_AUTO                         "Launcher if running, else Tray (default)"
+#define KT_KSET_WD_TRAY_OWN                          "Tray icon per window"
+#define KT_KSET_WD_TRAY_LAUNCHER                     "Launcher (starts one if needed)"
 #define KT_KSET_WD_ICONFILE                          "Icon library for session icons (.exe, .dll or .icl):"
 #define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Title & Icon panel picks one of its icons for " \
         "the terminal window. Read at the next start; blank = kitty.dll beside kitty.exe, else kitty.exe."
@@ -1403,6 +1407,9 @@
         "started again."
 #define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a change here applies " \
         "the next time it starts."
+#define KT_KSET_LA_START                             "Start"
+#define KT_KSET_LA_START_AT_LOGIN                    "Start Launcher at Login"
+#define KT_KSET_LA_START_NOW                         "Start Launcher Now"
 
 /* The three panel side-jobs of the settings tree */
 #define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Switched off for every session, on Application > KiTTY " \
@@ -1558,7 +1565,21 @@
 #define KT_MENU_HIDE_ALL                             "&Hide all"
 #define KT_MENU_UNHIDE_ALL                           "&Unhide all"
 #define KT_MENU_WINDOW_UNIQUE                        "Show &one window at a time"
+#define KT_MENU_SHOW_NEXT_ON_CLOSE                   "Show &next window on close"
+/* One exit confirmation for windows closed together (window.c TIMER_CLOSEGROUP) */
+#define KT_CLOSE_GROUP_CONFIRM                       "Are you sure you want to close these %d sessions?"
 #define KT_MENU_OPENED_SESSIONS                      "&Open Sessions"
+/* After "Open Sessions" and after a folder's name in that list: how many
+ * windows, and how many of them are hidden ("&Open Sessions (12, 7 hidden)"). */
+#define KT_MENU_OPENED_COUNTS                        " (%d, %d hidden)"
+#define KT_MENU_OPENED_COUNTS_NONE_HIDDEN            " (%d)"
+/* Between the parts of a window's entry in that list - name, session, title -
+ * and between a window's name and its title (window.c). Wide: both are built
+ * from Unicode text. */
+#define KT_WINLABEL_SEP                              L" - "
+/* After the entry of a window whose session is over (its connection closed or
+ * lost, the window still open): the entry stays clickable (hknet/KiTTY#54). */
+#define KT_WINLABEL_DISCONNECTED                     L" (disconnected)"
 /* The launcher's folder context menu (right click on a session folder) */
 #define KT_MENU_OPEN_FOLDER_ALL                      "Open all %d sessions in \"%.200s\""
 #define KT_LAUNCHER_OPEN_FOLDER_CONFIRM              "Open all %d sessions in \"%.200s\"?"
@@ -2790,6 +2811,7 @@
 #define KT_SYSMENU_ROLLUP                            "Roll-u&p"
 #define KT_SYSMENU_SEND_TO_TRAY                      "Send to tra&y"
 #define KT_SYSMENU_PROTECT                           "Prote&ct"
+#define KT_SYSMENU_NAME_WINDOW                       "&Name this window..."
 #define KT_SYSMENU_WINDOW                            "&Window"
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"
 #define KT_SYSMENU_START_WINSCP                      "Start Win&SCP"
@@ -3352,6 +3374,10 @@
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE                            "Text input - /help = KiTTY commands"
 #define KT_INPUTBOX_TITLE_SUFFIX                     " - Text input"
+/* The same box for "Name this window..." (system menu): the name goes in
+ * front of the window title and into the launcher's Open Sessions list. */
+#define KT_WINNAME_CAPTION                           "Name this window"
+#define KT_WINNAME_PROMPT                            "Window name (empty = no name):"
 
 /* kitty_storemove.c: portable copy out, folder store in (captions = the panel's group titles) */
 #define KT_STOREMOVE_TITLE_OUT                       KT_INIMIG_OUT_GROUP

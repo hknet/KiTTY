@@ -340,6 +340,67 @@ void ShowInputBox( HINSTANCE hInstance, HWND hwnd ) {
 		}
 	}
 
+/*
+ * "Name this window..." (system menu > Window, hknet/KiTTY#54): the send-text
+ * box's template (IDD_INPUTBOX) with its own caption and prompt, prefilled
+ * with the current name. OK hands the text to kitty_window_name_set (window.c)
+ * - empty clears the name - and closes the box; Esc or the close button
+ * closes it unchanged. Modeless, one per window, registered as an aux dialog
+ * like the send-text box; the dialog hook themes it. A Unicode dialog, so a
+ * name is not limited to the ANSI codepage.
+ */
+#define KITTY_WINNAME_MAXLEN	100
+static HWND WinNameBoxHwnd = NULL ;
+
+static INT_PTR CALLBACK WinNameCallBack( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
+	switch( message ) {
+		case WM_INITDIALOG: {
+			HWND edit = GetDlgItem( hwnd, IDC_RESULT ) ;
+			HWND prompt = FindWindowExA( hwnd, NULL, "Static", NULL ) ;
+			SetWindowTextA( hwnd, KT_WINNAME_CAPTION ) ;
+			if( prompt ) SetWindowTextA( prompt, KT_WINNAME_PROMPT ) ;
+			SendMessageW( edit, EM_LIMITTEXT, KITTY_WINNAME_MAXLEN, 0 ) ;
+			SetWindowTextW( edit, kitty_window_name_get() ) ;
+			SendMessageW( edit, EM_SETSEL, 0, -1 ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;   /* its owner's icon */
+			SetFocus( edit ) ;
+			return FALSE ;                      /* the focus is set */
+		}
+		case WM_COMMAND:
+			if( LOWORD(wParam) == IDOK ) {
+				wchar_t name[KITTY_WINNAME_MAXLEN + 1] = L"" ;
+				GetWindowTextW( GetDlgItem( hwnd, IDC_RESULT ), name, KITTY_WINNAME_MAXLEN + 1 ) ;
+				kitty_window_name_set( name ) ;
+				DestroyWindow( hwnd ) ;
+				return TRUE ;
+			}
+			if( LOWORD(wParam) == IDCANCEL ) {
+				DestroyWindow( hwnd ) ;
+				return TRUE ;
+			}
+			break ;
+		case WM_CLOSE:
+			DestroyWindow( hwnd ) ;
+			return TRUE ;
+		case WM_DESTROY:
+			ShinyRemoveAuxDialog( hwnd ) ;
+			WinNameBoxHwnd = NULL ;
+			break ;
+	}
+	(void)lParam ;
+	return FALSE ;
+}
+
+void kitty_winname_box( HWND owner ) {
+	if( WinNameBoxHwnd && IsWindow( WinNameBoxHwnd ) ) { SetForegroundWindow( WinNameBoxHwnd ) ; return ; }
+	WinNameBoxHwnd = CreateDialogParamW( hinst, MAKEINTRESOURCEW(IDD_INPUTBOX), owner, WinNameCallBack, 0 ) ;
+	if( WinNameBoxHwnd ) {
+		ShinyAddAuxDialog( WinNameBoxHwnd ) ;
+		ShowWindow( WinNameBoxHwnd, SW_SHOW ) ;
+		SetForegroundWindow( WinNameBoxHwnd ) ;
+	}
+}
+
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) {
 	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
 	

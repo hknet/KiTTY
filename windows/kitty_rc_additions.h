@@ -372,6 +372,10 @@
 #ifndef IDM_IMPORTSETTINGS
 #define IDM_IMPORTSETTINGS 0xB1F0
 #endif
+/* System menu > Window > "Name this window..." (hknet/KiTTY#54). */
+#ifndef IDM_WINNAME
+#define IDM_WINNAME 0xB220
+#endif
 
 /* KiTTY send-text input boxes ([Shortcuts] input / inputm and the password
  * variant) and the InfoBox banner. The 0.76 originals were ordinals 117-120,

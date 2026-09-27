@@ -61,6 +61,10 @@ bool kitty_bold_caption(const char *text) { return false; }
 struct dlgparam;
 void kitty_cfgbox_workplace_poll(struct dlgparam *dp) { }
 
+/* No launcher here, so no start/exit notice to listen for (0 = none). */
+UINT kitty_cfgbox_launcher_msg(void) { return 0; }
+void kitty_cfgbox_launcher_changed(struct dlgparam *dp) { (void)dp; }
+
 /* No settings field here holds its write back, so there is none to flush. */
 void kitty_cfgbox_flush_pending(void) { }
 
@@ -101,6 +105,14 @@ int kitty_confirm_box(HWND owner, const char *caption, const char *text,
     (void)warn_red;
     return MessageBoxA(owner, text, caption,
                        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) == IDYES;
+}
+int kitty_confirm_box_yes_front(HWND owner, const char *caption, const char *text,
+                                const char *warn_red)
+{
+    (void)warn_red;
+    return MessageBoxA(owner, text, caption,
+                       MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON1 |
+                       MB_TOPMOST | MB_SETFOREGROUND) == IDYES;
 }
 int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
                           const char *warn_red)

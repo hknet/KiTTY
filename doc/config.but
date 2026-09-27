@@ -1229,6 +1229,13 @@ terminated can always be closed without a warning.
 If you want to be able to close a window quickly, you can disable
 the \q{Warn before closing window} option.
 
+When several KiTTY++ windows are closed together - the taskbar's
+\q{Close all windows} - one warning window covers all of them: \q{Are
+you sure you want to close these 12 sessions?}. Yes closes them all, No
+keeps them all. Windows closed within about a second of the first one
+count as closed together; a window closed while that warning is up gets
+a warning of its own.
+
 \S{config-altf4} \q{Window closes on \i{ALT-F4}}
 
 By default, pressing ALT-F4 causes the \I{closing window}window to

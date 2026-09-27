@@ -1948,6 +1948,100 @@ static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
     }
 }
 
+/*
+ * Application > Launcher > Start (hknet/KiTTY#54): "Start Launcher at Login"
+ * and "Start Launcher Now". Neither is a kitty.ini key: the checkbox is the
+ * Startup-folder shortcut the tray menu's "Start at login" makes (one shared
+ * implementation, kitty_launcher.c), the button starts this exe -launcher.
+ *
+ * The button is greyed while a launcher of this install runs. It learns of a
+ * change three ways: the panel coming into view (EVENT_REFRESH), the notice
+ * every launcher posts when it starts and when it exits normally
+ * (KITTY_LAUNCHER_STATE_MESSAGE, through windows/dialog.c), and - for a
+ * launcher that was killed and could say nothing - the box's one-second tick,
+ * which looks only while this panel is on screen.
+ */
+static dlgcontrol *kla_start_btn;       /* found again by the tick and the notice */
+static int kla_last_running = -1;
+
+static void kla_start_btn_state(dlgparam *dlg)
+{
+#ifdef MOD_LAUNCHER
+    kla_last_running = kitty_launcher_window() != NULL;
+    kitty_dlg_enable(kla_start_btn, dlg, !kla_last_running);
+#else
+    (void)dlg;
+#endif
+}
+
+static void kitty_launcher_autostart_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    (void)data;
+#ifdef MOD_LAUNCHER
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, kitty_launcher_autostart_on() != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        /* A refusal (the installer's all-users shortcut, another KiTTY's) is
+         * explained by the toggle; the box then shows the real state again. */
+        (void)kitty_launcher_autostart_toggle(kitty_cfg_modal_owner());
+        dlg_checkbox_set(ctrl, dlg, kitty_launcher_autostart_on() != 0);
+    }
+#else
+    (void)ctrl; (void)dlg; (void)event;
+#endif
+}
+
+static void kitty_launcher_startnow_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                            void *data, int event)
+{
+    (void)data;
+#ifdef MOD_LAUNCHER
+    if (event == EVENT_REFRESH) {
+        kla_start_btn_state(dlg);
+    } else if (event == EVENT_ACTION) {
+        /* Started without waiting for it: the launcher's own start notice
+         * confirms the grey a moment later, and the box never freezes. */
+        if (!kitty_launcher_window() && kitty_launcher_spawn())
+            kitty_dlg_enable(ctrl, dlg, false);
+        else
+            kla_start_btn_state(dlg);
+    }
+#else
+    (void)ctrl; (void)dlg; (void)event;
+#endif
+}
+
+/* The box's one-second tick (kitty_config_shared.c). */
+void kitty_cfgbox_launcher_poll(dlgparam *dlg)
+{
+#ifdef MOD_LAUNCHER
+    if (!kla_start_btn || !kitty_dlg_ctrl_shown(kla_start_btn, dlg))
+        return;                         /* not on screen: nothing to look at */
+    if ((kitty_launcher_window() != NULL) != kla_last_running)
+        kla_start_btn_state(dlg);
+#else
+    (void)dlg;
+#endif
+}
+
+/* The launcher's start/exit notice (windows/dialog.c). The message's id is
+ * registered once; 0 means "none" to the caller. The state is looked up
+ * again rather than taken from wParam: with "A second launcher: Starts
+ * anyway" one may exit while another runs. */
+UINT kitty_cfgbox_launcher_msg(void)
+{
+    static UINT msg = 0;
+    if (!msg)
+        msg = RegisterWindowMessageA(KITTY_LAUNCHER_STATE_MESSAGE);
+    return msg;
+}
+void kitty_cfgbox_launcher_changed(dlgparam *dlg)
+{
+    if (kla_start_btn)
+        kla_start_btn_state(dlg);       /* a panel never laid out: nothing to grey */
+}
+
 /* ======================================================================
  * KiTTY++ Settings > Automation > Broadcast
  *
@@ -2550,6 +2644,10 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     char line[1400];
     char buf[4096];
 
+    /* a box built without the Launcher panel must not keep an older box's button */
+    kla_start_btn = NULL;
+    kla_last_running = -1;
+
     /* ---- Appearance: the colour theme of every window of the suite ---- */
     ctrl_settitle(b, KSET_PATH("Appearance"), KT_APPEARANCE_TITLE);
     s = ctrl_getset(b, KSET_PATH("Appearance"), "colours", KT_APPEARANCE_COLOURS);
@@ -2628,6 +2726,10 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, KI_HYPERLINK, kitty_kset_window);
     m->context2 = P(KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, KI_SLIDEDELAY, kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, KI_SHRINKBITMAP, kitty_kset_window);
+    /* [KiTTY] traymode: the label above a full-width list - the entries are
+     * too long for the half-width droplist beside a label. */
+    ctrl_droplist(s, KT_KSET_WD_TRAYMODE, NO_SHORTCUT, 100, HELPCTX(kitty_kset_window),
+                  kitty_kset_handler, KSET(KI_TRAYMODE));
     /* Not a feature: the library the per-session icon numbers index into
      * (kitty_startup.c loads it at startup, kitty.dll or the exe when unset). */
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
@@ -2764,6 +2866,16 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Launcher"), "workplace", KT_KSET_LA_WORKPLACE);
     KSET_CHECKBOX(s, KT_KSET_LA_EXITWITH, KI_LAUNCHER_EXITWITHWORKPLACE, kitty_kset_launcher);
     KSET_NUMBER(s, KT_KSET_LA_NOTICE, KI_LAUNCHER_NOTICESECONDS, kitty_kset_launcher);
+#ifdef MOD_LAUNCHER
+    /* The last group, the button across the whole panel (no ctrl_columns: a
+     * full-content-width push button stretches with the box, windows/controls.c). */
+    s = ctrl_getset(b, KSET_PATH("Launcher"), "start", KT_KSET_LA_START);
+    ctrl_checkbox(s, KT_KSET_LA_START_AT_LOGIN, NO_SHORTCUT,
+                  HELPCTX(kitty_kset_launcher), kitty_launcher_autostart_handler, P(NULL));
+    kla_start_btn = ctrl_pushbutton(s, KT_KSET_LA_START_NOW, NO_SHORTCUT,
+                                    HELPCTX(kitty_kset_launcher),
+                                    kitty_launcher_startnow_handler, P(NULL));
+#endif
     /* [Launcher] classname is deliberately NOT shown: it exists only to keep
      * two installations' launchers from taking each other for "already
      * running", is set by hand in kitty.ini for that one purpose, and a

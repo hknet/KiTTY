@@ -158,6 +158,8 @@ typedef struct {
 	const char *b_over ; /* 3-way: the default button (IDYES),  e.g. Overwrite */
 	const char *b_keep ; /* 3-way: the third button (IDC_CONFIRM_THIRD), Keep both */
 	const char *b_cancel;/* 3-way: the No button (IDNO), Cancel */
+	int front ;          /* 1 = on top of every window until answered, and
+	                      * brought to the foreground (kitty_confirm_box_yes_front) */
 } kitty_confirm_t ;
 
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
@@ -353,6 +355,10 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 		} else
 			SetFocus( GetDlgItem( h, IDNO ) ) ;
 		kitty_centre_on_owner( h ) ;       /* over the window that asked, not mid-screen */
+		if( cf && cf->front ) {
+			SetWindowPos( h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE ) ;
+			SetForegroundWindow( h ) ;
+		}
 		return FALSE ;                     /* focus set here, not by the manager */
 	  }
 	  /* The warning line's colour is not answered here: it is marked above
@@ -425,6 +431,18 @@ int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text,
 	kitty_confirm_t cf = {0} ;
 	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
 	cf.info = 0 ; cf.defyes = 1 ;
+	return kitty_confirm_run( owner, &cf ) == 1 ;
+}
+
+/* kitty_confirm_box_yes for a box that comes up with no click behind it (the
+ * shared exit confirmation of windows closed together, raised from a timer):
+ * on top of every window until answered, so it cannot open unseen behind
+ * others. */
+int kitty_confirm_box_yes_front( HWND owner, const char *caption, const char *text,
+                                 const char *warn_red ) {
+	kitty_confirm_t cf = {0} ;
+	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
+	cf.info = 0 ; cf.defyes = 1 ; cf.front = 1 ;
 	return kitty_confirm_run( owner, &cf ) == 1 ;
 }
 

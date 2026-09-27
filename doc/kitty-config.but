@@ -1763,17 +1763,32 @@ while output streams in: \q{Follow the display} means one frame per
 refresh of whatever display the window is on, \q{30fps} and \q{20fps}
 cap it, and \q{PuTTY's fixed (20ms)} is the pause PuTTY always had. Both
 apply to terminal windows opened afterwards. The checkboxes enable or
-disable Ctrl+Tab window switching, window transparency, background images
+disable Ctrl+Tab window switching (also needs the per-session switch in
+Window > Behaviour), window transparency, background images
 and hyperlinks in the terminal; a disabled feature's panels and menu
 entries disappear from the next configuration window. The slideshow
 interval is the fallback for a session that sets none, and \q{Resample a
 large image for Stretch+} trades a little repaint time for a cleaner
 downscale.
 
+\b \q{Terminal minimize to Tray/Launcher} decides what Send to tray does -
+the system menu entry, its shortcut, Ctrl+middle-click, a right click or a
+Ctrl+click on the window's minimize button, and \q{Send to tray on startup}.
+\q{Tray icon per window} puts an icon for the window in the
+notification area, as KiTTY always did. \q{Launcher (starts one if needed)}
+hides the window the way the launcher's Hide does: no taskbar button and
+no icon of its own, listed in the launcher's Open Sessions, which brings
+it back; with no launcher running, one is started first, and if none
+comes up the window gets its own icon after all. Like a window the
+launcher hid, it shows itself again when that launcher ends (\c{[Launcher]
+unhideafter}). \q{Launcher if running, else Tray}, the default, goes
+into a running launcher and otherwise to its own icon; it never starts
+a launcher.
+
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{wintitle}, \c{size},
 \c{winroll}, \c{renderer}, \c{framepace}, \c{ctrltab},
-\c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay} and
-\c{shrinkbitmap}.
+\c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay},
+\c{shrinkbitmap} and \c{traymode}.
 
 \S{kitty-cfg-kset-fontfb} The Font Fallback leaf (under Terminal)
 
@@ -1899,6 +1914,17 @@ when it is hidden.
 launcher the mode started by itself; one you started stays. The notice
 duration is how long the workplace mode notice stays on screen.
 
+\b \q{Start Launcher at Login}, at the bottom of the panel, is the same
+setting as \q{Start at login} in the launcher's own menu: a \q{KiTTY
+Launcher} shortcut to this \c{kitty.exe -launcher} in your Startup
+folder, made or removed at once. It is not a \c{kitty.ini} key. If the
+installer already put such a shortcut into the Startup folder for all
+users, or your Startup folder holds one for a different KiTTY++
+installation, you are told so and nothing is changed.
+
+\b \q{Start Launcher Now} starts the launcher of this KiTTY++. It is
+greyed while one is running and comes back when it exits.
+
 One \c{[Launcher]} key is not on the panel: \c{classname}, the Windows
 window class the launcher registers and looks for to decide whether one
 is already running. It matters only when two separate KiTTY
@@ -1952,18 +1978,52 @@ all ... sessions in} that folder: the sessions directly in it, not those
 of its subfolders. More than eight sessions are asked about first, and
 the sessions start one after the other, a moment apart.
 
-\q{Open Sessions} lists every open KiTTY++ window, ticked while it
-is visible. Choosing a window hides it, or shows it again and brings it
-to the front; \q{Hide all} and \q{Unhide all} do that for all of them. A
-hidden window is gone from the desktop and from the taskbar, and its
-session keeps running.
+\q{Open Sessions} lists every open KiTTY++ window; its label counts
+them, \q{Open Sessions (12, 7 hidden)}. Each entry names the saved
+session - \c{user@host} for a window opened without one - with the
+window's live title after it, \q{prod-db - root@db1: ~}. The hidden
+windows come first, then the visible ones, each group in alphabetical
+order with a separator between the two. A visible window carries a tick,
+a hidden one a round bullet. Choosing a window hides it, or shows it
+again and brings it to the front; \q{Hide all} and \q{Unhide all} do
+that for all of them. A hidden window is gone from the desktop and from
+the taskbar, and its session keeps running. A window sent to its own
+tray icon is listed as hidden too, and choosing it brings it back from
+the tray. A window whose session is over - the connection closed or
+lost, the window still open - has \q{(disconnected)} after its entry;
+it stays in the list and choosing it shows it, so it can be restarted.
+
+With more than 25 windows open, the windows of sessions filed in a
+session folder move into one submenu per folder, with the same counts
+after the folder's name; windows of sessions without a folder stay in
+the list itself. An entry whose first letter no other entry of its menu
+starts with has that letter as its keyboard key.
+
+\q{Name this window...} in a terminal's system menu, under
+\q{Window}, gives that window a name of its own: it is shown in front of
+the window title - and so on the taskbar button - and in front of the
+session name in \q{Open Sessions}, so ten windows to one jump host can
+read \q{db - jump - ...}, \q{web - jump - ...}. An empty name removes
+it. The name belongs to the window: it is not saved, and a new window of
+the same session starts without one. A right click on a window's entry
+in \q{Open Sessions} offers the same \q{Name this window...} - the way
+to name a window that is hidden.
 
 \q{Show one window at a time} changes what choosing a window does.
-While it is ticked, the chosen window is shown and every other KiTTY++
-window is hidden, so the list works as a switcher between sessions that
+Ticking it keeps the topmost visible KiTTY++ window and hides the others
+at once. While it is ticked, the chosen window is shown and every other
+KiTTY++ window is hidden, so the list works as a switcher between sessions that
 share one place on the screen; \q{Hide all} and \q{Unhide all} leave
 the menu while it is on. The setting is not stored: it lasts until the
 launcher exits.
+
+\q{Show next window on close} appears under it while it is ticked. When
+the window it showed is closed, the next one comes up by itself: the
+window shown before that one, or, when that one is gone too, the first
+entry of \q{Open Sessions}. Nothing comes up while another KiTTY++
+window is still visible. Like the setting above it, it lasts until the
+launcher exits. A window of an older KiTTY++ gives the launcher no
+notice when it closes, so nothing comes up after it.
 
 \S{kitty-cfg-system} The System panel
 
@@ -2816,9 +2876,11 @@ screen on startup} decide the state the window opens in. Sending to the
 tray at startup is how a session that exists to hold a tunnel stays out
 of the way.
 
-\b \q{Switch KiTTY windows with Ctrl + TAB} moves between KiTTY windows
-from the keyboard. Turn it off if a program inside the terminal wants
-\c{Ctrl+Tab} for itself.
+\b \q{Switch Terminal Windows using Ctrl+TAB} moves between terminal windows
+that have it on; windows without it are skipped. Turn it off if a
+program inside the terminal wants \c{Ctrl+Tab} for itself. Requires
+\q{Ctrl+Tab window switching} in Application > KiTTY++ Settings >
+Terminal.
 
 \b \q{System menu} and \q{Allow closing (also disables the X and
 Alt+F4)} remove the window's own controls. They are for a KiTTY embedded

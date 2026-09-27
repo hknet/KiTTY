@@ -21,6 +21,10 @@ int kitty_cfgbox_size_locked(void);
 void kitty_cfgbox_store_size(int w, int h);
 const char *kitty_cfgbox_wanted_panel(void);
 void kitty_cfgbox_workplace_poll(struct dlgparam *dlg);
+/* A launcher's start/exit notice for Application > Launcher's "Start Launcher
+ * Now" (kitty_config_app.c; windows/kitty_config_stubs.c: 0 = none). */
+unsigned int kitty_cfgbox_launcher_msg(void);
+void kitty_cfgbox_launcher_changed(struct dlgparam *dlg);
 void kitty_cfgtree_folds_save(void);
 int kitty_cfgtree_get_fold(const char *path);
 void kitty_cfgtree_set_fold(const char *path, int expanded, int default_expanded);
@@ -44,6 +48,7 @@ int GetModalNewHostKeyConfirmationFlag(void);
 int GetModalWeakKeyConfirmationFlag(void);
 int kitty_confirm_box(HWND owner, const char *caption, const char *text, const char *warn_red);
 int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text, const char *warn_red);
+int kitty_confirm_box_yes_front(HWND owner, const char *caption, const char *text, const char *warn_red);
 void kitty_demo_templates(void);
 void kitty_info_box(HWND owner, const char *caption, const char *text, const char *warn_red);
 int kitty_message_box(HWND owner, const char *text, const char *caption, unsigned type);

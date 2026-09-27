@@ -26,6 +26,7 @@ int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) ;
 int kitty_confirm_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 int kitty_confirm_box3( HWND owner, const char *caption, const char *text, const char *b_over, const char *b_keep, const char *b_cancel );
 int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text, const char *warn_red );
+int kitty_confirm_box_yes_front( HWND owner, const char *caption, const char *text, const char *warn_red );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
 void kitty_notice_box( HWND owner, const char *caption, const char *text );

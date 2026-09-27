@@ -5257,15 +5257,13 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                       kitty_checkbox_int_handler, I(CONF_fullscreen));
         /* KiTTY: Ctrl+Tab between windows. Two gates, as in classic KiTTY:
          * [KiTTY] ctrltab (or -noctrltab) decides whether the feature exists at
-         * all, and this per-session box turns it on for a session. The port
-         * kept both gates but not this box, which left CONF_ctrl_tab_switch at
-         * its default 0 with no way to change it - so ctrltab=yes did nothing.
-         * Offered only when the feature is enabled, and not mid-session,
-         * matching classic (0.76b windows/config.c). */
-        if (!midsession && GetCtrlTabFlag())
-            ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
-                          HELPCTX(kitty_behaviour),
-                          kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
+         * all, and this per-session box turns it on for a session. Shown
+         * always - also while the global switch is off, so sessions can be set
+         * up in advance, and mid-session (window.c republishes the window's
+         * Ctrl+Tab flag after the change). Classic hid it in both cases. */
+        ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
+                      HELPCTX(kitty_behaviour),
+                      kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
     }
 
     /*

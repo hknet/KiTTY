@@ -57,6 +57,7 @@ one is available.
 - **Graphical features**
   - [An icon for each session](#an-icon-for-each-session)
   - [Send to tray](#send-to-tray)
+  - [One confirmation for many windows](#one-confirmation-for-many-windows)
   - [Transparency](#transparency)
   - [Roll-up](#roll-up)
   - [Always on top](#always-on-top)
@@ -253,11 +254,11 @@ The session launcher gives you a quick way to open your saved sessions without d
 
 A right click on a session folder inside the open menu offers **Open all ... sessions in** that folder: the sessions directly in it, not those of its subfolders. More than eight sessions are asked about first, and they start one after the other.
 
-The **Open Sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, ticked while it is visible: choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them. **Show one window at a time** changes what choosing a window does: while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. The setting lasts until the launcher exits.
+The **Open Sessions** menu - a right click on the tray icon opens it directly - lists every open KiTTY++ window, and its label counts them: **Open Sessions (12, 7 hidden)**. Each entry names the saved session (`user@host` for a window opened without one) with the live window title after it, `prod-db - root@db1: ~`; hidden windows come first, then the visible ones, alphabetical within each group. A visible window is ticked, a hidden one carries a round bullet - both drawn by Windows, so they follow the light or dark menu theme. Choosing one hides or shows it, **Hide all** and **Unhide all** do that for all of them; a window sent to its own tray icon is listed as hidden, and choosing it brings it back from the tray. A window whose session is over (connection closed or lost, window still open) shows **(disconnected)** after its entry and stays choosable, so it can be restarted. Above 25 windows, those of sessions filed in a folder move into one submenu per folder, and an entry whose first letter is unique in its menu has that letter as its keyboard key. **Name this window...** in a terminal's system menu (**Window**) gives one window a name of its own - shown in front of the window title, so on the taskbar too, and in front of its entry in Open Sessions: ten windows to one jump host read `db - jump - ...`, `web - jump - ...`. The name lives with the window and is not saved; a right click on a window's entry in Open Sessions offers the same **Name this window...**, which is how a hidden window gets one. **Show one window at a time** changes what choosing a window does: ticking it keeps the topmost visible window and hides the others at once, and while it is ticked, the chosen window is shown and every other KiTTY++ window is hidden, so the list works as a switcher between sessions that share one place on the screen. **Show next window on close**, under it, brings the window shown before up by itself when the current one is closed (or the first entry of Open Sessions). Both settings last until the launcher exits.
 
 A hidden window has no taskbar button and no tray icon, so it does not depend on the launcher staying alive: when the launcher is killed or crashes, every window it hid shows itself again after 3 seconds. **Application > KiTTY++ Settings > Launcher** sets that delay (`[Launcher] unhideafter`); 0 keeps hidden windows hidden until a launcher is started again, which lists them.
 
-**How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions.
+**How to enable:** Run **`kitty.exe -launcher`** to open the tray launcher listing your saved sessions, or use **Start Launcher Now** at the bottom of **Application > KiTTY++ Settings > Launcher**; **Start Launcher at Login** there (the same setting as **Start at login** in the launcher's menu) starts it with Windows.
 
 You can keep individual sessions out of the launcher menu while leaving them in the normal session list: tick **"Hide this session from the launcher"** on the session's **Session > Startup** panel (Launcher configuration).
 
@@ -878,7 +879,21 @@ When you run long background batches or just keep KiTTY open to maintain SSH tun
 
 **How to enable:** System menu **Send to tray** for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
 
+A **right click or a Ctrl+click on the window's minimize button** sends it to the tray too, like the system menu entry (**Ctrl+F6** and **Ctrl+middle-click** do the same).
+
+With many windows, one tray icon each gets crowded, so where a window goes is a setting: **Application > KiTTY++ Settings > Terminal**, **Terminal minimize to Tray/Launcher** (`[KiTTY] traymode`):
+
+- **Launcher if running, else Tray (default)** (`auto`) - while the [session launcher](#session-launcher) runs, the window is hidden into it; otherwise it gets its own tray icon. Nothing changes for a user who never starts the launcher.
+- **Tray icon per window** (`own`) - one icon per window in the notification area, as before.
+- **Launcher (starts one if needed)** (`launcher`) - the window is hidden the way the launcher's **Hide** hides it: no taskbar button and no icon of its own. It is listed in the launcher's **Open Sessions**, and choosing it there brings it back. With no launcher running, one is started first (the same `kitty.exe -launcher`); if none comes up, the window gets its own tray icon after all.
+
+A window hidden into the launcher shows itself again if that launcher is killed or crashes, after the delay set by `[Launcher] unhideafter`, like every window the launcher hid.
+
 ![Send to tray](docs/features/img/config_sendtotray.jpg)
+
+### One confirmation for many windows
+
+When several KiTTY++ windows are closed together - the taskbar's **Close all windows** - one exit confirmation covers all of them: **Are you sure you want to close these 12 sessions?** Yes closes them all, No keeps them all. Windows closed within about a second of the first one count as closed together; a window alone keeps its usual confirmation, and a window closed while the shared one is up gets its own. Windows with **Warn before closing window** off close at once and are not counted.
 
 ### Transparency
 
