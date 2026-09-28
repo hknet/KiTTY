@@ -153,6 +153,13 @@ void SetSessionFilterFlag( const int flag ) ;
 int GetDefaultSettingsFlag(void) ;
 void SetDefaultSettingsFlag( const int flag ) ;
 
+// Show the Connection/SUPDUP and Connection/Rlogin leaves in the tree
+// [ConfigBox] supdup=yes / rlogin=yes
+int GetConfigBoxSupdupFlag(void) ;
+void SetConfigBoxSupdupFlag( const int flag ) ;
+int GetConfigBoxRloginFlag(void) ;
+void SetConfigBoxRloginFlag( const int flag ) ;
+
 // Browse folders as rows of the saved-session list instead of via the combo
 // [ConfigBox] foldernavigation=no
 int GetFolderNavigationFlag(void) ;

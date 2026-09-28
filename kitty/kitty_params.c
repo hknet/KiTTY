@@ -309,6 +309,17 @@ static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
 
+/* [ConfigBox] supdup=yes / rlogin=yes: show the Connection/SUPDUP and
+ * Connection/Rlogin leaves in the configuration window's tree. Off hides the
+ * leaf, except while the session in the box uses that protocol - the tree
+ * filter in windows/dialog.c decides. */
+static int ConfigBoxSupdupFlag = 1 ;
+int GetConfigBoxSupdupFlag(void) { return ConfigBoxSupdupFlag ; }
+void SetConfigBoxSupdupFlag( const int flag ) { ConfigBoxSupdupFlag = flag ; }
+static int ConfigBoxRloginFlag = 1 ;
+int GetConfigBoxRloginFlag(void) { return ConfigBoxRloginFlag ; }
+void SetConfigBoxRloginFlag( const int flag ) { ConfigBoxRloginFlag = flag ; }
+
 /* KiTTY (hknet/KiTTY#26) [ConfigBox] foldernavigation=yes: browse session
  * folders as ROWS of the saved-session list - folders first, then the sessions
  * at that level, with ".." to go back up - instead of picking a folder from a
@@ -640,6 +651,9 @@ static const IniParam ini_params[] = {
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_DEFAULTSETTINGS,	1, 0, IGN,	&DefaultSettingsFlag, NULL ),
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_FOLDERNAVIGATION,	1, 0, IGN,	&FolderNavigationFlag, NULL ),
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_LOADLASTSESSION,	1, 0, IGN,	&LoadLastSessionFlag, NULL ),
+	/* Same shape: the two Tree Navigation checkboxes on Config Window. */
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_SUPDUP,		1, 0, IGN,	&ConfigBoxSupdupFlag, NULL ),
+	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_RLOGIN,		1, 0, IGN,	&ConfigBoxRloginFlag, NULL ),
 	/*
 	 * READ THE WAY THEY ARE WRITTEN (0 = ReadParameterN, registry then ini).
 	 *

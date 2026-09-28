@@ -1364,6 +1364,13 @@ are not here: they are one setting for the whole suite, on
 \b \q{Levels of the trees to open} sets how much of the tree is
 expanded when the box opens: the top level only, or everything.
 
+\b \q{Display SUPDUP} and \q{Display Rlogin}, cleared, leave the
+Connection/SUPDUP and Connection/Rlogin panels out of the Session tree.
+A panel still shows while the session in the box uses that protocol, so
+such a session stays editable; the protocol buttons stay. The change
+shows the next time the Session tab is opened (\c{supdup} and
+\c{rlogin} in \c{kitty.ini}).
+
 \b \q{Window height} and \q{Window width}, in pixels, open the box at a
 size of your choosing; blank means the default. They take effect on the
 window that is already open as well, and dragging the window's edge

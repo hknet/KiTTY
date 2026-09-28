@@ -303,6 +303,9 @@ static void pds_free(PortableDialogStuff *pds)
  * below; NULL when hwnd is not the config box or the panel carries none.
  * Implemented after the panel cache it reads. */
 static const char *kitty_cfg_panel_helpctx(HWND hwnd);
+/* The Session tree follows the session's protocol (SUPDUP/Rlogin leaves). */
+static HWND kitty_cfg_hwnd;
+static void kitty_cfg_tree_protocol_sync(PortableDialogStuff *pds);
 
 static INT_PTR pds_default_dlgproc(PortableDialogStuff *pds, HWND hwnd,
                                    UINT msg, WPARAM wParam, LPARAM lParam)
@@ -328,6 +331,9 @@ static INT_PTR pds_default_dlgproc(PortableDialogStuff *pds, HWND hwnd,
             ret = winctrl_handle_command(pds->dp, msg, wParam, lParam);
             if (pds->dp->ended && GetCapture() != hwnd)
                 ShinyEndDialog(hwnd, pds->dp->endresult ? 1 : 0);
+            else if ((msg == WM_COMMAND || msg == WM_NOTIFY) &&
+                     hwnd == kitty_cfg_hwnd && !pds->dp->ended)
+                kitty_cfg_tree_protocol_sync(pds);
         } else
             ret = 0;
         return ret;
@@ -2834,6 +2840,42 @@ static bool kitty_cfg_path_is_app(const char *path)
     return !strncmp(path, KITTY_APPTAB_PREFIX, strlen(KITTY_APPTAB_PREFIX));
 }
 
+/*
+ * [ConfigBox] supdup=no / rlogin=no: the Session tree leaves out
+ * Connection/SUPDUP or Connection/Rlogin. The panels themselves are always
+ * built; only the tree item is withheld, and never while the session in the
+ * box uses that protocol - a saved SUPDUP session must stay editable. The
+ * session can change under the box (Load, a double click, the protocol
+ * radio), so the tree records what it was built without and
+ * kitty_cfg_tree_protocol_sync() rebuilds it when that goes stale.
+ */
+#define KITTY_CFG_HIDE_SUPDUP 1
+#define KITTY_CFG_HIDE_RLOGIN 2
+static int kitty_cfg_tree_hidden = 0;
+
+static int kitty_cfg_tree_hidden_wanted(PortableDialogStuff *pds)
+{
+    extern int GetConfigBoxSupdupFlag(void);
+    extern int GetConfigBoxRloginFlag(void);
+    Conf *conf = (Conf *)pds->dp->data;
+    int proto = conf ? conf_get_int(conf, CONF_protocol) : -1;
+    int hidden = 0;
+
+    if (!GetConfigBoxSupdupFlag() && proto != PROT_SUPDUP)
+        hidden |= KITTY_CFG_HIDE_SUPDUP;
+    if (!GetConfigBoxRloginFlag() && proto != PROT_RLOGIN)
+        hidden |= KITTY_CFG_HIDE_RLOGIN;
+    return hidden;
+}
+
+static bool kitty_cfg_path_hidden(const char *path, int hidden)
+{
+    return ((hidden & KITTY_CFG_HIDE_SUPDUP) &&
+            !strcmp(path, "Connection/SUPDUP")) ||
+           ((hidden & KITTY_CFG_HIDE_RLOGIN) &&
+            !strcmp(path, "Connection/Rlogin"));
+}
+
 /* Build the tree for one tab. Returns the first path inserted, or NULL when
  * the tab has no panels at all - which is a real case: the Application tab is
  * empty mid-session, and an empty tab must not leave the box showing whatever
@@ -2917,6 +2959,8 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
     SendMessage(faff->treeview, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(faff->treeview);
     memset(faff->lastat, 0, sizeof(faff->lastat));
+    if (!apptab)
+        kitty_cfg_tree_hidden = kitty_cfg_tree_hidden_wanted(pds);
 
     for (i = 0; i < pds->ctrlbox->nctrlsets; i++) {
         struct controlset *cs = pds->ctrlbox->ctrlsets[i];
@@ -2927,6 +2971,9 @@ static const char *kitty_cfg_build_tree(PortableDialogStuff *pds,
         if (!cs->pathname[0])
             continue;
         if (kitty_cfg_path_is_app(cs->pathname) != apptab)
+            continue;
+        if (!apptab && kitty_cfg_path_hidden(cs->pathname,
+                                             kitty_cfg_tree_hidden))
             continue;
 
         /* Depth is counted within the tab, so the Application tab's own
@@ -3077,6 +3124,44 @@ void kitty_cfg_goto_panel(const char *path)
         TreeView_SelectItem(tv, want);
         /* A programmatic jump may land on a row scrolled out of the tree -
          * the selection must be SEEN to explain the panel change. */
+        TreeView_EnsureVisible(tv, want);
+    }
+}
+
+/*
+ * After a control has acted: when the session in the box now wants a
+ * different pair of protocol leaves than the Session tree was built with
+ * (a session loaded, the protocol radio changed), rebuild that tree and put
+ * the selection back on the panel in front of the user. One check after
+ * every command rather than a call in each handler, so no road to a new
+ * protocol can miss it. The Application tab rebuilds the Session tree on the
+ * way back anyway.
+ */
+static void kitty_cfg_tree_protocol_sync(PortableDialogStuff *pds)
+{
+    HWND tv = kitty_cfg_treeview;
+    HWND strip;
+    struct treeview_faff faff;
+    HTREEITEM want = NULL;
+
+    /* Not from inside a rebuild: deleting the items notifies too. */
+    if (!tv || !kitty_cfg_hwnd || !pds || kitty_cfg_tree_rebuilding)
+        return;
+    strip = GetDlgItem(kitty_cfg_hwnd, IDCX_TABSTRIP);
+    if (strip && SendMessage(strip, TCM_GETCURSEL, 0, 0) != 0)
+        return;
+    if (kitty_cfg_tree_hidden_wanted(pds) == kitty_cfg_tree_hidden)
+        return;
+    memset(&faff, 0, sizeof(faff));
+    faff.treeview = tv;
+    kitty_cfg_build_tree(pds, &faff, false);
+    if (kitty_cfg_active_panel)
+        want = kitty_cfg_find_item(tv, TreeView_GetRoot(tv),
+                                   kitty_cfg_active_panel->path);
+    if (!want)
+        want = TreeView_GetRoot(tv);
+    if (want) {
+        TreeView_SelectItem(tv, want);
         TreeView_EnsureVisible(tv, want);
     }
 }
@@ -3669,6 +3754,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
             char *path = NULL;
             char *firstpath = NULL, *wantedpath = NULL;
 
+            kitty_cfg_tree_hidden = kitty_cfg_tree_hidden_wanted(pds);
             for (i = 0; i < pds->ctrlbox->nctrlsets; i++) {
                 struct controlset *s = pds->ctrlbox->ctrlsets[i];
                 HTREEITEM item;
@@ -3681,6 +3767,9 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                  * session panels only; the Application ones arrive when that
                  * tab is chosen. */
                 if (kitty_cfg_path_is_app(s->pathname))
+                    continue;
+                /* [ConfigBox] supdup=no / rlogin=no. */
+                if (kitty_cfg_path_hidden(s->pathname, kitty_cfg_tree_hidden))
                     continue;
                 j = path ? ctrl_path_compare(s->pathname, path) : 0;
                 if (j == INT_MAX)
@@ -4314,7 +4403,11 @@ bool do_config(Conf *conf)
          * "kitty.exe -restrict-acl" with no session shows: the terminal title
          * carries the same marker, but there is no terminal yet here.
          * Suffixes composed in kitty/kitty_title.c - one place for all. */
-        char *base = dupprintf("%s Configuration", appname);
+        /* The product name for the default class; a renamed class
+         * (KiClassName) keeps its own name, so a PuTTY room says PuTTY. */
+        char *base = !strcmp(appname, "KiTTY")
+            ? dupstr("KiTTY++ Configuration")
+            : dupprintf("%s Configuration", appname);
         if (dialog_box_demo_screenshot_filename) {
             /* Demo-screenshot mode exists only to render the box for the
              * documentation, so the title must be the CANONICAL one - no
@@ -4361,7 +4454,11 @@ bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
         extern char *kitty_title_compose(const char *, int, int, int);
         /* This window missed (RESTRICTED) while every title rolled its own
          * suffixes - composed in kitty/kitty_title.c now, one place for all. */
-        char *base = dupprintf("%s Reconfiguration", appname);
+        /* Named like the configuration window: KiTTY++ for the default
+         * class, the class's own name for a renamed one. */
+        char *base = !strcmp(appname, "KiTTY")
+            ? dupstr("KiTTY++ Reconfiguration")
+            : dupprintf("%s Reconfiguration", appname);
         pds->dp->wintitle = kitty_title_compose(
             base, kitty_storage_is_portable(), restricted_acl(), true);
         sfree(base);

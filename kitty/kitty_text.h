@@ -864,6 +864,8 @@
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply to windows opened afterwards - this " \
         "configuration window keeps the colours it opened with."
 #define KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING "Levels of the trees to open:"
+#define KT_CONFIG_WINDOW_DISPLAY_SUPDUP              "Display SUPDUP"
+#define KT_CONFIG_WINDOW_DISPLAY_RLOGIN              "Display Rlogin"
 #define KT_CONFIG_WINDOW_SIZE                        "Size"
 #define KT_CONFIG_WINDOW_WINDOW_HEIGHT_IN_PIXELS_BLANK "Window height, in pixels (blank = default):"
 #define KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK "Window width, in pixels (blank = default):"

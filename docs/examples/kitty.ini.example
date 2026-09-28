@@ -61,6 +61,14 @@
 ;    and so on.
 ;categoryexpand=all
 
+; supdup, rlogin: when no, the Connection/SUPDUP or Connection/Rlogin leaf is
+;    left out of the Session tree. The leaf still shows while the session in
+;    the box uses that protocol, so such a session stays editable; the protocol
+;    button stays too. Default yes. Application > Config Window > Tree
+;    Navigation has them as the "Display SUPDUP" / "Display Rlogin" checkboxes.
+;supdup=yes
+;rlogin=yes
+
 ; filter: with yes (the default), typing in the Saved Sessions NAME BOX narrows
 ;    the list below to sessions matching what you typed. no leaves the box as a
 ;    plain name field and the list always shows everything, like stock PuTTY.

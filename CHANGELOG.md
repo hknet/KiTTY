@@ -41,6 +41,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   instead, and the Restart Manager brings it back under that name. The
   setup, server side included, is in
   [docs/TERMINAL-REATTACH.md](docs/TERMINAL-REATTACH.md) (cyd01/KiTTY#473).
+- **The configuration window is titled "KiTTY++ Configuration" (Change
+  Settings: "KiTTY++ Reconfiguration"), and the
+  SUPDUP and Rlogin panels can be hidden.** Application > Config Window >
+  Tree Navigation has "Display SUPDUP" and "Display Rlogin"; a cleared box
+  drops that panel from the Session tree unless the session in the box uses
+  the protocol (`[ConfigBox] supdup`, `rlogin`). A renamed class
+  (`KiClassName`) keeps its own name in the title.
 - **Start the launcher from the configuration box.** Application > KiTTY++
   Settings > Launcher ends with "Start Launcher at Login" - the same
   setting as the launcher menu's "Start at login" - and a "Start Launcher

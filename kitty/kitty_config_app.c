@@ -1393,6 +1393,8 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (!strcmp(key, KI_CONFIGBOX_FILTER))              cur = GetSessionFilterFlag();
     else if (!strcmp(key, KI_CONFIGBOX_DEFAULTSETTINGS)) cur = GetDefaultSettingsFlag();
     else if (!strcmp(key, KI_CONFIGBOX_FOLDERNAVIGATION)) cur = GetFolderNavigationFlag();
+    else if (!strcmp(key, KI_CONFIGBOX_SUPDUP))          cur = GetConfigBoxSupdupFlag();
+    else if (!strcmp(key, KI_CONFIGBOX_RLOGIN))          cur = GetConfigBoxRloginFlag();
     else                                      cur = GetLoadLastSessionFlag();
 
     if (event == EVENT_REFRESH) {
@@ -1406,6 +1408,8 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (!strcmp(key, KI_CONFIGBOX_FILTER))               SetSessionFilterFlag(on);
         else if (!strcmp(key, KI_CONFIGBOX_DEFAULTSETTINGS)) SetDefaultSettingsFlag(on);
         else if (!strcmp(key, KI_CONFIGBOX_FOLDERNAVIGATION)) SetFolderNavigationFlag(on);
+        else if (!strcmp(key, KI_CONFIGBOX_SUPDUP))          SetConfigBoxSupdupFlag(on);
+        else if (!strcmp(key, KI_CONFIGBOX_RLOGIN))          SetConfigBoxRloginFlag(on);
         else                                       SetLoadLastSessionFlag(on);
     }
 }
@@ -1644,6 +1648,16 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
      * its room and makes the list as narrow as its two short entries allow. */
     ctrl_droplist(s, KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING, NO_SHORTCUT, 30,
                   HELPCTX(kitty_theme), kitty_cfgwin_expand_handler, P(NULL));
+    /* The two rarely used protocols' leaves. Both panels are always built;
+     * the Session tree leaves one out while its checkbox is off and the session
+     * in the box uses another protocol (windows/dialog.c), so the next visit
+     * to the Session tab already follows the tick. */
+    ctrl_checkbox(s, KT_CONFIG_WINDOW_DISPLAY_SUPDUP, NO_SHORTCUT,
+                  HELPCTX(kitty_theme), kitty_cfgwin_flag_handler,
+                  P(KI_CONFIGBOX_SUPDUP));
+    ctrl_checkbox(s, KT_CONFIG_WINDOW_DISPLAY_RLOGIN, NO_SHORTCUT,
+                  HELPCTX(kitty_theme), kitty_cfgwin_flag_handler,
+                  P(KI_CONFIGBOX_RLOGIN));
 
     s = ctrl_getset(b, "Application/Config Window", "size", KT_CONFIG_WINDOW_SIZE);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window

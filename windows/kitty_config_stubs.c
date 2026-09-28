@@ -87,6 +87,13 @@ void kitty_cfgtree_set_fold(const char *path, int expanded, int default_expanded
 int kitty_cfgtree_get_fold(const char *path) { (void)path; return -1; }
 void kitty_cfgtree_folds_save(void) { }
 
+/* The stock variants have no [ConfigBox] supdup / rlogin keys: the tree
+ * always lists both leaves. */
+int GetConfigBoxSupdupFlag(void);
+int GetConfigBoxRloginFlag(void);
+int GetConfigBoxSupdupFlag(void) { return 1; }
+int GetConfigBoxRloginFlag(void) { return 1; }
+
 /* The stock variants pin nothing to the panel bottom. */
 void kitty_config_pin_bottoms(void) { }
 

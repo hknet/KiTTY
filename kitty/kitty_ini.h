@@ -64,6 +64,14 @@ char default_init_file_content[] =
 ;    and so on.\n\
 ;categoryexpand=all\n\
 \n\
+; supdup, rlogin: when no, the Connection/SUPDUP or Connection/Rlogin leaf is\n\
+;    left out of the Session tree. The leaf still shows while the session in\n\
+;    the box uses that protocol, so such a session stays editable; the protocol\n\
+;    button stays too. Default yes. Application > Config Window > Tree\n\
+;    Navigation has them as the \"Display SUPDUP\" / \"Display Rlogin\" checkboxes.\n\
+;supdup=yes\n\
+;rlogin=yes\n\
+\n\
 ; filter: with yes (the default), typing in the Saved Sessions NAME BOX narrows\n\
 ;    the list below to sessions matching what you typed. no leaves the box as a\n\
 ;    plain name field and the list always shows everything, like stock PuTTY.\n\

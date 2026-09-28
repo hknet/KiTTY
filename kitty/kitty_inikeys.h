@@ -118,6 +118,8 @@
 #define KI_CONFIGBOX_LOADLASTSESSION        "loadlastsession"
 #define KI_CONFIGBOX_NOEXIT                 "noexit"
 #define KI_CONFIGBOX_PROXYSELECTION         "proxyselection"
+#define KI_CONFIGBOX_RLOGIN                 "rlogin"
+#define KI_CONFIGBOX_SUPDUP                 "supdup"
 #define KI_CONFIGBOX_SWITCHPAINT            "switchpaint"
 #define KI_CONFIGBOX_WINDOWHEIGHT           "windowheight"
 #define KI_CONFIGBOX_WINDOWWIDTH            "windowwidth"

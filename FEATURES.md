@@ -1340,7 +1340,7 @@ It is stored with the session like any other setting, so it travels through **Ex
 
 ### The configuration window remembers how you use it
 
-Four behaviours of the configuration window itself:
+Five behaviours of the configuration window itself:
 
 - **The Category tree keeps your folds.** Any category you fold - closed or
   open - stays that way the next time the window opens, whatever the
@@ -1355,6 +1355,11 @@ Four behaviours of the configuration window itself:
 - **Named proxy pre-sets load from the Proxy panel itself** — a chooser and a
   Load button at the foot of **Connection > Proxy**, replacing the separate
   picker window.
+- **SUPDUP and Rlogin can leave the tree.** Clear **Display SUPDUP** or
+  **Display Rlogin** under Application > Config Window > Tree Navigation
+  (`[ConfigBox] supdup=no` / `rlogin=no`) and that Connection panel is no
+  longer listed - except while the session in the box uses the protocol, so
+  such a session stays editable.
 
 (no screenshot)
 
