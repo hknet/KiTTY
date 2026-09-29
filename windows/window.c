@@ -1395,6 +1395,30 @@ static bool kitty_eventlog_is_open(void)
  * MOD_* defines, and a conditionally-compiled field in it once produced a
  * silent layout mismatch and a crash. */
 static int kitty_coe_pending_exit = -1;
+
+/* KiTTY: an automatic close requested while Windows' own modal loop runs.
+ *
+ * Network callbacks and timers run inside the menu and move/size loops (the
+ * TIMER_MODALPUMP pump), so "close window on exit" can call for the quit from
+ * there. A WM_QUIT posted then is taken by the menu loop and never reaches the
+ * main loop: the window stayed open with its session ended. Inside a box raised
+ * from the pump, the same WM_QUIT would end the box before it could be read.
+ *
+ * So the quit is held here (the first exit code wins), the loop is asked to end
+ * with WM_CANCELMODE, and the main loop posts the quit once the loop is over. */
+static bool kitty_in_menu_loop, kitty_in_move_loop;
+static int kitty_quit_after_modal = -1;
+static void kitty_post_quit(HWND hwnd, int code)
+{
+    if (kitty_in_menu_loop || kitty_in_move_loop) {
+        if (kitty_quit_after_modal < 0)
+            kitty_quit_after_modal = code;
+        if (hwnd)
+            PostMessage(hwnd, WM_CANCELMODE, 0, 0);
+        return;
+    }
+    PostQuitMessage(code);
+}
 #endif
 
 #ifdef MOD_LAUNCHER
@@ -2475,6 +2499,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             kitty_on_window_closing(wgs, wgs->term_hwnd);
             PostQuitMessage(code);
         }
+        /* a close called for inside a menu or move/size loop (see
+         * kitty_post_quit): that loop is over when we are back here */
+        if (kitty_quit_after_modal >= 0 &&
+            !kitty_in_menu_loop && !kitty_in_move_loop) {
+            int code = kitty_quit_after_modal;
+            kitty_quit_after_modal = -1;
+            PostQuitMessage(code);
+        }
 #endif
     }
 
@@ -3077,7 +3109,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
                 return;
             }
             kitty_on_window_closing(wgs, wgs->term_hwnd);
-            PostQuitMessage(0);
+            kitty_post_quit(wgs->term_hwnd, 0);   /* may run inside a menu loop */
         } else {
             queue_toplevel_callback(close_session, wgs);
         }
@@ -3188,8 +3220,10 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         /* Same as exit_callback: this fatal-error close uses PostQuitMessage
          * (no WM_DESTROY), so save the remembered position here too. */
         kitty_on_window_closing(wgs, wgs->term_hwnd);
-#endif
+        kitty_post_quit(wgs->term_hwnd, 1);   /* may run inside a menu loop */
+#else
         PostQuitMessage(1);
+#endif
     } else {
         queue_toplevel_callback(close_session, wgs);
     }
@@ -4125,8 +4159,10 @@ static void exit_callback(void *vctx)
              * generate WM_DESTROY, so the position must be saved here too -- else
              * "remember window position" never records a window closed this way. */
             kitty_on_window_closing(wgs, wgs->term_hwnd);
-#endif
+            kitty_post_quit(wgs->term_hwnd, 0);   /* may run inside a menu loop */
+#else
             PostQuitMessage(0);
+#endif
         } else {
             queue_toplevel_callback(close_session, wgs);
             wgs->session_closed = true;
@@ -6045,9 +6081,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
 #ifdef MOD_PERSO
       case WM_ENTERMENULOOP:
+        kitty_in_menu_loop = true;   /* see kitty_post_quit */
         SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
         break;
       case WM_EXITMENULOOP:
+        kitty_in_menu_loop = false;
         KillTimer(hwnd, TIMER_MODALPUMP);
         break;
 #endif
@@ -6062,6 +6100,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * still. A timer message the modal loop does deliver pumps the
          * pending work meanwhile. */
         SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
+        kitty_in_move_loop = true;   /* see kitty_post_quit */
 #endif
         break;
       case WM_EXITSIZEMOVE:
@@ -6069,6 +6108,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         wgs->resizing = false;
 #ifdef MOD_PERSO
         KillTimer(hwnd, TIMER_MODALPUMP);
+        kitty_in_move_loop = false;
 #endif
         if (wgs->need_backend_resize) {
             term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
