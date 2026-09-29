@@ -20,6 +20,7 @@
 #include "putty.h"
 #include <dwmapi.h>
 #include "kitty_gui.h"
+#include "kitty_buildlabel.h"   /* the measuring switches below: test builds only */
 
 /* The millisecond clock behind GETTICKCOUNT (windows/platform.h): the
  * performance counter, so timers wait what they were asked and not the
@@ -57,9 +58,11 @@ static int pace_setting = PACE_AUTO;
 
 void kitty_pace_set_setting(const char *value)
 {
+#ifdef KITTY_TEST_BUILD_LABEL
     const char *e = getenv("KITTY_UPDATE_PACE_MS");   /* the measuring knob */
     if (e && atoi(e) > 0)
         value = e;
+#endif
     if (!value || !*value || !stricmp(value, "auto")) {
         pace_setting = PACE_AUTO;
     } else {
@@ -190,7 +193,9 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
     target = now + d;
 
     d = target - now;
+#ifdef KITTY_TEST_BUILD_LABEL
     {
+        /* KITTY_PACE_TRACE=<file>: one line per frame decision */
         static FILE *trace = NULL;
         static bool tried = false;
         static double asked_for = 0;
@@ -208,6 +213,7 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
             asked_for = now + (d < 1 ? 1 : d);
         }
     }
+#endif
     kitty_present_wait_ms = 0;
     return (unsigned long)(d < 1 ? 1 : d + 0.5);
 }
