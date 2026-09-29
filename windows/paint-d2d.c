@@ -46,9 +46,16 @@
  * presents through a swap chain like the hardware device did. Three more
  * failures on WARP and the window stops drawing.
  *
- * Not yet: right-to-left shaping
- * (runs are placed glyph by glyph like the GDI exact_textout path, without
- * the reordering GetCharacterPlacement did), and a native background image.
+ * Right-to-left text needs no shaping here. The terminal core
+ * (term_bidi_line) has already put each line in visual order, mirrored the
+ * brackets of right-to-left runs and replaced Arabic letters by their joined
+ * presentation forms (unless the session turns those off) before a run
+ * reaches text_general. The GDI painter then maps each character to one
+ * glyph in its own cell (exact_textout: every character classed neutral, so
+ * Windows does not reorder), and draw_run does the same. Running a shaper
+ * over these runs would reverse and mirror them a second time.
+ *
+ * Not yet: a native background image.
  */
 #define COBJMACROS
 #define INITGUID
