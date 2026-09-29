@@ -1621,7 +1621,11 @@ static void term_sync_release(Terminal *term)
 #define SB_QUIET_MS 200
 #define SB_COMPACT_STEP 256
 #define SB_RAW_MAX_CELLS (512 * 1024)
-bool term_sbdefer_off = false;
+#ifdef KITTY_TEST_HOOKS
+bool term_sbdefer_off = false;         /* test/test_textrun.c switches it */
+#else
+#define term_sbdefer_off false         /* a constant everywhere else */
+#endif
 
 static void sb_arm(Terminal *term, int ms)
 {
@@ -1697,11 +1701,13 @@ static void term_sb_compact(Terminal *term, bool all)
         term->sb_raw_lines = term->sb_raw_cells = 0;
 }
 
+#ifdef KITTY_TEST_HOOKS
 void term_sb_compact_now(Terminal *term)
 {
     term_sb_compact(term, true);
 }
-#elif defined(MOD_PERSO)
+#endif
+#elif defined(MOD_PERSO) && defined(KITTY_TEST_HOOKS)
 bool term_sbdefer_off = true;          /* no compression to defer */
 void term_sb_compact_now(Terminal *term) { (void)term; }
 #endif
@@ -6805,10 +6811,12 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
  *
  * Returns the number of bytes consumed, 0 when nothing could be taken.
  */
-#ifdef KITTY_TEXTRUN_OFF
-bool term_textrun_off = true;    /* a measurement build: the ordinary path only */
+#if defined(KITTY_TEST_HOOKS)
+bool term_textrun_off = false;   /* test/test_textrun.c switches it */
+#elif defined(KITTY_TEXTRUN_OFF)
+#define term_textrun_off true    /* a measurement build: the ordinary path only */
 #else
-bool term_textrun_off = false;
+#define term_textrun_off false   /* a constant everywhere else */
 #endif
 
 /* One character of a run, decoded from p[0..n): its value as

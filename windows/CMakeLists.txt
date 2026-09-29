@@ -591,7 +591,9 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   no-jump-list.c)
 target_include_directories(test_textrun PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
-target_compile_definitions(test_textrun PRIVATE MOD_PERSO MOD_FAR2L)
+# KITTY_TEST_HOOKS: the switches the test flips (terminal.h) exist in this
+# build only.
+target_compile_definitions(test_textrun PRIVATE MOD_PERSO MOD_FAR2L KITTY_TEST_HOOKS)
 target_link_libraries(test_textrun
   guiterminal settings eventloop utils ${platform_libraries})
 

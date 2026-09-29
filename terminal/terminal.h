@@ -856,10 +856,13 @@ enum {
 termline *term_get_line(Terminal *term, int y);
 void term_release_line(termline *line);
 
-#ifdef MOD_PERSO
-/* KiTTY: true switches the plain-text fast path in term_out() off, so the
- * differential test (test/test_textrun.c) can run the ordinary path on the
- * same input. Nothing in the product sets it. */
+#if defined(MOD_PERSO) && defined(KITTY_TEST_HOOKS)
+/* KiTTY test hooks, compiled only into test/test_textrun.c's build (the
+ * define is set on that target alone): in every other build these switches
+ * are constants and the function does not exist.
+ *
+ * true switches the plain-text fast path in term_out() off, so the
+ * differential test can run the ordinary path on the same input. */
 extern bool term_textrun_off;
 /* The same for deferred scrollback compression: true compresses every
  * scrolled-off line at once, as upstream does; term_sb_compact_now()
