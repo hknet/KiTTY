@@ -1378,6 +1378,9 @@ static void check_line_size(Terminal *term, termline *line)
 static void term_schedule_tblink(Terminal *term);
 static void term_schedule_cblink(Terminal *term);
 static void term_update_callback(void *ctx);
+#ifdef MOD_PERSO
+static void term_sync_release(Terminal *term);
+#endif
 
 static void term_timer(void *ctx, unsigned long now)
 {
@@ -1410,6 +1413,10 @@ static void term_timer(void *ctx, unsigned long now)
         if (term->osc5522_paste_events)
             (void)term_osc5522_paste_tokens(term);  /* logs, refreshes the marker */
     }
+
+    /* KiTTY: synchronized output's limit - a hold never outlasts it. */
+    if (term->sync_hold && now == term->sync_end)
+        term_sync_release(term);
 #endif
 
     if (term->window_update_cooldown &&
@@ -1480,8 +1487,17 @@ static void term_update_callback(void *ctx)
         return;
     if (!term->window_update_cooldown) {
 #ifdef MOD_PERSO
-        double t0 = kitty_fine_ms(), t1;
+        double t0, t1;
         unsigned long cd;
+        if (term->sync_hold) {
+            /* Nothing is drawn during a hold, so there is no frame to pace:
+             * no cooldown. The release then paints at once, unless the last
+             * frame actually drawn is still within its own cooldown - so a
+             * program that ends a hold per line cannot outrun the pace. */
+            term_update(term);
+            return;
+        }
+        t0 = kitty_fine_ms();
         term_update(term);
         t1 = kitty_fine_ms();
         term->window_update_cooldown = true;
@@ -1508,6 +1524,38 @@ static void term_schedule_update(Terminal *term)
         queue_toplevel_callback(term_update_callback, term);
     }
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY synchronized output (private mode 2026). A program wraps a redraw in
+ * CSI ? 2026 h ... CSI ? 2026 l; in between, term_update() skips the drawing
+ * and do_paint() later diffs the live screen against the last frame SHOWN, so
+ * everything the hold accumulated goes out in one update. The hold ends on
+ * the reset, on the per-session limit armed at the set (CONF_sync_output_
+ * hold_ms, term_timer), on a resize (the old frame no longer fits) and on a
+ * terminal reset. A limit of 0 turns the mode off. A WM_PAINT during a hold
+ * (term_paint) draws the live screen: a half-drawn frame for at most the
+ * limit, only when the window is uncovered at that moment.
+ */
+#define SYNC_HOLD_MAX_MS 5000
+
+/* The session's limit in ms, 0 = the mode is off. */
+static int term_sync_hold_ms(Terminal *term)
+{
+    int ms = conf_get_int(term->conf, CONF_sync_output_hold_ms);
+    if (ms <= 0)
+        return 0;
+    return ms > SYNC_HOLD_MAX_MS ? SYNC_HOLD_MAX_MS : ms;
+}
+
+static void term_sync_release(Terminal *term)
+{
+    if (!term->sync_hold)
+        return;
+    term->sync_hold = false;
+    term_schedule_update(term);
+}
+#endif
 
 /*
  * Call this whenever the terminal window state changes, to queue an
@@ -1671,6 +1719,7 @@ static void power_on(Terminal *term, bool clear)
     if (term->osc5522_paste_events)
         osc5522_paste_disarm(term, false);
     term->esc_dollar = false;
+    term->sync_hold = false;   /* the update scheduled below draws the screen */
 #endif
     term->srm_echo = false;
     {
@@ -1753,6 +1802,16 @@ void term_update(Terminal *term)
         term->win_palette_pending = false;
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY synchronized output: while held, only the scrollbar follows the
+     * model; the frame, and the caret placed on it, wait for the release. */
+    if (term->sync_hold) {
+        if (term->win_scrollbar_update_pending) {
+            term->win_scrollbar_update_pending = false;
+            update_sbar(term);
+        }
+    } else
+#endif
     if (win_setup_draw_ctx(term->win)) {
         if (term->win_scrollbar_update_pending) {
             term->win_scrollbar_update_pending = false;
@@ -2461,6 +2520,9 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
     if (newcols < 1) newcols = 1;
 
 #ifdef MOD_PERSO
+    /* Synchronized output: the held frame no longer fits the new size. */
+    term_sync_release(term);
+
     /* A view scrolled back on the main screen must keep showing the same
      * top line. Remember that line's index in the combined scrollback +
      * screen list before swap_screen, whose display event resets disptop
@@ -3466,6 +3528,21 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
             /* KiTTY: kitty's clipboard-protocol paste events. See
              * osc5522_paste_set() for what the mode does and what bounds it. */
             osc5522_paste_set(term, state);
+            break;
+          case 2026:
+            /* KiTTY: synchronized output, see term_sync_release(). A second
+             * set during a hold does not re-arm the limit: a program that
+             * never resets the mode cannot keep the screen frozen. */
+            if (state && !term->sync_hold) {
+                int ms = term_sync_hold_ms(term);
+                if (ms) {
+                    term->sync_hold = true;
+                    term->sync_end = schedule_timer(
+                        (long)ms * TICKSPERSEC / 1000, term_timer, term);
+                }
+            } else if (!state) {
+                term_sync_release(term);
+            }
             break;
 #endif
         }
@@ -7448,10 +7525,12 @@ static void term_out(Terminal *term, bool called_from_term_data)
 #ifdef MOD_PERSO
                       case ANSI('p', 1):
                         /*
-                         * KiTTY: DECRQM for private mode 5522 ONLY (CSI ? 5522
-                         * $ p), the detection query the paste-events spec
-                         * prescribes. Answered CSI ? 5522 ; 1 $ y (set) or ; 2
-                         * (reset). Every other mode keeps today's silence: a
+                         * KiTTY: DECRQM for private modes 5522 and 2026 ONLY
+                         * (CSI ? Ps $ p), the detection queries the
+                         * paste-events and synchronized-output specs
+                         * prescribe. Answered CSI ? Ps ; 1 $ y (set) or ; 2
+                         * (reset); 2026 switched off by the session answers
+                         * ; 0 (not recognised). Every other mode keeps today's silence: a
                          * general DECRQM that answered "not recognised" for
                          * modes this terminal does implement would be a lie,
                          * and a truthful one is its own piece of work.
@@ -7461,6 +7540,12 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             (void)term_osc5522_paste_events(term); /* retire if due */
                             snprintf(rep, sizeof(rep), "\033[?5522;%d$y",
                                      term->osc5522_paste_events ? 1 : 2);
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                        } else if (term->esc_dollar && term->esc_args[0] == 2026) {
+                            char rep[32];
+                            snprintf(rep, sizeof(rep), "\033[?2026;%d$y",
+                                     !term_sync_hold_ms(term) ? 0 :
+                                     term->sync_hold ? 1 : 2);
                             kitty_osc52_send_raw(term, rep, strlen(rep));
                         }
                         break;

@@ -2874,6 +2874,19 @@ Programs that use it - editors that redraw or save on focus change -
 stop doing so; the reason to turn it off is a program that misbehaves
 on the reports, or leaks them as stray characters at the prompt.
 
+\S{kitty-cfg-syncoutput} \q{Synchronized output (mode 2026) max hold, ms}
+
+A program that wraps a redraw in \c{CSI ? 2026 h} ... \c{CSI ? 2026 l}
+gets it drawn as one frame, never half-drawn (\i{synchronized output}).
+This value is the longest one hold keeps the screen from being drawn, so a
+program that never ends the mode cannot freeze the window; the hold also
+ends on a resize and on a terminal reset. The default is 200 ms; raise it
+for full-screen programs whose redraws arrive slowly over a slow link.
+\c{0} turns the mode off: KiTTY then ignores it and \c{CSI ? 2026 $ p}
+(DECRQM) answers \q{not recognised}, so programs do not use it. The largest
+value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
+made in Change Settings applies from the next hold.
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

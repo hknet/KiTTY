@@ -376,6 +376,13 @@ struct terminal_tag {
     unsigned long osc5522_paste_pw_until; /* wall clock; single use within this */
     bool esc_dollar;                      /* CSI intermediate '$' seen (DECRQM) */
 
+    /* KiTTY synchronized output (private mode 2026). While held, the screen
+     * model changes as always but nothing is drawn, so a program's redraw
+     * reaches the window as one frame. A timer armed once per hold bounds it.
+     * Unconditional storage, same ODR reason as above. */
+    bool sync_hold;
+    unsigned long sync_end;               /* the timer that ends the hold */
+
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
      * Every one of these events fires at a moment the REMOTE HOST chose, so both

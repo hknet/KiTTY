@@ -1614,6 +1614,10 @@ CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogT
  * timer; see kitty/kitty_logkeep.c. */
 CONF_OPTION(logkeepdays, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogKeepDays"),)
 CONF_OPTION(logkeepmb, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogKeepMB"),)
+/* KiTTY: synchronized output (private mode 2026) - the longest one hold keeps
+ * the screen from being drawn, in ms. 0 = the mode is off: not recognised,
+ * and DECRQM says so. Read at each set, clamped to 5000 (terminal.c). */
+CONF_OPTION(sync_output_hold_ms, VALUE_TYPE(INT), DEFAULT_INT(200), SAVE_KEYWORD("SyncOutputHoldMs"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

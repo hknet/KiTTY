@@ -69,6 +69,7 @@ one is available.
   - [Background image](#background-image)
   - [Terminal renderer (Direct2D)](#terminal-renderer-direct2d)
   - [Frame pacing](#frame-pacing)
+  - [Synchronized output](#synchronized-output)
 - **Other features**
   - [Automatic saving](#automatic-saving)
   - [Non-blocking connection errors](#non-blocking-connection-errors)
@@ -996,6 +997,10 @@ What a given window gets, decided at start-up, never by a build:
 | GDI | XP, and the 32-bit build there | the classic timer window, as PuTTY has always used |
 
 Output also keeps reaching the screen while the window is being moved or a menu is open. Windows runs its own loop during those, and the terminal's own loop, where network data is digested and the window repainted, is parked until the mouse button is released, so `top` used to stand still while its window was dragged. A timer message that Windows' loop does deliver now pumps that work meanwhile.
+
+### Synchronized output
+
+A full-screen program (neovim, tmux, htop) that wraps its redraw in `CSI ? 2026 h` ... `CSI ? 2026 l` gets it on screen as one frame: nothing of the redraw is drawn until the reset, so a half-drawn screen never shows. The hold ends at the reset, after 200 ms at most by default (a program that never resets cannot freeze the window), when the window is resized, and on a terminal reset; a second `CSI ? 2026 h` during a hold does not extend it. `CSI ? 2026 $ p` (DECRQM) answers whether the mode is set, which is how programs detect it. The limit is set per session under Terminal > Features, "Synchronized output (mode 2026) max hold, ms" (`SyncOutputHoldMs`, up to 5000): longer for full-screen programs redrawing over a slow link, `0` to turn the mode off, which DECRQM then reports as not recognised.
 
 ---
 

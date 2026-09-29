@@ -88,6 +88,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   oldest first - never the open log or a file another program has open - and
   run before the session starts and after it ends; each deletion is noted in
   the Windows Application event log (cyd01/KiTTY#439).
+- **Synchronized output (private mode 2026).** A program that wraps a redraw
+  in `CSI ? 2026 h` ... `CSI ? 2026 l` gets it on screen as one frame, never
+  half-drawn. The hold ends at the reset, on a resize, on a terminal reset
+  and at a per-session limit, Terminal > Features "Synchronized output (mode
+  2026) max hold, ms" (200 by default, 0 turns the mode off);
+  `CSI ? 2026 $ p` (DECRQM) reports the mode.
 
 ### Changed
 

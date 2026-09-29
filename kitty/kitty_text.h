@@ -297,6 +297,7 @@
 #define KT_FEATURES_DISABLE_BIDIRECTIONAL_TEXT_DISPLAY "Disable bidirectional text display"
 #define KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE     "Disable bracketed paste mode"
 #define KT_FEATURES_DISABLE_FOCUS_REPORTING          "Disable focus reporting"
+#define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
 
 /* Window */
 #define KT_WINDOW_SET_THE_SIZE                       "Set the size of the window"

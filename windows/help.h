@@ -90,6 +90,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_crlf               "kitty-cfg-crlf"
 #define WINHELP_CTX_kitty_fgbell             "kitty-cfg-fgbell"
 #define WINHELP_CTX_kitty_nofocusrep         "kitty-cfg-nofocusrep"
+#define WINHELP_CTX_kitty_syncoutput         "kitty-cfg-syncoutput"
 #define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
 #define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
 #define WINHELP_CTX_kitty_window_name        "kitty-cfg-window-name"

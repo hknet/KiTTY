@@ -728,6 +728,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "SSHTunnelInTitle" ) ;
 					RegDeleteValue( hSubKey, "SCPAutoPwd" ) ;
 					RegDeleteValue( hSubKey, "NoFocusReporting" ) ;
+					RegDeleteValue( hSubKey, "SyncOutputHoldMs" ) ;
 					RegDeleteValue( hSubKey, "LinesAtAScroll" ) ;
 					RegDeleteValue( hSubKey, "DisableAltGr" ) ;
 					RegDeleteValue( hSubKey, "ProxySelection" ) ;

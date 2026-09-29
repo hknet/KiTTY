@@ -601,6 +601,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "RunCmdConfirm", conf_get_bool(conf, CONF_runcmdconfirm));
     write_setting_b_forced(sesskey, "RunCmdNotify", conf_get_bool(conf, CONF_runcmdnotify));
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
+    write_setting_i_forced(sesskey, "SyncOutputHoldMs", conf_get_int(conf, CONF_sync_output_hold_ms));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
     write_setting_i_forced(sesskey, "OSC52Clipboard", conf_get_int(conf, CONF_osc52_clipboard));

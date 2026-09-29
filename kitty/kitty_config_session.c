@@ -4948,10 +4948,16 @@ void scb_panel_terminal(struct controlbox *b)
     ctrl_checkbox(s, KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE,
                   'p', HELPCTX(features_bracketed_paste), conf_checkbox_handler,
                   I(CONF_no_bracketed_paste));
-    if (!GetPuttyFlag())
+    if (!GetPuttyFlag()) {
         ctrl_checkbox(s, KT_FEATURES_DISABLE_FOCUS_REPORTING, NO_SHORTCUT,
                       HELPCTX(kitty_nofocusrep), conf_checkbox_handler,
                       I(CONF_no_focus_rep));
+        /* 0 switches the mode off; the upper bound is applied where the
+         * value is used (terminal.c), like the other plain number boxes. */
+        ctrl_editbox(s, KT_FEATURES_SYNC_OUTPUT_MAX_HOLD, NO_SHORTCUT, 20,
+                     HELPCTX(kitty_syncoutput), conf_editbox_handler,
+                     I(CONF_sync_output_hold_ms), ED_INT);
+    }
 }
 
 /* The Window panel and its Appearance/Behaviour sub-panels, plus the
