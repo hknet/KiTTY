@@ -17,13 +17,15 @@
 static long long kp_total[KP_NBUCKETS];
 static long long kp_cputot[KP_NBUCKETS];
 static long long kp_calls[KP_NBUCKETS];
+static long long kp_inupd[KP_NBUCKETS];   /* wall time spent inside term_update */
 static long long kp_freq;
 static long long kp_start_qpc;
 static int kp_registered;
+int kp_in_update;
 
 static const char *kp_names[KP_NBUCKETS] = {
     "recv (socket)", "plug_receive -> term_data", "term_out (terminal core)",
-    "term_update", "paint", "timer reprogramming"
+    "term_update (whole)", "paint", "timer reprogramming", "url rescan"
 };
 
 long long kp_now(void)
@@ -68,6 +70,16 @@ static void kp_dump(void)
         double per  = kp_calls[i] ? secs * 1e6 / (double)kp_calls[i] : 0.0;
         fprintf(fp, "%-28s %10.3f %10.3f %12lld %10.2f\n",
                 kp_names[i], secs, cpu, kp_calls[i], per);
+    }
+    /* term_update split: what it spent drawing (painter + URL rescan inside
+     * it) and the rest, which is do_paint deciding what changed. */
+    if (kp_freq) {
+        double upd = (double)kp_total[KP_UPDATE] / (double)kp_freq;
+        double pnt = (double)kp_inupd[KP_PAINT] / (double)kp_freq;
+        double url = (double)kp_inupd[KP_URL] / (double)kp_freq;
+        fprintf(fp, "%-28s %10.3f\n", "  paint inside term_update", pnt);
+        fprintf(fp, "%-28s %10.3f\n", "  url inside term_update", url);
+        fprintf(fp, "%-28s %10.3f\n", "  diff (the rest)", upd - pnt - url);
     }
     fprintf(fp, "%-28s %10.3f\n", "wall clock since first timed call",
             kp_freq ? (double)wall / (double)kp_freq : 0.0);
@@ -119,7 +131,12 @@ void kp_add(int bucket, long long start_qpc, long long start_cpu)
         kp_registered = 1;
         atexit(kp_dump);
     }
-    kp_total[bucket] += kp_now() - start_qpc;
+    {
+        long long dt = kp_now() - start_qpc;
+        kp_total[bucket] += dt;
+        if (kp_in_update && bucket != KP_UPDATE)
+            kp_inupd[bucket] += dt;
+    }
     kp_cputot[bucket] += kp_cpu() - start_cpu;
     kp_calls[bucket]++;
 }

@@ -23,9 +23,10 @@ enum {
     KP_RECV,        /* recv() off the socket */
     KP_PLUG,        /* plug_receive: backend -> seat -> term_data */
     KP_TERMOUT,     /* term_out: the terminal core doing the actual work */
-    KP_UPDATE,      /* term_update: deciding what changed */
-    KP_PAINT,       /* the window painting it */
+    KP_UPDATE,      /* term_update, whole: deciding what changed + drawing it */
+    KP_PAINT,       /* the painter: text, cursor, begin/end of a frame */
     KP_TIMER,       /* KillTimer+SetTimer: reprogramming the Windows timer */
+    KP_URL,         /* the URL rescan at the start of a frame */
     KP_NBUCKETS
 };
 
@@ -33,13 +34,22 @@ void kp_add(int bucket, long long start_qpc, long long start_cpu);
 long long kp_now(void);      /* QueryPerformanceCounter: wall clock */
 long long kp_cpu(void);      /* this THREAD's user+kernel time, 100ns units */
 
+/* Set while term_update runs: paint and URL time spent inside it is also
+ * counted apart, so the dump can report "deciding what changed" as
+ * term_update minus both (a WM_PAINT paints outside term_update). */
+extern int kp_in_update;
+
 #define KP_T0 long long kp_t0 = kp_now(); long long kp_c0 = kp_cpu()
 #define KP_T1(b) kp_add((b), kp_t0, kp_c0)
+#define KP_UPDATE_BEGIN (kp_in_update = 1)
+#define KP_UPDATE_END (kp_in_update = 0)
 
 #else  /* !KITTY_PERF */
 
 #define KP_T0 do {} while (0)
 #define KP_T1(b) do {} while (0)
+#define KP_UPDATE_BEGIN do {} while (0)
+#define KP_UPDATE_END do {} while (0)
 
 #endif /* KITTY_PERF */
 #endif /* KITTY_PERF_H */

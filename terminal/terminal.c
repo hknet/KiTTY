@@ -1753,6 +1753,7 @@ static void power_on(Terminal *term, bool clear)
 void term_update(Terminal *term)
 {
     KP_T0;
+    KP_UPDATE_BEGIN;
     term->window_update_pending = false;
 
     if (term->win_move_pending) {
@@ -1822,6 +1823,7 @@ void term_update(Terminal *term)
             term->win, term->curs.x, term->curs.y - term->disptop);
         win_free_draw_ctx(term->win);
     }
+    KP_UPDATE_END;
     KP_T1(KP_UPDATE);
 }
 

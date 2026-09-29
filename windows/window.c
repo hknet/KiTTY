@@ -27,6 +27,7 @@
 #include "../kitty/kitty_updater.h"
 #include "../kitty/kitty_dlgbox.h"  /* KiTTY: the themed boxes; stubbed for the stock targets */
 #include "paint.h"
+#include "kitty_perf.h"   /* KiTTY: stage timers, empty unless KITTY_PERF */
 #include "tree234.h"
 
 #ifdef NO_MULTIMON
@@ -7486,6 +7487,7 @@ static void wintw_draw_text(
     unsigned long attr, int lattr, truecolour truecolour)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+    KP_T0;
     if (attr & TATTR_COMBINING) {
         unsigned long a = 0;
         int len0 = 1;
@@ -7523,6 +7525,7 @@ static void wintw_draw_text(
         }
     } else
         do_text_internal(wgs, x, y, text, len, attr, lattr, truecolour);
+    KP_T1(KP_PAINT);
 }
 
 static void wintw_draw_cursor(
@@ -7533,6 +7536,9 @@ static void wintw_draw_cursor(
     int fnt_width;
     int char_width;
     int ctype = wgs->cursor_type;
+    /* KITTY_PERF: a block cursor returns through win_draw_text, which counts
+     * itself; only the drawing below is counted here. */
+    KP_T0;
 
     lattr &= LATTR_MODE;
 
@@ -7596,6 +7602,7 @@ static void wintw_draw_cursor(
             }
         }
     }
+    KP_T1(KP_PAINT);
 }
 
 static void wintw_draw_trust_sigil(TermWin *tw, int x, int y)
@@ -9228,7 +9235,12 @@ static void wintw_set_scrollbar(TermWin *tw, int total, int start, int page)
 static bool wintw_setup_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
-    bool ok = wgs->term_hwnd && kp_begin(wgs->painter, NULL);
+    bool ok;
+    {
+        KP_T0;
+        ok = wgs->term_hwnd && kp_begin(wgs->painter, NULL);
+        KP_T1(KP_PAINT);
+    }
 #ifdef MOD_PERSO
     /* Keep URL link regions current at paint time: content changes always
      * repaint, so one scan per repaint burst keeps hover/click hit-tests and
@@ -9237,9 +9249,11 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
      * off; repainting the changed rows only matters when underlines are
      * drawn. */
     if (ok && GetHyperlinkFlag()) {
+        KP_T0;
         if (kitty_url_rescan(wgs->term) &&
             conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
+        KP_T1(KP_URL);
     }
 #endif
     return ok;
@@ -9248,7 +9262,9 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
 static void wintw_free_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
-    kp_end(wgs->painter);
+    KP_T0;
+    kp_end(wgs->painter);   /* Direct2D presents the frame here */
+    KP_T1(KP_PAINT);
 }
 
 /* A DC on the terminal window for measuring and palette work, outside a
