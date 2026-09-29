@@ -97,6 +97,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Output reaches the screen several times faster.** Plain text is now
+  written a run at a time instead of one character at a time, and lines that
+  scroll into the scrollback are compressed once output goes quiet, so a
+  burst larger than the scrollback no longer compresses lines only to drop
+  them again. 40 000 lines scroll through in about a quarter of the time with
+  Direct2D and a sixth with GDI; plain ASCII is about 60 % and Unicode about
+  30 % faster in kitty's throughput benchmark.
 - **Send to tray goes into the launcher while one runs.** Until now it always
   gave the window a tray icon of its own; with a launcher running, the window
   is now hidden into it and listed in its Open Sessions. Application > KiTTY++

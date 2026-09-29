@@ -786,6 +786,26 @@ typedef struct compressed_scrollback_line {
     /* compressed data follows after this */
 } compressed_scrollback_line;
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: a scrollback entry that is not compressed yet - the scrolled-off
+ * line itself behind a header whose length is SB_RAW_TAG. See
+ * term_sb_compact() for when it is compressed; decompressline_no_free(),
+ * decompressline_and_free() and free_compressed_line() take either kind, so
+ * nothing that reads the scrollback needs to know.
+ */
+#define KITTY_SB_DEFER
+#define SB_RAW_TAG ((size_t)-1)
+typedef struct sb_raw_line {
+    compressed_scrollback_line hdr;
+    termline *line;
+} sb_raw_line;
+static inline bool sb_is_raw(compressed_scrollback_line *c)
+{
+    return c->len == SB_RAW_TAG;
+}
+#endif
+
 static termline *decompressline_no_free(compressed_scrollback_line *line);
 
 static compressed_scrollback_line *compressline_no_free(termline *ldata)
@@ -1030,6 +1050,13 @@ static termline *decompressline_no_free(compressed_scrollback_line *line)
     BinarySource bs[1];
     termline *ldata;
 
+#ifdef KITTY_SB_DEFER
+    /* the stored line itself, not temporary, so releasing it frees nothing -
+     * as in the NO_SCROLLBACK_COMPRESSION variant below */
+    if (sb_is_raw(line))
+        return ((sb_raw_line *)line)->line;
+#endif
+
     BinarySource_BARE_INIT(bs, line+1, line->len);
 
     /*
@@ -1093,11 +1120,22 @@ static termline *decompressline_no_free(compressed_scrollback_line *line)
 
 static inline void free_compressed_line(compressed_scrollback_line *cline)
 {
+#ifdef KITTY_SB_DEFER
+    if (sb_is_raw(cline))
+        freetermline(((sb_raw_line *)cline)->line);
+#endif
     sfree(cline);
 }
 
 static termline *decompressline_and_free(compressed_scrollback_line *cline)
 {
+#ifdef KITTY_SB_DEFER
+    if (sb_is_raw(cline)) {
+        termline *ldata = ((sb_raw_line *)cline)->line;
+        sfree(cline);
+        return ldata;
+    }
+#endif
     termline *ldata = decompressline_no_free(cline);
     free_compressed_line(cline);
     return ldata;
@@ -1381,6 +1419,9 @@ static void term_update_callback(void *ctx);
 #ifdef MOD_PERSO
 static void term_sync_release(Terminal *term);
 #endif
+#ifdef KITTY_SB_DEFER
+static void term_sb_compact(Terminal *term, bool all);
+#endif
 
 static void term_timer(void *ctx, unsigned long now)
 {
@@ -1417,6 +1458,13 @@ static void term_timer(void *ctx, unsigned long now)
     /* KiTTY: synchronized output's limit - a hold never outlasts it. */
     if (term->sync_hold && now == term->sync_end)
         term_sync_release(term);
+#endif
+#ifdef KITTY_SB_DEFER
+    /* KiTTY: compress the scrollback that waited for quiet output. */
+    if (term->sb_compact_pending && now == term->sb_compact_end) {
+        term->sb_compact_pending = false;
+        term_sb_compact(term, false);
+    }
 #endif
 
     if (term->window_update_cooldown &&
@@ -1555,6 +1603,107 @@ static void term_sync_release(Terminal *term)
     term->sync_hold = false;
     term_schedule_update(term);
 }
+#endif
+
+#ifdef KITTY_SB_DEFER
+/*
+ * KiTTY: deferred scrollback compression. Upstream compresses every line as
+ * it scrolls off, and during a burst most of those lines fall out of the top
+ * of a full scrollback again before anyone looks: 40 000 lines through the
+ * default 2 000-line scrollback compress 38 000 lines for nothing, and that
+ * was the largest single cost of streaming output. So a scrolled-off line
+ * goes into the scrollback as it is (an sb_raw_line), and is compressed once
+ * output has been quiet for SB_QUIET_MS, SB_COMPACT_STEP lines per timer
+ * firing; a line evicted before then is never compressed at all. Bounded:
+ * past SB_RAW_MAX_CELLS uncompressed cells (about 12 MB) a new line is
+ * compressed at once, as before.
+ */
+#define SB_QUIET_MS 200
+#define SB_COMPACT_STEP 256
+#define SB_RAW_MAX_CELLS (512 * 1024)
+bool term_sbdefer_off = false;
+
+static void sb_arm(Terminal *term, int ms)
+{
+    if (!term->sb_compact_pending) {
+        term->sb_compact_pending = true;
+        term->sb_compact_end = schedule_timer(
+            (long)ms * TICKSPERSEC / 1000, term_timer, term);
+    }
+}
+
+/* An entry leaves the scrollback: keep the uncompressed count right. */
+static void sb_forget(Terminal *term, compressed_scrollback_line *c)
+{
+    if (sb_is_raw(c)) {
+        term->sb_raw_lines--;
+        term->sb_raw_cells -= ((sb_raw_line *)c)->line->cols;
+    }
+}
+
+/* The scrollback entry for a line scrolling off the screen. When it is kept
+ * uncompressed, the entry takes the line itself and *taken says so: the
+ * caller then needs another line for the screen. */
+static compressed_scrollback_line *sb_entry_for(
+    Terminal *term, termline *line, bool *taken)
+{
+    sb_raw_line *r;
+
+    if (term_sbdefer_off ||
+        term->sb_raw_cells + line->cols > SB_RAW_MAX_CELLS) {
+        *taken = false;
+        return compressline_no_free(line);
+    }
+    r = snew(sb_raw_line);
+    r->hdr.len = SB_RAW_TAG;
+    r->line = line;
+    term->sb_raw_lines++;
+    term->sb_raw_cells += line->cols;
+    term->sb_last_scroll = GETTICKCOUNT();
+    sb_arm(term, SB_QUIET_MS);
+    *taken = true;
+    return &r->hdr;
+}
+
+/* Compress the entries still waiting, newest first. Not while output is
+ * streaming (unless all): then it only re-arms. */
+static void term_sb_compact(Terminal *term, bool all)
+{
+    int i, budget = SB_COMPACT_STEP;
+
+    if (!all && GETTICKCOUNT() - term->sb_last_scroll <
+        (unsigned long)SB_QUIET_MS * TICKSPERSEC / 1000) {
+        sb_arm(term, SB_QUIET_MS);
+        return;
+    }
+    for (i = count234(term->scrollback) - 1;
+         i >= 0 && term->sb_raw_lines > 0; i--) {
+        compressed_scrollback_line *c = index234(term->scrollback, i);
+        termline *line;
+        if (!sb_is_raw(c))
+            continue;
+        if (!all && budget-- == 0) {
+            sb_arm(term, 10);          /* more next time, a moment later */
+            return;
+        }
+        line = ((sb_raw_line *)c)->line;
+        delpos234(term->scrollback, i);
+        addpos234(term->scrollback, compressline_no_free(line), i);
+        sb_forget(term, c);
+        freetermline(line);
+        sfree(c);
+    }
+    if (i < 0)                         /* a full pass: nothing can be left */
+        term->sb_raw_lines = term->sb_raw_cells = 0;
+}
+
+void term_sb_compact_now(Terminal *term)
+{
+    term_sb_compact(term, true);
+}
+#elif defined(MOD_PERSO)
+bool term_sbdefer_off = true;          /* no compression to defer */
+void term_sb_compact_now(Terminal *term) { (void)term; }
 #endif
 
 /*
@@ -2139,8 +2288,16 @@ void term_clrsb(Terminal *term)
      * Clear the actual scrollback.
      */
     while ((line = delpos234(term->scrollback, 0)) != NULL) {
+#ifdef KITTY_SB_DEFER
+        /* KiTTY: an entry may be an uncompressed line (see sb_forget) */
+        free_compressed_line((compressed_scrollback_line *)line);
+#else
         sfree(line);            /* this is compressed data, not a termline */
+#endif
     }
+#ifdef KITTY_SB_DEFER
+    term->sb_raw_lines = term->sb_raw_cells = 0;
+#endif
 
     /*
      * When clearing the scrollback, we also truncate any termlines on
@@ -2579,6 +2736,9 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
             /* Insert a line from the scrollback at the top of the screen. */
             assert(sblen >= term->tempsblines);
             cline = delpos234(term->scrollback, --sblen);
+#ifdef KITTY_SB_DEFER
+            sb_forget(term, cline);
+#endif
             line = decompressline_and_free(cline);
             line->temporary = false;   /* reconstituted line is now real */
             term->tempsblines -= 1;
@@ -2617,8 +2777,15 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
 
     /* Delete any excess lines from the scrollback. */
     while (sblen > newsavelines) {
+#ifdef KITTY_SB_DEFER
+        /* KiTTY: an entry may be an uncompressed line (see sb_forget) */
+        compressed_scrollback_line *c = delpos234(term->scrollback, 0);
+        sb_forget(term, c);
+        free_compressed_line(c);
+#else
         line = delpos234(term->scrollback, 0);
         sfree(line);
+#endif
         sblen--;
 #ifdef MOD_PERSO
         viewtop--;
@@ -2995,6 +3162,10 @@ static void scroll(Terminal *term, int topline, int botline,
 #endif
             if (sb && term->savelines > 0) {
                 int sblen = count234(term->scrollback);
+#ifdef KITTY_SB_DEFER
+                termline *spare = NULL;
+                bool taken;
+#endif
                 /*
                  * We must add this line to the scrollback. We'll
                  * remove a line from the top of the scrollback if
@@ -3005,11 +3176,33 @@ static void scroll(Terminal *term, int topline, int botline,
 
                     sblen--;
                     cline = delpos234(term->scrollback, 0);
+#ifdef KITTY_SB_DEFER
+                    /* KiTTY: an evicted line that was never compressed
+                     * becomes the new bottom line (see below) */
+                    sb_forget(term, cline);
+                    if (sb_is_raw(cline)) {
+                        spare = ((sb_raw_line *)cline)->line;
+                        sfree(cline);
+                    } else
+#endif
                     free_compressed_line(cline);
                 } else
                     term->tempsblines += 1;
 
+#ifdef KITTY_SB_DEFER
+                /* KiTTY: kept uncompressed, the line itself goes to the
+                 * scrollback, and the screen gets another one */
+                addpos234(term->scrollback, sb_entry_for(term, line, &taken),
+                          sblen);
+                if (taken) {
+                    line = spare ? spare : newtermline(term, term->cols, false);
+                    spare = NULL;
+                }
+                if (spare)
+                    freetermline(spare);
+#else
                 addpos234(term->scrollback, compressline_no_free(line), sblen);
+#endif
 
                 /* now `line' itself can be reused as the bottom line */
 
@@ -6443,9 +6636,17 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         incpos(cursplus);
         check_selection(term, term->curs, cursplus);
     }
+#ifdef MOD_PERSO
+    /* KiTTY: no call into the log for every character when the session
+     * logs no printable output - logtraffic() would only return. */
+    if (term->logtype == LGTYP_ASCII && term->logctx &&
+        ((c & CSET_MASK) == CSET_ASCII || (c & CSET_MASK) == 0))
+        logtraffic(term->logctx, (unsigned char) c, LGTYP_ASCII);
+#else
     if (((c & CSET_MASK) == CSET_ASCII ||
          (c & CSET_MASK) == 0) && term->logctx)
         logtraffic(term->logctx, (unsigned char) c, LGTYP_ASCII);
+#endif
 
     check_trust_status(term, cline);
 
@@ -6584,6 +6785,182 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
     }
     seen_disp_event(term);
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: a run of plain text in one pass. term_out() hands every byte to the
+ * whole state machine and term_display_graphic_char() treats every character
+ * as a one-off: three line lookups, two boundary checks, a trust check and a
+ * "screen changed" signal each. For a run of printable characters written at
+ * the cursor all of that is the same for every character of the run, so it is
+ * done once per line segment here and the cells are written in a loop.
+ *
+ * What takes this road: printable ASCII and well-formed UTF-8 of width 1, in
+ * UTF-8 mode, at top level, with nothing pending. Everything else - controls,
+ * escapes, wide and combining characters, a wrap at the margin, insert mode,
+ * VT52, line drawing, printer and debug logging, a malformed or incomplete
+ * UTF-8 sequence - ends the run and goes through the ordinary path unchanged,
+ * which is also what term_textrun_off selects (test/test_textrun.c compares
+ * the two, cell for cell).
+ *
+ * Returns the number of bytes consumed, 0 when nothing could be taken.
+ */
+#ifdef KITTY_TEXTRUN_OFF
+bool term_textrun_off = true;    /* a measurement build: the ordinary path only */
+#else
+bool term_textrun_off = false;
+#endif
+
+/* One character of a run, decoded from p[0..n): its value as
+ * term_translate() would give it, its width (1 or 2 cells), the bytes it
+ * takes; 0 if it cannot be part of a run. */
+static size_t term_textrun_char(Terminal *term, const unsigned char *p,
+                                size_t n, unsigned long *out, int *width)
+{
+    unsigned char b = p[0];
+    unsigned long t;
+    size_t len, i;
+    int w;
+
+    if (b >= 0x20 && b < 0x7F) {
+        if (term->ucsdata->unitab_ctrl[b] != 0xFF)
+            return 0;
+        *out = b | CSET_ASCII;
+        *width = 1;
+        return 1;
+    }
+    if ((b & 0xE0) == 0xC0)      { len = 2; t = b & 0x1F; }
+    else if ((b & 0xF0) == 0xE0) { len = 3; t = b & 0x0F; }
+    else if ((b & 0xF8) == 0xF0) { len = 4; t = b & 0x07; }
+    else return 0;
+    if (len > n)
+        return 0;                  /* the rest is in the next chunk */
+    for (i = 1; i < len; i++) {
+        if ((p[i] & 0xC0) != 0x80)
+            return 0;
+        t = (t << 6) | (p[i] & 0x3F);
+    }
+    /* term_translate()'s rejections and special cases all go the ordinary
+     * way: overlong forms, C1, the line/paragraph separators, surrogates,
+     * beyond U+10FFFF, U+FEFF, U+FFFE/FFFF. */
+    if ((len == 2 && t < 0x80) || (len == 3 && t < 0x800) ||
+        (len == 4 && t < 0x10000))
+        return 0;
+    if (t < 0xA0 || t == 0x2028 || t == 0x2029 ||
+        (t >= 0xD800 && t < 0xE000) || t > 0x10FFFF ||
+        t == 0xFEFF || t == 0xFFFE || t == 0xFFFF)
+        return 0;
+    /* combining (0) and unprintable (-1) characters go the ordinary way */
+    w = term_char_width(term, t);
+    if (w != 1 && w != 2)
+        return 0;
+    *out = t;
+    *width = w;
+    return len;
+}
+
+static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
+{
+    size_t used = 0;
+
+    if (term_textrun_off || term->termstate != TOPLEVEL ||
+        term->utf8.state != 0 || term->printing ||
+        term->logtype == LGTYP_DEBUG || !in_utf(term) ||
+        term->insert || term->vt52_mode ||
+        (term->utf8linedraw && term->cset_attr[term->cset] == CSET_LINEDRW))
+        return 0;
+
+    while (used < n && !term->wrapnext) {
+        unsigned long seg[256], ch, lastc = 0;
+        size_t segbytes = 0;
+        int k = 0, room, x0, i, w;
+        termline *cline;
+        int linecols;
+
+        /* Nothing touches the line unless a character will be written to
+         * it: check_trust_status() may clear it with the erase character
+         * of this moment, which is exactly when the ordinary path would. */
+        if (!term_textrun_char(term, p + used, n - used, &ch, &w))
+            break;
+        cline = scrlineptr(term->curs.y);
+        check_trust_status(term, cline);
+        linecols = term->cols - (cline->trusted ? TRUST_SIGIL_WIDTH : 0);
+        room = linecols - term->curs.x;
+        if (room > (int)lenof(seg))
+            room = lenof(seg);
+        /* seg[] holds cells: a double-width character is itself followed by
+         * UCSWIDE, as the ordinary path writes it; one that does not fit
+         * before the margin ends the run (the ordinary path wraps it) */
+        while (k < room && used + segbytes < n) {
+            size_t len = term_textrun_char(term, p + used + segbytes,
+                                           n - used - segbytes, &ch, &w);
+            if (!len || k + w > room)
+                break;
+            seg[k++] = ch;
+            if (w == 2)
+                seg[k++] = UCSWIDE;
+            lastc = ch;
+            segbytes += len;
+        }
+        if (k == 0)
+            break;
+
+        /* The two ends only: every cell in between is overwritten, so a wide
+         * character split inside the segment disappears with it. */
+        x0 = term->curs.x;
+        check_boundary(term, x0, term->curs.y);
+        check_boundary(term, x0 + k, term->curs.y);
+        for (i = 0; i < k; i++) {
+            /* FULL-TERMCHAR; the array after check_boundary(), which may
+             * have resized the line */
+            clear_cc(cline, x0 + i);
+            cline->chars[x0 + i].chr = seg[i];
+            cline->chars[x0 + i].attr = term->curr_attr;
+            cline->chars[x0 + i].truecolour = term->curr_truecolour;
+        }
+        /* exactly what the ordinary path logs: ASCII and code points below
+         * U+0100, a byte each */
+        if (term->logtype == LGTYP_ASCII && term->logctx)
+            for (i = 0; i < k; i++)
+                if ((seg[i] & CSET_MASK) == CSET_ASCII ||
+                    (seg[i] & CSET_MASK) == 0)
+                    logtraffic(term->logctx, (unsigned char) seg[i],
+                               LGTYP_ASCII);
+
+        term->curs.x = x0 + k;
+        if (term->curs.x >= linecols) {
+            term->curs.x = linecols - 1;
+            if (term->wrap)
+                term->wrapnext = true;
+        }
+        /* The selection checks the ordinary path makes, per character and in
+         * the same cells: the character's first cell before it is written,
+         * the cursor's cell after it moved. Only while a selection exists. */
+        for (i = 0; i < k && term->selstate != NO_SELECTION; i++) {
+            pos a, b;
+            int nx;
+            if (seg[i] == UCSWIDE)
+                continue;
+            nx = x0 + i + ((i + 1 < k && seg[i + 1] == UCSWIDE) ? 2 : 1);
+            if (nx >= linecols)
+                nx = linecols - 1;
+            a.y = b.y = term->curs.y;
+            a.x = b.x = x0 + i;
+            incpos(b);
+            check_selection(term, a, b);
+            a.x = b.x = nx;
+            incpos(b);
+            check_selection(term, a, b);
+        }
+        term->last_graphic_char = lastc;
+        seen_disp_event(term);
+        used += segbytes;
+        if (k < room && used < n)
+            break;                     /* stopped at a byte the run cannot take */
+    }
+    return used;
+}
+#endif
 
 static strbuf *term_input_data_from_unicode(
     Terminal *term, const wchar_t *widebuf, size_t len)
@@ -6919,6 +7296,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 assert(chars != NULL);
                 assert(nchars_used < nchars_got);
             }
+#ifdef MOD_PERSO
+            /* KiTTY: plain text in runs, see term_text_run() */
+            {
+                size_t run = term_text_run(term, chars + nchars_used,
+                                           nchars_got - nchars_used);
+                if (run) {
+                    nchars_used += run;
+                    continue;
+                }
+            }
+#endif
             c = chars[nchars_used++];
 
             /*

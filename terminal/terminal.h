@@ -383,6 +383,14 @@ struct terminal_tag {
     bool sync_hold;
     unsigned long sync_end;               /* the timer that ends the hold */
 
+    /* KiTTY deferred scrollback compression (terminal.c, term_sb_compact):
+     * lines that scroll off stay uncompressed until output goes quiet.
+     * Unconditional storage, same ODR reason as above. */
+    int sb_raw_lines, sb_raw_cells;       /* uncompressed entries, their cells */
+    unsigned long sb_last_scroll;         /* tick of the last one added */
+    bool sb_compact_pending;
+    unsigned long sb_compact_end;         /* the timer that compresses */
+
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
      * Every one of these events fires at a moment the REMOTE HOST chose, so both
@@ -847,5 +855,17 @@ enum {
 
 termline *term_get_line(Terminal *term, int y);
 void term_release_line(termline *line);
+
+#ifdef MOD_PERSO
+/* KiTTY: true switches the plain-text fast path in term_out() off, so the
+ * differential test (test/test_textrun.c) can run the ordinary path on the
+ * same input. Nothing in the product sets it. */
+extern bool term_textrun_off;
+/* The same for deferred scrollback compression: true compresses every
+ * scrolled-off line at once, as upstream does; term_sb_compact_now()
+ * compresses whatever is still waiting. Both for test/test_textrun.c. */
+extern bool term_sbdefer_off;
+void term_sb_compact_now(Terminal *term);
+#endif
 
 #endif

@@ -577,6 +577,24 @@ target_compile_definitions(test_osc52 PRIVATE MOD_PERSO MOD_FAR2L)
 target_link_libraries(test_osc52
   guiterminal settings eventloop utils ${platform_libraries})
 
+# The plain-text fast path in term_out() against the ordinary path, cell for
+# cell (test/test_textrun.c). Same build of terminal.c as test_osc52 and the
+# kitty target - MOD_PERSO and MOD_FAR2L - since the fast path lives behind
+# MOD_PERSO and guiterminal is built without it.
+add_executable(test_textrun
+  ${CMAKE_SOURCE_DIR}/test/test_textrun.c
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  no-jump-list.c)
+target_include_directories(test_textrun PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
+target_compile_definitions(test_textrun PRIVATE MOD_PERSO MOD_FAR2L)
+target_link_libraries(test_textrun
+  guiterminal settings eventloop utils ${platform_libraries})
+
 # The master password's Argon2id cost, checked against the limits PuTTY 0.85
 # enforces for PPK parameters (argon2_params_bad). Ours are compile-time
 # constants, so nothing validates them at run time - and the MPW1 envelope does
