@@ -30,6 +30,22 @@
  * not Windows' own fallback: it keeps drawing, as GDI's own font linking
  * does with the switch off there.
  *
+ * A lost device (a driver update, a GPU reset, a session switch): EndDraw,
+ * Present and ResizeBuffers are checked for it. The device and everything
+ * made from it (swap chain, device context, canvas, brush, bitmaps) are
+ * released at once and re-created at the start of the next frame, and the
+ * whole window is invalidated, since the canvas went with the device. The
+ * DirectWrite factory, the font faces and the Direct2D factory do not belong
+ * to a device and are kept. Three failures in a row - a loss, or a
+ * re-creation that fails, each within D2D_LOSS_RUN_MS of the one before -
+ * and this window's device is made on WARP, the software rasteriser, for
+ * the rest of its life, with one line in the event log. Not GDI: after the
+ * first Present1 of a flip-model swap chain, GDI's output never reaches
+ * that window again, even once the chain is gone (Microsoft, "DXGI flip
+ * model"; seen: GDI drew, the window kept the last Direct2D frame). WARP
+ * presents through a swap chain like the hardware device did. Three more
+ * failures on WARP and the window stops drawing.
+ *
  * Not yet: right-to-left shaping
  * (runs are placed glyph by glyph like the GDI exact_textout path, without
  * the reordering GetCharacterPlacement did), and a native background image.
@@ -47,6 +63,21 @@
 #include <dwrite_2.h>
 #include "paint.h"
 #include "../kitty/kitty_text.h"    /* KiTTY: the renderer badge's word */
+#include "../kitty/kitty_renameguard.h"   /* kitty_eventlog_line */
+#include "kitty_buildlabel.h"       /* the test build's label, if this is one */
+
+/* The frame pacing's display signal (windows/kitty_pace_frame.c): it must
+ * never hold a handle this file has closed. */
+void kitty_pace_set_frame_signal(HANDLE h);
+
+/* Device loss: how close together failures must come to count as a run,
+ * how many make the window give up on the graphics card (and then on
+ * WARP), and how long to wait before trying again after a re-creation
+ * failed. */
+#define D2D_LOSS_RUN_MS     5000
+#define D2D_LOSS_MAX        3
+#define D2D_RETRY_MS        2000
+#define D2D_RETRY_TIMER_ID  0x44324401     /* next to the badge's timer id */
 
 typedef HRESULT (WINAPI *D3D11CreateDevice_t)(
     IDXGIAdapter *, D3D_DRIVER_TYPE, HMODULE, UINT, const D3D_FEATURE_LEVEL *,
@@ -211,6 +242,19 @@ typedef struct D2DPainter {
     int bgoffx, bgoffy, bggen, bgw, bgh;
     struct { HICON icon; int w, h; ID2D1Bitmap *bmp; } icons[4];
     int nicons;
+    /* device loss (see the top of the file) */
+    D3D11CreateDevice_t create_d3d;    /* bound once, used again to re-create */
+    bool force_warp;                   /* the card failed too often: WARP only */
+    bool dead;                         /* WARP failed too: no more frames */
+    bool lost;                         /* no device: re-create at the next frame */
+    int fail_run;                      /* failures in the current run */
+    DWORD fail_tick;                   /* GetTickCount of the last failure */
+    DWORD retry_at;                    /* no re-creation before this tick */
+    HRESULT last_hr;                   /* the last loss's code, for the event log */
+#ifdef KITTY_TEST_BUILD_LABEL
+    unsigned long npresent;            /* presents so far, KITTY_D2D_FAIL_PRESENT */
+    unsigned long inj_from, inj_count;
+#endif
 } D2DPainter;
 #define D2D_ICON_CACHE 4
 
@@ -259,6 +303,56 @@ static void fill(D2DPainter *d, int l, int t, int r, int b, COLORREF c)
     ID2D1RenderTarget_FillRectangle((ID2D1RenderTarget *)d->dc, &rc,
                                     (ID2D1Brush *)d->brush);
 }
+
+/* ---- test-build trace ---------------------------------------------- */
+
+/* A test build started with KITTY_D2D_TRACE set appends what the device
+ * does (which adapter, each loss, each re-creation, the fallback) to
+ * d2d_trace.log beside the exe, one "<GetTickCount> <text>" line each. A
+ * normal build has none of it. */
+#ifdef KITTY_TEST_BUILD_LABEL
+static void d2d_trace(const char *fmt, ...)
+{
+    char path[MAX_PATH], *slash;
+    const char *on = getenv("KITTY_D2D_TRACE");
+    FILE *f;
+    va_list ap;
+    if (!on || !*on)
+        return;
+    if (!GetModuleFileNameA(NULL, path, sizeof(path)))
+        return;
+    if ((slash = strrchr(path, '\\')) == NULL)
+        return;
+    strcpy(slash + 1, "d2d_trace.log");
+    if ((f = fopen(path, "a")) == NULL)
+        return;
+    fprintf(f, "%lu ", (unsigned long)GetTickCount());
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
+}
+#define D2D_TRACE(...) d2d_trace(__VA_ARGS__)
+#else
+#define D2D_TRACE(...) ((void)0)
+#endif
+
+/* ---- device loss --------------------------------------------------- */
+
+/* The codes that mean the device is gone, not that one call went wrong.
+ * Any other failure is checked against the device's own removed reason. */
+static bool hr_is_loss(D2DPainter *d, HRESULT hr)
+{
+    if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED ||
+        hr == DXGI_ERROR_DEVICE_RESET || hr == DXGI_ERROR_DEVICE_HUNG ||
+        hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
+        return true;
+    return FAILED(hr) && d->d3d &&
+        FAILED(ID3D11Device_GetDeviceRemovedReason(d->d3d));
+}
+
+static void device_lost(D2DPainter *d, HRESULT hr, const char *where);
 
 /* ---- the swap chain's two bitmaps ---------------------------------- */
 
@@ -347,7 +441,21 @@ static void do_resize(D2DPainter *d, int w, int h)
         ID3D11DeviceContext_Flush(d->d3dctx);
         hr = IDXGISwapChain1_ResizeBuffers(d->swap, 0, w, h, DXGI_FORMAT_UNKNOWN, flags);
     }
-    if (SUCCEEDED(hr) && create_targets(d, w, h) && old) {
+    if (FAILED(hr) && hr_is_loss(d, hr)) {
+        /* the device went: the re-creation takes the new size from the
+         * window, and the canvas is repainted whole anyway */
+        if (old) IUnknown_Release((IUnknown *)old);
+        device_lost(d, hr, "ResizeBuffers");
+        return;
+    }
+    if (SUCCEEDED(hr) && !create_targets(d, w, h)) {
+        HRESULT why = ID3D11Device_GetDeviceRemovedReason(d->d3d);
+        if (FAILED(why)) {
+            if (old) IUnknown_Release((IUnknown *)old);
+            device_lost(d, why, "CreateBitmap");
+            return;
+        }
+    } else if (SUCCEEDED(hr) && old) {
         /* what was on screen, at the new size's top-left, until the
          * repaint lands: no black flash during a live resize */
         D2D1_RECT_F src = rectf(0, 0, oldw < w ? oldw : w, oldh < h ? oldh : h);
@@ -368,7 +476,7 @@ static void d2d_resize(KittyPainter *p, int w, int h)
 {
     D2DPainter *d = (D2DPainter *)p;
     if (!d->swap)
-        return;
+        return;                        /* also while lost: re-creation reads the size */
     if (w < 1 || h < 1)
         return;
     if (d->in_frame) {
@@ -492,10 +600,26 @@ static void badge_draw(D2DPainter *d)
 
 /* ---- frames -------------------------------------------------------- */
 
+static bool device_recreate(D2DPainter *d);
+
 static bool d2d_begin(KittyPainter *p, HDC given)
 {
     D2DPainter *d = (D2DPainter *)p;
-    (void)given;                       /* WM_PAINT's DC: not ours to use */
+    /* given: WM_PAINT's DC, not ours to use */
+    if (d->dead)
+        return false;
+    if (d->lost && !d->in_frame) {
+        if ((LONG)(GetTickCount() - d->retry_at) < 0)
+            return false;              /* the retry timer invalidates the window */
+        if (!device_recreate(d))
+            return false;
+        /* A new canvas is black: the whole window is repainted. The
+         * terminal's own update draws only what changed, so it is skipped
+         * and WM_PAINT does the lot; WM_PAINT itself goes ahead. */
+        InvalidateRect(d->hwnd, NULL, FALSE);
+        if (!given)
+            return false;
+    }
     if (d->in_frame || !d->canvas)
         return false;
     ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
@@ -512,16 +636,20 @@ static void d2d_end(KittyPainter *p)
 {
     D2DPainter *d = (D2DPainter *)p;
     D2D1_RECT_F all;
+    HRESULT hr;
+    const char *where;
     if (!d->in_frame)
         return;
-    {
-        HRESULT hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc,
-                                               NULL, NULL);
-        /* A failed frame leaves its code on the window for the harness. */
-        if (FAILED(hr))
-            SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
-    }
+    hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
     d->in_frame = false;
+    if (FAILED(hr)) {
+        /* A failed frame leaves its code on the window for the harness. */
+        SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
+        if (hr_is_loss(d, hr)) {
+            device_lost(d, hr, "EndDraw");
+            return;
+        }
+    }
 
     /* Nothing drawn: nothing to present, and the frame slot stays free -
      * but a resize that arrived during the frame is still owed. */
@@ -548,7 +676,11 @@ static void d2d_end(KittyPainter *p)
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                  &all);
     badge_draw(d);
-    ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
+    hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
+    if (FAILED(hr) && hr_is_loss(d, hr)) {
+        device_lost(d, hr, "EndDraw-backbuffer");
+        return;
+    }
     {
         extern double kitty_present_wait_ms;
         DXGI_PRESENT_PARAMETERS pp;
@@ -563,11 +695,34 @@ static void d2d_end(KittyPainter *p)
         pp.pDirtyRects = &dr;
         QueryPerformanceFrequency(&f);
         QueryPerformanceCounter(&a);
-        /* dirty rectangles are a flip-model notion; the blit model presents whole */
-        if (d->blit || FAILED(IDXGISwapChain1_Present1(d->swap, 0, 0, &pp)))
-            IDXGISwapChain1_Present(d->swap, 0, 0);
+        /* dirty rectangles are a flip-model notion; the blit model presents
+         * whole, and so does a Present1 that failed for another reason
+         * than a lost device */
+        where = d->blit ? "Present" : "Present1";
+#ifdef KITTY_TEST_BUILD_LABEL
+        /* KITTY_D2D_FAIL_PRESENT=<n>[:<k>]: presents n .. n+k-1 of this
+         * painter report a removed device without presenting, so the
+         * recovery below runs for real on a healthy device. */
+        d->npresent++;
+        if (d->inj_from && d->npresent >= d->inj_from &&
+            d->npresent - d->inj_from < d->inj_count)
+            hr = DXGI_ERROR_DEVICE_REMOVED;
+        else
+#endif
+        {
+            hr = d->blit ? IDXGISwapChain1_Present(d->swap, 0, 0)
+                         : IDXGISwapChain1_Present1(d->swap, 0, 0, &pp);
+            if (FAILED(hr) && !d->blit && !hr_is_loss(d, hr)) {
+                where = "Present";
+                hr = IDXGISwapChain1_Present(d->swap, 0, 0);
+            }
+        }
         QueryPerformanceCounter(&b);
         kitty_present_wait_ms += (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart;
+    }
+    if (FAILED(hr) && hr_is_loss(d, hr)) {
+        device_lost(d, hr, where);
+        return;
     }
     d->dirty_any = false;
     ID2D1DeviceContext_SetTarget(d->dc, NULL);
@@ -958,6 +1113,8 @@ static void d2d_text_a(KittyPainter *p, int x, int y, const RECT *clip,
         draw_run((D2DPainter *)p, x, y, clip, opaque, w, m, dx);
 }
 
+/* The run is in visual order, mirrored and shaped already (see the top of
+ * the file): one glyph per character in its cell, as GDI's exact_textout. */
 static void d2d_text_general(KittyPainter *p, int x, int y, const RECT *clip,
                              bool opaque, bool varpitch,
                              const wchar_t *s, int n, const int *dx)
@@ -1201,46 +1358,88 @@ static const KittyPainterVtable d2d_vt = {
     .frame_signal = d2d_frame_signal,
 };
 
-/* ---- creation ------------------------------------------------------ */
+/* ---- the device ---------------------------------------------------- */
 
-static void d2d_destroy(D2DPainter *d)
+/* Everything made from the Direct3D device, released - after a loss, or
+ * for good. The Direct2D factory and the DirectWrite side (factory, font
+ * faces, fallback) belong to no device and are kept. */
+static void release_device(D2DPainter *d)
 {
     int i;
-    RemovePropA(d->hwnd, "KiTTY.renderer");
-    badge_free(d);
-    for (i = 0; i < d->nfb; i++)
-        if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
-    if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
-    if (d->bgbmp) ID2D1Bitmap_Release(d->bgbmp);
-    if (d->frame_ready) CloseHandle(d->frame_ready);
+    if (d->dc) release_targets(d);
     for (i = 0; i < d->nicons; i++)
         if (d->icons[i].bmp) ID2D1Bitmap_Release(d->icons[i].bmp);
-    if (d->sysfonts) IUnknown_Release((IUnknown *)d->sysfonts);
-    for (i = 0; i < d->nfonts; i++)
-        if (d->fonts[i].face)
-            IDWriteFontFace_Release(d->fonts[i].face);
-    if (d->dc) release_targets(d);
-    if (d->brush) ID2D1SolidColorBrush_Release(d->brush);
-    if (d->gdi) IDWriteGdiInterop_Release(d->gdi);
-    if (d->dw) IDWriteFactory_Release(d->dw);
-    if (d->dc) IUnknown_Release((IUnknown *)d->dc);
-    if (d->device) IUnknown_Release((IUnknown *)d->device);
-    if (d->factory) ID2D1Factory1_Release(d->factory);
-    if (d->swap) IDXGISwapChain1_Release(d->swap);
-    if (d->d3dctx) ID3D11DeviceContext_Release(d->d3dctx);
-    if (d->d3d) ID3D11Device_Release(d->d3d);
-    if (d->dwritedll) FreeLibrary(d->dwritedll);
-    if (d->d2d1dll) FreeLibrary(d->d2d1dll);
-    if (d->d3d11dll) FreeLibrary(d->d3d11dll);
-    sfree(d);
+    d->nicons = 0;
+    if (d->bgbmp) { ID2D1Bitmap_Release(d->bgbmp); d->bgbmp = NULL; }
+    if (d->brush) { ID2D1SolidColorBrush_Release(d->brush); d->brush = NULL; }
+    if (d->dc) { IUnknown_Release((IUnknown *)d->dc); d->dc = NULL; }
+    if (d->device) { IUnknown_Release((IUnknown *)d->device); d->device = NULL; }
+    if (d->swap) { IDXGISwapChain1_Release(d->swap); d->swap = NULL; }
+    if (d->frame_ready) {
+        kitty_pace_set_frame_signal(NULL);
+        CloseHandle(d->frame_ready);
+        d->frame_ready = NULL;
+    }
+    if (d->d3dctx) {
+        /* Direct3D destroys objects late; this lets the swap chain go
+         * now, so a new one can be made on the same window. */
+        ID3D11DeviceContext_ClearState(d->d3dctx);
+        ID3D11DeviceContext_Flush(d->d3dctx);
+        ID3D11DeviceContext_Release(d->d3dctx);
+        d->d3dctx = NULL;
+    }
+    if (d->d3d) { ID3D11Device_Release(d->d3d); d->d3d = NULL; }
+    d->in_frame = false;
+    d->dirty_any = false;
+    d->pend_w = d->pend_h = 0;
+    d->width = d->height = 0;
 }
 
-KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
+#ifdef KITTY_TEST_BUILD_LABEL
+/* Which adapter the device got. kind: "warp" when the hardware device
+ * could not be made and WARP was asked for; "basic" when a hardware
+ * device landed on the Microsoft Basic Render Driver (vendor 0x1414,
+ * device 0x8c: no GPU driver, rasterised by WARP all the same); "software"
+ * for any other adapter DXGI flags as software; else "hardware". */
+static void trace_adapter(D2DPainter *d, IDXGIAdapter *adapter)
 {
-    D2DPainter *d = snew(D2DPainter);
-    D3D11CreateDevice_t pD3D11CreateDevice;
-    D2D1CreateFactory_t pD2D1CreateFactory;
-    DWriteCreateFactory_t pDWriteCreateFactory;
+    DXGI_ADAPTER_DESC desc;
+    IDXGIAdapter1 *a1 = NULL;
+    UINT flags = 0;
+    char name[256];
+    const char *kind;
+    if (FAILED(IDXGIAdapter_GetDesc(adapter, &desc)))
+        return;
+    if (SUCCEEDED(IDXGIAdapter_QueryInterface(adapter, &IID_IDXGIAdapter1,
+                                              (void **)&a1))) {
+        DXGI_ADAPTER_DESC1 d1;
+        if (SUCCEEDED(IDXGIAdapter1_GetDesc1(a1, &d1)))
+            flags = d1.Flags;
+        IDXGIAdapter1_Release(a1);
+    }
+    if (!WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name,
+                             sizeof(name), NULL, NULL))
+        strcpy(name, "?");
+    if (d->warp)
+        kind = "warp";
+    else if (desc.VendorId == 0x1414 && desc.DeviceId == 0x8c)
+        kind = "basic";
+    else if (flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+        kind = "software";
+    else
+        kind = "hardware";
+    D2D_TRACE("adapter: %s vendor=0x%04x device=0x%04x kind=%s", name,
+              (unsigned)desc.VendorId, (unsigned)desc.DeviceId, kind);
+}
+#endif
+
+/* The device and everything made from it, at the window's current size:
+ * the hardware device, or WARP when there is none or the card has failed
+ * too often (force_warp). 0, or the step that
+ * failed (the numbers are kitty_painter_d2d_new's, for KiTTY.renderer.fail),
+ * with nothing left half made. */
+static int create_device(D2DPainter *d)
+{
     IDXGIDevice *dxgidev = NULL;
     IDXGIAdapter *adapter = NULL;
     IDXGIFactory2 *dxgifactory = NULL;
@@ -1250,63 +1449,40 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
     HRESULT hr;
     int failstep = 0;
 
-    memset(d, 0, sizeof(*d));
-    d->p.vt = &d2d_vt;
-    d->hwnd = hwnd;
-    d->blit = layerable;
-    switch (font_quality) {
-      case FQ_NONANTIALIASED: d->textaa = D2D1_TEXT_ANTIALIAS_MODE_ALIASED; break;
-      case FQ_ANTIALIASED:    d->textaa = D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE; break;
-      case FQ_CLEARTYPE:      d->textaa = D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE; break;
-      default:                d->textaa = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT; break;
-    }
-
-    d->d3d11dll = LoadLibraryA("d3d11.dll");
-    d->d2d1dll = LoadLibraryA("d2d1.dll");
-    d->dwritedll = LoadLibraryA("dwrite.dll");
-    if (!d->d3d11dll || !d->d2d1dll || !d->dwritedll)
-        { failstep = 1; goto fail; }
-    pD3D11CreateDevice = (D3D11CreateDevice_t)
-        GetProcAddress(d->d3d11dll, "D3D11CreateDevice");
-    pD2D1CreateFactory = (D2D1CreateFactory_t)
-        GetProcAddress(d->d2d1dll, "D2D1CreateFactory");
-    pDWriteCreateFactory = (DWriteCreateFactory_t)
-        GetProcAddress(d->dwritedll, "DWriteCreateFactory");
-    if (!pD3D11CreateDevice || !pD2D1CreateFactory || !pDWriteCreateFactory)
-        { failstep = 2; goto fail; }
-
-    hr = pD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
-                            D3D11_CREATE_DEVICE_BGRA_SUPPORT, NULL, 0,
-                            D3D11_SDK_VERSION, &d->d3d, NULL, &d->d3dctx);
+    d->warp = false;
+    hr = E_FAIL;
+    if (!d->force_warp)
+        hr = d->create_d3d(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL,
+                           D3D11_CREATE_DEVICE_BGRA_SUPPORT, NULL, 0,
+                           D3D11_SDK_VERSION, &d->d3d, NULL, &d->d3dctx);
     if (FAILED(hr)) {
         d->warp = true;
-        hr = pD3D11CreateDevice(NULL, D3D_DRIVER_TYPE_WARP, NULL,
-                                D3D11_CREATE_DEVICE_BGRA_SUPPORT, NULL, 0,
-                                D3D11_SDK_VERSION, &d->d3d, NULL, &d->d3dctx);
+        hr = d->create_d3d(NULL, D3D_DRIVER_TYPE_WARP, NULL,
+                           D3D11_CREATE_DEVICE_BGRA_SUPPORT, NULL, 0,
+                           D3D11_SDK_VERSION, &d->d3d, NULL, &d->d3dctx);
     }
     if (FAILED(hr))
-        { failstep = 3; goto fail; }
+        { failstep = 3; goto done; }
 
-    if (FAILED(pD2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
-                                  &IID_ID2D1Factory1, NULL,
-                                  (void **)&d->factory)))
-        { failstep = 4; goto fail; }
     if (FAILED(ID3D11Device_QueryInterface(d->d3d, &IID_IDXGIDevice,
                                            (void **)&dxgidev)))
-        { failstep = 5; goto fail; }
+        { failstep = 5; goto done; }
     if (FAILED(ID2D1Factory1_CreateDevice(d->factory, dxgidev, &d->device)))
-        { failstep = 6; goto fail; }
+        { failstep = 6; goto done; }
     if (FAILED(ID2D1Device_CreateDeviceContext(
                    d->device, D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &d->dc)))
-        { failstep = 7; goto fail; }
+        { failstep = 7; goto done; }
     ID2D1RenderTarget_SetDpi((ID2D1RenderTarget *)d->dc, 96, 96);
 
     if (FAILED(IDXGIDevice_GetAdapter(dxgidev, &adapter)))
-        { failstep = 8; goto fail; }
+        { failstep = 8; goto done; }
+#ifdef KITTY_TEST_BUILD_LABEL
+    trace_adapter(d, adapter);
+#endif
     if (FAILED(IDXGIAdapter_GetParent(adapter, &IID_IDXGIFactory2,
                                       (void **)&dxgifactory)))
-        { failstep = 9; goto fail; }
-    GetClientRect(hwnd, &client);
+        { failstep = 9; goto done; }
+    GetClientRect(d->hwnd, &client);
     memset(&sd, 0, sizeof(sd));
     sd.Width = client.right > 0 ? client.right : 1;
     sd.Height = client.bottom > 0 ? client.bottom : 1;
@@ -1338,14 +1514,14 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
         sd.Flags = 0;
     }
     hr = IDXGIFactory2_CreateSwapChainForHwnd(
-        dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
+        dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
     if (FAILED(hr) && sd.Flags) {
         sd.Flags = 0;                 /* a runtime without it: no signal */
         hr = IDXGIFactory2_CreateSwapChainForHwnd(
-            dxgifactory, (IUnknown *)d->d3d, hwnd, &sd, NULL, NULL, &d->swap);
+            dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
     }
     if (FAILED(hr))
-        { failstep = 10; goto fail; }
+        { failstep = 10; goto done; }
     if (sd.Flags) {
         IDXGISwapChain2 *sc2 = NULL;
         if (SUCCEEDED(IUnknown_QueryInterface((IUnknown *)d->swap,
@@ -1359,7 +1535,175 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
 
     if (FAILED(ID2D1RenderTarget_CreateSolidColorBrush(
                    (ID2D1RenderTarget *)d->dc, &black, NULL, &d->brush)))
-        { failstep = 11; goto fail; }
+        { failstep = 11; goto done; }
+    if (!create_targets(d, sd.Width, sd.Height))
+        { failstep = 14; goto done; }
+
+    /* Which painter the window ended up with, for whoever asks (the QA
+     * harness reads it across processes): 1 GDI, 2 Direct2D on the GPU,
+     * 3 Direct2D on WARP. */
+    SetPropA(d->hwnd, "KiTTY.renderer", (HANDLE)(ULONG_PTR)(d->warp ? 3 : 2));
+
+  done:
+    if (dxgifactory) IDXGIFactory2_Release(dxgifactory);
+    if (adapter) IDXGIAdapter_Release(adapter);
+    if (dxgidev) IDXGIDevice_Release(dxgidev);
+    if (failstep)
+        release_device(d);
+    return failstep;
+}
+
+/* The retry after a failed re-creation: a frame to try in. */
+static void CALLBACK retry_tick(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
+{
+    (void)msg; (void)now;
+    KillTimer(hwnd, id);
+    InvalidateRect(hwnd, NULL, FALSE);
+}
+
+/* D2D_LOSS_MAX failures in a row on the graphics card: WARP for the rest
+ * of the window's life, and one line in the event log for whoever wonders
+ * why. The device is already released (device_lost, or the re-creation
+ * that failed); the next frame makes it again, on WARP, with its own swap
+ * chain on the same window - the flip model stays, so does the pacing. */
+static void fall_back_to_warp(D2DPainter *d)
+{
+    char *msg;
+    d->force_warp = true;
+    d->fail_run = 0;
+    d->retry_at = GetTickCount();
+    D2D_TRACE("fallback to WARP after %d failures", D2D_LOSS_MAX);
+    msg = dupprintf(KT_D2D_FALLBACK_EVENT, D2D_LOSS_MAX,
+                    (unsigned long)(DWORD)d->last_hr);
+    kitty_eventlog_line(EVENTLOG_WARNING_TYPE, msg);
+    sfree(msg);
+}
+
+/* One more failure: a loss, or a re-creation that failed. A failure
+ * within D2D_LOSS_RUN_MS of the one before continues the run, a later one
+ * starts a new run. A full run on the card switches to WARP; a full run on
+ * WARP as well and the window stops drawing: true, the caller stops. */
+static bool count_failure(D2DPainter *d)
+{
+    DWORD now = GetTickCount();
+    if (d->fail_run > 0 && now - d->fail_tick <= D2D_LOSS_RUN_MS)
+        d->fail_run++;
+    else
+        d->fail_run = 1;
+    d->fail_tick = now;
+    if (d->fail_run < D2D_LOSS_MAX)
+        return false;
+    if (!d->force_warp) {
+        fall_back_to_warp(d);
+        return false;
+    }
+    D2D_TRACE("WARP failed %d times too: this window draws no more",
+              d->fail_run);
+    d->dead = true;
+    d->lost = false;
+    KillTimer(d->hwnd, D2D_RETRY_TIMER_ID);
+    return true;
+}
+
+/* The device is gone (hr, reported by `where`): let everything made from
+ * it go, and have the next frame make it again. Outside a frame always -
+ * EndDraw has been called, or no frame was open. */
+static void device_lost(D2DPainter *d, HRESULT hr, const char *where)
+{
+    D2D_TRACE("device lost hr=0x%08lx at %s", (unsigned long)(DWORD)hr, where);
+    SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
+    d->last_hr = hr;
+    release_device(d);
+    d->lost = true;
+    d->retry_at = GetTickCount();      /* the first attempt at once */
+    if (count_failure(d))
+        return;
+    /* the canvas went with the device: the whole window is drawn again */
+    InvalidateRect(d->hwnd, NULL, FALSE);
+}
+
+/* The next frame after a loss. False: no device yet (a retry is armed),
+ * or WARP has failed too and the window draws no more (d->dead). */
+static bool device_recreate(D2DPainter *d)
+{
+    int step = create_device(d);
+    if (step) {
+        D2D_TRACE("device recreation failed at step %d", step);
+        if (count_failure(d))
+            return false;
+        d->retry_at = GetTickCount() + D2D_RETRY_MS;
+        SetTimer(d->hwnd, D2D_RETRY_TIMER_ID, D2D_RETRY_MS, retry_tick);
+        return false;
+    }
+    d->lost = false;
+    D2D_TRACE("device recreated");
+    kitty_pace_set_frame_signal(d->frame_ready);
+    return true;
+}
+
+/* ---- creation ------------------------------------------------------ */
+
+static void d2d_destroy(D2DPainter *d)
+{
+    int i;
+    RemovePropA(d->hwnd, "KiTTY.renderer");
+    KillTimer(d->hwnd, D2D_RETRY_TIMER_ID);
+    badge_free(d);
+    release_device(d);
+    for (i = 0; i < d->nfb; i++)
+        if (d->fbfaces[i].face) IDWriteFontFace_Release(d->fbfaces[i].face);
+    if (d->fallback) IUnknown_Release((IUnknown *)d->fallback);
+    if (d->sysfonts) IUnknown_Release((IUnknown *)d->sysfonts);
+    for (i = 0; i < d->nfonts; i++)
+        if (d->fonts[i].face)
+            IDWriteFontFace_Release(d->fonts[i].face);
+    if (d->gdi) IDWriteGdiInterop_Release(d->gdi);
+    if (d->dw) IDWriteFactory_Release(d->dw);
+    if (d->factory) ID2D1Factory1_Release(d->factory);
+    if (d->dwritedll) FreeLibrary(d->dwritedll);
+    if (d->d2d1dll) FreeLibrary(d->d2d1dll);
+    if (d->d3d11dll) FreeLibrary(d->d3d11dll);
+    sfree(d);
+}
+
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality,
+                                    bool layerable)
+{
+    D2DPainter *d = snew(D2DPainter);
+    D2D1CreateFactory_t pD2D1CreateFactory;
+    DWriteCreateFactory_t pDWriteCreateFactory;
+    int failstep = 0;
+
+    memset(d, 0, sizeof(*d));
+    d->p.vt = &d2d_vt;
+    d->hwnd = hwnd;
+    d->blit = layerable;
+    switch (font_quality) {
+      case FQ_NONANTIALIASED: d->textaa = D2D1_TEXT_ANTIALIAS_MODE_ALIASED; break;
+      case FQ_ANTIALIASED:    d->textaa = D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE; break;
+      case FQ_CLEARTYPE:      d->textaa = D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE; break;
+      default:                d->textaa = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT; break;
+    }
+
+    d->d3d11dll = LoadLibraryA("d3d11.dll");
+    d->d2d1dll = LoadLibraryA("d2d1.dll");
+    d->dwritedll = LoadLibraryA("dwrite.dll");
+    if (!d->d3d11dll || !d->d2d1dll || !d->dwritedll)
+        { failstep = 1; goto fail; }
+    d->create_d3d = (D3D11CreateDevice_t)
+        GetProcAddress(d->d3d11dll, "D3D11CreateDevice");
+    pD2D1CreateFactory = (D2D1CreateFactory_t)
+        GetProcAddress(d->d2d1dll, "D2D1CreateFactory");
+    pDWriteCreateFactory = (DWriteCreateFactory_t)
+        GetProcAddress(d->dwritedll, "DWriteCreateFactory");
+    if (!d->create_d3d || !pD2D1CreateFactory || !pDWriteCreateFactory)
+        { failstep = 2; goto fail; }
+
+    /* Device-independent: made once, kept across a lost device. */
+    if (FAILED(pD2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                                  &IID_ID2D1Factory1, NULL,
+                                  (void **)&d->factory)))
+        { failstep = 4; goto fail; }
     if (FAILED(pDWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
                                     &IID_IDWriteFactory,
                                     (IUnknown **)&d->dw)))
@@ -1378,28 +1722,38 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
         }
         IDWriteFactory_GetSystemFontCollection(d->dw, &d->sysfonts, FALSE);
     }
-    if (!create_targets(d, sd.Width, sd.Height))
-        { failstep = 14; goto fail; }
 
-    IDXGIFactory2_Release(dxgifactory);
-    IDXGIAdapter_Release(adapter);
-    IDXGIDevice_Release(dxgidev);
-    /* Which painter the window ended up with, for whoever asks (the QA
-     * harness reads it across processes): 1 GDI, 2 Direct2D on the GPU,
-     * 3 Direct2D on WARP. */
-    SetPropA(hwnd, "KiTTY.renderer", (HANDLE)(ULONG_PTR)(d->warp ? 3 : 2));
-    /* ... and whether it survives the window turning layered: the
+    /* The device and all made from it (steps 3, 5-11, 14). */
+    if ((failstep = create_device(d)) != 0)
+        goto fail;
+
+#ifdef KITTY_TEST_BUILD_LABEL
+    {
+        /* KITTY_D2D_FAIL_PRESENT=<n> or <n>:<k> (see d2d_end) */
+        const char *e = getenv("KITTY_D2D_FAIL_PRESENT");
+        if (e && *e) {
+            char *end;
+            unsigned long n = strtoul(e, &end, 10), k = 1;
+            if (*end == ':')
+                k = strtoul(end + 1, NULL, 10);
+            if (n >= 1 && k >= 1) {
+                d->inj_from = n;
+                d->inj_count = k;
+            }
+        }
+    }
+#endif
+    /* Whether the painter survives the window turning layered: the
      * transparency code asks before it sets WS_EX_LAYERED. */
     SetPropA(hwnd, "KiTTY.renderer.blit", (HANDLE)(ULONG_PTR)(d->blit ? 1 : 0));
     badge_init(d);
     return &d->p;
 
   fail:
-    /* Which step gave up (source order), for the QA harness / support. */
+    /* Which step gave up, for the QA harness / support: 1-2 the DLLs,
+     * 4 the Direct2D factory, 12-13 DirectWrite, 3, 5-11 and 14 the
+     * device (create_device). */
     SetPropA(hwnd, "KiTTY.renderer.fail", (HANDLE)(ULONG_PTR)failstep);
-    if (dxgifactory) IDXGIFactory2_Release(dxgifactory);
-    if (adapter) IDXGIAdapter_Release(adapter);
-    if (dxgidev) IDXGIDevice_Release(dxgidev);
     d2d_destroy(d);
     return NULL;
 }

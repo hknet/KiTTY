@@ -5978,7 +5978,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * current terminal appearance so that WM_PAINT becomes
          * completely trivial. However, this should do for now.
          */
+#ifdef MOD_PERSO
+        /* A painter that cannot draw now (Direct2D between a lost device
+         * and its re-creation) must not be drawn into; it invalidates the
+         * window itself once it can draw again. */
+        if (!kp_begin(wgs->painter, hdc)) {
+            EndPaint(hwnd, &p);
+            ShowCaret(hwnd);
+            return 0;
+        }
+#else
         kp_begin(wgs->painter, hdc);
+#endif
         term_paint(wgs->term,
                    (p.rcPaint.left-wgs->offset_width)/wgs->font_width,
                    (p.rcPaint.top-wgs->offset_height)/wgs->font_height,

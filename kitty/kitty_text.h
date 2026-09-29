@@ -1306,6 +1306,8 @@
 #define KT_KSET_WD_RENDERER_D2D                      "Direct2D"
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
+#define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \
+        "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* event log, paint-d2d.c */
 #define KT_KSET_WD_FRAMEPACE                         "Frame pacing:"
 #define KT_KSET_WD_FP_AUTO                           "Follow the display (auto)"
 #define KT_KSET_WD_FP_30                             "30fps"
