@@ -306,6 +306,11 @@ static HANDLE gdi_frame_signal(KittyPainter *p)
     return NULL;                       /* GDI has no display signal */
 }
 
+static void gdi_fonts_changed(KittyPainter *p)
+{
+    (void)p;                           /* GDI uses the HFONTs as they are */
+}
+
 static const KittyPainterVtable gdi_vt = {
     .begin = gdi_begin,
     .end = gdi_end,
@@ -325,6 +330,7 @@ static const KittyPainterVtable gdi_vt = {
     .char_width = gdi_char_width,
     .hdc = gdi_hdc,
     .frame_signal = gdi_frame_signal,
+    .fonts_changed = gdi_fonts_changed,
 };
 
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)

@@ -736,6 +736,28 @@ static void d2d_end(KittyPainter *p)
 
 /* ---- fonts --------------------------------------------------------- */
 
+/* Forget every cached font. The window made new HFONTs (d2d_fonts_changed)
+ * and handle values are recycled, so a kept entry could describe an old font
+ * - its size above all - and without this the table fills after a few font
+ * or DPI changes and text stops being drawn. The per-character fallback map
+ * stores indices into this table, so it goes too; the fallback faces are
+ * kept by family name and stay valid. */
+static void fonts_forget(D2DPainter *d)
+{
+    int i;
+    for (i = 0; i < d->nfonts; i++)
+        if (d->fonts[i].face)
+            IDWriteFontFace_Release(d->fonts[i].face);
+    d->nfonts = 0;
+    d->font = NULL;
+    memset(d->fbmap, 0, sizeof(d->fbmap));
+}
+
+static void d2d_fonts_changed(KittyPainter *p)
+{
+    fonts_forget((D2DPainter *)p);
+}
+
 static D2DFont *font_of(D2DPainter *d, HFONT hfont)
 {
     int i;
@@ -750,8 +772,10 @@ static D2DFont *font_of(D2DPainter *d, HFONT hfont)
     for (i = 0; i < d->nfonts; i++)
         if (d->fonts[i].hfont == hfont)
             return &d->fonts[i];
-    if (!hfont || d->nfonts >= D2D_FONT_CACHE)
+    if (!hfont)
         return NULL;
+    if (d->nfonts >= D2D_FONT_CACHE)
+        fonts_forget(d);               /* never full: start over */
     if (!GetObjectW(hfont, sizeof(lf), &lf))
         return NULL;
     if (FAILED(IDWriteGdiInterop_CreateFontFromLOGFONT(d->gdi, &lf, &font)))
@@ -1356,6 +1380,7 @@ static const KittyPainterVtable d2d_vt = {
     .char_width = d2d_char_width,
     .hdc = d2d_hdc,
     .frame_signal = d2d_frame_signal,
+    .fonts_changed = d2d_fonts_changed,
 };
 
 /* ---- the device ---------------------------------------------------- */

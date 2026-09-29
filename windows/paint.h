@@ -91,6 +91,10 @@ typedef struct KittyPainterVtable {
      * (Direct2D: the swap chain's frame-latency waitable object), or NULL
      * for a painter that has none (GDI). The frame pacing waits on it. */
     HANDLE (*frame_signal)(KittyPainter *p);
+    /* The window has just made a new set of HFONTs (a font, zoom or DPI
+     * change). A painter that caches per HFONT drops its cache: handle
+     * values are recycled, so an old entry could describe another font. */
+    void (*fonts_changed)(KittyPainter *p);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -129,5 +133,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool layerable)
 #define kp_char_width(p, f, ch, w, out)  ((p)->vt->char_width((p), (f), (ch), (w), (out)))
 #define kp_hdc(p)                        ((p)->vt->hdc(p))
 #define kp_frame_signal(p)               ((p)->vt->frame_signal(p))
+#define kp_fonts_changed(p)              ((p)->vt->fonts_changed(p))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

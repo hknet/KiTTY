@@ -3607,6 +3607,11 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
     wgs->fontflag[2] = true;
 
     init_ucs(wgs->conf, &wgs->ucsdata);
+#ifdef MOD_PERSO
+    /* KiTTY: a painter that caches per HFONT must drop the old ones */
+    if (wgs->painter)
+        kp_fonts_changed(wgs->painter);
+#endif
 }
 
 static void another_font(WinGuiSeat *wgs, int fontno)
