@@ -129,7 +129,8 @@ void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
     int t = conf_get_int(conf, CONF_transparencynumber);
     if (!GetTransparencyFlag() || t < 0) return;
     t += up ? 10 : -10;
-    if (t < 0) t = 0; if (t > 254) t = 254;
+    if (t < 0) t = 0;
+    if (t > 254) t = 254;
     conf_set_int(conf, CONF_transparencynumber, t);
     {
         /* a Direct2D window not layered at creation stays as it is

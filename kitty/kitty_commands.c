@@ -507,7 +507,9 @@ static int cmd_passwd( HWND hwnd, char * arg ) {
 static int cmd_screenshot( HWND hwnd, char * arg ) {
 	char screenShotFile[1024] ;
 	(void)arg ;
-	snprintf( screenShotFile, sizeof(screenShotFile), "%s\\screenshot-%d-%ld.jpg", InitialDirectory, getpid(), time(0) );
+	/* time_t is 64-bit here; %lu of the value cast down fits every target's
+	 * printf (old msvcrt has no %lld) and is unique until 2106 */
+	snprintf( screenShotFile, sizeof(screenShotFile), "%s\\screenshot-%d-%lu.jpg", InitialDirectory, getpid(), (unsigned long)time(0) );
 	screenCaptureClientRect( GetParent(hwnd), screenShotFile, 100 ) ;
 	return 1 ;
 }

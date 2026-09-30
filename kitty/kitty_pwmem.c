@@ -2,7 +2,7 @@
  * kitty_pwmem.c - see kitty_pwmem.h.
  *
  * In the `utils` library because EVERY binary links that: the password keys
- * are read from shared files (settings.c, cmdline.c, proxy/*.c,
+ * are read from shared files (settings.c, cmdline.c, the proxy/ sources,
  * utils/format_connection_setup_command.c) which are compiled into libraries
  * built WITHOUT MOD_PERSO, so those files call these functions directly rather
  * than through a guard that the preprocessor would delete.

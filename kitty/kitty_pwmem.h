@@ -45,7 +45,7 @@
  * refused or dropped because the protection is unavailable.
  *
  * Windows-only in substance; the non-Windows build gets pass-through inlines so
- * that the shared files calling these (settings.c, cmdline.c, proxy/*.c) keep
+ * that the shared files calling these (settings.c, cmdline.c, proxy/) keep
  * compiling.
  */
 #ifndef KITTY_PWMEM_H

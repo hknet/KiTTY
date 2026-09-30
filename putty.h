@@ -2107,7 +2107,7 @@ void term_provide_logctx(Terminal *term, LogContext *logctx);
 void term_set_focus(Terminal *term, bool has_focus);
 #ifdef MOD_PERSO
 /* KiTTY: which OSC 52 clipboard permission is live, for the title marker and the
- * window tint. Returns OSC52_PERM_*; *read/*write say which. */
+ * window tint. Returns OSC52_PERM_*; *read and *write say which. */
 int term_osc52_perm_state(Terminal *term, bool *read, bool *write);
 /* KiTTY: is OSC 5522 paste-events mode (private mode 5522) set? And are pastes
  * still carrying a token (read without a dialog), or has that clock run out?

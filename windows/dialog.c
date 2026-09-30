@@ -2028,7 +2028,7 @@ static bool kitty_cfg_panel_relayout_ex(PortableDialogStuff *pds,
     int focus_index = -1;
     int scroll_was = kitty_cfg_scroll_y;
 
-    if (!p || !kitty_cfg_panel_host || !pds || !pds->dp)
+    if (!p || !kitty_cfg_panel_host || !pds)   /* pds->dp is an array member */
         return false;
     if ((p == kitty_cfg_active_panel) != visible)
         return false;                  /* the caller has them the wrong way round */
@@ -3611,7 +3611,7 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
                 /* Only when Application panels EXIST. The stock variants
                  * (kitty_tel, kitty_pterm, putty) build their box from the
-                 * stock config.c, which has no Application/* paths - the tab
+                 * stock config.c, which has no paths under Application/ - the tab
                  * offered a completely empty tree there. Every consumer
                  * compares TCM_GETCURSEL against 1, so a one-tab strip
                  * degrades all of them to "Session" correctly. */

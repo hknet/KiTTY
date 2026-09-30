@@ -58,7 +58,7 @@ static int kitty_version_cmp( const int a[4], const int b[4] ) {
 typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitty_install_t ;
 
 /* Our MSI UpgradeCodes, stable across versions - they must match the ones in
- * windows/installer/*.wxs, which is where they are defined.
+ * the .wxs files in windows/installer/, which is where they are defined.
  * MsiEnumRelatedProducts takes the braced GUID form. */
 #define KITTY_UPGRADE_SYSTEM  "{69EA2DD5-EF19-4811-B324-EF34CAA6942C}"
 #define KITTY_UPGRADE_PERUSER "{578952A6-AA7F-4146-918B-47803234700B}"
@@ -286,7 +286,8 @@ static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 /* Launch the background update check once per process (fire-and-forget). */
 void kitty_start_update_check( void ) {
 	static int started = 0 ;
-	if( started ) return ; started = 1 ;
+	if( started ) return ;
+	started = 1 ;
 	HANDLE th = CreateThread( NULL, 0, kitty_update_worker, NULL, 0, NULL ) ;
 	if( th != NULL ) CloseHandle( th ) ;
 }
@@ -658,7 +659,8 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				for( ;; ) {
 					if( cap - bodylen < 4096 ) {
 						char *nb = (char*)realloc( body, cap*2 ) ;
-						if( nb==NULL ) break ; body = nb ; cap *= 2 ;
+						if( nb==NULL ) break ;
+						body = nb ; cap *= 2 ;
 						}
 					if( !InternetReadFile( hu, body+bodylen, cap-bodylen-1, &nread ) || nread==0 ) break ;
 					bodylen += nread ;

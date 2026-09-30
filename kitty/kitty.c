@@ -128,7 +128,7 @@ void debug_log( const char *fmt, ... ) {
 	va_list ap;
 	FILE *fp ;
 
-	if( (InitialDirectory!=NULL) && (strlen(InitialDirectory)>0) )
+	if( strlen(InitialDirectory)>0 )   /* an array: never NULL */
 		snprintf( filename, sizeof(filename),"%s\\kitty.log",InitialDirectory);
 	else strcpy(filename,"kitty.log");
 
@@ -569,10 +569,9 @@ int license_test( char * license, char sep, int modulo, int result ) ;
 
 // Increment the usage counter in the registry
 void CountUp( void ) {
-	char buffer[4096] = "0", *pst ;
+	char buffer[4096] = "0" ;
 	long int n ;
-	int len = 1024 ;
-	
+
 	if( ReadParameterN( INIT_SECTION, KI_KICOUNT, buffer, sizeof(buffer) ) == 0 ) { strcpy( buffer, "0" ) ; }
 	n = atol( buffer ) + 1 ;
 	snprintf( buffer, sizeof(buffer), "%ld", n ) ;

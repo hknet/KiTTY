@@ -32,7 +32,7 @@ int kitty_authenticode_verify(const char *path);
  * sibling launcher - keeps kitty_authenticode_verify(). */
 int kitty_authenticode_verify_offline(const char *path);
 
-/* The PE fixed-file-version of `path` into *ms/*ls (dwFileVersionMS /
+/* The PE fixed-file-version of `path` into *ms and *ls (dwFileVersionMS /
  * dwFileVersionLS). 1 on success, 0 on failure. */
 int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls);
 

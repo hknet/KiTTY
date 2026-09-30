@@ -514,13 +514,21 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppb_forced(sesskey, "NoRemoteClearScroll",
          conf, CONF_no_remote_clearscroll);
     {
-	/* Backward compatibility */
-	int no_remote_qtitle = gppi_raw_forced(sesskey, "NoRemoteQTitle", 1);
-	/* We deliberately interpret the old setting of "no response" as
-	 * "empty string". This changes the behaviour, but hopefully for
-	 * the better; the user can always recover the old behaviour. */
-	gppi_forced(sesskey, "RemoteQTitleAction",
-	     conf, CONF_remote_qtitle_action);
+	/* As settings.c: the stored RemoteQTitleAction through its enum map;
+	 * without one, the older NoRemoteQTitle decides (read before, never
+	 * used - an old session got the conf default instead). */
+	extern const ConfSaveEnumType conf_enum_remote_qtitle_action;   /* conf-enums.h, as settings.c declares it */
+	int storageval = gppi_raw_forced(sesskey, "RemoteQTitleAction", -1);
+	int confval;
+	if (!conf_enum_map_from_storage(&conf_enum_remote_qtitle_action,
+	                                storageval, &confval)) {
+	    storageval = gppi_raw_forced(sesskey, "NoRemoteQTitle", 1);
+	    /* We deliberately interpret the old setting of "no response" as
+	     * "empty string". This changes the behaviour, but hopefully for
+	     * the better; the user can always recover the old behaviour. */
+	    confval = storageval ? TITLE_EMPTY : TITLE_REAL;
+	}
+	conf_set_int(conf, CONF_remote_qtitle_action, confval);
     }
     gppb_forced(sesskey, "NoDBackspace", conf, CONF_no_dbackspace);
     gppb_forced(sesskey, "NoRemoteCharset", conf, CONF_no_remote_charset);

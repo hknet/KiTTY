@@ -289,8 +289,9 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
  * rotating is actually safe.
  * WARNING: 8712 is TIMER_CLIPACTIVITY (windows/kitty_rc_additions.h) - using it here
  * put this timer behind that branch, which KillTimer()s it, so rotation fired
- * once and never again. When picking an id, grep windows/*.h too, not just the
- * .c files and kitty.h (which has its own unused TIMER_LOGROTATION 8707). */
+ * once and never again. When picking an id, grep the headers in windows/ too,
+ * not just the .c files and kitty.h (which has its own unused TIMER_LOGROTATION
+ * 8707). */
 #define TIMER_LOGROTATION 8713
 #define TIMER_MODALPUMP   8714   /* KiTTY: pending work during a move or a menu */
 #endif
@@ -2786,7 +2787,8 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
                                                           : MENU_SAVED_MAX+1);
     /* DeleteMenu, not RemoveMenu: it destroys a submenu along with its item, so
      * the folder popups built below do not leak on every rebuild. */
-    while (DeleteMenu(wgs->savedsess_menu, 0, MF_BYPOSITION)) ;
+    while (DeleteMenu(wgs->savedsess_menu, 0, MF_BYPOSITION))
+        continue;
 #ifdef MOD_PERSO
     /*
      * KiTTY: one submenu per folder, unfiled sessions after them.
