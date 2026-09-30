@@ -148,6 +148,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **URLs on newer top-level domains are found whole.** The default
+  expression took a fixed list of domains or two letters, so
+  `https://pi.dev/changelog` was found as `https://pi.de`. It now takes any
+  domain of two or more letters. A session whose custom expression is an
+  old KiTTY default gets the new one when it is loaded.
 - **Non-ASCII text printed to the "Windows clipboard" printer is no longer
   mangled.** The printed bytes were put on the clipboard as ANSI text, so
   UTF-8 such as "£500" or "€100" pasted as "Â£500" / "â‚¬100". They are

@@ -8,6 +8,7 @@
 #include "putty.h"
 #include "storage.h"
 #include "kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
+#include "kitty/kitty_url_regex.h"   /* KiTTY: old URL defaults replaced */
 #ifndef NO_GSSAPI
 #include "ssh/gssc.h"
 #include "ssh/gss.h"
@@ -1128,6 +1129,17 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
      * into the settings library WITHOUT MOD_PERSO, and kitty_pwmem.c is in
      * `utils`, which every binary links. */
     kitty_pw_seal_all(conf);
+
+    /* KiTTY: a custom URL expression that is word for word one of KiTTY's
+     * old defaults was taken from KiTTY, not written by the user: it gets
+     * the current default (kitty/kitty_url_regex.h), and keeps it at the
+     * next save. Unguarded for the same reason as the call above. */
+    {
+        const char *re = conf_get_str(conf, CONF_url_regex);
+        if (!strcmp(re, KITTY_URL_REGEX_OLD_1) ||
+            !strcmp(re, KITTY_URL_REGEX_OLD_2))
+            conf_set_str(conf, CONF_url_regex, KITTY_URL_REGEX_DEFAULT);
+    }
 }
 
 bool do_defaults(const char *session, Conf *conf)

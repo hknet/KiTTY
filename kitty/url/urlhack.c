@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <string.h>
 #include "urlhack.h"
+#include "../kitty_url_regex.h"
 #include "misc.h"
 #include "puttymem.h"
 #include <assert.h>
@@ -22,7 +23,9 @@ const char* urlhack_default_regex = "(((https?|ftp):\\/\\/)|www\\.)(([0-9]+\\.[0
 // (memory leak) seen with the hyperlink patch
 */
 
-const char* urlhack_default_regex =  "(((https?|ftp):\\/\\/)|www\\.)(([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)|localhost|([a-zA-Z0-9\\-]+\\.)*[a-zA-Z0-9\\-]+\\.(com|net|org|info|biz|gov|name|edu|[a-zA-Z][a-zA-Z]))(:[0-9]+)?((\\/|\\?)[^ \"]*[^ ,;\\.:\">)])?";
+/* KiTTY: any top-level domain of two or more letters, and the older
+ * defaults beside it for the session fix-up (kitty_url_regex.h). */
+const char* urlhack_default_regex = KITTY_URL_REGEX_DEFAULT;
 
 
 const char* urlhack_liberal_regex =
