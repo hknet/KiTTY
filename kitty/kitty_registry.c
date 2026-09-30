@@ -692,6 +692,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "HyperlinkRegularExpression" ) ;
 					RegDeleteValue( hSubKey, "HyperlinkScan" ) ;
 					RegDeleteValue( hSubKey, "HyperlinkOSC8" ) ;
+					RegDeleteValue( hSubKey, "HyperlinkPreview" ) ;
 					RegDeleteValue( hSubKey, "rzCommand" ) ;
 					RegDeleteValue( hSubKey, "rzOptions" ) ;
 					RegDeleteValue( hSubKey, "szCommand" ) ;

@@ -5951,12 +5951,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * here would re-run the URL regex over the whole visible screen at
          * pointer speed for no new information. */
         if (GetHyperlinkFlag()) {
-            kitty_url_hover(wgs->term, hwnd,
+            kitty_url_hover(wgs->term, wgs->conf, hwnd,
                             TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
                             conf_get_int(wgs->conf, CONF_url_hover_cursor));
-        }
+        } else
+            kitty_url_preview_hide();
 #endif
         return 0;
+#ifdef MOD_PERSO
+      case WM_MOUSELEAVE:
+        /* KiTTY: the pointer left the window - the OSC 8 target preview
+         * goes with it (kitty_url.c requests this message while one is up) */
+        kitty_url_preview_hide();
+        return 0;
+#endif
       case WM_NCMOUSEMOVE:
         if (wgs->last_mousemove != WM_NCMOUSEMOVE ||
             wParam != wgs->last_wm_ncmousemove_wParam ||
@@ -6081,6 +6089,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         term_update(wgs->term);
         break;
       case WM_KILLFOCUS:
+#ifdef MOD_PERSO
+        kitty_url_preview_hide();      /* KiTTY: no OSC 8 preview left behind */
+#endif
         show_mouseptr(wgs, true);
         term_set_focus(wgs->term, false);
         DestroyCaret();
@@ -9320,6 +9331,8 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
         if (kitty_url_rescan(wgs->term, wgs->conf) &&
             conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
+        /* the link under an open preview may have scrolled away */
+        kitty_url_preview_refresh(wgs->term, wgs->conf, wgs->term_hwnd);
         KP_T1(KP_URL);
     }
 #endif

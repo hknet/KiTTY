@@ -23,12 +23,15 @@
  */
 #include "putty.h"
 #include <windows.h>
+#include <commctrl.h>                  /* the OSC 8 preview tooltip */
 #include <ctype.h>
 #include "terminal.h"
 #include "urlhack.h"
 #include "kitty_url.h"
 #include "kitty_text.h"
 #include "kitty_dlgbox.h"
+#include "kitty_theme.h"               /* kitty_theme_tooltip */
+#include "kitty_win.h"                 /* kitty_theme_app_dark */
 
 /* KiTTY url_underline modes (were in 0.76b putty.h) */
 enum {
@@ -201,16 +204,359 @@ int kitty_url_row_dirty(int row)
 }
 
 /*
- * Update the mouse-hover state: show a hand cursor when over a link region.
+ * The host of a declared link's target, for the look-alike checks and for the
+ * "Host:" line of the confirmation and of a long target's preview. Targets
+ * are printable ASCII (terminal.c refuses anything else), so every trick left
+ * is one of spelling:
+ *   userinfo   https://mybank.example@evil.test/ - the host is evil.test
+ *   numeric    http://3232235777/, 0x7f.1, 0177.0.0.1, 127.1 - an address in
+ *              disguise. A plain dotted quad (192.168.1.1) is not one
+ *   encoded    %2e and the like inside the host
+ *   punycode   a label starting xn-- (a name imitating another)
+ */
+typedef struct kitty_url_hostinfo {
+    char host[256];                    /* lower case; "" = no authority */
+    int userinfo, numeric, encoded, punycode;
+} kitty_url_hostinfo;
+
+static int kitty_url_label_numeric(const char *l, size_t len)
+{
+    size_t i = 0;
+    if (len > 2 && l[0] == '0' && (l[1] == 'x' || l[1] == 'X')) {
+        for (i = 2; i < len; i++)
+            if (!isxdigit((unsigned char)l[i]))
+                return 0;
+        return 1;
+    }
+    for (i = 0; i < len; i++)
+        if (!isdigit((unsigned char)l[i]))
+            return 0;
+    return len > 0;
+}
+
+static void kitty_url_hostinfo_of(const char *uri, kitty_url_hostinfo *hi)
+{
+    const char *a = strchr(uri, ':'), *end, *h, *p;
+    size_t n, i;
+    int labels = 0, numlabels = 0, canonical = 1;
+
+    memset(hi, 0, sizeof(*hi));
+    if (!a || strncmp(a + 1, "//", 2) != 0)
+        return;                        /* mailto: and the like: no host */
+    a += 3;
+    end = a + strcspn(a, "/?#");
+    h = a;
+    for (p = a; p < end; p++)
+        if (*p == '@') {
+            hi->userinfo = 1;
+            h = p + 1;                 /* the host is after the LAST @ */
+        }
+    if (*h == '[') {                   /* an IPv6 literal, kept as it is */
+        p = memchr(h, ']', end - h);
+        n = p ? (size_t)(p + 1 - h) : (size_t)(end - h);
+    } else {
+        for (p = h; p < end && *p != ':'; p++)
+            ;
+        n = p - h;                     /* without the port */
+    }
+    if (n >= sizeof(hi->host))
+        n = sizeof(hi->host) - 1;
+    for (i = 0; i < n; i++)
+        hi->host[i] = (char)tolower((unsigned char)h[i]);
+    hi->host[n] = '\0';
+    hi->encoded = strchr(hi->host, '%') != NULL;
+    if (!hi->host[0] || hi->host[0] == '[')
+        return;
+    for (p = hi->host; *p; ) {
+        size_t len = strcspn(p, ".");
+        if (len) {
+            labels++;
+            if (len >= 4 && !strncmp(p, "xn--", 4))
+                hi->punycode = 1;
+            if (kitty_url_label_numeric(p, len)) {
+                numlabels++;
+                /* a dotted quad's part: decimal, no leading zero, <= 255 */
+                if ((len > 1 && p[0] == '0') || len > 3 ||
+                    !isdigit((unsigned char)p[0]) || atoi(p) > 255)
+                    canonical = 0;
+            }
+        }
+        p += len + (p[len] == '.');
+    }
+    if (numlabels && numlabels == labels && !(labels == 4 && canonical))
+        hi->numeric = 1;
+}
+
+/* The host a link's TEXT names, when the text is written as an address:
+ * "https://..." or "www...." at its start. A bare name ("mybank.com") is
+ * kitty_url_text_bare's. */
+static int kitty_url_text_host(const char *text, char *out, size_t outlen)
+{
+    const char *s = text, *p, *e, *q;
+    size_t n = 0;
+    while (*s == ' ')
+        s++;
+    if ((p = strstr(s, "://")) != NULL && p - s < 16)
+        s = p + 3;
+    else if (_strnicmp(s, "www.", 4) != 0)
+        return 0;
+    e = s + strcspn(s, "/?# ");
+    for (q = s; q < e; q++)
+        if (*q == '@')
+            s = q + 1;
+    while (s[n] && (isalnum((unsigned char)s[n]) || s[n] == '-' ||
+                    s[n] == '.') && n + 1 < outlen) {
+        out[n] = (char)tolower((unsigned char)s[n]);
+        n++;
+    }
+    out[n] = '\0';
+    while (n && out[n - 1] == '.')
+        out[--n] = '\0';
+    return n > 0 && strchr(out, '.') != NULL;
+}
+
+/* The text as a single bare name.name word ("mybank.com", "report.pdf"),
+ * lower case: a host or a file name, which its shape cannot tell apart.
+ * kitty_url_open_declared settles it against the target instead. */
+static int kitty_url_text_bare(const char *text, char *out, size_t outlen)
+{
+    const char *s = text, *last;
+    size_t n, len;
+    int dots = 0, letter = 0;
+    while (*s == ' ')
+        s++;
+    len = strlen(s);
+    while (len && (s[len - 1] == ' ' || s[len - 1] == '/'))
+        len--;
+    if (!len || len + 1 > outlen)
+        return 0;
+    for (n = 0; n < len; n++) {
+        char c = s[n];
+        if (c == '.') {
+            if (!n || s[n - 1] == '.' || n + 1 == len)
+                return 0;              /* no empty label */
+            dots++;
+        } else if (!isalnum((unsigned char)c) && c != '-')
+            return 0;
+        out[n] = (char)tolower((unsigned char)c);
+    }
+    out[n] = '\0';
+    last = strrchr(out, '.');
+    if (!dots || !last)
+        return 0;
+    for (last++; *last; last++)        /* 1.2.3 is a version, not a name */
+        if (isalpha((unsigned char)*last))
+            letter = 1;
+    return letter;
+}
+
+/* One host is the other, or a name under it (docs.example.org is under
+ * example.org): the same owner. */
+static int kitty_url_same_owner(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    if (!strcmp(a, b))
+        return 1;
+    if (la > lb && a[la - lb - 1] == '.' && !strcmp(a + la - lb, b))
+        return 1;
+    if (lb > la && b[lb - la - 1] == '.' && !strcmp(b + lb - la, a))
+        return 1;
+    return 0;
+}
+
+/*
+ * OSC 8 link preview: hovering a declared link shows its target in a tooltip
+ * (CONF_url_preview), because its text need not be its target. A detected
+ * link gets none - its text IS the target.
+ *
+ * One tracking tooltip per window, placed under the pointer when the pointer
+ * reaches a link and kept there while it stays on that link (it does not
+ * chase the pointer across the link's cells). It goes when the pointer
+ * leaves the link or the window (WM_MOUSELEAVE), the window loses the focus,
+ * the link is clicked, or the output replaces or scrolls the link away
+ * (kitty_url_preview_refresh after each rescan). A target has no spaces to
+ * wrap at, so it is broken every KITTY_URL_TIP_LINE characters. Past
+ * KITTY_URL_TIP_MAX it ends in "..." - the whole target is in the
+ * confirmation box's field when it matters.
+ */
+#define KITTY_URL_TIP_LINE 80
+#define KITTY_URL_TIP_MAX 1024
+/* A target the preview showed WHOLE on one line (KITTY_URL_TIP_LINE) for at
+ * least this long before the click opens without the confirmation (the
+ * other conditions are in kitty_url_open_declared). */
+#define KITTY_URL_TIP_READ_MS 400
+static HWND kitty_url_tip = NULL, kitty_url_tip_owner = NULL;
+static unsigned int kitty_url_tip_link = 0;    /* the link shown, 0 = none */
+static DWORD kitty_url_tip_since = 0;          /* when it came up */
+static char *kitty_url_tip_text = NULL;
+static int kitty_url_tip_added = 0;
+
+/* A target longer than one line starts with its host on a line of its own,
+ * so a long name cannot hide where it really goes. */
+static char *kitty_url_tip_format(const char *uri)
+{
+    size_t len = strlen(uri), i, n = 0, hl = 0;
+    kitty_url_hostinfo hi;
+    char *s, *hostline = NULL;
+    kitty_url_hostinfo_of(uri, &hi);
+    if (len > KITTY_URL_TIP_LINE && hi.host[0]) {
+        hostline = dupprintf(KT_OSC8_HOST_LINE, hi.host);
+        hl = strlen(hostline);
+    }
+    s = snewn(hl + 1 + KITTY_URL_TIP_MAX + KITTY_URL_TIP_MAX / KITTY_URL_TIP_LINE + 8, char);
+    if (hostline) {
+        memcpy(s, hostline, hl);
+        n = hl;
+        s[n++] = '\n';
+        sfree(hostline);
+    }
+    for (i = 0; i < len && i < KITTY_URL_TIP_MAX; i++) {
+        if (i && i % KITTY_URL_TIP_LINE == 0)
+            s[n++] = '\n';
+        s[n++] = uri[i];
+    }
+    if (len > KITTY_URL_TIP_MAX) {
+        memcpy(s + n, "...", 3);
+        n += 3;
+    }
+    s[n] = '\0';
+    return s;
+}
+
+static void kitty_url_tip_info(TOOLINFOA *ti)
+{
+    memset(ti, 0, sizeof(*ti));
+    ti->cbSize = TTTOOLINFOA_V1_SIZE;
+    ti->uFlags = TTF_TRACK | TTF_ABSOLUTE;
+    ti->hwnd = kitty_url_tip_owner;
+    ti->uId = 0;
+    ti->lpszText = kitty_url_tip_text;
+}
+
+void kitty_url_preview_hide(void)
+{
+    TOOLINFOA ti;
+    if (kitty_url_tip && kitty_url_tip_added && kitty_url_tip_link) {
+        kitty_url_tip_info(&ti);
+        SendMessage(kitty_url_tip, TTM_TRACKACTIVATE, FALSE, (LPARAM)&ti);
+    }
+    kitty_url_tip_link = 0;
+}
+
+static void kitty_url_preview_show(HWND hwnd, unsigned int link,
+                                   const char *uri)
+{
+    TOOLINFOA ti;
+    POINT pt;
+    RECT tr;
+    MONITORINFO mi;
+    TRACKMOUSEEVENT tme;
+    int x, y;
+
+    if (link == kitty_url_tip_link && hwnd == kitty_url_tip_owner)
+        return;                        /* this one is up already */
+    if (!kitty_url_tip || kitty_url_tip_owner != hwnd) {
+        if (kitty_url_tip)
+            DestroyWindow(kitty_url_tip);
+        kitty_url_tip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+                                       WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                                       CW_USEDEFAULT, CW_USEDEFAULT,
+                                       CW_USEDEFAULT, CW_USEDEFAULT,
+                                       hwnd, NULL, GetModuleHandle(NULL), NULL);
+        kitty_url_tip_owner = hwnd;
+        kitty_url_tip_added = 0;
+        if (!kitty_url_tip)
+            return;
+        /* any width: lines break only where the text has them */
+        SendMessage(kitty_url_tip, TTM_SETMAXTIPWIDTH, 0, 32767);
+    }
+    sfree(kitty_url_tip_text);
+    kitty_url_tip_text = kitty_url_tip_format(uri);
+    kitty_url_tip_info(&ti);
+    if (!kitty_url_tip_added) {
+        if (!SendMessage(kitty_url_tip, TTM_ADDTOOL, 0, (LPARAM)&ti))
+            return;
+        kitty_url_tip_added = 1;
+    } else {
+        SendMessage(kitty_url_tip, TTM_UPDATETIPTEXT, 0, (LPARAM)&ti);
+    }
+    /* the application's theme, as the terminal's own frame takes it */
+    kitty_theme_tooltip(kitty_url_tip, kitty_theme_app_dark());
+
+    /* under the pointer, kept on the pointer's monitor: above it when there
+     * is no room below, pulled left when there is none to the right */
+    GetCursorPos(&pt);
+    x = pt.x;
+    y = pt.y + GetSystemMetrics(SM_CYCURSOR) * 2 / 3;
+    SendMessage(kitty_url_tip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
+    SendMessage(kitty_url_tip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
+    mi.cbSize = sizeof(mi);
+    if (GetWindowRect(kitty_url_tip, &tr) &&
+        GetMonitorInfo(MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST), &mi)) {
+        int w = tr.right - tr.left, h = tr.bottom - tr.top;
+        if (y + h > mi.rcWork.bottom)
+            y = pt.y - h - 4;
+        if (x + w > mi.rcWork.right)
+            x = mi.rcWork.right - w;
+        if (x < mi.rcWork.left)
+            x = mi.rcWork.left;
+        if (y < mi.rcWork.top)
+            y = mi.rcWork.top;
+        SendMessage(kitty_url_tip, TTM_TRACKPOSITION, 0, MAKELPARAM(x, y));
+    }
+    kitty_url_tip_link = link;
+    kitty_url_tip_since = GetTickCount();
+
+    /* WM_MOUSELEAVE when the pointer leaves the window, to take it down */
+    tme.cbSize = sizeof(tme);
+    tme.dwFlags = TME_LEAVE;
+    tme.hwndTrack = hwnd;
+    tme.dwHoverTime = 0;
+    TrackMouseEvent(&tme);
+}
+
+/* The preview for the cell (cx, cy): the declared link's target, or none. */
+static void kitty_url_preview_at(Terminal *term, Conf *conf, HWND hwnd,
+                                 int cx, int cy)
+{
+    unsigned int link = 0;
+    const char *uri = NULL;
+    if (conf_get_int(conf, CONF_url_preview) &&
+        conf_get_int(conf, CONF_url_osc8) && kitty_url_linkv &&
+        cx >= 0 && cx < kitty_url_mask_cols &&
+        cy >= 0 && cy < kitty_url_mask_rows)
+        link = kitty_url_linkv[cy * kitty_url_mask_cols + cx];
+    if (link)
+        uri = term_link_uri(term, link);
+    if (!uri)
+        kitty_url_preview_hide();
+    else
+        kitty_url_preview_show(hwnd, link, uri);
+}
+
+/* After a rescan: the output may have replaced or moved the link under a
+ * preview that is up. Only then - a preview appears on a pointer move. */
+void kitty_url_preview_refresh(Terminal *term, Conf *conf, HWND hwnd)
+{
+    if (kitty_url_tip_link)
+        kitty_url_preview_at(term, conf, hwnd,
+                             urlhack_mouse_old_x, urlhack_mouse_old_y);
+}
+
+/*
+ * Update the mouse-hover state: show a hand cursor when over a link region,
+ * and the target of a declared link (the preview above).
  * cx/cy are character coordinates.  Returns 1 if currently over a link.
  */
-int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor)
+int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
+                    int hover_cursor)
 {
     int over;
     if (!kitty_url_inited)
         return 0;
     urlhack_mouse_old_x = cx;
     urlhack_mouse_old_y = cy;
+    kitty_url_preview_at(term, conf, hwnd, cx, cy);
     /* the mask: detected and declared links alike */
     over = hover_cursor && kitty_url_cell_in_link(cx, cy);
     if (over) {
@@ -232,13 +578,10 @@ int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor)
  *
  * The host names the target, and its text need not be that target, so the
  * scheme is the boundary the regular expression used to be by accident: the
- * expression only ever matched http, https, ftp and www. A target opens at
- * once only when its scheme is http, https, ftp or mailto AND the link's own
- * text is the target itself; anything else shows the target for a confirmation, with
- * a red line when the scheme is not a browser's (ssh: reaches our own URL
- * handler). Refused outright: no valid scheme (a drive letter is none), a
- * double quote (it would end the argument a configured browser gets), a
- * file: target on another host.
+ * expression only ever matched http, https, ftp and www. What opens at once,
+ * what needs the confirmation and what is refused: kitty_url_open_declared.
+ * A drive letter is no scheme. A double quote would end the argument a
+ * configured browser gets.
  */
 static int kitty_url_scheme(const char *uri, char *out, size_t outlen)
 {
@@ -332,31 +675,92 @@ static void kitty_url_answer(int yes, void *ctx)
     sfree(p);
 }
 
+/* Add one red line to the confirmation's warning (lines joined by \n). */
+static void kitty_url_warn_add(char **warn, char *line)
+{
+    if (!*warn) {
+        *warn = line;
+    } else {
+        char *both = dupprintf("%s\n%s", *warn, line);
+        sfree(*warn);
+        sfree(line);
+        *warn = both;
+    }
+}
+
+/*
+ * previewed: the link whose target the preview showed for at least
+ * KITTY_URL_TIP_READ_MS before this click, else 0 (kitty_url_click).
+ *
+ * Refused (event log, no box): no valid scheme, a double quote, file: on
+ * another computer. For http, https and ftp also: a user name before the host
+ * or a host written as a number or encoded.
+ * Opened at once: http, https, ftp or mailto with no red flag below, when either
+ * the text IS the target, or the preview showed this target whole (at most
+ * KITTY_URL_TIP_LINE characters, one line of the tip) before the click.
+ * Everything else: the confirmation, with the host on its own line and a
+ * red line per flag - not a browser's scheme, a text naming another host
+ * than the target's, a punycode host.
+ */
 static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
                                     LogContext *logctx, int x, int y,
-                                    unsigned int link)
+                                    unsigned int link, unsigned int previewed)
 {
     static int logged_bad;                 /* once per window */
     const char *uri = term_link_uri(term, link);
-    char scheme[33], *text, *warn = NULL;
-    int web, trusted, same;
+    char scheme[33], *text, *warn = NULL, *detail, texthost[256];
+    const char *why = NULL;
+    int web, trusted, same, mismatch = 0;
+    size_t tmax;
     const char *browser = NULL;
+    kitty_url_hostinfo hi;
 
     if (!uri)
         return;
-    if (!kitty_url_scheme(uri, scheme, sizeof(scheme)) || strchr(uri, '"') ||
-        (!strcmp(scheme, "file") && !kitty_url_file_is_local(uri))) {
+    kitty_url_hostinfo_of(uri, &hi);
+    if (!kitty_url_scheme(uri, scheme, sizeof(scheme)) || strchr(uri, '"'))
+        why = KT_OSC8_REFUSED_MALFORMED;
+    else if (!strcmp(scheme, "file") && !kitty_url_file_is_local(uri))
+        why = KT_OSC8_REFUSED_FILEHOST;
+    web = !why && (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
+                   !strcmp(scheme, "ftp"));
+    if (!why && web && hi.userinfo)
+        why = KT_OSC8_REFUSED_USERINFO;
+    if (!why && web && (hi.numeric || hi.encoded))
+        why = KT_OSC8_REFUSED_NUMERIC;
+    if (why) {
         if (!logged_bad && logctx) {
-            logevent(logctx, KT_OSC8_LOG_REFUSED);
+            char *m = dupprintf(KT_OSC8_LOG_REFUSED, why);
+            logevent(logctx, m);
+            sfree(m);
             logged_bad = 1;
         }
         return;
     }
-    web = !strcmp(scheme, "http") || !strcmp(scheme, "https") ||
-          !strcmp(scheme, "ftp");
     trusted = web || !strcmp(scheme, "mailto");
-    text = kitty_url_link_text(term, x, y, link, strlen(uri) + 1);
+    tmax = strlen(uri) + 1;
+    if (tmax < 300)
+        tmax = 300;                    /* enough for the host in the text */
+    text = kitty_url_link_text(term, x, y, link, tmax);
     same = !strcmp(text, uri);
+    if (!same && hi.host[0] &&
+        kitty_url_text_host(text, texthost, sizeof(texthost)) &&
+        !kitty_url_same_owner(texthost, hi.host))
+        mismatch = 1;
+    /* A bare name.name text of a web link ("mybank.com"): a host or a file
+     * name. Harmless when it is the target's host (or above or below it)
+     * or appears in the target itself (report.pdf -> .../report.pdf).
+     * Otherwise the text claims something the target is not. */
+    if (!same && !mismatch && web && hi.host[0] &&
+        kitty_url_text_bare(text, texthost, sizeof(texthost)) &&
+        !kitty_url_same_owner(texthost, hi.host)) {
+        char *lower = dupstr(uri), *q;
+        for (q = lower; *q; q++)
+            *q = (char)tolower((unsigned char)*q);
+        if (!strstr(lower, texthost))
+            mismatch = 1;
+        sfree(lower);
+    }
     sfree(text);
 
     /* a configured browser gets web targets only; mailto: and the rest go to
@@ -364,7 +768,8 @@ static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
     if (web && !conf_get_int(conf, CONF_url_defbrowser))
         browser = filename_to_str(conf_get_filename(conf, CONF_url_browser));
 
-    if (trusted && same) {
+    if (trusted && !mismatch && !hi.punycode &&
+        (same || (previewed == link && strlen(uri) <= KITTY_URL_TIP_LINE))) {
         urlhack_launch_url(browser, uri);
         return;
     }
@@ -378,26 +783,39 @@ static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
         return;
     }
     if (!trusted)
-        warn = !strcmp(scheme, "ssh") ? dupstr(KT_OSC8_CONFIRM_WARN_SSH) :
-               !strcmp(scheme, "file") ? dupstr(KT_OSC8_CONFIRM_WARN_FILE) :
-               dupprintf(KT_OSC8_CONFIRM_WARN_SCHEME, scheme);
+        kitty_url_warn_add(&warn,
+            !strcmp(scheme, "ssh") ? dupstr(KT_OSC8_CONFIRM_WARN_SSH) :
+            !strcmp(scheme, "file") ? dupstr(KT_OSC8_CONFIRM_WARN_FILE) :
+            dupprintf(KT_OSC8_CONFIRM_WARN_SCHEME, scheme));
+    if (mismatch)
+        kitty_url_warn_add(&warn, dupprintf(KT_OSC8_CONFIRM_WARN_TEXTHOST,
+                                            texthost, hi.host));
+    if (hi.punycode)
+        kitty_url_warn_add(&warn, dupstr(KT_OSC8_CONFIRM_WARN_PUNYCODE));
+    /* the host on a line of its own, then the whole target: the field
+     * wraps and scrolls when long, so every character can be inspected */
+    if (hi.host[0]) {
+        char *hostline = dupprintf(KT_OSC8_HOST_LINE, hi.host);
+        detail = dupprintf("%s\r\n%s", hostline, uri);
+        sfree(hostline);
+    } else
+        detail = dupstr(uri);
     {
-        /* the whole target, in the box's read-only field: it wraps, and
-         * scrolls when long, so every character can be inspected */
         kitty_url_pending *p = snew(kitty_url_pending);
         p->uri = dupstr(uri);
         p->browser = browser ? dupstr(browser) : NULL;
         /* the click held the mouse: let it go, or the box gets no clicks */
         ReleaseCapture();
         kitty_url_box = kitty_confirm_modeless(hwnd, KT_OSC8_CONFIRM_CAPTION,
-                                               KT_OSC8_CONFIRM_TEXT, uri, warn,
-                                               kitty_url_answer, p);
+                                               KT_OSC8_CONFIRM_TEXT, detail,
+                                               warn, kitty_url_answer, p);
         if (!kitty_url_box) {          /* not made: that is a No */
             sfree(p->uri);
             sfree(p->browser);
             sfree(p);
         }
     }
+    sfree(detail);
     sfree(warn);
 }
 
@@ -416,8 +834,16 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
     int i;
     int ctrl_required;
 
+    unsigned int previewed;
+
     if (!kitty_url_inited || term == NULL)
         return 0;
+    /* which target the preview had shown long enough to be read - taken
+     * before the click takes the preview down */
+    previewed = (kitty_url_tip_link &&
+                 GetTickCount() - kitty_url_tip_since >= KITTY_URL_TIP_READ_MS)
+                ? kitty_url_tip_link : 0;
+    kitty_url_preview_hide();
 
     ctrl_required = conf_get_int(conf, CONF_url_ctrl_click);
     if (ctrl_required && !ctrl_down)
@@ -428,7 +854,8 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
         y >= 0 && y < kitty_url_mask_rows &&
         kitty_url_linkv[y * kitty_url_mask_cols + x]) {
         kitty_url_open_declared(term, conf, hwnd, logctx, x, y,
-                                kitty_url_linkv[y * kitty_url_mask_cols + x]);
+                                kitty_url_linkv[y * kitty_url_mask_cols + x],
+                                previewed);
         return 1;
     }
     if (!conf_get_int(conf, CONF_url_scan) || !urlhack_is_in_link_region(x, y))

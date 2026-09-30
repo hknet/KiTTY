@@ -1561,6 +1561,9 @@ CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("Hyper
  * so a session saved before these keys existed keeps what it did. */
 CONF_OPTION(url_scan, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkScan"),)
 CONF_OPTION(url_osc8, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkOSC8"),)
+/* KiTTY: hovering a declared (OSC 8) link shows its target (kitty_url.c, the
+ * preview tooltip). On by default. */
+CONF_OPTION(url_preview, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkPreview"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
 /* FileZilla hand-off (Connection > SSH > FileZilla). How the session password

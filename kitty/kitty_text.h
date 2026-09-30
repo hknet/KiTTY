@@ -381,6 +381,7 @@
 /* Where links come from: the regular expression over the text, and OSC 8 */
 #define KT_HYPERLINKS_SCAN                           "Detect URLs in the output (regex)"
 #define KT_HYPERLINKS_OSC8                           "Accept links declared by the host (OSC 8)"
+#define KT_HYPERLINKS_PREVIEW                        "Show the target of declared links (OSC 8) on hover"
 /* The confirmation before an OSC 8 link opens: its text is not its target,
  * or its scheme is not http, https, ftp or mailto. The target itself is in
  * the read-only field under this line. */
@@ -390,8 +391,19 @@
 #define KT_OSC8_CONFIRM_WARN_SCHEME                  "\"%s:\" links do not open in a browser: Windows starts the program registered for them."
 #define KT_OSC8_CONFIRM_WARN_SSH                     "ssh: links start a connection the host chose."
 #define KT_OSC8_CONFIRM_WARN_FILE                    "file: links open a file on this computer."
+/* red: the link's text names one host, its target goes to another.
+ * %s = the host in the text, %s = the target's host */
+#define KT_OSC8_CONFIRM_WARN_TEXTHOST                "The text shows %s, the link goes to %s."
+#define KT_OSC8_CONFIRM_WARN_PUNYCODE                "The host is written in punycode: it may imitate another name."
+/* the first line of the box's field and of a long target's tip. %s = host */
+#define KT_OSC8_HOST_LINE                            "Host: %s"
+/* why a target was refused, for the event log line below */
+#define KT_OSC8_REFUSED_MALFORMED                    "malformed target"
+#define KT_OSC8_REFUSED_USERINFO                     "a user name before the host"
+#define KT_OSC8_REFUSED_NUMERIC                      "a host written as a number or encoded"
+#define KT_OSC8_REFUSED_FILEHOST                     "a file on another computer"
 /* event log, the first refused target of a window only */
-#define KT_OSC8_LOG_REFUSED                          "OSC 8 link not opened: malformed target"
+#define KT_OSC8_LOG_REFUSED                          "OSC 8 link not opened: %s"
 
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"

@@ -16,6 +16,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   declared links (`HyperlinkOSC8`) and the URL detection by regular
   expression (`HyperlinkScan`) per session; both are on
   (cyd01/KiTTY#441).
+- **Hovering a declared link shows its target. Look-alike links are
+  caught.** The target of an OSC 8 link appears in a tip under the pointer
+  (`HyperlinkPreview`, on). A short web target the tip has shown opens
+  without the confirmation. The confirmation shows the host on a line of
+  its own and marks in red a text naming another host and a punycode host.
+  A web address with a user name before the host, or with a host written as
+  a number or encoded, is not opened.
 - **A right click or a Ctrl+click on the minimize button sends a window to
   the tray, and the tray can be the launcher.** Application > KiTTY++ Settings > Terminal
   chooses where a window sent to the tray goes: into the launcher while one
