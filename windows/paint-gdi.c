@@ -14,12 +14,22 @@ typedef struct GdiPainter {
     HPALETTE *pal;
     HDC hdc;
     bool owned;                        /* GetDC'd here, not WM_PAINT's */
+    /* What this frame's DC holds already, so a style call sets only what
+     * changed. Valid from the first style call of a frame; forgotten at
+     * every begin (a new DC) and whenever the DC is handed out (kp_hdc: the
+     * caller draws with GDI directly and may change anything). */
+    bool st_valid;
+    HFONT st_font;
+    COLORREF st_fg, st_bg;
+    int st_bkmode;
+    UINT st_align;
 } GdiPainter;
 
 static bool gdi_begin(KittyPainter *p, HDC given)
 {
     GdiPainter *g = (GdiPainter *)p;
     assert(!g->hdc);
+    g->st_valid = false;
     if (given) {
         g->hdc = given;
         g->owned = false;
@@ -50,18 +60,30 @@ static void gdi_style(KittyPainter *p, HFONT font, COLORREF fg, COLORREF bg,
                       bool opaque, bool centre)
 {
     GdiPainter *g = (GdiPainter *)p;
-    SelectObject(g->hdc, font);
-    SetTextColor(g->hdc, fg);
-    SetBkColor(g->hdc, bg);
-    SetBkMode(g->hdc, opaque ? OPAQUE : TRANSPARENT);
-    SetTextAlign(g->hdc, TA_TOP | (centre ? TA_CENTER : TA_LEFT) |
-                 TA_NOUPDATECP);
+    int bkmode = opaque ? OPAQUE : TRANSPARENT;
+    UINT align = TA_TOP | (centre ? TA_CENTER : TA_LEFT) | TA_NOUPDATECP;
+    if (!g->st_valid || g->st_font != font)
+        SelectObject(g->hdc, font);
+    if (!g->st_valid || g->st_fg != fg)
+        SetTextColor(g->hdc, fg);
+    if (!g->st_valid || g->st_bg != bg)
+        SetBkColor(g->hdc, bg);
+    if (!g->st_valid || g->st_bkmode != bkmode)
+        SetBkMode(g->hdc, bkmode);
+    if (!g->st_valid || g->st_align != align)
+        SetTextAlign(g->hdc, align);
+    g->st_font = font; g->st_fg = fg; g->st_bg = bg;
+    g->st_bkmode = bkmode; g->st_align = align;
+    g->st_valid = true;
 }
 
 static void gdi_opaque(KittyPainter *p, bool opaque)
 {
     GdiPainter *g = (GdiPainter *)p;
-    SetBkMode(g->hdc, opaque ? OPAQUE : TRANSPARENT);
+    int bkmode = opaque ? OPAQUE : TRANSPARENT;
+    if (!g->st_valid || g->st_bkmode != bkmode)
+        SetBkMode(g->hdc, bkmode);
+    g->st_bkmode = bkmode;             /* the rest of the cache is untouched */
 }
 
 static void gdi_text_w(KittyPainter *p, int x, int y, const RECT *clip,
@@ -268,6 +290,7 @@ static bool gdi_char_width(KittyPainter *p, HFONT font, unsigned ch,
     GdiPainter *g = (GdiPainter *)p;
     int ibuf = 0;
     SelectObject(g->hdc, font);
+    g->st_font = font;                 /* the DC now holds this one */
     if (wide) {
         if (GetCharWidth32W(g->hdc, ch, ch, &ibuf) == 1)
             /* Okay that one worked */ ;
@@ -286,7 +309,9 @@ static bool gdi_char_width(KittyPainter *p, HFONT font, unsigned ch,
 
 static HDC gdi_hdc(KittyPainter *p)
 {
-    return ((GdiPainter *)p)->hdc;
+    GdiPainter *g = (GdiPainter *)p;
+    g->st_valid = false;               /* drawn on directly: state unknown */
+    return g->hdc;
 }
 
 static void gdi_resize(KittyPainter *p, int w, int h)

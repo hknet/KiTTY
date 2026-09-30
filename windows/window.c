@@ -7459,10 +7459,13 @@ static void do_text_internal(
             int fb_nruns = winfb_split(wbuf, len, fb_runs, WINFB_MAX_RUNS);
             /* The fallback module draws with GDI itself; a painter with no
              * DC (a GPU renderer) has its own fallback, so its runs go the
-             * ordinary way below. */
-            HDC fb_hdc = kp_hdc(wgs->painter);
-            if (fb_hdc &&
-                (fb_nruns > 1 || (fb_nruns == 1 && fb_runs[0].slot >= 0))) {
+             * ordinary way below. The DC is asked for only when fallback
+             * runs are due: handing it out makes the GDI painter forget
+             * which style its DC holds (paint-gdi.c). */
+            HDC fb_hdc = NULL;
+            if (fb_nruns > 1 || (fb_nruns == 1 && fb_runs[0].slot >= 0))
+                fb_hdc = kp_hdc(wgs->painter);
+            if (fb_hdc) {
                 winfb_draw_runs(
                     fb_hdc, x + xoffset,
                     y - wgs->font_height * (lattr==LATTR_BOT) + text_adjust,
