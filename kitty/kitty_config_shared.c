@@ -744,8 +744,9 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_CTRLTAB,        KSET_BOOL, false, GetCtrlTabFlag, SetCtrlTabFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_TRANSPARENCY,   KSET_BOOL, false, GetTransparencyFlag, SetTransparencyEnabled, NULL, 0, 0, 1 },
     /* No setter: the renderer is read when a window is created, and choosing
-     * Direct2D leaves window transparency alone - a layerable window gets the
-     * blit-model swap chain (windows/paint-d2d.c), so the two go together. */
+     * Direct2D leaves window transparency alone - a Direct2D window where
+     * transparency is allowed is layered from its creation (windows/window.c),
+     * so the two go together. */
     { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
     { INIT_SECTION, KI_FRAMEPACE,      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
@@ -1099,10 +1100,10 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
             }
             kset_write(k, k->choices[idx].stored);
             kset_set_int(k, k->choices[idx].value);
-            /* Direct2D and window transparency no longer exclude each
-             * other (a layerable window gets the blit-model swap chain,
-             * paint-d2d.c), so the renderer choice leaves the
-             * transparency checkbox alone. */
+            /* Direct2D and window transparency do not exclude each other
+             * (a Direct2D window is layered from its creation when
+             * transparency is allowed, window.c), so the renderer choice
+             * leaves the transparency checkbox alone. */
         }
     }
 }

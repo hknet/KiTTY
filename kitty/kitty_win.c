@@ -132,8 +132,10 @@ void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
     if (t < 0) t = 0; if (t > 254) t = 254;
     conf_set_int(conf, CONF_transparencynumber, t);
     {
-        void kitty_painter_before_layering(HWND);   /* window.c */
-        kitty_painter_before_layering(term_hwnd);
+        /* a Direct2D window not layered at creation stays as it is
+         * (window.c); the new level applies to the next window */
+        bool kitty_window_may_layer(HWND);   /* window.c */
+        if (!kitty_window_may_layer(term_hwnd)) return;
     }
     SetWindowLongPtr(term_hwnd, GWL_EXSTYLE,
         GetWindowLongPtr(term_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);

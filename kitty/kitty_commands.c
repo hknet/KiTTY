@@ -144,7 +144,11 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 	 * command may leave. */
 	if( conf_get_int(conf,CONF_transparencynumber) == -1 ) return 1 ;
 	if( !GetTransparencyAllowed() ) return 1 ;
+	/* A Direct2D window is layered from its creation or not at all: its
+	 * layered style is never switched while it is open (windows/window.c,
+	 * kitty_window_may_layer), so "off" keeps it layered at full opacity. */
 	if( TransparencyFlag == 0 ) {
+		if( !kitty_window_may_layer( MainHwnd ) ) return 1 ;
 		TransparencyFlag = 1 ;
 		SetWindowLongPtr(MainHwnd, GWL_EXSTYLE, GetWindowLong(MainHwnd, GWL_EXSTYLE) | WS_EX_LAYERED ) ;
 		SetWindowPos( MainHwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER ) ;
@@ -154,9 +158,11 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 	} else {
 		TransparencyFlag = 0 ;
 		SetTransparency( MainHwnd, 255 ) ;
-		SetWindowLongPtr(MainHwnd, GWL_EXSTYLE, GetWindowLong(hwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED ) ;
-		RedrawWindow(MainHwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
-		SetWindowPos( MainHwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER ) ;
+		if( (ULONG_PTR)GetPropA( MainHwnd, "KiTTY.renderer" ) <= 1 ) {
+			SetWindowLongPtr(MainHwnd, GWL_EXSTYLE, GetWindowLong(MainHwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED ) ;
+			RedrawWindow(MainHwnd, NULL, NULL, RDW_ERASE | RDW_INVALIDATE | RDW_FRAME | RDW_ALLCHILDREN);
+			SetWindowPos( MainHwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER ) ;
+		}
 		SetForegroundWindow( hwnd ) ;
 	}
 #else

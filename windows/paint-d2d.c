@@ -203,7 +203,6 @@ typedef struct D2DPainter {
     KittyPainter p;
     HWND hwnd;
     bool warp;                  /* the device is WARP, the software rasteriser */
-    bool blit;                  /* blit-model swap chain: the window may be layered */
     HMODULE d3d11dll, d2d1dll, dwritedll;
     ID3D11Device *d3d;
     ID3D11DeviceContext *d3dctx;
@@ -702,10 +701,9 @@ static void d2d_end(KittyPainter *p)
         pp.pDirtyRects = &dr;
         QueryPerformanceFrequency(&f);
         QueryPerformanceCounter(&a);
-        /* dirty rectangles are a flip-model notion; the blit model presents
-         * whole, and so does a Present1 that failed for another reason
-         * than a lost device */
-        where = d->blit ? "Present" : "Present1";
+        /* a Present1 that failed for another reason than a lost device is
+         * retried whole */
+        where = "Present1";
 #ifdef KITTY_TEST_BUILD_LABEL
         /* KITTY_D2D_FAIL_PRESENT=<n>[:<k>]: presents n .. n+k-1 of this
          * painter report a removed device without presenting, so the
@@ -717,9 +715,8 @@ static void d2d_end(KittyPainter *p)
         else
 #endif
         {
-            hr = d->blit ? IDXGISwapChain1_Present(d->swap, 0, 0)
-                         : IDXGISwapChain1_Present1(d->swap, 0, 0, &pp);
-            if (FAILED(hr) && !d->blit && !hr_is_loss(d, hr)) {
+            hr = IDXGISwapChain1_Present1(d->swap, 0, 0, &pp);
+            if (FAILED(hr) && !hr_is_loss(d, hr)) {
                 where = "Present";
                 hr = IDXGISwapChain1_Present(d->swap, 0, 0);
             }
@@ -1529,22 +1526,12 @@ static int create_device(D2DPainter *d)
      * it is ready for the next frame - the display's own pace, which the
      * frame pacing waits on instead of guessing at vblanks. Windows 8.1. */
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-    if (d->blit) {
-        /* A window that is, or may become, layered (window transparency):
-         * the flip model presents past the window's redirection surface,
-         * which is the very thing SetLayeredWindowAttributes dims - so the
-         * dimming never shows. The blit model copies each frame INTO that
-         * surface, and the layered alpha applies as it does for GDI. Costs
-         * the flip model's present path and its frame-latency signal (the
-         * pacing then runs without one, as on a runtime that lacks it);
-         * the persistent canvas makes the undefined back buffer harmless.
-         * The composition route (DirectComposition) is the one that keeps
-         * the flip model. */
-        sd.BufferCount = 1;
-        sd.Scaling = DXGI_SCALING_STRETCH;   /* NONE is flip-model only */
-        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-        sd.Flags = 0;
-    }
+    /* Window transparency needs nothing here: a window that may be dimmed
+     * is layered from its creation (window.c), and the layered alpha then
+     * applies to this chain's frames as to GDI's output, title bar
+     * included (measured on the composed screen). What breaks is
+     * changing an open window's presentation - layered on or off, another
+     * chain model - so neither is ever done to a window that has one. */
     hr = IDXGIFactory2_CreateSwapChainForHwnd(
         dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
     if (FAILED(hr) && sd.Flags) {
@@ -1698,8 +1685,7 @@ static void d2d_destroy(D2DPainter *d)
     sfree(d);
 }
 
-KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality,
-                                    bool layerable)
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
 {
     D2DPainter *d = snew(D2DPainter);
     D2D1CreateFactory_t pD2D1CreateFactory;
@@ -1709,7 +1695,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality,
     memset(d, 0, sizeof(*d));
     d->p.vt = &d2d_vt;
     d->hwnd = hwnd;
-    d->blit = layerable;
     switch (font_quality) {
       case FQ_NONANTIALIASED: d->textaa = D2D1_TEXT_ANTIALIAS_MODE_ALIASED; break;
       case FQ_ANTIALIASED:    d->textaa = D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE; break;
@@ -1775,9 +1760,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality,
         }
     }
 #endif
-    /* Whether the painter survives the window turning layered: the
-     * transparency code asks before it sets WS_EX_LAYERED. */
-    SetPropA(hwnd, "KiTTY.renderer.blit", (HANDLE)(ULONG_PTR)(d->blit ? 1 : 0));
     badge_init(d);
     return &d->p;
 
