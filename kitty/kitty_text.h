@@ -378,6 +378,20 @@
 #define KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION "Use the default regular expression"
 #define KT_HYPERLINKS_CUSTOM_REGEX                   "Custom regex:"
 #define KT_HYPERLINKS_RESET_REGEX                    "Reset to KiTTY default"
+/* Where links come from: the regular expression over the text, and OSC 8 */
+#define KT_HYPERLINKS_SCAN                           "Detect URLs in the output (regex)"
+#define KT_HYPERLINKS_OSC8                           "Accept links declared by the host (OSC 8)"
+/* The confirmation before an OSC 8 link opens: its text is not its target,
+ * or its scheme is not http, https, ftp or mailto. The target itself is in
+ * the read-only field under this line. */
+#define KT_OSC8_CONFIRM_CAPTION                      "Open link"
+#define KT_OSC8_CONFIRM_TEXT                         "Open the following Link?"
+/* red, under the question, when the scheme is not a browser's: %s = scheme */
+#define KT_OSC8_CONFIRM_WARN_SCHEME                  "\"%s:\" links do not open in a browser: Windows starts the program registered for them."
+#define KT_OSC8_CONFIRM_WARN_SSH                     "ssh: links start a connection the host chose."
+#define KT_OSC8_CONFIRM_WARN_FILE                    "file: links open a file on this computer."
+/* event log, the first refused target of a window only */
+#define KT_OSC8_LOG_REFUSED                          "OSC 8 link not opened: malformed target"
 
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"

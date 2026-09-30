@@ -45,6 +45,15 @@ struct termchar {
      * Zero means end of list.
      */
     int cc_next;
+
+    /*
+     * KiTTY OSC 8: the hyperlink this cell was written under, 0 = none.
+     * A handle into the terminal's link table (terminal.c, term_link_uri),
+     * not a pointer; a handle whose table slot was reused reads as none.
+     * Unconditional: files compiled with and without the KiTTY defines
+     * share this struct (the ODR note in struct terminal_tag).
+     */
+    unsigned int link;
 };
 
 struct termline {
@@ -397,6 +406,16 @@ struct terminal_tag {
      * shift_state: 0 none, 1 usable, -1 unusable this frame. Unconditional
      * storage, same ODR reason as above. */
     int shift_state, shift_top, shift_bot, shift_lines;
+
+    /* KiTTY OSC 8 hyperlinks (terminal.c, kitty_osc8): the link new text is
+     * written under (0 = none) and the table the cells' handles point into -
+     * a ring of slots, each tagged with a generation so that a cell still
+     * holding an evicted slot's handle finds no link rather than the next
+     * one. Unconditional storage, same ODR reason as above. */
+    unsigned int curr_link;
+    struct kitty_link *links;             /* KITTY_LINK_SLOTS entries, lazily */
+    unsigned int link_next, link_gen;     /* ring position, last generation */
+    size_t link_bytes;                    /* URI + id bytes held */
 
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
@@ -869,6 +888,11 @@ void term_release_line(termline *line);
  * inside the frame do_paint is drawing. Returns false when it did not move
  * them (then nothing is assumed moved). NULL = never. */
 extern bool (*kitty_term_scroll_hook)(TermWin *win, int top, int bot, int lines);
+
+/* KiTTY OSC 8: the URI a cell's link handle stands for, or NULL when the
+ * handle is 0 or its slot has been reused since. The string belongs to the
+ * terminal and is valid until the next output is processed. */
+const char *term_link_uri(Terminal *term, unsigned int link);
 #endif
 
 #if defined(MOD_PERSO) && defined(KITTY_TEST_HOOKS)

@@ -311,7 +311,9 @@ secret123
 
 KiTTY++ can detect URLs in the terminal output and turn them into clickable hyperlinks, so you can jump straight to a web address without copying and pasting it. You decide how links behave, including whether they are underlined, which modifier key activates them, and which browser opens them. This makes it quick to follow links that appear in logs, command output, or chat sessions.
 
-**How to enable:** Configuration > **Window > Hyperlinks**: choose underline, whether Ctrl is required to activate links, browser, and optional hand cursor on hover. Ctrl+click a URL in the terminal to open it by default.
+Programs that declare their links (OSC 8, e.g. `ls --hyperlink` or Textual and Rich applications) get them clickable too, with the target the program named. A declared link opens at once only when its text is its target and it is an http, https, ftp or mailto address; any other shows its target and needs a confirmation.
+
+**How to enable:** Configuration > **Window > Hyperlinks**: detection by regular expression and declared (OSC 8) links, each on or off; underline, whether Ctrl is required to activate links, browser, and optional hand cursor on hover. Ctrl+click a URL in the terminal to open it by default.
 
 ![URL hyperlinks](docs/features/img/config_hyperlinks.jpg)
 

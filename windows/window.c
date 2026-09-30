@@ -5886,7 +5886,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                  * lands on a detected URL region, launch it instead of
                  * completing a selection. */
                 if (message == WM_LBUTTONUP && GetHyperlinkFlag() &&
-                    kitty_url_click(wgs->term, wgs->conf,
+                    kitty_url_click(wgs->term, wgs->conf, hwnd, wgs->logctx,
                                     TO_CHR_X(X_POS(lParam)),
                                     TO_CHR_Y(Y_POS(lParam)),
                                     (wParam & MK_CONTROL) != 0)) {
@@ -9317,7 +9317,7 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
      * drawn. */
     if (ok && GetHyperlinkFlag()) {
         KP_T0;
-        if (kitty_url_rescan(wgs->term) &&
+        if (kitty_url_rescan(wgs->term, wgs->conf) &&
             conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
         KP_T1(KP_URL);

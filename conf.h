@@ -1555,6 +1555,12 @@ CONF_OPTION(url_regex, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Hyperlink
 CONF_OPTION(url_underline, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUnderline"),)
 CONF_OPTION(url_hover_cursor, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("HyperlinkHoverCursor"),)
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
+/* KiTTY: where links come from. HyperlinkScan = find URLs in the text with
+ * the regular expression (the behaviour before OSC 8); HyperlinkOSC8 = links
+ * the host declares with OSC 8 (terminal.c kitty_osc8). Both on by default,
+ * so a session saved before these keys existed keeps what it did. */
+CONF_OPTION(url_scan, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkScan"),)
+CONF_OPTION(url_osc8, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkOSC8"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
 /* FileZilla hand-off (Connection > SSH > FileZilla). How the session password

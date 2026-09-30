@@ -514,6 +514,8 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_filename_forced(sesskey, "HyperlinkBrowser", conf_get_filename(conf, CONF_url_browser));
     write_setting_i_forced(sesskey, "HyperlinkRegularExpressionUseDefault", conf_get_int(conf, CONF_url_defregex));
     write_setting_s_forced(sesskey, "HyperlinkRegularExpression", conf_get_str(conf, CONF_url_regex));
+    write_setting_i_forced(sesskey, "HyperlinkScan", conf_get_int(conf, CONF_url_scan));
+    write_setting_i_forced(sesskey, "HyperlinkOSC8", conf_get_int(conf, CONF_url_osc8));
     /* RuTTY scripting is compiled and exposed in current KiTTY builds, so the
      * KTX export must persist it unconditionally, without depending on a
      * build-time switch. Do not save record mode as active; match old KiTTY

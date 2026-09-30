@@ -433,6 +433,10 @@ static bool termchars_equal_override(termchar *a, termchar *b,
         return false;
     if ((a->attr &~ DATTR_MASK) != (battr &~ DATTR_MASK))
         return false;
+#ifdef MOD_PERSO
+    if (a->link != b->link)            /* KiTTY OSC 8: same text, other link */
+        return false;
+#endif
     while (a->cc_next || b->cc_next) {
         if (!a->cc_next || !b->cc_next)
             return false;              /* one cc-list ends, other does not */
@@ -754,6 +758,19 @@ static void makeliteral_truecolour(strbuf *b, termchar *c, unsigned long *state)
         put_byte(b, c->truecolour.bg.b);
     }
 }
+#ifdef MOD_PERSO
+/* KiTTY OSC 8: the cell's link handle - one zero byte for the usual no link,
+ * else a marker and the handle; a link covers a run, which makerle folds. */
+static void makeliteral_link(strbuf *b, termchar *c, unsigned long *state)
+{
+    if (!c->link) {
+        put_byte(b, 0);
+    } else {
+        put_byte(b, 1);
+        put_uint32(b, c->link);
+    }
+}
+#endif
 static void makeliteral_cc(strbuf *b, termchar *c, unsigned long *state)
 {
     /*
@@ -858,6 +875,9 @@ static compressed_scrollback_line *compressline_no_free(termline *ldata)
     makerle(b, ldata, makeliteral_chr);
     makerle(b, ldata, makeliteral_attr);
     makerle(b, ldata, makeliteral_truecolour);
+#ifdef MOD_PERSO
+    makerle(b, ldata, makeliteral_link);
+#endif
     makerle(b, ldata, makeliteral_cc);
 
     size_t linelen = b->len - sizeof(compressed_scrollback_line);
@@ -1026,6 +1046,13 @@ static void readliteral_truecolour(
         c->truecolour.bg = optionalrgb_none;
     }
 }
+#ifdef MOD_PERSO
+static void readliteral_link(BinarySource *bs, termchar *c, termline *ldata,
+                             unsigned long *state)
+{
+    c->link = get_byte(bs) ? (unsigned int)get_uint32(bs) : 0;
+}
+#endif
 static void readliteral_cc(BinarySource *bs, termchar *c, termline *ldata,
                            unsigned long *state)
 {
@@ -1108,6 +1135,15 @@ static termline *decompressline_no_free(compressed_scrollback_line *line)
     readrle(bs, ldata, readliteral_chr);
     readrle(bs, ldata, readliteral_attr);
     readrle(bs, ldata, readliteral_truecolour);
+#ifdef MOD_PERSO
+    readrle(bs, ldata, readliteral_link);
+#else
+    {
+        int i;
+        for (i = 0; i < ldata->cols; i++)
+            ldata->chars[i].link = 0;
+    }
+#endif
     readrle(bs, ldata, readliteral_cc);
 
     /* And we always expect that we ended up exactly at the end of the
@@ -1852,6 +1888,11 @@ static void power_on(Terminal *term, bool clear)
         term->alt_save_attr = term->curr_attr = ATTR_DEFAULT;
     term->curr_truecolour.fg = term->curr_truecolour.bg = optionalrgb_none;
     term->save_truecolour = term->alt_save_truecolour = term->curr_truecolour;
+#ifdef MOD_PERSO
+    /* KiTTY OSC 8: a reset ends an open link. The table stays: the
+     * scrollback may still point into it. */
+    term->curr_link = 0;
+#endif
     term->app_cursor_keys = conf_get_bool(term->conf, CONF_app_cursor);
     term->app_keypad_keys = conf_get_bool(term->conf, CONF_app_keypad);
     term->use_bce = conf_get_bool(term->conf, CONF_bce);
@@ -2537,6 +2578,7 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
     term->basic_erase_char.attr = ATTR_DEFAULT;
     term->basic_erase_char.truecolour.fg = optionalrgb_none;
     term->basic_erase_char.truecolour.bg = optionalrgb_none;
+    term->basic_erase_char.link = 0;   /* KiTTY OSC 8: erasing links nothing */
     term->erase_char = term->basic_erase_char;
 
     /* TermWin implementations will typically extend these with
@@ -2563,6 +2605,153 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
 
     return term;
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY OSC 8 hyperlinks. ESC ] 8 ; params ; URI ST opens a link, an empty
+ * URI closes it, and every cell written in between carries the link's
+ * handle (termchar.link).
+ *
+ * The table is a ring of KITTY_LINK_SLOTS slots. A handle is the slot number
+ * plus the generation the slot was filled with, so a cell that outlives its
+ * slot - the ring came round, or the byte budget pushed the slot out - reads
+ * as no link, never as the link that took the slot over. A link already in
+ * the table (same id and URI) gets its handle again instead of a new slot,
+ * so a long listing of the same few targets does not churn the ring. Once
+ * the generations run out (a million new links in one session) no further
+ * link is made rather than risk an old cell resolving to a new target.
+ */
+#define KITTY_LINK_SLOT_BITS 12
+#define KITTY_LINK_SLOTS (1u << KITTY_LINK_SLOT_BITS)
+#define KITTY_LINK_GEN_MAX ((1u << (32 - KITTY_LINK_SLOT_BITS)) - 1)
+#define KITTY_LINK_BYTES_MAX (1024 * 1024)
+#define KITTY_LINK_ID_MAX 250
+
+struct kitty_link {
+    char *uri, *id;                    /* uri NULL: a free slot */
+    unsigned int gen;
+    unsigned long hash;
+};
+
+static unsigned long kitty_link_hash(const char *id, const char *uri)
+{
+    unsigned long h = 2166136261UL;    /* FNV-1a, id then a 0 then the URI */
+    for (; *id; id++)
+        h = ((h ^ (unsigned char)*id) * 16777619UL) & 0xFFFFFFFFUL;
+    h = (h * 16777619UL) & 0xFFFFFFFFUL;
+    for (; *uri; uri++)
+        h = ((h ^ (unsigned char)*uri) * 16777619UL) & 0xFFFFFFFFUL;
+    return h;
+}
+
+static void kitty_link_drop(Terminal *term, struct kitty_link *l)
+{
+    if (!l->uri)
+        return;
+    term->link_bytes -= strlen(l->uri) + strlen(l->id);
+    sfree(l->uri);
+    sfree(l->id);
+    l->uri = l->id = NULL;
+}
+
+static void kitty_links_free(Terminal *term)
+{
+    unsigned int i;
+    if (!term->links)
+        return;
+    for (i = 0; i < KITTY_LINK_SLOTS; i++)
+        kitty_link_drop(term, &term->links[i]);
+    sfree(term->links);
+    term->links = NULL;
+}
+
+static unsigned int kitty_link_intern(Terminal *term, const char *id,
+                                      const char *uri)
+{
+    size_t need = strlen(uri) + strlen(id);
+    unsigned long h = kitty_link_hash(id, uri);
+    unsigned int i, slot;
+    struct kitty_link *l;
+
+    if (!term->links) {
+        term->links = snewn(KITTY_LINK_SLOTS, struct kitty_link);
+        memset(term->links, 0, KITTY_LINK_SLOTS * sizeof(struct kitty_link));
+    }
+    for (i = 0; i < KITTY_LINK_SLOTS; i++) {
+        l = &term->links[i];
+        if (l->uri && l->hash == h && !strcmp(l->uri, uri) &&
+            !strcmp(l->id, id))
+            return (l->gen << KITTY_LINK_SLOT_BITS) | i;
+    }
+    /* The next slot round the ring, and as many after it as the byte
+     * budget needs. */
+    slot = term->link_next;
+    kitty_link_drop(term, &term->links[slot]);
+    for (i = 1; term->link_bytes + need > KITTY_LINK_BYTES_MAX &&
+             i < KITTY_LINK_SLOTS; i++)
+        kitty_link_drop(term, &term->links[(slot + i) % KITTY_LINK_SLOTS]);
+    term->link_next = (slot + 1) % KITTY_LINK_SLOTS;
+    l = &term->links[slot];
+    l->uri = dupstr(uri);
+    l->id = dupstr(id);
+    l->gen = ++term->link_gen;
+    l->hash = h;
+    term->link_bytes += need;
+    return (l->gen << KITTY_LINK_SLOT_BITS) | slot;
+}
+
+const char *term_link_uri(Terminal *term, unsigned int link)
+{
+    struct kitty_link *l;
+    if (!link || !term->links)
+        return NULL;
+    l = &term->links[link & (KITTY_LINK_SLOTS - 1)];
+    if (!l->uri || l->gen != link >> KITTY_LINK_SLOT_BITS)
+        return NULL;
+    return l->uri;
+}
+
+/* do_osc, OSC 8. Every OSC 8 ends the link before it; a well-formed one with
+ * a URI starts the next. Refused, so that the text after it is plain: the
+ * session's switch off, a sequence cut at the OSC ceiling, a URI with bytes
+ * outside printable ASCII (the specification's own rule), an id over
+ * KITTY_LINK_ID_MAX. What a link may OPEN is decided at the click, not here
+ * (windows side). */
+static void kitty_osc8(Terminal *term)
+{
+    char *s = term->osc_string, *uri, *p;
+    char id[KITTY_LINK_ID_MAX + 1];
+
+    term->curr_link = 0;
+    if (!term->conf || !conf_get_int(term->conf, CONF_url_osc8) ||
+        term->osc_str_overflow)
+        return;
+    uri = strchr(s, ';');
+    if (!uri)
+        return;                        /* no URI field at all */
+    *uri++ = '\0';
+    if (!*uri)
+        return;                        /* the close */
+    for (p = uri; *p; p++)
+        if ((unsigned char)*p < 0x21 || (unsigned char)*p > 0x7E)
+            return;
+    id[0] = '\0';
+    for (p = s; *p; ) {                /* params: key=value:key=value */
+        char *end = strchr(p, ':');
+        size_t n = end ? (size_t)(end - p) : strlen(p);
+        if (n > 3 && !strncmp(p, "id=", 3)) {
+            if (n - 3 > KITTY_LINK_ID_MAX)
+                return;
+            memcpy(id, p + 3, n - 3);
+            id[n - 3] = '\0';
+        }
+        p += n + (end ? 1 : 0);
+    }
+    if (term->link_gen >= KITTY_LINK_GEN_MAX)
+        return;                        /* generations spent: see above */
+    term->curr_link = kitty_link_intern(term, id, uri);
+}
+#endif
 
 void term_free(Terminal *term)
 {
@@ -2600,6 +2789,7 @@ void term_free(Terminal *term)
     sfree(term->wcTo);
     sfree(term->osc_string);
 #ifdef MOD_PERSO
+    kitty_links_free(term);
     /* KiTTY: the OSC 5522 approvals table. The passwords are wiped rather than
      * merely freed - they are the token a program is recognised by. */
     for (i = 0; i < OSC5522_MAX_APPROVALS; i++) {
@@ -6610,6 +6800,10 @@ static void do_osc(Terminal *term)
              * dispatcher (CVE-2024-23749), which stays dead. */
             kitty_set_remote_cwd(term->osc_string);
             break;
+          case 8:
+            /* OSC 8: a hyperlink the host declares (kitty_osc8). */
+            kitty_osc8(term);
+            break;
           case 52:
             /* OSC 52: the host wants to set the local clipboard, or (with Pd
              * "?") to read it. Text only - the protocol carries nothing else. */
@@ -6792,6 +6986,9 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         cline->chars[term->curs.x].attr = term->curr_attr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
+#ifdef MOD_PERSO
+        cline->chars[term->curs.x].link = term->curr_link;
+#endif
 
         term->curs.x++;
 
@@ -6801,6 +6998,9 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         cline->chars[term->curs.x].attr = term->curr_attr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
+#ifdef MOD_PERSO
+        cline->chars[term->curs.x].link = term->curr_link;
+#endif
 
         break;
       case 1:
@@ -6813,6 +7013,9 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
         cline->chars[term->curs.x].attr = term->curr_attr;
         cline->chars[term->curs.x].truecolour =
             term->curr_truecolour;
+#ifdef MOD_PERSO
+        cline->chars[term->curs.x].link = term->curr_link;
+#endif
 
         break;
       case 0:
@@ -6998,6 +7201,7 @@ static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
             cline->chars[x0 + i].chr = seg[i];
             cline->chars[x0 + i].attr = term->curr_attr;
             cline->chars[x0 + i].truecolour = term->curr_truecolour;
+            cline->chars[x0 + i].link = term->curr_link;
         }
         /* exactly what the ordinary path logs: ASCII and code points below
          * U+0100, a byte each */
@@ -9941,6 +10145,9 @@ static void do_paint(Terminal *term)
             newline[j].attr = tattr;
             newline[j].chr = tchar;
             newline[j].truecolour = tc;
+#ifdef MOD_PERSO
+            newline[j].link = d->link; /* a link that changes redraws */
+#endif
             /* Combining characters are still read from lchars */
             newline[j].cc_next = 0;
         }

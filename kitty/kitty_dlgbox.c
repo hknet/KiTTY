@@ -24,6 +24,10 @@
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+/* windows/platform.h, windows/utils/shinydialogbox.c: the modeless dialogs
+ * the message loops keep Esc and Tab working for (kitty_confirm_modeless) */
+void ShinyAddAuxDialog( HWND hwnd ) ;
+void ShinyRemoveAuxDialog( HWND hwnd ) ;
 
 // Centre a dialog in the middle of its parent window
 void CenterDlgInParent(HWND hDlg) {
@@ -160,7 +164,58 @@ typedef struct {
 	const char *b_cancel;/* 3-way: the No button (IDNO), Cancel */
 	int front ;          /* 1 = on top of every window until answered, and
 	                      * brought to the foreground (kitty_confirm_box_yes_front) */
+	/* Modeless (kitty_confirm_modeless): the box does not hold up its owner;
+	 * the answer goes to done(1 = Yes, 0 = anything else, ctx) exactly once,
+	 * and the box owns this struct and its strings (freed on WM_DESTROY). */
+	void (*done)( int yes, void *ctx ) ;
+	void *ctx ;
+	int answered ;
+	/* NULL = no detail field. Else the text of a read-only field under the
+	 * question, sized to it up to KITTY_CONFIRM_DETAIL_LINES lines and
+	 * scrolling beyond that - for a long value the user must be able to
+	 * read whole (an OSC 8 link's target). */
+	const char *detail ;
 } kitty_confirm_t ;
+
+#define KITTY_CONFIRM_DETAIL_LINES 6
+
+/* Show and place the detail field right under the question (whose bottom is
+ * `top`, client pixels), as tall as its text needs up to the line limit,
+ * with a scroll bar past it. Returns the height it takes, gap included, for
+ * the caller to move what is below. */
+static int kitty_confirm_detail( HWND h, const char *detail, int top ) {
+	HWND e = GetDlgItem( h, IDC_CONFIRM_DETAIL ), t = GetDlgItem( h, IDC_CONFIRM_TEXT ) ;
+	HFONT f = (HFONT)SendMessage( h, WM_GETFONT, 0, 0 ) ;
+	RECT tr ;
+	TEXTMETRIC tm ;
+	HDC dc ;
+	int lineh, lines, height, gap ;
+	if( !e || !t || !detail ) return 0 ;
+	GetWindowRect( t, &tr ) ; MapWindowPoints( NULL, h, (POINT*)&tr, 2 ) ;
+	dc = GetDC( h ) ;
+	if( f ) SelectObject( dc, f ) ;
+	GetTextMetrics( dc, &tm ) ;
+	ReleaseDC( h, dc ) ;
+	lineh = tm.tmHeight ;
+	gap = lineh / 2 ;
+	/* as wide as the question, tall enough to count every wrapped line */
+	MoveWindow( e, tr.left, top + gap, tr.right - tr.left, lineh * 40, FALSE ) ;
+	SetWindowTextA( e, detail ) ;
+	lines = (int)SendMessage( e, EM_GETLINECOUNT, 0, 0 ) ;
+	if( lines < 1 ) lines = 1 ;
+	if( lines > KITTY_CONFIRM_DETAIL_LINES ) {
+		/* the scroll bar only when there is something to scroll to */
+		SetWindowLongPtr( e, GWL_STYLE, GetWindowLongPtr( e, GWL_STYLE ) | WS_VSCROLL ) ;
+		lines = KITTY_CONFIRM_DETAIL_LINES ;
+	}
+	height = lines * lineh + 2 * GetSystemMetrics( SM_CYEDGE ) + 4 ;
+	SetWindowPos( e, NULL, tr.left, top + gap, tr.right - tr.left, height,
+		SWP_NOZORDER | SWP_FRAMECHANGED ) ;
+	SendMessage( e, EM_SETSEL, 0, 0 ) ;        /* from the start, nothing marked */
+	SendMessage( e, EM_SCROLLCARET, 0, 0 ) ;
+	ShowWindow( e, SW_SHOW ) ;
+	return gap + height ;
+}
 
 /* Grow one text control to fit its text at the DIALOG's font, offset by extra_dy,
  * and return the height change in pixels. Same measure-then-move approach the
@@ -259,12 +314,24 @@ void kitty_centre_on_owner( HWND dlg ) {
 	SetWindowPos( dlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
 }
 
+/* The box's answer: a modal box ends its dialog loop with it, a modeless one
+ * hands it to its callback and goes. */
+static void kitty_confirm_end( HWND h, kitty_confirm_t *cf, int r ) {
+	if( cf && cf->done ) {
+		if( !cf->answered ) { cf->answered = 1 ; cf->done( r == 1, cf->ctx ) ; }
+		DestroyWindow( h ) ;
+	} else
+		EndDialog( h, r ) ;
+}
+
 static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
-	static const kitty_confirm_t *cf = NULL ;
+	/* per box, not static: a modeless box can be open beside a modal one */
+	kitty_confirm_t *cf = (kitty_confirm_t *)GetWindowLongPtr( h, DWLP_USER ) ;
 	switch( msg ) {
 	  case WM_INITDIALOG: {
 		int d1, d2, dh, id ;
-		cf = (const kitty_confirm_t *)lp ;
+		cf = (kitty_confirm_t *)lp ;
+		SetWindowLongPtr( h, DWLP_USER, (LONG_PTR)cf ) ;
 		if( cf && cf->caption ) SetWindowTextA( h, cf->caption ) ;
 		if( cf && cf->info ) {
 			/* Info mode: one OK where Yes/No stand. The No button is the
@@ -291,6 +358,14 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			kitty_theme_mark_ink( GetDlgItem( h, IDC_CONFIRM_WARN ),
 				KITTY_INK_BAD ) ;   /* the warning line, and only it */
 		d1 = kitty_fit_text( h, IDC_CONFIRM_TEXT, cf ? cf->text : NULL, 0 ) ;
+		if( cf && cf->detail ) {
+			/* the detail field goes between the question and the red line,
+			 * which moves down by what it takes */
+			RECT qr ;
+			GetWindowRect( GetDlgItem( h, IDC_CONFIRM_TEXT ), &qr ) ;
+			MapWindowPoints( NULL, h, (POINT*)&qr, 2 ) ;
+			d1 += kitty_confirm_detail( h, cf->detail, qr.bottom ) ;
+		}
 		d2 = kitty_fit_text( h, IDC_CONFIRM_WARN, cf ? cf->warn : NULL, d1 ) ;
 		dh = d1 + d2 ;
 		if( dh != 0 ) {
@@ -366,21 +441,64 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 	   * window ever reaches (kitty_theme_mark_ink). */
 	  case WM_COMMAND:
 		switch( LOWORD(wp) ) {
-		  case IDYES: EndDialog( h, 1 ) ; return TRUE ;   /* 3-way: Overwrite */
-		  case IDC_CONFIRM_THIRD: EndDialog( h, 2 ) ; return TRUE ;  /* 3-way: Keep both */
+		  case IDYES: kitty_confirm_end( h, cf, 1 ) ; return TRUE ;   /* 3-way: Overwrite */
+		  case IDC_CONFIRM_THIRD: kitty_confirm_end( h, cf, 2 ) ; return TRUE ;  /* 3-way: Keep both */
 		  case IDOK:
 			/* Only the info dress has an OK to press (drivers that used to
 			 * answer a MessageBox send IDOK); on a real question OK must
 			 * not silently mean Yes. */
-			if( cf && cf->info ) { EndDialog( h, 0 ) ; return TRUE ; }
+			if( cf && cf->info ) { kitty_confirm_end( h, cf, 0 ) ; return TRUE ; }
 			return FALSE ;
 		  case IDNO:
-		  case IDCANCEL: EndDialog( h, 0 ) ; return TRUE ;
+		  case IDCANCEL: kitty_confirm_end( h, cf, 0 ) ; return TRUE ;
 		}
 		return FALSE ;
-	  case WM_CLOSE: EndDialog( h, 0 ) ; return TRUE ;   /* closing means No */
+	  case WM_CLOSE: kitty_confirm_end( h, cf, 0 ) ; return TRUE ;   /* closing means No */
+	  case WM_DESTROY:
+		if( cf && cf->done ) {
+			/* gone unanswered (its owner closed): that is a No too */
+			if( !cf->answered ) { cf->answered = 1 ; cf->done( 0, cf->ctx ) ; }
+			ShinyRemoveAuxDialog( h ) ;
+			SetWindowLongPtr( h, DWLP_USER, 0 ) ;
+			free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
+			free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
+			free( cf ) ;
+		}
+		return FALSE ;
 	}
 	return FALSE ;
+}
+
+/* The same question on the same template, without holding up the window
+ * that puts it up: its output keeps arriving while the box waits. `detail`: NULL,
+ * or the text of the read-only field under the question (see kitty_confirm_t
+ * and kitty_confirm_detail). The answer goes
+ * to done(yes, ctx) exactly once - Yes, or 0 for No, Escape, closing the box
+ * or the owner going away. Returns the box, or NULL when it could not be
+ * made (done is then NOT called; the caller treats that as No). */
+HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
+                             const char *detail, const char *warn_red,
+                             void (*done)( int yes, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	HWND h ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->warn = warn_red ? _strdup( warn_red ) : NULL ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->done = done ; cf->ctx = ctx ;
+	h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)cf ) ;
+	if( !h ) {
+		free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
+		free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
+		free( cf ) ;
+		return NULL ;
+	}
+	ShinyAddAuxDialog( h ) ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+	return h ;
 }
 
 /* If the dialog cannot be created at all (-1: out of resources, or so early or

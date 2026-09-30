@@ -221,10 +221,17 @@ static void compare(const char *what, Terminal *f, Terminal *o)
              * never initialised, so only the chain's characters count. */
             for (x = 0; x < lf->cols && !bad; x++) {
                 const termchar *cf = &lf->chars[x], *co = &lo->chars[x];
+                const char *uf = term_link_uri(f, cf->link);
+                const char *uo = term_link_uri(o, co->link);
                 if (cf->chr != co->chr || cf->attr != co->attr ||
                     !same_termchar_colour(cf, co))
                     DIFF("line %d col %d: chr %#lx/%#lx attr %#lx/%#lx",
                          y, x, cf->chr, co->chr, cf->attr, co->attr);
+                else if (cf->link != co->link || !uf != !uo ||
+                         (uf && strcmp(uf, uo)))
+                    DIFF("line %d col %d: link %#x/%#x (%s / %s)", y, x,
+                         cf->link, co->link, uf ? uf : "none",
+                         uo ? uo : "none");
                 while (!bad && (cf->cc_next || co->cc_next)) {
                     if (!cf->cc_next || !co->cc_next) {
                         DIFF("line %d col %d: combining chain lengths differ",
@@ -360,6 +367,23 @@ static void test_fixed_cases(void)
     CASE("malformed UTF-8",
          "x\xc0\x80y\x80z\xed\xa0\x80w\xf8\x88\x80\x80\x80v\xe4\xb8u\xef\xbf\xbe.");
     CASE("C1 in UTF-8", "a\xc2\x9b" "31mb\xc2\x85" "c");
+    /* OSC 8: the link rides on every cell written while it is open, wide
+     * and combined cells and a wrap included; erasing takes it away */
+    CASE("OSC 8 link, closed with ST and BEL",
+         "see \033]8;;https://example.org/a\033\\the docs\033]8;;\033\\ now, "
+         "\033]8;id=x;http://example.org/b\007two\033]8;;\007 done");
+    CASE("OSC 8 link over wide and combining text",
+         "\033]8;;https://example.org/w\033\\\xe4\xb8\xad" "e\xcc\x81" "x"
+         "\033]8;;\033\\y");
+    CASE("OSC 8 link erased in part",
+         "\033]8;;https://example.org/e\033\\abcdefgh\033]8;;\033\\\033[4D\033[K");
+
+    /* an OSC 8 link open across many wraps and scrolls, into the scrollback */
+    n = 0;
+    n += snprintf(buf + n, sizeof(buf) - n, "\033]8;;https://example.org/long\033\\");
+    for (i = 0; i < 3000; i++) buf[n++] = 'a' + (i % 26);
+    n += snprintf(buf + n, sizeof(buf) - n, "\033]8;;\033\\tail");
+    run_case("OSC 8 link through the scrollback", buf, n, 40, 6, false, NULL);
 
     /* a wide character that lands on the last column */
     n = 0;
@@ -505,9 +529,88 @@ static void test_random(void)
     }
 }
 
+/* OSC 8 on its own terms, not fast path against ordinary: which cells carry
+ * which target, and which sequences make no link at all. */
+#define FEED(t, s) feed((t), (s), strlen(s), 0, 1)
+static const char *cell_uri(Terminal *term, int y, int x)
+{
+    termline *l = term_get_line(term, y);
+    const char *u = term_link_uri(term, l->chars[x].link);
+    term_release_line(l);
+    return u;
+}
+
+static void expect_uri(const char *what, Terminal *term, int y, int x,
+                       const char *want)
+{
+    const char *got = cell_uri(term, y, x);
+    cases++;
+    if (!want ? got != NULL : (!got || strcmp(got, want))) {
+        printf("FAIL OSC 8 %s: row %d col %d links to %s, expected %s\n",
+               what, y, x, got ? got : "nothing", want ? want : "nothing");
+        failures++;
+    }
+}
+
+static void test_osc8(void)
+{
+    static char big[4096];
+    Mock *mk = mock_new(80, 24, false);
+    Terminal *t = mk->term;
+    size_t n;
+
+    FEED(t, "a\033]8;;https://x.test/1\033\\bc\033]8;;\033\\d");
+    expect_uri("plain: before", t, 0, 0, NULL);
+    expect_uri("plain: first cell", t, 0, 1, "https://x.test/1");
+    expect_uri("plain: last cell", t, 0, 2, "https://x.test/1");
+    expect_uri("plain: after the close", t, 0, 3, NULL);
+
+    /* the same id and target again: the same handle */
+    FEED(t, "\r\n\033]8;id=k;https://x.test/2\033\\e\033]8;;\033\\"
+            "\033]8;id=k;https://x.test/2\033\\f\033]8;;\033\\");
+    {
+        termline *l = term_get_line(t, 1);
+        cases++;
+        if (!l->chars[0].link || l->chars[0].link != l->chars[1].link) {
+            printf("FAIL OSC 8 same id and target: handles %#x and %#x\n",
+                   l->chars[0].link, l->chars[1].link);
+            failures++;
+        }
+        term_release_line(l);
+    }
+
+    /* no link: a space in the target, bytes above ASCII, no URI field */
+    FEED(t, "\r\n\033]8;;http://a b\033\\g\033]8;;\033\\");
+    expect_uri("space in the target", t, 2, 0, NULL);
+    FEED(t, "\r\n\033]8;;http://\xc3\xa9\033\\h\033]8;;\033\\");
+    expect_uri("non-ASCII target", t, 3, 0, NULL);
+    FEED(t, "\r\n\033]8;id=q\033\\i");
+    expect_uri("no URI field", t, 4, 0, NULL);
+
+    /* a target longer than the OSC ceiling: cut, so no link */
+    n = 0;
+    n += snprintf(big + n, sizeof(big) - n, "\r\n\033]8;;https://x.test/");
+    while (n < 3000) big[n++] = 'z';
+    n += snprintf(big + n, sizeof(big) - n, "\033\\j\033]8;;\033\\");
+    feed(t, big, n, 0, 1);
+    expect_uri("over the OSC ceiling", t, 5, 0, NULL);
+
+    /* a reset ends an open link */
+    FEED(t, "\r\n\033]8;;https://x.test/3\033\\k\033c");
+    FEED(t, "l");
+    expect_uri("after a reset", t, 0, 0, NULL);
+
+    /* the switch off: the sequence is taken, no link is made */
+    conf_set_int(t->conf, CONF_url_osc8, 0);   /* the terminal's own copy */
+    FEED(t, "\033]8;;https://x.test/4\033\\m\033]8;;\033\\");
+    expect_uri("switched off", t, 0, 1, NULL);
+    mock_free(mk);
+}
+
 int main(void)
 {
     test_fixed_cases();
+    test_osc8();
     test_scrollback();
     test_random();
     if (failures) {

@@ -360,6 +360,12 @@ BEGIN
      * modes (so those boxes are unchanged), shown and laid out only in 3-way
      * mode (Get File "files already exist"). */
     PUSHBUTTON      "", IDC_CONFIRM_THIRD, 112, 89, 50, 14
+    /* The optional detail field: a read-only text the user can select and
+     * scroll (the target of an OSC 8 link). Hidden unless a box carries a
+     * detail; the dlgproc places it under the question, sizes it to the text
+     * up to a few lines, and gives it a scroll bar beyond that. */
+    EDITTEXT        IDC_CONFIRM_DETAIL, 10, 68, 260, 14,
+                    ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | NOT WS_VISIBLE | WS_TABSTOP
 END
 
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to

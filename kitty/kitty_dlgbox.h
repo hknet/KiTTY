@@ -27,6 +27,11 @@ int kitty_confirm_box( HWND owner, const char *caption, const char *text, const 
 int kitty_confirm_box3( HWND owner, const char *caption, const char *text, const char *b_over, const char *b_keep, const char *b_cancel );
 int kitty_confirm_box_yes( HWND owner, const char *caption, const char *text, const char *warn_red );
 int kitty_confirm_box_yes_front( HWND owner, const char *caption, const char *text, const char *warn_red );
+/* The same box, modeless: done(yes, ctx) once; NULL = not made, no callback.
+ * detail: NULL, or a read-only field under the question (scrolls if long). */
+HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
+                             const char *detail, const char *warn_red,
+                             void (*done)( int yes, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
 void kitty_notice_box( HWND owner, const char *caption, const char *text );

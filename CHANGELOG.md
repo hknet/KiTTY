@@ -8,6 +8,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Links a program declares are clickable (OSC 8).** A program on the far
+  end can mark text as a link to a target it names (`ls --hyperlink`,
+  Textual and Rich applications). Such a link opens at once only when its
+  text is its target and it is an http, https, ftp or mailto address; any
+  other link shows its target and needs a confirmation. Window > Hyperlinks switches
+  declared links (`HyperlinkOSC8`) and the URL detection by regular
+  expression (`HyperlinkScan`) per session; both are on
+  (cyd01/KiTTY#441).
 - **A right click or a Ctrl+click on the minimize button sends a window to
   the tray, and the tray can be the launcher.** Application > KiTTY++ Settings > Terminal
   chooses where a window sent to the tray goes: into the launcher while one

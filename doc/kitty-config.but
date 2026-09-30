@@ -451,6 +451,24 @@ a limit KiTTY imposes.
 
 KiTTY finds URLs in the terminal output and makes them clickable.
 
+\b \q{Detect URLs in the output (regex)} finds links by
+their look, with the pattern set below. Output that marks nothing up -
+a URL printed by \c{cat}, a link in a log - is only clickable this way.
+Stored as \c{HyperlinkScan}.
+
+\b \q{Accept links declared by the host (\i{OSC 8})} lets a program on the
+far end mark text as a link to a target it names (\c{ls --hyperlink},
+many text-mode programs). The text need not be the target, so KiTTY
+opens such a link at once only when its text is the target and it is an
+\c{http}, \c{https}, \c{ftp} or \c{mailto} address; any other link
+shows its target first and opens only on \q{Yes}. The terminal keeps
+running while the confirmation is open. A \c{file} link naming
+another computer, or a target that is not a valid address, is never
+opened. Stored as \c{HyperlinkOSC8}.
+
+Where both apply to the same text, the declared link wins. Turning both
+off leaves no links at all.
+
 \b \q{Require Ctrl key to click hyperlinks} keeps ordinary clicking as
 selection, which is what you want if you select text with the mouse
 more often than you follow links.

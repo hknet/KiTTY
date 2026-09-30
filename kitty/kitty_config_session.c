@@ -5353,6 +5353,14 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     if (!GetPuttyFlag()) {
         s = ctrl_getset(b, "Window/Hyperlinks", "main",
                         KT_HYPERLINKS_HYPERLINK_BEHAVIOUR);
+        /* Where links come from: the regular expression over the output
+         * (the behaviour before OSC 8) and the links the host declares. */
+        ctrl_checkbox(s, KT_HYPERLINKS_SCAN, NO_SHORTCUT,
+                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                      I(CONF_url_scan));
+        ctrl_checkbox(s, KT_HYPERLINKS_OSC8, NO_SHORTCUT,
+                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                      I(CONF_url_osc8));
         ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_ctrl_click));

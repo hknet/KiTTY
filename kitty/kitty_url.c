@@ -23,9 +23,12 @@
  */
 #include "putty.h"
 #include <windows.h>
+#include <ctype.h>
 #include "terminal.h"
 #include "urlhack.h"
 #include "kitty_url.h"
+#include "kitty_text.h"
+#include "kitty_dlgbox.h"
 
 /* KiTTY url_underline modes (were in 0.76b putty.h) */
 enum {
@@ -45,6 +48,11 @@ static unsigned char *kitty_url_mask = NULL;
 static unsigned char *kitty_url_prevmask = NULL;
 static unsigned char *kitty_url_dirtyrow = NULL;
 static int kitty_url_mask_rows = 0, kitty_url_mask_cols = 0;
+
+/* OSC 8: the link handle of every visible cell as the last scan saw it (0 =
+ * none, or a handle the terminal no longer resolves), so hover and click
+ * know a declared link from a detected one. Same frame as the masks. */
+static unsigned int *kitty_url_linkv = NULL;
 
 /* A fingerprint of the text the last scan saw. A repaint whose text is the
  * same as last time - a focus change, another window uncovering ours, a
@@ -82,34 +90,64 @@ void kitty_url_config(Conf *conf)
  * Scrape the visible terminal screen into urlhack and (re)scan for links.
  * Mirrors the term->url_update branch in 0.76b terminal.c do_paint, using the
  * 0.84 public term_get_line()/term_release_line() accessors.
+ *
+ * Two sources, each switched per session: the regular expression over the
+ * text (CONF_url_scan) and the links the host declared with OSC 8
+ * (CONF_url_osc8). A cell an OSC 8 link owns is a link whatever the
+ * expression thinks, and is a blank to the expression, so a detected URL
+ * never runs into or across a declared one.
  */
-int kitty_url_rescan(Terminal *term)
+int kitty_url_rescan(Terminal *term, Conf *conf)
 {
     int i, j, any = 0;
+    int scan = conf_get_int(conf, CONF_url_scan) != 0;
+    int osc8 = conf_get_int(conf, CONF_url_osc8) != 0;
     unsigned long long hash = 1469598103934665603ULL;   /* FNV-1a */
     if (!kitty_url_inited || term == NULL)
         return 0;
+    if (kitty_url_mask_rows != term->rows || kitty_url_mask_cols != term->cols) {
+        sfree(kitty_url_mask);
+        sfree(kitty_url_prevmask);
+        sfree(kitty_url_dirtyrow);
+        sfree(kitty_url_linkv);
+        kitty_url_mask_rows = term->rows;
+        kitty_url_mask_cols = term->cols;
+        kitty_url_mask     = snewn(term->rows * term->cols, unsigned char);
+        kitty_url_prevmask = snewn(term->rows * term->cols, unsigned char);
+        kitty_url_dirtyrow = snewn(term->rows, unsigned char);
+        kitty_url_linkv    = snewn(term->rows * term->cols, unsigned int);
+        memset(kitty_url_prevmask, 0, term->rows * term->cols);
+        kitty_url_last_valid = 0;
+    }
     urlhack_reset();
     hash = (hash ^ (unsigned long long)term->rows) * 1099511628211ULL;
     hash = (hash ^ (unsigned long long)term->cols) * 1099511628211ULL;
+    hash = (hash ^ (unsigned long long)(scan | osc8 << 1)) * 1099511628211ULL;
     for (i = 0; i < term->rows; i++) {
         termline *lp = term_get_line(term, term->disptop + i);
-        if (!lp)
+        unsigned int *lv = kitty_url_linkv + i * term->cols;
+        if (!lp) {
+            memset(lv, 0, term->cols * sizeof(*lv));
             continue;
+        }
         for (j = 0; j < term->cols; j++) {
             unsigned long c = lp->chars[j].chr & 0xFF;
+            unsigned int link = osc8 ? lp->chars[j].link : 0;
+            if (link && !term_link_uri(term, link))
+                link = 0;              /* its slot has been reused */
+            lv[j] = link;
             /* UCSWIDE / control chars -> treat as blank for URL scanning */
             if (c < 0x20 || c == 0x7F)
                 c = ' ';
-            urlhack_putchar((char)c);
             hash = (hash ^ c) * 1099511628211ULL;
+            hash = (hash ^ link) * 1099511628211ULL;
+            urlhack_putchar(link ? ' ' : (char)c);
         }
         term_release_line(lp);
     }
     urlhack_putchar('\0');             /* the scan reads up to this */
 
-    if (kitty_url_last_valid && hash == kitty_url_last_hash &&
-        kitty_url_mask_rows == term->rows && kitty_url_mask_cols == term->cols) {
+    if (kitty_url_last_valid && hash == kitty_url_last_hash) {
         /* Same text as the last scan: the regions and the mask still hold. */
         if (kitty_url_dirtyrow)
             memset(kitty_url_dirtyrow, 0, term->rows);
@@ -117,7 +155,10 @@ int kitty_url_rescan(Terminal *term)
     }
     kitty_url_last_hash = hash;
     kitty_url_last_valid = 1;
-    urlhack_go_find_me_some_hyperlinks(term->cols);
+    /* Scan off: urlhack keeps the regions of its last scan, so every reader
+     * of them below and in the click checks `scan` first. */
+    if (scan)
+        urlhack_go_find_me_some_hyperlinks(term->cols);
 
     /*
      * Diff per-cell link membership against the previous scan so the caller can
@@ -126,21 +167,11 @@ int kitty_url_rescan(Terminal *term)
      * link_region() uses the same 0-based visible frame as kitty_url_cell_
      * underline(), so the mask lines up with what gets drawn.
      */
-    if (kitty_url_mask_rows != term->rows || kitty_url_mask_cols != term->cols) {
-        sfree(kitty_url_mask);
-        sfree(kitty_url_prevmask);
-        sfree(kitty_url_dirtyrow);
-        kitty_url_mask_rows = term->rows;
-        kitty_url_mask_cols = term->cols;
-        kitty_url_mask     = snewn(term->rows * term->cols, unsigned char);
-        kitty_url_prevmask = snewn(term->rows * term->cols, unsigned char);
-        kitty_url_dirtyrow = snewn(term->rows, unsigned char);
-        memset(kitty_url_prevmask, 0, term->rows * term->cols);
-    }
     for (i = 0; i < term->rows; i++) {
         int rowchanged = 0;
         for (j = 0; j < term->cols; j++) {
-            unsigned char m = urlhack_is_in_link_region(j, i) ? 1 : 0;
+            unsigned char m = (kitty_url_linkv[i * term->cols + j] ||
+                               (scan && urlhack_is_in_link_region(j, i))) ? 1 : 0;
             kitty_url_mask[i * term->cols + j] = m;
             if (m != kitty_url_prevmask[i * term->cols + j])
                 rowchanged = 1;
@@ -180,7 +211,8 @@ int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor)
         return 0;
     urlhack_mouse_old_x = cx;
     urlhack_mouse_old_y = cy;
-    over = hover_cursor && urlhack_is_in_link_region(cx, cy);
+    /* the mask: detected and declared links alike */
+    over = hover_cursor && kitty_url_cell_in_link(cx, cy);
     if (over) {
         if (!kitty_url_cursor_is_hand) {
             SetClassLongPtr(hwnd, GCLP_HCURSOR,
@@ -196,11 +228,188 @@ int kitty_url_hover(Terminal *term, HWND hwnd, int cx, int cy, int hover_cursor)
 }
 
 /*
+ * OSC 8: what a declared link may open, and when it needs a confirmation.
+ *
+ * The host names the target, and its text need not be that target, so the
+ * scheme is the boundary the regular expression used to be by accident: the
+ * expression only ever matched http, https, ftp and www. A target opens at
+ * once only when its scheme is http, https, ftp or mailto AND the link's own
+ * text is the target itself; anything else shows the target for a confirmation, with
+ * a red line when the scheme is not a browser's (ssh: reaches our own URL
+ * handler). Refused outright: no valid scheme (a drive letter is none), a
+ * double quote (it would end the argument a configured browser gets), a
+ * file: target on another host.
+ */
+static int kitty_url_scheme(const char *uri, char *out, size_t outlen)
+{
+    size_t n = 0;
+    if (!isalpha((unsigned char)uri[0]))
+        return 0;
+    while (uri[n] && uri[n] != ':') {
+        char c = uri[n];
+        if (!isalnum((unsigned char)c) && c != '+' && c != '-' && c != '.')
+            return 0;
+        if (n + 1 >= outlen)
+            return 0;
+        out[n] = (char)tolower((unsigned char)c);
+        n++;
+    }
+    /* one letter is a drive (c:\...), never a scheme */
+    if (uri[n] != ':' || n < 2)
+        return 0;
+    out[n] = '\0';
+    return 1;
+}
+
+/* file://host/path: only an empty host, localhost or this computer's name */
+static int kitty_url_file_is_local(const char *uri)
+{
+    const char *h = uri + 5, *end;         /* past "file:" */
+    char me[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD melen = sizeof(me);
+    size_t n;
+    if (strncmp(h, "//", 2) != 0)
+        return 1;                          /* file:/path, no authority */
+    h += 2;
+    end = strchr(h, '/');
+    n = end ? (size_t)(end - h) : strlen(h);
+    if (n == 0 || (n == 9 && !_strnicmp(h, "localhost", 9)))
+        return 1;
+    if (GetComputerNameA(me, &melen) && n == melen && !_strnicmp(h, me, n))
+        return 1;
+    return 0;
+}
+
+/* The link's own text: the run of cells around (x,y) with the same handle,
+ * read on across line ends, ASCII only - enough to decide whether it is the
+ * target. At most `max` characters. */
+static char *kitty_url_link_text(Terminal *term, int x, int y,
+                                 unsigned int link, size_t max)
+{
+    int cols = kitty_url_mask_cols, rows = kitty_url_mask_rows;
+    int p = y * cols + x;
+    size_t n = 0;
+    char *s = snewn(max + 1, char);
+    termline *lp = NULL;
+    int lprow = -1;
+    while (p > 0 && kitty_url_linkv[p - 1] == link)
+        p--;
+    for (; p < rows * cols && kitty_url_linkv[p] == link && n < max; p++) {
+        unsigned long c;
+        if (p / cols != lprow) {
+            if (lp)
+                term_release_line(lp);
+            lprow = p / cols;
+            lp = term_get_line(term, term->disptop + lprow);
+            if (!lp)
+                break;
+        }
+        c = lp->chars[p % cols].chr;
+        if (c == UCSWIDE)
+            continue;
+        s[n++] = (char)(c & 0xFF);
+    }
+    if (lp)
+        term_release_line(lp);
+    s[n] = '\0';
+    return s;
+}
+
+/* The open "Open link" box and what its Yes opens. */
+typedef struct kitty_url_pending {
+    char *uri, *browser;
+} kitty_url_pending;
+static HWND kitty_url_box = NULL;
+
+static void kitty_url_answer(int yes, void *ctx)
+{
+    kitty_url_pending *p = (kitty_url_pending *)ctx;
+    kitty_url_box = NULL;
+    if (yes)
+        urlhack_launch_url(p->browser, p->uri);
+    sfree(p->uri);
+    sfree(p->browser);
+    sfree(p);
+}
+
+static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
+                                    LogContext *logctx, int x, int y,
+                                    unsigned int link)
+{
+    static int logged_bad;                 /* once per window */
+    const char *uri = term_link_uri(term, link);
+    char scheme[33], *text, *warn = NULL;
+    int web, trusted, same;
+    const char *browser = NULL;
+
+    if (!uri)
+        return;
+    if (!kitty_url_scheme(uri, scheme, sizeof(scheme)) || strchr(uri, '"') ||
+        (!strcmp(scheme, "file") && !kitty_url_file_is_local(uri))) {
+        if (!logged_bad && logctx) {
+            logevent(logctx, KT_OSC8_LOG_REFUSED);
+            logged_bad = 1;
+        }
+        return;
+    }
+    web = !strcmp(scheme, "http") || !strcmp(scheme, "https") ||
+          !strcmp(scheme, "ftp");
+    trusted = web || !strcmp(scheme, "mailto");
+    text = kitty_url_link_text(term, x, y, link, strlen(uri) + 1);
+    same = !strcmp(text, uri);
+    sfree(text);
+
+    /* a configured browser gets web targets only; mailto: and the rest go to
+     * whatever Windows has registered for them */
+    if (web && !conf_get_int(conf, CONF_url_defbrowser))
+        browser = filename_to_str(conf_get_filename(conf, CONF_url_browser));
+
+    if (trusted && same) {
+        urlhack_launch_url(browser, uri);
+        return;
+    }
+
+    /* The confirmation - modeless, so the terminal's output keeps arriving while the
+     * box waits. One box at a time: a click on another link while one is
+     * open brings that one forward instead. Yes opens what the box showed,
+     * copied now, whatever has become of the link meanwhile. */
+    if (kitty_url_box && IsWindow(kitty_url_box)) {
+        SetForegroundWindow(kitty_url_box);
+        return;
+    }
+    if (!trusted)
+        warn = !strcmp(scheme, "ssh") ? dupstr(KT_OSC8_CONFIRM_WARN_SSH) :
+               !strcmp(scheme, "file") ? dupstr(KT_OSC8_CONFIRM_WARN_FILE) :
+               dupprintf(KT_OSC8_CONFIRM_WARN_SCHEME, scheme);
+    {
+        /* the whole target, in the box's read-only field: it wraps, and
+         * scrolls when long, so every character can be inspected */
+        kitty_url_pending *p = snew(kitty_url_pending);
+        p->uri = dupstr(uri);
+        p->browser = browser ? dupstr(browser) : NULL;
+        /* the click held the mouse: let it go, or the box gets no clicks */
+        ReleaseCapture();
+        kitty_url_box = kitty_confirm_modeless(hwnd, KT_OSC8_CONFIRM_CAPTION,
+                                               KT_OSC8_CONFIRM_TEXT, uri, warn,
+                                               kitty_url_answer, p);
+        if (!kitty_url_box) {          /* not made: that is a No */
+            sfree(p->uri);
+            sfree(p->browser);
+            sfree(p);
+        }
+    }
+    sfree(warn);
+}
+
+/*
  * Handle a (ctrl+)click at character coordinates x,y.  If it falls inside a
  * detected link region, extract the URL text and launch it.  Returns 1 if a
  * URL was launched.  Mirrors the term_mouse launch branch in 0.76b terminal.c.
+ * A cell of an OSC 8 link goes through kitty_url_open_declared instead, and
+ * the click is taken (1) whatever that decides.
  */
-int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down)
+int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
+                    int x, int y, int ctrl_down)
 {
     text_region region;
     char *linkbuf = NULL;
@@ -213,7 +422,16 @@ int kitty_url_click(Terminal *term, Conf *conf, int x, int y, int ctrl_down)
     ctrl_required = conf_get_int(conf, CONF_url_ctrl_click);
     if (ctrl_required && !ctrl_down)
         return 0;
-    if (!urlhack_is_in_link_region(x, y))
+    if (!kitty_url_cell_in_link(x, y))
+        return 0;
+    if (kitty_url_linkv && x >= 0 && x < kitty_url_mask_cols &&
+        y >= 0 && y < kitty_url_mask_rows &&
+        kitty_url_linkv[y * kitty_url_mask_cols + x]) {
+        kitty_url_open_declared(term, conf, hwnd, logctx, x, y,
+                                kitty_url_linkv[y * kitty_url_mask_cols + x]);
+        return 1;
+    }
+    if (!conf_get_int(conf, CONF_url_scan) || !urlhack_is_in_link_region(x, y))
         return 0;
 
     region = urlhack_get_link_bounds(x, y);
