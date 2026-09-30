@@ -97,6 +97,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Scrolling output costs less.** Rows that only moved up are shifted on
+  screen instead of drawn again, so only the new lines are painted. A
+  maximised window taking 200 lines per second paints each frame in a fifth
+  of the time with GDI and uses a third of the CPU; Direct2D gains less.
 - **Output reaches the screen several times faster.** Plain text is now
   written a run at a time instead of one character at a time, and lines that
   scroll into the scrollback are compressed once output goes quiet, so a

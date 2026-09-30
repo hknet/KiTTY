@@ -95,6 +95,11 @@ typedef struct KittyPainterVtable {
      * change). A painter that caches per HFONT drops its cache: handle
      * values are recycled, so an old entry could describe another font. */
     void (*fonts_changed)(KittyPainter *p);
+    /* Move the pixels inside `band` (client pixels) by dy pixels (negative
+     * = up), within the frame being drawn; what moved out of the band is
+     * dropped, what came in is left for the caller to draw. False when the
+     * painter did not (or could not completely) move them. */
+    bool (*scroll_rows)(KittyPainter *p, const RECT *band, int dy);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -134,5 +139,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_hdc(p)                        ((p)->vt->hdc(p))
 #define kp_frame_signal(p)               ((p)->vt->frame_signal(p))
 #define kp_fonts_changed(p)              ((p)->vt->fonts_changed(p))
+#define kp_scroll_rows(p, band, dy)      ((p)->vt->scroll_rows((p), (band), (dy)))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

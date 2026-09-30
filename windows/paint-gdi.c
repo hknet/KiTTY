@@ -336,6 +336,31 @@ static void gdi_fonts_changed(KittyPainter *p)
     (void)p;                           /* GDI uses the HFONTs as they are */
 }
 
+/* The band's pixels moved by dy within the window DC. What ScrollDC could
+ * not copy (a covered part, on Windows without composition) comes back in
+ * the update region beside the rows the caller draws anyway; that rest is
+ * invalidated, so WM_PAINT repairs it from the terminal's own record. */
+static bool gdi_scroll_rows(KittyPainter *p, const RECT *band, int dy)
+{
+    GdiPainter *g = (GdiPainter *)p;
+    HRGN upd, fresh;
+    RECT in = *band;
+    if (!g->hdc || !g->owned)          /* never inside WM_PAINT's clipped DC */
+        return false;
+    upd = CreateRectRgn(0, 0, 0, 0);
+    if (!ScrollDC(g->hdc, 0, dy, band, band, upd, NULL)) {
+        DeleteObject(upd);
+        return false;
+    }
+    if (dy < 0) in.top = band->bottom + dy; else in.bottom = band->top + dy;
+    fresh = CreateRectRgnIndirect(&in);
+    if (CombineRgn(upd, upd, fresh, RGN_DIFF) != NULLREGION)
+        InvalidateRgn(g->hwnd, upd, FALSE);
+    DeleteObject(fresh);
+    DeleteObject(upd);
+    return true;
+}
+
 static const KittyPainterVtable gdi_vt = {
     .begin = gdi_begin,
     .end = gdi_end,
@@ -356,6 +381,7 @@ static const KittyPainterVtable gdi_vt = {
     .hdc = gdi_hdc,
     .frame_signal = gdi_frame_signal,
     .fonts_changed = gdi_fonts_changed,
+    .scroll_rows = gdi_scroll_rows,
 };
 
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)

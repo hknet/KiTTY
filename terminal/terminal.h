@@ -391,6 +391,13 @@ struct terminal_tag {
     bool sb_compact_pending;
     unsigned long sb_compact_end;         /* the timer that compresses */
 
+    /* KiTTY scroll by moving pixels (terminal.c scroll / do_paint): how far
+     * one band of the visible screen moved since the last frame, so the
+     * next frame moves the pixels and draws only the rows that came in.
+     * shift_state: 0 none, 1 usable, -1 unusable this frame. Unconditional
+     * storage, same ODR reason as above. */
+    int shift_state, shift_top, shift_bot, shift_lines;
+
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
      * Every one of these events fires at a moment the REMOTE HOST chose, so both
@@ -855,6 +862,14 @@ enum {
 
 termline *term_get_line(Terminal *term, int y);
 void term_release_line(termline *line);
+
+#ifdef MOD_PERSO
+/* KiTTY scroll by moving pixels (terminal.c): set by a front end that can
+ * move the pixels of display rows top..bot by `lines` rows (positive = up)
+ * inside the frame do_paint is drawing. Returns false when it did not move
+ * them (then nothing is assumed moved). NULL = never. */
+extern bool (*kitty_term_scroll_hook)(TermWin *win, int top, int bot, int lines);
+#endif
 
 #if defined(MOD_PERSO) && defined(KITTY_TEST_HOOKS)
 /* KiTTY test hooks, compiled only into test/test_textrun.c's build (the

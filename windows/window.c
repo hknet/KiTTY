@@ -1409,6 +1409,9 @@ static int kitty_coe_pending_exit = -1;
  * with WM_CANCELMODE, and the main loop posts the quit once the loop is over. */
 static bool kitty_in_menu_loop, kitty_in_move_loop;
 static int kitty_quit_after_modal = -1;
+/* KiTTY scroll by moving pixels: the terminal's hook (below, beside the draw
+ * context functions) */
+static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
 static void kitty_post_quit(HWND hwnd, int code)
 {
     if (kitty_in_menu_loop || kitty_in_move_loop) {
@@ -1806,6 +1809,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             void kitty_pace_set_frame_signal(HANDLE);
             kitty_pace_set_frame_signal(kp_frame_signal(wgs->painter));
         }
+        /* rows that only scrolled keep their pixels (terminal.c) */
+        kitty_term_scroll_hook = kitty_win_scroll_rows;
 #endif
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
@@ -9320,6 +9325,32 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
 #endif
     return ok;
 }
+
+#ifdef MOD_PERSO
+/* KiTTY scroll by moving pixels (terminal.c kitty_term_scroll_hook): display
+ * rows top..bot moved by `lines` (positive = up) since the last frame; move
+ * their pixels in the frame being drawn. Not with a background image: it is
+ * tied to screen positions and must not move with the text. */
+static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines)
+{
+    WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+    RECT band;
+#ifdef MOD_BACKGROUNDIMAGE
+    {
+        extern HDC backgrounddc;       /* kitty_image.c, NULL until loaded */
+        if (backgrounddc)
+            return false;
+    }
+#endif
+    if (!wgs->painter || wgs->font_height <= 0 || !wgs->term)
+        return false;
+    band.left = wgs->offset_width;
+    band.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
+    band.top = wgs->offset_height + top * wgs->font_height;
+    band.bottom = wgs->offset_height + (bot + 1) * wgs->font_height;
+    return kp_scroll_rows(wgs->painter, &band, -lines * wgs->font_height);
+}
+#endif
 
 static void wintw_free_draw_ctx(TermWin *tw)
 {

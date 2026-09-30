@@ -215,6 +215,9 @@ typedef struct D2DPainter {
     ID2D1DeviceContext *dc;
     ID2D1Bitmap1 *target;              /* the swap chain's back buffer */
     ID2D1Bitmap1 *canvas;              /* what the window shows, persistent */
+    ID2D1Bitmap1 *scratch;             /* scroll_rows: the band on its way */
+    int scratch_w, scratch_h;
+    HRESULT mid_hr;                    /* scroll_rows' EndDraw, for d2d_end */
     ID2D1SolidColorBrush *brush;
     IDWriteFactory *dw;
     IDWriteGdiInterop *gdi;
@@ -367,6 +370,8 @@ static void release_targets(D2DPainter *d)
     ID2D1DeviceContext_SetTarget(d->dc, NULL);
     if (d->target) { IUnknown_Release((IUnknown *)d->target); d->target = NULL; }
     if (d->canvas) { IUnknown_Release((IUnknown *)d->canvas); d->canvas = NULL; }
+    if (d->scratch) { IUnknown_Release((IUnknown *)d->scratch); d->scratch = NULL; }
+    d->scratch_w = d->scratch_h = 0;
 }
 
 static bool create_targets(D2DPainter *d, int w, int h)
@@ -648,6 +653,9 @@ static void d2d_end(KittyPainter *p)
         return;
     hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
     d->in_frame = false;
+    if (SUCCEEDED(hr) && FAILED(d->mid_hr))
+        hr = d->mid_hr;                /* scroll_rows ended part of it */
+    d->mid_hr = S_OK;
     if (FAILED(hr)) {
         /* A failed frame leaves its code on the window for the harness. */
         SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
@@ -760,6 +768,72 @@ static void fonts_forget(D2DPainter *d)
 static void d2d_fonts_changed(KittyPainter *p)
 {
     fonts_forget((D2DPainter *)p);
+}
+
+/* The band's pixels moved by dy within the persistent canvas, mid-frame:
+ * the frame so far is ended (a bitmap copy is not made on a bitmap that is
+ * being drawn into), the band goes canvas -> scratch -> canvas at its new
+ * place, and the frame is begun again as d2d_begin began it. The band is
+ * dirty for the present. Any failure: false, nothing is assumed moved. */
+static bool d2d_scroll_rows(KittyPainter *p, const RECT *band, int dy)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    D2D1_RECT_U src;
+    D2D1_POINT_2U at0 = { 0, 0 }, dst;
+    D2D1_RECT_U back;
+    HRESULT hr;
+    int h;
+    if (!d->in_frame || !d->canvas || d->lost || dy == 0 ||
+        band->left < 0 || band->top < 0 ||
+        band->right > d->width || band->bottom > d->height)
+        return false;
+    h = band->bottom - band->top - (dy < 0 ? -dy : dy);
+    if (h <= 0 || band->right <= band->left)
+        return false;
+    if (!d->scratch || d->scratch_w != d->width || d->scratch_h != d->height) {
+        D2D1_BITMAP_PROPERTIES1 props;
+        D2D1_SIZE_U size;
+        if (d->scratch) { IUnknown_Release((IUnknown *)d->scratch); d->scratch = NULL; }
+        memset(&props, 0, sizeof(props));
+        props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        props.pixelFormat.alphaMode = D2D1_ALPHA_MODE_IGNORE;
+        props.dpiX = 96; props.dpiY = 96;
+        props.bitmapOptions = D2D1_BITMAP_OPTIONS_NONE;
+        size.width = d->width; size.height = d->height;
+        if (FAILED(d->dc->lpVtbl->CreateBitmap(d->dc, size, NULL, 0, &props,
+                                               &d->scratch)))
+            return false;
+        d->scratch_w = d->width; d->scratch_h = d->height;
+    }
+    hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
+    d->in_frame = false;
+    if (FAILED(hr))
+        d->mid_hr = hr;                /* d2d_end handles it, device lost included */
+    else {
+        src.left = band->left; src.right = band->right;
+        src.top = band->top + (dy < 0 ? -dy : 0);
+        src.bottom = src.top + h;
+        dst.x = band->left;
+        dst.y = band->top + (dy > 0 ? dy : 0);
+        back.left = 0; back.top = 0; back.right = band->right - band->left; back.bottom = h;
+        hr = ((ID2D1Bitmap *)d->scratch)->lpVtbl->CopyFromBitmap(
+            (ID2D1Bitmap *)d->scratch, &at0, (ID2D1Bitmap *)d->canvas, &src);
+        if (SUCCEEDED(hr))
+            hr = ((ID2D1Bitmap *)d->canvas)->lpVtbl->CopyFromBitmap(
+                (ID2D1Bitmap *)d->canvas, &dst, (ID2D1Bitmap *)d->scratch, &back);
+    }
+    /* the frame goes on either way, as d2d_begin started it */
+    ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
+    ID2D1RenderTarget_BeginDraw((ID2D1RenderTarget *)d->dc);
+    ID2D1RenderTarget_SetAntialiasMode((ID2D1RenderTarget *)d->dc,
+                                       D2D1_ANTIALIAS_MODE_ALIASED);
+    ID2D1RenderTarget_SetTextAntialiasMode((ID2D1RenderTarget *)d->dc,
+                                           d->textaa);
+    d->in_frame = true;
+    if (FAILED(hr))
+        return false;
+    touch(d, band->left, band->top, band->right, band->bottom);
+    return true;
 }
 
 static D2DFont *font_of(D2DPainter *d, HFONT hfont)
@@ -1385,6 +1459,7 @@ static const KittyPainterVtable d2d_vt = {
     .hdc = d2d_hdc,
     .frame_signal = d2d_frame_signal,
     .fonts_changed = d2d_fonts_changed,
+    .scroll_rows = d2d_scroll_rows,
 };
 
 /* ---- the device ---------------------------------------------------- */

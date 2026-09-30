@@ -2673,6 +2673,7 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
 #ifdef MOD_PERSO
     bool keepview;
     int viewtop = 0;
+    term->shift_state = 0;             /* a shift noted before is for the old grid */
 #endif
 
     if (newrows == term->rows && newcols == term->cols &&
@@ -3122,6 +3123,75 @@ static void check_trust_status(Terminal *term, termline *line)
  * for backward.) `sb' is true if the scrolling is permitted to
  * affect the scrollback buffer.
  */
+#ifdef MOD_PERSO
+/*
+ * KiTTY: scroll by moving pixels. scroll() notes how far one band of the
+ * visible screen moved since the last frame; do_paint then asks the window
+ * to move that band's pixels (kitty_term_scroll_hook) and rotates disptext
+ * the same way, so the comparison redraws only the rows that came in. Only
+ * with the view at the bottom (disptop 0: screen rows = display rows), one
+ * band, one direction; anything else = "unusable", the ordinary full
+ * comparison. The hook is NULL where no window moves pixels.
+ */
+bool (*kitty_term_scroll_hook)(TermWin *win, int top, int bot, int lines);
+
+static void kitty_shift_note(Terminal *term, int top, int bot, int lines)
+{
+    if (lines == 0 || term->shift_state < 0)
+        return;
+    if (term->disptop != 0) {
+        term->shift_state = -1;
+        return;
+    }
+    if (term->shift_state == 0) {
+        term->shift_state = 1;
+        term->shift_top = top;
+        term->shift_bot = bot;
+        term->shift_lines = lines;
+    } else if (term->shift_top == top && term->shift_bot == bot &&
+               (term->shift_lines > 0) == (lines > 0)) {
+        term->shift_lines += lines;
+    } else
+        term->shift_state = -1;
+}
+
+/* At the top of do_paint: move the pixels, then disptext. */
+static void kitty_shift_apply(Terminal *term)
+{
+    int top = term->shift_top, bot = term->shift_bot, n = term->shift_lines;
+    int band = bot - top + 1, i, j, k;
+    bool usable = term->shift_state == 1;
+    term->shift_state = 0;
+    if (!usable || !kitty_term_scroll_hook || top < 0 || bot >= term->rows ||
+        band < 2 || n == 0 || n >= band || -n >= band)
+        return;
+    if (!kitty_term_scroll_hook(term->win, top, bot, n))
+        return;
+    if (n > 0) {
+        /* content moved up: row r shows what row r + n showed */
+        for (k = 0; k < n; k++) {
+            termline *first = term->disptext[top];
+            for (i = top; i < bot; i++)
+                term->disptext[i] = term->disptext[i + 1];
+            term->disptext[bot] = first;
+        }
+        for (i = bot - n + 1; i <= bot; i++)
+            for (j = 0; j < term->cols; j++)
+                term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+    } else {
+        for (k = 0; k < -n; k++) {
+            termline *last = term->disptext[bot];
+            for (i = bot; i > top; i--)
+                term->disptext[i] = term->disptext[i - 1];
+            term->disptext[top] = last;
+        }
+        for (i = top; i < top - n; i++)
+            for (j = 0; j < term->cols; j++)
+                term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+    }
+}
+#endif
+
 static void scroll(Terminal *term, int topline, int botline,
                    int lines, bool sb)
 {
@@ -3132,6 +3202,9 @@ static void scroll(Terminal *term, int topline, int botline,
         sb = false;
 
     scrollwinsize = botline - topline + 1;
+#ifdef MOD_PERSO
+    kitty_shift_note(term, topline, botline, lines);
+#endif
 
     if (lines < 0) {
         lines = -lines;
@@ -9719,6 +9792,12 @@ static void do_paint(Terminal *term)
         unlineptr(ldata);
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: rows that only moved keep their pixels (see scroll()) */
+    if (term->disptop != 0)
+        term->shift_state = 0;
+    kitty_shift_apply(term);
+#endif
 
     /* The normal screen data */
     for (i = 0; i < term->rows; i++) {
@@ -10170,6 +10249,11 @@ void term_paint(Terminal *term,
     }
 
     if (immediately) {
+#ifdef MOD_PERSO
+        /* a WM_PAINT: its DC is clipped to the update region, so pixels
+         * cannot be moved band-wide here - the ordinary comparison */
+        term->shift_state = 0;
+#endif
         do_paint(term);
     } else {
         term_schedule_update(term);
