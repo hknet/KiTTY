@@ -380,8 +380,13 @@
 #define KT_HYPERLINKS_RESET_REGEX                    "Reset to KiTTY default"
 /* Where links come from: the regular expression over the text, and OSC 8 */
 #define KT_HYPERLINKS_SCAN                           "Detect URLs in the output (regex)"
-#define KT_HYPERLINKS_OSC8                           "Accept links declared by the host (OSC 8)"
-#define KT_HYPERLINKS_PREVIEW                        "Show the target of declared links (OSC 8) on hover"
+#define KT_HYPERLINKS_OSC8                           "Allow OSC 8 hyperlinks"
+#define KT_HYPERLINKS_PREVIEW                        "Show the target of OSC 8 hyperlinks on hover"
+/* HyperlinkConfirm: when opening a link needs the confirmation */
+#define KT_HYPERLINKS_CONFIRM                        "Confirmation before opening a link:"
+#define KT_HYPERLINKS_CONFIRM_ALWAYS                 "Always"
+#define KT_HYPERLINKS_CONFIRM_RISKY                  "When the link looks risky"
+#define KT_HYPERLINKS_CONFIRM_NONWEB                 "Only for non-web links"
 /* The confirmation before an OSC 8 link opens: its text is not its target,
  * or its scheme is not http, https, ftp or mailto. The target itself is in
  * the read-only field under this line. */
@@ -395,6 +400,11 @@
  * %s = the host in the text, %s = the target's host */
 #define KT_OSC8_CONFIRM_WARN_TEXTHOST                "The text shows %s, the link goes to %s."
 #define KT_OSC8_CONFIRM_WARN_PUNYCODE                "The host is written in punycode: it may imitate another name."
+/* red: the target's query carries a second address with another owner;
+ * %s = that address's host */
+#define KT_OSC8_CONFIRM_WARN_REDIRECT                "The link forwards to another host: %s."
+/* event log, a link the regular expression found; %s = the reason */
+#define KT_URL_LOG_REFUSED                           "Link not opened: %s"
 /* the first line of the box's field and of a long target's tip. %s = host */
 #define KT_OSC8_HOST_LINE                            "Host: %s"
 /* why a target was refused, for the event log line below */

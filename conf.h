@@ -1557,13 +1557,19 @@ CONF_OPTION(url_hover_cursor, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Hyp
 CONF_OPTION(url_ctrl_click, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkUseCtrlClick"),)
 /* KiTTY: where links come from. HyperlinkScan = find URLs in the text with
  * the regular expression (the behaviour before OSC 8); HyperlinkOSC8 = links
- * the host declares with OSC 8 (terminal.c kitty_osc8). Both on by default,
+ * the host sends with OSC 8 (terminal.c kitty_osc8). Both on by default,
  * so a session saved before these keys existed keeps what it did. */
 CONF_OPTION(url_scan, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkScan"),)
 CONF_OPTION(url_osc8, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkOSC8"),)
-/* KiTTY: hovering a declared (OSC 8) link shows its target (kitty_url.c, the
+/* KiTTY: hovering an OSC 8 hyperlink shows its target (kitty_url.c, the
  * preview tooltip). On by default. */
 CONF_OPTION(url_preview, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkPreview"),)
+/* KiTTY: when opening a link needs the confirmation (kitty_url.c):
+ * 0 = always, every link, the ones the regex finds too; 1 = when the link
+ * looks risky (the look-alike rules, default); 2 = only for non-web links
+ * (http, https, ftp and mailto open at once). Refused targets stay refused
+ * in every mode. */
+CONF_OPTION(url_confirm, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HyperlinkConfirm"),)
 CONF_OPTION(windowstate, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WindowState"),)
 CONF_OPTION(winscpoptions, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPOptions"),)
 /* FileZilla hand-off (Connection > SSH > FileZilla). How the session password

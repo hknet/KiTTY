@@ -8,21 +8,27 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
-- **Links a program declares are clickable (OSC 8).** A program on the far
+- **OSC 8 hyperlinks are clickable.** A program on the far
   end can mark text as a link to a target it names (`ls --hyperlink`,
   Textual and Rich applications). Such a link opens at once only when its
   text is its target and it is an http, https, ftp or mailto address; any
   other link shows its target and needs a confirmation. Window > Hyperlinks switches
-  declared links (`HyperlinkOSC8`) and the URL detection by regular
+  OSC 8 hyperlinks (`HyperlinkOSC8`) and the URL detection by regular
   expression (`HyperlinkScan`) per session; both are on
   (cyd01/KiTTY#441).
-- **Hovering a declared link shows its target. Look-alike links are
+- **Hovering an OSC 8 hyperlink shows its target. Look-alike links are
   caught.** The target of an OSC 8 link appears in a tip under the pointer
   (`HyperlinkPreview`, on). A short web target the tip has shown opens
   without the confirmation. The confirmation shows the host on a line of
   its own and marks in red a text naming another host and a punycode host.
   A web address with a user name before the host, or with a host written as
   a number or encoded, is not opened.
+  A target whose query carries an address of another owner (a redirect)
+  gets a red line naming that host. Links the regular expression finds are
+  refused for the same user-name and number tricks. Window > Hyperlinks >
+  "Confirmation before opening a link" chooses Always, When the link looks
+  risky (the default) or Only for non-web links (`HyperlinkConfirm`).
+  Refused targets stay refused in every mode.
 - **A right click or a Ctrl+click on the minimize button sends a window to
   the tray, and the tray can be the launcher.** Application > KiTTY++ Settings > Terminal
   chooses where a window sent to the tray goes: into the launcher while one

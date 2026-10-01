@@ -54,7 +54,7 @@ static int kitty_url_mask_rows = 0, kitty_url_mask_cols = 0;
 
 /* OSC 8: the link handle of every visible cell as the last scan saw it (0 =
  * none, or a handle the terminal no longer resolves), so hover and click
- * know a declared link from a detected one. Same frame as the masks. */
+ * separate an OSC 8 hyperlink from a detected one. Same frame as the masks. */
 static unsigned int *kitty_url_linkv = NULL;
 
 /* A fingerprint of the text the last scan saw. A repaint whose text is the
@@ -95,10 +95,10 @@ void kitty_url_config(Conf *conf)
  * 0.84 public term_get_line()/term_release_line() accessors.
  *
  * Two sources, each switched per session: the regular expression over the
- * text (CONF_url_scan) and the links the host declared with OSC 8
+ * text (CONF_url_scan) and the OSC 8 hyperlinks the host sends
  * (CONF_url_osc8). A cell an OSC 8 link owns is a link whatever the
  * expression thinks, and is a blank to the expression, so a detected URL
- * never runs into or across a declared one.
+ * never runs into or across an OSC 8 one.
  */
 int kitty_url_rescan(Terminal *term, Conf *conf)
 {
@@ -204,7 +204,7 @@ int kitty_url_row_dirty(int row)
 }
 
 /*
- * The host of a declared link's target, for the look-alike checks and for the
+ * The host of an OSC 8 hyperlink's target, for the look-alike checks and for the
  * "Host:" line of the confirmation and of a long target's preview. Targets
  * are printable ASCII (terminal.c refuses anything else), so every trick left
  * is one of spelling:
@@ -317,7 +317,7 @@ static int kitty_url_text_host(const char *text, char *out, size_t outlen)
 
 /* The text as a single bare name.name word ("mybank.com", "report.pdf"),
  * lower case: a host or a file name, which its shape cannot tell apart.
- * kitty_url_open_declared settles it against the target instead. */
+ * kitty_url_open_osc8 settles it against the target instead. */
 static int kitty_url_text_bare(const char *text, char *out, size_t outlen)
 {
     const char *s = text, *last;
@@ -364,8 +364,59 @@ static int kitty_url_same_owner(const char *a, const char *b)
     return 0;
 }
 
+/* A second address carried in the target's query - "?url=https://...",
+ * "&next=https%3A%2F%2F...", "?to=//host/..." - whose host has another
+ * owner than the target's: where a redirecting page really sends the user.
+ * The value is percent-decoded once. Returns that host in out, or 0. */
+static int kitty_url_redirect_host(const char *uri, const char *host,
+                                   char *out, size_t outlen)
+{
+    const char *q = strchr(uri, '?'), *p;
+    if (!q || !host[0])
+        return 0;
+    for (p = q + 1; *p && *p != '#'; ) {
+        size_t len = strcspn(p, "&#");
+        const char *eq = memchr(p, '=', len);
+        if (eq) {
+            size_t vlen = len - (size_t)(eq + 1 - p), i, n = 0;
+            char *v = snewn(vlen + 1, char);
+            for (i = 0; i < vlen; i++) {
+                const char *c = eq + 1 + i;
+                if (c[0] == '%' && i + 2 < vlen &&
+                    isxdigit((unsigned char)c[1]) &&
+                    isxdigit((unsigned char)c[2])) {
+                    char hx[3];
+                    hx[0] = c[1]; hx[1] = c[2]; hx[2] = '\0';
+                    v[n++] = (char)strtol(hx, NULL, 16);
+                    i += 2;
+                } else
+                    v[n++] = *c;
+            }
+            v[n] = '\0';
+            if (!_strnicmp(v, "http://", 7) || !_strnicmp(v, "https://", 8) ||
+                !strncmp(v, "//", 2)) {
+                kitty_url_hostinfo ri;
+                char *full = v[0] == '/' ? dupprintf("https:%s", v) : dupstr(v);
+                kitty_url_hostinfo_of(full, &ri);
+                sfree(full);
+                if (ri.host[0] && !kitty_url_same_owner(ri.host, host) &&
+                    strlen(ri.host) < outlen) {
+                    strcpy(out, ri.host);
+                    sfree(v);
+                    return 1;
+                }
+            }
+            sfree(v);
+        }
+        p += len;
+        if (*p == '&')
+            p++;
+    }
+    return 0;
+}
+
 /*
- * OSC 8 link preview: hovering a declared link shows its target in a tooltip
+ * OSC 8 link preview: hovering an OSC 8 hyperlink shows its target in a tooltip
  * (CONF_url_preview), because its text need not be its target. A detected
  * link gets none - its text IS the target.
  *
@@ -383,7 +434,7 @@ static int kitty_url_same_owner(const char *a, const char *b)
 #define KITTY_URL_TIP_MAX 1024
 /* A target the preview showed WHOLE on one line (KITTY_URL_TIP_LINE) for at
  * least this long before the click opens without the confirmation (the
- * other conditions are in kitty_url_open_declared). */
+ * other conditions are in kitty_url_open_osc8). */
 #define KITTY_URL_TIP_READ_MS 400
 static HWND kitty_url_tip = NULL, kitty_url_tip_owner = NULL;
 static unsigned int kitty_url_tip_link = 0;    /* the link shown, 0 = none */
@@ -515,7 +566,7 @@ static void kitty_url_preview_show(HWND hwnd, unsigned int link,
     TrackMouseEvent(&tme);
 }
 
-/* The preview for the cell (cx, cy): the declared link's target, or none. */
+/* The preview for the cell (cx, cy): the OSC 8 hyperlink's target, or none. */
 static void kitty_url_preview_at(Terminal *term, Conf *conf, HWND hwnd,
                                  int cx, int cy)
 {
@@ -545,7 +596,7 @@ void kitty_url_preview_refresh(Terminal *term, Conf *conf, HWND hwnd)
 
 /*
  * Update the mouse-hover state: show a hand cursor when over a link region,
- * and the target of a declared link (the preview above).
+ * and the target of an OSC 8 hyperlink (the preview above).
  * cx/cy are character coordinates.  Returns 1 if currently over a link.
  */
 int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
@@ -557,7 +608,7 @@ int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
     urlhack_mouse_old_x = cx;
     urlhack_mouse_old_y = cy;
     kitty_url_preview_at(term, conf, hwnd, cx, cy);
-    /* the mask: detected and declared links alike */
+    /* the mask: detected and OSC 8 links alike */
     over = hover_cursor && kitty_url_cell_in_link(cx, cy);
     if (over) {
         if (!kitty_url_cursor_is_hand) {
@@ -574,12 +625,12 @@ int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
 }
 
 /*
- * OSC 8: what a declared link may open, and when it needs a confirmation.
+ * What an OSC 8 hyperlink may open and when it needs a confirmation.
  *
  * The host names the target, and its text need not be that target, so the
  * scheme is the boundary the regular expression used to be by accident: the
  * expression only ever matched http, https, ftp and www. What opens at once,
- * what needs the confirmation and what is refused: kitty_url_open_declared.
+ * what needs the confirmation and what is refused: kitty_url_open_osc8.
  * A drive letter is no scheme. A double quote would end the argument a
  * configured browser gets.
  */
@@ -675,6 +726,43 @@ static void kitty_url_answer(int yes, void *ctx)
     sfree(p);
 }
 
+/* The confirmation - modeless, so the terminal's output keeps arriving while
+ * the box waits. The host on a line of its own, then the whole target: the
+ * field wraps and scrolls when long, so every character can be inspected.
+ * One box at a time: a click on another link while one is open brings that
+ * one forward instead. Yes opens what the box showed, copied now, whatever
+ * has become of the link meanwhile. warn: NULL or the red lines. */
+static void kitty_url_ask(HWND hwnd, const char *uri, const char *browser,
+                          const char *host, const char *warn)
+{
+    char *detail;
+    kitty_url_pending *p;
+    if (kitty_url_box && IsWindow(kitty_url_box)) {
+        SetForegroundWindow(kitty_url_box);
+        return;
+    }
+    if (host && host[0]) {
+        char *hostline = dupprintf(KT_OSC8_HOST_LINE, host);
+        detail = dupprintf("%s\r\n%s", hostline, uri);
+        sfree(hostline);
+    } else
+        detail = dupstr(uri);
+    p = snew(kitty_url_pending);
+    p->uri = dupstr(uri);
+    p->browser = browser ? dupstr(browser) : NULL;
+    /* the click held the mouse: let it go, or the box gets no clicks */
+    ReleaseCapture();
+    kitty_url_box = kitty_confirm_modeless(hwnd, KT_OSC8_CONFIRM_CAPTION,
+                                           KT_OSC8_CONFIRM_TEXT, detail,
+                                           warn, kitty_url_answer, p);
+    if (!kitty_url_box) {              /* not made: that is a No */
+        sfree(p->uri);
+        sfree(p->browser);
+        sfree(p);
+    }
+    sfree(detail);
+}
+
 /* Add one red line to the confirmation's warning (lines joined by \n). */
 static void kitty_url_warn_add(char **warn, char *line)
 {
@@ -702,15 +790,17 @@ static void kitty_url_warn_add(char **warn, char *line)
  * red line per flag - not a browser's scheme, a text naming another host
  * than the target's, a punycode host.
  */
-static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
+static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
                                     LogContext *logctx, int x, int y,
                                     unsigned int link, unsigned int previewed)
 {
     static int logged_bad;                 /* once per window */
     const char *uri = term_link_uri(term, link);
-    char scheme[33], *text, *warn = NULL, *detail, texthost[256];
+    char scheme[33], *text, *warn = NULL, texthost[256];
+    char redirhost[256];
+    int level;
     const char *why = NULL;
-    int web, trusted, same, mismatch = 0;
+    int web, trusted, same, mismatch = 0, redirect = 0;
     size_t tmax;
     const char *browser = NULL;
     kitty_url_hostinfo hi;
@@ -762,26 +852,26 @@ static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
         sfree(lower);
     }
     sfree(text);
+    /* a second address in the query, with another owner: a redirect */
+    if (web)
+        redirect = kitty_url_redirect_host(uri, hi.host, redirhost,
+                                           sizeof(redirhost));
 
     /* a configured browser gets web targets only; mailto: and the rest go to
      * whatever Windows has registered for them */
     if (web && !conf_get_int(conf, CONF_url_defbrowser))
         browser = filename_to_str(conf_get_filename(conf, CONF_url_browser));
 
-    if (trusted && !mismatch && !hi.punycode &&
-        (same || (previewed == link && strlen(uri) <= KITTY_URL_TIP_LINE))) {
+    /* HyperlinkConfirm: 0 always puts up the box, 2 lets every web target through,
+     * 1 (default) is the rule above */
+    level = conf_get_int(conf, CONF_url_confirm);
+    if ((level == 2 && trusted) ||
+        (level == 1 && trusted && !mismatch && !redirect && !hi.punycode &&
+         (same || (previewed == link && strlen(uri) <= KITTY_URL_TIP_LINE)))) {
         urlhack_launch_url(browser, uri);
         return;
     }
 
-    /* The confirmation - modeless, so the terminal's output keeps arriving while the
-     * box waits. One box at a time: a click on another link while one is
-     * open brings that one forward instead. Yes opens what the box showed,
-     * copied now, whatever has become of the link meanwhile. */
-    if (kitty_url_box && IsWindow(kitty_url_box)) {
-        SetForegroundWindow(kitty_url_box);
-        return;
-    }
     if (!trusted)
         kitty_url_warn_add(&warn,
             !strcmp(scheme, "ssh") ? dupstr(KT_OSC8_CONFIRM_WARN_SSH) :
@@ -790,32 +880,12 @@ static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
     if (mismatch)
         kitty_url_warn_add(&warn, dupprintf(KT_OSC8_CONFIRM_WARN_TEXTHOST,
                                             texthost, hi.host));
+    if (redirect)
+        kitty_url_warn_add(&warn, dupprintf(KT_OSC8_CONFIRM_WARN_REDIRECT,
+                                            redirhost));
     if (hi.punycode)
         kitty_url_warn_add(&warn, dupstr(KT_OSC8_CONFIRM_WARN_PUNYCODE));
-    /* the host on a line of its own, then the whole target: the field
-     * wraps and scrolls when long, so every character can be inspected */
-    if (hi.host[0]) {
-        char *hostline = dupprintf(KT_OSC8_HOST_LINE, hi.host);
-        detail = dupprintf("%s\r\n%s", hostline, uri);
-        sfree(hostline);
-    } else
-        detail = dupstr(uri);
-    {
-        kitty_url_pending *p = snew(kitty_url_pending);
-        p->uri = dupstr(uri);
-        p->browser = browser ? dupstr(browser) : NULL;
-        /* the click held the mouse: let it go, or the box gets no clicks */
-        ReleaseCapture();
-        kitty_url_box = kitty_confirm_modeless(hwnd, KT_OSC8_CONFIRM_CAPTION,
-                                               KT_OSC8_CONFIRM_TEXT, detail,
-                                               warn, kitty_url_answer, p);
-        if (!kitty_url_box) {          /* not made: that is a No */
-            sfree(p->uri);
-            sfree(p->browser);
-            sfree(p);
-        }
-    }
-    sfree(detail);
+    kitty_url_ask(hwnd, uri, browser, hi.host, warn);
     sfree(warn);
 }
 
@@ -823,7 +893,7 @@ static void kitty_url_open_declared(Terminal *term, Conf *conf, HWND hwnd,
  * Handle a (ctrl+)click at character coordinates x,y.  If it falls inside a
  * detected link region, extract the URL text and launch it.  Returns 1 if a
  * URL was launched.  Mirrors the term_mouse launch branch in 0.76b terminal.c.
- * A cell of an OSC 8 link goes through kitty_url_open_declared instead, and
+ * A cell of an OSC 8 link goes through kitty_url_open_osc8 instead, and
  * the click is taken (1) whatever that decides.
  */
 int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
@@ -853,7 +923,7 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
     if (kitty_url_linkv && x >= 0 && x < kitty_url_mask_cols &&
         y >= 0 && y < kitty_url_mask_rows &&
         kitty_url_linkv[y * kitty_url_mask_cols + x]) {
-        kitty_url_open_declared(term, conf, hwnd, logctx, x, y,
+        kitty_url_open_osc8(term, conf, hwnd, logctx, x, y,
                                 kitty_url_linkv[y * kitty_url_mask_cols + x],
                                 previewed);
         return 1;
@@ -897,9 +967,35 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
 
     if (linkbuf) {
         const char *browser = NULL;
+        char scheme[33];
+        kitty_url_hostinfo hi;
+        /* The URL the expression found is its own text, so only the tricks
+         * of spelling apply: a web address with a user name before the host,
+         * or with a host written as a number or encoded, is not opened (with
+         * KiTTY's default expression neither can match. A custom one can.) */
+        kitty_url_hostinfo_of(linkbuf, &hi);
+        if (kitty_url_scheme(linkbuf, scheme, sizeof(scheme)) &&
+            (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
+             !strcmp(scheme, "ftp")) &&
+            (hi.userinfo || hi.numeric || hi.encoded)) {
+            static int logged_scan;        /* once per window */
+            if (!logged_scan && logctx) {
+                char *m = dupprintf(KT_URL_LOG_REFUSED, hi.userinfo ?
+                                    KT_OSC8_REFUSED_USERINFO :
+                                    KT_OSC8_REFUSED_NUMERIC);
+                logevent(logctx, m);
+                sfree(m);
+                logged_scan = 1;
+            }
+            sfree(linkbuf);
+            return 1;
+        }
         if (!conf_get_int(conf, CONF_url_defbrowser))
             browser = filename_to_str(conf_get_filename(conf, CONF_url_browser));
-        urlhack_launch_url(browser, linkbuf);
+        if (conf_get_int(conf, CONF_url_confirm) == 0)
+            kitty_url_ask(hwnd, linkbuf, browser, hi.host, NULL);  /* always */
+        else
+            urlhack_launch_url(browser, linkbuf);
         sfree(linkbuf);
         return 1;
     }

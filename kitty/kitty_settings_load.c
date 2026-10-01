@@ -832,6 +832,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	gppi_forced(sesskey, "HyperlinkScan", conf, CONF_url_scan);
 	gppi_forced(sesskey, "HyperlinkOSC8", conf, CONF_url_osc8);
 	gppi_forced(sesskey, "HyperlinkPreview", conf, CONF_url_preview);
+	gppi_forced(sesskey, "HyperlinkConfirm", conf, CONF_url_confirm);
 #ifdef MOD_ZMODEM
     gppfile_forced(sesskey, "rzCommand", conf, CONF_rzcommand );
     gpps_forced(sesskey, "rzOptions", conf, CONF_rzoptions );

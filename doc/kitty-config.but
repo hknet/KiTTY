@@ -456,30 +456,80 @@ their look, with the pattern set below. Output that marks nothing up -
 a URL printed by \c{cat}, a link in a log - is only clickable this way.
 Stored as \c{HyperlinkScan}.
 
-\b \q{Accept links declared by the host (\i{OSC 8})} lets a program on the
+\b \q{Allow \i{OSC 8} hyperlinks} lets a program on the
 far end mark text as a link to a target it names (\c{ls --hyperlink},
-many text-mode programs). The text need not be the target, so KiTTY
-opens such a link at once only when it is an \c{http}, \c{https},
-\c{ftp} or \c{mailto} address and either its text is the target, or the
-tip below has shown the whole target (80 characters at most) before the
-click. Any other link shows its host and target first and opens only on
-\q{Yes}. The terminal keeps running while the confirmation is open. A red
-line in the confirmation marks a text that names another host than the
-target's, a host written in punycode (\c{xn--}, which can imitate another
-name) and a scheme that is not a browser's. Never opened: a \c{file} link
-naming another computer, a target that is not a valid address or a web
-address with a user name before the host (\c{https://mybank@evil/}) or a
-host written as a number or percent-encoded. Stored as \c{HyperlinkOSC8}.
+many text-mode programs). The text need not be the target, so what such
+a link may open and when it needs a confirmation first follow the
+rules under \q{Confirmation before opening a link} below. Stored as
+\c{HyperlinkOSC8}.
 
-\b \q{Show the target of declared links (OSC 8) on hover} shows a
-declared link's target in a tip under the pointer while it rests on the
+\b \q{Show the target of OSC 8 hyperlinks on hover} shows an
+OSC 8 hyperlink's target in a tip under the pointer while it rests on the
 link, since the text need not be the target. A target longer than a line
 starts with its host on a line of its own. A link found by the regular
 expression gets no tip: its text is the target. Stored as
 \c{HyperlinkPreview}.
 
-Where both apply to the same text, the declared link wins. Turning both
+Where both apply to the same text, the OSC 8 hyperlink wins. Turning both
 off leaves no links at all.
+
+\b \q{Confirmation before opening a link} decides when a click on a link
+shows the confirmation first. Stored as \c{HyperlinkConfirm}: 0, 1 (the
+default) or 2.
+
+\lcont{
+
+\b \q{Always} (0): every link shows the confirmation, OSC 8 hyperlinks
+and links the regular expression finds alike.
+
+\b \q{When the link looks risky} (1): a link the regular expression finds
+opens at once, since its text is its target. An OSC 8 hyperlink opens at
+once only when all of these hold: its scheme is \c{http}, \c{https},
+\c{ftp} or \c{mailto}, none of the warnings below applies and either its
+text is its target or the tip above has shown the whole target (80
+characters at most) for at least 0.4 seconds before the click. Anything
+else shows the confirmation, with one red line per warning:
+
+\lcont{
+
+\b the scheme is not a browser's (\c{ssh:}, \c{file:} or any other): Windows
+starts the program registered for it.
+
+\b the text names another host than the target's. That is checked when the
+text is written as an address (\c{https://...} or \c{www....}) and names a
+host that is neither the target's nor a name above or below it
+(\c{docs.example.org} and \c{example.org} are the same owner). It is also
+checked when the text is a single name such as \c{mybank.com}: then the
+name must be the target's host, or appear somewhere in the target
+(\c{report.pdf} for \c{https://.../report.pdf} is fine).
+
+\b the target carries a second address in its query (\c{?url=https://...},
+also percent-encoded) whose host has another owner: where a redirecting
+page really sends you.
+
+\b the host is written in punycode (\c{xn--...}), which can imitate
+another name.
+
+}
+
+\b \q{Only for non-web links} (2): \c{http}, \c{https}, \c{ftp} and
+\c{mailto} links open at once, warnings or not. Any other scheme shows
+the confirmation.
+
+}
+
+The confirmation shows the host on a line of its own, then the whole
+target in a field that scrolls when the target is long. It opens only on
+\q{Yes}. The terminal keeps running while it is open. Only one is open
+at a time.
+
+In every mode some targets are never opened. The first one of a window
+is noted in the Event Log: a target with no valid scheme (a drive letter
+such as \c{c:\\...} is none), a target with a double quote in it, a
+\c{file} link naming another computer and a web address with a user name
+before the host (\c{https://mybank@evil/}) or with a host written as a
+number (\c{3232235777}, \c{0x7f.1}, \c{127.1}) or percent-encoded. The last
+two apply to links the regular expression finds as well.
 
 \b \q{Require Ctrl key to click hyperlinks} keeps ordinary clicking as
 selection, which is what you want if you select text with the mouse

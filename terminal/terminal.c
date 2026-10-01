@@ -6801,7 +6801,7 @@ static void do_osc(Terminal *term)
             kitty_set_remote_cwd(term->osc_string);
             break;
           case 8:
-            /* OSC 8: a hyperlink the host declares (kitty_osc8). */
+            /* OSC 8: a hyperlink the host sends (kitty_osc8). */
             kitty_osc8(term);
             break;
           case 52:

@@ -5364,6 +5364,13 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
         ctrl_checkbox(s, KT_HYPERLINKS_PREVIEW, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_preview));
+        /* NO_SHORTCUT: each button carries its own shortcut (triples) */
+        ctrl_radiobuttons(s, KT_HYPERLINKS_CONFIRM, NO_SHORTCUT, 1,
+                          HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
+                          I(CONF_url_confirm),
+                          KT_HYPERLINKS_CONFIRM_ALWAYS, NO_SHORTCUT, I(0),
+                          KT_HYPERLINKS_CONFIRM_RISKY,  NO_SHORTCUT, I(1),
+                          KT_HYPERLINKS_CONFIRM_NONWEB, NO_SHORTCUT, I(2));
         ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_ctrl_click));
