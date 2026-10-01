@@ -1342,6 +1342,177 @@ static inline int checkscr(int y, int lineno)
     return y;
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: redraw what changed (TODO "Terminal redraw speed", steps 3 and 14).
+ *
+ * do_paint walked every cell of every row on every update - output, a
+ * cursor-blink tick, anything - comparing it with what it drew last. It now
+ * walks only the rows marked here and skips the rest.
+ *
+ * The marks:
+ *  - every screen line the terminal fetches through lineptr while it is NOT
+ *    painting (kd_quiet == 0): the one door all writers go through, so no
+ *    write site can be missed. A reader marks too, which costs a walk only;
+ *  - scroll(): the marks move with the rows (kitty_kd_scroll) and the rows
+ *    that come in are marked. When the frame then does not move the pixels
+ *    (kitty_shift_apply), every row is walked;
+ *  - every row: a resize, a reset, the other screen, term_invalidate, a
+ *    reconfiguration, and whatever else a frame depends on changing since
+ *    the last paint (kitty_kd_frame: the view scrolled back, the selection,
+ *    reverse video and the visual bell, focus, text blink, IME text);
+ *  - the cursor's row and the row it was drawn on, always;
+ *  - term_paint (WM_PAINT): the rows of its rectangle.
+ * The plain-text writer (term_text_run) knows the columns it wrote and marks
+ * only those (kitty_kd_cols); do_paint then walks from the start of the run
+ * the last frame drew there to its end (step 14).
+ */
+static void kitty_kd_size(Terminal *term)
+{
+    int n = term->rows > 0 ? term->rows : 0;
+    if (term->kd_rows != n) {
+        sfree(term->kd_full);
+        sfree(term->kd_x0);
+        sfree(term->kd_x1);
+        term->kd_full = n ? snewn(n, unsigned char) : NULL;
+        term->kd_x0 = n ? snewn(n, int) : NULL;
+        term->kd_x1 = n ? snewn(n, int) : NULL;
+        if (n) {
+            memset(term->kd_full, 0, n);
+            memset(term->kd_x0, 0, n * sizeof(int));
+            memset(term->kd_x1, 0, n * sizeof(int));
+        }
+        term->kd_rows = n;
+    }
+    term->kd_all = true;
+}
+
+static inline void kitty_kd_row(Terminal *term, int y)
+{
+    if (y >= 0 && y < term->kd_rows)
+        term->kd_full[y] = 1;
+}
+
+/* Columns x0 .. x1-1 of row y written by the plain-text writer; a row
+ * already marked whole stays whole. */
+static void kitty_kd_cols(Terminal *term, int y, int x0, int x1)
+{
+    if (y < 0 || y >= term->kd_rows || term->kd_full[y] || x1 <= x0)
+        return;
+    if (term->kd_x1[y] > term->kd_x0[y]) {
+        if (x0 < term->kd_x0[y]) term->kd_x0[y] = x0;
+        if (x1 > term->kd_x1[y]) term->kd_x1[y] = x1;
+    } else {
+        term->kd_x0[y] = x0;
+        term->kd_x1[y] = x1;
+    }
+}
+
+/* scroll(): rows top..bot moved by n (positive = up). The marks move with
+ * them, as do_paint's shift moves their pixels and disptext. */
+static void kitty_kd_scroll(Terminal *term, int top, int bot, int n)
+{
+    int band = bot - top + 1, i;
+    if (!n || top < 0 || bot >= term->kd_rows || band < 1)
+        return;
+    /* the cursor the last frame drew moves with the pixels too, or out */
+    if (term->kd_cursy >= top && term->kd_cursy <= bot) {
+        term->kd_cursy -= n;
+        if (term->kd_cursy < top || term->kd_cursy > bot)
+            term->kd_cursy = -1;
+    }
+    if (n >= band || -n >= band) {
+        for (i = top; i <= bot; i++)
+            kitty_kd_row(term, i);
+        return;
+    }
+    if (n > 0) {
+        memmove(term->kd_full + top, term->kd_full + top + n, band - n);
+        memmove(term->kd_x0 + top, term->kd_x0 + top + n,
+                (band - n) * sizeof(int));
+        memmove(term->kd_x1 + top, term->kd_x1 + top + n,
+                (band - n) * sizeof(int));
+        for (i = bot - n + 1; i <= bot; i++)
+            kitty_kd_row(term, i);
+    } else {
+        n = -n;
+        memmove(term->kd_full + top + n, term->kd_full + top, band - n);
+        memmove(term->kd_x0 + top + n, term->kd_x0 + top,
+                (band - n) * sizeof(int));
+        memmove(term->kd_x1 + top + n, term->kd_x1 + top,
+                (band - n) * sizeof(int));
+        for (i = top; i < top + n; i++)
+            kitty_kd_row(term, i);
+    }
+}
+
+/* do_paint, before the rows: what else the frame depends on, against the
+ * last paint. Any of it changed = every row; the cursor's rows always. */
+static void kitty_kd_frame(Terminal *term, int curs_y)
+{
+    bool rv = !term->rvideo ^ !term->in_vbell;
+    bool preedit = term->preedit_termline != NULL;
+    if (term->kd_rows != term->rows)
+        kitty_kd_size(term);
+    if (!term->kd_valid || term->disptop != 0 ||
+        term->kd_disptop != term->disptop ||
+        term->kd_selstate != (int)term->selstate ||
+        term->kd_seltype != (int)term->seltype ||
+        !poseq(term->kd_selstart, term->selstart) ||
+        !poseq(term->kd_selend, term->selend) ||
+        term->kd_rv != rv || term->kd_tblinker != term->tblinker ||
+        term->kd_focus != term->has_focus ||
+        preedit || term->kd_preedit != preedit)
+        term->kd_all = true;
+    term->kd_disptop = term->disptop;
+    term->kd_selstate = (int)term->selstate;
+    term->kd_seltype = (int)term->seltype;
+    term->kd_selstart = term->selstart;
+    term->kd_selend = term->selend;
+    term->kd_rv = rv;
+    term->kd_tblinker = term->tblinker;
+    term->kd_focus = term->has_focus;
+    term->kd_preedit = preedit;
+    kitty_kd_row(term, curs_y);
+    kitty_kd_row(term, term->kd_cursy);
+    term->kd_cursy = curs_y;
+    term->kd_valid = true;
+}
+
+/* do_paint, per row: walk it? x0 .. x1-1 are the columns (all of them for a
+ * row marked whole). The marks of a row that is walked are spent. */
+static bool kitty_kd_due(Terminal *term, int y, int *x0, int *x1)
+{
+    *x0 = 0;
+    *x1 = term->cols;
+    if (term->kd_all || y >= term->kd_rows)
+        return true;
+    if (term->kd_full[y]) {
+        term->kd_full[y] = 0;
+        term->kd_x0[y] = term->kd_x1[y] = 0;
+        return true;
+    }
+    if (term->kd_x1[y] > term->kd_x0[y]) {
+        *x0 = term->kd_x0[y];
+        *x1 = term->kd_x1[y] < term->cols ? term->kd_x1[y] : term->cols;
+        term->kd_x0[y] = term->kd_x1[y] = 0;
+        return true;
+    }
+    return false;
+}
+
+/* After do_paint's rows: every mark is spent. */
+static void kitty_kd_spent(Terminal *term)
+{
+    if (term->kd_all && term->kd_rows) {
+        memset(term->kd_full, 0, term->kd_rows);
+        memset(term->kd_x0, 0, term->kd_rows * sizeof(int));
+        memset(term->kd_x1, 0, term->kd_rows * sizeof(int));
+    }
+    term->kd_all = false;
+}
+#endif
+
 /*
  * Retrieve a line of the screen or of the scrollback, according to
  * whether the y coordinate is non-negative or negative
@@ -1406,6 +1577,12 @@ static termline *lineptr(Terminal *term, int y, int lineno)
     if (term->cols > line->cols)
         resizeline(term, line, term->cols);
 
+#ifdef MOD_PERSO
+    /* KiTTY redraw what changed: a screen line fetched outside do_paint may
+     * be written - its row is walked at the next paint (kitty_kd_*) */
+    if (y >= 0 && !term->kd_quiet)
+        kitty_kd_row(term, y);
+#endif
     return line;
 }
 
@@ -1431,7 +1608,19 @@ static termline *lineptr(Terminal *term, int y, int lineno)
 #define unlineptr(line) term_release_line(line)
 
 /* Wrapper for external use (e.g. tests), without the __LINE__ parameter */
+#ifdef MOD_PERSO
+/* KiTTY: the front end only reads (the URL scan, every paint): no marks */
+termline *term_get_line(Terminal *term, int y)
+{
+    termline *l;
+    term->kd_quiet++;
+    l = lineptr(y);
+    term->kd_quiet--;
+    return l;
+}
+#else
 termline *term_get_line(Terminal *term, int y) { return lineptr(y); }
+#endif
 
 /*
  * Coerce a termline to the terminal's current width. Unlike the
@@ -1884,6 +2073,9 @@ static void power_on(Terminal *term, bool clear)
     term->in_vbell = false;
     term->cursor_on = true;
     term->big_cursor = false;
+#ifdef MOD_PERSO
+    term->kd_all = true;               /* KiTTY: a reset, every row walked */
+#endif
     term->default_attr = term->save_attr =
         term->alt_save_attr = term->curr_attr = ATTR_DEFAULT;
     term->curr_truecolour.fg = term->curr_truecolour.bg = optionalrgb_none;
@@ -2202,6 +2394,9 @@ void term_reconfig(Terminal *term, Conf *conf)
                  conf_get_bool(conf, CONF_bce));
     reset_tblink = (conf_get_bool(term->conf, CONF_blinktext) !=
                     conf_get_bool(conf, CONF_blinktext));
+#ifdef MOD_PERSO
+    term->kd_all = true;               /* KiTTY: new settings, every row walked */
+#endif
     reset_charclass = false;
     for (i = 0; i < 256; i++)
         if (conf_get_int_int(term->conf, CONF_wordness, i) !=
@@ -2790,6 +2985,9 @@ void term_free(Terminal *term)
     sfree(term->osc_string);
 #ifdef MOD_PERSO
     kitty_links_free(term);
+    sfree(term->kd_full);
+    sfree(term->kd_x0);
+    sfree(term->kd_x1);
     /* KiTTY: the OSC 5522 approvals table. The passwords are wiped rather than
      * merely freed - they are the token a program is recognised by. */
     for (i = 0; i < OSC5522_MAX_APPROVALS; i++) {
@@ -2864,6 +3062,7 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
     bool keepview;
     int viewtop = 0;
     term->shift_state = 0;             /* a shift noted before is for the old grid */
+    term->kd_all = true;               /* every row walked (kitty_kd_frame sizes) */
 #endif
 
     if (newrows == term->rows && newcols == term->cols &&
@@ -3141,6 +3340,9 @@ static void swap_screen(Terminal *term, int which,
 
     if (!which)
         reset = false;                 /* do no weird resetting if which==0 */
+#ifdef MOD_PERSO
+    term->kd_all = true;               /* KiTTY: the other screen, every row */
+#endif
 
     if (which != term->alt_which) {
         if (term->erase_to_scrollback && term->alt_screen &&
@@ -3351,12 +3553,17 @@ static void kitty_shift_apply(Terminal *term)
     int top = term->shift_top, bot = term->shift_bot, n = term->shift_lines;
     int band = bot - top + 1, i, j, k;
     bool usable = term->shift_state == 1;
+    bool moved = term->shift_state != 0;
     term->shift_state = 0;
     if (!usable || !kitty_term_scroll_hook || top < 0 || bot >= term->rows ||
-        band < 2 || n == 0 || n >= band || -n >= band)
+        band < 2 || n == 0 || n >= band || -n >= band ||
+        !kitty_term_scroll_hook(term->win, top, bot, n)) {
+        /* rows moved and their pixels did not: every row is compared, not
+         * only the marked ones (kitty_kd_*) */
+        if (moved)
+            term->kd_all = true;
         return;
-    if (!kitty_term_scroll_hook(term->win, top, bot, n))
-        return;
+    }
     if (n > 0) {
         /* content moved up: row r shows what row r + n showed */
         for (k = 0; k < n; k++) {
@@ -3394,6 +3601,7 @@ static void scroll(Terminal *term, int topline, int botline,
     scrollwinsize = botline - topline + 1;
 #ifdef MOD_PERSO
     kitty_shift_note(term, topline, botline, lines);
+    kitty_kd_scroll(term, topline, botline, lines);
 #endif
 
     if (lines < 0) {
@@ -7166,7 +7374,14 @@ static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
          * of this moment, which is exactly when the ordinary path would. */
         if (!term_textrun_char(term, p + used, n - used, &ch, &w))
             break;
+        /* this writer knows the columns it writes (kitty_kd_cols below): its
+         * own fetches mark nothing, unless the line is cleared for a change
+         * of trust - then the whole row */
+        term->kd_quiet++;
         cline = scrlineptr(term->curs.y);
+        term->kd_quiet--;
+        if (cline->trusted != term->trusted)
+            kitty_kd_row(term, term->curs.y);
         check_trust_status(term, cline);
         linecols = term->cols - (cline->trusted ? TRUST_SIGIL_WIDTH : 0);
         room = linecols - term->curs.x;
@@ -7192,8 +7407,10 @@ static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
         /* The two ends only: every cell in between is overwritten, so a wide
          * character split inside the segment disappears with it. */
         x0 = term->curs.x;
+        term->kd_quiet++;              /* the same row, columns x0-1 .. x0+k */
         check_boundary(term, x0, term->curs.y);
         check_boundary(term, x0 + k, term->curs.y);
+        term->kd_quiet--;
         for (i = 0; i < k; i++) {
             /* FULL-TERMCHAR; the array after check_boundary(), which may
              * have resized the line */
@@ -7203,6 +7420,7 @@ static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
             cline->chars[x0 + i].truecolour = term->curr_truecolour;
             cline->chars[x0 + i].link = term->curr_link;
         }
+        kitty_kd_cols(term, term->curs.y, x0 > 0 ? x0 - 1 : 0, x0 + k + 1);
         /* exactly what the ordinary path logs: ASCII and code points below
          * U+0100, a byte each */
         if (term->logtype == LGTYP_ASCII && term->logctx)
@@ -9941,6 +10159,9 @@ static void do_paint(Terminal *term)
     size_t chlen;
     termchar *newline;
 
+#ifdef MOD_PERSO
+    term->kd_quiet++;                  /* KiTTY: painting reads, marks nothing */
+#endif
     chlen = 1024;
     ch = snewn(chlen, wchar_t);
 
@@ -9997,6 +10218,8 @@ static void do_paint(Terminal *term)
     }
 
 #ifdef MOD_PERSO
+    /* KiTTY: which rows this frame walks (kitty_kd_*) */
+    kitty_kd_frame(term, our_curs_y);
     /* KiTTY: rows that only moved keep their pixels (see scroll()) */
     if (term->disptop != 0)
         term->shift_state = 0;
@@ -10017,6 +10240,11 @@ static void do_paint(Terminal *term)
         int *backward;
         truecolour tc;
         int preedit_start = 0, preedit_end = 0;
+#ifdef MOD_PERSO
+        int kx0, kx1;                  /* KiTTY: the columns walked */
+        if (!kitty_kd_due(term, i, &kx0, &kx1))
+            continue;                  /* nothing marked it: unchanged */
+#endif
 
         scrpos.y = i + term->disptop;
         ldata = lineptr(scrpos.y);
@@ -10047,11 +10275,42 @@ static void do_paint(Terminal *term)
             cursor |= ATTR_RIGHTCURS;
         }
 
+#ifdef MOD_PERSO
+        /* KiTTY step 14: only some columns were written. The whole row when
+         * its columns do not map one to one (bidi, shaping), its line
+         * attribute changed, or the cursor or IME text is on it. Else the
+         * columns widen to the runs the last frame drew around them: a run
+         * is drawn whole or not at all (the second loop below). */
+        if (kx0 > 0 || kx1 < term->cols) {
+            if (backward || lchars != ldata->chars ||
+                ldata->lattr != term->disptext[i]->lattr ||
+                i == our_curs_y || preedit_end > preedit_start) {
+                kx0 = 0;
+                kx1 = term->cols;
+            } else {
+                kx0 = kx0 > 2 ? kx0 - 2 : 0;
+                kx1 = kx1 + 2 < term->cols ? kx1 + 2 : term->cols;
+                while (kx0 > 0 &&
+                       !(term->disptext[i]->chars[kx0].attr & DATTR_STARTRUN))
+                    kx0--;
+                while (kx1 < term->cols &&
+                       !(term->disptext[i]->chars[kx1].attr & DATTR_STARTRUN))
+                    kx1++;
+            }
+        }
+#endif
+
         /*
          * First loop: work along the line deciding what we want
          * each character cell to look like.
          */
+#ifdef MOD_PERSO
+        /* from one cell before the walked columns: the third loop looks at
+         * the cell to the left (USES_VTLINE_HACK) */
+        for (j = kx0 > 0 ? kx0 - 1 : 0; j < kx1; j++) {
+#else
         for (j = 0; j < term->cols; j++) {
+#endif
             unsigned long tattr, tchar;
             termchar *d = lchars + j;
             bool in_preedit = j >= preedit_start && j < preedit_end;
@@ -10166,9 +10425,15 @@ static void do_paint(Terminal *term)
          * bounding rectangle, should solve any possible problems
          * with fonts that overflow their character cells.
          */
+#ifdef MOD_PERSO
+        laststart = kx0;
+        dirtyrect = false;
+        for (j = kx0; j < kx1; j++) {
+#else
         laststart = 0;
         dirtyrect = false;
         for (j = 0; j < term->cols; j++) {
+#endif
             if (term->disptext[i]->chars[j].attr & DATTR_STARTRUN) {
                 laststart = j;
                 dirtyrect = false;
@@ -10199,7 +10464,12 @@ static void do_paint(Terminal *term)
         term->disptext[i]->lattr = ldata->lattr;
 
         tc = term->erase_char.truecolour;
+#ifdef MOD_PERSO
+        start = kx0;
+        for (j = kx0; j < kx1; j++) {
+#else
         for (j = 0; j < term->cols; j++) {
+#endif
             unsigned long tattr, tchar;
             bool break_run, do_copy, next_run_dirty = false;
             termchar *d = lchars + j;
@@ -10416,6 +10686,10 @@ static void do_paint(Terminal *term)
         unlineptr(ldata);
     }
 
+#ifdef MOD_PERSO
+    kitty_kd_spent(term);
+    term->kd_quiet--;
+#endif
     sfree(newline);
     sfree(ch);
 }
@@ -10430,6 +10704,9 @@ void term_invalidate(Terminal *term)
     for (i = 0; i < term->rows; i++)
         for (j = 0; j < term->cols; j++)
             term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+#ifdef MOD_PERSO
+    term->kd_all = true;               /* KiTTY: every row walked */
+#endif
 
     term_schedule_update(term);
 }
@@ -10453,12 +10730,18 @@ void term_paint(Terminal *term,
         else
             for (j = left / 2; j <= right / 2 + 1 && j < term->cols; j++)
                 term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+#ifdef MOD_PERSO
+        kitty_kd_row(term, i);         /* KiTTY: these rows are walked */
+#endif
     }
 
     if (immediately) {
 #ifdef MOD_PERSO
         /* a WM_PAINT: its DC is clipped to the update region, so pixels
-         * cannot be moved band-wide here - the ordinary comparison */
+         * cannot be moved band-wide here - the ordinary comparison, of
+         * every row when rows had moved */
+        if (term->shift_state != 0)
+            term->kd_all = true;
         term->shift_state = 0;
 #endif
         do_paint(term);

@@ -134,6 +134,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   of each character per font instead of measuring it again on every frame. A
   maximised GDI window taking 200 lines per second of non-ASCII text updates
   each frame in about a third less time.
+- **Updates that change part of the screen cost less.** Each update now
+  compares only the rows the terminal wrote since the last frame instead of
+  every cell of the screen. Plain text marks only the columns it wrote. At 200
+  lines per second this takes about a third off the update time outside
+  drawing. A cursor blink or a progress line no longer compares the whole
+  screen.
 - **Send to tray goes into the launcher while one runs.** Until now it always
   gave the window a tray icon of its own; with a launcher running, the window
   is now hidden into it and listed in its Open Sessions. Application > KiTTY++

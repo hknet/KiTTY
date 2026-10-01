@@ -417,6 +417,21 @@ struct terminal_tag {
     unsigned int link_next, link_gen;     /* ring position, last generation */
     size_t link_bytes;                    /* URI + id bytes held */
 
+    /* KiTTY redraw what changed (terminal.c, kitty_kd_*): which display
+     * rows do_paint walks. kd_full[y] = the whole row; else kd_x0[y] <
+     * kd_x1[y] = only those columns (the plain-text writer's); else the row
+     * is clean. kd_all = every row, next paint. kd_quiet > 0 while do_paint
+     * and the readers read lines, which marks nothing. The kd_* snapshot is
+     * what else a frame depends on, as at the last paint. Unconditional
+     * storage, same ODR reason as above. */
+    unsigned char *kd_full;
+    int *kd_x0, *kd_x1;
+    int kd_rows, kd_quiet;
+    bool kd_all, kd_valid;
+    int kd_disptop, kd_selstate, kd_seltype, kd_cursy;
+    pos kd_selstart, kd_selend;
+    bool kd_rv, kd_tblinker, kd_focus, kd_preedit;
+
     /* KiTTY: accounting for "a clipboard payload was too big and was dropped",
      * shared by OSC 52, OSC 5522 and far2l so all three report it the same way.
      * Every one of these events fires at a moment the REMOTE HOST chose, so both
