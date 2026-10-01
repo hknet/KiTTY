@@ -7,6 +7,7 @@
  */
 #include "putty.h"
 #include "paint.h"
+#include "paint-widthcache.h"
 
 typedef struct GdiPainter {
     KittyPainter p;
@@ -23,6 +24,7 @@ typedef struct GdiPainter {
     COLORREF st_fg, st_bg;
     int st_bkmode;
     UINT st_align;
+    KittyWidthCache wc;                /* measured widths (paint-widthcache.h) */
 } GdiPainter;
 
 static bool gdi_begin(KittyPainter *p, HDC given)
@@ -289,6 +291,8 @@ static bool gdi_char_width(KittyPainter *p, HFONT font, unsigned ch,
 {
     GdiPainter *g = (GdiPainter *)p;
     int ibuf = 0;
+    if (kitty_wc_get(&g->wc, font, ch, wide, width))
+        return true;                   /* measured before */
     SelectObject(g->hdc, font);
     g->st_font = font;                 /* the DC now holds this one */
     if (wide) {
@@ -304,6 +308,7 @@ static bool gdi_char_width(KittyPainter *p, HFONT font, unsigned ch,
             return false;
     }
     *width = ibuf;
+    kitty_wc_put(&g->wc, font, ch, wide, ibuf);
     return true;
 }
 
@@ -322,6 +327,7 @@ static void gdi_resize(KittyPainter *p, int w, int h)
 static void gdi_destroy(KittyPainter *p)
 {
     RemovePropA(((GdiPainter *)p)->hwnd, "KiTTY.renderer");
+    kitty_wc_free(&((GdiPainter *)p)->wc);
     sfree(p);
 }
 
@@ -333,7 +339,9 @@ static HANDLE gdi_frame_signal(KittyPainter *p)
 
 static void gdi_fonts_changed(KittyPainter *p)
 {
-    (void)p;                           /* GDI uses the HFONTs as they are */
+    /* GDI draws with the HFONTs as they are; only the measured widths can
+     * belong to a recycled handle */
+    kitty_wc_clear(&((GdiPainter *)p)->wc);
 }
 
 /* The band's pixels moved by dy within the window DC. What ScrollDC could

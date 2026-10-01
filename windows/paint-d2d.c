@@ -69,6 +69,7 @@
 #include <dwrite.h>
 #include <dwrite_2.h>
 #include "paint.h"
+#include "paint-widthcache.h"
 #include "../kitty/kitty_text.h"    /* KiTTY: the renderer badge's word */
 #include "../kitty/kitty_renameguard.h"   /* kitty_eventlog_line */
 #include "kitty_buildlabel.h"       /* the test build's label, if this is one */
@@ -218,6 +219,7 @@ typedef struct D2DPainter {
     ID2D1Bitmap1 *scratch;             /* scroll_rows: the band on its way */
     int scratch_w, scratch_h;
     HRESULT mid_hr;                    /* scroll_rows' EndDraw, for d2d_end */
+    KittyWidthCache wc;                /* measured widths (paint-widthcache.h) */
     ID2D1SolidColorBrush *brush;
     IDWriteFactory *dw;
     IDWriteGdiInterop *gdi;
@@ -768,6 +770,7 @@ static void fonts_forget(D2DPainter *d)
 static void d2d_fonts_changed(KittyPainter *p)
 {
     fonts_forget((D2DPainter *)p);
+    kitty_wc_clear(&((D2DPainter *)p)->wc);   /* widths of recycled handles */
 }
 
 /* The band's pixels moved by dy within the persistent canvas, mid-frame:
@@ -1410,11 +1413,13 @@ static bool d2d_char_width(KittyPainter *p, HFONT font, unsigned ch,
                            bool wide, int *width)
 {
     D2DPainter *d = (D2DPainter *)p;
-    D2DFont *f = font_of(d, font);
+    D2DFont *f;
     UINT32 cp = ch;
     UINT16 gi;
     DWRITE_GLYPH_METRICS gm;
-    (void)wide;
+    if (kitty_wc_get(&d->wc, font, ch, wide, width))
+        return true;                   /* measured before */
+    f = font_of(d, font);
     if (!f)
         return false;
     if (FAILED(IDWriteFontFace_GetGlyphIndices(f->face, &cp, 1, &gi)))
@@ -1422,6 +1427,7 @@ static bool d2d_char_width(KittyPainter *p, HFONT font, unsigned ch,
     if (FAILED(IDWriteFontFace_GetDesignGlyphMetrics(f->face, &gi, 1, &gm, FALSE)))
         return false;
     *width = (int)(gm.advanceWidth * f->emsize / f->units_per_em + 0.5f);
+    kitty_wc_put(&d->wc, font, ch, wide, *width);
     return true;
 }
 
@@ -1432,7 +1438,11 @@ static HDC d2d_hdc(KittyPainter *p)
 }
 
 static void d2d_destroy(D2DPainter *d);
-static void d2d_destroy_p(KittyPainter *p) { d2d_destroy((D2DPainter *)p); }
+static void d2d_destroy_p(KittyPainter *p)
+{
+    kitty_wc_free(&((D2DPainter *)p)->wc);
+    d2d_destroy((D2DPainter *)p);
+}
 
 static HANDLE d2d_frame_signal(KittyPainter *p)
 {

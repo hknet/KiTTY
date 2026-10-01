@@ -130,6 +130,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   them again. 40 000 lines scroll through in about a quarter of the time with
   Direct2D and a sixth with GDI; plain ASCII is about 60 % and Unicode about
   30 % faster in kitty's throughput benchmark.
+- **Non-ASCII text costs less to draw.** Both renderers now keep the width
+  of each character per font instead of measuring it again on every frame. A
+  maximised GDI window taking 200 lines per second of non-ASCII text updates
+  each frame in about a third less time.
 - **Send to tray goes into the launcher while one runs.** Until now it always
   gave the window a tray icon of its own; with a launcher running, the window
   is now hidden into it and listed in its Open Sessions. Application > KiTTY++
