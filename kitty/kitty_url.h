@@ -19,6 +19,10 @@ void kitty_url_preview_hide(void);
 void kitty_url_preview_refresh(Terminal *term, Conf *conf, HWND hwnd);
 void kitty_url_init(void);
 int kitty_url_rescan(Terminal *term, Conf *conf);
+/* The frame moved rows top..bot by n (positive = up); after the frame, the
+ * rows whose underline changed (then kitty_url_row_dirty). */
+void kitty_url_note_shift(int top, int bot, int n);
+int kitty_url_frame_done(void);
 int kitty_url_row_dirty(int row);
 
 #endif /* KITTY_URL_H */

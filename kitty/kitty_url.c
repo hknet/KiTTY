@@ -65,6 +65,61 @@ static unsigned int *kitty_url_linkv = NULL;
 static unsigned long long kitty_url_last_hash = 0;
 static int kitty_url_last_valid = 0;
 
+/*
+ * The expression runs per chunk of the screen, not over the whole screen,
+ * and a chunk whose text the last scan saw takes its matches from it - so
+ * output that scrolls scans only the lines that came in.
+ *
+ * A chunk is a run of rows the expression could match across: the screen
+ * text has no separators between rows, so a link continues on the next row
+ * whenever a row is full. A row whose last cell is a blank (OSC 8 cells
+ * count as blanks) ends its chunk. Keyed by its text and length, never by
+ * position: a chunk that only moved is found again. Matches are kept as
+ * offsets from the chunk's start. Only the last scan's chunks are kept.
+ */
+typedef struct kitty_url_chunk {
+    unsigned long long hash;
+    int len;                           /* bytes of screen text */
+    int first, n;                      /* its matches in the offset array */
+} kitty_url_chunk;
+typedef struct kitty_url_chunks {
+    kitty_url_chunk *c;
+    int nc, cc;
+    int *off;                          /* start, end pairs */
+    int noff, coff;
+} kitty_url_chunks;
+static kitty_url_chunks kitty_url_cache[2];
+static int kitty_url_cache_cur = 0;    /* the one being filled */
+
+/* After a scan, until the frame is drawn: the old mask is still in
+ * kitty_url_mask. The rows whose pixels the window moved meanwhile
+ * (kitty_url_note_shift) decide which old row each new one is compared
+ * with (kitty_url_frame_done). */
+static int kitty_url_diff_pending = 0;
+static int kitty_url_shift_top, kitty_url_shift_bot, kitty_url_shift_n;
+
+/* Per row of the last scan: the hash of its text, and whether its last
+ * cell was a blank (the end of a chunk). */
+static unsigned long long *kitty_url_rowhash = NULL;
+static unsigned char *kitty_url_rowend = NULL;
+
+static void kitty_url_cache_clear(void)
+{
+    kitty_url_cache[0].nc = kitty_url_cache[0].noff = 0;
+    kitty_url_cache[1].nc = kitty_url_cache[1].noff = 0;
+}
+
+static void kitty_url_cache_match(void *ctx, int s, int e)
+{
+    kitty_url_chunks *k = (kitty_url_chunks *)ctx;
+    if (k->noff + 2 > k->coff) {
+        k->coff = k->coff ? 2 * k->coff : 64;
+        k->off = sresize(k->off, k->coff, int);
+    }
+    k->off[k->noff++] = s;
+    k->off[k->noff++] = e;
+}
+
 void kitty_url_init(void)
 {
     if (!kitty_url_inited) {
@@ -80,6 +135,7 @@ void kitty_url_config(Conf *conf)
     if (!kitty_url_inited)
         return;
     kitty_url_last_valid = 0;          /* a new expression must rescan */
+    kitty_url_cache_clear();           /* and its matches are not the old ones */
     re = conf_get_str(conf, CONF_url_regex);
     if (re == NULL || strlen(re) == 0)
         re = "@" "NO REGEX--"; /* harmless placeholder, matches nothing */
@@ -99,10 +155,14 @@ void kitty_url_config(Conf *conf)
  * (CONF_url_osc8). A cell an OSC 8 link owns is a link whatever the
  * expression thinks, and is a blank to the expression, so a detected URL
  * never runs into or across an OSC 8 one.
+ *
+ * Runs before the frame is drawn, which draws with the new scan. Which rows
+ * changed their underline is settled after it (kitty_url_frame_done), once
+ * it is known whether the frame moved rows. True when the text changed.
  */
 int kitty_url_rescan(Terminal *term, Conf *conf)
 {
-    int i, j, any = 0;
+    int i, j;
     int scan = conf_get_int(conf, CONF_url_scan) != 0;
     int osc8 = conf_get_int(conf, CONF_url_osc8) != 0;
     unsigned long long hash = 1469598103934665603ULL;   /* FNV-1a */
@@ -113,15 +173,22 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
         sfree(kitty_url_prevmask);
         sfree(kitty_url_dirtyrow);
         sfree(kitty_url_linkv);
+        sfree(kitty_url_rowhash);
+        sfree(kitty_url_rowend);
         kitty_url_mask_rows = term->rows;
         kitty_url_mask_cols = term->cols;
         kitty_url_mask     = snewn(term->rows * term->cols, unsigned char);
         kitty_url_prevmask = snewn(term->rows * term->cols, unsigned char);
         kitty_url_dirtyrow = snewn(term->rows, unsigned char);
         kitty_url_linkv    = snewn(term->rows * term->cols, unsigned int);
+        kitty_url_rowhash  = snewn(term->rows, unsigned long long);
+        kitty_url_rowend   = snewn(term->rows, unsigned char);
         memset(kitty_url_prevmask, 0, term->rows * term->cols);
+        memset(kitty_url_dirtyrow, 0, term->rows);
         kitty_url_last_valid = 0;
     }
+    kitty_url_diff_pending = 0;        /* a new frame: no diff, no shift yet */
+    kitty_url_shift_n = 0;
     urlhack_reset();
     hash = (hash ^ (unsigned long long)term->rows) * 1099511628211ULL;
     hash = (hash ^ (unsigned long long)term->cols) * 1099511628211ULL;
@@ -129,8 +196,18 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
     for (i = 0; i < term->rows; i++) {
         termline *lp = term_get_line(term, term->disptop + i);
         unsigned int *lv = kitty_url_linkv + i * term->cols;
+        unsigned long long rh = 1469598103934665603ULL;
+        char fed = ' ';
         if (!lp) {
+            /* a blank row, as the scan sees it */
             memset(lv, 0, term->cols * sizeof(*lv));
+            for (j = 0; j < term->cols; j++) {
+                urlhack_putchar(' ');
+                rh = (rh ^ ' ') * 1099511628211ULL;
+            }
+            hash = (hash ^ rh) * 1099511628211ULL;
+            kitty_url_rowhash[i] = rh;
+            kitty_url_rowend[i] = 1;
             continue;
         }
         for (j = 0; j < term->cols; j++) {
@@ -142,11 +219,15 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
             /* UCSWIDE / control chars -> treat as blank for URL scanning */
             if (c < 0x20 || c == 0x7F)
                 c = ' ';
+            fed = link ? ' ' : (char)c;
+            rh = (rh ^ (unsigned char)fed) * 1099511628211ULL;
             hash = (hash ^ c) * 1099511628211ULL;
             hash = (hash ^ link) * 1099511628211ULL;
-            urlhack_putchar(link ? ' ' : (char)c);
+            urlhack_putchar(fed);
         }
         term_release_line(lp);
+        kitty_url_rowhash[i] = rh;
+        kitty_url_rowend[i] = fed == ' ';
     }
     urlhack_putchar('\0');             /* the scan reads up to this */
 
@@ -158,43 +239,129 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
     }
     kitty_url_last_hash = hash;
     kitty_url_last_valid = 1;
-    /* Scan off: urlhack keeps the regions of its last scan, so every reader
-     * of them below and in the click checks `scan` first. */
-    if (scan)
-        urlhack_go_find_me_some_hyperlinks(term->cols);
 
-    /*
-     * Diff per-cell link membership against the previous scan so the caller can
-     * repaint only the rows whose underline state actually changed, rather than
-     * invalidating the whole window on every content change.  urlhack_is_in_
-     * link_region() uses the same 0-based visible frame as kitty_url_cell_
-     * underline(), so the mask lines up with what gets drawn.
-     */
-    for (i = 0; i < term->rows; i++) {
-        int rowchanged = 0;
-        for (j = 0; j < term->cols; j++) {
-            unsigned char m = (kitty_url_linkv[i * term->cols + j] ||
-                               (scan && urlhack_is_in_link_region(j, i))) ? 1 : 0;
-            kitty_url_mask[i * term->cols + j] = m;
-            if (m != kitty_url_prevmask[i * term->cols + j])
-                rowchanged = 1;
+    /* The new mask: OSC 8 cells, then the regions of the expression. */
+    for (i = 0; i < term->rows * term->cols; i++)
+        kitty_url_mask[i] = kitty_url_linkv[i] ? 1 : 0;
+    /* Scan off: urlhack keeps the regions of its last scan, so every reader
+     * of them in the click checks `scan` first. */
+    if (scan) {
+        kitty_url_chunks *cur = &kitty_url_cache[kitty_url_cache_cur];
+        kitty_url_chunks *old = &kitty_url_cache[!kitty_url_cache_cur];
+        int r0 = 0, r1, cols = term->cols, total = term->rows * term->cols;
+        cur->nc = cur->noff = 0;
+        urlhack_clear_regions();
+        while (r0 < term->rows) {
+            unsigned long long ch = 1469598103934665603ULL;
+            int start = r0 * cols, len, k, found = -1, ok = 1;
+            for (r1 = r0; r1 < term->rows - 1 && !kitty_url_rowend[r1]; r1++)
+                ;
+            len = (r1 - r0 + 1) * cols;
+            for (k = r0; k <= r1; k++)
+                ch = (ch ^ kitty_url_rowhash[k]) * 1099511628211ULL;
+            ch = (ch ^ (unsigned long long)len) * 1099511628211ULL;
+            for (k = 0; k < old->nc; k++)
+                if (old->c[k].hash == ch && old->c[k].len == len) {
+                    found = k;
+                    break;
+                }
+            if (cur->nc == cur->cc) {
+                cur->cc = cur->cc ? 2 * cur->cc : 32;
+                cur->c = sresize(cur->c, cur->cc, kitty_url_chunk);
+            }
+            cur->c[cur->nc].hash = ch;
+            cur->c[cur->nc].len = len;
+            cur->c[cur->nc].first = cur->noff;
+            if (found >= 0) {
+                /* seen before: its matches, moved to where it is now */
+                for (k = 0; k < old->c[found].n; k++) {
+                    int o = old->off[old->c[found].first + 2 * k];
+                    int e = old->off[old->c[found].first + 2 * k + 1];
+                    kitty_url_cache_match(cur, o, e);
+                }
+            } else {
+                int m0 = cur->noff;
+                ok = urlhack_scan_range(start, start + len,
+                                        kitty_url_cache_match, cur);
+                for (k = m0; k < cur->noff; k++)
+                    cur->off[k] -= start;   /* offsets from the chunk start */
+            }
+            cur->c[cur->nc].n = (cur->noff - cur->c[cur->nc].first) / 2;
+            cur->nc++;
+            if (!ok)
+                break;                 /* no expression: no links at all */
+            /* the regions, and their cells in the mask */
+            for (k = cur->c[cur->nc - 1].first; k < cur->noff; k += 2) {
+                int s = start + cur->off[k], e = start + cur->off[k + 1], p;
+                urlhack_add_link_region(s % cols, s / cols, e % cols, e / cols);
+                for (p = s < 0 ? 0 : s; p < e && p < total; p++)
+                    kitty_url_mask[p] = 1;
+            }
+            r0 = r1 + 1;
         }
-        kitty_url_dirtyrow[i] = (unsigned char)rowchanged;
-        if (rowchanged)
-            any = 1;
+        kitty_url_cache_cur = !kitty_url_cache_cur;
     }
-    {   /* current scan becomes the baseline for the next diff */
+    {   /* the new scan is what is drawn; the old one waits for the diff */
         unsigned char *t = kitty_url_prevmask;
         kitty_url_prevmask = kitty_url_mask;
         kitty_url_mask = t;
+    }
+    kitty_url_diff_pending = 1;
+    return 1;
+}
+
+/* The window moved the pixels of rows top..bot by n (positive = up) in the
+ * frame being drawn (window.c kitty_win_scroll_rows). */
+void kitty_url_note_shift(int top, int bot, int n)
+{
+    kitty_url_shift_top = top;
+    kitty_url_shift_bot = bot;
+    kitty_url_shift_n = n;
+}
+
+/*
+ * After the frame is drawn: which rows changed hyperlink-underline
+ * membership against the last scan, for the window to repaint
+ * (kitty_url_row_dirty). A row whose pixels the frame moved is compared with
+ * the row they came from - a link that only scrolled keeps its underline
+ * with its pixels. A row that came in was drawn whole. True when a row is
+ * dirty.
+ */
+int kitty_url_frame_done(void)
+{
+    int i, j, any = 0, rows = kitty_url_mask_rows, cols = kitty_url_mask_cols;
+    int top = kitty_url_shift_top, bot = kitty_url_shift_bot;
+    int n = kitty_url_shift_n;
+    kitty_url_shift_n = 0;
+    if (!kitty_url_diff_pending || !kitty_url_mask || !kitty_url_prevmask)
+        return 0;
+    kitty_url_diff_pending = 0;
+    if (n && (top < 0 || bot >= rows || top > bot))
+        n = 0;
+    for (i = 0; i < rows; i++) {
+        int src = i;
+        if (n && i >= top && i <= bot) {
+            src = i + n;
+            if (src < top || src > bot) {
+                kitty_url_dirtyrow[i] = 0;     /* came in: drawn whole */
+                continue;
+            }
+        }
+        kitty_url_dirtyrow[i] = 0;
+        for (j = 0; j < cols; j++)
+            if (kitty_url_prevmask[i * cols + j] != kitty_url_mask[src * cols + j]) {
+                kitty_url_dirtyrow[i] = 1;
+                any = 1;
+                break;
+            }
     }
     return any;
 }
 
 /*
  * Did row `row` (0-based, top visible line) change hyperlink-underline
- * membership in the most recent kitty_url_rescan()?  Lets the window layer
- * repaint only the affected rows.
+ * membership in the most recent frame (kitty_url_frame_done)?  Lets the
+ * window layer repaint only the affected rows.
  */
 int kitty_url_row_dirty(int row)
 {

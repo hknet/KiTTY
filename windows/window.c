@@ -9327,13 +9327,11 @@ static bool wintw_setup_draw_ctx(TermWin *tw)
      * repaint, so one scan per repaint burst keeps hover/click hit-tests and
      * the hyperlink underline current.  This is the only rescan driver (the
      * mouse-move path only hit-tests), so it must run even with underlining
-     * off; repainting the changed rows only matters when underlines are
-     * drawn. */
+     * off. The rows whose underline changed are repainted after the frame
+     * (wintw_free_draw_ctx). */
     if (ok && GetHyperlinkFlag()) {
         KP_T0;
-        if (kitty_url_rescan(wgs->term, wgs->conf) &&
-            conf_get_int(wgs->conf, CONF_url_underline))
-            kitty_url_invalidate_dirty_rows(wgs);
+        kitty_url_rescan(wgs->term, wgs->conf);
         /* the link under an open preview may have scrolled away */
         kitty_url_preview_refresh(wgs->term, wgs->conf, wgs->term_hwnd);
         KP_T1(KP_URL);
@@ -9364,7 +9362,11 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines)
     band.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
     band.top = wgs->offset_height + top * wgs->font_height;
     band.bottom = wgs->offset_height + (bot + 1) * wgs->font_height;
-    return kp_scroll_rows(wgs->painter, &band, -lines * wgs->font_height);
+    if (!kp_scroll_rows(wgs->painter, &band, -lines * wgs->font_height))
+        return false;
+    /* link underlines moved with the pixels (kitty_url_frame_done) */
+    kitty_url_note_shift(top, bot, lines);
+    return true;
 }
 #endif
 
@@ -9374,6 +9376,17 @@ static void wintw_free_draw_ctx(TermWin *tw)
     KP_T0;
     kp_end(wgs->painter);   /* Direct2D presents the frame here */
     KP_T1(KP_PAINT);
+#ifdef MOD_PERSO
+    /* the rows whose link underline changed are repainted, unless the link
+     * only moved with the pixels */
+    if (GetHyperlinkFlag()) {
+        KP_T0;
+        if (kitty_url_frame_done() &&
+            conf_get_int(wgs->conf, CONF_url_underline))
+            kitty_url_invalidate_dirty_rows(wgs);
+        KP_T1(KP_URL);
+    }
+#endif
 }
 
 /* A DC on the terminal window for measuring and palette work, outside a

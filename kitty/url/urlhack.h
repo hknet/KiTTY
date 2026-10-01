@@ -29,6 +29,9 @@ int urlhack_mouse_old_x, urlhack_mouse_old_y, urlhack_current_region;
 
 void urlhack_reset(void);
 void urlhack_go_find_me_some_hyperlinks(int screen_width);
+void urlhack_clear_regions(void);
+int urlhack_scan_range(int start, int end,
+                       void (*fn)(void *ctx, int s, int e), void *ctx);
 void urlhack_putchar(char ch);
 text_region urlhack_get_link_region(int index);
 

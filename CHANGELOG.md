@@ -140,6 +140,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   lines per second this takes about a third off the update time outside
   drawing. A cursor blink or a progress line no longer compares the whole
   screen.
+- **Detected links cost less while output scrolls.** The search for web
+  addresses now runs only over the lines that changed and reuses what it found
+  in lines it saw before. A link that only scrolled keeps its underline
+  instead of being drawn again. With a screen full of links at 200 lines per
+  second the search takes about a fifth of the time.
 - **Send to tray goes into the launcher while one runs.** Until now it always
   gave the window a tray icon of its own; with a launcher running, the window
   is now hidden into it and listed in its Open Sessions. Application > KiTTY++

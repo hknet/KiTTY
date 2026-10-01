@@ -308,6 +308,45 @@ void urlhack_set_regular_expression(int mode, const char* expression)
     is_regexp_compiled = 1;
 }
 
+/* KiTTY: the regions of a scan are rebuilt by the caller (kitty_url.c,
+ * one chunk of the screen at a time, most from its cache). */
+void urlhack_clear_regions(void)
+{
+    urlhack_link_regions_clear();
+}
+
+/* KiTTY: the matches in window_text[start .. end) - one chunk of the
+ * screen - as offsets into window_text, each handed to fn. The text is
+ * cut at end for the scan and restored. Same rules as the whole-screen
+ * scan below: a match starting with a blank starts after it, the next
+ * search starts one past the end of a match. False when no expression
+ * can run. */
+int urlhack_scan_range(int start, int end,
+                       void (*fn)(void *ctx, int s, int e), void *ctx)
+{
+    char *text_pos, *stop, saved;
+    if (urlhack_disabled != 0)
+        return 0;
+    if (is_regexp_compiled == 0)
+        urlhack_set_regular_expression(URLHACK_REGEX_CLASSIC, urlhack_default_regex);
+    if (urlhack_disabled != 0 || urlhack_rx == NULL)
+        return 0;
+    if (start < 0 || end > window_text_current_pos || start >= end)
+        return 1;
+    stop = window_text + end;
+    saved = *stop;
+    *stop = '\0';
+    text_pos = window_text + start;
+    while (text_pos < stop && regexec(urlhack_rx, text_pos) == 1) {
+        char *s = *urlhack_rx->startp[0] == ' ' ? urlhack_rx->startp[0] + 1
+                                                 : urlhack_rx->startp[0];
+        fn(ctx, (int)(s - window_text), (int)(urlhack_rx->endp[0] - window_text));
+        text_pos = urlhack_rx->endp[0] + 1;
+    }
+    *stop = saved;
+    return 1;
+}
+
 void urlhack_go_find_me_some_hyperlinks(int screen_width)
 {
     char* text_pos;
