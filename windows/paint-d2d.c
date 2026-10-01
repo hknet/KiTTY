@@ -220,6 +220,9 @@ typedef struct D2DPainter {
     int scratch_w, scratch_h;
     HRESULT mid_hr;                    /* scroll_rows' EndDraw, for d2d_end */
     KittyWidthCache wc;                /* measured widths (paint-widthcache.h) */
+    /* d2d_end's partial copy */
+    RECT prev_dirty;                   /* the last frame's changed rectangle */
+    int full_copies;                   /* frames still copying the whole canvas */
     ID2D1SolidColorBrush *brush;
     IDWriteFactory *dw;
     IDWriteGdiInterop *gdi;
@@ -414,6 +417,8 @@ static bool create_targets(D2DPainter *d, int w, int h)
     d->width = w; d->height = h;
     d->dirty.left = 0; d->dirty.top = 0; d->dirty.right = w; d->dirty.bottom = h;
     d->dirty_any = true;
+    d->full_copies = 2;                /* both buffers are new (d2d_end) */
+    memset(&d->prev_dirty, 0, sizeof(d->prev_dirty));
 
     /* A fresh canvas is black until the terminal repaints into it. */
     ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
@@ -684,7 +689,32 @@ static void d2d_end(KittyPainter *p)
      * waited on before this frame was started (the pacing), so Present
      * does not block; what little it waits is measured and taken off the
      * paint cost (windows/kitty_pace.c). */
-    all = rectf(0, 0, d->width, d->height);
+    /* Only what changed goes over. The swap chain flips between two
+     * buffers, so the one drawn into now still holds the frame before last:
+     * it needs this frame's changes and the previous frame's. Everything is
+     * copied while the buffers are new (created, resized: their content is
+     * undefined) and while the badge is drawn over them. */
+    {
+        RECT cr = d->dirty, cur;
+        if (cr.left < 0) cr.left = 0;
+        if (cr.top < 0) cr.top = 0;
+        if (cr.right > d->width) cr.right = d->width;
+        if (cr.bottom > d->height) cr.bottom = d->height;
+        cur = cr;
+        if (d->badge_fmt && GetTickCount() - d->badge_t0 < BADGE_SHOW_MS)
+            d->full_copies = 2;        /* and two more once it is gone */
+        if (d->full_copies > 0) {
+            cr.left = 0; cr.top = 0; cr.right = d->width; cr.bottom = d->height;
+            d->full_copies--;
+        } else {
+            if (d->prev_dirty.left < cr.left) cr.left = d->prev_dirty.left;
+            if (d->prev_dirty.top < cr.top) cr.top = d->prev_dirty.top;
+            if (d->prev_dirty.right > cr.right) cr.right = d->prev_dirty.right;
+            if (d->prev_dirty.bottom > cr.bottom) cr.bottom = d->prev_dirty.bottom;
+        }
+        d->prev_dirty = cur;
+        all = rectf(cr.left, cr.top, cr.right, cr.bottom);
+    }
     ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->target);
     ID2D1RenderTarget_BeginDraw((ID2D1RenderTarget *)d->dc);
     ID2D1RenderTarget_DrawBitmap((ID2D1RenderTarget *)d->dc,
