@@ -1344,7 +1344,7 @@ static inline int checkscr(int y, int lineno)
 
 #ifdef MOD_PERSO
 /*
- * KiTTY: redraw what changed (TODO "Terminal redraw speed", steps 3 and 14).
+ * KiTTY: redraw what changed.
  *
  * do_paint walked every cell of every row on every update - output, a
  * cursor-blink tick, anything - comparing it with what it drew last. It now
@@ -1365,7 +1365,7 @@ static inline int checkscr(int y, int lineno)
  *  - term_paint (WM_PAINT): the rows of its rectangle.
  * The plain-text writer (term_text_run) knows the columns it wrote and marks
  * only those (kitty_kd_cols); do_paint then walks from the start of the run
- * the last frame drew there to its end (step 14).
+ * the last frame drew there to its end.
  */
 static void kitty_kd_size(Terminal *term)
 {
@@ -10276,7 +10276,7 @@ static void do_paint(Terminal *term)
         }
 
 #ifdef MOD_PERSO
-        /* KiTTY step 14: only some columns were written. The whole row when
+        /* KiTTY: only some columns were written. The whole row when
          * its columns do not map one to one (bidi, shaping), its line
          * attribute changed, or the cursor or IME text is on it. Else the
          * columns widen to the runs the last frame drew around them: a run
