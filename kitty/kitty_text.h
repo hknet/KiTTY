@@ -400,6 +400,8 @@
  * %s = the host in the text, %s = the target's host */
 #define KT_OSC8_CONFIRM_WARN_TEXTHOST                "The text shows %s, the link goes to %s."
 #define KT_OSC8_CONFIRM_WARN_PUNYCODE                "The host is written in punycode: it may imitate another name."
+/* red: a user name (and password) before the host; %s = host, %s = user */
+#define KT_OSC8_CONFIRM_WARN_USERINFO                "The link logs in to %s as %s."
 /* red: the target's query carries a second address with another owner;
  * %s = that address's host */
 #define KT_OSC8_CONFIRM_WARN_REDIRECT                "The link forwards to another host: %s."
@@ -409,7 +411,6 @@
 #define KT_OSC8_HOST_LINE                            "Host: %s"
 /* why a target was refused, for the event log line below */
 #define KT_OSC8_REFUSED_MALFORMED                    "malformed target"
-#define KT_OSC8_REFUSED_USERINFO                     "a user name before the host"
 #define KT_OSC8_REFUSED_NUMERIC                      "a host written as a number or encoded"
 #define KT_OSC8_REFUSED_FILEHOST                     "a file on another computer"
 /* event log, the first refused target of a window only */

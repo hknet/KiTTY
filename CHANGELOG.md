@@ -21,11 +21,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`HyperlinkPreview`, on). A short web target the tip has shown opens
   without the confirmation. The confirmation shows the host on a line of
   its own and marks in red a text naming another host and a punycode host.
-  A web address with a user name before the host, or with a host written as
-  a number or encoded, is not opened.
-  A target whose query carries an address of another owner (a redirect)
-  gets a red line naming that host. Links the regular expression finds are
-  refused for the same user-name and number tricks. Window > Hyperlinks >
+  A web address with a host written as a number or encoded is not opened.
+  One that logs in with a user name before the host gets a red line naming
+  host and user, with its password shown as `****`. A target whose query
+  carries an address of another owner (a redirect) gets a red line naming
+  that host. Links the regular expression finds follow the same number and
+  user-name rules. Window > Hyperlinks >
   "Confirmation before opening a link" chooses Always, When the link looks
   risky (the default) or Only for non-web links (`HyperlinkConfirm`).
   Refused targets stay refused in every mode.

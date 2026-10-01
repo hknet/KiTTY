@@ -208,7 +208,9 @@ int kitty_url_row_dirty(int row)
  * "Host:" line of the confirmation and of a long target's preview. Targets
  * are printable ASCII (terminal.c refuses anything else), so every trick left
  * is one of spelling:
- *   userinfo   https://mybank.example@evil.test/ - the host is evil.test
+ *   userinfo   https://mybank.example@evil.test/ - the host is evil.test;
+ *              https://user:pass@host/ logs in with a password (kept here
+ *              so the box can name the user and mask the password)
  *   numeric    http://3232235777/, 0x7f.1, 0177.0.0.1, 127.1 - an address in
  *              disguise. A plain dotted quad (192.168.1.1) is not one
  *   encoded    %2e and the like inside the host
@@ -216,6 +218,7 @@ int kitty_url_row_dirty(int row)
  */
 typedef struct kitty_url_hostinfo {
     char host[256];                    /* lower case; "" = no authority */
+    char user[128];                    /* the user name before @, as written */
     int userinfo, numeric, encoded, punycode;
 } kitty_url_hostinfo;
 
@@ -251,6 +254,13 @@ static void kitty_url_hostinfo_of(const char *uri, kitty_url_hostinfo *hi)
             hi->userinfo = 1;
             h = p + 1;                 /* the host is after the LAST @ */
         }
+    if (hi->userinfo) {                /* the user name: up to ':' or the @ */
+        n = strcspn(a, ":@");
+        if (n >= sizeof(hi->user))
+            n = sizeof(hi->user) - 1;
+        memcpy(hi->user, a, n);
+        hi->user[n] = '\0';
+    }
     if (*h == '[') {                   /* an IPv6 literal, kept as it is */
         p = memchr(h, ']', end - h);
         n = p ? (size_t)(p + 1 - h) : (size_t)(end - h);
@@ -285,6 +295,47 @@ static void kitty_url_hostinfo_of(const char *uri, kitty_url_hostinfo *hi)
     }
     if (numlabels && numlabels == labels && !(labels == 4 && canonical))
         hi->numeric = 1;
+}
+
+/* The target as it is SHOWN (tip, box): a password before the host
+ * (user:password@host) is masked as ****. What opens is the target as
+ * written. */
+static char *kitty_url_masked(const char *uri)
+{
+    const char *a = strchr(uri, ':'), *end, *at = NULL, *colon, *p;
+    if (!a || strncmp(a + 1, "//", 2) != 0)
+        return dupstr(uri);
+    a += 3;
+    end = a + strcspn(a, "/?#");
+    for (p = a; p < end; p++)
+        if (*p == '@')
+            at = p;
+    if (!at)
+        return dupstr(uri);
+    colon = memchr(a, ':', at - a);
+    if (!colon)
+        return dupstr(uri);            /* a user name, no password */
+    return dupprintf("%.*s****%s", (int)(colon + 1 - uri), uri, at);
+}
+
+/* The target with its user name and password taken out, lower case: what
+ * the bare-text check searches, so "mybank.com" in
+ * https://mybank.com@evil.test/ does not count as found in the target. */
+static char *kitty_url_without_userinfo(const char *uri)
+{
+    const char *a = strchr(uri, ':'), *end, *at = NULL, *p;
+    char *s, *q;
+    if (a && !strncmp(a + 1, "//", 2)) {
+        a += 3;
+        end = a + strcspn(a, "/?#");
+        for (p = a; p < end; p++)
+            if (*p == '@')
+                at = p;
+    }
+    s = at ? dupprintf("%.*s%s", (int)(a - uri), uri, at + 1) : dupstr(uri);
+    for (q = s; *q; q++)
+        *q = (char)tolower((unsigned char)*q);
+    return s;
 }
 
 /* The host a link's TEXT names, when the text is written as an address:
@@ -443,9 +494,11 @@ static char *kitty_url_tip_text = NULL;
 static int kitty_url_tip_added = 0;
 
 /* A target longer than one line starts with its host on a line of its own,
- * so a long name cannot hide where it really goes. */
-static char *kitty_url_tip_format(const char *uri)
+ * so a long name cannot hide where it really goes. A password in it is
+ * shown masked (kitty_url_masked). */
+static char *kitty_url_tip_format(const char *target)
 {
+    char *uri = kitty_url_masked(target);
     size_t len = strlen(uri), i, n = 0, hl = 0;
     kitty_url_hostinfo hi;
     char *s, *hostline = NULL;
@@ -471,6 +524,7 @@ static char *kitty_url_tip_format(const char *uri)
         n += 3;
     }
     s[n] = '\0';
+    sfree(uri);
     return s;
 }
 
@@ -731,22 +785,25 @@ static void kitty_url_answer(int yes, void *ctx)
  * field wraps and scrolls when long, so every character can be inspected.
  * One box at a time: a click on another link while one is open brings that
  * one forward instead. Yes opens what the box showed, copied now, whatever
- * has become of the link meanwhile. warn: NULL or the red lines. */
+ * has become of the link meanwhile - a password in it shown masked, opened
+ * as written. warn: NULL or the red lines. */
 static void kitty_url_ask(HWND hwnd, const char *uri, const char *browser,
                           const char *host, const char *warn)
 {
-    char *detail;
+    char *detail, *shown;
     kitty_url_pending *p;
     if (kitty_url_box && IsWindow(kitty_url_box)) {
         SetForegroundWindow(kitty_url_box);
         return;
     }
+    shown = kitty_url_masked(uri);
     if (host && host[0]) {
         char *hostline = dupprintf(KT_OSC8_HOST_LINE, host);
-        detail = dupprintf("%s\r\n%s", hostline, uri);
+        detail = dupprintf("%s\r\n%s", hostline, shown);
         sfree(hostline);
     } else
-        detail = dupstr(uri);
+        detail = dupstr(shown);
+    sfree(shown);
     p = snew(kitty_url_pending);
     p->uri = dupstr(uri);
     p->browser = browser ? dupstr(browser) : NULL;
@@ -814,8 +871,6 @@ static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
         why = KT_OSC8_REFUSED_FILEHOST;
     web = !why && (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
                    !strcmp(scheme, "ftp"));
-    if (!why && web && hi.userinfo)
-        why = KT_OSC8_REFUSED_USERINFO;
     if (!why && web && (hi.numeric || hi.encoded))
         why = KT_OSC8_REFUSED_NUMERIC;
     if (why) {
@@ -839,14 +894,14 @@ static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
         mismatch = 1;
     /* A bare name.name text of a web link ("mybank.com"): a host or a file
      * name. Harmless when it is the target's host (or above or below it)
-     * or appears in the target itself (report.pdf -> .../report.pdf).
-     * Otherwise the text claims something the target is not. */
+     * or appears in the target itself (report.pdf -> .../report.pdf) - NOT
+     * counting a user name before the host, where https://mybank.com@evil/
+     * would hide it. Otherwise the text claims something the target is
+     * not. */
     if (!same && !mismatch && web && hi.host[0] &&
         kitty_url_text_bare(text, texthost, sizeof(texthost)) &&
         !kitty_url_same_owner(texthost, hi.host)) {
-        char *lower = dupstr(uri), *q;
-        for (q = lower; *q; q++)
-            *q = (char)tolower((unsigned char)*q);
+        char *lower = kitty_url_without_userinfo(uri);
         if (!strstr(lower, texthost))
             mismatch = 1;
         sfree(lower);
@@ -867,6 +922,7 @@ static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
     level = conf_get_int(conf, CONF_url_confirm);
     if ((level == 2 && trusted) ||
         (level == 1 && trusted && !mismatch && !redirect && !hi.punycode &&
+         !hi.userinfo &&
          (same || (previewed == link && strlen(uri) <= KITTY_URL_TIP_LINE)))) {
         urlhack_launch_url(browser, uri);
         return;
@@ -885,6 +941,9 @@ static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
                                             redirhost));
     if (hi.punycode)
         kitty_url_warn_add(&warn, dupstr(KT_OSC8_CONFIRM_WARN_PUNYCODE));
+    if (hi.userinfo)
+        kitty_url_warn_add(&warn, dupprintf(KT_OSC8_CONFIRM_WARN_USERINFO,
+                                            hi.host, hi.user));
     kitty_url_ask(hwnd, uri, browser, hi.host, warn);
     sfree(warn);
 }
@@ -969,20 +1028,21 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
         const char *browser = NULL;
         char scheme[33];
         kitty_url_hostinfo hi;
+        int web, level = conf_get_int(conf, CONF_url_confirm);
         /* The URL the expression found is its own text, so only the tricks
-         * of spelling apply: a web address with a user name before the host,
-         * or with a host written as a number or encoded, is not opened (with
-         * KiTTY's default expression neither can match. A custom one can.) */
+         * of spelling apply: a web address with a host written as a number
+         * or encoded is not opened. One with a user name before the host
+         * needs the confirmation, with the red line, except in "only for
+         * non-web links". (KiTTY's default expression matches neither. A
+         * custom one can.) */
         kitty_url_hostinfo_of(linkbuf, &hi);
-        if (kitty_url_scheme(linkbuf, scheme, sizeof(scheme)) &&
-            (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
-             !strcmp(scheme, "ftp")) &&
-            (hi.userinfo || hi.numeric || hi.encoded)) {
+        web = kitty_url_scheme(linkbuf, scheme, sizeof(scheme)) &&
+              (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
+               !strcmp(scheme, "ftp"));
+        if (web && (hi.numeric || hi.encoded)) {
             static int logged_scan;        /* once per window */
             if (!logged_scan && logctx) {
-                char *m = dupprintf(KT_URL_LOG_REFUSED, hi.userinfo ?
-                                    KT_OSC8_REFUSED_USERINFO :
-                                    KT_OSC8_REFUSED_NUMERIC);
+                char *m = dupprintf(KT_URL_LOG_REFUSED, KT_OSC8_REFUSED_NUMERIC);
                 logevent(logctx, m);
                 sfree(m);
                 logged_scan = 1;
@@ -992,9 +1052,12 @@ int kitty_url_click(Terminal *term, Conf *conf, HWND hwnd, LogContext *logctx,
         }
         if (!conf_get_int(conf, CONF_url_defbrowser))
             browser = filename_to_str(conf_get_filename(conf, CONF_url_browser));
-        if (conf_get_int(conf, CONF_url_confirm) == 0)
-            kitty_url_ask(hwnd, linkbuf, browser, hi.host, NULL);  /* always */
-        else
+        if (level == 0 || (level == 1 && web && hi.userinfo)) {
+            char *warn = (web && hi.userinfo) ?
+                dupprintf(KT_OSC8_CONFIRM_WARN_USERINFO, hi.host, hi.user) : NULL;
+            kitty_url_ask(hwnd, linkbuf, browser, hi.host, warn);
+            sfree(warn);
+        } else
             urlhack_launch_url(browser, linkbuf);
         sfree(linkbuf);
         return 1;

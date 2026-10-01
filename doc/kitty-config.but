@@ -510,6 +510,13 @@ page really sends you.
 \b the host is written in punycode (\c{xn--...}), which can imitate
 another name.
 
+\b the target logs in with a user name (maybe with a password) before the
+host (\c{https://harald:secret@kapper.net/}): the red line names the host
+and the user. The password is shown as \c{****} in the tip and in the
+confirmation. The link opens with it as written. A text that names
+a host only inside that user name (\c{mybank.com} for
+\c{https://mybank.com@evil.test/}) counts as naming another host.
+
 }
 
 \b \q{Only for non-web links} (2): \c{http}, \c{https}, \c{ftp} and
@@ -526,10 +533,12 @@ at a time.
 In every mode some targets are never opened. The first one of a window
 is noted in the Event Log: a target with no valid scheme (a drive letter
 such as \c{c:\\...} is none), a target with a double quote in it, a
-\c{file} link naming another computer and a web address with a user name
-before the host (\c{https://mybank@evil/}) or with a host written as a
-number (\c{3232235777}, \c{0x7f.1}, \c{127.1}) or percent-encoded. The last
-two apply to links the regular expression finds as well.
+\c{file} link naming another computer and a web address with a host
+written as a number (\c{3232235777}, \c{0x7f.1}, \c{127.1}) or
+percent-encoded. The last one applies to links the regular expression
+finds as well. A link found by the regular expression with a user name
+before the host shows the confirmation with its red line, except under
+\q{Only for non-web links}.
 
 \b \q{Require Ctrl key to click hyperlinks} keeps ordinary clicking as
 selection, which is what you want if you select text with the mouse
