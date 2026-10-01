@@ -21,6 +21,18 @@ static HandleWait *frame_wait;
 static void (*frame_cb)(void *);
 static void *frame_ctx;
 
+/* While the window is being sized by the mouse (WM_ENTERSIZEMOVE ..
+ * WM_EXITSIZEMOVE) frames are not held for the display's signal: Windows'
+ * own modal loop owns the thread, our timer pumps the work every 16 ms, and
+ * waiting for the signal as well only adds a timer period of lag to every
+ * frame of the drag. The timer is the pace meanwhile. */
+static bool sizing;
+
+void kitty_pace_set_sizing(bool on)
+{
+    sizing = on;
+}
+
 void kitty_pace_set_frame_signal(HANDLE h)
 {
     if (frame_wait) {
@@ -42,11 +54,11 @@ static void frame_fired(void *ctx)
 }
 
 /* Wait for the display's next frame slot; cb(ctx) runs when it comes.
- * False when there is no signal (GDI) or the pace is off: the caller
- * paces on the timer alone. */
+ * False when there is no signal (GDI), the window is being sized or the pace
+ * is off: the caller paces on the timer alone. */
 bool kitty_pace_wait_frame(void (*cb)(void *), void *ctx)
 {
-    if (!frame_signal || kitty_pace_effective_ms() <= 0)
+    if (!frame_signal || sizing || kitty_pace_effective_ms() <= 0)
         return false;
     if (frame_wait)
         delete_handle_wait(frame_wait);

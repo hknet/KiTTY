@@ -47,6 +47,8 @@ extern double kitty_present_wait_ms;
 void kitty_pace_frame_pump(void);
 void kitty_pace_set_frame_signal(HANDLE h);
 bool kitty_pace_wait_frame(void (*cb)(void *), void *ctx);
+/* frames not held for the display's signal while the window is sized */
+void kitty_pace_set_sizing(bool on);
 
 /* ---- exported from windows/window.c ---- */
 void ResetWindow(int reinit);

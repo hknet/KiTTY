@@ -6120,6 +6120,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * pending work meanwhile. */
         SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
         kitty_in_move_loop = true;   /* see kitty_post_quit */
+        /* the drag is paced by that timer, not held for the display */
+        kitty_pace_set_sizing(true);
 #endif
         break;
       case WM_EXITSIZEMOVE:
@@ -6128,6 +6130,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
         KillTimer(hwnd, TIMER_MODALPUMP);
         kitty_in_move_loop = false;
+        kitty_pace_set_sizing(false);
 #endif
         if (wgs->need_backend_resize) {
             term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
