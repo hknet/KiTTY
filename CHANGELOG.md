@@ -202,6 +202,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Get File's debug log no longer shows the password.** When no private
+  password file could be made, the password went on kscp's command line, and
+  Get File logged that line unblanked; Send File always blanked it.
 - **Send File no longer fails now and then with "no such file".** The chosen
   file's path could reach kscp with stray characters after it, depending on
   leftover memory, so the same upload sometimes worked and sometimes did not.

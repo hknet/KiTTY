@@ -1634,7 +1634,7 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 	/* Both sources hold the password WRAPPED (kitty_pwmem.c); unwrapped once
 	 * here, the buffer burned before this returns. Into a private file, the
 	 * protected form when the helper reads it - exactly as the session's
-	 * password goes (see the -pwfile block in SendOneFile). No file at all:
+	 * password goes (see the -pwfile block in kx_kscp_line). No file at all:
 	 * the option is left out rather than put a password on the command line;
 	 * the jump host then asks, which a transfer window can show. */
 	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
@@ -1681,47 +1681,38 @@ static int kx_helper_has_flag( const char *path, const char *flag ) {
 	return ok ;
 }
 
-void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
-	char buffer[4096], pscppath[4096]="", pscpport[4096]="22", remotedir[4096]=".", b1[256], tgt[4096] ;
-	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in buffer */
-	size_t px_at = 0, px_len = 0 ;   /* ... and the proxy password file's path */
-	int pwfiles = 0 ;                /* password handed over as a file, to delete after the start */
-	int pw_mode = KX_PW_NONE ;       /* what the window will say about the hand-over */
+/*
+ * KiTTY: the kscp command line both directions build - Send File (SendOneFile)
+ * and Get File (GetOneFileStaged) - up to the two paths: the helper, the
+ * user's raw options, the protocol, the port, the login (password, port
+ * knocking, key file) and the connection's proxy. One builder, so the two
+ * directions cannot drift apart. Each caller appends its source and target.
+ */
+typedef struct {
+	int pwfiles ;              /* password files to delete once kscp has them */
+	int pw_mode ;              /* how the password travelled (kx_pw_handover_line) */
+	size_t pw_at, pw_len ;     /* where the password landed, for the redacted log */
+	size_t px_at, px_len ;     /* ... and the proxy password file's path */
+} kx_kscp_line_t ;
+
+/* Starts `buffer` (BC bytes); 0 when there is no helper to start. */
+static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
+	char pscppath[4096]="", pscpport[4096]="22", b1[256] ;
 	int p ;
 
-	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; }
+	memset( k, 0, sizeof(*k) ) ;
+	k->pw_mode = KX_PW_NONE ;
 	if( PSCPPath==NULL ) {
-		if( IniFileFlag == SAVEMODE_REG ) return ;
-		else if( !SearchPSCP() ) return ;
+		if( IniFileFlag == SAVEMODE_REG ) return 0 ;
+		else if( !SearchPSCP() ) return 0 ;
 	}
 	if( !existfile( PSCPPath ) ) {
-		if( IniFileFlag == SAVEMODE_REG ) return ;
-		else if( !SearchPSCP() ) return ;
+		if( IniFileFlag == SAVEMODE_REG ) return 0 ;
+		else if( !SearchPSCP() ) return 0 ;
 	}
-
-	if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
-
-	/* The local upload folder ([KiTTY] uploaddir, the session's zUploadDir)
-	 * is where the Send File picker opens (SendFile below); the file to send
-	 * arrives here already chosen, as directory + filename. */
-
-	if( (distantdir != NULL ) && ( strlen(distantdir)>0 ) ) {
-		strcpy( remotedir, distantdir ) ;
-	} else if( strlen(conf_get_str(conf,CONF_pscpremotedir))>0 ) {
-		/* fixed remote dir sanity check: qcat below already quotes/escapes the
-		 * whole user@host:dir argument (and kscp runs via CreateProcess, no
-		 * shell), so injection is handled - but reject control characters that a
-		 * quoted argument can't sensibly carry, falling back to the remote home. */
-		const char * rd = conf_get_str(conf,CONF_pscpremotedir) ; const char * q ; int ok = 1 ;
-		for( q = rd ; *q ; q++ ) if( (unsigned char)*q < 0x20 ) { ok = 0 ; break ; }
-		strcpy( remotedir, ok ? rd : "." ) ;
-	} else { strcpy( remotedir, "." ) ;
-	}
-	if( strlen( remotedir ) == 0 ) strcpy( remotedir, "." ) ;
+	if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return 0 ;
 
 	buffer[0] = '\0' ;
-	const size_t BC = sizeof(buffer) ;
-
 	bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;   /* exe: 8.3 path, no spaces/quotes */
 
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
@@ -1773,13 +1764,13 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 		enc = kitty_pwfile_line_is_protected( line ) ;
 		pf = kx_password_file( line ? line : pw ) ;
 		bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
-		pw_at = strlen( buffer ) ;
+		k->pw_at = strlen( buffer ) ;
 		qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
-		pw_len = strlen( buffer ) - pw_at ;   /* the span covers whatever was written */
+		k->pw_len = strlen( buffer ) - k->pw_at ;   /* the span covers whatever was written */
 		bcat( buffer, BC, " " ) ;
-		if( pf ) pwfiles++ ;
-		pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
-		             : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
+		if( pf ) k->pwfiles++ ;
+		k->pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
+		                : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
 		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
 		smemclr( pw, sizeof(pw) ) ;
 	}
@@ -1789,7 +1780,54 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	{ const char *kf = kx_helper_keyfile(conf) ;
 	  if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
 	}
-	kx_proxy_args( buffer, BC, &pwfiles, &px_at, &px_len ) ;   /* the connection's proxy, if any */
+	kx_proxy_args( buffer, BC, &k->pwfiles, &k->px_at, &k->px_len ) ;   /* the connection's proxy, if any */
+	return 1 ;
+}
+
+/* The remote end of the line, up to and including the ':' before the path:
+ * user@host (user@[addr] for an IPv6 address), or the user@host part of an
+ * explicit -sftpconnect target. */
+static void kx_kscp_remote( char *out, size_t n ) {
+	char b1[256] ; int p ;
+	out[0] = '\0' ;
+	if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
+		snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
+		if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
+		bcat( out, n, b1 ) ;
+	} else {
+		bcat( out, n, conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( out, n, "@" ) ;
+		if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(out,n,"[") ; bcat(out,n,conf_get_str(conf,CONF_host)) ; bcat(out,n,"]") ; }
+		else { bcat( out, n, conf_get_str(conf,CONF_host) ) ; }
+	}
+	bcat( out, n, ":" ) ;
+}
+
+void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
+	char buffer[4096], remotedir[4096]=".", tgt[4096] ;
+	kx_kscp_line_t k ;               /* KiTTY: what the shared builder handed over, and where */
+
+	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; }
+
+	/* The local upload folder ([KiTTY] uploaddir, the session's zUploadDir)
+	 * is where the Send File picker opens (SendFile below); the file to send
+	 * arrives here already chosen, as directory + filename. */
+
+	if( (distantdir != NULL ) && ( strlen(distantdir)>0 ) ) {
+		strcpy( remotedir, distantdir ) ;
+	} else if( strlen(conf_get_str(conf,CONF_pscpremotedir))>0 ) {
+		/* fixed remote dir sanity check: qcat below already quotes/escapes the
+		 * whole user@host:dir argument (and kscp runs via CreateProcess, no
+		 * shell), so injection is handled - but reject control characters that a
+		 * quoted argument can't sensibly carry, falling back to the remote home. */
+		const char * rd = conf_get_str(conf,CONF_pscpremotedir) ; const char * q ; int ok = 1 ;
+		for( q = rd ; *q ; q++ ) if( (unsigned char)*q < 0x20 ) { ok = 0 ; break ; }
+		strcpy( remotedir, ok ? rd : "." ) ;
+	} else { strcpy( remotedir, "." ) ;
+	}
+	if( strlen( remotedir ) == 0 ) strcpy( remotedir, "." ) ;
+
+	const size_t BC = sizeof(buffer) ;
+	if( !kx_kscp_line( buffer, BC, &k ) ) return ;
 
 	/* source path (single quoted argument) */
 	{
@@ -1805,23 +1843,12 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	}
 
 	/* destination user@host:remotedir (single quoted argument) */
-	{
-		tgt[0]='\0' ;
-		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-			snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
-			if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-			bcat( tgt, sizeof(tgt), b1 ) ;
-		} else {
-			bcat( tgt, sizeof(tgt), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( tgt, sizeof(tgt), "@" ) ;
-			if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(tgt,sizeof(tgt),"[") ; bcat(tgt,sizeof(tgt),conf_get_str(conf,CONF_host)) ; bcat(tgt,sizeof(tgt),"]") ; }
-			else { bcat( tgt, sizeof(tgt), conf_get_str(conf,CONF_host) ) ; }
-		}
-		bcat( tgt, sizeof(tgt), ":" ) ; bcat( tgt, sizeof(tgt), remotedir ) ;
-		qcat( buffer, BC, tgt ) ;
-	}
+	kx_kscp_remote( tgt, sizeof(tgt) ) ;
+	bcat( tgt, sizeof(tgt), remotedir ) ;
+	qcat( buffer, BC, tgt ) ;
 
 	chdir( InitialDirectory ) ;
-	debug_logevent_redacted2( "Run", buffer, pw_at, pw_len, px_at, px_len ) ;
+	debug_logevent_redacted2( "Run", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
 	{ char whatbuf[600], updir[4096] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
@@ -1830,7 +1857,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
 	  /* One line saying how the password travelled, from what the builder
 	   * above actually did. Nothing when the login uses a key or the agent. */
-	  { const char *hand = kx_pw_handover_line( pw_mode ) ;
+	  { const char *hand = kx_pw_handover_line( k.pw_mode ) ;
 	    if( hand != NULL ) {
 		char *t = dupprintf( "%s%s\r\n\r\n", intro, hand ) ;
 		sfree( intro ) ; intro = t ;
@@ -1843,7 +1870,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
 
 	memset(buffer,0,strlen(buffer));
-	if( pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
+	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 	}
 
 void SendFileList( HWND hwnd, char * filelist ) {
@@ -1931,92 +1958,19 @@ void GetOneFileToPath( HWND hwnd, char * directory, const char * filename, const
  * localdir is the staging folder kscp writes into, final_dir the folder the
  * files are moved to on success, lock the held-open marker. */
 void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile, const char * final_dir, HANDLE lock ) {
-    char buffer[4096], pscppath[4096]="", pscpport[4096]="22", dir[4096]=".", b1[256] ;
-    int pwfiles = 0 ;   /* password handed over as a file, to delete after the start */
-    int pw_mode = KX_PW_NONE ;   /* what the window will say about the hand-over */
-    size_t px_at = 0, px_len = 0 ;   /* the proxy password file's span, for the redacted log */
-    int p;
-
-    if( PSCPPath==NULL ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPSCP() ) return ;
-    }
-    if( !existfile( PSCPPath ) ) {
-        if( IniFileFlag == SAVEMODE_REG ) return ;
-        else if( !SearchPSCP() ) return ;
-    }
-
-    if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return ;
+    char buffer[4096], dir[4096]="." ;
+    kx_kscp_line_t k ;   /* what the shared builder handed over, and where */
 
     if( localdir != NULL && localdir[0] && existdirectory( localdir ) ) snprintf( dir, sizeof(dir), "%s", localdir ) ;
     else kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
 
-    buffer[0]='\0' ;
     const size_t BC = sizeof(buffer) ;
-
-    bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;
-
-    if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - unquoted */
-        bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
-    }
-    bcat( buffer, BC, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
-
-    /* Session field, then the global kscp port, then the session's port - the
-     * same order as SendOneFile (kitty_xfer_default_port states it). */
-    if( (p = kitty_xfer_port_field( conf_get_str(conf, CONF_kscp_port) )) > 0 ) {
-        snprintf( b1, sizeof(b1), "-P %d ", p ) ;
-        bcat( buffer, BC, b1 ) ;
-    } else if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
-        pscpport[17]='\0';
-        if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf,CONF_port) ) ;
-        bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
-    } else {
-        if( (p = kx_override_port( conf_get_str(conf, CONF_sftpconnect) )) > 0 ) snprintf( b1, sizeof(b1), "-P %d ", p ) ;
-        else snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port) ) ;
-        bcat( buffer, BC, b1 ) ;
-    }
-    if( conf_get_int(conf,CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
-
-    if( !kitty_pw_empty(conf,CONF_password) ) {
-        /* A private file rather than the command line, and the protected form
-         * - in the file, or after -pw when no file could be made - only for a
-         * helper that says it reads one. See SendOneFile and
-         * kx_helper_reads_protected. */
-        char pw[KITTY_PW_MAX+1] ; const char *pf ; char *line = NULL ; int enc ;
-        kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
-        if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
-        enc = kitty_pwfile_line_is_protected( line ) ;
-        pf = kx_password_file( line ? line : pw ) ;
-        bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
-        qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
-        bcat( buffer, BC, " " ) ;
-        if( pf ) pwfiles++ ;
-        pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
-                     : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
-        if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
-        smemclr( pw, sizeof(pw) ) ;
-    }
-    if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
-        bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
-    }
-    { const char *kf = kx_helper_keyfile(conf) ;
-      if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
-    }
-    kx_proxy_args( buffer, BC, &pwfiles, &px_at, &px_len ) ;   /* the connection's proxy, if any */
+    if( !kx_kscp_line( buffer, BC, &k ) ) return ;
 
     /* remote source user@host:path (single quoted argument) */
     {
-        char src[4096] ; src[0]='\0' ;
-        if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-            snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
-            if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-            bcat( src, sizeof(src), b1 ) ;
-        } else {
-            bcat( src, sizeof(src), conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( src, sizeof(src), "@" ) ;
-            if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat(src,sizeof(src),"[") ; bcat(src,sizeof(src),conf_get_str(conf,CONF_host)) ; bcat(src,sizeof(src),"]") ; }
-            else { bcat( src, sizeof(src), conf_get_str(conf,CONF_host) ) ; }
-        }
-        bcat( src, sizeof(src), ":" ) ;
+        char src[4096] ;
+        kx_kscp_remote( src, sizeof(src) ) ;
         if( filename[0]=='/' ) {
             bcat( src, sizeof(src), filename ) ;
         } else if( (directory!=NULL) && (strlen(directory)>0) && (strlen(filename)>0) ) {
@@ -2035,7 +1989,9 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
 
     chdir( InitialDirectory ) ;
 
-    if( debug_flag ) { debug_logevent( "Get on file: %s", buffer) ; }
+    /* KiTTY: the password's span blanked, as Send File always did - the plain
+     * line put it in the debug log on the no-file fallback (-pw) */
+    debug_logevent_redacted2( "Get on file", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
     /* Capture output + show on failure (no vanishing console). */
     { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_DOWNLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
       char *note = kx_hello_agent_note( conf ) ;
@@ -2052,7 +2008,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
       /* No target line, but the note if the key needs loading - and the one
        * line saying how the password travelled, from what the builder above
        * actually did. Nothing of it when the login uses a key or the agent. */
-      const char *hand = kx_pw_handover_line( pw_mode ) ;
+      const char *hand = kx_pw_handover_line( k.pw_mode ) ;
       char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
       /* Staged (wildcard/folder): kscp wrote into `dir` (the staging folder);
        * on success the files move to final_dir. The balloon opens final_dir. */
@@ -2064,7 +2020,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
     memset(buffer,0,strlen(buffer));
-    if( pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
+    if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 }
 
 /* --- Where received files go ------------------------------------------------
