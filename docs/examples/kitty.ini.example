@@ -595,10 +595,11 @@
 ;    the registry, since the registry cannot say "do not use the registry".
 ;    Allowed values are:
 ;    - registry : sessions in the Windows registry, under KiTTY's own hive.
-;                 The default.
+;                 The default for kitty.exe.
 ;    - dir      : sessions as files in a directory tree, one file each. This
-;                 is portable mode: it also turns on folder browsing and the
-;                 portable password protection described further down.
+;                 is portable mode and the default for kitty_portable.exe.
+;                 It also turns on the portable password protection
+;                 described further down.
 ;    - file     : NOT a file backend, despite the name. Sessions still live
 ;                 in the registry exactly as in registry mode; what it adds is
 ;                 loading the .sav registry dump into that hive at startup.

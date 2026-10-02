@@ -598,10 +598,11 @@ char default_init_file_content[] =
 ;    the registry, since the registry cannot say \"do not use the registry\".\n\
 ;    Allowed values are:\n\
 ;    - registry : sessions in the Windows registry, under KiTTY's own hive.\n\
-;                 The default.\n\
+;                 The default for kitty.exe.\n\
 ;    - dir      : sessions as files in a directory tree, one file each. This\n\
-;                 is portable mode: it also turns on folder browsing and the\n\
-;                 portable password protection described further down.\n\
+;                 is portable mode and the default for kitty_portable.exe.\n\
+;                 It also turns on the portable password protection\n\
+;                 described further down.\n\
 ;    - file     : NOT a file backend, despite the name. Sessions still live\n\
 ;                 in the registry exactly as in registry mode; what it adds is\n\
 ;                 loading the .sav registry dump into that hive at startup.\n\
