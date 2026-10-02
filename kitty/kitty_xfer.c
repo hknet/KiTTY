@@ -2354,6 +2354,35 @@ void GetFile( HWND hwnd ) {
  * by default and each toggled in the config dialog (Window/Selection): a
  * confirmation prompt (CONF_runcmdconfirm) and a post-launch tray balloon
  * (CONF_runcmdnotify, mirroring kageant's key-use balloon). */
+typedef struct { HWND hwnd ; char cmd[4096] ; } kx_runcmd_t ;
+static HWND kx_runcmd_box = NULL ;   /* one confirmation at a time */
+
+/* Run the confirmed (or unconfirmed) clipboard command. */
+static void kx_runcmd_go( HWND hwnd, char *cmd ) {
+    STARTUPINFO si ;
+    PROCESS_INFORMATION pi ;
+    chdir( InitialDirectory ) ;
+    ZeroMemory( &si, sizeof(si) ) ;
+    si.cb = sizeof(si) ;
+    ZeroMemory( &pi, sizeof(pi) ) ;
+    if( CreateProcess( NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) {
+        CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+    } else
+        ShellExecute( hwnd, "open", cmd, 0, 0, SW_SHOWDEFAULT ) ;
+    if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
+        char note[4096+64] ;
+        snprintf( note, sizeof(note), KT_XFER_RAN_CLIP, cmd ) ;
+        kitty_tray_balloon_async( KT_CAP_KITTY, note, NULL ) ;
+    }
+}
+static void kx_runcmd_answer( int yes, void *vp ) {
+    kx_runcmd_t *r = (kx_runcmd_t *)vp ;
+    kx_runcmd_box = NULL ;
+    if( yes ) kx_runcmd_go( r->hwnd, r->cmd ) ;
+    smemclr( r->cmd, sizeof(r->cmd) ) ;
+    sfree( r ) ;
+}
+
 void RunCmd( HWND hwnd ) {
     char buffer[4096]="", * pst = NULL ;
     if (!IsClipboardFormatAvailable(CF_TEXT)) return ;
@@ -2370,27 +2399,22 @@ void RunCmd( HWND hwnd ) {
     }
     if( strlen( buffer ) > 0 ) {
         if( conf_get_bool( conf, CONF_runcmdconfirm ) ) {
-            char prompt[4096+160] ;
-            snprintf( prompt, sizeof(prompt),
-                KT_XFER_RUN_CLIP_PROMPT, buffer ) ;
-            if( MessageBox( hwnd, prompt, KT_CAP_RUN_CLIP_CMD,
-                    MB_YESNO|MB_ICONWARNING|MB_DEFBUTTON2 ) != IDYES ) return ;
+            /* modeless: the terminal's output keeps arriving while it waits;
+             * the command is in the read-only field, the run in the answer */
+            kx_runcmd_t *r ;
+            if( kx_runcmd_box && IsWindow( kx_runcmd_box ) ) {
+                SetForegroundWindow( kx_runcmd_box ) ;
+                return ;
+            }
+            r = snew( kx_runcmd_t ) ;
+            r->hwnd = hwnd ;
+            snprintf( r->cmd, sizeof(r->cmd), "%s", buffer ) ;
+            kx_runcmd_box = kitty_confirm_modeless( hwnd, KT_CAP_RUN_CLIP_CMD,
+                KT_XFER_RUN_CLIP_PROMPT, buffer, NULL, kx_runcmd_answer, r ) ;
+            if( !kx_runcmd_box ) { smemclr( r->cmd, sizeof(r->cmd) ) ; sfree( r ) ; }   /* not made: a No */
+            return ;
         }
-        chdir( InitialDirectory ) ;
-        //system( buffer ) ;
-        STARTUPINFO si ;
-        PROCESS_INFORMATION pi ;
-        ZeroMemory( &si, sizeof(si) );
-        si.cb = sizeof(si);
-        ZeroMemory( &pi, sizeof(pi) );
-        if( !CreateProcess(NULL, buffer, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi) ) {
-            ShellExecute(hwnd, "open", buffer,0, 0, SW_SHOWDEFAULT);
-        }
-        if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
-            char note[4096+64] ;
-            snprintf( note, sizeof(note), KT_XFER_RAN_CLIP, buffer ) ;
-            kitty_tray_balloon_async( KT_CAP_KITTY, note, NULL ) ;
-        }
+        kx_runcmd_go( hwnd, buffer ) ;
     }
 }
 

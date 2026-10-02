@@ -2098,7 +2098,8 @@
 #define KT_XFER_STAGING_DIR_N                        "KiTTY++ download in progress (%d)"
 #define KT_XFER_STAGING_LOCK                         "KiTTY++ download in progress.lock"
 #define KT_XFER_STAGING_KEEP_LINE                    "\r\nThe download folder %s could not be removed; it is removed at the next start or the next download into this folder.\r\n"
-#define KT_XFER_RUN_CLIP_PROMPT                      "Run this command from the clipboard?\n\n%s"
+/* the command itself is in the box's read-only field */
+#define KT_XFER_RUN_CLIP_PROMPT                      "Run this command from the clipboard?"
 #define KT_XFER_RAN_CLIP                             "Ran clipboard command:\n%s"
 #define KT_XFER_START_WINSCP_ANYWAY                  "%sStart WinSCP anyway?"
 

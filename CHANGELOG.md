@@ -147,6 +147,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   checked: they update themselves. Otherwise a box shows the file and its signer the first time.
   Yes remembers that exact file (`[TrustedHelpers]`). A file with a broken
   signature is not started.
+- **The Ctrl+F5 confirmation no longer holds up the terminal.** Output keeps
+  arriving while the box asks whether to run the clipboard command.
 - **Detected links cost less while output scrolls.** The search for web
   addresses now runs only over the lines that changed and reuses what it found
   in lines it saw before. A link that only scrolled keeps its underline
