@@ -2240,6 +2240,15 @@
 /* kageant: tray menu items */
 #define KT_KA_MENU_QUICK_CONNECT                     "&Quick Connect"
 #define KT_KA_MENU_AGENT_KEYS                        "Agent &Keys && Configuration"
+/* the agent lock: one tray entry, its text follows the state */
+#define KT_KA_MENU_LOCK                              "Lock agen&t"
+#define KT_KA_MENU_UNLOCK                            "Unlock agen&t"
+#define KT_KA_NOTICE_LOCKED                          "kageant - agent locked"
+#define KT_KA_NOTICE_UNLOCKED                        "kageant - agent unlocked"
+#define KT_KA_LOCKED_BY_FMT                          "The agent was locked%s. The keys stay loaded and are not used until it is unlocked."
+#define KT_KA_UNLOCKED_BY_FMT                        "The agent was unlocked%s."
+#define KT_KA_NOTICE_REENCRYPTED                     "kageant - keys re-encrypted"
+#define KT_KA_REENCRYPTED_LEFT_FMT                   "Keys still encrypted: %d. They ask for their passphrase on first use - there is no key file to read them from."
 #define KT_KA_MENU_OPENSSH                           "Register as Windows &OpenSSH agent"
 #define KT_KA_MENU_START_AT_LOGIN                    "&Start kageant at login"
 #define KT_KA_MENU_LOAD_KEYS                         "&Load remembered keys at startup"
@@ -2255,6 +2264,7 @@
 #define KT_KA_TIP_INI                                "kageant (KiTTY++ authentication agent)\r\n(kitty.ini mode)"
 #define KT_KA_TIP_UNPROTECTED_FMT                    "%.*s\r\nkeys UNPROTECTED in memory%s"
 #define KT_KA_TIP_AUTOENC_FMT                        "%.*s\r\nidle re-encrypt enforced: %s%s"
+#define KT_KA_TIP_LOCKED_FMT                         "%.*s\r\nagent LOCKED%s"
 #define KT_KA_TIP_MISMATCH_ONE                       "1 key NOT loaded - fingerprint mismatch"
 #define KT_KA_TIP_MISMATCH_MANY_FMT                  "%d keys NOT loaded - fingerprint mismatch"
 
@@ -2451,6 +2461,7 @@
 /* the key list's right-click menu (moved there from the tray menu) */
 #define KT_KAKEYS_MENU_REMOVE_ALL                    "&Remove All Keys"
 #define KT_KAKEYS_MENU_REENCRYPT_ALL                 "R&e-encrypt All Keys"
+#define KT_KAKEYS_STATE_LOCKED                       "locked"
 #define KT_KAKEYS_STATE_ENCRYPTED                    "encrypted"
 #define KT_KAKEYS_STATE_REENCRYPTABLE                "re-encryptable"
 #define KT_KAKEYS_STATE_LOADED                       "loaded"
@@ -2561,6 +2572,9 @@
 #define KT_KASET_RETRY_NEVER                         KT_PROXYGUI_LOG_NEVER  /* "never" */
 #define KT_KASET_RETRY_DRIVE                         "from their stored drive and path"
 #define KT_KASET_RETRY_ANYDRIVE                      "from their stored path on any drive"
+#define KT_KASET_WINLOCK_KEEP                        "Keep the agent working"
+#define KT_KASET_WINLOCK_LOCK                        "Lock the agent"
+#define KT_KASET_WINLOCK_REENCRYPT                   "Re-encrypt the keys"
 #define KT_KASET_AUTOENC_OFF                         KT_SCRIPTING_OFF  /* "Off" */
 #define KT_KASET_AUTOENC_DEFAULT                     "Default for keys without their own setting"
 #define KT_KASET_AUTOENC_ENFORCED                    "Enforced for every key"
@@ -3641,6 +3655,10 @@
 #define KT_RC_KEYSETTINGS_LOCKDOWN                   "&Lock down: refuse ALL key add/remove over IPC"
 #define KT_RC_KEYSETTINGS_BLOCKADD                   "Block &adding keys over IPC"
 #define KT_RC_KEYSETTINGS_BLOCKREMOVE                "Block re&moving keys over IPC"
+/* No accelerator on these two: the letters are unique per DIALOG, and every
+ * letter of both texts is taken on one of the four pages (free: b j q v z). */
+#define KT_RC_KEYSETTINGS_ALLOWIPCLOCK               "Allow locking the agent over IPC (ssh-add -x / -X)"
+#define KT_RC_KEYSETTINGS_WINLOCK_LABEL              "When Windows locks:"
 #define KT_RC_KEYSETTINGS_HELLO                      "Confirmations require Windows &Hello"
 #define KT_RC_KEYSETTINGS_TTL_LABEL                  "&Passphrase cache (seconds):"
 #define KT_RC_KEYSETTINGS_TTL_HINT                   "0 = do not cache; blank = the default 60; maximum 300 (5 min). Keys that share a passphrase then load with one prompt."

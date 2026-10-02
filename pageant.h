@@ -145,6 +145,29 @@ extern int (*kageant_ipc_blocked_hook)(int op);
 extern void (*kageant_mutation_notice_hook)(int op, const char *comment);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
+
+/* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
+ * its keys but answers an empty key list and refuses every other request but
+ * an UNLOCK (OpenSSH's semantics). Each flag has its own owner and is
+ * cleared only by it:
+ *   PROGRAM - SSH_AGENTC_LOCK over the pipe (ssh-add -x), with a passphrase;
+ *             cleared by a matching SSH_AGENTC_UNLOCK or the tray's Unlock
+ *   TRAY    - the tray's "Lock agent", no passphrase; the tray's Unlock
+ *   WINDOWS - the Windows session locked ("When Windows locks"); its unlock
+ * The tray's Unlock clears all three: whoever sits at the console could
+ * restart the agent anyway, and with the menu open the session is unlocked. */
+enum { PAGEANT_LOCK_PROGRAM = 1, PAGEANT_LOCK_TRAY = 2, PAGEANT_LOCK_WINDOWS = 4 };
+int pageant_lock_flags(void);                 /* the PAGEANT_LOCK_* bits set */
+void pageant_lock_set(int flag, bool on);     /* TRAY / WINDOWS (PROGRAM: off only) */
+/* May a program lock/unlock over the pipe at all? ("Allow locking the agent
+ * over IPC", default off). NULL = no. */
+extern int (*kageant_ipc_lock_allowed_hook)(void);
+/* A program's lock request was handled: op 0 = lock, 1 = unlock; result 0 =
+ * done, 1 = refused (wrong passphrase, already / not locked), 2 = blocked by
+ * the setting. For the agent log and the notice naming the program. */
+extern void (*kageant_lock_event_hook)(int op, int result);
+/* The lock state changed (any flag): tray tip, tray menu, key list. */
+extern void (*kageant_lock_changed_hook)(void);
 bool pageant_reencrypt_nth_ssh2_key(int i);
 /* KiTTY: in-agent re-encrypt by public blob, same rationale as the delete. */
 bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob);

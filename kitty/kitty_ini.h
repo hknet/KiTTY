@@ -1175,6 +1175,10 @@ char default_init_file_content[] =
 ; blockipcadd / blockipcremove: refuse just adds, or just removes.\n\
 ;blockipcadd=no\n\
 ;blockipcremove=no\n\
+; allowipclock: let programs lock and unlock the agent over IPC (ssh-add -x\n\
+; / -X). Off by default; the tray menu's Lock agent / Unlock agent always\n\
+; works, and its Unlock also clears a program's lock.\n\
+;allowipclock=no\n\
 \n\
 ; --- The agent log: what the agent did with keys - what signed or was\n\
 ; refused and why, what was added or removed and by which process. One\n\
@@ -1270,6 +1274,13 @@ char default_init_file_content[] =
 ; \"use\" = right after each signature. 30 s to 7 d. Default off, 600.\n\
 ;autoencryptmode=off\n\
 ;autoencryptseconds=600\n\
+\n\
+; lockwithwindows: when Windows locks or a remote desktop disconnects -\n\
+; keep = the agent keeps working (default); lock = no key is offered or used\n\
+; until Windows unlocks; reencrypt = every key with a passphrase also goes\n\
+; back to its encrypted state, and when Windows unlocks the keys with a key\n\
+; file ask for their passphrase (the others on first use).\n\
+;lockwithwindows=keep\n\
 \n\
 ; keylistgeometry / keylistcolumns: the key-list window's remembered\n\
 ; position/size and column widths. kageant writes these itself when the\n\

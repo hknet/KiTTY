@@ -2762,6 +2762,28 @@ int kageant_ipc_blocked(int op)
     return blocked;
 }
 
+/* " by ssh-add.exe (PID 1234)" for the requesting process of an external
+ * request, "" when it is not known. */
+static void kageant_requester_text(char *proc, size_t n)
+{
+    proc[0] = '\0';
+    if (pageant_external_pid) {
+        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                               (DWORD)pageant_external_pid);
+        char path[MAX_PATH];
+        DWORD sz = sizeof(path);
+        if (h && kitty_process_image_path(h, path, sz)) {
+            const char *base = strrchr(path, '\\');
+            snprintf(proc, n, KT_KA_BY_PROGRAM_PID_FMT,
+                     base ? base + 1 : path, pageant_external_pid);
+        } else {
+            snprintf(proc, n, KT_KA_BY_PID_FMT, pageant_external_pid);
+        }
+        if (h)
+            CloseHandle(h);
+    }
+}
+
 void kageant_do_mutation_notice(int op, const char *comment)
 {
     char proc[MAX_PATH + 32];
@@ -2777,22 +2799,7 @@ void kageant_do_mutation_notice(int op, const char *comment)
     if (!kageant_notify_get() || !traywindow)
         return;
 
-    proc[0] = '\0';
-    if (pageant_external_pid) {
-        HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
-                               (DWORD)pageant_external_pid);
-        char path[MAX_PATH];
-        DWORD sz = sizeof(path);
-        if (h && kitty_process_image_path(h, path, sz)) {
-            const char *base = strrchr(path, '\\');
-            snprintf(proc, sizeof(proc), KT_KA_BY_PROGRAM_PID_FMT,
-                     base ? base + 1 : path, pageant_external_pid);
-        } else {
-            snprintf(proc, sizeof(proc), KT_KA_BY_PID_FMT, pageant_external_pid);
-        }
-        if (h)
-            CloseHandle(h);
-    }
+    kageant_requester_text(proc, sizeof(proc));
 
     title = op == KAGEANT_MUT_ADD    ? KT_KA_NOTICE_KEY_ADDED :
             op == KAGEANT_MUT_REMOVE ? KT_KA_NOTICE_KEY_REMOVED :
@@ -2811,6 +2818,121 @@ void kageant_do_mutation_notice(int op, const char *comment)
                       kageant_notice_seconds(8), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);
     sfree(text);
+}
+
+/* ---------------------------------------------------------------------------
+ * KiTTY: the agent lock, frontend half (the core is in pageant.c, the flags
+ * are described in pageant.h).
+ * ------------------------------------------------------------------------- */
+
+/* May a program lock/unlock over the pipe? The core asks for every external
+ * SSH_AGENTC_LOCK / UNLOCK. */
+int kageant_ipc_lock_allowed(void)
+{
+    return kageant_allowipclock_get();
+}
+
+/* A program's lock request was handled (pageant.h kageant_lock_event_hook).
+ * Always in the agent log; a notice naming the program when it actually
+ * locked or unlocked - a refused request (the setting is off) is a log line
+ * only, so a program cannot raise notices at will. */
+void kageant_do_lock_event(int op, int result)
+{
+    char proc[MAX_PATH + 32];
+    char *text;
+
+    kageant_audit_use(op ? "unlock" : "lock", NULL, NULL,
+                      result == 0 ? "done" : result == 1 ? "refused" : "blocked",
+                      result == 2 ? "ipc-policy" : "ipc", pageant_external_pid);
+    if (result != 0 || !traywindow)
+        return;
+    kageant_requester_text(proc, sizeof(proc));
+    text = dupprintf(op ? KT_KA_UNLOCKED_BY_FMT : KT_KA_LOCKED_BY_FMT, proc);
+    kitty_notice_show(op ? KT_KA_NOTICE_UNLOCKED : KT_KA_NOTICE_LOCKED, text,
+                      op ? KAGEANT_NOTICE_INFO : KAGEANT_NOTICE_WARN,
+                      kageant_notice_seconds(10), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
+}
+
+/* "When Windows locks: Re-encrypt the keys" - the keys that were unlocked
+ * (decrypted) when Windows locked, by public blob: at Windows unlock their
+ * passphrases are asked for again. */
+static strbuf **g_winlock_blobs = NULL;
+static int g_nwinlock_blobs = 0;
+
+static void kageant_winlock_note(ptrlen blob, void *ctx)
+{
+    (void)ctx;
+    g_winlock_blobs = sresize(g_winlock_blobs, g_nwinlock_blobs + 1, strbuf *);
+    g_winlock_blobs[g_nwinlock_blobs++] = strbuf_dup(blob);
+}
+
+extern void win_add_keyfile(Filename *filename, bool encrypted);   /* windows/pageant.c */
+
+/* The Windows session locked (or a remote desktop disconnected) / unlocked.
+ * WM_WTSSESSION_CHANGE in windows/pageant.c calls this. */
+void kageant_winlock_session(int locked)
+{
+    if (locked) {
+        int mode = kageant_winlock_mode();
+        if (mode == 0)
+            return;                      /* keep the agent working (default) */
+        if (mode == 2) {
+            /* Which keys are unlocked now - asked for again at Windows unlock
+             * - then all of them back to their encrypted state. A key with no
+             * passphrase cannot be re-encrypted: the lock below keeps it from
+             * being used meanwhile. */
+            int i;
+            for (i = 0; i < g_nwinlock_blobs; i++)
+                strbuf_free(g_winlock_blobs[i]);
+            g_nwinlock_blobs = 0;
+            pageant_foreach_decrypted_reencryptable(kageant_winlock_note, NULL);
+            pageant_reencrypt_all();
+            kageant_audit_use("reencrypt-all", NULL, NULL, "done", "windows-lock", 0);
+        }
+        pageant_lock_set(PAGEANT_LOCK_WINDOWS, true);
+        kageant_audit_use("lock", NULL, NULL, "done", "windows-lock", 0);
+        return;
+    }
+
+    /* Windows unlocked: whatever the setting is NOW, a lock it set goes. */
+    if (pageant_lock_flags() & PAGEANT_LOCK_WINDOWS) {
+        pageant_lock_set(PAGEANT_LOCK_WINDOWS, false);
+        kageant_audit_use("unlock", NULL, NULL, "done", "windows-unlock", 0);
+    }
+    if (g_nwinlock_blobs) {
+        /* The keys it re-encrypted: the ones with a key file are decrypted
+         * again from it right away (the key list's Decrypt - one passphrase
+         * prompt each, or Windows Hello). The others - added over the pipe,
+         * or their stick is gone - ask on first use, and a notice says so. */
+        int i, left = 0;
+        int n = g_nwinlock_blobs;
+        strbuf **blobs = g_winlock_blobs;
+        g_winlock_blobs = NULL;
+        g_nwinlock_blobs = 0;
+        for (i = 0; i < n; i++) {
+            char *path = kageant_file_of_blob(ptrlen_from_strbuf(blobs[i]));
+            if (path && GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) {
+                Filename *fn = filename_from_str(path);
+                win_add_keyfile(fn, false);
+                filename_free(fn);
+            } else {
+                left++;
+            }
+            sfree(path);
+            strbuf_free(blobs[i]);
+        }
+        sfree(blobs);
+        if (left && traywindow) {
+            char *text = dupprintf(KT_KA_REENCRYPTED_LEFT_FMT, left);
+            kitty_notice_show(KT_KA_NOTICE_REENCRYPTED, text, KAGEANT_NOTICE_INFO,
+                              kageant_notice_seconds(10), traywindow,
+                              KAGEANT_WM_NOTICE_CLICK);
+            sfree(text);
+        }
+        keylist_update();
+    }
 }
 
 /* The comment convention. Checked once at ADD time (via

@@ -1005,6 +1005,114 @@ static bool kageant_mutation_blocked(int op)
     return pageant_external_request && kageant_ipc_blocked_hook &&
         kageant_ipc_blocked_hook(op);
 }
+
+/*
+ * KiTTY: the agent lock - see pageant.h for the three flags and who clears
+ * which. A gate, not cryptography: the keys stay in memory as they are, the
+ * agent only refuses to offer or use them. The PROGRAM lock's passphrase is
+ * kept as a salted SHA-256 in protected memory, never itself.
+ */
+int (*kageant_ipc_lock_allowed_hook)(void) = NULL;
+void (*kageant_lock_event_hook)(int op, int result) = NULL;
+void (*kageant_lock_changed_hook)(void) = NULL;
+static int pageant_lock_state = 0;
+static unsigned char pageant_lock_salt[16];
+static unsigned char pageant_lock_hash[32];   /* CryptProtectMemory'd when it can be */
+static bool pageant_lock_hash_protected = false;
+
+static void pageant_lock_hash_of(ptrlen pass, unsigned char out[32])
+{
+    ssh_hash *h = ssh_hash_new(&ssh_sha256);
+    put_data(h, pageant_lock_salt, sizeof(pageant_lock_salt));
+    put_datapl(h, pass);
+    ssh_hash_final(h, out);
+}
+
+int pageant_lock_flags(void)
+{
+    return pageant_lock_state;
+}
+
+void pageant_lock_set(int flag, bool on)
+{
+    int before = pageant_lock_state;
+    if (flag == PAGEANT_LOCK_PROGRAM && on)
+        return;                  /* only SSH_AGENTC_LOCK, with its passphrase */
+    if (on)
+        pageant_lock_state |= flag;
+    else
+        pageant_lock_state &= ~flag;
+    if (flag == PAGEANT_LOCK_PROGRAM && !on) {
+        smemclr(pageant_lock_hash, sizeof(pageant_lock_hash));
+        smemclr(pageant_lock_salt, sizeof(pageant_lock_salt));
+        pageant_lock_hash_protected = false;
+    }
+    if (before != pageant_lock_state && kageant_lock_changed_hook)
+        kageant_lock_changed_hook();
+}
+
+/* SSH_AGENTC_LOCK / SSH_AGENTC_UNLOCK: answer in sb, tell the frontend. */
+static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqid,
+                                 strbuf *sb, bool unlock, BinarySource *msg)
+{
+    ptrlen pass = get_string(msg);
+    unsigned char h[32];
+    int result;
+
+    pageant_client_log(pc, reqid, unlock ? "request: SSH_AGENTC_UNLOCK"
+                                         : "request: SSH_AGENTC_LOCK");
+    if (get_err(msg)) {
+        failure(pc, reqid, sb, SSH_AGENT_FAILURE, "unable to decode request");
+        return;
+    }
+    if (pageant_external_request &&
+        !(kageant_ipc_lock_allowed_hook && kageant_ipc_lock_allowed_hook())) {
+        result = 2;              /* the setting is off - the default */
+    } else if (!unlock) {
+        if (pageant_lock_state & PAGEANT_LOCK_PROGRAM) {
+            result = 1;          /* already locked by a program */
+        } else {
+            if (kageant_random_hook)
+                random_read(pageant_lock_salt, sizeof(pageant_lock_salt));
+            else
+                memset(pageant_lock_salt, 0, sizeof(pageant_lock_salt));
+            pageant_lock_hash_of(pass, pageant_lock_hash);
+            pageant_lock_hash_protected =
+                pageant_protect_memory(pageant_lock_hash, sizeof(pageant_lock_hash));
+            pageant_lock_state |= PAGEANT_LOCK_PROGRAM;
+            if (kageant_lock_changed_hook)
+                kageant_lock_changed_hook();
+            result = 0;
+        }
+    } else {
+        if (!(pageant_lock_state & PAGEANT_LOCK_PROGRAM)) {
+            result = 1;          /* nothing a program locked */
+        } else {
+            unsigned char stored[32];
+            memcpy(stored, pageant_lock_hash, sizeof(stored));
+            if (pageant_lock_hash_protected)
+                pageant_unprotect_memory(stored, sizeof(stored));
+            pageant_lock_hash_of(pass, h);
+            result = smemeq(stored, h, sizeof(stored)) ? 0 : 1;
+            smemclr(stored, sizeof(stored));
+            if (result == 0)
+                pageant_lock_set(PAGEANT_LOCK_PROGRAM, false);
+        }
+    }
+    smemclr(h, sizeof(h));
+
+    if (result == 0) {
+        put_byte(sb, SSH_AGENT_SUCCESS);
+        pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
+    } else {
+        failure(pc, reqid, sb, SSH_AGENT_FAILURE,
+                result == 2 ? "locking the agent over IPC is not allowed" :
+                unlock ? "agent not locked by a program, or wrong passphrase" :
+                         "agent already locked");
+    }
+    if (kageant_lock_event_hook)
+        kageant_lock_event_hook(unlock ? 1 : 0, result);
+}
 /* KiTTY: optional "a key was just used" notification hook, set by kageant to show
  * a tray balloon. Fired after a successful signature. NULL outside the GUI agent. */
 void (*kageant_notify_hook)(const char *comment,
@@ -1417,6 +1525,32 @@ static PageantAsyncOp *pageant_make_op(
     type = get_byte(msg);
     if (get_err(msg)) {
         fail("message contained no type code");
+        goto responded;
+    }
+
+    /* KiTTY: the agent lock (pageant.h). LOCK/UNLOCK are answered whatever
+     * the state; while locked, a key list is EMPTY - a client sees "no keys"
+     * and falls back cleanly, as with OpenSSH's agent - and everything else
+     * is refused. */
+    if (type == SSH_AGENTC_LOCK || type == SSH_AGENTC_UNLOCK) {
+        pageant_lock_request(pc, reqid, sb, type == SSH_AGENTC_UNLOCK, msg);
+        goto responded;
+    }
+    if (pageant_lock_state) {
+        if (type == SSH1_AGENTC_REQUEST_RSA_IDENTITIES) {
+            pageant_client_log(pc, reqid, "request: SSH1_AGENTC_REQUEST_RSA_IDENTITIES"
+                               " (agent locked: empty list)");
+            put_byte(sb, SSH1_AGENT_RSA_IDENTITIES_ANSWER);
+            put_uint32(sb, 0);
+        } else if (type == SSH2_AGENTC_REQUEST_IDENTITIES) {
+            pageant_client_log(pc, reqid, "request: SSH2_AGENTC_REQUEST_IDENTITIES"
+                               " (agent locked: empty list)");
+            put_byte(sb, SSH2_AGENT_IDENTITIES_ANSWER);
+            put_uint32(sb, 0);
+        } else {
+            pageant_client_log(pc, reqid, "request: type %d (agent locked)", type);
+            fail("the agent is locked");
+        }
         goto responded;
     }
 

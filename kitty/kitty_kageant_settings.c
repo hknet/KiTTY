@@ -769,15 +769,17 @@ static int kageant_policy_read(const char *inikey, const char *regname)
 }
 
 /* Remembered for two seconds per policy, like the confirm mode: these are
- * asked on every external add/remove request. A write through
- * kageant_policy_set forgets all three at once. */
-static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[3];
+ * asked on every external add/remove (and lock) request. One slot per
+ * policy - a fifth policy needs a fifth slot, or it is re-read every time.
+ * A write through kageant_policy_set forgets them all at once. */
+#define KAGEANT_POLICY_SLOTS 4
+static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[KAGEANT_POLICY_SLOTS];
 
 int kageant_policy_get(const char *inikey, const char *regname)
 {
     DWORD now = GetTickCount();
     int i, slot = -1;
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < KAGEANT_POLICY_SLOTS; i++) {
         if (kageant_policy_cache[i].inikey &&
             !strcmp(kageant_policy_cache[i].inikey, inikey)) {
             if (now - kageant_policy_cache[i].stamp < 2000)
@@ -831,6 +833,45 @@ int  kageant_blockremove_get(void)
 void kageant_blockremove_set(int on)
 {
     kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", on);
+}
+/* "Allow locking the agent over IPC (ssh-add -x / -X)" - default OFF: the
+ * agent never supported the lock before, so nothing depends on it, and any
+ * program could otherwise lock the agent with a passphrase nobody knows. */
+int  kageant_allowipclock_get(void)
+{
+    return kageant_policy_get(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock");
+}
+void kageant_allowipclock_set(int on)
+{
+    kageant_policy_set(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock", on);
+}
+
+/* "When Windows locks": 0 keep the agent working (default), 1 lock the
+ * agent, 2 re-encrypt the keys. [Agent] lockwithwindows=keep|lock|reencrypt,
+ * registry LockWithWindows (DWORD 0-2). Read on each session event, which is
+ * rare enough to need no cache. */
+int kageant_winlock_mode(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOCKWITHWINDOWS, buf, sizeof(buf))) {
+        if (!stricmp(buf, "keep")) ini_v = 0;
+        else if (!stricmp(buf, "lock")) ini_v = 1;
+        else if (!stricmp(buf, "reencrypt")) ini_v = 2;
+    }
+    if (kitty_inilight_registry_authoritative())
+        return kageant_reg_read_dword("LockWithWindows", &reg_v) ?
+               (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
+    if (ini_v >= 0) return ini_v;
+    return kageant_reg_read_dword("LockWithWindows", &reg_v) ?
+           (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : 0;
+}
+void kageant_winlock_mode_set(int mode)
+{
+    static const char *const words[] = { "keep", "lock", "reencrypt" };
+    if (mode < 0 || mode > 2) mode = 0;
+    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOCKWITHWINDOWS, words[mode]);
+    kageant_reg_write_dword("LockWithWindows", mode);
 }
 
 /* The raw configured notice display time (0 = unset = per-notice default). */

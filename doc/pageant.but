@@ -440,6 +440,38 @@ that signs twice in one handshake then asks twice. In \c{kitty.ini}
 these are \c{autoencryptmode} and \c{autoencryptseconds} in the
 \c{[Agent]} section; a key's own value travels on its startup entry.
 
+\H{pageant-lock} Locking the agent
+
+A \i{locked agent} keeps its keys but neither offers nor uses them: a
+client asking for the key list gets an empty one and falls back to its
+other ways of logging in, and a request to sign, add or remove a key is
+refused. The key list shows every key as \q{locked}, and the tray tip
+says \q{agent LOCKED}. The lock is a gate, not encryption: it stops
+programs from using the agent while it lasts, and adds nothing against
+someone who can read kageant's memory.
+
+\q{Lock agent} in the tray menu locks it; the same entry then reads
+\q{Unlock agent} and unlocks it again, whoever locked it.
+
+\q{When Windows locks}, on the Security page of the settings, ties the
+agent to the Windows session. \q{Keep the agent working} (the default)
+leaves it alone, so a job that uses the agent keeps running while the
+screen is locked. \q{Lock the agent} locks it when Windows locks or a
+remote desktop disconnects, and unlocks it when Windows unlocks.
+\q{Re-encrypt the keys} also puts every key that has a passphrase back
+into its encrypted state; when Windows unlocks, kageant asks for the
+passphrase of each key it re-encrypted that has a key file to read it
+from, and the others ask on first use. In \c{kitty.ini} this is
+\c{lockwithwindows} (\c{keep}, \c{lock} or \c{reencrypt}) in the
+\c{[Agent]} section.
+
+\c{ssh-add -x} and \c{ssh-add -X} lock and unlock the agent with a
+passphrase of the program's choosing - but only with \q{Allow locking
+the agent over IPC} ticked on the Security page (\c{allowipclock=yes});
+otherwise they are refused and the agent log notes it. A program's lock
+raises a notice naming the program, and the tray menu's \q{Unlock agent}
+clears it without the passphrase.
+
 \H{pageant-security} Security considerations
 
 \I{security risk}Using kageant for public-key authentication gives you the

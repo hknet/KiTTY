@@ -68,6 +68,9 @@
 #define IDC_SET_AUTOENC 346       /* ... and the time */
 #define IDC_SET_L_AUTOENC 347
 #define IDC_SET_L_AUTOENCHINT 348
+#define IDC_SET_ALLOWIPCLOCK 349  /* ssh-add -x / -X allowed */
+#define IDC_SET_WINLOCK 350       /* When Windows locks: keep / lock / re-encrypt */
+#define IDC_SET_L_WINLOCK 351
 #define IDC_SET_L_RETRY 338
 #define IDC_SET_L_LOGPATH 339
 #define IDC_SET_L_LOGKB 340

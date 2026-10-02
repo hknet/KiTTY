@@ -158,6 +158,7 @@ static filereq_saved_dir *keypath = NULL;
  * multiple of 0x10. 0x00B8 silently aliased to IDM_LOAD_ON_STARTUP. */
 #define IDM_LOAD_KEYS          0x0100    /* KiTTY: re-add remembered keys */
 #define IDM_AUDITLOG           0x0110    /* KiTTY: open the audit-log viewer */
+#define IDM_AGENTLOCK          0x0130    /* KiTTY: Lock agent / Unlock agent (0x0120 = IDM_UPDATE) */
 #define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
 #define IDM_SESSIONS_MAX       0x2000
@@ -874,6 +875,13 @@ static void keylist_update_callback(
     } else {
         disp->state = KEYSTATE_LOADED;
         put_dataz(disp->info, KT_KAKEYS_STATE_LOADED);
+    }
+    /* KiTTY: the agent is locked - every key reads "locked" while it lasts.
+     * Only the TEXT: disp->state stays what the key is, for the Decrypt /
+     * Re-encrypt button. */
+    if (pageant_lock_flags()) {
+        strbuf_clear(disp->info);
+        put_dataz(disp->info, KT_KAKEYS_STATE_LOCKED);
     }
 
     /* KiTTY: the Lifetime column - a countdown for an ssh-add -t key,
@@ -3653,10 +3661,12 @@ static const int keysettings_page_agent[] = {
     IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
 };
 static const int keysettings_page_security[] = {
-    IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_HELLO,
+    IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_ALLOWIPCLOCK,
+    IDC_SET_HELLO,
     IDC_SET_L_TTL, IDC_SET_TTL, IDC_SET_L_TTLHINT,
     IDC_SET_L_HELLOTTL, IDC_SET_HELLOTTL, IDC_SET_L_HELLOTTLHINT,
     IDC_SET_L_AUTOENC, IDC_SET_AUTOENCMODE, IDC_SET_AUTOENC, IDC_SET_L_AUTOENCHINT,
+    IDC_SET_L_WINLOCK, IDC_SET_WINLOCK,
 };
 static const int keysettings_page_media[] = {
     IDC_SET_L_RETRY, IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET,
@@ -3768,6 +3778,7 @@ static void keysettings_align_rows(HWND hwnd)
         { IDC_SET_TTL,          { IDC_SET_L_TTL, 0 } },
         { IDC_SET_HELLOTTL,     { IDC_SET_L_HELLOTTL, 0 } },
         { IDC_SET_AUTOENCMODE,  { IDC_SET_L_AUTOENC, IDC_SET_AUTOENC, 0 } },
+        { IDC_SET_WINLOCK,      { IDC_SET_L_WINLOCK, 0 } },
         { IDC_SET_AGENTLOGPATH, { IDC_SET_L_LOGPATH, 0 } },
         { IDC_SET_AGENTLOGKB,   { IDC_SET_L_LOGKB, 0 } },
         { IDC_SET_AGENTLOGKEEP, { IDC_SET_L_LOGKEEP, 0 } },
@@ -3883,6 +3894,18 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_blockadd_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_BLOCKREMOVE,
             kageant_blockremove_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_ALLOWIPCLOCK,
+            kageant_allowipclock_get() ? BST_CHECKED : BST_UNCHECKED);
+        /* KiTTY: When Windows locks - the list index is the stored value */
+        {
+            static const char *const wl[] = {
+                KT_KASET_WINLOCK_KEEP, KT_KASET_WINLOCK_LOCK, KT_KASET_WINLOCK_REENCRYPT,
+            };
+            int i;
+            for (i = 0; i < (int)lenof(wl); i++)
+                SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_ADDSTRING, 0, (LPARAM)wl[i]);
+            SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_SETCURSEL, kageant_winlock_mode(), 0);
+        }
         {
             int ns = kageant_notice_timeout_get();
             if (ns > 0)
@@ -4072,6 +4095,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKADD) == BST_CHECKED);
             kageant_blockremove_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
+            kageant_allowipclock_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_ALLOWIPCLOCK) == BST_CHECKED);
+            {
+                int wl = (int)SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_GETCURSEL, 0, 0);
+                kageant_winlock_mode_set(wl >= 0 && wl <= 2 ? wl : 0);
+            }
             {
                 /* This field's default IS 0 - "each notice's own timing" -
                  * and 0 is displayed as an empty box, so it round-trips. */
@@ -5625,6 +5654,17 @@ void kageant_refresh_tray_tip(void)
         sfree(tip);
         tip = dupstr(merged);
     }
+    /* KiTTY: the agent lock - merged after the policy lines so it lands
+     * above them: while it lasts, no key is offered at all. */
+    if (pageant_lock_flags()) {
+        const char *rest = strstr(tip, "\r\n");
+        char merged[256];
+        snprintf(merged, sizeof(merged), KT_KA_TIP_LOCKED_FMT,
+                 rest ? (int)(rest - tip) : (int)strlen(tip), tip,
+                 rest ? rest : "");
+        sfree(tip);
+        tip = dupstr(merged);
+    }
     held = kageant_mismatch_count();
     if (held > 0) {
         char line[64];
@@ -5643,6 +5683,48 @@ void kageant_refresh_tray_tip(void)
     sfree(tip);
 
     Shell_NotifyIcon(NIM_MODIFY, &tnid);
+}
+
+/*
+ * KiTTY: the agent lock's tray side. The lock state changed (pageant.h
+ * kageant_lock_changed_hook): the tray tip and the key list follow.
+ */
+static void kageant_lock_changed(void)
+{
+    kageant_refresh_tray_tip();
+    keylist_update();
+}
+
+/* "When Windows locks": the Windows session notifications, for the tray
+ * window. wtsapi32 is loaded at run time - a static import of a DLL an old
+ * Windows lacks stops the program in the loader. */
+#ifndef WM_WTSSESSION_CHANGE
+#define WM_WTSSESSION_CHANGE 0x02B1
+#endif
+#define KAGEANT_WTS_CONSOLE_DISCONNECT 0x2
+#define KAGEANT_WTS_REMOTE_DISCONNECT  0x4
+#define KAGEANT_WTS_SESSION_LOCK       0x7
+#define KAGEANT_WTS_SESSION_UNLOCK     0x8
+static HMODULE kageant_wtsapi = NULL;
+static void kageant_wts_register(HWND hwnd, bool on)
+{
+    typedef BOOL (WINAPI *pfn_reg)(HWND, DWORD);
+    typedef BOOL (WINAPI *pfn_unreg)(HWND);
+    if (!kageant_wtsapi)
+        kageant_wtsapi = load_system32_dll("wtsapi32.dll");
+    if (!kageant_wtsapi)
+        return;
+    if (on) {
+        pfn_reg reg = (pfn_reg)GetProcAddress(kageant_wtsapi,
+                                              "WTSRegisterSessionNotification");
+        if (reg)
+            reg(hwnd, 0 /* NOTIFY_FOR_THIS_SESSION */);
+    } else {
+        pfn_unreg unreg = (pfn_unreg)GetProcAddress(kageant_wtsapi,
+                                                    "WTSUnRegisterSessionNotification");
+        if (unreg)
+            unreg(hwnd);
+    }
 }
 
 static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
@@ -5665,6 +5747,20 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         break;
       case WM_CREATE:
         msgTaskbarCreated = RegisterWindowMessage(_T("TaskbarCreated"));
+        kageant_wts_register(hwnd, true);   /* KiTTY: When Windows locks */
+        break;
+      case WM_WTSSESSION_CHANGE:
+        /* KiTTY: When Windows locks. A locked session and a disconnected
+         * remote desktop both mean nobody is at this desktop. Only the
+         * UNLOCK releases the lock - a reconnect is announced before anyone
+         * has authenticated on a remote desktop without NLA; if an unlock
+         * never comes, the tray's Unlock agent clears it. */
+        if (wParam == KAGEANT_WTS_SESSION_LOCK ||
+            wParam == KAGEANT_WTS_REMOTE_DISCONNECT ||
+            wParam == KAGEANT_WTS_CONSOLE_DISCONNECT)
+            kageant_winlock_session(1);
+        else if (wParam == KAGEANT_WTS_SESSION_UNLOCK)
+            kageant_winlock_session(0);
         break;
       default:
         if (message==msgTaskbarCreated) {
@@ -5888,6 +5984,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             EnableMenuItem(systray_menu, IDM_RESUME_CONFIRM, MF_BYCOMMAND |
                            (kageant_confirm_suppressed() ? MF_ENABLED
                                                          : MF_GRAYED));
+            /* KiTTY: Lock agent / Unlock agent, after the state. A Windows
+             * lock still set here means its unlock was never announced (a
+             * remote desktop reconnect can do that): Unlock clears it too. */
+            ModifyMenu(systray_menu, IDM_AGENTLOCK, MF_BYCOMMAND | MF_STRING,
+                       IDM_AGENTLOCK,
+                       pageant_lock_flags() ? KT_KA_MENU_UNLOCK : KT_KA_MENU_LOCK);
             /* KiTTY: the menu's colours come from the process-wide app mode,
              * set at start. The theme can change in the configuration box
              * while kageant runs for days (the key list follows it on its
@@ -5961,6 +6063,23 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_REENCRYPT_ALL:
             pageant_reencrypt_all();
             keylist_update();
+            break;
+          case IDM_AGENTLOCK:
+            /* KiTTY: the tray's lock - no passphrase. Unlock clears every
+             * lock: a program's (ssh-add -x), because whoever sits at the
+             * console could restart the agent anyway, and a Windows lock whose
+             * unlock was never announced - the menu is open, so the session
+             * is unlocked - including its re-encrypted keys' prompts. */
+            if (pageant_lock_flags()) {
+                pageant_lock_set(PAGEANT_LOCK_PROGRAM, false);
+                pageant_lock_set(PAGEANT_LOCK_TRAY, false);
+                kageant_audit_use("unlock", NULL, NULL, "done", "tray", 0);
+                if (pageant_lock_flags() & PAGEANT_LOCK_WINDOWS)
+                    kageant_winlock_session(0);
+            } else {
+                pageant_lock_set(PAGEANT_LOCK_TRAY, true);
+                kageant_audit_use("lock", NULL, NULL, "done", "tray", 0);
+            }
             break;
           case IDM_ABOUT:
             if (!aboutbox) {
@@ -6599,6 +6718,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * identity list - see kageant_do_identities_asked for the rate limit. */
         kageant_identities_asked_hook = kageant_do_identities_asked;
         kageant_key_lifetime_hook = kageant_key_set_lifetime;   /* ssh-add -t */
+        /* KiTTY: the agent lock (pageant.h) */
+        kageant_ipc_lock_allowed_hook = kageant_ipc_lock_allowed;
+        kageant_lock_event_hook = kageant_do_lock_event;
+        kageant_lock_changed_hook = kageant_lock_changed;
 
         /*
          * Set up a named-pipe listener.
@@ -6806,7 +6929,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kageant_tick_sync();
     kageant_idle_install();      /* the idle re-encrypt rides the same tick */
 
-    /* Accelerators used: qdkoslncugax. KiTTY: adding keys, removing and
+    /* Accelerators used: qdktoslncugax. KiTTY: adding keys, removing and
      * re-encrypting them all live in the key window (its buttons and its
      * right-click menu), help too - the tray keeps what is reached without
      * opening it. */
@@ -6819,6 +6942,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     }
     AppendMenu(systray_menu, MF_ENABLED, IDM_VIEWKEYS, KT_KA_MENU_AGENT_KEYS);
+    AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
+    /* KiTTY: the agent lock - its text is set each time the menu opens */
+    AppendMenu(systray_menu, MF_ENABLED, IDM_AGENTLOCK, KT_KA_MENU_LOCK);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     /* KiTTY: opt-in Windows OpenSSH integration (default off). */
     AppendMenu(systray_menu, MF_ENABLED |
@@ -6921,6 +7047,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * exit path funnels through here. (A force-kill cannot log, by nature;
      * the next start line brackets the gap.) */
     kitty_audit("agent", "result", "stop", (const char *)NULL);
+    if (traywindow)
+        kageant_wts_register(traywindow, false);   /* KiTTY: When Windows locks */
 
     /* Clean up the system tray icon */
     {

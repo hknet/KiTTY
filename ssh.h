@@ -2003,6 +2003,8 @@ enum {
 #define SSH2_AGENTC_REMOVE_IDENTITY             18
 #define SSH2_AGENTC_ADD_ID_CONSTRAINED          25 /* KiTTY: add with per-key constraints */
 #define SSH2_AGENTC_REMOVE_ALL_IDENTITIES       19
+#define SSH_AGENTC_LOCK                         22 /* KiTTY: ssh-add -x */
+#define SSH_AGENTC_UNLOCK                       23 /* KiTTY: ssh-add -X */
 #define SSH2_AGENTC_EXTENSION                   27
 #define SSH_AGENT_EXTENSION_FAILURE             28
 

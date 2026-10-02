@@ -90,6 +90,7 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "lockdownmode"),
     ("Agent", "blockipcadd"),
     ("Agent", "blockipcremove"),
+    ("Agent", "allowipclock"),
     ("Agent", "keylistgeometry"),
     ("Agent", "keylistcolumns"),
     ("Agent", "agentloggeometry"),

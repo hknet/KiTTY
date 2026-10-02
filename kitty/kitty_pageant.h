@@ -233,6 +233,17 @@ int  kageant_blockadd_get(void);
 void kageant_blockadd_set(int on);
 int  kageant_blockremove_get(void);
 void kageant_blockremove_set(int on);
+int  kageant_allowipclock_get(void);    /* ssh-add -x / -X allowed (default no) */
+void kageant_allowipclock_set(int on);
+int  kageant_winlock_mode(void);        /* When Windows locks: 0 keep, 1 lock, 2 re-encrypt */
+void kageant_winlock_mode_set(int mode);
+/* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
+void kageant_audit_use(const char *ev, const char *fp, const char *comment,
+                       const char *result, const char *reason, unsigned long pid);
+/* the agent lock's frontend half (kitty_pageant.c) */
+int  kageant_ipc_lock_allowed(void);
+void kageant_do_lock_event(int op, int result);
+void kageant_winlock_session(int locked);   /* the Windows session locked / unlocked */
 int  kageant_notice_timeout_get(void);   /* raw seconds, 0 = default */
 void kageant_notice_timeout_set(int seconds);
 int kageant_comment_wants_confirm(const char *comment);

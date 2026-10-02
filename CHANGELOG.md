@@ -120,6 +120,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   "Underline hyperlinks" is now Always, On hover or Never
   (`HyperlinkUnderline` 1, 2, 0). On hover underlines the whole link under the
   pointer, including every piece of an OSC 8 link that shares its `id=`.
+- **kageant can be locked.** The tray menu's Lock agent keeps the keys loaded
+  but neither offers nor uses them until Unlock agent. Settings > Security,
+  "When Windows locks": keep the agent working (the default), lock the agent,
+  or re-encrypt the keys. A disconnected remote desktop counts as locked.
+  Re-encrypted keys that have a key file ask for their passphrase when Windows
+  unlocks, the others on first use.
+- **`ssh-add -x` / `-X` lock and unlock kageant**, when Settings > Security
+  "Allow locking the agent over IPC" is ticked (off by default). A notice
+  names the program that locked, and the tray's Unlock agent clears its lock.
 
 ### Changed
 
