@@ -143,9 +143,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Helper programs are checked before they receive the session's login.**
   `kscp.exe` and `klink.exe` beside `kitty.exe` start only as the KiTTY++
   programs of this release. Another kscp, PuTTY's pscp, rz and sz start at
-  once when they carry the KiTTY++ signature. WinSCP and FileZilla are not
-  checked: they update themselves. Otherwise a box shows the file and its signer the first time.
-  Yes remembers that exact file (`[TrustedHelpers]`). A file with a broken
+  once when they carry the KiTTY++ signature. Windows' own programs (such as
+  `wsl.exe` for ZModem through WSL) start at once when a Windows catalog lists
+  them. Otherwise a box shows the file and its signer the first time. Yes
+  remembers that exact file (`[TrustedHelpers]`). A file with a broken
   signature is not started.
 - **The Ctrl+F5 confirmation no longer holds up the terminal.** Output keeps
   arriving while the box asks whether to run the clipboard command.

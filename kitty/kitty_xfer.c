@@ -217,9 +217,11 @@ static const char *kx_helper_keyfile(Conf *c)
  *  1. it is one of our tools (kscp.exe, klink.exe) BESIDE kitty.exe and
  *     kitty_verify_sibling() accepts it: our signature (when kitty.exe is
  *     signed) and exactly our version. Otherwise it is refused;
- *  2. anywhere else: it carries our signature (kitty_authenticode_verify), or
- *     the user allowed exactly this file - path and SHA-256 - before. A
- *     broken signature (the file changed after it was signed) is refused.
+ *  2. anywhere else: it carries our signature (kitty_authenticode_verify), it
+ *     is a Windows component (listed in a Windows catalog this machine
+ *     trusts: kh_catalog_signer), or the user allowed exactly this file -
+ *     path and SHA-256 - before. A broken signature (the file changed after
+ *     it was signed) is refused.
  *
  * Allowing happens one step earlier, where a user action finds its helper
  * (kitty_helper_ready): before any password file exists, a modeless box names
@@ -355,6 +357,92 @@ static void kh_ours_add( const char *full, const char *hex ) {
 	kh_ours_leave() ;
 }
 
+/*
+ * A file Windows signs in a CATALOG rather than in the file - its own
+ * programs (wsl.exe, where.exe ...) - reads as unsigned to the in-file check.
+ * Its catalog is looked up here: 1 and the catalog's signer when the file is
+ * listed in a catalog this machine trusts; such a file runs without a
+ * confirmation (kh_judge). The catalog's trust comes from what the machine
+ * holds - revocation is not fetched, as for any Windows component.
+ * SHA-256 lookup (Windows 8+, loaded at run time: XP has no such entry
+ * points), else the SHA-1 one.
+ */
+#include <mscat.h>
+#include <softpub.h>
+typedef BOOL (WINAPI *kh_acquire2_fn)( HCATADMIN *, const GUID *, const WCHAR *,
+                                       const CERT_STRONG_SIGN_PARA *, DWORD ) ;
+typedef BOOL (WINAPI *kh_hash2_fn)( HCATADMIN, HANDLE, DWORD *, BYTE *, DWORD ) ;
+static int kh_catalog_signer( const char *full, HANDLE held, char *signer, size_t n ) {
+	HMODULE wt = GetModuleHandleA( "wintrust.dll" ) ;
+	kh_acquire2_fn acquire2 = wt ? (kh_acquire2_fn)GetProcAddress( wt, "CryptCATAdminAcquireContext2" ) : NULL ;
+	kh_hash2_fn hash2 = wt ? (kh_hash2_fn)GetProcAddress( wt, "CryptCATAdminCalcHashFromFileHandle2" ) : NULL ;
+	WCHAR wfull[MAX_PATH*4] ;
+	GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2 ;
+	int ok = 0, pass ;
+	LARGE_INTEGER zero ; zero.QuadPart = 0 ;
+
+	signer[0] = '\0' ;
+	if( !MultiByteToWideChar( CP_ACP, 0, full, -1, wfull, MAX_PATH*4 ) ) return 0 ;
+	/* pass 0: SHA-256, pass 1: SHA-1. A catalog lists a file under one of
+	 * them - many Windows catalogs still under SHA-1 - so a hash no catalog
+	 * knows is tried the other way before the file counts as unsigned. */
+	for( pass = 0 ; pass < 2 && !ok ; pass++ ) {
+		HCATADMIN cat = NULL ;
+		HCATINFO info = NULL ;
+		BYTE hash[64] ;
+		DWORD hsize = sizeof(hash) ;
+		WCHAR tag[129] ;
+		CATALOG_INFO ci ;
+		SetFilePointerEx( held, zero, NULL, FILE_BEGIN ) ;
+		if( pass == 0 ) {
+			if( !acquire2 || !hash2 || !acquire2( &cat, NULL, L"SHA256", NULL, 0 ) ) continue ;
+			if( !hash2( cat, held, &hsize, hash, 0 ) ) { CryptCATAdminReleaseContext( cat, 0 ) ; continue ; }
+		} else {
+			if( !CryptCATAdminAcquireContext( &cat, NULL, 0 ) ) continue ;
+			if( !CryptCATAdminCalcHashFromFileHandle( held, &hsize, hash, 0 ) ) { CryptCATAdminReleaseContext( cat, 0 ) ; continue ; }
+		}
+		info = CryptCATAdminEnumCatalogFromHash( cat, hash, hsize, 0, NULL ) ;
+		memset( &ci, 0, sizeof(ci) ) ; ci.cbStruct = sizeof(ci) ;
+		if( info && CryptCATCatalogInfoFromContext( info, &ci, 0 ) ) {
+			WINTRUST_CATALOG_INFO wci ;
+			WINTRUST_DATA wd ;
+			{   /* the member tag: the hash as upper-case hex */
+				static const WCHAR hx[] = L"0123456789ABCDEF" ;
+				DWORD i ;
+				for( i = 0 ; i < hsize && i < 64 ; i++ ) { tag[2*i] = hx[hash[i] >> 4] ; tag[2*i+1] = hx[hash[i] & 15] ; }
+				tag[2*i] = 0 ;
+			}
+			memset( &wci, 0, sizeof(wci) ) ; wci.cbStruct = sizeof(wci) ;
+			wci.pcwszCatalogFilePath = ci.wszCatalogFile ;
+			wci.pcwszMemberFilePath = wfull ;
+			wci.pcwszMemberTag = tag ;
+			wci.pbCalculatedFileHash = hash ;
+			wci.cbCalculatedFileHash = hsize ;
+			wci.hMemberFile = held ;
+			memset( &wd, 0, sizeof(wd) ) ; wd.cbStruct = sizeof(wd) ;
+			wd.dwUIChoice = WTD_UI_NONE ;
+			wd.fdwRevocationChecks = WTD_REVOKE_NONE ;
+			wd.dwUnionChoice = WTD_CHOICE_CATALOG ;
+			wd.pCatalog = &wci ;
+			wd.dwStateAction = WTD_STATEACTION_VERIFY ;
+			wd.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL ;
+			if( WinVerifyTrust( NULL, &action, &wd ) == ERROR_SUCCESS ) {
+				CRYPT_PROVIDER_DATA *pd = WTHelperProvDataFromStateData( wd.hWVTStateData ) ;
+				CRYPT_PROVIDER_SGNR *sg = pd ? WTHelperGetProvSignerFromChain( pd, 0, FALSE, 0 ) : NULL ;
+				ok = 1 ;
+				if( sg && sg->csCertChain > 0 && sg->pasCertChain && sg->pasCertChain[0].pCert )
+					CertGetNameStringA( sg->pasCertChain[0].pCert, CERT_NAME_ATTR_TYPE, 0,
+					                    (void *)szOID_COMMON_NAME, signer, (DWORD)n ) ;
+			}
+			wd.dwStateAction = WTD_STATEACTION_CLOSE ;
+			WinVerifyTrust( NULL, &action, &wd ) ;
+		}
+		if( info ) CryptCATAdminReleaseCatalogContext( cat, info, 0 ) ;
+		CryptCATAdminReleaseContext( cat, 0 ) ;
+	}
+	return ok ;
+}
+
 /* What may happen with the held file: run, confirm first (signer filled in), refuse.
  * hex: the file's SHA-256, for the store. */
 static int kh_judge( const char *full, HANDLE held, char *signer, size_t signersz, char hex[65] ) {
@@ -373,6 +461,17 @@ static int kh_judge( const char *full, HANDLE held, char *signer, size_t signers
 	if( sig == KG_SIG_MODIFIED ) return KHJ_REFUSE_BROKEN ;
 	if( kh_store_get( full, known, sizeof(known) ) && !stricmp( known, hex ) ) return KHJ_RUN ;
 	if( sig == KG_SIG_OURS || sig == KG_SIG_OTHER ) return KHJ_CONFIRM_SIGNED ;
+	/* No signature in the file, but listed in a Windows catalog this machine
+	 * trusts: a component of Windows (wsl.exe for rz/sz through WSL), which
+	 * only an administrator can replace and Windows Update replaces often - a
+	 * confirmation pinned to its SHA-256 would come back after every update.
+	 * It runs (his word). A changed or planted copy matches no catalog and
+	 * falls through to the unsigned confirmation below. */
+	if( ( sig == KG_SIG_UNSIGNED || sig == KG_SIG_CANNOT ) &&
+	    kh_catalog_signer( full, held, signer, signersz ) ) {
+		kh_ours_add( full, hex ) ;
+		return KHJ_RUN ;
+	}
 	if( sig == KG_SIG_CANNOT ) return KHJ_CONFIRM_CANNOT ;
 	return KHJ_CONFIRM_UNSIGNED ;
 }

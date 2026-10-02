@@ -1318,6 +1318,16 @@ set on \k{kitty-cfg-transfers-panel} (the panel names it). \c{Ctrl+X}
 aborts a transfer that has begun. The \e{paths} to \c{rz} and \c{sz}
 are per PC and live on \k{kitty-cfg-external-tools}.
 
+\b \i{ZModem with WSL}: a PC with the Windows Subsystem for Linux needs no
+Windows build of \c{rz} and \c{sz}. Install them in the distribution
+(\c{sudo apt install lrzsz}), set both paths to
+\c{C:\\Windows\\System32\\wsl.exe}, and give this panel's options as
+\c{-e rz} and \c{-e sz}. KiTTY++ starts \c{rz} in the download folder and
+\c{sz} in the folder of the chosen files with bare file names, which WSL
+maps to the same folders under \c{/mnt}. \c{wsl.exe} is a Windows
+component and starts without the helper confirmation
+(\k{kitty-cfg-external-tools}); a changed or planted copy does not.
+
 \H{kitty-cfg-knocking} \ii{Port knocking}
 
 A sequence of connection attempts that a firewall watches for, and
@@ -2236,9 +2246,11 @@ refused.
 WinSCP and FileZilla are not checked: they update themselves, and every
 update would need a new confirmation.
 
-Windows' own programs are signed in a catalog, not in the file; the
-check reads only signatures in the file, so a helper such as
-\c{wsl.exe} is shown as not signed.
+Windows' own programs - \c{wsl.exe} among them - are signed in a Windows
+catalog rather than in the file. A program listed in a catalog this PC
+trusts starts without a confirmation: only an administrator can replace
+it, and Windows Update replaces it often. A changed or planted copy is
+listed in no catalog and needs the confirmation like any unsigned file.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{PSCPPath},
 \c{pscpport}, \c{downloaddir}, \c{uploaddir} and
