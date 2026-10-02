@@ -449,7 +449,11 @@ int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
 void RetireConfigPasswordLeftovers( void ) {
 	char buf[4096] ;
-	if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD, buf, sizeof(buf) ) != NULL )
+	/* the registry only for a copy that keeps its settings there: a portable
+	 * copy (folder store) leaves HKCU alone - an installed copy cleans its
+	 * own hive at its next start */
+	if( IniFileFlag != SAVEMODE_DIR
+	    && GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD, buf, sizeof(buf) ) != NULL )
 		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
 	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
 	    && readINI( KittyIniFile, INIT_SECTION, KI_PASSWORD, buf, sizeof(buf) ) )
@@ -481,7 +485,8 @@ void RetireCountUpLeftovers( void ) {
 	char buf[4096] ;
 	size_t i ;
 	for( i = 0 ; i < lenof(dead) ; i++ ) {
-		if( GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), dead[i], buf, sizeof(buf) ) != NULL )
+		if( IniFileFlag != SAVEMODE_DIR   /* a portable copy leaves HKCU alone (above) */
+		    && GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), dead[i], buf, sizeof(buf) ) != NULL )
 			RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), dead[i] ) ;
 		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
 		    && readINI( KittyIniFile, INIT_SECTION, dead[i], buf, sizeof(buf) ) )

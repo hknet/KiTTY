@@ -184,6 +184,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A portable copy no longer deletes settings from the registry.** When a
+  portable copy (`savemode=dir`) retired old settings, it also deleted them
+  from the registry, where an installed KiTTY++ keeps its settings.
 - **URLs on newer top-level domains are found whole.** The default
   expression took a fixed list of domains or two letters, so
   `https://pi.dev/changelog` was found as `https://pi.de`. It now takes any
