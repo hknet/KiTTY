@@ -184,12 +184,12 @@ int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	else { return 1 ; }
 	}
 
-/* Save-As opening in a given folder with a name PREFILLED by the caller (the
- * remote base name). Unlike SaveFileName it does NOT clear filename, so the
- * dialog opens on that name; OFN_OVERWRITEPROMPT is Windows' own replace
- * question. Used by Get File for a single named file (never overwrite
- * silently). Returns 1 with the chosen full path in filename, 0 on cancel. */
-int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+/* The classic Save-As (GetSaveFileName): SaveFileNameFrom's fallback where the
+ * Common Item Dialog cannot be created (XP). On Windows 11 the same call was
+ * seen opening in the folder Windows remembers for the program, or in
+ * Documents, ignoring both the initial folder and the path in the prefilled
+ * name - which is why it is only the fallback now. */
+static int save_file_name_classic( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	int i = 0 ;
 	while( i < (int)sizeof(szFilter) && szFilter[i] != '\0' ) { if( szFilter[i]=='|' ) szFilter[i]='\0' ; i++ ; }
@@ -213,6 +213,91 @@ int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter,
 #include <shobjidl.h>   /* IFileOpenDialog (Common Item Dialog folder picker) */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_tools.h"        /* existdirectory */
+
+/* Save-As opening in a given folder with a name PREFILLED by the caller (the
+ * remote base name, the last component of `filename`). Used by Get File for a
+ * single named file; FOS_OVERWRITEPROMPT is Windows' own replace question, so
+ * a file is never overwritten silently. Returns 1 with the chosen full path in
+ * filename (4096 bytes), 0 on cancel.
+ *
+ * KiTTY: the Common Item Dialog (Vista+) with SetFolder, which FORCES the
+ * folder: GetSaveFileName opened in the folder Windows remembers for the
+ * program (or Documents), so Get File's Save-As never showed the download
+ * folder it was given. GetSaveFileName stays as the fallback (XP). */
+int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+	static const GUID clsid_fsd = {0xC0B4E2F3,0xBA21,0x4773,{0x8D,0xBA,0x33,0x5E,0xC9,0x46,0xEB,0x8B}} ;   /* FileSaveDialog */
+	static const GUID iid_fsd   = {0x84bccd23,0x5fde,0x4cdb,{0xae,0xa4,0xaf,0x64,0xb8,0x3d,0x78,0xab}} ;   /* IFileSaveDialog */
+	static const GUID iid_si    = {0x43826d1e,0xe718,0x42ee,{0xbc,0x55,0xa1,0xe2,0x61,0xc3,0x7b,0xfe}} ;   /* IShellItem */
+	IFileSaveDialog *pfd = NULL ;
+	int ret = 0 ;
+	HRESULT hrInit = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
+
+	if( FAILED( CoCreateInstance( &clsid_fsd, NULL, CLSCTX_INPROC_SERVER, &iid_fsd, (void**)&pfd ) ) || !pfd ) {
+		if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
+		return save_file_name_classic( hFrame, filename, Title, Filter, initialdir ) ;
+	}
+	{
+		DWORD opts = 0 ;
+		pfd->lpVtbl->GetOptions( pfd, &opts ) ;
+		pfd->lpVtbl->SetOptions( pfd, opts | FOS_OVERWRITEPROMPT | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST
+		                               | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT ) ;
+	}
+	if( Title ) {
+		wchar_t wt[256] ;
+		MultiByteToWideChar( CP_ACP, 0, Title, -1, wt, 256 ) ; wt[255] = 0 ;
+		pfd->lpVtbl->SetTitle( pfd, wt ) ;
+	}
+	/* The filter: "Name|pattern|Name|pattern|" as the classic dialog takes it. */
+	if( Filter && Filter[0] ) {
+		COMDLG_FILTERSPEC spec[8] ; wchar_t wf[8][2][256] ; UINT n = 0 ;
+		char f[1024] ; char *p, *name, *pat ;
+		snprintf( f, sizeof(f), "%s", Filter ) ;
+		for( p = f ; n < 8 && *p ; n++ ) {
+			name = p ; if( !(p = strchr( p, '|' )) ) break ; *p++ = '\0' ;
+			pat = p ; if( (p = strchr( p, '|' )) ) *p++ = '\0' ; else p = pat + strlen( pat ) ;
+			MultiByteToWideChar( CP_ACP, 0, name, -1, wf[n][0], 256 ) ; wf[n][0][255] = 0 ;
+			MultiByteToWideChar( CP_ACP, 0, pat, -1, wf[n][1], 256 ) ; wf[n][1][255] = 0 ;
+			spec[n].pszName = wf[n][0] ; spec[n].pszSpec = wf[n][1] ;
+		}
+		if( n ) pfd->lpVtbl->SetFileTypes( pfd, n, spec ) ;
+	}
+	if( initialdir && initialdir[0] && existdirectory( initialdir ) ) {
+		/* SHCreateItemFromParsingName is Vista+: resolved at run time, as in
+		 * OpenDirNameFrom, so the XP build still loads. */
+		typedef HRESULT (WINAPI *pfn_scifpn)( PCWSTR, IBindCtx *, REFIID, void ** ) ;
+		HMODULE sh = GetModuleHandleA( "shell32.dll" ) ;
+		pfn_scifpn scifpn = sh ? (pfn_scifpn)GetProcAddress( sh, "SHCreateItemFromParsingName" ) : NULL ;
+		if( scifpn ) {
+			wchar_t wi[4096] ; IShellItem *psi0 = NULL ;
+			MultiByteToWideChar( CP_ACP, 0, initialdir, -1, wi, 4096 ) ; wi[4095] = 0 ;
+			if( SUCCEEDED( scifpn( wi, NULL, &iid_si, (void**)&psi0 ) ) && psi0 ) {
+				pfd->lpVtbl->SetFolder( pfd, psi0 ) ;
+				psi0->lpVtbl->Release( psi0 ) ;
+			}
+		}
+	}
+	{
+		/* the prefilled name without its folder: the folder is set above */
+		const char *base = strrchr( filename, '\\' ) ;
+		wchar_t wn[1024] ;
+		MultiByteToWideChar( CP_ACP, 0, base ? base + 1 : filename, -1, wn, 1024 ) ; wn[1023] = 0 ;
+		if( wn[0] ) pfd->lpVtbl->SetFileName( pfd, wn ) ;
+	}
+	if( SUCCEEDED( pfd->lpVtbl->Show( pfd, hFrame ) ) ) {
+		IShellItem *psi = NULL ;
+		if( SUCCEEDED( pfd->lpVtbl->GetResult( pfd, &psi ) ) && psi ) {
+			PWSTR wpath = NULL ;
+			if( SUCCEEDED( psi->lpVtbl->GetDisplayName( psi, SIGDN_FILESYSPATH, &wpath ) ) && wpath ) {
+				if( WideCharToMultiByte( CP_ACP, 0, wpath, -1, filename, 4096, NULL, NULL ) > 0 ) ret = 1 ;
+				CoTaskMemFree( wpath ) ;
+			}
+			psi->lpVtbl->Release( psi ) ;
+		}
+	}
+	pfd->lpVtbl->Release( pfd ) ;
+	if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
+	return ret ;   /* a cancel is a cancel: no fallback to the classic box */
+}
 /* The tree picker's initial selection: SHBrowseForFolder takes it through a
  * callback, not a field. lParam carries the ANSI path. */
 static int CALLBACK browse_start_folder( HWND hwnd, UINT msg, LPARAM lParam, LPARAM data ) {

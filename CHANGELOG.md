@@ -202,6 +202,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Get File's Save-As box opens in the download folder.** For one named
+  file it opened in the folder last used with KiTTY++, or in Documents,
+  whatever download folder was set.
 - **Get File's debug log no longer shows the password.** When no private
   password file could be made, the password went on kscp's command line, and
   Get File logged that line unblanked; Send File always blanked it.
