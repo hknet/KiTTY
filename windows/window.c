@@ -3060,6 +3060,60 @@ static bool kitty_is_benign_channel_close_msg(const char *msg)
     return msg && strstr(msg, "nonexistent channel") != NULL;
 }
 
+/*
+ * KiTTY: the wait step of the mid-session "Change Settings" box
+ * (dialog.c do_reconfig -> ShinyDialogBoxPumped). It serves what the main
+ * loop serves - the handle waits (network, helpers, the frame signal) and
+ * the queued callbacks - and returns once a window message may be waiting,
+ * so the session keeps running while the box is open. Not under MOD_PERSO:
+ * dialog.c is in the shared guiterminal library and calls it from every GUI
+ * target.
+ */
+void kitty_reconf_wait(void)
+{
+    DWORD n, timeout;
+    HandleWaitList *hwl;
+
+    /* a message already queued, or a callback pending: do not block */
+    timeout = (toplevel_callback_pending() ||
+               HIWORD(GetQueueStatus(QS_ALLINPUT))) ? 0 : INFINITE;
+    hwl = get_handle_wait_list();
+    n = MsgWaitForMultipleObjects(hwl->nhandles, hwl->handles, false,
+                                  timeout, QS_ALLINPUT);
+    if ((unsigned)(n - WAIT_OBJECT_0) < (unsigned)hwl->nhandles)
+        handle_wait_activate(hwl, n - WAIT_OBJECT_0);
+    handle_wait_list_free(hwl);
+    run_toplevel_callbacks();
+#ifdef MOD_ZMODEM
+    if (kitty_zmodem_active())
+        kitty_zmodem_process();
+#endif
+}
+
+#ifdef MOD_PERSO
+/* KiTTY: the open mid-session "Change Settings" box of this thread, or NULL
+ * (its class: dialog.c do_reconfig) */
+static BOOL CALLBACK kitty_reconf_box_enum(HWND h, LPARAM lp)
+{
+    char cls[32];
+    if (GetClassNameA(h, cls, sizeof(cls)) && !strcmp(cls, "PuTTYConfigBox") &&
+        IsWindowVisible(h)) {
+        *(HWND *)lp = h;
+        return FALSE;
+    }
+    return TRUE;
+}
+static HWND kitty_reconf_box(void)
+{
+    HWND h = NULL;
+    EnumThreadWindows(GetCurrentThreadId(), kitty_reconf_box_enum, (LPARAM)&h);
+    return h;
+}
+/* the window was asked to close while that box was open: it closes once the
+ * box is gone (IDM_RECONF) */
+static bool kitty_close_after_reconf = false;
+#endif
+
 /* KiTTY hyperlink underline: repaint only the rows whose link membership
  * changed in the last kitty_url_rescan(), instead of InvalidateRect(whole
  * window) which forced a full repaint on every screen update and flickered on
@@ -4586,6 +4640,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_CLOSE: {
         char *title, *msg, *additional = NULL;
 #ifdef MOD_PERSO
+        /* KiTTY: Change Settings is open (the session runs behind it, so this
+         * can arrive): the box goes first, as a Cancel, and this close is
+         * done again once it has gone - the box still uses this window's
+         * settings until then. */
+        if (wgs->reconfiguring) {
+            HWND box = kitty_reconf_box();
+            kitty_close_after_reconf = true;
+            if (box)
+                PostMessage(box, WM_CLOSE, 0, 0);
+            return 0;
+        }
+#endif
+#ifdef MOD_PERSO
         /*
          * KiTTY: this session may not be closed by the user.
          *
@@ -5223,6 +5290,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 hwnd, wgs->conf,
                 wgs->backend ? backend_cfg_info(wgs->backend) : 0);
             wgs->reconfiguring = false;
+#ifdef MOD_PERSO
+            /* KiTTY: the window was asked to close while the box was open
+             * (WM_CLOSE above): now it can */
+            if (kitty_close_after_reconf) {
+                kitty_close_after_reconf = false;
+                conf_free(prev_conf);
+                PostMessage(hwnd, WM_CLOSE, 0, 0);
+                break;
+            }
+#endif
             if (!reconfig_result) {
                 conf_free(prev_conf);
                 break;

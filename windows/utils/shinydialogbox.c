@@ -107,6 +107,76 @@ int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     return state->result;
 }
 
+/*
+ * KiTTY: ShinyDialogBox for a box the terminal must keep running behind
+ * ("Change Settings" mid-session). The plain loop above blocks in
+ * GetMessage, which serves window messages only: network and helper events
+ * (handle waits) and the queued callbacks wait until the box is closed, so
+ * no output arrives meanwhile. Here wait() replaces that block - it services
+ * what the terminal's main loop services and returns once a message may be
+ * waiting (windows/window.c kitty_reconf_wait). It is passed in rather than
+ * called, because this file sits below the libraries that know the handle
+ * waits and the callbacks.
+ */
+int ShinyDialogBoxPumped(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
+                         HWND hwndparent, ShinyDlgProc proc, void *ctx,
+                         void (*wait)(void))
+{
+    WNDCLASS wc;
+    struct ShinyDialogBoxState state[1];
+    HWND hwnd;
+    MSG msg;
+    bool quit = false;
+    WPARAM quitcode = 0;
+
+    wc.style = CS_DBLCLKS | CS_SAVEBITS | CS_BYTEALIGNWINDOW;
+    wc.lpfnWndProc = DefDlgProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = DLGWINDOWEXTRA + sizeof(LONG_PTR);
+    wc.hInstance = hinst;
+    wc.hIcon = NULL;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH) (COLOR_BACKGROUND +1);
+    wc.lpszMenuName = NULL;
+    wc.lpszClassName = winclass;
+    RegisterClass(&wc);
+
+    state->ended = false;
+    state->proc = proc;
+    state->ctx = ctx;
+
+    sdb_tempstate = state;
+    hwnd = CreateDialog(hinst, tmpl, hwndparent, ShinyRealDlgProc);
+    SetWindowLongPtr(hwnd, DLGWINDOWEXTRA, (LONG_PTR)state);
+    sdb_tempstate = NULL;
+
+    while (!state->ended && !quit) {
+        int n = 0;
+        wait();
+        /* a handful of messages per round, so the events keep their turn */
+        while (n++ < 16 && PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) {
+                quit = true;
+                quitcode = msg.wParam;
+                break;
+            }
+            if (!IsDialogMessage(hwnd, &msg) && !ShinyAuxDialogMessage(&msg))
+                DispatchMessage(&msg);
+            if (state->ended)
+                break;
+        }
+    }
+
+    if (quit) {
+        PostQuitMessage((int)quitcode);   /* pass the WM_QUIT on */
+        if (!state->ended)
+            state->result = 0;            /* the box did not finish: a Cancel */
+    }
+
+    DestroyWindow(hwnd);
+    return state->result;
+}
+
 void ShinyEndDialog(HWND hwnd, int ret)
 {
     struct ShinyDialogBoxState *state = ShinyDialogGetState(hwnd);

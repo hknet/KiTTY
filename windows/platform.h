@@ -148,6 +148,11 @@ typedef INT_PTR (*ShinyDlgProc)(HWND hwnd, UINT msg, WPARAM wParam,
                                 LPARAM lParam, void *ctx);
 int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
                    HWND hwndparent, ShinyDlgProc proc, void *ctx);
+/* KiTTY: the same, with wait() serving the terminal's events while the box
+ * is open (mid-session Change Settings; shinydialogbox.c) */
+int ShinyDialogBoxPumped(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
+                         HWND hwndparent, ShinyDlgProc proc, void *ctx,
+                         void (*wait)(void));
 void ShinyEndDialog(HWND hwnd, int ret);
 /* KiTTY: register a modeless aux dialog (About box, /help command list) so
  * message loops can keep its dialog keyboard handling (Esc/Tab) working via

@@ -154,6 +154,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   signature is not started.
 - **The Ctrl+F5 confirmation no longer holds up the terminal.** Output keeps
   arriving while the box asks whether to run the clipboard command.
+- **Change Settings keeps the session running.** Output, transfers and
+  keepalives go on while the box is open. Cancel leaves the session's
+  settings untouched. Closing the window closes the box with it.
 - **Detected links cost less while output scrolls.** The search for web
   addresses now runs only over the lines that changed and reuses what it found
   in lines it saw before. A link that only scrolled keeps its underline

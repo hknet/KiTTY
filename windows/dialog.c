@@ -4435,6 +4435,12 @@ bool do_config(Conf *conf)
     return ret;
 }
 
+/* KiTTY: window.c's wait step for the mid-session box (ShinyDialogBoxPumped):
+ * the session keeps running while Change Settings is open. Not guarded: this
+ * file is in the shared guiterminal library, where MOD_PERSO is undefined,
+ * and every window.c (one per GUI target) defines it. */
+void kitty_reconf_wait(void);
+
 bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
 {
     Conf *backup_conf;
@@ -4463,19 +4469,26 @@ bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
             base, kitty_storage_is_portable(), restricted_acl(), true);
         sfree(base);
     }
-    pds->dp->data = conf;
+    /* KiTTY: the box edits a COPY. The session keeps running while it is
+     * open (below), and it reads its settings all the while - edits made in
+     * place would take effect half-typed, before OK. The copy goes into the
+     * session's settings on OK only; Cancel leaves them untouched. */
+    pds->dp->data = backup_conf;
 
     dlg_auto_set_fixed_pitch_flag(pds->dp);
 
     pds->dp->shortcuts['g'] = true;          /* the treeview: `Cate&gory' */
 
-    ret = ShinyDialogBox(hinst, MAKEINTRESOURCE(IDD_MAINBOX), "PuTTYConfigBox",
-                         NULL, GenericMainDlgProc, pds);
+    /* KiTTY: the terminal's network, helper and callback events are served
+     * while the box is open, so output keeps arriving */
+    ret = ShinyDialogBoxPumped(hinst, MAKEINTRESOURCE(IDD_MAINBOX),
+                               "PuTTYConfigBox", NULL, GenericMainDlgProc, pds,
+                               kitty_reconf_wait);
 
     pds_free(pds);
 
-    if (!ret)
-        conf_copy_into(conf, backup_conf);
+    if (ret)
+        conf_copy_into(conf, backup_conf);   /* KiTTY: the edited copy, on OK */
 
     conf_free(backup_conf);
 
