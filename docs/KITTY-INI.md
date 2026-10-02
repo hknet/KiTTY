@@ -280,6 +280,10 @@ szcommand=C:\Tools\lrzsz\sz.exe
 PSCPPath=
 ```
 
+With WSL, lrzsz installed in the distribution serves both: `rzcommand` and
+`szcommand` set to `C:\Windows\System32\wsl.exe`, the session's rz/sz options
+`-e rz` and `-e sz` (manual: "ZModem with WSL").
+
 These are properties of the machine, not of a connection, so they live here
 and every session shares them. Set them on **Application > KiTTY++ Settings >
 Transfers & Tools**, which has a leaf per tool. The Tools menu of a terminal
