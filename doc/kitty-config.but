@@ -2213,6 +2213,33 @@ else on this tab. The settings that \e{are} per session stay on the
 session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
 
+\i{Helper programs} are checked before they start, because they receive
+the session's login - host, user, a password file:
+
+\b \c{kscp.exe} and \c{klink.exe} beside \c{kitty.exe} start only when
+they are the KiTTY++ programs of this release: our signature (when
+\c{kitty.exe} carries one) and the same version. Anything else is
+refused, and a box names the file.
+
+\b Any other helper - a \c{PSCPPath} elsewhere, PuTTY's \c{pscp.exe},
+\c{rz} and \c{sz} - starts at once when it carries our signature. Otherwise a confirmation box comes up the first time,
+with the file and its signer (or \q{Not signed}, in red); \q{Yes} starts
+the action again and remembers that exact file - its path and SHA-256 -
+in \c{[TrustedHelpers]} (registry key \c{TrustedHelpers} on an installed
+copy). A replaced or updated file needs a new confirmation. For ZModem,
+the far end may give up while the box is open: start the transfer again
+if it does not begin.
+
+\b A file whose signature is broken - changed after it was signed - is
+refused.
+
+WinSCP and FileZilla are not checked: they update themselves, and every
+update would need a new confirmation.
+
+Windows' own programs are signed in a catalog, not in the file; the
+check reads only signatures in the file, so a helper such as
+\c{wsl.exe} is shown as not signed.
+
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{PSCPPath},
 \c{pscpport}, \c{downloaddir}, \c{uploaddir} and
 \c{transfernotification}; the WinSCP leaf writes \c{WinSCPPath}, the

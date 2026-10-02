@@ -331,10 +331,9 @@ static kitty_zmodem_state *zm_spawn(const char *command, const char *params,
         _snprintf(cmdline, sizeof(cmdline) - 1, "%s %s", base, params ? params : "");
         cmdline[sizeof(cmdline) - 1] = '\0';
 
-        if (!CreateProcess(command, cmdline, NULL, NULL, TRUE,
-                           CREATE_NEW_CONSOLE, NULL,
-                           (workdir && workdir[0]) ? workdir : NULL,
-                           &si, &zm->pi)) {
+        /* rz/sz start only through the helper signature check (kitty_xfer.c) */
+        if (!kitty_helper_start(command, cmdline, TRUE, CREATE_NEW_CONSOLE,
+                                workdir, &si, &zm->pi)) {
             CloseHandle(newstdin); CloseHandle(write_stdin);
             CloseHandle(newstdout); CloseHandle(read_stdout);
             CloseHandle(newstderr); CloseHandle(read_stderr);
@@ -367,9 +366,24 @@ static kitty_zmodem_state *zm_spawn(const char *command, const char *params,
     return zm;
 }
 
+/* A Yes in the helper box (kitty_helper_ready): the menu command again. */
+typedef struct { HWND owner; UINT cmd; } zm_again_t;
+static void zm_again(void *v)
+{
+    zm_again_t *g = (zm_again_t *)v;
+    PostMessage(g->owner, WM_COMMAND, g->cmd, 0);
+}
+static void zm_again_free(void *v) { sfree(v); }
+static zm_again_t *zm_again_new(HWND owner, UINT cmd)
+{
+    zm_again_t *g = snew(zm_again_t);
+    g->owner = owner; g->cmd = cmd;
+    return g;
+}
+
 /* Start a ZModem RECEIVE (rz): the remote 'sz' has begun; we spawn rz and feed
  * it the incoming stream. Returns 1 on success. */
-int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
+int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
     const char *cmd = kitty_zmodem_command(0);
     const char *opts = conf_get_str(conf, CONF_rzoptions);
@@ -387,6 +401,9 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
         MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
         return 0;
     }
+    /* rz checked first: a Yes in its confirmation box starts the receive again */
+    if (!kitty_helper_ready(owner, cmd, 0, 1, zm_again, zm_again_new(owner, again), zm_again_free))
+        return 0;
     zm = zm_spawn(cmd, opts, dir, backend, logctx, term);
     if (!zm) {
         MessageBox(NULL, KT_ZM_RZ_START_FAILED, KT_CAP_ZMODEM,
@@ -400,7 +417,7 @@ int kitty_zmodem_receive(Conf *conf, Backend *backend, LogContext *logctx, Termi
 }
 
 /* Start a ZModem SEND (sz <files>): prompt for files, spawn sz. Returns 1. */
-int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
+int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
     OPENFILENAME fn;
     static char filenames[32000];
@@ -421,6 +438,9 @@ int kitty_zmodem_send(HWND owner, Conf *conf, Backend *backend, LogContext *logc
         MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
         return 0;
     }
+    /* sz checked before the picker: a Yes in its confirmation box re-opens the upload */
+    if (!kitty_helper_ready(owner, cmd, 0, 1, zm_again, zm_again_new(owner, again), zm_again_free))
+        return 0;
 
     memset(&fn, 0, sizeof(fn));
     memset(filenames, 0, sizeof(filenames));

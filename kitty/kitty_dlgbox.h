@@ -33,6 +33,9 @@ HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
                              const char *detail, const char *warn_red,
                              void (*done)( int yes, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
+/* kitty_info_box, modeless (detail as above); NULL = not made. */
+HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,
+                          const char *detail, const char *warn_red );
 int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
 void kitty_notice_box( HWND owner, const char *caption, const char *text );
 void kitty_demo_templates( void );

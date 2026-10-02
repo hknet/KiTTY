@@ -349,6 +349,15 @@ void StartFileZilla( HWND hwnd ) ;
 void RunCmd( HWND hwnd ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
+/* Helper programs (kitty_xfer.c): the signature check and the one start.
+ * kitty_helper_ready: may the action that found its helper at `path` go on
+ * now? 1 = yes; 0 = refused, or a confirmation box is open and fn(ctx) runs on its Yes (ctx
+ * is freed with ctxfree either way). kitty_helper_start: CreateProcessA of
+ * exactly that file, after the check; FALSE + ERROR_ACCESS_DENIED = refused. */
+int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
+                        void (*fn)( void * ), void *ctx, void (*ctxfree)( void * ) ) ;
+BOOL kitty_helper_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
+                         const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
 void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
 // Show a menu in the system tray

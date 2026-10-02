@@ -5707,11 +5707,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_ZMODEM
           case IDM_XYZSTART:
             if (GetZModemFlag())
-                kitty_zmodem_receive(wgs->conf, wgs->backend, wgs->logctx, wgs->term);
+                kitty_zmodem_receive(hwnd, IDM_XYZSTART, wgs->conf, wgs->backend, wgs->logctx, wgs->term);
             break;
           case IDM_XYZUPLOAD:
             if (GetZModemFlag())
-                kitty_zmodem_send(hwnd, wgs->conf, wgs->backend, wgs->logctx, wgs->term);
+                kitty_zmodem_send(hwnd, IDM_XYZUPLOAD, wgs->conf, wgs->backend, wgs->logctx, wgs->term);
             break;
           case IDM_XYZABORT:
             if (GetZModemFlag())

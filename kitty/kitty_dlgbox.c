@@ -501,6 +501,37 @@ HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
 	return h ;
 }
 
+/* An announcement has no answer to hand on; a done callback is what makes
+ * the box modeless (kitty_confirm_end, WM_DESTROY). */
+static void kitty_info_modeless_done( int yes, void *ctx ) { (void)yes ; (void)ctx ; }
+
+/* kitty_info_box without holding up the window that puts it up: one OK, the
+ * same template, `detail` as in kitty_confirm_modeless. NULL = not made. */
+HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,
+                          const char *detail, const char *warn_red ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	HWND h ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->warn = warn_red ? _strdup( warn_red ) : NULL ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->info = 1 ;
+	cf->done = kitty_info_modeless_done ;
+	h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)cf ) ;
+	if( !h ) {
+		free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
+		free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
+		free( cf ) ;
+		return NULL ;
+	}
+	ShinyAddAuxDialog( h ) ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+	return h ;
+}
+
 /* If the dialog cannot be created at all (-1: out of resources, or so early or
  * so broken that no template loads), fall back to a plain MessageBox with the
  * same words - a fatal error must never pass unshown. */

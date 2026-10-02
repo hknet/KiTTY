@@ -193,32 +193,398 @@ static const char *kx_helper_keyfile(Conf *c)
 
 /* Provided elsewhere in the KiTTY tree (not in a header). */
 
-// Send a file by SCP to the root of the account
-/* KiTTY security: launch a console command line WITHOUT a shell. Replaces
- * system()/"start" for the kscp/klink command builders below, so session fields
- * spliced into the command line cannot inject shell commands - CreateProcess does
- * NOT run cmd.exe, so & | > ` and friends are taken literally (kills the shell
- * command-injection class). A new console is created (kscp/klink are console
- * tools); `wait` blocks until exit (the old inline system() behaviour) or returns
- * immediately (the old "start" new-window behaviour). Returns 0 on success.
- * That staged follow-up is DONE, and this note is kept because it says what
- * the three quoting layers below are for: bcat bounds every append (no
+/* KiTTY security: the helpers are started WITHOUT a shell (CreateProcess, no
+ * cmd.exe), so session fields spliced into a command line cannot inject shell
+ * commands - & | > ` and friends are taken literally. The quoting layers
+ * below are what keeps each value one argument: bcat bounds every append (no
  * overflow of buffer[4096]), qcat applies Win32 argv quoting to each single
  * value (no injected extra arguments), rawcat applies WinSCP's rawsettings
  * rule and urlcat percent-encodes URL userinfo. What is still appended RAW is
  * deliberate and documented at each site: pscpoptions, winscpoptions and
  * winscprawsettings are the user writing command line on purpose, and
  * quoting them would break the feature. */
-static int kitty_run_noshell( char *cmdline, int wait ) {
+
+/*
+ * HELPER PROGRAMS: the one place a helper is started, and the signature check
+ * in front of it.
+ *
+ * kscp/pscp, rz/sz and klink are programs KiTTY++ finds by a search or a
+ * configured path and starts with the session's login - host, user, a
+ * password file. Anything that can put a program there would be handed live
+ * credentials by a program the user trusts. So every one of them starts
+ * through kitty_helper_start(), and that runs a program only when
+ *
+ *  1. it is one of our tools (kscp.exe, klink.exe) BESIDE kitty.exe and
+ *     kitty_verify_sibling() accepts it: our signature (when kitty.exe is
+ *     signed) and exactly our version. Otherwise it is refused;
+ *  2. anywhere else: it carries our signature (kitty_authenticode_verify), or
+ *     the user allowed exactly this file - path and SHA-256 - before. A
+ *     broken signature (the file changed after it was signed) is refused.
+ *
+ * Allowing happens one step earlier, where a user action finds its helper
+ * (kitty_helper_ready): before any password file exists, a modeless box names
+ * the file and its signer; Yes remembers it (TrustedHelpers: a registry key,
+ * or [TrustedHelpers] in kitty.ini in portable mode) and runs the action
+ * again. The file is held open, writes and deletion refused, from the check
+ * until the process has started, so what was checked is what runs.
+ */
+#include "kitty_authenticode.h"   /* kitty_verify_sibling, kitty_authenticode_verify */
+#include "kitty_renameguard.h"    /* kitty_signature_reading, kitty_eventlog_line */
+#include "mini/mini.h"            /* readINI / writeINI: portable mode's store */
+#include "kitty_storage.h"        /* kitty_registry_base: the registry store */
+
+#define KH_STORE_SECTION "TrustedHelpers"
+
+enum { KHJ_RUN, KHJ_CONFIRM_SIGNED, KHJ_CONFIRM_UNSIGNED, KHJ_CONFIRM_CANNOT,
+       KHJ_REFUSE_SIBLING, KHJ_REFUSE_BROKEN, KHJ_MISSING };
+
+/* The full long path, so one file has one name in the store. */
+static int kh_full_path( const char *in, char *out, size_t n ) {
+	char tmp[MAX_PATH*4] ;
+	DWORD r = GetFullPathNameA( in, sizeof(tmp), tmp, NULL ) ;
+	if( r == 0 || r >= sizeof(tmp) ) return 0 ;
+	r = GetLongPathNameA( tmp, out, (DWORD)n ) ;
+	if( r == 0 || r >= n ) { if( strlen(tmp) >= n ) return 0 ; strcpy( out, tmp ) ; }
+	return 1 ;
+}
+
+/* Our own tool, beside the running kitty.exe? Rule 1 applies to these only. */
+static int kh_is_our_sibling( const char *full ) {
+	char self[MAX_PATH*4], selffull[MAX_PATH*4], *s, *b ;
+	const char *base ;
+	if( !GetModuleFileNameA( NULL, self, sizeof(self) ) || !kh_full_path( self, selffull, sizeof(selffull) ) )
+		return 0 ;
+	s = strrchr( selffull, '\\' ) ; base = strrchr( full, '\\' ) ;
+	if( !s || !base ) return 0 ;
+	base++ ;
+	if( stricmp( base, "kscp.exe" ) && stricmp( base, "klink.exe" ) ) return 0 ;
+	if( (size_t)( base - full ) != (size_t)( s + 1 - selffull ) ) return 0 ;
+	b = selffull ;
+	return strnicmp( full, b, (size_t)( s + 1 - selffull ) ) == 0 ;
+}
+
+/* SHA-256 of the open file, as 64 hex digits. */
+static int kh_sha256( HANDLE h, char hex[65] ) {
+	unsigned char buf[65536], digest[32] ;
+	DWORD got ;
+	ssh_hash *sh = ssh_hash_new( &ssh_sha256 ) ;
+	LARGE_INTEGER zero ; zero.QuadPart = 0 ;
+	if( !SetFilePointerEx( h, zero, NULL, FILE_BEGIN ) ) { ssh_hash_free( sh ) ; return 0 ; }
+	for(;;) {
+		if( !ReadFile( h, buf, sizeof(buf), &got, NULL ) ) { ssh_hash_free( sh ) ; return 0 ; }
+		if( got == 0 ) break ;
+		put_data( sh, buf, got ) ;
+	}
+	ssh_hash_final( sh, digest ) ;
+	for( int i = 0 ; i < 32 ; i++ ) sprintf( hex + 2*i, "%02x", digest[i] ) ;
+	return 1 ;
+}
+
+/* The store: value name = the lower-case full path, data = the SHA-256. */
+static void kh_store_name( const char *full, char *name, size_t n ) {
+	size_t i ;
+	for( i = 0 ; full[i] && i + 1 < n ; i++ ) name[i] = (char)tolower( (unsigned char)full[i] ) ;
+	name[i] = '\0' ;
+}
+static int kh_store_get( const char *full, char *hex, size_t n ) {
+	char name[MAX_PATH*4] ;
+	kh_store_name( full, name, sizeof(name) ) ;
+	hex[0] = '\0' ;
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		if( !readINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex, n ) ) hex[0] = '\0' ;
+	} else {
+		char key[1024] ; HKEY hk ; DWORD type, len = (DWORD)n ;
+		snprintf( key, sizeof(key), "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		if( RegOpenKeyExA( HKEY_CURRENT_USER, key, 0, KEY_READ, &hk ) == ERROR_SUCCESS ) {
+			if( RegQueryValueExA( hk, name, NULL, &type, (BYTE *)hex, &len ) != ERROR_SUCCESS || type != REG_SZ )
+				hex[0] = '\0' ;
+			else hex[n-1] = '\0' ;
+			RegCloseKey( hk ) ;
+		}
+	}
+	return hex[0] != '\0' ;
+}
+static void kh_store_put( const char *full, const char *hex ) {
+	char name[MAX_PATH*4] ;
+	kh_store_name( full, name, sizeof(name) ) ;
+	if( strchr( name, '=' ) ) return ;   /* not a kitty.ini key: confirmed again next time */
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		if( !GetReadOnlyFlag() ) writeINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex ) ;
+	} else {
+		char key[1024] ; HKEY hk ;
+		snprintf( key, sizeof(key), "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		if( RegCreateKeyExA( HKEY_CURRENT_USER, key, 0, NULL, 0, KEY_WRITE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
+			RegSetValueExA( hk, name, 0, REG_SZ, (const BYTE *)hex, (DWORD)strlen( hex ) + 1 ) ;
+			RegCloseKey( hk ) ;
+		}
+	}
+}
+
+/* Open the file for the check and the start: reading shared, writing and
+ * deleting refused until it is closed. */
+static HANDLE kh_hold( const char *full ) {
+	return CreateFileA( full, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING,
+	                    FILE_ATTRIBUTE_NORMAL, NULL ) ;
+}
+
+/* Files this process found to be ours, or the user allowed, by path and
+ * SHA-256: the signature check goes online for revocation, which can take
+ * seconds on a machine without a network, and every action checks twice
+ * (ready, then start). An allowed file the store cannot keep (a read-only
+ * kitty.ini) is still allowed for the action that wanted it. */
+#define KH_OURS_CACHE 8
+static struct { char full[MAX_PATH*4] ; char hex[65] ; } kh_ours[KH_OURS_CACHE] ;
+static int kh_ours_next = 0 ;
+static volatile LONG kh_ours_lock = 0 ;   /* klink starts from a worker thread too */
+static void kh_ours_enter( void ) { while( InterlockedExchange( &kh_ours_lock, 1 ) ) Sleep( 0 ) ; }
+static void kh_ours_leave( void ) { InterlockedExchange( &kh_ours_lock, 0 ) ; }
+static int kh_ours_known( const char *full, const char *hex ) {
+	int found = 0 ;
+	kh_ours_enter() ;
+	for( int i = 0 ; i < KH_OURS_CACHE && !found ; i++ )
+		if( kh_ours[i].hex[0] && !strcmp( kh_ours[i].hex, hex ) && !stricmp( kh_ours[i].full, full ) )
+			found = 1 ;
+	kh_ours_leave() ;
+	return found ;
+}
+static void kh_ours_add( const char *full, const char *hex ) {
+	kh_ours_enter() ;
+	snprintf( kh_ours[kh_ours_next].full, sizeof(kh_ours[0].full), "%s", full ) ;
+	snprintf( kh_ours[kh_ours_next].hex, sizeof(kh_ours[0].hex), "%s", hex ) ;
+	kh_ours_next = ( kh_ours_next + 1 ) % KH_OURS_CACHE ;
+	kh_ours_leave() ;
+}
+
+/* What may happen with the held file: run, confirm first (signer filled in), refuse.
+ * hex: the file's SHA-256, for the store. */
+static int kh_judge( const char *full, HANDLE held, char *signer, size_t signersz, char hex[65] ) {
+	char known[80] ;
+	int sig ;
+	signer[0] = '\0' ; hex[0] = '\0' ;
+	if( held == INVALID_HANDLE_VALUE || !kh_sha256( held, hex ) ) return KHJ_MISSING ;
+	if( kh_ours_known( full, hex ) ) return KHJ_RUN ;
+	if( kh_is_our_sibling( full ) ) {
+		if( !kitty_verify_sibling( full ) ) return KHJ_REFUSE_SIBLING ;
+		kh_ours_add( full, hex ) ;
+		return KHJ_RUN ;
+	}
+	if( kitty_authenticode_verify( full ) ) { kh_ours_add( full, hex ) ; return KHJ_RUN ; }
+	sig = kitty_signature_reading( full, signer, signersz ) ;
+	if( sig == KG_SIG_MODIFIED ) return KHJ_REFUSE_BROKEN ;
+	if( kh_store_get( full, known, sizeof(known) ) && !stricmp( known, hex ) ) return KHJ_RUN ;
+	if( sig == KG_SIG_OURS || sig == KG_SIG_OTHER ) return KHJ_CONFIRM_SIGNED ;
+	if( sig == KG_SIG_CANNOT ) return KHJ_CONFIRM_CANNOT ;
+	return KHJ_CONFIRM_UNSIGNED ;
+}
+
+static const char *kh_base( const char *full ) {
+	const char *b = strrchr( full, '\\' ) ;
+	return b ? b + 1 : full ;
+}
+
+static void kh_log( unsigned type, const char *fmt, const char *full, const char *why ) {
+	char *m = dupprintf( fmt, full, why ) ;
+	kitty_eventlog_line( type, m ) ;
+	sfree( m ) ;
+}
+
+/* One open box per file; every action that wanted the file while it was open
+ * runs on its Yes, in the order they came. */
+typedef struct kh_retry { void (*fn)( void * ) ; void *ctx ; void (*ctxfree)( void * ) ; struct kh_retry *next ; } kh_retry ;
+typedef struct kh_pending { char full[MAX_PATH*4] ; char hex[65] ; char why[300] ; HWND box ;
+                            kh_retry *retries ; struct kh_pending *next ; } kh_pending ;
+static kh_pending *kh_pendings = NULL ;
+
+static void kh_answer( int yes, void *vp ) {
+	kh_pending *p = (kh_pending *)vp, **pp ;
+	kh_retry *r, *rn ;
+	for( pp = &kh_pendings ; *pp ; pp = &(*pp)->next )
+		if( *pp == p ) { *pp = p->next ; break ; }
+	kh_log( yes ? EVENTLOG_INFORMATION_TYPE : EVENTLOG_WARNING_TYPE,
+	        yes ? KT_HELPER_LOG_ALLOWED : KT_HELPER_LOG_DECLINED, p->full, p->why ) ;
+	if( yes ) { kh_store_put( p->full, p->hex ) ; kh_ours_add( p->full, p->hex ) ; }
+	for( r = p->retries ; r ; r = rn ) {
+		rn = r->next ;
+		if( yes ) r->fn( r->ctx ) ;
+		if( r->ctxfree ) r->ctxfree( r->ctx ) ;
+		sfree( r ) ;
+	}
+	sfree( p ) ;
+}
+
+/*
+ * A user action found its helper at `path`: may it go on now?
+ * 1 = yes (ctx is freed here, nothing waits). 0 = not now: the file was
+ * refused (a box gives the reason), or a confirmation box is open and fn(ctx) runs on its Yes;
+ * ctx is freed either way. password: whether the helper receives one, for the
+ * warning's wording. zmodem: the box adds that the transfer may need starting
+ * again.
+ */
+int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
+                        void (*fn)( void * ), void *ctx, void (*ctxfree)( void * ) ) {
+	char full[MAX_PATH*4], signer[256], hex[65], *detail, *text ;
+	const char *warn = NULL, *sigline ;
+	char sigbuf[320] ;
+	HANDLE held ;
+	int j ;
+	kh_pending *p ;
+	kh_retry *r ;
+
+	if( !path || !kh_full_path( path, full, sizeof(full) ) ) {
+		if( ctxfree ) ctxfree( ctx ) ;
+		return 1 ;   /* nothing there: the action reports its own "not found" */
+	}
+	held = kh_hold( full ) ;
+	j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
+	if( held != INVALID_HANDLE_VALUE ) CloseHandle( held ) ;
+	if( j == KHJ_RUN || j == KHJ_MISSING ) {
+		if( ctxfree ) ctxfree( ctx ) ;
+		return 1 ;   /* missing: the start fails and reports it as before */
+	}
+	if( j == KHJ_REFUSE_SIBLING || j == KHJ_REFUSE_BROKEN ) {
+		text = dupprintf( j == KHJ_REFUSE_SIBLING ? KT_HELPER_REFUSE_SIBLING : KT_HELPER_REFUSE_BROKEN, kh_base( full ) ) ;
+		kitty_info_modeless( owner, KT_HELPER_CAPTION, text, full,
+		                     j == KHJ_REFUSE_SIBLING ? KT_HELPER_REFUSE_SIBLING_WARN : KT_HELPER_REFUSE_BROKEN_WARN ) ;
+		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
+		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING : KT_HELPER_WHY_BROKEN ) ;
+		sfree( text ) ;
+		if( ctxfree ) ctxfree( ctx ) ;
+		return 0 ;
+	}
+	/* a box for this file is open already: this action waits on it too */
+	r = snew( kh_retry ) ; r->fn = fn ; r->ctx = ctx ; r->ctxfree = ctxfree ; r->next = NULL ;
+	for( p = kh_pendings ; p ; p = p->next )
+		if( !stricmp( p->full, full ) ) {
+			kh_retry **t = &p->retries ;
+			while( *t ) t = &(*t)->next ;
+			*t = r ;
+			if( p->box ) SetForegroundWindow( p->box ) ;
+			return 0 ;
+		}
+	if( j == KHJ_CONFIRM_SIGNED ) {
+		snprintf( sigbuf, sizeof(sigbuf), KT_HELPER_SIGNED_BY, signer[0] ? signer : "?" ) ;
+		sigline = sigbuf ;
+	} else if( j == KHJ_CONFIRM_CANNOT ) {
+		sigline = KT_HELPER_NOT_CHECKABLE ; warn = KT_HELPER_WARN_CANNOT ;
+	} else {
+		sigline = KT_HELPER_NOT_SIGNED ; warn = password ? KT_HELPER_WARN_UNSIGNED_PW : KT_HELPER_WARN_UNSIGNED ;
+	}
+	p = snew( kh_pending ) ; memset( p, 0, sizeof(*p) ) ;
+	strcpy( p->full, full ) ; strcpy( p->hex, hex ) ;
+	snprintf( p->why, sizeof(p->why), "%s", sigline ) ;
+	p->retries = r ;
+	p->next = kh_pendings ; kh_pendings = p ;
+	detail = dupprintf( "%s\r\n%s", full, sigline ) ;
+	p->box = kitty_confirm_modeless( owner, KT_HELPER_CAPTION,
+	                                 zmodem ? KT_HELPER_CONFIRM_ZMODEM : KT_HELPER_CONFIRM_TEXT,
+	                                 detail, warn, kh_answer, p ) ;
+	sfree( detail ) ;
+	if( !p->box ) kh_answer( 0, p ) ;   /* no box: that is a No */
+	return 0 ;
+}
+
+/*
+ * THE start of a helper. The file at `path` is held open, checked (rule 1 or
+ * rule 2 above - no box here: allowing is kitty_helper_ready's) and started
+ * as lpApplicationName, so exactly the checked file runs. The other
+ * arguments are CreateProcessA's. FALSE with ERROR_ACCESS_DENIED when the
+ * check said no (one event-log line).
+ */
+BOOL kitty_helper_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
+                         const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi ) {
+	char full[MAX_PATH*4], signer[256], hex[65] ;
+	HANDLE held ;
+	int j ;
+	BOOL ok ;
+	if( !path || !kh_full_path( path, full, sizeof(full) ) ) { SetLastError( ERROR_FILE_NOT_FOUND ) ; return FALSE ; }
+	held = kh_hold( full ) ;
+	if( held == INVALID_HANDLE_VALUE ) return FALSE ;
+	j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
+	if( j != KHJ_RUN ) {
+		CloseHandle( held ) ;
+		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
+		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING :
+		        j == KHJ_REFUSE_BROKEN ? KT_HELPER_WHY_BROKEN : KT_HELPER_WHY_UNCONFIRMED ) ;
+		SetLastError( ERROR_ACCESS_DENIED ) ;
+		return FALSE ;
+	}
+	ok = CreateProcessA( full, cmdline, NULL, NULL, inherit, flags, NULL,
+	                     ( workdir && workdir[0] ) ? workdir : NULL, si, pi ) ;
+	{ DWORD e = GetLastError() ; CloseHandle( held ) ; SetLastError( e ) ; }
+	return ok ;
+}
+
+/*
+ * WinSCP and FileZilla are NOT checked: switched off here, kept for
+ * reference. They update themselves, and a check that remembers a file by its
+ * SHA-256 would put up the confirmation again after every update - a regular
+ * alert for something the user is supposed to do. They start through
+ * RunCommand as before. Setting this to 1 builds the check for them as it
+ * was written: kitty_helper_ready in StartWinSCP / StartFileZilla, the start
+ * through kitty_helper_run below.
+ */
+#define KX_CHECK_SELF_UPDATING_TOOLS 0
+
+#if KX_CHECK_SELF_UPDATING_TOOLS
+/* A helper with a window of its own (WinSCP, FileZilla): cmdline starts with
+ * its quoted path, as the builders write it. Started detached; a path
+ * CreateProcess cannot start itself (WinSCPPath may name a .bat) goes to
+ * ShellExecute, after the same check. Returns 1 if started. */
+static int kitty_helper_run( HWND hwnd, const char *path, char *cmdline ) {
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
+	const char *args = cmdline ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	memset( &pi, 0, sizeof(pi) ) ;
-	if( !CreateProcessA( NULL, cmdline, NULL, NULL, FALSE,
-	                     CREATE_NEW_CONSOLE, NULL, NULL, &si, &pi ) )
-		return -1 ;
-	if( wait ) WaitForSingleObject( pi.hProcess, INFINITE ) ;
-	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
-	return 0 ;
+	if( kitty_helper_start( path, cmdline, FALSE, 0, NULL, &si, &pi ) ) {
+		CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+		return 1 ;
+	}
+	if( GetLastError() == ERROR_ACCESS_DENIED ) return 0 ;
+	/* the arguments: everything after the program's own (quoted) name */
+	if( *args == '"' ) { args = strchr( args + 1, '"' ) ; args = args ? args + 1 : "" ; }
+	else { while( *args && *args != ' ' ) args++ ; }
+	while( *args == ' ' ) args++ ;
+	{
+		char full[MAX_PATH*4], signer[256], hex[65] ;
+		HANDLE held ;
+		int j ;
+		if( !kh_full_path( path, full, sizeof(full) ) ) return 0 ;
+		held = kh_hold( full ) ;
+		j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
+		if( j == KHJ_RUN )
+			ShellExecuteA( hwnd, "open", full, args, NULL, SW_SHOWNORMAL ) ;
+		if( held != INVALID_HANDLE_VALUE ) CloseHandle( held ) ;
+		return j == KHJ_RUN ;
+	}
+}
+#endif
+
+/* What kitty_helper_ready runs on a Yes: the user action again, which finds
+ * its helper allowed this time. */
+typedef struct { HWND hwnd ; char *a, *b, *c ; char **files ; int nfiles ; } kx_again_t ;
+static kx_again_t *kx_again( HWND hwnd ) {
+	kx_again_t *g = snew( kx_again_t ) ;
+	memset( g, 0, sizeof(*g) ) ; g->hwnd = hwnd ;
+	return g ;
+}
+static void kx_again_free( void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	sfree( g->a ) ; sfree( g->b ) ; sfree( g->c ) ;
+	for( int i = 0 ; i < g->nfiles ; i++ ) sfree( g->files[i] ) ;
+	sfree( g->files ) ; sfree( g ) ;
+}
+static void kx_again_sendfile( void *v ) { SendFile( ((kx_again_t *)v)->hwnd ) ; }
+static void kx_again_getfile( void *v ) { GetFile( ((kx_again_t *)v)->hwnd ) ; }
+#if KX_CHECK_SELF_UPDATING_TOOLS
+static void kx_again_filezilla( void *v ) { StartFileZilla( ((kx_again_t *)v)->hwnd ) ; }
+static void kx_again_winscp( void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	StartWinSCP( g->hwnd, g->a, g->b, g->c ) ;
+}
+#endif
+static void kx_again_drop( void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	for( int i = 0 ; i < g->nfiles ; i++ ) SendOneFile( g->hwnd, "", g->files[i], NULL ) ;
 }
 
 /* Watch a launched transfer process (kscp/klink) on a background thread: wait
@@ -813,8 +1179,8 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	si.dwFlags = STARTF_USESTDHANDLES ;
 	si.hStdOutput = wr ; si.hStdError = wr ; si.hStdInput = GetStdHandle( STD_INPUT_HANDLE ) ;
 	memset( &pi, 0, sizeof(pi) ) ;
-	if( !CreateProcessA( NULL, cmdline, NULL, NULL, TRUE,
-	                     CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) {
+	/* kscp is PSCPPath: started only through the signature check */
+	if( !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
 		MessageBox( NULL, KT_XFER_LAUNCH_FAILED,
 		            KT_CAP_XFER, MB_OK|MB_ICONERROR ) ;
@@ -1418,6 +1784,11 @@ void SendFile( HWND hwnd ) {
 		return ;
 		}
 
+	/* kscp checked before the picker: a Yes in its confirmation box re-opens Send File */
+	if( kitty_xfer_tool_ready( 0 ) &&
+	    !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_sendfile, kx_again( hwnd ), kx_again_free ) )
+		return ;
+
 	/* The picker opens in the upload folder (Connection > File-Transfer-Settings, else
 	 * the global one, else Documents). */
 	char updir[4096] ;
@@ -1851,6 +2222,8 @@ void GetFile( HWND hwnd ) {
         MessageBox( hwnd, KT_XFER_KSCP_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
         return ;
     }
+    if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_getfile, kx_again( hwnd ), kx_again_free ) )
+        return ;
 
     /* Take a private copy of the clipboard text: the picker below pumps
      * messages, and a locked clipboard across that would be a hold. */
@@ -2181,7 +2554,16 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	if( !existfile( WinSCPPath ) ) {
 		if( !SearchWinSCP() ) return ;
 	}
-		
+#if KX_CHECK_SELF_UPDATING_TOOLS
+	/* checked before any password file exists; a Yes starts WinSCP again */
+	{ kx_again_t *g = kx_again( hwnd ) ;
+	  g->a = directory ? dupstr( directory ) : NULL ;
+	  g->b = host ? dupstr( host ) : NULL ;
+	  g->c = user ? dupstr( user ) : NULL ;
+	  if( !kitty_helper_ready( hwnd, WinSCPPath, 1, 0, kx_again_winscp, g, kx_again_free ) ) return ;
+	}
+#endif
+
 	if( !GetShortPathName( WinSCPPath, shortpath, 4095 ) ) return ;
 
 	switch( conf_get_int(conf, CONF_winscpprot) ) {
@@ -2419,7 +2801,11 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	 * (key files and the agent are untouched by this). */
 	if( pwfiles ) bcat( cmd, sizeof(cmd), " /passwordsfromfiles" ) ;
 	debug_logevent_redacted2( "Start WinSCP", cmd, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
-	RunCommand( hwnd, cmd ) ;
+#if KX_CHECK_SELF_UPDATING_TOOLS
+	kitty_helper_run( hwnd, WinSCPPath, cmd ) ;
+#else
+	RunCommand( hwnd, cmd ) ;          /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+#endif
 	memset(cmd,0,strlen(cmd));
 	kx_pwfiles_release( 0 ) ;
 }
@@ -2643,6 +3029,14 @@ void StartFileZilla( HWND hwnd ) {
 		smemclr( pw, sizeof(pw) ) ;
 		return ;
 	}
+#if KX_CHECK_SELF_UPDATING_TOOLS
+	/* FileZilla receives the password in modes 1 and 2 only (0 = it prompts for it) */
+	if( !kitty_helper_ready( hwnd, FileZillaPath, havepw && mode != 0, 0,
+	                         kx_again_filezilla, kx_again( hwnd ), kx_again_free ) ) {
+		smemclr( pw, sizeof(pw) ) ;
+		return ;
+	}
+#endif
 	/* The REAL path, quoted - not GetShortPathName(): started through its 8.3
 	 * name (C:\PROGRA~1\FILEZI~1\FILEZI~1.EXE) FileZilla exits at once, before
 	 * any window, because it locates its resources from its own module path. */
@@ -2735,7 +3129,11 @@ void StartFileZilla( HWND hwnd ) {
 
 	debug_logevent_redacted( "Start FileZilla", cmd, pw_at, pw_len ) ;
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", fzdir ) ;
-	RunCommand( hwnd, cmd ) ;
+#if KX_CHECK_SELF_UPDATING_TOOLS
+	kitty_helper_run( hwnd, FileZillaPath, cmd ) ;
+#else
+	RunCommand( hwnd, cmd ) ;          /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+#endif
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", NULL ) ;
 	memset( cmd, 0, strlen(cmd) ) ;
 	smemclr( pw, sizeof(pw) ) ;
@@ -2791,6 +3189,23 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 	if( leDrop==NULL ) return ;
         nb=DragQueryFile( hDropInfo, 0xFFFFFFFF, NULL, 0 ) ;
         char *fic ;
+	/* Files to upload need kscp, checked first: while its confirmation box is open, the
+	 * names wait in the retry and are sent on its Yes. kitty.ini (the editor
+	 * below) is not a kscp job and goes on either way. */
+	int upload = 1 ;
+	{ kx_again_t *g = kx_again( hwnd ) ;
+	  g->files = snewn( nb > 0 ? nb : 1, char * ) ;
+	  for( i = 0 ; i < nb ; i++ ) {
+		UINT n = DragQueryFile( hDropInfo, i, NULL, 0 ) ;
+		char *f = snewn( n + 2, char ) ;
+		UINT got = DragQueryFile( hDropInfo, i, f, n + 1 ) ; f[got] = '\0' ;
+		if( strlen( f ) >= 10 && !strcmp( f+strlen(f)-10, "\\kitty.ini" ) ) sfree( f ) ;
+		else g->files[g->nfiles++] = f ;
+	  }
+	  if( g->nfiles > 0 && kitty_xfer_tool_ready( 0 ) )
+		upload = kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_drop, g, kx_again_free ) ;
+	  else kx_again_free( g ) ;
+	}
 	if( nb>0 ) for( i = 0; i < nb; i++ ) {
                 taille = DragQueryFile(hDropInfo, i, NULL, 0 ) ;   /* length, excluding NUL */
 		fic = (char*)malloc(taille+2) ;
@@ -2802,7 +3217,7 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 					snprintf( buffer, sizeof(buffer), "\"%s\" -ed %s", shortname, fic ) ;
 					RunCommand( hwnd, buffer ) ;
 				}
-		} else {
+		} else if( upload ) {
 			/* NULL target dir either way: the RemotePath store the auto-pwd
 			 * branch used to pass was never written on the 0.84 core (the
 			 * __pw title-scan was not forward-ported), so it was always NULL. */

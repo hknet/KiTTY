@@ -140,6 +140,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   lines per second this takes about a third off the update time outside
   drawing. A cursor blink or a progress line no longer compares the whole
   screen.
+- **Helper programs are checked before they receive the session's login.**
+  `kscp.exe` and `klink.exe` beside `kitty.exe` start only as the KiTTY++
+  programs of this release. Another kscp, PuTTY's pscp, rz and sz start at
+  once when they carry the KiTTY++ signature. WinSCP and FileZilla are not
+  checked: they update themselves. Otherwise a box shows the file and its signer the first time.
+  Yes remembers that exact file (`[TrustedHelpers]`). A file with a broken
+  signature is not started.
 - **Detected links cost less while output scrolls.** The search for web
   addresses now runs only over the lines that changed and reuses what it found
   in lines it saw before. A link that only scrolled keeps its underline

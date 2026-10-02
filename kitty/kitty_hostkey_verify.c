@@ -11,6 +11,8 @@
 #include <windows.h>
 #include "putty.h"
 #include "kitty_hostkey_verify.h"
+#include "kitty.h"      /* kitty_helper_start: the helper signature check */
+#include "kitty_text.h" /* KT_HELPER_REFUSE_SIBLING */
 
 struct kitty_hkv_run {
     struct kitty_hkv_job *jobs;
@@ -23,8 +25,9 @@ char *kitty_hkv_klink_path(void)
 {
     char exe[MAX_PATH];
     char *slash;
+    /* klink beside kitty.exe or none: never one from the search path */
     if (!GetModuleFileNameA(NULL, exe, sizeof(exe)))
-        return dupstr("klink.exe");
+        return dupstr("");
     slash = strrchr(exe, '\\');
     if (slash) slash[1] = '\0';
     return dupcat(exe, "klink.exe");
@@ -32,9 +35,9 @@ char *kitty_hkv_klink_path(void)
 
 /* ---- the child ----------------------------------------------------------- */
 
-/* Run a command line hidden, collect its stdout. false when it could not be
- * started (then *out holds the Windows error text). */
-static bool run_hidden(char *cmdline, char **out, DWORD *exitcode)
+/* Run exe with a command line, hidden, collect its stdout. false when it
+ * could not be started (then *out holds the Windows error text). */
+static bool run_hidden(const char *exe, char *cmdline, char **out, DWORD *exitcode)
 {
     SECURITY_ATTRIBUTES sa;
     HANDLE rd = NULL, wr = NULL;
@@ -59,11 +62,15 @@ static bool run_hidden(char *cmdline, char **out, DWORD *exitcode)
     si.hStdError = wr;            /* klink's diagnostics land in the same text */
     si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
     memset(&pi, 0, sizeof(pi));
-    if (!CreateProcessA(NULL, cmdline, NULL, NULL, TRUE, CREATE_NO_WINDOW,
-                        NULL, NULL, &si, &pi)) {
+    /* klink starts only through the helper signature check (kitty_xfer.c):
+     * ours, beside kitty.exe, of this release */
+    if (!kitty_helper_start(exe, cmdline, TRUE, CREATE_NO_WINDOW,
+                            NULL, &si, &pi)) {
         DWORD err = GetLastError();
         CloseHandle(rd); CloseHandle(wr);
-        *out = dupprintf("could not start klink.exe (Windows error %lu)", (unsigned long)err);
+        *out = err == ERROR_ACCESS_DENIED ?
+            dupprintf(KT_HELPER_REFUSE_SIBLING, "klink.exe") :
+            dupprintf("could not start klink.exe (Windows error %lu)", (unsigned long)err);
         return false;
     }
     CloseHandle(wr);
@@ -154,7 +161,7 @@ static DWORD WINAPI worker(LPVOID param)
             cmd = strchr(j->host, ':') ?
                 dupprintf("\"%s\" -scan -json -t %s [%s]:%d", klink, j->keytype, j->host, j->port) :
                 dupprintf("\"%s\" -scan -json -t %s %s:%d", klink, j->keytype, j->host, j->port);
-            if (!run_hidden(cmd, &out, &code)) {
+            if (!run_hidden(klink, cmd, &out, &code)) {
                 j->status = dupstr("no klink");
                 sfree(j->error); j->error = out; out = NULL;
             } else {
