@@ -5374,9 +5374,15 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
         ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_ctrl_click));
-        ctrl_checkbox(s, KT_HYPERLINKS_UNDERLINE_HYPERLINKS, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_underline));
+        /* The values keep their old meaning (the checkbox stored 1 / 0):
+         * On hover is the new 2 - the link under the pointer, every piece
+         * of it (OSC 8 pieces sharing id= and target are one link). */
+        ctrl_radiobuttons(s, KT_HYPERLINKS_UNDERLINE_HYPERLINKS, NO_SHORTCUT, 3,
+                          HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
+                          I(CONF_url_underline),
+                          KT_HYPERLINKS_UNDERLINE_ALWAYS, NO_SHORTCUT, I(1),
+                          KT_HYPERLINKS_UNDERLINE_HOVER,  NO_SHORTCUT, I(2),
+                          KT_HYPERLINKS_UNDERLINE_NEVER,  NO_SHORTCUT, I(0));
         ctrl_checkbox(s, KT_HYPERLINKS_SHOW_HAND_CURSOR_WHEN_HOVERING, NO_SHORTCUT,
                       HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
                       I(CONF_url_hover_cursor));

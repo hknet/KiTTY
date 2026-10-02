@@ -544,8 +544,15 @@ before the host shows the confirmation with its red line, except under
 selection, which is what you want if you select text with the mouse
 more often than you follow links.
 
-\b \q{Underline hyperlinks} and \q{Show hand cursor when hovering}
-control how a link announces itself.
+\b \q{Underline hyperlinks}: \q{Always} (the default) underlines every
+link, \q{On hover} only the link under the mouse pointer, \q{Never}
+none. On hover, an OSC 8 hyperlink is underlined in all its pieces: the
+host can split one link into parts - across lines, or around other text -
+and parts with the same \c{id=} and target are one link. The key is
+\c{HyperlinkUnderline}: 1 Always, 2 On hover, 0 Never.
+
+\b \q{Show hand cursor when hovering} turns the mouse pointer into a hand
+over a link.
 
 \b \q{Use the default browser} opens the link with whatever Windows is
 configured to use; clear it and name another program in \q{Other

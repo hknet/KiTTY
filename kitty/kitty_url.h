@@ -23,6 +23,16 @@ int kitty_url_rescan(Terminal *term, Conf *conf);
  * rows whose underline changed (then kitty_url_row_dirty). */
 void kitty_url_note_shift(int top, int bot, int n);
 int kitty_url_frame_done(void);
-int kitty_url_row_dirty(int row);
+/* with_links: the links' own changes count (Underline = Always), not only
+ * the rows the pointer's link changed (On hover). */
+int kitty_url_row_dirty(int row, int with_links);
+/* Underline hyperlinks = On hover: rows the pointer changed are waiting
+ * (kitty_url_hover_dirty); the pointer left the window (kitty_url_hover_leave);
+ * after the window repainted the dirty rows, kitty_url_dirty_clear. */
+int kitty_url_hover_dirty(void);
+void kitty_url_hover_leave(void);
+void kitty_url_dirty_clear(void);
+/* Is a cell drawn underlined, for CONF_url_underline = mode? */
+int kitty_url_cell_underlined(int col, int row, int mode);
 
 #endif /* KITTY_URL_H */

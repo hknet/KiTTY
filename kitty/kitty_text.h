@@ -370,7 +370,11 @@
 #define KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS "Options controlling clickable URL hyperlinks"
 #define KT_HYPERLINKS_HYPERLINK_BEHAVIOUR            "Hyperlink behaviour"
 #define KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK      "Require Ctrl key to click hyperlinks"
-#define KT_HYPERLINKS_UNDERLINE_HYPERLINKS           "Underline hyperlinks"
+#define KT_HYPERLINKS_UNDERLINE_HYPERLINKS           "Underline hyperlinks:"
+/* HyperlinkUnderline: 1 Always (the old "on"), 2 On hover, 0 Never (the old "off") */
+#define KT_HYPERLINKS_UNDERLINE_ALWAYS               "Always"
+#define KT_HYPERLINKS_UNDERLINE_HOVER                "On hover"
+#define KT_HYPERLINKS_UNDERLINE_NEVER                "Never"
 #define KT_HYPERLINKS_SHOW_HAND_CURSOR_WHEN_HOVERING "Show hand cursor when hovering over hyperlinks"
 #define KT_HYPERLINKS_USE_THE_DEFAULT_BROWSER        "Use the default browser"
 #define KT_HYPERLINKS_OTHER_BROWSER                  "Other browser:"

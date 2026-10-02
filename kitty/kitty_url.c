@@ -33,11 +33,14 @@
 #include "kitty_theme.h"               /* kitty_theme_tooltip */
 #include "kitty_win.h"                 /* kitty_theme_app_dark */
 
-/* KiTTY url_underline modes (were in 0.76b putty.h) */
+/* HyperlinkUnderline (CONF_url_underline), as stored: the checkbox it used
+ * to be wrote 1 / 0, so those keep their meaning and On hover is the new 2.
+ * (0.76b's enum - Always 0, Hover 1, Never 2 - never matched what was
+ * stored, and nothing read it.) */
 enum {
-    URLHACK_UNDERLINE_ALWAYS = 0,
-    URLHACK_UNDERLINE_HOVER,
-    URLHACK_UNDERLINE_NEVER
+    KITTY_URL_UNDERLINE_NEVER = 0,
+    KITTY_URL_UNDERLINE_ALWAYS = 1,
+    KITTY_URL_UNDERLINE_HOVER = 2
 };
 
 static int kitty_url_inited = 0;
@@ -103,10 +106,76 @@ static int kitty_url_shift_top, kitty_url_shift_bot, kitty_url_shift_n;
 static unsigned long long *kitty_url_rowhash = NULL;
 static unsigned char *kitty_url_rowend = NULL;
 
+/*
+ * The link under the pointer, for Underline hyperlinks = On hover: an OSC 8
+ * link is its handle - every piece of it on the screen, since pieces with the
+ * same id= and target share one handle (terminal.c kitty_link_intern) - and a
+ * detected link is its region. Rows whose underline the pointer changed wait
+ * in kitty_url_hoverdirty for the window to repaint them.
+ */
+static int kitty_url_hover_in = 0;            /* the pointer is over the window */
+static unsigned int kitty_url_hover_link = 0;
+static text_region kitty_url_hover_region = { -1, -1, -1, -1 };
+static unsigned char *kitty_url_hoverdirty = NULL;
+static int kitty_url_hover_pending = 0;
+
 static void kitty_url_cache_clear(void)
 {
     kitty_url_cache[0].nc = kitty_url_cache[0].noff = 0;
     kitty_url_cache[1].nc = kitty_url_cache[1].noff = 0;
+}
+
+/* Mark the rows of one hover group for repainting: the rows any piece of the
+ * handle is on, or the rows of the region. */
+static void kitty_url_hover_mark(unsigned int link, text_region r)
+{
+    int i, j, rows = kitty_url_mask_rows, cols = kitty_url_mask_cols;
+    if (!kitty_url_hoverdirty)
+        return;
+    if (link && kitty_url_linkv)
+        for (i = 0; i < rows; i++)
+            for (j = 0; j < cols; j++)
+                if (kitty_url_linkv[i * cols + j] == link) {
+                    kitty_url_hoverdirty[i] = 1;
+                    break;
+                }
+    if (r.y0 >= 0)
+        for (i = r.y0; i <= r.y1 && i < rows; i++)
+            kitty_url_hoverdirty[i] = 1;
+}
+
+/* The group under cell (cx, cy): an OSC 8 handle, else a detected link's
+ * region, else none - also when the pointer is not over the window. */
+static void kitty_url_hover_group(int cx, int cy, int scan,
+                                  unsigned int *link, text_region *r)
+{
+    *link = 0;
+    r->x0 = r->y0 = r->x1 = r->y1 = -1;
+    if (!kitty_url_hover_in || !kitty_url_linkv || cx < 0 || cy < 0 ||
+        cx >= kitty_url_mask_cols || cy >= kitty_url_mask_rows)
+        return;
+    *link = kitty_url_linkv[cy * kitty_url_mask_cols + cx];
+    if (!*link && scan && urlhack_is_in_link_region(cx, cy))
+        *r = urlhack_get_link_bounds(cx, cy);
+}
+
+/* The pointer is at (cx, cy) now: when the group under it changed, the rows
+ * of the old one and of the new one are marked. True when it changed. */
+static int kitty_url_hover_to(int cx, int cy, int scan)
+{
+    unsigned int link;
+    text_region r;
+    kitty_url_hover_group(cx, cy, scan, &link, &r);
+    if (link == kitty_url_hover_link && r.x0 == kitty_url_hover_region.x0 &&
+        r.y0 == kitty_url_hover_region.y0 && r.x1 == kitty_url_hover_region.x1 &&
+        r.y1 == kitty_url_hover_region.y1)
+        return 0;
+    kitty_url_hover_mark(kitty_url_hover_link, kitty_url_hover_region);
+    kitty_url_hover_mark(link, r);
+    kitty_url_hover_link = link;
+    kitty_url_hover_region = r;
+    kitty_url_hover_pending = 1;
+    return 1;
 }
 
 static void kitty_url_cache_match(void *ctx, int s, int e)
@@ -175,6 +244,7 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
         sfree(kitty_url_linkv);
         sfree(kitty_url_rowhash);
         sfree(kitty_url_rowend);
+        sfree(kitty_url_hoverdirty);
         kitty_url_mask_rows = term->rows;
         kitty_url_mask_cols = term->cols;
         kitty_url_mask     = snewn(term->rows * term->cols, unsigned char);
@@ -183,8 +253,12 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
         kitty_url_linkv    = snewn(term->rows * term->cols, unsigned int);
         kitty_url_rowhash  = snewn(term->rows, unsigned long long);
         kitty_url_rowend   = snewn(term->rows, unsigned char);
+        kitty_url_hoverdirty = snewn(term->rows, unsigned char);
         memset(kitty_url_prevmask, 0, term->rows * term->cols);
         memset(kitty_url_dirtyrow, 0, term->rows);
+        memset(kitty_url_hoverdirty, 0, term->rows);
+        kitty_url_hover_link = 0;          /* the old grid's coordinates */
+        kitty_url_hover_region.y0 = -1;
         kitty_url_last_valid = 0;
     }
     kitty_url_diff_pending = 0;        /* a new frame: no diff, no shift yet */
@@ -307,6 +381,17 @@ int kitty_url_rescan(Terminal *term, Conf *conf)
         kitty_url_mask = t;
     }
     kitty_url_diff_pending = 1;
+    /* On hover: the output may have moved or replaced the link under a
+     * pointer that did not move. A detected link's old region is in the old
+     * scan's coordinates, so when that one is left every row is repainted
+     * (rare: output moving a detected link away from a resting pointer). */
+    if (kitty_url_hover_in &&
+        conf_get_int(conf, CONF_url_underline) == KITTY_URL_UNDERLINE_HOVER) {
+        int had_region = kitty_url_hover_region.y0 >= 0;
+        if (kitty_url_hover_to(urlhack_mouse_old_x, urlhack_mouse_old_y, scan) &&
+            had_region && kitty_url_hoverdirty)
+            memset(kitty_url_hoverdirty, 1, term->rows);
+    }
     return 1;
 }
 
@@ -363,11 +448,53 @@ int kitty_url_frame_done(void)
  * membership in the most recent frame (kitty_url_frame_done)?  Lets the
  * window layer repaint only the affected rows.
  */
-int kitty_url_row_dirty(int row)
+int kitty_url_row_dirty(int row, int with_links)
 {
     if (!kitty_url_dirtyrow || row < 0 || row >= kitty_url_mask_rows)
         return 0;
-    return kitty_url_dirtyrow[row];
+    /* with_links: the links' own membership changes count (Always); On
+     * hover only the rows the pointer's link changed */
+    return (with_links && kitty_url_dirtyrow[row]) ||
+           (kitty_url_hoverdirty && kitty_url_hoverdirty[row]);
+}
+
+/* Rows the pointer changed are waiting (kitty_url_hover, _hover_leave, a
+ * rescan under a resting pointer). */
+int kitty_url_hover_dirty(void)
+{
+    return kitty_url_hover_pending;
+}
+
+/* The window repainted the dirty rows: start over. */
+void kitty_url_dirty_clear(void)
+{
+    if (kitty_url_dirtyrow)
+        memset(kitty_url_dirtyrow, 0, kitty_url_mask_rows);
+    if (kitty_url_hoverdirty)
+        memset(kitty_url_hoverdirty, 0, kitty_url_mask_rows);
+    kitty_url_hover_pending = 0;
+}
+
+/* The pointer left the window: no link is under it. */
+void kitty_url_hover_leave(void)
+{
+    kitty_url_hover_in = 0;
+    kitty_url_hover_to(-1, -1, 0);
+}
+
+/* Is cell (col, row) drawn underlined? Always: any link. On hover: a piece
+ * of the link under the pointer. Never: no. */
+int kitty_url_cell_underlined(int col, int row, int mode)
+{
+    if (mode == KITTY_URL_UNDERLINE_ALWAYS)
+        return kitty_url_cell_in_link(col, row);
+    if (mode != KITTY_URL_UNDERLINE_HOVER || !kitty_url_linkv ||
+        row < 0 || row >= kitty_url_mask_rows || col < 0 || col >= kitty_url_mask_cols)
+        return 0;
+    if (kitty_url_hover_link)
+        return kitty_url_linkv[row * kitty_url_mask_cols + col] == kitty_url_hover_link;
+    return kitty_url_hover_region.y0 >= 0 &&
+           urlhack_is_in_this_link_region(kitty_url_hover_region, col, row);
 }
 
 /*
@@ -715,6 +842,18 @@ void kitty_url_preview_hide(void)
     kitty_url_tip_link = 0;
 }
 
+/* WM_MOUSELEAVE once the pointer leaves the window: what the pointer put up
+ * (the preview, an On-hover underline) is taken down there. */
+static void kitty_url_track_leave(HWND hwnd)
+{
+    TRACKMOUSEEVENT tme;
+    tme.cbSize = sizeof(tme);
+    tme.dwFlags = TME_LEAVE;
+    tme.hwndTrack = hwnd;
+    tme.dwHoverTime = 0;
+    TrackMouseEvent(&tme);
+}
+
 static void kitty_url_preview_show(HWND hwnd, unsigned int link,
                                    const char *uri)
 {
@@ -722,7 +861,6 @@ static void kitty_url_preview_show(HWND hwnd, unsigned int link,
     POINT pt;
     RECT tr;
     MONITORINFO mi;
-    TRACKMOUSEEVENT tme;
     int x, y;
 
     if (link == kitty_url_tip_link && hwnd == kitty_url_tip_owner)
@@ -780,11 +918,7 @@ static void kitty_url_preview_show(HWND hwnd, unsigned int link,
     kitty_url_tip_since = GetTickCount();
 
     /* WM_MOUSELEAVE when the pointer leaves the window, to take it down */
-    tme.cbSize = sizeof(tme);
-    tme.dwFlags = TME_LEAVE;
-    tme.hwndTrack = hwnd;
-    tme.dwHoverTime = 0;
-    TrackMouseEvent(&tme);
+    kitty_url_track_leave(hwnd);
 }
 
 /* The preview for the cell (cx, cy): the OSC 8 hyperlink's target, or none. */
@@ -829,6 +963,13 @@ int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
     urlhack_mouse_old_x = cx;
     urlhack_mouse_old_y = cy;
     kitty_url_preview_at(term, conf, hwnd, cx, cy);
+    /* On hover: the link under the pointer is underlined, all its pieces */
+    kitty_url_hover_in = 1;
+    if (conf_get_int(conf, CONF_url_underline) == KITTY_URL_UNDERLINE_HOVER) {
+        kitty_url_hover_to(cx, cy, conf_get_int(conf, CONF_url_scan) != 0);
+        if (kitty_url_hover_link || kitty_url_hover_region.y0 >= 0)
+            kitty_url_track_leave(hwnd);   /* WM_MOUSELEAVE takes it down */
+    }
     /* the mask: detected and OSC 8 links alike */
     over = hover_cursor && kitty_url_cell_in_link(cx, cy);
     if (over) {

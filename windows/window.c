@@ -3069,12 +3069,15 @@ static bool kitty_is_benign_channel_close_msg(const char *msg)
                     * this is inert (and uncompiled) in the stock GUI variants. */
 static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
 {
-    int r;
+    int r, with_links;
     RECT rc;
     if (!wgs->term || !wgs->term_hwnd)
         return;
+    /* Underline = Always (1): every link change shows; On hover (2): only
+     * the rows the pointer's link changed */
+    with_links = conf_get_int(wgs->conf, CONF_url_underline) == 1;
     for (r = 0; r < wgs->term->rows; r++) {
-        if (!kitty_url_row_dirty(r))
+        if (!kitty_url_row_dirty(r, with_links))
             continue;
         rc.left   = wgs->offset_width;
         rc.top    = wgs->offset_height + r * wgs->font_height;
@@ -3082,6 +3085,7 @@ static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
         rc.bottom = rc.top + wgs->font_height;
         InvalidateRect(wgs->term_hwnd, &rc, FALSE);
     }
+    kitty_url_dirty_clear();
 }
 #endif
 
@@ -5954,6 +5958,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             kitty_url_hover(wgs->term, wgs->conf, hwnd,
                             TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
                             conf_get_int(wgs->conf, CONF_url_hover_cursor));
+            /* On hover: the link under the pointer changed - its rows */
+            if (kitty_url_hover_dirty())
+                kitty_url_invalidate_dirty_rows(wgs);
         } else
             kitty_url_preview_hide();
 #endif
@@ -5961,8 +5968,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
       case WM_MOUSELEAVE:
         /* KiTTY: the pointer left the window - the OSC 8 target preview
-         * goes with it (kitty_url.c requests this message while one is up) */
+         * and an On-hover underline go with it (kitty_url.c requests this
+         * message while either is up) */
         kitty_url_preview_hide();
+        kitty_url_hover_leave();
+        if (kitty_url_hover_dirty())
+            kitty_url_invalidate_dirty_rows(wgs);
         return 0;
 #endif
       case WM_NCMOUSEMOVE:
@@ -7538,9 +7549,10 @@ static void do_text_internal(
     if (lattr != LATTR_TOP && GetHyperlinkFlag() &&
         conf_get_int(wgs->conf, CONF_url_underline)) {
         int kk, span0 = -1;
+        int mode = conf_get_int(wgs->conf, CONF_url_underline);   /* 1 Always, 2 On hover */
         for (kk = 0; kk <= len; kk++) {
             int inlink = (kk < len) &&
-                kitty_url_cell_in_link(kitty_url_col + kk, kitty_url_row);
+                kitty_url_cell_underlined(kitty_url_col + kk, kitty_url_row, mode);
             if (inlink) {
                 if (span0 < 0) span0 = kk;
             } else if (span0 >= 0) {
@@ -9381,7 +9393,7 @@ static void wintw_free_draw_ctx(TermWin *tw)
      * only moved with the pixels */
     if (GetHyperlinkFlag()) {
         KP_T0;
-        if (kitty_url_frame_done() &&
+        if ((kitty_url_frame_done() || kitty_url_hover_dirty()) &&
             conf_get_int(wgs->conf, CONF_url_underline))
             kitty_url_invalidate_dirty_rows(wgs);
         KP_T1(KP_URL);

@@ -116,6 +116,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   and at a per-session limit, Terminal > Features "Synchronized output (mode
   2026) max hold, ms" (200 by default, 0 turns the mode off);
   `CSI ? 2026 $ p` (DECRQM) reports the mode.
+- **Hyperlinks can be underlined only under the mouse.** Window > Hyperlinks
+  "Underline hyperlinks" is now Always, On hover or Never
+  (`HyperlinkUnderline` 1, 2, 0). On hover underlines the whole link under the
+  pointer, including every piece of an OSC 8 link that shares its `id=`.
 
 ### Changed
 
