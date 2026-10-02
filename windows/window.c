@@ -201,6 +201,7 @@ int WINAPI Launcher_WinMain(HINSTANCE, HINSTANCE, LPSTR, int); /* session launch
 extern char *ScriptFileContent;                /* kitty.c: loaded login-script buffer (NULL = none) */
 extern HWND MainHwnd;                          /* kitty.c/bridge: active terminal hwnd for keystroke injection */
 static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd);
+static void kitty_note_normal_rect(WinGuiSeat *wgs, HWND hwnd);
 static void kitty_winprops_remove(HWND hwnd);   /* the launcher's properties (WM_DESTROY) */
 static void kitty_winprops_publish(WinGuiSeat *wgs);   /* ...and their values (title, reconfig) */
 static void kitty_winprop_closed(HWND hwnd, bool closed); /* the session is over, window open */
@@ -2094,8 +2095,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: apply remembered/pinned window position AFTER the sizing+clamp
      * block above, so the single-monitor working-area clamp can't undo a
      * restore onto another (possibly different-DPI) monitor. Done before
-     * ShowWindow, so there's no visible jump. */
-    kitty_apply_window_pos(wgs);
+     * ShowWindow, so there's no visible jump. True when the remembered
+     * placement was left maximised: shown maximised below. */
+    bool kitty_start_max = kitty_apply_window_pos(wgs);
 #endif
 
     /*
@@ -2370,8 +2372,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
 #ifdef MOD_PERSO
     /* KiTTY feature: maximize on start (no-global; reads this seat's conf).
-     * Skipped when embedded (#554): the host window owns sizing. */
-    if (conf_get_int(wgs->conf, CONF_maximize) && !KITTY_EMBEDDED())
+     * Also a window that was closed maximised: "Save settings on exit" keeps
+     * that as WindowState, "Remember window position" in its entry. Shown
+     * maximised over the normal placement applied above, which un-maximising
+     * returns to. WindowState counts only while "Save settings on exit" is on:
+     * nothing else rewrites it, and no panel shows it. Skipped when embedded
+     * (#554): the host window owns sizing. */
+    if ((conf_get_int(wgs->conf, CONF_maximize) ||
+         (conf_get_bool(wgs->conf, CONF_saveonexit) &&
+          conf_get_int(wgs->conf, CONF_windowstate)) ||
+         kitty_start_max) &&
+        !KITTY_EMBEDDED())
         show = SW_SHOWMAXIMIZED;
 #endif
     ShowWindow(wgs->term_hwnd, show);
@@ -6358,6 +6369,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_MOVE:
         term_notify_window_pos(wgs->term, LOWORD(lParam), HIWORD(lParam));
         sys_cursor_update(wgs);
+#ifdef MOD_PERSO
+        kitty_note_normal_rect(wgs, hwnd);
+#endif
         break;
       case WM_SIZE:
         /* The painter's surfaces follow the client area (a GPU painter
@@ -6365,6 +6379,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if (wgs->painter)
             kp_resize(wgs->painter, LOWORD(lParam), HIWORD(lParam));
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
+#ifdef MOD_PERSO
+        kitty_note_normal_rect(wgs, hwnd);
+#endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
          * stale -- the window was created on whatever monitor Windows first
@@ -6457,9 +6474,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             reset_window(wgs, -1);
         } else {
             if (wParam == SIZE_MAXIMIZED) {
+#ifdef MOD_PERSO
+                /* KiTTY: prev_* is the grid of the NORMAL window, which a
+                 * window closed maximised saves. A maximised window coming
+                 * back from minimised gets SIZE_MAXIMIZED again, with the
+                 * maximised grid: keep the first one. */
+                if (!wgs->was_zoomed) {
+                    wgs->prev_rows = wgs->term->rows;
+                    wgs->prev_cols = wgs->term->cols;
+                }
+                wgs->was_zoomed = true;
+#else
                 wgs->was_zoomed = true;
                 wgs->prev_rows = wgs->term->rows;
                 wgs->prev_cols = wgs->term->cols;
+#endif
                 if (resize_action == RESIZE_TERM)
                     wm_size_resize_term(wgs, lParam);
                 reset_window(wgs, 0);
@@ -10884,7 +10913,45 @@ static void kitty_winpos_dump_topo(const char *when)
  * (rewriting the template from one window's final state is how every later
  * session inherits a stray change). CONF_width/height already track the live
  * terminal size - they are updated on every resize - so only the position and
- * the maximised state need filling in here. */
+ * the maximised state need filling in here. A window closed maximised saves
+ * its NORMAL placement plus WindowState=1, so it re-opens maximised and
+ * un-maximising returns it to where it was. */
+
+/* Maximised now, or minimised from maximised (IsZoomed is false then). */
+static bool kitty_window_maximised(HWND hwnd)
+{
+    WINDOWPLACEMENT wp;
+    if (IsZoomed(hwnd)) return true;
+    if (!IsIconic(hwnd)) return false;
+    wp.length = sizeof(wp);
+    return GetWindowPlacement(hwnd, &wp) &&
+           (wp.flags & WPF_RESTORETOMAXIMIZED) != 0;
+}
+
+/* The terminal grid of the normal (not maximised) window. */
+static void kitty_normal_grid(WinGuiSeat *wgs, int *cols, int *rows)
+{
+    if (wgs->was_zoomed && wgs->prev_cols > 0 && wgs->prev_rows > 0) {
+        *cols = wgs->prev_cols;
+        *rows = wgs->prev_rows;
+    } else {
+        *cols = wgs->term ? wgs->term->cols : conf_get_int(wgs->conf, CONF_width);
+        *rows = wgs->term ? wgs->term->rows : conf_get_int(wgs->conf, CONF_height);
+    }
+}
+
+/* WM_MOVE / WM_SIZE: keep the rectangle of the normal window. Windows has
+ * already set the maximised or minimised state when those arrive for a
+ * maximise or a minimise, so those rectangles are not taken. */
+static void kitty_note_normal_rect(WinGuiSeat *wgs, HWND hwnd)
+{
+    RECT r;
+    if (!wgs || !hwnd || IsZoomed(hwnd) || IsIconic(hwnd)) return;
+    if (!GetWindowRect(hwnd, &r)) return;
+    wgs->normal_rect = r;
+    wgs->normal_rect_valid = true;
+}
+
 static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
 {
     if (!wgs) return;
@@ -10900,15 +10967,25 @@ static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
         const char *name = conf_get_str(wgs->conf, CONF_sessionname);
         if (name && *name && strcmp(name, "Default Settings") != 0) {
             char *err;
-            if (hwnd && !IsIconic(hwnd) && !IsZoomed(hwnd)) {
+            bool maxed = hwnd && kitty_window_maximised(hwnd);
+            if (hwnd && !IsIconic(hwnd) && !maxed) {
                 RECT r;
                 if (GetWindowRect(hwnd, &r)) {
                     conf_set_int(wgs->conf, CONF_xpos, (int)r.left);
                     conf_set_int(wgs->conf, CONF_ypos, (int)r.top);
                 }
+            } else if (maxed) {
+                int cols, rows;
+                if (wgs->normal_rect_valid) {
+                    conf_set_int(wgs->conf, CONF_xpos, (int)wgs->normal_rect.left);
+                    conf_set_int(wgs->conf, CONF_ypos, (int)wgs->normal_rect.top);
+                }
+                /* CONF_width/height followed the maximised grid */
+                kitty_normal_grid(wgs, &cols, &rows);
+                conf_set_int(wgs->conf, CONF_width, cols);
+                conf_set_int(wgs->conf, CONF_height, rows);
             }
-            conf_set_int(wgs->conf, CONF_windowstate,
-                         (hwnd && IsZoomed(hwnd)) ? 1 : 0);
+            conf_set_int(wgs->conf, CONF_windowstate, maxed ? 1 : 0);
             err = save_settings(name, wgs->conf);
             if (err) sfree(err);   /* closing: nowhere left to show it */
         }
@@ -10918,26 +10995,37 @@ static void kitty_on_window_closing(WinGuiSeat *wgs, HWND hwnd)
 /* Save THIS window's top-left and terminal grid for the current monitor
  * layout (on close): into the session's own entry, or - for an unnamed
  * session and a window opened as "Default Settings" - into the SHARED
- * entry. Minimised/maximised states are not remembered (we only persist a
- * normal restored position). "Default Settings" itself is never written. */
+ * entry. A maximised window (also one minimised from maximised) saves its
+ * normal placement with the maximised mark; one minimised from normal is not
+ * remembered. "Default Settings" itself is never written. */
 static void kitty_save_window_placement(WinGuiSeat *wgs, HWND hwnd)
 {
     if (!wgs || !hwnd) return;
     if (KITTY_IS_EMBEDDED(hwnd)) { kitty_winpos_dbg("SAVE skipped: embedded"); return; }   /* #554 */
-    if (IsIconic(hwnd) || IsZoomed(hwnd)) { kitty_winpos_dbg("SAVE skipped: iconic/zoomed"); return; }
+    bool maxed = kitty_window_maximised(hwnd);
+    if (IsIconic(hwnd) && !maxed) { kitty_winpos_dbg("SAVE skipped: iconic"); return; }
     RECT r;
-    if (!GetWindowRect(hwnd, &r)) { kitty_winpos_dbg("SAVE skipped: GetWindowRect failed"); return; }
+    if (maxed) {
+        if (!wgs->normal_rect_valid) { kitty_winpos_dbg("SAVE skipped: maximised, no normal rect"); return; }
+        r = wgs->normal_rect;
+    } else if (!GetWindowRect(hwnd, &r)) { kitty_winpos_dbg("SAVE skipped: GetWindowRect failed"); return; }
     const char *name = conf_get_str(wgs->conf, CONF_sessionname);
     unsigned long layout = kitty_winpos_layout_hash();
     struct kitty_termpos pos;
     pos.left = (int)r.left;
     pos.top = (int)r.top;
-    pos.cols = wgs->term ? wgs->term->cols : conf_get_int(wgs->conf, CONF_width);
-    pos.rows = wgs->term ? wgs->term->rows : conf_get_int(wgs->conf, CONF_height);
+    if (maxed)
+        kitty_normal_grid(wgs, &pos.cols, &pos.rows);
+    else {
+        pos.cols = wgs->term ? wgs->term->cols : conf_get_int(wgs->conf, CONF_width);
+        pos.rows = wgs->term ? wgs->term->rows : conf_get_int(wgs->conf, CONF_height);
+    }
+    pos.maximised = maxed ? 1 : 0;
     char keyname[64]; kitty_winpos_key(keyname, sizeof(keyname));
     kitty_winpos_dump_topo("SAVE");
-    kitty_winpos_dbg("SAVE layout=%s session='%s' pos=(%d,%d) grid=%dx%d",
-                     keyname, name ? name : "", pos.left, pos.top, pos.cols, pos.rows);
+    kitty_winpos_dbg("SAVE layout=%s session='%s' pos=(%d,%d) grid=%dx%d max=%d",
+                     keyname, name ? name : "", pos.left, pos.top, pos.cols, pos.rows,
+                     pos.maximised);
     int ok;
     if (kitty_winpos_is_shared_window(name))
         ok = kitty_winpos_shared_set(layout, &pos);
@@ -10980,8 +11068,9 @@ static int kitty_nearest_work_area(int x, int y, RECT *work)
  * session and a "Default Settings" window use). A placement is never applied
  * where the user cannot reach it: a top-left that is on no current monitor
  * is moved onto the nearest monitor's work area, and a grid larger than that
- * work area is reduced to fit. Returns 1 if a placement was applied. */
-static int kitty_restore_window_placement(WinGuiSeat *wgs)
+ * work area is reduced to fit. Returns 1 if a placement was applied; *maxed
+ * is then set when the window was closed maximised. */
+static int kitty_restore_window_placement(WinGuiSeat *wgs, bool *maxed)
 {
     HWND hwnd = wgs ? wgs->term_hwnd : NULL;
     if (!hwnd) return 0;
@@ -11002,8 +11091,9 @@ static int kitty_restore_window_placement(WinGuiSeat *wgs)
         kitty_winpos_dbg("RESTORE layout=%s session='%s': no entry", keyname, name ? name : "");
         return 0;
     }
-    kitty_winpos_dbg("RESTORE layout=%s from=%s pos=(%d,%d) grid=%dx%d",
-                     keyname, from, pos.left, pos.top, pos.cols, pos.rows);
+    kitty_winpos_dbg("RESTORE layout=%s from=%s pos=(%d,%d) grid=%dx%d max=%d",
+                     keyname, from, pos.left, pos.top, pos.cols, pos.rows,
+                     pos.maximised);
 
     /* Pixels for the grid, with the metrics the startup sizing just used. */
     int w = 0, h = 0;
@@ -11049,6 +11139,7 @@ static int kitty_restore_window_placement(WinGuiSeat *wgs)
     int ok = SetWindowPos(hwnd, NULL, x, y, w, h, flags) ? 1 : 0;
     kitty_winpos_dbg("RESTORE SetWindowPos(%d,%d,%dx%d grid=%dx%d) -> %d",
                      x, y, w, h, cols, rows, ok);
+    if (ok) *maxed = pos.maximised != 0;
     return ok;
 }
 
@@ -11098,11 +11189,15 @@ static void kitty_clamp_pin_to_visible(HWND hwnd, int *x, int *y)
  * consulted the enabling checkbox, so a session whose stored TermXPos/TermYPos
  * happened to be (0,0) looked like an explicit pin and was forced to the screen
  * corner. Now that CONF_set_windowpos actually gates the pin, "no pin" and
- * "pinned at the corner" are distinguishable and the natural order works. */
-void kitty_apply_window_pos(WinGuiSeat *wgs)
+ * "pinned at the corner" are distinguishable and the natural order works.
+ *
+ * Returns true when the remembered placement was closed maximised: the
+ * caller shows the window maximised over it. */
+bool kitty_apply_window_pos(WinGuiSeat *wgs)
 {
-    if (!wgs || !wgs->term_hwnd) return;
-    if (KITTY_EMBEDDED()) { kitty_winpos_dbg("APPLY skipped: embedded"); return; }   /* #554 */
+    bool maxed = false;
+    if (!wgs || !wgs->term_hwnd) return false;
+    if (KITTY_EMBEDDED()) { kitty_winpos_dbg("APPLY skipped: embedded"); return false; }   /* #554 */
     int x = conf_get_int(wgs->conf, CONF_xpos);
     int y = conf_get_int(wgs->conf, CONF_ypos);
     int remember = conf_get_bool(wgs->conf, CONF_remember_winpos);
@@ -11115,11 +11210,12 @@ void kitty_apply_window_pos(WinGuiSeat *wgs)
         SetWindowPos(wgs->term_hwnd, NULL, x, y, 0, 0,
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         kitty_winpos_dbg("APPLY pinned CONF pos (%d,%d) set", x, y);
-        return;
+        return false;
     }
-    if (remember && kitty_restore_window_placement(wgs)) {
-        kitty_winpos_dbg("APPLY restored remembered position");
-        return;
+    if (remember && kitty_restore_window_placement(wgs, &maxed)) {
+        kitty_winpos_dbg("APPLY restored remembered position, maximised=%d", maxed);
+        return maxed;
     }
+    return false;
 }
 #endif

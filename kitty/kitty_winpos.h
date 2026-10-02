@@ -9,10 +9,13 @@
 
 /* One remembered placement: the window's top-left in screen pixels and the
  * terminal grid in columns x rows. cols/rows of 0 mean "position only" (a
- * value written by an earlier version, which stored pixels). */
+ * value written by an earlier version, which stored pixels). maximised: the
+ * window was closed maximised; left/top/cols/rows are then the placement it
+ * had before, which un-maximising returns to. */
 struct kitty_termpos {
     int left, top;
     int cols, rows;
+    int maximised;
 };
 
 /* Order-independent hash of the current monitor layout. */
@@ -22,7 +25,8 @@ unsigned long kitty_winpos_layout_hash(void);
 void kitty_winpos_layout_key(char *buf, size_t n, const char *prefix,
                              unsigned long layout);
 
-/* Text form "left,top,cols,rows" <-> struct. Parse returns 1 on success. */
+/* Text form "left,top,cols,rows", plus ",1" when maximised <-> struct. Parse
+ * returns 1 on success. A version that reads four numbers ignores the fifth. */
 void kitty_winpos_format(const struct kitty_termpos *pos, char *buf, size_t n);
 int kitty_winpos_parse(const char *s, struct kitty_termpos *out);
 

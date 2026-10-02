@@ -83,6 +83,9 @@ static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
     struct kitty_termpos pos;
     if (!conf_get_bool(conf, CONF_remember_winpos)) return;
     if (kitty_winpos_is_shared_window(session)) return;
+    /* the panels show no maximised state: keep the one the entry has */
+    if (!kitty_winpos_session_get(session, kitty_winpos_layout_hash(), &pos))
+        pos.maximised = 0;
     pos.left = conf_get_int(conf, CONF_xpos);
     pos.top = conf_get_int(conf, CONF_ypos);
     pos.cols = conf_get_int(conf, CONF_width);

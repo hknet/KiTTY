@@ -125,6 +125,11 @@ struct WinGuiSeat {
                               * re-sending a rejected password on every server
                               * re-prompt (which burns MaxAuthTries -> IP ban).
                               * Reset per connection in start_backend. */
+    RECT normal_rect;        /* KiTTY: the window's screen rectangle the last time
+                              * it was neither maximised nor minimised (WM_MOVE /
+                              * WM_SIZE). A window closed maximised saves THIS
+                              * position. Unconditional: one struct, one layout. */
+    bool normal_rect_valid;
     /* These fields MUST stay unconditional (do NOT wrap in #ifdef MOD_RECONNECT).
      * WinGuiSeat is shared between window.c (compiled into the kitty executable
      * target, where MOD_RECONNECT is a PRIVATE compile-def) and dialog.c (compiled

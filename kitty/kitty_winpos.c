@@ -82,17 +82,23 @@ void kitty_winpos_layout_key(char *buf, size_t n, const char *prefix,
 
 void kitty_winpos_format(const struct kitty_termpos *pos, char *buf, size_t n)
 {
-    _snprintf(buf, n, "%d,%d,%d,%d", pos->left, pos->top, pos->cols, pos->rows);
+    if (pos->maximised)
+        _snprintf(buf, n, "%d,%d,%d,%d,1", pos->left, pos->top, pos->cols, pos->rows);
+    else
+        _snprintf(buf, n, "%d,%d,%d,%d", pos->left, pos->top, pos->cols, pos->rows);
     if (n) buf[n - 1] = '\0';
 }
 
 int kitty_winpos_parse(const char *s, struct kitty_termpos *out)
 {
-    int l, t, c, r;
+    int l, t, c, r, m = 0;
+    int got;
     if (!s || !out) return 0;
-    if (sscanf(s, "%d,%d,%d,%d", &l, &t, &c, &r) != 4) return 0;
+    got = sscanf(s, "%d,%d,%d,%d,%d", &l, &t, &c, &r, &m);
+    if (got < 4) return 0;
     if (c < 0 || r < 0) return 0;
     out->left = l; out->top = t; out->cols = c; out->rows = r;
+    out->maximised = (got == 5 && m) ? 1 : 0;
     return 1;
 }
 
@@ -295,6 +301,7 @@ int kitty_winpos_shared_get(unsigned long layout, struct kitty_termpos *out)
                 out->top = (int)r.top;
                 out->cols = 0;
                 out->rows = 0;
+                out->maximised = 0;
                 ret = 2;
             }
         }

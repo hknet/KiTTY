@@ -216,6 +216,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A window closed maximised opens maximised again.** With "Save settings
+  on exit" it kept its old position but the maximised size, so it opened
+  too large for the screen. It now keeps the size from before the maximise.
+  "Remember window position" now remembers the maximised state too, and
+  un-maximising returns the window to its place.
 - **Get File's Save-As box opens in the download folder.** For one named
   file it opened in the folder last used with KiTTY++, or in Documents,
   whatever download folder was set.

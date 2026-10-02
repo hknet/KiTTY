@@ -56,7 +56,7 @@ void SendStrToTerminal(const char *str, const int len);
 void do_eventlog(const char *st);
 int kitty_active_seat_workplace_proxied(void);
 void kitty_apply_transparency(struct WinGuiSeat *wgs);
-void kitty_apply_window_pos(struct WinGuiSeat *wgs);
+bool kitty_apply_window_pos(struct WinGuiSeat *wgs);   /* true: open maximised */
 bool kitty_window_may_layer(HWND hwnd);
 void kitty_set_active_seat(struct WinGuiSeat *wgs);
 Conf *kitty_seat_conf(Seat *seat);   /* the session behind a terminal window's seat, else NULL */

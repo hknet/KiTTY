@@ -340,8 +340,9 @@ Re-opens this session's window where you last left it, at the terminal
 size it had. When the window closes, its top-left and its size in
 \i{columns x rows} are saved for this session and for the \i{monitor
 layout} it was on; when the session is opened again on that layout, the
-window opens there, at that size. Neither a minimised nor a maximised
-window is remembered. On by default.
+window opens there, at that size. A window closed maximised opens
+maximised; un-maximising it returns it to the place and size it had
+before. A window closed minimised is not remembered. On by default.
 
 The position is remembered \e{per monitor layout}, so docking a laptop -
 or unplugging a screen - does not drag windows onto a monitor that is no
@@ -3189,7 +3190,9 @@ change made through \q{Change Settings} during the session is kept
 without saving by hand. Off by default: with it on, a change you made
 to try something out is saved as well. It saves everything the session
 holds, the window's position and size included, so a fixed position
-(\k{kitty-cfg-winpos}) moves along with the window. An unnamed session
+(\k{kitty-cfg-winpos}) moves along with the window. A window closed
+maximised keeps its size from before the maximise and opens maximised
+again. An unnamed session
 has nothing to be saved into, and \q{Default Settings} is never written
 by a closing window. Where the window opens is a matter for
 \q{Remember window position} (\k{kitty-cfg-winpos-remember}) on Window
