@@ -202,6 +202,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Send File no longer fails now and then with "no such file".** The chosen
+  file's path could reach kscp with stray characters after it, depending on
+  leftover memory, so the same upload sometimes worked and sometimes did not.
 - **A portable copy no longer deletes settings from the registry.** When a
   portable copy (`savemode=dir`) retired old settings, it also deleted them
   from the registry, where an installed KiTTY++ keeps its settings.

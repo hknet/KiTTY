@@ -1876,7 +1876,11 @@ void SendFileList( HWND hwnd, char * filelist ) {
 	}
 
 void SendFile( HWND hwnd ) {
-	char filename[32768] ;
+	/* KiTTY: zeroed whole. The picker is single-select and ends the path with
+	 * ONE NUL; SendFileList reads the byte after it to tell "dir\0file\0\0"
+	 * from one full path, and a stray stack byte there was taken as a file
+	 * name - kscp got "<path>\<garbage>" and the upload failed. */
+	char filename[32768] = "" ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
 		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
