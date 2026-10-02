@@ -453,6 +453,9 @@ someone who can read kageant's memory.
 \q{Lock agent} in the tray menu locks it; the same entry then reads
 \q{Unlock agent} and unlocks it again, whoever locked it.
 
+The lock lasts while kageant runs; a restart starts it unlocked, as
+OpenSSH's agent does.
+
 \q{When Windows locks}, on the Security page of the settings, ties the
 agent to the Windows session. \q{Keep the agent working} (the default)
 leaves it alone, so a job that uses the agent keeps running while the
