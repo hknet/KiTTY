@@ -10,9 +10,9 @@
  *  - a malformed or truncated payload is refused WHOLE, never handed over in
  *    part, because half a clipboard looks like success and pasting half a
  *    command line is how that becomes somebody's bad day;
- *  - the policy gate is honoured (CONF_osc52_clipboard: deny/allow/ask).
- *    "Ask" is never exercised here - it raises a MessageBox, which would hang a
- *    headless run;
+ *  - the policy gate is honoured (CONF_osc52_clipboard: deny/allow/ask). "Ask"
+ *    is a modeless box, so the write waits for its answer: the box is a stub
+ *    here and the tests answer it (test_write_confirm);
  *  - a real clipboard-sized payload survives, i.e. the buffer actually grows;
  *  - and every OTHER OSC sequence still stops at the size it always did, so the
  *    clipboard feature cannot be used to hand us a multi-megabyte window title.
@@ -233,6 +233,12 @@ void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a)
     osc52_notify_action = a;
 }
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
+/* The write confirmation box: opened, never answered here - the tests answer
+ * through term_osc52_write_answer, as the platform side does once it closes. */
+static int osc52_wconfirms;
+static int osc52_wconfirm_ends;
+void kitty_osc52_write_confirm(Terminal *term) { osc52_wconfirms++; }
+void kitty_osc52_write_confirm_end(Terminal *term) { osc52_wconfirm_ends++; }
 /* OSC 5113 (kitty/kitty_transfer.c) is not under test here: the terminal
  * dispatches to these two, so they exist and do nothing. */
 void kitty_transfer_osc(Terminal *term) { (void)term; }
@@ -1904,6 +1910,161 @@ static void test_colour_queries(Mock *mk)
                  "\033]11;rgb:1212/3434/5656\007");
 }
 
+/*
+ * The write confirmation box (writes set to Ask). It is modeless, so the write
+ * WAITS for the answer while the parser goes on: Yes applies what waited and
+ * latches Allow, No drops it and latches Deny, a read behind the write runs
+ * after it, and a setting changed meanwhile (Change Settings runs beside the
+ * box) wins over the answer. Each case answers its box, so none leaves a
+ * write waiting for the next.
+ */
+static void wc_reset(Mock *mk)
+{
+    read_reset(mk);
+    conf_set_int(mk->term->conf, CONF_clipboard_writes_per_sec, 0);
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ASK;
+    mk->clip_writes = 0;
+    osc52_wconfirms = 0;
+    osc52_set_fail = false;
+    counters_reset();
+}
+
+static void feed_seq(Mock *mk, const char *seq)
+{
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+}
+
+static void test_write_confirm(Mock *mk)
+{
+    static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
+
+    /* OSC 52, Yes: nothing before the answer, ONE box for two writes, then the
+     * LATEST payload (it would have overwritten the first), and Allow latched */
+    wc_reset(mk);
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");                            /* Hello */
+    if (osc52_wconfirms != 1)
+        fail("confirm OSC 52", "the box was not opened exactly once");
+    if (mk->clip_writes != 0)
+        fail("confirm OSC 52", "the clipboard was set before the answer");
+    feed_seq(mk, "\033]52;c;V29ybGQ=\007");                            /* World */
+    if (osc52_wconfirms != 1)
+        fail("confirm OSC 52", "a second write opened a second box");
+    term_osc52_write_answer(mk->term, true);
+    if (mk->clip_writes != 1 || !mk->clip || wcscmp(mk->clip, L"World"))
+        fail("confirm OSC 52, Yes", "the latest payload did not land exactly once");
+    if (mk->term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
+        fail("confirm OSC 52, Yes", "Allow was not latched");
+    mk->clip_writes = 0;
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    if (mk->clip_writes != 1 || osc52_wconfirms != 1)
+        fail("confirm OSC 52, Yes", "the next write did not go through without a box");
+
+    /* OSC 52, No: dropped, Deny latched, the next write refused without a box */
+    wc_reset(mk);
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    term_osc52_write_answer(mk->term, false);
+    if (mk->clip_writes != 0)
+        fail("confirm OSC 52, No", "the refused payload reached the clipboard");
+    if (mk->term->osc52_allowed != OSC52_CLIPBOARD_DENY)
+        fail("confirm OSC 52, No", "Deny was not latched");
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    if (mk->clip_writes != 0 || osc52_wconfirms != 1)
+        fail("confirm OSC 52, No", "the next write was set, or opened another box");
+
+    /* OSC 5522, Yes after the end: the whole write is in, its reply waits */
+    wc_reset(mk);
+    feed_5522_raw(mk, "type=write:id=c1", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 0 || osc52_set_calls != 0)
+        fail("confirm 5522", "answered or set before the box was");
+    term_osc52_write_answer(mk->term, true);
+    if (osc52_sends != 1)
+        fail("confirm 5522, Yes", "expected exactly one reply, DONE");
+    expect_last(mk, "confirm 5522, Yes", "type=write:status=DONE:id=c1");
+    if (osc52_set_calls != 1 || strcmp(osc52_set_text, "Hello"))
+        fail("confirm 5522, Yes", "the payload did not land exactly once");
+
+    /* OSC 5522, No after the end: EPERM, nothing set */
+    wc_reset(mk);
+    feed_5522_raw(mk, "type=write:id=c2", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    term_osc52_write_answer(mk->term, false);
+    expect_last(mk, "confirm 5522, No", "type=write:status=EPERM:id=c2");
+    if (osc52_set_calls != 0)
+        fail("confirm 5522, No", "the refused write reached the clipboard");
+
+    /* OSC 5522, Yes while it still streams: it goes on and ends as usual */
+    wc_reset(mk);
+    feed_5522_raw(mk, "type=write:id=c3", NULL);
+    feed_5522_raw(mk, M, "SGVs");
+    term_osc52_write_answer(mk->term, true);
+    if (osc52_sends != 0)
+        fail("confirm 5522, Yes mid-write", "answered before the write ended");
+    feed_5522_raw(mk, M, "bG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    expect_last(mk, "confirm 5522, Yes mid-write", "type=write:status=DONE:id=c3");
+    if (strcmp(osc52_set_text, "Hello"))
+        fail("confirm 5522, Yes mid-write", "the chunks around the answer did not join");
+
+    /* OSC 5522, No while it still streams: EPERM at once, the rest ignored */
+    wc_reset(mk);
+    feed_5522_raw(mk, "type=write:id=c4", NULL);
+    term_osc52_write_answer(mk->term, false);
+    expect_last(mk, "confirm 5522, No mid-write", "type=write:status=EPERM:id=c4");
+    counters_reset();
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    if (osc52_sends != 0 || osc52_set_calls != 0)
+        fail("confirm 5522, No mid-write", "packets of the refused write were not ignored");
+
+    /* A read behind the write waits and runs AFTER it: DONE first, then the
+     * clipboard goes out (reads allowed here without their own dialog) */
+    wc_reset(mk);
+    mk->term->osc52_read_decision = 1;
+    mk->term->osc52_read_remaining = -1;
+    feed_5522_raw(mk, "type=write:id=c5", NULL);
+    feed_5522_raw(mk, M, "SGVsbG8=");
+    feed_5522_raw(mk, "type=wdata", NULL);
+    feed_seq(mk, READ_SEQ);
+    if (osc52_sends != 0)
+        fail("confirm, read behind the write", "the read was served before the answer");
+    term_osc52_write_answer(mk->term, true);
+    {
+        const char *done = strstr(osc52_all, "status=DONE");
+        const char *read = strstr(osc52_all, "\033]52;");
+        if (osc52_sends != 2 || !done || !read || read < done)
+            fail("confirm, read behind the write", "expected DONE, then the read's reply");
+    }
+
+    /* Only one read waits; an OSC 5522 read beyond it is EBUSY */
+    wc_reset(mk);
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    feed_5522_raw(mk, "type=read:id=r6", "dGV4dC9wbGFpbg==");
+    feed_5522_raw(mk, "type=read:id=r7", "dGV4dC9wbGFpbg==");
+    if (osc52_sends != 1)
+        fail("confirm, two reads behind the write", "expected one EBUSY, the first read waiting");
+    expect_last(mk, "confirm, two reads behind the write", "type=read:id=r7:status=EBUSY");
+    term_osc52_write_answer(mk->term, false);
+
+    /* A setting changed meanwhile wins: Ask became Deny, then Yes - nothing set */
+    wc_reset(mk);
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
+    term_osc52_write_answer(mk->term, true);
+    if (mk->clip_writes != 0 || mk->term->osc52_allowed != OSC52_CLIPBOARD_DENY)
+        fail("confirm, setting changed meanwhile", "the stale Yes overrode the new setting");
+
+    /* An answer with no question open does nothing */
+    wc_reset(mk);
+    term_osc52_write_answer(mk->term, true);
+    if (mk->term->osc52_allowed != OSC52_CLIPBOARD_ASK)
+        fail("confirm, stray answer", "an answer without a box changed the setting");
+    mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -1992,6 +2153,7 @@ int main(void)
     test_read_direction(mk);
     test_osc5522(mk);
     test_osc5522_write(mk);
+    test_write_confirm(mk);
     test_osc5522_paste_events(mk);
     test_write_focus_rule(mk);
     test_clipboard_write_rate(mk);

@@ -87,6 +87,9 @@ static void clip_note_activity(Terminal *term, int dir);
 /* Drop an OSC 5522 write transaction, wiping its data. Declared here because
  * term_free() sits earlier in the file than the OSC 5522 code. */
 static void osc5522_write_reset(Terminal *term);
+/* Drop what waits for the write confirmation box, wiping it. Declared here for
+ * term_free() too. */
+static void osc52_write_held_drop(Terminal *term);
 /* Paste-events mode off (and its token gone). `timed`: by the auto-disarm timer,
  * which is logged, as opposed to a reset or the application clearing it. */
 static void osc5522_paste_disarm(Terminal *term, bool timed);
@@ -3010,6 +3013,10 @@ void term_free(Terminal *term)
         }
         sfree(term->osc5522_pw_name[i]);
     }
+    /* KiTTY: an open write confirmation box closes as No, and the writes and
+     * the read that waited for it are wiped. */
+    kitty_osc52_write_confirm_end(term);
+    osc52_write_held_drop(term);
     osc5522_write_reset(term);
     if (term->osc5522_paste_pw) {
         smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
@@ -5543,7 +5550,10 @@ static void osc52_read_clipboard(Terminal *term)
  * auto-disarm clock (OSC5522PasteMinutes).
  */
 #define OSC5522_CHUNK 4096             /* spec: bytes per chunk BEFORE base64 */
-static bool clip_write_gate(Terminal *term, const char **err);
+/* clip_write_gate's answer: refused, allowed, or waiting for the write
+ * confirmation box (the caller holds the write until term_osc52_write_answer) */
+enum { CLIP_GATE_NO, CLIP_GATE_YES, CLIP_GATE_WAIT };
+static int clip_write_gate(Terminal *term, const char **err);
 
 /* Pull one plain (not base64) metadata value out of the colon-separated list.
  * 1 = found, 0 = absent, -1 = present but longer than the buffer. The last is
@@ -6106,6 +6116,8 @@ static void osc5522_write_reset(Terminal *term)
     term->osc5522_w_naliases = 0;
     term->osc5522_w_bytes = 0;
     term->osc5522_w_active = false;
+    term->osc5522_w_pending = false;
+    term->osc5522_w_held_commit = false;
     term->osc5522_w_id[0] = '\0';
 }
 
@@ -6173,10 +6185,15 @@ static void osc5522_write_begin(Terminal *term, const char *meta)
         osc5522_write_fail(term, "ENOSYS", NULL);
         return;
     }
-    if (!clip_write_gate(term, &err)) {
+    r = clip_write_gate(term, &err);
+    if (r == CLIP_GATE_NO) {
         osc5522_write_fail(term, err, NULL);
         return;
     }
+    /* KiTTY: waiting for the confirmation box, the transaction still streams
+     * in under its limits; only its reply waits for the answer (commit). */
+    if (r == CLIP_GATE_WAIT)
+        term->osc5522_w_pending = true;
 }
 
 /* Find or add the accumulator for a MIME type. NULL after EFBIG has been sent. */
@@ -6210,8 +6227,9 @@ static void osc5522_write_data(Terminal *term, const char *meta,
     int r, ti;
     size_t i;
 
-    if (!term->osc5522_w_active)
-        return;                        /* no transaction, or a failed one */
+    if (!term->osc5522_w_active || term->osc5522_w_held_commit)
+        return;                        /* no transaction, a failed one, or an
+                                        * ended one waiting for the box */
     if (term->osc_str_overflow) {
         osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
         return;
@@ -6279,7 +6297,7 @@ static void osc5522_write_alias(Terminal *term, const char *meta,
     char *p, *end;
     int r;
 
-    if (!term->osc5522_w_active)
+    if (!term->osc5522_w_active || term->osc5522_w_held_commit)
         return;
     if (term->osc_str_overflow) {
         osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
@@ -6346,6 +6364,13 @@ static void osc5522_write_commit(Terminal *term)
             osc5522_write_fail(term, "EINVAL", KT_CLIP_LOG_WRITE_5522_INVALID);
             return;
         }
+
+    /* KiTTY: the write confirmation box is still open - the whole write is in
+     * and waits, its reply with it (term_osc52_write_answer finishes it). */
+    if (term->osc5522_w_pending) {
+        term->osc5522_w_held_commit = true;
+        return;
+    }
 
     /* A write that carried nothing sets nothing - the same rule OSC 52 has for
      * an empty payload: a multiplexer's empty selection must not wipe what the
@@ -6651,6 +6676,23 @@ static void osc5522_process(Terminal *term)
             osc5522_send(term, ebusy, NULL, 0);
             return;
         }
+        /* KiTTY: behind a write that waits for its confirmation box, the read
+         * waits too and runs after the answer - it must see the clipboard the
+         * write left, as it did while that box was modal. One waits; a further
+         * one is "not now" (EBUSY). */
+        if (term->osc52_w_asking) {
+            if (term->osc52_held_read) {
+                char ebusy[64];
+                snprintf(ebusy, sizeof(ebusy), "type=read%s:status=EBUSY", idpart);
+                osc5522_send(term, ebusy, NULL, 0);
+                return;
+            }
+            term->osc52_held_read = 2;
+            term->osc52_held_read_meta = dupstr(meta);
+            term->osc52_held_read_payload = payload ? dupstr(payload) : NULL;
+            term->osc52_held_read_len = payload_len;
+            return;
+        }
         osc5522_read(term, meta, payload, payload_len);
         return;
     }
@@ -6704,14 +6746,15 @@ static void osc5522_process(Terminal *term)
  * set the clipboard right now? Policy (Deny / Ask-once-and-latch / Allow), the
  * focus rule, then the rate cap - in that order, so a refused or unfocused write
  * costs nobody any budget. `err`, if wanted, receives the 5522 status a refusal
- * maps to: EPERM for policy and focus, EBUSY for the cap.
+ * maps to: EPERM for policy and focus, EBUSY for the cap. CLIP_GATE_WAIT: Ask,
+ * the confirmation box is open - the caller holds the write for its answer.
  */
-static bool clip_write_gate(Terminal *term, const char **err)
+static int clip_write_gate(Terminal *term, const char **err)
 {
     if (err)
         *err = "EPERM";
     if (term->osc52_allowed == OSC52_CLIPBOARD_DENY)
-        return false;
+        return CLIP_GATE_NO;
 
     /*
      * KiTTY: the focus rule applies to writes as well as reads.
@@ -6727,34 +6770,25 @@ static bool clip_write_gate(Terminal *term, const char **err)
      */
     if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus) {
         logevent(term->logctx, KT_CLIP_LOG_WRITE_NO_FOCUS);
-        return false;
+        return CLIP_GATE_NO;
     }
 
     if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
-#ifdef _WINDOWS
-        int status = MessageBox(
-            NULL,
-            KT_CLIP_WRITE_ALLOW_Q,
-            KT_CAP_KITTY, MB_OKCANCEL | MB_ICONQUESTION);
-        /* Latch either way: asking once per payload would let any host raise a
-         * dialog as often as it liked. */
-        term->osc52_allowed = (status == IDOK ?
-                               OSC52_CLIPBOARD_ALLOW :
-                               OSC52_CLIPBOARD_DENY);
-#else
-        term->osc52_allowed = OSC52_CLIPBOARD_DENY;
-#endif
-        if (term->osc52_allowed != OSC52_CLIPBOARD_ALLOW)
-            return false;
         /*
-         * Answering "yes" here is a GRANT with a lifetime - it latches for the rest
-         * of the session - exactly like allowing a read for the session, so the
-         * window has to start showing it. Without this the "(clip write)" marker
-         * did not appear until the session next set its own title, which for a
-         * shell that never sets one is never: the permission was live and invisible,
-         * which is the one thing the marker exists to prevent.
+         * KiTTY: the confirmation box is MODELESS. It used to be a modal
+         * MessageBox opened from here, inside the parser: output stopped until
+         * it was answered, keys and repaints could reach the terminal in the
+         * middle of a parse, and its default button was OK - an Enter typed as
+         * it appeared allowed every write for the rest of the session. Now the
+         * write waits and the answer arrives later (term_osc52_write_answer),
+         * from a box whose default is No. One box: a write that arrives while it
+         * is open waits for the same answer.
          */
-        kitty_osc52_state_changed(term);
+        if (!term->osc52_w_asking) {
+            term->osc52_w_asking = true;
+            kitty_osc52_write_confirm(term);
+        }
+        return CLIP_GATE_WAIT;
     }
 
     /* Rate cap. Checked after the permission gates and immediately before the
@@ -6762,9 +6796,27 @@ static bool clip_write_gate(Terminal *term, const char **err)
     if (!clip_write_allowed(term)) {
         if (err)
             *err = "EBUSY";
-        return false;
+        return CLIP_GATE_NO;
     }
-    return true;
+    return CLIP_GATE_YES;
+}
+
+/* Put a decoded OSC 52 payload on the clipboard. The caller frees `decoded`. */
+static void osc52_write_text(Terminal *term, strbuf *decoded)
+{
+    wchar_t *wide;
+    size_t wlen;
+
+    /* strbuf keeps its contents NUL-terminated, and decode_utf8_to_wide_string
+     * substitutes U+FFFD for anything malformed rather than failing. */
+    wide = decode_utf8_to_wide_string(decoded->s);
+    wlen = wcslen(wide);
+    /* SELECTION_NUL_TERMINATED: the same length convention clipme() uses, i.e.
+     * on Windows the terminating NUL is part of what is handed over. */
+    win_clip_write(term->win, CLIP_SYSTEM, wide, NULL, NULL,
+                   (int)(wlen + SELECTION_NUL_TERMINATED), false);
+    clip_note_activity(term, CLIP_ACT_WRITE);
+    sfree(wide);
 }
 
 static void osc52_set_clipboard(Terminal *term)
@@ -6772,8 +6824,7 @@ static void osc52_set_clipboard(Terminal *term)
     const char *sep, *pd, *p;
     size_t pdlen;
     strbuf *decoded;
-    wchar_t *wide;
-    size_t wlen;
+    int gate;
 
     sep = strchr(term->osc_string, ';');
     if (!sep)
@@ -6798,6 +6849,14 @@ static void osc52_set_clipboard(Terminal *term)
      * variation on the write below and does not share its policy.
      */
     if (!strcmp(pd, "?")) {
+        /* KiTTY: behind a write that waits for its confirmation box, after it
+         * (term_osc52_write_answer); one read waits, a further one is dropped,
+         * as every OSC 52 refusal is - in silence. */
+        if (term->osc52_w_asking) {
+            if (!term->osc52_held_read)
+                term->osc52_held_read = 1;
+            return;
+        }
         osc52_read_clipboard(term);
         return;
     }
@@ -6851,21 +6910,115 @@ static void osc52_set_clipboard(Terminal *term)
         return;
     }
 
-    if (!clip_write_gate(term, NULL))
+    gate = clip_write_gate(term, NULL);
+    if (gate == CLIP_GATE_NO)
         return;
 
     decoded = base64_decode_sb(make_ptrlen(pd, pdlen));
-    /* strbuf keeps its contents NUL-terminated, and decode_utf8_to_wide_string
-     * substitutes U+FFFD for anything malformed rather than failing. */
-    wide = decode_utf8_to_wide_string(decoded->s);
-    wlen = wcslen(wide);
-    /* SELECTION_NUL_TERMINATED: the same length convention clipme() uses, i.e.
-     * on Windows the terminating NUL is part of what is handed over. */
-    win_clip_write(term->win, CLIP_SYSTEM, wide, NULL, NULL,
-                   (int)(wlen + SELECTION_NUL_TERMINATED), false);
-    clip_note_activity(term, CLIP_ACT_WRITE);
-    sfree(wide);
+    if (gate == CLIP_GATE_WAIT) {
+        /* KiTTY: the confirmation box is open. The latest payload waits for
+         * its answer: an earlier one still waiting would have been overwritten
+         * on the clipboard straight away, so it is replaced here. */
+        if (term->osc52_w_held) {
+            smemclr(term->osc52_w_held->u, term->osc52_w_held->len);
+            strbuf_free(term->osc52_w_held);
+        }
+        term->osc52_w_held = decoded;
+        return;
+    }
+    osc52_write_text(term, decoded);
     strbuf_free(decoded);
+}
+
+static void osc52_write_held_drop(Terminal *term)
+{
+    if (term->osc52_w_held) {
+        /* wiped, not merely freed: it may well be a password */
+        smemclr(term->osc52_w_held->u, term->osc52_w_held->len);
+        strbuf_free(term->osc52_w_held);
+        term->osc52_w_held = NULL;
+    }
+    sfree(term->osc52_held_read_meta);
+    sfree(term->osc52_held_read_payload);
+    term->osc52_held_read_meta = NULL;
+    term->osc52_held_read_payload = NULL;
+    term->osc52_held_read = 0;
+    term->osc52_w_asking = false;
+}
+
+/*
+ * KiTTY: the answer of the write confirmation box. It comes from the platform
+ * side after the box has closed (kitty_osc52.c), never from inside the parser,
+ * and finishes what waited for it, in the order it arrived: the writes, then
+ * the read behind them.
+ */
+void term_osc52_write_answer(Terminal *term, bool yes)
+{
+    bool ok;
+
+    if (!term || !term->osc52_w_asking)
+        return;
+    term->osc52_w_asking = false;
+
+    /*
+     * The answer latches for the rest of the session either way: a box per
+     * payload would let any host raise one as often as it liked. Only while
+     * the setting is still Ask, though - Change Settings runs beside the box,
+     * and a setting chosen there meanwhile is the newer decision.
+     */
+    if (term->osc52_allowed == OSC52_CLIPBOARD_ASK) {
+        term->osc52_allowed = yes ? OSC52_CLIPBOARD_ALLOW : OSC52_CLIPBOARD_DENY;
+        /*
+         * Yes is a GRANT with a lifetime - exactly like allowing a read for the
+         * session - so the window has to start showing it. Without this the
+         * "(clip write)" marker did not appear until the session next set its
+         * own title, which for a shell that never sets one is never: the
+         * permission was live and invisible, which is the one thing the marker
+         * exists to prevent.
+         */
+        if (yes)
+            kitty_osc52_state_changed(term);
+    }
+    ok = (term->osc52_allowed == OSC52_CLIPBOARD_ALLOW);
+
+    /* The held writes. The focus rule was met when they arrived and is not
+     * applied again: the box had the focus. The rate cap still is. */
+    if (term->osc52_w_held) {
+        strbuf *held = term->osc52_w_held;
+        term->osc52_w_held = NULL;
+        if (ok && clip_write_allowed(term))
+            osc52_write_text(term, held);
+        smemclr(held->u, held->len);
+        strbuf_free(held);
+    }
+    if (term->osc5522_w_pending) {
+        term->osc5522_w_pending = false;
+        if (!ok)
+            osc5522_write_fail(term, "EPERM", NULL);
+        else if (!clip_write_allowed(term))
+            osc5522_write_fail(term, "EBUSY", NULL);
+        else if (term->osc5522_w_held_commit) {
+            term->osc5522_w_held_commit = false;
+            osc5522_write_commit(term);
+        }
+        /* else still streaming, and now allowed: it ends like any other */
+    }
+
+    /* Then the read that came in behind them. */
+    if (term->osc52_held_read == 1) {
+        term->osc52_held_read = 0;
+        osc52_read_clipboard(term);
+    } else if (term->osc52_held_read == 2) {
+        char *meta = term->osc52_held_read_meta;
+        char *payload = term->osc52_held_read_payload;
+        size_t len = term->osc52_held_read_len;
+        term->osc52_held_read = 0;
+        term->osc52_held_read_meta = NULL;
+        term->osc52_held_read_payload = NULL;
+        osc5522_read(term, meta, payload, len);
+        sfree(meta);
+        sfree(payload);
+    }
 }
 #endif /* MOD_PERSO */
 

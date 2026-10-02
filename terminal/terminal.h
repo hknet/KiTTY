@@ -296,6 +296,20 @@ struct terminal_tag {
      * be a MessageBox storm any host could trigger at will. UNCONDITIONAL
      * storage, for the ODR reason given above. */
     int osc52_allowed;
+    /* KiTTY: the write confirmation box (osc52_allowed is Ask) is open. It is
+     * modeless, so the parser goes on: the write waits for the answer instead
+     * (term_osc52_write_answer). Held meanwhile: the latest OSC 52 payload,
+     * whether the open OSC 5522 transaction waits for the answer and whether it
+     * has already ended, and ONE read that arrived behind the write - replayed
+     * after the answer, so a read still sees the write before it. */
+    bool osc52_w_asking;
+    strbuf *osc52_w_held;             /* OSC 52 payload, decoded; NULL = none */
+    bool osc5522_w_pending;           /* the open transaction waits for the answer */
+    bool osc5522_w_held_commit;       /* ...and has ended: its reply waits too */
+    int osc52_held_read;              /* 0 none, 1 OSC 52 "?", 2 OSC 5522 read */
+    char *osc52_held_read_meta;       /* the 5522 read, copied for the replay */
+    char *osc52_held_read_payload;
+    size_t osc52_held_read_len;
 
     /* KiTTY OSC 52 READ direction (a host asking for the contents of the local
      * clipboard). All UNCONDITIONAL storage, for the ODR reason above.

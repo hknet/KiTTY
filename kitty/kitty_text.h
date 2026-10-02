@@ -1548,7 +1548,7 @@
 #define KT_CAP_SESSION_IMPORT                        KT_MIG_BOX_TITLE  /* the Migration panel's box carries the same title */
 #define KT_CAP_SESSION_EXPORT                        "KiTTY session export"
 #define KT_CAP_UPDATE                                "KiTTY Update"
-#define KT_CAP_CLIPBOARD                             "KiTTY clipboard"
+#define KT_CAP_CLIPBOARD                             "KiTTY++ clipboard"
 #define KT_CAP_FILE_ASSOC                            "KiTTY file association"
 #define KT_CAP_SAVE_SESSION                          "Save session"
 #define KT_CAP_SELECT_FOLDER                         "Select a folder..."
@@ -3025,10 +3025,12 @@
 #define KT_CLIP_WHAT_OSC52                           "A remote clipboard write (OSC 52)"
 #define KT_CLIP_WHAT_OSC5522                         "A clipboard request (OSC 5522)"
 #define KT_CLIP_FAR2L_ALLOW_Q                        "Allow far2l clipboard sync?"
-/* Shared by OSC 52 and OSC 5522 writes. Wording follows Ghostty's clipboard
- * dialog ("An application is attempting to write to the clipboard."). */
-#define KT_CLIP_WRITE_ALLOW_Q                        "An application is attempting to write to the clipboard.\n\n" \
-        "OK allows similar requests for the rest of this session."
+/* Shared by OSC 52 and OSC 5522 writes: the modeless Yes/No box (No is the
+ * default); its field names the session (KT_OSC52_WHERE_*). */
+#define KT_CLIP_WRITE_ALLOW_Q                        "The remote host wants to set the clipboard.\n" \
+        "Allow it?\n\n" \
+        "Yes allows it for the rest of the session.\n" \
+        "No refuses it for the rest of the session."
 /* balloon notices */
 #define KT_CLIP_NOTICE_TOO_MUCH                      "Too much data arrived for the clipboard in one go, so it " \
         "was not copied. Nothing was pasted in part.\n" \

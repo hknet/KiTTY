@@ -23,5 +23,10 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n);
 void kitty_osc52_state_changed(Terminal *term);
 bool kitty_osc52_title_visible(void);
+/* The clipboard write confirmation (osc52_allowed = Ask), modeless: opens the
+ * box once per question, the answer reaches term_osc52_write_answer later.
+ * _end: the terminal is going away - the box closes as No without calling it. */
+void kitty_osc52_write_confirm(Terminal *term);
+void kitty_osc52_write_confirm_end(Terminal *term);
 
 #endif /* KITTY_OSC52_H */

@@ -157,6 +157,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Change Settings keeps the session running.** Output, transfers and
   keepalives go on while the box is open. Cancel leaves the session's
   settings untouched. Closing the window closes the box with it.
+- **The clipboard write confirmation no longer holds up the terminal.** With
+  remote clipboard writes set to Ask, the box is now a Yes/No box on the
+  session's window with No as the default, so an Enter typed as it appears no
+  longer allows every write. The write waits for the answer while output keeps
+  arriving. An OSC 5522 program gets DONE after Yes and EPERM after No.
 - **Detected links cost less while output scrolls.** The search for web
   addresses now runs only over the lines that changed and reuses what it found
   in lines it saw before. A link that only scrolled keeps its underline

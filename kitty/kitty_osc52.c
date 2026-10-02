@@ -29,6 +29,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_gui.h"
 #include "kitty_osc52.h"
+#include "kitty_dlgbox.h"  /* kitty_confirm_modeless: the write confirmation */
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
 #include "kitty_win.h"     /* kitty_theme_app_dark */
 
@@ -741,6 +742,100 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
     if (always_deny)
         *always_deny = ask.always_deny;
     return ask.allowed;
+}
+
+/* ------------------------------------------------------------------------
+ * The write confirmation (osc52_allowed = Ask)
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Modeless, on the shared confirmation box: its default is No, it sits on the
+ * terminal window that wants the write, and the terminal keeps running while
+ * it is open (terminal.c clip_write_gate holds the write). The box is opened
+ * and its answer handed on from toplevel callbacks, never from inside the
+ * parser that raised it: creating a window there sends focus messages into
+ * the terminal mid-parse, and the answer goes back only once the box is gone
+ * and the focus is the terminal's again - as it was after the modal box.
+ *
+ * The holder outlives whichever comes last of the box and the two callbacks;
+ * term = NULL means the terminal went first (kitty_osc52_write_confirm_end).
+ */
+typedef struct {
+    Terminal *term;
+    HWND box;
+    int yes;
+} osc52_wconfirm_t;
+static osc52_wconfirm_t *osc52_wconfirm = NULL;    /* the open question */
+
+static void osc52_wconfirm_apply(void *ctx)
+{
+    osc52_wconfirm_t *c = (osc52_wconfirm_t *)ctx;
+    Terminal *term = c->term;
+    bool yes = c->yes != 0;
+    if (osc52_wconfirm == c)
+        osc52_wconfirm = NULL;
+    sfree(c);
+    if (term)
+        term_osc52_write_answer(term, yes);
+}
+
+static void osc52_wconfirm_done(int yes, void *ctx)
+{
+    osc52_wconfirm_t *c = (osc52_wconfirm_t *)ctx;
+    c->yes = yes;
+    c->box = NULL;                     /* closing: the box frees itself */
+    queue_toplevel_callback(osc52_wconfirm_apply, c);
+}
+
+static void osc52_wconfirm_open(void *ctx)
+{
+    osc52_wconfirm_t *c = (osc52_wconfirm_t *)ctx;
+    char *where;
+
+    if (!c->term) {                    /* the terminal went before the box came */
+        if (osc52_wconfirm == c)
+            osc52_wconfirm = NULL;
+        sfree(c);
+        return;
+    }
+    where = osc52_where(c->term);
+    c->box = kitty_confirm_modeless(MainHwnd, KT_CAP_CLIPBOARD,
+                                    KT_CLIP_WRITE_ALLOW_Q, where, NULL,
+                                    osc52_wconfirm_done, c);
+    sfree(where);
+    if (!c->box) {                     /* not made: that is a No */
+        c->yes = 0;
+        osc52_wconfirm_apply(c);
+    }
+}
+
+void kitty_osc52_write_confirm(Terminal *term)
+{
+    osc52_wconfirm_t *c;
+
+    if (osc52_wconfirm)
+        return;                        /* one box; its answer covers this too */
+    c = snew(osc52_wconfirm_t);
+    c->term = term;
+    c->box = NULL;
+    c->yes = 0;
+    osc52_wconfirm = c;
+    queue_toplevel_callback(osc52_wconfirm_open, c);
+}
+
+void kitty_osc52_write_confirm_end(Terminal *term)
+{
+    osc52_wconfirm_t *c = osc52_wconfirm;
+
+    if (!c || c->term != term)
+        return;
+    c->term = NULL;                    /* whatever runs next finds no terminal */
+    osc52_wconfirm = NULL;
+    if (c->box) {
+        HWND box = c->box;
+        c->box = NULL;
+        DestroyWindow(box);            /* done(No) -> apply, which frees c */
+    }
 }
 
 /* ------------------------------------------------------------------------
