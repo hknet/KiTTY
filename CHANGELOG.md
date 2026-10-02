@@ -153,7 +153,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   remembers that exact file (`[TrustedHelpers]`). A file with a broken
   signature is not started.
 - **The Ctrl+F5 confirmation no longer holds up the terminal.** Output keeps
-  arriving while the box asks whether to run the clipboard command.
+  arriving while the box for the clipboard command is open.
 - **Change Settings keeps the session running.** Output, transfers and
   keepalives go on while the box is open. Cancel leaves the session's
   settings untouched. Closing the window closes the box with it.
@@ -162,6 +162,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   session's window with No as the default, so an Enter typed as it appears no
   longer allows every write. The write waits for the answer while output keeps
   arriving. An OSC 5522 program gets DONE after Yes and EPERM after No.
+- **The clipboard read box no longer holds up the terminal.** Output keeps
+  arriving while it is open. Allow sends the clipboard as the box showed it,
+  even if something else was copied meanwhile.
 - **Detected links cost less while output scrolls.** The search for web
   addresses now runs only over the lines that changed and reuses what it found
   in lines it saw before. A link that only scrolled keeps its underline

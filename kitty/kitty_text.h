@@ -1607,7 +1607,7 @@
 #define KT_CAP_TRANSFER_PROBLEM                      "Transfer problem"
 #define KT_CAP_RUN_CLIP_CMD                          "KiTTY - run clipboard command"
 #define KT_CAP_KEY_NOT_IN_AGENT                      "KiTTY - the key is not in the agent"
-#define KT_CAP_OSC52_SESSION                         "KiTTY - allow for the whole session?"
+#define KT_CAP_OSC52_SESSION                         "KiTTY++ - allow for the whole session?"
 
 /* Tray-menu and system-menu items (kitty.c, kitty_launcher.c, kitty_specialmenu.c) */
 #define KT_MENU_HIDE_ALL                             "&Hide all"
@@ -3579,7 +3579,7 @@
 #define KT_RC_TITLEVARS_INTRO                        "Double-click a placeholder (or select one and press Copy) to put it on the clipboard, then paste it into the Window title field."
 
 /* kitty.rc: IDD_OSC52READ (Deny = KT_REMOTE_CLIPBOARD_DENY) */
-#define KT_RC_OSC52READ_CAPTION                      "KiTTY - a server wants to read your clipboard"
+#define KT_RC_OSC52READ_CAPTION                      "KiTTY++ - a server wants to read your clipboard"
 #define KT_RC_OSC52READ_VIEW                         "&View..."
 #define KT_RC_OSC52READ_APPLY_LABEL                  "Apply this decision to:"
 #define KT_RC_OSC52READ_ONCE                         "just this &request"

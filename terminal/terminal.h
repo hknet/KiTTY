@@ -100,6 +100,16 @@ typedef struct KittyClipFormat {
     size_t len;
 } KittyClipFormat;
 
+/* KiTTY: a clipboard read request kept to run later - behind a write that waits
+ * for its confirmation box, or itself waiting for the read box. kind: 0 none,
+ * 1 OSC 52 "?", 2 OSC 5522 read (its metadata and payload copied). */
+typedef struct ClipHeldRead {
+    int kind;
+    char *meta;
+    char *payload;
+    size_t len;
+} ClipHeldRead;
+
 struct terminal_tag {
 
     int compatibility_level;
@@ -306,10 +316,7 @@ struct terminal_tag {
     strbuf *osc52_w_held;             /* OSC 52 payload, decoded; NULL = none */
     bool osc5522_w_pending;           /* the open transaction waits for the answer */
     bool osc5522_w_held_commit;       /* ...and has ended: its reply waits too */
-    int osc52_held_read;              /* 0 none, 1 OSC 52 "?", 2 OSC 5522 read */
-    char *osc52_held_read_meta;       /* the 5522 read, copied for the replay */
-    char *osc52_held_read_payload;
-    size_t osc52_held_read_len;
+    ClipHeldRead osc52_w_held_read;   /* the read behind the write */
 
     /* KiTTY OSC 52 READ direction (a host asking for the contents of the local
      * clipboard). All UNCONDITIONAL storage, for the ODR reason above.
@@ -340,6 +347,21 @@ struct terminal_tag {
     /* true while a permission dialog is open for this terminal: the next request
      * is refused, not stacked behind it */
     bool osc52_read_asking;
+    /* KiTTY: that box is modeless, so the request waits while it is open
+     * (osc52_read_wait), with the clipboard as the box showed it
+     * (osc52_read_held_*): that, not whatever is on the clipboard by the time
+     * of the answer, is what an Allow sends. term_osc52_read_answer stores the
+     * answer (osc52_read_ans_*) and runs the request again, and the gate takes
+     * the stored answer instead of opening another box. */
+    ClipHeldRead osc52_read_wait;
+    wchar_t *osc52_read_held_text;
+    int osc52_read_held_text_len;
+    unsigned char *osc52_read_held_png;
+    size_t osc52_read_held_png_len;
+    bool osc52_read_answered;
+    bool osc52_read_ans_allowed;
+    int osc52_read_ans_grant;
+    bool osc52_read_ans_always_deny;
     /* refusals suppressed since the last Event Log line, and when that line was
      * written. A host that asks in a loop must not be able to fill the log. */
     int osc52_read_refused_quiet;

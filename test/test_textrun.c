@@ -78,9 +78,9 @@ bool kitty_osc52_clipboard_has_image(void) { return false; }
 void kitty_osc52_random(unsigned char *buf, size_t len) { memset(buf, 1, len); }
 bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
 { return false; }
-bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
-                             const char *claim, int *grant, bool *always_deny)
-{ if (grant) *grant = 0; if (always_deny) *always_deny = false; return false; }
+void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
+                              const char *claim) { }
+void kitty_osc52_read_confirm_end(Terminal *term) { }
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
 bool kitty_osc52_title_visible(void) { return true; }
 void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a) { }

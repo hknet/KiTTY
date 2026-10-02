@@ -22,10 +22,12 @@
  * dialog code; the test target supplies its own stubs, which is also how it
  * exercises the permission logic without a window ever appearing.
  *
- * kitty_osc52_read_dialog() returns true for allow and false for deny, and fills
- * in how long the answer applies (one of OSC52_GRANT_*) plus whether the user
- * ticked "always deny for this host". It is the ONLY place a read can be
- * permitted; there is no setting that does it.
+ * kitty_osc52_read_confirm() opens the read box, modeless: the request waits,
+ * and the answer comes back later through term_osc52_read_answer() - allow or
+ * deny, how long it applies (one of OSC52_GRANT_*) and whether the user ticked
+ * "always deny for this host". The box is the ONLY place a read can be
+ * permitted; there is no setting that does it. _end: the terminal is going
+ * away, the box closes without answering.
  */
 enum {
     OSC52_GRANT_ONCE,          /* just this request */
@@ -33,8 +35,9 @@ enum {
     OSC52_GRANT_REQUESTS,      /* CONF_osc52_read_requests */
     OSC52_GRANT_SESSION,       /* the rest of this terminal session */
 };
-bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
-                             const char *claim, int *grant, bool *always_deny);
+void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
+                              const char *claim);
+void kitty_osc52_read_confirm_end(Terminal *term);
 /* Fetch the local clipboard as wide text. Caller frees. NULL if empty or if the
  * clipboard holds something that is not text. */
 /* ...and the variant that distinguishes "empty" from "somebody else has it
@@ -90,6 +93,8 @@ static void osc5522_write_reset(Terminal *term);
 /* Drop what waits for the write confirmation box, wiping it. Declared here for
  * term_free() too. */
 static void osc52_write_held_drop(Terminal *term);
+/* The same for the read box: the waiting request and the clipboard it showed. */
+static void osc52_read_wait_drop(Terminal *term);
 /* Paste-events mode off (and its token gone). `timed`: by the auto-disarm timer,
  * which is logged, as opposed to a reset or the application clearing it. */
 static void osc5522_paste_disarm(Terminal *term, bool timed);
@@ -3017,6 +3022,9 @@ void term_free(Terminal *term)
      * the read that waited for it are wiped. */
     kitty_osc52_write_confirm_end(term);
     osc52_write_held_drop(term);
+    /* the read box the same way */
+    kitty_osc52_read_confirm_end(term);
+    osc52_read_wait_drop(term);
     osc5522_write_reset(term);
     if (term->osc5522_paste_pw) {
         smemclr(term->osc5522_paste_pw, strlen(term->osc5522_paste_pw));
@@ -5135,6 +5143,25 @@ static void clip_read_free(ClipReadData *d)
     memset(d, 0, sizeof(*d));
 }
 
+/* KiTTY: keep a read request to run later (ClipHeldRead, terminal.h); run by
+ * clip_held_read_run, further down beside the two answers. */
+static void clip_held_read_drop(ClipHeldRead *h)
+{
+    sfree(h->meta);
+    sfree(h->payload);
+    memset(h, 0, sizeof(*h));
+}
+
+static void clip_held_read_set(ClipHeldRead *h, int kind, const char *meta,
+                               const char *payload, size_t len)
+{
+    clip_held_read_drop(h);
+    h->kind = kind;
+    h->meta = meta ? dupstr(meta) : NULL;
+    h->payload = payload ? dupstr(payload) : NULL;
+    h->len = len;
+}
+
 /* Fetch what the request wants and the clipboard has. True if anything came
  * back. *unavailable is set only when NOTHING came back because another program
  * holds the clipboard - the one case that is not an answer. */
@@ -5162,6 +5189,10 @@ static bool clip_read_fetch(const ClipReadWant *want, ClipReadData *d,
     return d->text || d->png;
 }
 
+/* KiTTY: the gate's *err when the read box has been opened: not a refusal - the
+ * request waits for the answer, without a reply (compared by address) */
+static const char OSC52_READ_WAIT[] = "WAIT";
+
 static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
                             const ClipReadWant *want, ClipReadData *out,
                             const char **err)
@@ -5170,6 +5201,8 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     int clip_len = 0;
     unsigned long now = (unsigned long)time(NULL);
     int interval, max_served, dialog_cap;
+    int grant = OSC52_GRANT_ONCE;
+    bool always_deny = false, allowed = false;
 
     memset(out, 0, sizeof(*out));
     *err = "EPERM";
@@ -5322,6 +5355,27 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
         }
     }
 
+    /* KiTTY: the read box has been answered, and this is the request that
+     * waited for it, run again (term_osc52_read_answer). The stored answer
+     * decides, over the clipboard the box showed. The rules above were
+     * applied again on the way, so a setting changed while the box was open
+     * has had its say. */
+    if (term->osc52_read_answered) {
+        term->osc52_read_answered = false;
+        allowed = term->osc52_read_ans_allowed;
+        grant = term->osc52_read_ans_grant;
+        always_deny = term->osc52_read_ans_always_deny;
+        out->text = term->osc52_read_held_text;
+        out->text_len = term->osc52_read_held_text_len;
+        out->png = term->osc52_read_held_png;
+        out->png_len = term->osc52_read_held_png_len;
+        term->osc52_read_held_text = NULL;
+        term->osc52_read_held_text_len = 0;
+        term->osc52_read_held_png = NULL;
+        term->osc52_read_held_png_len = 0;
+        goto decided;
+    }
+
     /* 5. The prompt itself is an attack surface, so it is rationed. A dialog
      * already open for this window means the next request is refused, not
      * stacked behind it. */
@@ -5366,10 +5420,6 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
     }
 
     {
-        int grant = OSC52_GRANT_ONCE;
-        bool always_deny = false;
-        bool allowed;
-
         wchar_t *preview = NULL;
 
         term->osc52_read_asking = true;
@@ -5388,12 +5438,29 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
             clip = preview;
             clip_len = (int)wcslen(preview);
         }
-        allowed = kitty_osc52_read_dialog(term, clip, clip_len, claim,
-                                          &grant, &always_deny);
+        kitty_osc52_read_confirm(term, clip, clip_len, claim);
         sfree(preview);
         clip = NULL;
-        term->osc52_read_asking = false;
+        /*
+         * KiTTY: the box is MODELESS. It used to be a modal DialogBoxParam
+         * opened from here, inside the parser: output stopped until it was
+         * answered, and keys and repaints could reach the terminal in the
+         * middle of a parse. Now the request waits (the callers keep it in
+         * osc52_read_wait) and so does what the box shows - an Allow sends
+         * exactly that. The answer runs the request again, which arrives
+         * above with osc52_read_answered set.
+         */
+        term->osc52_read_held_text = out->text;
+        term->osc52_read_held_text_len = out->text_len;
+        term->osc52_read_held_png = out->png;
+        term->osc52_read_held_png_len = out->png_len;
+        memset(out, 0, sizeof(*out));
+        *err = OSC52_READ_WAIT;
+        return false;
+    }
 
+  decided:
+    {
         if (always_deny) {
             if (kitty_osc52_save_deny_for_host(term)) {
                 conf_set_int(term->conf, CONF_osc52_clipboard_read,
@@ -5504,8 +5571,12 @@ static void osc52_read_clipboard(Terminal *term)
     ClipReadData data;
     const char *err = NULL;
 
-    if (!osc52_read_gate(term, NULL, NULL, &want, &data, &err))
+    if (!osc52_read_gate(term, NULL, NULL, &want, &data, &err)) {
+        /* KiTTY: the read box is open - this request waits for its answer */
+        if (err == OSC52_READ_WAIT)
+            clip_held_read_set(&term->osc52_read_wait, 1, NULL, NULL, 0);
         return;
+    }
     osc52_read_send(term, data.text, data.text_len);
     clip_read_free(&data);
 }
@@ -5983,7 +6054,12 @@ static void osc5522_read(Terminal *term, const char *meta,
     }
 
     if (!osc52_read_gate(term, name, pw, &rw, &data, &err)) {
-        if (err) {
+        if (err == OSC52_READ_WAIT) {
+            /* KiTTY: the read box is open - this request waits for its
+             * answer, its reply with it (term_osc52_read_answer runs it again) */
+            clip_held_read_set(&term->osc52_read_wait, 2, meta, payload,
+                               payload_len);
+        } else if (err) {
             snprintf(reply, sizeof(reply), "type=read%s:status=%s", idpart, err);
             osc5522_send(term, reply, NULL, 0);
         } else {
@@ -6681,16 +6757,14 @@ static void osc5522_process(Terminal *term)
          * write left, as it did while that box was modal. One waits; a further
          * one is "not now" (EBUSY). */
         if (term->osc52_w_asking) {
-            if (term->osc52_held_read) {
+            if (term->osc52_w_held_read.kind) {
                 char ebusy[64];
                 snprintf(ebusy, sizeof(ebusy), "type=read%s:status=EBUSY", idpart);
                 osc5522_send(term, ebusy, NULL, 0);
                 return;
             }
-            term->osc52_held_read = 2;
-            term->osc52_held_read_meta = dupstr(meta);
-            term->osc52_held_read_payload = payload ? dupstr(payload) : NULL;
-            term->osc52_held_read_len = payload_len;
+            clip_held_read_set(&term->osc52_w_held_read, 2, meta, payload,
+                               payload_len);
             return;
         }
         osc5522_read(term, meta, payload, payload_len);
@@ -6853,8 +6927,8 @@ static void osc52_set_clipboard(Terminal *term)
          * (term_osc52_write_answer); one read waits, a further one is dropped,
          * as every OSC 52 refusal is - in silence. */
         if (term->osc52_w_asking) {
-            if (!term->osc52_held_read)
-                term->osc52_held_read = 1;
+            if (!term->osc52_w_held_read.kind)
+                clip_held_read_set(&term->osc52_w_held_read, 1, NULL, NULL, 0);
             return;
         }
         osc52_read_clipboard(term);
@@ -6938,12 +7012,71 @@ static void osc52_write_held_drop(Terminal *term)
         strbuf_free(term->osc52_w_held);
         term->osc52_w_held = NULL;
     }
-    sfree(term->osc52_held_read_meta);
-    sfree(term->osc52_held_read_payload);
-    term->osc52_held_read_meta = NULL;
-    term->osc52_held_read_payload = NULL;
-    term->osc52_held_read = 0;
+    clip_held_read_drop(&term->osc52_w_held_read);
     term->osc52_w_asking = false;
+}
+
+/* What the read box showed: wiped, not merely freed. */
+static void osc52_read_held_wipe(Terminal *term)
+{
+    if (term->osc52_read_held_text) {
+        smemclr(term->osc52_read_held_text,
+                term->osc52_read_held_text_len * sizeof(wchar_t));
+        sfree(term->osc52_read_held_text);
+    }
+    if (term->osc52_read_held_png) {
+        smemclr(term->osc52_read_held_png, term->osc52_read_held_png_len);
+        sfree(term->osc52_read_held_png);
+    }
+    term->osc52_read_held_text = NULL;
+    term->osc52_read_held_text_len = 0;
+    term->osc52_read_held_png = NULL;
+    term->osc52_read_held_png_len = 0;
+}
+
+static void osc52_read_wait_drop(Terminal *term)
+{
+    osc52_read_held_wipe(term);
+    clip_held_read_drop(&term->osc52_read_wait);
+    term->osc52_read_answered = false;
+    term->osc52_read_asking = false;
+}
+
+/* Run a kept read request now, through the ordinary path. */
+static void clip_held_read_run(Terminal *term, ClipHeldRead *h)
+{
+    ClipHeldRead r = *h;
+    memset(h, 0, sizeof(*h));          /* taken: the run may keep a new one */
+    if (r.kind == 1)
+        osc52_read_clipboard(term);
+    else if (r.kind == 2)
+        osc5522_read(term, r.meta, r.payload, r.len);
+    sfree(r.meta);
+    sfree(r.payload);
+}
+
+/*
+ * KiTTY: the answer of the read box, from the platform side after the box has
+ * closed (kitty_osc52.c), never from inside the parser. The request that
+ * waited runs again through the ordinary path - so the setting and the focus
+ * rule are applied again - and the gate takes this answer instead of opening
+ * another box.
+ */
+void term_osc52_read_answer(Terminal *term, bool allowed, int grant,
+                            bool always_deny)
+{
+    if (!term || !term->osc52_read_asking)
+        return;
+    term->osc52_read_asking = false;
+    term->osc52_read_answered = true;
+    term->osc52_read_ans_allowed = allowed;
+    term->osc52_read_ans_grant = grant;
+    term->osc52_read_ans_always_deny = always_deny;
+    clip_held_read_run(term, &term->osc52_read_wait);
+    /* Refused before the gate reached the answer (the setting became Deny
+     * meanwhile, say): nothing is sent, and what the box showed is wiped. */
+    term->osc52_read_answered = false;
+    osc52_read_held_wipe(term);
 }
 
 /*
@@ -7005,20 +7138,7 @@ void term_osc52_write_answer(Terminal *term, bool yes)
     }
 
     /* Then the read that came in behind them. */
-    if (term->osc52_held_read == 1) {
-        term->osc52_held_read = 0;
-        osc52_read_clipboard(term);
-    } else if (term->osc52_held_read == 2) {
-        char *meta = term->osc52_held_read_meta;
-        char *payload = term->osc52_held_read_payload;
-        size_t len = term->osc52_held_read_len;
-        term->osc52_held_read = 0;
-        term->osc52_held_read_meta = NULL;
-        term->osc52_held_read_payload = NULL;
-        osc5522_read(term, meta, payload, len);
-        sfree(meta);
-        sfree(payload);
-    }
+    clip_held_read_run(term, &term->osc52_w_held_read);
 }
 #endif /* MOD_PERSO */
 

@@ -207,14 +207,33 @@ bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
     return true;
 }
 
-bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
-                             const char *claim, int *grant, bool *always_deny)
+/* The read box is modeless: opening it only records that it is open, and the
+ * fake user answers it once the data that raised it has been fed (term_data
+ * below) - the platform side answers from a callback the same way, after the
+ * parser has returned. */
+static bool osc52_read_box_open;
+static bool osc52_read_box_manual;  /* a test answers the box itself */
+void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
+                              const char *claim)
 {
     osc52_dialogs++;
-    if (grant) *grant = osc52_dialog_grant;
-    if (always_deny) *always_deny = false;
-    return osc52_dialog_answer;
+    osc52_read_box_open = true;
 }
+void kitty_osc52_read_confirm_end(Terminal *term) { osc52_read_box_open = false; }
+
+/* Every feed in this file goes through here: the real term_data, then the
+ * answer to a read box it opened. */
+static size_t test_term_data(Terminal *term, const void *data, size_t len)
+{
+    size_t r = term_data(term, data, len);
+    if (osc52_read_box_open && !osc52_read_box_manual) {
+        osc52_read_box_open = false;
+        term_osc52_read_answer(term, osc52_dialog_answer, osc52_dialog_grant,
+                               false);
+    }
+    return r;
+}
+#define term_data test_term_data
 
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
 /* true: the tests model a normal window with a title bar, so the full-screen
@@ -2065,6 +2084,67 @@ static void test_write_confirm(Mock *mk)
     mk->term->osc52_allowed = OSC52_CLIPBOARD_ALLOW;
 }
 
+/*
+ * The read box is modeless too: the request waits for the answer while the
+ * parser goes on, an Allow sends what the box SHOWED (not whatever is on the
+ * clipboard by then), a setting changed while it was open wins, and a second
+ * request meanwhile is "not now" while the first keeps waiting.
+ */
+static void test_read_box_modeless(Mock *mk)
+{
+    osc52_read_box_manual = true;
+
+    /* waits, then sends the clipboard as it was shown: "secret" = c2VjcmV0 */
+    read_reset(mk);
+    counters_reset();
+    term_data(mk->term, READ_SEQ, strlen(READ_SEQ));
+    term_update(mk->term);
+    if (osc52_dialogs != 1 || osc52_sends != 0)
+        fail("read box", "expected the box open and nothing sent yet");
+    stub_clip = L"copied-meanwhile";
+    osc52_read_box_open = false;
+    term_osc52_read_answer(mk->term, true, GRANT_ONCE, false);
+    if (osc52_sends != 1 || !strstr(osc52_last_send, "c2VjcmV0"))
+        fail("read box, Allow", "did not send exactly the clipboard the box showed");
+
+    /* reads set to Deny while the box was open: the Allow sends nothing */
+    read_reset(mk);
+    counters_reset();
+    term_data(mk->term, READ_SEQ, strlen(READ_SEQ));
+    conf_set_int(mk->term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
+    osc52_read_box_open = false;
+    term_osc52_read_answer(mk->term, true, GRANT_ONCE, false);
+    if (osc52_sends != 0)
+        fail("read box, setting changed meanwhile", "the stale Allow sent the clipboard");
+
+    /* a second request while it is open: EBUSY; the first is served after */
+    read_reset(mk);
+    counters_reset();
+    feed_5522_raw(mk, "type=read:id=q1", "dGV4dC9wbGFpbg==");
+    feed_5522_raw(mk, "type=read:id=q2", "dGV4dC9wbGFpbg==");
+    if (osc52_dialogs != 1)
+        fail("read box, second request", "a second box was opened");
+    expect_last(mk, "read box, second request", "type=read:id=q2:status=EBUSY");
+    osc52_read_box_open = false;
+    term_osc52_read_answer(mk->term, true, GRANT_ONCE, false);
+    if (!strstr(osc52_all, "type=read:id=q1:status=OK") ||
+        !strstr(osc52_all, "type=read:id=q1:status=DONE"))
+        fail("read box, second request", "the first request was not served after the answer");
+
+    /* Deny: refused, nothing sent, and an EPERM for the 5522 request */
+    read_reset(mk);
+    counters_reset();
+    feed_5522_raw(mk, "type=read:id=q3", "dGV4dC9wbGFpbg==");
+    osc52_read_box_open = false;
+    term_osc52_read_answer(mk->term, false, GRANT_ONCE, false);
+    expect_last(mk, "read box, Deny", "type=read:id=q3:status=EPERM");
+    if (strstr(osc52_all, "status=DATA"))
+        fail("read box, Deny", "clipboard data went out after a Deny");
+
+    osc52_read_box_manual = false;
+    read_reset(mk);
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -2154,6 +2234,7 @@ int main(void)
     test_osc5522(mk);
     test_osc5522_write(mk);
     test_write_confirm(mk);
+    test_read_box_modeless(mk);
     test_osc5522_paste_events(mk);
     test_write_focus_rule(mk);
     test_clipboard_write_rate(mk);

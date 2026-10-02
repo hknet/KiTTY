@@ -423,13 +423,16 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
  * The permission dialog
  * ------------------------------------------------------------------------ */
 
-/* What the dialog is being asked about, and what it answers. One instance,
- * stack-allocated by the caller and passed through DialogBoxParam. */
+/* What the dialog is being asked about, and what it answers. One instance per
+ * open box, on the heap: the box is modeless and outlives the call that asked
+ * (kitty_osc52_read_confirm), so it owns copies of what it shows. term = NULL:
+ * the terminal went first (kitty_osc52_read_confirm_end). */
 struct osc52_ask {
     Terminal *term;
-    const wchar_t *clip;
+    wchar_t *clip;             /* copy, wiped when the box is done */
     int clip_len;
-    const char *claim;         /* program's self-description, or NULL on OSC 52 */
+    char *claim;               /* program's self-description, or NULL on OSC 52 */
+    HWND box;
 
     int grant;                 /* OSC52_GRANT_* */
     bool always_deny;
@@ -438,6 +441,11 @@ struct osc52_ask {
     int seconds_left;          /* countdown; 0 means no timeout */
     bool revealed;             /* has View been pressed? */
 };
+static struct osc52_ask *osc52_rconfirm = NULL;   /* the open read box */
+/* windows/utils/shinydialogbox.c: Tab and Esc in a modeless box */
+void ShinyAddAuxDialog(HWND hwnd);
+void ShinyRemoveAuxDialog(HWND hwnd);
+static void osc52_rconfirm_apply(void *ctx);
 
 /* Match terminal.c's enum. Kept in step by hand: it is four values that have not
  * changed since the design, and exporting it through a header would drag the
@@ -617,7 +625,7 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
                 ask->allowed = false;
                 ask->grant = OSC52_GRANT_ONCE;
                 ask->always_deny = false;
-                EndDialog(hwnd, 0);
+                DestroyWindow(hwnd);       /* the answer goes on from WM_DESTROY */
                 return TRUE;
             }
             osc52_set_countdown(hwnd, ask);
@@ -680,7 +688,7 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
                 ask->allowed = false;
 
             KillTimer(hwnd, OSC52_ASK_TIMER);
-            EndDialog(hwnd, 0);
+            DestroyWindow(hwnd);
             return TRUE;
           }
         }
@@ -694,7 +702,7 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
             ask->always_deny = false;
             KillTimer(hwnd, OSC52_ASK_TIMER);
         }
-        EndDialog(hwnd, 0);
+        DestroyWindow(hwnd);
         return TRUE;
 
       case WM_DESTROY:
@@ -705,23 +713,58 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
             if (ed)
                 SetWindowTextW(ed, L"");
         }
+        if (ask) {
+            /* Every way out ends here - a button, the timeout, Esc, or the
+             * terminal window closing under the box (unanswered: the defaults,
+             * a deny that remembers nothing). The answer goes back from a
+             * toplevel callback, once the box is gone and the focus is the
+             * terminal's again, as it was after the modal box. */
+            KillTimer(hwnd, OSC52_ASK_TIMER);
+            ShinyRemoveAuxDialog(hwnd);
+            SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
+            ask->box = NULL;
+            queue_toplevel_callback(osc52_rconfirm_apply, ask);
+        }
         break;
     }
     return FALSE;
 }
 
-bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
-                             const char *claim, int *grant, bool *always_deny)
+static void osc52_ask_free(struct osc52_ask *ask)
 {
-    struct osc52_ask ask;
+    if (ask->clip) {
+        smemclr(ask->clip, ask->clip_len * sizeof(wchar_t));
+        sfree(ask->clip);
+    }
+    sfree(ask->claim);
+    sfree(ask);
+}
 
-    memset(&ask, 0, sizeof(ask));
-    ask.term = term;
-    ask.clip = clip;
-    ask.clip_len = clip_len;
-    ask.claim = claim;
-    ask.grant = OSC52_GRANT_ONCE;
-    ask.allowed = false;
+/* The box is gone: hand the answer to the terminal that asked, if it is still
+ * there, and free the holder. */
+static void osc52_rconfirm_apply(void *ctx)
+{
+    struct osc52_ask *ask = (struct osc52_ask *)ctx;
+    Terminal *term = ask->term;
+    if (osc52_rconfirm == ask)
+        osc52_rconfirm = NULL;
+    if (term)
+        term_osc52_read_answer(term, ask->allowed, ask->grant, ask->always_deny);
+    osc52_ask_free(ask);
+}
+
+/* Opened from a toplevel callback, never from inside the parser that asked:
+ * creating a window there sends focus messages into the terminal mid-parse. */
+static void osc52_rconfirm_open(void *ctx)
+{
+    struct osc52_ask *ask = (struct osc52_ask *)ctx;
+
+    if (!ask->term) {                  /* the terminal went before the box came */
+        if (osc52_rconfirm == ask)
+            osc52_rconfirm = NULL;
+        osc52_ask_free(ask);
+        return;
+    }
 
     /*
      * Bring the window to the front first. The request only gets this far when
@@ -734,14 +777,58 @@ bool kitty_osc52_read_dialog(Terminal *term, const wchar_t *clip, int clip_len,
         SetForegroundWindow(MainHwnd);
     }
 
-    DialogBoxParam(hinst, MAKEINTRESOURCE(IDD_OSC52READ), MainHwnd,
-                   osc52_ask_proc, (LPARAM)&ask);
+    ask->box = CreateDialogParam(hinst, MAKEINTRESOURCE(IDD_OSC52READ), MainHwnd,
+                                 osc52_ask_proc, (LPARAM)ask);
+    if (!ask->box) {                   /* not made: a deny that remembers nothing */
+        ask->allowed = false;
+        ask->grant = OSC52_GRANT_ONCE;
+        ask->always_deny = false;
+        osc52_rconfirm_apply(ask);
+        return;
+    }
+    ShinyAddAuxDialog(ask->box);
+    ShowWindow(ask->box, SW_SHOW);
+}
 
-    if (grant)
-        *grant = ask.grant;
-    if (always_deny)
-        *always_deny = ask.always_deny;
-    return ask.allowed;
+/*
+ * The read box, modeless (terminal.c holds the request and what the box shows
+ * until the answer). It keeps its own dialog rather than the shared Yes/No box:
+ * the masked summary, View, the four durations, "always deny for this host" and
+ * the countdown are the decision, and the shared box has none of them. Deny
+ * keeps the focus, as before.
+ */
+void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
+                              const char *claim)
+{
+    struct osc52_ask *ask;
+
+    if (osc52_rconfirm)
+        return;                        /* one box (terminal.c refuses meanwhile) */
+    ask = snew(struct osc52_ask);
+    memset(ask, 0, sizeof(*ask));
+    ask->term = term;
+    ask->clip_len = clip_len > 0 ? clip_len : 0;
+    ask->clip = snewn(ask->clip_len + 1, wchar_t);
+    if (ask->clip_len)
+        memcpy(ask->clip, clip, ask->clip_len * sizeof(wchar_t));
+    ask->clip[ask->clip_len] = L'\0';
+    ask->claim = claim ? dupstr(claim) : NULL;
+    ask->grant = OSC52_GRANT_ONCE;
+    ask->allowed = false;
+    osc52_rconfirm = ask;
+    queue_toplevel_callback(osc52_rconfirm_open, ask);
+}
+
+void kitty_osc52_read_confirm_end(Terminal *term)
+{
+    struct osc52_ask *ask = osc52_rconfirm;
+
+    if (!ask || ask->term != term)
+        return;
+    ask->term = NULL;                  /* whatever runs next finds no terminal */
+    osc52_rconfirm = NULL;
+    if (ask->box)
+        DestroyWindow(ask->box);       /* WM_DESTROY -> apply, which frees it */
 }
 
 /* ------------------------------------------------------------------------
