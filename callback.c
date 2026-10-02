@@ -115,6 +115,18 @@ void queue_toplevel_callback(toplevel_callback_fn_t fn, void *ctx)
 bool run_toplevel_callbacks(void)
 {
     bool done_something = false;
+    /*
+     * KiTTY: this can be entered again while a callback is running. Our own
+     * message pumps run the queue from inside a callback - the Windows Hello
+     * prompt (kitty/kitty_hello.c) and the modal-loop timer (window.c
+     * TIMER_MODALPUMP) - and the nested run used to overwrite cbcurr: the
+     * outer callback's record leaked, and toplevel_callback_pending() no
+     * longer saw that one was running. The running one is kept here and put
+     * back after. Not fenced: this file is built into the shared eventloop
+     * library without MOD_PERSO, and without nesting outer is NULL - exactly
+     * what upstream does.
+     */
+    struct callback *outer = cbcurr;
 
     if (cbhead) {
         /*
@@ -131,9 +143,12 @@ bool run_toplevel_callbacks(void)
         /*
          * Now run the callback, and then clear it out of cbcurr.
          */
-        cbcurr->fn(cbcurr->ctx);
-        sfree(cbcurr);
-        cbcurr = NULL;
+        {   /* KiTTY: see above - a nested run may set cbcurr */
+            struct callback *mine = cbcurr;
+            mine->fn(mine->ctx);
+            sfree(mine);
+            cbcurr = outer;                   /* the running one, if any */
+        }
 
         done_something = true;
     }
