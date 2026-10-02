@@ -18,6 +18,7 @@ Starting a session\r\n\
 * ssh://[user@]host[:port] - connect to a host; telnet:// works the same way\r\n\
 * kitty://<session> - open a saved session by name (putty://<session> too)\r\n\
 * -edit <session>: open a saved session's settings instead of connecting\r\n\
+* -quickconnect: open the configuration box on Default Settings, ready for a host\r\n\
 * -kload <file> (also -loadfile): load session settings from a .ktx file\r\n\
 * -folder <folder>: open a specific folder; must come before -load\r\n\
 * -fullscreen: start directly in full screen mode\r\n\

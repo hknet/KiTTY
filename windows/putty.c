@@ -169,6 +169,9 @@ const unsigned cmdline_tooltype =
  * configuration box carrying the settings it sent, rather than connect with
  * them. */
 static bool kitty_start_at_config_box = false;
+/* KiTTY: -quickconnect (kageant's "Quick Connect"): the configuration box on
+ * Default Settings in quick-connect mode, whatever session was used last. */
+static bool kitty_start_quick_connect = false;
 #endif
 
 void gui_term_process_cmdline(Conf *conf, char *cmdline)
@@ -286,6 +289,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * Session...": the point is to edit the host before connecting,
                  * so the box has to appear WITH the host in it. */
                 kitty_start_at_config_box = true;
+            } else if (!strcmp(p, "-quickconnect")) {
+                kitty_start_quick_connect = true;
             } else if (!strcmp(p, "-fullscreen")) {
                 conf_set_int(conf, CONF_fullscreen, 1);
             } else if (!strcmp(p, "-send-to-tray")) {
@@ -911,7 +916,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                                                        sizeof(lastsess)) &&
                                 *lastsess;
 
-                if (!GetLoadLastSessionFlag() ||
+                if (kitty_start_quick_connect || !GetLoadLastSessionFlag() ||
                     (havelast && !strcmp(lastsess, "Default Settings"))) {
                     SetQuickConnectMode(1);
                 } else if (havelast && !kitty_start_at_config_box) {

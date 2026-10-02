@@ -199,6 +199,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   pointer happened to be. Both menus now open beside the icon,
   away from the taskbar edge; without a visible icon they still open at the
   pointer.
+- **kageant's tray menu is shorter.** "New Session" is now "Quick Connect"
+  and opens the configuration box on Default Settings, ready for a host
+  (`kitty -quickconnect`). "View Keys" is now "Agent Keys & Configuration".
+  Adding keys and Help are in the key window already. Remove All Keys and
+  Re-encrypt All Keys moved to a right-click menu on its key list.
 
 ### Fixed
 

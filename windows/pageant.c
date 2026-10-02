@@ -4351,6 +4351,34 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * close - a tray Exit can end the process with this window open. */
         keylist_save_geometry(hwnd);
         return 0;
+      case WM_CONTEXTMENU: {
+        /* KiTTY: the key list's right-click menu - the actions on ALL keys
+         * that used to sit in the tray menu. The tray's own handlers run
+         * them, so there is one place each happens. */
+        HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+        POINT pt;
+        HMENU m;
+        UINT cmd;
+        if ((HWND)wParam != hlist)
+            break;
+        pt.x = GET_X_LPARAM(lParam);
+        pt.y = GET_Y_LPARAM(lParam);
+        if (lParam == -1) {            /* the menu key: at the list's corner */
+            RECT r;
+            GetWindowRect(hlist, &r);
+            pt.x = r.left + 8;
+            pt.y = r.top + 8;
+        }
+        m = CreatePopupMenu();
+        AppendMenu(m, MF_ENABLED, IDM_REMOVE_ALL, KT_KAKEYS_MENU_REMOVE_ALL);
+        AppendMenu(m, MF_ENABLED, IDM_REENCRYPT_ALL, KT_KAKEYS_MENU_REENCRYPT_ALL);
+        cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON,
+                             pt.x, pt.y, 0, hwnd, NULL);
+        DestroyMenu(m);
+        if (cmd && traywindow)
+            SendMessage(traywindow, WM_COMMAND, cmd, 0);
+        return 1;
+      }
       case WM_NOTIFY: {
         /* KiTTY: ListView notifications. Double-click activates a row ->
          * details. (Enter arrives as IDOK instead - see WM_COMMAND.) */
@@ -5879,12 +5907,18 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         unsigned command = wParam & ~0xF; /* low 4 bits reserved to Windows */
         switch (command) {
           case IDM_PUTTY: {
-            TCHAR cmdline[10];
+            /* KiTTY: "Quick Connect" - the configuration box on Default
+             * Settings in quick-connect mode (-quickconnect), not on
+             * whatever session was used last. */
+            TCHAR cmdline[48];
             if (!kageant_kitty_launch_allowed(hwnd))
                 break;
             cmdline[0] = '\0';
+            /* the switch form: the "&R" prefix is only read directly before
+             * the end of the line, '@' or '&' */
             if (restrict_putty_acl)
-                strcat(cmdline, "&R");
+                strcat(cmdline, "-restrict-acl ");
+            strcat(cmdline, "-quickconnect");
 
             if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, cmdline,
                                       _T(""), SW_SHOW) <= 32) {
@@ -6772,25 +6806,19 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kageant_tick_sync();
     kageant_idle_install();      /* the idle re-encrypt rides the same tick */
 
-    /* Accelerators used: nsvkxaol */
+    /* Accelerators used: qdkoslncugax. KiTTY: adding keys, removing and
+     * re-encrypting them all live in the key window (its buttons and its
+     * right-click menu), help too - the tray keeps what is reached without
+     * opening it. */
     systray_menu = CreatePopupMenu();
     if (putty_path) {
         session_menu = CreateMenu();
-        AppendMenu(systray_menu, MF_ENABLED, IDM_PUTTY, "&New Session");
+        AppendMenu(systray_menu, MF_ENABLED, IDM_PUTTY, KT_KA_MENU_QUICK_CONNECT);
         AppendMenu(systray_menu, MF_POPUP | MF_ENABLED,
                    (UINT_PTR) session_menu, "Save&d Sessions");
         AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     }
-    AppendMenu(systray_menu, MF_ENABLED, IDM_VIEWKEYS,
-               "&View Keys");
-    AppendMenu(systray_menu, MF_ENABLED, IDM_ADDKEY, "Add &Key");
-    AppendMenu(systray_menu, MF_ENABLED, IDM_ADDKEY_ENCRYPTED,
-               "Add key (encrypted)");
-    AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
-    AppendMenu(systray_menu, MF_ENABLED, IDM_REMOVE_ALL,
-               "Remove All Keys");
-    AppendMenu(systray_menu, MF_ENABLED, IDM_REENCRYPT_ALL,
-               "Re-encrypt All Keys");
+    AppendMenu(systray_menu, MF_ENABLED, IDM_VIEWKEYS, KT_KA_MENU_AGENT_KEYS);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     /* KiTTY: opt-in Windows OpenSSH integration (default off). */
     AppendMenu(systray_menu, MF_ENABLED |
@@ -6822,8 +6850,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     AppendMenu(systray_menu, MF_ENABLED, IDM_SETTINGS, KT_KA_MENU_SETTINGS);
     AppendMenu(systray_menu, MF_ENABLED, IDM_AUDITLOG, KT_KA_MENU_AGENT_LOG);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
-    if (has_help())
-        AppendMenu(systray_menu, MF_ENABLED, IDM_HELP, KT_MENU_HELP);
     AppendMenu(systray_menu, MF_ENABLED, IDM_ABOUT, KT_MENU_ABOUT);
     AppendMenu(systray_menu, MF_SEPARATOR, 0, 0);
     AppendMenu(systray_menu, MF_ENABLED, IDM_CLOSE, KT_MENU_EXIT);

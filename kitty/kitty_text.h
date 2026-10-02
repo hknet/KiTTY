@@ -2238,6 +2238,8 @@
 #define KT_KA_NOTICE_KEY_USED                        "kageant: SSH key used"
 
 /* kageant: tray menu items */
+#define KT_KA_MENU_QUICK_CONNECT                     "&Quick Connect"
+#define KT_KA_MENU_AGENT_KEYS                        "Agent &Keys && Configuration"
 #define KT_KA_MENU_OPENSSH                           "Register as Windows &OpenSSH agent"
 #define KT_KA_MENU_START_AT_LOGIN                    "&Start kageant at login"
 #define KT_KA_MENU_LOAD_KEYS                         "&Load remembered keys at startup"
@@ -2446,6 +2448,9 @@
 #define KT_KAKEYS_COL_LIFETIME                       "Lifetime"
 #define KT_KAKEYS_COL_CONFIRM                        "Confirm"
 #define KT_KAKEYS_COL_COMMENT                        "Comment"
+/* the key list's right-click menu (moved there from the tray menu) */
+#define KT_KAKEYS_MENU_REMOVE_ALL                    "&Remove All Keys"
+#define KT_KAKEYS_MENU_REENCRYPT_ALL                 "R&e-encrypt All Keys"
 #define KT_KAKEYS_STATE_ENCRYPTED                    "encrypted"
 #define KT_KAKEYS_STATE_REENCRYPTABLE                "re-encryptable"
 #define KT_KAKEYS_STATE_LOADED                       "loaded"

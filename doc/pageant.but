@@ -15,7 +15,7 @@ load a private key into it. (You may need to use Windows'
 \q{Show hidden icons} arrow to see the kageant icon.)
 
 If you click the kageant icon with the right mouse button, you will
-see a menu. Select \q{View Keys} from this menu. The kageant main
+see a menu. Select \q{Agent Keys & Configuration} from this menu. The kageant main
 window will appear. (You can also bring this window up by
 double-clicking on the kageant icon.)
 
@@ -48,13 +48,14 @@ kageant icon in the System tray, and select \q{Exit} from the menu.
 Closing the kageant main window does \e{not} shut down kageant.
 
 If you want kageant to stay running but forget all the keys it has
-acquired, select \q{Remove All Keys} from the System tray menu.
+acquired, right-click the key list in the main window and select
+\q{Remove All Keys}.
 
 \H{pageant-mainwin} The kageant main window
 
 The kageant main window appears when you left-click on the kageant
-system tray icon, or alternatively right-click and select \q{View
-Keys} from the menu. You can use it to keep track of what keys are
+system tray icon, or alternatively right-click and select \q{Agent
+Keys & Configuration} from the menu. You can use it to keep track of what keys are
 currently loaded into kageant, and to add new ones or remove the
 existing keys.
 
@@ -113,9 +114,7 @@ See \k{pageant-deferred-decryption}.
 \S{pageant-mainwin-addkey} The \q{Add Key} button
 
 To add a key to kageant by reading it out of a local disk file,
-press the \q{Add Key} button in the kageant main window, or
-alternatively right-click on the kageant icon in the system tray and
-select \q{Add Key} from there.
+press the \q{Add Key} button in the kageant main window.
 
 kageant will bring up a file dialog, labelled \q{Select Private Key
 File}. Find your private key file in this dialog, and press
@@ -385,9 +384,7 @@ KiTTY running locally, or a remote client connecting to kageant
 through agent forwarding.
 
 To add a key to kageant in this encrypted form, press the \q{Add Key
-(encrypted)} button in the kageant main window, or alternatively
-right-click on the kageant icon in the system tray and select \q{Add
-Key (encrypted)} from there. kageant will bring up a file dialog, in
+(encrypted)} button in the kageant main window. kageant will bring up a file dialog, in
 just the same way as it would for the plain \q{Add Key} button. But it
 won't ask for a passphrase. Instead, the key will be listed in the
 main window with \q{(encrypted)} after it.
@@ -404,8 +401,9 @@ the key with \q{(\i{re-encryptable})} after it. You can revert it
 to the previous state, where a passphrase is required, using the
 \q{\i{Re-encrypt}} button in the kageant main window.
 
-You can also \q{re-encrypt} all keys that were added encrypted by
-choosing \q{Re-encrypt All Keys} from the System tray menu.
+You can also \q{re-encrypt} all keys that were added encrypted:
+right-click the key list in the main window and choose \q{Re-encrypt
+All Keys}.
 (Note that this does \e{not} discard cleartext keys that were not
 previously added encrypted!)
 
