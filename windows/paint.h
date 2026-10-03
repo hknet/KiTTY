@@ -22,6 +22,19 @@
 
 typedef struct KittyPainter KittyPainter;
 
+/* KiTTY: one picture of the overlay drawn over the text (far2l images):
+ * premultiplied BGRA, top-down, w * 4 bytes a row, stretched to `dst`
+ * (client pixels). `serial` changes whenever the pixels do, so a painter
+ * may keep its own copy of them. */
+typedef struct KittyOverlayItem {
+    const void *bgra;
+    int w, h;
+    bool opaque;
+    RECT dst;
+    unsigned long serial;
+} KittyOverlayItem;
+#define KITTY_OVERLAY_MAX 64
+
 typedef struct KittyPainterVtable {
     /* A frame. `given` is the DC WM_PAINT already holds (BeginPaint), or
      * NULL for a paint the terminal asked for itself; the painter keeps
@@ -100,6 +113,15 @@ typedef struct KittyPainterVtable {
      * dropped, what came in is left for the caller to draw. False when the
      * painter did not (or could not completely) move them. */
     bool (*scroll_rows)(KittyPainter *p, const RECT *band, int dy);
+    /* KiTTY: the overlay of this frame (far2l images), called once per
+     * frame just before end(), with n == 0 when there is none. Drawn over
+     * everything else, clipped to `clip` (the terminal area); a transparent
+     * pixel shows the background colour `bg`, not the text, so drawing a
+     * picture again over itself changes nothing. The items are copied; their
+     * pixels must stay valid until end(). GDI draws where this frame drew;
+     * Direct2D draws onto the back buffer, never into its canvas. */
+    void (*overlay)(KittyPainter *p, const KittyOverlayItem *items, int n,
+                    const RECT *clip, COLORREF bg);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -140,5 +162,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_frame_signal(p)               ((p)->vt->frame_signal(p))
 #define kp_fonts_changed(p)              ((p)->vt->fonts_changed(p))
 #define kp_scroll_rows(p, band, dy)      ((p)->vt->scroll_rows((p), (band), (dy)))
+#define kp_overlay(p, it, n, clip, bg)   ((p)->vt->overlay((p), (it), (n), (clip), (bg)))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

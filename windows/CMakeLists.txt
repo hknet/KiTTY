@@ -557,6 +557,9 @@ target_link_libraries(bench_term
 add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/test/test_osc52.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # KiTTY: far2l images (request 'i'), called from terminal.c under MOD_FAR2L
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
   # far2l's own base64, and its include dir below: MOD_FAR2L makes terminal.c
   # include cdecode.h/cencode.h, which live under kitty/far2l/ and are not on the
   # default include path.
@@ -594,6 +597,8 @@ target_link_libraries(test_far2l utils ${platform_libraries})
 add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/test/test_textrun.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c        # KiTTY: far2l images, as test_osc52
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
@@ -718,6 +723,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
+  ${KITTY_DIR}/kitty_far2l_image.c        # KiTTY: far2l images - the store and the request parser
+  ${KITTY_DIR}/kitty_far2l_image_term.c   # KiTTY: far2l images - the terminal side, WIC decoding
   ${KITTY_DIR}/kitty_transfer.c
   ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)
   ${KITTY_DIR}/kitty_oscnotify.c    # KiTTY: their parsing and decisions, no Win32 (test/test_oscnotify.c)

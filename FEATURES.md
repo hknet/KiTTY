@@ -76,6 +76,8 @@ one is available.
   - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
   - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
   - [Notifications from the host (OSC 9, OSC 777, OSC 99)](#notifications-from-the-host-osc-9-osc-777-osc-99)
+  - [far2l keys and mouse](#far2l-keys-and-mouse)
+  - [far2l images](#far2l-images)
   - [Paste size guard](#paste-size-guard)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
   - [kscp, WinSCP and FileZilla integration](#kscp-winscp-and-filezilla-integration)
@@ -1095,6 +1097,30 @@ OSC 99 is supported in its core: ids, text sent in chunks and base64, `p=close` 
 Limits: titles are cut at 256 bytes and texts at 2048, control characters and invalid UTF-8 are removed, and a window shows at most one notice every 2 seconds - a newer one replaces the one waiting, and the Event Log counts the ones dropped.
 
 **Taskbar progress (OSC 9;4).** `ESC ] 9 ; 4 ; <state> ; <percent> BEL`, the form ConEmu and Windows Terminal use, shows progress on this window's taskbar button: 0 hides it, 1 normal, 2 error, 3 busy without a percentage, 4 paused. It is cleared when the session ends. **Terminal → Features → Show progress on the taskbar button (OSC 9;4)**, on by default (`TaskbarProgress`). Windows 7 and later.
+
+far2l's own notifications, sent over the far2l terminal extensions, show as the same notice, under the same setting and limits.
+
+(no screenshot)
+
+### far2l keys and mouse
+
+A `far2l` started in a KiTTY++ window switches on the far2l terminal extensions, and from then on KiTTY++ sends it every key as a far2l key event instead of an escape sequence, as classic KiTTY did. far2l then gets what it gets on Windows: the press **and** the release of each key, left and right Ctrl and Alt apart, every Ctrl/Alt/Shift combination, the virtual key and scan code, NumLock, CapsLock and ScrollLock, the character the keyboard layout gives (AltGr characters and dead-key compositions included) and the repeat count. Ctrl+Shift+arrows, Ctrl+Alt+letters and the like reach far2l, which escape sequences cannot carry.
+
+Mouse buttons, wheel and moves go to far2l as far2l mouse events, in cells, with the buttons held and the modifiers, where far2l asked for the mouse. Shift with the mouse still selects text locally, Ctrl+right-click still opens the menu.
+
+Only while far2l has the extensions on: when it exits (or the terminal is reset) keys go out as before. Event mode starts only once far2l has chosen its input features (its first request after switching the extensions on), so a stray switch-on string in host output - a `cat` of a file - leaves the keyboard as it is; and never while KiTTY++ itself asks for a user name or password in the window. The events go only to the host. KiTTY++'s own shortcuts and Ctrl+Tab switching keep precedence; their defaults include Shift+F2…F12 and Ctrl+F2…F12, which far2l also uses — `shortcuts=no` in the `[KiTTY]` section of `kitty.ini` hands those keys to far2l. Alt+F4 and Alt+Space go to far2l as well, not to the window. A key typed through an IME arrives at far2l as text.
+
+**How to enable:** nothing to set; far2l asks for it when it starts.
+
+(no screenshot)
+
+### far2l images
+
+far2l can show pictures in a KiTTY++ window - its image viewer, for one. They are placed over the text, cell-aligned and stretched to the cells far2l names or at their own size at a pixel offset, and far2l can move, rotate (90/180/270 degrees), mirror and delete them. They stay over the text until far2l removes them and do not scroll with it; a terminal reset, far2l's exit and the end of the session remove them too. Both renderers (GDI and Direct2D) draw them.
+
+Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imaging component (Vista and later). A transparent part of a picture shows the terminal's background colour. Limits: one picture at most 4096 pixels a side and 8 megapixels, at most 64 pictures and 64 MB in all per window; a picture beyond a limit is refused and far2l is told so.
+
+**How to enable:** on by default; **Window → Copy & Paste → Remote clipboard → Show far2l images**. Off tells far2l the terminal shows no images.
 
 (no screenshot)
 

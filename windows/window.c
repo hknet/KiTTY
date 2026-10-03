@@ -191,6 +191,334 @@ static void flip_full_screen(WinGuiSeat *wgs);
 static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode);
 static void setup_clipboards(Terminal *, Conf *);
 
+#ifdef MOD_FAR2L
+/*
+ * KiTTY far2l key and mouse events (hknet/KiTTY#57).
+ *
+ * While a far2l client has the extensions active, every key press AND release
+ * goes to the host as a far2l event carrying what a Windows console would
+ * report: virtual key, scan code, left/right Ctrl and Alt, Shift, the lock
+ * states, the character the layout produced, the repeat count. Mouse input
+ * goes the same way, but only where the terminal would otherwise report the
+ * mouse to the application (the application asked for mouse reporting, and
+ * Shift is not overriding it), so local selection and the context menu keep
+ * working as before. The encoding is in kitty/kitty_far2l_input.h; this is
+ * the half that reads the Win32 messages. Sent straight to the backend, not
+ * through the line discipline: an event is not typed text and must not wait
+ * in a local line editor.
+ *
+ * The state below is per process; KiTTY runs one terminal window per process.
+ */
+#define KITTY_FAR2L_INPUT_IMPL
+#include "../kitty/kitty_far2l_input.h"
+#include "../kitty/kitty_far2l_image.h"        /* far2l images: the store */
+#include "../kitty/kitty_far2l_image_term.h"   /* ...and the terminal's side */
+
+static struct {
+    /* The character each held key produced on its press, reported again with
+     * its release, as a Windows console does. Asking the layout again on the
+     * release would disturb a dead key's composition. */
+    uint32_t down_char[256];
+    /* The last mouse event sent, so a move within one cell is not resent. */
+    bool have_last;
+    int last_x, last_y;
+    uint32_t last_buttons;
+    /* The last button press, for DOUBLE_CLICK: far2l's client synthesises it
+     * for xterm mouse reports but not for events, so the terminal does. */
+    uint32_t click_button;
+    DWORD click_time;
+    int click_x, click_y;
+    /* The buttons whose press went to far2l as an event: only their release
+     * goes the same way. A press the terminal took (event mode came on during
+     * a local drag) is released through the terminal, so its selection ends. */
+    uint32_t pressed;
+    /* term->far2l_input_gen as last seen: event mode started or ended since,
+     * and everything above belongs to the previous run. */
+    unsigned gen;
+} far2l_in;
+
+/*
+ * Keys and the mouse go to far2l as events only once the client armed them
+ * with its own 'x' request after the handshake (a bare far2l1 in host output
+ * does not), and never while the terminal itself serves a prompt (an SSH
+ * username or password asked in the window): the prompt reads the keys.
+ */
+static bool far2l_events_on(WinGuiSeat *wgs)
+{
+    Terminal *term = wgs->term;
+    if (!term)
+        return false;
+    if (far2l_in.gen != term->far2l_input_gen) {
+        memset(&far2l_in, 0, sizeof(far2l_in));
+        far2l_in.gen = term->far2l_input_gen;
+    }
+    return term->far2l_ext && term->far2l_events_armed &&
+           !term->userpass_state && wgs->backend;
+}
+
+static void far2l_send(WinGuiSeat *wgs, const char *data, size_t len)
+{
+    if (len && wgs->backend)
+        backend_send(wgs->backend, data, len);
+}
+
+/* The control key state now, as of the message being handled (GetKeyState,
+ * not GetAsyncKeyState: the state must match the queued message, also for
+ * input injected with SendInput). */
+static uint32_t far2l_ctrl_now(bool enhanced)
+{
+    Far2lModifiers m;
+    m.lctrl = (GetKeyState(VK_LCONTROL) & 0x8000) != 0;
+    m.rctrl = (GetKeyState(VK_RCONTROL) & 0x8000) != 0;
+    m.lalt = (GetKeyState(VK_LMENU) & 0x8000) != 0;
+    m.ralt = (GetKeyState(VK_RMENU) & 0x8000) != 0;
+    m.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    m.numlock = (GetKeyState(VK_NUMLOCK) & 1) != 0;
+    m.scrolllock = (GetKeyState(VK_SCROLL) & 1) != 0;
+    m.capslock = (GetKeyState(VK_CAPITAL) & 1) != 0;
+    return far2l_ctrl_state(&m, enhanced);
+}
+
+static void far2l_send_key(WinGuiSeat *wgs, const Far2lKeyEvent *ev)
+{
+    char out[F2L_EVENT_MAX];
+    bool compact = (wgs->term->far2l_features & F2L_FEAT_COMPACT_INPUT) != 0;
+    far2l_send(wgs, out, far2l_encode_key(ev, compact, out, sizeof(out)));
+}
+
+/*
+ * A WM_(SYS)KEYDOWN/UP while far2l events are on. Returns false for the keys
+ * that keep the ordinary path: an IME's VK_PROCESSKEY and a VK_PACKET
+ * (SendInput's Unicode keys), whose text arrives later as characters and is
+ * sent as text, which far2l reads as well.
+ */
+static bool far2l_key_message(WinGuiSeat *wgs, UINT message, WPARAM wParam,
+                              LPARAM lParam)
+{
+    Far2lKeyEvent ev;
+    uint32_t chars[4];
+    int nch = 0, i;
+    uint16_t vk = (uint16_t)(wParam & 0xFF);
+    uint16_t hw_scan = (uint16_t)((HIWORD(lParam)) & 0xFF);
+
+    if (wParam == VK_PROCESSKEY || wParam == VK_PACKET)
+        return false;
+
+    ev.down = (message == WM_KEYDOWN || message == WM_SYSKEYDOWN);
+    ev.ctrl = far2l_ctrl_now((lParam & (1 << 24)) != 0);
+    ev.vk = vk;
+    ev.vsc = far2l_key_scan(vk, hw_scan);
+    ev.repeat = LOWORD(lParam);
+
+    if (ev.down) {
+        /* The character the layout gives for this key in this state: AltGr
+         * (which Windows reports as left Ctrl + right Alt) gives its third-
+         * level character, Ctrl+letter its control code, a dead key nothing
+         * (-1, kept for the next key, which then gives the composed one), a
+         * dead key that does not combine two characters. */
+        BYTE kb[256];
+        WCHAR wbuf[8];
+        int r = 0;
+        if (GetKeyboardState(kb))
+            r = ToUnicodeEx(vk, hw_scan, kb, wbuf, lenof(wbuf), 0,
+                            GetKeyboardLayout(0));
+        for (i = 0; i < r && nch < (int)lenof(chars); ) {
+            int used;
+            chars[nch++] = far2l_utf16_next((const uint16_t *)wbuf + i,
+                                            r - i, &used);
+            i += used;
+        }
+        far2l_in.down_char[vk] = nch ? chars[nch - 1] : 0;
+    } else {
+        chars[0] = far2l_in.down_char[vk];
+        nch = chars[0] ? 1 : 0;
+        far2l_in.down_char[vk] = 0;
+    }
+
+    /* All but the last character (a dead key that did not combine) as a
+     * press and release of their own, as a Windows console delivers them. */
+    for (i = 0; i + 1 < nch; i++) {
+        Far2lKeyEvent extra = ev;
+        extra.uchar = chars[i];
+        extra.repeat = 1;
+        extra.down = true;
+        far2l_send_key(wgs, &extra);
+        extra.down = false;
+        far2l_send_key(wgs, &extra);
+    }
+    ev.uchar = nch ? chars[nch - 1] : 0;
+    far2l_send_key(wgs, &ev);
+
+    if (ev.down) {
+        term_seen_key_event(wgs->term);
+        show_mouseptr(wgs, false);
+        if (far2l_key_is_paste_gesture(vk, ev.ctrl))
+            term_far2l_paste_gesture(wgs->term);
+    }
+    return true;
+}
+
+/* Mouse events go to far2l exactly where PuTTY would send the application a
+ * mouse report (term_mouse's own test), and nowhere else. */
+static bool far2l_mouse_wanted(WinGuiSeat *wgs, bool shift)
+{
+    Terminal *term = wgs->term;
+    return far2l_events_on(wgs) && term->xterm_mouse &&
+           !term->no_mouse_rep && !(term->mouse_override && shift);
+}
+
+static uint32_t far2l_buttons_held(WPARAM mk)
+{
+    uint32_t b = 0;
+    if (mk & MK_LBUTTON)  b |= F2L_BUTTON_LEFT;
+    if (mk & MK_RBUTTON)  b |= F2L_BUTTON_RIGHT;
+    if (mk & MK_MBUTTON)  b |= F2L_BUTTON_MIDDLE;
+    if (mk & 0x0020)      b |= F2L_BUTTON_X1;     /* MK_XBUTTON1 */
+    if (mk & 0x0040)      b |= F2L_BUTTON_X2;     /* MK_XBUTTON2 */
+    return b;
+}
+
+/* A drag can leave the window; the position reported stays on the screen. */
+static void far2l_clamp_cell(WinGuiSeat *wgs, int *x, int *y)
+{
+    if (*x >= wgs->term->cols) *x = wgs->term->cols - 1;
+    if (*y >= wgs->term->rows) *y = wgs->term->rows - 1;
+    if (*x < 0) *x = 0;
+    if (*y < 0) *y = 0;
+}
+
+static void far2l_send_mouse(WinGuiSeat *wgs, uint32_t flags,
+                             uint32_t buttons, int x, int y)
+{
+    Far2lMouseEvent ev;
+    char out[F2L_EVENT_MAX];
+    bool compact = (wgs->term->far2l_features & F2L_FEAT_COMPACT_INPUT) != 0;
+
+    far2l_clamp_cell(wgs, &x, &y);
+    ev.flags = flags;
+    ev.ctrl = far2l_ctrl_now(false);
+    ev.buttons = buttons;
+    ev.x = (int16_t)x;
+    ev.y = (int16_t)y;
+    far2l_send(wgs, out, far2l_encode_mouse(&ev, compact, out, sizeof(out)));
+
+    far2l_in.have_last = true;
+    far2l_in.last_x = x;
+    far2l_in.last_y = y;
+    far2l_in.last_buttons = buttons & 0xFFFF;
+}
+
+/* A button went down or up; mk is the button state AFTER the change. False
+ * for a release whose press did not go to far2l: the caller hands it to the
+ * terminal, which had the press. */
+static bool far2l_mouse_button(WinGuiSeat *wgs, Mouse_Button button,
+                               bool press, WPARAM mk, int x, int y)
+{
+    uint32_t flags = 0;
+    uint32_t bit = button == MBT_LEFT ? F2L_BUTTON_LEFT :
+                   button == MBT_RIGHT ? F2L_BUTTON_RIGHT :
+                   F2L_BUTTON_MIDDLE;
+
+    if (!press) {
+        if (!(far2l_in.pressed & bit))
+            return false;
+        far2l_in.pressed &= ~bit;
+    } else {
+        DWORD now = (DWORD)GetMessageTime();
+        far2l_in.pressed |= bit;
+        if (far2l_in.click_button == bit &&
+            now - far2l_in.click_time <= GetDoubleClickTime() &&
+            far2l_in.click_x == x && far2l_in.click_y == y) {
+            flags = F2L_DOUBLE_CLICK;
+            far2l_in.click_button = 0;   /* a third press starts again */
+        } else {
+            far2l_in.click_button = bit;
+            far2l_in.click_time = now;
+            far2l_in.click_x = x;
+            far2l_in.click_y = y;
+        }
+    }
+    far2l_send_mouse(wgs, flags, far2l_buttons_held(mk), x, y);
+    if (press && button == MBT_MIDDLE)
+        term_far2l_paste_gesture(wgs->term);
+    return true;
+}
+
+static void far2l_mouse_move(WinGuiSeat *wgs, WPARAM mk, int x, int y)
+{
+    uint32_t buttons = far2l_buttons_held(mk);
+    far2l_clamp_cell(wgs, &x, &y);
+    if (far2l_in.have_last && far2l_in.last_x == x && far2l_in.last_y == y &&
+        far2l_in.last_buttons == buttons)
+        return;
+    far2l_send_mouse(wgs, F2L_MOUSE_MOVED, buttons, x, y);
+}
+
+/* One wheel notch: positive is up (or right). */
+static void far2l_mouse_wheel(WinGuiSeat *wgs, bool horizontal, int delta,
+                              WPARAM mk, int x, int y)
+{
+    far2l_send_mouse(wgs, horizontal ? F2L_MOUSE_HWHEELED : F2L_MOUSE_WHEELED,
+                     far2l_wheel_buttons(far2l_buttons_held(mk), delta), x, y);
+}
+
+/*
+ * KiTTY far2l images (kitty/kitty_far2l_image_term.c): the cell size and the
+ * terminal's origin in the client area, for the requests; and the overlay,
+ * handed to the painter at the end of every frame, over the text, clipped to
+ * the terminal area. A session that has ended takes its images with it.
+ */
+static bool far2l_cell_size(TermWin *tw, int *cw, int *ch, int *ox, int *oy)
+{
+    WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+    *cw = wgs->font_width;
+    *ch = wgs->font_height;
+    *ox = wgs->offset_width;
+    *oy = wgs->offset_height;
+    return wgs->font_width > 0 && wgs->font_height > 0;
+}
+
+static void far2l_overlay(WinGuiSeat *wgs)
+{
+    KittyOverlayItem items[KITTY_OVERLAY_MAX];
+    Far2lImageStore *st;
+    RECT clip;
+    int i, n = 0;
+
+    if (!wgs->painter || !wgs->term)
+        return;
+    if (wgs->session_closed)
+        kitty_far2l_images_reset(wgs->term);
+    st = wgs->term->far2l_images;
+    clip.left = wgs->offset_width;
+    clip.top = wgs->offset_height;
+    clip.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
+    clip.bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
+    for (i = 0; st && i < st->n && n < KITTY_OVERLAY_MAX; i++) {
+        const Far2lImage *img = &st->imgs[i];
+        Far2lRect r;
+        KittyOverlayItem *it = &items[n];
+        if (!far2l_img_rect(img, wgs->font_width, wgs->font_height, &r))
+            continue;
+        it->dst.left = r.x0 + wgs->offset_width;
+        it->dst.top = r.y0 + wgs->offset_height;
+        it->dst.right = r.x1 + wgs->offset_width;
+        it->dst.bottom = r.y1 + wgs->offset_height;
+        if (it->dst.right <= clip.left || it->dst.left >= clip.right ||
+            it->dst.bottom <= clip.top || it->dst.top >= clip.bottom)
+            continue;
+        it->bgra = img->px;
+        it->w = img->w;
+        it->h = img->h;
+        it->opaque = img->opaque;
+        it->serial = img->serial;
+        n++;
+    }
+    kp_overlay(wgs->painter, items, n, &clip,
+               wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
+}
+#endif /* MOD_FAR2L */
+
 /* Window layout information */
 static void reset_window(WinGuiSeat *wgs, int reinit);
 #ifdef MOD_PERSO
@@ -1813,6 +2141,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         }
         /* rows that only scrolled keep their pixels (terminal.c) */
         kitty_term_scroll_hook = kitty_win_scroll_rows;
+#ifdef MOD_FAR2L
+        /* far2l images: the cell size and origin (kitty_far2l_image_term.c) */
+        kitty_far2l_cell_hook = far2l_cell_size;
+#endif
 #endif
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
@@ -5978,6 +6310,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 }
             }
 
+#ifdef MOD_FAR2L
+            /* KiTTY: far2l extensions active and the application asked for
+             * the mouse - a far2l mouse event instead of the xterm report. */
+            if (far2l_mouse_wanted(wgs, (wParam & MK_SHIFT) != 0) &&
+                far2l_mouse_button(wgs, button, press, wParam,
+                                   TO_CHR_X(X_POS(lParam)),
+                                   TO_CHR_Y(Y_POS(lParam)))) {
+                if (press)
+                    SetCapture(hwnd);
+                else if (!(wParam & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON)))
+                    ReleaseCapture();
+                return 0;
+            }
+#endif
             if (press) {
                 click(wgs, button,
                       TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
@@ -6029,6 +6375,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          */
         noise_ultralight(NOISE_SOURCE_MOUSEPOS, lParam);
 
+#ifdef MOD_FAR2L
+        /* KiTTY: far2l mouse events - a move to another cell, with the
+         * buttons held, instead of the xterm drag/move report. */
+        if (far2l_mouse_wanted(wgs, (wParam & MK_SHIFT) != 0))
+            far2l_mouse_move(wgs, wParam, TO_CHR_X(X_POS(lParam)),
+                             TO_CHR_Y(Y_POS(lParam)));
+        else
+#endif
         if (wParam & (MK_LBUTTON | MK_MBUTTON | MK_RBUTTON) &&
             GetCapture() == hwnd) {
             Mouse_Button b;
@@ -6164,6 +6518,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                    (p.rcPaint.right-wgs->offset_width-1)/wgs->font_width,
                    (p.rcPaint.bottom-wgs->offset_height-1)/wgs->font_height,
                    !wgs->term->window_update_pending);
+#ifdef MOD_FAR2L
+        /* KiTTY: far2l images over what was just drawn - before the border
+         * fill, which leaves the DC's clipping changed */
+        far2l_overlay(wgs);
+#endif
 
         if (p.fErase ||
             p.rcPaint.left  < wgs->offset_width  ||
@@ -6759,6 +7118,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 return 0;
         }
 #endif
+#ifdef MOD_FAR2L
+        /* KiTTY: far2l extensions active - the key goes to the host as a
+         * far2l event instead of through the key translation below. KiTTY's
+         * own shortcuts and Ctrl+Tab switching above keep precedence. */
+        if (far2l_events_on(wgs) &&
+            far2l_key_message(wgs, message, wParam, lParam))
+            return 0;
+#endif
 
         /*
          * We don't do TranslateMessage since it disassociates the
@@ -7059,6 +7426,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     POINT p;
                     p.x = X_POS(lParam); p.y = Y_POS(lParam);
                     if (ScreenToClient(hwnd, &p)) {
+#ifdef MOD_FAR2L
+                        /* KiTTY: far2l extensions active - one far2l
+                         * wheel event per notch instead. */
+                        if (far2l_events_on(wgs))
+                            far2l_mouse_wheel(
+                                wgs, message == WM_MOUSEHWHEEL,
+                                (b == MBT_WHEEL_UP || b == MBT_WHEEL_RIGHT) ?
+                                F2L_WHEEL_NOTCH : -F2L_WHEEL_NOTCH,
+                                (message == WM_MOUSEWHEEL ||
+                                 message == WM_MOUSEHWHEEL) ?
+                                LOWORD(wParam) : 0,
+                                TO_CHR_X(p.x), TO_CHR_Y(p.y));
+                        else
+#endif
                         /* send a mouse-down followed by a mouse up */
                         term_mouse(wgs->term, b, translate_button(wgs, b),
                                    MA_CLICK,
@@ -9506,6 +9887,13 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines)
 #endif
     if (!wgs->painter || wgs->font_height <= 0 || !wgs->term)
         return false;
+#ifdef MOD_FAR2L
+    /* Nor with far2l images shown: they stay where they are while the text
+     * moves, and GDI draws them into the very pixels that would move. The
+     * rows are compared and drawn instead, the images over them. */
+    if (kitty_far2l_images_any(wgs->term))
+        return false;
+#endif
     band.left = wgs->offset_width;
     band.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
     band.top = wgs->offset_height + top * wgs->font_height;
@@ -9522,6 +9910,9 @@ static void wintw_free_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     KP_T0;
+#ifdef MOD_FAR2L
+    far2l_overlay(wgs);     /* KiTTY: far2l images, over the frame's text */
+#endif
     kp_end(wgs->painter);   /* Direct2D presents the frame here */
     KP_T1(KP_PAINT);
 #ifdef MOD_PERSO

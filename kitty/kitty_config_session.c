@@ -5726,6 +5726,17 @@ void scb_panel_selection(struct controlbox *b)
                   NO_SHORTCUT, HELPCTX(kitty_osc52),
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
 
+#ifdef MOD_FAR2L
+    /* KiTTY (far2l): the pictures far2l places over the text. Here, beside
+     * the far2l clipboard, because this panel is where the far2l extensions
+     * are set; a set of its own (no title), so it is not read as one more
+     * clipboard permission. */
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard", "far2limages", NULL);
+    ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES, NO_SHORTCUT,
+                  HELPCTX(kitty_far2l_images),
+                  conf_checkbox_handler, I(CONF_far2l_images));
+#endif
+
     /*
      * The Window/Selection/Remote clipboard/Limits panel.
      */

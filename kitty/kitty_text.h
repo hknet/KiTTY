@@ -509,6 +509,8 @@
 #define KT_REMOTE_CLIPBOARD_WRITES_HOST_SETS_YOUR_CLIPBOARD "Writes - host sets your clipboard (OSC 52):"
 #define KT_REMOTE_CLIPBOARD_READS_HOST_ASKS_FOR_YOUR "Reads - host asks for your clipboard (OSC 52):"
 #define KT_REMOTE_CLIPBOARD_ONLY_WHILE_THIS_WINDOW_HAS "Only while this window has focus"
+/* KiTTY far2l images: per session, on the same panel as the far2l clipboard */
+#define KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES        "Show far2l images"
 
 /* Window/Selection/Remote clipboard/Limits */
 #define KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED         "Bounds on what a permitted host can do"

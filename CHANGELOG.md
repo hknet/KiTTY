@@ -140,6 +140,19 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   on the window's taskbar button, as in Windows Terminal; it is cleared when
   the session ends. Terminal > Features, "Show progress on the taskbar button
   (OSC 9;4)", on by default (`TaskbarProgress`).
+- **far2l gets its keys and the mouse as far2l events again**, as in classic
+  KiTTY. While far2l has its terminal extensions on, every key press and
+  release goes to it with left/right Ctrl and Alt, Shift, the lock states,
+  virtual key, scan code and the character the layout gives, so
+  Ctrl+Shift+arrows and similar combinations work. Mouse buttons, wheel and
+  moves follow where far2l asked for the mouse; Shift+mouse still selects
+  locally. A terminal reset ends the extensions (hknet/KiTTY#57).
+- **far2l shows images in the window**: far2l's image viewer and anything
+  else that places pictures through the far2l extensions. Raw RGB/RGBA, and
+  PNG/JPEG on Vista and later; moved, rotated, mirrored and deleted by far2l;
+  over the text, not scrolling with it, in both renderers. Per session:
+  Window > Copy & Paste > Remote clipboard "Show far2l images", on by
+  default (hknet/KiTTY#57).
 
 ### Changed
 
@@ -240,6 +253,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   unchanged clipboard without reading it again. Alt+F9 in far2l maximises
   and restores the window, from the real largest size on its monitor.
   Focus reports (`ESC [ ? 1004 h`) are answered.
+  far2l's notifications show as the desktop notifications from the host
+  do, under the same setting.
 
 ### Fixed
 
@@ -249,6 +264,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **far2l requests follow the protocol more closely.** A request with ID 0
   gets no reply, a request before far2l announces itself is ignored, and
   an unknown request is answered with an empty reply.
+- **far2l no longer hangs on a request over the size limit.** A far2l
+  request larger than the clipboard size ceiling (ClipboardMaxMB) was
+  dropped without an answer, and far2l waited for ever. It is still
+  dropped, but answered as failed (hknet/KiTTY#57).
 - **A window closed maximised opens maximised again.** With "Save settings
   on exit" it kept its old position but the maximised size, so it opened
   too large for the screen. It now keeps the size from before the maximise.

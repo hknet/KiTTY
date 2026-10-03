@@ -1141,6 +1141,9 @@ CONF_OPTION(shared_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("Sha
  * opens the clipboard without the question while SharedClipboard is Ask; the
  * read gate (a paste in the last 5 seconds) still applies to it. */
 CONF_OPTION(far2l_client_ids, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Far2lClientIds"),)
+/* KiTTY (far2l): show the images far2l places over the text (request 'i').
+ * Off: far2l is told the terminal has no image support. */
+CONF_OPTION(far2l_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("Far2lImages"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

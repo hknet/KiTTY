@@ -47,6 +47,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_icon               "kitty-cfg-icon"
 #define WINHELP_CTX_kitty_bgimage            "kitty-cfg-bgimage"
 #define WINHELP_CTX_kitty_osc52              "kitty-cfg-remote-clipboard"
+#define WINHELP_CTX_kitty_far2l_images       "kitty-cfg-far2l-images"
 #define WINHELP_CTX_kitty_zmodem             "kitty-cfg-zmodem-session"
 #define WINHELP_CTX_kitty_verifyagent        "kitty-cfg-security"
 #define WINHELP_CTX_kitty_missing_features   "kitty-cfg-missing-features"

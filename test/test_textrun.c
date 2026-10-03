@@ -89,10 +89,6 @@ void kitty_osc52_write_confirm(Terminal *term) { }
 void kitty_osc52_write_confirm_end(Terminal *term) { }
 void kitty_transfer_osc(Terminal *term) { (void)term; }
 void kitty_transfer_free(Terminal *term) { (void)term; }
-void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
-                          size_t len, bool overflow)
-{ (void)term; (void)osc; (void)s; (void)len; (void)overflow; }
-void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
 /* The far2l platform seams (kitty/kitty_far2l.h): not reached by plain text. */
 uint32_t kitty_far2l_clip_register(const char *name, size_t len) { return 0; }
 bool kitty_far2l_clip_available(uint32_t fmt) { return false; }
@@ -105,6 +101,12 @@ void kitty_far2l_confirm(Terminal *term, bool offer_always) { }
 void kitty_far2l_confirm_end(Terminal *term) { }
 bool kitty_far2l_save_client_ids(Terminal *term) { return false; }
 bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols) { return false; }
+void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
+                          size_t len, bool overflow)
+{ (void)term; (void)osc; (void)s; (void)len; (void)overflow; }
+void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
+void kitty_host_notice(Terminal *term, const char *title, const char *body)
+{ (void)term; (void)title; (void)body; }
 
 typedef struct Mock {
     Terminal *term;

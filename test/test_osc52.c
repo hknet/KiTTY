@@ -30,6 +30,9 @@
 
 #include "putty.h"
 #include "terminal.h"
+#include "../kitty/kitty_far2l_image.h"        /* KiTTY: far2l images */
+#include "../kitty/kitty_far2l_image_term.h"
+#include <objbase.h>                    /* CoInitialize: WIC for far2l PNG */
 
 void modalfatalbox(const char *p, ...)
 {
@@ -282,6 +285,17 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
              (int)(len < sizeof(hn_last) - 1 ? len : sizeof(hn_last) - 1), s);
 }
 void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
+/* far2l's notification request reaches the same notice through this one;
+ * the stub records the title and text it was handed. */
+static int hn_notice_calls;
+static char hn_notice_title[64], hn_notice_body[64];
+void kitty_host_notice(Terminal *term, const char *title, const char *body)
+{
+    (void)term;
+    hn_notice_calls++;
+    snprintf(hn_notice_title, sizeof(hn_notice_title), "%s", title ? title : "");
+    snprintf(hn_notice_body, sizeof(hn_notice_body), "%s", body ? body : "");
+}
 
 /*
  * The far2l platform seams (kitty/kitty_far2l.h). A fake clipboard of a few
@@ -2426,6 +2440,225 @@ static void test_far2l_protocol(Mock *mk)
     mk->term->clip_allowed = 0;
 }
 
+/*
+ * far2l key and mouse events are armed by the client's own feature request
+ * ('x') after the handshake, not by far2l1 alone: a far2l1 in a file being
+ * cat'ed must not turn the keyboard into events. And far2l images (request
+ * 'i') through terminal.c: the wire shape of the replies, and the images
+ * going with far2l0.
+ */
+static bool far2l_test_cells(TermWin *win, int *cw, int *ch, int *ox, int *oy)
+{
+    (void)win;
+    *cw = 8; *ch = 16; *ox = 1; *oy = 1;
+    return true;
+}
+
+static void test_far2l_arming_and_images(Mock *mk)
+{
+    static const char on[] = "far2l1", off[] = "far2l0";
+    static const char feat[] = "far2l:AQAAAAAAAAB4AA==";   /* 'x', compact input, ID 0 */
+    static const char caps[] = "far2l:Y2kF";                /* 'i' 'c', ID 5 */
+    /* one red pixel "img" at cell 2,3, ID 6 (the far2l description's example) */
+    static const char set[] =
+        "far2l:/wAA/wEAAAABAAAA/////wMAAgAAAAAAAAAAAGltZwMAAABzaQY=";
+    unsigned gen;
+
+    feed_apc(mk, off, strlen(off));
+    feed_apc(mk, on, strlen(on));
+    if (!mk->term->far2l_ext || mk->term->far2l_events_armed)
+        fail("far2l arming", "far2l1 alone armed key events");
+    gen = mk->term->far2l_input_gen;
+    feed_apc(mk, feat, strlen(feat));
+    if (!mk->term->far2l_events_armed || mk->term->far2l_input_gen == gen)
+        fail("far2l arming", "the client's 'x' did not arm key events");
+    feed_apc(mk, on, strlen(on));
+    if (!mk->term->far2l_events_armed)
+        fail("far2l arming", "a repeated far2l1 disarmed key events");
+
+    /* no window: no cell size, so caps 0 and a 0 x 0 cell - 13 bytes */
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, caps, strlen(caps));
+    if (strcmp(osc52_last_send, "\033_far2lAAAAAAAAAAAAAAAABQ==\007"))
+        fail("far2l image caps", "unexpected reply to 'i c' without a window");
+
+    /* with a cell size: the set is served and answered 1 */
+    kitty_far2l_cell_hook = far2l_test_cells;
+    conf_set_bool(mk->term->conf, CONF_far2l_images, true);
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, set, strlen(set));
+    if (strcmp(osc52_last_send, "\033_far2lAQY=\007"))
+        fail("far2l image set", "the example image was not answered 1");
+    if (!mk->term->far2l_images || mk->term->far2l_images->n != 1)
+        fail("far2l image set", "the image was not stored");
+
+    /*
+     * Width is popped before height, so it lies ABOVE height on the stack:
+     * the wire, bottom first, is [data][height][width][bottom]... A 2x1 RGBA
+     * image (red, blue) at cells 2,3-5,6, ID 9, must come out 2 wide.
+     */
+    {
+        static const char wide[] =
+            "far2l:/wAA/wAA//8BAAAAAgAAAAYABQADAAIAAAAAAAAAAAB3AQAAAHNpCQ==";
+        const Far2lImage *img;
+        osc52_last_send[0] = '\0';
+        feed_apc(mk, wide, strlen(wide));
+        img = mk->term->far2l_images && mk->term->far2l_images->n == 2 ?
+            &mk->term->far2l_images->imgs[1] : NULL;
+        if (strcmp(osc52_last_send, "\033_far2lAQk=\007") || !img)
+            fail("far2l image set 2x1", "the non-square image was not answered 1");
+        else if (img->w != 2 || img->h != 1 ||
+                 memcmp(img->px + 4, "\xff\x00\x00\xff", 4))
+            fail("far2l image set 2x1", "width and height were popped swapped");
+    }
+
+    /*
+     * A PNG through the real decoder (WIC, which needs COM: main initialises
+     * it before the first image request, because the decoder's availability
+     * is probed once per process). The file is a 4x4 solid red PNG, 125
+     * bytes: width 125, height 1, at cells 2,3-5,6, ID 30. With the decoder
+     * the caps say PNG and the set is answered 1 with a 4x4 opaque red image;
+     * without it the caps do not say PNG and the set is answered 0.
+     */
+    {
+        static const char pngset[] =
+            "far2l:iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAASSURBVBhXY/jPwPAfGTOQLgAAPEAf4VUKBeIAAAAASUVORK5CYIIBAAAAfQAAAAYABQADAAIAAgAAAAAAAABwAQAAAHNpHg==";
+        /* the same with width and height in each other's place: refused */
+        static const char pngswapped[] =
+            "far2l:iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAASSURBVBhXY/jPwPAfGTOQLgAAPEAf4VUKBeIAAAAASUVORK5CYIJ9AAAAAQAAAAYABQADAAIAAgAAAAAAAABwAQAAAHNpHg==";
+        bool wic;
+        const Far2lImage *img;
+        osc52_last_send[0] = '\0';
+        feed_apc(mk, caps, strlen(caps));
+        /* "AwgA..." = caps 0x803, "AQgA..." = caps 0x801 */
+        wic = !strncmp(osc52_last_send, "\033_far2lAwgA", 11);
+        if (!wic && strncmp(osc52_last_send, "\033_far2lAQgA", 11))
+            fail("far2l image caps", "unexpected caps with a cell size");
+        osc52_last_send[0] = '\0';
+        feed_apc(mk, pngswapped, strlen(pngswapped));
+        if (strcmp(osc52_last_send, "\033_far2lAB4=\007"))
+            fail("far2l PNG set", "a PNG with width and height swapped was not refused");
+        osc52_last_send[0] = '\0';
+        feed_apc(mk, pngset, strlen(pngset));
+        if (wic) {
+            img = mk->term->far2l_images && mk->term->far2l_images->n == 3 ?
+                &mk->term->far2l_images->imgs[2] : NULL;
+            if (strcmp(osc52_last_send, "\033_far2lAR4=\007") || !img)
+                fail("far2l PNG set", "a valid PNG was not answered 1");
+            else if (img->w != 4 || img->h != 4 || !img->opaque ||
+                     memcmp(img->px, "\x00\x00\xff\xff", 4) ||
+                     memcmp(img->px + 15 * 4, "\x00\x00\xff\xff", 4))
+                fail("far2l PNG set", "the PNG did not decode to 4x4 opaque red");
+        } else {
+            printf("NOTE: no WIC decoder here; PNG checked as refused only\n");
+            if (strcmp(osc52_last_send, "\033_far2lAB4=\007"))
+                fail("far2l PNG set", "a PNG was accepted without a decoder");
+        }
+    }
+
+    /* images off for the session: refused, answered 0 */
+    conf_set_bool(mk->term->conf, CONF_far2l_images, false);
+    osc52_last_send[0] = '\0';
+    feed_apc(mk, set, strlen(set));
+    if (strcmp(osc52_last_send, "\033_far2lAAY=\007"))
+        fail("far2l image set", "images off still accepted an image");
+    conf_set_bool(mk->term->conf, CONF_far2l_images, true);
+
+    feed_apc(mk, off, strlen(off));
+    if (mk->term->far2l_events_armed)
+        fail("far2l arming", "far2l0 left key events armed");
+    if (mk->term->far2l_images && mk->term->far2l_images->n != 0)
+        fail("far2l images", "far2l0 left the images up");
+
+    feed_apc(mk, on, strlen(on));
+    feed_apc(mk, feat, strlen(feat));
+    term_pwron(mk->term, true);
+    if (mk->term->far2l_events_armed || mk->term->far2l_ext)
+        fail("far2l arming", "a reset left key events armed");
+    kitty_far2l_cell_hook = NULL;
+}
+
+/* One far2l request whose arguments are `fill` zero bytes under the command
+ * letters: with ClipboardMaxMB 1 and a megabyte of filler it is over the
+ * ceiling. Returns the number of replies. */
+static int f2l_big(Mock *mk, size_t fill, char cmd, char sub, uint8_t id)
+{
+    F2lOut o;
+    unsigned char *z = snewn(fill, unsigned char);
+    int n;
+    memset(z, 0, fill);
+    f2l_out_init(&o);
+    f2l_push_bytes(&o, z, fill);
+    f2l_push_u8(&o, (uint8_t)sub);
+    f2l_push_u8(&o, (uint8_t)cmd);
+    f2l_push_u8(&o, id);
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    sfree(z);
+    return n;
+}
+
+/*
+ * far2l's notification request goes to the host-notice entry point with its
+ * title and text; a request over the payload ceiling is dropped but still
+ * answered - a set with status 0, a chunk breaks the upload, anything else
+ * the ID alone - whatever the base64 padding at its end.
+ */
+static void test_far2l_notify_and_overflow(Mock *mk)
+{
+    static const char title[] = "Copy", text[] = "done: 3 files";
+    const size_t mb = 1024 * 1024;
+    int old_mb = conf_get_int(mk->term->conf, CONF_clipboard_max_mb);
+    size_t k;
+    F2lOut o;
+
+    feed_apc(mk, "far2l1", 6);
+
+    /* --- notification: title on top, text below it; the ID alone back --- */
+    hn_notice_calls = 0;
+    f2l_out_init(&o);
+    f2l_push_bytes(&o, text, strlen(text));
+    f2l_push_u32(&o, (uint32_t)strlen(text));
+    f2l_push_bytes(&o, title, strlen(title));
+    f2l_push_u32(&o, (uint32_t)strlen(title));
+    f2l_push_u8(&o, 'n');
+    f2l_push_u8(&o, 40);
+    if (f2l_send(mk, &o) != 1 || f2l_rep_len[0] != 1 || f2l_rep[0][0] != 40)
+        fail("far2l notification", "not answered with the ID alone");
+    f2l_out_free(&o);
+    if (hn_notice_calls != 1 || strcmp(hn_notice_title, title) ||
+        strcmp(hn_notice_body, text))
+        fail("far2l notification", "title and text did not reach the notice");
+
+    /* --- over the ceiling: answered, never left waiting --- */
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, 1);
+    for (k = 0; k < 3; k++) {          /* every base64 padding at the end */
+        size_t fill = mb + k;
+        if (f2l_big(mk, fill, 'i', 's', 41) != 1 || f2l_rep_len[0] != 2 ||
+            f2l_rep[0][0] != 0 || f2l_rep[0][1] != 41)
+            fail("far2l over the ceiling", "image set not answered 0");
+        if (f2l_big(mk, fill, 'c', 's', 42) != 1 || f2l_rep_len[0] != 2 ||
+            f2l_rep[0][0] != 0 || f2l_rep[0][1] != 42)
+            fail("far2l over the ceiling", "clipboard set not answered 0");
+        mk->term->far2l_chunks.overflow = false;
+        if (f2l_big(mk, fill, 'c', 'S', 43) != 1 || f2l_rep_len[0] != 1 ||
+            f2l_rep[0][0] != 43 || !mk->term->far2l_chunks.overflow)
+            fail("far2l over the ceiling", "chunk not answered or upload kept");
+        if (f2l_big(mk, fill, 'c', 'g', 44) != 1 || f2l_rep_len[0] != 1 ||
+            f2l_rep[0][0] != 44)
+            fail("far2l over the ceiling", "other request not given the ID alone");
+        if (f2l_big(mk, fill, 'i', 's', 0) != 0)
+            fail("far2l over the ceiling", "ID 0 was answered");
+    }
+    /* under the ceiling the same request is served as ever */
+    if (f2l_big(mk, 16, 'c', 'g', 45) != 1 || f2l_rep[0][f2l_rep_len[0] - 1] != 45)
+        fail("far2l over the ceiling", "a small request was not served");
+
+    f2l_chunks_clear(&mk->term->far2l_chunks);
+    conf_set_int(mk->term->conf, CONF_clipboard_max_mb, old_mb);
+    feed_apc(mk, "far2l0", 6);
+}
+
 /* The focus rule applies to WRITES as well, which is a change to behaviour that
  * shipped working - so it gets its own test in both positions. */
 static void test_write_focus_rule(Mock *mk)
@@ -2781,6 +3014,7 @@ static void test_hostnotify_dispatch(Mock *mk)
 int main(void)
 {
     Mock *mk = mock_new();
+    CoInitialize(NULL);                 /* COM, as window.c: the PNG decoder */
     mk->term = term_init(mk->conf, mk->ucsdata, &mk->tw);
     term_pwron(mk->term, true);
     term_size(mk->term, 24, 80, 0);
@@ -2876,6 +3110,8 @@ int main(void)
     test_far2l_protocol(mk);
     test_colour_queries(mk);
     test_hostnotify_dispatch(mk);
+    test_far2l_arming_and_images(mk);   /* KiTTY: far2l events armed by 'x'; images */
+    test_far2l_notify_and_overflow(mk); /* KiTTY: far2l 'n'; over-ceiling answers */
 
     mock_free(mk);
 

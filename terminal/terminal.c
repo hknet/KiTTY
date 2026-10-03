@@ -111,6 +111,7 @@ static bool osc5522_paste_event(Terminal *term);
 /* KiTTY: the platform seams of the far2l extensions (clipboard, permission
  * box, window size); the test targets stub them. */
 #include "../kitty/kitty_far2l.h"
+#include "../kitty/kitty_far2l_image_term.h"   /* KiTTY: far2l images */
 /* Drop everything a far2l activation holds: the open box, the requests held
  * behind it, a chunked upload, the open clipboard. Declared here because
  * term_free() sits earlier in the file. */
@@ -2136,11 +2137,14 @@ static void power_on(Terminal *term, bool clear)
     term->far2l_ext = 0;
     term->far2l_features = 0;
     term->far2l_paste_gesture_seen = false;
-#endif
-#ifdef MOD_FAR2L
+    term->far2l_events_armed = false;
+    term->far2l_input_gen++;
     /* KiTTY far2l clipboard: and so does what it held - the box, the requests
      * behind it, a chunked upload, the open clipboard. */
     far2l_reset_state(term);
+    /* KiTTY far2l images: a reset removes every image (the store stays
+     * allocated, empty). */
+    kitty_far2l_images_reset(term);
 #endif
     term->srm_echo = false;
     {
@@ -3000,6 +3004,9 @@ void term_free(Terminal *term)
     struct beeptime *beep;
     int i;
 
+#ifdef MOD_FAR2L
+    kitty_far2l_images_free(term);     /* KiTTY: far2l images */
+#endif
     while ((cline = delpos234(term->scrollback, 0)) != NULL)
         free_compressed_line(cline);
     freetree234(term->scrollback);
@@ -4449,16 +4456,34 @@ static void far2l_log_dataid(Terminal *term)
 }
 
 /*
- * The notification request ('n'), parsed. Not shown yet: this is the single
- * place a far2l notification is to be handed to the desktop notice window
- * (the OSC 99 entry point, with its setting, limits and flood rule) once that
- * is wired. Title and text are UTF-8 from the host, not NUL-terminated.
+ * The notification request ('n'): the single place a far2l notification is
+ * handed to the desktop notice window - the same entry point, setting
+ * (HostNotify), limits, cleaning and flood rule as OSC 9/777/99. Title and
+ * text are UTF-8 from the host, not NUL-terminated: each is copied with a NUL
+ * (an embedded NUL ends it there) and cut well above the notice's own limits
+ * first, so a huge request costs no huge copy; the notice cuts them again on
+ * a character boundary and drops a partial character at the end.
  */
+#define FAR2L_NOTICE_COPY_MAX 8192
+
 static void far2l_notification(Terminal *term,
                                const unsigned char *title, size_t title_len,
                                const unsigned char *text, size_t text_len)
 {
-    (void)term; (void)title; (void)title_len; (void)text; (void)text_len;
+    char *t, *b;
+    if (title_len > FAR2L_NOTICE_COPY_MAX)
+        title_len = FAR2L_NOTICE_COPY_MAX;
+    if (text_len > FAR2L_NOTICE_COPY_MAX)
+        text_len = FAR2L_NOTICE_COPY_MAX;
+    t = dupprintf("%.*s", (int)title_len, (const char *)title);
+    b = dupprintf("%.*s", (int)text_len, (const char *)text);
+#ifdef MOD_PERSO
+    kitty_host_notice(term, t, b);
+#else
+    (void)term;
+#endif
+    sfree(t);
+    sfree(b);
 }
 
 /* Is a read inside the gate? The gesture comes from the terminal's paste
@@ -4776,6 +4801,12 @@ static void far2l_dispatch(Terminal *term, const unsigned char *data, size_t len
         uint64_t feat = 0;
         f2l_pop_u64(&st, &feat);
         term->far2l_features = (unsigned)feat;
+        /* The client's own request after the handshake: from here on keys
+         * and the mouse go to it as events (the window, far2l_events_on). */
+        if (!term->far2l_events_armed) {
+            term->far2l_events_armed = true;
+            term->far2l_input_gen++;
+        }
         break;
       }
       case 'p':                            /* GET_COLOR_PALETTE: 24-bit */
@@ -4817,12 +4848,20 @@ static void far2l_dispatch(Terminal *term, const unsigned char *data, size_t len
       case 'f':                            /* SET_FKEY_TITLES */
         f2l_push_u8(&o, 0);                /* no place to show them */
         break;
-      case 'i':                            /* IMAGE: not supported yet */
-        /* Four zero bytes: far2l fails to read capabilities out of them and
-         * takes that as "no images". */
-        f2l_push_u32(&o, 0);
+      case 'i': {                          /* IMAGE: kitty_far2l_image_term.c */
+        /* The image module answers with its last byte left free for the
+         * ID, which far2l_reply puts on top; 1 byte = the ID alone. */
+        int rs = 0;
+        char *r = kitty_far2l_image_request(term, (const char *)st.data,
+                                            (int)st.len,
+                                            clip_ceiling_bytes(term) / 4 * 3,
+                                            &rs);
+        if (rs > 1)
+            f2l_push_bytes(&o, r, (size_t)rs - 1);
+        sfree(r);
         break;
-      default:                             /* x, e, h and anything unknown */
+      }
+      default:                             /* e, h and anything unknown */
         break;
     }
     far2l_reply(term, &o, id);
@@ -4952,10 +4991,91 @@ void term_far2l_block(Terminal *term)
     f2l_chunks_clear(&term->far2l_chunks);
 }
 
+/* A character of the base64 alphabet (padding included): what the decoder
+ * reads; anything else it skips. */
+static bool f2l_b64_char(unsigned char c)
+{
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=';
+}
+
+/*
+ * A payload over the ceiling was dropped whole, but far2l waits for every
+ * answer without a timeout, so it is still answered - as a failure. The top
+ * of the stack (request ID, command, sub-command) is the END of the stream:
+ * decode its last base64 characters, from a group boundary counted from the
+ * payload's start, out of the buffer's end and the characters kept past the
+ * ceiling (osc_addchar). A set (clipboard or image) answers status 0, a
+ * clipboard chunk breaks the upload so the closing set fails, anything else
+ * gets the ID alone.
+ */
+#define FAR2L_TAIL_CHARS 8             /* two groups: at least 4 bytes */
+
+static void far2l_overflow_answer(Terminal *term)
+{
+    char tail[FAR2L_TAIL_CHARS + 4];
+    unsigned char dec[sizeof(tail)];
+    size_t total, want, ntail, i, from_buf;
+    const unsigned char *s = (const unsigned char *)term->osc_string;
+    base64_decodestate ds;
+    int n;
+    unsigned char id, cmd, sub;
+    F2lOut o;
+
+    /* every alphabet character of the payload, kept or dropped */
+    total = term->far2l_tail_n;
+    for (i = FAR2L_DATA_PREFIX_LEN; i < (size_t)term->osc_strlen; i++)
+        if (f2l_b64_char(s[i]))
+            total++;
+    want = FAR2L_TAIL_CHARS + total % 4;   /* starts on a group boundary */
+    if (want > total)
+        want = total;
+    ntail = term->far2l_tail_n < want ? term->far2l_tail_n : want;
+    if (ntail > FAR2L_TAIL_RING)
+        ntail = FAR2L_TAIL_RING;           /* not reached: want <= 11 */
+    from_buf = want - ntail;
+
+    /* the buffer's last alphabet characters, then the ring's, in order */
+    n = 0;
+    if (from_buf) {
+        size_t got = 0;
+        i = (size_t)term->osc_strlen;
+        while (i > FAR2L_DATA_PREFIX_LEN && got < from_buf)
+            if (f2l_b64_char(s[--i]))
+                got++;
+        for (; i < (size_t)term->osc_strlen; i++)
+            if (f2l_b64_char(s[i]))
+                tail[n++] = (char)s[i];
+    }
+    for (i = term->far2l_tail_n - ntail; i < term->far2l_tail_n; i++)
+        tail[n++] = term->far2l_tail[i % FAR2L_TAIL_RING];
+
+    base64_init_decodestate(&ds);
+    n = base64_decode_block(tail, n, (char *)dec, &ds);
+    if (n < 2)
+        return;                            /* no ID to answer */
+    id = dec[n - 1];
+    cmd = dec[n - 2];
+    sub = n >= 3 ? dec[n - 3] : 0;
+
+    f2l_out_init(&o);
+    if (cmd == 'c' && sub == 's') {        /* CLIP_SETDATA: failed */
+        f2l_chunks_clear(&term->far2l_chunks);
+        f2l_push_u8(&o, 0);
+    } else if (cmd == 'c' && sub == 'S') { /* a chunk: the upload is broken */
+        f2l_chunks_clear(&term->far2l_chunks);
+        term->far2l_chunks.overflow = true;
+    } else if (cmd == 'i' && sub == 's') { /* IMAGE set: not shown */
+        f2l_push_u8(&o, 0);
+    }
+    far2l_reply(term, &o, id);
+}
+
 /*
  * Decode a far2l payload and serve it. Requests before the handshake (or after
  * far2l0) are ignored without a reply, as the protocol has it. Payloads that
- * did not fit the accumulation ceiling are dropped whole.
+ * did not fit the accumulation ceiling are dropped whole, and answered as a
+ * failure (far2l_overflow_answer).
  */
 static void far2l_process_payload(Terminal *term)
 {
@@ -4980,6 +5100,7 @@ static void far2l_process_payload(Terminal *term)
         clip_payload_dropped(term, KT_CLIP_WHAT_FAR2L,
                              term->clip_allowed != 0);
 #endif
+        far2l_overflow_answer(term);
         return;
     }
 
@@ -5049,6 +5170,7 @@ static void osc_start(Terminal *term, size_t limit)
     term->osc_strlen = 0;
     term->osc_str_limit = limit;
     term->osc_str_overflow = false;
+    term->far2l_tail_n = 0;
     if (term->osc_strsize > OSC_STR_MAX + 1) {
         term->osc_strsize = OSC_STR_MAX + 1;
         term->osc_string = sresize(term->osc_string, term->osc_strsize, char);
@@ -5090,6 +5212,17 @@ static void osc_addchar(Terminal *term, unsigned char c)
 {
     if ((size_t)term->osc_strlen >= term->osc_str_limit) {
         term->osc_str_overflow = true;
+#ifdef MOD_FAR2L
+        /* KiTTY: a far2l payload past its ceiling keeps its last base64
+         * characters, so it can still be answered (far2l_overflow_answer) */
+        if (term->osc_type == OSCLIKE_APC &&
+            term->osc_strlen >= FAR2L_DATA_PREFIX_LEN &&
+            !memcmp(term->osc_string, FAR2L_DATA_PREFIX, FAR2L_DATA_PREFIX_LEN) &&
+            f2l_b64_char(c)) {
+            term->far2l_tail[term->far2l_tail_n % FAR2L_TAIL_RING] = (char)c;
+            term->far2l_tail_n++;
+        }
+#endif
         return;
     }
     /* +2 rather than +1: room for this byte AND for the terminating NUL that
@@ -7607,6 +7740,12 @@ static void do_osc(Terminal *term)
         if (strncmp(term->osc_string, "far2l", 5) == 0) {
             const char *arg = term->osc_string + 5;
             if (arg[0] == '1') {
+                /* KiTTY: a new activation waits for the client's 'x' before
+                 * keys become events; a repeated far2l1 keeps the state. */
+                if (!term->far2l_ext) {
+                    term->far2l_events_armed = false;
+                    term->far2l_input_gen++;
+                }
                 term->far2l_ext = 1;
                 /* seed clipboard permission from config for this session */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
@@ -7629,6 +7768,9 @@ static void do_osc(Terminal *term)
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
                 term->far2l_features = 0;   /* KiTTY: negotiated features end too */
+                term->far2l_events_armed = false;
+                term->far2l_input_gen++;
+                kitty_far2l_images_reset(term);   /* KiTTY: its images go with it */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
                 far2l_reset_state(term);   /* far2l left: drop what it held */
             } else if (arg[0] == ':') {

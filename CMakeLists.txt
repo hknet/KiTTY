@@ -202,6 +202,17 @@ add_executable(test_oscnotify
   test/test_oscnotify.c
   kitty/kitty_oscnotify.c)
 
+# KiTTY: unit test for the far2l key and mouse event encoding (self-contained;
+# the encoder lives in kitty/kitty_far2l_input.h, shared with windows/window.c).
+add_executable(test_far2l_keys
+  test/test_far2l_keys.c)
+
+# KiTTY: unit test for far2l images - request parsing, geometry, transforms,
+# the store's cap (kitty/kitty_far2l_image.c is plain C, no Windows headers).
+add_executable(test_far2l_images
+  test/test_far2l_images.c
+  kitty/kitty_far2l_image.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)
@@ -309,6 +320,8 @@ foreach(t
     test_far2l test_oscnotify)
   kitty_add_test(${t})
 endforeach()
+kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
+kitty_add_test(test_far2l_images) # KiTTY: far2l images
 if(KITTY_CTEST_MACHINE_STATE)
   kitty_add_test(test_storage_roundtrip machine-state)
 endif()

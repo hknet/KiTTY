@@ -265,6 +265,17 @@ typedef struct D2DPainter {
     DWORD fail_tick;                   /* GetTickCount of the last failure */
     DWORD retry_at;                    /* no re-creation before this tick */
     HRESULT last_hr;                   /* the last loss's code, for the event log */
+    /* KiTTY: the overlay of the frame being drawn (far2l images), drawn by
+     * d2d_end onto the back buffer, never into the canvas; a signature of it
+     * (what, where) to see when it changed; and the pictures uploaded for
+     * it, by serial, kept while they are shown. */
+    KittyOverlayItem ov[KITTY_OVERLAY_MAX];
+    int nov;
+    RECT ovclip;
+    COLORREF ovbg;
+    unsigned long ovsig, ovsig_shown;
+    struct { unsigned long serial; ID2D1Bitmap *bmp; bool used; } ovc[KITTY_OVERLAY_MAX];
+    int novc;
 #ifdef KITTY_TEST_BUILD_LABEL
     unsigned long npresent;            /* presents so far, KITTY_D2D_FAIL_PRESENT */
     unsigned long inj_from, inj_count;
@@ -647,7 +658,127 @@ static bool d2d_begin(KittyPainter *p, HDC given)
     ID2D1RenderTarget_SetTextAntialiasMode((ID2D1RenderTarget *)d->dc,
                                            d->textaa);
     d->in_frame = true;
+    d->nov = 0;                        /* until this frame's overlay call */
+    d->ovsig = 0;
     return true;
+}
+
+/* ---- the overlay (far2l images) ------------------------------------ */
+
+/* KiTTY: the pictures uploaded for the overlay, all released (a lost
+ * device takes them with it; d2d_destroy). */
+static void overlay_release(D2DPainter *d)
+{
+    int i;
+    for (i = 0; i < d->novc; i++)
+        if (d->ovc[i].bmp)
+            ID2D1Bitmap_Release(d->ovc[i].bmp);
+    d->novc = 0;
+}
+
+static void d2d_overlay(KittyPainter *p, const KittyOverlayItem *items,
+                        int n, const RECT *clip, COLORREF bg)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    unsigned long h = 2166136261u;
+    int i;
+    if (n > KITTY_OVERLAY_MAX)
+        n = KITTY_OVERLAY_MAX;
+    d->nov = n > 0 ? n : 0;
+    if (d->nov)
+        memcpy(d->ov, items, (size_t)d->nov * sizeof(*items));
+    d->ovclip = *clip;
+    d->ovbg = bg;
+    /* what is shown and where, folded together (FNV-1a over the fields) */
+#define OVMIX(v) (h = (h ^ (unsigned long)(v)) * 16777619u)
+    OVMIX(d->nov);
+    for (i = 0; i < d->nov; i++) {
+        OVMIX(d->ov[i].serial);
+        OVMIX(d->ov[i].dst.left); OVMIX(d->ov[i].dst.top);
+        OVMIX(d->ov[i].dst.right); OVMIX(d->ov[i].dst.bottom);
+    }
+    if (d->nov) {
+        OVMIX(clip->left); OVMIX(clip->top); OVMIX(clip->right);
+        OVMIX(clip->bottom); OVMIX(bg);
+    }
+#undef OVMIX
+    d->ovsig = d->nov ? h : 0;        /* none: the same as no call at all */
+}
+
+/* Onto the back buffer, after the canvas went there, inside `all` - the
+ * part of the back buffer this frame rewrote; outside it the buffer holds
+ * an older frame, overlay included, and is left alone. */
+static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
+{
+    ID2D1RenderTarget *rt = (ID2D1RenderTarget *)d->dc;
+    D2D1_RECT_F clip;
+    UINT32 maxsz;
+    int i, j;
+
+    for (j = 0; j < d->novc; j++)
+        d->ovc[j].used = false;
+    clip.left = max(all->left, (float)d->ovclip.left);
+    clip.top = max(all->top, (float)d->ovclip.top);
+    clip.right = min(all->right, (float)d->ovclip.right);
+    clip.bottom = min(all->bottom, (float)d->ovclip.bottom);
+    if (d->nov > 0 && clip.right > clip.left && clip.bottom > clip.top) {
+        maxsz = ID2D1RenderTarget_GetMaximumBitmapSize(rt);
+        ID2D1RenderTarget_PushAxisAlignedClip(rt, &clip,
+                                              D2D1_ANTIALIAS_MODE_ALIASED);
+        for (i = 0; i < d->nov; i++) {
+            const KittyOverlayItem *it = &d->ov[i];
+            ID2D1Bitmap *bmp = NULL;
+            D2D1_RECT_F dst = rectf(it->dst.left, it->dst.top,
+                                    it->dst.right, it->dst.bottom);
+            for (j = 0; j < d->novc; j++)
+                if (d->ovc[j].serial == it->serial) {
+                    bmp = d->ovc[j].bmp;
+                    d->ovc[j].used = true;
+                    break;
+                }
+            if (!bmp && d->novc < KITTY_OVERLAY_MAX && it->bgra &&
+                it->w > 0 && it->h > 0 &&
+                (UINT32)it->w <= maxsz && (UINT32)it->h <= maxsz) {
+                D2D1_BITMAP_PROPERTIES props;
+                D2D1_SIZE_U size;
+                memset(&props, 0, sizeof(props));
+                props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+                props.pixelFormat.alphaMode = it->opaque ?
+                    D2D1_ALPHA_MODE_IGNORE : D2D1_ALPHA_MODE_PREMULTIPLIED;
+                props.dpiX = 96; props.dpiY = 96;
+                size.width = it->w; size.height = it->h;
+                if (SUCCEEDED(ID2D1RenderTarget_CreateBitmap(
+                                  rt, size, it->bgra, (UINT32)it->w * 4,
+                                  &props, &bmp)) && bmp) {
+                    d->ovc[d->novc].serial = it->serial;
+                    d->ovc[d->novc].bmp = bmp;
+                    d->ovc[d->novc].used = true;
+                    d->novc++;
+                } else
+                    bmp = NULL;
+            }
+            if (!bmp)
+                continue;              /* that picture is skipped, not the frame */
+            if (!it->opaque) {
+                /* transparent pixels show the background, as under GDI */
+                D2D1_COLOR_F col = colour_of(d->ovbg);
+                ID2D1SolidColorBrush_SetColor(d->brush, &col);
+                ID2D1RenderTarget_FillRectangle(rt, &dst, (ID2D1Brush *)d->brush);
+            }
+            ID2D1RenderTarget_DrawBitmap(rt, bmp, &dst, 1.0f,
+                                         D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+                                         NULL);
+        }
+        ID2D1RenderTarget_PopAxisAlignedClip(rt);
+    }
+    /* pictures no longer shown go */
+    for (i = j = 0; i < d->novc; i++) {
+        if (d->ovc[i].used)
+            d->ovc[j++] = d->ovc[i];
+        else if (d->ovc[i].bmp)
+            ID2D1Bitmap_Release(d->ovc[i].bmp);
+    }
+    d->novc = j;
 }
 
 static void d2d_end(KittyPainter *p)
@@ -694,6 +825,15 @@ static void d2d_end(KittyPainter *p)
      * it needs this frame's changes and the previous frame's. Everything is
      * copied while the buffers are new (created, resized: their content is
      * undefined) and while the badge is drawn over them. */
+    /* KiTTY: the overlay changed (an image came, went, moved): the whole
+     * back buffer is rewritten for the next two frames and the whole window
+     * recomposed, so neither buffer keeps an old picture. */
+    if (d->ovsig != d->ovsig_shown) {
+        d->ovsig_shown = d->ovsig;
+        d->full_copies = 2;
+        d->dirty.left = 0; d->dirty.top = 0;
+        d->dirty.right = d->width; d->dirty.bottom = d->height;
+    }
     {
         RECT cr = d->dirty, cur;
         if (cr.left < 0) cr.left = 0;
@@ -721,6 +861,7 @@ static void d2d_end(KittyPainter *p)
                                  (ID2D1Bitmap *)d->canvas, &all, 1.0f,
                                  D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
                                  &all);
+    overlay_draw(d, &all);             /* KiTTY: far2l images */
     badge_draw(d);
     hr = ID2D1RenderTarget_EndDraw((ID2D1RenderTarget *)d->dc, NULL, NULL);
     if (FAILED(hr) && hr_is_loss(d, hr)) {
@@ -1500,6 +1641,7 @@ static const KittyPainterVtable d2d_vt = {
     .frame_signal = d2d_frame_signal,
     .fonts_changed = d2d_fonts_changed,
     .scroll_rows = d2d_scroll_rows,
+    .overlay = d2d_overlay,
 };
 
 /* ---- the device ---------------------------------------------------- */
@@ -1514,6 +1656,7 @@ static void release_device(D2DPainter *d)
     for (i = 0; i < d->nicons; i++)
         if (d->icons[i].bmp) ID2D1Bitmap_Release(d->icons[i].bmp);
     d->nicons = 0;
+    overlay_release(d);                /* KiTTY: far2l images */
     if (d->bgbmp) { ID2D1Bitmap_Release(d->bgbmp); d->bgbmp = NULL; }
     if (d->brush) { ID2D1SolidColorBrush_Release(d->brush); d->brush = NULL; }
     if (d->dc) { IUnknown_Release((IUnknown *)d->dc); d->dc = NULL; }

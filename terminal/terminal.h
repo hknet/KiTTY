@@ -306,6 +306,17 @@ struct terminal_tag {
      * cleared by far2l0 and by a terminal reset. Unconditional storage, for
      * the ODR reason above. */
     unsigned far2l_features;
+    /* Key and mouse events are armed only by the client's own 'x' request
+     * after the handshake (far2l sends it right after far2lok): a stray
+     * far2l1 in host output (a `cat` of a file) must not turn the keyboard
+     * into events nobody reads. Cleared with far2l_ext. far2l_input_gen
+     * counts every arm and disarm, so the window drops its per-key input
+     * state whenever event mode starts or ends. */
+    bool far2l_events_armed;
+    unsigned far2l_input_gen;
+    /* KiTTY far2l images: the per-terminal image store (kitty_far2l_image.h),
+     * NULL until the first image request. Unconditional storage, as above. */
+    struct Far2lImageStore *far2l_images;
     /* The last paste gesture the window forwarded to far2l as a key or mouse
      * event (Ctrl+V, Shift+Ins, a middle-button press): GETTICKCOUNT() at the
      * time, valid once far2l_paste_gesture_seen is set. In event mode these
@@ -316,6 +327,15 @@ struct terminal_tag {
     /* KiTTY far2l clipboard: the gestures counted, so two in one tick are
      * still two (the read gate and the box rule tell gestures apart by it). */
     unsigned far2l_paste_gesture_count;
+    /* A far2l payload over its ceiling is dropped whole, but far2l waits for
+     * the answer without a timeout: the last base64 characters past the
+     * ceiling are kept here (a ring; far2l_tail_n counts every one dropped),
+     * so the request ID and command on top of the stack can still be read
+     * and the request failed rather than left unanswered. Reset by
+     * osc_start. Unconditional storage, as above. */
+#define FAR2L_TAIL_RING 16
+    char far2l_tail[FAR2L_TAIL_RING];
+    size_t far2l_tail_n;
     /* far2l clipboard-sync permission, seeded from CONF_shared_clipboard at the
      * handshake: 0=deny, 1=allow, 2=ask-then-latch (SHARED_CLIPBOARD_*). */
     int clip_allowed;
