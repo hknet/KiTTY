@@ -114,6 +114,18 @@ static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
  * beside it can fill it in. Same trick as g_autopw_ctrl below. */
 static dlgcontrol *g_loginscript_ctrl = NULL;
 
+#ifdef MOD_FAR2L
+/* "Forget always-allowed far2l clients": empties Far2lClientIds, so every far2l
+ * is asked again (with the far2l clipboard set to Ask). */
+static void kitty_far2l_forget_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                       void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_ACTION)
+        conf_set_str(conf, CONF_far2l_client_ids, "");
+}
+#endif
+
 static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                       void *data, int event)
 {
@@ -5674,6 +5686,11 @@ void scb_panel_selection(struct controlbox *b)
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(SHARED_CLIPBOARD_DISABLED),
                       KT_REMOTE_CLIPBOARD_ALLOW, NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
                       KT_REMOTE_CLIPBOARD_ASK, NO_SHORTCUT, I(SHARED_CLIPBOARD_ASK));
+    /* KiTTY (far2l): the far2l clients answered "Always allow this far2l"
+     * are kept per session (Far2lClientIds) - this takes that back without
+     * editing the session store. */
+    ctrl_pushbutton(s, KT_REMOTE_CLIPBOARD_FAR2L_FORGET, NO_SHORTCUT,
+                    HELPCTX(kitty_osc52), kitty_far2l_forget_handler, P(NULL));
 #endif
     /* KiTTY (OSC 52): let the remote host put text on the local clipboard.
      * Same three-way shape as the far2l control above, on purpose. "Ask"

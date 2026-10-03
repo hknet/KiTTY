@@ -306,7 +306,7 @@ foreach(t
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_textrun test_mpw_params test_hello_container
-    test_oscnotify)
+    test_far2l test_oscnotify)
   kitty_add_test(${t})
 endforeach()
 if(KITTY_CTEST_MACHINE_STATE)

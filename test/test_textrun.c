@@ -93,6 +93,18 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
                           size_t len, bool overflow)
 { (void)term; (void)osc; (void)s; (void)len; (void)overflow; }
 void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
+/* The far2l platform seams (kitty/kitty_far2l.h): not reached by plain text. */
+uint32_t kitty_far2l_clip_register(const char *name, size_t len) { return 0; }
+bool kitty_far2l_clip_available(uint32_t fmt) { return false; }
+bool kitty_far2l_clip_empty(void) { return false; }
+bool kitty_far2l_clip_set(uint32_t fmt, const unsigned char *data, size_t len,
+                          bool empty_first) { return false; }
+unsigned char *kitty_far2l_clip_get(uint32_t fmt, size_t *len)
+{ *len = 0; return NULL; }
+void kitty_far2l_confirm(Terminal *term, bool offer_always) { }
+void kitty_far2l_confirm_end(Terminal *term) { }
+bool kitty_far2l_save_client_ids(Terminal *term) { return false; }
+bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols) { return false; }
 
 typedef struct Mock {
     Terminal *term;

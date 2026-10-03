@@ -614,6 +614,14 @@ protocol. It follows the same policy values, and the focus rule above
 covers it too - which is why that setting is named for the clipboard
 rather than for OSC 52.
 
+A read is served only within 5 seconds of a paste you sent from this
+window (Ctrl+V, Shift+Ins, a menu or mouse paste); any other read gets
+an empty clipboard. There is no setting for this.
+
+With \e{Ask}, the question offers \q{Always allow this far2l}: that far2l
+(by the client ID it sends) is not asked again in this session.
+\q{Forget always-allowed far2l clients} empties that list.
+
 \S{kitty-cfg-osc52-limits} The Limits panel
 
 Bounds on what a granted permission allows, so \q{Allow} does not mean

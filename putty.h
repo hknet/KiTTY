@@ -2125,6 +2125,14 @@ bool term_osc5522_paste_tokens(Terminal *term);
  * (CLIP_ACT_* bits), or 0 once that has lapsed. */
 int term_clipboard_activity(Terminal *term);
 #endif
+#ifdef MOD_FAR2L
+/* KiTTY far2l: the answer of the clipboard permission box (kitty/kitty_far2l.c
+ * kitty_far2l_confirm): replies to the held open, then serves what waited. */
+void term_far2l_open_answer(Terminal *term, bool allow, bool always);
+/* KiTTY far2l: clipboard writes were blocked from the tray balloon - close
+ * the box, refuse what waits, and close the far2l clipboard. */
+void term_far2l_block(Terminal *term);
+#endif
 char *term_get_ttymode(Terminal *term, const char *mode);
 SeatPromptResult term_get_userpass_input(Terminal *term, prompts_t *p);
 void term_set_trust_status(Terminal *term, bool trusted);

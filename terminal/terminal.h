@@ -7,6 +7,9 @@
 #define PUTTY_TERMINAL_H
 
 #include "tree234.h"
+/* KiTTY: the far2l state types (F2lReadGate, F2lChunks). Plain types, included
+ * unconditionally, for the same layout reason the far2l fields below are. */
+#include "../kitty/far2l/far2l_proto.h"
 
 struct beeptime {
     struct beeptime *next;
@@ -297,9 +300,61 @@ struct terminal_tag {
     /* set when the far2l APC handshake enabled extensions mode
      * (\x1b_far2l1\x07 -> reply \x1b_far2lok\x07). */
     int far2l_ext;
+    /* KiTTY far2l key and mouse events: the features the client chose with
+     * its request 'x' (F2L_FEAT_*, kitty/kitty_far2l_input.h; the low 32 bits
+     * of the 64 it sends - none above are defined). Replaced by every 'x',
+     * cleared by far2l0 and by a terminal reset. Unconditional storage, for
+     * the ODR reason above. */
+    unsigned far2l_features;
+    /* The last paste gesture the window forwarded to far2l as a key or mouse
+     * event (Ctrl+V, Shift+Ins, a middle-button press): GETTICKCOUNT() at the
+     * time, valid once far2l_paste_gesture_seen is set. In event mode these
+     * never reach KiTTY's own paste path, so this is what a read gate of the
+     * far2l clipboard has to look at. */
+    unsigned long far2l_paste_gesture_tick;
+    bool far2l_paste_gesture_seen;
+    /* KiTTY far2l clipboard: the gestures counted, so two in one tick are
+     * still two (the read gate and the box rule tell gestures apart by it). */
+    unsigned far2l_paste_gesture_count;
     /* far2l clipboard-sync permission, seeded from CONF_shared_clipboard at the
      * handshake: 0=deny, 1=allow, 2=ask-then-latch (SHARED_CLIPBOARD_*). */
     int clip_allowed;
+    /* KiTTY far2l clipboard, UNCONDITIONAL for the same
+     * layout reason. far2l_clip_open: an authorised client has the clipboard
+     * open (a logical state; the Windows clipboard is opened per request).
+     * far2l_clip_need_empty: the next set of this transaction empties the
+     * clipboard first, so the formats of one copy stay together. */
+    bool far2l_clip_open;
+    bool far2l_clip_need_empty;
+    F2lReadGate far2l_gate;            /* reads only after a paste gesture */
+    F2lChunks far2l_chunks;            /* chunked upload in progress */
+    /* The permission box is open: the open request waits for its answer
+     * (far2l_wait_id, far2l_wait_cid = its client ID or NULL), and every
+     * later request is held behind it, in order, until then. */
+    bool far2l_wait;
+    unsigned char far2l_wait_id;
+    char *far2l_wait_cid;
+    struct far2l_held *far2l_held_head, *far2l_held_tail;
+    int far2l_held_n;
+    size_t far2l_held_bytes;
+    /* far2l_wait_gesture: a real paste gesture came within 30 s before the
+     * box opened, so Allow may open the read gate. */
+    bool far2l_wait_gesture;
+    /* The box may not be raised at the host's will. Per WINDOW, kept across
+     * far2l1 and terminal resets (both are host output): after the first box,
+     * another one needs a real paste gesture since the last (far2l_box_tick,
+     * far2l_box_tick_seen = the gesture stamp when it opened); far2l_denied =
+     * the last box was refused or closed unanswered, answered -1 meanwhile. */
+    bool far2l_box_shown;
+    bool far2l_box_tick_seen;
+    unsigned far2l_box_tick;           /* far2l_paste_gesture_count then */
+    bool far2l_denied;
+    int far2l_registered;              /* formats registered this activation */
+    /* rate limits of the "read refused" and "data ID" Event Log lines */
+    unsigned long far2l_refused_logged;
+    unsigned long far2l_id_logged;
+    /* KiTTY: DECSET 1004, focus in/out reports (ESC [ I / ESC [ O). */
+    bool focus_reports;
     /* KiTTY OSC 52 permission, seeded from CONF_osc52_clipboard whenever config
      * is copied in: 0=deny, 1=allow, 2=ask-then-latch (OSC52_CLIPBOARD_*).
      * Latching matters: OSC 52 has no handshake, so a per-payload prompt would
@@ -968,6 +1023,13 @@ extern bool term_textrun_off;
  * compresses whatever is still waiting. Both for test/test_textrun.c. */
 extern bool term_sbdefer_off;
 void term_sb_compact_now(Terminal *term);
+#endif
+
+#ifdef MOD_FAR2L
+/* KiTTY far2l key and mouse events: the window forwarded a paste gesture
+ * (Ctrl+V, Shift+Ins, middle button) to far2l as an event. Stamps
+ * far2l_paste_gesture_tick. */
+void term_far2l_paste_gesture(Terminal *term);
 #endif
 
 #endif

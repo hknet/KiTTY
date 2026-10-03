@@ -283,6 +283,100 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
 }
 void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
 
+/*
+ * The far2l platform seams (kitty/kitty_far2l.h). A fake clipboard of a few
+ * formats, holding the wire bytes as they came, so a set and the read back can
+ * be compared; the box is recorded and answered by the tests through
+ * term_far2l_open_answer, as the platform side does once it closes.
+ */
+#define F2L_FAKE_FMTS 8
+static struct { uint32_t fmt; unsigned char *data; size_t len; } f2l_clip[F2L_FAKE_FMTS];
+static int f2l_sets, f2l_empties, f2l_set_emptied, f2l_confirms, f2l_confirm_ends;
+static int f2l_saves;
+static bool f2l_offer_always;
+static bool f2l_last_set_empty_first;
+
+static void f2l_fake_empty(void)
+{
+    int i;
+    for (i = 0; i < F2L_FAKE_FMTS; i++) {
+        sfree(f2l_clip[i].data);
+        f2l_clip[i].data = NULL;
+        f2l_clip[i].fmt = 0;
+        f2l_clip[i].len = 0;
+    }
+}
+uint32_t kitty_far2l_clip_register(const char *name, size_t len)
+{ return len ? 0xC0DE : 0; }
+bool kitty_far2l_clip_available(uint32_t fmt)
+{
+    int i;
+    for (i = 0; i < F2L_FAKE_FMTS; i++)
+        if (f2l_clip[i].data && f2l_clip[i].fmt == fmt)
+            return true;
+    return false;
+}
+bool kitty_far2l_clip_empty(void)
+{
+    f2l_empties++;
+    f2l_fake_empty();
+    return true;
+}
+bool kitty_far2l_clip_set(uint32_t fmt, const unsigned char *data, size_t len,
+                          bool empty_first)
+{
+    int i, slot = -1;
+    f2l_sets++;
+    f2l_last_set_empty_first = empty_first;
+    if (empty_first) {
+        f2l_set_emptied++;
+        f2l_fake_empty();
+    }
+    for (i = 0; i < F2L_FAKE_FMTS && slot < 0; i++)
+        if (f2l_clip[i].data && f2l_clip[i].fmt == fmt)
+            slot = i;
+    for (i = 0; i < F2L_FAKE_FMTS && slot < 0; i++)
+        if (!f2l_clip[i].data)
+            slot = i;
+    if (slot < 0)
+        return false;
+    sfree(f2l_clip[slot].data);
+    f2l_clip[slot].fmt = fmt;
+    f2l_clip[slot].data = snewn(len ? len : 1, unsigned char);
+    memcpy(f2l_clip[slot].data, data, len);
+    f2l_clip[slot].len = len;
+    return true;
+}
+unsigned char *kitty_far2l_clip_get(uint32_t fmt, size_t *len)
+{
+    int i;
+    *len = 0;
+    for (i = 0; i < F2L_FAKE_FMTS; i++)
+        if (f2l_clip[i].data && f2l_clip[i].fmt == fmt && f2l_clip[i].len) {
+            unsigned char *out = snewn(f2l_clip[i].len, unsigned char);
+            memcpy(out, f2l_clip[i].data, f2l_clip[i].len);
+            *len = f2l_clip[i].len;
+            return out;
+        }
+    return NULL;
+}
+void kitty_far2l_confirm(Terminal *term, bool offer_always)
+{
+    f2l_confirms++;
+    f2l_offer_always = offer_always;
+}
+void kitty_far2l_confirm_end(Terminal *term) { f2l_confirm_ends++; }
+bool kitty_far2l_save_client_ids(Terminal *term) { f2l_saves++; return true; }
+static int f2l_max_rows = 0, f2l_max_cols = 0;
+bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols)
+{
+    if (f2l_max_rows <= 0)
+        return false;
+    *rows = f2l_max_rows;
+    *cols = f2l_max_cols;
+    return true;
+}
+
 typedef struct Mock {
     Terminal *term;
     Conf *conf;
@@ -311,6 +405,14 @@ static void mock_palette_set(TermWin *win, unsigned start, unsigned ncolours,
                              const rgb *colours) {}
 static void mock_palette_get_overrides(TermWin *tw, Terminal *term) {}
 static void mock_set_icon_title(TermWin *win, const char *title, int cp) {}
+/* far2l's maximise/restore requests arrive here: recorded. */
+static int mock_maximise_calls;
+static bool mock_maximised;
+static void mock_set_maximised(TermWin *win, bool maximised)
+{
+    mock_maximise_calls++;
+    mock_maximised = maximised;
+}
 
 static void mock_set_title(TermWin *win, const char *title, int codepage)
 {
@@ -351,6 +453,7 @@ static const TermWinVtable mock_termwin_vt = {
     .palette_get_overrides = mock_palette_get_overrides,
     .clip_write = mock_clip_write,
     .clip_request_paste = mock_clip_request_paste,
+    .set_maximised = mock_set_maximised,
 };
 
 static Mock *mock_new(void)
@@ -1812,6 +1915,9 @@ static void test_far2l_focus(Mock *mk)
     char allowed[sizeof(osc52_last_send)];
 
     conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
+    /* requests count only after the handshake, which seeds the policy from
+     * the setting - so the policy is forced after it */
+    feed_apc(mk, "far2l1", 6);
     mk->term->clip_allowed = 1;                 /* policy says allow */
 
     mk->term->has_focus = true;
@@ -1852,6 +1958,471 @@ static void test_far2l_focus(Mock *mk)
 
     conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
     mk->term->has_focus = true;
+    mk->term->clip_allowed = 0;
+}
+
+/*
+ * far2l requests end to end through terminal.c, against the fake clipboard
+ * above: the ID-0 rule, the bare acknowledgement, the open and its held
+ * reply, "always allow" by client ID, the read gate, one empty per
+ * transaction, chunked upload, data IDs, the window size and the focus
+ * reports far2l asks for.
+ */
+#define F2L_MAXREP 8
+static unsigned char f2l_rep[F2L_MAXREP][8192];
+static size_t f2l_rep_len[F2L_MAXREP];
+static int f2l_nrep;
+
+/* Split what was sent to the host into far2l replies, decoded. The handshake
+ * acknowledgement is not a reply and is skipped. */
+static void f2l_collect(void)
+{
+    const char *p = osc52_all, *end = osc52_all + osc52_all_len;
+    f2l_nrep = 0;
+    while (p < end && f2l_nrep < F2L_MAXREP) {
+        const char *s = strstr(p, "\033_far2l"), *bel;
+        strbuf *dec;
+        if (!s || s >= end)
+            break;
+        s += 7;
+        bel = memchr(s, '\007', end - s);
+        if (!bel)
+            break;
+        if (!(bel - s == 2 && !memcmp(s, "ok", 2))) {
+            dec = base64_decode_sb(make_ptrlen(s, bel - s));
+            f2l_rep_len[f2l_nrep] = dec->len < sizeof(f2l_rep[0]) ? dec->len
+                                                                   : sizeof(f2l_rep[0]);
+            memcpy(f2l_rep[f2l_nrep], dec->u, f2l_rep_len[f2l_nrep]);
+            f2l_nrep++;
+            strbuf_free(dec);
+        }
+        p = bel + 1;
+    }
+}
+
+/* Send one request (the stack in wire order); returns the number of replies. */
+static int f2l_send(Mock *mk, const F2lOut *req)
+{
+    strbuf *sb = strbuf_new();
+    put_dataz(sb, "\033_far2l:");
+    base64_encode_bs(BinarySink_UPCAST(sb), make_ptrlen(req->data, req->len), 0);
+    put_byte(sb, '\007');
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_data(mk->term, sb->s, sb->len);
+    term_update(mk->term);
+    strbuf_free(sb);
+    f2l_collect();
+    return f2l_nrep;
+}
+
+/* Build-and-send helpers: arguments are pushed bottom first, then the
+ * command letter(s), then the ID on top. */
+static int f2l_cmd(Mock *mk, char cmd, uint8_t id)
+{
+    F2lOut o;
+    int n;
+    f2l_out_init(&o);
+    f2l_push_u8(&o, (uint8_t)cmd);
+    f2l_push_u8(&o, id);
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    return n;
+}
+
+static int f2l_open(Mock *mk, const char *cid, uint8_t id)
+{
+    F2lOut o;
+    int n;
+    f2l_out_init(&o);
+    if (cid) {
+        f2l_push_bytes(&o, cid, strlen(cid));
+        f2l_push_u32(&o, (uint32_t)strlen(cid));
+    }
+    f2l_push_u8(&o, 'o');
+    f2l_push_u8(&o, 'c');
+    f2l_push_u8(&o, id);
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    return n;
+}
+
+static int f2l_clip_simple(Mock *mk, char sub, uint8_t id)
+{
+    F2lOut o;
+    int n;
+    f2l_out_init(&o);
+    f2l_push_u8(&o, (uint8_t)sub);
+    f2l_push_u8(&o, 'c');
+    f2l_push_u8(&o, id);
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    return n;
+}
+
+static int f2l_set(Mock *mk, uint32_t fmt, const void *data, size_t len, uint8_t id)
+{
+    F2lOut o;
+    int n;
+    f2l_out_init(&o);
+    f2l_push_bytes(&o, data, len);
+    f2l_push_u32(&o, (uint32_t)len);
+    f2l_push_u32(&o, fmt);
+    f2l_push_u8(&o, 's');
+    f2l_push_u8(&o, 'c');
+    f2l_push_u8(&o, id);
+    /* the write rate cap has its own tests; not what is under test here */
+    mk->term->clip_write_second = 0;
+    mk->term->clip_write_count = 0;
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    return n;
+}
+
+static int f2l_get(Mock *mk, char sub, uint32_t fmt, uint8_t id)
+{
+    F2lOut o;
+    int n;
+    f2l_out_init(&o);
+    f2l_push_u32(&o, fmt);
+    f2l_push_u8(&o, (uint8_t)sub);
+    f2l_push_u8(&o, 'c');
+    f2l_push_u8(&o, id);
+    n = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    return n;
+}
+
+static int f2l_chunk(Mock *mk, uint16_t enc, unsigned char fill, uint8_t id)
+{
+    F2lOut o;
+    unsigned char *buf;
+    size_t n = (size_t)enc << 8;
+    int r;
+    f2l_out_init(&o);
+    buf = snewn(n ? n : 1, unsigned char);
+    memset(buf, fill, n);
+    f2l_push_bytes(&o, buf, n);
+    f2l_push_u16(&o, enc);
+    f2l_push_u8(&o, 'S');
+    f2l_push_u8(&o, 'c');
+    f2l_push_u8(&o, id);
+    r = f2l_send(mk, &o);
+    f2l_out_free(&o);
+    sfree(buf);
+    return r;
+}
+
+static uint64_t f2l_le(const unsigned char *p, int n)
+{
+    uint64_t v = 0;
+    while (n-- > 0)
+        v = (v << 8) | p[n];
+    return v;
+}
+
+static void test_far2l_protocol(Mock *mk)
+{
+    static const char cid[] = "testhost-0123456789abcdefghijklmnopqrstuv";
+    uint64_t set_id;
+
+    counters_reset();
+    f2l_fake_empty();
+    conf_set_bool(mk->term->conf, CONF_clipboard_require_focus, true);
+    conf_set_int(mk->term->conf, CONF_shared_clipboard, 2);     /* Ask */
+    conf_set_str(mk->term->conf, CONF_far2l_client_ids, "");
+    mk->term->has_focus = true;
+
+    /* --- nothing before the handshake --- */
+    feed_apc(mk, "far2l0", 6);
+    if (f2l_cmd(mk, 'p', 9) != 0)
+        fail("far2l before handshake", "a request was answered before far2l1");
+    osc52_all_len = 0;
+    feed_apc(mk, "far2l1", 6);
+    if (!strstr(osc52_all, "\033_far2lok\007"))
+        fail("far2l handshake", "no far2lok");
+
+    /* --- ID 0: never a reply; otherwise always one --- */
+    if (f2l_cmd(mk, 'p', 0) != 0)
+        fail("far2l ID 0", "a request with ID 0 was answered");
+    if (f2l_cmd(mk, 'p', 5) != 1 || f2l_rep_len[0] != 3 ||
+        f2l_rep[0][0] != 0 || f2l_rep[0][1] != 24 || f2l_rep[0][2] != 5)
+        fail("far2l palette", "the 24-bit reply is not [0, 24, id]");
+    if (f2l_cmd(mk, 'Z', 7) != 1 || f2l_rep_len[0] != 1 || f2l_rep[0][0] != 7)
+        fail("far2l unknown command", "not answered with the ID alone");
+    if (f2l_cmd(mk, 'f', 8) != 1 || f2l_rep_len[0] != 2 || f2l_rep[0][0] != 0)
+        fail("far2l F-key titles", "not answered 'not supported'");
+    if (f2l_cmd(mk, 'n', 0) != 0)
+        fail("far2l notification", "a notification with ID 0 was answered");
+
+    /* --- the window size: never 0 x 0 --- */
+    f2l_max_rows = 0;
+    if (f2l_cmd(mk, 'w', 6) != 1 || f2l_rep_len[0] != 5 ||
+        f2l_le(f2l_rep[0], 2) != 80 || f2l_le(f2l_rep[0] + 2, 2) != 24)
+        fail("far2l max size fallback", "not the current 80 x 24");
+    f2l_max_rows = 50; f2l_max_cols = 200;
+    if (f2l_cmd(mk, 'w', 6) != 1 || f2l_rep_len[0] != 5 ||
+        f2l_le(f2l_rep[0], 2) != 200 || f2l_le(f2l_rep[0] + 2, 2) != 50)
+        fail("far2l max size", "the width/height order or values are wrong");
+    f2l_max_rows = 0;
+    mock_maximise_calls = 0;
+    f2l_cmd(mk, 'M', 0);
+    if (mock_maximise_calls != 1 || !mock_maximised)
+        fail("far2l maximise", "M did not maximise the window");
+    f2l_cmd(mk, 'm', 0);
+    if (mock_maximise_calls != 2 || mock_maximised)
+        fail("far2l restore", "m did not restore the window");
+
+    /* --- a malformed client ID is refused outright --- */
+    if (f2l_open(mk, "SHORT", 10) != 1 || f2l_rep_len[0] != 10 ||
+        (int8_t)f2l_rep[0][8] != 0)
+        fail("far2l bad client ID", "not answered status 0");
+    if (f2l_confirms != 0)
+        fail("far2l bad client ID", "the box was raised for a malformed ID");
+
+    /* --- Ask: the box, the held reply, and what waits behind it --- */
+    if (f2l_open(mk, cid, 11) != 0)
+        fail("far2l ask", "the open was answered before the box");
+    if (f2l_confirms != 1 || !f2l_offer_always)
+        fail("far2l ask", "no box, or no 'always allow' on it");
+    if (f2l_get(mk, 'a', F2L_CF_TEXT, 12) != 0)
+        fail("far2l ask", "a request behind the box was answered early");
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_far2l_open_answer(mk->term, true, true);
+    f2l_collect();
+    if (f2l_nrep != 2)
+        fail("far2l ask answer", "the open and the held request were not both answered");
+    else {
+        if (f2l_rep_len[0] != 10 || f2l_rep[0][9] != 11 || f2l_rep[0][8] != 1 ||
+            f2l_le(f2l_rep[0], 8) != (F2L_FEATCLIP_DATA_ID | F2L_FEATCLIP_CHUNKED_SET))
+            fail("far2l ask answer", "the open reply is not [features, 1, id]");
+        if (f2l_rep_len[1] != 2 || f2l_rep[1][1] != 12)
+            fail("far2l ask answer", "the held request was not answered after it");
+    }
+    if (!f2l_client_ids_contains(conf_get_str(mk->term->conf, CONF_far2l_client_ids),
+                                 (const unsigned char *)cid, strlen(cid)) ||
+        f2l_saves != 1)
+        fail("far2l always allow", "the client ID was not remembered and saved");
+
+    /* Allow on a box the host raised without a paste opens the clipboard,
+     * never the read gate */
+    kitty_far2l_clip_set(F2L_CF_TEXT, (const unsigned char *)"pre", 3, true);
+    if (f2l_get(mk, 'g', F2L_CF_TEXT, 30) != 1 || f2l_le(f2l_rep[0] + 8, 4) != 0)
+        fail("far2l ask answer", "Allow without a paste opened the read gate");
+
+    /* --- one empty per transaction; the formats of one copy stay --- */
+    f2l_sets = f2l_set_emptied = 0;
+    if (f2l_set(mk, F2L_CF_TEXT, "hello", 5, 13) != 1 || f2l_rep_len[0] != 10 ||
+        f2l_rep[0][8] != 1)
+        fail("far2l set", "not answered [data ID, 1, id]");
+    set_id = f2l_le(f2l_rep[0], 8);
+    if (set_id == 0)
+        fail("far2l set", "data ID 0 on success");
+    f2l_set(mk, 0xC0DE, "\0\0\0\0", 4, 14);
+    if (f2l_sets != 2 || f2l_set_emptied != 1 || f2l_last_set_empty_first)
+        fail("far2l transaction", "the clipboard was emptied per format, not once");
+    if (!kitty_far2l_clip_available(F2L_CF_TEXT))
+        fail("far2l transaction", "the text did not survive the second format");
+    f2l_clip_simple(mk, 'e', 0);
+    f2l_set(mk, F2L_CF_TEXT, "hello", 5, 0);
+    if (f2l_set_emptied != 1)
+        fail("far2l transaction", "a set after CLIP_EMPTY emptied again");
+
+    /* --- the read gate: nothing without a paste gesture --- */
+    if (f2l_get(mk, 'g', F2L_CF_TEXT, 15) != 1 || f2l_rep_len[0] != 13 ||
+        f2l_le(f2l_rep[0] + 8, 4) != 0 || f2l_le(f2l_rep[0], 8) != 0)
+        fail("far2l read gate", "a read without a paste was served");
+    if (f2l_get(mk, 'i', F2L_CF_TEXT, 16) != 1 || f2l_le(f2l_rep[0], 8) != 0)
+        fail("far2l read gate", "a data ID without a paste was served");
+    term_far2l_paste_gesture(mk->term);
+    if (f2l_get(mk, 'g', F2L_CF_TEXT, 17) != 1 || f2l_rep_len[0] != 8 + 5 + 4 + 1 ||
+        f2l_le(f2l_rep[0] + 13, 4) != 5 || memcmp(f2l_rep[0] + 8, "hello", 5))
+        fail("far2l read", "the clipboard was not served after a paste");
+    else if (f2l_le(f2l_rep[0], 8) != set_id)
+        fail("far2l data ID", "the read's data ID differs from the set's");
+    if (f2l_get(mk, 'i', F2L_CF_TEXT, 18) != 1 || f2l_le(f2l_rep[0], 8) != set_id)
+        fail("far2l data ID", "GETDATAID does not match the data");
+
+    /* --- chunked upload --- */
+    {
+        size_t got;
+        unsigned char *all;
+        f2l_chunk(mk, 1, 'A', 0);
+        if (f2l_chunk(mk, 1, 'A', 19) != 1 || f2l_rep_len[0] != 1)
+            fail("far2l chunk", "a chunk with an ID was not acknowledged alone");
+        f2l_set(mk, F2L_CF_TEXT, "BC", 2, 20);
+        all = kitty_far2l_clip_get(F2L_CF_TEXT, &got);
+        if (!all || got != 514 || all[0] != 'A' || all[511] != 'A' ||
+            memcmp(all + 512, "BC", 2))
+            fail("far2l chunk", "the chunks were not put in front of the data");
+        sfree(all);
+        /* a cancelled upload leaves nothing behind */
+        f2l_chunk(mk, 1, 'X', 0);
+        f2l_chunk(mk, 0, 0, 0);
+        f2l_set(mk, F2L_CF_TEXT, "Z", 1, 21);
+        all = kitty_far2l_clip_get(F2L_CF_TEXT, &got);
+        if (!all || got != 1 || all[0] != 'Z')
+            fail("far2l chunk cancel", "cancelled chunks reached the clipboard");
+        sfree(all);
+    }
+
+    /* --- close: the clipboard is no longer open for reads --- */
+    f2l_clip_simple(mk, 'c', 0);
+    if (f2l_get(mk, 'g', F2L_CF_TEXT, 22) != 1 || f2l_rep_len[0] != 5 ||
+        f2l_le(f2l_rep[0], 4) != 0xFFFFFFFFU)
+        fail("far2l closed", "a read after CLIP_CLOSE was not 'not open'");
+
+    /* --- a listed client opens without the box; the gate still applies --- */
+    feed_apc(mk, "far2l1", 6);
+    f2l_confirms = 0;
+    if (f2l_open(mk, cid, 23) != 1 || f2l_rep[0][8] != 1 || f2l_confirms != 0)
+        fail("far2l always allow", "a listed client was asked again");
+    if (f2l_get(mk, 'g', F2L_CF_TEXT, 24) != 1 || f2l_le(f2l_rep[0] + 8, 4) != 0)
+        fail("far2l always allow", "a listed client read without a paste");
+
+    /* --- far2l leaving while the box is open --- */
+    feed_apc(mk, "far2l1", 6);
+    conf_set_str(mk->term->conf, CONF_far2l_client_ids, "");
+    f2l_confirms = 0;
+    if (f2l_open(mk, cid, 25) != 1 || (int8_t)f2l_rep[0][8] != 0 || f2l_confirms != 0)
+        fail("far2l box rule", "a second box came without a paste");
+    term_far2l_paste_gesture(mk->term);
+    f2l_confirm_ends = 0;
+    f2l_open(mk, cid, 25);
+    if (f2l_confirms != 1)
+        fail("far2l box rule", "no box after a paste");
+    feed_apc(mk, "far2l0", 6);
+    if (f2l_confirm_ends != 1)
+        fail("far2l leave", "the box was not closed when far2l left");
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_far2l_open_answer(mk->term, true, false);
+    f2l_collect();
+    if (f2l_nrep != 0)
+        fail("far2l leave", "a late answer was still sent");
+
+    /* --- the host cannot raise boxes at will: closed unanswered counts as a
+     * refusal, and far2l1 + open loops get -1 without a box --- */
+    {
+        int k;
+        f2l_confirms = 0;
+        for (k = 0; k < 5; k++) {
+            feed_apc(mk, "far2l1", 6);
+            if (f2l_open(mk, cid, 26) != 1 || (int8_t)f2l_rep[0][8] != -1)
+                fail("far2l box loop", "not refused while the refusal stands");
+        }
+        if (f2l_confirms != 0)
+            fail("far2l box loop", "a re-handshake raised the box again");
+    }
+
+    /* --- a real paste: one box; Allow on its back serves the held read --- */
+    feed_apc(mk, "far2l1", 6);
+    term_far2l_paste_gesture(mk->term);
+    f2l_confirms = 0;
+    f2l_open(mk, cid, 27);
+    f2l_get(mk, 'g', F2L_CF_TEXT, 28);        /* held behind the box */
+    if (f2l_confirms != 1)
+        fail("far2l paste box", "no box after a paste");
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_far2l_open_answer(mk->term, true, false);
+    f2l_collect();
+    if (f2l_nrep != 2 || f2l_rep[0][8] != 1 || f2l_le(f2l_rep[1] + f2l_rep_len[1] - 5, 4) == 0)
+        fail("far2l paste box", "Allow after a paste did not serve the held read");
+    /* that answer is not a new gesture: no further box without a paste */
+    feed_apc(mk, "far2l1", 6);
+    f2l_confirms = 0;
+    if (f2l_open(mk, cid, 29) != 1 || (int8_t)f2l_rep[0][8] != 0 || f2l_confirms != 0)
+        fail("far2l paste box", "a box came again without a new paste");
+
+    /* --- Deny latches across far2l1 until a paste --- */
+    term_far2l_paste_gesture(mk->term);
+    f2l_open(mk, cid, 31);
+    term_far2l_open_answer(mk->term, false, false);
+    feed_apc(mk, "far2l1", 6);
+    f2l_confirms = 0;
+    if (f2l_open(mk, cid, 32) != 1 || (int8_t)f2l_rep[0][8] != -1 || f2l_confirms != 0)
+        fail("far2l deny latch", "a re-handshake undid the refusal");
+
+    /* --- register: only for an authorised open, capped per activation --- */
+    feed_apc(mk, "far2l1", 6);
+    mk->term->clip_allowed = 1;
+    {
+        F2lOut o;
+        int k, got = 0;
+        for (k = 0; k < 70; k++) {
+            f2l_out_init(&o);
+            f2l_push_bytes(&o, "FMT", 3);
+            f2l_push_u32(&o, 3);
+            f2l_push_u8(&o, 'r');
+            f2l_push_u8(&o, 'c');
+            f2l_push_u8(&o, 33);
+            f2l_send(mk, &o);
+            f2l_out_free(&o);
+            if (k == 0) {
+                if (f2l_le(f2l_rep[0], 4) != 0)
+                    fail("far2l register", "a format was registered before an open");
+                f2l_open(mk, NULL, 34);
+            } else if (f2l_le(f2l_rep[0], 4) != 0) {
+                got++;
+            }
+        }
+        if (got != 64)
+            fail("far2l register", "registrations are not capped at 64");
+    }
+
+    /* --- a chunk refused while unfocused fails the closing set --- */
+    f2l_chunk(mk, 1, 'A', 0);
+    mk->term->has_focus = false;
+    f2l_chunk(mk, 1, 'B', 0);
+    mk->term->has_focus = true;
+    if (f2l_set(mk, F2L_CF_TEXT, "C", 1, 35) != 1 ||
+        (int8_t)f2l_rep[0][f2l_rep_len[0] - 2] != 0)
+        fail("far2l chunk refused", "a set with a refused chunk succeeded");
+
+    /* --- the data-ID query counts like a read --- */
+    term_far2l_paste_gesture(mk->term);
+    f2l_get(mk, 'i', F2L_CF_TEXT, 36);
+    if (mk->term->far2l_gate.prolongs != 1)
+        fail("far2l data ID", "the query did not use an extension of the gate");
+
+    /* --- blocking writes from the balloon closes an open box as refused --- */
+    feed_apc(mk, "far2l1", 6);
+    term_far2l_paste_gesture(mk->term);
+    f2l_confirm_ends = 0;
+    f2l_confirms = 0;
+    f2l_open(mk, cid, 37);
+    if (f2l_confirms != 1)
+        fail("far2l block", "no box to block");
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_far2l_block(mk->term);
+    f2l_collect();
+    if (f2l_confirm_ends != 1 || f2l_nrep != 1 || (int8_t)f2l_rep[0][8] != -1)
+        fail("far2l block", "the box was not closed and the open refused");
+    term_far2l_open_answer(mk->term, true, false);
+    if (mk->term->clip_allowed != 0 ||
+        conf_get_int(mk->term->conf, CONF_shared_clipboard) != 0)
+        fail("far2l block", "a late Allow gave the permission back");
+    conf_set_int(mk->term->conf, CONF_shared_clipboard, 2);
+
+    /* --- the focus reports far2l asks for (DECSET 1004) --- */
+    osc52_all_len = 0;
+    osc52_all[0] = '\0';
+    term_set_focus(mk->term, false);
+    term_set_focus(mk->term, true);
+    if (osc52_all_len != 0)
+        fail("focus reports", "sent without DECSET 1004");
+    term_data(mk->term, "\033[?1004h", 8);
+    term_set_focus(mk->term, false);
+    term_set_focus(mk->term, true);
+    if (osc52_all_len != 6 || memcmp(osc52_all, "\033[O\033[I", 6))
+        fail("focus reports", "not ESC [ O then ESC [ I");
+    term_data(mk->term, "\033[?1004l", 8);
+
+    f2l_fake_empty();
+    conf_set_str(mk->term->conf, CONF_far2l_client_ids, "");
     mk->term->clip_allowed = 0;
 }
 
@@ -2302,6 +2873,7 @@ int main(void)
     test_clipboard_write_rate(mk);
     test_far2l_ceiling(mk);
     test_far2l_focus(mk);
+    test_far2l_protocol(mk);
     test_colour_queries(mk);
     test_hostnotify_dispatch(mk);
 

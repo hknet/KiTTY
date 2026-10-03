@@ -1136,6 +1136,11 @@ CONF_OPTION(sel_colour, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("SelectedA
 /* KiTTY (far2l): far2l terminal-extension clipboard sync. 0=disabled, 1=enabled,
  * 2=ask (SHARED_CLIPBOARD_* in putty.h). Default ask, so it works but prompts. */
 CONF_OPTION(shared_clipboard, VALUE_TYPE(INT), DEFAULT_INT(2), SAVE_KEYWORD("SharedClipboard"),)
+/* KiTTY (far2l): the far2l client IDs answered "Always allow this far2l" in
+ * this session, comma-separated (an ID is 32-256 of 0-9 a-z - _). A listed ID
+ * opens the clipboard without the question while SharedClipboard is Ask; the
+ * read gate (a paste in the last 5 seconds) still applies to it. */
+CONF_OPTION(far2l_client_ids, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Far2lClientIds"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

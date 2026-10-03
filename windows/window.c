@@ -5095,6 +5095,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                  OSC52_CLIPBOARD_DENY);
                     if (wgs->term)
                         wgs->term->clip_allowed = 0;
+#ifdef MOD_FAR2L
+                    /* and a far2l box that is open closes as refused */
+                    if (wgs->term)
+                        term_far2l_block(wgs->term);
+#endif
                     conf_set_int(wgs->conf, CONF_shared_clipboard,
                                  SHARED_CLIPBOARD_DISABLED);
                     logevent(wgs->logctx, KT_TWIN_LOG_CLIP_WRITES_BLOCKED);
@@ -8062,6 +8067,19 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
     shift_state = ((keystate[VK_SHIFT] & 0x80) != 0)
         + ((keystate[VK_CONTROL] & 0x80) != 0) * 2;
 
+#ifdef MOD_FAR2L
+    /* KiTTY: the paste keys open far2l's clipboard read gate - Ctrl+V with or
+     * without Shift, and Shift+Ins, never with Alt (AltGr included). Ctrl+V
+     * goes to far2l as a key and far2l then reads the clipboard; Shift+Ins
+     * may paste here as well, which marks the gesture again. */
+    if (key_down && (message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
+        !(HIWORD(lParam) & KF_ALTDOWN) && !(keystate[VK_MENU] & 0x80) &&
+        !(keystate[VK_RMENU] & 0x80) &&
+        ((wParam == 'V' && (shift_state & 2)) ||
+         (wParam == VK_INSERT && shift_state == 1)))
+        term_far2l_paste_gesture(wgs->term);
+#endif
+
     /* Note if AltGr was pressed and if it was used as a compose key */
     if (!wgs->compose_state) {
         wgs->compose_keycode = 0x100;
@@ -10466,6 +10484,80 @@ static bool get_fullscreen_rect(WinGuiSeat *wgs, RECT *ss)
 */
     return GetClientRect(GetDesktopWindow(), ss);
 }
+
+#ifdef MOD_FAR2L
+#include "../kitty/kitty_far2l.h"
+#ifndef SM_CXPADDEDBORDER
+#define SM_CXPADDEDBORDER 92           /* Vista and later; 0 before */
+#endif
+/*
+ * KiTTY far2l: the largest terminal this window can have, in cells - what
+ * far2l asks with GET_WINDOW_MAXSIZE so that its "toggle window size" knows
+ * whether to maximise or restore.
+ *
+ * Maximised or full screen: the client area as it is. Otherwise the work area
+ * of this window's monitor less the frame the window keeps when maximised (a
+ * maximised window's sizing border lies outside the work area, so only the
+ * caption, menu and scroll bar are subtracted). When a resize changes the font
+ * rather than the rows and columns, or is switched off, the current size is
+ * the largest there is.
+ */
+bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols)
+{
+    struct WinGuiSeatListNode *node;
+    WinGuiSeat *wgs = NULL;
+    RECT wr, cr, work;
+    int border, w, h, action;
+
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *s = container_of(node, WinGuiSeat, wgslistnode);
+        if (s->term == term) {
+            wgs = s;
+            break;
+        }
+    }
+    if (!wgs || !wgs->term_hwnd || wgs->font_width <= 0 || wgs->font_height <= 0)
+        return false;
+
+    action = conf_get_int(wgs->conf, CONF_resize_action);
+    if (action == RESIZE_FONT || action == RESIZE_DISABLED) {
+        *rows = term->rows;
+        *cols = term->cols;
+        return true;
+    }
+
+    border = conf_get_int(wgs->conf, CONF_window_border);
+    if (!GetClientRect(wgs->term_hwnd, &cr))
+        return false;
+    if (IsZoomed(wgs->term_hwnd)) {
+        w = cr.right - cr.left;
+        h = cr.bottom - cr.top;
+    } else {
+        LONG_PTR style = GetWindowLongPtr(wgs->term_hwnd, GWL_STYLE);
+        int fx = 0, fy = 0;
+        if (!GetWindowRect(wgs->term_hwnd, &wr) ||
+            !get_workingarea_rect(wgs, &work))
+            return false;
+        if (style & WS_THICKFRAME) {
+            fx = GetSystemMetrics(SM_CXSIZEFRAME) +
+                 GetSystemMetrics(SM_CXPADDEDBORDER);
+            fy = GetSystemMetrics(SM_CYSIZEFRAME) +
+                 GetSystemMetrics(SM_CXPADDEDBORDER);
+        }
+        w = (work.right - work.left) -
+            ((wr.right - wr.left) - (cr.right - cr.left) - 2 * fx);
+        h = (work.bottom - work.top) -
+            ((wr.bottom - wr.top) - (cr.bottom - cr.top) - 2 * fy);
+    }
+    w -= 2 * border;
+    h -= 2 * border;
+    if (w < wgs->font_width || h < wgs->font_height)
+        return false;
+    *cols = w / wgs->font_width;
+    *rows = h / wgs->font_height;
+    return true;
+}
+#endif
 
 
 /* Similar to get_fullscreen_rect, but retrieves the working area of the

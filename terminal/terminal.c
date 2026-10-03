@@ -108,6 +108,13 @@ static bool osc5522_paste_event(Terminal *term);
 #include "cdecode.h"
 #include "cencode.h"
 #include "../kitty/kitty_text.h"   /* KiTTY: the far2l clipboard prompt's words */
+/* KiTTY: the platform seams of the far2l extensions (clipboard, permission
+ * box, window size); the test targets stub them. */
+#include "../kitty/kitty_far2l.h"
+/* Drop everything a far2l activation holds: the open box, the requests held
+ * behind it, a chunked upload, the open clipboard. Declared here because
+ * term_free() sits earlier in the file. */
+static void far2l_reset_state(Terminal *term);
 #ifdef MOD_PERSO
 #include "kitty/kitty.h"
 #include "kitty/kitty_osc52.h"
@@ -2115,11 +2122,25 @@ static void power_on(Terminal *term, bool clear)
     term->win_pointer_shape_raw = false;
     term->bracketed_paste = false;
 #ifdef MOD_PERSO
+    term->focus_reports = false;       /* KiTTY: DECSET 1004 */
     /* KiTTY: a reset clears paste-events mode like every other mode. */
     if (term->osc5522_paste_events)
         osc5522_paste_disarm(term, false);
     term->esc_dollar = false;
     term->sync_hold = false;   /* the update scheduled below draws the screen */
+#endif
+#ifdef MOD_FAR2L
+    /* KiTTY far2l: a reset (or a restarted session) ends the extensions. A
+     * far2l that died without sending far2l0 would otherwise leave every key
+     * going out as a far2l event to whatever runs next. */
+    term->far2l_ext = 0;
+    term->far2l_features = 0;
+    term->far2l_paste_gesture_seen = false;
+#endif
+#ifdef MOD_FAR2L
+    /* KiTTY far2l clipboard: and so does what it held - the box, the requests
+     * behind it, a chunked upload, the open clipboard. */
+    far2l_reset_state(term);
 #endif
     term->srm_echo = false;
     {
@@ -3037,6 +3058,11 @@ void term_free(Terminal *term)
     kitty_transfer_free(term);
     /* KiTTY: notifications from the host (a pending notice, its timer). */
     kitty_hostnotify_term_free(term);
+#endif
+#ifdef MOD_FAR2L
+    /* KiTTY: an open far2l permission box closes unanswered; what waited for
+     * it and a half-done chunked upload are wiped. */
+    far2l_reset_state(term);
 #endif
     strbuf_free(term->answerback);
 
@@ -4229,6 +4255,12 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
             term->bracketed_paste = state ? true : false;
             break;
 #ifdef MOD_PERSO
+          case 1004:
+            /* KiTTY: xterm focus reports - ESC [ I when the window gains the
+             * keyboard focus, ESC [ O when it loses it (term_set_focus).
+             * far2l asks for them to know when to show a notification. */
+            term->focus_reports = state;
+            break;
           case 5522:
             /* KiTTY: kitty's clipboard-protocol paste events. See
              * osc5522_paste_set() for what the mode does and what bounds it. */
@@ -4271,19 +4303,30 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
 }
 
 #ifdef MOD_FAR2L
-/* Decode a far2l "\x1b_far2l:<base64>\x07" payload, dispatch, and reply with
- * "\x1b_far2l<base64>\x07". Clipboard is DENIED but answered with the original
- * 0.76b per-subcommand deny replies so the remote far2l never hangs. term-> and
- * ldisc only; no Win32, no globals. Payloads >OSC_STR_MAX are dropped. */
+/*
+ * KiTTY far2l terminal extensions: requests arrive as
+ * "\x1b_far2l:<base64>\x07", replies leave as "\x1b_far2l<base64>\x07". The
+ * payload is a stack read from its END: the request ID on top, then the
+ * command letter, then the arguments (kitty/far2l/far2l_proto.h). Every
+ * request with a non-zero ID gets a reply - far2l waits for it without a
+ * timeout - and a request with ID 0 never does.
+ *
+ * The Windows clipboard, the permission box and the window size are reached
+ * through the seams in kitty/kitty_far2l.h, so the test targets that compile
+ * this file never touch the real clipboard.
+ */
+static size_t clip_ceiling_bytes(Terminal *term);
+
 static void far2l_send_reply(Terminal *term, const unsigned char *reply, int reply_size)
 {
     base64_encodestate es;
     char *out;
-    int count;
+    int count, outsize;
     strbuf *sb;
     if (reply_size <= 0) return;
     base64_init_encodestate(&es);
-    out = snewn(reply_size * 2 + 8, char);
+    outsize = reply_size * 2 + 8;
+    out = snewn(outsize, char);
     count = base64_encode_block((const char *)reply, reply_size, out, &es);
     count += base64_encode_blockend(out + count, &es);
     /* Through the same seam as the OSC 52 and OSC 5522 replies, rather than three
@@ -4296,51 +4339,638 @@ static void far2l_send_reply(Terminal *term, const unsigned char *reply, int rep
     put_byte(sb, '\x07');
     kitty_osc52_send_raw(term, sb->s, sb->len);
     strbuf_free(sb);
+    smemclr(out, outsize);             /* a get reply carries the clipboard */
     sfree(out);
 }
 
+/* Finish a reply: the request ID goes on top, and nothing is sent at all for
+ * ID 0. Frees the reply either way. */
+static void far2l_reply(Terminal *term, F2lOut *o, unsigned char id)
+{
+    if (id) {
+        f2l_push_u8(o, id);
+        far2l_send_reply(term, o->data, (int)o->len);
+    }
+    f2l_out_free(o);
+}
+
+/* The bare acknowledgement: the ID alone. What an unknown command, a request
+ * too short to read and a command without return values get - an empty reply
+ * is "nothing to say", where silence would leave far2l waiting. */
+static void far2l_reply_empty(Terminal *term, unsigned char id)
+{
+    F2lOut o;
+    f2l_out_init(&o);
+    far2l_reply(term, &o, id);
+}
+
 /*
- * Decode a far2l payload and serve it. The clipboard ('c') subcommands do real
- * get/set against the Windows clipboard, gated by term->clip_allowed (seeded
- * from CONF_shared_clipboard: 0 deny / 1 allow / 2 ask-then-latch). Ported from
- * putty4far2l (PuTTY 0.78.5). Win32 clipboard types/calls come from putty.h's
- * Windows platform headers; the #else paths keep it compiling off-Windows.
+ * The clipboard permission actually in force for THIS request: the session's
+ * far2l clipboard policy (0 deny, 1 allow, 2 ask; latched by the box for the
+ * activation), but zero while the window has no keyboard focus. far2l was once
+ * the one clipboard path that ignored the focus rule; zero rather than a flag
+ * so every check below covers it, and the refusals still answer.
+ */
+static int far2l_clip_perm(Terminal *term)
+{
+    int eff = term->clip_allowed;
+#ifdef MOD_PERSO
+    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus)
+        eff = 0;
+#endif
+    return eff;
+}
+
+/* May a clipboard request other than open be served? An authorised client
+ * holds the (logical) clipboard open, and the permission is still in force. */
+static bool far2l_clip_usable(Terminal *term)
+{
+    return term->far2l_clip_open && far2l_clip_perm(term) == 1;
+}
+
+/* CLIP_OPEN reply: the status, and below it the clipboard features this side
+ * has (sent whatever the status, as far2l's own server does). Status 1 open,
+ * 0 failed (the client may retry), -1 refused: use your own clipboard. */
+static void far2l_clip_open_reply(Terminal *term, unsigned char id, int status)
+{
+    F2lOut o;
+    f2l_out_init(&o);
+    f2l_push_u64(&o, F2L_FEATCLIP_DATA_ID | F2L_FEATCLIP_CHUNKED_SET);
+    f2l_push_u8(&o, (uint8_t)(int8_t)status);
+    far2l_reply(term, &o, id);
+}
+
+static void far2l_clip_grant(Terminal *term)
+{
+    term->far2l_clip_open = true;
+    /* the first set of the transaction replaces the clipboard, the others
+     * add their formats to it */
+    term->far2l_clip_need_empty = true;
+    f2l_chunks_clear(&term->far2l_chunks);
+}
+
+/*
+ * Every served read: an Event Log line and the clipboard activity mark, as an
+ * OSC 52 read has. A refused read: a line too, rate-limited, because the host
+ * decides how often it asks.
+ */
+static void far2l_log_read(Terminal *term, size_t bytes)
+{
+    char *msg = dupprintf(KT_CLIP_FAR2L_LOG_READ, (int)bytes);
+    logevent(term->logctx, msg);
+    sfree(msg);
+#ifdef MOD_PERSO
+    clip_note_activity(term, CLIP_ACT_READ);
+#endif
+}
+
+#define FAR2L_REFUSED_LOG_GAP 5        /* seconds between "refused" lines */
+
+static void far2l_log_refused(Terminal *term)
+{
+    unsigned long now = (unsigned long)time(NULL);
+    if (term->far2l_refused_logged != 0 &&
+        now - term->far2l_refused_logged < FAR2L_REFUSED_LOG_GAP)
+        return;
+    term->far2l_refused_logged = now;
+    logevent(term->logctx, KT_CLIP_FAR2L_LOG_REFUSED);
+}
+
+/* A served data-ID query: no data leaves, but it tells the host whether the
+ * clipboard changed, so it is logged too - rate-limited like a refusal. */
+static void far2l_log_dataid(Terminal *term)
+{
+    unsigned long now = (unsigned long)time(NULL);
+    if (term->far2l_id_logged != 0 &&
+        now - term->far2l_id_logged < FAR2L_REFUSED_LOG_GAP)
+        return;
+    term->far2l_id_logged = now;
+    logevent(term->logctx, KT_CLIP_FAR2L_LOG_DATAID);
+}
+
+/*
+ * The notification request ('n'), parsed. Not shown yet: this is the single
+ * place a far2l notification is to be handed to the desktop notice window
+ * (the OSC 99 entry point, with its setting, limits and flood rule) once that
+ * is wired. Title and text are UTF-8 from the host, not NUL-terminated.
+ */
+static void far2l_notification(Terminal *term,
+                               const unsigned char *title, size_t title_len,
+                               const unsigned char *text, size_t text_len)
+{
+    (void)term; (void)title; (void)title_len; (void)text; (void)text_len;
+}
+
+/* Is a read inside the gate? The gesture comes from the terminal's paste
+ * stamp (term_far2l_paste_gesture: KiTTY's own paste paths, and the paste
+ * keys and middle button forwarded to far2l as events); the gate adds the
+ * 5 seconds and the prolongs. */
+static bool far2l_gate_check(Terminal *term, uint32_t now)
+{
+    f2l_gate_sync(&term->far2l_gate, term->far2l_paste_gesture_seen,
+                  term->far2l_paste_gesture_count,
+                  (uint32_t)term->far2l_paste_gesture_tick);
+    return f2l_gate_open(&term->far2l_gate, now);
+}
+
+/*
+ * May a permission box be raised now? far2l1, a terminal reset and the open
+ * request are all host output, so a host - or a `cat` of a hostile file -
+ * could otherwise raise box after box while the user types, and one misclick
+ * would hand over the clipboard. The first box of a window is free (far2l
+ * opens the clipboard on a copy too, without a paste); every later one needs
+ * a real paste gesture since the last box was raised. Kept per window, across
+ * far2l1 and resets.
+ */
+#define FAR2L_BOX_GESTURE_MS 30000     /* a paste this recent backs an Allow */
+#define FAR2L_REGISTER_MAX   64        /* formats registered per activation */
+
+static bool far2l_box_allowed(Terminal *term)
+{
+    if (!term->far2l_box_shown)
+        return true;
+    if (!term->far2l_paste_gesture_seen)
+        return false;
+    return !term->far2l_box_tick_seen ||
+        term->far2l_paste_gesture_count != term->far2l_box_tick;
+}
+
+/* The clipboard sub-commands ('c'). */
+static void far2l_clipboard(Terminal *term, F2lStack *st, unsigned char id)
+{
+    uint8_t sub;
+    F2lOut o;
+
+    f2l_out_init(&o);
+    if (!f2l_pop_u8(st, &sub)) {
+        far2l_reply_empty(term, id);
+        return;
+    }
+
+    switch (sub) {
+      case 'o': {                          /* CLIP_OPEN */
+        const unsigned char *cid = NULL;
+        size_t cidlen = 0;
+        /* An open without any client ID is the older form of the request:
+         * it is still asked, but "always allow" has nothing to remember. A
+         * client ID that is there but malformed is refused outright, as the
+         * protocol has it. */
+        bool has_cid = st->len > 0;
+        int eff = far2l_clip_perm(term);
+
+        f2l_chunks_clear(&term->far2l_chunks);
+        if (has_cid && (!f2l_pop_str(st, &cid, &cidlen) ||
+                        !f2l_client_id_valid(cid, cidlen))) {
+            far2l_clip_open_reply(term, id, 0);
+            return;
+        }
+        if (eff == 2 && has_cid &&
+            f2l_client_ids_contains(conf_get_str(term->conf,
+                                                 CONF_far2l_client_ids),
+                                    cid, cidlen)) {
+            /* "Always allow this far2l" was answered for this client before.
+             * Latched for the activation like an answer in the box. */
+            term->clip_allowed = 1;
+            eff = 1;
+        }
+        if (eff == 2 && !far2l_box_allowed(term)) {
+            /* No box at the host's will: after the first one, only a real
+             * paste since the last box earns another. Until then a refusal
+             * stands (-1) and anything else is "try later" (0). */
+            far2l_clip_open_reply(term, id, term->far2l_denied ? -1 : 0);
+            return;
+        }
+        if (eff == 2) {
+            /* Ask: the reply waits for the box, and every later request is
+             * held behind it (far2l_process_payload) until the answer. */
+            uint32_t now = (uint32_t)GETTICKCOUNT();
+            term->far2l_box_shown = true;
+            term->far2l_box_tick_seen = term->far2l_paste_gesture_seen;
+            term->far2l_box_tick = term->far2l_paste_gesture_count;
+            /* Allow may open the read gate only on the back of a real paste
+             * shortly before the question, never on the click alone. */
+            term->far2l_wait_gesture = term->far2l_paste_gesture_seen &&
+                (uint32_t)(now - (uint32_t)term->far2l_paste_gesture_tick) <
+                FAR2L_BOX_GESTURE_MS;
+            term->far2l_wait = true;
+            term->far2l_wait_id = id;
+            sfree(term->far2l_wait_cid);
+            term->far2l_wait_cid = has_cid ?
+                dupprintf("%.*s", (int)cidlen, (const char *)cid) : NULL;
+            kitty_far2l_confirm(term, has_cid);
+            return;
+        }
+        if (eff == 1) {
+            far2l_clip_grant(term);
+            far2l_clip_open_reply(term, id, 1);
+        } else {
+            term->far2l_clip_open = false;
+            far2l_clip_open_reply(term, id, -1);
+        }
+        return;
+      }
+      case 'c': {                          /* CLIP_CLOSE */
+        int8_t status = term->far2l_clip_open ? 1 : -1;
+        term->far2l_clip_open = false;
+        f2l_chunks_clear(&term->far2l_chunks);
+        f2l_push_u8(&o, (uint8_t)status);
+        break;
+      }
+      case 'e': {                          /* CLIP_EMPTY */
+        int8_t status = -1;
+        if (far2l_clip_usable(term)) {
+            status = kitty_far2l_clip_empty() ? 1 : 0;
+            if (status == 1)
+                term->far2l_clip_need_empty = false;
+        }
+        f2l_push_u8(&o, (uint8_t)status);
+        break;
+      }
+      case 'a': {                          /* CLIP_ISAVAIL */
+        uint32_t fmt;
+        uint8_t avail = 0;
+        if (!f2l_pop_u32(st, &fmt))
+            break;                         /* too short: the ID alone */
+        if (far2l_clip_usable(term))
+            avail = kitty_far2l_clip_available(fmt) ? 1 : 0;
+        f2l_push_u8(&o, avail);
+        break;
+      }
+      case 'r': {                          /* CLIP_REGISTER_FORMAT */
+        const unsigned char *name;
+        size_t n;
+        uint32_t fmt = 0;
+        if (!f2l_pop_str(st, &name, &n))
+            break;
+        /* Only for an authorised open, and a bounded number per activation:
+         * a registered format is a session-wide atom Windows never frees,
+         * so a host must not be able to register at will. */
+        if (far2l_clip_usable(term) && n > 0 && n < 256 &&
+            term->far2l_registered < FAR2L_REGISTER_MAX) {
+            fmt = kitty_far2l_clip_register((const char *)name, n);
+            if (fmt)
+                term->far2l_registered++;
+        }
+        f2l_push_u32(&o, fmt);
+        break;
+      }
+      case 'S': {                          /* CLIP_SETDATACHUNK */
+        /* No return values: the ID alone, and only every 16th chunk of
+         * far2l's carries one. Bounded by the clipboard ceiling; past it the
+         * closing set fails rather than set a part. */
+        if (far2l_clip_usable(term)) {
+            f2l_chunks_add(&term->far2l_chunks, st,
+                           clip_ceiling_bytes(term));
+        } else {
+            /* refused (focus gone, not open): the upload has a hole now, so
+             * the closing set must fail rather than set what is left */
+            f2l_chunks_clear(&term->far2l_chunks);
+            term->far2l_chunks.overflow = true;
+        }
+        break;
+      }
+      case 's': {                          /* CLIP_SETDATA */
+        uint32_t fmt, len;
+        const unsigned char *p;
+        int8_t status = -1;
+        uint64_t data_id = 0;
+        if (!f2l_pop_u32(st, &fmt) || !f2l_pop_u32(st, &len) ||
+            !(p = f2l_pop_bytes(st, len))) {
+            f2l_chunks_clear(&term->far2l_chunks);
+            break;
+        }
+        if (far2l_clip_usable(term)) {
+            F2lChunks *ch = &term->far2l_chunks;
+            size_t total = ch->len + len;
+            status = 0;
+#ifdef MOD_PERSO
+            /* Same rate cap as OSC 52, sharing its budget: far2l is the other
+             * way a host can overwrite the clipboard. */
+            if (!clip_write_allowed(term))
+                total = 0;
+#endif
+            if (!ch->overflow && total > 0) {
+                unsigned char *buf = NULL;
+                const unsigned char *all = p;
+                if (ch->len) {         /* the chunks first, then this part */
+                    buf = snewn(total, unsigned char);
+                    memcpy(buf, ch->data, ch->len);
+                    if (len)
+                        memcpy(buf + ch->len, p, len);
+                    all = buf;
+                }
+                if (kitty_far2l_clip_set(fmt, all, total,
+                                         term->far2l_clip_need_empty)) {
+                    status = 1;
+                    term->far2l_clip_need_empty = false;
+                    data_id = f2l_data_id(fmt, all, total);
+#ifdef MOD_PERSO
+                    clip_note_activity(term, CLIP_ACT_WRITE);
+#endif
+                }
+                if (buf) {
+                    smemclr(buf, total);
+                    sfree(buf);
+                }
+            }
+        }
+        f2l_chunks_clear(&term->far2l_chunks);
+        if (status == 1)
+            f2l_push_u64(&o, data_id);     /* below the status, on success only */
+        f2l_push_u8(&o, (uint8_t)status);
+        break;
+      }
+      case 'g': {                          /* CLIP_GETDATA */
+        uint32_t fmt;
+        uint32_t now;
+        unsigned char *data;
+        size_t n = 0;
+        if (!f2l_pop_u32(st, &fmt))
+            break;
+        if (!far2l_clip_usable(term)) {
+            f2l_push_u32(&o, 0xFFFFFFFFU); /* "not open": the size alone */
+            break;
+        }
+        now = (uint32_t)GETTICKCOUNT();
+        if (!far2l_gate_check(term, now)) {
+            /* no paste gesture: answered exactly like an empty clipboard */
+            far2l_log_refused(term);
+            f2l_push_u64(&o, 0);
+            f2l_push_u32(&o, 0);
+            break;
+        }
+        data = kitty_far2l_clip_get(fmt, &n);
+        if (!data || n > 0xFFFFFFFFU)
+            n = 0;
+        f2l_push_u64(&o, n ? f2l_data_id(fmt, data, n) : 0);
+        if (n)
+            f2l_push_bytes(&o, data, n);
+        f2l_push_u32(&o, (uint32_t)n);
+        if (data) {
+            smemclr(data, n);
+            sfree(data);
+        }
+        f2l_gate_served(&term->far2l_gate, now);
+        if (n)
+            far2l_log_read(term, n);
+        break;
+      }
+      case 'i': {                          /* CLIP_GETDATAID */
+        uint32_t fmt;
+        uint64_t data_id = 0;
+        if (!f2l_pop_u32(st, &fmt))
+            break;
+        /* needs the gesture like a read, and counts like one: it uses up an
+         * extension of the gate and is logged */
+        if (far2l_clip_usable(term)) {
+            uint32_t now = (uint32_t)GETTICKCOUNT();
+            if (far2l_gate_check(term, now)) {
+                size_t n = 0;
+                unsigned char *data = kitty_far2l_clip_get(fmt, &n);
+                if (data && n)
+                    data_id = f2l_data_id(fmt, data, n);
+                if (data) {
+                    smemclr(data, n);
+                    sfree(data);
+                }
+                f2l_gate_served(&term->far2l_gate, now);
+                far2l_log_dataid(term);
+            } else {
+                far2l_log_refused(term);
+            }
+        }
+        f2l_push_u64(&o, data_id);
+        break;
+      }
+      default:
+        break;                             /* unknown: the ID alone */
+    }
+    far2l_reply(term, &o, id);
+}
+
+/* One request: the stack as decoded, top byte last. */
+static void far2l_dispatch(Terminal *term, const unsigned char *data, size_t len)
+{
+    F2lStack st;
+    uint8_t id, cmd;
+    F2lOut o;
+
+    st.data = data;
+    st.len = len;
+    if (!f2l_pop_u8(&st, &id))
+        return;
+    if (!f2l_pop_u8(&st, &cmd)) {
+        far2l_reply_empty(term, id);
+        return;
+    }
+    f2l_out_init(&o);
+
+    switch (cmd) {
+      case 'c':                            /* CLIPBOARD */
+        far2l_clipboard(term, &st, id);
+        return;
+      case 'x': {                          /* CHOOSE_EXTRA_FEATURES */
+        /* A uint64 under the command letter; it REPLACES the set (the low
+         * 32 bits - none above are defined). A short stack chooses nothing.
+         * No return values: the ID alone. */
+        uint64_t feat = 0;
+        f2l_pop_u64(&st, &feat);
+        term->far2l_features = (unsigned)feat;
+        break;
+      }
+      case 'p':                            /* GET_COLOR_PALETTE: 24-bit */
+        f2l_push_u8(&o, 0);                /* reserved, popped second */
+        f2l_push_u8(&o, 24);
+        break;
+      case 'w': {                          /* GET_WINDOW_MAXSIZE */
+        /* The real largest size, so far2l's "toggle window size" works.
+         * Never 0 x 0: far2l keeps the first answer for its whole run. */
+        int rows = 0, cols = 0;
+        if (!kitty_far2l_max_cells(term, &rows, &cols) || rows <= 0 || cols <= 0) {
+            rows = term->rows;
+            cols = term->cols;
+        }
+        if (rows > 0x7FFF) rows = 0x7FFF;
+        if (cols > 0x7FFF) cols = 0x7FFF;
+        f2l_push_u16(&o, (uint16_t)cols);  /* width below */
+        f2l_push_u16(&o, (uint16_t)rows);  /* height on top */
+        break;
+      }
+      case 'M':                            /* WINDOW_MAXIMIZE */
+      case 'm':                            /* WINDOW_RESTORE */
+        /* The same path as CSI 9 t, and the same switch that stops a host
+         * resizing the window at all. */
+        if (!term->no_remote_resize) {
+            term->win_maximise_pending = true;
+            term->win_maximise_enable = (cmd == 'M');
+            term_schedule_update(term);
+        }
+        break;
+      case 'n': {                          /* DESKTOP_NOTIFICATION */
+        const unsigned char *title, *text;
+        size_t title_len, text_len;
+        if (f2l_pop_str(&st, &title, &title_len) &&
+            f2l_pop_str(&st, &text, &text_len))
+            far2l_notification(term, title, title_len, text, text_len);
+        break;
+      }
+      case 'f':                            /* SET_FKEY_TITLES */
+        f2l_push_u8(&o, 0);                /* no place to show them */
+        break;
+      case 'i':                            /* IMAGE: not supported yet */
+        /* Four zero bytes: far2l fails to read capabilities out of them and
+         * takes that as "no images". */
+        f2l_push_u32(&o, 0);
+        break;
+      default:                             /* x, e, h and anything unknown */
+        break;
+    }
+    far2l_reply(term, &o, id);
+}
+
+/* A request held behind the permission box: the decoded stack, as it came. */
+struct far2l_held {
+    struct far2l_held *next;
+    unsigned char *data;
+    size_t len;
+};
+
+#define FAR2L_HELD_MAX 256             /* requests held behind the box, at most */
+
+static void far2l_held_drop(Terminal *term)
+{
+    struct far2l_held *h;
+    while ((h = term->far2l_held_head) != NULL) {
+        term->far2l_held_head = h->next;
+        smemclr(h->data, h->len);
+        sfree(h->data);
+        sfree(h);
+    }
+    term->far2l_held_tail = NULL;
+    term->far2l_held_n = 0;
+    term->far2l_held_bytes = 0;
+}
+
+static void far2l_reset_state(Terminal *term)
+{
+    if (term->far2l_wait) {
+        kitty_far2l_confirm_end(term);
+        term->far2l_denied = true;     /* closed unanswered: a refusal */
+    }
+    term->far2l_registered = 0;
+    term->far2l_wait = false;
+    sfree(term->far2l_wait_cid);
+    term->far2l_wait_cid = NULL;
+    far2l_held_drop(term);
+    f2l_chunks_clear(&term->far2l_chunks);
+    term->far2l_clip_open = false;
+    f2l_gate_reset(&term->far2l_gate);
+    term->far2l_paste_gesture_seen = false;   /* a paste before this activation grants nothing */
+}
+
+/*
+ * The box answered. Reply to the open that asked, then serve what waited for
+ * it, in order, until the queue is empty or another box is up.
+ */
+void term_far2l_open_answer(Terminal *term, bool allow, bool always)
+{
+    unsigned char id;
+
+    if (!term->far2l_wait)
+        return;                            /* nothing asked, or far2l left */
+    term->far2l_wait = false;
+    id = term->far2l_wait_id;
+    term->clip_allowed = allow ? 1 : 0;    /* latched for the activation */
+    if (allow) {
+        if (always && term->far2l_wait_cid) {
+            /* "Always allow this far2l": this client ID opens the clipboard
+             * without the question from now on, in this session. Saved when
+             * the session has a name; kept for this window otherwise. */
+            char *list = f2l_client_ids_add(
+                conf_get_str(term->conf, CONF_far2l_client_ids),
+                (const unsigned char *)term->far2l_wait_cid,
+                strlen(term->far2l_wait_cid));
+            conf_set_str(term->conf, CONF_far2l_client_ids, list);
+            sfree(list);
+            kitty_far2l_save_client_ids(term);
+        }
+        far2l_clip_grant(term);
+        term->far2l_denied = false;
+        /* Allow on the back of a real paste just before the question counts
+         * as that paste again: by the time the box is answered the paste is
+         * usually more than 5 seconds old, and the first paste after Allow
+         * would come back empty. Allow alone - a box the host raised without
+         * a paste - opens the clipboard, never the read gate. */
+        if (term->far2l_wait_gesture) {
+            term_far2l_paste_gesture(term);
+            /* ...but not a new gesture for the box rule */
+            term->far2l_box_tick_seen = true;
+            term->far2l_box_tick = term->far2l_paste_gesture_count;
+        }
+        far2l_clip_open_reply(term, id, 1);
+    } else {
+        term->far2l_denied = true;     /* no new box until a real paste */
+        term->far2l_clip_open = false;
+        far2l_clip_open_reply(term, id, -1);
+    }
+    term->far2l_wait_gesture = false;
+    sfree(term->far2l_wait_cid);
+    term->far2l_wait_cid = NULL;
+
+    while (!term->far2l_wait && term->far2l_held_head) {
+        struct far2l_held *h = term->far2l_held_head;
+        term->far2l_held_head = h->next;
+        if (!term->far2l_held_head)
+            term->far2l_held_tail = NULL;
+        term->far2l_held_n--;
+        term->far2l_held_bytes -= h->len;
+        far2l_dispatch(term, h->data, h->len);
+        smemclr(h->data, h->len);
+        sfree(h->data);
+        sfree(h);
+    }
+}
+
+/*
+ * The user blocked clipboard writes from the tray balloon: far2l loses the
+ * clipboard at once. An open box closes, the open waiting for it is refused
+ * and what waited behind it is answered as refused too - an Allow clicked
+ * afterwards must not give the permission back.
+ */
+void term_far2l_block(Terminal *term)
+{
+    term->clip_allowed = 0;
+    if (term->far2l_wait) {
+        kitty_far2l_confirm_end(term);
+        term_far2l_open_answer(term, false, false);
+    }
+    term->clip_allowed = 0;
+    /* the terminal's own copy of the setting too, so a new far2l1 does not
+     * seed Ask again from it (0 = SHARED_CLIPBOARD_DISABLED) */
+    conf_set_int(term->conf, CONF_shared_clipboard, 0);
+    term->far2l_clip_open = false;
+    f2l_chunks_clear(&term->far2l_chunks);
+}
+
+/*
+ * Decode a far2l payload and serve it. Requests before the handshake (or after
+ * far2l0) are ignored without a reply, as the protocol has it. Payloads that
+ * did not fit the accumulation ceiling are dropped whole.
  */
 static void far2l_process_payload(Terminal *term)
 {
     base64_decodestate ds;
     char *d_out;
     int d_count;
-    unsigned char id;
-    char *reply = NULL;
-    int reply_size = 0;
-    /*
-     * The permission actually in force for THIS payload: the session's far2l
-     * clipboard policy, but zero while the window has no keyboard focus.
-     *
-     * far2l was the one clipboard path that ignored the focus rule, which made the
-     * rule untrue as stated - "KiTTY never touches your clipboard unless you are
-     * looking at that window" is worth having precisely because it has no
-     * exceptions in it. Zero rather than a separate flag, so every existing
-     * "allowed?" test below is covered without being rewritten, and so the
-     * per-subcommand DENY replies still go out and the remote far2l never hangs
-     * waiting for an answer.
-     */
-    int clip_allowed_eff;
-#ifdef _WINDOWS
-    DWORD len;
-    DWORD zero = 0;
-#endif
+    size_t d_size;
 
+    if (!term->far2l_ext) return;
     if (term->osc_strlen <= FAR2L_DATA_PREFIX_LEN) return;
     /*
      * A payload that did not fit is refused WHOLE, never acted on in part - the
      * same rule as OSC 52, and for the same reason: half a clipboard looks like
-     * success. This used to read "osc_strlen >= OSC_STR_MAX", which was both the
-     * truncation detector AND the thing that made every far2l clipboard SET over
-     * ~2 KB vanish, because the ceiling it compared against was the 2 KB one.
-     * osc_str_overflow is now the honest test: it is set only when the ceiling
-     * for THIS sequence was actually exceeded.
+     * success. osc_str_overflow is set only when the ceiling for THIS sequence
+     * was actually exceeded.
      */
     if (term->osc_str_overflow) {
 #ifdef MOD_PERSO
@@ -4353,256 +4983,60 @@ static void far2l_process_payload(Terminal *term)
         return;
     }
 
-    clip_allowed_eff = term->clip_allowed;
-#ifdef MOD_PERSO
-    if (conf_get_bool(term->conf, CONF_clipboard_require_focus) && !term->has_focus)
-        clip_allowed_eff = 0;
-#endif
-
     base64_init_decodestate(&ds);
-    d_out = snewn(term->osc_strlen, char);
+    d_size = term->osc_strlen;
+    d_out = snewn(d_size, char);
     d_count = base64_decode_block(term->osc_string + FAR2L_DATA_PREFIX_LEN,
                                   term->osc_strlen - FAR2L_DATA_PREFIX_LEN,
                                   d_out, &ds);
-    if (d_count < 2) { sfree(d_out); return; }
+    if (d_count < 1) {
+        sfree(d_out);
+        return;
+    }
 
-    id = (unsigned char)d_out[d_count - 1];   /* last byte = request id */
-
-    switch (d_out[d_count - 2]) {              /* preceding byte = command */
-      case 'c': {                              /* CLIPBOARD */
-        if (d_count < 3) { sfree(d_out); return; }
-        switch (d_out[d_count - 3]) {          /* subcommand */
-          case 'r': {                          /* register format */
-#ifdef _WINDOWS
-            /* SECURITY: the length DWORD sits at d_out+d_count-7, so we need at
-             * least 7 decoded bytes or the read underflows the heap buffer.
-             * Gate behind clip_allowed so a malicious server can't register
-             * clipboard formats with zero user consent. */
-            uint32_t status = 0;
-            if (clip_allowed_eff == 1 && d_count >= 7) {
-                memcpy(&len, d_out + d_count - 3 - 4, sizeof(DWORD));
-                if (len > (DWORD)(d_count - 7)) len = (DWORD)(d_count - 7);
-                d_out[len] = 0;                 /* always terminate the name */
-                status = RegisterClipboardFormatA(d_out);
-            }
-#endif
-            reply_size = 5; reply = snewn(reply_size, char);
-#ifdef _WINDOWS
-            memcpy(reply, &status, sizeof(uint32_t));
-#else
-            memset(reply, 0, 4);
-#endif
-            break;
-          }
-          case 'e': {                          /* empty clipboard */
-#ifdef _WINDOWS
-            char ec_status = 0;
-            if (clip_allowed_eff == 1 && OpenClipboard(NULL)) {
-                ec_status = EmptyClipboard() ? 1 : 0;
-                CloseClipboard();
-            }
-#endif
-            reply_size = 2; reply = snewn(reply_size, char);
-#ifdef _WINDOWS
-            reply[0] = ec_status;
-#else
-            reply[0] = 0;
-#endif
-            break;
-          }
-          case 'a': {                          /* is-format-available */
-#ifdef _WINDOWS
-            /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7,
-             * and gate behind clip_allowed (no zero-consent clipboard probing). */
-            char avail = 0;
-            if (clip_allowed_eff == 1 && d_count >= 7) {
-                uint32_t a_fmt;
-                memcpy(&a_fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
-                avail = IsClipboardFormatAvailable(a_fmt) ? 1 : 0;
-            }
-#endif
-            reply_size = 2; reply = snewn(reply_size, char);
-#ifdef _WINDOWS
-            reply[0] = avail;
-#else
-            reply[0] = 0;
-#endif
-            break;
-          }
-          case 'o': {                          /* open: permission gate */
-            reply_size = 2; reply = snewn(reply_size, char);
-#ifdef _WINDOWS
-            if (clip_allowed_eff == 2) {     /* ask once, then latch */
-                int status = MessageBox(NULL, KT_CLIP_FAR2L_ALLOW_Q,
-                                        KT_CAP_KITTY, MB_OKCANCEL);
-                term->clip_allowed = (status == IDOK) ? 1 : 0;
-                /* KiTTY: answer THIS request with the choice just made.
-                 * clip_allowed_eff still held "ask", so an OK used to be
-                 * answered as a refusal - and far2l, refused, switches to its
-                 * own file clipboard for the rest of its run. */
-                clip_allowed_eff = term->clip_allowed;
-            }
-            reply[0] = (clip_allowed_eff == 1) ? 1 : (char)-1;
-#else
-            reply[0] = (char)-1;
-#endif
-            break;
-          }
-          case 's': {                          /* set clipboard data */
-#ifdef _WINDOWS
-#ifdef MOD_PERSO
-            /* Same rate cap as OSC 52, and sharing its budget: far2l is the other
-             * way a host can overwrite the clipboard, so capping them separately
-             * would just let one host use both and get twice the rate. Dropping
-             * to "not allowed" falls into the ordinary failure reply below, so the
-             * remote far2l gets an answer rather than hanging. */
-            if (clip_allowed_eff == 1 && !clip_write_allowed(term))
-                clip_allowed_eff = 0;
-#endif
-            if (clip_allowed_eff == 1 && d_count >= 4 + 4 + 3) {
-                uint32_t fmt;
-                char *buffer = NULL;
-                int BufferSize = 0;
-                bool set_ok = 0;
-                memcpy(&fmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
-                memcpy(&len, d_out + d_count - 3 - 4 - 4, sizeof(DWORD));
-                if (len > (DWORD)(d_count - 3 - 4 - 4)) len = d_count - 3 - 4 - 4;
-                if (fmt == CF_TEXT) {
-                    int cnt = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)d_out, len, NULL, 0);
-                    if (cnt > 0) {
-                        buffer = calloc(cnt + 1, sizeof(wchar_t));
-                        MultiByteToWideChar(CP_UTF8, 0, (LPCCH)d_out, len, (PWCHAR)buffer, cnt);
-                    }
-                    fmt = CF_UNICODETEXT;
-                    BufferSize = buffer ? (wcslen((PWCHAR)buffer) + 1) * sizeof(WCHAR) : 0;
-                } else if (fmt == CF_UNICODETEXT) {
-                    buffer = calloc((len / sizeof(uint32_t)) + 1, sizeof(wchar_t));
-                    if (buffer)
-                        for (unsigned i = 0; i < len / sizeof(uint32_t); ++i)
-                            ((wchar_t *)buffer)[i] = ((uint32_t *)d_out)[i];
-                    BufferSize = buffer ? (wcslen((PWCHAR)buffer) + 1) * sizeof(WCHAR) : 0;
-                } else if (fmt >= 0xC000) {
-                    buffer = malloc(len);
-                    if (buffer) { memcpy(buffer, d_out, len); BufferSize = len; }
-                }
-                if (buffer && BufferSize > 0) {
-                    HGLOBAL hData = GlobalAlloc(GMEM_MOVEABLE, BufferSize);
-                    void *GData;
-                    if (hData && (GData = GlobalLock(hData))) {
-                        memcpy(GData, buffer, BufferSize);
-                        GlobalUnlock(hData);
-                        if (OpenClipboard(NULL)) {
-                            EmptyClipboard();
-                            if (SetClipboardData(fmt, (HANDLE)hData)) set_ok = 1;
-                            else GlobalFree(hData);
-                            CloseClipboard();
-                        } else GlobalFree(hData);
-                    } else if (hData) GlobalFree(hData);
-                }
-                free(buffer);
-#ifdef MOD_PERSO
-                if (set_ok)
-                    clip_note_activity(term, CLIP_ACT_WRITE);
-#endif
-                reply_size = 2; reply = snewn(reply_size, char);
-                reply[0] = set_ok;
-            } else {
-                reply_size = 2; reply = snewn(reply_size, char); reply[0] = 0;
-            }
-#else
-            reply_size = 2; reply = snewn(reply_size, char); reply[0] = 0;
-#endif
-            break;
-          }
-          case 'g': {                          /* get clipboard data */
-#ifdef _WINDOWS
-            /* SECURITY: 4-byte format id at d_out+d_count-7 -> need d_count>=7. */
-            if (clip_allowed_eff == 1 && d_count >= 7) {
-                uint32_t gfmt;
-                void *ClipText = NULL;
-                int ClipTextSize = 0;
-                memcpy(&gfmt, d_out + d_count - 3 - 4, sizeof(uint32_t));
-                if ((gfmt == CF_TEXT || gfmt == CF_UNICODETEXT || gfmt >= 0xC000) &&
-                    OpenClipboard(NULL)) {
-                    HANDLE hClip = GetClipboardData((gfmt == CF_TEXT) ? CF_UNICODETEXT : gfmt);
-                    void *p;
-                    if (hClip && (p = GlobalLock(hClip))) {
-                        size_t n = GlobalSize(hClip);
-                        if (gfmt == CF_TEXT) {
-                            n = wcsnlen((wchar_t *)p, n / sizeof(wchar_t));
-                            int need = WideCharToMultiByte(CP_UTF8, 0, (wchar_t *)p, n,
-                                                           NULL, 0, NULL, NULL) + 1;
-                            if (need > 0) {
-                                ClipText = calloc(need + 1, 1);
-                                if (ClipText) {
-                                    WideCharToMultiByte(CP_UTF8, 0, (wchar_t *)p, n,
-                                                        (char *)ClipText, need, NULL, NULL);
-                                    ClipTextSize = strlen((char *)ClipText) + 1;
-                                }
-                            }
-                        } else if (gfmt == CF_UNICODETEXT) {
-                            n = wcsnlen((wchar_t *)p, n / sizeof(wchar_t));
-                            ClipText = calloc(n + 1, sizeof(uint32_t));
-                            if (ClipText) {
-                                for (size_t i = 0; i < n; ++i)
-                                    ((uint32_t *)ClipText)[i] = ((uint16_t *)p)[i];
-                                ClipTextSize = (n + 1) * sizeof(uint32_t);
-                            }
-                        } else {
-                            ClipText = malloc(n);
-                            if (ClipText) { memcpy(ClipText, p, n); ClipTextSize = n; }
-                        }
-                        GlobalUnlock(hClip);
-                    }
-                    CloseClipboard();
-                }
-                if (!ClipText || ClipTextSize <= 0) {
-                    reply_size = 5; reply = snewn(reply_size, char);
-                    memset(reply, 0, reply_size);
-                } else {
-                    reply_size = ClipTextSize + 5;   /* data + 4-byte len + id */
-                    reply = snewn(reply_size, char);
-                    memset(reply, 0, reply_size);
-                    memcpy(reply, ClipText, ClipTextSize);
-                    memcpy(reply + ClipTextSize, &ClipTextSize, sizeof(ClipTextSize));
-                }
-                free(ClipText);
-            } else {
-                reply_size = 5; reply = snewn(reply_size, char);
-                memset(reply, 0, reply_size);
-            }
-#else
-            reply_size = 5; reply = snewn(reply_size, char);
-            memset(reply, 0, reply_size);
-#endif
-            break;
-          }
-          default:
-            reply_size = 5; reply = snewn(reply_size, char);
-            memset(reply, 0, reply_size);
-            break;
+    if (term->far2l_wait) {
+        /* The permission box is open: hold this behind the open it waits
+         * for, so the requests are still served in the order they came. */
+        unsigned char id = (unsigned char)d_out[d_count - 1];
+        if (term->far2l_held_n >= FAR2L_HELD_MAX ||
+            term->far2l_held_bytes + (size_t)d_count > clip_ceiling_bytes(term)) {
+            far2l_reply_empty(term, id);   /* fail it rather than drop it */
+        } else {
+            struct far2l_held *h = snew(struct far2l_held);
+            h->next = NULL;
+            h->len = (size_t)d_count;
+            h->data = snewn(h->len, unsigned char);
+            memcpy(h->data, d_out, h->len);
+            if (term->far2l_held_tail)
+                term->far2l_held_tail->next = h;
+            else
+                term->far2l_held_head = h;
+            term->far2l_held_tail = h;
+            term->far2l_held_n++;
+            term->far2l_held_bytes += h->len;
         }
-        break;
-      }
-      case 'p':   /* capabilities: reserved=0, bits=24 */
-        reply_size = 3; reply = snewn(reply_size, char);
-        reply[0] = 0; reply[1] = 24; break;
-      case 'w':   /* GET_WINDOW_MAXSIZE: stub */
-      case 'f':   /* SET_FKEY_TITLES: stub */
-      case 'n':   /* DISPLAY_NOTIFICATION: stub (no tray notification) */
-      default:
-        reply_size = 5; reply = snewn(reply_size, char);
-        memset(reply, 0, reply_size); break;
+    } else {
+        far2l_dispatch(term, (const unsigned char *)d_out, (size_t)d_count);
     }
-
+    smemclr(d_out, d_size);
     sfree(d_out);
-    if (reply && reply_size > 0) {
-        reply[reply_size - 1] = id;
-        far2l_send_reply(term, (const unsigned char *)reply, reply_size);
-    }
-    sfree(reply);
 }
 #endif /* MOD_FAR2L */
+
+#ifdef MOD_FAR2L
+/*
+ * KiTTY far2l key and mouse events: the window has just sent far2l a paste
+ * gesture as an event. far2l pastes by reading the clipboard over the
+ * extensions, so in event mode this - not KiTTY's own paste path - is the
+ * user action that a read of the far2l clipboard follows.
+ */
+void term_far2l_paste_gesture(Terminal *term)
+{
+    term->far2l_paste_gesture_tick = GETTICKCOUNT();
+    term->far2l_paste_gesture_seen = true;
+    term->far2l_paste_gesture_count++;   /* KiTTY: far2l clipboard gate */
+}
+#endif
 
 /*
  * KiTTY: begin accumulating a new OSC-like string, with the ceiling that applies
@@ -7176,6 +7610,9 @@ static void do_osc(Terminal *term)
                 term->far2l_ext = 1;
                 /* seed clipboard permission from config for this session */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
+                /* a new activation starts closed: no open clipboard, no box,
+                 * and no read before the next paste */
+                far2l_reset_state(term);
                 {
                     /* Through the same seam as every other far2l and OSC 52
                      * reply, NOT ldisc_send(): ldisc feeds the local line
@@ -7191,7 +7628,9 @@ static void do_osc(Terminal *term)
                 }
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
+                term->far2l_features = 0;   /* KiTTY: negotiated features end too */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
+                far2l_reset_state(term);   /* far2l left: drop what it held */
             } else if (arg[0] == ':') {
                 far2l_process_payload(term);
             }
@@ -11366,6 +11805,12 @@ void term_request_copy(Terminal *term, const int *clipboards, int n_clipboards)
 
 void term_request_paste(Terminal *term, int clipboard)
 {
+#ifdef MOD_FAR2L
+    /* KiTTY: every paste requested here (menu, mouse, Shift+Ins,
+     * Ctrl+Shift+V) opens far2l's clipboard read gate - before the
+     * paste-events return below, which is a paste gesture too. */
+    term_far2l_paste_gesture(term);
+#endif
 #ifdef MOD_PERSO
     /*
      * KiTTY: with paste-events mode armed, Paste does not paste. The
@@ -11659,6 +12104,9 @@ void term_do_paste(Terminal *term, const wchar_t *data, size_t len)
     if (len == 0)
         return;
     term_seen_key_event(term);
+#ifdef MOD_FAR2L
+    term_far2l_paste_gesture(term);    /* KiTTY: a paste sent to the host */
+#endif
 
     if (term->paste_buffer)
         sfree(term->paste_buffer);
@@ -12444,6 +12892,11 @@ void term_set_focus(Terminal *term, bool has_focus)
      * because they would have no idea why the editor stopped seeing pastes. */
     if (changed && term->osc52_read_decision > 0)
         kitty_osc52_state_changed(term);
+    /* KiTTY: DECSET 1004 focus reports. Straight to the host through the reply
+     * seam, not ldisc: with local line editing on, ldisc would append them to
+     * the line the user is typing. */
+    if (changed && term->focus_reports)
+        kitty_osc52_send_raw(term, has_focus ? "\033[I" : "\033[O", 3);
 #endif
 }
 

@@ -562,6 +562,7 @@ add_executable(test_osc52
   # default include path.
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
   ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
@@ -577,6 +578,15 @@ target_compile_definitions(test_osc52 PRIVATE MOD_PERSO MOD_FAR2L)
 target_link_libraries(test_osc52
   guiterminal settings eventloop utils ${platform_libraries})
 
+# far2l terminal extensions without a window (test/test_far2l.c): the
+# request stack, client IDs, the clipboard read gate, chunked uploads, data
+# IDs and the format conversions of kitty/far2l/far2l_proto.c.
+add_executable(test_far2l
+  ${CMAKE_SOURCE_DIR}/test/test_far2l.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c)
+target_include_directories(test_far2l PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
+target_link_libraries(test_far2l utils ${platform_libraries})
+
 # The plain-text fast path in term_out() against the ordinary path, cell for
 # cell (test/test_textrun.c). Same build of terminal.c as test_osc52 and the
 # kitty target - MOD_PERSO and MOD_FAR2L - since the fast path lives behind
@@ -586,6 +596,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
   ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
@@ -651,6 +662,8 @@ endif()
 set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/far2l/cdecode.c
   ${KITTY_DIR}/far2l/cencode.c
+  ${KITTY_DIR}/far2l/far2l_proto.c   # KiTTY: the far2l request stack, read gate, chunks, data IDs (no window)
+  ${KITTY_DIR}/kitty_far2l.c         # KiTTY: far2l's clipboard and permission box (the seams in kitty_far2l.h)
   ${KITTY_DIR}/kitty.c
   ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
   ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)

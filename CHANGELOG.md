@@ -224,12 +224,31 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`kitty -quickconnect`). "View Keys" is now "Agent Keys & Configuration".
   Adding keys and Help are in the key window already. Remove All Keys and
   Re-encrypt All Keys moved to a right-click menu on its key list.
+- **far2l reads the clipboard only right after a paste.** A far2l session
+  gets the Windows clipboard only within 5 seconds of a paste sent from
+  this window (Ctrl+V, Shift+Ins, a menu or mouse paste), as far2l's own
+  terminal does. Any other read gets an empty clipboard and an Event Log
+  line; every served read is in the Event Log and marked in the title bar.
+- **The far2l clipboard question is a box of its own, with "Always allow
+  this far2l".** It no longer holds up the window and names reading as well
+  as writing. A far2l allowed always opens the clipboard without the
+  question in that session (`Far2lClientIds`); Window > Selection > Remote
+  clipboard can clear the list.
+- **far2l: more of its terminal extensions.** A far2l copy keeps all its
+  formats on the clipboard together (the vertical-block mark, HTML as the
+  Windows HTML format). Large copies arrive in parts, and far2l can tell an
+  unchanged clipboard without reading it again. Alt+F9 in far2l maximises
+  and restores the window, from the real largest size on its monitor.
+  Focus reports (`ESC [ ? 1004 h`) are answered.
 
 ### Fixed
 
 - **far2l gets the clipboard after you allow it.** With the far2l clipboard
   set to Ask, the default, an OK in the box was sent back to far2l as a
   refusal. far2l then used its own clipboard for the rest of its run.
+- **far2l requests follow the protocol more closely.** A request with ID 0
+  gets no reply, a request before far2l announces itself is ignored, and
+  an unknown request is answered with an empty reply.
 - **A window closed maximised opens maximised again.** With "Save settings
   on exit" it kept its old position but the maximised size, so it opened
   too large for the screen. It now keeps the size from before the maximise.

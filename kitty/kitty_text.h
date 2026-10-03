@@ -501,6 +501,8 @@
 #define KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY   "What a remote host may do with your clipboard"
 #define KT_REMOTE_CLIPBOARD_PERMISSIONS              "Permissions"
 #define KT_REMOTE_CLIPBOARD_FAR2L_SHARED_CLIPBOARD   "far2l shared clipboard:"
+/* the button under it: empties Far2lClientIds */
+#define KT_REMOTE_CLIPBOARD_FAR2L_FORGET             "Forget always-allowed far2l clients"
 #define KT_REMOTE_CLIPBOARD_DENY                     "Deny"
 #define KT_REMOTE_CLIPBOARD_ALLOW                    "Allow"
 #define KT_REMOTE_CLIPBOARD_ASK                      "Ask"
@@ -3052,7 +3054,16 @@
 #define KT_CLIP_WHAT_FAR2L                           "A far2l clipboard payload"
 #define KT_CLIP_WHAT_OSC52                           "A remote clipboard write (OSC 52)"
 #define KT_CLIP_WHAT_OSC5522                         "A clipboard request (OSC 5522)"
-#define KT_CLIP_FAR2L_ALLOW_Q                        "Allow far2l clipboard sync?"
+/* far2l: the modeless permission box (kitty/kitty_far2l.c,
+ * caption KT_CAP_KITTYPP), and the Event Log lines of the read gate (%d =
+ * bytes handed out). */
+#define KT_CLIP_FAR2L_ALLOW_Q                        "far2l wants to read/write the Windows clipboard."
+#define KT_CLIP_FAR2L_ALLOW                          "Allow"
+#define KT_CLIP_FAR2L_DENY                           "Deny"
+#define KT_CLIP_FAR2L_ALWAYS                         "Always allow this far2l"
+#define KT_CLIP_FAR2L_LOG_READ                       "far2l read the clipboard (%d bytes)."
+#define KT_CLIP_FAR2L_LOG_REFUSED                    "far2l clipboard read refused: no paste sent in the last 5 seconds."
+#define KT_CLIP_FAR2L_LOG_DATAID                     "far2l checked the clipboard by its data ID."
 /* Shared by OSC 52 and OSC 5522 writes: the modeless Yes/No box (No is the
  * default); its field names the session (KT_OSC52_WHERE_*). */
 #define KT_CLIP_WRITE_ALLOW_Q                        "The remote host wants to set the clipboard.\n" \
