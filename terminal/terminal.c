@@ -4431,6 +4431,11 @@ static void far2l_process_payload(Terminal *term)
                 int status = MessageBox(NULL, KT_CLIP_FAR2L_ALLOW_Q,
                                         KT_CAP_KITTY, MB_OKCANCEL);
                 term->clip_allowed = (status == IDOK) ? 1 : 0;
+                /* KiTTY: answer THIS request with the choice just made.
+                 * clip_allowed_eff still held "ask", so an OK used to be
+                 * answered as a refusal - and far2l, refused, switches to its
+                 * own file clipboard for the rest of its run. */
+                clip_allowed_eff = term->clip_allowed;
             }
             reply[0] = (clip_allowed_eff == 1) ? 1 : (char)-1;
 #else

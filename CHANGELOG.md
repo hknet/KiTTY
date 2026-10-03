@@ -216,6 +216,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **far2l gets the clipboard after you allow it.** With the far2l clipboard
+  set to Ask, the default, an OK in the box was sent back to far2l as a
+  refusal. far2l then used its own clipboard for the rest of its run.
 - **A window closed maximised opens maximised again.** With "Save settings
   on exit" it kept its old position but the maximised size, so it opened
   too large for the screen. It now keeps the size from before the maximise.
