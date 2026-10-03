@@ -175,6 +175,17 @@ typedef struct {
 	 * scrolling beyond that - for a long value the user must be able to
 	 * read whole (an OSC 8 link's target). */
 	const char *detail ;
+	/* kitty_confirm_modeless_words / _check: NULL = the template's own button
+	 * words. Else the Yes/No buttons carry these, each as wide as its words. */
+	const char *b_yes ;
+	const char *b_no ;
+	/* kitty_confirm_modeless_check: NULL = no checkbox. Else the label of a
+	 * checkbox between the question and the buttons, whose state goes to
+	 * done_check with the answer. */
+	const char *check ;
+	int checked ;
+	void (*done_check)( int yes, int checked, void *ctx ) ;
+	void *ctx_check ;
 } kitty_confirm_t ;
 
 #define KITTY_CONFIRM_DETAIL_LINES 6
@@ -317,6 +328,8 @@ void kitty_centre_on_owner( HWND dlg ) {
 /* The box's answer: a modal box ends its dialog loop with it, a modeless one
  * hands it to its callback and goes. */
 static void kitty_confirm_end( HWND h, kitty_confirm_t *cf, int r ) {
+	if( cf && cf->check )   /* read while the box is still there */
+		cf->checked = ( IsDlgButtonChecked( h, IDC_CONFIRM_CHECK ) == BST_CHECKED ) ;
 	if( cf && cf->done ) {
 		if( !cf->answered ) { cf->answered = 1 ; cf->done( r == 1, cf->ctx ) ; }
 		DestroyWindow( h ) ;
@@ -387,6 +400,60 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			{ RECT wr ; GetWindowRect( h, &wr ) ;
 			  SetWindowPos( h, NULL, 0, 0, wr.right-wr.left,
 				(wr.bottom-wr.top)+dh, SWP_NOMOVE|SWP_NOZORDER ) ; }
+		}
+		if( cf && cf->check ) {
+			/* The optional checkbox takes the button row's place, and the
+			 * buttons and the window's foot move down by its height and a
+			 * half-line gap. */
+			HWND cb = GetDlgItem( h, IDC_CONFIRM_CHECK ) ;
+			RECT br, cbr, wr ;
+			int ch, step ;
+			GetWindowRect( GetDlgItem( h, IDYES ), &br ) ;
+			MapWindowPoints( NULL, h, (POINT*)&br, 2 ) ;
+			GetWindowRect( cb, &cbr ) ;
+			MapWindowPoints( NULL, h, (POINT*)&cbr, 2 ) ;
+			ch = cbr.bottom - cbr.top ;
+			step = ch + ch / 2 ;
+			SetWindowTextA( cb, cf->check ) ;
+			MoveWindow( cb, cbr.left, br.top, cbr.right - cbr.left, ch, TRUE ) ;
+			for( id = IDYES ; ; id = IDNO ) {
+				HWND b = GetDlgItem( h, id ) ;
+				RECT r ;
+				GetWindowRect( b, &r ) ; MapWindowPoints( NULL, h, (POINT*)&r, 2 ) ;
+				MoveWindow( b, r.left, r.top + step, r.right-r.left, r.bottom-r.top, TRUE ) ;
+				if( id == IDNO ) break ;
+			}
+			GetWindowRect( h, &wr ) ;
+			SetWindowPos( h, NULL, 0, 0, wr.right-wr.left, (wr.bottom-wr.top)+step,
+				SWP_NOMOVE|SWP_NOZORDER ) ;
+			ShowWindow( cb, SW_SHOW ) ;
+		}
+		if( cf && !cf->three && ( cf->b_yes || cf->b_no ) ) {
+			/* Named buttons: each as wide as the words it carries, the pair
+			 * right-aligned on the template's row; the box widens rather
+			 * than clip a caption. */
+			HWND by = GetDlgItem( h, IDYES ), bn = GetDlgItem( h, IDNO ) ;
+			RECT rc, ry, rn ;
+			int wy, wn, gap, margin, need, cw ;
+			if( cf->b_yes ) SetWindowTextA( by, cf->b_yes ) ;
+			if( cf->b_no ) SetWindowTextA( bn, cf->b_no ) ;
+			GetClientRect( h, &rc ) ;
+			GetWindowRect( by, &ry ) ; MapWindowPoints( NULL, h, (POINT*)&ry, 2 ) ;
+			GetWindowRect( bn, &rn ) ; MapWindowPoints( NULL, h, (POINT*)&rn, 2 ) ;
+			gap = rn.left - ry.right ; if( gap < 4 ) gap = 4 ;
+			margin = rc.right - rn.right ; if( margin < 4 ) margin = 4 ;
+			wy = kitty_theme_button_width( by, ry.right - ry.left ) ;
+			wn = kitty_theme_button_width( bn, rn.right - rn.left ) ;
+			need = wy + gap + wn + 2 * margin ;
+			cw = rc.right - rc.left ;
+			if( need > cw ) {
+				RECT wr ; GetWindowRect( h, &wr ) ;
+				SetWindowPos( h, NULL, 0, 0, (wr.right-wr.left) + (need-cw),
+					wr.bottom-wr.top, SWP_NOMOVE|SWP_NOZORDER ) ;
+				GetClientRect( h, &rc ) ;
+			}
+			MoveWindow( bn, rc.right - margin - wn, rn.top, wn, rn.bottom-rn.top, TRUE ) ;
+			MoveWindow( by, rc.right - margin - wn - gap - wy, ry.top, wy, ry.bottom-ry.top, TRUE ) ;
 		}
 		if( cf && cf->three ) {
 			/* Size each button to its text (the shared helper) and lay the
@@ -462,6 +529,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			SetWindowLongPtr( h, DWLP_USER, 0 ) ;
 			free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
 			free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
+			free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
 			free( cf ) ;
 		}
 		return FALSE ;
@@ -499,6 +567,69 @@ HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
 	ShowWindow( h, SW_SHOW ) ;
 	SetForegroundWindow( h ) ;
 	return h ;
+}
+
+/* Open a filled-in modeless box (caption, text, words and done already set).
+ * On failure every string the box would have owned is freed with it, and
+ * NULL comes back without a callback. */
+static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
+	HWND h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)cf ) ;
+	if( !h ) {
+		free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
+		free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
+		free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
+		free( cf ) ;
+		return NULL ;
+	}
+	ShinyAddAuxDialog( h ) ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+	return h ;
+}
+
+/* kitty_confirm_modeless with the two buttons named (b_yes, b_no; NULL keeps
+ * the template's word). The second stays the default, so a reflex Return
+ * does not agree. Same answer rules; NULL = not made, no callback. */
+HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *b_yes, const char *b_no,
+                                   void (*done)( int yes, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->b_yes = b_yes ? _strdup( b_yes ) : NULL ;
+	cf->b_no = b_no ? _strdup( b_no ) : NULL ;
+	cf->done = done ; cf->ctx = ctx ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
+}
+
+/* kitty_confirm_modeless_check's answer: hands the checkbox on with it. The
+ * box frees its strings, the checkbox label included, on WM_DESTROY. */
+static void kitty_confirm_check_done( int yes, void *ctx ) {
+	kitty_confirm_t *cf = (kitty_confirm_t *)ctx ;
+	if( cf->done_check ) cf->done_check( yes, yes ? cf->checked : 0, cf->ctx_check ) ;
+}
+
+/* kitty_confirm_modeless with the two buttons named (`b_yes`, `b_no`; the
+ * second stays the default) and, when `check` is not NULL, a checkbox of that
+ * label between the question and the buttons. done(yes, checked, ctx) once;
+ * `checked` is 0 unless the first button was pressed with the box ticked.
+ * NULL = not made, no callback. */
+HWND kitty_confirm_modeless_check( HWND owner, const char *caption, const char *text,
+                                   const char *b_yes, const char *b_no, const char *check,
+                                   void (*done)( int yes, int checked, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->b_yes = b_yes ? _strdup( b_yes ) : NULL ;
+	cf->b_no = b_no ? _strdup( b_no ) : NULL ;
+	cf->check = check ? _strdup( check ) : NULL ;
+	cf->done_check = done ; cf->ctx_check = ctx ;
+	cf->done = kitty_confirm_check_done ; cf->ctx = cf ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
 }
 
 /* An announcement has no answer to hand on; a done callback is what makes

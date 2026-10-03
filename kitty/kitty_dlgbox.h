@@ -32,6 +32,17 @@ int kitty_confirm_box_yes_front( HWND owner, const char *caption, const char *te
 HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
                              const char *detail, const char *warn_red,
                              void (*done)( int yes, void *ctx ), void *ctx );
+/* The same box with its two buttons named (b_no stays the default; NULL keeps
+ * the template's word). */
+HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *b_yes, const char *b_no,
+                                   void (*done)( int yes, void *ctx ), void *ctx );
+/* The same box with named buttons (b_no stays the default) and an optional
+ * checkbox (check = its label, or NULL): done(yes, checked, ctx) once;
+ * checked only counts with yes. NULL = not made, no callback. */
+HWND kitty_confirm_modeless_check( HWND owner, const char *caption, const char *text,
+                                   const char *b_yes, const char *b_no, const char *check,
+                                   void (*done)( int yes, int checked, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 /* kitty_info_box, modeless (detail as above); NULL = not made. */
 HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,

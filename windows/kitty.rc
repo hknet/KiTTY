@@ -366,6 +366,10 @@ BEGIN
      * up to a few lines, and gives it a scroll bar beyond that. */
     EDITTEXT        IDC_CONFIRM_DETAIL, 10, 68, 260, 14,
                     ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | NOT WS_VISIBLE | WS_TABSTOP
+    /* The optional checkbox (kitty_confirm_modeless_check, the far2l
+     * clipboard box): hidden unless a box carries one; the dlgproc puts it
+     * where the buttons were and moves them down. */
+    AUTOCHECKBOX    "", IDC_CONFIRM_CHECK, 10, 89, 260, 10, NOT WS_VISIBLE | WS_TABSTOP
 END
 
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to

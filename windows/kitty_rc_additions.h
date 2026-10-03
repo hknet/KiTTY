@@ -591,6 +591,11 @@
 #ifndef IDC_CONFIRM_DETAIL
 #define IDC_CONFIRM_DETAIL 1285
 #endif
+/* The optional CHECKBOX of the shared confirm box (the far2l clipboard box's
+ * "Always allow this far2l"): hidden unless a box carries one. */
+#ifndef IDC_CONFIRM_CHECK
+#define IDC_CONFIRM_CHECK 1296
+#endif
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
  * read files from this PC (OSC 5113, files leaving). One line per file with
  * a checkbox, a count line above the list, "Allow selected" / "Deny". A
