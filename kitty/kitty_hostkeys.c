@@ -277,6 +277,19 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
                 char *keytype, *host, *text, *stamp, *raw;
                 int port;
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+                /* KiTTY (hknet/KiTTY#56): with [KiTTY] keysuffix every
+                 * host-key file - stamps included - ends in it, and the
+                 * readers append it again; a file without it is not one of
+                 * ours. */
+                {
+                    const char *ks = kitty_hostkey_suffix();
+                    size_t fl = strlen(fd.cFileName), sl = strlen(ks);
+                    if (sl) {
+                        if (fl <= sl || stricmp(fd.cFileName + fl - sl, ks))
+                            continue;
+                        fd.cFileName[fl - sl] = '\0';
+                    }
+                }
                 /* File names are the store names MUNGED (ksf_munge); the
                  * readers munge again, so they take the raw name. */
                 raw = ksf_unmunge(fd.cFileName);

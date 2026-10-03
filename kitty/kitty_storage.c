@@ -36,6 +36,7 @@
 #include "kitty.h"
 #include "kitty_params.h"     /* ReadParameterN: the weak stub below is its fallback */
 #include "kitty_storage_int.h"
+#include "kitty_sessionpath.h" /* session names as folder paths */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -215,6 +216,19 @@ void kitty_foreign_notice_clear(int bits)
     if (!(v & (DWORD)bits))
         return;
     kitty_dword_store(KITTY_FOREIGN_NOTICE_VALUE, v & ~(DWORD)bits);
+}
+
+/* KiTTY (hknet/KiTTY#55): the one-time Arrange offer, kept in the store it
+ * is about (the registry hive, or the folder store's state) so a store taken
+ * to another PC or another copy carries its answer with it. */
+#define KITTY_ARRANGE_OFFER_VALUE "SessionArrangeOffered"
+int kitty_arrange_offer_pending(void)
+{
+    return kitty_dword_load(KITTY_ARRANGE_OFFER_VALUE) == 0;
+}
+void kitty_arrange_offer_made(void)
+{
+    kitty_dword_store(KITTY_ARRANGE_OFFER_VALUE, 1);
 }
 
 /* kitty.c: the kitty.ini reader, and the name of its main section. */
@@ -420,7 +434,15 @@ const char *kitty_registry_base(void) { return reg_base_buf; }
 /* See kitty_storage.h. Interlocked because the backup that consumes it runs on
  * a worker thread. */
 static LONG kitty_store_dirty = 0;
-void kitty_store_mark_dirty(void) { InterlockedExchange(&kitty_store_dirty, 1); }
+/* KiTTY: a count of writes, for a window that shows the store and must know
+ * whether to read it again (Organize sessions); never reset. */
+static LONG kitty_store_writes = 0;
+void kitty_store_mark_dirty(void)
+{
+    InterlockedExchange(&kitty_store_dirty, 1);
+    InterlockedIncrement(&kitty_store_writes);
+}
+long kitty_store_generation(void) { return (long)kitty_store_writes; }
 int kitty_store_take_dirty(void) { return InterlockedExchange(&kitty_store_dirty, 0) != 0; }
 
 /*
@@ -675,6 +697,11 @@ char *kitty_read_session_folder(const char *sessionname)
 {
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return NULL;
+    /* A session stored under a path is in that path's folder, whatever its
+     * Folder value says (hknet/KiTTY#55): the path wins, and the next save
+     * writes the matching Folder value back. */
+    if (sessionname && strchr(sessionname, '\\'))
+        return ksp_folder_of(sessionname);
     return kitty_read_session_value_direct(sessionname, KR_FOLDER, 0);
 }
 
@@ -694,6 +721,8 @@ char *kitty_read_session_folder_cached(const char *sessionname)
         return NULL;
     if (!sessionname)
         return kitty_read_session_value_direct(sessionname, KR_FOLDER, 0);
+    if (strchr(sessionname, '\\'))
+        return ksp_folder_of(sessionname);   /* the path wins: no store read */
 
     now = GetTickCount();
     if (kitty_folder_cache.n && now - kitty_folder_cache.stamp > 2000)
@@ -896,12 +925,391 @@ void ksf_list_free(struct ksf_item *h)
         h = n;
     }
 }
+/* ===================================================================== *
+ * KiTTY: session names as folder paths (hknet/KiTTY#55) and the session
+ * file suffix (hknet/KiTTY#56).
+ *
+ * A session "Linux\web\srv01" is the file Sessions\Linux\web\srv01<suffix>,
+ * every component escaped by ksp_component_munge (kitty_sessionpath.c). Two
+ * older layouts are still READ, and a save moves such a session to the
+ * current one:
+ *   - the same path without the suffix (a store from before the suffix was
+ *     set, or a classic store whose putty.conf named one);
+ *   - the flat file Sessions\<ksf_munge(whole name)> this backend wrote before
+ *     names became paths. For a plain name that IS the current file; it only
+ *     differs for a name with a reserved word, a leading or trailing dot or
+ *     space, or a '\' in it.
+ * The legacy file wins while it exists: it is the one on screen, and saving
+ * it either migrates it or - when the current file is ALSO there, as another
+ * session - is refused with the save-clash text (KT_SP_SAVE_CLASH).
+ * ===================================================================== */
+static char g_sess_suffix[64] = "";
+
+void kitty_set_session_suffix(const char *suffix)
+{
+    /* A suffix is a file-name ending, so the characters the escape would
+     * rewrite have no place in it; refuse rather than half-apply. */
+    const char *p;
+    g_sess_suffix[0] = '\0';
+    if (!suffix)
+        return;
+    for (p = suffix; *p; p++)
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
+            return;
+    strncpy(g_sess_suffix, suffix, sizeof(g_sess_suffix) - 1);
+    g_sess_suffix[sizeof(g_sess_suffix) - 1] = '\0';
+}
+const char *kitty_session_suffix(void) { return g_sess_suffix; }
+
+/* Where a save writes the session. */
+char *ksf_session_target_path(const char *sessionname)   /* snewn'd */
+{
+    char *rel = ksp_path_to_relfile(sessionname ? sessionname : "", g_sess_suffix);
+    char *p = dupprintf("%s\\%s", g_sess_dir, rel);
+    sfree(rel);
+    return p;
+}
+
+static bool ksf_exists_file(const char *p)
+{
+    DWORD a = p ? GetFileAttributesA(p) : INVALID_FILE_ATTRIBUTES;
+    return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/*
+ * Without a suffix a session and a folder can want the same name on disk: the
+ * root session "Linux" is the FILE Sessions\Linux, the folder "Linux" the
+ * DIRECTORY Sessions\Linux. Only one of them can exist. These name what is in
+ * the way (relative to the session directory, snewn'd), or return NULL:
+ *   ksf_path_blocker   - for a session: a directory where its file goes, or
+ *                        a file where one of its folders goes;
+ *   ksf_folder_blocker - for a folder: a file where it or a folder above it
+ *                        goes.
+ * A save, a move or a new folder that meets one is refused, never done
+ * half-way (fopen on a directory fails without a word).
+ */
+static bool ksf_exists_dir(const char *p)
+{
+    DWORD a = p ? GetFileAttributesA(p) : INVALID_FILE_ATTRIBUTES;
+    return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
+}
+static char *ksf_parent_file_blocker(const char *rel)
+{
+    /* every proper prefix of rel ending before a '\' */
+    char *buf = dupstr(rel), *q, *hit = NULL;
+    for (q = buf; !hit && (q = strchr(q, '\\')) != NULL; q++) {
+        char *full;
+        *q = '\0';
+        full = dupprintf("%s\\%s", g_sess_dir, buf);
+        if (ksf_exists_file(full))
+            hit = dupstr(buf);
+        sfree(full);
+        *q = '\\';
+    }
+    sfree(buf);
+    return hit;
+}
+char *ksf_path_blocker(const char *sessionname)
+{
+    char *rel, *full, *hit;
+    if (!g_sess_dir[0] || !sessionname || !*sessionname)
+        return NULL;
+    rel = ksp_path_to_relfile(sessionname, g_sess_suffix);
+    full = dupprintf("%s\\%s", g_sess_dir, rel);
+    hit = ksf_exists_dir(full) ? dupstr(rel) : ksf_parent_file_blocker(rel);
+    sfree(full);
+    sfree(rel);
+    return hit;
+}
+char *ksf_folder_blocker(const char *folder)
+{
+    char *rel, *withleaf, *hit;
+    if (!g_sess_dir[0] || ksp_folder_is_root(folder))
+        return NULL;
+    rel = ksp_path_to_relfile(folder, "");
+    /* the folder itself counts too: test it as the parent of a leaf */
+    withleaf = dupcat(rel, "\\x");
+    hit = ksf_parent_file_blocker(withleaf);
+    sfree(withleaf);
+    sfree(rel);
+    return hit;
+}
+
+/* The legacy file holding this session, if there is one and it differs from
+ * the target; NULL otherwise. snewn'd. */
+char *ksf_session_legacy_path(const char *sessionname)
+{
+    char *target = ksf_session_target_path(sessionname);
+    char *cand[2];
+    char *found = NULL;
+    int i;
+    {
+        char *rel = ksp_path_to_relfile(sessionname ? sessionname : "", "");
+        cand[0] = dupprintf("%s\\%s", g_sess_dir, rel);
+        sfree(rel);
+    }
+    {
+        char *m = ksf_munge(sessionname ? sessionname : "");
+        cand[1] = dupprintf("%s\\%s", g_sess_dir, m);
+        sfree(m);
+    }
+    for (i = 0; i < 2 && !found; i++)
+        if (stricmp(cand[i], target) && ksf_exists_file(cand[i]) &&
+            ksp_file_is_session(cand[i]))
+            found = dupstr(cand[i]);
+    sfree(cand[0]);
+    sfree(cand[1]);
+    sfree(target);
+    return found;
+}
+
+/* The file the session is read from: the legacy one while it exists, else the
+ * target. NULL when neither exists. */
+char *ksf_session_find(const char *sessionname)
+{
+    char *p = ksf_session_legacy_path(sessionname);
+    if (p)
+        return p;
+    p = ksf_session_target_path(sessionname);
+    if (ksf_exists_file(p))
+        return p;
+    sfree(p);
+    return NULL;
+}
+
 char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
 {
-    char *m = ksf_munge(sessionname);
-    char *p = dupprintf("%s\\%s", g_sess_dir, m);
-    sfree(m);
-    return p;
+    /* Existing file if any, else where a save would put it - what the callers
+     * outside the backend (window positions, the import's exists check) ask. */
+    char *p = ksf_session_find(sessionname);
+    return p ? p : ksf_session_target_path(sessionname);
+}
+
+/* Create the directories above a session file (mkdir -p below g_sess_dir). */
+void ksf_make_parent_dirs(const char *path)
+{
+    size_t base = strlen(g_sess_dir);
+    char *p = dupstr(path), *q;
+    CreateDirectoryA(g_sess_dir, NULL);
+    if (strnicmp(p, g_sess_dir, base) || p[base] != '\\') {
+        sfree(p);
+        return;
+    }
+    for (q = p + base + 1; (q = strchr(q, '\\')) != NULL; q++) {
+        *q = '\0';
+        CreateDirectoryA(p, NULL);
+        *q = '\\';
+    }
+    sfree(p);
+}
+
+/* Remove the directories above a removed session file while they are empty,
+ * stopping at g_sess_dir. RemoveDirectory refuses a directory with anything
+ * in it, so a folder that still holds a session - or a .gitkeep - stays. */
+void ksf_prune_empty_dirs(const char *path)
+{
+    size_t base = strlen(g_sess_dir);
+    char *p = dupstr(path), *bs;
+    if (strnicmp(p, g_sess_dir, base) || p[base] != '\\') {
+        sfree(p);
+        return;
+    }
+    while ((bs = strrchr(p, '\\')) != NULL && (size_t)(bs - p) > base) {
+        *bs = '\0';
+        if (!RemoveDirectoryA(p))
+            break;
+    }
+    sfree(p);
+}
+
+/* Enumerate the folder store: every session file below g_sess_dir, as path
+ * identities. Dot-files and dot-directories are never looked at (a session
+ * folder kept in Git holds .git and .gitignore); a file counts only when its
+ * content says it is a session (ksp_file_is_session). Junctions and symlinks
+ * are not followed, and the depth is capped, so a loop cannot hang the list. */
+#define KSF_ENUM_MAXDEPTH 24
+static void ksf_enum_add(char ***names, int *count, int *alloc, char *name)
+{
+    int j;
+    for (j = 0; j < *count; j++)
+        if (!stricmp((*names)[j], name)) {   /* "foo" and "foo<suffix>" */
+            sfree(name);
+            return;
+        }
+    if (*count >= *alloc) {
+        *alloc = *alloc ? *alloc * 2 : 16;
+        *names = sresize(*names, *alloc, char *);
+    }
+    (*names)[(*count)++] = name;
+}
+/*
+ * What the listing costs: one directory walk, plus a read of the files whose
+ * verdict is not known yet. Every file is judged by its content, the
+ * configured suffix included (a note named like a session is not one); a
+ * file is read only until a HostName or Protocol line turns up - and KiTTY++
+ * writes those near the top. The verdict cache (ksp_file_verdict) keeps each
+ * file's verdict against the size and time the walk reports, so a listing
+ * reads again only the files that are new or changed. `leaf` (NULL = all)
+ * narrows the walk to the sessions of that name: the bare-name lookup behind
+ * -load, a jump host or a host argument then opens at most the files that
+ * share the name, never the whole store.
+ */
+static void ksf_enum_dir(const char *dir, const char *prefix, int depth,
+                         char ***names, int *count, int *alloc,
+                         const char *leaf)
+{
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE hf = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (hf == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        char *full, *comp;
+        if (fd.cFileName[0] == '.')
+            continue;                    /* ".", "..", .git, .gitignore */
+        /* A folder junction or link is not followed (a loop would never end);
+         * a FILE with the attribute is an ordinary placeholder of a synced
+         * folder (OneDrive, Dropbox) and is a session like any other. */
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+            (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            comp = ksp_component_unmunge(fd.cFileName);
+            if (depth < KSF_ENUM_MAXDEPTH && comp[0] && !strchr(comp, '\\')) {
+                char *sub = dupcat(prefix, comp, "\\");
+                ksf_enum_dir(full, sub, depth + 1, names, count, alloc, leaf);
+                sfree(sub);
+            }
+            sfree(comp);
+        } else {
+            char *fname = dupstr(fd.cFileName);
+            ksp_strip_suffix(fname, g_sess_suffix);
+            comp = ksp_component_unmunge(fname);
+            sfree(fname);
+            /* A '\' inside one component cannot be told from a folder; only
+             * the flat legacy files at the top level carry one (that is what
+             * they mean: a whole path in one file name). */
+            if (comp[0] && (!prefix[0] || !strchr(comp, '\\')) &&
+                (!leaf || !stricmp(ksp_leaf(comp), leaf)) &&
+                ksp_file_verdict(full,
+                    ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow,
+                    ((unsigned long long)fd.ftLastWriteTime.dwHighDateTime << 32) |
+                    fd.ftLastWriteTime.dwLowDateTime))
+                ksf_enum_add(names, count, alloc, dupcat(prefix, comp));
+            sfree(comp);
+        }
+        sfree(full);
+    } while (FindNextFileA(hf, &fd));
+    FindClose(hf);
+}
+
+char **ksf_enum_sessions(int *count)
+{
+    char **names = NULL;
+    int alloc = 0;
+    *count = 0;
+    if (g_sess_dir[0]) {
+        /* The whole store is met: verdicts of files gone since are dropped. */
+        unsigned long gen = ksp_verdict_walk_begin();
+        ksf_enum_dir(g_sess_dir, "", 0, &names, count, &alloc, NULL);
+        ksp_verdict_walk_end(gen);
+    }
+    return names;
+}
+
+char **ksf_enum_sessions_leaf(const char *leaf, int *count)
+{
+    char **names = NULL;
+    int alloc = 0;
+    *count = 0;
+    if (g_sess_dir[0] && leaf && *leaf)
+        ksf_enum_dir(g_sess_dir, "", 0, &names, count, &alloc, leaf);
+    return names;
+}
+
+/*
+ * Change the session file suffix on disk, once: every session file ending in
+ * `oldsuf` (or with no suffix, the legacy form) is renamed to end in `newsuf`.
+ * A file whose new name already exists is left alone and named in `clashes`
+ * (one relative path per line). With dry_run nothing moves and the return is
+ * the number of files that would be renamed. Returns the number renamed.
+ */
+static int ksf_suffix_walk(const char *dir, const char *rel, int depth,
+                           const char *oldsuf, const char *newsuf,
+                           int dry_run, strbuf *clashes)
+{
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE hf = FindFirstFileA(pat, &fd);
+    int n = 0;
+    sfree(pat);
+    if (hf == INVALID_HANDLE_VALUE)
+        return 0;
+    do {
+        char *full;
+        if (fd.cFileName[0] == '.' ||
+            ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+             (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
+            continue;
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (depth < KSF_ENUM_MAXDEPTH) {
+                char *subrel = dupcat(rel, fd.cFileName, "\\");
+                n += ksf_suffix_walk(full, subrel, depth + 1, oldsuf, newsuf,
+                                     dry_run, clashes);
+                sfree(subrel);
+            }
+        } else if (ksp_file_is_session(full)) {
+            char *base = dupstr(fd.cFileName);
+            char *to;
+            int had_old = ksp_strip_suffix(base, oldsuf);
+            to = dupprintf("%s\\%s%s", dir, base, newsuf ? newsuf : "");
+            /* A file already ending in the new suffix is listed under the
+             * stripped name already: appending it a second time would rename
+             * the session, not migrate it. */
+            if (!had_old && newsuf && *newsuf) {
+                char *chk = dupstr(fd.cFileName);
+                if (ksp_strip_suffix(chk, newsuf)) {
+                    sfree(to);
+                    to = dupstr(full);
+                }
+                sfree(chk);
+            }
+            if (stricmp(to, full)) {
+                if (ksf_exists_file(to)) {
+                    if (clashes) {
+                        if (clashes->len)
+                            put_byte(clashes, '\n');
+                        put_fmt(clashes, "%s%s", rel, fd.cFileName);
+                    }
+                } else if (dry_run) {
+                    n++;
+                } else if (MoveFileA(full, to)) {
+                    n++;
+                }
+            }
+            sfree(to);
+            sfree(base);
+        }
+        sfree(full);
+    } while (FindNextFileA(hf, &fd));
+    FindClose(hf);
+    return n;
+}
+
+int kitty_session_suffix_rename(const char *oldsuf, const char *newsuf,
+                                int dry_run, strbuf *clashes)
+{
+    int n;
+    if (!store_is_file())
+        return 0;
+    n = ksf_suffix_walk(g_sess_dir, "", 0, oldsuf ? oldsuf : "",
+                        newsuf ? newsuf : "", dry_run, clashes);
+    if (n && !dry_run)
+        kitty_store_mark_dirty();
+    return n;
 }
 /* A cyd01-syntax file was written by old (<=0.76) KiTTY, whose portable saves
  * stored "Password" bcrypt-encrypted, same scheme as its old registry hive
@@ -997,18 +1405,25 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
         ksf_convert_legacy_password(&head);
     return head;
 }
-void ksf_save(const char *path, struct ksf_item *h)
+/* Returns true only when the whole file was written and closed: the caller
+ * removes an older copy of the session on that, and on nothing less. */
+bool ksf_save(const char *path, struct ksf_item *h)
 {
     FILE *fp;
+    bool ok;
     CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
     fp = fopen(path, "wb");
-    if (!fp) return;
+    if (!fp) return false;
     for (; h; h = h->next) {
         char *mv = ksf_munge(h->val ? h->val : "");
         fprintf(fp, "%s=%s\n", h->key, mv ? mv : "");
         if (mv) sfree(mv);
     }
-    fclose(fp);
+    ok = !ferror(fp);
+    if (fclose(fp) != 0)
+        ok = false;
+    ksp_verdict_forget(path);   /* judged afresh at the next listing */
+    return ok;
 }
 
 char *portable_root_dir(void)           /* snewn'd or NULL */
@@ -1022,9 +1437,43 @@ char *portable_root_dir(void)           /* snewn'd or NULL */
     return root;
 }
 
+/* KiTTY: the host-key folder of the folder store, and an ending on host-key
+ * file names - kitty.ini [KiTTY] sshhostkeys / keysuffix, set at startup. An
+ * empty folder means the SshHostKeys folder beside Sessions, as before. */
+static char g_hostkey_dir[1024] = "";
+static char g_hostkey_suffix[64] = "";
+void kitty_set_hostkey_dir(const char *dir)
+{
+    g_hostkey_dir[0] = '\0';
+    if (dir && *dir) {
+        strncpy(g_hostkey_dir, dir, sizeof(g_hostkey_dir) - 1);
+        g_hostkey_dir[sizeof(g_hostkey_dir) - 1] = '\0';
+        while (g_hostkey_dir[0] &&
+               g_hostkey_dir[strlen(g_hostkey_dir) - 1] == '\\')
+            g_hostkey_dir[strlen(g_hostkey_dir) - 1] = '\0';
+    }
+}
+const char *kitty_hostkey_dir(void) { return g_hostkey_dir; }
+void kitty_set_hostkey_suffix(const char *suffix)
+{
+    const char *p;
+    g_hostkey_suffix[0] = '\0';
+    if (!suffix)
+        return;
+    for (p = suffix; *p; p++)
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
+            return;
+    strncpy(g_hostkey_suffix, suffix, sizeof(g_hostkey_suffix) - 1);
+    g_hostkey_suffix[sizeof(g_hostkey_suffix) - 1] = '\0';
+}
+const char *kitty_hostkey_suffix(void) { return g_hostkey_suffix; }
+
 char *portable_subdir_path(const char *subdir)     /* snewn'd */
 {
-    char *root = portable_root_dir();
+    char *root;
+    if (g_hostkey_dir[0] && !strcmp(subdir, "SshHostKeys") && store_is_file())
+        return dupstr(g_hostkey_dir);
+    root = portable_root_dir();
     char *path = root ? dupprintf("%s\\%s", root, subdir) : NULL;
     sfree(root);
     return path;
@@ -1034,7 +1483,10 @@ char *portable_item_path(const char *subdir, const char *name)
 {
     char *dir = portable_subdir_path(subdir);
     char *m = ksf_munge(name ? name : "");
-    char *path = (dir && m) ? dupprintf("%s\\%s", dir, m) : NULL;
+    /* KiTTY: keysuffix ends every host-key file name (never the folder). */
+    const char *suf = (name && *name && !strcmp(subdir, "SshHostKeys")) ?
+        g_hostkey_suffix : "";
+    char *path = (dir && m) ? dupprintf("%s\\%s%s", dir, m, suf) : NULL;
     sfree(dir);
     sfree(m);
     return path;

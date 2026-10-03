@@ -76,7 +76,8 @@ enum {
     KFS_UNREADABLE        /* the file did not parse as a session */
 };
 struct kitty_folder_scan_item {
-    char *name;           /* the session name (the file name, unmunged) */
+    char *name;           /* the session name (the file name, suffix off, unmunged) */
+    char *fname;          /* the file name as found, for a changed suffix */
     char *path;           /* full path of the file */
     char *folder;         /* target folder the user assigned (owned) */
     int state;            /* KFS_* */
@@ -93,6 +94,14 @@ struct kitty_folder_scan {
 struct kitty_folder_scan *kitty_scan_folder_store(const char *root,
                                                   const char *default_folder);
 void kitty_folder_scan_free(struct kitty_folder_scan *s);
+/* The scanned rows' names again, with `suffix` (may be empty) taken off the
+ * file names - the old store's session file suffix (hknet/KiTTY#56). */
+void kitty_folder_scan_set_suffix(struct kitty_folder_scan *s, const char *suffix);
+/* The session file suffix an old store was kept with: its kitty.ini [KiTTY]
+ * sessionsuffix, else its putty.conf sessionsuffix=, looked for in `root`
+ * and - when `root` is a Sessions folder - in the folder above it. ""
+ * when none is found. snewn'd. */
+char *kitty_store_suffix_of(const char *root);
 /* Does a session of this name exist in OUR store (registry key or file,
  * whichever this KiTTY runs)? */
 bool kitty_own_session_exists(const char *name);

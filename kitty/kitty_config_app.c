@@ -52,6 +52,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_sessorg.h"      /* Organize sessions (hknet/KiTTY#55) */
 
 #define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
 
@@ -3826,6 +3827,205 @@ void scb_panel_shortcut_editor(struct controlbox *b, const char *path)
     sc->tnote->text.lines = 2;
 }
 
+/* ==== The folder store's session file suffix and host-key folder ========
+ * (hknet/KiTTY#56). Both are kitty.ini [KiTTY] keys that only mean anything
+ * in a folder store, so in the registry store both rows are greyed; so are
+ * they when nothing can be written (readonly=yes, conf=no). */
+
+static bool kitty_sp_folder_store_writable(void)
+{
+    const char *ini = GetKittyIniFile();
+    return kitty_storage_is_portable() && ini && ini[0] &&
+        !GetReadOnlyFlag() && !GetNoKittyFileFlag();
+}
+
+/* The session list, re-read: the suffix changes the names it shows. */
+static void kitty_sp_refresh_session_list(dlgparam *dlg)
+{
+    struct sessionsaver_data *ssd = kitty_session_ssd;
+    if (ssd && ssd->listbox) {
+        get_sesslist(&ssd->sesslist, false);
+        get_sesslist(&ssd->sesslist, true);
+        kitty_session_folder_cache_clear();
+        dlg_refresh(ssd->listbox, dlg);
+    }
+    kitty_notify_launcher_sessions_changed();
+}
+
+/* Application > Migration > "Organize sessions..." (hknet/KiTTY#55). */
+static void kitty_sessorg_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    (void)ctrl; (void)dlg; (void)data;
+    if (event == EVENT_ACTION)
+        kitty_sessorg_open(kitty_cfg_modal_owner());
+}
+
+static dlgcontrol *ksp_suffix_edit = NULL;
+
+/* The suffix-rename question's answer (modeless: the configuration window
+ * carries on while it stands). Yes renames the files from the old suffix to
+ * the new and says what happened; No leaves them as they are. */
+struct ksp_suffix_ask {
+    char *oldsuf, *newsuf;
+};
+static void kitty_sp_suffix_answer(int yes, void *ctx)
+{
+    struct ksp_suffix_ask *a = (struct ksp_suffix_ask *)ctx;
+    if (yes) {
+        strbuf *clashes = strbuf_new(), *msg = strbuf_new();
+        int done = kitty_session_suffix_rename(a->oldsuf, a->newsuf, 0, clashes);
+        put_fmt(msg, KT_SP_SUFFIX_RENAMED, done);
+        if (clashes->len) {
+            const char *p;
+            int nclash = 1;
+            for (p = clashes->s; *p; p++)
+                if (*p == '\n')
+                    nclash++;
+            put_datapl(msg, PTRLEN_LITERAL("\n\n"));
+            put_fmt(msg, KT_SP_SUFFIX_LEFT, nclash);
+        }
+        /* The clash list goes into the box's scrolling field: it can be
+         * long, and the box must stay on the screen. */
+        kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg->s,
+                            clashes->len ? clashes->s : NULL, NULL);
+        strbuf_free(msg);
+        strbuf_free(clashes);
+        kitty_config_session_store_changed();
+    }
+    sfree(a->oldsuf);
+    sfree(a->newsuf);
+    sfree(a);
+}
+
+/* The text box: shows the suffix in force. Typing changes nothing until
+ * "Apply suffix" - a rename of files must not fire per keystroke. */
+static void kitty_sp_suffix_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                         void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        cfgwin_refreshing = 1;
+        dlg_editbox_set(ctrl, dlg, kitty_session_suffix());
+        cfgwin_refreshing = 0;
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+    }
+}
+
+/*
+ * "Apply suffix": the new suffix goes into kitty.ini and into force, and the
+ * session files that carry the old one (or none) are offered a rename, once.
+ * Declining keeps the files as they are and still applies the suffix: a file
+ * without it stays listed and gets it on its next save.
+ */
+static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    char *nw, *old;
+    const char *p;
+    int n;
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+        return;
+    }
+    if (event != EVENT_ACTION || !ksp_suffix_edit ||
+        !kitty_sp_folder_store_writable())
+        return;
+    nw = dlg_editbox_get(ksp_suffix_edit, dlg);
+    str_rtrim(nw, " \t");
+    for (p = nw; *p; p++)
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
+            break;
+    old = dupstr(kitty_session_suffix());
+    if (*p || !strcmp(old, nw)) {
+        /* Not a file-name ending, or nothing changed: put the value in
+         * force back. */
+        dlg_beep(dlg);
+        dlg_refresh(ksp_suffix_edit, dlg);
+        sfree(nw);
+        sfree(old);
+        return;
+    }
+    /* The suffix applies at once; the rename of the files is the question,
+     * asked in a modeless box whose answer does the rename
+     * (kitty_sp_suffix_answer). */
+    n = kitty_session_suffix_rename(old, nw, 1, NULL);
+    writeINI(GetKittyIniFile(), INIT_SECTION, KI_SESSIONSUFFIX, nw);
+    kitty_set_session_suffix(nw);
+    kitty_store_mark_dirty();
+    kitty_sp_refresh_session_list(dlg);
+    if (n > 0) {
+        char *q = dupprintf(KT_SP_SUFFIX_RENAME_Q, n,
+                            old[0] ? old : KT_SP_SUFFIX_NONE,
+                            nw[0] ? nw : KT_SP_SUFFIX_NONE);
+        struct ksp_suffix_ask *a = snew(struct ksp_suffix_ask);
+        a->oldsuf = old;
+        a->newsuf = nw;
+        old = nw = NULL;
+        if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP,
+                                          q, NULL, NULL, NULL,
+                                          kitty_sp_suffix_answer, a)) {
+            sfree(a->oldsuf);
+            sfree(a->newsuf);
+            sfree(a);
+        }
+        sfree(q);
+    }
+    sfree(nw);
+    sfree(old);
+}
+
+static dlgcontrol *ksp_hostkeys_edit = NULL;
+
+/* "Host keys folder": the folder store's host-key folder in force, written
+ * to kitty.ini [KiTTY] sshhostkeys as it is typed (empty = the SshHostKeys
+ * folder beside Sessions). The registry store shows its key, read-only. */
+static void kitty_sp_hostkeys_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        char *shown;
+        if (kitty_storage_is_portable()) {
+            shown = kitty_hostkey_dir()[0] ? dupstr(kitty_hostkey_dir()) :
+                portable_subdir_path("SshHostKeys");
+        } else {
+            shown = dupprintf(KT_SP_HOSTKEYS_REGISTRY, kitty_reg_hostkeys());
+        }
+        cfgwin_refreshing = 1;
+        dlg_editbox_set(ctrl, dlg, shown ? shown : "");
+        cfgwin_refreshing = 0;
+        sfree(shown);
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+    } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing &&
+               kitty_sp_folder_store_writable()) {
+        char *v = dlg_editbox_get(ctrl, dlg);
+        str_rtrim(v, " \t");
+        writeINI(GetKittyIniFile(), INIT_SECTION, KI_SSHHOSTKEYS, v);
+        kitty_set_hostkey_dir(v);
+        sfree(v);
+    }
+}
+
+static void kitty_sp_hostkeys_browse_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    char dir[MAX_PATH * 2], *cur;
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+        return;
+    }
+    if (event != EVENT_ACTION || !ksp_hostkeys_edit ||
+        !kitty_sp_folder_store_writable())
+        return;
+    cur = dlg_editbox_get(ksp_hostkeys_edit, dlg);
+    if (OpenDirNameFrom(dlg->hwnd, dir, cur, KT_SP_HOSTKEYS_FOLDER) && dir[0])
+        dlg_editbox_set(ksp_hostkeys_edit, dlg, dir);   /* VALCHANGE writes it */
+    sfree(cur);
+}
+
 /* ==== The tree's roots: KiTTY++ Settings, Session Panel ================= */
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
@@ -3852,7 +4052,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 
     /* The status: store, file, and whether writes are possible. ctrl_text
      * copies its string, so a line built here need not outlive the call. */
-    s = ctrl_getset(b, storage, "status", KT_KSET_STORAGE_THIS_KITTY);
+    s = ctrl_getset(b, storage, "status", KT_SP_STORAGE_THIS_KITTYPP);
     if (mode == KSET_SAVEMODE_DIR)
         snprintf(line, sizeof(line), KT_KSET_STORAGE_STORE_FOLDER,
                  ConfigDirectory ? ConfigDirectory : "");
@@ -3867,6 +4067,22 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     else
         snprintf(line, sizeof(line), KT_KSET_STORAGE_INI, ini);
     ctrl_text(s, line, HELPCTX(kitty_storage));
+    /* KiTTY (hknet/KiTTY#56): where accepted host keys are kept. A folder
+     * store's folder can be moved here; the registry store's key is shown
+     * read-only, its Browse... greyed. */
+    {
+        dlgcontrol *c;
+        ctrl_columns(s, 2, 75, 25);
+        ksp_hostkeys_edit = ctrl_editbox(s, KT_SP_HOSTKEYS_FOLDER, NO_SHORTCUT, 65,
+                                         HELPCTX(kitty_storage),
+                                         kitty_sp_hostkeys_handler, P(NULL), P(NULL));
+        ksp_hostkeys_edit->column = 0;
+        c = ctrl_pushbutton(s, KT_SP_HOSTKEYS_BROWSE, NO_SHORTCUT, HELPCTX(kitty_storage),
+                            kitty_sp_hostkeys_browse_handler, P(NULL));
+        c->column = 1;
+        c->align_next_to = ksp_hostkeys_edit;
+        ctrl_columns(s, 1, 100);
+    }
     if (GetReadOnlyFlag())
         ctrl_text(s, KT_KSET_STORAGE_READONLY, HELPCTX(kitty_storage));
     if (GetNoKittyFileFlag())
@@ -3980,6 +4196,21 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU,
                   NO_SHORTCUT, HELPCTX(kitty_folders),
                   kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_FILTER));
+    /* KiTTY (hknet/KiTTY#56): the folder store's session file suffix - the
+     * text box, and the button that applies it (and offers the rename). */
+    {
+        dlgcontrol *c;
+        ctrl_columns(s, 2, 70, 30);
+        ksp_suffix_edit = ctrl_editbox(s, KT_SP_SUFFIX_LABEL, NO_SHORTCUT, 50,
+                                       HELPCTX(kitty_folders),
+                                       kitty_sp_suffix_edit_handler, P(NULL), P(NULL));
+        ksp_suffix_edit->column = 0;
+        c = ctrl_pushbutton(s, KT_SP_SUFFIX_APPLY, NO_SHORTCUT, HELPCTX(kitty_folders),
+                            kitty_sp_suffix_apply_handler, P(NULL));
+        c->column = 1;
+        c->align_next_to = ksp_suffix_edit;
+        ctrl_columns(s, 1, 100);
+    }
 
     s = ctrl_getset(b, "Application/Config Window/Session Panel", "opening", KT_SESSION_PARAMETER_OPENING);
     ctrl_checkbox(s, KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED,
@@ -4401,7 +4632,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
     struct migf_data *m = (struct migf_data *)ctrl->context.p;
     int which = ctrl->context2.i;      /* 0 folder box, 1 browse, 2 scan,
                                           3 target combo, 4 assign, 5 list,
-                                          6 import */
+                                          6 import, 7 suffix */
     if (!m)
         return;
 
@@ -4422,9 +4653,16 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (event == EVENT_ACTION) {
             char dir[MAX_PATH * 2];
             if (OpenDirName(dlg->hwnd, dir) && dir[0]) {
+                char *suf;
                 snprintf(m->root, sizeof(m->root), "%s", dir);
                 if (m->folderbox)
                     dlg_refresh(m->folderbox, dlg);
+                /* The suffix that store was kept with, when it says. */
+                suf = kitty_store_suffix_of(m->root);
+                snprintf(m->suffix, sizeof(m->suffix), "%s", suf);
+                sfree(suf);
+                if (m->suffixbox)
+                    dlg_refresh(m->suffixbox, dlg);
             }
         }
         break;
@@ -4439,6 +4677,16 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
             kitty_folder_scan_free(m->found);
             m->found = kitty_scan_folder_store(m->root, folder);
             sfree(folder);
+            /* A typed folder gets its suffix looked up here, unless one was
+             * typed already. */
+            if (!m->suffix[0]) {
+                char *suf = kitty_store_suffix_of(m->root);
+                snprintf(m->suffix, sizeof(m->suffix), "%s", suf);
+                sfree(suf);
+                if (m->suffixbox)
+                    dlg_refresh(m->suffixbox, dlg);
+            }
+            kitty_folder_scan_set_suffix(m->found, m->suffix);
             migf_fill_list(m, dlg);
             line = strbuf_new();
             if (m->found->n)
@@ -4452,6 +4700,23 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 put_fmt(line, KT_MIGF_LIMIT_COUNT, KFS_MAX_FILES);
             migf_say(m, dlg, line->s);
             strbuf_free(line);
+        }
+        break;
+
+      case 7:                          /* Suffix to remove from file names */
+        if (event == EVENT_REFRESH) {
+            migf_refreshing = 1;
+            dlg_editbox_set(ctrl, dlg, m->suffix);
+            migf_refreshing = 0;
+        } else if (event == EVENT_VALCHANGE && !migf_refreshing) {
+            char *s = dlg_editbox_get(ctrl, dlg);
+            snprintf(m->suffix, sizeof(m->suffix), "%s", s);
+            sfree(s);
+            /* The list shows the names as they will be imported. */
+            if (m->found) {
+                kitty_folder_scan_set_suffix(m->found, m->suffix);
+                migf_fill_list(m, dlg);
+            }
         }
         break;
 
@@ -4660,6 +4925,10 @@ static void scb_panel_folder_import(struct controlbox *b)
     m->folderbox = ctrl_editbox(s, KT_MIGF_FOLDER, NO_SHORTCUT, 100,
                                 HELPCTX(kitty_import_folders),
                                 kitty_migf_handler, P(m), I(0));
+    /* KiTTY (hknet/KiTTY#56): the old store's session file suffix. */
+    m->suffixbox = ctrl_editbox(s, KT_MIGF_SUFFIX, NO_SHORTCUT, 30,
+                                HELPCTX(kitty_import_folders),
+                                kitty_migf_handler, P(m), I(7));
     ctrl_columns(s, 2, 50, 50);
     c = ctrl_pushbutton(s, KT_MIGF_BROWSE, NO_SHORTCUT, HELPCTX(kitty_import_folders),
                         kitty_migf_handler, P(m));
@@ -4759,6 +5028,20 @@ void scb_panel_application(struct controlbox *b, bool midsession)
                                  HELPCTX(session_saved),
                                  kitty_storexfer_handler, I(1));
             c2->column = 1;
+        }
+        ctrl_columns(s, 1, 100);
+
+        /* KiTTY (hknet/KiTTY#55): the session/folder editor - moving many
+         * sessions between folders, and Arrange - lives here as well as
+         * under the session list. */
+        s = ctrl_getset(b, "Application/Migration", "organize",
+                        KT_SP_ORG_MIGRATION_GROUP);
+        ctrl_columns(s, 2, 50, 50);
+        {
+            dlgcontrol *c3 = ctrl_pushbutton(s, KT_SP_ORG_MIGRATION, NO_SHORTCUT,
+                                             HELPCTX(session_saved),
+                                             kitty_sessorg_handler, P(NULL));
+            c3->column = 0;
         }
         ctrl_columns(s, 1, 100);
 

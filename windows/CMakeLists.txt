@@ -189,6 +189,9 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
 # kittygen_cli and test_storage_roundtrip source lists below, or those
 # targets fail to link.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
+# KiTTY: a session name as a folder path, the name resolver and the session
+# file check (hknet/KiTTY#55, #56). Listed beside kitty_storage.c everywhere.
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
@@ -392,6 +395,7 @@ add_executable(puttygen
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   help.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
@@ -428,6 +432,7 @@ add_executable(kittygen_cli
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   no-jump-list.c
   nohelp.c
@@ -494,6 +499,7 @@ add_executable(test_storage_roundtrip
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
   # the .ktx reader, so the old-export test drives the real parser rather than a
@@ -704,6 +710,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_settings_load.c
   ${KITTY_DIR}/kitty_logkeep.c   # KiTTY: log retention, called from logging.c (listed per terminal target below)
   ${KITTY_DIR}/kitty_migrate.c
+  ${KITTY_DIR}/kitty_sessionrekey.c   # KiTTY: move/rename a session and what hangs off its name (#55)
+  ${KITTY_DIR}/kitty_sessorg.c   # KiTTY: Organize sessions, Arrange, the folder-delete box (#55)
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)

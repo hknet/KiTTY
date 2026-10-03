@@ -739,6 +739,22 @@ bool load_settings(const char *section, Conf *conf)
     if (!section || !strcmp(section, "Default Settings"))
         conf_set_str(conf, CONF_folder, "Default");
 
+    /*
+     * KiTTY (hknet/KiTTY#55): a session stored under a folder PATH
+     * ("Linux\web\srv01") is in that folder, whatever its Folder value says -
+     * the path wins, and putting the path's folder into the Conf here is what
+     * makes the next save write the matching Folder value back. A session
+     * stored by its bare name keeps its Folder value: that is the only place
+     * an unarranged session's folder is recorded. Unguarded, as above.
+     */
+    if (exists && section && strchr(section, '\\')) {
+        const char *bs = strrchr(section, '\\');
+        char *fld = dupprintf("%.*s", (int)(bs - section), section);
+        if (*fld)
+            conf_set_str(conf, CONF_folder, fld);
+        sfree(fld);
+    }
+
     if (settings_load_hook)
         settings_load_hook(section, conf, exists);
 

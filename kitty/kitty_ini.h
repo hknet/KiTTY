@@ -231,20 +231,42 @@ char default_init_file_content[] =
 ;    across instead of stranding it.\n\
 ;configdir=\n\
 \n\
-; browsedirectory: store session FOLDERS as real subdirectories under Sessions\\\n\
-;    (yes/no, default no). The legacy layout from classic KiTTY. This version\n\
-;    writes one flat file per session with a Folder= line inside it whatever\n\
-;    this says, so leaving it off is what you want.\n\
-;    savemode=dir used to switch it on by itself, which sent the folder lookup\n\
-;    hunting for subdirectories that nothing creates - the folder list came up\n\
-;    empty and the tray menu could not group by folder.\n\
-;    It does NOT make an old subdirectory tree readable: sessions inside\n\
-;    subdirectories are not listed at all, so on a normal store turning it on\n\
-;    only stops folders being found. The key is INERT for now; if you carry\n\
-;    an old store whose sessions live in subdirectories, they are not shown\n\
-;    until a migration for that layout exists - move the session files up\n\
-;    into Sessions\\ in the meantime.\n\
+; browsedirectory: classic KiTTY's switch for session folders as\n\
+;    subdirectories (yes/no, default no). Not needed: a folder store keeps\n\
+;    every session at its folder path anyway - Sessions\\Linux\\web\\srv01 is\n\
+;    the session \"srv01\" in the folder Linux\\web - and lists every\n\
+;    subdirectory, whatever this says. Leave it off; on, it only sends the\n\
+;    old tray-menu folder lookup down a path of its own.\n\
 ;browsedirectory=\n\
+\n\
+; sessions: the folder store's session folder (savemode=dir). Default: the\n\
+;    Sessions folder beside kitty.exe, or under configdir. A relative path is\n\
+;    taken from the kitty.exe folder. Copied once from classic KiTTY's\n\
+;    putty.conf (Sessions=), see puttyconfmigrated.\n\
+;sessions=\n\
+\n\
+; sessionsuffix: an ending added to every session file name in the folder\n\
+;    store, for example .ktx. The list shows the names without it; a session\n\
+;    file without it is still listed and gets it on its next save. Changing it\n\
+;    in Application > Config Window > Session Panel offers to rename the\n\
+;    existing files. Folder store only. Default: none.\n\
+;sessionsuffix=\n\
+\n\
+; sshhostkeys: the folder store's host-key folder. Default (empty): the\n\
+;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings\n\
+;    > Storage & Backup. Folder store only.\n\
+;sshhostkeys=\n\
+\n\
+; keysuffix: an ending added to every host-key file name in the folder store.\n\
+;    Files without it are not read. Default: none.\n\
+;keysuffix=\n\
+\n\
+; puttyconfmigrated: written by KiTTY (yes) once classic KiTTY's putty.conf\n\
+;    keys Sessions, sessionsuffix, SshHostKeys and keysuffix have been copied\n\
+;    into the four keys above. From then on only kitty.ini counts: a key\n\
+;    edited or removed here is never copied back, and putty.conf is left as\n\
+;    it was for older copies. Not copied: Jumplist, seedfile.\n\
+;puttyconfmigrated=\n\
 \n\
 ; Folders: the list of session folders, written by KiTTY whenever you add or\n\
 ;    remove one. It is the live list, not a cache of something else, so an\n\

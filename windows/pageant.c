@@ -6230,7 +6230,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             if (wParam >= IDM_SESSIONS_BASE && wParam <= IDM_SESSIONS_MAX) {
                 MENUITEMINFO mii;
                 TCHAR buf[MAX_PATH + 1];
-                TCHAR param[MAX_PATH + 1];
+                TCHAR param[MAX_PATH + 8];   /* KiTTY: room for "&R@" before a MAX_PATH name */
                 memset(&mii, 0, sizeof(mii));
                 mii.cbSize = sizeof(mii);
                 mii.fMask = MIIM_TYPE;

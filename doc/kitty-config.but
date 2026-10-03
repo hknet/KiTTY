@@ -44,9 +44,34 @@ rows instead - see \k{kitty-cfg-sessionlist}. \q{Default} is the folder
 a session gets when you do not choose one; it is not a special folder
 beyond that.
 
-Deleting a folder does not delete the sessions in it. They return to
-\q{Default}, because a session that belongs to nothing cannot be
-listed.
+Deleting a folder does not delete the sessions in it. The box asks where
+they go: \q{All sessions (root)} is preselected, any other folder can be
+picked. Subfolders move along and keep their place below the
+destination. A name that already exists there stops the delete before
+anything moves, and the box names the sessions in the way. An empty
+folder is deleted without asking.
+
+\q{Organize...} (under \q{Del folder}, beside the comment field) and
+\q{Organize sessions...} on \k{kitty-cfg-migration} open the
+\q{Organize sessions} window: the folder tree on the left, the selected
+folder's sessions on the right. Ctrl+click picks single sessions,
+Shift+click a range, Ctrl+A all of them. \q{Move to...} moves the
+selection to a folder picked in a tree, as does dragging it onto a
+folder of the tree; \q{Rename} renames the selected session, or the
+selected folder when the tree has the focus; \q{New folder} creates one
+inside the selected folder; \q{Delete folder} deletes it (see above);
+\q{Arrange...} is described below. A move takes the session's saved
+password, jump list entry and launcher entries with it, and updates the
+sessions that use it as SSH jump host, which are listed afterwards. A
+name that already exists at the destination moves nothing.
+
+\q{Arrange} moves the sessions an older version filed by their
+\c{Folder} value only into their folder path: \c{srv01} with
+\c{Folder=Linux\\web} becomes \c{Linux\\web\\srv01}. The registry is
+backed up first; a folder store's files move into subfolders of
+Sessions. It is offered once, the first time the configuration window
+opens on a store that has such sessions; after \q{Later} it stays in
+Organize sessions.
 
 \S{kitty-cfg-proxy-override} \q{Proxy override options}
 
@@ -1533,6 +1558,13 @@ you have more than a handful.
 
 \b \q{Search the list as you type} filters the list from the keyboard.
 
+\b \q{Session file suffix} (folder store only): an ending added to every
+session file name, for example \c{.ktx}. The list shows the names
+without it. Changing it offers to rename the existing files. A session
+file without the suffix is still listed and gets the suffix on its next
+save. \c{kitty.ini}: \c{[KiTTY] sessionsuffix}. The new suffix takes
+effect when \q{Apply suffix} is pressed; greyed in the registry store.
+
 \b \q{Open on the last used session} starts each KiTTY on the session
 you used last. Off, KiTTY starts in \e{quick connect}: every window
 opens on \q{Default Settings} with the cursor already in \q{Host Name},
@@ -2318,12 +2350,19 @@ its configuration, so a settings window must not offer it.
 
 \S{kitty-cfg-storage} The Storage & Backup panel
 
-\b \q{This KiTTY} reports where the settings live - the registry hive,
+\b \q{This KiTTY++} reports where the settings live - the registry hive,
 or the folder of a folder store - and which configuration file is in
 use. When KiTTY runs read-only (\c{readonly=yes}) or without a
 configuration file (\c{conf=no}) the panel says so and offers no
 fields: the backups are not written in either state, so a count would
 change nothing.
+
+\b \q{Host keys folder} (folder store only): where accepted host keys are
+kept. Empty means the SshHostKeys folder beside Sessions.
+\c{kitty.ini}: \c{[KiTTY] sshhostkeys}, with \c{keysuffix} for an ending
+on host-key file names. \q{Browse...} picks the folder. In the registry
+store the field shows the registry key, read-only, and \q{Browse...} is
+greyed.
 
 \b \q{Registry backups to keep} is how many timestamped \c{.sav}
 exports of the hive an installed copy keeps; in a folder store the
@@ -2707,7 +2746,14 @@ each format's password protection is handled (see \q{State} below).
 Choose the folder and press \q{Scan}; the folder and its subfolders are searched
 (eight levels deep, up to five thousand files - the result line says so
 if either limit stopped the search; hidden and system folders are not
-entered). Every session file found is listed with its full path.
+entered). Every session file found is listed with its full path. A file
+is a session file when it holds a \c{HostName} or \c{Protocol} setting -
+inside \c{Sessions} as well, so a \c{README.md} or a log kept there is
+not listed; dot-files are skipped.
+
+\q{Suffix to remove from file names}: filled in from the old store's
+putty.conf when one is found. The list shows the names as they will be
+imported.
 
 The \q{Folder} column says where each copy will be filed. A file that
 carries a folder of its own keeps it; an old KiTTY kept its folders as

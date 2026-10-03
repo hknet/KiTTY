@@ -129,6 +129,66 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **`ssh-add -x` / `-X` lock and unlock kageant**, when Settings > Security
   "Allow locking the agent over IPC" is ticked (off by default). A notice
   names the program that locked, and the tray's Unlock agent clears its lock.
+- **Session folders are folder paths, in both stores.** A session's name is
+  its folder path plus its name, `Linux\web\srv01`. The folder store keeps it
+  as the file `Sessions\Linux\web\srv01` (a session folder that can live in
+  Git), the registry as one key. The same name can exist in two folders. The
+  session list nests: inside a folder its subfolders are rows, `..` goes up
+  one level, and New folder inside `network` creates `network\test`. Renaming
+  or deleting a folder moves its subfolders with it; a session that moves
+  keeps its saved password, jump list entry and launcher entry, and sessions
+  that name it as SSH jump host are updated and listed. `-load
+  Linux\web\srv01` works in both stores and in klink, kscp and ksftp, and so
+  does the path in an SSH jump host field and in a `kitty://` link. A bare
+  name loads the one session of that name; when several folders hold one,
+  `-load` ends with an error naming them (exit code 1) and a jump host fails
+  the connection rather than look the name up as a host. Sessions filed by
+  their Folder value only keep working by their bare name (hknet/KiTTY#55).
+- **Only session files are listed, and session files can carry a suffix.**
+  The folder store lists a file only when it holds a `HostName` or
+  `Protocol` setting, in either file format; dot-files and dot-folders
+  (`.git`, `.gitignore`) are never looked at, so a README or a log beside the
+  sessions stays out of the list. `[KiTTY] sessionsuffix` (Application >
+  Config Window > Session Panel, "Session file suffix") adds an ending such
+  as `.ktx` to every session file name; the list shows the names without it.
+  A session file without the suffix is still listed and gets it on its next
+  save, a save whose file name is already another session's is refused, and
+  changing the suffix offers to rename the existing files (hknet/KiTTY#56).
+- **Folder store: the host-key folder can be set, and classic KiTTY's
+  putty.conf is taken over.** Storage & Backup, group "This KiTTY++", has a
+  "Host keys folder" field with a folder picker (`[KiTTY] sshhostkeys`; in
+  the registry store it shows the registry key, read-only); `keysuffix` adds
+  an ending to host-key file names. A putty.conf's `Sessions`,
+  `sessionsuffix`, `SshHostKeys` and `keysuffix` are copied into kitty.ini
+  once and kitty.ini rules from then on; putty.conf itself is left as it is
+  (hknet/KiTTY#56).
+- **Organize sessions: move many sessions between folders at once.** A
+  window with the folder tree on the left and the selected folder's sessions
+  on the right (Ctrl+click, Shift+click, Ctrl+A): Move to..., drag and drop
+  onto a folder, Rename (a session or a folder), New folder, Delete folder and
+  Arrange.... Each move carries the saved password, the jump list and
+  launcher entries and the jump-host references along; a name already taken
+  at the destination moves nothing and is named. Opened with "Organize..."
+  under the session list's Del folder, or Application > Migration
+  "Organize sessions..." (hknet/KiTTY#55).
+- **Arrange: sessions filed by their Folder value move to their folder
+  path.** Offered once, the first time the configuration window opens on a
+  store that has such sessions (registry or folder store), and always
+  available in Organize sessions. The registry is backed up first
+  (hknet/KiTTY#55).
+- **Deleting a folder that holds sessions asks where they go.** The box
+  offers the root (preselected) or any other folder; subfolders keep their
+  place below the destination, and a name already taken there stops the
+  delete before anything moves. Session list and Organize sessions alike
+  (hknet/KiTTY#55).
+- **Migration copes with nested session folders.** Make portable copy writes
+  the copy's sessions into folders, Take folder store reads every subfolder
+  (and the store's own `sessions`/`sshhostkeys` location and suffixes), and
+  Export all writes a session named like a Windows device (`CON`) under an
+  escaped file name. Import of old KiTTY Folders lists only real session
+  files inside Sessions too, and a "Suffix to remove from file names" field,
+  filled in from the old store's putty.conf, shows the names as they will be
+  imported (hknet/KiTTY#55, hknet/KiTTY#56).
 - **Desktop notifications from the host (OSC 9, OSC 777, OSC 99).** A
   program on the host can show a notice near the clock, titled with the
   session's name. Terminal > Features, "Desktop notifications (OSC 9, 777,
@@ -155,6 +215,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   default (hknet/KiTTY#57).
 
 ### Changed
+
+- **A registry session whose name contains `\` is now a session in a
+  folder.** `DOMAIN\user` or `prod\db01` saved by an earlier version is read
+  as the session `user` in folder `DOMAIN` (`db01` in `prod`): it lists
+  inside that folder, its `Folder=` value is ignored and corrected on the
+  next save. `-load DOMAIN\user` still loads it (hknet/KiTTY#55).
+- **The boxes of the session list no longer hold up the configuration
+  window.** A save refused because the name is taken, a move refused because
+  a name already exists at the destination, and the list of updated jump
+  hosts are shown in boxes beside the window; so is the suffix-rename
+  question, whose default answer is now No (hknet/KiTTY#55, hknet/KiTTY#56).
 
 - **Scrolling output costs less.** Rows that only moved up are shifted on
   screen instead of drawn again, so only the new lines are painted. A
@@ -318,6 +389,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **kageant's tray menu follows a colour theme change made while it runs.**
   Its key list did, but the menu kept the theme kageant started with until a
   restart.
+- **A session named `CON`, `NUL`, `COM1` or another Windows device name, or
+  one ending in a dot or a space, can be saved in the folder store.** Such a
+  name could not be a file name, so the session could not be saved.
 
 ## 0.85.1.12-beta — 2026-09-23
 

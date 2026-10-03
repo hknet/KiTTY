@@ -12,6 +12,10 @@
  * MOD_PERSO. kitty_pwmem.c is in `utils`, which they all link, so the call is
  * unguarded and the include must be too. */
 #include "kitty/kitty_pwmem.h"
+/* KiTTY: session names as folder paths (hknet/KiTTY#55). Unguarded, like
+ * kitty_pwmem.h above: klink, kscp and ksftp resolve a -load name through the
+ * settings library's copy of this file. */
+#include "kitty/kitty_sessionpath.h"
 #ifdef MOD_PERSO
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
 #ifdef MOD_PERSO
@@ -194,6 +198,27 @@ static bool seen_hostname_argument = false;
 static bool seen_port_argument = false;
 static bool seen_verbose_option = false;
 static bool loaded_session = false;
+
+/*
+ * KiTTY (hknet/KiTTY#55): a session name typed on the command line - -load,
+ * a kitty:// link, or a host argument that names a session - may be a folder
+ * path ("Linux\web\srv01"), the exact name, or a bare name that exists in
+ * exactly one folder. A bare name that exists in more than one folder ends
+ * the run with an error naming the matches: never a guess, never a notice,
+ * because a script that asked for one session must not connect to another.
+ * cmdline_error() exits with 1 (a box in the GUI, stderr in the console
+ * tools). Returns the name to load, snewn'd: the resolved identity, or the
+ * name as given when nothing matches (do_defaults then behaves as before).
+ */
+static char *kitty_cmdline_session_name(const char *name)
+{
+    char *resolved = NULL, *err = NULL;
+    int kind = kitty_session_resolve(name, &resolved, &err, 1);
+    if (kind == KSP_AMBIGUOUS)
+        cmdline_error("%s", err);
+    sfree(err);
+    return resolved ? resolved : dupstr(name);
+}
 bool cmdline_verbose(void) { return seen_verbose_option; }
 bool cmdline_seat_verbose(Seat *seat) { return cmdline_verbose(); }
 bool cmdline_lp_verbose(LogPolicy *lp) { return cmdline_verbose(); }
@@ -494,7 +519,11 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                      * -load completely.)
                      */
                     Conf *conf2 = conf_new();
-                    if (do_defaults(hostname_after_user, conf2) &&
+                    /* KiTTY: a session path, or a bare name in one folder. */
+                    char *sessname = kitty_cmdline_session_name(hostname_after_user);
+                    bool found = do_defaults(sessname, conf2);
+                    sfree(sessname);
+                    if (found &&
                         conf_launchable(conf2)) {
                         conf_copy_into(conf, conf2);
                         loaded_session = true;
@@ -566,6 +595,22 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                 while (n > 0 && v[n-1] == '/')
                     n--;
                 name = dupprintf("%.*s", (int)n, v);
+                /* KiTTY (hknet/KiTTY#55): a link carries the folder path
+                 * URL-style - kitty://Linux/web/srv01, or percent-escaped
+                 * (%5C, %20) - so decode it and turn '/' into the path
+                 * separator before the name is looked up. */
+                {
+                    strbuf *dec = percent_decode_sb(ptrlen_from_asciz(name));
+                    char *q, *resolved;
+                    sfree(name);
+                    name = strbuf_to_str(dec);
+                    for (q = name; *q; q++)
+                        if (*q == '/')
+                            *q = '\\';
+                    resolved = kitty_cmdline_session_name(name);
+                    sfree(name);
+                    name = resolved;
+                }
                 do_defaults(name, conf);
                 sfree(name);
                 loaded_session = true;
@@ -573,7 +618,12 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
             }
         }
 #endif
-        do_defaults(value, conf);
+        {
+            /* KiTTY (hknet/KiTTY#55): a path, or a bare name in one folder. */
+            char *sessname = kitty_cmdline_session_name(value);
+            do_defaults(sessname, conf);
+            sfree(sessname);
+        }
         loaded_session = true;
         return 2;
     }

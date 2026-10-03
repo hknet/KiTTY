@@ -298,6 +298,25 @@ be_list(test_sessionlist TestSessionList SSH SERIAL OTHERBACKENDS)
 target_link_libraries(test_sessionlist
   sshclient otherbackends settings network crypto utils ${platform_libraries})
 
+# KiTTY: session names as folder paths and the session file suffix
+# (hknet/KiTTY#55, #56) - the escapes, the name lookup, the suffix and the
+# session-file check, plus the folder store's nested layout against a temp
+# directory. Hermetic like test_sessionlist.
+add_executable(test_sessionpath
+  test/test_sessionpath.c
+  kitty/kitty_sessionrekey.c   # the re-key, against the fixture store
+  stubs/no-agent.c
+  stubs/no-callback.c
+  stubs/no-gss.c
+  stubs/no-ldisc.c
+  stubs/no-network.c
+  stubs/no-timing.c
+  proxy/noproxy.c
+)
+be_list(test_sessionpath TestSessionPath SSH SERIAL OTHERBACKENDS)
+target_link_libraries(test_sessionpath
+  sshclient otherbackends settings network crypto utils ${platform_libraries})
+
 foreach(subdir ${platform} ${extra_dirs})
   add_subdirectory(${subdir})
 endforeach()
@@ -316,6 +335,7 @@ foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
+    test_sessionpath
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify)
   kitty_add_test(${t})

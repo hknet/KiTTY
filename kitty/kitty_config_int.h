@@ -54,6 +54,10 @@ struct migf_data {
     struct kitty_folder_scan *found;   /* the last scan, or NULL */
     char root[MAX_PATH * 2];
     char folder[256];                  /* the target folder as typed/chosen */
+    /* KiTTY (hknet/KiTTY#56): the old store's session file suffix, taken
+     * off the file names; filled in from its putty.conf / kitty.ini. */
+    dlgcontrol *suffixbox;
+    char suffix[64];
 };
 extern struct migf_data *kitty_migf_active;   /* kitty_config.c */
 /* What Verify found out about one stored key, kept beside the store's own
@@ -246,9 +250,15 @@ struct sessionsaver_data {
      * name in the list, because that only copies the NAME across - which is the
      * whole reason the Save guard exists. NULL = nothing loaded in this box. */
     char *loaded_from;
+    /* KiTTY (hknet/KiTTY#55): "Organize..." under Del folder, beside the
+     * comment field; spread with the list's buttons when the list is tall. */
+    dlgcontrol *organizebutton;
 };
 extern struct sessionsaver_data *kitty_session_ssd;   /* kitty_config_session.c */
 int kitty_config_session_rows(void);   /* kitty_config_session.c */
+/* The store changed outside the session panel's handlers: the open box's
+ * folder and session lists follow (hknet/KiTTY#55). kitty_config_session.c */
+void kitty_config_session_store_changed(void);
 extern struct sessionsaver_data *session_filter_ssd;   /* kitty_config_session.c */
 void scb_panel_session(struct controlbox *b, bool midsession);   /* kitty_config_session.c */
 void scb_panel_logging(struct controlbox *b, bool midsession, int protocol);   /* kitty_config_session.c */

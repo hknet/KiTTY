@@ -1023,7 +1023,6 @@
 
 /* Application/KiTTY++ Settings/Storage & Backup */
 #define KT_KSET_STORAGE_TITLE                        "Where settings are kept"
-#define KT_KSET_STORAGE_THIS_KITTY                   "This KiTTY"
 #define KT_KSET_STORAGE_STORE_REGISTRY               "Settings store: registry (HKCU\\%s)"
 #define KT_KSET_STORAGE_STORE_SAV                    "Settings store: registry, loaded from a .sav file at start " \
         "(savemode=file)"
@@ -3248,12 +3247,6 @@
 #define KT_CFG_FOLDER_NAME_RESERVED_ROOT             "That name is reserved for the root session list."
 #define KT_CFG_FOLDER_NAME_RESERVED                  "That name is reserved."
 #define KT_CFG_FOLDER_EXISTS                         "A folder of that name already exists."
-#define KT_CFG_FOLDER_DELETE_ONE                     "\"%s\" contains one session.\n\n" \
-        "Delete the folder and move the session to the root list?\n" \
-        "The session itself is kept."
-#define KT_CFG_FOLDER_DELETE_MANY                    "\"%s\" contains %d sessions.\n\n" \
-        "Delete the folder and move the sessions to the root list?\n" \
-        "The sessions themselves are kept."
 #define KT_CFG_DEFAULT_CANT_DELETE_NOSAVE            "\"%s\" cannot be deleted - it is the template every new " \
         "session starts from.\n\n" \
         "It can normally be hidden from this list, but %s, so that " \
@@ -3508,12 +3501,14 @@
 #define KT_STOREMOVE_COPY_DPAPI                      "\n\nIts passwords are readable by this Windows " \
         "account on this PC only."
 #define KT_STOREMOVE_COPY_FAILED                     "\n\n%d item%s could not be written."
+#define KT_STOREMOVE_COPY_BLOCKED                    "Nothing was written to\n%s\n\n%s"
 #define KT_STOREMOVE_NO_TEMP                         "No temporary folder could be created; nothing " \
         "was taken."
 #define KT_STOREMOVE_TAKEN                           "Taken from\n%s\n\n" \
         "%d session%s, %d prox%s, %d host key%s, %d setting%s."
 #define KT_STOREMOVE_TAKEN_KEPT                      "\n%d kept as already present."
 #define KT_STOREMOVE_TAKEN_FAILED                    "\n%d item%s could not be taken."
+#define KT_STOREMOVE_TAKEN_DUPS                      "\n\nNot taken, another file gives the same session:\n%s"
 #define KT_STOREMOVE_TAKEN_REPROTECTED               "\n\nSaved passwords were re-protected for the store " \
         "in use. Settings apply after a restart."
 #define KT_STOREMOVE_NOT_WRITABLE                    "Nothing can be written to\n%s\n\nChoose another folder."
@@ -3552,6 +3547,92 @@
 #define KT_STORE_EXPAND_ENV_USER_FAILED              "Unable to ExpandEnvironmentStringsForUser for session path"
 #define KT_STORE_CONF_READ_FAILED                    "Unable to read configuration file, falling back to defaults"
 #define KT_STORE_SESSION_READ_FAILED                 "Unable to read session file"
+
+/* Session folders as a path (hknet/KiTTY#55) and the session file suffix
+ * (hknet/KiTTY#56): kitty_sessionpath.c, kitty_storage.c, the session list. */
+#define KT_SP_LOAD_AMBIGUOUS                         "Session \"%s\" exists in more than one folder:\n%s\n\n" \
+        "Load it by its full path, for example -load \"%s\"."
+#define KT_SP_JUMP_AMBIGUOUS                         "Session \"%s\" exists in more than one folder:\n%s"
+#define KT_SP_SAVE_CLASH                             "Another session already uses the file \"%s\".\n\n" \
+        "Choose another name for this session."
+#define KT_SP_SUFFIX_RENAME_Q                        "Rename %d session files from \"%s\" to \"%s\"?\n\n" \
+        "A file whose new name already exists is left as it is and listed afterwards."
+#define KT_SP_SUFFIX_NONE                            "(none)"
+#define KT_SP_SUFFIX_RENAMED                         "%d session files renamed."
+#define KT_SP_SUFFIX_LEFT                            "%d left as they are because the new name already exists:"
+#define KT_SP_JUMP_REWRITTEN                         "Jump host updated in these sessions:\n%s"
+#define KT_SP_MOVE_CLASH                             "Nothing was moved. These sessions already exist in \"%s\":\n%s"
+/* Application > Config Window > Session Panel and Storage & Backup
+ * (kitty_config_app.c): the session file suffix and the host-key folder. */
+#define KT_SP_SUFFIX_LABEL                           "Session file suffix"
+#define KT_SP_SUFFIX_APPLY                           "Apply suffix"
+#define KT_SP_STORAGE_THIS_KITTYPP                   "This KiTTY++"
+#define KT_SP_HOSTKEYS_FOLDER                        "Host keys folder"
+#define KT_SP_HOSTKEYS_BROWSE                        "Browse..."
+#define KT_SP_HOSTKEYS_REGISTRY                      "HKCU\\%s (registry)"
+
+/* Moving sessions safely (kitty_sessionrekey.c, windows/storage.c). */
+#define KT_SP_PATH_BLOCKED                           "A session and a folder would both be \"%s\" in the session folder.\n\n" \
+        "Choose another name, or set a session file suffix."
+#define KT_SP_REKEY_COPY_FAILED                      "the copy of its registry key did not match the original; nothing was changed"
+#define KT_SP_REKEY_LEFTOVER                         "the copy of its registry key failed; its settings are kept under the key %s"
+#define KT_SP_REKEY_REFUSED                          "Nothing was moved:\n%s"
+#define KT_SP_REKEY_PARTIAL                          "Moved before the failure:\n%s"
+#define KT_SP_REKEY_MOVED_PAIR                       "%s -> %s"
+
+/* Organize sessions (kitty_sessorg.c), Arrange and the folder-delete box. */
+#define KT_SP_ORG_BUTTON                             "Organize..."
+#define KT_SP_ORG_MIGRATION                          "Organize sessions..."
+#define KT_SP_ORG_MIGRATION_GROUP                    "Session folders"
+#define KT_SP_ORG_TITLE                              "Organize sessions"
+#define KT_SP_ORG_ROOT                               "All sessions (root)"
+#define KT_SP_ORG_MOVE                               "Move to..."
+#define KT_SP_ORG_RENAME                             "Rename"
+#define KT_SP_ORG_NEW_FOLDER                         "New folder"
+#define KT_SP_ORG_DEL_FOLDER                         "Delete folder"
+#define KT_SP_ORG_ARRANGE                            "Arrange..."
+#define KT_SP_ORG_CLOSE                              "Close"
+#define KT_SP_ORG_MOVE_Q                             "Move %d sessions to:"
+#define KT_SP_ORG_MOVE_ONE_Q                         "Move one session to:"
+#define KT_SP_ORG_MOVE_BTN                           "Move"
+#define KT_SP_ORG_CANCEL                             "Cancel"
+#define KT_SP_ORG_OK                                 "OK"
+#define KT_SP_ORG_NAME_LABEL                         "Name:"
+#define KT_SP_ORG_RENAME_SESSION_CAP                 "Rename session"
+#define KT_SP_ORG_RENAME_FOLDER_CAP                  "Rename folder"
+#define KT_SP_ORG_NAME_BAD                           "A name cannot be empty or contain \\ (the folder separator)."
+#define KT_SP_ORG_FOLDER_EXISTS                      "A folder \"%s\" already exists."
+#define KT_SP_ORG_NOT_EMPTY_INTO_SELF                "A folder cannot move into itself."
+#define KT_SP_ORG_COUNT                              "%d sessions"
+#define KT_SP_ORG_COUNT_ONE                          "1 session"
+#define KT_SP_ORG_LIST_MORE                          "\n(+%d)"
+#define KT_SP_ARRANGE_Q                              "%d sessions are in folders by their Folder value only.\n\n" \
+        "Arrange them now? Each session moves to its folder path, for example Linux\\web\\srv01. " \
+        "Its saved password, jump list entry and launcher entries move with it."
+#define KT_SP_ARRANGE_Q_ONE                          "1 session is in a folder by its Folder value only.\n\n" \
+        "Arrange it now? It moves to its folder path, for example Linux\\web\\srv01. " \
+        "Its saved password, jump list entry and launcher entries move with it."
+#define KT_SP_ARRANGE_REG                            "The registry sessions are backed up first."
+#define KT_SP_ARRANGE_DIR                            "The session files move into subfolders of Sessions."
+#define KT_SP_ARRANGE_NOW                            "Arrange now"
+#define KT_SP_ARRANGE_LATER                          "Later"
+#define KT_SP_ARRANGE_LATER_NOTE                     "Arrange is in Organize sessions."
+#define KT_SP_ARRANGE_NONE                           "No session is in a folder by its Folder value only."
+#define KT_SP_ARRANGE_DONE                           "%d sessions arranged."
+#define KT_SP_ARRANGE_DONE_ONE                       "1 session arranged."
+#define KT_SP_ARRANGE_CLASH                          "Nothing was moved. These folder paths are already taken:\n%s"
+#define KT_SP_DEL_HEAD_ONE                           "\"%s\" contains one session."
+#define KT_SP_DEL_HEAD_MANY                          "\"%s\" contains %d sessions."
+#define KT_SP_DEL_HEAD_SUB                           "\"%s\" contains %d sessions in %d folders."
+#define KT_SP_DEL_DEST_ONE                           "Delete the folder and move the session to:"
+#define KT_SP_DEL_DEST_MANY                          "Delete the folder and move the sessions to:"
+#define KT_SP_DEL_KEPT_ONE                           "The session itself is kept."
+#define KT_SP_DEL_KEPT_MANY                          "The sessions themselves are kept."
+#define KT_SP_DEL_BTN                                "Delete"
+#define KT_SP_DEL_CLASH                              "Nothing was moved. These sessions already exist in \"%s\":\n%s\n\n" \
+        "Choose another folder or rename them first."
+/* Application > Migration > old KiTTY Folders: the suffix of the old store. */
+#define KT_MIGF_SUFFIX                               "Suffix to remove from file names"
 
 /* ---- resource scripts ---- */
 /* Dialog templates in windows/kitty.rc, pageant.rc, puttygen.rc and

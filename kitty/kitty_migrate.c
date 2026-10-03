@@ -25,6 +25,9 @@
 #include "kitty_secretstore.h"
 #include "kitty_migrate.h"
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
+#include "kitty_sessionpath.h"   /* file and folder names of another store (hknet/KiTTY#55) */
+#include "kitty_tools.h"         /* str_rtrim */
+#include "kitty_inikeys.h"       /* KI_SESSIONSUFFIX */
 
 /* ------------------------------------------------------------------ */
 /* name sets                                                          */
@@ -307,8 +310,10 @@ bool kitty_own_session_exists(const char *name)
     if (!name || !*name)
         return false;
     if (store_is_file()) {
-        char *p = ksf_session_path(name);
-        bool yes = p && GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES;
+        /* A session is a FILE: a folder of the same name is not one
+         * (ksf_session_find looks at regular files only). */
+        char *p = ksf_session_find(name);
+        bool yes = p != NULL;
         sfree(p);
         return yes;
     }
@@ -378,12 +383,14 @@ static int classify_password(struct ksf_item *items)
 }
 
 static void scan_add(struct kitty_folder_scan *s, const char *name,
-                     const char *path, const char *folder, int state)
+                     const char *fname, const char *path, const char *folder,
+                     int state)
 {
     struct kitty_folder_scan_item *it;
     sgrowarray(s->items, s->alloc, s->n);
     it = &s->items[s->n++];
     it->name = dupstr(name);
+    it->fname = dupstr(fname);
     it->path = dupstr(path);
     it->folder = dupstr(folder);
     it->state = state;
@@ -406,13 +413,11 @@ static void scan_dir(struct kitty_folder_scan *s, const char *dir, int depth,
     HANDLE h;
     char *pattern;
     const char *leaf;
-    bool in_sessions;
 
     if (depth > KFS_MAX_DEPTH) { s->hit_depth = true; return; }
     s->dirs_seen++;
     leaf = strrchr(dir, '\\');
     leaf = leaf ? leaf + 1 : dir;
-    in_sessions = (sess_rel != NULL) || !_stricmp(leaf, "Sessions");
 
     pattern = dupcat(dir, "\\*");
     h = FindFirstFileA(pattern, &fd);
@@ -449,22 +454,34 @@ static void scan_dir(struct kitty_folder_scan *s, const char *dir, int depth,
         }
         if (s->files_seen >= KFS_MAX_FILES) { s->hit_count = true; break; }
         s->files_seen++;
+        /* A dot-file is never a session (.gitignore, a Git folder's files):
+         * the folder store does not list one either. */
+        if (fd.cFileName[0] == '.')
+            continue;
         full = dupcat(dir, "\\", fd.cFileName);
         {
             struct ksf_item *items = ksf_load(full);
             bool session = items && (ksf_list_get(items, "HostName") ||
                                      ksf_list_get(items, "Protocol"));
-            if (in_sessions || session) {
+            /* KiTTY (hknet/KiTTY#56): the content decides inside Sessions
+             * too - a README.md or a debug.log kept there is not a session.
+             * The name is set again by kitty_folder_scan_set_suffix. */
+            if (session) {
                 char *name = ksf_unmunge(fd.cFileName);
-                int state = !items ? KFS_UNREADABLE : classify_password(items);
+                int state = classify_password(items);
                 /* The row's default folder: the file's own Folder key, else
                  * the old store's directory below Sessions, else the panel's
                  * default. "Default" in the file means "no folder" there. */
                 const char *fkey = items ? ksf_list_get(items, "Folder") : NULL;
+                /* A directory name below Sessions is escaped like a file
+                 * name (hknet/KiTTY#55): "a%3Ab" is the folder "a:b". */
+                char *relname = (sess_rel && *sess_rel) ?
+                    ksp_import_name(sess_rel, "") : NULL;
                 const char *folder =
                     (fkey && *fkey && strcmp(fkey, "Default")) ? fkey :
-                    (sess_rel && *sess_rel) ? sess_rel : default_folder;
-                scan_add(s, name, full, folder, state);
+                    relname ? relname : default_folder;
+                scan_add(s, name, fd.cFileName, full, folder, state);
+                sfree(relname);
                 sfree(name);
             }
             ksf_list_free(items);
@@ -490,11 +507,82 @@ struct kitty_folder_scan *kitty_scan_folder_store(const char *root,
     return s;
 }
 
+void kitty_folder_scan_set_suffix(struct kitty_folder_scan *s, const char *suffix)
+{
+    int i;
+    if (!s)
+        return;
+    for (i = 0; i < s->n; i++) {
+        char *n;
+        if (!s->items[i].fname)
+            continue;
+        n = ksp_import_name(s->items[i].fname, suffix ? suffix : "");
+        sfree(s->items[i].name);
+        s->items[i].name = n;
+    }
+}
+
+/* One "key=value" of a putty.conf, or NULL. snewn'd. */
+static char *putty_conf_value(const char *path, const char *key)
+{
+    FILE *fp = fopen(path, "rb");
+    char line[1024];
+    size_t kl = strlen(key);
+    char *val = NULL;
+    if (!fp)
+        return NULL;
+    while (!val && fgets(line, sizeof(line), fp)) {
+        if (!strnicmp(line, key, kl) && line[kl] == '=') {
+            val = dupstr(line + kl + 1);
+            str_rtrim(val, " \n\r\t");
+        }
+    }
+    fclose(fp);
+    return val;
+}
+
+char *kitty_store_suffix_of(const char *root)
+{
+    char *dirs[2] = { NULL, NULL }, *found = NULL;
+    int i;
+    const char *leaf;
+    if (!root || !*root)
+        return dupstr("");
+    dirs[0] = dupstr(root);
+    str_rtrim(dirs[0], "\\");
+    leaf = strrchr(dirs[0], '\\');
+    if (leaf && !_stricmp(leaf + 1, "Sessions"))
+        dirs[1] = dupprintf("%.*s", (int)(leaf - dirs[0]), dirs[0]);
+    for (i = 0; i < 2 && !found; i++) {
+        char *ini, *pc, buf[256];
+        if (!dirs[i])
+            continue;
+        ini = dupprintf("%s\\kitty.ini", dirs[i]);
+        if (GetFileAttributesA(ini) != INVALID_FILE_ATTRIBUTES &&
+            GetPrivateProfileStringA("KiTTY", KI_SESSIONSUFFIX, "\x01", buf,
+                                     sizeof(buf), ini) &&
+            strcmp(buf, "\x01")) {
+            found = dupstr(buf);
+            str_rtrim(found, " \t");
+        }
+        sfree(ini);
+        if (!found) {
+            pc = dupprintf("%s\\putty.conf", dirs[i]);
+            found = putty_conf_value(pc, KI_SESSIONSUFFIX);
+            sfree(pc);
+        }
+    }
+    sfree(dirs[0]);
+    sfree(dirs[1]);
+    return found ? found : dupstr("");
+}
+
 void kitty_folder_scan_free(struct kitty_folder_scan *s)
 {
     if (!s) return;
     for (int i = 0; i < s->n; i++) {
         sfree(s->items[i].name);
+        sfree(s->items[i].fname);
         sfree(s->items[i].path);
         sfree(s->items[i].folder);
     }

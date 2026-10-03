@@ -1036,7 +1036,7 @@ static int ksf_text_has_mpw(const char *path)
     return found;
 }
 
-static int ksf_dir_has_mpw(const char *dir)
+static int ksf_dir_has_mpw_depth(const char *dir, int depth)
 {
     char *pat;
     WIN32_FIND_DATAA fd;
@@ -1049,13 +1049,27 @@ static int ksf_dir_has_mpw(const char *dir)
     if (h == INVALID_HANDLE_VALUE) return 0;
     do {
         char *path;
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        /* KiTTY (hknet/KiTTY#55): sessions live in nested folders now, so
+         * the folders are searched too - not the dot ones (.git), and no
+         * junction is followed. */
+        if (fd.cFileName[0] == '.' ||
+            ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+             (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
+            continue;
         path = dupprintf("%s\\%s", dir, fd.cFileName);
-        found = ksf_text_has_mpw(path);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            found = depth < 24 && ksf_dir_has_mpw_depth(path, depth + 1);
+        else
+            found = ksf_text_has_mpw(path);
         sfree(path);
     } while (!found && FindNextFileA(h, &fd));
     FindClose(h);
     return found;
+}
+
+static int ksf_dir_has_mpw(const char *dir)
+{
+    return ksf_dir_has_mpw_depth(dir, 0);
 }
 
 static int store_has_mpw_wrapped_secret(void)

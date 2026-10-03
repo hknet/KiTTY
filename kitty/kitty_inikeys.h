@@ -82,6 +82,13 @@
 #define KI_SLIDEDELAY                       "slidedelay"
 #define KI_SSHVERSION                       "sshversion"
 #define KI_SZCOMMAND                        "szcommand"
+/* The folder store's paths and file-name endings (hknet/KiTTY#56), taken over
+ * from classic KiTTY's putty.conf once (kitty_store.c). */
+#define KI_SESSIONS                         "sessions"
+#define KI_SESSIONSUFFIX                    "sessionsuffix"
+#define KI_SSHHOSTKEYS                      "sshhostkeys"
+#define KI_KEYSUFFIX                        "keysuffix"
+#define KI_PUTTYCONFMIGRATED                "puttyconfmigrated"
 #define KI_THEME                            "theme"
 #define KI_TRANSFERFULLPATH                 "transferfullpath"
 #define KI_TRANSFERMAXMB                    "transfermaxmb"

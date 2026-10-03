@@ -11,6 +11,7 @@
 #include "putty.h"
 #include "psftp.h"
 #include "storage.h"
+#include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
 #include "ssh.h"
 #include "ssh/sftp.h"
 
@@ -2611,17 +2612,27 @@ static int psftp_connect(char *userhost, char *user, int portnumber)
     if (!cmdline_loaded_session()) {
         /* Try to load settings for `host' into a temporary config */
         Conf *conf2 = conf_new();
+        /* KiTTY (hknet/KiTTY#55): a bare name may stand for a session in
+         * one folder; one in several folders is an error naming them, never
+         * a guess and never the name taken for a host. */
+        char *sessname = NULL, *amb = NULL;
+        if (kitty_session_resolve(host, &sessname, &amb, 1) == KSP_AMBIGUOUS) {
+            fprintf(stderr, "%s\n", amb);
+            cleanup_exit(1);
+        }
+        sfree(amb);
         conf_set_str(conf2, CONF_host, "");
-        do_defaults(host, conf2);
+        do_defaults(sessname ? sessname : host, conf2);
         if (conf_get_str(conf2, CONF_host)[0] != '\0') {
             /* Settings present and include hostname */
             /* Re-load data into the real config. */
-            do_defaults(host, conf);
+            do_defaults(sessname ? sessname : host, conf);
         } else {
             /* Session doesn't exist or mention a hostname. */
             /* Use `host' as a bare hostname. */
             conf_set_str(conf, CONF_host, host);
         }
+        sfree(sessname);
         conf_free(conf2);
     } else {
         /* Patch in hostname `host' to session details. */

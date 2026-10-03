@@ -508,6 +508,12 @@ void InitWinMain( void ) {
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ){ // directory save mode
 		if( strlen(sesspath) == 0 ) { loadPath() ; }
+		/* KiTTY (hknet/KiTTY#56): putty.conf's Sessions, sessionsuffix,
+		 * SshHostKeys and keysuffix move into kitty.ini once; from then on
+		 * kitty.ini's values are the ones in force (session folder, session
+		 * file suffix, host-key folder and suffix). Before the store starts,
+		 * because it may move the session folder. */
+		kitty_store_ini_takeover() ;
 		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
 		 * now that sesspath is known. Sessions are then read/written as one file per
 		 * session under sesspath, instead of the registry. Decoupled setters so

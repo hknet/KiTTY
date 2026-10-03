@@ -65,6 +65,7 @@
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
+#include "../kitty/kitty_sessionpath.h"   /* KiTTY: @name as a folder path */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_params.h"
@@ -2985,6 +2986,22 @@ bool handle_special_sessionname_cmdline(char *p, Conf *conf)
         sessionname.len--;
 
     char *dup = mkstr(sessionname);
+#ifdef MOD_PERSO
+    /* KiTTY (hknet/KiTTY#55): a folder path, or a bare name that exists in
+     * one folder only. One in several folders is the -load error, not a
+     * guess and not a fall-through to the ordinary argument parse (which
+     * would take the name for a host). */
+    {
+        char *resolved = NULL, *err = NULL;
+        if (kitty_session_resolve(dup, &resolved, &err, 1) == KSP_AMBIGUOUS)
+            cmdline_error("%s", err);
+        sfree(err);
+        if (resolved) {
+            sfree(dup);
+            dup = resolved;
+        }
+    }
+#endif
     bool loaded = do_defaults(dup, conf);
     sfree(dup);
 

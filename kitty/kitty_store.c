@@ -19,6 +19,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty.h"
 #include "kitty_registry.h"
+#include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 
 
 #ifndef snewn
@@ -42,6 +43,27 @@ char jumplistpath[2 * MAX_PATH] = "\0";
 char oldpath[2 * MAX_PATH] = "\0";
 char sessionsuffix[16] = "\0";
 char keysuffix[16] = "\0";
+
+/* KiTTY (hknet/KiTTY#56): what putty.conf actually said, kept raw for the
+ * one-time move into kitty.ini (kitty_store_ini_takeover below), plus the
+ * paths loadPath() falls back to and resolves relative names against. */
+#define KSTORE_PC_SESSIONS      1
+#define KSTORE_PC_SESSIONSUFFIX 2
+#define KSTORE_PC_SSHHOSTKEYS   4
+#define KSTORE_PC_KEYSUFFIX     8
+static int kstore_pc_found = 0;
+static char kstore_pc_sessions[2 * MAX_PATH] = "";
+static char kstore_pc_sshhostkeys[2 * MAX_PATH] = "";
+static char kstore_pc_sessionsuffix[64] = "";
+static char kstore_pc_keysuffix[64] = "";
+static char kstore_basepath[2 * MAX_PATH] = "";
+static char kstore_default_sesspath[2 * MAX_PATH] = "";
+static void kstore_pc_keep(char *dst, size_t len, const char *raw, int bit)
+{
+	snprintf(dst, len, "%s", raw);
+	str_rtrim(dst, " \n\r\t");
+	kstore_pc_found |= bit;
+}
 
 static const char hex[16] = "0123456789ABCDEF";
 
@@ -289,6 +311,11 @@ int loadPath(void) {
 		snprintf(jumplistpath, sizeof(jumplistpath), "%s\\Jumplist", puttypath);
 		snprintf(seedpath, sizeof(seedpath), "%s\\putty.rnd", puttypath);
 		}
+	/* KiTTY: kept for kitty_store_ini_takeover(), which resolves kitty.ini's
+	 * paths the way putty.conf's are resolved below. */
+	snprintf(kstore_basepath, sizeof(kstore_basepath), "%s", puttypath);
+	snprintf(kstore_default_sesspath, sizeof(kstore_default_sesspath), "%s", sesspath);
+	kstore_pc_found = 0;
 
 	hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
 	/* Test Sessions directory */
@@ -332,6 +359,7 @@ EMERGENCY_BREAK
 				if (!strcmp(p, "Sessions")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
+					kstore_pc_keep(kstore_pc_sessions, sizeof(kstore_pc_sessions), p2, KSTORE_PC_SESSIONS);
 					joinPath(sesspath, puttypath, p2);
 					p2 = sesspath+strlen(sesspath)-1;
 					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
@@ -340,6 +368,7 @@ EMERGENCY_BREAK
 				else if (!strcmp(p, "SshHostKeys")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
+					kstore_pc_keep(kstore_pc_sshhostkeys, sizeof(kstore_pc_sshhostkeys), p2, KSTORE_PC_SSHHOSTKEYS);
 					joinPath(sshkpath, puttypath, p2);
 					p2 = sshkpath+strlen(sshkpath)-1;
 					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
@@ -364,12 +393,14 @@ EMERGENCY_BREAK
 				else if (!strcmp(p, "sessionsuffix")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
+					kstore_pc_keep(kstore_pc_sessionsuffix, sizeof(kstore_pc_sessionsuffix), p2, KSTORE_PC_SESSIONSUFFIX);
 					snprintf(sessionsuffix, sizeof(sessionsuffix), "%s", p2);
 					str_rtrim( sessionsuffix, " \n\r\t" ) ;
 				}
 				else if (!strcmp(p, "keysuffix")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
+					kstore_pc_keep(kstore_pc_keysuffix, sizeof(kstore_pc_keysuffix), p2, KSTORE_PC_KEYSUFFIX);
 					snprintf(keysuffix, sizeof(keysuffix), "%s", p2);
 					str_rtrim( keysuffix, " \n\r\t" ) ;
 				}
@@ -405,6 +436,103 @@ char * SetSessPath( const char * dec ) {
 	pst = sesspath+strlen(initialsesspath ) ;
 	while( pst[0]=='\\' ) pst++ ;
 	return pst ;
+}
+
+/*
+ * KiTTY (hknet/KiTTY#56): the folder store's four path settings move from
+ * classic KiTTY's putty.conf into kitty.ini [KiTTY] - sessions, sessionsuffix,
+ * sshhostkeys, keysuffix. Called once per start in savemode=dir, after
+ * loadPath() and before the store is switched on.
+ *
+ * ONCE: each key putty.conf has and kitty.ini lacks is copied over, and
+ * puttyconfmigrated=yes records that it happened, so a key later edited or
+ * removed in kitty.ini is never copied back. putty.conf itself is left as it
+ * is, for older copies of KiTTY that still read it. Jumplist= and seedfile=
+ * are not carried over (Windows keeps the jump list now; the seed file has no
+ * use here).
+ *
+ * After the move kitty.ini is the one source: a key it does not have means
+ * the default, whatever putty.conf says. Where kitty.ini cannot be written
+ * (conf=no, readonly=yes) nothing moves and putty.conf keeps working, with a
+ * key kitty.ini does carry still winning.
+ */
+extern char *GetKittyIniFile(void);
+extern int GetNoKittyFileFlag(void);
+extern int writeINI(const char *filename, const char *section, const char *key, const char *value);
+void kitty_set_session_suffix(const char *suffix);
+void kitty_set_hostkey_dir(const char *dir);
+void kitty_set_hostkey_suffix(const char *suffix);
+
+void kitty_store_ini_takeover(void) {
+	const char *ini = GetKittyIniFile() ;
+	char v[2 * MAX_PATH], path[2 * MAX_PATH] ;
+	int can_write = ini && ini[0] && !GetNoKittyFileFlag() && !GetReadOnlyFlag() ;
+	int migrated = 0, ini_only ;
+	const char *suffix = "", *hkdir = "", *keysuf = "" ;
+	static char suffix_buf[64], hkdir_buf[2 * MAX_PATH], keysuf_buf[64] ;
+
+	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, v, sizeof(v) ) && !stricmp( v, "yes" ) )
+		migrated = 1 ;
+	if( !migrated && can_write && kstore_pc_found ) {
+		static const struct { int bit; const char *key; const char *val; } keys[] = {
+			{ KSTORE_PC_SESSIONS, KI_SESSIONS, kstore_pc_sessions },
+			{ KSTORE_PC_SESSIONSUFFIX, KI_SESSIONSUFFIX, kstore_pc_sessionsuffix },
+			{ KSTORE_PC_SSHHOSTKEYS, KI_SSHHOSTKEYS, kstore_pc_sshhostkeys },
+			{ KSTORE_PC_KEYSUFFIX, KI_KEYSUFFIX, kstore_pc_keysuffix },
+		} ;
+		int i ;
+		/* An EMPTY key in kitty.ini (a template line such as "sessions=")
+		 * says nothing either: putty.conf's value is carried over it. */
+		for( i = 0 ; i < (int)(sizeof(keys)/sizeof(keys[0])) ; i++ )
+			if( (kstore_pc_found & keys[i].bit) &&
+			    ( !readINI( ini, INIT_SECTION, keys[i].key, v, sizeof(v) ) || !v[0] ) )
+				writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) ;
+		if( writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
+			migrated = 1 ;
+	}
+	/* kitty.ini alone: after the move, or when there is no putty.conf key to
+	 * compete with. Otherwise putty.conf's values stand where kitty.ini is
+	 * silent. */
+	ini_only = migrated || !kstore_pc_found ;
+
+	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SESSIONS, v, sizeof(v) ) && v[0] ) {
+		joinPath( path, kstore_basepath, v ) ;
+		str_rtrim( path, " \n\r\t\\" ) ;
+		/* "C:\" trimmed is "C:", which means the current folder of drive C:
+		 * - the root keeps its backslash. */
+		if( strlen( path ) == 2 && path[1] == ':' ) strcat( path, "\\" ) ;
+		snprintf( sesspath, sizeof(sesspath), "%s", path ) ;
+		snprintf( initialsesspath, sizeof(initialsesspath), "%s", sesspath ) ;
+	} else if( ini_only && (kstore_pc_found & KSTORE_PC_SESSIONS) && kstore_default_sesspath[0] ) {
+		snprintf( sesspath, sizeof(sesspath), "%s", kstore_default_sesspath ) ;
+		snprintf( initialsesspath, sizeof(initialsesspath), "%s", sesspath ) ;
+	}
+	if( !GetReadOnlyFlag() && sesspath[0] && !existdirectory( sesspath ) )
+		MakeDir( sesspath ) ;
+
+	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SESSIONSUFFIX, suffix_buf, sizeof(suffix_buf) ) ) {
+		str_rtrim( suffix_buf, " \n\r\t" ) ;
+		suffix = suffix_buf ;
+	} else if( !ini_only )
+		suffix = kstore_pc_sessionsuffix ;
+
+	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SSHHOSTKEYS, v, sizeof(v) ) && v[0] ) {
+		joinPath( hkdir_buf, kstore_basepath, v ) ;
+		str_rtrim( hkdir_buf, " \n\r\t" ) ;
+		hkdir = hkdir_buf ;
+	} else if( !ini_only && (kstore_pc_found & KSTORE_PC_SSHHOSTKEYS) ) {
+		hkdir = sshkpath ;   /* putty.conf's, resolved by loadPath() */
+	}
+
+	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_KEYSUFFIX, keysuf_buf, sizeof(keysuf_buf) ) ) {
+		str_rtrim( keysuf_buf, " \n\r\t" ) ;
+		keysuf = keysuf_buf ;
+	} else if( !ini_only )
+		keysuf = kstore_pc_keysuffix ;
+
+	kitty_set_session_suffix( suffix ) ;
+	kitty_set_hostkey_dir( hkdir ) ;
+	kitty_set_hostkey_suffix( keysuf ) ;
 }
 
 HSettingsItem SettingsNewItem( const char * name, const char * value ) {

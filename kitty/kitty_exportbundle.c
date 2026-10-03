@@ -30,6 +30,7 @@
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
 #endif
+#include "kitty_sessionpath.h"   /* the bundle file name of a path session */
 
 /* ---- Bulk session export/import -------------------------------------------
  * Export: every saved session is decrypted through the normal read path
@@ -62,7 +63,12 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
         if (!strcmp(sl.sessions[i], "Default Settings")) continue;
         Conf *conf = conf_new();
         if (load_settings(sl.sessions[i], conf)) {
-            char *m = kitty_session_fname_munge(sl.sessions[i]);
+            /* KiTTY (hknet/KiTTY#55): one flat file per session, its whole
+             * identity (folder path included) in the name with every '\'
+             * escaped, and a reserved device name or an edge dot escaped
+             * too (a session named CON is the file %43ON.ktx, not the
+             * console). Import reverses it with the same unescape. */
+            char *m = ksp_component_munge(sl.sessions[i]);
             char *path = dupprintf("%s\\%s%s", dir, m, ktx_ext());
             save_open_settings_forced(path, conf);
             if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) n++;

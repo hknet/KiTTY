@@ -655,3 +655,76 @@
 #ifndef TIMER_CLIPACTIVITY
 #define TIMER_CLIPACTIVITY 8712
 #endif
+/* Organize sessions (kitty/kitty_sessorg.c, hknet/KiTTY#55): the window, its
+ * Move box, its name box (Rename / New folder) and the box that deletes a
+ * folder holding sessions. All modeless. Ids kept clear of the 15x/12xx
+ * ranges the other dialogs grow into. */
+#ifndef IDD_SESSORG
+#define IDD_SESSORG 170
+#endif
+#ifndef IDD_SESSORG_MOVE
+#define IDD_SESSORG_MOVE 171
+#endif
+#ifndef IDD_SESSORG_NAME
+#define IDD_SESSORG_NAME 172
+#endif
+#ifndef IDD_SESSORG_DEL
+#define IDD_SESSORG_DEL 173
+#endif
+#ifndef IDC_SO_TREE
+#define IDC_SO_TREE 1400
+#endif
+#ifndef IDC_SO_LIST
+#define IDC_SO_LIST 1401
+#endif
+#ifndef IDC_SO_COUNT
+#define IDC_SO_COUNT 1402
+#endif
+#ifndef IDC_SO_MOVE
+#define IDC_SO_MOVE 1403
+#endif
+#ifndef IDC_SO_RENAME
+#define IDC_SO_RENAME 1404
+#endif
+#ifndef IDC_SO_NEWFOLDER
+#define IDC_SO_NEWFOLDER 1405
+#endif
+#ifndef IDC_SO_DELFOLDER
+#define IDC_SO_DELFOLDER 1406
+#endif
+#ifndef IDC_SO_ARRANGE
+#define IDC_SO_ARRANGE 1407
+#endif
+#ifndef IDC_SOM_TEXT
+#define IDC_SOM_TEXT 1410
+#endif
+#ifndef IDC_SOM_TREE
+#define IDC_SOM_TREE 1411
+#endif
+#ifndef IDC_SOM_WARN
+#define IDC_SOM_WARN 1412
+#endif
+#ifndef IDC_SON_LABEL
+#define IDC_SON_LABEL 1420
+#endif
+#ifndef IDC_SON_EDIT
+#define IDC_SON_EDIT 1421
+#endif
+#ifndef IDC_SON_WARN
+#define IDC_SON_WARN 1422
+#endif
+#ifndef IDC_SOD_HEAD
+#define IDC_SOD_HEAD 1430
+#endif
+#ifndef IDC_SOD_DESTLBL
+#define IDC_SOD_DESTLBL 1431
+#endif
+#ifndef IDC_SOD_DEST
+#define IDC_SOD_DEST 1432
+#endif
+#ifndef IDC_SOD_KEPT
+#define IDC_SOD_KEPT 1433
+#endif
+#ifndef IDC_SOD_WARN
+#define IDC_SOD_WARN 1434
+#endif

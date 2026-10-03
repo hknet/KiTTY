@@ -14,6 +14,7 @@
 #include "../kitty/kitty_storage.h"  /* the KiTTY half of this file (registry root, portable store, at-rest crypto) */
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
+#include "../kitty/kitty_text.h"     /* KT_SP_SAVE_CLASH: the folder store's save clash */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -52,6 +53,7 @@ struct settings_w {
     char *fpath;
     struct ksf_item *items;
     int mig_answer;   /* legacy->protected consent for THIS save: -1 unasked */
+    char *legacy;     /* KiTTY: older file of this session, removed once saved */
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -67,16 +69,45 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
         handle->is_file = 1;
         handle->items = NULL;
         handle->mig_answer = -1;
-        handle->fpath = ksf_session_path(sessionname);
-        if (!handle->fpath) {
-            sfree(handle);
-            *errmsg = dupstr("Unable to build portable session path");
-            return NULL;
+        /* KiTTY (hknet/KiTTY#55, #56): the session is written to its path
+         * with the suffix; an older file of it (no suffix, or the flat
+         * pre-path name) is carried over and removed once the save is done.
+         * When BOTH exist they are two sessions sharing one name, and the
+         * save is refused rather than overwrite one of them. */
+        handle->fpath = ksf_session_target_path(sessionname);
+        handle->legacy = ksf_session_legacy_path(sessionname);
+        if (handle->legacy) {
+            DWORD a = GetFileAttributesA(handle->fpath);
+            if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY)) {
+                const char *rel = handle->fpath + strlen(g_sess_dir);
+                while (*rel == '\\')
+                    rel++;
+                *errmsg = dupprintf(KT_SP_SAVE_CLASH, rel);
+                sfree(handle->fpath);
+                sfree(handle->legacy);
+                sfree(handle);
+                return NULL;
+            }
+        }
+        /* KiTTY: a folder where the file goes, or a session file where one of
+         * its folders goes (no suffix: "Linux" the session and "Linux" the
+         * folder are one name on disk). Refused with a reason - the write
+         * would otherwise fail without a word. */
+        {
+            char *blk = ksf_path_blocker(sessionname);
+            if (blk) {
+                *errmsg = dupprintf(KT_SP_PATH_BLOCKED, blk);
+                sfree(blk);
+                sfree(handle->fpath);
+                sfree(handle->legacy);
+                sfree(handle);
+                return NULL;
+            }
         }
         /* Pre-load any existing file so a save overwrites/adds in place and never
          * drops keys it didn't rewrite (matches the registry open-then-overwrite
          * semantics; the full conf is normally rewritten on each save anyway). */
-        handle->items = ksf_load(handle->fpath);
+        handle->items = ksf_load(handle->legacy ? handle->legacy : handle->fpath);
         return handle;
     }
 
@@ -98,6 +129,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     handle->fpath = NULL;
     handle->items = NULL;
     handle->mig_answer = -1;
+    handle->legacy = NULL;
     return handle;
 }
 
@@ -277,7 +309,23 @@ void close_settings_w(settings_w *handle)
     kitty_store_mark_dirty();
     kitty_retire_renamed_keys(handle);
     if (handle->is_file) {
-        if (handle->fpath) { ksf_save(handle->fpath, handle->items); sfree(handle->fpath); }
+        if (handle->fpath) {
+            bool saved;
+            DWORD a;
+            ksf_make_parent_dirs(handle->fpath);   /* KiTTY: the folder path */
+            saved = ksf_save(handle->fpath, handle->items);
+            /* KiTTY: the session now lives at its path with the suffix; the
+             * older file goes, and so does its folder if that left it empty -
+             * but only once the new file is written whole and is a file. */
+            a = GetFileAttributesA(handle->fpath);
+            if (handle->legacy && saved && a != INVALID_FILE_ATTRIBUTES &&
+                !(a & FILE_ATTRIBUTE_DIRECTORY)) {
+                DeleteFileA(handle->legacy);
+                ksf_prune_empty_dirs(handle->legacy);
+            }
+            sfree(handle->fpath);
+        }
+        sfree(handle->legacy);
         ksf_list_free(handle->items);
     } else {
         close_regkey(handle->sesskey);
@@ -299,9 +347,8 @@ settings_r *open_settings_r(const char *sessionname)
         sessionname = KITTY_DEFAULT_SESSION;
 
     if (store_is_file()) {
-        char *path = ksf_session_path(sessionname);
+        char *path = ksf_session_find(sessionname);   /* KiTTY: path, suffix, legacy */
         if (!path) return NULL;
-        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) { sfree(path); return NULL; }
         settings_r *handle = snew(settings_r);
         handle->sesskey = NULL;
         handle->src_hive = KSEC_HIVE_PRIMARY;
@@ -614,8 +661,12 @@ void del_settings(const char *sessionname)
 {
     kitty_store_mark_dirty();
     if (store_is_file()) {
-        char *path = ksf_session_path(sessionname);
-        if (path) { DeleteFileA(path); sfree(path); }
+        char *path = ksf_session_find(sessionname);
+        if (path) {
+            DeleteFileA(path);
+            ksf_prune_empty_dirs(path);   /* KiTTY: an emptied folder goes too */
+            sfree(path);
+        }
         remove_session_from_jumplist(sessionname);
         return;
     }
@@ -659,26 +710,10 @@ settings_e *enum_settings_start(void)
     e->is_file = 0;
 
     if (store_is_file()) {
+        /* KiTTY (hknet/KiTTY#55, #56): the whole folder tree, as path names;
+         * dot-files and files that are not sessions are left out. */
         e->is_file = 1;
-        int alloc = 0;
-        char pat[1100];
-        WIN32_FIND_DATAA fd;
-        HANDLE hf;
-        snprintf(pat, sizeof(pat), "%s\\*", g_sess_dir);
-        hf = FindFirstFileA(pat, &fd);
-        if (hf != INVALID_HANDLE_VALUE) {
-            do {
-                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                char *nm = ksf_unmunge(fd.cFileName);   /* file name -> session name */
-                if (!nm) continue;
-                if (e->count >= alloc) {
-                    alloc = alloc ? alloc * 2 : 16;
-                    e->names = sresize(e->names, alloc, char *);
-                }
-                e->names[e->count++] = nm;
-            } while (FindNextFileA(hf, &fd));
-            FindClose(hf);
-        }
+        e->names = ksf_enum_sessions(&e->count);
         return e;
     }
 

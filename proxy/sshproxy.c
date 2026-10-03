@@ -12,6 +12,7 @@
 #include "storage.h"
 #include "proxy.h"
 #include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
+#include "kitty/kitty_sessionpath.h"   /* a jump host named by a session path */
 
 const bool ssh_proxy_supported = true;
 
@@ -702,10 +703,33 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
      * did it pick" is the whole question this setting answers. */
     bool used_saved_session = false;
 
-    if (!from_named_proxy && do_defaults(proxy_hostname, sp->conf)) {
+    /*
+     * KiTTY (hknet/KiTTY#55): the field may name a saved session by its
+     * folder path ("Linux\web\jump01"), or by a bare name that exists in one
+     * folder only. A bare name that exists in SEVERAL folders fails the
+     * connection with the text that names them: falling through to the
+     * hostname reading below would look the session's name up in DNS and
+     * connect somewhere else entirely. Not MOD_PERSO-guarded, like the rest
+     * of this block (the shared crypto library is built without it).
+     */
+    char *kitty_jump_session = NULL;
+    if (!from_named_proxy) {
+        char *amb = NULL;
+        if (kitty_session_resolve(proxy_hostname, &kitty_jump_session, &amb,
+                                  0) == KSP_AMBIGUOUS) {
+            sp->errmsg = amb;
+            return &sp->sock;
+        }
+        sfree(amb);
+    }
+
+    if (!from_named_proxy &&
+        do_defaults(kitty_jump_session ? kitty_jump_session : proxy_hostname,
+                    sp->conf)) {
         if (!conf_launchable(sp->conf)) {
             sp->errmsg = dupprintf("saved session '%s' is not launchable",
                                    proxy_hostname);
+            sfree(kitty_jump_session);
             return &sp->sock;
         }
         used_saved_session = true;
@@ -727,6 +751,7 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
             conf_set_int(sp->conf, CONF_port, pport > 0 ? pport : 22);
         }
     }
+    sfree(kitty_jump_session);
     const char *proxy_username = conf_get_str(clientconf, CONF_proxy_username);
     if (*proxy_username)
         conf_set_str(sp->conf, CONF_username, proxy_username);

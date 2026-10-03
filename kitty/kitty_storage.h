@@ -59,6 +59,9 @@ void kitty_set_show_foreign_sessions(int on);
 #define KITTY_FOREIGN_NOTICE_LIST    2
 int kitty_foreign_notice_pending(int bits);
 void kitty_foreign_notice_clear(int bits);
+/* The one-time Arrange offer of the store in use (hknet/KiTTY#55). */
+int kitty_arrange_offer_pending(void);
+void kitty_arrange_offer_made(void);
 const char *kitty_registry_base(void);   /* base hive, no suffix */
 const char *kitty_reg_sessions(void);    /* <base>\Sessions */
 const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */
@@ -126,8 +129,38 @@ void ksf_list_set(struct ksf_item **h, const char *key, const char *val);
 void ksf_list_del(struct ksf_item **h, const char *key);  /* retire a renamed key */
 void ksf_list_free(struct ksf_item *h);
 char *ksf_session_path(const char *sessionname);  /* snewn'd or NULL */
+/* Session names as folder paths and the session file suffix (hknet/KiTTY#55,
+ * #56); see kitty_storage.c. The suffix is set once at startup from kitty.ini
+ * [KiTTY] sessionsuffix (folder store only). */
+void kitty_set_session_suffix(const char *suffix);
+const char *kitty_session_suffix(void);
+char *ksf_session_target_path(const char *sessionname);  /* where a save writes */
+char *ksf_session_legacy_path(const char *sessionname);  /* older file, or NULL */
+char *ksf_session_find(const char *sessionname);  /* file read from, or NULL */
+void ksf_make_parent_dirs(const char *path);
+void ksf_prune_empty_dirs(const char *path);
+/* What stands where a session's file or a folder would go (a directory where
+ * a session file goes, a file where a folder goes), relative to the session
+ * directory, or NULL. snewn'd. */
+char *ksf_path_blocker(const char *sessionname);
+char *ksf_folder_blocker(const char *folder);
+char **ksf_enum_sessions(int *count);           /* identities; caller frees */
+/* Only the sessions whose own name (last path component) is `leaf`: the
+ * bare-name lookup, without opening the rest of the store. */
+char **ksf_enum_sessions_leaf(const char *leaf, int *count);
+/* Rename every session file from one suffix to another (see kitty_storage.c);
+ * dry_run counts only. Clashes, one relative file name per line. */
+int kitty_session_suffix_rename(const char *oldsuf, const char *newsuf,
+                                int dry_run, strbuf *clashes);
+/* The folder store's host-key folder ("" = SshHostKeys beside Sessions) and
+ * the ending on host-key file names; kitty.ini [KiTTY] sshhostkeys and
+ * keysuffix, set at startup. portable_*_path("SshHostKeys", ...) honour both. */
+void kitty_set_hostkey_dir(const char *dir);
+const char *kitty_hostkey_dir(void);
+void kitty_set_hostkey_suffix(const char *suffix);
+const char *kitty_hostkey_suffix(void);
 struct ksf_item *ksf_load(const char *path);      /* parsed list (may be NULL) */
-void ksf_save(const char *path, struct ksf_item *h);
+bool ksf_save(const char *path, struct ksf_item *h);   /* true = all written */
 char *portable_root_dir(void);                    /* snewn'd or NULL */
 char *portable_subdir_path(const char *subdir);   /* snewn'd */
 char *portable_item_path(const char *subdir, const char *name);
@@ -147,6 +180,7 @@ void kitty_pwdebug(const char *fmt, ...);
  * compiled into every variant and already includes this header. */
 void kitty_store_mark_dirty(void);
 int  kitty_store_take_dirty(void);   /* 1 if dirty; clears the flag */
+long kitty_store_generation(void);   /* grows with every write; never reset */
 
 /* ---- exported from kitty/kitty_showforeign_ini.c ---- */
 int kitty_showforeign_ini_read(char *value, size_t size);

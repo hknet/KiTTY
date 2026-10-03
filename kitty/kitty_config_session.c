@@ -28,6 +28,10 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
+#include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
+#include "kitty_sessionrekey.h"  /* moving a session with what hangs off its name */
+#include "kitty_sessorg.h"       /* Organize sessions, Arrange, the folder-delete box */
+#include "kitty_dlgbox.h"        /* the modeless info box */
 #include "kitty_commun.h"
 #include "kitty.h"
 #include "kitty_params.h"
@@ -839,6 +843,17 @@ void kitty_config_session_distribute(void)
     listtop = lr.top;
     listbot = lr.bottom;
 
+    /* KiTTY (hknet/KiTTY#55): "Organize..." is built beside the comment
+     * field, under the list. When the list is tall enough for it as well,
+     * it moves up to the list's foot - bottom aligned with the list - and
+     * the other buttons are spread above it; otherwise it stays where the
+     * layout put it. */
+    if (ssd->organizebutton && kitty_cfg_ctrl_hwnd(ssd->organizebutton)) {
+        int n = ntop + nmid + 1;
+        if (listbot - listtop >= n * bh + (n - 1) * gap + gap)
+            bot[nbot++] = ssd->organizebutton;
+    }
+
     /* Positions are set in the panel host's client coordinates. */
     #define KCS_MOVE(ctrl, ytop)                                            \
         do {                                                                \
@@ -1084,6 +1099,44 @@ static void sessionsaver_end_folder_rename(struct sessionsaver_data *ssd,
     sessionsaver_update_save_button(ssd, dlg);
 }
 
+/* KiTTY (hknet/KiTTY#55): the configuration box's dlgparam and Conf while it
+ * is open, for what changes the store from OUTSIDE a control's handler - the
+ * Organize window, Arrange, and the answers of the modeless boxes below. Set
+ * by every sessionsaver_handler call, cleared with the box's data. */
+static dlgparam *kcs_dlg = NULL;
+static Conf *kcs_conf = NULL;
+
+/* A message raised from the session list: modeless, owned by the
+ * configuration window, which carries on behind it. */
+static void kcs_tell(const char *msg)
+{
+    kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg, NULL, NULL);
+}
+
+/* Folder store without a suffix: is a session FILE where this folder would
+ * go? Says so (modeless) and answers true; a folder is then not made. */
+static bool kcs_folder_blocked(const char *folder)
+{
+    char *blk, *msg;
+    if (!store_is_file() || !(blk = ksf_folder_blocker(folder)))
+        return false;
+    msg = dupprintf(KT_SP_PATH_BLOCKED, blk);
+    kcs_tell(msg);
+    sfree(msg);
+    sfree(blk);
+    return true;
+}
+
+/* The one-time Arrange offer, raised once the configuration box is up. */
+static VOID CALLBACK kcs_arrange_timer(HWND hwnd, UINT msg, UINT_PTR id,
+                                       DWORD when)
+{
+    (void)hwnd; (void)msg; (void)when;
+    KillTimer(NULL, id);
+    if (kcs_dlg)
+        kitty_sessorg_arrange(kitty_cfg_modal_owner(), 1);
+}
+
 void kitty_config_end_folder_rename(dlgparam *dp)
 {
     struct sessionsaver_data *ssd = session_filter_ssd;
@@ -1092,9 +1145,92 @@ void kitty_config_end_folder_rename(dlgparam *dp)
     sessionsaver_end_folder_rename(ssd, dp);
 }
 
+/*
+ * KiTTY (hknet/KiTTY#55): the store changed from outside this panel's own
+ * handlers (the Organize window, Arrange, the folder-delete box): the folder
+ * list, the session list and the launcher follow. Nothing to do while no
+ * configuration box is open.
+ */
+void kitty_config_session_store_changed(void)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    dlgparam *dlg = kcs_dlg;
+    InitFolderList();
+    kitty_session_folder_cache_clear();
+    if (ssd && dlg && ssd->listbox) {
+        get_sesslist(&ssd->sesslist, false);
+        get_sesslist(&ssd->sesslist, true);
+        if (ssd->editbox)
+            dlg_refresh(ssd->editbox, dlg);
+        if (ssd->folderlist)
+            dlg_refresh(ssd->folderlist, dlg);
+        dlg_refresh(ssd->listbox, dlg);
+    }
+    kitty_notify_launcher_sessions_changed();
+}
+
+/*
+ * ...and a folder moved (`to`), or was deleted (`deleted`: its sessions went
+ * to `to`, or it was empty and `to` is NULL). The level shown follows a
+ * moved folder and steps up out of a deleted one, as the panel's own Del
+ * folder does; the loaded session keeps pointing at itself.
+ */
+void kitty_config_session_folder_moved(const char *from, const char *to,
+                                       int deleted)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    Conf *conf = kcs_conf;
+    if (!ksp_folder_is_root(CurrentFolder) &&
+        ksp_folder_within(CurrentFolder, from)) {
+        char *np = deleted ? ksp_folder_parent(from)
+                           : ksp_folder_moved_path(CurrentFolder, from, to);
+        strncpy(CurrentFolder, np, 1023);
+        CurrentFolder[1023] = '\0';
+        sfree(np);
+        kitty_set_last_folder(CurrentFolder);
+    }
+    if (!ssd || !to)
+        return;
+    if (conf && !ksp_folder_is_root(conf_get_str(conf, CONF_folder)) &&
+        ksp_folder_within(conf_get_str(conf, CONF_folder), from)) {
+        char *np = ksp_folder_moved_path(conf_get_str(conf, CONF_folder), from, to);
+        conf_set_str(conf, CONF_folder, np);
+        sfree(np);
+    }
+    if (ssd->loaded_from && strchr(ssd->loaded_from, '\\')) {
+        char *lf = ksp_folder_of(ssd->loaded_from);
+        if (lf && ksp_folder_within(lf, from)) {
+            char *np = ksp_folder_moved_path(ssd->loaded_from, from, to);
+            sfree(ssd->loaded_from);
+            ssd->loaded_from = np;
+            if (conf)
+                conf_set_str(conf, CONF_sessionname, np);
+        }
+        sfree(lf);
+    }
+}
+
+/* The answer of the folder-delete box raised by Del folder. */
+static void kcs_delete_folder_done(int deleted, void *ctx)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    (void)ctx;
+    if (deleted && ssd && kcs_dlg) {
+        sfree(ssd->savedsession);
+        ssd->savedsession = dupstr("");
+    }
+    kitty_config_session_store_changed();
+}
+
 static void sessionsaver_data_free(void *ssdv)
 {
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ssdv;
+    if (session_filter_ssd == ssd) {
+        /* KiTTY (hknet/KiTTY#55): the box is going; nothing outside may
+         * refresh it any more. */
+        kcs_dlg = NULL;
+        kcs_conf = NULL;
+    }
     if (session_filter_ctrl == ssd->editbox)
         session_filter_ctrl = NULL;
     if (session_filter_ssd == ssd) {
@@ -1192,6 +1328,29 @@ static bool kitty_at_root_level(void)
 }
 
 /*
+ * KiTTY (hknet/KiTTY#55): folders NEST. A folder is a path - "Linux\web" - and
+ * a session stored under a path ("Linux\web\srv01") is in that path's folder
+ * (kitty_read_session_folder answers the prefix without reading the store).
+ * Both stores are case-insensitive, so folders are compared that way too: a
+ * FolderList entry spelled "linux" and a session path "Linux\srv01" are the
+ * same folder, not two rows.
+ */
+static bool kitty_folder_is_root(const char *f) { return ksp_folder_is_root(f); }
+static bool kitty_folder_same(const char *a, const char *b) { return ksp_folder_same(a, b); }
+/* Is `folder` the folder `top` or one below it? */
+static bool kitty_folder_within(const char *folder, const char *top)
+{
+    return ksp_folder_within(folder, top);
+}
+/* The folder above `f` ("Default" above a top-level one). snewn'd. */
+static char *kitty_folder_parent(const char *f) { return ksp_folder_parent(f); }
+/* The row `folder` puts at `level` (kitty_sessionpath.h). snewn'd. */
+static char *kitty_folder_child_row(const char *level, const char *folder)
+{
+    return ksp_folder_child_row(level, folder);
+}
+
+/*
  * Does this session belong on the level being shown?
  *
  * Index 0 is "Default Settings": it belongs to no folder and is deliberately
@@ -1225,7 +1384,7 @@ static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
      * neighbours - which is the level the user is actually looking at. */
     if (!kitty_at_root_level()) {
         fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
-        ok = (fld && !strcmp(fld, CurrentFolder));
+        ok = (fld && kitty_folder_same(fld, CurrentFolder));
         sfree(fld);
         return ok;
     }
@@ -1522,8 +1681,10 @@ static int sessionsaver_filter_match(const char *sessionname, const char *filter
  */
 static bool kitty_folder_row_visible(const char *name, const char *filter)
 {
+    /* The filter is matched against what the row SHOWS - the folder's own
+     * name, not the path above it. */
     return name && name[0] && strcmp(name, "Default") != 0 &&
-        sessionsaver_filter_match(name, filter) != 0;
+        sessionsaver_filter_match(ksp_leaf(name), filter) != 0;
 }
 
 /*
@@ -1557,25 +1718,42 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
     sfree(ssd->folderrows);
     ssd->folderrows = NULL;
     ssd->nfolderrows = 0;
-    if (!kitty_folder_rows_active(ssd) || !kitty_at_root_level())
-        return;                          /* one level: no folders inside one */
+    if (!kitty_folder_rows_active(ssd))
+        return;
 
+    /* KiTTY (hknet/KiTTY#55): folders nest, so every level has rows - the
+     * CHILDREN of the level shown, each standing for its whole subtree
+     * ("network" at the root, "network\test" inside "network"). */
     cap = ssd->sesslist.nsessions + 64;
     ssd->folderrows = snewn(cap, char *);
 
-    for (i = 0; FolderList && FolderList[i] != NULL && n < cap; i++)
-        if (kitty_folder_row_visible(FolderList[i], filter))
-            ssd->folderrows[n++] = dupstr(FolderList[i]);
+    for (i = 0; FolderList && FolderList[i] != NULL && n < cap; i++) {
+        char *row = kitty_folder_child_row(CurrentFolder, FolderList[i]);
+        if (row && kitty_folder_row_visible(row, filter)) {
+            int j, seen = 0;
+            for (j = 0; j < n; j++)
+                if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
+            if (!seen) {
+                ssd->folderrows[n++] = row;
+                row = NULL;
+            }
+        }
+        sfree(row);
+    }
 
     for (i = 0; i < ssd->sesslist.nsessions && n < cap; i++) {
         char *fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
-        if (kitty_folder_row_visible(fld, filter)) {
+        char *row = kitty_folder_child_row(CurrentFolder, fld);
+        if (row && kitty_folder_row_visible(row, filter)) {
             int j, seen = 0;
             for (j = 0; j < n; j++)
-                if (!strcmp(ssd->folderrows[j], fld)) { seen = 1; break; }
-            if (!seen)
-                ssd->folderrows[n++] = dupstr(fld);
+                if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
+            if (!seen) {
+                ssd->folderrows[n++] = row;
+                row = NULL;
+            }
         }
+        sfree(row);
         sfree(fld);
     }
     ssd->nfolderrows = n;
@@ -1586,7 +1764,7 @@ static int kitty_nav_row_count(struct sessionsaver_data *ssd)
     if (!kitty_folder_rows_active(ssd))
         return 0;
     if (!kitty_at_root_level())
-        return 1;                        /* ".." only: one level, so no folders */
+        return 1 + ssd->nfolderrows;     /* "..", then the subfolders */
     return ssd->nfolderrows;
 }
 
@@ -1605,13 +1783,12 @@ static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
     int i;
     if (!kitty_folder_rows_active(ssd))
         return;
-    if (!kitty_at_root_level()) {
+    if (!kitty_at_root_level())
         dlg_listbox_addwithid(ctrl, dlg, "..", KITTY_ROW_PARENT);
-        return;
-    }
     for (i = 0; i < ssd->nfolderrows; i++) {
         char disp[700];
-        snprintf(disp, sizeof(disp), "%s/", ssd->folderrows[i]);
+        /* The row shows the folder's own name; it stands for the full path. */
+        snprintf(disp, sizeof(disp), "%s/", ksp_leaf(ssd->folderrows[i]));
         dlg_listbox_addwithid(ctrl, dlg, disp, KITTY_ROW_FOLDER_BASE - i);
     }
 }
@@ -1622,8 +1799,15 @@ static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
 static const char *kitty_folder_for_row_id(struct sessionsaver_data *ssd, int id)
 {
     int idx;
-    if (id == KITTY_ROW_PARENT)
-        return "Default";
+    if (id == KITTY_ROW_PARENT) {
+        /* Folders nest (hknet/KiTTY#55): ".." is the folder above this one. */
+        static char parent[1024];
+        char *p = kitty_folder_parent(CurrentFolder);
+        strncpy(parent, p, sizeof(parent) - 1);
+        parent[sizeof(parent) - 1] = '\0';
+        sfree(p);
+        return parent;
+    }
     if (id > KITTY_ROW_FOLDER_BASE)
         return NULL;
     idx = KITTY_ROW_FOLDER_BASE - id;
@@ -1637,8 +1821,11 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
                                           int session_index, bool searching)
 {
     char disp[700];
-    const char *sessionname = ssd->sesslist.sessions[session_index];
-    int og = kitty_session_origin(sessionname);
+    /* KiTTY (hknet/KiTTY#55): a session stored under a folder path shows its
+     * own name; where it lives is the level (or the bracket) that shows it. */
+    const char *sessionname = ksp_leaf(ssd->sesslist.sessions[session_index]);
+    const char *storedname = ssd->sesslist.sessions[session_index];
+    int og = kitty_session_origin(storedname);
     /* Show which folder a session is in when the list is not already narrowed
      * to one - inside a folder the bracket would just repeat the selection on
      * every row. That means while searching (results come from everywhere),
@@ -1657,7 +1844,7 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
     bool annotate_folders = !kitty_folder_rows_active(ssd) ||
         kitty_searching_all_folders(ssd);
     char *fld = (annotate_folders && (searching || root_view)) ?
-        kitty_read_session_folder(sessionname) : NULL;
+        kitty_read_session_folder(storedname) : NULL;
     bool filed = (fld && *fld && strcmp(fld, "Default"));
     if (annotate_folders && (searching || filed)) {
         const char *folder = filed ? fld : "root";
@@ -1758,7 +1945,10 @@ static int sessionsaver_folder_member_count_of(struct sessionsaver_data *ssd,
         if (!strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
             continue;                      /* belongs to no folder; see above */
         fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
-        if (fld && !strcmp(fld, folder))
+        /* Subfolders count too (hknet/KiTTY#55): emptying a folder moves its
+         * whole subtree, and a folder whose sessions all sit one level down
+         * is not empty. */
+        if (fld && kitty_folder_within(fld, folder))
             n++;
         sfree(fld);
     }
@@ -1768,6 +1958,18 @@ static int sessionsaver_folder_member_count_of(struct sessionsaver_data *ssd,
 static int sessionsaver_folder_member_count(struct sessionsaver_data *ssd)
 {
     return sessionsaver_folder_member_count_of(ssd, CurrentFolder);
+}
+
+/*
+ * KiTTY (hknet/KiTTY#55): the name a folder's member gets when the folder
+ * moves from `from` to `to` - its subtree keeps its shape below the new place:
+ * "a\b\srv" moved from "a" to the root is "b\srv", to "x" it is "x\b\srv".
+ * `path` is the member's path (a session path or a folder). snewn'd.
+ */
+static char *kitty_folder_moved_path(const char *path, const char *from,
+                                     const char *to)
+{
+    return ksp_folder_moved_path(path, from, to);
 }
 
 /* Move every session in `from` to `to` ("Default" = the root list), by
@@ -1786,17 +1988,89 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
                                              const char *from, const char *to)
 {
     int i, moved = 0;
+    /*
+     * KiTTY (hknet/KiTTY#55): sessions stored under a folder PATH are moved
+     * by re-keying them - key or file, Folder value, jump list, launcher and
+     * every jump-host reference to them - and that is all or nothing: a name
+     * already taken at the destination stops the whole move before anything
+     * changes, and the message names the clashes. The bare-name sessions
+     * (filed by their Folder value only) follow below as before.
+     */
+    {
+        char **kf = NULL, **kt = NULL;
+        int nk = 0;
+        for (i = 0; i < ssd->sesslist.nsessions; i++) {
+            const char *sess = ssd->sesslist.sessions[i];
+            char *fld;
+            if (!strchr(sess, '\\'))
+                continue;
+            fld = ksp_folder_of(sess);
+            if (fld && kitty_folder_within(fld, from)) {
+                kf = sresize(kf, nk + 1, char *);
+                kt = sresize(kt, nk + 1, char *);
+                kf[nk] = dupstr(sess);
+                kt[nk] = kitty_folder_moved_path(sess, from, to);
+                nk++;
+            }
+            sfree(fld);
+        }
+        if (nk) {
+            strbuf *rw = strbuf_new(), *cl = strbuf_new();
+            char *err = NULL;
+            int r = kitty_session_rekey_many(kf, kt, nk, rw, cl, &err);
+            int k;
+            if (r == KITTY_REKEY_CLASH) {
+                char rootlabel[256], *msg;
+                kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+                msg = dupprintf(KT_SP_MOVE_CLASH,
+                                kitty_folder_is_root(to) ? rootlabel : to, cl->s);
+                kcs_tell(msg);
+                sfree(msg);
+            } else if (r == KITTY_REKEY_FAILED) {
+                kcs_tell(err ? err : KT_MSG_UNKNOWN_ERROR);
+            } else if (rw->len) {
+                char *msg = dupprintf(KT_SP_JUMP_REWRITTEN, rw->s);
+                kcs_tell(msg);
+                sfree(msg);
+            }
+            sfree(err);
+            strbuf_free(rw);
+            strbuf_free(cl);
+            for (k = 0; k < nk; k++) {
+                sfree(kf[k]);
+                sfree(kt[k]);
+            }
+            sfree(kf);
+            sfree(kt);
+            kitty_session_folder_cache_clear();
+            if (r != KITTY_REKEY_OK)
+                return -1;
+            moved += nk;
+            /* The list the loop below walks still holds the old names. */
+            get_sesslist(&ssd->sesslist, false);
+            get_sesslist(&ssd->sesslist, true);
+        }
+    }
     for (i = 0; i < ssd->sesslist.nsessions; i++) {
         const char *sess = ssd->sesslist.sessions[i];
         bool isdef = !strcmp(sess, KITTY_DEFAULT_SESSION);
-        const char *dest = isdef ? "Default" : to;
-        char *fld = kitty_read_session_folder_cached(sess);
-        int match = (fld && !strcmp(fld, from));
+        char *fld, *destbuf = NULL;
+        const char *dest;
+        int match;
         char *errmsg = NULL;
         settings_w *w;
+        if (strchr(sess, '\\'))
+            continue;                    /* path sessions: moved above */
+        fld = kitty_read_session_folder_cached(sess);
+        match = (fld && kitty_folder_within(fld, from));
+        if (match && !isdef)
+            destbuf = kitty_folder_moved_path(fld, from, to);
+        dest = isdef ? "Default" : destbuf;
         sfree(fld);
-        if (!match)
+        if (!match) {
+            sfree(destbuf);
             continue;
+        }
         /* "Default Settings" is never carried into the new folder - it belongs
          * to none. Clearing it here is also what removes folder ghosts left by
          * earlier versions, which silently kept renamed/deleted folders alive. */
@@ -1807,11 +2081,13 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
                      KT_CFG_SESSION_UPDATE_FAILED, sess,
                      errmsg ? errmsg : KT_MSG_UNKNOWN_ERROR);
             sfree(errmsg);
-            dlg_error_msg(dlg, msg);
+            sfree(destbuf);
+            kcs_tell(msg);
             return -1;
         }
         write_setting_s(w, "Folder", dest);
         close_settings_w(w);
+        sfree(destbuf);
         kitty_session_folder_cache_clear();
         if (!isdef)
             moved++;
@@ -1823,9 +2099,50 @@ static bool sessionsaver_folder_exists(const char *name)
 {
     int i;
     for (i = 0; FolderList && FolderList[i] != NULL; i++)
-        if (FolderList[i][0] && !stricmp(FolderList[i], name))
+        if (FolderList[i][0] && kitty_folder_within(FolderList[i], name))
             return true;
+    /* KiTTY (hknet/KiTTY#55): a folder that holds path sessions exists
+     * whether or not the stored list names it. */
+    if (session_filter_ssd) {
+        struct sessionsaver_data *ssd = session_filter_ssd;
+        for (i = 0; i < ssd->sesslist.nsessions; i++) {
+            char *fld = ksp_folder_of(ssd->sesslist.sessions[i]);
+            bool yes = fld && kitty_folder_within(fld, name);
+            sfree(fld);
+            if (yes)
+                return true;
+        }
+    }
     return false;
+}
+
+/* KiTTY (hknet/KiTTY#55): the stored folder list follows a rename or a
+ * delete of a folder together with everything below it. `to` NULL deletes. */
+static void kitty_folderlist_move_subtree(const char *from, const char *to)
+{
+    int i;
+    char **moved = NULL;
+    int nm = 0;
+    InitFolderList();
+    for (i = 0; FolderList && FolderList[i] != NULL; i++)
+        if (FolderList[i][0] && kitty_folder_within(FolderList[i], from)) {
+            moved = sresize(moved, nm + 1, char *);
+            moved[nm++] = dupstr(FolderList[i]);
+        }
+    for (i = 0; i < nm; i++) {
+        StringList_Del(FolderList, moved[i]);
+        if (to) {
+            char *np = kitty_folder_moved_path(moved[i], from, to);
+            if (!kitty_folder_is_root(np))
+                StringList_Add(FolderList, np);
+            sfree(np);
+        }
+        sfree(moved[i]);
+    }
+    sfree(moved);
+    if (to && !kitty_folder_is_root(to))
+        StringList_Add(FolderList, to);
+    SaveFolderList();
 }
 
 /* A name typed over the current selection renames it - the root list's label
@@ -1869,6 +2186,19 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
     CleanFolderName(folder);
     strncpy(old, oldname ? oldname : "", sizeof(old)-1);
     old[sizeof(old)-1] = '\0';
+    /* KiTTY (hknet/KiTTY#55): a plain name renames a nested folder where it
+     * is - "test" typed over "network\test" means "network\prod", not a move
+     * to the top level. A path typed in full is taken as it is. */
+    if (folder[0] && !strchr(folder, '\\') && strchr(old, '\\')) {
+        char *parent = ksp_folder_of(old);
+        if (parent) {
+            char *full = dupprintf("%s\\%s", parent, folder);
+            strncpy(folder, full, sizeof(folder)-1);
+            folder[sizeof(folder)-1] = '\0';
+            sfree(full);
+            sfree(parent);
+        }
+    }
 
     if (!folder[0] || !old[0]) {
         dlg_beep(dlg);
@@ -1887,21 +2217,38 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
     if (sessionsaver_move_folder_sessions(ssd, dlg, old, folder) < 0)
         return false;
 
-    InitFolderList();
-    StringList_Del(FolderList, old);
-    StringList_Add(FolderList, folder);
-    SaveFolderList();
-    /* Only follow the rename if we were standing in that folder. Renaming a row
-     * at the root must leave the view where it is. */
-    if (!strcmp(CurrentFolder, old)) {
-        strncpy(CurrentFolder, folder, 1023);
+    /* KiTTY (hknet/KiTTY#55): its subfolders are renamed with it. */
+    kitty_folderlist_move_subtree(old, folder);
+    /* Only follow the rename if we were standing in that folder (or below
+     * it). Renaming a row elsewhere must leave the view where it is. */
+    if (kitty_folder_within(CurrentFolder, old) &&
+        !kitty_folder_is_root(CurrentFolder)) {
+        char *np = kitty_folder_moved_path(CurrentFolder, old, folder);
+        strncpy(CurrentFolder, np, 1023);
         CurrentFolder[1023] = '\0';
+        sfree(np);
         kitty_set_last_folder(CurrentFolder);
     }
     /* The loaded session, if it was in the renamed folder, must follow it or
      * the next Save would put it back under the old name. */
-    if (!strcmp(conf_get_str(conf, CONF_folder), old))
-        conf_set_str(conf, CONF_folder, folder);
+    if (kitty_folder_within(conf_get_str(conf, CONF_folder), old) &&
+        !kitty_folder_is_root(conf_get_str(conf, CONF_folder))) {
+        char *np = kitty_folder_moved_path(conf_get_str(conf, CONF_folder),
+                                           old, folder);
+        conf_set_str(conf, CONF_folder, np);
+        sfree(np);
+    }
+    /* ...and so does its name, if it was stored under the old path. */
+    if (ssd->loaded_from && strchr(ssd->loaded_from, '\\')) {
+        char *lf = ksp_folder_of(ssd->loaded_from);
+        if (lf && kitty_folder_within(lf, old)) {
+            char *np = kitty_folder_moved_path(ssd->loaded_from, old, folder);
+            sfree(ssd->loaded_from);
+            ssd->loaded_from = np;
+            conf_set_str(conf, CONF_sessionname, np);
+        }
+        sfree(lf);
+    }
     sfree(ssd->newfolder);
     ssd->newfolder = dupstr("");
     ssd->folder_new_selected = 0;
@@ -1911,26 +2258,8 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
     return true;
 }
 
-/* Deleting a folder that still holds sessions: ask, then empty it by moving
- * them to the root list. Returns true if the folder is now empty and the
- * caller may drop it. */
-static bool sessionsaver_confirm_empty_folder(struct sessionsaver_data *ssd,
-                                              dlgparam *dlg)
-{
-    int n = sessionsaver_folder_member_count(ssd);
-    char msg[512];
-    if (n == 1)
-        snprintf(msg, sizeof(msg),
-                 KT_CFG_FOLDER_DELETE_ONE, CurrentFolder);
-    else
-        snprintf(msg, sizeof(msg),
-                 KT_CFG_FOLDER_DELETE_MANY, CurrentFolder, n);
-    if (MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
-                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
-        return false;
-    return sessionsaver_move_folder_sessions(ssd, dlg, CurrentFolder,
-                                             "Default") >= 0;
-}
+/* Deleting a folder that still holds sessions: the modeless box of
+ * kitty_sessorg.c asks where they go and moves them (hknet/KiTTY#55). */
 
 /*
  * KiTTY: Delete pressed on "Default Settings".
@@ -2115,8 +2444,15 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
                                              dlgparam *dlg)
 {
     char folder[1024];
-    strncpy(folder, ssd->savedsession ? ssd->savedsession : "", sizeof(folder)-1);
-    folder[sizeof(folder)-1] = '\0';
+    /* KiTTY (hknet/KiTTY#55): a folder made while standing in "network" is
+     * "network\test" - it is created where you are, like Explorer's. */
+    if (!kitty_at_root_level() && ssd->savedsession && ssd->savedsession[0])
+        snprintf(folder, sizeof(folder), "%s\\%s", CurrentFolder,
+                 ssd->savedsession);
+    else {
+        strncpy(folder, ssd->savedsession ? ssd->savedsession : "", sizeof(folder)-1);
+        folder[sizeof(folder)-1] = '\0';
+    }
     CleanFolderName(folder);
     if (!folder[0]) {
         /* Nothing typed: put the caret where the name goes rather than just
@@ -2132,6 +2468,10 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
         dlg_error_msg(dlg, KT_CFG_FOLDER_EXISTS);
         return;
     }
+    /* KiTTY (hknet/KiTTY#55): without a suffix the root session "Linux" is
+     * the file Sessions\Linux, and a folder "Linux" could never hold one. */
+    if (kcs_folder_blocked(folder))
+        return;
     InitFolderList();
     StringList_Add(FolderList, folder);
     SaveFolderList();
@@ -2188,6 +2528,46 @@ static bool sessionsaver_enter_selected_folder(struct sessionsaver_data *ssd,
     return true;
 }
 
+/*
+ * KiTTY (hknet/KiTTY#55): which session a Save writes.
+ *
+ * A session's identity is its folder path plus its name, so a name typed while
+ * standing in "Linux\web" saves "Linux\web\<name>" - in classic mode the
+ * folder combo is where you stand, with folder rows the level shown. A full
+ * path typed into the box is taken as it is. Two things keep their old
+ * behaviour on purpose: a session that already exists under its BARE name
+ * (filed by its Folder value only, not yet arranged) is saved in place - its
+ * folder is still the Folder value, as before - and Default Settings is
+ * never filed. Mid-session the running session's own name is the target.
+ *
+ * A session loaded from one folder and saved while standing in another is
+ * MOVED there, as Save has always re-filed it; under the path model that is a
+ * re-key (*move_from is set to the loaded name, the return is where it goes).
+ */
+static char *sessionsaver_save_target(struct sessionsaver_data *ssd,
+                                      bool isdef, char **move_from)
+{
+    const char *name = ssd->savedsession;
+    const char *cur = kitty_at_root_level() ? NULL : CurrentFolder;
+    *move_from = NULL;
+    if (isdef || !name || !name[0] || ssd->midsession || GetPuttyFlag() ||
+        !kitty_folders_available(ssd))
+        return dupstr(name ? name : "");
+    if (strchr(name, '\\')) {
+        if (ssd->loaded_from && !strcmp(ssd->loaded_from, name) &&
+            ssd->folder_at_load &&
+            !kitty_folder_same(ssd->folder_at_load, cur)) {
+            *move_from = dupstr(name);
+            return cur ? dupprintf("%s\\%s", cur, ksp_leaf(name))
+                       : dupstr(ksp_leaf(name));
+        }
+        return dupstr(name);
+    }
+    if (kitty_own_session_exists(name) || !cur)
+        return dupstr(name);
+    return dupprintf("%s\\%s", cur, name);
+}
+
 static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
@@ -2195,7 +2575,32 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
     struct sessionsaver_data *ssd =
         (struct sessionsaver_data *)ctrl->context.p;
 
+    /* KiTTY (hknet/KiTTY#55): what the Organize window and the modeless
+     * boxes refresh through (kitty_config_session_store_changed). */
+    if (ssd && ssd == session_filter_ssd) {
+        kcs_dlg = dlg;
+        kcs_conf = conf;
+    }
+
+    /* KiTTY (hknet/KiTTY#55): Organize... opens the Organize window. */
+    if (ssd && ssd->organizebutton && ctrl == ssd->organizebutton) {
+        if (event == EVENT_ACTION)
+            kitty_sessorg_open(kitty_cfg_modal_owner());
+        return;
+    }
+
     if (event == EVENT_REFRESH) {
+        /* KiTTY (hknet/KiTTY#55): the one-time Arrange offer, once the box
+         * is up (a timer: this refresh runs while the window is still being
+         * built). Checked once per store, never mid-session. */
+        if (ctrl == ssd->listbox && !ssd->midsession && !GetPuttyFlag()) {
+            static int arrange_checked = 0;
+            if (!arrange_checked) {
+                arrange_checked = 1;
+                if (kitty_sessorg_arrange_pending())
+                    SetTimer(NULL, 0, 400, kcs_arrange_timer);
+            }
+        }
         if (ctrl == ssd->editbox) {
             /*
              * KiTTY: mid-session, start with THIS session's name in the box.
@@ -2606,12 +3011,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 ssd->folder_text_in_box = NULL;
             }
             if (ssd->selected_folder) {
+                /* The folder's own name, as the row shows it; a plain name
+                 * typed over it renames the folder where it is (see
+                 * sessionsaver_rename_folder). */
                 sfree(ssd->savedsession);
-                ssd->savedsession = dupstr(ssd->selected_folder);
+                ssd->savedsession = dupstr(ksp_leaf(ssd->selected_folder));
                 /* Remember what we put there, so it can be taken back out if
                  * the rename ends without the user having edited it. */
                 sfree(ssd->folder_text_in_box);
-                ssd->folder_text_in_box = dupstr(ssd->selected_folder);
+                ssd->folder_text_in_box = dupstr(ksp_leaf(ssd->selected_folder));
                 sfree(ssd->searchfilter);
                 ssd->searchfilter = dupstr("");
                 dlg_refresh(ssd->editbox, dlg);
@@ -2775,6 +3183,67 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     /* else: keep the folder the session was loaded with */
                 }
                 /*
+                 * KiTTY (hknet/KiTTY#55): the identity the save writes - see
+                 * sessionsaver_save_target. A path's folder is the session's
+                 * folder, so the Folder value is set to match it. A loaded
+                 * session saved at another level is moved there first, with
+                 * its password, jump list, launcher entries and the jump-host
+                 * references to it; a name taken there stops the save.
+                 */
+                {
+                    char *move_from = NULL;
+                    char *target = sessionsaver_save_target(ssd, isdef,
+                                                            &move_from);
+                    if (move_from) {
+                        strbuf *rw = strbuf_new(), *cl = strbuf_new();
+                        char *err = NULL;
+                        int r;
+                        SaveRegistryKeyNow();
+                        r = kitty_session_rekey(move_from, target, rw, cl, &err);
+                        if (r != KITTY_REKEY_OK) {
+                            char rootlabel[256], *msg, *fld = ksp_folder_of(target);
+                            kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+                            msg = (r == KITTY_REKEY_CLASH) ?
+                                dupprintf(KT_SP_MOVE_CLASH, fld ? fld : rootlabel,
+                                          cl->s) :
+                                dupstr(err ? err : KT_MSG_UNKNOWN_ERROR);
+                            kcs_tell(msg);
+                            sfree(msg);
+                            sfree(fld);
+                            sfree(err);
+                            strbuf_free(rw);
+                            strbuf_free(cl);
+                            sfree(move_from);
+                            sfree(target);
+                            return;
+                        }
+                        if (rw->len) {
+                            char *msg = dupprintf(KT_SP_JUMP_REWRITTEN, rw->s);
+                            kcs_tell(msg);
+                            sfree(msg);
+                        }
+                        strbuf_free(rw);
+                        strbuf_free(cl);
+                        sfree(move_from);
+                        /* What is in the box IS the moved session now. */
+                        sfree(ssd->loaded_from);
+                        ssd->loaded_from = dupstr(target);
+                        kitty_notify_launcher_sessions_changed();
+                    }
+                    if (!isdef && target[0] && !ssd->midsession &&
+                        !GetPuttyFlag()) {
+                        char *fld = ksp_folder_of(target);
+                        if (fld)
+                            conf_set_str(conf, CONF_folder, fld);
+                        else if (strchr(ssd->savedsession, '\\') ||
+                                 !kitty_own_session_exists(target))
+                            conf_set_str(conf, CONF_folder, "Default");
+                        sfree(fld);
+                    }
+                    sfree(ssd->savedsession);
+                    ssd->savedsession = target;
+                }
+                /*
                  * KiTTY: confirm before REPLACING a session you never loaded.
                  *
                  * The accident this stops, reported with an exact repro: load
@@ -2920,7 +3389,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 }
                 char *errmsg = save_settings(ssd->savedsession, conf);
                 if (errmsg) {
-                    dlg_error_msg(dlg, errmsg);
+                    /* KiTTY: modeless, like every box of this window's flow -
+                     * the save clash and the name-on-disk clash of the folder
+                     * store (hknet/KiTTY#55, #56) arrive here. */
+                    kcs_tell(errmsg);
                     sfree(errmsg);
                 } else {
                     /* KiTTY: a Save under a NEW name is a copy, and the
@@ -3082,6 +3554,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_beep(dlg);
                 } else if (kitty_folder_name_reserved(folder)) {
                     dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
+                } else if (kcs_folder_blocked(folder)) {
+                    /* KiTTY (hknet/KiTTY#55): a session file of that name
+                     * is in the way on disk (no suffix); said, not done. */
                 } else {
                     InitFolderList();
                     StringList_Add(FolderList, folder);
@@ -3112,9 +3587,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             SaveRegistryKeyNow();
             if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
                 kitty_root_folder_cannot_delete(dlg);
-            } else if (sessionsaver_folder_member_count(ssd) > 0 ?
-                       !sessionsaver_confirm_empty_folder(ssd, dlg) :
-                       /* No members, but "Default Settings" may still carry
+            } else if (sessionsaver_folder_member_count(ssd) > 0) {
+                /* KiTTY (hknet/KiTTY#55): ask, in a modeless box that also
+                 * offers where the sessions go (the root preselected); the
+                 * box moves them, drops the folder and calls back. */
+                kitty_sessorg_delete_folder(kitty_cfg_modal_owner(), CurrentFolder,
+                                            kcs_delete_folder_done, NULL);
+            } else if (/* No members, but "Default Settings" may still carry
                         * this folder - invisible in the UI, yet enough to
                         * rebuild the folder straight back. Clear it. */
                        sessionsaver_move_folder_sessions(ssd, dlg,
@@ -3126,10 +3605,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * would rebuild it from those "Folder" values and the delete
                  * would only look like it worked. */
             } else {
-                StringList_Del(FolderList, CurrentFolder);
-                SaveFolderList();
+                /* KiTTY (hknet/KiTTY#55): with its subfolders, which were
+                 * emptied with it; the view steps up to the folder above. */
+                char *up = kitty_folder_parent(CurrentFolder);
+                kitty_folderlist_move_subtree(CurrentFolder, NULL);
                 InitFolderList();
-                strcpy(CurrentFolder, "Default");
+                strncpy(CurrentFolder, up, 1023);
+                CurrentFolder[1023] = '\0';
+                sfree(up);
                 kitty_set_last_folder(CurrentFolder);
                 sfree(ssd->savedsession);
                 ssd->savedsession = dupstr("");
@@ -4146,11 +4629,28 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     /* KiTTY: read-only display of the selected session's comment, below the list.
      * Empty comments show a clear placeholder directly inside the field. */
     if (!GetPuttyFlag()) {
+        /* KiTTY (hknet/KiTTY#55): "Organize..." takes the right quarter of
+         * the comment's row, under the list's column of buttons; when the
+         * list is tall enough, kitty_config_session_distribute() lifts it
+         * to the list's foot. */
+        if (!midsession)
+            ctrl_columns(s, 2, 75, 25);
         ssd->commentbox = ctrl_editbox_multiline(
             s, NULL, NO_SHORTCUT, 2, true,
             HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
+        if (!midsession) {
+            ssd->commentbox->column = 0;
+            ssd->organizebutton = ctrl_pushbutton(s, KT_SP_ORG_BUTTON, NO_SHORTCUT,
+                                                  HELPCTX(session_saved),
+                                                  sessionsaver_handler, P(ssd));
+            ssd->organizebutton->column = 1;
+            ctrl_columns(s, 1, 100);
+        } else {
+            ssd->organizebutton = NULL;
+        }
     } else {
         ssd->commentbox = NULL;
+        ssd->organizebutton = NULL;
     }
 
     /* "Close window on exit" and "Save settings on exit" are on Window >

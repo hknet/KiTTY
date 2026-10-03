@@ -45,6 +45,9 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
+#include "kitty_sessionpath.h"   /* session paths and file names (hknet/KiTTY#55) */
+#include "kitty_migrate.h"       /* kitty_store_suffix_of */
+#include "kitty_tools.h"         /* str_rtrim */
 
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */
@@ -56,7 +59,10 @@ static int ksm_layout_key(const char *name)
 {
     static const char *const skip[] = {
         KI_SAVEMODE, KI_CONFIGDIR, KI_BROWSEDIRECTORY, KI_KICLASSNAME, KI_SAV,
-        KI_CONF, KI_READONLY, KI_PORTABLEPASSWORDPROTECTION, NULL
+        KI_CONF, KI_READONLY, KI_PORTABLEPASSWORDPROTECTION,
+        /* KiTTY (hknet/KiTTY#56): where this store keeps its sessions and
+         * host keys - a copy keeps its own beside its kitty.ini */
+        KI_SESSIONS, KI_SSHHOSTKEYS, NULL
     };
     int i;
     for (i = 0; skip[i]; i++)
@@ -170,6 +176,58 @@ static void ksm_delete_file_cb(const char *dir, const char *name, void *ctx)
     sfree(p);
 }
 
+/* KiTTY (hknet/KiTTY#56): a folder store's own description of where it keeps
+ * things - its kitty.ini [KiTTY] key, else its putty.conf (classic KiTTY's),
+ * else `dflt` beside it. A relative path is taken from the store's folder.
+ * snewn'd. */
+static char *ksm_source_value(const char *dir, const char *inikey,
+                              const char *confkey)
+{
+    char *ini = dupprintf("%s\\" KSM_INI, dir), *v = NULL;
+    char buf[MAX_PATH * 2];
+    if (ksm_file_exists(ini) &&
+        GetPrivateProfileStringA(INIT_SECTION, inikey, "", buf, sizeof(buf), ini) &&
+        buf[0])
+        v = dupstr(buf);
+    sfree(ini);
+    if (!v) {
+        char *pc = dupprintf("%s\\putty.conf", dir), line[MAX_PATH * 2];
+        FILE *fp = fopen(pc, "rb");
+        size_t kl = strlen(confkey);
+        while (fp && !v && fgets(line, sizeof(line), fp))
+            if (!_strnicmp(line, confkey, kl) && line[kl] == '=') {
+                v = dupstr(line + kl + 1);
+                str_rtrim(v, " \n\r\t");
+                if (!v[0]) { sfree(v); v = NULL; }
+            }
+        if (fp) fclose(fp);
+        sfree(pc);
+    }
+    return v;                           /* NULL: the store does not say */
+}
+
+static char *ksm_source_path(const char *dir, const char *inikey,
+                             const char *confkey, const char *dflt)
+{
+    char *v = ksm_source_value(dir, inikey, confkey);
+    if (!v)
+        return dupprintf("%s\\%s", dir, dflt);
+    str_rtrim(v, " \t\\");
+    if (v[0] == '\\' || (v[0] && v[1] == ':')) {
+        if (strlen(v) == 2 && v[1] == ':') {   /* "C:" means drive C:'s root */
+            char *r = dupcat(v, "\\");
+            sfree(v);
+            return r;
+        }
+        return v;
+    }
+    {
+        char *r = dupprintf("%s\\%s", dir, v);
+        sfree(v);
+        return r;
+    }
+}
+
 /* ---- host keys ------------------------------------------------------- */
 
 /* Registry hive in use -> <dst>\SshHostKeys\<munged name>. */
@@ -231,7 +289,10 @@ static int ksm_copy_dir_files(const char *from, const char *to, int *fail)
 /* <src>\SshHostKeys\* -> values under the hive in use. */
 static int ksm_hostkeys_from_dir(const char *src, int *fail)
 {
-    char *dir = dupprintf("%s\\SshHostKeys", src);
+    /* KiTTY (hknet/KiTTY#56): the folder the store says it keeps them in,
+     * and the ending its host-key file names carry. */
+    char *dir = ksm_source_path(src, KI_SSHHOSTKEYS, "SshHostKeys", "SshHostKeys");
+    char *keysuf = ksm_source_value(src, KI_KEYSUFFIX, "keysuffix");
     char *pat = dupprintf("%s\\*", dir);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pat, &fd);
@@ -250,7 +311,12 @@ static int ksm_hostkeys_from_dir(const char *src, int *fail)
                           != ERROR_SUCCESS) {
                 k = NULL; (*fail)++; sfree(val); continue;
             }
-            name = ksf_unmunge(fd.cFileName);
+            {
+                char *fname = dupstr(fd.cFileName);
+                ksp_strip_suffix(fname, keysuf ? keysuf : "");
+                name = ksf_unmunge(fname);
+                sfree(fname);
+            }
             if (RegSetValueExA(k, name, 0, REG_SZ, (const BYTE *)val,
                                (DWORD)strlen(val) + 1) == ERROR_SUCCESS) n++;
             else (*fail)++;
@@ -260,6 +326,7 @@ static int ksm_hostkeys_from_dir(const char *src, int *fail)
         FindClose(h);
     }
     if (k) RegCloseKey(k);
+    sfree(keysuf);
     sfree(pat);
     sfree(dir);
     return n;
@@ -412,16 +479,41 @@ static int ksm_copy_programs(const char *dst, int *fail)
 /* The bundle just written into <dir>\Sessions: strip the bundle extension so
  * each file is a session of the copy, and lift Proxies\ one level up, where
  * the folder store keeps them. */
+/* Create the directories of `rel` (a file path below `base`), mkdir -p. */
+static void ksm_make_dirs(const char *base, const char *rel)
+{
+    char *p = dupprintf("%s\\%s", base, rel), *q;
+    for (q = p + strlen(base) + 1; (q = strchr(q, '\\')) != NULL; q++) {
+        *q = '\0';
+        CreateDirectoryA(p, NULL);
+        *q = '\\';
+    }
+    sfree(p);
+}
+
+/* KiTTY (hknet/KiTTY#55): a bundle file carries the session's whole
+ * identity, folder path included ("Linux%5Cweb%5Csrv01.ktx"); in the copy it
+ * becomes the folder store's own layout, Sessions\Linux\web\srv01 - every
+ * component escaped, the session file suffix in force appended. A file that
+ * cannot be put there counts as a failure (ctx: the int failure count). */
 static void ksm_strip_ext_cb(const char *dir, const char *name, void *ctx)
 {
     size_t l = strlen(name), e = strlen(KSM_BUNDLE_EXT);
-    (void)ctx;
+    int *fail = (int *)ctx;
     if (l > e && !_stricmp(name + l - e, KSM_BUNDLE_EXT)) {
+        char *stem = dupprintf("%.*s", (int)(l - e), name);
+        char *ident = ksf_unmunge(stem);
+        char *rel = ksp_path_to_relfile(ident, kitty_session_suffix());
         char *a = dupprintf("%s\\%s", dir, name);
-        char *b = dupprintf("%s\\%.*s", dir, (int)(l - e), name);
-        MoveFileExA(a, b, MOVEFILE_REPLACE_EXISTING);
+        char *b = dupprintf("%s\\%s", dir, rel[0] ? rel : stem);
+        ksm_make_dirs(dir, rel[0] ? rel : stem);
+        if (!MoveFileExA(a, b, MOVEFILE_REPLACE_EXISTING) && fail)
+            (*fail)++;
         sfree(a);
         sfree(b);
+        sfree(rel);
+        sfree(ident);
+        sfree(stem);
     }
 }
 static void ksm_move_file_cb(const char *dir, const char *name, void *ctx)
@@ -433,12 +525,12 @@ static void ksm_move_file_cb(const char *dir, const char *name, void *ctx)
     sfree(a);
     sfree(b);
 }
-static void ksm_bundle_to_store_layout(const char *dir)
+static void ksm_bundle_to_store_layout(const char *dir, int *fail)
 {
     char *sess = dupprintf("%s\\Sessions", dir);
     char *from = dupprintf("%s\\Sessions\\Proxies", dir);
     char *to = dupprintf("%s\\Proxies", dir);
-    ksm_each_file(sess, ksm_strip_ext_cb, NULL);
+    ksm_each_file(sess, ksm_strip_ext_cb, fail);
     if (ksm_dir_exists(from)) {
         CreateDirectoryA(to, NULL);
         ksm_each_file(from, ksm_move_file_cb, to);
@@ -451,19 +543,69 @@ static void ksm_bundle_to_store_layout(const char *dir)
 
 /* The reverse: stage the folder store as a bundle in a temporary folder -
  * sessions with the bundle extension, proxies beneath them. */
-static void ksm_stage_session_cb(const char *dir, const char *name, void *ctx)
+/* KiTTY (hknet/KiTTY#55, #56): the folder store's whole tree, not its top
+ * level only. A file below Sessions\Linux\web is the session
+ * Linux\web\<name>, the store's own suffix taken off; it is staged as one
+ * flat bundle file carrying that identity. Dot-files and dot-folders (a Git
+ * checkout's), junctions, and files that are not sessions are left out, as
+ * the folder store's own listing leaves them out. Two files that give the
+ * same session (`srv01` and `srv01.ktx` with the suffix .ktx) stage the
+ * first one found; each further one is left out and named in `dups` (one
+ * relative path per line), counted in *ndup. */
+#define KSM_STAGE_MAXDEPTH 24
+struct ksm_stage_ctx {
+    const char *stage, *suffix;
+    strbuf *dups;               /* NULL = not wanted */
+    int ndup;
+};
+static void ksm_stage_walk(const char *dir, const char *rel, int depth,
+                           struct ksm_stage_ctx *sc)
 {
-    const char *to = (const char *)ctx;
-    char *a = dupprintf("%s\\%s", dir, name);
-    char *b = dupprintf("%s\\%s%s", to, name, KSM_BUNDLE_EXT);
-    CopyFileA(a, b, FALSE);
-    sfree(a);
-    sfree(b);
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        char *full, *r;
+        if (fd.cFileName[0] == '.')
+            continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+            (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        r = rel[0] ? dupprintf("%s\\%s", rel, fd.cFileName) : dupstr(fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (depth < KSM_STAGE_MAXDEPTH)
+                ksm_stage_walk(full, r, depth + 1, sc);
+        } else if (ksp_file_is_session(full)) {
+            char *ident = ksp_import_name(r, sc->suffix);
+            char *m = ksp_component_munge(ident);
+            char *b = dupprintf("%s\\%s%s", sc->stage, m, KSM_BUNDLE_EXT);
+            if (!CopyFileA(full, b, TRUE) && GetLastError() == ERROR_FILE_EXISTS) {
+                sc->ndup++;
+                if (sc->dups) {
+                    if (sc->dups->len)
+                        put_byte(sc->dups, '\n');
+                    put_dataz(sc->dups, r);
+                }
+            }
+            sfree(b);
+            sfree(m);
+            sfree(ident);
+        }
+        sfree(r);
+        sfree(full);
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
 }
-static char *ksm_stage_folder_store(const char *dir)      /* snewn'd or NULL */
+/* snewn'd or NULL. dups / ndup: see ksm_stage_walk; NULL = not wanted. */
+static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup)
 {
     char tmp[MAX_PATH];
     char *stage, *sess, *prox, *sprox;
+    if (ndup) *ndup = 0;
     if (!GetTempPathA(sizeof(tmp), tmp)) return NULL;
     ksm_trim_slashes(tmp);
     stage = dupprintf("%s\\kitty-take-%lu", tmp,
@@ -473,9 +615,23 @@ static char *ksm_stage_folder_store(const char *dir)      /* snewn'd or NULL */
         GetLastError() != ERROR_ALREADY_EXISTS) {
         sfree(sprox); sfree(stage); return NULL;
     }
-    sess = dupprintf("%s\\Sessions", dir);
+    /* empty, so that a file already there is never taken for a second one
+     * of the same session */
+    ksm_each_file(stage, ksm_delete_file_cb, NULL);
+    /* KiTTY (hknet/KiTTY#56): where that store says its sessions are. */
+    sess = ksm_source_path(dir, KI_SESSIONS, "Sessions", "Sessions");
     prox = dupprintf("%s\\Proxies", dir);
-    if (ksm_dir_exists(sess)) ksm_each_file(sess, ksm_stage_session_cb, stage);
+    if (ksm_dir_exists(sess)) {
+        struct ksm_stage_ctx sc;
+        char *suffix = kitty_store_suffix_of(dir);
+        sc.stage = stage;
+        sc.suffix = suffix;
+        sc.dups = dups;
+        sc.ndup = 0;
+        ksm_stage_walk(sess, "", 0, &sc);
+        if (ndup) *ndup = sc.ndup;
+        sfree(suffix);
+    }
     if (ksm_dir_exists(prox)) {
         int f = 0;
         ksm_copy_dir_files(prox, sprox, &f);
@@ -537,6 +693,26 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     memset(r, 0, sizeof(*r));
     msg[0] = '\0';
 
+    /* KiTTY (hknet/KiTTY#55): a session file where another session needs a
+     * folder (`foo` and `foo\bar`, no suffix) cannot be laid out; refuse
+     * before anything is written rather than copy half the sessions. */
+    {
+        struct sesslist sl;
+        char *blk;
+        get_sesslist(&sl, true);
+        blk = ksp_layout_blocker(sl.sessions, sl.nsessions, kitty_session_suffix());
+        get_sesslist(&sl, false);
+        if (blk) {
+            char *why = dupprintf(KT_SP_PATH_BLOCKED, blk);
+            snprintf(msg, msglen, KT_STOREMOVE_COPY_BLOCKED, dir, why);
+            sfree(why);
+            sfree(blk);
+            sfree(sessdir);
+            sfree(ini);
+            return ++r->fail;
+        }
+    }
+
     /* sessions + named proxies, re-protected for the copy */
     CreateDirectoryA(sessdir, NULL);
     if (dpapi) kitty_set_bundle_dpapi_only(1);
@@ -544,7 +720,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     r->sessions = kitty_export_all_to_dir(sessdir, &r->fail);
     if (kitty_bundle_wrap_failed()) r->fail++;
     kitty_clear_bundle_context();
-    ksm_bundle_to_store_layout(dir);
+    ksm_bundle_to_store_layout(dir, &r->fail);
     {
         char *prox = dupprintf("%s\\Proxies", dir);
         struct { int n; } c = { 0 };
@@ -568,7 +744,10 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     } else {
         char *root = portable_root_dir();
         if (root) {
-            char *from = dupprintf("%s\\SshHostKeys", root);
+            /* KiTTY (hknet/KiTTY#56): the host-key folder in force, which
+             * kitty.ini sshhostkeys= may have moved away from the root. */
+            char *from = kitty_hostkey_dir()[0] ? dupstr(kitty_hostkey_dir())
+                                                : dupprintf("%s\\SshHostKeys", root);
             char *to = dupprintf("%s\\SshHostKeys", dir);
             r->hostkeys = ksm_copy_dir_files(from, to, &r->fail);
             sfree(to);
@@ -611,7 +790,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
 int kitty_take_folder_needs_password(const char *dir)
 {
-    char *stage = ksm_stage_folder_store(dir);
+    char *stage = ksm_stage_folder_store(dir, NULL, NULL);
     int need = stage ? kitty_bundle_needs_password(stage) : 0;
     ksm_unstage(stage);
     return need;
@@ -623,12 +802,15 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     char *ini = dupprintf("%s\\" KSM_INI, dir);
     char *stage;
     char t[256];
+    strbuf *dups = strbuf_new();
+    int ndup = 0;
     memset(r, 0, sizeof(*r));
     msg[0] = '\0';
 
-    stage = ksm_stage_folder_store(dir);
+    stage = ksm_stage_folder_store(dir, dups, &ndup);
     if (!stage) {
         snprintf(msg, msglen, KT_STOREMOVE_NO_TEMP);
+        strbuf_free(dups);
         sfree(ini);
         return ++r->fail;
     }
@@ -642,6 +824,9 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
                                    &r->skipped, overwrite);
     kitty_clear_bundle_context();
     ksm_unstage(stage);
+    /* a session file left out because another file gives the same session
+     * is not taken: it counts as such and is named below */
+    r->fail += ndup;
 
     r->hostkeys = ksm_hostkeys_from_dir(dir, &r->fail);
     if (ksm_file_exists(ini)) r->settings = ksm_globals_from_ini(ini, &r->fail);
@@ -661,6 +846,12 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
                  r->fail, r->fail == 1 ? "" : "s");
         ksm_cat(msg, msglen, t);
     }
+    if (ndup > 0) {
+        char *d = dupprintf(KT_STOREMOVE_TAKEN_DUPS, dups->s);
+        ksm_cat(msg, msglen, d);
+        sfree(d);
+    }
+    strbuf_free(dups);
     ksm_cat(msg, msglen, KT_STOREMOVE_TAKEN_REPROTECTED);
     sfree(ini);
     return r->fail;
@@ -718,7 +909,7 @@ void kitty_take_folder_store(HWND hwnd)
     if (!OpenDirName(hwnd, dir) || !dir[0]) return;
     ksm_trim_slashes(dir);
 
-    sessdir = dupprintf("%s\\Sessions", dir);
+    sessdir = ksm_source_path(dir, KI_SESSIONS, "Sessions", "Sessions");
     ini = dupprintf("%s\\" KSM_INI, dir);
     if (!ksm_dir_exists(sessdir) && !ksm_file_exists(ini)) {
         snprintf(msg, sizeof(msg),
@@ -738,7 +929,7 @@ void kitty_take_folder_store(HWND hwnd)
 
     /* The folder's master password, asked once - the bundle unlock scans the
      * staged copy, which is the shape it knows. */
-    stage = ksm_stage_folder_store(dir);
+    stage = ksm_stage_folder_store(dir, NULL, NULL);
     if (!stage || !kitty_unlock_import_bundle(hwnd, stage, &pw)) {
         ksm_unstage(stage);
         return;

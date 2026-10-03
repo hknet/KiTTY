@@ -42,6 +42,8 @@
 #include "kitty_int.h"         /* what the split-off files share with this one */
 #include "kitty_startup.h"    /* InitWinMain */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
+#include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
+#include "kitty_storage.h"       /* kitty_read_session_folder */
 #include "kitty_commun.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
@@ -102,6 +104,9 @@
  * Refresh was chosen in the OPEN tray menu: the menu filter swallowed the
  * click, so the menu is still on the screen, and the refresh runs behind it. */
 #define KLWM_REFRESHINPLACE	(WM_USER+18)
+/* Posted from WM_CREATE right after the tray icon is added, folder store only:
+ * the first copy of the store into Launcher\ (see LauncherStoreCopyPending). */
+#define KLWM_STORECOPY		(WM_USER+19)
 /* The spinner beside "Refresh", and the end of its minimum showing time. */
 #define LAUNCHER_REFRESHSPIN_TIMER	104
 #define LAUNCHER_REFRESHSPIN_STEP_MS	80
@@ -143,6 +148,14 @@ static HMENU HideMenu ;
 static int LauncherRefreshBusy = 0 ;
 static HMENU LauncherPendingMenu = NULL ;
 static int LauncherConfReload = 1 ;
+/* Folder store: the start-up copy of the store waits until the tray icon is
+ * up. It reads every session file the launcher has not judged yet (the
+ * content decides what is a session), which on a cold disk takes a second
+ * or more at a few hundred sessions; done before the window, that second
+ * kept the icon away. It also fills the verdict cache, so every later
+ * Refresh reads only changed files. Until it runs, the menu is the one the
+ * previous launcher left in Launcher\. */
+static int LauncherStoreCopyPending = 0 ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
 /* How the tray menu is placed at LauncherMenuPoint (see LauncherMenuAnchor);
@@ -771,6 +784,16 @@ void DelDir( const char * directory ) {
 */
 
 // Build the Launcher directory tree in savemode=dir with folder browsing
+/* KiTTY: the session folder in use - kitty.ini sessions= may put it away
+ * from ConfigDirectory\Sessions, which is only the default. */
+static const char * kitty_launcher_sessions_root( void ) {
+	static char root[MAX_VALUE_NAME] ;
+	const char * d = kitty_session_dir() ;
+	if( d != NULL && d[0] ) snprintf( root, sizeof(root), "%s", d ) ;
+	else snprintf( root, sizeof(root), "%s\\Sessions", ConfigDirectory ) ;
+	return root ;
+	}
+
 static void InitLauncherDir( const char * directory ) {
 	char fullpath[MAX_VALUE_NAME], buffer[MAX_VALUE_NAME] ;
 	DIR * dir ;
@@ -778,10 +801,10 @@ static void InitLauncherDir( const char * directory ) {
 	FILE * fp ;
 	
 	if( strlen(directory)>0 ) {
-		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s", ConfigDirectory, directory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s\\%s", kitty_launcher_sessions_root(), directory ) ;
 		snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, directory ) ;
 	} else {
-		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions", ConfigDirectory ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s", kitty_launcher_sessions_root() ) ;
 		snprintf( buffer, sizeof(buffer), "%s\\Launcher", ConfigDirectory ) ;
 	}
 	if( !MakeDir( buffer ) ) { 
@@ -791,7 +814,7 @@ static void InitLauncherDir( const char * directory ) {
 	if( (dir=opendir(fullpath)) != NULL ) {
 		while( (de=readdir(dir)) != NULL ) 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-			snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
+			snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", kitty_launcher_sessions_root(), directory, de->d_name ) ;
 			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
 				if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
@@ -854,8 +877,17 @@ void InitLauncherRegistry( void ) {
 					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
 					if( !strcmp( folder, KITTY_DEFAULT_SESSION ) ) continue ;
 					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-					if( !GetValueDataN(HKEY_CURRENT_USER, buffer, KR_FOLDER, folder, sizeof(folder) ) )
-						{ strcpy( folder, "Default" ) ; }
+					/* KiTTY (hknet/KiTTY#55): a session stored under a folder
+					 * path is in that folder, whatever its Folder value says. */
+					{
+						char * pf = ksp_folder_of( folder ) ;
+						if( pf != NULL ) {
+							snprintf( folder, MAX_VALUE_NAME, "%s", pf ) ;
+							sfree( pf ) ;
+							}
+						else if( !GetValueDataN(HKEY_CURRENT_USER, buffer, KR_FOLDER, folder, sizeof(folder) ) )
+							{ strcpy( folder, "Default" ) ; }
+					}
 					CleanFolderName( folder ) ;
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
 						snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
@@ -863,44 +895,65 @@ void InitLauncherRegistry( void ) {
 						snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
 					strcpy( folder, "" ) ;
 					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
+					/* The entry is labelled with the session's own name; the
+					 * data is the full path that -load takes. */
 					if( strlen(folder) > 0 )
-						RegTestOrCreate( HKEY_CURRENT_USER, buffer, folder, folder ) ;
+						RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( folder ), folder ) ;
 				}
 			}
 		RegCloseKey( hKey ) ;
 	} else if( (IniFileFlag == SAVEMODE_DIR)&&(DirectoryBrowseFlag==0) ) {
+		/* KiTTY (hknet/KiTTY#55): every session of the folder tree, by the
+		 * store's own enumeration (nested folders, dot-files and non-session
+		 * files left out). One file per entry, "label\session\": the label is
+		 * the session's own name - the menu reader splits at the FIRST '\',
+		 * so it must hold none - and the session is the full path. */
 		char fullpath[MAX_VALUE_NAME], folder[MAX_VALUE_NAME] ;
-		DIR * dir ;
-		struct dirent * de ;
 		FILE * fp ;
+		int nn = 0, k ;
+		char ** names ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
 		if(!MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
-		snprintf( fullpath, sizeof(fullpath), "%s\\Sessions", ConfigDirectory ) ;
-		if( (dir=opendir(fullpath)) != NULL ) {
-			while( (de=readdir(dir)) != NULL ) 
-			if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-				snprintf( fullpath, sizeof(fullpath), "%s\\Sessions\\%s", ConfigDirectory, de->d_name ) ;
-				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-					strcpy( folder, "" ) ;
-					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
-					if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it names */
-					GetSessionFolderName( buffer, folder ) ;
-					CleanFolderName( folder ) ;
-					snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, folder ) ;
-					if( strcmp(folder,"Default") ) {
-						MakeDir( buffer ) ;
-						snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, folder, de->d_name ) ;
-					} else sprintf( buffer, "%s\\Launcher\\%s", ConfigDirectory, de->d_name ) ;
-					if( (fp=fopen(buffer,"wb")) != NULL ) {
-						unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
-						fprintf( fp, "%s\\%s\\", buffer, buffer ) ;
-						fclose( fp ) ; 
+		names = kitty_session_names( &nn ) ;
+		for( k = 0 ; k < nn ; k++ ) {
+			const char * leaf = ksp_leaf( names[k] ) ;
+			char * fld ;
+			char mleaf[MAX_VALUE_NAME] ;
+			if( !strcmp( names[k], KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it names */
+			if( strlen( names[k] ) * 3 + 1 >= MAX_VALUE_NAME ) continue ;
+			fld = kitty_read_session_folder( names[k] ) ;
+			snprintf( folder, sizeof(folder), "%s", fld ? fld : "" ) ;
+			sfree( fld ) ;
+			CleanFolderName( folder ) ;
+			mungestr( leaf, mleaf ) ;
+			if( strlen(folder) > 0 && strcmp(folder,"Default") ) {
+				/* each folder component on its own, as the reader unmunges it */
+				char mfold[MAX_VALUE_NAME] = "", comp[MAX_VALUE_NAME], mcomp[MAX_VALUE_NAME] ;
+				const char * q = folder ;
+				while( *q ) {
+					const char * e = strchr( q, '\\' ) ;
+					size_t n = e ? (size_t)(e - q) : strlen( q ) ;
+					if( n >= sizeof(comp) / 3 ) break ;
+					memcpy( comp, q, n ) ; comp[n] = '\0' ;
+					mungestr( comp, mcomp ) ;
+					if( strlen(mfold) + strlen(mcomp) + 2 >= sizeof(mfold) ) break ;
+					if( mfold[0] ) strcat( mfold, "\\" ) ;
+					strcat( mfold, mcomp ) ;
+					q += n ; if( *q == '\\' ) q++ ;
 					}
+				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s", ConfigDirectory, mfold ) ;
+				MakeDir( fullpath ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s\\%s", ConfigDirectory, mfold, mleaf ) ;
+				}
+			else
+				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s", ConfigDirectory, mleaf ) ;
+			if( (fp=fopen(fullpath,"wb")) != NULL ) {
+				fprintf( fp, "%s\\%s\\", leaf, names[k] ) ;
+				fclose( fp ) ;
 				}
 			}
-			closedir(dir) ;
-		}
+		kitty_session_names_free( names, nn ) ;
 	} else if( (IniFileFlag == SAVEMODE_DIR)&&DirectoryBrowseFlag ) {
 		char fullpath[MAX_VALUE_NAME] ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
@@ -2323,6 +2376,9 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 	LauncherSetTrayTip() ;
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
+	/* Normally queued ahead of any click on the icon, so the first menu
+	 * opened is built from the fresh copy. */
+	if( LauncherStoreCopyPending ) PostMessage( hwnd, KLWM_STORECOPY, 0, 0 ) ;
 	if( ResShell ) {
 		LauncherSetTrayTip() ;
 		ResShell = Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
@@ -2356,7 +2412,9 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		 * existed, so its expiry timer could not be set against it then. */
 		if( kitty_workplace_holding() && kitty_workplace_minutes_left() )
 			SetTimer( hwnd, LAUNCHER_WORKPLACE_TIMER, 30000, NULL ) ;
-		LauncherRegisterHotkeys( hwnd, 1 ) ;	/* startup: conflicts balloon */
+		/* startup: conflicts balloon. With the store copy still to come,
+		 * KLWM_STORECOPY registers them from the fresh one instead. */
+		if( !LauncherStoreCopyPending ) LauncherRegisterHotkeys( hwnd, 1 ) ;
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
 		return 1 ;
@@ -2366,6 +2424,20 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 	
 		case KLWM_NOTESPENDING :
 			kitty_notes_show_pending( hwnd ) ;
+			break ;
+
+		case KLWM_STORECOPY :
+			/* A Refresh already running makes the same copy. */
+			if( LauncherStoreCopyPending && !LauncherRefreshBusy ) {
+				LauncherStoreCopyPending = 0 ;
+				{
+					LAUNCHER_TIMING_START ;
+					InitLauncherRegistry() ;
+					LAUNCHER_TIMING_END( "store-first" ) ;
+				}
+				RefreshMenuLauncher() ;
+				LauncherRegisterHotkeys( hwnd, 1 ) ;	/* startup: conflicts balloon */
+			}
 			break ;
 
 		case KLWM_WORKPLACEOFFER :
@@ -2913,7 +2985,12 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	/* KiTTY 0.84: the launcher can run before the main terminal (e.g. the boot Startup
 	 * shortcut), so migrate the old 9bis.com\KiTTY hive here too before reading sessions. */
 	MigrateOldKittyHive() ;
-	if( LauncherConfReload ) InitLauncherRegistry() ;
+	if( LauncherConfReload ) {
+		if( (IniFileFlag == SAVEMODE_DIR) && (DirectoryBrowseFlag == 0) )
+			LauncherStoreCopyPending = 1 ;   /* posted from WM_CREATE */
+		else
+			InitLauncherRegistry() ;
+	}
 		
 	MainHwnd = CreateWindowEx(0, className, "KiTTYLauncher",
 				0,//WS_OVERLAPPEDWINDOW,
@@ -3161,8 +3238,14 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	session = (char*)malloc(strlen(session_in)+100) ;
 	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
-		mungestr(session_in, session) ;
-		snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", kitty_registry_base(), session ) ;
+		/* KiTTY (hknet/KiTTY#55): the key is PuTTY's escape of the name -
+		 * the folder path's '\' included - which is what the store wrote. */
+		{
+			strbuf * sb = strbuf_new() ;
+			escape_registry_key( session_in, sb ) ;
+			snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", kitty_registry_base(), sb->s ) ;
+			strbuf_free( sb ) ;
+		}
 		if( RegTestKey(HKEY_CURRENT_USER, buffer) ) {
 			strcpy( session, session_in ) ;
 			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {

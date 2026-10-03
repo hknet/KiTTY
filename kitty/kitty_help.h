@@ -16,7 +16,8 @@ KiTTY adds these options to PuTTY's own (see the PuTTY manual for the rest):\r\n
 Starting a session\r\n\
 \r\n\
 * ssh://[user@]host[:port] - connect to a host; telnet:// works the same way\r\n\
-* kitty://<session> - open a saved session by name (putty://<session> too)\r\n\
+* kitty://<session> - open a saved session by name or folder path, kitty://Linux/web/srv01 (putty://<session> too)\r\n\
+* -load <session>: a folder path (Linux\\web\\srv01) or a name found in one folder only; in several folders it is an error naming them\r\n\
 * -edit <session>: open a saved session's settings instead of connecting\r\n\
 * -quickconnect: open the configuration box on Default Settings, ready for a host\r\n\
 * -kload <file> (also -loadfile): load session settings from a .ktx file\r\n\

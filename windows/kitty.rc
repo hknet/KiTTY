@@ -445,6 +445,73 @@ BEGIN
     DEFPUSHBUTTON   "Close", IDCANCEL, 274, 220, 52, 14
 END
 
+/* Organize sessions (kitty/kitty_sessorg.c): the folder tree left, the
+ * selected folder's sessions right (multi-select), the actions along the
+ * foot. Modeless and resizable; the list takes the slack, the buttons ride
+ * the bottom edge (kitty_anchor.h), every button as wide as its caption.
+ * 440 x 250 dialog units keeps it inside 1280 x 660 at any scale. */
+IDD_SESSORG DIALOGEX DISCARDABLE 0, 0, 440, 250
+STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
+CAPTION KT_SP_ORG_TITLE
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    CONTROL         "", IDC_SO_TREE, "SysTreeView32", TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP | WS_BORDER | WS_TABSTOP,
+                    7, 7, 150, 214
+    LTEXT           "", IDC_SO_COUNT, 164, 7, 269, 10
+    CONTROL         "", IDC_SO_LIST, "SysListView32", LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | LVS_SORTASCENDING | WS_BORDER | WS_TABSTOP,
+                    164, 19, 269, 202
+    PUSHBUTTON      KT_SP_ORG_MOVE, IDC_SO_MOVE, 7, 229, 50, 14
+    PUSHBUTTON      KT_SP_ORG_RENAME, IDC_SO_RENAME, 61, 229, 50, 14
+    PUSHBUTTON      KT_SP_ORG_NEW_FOLDER, IDC_SO_NEWFOLDER, 115, 229, 50, 14
+    PUSHBUTTON      KT_SP_ORG_DEL_FOLDER, IDC_SO_DELFOLDER, 169, 229, 50, 14
+    PUSHBUTTON      KT_SP_ORG_ARRANGE, IDC_SO_ARRANGE, 223, 229, 50, 14
+    DEFPUSHBUTTON   KT_SP_ORG_CLOSE, IDCANCEL, 383, 229, 50, 14
+END
+
+/* Organize sessions > Move to...: "Move %d sessions to:", the folder tree,
+ * the clash line (grows to fit), Move / Cancel. */
+IDD_SESSORG_MOVE DIALOGEX DISCARDABLE 0, 0, 240, 214
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_SP_ORG_TITLE
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_SOM_TEXT, 7, 7, 226, 10
+    CONTROL         "", IDC_SOM_TREE, "SysTreeView32", TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP | WS_BORDER | WS_TABSTOP,
+                    7, 20, 226, 160
+    LTEXT           "", IDC_SOM_WARN, 7, 183, 226, 8
+    PUSHBUTTON      KT_SP_ORG_MOVE_BTN, IDOK, 129, 193, 50, 14
+    DEFPUSHBUTTON   KT_SP_ORG_CANCEL, IDCANCEL, 183, 193, 50, 14
+END
+
+/* Organize sessions > Rename / New folder: one name. */
+IDD_SESSORG_NAME DIALOGEX DISCARDABLE 0, 0, 230, 62
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_SP_ORG_TITLE
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           KT_SP_ORG_NAME_LABEL, IDC_SON_LABEL, 7, 9, 34, 12, SS_CENTERIMAGE
+    EDITTEXT        IDC_SON_EDIT, 44, 7, 179, 14, ES_AUTOHSCROLL
+    LTEXT           "", IDC_SON_WARN, 7, 25, 216, 8
+    DEFPUSHBUTTON   KT_SP_ORG_OK, IDOK, 119, 41, 50, 14
+    PUSHBUTTON      KT_SP_ORG_CANCEL, IDCANCEL, 173, 41, 50, 14
+END
+
+/* Deleting a folder that holds sessions: where they go (the root
+ * preselected), the clash line, Delete / Cancel. Cancel is the default. */
+IDD_SESSORG_DEL DIALOGEX DISCARDABLE 0, 0, 260, 106
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_CAP_KITTYPP
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_SOD_HEAD, 7, 7, 246, 10
+    LTEXT           "", IDC_SOD_DESTLBL, 7, 24, 246, 10
+    COMBOBOX        IDC_SOD_DEST, 7, 36, 246, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "", IDC_SOD_KEPT, 7, 54, 246, 10
+    LTEXT           "", IDC_SOD_WARN, 7, 68, 246, 8
+    PUSHBUTTON      KT_SP_DEL_BTN, IDOK, 149, 85, 50, 14
+    DEFPUSHBUTTON   KT_SP_ORG_CANCEL, IDCANCEL, 203, 85, 50, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

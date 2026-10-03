@@ -151,9 +151,75 @@ the filed ones in brackets.
   **Ctrl+G** matters more than in the classic mode — it searches every folder
   and marks each result with the folder it lives in, `beta [work]`.
 
-Nothing about storage changes: a folder is still an attribute of a session, so
-turning the setting off puts the classic dropdown back exactly as it was, with
-every session where it was. The setting is off by default.
+Turning the setting off puts the classic dropdown back exactly as it was, with
+every session where it was: the setting changes how you look at the folders,
+not where the sessions are stored. The setting is off by default.
+
+**Folders are paths, and they nest.** A session's name is its folder path plus
+its name, `Linux\web\srv01`, in both stores: the registry keeps one key per
+session, the folder store a file in nested folders
+(`Sessions\Linux\web\srv01`), which suits a session folder kept in Git. The
+same name can exist in two folders. Inside a folder its subfolders are rows,
+`..` goes up one level, and *New folder* creates the folder where you stand -
+inside `network` it creates `network\test`. A name typed and saved while you
+stand in a folder is saved in that folder. Renaming or deleting a folder moves
+its subfolders with it, keeping their place below the new one; a session that
+moves keeps its saved password, its jump list entry and its launcher entry, and
+sessions that use it as SSH jump host are updated and listed afterwards. A
+session's `Folder=` value is still written, matching the path; when the two
+disagree, the path wins and the next save corrects the value. Sessions filed by
+their `Folder=` value only (saved by an older version) keep working by their
+bare name.
+
+`-load Linux\web\srv01` loads by path in both stores, and so do klink, kscp,
+ksftp, `@name`, a `kitty://Linux/web/srv01` link and an SSH jump host field. A
+bare name - `-load srv01` - loads the one session of that name. When several
+folders hold one, `-load` stops with an error that names them and exits with
+code 1, and a jump host fails the connection; neither guesses, and the name is
+never looked up as a host name.
+
+**Folder store: only session files are listed.** A file counts as a session
+when it holds a `HostName` or `Protocol` setting, in either file format
+(`Key=value` or classic `Key\value\`). Dot-files and dot-folders (`.git`,
+`.gitignore`) are never looked at, so a README or a log beside the sessions
+stays out of the list. Session file names are escaped per folder level: `:`
+and the other characters Windows refuses, a leading dot, a trailing dot or
+space, and device names such as `CON` or `COM1` are written as `%xx`.
+`[KiTTY] sessionsuffix` adds an ending such as `.ktx` to every session file
+(Application > Config Window > Session Panel, *Session file suffix*); the list
+shows the names without it, a file without it is still listed and gets it on
+its next save, and changing it offers to rename the existing files once.
+
+**Organize sessions.** *Organize...* (under *Del folder*, beside the comment
+field; at the list's foot when the list is tall enough) and Application >
+Migration > *Organize sessions...* open a window of its own: the folder tree on
+the left, *All sessions (root)* at its top, and the selected folder's sessions
+on the right. Ctrl+click picks single sessions, Shift+click a range, Ctrl+A the
+whole folder. *Move to...* asks for the destination in a tree; dragging the
+selection onto a folder of the tree does the same. *Rename* renames the
+selected session (in the list) or folder (in the tree), *New folder* creates
+one inside the selected folder, *Delete folder* removes the selected folder.
+Every move is one step that carries the saved password, the jump list and
+launcher entries, and the sessions that use a moved one as SSH jump host,
+which are listed afterwards. A name that already exists at the destination
+moves nothing; the box names the clashes. The window does not hold up the
+configuration window, and it reads the store again when you come back to it
+after a change made there.
+
+**Arrange.** Sessions saved by an older version are filed by their `Folder=`
+value and keyed by their bare name. *Arrange...* moves each of them to its
+folder path (`srv01` with `Folder=Linux\web` becomes `Linux\web\srv01`), with
+the same carrying-along as a move. The registry store is backed up first; in a
+folder store the files move into subfolders of Sessions, which a Git user sees
+as one commit of moves. The first time the configuration window opens on a
+store with such sessions, *Arrange now* / *Later* is offered once; after
+*Later* the box says that Arrange is in Organize sessions.
+
+**Deleting a folder that holds sessions** asks where they go: a droplist with
+*All sessions (root)* preselected, or any other folder. Subfolders move along
+and keep their place below the destination. A name already taken there stops
+the delete before anything moves and names the clashes, so another folder can
+be chosen. An empty folder is deleted without asking.
 
 **Folders in the menus.** A terminal's **Saved Sessions** menu (the window's
 system menu, or right-click on the title bar) groups sessions into a submenu per
