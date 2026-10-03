@@ -262,6 +262,26 @@ void kitty_osc52_write_confirm_end(Terminal *term) { osc52_wconfirm_ends++; }
  * dispatches to these two, so they exist and do nothing. */
 void kitty_transfer_osc(Terminal *term) { (void)term; }
 void kitty_transfer_free(Terminal *term) { (void)term; }
+/* Notifications from the host (kitty/kitty_hostnotify.c): the stub records
+ * what the terminal handed over, so test_hostnotify_dispatch can check the
+ * dispatch and the OSC 99 ceiling. */
+static int hn_calls;
+static unsigned hn_last_osc;
+static size_t hn_last_len;
+static bool hn_last_overflow;
+static char hn_last[64];
+void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
+                          size_t len, bool overflow)
+{
+    (void)term;
+    hn_calls++;
+    hn_last_osc = osc;
+    hn_last_len = len;
+    hn_last_overflow = overflow;
+    snprintf(hn_last, sizeof(hn_last), "%.*s",
+             (int)(len < sizeof(hn_last) - 1 ? len : sizeof(hn_last) - 1), s);
+}
+void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
 
 typedef struct Mock {
     Terminal *term;
@@ -2145,6 +2165,48 @@ static void test_read_box_modeless(Mock *mk)
     read_reset(mk);
 }
 
+/*
+ * OSC 9, 777 and 99 reach the notification handler (kitty/kitty_hostnotify.c,
+ * stubbed above) with the string after the number, and OSC 99 gets the larger
+ * ceiling: a 2048-byte body in base64 plus its metadata is past OSC_STR_MAX.
+ * The parsing itself is tested in test/test_oscnotify.c.
+ */
+static void test_hostnotify_dispatch(Mock *mk)
+{
+    char *seq;
+    size_t n = 3000, i;
+
+    feed_seq(mk, "\033]9;4;1;50\007");
+    if (hn_calls != 1 || hn_last_osc != 9 || strcmp(hn_last, "4;1;50"))
+        fail("OSC 9;4 dispatch", hn_last);
+    feed_seq(mk, "\033]777;notify;T;B\033\\");
+    if (hn_calls != 2 || hn_last_osc != 777 || strcmp(hn_last, "notify;T;B"))
+        fail("OSC 777 dispatch", hn_last);
+
+    seq = snewn(n + 32, char);
+    memcpy(seq, "\033]99;i=1;", 9);
+    for (i = 0; i < n; i++)
+        seq[9 + i] = 'A';
+    memcpy(seq + 9 + n, "\033\\", 3);
+    feed_seq(mk, seq);
+    if (hn_calls != 3 || hn_last_osc != 99 || hn_last_len != 4 + n ||
+        hn_last_overflow)
+        fail("OSC 99 ceiling", "a 3000-byte OSC 99 did not arrive whole");
+    sfree(seq);
+
+    /* An OSC 9 notice keeps the ordinary ceiling: cut, and says so. */
+    seq = snewn(n + 32, char);
+    memcpy(seq, "\033]9;", 4);
+    for (i = 0; i < n; i++)
+        seq[4 + i] = 'A';
+    memcpy(seq + 4 + n, "\007", 2);
+    feed_seq(mk, seq);
+    if (hn_calls != 4 || hn_last_osc != 9 || hn_last_len != OSC_STR_MAX ||
+        !hn_last_overflow)
+        fail("OSC 9 ceiling", "an over-long OSC 9 was not cut at OSC_STR_MAX");
+    sfree(seq);
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -2241,6 +2303,7 @@ int main(void)
     test_far2l_ceiling(mk);
     test_far2l_focus(mk);
     test_colour_queries(mk);
+    test_hostnotify_dispatch(mk);
 
     mock_free(mk);
 

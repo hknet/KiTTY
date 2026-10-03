@@ -298,6 +298,14 @@
 #define KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE     "Disable bracketed paste mode"
 #define KT_FEATURES_DISABLE_FOCUS_REPORTING          "Disable focus reporting"
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
+/* Terminal/Features: notifications from the host (kitty/kitty_hostnotify.c) */
+#define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
+#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99)"
+#define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
+#define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
+#define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
+#define KT_FEATURES_TASKBAR_PROGRESS                 "Show progress on the taskbar button (OSC 9;4)"
+#define KT_HOSTNOTIFY_LOG_DROPPED                    "Notifications from the host: %d dropped (more than one in 2 seconds)."
 
 /* Window */
 #define KT_WINDOW_SET_THE_SIZE                       "Set the size of the window"
@@ -2186,6 +2194,7 @@
 #define KT_WINFEAT_DPI                               "per-monitor DPI scaling"
 #define KT_WINFEAT_PASSWORD_IN_MEMORY                "keeping passwords encrypted in memory"
 #define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
+#define KT_WINFEAT_TASKBAR_PROGRESS                  "progress on the taskbar button"
 
 /* ---- kageant (agent) and kittygen (key generator), Windows Hello ---- */
 

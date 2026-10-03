@@ -194,6 +194,14 @@ add_executable(test_osc7
 add_executable(test_transfer_parse
   test/test_transfer_parse.c)
 
+# KiTTY: unit test for desktop notifications from the host (OSC 9, 777, 99)
+# and taskbar progress (OSC 9;4): parsing, limits, decisions and replies
+# (self-contained; the code lives in kitty/kitty_oscnotify.c, which the
+# terminal targets compile too).
+add_executable(test_oscnotify
+  test/test_oscnotify.c
+  kitty/kitty_oscnotify.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)
@@ -297,7 +305,8 @@ foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
-    test_textrun test_mpw_params test_hello_container)
+    test_textrun test_mpw_params test_hello_container
+    test_oscnotify)
   kitty_add_test(${t})
 endforeach()
 if(KITTY_CTEST_MACHINE_STATE)

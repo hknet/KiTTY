@@ -497,6 +497,12 @@ struct terminal_tag {
     int clip_activity_dir;
     unsigned long clip_activity_until;
 
+    /* KiTTY: desktop notifications from the host (OSC 9, 777, 99) - the chunk
+     * assembly, the flood rule and the notice on screen, created on first use
+     * (kitty/kitty_hostnotify.c). Unconditional storage, same ODR reason as
+     * everything above. */
+    struct kitty_hostnotify *hostnotify;
+
     char id_string[1024];
 
     unsigned char *tabs;

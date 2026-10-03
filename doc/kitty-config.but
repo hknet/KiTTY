@@ -3023,6 +3023,30 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
+\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99)}
+
+Desktop notifications: lets a program on the host show a notice near
+the clock (OSC 9, OSC 777, OSC 99), for example when a long job ends.
+The notice is titled with this session's name. Off, only while this
+window is not focused, or always. A program can ask for less, never for
+more.
+
+The default is \q{When not focused}. The program's own title is the
+first line of the notice, its text follows. Titles are cut at 256 bytes
+and texts at 2048; control characters are removed. At most one notice
+every 2 seconds per window: a newer one replaces the one waiting, and
+the Event Log counts the ones dropped. A click on the notice brings this
+window forward. Stored with the session (\c{HostNotify}: 0 off, 1 when
+not focused, 2 always).
+
+\S{kitty-cfg-taskbarprogress} \q{Show progress on the taskbar button (OSC 9;4)}
+
+Taskbar progress: lets a program on the host show progress on this
+window's taskbar button (OSC 9;4), as Windows Terminal does.
+
+The progress is cleared when the session ends. On by default; stored
+with the session (\c{TaskbarProgress}).
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

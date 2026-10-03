@@ -706,6 +706,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
   ${KITTY_DIR}/kitty_transfer.c
+  ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)
+  ${KITTY_DIR}/kitty_oscnotify.c    # KiTTY: their parsing and decisions, no Win32 (test/test_oscnotify.c)
   ${KITTY_DIR}/kitty_specialmenu.c
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c

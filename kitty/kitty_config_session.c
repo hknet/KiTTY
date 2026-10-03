@@ -4712,6 +4712,31 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
 #endif
 }
 
+/* Terminal/Features, "Desktop notifications": Off / When not focused /
+ * Always, stored as HostNotify 0 / 1 / 2 (the item id is the value). */
+static void kitty_hostnotify_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        /* The value first: refilling the list sends a SELCHANGE. */
+        int v = conf_get_int(conf, ctrl->context.i);
+        if (v < 0 || v > 2)
+            v = 1;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        dlg_listbox_addwithid(ctrl, dlg, KT_FEATURES_HOSTNOTIFY_OFF, 0);
+        dlg_listbox_addwithid(ctrl, dlg, KT_FEATURES_HOSTNOTIFY_UNFOCUSED, 1);
+        dlg_listbox_addwithid(ctrl, dlg, KT_FEATURES_HOSTNOTIFY_ALWAYS, 2);
+        dlg_listbox_select(ctrl, dlg, v);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int i = dlg_listbox_index(ctrl, dlg);
+        conf_set_int(conf, ctrl->context.i,
+                     i < 0 ? 1 : dlg_listbox_getid(ctrl, dlg, i));
+    }
+}
+
 /* The Terminal panel and its Keyboard/Bell/Features sub-panels. */
 void scb_panel_terminal(struct controlbox *b)
 {
@@ -4960,6 +4985,20 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_editbox(s, KT_FEATURES_SYNC_OUTPUT_MAX_HOLD, NO_SHORTCUT, 20,
                      HELPCTX(kitty_syncoutput), conf_editbox_handler,
                      I(CONF_sync_output_hold_ms), ED_INT);
+    }
+
+    /* Notifications from the host (OSC 9, 777, 99) and taskbar progress
+     * (OSC 9;4): a group of its own (kitty/kitty_hostnotify.c). The droplist
+     * takes the full width, so its label sits above it and is never cut. */
+    if (!GetPuttyFlag()) {
+        s = ctrl_getset(b, "Terminal/Features", "hostnotify",
+                        KT_FEATURES_HOSTNOTIFY_GROUP);
+        ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
+                      HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
+                      I(CONF_host_notify));
+        ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
+                      HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
+                      I(CONF_taskbar_progress));
     }
 }
 

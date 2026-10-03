@@ -1636,6 +1636,12 @@ CONF_OPTION(logkeepmb, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogKeepMB"
  * the screen from being drawn, in ms. 0 = the mode is off: not recognised,
  * and DECRQM says so. Read at each set, clamped to 5000 (terminal.c). */
 CONF_OPTION(sync_output_hold_ms, VALUE_TYPE(INT), DEFAULT_INT(200), SAVE_KEYWORD("SyncOutputHoldMs"),)
+/* KiTTY: desktop notifications from the host (OSC 9, OSC 777, OSC 99):
+ * 0 off, 1 only while the window is not focused, 2 always. A program's o=
+ * (OSC 99) narrows it, never widens it (kitty/kitty_hostnotify.c). */
+CONF_OPTION(host_notify, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HostNotify"),)
+/* KiTTY: progress on this window's taskbar button (OSC 9;4). */
+CONF_OPTION(taskbar_progress, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("TaskbarProgress"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

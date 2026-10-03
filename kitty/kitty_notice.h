@@ -39,6 +39,13 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
                           int seconds, HWND click_hwnd, unsigned int click_msg,
                           void (*on_close)(void *ctx, int clicked), void *ctx);
 
+/* Is the notice raised with this on_close context the one on screen? And
+ * close it if so - on_close runs with clicked = 0, as for a notice that ran
+ * out. For a caller that tracks its own notice (notifications from the host:
+ * OSC 99 p=alive and p=close). */
+int kitty_notice_showing(void *ctx);
+void kitty_notice_close_ctx(void *ctx);
+
 /* Clicking the "SSH agent not verified" notice (kitty_win.c) posts this to
  * the terminal window; window.c answers by opening a configuration window
  * on Connection/SSH/Auth, where the warning's off switch lives. Shared here

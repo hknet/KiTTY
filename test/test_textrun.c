@@ -89,6 +89,10 @@ void kitty_osc52_write_confirm(Terminal *term) { }
 void kitty_osc52_write_confirm_end(Terminal *term) { }
 void kitty_transfer_osc(Terminal *term) { (void)term; }
 void kitty_transfer_free(Terminal *term) { (void)term; }
+void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
+                          size_t len, bool overflow)
+{ (void)term; (void)osc; (void)s; (void)len; (void)overflow; }
+void kitty_hostnotify_term_free(Terminal *term) { (void)term; }
 
 typedef struct Mock {
     Terminal *term;

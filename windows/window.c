@@ -274,6 +274,7 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h"   /* KiTTY: the theme preference, readable before InitWinMain */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "../kitty/kitty_hostnotify.h"  /* taskbar progress, cleared at session end */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -4372,6 +4373,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
     int resize_action;
     WinGuiSeat *wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+#ifdef MOD_PERSO
+    /* KiTTY: the taskbar button was (re)created - Explorer restarted - so a
+     * host's taskbar progress (OSC 9;4) goes back on it. A registered
+     * message, so it cannot be a case label; it carries on to the default. */
+    kitty_hostnotify_taskbar_message(message);
+#endif
     switch (message) {
       case WM_CREATE:
         break;
@@ -8889,9 +8896,12 @@ static void kitty_winprop_closed(HWND hwnd, bool closed)
 {
     if (!hwnd)
         return;
-    if (closed)
+    if (closed) {
         SetPropW(hwnd, KITTY_CLOSED_PROP, (HANDLE)1);
-    else
+        /* Every route that ends a session comes through here: a host's
+         * taskbar progress (OSC 9;4) ends with it. */
+        kitty_hostnotify_session_ended();
+    } else
         RemovePropW(hwnd, KITTY_CLOSED_PROP);
 }
 
@@ -8920,6 +8930,8 @@ static void kitty_window_leaving(HWND hwnd)
     if (left || !hwnd)
         return;
     left = true;
+    kitty_hostnotify_session_ended();   /* the taskbar progress (OSC 9;4) */
+    kitty_hostnotify_shutdown();        /* ...and its COM interface */
     kitty_winprops_remove(hwnd);
     if (!KITTY_EMBEDDED())
         kitty_launcher_window_gone(hwnd);

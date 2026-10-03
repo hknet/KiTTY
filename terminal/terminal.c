@@ -63,6 +63,9 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
 /* KiTTY OSC 5113 file transfer (kitty/kitty_transfer.c); test builds of this
  * file stub the two entry points (test/test_osc52.c). */
 #include "../kitty/kitty_transfer.h"
+/* KiTTY desktop notifications from the host and taskbar progress (OSC 9, 777,
+ * 99; kitty/kitty_hostnotify.c); stubbed by the test builds of this file. */
+#include "../kitty/kitty_hostnotify.h"
 #endif
 #if defined(MOD_PERSO) || defined(MOD_FAR2L)
 /* Send bytes down to the host. A seam rather than an ldisc_send() here so that the
@@ -3032,6 +3035,8 @@ void term_free(Terminal *term)
     }
     /* KiTTY: OSC 5113 file-transfer sessions (partial files are deleted). */
     kitty_transfer_free(term);
+    /* KiTTY: notifications from the host (a pending notice, its timer). */
+    kitty_hostnotify_term_free(term);
 #endif
     strbuf_free(term->answerback);
 
@@ -7320,6 +7325,18 @@ static void do_osc(Terminal *term)
              * in kitty/kitty_transfer.c. */
             kitty_transfer_osc(term);
             break;
+          case 9:
+          case 777:
+          case 99:
+            /* Desktop notifications from the host (OSC 9, OSC 777, OSC 99)
+             * and taskbar progress (OSC 9;4). The ConEmu numbers of OSC 9
+             * arrive here as the start of the string (the numeric parser
+             * stops at the first ';'), so they are told apart there. The
+             * per-session setting, the limits and the flood rule live in
+             * kitty/kitty_hostnotify.c. */
+            kitty_hostnotify_osc(term, term->esc_args[0], term->osc_string,
+                                 term->osc_strlen, term->osc_str_overflow);
+            break;
 #endif
         }
         break;
@@ -9707,12 +9724,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                          * metadata and still refuses anything absurd. The
                          * transaction's own limit (64 MB at least, see
                          * osc5522_write_limit) is enforced on the decoded bytes
-                         * as they arrive. */
+                         * as they arrive.
+                         *
+                         * OSC 99 (desktop notifications) shares that ceiling:
+                         * a 2048-byte body in base64 plus its metadata does
+                         * not fit the ordinary one. */
                         osc_start(term,
                                   term->esc_args[0] == 52 ?
                                       clip_ceiling_bytes(term) :
                                   term->esc_args[0] == 5522 ||
-                                  term->esc_args[0] == 5113 ? OSC_STR_MAX_5522 :
+                                  term->esc_args[0] == 5113 ||
+                                  term->esc_args[0] == 99 ? OSC_STR_MAX_5522 :
                                   OSC_STR_MAX);
 #else
                         osc_start(term, OSC_STR_MAX);

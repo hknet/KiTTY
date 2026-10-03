@@ -129,6 +129,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **`ssh-add -x` / `-X` lock and unlock kageant**, when Settings > Security
   "Allow locking the agent over IPC" is ticked (off by default). A notice
   names the program that locked, and the tray's Unlock agent clears its lock.
+- **Desktop notifications from the host (OSC 9, OSC 777, OSC 99).** A
+  program on the host can show a notice near the clock, titled with the
+  session's name. Terminal > Features, "Desktop notifications (OSC 9, 777,
+  99)": Off, When not focused (the default) or Always (`HostNotify`); a
+  program can ask for less, never for more. OSC 99 ids, chunks, base64,
+  urgency, display time, `p=close`, `p=alive`, `p=?` and the click and close
+  reports are supported. At most one notice every 2 seconds per window.
+- **Taskbar progress (OSC 9;4).** A program on the host can show progress
+  on the window's taskbar button, as in Windows Terminal; it is cleared when
+  the session ends. Terminal > Features, "Show progress on the taskbar button
+  (OSC 9;4)", on by default (`TaskbarProgress`).
 
 ### Changed
 

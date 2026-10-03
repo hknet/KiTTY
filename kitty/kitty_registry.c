@@ -733,6 +733,8 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "SCPAutoPwd" ) ;
 					RegDeleteValue( hSubKey, "NoFocusReporting" ) ;
 					RegDeleteValue( hSubKey, "SyncOutputHoldMs" ) ;
+					RegDeleteValue( hSubKey, "HostNotify" ) ;
+					RegDeleteValue( hSubKey, "TaskbarProgress" ) ;
 					RegDeleteValue( hSubKey, "LinesAtAScroll" ) ;
 					RegDeleteValue( hSubKey, "DisableAltGr" ) ;
 					RegDeleteValue( hSubKey, "ProxySelection" ) ;

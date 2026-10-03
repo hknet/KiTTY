@@ -606,6 +606,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "RunCmdNotify", conf_get_bool(conf, CONF_runcmdnotify));
     write_setting_b_forced(sesskey, "NoFocusReporting", conf_get_bool(conf, CONF_no_focus_rep));
     write_setting_i_forced(sesskey, "SyncOutputHoldMs", conf_get_int(conf, CONF_sync_output_hold_ms));
+    /* Notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4). */
+    write_setting_i_forced(sesskey, "HostNotify", conf_get_int(conf, CONF_host_notify));
+    write_setting_b_forced(sesskey, "TaskbarProgress", conf_get_bool(conf, CONF_taskbar_progress));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
     write_setting_i_forced(sesskey, "OSC52Clipboard", conf_get_int(conf, CONF_osc52_clipboard));

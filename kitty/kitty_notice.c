@@ -416,8 +416,15 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
     HDC dc;
     HFONT old;
 
-    if (!title || !text)
+    /* Every early return below releases what the caller was holding for the
+     * notice (on_close, not clicked), exactly as a failed CreateWindowEx
+     * does: a caller that tracks its notice must never be left believing
+     * one is on screen. */
+    if (!title || !text) {
+        if (on_close)
+            on_close(ctx, 0);
         return;
+    }
     notice_register_class();
 
     /* Beside the TRAY's monitor, not the primary one: on a two-monitor desk the
@@ -427,15 +434,21 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
     mon = MonitorFromWindow(tray ? tray : GetDesktopWindow(), MONITOR_DEFAULTTOPRIMARY);
     memset(&mi, 0, sizeof(mi));
     mi.cbSize = sizeof(mi);
-    if (!GetMonitorInfoA(mon, &mi))
+    if (!GetMonitorInfoA(mon, &mi)) {
+        if (on_close)
+            on_close(ctx, 0);
         return;
+    }
     dpi = notice_dpi_for_monitor(mon);
     pad = notice_scale(NOTICE_PAD, dpi);
     w = notice_scale(NOTICE_WIDTH, dpi);
 
     st = (struct notice_state *)calloc(1, sizeof(*st));
-    if (!st)
+    if (!st) {
+        if (on_close)
+            on_close(ctx, 0);
         return;
+    }
     st->accent = accent;
     st->dpi = dpi;
     /* 0 = no timer at all (KITTY_NOTICE_STICKY); every other non-positive
@@ -450,6 +463,8 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
     st->text = strdup(text);
     if (!st->text) {
         free(st);
+        if (on_close)
+            on_close(ctx, 0);
         return;
     }
     st->title_font = notice_font(dpi, 1);
@@ -545,4 +560,30 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
      * notice replaces it, or when the process ends. */
     if (st->seconds > 0)
         SetTimer(hwnd, NOTICE_TIMER, (UINT)(st->seconds * 1000), NULL);
+}
+
+/* A caller that tracks its own notice by its on_close context (notifications
+ * from the host) asks whether it is the one on screen, and closes it. Only
+ * the notice ON SCREEN counts: a parked one is always sticky, and nothing
+ * that tracks its notice this way raises sticky ones. */
+static struct notice_state *notice_current_state(void)
+{
+    if (!notice_hwnd || !IsWindow(notice_hwnd))
+        return NULL;
+    return (struct notice_state *)GetWindowLongPtr(notice_hwnd, GWLP_USERDATA);
+}
+
+int kitty_notice_showing(void *ctx)
+{
+    struct notice_state *st = notice_current_state();
+    return ctx && st && st->on_close && st->close_ctx == ctx;
+}
+
+void kitty_notice_close_ctx(void *ctx)
+{
+    if (!kitty_notice_showing(ctx))
+        return;
+    notice_close(notice_hwnd);
+    /* As when it runs out: a sticky notice it displaced comes back. */
+    notice_restore_parked();
 }
