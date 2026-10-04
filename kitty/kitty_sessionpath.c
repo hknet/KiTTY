@@ -6,7 +6,9 @@
  * Compiles into the settings library (and standalone into the targets that
  * list kitty_storage.c, windows/CMakeLists.txt), so it stays free of GUI
  * dependencies: klink, kscp and ksftp resolve a -load name through the same
- * code as the terminal window.
+ * code as the terminal window. It needs no store either (the store-aware
+ * names and resolver are in kitty_storage.c): kageant links it without the
+ * settings library, for its Saved Sessions menu.
  */
 
 #include <stdio.h>
@@ -41,6 +43,47 @@ static int ksp_reserved_base(const char *s, size_t n)
 }
 
 static const char ksp_hex[] = "0123456789ABCDEF";
+
+/* The folder store's %xx escape of a name or a value (declared in
+ * kitty_storage.h). It lives here, with the component rules built on it, so
+ * a binary without the settings library (kageant) links the same escape. */
+static int ksf_special(unsigned char c)
+{
+    return c < 0x20 || c == 0x7f || c == '%' || c == '\\' || c == '/' ||
+           c == ':' || c == '*' || c == '?' || c == '"' || c == '<' ||
+           c == '>' || c == '|';
+}
+char *ksf_munge(const char *in)            /* snewn'd */
+{
+    char *out = snewn(strlen(in) * 3 + 1, char), *o = out;
+    for (; *in; in++) {
+        unsigned char c = (unsigned char)*in;
+        if (ksf_special(c)) { *o++ = '%'; *o++ = ksp_hex[c >> 4]; *o++ = ksp_hex[c & 15]; }
+        else *o++ = (char)c;
+    }
+    *o = '\0';
+    return out;
+}
+static int ksf_hexv(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+char *ksf_unmunge(const char *in)          /* snewn'd */
+{
+    char *out = snewn(strlen(in) + 1, char), *o = out;
+    while (*in) {
+        if (*in == '%' && in[1] && in[2]) {
+            int hi = ksf_hexv(in[1]), lo = ksf_hexv(in[2]);
+            if (hi >= 0 && lo >= 0) { *o++ = (char)((hi << 4) | lo); in += 3; continue; }
+        }
+        *o++ = *in++;
+    }
+    *o = '\0';
+    return out;
+}
 
 char *ksp_component_munge(const char *component)
 {
@@ -599,87 +642,115 @@ char *ksp_ambiguous_text(const char *wanted, char *const *list, int nlist,
     return out;
 }
 
-char **kitty_session_names(int *n)
+/* ---- walking a folder store ----
+ * Every session file below `dir`, as path identities. Dot-files and
+ * dot-directories are never looked at (a session folder kept in Git holds .git
+ * and .gitignore); a file counts only when its content says it is a session
+ * (the verdict cache, ksp_file_verdict). Junctions and symlinks are not
+ * followed, and the depth is capped, so a loop cannot hang the list. The
+ * terminal's store (ksf_enum_sessions) and kageant's tray menu both walk
+ * through here, so the two cannot disagree on what a session is. */
+static void ksp_walk_add(struct ksp_store_file **v, int *count, int *alloc,
+                         char *id, const char *path, const WIN32_FIND_DATAA *fd)
 {
-    settings_e *e = enum_settings_start();
-    char **names = NULL;
-    int count = 0, alloc = 0;
-    strbuf *sb = strbuf_new();
-    if (e) {
-        while (enum_settings_next(e, sb)) {
-            if (count >= alloc) {
-                alloc = alloc ? alloc * 2 : 32;
-                names = sresize(names, alloc, char *);
-            }
-            names[count++] = dupstr(sb->s);
-            strbuf_clear(sb);
+    int j;
+    for (j = 0; j < *count; j++)
+        if (!stricmp((*v)[j].id, id)) {      /* "foo" and "foo<suffix>" */
+            sfree(id);
+            return;
         }
-        enum_settings_finish(e);
+    if (*count >= *alloc) {
+        *alloc = *alloc ? *alloc * 2 : 16;
+        *v = sresize(*v, *alloc, struct ksp_store_file);
     }
-    strbuf_free(sb);
-    *n = count;
-    return names;
+    (*v)[*count].id = id;
+    (*v)[*count].path = dupstr(path);
+    (*v)[*count].size =
+        ((unsigned long long)fd->nFileSizeHigh << 32) | fd->nFileSizeLow;
+    (*v)[*count].mtime =
+        ((unsigned long long)fd->ftLastWriteTime.dwHighDateTime << 32) |
+        fd->ftLastWriteTime.dwLowDateTime;
+    (*count)++;
 }
 
-void kitty_session_names_free(char **names, int n)
+static void ksp_walk_dir(const char *dir, const char *prefix, int depth,
+                         const char *suffix, const char *leaf,
+                         struct ksp_store_file **v, int *count, int *alloc)
+{
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE hf = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (hf == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        char *full, *comp;
+        if (fd.cFileName[0] == '.')
+            continue;                    /* ".", "..", .git, .gitignore */
+        /* A folder junction or link is not followed (a loop would never end);
+         * a FILE with the attribute is an ordinary placeholder of a synced
+         * folder (OneDrive, Dropbox) and is a session like any other. */
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+            (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            comp = ksp_component_unmunge(fd.cFileName);
+            if (depth < KSP_WALK_MAXDEPTH && comp[0] && !strchr(comp, '\\')) {
+                char *sub = dupcat(prefix, comp, "\\");
+                ksp_walk_dir(full, sub, depth + 1, suffix, leaf, v, count, alloc);
+                sfree(sub);
+            }
+            sfree(comp);
+        } else {
+            char *fname = dupstr(fd.cFileName);
+            ksp_strip_suffix(fname, suffix);
+            comp = ksp_component_unmunge(fname);
+            sfree(fname);
+            /* A '\' inside one component cannot be told from a folder; only
+             * the flat legacy files at the top level carry one (that is what
+             * they mean: a whole path in one file name). */
+            if (comp[0] && (!prefix[0] || !strchr(comp, '\\')) &&
+                (!leaf || !stricmp(ksp_leaf(comp), leaf)) &&
+                ksp_file_verdict(full,
+                    ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow,
+                    ((unsigned long long)fd.ftLastWriteTime.dwHighDateTime << 32) |
+                    fd.ftLastWriteTime.dwLowDateTime))
+                ksp_walk_add(v, count, alloc, dupcat(prefix, comp), full, &fd);
+            sfree(comp);
+        }
+        sfree(full);
+    } while (FindNextFileA(hf, &fd));
+    FindClose(hf);
+}
+
+struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
+                                      const char *leaf, int *count)
+{
+    struct ksp_store_file *v = NULL;
+    int alloc = 0;
+    *count = 0;
+    if (!dir || !*dir || (leaf && !*leaf))
+        return NULL;
+    if (!leaf) {
+        /* The whole store is met: verdicts of files gone since are dropped. */
+        unsigned long gen = ksp_verdict_walk_begin();
+        ksp_walk_dir(dir, "", 0, suffix ? suffix : "", NULL, &v, count, &alloc);
+        ksp_verdict_walk_end(gen);
+    } else {
+        ksp_walk_dir(dir, "", 0, suffix ? suffix : "", leaf, &v, count, &alloc);
+    }
+    return v;
+}
+
+void ksp_walk_store_free(struct ksp_store_file *v, int n)
 {
     int i;
-    for (i = 0; i < n; i++)
-        sfree(names[i]);
-    sfree(names);
-}
-
-int kitty_session_resolve(const char *wanted, char **resolved, char **errtext,
-                          int with_load_hint)
-{
-    char **names;
-    int n, nm = 0, kind, *idx;
-    settings_r *r;
-
-    if (resolved)
-        *resolved = NULL;
-    if (errtext)
-        *errtext = NULL;
-    if (!wanted || !*wanted)
-        return KSP_NONE;
-
-    /* The exact name first: it costs one open, and it is the answer for every
-     * root session and every unarranged one - the store is case-insensitive in
-     * both backends, so this is the case-insensitive exact match too. */
-    r = open_settings_r(wanted);
-    if (r) {
-        close_settings_r(r);
-        if (resolved)
-            *resolved = dupstr(wanted);
-        return KSP_EXACT;
+    for (i = 0; i < n; i++) {
+        sfree(v[i].id);
+        sfree(v[i].path);
     }
-    if (strchr(wanted, '\\'))
-        return KSP_NONE;
-
-    /* Folder store: only the files that carry this name are looked at (a
-     * proxy connection or a host on the command line asks this for every
-     * name that is not a session, so a whole-store read here would be paid
-     * on every connection). The registry lists key names only, which is
-     * cheap as it is. */
-    if (store_is_file())
-        names = ksf_enum_sessions_leaf(wanted, &n);
-    else
-        names = kitty_session_names(&n);
-    idx = snewn(n > 0 ? n : 1, int);
-    kind = ksp_lookup(names, n, wanted, idx, n, &nm);
-    if ((kind == KSP_EXACT || kind == KSP_UNIQUE) && resolved)
-        *resolved = dupstr(names[idx[0]]);
-    if (kind == KSP_AMBIGUOUS && errtext) {
-        char **list = snewn(nm, char *);
-        int i;
-        for (i = 0; i < nm; i++)
-            list[i] = names[idx[i]];
-        *errtext = ksp_ambiguous_text(wanted, list, nm, with_load_hint);
-        sfree(list);
-    }
-    sfree(idx);
-    kitty_session_names_free(names, n);
-    return kind;
+    sfree(v);
 }
 
 /* ---- a registry key tree, copied and then proved equal ----

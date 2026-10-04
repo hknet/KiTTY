@@ -266,6 +266,8 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c  # KiTTY: session paths + the folder-store walk (no settings library needed)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessmenu.c     # KiTTY: the Saved Sessions menu as the folder tree
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c    # KiTTY: Windows Hello presence check (confirm-on-use gating)

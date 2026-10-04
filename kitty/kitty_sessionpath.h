@@ -13,8 +13,9 @@
  *
  * The pure helpers (ksp_*) touch no store and no global, so the unit test
  * drives them directly. kitty_session_resolve() is the one store-aware entry
- * point: it lives here, in the settings library, so the console tools and the
- * SSH proxy code get the same answer as the GUI.
+ * point: it lives in the settings library (kitty_storage.c), so the console
+ * tools and the SSH proxy code get the same answer as the GUI. This file
+ * itself needs no store: kageant links it without the settings library.
  */
 #ifndef KITTY_SESSIONPATH_H
 #define KITTY_SESSIONPATH_H
@@ -114,6 +115,23 @@ unsigned long ksp_verdict_walk_begin(void);
 void ksp_verdict_walk_end(unsigned long gen);
 unsigned long ksp_verdict_reads(void);
 int ksp_verdict_count(void);
+
+/* ---- walking a folder store ----
+ * Every session below the session directory `dir`: identity, the file it was
+ * found in, and the size and time the walk saw. Dot-files and dot-folders are
+ * skipped, folder links not followed, `suffix` (may be "") stripped, and a
+ * file counts only by its content (ksp_file_verdict). `leaf` (NULL = all)
+ * keeps only the sessions of that name. The terminal's store and kageant's
+ * tray menu both walk through this. Free with ksp_walk_store_free. */
+#define KSP_WALK_MAXDEPTH 24
+struct ksp_store_file {
+    char *id;
+    char *path;
+    unsigned long long size, mtime;
+};
+struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
+                                      const char *leaf, int *count);
+void ksp_walk_store_free(struct ksp_store_file *v, int n);
 
 /* ---- name lookup over a list of session identities ----
  * Path exact (case-insensitive) wins. A bare name (no '\') that is not an

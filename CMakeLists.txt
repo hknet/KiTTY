@@ -317,6 +317,15 @@ be_list(test_sessionpath TestSessionPath SSH SERIAL OTHERBACKENDS)
 target_link_libraries(test_sessionpath
   sshclient otherbackends settings network crypto utils ${platform_libraries})
 
+# KiTTY: kageant's Saved Sessions menu as the folder tree (hknet/KiTTY#55).
+# Linked as kageant links these two files - utils only, no settings library -
+# so a store dependency creeping into them fails here first.
+add_executable(test_sessmenu
+  test/test_sessmenu.c
+  kitty/kitty_sessmenu.c
+  kitty/kitty_sessionpath.c)
+target_link_libraries(test_sessmenu utils ${platform_libraries})
+
 foreach(subdir ${platform} ${extra_dirs})
   add_subdirectory(${subdir})
 endforeach()
@@ -335,7 +344,7 @@ foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
-    test_sessionpath
+    test_sessionpath test_sessmenu
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify)
   kitty_add_test(${t})

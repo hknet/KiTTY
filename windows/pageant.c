@@ -30,6 +30,7 @@
 #include "../kitty/kitty_foreground.h"  /* KiTTY: one place for the foreground dance */
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
 #include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
+#include "../kitty/kitty_sessmenu.h"  /* KiTTY: Saved Sessions as the folder tree */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
 #include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
@@ -161,7 +162,10 @@ static filereq_saved_dir *keypath = NULL;
 #define IDM_AGENTLOCK          0x0130    /* KiTTY: Lock agent / Unlock agent (0x0120 = IDM_UPDATE) */
 #define IDM_RESUME_CONFIRM     0x00F0    /* KiTTY: lift the confirm-suppress latch */
 #define IDM_SESSIONS_BASE      0x1000
-#define IDM_SESSIONS_MAX       0x2000
+/* KiTTY: up to the last id below the system commands (SC_* start at 0xF000;
+ * WM_SYSCOMMAND shares this switch), 3584 sessions. 0x2000 stopped at 256. */
+#define IDM_SESSIONS_MAX       0xEFF0
+#define KAGEANT_SESS_MAXIDS    ((IDM_SESSIONS_MAX - IDM_SESSIONS_BASE) / 16 + 1)
 /* KiTTY: kageant's session submenu reads the hive where the sessions actually
  * live - which is a RUNTIME question, not a compile-time one.
  *
@@ -5046,54 +5050,149 @@ static BOOL AddTrayIcon(HWND hwnd)
     return res;
 }
 
-/* Update the saved-sessions menu. */
+/* KiTTY: the session each menu command starts - IDM_SESSIONS_BASE + 16*i
+ * starts kageant_sess_ids[i], a session identity ("Linux\web\srv01" or a
+ * bare name). The menu shows only the name, so the command carries the
+ * identity, not the item text. Rebuilt with the menu. */
+static char **kageant_sess_ids;
+static int kageant_sess_nids;
+
+/* The registry store's sessions (the hive kageant_sessions_key names): the
+ * identity of every key, and the Folder value of each one stored by its bare
+ * name - one key open per such session. */
+static int kageant_registry_rows(char ***ids, char ***folders)
+{
+    HKEY hkey;
+    char buf[MAX_PATH + 1];
+    strbuf *sb;
+    int n = 0;
+    size_t cap = 0, cap2 = 0;
+    DWORD i;
+
+    *ids = NULL;
+    *folders = NULL;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, kageant_sessions_key(), 0,
+                      KEY_READ, &hkey) != ERROR_SUCCESS)
+        return 0;
+    sb = strbuf_new();
+    for (i = 0; RegEnumKeyA(hkey, i, buf, MAX_PATH) == ERROR_SUCCESS; i++) {
+        char *folder = NULL;
+        if (!strcmp(buf, PUTTY_DEFAULT))
+            continue;
+        strbuf_clear(sb);
+        unescape_registry_key(buf, sb);
+        if (!strchr(sb->s, '\\')) {
+            HKEY sk;
+            if (RegOpenKeyExA(hkey, buf, 0, KEY_QUERY_VALUE, &sk) == ERROR_SUCCESS) {
+                DWORD type = 0, size = 0;
+                if (RegQueryValueExA(sk, "Folder", NULL, &type, NULL,
+                                     &size) == ERROR_SUCCESS &&
+                    type == REG_SZ && size > 0 && size < 4096) {
+                    folder = snewn(size + 1, char);
+                    if (RegQueryValueExA(sk, "Folder", NULL, &type,
+                                         (BYTE *)folder, &size) == ERROR_SUCCESS)
+                        folder[size] = '\0';
+                    else
+                        folder[0] = '\0';
+                }
+                RegCloseKey(sk);
+            }
+        }
+        sgrowarray(*ids, cap, n);
+        sgrowarray(*folders, cap2, n);
+        (*ids)[n] = dupstr(sb->s);
+        (*folders)[n] = folder;
+        n++;
+    }
+    strbuf_free(sb);
+    RegCloseKey(hkey);
+    return n;
+}
+
+/* A name as menu text: '&' doubled, so it is shown, not taken for an
+ * accelerator. */
+static char *kageant_menu_label(const char *s)
+{
+    strbuf *sb = strbuf_new();
+    for (; *s; s++) {
+        if (*s == '&')
+            put_byte(sb, '&');
+        put_byte(sb, *s);
+    }
+    return strbuf_to_str(sb);
+}
+
+/* Update the saved-sessions menu. KiTTY: one submenu per session folder,
+ * nested as the folder tree, from whichever store kitty.exe uses - the
+ * folder store when kitty.ini says savemode=dir, else the registry. Built
+ * when the tray menu opens; the folder store is walked by the terminal's own
+ * rules (ksp_walk_store), whose content check reads only files that are new
+ * or changed since the last walk. */
 static void update_sessions(void)
 {
-    int num_entries;
-    HKEY hkey;
-    TCHAR buf[MAX_PATH + 1];
-    MENUITEMINFO mii;
-    strbuf *sb;
-
-    int index_key, index_menu;
+    char sdir[4 * MAX_PATH + 8], suffix[64];
+    char **ids = NULL, **folders = NULL;
+    int n, ne, i, toppos = 0, depth = 0;
+    struct ksm_entry *e;
+    HMENU *stack = NULL;
+    size_t stacksize = 0;
 
     if (!putty_path)
         return;
 
-    if (ERROR_SUCCESS != RegOpenKey(HKEY_CURRENT_USER, kageant_sessions_key(), &hkey))
-        return;
+    /* DeleteMenu, not RemoveMenu: it destroys the folder submenus too. */
+    while (GetMenuItemCount(session_menu) > initial_menuitems_count)
+        if (!DeleteMenu(session_menu, 0, MF_BYPOSITION))
+            break;
+    for (i = 0; i < kageant_sess_nids; i++)
+        sfree(kageant_sess_ids[i]);
+    sfree(kageant_sess_ids);
+    kageant_sess_ids = NULL;
+    kageant_sess_nids = 0;
 
-    for (num_entries = GetMenuItemCount(session_menu);
-        num_entries > initial_menuitems_count;
-        num_entries--)
-        RemoveMenu(session_menu, 0, MF_BYPOSITION);
+    if (kitty_inilight_folder_store(sdir, sizeof(sdir), suffix, sizeof(suffix)))
+        n = ksm_folder_store_rows(sdir, suffix, &ids, &folders);
+    else
+        n = kageant_registry_rows(&ids, &folders);
 
-    index_key = 0;
-    index_menu = 0;
-
-    sb = strbuf_new();
-    while (ERROR_SUCCESS == RegEnumKey(hkey, index_key, buf, MAX_PATH)) {
-        if (strcmp(buf, PUTTY_DEFAULT) != 0) {
-            strbuf_clear(sb);
-            unescape_registry_key(buf, sb);
-
-            memset(&mii, 0, sizeof(mii));
-            mii.cbSize = sizeof(mii);
-            mii.fMask = MIIM_TYPE | MIIM_STATE | MIIM_ID;
-            mii.fType = MFT_STRING;
-            mii.fState = MFS_ENABLED;
-            mii.wID = (index_menu * 16) + IDM_SESSIONS_BASE;
-            mii.dwTypeData = sb->s;
-            InsertMenuItem(session_menu, index_menu, true, &mii);
-            index_menu++;
+    e = ksm_build(ids, folders, n, &ne);
+    kageant_sess_ids = snewn(KAGEANT_SESS_MAXIDS, char *);
+    sgrowarray(stack, stacksize, 0);
+    stack[0] = session_menu;
+    for (i = 0; i < ne; i++) {
+        char *label = e[i].label ? kageant_menu_label(e[i].label) : NULL;
+        HMENU into = stack[depth];
+        if (e[i].kind == KSM_FOLDER_OPEN) {
+            HMENU sub = CreatePopupMenu();
+            if (depth == 0)
+                InsertMenu(into, toppos++, MF_BYPOSITION | MF_POPUP | MF_STRING,
+                           (UINT_PTR)sub, label);
+            else
+                AppendMenu(into, MF_POPUP | MF_STRING, (UINT_PTR)sub, label);
+            depth++;
+            sgrowarray(stack, stacksize, depth);
+            stack[depth] = sub;
+        } else if (e[i].kind == KSM_FOLDER_CLOSE) {
+            if (depth > 0)
+                depth--;
+        } else if (kageant_sess_nids < KAGEANT_SESS_MAXIDS) {
+            UINT id = IDM_SESSIONS_BASE + 16 * kageant_sess_nids;
+            kageant_sess_ids[kageant_sess_nids++] = dupstr(ids[e[i].idx]);
+            if (depth == 0)
+                InsertMenu(into, toppos++, MF_BYPOSITION | MF_STRING, id, label);
+            else
+                AppendMenu(into, MF_STRING, id, label);
         }
-        index_key++;
+        sfree(label);
     }
-    strbuf_free(sb);
+    sfree(stack);
+    ksm_free(e, ne);
+    ksm_rows_free(ids, folders, n);
 
-    RegCloseKey(hkey);
-
-    if (index_menu == 0) {
+    if (toppos == 0) {
+        MENUITEMINFO mii;
+        int index_menu = 0;
+        memset(&mii, 0, sizeof(mii));
         mii.cbSize = sizeof(mii);
         mii.fMask = MIIM_TYPE | MIIM_STATE;
         mii.fType = MFT_STRING;
@@ -6227,28 +6326,24 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             kageant_confirm_resume();
             break;
           default: {
-            if (wParam >= IDM_SESSIONS_BASE && wParam <= IDM_SESSIONS_MAX) {
-                MENUITEMINFO mii;
-                TCHAR buf[MAX_PATH + 1];
-                TCHAR param[MAX_PATH + 8];   /* KiTTY: room for "&R@" before a MAX_PATH name */
-                memset(&mii, 0, sizeof(mii));
-                mii.cbSize = sizeof(mii);
-                mii.fMask = MIIM_TYPE;
-                mii.cch = MAX_PATH;
-                mii.dwTypeData = buf;
-                GetMenuItemInfo(session_menu, wParam, false, &mii);
+            if (command >= IDM_SESSIONS_BASE && command <= IDM_SESSIONS_MAX) {
+                /* KiTTY: the session's identity from the menu's table - the
+                 * item shows only its name, the folder path is the menu.
+                 * kitty.exe resolves "@Linux\web\srv01" as -load does. */
+                int k = (int)((command - IDM_SESSIONS_BASE) / 16);
+                char *param;
+                if (k >= kageant_sess_nids || !kageant_sess_ids[k])
+                    break;
                 if (!kageant_kitty_launch_allowed(hwnd))
                     break;
-                param[0] = '\0';
-                if (restrict_putty_acl)
-                    strcat(param, "&R");
-                strcat(param, "@");
-                strcat(param, mii.dwTypeData);
+                param = dupcat(restrict_putty_acl ? "&R" : "", "@",
+                               kageant_sess_ids[k]);
                 if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, param,
                                           _T(""), SW_SHOW) <= 32) {
                     MessageBox(NULL, KT_MSG_EXEC_KITTY_FAILED, KT_CAP_ERROR,
                               MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
                 }
+                sfree(param);
             }
             break;
           }

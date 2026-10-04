@@ -235,6 +235,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   a name already exists at the destination, and the list of updated jump
   hosts are shown in boxes beside the window; so is the suffix-rename
   question, whose default answer is now No (hknet/KiTTY#55, hknet/KiTTY#56).
+- **kageant's Saved Sessions menu shows the session folders and the folder
+  store's sessions.** One submenu per folder, nested as the folder tree,
+  sorted by name with numbers in order. With `savemode=dir` it lists the
+  session folder (`sessions=`, `sessionsuffix=`) instead of the registry, and
+  a session is started by its full path. It lists up to 3584 sessions, not
+  256 (hknet/KiTTY#55).
 
 - **Scrolling output costs less.** Rows that only moved up are shifted on
   screen instead of drawn again, so only the new lines are painted. A

@@ -229,6 +229,13 @@ folder, with the root-level sessions below them; the tray launcher's menu has al
 done the same. This is independent of `foldernavigation` — the menus group
 either way.
 
+**kageant's Saved Sessions.** The kageant tray menu's **Saved Sessions** has
+the same submenu per folder, nested as the folder tree, sorted by name with
+numbers in order (`k8` before `k78`). It reads the store kitty.exe uses — the
+session folder when kitty.ini says `savemode=dir` (`sessions=` and
+`sessionsuffix=` included), the registry otherwise — and starts the chosen
+session by its full path (`Linux\web\srv01`).
+
 ### Quick connect (type a host instead of picking a session)
 
 The configuration box opens with the session you used last, which is what you want if you work from a list of saved sessions. If you connect by typing an address — a room full of switches, a lab, anything not worth saving — that is the wrong starting point every time: the settings that arrive belong to whichever host you happened to visit last, and the only way back to a known state is to load *Default Settings* by hand before each connection.

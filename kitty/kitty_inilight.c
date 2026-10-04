@@ -180,3 +180,92 @@ int kitty_inilight_write(const char *section, const char *key,
         return 0;
     return WritePrivateProfileStringA(section, key, value, f) ? 1 : 0;
 }
+
+/* The folder store, as kitty.exe finds it (kitty_store.c loadPath and
+ * kitty_store_ini_takeover). It is in use when the ini says savemode=dir, or
+ * says no savemode at all beside a portable layout (the portable build forces
+ * dir mode without the key); savemode=file keeps its sessions in the
+ * registry. The session directory is sessions= (environment strings
+ * expanded; a leading '\' or '/' is below the program folder, "X:..." is
+ * absolute, anything else is relative to the program folder), else
+ * <configdir>\Sessions, else <program folder>\Sessions. The suffix is
+ * sessionsuffix= unless it holds a character a file name cannot end in.
+ * Classic KiTTY's putty.conf is not read: kitty.exe moves its keys into
+ * kitty.ini on its first folder-store start. Returns 1 with dir and suffix
+ * filled, 0 when the sessions are in the registry. */
+static void inilight_rtrim(char *s, const char *set)
+{
+    size_t n = strlen(s);
+    while (n > 0 && strchr(set, s[n - 1]))
+        s[--n] = '\0';
+}
+
+int kitty_inilight_folder_store(char *dir, int dirlen, char *suffix, int suflen)
+{
+    char mode[32], v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
+    char path[4 * MAX_PATH + 8];
+    char *slash;
+    DWORD n;
+    const char *p;
+
+    if (dirlen > 0)
+        dir[0] = '\0';
+    if (suflen > 0)
+        suffix[0] = '\0';
+    if (!kitty_inilight_file())
+        return 0;
+    GetPrivateProfileStringA(inilight_mainsection, KI_SAVEMODE, "",
+                             mode, sizeof(mode), inilight_path);
+    inilight_rtrim(mode, " \t\r\n");
+    if (stricmp(mode, "dir") && (mode[0] || !inilight_portable_layout()))
+        return 0;
+
+    n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH || !(slash = strrchr(exedir, '\\')))
+        return 0;
+    *slash = '\0';
+
+    GetPrivateProfileStringA(inilight_mainsection, KI_SESSIONS, "",
+                             v, sizeof(v), inilight_path);
+    if (v[0]) {
+        DWORD xn = ExpandEnvironmentStringsA(v, x, sizeof(x));
+        if (xn == 0 || xn > sizeof(x))
+            snprintf(x, sizeof(x), "%s", v);
+        if (x[0] == '\\' || x[0] == '/')
+            snprintf(path, sizeof(path), "%s%s", exedir, x);
+        else if (x[0] && x[1] == ':')
+            snprintf(path, sizeof(path), "%s", x);
+        else
+            snprintf(path, sizeof(path), "%s\\%s", exedir, x);
+        inilight_rtrim(path, " \n\r\t\\");
+        if (strlen(path) == 2 && path[1] == ':')
+            strcat(path, "\\");          /* "C:" alone is drive C's cwd */
+    } else {
+        GetPrivateProfileStringA(inilight_mainsection, KI_CONFIGDIR, "",
+                                 v, sizeof(v), inilight_path);
+        inilight_rtrim(v, " \n\r\t\\");
+        if (!v[0])
+            snprintf(path, sizeof(path), "%s\\Sessions", exedir);
+        else if (v[0] == '\\' || v[1] == ':')
+            snprintf(path, sizeof(path), "%s\\Sessions", v);
+        else
+            snprintf(path, sizeof(path), "%s\\%s\\Sessions", exedir, v);
+    }
+    if ((int)strlen(path) >= dirlen)
+        return 0;
+    strcpy(dir, path);
+
+    /* kitty.exe keeps at most 63 characters and refuses a suffix with a
+     * character its escape would rewrite (kitty_set_session_suffix). */
+    GetPrivateProfileStringA(inilight_mainsection, KI_SESSIONSUFFIX, "",
+                             v, sizeof(v), inilight_path);
+    inilight_rtrim(v, " \n\r\t");
+    for (p = v; *p; p++)
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
+            return 1;
+    if (strlen(v) > 63)
+        v[63] = '\0';
+    if ((int)strlen(v) < suflen)
+        strcpy(suffix, v);
+    return 1;
+}
