@@ -326,6 +326,13 @@ add_executable(test_sessmenu
   kitty/kitty_sessionpath.c)
 target_link_libraries(test_sessmenu utils ${platform_libraries})
 
+# KiTTY: the payload table behind the launcher's session menu and the User
+# Command menu (IDM_USERCMD + n): growth, ceiling, the count of the entries
+# left out across nested folders (hknet/KiTTY#55). No Win32, no PuTTY.
+add_executable(test_menuslots
+  test/test_menuslots.c
+  kitty/kitty_menuslots.c)
+
 foreach(subdir ${platform} ${extra_dirs})
   add_subdirectory(${subdir})
 endforeach()
@@ -344,7 +351,7 @@ foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
-    test_sessionpath test_sessmenu
+    test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify)
   kitty_add_test(${t})

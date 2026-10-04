@@ -1653,6 +1653,9 @@
 #define KT_MENU_WORKPLACE_OFF                        "&Workplace proxy mode (off) - use one proxy for everything"
 #define KT_MENU_WORKPLACE_NEEDS_PROXY                "Workplace proxy mode (needs a named proxy)"
 #define KT_MENU_USER_COMMAND                         "&User Command"
+/* The launcher's session menu, greyed last entry when sessions are past the
+ * ceiling of the menu (kitty_menuslots.h NB_MENU_MAX): how many it left out. */
+#define KT_MENU_SESSIONS_NOT_SHOWN                   "(%d more sessions not shown)"
 
 /* kitty_startup.c: startup; kitty_regbackup.c: the registry store's .sav export and loader; kitty_portfwd.c: port forwardings */
 #define KT_MAIN_INFO_CLEANING_BACKUP                 "Cleaning backup registry"

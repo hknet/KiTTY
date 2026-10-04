@@ -35,8 +35,15 @@
  * existing accessor. */
 #define ShortcutsFlag (GetShortcutsFlag())
 
-#define NB_MENU_MAX 1024
-char *SpecialMenu[NB_MENU_MAX] ;   /* shared: kitty_launcher.c uses it directly */
+/* KiTTY: the entry payloads live in kitty_menuslots.c, a table that grows
+ * up to NB_MENU_MAX. That ceiling must keep IDM_USERCMD + n clear of every
+ * other command id the launcher and the terminal window handle. */
+_Static_assert( IDM_USERCMD + NB_MENU_MAX <= IDM_GOHIDE,
+                "User-Command / launcher ids run into IDM_GOHIDE" ) ;
+_Static_assert( IDM_USERCMD + NB_MENU_MAX <= IDM_WORKPLACE,
+                "User-Command / launcher ids run into IDM_WORKPLACE" ) ;
+_Static_assert( IDM_USERCMD + NB_MENU_MAX <= IDM_QUIT,
+                "User-Command / launcher ids run into IDM_QUIT" ) ;
 
 /* KiTTY: the entries of one menu level, gathered before they are appended.
  * The launcher's copy of the sessions is then listed by the name each entry
@@ -67,6 +74,20 @@ static void sm_items_free( struct sm_item **v, int *n ) {
 	*n = 0 ;
 }
 
+/* KiTTY: one folder's submenu, read and appended to `menu`. A folder whose
+ * entries were ALL cut by the ceiling is left out rather than shown empty;
+ * its entries are in the count of the ones not shown. A folder that is empty
+ * in the store is still listed, as before. */
+static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, const char * label ) {
+	int cut = kitty_menuslots_cut() ;
+	ReadSpecialMenu( sub, key, nbitem, 0 ) ;
+	if( GetMenuItemCount( sub ) == 0 && kitty_menuslots_cut() > cut ) {
+		DestroyMenu( sub ) ;
+		return ;
+		}
+	AppendMenu( menu, MF_POPUP, (UINT_PTR)sub, label ) ;
+	}
+
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 	HKEY hKey ;
 	HMENU SubMenu ;
@@ -89,7 +110,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		nb = (*nbitem) ;
 
 		if( cSubKeys>0 ) { // collect the submenus
-		for (i=0; (i<cSubKeys)&&(nb<NB_MENU_MAX); i++) {
+		for (i=0; i<cSubKeys; i++) {
 			DWORD cchValue = MAX_VALUE_NAME;
 			char lpData[4096] ;
 			achValue[0] = '\0';
@@ -104,8 +125,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		for( k = 0 ; k < nitems ; k++ ) {
 			SubMenu = CreateMenu() ;
 			snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, items[k].data ) ;
-			ReadSpecialMenu( SubMenu, buffer, nbitem, 0 ) ;
-			AppendMenu( menu, MF_POPUP, (UINT_PTR)SubMenu, items[k].label ) ;
+			sm_read_folder( menu, SubMenu, buffer, nbitem, items[k].label ) ;
 			}
 		sm_items_free( &items, &nitems ) ;
 
@@ -114,7 +134,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		if (cValues) { // collect the menu items
 		if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 
-		if( nb<NB_MENU_MAX )
 	        for (i=0; i<cValues; i++) {
 			DWORD cchValue = MAX_VALUE_NAME;
 			DWORD lpType,dwDataSize=4096 ;
@@ -133,7 +152,9 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			}
     		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
-		for( k = 0 ; k < nitems && nb < NB_MENU_MAX ; k++ ) {
+		for( k = 0 ; k < nitems ; k++ ) {
+			/* Past the ceiling the entry is only counted (kitty_menuslots_cut). */
+			if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
 			if( ShortcutsFlag ) {
 				if( nb < 26 )
 					snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", items[k].label, ('A'+nb) ) ;
@@ -143,14 +164,11 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			else
 				snprintf( buffer, sizeof(buffer), "%s", items[k].label ) ;
 			AppendMenu(menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
-			SpecialMenu[nb]=(char*)malloc( strlen( items[k].data ) + 1 ) ;
-			strcpy( SpecialMenu[nb], items[k].data ) ;
-			nb++ ;
 			local_nb++ ;
 			}
 		sm_items_free( &items, &nitems ) ;
 
-		(*nbitem)=nb ;
+		(*nbitem)=kitty_menuslots_count() ;
 		
 		RegCloseKey( hKey ) ;
 		}
@@ -184,8 +202,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			for( k = 0 ; k < nitems ; k++ ) {
 				SubMenu = CreateMenu() ;
 				snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, items[k].data ) ;
-				ReadSpecialMenu( SubMenu, buffer, nbitem, 0 ) ;
-				AppendMenu( menu, MF_POPUP, (UINT_PTR)SubMenu, items[k].label ) ;
+				sm_read_folder( menu, SubMenu, buffer, nbitem, items[k].label ) ;
 				}
 			sm_items_free( &items, &nitems ) ;
 			rewinddir( dir ) ;
@@ -227,15 +244,14 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
-			for( k = 0 ; k < nitems && nb < NB_MENU_MAX ; k++ ) {
+			for( k = 0 ; k < nitems ; k++ ) {
+				/* Past the ceiling the entry is only counted (kitty_menuslots_cut). */
+				if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
 				AppendMenu(menu, MF_ENABLED, IDM_USERCMD+nb, items[k].label ) ;
-				SpecialMenu[nb]=(char*)malloc( strlen( items[k].data ) + 1 ) ;
-				strcpy( SpecialMenu[nb], items[k].data ) ;
-				nb++ ;
 				local_nb++ ;
 				}
 			sm_items_free( &items, &nitems ) ;
-			(*nbitem)=nb ;
+			(*nbitem)=kitty_menuslots_count() ;
 			closedir( dir ) ;
 			}
 		}
@@ -248,6 +264,9 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 
 	HMENU menu ;
 	menu = CreateMenu() ;
+	/* Each build of the menu starts the numbering anew (the system menu and
+	 * the context menu get the same numbers for the same commands). */
+	kitty_menuslots_reset( 0 ) ;
 	
 	if( IniFileFlag == SAVEMODE_DIR ) {
 		strcpy( KeyName, "Commands" ) ;
@@ -283,22 +302,24 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 void ManageSpecialCommand( HWND hwnd, int menunum ) {
 	char buffer[4096] ;
 	FILE *fp ;
-	if( menunum < NB_MENU_MAX ) {
-	if( SpecialMenu[menunum] != NULL ) 
-		if( strlen( SpecialMenu[menunum] ) > 0 ) {
-			if( ( fp=fopen( SpecialMenu[menunum], "r") ) != NULL ) {
+	/* A copy: replaying the keys can run messages, and a menu rebuild frees
+	 * the table's payloads. */
+	char * cmd = kitty_menuslots_get( menunum ) ? dupstr( kitty_menuslots_get( menunum ) ) : NULL ;
+	if( cmd != NULL ) {
+		if( strlen( cmd ) > 0 ) {
+			if( ( fp=fopen( cmd, "r") ) != NULL ) {
 				while( fgets( buffer, 4095, fp ) != NULL ) {
 					SendKeyboardPlus( hwnd, buffer ) ;
 					}
-				fclose( fp ) ; 
+				fclose( fp ) ;
 				}
-			else SendKeyboardPlus( hwnd, SpecialMenu[menunum] ) ;
+			else SendKeyboardPlus( hwnd, cmd ) ;
 			}
+		sfree( cmd ) ;
 		}
 	}
 
 /* Seam: the startup code (kitty_startup.c) used to zero the table with an inline loop. */
 void InitSpecialMenuTab( void ) {
-	int i ;
-	for( i=0 ; i < NB_MENU_MAX ; i++ ) SpecialMenu[i] = NULL ;
+	kitty_menuslots_reset( 0 ) ;
 	}

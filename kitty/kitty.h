@@ -151,8 +151,7 @@ void save_open_settings_forced(char *filename, Conf *conf) ;
 int SwitchCryptFlag( void ) ;
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) ;
 void InitSpecialMenuTab( void ) ;
-#define NB_MENU_MAX 1024
-extern char *SpecialMenu[NB_MENU_MAX] ;   /* User-Command / launcher entry payloads (kitty_specialmenu.c) */
+#include "kitty_menuslots.h"   /* NB_MENU_MAX + the User-Command / launcher entry payloads */
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
 
 /* keyboard-shortcut types, tables + entry points; all defined in
@@ -528,8 +527,9 @@ void xyz_updateMenuItems(Terminal *term) ;
  * is on screen. */
 #define KITTY_LAUNCHER_STATE_MESSAGE "KiTTYLauncherStateChanged"
 
-// USERCMD must be the largest value, so that there can be as many shortcuts
-// as wanted
+// USERCMD + 0 .. NB_MENU_MAX-1 (kitty_menuslots.h): the launcher's sessions and
+// the User Commands. kitty_specialmenu.c checks at compile time that the range
+// ends below IDM_GOHIDE, IDM_WORKPLACE and IDM_QUIT.
 #ifndef IDM_USERCMD
 #define IDM_USERCMD   0x8000
 #endif
@@ -567,9 +567,6 @@ void xyz_updateMenuItems(Terminal *term) ;
 #define SAVEMODE_DIR 2
 #endif
 
-#ifndef NB_MENU_MAX
-#define NB_MENU_MAX 1024
-#endif
 
 
 

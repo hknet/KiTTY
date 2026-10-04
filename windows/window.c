@@ -574,9 +574,6 @@ int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
 #ifndef IDM_USERCMD
 #define IDM_USERCMD 0x8000
 #endif
-#ifndef NB_MENU_MAX
-#define NB_MENU_MAX 1024
-#endif
 /* URL hyperlinks (kitty_url.c + kitty.c flag) */
 void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
                                   UINT id_down, UINT id_anchor);
@@ -2670,7 +2667,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, KT_SYSMENU_TOOLS);
 
             /* KiTTY "Shortcuts for predefined commands": read the registry
-             * Commands keys into SpecialMenu[] and add a "&User Command"
+             * Commands keys into the entry table (kitty_menuslots.c) and add a "&User Command"
              * submenu. Keyboard shortcuts (Ctrl+Shift+A..Z) dispatch via
              * WM_COMMAND IDM_USERCMD+n -> ManageSpecialCommand (handled in the
              * WM_COMMAND default case). Added to both the system menu and the
@@ -6243,7 +6240,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
             /* KiTTY predefined-command shortcuts: Ctrl+Shift+A..Z (and User
              * Command context-menu clicks) arrive here as WM_COMMAND
-             * IDM_USERCMD+n; run the n-th SpecialMenu[] command. */
+             * IDM_USERCMD+n; run the n-th command of the entry table. */
             {
                 int nb = (int)LOWORD(wParam) - IDM_USERCMD;
                 if (nb >= 0 && nb < NB_MENU_MAX)

@@ -592,17 +592,42 @@ int kitty_launcher_autostart_toggle( HWND owner ) {
 	return kitty_launcher_autostart_on() ;
 }
 
+/*
+ * KiTTY: how many sessions the menu lists - NB_MENU_MAX, the end of the
+ * command ids free for them (kitty_menuslots.h). A test build started with
+ * KITTY_LAUNCHER_MENU_MAX=<n> lists at most n, so a harness can reach the
+ * ceiling with a handful of sessions instead of thousands.
+ */
+static int LauncherMenuCap( void ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	const char * e = getenv( "KITTY_LAUNCHER_MENU_MAX" ) ;
+	if( e != NULL && atoi( e ) > 0 ) return atoi( e ) ;   /* clamped to NB_MENU_MAX by the reset */
+#endif
+	return NB_MENU_MAX ;
+}
+
 static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
 	char KeyName[1024] ;
 	int nbitem = 0 ;
+
+	/* The ids of the menu still on the screen are renumbered from here on:
+	 * every caller replaces it (or grafts the new ids into it) right after. */
+	kitty_menuslots_reset( LauncherMenuCap() ) ;
 	
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		ReadSpecialMenu( menu, Key, &nbitem, 0 ) ;
+	}
+	/* Sessions past the ceiling, in every folder counted: said, not dropped
+	 * silently. Greyed, no command. */
+	if( kitty_menuslots_cut() > 0 ) {
+		char more[128] ;
+		snprintf( more, sizeof(more), KT_MENU_SESSIONS_NOT_SHOWN, kitty_menuslots_cut() ) ;
+		AppendMenu( menu, MF_GRAYED, 0, more ) ;
 	}
 
 	if( GetMenuItemCount( menu ) > 0 )
@@ -1151,7 +1176,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 			    && (GetKeyState(VK_CONTROL) & 0x8000)
 			    && (GetKeyState(VK_SHIFT) & 0x8000) ) {
 				int nb = vk - 'A' ;
-				if( nb >= 0 && nb < NB_MENU_MAX && SpecialMenu[nb] != NULL ) {
+				if( kitty_menuslots_get( nb ) != NULL ) {
 					EndMenu() ;   /* close the popup */
 					PostMessage( MainHwnd, WM_COMMAND, IDM_USERCMD + nb, 0 ) ;
 					return 1 ;    /* consume -> no ding */
@@ -1191,7 +1216,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
  * a folder of folders would otherwise start the whole store with one click).
  *
  * The sessions are COPIED out of the menu when the entry is chosen: every
- * RunSession() is followed by a menu rebuild, which replaces the SpecialMenu[]
+ * RunSession() is followed by a menu rebuild, which replaces the entry
  * payloads the menu items point at. The start itself happens after the menu
  * loop has ended (a posted message), so the confirmation box is not raised
  * under an open menu, and one session per timer tick, so a large folder does
@@ -1217,11 +1242,11 @@ static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, i
 	for( i = 0 ; i < count ; i++ ) {
 		UINT id = GetMenuItemID( sub, i ) ;   /* (UINT)-1 for a submenu */
 		int nb = (int)id - IDM_USERCMD ;
-		if( id == (UINT)-1 || nb < 0 || nb >= NB_MENU_MAX || SpecialMenu[nb] == NULL )
+		if( id == (UINT)-1 || kitty_menuslots_get( nb ) == NULL )
 			continue ;
 		if( out != NULL && n < max ) {
 			char * tab ;
-			snprintf( out[n].payload, sizeof(out[n].payload), "%s", SpecialMenu[nb] ) ;
+			snprintf( out[n].payload, sizeof(out[n].payload), "%s", kitty_menuslots_get( nb ) ) ;
 			out[n].label[0] = '\0' ;
 			GetMenuString( sub, i, out[n].label, sizeof(out[n].label), MF_BYPOSITION ) ;
 			/* the "\tCtrl+Shift+A" accelerator text is not part of the name */
@@ -2029,15 +2054,16 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	char winner[256] = "" ;
 	int overflow = 0 ;
 	LauncherUnregisterHotkeys( hwnd ) ;
-	for( i=0 ; i<NB_MENU_MAX ; i++ ) {
+	for( i=0 ; i<kitty_menuslots_count() ; i++ ) {
 		/* The session's two hotkey settings, read alone. This loop used to
 		 * load every session's WHOLE configuration to look at those two - at
 		 * 200 sessions in a portable store that took about twelve seconds,
 		 * at every start and every refresh of the store, and the launcher
 		 * answered no tray click while it ran. */
 		char spec[256] ;
-		if( SpecialMenu[i] == NULL || SpecialMenu[i][0] == '\0' ) continue ;
-		if( kitty_hotkey_of_session( SpecialMenu[i], &mods, &vk, spec, sizeof(spec) ) ) {
+		char * sess = kitty_menuslots_get( i ) ;
+		if( sess == NULL || sess[0] == '\0' ) continue ;
+		if( kitty_hotkey_of_session( sess, &mods, &vk, spec, sizeof(spec) ) ) {
 			int dup = -1 ;
 			for( j=0 ; j<LauncherHotkeyCount ; j++ )
 				if( LauncherHotkeys[j].modifiers == (mods|MOD_NOREPEAT) && LauncherHotkeys[j].vk == vk ) { dup = j ; break ; }
@@ -2046,7 +2072,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 				snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_DUP,
 				          report[0] ? "\n" : "",
 				          spec,
-				          LauncherHotkeys[dup].session, SpecialMenu[i] ) ;
+				          LauncherHotkeys[dup].session, sess ) ;
 				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 				if( winner[0] == '\0' ) {
 					strncpy( winner, LauncherHotkeys[dup].session, sizeof(winner)-1 ) ;
@@ -2058,9 +2084,9 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 				LauncherHotkeys[LauncherHotkeyCount].id = LAUNCHER_HOTKEY_BASE + LauncherHotkeyCount ;
 				LauncherHotkeys[LauncherHotkeyCount].modifiers = mods | MOD_NOREPEAT ;
 				LauncherHotkeys[LauncherHotkeyCount].vk = vk ;
-				strncpy( LauncherHotkeys[LauncherHotkeyCount].folder, SpecialMenu[i], sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1 ) ;
+				strncpy( LauncherHotkeys[LauncherHotkeyCount].folder, sess, sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1 ) ;
 				LauncherHotkeys[LauncherHotkeyCount].folder[sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1] = '\0' ;
-				strncpy( LauncherHotkeys[LauncherHotkeyCount].session, SpecialMenu[i], sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1 ) ;
+				strncpy( LauncherHotkeys[LauncherHotkeyCount].session, sess, sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1 ) ;
 				LauncherHotkeys[LauncherHotkeyCount].session[sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1] = '\0' ;
 				if( RegisterHotKey( hwnd, LauncherHotkeys[LauncherHotkeyCount].id,
 					LauncherHotkeys[LauncherHotkeyCount].modifiers, LauncherHotkeys[LauncherHotkeyCount].vk ) )
@@ -2070,7 +2096,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 					snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_HELD,
 					          report[0] ? "\n" : "",
 					          spec,
-					          SpecialMenu[i] ) ;
+					          sess ) ;
 					strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 				}
 			}
@@ -2846,15 +2872,19 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				int nb ;
 				nb = LOWORD(wParam)-IDM_USERCMD ;
 				if( ( nb >= 0 ) && ( nb<NB_MENU_MAX ) ) {
-					if( SpecialMenu[nb]!= NULL )
-					//if( strlen( SpecialMenu[nb] ) > 0 ) 
+					/* A copy: the master-password prompt RunSession may raise
+					 * runs a message loop, and a menu rebuild in there frees
+					 * the entry's payload. */
+					char * sess = kitty_menuslots_get( nb ) ? dupstr( kitty_menuslots_get( nb ) ) : NULL ;
+					if( sess != NULL )
 						{
 						if( DirectoryBrowseFlag ) {
 							char buffer[1024]="" ;
 							GetMenuString( MenuLauncher, nb+IDM_USERCMD, buffer, 1024, MF_BYCOMMAND ) ;
-							RunSession( hwnd, SpecialMenu[nb], buffer ) ;
+							RunSession( hwnd, sess, buffer ) ;
 							}
-						else RunSession( hwnd, SpecialMenu[nb], SpecialMenu[nb] ) ;
+						else RunSession( hwnd, sess, sess ) ;
+						sfree( sess ) ;
 						RefreshMenuLauncher() ;
 						}
 					break ;

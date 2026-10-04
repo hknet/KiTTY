@@ -672,8 +672,8 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	if( ( IniFileFlag != SAVEMODE_DIR ) && shift_flag && control_flag
 	 && ( key_num >= 'A' ) && ( key_num <= 'Z' ) ) {
 		int usercmd = key_num - 'A' ;
-		if( ( usercmd < NB_MENU_MAX ) && ( SpecialMenu[usercmd] != NULL )
-		 && ( strlen( SpecialMenu[usercmd] ) > 0 ) )
+		if( ( kitty_menuslots_get( usercmd ) != NULL )
+		 && ( strlen( kitty_menuslots_get( usercmd ) ) > 0 ) )
 			{ SendMessage( hwnd, WM_COMMAND, IDM_USERCMD+usercmd, 0 ) ; return 1 ; }
 	}
 

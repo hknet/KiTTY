@@ -407,6 +407,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **A session named `CON`, `NUL`, `COM1` or another Windows device name, or
   one ending in a dot or a space, can be saved in the folder store.** Such a
   name could not be a file name, so the session could not be saved.
+- **The launcher lists up to 4096 sessions and says how many it left out.**
+  It stopped at 1024 without a word; past 4096 the menu now ends with
+  "(N more sessions not shown)" (hknet/KiTTY#55).
 
 ## 0.85.1.12-beta — 2026-09-23
 
