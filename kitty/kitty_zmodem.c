@@ -37,6 +37,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_zmodem.h"
 #include "kitty_tools.h"    /* existfile: the helper paths must name a file */
+#include "kitty_winutil.h"  /* kitty_expand_env_dup: %VAR% in the rz/sz paths */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -103,8 +104,22 @@ int kitty_zmodem_active(void)
  * those are arguments for a particular remote, not a property of the install.
  *
  * A static buffer per direction; every caller is finished with it before the
- * next call.
+ * next call. %VAR% Windows variables in the stored path are expanded here,
+ * as for the other helper paths (cyd01/KiTTY#472); the setting keeps them as
+ * typed, and an unknown %name% stays as it is. Every caller uses the result
+ * as a path to test or start, never to show or store.
  */
+static const char *zmodem_expanded(char *buf)
+{
+    char *expanded;
+    if (!buf[0])
+        return buf;
+    expanded = kitty_expand_env_dup(buf);
+    snprintf(buf, MAX_PATH, "%s", expanded);
+    free(expanded);
+    return buf;
+}
+
 const char *kitty_zmodem_command(int send)
 {
     static char rz[MAX_PATH], sz[MAX_PATH];
@@ -116,11 +131,11 @@ const char *kitty_zmodem_command(int send)
     if (send) {
         if (!ReadParameterN(INIT_SECTION, KI_SZCOMMAND, sz, MAX_PATH))
             sz[0] = '\0';
-        return sz;
+        return zmodem_expanded(sz);
     }
     if (!ReadParameterN(INIT_SECTION, KI_RZCOMMAND, rz, MAX_PATH))
         rz[0] = '\0';
-    return rz;
+    return zmodem_expanded(rz);
 }
 
 /* handle_free() first, then close the pipe: handle-io.c does not close the

@@ -614,8 +614,8 @@ bool IsPathAbsolute( const char * path ) {
 /*
  * KiTTY: %VAR% expansion (cyd01/KiTTY#472) for the plain-string (non-
  * Filename) settings that hold a path: the download/upload folders, the
- * PSCPPath/WinSCPPath/FileZillaPath helper-program paths, and the sav=
- * override. These never round-trip through the Filename type - each is a
+ * PSCPPath/WinSCPPath/FileZillaPath helper-program paths, the rzcommand/
+ * szcommand ZModem programs (kitty_zmodem.c), and the sav= override. These never round-trip through the Filename type - each is a
  * char* read straight out of kitty.ini/the registry (ReadParameterN) into a
  * running global or a local buffer.
  *

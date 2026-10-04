@@ -48,7 +48,8 @@ void debug_logevent( const char *fmt, ... ) ;
 bool IsPathAbsolute( const char * path ) ;
 
 /* Expand %VAR% Windows environment variables in a stored plain-string path
- * (download/upload folder, PSCPPath/WinSCPPath/FileZillaPath, sav=), right
+ * (download/upload folder, PSCPPath/WinSCPPath/FileZillaPath, rzcommand/
+ * szcommand, sav=), right
  * before it is used as a real Win32 path (cyd01/KiTTY#472). See the
  * implementation comment in kitty_winutil.c. Caller frees with free(). */
 char *kitty_expand_env_dup(const char *in);
