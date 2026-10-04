@@ -228,6 +228,50 @@ static void part_pure(void)
         sfree(t);
     }
 
+    head("the order a list shows sessions in");
+    {
+        /* One folder, both storage forms: a bare name filed by Folder=VSS and
+         * four "VSS\..." paths. Their identities sort monitor first; their
+         * shown names do not. */
+        struct ksp_shown_row r[6] = {
+            { "VSS\\k79.example-root", NULL, 0 },
+            { "monitor.example", "VSS", 1 },
+            { "VSS\\k8.example-root", NULL, 2 },
+            { "Default Settings", NULL, 3 },
+            { "VSS\\k78.example-root", NULL, 4 },
+            { "VSS\\k7.example-root", NULL, 5 },
+        };
+        int i, want[6] = { 3, 5, 2, 4, 0, 1 }, same = 1;
+        for (i = 0; i < 6; i++)
+            if (!r[i].folder && strchr(r[i].id, '\\'))
+                r[i].folder = "VSS";
+        ksp_sort_shown(r, 6);
+        for (i = 0; i < 6; i++)
+            same &= (r[i].idx == want[i]);
+        ok(same, "Default Settings, k7, k8, k78, k79, monitor - by the shown "
+           "name, whatever form each is stored in");
+        ok(ksp_natcasecmp("k8", "k78") < 0 && ksp_natcasecmp("host2", "Host10") < 0,
+           "digit runs by value, case ignored");
+        ok(ksp_natcasecmp("Monitor", "monitor") == 0 &&
+           ksp_natcasecmp("k007", "k7") == 0, "case and zero padding alone are equal");
+        ok(ksp_natcasecmp("net\\x", "net-2") < 0 && ksp_natcasecmp("net", "net\\x") < 0,
+           "a folder's subfolders follow it, ahead of a sibling that starts alike");
+    }
+    {
+        /* classic root list: "srv01 [Linux]" - the name leads, then the folder */
+        struct ksp_shown_row r[3] = {
+            { "Linux\\srv01", "Linux", 0 },
+            { "srv01", NULL, 1 },
+            { "alpha", "Zeta", 2 },
+        };
+        ksp_sort_shown(r, 3);
+        ok(r[0].idx == 2 && r[1].idx == 1 && r[2].idx == 0,
+           "by name first, the root before a folder for the same name");
+        ksp_sort_shown_by_folder(r, 3);
+        ok(r[0].idx == 1 && r[1].idx == 0 && r[2].idx == 2,
+           "grouped by folder: the root, Linux, Zeta");
+    }
+
     head("path <-> registry key (PuTTY's escape, one flat key)");
     {
         strbuf *k = strbuf_new(), *back = strbuf_new();

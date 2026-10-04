@@ -74,6 +74,24 @@ char *ksp_folder_child_row(const char *level, const char *folder);
  * "Default" when the result is the root itself. snewn'd. */
 char *ksp_folder_moved_path(const char *path, const char *from, const char *to);
 
+/* ---- the order a list shows sessions in ----
+ * Lists sort by the name a row SHOWS (the leaf), never by the stored identity:
+ * a session stored by its bare name with a Folder value and one stored as a
+ * folder path sit side by side in the same folder.
+ * ksp_natcasecmp: case-insensitive, digit runs by value ("k8" before "k78"),
+ * a '\' below every character so a folder's subfolders follow it. 0 when the
+ * two differ only in case or zero padding. */
+int ksp_natcasecmp(const char *a, const char *b);
+struct ksp_shown_row {
+    const char *id;         /* the stored identity */
+    const char *folder;     /* its folder; NULL, "" or "Default" = root */
+    int idx;                /* the caller's own index, carried along */
+};
+/* "Default Settings" first, then by shown name, then folder, then identity. */
+void ksp_sort_shown(struct ksp_shown_row *rows, int n);
+/* The same, folder first: for a list grouped by folder (a menu). */
+void ksp_sort_shown_by_folder(struct ksp_shown_row *rows, int n);
+
 /* ---- what counts as a session file (hknet/KiTTY#56) ----
  * A file is a session when it holds a HostName or Protocol key, in either
  * on-disk form: "Key=value" (KiTTY++) or "Key\value\" (classic KiTTY, .ktx).

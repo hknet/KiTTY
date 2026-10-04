@@ -1402,32 +1402,66 @@ static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
  * go through this rather than counting for themselves. */
 static int kitty_nav_row_count(struct sessionsaver_data *ssd);
 
+/* The order the session rows are drawn in: sesslist indices sorted by the name
+ * a row shows (its leaf), then its folder - the classic root list reads
+ * "srv01 [Linux\web]", so the name leads there too. sesslist itself stays in
+ * get_sesslist's order (row ids are indices into it); the population loop and
+ * sessionsaver_folder_visible_position both walk THIS order so they agree.
+ * snewn'd, ssd->sesslist.nsessions entries. */
+static int *kitty_session_row_order(struct sessionsaver_data *ssd)
+{
+    int i, n = ssd->sesslist.nsessions;
+    int *order = snewn(n > 0 ? n : 1, int);
+    struct ksp_shown_row *rows = snewn(n > 0 ? n : 1, struct ksp_shown_row);
+    char **flds = snewn(n > 0 ? n : 1, char *);
+    for (i = 0; i < n; i++) {
+        flds[i] = GetPuttyFlag() ? NULL :
+            kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
+        rows[i].id = ssd->sesslist.sessions[i];
+        rows[i].folder = flds[i];
+        rows[i].idx = i;
+    }
+    ksp_sort_shown(rows, n);
+    for (i = 0; i < n; i++) {
+        order[i] = rows[i].idx;
+        sfree(flds[i]);
+    }
+    sfree(flds);
+    sfree(rows);
+    return order;
+}
+
 static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
                                                 int sessindex)
 {
     /* Folder navigation puts its rows above the sessions, so every session row
      * shifts down by that many. The rows themselves were worked out by the last
      * refresh, which is the only thing that can have drawn them. */
-    int pos = kitty_nav_row_count(ssd);
+    int pos = kitty_nav_row_count(ssd), *order, found = -1;
     if (sessindex < 0 || sessindex >= ssd->sesslist.nsessions)
         return -1;
-    for (int i = 0; i < ssd->sesslist.nsessions; i++) {
+    order = kitty_session_row_order(ssd);   /* the population loop's order */
+    for (int k = 0; k < ssd->sesslist.nsessions; k++) {
+        int i = order[k];
         /* Must mirror the listbox population loop exactly, or index->row mapping
          * drifts. defaultsettings=no hides "Default Settings", so it occupies no
          * row (without this the whole selection was off by one). */
         { extern int GetDefaultSettingsFlag(void);
           if (!GetDefaultSettingsFlag() &&
               !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION)) {
-              if (i == sessindex) return -1;   /* the hidden row has no position */
+              if (i == sessindex) break;   /* the hidden row has no position */
               continue;
           } }
         if (!kitty_session_on_level(ssd, i))
             continue;
-        if (i == sessindex)
-            return pos;
+        if (i == sessindex) {
+            found = pos;
+            break;
+        }
         pos++;
     }
-    return -1;
+    sfree(order);
+    return found;
 }
 
 /*
@@ -1709,6 +1743,13 @@ static bool kitty_folder_row_visible(const char *name, const char *filter)
  * session, carrying Folder=). Deriving the rows from the attribute sidesteps
  * that disagreement entirely rather than depending on which mode is active.
  */
+static int kitty_folder_row_cmp(const void *av, const void *bv)
+{
+    const char *a = *(const char *const *)av, *b = *(const char *const *)bv;
+    int c = ksp_natcasecmp(ksp_leaf(a), ksp_leaf(b));
+    return c ? c : strcmp(a, b);
+}
+
 static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
                                       const char *filter)
 {
@@ -1757,6 +1798,11 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
         sfree(fld);
     }
     ssd->nfolderrows = n;
+    /* Gathered from two sources in their own orders; drawn by the name each
+     * row shows, like the session rows below them. Row ids are assigned from
+     * this order afterwards (sessionsaver_add_nav_rows). */
+    if (n > 1)
+        qsort(ssd->folderrows, n, sizeof(char *), kitty_folder_row_cmp);
 }
 
 static int kitty_nav_row_count(struct sessionsaver_data *ssd)
@@ -2716,9 +2762,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             sessionsaver_add_nav_rows(ctrl, dlg, ssd);
             lbpos = kitty_nav_row_count(ssd);
             int firstsession = -1;
+            /* Rows in the order of the name they show, not of the stored
+             * identity (kitty_session_row_order). */
+            int *roworder = kitty_session_row_order(ssd);
             for (int pass = 2; pass >= 1; pass--) {
-            for (i = 0; i < ssd->sesslist.nsessions; i++) {
+            for (int k = 0; k < ssd->sesslist.nsessions; k++) {
                 int smatch;
+                i = roworder[k];
                 /* KiTTY [ConfigBox] defaultsettings=no: hide "Default Settings"
                  * from the saved-session list. It still exists as the new-session
                  * template (loaded by name). Row IDs are session indices, not
@@ -2762,6 +2812,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (!searching)
                 break;
             }
+            sfree(roworder);
             dlg_update_done(ctrl, dlg);
             /* KiTTY: auto-select the best visible match (chosen above):
              * typed match while searching, else the current name-box session,

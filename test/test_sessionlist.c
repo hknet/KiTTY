@@ -25,6 +25,7 @@
 #include "putty.h"
 #include "storage.h"
 #include "kitty/kitty_storage.h"
+#include "kitty/kitty_sessionpath.h"
 
 /* kitty/kitty_storage.c - public, but declared where their callers need them
  * rather than in a shared header. */
@@ -189,6 +190,46 @@ int main(int argc, char **argv)
         int i2 = index_of(&sl, "host2");
         int i10 = index_of(&sl, "host10");
         ok(i1 < i2 && i2 < i10, "host1 < host2 < host10 (natural, not ASCII)");
+        get_sesslist(&sl, false);
+    }
+
+    head("order inside a folder: by the name a row shows");
+    /* Both storage forms in one folder: a bare name filed by Folder=VSS and
+     * sessions stored as "VSS\..." paths. get_sesslist orders identities, so
+     * "monitor..." lands before "VSS\k7..."; the lists sort what they show
+     * (ksp_sort_shown), with the folder read the way the lists read it. */
+    make_session("monitor.example", "m.example", "VSS");
+    make_session("VSS\\k7.example-root", "7.example", NULL);
+    make_session("VSS\\k8.example-root", "8.example", NULL);
+    make_session("VSS\\k78.example-root", "78.example", NULL);
+    make_session("VSS\\k79.example-root", "79.example", NULL);
+    {
+        struct sesslist sl;
+        struct ksp_shown_row rows[16];
+        char *flds[16];
+        int n = 0, i;
+        const char *want[5] = {
+            "VSS\\k7.example-root", "VSS\\k8.example-root",
+            "VSS\\k78.example-root", "VSS\\k79.example-root",
+            "monitor.example" };
+        get_sesslist(&sl, true);
+        for (i = 0; i < sl.nsessions && n < 16; i++) {
+            char *f = kitty_read_session_folder(sl.sessions[i]);
+            if (f && !strcmp(f, "VSS")) {
+                flds[n] = f;
+                rows[n].id = sl.sessions[i];
+                rows[n].folder = f;
+                rows[n].idx = i;
+                n++;
+            } else
+                sfree(f);
+        }
+        ok(n == 5, "the folder holds the five sessions, both forms");
+        ksp_sort_shown(rows, n);
+        for (i = 0; i < 5 && i < n; i++)
+            ok_eq_str(rows[i].id, want[i], "shown order: k7, k8, k78, k79, monitor");
+        for (i = 0; i < n; i++)
+            sfree(flds[i]);
         get_sesslist(&sl, false);
     }
 

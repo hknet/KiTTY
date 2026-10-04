@@ -178,6 +178,87 @@ char *ksp_folder_moved_path(const char *path, const char *from, const char *to)
     return *rest ? dupprintf("%s\\%s", to, rest) : dupstr(to);
 }
 
+/* ---- the order a list shows sessions in ----
+ * By the name a row SHOWS. Sorting by the stored identity put a session stored
+ * by its bare name (Folder=VSS) among sessions stored as "VSS\..." paths by
+ * comparing two different strings: "monitor" against "VSS\k7". */
+int ksp_natcasecmp(const char *a, const char *b)
+{
+    while (*a && *b) {
+        int da = (*a >= '0' && *a <= '9'), db = (*b >= '0' && *b <= '9');
+        int ca, cb;
+        if (da && db) {
+            const char *sa, *sb;
+            size_t la, lb;
+            int c;
+            while (*a == '0') a++;     /* leading zeros carry no value */
+            while (*b == '0') b++;
+            sa = a; sb = b;
+            while (*a >= '0' && *a <= '9') a++;
+            while (*b >= '0' && *b <= '9') b++;
+            la = a - sa; lb = b - sb;
+            if (la != lb)              /* more digits = larger number */
+                return la < lb ? -1 : +1;
+            c = strncmp(sa, sb, la);
+            if (c)
+                return c < 0 ? -1 : +1;
+            continue;
+        }
+        /* A folder separator ends a component, so it sorts below every
+         * character: "net\x" stays next to "net", ahead of "net-2". */
+        ca = (*a == '\\') ? 1 : tolower((unsigned char)*a);
+        cb = (*b == '\\') ? 1 : tolower((unsigned char)*b);
+        if (ca != cb)
+            return ca < cb ? -1 : +1;
+        a++; b++;
+    }
+    if (*a) return +1;
+    if (*b) return -1;
+    return 0;
+}
+
+static const char *ksp_shown_folder(const struct ksp_shown_row *r)
+{
+    return ksp_folder_is_root(r->folder) ? "" : r->folder;
+}
+
+/* Default Settings first; then the shown name, then the folder, then the
+ * identity itself, so the order is total and the same on every refresh. */
+static int ksp_shown_cmp_rows(const struct ksp_shown_row *a,
+                              const struct ksp_shown_row *b, int folder_first)
+{
+    int c, da = !strcmp(a->id, "Default Settings"),
+        db = !strcmp(b->id, "Default Settings");
+    if (da || db)
+        return db - da;
+    if (folder_first &&
+        (c = ksp_natcasecmp(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
+        return c;
+    if ((c = ksp_natcasecmp(ksp_leaf(a->id), ksp_leaf(b->id))) != 0)
+        return c;
+    if ((c = ksp_natcasecmp(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
+        return c;
+    return strcmp(a->id, b->id);
+}
+static int ksp_shown_qcmp(const void *a, const void *b)
+{
+    return ksp_shown_cmp_rows(a, b, 0);
+}
+static int ksp_shown_qcmp_folder(const void *a, const void *b)
+{
+    return ksp_shown_cmp_rows(a, b, 1);
+}
+void ksp_sort_shown(struct ksp_shown_row *rows, int n)
+{
+    if (n > 1)
+        qsort(rows, n, sizeof(*rows), ksp_shown_qcmp);
+}
+void ksp_sort_shown_by_folder(struct ksp_shown_row *rows, int n)
+{
+    if (n > 1)
+        qsort(rows, n, sizeof(*rows), ksp_shown_qcmp_folder);
+}
+
 char *ksp_path_to_relfile(const char *path, const char *suffix)
 {
     char *norm = ksp_normalise(path);

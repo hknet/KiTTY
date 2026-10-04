@@ -455,9 +455,14 @@ static void so_folders_add(struct so_folders *fs, const char *f)
         }
     }
 }
+/* Siblings share their parent's path, so this orders each level by the name
+ * its rows show, digit runs by value; a parent still sorts before its children,
+ * which so_fill_tree_open's parent lookup relies on. */
 static int so_folders_cmp(const void *a, const void *b)
 {
-    return stricmp(*(char *const *)a, *(char *const *)b);
+    const char *x = *(char *const *)a, *y = *(char *const *)b;
+    int c = ksp_natcasecmp(x, y);
+    return c ? c : strcmp(x, y);
 }
 static void so_folders_load(struct so_folders *fs, const struct so_names *s)
 {
@@ -623,26 +628,40 @@ static struct so_state *so_window = NULL;   /* one Organize window at a time */
 static void so_fill_list(struct so_state *st)
 {
     LVITEMA it;
-    int i, shown = 0;
+    int i, k, nrows = 0, shown = 0;
     char *count;
-    SendMessage(st->list, WM_SETREDRAW, FALSE, 0);
-    ListView_DeleteAllItems(st->list);
-    memset(&it, 0, sizeof(it));
-    it.mask = LVIF_TEXT | LVIF_PARAM;
+    /* The folder's sessions, in the order of the name each row shows: a
+     * session stored by its bare name and one stored as "folder\name" sit
+     * side by side here, and their identities do not sort together. The
+     * control has no LVS_SORTASCENDING (kitty.rc), so this order is kept. */
+    struct ksp_shown_row *rows = snewn(st->s.n > 0 ? st->s.n : 1,
+                                       struct ksp_shown_row);
     for (i = 0; i < st->s.n; i++) {
         char *f;
         if (!strcmp(st->s.names[i], "Default Settings"))
             continue;
         f = so_effective_folder(st->s.names[i], st->s.folders[i]);
         if (ksp_folder_same(*f ? f : NULL, *st->cur ? st->cur : NULL)) {
-            it.iItem = shown;
-            it.pszText = (char *)ksp_leaf(st->s.names[i]);
-            it.lParam = i;
-            if (SendMessageA(st->list, LVM_INSERTITEMA, 0, (LPARAM)&it) >= 0)
-                shown++;
+            rows[nrows].id = st->s.names[i];
+            rows[nrows].folder = NULL;      /* all in the folder shown */
+            rows[nrows].idx = i;
+            nrows++;
         }
         sfree(f);
     }
+    ksp_sort_shown(rows, nrows);
+    SendMessage(st->list, WM_SETREDRAW, FALSE, 0);
+    ListView_DeleteAllItems(st->list);
+    memset(&it, 0, sizeof(it));
+    it.mask = LVIF_TEXT | LVIF_PARAM;
+    for (k = 0; k < nrows; k++) {
+        it.iItem = shown;
+        it.pszText = (char *)ksp_leaf(rows[k].id);
+        it.lParam = rows[k].idx;
+        if (SendMessageA(st->list, LVM_INSERTITEMA, 0, (LPARAM)&it) >= 0)
+            shown++;
+    }
+    sfree(rows);
     ListView_SetColumnWidth(st->list, 0, LVSCW_AUTOSIZE_USEHEADER);
     SendMessage(st->list, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(st->list, NULL, TRUE);

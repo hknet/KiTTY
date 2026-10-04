@@ -3202,32 +3202,53 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
         struct kitty_menu_folders f;
         int nfolders = 0, j;
         int *unfiled = (limit > 1) ? snewn(limit, int) : NULL;
-        int nunfiled = 0;
+        int nunfiled = 0, k, nrows = 0;
+        /* Walked folder first, then by the name an item shows: folders are
+         * made (and placed) in their own order, and each menu lists its
+         * sessions by name - a session stored by its bare name with a Folder
+         * value sorts among the ones stored as "folder\name" paths. */
+        char **flds = (limit > 1) ? snewn(limit, char *) : NULL;
+        struct ksp_shown_row *rows =
+            (limit > 1) ? snewn(limit, struct ksp_shown_row) : NULL;
 
         f.n = 0;
         /* skip sesslist.sessions[0] == Default Settings */
         for (i = 1; i < limit; i++) {
             char *fld = kitty_read_session_folder_cached(sesslist.sessions[i]);
-            bool filed;
-            int slot = -1;
             /* the launcher's own tidying: '/' reads as '\', no blanks around it */
             if (fld)
                 CleanFolderName(fld);
+            flds[nrows] = fld;
+            rows[nrows].id = sesslist.sessions[i];
+            rows[nrows].folder = fld;
+            rows[nrows].idx = i;
+            nrows++;
+        }
+        ksp_sort_shown_by_folder(rows, nrows);
+        for (k = 0; k < nrows; k++) {
+            const char *fld = rows[k].folder;
+            bool filed;
+            int slot = -1;
+            i = rows[k].idx;
             filed = (fld && *fld && strcmp(fld, "Default") != 0);
             if (filed)
                 slot = kitty_menu_folder_slot(&f, fld);
             if (slot >= 0) {
+                /* inside its folder's menu the item shows its own name */
                 AppendMenu(f.menu[slot], MF_ENABLED,
                            IDM_SAVED_MIN + (i-1)*MENU_SAVED_STEP,
-                           sesslist.sessions[i]);
+                           ksp_leaf(sesslist.sessions[i]));
             } else if (unfiled) {
                 /* Unfiled, or more folders than this menu will hold: either way
                  * the session stays VISIBLE at the top level rather than being
                  * dropped into a folder that was never created. */
                 unfiled[nunfiled++] = i;
             }
-            sfree(fld);
         }
+        for (k = 0; k < nrows; k++)
+            sfree(flds[k]);
+        sfree(flds);
+        sfree(rows);
 
         /* Hang every folder where it belongs: a top-level one on the menu, a
          * nested one in FRONT of its parent's sessions, under its last name
