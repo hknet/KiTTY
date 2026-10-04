@@ -344,6 +344,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A screen of links scrolls at the display's rate with Direct2D.** The
+  rows whose link underline changed were painted again in a frame of their
+  own after each frame, which Direct2D held for the next refresh: a screen
+  of links scrolled at half the rate. Those rows now go into the next
+  regular frame.
 - **Steady output shows a frame every refresh.** Frame pacing (`framepace`
   auto) drew a frame every 18 ms on a 60 Hz display and lost 4-5 refreshes
   a second. It now aims each frame at the middle of the refresh period

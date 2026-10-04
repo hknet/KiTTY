@@ -3527,13 +3527,16 @@ static bool kitty_close_after_reconf = false;
  * changed in the last kitty_url_rescan(), instead of InvalidateRect(whole
  * window) which forced a full repaint on every screen update and flickered on
  * live output.  Rows being drawn anyway just repaint once more (same content,
- * no visible flicker); untouched rows are left alone. */
+ * no visible flicker); untouched rows are left alone.
+ * The rows are marked for the terminal's next paced frame, not invalidated
+ * for a WM_PAINT: that was a second frame right after each one, and with
+ * Direct2D its Present waited for the next refresh - a screen of links
+ * scrolled at half the display's rate. */
 #ifdef MOD_PERSO   /* KiTTY-only; both call sites are MOD_PERSO-guarded too, so
                     * this is inert (and uncompiled) in the stock GUI variants. */
 static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
 {
     int r, with_links;
-    RECT rc;
     if (!wgs->term || !wgs->term_hwnd)
         return;
     /* Underline = Always (1): every link change shows; On hover (2): only
@@ -3542,11 +3545,7 @@ static void kitty_url_invalidate_dirty_rows(WinGuiSeat *wgs)
     for (r = 0; r < wgs->term->rows; r++) {
         if (!kitty_url_row_dirty(r, with_links))
             continue;
-        rc.left   = wgs->offset_width;
-        rc.top    = wgs->offset_height + r * wgs->font_height;
-        rc.right  = wgs->offset_width + wgs->term->cols * wgs->font_width;
-        rc.bottom = rc.top + wgs->font_height;
-        InvalidateRect(wgs->term_hwnd, &rc, FALSE);
+        term_paint(wgs->term, 0, r, wgs->term->cols - 1, r, false);
     }
     kitty_url_dirty_clear();
 }
