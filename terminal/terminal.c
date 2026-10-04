@@ -2139,6 +2139,7 @@ static void power_on(Terminal *term, bool clear)
     term->far2l_paste_gesture_seen = false;
     term->far2l_events_armed = false;
     term->far2l_input_gen++;
+    kitty_far2l_events_changed(term);
     /* KiTTY far2l clipboard: and so does what it held - the box, the requests
      * behind it, a chunked upload, the open clipboard. */
     far2l_reset_state(term);
@@ -4806,6 +4807,7 @@ static void far2l_dispatch(Terminal *term, const unsigned char *data, size_t len
         if (!term->far2l_events_armed) {
             term->far2l_events_armed = true;
             term->far2l_input_gen++;
+            kitty_far2l_events_changed(term);
         }
         break;
       }
@@ -7745,6 +7747,7 @@ static void do_osc(Terminal *term)
                 if (!term->far2l_ext) {
                     term->far2l_events_armed = false;
                     term->far2l_input_gen++;
+                    kitty_far2l_events_changed(term);
                 }
                 term->far2l_ext = 1;
                 /* seed clipboard permission from config for this session */
@@ -7770,6 +7773,7 @@ static void do_osc(Terminal *term)
                 term->far2l_features = 0;   /* KiTTY: negotiated features end too */
                 term->far2l_events_armed = false;
                 term->far2l_input_gen++;
+                kitty_far2l_events_changed(term);
                 kitty_far2l_images_reset(term);   /* KiTTY: its images go with it */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
                 far2l_reset_state(term);   /* far2l left: drop what it held */

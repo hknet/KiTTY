@@ -151,7 +151,64 @@ size_t far2l_encode_key(const Far2lKeyEvent *ev, bool compact_ok,
 size_t far2l_encode_mouse(const Far2lMouseEvent *ev, bool compact_ok,
                           char *out, size_t outsz);
 
+/*
+ * When the key events turn on or off, a notice says so - one per change that
+ * holds, not one per flip: the state must stay put for F2L_KEYS_SETTLE_MS
+ * before it is told, so a far2l that switches on and off again within that
+ * time (or off and on) shows nothing. The title follows the live state at
+ * once; only the notice waits.
+ *
+ * live    the state now; told: the state the last notice gave (off before
+ *         the first, so a first change to off is never told);
+ * changed the tick of the last change of live (GETTICKCOUNT; wrap-safe).
+ */
+#define F2L_KEYS_SETTLE_MS      1000
+
+typedef struct {
+    bool live, told;
+    unsigned long changed;
+} Far2lKeysNote;
+
+/* The live state is now `on`. Returns true when it changed: the caller
+ * redraws the title and starts a settle timer of F2L_KEYS_SETTLE_MS. */
+bool far2l_keys_note_set(Far2lKeysNote *n, bool on, unsigned long now);
+
+/* A settle timer ran out: +1 = tell "on", -1 = tell "off" (the state counts
+ * as told from here), 0 = nothing (not settled yet - a later change has a
+ * timer of its own - or settled where the last notice already was). */
+int far2l_keys_note_due(Far2lKeysNote *n, unsigned long now);
+
+/* The session ended: the state is off and counts as told, so no "far2l
+ * ended" notice follows - with the connection gone there is nothing to say
+ * about far2l. */
+void far2l_keys_note_quiet_off(Far2lKeysNote *n);
+
 #ifdef KITTY_FAR2L_INPUT_IMPL
+
+void far2l_keys_note_quiet_off(Far2lKeysNote *n)
+{
+    n->live = false;
+    n->told = false;
+}
+
+bool far2l_keys_note_set(Far2lKeysNote *n, bool on, unsigned long now)
+{
+    if (n->live == on)
+        return false;
+    n->live = on;
+    n->changed = now;
+    return true;
+}
+
+int far2l_keys_note_due(Far2lKeysNote *n, unsigned long now)
+{
+    if ((long)(now - n->changed) < (long)F2L_KEYS_SETTLE_MS)
+        return 0;
+    if (n->live == n->told)
+        return 0;
+    n->told = n->live;
+    return n->live ? 1 : -1;
+}
 
 uint32_t far2l_ctrl_state(const Far2lModifiers *m, bool enhanced)
 {

@@ -46,4 +46,10 @@ bool kitty_far2l_save_client_ids(Terminal *term);
  * window is not known; the caller then answers the current size. */
 bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols);
 
+/* windows/window.c: the key events may have turned on or off (armed,
+ * disarmed, far2l left, a reset) - every far2l_input_gen step calls it. The
+ * window re-reads the state from a toplevel callback: the title suffix and
+ * the notice (kitty_far2l_keys_notice in kitty/kitty_hostnotify.c). */
+void kitty_far2l_events_changed(Terminal *term);
+
 #endif /* KITTY_FAR2L_H */

@@ -3065,6 +3065,13 @@
 #define KT_CLIP_FAR2L_LOG_READ                       "far2l read the clipboard (%d bytes)."
 #define KT_CLIP_FAR2L_LOG_REFUSED                    "far2l clipboard read refused: no paste sent in the last 5 seconds."
 #define KT_CLIP_FAR2L_LOG_DATAID                     "far2l checked the clipboard by its data ID."
+/* far2l key events: the title suffix while they are on (window.c, wide: it
+ * goes on after the codepage conversion) and the notices when they turn on
+ * and off (kitty/kitty_hostnotify.c, titled with the session name). */
+#define KT_FAR2L_TITLE_KEYS                          L" [far2l keys]"
+#define KT_FAR2L_KEYS_NOTICE_ON                      "Keyboard: all keys go to far2l on the host. " \
+        "KiTTY++ shortcuts are off until far2l ends."
+#define KT_FAR2L_KEYS_NOTICE_OFF                     "Keyboard: far2l ended. KiTTY++ shortcuts are back."
 /* Shared by OSC 52 and OSC 5522 writes: the modeless Yes/No box (No is the
  * default); its field names the session (KT_OSC52_WHERE_*). */
 #define KT_CLIP_WRITE_ALLOW_Q                        "The remote host wants to set the clipboard.\n" \

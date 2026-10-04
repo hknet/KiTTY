@@ -27,6 +27,11 @@ void kitty_hostnotify_osc(struct terminal_tag *term, unsigned osc,
 void kitty_host_notice(struct terminal_tag *term, const char *title,
                        const char *body);
 
+/* KiTTY++'s own notice that far2l's key events turned on or off (window.c
+ * calls it once the state has held for a moment). Titled like the host's
+ * notices, but not subject to their setting or limits. */
+void kitty_far2l_keys_notice(struct terminal_tag *term, bool on);
+
 /* The terminal is going: forget it (pending notice, timer, tracked notice). */
 void kitty_hostnotify_term_free(struct terminal_tag *term);
 

@@ -206,7 +206,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   virtual key, scan code and the character the layout gives, so
   Ctrl+Shift+arrows and similar combinations work. Mouse buttons, wheel and
   moves follow where far2l asked for the mouse; Shift+mouse still selects
-  locally. A terminal reset ends the extensions (hknet/KiTTY#57).
+  locally. While far2l's key events are on, KiTTY's own shortcuts are off.
+  The title then ends in `[far2l keys]`, and a notice says when they turn
+  on and off.
+  A terminal reset ends the extensions (hknet/KiTTY#57).
 - **far2l shows images in the window**: far2l's image viewer and anything
   else that places pictures through the far2l extensions. Raw RGB/RGBA, and
   PNG/JPEG on Vista and later; moved, rotated, mirrored and deleted by far2l;

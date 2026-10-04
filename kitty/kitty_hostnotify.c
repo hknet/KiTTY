@@ -173,6 +173,17 @@ static char *hn_utf8_to_ansi(const char *utf8)
     return a;
 }
 
+/* A notice's title: the session's name - the host name for an unnamed one.
+ * Both are held in the ANSI code page (the launcher and the window-title
+ * placeholders read them as CP_ACP), which is what the notice draws. */
+static const char *hn_session_name(Terminal *term)
+{
+    const char *sess = conf_get_str(term->conf, CONF_sessionname);
+    const char *name = (sess && *sess && strcmp(sess, "Default Settings") != 0) ?
+                       sess : conf_get_str(term->conf, CONF_host);
+    return (name && *name) ? name : appname;
+}
+
 /* Brings the terminal window forward. Allowed from here: the click that got
  * us here was input to this process. A window sent to the tray stays there. */
 static void hn_focus_terminal(void)
@@ -211,7 +222,6 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
     Terminal *term = st->term;
     char title[ON_TITLE_MAX + 1], body[ON_BODY_MAX + 1];
     size_t tl, bl;
-    const char *sess, *name;
     char *text, *text_a, *name_a;
     int seconds, critical;
     COLORREF accent;
@@ -226,15 +236,6 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
         return;
     /* The program's title on the first line, then its body. */
     text = tl && bl ? dupcat(title, "\n", body) : dupstr(tl ? title : body);
-
-    /* Titled with the session's name - the host name for an unnamed one.
-     * Both are held in the ANSI code page (the launcher and the window-title
-     * placeholders read them as CP_ACP), which is what the notice draws. */
-    sess = conf_get_str(term->conf, CONF_sessionname);
-    name = (sess && *sess && strcmp(sess, "Default Settings") != 0) ? sess :
-           conf_get_str(term->conf, CONF_host);
-    if (!name || !*name)
-        name = appname;
 
     seconds = on_seconds(n->meta.urgency, n->meta.expire, &critical);
     accent = critical ? HN_ACCENT_CRITICAL : HN_ACCENT;
@@ -254,7 +255,7 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
     st->shown = sh;
 
     text_a = hn_utf8_to_ansi(text);
-    name_a = dupstr(name);
+    name_a = dupstr(hn_session_name(term));   /* titled with the session's name */
     kitty_notice_show_ex(name_a, text_a, accent, seconds, NULL, 0,
                          hn_on_close, sh);
     if (st->shown)
@@ -534,6 +535,44 @@ void kitty_host_notice(Terminal *term, const char *title, const char *body)
     on_notice_set(&n, title, title ? strlen(title) : 0,
                   body, body ? strlen(body) : 0);
     hn_offer(hn_get(term), &n);
+}
+
+/*
+ * KiTTY far2l: the key events turned on or off and the state held for a
+ * moment (window.c debounces). KiTTY++'s own notice, not the host's: shown
+ * whatever the HostNotify setting, the focus or the flood rule, and in PuTTY
+ * mode too, where the keys go to far2l as well. Titled like the host's
+ * notices; the suite's green. Each notice gets a context of its own, so the
+ * on_close of the notice it replaces (run inside the call) cannot be taken
+ * for its own failure.
+ */
+#define HN_ACCENT_KEYS RGB(0, 100, 0)
+
+static void *hn_keys_shown;
+
+static void hn_keys_on_close(void *ctx, int clicked)
+{
+    (void)clicked;
+    if (hn_keys_shown == ctx)
+        hn_keys_shown = NULL;
+}
+
+void kitty_far2l_keys_notice(Terminal *term, bool on)
+{
+    static uintptr_t serial;
+    const char *text = on ? KT_FAR2L_KEYS_NOTICE_ON : KT_FAR2L_KEYS_NOTICE_OFF;
+    void *ctx;
+
+    if (!term || !term->conf)
+        return;
+    if (!++serial)
+        serial = 1;
+    ctx = (void *)serial;
+    hn_keys_shown = ctx;
+    kitty_notice_show_ex(hn_session_name(term), text, HN_ACCENT_KEYS, 10,
+                         NULL, 0, hn_keys_on_close, ctx);
+    if (hn_keys_shown == ctx)
+        hn_trace_notice(HN_ACCENT_KEYS, text);
 }
 
 void kitty_hostnotify_term_free(Terminal *term)

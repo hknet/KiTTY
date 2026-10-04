@@ -257,6 +257,29 @@ static bool far2l_events_on(WinGuiSeat *wgs)
            !term->userpass_state && wgs->backend;
 }
 
+/*
+ * The key events on display: while they are on, the title ends in
+ * KT_FAR2L_TITLE_KEYS (wintw_set_title), at once; a notice says when they
+ * turned on or off, once the state has held for F2L_KEYS_SETTLE_MS
+ * (far2l_keys_note_*, kitty/kitty_far2l_input.h), so a quick on/off shows
+ * none. far2l_keys_sync (below, by kitty_far2l_max_cells) re-reads the state
+ * after every far2l_input_gen step, the end of the session and a prompt.
+ */
+static Far2lKeysNote far2l_keys_note;
+static void far2l_keys_sync(WinGuiSeat *wgs);
+
+/*
+ * Input locked by Protect, or by a rolled-up window while the shortcuts are
+ * on (the dispatcher swallows its keys then; with them off it does not).
+ * KiTTY's own key handling keeps the keys then, far2l events or not: the
+ * dispatcher holds the keys that undo the lock and swallows the rest.
+ */
+static bool far2l_input_locked(void)
+{
+    return GetProtectFlag() == 1 ||
+           (GetShortcutsFlag() && GetWinHeight() != -1);
+}
+
 static void far2l_send(WinGuiSeat *wgs, const char *data, size_t len)
 {
     if (len && wgs->backend)
@@ -1591,6 +1614,12 @@ static void close_session(void *vctx)
         term_provide_backend(wgs->term, NULL);
         seat_update_specials_menu(&wgs->seat);
     }
+#ifdef MOD_FAR2L
+    /* KiTTY: no backend, no far2l key events: the title loses its suffix.
+     * No "far2l ended" notice: the connection itself is gone. */
+    far2l_keys_note_quiet_off(&far2l_keys_note);
+    kitty_refresh_title();
+#endif
 
     /*
      * Show the Restart Session menu item. Do a precautionary
@@ -7077,6 +7106,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             return 0;
         }
 #endif
+#ifdef MOD_FAR2L
+        /* KiTTY: far2l extensions active - every key goes to the host as a
+         * far2l event instead of through the key translation below, ahead of
+         * KiTTY's own shortcuts and Ctrl+Tab switching. Not while input is
+         * locked (Protect, rolled up): the dispatcher below keeps the keys. */
+        if (far2l_events_on(wgs) && !far2l_input_locked() &&
+            far2l_key_message(wgs, message, wParam, lParam))
+            return 0;
+#endif
         /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
         if (wParam == VK_TAB)      /* KITTY_CTRLTAB_TRACE test runs: ctrltab.log (kitty_bridge.c) */
             kitty_ctrltab_trace("hwnd %p %s Tab: ctrl key state %d, async %d, "
@@ -7136,11 +7174,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #endif
 #ifdef MOD_FAR2L
-        /* KiTTY: far2l extensions active - the key goes to the host as a
-         * far2l event instead of through the key translation below. KiTTY's
-         * own shortcuts and Ctrl+Tab switching above keep precedence. */
-        if (far2l_events_on(wgs) &&
-            far2l_key_message(wgs, message, wParam, lParam))
+        /* KiTTY: far2l extensions active but input locked - what the
+         * dispatcher above did not take (the releases) goes nowhere, not
+         * to far2l as a stray release event. */
+        if (far2l_events_on(wgs) && far2l_input_locked())
             return 0;
 #endif
 
@@ -9133,9 +9170,21 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
 void kitty_refresh_title(void)
 {
     WinGuiSeat *wgs;
-    if (!MainHwnd || !kitty_raw_title) return;
+    if (!MainHwnd) return;
     wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA);
     if (!wgs) return;
+    if (!kitty_raw_title) {
+        /* No title was set yet (a raw session before its first update, or a
+         * host that never sends one): decorate what the window shows now. */
+        wchar_t now[1024];
+        char *u;
+        if (!GetWindowTextW(wgs->term_hwnd, now, lenof(now)))
+            return;
+        u = dup_wc_to_mb(CP_UTF8, now, "?");
+        win_set_title(&wgs->termwin, u, CP_UTF8);
+        sfree(u);
+        return;
+    }
     win_set_title(&wgs->termwin, kitty_raw_title, kitty_raw_title_cp);
 }
 
@@ -9806,6 +9855,19 @@ static void wintw_set_title(TermWin *tw, const char *title, int codepage)
         /* Clipboard markers go on AFTER the codepage conversion: they are Unicode,
          * and the title itself may have arrived in any codepage. */
         new_window_name = kitty_clip_decorate_wide(wgs, new_window_name);
+#ifdef MOD_FAR2L
+        /* far2l has the keyboard: last, so the title ends in it, and not
+         * subject to [KiTTY] wintitle - the shortcuts are off meanwhile, and
+         * the title is where that shows. */
+        if (far2l_keys_note.live) {
+            wchar_t *t = snewn(wcslen(new_window_name) +
+                               wcslen(KT_FAR2L_TITLE_KEYS) + 1, wchar_t);
+            wcscpy(t, new_window_name);
+            wcscat(t, KT_FAR2L_TITLE_KEYS);
+            sfree(new_window_name);
+            new_window_name = t;
+        }
+#endif
         /* The window's name in front of everything (kitty_window_name_set),
          * and the launcher's properties brought up to date. */
         new_window_name = kitty_winname_decorate_wide(new_window_name);
@@ -10965,6 +11027,61 @@ bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols)
     *rows = h / wgs->font_height;
     return true;
 }
+
+static WinGuiSeat *far2l_seat_of(Terminal *term)
+{
+    struct WinGuiSeatListNode *node;
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *s = container_of(node, WinGuiSeat, wgslistnode);
+        if (term && s->term == term)
+            return s;
+    }
+    return NULL;
+}
+
+/* A settle timer ran out: tell the state if it held and is news. */
+static void far2l_keys_timer(void *ctx, unsigned long now)
+{
+    WinGuiSeat *wgs = far2l_seat_of((Terminal *)ctx);
+    int due;
+    if (!wgs)
+        return;
+    due = far2l_keys_note_due(&far2l_keys_note, now);
+    if (due)
+        kitty_far2l_keys_notice(wgs->term, due > 0);
+}
+
+/* Re-read whether the key events are on: the title at once, the notice
+ * after the settle time. */
+static void far2l_keys_sync(WinGuiSeat *wgs)
+{
+    if (!wgs || !wgs->term)
+        return;
+    if (!far2l_keys_note_set(&far2l_keys_note, far2l_events_on(wgs),
+                             GETTICKCOUNT()))
+        return;
+    kitty_refresh_title();
+    schedule_timer(F2L_KEYS_SETTLE_MS, far2l_keys_timer, wgs->term);
+}
+
+/* terminal.c changed far2l_input_gen. It may be inside the parser, or in
+ * term_init before the window knows its terminal: the state is re-read from
+ * a toplevel callback. */
+static bool far2l_keys_sync_queued;
+
+static void far2l_keys_sync_cb(void *ctx)
+{
+    far2l_keys_sync_queued = false;
+    far2l_keys_sync(far2l_seat_of((Terminal *)ctx));
+}
+
+void kitty_far2l_events_changed(Terminal *term)
+{
+    if (far2l_keys_sync_queued)
+        return;
+    far2l_keys_sync_queued = true;
+    queue_toplevel_callback(far2l_keys_sync_cb, term);
+}
 #endif
 
 
@@ -11195,6 +11312,9 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
 #endif
     if (spr.kind == SPRK_INCOMPLETE)
         spr = term_get_userpass_input(wgs->term, p);
+#ifdef MOD_FAR2L
+    far2l_keys_sync(wgs);    /* KiTTY: a prompt in the window holds the events */
+#endif
     return spr;
 }
 

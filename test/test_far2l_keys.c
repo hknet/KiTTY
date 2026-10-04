@@ -378,6 +378,70 @@ static void test_misc(void)
     CHECK(!far2l_key_is_paste_gesture(0x2D, 0), "Ins alone");
 }
 
+/* The notice when the key events turn on/off: one per change that holds for
+ * F2L_KEYS_SETTLE_MS, none for a flip that is undone within it. */
+static void test_keys_note(void)
+{
+    Far2lKeysNote n;
+    const unsigned long S = F2L_KEYS_SETTLE_MS;
+    unsigned long t;
+
+    /* the session ends while on: no "far2l ended" notice */
+    memset(&n, 0, sizeof(n));
+    CHECK(far2l_keys_note_set(&n, true, 100), "end: on");
+    CHECK(far2l_keys_note_due(&n, 100 + S) == 1, "end: on told");
+    far2l_keys_note_quiet_off(&n);
+    CHECK(far2l_keys_note_due(&n, 100 + 3 * S) == 0, "end: session end tells nothing");
+    CHECK(!far2l_keys_note_set(&n, false, 100 + 4 * S), "end: state already off");
+
+    memset(&n, 0, sizeof(n));
+    CHECK(!far2l_keys_note_set(&n, false, 100), "off while off: no change");
+    CHECK(far2l_keys_note_due(&n, 100 + S) == 0, "nothing ever on: nothing told");
+
+    /* on, settled: told once */
+    CHECK(far2l_keys_note_set(&n, true, 1000), "on: a change");
+    CHECK(!far2l_keys_note_set(&n, true, 1200), "on again: no change");
+    CHECK(far2l_keys_note_due(&n, 1000 + S - 1) == 0, "on: not settled 1 ms early");
+    CHECK(far2l_keys_note_due(&n, 1000 + S) == 1, "on: told when settled");
+    CHECK(far2l_keys_note_due(&n, 1000 + 2 * S) == 0, "on: told once only");
+
+    /* off, settled: told once */
+    CHECK(far2l_keys_note_set(&n, false, 5000), "off: a change");
+    CHECK(far2l_keys_note_due(&n, 5000 + S) == -1, "off: told when settled");
+    CHECK(far2l_keys_note_due(&n, 5000 + S + 1) == 0, "off: told once only");
+
+    /* on and off again within the settle time: nothing */
+    CHECK(far2l_keys_note_set(&n, true, 9000), "flap on");
+    CHECK(far2l_keys_note_set(&n, false, 9400), "flap off");
+    CHECK(far2l_keys_note_due(&n, 9000 + S) == 0, "flap: the first timer, not settled");
+    CHECK(far2l_keys_note_due(&n, 9400 + S) == 0, "flap: settled where it was told");
+
+    /* told on; off and on again within the settle time: nothing either */
+    CHECK(far2l_keys_note_set(&n, true, 12000), "on");
+    CHECK(far2l_keys_note_due(&n, 12000 + S) == 1, "on told");
+    CHECK(far2l_keys_note_set(&n, false, 14000), "off");
+    CHECK(far2l_keys_note_set(&n, true, 14300), "on again");
+    CHECK(far2l_keys_note_due(&n, 14000 + S) == 0, "off+on: the early timer");
+    CHECK(far2l_keys_note_due(&n, 14300 + S) == 0, "off+on: settled where told");
+
+    /* a burst: on/off/on, each 300 ms apart - one notice, after the last */
+    CHECK(far2l_keys_note_set(&n, false, 20000), "off");
+    CHECK(far2l_keys_note_due(&n, 20000 + S) == -1, "off told");
+    far2l_keys_note_set(&n, true, 30000);
+    far2l_keys_note_set(&n, false, 30300);
+    far2l_keys_note_set(&n, true, 30600);
+    CHECK(far2l_keys_note_due(&n, 30000 + S) == 0, "burst: timer 1");
+    CHECK(far2l_keys_note_due(&n, 30300 + S) == 0, "burst: timer 2");
+    CHECK(far2l_keys_note_due(&n, 30600 + S) == 1, "burst: one notice, on");
+
+    /* the tick counter wraps */
+    memset(&n, 0, sizeof(n));
+    t = (unsigned long)-1 - 200;
+    CHECK(far2l_keys_note_set(&n, true, t), "on near the wrap");
+    CHECK(far2l_keys_note_due(&n, t + 500) == 0, "wrap: not settled");
+    CHECK(far2l_keys_note_due(&n, t + S) == 1, "wrap: told after the wrap");
+}
+
 int main(void)
 {
     test_golden();
@@ -385,6 +449,7 @@ int main(void)
     test_ctrl_state();
     test_mouse();
     test_misc();
+    test_keys_note();
     if (failures) {
         printf("test_far2l_keys: %d FAILED\n", failures);
         return 1;

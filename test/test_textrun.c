@@ -101,6 +101,7 @@ void kitty_far2l_confirm(Terminal *term, bool offer_always) { }
 void kitty_far2l_confirm_end(Terminal *term) { }
 bool kitty_far2l_save_client_ids(Terminal *term) { return false; }
 bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols) { return false; }
+void kitty_far2l_events_changed(Terminal *term) { }
 void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
                           size_t len, bool overflow)
 { (void)term; (void)osc; (void)s; (void)len; (void)overflow; }

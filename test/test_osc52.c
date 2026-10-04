@@ -382,6 +382,9 @@ void kitty_far2l_confirm(Terminal *term, bool offer_always)
 void kitty_far2l_confirm_end(Terminal *term) { f2l_confirm_ends++; }
 bool kitty_far2l_save_client_ids(Terminal *term) { f2l_saves++; return true; }
 static int f2l_max_rows = 0, f2l_max_cols = 0;
+/* every step of far2l_input_gen tells the window (title suffix, notice) */
+static int f2l_events_changes = 0;
+void kitty_far2l_events_changed(Terminal *term) { (void)term; f2l_events_changes++; }
 bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols)
 {
     if (f2l_max_rows <= 0)
@@ -2463,18 +2466,31 @@ static void test_far2l_arming_and_images(Mock *mk)
     static const char set[] =
         "far2l:/wAA/wEAAAABAAAA/////wMAAgAAAAAAAAAAAGltZwMAAABzaQY=";
     unsigned gen;
+    int changes;
 
     feed_apc(mk, off, strlen(off));
+    changes = f2l_events_changes;
     feed_apc(mk, on, strlen(on));
     if (!mk->term->far2l_ext || mk->term->far2l_events_armed)
         fail("far2l arming", "far2l1 alone armed key events");
+    if (f2l_events_changes != changes + 1)
+        fail("far2l arming", "a new far2l1 did not tell the window");
     gen = mk->term->far2l_input_gen;
+    changes = f2l_events_changes;
     feed_apc(mk, feat, strlen(feat));
     if (!mk->term->far2l_events_armed || mk->term->far2l_input_gen == gen)
         fail("far2l arming", "the client's 'x' did not arm key events");
+    if (f2l_events_changes != changes + 1)
+        fail("far2l arming", "arming did not tell the window");
+    changes = f2l_events_changes;
+    feed_apc(mk, feat, strlen(feat));
+    if (f2l_events_changes != changes)
+        fail("far2l arming", "a second 'x' while armed told the window");
     feed_apc(mk, on, strlen(on));
     if (!mk->term->far2l_events_armed)
         fail("far2l arming", "a repeated far2l1 disarmed key events");
+    if (f2l_events_changes != changes)
+        fail("far2l arming", "a repeated far2l1 told the window");
 
     /* no window: no cell size, so caps 0 and a 0 x 0 cell - 13 bytes */
     osc52_last_send[0] = '\0';
@@ -2564,17 +2580,23 @@ static void test_far2l_arming_and_images(Mock *mk)
         fail("far2l image set", "images off still accepted an image");
     conf_set_bool(mk->term->conf, CONF_far2l_images, true);
 
+    changes = f2l_events_changes;
     feed_apc(mk, off, strlen(off));
     if (mk->term->far2l_events_armed)
         fail("far2l arming", "far2l0 left key events armed");
+    if (f2l_events_changes != changes + 1)
+        fail("far2l arming", "far2l0 did not tell the window");
     if (mk->term->far2l_images && mk->term->far2l_images->n != 0)
         fail("far2l images", "far2l0 left the images up");
 
     feed_apc(mk, on, strlen(on));
     feed_apc(mk, feat, strlen(feat));
+    changes = f2l_events_changes;
     term_pwron(mk->term, true);
     if (mk->term->far2l_events_armed || mk->term->far2l_ext)
         fail("far2l arming", "a reset left key events armed");
+    if (f2l_events_changes == changes)
+        fail("far2l arming", "a reset did not tell the window");
     kitty_far2l_cell_hook = NULL;
 }
 
