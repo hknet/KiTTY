@@ -885,6 +885,21 @@ static void ksp_plan_check(struct ksp_plan *p, char *const *names, int n)
     }
 }
 
+/* The same test for one move before it is planned (Arrange): taken by
+ * another session, or by a move already in the plan. */
+static bool ksp_plan_target_taken(const struct ksp_plan *p, char *const *names,
+                                  int n, const char *from, const char *to)
+{
+    int j;
+    for (j = 0; j < n; j++)
+        if (names[j] && !stricmp(names[j], to) && stricmp(names[j], from))
+            return true;
+    for (j = 0; j < p->n; j++)
+        if (!stricmp(p->to[j], to))
+            return true;
+    return false;
+}
+
 void ksp_plan_init(struct ksp_plan *p)
 {
     memset(p, 0, sizeof(*p));
@@ -934,11 +949,19 @@ void ksp_plan_arrange(char *const *names, char *const *folders, int n,
             continue;
         }
         to = dupprintf("%s\\%s", fld, names[i]);
-        ksp_plan_add(&p->from, &p->to, &p->n, names[i], to);
+        /* A taken path is listed, not planned: the free ones still move. */
+        if (ksp_plan_target_taken(p, names, n, names[i], to))
+            ksp_plan_clash(p, to);
+        else
+            ksp_plan_add(&p->from, &p->to, &p->n, names[i], to);
         sfree(to);
         sfree(fld);
     }
-    ksp_plan_check(p, names, n);
+}
+
+int ksp_plan_arrange_offer_due(const struct ksp_plan *p)
+{
+    return p->nclash > 0;
 }
 
 void ksp_plan_folder_move(char *const *names, char *const *folders, int n,

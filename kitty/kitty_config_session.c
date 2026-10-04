@@ -2592,7 +2592,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (event == EVENT_REFRESH) {
         /* KiTTY (hknet/KiTTY#55): the one-time Arrange offer, once the box
          * is up (a timer: this refresh runs while the window is still being
-         * built). Checked once per store, never mid-session. */
+         * built). Checked once per process until it has been made, then
+         * never again for this store; never mid-session. */
         if (ctrl == ssd->listbox && !ssd->midsession && !GetPuttyFlag()) {
             static int arrange_checked = 0;
             if (!arrange_checked) {

@@ -136,7 +136,7 @@ void kitty_session_names_free(char **names, int n);
  * (fname[i] gets Folder=fvalue[i], "Default" = the root), and the targets
  * that are taken (clash[]: an identity another session already has, or one
  * two moves of the plan would both use). A plan with clashes is carried out
- * not at all. `names` is every identity in the store, `folders[i]` the
+ * not at all (Arrange aside, see there). `names` is every identity in the store, `folders[i]` the
  * Folder value of names[i] (read only for bare names; may be NULL). */
 struct ksp_plan {
     int n;
@@ -149,9 +149,17 @@ struct ksp_plan {
 void ksp_plan_init(struct ksp_plan *p);
 void ksp_plan_free(struct ksp_plan *p);
 /* Arrange: every session stored by its bare name (Default Settings aside)
- * whose Folder value is not the root moves to <Folder>\<name>. */
+ * whose Folder value is not the root moves to <Folder>\<name>. Unlike the
+ * other plans, a taken path does not stop it: that session is only listed in
+ * clash[] and stays where it is, every free one is planned. p->n + p->nclash
+ * is the number of sessions to arrange. */
 void ksp_plan_arrange(char *const *names, char *const *folders, int n,
                       struct ksp_plan *p);
+/* Is the first-start Arrange offer due for this Arrange plan? Only when an
+ * unarranged session's folder path is already taken by another session (the
+ * list would show two sessions of one name in one folder). Sessions filed by
+ * their Folder value with a free path are left to Arrange on demand. */
+int ksp_plan_arrange_offer_due(const struct ksp_plan *p);
 /* A folder and everything below it moves from `from` to `to` (a rename, or
  * the delete of `from` into `to`): path sessions are re-keyed keeping their
  * shape below it, bare sessions filed there get their Folder value moved. */

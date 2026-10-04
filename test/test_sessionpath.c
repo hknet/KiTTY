@@ -530,14 +530,17 @@ static void part_plan(void)
         char *folders[] = { "Linux", "Linux\\web", "BSD", "Default",
                             "ignored", "Linux", "Linux", "" };
         ksp_plan_arrange(names, folders, 8, &p);
-        ok(p.n == 3, "three bare sessions with a non-root Folder value");
+        ok(p.n == 2, "two of the three bare sessions with a non-root Folder value move");
         ok(plan_has(&p, "srv01", "Linux\\web\\srv01"), "srv01 -> Linux\\web\\srv01");
         ok(plan_has(&p, "srv02", "BSD\\srv02"), "srv02 -> BSD\\srv02");
-        ok(plan_has(&p, "db", "Linux\\db"), "db -> Linux\\db is planned");
+        ok(!plan_has(&p, "db", "Linux\\db"),
+           "db -> Linux\\db is not planned: the path is taken, db stays");
         ok(!plan_has(&p, "Default Settings", "Linux\\Default Settings"),
            "Default Settings is never arranged");
         ok(p.nclash == 1 && plan_has_clash(&p, "Linux\\db"),
            "Linux\\db exists already: the one clash");
+        ok(ksp_plan_arrange_offer_due(&p),
+           "a taken folder path: the first-start offer is due");
         ksp_plan_free(&p);
     }
     {
@@ -547,9 +550,70 @@ static void part_plan(void)
         char *f2[] = { "Same", "same" };
         ksp_plan_arrange(names, folders, 2, &p);
         ok(p.n == 1 && p.nclash == 0, "nothing in the way: no clash");
+        ok(!ksp_plan_arrange_offer_due(&p),
+           "Folder= session with a free path beside a path session: no offer");
         ksp_plan_free(&p);
         ksp_plan_arrange(n2, f2, 2, &p);
         ok(p.n == 2 && p.nclash == 0, "two sessions into one folder, different names");
+        ok(!ksp_plan_arrange_offer_due(&p),
+           "Folder= sessions only, no clash: no offer");
+        ksp_plan_free(&p);
+    }
+    head("Arrange: the free ones move, the taken ones stay; the offer only on a clash");
+    {
+        char *names[] = { "beta", "gamma", "work\\beta" };
+        char *folders[] = { "work", "work", "" };
+        char *n2[] = { "Default Settings", "root1", "Linux\\srv" };
+        char *f2[] = { "Linux", "Default", "" };
+        ksp_plan_arrange(names, folders, 3, &p);
+        ok(p.n == 1 && p.nclash == 1 && plan_has_clash(&p, "work\\beta"),
+           "beta (Folder=work) meets work\\beta: one clash, two to arrange");
+        ok(plan_has(&p, "gamma", "work\\gamma") && !plan_has(&p, "beta", "work\\beta"),
+           "the free gamma is planned, the clashing beta is not");
+        ok(ksp_plan_arrange_offer_due(&p), "clash: the offer is due");
+        ksp_plan_free(&p);
+        {
+            /* Every candidate clashes: nothing planned, the offer still due. */
+            char *n3[] = { "beta", "work\\beta" };
+            char *f3[] = { "work", "" };
+            ksp_plan_arrange(n3, f3, 2, &p);
+            ok(p.n == 0 && p.nclash == 1 && ksp_plan_arrange_offer_due(&p),
+               "only a clashing session: nothing planned, one clash, offer due");
+            ksp_plan_free(&p);
+        }
+        {
+            /* Mixed: free ones planned, taken ones listed, nothing twice. */
+            char *n4[] = { "a", "b", "c", "d", "x\\b", "y\\d", "Default Settings" };
+            char *f4[] = { "x", "x", "y", "y", "", "", "x" };
+            int i, j;
+            bool twice = false, both = false;
+            ksp_plan_arrange(n4, f4, 7, &p);
+            ok(p.n == 2 && plan_has(&p, "a", "x\\a") && plan_has(&p, "c", "y\\c"),
+               "mixed plan: the two free ones are planned");
+            ok(p.nclash == 2 && plan_has_clash(&p, "x\\b") && plan_has_clash(&p, "y\\d"),
+               "mixed plan: the two taken paths are listed");
+            for (i = 0; i < p.n; i++) {
+                for (j = i + 1; j < p.n; j++)
+                    if (!stricmp(p.from[i], p.from[j]) || !stricmp(p.to[i], p.to[j]))
+                        twice = true;
+                for (j = 0; j < p.nclash; j++)
+                    if (!stricmp(p.to[i], p.clash[j]))
+                        both = true;
+            }
+            ok(!twice, "mixed plan: no session and no target planned twice");
+            ok(!both, "mixed plan: no target both planned and listed as taken");
+            ksp_plan_free(&p);
+        }
+        ksp_plan_arrange(names, folders, 2, &p);
+        ok(p.n == 2 && !ksp_plan_arrange_offer_due(&p),
+           "the same Folder= sessions without work\\beta: no offer");
+        ksp_plan_free(&p);
+        ksp_plan_arrange(n2, f2, 3, &p);
+        ok(p.n == 0 && !ksp_plan_arrange_offer_due(&p),
+           "root and path sessions only (Default Settings aside): no offer");
+        ksp_plan_free(&p);
+        ksp_plan_arrange(NULL, NULL, 0, &p);
+        ok(!ksp_plan_arrange_offer_due(&p), "an empty store: no offer");
         ksp_plan_free(&p);
     }
 

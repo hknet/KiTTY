@@ -174,10 +174,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   under the session list's Del folder, or Application > Migration
   "Organize sessions..." (hknet/KiTTY#55).
 - **Arrange: sessions filed by their Folder value move to their folder
-  path.** Offered once, the first time the configuration window opens on a
-  store that has such sessions (registry or folder store), and always
-  available in Organize sessions. The registry is backed up first
-  (hknet/KiTTY#55).
+  path.** Available in Organize sessions. Offered once when the
+  configuration window opens, only on a store (registry or folder store)
+  where such a session's folder path is already taken by another session.
+  A session whose path is taken stays as it is and is named in the result;
+  the others move. The registry is backed up first (hknet/KiTTY#55).
 - **Deleting a folder that holds sessions asks where they go.** The box
   offers the root (preselected) or any other folder; subfolders keep their
   place below the destination, and a name already taken there stops the

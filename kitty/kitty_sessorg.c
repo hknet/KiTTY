@@ -484,14 +484,54 @@ static void so_folders_free(struct so_folders *fs)
     memset(fs, 0, sizeof(*fs));
 }
 
+/* The folders whose rows are expanded now (snewn'd copies, *n of them), so a
+ * rebuild of the tree can open them again: a re-read after every move must
+ * not fold the folders being worked in. */
+static char **so_tree_expanded(HWND tree, const struct so_folders *fs, int *n)
+{
+    char **out = snewn(fs->n + 1, char *);
+    HTREEITEM it = TreeView_GetRoot(tree);
+    *n = 0;
+    while (it) {
+        TVITEMA tv;
+        HTREEITEM next;
+        memset(&tv, 0, sizeof(tv));
+        tv.mask = TVIF_PARAM | TVIF_STATE;
+        tv.stateMask = TVIS_EXPANDED;
+        tv.hItem = it;
+        if (SendMessageA(tree, TVM_GETITEMA, 0, (LPARAM)&tv) &&
+            (tv.state & TVIS_EXPANDED) && tv.lParam >= 0 &&
+            tv.lParam < fs->n && *n < fs->n)
+            out[(*n)++] = dupstr(fs->f[tv.lParam]);
+        /* depth-first walk: child, else next sibling, else an ancestor's */
+        next = TreeView_GetChild(tree, it);
+        while (!next && it) {
+            next = TreeView_GetNextSibling(tree, it);
+            if (!next)
+                it = TreeView_GetParent(tree, it);
+        }
+        it = next;
+    }
+    return out;
+}
+
 /* Fill a tree view: the root row (lParam -1), then each folder under its
- * parent (lParam = index into fs). Selects `select` ("" = root). */
+ * parent (lParam = index into fs). Selects `select` ("" = root) and expands
+ * the folders named in `open` (n of them) that still exist. */
+static void so_fill_tree_open(HWND tree, const struct so_folders *fs,
+                              const char *select, char **open, int nopen);
 static void so_fill_tree(HWND tree, const struct so_folders *fs,
                          const char *select)
+{
+    so_fill_tree_open(tree, fs, select, NULL, 0);
+}
+static void so_fill_tree_open(HWND tree, const struct so_folders *fs,
+                              const char *select, char **open, int nopen)
 {
     HTREEITEM *items = snewn(fs->n + 1, HTREEITEM), root, want;
     TVINSERTSTRUCTA ins;
     int i, j;
+    SendMessage(tree, WM_SETREDRAW, FALSE, 0);
     TreeView_DeleteAllItems(tree);
     memset(&ins, 0, sizeof(ins));
     ins.hParent = TVI_ROOT;
@@ -519,8 +559,16 @@ static void so_fill_tree(HWND tree, const struct so_folders *fs,
             want = items[i];
     }
     TreeView_Expand(tree, root, TVE_EXPAND);
+    for (j = 0; j < nopen; j++)
+        for (i = 0; i < fs->n; i++)
+            if (!stricmp(fs->f[i], open[j])) {
+                TreeView_Expand(tree, items[i], TVE_EXPAND);
+                break;
+            }
     TreeView_SelectItem(tree, want);
     TreeView_EnsureVisible(tree, want);
+    SendMessage(tree, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(tree, NULL, TRUE);
     sfree(items);
 }
 
@@ -608,7 +656,11 @@ static void so_fill_list(struct so_state *st)
 static void so_reload(struct so_state *st)
 {
     char *keep = dupstr(st->cur);
-    int i, found = !*keep;
+    int i, found = !*keep, nopen = 0;
+    /* what was open, and how far the tree was scrolled, before the re-read */
+    char **open = so_tree_expanded(st->tree, &st->fs, &nopen);
+    HTREEITEM top = TreeView_GetFirstVisible(st->tree);
+    char *topf = so_tree_folder(st->tree, top, &st->fs);
     so_folders_free(&st->fs);
     so_names_free(&st->s);
     st->gen = kitty_store_generation();
@@ -621,7 +673,32 @@ static void so_reload(struct so_state *st)
     st->cur = found ? keep : dupstr("");
     if (!found)
         sfree(keep);
-    so_fill_tree(st->tree, &st->fs, st->cur);
+    so_fill_tree_open(st->tree, &st->fs, st->cur, open, nopen);
+    /* the same first visible row, when that folder still exists */
+    if (topf) {
+        HTREEITEM it = TreeView_GetRoot(st->tree);
+        while (it) {
+            char *f = so_tree_folder(st->tree, it, &st->fs);
+            int same = f && !stricmp(f, topf);
+            HTREEITEM next;
+            sfree(f);
+            if (same) {
+                TreeView_Select(st->tree, it, TVGN_FIRSTVISIBLE);
+                break;
+            }
+            next = TreeView_GetChild(st->tree, it);
+            while (!next && it) {
+                next = TreeView_GetNextSibling(st->tree, it);
+                if (!next)
+                    it = TreeView_GetParent(st->tree, it);
+            }
+            it = next;
+        }
+        sfree(topf);
+    }
+    for (i = 0; i < nopen; i++)
+        sfree(open[i]);
+    sfree(open);
     so_fill_list(st);
 }
 
@@ -1124,7 +1201,10 @@ static void so_arrange_run(HWND owner)
     so_names_load(&s);
     ksp_plan_arrange(s.names, s.folders, s.n, &p);
     n = p.n;
-    if (p.nclash) {
+    /* The plan holds the free moves only; a session whose path is taken
+     * stays where it is and is named in the result. Nothing free: nothing
+     * moves. */
+    if (!p.n && p.nclash) {
         char *list = so_join(p.clash, p.nclash), *capped = so_cap_list(list);
         msg = dupprintf(KT_SP_ARRANGE_CLASH, capped);
         kitty_info_modeless(owner, KT_CAP_KITTYPP, msg, NULL, NULL);
@@ -1146,6 +1226,12 @@ static void so_arrange_run(HWND owner)
             put_dataz(sb, KT_SP_ARRANGE_DONE_ONE);
         else
             put_fmt(sb, KT_SP_ARRANGE_DONE, n);
+        if (p.nclash) {
+            char *list = so_join(p.clash, p.nclash), *capped = so_cap_list(list);
+            put_fmt(sb, KT_SP_ARRANGE_LEFT, capped);
+            sfree(capped);
+            sfree(list);
+        }
         if (rw->len) {
             char *list = so_cap_list(rw->s);
             put_datapl(sb, PTRLEN_LITERAL("\n\n"));
@@ -1194,7 +1280,7 @@ void kitty_sessorg_arrange(HWND owner, int first_start)
     struct ksp_plan p;
     struct so_arrange *a;
     char *q;
-    int n;
+    int n, due;
 
     if (GetReadOnlyFlag()) {
         if (!first_start)
@@ -1203,14 +1289,17 @@ void kitty_sessorg_arrange(HWND owner, int first_start)
     }
     so_names_load(&s);
     ksp_plan_arrange(s.names, s.folders, s.n, &p);
-    n = p.n;
+    n = p.n + p.nclash;                 /* the free ones and the taken ones */
+    due = ksp_plan_arrange_offer_due(&p);
     ksp_plan_free(&p);
     so_names_free(&s);
+    /* At first start the offer is made only for a taken folder path, and the
+     * marker is left unset otherwise: a clash that appears later (a session
+     * copied in) is still offered once. */
+    if (first_start && !due)
+        return;
     if (!n) {
-        if (first_start)
-            kitty_arrange_offer_made(); /* nothing to arrange: checked, done */
-        else
-            kitty_info_modeless(owner, KT_CAP_KITTYPP, KT_SP_ARRANGE_NONE, NULL, NULL);
+        kitty_info_modeless(owner, KT_CAP_KITTYPP, KT_SP_ARRANGE_NONE, NULL, NULL);
         return;
     }
     if (n == 1)

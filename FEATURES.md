@@ -211,9 +211,11 @@ value and keyed by their bare name. *Arrange...* moves each of them to its
 folder path (`srv01` with `Folder=Linux\web` becomes `Linux\web\srv01`), with
 the same carrying-along as a move. The registry store is backed up first; in a
 folder store the files move into subfolders of Sessions, which a Git user sees
-as one commit of moves. The first time the configuration window opens on a
-store with such sessions, *Arrange now* / *Later* is offered once; after
-*Later* the box says that Arrange is in Organize sessions.
+as one commit of moves. A session whose folder path another session already
+has (the list shows two sessions of one name in one folder) stays as it is;
+the others move, and the result names the taken paths. When the configuration window opens on a store with
+such a clash, *Arrange now* / *Later* is offered once; after *Later* the box
+says that Arrange is in Organize sessions. Without a clash there is no offer.
 
 **Deleting a folder that holds sessions** asks where they go: a droplist with
 *All sessions (root)* preselected, or any other folder. Subfolders move along

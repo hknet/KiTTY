@@ -3629,6 +3629,8 @@
 #define KT_SP_ARRANGE_DONE                           "%d sessions arranged."
 #define KT_SP_ARRANGE_DONE_ONE                       "1 session arranged."
 #define KT_SP_ARRANGE_CLASH                          "Nothing was moved. These folder paths are already taken:\n%s"
+/* Follows KT_SP_ARRANGE_DONE / _DONE_ONE when some paths were taken. */
+#define KT_SP_ARRANGE_LEFT                           " These were left as they are because the folder path is already taken:\n%s"
 #define KT_SP_DEL_HEAD_ONE                           "\"%s\" contains one session."
 #define KT_SP_DEL_HEAD_MANY                          "\"%s\" contains %d sessions."
 #define KT_SP_DEL_HEAD_SUB                           "\"%s\" contains %d sessions in %d folders."
