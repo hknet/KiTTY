@@ -219,6 +219,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The configuration box's Cancel button reads Exit before a session.**
+  It ends the program there; the Application settings are already saved as
+  they change. Mid-session (Change Settings) it still reads Cancel.
 - **A registry session whose name contains `\` is now a session in a
   folder.** `DOMAIN\user` or `prod\db01` saved by an earlier version is read
   as the session `user` in folder `DOMAIN` (`db01` in `prod`): it lists

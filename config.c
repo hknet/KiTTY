@@ -1850,7 +1850,15 @@ void setup_config_box(struct controlbox *b, bool midsession,
                                     sessionsaver_handler, P(ssd));
     ssd->okbutton->button.isdefault = true;
     ssd->okbutton->column = 3;
-    ssd->cancelbutton = ctrl_pushbutton(s, "Cancel", 'c', HELPCTX(no_help),
+    /* KiTTY: before a session this button ends the program (the Application
+     * settings are already saved as they change, so there is nothing to
+     * cancel): "Exit". Mid-session it drops the unapplied changes and goes
+     * back to the terminal: "Cancel", as upstream. (No MOD_PERSO guard:
+     * config.c reaches the binary through a library built without it.) */
+    ssd->cancelbutton = ctrl_pushbutton(s,
+                                        (midsession ? "Cancel" : "Exit"),
+                                        (char)(midsession ? 'c' : 'x'),
+                                        HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = true;
     ssd->cancelbutton->column = 4;
