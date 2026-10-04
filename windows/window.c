@@ -267,6 +267,7 @@ static bool far2l_events_on(WinGuiSeat *wgs)
  */
 static Far2lKeysNote far2l_keys_note;
 static void far2l_keys_sync(WinGuiSeat *wgs);
+static void far2l_title_refresh(WinGuiSeat *wgs);
 
 /*
  * Input locked by Protect, or by a rolled-up window while the shortcuts are
@@ -1618,7 +1619,7 @@ static void close_session(void *vctx)
     /* KiTTY: no backend, no far2l key events: the title loses its suffix.
      * No "far2l ended" notice: the connection itself is gone. */
     far2l_keys_note_quiet_off(&far2l_keys_note);
-    kitty_refresh_title();
+    far2l_title_refresh(wgs);
 #endif
 
     /*
@@ -9191,21 +9192,9 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
 void kitty_refresh_title(void)
 {
     WinGuiSeat *wgs;
-    if (!MainHwnd) return;
+    if (!MainHwnd || !kitty_raw_title) return;
     wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA);
     if (!wgs) return;
-    if (!kitty_raw_title) {
-        /* No title was set yet (a raw session before its first update, or a
-         * host that never sends one): decorate what the window shows now. */
-        wchar_t now[1024];
-        char *u;
-        if (!GetWindowTextW(wgs->term_hwnd, now, lenof(now)))
-            return;
-        u = dup_wc_to_mb(CP_UTF8, now, "?");
-        win_set_title(&wgs->termwin, u, CP_UTF8);
-        sfree(u);
-        return;
-    }
     win_set_title(&wgs->termwin, kitty_raw_title, kitty_raw_title_cp);
 }
 
@@ -11072,6 +11061,37 @@ static void far2l_keys_timer(void *ctx, unsigned long now)
         kitty_far2l_keys_notice(wgs->term, due > 0);
 }
 
+/* The title follows far2l_keys_note.live. With a title set, the normal
+ * decoration path adds or drops the suffix (wintw_set_title). Before any title
+ * was set (a raw session that has not drawn yet, a host that never sends one)
+ * there is no raw title to decorate, so the suffix goes on or off the text the
+ * window shows - without becoming the raw title, which would freeze the
+ * window's initial text into every later decoration. */
+static void far2l_title_refresh(WinGuiSeat *wgs)
+{
+    wchar_t now[1024], *t;
+    size_t n, sl = wcslen(KT_FAR2L_TITLE_KEYS);
+    bool has;
+    if (kitty_raw_title || !wgs) {
+        kitty_refresh_title();
+        return;
+    }
+    if (!GetWindowTextW(wgs->term_hwnd, now, lenof(now) - (int)sl - 1))
+        return;
+    n = wcslen(now);
+    has = n >= sl && !wcscmp(now + n - sl, KT_FAR2L_TITLE_KEYS);
+    if (far2l_keys_note.live && !has)
+        wcscat(now, KT_FAR2L_TITLE_KEYS);
+    else if (!far2l_keys_note.live && has)
+        now[n - sl] = L'\0';
+    else
+        return;
+    t = dupwcs(now);
+    sfree(wgs->window_name);
+    wgs->window_name = t;
+    sw_SetWindowText(wgs->term_hwnd, wgs->window_name);
+}
+
 /* Re-read whether the key events are on: the title at once, the notice
  * after the settle time. */
 static void far2l_keys_sync(WinGuiSeat *wgs)
@@ -11081,7 +11101,7 @@ static void far2l_keys_sync(WinGuiSeat *wgs)
     if (!far2l_keys_note_set(&far2l_keys_note, far2l_events_on(wgs),
                              GETTICKCOUNT()))
         return;
-    kitty_refresh_title();
+    far2l_title_refresh(wgs);
     schedule_timer(F2L_KEYS_SETTLE_MS, far2l_keys_timer, wgs->term);
 }
 
