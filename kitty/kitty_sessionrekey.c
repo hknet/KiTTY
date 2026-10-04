@@ -87,7 +87,17 @@ static char *rk_move_one(const char *from, const char *to)
         char *leftover = NULL;
         if (!ksp_reg_move_tree(HKEY_CURRENT_USER, src, dst, &leftover)) {
             if (leftover) {
-                char *why = dupprintf(KT_SP_REKEY_LEFTOVER, leftover);
+                /* Two ways to end with a leftover key: the old key is still
+                 * (partly) there and could not be removed, or it is gone and
+                 * the settings could not be written back under any name. */
+                HKEY k;
+                int src_there = RegOpenKeyExA(HKEY_CURRENT_USER, src, 0,
+                                              KEY_READ, &k) == ERROR_SUCCESS;
+                if (src_there)
+                    RegCloseKey(k);
+                char *why = dupprintf(src_there ? KT_SP_REKEY_LEFTOVER
+                                                : KT_SP_REKEY_NOT_WRITTEN_BACK,
+                                      leftover);
                 err = dupprintf(KT_CFG_SESSION_UPDATE_FAILED, from, why);
                 sfree(why);
             } else {

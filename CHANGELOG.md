@@ -144,6 +144,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `-load` ends with an error naming them (exit code 1) and a jump host fails
   the connection rather than look the name up as a host. Sessions filed by
   their Folder value only keep working by their bare name (hknet/KiTTY#55).
+  `kitty://` links take the path with `/` (`kitty://Linux/web/srv01`) and
+  are percent-decoded: a `%` in a session name is written `%25` in a link.
 - **Only session files are listed, and session files can carry a suffix.**
   The folder store lists a file only when it holds a `HostName` or
   `Protocol` setting, in either file format; dot-files and dot-folders

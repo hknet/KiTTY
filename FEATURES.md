@@ -647,6 +647,8 @@ KiTTY++ can register itself with Windows as the program that opens **ssh://**, *
 
 `ssh://[user@]host[:port]` connects to a host — a trailing path is ignored, so a link copied from anywhere still works — and `kitty://<session name>` opens one of your saved sessions. Both forms work on the command line too, registered or not: `kitty.exe ssh://server.example.com` is a valid way to start KiTTY++. A password given inside a URL is deliberately **discarded**: it would otherwise sit in a command line that any other user of the machine can read.
 
+A `kitty://` link names a session the way `-load` does. It can carry the folder path, with `/` as the separator: `kitty://Linux/web/srv01` opens `Linux\web\srv01`. A bare name such as `kitty://srv01` opens the session of exactly that name at the top level, or else the one session of that name in any folder, so a link keeps working after the session moves into a folder. A name that exists in more than one folder opens nothing and shows the matching paths. Links are percent-decoded: a session name containing `%` is written `%25` in a link, a space `%20`.
+
 **How to enable:** run **`kitty.exe -sshhandler`**. As administrator it registers for everyone on the machine; run normally it registers for your account, and the machine-wide installation asks for the rights itself. A protocol another program already opens is **reported and left alone** — add `-force` to take it over, and the report then names the `reg` command that puts the old setting back, having exported it first.
 
 | Option | Effect |
