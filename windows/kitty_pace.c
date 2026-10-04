@@ -205,8 +205,31 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
      * (output after a pause) starts a new one. */
     if (pace_setting == PACE_AUTO && refresh_vblank_ms > 0) {
         double period = refresh_period_ms();
-        double mid = refresh_vblank_ms + period / 2;
-        double k = floor((started + pace - mid) / period + 0.5);
+        double aim, mid, k;
+        /* A long paint (a maximised GDI window: a third of the cycle and
+         * more) started mid-cycle is still drawing when the compositor
+         * takes the next refresh: such frames start just after the blank
+         * instead. Short paints keep the middle, clear of the blank. Taken
+         * from the paints averaged, with a gap between the two thresholds,
+         * so one slow frame does not move the aim. */
+        static double avg_paint = 0;
+        static bool early = false;
+        avg_paint += (paint_ms - avg_paint) / 8;
+        if (!early && avg_paint > period * 0.35)
+            early = true;
+        else if (early && avg_paint < period * 0.25)
+            early = false;
+        aim = early ? 0.1 : 0.5;
+#ifdef KITTY_TEST_BUILD_LABEL
+        {
+            /* KITTY_PACE_AIM=<0..1>: where in the cycle (the measuring knob) */
+            const char *e = getenv("KITTY_PACE_AIM");
+            if (e && *e && atof(e) >= 0 && atof(e) < 1)
+                aim = atof(e);
+        }
+#endif
+        mid = refresh_vblank_ms + period * aim;
+        k = floor((started + pace - mid) / period + 0.5);
         target = mid + k * period;
     } else if (next_due > 0 && started >= next_due - pace &&
                started < next_due + pace) {

@@ -353,7 +353,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   auto) drew a frame every 18 ms on a 60 Hz display and lost 4-5 refreshes
   a second. It now aims each frame at the middle of the refresh period
   Windows reports: 59-60 frames/s on both renderers at 200 lines/s, at the
-  same CPU.
+  same CPU. A frame that takes a third of the period and more to paint (a
+  maximised GDI window) starts just after the refresh instead: 38-54
+  frames/s there, up from 31-34.
 - **far2l gets the clipboard after you allow it.** With the far2l clipboard
   set to Ask, the default, an OK in the box was sent back to far2l as a
   refusal. far2l then used its own clipboard for the rest of its run.
