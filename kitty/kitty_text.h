@@ -102,6 +102,7 @@
 /* general */
 #define KT_KITTY_START                               "Start"
 #define KT_KITTY_CANCEL                              "Cancel"
+#define KT_KITTY_EXIT                                "Exit"
 
 /* Session */
 #define KT_SESSION_SAVE                              "Save"

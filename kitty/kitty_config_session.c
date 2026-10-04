@@ -4401,7 +4401,17 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * updates now" on the Application/Updates panel, where the update setting
      * is. It was abbreviated to one word only because a button in a five-column
      * row has no space for a sentence; on a panel it can say what it does. */
-    ssd->cancelbutton = ctrl_pushbutton(s, KT_KITTY_CANCEL, 'c', HELPCTX(no_help),
+    /* Before a session this button ends the program (the Application
+     * settings are already saved as they change, so there is nothing to
+     * cancel): "Exit". Mid-session it drops the unapplied changes and goes
+     * back to the terminal: "Cancel". "Exit" has no Alt key: this row shows
+     * beside every panel, so its keys must be free on all of them, and E, X,
+     * I and T are each taken somewhere (Esc still works: it is the cancel
+     * button). */
+    ssd->cancelbutton = ctrl_pushbutton(s,
+                                        (midsession ? KT_KITTY_CANCEL : KT_KITTY_EXIT),
+                                        (char)(midsession ? 'c' : NO_SHORTCUT),
+                                        HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = true;
     ssd->cancelbutton->column = 4;

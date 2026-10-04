@@ -1853,11 +1853,14 @@ void setup_config_box(struct controlbox *b, bool midsession,
     /* KiTTY: before a session this button ends the program (the Application
      * settings are already saved as they change, so there is nothing to
      * cancel): "Exit". Mid-session it drops the unapplied changes and goes
-     * back to the terminal: "Cancel", as upstream. (No MOD_PERSO guard:
-     * config.c reaches the binary through a library built without it.) */
+     * back to the terminal: "Cancel", as upstream. "Exit" has no Alt key:
+     * this row shows beside every panel and E, X, I and T are each taken
+     * on one (Esc still works). (No MOD_PERSO guard: this file
+     * is built into the GUI library, without it, for kitty_tel and
+     * kitty_pterm; kitty.exe has its own box in kitty/kitty_config_session.c.) */
     ssd->cancelbutton = ctrl_pushbutton(s,
                                         (midsession ? "Cancel" : "Exit"),
-                                        (char)(midsession ? 'c' : 'x'),
+                                        (char)(midsession ? 'c' : NO_SHORTCUT),
                                         HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = true;
