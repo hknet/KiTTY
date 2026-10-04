@@ -7,17 +7,22 @@
  * (windows/utils/gui-timing.c) fires it exactly.
  *
  * The setting, [KiTTY] framepace:
- *   auto     one frame per display refresh, never more often than every
- *            16 ms; 33 ms on battery, 50 ms with Energy Saver on (default)
+ *   auto     one frame per display refresh, to the fraction of a ms (16 ms
+ *            when Windows cannot say); every second one with Energy Saver
+ *            on (default)
  *   N        at most one frame per N ms, whatever the power state
  *   0        PuTTY's fixed 20 ms cooldown
- * In every case the cooldown is never shorter than the paint itself, so
- * painting takes at most half the time. A painter with a display signal
- * (Direct2D) does not time the next frame at all: the compositor says when
- * it is ready for one (kitty_pace_wait_frame); GDI paces on the timer.
+ * With auto, frames are aimed at the middle of a refresh cycle, so no two
+ * fall into one refresh; a number keeps frames on a grid a pace apart, so
+ * a timer that wakes late does not slow the rate. In every case the
+ * cooldown is never shorter than the paint itself, so painting takes at
+ * most half the time. A painter with a display signal (Direct2D) may end
+ * a cooldown early when the compositor says it is ready for a frame
+ * (kitty_pace_wait_frame); the timer paces otherwise.
  */
 
 #include "putty.h"
+#include <math.h>
 #include <dwmapi.h>
 #include "kitty_gui.h"
 #include "kitty_buildlabel.h"   /* the measuring switches below: test builds only */
@@ -73,8 +78,10 @@ void kitty_pace_set_setting(const char *value)
 
 /* The display's refresh period as DWM reports it, re-read every 250 ms
  * so a panel Windows slows down on battery is followed; 0 when it cannot
- * say. Only the period is used - never where in the cycle we are. */
+ * say. With it the time of a vertical blank (refresh_vblank_ms), so frames
+ * can be aimed at a point of the cycle (kitty_pace_cooldown_ms). */
 typedef HRESULT (WINAPI *DwmTiming_t)(HWND, DWM_TIMING_INFO *);
+static double refresh_vblank_ms;
 static double refresh_period_ms(void)
 {
     static DwmTiming_t fn = NULL;
@@ -95,10 +102,13 @@ static double refresh_period_ms(void)
         ti.cbSize = sizeof(ti);
         asked = t;
         period = 0;
-        if (SUCCEEDED(fn(NULL, &ti)) && ti.qpcRefreshPeriod > 0)
+        refresh_vblank_ms = 0;
+        if (SUCCEEDED(fn(NULL, &ti)) && ti.qpcRefreshPeriod > 0) {
             period = ti.qpcRefreshPeriod / qpc_per_ms();
+            refresh_vblank_ms = ti.qpcVBlank / qpc_per_ms();
+        }
         if (period < 4 || period > 50)          /* 20..250 Hz, else nonsense */
-            period = 0;
+            period = refresh_vblank_ms = 0;
     }
     return period;
 }
@@ -120,8 +130,9 @@ static bool energy_saver(void)
 }
 
 /* The pace in force, in ms: auto = one refresh period (16 when unknown),
- * two with Energy Saver on; a number as given; 0 = the fixed cooldown. */
-static int effective_pace_ms(void)
+ * two with Energy Saver on; a number as given; 0 = the fixed cooldown.
+ * Not rounded: a 16.95 ms display paced at 17 ms falls behind it. */
+static double effective_pace_ms(void)
 {
     double period;
     if (pace_setting != PACE_AUTO)
@@ -131,7 +142,7 @@ static int effective_pace_ms(void)
         period = 16;
     if (energy_saver())
         period *= 2;
-    return (int)(period + 0.5);
+    return period;
 }
 
 /* A minimised window paints at most once a second (windows/window.c says
@@ -156,7 +167,7 @@ bool kitty_pace_signal_allowed(double now)
  * in the event-loop library because that is where the handle list lives). */
 int kitty_pace_effective_ms(void)
 {
-    return effective_pace_ms();
+    return (int)(effective_pace_ms() + 0.5);
 }
 
 /* ---- the answer ------------------------------------------------------ */
@@ -167,19 +178,46 @@ int kitty_pace_effective_ms(void)
  * it is taken off the paint cost, once. */
 double kitty_present_wait_ms = 0;
 
+/* When the next frame is due: frames sit on a grid `pace` ms apart. */
+static double next_due;
+
 unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
 {
-    int pace = effective_pace_ms();
-    double d, target;
+    double pace = effective_pace_ms();
+    double d, target, started;
 
     if (pace <= 0)
         return 20;                              /* PuTTY's UPDATE_DELAY */
+    started = now - paint_ms;                   /* present wait included */
     paint_ms -= kitty_present_wait_ms;
     if (paint_ms < 0) paint_ms = 0;
 
-    /* frames every `pace` ms, and never a cooldown shorter than the paint
-     * itself: painting takes at most half the time */
-    d = pace - paint_ms;
+    /* frames every `pace` ms from start to start. With auto and a known
+     * vertical blank the frame is aimed at the middle of a refresh cycle,
+     * the one nearest a pace after this frame started: a frame at the
+     * display's rate but at a chance point of the cycle can sit next to
+     * the moment the compositor takes it, and two frames then fall into
+     * one refresh and the next refresh shows nothing - for a whole run.
+     * The aim also absorbs a timer that wakes a ms late. Otherwise the
+     * next frame is due a pace after this one was due, not after it
+     * started (the same late timer would make every frame a ms longer
+     * than the display's); a frame more than a pace off that grid
+     * (output after a pause) starts a new one. */
+    if (pace_setting == PACE_AUTO && refresh_vblank_ms > 0) {
+        double period = refresh_period_ms();
+        double mid = refresh_vblank_ms + period / 2;
+        double k = floor((started + pace - mid) / period + 0.5);
+        target = mid + k * period;
+    } else if (next_due > 0 && started >= next_due - pace &&
+               started < next_due + pace) {
+        target = next_due + pace;
+    } else {
+        target = started + pace;
+    }
+    next_due = target;
+    /* and never a cooldown shorter than the paint itself: painting takes
+     * at most half the time */
+    d = target - now;
     if (d < paint_ms) d = paint_ms;
     if (d < 1) d = 1;
     /* what the display signal has to respect before it may end this
