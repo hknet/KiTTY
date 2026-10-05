@@ -72,7 +72,12 @@ int loadPath(void) ;
  * apply kitty.ini's (hknet/KiTTY#56). After loadPath(), before the store starts. */
 void kitty_store_ini_takeover(void) ;
 /* the host-key files renamed to a new hostkeyextension, once; after the
- * store is switched on */
-void kitty_store_hostkey_rename(void) ;
+ * store is switched on. Returns the count renamed (dry_run: would be, and
+ * nothing changes); `clashes` (may be NULL) gets the names left as they are,
+ * one per line. */
+int kitty_store_hostkey_rename(int dry_run, char *clashes, size_t clsize) ;
+/* hostkeyextensionapplied / fileextensionapplied: read ("" = none), record */
+void kitty_store_ending_applied(const char *key, char *buf, size_t n) ;
+void kitty_store_ending_mark(const char *key, const char *now) ;
 
 bool ReadPortableValue(const char *buffer, const char * name, char * value, const int maxlen) ;

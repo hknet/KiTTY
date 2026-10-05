@@ -186,6 +186,9 @@ typedef struct {
 	int checked ;
 	void (*done_check)( int yes, int checked, void *ctx ) ;
 	void *ctx_check ;
+	/* kitty_confirm_modeless3: 3-way, but the No button (IDNO) is the default,
+	 * so a reflex Return does not agree. */
+	int defno ;
 } kitty_confirm_t ;
 
 #define KITTY_CONFIRM_DETAIL_LINES 6
@@ -331,7 +334,8 @@ static void kitty_confirm_end( HWND h, kitty_confirm_t *cf, int r ) {
 	if( cf && cf->check )   /* read while the box is still there */
 		cf->checked = ( IsDlgButtonChecked( h, IDC_CONFIRM_CHECK ) == BST_CHECKED ) ;
 	if( cf && cf->done ) {
-		if( !cf->answered ) { cf->answered = 1 ; cf->done( r == 1, cf->ctx ) ; }
+		/* a 3-way modeless box hands on which of the three (1, 2, 0) */
+		if( !cf->answered ) { cf->answered = 1 ; cf->done( cf->three ? r : ( r == 1 ), cf->ctx ) ; }
 		DestroyWindow( h ) ;
 	} else
 		EndDialog( h, r ) ;
@@ -481,11 +485,19 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			MoveWindow( bc, xC, by, wc, bh, TRUE ) ;
 			MoveWindow( bk, xK, by, wk, bh, TRUE ) ;
 			MoveWindow( bo, xO, by, wo, bh, TRUE ) ;
+			if( cf->defno ) {
+				SendMessage( h, DM_SETDEFID, IDNO, 0 ) ;
+				SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+				SendDlgItemMessage( h, IDC_CONFIRM_THIRD, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+				SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
+				SetFocus( bc ) ;
+			} else {
 			SendMessage( h, DM_SETDEFID, IDYES, 0 ) ;
 			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
 			SendDlgItemMessage( h, IDC_CONFIRM_THIRD, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
 			SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
 			SetFocus( bo ) ;
+			}
 			kitty_centre_on_owner( h ) ;
 			return FALSE ;
 		}
@@ -517,6 +529,8 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			if( cf && cf->info ) { kitty_confirm_end( h, cf, 0 ) ; return TRUE ; }
 			return FALSE ;
 		  case IDNO:
+			/* kitty_confirm_modeless3: No PRESSED (3) is not Escape or a close (0) */
+			kitty_confirm_end( h, cf, ( cf && cf->defno ) ? 3 : 0 ) ; return TRUE ;
 		  case IDCANCEL: kitty_confirm_end( h, cf, 0 ) ; return TRUE ;
 		}
 		return FALSE ;
@@ -530,6 +544,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
 			free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
 			free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
+			if( cf->three ) free( (char *)cf->b_keep ) ;   /* kitty_confirm_modeless3's copy */
 			free( cf ) ;
 		}
 		return FALSE ;
@@ -579,6 +594,7 @@ static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
 		free( (char *)cf->caption ) ; free( (char *)cf->text ) ;
 		free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
 		free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
+		if( cf->three ) free( (char *)cf->b_keep ) ;
 		free( cf ) ;
 		return NULL ;
 	}
@@ -601,6 +617,32 @@ HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *
 	cf->detail = detail ? _strdup( detail ) : NULL ;
 	cf->b_yes = b_yes ? _strdup( b_yes ) : NULL ;
 	cf->b_no = b_no ? _strdup( b_no ) : NULL ;
+	cf->done = done ; cf->ctx = ctx ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
+}
+
+/* A three-way question, modeless, on the same template: b_yes (IDYES), b_third
+ * (IDC_CONFIRM_THIRD) and b_no (IDNO, the default), laid out as box3 lays
+ * them. done(1 = b_yes, 2 = b_third, 3 = b_no, 0 = Escape / closed / the
+ * owner gone, ctx) once;
+ * `detail` as in kitty_confirm_modeless. NULL = not made, no callback. The
+ * strings are the box's own copies. */
+HWND kitty_confirm_modeless3( HWND owner, const char *caption, const char *text,
+                              const char *detail, const char *b_yes, const char *b_third,
+                              const char *b_no, void (*done)( int answer, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	/* box3's three words are borrowed pointers; here they live in b_yes /
+	 * b_no / check, which WM_DESTROY frees */
+	cf->b_yes = _strdup( b_yes ? b_yes : "" ) ;
+	cf->b_no = _strdup( b_no ? b_no : "" ) ;
+	cf->check = NULL ;
+	cf->b_over = cf->b_yes ; cf->b_cancel = cf->b_no ;
+	cf->b_keep = _strdup( b_third ? b_third : "" ) ;
+	cf->three = 1 ; cf->defno = 1 ;
 	cf->done = done ; cf->ctx = ctx ;
 	return kitty_confirm_modeless_open( owner, cf ) ;
 }

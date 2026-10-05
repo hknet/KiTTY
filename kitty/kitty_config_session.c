@@ -1137,6 +1137,16 @@ static VOID CALLBACK kcs_arrange_timer(HWND hwnd, UINT msg, UINT_PTR id,
         kitty_sessorg_arrange(kitty_cfg_modal_owner(), 1);
 }
 
+/* The rename question for hand-edited file-name endings, the same way. */
+static VOID CALLBACK kcs_endings_timer(HWND hwnd, UINT msg, UINT_PTR id,
+                                       DWORD when)
+{
+    (void)hwnd; (void)msg; (void)when;
+    KillTimer(NULL, id);
+    if (kcs_dlg)
+        kitty_sp_endings_offer(kitty_cfg_modal_owner());
+}
+
 void kitty_config_end_folder_rename(dlgparam *dp)
 {
     struct sessionsaver_data *ssd = session_filter_ssd;
@@ -2644,6 +2654,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             static int arrange_checked = 0;
             if (!arrange_checked) {
                 arrange_checked = 1;
+                /* first the endings (a rename changes the names Arrange
+                 * would plan with), then Arrange */
+                if (kitty_sp_endings_changed())
+                    SetTimer(NULL, 0, 250, kcs_endings_timer);
                 if (kitty_sessorg_arrange_pending())
                     SetTimer(NULL, 0, 400, kcs_arrange_timer);
             }

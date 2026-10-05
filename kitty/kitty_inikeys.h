@@ -94,6 +94,9 @@
 #define KI_HOSTKEYEXTENSION                 "hostkeyextension"
 /* written by KiTTY: the ending the host-key files were last renamed to */
 #define KI_HOSTKEYEXTENSIONAPPLIED          "hostkeyextensionapplied"
+/* written by KiTTY: the ending the session files were last renamed to, or
+ * the rename to it was declined for */
+#define KI_FILEEXTENSIONAPPLIED             "fileextensionapplied"
 #define KI_PUTTYCONFMIGRATED                "puttyconfmigrated"
 
 /* A file-name ending as old KiTTY read fileextension / hostkeyextension:

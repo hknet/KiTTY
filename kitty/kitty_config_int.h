@@ -256,6 +256,10 @@ struct sessionsaver_data {
 };
 extern struct sessionsaver_data *kitty_session_ssd;   /* kitty_config_session.c */
 int kitty_config_session_rows(void);   /* kitty_config_session.c */
+/* The start-up question when kitty.ini's file-name endings were edited by
+ * hand (hknet/KiTTY#56): the cheap check, and the question. kitty_config_app.c */
+int kitty_sp_endings_changed(void);
+void kitty_sp_endings_offer(HWND owner);
 /* The store changed outside the session panel's handlers: the open box's
  * folder and session lists follow (hknet/KiTTY#55). kitty_config_session.c */
 void kitty_config_session_store_changed(void);

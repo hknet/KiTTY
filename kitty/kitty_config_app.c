@@ -44,6 +44,7 @@
 #include "kitty_registry.h"
 #include "kitty_userpath.h"
 #include "kitty_storemove.h"
+#include "kitty_store.h"   /* kitty_store_hostkey_rename */
 #include "kitty_mpw.h"
 #include "kitty_config.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
@@ -3827,10 +3828,10 @@ void scb_panel_shortcut_editor(struct controlbox *b, const char *path)
     sc->tnote->text.lines = 2;
 }
 
-/* ==== The folder store's session file suffix and host-key folder ========
- * (hknet/KiTTY#56). Both are kitty.ini [KiTTY] keys that only mean anything
- * in a folder store, so in the registry store both rows are greyed; so are
- * they when nothing can be written (readonly=yes, conf=no). */
+/* ==== The folder store's host-key folder and the file endings ===========
+ * (hknet/KiTTY#56), on Storage & Backup. All are kitty.ini [KiTTY] keys that
+ * only mean anything in a folder store, so in the registry store the rows are
+ * greyed; so are they when nothing can be written (readonly=yes, conf=no). */
 
 static bool kitty_sp_folder_store_writable(void)
 {
@@ -3963,6 +3964,9 @@ static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (strlen(nw) < sizeof(FileExtension))
         snprintf(FileExtension, sizeof(FileExtension), "%s", nw);
     kitty_set_session_suffix(nw);
+    /* recorded as applied whatever the rename question's answer: the
+     * start-up question is for hand edits of kitty.ini only */
+    kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, nw);
     kitty_store_mark_dirty();
     kitty_sp_refresh_session_list(dlg);
     if (n > 0) {
@@ -4036,6 +4040,224 @@ static void kitty_sp_hostkeys_browse_handler(dlgcontrol *ctrl, dlgparam *dlg,
     sfree(cur);
 }
 
+static dlgcontrol *ksp_keyext_edit = NULL;
+
+/* "Host Key File Extension": the ending in force (kitty.ini [KiTTY]
+ * hostkeyextension). Typing changes nothing until Apply. */
+static void kitty_sp_keyext_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                         void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        cfgwin_refreshing = 1;
+        dlg_editbox_set(ctrl, dlg, kitty_hostkey_suffix());
+        cfgwin_refreshing = 0;
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+    }
+}
+
+/*
+ * Its Apply: the ending goes into kitty.ini and into force, and the host-key
+ * files are renamed to it at once, without a question - what a start does
+ * after the key is edited by hand. The box gives the count and the names left
+ * as they are because their new name exists already.
+ */
+static void kitty_sp_keyext_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    char *nw, buf[64], clashes[4096];
+    const char *p;
+    int done;
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
+        return;
+    }
+    if (event != EVENT_ACTION || !ksp_keyext_edit ||
+        !kitty_sp_folder_store_writable())
+        return;
+    nw = dlg_editbox_get(ksp_keyext_edit, dlg);
+    str_rtrim(nw, " \t");
+    for (p = nw; *p; p++)
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
+            break;
+    snprintf(buf, sizeof(buf), "%s", nw);
+    kitty_ext_dot(buf, sizeof(buf));    /* a dot in front if missing */
+    if (*p || strlen(buf) > 15 || !strcmp(buf, kitty_hostkey_suffix())) {
+        /* Not a file-name ending (old KiTTY kept 15 characters), or nothing
+         * changed: put the value in force back. */
+        sfree(nw);
+        dlg_beep(dlg);
+        dlg_refresh(ksp_keyext_edit, dlg);
+        return;
+    }
+    sfree(nw);
+    if (buf[0])
+        writeINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION, buf);
+    else
+        delINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION);
+    kitty_set_hostkey_suffix(buf);
+    done = kitty_store_hostkey_rename(0, clashes, sizeof(clashes));
+    {
+        strbuf *msg = strbuf_new();
+        put_fmt(msg, KT_SP_KEYEXT_RENAMED, done);
+        if (clashes[0]) {
+            int nclash = 1;
+            for (p = clashes; *p; p++)
+                if (*p == '\n')
+                    nclash++;
+            put_datapl(msg, PTRLEN_LITERAL("\n\n"));
+            put_fmt(msg, KT_SP_SUFFIX_LEFT, nclash);
+        }
+        kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg->s,
+                            clashes[0] ? clashes : NULL, NULL);
+        strbuf_free(msg);
+    }
+    kitty_store_mark_dirty();
+}
+
+/*
+ * The start-up question (hknet/KiTTY#56): kitty.ini's fileextension or
+ * hostkeyextension was edited by hand since its files were last renamed
+ * (fileextensionapplied / hostkeyextensionapplied record that). Asked once
+ * the configuration box is up, modeless; nothing is renamed until it is
+ * answered. Yes renames and reports; No records the new endings as applied,
+ * so it is not asked again; Storage & Backup... records nothing and opens that
+ * panel, as does closing the box unanswered - it is then asked at the next
+ * start. A change with nothing to rename is recorded without a word.
+ */
+struct ksp_endings {
+    char swas[64], snow[64], kwas[64], know[64];
+    int ns, nk;                 /* files to rename; 0 = that side not asked */
+};
+
+static const char *ksp_ending_shown(const char *e)
+{
+    return e[0] ? e : KT_SP_SUFFIX_NONE;
+}
+
+static void ksp_endings_result_answer(int yes, void *ctx)
+{
+    (void)ctx;
+    if (yes)
+        kitty_cfg_goto_panel(KSET_PATH("Storage & Backup"));
+}
+
+static void ksp_endings_answer(int answer, void *ctx)
+{
+    struct ksp_endings *e = (struct ksp_endings *)ctx;
+    if (answer == 1) {
+        strbuf *msg = strbuf_new(), *left = strbuf_new();
+        if (e->ns) {
+            int done = kitty_session_suffix_rename(e->swas, e->snow, 0, left);
+            put_fmt(msg, KT_SP_SUFFIX_RENAMED, done);
+            kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, e->snow);
+        }
+        if (e->nk) {
+            char kc[4096];
+            /* renames from the recorded ending and records the new one */
+            int done = kitty_store_hostkey_rename(0, kc, sizeof(kc));
+            if (msg->len)
+                put_byte(msg, '\n');
+            put_fmt(msg, KT_SP_KEYEXT_RENAMED, done);
+            if (kc[0]) {
+                if (left->len)
+                    put_byte(left, '\n');
+                put_dataz(left, kc);
+            }
+        }
+        if (left->len) {
+            const char *p;
+            int nleft = 1;
+            for (p = left->s; *p; p++)
+                if (*p == '\n')
+                    nleft++;
+            put_datapl(msg, PTRLEN_LITERAL("\n\n"));
+            put_fmt(msg, KT_SP_SUFFIX_LEFT, nleft);
+        }
+        kitty_store_mark_dirty();
+        kitty_config_session_store_changed();
+        kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg->s,
+                                     left->len ? left->s : NULL,
+                                     KT_SP_ENDINGS_GOTO, KT_SP_ENDINGS_OK,
+                                     ksp_endings_result_answer, NULL);
+        strbuf_free(msg);
+        strbuf_free(left);
+    } else if (answer == 3) {           /* No, pressed */
+        if (e->ns)
+            kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, e->snow);
+        if (e->nk)
+            kitty_store_ending_mark(KI_HOSTKEYEXTENSIONAPPLIED, e->know);
+    } else if (answer == 2) {
+        kitty_cfg_goto_panel(KSET_PATH("Storage & Backup"));
+    }
+    sfree(e);
+}
+
+/* Whether kitty.ini's endings differ from those last applied (no file is
+ * looked at): the cheap check before the configuration box's timer. */
+int kitty_sp_endings_changed(void)
+{
+    char was[64];
+    if (!kitty_sp_folder_store_writable())
+        return 0;
+    kitty_store_ending_applied(KI_FILEEXTENSIONAPPLIED, was, sizeof(was));
+    if (stricmp(was, kitty_session_suffix()))
+        return 1;
+    kitty_store_ending_applied(KI_HOSTKEYEXTENSIONAPPLIED, was, sizeof(was));
+    return stricmp(was, kitty_hostkey_suffix()) != 0;
+}
+
+void kitty_sp_endings_offer(HWND owner)
+{
+    struct ksp_endings *e;
+    strbuf *q;
+    if (!kitty_sp_endings_changed())
+        return;
+    e = snew(struct ksp_endings);
+    memset(e, 0, sizeof(*e));
+    kitty_store_ending_applied(KI_FILEEXTENSIONAPPLIED, e->swas, sizeof(e->swas));
+    snprintf(e->snow, sizeof(e->snow), "%s", kitty_session_suffix());
+    kitty_store_ending_applied(KI_HOSTKEYEXTENSIONAPPLIED, e->kwas, sizeof(e->kwas));
+    snprintf(e->know, sizeof(e->know), "%s", kitty_hostkey_suffix());
+    if (stricmp(e->swas, e->snow)) {
+        e->ns = kitty_session_suffix_rename(e->swas, e->snow, 1, NULL);
+        if (!e->ns)                     /* nothing to rename: just record it */
+            kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, e->snow);
+    }
+    if (stricmp(e->kwas, e->know)) {
+        e->nk = kitty_store_hostkey_rename(1, NULL, 0);
+        if (!e->nk)
+            kitty_store_ending_mark(KI_HOSTKEYEXTENSIONAPPLIED, e->know);
+    }
+    if (!e->ns && !e->nk) {
+        sfree(e);
+        return;
+    }
+    q = strbuf_new();
+    put_fmt(q, "%s\n", KT_SP_ENDINGS_Q);
+    if (e->ns) {
+        put_byte(q, '\n');
+        put_fmt(q, KT_SP_ENDINGS_Q_SESS, e->ns, ksp_ending_shown(e->swas),
+                ksp_ending_shown(e->snow));
+    }
+    if (e->nk) {
+        put_byte(q, '\n');
+        put_fmt(q, KT_SP_ENDINGS_Q_KEYS, e->nk, ksp_ending_shown(e->kwas),
+                ksp_ending_shown(e->know));
+    }
+    put_fmt(q, "\n\n%s", KT_SP_ENDINGS_Q_LEFT);
+    if (e->nk && e->kwas[0]) {
+        put_byte(q, '\n');
+        put_fmt(q, KT_SP_ENDINGS_Q_OLDKEYS, e->kwas);
+    }
+    if (!kitty_confirm_modeless3(owner, KT_CAP_KITTYPP, q->s, NULL,
+                                 KT_SP_ENDINGS_YES, KT_SP_ENDINGS_GOTO,
+                                 KT_SP_ENDINGS_NO, ksp_endings_answer, e))
+        sfree(e);                       /* not shown: asked at the next start */
+    strbuf_free(q);
+}
+
 /* ==== The tree's roots: KiTTY++ Settings, Session Panel ================= */
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
@@ -4091,6 +4313,28 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
                             kitty_sp_hostkeys_browse_handler, P(NULL));
         c->column = 1;
         c->align_next_to = ksp_hostkeys_edit;
+        ctrl_columns(s, 1, 100);
+        /* the host-key files' ending, and the session files' (hknet/KiTTY#56):
+         * old KiTTY's hostkeyextension and fileextension; each Apply renames */
+        ctrl_columns(s, 2, 75, 25);
+        ksp_keyext_edit = ctrl_editbox(s, KT_SP_KEYEXT_LABEL, NO_SHORTCUT, 50,
+                                       HELPCTX(kitty_storage),
+                                       kitty_sp_keyext_edit_handler, P(NULL), P(NULL));
+        ksp_keyext_edit->column = 0;
+        c = ctrl_pushbutton(s, KT_SP_SUFFIX_APPLY, NO_SHORTCUT, HELPCTX(kitty_storage),
+                            kitty_sp_keyext_apply_handler, P(NULL));
+        c->column = 1;
+        c->align_next_to = ksp_keyext_edit;
+        ctrl_columns(s, 1, 100);
+        ctrl_columns(s, 2, 75, 25);
+        ksp_suffix_edit = ctrl_editbox(s, KT_SP_SUFFIX_LABEL, NO_SHORTCUT, 50,
+                                       HELPCTX(kitty_storage),
+                                       kitty_sp_suffix_edit_handler, P(NULL), P(NULL));
+        ksp_suffix_edit->column = 0;
+        c = ctrl_pushbutton(s, KT_SP_SUFFIX_APPLY, NO_SHORTCUT, HELPCTX(kitty_storage),
+                            kitty_sp_suffix_apply_handler, P(NULL));
+        c->column = 1;
+        c->align_next_to = ksp_suffix_edit;
         ctrl_columns(s, 1, 100);
     }
     if (GetReadOnlyFlag())
@@ -4206,21 +4450,6 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU,
                   NO_SHORTCUT, HELPCTX(kitty_folders),
                   kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_FILTER));
-    /* KiTTY (hknet/KiTTY#56): the folder store's session file suffix - the
-     * text box, and the button that applies it (and offers the rename). */
-    {
-        dlgcontrol *c;
-        ctrl_columns(s, 2, 70, 30);
-        ksp_suffix_edit = ctrl_editbox(s, KT_SP_SUFFIX_LABEL, NO_SHORTCUT, 50,
-                                       HELPCTX(kitty_folders),
-                                       kitty_sp_suffix_edit_handler, P(NULL), P(NULL));
-        ksp_suffix_edit->column = 0;
-        c = ctrl_pushbutton(s, KT_SP_SUFFIX_APPLY, NO_SHORTCUT, HELPCTX(kitty_folders),
-                            kitty_sp_suffix_apply_handler, P(NULL));
-        c->column = 1;
-        c->align_next_to = ksp_suffix_edit;
-        ctrl_columns(s, 1, 100);
-    }
 
     s = ctrl_getset(b, "Application/Config Window/Session Panel", "opening", KT_SESSION_PARAMETER_OPENING);
     ctrl_checkbox(s, KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED,

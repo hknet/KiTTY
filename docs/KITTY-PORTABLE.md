@@ -35,8 +35,8 @@ folder store lists a file only when it holds a `HostName` or `Protocol`
 setting, in either file format; dot-files and dot-folders (`.git`,
 `.gitignore`) are never looked at, so a README or a log beside the sessions
 stays out of the list. `[KiTTY] fileextension` - old KiTTY's key, a dot put in
-front if missing - (Application > Config Window > Session Panel, "Session file
-suffix") adds an ending such as `.ktx` to every session file name, which keeps
+front if missing, none by default - (Application > KiTTY++ Settings > Storage &
+Backup, "Session File Extension") adds an ending such as `.ktx` to every session file name, which keeps
 session files apart from other files in the folder; the list shows the names
 without it. It is also the file type registered for double-clicked session
 files. A session file without
@@ -47,10 +47,14 @@ Windows device name, or one ending in a dot or a space, can be saved.
 
 **The host-key folder can be set, and classic KiTTY's putty.conf is taken
 over.** Application > KiTTY++ Settings > Storage & Backup, group "This
-KiTTY++", has a "Host keys folder" field with a folder picker
-(`[KiTTY] sshhostkeys`); `hostkeyextension` - old KiTTY's key too - adds an
-ending such as `.khk` to host-key file names. When it is set or changed, the
-existing host-key files are renamed to carry it at the next start; a file
+KiTTY++", has a "Host Keys Folder" field with a folder picker
+(`[KiTTY] sshhostkeys`), and below it "Host Key File Extension"
+(`hostkeyextension`, old KiTTY's key too; none by default), which adds an
+ending such as `.khk` to host-key file names. Its Apply renames the existing
+host-key files at once. Either ending changed in kitty.ini by hand is offered
+as a rename at the next start of the configuration window (Yes / No /
+Storage & Backup...; after No, host keys under an old ending are not read).
+A file
 arriving later without it is renamed when its host is first used, and where
 both names exist the one with the ending is read. A putty.conf's `Sessions`,
 `sessionsuffix`, `SshHostKeys` and `keysuffix` are copied into kitty.ini once

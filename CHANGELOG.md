@@ -33,9 +33,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `fileextension` and `hostkeyextension`.** An old KiTTY's `kitty.ini` with
   `fileextension=.ktx` and `hostkeyextension=.khk` now works as it did
   there; 0.85.1.13's `sessionsuffix` / `keysuffix` are copied into them once
-  and removed. When `hostkeyextension` is set or changed, the existing
-  host-key files are renamed to carry it at the next start, and one arriving
-  later without it is renamed when its host is first used (hknet/KiTTY#56).
+  and removed. A host-key file without the ending is renamed when its host
+  is first used (hknet/KiTTY#56).
+- **Both file-name endings are set in Application > KiTTY++ Settings >
+  Storage & Backup**, below the host-key folder: Host Key File Extension
+  (new; its Apply renames the host-key files at once and reports how many)
+  and Session File Extension (moved there from the Session Panel). Neither
+  has a default, as in old KiTTY. Either ending changed in `kitty.ini` by
+  hand is offered as a rename at the next start of the configuration
+  window, one question for both: Yes renames, No keeps the names and is not
+  asked again, Storage & Backup... opens that panel.
 - **The suite's windows keep their place for each monitor layout, and
   always open fully on a screen.** The configuration window (it remembered
   one place for every layout), Organize sessions (it remembered nothing),

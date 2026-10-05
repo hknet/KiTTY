@@ -43,6 +43,12 @@ HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *
 HWND kitty_confirm_modeless_check( HWND owner, const char *caption, const char *text,
                                    const char *b_yes, const char *b_no, const char *check,
                                    void (*done)( int yes, int checked, void *ctx ), void *ctx );
+/* Three named buttons, modeless; b_no is the default. done(1 = b_yes,
+ * 2 = b_third, 3 = b_no, 0 = Escape / closed / owner gone, ctx) once.
+ * NULL = not made. */
+HWND kitty_confirm_modeless3( HWND owner, const char *caption, const char *text,
+                              const char *detail, const char *b_yes, const char *b_third,
+                              const char *b_no, void (*done)( int answer, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 /* kitty_info_box, modeless (detail as above); NULL = not made. */
 HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,

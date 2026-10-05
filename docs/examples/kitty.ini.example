@@ -247,10 +247,17 @@
 ;    key, read the same way. It keeps session files apart from other files in
 ;    the folder. The list shows the names without it; a session file without
 ;    it is still listed and gets it on its next save. Changing it in
-;    Application > Config Window > Session Panel offers to rename the existing
-;    files. Also the file type registered for double-clicked session files
-;    (.ktx when empty). Folder store only. Default: none.
+;    Application > KiTTY++ Settings > Storage & Backup offers to rename the
+;    existing files. Changed here by hand, the configuration window asks at
+;    the next start whether to rename the session files to it (Yes renames,
+;    No keeps the names and is not asked again). Also the file type
+;    registered for double-clicked session files (.ktx when empty).
+;    Folder store only. Default: none.
 ;fileextension=
+
+; fileextensionapplied: written by KiTTY - the ending the session files were
+;    last renamed to, or the rename was declined for.
+;fileextensionapplied=
 
 ; sshhostkeys: the folder store's host-key folder. Default (empty): the
 ;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings
@@ -259,13 +266,16 @@
 
 ; hostkeyextension: an ending added to every host-key file name in the folder
 ;    store, for example .khk (a dot is put in front if missing) - old KiTTY's
-;    key. When it is set or changed, the host-key files are renamed to carry it
-;    once, at the next start; a file arriving later without it is renamed when
-;    its host is first used. Default: none.
+;    key. Set in Application > KiTTY++ Settings > Storage & Backup, or here:
+;    changed here by hand, the configuration window asks at the next start
+;    whether to rename the host-key files to it (one question with the
+;    session files'). After No, host keys under an old ending are not read.
+;    A file arriving later without it is renamed when its host is first
+;    used. Default: none.
 ;hostkeyextension=
 
 ; hostkeyextensionapplied: written by KiTTY - the ending the host-key files
-;    were last renamed to.
+;    were last renamed to, or the rename was declined for.
 ;hostkeyextensionapplied=
 
 ; sessionsuffix, keysuffix: the names 0.85.1.13 used for fileextension and

@@ -198,19 +198,22 @@ space, a `%` typed by hand - is listed under its decoded name, opened under
 it and saved in place under its old file name.
 `[KiTTY] fileextension` - old KiTTY's key, read the same way - adds an ending
 such as `.ktx` to every session file, which keeps them apart from other files
-in the folder (Application > Config Window > Session Panel, *Session file
-suffix*); the list shows the names without it, a file without it is still
+in the folder (Application > KiTTY++ Settings > Storage & Backup, *Session
+File Extension*; none by default, as in old KiTTY); the list shows the names without it, a file without it is still
 listed and gets it on its next save, and changing it offers to rename the
 existing files once. It is also the file type registered for double-clicked
 session files.
 
 **Folder store: the host-key folder can be set, and classic KiTTY's
 putty.conf is taken over.** Storage & Backup, group "This KiTTY++", has a
-**Host keys folder** field with a folder picker (`[KiTTY] sshhostkeys`; in the
-registry store it shows the registry key, read-only); `hostkeyextension` - old
-KiTTY's key too - adds an ending such as `.khk` to host-key file names. When it
-is set or changed, the existing host-key files are renamed to carry it at the
-next start; one arriving later without it is renamed when its host is first
+**Host Keys Folder** field with a folder picker (`[KiTTY] sshhostkeys`; in the
+registry store it shows the registry key, read-only). Below it, **Host Key
+File Extension** (`hostkeyextension`, old KiTTY's key too; none by default)
+adds an ending such as `.khk` to host-key file names: its Apply renames the
+existing host-key files at once. Either ending changed in kitty.ini by hand is
+offered as a rename at the next start of the configuration window, one
+question for both (after No, host keys under an old ending are not read); one
+arriving later without it is renamed when its host is first
 used, and where both names exist the one with the ending is read. A
 putty.conf's `Sessions`, `sessionsuffix`, `SshHostKeys` and `keysuffix` are
 copied into kitty.ini once (as `sessions`, `fileextension`, `sshhostkeys` and

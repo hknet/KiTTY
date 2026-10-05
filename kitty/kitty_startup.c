@@ -528,8 +528,8 @@ void InitWinMain( void ) {
 			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
-			/* the host-key files renamed to a new hostkeyextension, once */
-			kitty_store_hostkey_rename() ;
+			/* A hand-edited hostkeyextension / fileextension renames nothing
+			 * here: the configuration box asks first (kitty_sp_endings_offer). */
 			/* Portable at-rest password policy: master (default) or the
 			 * explicit legacy/plaintext compatibility escape hatch. */
 			if( readINI( KittyIniFile, INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION, ppmode, sizeof(ppmode) ) )

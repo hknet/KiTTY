@@ -3575,14 +3575,26 @@
 #define KT_SP_SUFFIX_LEFT                            "%d left as they are because the new name already exists:"
 #define KT_SP_JUMP_REWRITTEN                         "Jump host updated in these sessions:\n%s"
 #define KT_SP_MOVE_CLASH                             "Nothing was moved. These sessions already exist in \"%s\":\n%s"
-/* Application > Config Window > Session Panel and Storage & Backup
- * (kitty_config_app.c): the session file suffix and the host-key folder. */
-#define KT_SP_SUFFIX_LABEL                           "Session file suffix"
-#define KT_SP_SUFFIX_APPLY                           "Apply suffix"
+/* Application > KiTTY++ Settings > Storage & Backup (kitty_config_app.c):
+ * the host-key folder, the host-key file ending and the session file ending. */
+#define KT_SP_SUFFIX_LABEL                           "Session File Extension"
+#define KT_SP_SUFFIX_APPLY                           "Apply"
+#define KT_SP_KEYEXT_LABEL                           "Host Key File Extension"
+#define KT_SP_KEYEXT_RENAMED                         "%d host-key files renamed."
 #define KT_SP_STORAGE_THIS_KITTYPP                   "This KiTTY++"
-#define KT_SP_HOSTKEYS_FOLDER                        "Host keys folder"
+#define KT_SP_HOSTKEYS_FOLDER                        "Host Keys Folder"
 #define KT_SP_HOSTKEYS_BROWSE                        "Browse..."
 #define KT_SP_HOSTKEYS_REGISTRY                      "HKCU\\%s (registry)"
+/* The startup question when kitty.ini's endings were edited by hand. */
+#define KT_SP_ENDINGS_Q                              "kitty.ini sets new file-name endings. Rename the files now?"
+#define KT_SP_ENDINGS_Q_SESS                         "Session files: %d, from \"%s\" to \"%s\""
+#define KT_SP_ENDINGS_Q_KEYS                         "Host-key files: %d, from \"%s\" to \"%s\""
+#define KT_SP_ENDINGS_Q_LEFT                         "A file whose new name already exists is left as it is and listed afterwards."
+#define KT_SP_ENDINGS_Q_OLDKEYS                      "After No, host keys under the old ending \"%s\" are not read."
+#define KT_SP_ENDINGS_YES                            "Yes"
+#define KT_SP_ENDINGS_NO                             "No"
+#define KT_SP_ENDINGS_GOTO                           "Storage && Backup..."   /* a button: && shows one & */
+#define KT_SP_ENDINGS_OK                             "OK"
 
 /* Moving sessions safely (kitty_sessionrekey.c, windows/storage.c). */
 #define KT_SP_PATH_BLOCKED                           "A session and a folder would both be \"%s\" in the session folder.\n\n" \

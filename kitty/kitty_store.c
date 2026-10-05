@@ -575,8 +575,11 @@ void kitty_store_ini_takeover(void) {
  * suffixed one wins); the store's reader also takes a file without the
  * ending and renames it (kitty_storage.c), for files that arrive later.
  * After the store is switched on; nothing happens where kitty.ini cannot be
- * written, since the change could not be recorded. Nothing is reported: a
- * file left as it is only lost to its twin with the ending, which is read.
+ * written, since the change could not be recorded. Returns the number of
+ * files renamed; the names left as they are go into `clashes` (may be NULL),
+ * one per line, as far as they fit. dry_run counts what would be renamed and
+ * changes nothing, the record included. The callers - the panel's Apply and
+ * the configuration box's start-up question - show both.
  */
 const char *kitty_hostkey_suffix(void);
 char *portable_subdir_path(const char *subdir);
@@ -584,20 +587,41 @@ static int kstore_ends_with( const char *s, const char *end ) {
 	size_t ls = strlen( s ), le = strlen( end ) ;
 	return le && ls > le && !stricmp( s + ls - le, end ) ;
 }
-void kitty_store_hostkey_rename( void ) {
+
+/* The ending last applied (hostkeyextensionapplied, fileextensionapplied):
+ * "" when none is recorded. */
+void kitty_store_ending_applied( const char *key, char *buf, size_t n ) {
+	const char *ini = GetKittyIniFile() ;
+	if( !n ) return ;
+	buf[0] = '\0' ;
+	if( ini && ini[0] && !GetNoKittyFileFlag() )
+		readINI( ini, INIT_SECTION, key, buf, (int)n ) ;
+	str_rtrim( buf, " \n\r\t" ) ;
+}
+/* Record `now` as applied (the files renamed to it, or the rename declined). */
+void kitty_store_ending_mark( const char *key, const char *now ) {
+	const char *ini = GetKittyIniFile() ;
+	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	if( now && now[0] ) writeINI( ini, INIT_SECTION, key, now ) ;
+	else delINI( ini, INIT_SECTION, key ) ;
+}
+
+int kitty_store_hostkey_rename( int dry_run, char *clashes, size_t clsize ) {
 	const char *ini = GetKittyIniFile() ;
 	const char *now = kitty_hostkey_suffix() ;
 	char was[64] = "", pat[2 * MAX_PATH + 4], base[MAX_PATH] ;
 	char from[3 * MAX_PATH + 8], to[3 * MAX_PATH + 72] ;
 	char *dir ;
+	int done = 0 ;
 	WIN32_FIND_DATAA fd ;
 	HANDLE h ;
 
-	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	if( clashes && clsize ) clashes[0] = '\0' ;
+	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return 0 ;
 	readINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, was, sizeof(was) ) ;
 	str_rtrim( was, " \n\r\t" ) ;
-	if( !stricmp( was, now ) ) return ;
-	if( !( dir = portable_subdir_path( "SshHostKeys" ) ) ) return ;
+	if( !stricmp( was, now ) ) return 0 ;
+	if( !( dir = portable_subdir_path( "SshHostKeys" ) ) ) return 0 ;
 	snprintf( pat, sizeof(pat), "%s\\*", dir ) ;
 	h = FindFirstFileA( pat, &fd ) ;
 	if( h != INVALID_HANDLE_VALUE ) {
@@ -610,14 +634,22 @@ void kitty_store_hostkey_rename( void ) {
 			snprintf( from, sizeof(from), "%s\\%s", dir, fd.cFileName ) ;
 			snprintf( to, sizeof(to), "%s\\%s%s", dir, base, now ) ;
 			/* the new name taken already: that file wins, this one stays */
-			if( stricmp( from, to ) && GetFileAttributesA( to ) == INVALID_FILE_ATTRIBUTES )
-				MoveFileA( from, to ) ;
+			if( !stricmp( from, to ) ) continue ;
+			if( GetFileAttributesA( to ) == INVALID_FILE_ATTRIBUTES &&
+			    ( dry_run || MoveFileA( from, to ) ) )
+				done++ ;
+			else if( clashes && clsize ) {
+				size_t used = strlen( clashes ) ;
+				if( used + strlen( fd.cFileName ) + 2 < clsize )
+					snprintf( clashes + used, clsize - used, "%s%s", used ? "\n" : "", fd.cFileName ) ;
+			}
 		} while( FindNextFileA( h, &fd ) ) ;
 		FindClose( h ) ;
 	}
 	sfree( dir ) ;
-	if( now[0] ) writeINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, now ) ;
-	else delINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED ) ;
+	if( !dry_run )
+		kitty_store_ending_mark( KI_HOSTKEYEXTENSIONAPPLIED, now ) ;
+	return done ;
 }
 
 HSettingsItem SettingsNewItem( const char * name, const char * value ) {

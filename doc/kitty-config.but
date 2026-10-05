@@ -1622,16 +1622,6 @@ you have more than a handful.
 
 \b \q{Search the list as you type} filters the list from the keyboard.
 
-\b \q{Session file suffix} (folder store only): an ending added to every
-session file name, for example \c{.ktx}. The list shows the names
-without it. Changing it offers to rename the existing files. A session
-file without the suffix is still listed and gets the suffix on its next
-save. The ending keeps session files apart from other files in the
-folder, and a dot is put in front if missing. \c{kitty.ini}:
-\c{[KiTTY] fileextension}, old KiTTY's key, which is also the file type
-registered for double-clicked session files. The new suffix takes
-effect when \q{Apply suffix} is pressed; greyed in the registry store.
-
 \b \q{Open on the last used session} starts each KiTTY on the session
 you used last. Off, KiTTY starts in \e{quick connect}: every window
 opens on \q{Default Settings} with the cursor already in \q{Host Name},
@@ -2303,7 +2293,7 @@ behind: uncheck and check again from the new place.
 
 The only key in \c{kitty.ini} here is \c{fileextension} under
 \c{[KiTTY]} - in the folder store also the ending of every session file
-(\q{Session file suffix} on the Session Panel); the registrations
+(\q{Session File Extension} on Storage & Backup); the registrations
 themselves live in the Windows registry, not in the file.
 
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
@@ -2429,16 +2419,40 @@ configuration file (\c{conf=no}) the panel states so and offers no
 fields: the backups are not written in either state, so a count would
 change nothing.
 
-\b \q{Host keys folder} (folder store only): where accepted host keys are
+\b \q{Host Keys Folder} (folder store only): where accepted host keys are
 kept. Empty means the SshHostKeys folder beside Sessions.
-\c{kitty.ini}: \c{[KiTTY] sshhostkeys}, with \c{hostkeyextension} (old
-KiTTY's key, a dot put in front if missing) for an ending on host-key
-file names: when it is set or changed, the host-key files are renamed to
-carry it at the next start, a file arriving later without it is renamed
-when its host is first used, and where both names exist the one with the
-ending is read. \q{Browse...} picks the folder. In the registry
-store the field shows the registry key, read-only, and \q{Browse...} is
-greyed.
+\c{kitty.ini}: \c{[KiTTY] sshhostkeys}. \q{Browse...} picks the folder.
+In the registry store the field shows the registry key, read-only, and
+\q{Browse...} is greyed.
+
+\b \q{Host Key File Extension} (folder store only): an ending on every
+host-key file name, for example \c{.khk}; none by default. \q{Apply}
+puts it in force and renames the host-key files to carry it at once,
+then reports how many; a file whose new name exists already is left as
+it is and named. A file arriving later without it is renamed when its
+host is first used, and where both names exist the one with the ending
+is read. \c{kitty.ini}: \c{[KiTTY] hostkeyextension}, old KiTTY's key.
+
+\b \q{Session File Extension} (folder store only): an ending on every
+session file name, for example \c{.ktx}; none by default. The list
+shows the names without it. \q{Apply} puts it in force and offers to
+rename the existing files. A session file without it is still listed
+and gets it on its next save. \c{kitty.ini}: \c{[KiTTY] fileextension},
+old KiTTY's key, which is also the file type registered for
+double-clicked session files.
+
+For both endings a dot is put in front if missing, and both rows are
+greyed in the registry store.
+
+Either ending changed in \c{kitty.ini} by hand: at the next start the
+configuration window asks once whether to rename the files to it, one
+question for both, nothing renamed until it is answered. \q{Yes} renames
+and reports as \q{Apply} does; \q{No} keeps the names and is not asked
+again - host keys under an old ending are then not read;
+\q{Storage & Backup...} opens this panel, and the question comes back at
+the next start, as it does when the window is closed unanswered.
+\c{fileextensionapplied} and \c{hostkeyextensionapplied} in
+\c{kitty.ini} record the ending last applied.
 
 \b \q{Registry backups to keep} is how many timestamped \c{.sav}
 exports of the hive an installed copy keeps; in a folder store the
