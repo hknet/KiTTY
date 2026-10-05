@@ -15,7 +15,18 @@
 
 static int kitty_auxpos_persist = 1;       /* 0 => place only, nothing stored */
 static char kitty_auxpos_file[MAX_PATH];   /* set => this file, not the registry */
+static char kitty_auxpos_regkey[MAX_PATH] = KITTY_AUXPOS_REGKEY;
 void kitty_auxpos_set_persist(int on) { kitty_auxpos_persist = on ? 1 : 0; }
+
+/* The hive in use (kitty.exe's KiClassName=PuTTY moves it): AuxWinPos under
+ * it, so nothing is written to a hive this copy does not use. */
+void kitty_auxpos_set_regbase(const char *base)
+{
+    if (base && base[0] &&
+        strlen(base) + sizeof("\\" KITTY_AUXPOS_SECTION) <= sizeof(kitty_auxpos_regkey))
+        snprintf(kitty_auxpos_regkey, sizeof(kitty_auxpos_regkey), "%s\\%s",
+                 base, KITTY_AUXPOS_SECTION);
+}
 
 void kitty_auxpos_set_file_beside_exe(void)
 {
@@ -92,7 +103,7 @@ static int kitty_auxpos_read(const char *key, int *x, int *y, int *w, int *h)
         HKEY hk;
         DWORD type = 0, sz = sizeof(buf) - 1;
         buf[0] = '\0';
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, KITTY_AUXPOS_REGKEY, 0, KEY_READ, &hk)
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_auxpos_regkey, 0, KEY_READ, &hk)
             != ERROR_SUCCESS)
             return 0;
         if (RegQueryValueExA(hk, vn, NULL, &type, (LPBYTE)buf, &sz) != ERROR_SUCCESS) {
@@ -130,7 +141,7 @@ static void kitty_auxpos_write(const char *key, int x, int y, int w, int h)
         WritePrivateProfileStringA(KITTY_AUXPOS_SECTION, vn, val, kitty_auxpos_file);
     } else {
         HKEY hk;
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_AUXPOS_REGKEY, 0, NULL, 0,
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, kitty_auxpos_regkey, 0, NULL, 0,
                             KEY_WRITE, NULL, &hk, NULL) == ERROR_SUCCESS) {
             RegSetValueExA(hk, vn, 0, REG_SZ, (const BYTE*)val, (DWORD)strlen(val) + 1);
             RegCloseKey(hk);

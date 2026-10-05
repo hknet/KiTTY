@@ -31,7 +31,8 @@
  * layout and a single screen each keep their own; the value is "x,y,w,h"
  * (w,h in logical pixels, 96 DPI). A restored window is always moved fully
  * onto the work area of the nearest monitor, its size capped to it. Stored
- * under HKCU\Software\kapper.net\KiTTY\AuxWinPos - or, for a portable copy,
+ * under HKCU\Software\kapper.net\KiTTY\AuxWinPos (kitty.exe: AuxWinPos under
+ * the hive in use, kitty_auxpos_set_regbase) - or, for a portable copy,
  * in [AuxWinPos] of KITTY_AUXPOS_FILE beside the exe
  * (kitty_auxpos_set_file_beside_exe, called at start-up). */
 
@@ -48,5 +49,6 @@ void kitty_auxpos_save(HWND dlg, const char *key);
 int kitty_auxpos_seed(const char *key, int x, int y, int w, int h);
 void kitty_auxpos_set_persist(int on);   /* default on; 0 => place only, nothing stored */
 void kitty_auxpos_set_file_beside_exe(void);   /* portable: the file, not the registry */
+void kitty_auxpos_set_regbase(const char *base);   /* <base>\AuxWinPos, not kapper.net's */
 
 #endif

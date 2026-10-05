@@ -263,7 +263,11 @@ void InitWinMain( void ) {
 	/* Select the registry hive to match KiClassName: default KiTTY's own
 	 * (Software\9bis.com\KiTTY); PuTTY's hive when KiClassName=PuTTY. */
 	{ extern void kitty_set_registry_root(int use_putty);
-	  kitty_set_registry_root( !stricmp(KiTTYClassName, "PuTTY") ) ; }
+	  extern const char *kitty_registry_base(void);
+	  extern void kitty_auxpos_set_regbase(const char *base);
+	  kitty_set_registry_root( !stricmp(KiTTYClassName, "PuTTY") ) ;
+	  /* the window memory follows it (never into a hive not in use) */
+	  kitty_auxpos_set_regbase( kitty_registry_base() ) ; }
 #endif
 
 	// Initialise the menu table
