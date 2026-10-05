@@ -1404,6 +1404,7 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
     DWORD hit = (DWORD)SendMessage(list, LB_ITEMFROMPOINT, 0, MAKELPARAM(x, y));
     int row = HIWORD(hit) ? -1 : (int)LOWORD(hit), col = -1, i, left, avail;
     char *text, *p;
+    const char *own;
     SIZE sz;
     HDC hdc;
     HFONT font, old = NULL;
@@ -1436,18 +1437,31 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
     if (row < 0)
         return;
 
-    text = kt_hl_row_text(list, row);
-    for (p = text, i = 0; p && i < col; i++) {
-        p = strchr(p, '\t');
-        if (p) p++;
+    /* KiTTY: a row with a tip of its own shows that, cut or not */
+    own = NULL;
+    if (st->ctrl->listbox.rowtip) {
+        LRESULT idv = SendMessage(list, LB_GETITEMDATA, row, 0);
+        if (idv != LB_ERR)
+            own = st->ctrl->listbox.rowtip(st->ctrl, (int)idv);
+    }
+    if (own) {
+        text = dupstr(own);
+        p = text;
+    } else {
+        text = kt_hl_row_text(list, row);
+        for (p = text, i = 0; p && i < col; i++) {
+            p = strchr(p, '\t');
+            if (p) p++;
+        }
     }
     if (!p || !*p) {
         sfree(text);
         return;
     }
-    p[strcspn(p, "\t")] = '\0';
+    if (!own)
+        p[strcspn(p, "\t")] = '\0';
     left = col ? st->edge[col - 1] : 0;
-    avail = st->edge[col] - left - 2 * KT_HL_PAD;
+    avail = own ? -1 : st->edge[col] - left - 2 * KT_HL_PAD;
     sz.cx = 0;
     hdc = GetDC(list);
     if (hdc) {
@@ -1571,9 +1585,53 @@ static LRESULT CALLBACK kt_hl_proc(HWND hwnd, UINT msg, WPARAM wParam,
         if (!wParam)
             kt_hl_tip_hide(st);
         break;
+      case WM_KEYDOWN:
+        kt_hl_tip_hide(st);
+        /* KiTTY: a key the list's owner handles (the session list's
+         * Backspace = one folder up) never reaches the list */
+        if (st->ctrl->listbox.rowkey &&
+            st->ctrl->listbox.rowkey(st->ctrl, (int)wParam))
+            return 0;
+        break;
+      case WM_CONTEXTMENU:
+        /* KiTTY: the row under the mouse - or, from the keyboard (-1,-1),
+         * the selected row - is selected and its menu offered. */
+        if (st->ctrl->listbox.rowmenu) {
+            POINT pt;
+            int row = -1;
+            kt_hl_tip_hide(st);
+            pt.x = (short)LOWORD(lParam);
+            pt.y = (short)HIWORD(lParam);
+            if (pt.x == -1 && pt.y == -1) {
+                RECT ir;
+                row = (int)SendMessage(hwnd, LB_GETCARETINDEX, 0, 0);
+                if (row < 0 ||
+                    SendMessage(hwnd, LB_GETITEMRECT, row, (LPARAM)&ir) == LB_ERR)
+                    return 0;
+                pt.x = ir.left + 8;
+                pt.y = ir.bottom;
+                ClientToScreen(hwnd, &pt);
+            } else {
+                POINT cp = pt;
+                DWORD hit;
+                ScreenToClient(hwnd, &cp);
+                hit = (DWORD)SendMessage(hwnd, LB_ITEMFROMPOINT, 0,
+                                         MAKELPARAM(cp.x, cp.y));
+                if (HIWORD(hit))
+                    return 0;              /* below the last row */
+                row = (int)LOWORD(hit);
+            }
+            {
+                LRESULT idv = SendMessage(hwnd, LB_GETITEMDATA, row, 0);
+                if (idv == LB_ERR)
+                    return 0;
+                st->ctrl->listbox.rowmenu(st->ctrl, row, (int)idv, pt.x, pt.y);
+            }
+            return 0;
+        }
+        break;
       case WM_VSCROLL:
       case WM_MOUSEWHEEL:
-      case WM_KEYDOWN:
       case WM_LBUTTONDOWN:
       case WM_KILLFOCUS:
         kt_hl_tip_hide(st);
@@ -1633,7 +1691,8 @@ static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
     HDC hdc = di->hDC;
     RECT r = di->rcItem;
     bool dark = kitty_theme_window_dark(dp->hwnd);
-    bool header = (di->itemID == 0);
+    /* a plain list with row inks is drawn here too, and has no header */
+    bool header = ctrl->listbox.headerrow && (di->itemID == 0);
     bool selected = !header && (di->itemState & ODS_SELECTED);
     COLORREF back, ink;
     int len, ntabs = 0, *tabs = NULL;
@@ -2576,9 +2635,10 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                 }
             } else {
                 /* Ordinary list. */
+                /* KiTTY: owner-drawn for a header row, and for a per-row ink */
                 listbox(&pos, escaped, base_id, base_id+1,
                         ctrl->listbox.height, ctrl->listbox.multisel,
-                        ctrl->listbox.headerrow);
+                        ctrl->listbox.headerrow || ctrl->listbox.rowink);
                 kt_hl_attach(GetDlgItem(cp->hwnd, base_id+1), ctrl);
             }
             if (ctrl->listbox.ncols) {
@@ -2795,8 +2855,8 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
         return false;                  /* we have nothing to do */
 
     if (msg == WM_DRAWITEM && c->ctrl && c->ctrl->type == CTRL_LISTBOX &&
-        c->ctrl->listbox.headerrow) {
-        /* KiTTY: a row of a header-row list. */
+        (c->ctrl->listbox.headerrow || c->ctrl->listbox.rowink)) {
+        /* KiTTY: a row of a header-row list, or of a list with row inks. */
         kitty_draw_header_list_item(dp, c->ctrl, (LPDRAWITEMSTRUCT)lParam);
         return true;
     }

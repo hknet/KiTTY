@@ -2445,10 +2445,10 @@ For both endings a dot is put in front if missing, and both rows are
 greyed in the registry store.
 
 Either ending changed in \c{kitty.ini} by hand: at the next start the
-configuration window asks once whether to rename the files to it, one
-question for both, nothing renamed until it is answered. \q{Yes} renames
-and reports as \q{Apply} does; \q{No} keeps the names and is not asked
-again - host keys under an old ending are then not read;
+configuration window puts up one question - rename the files to it? - for
+both endings, and nothing is renamed until it is answered. \q{Yes} renames
+and reports as \q{Apply} does; \q{No} keeps the names and the question
+does not come back - host keys under an old ending are then not read;
 \q{Storage & Backup...} opens this panel, and the question comes back at
 the next start, as it does when the window is closed unanswered.
 \c{fileextensionapplied} and \c{hostkeyextensionapplied} in

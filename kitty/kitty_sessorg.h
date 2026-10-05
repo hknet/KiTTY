@@ -22,13 +22,23 @@ void kitty_sessorg_arrange(HWND owner, int first_start);
 /* Is the one-time offer still to be checked in this store? */
 int kitty_sessorg_arrange_pending(void);
 
-/* Delete `folder`, which holds sessions: the box asks where they go (the
+/* Delete `folder`, which holds sessions: the box queries where they go (the
  * root preselected) and moves them - subfolders keep their shape below the
  * destination - with everything that hangs off their names. done(deleted,
  * ctx) runs once: 1 when the folder is gone. */
 void kitty_sessorg_delete_folder(HWND owner, const char *folder,
                                  void (*done)(int deleted, void *ctx),
                                  void *ctx);
+
+/* Delete any folder as Organize does: with sessions in it the box above comes up;
+ * empty, it goes at once and done(1, ctx) runs. */
+void kitty_sessorg_delete_any_folder(HWND owner, const char *folder,
+                                     void (*done)(int deleted, void *ctx),
+                                     void *ctx);
+
+/* The Organize window's rename prompt for one session (`folder` 0) or one
+ * folder path (`folder` 1), from the session list's menu and F2. */
+void kitty_sessorg_rename(HWND owner, int folder, const char *target);
 
 /* Move the folder `from`, with everything below it, to `to` (a rename, or
  * the delete of `from` into an existing folder): path sessions re-keyed,

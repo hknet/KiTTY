@@ -401,9 +401,97 @@ void kitty_winname_box( HWND owner ) {
 	}
 }
 
+/*
+ * A text question on the same template, for any caller: caption, prompt, the
+ * text it starts with (selected), and done(text, ctx) on OK - a Unicode
+ * dialog, so a name outside the ANSI code page shows as it is. done returns 1
+ * to close the box, 0 to keep it open for another try (it has shown why).
+ * Cancel, Esc or closing calls done(NULL, ctx) once, so ctx can be freed
+ * there. Modeless, registered as an aux dialog; the dialog hook themes it.
+ */
+#define KITTY_ASKTEXT_MAXLEN	260
+struct kitty_asktext {
+	char *caption, *prompt ;
+	wchar_t *init ;
+	int (*done)( const wchar_t *text, void *ctx ) ;
+	void *ctx ;
+	int finished ;
+} ;
+
+static INT_PTR CALLBACK kitty_asktext_proc( HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
+	struct kitty_asktext *a = (struct kitty_asktext *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
+	switch( message ) {
+		case WM_INITDIALOG: {
+			HWND edit = GetDlgItem( hwnd, IDC_RESULT ) ;
+			HWND prompt = FindWindowExA( hwnd, NULL, "Static", NULL ) ;
+			a = (struct kitty_asktext *)lParam ;
+			SetWindowLongPtr( hwnd, GWLP_USERDATA, lParam ) ;
+			SetWindowTextA( hwnd, a->caption ) ;
+			if( prompt ) SetWindowTextA( prompt, a->prompt ) ;
+			SendMessageW( edit, EM_LIMITTEXT, KITTY_ASKTEXT_MAXLEN, 0 ) ;
+			SetWindowTextW( edit, a->init ? a->init : L"" ) ;
+			SendMessageW( edit, EM_SETSEL, 0, -1 ) ;
+			kitty_dialog_icon( hwnd, NULL ) ;
+			kitty_centre_on_owner( hwnd ) ;
+			SetFocus( edit ) ;
+			return FALSE ;
+		}
+		case WM_COMMAND:
+			if( !a ) break ;
+			if( LOWORD(wParam) == IDOK ) {
+				wchar_t text[KITTY_ASKTEXT_MAXLEN + 1] = L"" ;
+				GetWindowTextW( GetDlgItem( hwnd, IDC_RESULT ), text, KITTY_ASKTEXT_MAXLEN + 1 ) ;
+				if( a->done( text, a->ctx ) ) {
+					a->finished = 1 ;
+					DestroyWindow( hwnd ) ;
+				}
+				return TRUE ;
+			}
+			if( LOWORD(wParam) == IDCANCEL ) {
+				DestroyWindow( hwnd ) ;
+				return TRUE ;
+			}
+			break ;
+		case WM_CLOSE:
+			DestroyWindow( hwnd ) ;
+			return TRUE ;
+		case WM_DESTROY:
+			ShinyRemoveAuxDialog( hwnd ) ;
+			if( a ) {
+				if( !a->finished ) a->done( NULL, a->ctx ) ;
+				free( a->caption ) ; free( a->prompt ) ; free( a->init ) ;
+				free( a ) ;
+				SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
+			}
+			break ;
+	}
+	return FALSE ;
+}
+
+HWND kitty_ask_text( HWND owner, const char *caption, const char *prompt,
+                     const wchar_t *init, int (*done)( const wchar_t *text, void *ctx ),
+                     void *ctx ) {
+	struct kitty_asktext *a = calloc( 1, sizeof(*a) ) ;
+	HWND h ;
+	if( !a ) return NULL ;
+	a->caption = _strdup( caption ? caption : "" ) ;
+	a->prompt = _strdup( prompt ? prompt : "" ) ;
+	a->init = _wcsdup( init ? init : L"" ) ;
+	a->done = done ; a->ctx = ctx ;
+	h = CreateDialogParamW( hinst, MAKEINTRESOURCEW(IDD_INPUTBOX), owner, kitty_asktext_proc, (LPARAM)a ) ;
+	if( !h ) {
+		free( a->caption ) ; free( a->prompt ) ; free( a->init ) ; free( a ) ;
+		return NULL ;
+	}
+	ShinyAddAuxDialog( h ) ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+	return h ;
+}
+
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) {
 	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-	
+
 	if( IsClipboardFormatAvailable(CF_TEXT) ) {
 		char * pst = NULL ;
 		if( OpenClipboard(NULL) ) {

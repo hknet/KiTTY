@@ -248,9 +248,9 @@
 ;    the folder. The list shows the names without it; a session file without
 ;    it is still listed and gets it on its next save. Changing it in
 ;    Application > KiTTY++ Settings > Storage & Backup offers to rename the
-;    existing files. Changed here by hand, the configuration window asks at
-;    the next start whether to rename the session files to it (Yes renames,
-;    No keeps the names and is not asked again). Also the file type
+;    existing files. Changed here by hand, the configuration window puts up a
+;    question at the next start: rename the session files to it? (Yes
+;    renames, No keeps the names and the question does not come back.) Also the file type
 ;    registered for double-clicked session files (.ktx when empty).
 ;    Folder store only. Default: none.
 ;fileextension=
@@ -267,8 +267,8 @@
 ; hostkeyextension: an ending added to every host-key file name in the folder
 ;    store, for example .khk (a dot is put in front if missing) - old KiTTY's
 ;    key. Set in Application > KiTTY++ Settings > Storage & Backup, or here:
-;    changed here by hand, the configuration window asks at the next start
-;    whether to rename the host-key files to it (one question with the
+;    changed here by hand, the configuration window puts up a question at the
+;    next start: rename the host-key files to it? (one question with the
 ;    session files'). After No, host keys under an old ending are not read.
 ;    A file arriving later without it is renamed when its host is first
 ;    used. Default: none.

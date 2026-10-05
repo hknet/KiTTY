@@ -133,6 +133,23 @@ struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
                                       const char *leaf, int *count);
 void ksp_walk_store_free(struct ksp_store_file *v, int n);
 
+/* The session files and folders below `dir` whose own name does not fit the
+ * ANSI code page, so they cannot be used (walked with the W APIs; a folder
+ * named that way is listed itself and not looked into): the folder path they
+ * sit in ("" = the root), the name as the list shows it (a file's ending off,
+ * '?' for what does not fit), the full wide path, and whether it is a folder.
+ * Free with ksp_bad_free. */
+struct ksp_bad_file {
+    char *folder;
+    char *shown;
+    wchar_t *wpath;
+    int isdir;
+};
+struct ksp_bad_file *ksp_walk_unusable(const char *dir, const char *suffix,
+                                       int *count);
+void ksp_bad_free(struct ksp_bad_file *v, int n);
+int ksp_file_is_session_w(const wchar_t *path);
+
 /* ---- name lookup over a list of session identities ----
  * Path exact (case-insensitive) wins. A bare name (no '\') that is not an
  * exact match is looked up by its last component: one match is that session,

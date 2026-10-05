@@ -126,6 +126,11 @@ char * GetInputBoxResult( void ) ;
  * and the window's name it edits (window.c). */
 void kitty_winname_box( HWND owner ) ;
 const wchar_t * kitty_window_name_get( void ) ;
+/* A modeless text question on the same template (kitty_inputbox.c): done
+ * returns 1 to close, 0 to keep the box; done(NULL) once on Cancel/close. */
+HWND kitty_ask_text( HWND owner, const char *caption, const char *prompt,
+                     const wchar_t *init, int (*done)( const wchar_t *text, void *ctx ),
+                     void *ctx ) ;
 void kitty_window_name_set( const wchar_t * name ) ;
 /* -winslot <n>: the number an unnamed window asks for in %KITTY_WINDOW%. */
 void kitty_window_slot_want( int n ) ;

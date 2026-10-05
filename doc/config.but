@@ -146,6 +146,22 @@ does the same but first drops any folder filter, so the search
 covers every saved session. \c{filter=no} in \c{[ConfigBox]}
 restores the classic non-filtering box.
 
+\b \e{The list's menu and keys.} A right click on a row offers what
+the panel can do with it: a session \q{Load}, \q{Rename...} and
+\q{Delete}; a folder row \q{Open}, \q{Rename...} and \q{Delete} (that
+folder, not the one shown); \c{..} \q{Open}. In the list, F2 renames
+and Del deletes the selected session or folder, as the buttons and the
+Organize window do; a session's \q{Delete} requests confirmation
+first, as in Explorer. With folders as rows, Backspace goes up one level.
+
+\b \e{Session files KiTTY++ cannot use.} A session name is an ANSI
+string, so a folder-store file named outside the Windows code page (in
+Cyrillic, for example, on a Western Windows) is listed in red, with
+\c{?} for what does not fit, and cannot be loaded. Its tooltip states that;
+its menu offers \q{Show in Explorer} and \q{Rename...}, which renames
+the file in place to a name in ANSI characters. A folder named that way
+is a red row too: its sessions cannot be reached until it is renamed.
+
 \b \e{Session folders.} A session's name is its folder path plus its
 name, \c{Linux\\web\\srv01}, in the registry and in the folder store
 alike; the same name can exist in two folders. A folder drop-down

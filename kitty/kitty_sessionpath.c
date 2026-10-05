@@ -411,15 +411,29 @@ int ksp_text_is_session(const char *buf, size_t len)
     return 0;
 }
 
+static int ksp_fp_is_session(FILE *fp);
 int ksp_file_is_session(const char *path)
+{
+    FILE *fp;
+    if (!path || !(fp = fopen(path, "rb")))
+        return 0;
+    return ksp_fp_is_session(fp);
+}
+/* The same for a file named outside the ANSI code page (ksp_walk_unusable). */
+int ksp_file_is_session_w(const wchar_t *path)
+{
+    FILE *fp;
+    if (!path || !(fp = _wfopen(path, L"rb")))
+        return 0;
+    return ksp_fp_is_session(fp);
+}
+/* Reads and closes fp. */
+static int ksp_fp_is_session(FILE *fp)
 {
     /* Line by line rather than the whole file: a stray multi-megabyte log in
      * the session folder must not be read in full just to be ruled out. */
-    FILE *fp;
     char line[512];
     int found = 0, at_line_start = 1;
-    if (!path || !(fp = fopen(path, "rb")))
-        return 0;
     while (!found && fgets(line, sizeof(line), fp)) {
         size_t n = strlen(line);
         if (at_line_start && ksp_line_is_session_key(line, n))
@@ -749,6 +763,168 @@ void ksp_walk_store_free(struct ksp_store_file *v, int n)
     for (i = 0; i < n; i++) {
         sfree(v[i].id);
         sfree(v[i].path);
+    }
+    sfree(v);
+}
+
+/* ---- session files named outside the ANSI code page ----
+ * A session name is an ANSI string everywhere (the settings API, the list,
+ * -load), so the walk above cannot see a file named in Cyrillic, for example,
+ * on a Western Windows: FindFirstFileA turns those characters into '?' and the
+ * file cannot be opened under that name. This walk lists the folder with the
+ * W APIs and returns exactly those files - session files whose own name does
+ * not fit the code page - so the list can mark them and offer a rename. A
+ * folder named that way is returned itself and not looked into (its files
+ * could not be used either way until it is renamed). */
+static wchar_t *ksp_wdup(const wchar_t *s)
+{
+    size_t n = wcslen(s) + 1;
+    wchar_t *d = snewn(n, wchar_t);
+    memcpy(d, s, n * sizeof(wchar_t));
+    return d;
+}
+
+/* The ANSI form of a wide name; *lossless 0 when a character had no ANSI
+ * equivalent (it is then '?'). snewn'd. */
+static char *ksp_w_to_acp(const wchar_t *w, int *lossless)
+{
+    BOOL used = FALSE;
+    /* a UTF-8 ANSI code page (the Windows beta option) takes every name, and
+     * refuses the flag and the used-default question */
+    int utf8 = (GetACP() == CP_UTF8);
+    DWORD flags = utf8 ? 0 : WC_NO_BEST_FIT_CHARS;
+    int n = WideCharToMultiByte(CP_ACP, flags, w, -1, NULL, 0, NULL, NULL);
+    char *a;
+    if (n <= 0) {
+        *lossless = 0;
+        return dupstr("");
+    }
+    a = snewn(n, char);
+    WideCharToMultiByte(CP_ACP, flags, w, -1, a, n, utf8 ? NULL : "?",
+                        utf8 ? NULL : &used);
+    *lossless = !used;
+    return a;
+}
+
+static void ksp_walk_bad_dir(const wchar_t *wdir, const char *prefix, int depth,
+                             const wchar_t *wsuf, struct ksp_bad_file **v,
+                             int *count, int *alloc)
+{
+    size_t dl = wcslen(wdir);
+    wchar_t *pat = snewn(dl + 3, wchar_t);
+    WIN32_FIND_DATAW fd;
+    HANDLE hf;
+    memcpy(pat, wdir, dl * sizeof(wchar_t));
+    memcpy(pat + dl, L"\\*", 3 * sizeof(wchar_t));
+    hf = FindFirstFileW(pat, &fd);
+    sfree(pat);
+    if (hf == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        size_t nl = wcslen(fd.cFileName);
+        wchar_t *full;
+        char *ansi;
+        int ok;
+        if (fd.cFileName[0] == L'.')
+            continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+            (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            continue;
+        full = snewn(dl + nl + 2, wchar_t);
+        memcpy(full, wdir, dl * sizeof(wchar_t));
+        full[dl] = L'\\';
+        memcpy(full + dl + 1, fd.cFileName, (nl + 1) * sizeof(wchar_t));
+        ansi = ksp_w_to_acp(fd.cFileName, &ok);
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && !ok) {
+            /* the folder itself is the row: nothing inside it can be used
+             * until it is renamed */
+            if (*count >= *alloc) {
+                *alloc = *alloc ? *alloc * 2 : 8;
+                *v = sresize(*v, *alloc, struct ksp_bad_file);
+            }
+            (*v)[*count].folder = dupstr(prefix);
+            if ((*v)[*count].folder[0])
+                (*v)[*count].folder[strlen((*v)[*count].folder) - 1] = '\0';
+            (*v)[*count].shown = ksp_component_unmunge(ansi);
+            (*v)[*count].wpath = full;
+            (*v)[*count].isdir = 1;
+            full = NULL;
+            (*count)++;
+        } else if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (depth < KSP_WALK_MAXDEPTH) {
+                char *comp = ksp_component_unmunge(ansi);
+                if (comp[0] && !strchr(comp, '\\')) {
+                    char *sub = dupcat(prefix, comp, "\\");
+                    ksp_walk_bad_dir(full, sub, depth + 1, wsuf, v, count, alloc);
+                    sfree(sub);
+                }
+                sfree(comp);
+            }
+        } else if (!ok && ksp_file_is_session_w(full)) {
+            /* the name as the list would show it: the ending off, decoded */
+            wchar_t *stem = ksp_wdup(fd.cFileName);
+            size_t sl = wsuf ? wcslen(wsuf) : 0;
+            char *shown, *comp;
+            int dummy;
+            if (sl && nl > sl && !_wcsicmp(stem + nl - sl, wsuf))
+                stem[nl - sl] = L'\0';
+            shown = ksp_w_to_acp(stem, &dummy);
+            comp = ksp_component_unmunge(shown);
+            sfree(shown);
+            sfree(stem);
+            if (*count >= *alloc) {
+                *alloc = *alloc ? *alloc * 2 : 8;
+                *v = sresize(*v, *alloc, struct ksp_bad_file);
+            }
+            (*v)[*count].folder = dupstr(prefix);
+            if ((*v)[*count].folder[0])        /* "Linux\web\" -> "Linux\web" */
+                (*v)[*count].folder[strlen((*v)[*count].folder) - 1] = '\0';
+            (*v)[*count].shown = comp;
+            (*v)[*count].wpath = full;
+            (*v)[*count].isdir = 0;
+            full = NULL;
+            (*count)++;
+        }
+        sfree(ansi);
+        sfree(full);
+    } while (FindNextFileW(hf, &fd));
+    FindClose(hf);
+}
+
+struct ksp_bad_file *ksp_walk_unusable(const char *dir, const char *suffix,
+                                       int *count)
+{
+    struct ksp_bad_file *v = NULL;
+    int alloc = 0, n;
+    wchar_t *wdir, *wsuf = NULL;
+    *count = 0;
+    if (!dir || !*dir)
+        return NULL;
+    n = MultiByteToWideChar(CP_ACP, 0, dir, -1, NULL, 0);
+    if (n <= 0)
+        return NULL;
+    wdir = snewn(n, wchar_t);
+    MultiByteToWideChar(CP_ACP, 0, dir, -1, wdir, n);
+    if (suffix && *suffix) {
+        n = MultiByteToWideChar(CP_ACP, 0, suffix, -1, NULL, 0);
+        if (n > 0) {
+            wsuf = snewn(n, wchar_t);
+            MultiByteToWideChar(CP_ACP, 0, suffix, -1, wsuf, n);
+        }
+    }
+    ksp_walk_bad_dir(wdir, "", 0, wsuf, &v, count, &alloc);
+    sfree(wdir);
+    sfree(wsuf);
+    return v;
+}
+
+void ksp_bad_free(struct ksp_bad_file *v, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        sfree(v[i].folder);
+        sfree(v[i].shown);
+        sfree(v[i].wpath);
     }
     sfree(v);
 }

@@ -18,6 +18,22 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   read by Windows' own imaging component, which Windows Update keeps
   patched, instead of a libjpeg of unknown age that could not be updated.
 
+### New
+
+- **The saved-session list has a right-click menu and keys.** A session
+  row offers Load, Rename... and Delete; a folder row Open, Rename... and
+  Delete (that folder, not the one shown); `..` Open. F2 renames and Del
+  deletes the selected row, as the buttons and the Organize window do; a
+  session's Delete requests confirmation first, as in Explorer. With folders
+  as rows Backspace goes up one level (hknet/KiTTY#26).
+- **Session files KiTTY++ cannot use are marked red.** A folder-store file
+  named outside the Windows code page (in Cyrillic, for example, on a Western
+  Windows) was missing from the list without a word. It is now a red row that
+  shows on hover that it needs renaming, with Show in Explorer and Rename...,
+  which renames the file in place to a name in ANSI characters. A folder
+  named that way gets a red row of its own, as its sessions cannot be
+  reached until it is renamed.
+
 ### Changed
 
 - **kageant answers the agent protocol's `query` extension as RFC 9987
@@ -41,8 +57,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   and Session File Extension (moved there from the Session Panel). Neither
   has a default, as in old KiTTY. Either ending changed in `kitty.ini` by
   hand is offered as a rename at the next start of the configuration
-  window, one question for both: Yes renames, No keeps the names and is not
-  asked again, Storage & Backup... opens that panel.
+  window, one question for both: Yes renames, No keeps the names and the
+  question does not come back, Storage & Backup... opens that panel.
 - **The suite's windows keep their place for each monitor layout, and
   always open fully on a screen.** The configuration window (it remembered
   one place for every layout), Organize sessions (it remembered nothing),

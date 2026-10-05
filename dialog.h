@@ -361,8 +361,18 @@ struct dlgcontrol {
             bool headerrow;
             /* KiTTY: a row's ink, asked per row by the Windows owner-draw
              * (id = the row's addwithid value). Return true to override.
-             * NULL for the default. */
+             * NULL for the default. Set on a plain list, it makes that list
+             * owner-drawn too (Windows). */
             bool (*rowink)(dlgcontrol *ctrl, int id, bool dark, unsigned long *rgb);
+            /* KiTTY: a row's own tooltip, shown while the mouse is over it
+             * (NULL = none, then only a cut row shows its text). */
+            const char *(*rowtip)(dlgcontrol *ctrl, int id);
+            /* KiTTY: a right click (or the menu key) on a row: its index in
+             * the list, its id, x, y in screen pixels. NULL = no menu. */
+            void (*rowmenu)(dlgcontrol *ctrl, int row, int id, int x, int y);
+            /* KiTTY: a key pressed in the list (a virtual-key code); return
+             * true when it was handled and the list must not see it. */
+            bool (*rowkey)(dlgcontrol *ctrl, int vk);
         } listbox;
         struct { /* for CTRL_FILESELECT */
             char shortcut;

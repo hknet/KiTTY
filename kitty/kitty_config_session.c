@@ -50,6 +50,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
+#include <shellapi.h>       /* ShellExecuteW: a red row's Show in Explorer */
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
@@ -2584,6 +2585,374 @@ static bool sessionsaver_enter_selected_folder(struct sessionsaver_data *ssd,
     return true;
 }
 
+/* ==== The list's red rows, its right-click menu and its keys ===============
+ *
+ * Red rows (hknet/KiTTY#59 follow-up): a session file of the folder store
+ * whose name does not fit the ANSI code page cannot be used - a session name
+ * is ANSI everywhere - so it is listed in red at its level, with a tip
+ * stating that, and offers Show in Explorer and Rename... Its id is below every other
+ * kind (KITTY_ROW_BAD_BASE - i), so like a folder row it can never be loaded,
+ * saved over or commented on.
+ *
+ * The menu and the keys (hknet/KiTTY#26 refinements) carry the actions the
+ * panel already has, through the same routes: Load and Delete as the
+ * buttons with that row selected, Rename... as the Organize window's prompt,
+ * a folder's Delete as Organize's Del folder (for THAT folder, not the level
+ * shown), Open as a double-click. Backspace is "..".
+ */
+#define KITTY_ROW_BAD_BASE (-100000)     /* kcs_bad[i]  ->  BASE - i */
+static struct ksp_bad_file *kcs_bad = NULL;
+static int kcs_nbad = 0;
+
+static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event);
+
+static int kcs_bad_index(int id)
+{
+    int i = KITTY_ROW_BAD_BASE - id;
+    return (id <= KITTY_ROW_BAD_BASE && i >= 0 && i < kcs_nbad) ? i : -1;
+}
+
+static void kcs_bad_reload(void)
+{
+    ksp_bad_free(kcs_bad, kcs_nbad);
+    kcs_bad = NULL;
+    kcs_nbad = 0;
+    if (store_is_file())
+        kcs_bad = ksp_walk_unusable(kitty_session_dir(), kitty_session_suffix(),
+                                    &kcs_nbad);
+}
+
+/* At the level shown: folder rows show one level; the classic root shows
+ * every file (as it shows every session), a chosen folder only its own. */
+static bool kcs_bad_on_level(struct sessionsaver_data *ssd, int i)
+{
+    const char *f = kcs_bad[i].folder;
+    if (kitty_at_root_level())
+        return kitty_folder_rows_active(ssd) ? !f[0] : true;
+    return !stricmp(f, CurrentFolder);
+}
+
+static void kcs_add_bad_rows(dlgcontrol *ctrl, dlgparam *dlg,
+                             struct sessionsaver_data *ssd)
+{
+    int i;
+    for (i = 0; i < kcs_nbad; i++) {
+        if (!kcs_bad_on_level(ssd, i))
+            continue;
+        /* a folder drawn as the folder rows are, with a trailing "/" */
+        const char *slash = kcs_bad[i].isdir ? "/" : "";
+        char *d;
+        if (!kitty_folder_rows_active(ssd) && kitty_at_root_level() &&
+            kcs_bad[i].folder[0])
+            d = dupprintf("%s%s [%s]", kcs_bad[i].shown, slash, kcs_bad[i].folder);
+        else
+            d = dupprintf("%s%s", kcs_bad[i].shown, slash);
+        dlg_listbox_addwithid(ctrl, dlg, d, KITTY_ROW_BAD_BASE - i);
+        sfree(d);
+    }
+}
+
+static bool kcs_row_ink(dlgcontrol *ctrl, int id, bool dark, unsigned long *rgb)
+{
+    (void)ctrl;
+    if (kcs_bad_index(id) < 0)
+        return false;
+    *rgb = kitty_theme_ink(dark, KITTY_INK_BAD);
+    return true;
+}
+
+static const char *kcs_row_tip(dlgcontrol *ctrl, int id)
+{
+    int i = kcs_bad_index(id);
+    (void)ctrl;
+    if (i < 0)
+        return NULL;
+    return kcs_bad[i].isdir ? KT_SP_BAD_TIP_FOLDER : KT_SP_BAD_TIP;
+}
+
+/* Rename... on a red row: the new name typed (ANSI only), the file (or the
+ * folder) renamed in its own folder with this store's escape - and, for a
+ * file, its ending. */
+struct kcs_badren {
+    wchar_t *wpath;
+    int isdir;
+};
+
+static wchar_t *kcs_acp_to_w(const char *s)
+{
+    int n = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+    wchar_t *w = snewn(n > 0 ? n : 1, wchar_t);
+    if (n <= 0 || !MultiByteToWideChar(CP_ACP, 0, s, -1, w, n))
+        w[0] = L'\0';
+    return w;
+}
+
+static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
+{
+    struct kcs_badren *r = (struct kcs_badren *)ctx;
+    char name[512];
+    BOOL used = FALSE;
+    int utf8 = (GetACP() == CP_UTF8), n;
+    char *comp, *file;
+    wchar_t *wfile, *target, *slash;
+    size_t dl;
+    if (!text) {                        /* Cancel or closed */
+        sfree(r->wpath);
+        sfree(r);
+        return 1;
+    }
+    n = WideCharToMultiByte(CP_ACP, utf8 ? 0 : WC_NO_BEST_FIT_CHARS, text, -1,
+                            name, sizeof(name), utf8 ? NULL : "?",
+                            utf8 ? NULL : &used);
+    if (n <= 0 || used) {
+        MessageBeep(MB_ICONWARNING);    /* still not ANSI: the box stays */
+        return 0;
+    }
+    str_rtrim(name, " \t");
+    if (!name[0] || strchr(name, '\\') || !strcmp(name, KITTY_DEFAULT_SESSION)) {
+        MessageBeep(MB_ICONWARNING);
+        return 0;
+    }
+    comp = ksp_component_munge(name);
+    file = dupcat(comp, r->isdir ? "" : kitty_session_suffix());
+    wfile = kcs_acp_to_w(file);
+    slash = wcsrchr(r->wpath, L'\\');
+    dl = slash ? (size_t)(slash - r->wpath) + 1 : 0;
+    target = snewn(dl + wcslen(wfile) + 1, wchar_t);
+    memcpy(target, r->wpath, dl * sizeof(wchar_t));
+    wcscpy(target + dl, wfile);
+    if (GetFileAttributesW(target) != INVALID_FILE_ATTRIBUTES) {
+        char *msg = dupprintf(KT_SP_SAVE_CLASH, file);
+        kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg, NULL, NULL);
+        sfree(msg);
+        n = 0;
+    } else if (!MoveFileW(r->wpath, target)) {
+        MessageBeep(MB_ICONWARNING);
+        n = 0;
+    } else {
+        n = 1;
+    }
+    sfree(target);
+    sfree(wfile);
+    sfree(file);
+    sfree(comp);
+    if (!n)
+        return 0;
+    sfree(r->wpath);
+    sfree(r);
+    kitty_store_mark_dirty();
+    kitty_config_session_store_changed();
+    return 1;
+}
+
+static void kcs_bad_rename(int i)
+{
+    struct kcs_badren *r;
+    const wchar_t *base;
+    wchar_t *init;
+    size_t sl;
+    if (i < 0 || i >= kcs_nbad || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    r = snew(struct kcs_badren);
+    r->wpath = snewn(wcslen(kcs_bad[i].wpath) + 1, wchar_t);
+    wcscpy(r->wpath, kcs_bad[i].wpath);
+    r->isdir = kcs_bad[i].isdir;
+    /* prefilled with the real name, a file's ending off */
+    base = wcsrchr(r->wpath, L'\\');
+    base = base ? base + 1 : r->wpath;
+    init = snewn(wcslen(base) + 1, wchar_t);
+    wcscpy(init, base);
+    if (!r->isdir) {
+        wchar_t *wsuf = kcs_acp_to_w(kitty_session_suffix());
+        size_t il = wcslen(init);
+        sl = wcslen(wsuf);
+        if (sl && il > sl && !_wcsicmp(init + il - sl, wsuf))
+            init[il - sl] = L'\0';
+        sfree(wsuf);
+    }
+    if (!kitty_ask_text(kitty_cfg_modal_owner(),
+                        r->isdir ? KT_SP_BAD_RENAME_FOLDER_CAP : KT_SP_BAD_RENAME_CAP,
+                        KT_SP_BAD_RENAME_PROMPT, init, kcs_bad_rename_done, r)) {
+        sfree(r->wpath);
+        sfree(r);
+    }
+    sfree(init);
+}
+
+static void kcs_bad_explorer(int i)
+{
+    wchar_t *args;
+    if (i < 0 || i >= kcs_nbad)
+        return;
+    args = snewn(wcslen(kcs_bad[i].wpath) + 16, wchar_t);
+    wcscpy(args, L"/select,\"");
+    wcscat(args, kcs_bad[i].wpath);
+    wcscat(args, L"\"");
+    ShellExecuteW(NULL, L"open", L"explorer.exe", args, NULL, SW_SHOWNORMAL);
+    sfree(args);
+}
+
+enum { KCS_M_LOAD = 1, KCS_M_OPEN, KCS_M_RENAME, KCS_M_DELETE, KCS_M_EXPLORER };
+
+/* The answer to "Delete the session ...?": the delete the Delete button
+ * does, by name (the row may have moved while the box stood). */
+static void kcs_delete_session_answer(int yes, void *ctx)
+{
+    char *name = (char *)ctx;
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    if (yes && ssd && kcs_dlg && ssd->listbox) {
+        SaveRegistryKeyNow();           /* the backup, before the delete */
+        del_settings(name);
+        get_sesslist(&ssd->sesslist, false);
+        get_sesslist(&ssd->sesslist, true);
+        kitty_session_folder_cache_clear();
+        dlg_refresh(ssd->listbox, kcs_dlg);
+        kitty_notify_launcher_sessions_changed();
+    }
+    sfree(name);
+}
+
+/* The folder a row stands for, copied (the rows are rebuilt by what the
+ * action does), or NULL for "..", a session or a red row. */
+static char *kcs_row_folder(struct sessionsaver_data *ssd, int id)
+{
+    const char *f;
+    if (id >= 0 || id == KITTY_ROW_PARENT || kcs_bad_index(id) >= 0)
+        return NULL;
+    f = kitty_folder_for_row_id(ssd, id);
+    return f ? dupstr(f) : NULL;
+}
+
+static void kcs_row_action(struct sessionsaver_data *ssd, int row, int id,
+                           int cmd)
+{
+    dlgparam *dlg = kcs_dlg;
+    int bad = kcs_bad_index(id);
+    char *folder;
+    if (!dlg || !ssd || !ssd->listbox || ssd->midsession)
+        return;
+    if (row >= 0)
+        dlg_listbox_select(ssd->listbox, dlg, row);
+    switch (cmd) {
+      case KCS_M_LOAD:
+        if (id >= 0 && ssd->loadbutton)
+            sessionsaver_handler(ssd->loadbutton, dlg, kcs_conf, EVENT_ACTION);
+        break;
+      case KCS_M_OPEN:
+        sessionsaver_enter_selected_folder(ssd, dlg);
+        break;
+      case KCS_M_RENAME:
+        if (bad >= 0) {
+            kcs_bad_rename(bad);
+        } else if (id > 0) {            /* not Default Settings */
+            kitty_sessorg_rename(kitty_cfg_modal_owner(), 0,
+                                 ssd->sesslist.sessions[id]);
+        } else if ((folder = kcs_row_folder(ssd, id)) != NULL) {
+            kitty_sessorg_rename(kitty_cfg_modal_owner(), 1, folder);
+            sfree(folder);
+        } else {
+            dlg_beep(dlg);
+        }
+        break;
+      case KCS_M_DELETE:
+        if (id == 0 && ssd->delbutton) {
+            /* Default Settings: the button's offer to hide it, as before */
+            sessionsaver_handler(ssd->delbutton, dlg, kcs_conf, EVENT_ACTION);
+        } else if (id > 0 && id < ssd->sesslist.nsessions) {
+            /* unlike the button, a confirmation first, as Explorer has one */
+            char *name = dupstr(ssd->sesslist.sessions[id]);
+            char *q = dupprintf(KT_SP_DEL_SESSION_Q, name);
+            if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP,
+                                              q, NULL, KT_SP_MENU_DELETE,
+                                              KT_SP_DEL_SESSION_CANCEL,
+                                              kcs_delete_session_answer, name))
+                sfree(name);
+            sfree(q);
+        } else if ((folder = kcs_row_folder(ssd, id)) != NULL) {
+            SaveRegistryKeyNow();       /* as the Del folder button does */
+            kitty_sessorg_delete_any_folder(kitty_cfg_modal_owner(), folder,
+                                            kcs_delete_folder_done, NULL);
+            sfree(folder);
+        } else {
+            dlg_beep(dlg);
+        }
+        break;
+      case KCS_M_EXPLORER:
+        kcs_bad_explorer(bad);
+        break;
+    }
+}
+
+static void kcs_row_menu(dlgcontrol *ctrl, int row, int id, int x, int y)
+{
+    struct sessionsaver_data *ssd = (struct sessionsaver_data *)ctrl->context.p;
+    HMENU m;
+    int cmd;
+    if (!ssd || ssd->midsession || !kcs_dlg)
+        return;
+    m = CreatePopupMenu();
+    if (!m)
+        return;
+    if (kcs_bad_index(id) >= 0) {
+        AppendMenuA(m, MF_STRING, KCS_M_EXPLORER, KT_SP_MENU_EXPLORER);
+        AppendMenuA(m, MF_STRING, KCS_M_RENAME, KT_SP_MENU_RENAME);
+    } else if (id == KITTY_ROW_PARENT) {
+        AppendMenuA(m, MF_STRING, KCS_M_OPEN, KT_SP_MENU_OPEN);
+    } else if (id < 0) {
+        AppendMenuA(m, MF_STRING, KCS_M_OPEN, KT_SP_MENU_OPEN);
+        AppendMenuA(m, MF_STRING, KCS_M_RENAME, KT_SP_MENU_RENAME);
+        AppendMenuA(m, MF_STRING, KCS_M_DELETE, KT_SP_MENU_DELETE);
+    } else {
+        AppendMenuA(m, MF_STRING, KCS_M_LOAD, KT_SP_MENU_LOAD);
+        AppendMenuA(m, MF_STRING | (id == 0 ? MF_GRAYED : 0), KCS_M_RENAME,
+                    KT_SP_MENU_RENAME);
+        AppendMenuA(m, MF_STRING, KCS_M_DELETE, KT_SP_MENU_DELETE);
+    }
+    cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
+                         x, y, 0, kitty_cfg_modal_owner(), NULL);
+    DestroyMenu(m);
+    if (cmd)
+        kcs_row_action(ssd, row, id, cmd);
+}
+
+/* Backspace = ".." (folder rows, not at the root); F2 = Rename...; Del =
+ * Delete, for the selected row. */
+static bool kcs_row_key(dlgcontrol *ctrl, int vk)
+{
+    struct sessionsaver_data *ssd = (struct sessionsaver_data *)ctrl->context.p;
+    dlgparam *dlg = kcs_dlg;
+    int row, id;
+    if (!ssd || ssd->midsession || !dlg)
+        return false;
+    if (vk == VK_BACK) {
+        char *up;
+        if (!kitty_folder_rows_active(ssd) || kitty_at_root_level())
+            return false;
+        up = kitty_folder_parent(CurrentFolder);
+        sessionsaver_switch_folder(ssd, dlg, up);
+        sfree(up);
+        return true;
+    }
+    if (vk != VK_F2 && vk != VK_DELETE)
+        return false;
+    if (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_MENU) < 0 ||
+        GetKeyState(VK_SHIFT) < 0)
+        return false;
+    row = dlg_listbox_index(ssd->listbox, dlg);
+    if (row < 0)
+        return false;
+    id = dlg_listbox_getid(ssd->listbox, dlg, row);
+    if (vk == VK_DELETE && (kcs_bad_index(id) >= 0 || id == KITTY_ROW_PARENT))
+        return false;                   /* nothing to delete there */
+    if (vk == VK_F2 && id == KITTY_ROW_PARENT)
+        return false;
+    kcs_row_action(ssd, row, id, vk == VK_F2 ? KCS_M_RENAME : KCS_M_DELETE);
+    return true;
+}
+
 /*
  * KiTTY (hknet/KiTTY#55): which session a Save writes.
  *
@@ -2827,6 +3196,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 break;
             }
             sfree(roworder);
+            /* the session files no session name can reach, last and in red
+             * (looked for again on each refresh; not while searching) */
+            if (!searching && !ssd->midsession) {
+                kcs_bad_reload();
+                kcs_add_bad_rows(ctrl, dlg, ssd);
+            }
             dlg_update_done(ctrl, dlg);
             /* KiTTY: auto-select the best visible match (chosen above):
              * typed match while searching, else the current name-box session,
@@ -4621,6 +4996,12 @@ void scb_panel_session(struct controlbox *b, bool midsession)
                                 HELPCTX(session_saved),
                                 sessionsaver_handler, P(ssd));
     ssd->listbox->column = 0;
+    /* KiTTY: red rows with their tip, the right-click menu and the keys
+     * (kcs_row_*); the ink makes the list owner-drawn */
+    ssd->listbox->listbox.rowink = kcs_row_ink;
+    ssd->listbox->listbox.rowtip = kcs_row_tip;
+    ssd->listbox->listbox.rowmenu = kcs_row_menu;
+    ssd->listbox->listbox.rowkey = kcs_row_key;
     /*
      * KiTTY: the saved-session list height is user-configurable via kitty.ini
      * [ConfigBox] height (GetConfigBoxHeight()). The buttons beside it are

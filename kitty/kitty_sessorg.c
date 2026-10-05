@@ -911,10 +911,23 @@ static char *so_name_apply(HWND h, struct so_name *nm, const char *v)
         char *to = parent ? dupprintf("%s\\%s", parent, v) : dupstr(v);
         char *rewritten = NULL;
         int i, exists = 0;
-        if (nm->st)
+        if (nm->st) {
             for (i = 0; i < nm->st->fs.n; i++)
                 if (!stricmp(nm->st->fs.f[i], to) && stricmp(to, nm->target))
                     exists = 1;
+        } else {
+            /* opened from the session list (kitty_sessorg_rename): the
+             * folders as the store has them now */
+            struct so_names s;
+            struct so_folders fs;
+            so_names_load(&s);
+            so_folders_load(&fs, &s);
+            for (i = 0; i < fs.n; i++)
+                if (!stricmp(fs.f[i], to) && stricmp(to, nm->target))
+                    exists = 1;
+            so_folders_free(&fs);
+            so_names_free(&s);
+        }
         if (exists) {
             err = dupprintf(KT_SP_ORG_FOLDER_EXISTS, to);
         } else if (kitty_sessorg_folder_move(nm->target, to, KT_SP_MOVE_CLASH,
@@ -1182,6 +1195,30 @@ static INT_PTR CALLBACK so_del_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     return FALSE;
 }
 
+/* The Organize window's rename prompt, opened from the session list (its
+ * right-click menu and F2): `target` is a session identity, or a folder path
+ * when `folder` is set. The same checks and the same re-keying as there; the
+ * open configuration box follows through kitty_config_session_store_changed. */
+void kitty_sessorg_rename(HWND owner, int folder, const char *target)
+{
+    struct so_name *nm;
+    if (!target || !*target || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    nm = snew(struct so_name);
+    memset(nm, 0, sizeof(*nm));
+    nm->kind = folder ? SO_NAME_FOLDER : SO_NAME_SESSION;
+    nm->target = dupstr(target);
+    if (!folder && !strchr(target, '\\'))
+        nm->folder_value = kitty_read_session_folder(target);   /* a bare session's */
+    if (!so_dialog(IDD_SESSORG_NAME, owner, so_name_proc, nm)) {
+        sfree(nm->target);
+        sfree(nm->folder_value);
+        sfree(nm);
+    }
+}
+
 void kitty_sessorg_delete_folder(HWND owner, const char *folder,
                                  void (*done)(int deleted, void *ctx),
                                  void *ctx)
@@ -1202,6 +1239,42 @@ void kitty_sessorg_delete_folder(HWND owner, const char *folder,
     }
     if (so_window && owner == so_window->h)
         so_window->sub = h;
+}
+
+/* Delete any folder, as Organize's Del folder does: one holding sessions
+ * gets the question where they go (kitty_sessorg_delete_folder); an empty one (subfolders
+ * included) simply goes, and done(1, ctx) runs at once. */
+void kitty_sessorg_delete_any_folder(HWND owner, const char *folder,
+                                     void (*done)(int deleted, void *ctx),
+                                     void *ctx)
+{
+    struct so_names s;
+    int i, members = 0;
+    if (!folder || !*folder || ksp_folder_is_root(folder) || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    so_names_load(&s);
+    for (i = 0; i < s.n; i++) {
+        char *f = so_effective_folder(s.names[i], s.folders[i]);
+        if (*f && ksp_folder_within(f, folder) &&
+            strcmp(s.names[i], "Default Settings"))
+            members++;
+        sfree(f);
+    }
+    so_names_free(&s);
+    if (members) {
+        kitty_sessorg_delete_folder(owner, folder, done, ctx);
+    } else {
+        char *gone = dupstr(folder);   /* `folder` may live in a list rebuilt below */
+        so_folderlist_move(gone, NULL);
+        kitty_config_session_folder_moved(gone, NULL, 1);
+        sfree(gone);
+        if (so_window)
+            so_changed(so_window);
+        if (done)
+            done(1, ctx);
+    }
 }
 
 /* ---- Arrange ------------------------------------------------------------ */

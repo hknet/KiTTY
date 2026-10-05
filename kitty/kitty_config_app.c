@@ -4119,16 +4119,17 @@ static void kitty_sp_keyext_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
 /*
  * The start-up question (hknet/KiTTY#56): kitty.ini's fileextension or
  * hostkeyextension was edited by hand since its files were last renamed
- * (fileextensionapplied / hostkeyextensionapplied record that). Asked once
+ * (fileextensionapplied / hostkeyextensionapplied record that). Put up once
  * the configuration box is up, modeless; nothing is renamed until it is
  * answered. Yes renames and reports; No records the new endings as applied,
- * so it is not asked again; Storage & Backup... records nothing and opens that
- * panel, as does closing the box unanswered - it is then asked at the next
- * start. A change with nothing to rename is recorded without a word.
+ * so the question does not come back; Storage & Backup... records nothing
+ * and opens that panel, as does closing the box unanswered - the question
+ * then comes back at the next start. A change with nothing to rename is
+ * recorded without a word.
  */
 struct ksp_endings {
     char swas[64], snow[64], kwas[64], know[64];
-    int ns, nk;                 /* files to rename; 0 = that side not asked */
+    int ns, nk;                 /* files to rename; 0 = that side not in the question */
 };
 
 static const char *ksp_ending_shown(const char *e)
@@ -4254,7 +4255,7 @@ void kitty_sp_endings_offer(HWND owner)
     if (!kitty_confirm_modeless3(owner, KT_CAP_KITTYPP, q->s, NULL,
                                  KT_SP_ENDINGS_YES, KT_SP_ENDINGS_GOTO,
                                  KT_SP_ENDINGS_NO, ksp_endings_answer, e))
-        sfree(e);                       /* not shown: asked at the next start */
+        sfree(e);                       /* not shown: put up again at the next start */
     strbuf_free(q);
 }
 

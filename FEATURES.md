@@ -154,6 +154,21 @@ the filed ones in brackets.
   in no folder, so
   **Ctrl+G** matters more than in the classic mode — it searches every folder
   and marks each result with the folder it lives in, `beta [work]`.
+- **Right click, F2, Del, Backspace:** a right click on a row offers what the
+  panel can do with it - a session *Load*, *Rename...*, *Delete*; a folder row
+  *Open*, *Rename...*, *Delete* (that folder, not the one you are in); `..`
+  *Open*. F2 renames and Del deletes the selected row the same way - a
+  session's Delete requests confirmation first, as in Explorer - and
+  Backspace goes up one level. The menu, F2 and Del work in the classic mode too.
+
+**Session files KiTTY++ cannot use are marked red.** A session name is an ANSI
+string, so a folder-store file named outside the Windows code page (in
+Cyrillic, for example, on a Western Windows) is listed in red with `?` for what
+does not fit; its tooltip states that it needs renaming. Its right-click menu offers
+*Show in Explorer* and *Rename...*, which renames the file in place - the box
+shows the file's real name - to a name in ANSI characters. A folder named that
+way is a red row too (`??????/`): its sessions cannot be reached until it is
+renamed the same way.
 
 Turning the setting off puts the classic dropdown back exactly as it was, with
 every session where it was: the setting changes how you look at the folders,

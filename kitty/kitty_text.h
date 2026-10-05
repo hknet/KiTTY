@@ -3596,6 +3596,21 @@
 #define KT_SP_ENDINGS_GOTO                           "Storage && Backup..."   /* a button: && shows one & */
 #define KT_SP_ENDINGS_OK                             "OK"
 
+/* The saved-session list (kitty_config_session.c): a session file named
+ * outside the ANSI code page (red), and the list's right-click menu. */
+#define KT_SP_BAD_TIP                                "This session file needs to be renamed to ANSI characters before KiTTY++ can use it."
+#define KT_SP_BAD_TIP_FOLDER                         "This folder needs to be renamed to ANSI characters before KiTTY++ can use the sessions in it."
+#define KT_SP_BAD_RENAME_CAP                         "Rename session file"
+#define KT_SP_BAD_RENAME_FOLDER_CAP                  "Rename folder"
+#define KT_SP_DEL_SESSION_Q                          "Delete the session \"%s\"?"
+#define KT_SP_DEL_SESSION_CANCEL                     "Cancel"
+#define KT_SP_BAD_RENAME_PROMPT                      "New name (ANSI characters):"
+#define KT_SP_MENU_LOAD                              "Load"
+#define KT_SP_MENU_OPEN                              "Open"
+#define KT_SP_MENU_RENAME                            "Rename..."
+#define KT_SP_MENU_DELETE                            "Delete"
+#define KT_SP_MENU_EXPLORER                          "Show in Explorer"
+
 /* Moving sessions safely (kitty_sessionrekey.c, windows/storage.c). */
 #define KT_SP_PATH_BLOCKED                           "A session and a folder would both be \"%s\" in the session folder.\n\n" \
         "Choose another name, or set a session file suffix."
