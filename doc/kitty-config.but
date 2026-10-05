@@ -1624,7 +1624,10 @@ you have more than a handful.
 session file name, for example \c{.ktx}. The list shows the names
 without it. Changing it offers to rename the existing files. A session
 file without the suffix is still listed and gets the suffix on its next
-save. \c{kitty.ini}: \c{[KiTTY] sessionsuffix}. The new suffix takes
+save. The ending keeps session files apart from other files in the
+folder, and a dot is put in front if missing. \c{kitty.ini}:
+\c{[KiTTY] fileextension}, old KiTTY's key, which is also the file type
+registered for double-clicked session files. The new suffix takes
 effect when \q{Apply suffix} is pressed; greyed in the registry store.
 
 \b \q{Open on the last used session} starts each KiTTY on the session
@@ -2297,8 +2300,9 @@ they started with. A portable copy that is moved leaves the old entry
 behind: uncheck and check again from the new place.
 
 The only key in \c{kitty.ini} here is \c{fileextension} under
-\c{[KiTTY]}; the registrations themselves live in the Windows registry,
-not in the file.
+\c{[KiTTY]} - in the folder store also the ending of every session file
+(\q{Session file suffix} on the Session Panel); the registrations
+themselves live in the Windows registry, not in the file.
 
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
@@ -2425,8 +2429,12 @@ change nothing.
 
 \b \q{Host keys folder} (folder store only): where accepted host keys are
 kept. Empty means the SshHostKeys folder beside Sessions.
-\c{kitty.ini}: \c{[KiTTY] sshhostkeys}, with \c{keysuffix} for an ending
-on host-key file names. \q{Browse...} picks the folder. In the registry
+\c{kitty.ini}: \c{[KiTTY] sshhostkeys}, with \c{hostkeyextension} (old
+KiTTY's key, a dot put in front if missing) for an ending on host-key
+file names: when it is set or changed, the host-key files are renamed to
+carry it at the next start, a file arriving later without it is renamed
+when its host is first used, and where both names exist the one with the
+ending is read. \q{Browse...} picks the folder. In the registry
 store the field shows the registry key, read-only, and \q{Browse...} is
 greyed.
 

@@ -29,6 +29,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **`/screenshot` saves a PNG** (`screenshot-<pid>-<time>.png`) instead of a
   JPEG: sharper for terminal text. On XP it needs the .NET Framework 3.0 as
   above.
+- **The folder store's file-name endings use old KiTTY's own keys again:
+  `fileextension` and `hostkeyextension`.** An old KiTTY's `kitty.ini` with
+  `fileextension=.ktx` and `hostkeyextension=.khk` now works as it did
+  there; 0.85.1.13's `sessionsuffix` / `keysuffix` are copied into them once
+  and removed. When `hostkeyextension` is set or changed, the existing
+  host-key files are renamed to carry it at the next start, and one arriving
+  later without it is renamed when its host is first used (hknet/KiTTY#56).
 
 ## 0.85.1.13-beta — 2026-10-05
 

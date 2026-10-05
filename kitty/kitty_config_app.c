@@ -3937,6 +3937,13 @@ static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
     for (p = nw; *p; p++)
         if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
             break;
+    /* fileextension's rule, as old KiTTY had it: a dot in front if missing */
+    if (!*p && nw[0] && nw[0] != '.') {
+        char *dotted = dupprintf(".%s", nw);
+        sfree(nw);
+        nw = dotted;
+        p = nw + strlen(nw);
+    }
     old = dupstr(kitty_session_suffix());
     if (*p || !strcmp(old, nw)) {
         /* Not a file-name ending, or nothing changed: put the value in
@@ -3951,7 +3958,10 @@ static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
      * asked in a modeless box whose answer does the rename
      * (kitty_sp_suffix_answer). */
     n = kitty_session_suffix_rename(old, nw, 1, NULL);
-    writeINI(GetKittyIniFile(), INIT_SECTION, KI_SESSIONSUFFIX, nw);
+    /* old KiTTY's key: also the registered file type and the dialogs' filter */
+    writeINI(GetKittyIniFile(), INIT_SECTION, KI_FILEEXTENSION, nw);
+    if (strlen(nw) < sizeof(FileExtension))
+        snprintf(FileExtension, sizeof(FileExtension), "%s", nw);
     kitty_set_session_suffix(nw);
     kitty_store_mark_dirty();
     kitty_sp_refresh_session_list(dlg);

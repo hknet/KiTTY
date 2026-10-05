@@ -557,13 +557,20 @@ char *kitty_store_suffix_of(const char *root)
         char *ini, *pc, buf[256];
         if (!dirs[i])
             continue;
+        /* old KiTTY's fileextension first (a dot put in front if missing),
+         * then 0.85.1.13's sessionsuffix, then putty.conf's */
         ini = dupprintf("%s\\kitty.ini", dirs[i]);
-        if (GetFileAttributesA(ini) != INVALID_FILE_ATTRIBUTES &&
-            GetPrivateProfileStringA("KiTTY", KI_SESSIONSUFFIX, "\x01", buf,
-                                     sizeof(buf), ini) &&
-            strcmp(buf, "\x01")) {
-            found = dupstr(buf);
-            str_rtrim(found, " \t");
+        if (GetFileAttributesA(ini) != INVALID_FILE_ATTRIBUTES) {
+            if (GetPrivateProfileStringA("KiTTY", KI_FILEEXTENSION, "", buf,
+                                         sizeof(buf), ini) && buf[0]) {
+                kitty_ext_dot(buf, sizeof(buf));
+                found = dupstr(buf);
+            } else if (GetPrivateProfileStringA("KiTTY", KI_SESSIONSUFFIX, "\x01",
+                                                buf, sizeof(buf), ini) &&
+                       strcmp(buf, "\x01")) {
+                found = dupstr(buf);
+                str_rtrim(found, " \t");
+            }
         }
         sfree(ini);
         if (!found) {

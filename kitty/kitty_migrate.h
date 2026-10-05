@@ -98,7 +98,8 @@ void kitty_folder_scan_free(struct kitty_folder_scan *s);
  * file names - the old store's session file suffix (hknet/KiTTY#56). */
 void kitty_folder_scan_set_suffix(struct kitty_folder_scan *s, const char *suffix);
 /* The session file suffix an old store was kept with: its kitty.ini [KiTTY]
- * sessionsuffix, else its putty.conf sessionsuffix=, looked for in `root`
+ * fileextension (old KiTTY's key) or sessionsuffix (0.85.1.13's), else its
+ * putty.conf sessionsuffix=, looked for in `root`
  * and - when `root` is a Sessions folder - in the folder above it. ""
  * when none is found. snewn'd. */
 char *kitty_store_suffix_of(const char *root);

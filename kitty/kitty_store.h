@@ -71,5 +71,8 @@ int loadPath(void) ;
 /* savemode=dir: take putty.conf's path keys over into kitty.ini once, then
  * apply kitty.ini's (hknet/KiTTY#56). After loadPath(), before the store starts. */
 void kitty_store_ini_takeover(void) ;
+/* the host-key files renamed to a new hostkeyextension, once; after the
+ * store is switched on */
+void kitty_store_hostkey_rename(void) ;
 
 bool ReadPortableValue(const char *buffer, const char * name, char * value, const int maxlen) ;

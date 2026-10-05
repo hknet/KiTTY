@@ -189,7 +189,9 @@ int kitty_inilight_write(const char *section, const char *key,
  * expanded; a leading '\' or '/' is below the program folder, "X:..." is
  * absolute, anything else is relative to the program folder), else
  * <configdir>\Sessions, else <program folder>\Sessions. The suffix is
- * sessionsuffix= unless it holds a character a file name cannot end in.
+ * fileextension= (a dot put in front if missing, as old KiTTY read it), else
+ * 0.85.1.13's sessionsuffix= not yet copied over by kitty.exe, unless it
+ * holds a character a file name cannot end in.
  * Classic KiTTY's putty.conf is not read: kitty.exe moves its keys into
  * kitty.ini on its first folder-store start. Returns 1 with dir and suffix
  * filled, 0 when the sessions are in the registry. */
@@ -257,9 +259,13 @@ int kitty_inilight_folder_store(char *dir, int dirlen, char *suffix, int suflen)
 
     /* kitty.exe keeps at most 63 characters and refuses a suffix with a
      * character its escape would rewrite (kitty_set_session_suffix). */
-    GetPrivateProfileStringA(inilight_mainsection, KI_SESSIONSUFFIX, "",
+    GetPrivateProfileStringA(inilight_mainsection, KI_FILEEXTENSION, "",
                              v, sizeof(v), inilight_path);
     inilight_rtrim(v, " \n\r\t");
+    if (!v[0])
+        GetPrivateProfileStringA(inilight_mainsection, KI_SESSIONSUFFIX, "",
+                                 v, sizeof(v), inilight_path);
+    kitty_ext_dot(v, sizeof(v));
     for (p = v; *p; p++)
         if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
             return 1;

@@ -83,12 +83,33 @@
 #define KI_SSHVERSION                       "sshversion"
 #define KI_SZCOMMAND                        "szcommand"
 /* The folder store's paths and file-name endings (hknet/KiTTY#56), taken over
- * from classic KiTTY's putty.conf once (kitty_store.c). */
+ * from classic KiTTY's putty.conf once (kitty_store.c). The endings are old
+ * KiTTY's own keys: fileextension (session files, above) and
+ * hostkeyextension; sessionsuffix / keysuffix are the names 0.85.1.13 and
+ * putty.conf used, copied into them once and then removed. */
 #define KI_SESSIONS                         "sessions"
 #define KI_SESSIONSUFFIX                    "sessionsuffix"
 #define KI_SSHHOSTKEYS                      "sshhostkeys"
 #define KI_KEYSUFFIX                        "keysuffix"
+#define KI_HOSTKEYEXTENSION                 "hostkeyextension"
+/* written by KiTTY: the ending the host-key files were last renamed to */
+#define KI_HOSTKEYEXTENSIONAPPLIED          "hostkeyextensionapplied"
 #define KI_PUTTYCONFMIGRATED                "puttyconfmigrated"
+
+/* A file-name ending as old KiTTY read fileextension / hostkeyextension:
+ * trailing blanks and line ends off, a dot put in front when it has none. */
+static inline void kitty_ext_dot(char *v, unsigned size)
+{
+    unsigned n = 0;
+    while (v[n]) n++;
+    while (n > 0 && (v[n-1] == ' ' || v[n-1] == '\t' || v[n-1] == '\r' || v[n-1] == '\n'))
+        v[--n] = '\0';
+    if (n > 0 && v[0] != '.' && n + 2 <= size) {
+        unsigned i;
+        for (i = n + 1; i > 0; i--) v[i] = v[i-1];
+        v[0] = '.';
+    }
+}
 #define KI_THEME                            "theme"
 #define KI_TRANSFERFULLPATH                 "transferfullpath"
 #define KI_TRANSFERMAXMB                    "transfermaxmb"

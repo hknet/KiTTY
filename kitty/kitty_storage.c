@@ -1514,6 +1514,20 @@ char *portable_read_text_file(const char *subdir, const char *name)
     char *buf = NULL;
     if (!path) return NULL;
     fp = fopen(path, "rb");
+    /* KiTTY (hknet/KiTTY#56): a host-key file without the ending in force
+     * (one written before hostkeyextension was set, or copied in later) is
+     * renamed to carry it and read; a file WITH the ending always wins. */
+    if (!fp && g_hostkey_suffix[0] && name && *name &&
+        !strcmp(subdir, "SshHostKeys")) {
+        size_t sl = strlen(g_hostkey_suffix), pl = strlen(path);
+        if (pl > sl) {
+            char *plain = dupstr(path);
+            plain[pl - sl] = '\0';
+            if (GetFileAttributesA(plain) != INVALID_FILE_ATTRIBUTES)
+                fp = fopen(MoveFileA(plain, path) ? path : plain, "rb");
+            sfree(plain);
+        }
+    }
     sfree(path);
     if (!fp) return NULL;
     if (fseek(fp, 0, SEEK_END) || (len = ftell(fp)) < 0 || fseek(fp, 0, SEEK_SET)) {

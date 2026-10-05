@@ -205,8 +205,11 @@ Known limitations of this release:
   and dot-folders (`.git`, `.gitignore`) are never looked at.
 - **Folder store: classic KiTTY's putty.conf is taken over once.** Its `Sessions`,
   `sessionsuffix`, `SshHostKeys` and `keysuffix` are copied into kitty.ini
-  once and kitty.ini rules from then on; later edits to putty.conf have no
-  effect.
+  once (the endings as `fileextension` / `hostkeyextension`) and kitty.ini
+  rules from then on; later edits to putty.conf have no effect.
+- **Host-key files are renamed when `hostkeyextension` is set or changed.**
+  An older KiTTY on the same folder without that setting no longer finds
+  them and prompts once for each host key.
 - **Session list limits.** The launcher lists up to 4096 sessions; past 4096
   the menu ends with "(N more sessions not shown)". kageant's Saved Sessions
   menu lists up to 3584 sessions.

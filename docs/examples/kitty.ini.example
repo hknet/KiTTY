@@ -242,27 +242,45 @@
 ;    putty.conf (Sessions=), see puttyconfmigrated.
 ;sessions=
 
-; sessionsuffix: an ending added to every session file name in the folder
-;    store, for example .ktx. The list shows the names without it; a session
-;    file without it is still listed and gets it on its next save. Changing it
-;    in Application > Config Window > Session Panel offers to rename the
-;    existing files. Folder store only. Default: none.
-;sessionsuffix=
+; fileextension: an ending added to every session file name in the folder
+;    store, for example .ktx (a dot is put in front if missing) - old KiTTY's
+;    key, read the same way. It keeps session files apart from other files in
+;    the folder. The list shows the names without it; a session file without
+;    it is still listed and gets it on its next save. Changing it in
+;    Application > Config Window > Session Panel offers to rename the existing
+;    files. Also the file type registered for double-clicked session files
+;    (.ktx when empty). Folder store only. Default: none.
+;fileextension=
 
 ; sshhostkeys: the folder store's host-key folder. Default (empty): the
 ;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings
 ;    > Storage & Backup. Folder store only.
 ;sshhostkeys=
 
-; keysuffix: an ending added to every host-key file name in the folder store.
-;    Files without it are not read. Default: none.
+; hostkeyextension: an ending added to every host-key file name in the folder
+;    store, for example .khk (a dot is put in front if missing) - old KiTTY's
+;    key. When it is set or changed, the host-key files are renamed to carry it
+;    once, at the next start; a file arriving later without it is renamed when
+;    its host is first used. Default: none.
+;hostkeyextension=
+
+; hostkeyextensionapplied: written by KiTTY - the ending the host-key files
+;    were last renamed to.
+;hostkeyextensionapplied=
+
+; sessionsuffix, keysuffix: the names 0.85.1.13 used for fileextension and
+;    hostkeyextension. Found here, each is copied into its new key (unless
+;    that is set) and removed at the next start.
+;sessionsuffix=
 ;keysuffix=
 
 ; puttyconfmigrated: written by KiTTY (yes) once classic KiTTY's putty.conf
 ;    keys Sessions, sessionsuffix, SshHostKeys and keysuffix have been copied
-;    into the four keys above. From then on only kitty.ini counts: a key
-;    edited or removed here is never copied back, and putty.conf is left as
-;    it was for older copies. Not copied: Jumplist, seedfile.
+;    into sessions, fileextension, sshhostkeys and hostkeyextension. From then
+;    on only kitty.ini counts: a key edited or removed here is never copied
+;    back, and putty.conf is left as it was for older copies. Not copied:
+;    Jumplist, seedfile. 0.85.1.13's sessionsuffix / keysuffix in this file are
+;    copied the same way and then removed.
 ;puttyconfmigrated=
 
 ; Folders: the list of session folders, written by KiTTY whenever you add or
@@ -341,9 +359,6 @@
 ;    (/C:/...) over the session (kitten transfer)? no = only names inside
 ;    the upload folder; a session can set its own on Connection > File-Transfer-Settings
 ;transferfullpath=no
-
-; fileextension: the extension for session settings files in portable mode
-;fileextension=.ktx
 
 ; hyperlink: enable/disable the hyperlink feature
 ;hyperlink=yes

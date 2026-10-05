@@ -292,7 +292,17 @@ static int ksm_hostkeys_from_dir(const char *src, int *fail)
     /* KiTTY (hknet/KiTTY#56): the folder the store says it keeps them in,
      * and the ending its host-key file names carry. */
     char *dir = ksm_source_path(src, KI_SSHHOSTKEYS, "SshHostKeys", "SshHostKeys");
-    char *keysuf = ksm_source_value(src, KI_KEYSUFFIX, "keysuffix");
+    /* hostkeyextension (old KiTTY's key, a dot put in front if missing),
+     * else 0.85.1.13's keysuffix, else putty.conf's keysuffix= */
+    char *keysuf = ksm_source_value(src, KI_HOSTKEYEXTENSION, "\001");
+    if (keysuf) {
+        char dotted[64];
+        snprintf(dotted, sizeof(dotted), "%s", keysuf);
+        kitty_ext_dot(dotted, sizeof(dotted));
+        sfree(keysuf);
+        keysuf = dupstr(dotted);
+    } else
+        keysuf = ksm_source_value(src, KI_KEYSUFFIX, "keysuffix");
     char *pat = dupprintf("%s\\*", dir);
     WIN32_FIND_DATAA fd;
     HANDLE h = FindFirstFileA(pat, &fd);

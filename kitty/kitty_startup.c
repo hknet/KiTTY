@@ -509,9 +509,10 @@ void InitWinMain( void ) {
 	else if( IniFileFlag == SAVEMODE_DIR ){ // directory save mode
 		if( strlen(sesspath) == 0 ) { loadPath() ; }
 		/* KiTTY (hknet/KiTTY#56): putty.conf's Sessions, sessionsuffix,
-		 * SshHostKeys and keysuffix move into kitty.ini once; from then on
-		 * kitty.ini's values are the ones in force (session folder, session
-		 * file suffix, host-key folder and suffix). Before the store starts,
+		 * SshHostKeys and keysuffix move into kitty.ini once (the endings
+		 * as fileextension and hostkeyextension); from then on kitty.ini's
+		 * values are the ones in force (session folder, session file
+		 * ending, host-key folder and ending). Before the store starts,
 		 * because it may move the session folder. */
 		kitty_store_ini_takeover() ;
 		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
@@ -522,6 +523,8 @@ void InitWinMain( void ) {
 			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
+			/* the host-key files renamed to a new hostkeyextension, once */
+			kitty_store_hostkey_rename() ;
 			/* Portable at-rest password policy: master (default) or the
 			 * explicit legacy/plaintext compatibility escape hatch. */
 			if( readINI( KittyIniFile, INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION, ppmode, sizeof(ppmode) ) )

@@ -277,17 +277,24 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
                 char *keytype, *host, *text, *stamp, *raw;
                 int port;
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                /* KiTTY (hknet/KiTTY#56): with [KiTTY] keysuffix every
-                 * host-key file - stamps included - ends in it, and the
-                 * readers append it again; a file without it is not one of
-                 * ours. */
+                /* KiTTY (hknet/KiTTY#56): with [KiTTY] hostkeyextension
+                 * every host-key file - stamps included - ends in it, and
+                 * the readers append it again. A file without it is listed
+                 * too (reading it renames it, kitty_storage.c) unless its
+                 * twin with the ending is there, which is the one read. */
                 {
                     const char *ks = kitty_hostkey_suffix();
                     size_t fl = strlen(fd.cFileName), sl = strlen(ks);
                     if (sl) {
-                        if (fl <= sl || stricmp(fd.cFileName + fl - sl, ks))
-                            continue;
-                        fd.cFileName[fl - sl] = '\0';
+                        if (fl > sl && !stricmp(fd.cFileName + fl - sl, ks)) {
+                            fd.cFileName[fl - sl] = '\0';
+                        } else {
+                            char *twin = dupprintf("%s%s%s", dir, fd.cFileName, ks);
+                            DWORD a = GetFileAttributesA(twin);
+                            sfree(twin);
+                            if (a != INVALID_FILE_ATTRIBUTES)
+                                continue;
+                        }
                     }
                 }
                 /* File names are the store names MUNGED (ksf_munge); the

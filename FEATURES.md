@@ -193,18 +193,27 @@ when it holds a `HostName` or `Protocol` setting, in either file format
 stays out of the list. Session file names are escaped per folder level: `:`
 and the other characters Windows refuses, a leading dot, a trailing dot or
 space, and device names such as `CON` or `COM1` are written as `%xx`.
-`[KiTTY] sessionsuffix` adds an ending such as `.ktx` to every session file
-(Application > Config Window > Session Panel, *Session file suffix*); the list
-shows the names without it, a file without it is still listed and gets it on
-its next save, and changing it offers to rename the existing files once.
+`[KiTTY] fileextension` - old KiTTY's key, read the same way - adds an ending
+such as `.ktx` to every session file, which keeps them apart from other files
+in the folder (Application > Config Window > Session Panel, *Session file
+suffix*); the list shows the names without it, a file without it is still
+listed and gets it on its next save, and changing it offers to rename the
+existing files once. It is also the file type registered for double-clicked
+session files.
 
 **Folder store: the host-key folder can be set, and classic KiTTY's
 putty.conf is taken over.** Storage & Backup, group "This KiTTY++", has a
 **Host keys folder** field with a folder picker (`[KiTTY] sshhostkeys`; in the
-registry store it shows the registry key, read-only); `keysuffix` adds an
-ending to host-key file names. A putty.conf's `Sessions`, `sessionsuffix`,
-`SshHostKeys` and `keysuffix` are copied into kitty.ini once and kitty.ini
-rules from then on; putty.conf itself is left as it is.
+registry store it shows the registry key, read-only); `hostkeyextension` - old
+KiTTY's key too - adds an ending such as `.khk` to host-key file names. When it
+is set or changed, the existing host-key files are renamed to carry it at the
+next start; one arriving later without it is renamed when its host is first
+used, and where both names exist the one with the ending is read. A
+putty.conf's `Sessions`, `sessionsuffix`, `SshHostKeys` and `keysuffix` are
+copied into kitty.ini once (as `sessions`, `fileextension`, `sshhostkeys` and
+`hostkeyextension`) and kitty.ini rules from then on; putty.conf itself is left
+as it is. 0.85.1.13 named the endings `sessionsuffix` / `keysuffix` in
+kitty.ini: they are copied over the same way and removed.
 
 **Organize sessions.** *Organize...* (under *Del folder*, beside the comment
 field; at the list's foot when the list is tall enough) and Application >
@@ -249,7 +258,7 @@ either way.
 the same submenu per folder, nested as the folder tree, sorted by name with
 numbers in order (`k8` before `k78`). It reads the store kitty.exe uses — the
 session folder when kitty.ini sets `savemode=dir` (`sessions=` and
-`sessionsuffix=` included), the registry otherwise — and starts the chosen
+`fileextension=` included), the registry otherwise — and starts the chosen
 session by its full path (`Linux\web\srv01`). It lists up to 3584 sessions.
 
 ### Quick connect (type a host instead of picking a session)
@@ -1650,7 +1659,7 @@ the port):**
   never part of this port's build and nothing launched it; the setting and
   the sources went in 0.85.1.8. A Cygwin shell inside KiTTY++ goes through
   the cygtermd local-proxy route described above.
-- `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`, `hostkeyextension`,
+- `[KiTTY] adb`, `capslock`, `maxblinkingtime`, `paste`,
   `PlinkPath`, `KiPP` — read-but-dead in all 0.84.x builds; the features they
   once toggled either no longer exist or no longer consult them (ADB support is
   simply always available).

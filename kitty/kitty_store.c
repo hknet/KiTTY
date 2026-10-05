@@ -440,9 +440,15 @@ char * SetSessPath( const char * dec ) {
 
 /*
  * KiTTY (hknet/KiTTY#56): the folder store's four path settings move from
- * classic KiTTY's putty.conf into kitty.ini [KiTTY] - sessions, sessionsuffix,
- * sshhostkeys, keysuffix. Called once per start in savemode=dir, after
- * loadPath() and before the store is switched on.
+ * classic KiTTY's putty.conf into kitty.ini [KiTTY] - sessions, sshhostkeys,
+ * and the file-name endings under old KiTTY's own key names, fileextension
+ * (putty.conf's sessionsuffix) and hostkeyextension (its keysuffix). Called
+ * once per start in savemode=dir, after loadPath() and before the store is
+ * switched on.
+ *
+ * 0.85.1.13 wrote the endings as sessionsuffix / keysuffix: each is copied
+ * into fileextension / hostkeyextension unless that one is set already, and
+ * removed - one key per ending from then on.
  *
  * ONCE: each key putty.conf has and kitty.ini lacks is copied over, and
  * puttyconfmigrated=yes records that it happened, so a key later edited or
@@ -459,6 +465,7 @@ char * SetSessPath( const char * dec ) {
 extern char *GetKittyIniFile(void);
 extern int GetNoKittyFileFlag(void);
 extern int writeINI(const char *filename, const char *section, const char *key, const char *value);
+extern int delINI(const char *filename, const char *section, const char *key);
 void kitty_set_session_suffix(const char *suffix);
 void kitty_set_hostkey_dir(const char *dir);
 void kitty_set_hostkey_suffix(const char *suffix);
@@ -476,9 +483,9 @@ void kitty_store_ini_takeover(void) {
 	if( !migrated && can_write && kstore_pc_found ) {
 		static const struct { int bit; const char *key; const char *val; } keys[] = {
 			{ KSTORE_PC_SESSIONS, KI_SESSIONS, kstore_pc_sessions },
-			{ KSTORE_PC_SESSIONSUFFIX, KI_SESSIONSUFFIX, kstore_pc_sessionsuffix },
+			{ KSTORE_PC_SESSIONSUFFIX, KI_FILEEXTENSION, kstore_pc_sessionsuffix },
 			{ KSTORE_PC_SSHHOSTKEYS, KI_SSHHOSTKEYS, kstore_pc_sshhostkeys },
-			{ KSTORE_PC_KEYSUFFIX, KI_KEYSUFFIX, kstore_pc_keysuffix },
+			{ KSTORE_PC_KEYSUFFIX, KI_HOSTKEYEXTENSION, kstore_pc_keysuffix },
 		} ;
 		int i ;
 		/* An EMPTY key in kitty.ini (a template line such as "sessions=")
@@ -489,6 +496,22 @@ void kitty_store_ini_takeover(void) {
 				writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) ;
 		if( writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
 			migrated = 1 ;
+	}
+	/* 0.85.1.13's names for the endings: into old KiTTY's keys, then gone */
+	if( can_write ) {
+		static const char *const renames[2][2] = {
+			{ KI_SESSIONSUFFIX, KI_FILEEXTENSION },
+			{ KI_KEYSUFFIX, KI_HOSTKEYEXTENSION },
+		} ;
+		int i ;
+		for( i = 0 ; i < 2 ; i++ )
+			if( readINI( ini, INIT_SECTION, renames[i][0], v, sizeof(v) ) ) {
+				char cur[64] ;
+				str_rtrim( v, " \n\r\t" ) ;
+				if( v[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) )
+					writeINI( ini, INIT_SECTION, renames[i][1], v ) ;
+				delINI( ini, INIT_SECTION, renames[i][0] ) ;
+			}
 	}
 	/* kitty.ini alone: after the move, or when there is no putty.conf key to
 	 * compete with. Otherwise putty.conf's values stand where kitty.ini is
@@ -510,8 +533,11 @@ void kitty_store_ini_takeover(void) {
 	if( !GetReadOnlyFlag() && sesspath[0] && !existdirectory( sesspath ) )
 		MakeDir( sesspath ) ;
 
-	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SESSIONSUFFIX, suffix_buf, sizeof(suffix_buf) ) ) {
-		str_rtrim( suffix_buf, " \n\r\t" ) ;
+	/* the endings read as old KiTTY read them: a dot in front if missing.
+	 * Where kitty.ini could not be written, a 0.85.1.13 name still counts. */
+	if( ini && ini[0] && ( ( readINI( ini, INIT_SECTION, KI_FILEEXTENSION, suffix_buf, sizeof(suffix_buf) ) && suffix_buf[0] ) ||
+	                       readINI( ini, INIT_SECTION, KI_SESSIONSUFFIX, suffix_buf, sizeof(suffix_buf) ) ) ) {
+		kitty_ext_dot( suffix_buf, sizeof(suffix_buf) ) ;
 		suffix = suffix_buf ;
 	} else if( !ini_only )
 		suffix = kstore_pc_sessionsuffix ;
@@ -524,8 +550,9 @@ void kitty_store_ini_takeover(void) {
 		hkdir = sshkpath ;   /* putty.conf's, resolved by loadPath() */
 	}
 
-	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_KEYSUFFIX, keysuf_buf, sizeof(keysuf_buf) ) ) {
-		str_rtrim( keysuf_buf, " \n\r\t" ) ;
+	if( ini && ini[0] && ( ( readINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSION, keysuf_buf, sizeof(keysuf_buf) ) && keysuf_buf[0] ) ||
+	                       readINI( ini, INIT_SECTION, KI_KEYSUFFIX, keysuf_buf, sizeof(keysuf_buf) ) ) ) {
+		kitty_ext_dot( keysuf_buf, sizeof(keysuf_buf) ) ;
 		keysuf = keysuf_buf ;
 	} else if( !ini_only )
 		keysuf = kstore_pc_keysuffix ;
@@ -533,6 +560,64 @@ void kitty_store_ini_takeover(void) {
 	kitty_set_session_suffix( suffix ) ;
 	kitty_set_hostkey_dir( hkdir ) ;
 	kitty_set_hostkey_suffix( keysuf ) ;
+	/* fileextension is also the registered file type, the file dialogs'
+	 * filter and the export bundles' ending (FileExtension, read before
+	 * this): the same value, also when it was copied over just now */
+	if( suffix[0] && strlen( suffix ) < sizeof(FileExtension) )
+		snprintf( FileExtension, sizeof(FileExtension), "%s", suffix ) ;
+}
+
+/*
+ * KiTTY (hknet/KiTTY#56): the host-key files renamed to the ending in force
+ * (hostkeyextension), once each time it changes - from no ending, or from
+ * the one recorded in hostkeyextensionapplied - so the folder matches what
+ * is read. A file whose new name already exists is left as it is (the
+ * suffixed one wins); the store's reader also takes a file without the
+ * ending and renames it (kitty_storage.c), for files that arrive later.
+ * After the store is switched on; nothing happens where kitty.ini cannot be
+ * written, since the change could not be recorded. Nothing is reported: a
+ * file left as it is only lost to its twin with the ending, which is read.
+ */
+const char *kitty_hostkey_suffix(void);
+char *portable_subdir_path(const char *subdir);
+static int kstore_ends_with( const char *s, const char *end ) {
+	size_t ls = strlen( s ), le = strlen( end ) ;
+	return le && ls > le && !stricmp( s + ls - le, end ) ;
+}
+void kitty_store_hostkey_rename( void ) {
+	const char *ini = GetKittyIniFile() ;
+	const char *now = kitty_hostkey_suffix() ;
+	char was[64] = "", pat[2 * MAX_PATH + 4], base[MAX_PATH] ;
+	char from[3 * MAX_PATH + 8], to[3 * MAX_PATH + 72] ;
+	char *dir ;
+	WIN32_FIND_DATAA fd ;
+	HANDLE h ;
+
+	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	readINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, was, sizeof(was) ) ;
+	str_rtrim( was, " \n\r\t" ) ;
+	if( !stricmp( was, now ) ) return ;
+	if( !( dir = portable_subdir_path( "SshHostKeys" ) ) ) return ;
+	snprintf( pat, sizeof(pat), "%s\\*", dir ) ;
+	h = FindFirstFileA( pat, &fd ) ;
+	if( h != INVALID_HANDLE_VALUE ) {
+		do {
+			if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
+			if( now[0] && kstore_ends_with( fd.cFileName, now ) ) continue ;   /* already right */
+			snprintf( base, sizeof(base), "%s", fd.cFileName ) ;
+			if( was[0] && kstore_ends_with( base, was ) )
+				base[strlen( base ) - strlen( was )] = '\0' ;
+			snprintf( from, sizeof(from), "%s\\%s", dir, fd.cFileName ) ;
+			snprintf( to, sizeof(to), "%s\\%s%s", dir, base, now ) ;
+			/* the new name taken already: that file wins, this one stays */
+			if( stricmp( from, to ) && GetFileAttributesA( to ) == INVALID_FILE_ATTRIBUTES )
+				MoveFileA( from, to ) ;
+		} while( FindNextFileA( h, &fd ) ) ;
+		FindClose( h ) ;
+	}
+	sfree( dir ) ;
+	if( now[0] ) writeINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, now ) ;
+	else delINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED ) ;
 }
 
 HSettingsItem SettingsNewItem( const char * name, const char * value ) {

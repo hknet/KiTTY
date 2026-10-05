@@ -59,7 +59,7 @@ on Default Settings, ready for a host (\c{kitty \-quickconnect}).
 \q{Saved Sessions} lists the saved sessions as the folder tree: one
 submenu per folder, nested as the folders are, sorted by name with
 numbers in order. With \c{savemode=dir} it lists the session folder
-(\c{sessions=}, \c{sessionsuffix=}) instead of the registry. A session
+(\c{sessions=}, \c{fileextension=}) instead of the registry. A session
 is started by its full path. The menu lists up to 3584 sessions.
 
 \H{pageant-mainwin} The kageant main window
