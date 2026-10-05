@@ -137,6 +137,9 @@ const char *kitty_session_suffix(void);
 char *ksf_session_target_path(const char *sessionname);  /* where a save writes */
 char *ksf_session_legacy_path(const char *sessionname);  /* older file, or NULL */
 char *ksf_session_find(const char *sessionname);  /* file read from, or NULL */
+/* A file of another escape (old KiTTY's %20, a hand-written '%', ...) that the
+ * list shows under this name, or NULL; read and saved in place (#59). */
+char *ksf_session_inplace_path(const char *sessionname);
 void ksf_make_parent_dirs(const char *path);
 void ksf_prune_empty_dirs(const char *path);
 /* What stands where a session's file or a folder would go (a directory where

@@ -76,6 +76,22 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
          * save is refused rather than overwrite one of them. */
         handle->fpath = ksf_session_target_path(sessionname);
         handle->legacy = ksf_session_legacy_path(sessionname);
+        /* KiTTY (hknet/KiTTY#59): neither the file under today's name nor an
+         * older layout, but one of another escape the list shows as this
+         * session (old KiTTY's "Web%20Servers\srv%20(web).ktx"): saved IN
+         * PLACE, under its own name. */
+        if (!handle->legacy) {
+            DWORD ta = GetFileAttributesA(handle->fpath);
+            if (ta == INVALID_FILE_ATTRIBUTES) {
+                char *inplace = ksf_session_inplace_path(sessionname);
+                if (inplace) {
+                    sfree(handle->fpath);
+                    handle->fpath = inplace;
+                    handle->items = ksf_load(handle->fpath);
+                    return handle;
+                }
+            }
+        }
         if (handle->legacy) {
             DWORD a = GetFileAttributesA(handle->fpath);
             if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY)) {

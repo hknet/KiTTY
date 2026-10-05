@@ -1026,8 +1026,85 @@ char *ksf_session_legacy_path(const char *sessionname)
     return found;
 }
 
+/*
+ * KiTTY (hknet/KiTTY#59): a session file under a name of another escape -
+ * old KiTTY's and PuTTY's (a space as %20, a byte above '~' as %E4), a '%'
+ * written by hand ("100%"), any %xx this store's escape would not write. The
+ * list shows such a file under its DECODED name (ksp_component_unmunge, the
+ * ending stripped), so it is found the same way: each path component matched
+ * against the decoded names of the folder's entries, without case, following
+ * every folder whose name decodes to the component. Dot-entries are skipped,
+ * as the list skips them. NULL when nothing matches. Such a file is read and
+ * SAVED IN PLACE (windows/storage.c): renaming it would split an old folder
+ * like "Web%20Servers" from its new twin and take it from an old KiTTY
+ * reading the same folder - a rename is the user's (Rename, Organize).
+ */
+static char *ksf_scan_find(const char *dir, char **comps, int ncomp)
+{
+    char *pat = dupprintf("%s\\*", dir), *found = NULL;
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE)
+        return NULL;
+    do {
+        int isdir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        char *name, *dec, *full;
+        if (fd.cFileName[0] == '.')
+            continue;
+        if (isdir != (ncomp > 1))
+            continue;                   /* folders above, a file at the end */
+        if (isdir && (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            continue;                   /* not followed, as the list does not */
+        name = dupstr(fd.cFileName);
+        if (!isdir)
+            ksp_strip_suffix(name, g_sess_suffix);
+        dec = ksp_component_unmunge(name);
+        sfree(name);
+        if (stricmp(dec, comps[0])) {
+            sfree(dec);
+            continue;
+        }
+        sfree(dec);
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        if (isdir)
+            found = ksf_scan_find(full, comps + 1, ncomp - 1);
+        else if (ksp_file_is_session(full))
+            found = dupstr(full);
+        sfree(full);
+    } while (!found && FindNextFileA(h, &fd));
+    FindClose(h);
+    return found;
+}
+
+char *ksf_session_inplace_path(const char *sessionname)
+{
+    char *norm, *p, **comps = NULL, *found = NULL;
+    size_t n = 0, cap = 0;
+    if (!g_sess_dir[0] || !sessionname || !*sessionname)
+        return NULL;
+    norm = ksp_normalise(sessionname);
+    for (p = norm; *p; ) {
+        char *e = strchr(p, '\\');
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        sgrowarray(comps, cap, n);
+        comps[n++] = dupprintf("%.*s", (int)len, p);
+        p += len;
+        if (*p == '\\')
+            p++;
+    }
+    if (n > 0 && comps[n - 1][0])
+        found = ksf_scan_find(g_sess_dir, comps, (int)n);
+    while (n > 0)
+        sfree(comps[--n]);
+    sfree(comps);
+    sfree(norm);
+    return found;
+}
+
 /* The file the session is read from: the legacy one while it exists, else the
- * target. NULL when neither exists. */
+ * target, else a file of another escape (ksf_session_inplace_path). NULL when
+ * none exists. */
 char *ksf_session_find(const char *sessionname)
 {
     char *p = ksf_session_legacy_path(sessionname);
@@ -1037,7 +1114,7 @@ char *ksf_session_find(const char *sessionname)
     if (ksf_exists_file(p))
         return p;
     sfree(p);
-    return NULL;
+    return ksf_session_inplace_path(sessionname);
 }
 
 char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */

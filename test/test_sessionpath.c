@@ -534,6 +534,64 @@ static void part_store(void)
     kitty_set_session_suffix("");
 }
 
+/* hknet/KiTTY#59: session files under another escape - old KiTTY's and
+ * PuTTY's (%20 for a space, %E4 for a byte above '~'), a '%' written by hand.
+ * Listed under the decoded name, so opened, saved (IN PLACE) and deleted
+ * under it too. */
+static void part_store_escapes(void)
+{
+    head("files of another escape (#59): listed, opened, saved in place");
+    kitty_set_session_suffix(".ktx");
+    write_file("myserver.example.com%20(web).ktx", "HostName=web.example\n");
+    write_file("Web%20Servers\\srv%20one.ktx", "HostName=one.example\n");
+    write_file("100%.ktx", "HostName=pct.example\n");
+    write_file("B%E4ro.ktx", "HostName=buero.example\n");
+    ok(listed("myserver.example.com (web)"), "myserver.example.com%20(web).ktx lists as 'myserver.example.com (web)'");
+    {
+        char *h = read_host("myserver.example.com (web)");
+        ok_eq_str(h, "web.example", "and opens under that name (the bug of #59)");
+        sfree(h);
+        h = read_host("Web Servers\\srv one");
+        ok_eq_str(h, "one.example", "a %20 folder and file open as 'Web Servers\\srv one'");
+        sfree(h);
+        h = read_host("100%");
+        ok_eq_str(h, "pct.example", "a hand-written '%' (100%.ktx) opens as '100%'");
+        sfree(h);
+        h = read_host("B\xe4ro");
+        ok_eq_str(h, "buero.example", "PuTTY's %E4 opens under the decoded byte");
+        sfree(h);
+    }
+    make_session("myserver.example.com (web)", "web2.example", NULL);
+    ok(file_exists("myserver.example.com%20(web).ktx") &&
+       !file_exists("myserver.example.com (web).ktx"),
+       "a save writes IN PLACE: the old-escape file keeps its name, no twin appears");
+    {
+        char *h = read_host("myserver.example.com (web)");
+        ok_eq_str(h, "web2.example", "and the saved value is read back");
+        sfree(h);
+    }
+    make_session("Web Servers\\srv one", "one2.example", NULL);
+    ok(file_exists("Web%20Servers\\srv%20one.ktx") && !file_exists("Web Servers"),
+       "in a %20 folder too: no 'Web Servers' folder is split off");
+    make_session("Web Servers\\brand new", "new.example", NULL);
+    ok(file_exists("Web Servers\\brand new.ktx"),
+       "a NEW session is written under today's names (real spaces)");
+
+    head("the same name twice: today's file wins");
+    write_file("twin.ktx", "HostName=today.example\n");
+    write_file("tw%69n.ktx", "HostName=old.example\n");
+    {
+        char *h = read_host("twin");
+        ok_eq_str(h, "today.example", "twin.ktx and tw%69n.ktx: twin.ktx is the one opened");
+        sfree(h);
+    }
+
+    head("delete finds the old-escape file");
+    del_settings("100%");
+    ok(!file_exists("100%.ktx"), "deleting '100%' removes 100%.ktx");
+    kitty_set_session_suffix("");
+}
+
 /* ------------------------------------------------------------------ */
 /* Planning: Arrange, folder moves and deletes, session moves, import names */
 
@@ -1226,6 +1284,7 @@ int main(int argc, char **argv)
     kitty_set_session_dir(g_dir);
     if (store_is_file()) {
         part_store();
+        part_store_escapes();
         part_store_blockers();
         part_verdict_cache(tmp);
         part_perf(tmp);

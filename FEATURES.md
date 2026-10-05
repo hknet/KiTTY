@@ -193,6 +193,9 @@ when it holds a `HostName` or `Protocol` setting, in either file format
 stays out of the list. Session file names are escaped per folder level: `:`
 and the other characters Windows refuses, a leading dot, a trailing dot or
 space, and device names such as `CON` or `COM1` are written as `%xx`.
+A file named with another escape - old KiTTY's or PuTTY's `%20` for a
+space, a `%` typed by hand - is listed under its decoded name, opened under
+it and saved in place under its old file name.
 `[KiTTY] fileextension` - old KiTTY's key, read the same way - adds an ending
 such as `.ktx` to every session file, which keeps them apart from other files
 in the folder (Application > Config Window > Session Panel, *Session file

@@ -44,6 +44,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   The old stored places are carried over once. A portable copy keeps them
   in `kitty_windowpos.ini` beside the exe instead of the registry.
 
+### Fixed
+
+- **A session file written by old KiTTY or PuTTY with an escape in its
+  name opens again.** `myserver.example.com%20(web).ktx` was listed as
+  `myserver.example.com (web)` but could not be opened under that name;
+  the same held for `%E4` and other `%xx` escapes, folders named that way
+  and a `%` written by hand. Such a file is now opened and saved in place
+  under its old name (hknet/KiTTY#59).
+
 ## 0.85.1.13-beta — 2026-10-05
 
 ### New
