@@ -5,7 +5,7 @@ the free Windows SSH/Telnet client. This branch is a **forward-port of the old K
 onto current PuTTY 0.85** — so you get a lot of extras on top of a modern, security-patched
 PuTTY core (≈1,300 upstream commits newer than KiTTY's original 0.76b base).
 
-> ⚠️ **Beta release** (`0.85.1.12-beta`). The full KiTTY++ feature set on a modern, security-patched PuTTY 0.85 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please also read the known issues below.
+> ⚠️ **Beta release** (`0.85.1.13-beta`). The full KiTTY++ feature set on a modern, security-patched PuTTY 0.85 core — including a post-quantum key-exchange warning and a console CLI key generator (`kittygen-cli.exe`). Please also read the known issues below.
 
 ## Screenshots
 
@@ -25,16 +25,16 @@ The configuration of the GPU-Renderer
 
 Grab the latest build from the **[Releases page →](https://github.com/hknet/KiTTY/releases/latest)**.
 
-Current release — **[KiTTY 0.85.1.12-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.85.1.12-beta)**:
+Current release — **[KiTTY 0.85.1.13-beta](https://github.com/hknet/KiTTY/releases/tag/kitty-0.85.1.13-beta)**:
 
 | Download | Use it when |
 |---|---|
-| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/KiTTY-0.85.1.12-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
-| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/KiTTY-0.85.1.12-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
-| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/kitty-0.85.1.12-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. Executables are **not** UPX-packed (antivirus-friendly). |
-| **[Portable ZIP (UPX)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/kitty-0.85.1.12-beta-upx.zip)** | Same contents with `kitty.exe`/`kitty_portable.exe` UPX-packed for the smallest download. Some antivirus engines dislike UPX — if in doubt, take the standard ZIP. |
-| **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/kitty-0.85.1.12-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
-| **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.12-beta/kitty-0.85.1.12-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
+| **[Installer — per-user (no admin)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/KiTTY-0.85.1.13-beta-x64-peruser.msi)** | **Recommended.** Installs for your user only, **no UAC prompt** (`%LOCALAPPDATA%\Programs\KiTTY`). |
+| **[Installer — system-wide](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/KiTTY-0.85.1.13-beta-x64-system.msi)** | All users, into `Program Files` (requires admin). |
+| **[Portable ZIP](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/kitty-0.85.1.13-beta.zip)** | No install — run from a folder or USB stick. Includes `kitty_portable.exe` and all command-line tools. Executables are **not** UPX-packed (antivirus-friendly). |
+| **[Portable ZIP (UPX)](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/kitty-0.85.1.13-beta-upx.zip)** | Same contents with `kitty.exe`/`kitty_portable.exe` UPX-packed for the smallest download. Some antivirus engines dislike UPX — if in doubt, take the standard ZIP. |
+| **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/kitty-0.85.1.13-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
+| **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.13-beta/kitty-0.85.1.13-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
 
 Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
 cleanly. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
@@ -58,7 +58,9 @@ verified — reports welcome.
 
 - **Window:** transparency, maximize / fullscreen / saved position on start, always-on-top, roll-up,
   send-to-tray (auto + on-minimize), per-session icons, background image.
-- **Hyperlinks:** clickable URLs in the terminal (Ctrl+click configurable) with **underlining**.
+- **Hyperlinks:** clickable URLs in the terminal (Ctrl+click configurable) and clickable **OSC 8
+  hyperlinks**; underlined Always, On hover or Never; hovering an OSC 8 link shows its target, and
+  **look-alike links are caught** before they open.
 - **Sessions & automation:** auto-command after login, auto-password, anti-idle keepalive,
   port-knocking, duplicate-session, immediate-quit, session export/import, scripting (rutty),
   and an in-terminal command console (Ctrl+F8, type `/help`; see [`docs/COMMANDS.md`](docs/COMMANDS.md)).
@@ -118,13 +120,17 @@ or still want real-world testing. The full, per-release list is in
   executables. The `-upx.zip` flavour and the installers carry UPX-packed
   `kitty.exe`/`kitty_portable.exe` (smallest download), which can trip heuristic AV — if
   flagged, use the standard ZIP.
-- **far2l shared clipboard, non-text formats** — both directions are verified over the
-  wire (a remote writing your clipboard and reading it, including an 80 KB payload). What
-  is untested is whether **non-text** formats such as images survive the round trip; only
-  text has been exercised.
-- **far2l clipboard "Ask" mode** (Window → Copy & Paste) — answering **OK** grants the remote
-  clipboard access for the rest of the session (no per-request reprompt). Choose **Deny**
-  instead if a remote `far2l` should never reach your clipboard.
+- **far2l shared clipboard, pictures** — both directions are verified over the wire (a
+  remote writing your clipboard and reading it, including an 80 KB payload). far2l's
+  vertical-block mark survives the round trip through the Windows clipboard, and formatted
+  text copied in Windows arrives in far2l as plain text. A picture on the Windows clipboard
+  pastes nothing in far2l's editor, which takes text only; a picture round trip through
+  far2l is untested.
+- **far2l clipboard "Ask" mode** (Window → Copy & Paste) — **Allow** opens the clipboard for
+  that far2l run; **Always allow this far2l** opens it without the question in that session
+  (`Far2lClientIds`; "Forget always-allowed far2l clients" clears the list). far2l reads the clipboard only within
+  5 seconds of a paste sent from this window. Choose **Deny** if a remote `far2l` should not
+  reach your clipboard.
 - **adb backend** — verified against test fixtures, not yet against a real Android device.
 - **Stored passwords** — saving passwords is optional; saved ones are encrypted at rest:
   Windows **DPAPI** in registry mode (bound to your account/machine), an opt-in **master

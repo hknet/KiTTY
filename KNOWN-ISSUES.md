@@ -1,12 +1,6 @@
-# KiTTY++ 0.85.1.12 — Known issues & limitations
+# KiTTY++ 0.85.1.13 — Known issues & limitations
 
-The port builds **clean** (all binaries, 0 warnings, 0 errors) and ~46 old KiTTY
-features are working and verified. Known limitations as of this release:
-
-> **Where the clipboard settings live.** They moved in 0.84.1.68 and are now
-> under **Window → Copy & Paste → Remote clipboard**, with the numeric limits in
-> **→ Limits** and the title/tray markers in **→ Notices**. References below use
-> the new locations.
+Known limitations of this release:
 
 ## Functional limitations
 
@@ -38,90 +32,84 @@ features are working and verified. Known limitations as of this release:
   setting come from your Default Settings, or from a saved session when the
   proxy's Name/IP is one. So a jump host that needs a specific key still means
   saving a session for it and pointing the proxy at that session. A future
-  release will let the proxy editor own those settings directly. Since 0.84.1.69
-  the proxy at least **says which of the two its Name/IP means** (the
-  *.. this is ..* setting beside it), so that is no longer decided by whether a
-  session happens to share the name accidentally.
+  release will let the proxy editor own those settings directly.
 - **`/size` and `/wintitle` are application-wide, not per session.** They are
   runtime toggles rather than session settings, so `/save` does not store them —
   persist them with `[KiTTY] size=yes` / `wintitle=no` in kitty.ini.
 - **A brand-new release is noticed one launch late.** The startup update check
   runs on a worker thread and only refreshes a cached answer, so the notice about
   a release published since your last start appears on the *next* start. *Check
-  for updates* in the system menu always asks the server there and then. A
+  for updates* in the system menu always queries the server there and then. A
   launcher left running looks again after every 24 hours; kageant never
   queries the network and shows what the terminal or the launcher stored last.
 - **The update check looks at the newest release only.** A stable user is
-  therefore told about the newest *beta* rather than the newest stable, and asked
-  before anything is installed. Full stable-only channel filtering waits for
+  therefore shown the newest *beta* rather than the newest stable, and a
+  confirmation is required before anything is installed. Full stable-only channel filtering waits for
   stable releases to resume.
-- **far2l shared clipboard: both directions verified.** SET (a remote `far2l`
-  writing your Windows clipboard) and GET (a remote reading it) were both driven
-  over the wire and confirmed in 0.84.1.68, including an 80 KB payload.
-  ⚠️ Earlier releases of this file said GET travelled only over **SSH** and not
-  over **raw** — that was **wrong**, and the measurement that produced it was
-  faulty. GET works on both. Whether **non-text** clipboard formats (images)
-  round-trip is still unverified; only text has been tested.
-- **far2l clipboard privacy latch:** when **far2l shared clipboard** is set to
-  **Ask** (Window → Copy & Paste → Remote clipboard), answering **OK** grants the
-  remote access to your clipboard for the rest of that session — it does not
-  re-prompt per request. Set it to **Deny** if you do not want a remote `far2l`
-  to read/write your clipboard. The focus rule below still applies to it.
-- **OSC 52 remote clipboard writes are asked about, text-only, and write-only.**
+- **far2l shared clipboard: pictures are not verified.** Text travels both
+  ways, over SSH and raw; far2l's vertical-block mark survives the round trip
+  through the Windows clipboard, and formatted text copied in Windows arrives
+  in far2l as plain text. A picture on the Windows clipboard pastes nothing in
+  far2l's editor, which takes text only; a picture round trip through far2l
+  is untested.
+- **far2l reads the clipboard only right after a paste.** A far2l session
+  gets the Windows clipboard only within 5 seconds of a paste sent from
+  this window (Ctrl+V, Shift+Ins, a menu or mouse paste), as far2l's own
+  terminal does. Any other read gets an empty clipboard and an Event Log
+  line.
+- **far2l clipboard permission:** when **far2l shared clipboard** is set to
+  **Ask** (Window → Copy & Paste → Remote clipboard), **Allow** in the box
+  grants that far2l run access to your clipboard; it does not re-prompt per
+  request. A far2l allowed with "Always allow this far2l" opens the clipboard
+  without the question in that session (`Far2lClientIds`); Window > Copy &
+  Paste > Remote clipboard can clear the list. Set it to **Deny** if you do
+  not want a remote `far2l` to read/write your clipboard. The focus rule below
+  still applies to it.
+- **far2l key events switch KiTTY++'s own shortcuts off.** While far2l's key
+  events are on, KiTTY++'s own shortcuts are off. The title then ends in
+  `[far2l keys]`, and a notice shows when they turn on and off.
+- **far2l images:** PNG/JPEG need Vista and later; images sit over the text,
+  not scrolling with it.
+- **OSC 52 remote clipboard writes require a confirmation, and are text-only.**
   *Remote clipboard writes (OSC 52)* (Window → Copy & Paste) defaults
-  to **Ask** as of 0.84.1.69 — the write direction changes what you paste next
+  to **Ask** — the write direction changes what you paste next
   and cannot disclose anything to the host, but it is still a remote host
-  reaching into something you use for passwords. **Sessions saved before this
-  release keep whatever they had**, including Allow; only sessions created from
-  now on start at Ask. Set it to **Deny** if you would rather no host touched
-  your clipboard at all, or back to **Allow** for the old behaviour.
+  reaching into something you use for passwords. **Sessions saved by older
+  versions keep whatever they had**, including Allow. Set it to **Deny** if you
+  would rather no host touched your clipboard at all, or to **Allow**.
   Only **text** travels this way; the sequence carries nothing else, so images
   and other clipboard formats are unaffected.
-  As with far2l, answering **OK** to an **Ask** prompt grants access for the rest
-  of that session rather than re-prompting per payload; changing any setting in
-  the configuration box makes it ask again. A payload too large to fit, or one
-  that is not valid base64, is refused entirely rather than pasted in part.
+  The box is a Yes/No box with No as the default: Yes allows it for the rest
+  of the session, No refuses it for the rest of the session; changing any
+  setting in the configuration box brings the question back. A payload too
+  large to fit, or one that is not valid base64, is refused entirely rather
+  than pasted in part.
 - **OSC 52 remote clipboard *reads* are off by default, and there is no way to
   switch them permanently on.** *Remote clipboard reads (OSC 52)* (Window →
-  Copy & Paste) is the other direction: a host asking for the contents of your
+  Copy & Paste) is the other direction: a host requesting the contents of your
   clipboard, which are then sent to it. It offers **Deny** (the default) and
   **Ask** — and deliberately no "Allow", because a clipboard holds a password
-  often enough to matter and the host chooses the moment it asks. A read can be
-  permitted only by answering the prompt, and only for as long as that answer
-  says: one request, a number of minutes, a number of requests, or the rest of
-  the session, the last of which asks a second time before it takes effect. No
+  often enough to matter and the host chooses the moment of the request. A read
+  can be permitted only by answering the prompt, and only for as long as that
+  answer states: one request, a number of minutes, a number of requests, or the
+  rest of the session, the last of which requires a second confirmation before
+  it takes effect. No
   permission to read is ever written to disk. Every limit is a setting in the
   same panel.
 - **No remote clipboard access at all while the window has no keyboard focus.**
   *Only while this window has focus* (Window → Copy & Paste → Remote clipboard)
   defaults to on and covers reads **and writes**, across all three protocols. An
   existing permission is suspended rather than cancelled — the title marker gains
-  a pause sign and greys — and resumes without asking again when you come back.
-  Verified end-to-end in 0.84.1.68. Turn it off if you rely on a background job
+  a pause sign and greys — and resumes without a new prompt when you come back.
+  Turn it off if you rely on a background job
   that copies its own output into your clipboard.
-- **A host that asks too fast is refused, but keeps its permission.** *Shortest
+- **A host that requests too fast is refused, but keeps its permission.** *Shortest
   gap between reads* (Window → Copy & Paste → Remote clipboard → Limits) refuses a
   request that arrives too soon; it does **not** revoke a grant you gave. Only the
-  per-window read ceiling ends a grant early. In 0.84.1.67 and earlier the pacing
-  limit withdrew the permission and prompted again, which turned a chatty program
-  into a stream of dialogs.
-- **far2l shared clipboard: payloads over ~2 KB used to be dropped in silence.**
-  Fixed — a far2l clipboard payload may now be up to 16 MB (raise *Largest
-  payload, in MB* if you copy 4K screenshots), sized for an image
-  rather than a line of text, and one that still does not fit is refused whole and
-  recorded in the Event Log instead of vanishing. If copying large selections in a
-  far2l session appeared to do nothing before, that was this. Whether non-text
-  formats (images) round-trip is not yet verified.
-- **OSC 5522 (the other kitty's clipboard protocol): reads work, writes do not.**
-  Reads go through the same permission control and the same limits as OSC 52 reads
-  above — it is one permission, reachable two ways, not two settings.
-  Because this protocol can identify the program asking, a program that sends
-  a password and a name can be approved once and then not asked about again
-  for as long as that answer lasts;
-  those approvals are never written to disk. Writes (`type=write`, `wdata`,
-  `walias`) answer **ENOSYS**, so a program falls back to OSC 52 for text. Paste
-  events (`CSI ? 5522 h`) are not implemented, and the mode is ignored rather than
-  accepted — enabling it would otherwise look like it had worked.
+  per-window read ceiling ends a grant early.
+- **A far2l clipboard payload is limited to 16 MB by default.** Raise *Largest
+  payload, in MB* if you copy 4K screenshots; one that still does not fit is
+  refused whole and recorded in the Event Log.
 - **The title-bar and border tint needs Windows 11.** While a clipboard
   permission is live, or just after the clipboard has been used, the window is
   marked. The *icon* in the title works everywhere; the colouring uses an API that
@@ -136,31 +124,32 @@ features are working and verified. Known limitations as of this release:
   A session's **login script** (Connection → Login) and **rutty** scripting
   (Session → Scripting) both react to what the server sends. If both are
   configured, KiTTY warns and runs the login script first, then rutty. Prefer one
-  per session. The login script did not run at all before 0.84.1.68.
+  per session.
 - **adb backend & rutty scripting:** functional and verified against test
   fixtures (a fake adb server / a scripted listener), but **not** yet validated
   against a real Android device or a live remote shell.
-- **Encrypted `.ktx` configuration files are no longer written.** They were
-  encrypted under a key compiled into every copy of KiTTY, so possession of the
-  program was enough to read them. Existing files are still **read**, so imports
-  and old backups keep working, and anyone whose settings ask for the feature is
-  told once what to do instead. The **Shift+F12 / Shift+F11** scramble shortcuts
-  are gone with it.
+- **Encrypted `.ktx` configuration files are read, not written.** Existing
+  files are still **read**, so imports and old backups keep working.
 - **Background image:** renders correctly inside the terminal cell grid; the thin
   margin strip outside the grid is still solid-filled (cosmetic). The image now
   covers the whole virtual desktop; that this reaches a second monitor has
   been verified in code but not yet on a multi-monitor desk.
 - **The Direct2D (GPU) renderer is opt-in.** `renderer=d2d` needs
-  Windows 8.1 or newer. A translucent window runs it on the blit-model swap
-  chain, which costs the flip model's present path and the compositor's frame
-  signal (the pacing then runs on the timer); the badge in the top-right
-  corner says whether a window is on Direct2D at all. DirectWrite rasterises
+  Windows 8.1 or newer. A Direct2D window that may be transparent is layered
+  from its creation; one opened opaque stays opaque, and a transparency change
+  applies to the next window; `/transparency` changes nothing on a Direct2D
+  window opened opaque. The badge in the top-right corner shows whether a
+  window is on Direct2D at all. DirectWrite rasterises
   the text, so it looks slightly different from GDI's, and right-to-left text
   is placed glyph by glyph without the reordering GDI applies. Untested so
   far on this path: the trust sigil on screen, a DPI change of the terminal
   window while it is open, and a machine that has only the software (WARP)
   Direct3D device. Report what you see; GDI is one setting away if things
   don't work for you.
+- **A maximised GDI window under steady output does not reach the display's
+  rate.** A frame that takes a third of the period and more to paint starts
+  just after the refresh instead: 38-54 frames/s there, against 59-60 frames/s
+  on both renderers in a normal window at 200 lines/s.
 - **Font fallback renders monochrome**, on both renderers. Missing-glyph
   fallback draws with plain GDI or a plain DirectWrite glyph run, so emoji and
   other colour glyphs taken from a fallback font come out as monochrome
@@ -197,9 +186,6 @@ features are working and verified. Known limitations as of this release:
   setting) so they keep signing while the media is away, then add the key again
   from the new letter. Re-locating a key by its fingerprint when the volume
   returns is planned.
-- **Session folders are one level deep.** A folder holds sessions, not other
-  folders, so with `foldernavigation=yes` the `..` row always returns to the
-  root.
 - **First run copies PuTTY's sessions once.** In registry mode, a first start
   with no KiTTY++ hive of its own copies stock PuTTY's sessions into KiTTY++'s
   store (or restores KiTTY++'s newest backup if one exists); PuTTY is not
@@ -207,23 +193,45 @@ features are working and verified. Known limitations as of this release:
   yet. The settings of an old KiTTY (`9bis.com`) are taken first; when they
   came along without a session, only PuTTY's sessions are copied, not its
   host key cache.
-- **A portable store whose sessions live in SUBDIRECTORIES is not read.** This
-  version writes one flat file per session under `Sessions\` with its folder
-  recorded inside, and lists only the files directly there; a classic
-  `browsedirectory` layout copied across shows none of its sessions, and
-  `browsedirectory=yes` does not change which sessions are listed. Move the files
-  up into `Sessions\` — each keeps working — and re-file them from the config box.
+- **A bare session name held by several folders does not load.** A bare
+  name loads the one session of that name; when several folders hold one,
+  `-load` ends with an error naming them (exit code 1) and a jump host fails
+  the connection rather than look the name up as a host. Sessions filed by
+  their Folder value only keep working by their bare name.
+- **A `%` in a session name is written `%25` in a `kitty://` link.** Links
+  take the path with `/` (`kitty://Linux/web/srv01`) and are percent-decoded.
+- **The folder store lists only session files.** It lists a file only when it
+  holds a `HostName` or `Protocol` setting, in either file format; dot-files
+  and dot-folders (`.git`, `.gitignore`) are never looked at.
+- **Folder store: classic KiTTY's putty.conf is taken over once.** Its `Sessions`,
+  `sessionsuffix`, `SshHostKeys` and `keysuffix` are copied into kitty.ini
+  once and kitty.ini rules from then on; later edits to putty.conf have no
+  effect.
+- **Session list limits.** The launcher lists up to 4096 sessions; past 4096
+  the menu ends with "(N more sessions not shown)". kageant's Saved Sessions
+  menu lists up to 3584 sessions.
+- **A Terminal Name is not saved.** The name set with **Terminal Name...** is
+  only live with the current window.
+- **Ctrl+Tab switches only between windows that have "Switch Terminal
+  Windows using Ctrl+TAB" on.**
+- **Host notifications are rate-limited.** At most one notice every 2 seconds
+  per window (OSC 9, OSC 777, OSC 99).
+- **Synchronized output (mode 2026) is held for at most 200 ms by default.**
+  Terminal > Features "Synchronized output (mode 2026) max hold, ms" sets the
+  limit; 0 turns the mode off.
+- **OSC 8 links to a file on another computer are not opened.** A `file://`
+  target opens only with an empty host, localhost or this computer's name, so
+  the `file://<host>/<path>` links of `ls --hyperlink` on a server are refused.
+  A web address with a host written as a number or encoded is not opened
+  either. Refused targets stay refused in every mode.
 - **The mid-session Change Settings list does not navigate folders.** It opens on
   the running session's folder and stays there; a rename or a move belongs in the
   config box you start from, where the whole store is in front of you.
-- **kageant's own Saved Sessions menu is a flat list.** It reads the registry
-  directly, so it does not group by folder and does not see a portable store;
-  KiTTY's tray launcher is the one that mirrors your folders.
 - **Inline SSH security confirmations are not available during a rekey.** The
   opt-in in-terminal host-key/weak-key prompts
   (`modalnewhostkeyconfirmation` and friends) cannot run while an
   already-authenticated session rekeys — the running program owns the terminal —
-  so those confirmations abort the connection instead of asking.
+  so those confirmations abort the connection instead of putting up the question.
 
 ## Connectivity tips
 
@@ -255,48 +263,35 @@ features are working and verified. Known limitations as of this release:
 - **Other programs cannot open a protected key file.** pscp, psftp and WinSCP
   know nothing about the sidecar, so KiTTY does not hand them the path: load
   the key in kageant once and they get it from the agent instead. A transfer
-  started without the key in the agent says so rather than failing obscurely.
+  started without the key in the agent reports that rather than failing obscurely.
 - **The Hello gesture is per unlock, with a short cache.** One gesture covers a
   batch of keys loaded together, and the agent's cache (60 seconds by default,
   `0` disables it) covers quick successive unlocks; after that the next unlock
-  asks again.
-- **The agent-identity check works only in signed builds.** Since 0.84.1.72 a
+  requires the gesture again.
+- **The agent-identity check works only in signed builds.** A
   KiTTY that is itself Authenticode-signed verifies which process answers its
   agent requests and warns when it is not our signed kageant. A locally built,
   unsigned KiTTY cannot vouch for anyone and skips the check entirely — so
   "no warning" in a self-built binary is absence of the check, not a clean
   bill.
 - **kittygen's in-memory protection covers SSH-2 keys.** A generated or
-  loaded SSH-2 private key is held `CryptProtectMemory`-encrypted from
-  0.84.1.72 and decrypted only for the instant of use. Legacy **SSH-1** keys
+  loaded SSH-2 private key is held `CryptProtectMemory`-encrypted and
+  decrypted only for the instant of use. Legacy **SSH-1** keys
   stay in the clear while the window is open — the format is obsolete and the
   retrofit deliberately did not touch that path. The residual for SSH-2 is the
   brief decrypt-to-use window itself.
-- **Diagnostic dumps have been removed.** `/savedump` and `kitty.exe -savedump`
-  are gone as of **0.84.1.65**. The dump was written encrypted under a key
-  compiled into the program, and KiTTY shipped no way to read one back, so a
-  dump could not actually be used for support by you or by us. Any `kitty.dmp`
-  left over from an earlier version is still readable only with that build's
-  key; it is safe to delete. For troubleshooting use the **Event Log**
-  (right-click the title bar → *Event Log*) and session logging
-  (**Session → Logging**), and attach those to an issue instead.
 - **Stored passwords are DPAPI-encrypted at rest.** KiTTY can *optionally*
-  save a session password (PuTTY itself never stores one). As of **0.84.1.38**,
-  new and re-saved passwords are protected with **Windows DPAPI** and stored as
+  save a session password (PuTTY itself never stores one). Saved passwords are
+  protected with **Windows DPAPI** and stored as
   `DPAPI1:` blobs, tied to your Windows account/machine. This defeats offline
   and cross-user theft of the registry/session files, but **not** malware already
   running as the same Windows user, and DPAPI blobs do **not** move to another
-  PC. Existing legacy/old-KiTTY passwords still load and are re-encrypted on the
-  next save. In **portable mode** you can now protect saved session *and* proxy
-  passwords with an opt-in **master password** (you are prompted on first save;
-  `-masterpwfile` supplies it non-interactively). Unlike DPAPI, a master-password
-  store **moves between machines**: from 0.84.1.65 it is kept in a `Security`
-  folder inside the portable store itself, so carrying the folder carries the
-  protection — earlier versions kept it in the registry of the PC it was set up
-  on, and such an install is moved over automatically on the next start (several
-  portable copies sharing one master password need that folder copied into
-  each). Exporting sessions no longer creates a master password as a side
-  effect: an exported bundle carries its own password, see FEATURES.md.
+  PC. In **portable mode** saved session *and* proxy
+  passwords can be protected with an opt-in **master password** (you are
+  prompted on first save). A
+  master-password store **moves between machines**: it is kept in a `Security`
+  folder inside the portable store itself, so several portable copies sharing
+  one master password need that folder copied into each.
   **The master password is never stored and
   cannot be recovered: if you forget it, the passwords it protected are
   unrecoverable** — you would clear and re-enter them. Declining the prompt falls
@@ -313,11 +308,17 @@ features are working and verified. Known limitations as of this release:
   deliberately not extended to that path. **If security matters, prefer
   public-key authentication (kageant) with SSH-2 keys, and avoid saving
   passwords unless you understand these limits.**
-
-- **Remote clipboard reads report when they could not be served.** A read request
-  that arrives while another program holds the clipboard used to be refused in
-  silence; it is now refused with a reason in the Event Log, so "nothing
-  happened" can be told apart from "it was denied".
+- **Helper programs not carrying the KiTTY++ signature require a confirmation
+  the first time.** `kscp.exe` and `klink.exe` beside `kitty.exe` start only
+  as the KiTTY++ programs of this release. Another kscp, PuTTY's pscp, rz and sz start at once when
+  they carry the KiTTY++ signature; Windows' own programs start at once when a
+  Windows catalog lists them. Otherwise a box shows the file and its signer the
+  first time. Yes remembers that exact file (`[TrustedHelpers]`). A file with
+  a broken signature is not started.
+- **kageant lock.** The lock set with `ssh-add -x` does not survive a restart
+  of kageant. With "When Windows locks" set to re-encrypt the keys,
+  re-encrypted keys that have a key file require their passphrase when Windows
+  unlocks, the others on first use.
 
 ## Packaging / cosmetic
 
@@ -335,12 +336,15 @@ features are working and verified. Known limitations as of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.12-beta @ 2026-09-23`.
+- **Version string:** binaries report `0.85.1.13-beta @ 2026-10-05`.
+- **The configuration box's Exit button has no Alt key.** It reads Exit
+  before a session; its letters are taken on the panels. Mid-session (Change
+  Settings) it reads Cancel and keeps Alt+C. Esc works for both.
 - **`kittygen.exe` and `kittygen-cli.exe` are two programs with two command
   lines.** The window one takes only `-t`, `-b`, `-E`, `-primes`, `-strong-rsa`,
   `-ppk-param`, `-restrict-acl` and `-pgpfp`; `-C`, `-q`, `-o`, `-l` and
   `--new-passphrase` belong to **`kittygen-cli.exe`**. Give the window version a
-  switch it does not know and it says so in a dialog and waits for OK — correct
+  switch it does not know and it reports that in a dialog and waits for OK — correct
   for a window, fatal in a script, which then hangs until someone clicks it.
   **Script with `kittygen-cli.exe`.** Merging the two is on the list.
 - **kageant's key-file check protects against a swapped file, not against a
@@ -358,23 +362,8 @@ features are working and verified. Known limitations as of this release:
   interactive upgrade. Started under a machine account there is no desktop to
   reopen onto, so they close **without** reopening; `MSIDISABLERMRESTART=1`
   forces that behaviour in any silent install.
-- **Registry backups are standard UTF-16 `.reg` files, and are no longer
-  encrypted.** An older KiTTY version cannot load one itself — it treats the
-  file as unreadable — but Windows restores it perfectly well with
+- **Registry backups are standard UTF-16 `.reg` files.** An older KiTTY
+  version cannot load one itself — it treats the file as unreadable — but
+  Windows restores it perfectly well with
   `reg import kittynew-YYYYMMDD-HHMMSS.sav` (no administrator rights) or from
-  Registry Editor; this only arises if you downgrade. Existing encrypted backups
-  from older versions are still read, KiTTY asking for the password on load.
-
-## Still not ported (known)
-- *(None known.)* far2l **real clipboard** landed in 0.84.0.15, and both
-  directions were later driven over the wire and confirmed - including over
-  **raw**, correcting an earlier claim in this file that GET travelled only over
-  SSH. `-savedump`, the last deferred CLI switch, landed in 0.84.0.14 and was
-  then removed outright in 0.84.1.65 (see Security).
-
-## Earlier releases
-
-Release-by-release notes for every version before 0.84.1.60 - and for these ones
-too - are on the releases page, each pinned to its own tag:
-
-https://github.com/hknet/KiTTY/releases
+  Registry Editor; this only arises if you downgrade.

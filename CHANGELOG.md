@@ -4,51 +4,49 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.13-beta
+## 0.85.1.13-beta — 2026-10-05
 
 ### New
 
-- **OSC 8 hyperlinks are clickable.** A program on the far
-  end can mark text as a link to a target it names (`ls --hyperlink`,
-  Textual and Rich applications). Such a link opens at once only when its
-  text is its target and it is an http, https, ftp or mailto address; any
-  other link shows its target and needs a confirmation. Window > Hyperlinks switches
+- **OSC 8 hyperlinks are clickable.** A program on the remote host
+  can mark text as a link to a target. Such a link opens at once only when its
+  text is also its target and is a http, https, ftp or mailto address; any
+  other link displays its target and requests a confirmation. Window > Hyperlinks switches
   OSC 8 hyperlinks (`HyperlinkOSC8`) and the URL detection by regular
   expression (`HyperlinkScan`) per session; both are on
   (cyd01/KiTTY#441).
 - **Hovering an OSC 8 hyperlink shows its target. Look-alike links are
   caught.** The target of an OSC 8 link appears in a tip under the pointer
   (`HyperlinkPreview`, on). A short web target the tip has shown opens
-  without the confirmation. The confirmation shows the host on a line of
-  its own and marks in red a text naming another host and a punycode host.
+  without confirmation. The confirmation shows the host on a line of
+  its own and marks in red a text reporting another host and a punycode host.
   A web address with a host written as a number or encoded is not opened.
-  One that logs in with a user name before the host gets a red line naming
-  host and user, with its password shown as `****`. A target whose query
-  carries an address of another owner (a redirect) gets a red line naming
-  that host. Links the regular expression finds follow the same number and
-  user-name rules. Window > Hyperlinks >
-  "Confirmation before opening a link" chooses Always, When the link looks
-  risky (the default) or Only for non-web links (`HyperlinkConfirm`).
+  One that logs in with a user name before the host gets a red line showing
+  host and the user, with the password shown as `****`. A target whose query
+  carries an address of another owner (a redirect) gets a red line displaying
+  that host. Links the regex finds follow the same number and user rules.
+  Window > Hyperlinks > "Confirmation before opening a link" chooses Always,
+  When the link looks risky (the default) or Only for non-web links (`HyperlinkConfirm`).
   Refused targets stay refused in every mode.
 - **A right click or a Ctrl+click on the minimize button sends a window to
   the tray, and the tray can be the launcher.** Application > KiTTY++ Settings > Terminal
   chooses where a window sent to the tray goes: into the launcher while one
   runs (the default), always its own tray icon, or always into the launcher,
-  where it is listed in Open Sessions instead of taking an icon of its own
+  where it is listed in Open Sessions instead of holding an icon of its own
   (`[KiTTY] traymode`) (hknet/KiTTY#54, cyd01/KiTTY#467).
 - **The launcher's Open Sessions stays readable with many windows, and a
   window can have a name.** Each entry shows the saved session (or
   `user@host`) first and the live title after it; hidden windows come first
-  with a bullet, visible ones after them with a tick, alphabetical within
-  each group, and the label counts them - `Open Sessions (12, 7 hidden)`.
+  with a bullet, visible ones later with a tick, alphabetical within
+  each group, and the title counts them - `Open Sessions (12, 7 hidden)`.
   Above 25 windows the sessions of a folder share a submenu, and a unique
   first letter is the entry's keyboard key. Choosing a window that sits
   behind its own tray icon brings it back. A window whose connection closed
-  or dropped is marked "(disconnected)" and stays choosable. **Name this
-  window...** in the system menu's Window submenu - or a right click on the
+  or dropped is marked "(disconnected)" and stays choosable. **Terminal
+  Name...** in the system menu's Window submenu - or a right click on the
   window's entry in Open Sessions, for a hidden window - puts a name in
-  front of the window title and of its launcher entry; it lives with the
-  window and is not saved (hknet/KiTTY#54).
+  front of the window title and of its launcher entry; it is only live with the
+  current window and is not saved (hknet/KiTTY#54).
 - **A window's name reaches the far end, to re-attach tmux or screen.**
   `%KITTY_WINDOW%` (the window's name, else the session name, from the
   second window on with a number: `db`, `db-2`), `%KITTY_SESSION%`, `%KITTY_USER%`, `%KITTY_HOST%`,
@@ -92,7 +90,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   instance. The variable is resolved when the file is used; the setting keeps
   it as typed. An unknown `%name%` stays as it is, so nothing that worked
   before changes (cyd01/KiTTY#472).
-- **Windows hidden from the launcher show themselves again when it ends.** A
+- **Windows hidden from the launcher show themselves again at launcher-end.** A
   window hidden from the launcher's menu has no taskbar button and no tray
   icon; when the launcher is killed or crashes, it now shows itself again
   after 3 seconds. Application > KiTTY++ Settings > Launcher sets the delay;
@@ -124,11 +122,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   but neither offers nor uses them until Unlock agent. Settings > Security,
   "When Windows locks": keep the agent working (the default), lock the agent,
   or re-encrypt the keys. A disconnected remote desktop counts as locked.
-  Re-encrypted keys that have a key file ask for their passphrase when Windows
+  Re-encrypted keys that have a key file require their passphrase when Windows
   unlocks, the others on first use.
 - **`ssh-add -x` / `-X` lock and unlock kageant**, when Settings > Security
   "Allow locking the agent over IPC" is ticked (off by default). A notice
   names the program that locked, and the tray's Unlock agent clears its lock.
+  The lock does not survive a restart of kageant.
 - **Session folders are folder paths, in both stores.** A session's name is
   its folder path plus its name, `Linux\web\srv01`. The folder store keeps it
   as the file `Sessions\Linux\web\srv01` (a session folder that can live in
@@ -138,8 +137,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   or deleting a folder moves its subfolders with it; a session that moves
   keeps its saved password, jump list entry and launcher entry, and sessions
   that name it as SSH jump host are updated and listed. `-load
-  Linux\web\srv01` works in both stores and in klink, kscp and ksftp, and so
-  does the path in an SSH jump host field and in a `kitty://` link. A bare
+  Linux\web\srv01` works in both stores, and in klink, kscp and ksftp for the
+  registry store, and so does the path in an SSH jump host field and in a `kitty://` link. A bare
   name loads the one session of that name; when several folders hold one,
   `-load` ends with an error naming them (exit code 1) and a jump host fails
   the connection rather than look the name up as a host. Sessions filed by
@@ -179,7 +178,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   where such a session's folder path is already taken by another session.
   A session whose path is taken stays as it is and is named in the result;
   the others move. The registry is backed up first (hknet/KiTTY#55).
-- **Deleting a folder that holds sessions asks where they go.** The box
+- **Deleting a folder that holds sessions puts up the question where they go.** The box
   offers the root (preselected) or any other folder; subfolders keep their
   place below the destination, and a name already taken there stops the
   delete before anything moves. Session list and Organize sessions alike
@@ -196,7 +195,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   program on the host can show a notice near the clock, titled with the
   session's name. Terminal > Features, "Desktop notifications (OSC 9, 777,
   99)": Off, When not focused (the default) or Always (`HostNotify`); a
-  program can ask for less, never for more. OSC 99 ids, chunks, base64,
+  program can request less, never more. OSC 99 ids, chunks, base64,
   urgency, display time, `p=close`, `p=alive`, `p=?` and the click and close
   reports are supported. At most one notice every 2 seconds per window.
 - **Taskbar progress (OSC 9;4).** A program on the host can show progress
@@ -208,9 +207,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   release goes to it with left/right Ctrl and Alt, Shift, the lock states,
   virtual key, scan code and the character the layout gives, so
   Ctrl+Shift+arrows and similar combinations work. Mouse buttons, wheel and
-  moves follow where far2l asked for the mouse; Shift+mouse still selects
+  moves follow where far2l requested the mouse; Shift+mouse still selects
   locally. While far2l's key events are on, KiTTY's own shortcuts are off.
-  The title then ends in `[far2l keys]`, and a notice says when they turn
+  The title then ends in `[far2l keys]`, and a notice shows when they turn
   on and off.
   A terminal reset ends the extensions (hknet/KiTTY#57).
 - **far2l shows images in the window**: far2l's image viewer and anything
@@ -224,17 +223,22 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - **The configuration box's Cancel button reads Exit before a session.**
   It ends the program there; the Application settings are already saved as
-  they change. Mid-session (Change Settings) it still reads Cancel.
+  they change. Mid-session (Change Settings) it still reads Cancel. Exit has
+  no Alt key, since its letters are taken on the panels; Cancel keeps Alt+C.
+  Esc works for both.
 - **A registry session whose name contains `\` is now a session in a
   folder.** `DOMAIN\user` or `prod\db01` saved by an earlier version is read
   as the session `user` in folder `DOMAIN` (`db01` in `prod`): it lists
   inside that folder, its `Folder=` value is ignored and corrected on the
   next save. `-load DOMAIN\user` still loads it (hknet/KiTTY#55).
-- **The boxes of the session list no longer hold up the configuration
-  window.** A save refused because the name is taken, a move refused because
-  a name already exists at the destination, and the list of updated jump
-  hosts are shown in boxes beside the window; so is the suffix-rename
-  question, whose default answer is now No (hknet/KiTTY#55, hknet/KiTTY#56).
+- **The session list's messages no longer block the configuration
+  window.** They used to lock it until they were closed; now they open as
+  windows of their own and the configuration window stays usable while they
+  are open. That holds for a save refused because the name is taken, a move
+  refused because the name already exists at the destination, and the list
+  of updated jump hosts, and for the question whether to rename sessions to
+  the new suffix, whose default answer is now No (hknet/KiTTY#55,
+  hknet/KiTTY#56).
 - **kageant's Saved Sessions menu shows the session folders and the folder
   store's sessions.** One submenu per folder, nested as the folder tree,
   sorted by name with numbers in order. With `savemode=dir` it lists the
@@ -252,7 +256,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   burst larger than the scrollback no longer compresses lines only to drop
   them again. 40 000 lines scroll through in about a quarter of the time with
   Direct2D and a sixth with GDI; plain ASCII is about 60 % and Unicode about
-  30 % faster in kitty's throughput benchmark.
+  30 % faster in the other kitty's throughput benchmark.
 - **Non-ASCII text costs less to draw.** Both renderers now keep the width
   of each character per font instead of measuring it again on every frame. A
   maximised GDI window taking 200 lines per second of non-ASCII text updates
@@ -262,7 +266,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   every cell of the screen. Plain text marks only the columns it wrote. At 200
   lines per second this takes about a third off the update time outside
   drawing. A cursor blink or a progress line no longer compares the whole
-  screen.
+  screen. Direct2D copies only the changed area to the back buffer, GDI sets
+  only the text style that changed, and a Direct2D window no longer waits for
+  frames while it is resized.
 - **Helper programs are checked before they receive the session's login.**
   `kscp.exe` and `klink.exe` beside `kitty.exe` start only as the KiTTY++
   programs of this release. Another kscp, PuTTY's pscp, rz and sz start at
@@ -331,16 +337,21 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The far2l clipboard question is a box of its own, with "Always allow
   this far2l".** It no longer holds up the window and names reading as well
   as writing. A far2l allowed always opens the clipboard without the
-  question in that session (`Far2lClientIds`); Window > Selection > Remote
-  clipboard can clear the list.
+  question in that session (`Far2lClientIds`); Window > Copy & Paste >
+  Remote clipboard can clear the list.
 - **far2l: more of its terminal extensions.** A far2l copy keeps all its
   formats on the clipboard together (the vertical-block mark, HTML as the
-  Windows HTML format). Large copies arrive in parts, and far2l can tell an
+  Windows HTML format). Large copies arrive in parts, and far2l can detect an
   unchanged clipboard without reading it again. Alt+F9 in far2l maximises
   and restores the window, from the real largest size on its monitor.
   Focus reports (`ESC [ ? 1004 h`) are answered.
   far2l's notifications show as the desktop notifications from the host
   do, under the same setting.
+- **Ctrl+Tab switches only between windows that have "Switch Terminal
+  Windows using Ctrl+TAB" on.**
+- **Session lists sort by the name they display, numbers in natural order**
+  (`a8` before `a78`): the launcher's menu, the configuration box and
+  Organize sessions.
 
 ### Fixed
 
@@ -364,7 +375,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   an unknown request is answered with an empty reply.
 - **far2l no longer hangs on a request over the size limit.** A far2l
   request larger than the clipboard size ceiling (ClipboardMaxMB) was
-  dropped without an answer, and far2l waited for ever. It is still
+  dropped without an answer, and far2l waited forever. It is still
   dropped, but answered as failed (hknet/KiTTY#57).
 - **A window closed maximised opens maximised again.** With "Save settings
   on exit" it kept its old position but the maximised size, so it opened
@@ -373,7 +384,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   un-maximising returns the window to its place.
 - **Get File's Save-As box opens in the download folder.** For one named
   file it opened in the folder last used with KiTTY++, or in Documents,
-  whatever download folder was set.
+  whatever the download folder was set to.
 - **Get File's debug log no longer shows the password.** When no private
   password file could be made, the password went on kscp's command line, and
   Get File logged that line unblanked; Send File always blanked it.
@@ -413,15 +424,35 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `active=no` now turns it off there as well.** Windows' own font
   substitution still keeps drawing under both renderers regardless of the
   switch.
-- **kageant's tray menu follows a colour theme change made while it runs.**
+- **kageant's tray menu follows a display theme change made while it runs.**
   Its key list did, but the menu kept the theme kageant started with until a
   restart.
 - **A session named `CON`, `NUL`, `COM1` or another Windows device name, or
   one ending in a dot or a space, can be saved in the folder store.** Such a
   name could not be a file name, so the session could not be saved.
-- **The launcher lists up to 4096 sessions and says how many it left out.**
+- **The launcher lists up to 4096 sessions and reports how many it left out.**
   It stopped at 1024 without a word; past 4096 the menu now ends with
   "(N more sessions not shown)" (hknet/KiTTY#55).
+- **A Direct2D window recovers from a graphics driver update or a GPU
+  reset.** It re-creates its drawing device at the next frame and repaints
+  the whole window. After three failures in a row, each within five seconds of the
+  last, it moves to
+  Windows' software renderer (WARP) for good and writes one line to the
+  event log.
+- **Direct2D no longer draws text at the old size after a font, zoom or DPI
+  change,** and no longer stops drawing text when its font cache is full.
+- **A session that ends while the system menu is open or the window is
+  being moved now closes its window** with "Close window on exit"; the
+  window used to stay open.
+- **Dimming a Direct2D window no longer freezes it on its last frame.** A
+  Direct2D window that may be transparent is layered from its creation; one
+  opened opaque stays opaque, and a transparency change applies to the next
+  window. `/transparency` acts on the terminal window instead of the console.
+- **An old session keeps its "Response to remote title query" setting.**
+  A session saved before that setting existed carries it in the old
+  `NoRemoteQTitle` key, which the loader dropped; it reads it again.
+- **The generated kitty.ini describes the `savemode` default correctly:**
+  the registry for `kitty.exe`, the folder store for `kitty_portable.exe`.
 
 ## 0.85.1.12-beta — 2026-09-23
 
