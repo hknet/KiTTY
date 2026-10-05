@@ -131,7 +131,15 @@ exe*.
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. `reload=no` to keep a hand-edited launcher menu from being rebuilt, and `unhideafter=3`: the seconds after which windows hidden from the launcher's menu show themselves again when the launcher ends (`0` = never - they stay hidden until a launcher is started again). |
 | `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
-| `[TrustedHelpers]` | Helper programs (another kscp, PuTTY's pscp, rz, sz) allowed with Yes in the box that shows the file and its signer the first time: one line per file, its lower-case full path = its SHA-256. Written by KiTTY++, folder store (`savemode=dir`) only; the registry store keeps the same list in the `TrustedHelpers` key. Programs that carry the KiTTY++ signature, and Windows' own programs listed in a Windows catalog, start at once and are not listed; a file with a broken signature is not started. |
+
+KiTTY++ also writes a `[TrustedHelpers]` section that the example file does
+not carry: helper programs (another kscp, PuTTY's pscp, rz, sz) allowed with
+Yes in the box that shows the file and its signer the first time, one line
+per file, its lower-case full path = its SHA-256. Folder store
+(`savemode=dir`) only; the registry store keeps the same list in the
+`TrustedHelpers` key. Programs that carry the KiTTY++ signature, and Windows'
+own programs listed in a Windows catalog, start at once and are not listed; a
+file with a broken signature is not started.
 
 ## Old PuTTY and KiTTY sessions — `[KiTTY] showforeignsessions`
 
