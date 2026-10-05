@@ -2007,6 +2007,7 @@ enum {
 #define SSH_AGENTC_UNLOCK                       23 /* KiTTY: ssh-add -X */
 #define SSH2_AGENTC_EXTENSION                   27
 #define SSH_AGENT_EXTENSION_FAILURE             28
+#define SSH_AGENT_EXTENSION_RESPONSE            29 /* KiTTY: RFC 9987 5.8 */
 
 /*
  * Assorted other SSH-related enumerations.

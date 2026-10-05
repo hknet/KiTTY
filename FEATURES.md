@@ -555,7 +555,7 @@ kageant offers its loaded keys to a server in list order, and the server tries t
 
 The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses them until **Unlock agent**. Settings > Security, **When Windows locks**: **Keep the agent working** (the default), **Lock the agent**, or **Re-encrypt the keys**. A disconnected remote desktop counts as locked. Re-encrypted keys that have a key file require their passphrase when Windows unlocks, the others on first use.
 
-`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice names the program that locked, and the tray's Unlock agent clears its lock. The lock does not survive a restart of kageant.
+`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice names the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
 
 **How to enable:** right-click the kageant tray icon → **Lock agent**; Settings > Security for the rest. From **kitty.ini**: `[Agent] lockwithwindows=keep|lock|reencrypt` and `allowipclock=yes`.
 

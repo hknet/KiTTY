@@ -1020,6 +1020,20 @@ static unsigned char pageant_lock_salt[16];
 static unsigned char pageant_lock_hash[32];   /* CryptProtectMemory'd when it can be */
 static bool pageant_lock_hash_protected = false;
 
+/* Guessing the PROGRAM lock's passphrase (RFC 9987 section 10: an agent
+ * SHOULD take countermeasures). After the n-th wrong passphrase an unlock is
+ * refused unchecked for n x 100 ms, at most 10 s - OpenSSH's delay, without
+ * blocking the agent's one thread. The tenth wrong passphrase shuts unlocking
+ * over IPC: every UNLOCK is refused, the right one too, until the tray's
+ * Unlock agent (or a restart) - the RFC's lockout; the keys stay. A right
+ * passphrase before that starts the count again. */
+#define PAGEANT_UNLOCK_STEP_MS   100
+#define PAGEANT_UNLOCK_MAX_MS    10000
+#define PAGEANT_UNLOCK_MAX_FAILS 10
+static unsigned pageant_unlock_fails = 0;
+static unsigned long pageant_unlock_retry_at = 0;
+static bool pageant_unlock_shut = false;
+
 static void pageant_lock_hash_of(ptrlen pass, unsigned char out[32])
 {
     ssh_hash *h = ssh_hash_new(&ssh_sha256);
@@ -1046,6 +1060,8 @@ void pageant_lock_set(int flag, bool on)
         smemclr(pageant_lock_hash, sizeof(pageant_lock_hash));
         smemclr(pageant_lock_salt, sizeof(pageant_lock_salt));
         pageant_lock_hash_protected = false;
+        pageant_unlock_fails = 0;
+        pageant_unlock_shut = false;
     }
     if (before != pageant_lock_state && kageant_lock_changed_hook)
         kageant_lock_changed_hook();
@@ -1080,6 +1096,7 @@ static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqi
             pageant_lock_hash_protected =
                 pageant_protect_memory(pageant_lock_hash, sizeof(pageant_lock_hash));
             pageant_lock_state |= PAGEANT_LOCK_PROGRAM;
+            pageant_unlock_fails = 0;
             if (kageant_lock_changed_hook)
                 kageant_lock_changed_hook();
             result = 0;
@@ -1087,6 +1104,11 @@ static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqi
     } else {
         if (!(pageant_lock_state & PAGEANT_LOCK_PROGRAM)) {
             result = 1;          /* nothing a program locked */
+        } else if (pageant_unlock_shut) {
+            result = 5;          /* ten wrong: only the tray unlocks now */
+        } else if (pageant_unlock_fails &&
+                   (long)(GETTICKCOUNT() - pageant_unlock_retry_at) < 0) {
+            result = 3;          /* still waiting after a wrong passphrase */
         } else {
             unsigned char stored[32];
             memcpy(stored, pageant_lock_hash, sizeof(stored));
@@ -1095,8 +1117,17 @@ static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqi
             pageant_lock_hash_of(pass, h);
             result = smemeq(stored, h, sizeof(stored)) ? 0 : 1;
             smemclr(stored, sizeof(stored));
-            if (result == 0)
+            if (result == 0) {
                 pageant_lock_set(PAGEANT_LOCK_PROGRAM, false);
+            } else if (++pageant_unlock_fails >= PAGEANT_UNLOCK_MAX_FAILS) {
+                pageant_unlock_shut = true;
+                result = 4;
+            } else {
+                unsigned long wait = PAGEANT_UNLOCK_STEP_MS * pageant_unlock_fails;
+                if (wait > PAGEANT_UNLOCK_MAX_MS)
+                    wait = PAGEANT_UNLOCK_MAX_MS;
+                pageant_unlock_retry_at = GETTICKCOUNT() + wait;
+            }
         }
     }
     smemclr(h, sizeof(h));
@@ -1107,6 +1138,9 @@ static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqi
     } else {
         failure(pc, reqid, sb, SSH_AGENT_FAILURE,
                 result == 2 ? "locking the agent over IPC is not allowed" :
+                result == 3 ? "wrong passphrase before: not checked yet" :
+                result == 4 ? "wrong passphrase ten times: unlock only from the tray now" :
+                result == 5 ? "unlock over IPC shut after ten wrong passphrases" :
                 unlock ? "agent not locked by a program, or wrong passphrase" :
                          "agent already locked");
     }
@@ -2163,11 +2197,16 @@ static PageantAsyncOp *pageant_make_op(
             break;
 
           case EXT_QUERY:
-            /* Standard request to list the supported extensions. */
-            put_byte(sb, SSH_AGENT_SUCCESS);
+            /* Standard request to list the supported extensions. KiTTY: in
+             * RFC 9987's format (5.8.1), as OpenSSH answers it - upstream
+             * sends SSH_AGENT_SUCCESS + names, and nothing in this tree
+             * reads that reply. */
+            put_byte(sb, SSH_AGENT_EXTENSION_RESPONSE);
+            put_stringpl(sb, extension_names[EXT_QUERY]);
             for (size_t i = 0; i < lenof(extension_names); i++)
                 put_stringpl(sb, extension_names[i]);
-            pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS + names");
+            pageant_client_log(pc, reqid,
+                               "reply: SSH_AGENT_EXTENSION_RESPONSE + names");
             break;
 
           case EXT_ADD_PPK: {

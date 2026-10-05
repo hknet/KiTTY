@@ -4,6 +4,23 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.14-beta — 2026-10-05
+
+### Security
+
+- **kageant: guessing the unlock passphrase of `ssh-add -x` is limited.**
+  After each wrong passphrase the next unlock is refused for 0.1 s per
+  wrong passphrase so far, at most 10 s. After the tenth wrong passphrase
+  programs can no longer unlock the agent, the right passphrase included,
+  until Unlock agent in the tray menu; a notice names the program. The
+  keys stay loaded. Only with `allowipclock=yes`.
+
+### Changed
+
+- **kageant answers the agent protocol's `query` extension as RFC 9987
+  defines it** (`SSH_AGENT_EXTENSION_RESPONSE`, the name `query`, then the
+  supported extensions), as OpenSSH's agent does.
+
 ## 0.85.1.13-beta — 2026-10-05
 
 ### New

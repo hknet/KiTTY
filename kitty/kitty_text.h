@@ -2263,6 +2263,8 @@
 #define KT_KA_NOTICE_UNLOCKED                        "kageant - agent unlocked"
 #define KT_KA_LOCKED_BY_FMT                          "The agent was locked%s. The keys stay loaded and are not used until it is unlocked."
 #define KT_KA_UNLOCKED_BY_FMT                        "The agent was unlocked%s."
+#define KT_KA_NOTICE_UNLOCK_SHUT                     "kageant - unlock over IPC blocked"
+#define KT_KA_UNLOCK_GUESSED_FMT                     "Ten wrong unlock passphrases%s. Programs can no longer unlock the agent; Unlock agent in the tray menu unlocks it."
 #define KT_KA_NOTICE_REENCRYPTED                     "kageant - keys re-encrypted"
 #define KT_KA_REENCRYPTED_LEFT_FMT                   "Keys still encrypted: %d. They ask for their passphrase on first use - there is no key file to read them from."
 #define KT_KA_MENU_OPENSSH                           "Register as Windows &OpenSSH agent"

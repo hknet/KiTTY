@@ -2834,19 +2834,31 @@ int kageant_ipc_lock_allowed(void)
 
 /* A program's lock request was handled (pageant.h kageant_lock_event_hook).
  * Always in the agent log; a notice naming the program when it actually
- * locked or unlocked - a refused request (the setting is off) is a log line
- * only, so a program cannot raise notices at will. */
+ * locked or unlocked, or when its tenth wrong passphrase shut unlocking over
+ * IPC - a refused request (the setting is off, a wrong passphrase, the wait
+ * after one, unlocking shut) is a log line only, so a program cannot raise
+ * notices at will. */
 void kageant_do_lock_event(int op, int result)
 {
     char proc[MAX_PATH + 32];
     char *text;
 
     kageant_audit_use(op ? "unlock" : "lock", NULL, NULL,
-                      result == 0 ? "done" : result == 1 ? "refused" : "blocked",
+                      result == 0 ? "done" : result == 1 ? "refused" :
+                      result == 3 ? "waiting" : result == 4 ? "unlock-shut" :
+                      result == 5 ? "shut" : "blocked",
                       result == 2 ? "ipc-policy" : "ipc", pageant_external_pid);
-    if (result != 0 || !traywindow)
+    if ((result != 0 && result != 4) || !traywindow)
         return;
     kageant_requester_text(proc, sizeof(proc));
+    if (result == 4) {
+        text = dupprintf(KT_KA_UNLOCK_GUESSED_FMT, proc);
+        kitty_notice_show(KT_KA_NOTICE_UNLOCK_SHUT, text,
+                          KAGEANT_NOTICE_WARN, kageant_notice_seconds(10),
+                          traywindow, KAGEANT_WM_NOTICE_CLICK);
+        sfree(text);
+        return;
+    }
     text = dupprintf(op ? KT_KA_UNLOCKED_BY_FMT : KT_KA_LOCKED_BY_FMT, proc);
     kitty_notice_show(op ? KT_KA_NOTICE_UNLOCKED : KT_KA_NOTICE_LOCKED, text,
                       op ? KAGEANT_NOTICE_INFO : KAGEANT_NOTICE_WARN,

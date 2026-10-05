@@ -484,7 +484,11 @@ passphrase of the program's choosing - but only with \q{Allow locking
 the agent over IPC} ticked on the Security page (\c{allowipclock=yes});
 otherwise they are refused and the agent log notes it. A program's lock
 raises a notice naming the program, and the tray menu's \q{Unlock agent}
-clears it without the passphrase.
+clears it without the passphrase. After each wrong passphrase the next
+unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s.
+After the tenth wrong passphrase programs can no longer unlock the agent,
+the right passphrase included, until \q{Unlock agent} in the tray menu; a
+notice names the program, and the keys stay loaded.
 
 \H{pageant-security} Security considerations
 

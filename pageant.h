@@ -164,7 +164,10 @@ void pageant_lock_set(int flag, bool on);     /* TRAY / WINDOWS (PROGRAM: off on
 extern int (*kageant_ipc_lock_allowed_hook)(void);
 /* A program's lock request was handled: op 0 = lock, 1 = unlock; result 0 =
  * done, 1 = refused (wrong passphrase, already / not locked), 2 = blocked by
- * the setting. For the agent log and the notice naming the program. */
+ * the setting, 3 = refused unchecked (the wait after a wrong passphrase),
+ * 4 = the tenth wrong passphrase: unlocking over IPC shut until the tray's
+ * Unlock, 5 = refused because it is shut. For the agent log and the notice
+ * naming the program. */
 extern void (*kageant_lock_event_hook)(int op, int result);
 /* The lock state changed (any flag): tray tip, tray menu, key list. */
 extern void (*kageant_lock_changed_hook)(void);
