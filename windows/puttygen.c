@@ -522,9 +522,10 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* kitty_auxpos.c: DPI/monitor-safe aux-window placement + position memory. */
-void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
-void kitty_auxpos_save(HWND dlg, const char *key);
+/* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
+#include "../kitty/kitty_auxpos.h"
+#include "../kitty/kitty_inikeys.h"   /* KR_DLGPOS_*: the remembered windows' names */
+int kitty_inilight_registry_authoritative(void);   /* kitty_inilight.c */
 
 /* KiTTY: the About box is now a single NON-modal (modeless) window. */
 static HWND kitty_about_dlg = NULL;
@@ -540,7 +541,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
       case WM_INITDIALOG:
         /* KiTTY: place over the calling window (or a remembered spot), DPI/multi-
          * monitor-safe, instead of the old desktop-centre. */
-        kitty_auxpos_apply(hwnd, "kittygenAbout", GetWindow(hwnd, GW_OWNER), 0);
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_KG_ABOUT, GetWindow(hwnd, GW_OWNER), 0);
 
         {
             char *buildinfo_text = buildinfo("\r\n");
@@ -585,7 +586,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         DestroyWindow(hwnd);
         return 0;
       case WM_DESTROY:
-        kitty_auxpos_save(hwnd, "kittygenAbout");
+        kitty_auxpos_save(hwnd, KR_DLGPOS_KG_ABOUT);
         kitty_about_dlg = NULL;
         return 0;
     }
@@ -3274,6 +3275,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(1))
         ExitProcess(1);
+
+    /* KiTTY: a portable copy remembers its windows in kitty_windowpos.ini
+     * beside the exe, never in the registry. */
+    if (!kitty_inilight_registry_authoritative())
+        kitty_auxpos_set_file_beside_exe();
 
     init_common_controls();
     hinst = inst;

@@ -219,7 +219,8 @@ kitty.ini: they are copied over the same way and removed.
 field; at the list's foot when the list is tall enough) and Application >
 Migration > *Organize sessions...* open a window of its own: the folder tree on
 the left, *All sessions (root)* at its top, and the selected folder's sessions
-on the right. Ctrl+click picks single sessions, Shift+click a range, Ctrl+A the
+on the right. It opens where it was left and at the size it was given, for
+each monitor layout, and always fully on a screen. Ctrl+click picks single sessions, Shift+click a range, Ctrl+A the
 whole folder. *Move to...* offers the destination in a tree; dragging the
 selection onto a folder of the tree does the same. *Rename* renames the
 selected session (in the list) or folder (in the tree), *New folder* creates
@@ -1522,11 +1523,16 @@ It is stored with the session like any other setting, so it travels through **Ex
 
 ### The configuration window remembers how you use it
 
-Six behaviours of the configuration window itself:
+Seven behaviours of the configuration window itself:
 
 - **The title names the program.** The configuration window is titled
   "KiTTY++ Configuration" (Change Settings: "KiTTY++ Reconfiguration"); a
   renamed class (`KiClassName`) keeps its own name in the title.
+- **It opens where you left it, for each monitor layout**, and always fully
+  on a screen; its size is the one you dragged it to (`[ConfigBox]
+  windowwidth` / `windowheight`). The same memory serves Organize sessions,
+  kageant's key list and agent log, and the About boxes; a portable copy
+  keeps it in `kitty_windowpos.ini` beside the exe.
 
 - **The Category tree keeps your folds.** Any category you fold - closed or
   open - stays that way the next time the window opens, whatever the

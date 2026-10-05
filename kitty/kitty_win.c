@@ -317,7 +317,7 @@ static INT_PTR CALLBACK TitleVarsProc(HWND hwnd, UINT msg,
          * KiTTY window - it had none, which also left a blank in the
          * taskbar. */
         kitty_dialog_icon(hwnd, NULL);
-        kitty_auxpos_apply(hwnd, "TitleVars", GetWindow(hwnd, GW_OWNER), 1);
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_TITLEVARS, GetWindow(hwnd, GW_OWNER), 1);
         return 1;
       }
       case WM_COMMAND:
@@ -337,7 +337,7 @@ static INT_PTR CALLBACK TitleVarsProc(HWND hwnd, UINT msg,
         DestroyWindow(hwnd);
         return 1;
       case WM_DESTROY:
-        kitty_auxpos_save(hwnd, "TitleVars");
+        kitty_auxpos_save(hwnd, KR_DLGPOS_TITLEVARS);
         ShinyRemoveAuxDialog(hwnd);
         kitty_titlevars_dlg = NULL;
         return 0;

@@ -36,6 +36,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   and removed. When `hostkeyextension` is set or changed, the existing
   host-key files are renamed to carry it at the next start, and one arriving
   later without it is renamed when its host is first used (hknet/KiTTY#56).
+- **The suite's windows keep their place for each monitor layout, and
+  always open fully on a screen.** The configuration window (it remembered
+  one place for every layout), Organize sessions (it remembered nothing),
+  kageant's key list and agent log (one geometry for every layout) and the
+  About boxes now share one memory; the resizable ones keep their size too.
+  The old stored places are carried over once. A portable copy keeps them
+  in `kitty_windowpos.ini` beside the exe instead of the registry.
 
 ## 0.85.1.13-beta — 2026-10-05
 

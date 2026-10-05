@@ -78,7 +78,9 @@ empty folder is deleted without a question.
 \q{Organize...} (under \q{Del folder}, beside the comment field) and
 \q{Organize sessions...} on \k{kitty-cfg-migration} open the
 \q{Organize sessions} window: the folder tree on the left, the selected
-folder's sessions on the right. Ctrl+click picks single sessions,
+folder's sessions on the right. The window opens where it was left and
+at the size it was given, for each monitor layout, and always fully on a
+screen. Ctrl+click picks single sessions,
 Shift+click a range, Ctrl+A all of them. \q{Move to...} moves the
 selection to a folder picked in a tree, as does dragging it onto a
 folder of the tree; \q{Rename} renames the selected session, or the

@@ -13,6 +13,7 @@ directory instead of the Windows registry.
 | SSH host keys / host CAs | Windows registry | `SshHostKeys\` (settable, `[KiTTY] sshhostkeys`) / `SshHostCAs\` under the portable config dir |
 | Random seed | user profile / normal PuTTY location | `PUTTY.RND` under the portable config dir |
 | Recent/jump-list/update state | Windows registry / profile state | portable files such as `Jumplist` and `KiTTYState` |
+| Where windows were left (configuration window, Organize sessions, kageant's key list and agent log, About boxes, ...) | Windows registry (`AuxWinPos`) | `kitty_windowpos.ini` beside the exe |
 | Global options (`kitty.ini`) | next to the exe / `%APPDATA%` | next to the exe/config dir |
 | Needs install / admin rights | no | no |
 | Roams with the Windows user profile | yes | no — the portable state travels with the folder instead |
@@ -71,7 +72,9 @@ as they will be imported.
 Portable mode now covers the normal saved-session and SSH trust/cache state used by
 `kitty_portable.exe`: sessions, SSH host keys, SSH host CAs, the random seed, recent/
 last-session state, jump-list state, and the update-check cache live under the portable
-config directory.
+config directory. Where its windows were left (and how big) is kept in
+`kitty_windowpos.ini` beside the exe, per monitor layout, by every program of the suite
+that runs from the folder - not in the registry.
 
 One important exception remains: a DPAPI-encrypted session password is **machine-bound**.
 It protects the password at rest on the current Windows account, but it will not decrypt if

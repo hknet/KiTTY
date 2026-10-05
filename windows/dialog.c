@@ -729,9 +729,8 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* kitty_auxpos.c: DPI/monitor-safe aux-window placement + position memory. */
-void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
-void kitty_auxpos_save(HWND dlg, const char *key);
+/* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
+#include "../kitty/kitty_auxpos.h"
 
 /* KiTTY: the About box is now a single NON-modal (modeless) window. */
 static HWND kitty_about_dlg = NULL;
@@ -800,7 +799,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         sfree(text);
         /* KiTTY: place over the calling window (or a remembered spot), DPI/multi-
          * monitor-safe, instead of the template's screen-centre default. */
-        kitty_auxpos_apply(hwnd, "About", GetWindow(hwnd, GW_OWNER), 0);
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_ABOUT, GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
       case WM_COMMAND:
@@ -829,7 +828,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         DestroyWindow(hwnd);
         return 0;
       case WM_DESTROY:
-        kitty_auxpos_save(hwnd, "About");
+        kitty_auxpos_save(hwnd, KR_DLGPOS_ABOUT);
         kitty_about_dlg = NULL;
         ShinyRemoveAuxDialog(hwnd);
         return 0;
@@ -2384,25 +2383,19 @@ static void kitty_cfgpos_dbg(const char *fmt, ...)
     fputc('\n', fp);
     fclose(fp);
 }
+/* KiTTY: the box's place, per monitor layout, through the suite's shared
+ * window memory (kitty_auxpos.c: the registry, or kitty_windowpos.ini beside
+ * a portable exe). Its SIZE is not taken from there: that is [ConfigBox]
+ * windowwidth / windowheight, which the Application panel edits too
+ * (kitty_cfgbox_save_size below). */
 static void kitty_cfgbox_save_pos(HWND hwnd)
 {
-    RECT r;
-    if (!hwnd || IsIconic(hwnd) || IsZoomed(hwnd) || !GetWindowRect(hwnd, &r)) {
-        kitty_cfgpos_dbg("SAVE skipped (iconic/zoomed/no-rect)");
+    if (!hwnd || IsIconic(hwnd) || IsZoomed(hwnd)) {
+        kitty_cfgpos_dbg("SAVE skipped (iconic/zoomed)");
         return;
     }
-    char base[600];
-    _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        LONG xy[2]; xy[0] = r.left; xy[1] = r.top;
-        RegSetValueExA(hk, "ConfigBox", 0, REG_BINARY, (const BYTE *)xy, sizeof(xy));
-        RegCloseKey(hk);
-        kitty_cfgpos_dbg("SAVE ok (%ld,%ld) -> HKCU\\%s [ConfigBox]", r.left, r.top, base);
-    } else {
-        kitty_cfgpos_dbg("SAVE FAILED RegCreateKeyEx HKCU\\%s", base);
-    }
+    kitty_auxpos_save(hwnd, KR_DLGPOS_CONFIGBOX);
+    kitty_cfgpos_dbg("SAVE ok -> AuxWinPos %s", KR_DLGPOS_CONFIGBOX);
 }
 /*
  * Remember how big the user dragged the box.
@@ -2504,21 +2497,28 @@ static void kitty_cfgbox_save_size(HWND hwnd)
 
 static int kitty_cfgbox_restore_pos(HWND hwnd)
 {
+    /* Before 0.85.1.14 the place was one value for every monitor layout,
+     * WindowPos\ConfigBox in the registry (even for a portable copy):
+     * carried over once as this layout's entry, then removed. */
     char base[600];
+    HKEY hk;
+    int ok;
     _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
-    LONG xy[2]; DWORD sz = sizeof(xy);
-    LONG rc = RegGetValueA(HKEY_CURRENT_USER, base, "ConfigBox", RRF_RT_REG_BINARY,
-                           NULL, xy, &sz);
-    if (rc != ERROR_SUCCESS || sz != sizeof(xy)) {
-        kitty_cfgpos_dbg("RESTORE no value (rc=%ld sz=%lu) HKCU\\%s", (long)rc, (unsigned long)sz, base);
-        return 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, base, 0, KEY_QUERY_VALUE | KEY_SET_VALUE,
+                      &hk) == ERROR_SUCCESS) {
+        LONG xy[2];
+        DWORD sz = sizeof(xy), type = 0;
+        if (RegQueryValueExA(hk, KR_DLGPOS_CONFIGBOX, NULL, &type, (BYTE *)xy, &sz)
+            == ERROR_SUCCESS) {
+            if (type == REG_BINARY && sz == sizeof(xy))
+                kitty_auxpos_seed(KR_DLGPOS_CONFIGBOX, (int)xy[0], (int)xy[1], 0, 0);
+            RegDeleteValueA(hk, KR_DLGPOS_CONFIGBOX);
+            kitty_cfgpos_dbg("RESTORE carried the old WindowPos\\ConfigBox over");
+        }
+        RegCloseKey(hk);
     }
-    POINT pt; pt.x = xy[0] + 8; pt.y = xy[1] + 8;
-    int onmon = (MonitorFromPoint(pt, MONITOR_DEFAULTTONULL) != NULL);
-    if (!onmon) { kitty_cfgpos_dbg("RESTORE off-screen (%ld,%ld)", xy[0], xy[1]); return 0; }
-    int ok = SetWindowPos(hwnd, NULL, xy[0], xy[1], 0, 0,
-                          SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) ? 1 : 0;
-    kitty_cfgpos_dbg("RESTORE setpos (%ld,%ld) -> %d", xy[0], xy[1], ok);
+    ok = kitty_auxpos_restore(hwnd, KR_DLGPOS_CONFIGBOX, 0, 0, 0);
+    kitty_cfgpos_dbg("RESTORE -> %d", ok);
     return ok;
 }
 

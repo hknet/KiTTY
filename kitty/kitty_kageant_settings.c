@@ -101,10 +101,10 @@ void kageant_reg_write(const char *name, int on)
  * KiTTY: string settings with the same store precedence as the toggles
  * above - the authoritative store wins, the other is a first-run fallback,
  * and writes go to the authoritative store only (a portable install never
- * touches the registry). Used for the key-list window geometry and column
- * widths, which want to persist in portable mode too - which is why the
- * AuxWinPos mechanism (registry-only, persistence off in portable) is not
- * used for them.
+ * touches the registry). Used for the list column widths. The windows' place
+ * and size go through kitty_auxpos.c (registry, or kitty_windowpos.ini beside
+ * a portable exe); the geometry values kept here before 0.85.1.14 are read
+ * once to carry them over (windows/pageant.c kageant_geometry_carry_over).
  */
 static int kageant_reg_read_str(const char *name, char *buf, size_t len)
 {

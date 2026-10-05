@@ -270,5 +270,21 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_SCPAUTOPWDMIGRATED               "ScpAutoPwdMigrated"
 #define KR_SHARROWREPAIRDONE                "SharrowRepairDone"
 #define KR_SHOWFOREIGNSESSIONS              "ShowForeignSessions"
+/* windows whose place (and size) are remembered per monitor layout
+ * (kitty_auxpos.c: AuxWinPos\<name>_<layout>, or kitty_windowpos.ini) */
+#define KR_DLGPOS_ABOUT                     "About"
+#define KR_DLGPOS_TITLEVARS                 "TitleVars"
+#define KR_DLGPOS_CMDHELP                   "CmdHelp"
+#define KR_DLGPOS_CLIHELP                   "CliHelp"
+#define KR_DLGPOS_CONFIGBOX                 "ConfigBox"
+#define KR_DLGPOS_ORGANIZE                  "Organize"
+/* kageant's (names kept from before, so remembered places stay) */
+#define KR_DLGPOS_KA_ABOUT                  "kageantAbout"
+#define KR_DLGPOS_KA_HELLOPROTECT           "kageantHelloProtect"
+#define KR_DLGPOS_KA_KEYDETAILS             "kageantKeyDetails"
+#define KR_DLGPOS_KA_AGENTLOG               "kageantAuditView"
+#define KR_DLGPOS_KA_SETTINGS               "kageantSettings"
+#define KR_DLGPOS_KA_KEYLIST                "kageantKeyList"
+#define KR_DLGPOS_KG_ABOUT                  "kittygenAbout"
 
 #endif /* KITTY_INIKEYS_H */

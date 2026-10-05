@@ -255,9 +255,9 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
     return 0;
 }
 
-/* kitty_auxpos.c: DPI/monitor-safe aux-window placement + position memory. */
-void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
-void kitty_auxpos_save(HWND dlg, const char *key);
+/* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
+#include "../kitty/kitty_auxpos.h"
+int kitty_inilight_registry_authoritative(void);   /* kitty_inilight.c */
 
 /* KiTTY: the KiTTY key generator, sitting next to us - kittygen.exe in a
  * release, puttygen.exe in a dev build. Returns a malloc'd path if present,
@@ -381,14 +381,14 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         sfree(text);
         /* KiTTY: tray app - place the About near the notification area (or a
          * remembered spot), DPI/multi-monitor-safe, instead of screen-centre. */
-        kitty_auxpos_apply(hwnd, "kageantAbout", GetWindow(hwnd, GW_OWNER), 1);
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_ABOUT, GetWindow(hwnd, GW_OWNER), 1);
         return 1;
       }
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
           case IDCANCEL:
-            kitty_auxpos_save(hwnd, "kageantAbout");
+            kitty_auxpos_save(hwnd, KR_DLGPOS_KA_ABOUT);
             aboutbox = NULL;
             DestroyWindow(hwnd);
             return 0;
@@ -1877,17 +1877,15 @@ static void keydetail_show_lifetime(HWND hwnd)
     }
 }
 
+/* KiTTY: the window's place and size, per monitor layout, through the
+ * suite's shared window memory (kitty_auxpos.c: the registry, or
+ * kitty_windowpos.ini beside a portable exe); the column widths stay with
+ * the [Agent] settings. */
 static void keylist_save_geometry(HWND hwnd)
 {
     if (IsIconic(hwnd) || IsZoomed(hwnd))
         return;
-    RECT r;
-    if (GetWindowRect(hwnd, &r)) {
-        char buf[64];
-        sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
-                (long)(r.right - r.left), (long)(r.bottom - r.top));
-        kageant_setting_str_set(KI_AGENT_KEYLISTGEOMETRY, KL_GEOM_REGVAL, buf);
-    }
+    kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYLIST);
     HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
     if (hlist) {
         char cols[80];
@@ -1903,36 +1901,30 @@ static void keylist_save_geometry(HWND hwnd)
     }
 }
 
-/* Apply a remembered window position/size, clamped onto the nearest
- * monitor's work area. Returns false if nothing (usable) is stored, in
- * which case the caller centres the window as it always did. */
-static bool keylist_restore_geometry(HWND hwnd)
+/* Before 0.85.1.14 one geometry for every monitor layout was kept in the
+ * [Agent] settings (inikey / regname): carried over once as this layout's
+ * entry under `poskey`, then emptied. */
+static void kageant_geometry_carry_over(const char *inikey, const char *regname,
+                                        const char *poskey)
 {
     char buf[64];
     int x, y, w, h;
-    if (!kageant_setting_str_get(KI_AGENT_KEYLISTGEOMETRY, KL_GEOM_REGVAL,
-                                 buf, sizeof(buf)))
-        return false;
-    if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
-        return false;
-    if (w < keylist_minsize.cx) w = keylist_minsize.cx;
-    if (h < keylist_minsize.cy) h = keylist_minsize.cy;
-    RECT want;
-    SetRect(&want, x, y, x + w, y + h);
-    HMONITOR mon = MonitorFromRect(&want, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO mi;
-    mi.cbSize = sizeof(mi);
-    if (mon && GetMonitorInfo(mon, &mi)) {
-        RECT wk = mi.rcWork;
-        if (w > wk.right - wk.left) w = wk.right - wk.left;
-        if (h > wk.bottom - wk.top) h = wk.bottom - wk.top;
-        if (x + w > wk.right)  x = wk.right - w;
-        if (y + h > wk.bottom) y = wk.bottom - h;
-        if (x < wk.left) x = wk.left;
-        if (y < wk.top)  y = wk.top;
-    }
-    SetWindowPos(hwnd, NULL, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-    return true;
+    if (!kageant_setting_str_get(inikey, regname, buf, sizeof(buf)) || !buf[0])
+        return;
+    if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) == 4)
+        kitty_auxpos_seed(poskey, x, y, w, h);
+    kageant_setting_str_set(inikey, regname, "");
+}
+
+/* Apply the remembered place and size, fully on the nearest monitor's work
+ * area. Returns false if nothing is stored, in which case the caller
+ * centres the window as it always did. */
+static bool keylist_restore_geometry(HWND hwnd)
+{
+    kageant_geometry_carry_over(KI_AGENT_KEYLISTGEOMETRY, KL_GEOM_REGVAL,
+                                KR_DLGPOS_KA_KEYLIST);
+    return kitty_auxpos_restore(hwnd, KR_DLGPOS_KA_KEYLIST, 1,
+                                keylist_minsize.cx, keylist_minsize.cy) != 0;
 }
 
 /*
@@ -2037,7 +2029,7 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
         CheckDlgButton(hwnd, IDC_HP_REPLACE,
                        c->tracked ? BST_CHECKED : BST_UNCHECKED);
         hello_protect_sync(hwnd, c);
-        kitty_auxpos_apply(hwnd, "kageantHelloProtect", GetWindow(hwnd, GW_OWNER), 0);
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_HELLOPROTECT, GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
       case WM_COMMAND:
@@ -2139,18 +2131,18 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_HP_REPLACE) == BST_CHECKED;
             c->sidebound =
                 IsDlgButtonChecked(hwnd, IDC_HP_SIDEBOUND) == BST_CHECKED;
-            kitty_auxpos_save(hwnd, "kageantHelloProtect");
+            kitty_auxpos_save(hwnd, KR_DLGPOS_KA_HELLOPROTECT);
             EndDialog(hwnd, 1);
             return 0;
           }
           case IDCANCEL:
-            kitty_auxpos_save(hwnd, "kageantHelloProtect");
+            kitty_auxpos_save(hwnd, KR_DLGPOS_KA_HELLOPROTECT);
             EndDialog(hwnd, 0);
             return 0;
         }
         return 0;
       case WM_CLOSE:
-        kitty_auxpos_save(hwnd, "kageantHelloProtect");
+        kitty_auxpos_save(hwnd, KR_DLGPOS_KA_HELLOPROTECT);
         EndDialog(hwnd, 0);
         return 0;
     }
@@ -2491,7 +2483,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                          keydetail_baserects, &keydetail_basesize,
                          &keydetail_minsize);
         keydetail_layout_ready = true;
-        kitty_auxpos_apply(hwnd, "kageantKeyDetails",
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_KEYDETAILS,
                            GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
@@ -2628,7 +2620,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 return 0;
             }
             keylist_update();
-            kitty_auxpos_save(hwnd, "kageantKeyDetails");
+            kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
             sfree(keypath);
             /* cleared, or the IDOK/WM_CLOSE paths free it a second time */
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
@@ -2654,7 +2646,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 sfree(msg);
                 sfree(newpath);
                 keylist_update();
-                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
                 sfree(keypath);
                 SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
                 EndDialog(hwnd, 1);
@@ -2714,7 +2706,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             sfree(paths);
             if (done) {
                 keylist_update();
-                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
                 sfree(keypath);
                 SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)NULL);
                 EndDialog(hwnd, 1);
@@ -2746,7 +2738,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             r = kageant_locate_pending_key(keypath, newpath);
             if (r == 1) {
                 keylist_update();
-                kitty_auxpos_save(hwnd, "kageantKeyDetails");
+                kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
                 sfree(newpath);
                 sfree(keypath);
                 /* cleared, or IDOK/WM_CLOSE free it a second time */
@@ -2765,7 +2757,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
           }
           case IDOK:
           case IDCANCEL: {
-            kitty_auxpos_save(hwnd, "kageantKeyDetails");
+            kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
             char *loadpath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
             sfree(loadpath);
             EndDialog(hwnd, 1);
@@ -2774,7 +2766,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         }
         return 0;
       case WM_CLOSE: {
-        kitty_auxpos_save(hwnd, "kageantKeyDetails");
+        kitty_auxpos_save(hwnd, KR_DLGPOS_KA_KEYDETAILS);
         char *loadpath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
         sfree(loadpath);
         EndDialog(hwnd, 1);
@@ -3176,16 +3168,10 @@ static bool auditview_layout_ready = false;
 
 static void auditview_save_geometry(HWND hwnd)
 {
-    RECT r;
     HWND hlist;
     if (IsIconic(hwnd) || IsZoomed(hwnd))
         return;
-    if (GetWindowRect(hwnd, &r)) {
-        char buf[64];
-        sprintf(buf, "%ld,%ld,%ld,%ld", (long)r.left, (long)r.top,
-                (long)(r.right - r.left), (long)(r.bottom - r.top));
-        kageant_setting_str_set(KI_AGENT_AGENTLOGGEOMETRY, AV_GEOM_REGVAL, buf);
-    }
+    kitty_auxpos_save(hwnd, KR_DLGPOS_KA_AGENTLOG);
     hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
     if (hlist) {
         char cols[80];
@@ -3201,34 +3187,10 @@ static void auditview_save_geometry(HWND hwnd)
 
 static bool auditview_restore_geometry(HWND hwnd)
 {
-    char buf[64];
-    int x, y, w, h;
-    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGGEOMETRY, AV_GEOM_REGVAL,
-                                 buf, sizeof(buf)))
-        return false;
-    if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) != 4)
-        return false;
-    if (w < auditview_minsize.cx) w = auditview_minsize.cx;
-    if (h < auditview_minsize.cy) h = auditview_minsize.cy;
-    {
-        RECT want;
-        HMONITOR mon;
-        MONITORINFO mi;
-        SetRect(&want, x, y, x + w, y + h);
-        mon = MonitorFromRect(&want, MONITOR_DEFAULTTONEAREST);
-        mi.cbSize = sizeof(mi);
-        if (mon && GetMonitorInfo(mon, &mi)) {
-            RECT wk = mi.rcWork;
-            if (w > wk.right - wk.left) w = wk.right - wk.left;
-            if (h > wk.bottom - wk.top) h = wk.bottom - wk.top;
-            if (x + w > wk.right)  x = wk.right - w;
-            if (y + h > wk.bottom) y = wk.bottom - h;
-            if (x < wk.left) x = wk.left;
-            if (y < wk.top)  y = wk.top;
-        }
-    }
-    SetWindowPos(hwnd, NULL, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-    return true;
+    kageant_geometry_carry_over(KI_AGENT_AGENTLOGGEOMETRY, AV_GEOM_REGVAL,
+                                KR_DLGPOS_KA_AGENTLOG);
+    return kitty_auxpos_restore(hwnd, KR_DLGPOS_KA_AGENTLOG, 1,
+                                auditview_minsize.cx, auditview_minsize.cy) != 0;
 }
 
 static bool auditview_restore_columns(HWND hlist)
@@ -3450,7 +3412,7 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                          &auditview_minsize);
         auditview_layout_ready = true;
         if (!auditview_restore_geometry(hwnd))
-            kitty_auxpos_apply(hwnd, "kageantAuditView",
+            kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_AGENTLOG,
                                GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       }
@@ -3765,7 +3727,7 @@ static int keysettings_number(HWND hwnd, int id, int deflt, int current)
  */
 static void keysettings_leave(HWND hwnd)
 {
-    kitty_auxpos_save(hwnd, "kageantSettings");
+    kitty_auxpos_save(hwnd, KR_DLGPOS_KA_SETTINGS);
     kageant_settings_tab_set(
         (int)SendDlgItemMessage(hwnd, IDC_SET_TABS, TCM_GETCURSEL, 0, 0));
     /* The theme state is dropped by the subclass on WM_NCDESTROY, along with
@@ -3987,7 +3949,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             }
         }
         keysettings_apply_theme(hwnd);
-        kitty_auxpos_apply(hwnd, "kageantSettings",
+        kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_SETTINGS,
                            GetWindow(hwnd, GW_OWNER), 0);
         return 1;
       case WM_NOTIFY: {
@@ -6569,6 +6531,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(1))
         ExitProcess(1);
+
+    /* KiTTY: a portable copy (its kitty.ini has savemode=file/dir, or a
+     * portable layout) remembers its windows in kitty_windowpos.ini beside
+     * the exe, never in the registry. */
+    if (!kitty_inilight_registry_authoritative())
+        kitty_auxpos_set_file_beside_exe();
 
     hinst = inst;
 

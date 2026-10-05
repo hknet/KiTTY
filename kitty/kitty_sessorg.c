@@ -42,6 +42,8 @@
 #include "kitty_anchor.h"        /* the shared resize */
 #include "kitty_text.h"
 #include "kitty_sessorg.h"
+#include "kitty_auxpos.h"        /* the window's own place and size, per monitor layout */
+#include "kitty_inikeys.h"       /* KR_DLGPOS_ORGANIZE: its name there */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -1542,7 +1544,11 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             st->minsize.cy = (wr.bottom - wr.top) * 2 / 3;
             st->ready = 1;
         }
-        kitty_centre_on_owner(h);
+        /* where it was on this monitor layout, fully visible; the first
+         * time, over its owner */
+        if (!kitty_auxpos_restore(h, KR_DLGPOS_ORGANIZE, 1, st->minsize.cx,
+                                  st->minsize.cy))
+            kitty_centre_on_owner(h);
         SetFocus(st->tree);
         return FALSE;
       }
@@ -1635,6 +1641,8 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return TRUE;
       case WM_DESTROY:
         ShinyRemoveAuxDialog(h);
+        if (st && st->ready)
+            kitty_auxpos_save(h, KR_DLGPOS_ORGANIZE);
         if (st) {
             so_folders_free(&st->fs);
             so_names_free(&st->s);

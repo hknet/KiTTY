@@ -24,8 +24,10 @@
  * shared entry as a binary RECT in pixels; that is still read, as a
  * position without a size, and is replaced the next time it is written.
  *
- * The configuration window's own position (WindowPos\ConfigBox) is a
- * different thing and is left alone here.
+ * Terminal windows only. Dialogs and tool windows - the configuration
+ * window among them - keep their place (and size) through kitty_auxpos.c;
+ * the configuration window's old WindowPos\ConfigBox value is carried over
+ * from there (windows/dialog.c) and left alone here.
  */
 
 #include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */

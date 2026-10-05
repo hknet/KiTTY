@@ -273,11 +273,12 @@ void InitWinMain( void ) {
 	GetSaveMode() ;
 	NETDBG_TS("after GetSaveMode");
 
-	/* Aux-window position memory (About boxes, etc.) is registry-backed. In portable
-	 * modes (anything but SAVEMODE_REG) place windows correctly but do NOT persist, so
-	 * we leave no registry footprint -- consistent with the rest of portable KiTTY. */
-	{ void kitty_auxpos_set_persist( int on ) ;
-	  if( IniFileFlag != SAVEMODE_REG ) kitty_auxpos_set_persist( 0 ) ; }
+	/* Window position memory (About boxes, the configuration window, Organize
+	 * sessions, ...) is registry-backed. In portable modes (anything but
+	 * SAVEMODE_REG) it goes to kitty_windowpos.ini beside the exe instead, so a
+	 * portable copy remembers its windows and leaves no registry footprint. */
+	{ void kitty_auxpos_set_file_beside_exe( void ) ;
+	  if( IniFileFlag != SAVEMODE_REG ) kitty_auxpos_set_file_beside_exe() ; }
 
 	// Initialise the parameters from the kitty.ini file
 	LoadParameters() ;
