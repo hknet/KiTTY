@@ -1090,7 +1090,7 @@ Both can be set, and then the fixed position wins: an explicit instruction beats
 
 ### Background image
 
-KiTTY++ can display a picture behind your terminal text, giving each session window a custom backdrop. It supports BMP and JPEG images, and you can adjust how strongly the image shows through with an opacity setting or rotate through several pictures as a slideshow. This feature grows out of the covidimus patch integrated into KiTTY++.
+KiTTY++ can display a picture behind your terminal text, giving each session window a custom backdrop. It supports BMP, JPEG and PNG images - JPEG and PNG through Windows' own imaging component, which XP has only with the Microsoft .NET Framework 3.0 (or the WIC redistributable) installed; BMP works everywhere - and you can adjust how strongly the image shows through with an opacity setting or rotate through several pictures as a slideshow. This feature grows out of the covidimus patch integrated into KiTTY++.
 
 **How to enable:** Add `bgimage=yes` to `[KiTTY]` in kitty.ini (the key is `bgimage`, not `backgroundimage`), then configure **Window > Appearance > Background** (image file, opacity, slideshow).
 
@@ -1234,7 +1234,7 @@ While the key events are on, the window title ends in `[far2l keys]`. A notice n
 
 far2l can show pictures in a KiTTY++ window - its image viewer, for one. They are placed over the text, cell-aligned and stretched to the cells far2l names or at their own size at a pixel offset, and far2l can move, rotate (90/180/270 degrees), mirror and delete them. They stay over the text until far2l removes them and do not scroll with it; a terminal reset, far2l's exit and the end of the session remove them too. Both renderers (GDI and Direct2D) draw them. far2l draws them with its ImageViewer plugin, opened from the plugins menu (F11) - F3 and the quick view (Ctrl+Q) show the file as text - which needs ImageMagick's `convert` on the far2l host.
 
-Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imaging component (Vista and later). A transparent part of a picture shows the terminal's background colour. Limits: one picture at most 4096 pixels a side and 8 megapixels, at most 64 pictures and 64 MB in all per window; a picture beyond a limit is refused and the refusal is reported to far2l.
+Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imaging component (Vista and later, and XP with the Microsoft .NET Framework 3.0 installed). A transparent part of a picture shows the terminal's background colour. Limits: one picture at most 4096 pixels a side and 8 megapixels, at most 64 pictures and 64 MB in all per window; a picture beyond a limit is refused and the refusal is reported to far2l.
 
 **How to enable:** on by default; **Window → Copy & Paste → Remote clipboard → Show far2l images**. Off reports to far2l that the terminal shows no images.
 

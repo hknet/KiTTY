@@ -1,21 +1,23 @@
 /*
  * kitty_image.c - the terminal background image (MOD_BACKGROUNDIMAGE).
- * It loads the picture (a BMP through LoadImage, a JPEG through the bundled
- * libjpeg, or the desktop wallpaper read from the shell's own settings),
+ * It loads the picture (a BMP through LoadImage, a JPEG or PNG through the
+ * Windows Imaging Component, or the desktop wallpaper read from the shell's
+ * own settings),
  * then tiles, centres, stretches or places it in an off-screen device
  * context sized to the whole virtual desktop, and applies the configured
  * opacity, including the gradient styles computed pixel by pixel.
  * What it leaves behind is that background DC, plus a pre-blended copy for
  * fast fills, which the painting code draws behind the terminal text; it is
- * rebuilt on a resize or a configuration change.
+ * rebuilt on a resize or a configuration change. The /screenshot command's
+ * PNG writer lives here too.
  */
 
-#include <setjmp.h>
-#include "jpeg/jpeglib.h"
 #include <stdio.h>
 
 #include <winsock2.h>	/* must precede windows.h (putty.h pulls winsock2 later) */
 #include <windows.h>
+
+#include "kitty_wic.h"
 
 #ifdef MOD_BACKGROUNDIMAGE
 
@@ -390,10 +392,6 @@ static BOOL load_file_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
     return TRUE;
 }
 
-jmp_buf JPEG_bailout;
-int usePalette = 0;
-char *loadError = NULL;	
-COLORREF skycolour = RGB(0, 0, 255);
 
 HBITMAP CreateHBitmap(int w, int h, LPVOID *lpBits)
 {
@@ -420,205 +418,23 @@ HBITMAP CreateHBitmap(int w, int h, LPVOID *lpBits)
 	return bitmap;
 }
 
-//  LOADJPEGIMAGE  --  Load JPEG image into memory
-static HBITMAP loadJPEGimage(FILE *input_file, HGLOBAL *LimageBitmap, int *LsizeX, int *LsizeY)
-{
-	int i;
-	LPBITMAPINFOHEADER bh;
-	DWORD bmpsize;
-	struct jpeg_decompress_struct cinfo;
-	struct jpeg_error_mgr jerr;
-	JSAMPARRAY colormap;
-	LPBYTE pix;
-	int linewid;
-	int pixbytes;
-	static LPBYTE sl = NULL;
-	static HGLOBAL imageBitmap = NULL;		// In-memory bitmap
-
-	sl = NULL;
-	imageBitmap = NULL;
-	if (setjmp(JPEG_bailout) != 0) {
-		/*	Since we arrive here via longjmp() from
-			parts unknown, we may have allocated
-			the line buffer or bitmap prior to bailing
-			out.  If they've been allocated, release them.  */
-
-		if (sl != NULL) {
-			GlobalFree(sl);
-			sl = NULL;
-		}
-		if (imageBitmap != NULL) {
-			GlobalFree(imageBitmap);
-			imageBitmap = NULL;
-		}
-		return NULL;
-	}
-	cinfo.err = jpeg_std_error(&jerr);
-	jpeg_create_decompress(&cinfo);
-	jpeg_stdio_src(&cinfo, input_file);
-	jpeg_read_header(&cinfo, TRUE);
-	cinfo.desired_number_of_colors = 254;
-	cinfo.quantize_colors = usePalette;
-	jpeg_start_decompress(&cinfo);
-
-	pixbytes = (usePalette ? 1 : 3);
-	sl = GlobalAlloc(GMEM_FIXED, cinfo.output_width * pixbytes);
-	if (sl == NULL) {
-		loadError = "Cannot allocate JPEG decoder row buffer";
-		return NULL;
-	}
-
-	linewid = ((((cinfo.output_width * pixbytes) + (sizeof(LONG) - 1)) / sizeof(LONG)) * sizeof(LONG));
-	bmpsize = sizeof(BITMAPINFOHEADER) +
-		(usePalette ? (256 * sizeof(RGBQUAD)) : 0) +
-		(linewid * cinfo.output_height);
-
-	imageBitmap = GlobalAlloc(GMEM_FIXED, bmpsize);
-	if (imageBitmap == NULL) {
-		loadError = "Cannot allocate bitmap for decoded JPEG image";
-		GlobalFree(sl);
-		return NULL;
-	}
-
-	//	Plug in header fields with information from cinfo
-
-	bh = (LPBITMAPINFOHEADER) imageBitmap;
-	pix = ((LPBYTE) imageBitmap) + sizeof(BITMAPINFOHEADER) +
-			(usePalette ? (256 * sizeof(RGBQUAD)) : 0);
-	pix = pix + 0 ; // To avoid a compilation warning
-	bh->biSize = sizeof(BITMAPINFOHEADER);
-	bh->biWidth = cinfo.output_width;
-	bh->biHeight = cinfo.output_height;
-	bh->biPlanes = 1;
-	bh->biBitCount = usePalette ? 8 : 24;
-	bh->biCompression = BI_RGB;
-	bh->biSizeImage = 0;
-	bh->biXPelsPerMeter = bh->biYPelsPerMeter = 2835;
-	bh->biClrUsed = 0;
-	bh->biClrImportant = 0;
-
-	/*	Construct the palette from the colour map optimised
-		for the JPEG file.  */
-
-	if (usePalette) {
-		colormap = cinfo.colormap;
-		for (i = 0; i < cinfo.actual_number_of_colors; i++) {
-			if (cinfo.num_components == 1) {
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbRed =
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbGreen =
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbBlue = GETJSAMPLE(colormap[0][i]);
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbReserved = 0;
-			} else {
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbRed = GETJSAMPLE(colormap[0][i]);
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbGreen = GETJSAMPLE(colormap[1][i]);
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbBlue = GETJSAMPLE(colormap[2][i]);
-				((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[i])->rgbReserved = 0;
-			}
-		}
-
-		/*	Plug black and our text colour in the last two slots
-			of the palette so we canbe sure they're available.  */
-	
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[254])->rgbRed =
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[254])->rgbGreen =
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[254])->rgbBlue =
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[254])->rgbReserved = 0;
-
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[255])->rgbRed = GetRValue(skycolour);
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[255])->rgbGreen = GetGValue(skycolour);
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[255])->rgbBlue = GetBValue(skycolour);
-		((LPRGBQUAD) &((LPBITMAPINFO) bh)->bmiColors[255])->rgbReserved = 0;
-	}
-
-	//	Return scan lines and transfer to the pixel array
-
-	BYTE *pDst = NULL;
-	HBITMAP hBitmap = CreateHBitmap(bh->biWidth, bh->biHeight, (void**)&pDst);
-	int nStorageWidth = ((bh->biWidth * 24 + 31) & ~31) >> 3; //dword alignment
-	JSAMPARRAY ppDst = &pDst;
-/*
-	LPBYTE px = pix + (linewid * (bh->biHeight - 1));
-	for (i = 0; i < (int) cinfo.output_height; i++) {
-		unsigned char *slp[1] = { sl };
-		jpeg_read_scanlines(&cinfo, slp, 1);
-		if (usePalette) {
-			memcpy(px, sl, cinfo.output_width);
-		} else {
-			int j, k;
-
-			if (cinfo.num_components == 3) {
-				for (j = k = 0; j < (int) cinfo.output_width; j++, k += 3) {
-					px[k] = sl[k + 2];
-					px[k + 1] = sl[k + 1];
-					px[k + 2] = sl[k];
-				}
-			} else {
-				for (j = k = 0; j < (int) cinfo.output_width; j++, k += 3) {
-					px[k] = sl[j];
-					px[k + 1] = sl[j];
-					px[k + 2] = sl[j];
-				}
-			}
-		}
-		px -= linewid;
-	}
-*/
-pDst = pDst + (cinfo.output_height-1)*nStorageWidth ;
-while (cinfo.output_scanline < cinfo.output_height) {
-      jpeg_read_scanlines (&cinfo, ppDst, 1);
-
-	  if(cinfo.out_color_components==3) {
-		  //swap R & B
-		  BYTE* p = pDst;
-		  int i ;
-		  for( i=0;i<bh->biWidth;i++) {
-			  BYTE r = p[0];
-			  p[0] = p[2];
-			  p[2] = r;
-			  p += 3;
-		  }
-	  }
-
-	  //pDst += nStorageWidth;
-	  pDst -= nStorageWidth;
-	}
-
-	GlobalFree(sl);
-	jpeg_finish_decompress(&cinfo);
-	jpeg_destroy_decompress(&cinfo);
-	 
-	*LsizeX = (int) bh->biWidth;
-	*LsizeY = (int) bh->biHeight;
-	*LimageBitmap = imageBitmap;
-	return hBitmap;
-}
-
-
-static BOOL load_file_jpeg(HBITMAP* rawImage, int* style, int* x, int* y) {
+/* KiTTY: a JPEG or PNG background through Windows' own decoder of that
+ * format (kitty_wic.c) - the bundled libjpeg is gone. A Windows without WIC
+ * (XP unless .NET 3.0 or the WIC redistributable is installed) shows no
+ * image for these files; BMP goes through LoadImage everywhere. */
+static BOOL load_file_wic(HBITMAP* rawImage, int* style, int* x, int* y, int fmt) {
     *x = conf_get_int( conf, CONF_bg_image_abs_x );
     *y = conf_get_int( conf, CONF_bg_image_abs_y );
     *style = conf_get_int( conf, CONF_bg_image_style );
-    int res=TRUE, LsizeX, LsizeY ;
-    FILE *fp ;
-    HGLOBAL LimageBitmap = NULL ;
 
-	
+    if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
     /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see load_file_bmp() above. */
     {
         char *expanded = filename_expand_str(conf_get_filename(conf, CONF_bg_image_filename));
-        fp = fopen(expanded, "rb");
+        *rawImage = kitty_wic_load_file( expanded, fmt ) ;
         sfree(expanded);
     }
-    if( fp == NULL ) return FALSE ;
-
-    if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
-*rawImage = loadJPEGimage(fp, &LimageBitmap,&LsizeX, &LsizeY) ;
-if( rawImage == NULL ) res =FALSE ;    
-     fclose( fp ) ;
-
-    GlobalFree(LimageBitmap);
-    
-    return res;
+    return *rawImage != NULL ;
 }
 
 static HBITMAP CreateDIBSectionWithFileMapping(HDC dc, int width, int height, HANDLE fmap)
@@ -890,12 +706,13 @@ BOOL load_bg_bmp(void)
 		rawImage = CreateHBitmap(10, 10, (void**)&pDst);
 		style = 4 ;
 		}
-    	else if( bgpathlen>=4 && !stricmp( bgpath+bgpathlen-4, ".jpg" ) ) {
-    		if(!load_file_jpeg(&rawImage, &style, &x, &y))
+    	else if( ( bgpathlen>=4 && !stricmp( bgpath+bgpathlen-4, ".jpg" ) ) ||
+    	         ( bgpathlen>=5 && !stricmp( bgpath+bgpathlen-5, ".jpeg" ) ) ) {
+    		if(!load_file_wic(&rawImage, &style, &x, &y, KITTY_WIC_JPG))
         	    rawImage = NULL; // Make sure rawImage is still NULL.
     		}
-    	else if( bgpathlen>=5 && !stricmp( bgpath+bgpathlen-5, ".jpeg" ) ) {
-    		if(!load_file_jpeg(&rawImage, &style, &x, &y))
+    	else if( bgpathlen>=4 && !stricmp( bgpath+bgpathlen-4, ".png" ) ) {
+    		if(!load_file_wic(&rawImage, &style, &x, &y, KITTY_WIC_PNG))
         	    rawImage = NULL; // Make sure rawImage is still NULL.
     		}
     	else 
@@ -1100,96 +917,13 @@ void RedrawBackground( HWND hwnd ) {
 
 #endif
 
-static BOOL HBITMAP_to_JPG(HBITMAP hbm, LPCTSTR jpgfile, int quality)
-{
-  BITMAP      bm;
-  BITMAPINFO  bi;
-  BYTE       *pPixels;
-  JSAMPROW    jrows[1], jrow;
-  HDC         hdcScr, hdcMem1, hdcMem2;
-  HBITMAP     hbmMem, hbmOld1, hbmOld2;
-  FILE       *fp = fopen(jpgfile, "wb");
-  struct jpeg_compress_struct jpeg;
-  struct jpeg_error_mgr       jerr;
- 
-  if(!hbm)
-    return 0;
-  if(!GetObject(hbm, sizeof(bm), &bm))
-    return 0;
-  if(!fp)
-    return 0;
- 
-  ZeroMemory(&bi, sizeof(bi));
-  bi.bmiHeader.biSize        = sizeof(BITMAPINFOHEADER);
-  bi.bmiHeader.biWidth       = bm.bmWidth;
-  bi.bmiHeader.biHeight      = bm.bmHeight;
-  bi.bmiHeader.biPlanes      = 1;
-  bi.bmiHeader.biBitCount    = 24;
-  bi.bmiHeader.biCompression = BI_RGB;
- 
-  hdcScr  = GetDC(0);
-  hdcMem1 = CreateCompatibleDC(hdcScr);
-  hbmOld1 =  (HBITMAP)SelectObject(hdcMem1,hbm);
-  hdcMem2 = CreateCompatibleDC(hdcScr);
-  hbmMem  = CreateDIBSection(hdcScr, &bi, DIB_RGB_COLORS, (VOID **)&pPixels, 0, 0);
-  hbmOld2 = (HBITMAP)SelectObject(hdcMem2, hbmMem);
- 
-  BitBlt(hdcMem2, 0, 0, bm.bmWidth, bm.bmHeight, hdcMem1, 0, 0, SRCCOPY);
- 
-  SelectObject(hdcMem1, hbmOld1);
-  SelectObject(hdcMem2, hbmOld2);
-  ReleaseDC(0, hdcScr);
-  DeleteDC(hdcMem1);
-  DeleteDC(hdcMem2);
- 
-  jpeg.err = jpeg_std_error(&jerr);
-  jpeg_create_compress(&jpeg);
-  jpeg_stdio_dest(&jpeg, fp);
-  jpeg.image_width      = bm.bmWidth;
-  jpeg.image_height     = bm.bmHeight;
-  jpeg.input_components = 3;
-  jpeg.in_color_space   = JCS_RGB;
-  jpeg.dct_method       = JDCT_FLOAT;
-  jpeg_set_defaults(&jpeg);
-  jpeg_set_quality(&jpeg, (quality < 0 || quality > 100) ? 100 : quality, TRUE);
-  jpeg_start_compress(&jpeg, TRUE);
- 
-  char *comment=NULL ;
-  if( comment ) {
-	jpeg_write_marker(&jpeg, JPEG_COM, (const JOCTET*)comment, strlen(comment));
-  }
-
-  while(jpeg.next_scanline < jpeg.image_height)
-  {
-    unsigned int i, j, tmp;
- 
-    jrow = &pPixels[(jpeg.image_height - jpeg.next_scanline - 1) * ((((bm.bmWidth * 24) + 31) / 32) * 4)];
- 
-    for(i = 0; i < jpeg.image_width; i++)
-    {
-      j           = i * 3;
-      tmp         = jrow[j];
-      jrow[j]     = jrow[j + 2];
-      jrow[j + 2] = tmp;
-    }
-    jrows[0] = jrow;
-    jpeg_write_scanlines(&jpeg, jrows, 1);
-  }
- 
-  jpeg_finish_compress(&jpeg);
-  jpeg_destroy_compress(&jpeg);
-  DeleteObject(hbmMem);
-  fclose(fp);
-  return 1;
-}
-
-int screenCapturePart(int x, int y, int w, int h, LPCSTR fname,int quality) {
+/* KiTTY: the capture written as a PNG through WIC (kitty_wic.c); the
+ * bundled libjpeg that wrote a JPEG is gone. FALSE on a Windows without WIC
+ * (XP unless .NET 3.0 or the WIC redistributable is installed). */
+int screenCapturePart(int x, int y, int w, int h, LPCSTR fname) {
     int return_code = 0 ;
     HDC hdcSource = GetDC(NULL);
     HDC hdcMemory = CreateCompatibleDC(hdcSource);
-
-    //int capX = GetDeviceCaps(hdcSource, HORZRES);
-    //int capY = GetDeviceCaps(hdcSource, VERTRES);
 
     HBITMAP hBitmap = CreateCompatibleBitmap(hdcSource, w, h);
     HBITMAP hBitmapOld = (HBITMAP)SelectObject(hdcMemory, hBitmap);
@@ -1197,22 +931,20 @@ int screenCapturePart(int x, int y, int w, int h, LPCSTR fname,int quality) {
     BitBlt(hdcMemory, 0, 0, w, h, hdcSource, x, y, SRCCOPY);
     hBitmap = (HBITMAP)SelectObject(hdcMemory, hBitmapOld);
 
-    DeleteDC(hdcSource);
+    ReleaseDC(NULL, hdcSource);
     DeleteDC(hdcMemory);
 
-    //HPALETTE hpal = NULL;
-    if( HBITMAP_to_JPG( hBitmap,fname, quality) ) { return_code = 1 ; }
+    if( kitty_wic_save_png( hBitmap, fname ) ) { return_code = 1 ; }
     DeleteObject(hBitmap);
-	
+
     return return_code ;
 }
 
-int screenCaptureClientRect( HWND hwnd, LPCSTR fname, int quality ) {
+int screenCaptureClientRect( HWND hwnd, LPCSTR fname ) {
 	RECT rc;
 	POINT p;
 	GetClientRect(hwnd, &rc);
-	p.x=rc.left; p.y=rc.top,
+	p.x=rc.left; p.y=rc.top;
 	ClientToScreen(hwnd,&p);
-	rc.left=p.x;rc.top=p.y;
-	return screenCapturePart(rc.left,rc.top,rc.right,rc.bottom,fname,quality) ;
+	return screenCapturePart(p.x,p.y,rc.right-rc.left,rc.bottom-rc.top,fname) ;
 }

@@ -331,7 +331,8 @@ it to the clipboard** — remember the clipboard keeps it until overwritten.
 
 ### /screenshot
 
-Save a screenshot of the terminal window as `screenshot-<pid>-<time>.jpg`
-next to the exe.
+Save a screenshot of the terminal window as `screenshot-<pid>-<time>.png`
+next to the exe. Written with Windows' imaging component: on XP only with
+the Microsoft .NET Framework 3.0 installed.
 
 **Persists:** the image file.

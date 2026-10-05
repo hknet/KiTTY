@@ -1,8 +1,8 @@
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# KiTTY: the prebuilt archives under kitty/libs/ ship in both widths
-# (bcrypt/libjpeg as *_64.a and *_32.a); pick by the pointer size the
-# toolchain targets.
+# KiTTY: the prebuilt archive under kitty/libs/ ships in both widths
+# (bcrypt as *_64.a and *_32.a); pick by the pointer size the toolchain
+# targets.
 if(CMAKE_SIZEOF_VOID_P EQUAL 4)
   set(KITTY_LIBS_BITS 32)
 else()
@@ -166,7 +166,7 @@ function(kitty_terminal_common tgt)
   target_compile_options(${tgt} PRIVATE -fcommon)
   target_include_directories(${tgt} PRIVATE
     ${KITTY_DIR} ${KITTY_DIR}/far2l ${KITTY_DIR}/bcrypt
-    ${KITTY_DIR}/url ${KITTY_DIR}/jpeg)
+    ${KITTY_DIR}/url)
   kitty_selfcheck_target(${tgt})
   if(KITTY_NETDEBUG)
     target_compile_definitions(${tgt} PRIVATE MOD_NETDEBUG)
@@ -568,6 +568,7 @@ add_executable(test_osc52
   # KiTTY: far2l images (request 'i'), called from terminal.c under MOD_FAR2L
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c   # its WIC decoder
   # far2l's own base64, and its include dir below: MOD_FAR2L makes terminal.c
   # include cdecode.h/cencode.h, which live under kitty/far2l/ and are not on the
   # default include path.
@@ -598,6 +599,15 @@ add_executable(test_far2l
 target_include_directories(test_far2l PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
 target_link_libraries(test_far2l utils ${platform_libraries})
 
+# Pictures through the Windows Imaging Component without a window
+# (test/test_wic.c): a PNG written and read back pixel for pixel, a PNG
+# refused as a JPEG, a cut-off file and the size limits refused.
+add_executable(test_wic
+  ${CMAKE_SOURCE_DIR}/test/test_wic.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c)
+target_include_directories(test_wic PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
+target_link_libraries(test_wic ${platform_libraries})
+
 # The plain-text fast path in term_out() against the ordinary path, cell for
 # cell (test/test_textrun.c). Same build of terminal.c as test_osc52 and the
 # kitty target - MOD_PERSO and MOD_FAR2L - since the fast path lives behind
@@ -607,6 +617,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c        # KiTTY: far2l images, as test_osc52
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
@@ -734,7 +745,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
   ${KITTY_DIR}/kitty_far2l_image.c        # KiTTY: far2l images - the store and the request parser
-  ${KITTY_DIR}/kitty_far2l_image_term.c   # KiTTY: far2l images - the terminal side, WIC decoding
+  ${KITTY_DIR}/kitty_far2l_image_term.c   # KiTTY: far2l images - the terminal side
+  ${KITTY_DIR}/kitty_wic.c   # KiTTY: PNG/JPEG through WIC - far2l images, background image, /screenshot
   ${KITTY_DIR}/kitty_transfer.c
   ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)
   ${KITTY_DIR}/kitty_oscnotify.c    # KiTTY: their parsing and decisions, no Win32 (test/test_oscnotify.c)
@@ -857,7 +869,6 @@ endif()
 
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
-  ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
   ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
   ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
@@ -932,7 +943,6 @@ endif()
 
 target_link_libraries(kitty_portable
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
-  ${KITTY_DIR}/libs/libjpeg_${KITTY_LIBS_BITS}.a
   ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
   ${platform_libraries} wininet wintrust crypt32 msi version
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)

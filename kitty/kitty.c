@@ -1054,7 +1054,7 @@ int PreviousBgImage( HWND hwnd ) {
 					if( strcmp( previous, "" ) ) break ;
 		
 				GetExt( de->d_name, ext, sizeof(ext) ) ;
-				if( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))) 
+				if( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))||(!stricmp(ext,"PNG")))
 					{ snprintf( previous, sizeof(previous), "%s\\%s", basename, de->d_name ) ; }
 				}
 			}
@@ -1086,7 +1086,7 @@ int NextBgImage( HWND hwnd ) {
 		GetExt( de->d_name, ext, sizeof(ext) ) ;
 
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") 
-			&& ( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))) 
+			&& ( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))||(!stricmp(ext,"PNG")))
 			) {
 			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
@@ -1096,7 +1096,7 @@ int NextBgImage( HWND hwnd ) {
 					else 
 						strcpy( ext, "" ) ;
 						
-					while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG") ) {
+					while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG")&&stricmp(ext,"PNG") ) {
 						if( ( de = readdir(dir) ) != NULL ) 
 							GetExt( de->d_name, ext, sizeof(ext) ) ; 
 						else 
@@ -1110,7 +1110,7 @@ int NextBgImage( HWND hwnd ) {
 	if( de==NULL ) { rewinddir( dir ) ; do { de = readdir(dir) ; } while( (!strcmp(de->d_name,".")) || (!strcmp(de->d_name,"..")) ) ; }
 	if( de!=NULL ) GetExt( de->d_name, ext, sizeof(ext) ) ; else strcpy( ext, "" ) ;
 	if( de!=NULL )
-	while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG") ) {
+	while( (de!=NULL)&&stricmp(ext,"BMP")&&stricmp(ext,"JPG")&&stricmp(ext,"JPEG")&&stricmp(ext,"PNG") ) {
 		if( ( de = readdir(dir) ) != NULL ) GetExt( de->d_name, ext, sizeof(ext) ) ; else { strcpy( ext, "" ) ; break ; }
 		}
 	if( de != NULL  ) {

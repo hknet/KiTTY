@@ -480,6 +480,10 @@ gradient forms.
 \b \q{Image file} takes the picture; a value of the form \c{#RRGGBB} is
 read as a colour for the gradient styles instead of a file name. A file
 name can use Windows environment variables (\k{kitty-cfg-envvars}).
+BMP, JPEG and PNG files are read; JPEG and PNG through Windows' own
+imaging component, which Vista and later have built in and XP only with
+the Microsoft .NET Framework 3.0 (or the WIC redistributable) installed.
+A BMP works on every Windows.
 
 \b \q{Opacity} decides how strongly the image shows through the
 terminal background. A \e{negative} value with an image selected
@@ -678,7 +682,8 @@ far2l can place pictures over the text: its image viewer, for one. On
 by default. The pictures sit over the text until far2l removes them and
 do not scroll with it; a terminal reset, far2l's exit and the end of the
 session remove them too. Raw RGB and RGBA pictures always work, PNG and
-JPEG where Windows has the imaging component (Vista and later). far2l
+JPEG where Windows has the imaging component (Vista and later, and XP
+with the Microsoft .NET Framework 3.0 installed). far2l
 draws them with its ImageViewer plugin, opened from the plugins menu
 (F11) - F3 and the quick view (Ctrl+Q) show the file as text - which
 needs ImageMagick's

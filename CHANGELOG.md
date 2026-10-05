@@ -14,12 +14,21 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   programs can no longer unlock the agent, the right passphrase included,
   until Unlock agent in the tray menu; a notice names the program. The
   keys stay loaded. Only with `allowipclock=yes`.
+- **The bundled JPEG library is gone.** A JPEG background image is now
+  read by Windows' own imaging component, which Windows Update keeps
+  patched, instead of a libjpeg of unknown age that could not be updated.
 
 ### Changed
 
 - **kageant answers the agent protocol's `query` extension as RFC 9987
   defines it** (`SSH_AGENT_EXTENSION_RESPONSE`, the name `query`, then the
   supported extensions), as OpenSSH's agent does.
+- **The background image can also be a PNG.** JPEG and PNG need Windows'
+  imaging component: built into Vista and later, on XP installed with the
+  Microsoft .NET Framework 3.0. BMP works on every Windows.
+- **`/screenshot` saves a PNG** (`screenshot-<pid>-<time>.png`) instead of a
+  JPEG: sharper for terminal text. On XP it needs the .NET Framework 3.0 as
+  above.
 
 ## 0.85.1.13-beta — 2026-10-05
 

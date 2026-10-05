@@ -10,10 +10,9 @@
  * so the cells under an image must be drawn again whenever it changes: that
  * repaint is what makes both painters show the change.
  *
- * PNG and JPEG are decoded with the Windows Imaging Component, created at
- * run time through COM (CoCreateInstance): a Windows without WIC (XP as
- * shipped) simply reports those formats unsupported, and nothing here is
- * imported that XP lacks. COM is already initialised on the window's thread.
+ * PNG and JPEG are decoded with the Windows Imaging Component
+ * (kitty_wic.c, shared with the background image): a Windows without WIC (XP
+ * as shipped) simply reports those formats unsupported.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,9 +25,7 @@
 #include "kitty_buildlabel.h"          /* the test build's trace hook */
 
 #ifdef _WIN32
-#define COBJMACROS
-#include <windows.h>
-#include <wincodec.h>
+#include "kitty_wic.h"
 #endif
 
 bool (*kitty_far2l_cell_hook)(TermWin *win, int *cell_w, int *cell_h,
@@ -37,121 +34,18 @@ bool (*kitty_far2l_cell_hook)(TermWin *win, int *cell_w, int *cell_h,
 /* ---- PNG / JPEG through WIC -------------------------------------------- */
 
 #ifdef _WIN32
-/* Own copies of the GUIDs, so nothing needs uuid.lib. */
-static const GUID f2l_CLSID_WICImagingFactory =
-    { 0xcacaf262, 0x9370, 0x4615, { 0xa1, 0x3b, 0x9f, 0x55, 0x39, 0xda, 0x4c, 0x0a } };
-static const GUID f2l_IID_IWICImagingFactory =
-    { 0xec5ec8a9, 0xc395, 0x4314, { 0x9c, 0x77, 0x54, 0xd7, 0xa9, 0x35, 0xff, 0x70 } };
-static const GUID f2l_GUID_WICPixelFormat32bppPBGRA =
-    { 0x6fddc324, 0x4e03, 0x4bfe, { 0xb1, 0x85, 0x3d, 0x77, 0x76, 0x8d, 0xc9, 0x10 } };
-
-/* Windows' own PNG and JPEG decoders and their container formats. A file
- * is decoded only by the decoder of the format far2l named, never by
- * whatever codec WIC would pick from its content: a host must not be able to
- * feed other installed codecs (TIFF, ICO, third-party ones) with its bytes. */
-static const GUID f2l_CLSID_WICPngDecoder =
-    { 0x389ea17b, 0x5078, 0x4cde, { 0xb6, 0xef, 0x25, 0xc1, 0x51, 0x75, 0xc7, 0x51 } };
-static const GUID f2l_CLSID_WICJpegDecoder =
-    { 0x9456a480, 0xe88b, 0x43ea, { 0x9e, 0x73, 0x0b, 0x2d, 0x9b, 0x71, 0xb1, 0xca } };
-static const GUID f2l_IID_IWICBitmapDecoder =
-    { 0x9edde9e7, 0x8dee, 0x47ea, { 0x99, 0xdf, 0xe6, 0xfa, 0xf2, 0xed, 0x44, 0xbf } };
-static const GUID f2l_GUID_ContainerFormatPng =
-    { 0x1b7cfaf4, 0x713f, 0x473c, { 0xbb, 0xcd, 0x61, 0x37, 0x42, 0x5f, 0xae, 0xaf } };
-static const GUID f2l_GUID_ContainerFormatJpeg =
-    { 0x19e4a5aa, 0x5662, 0x4fc5, { 0xa0, 0xc0, 0x17, 0x58, 0x02, 0x8e, 0x10, 0x57 } };
-
-static IWICImagingFactory *wic_factory;
-static bool wic_tried;
-
-static IWICBitmapDecoder *wic_decoder(unsigned fmt)
-{
-    void *dec = NULL;
-    if (FAILED(CoCreateInstance(fmt == F2L_IMG_PNG ? &f2l_CLSID_WICPngDecoder
-                                                   : &f2l_CLSID_WICJpegDecoder,
-                                NULL, CLSCTX_INPROC_SERVER,
-                                &f2l_IID_IWICBitmapDecoder, &dec)))
-        return NULL;
-    return (IWICBitmapDecoder *)dec;
-}
-
-/* The factory, once both decoders proved creatable (PNG and JPEG are one
- * capability to far2l: WP_IMGCAP_JPG is both low bits). */
-static IWICImagingFactory *wic_get(void)
-{
-    if (!wic_tried) {
-        void *f = NULL;
-        IWICBitmapDecoder *png, *jpg;
-        wic_tried = true;
-        png = wic_decoder(F2L_IMG_PNG);
-        jpg = wic_decoder(F2L_IMG_JPG);
-        if (png && jpg &&
-            SUCCEEDED(CoCreateInstance(&f2l_CLSID_WICImagingFactory, NULL,
-                                       CLSCTX_INPROC_SERVER,
-                                       &f2l_IID_IWICImagingFactory, &f)))
-            wic_factory = (IWICImagingFactory *)f;
-        if (png) IWICBitmapDecoder_Release(png);
-        if (jpg) IWICBitmapDecoder_Release(jpg);
-    }
-    return wic_factory;
-}
-
+/* PNG and JPEG are one capability to far2l (WP_IMGCAP_JPG is both low
+ * bits), offered only when both decoders exist. */
 static bool wic_decode(void *ctx, unsigned fmt, const unsigned char *data,
                        size_t len, unsigned char **px, int *w, int *h)
 {
-    IWICImagingFactory *fac = wic_get();
-    IWICStream *stream = NULL;
-    IWICBitmapDecoder *dec = NULL;
-    IWICBitmapFrameDecode *frame = NULL;
-    IWICFormatConverter *conv = NULL;
-    GUID container;
-    const GUID *want = fmt == F2L_IMG_PNG ? &f2l_GUID_ContainerFormatPng
-                                          : &f2l_GUID_ContainerFormatJpeg;
-    UINT uw = 0, uh = 0;
-    bool ok = false;
     (void)ctx;
-
     *px = NULL;
-    if (!fac || len == 0 || len > 0x7FFFFFFF ||
-        (fmt != F2L_IMG_PNG && fmt != F2L_IMG_JPG))
+    if (fmt != F2L_IMG_PNG && fmt != F2L_IMG_JPG)
         return false;
-    if (FAILED(IWICImagingFactory_CreateStream(fac, &stream)) ||
-        FAILED(IWICStream_InitializeFromMemory(stream, (BYTE *)data,
-                                               (DWORD)len)) ||
-        !(dec = wic_decoder(fmt)) ||
-        FAILED(IWICBitmapDecoder_Initialize(dec, (IStream *)stream,
-                                            WICDecodeMetadataCacheOnDemand)) ||
-        FAILED(IWICBitmapDecoder_GetContainerFormat(dec, &container)) ||
-        !IsEqualGUID(&container, want) ||
-        FAILED(IWICBitmapDecoder_GetFrame(dec, 0, &frame)) ||
-        FAILED(IWICImagingFactory_CreateFormatConverter(fac, &conv)) ||
-        FAILED(IWICFormatConverter_Initialize(
-                   conv, (IWICBitmapSource *)frame,
-                   &f2l_GUID_WICPixelFormat32bppPBGRA,
-                   WICBitmapDitherTypeNone, NULL, 0.0,
-                   WICBitmapPaletteTypeCustom)) ||
-        FAILED(IWICFormatConverter_GetSize(conv, &uw, &uh)))
-        goto out;
-    if (uw == 0 || uh == 0 || uw > F2L_IMG_MAX_SIDE || uh > F2L_IMG_MAX_SIDE ||
-        (uint64_t)uw * uh > F2L_IMG_MAX_PIXELS)
-        goto out;
-    *px = malloc((size_t)uw * uh * 4);
-    if (!*px)
-        goto out;
-    if (FAILED(IWICFormatConverter_CopyPixels(conv, NULL, uw * 4,
-                                              uw * uh * 4, *px))) {
-        free(*px);
-        *px = NULL;
-        goto out;
-    }
-    *w = (int)uw;
-    *h = (int)uh;
-    ok = true;
-  out:
-    if (conv) IWICFormatConverter_Release(conv);
-    if (frame) IWICBitmapFrameDecode_Release(frame);
-    if (dec) IWICBitmapDecoder_Release(dec);
-    if (stream) IWICStream_Release(stream);
-    return ok;
+    return kitty_wic_decode(fmt == F2L_IMG_PNG ? KITTY_WIC_PNG : KITTY_WIC_JPG,
+                            data, len, F2L_IMG_MAX_SIDE, F2L_IMG_MAX_PIXELS,
+                            px, w, h);
 }
 #endif /* _WIN32 */
 
@@ -250,7 +144,7 @@ static void env_init(Terminal *term, TermCtx *tc, Far2lImageEnv *env)
     env->cur_x = term->curs.x;
     env->cur_y = term->curs.y;
 #ifdef _WIN32
-    if (env->enabled && wic_get()) {
+    if (env->enabled && kitty_wic_available()) {
         env->codecs = F2L_IMGCAP_PNG;
         env->decode = wic_decode;
     }

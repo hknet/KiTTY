@@ -46,6 +46,10 @@ The floor is Windows XP: the 32-bit ZIP runs there (every program of the suite, 
 Telnet sessions, verified by an automated run on an XP SP3 virtual machine), because every
 API the suite needs beyond XP is loaded dynamically with a fallback instead of being
 imported, so an old system starts rather than dying in the loader.
+Pictures other than BMP (a JPEG or PNG background image, far2l's images, the `/screenshot`
+command) use the Windows Imaging Component, which Vista and later have built in; on XP,
+install the Microsoft .NET Framework 3.0 (or the WIC redistributable) to get them as on
+later Windows.
 The 64-bit builds need a 64-bit Windows from Vista / Server 2008 on. Day-to-day testing and
 the QA gate run on Windows 10 and Windows 11; versions in between should run but are not
 verified — reports welcome.
