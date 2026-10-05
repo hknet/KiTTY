@@ -1,7 +1,7 @@
 # Re-attach tmux, screen, abduco or zellij per window
 
 After a connection drops, we have an option to deterministically reconnect.
-Meaning: KiTTY++ can tell the server **which terminal-window** is
+Meaning: KiTTY++ can report to the server **which terminal-window** is
 connecting, so that window lands straight back in its own tmux (or screen,
 abduco, zellij) session - every time, without typing anything.
 
@@ -171,7 +171,7 @@ alias ka '~/.local/bin/kitty-attach'     # fish: ~/.config/fish/config.fish
 |---|---|
 | `echo $KITTY_WINDOW` prints nothing | the variable is on Connection > Login > Environment and the session was saved; `sshd -T` lists `KITTY_*`; sshd was reloaded |
 | It prints `%KITTY_WINDOW%` literally | the build predates this feature |
-| A rename is not seen | the running shell keeps the value at login; the next connection (Restart Session, a reconnect) carries the new vaue |
+| A rename is not seen | the running shell keeps the value at login; the next connection (Restart Session, a reconnect) carries the new value |
 | Every window attaches to the same session | the same **name** was given to several windows - names are per window, use the base + numbers instead |
 | klink / kscp / ksftp | the console tools do not fill in `%KITTY_...%` |
 

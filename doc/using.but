@@ -709,6 +709,19 @@ call something like
 
 \c d:\path\to\kitty.exe -load "my session"
 
+A session in a folder is loaded by its folder path,
+\c{\-load Linux\\web\\srv01}. That works in both stores, and in klink,
+kscp and ksftp for the registry store; the same path works in an SSH
+jump host field and in a \c{kitty://} link. A bare name loads the one
+session of that name. When several folders hold one, \c{\-load} ends
+with an error naming them (exit code 1); a jump host of that name fails
+the connection rather than look the name up as a host. Sessions filed
+by their \c{Folder} value only keep working by their bare name.
+
+\c{kitty://} links take the path with \c{/}
+(\c{kitty://Linux/web/srv01}) and are percent-decoded: a \c{%} in a
+session name is written \c{%25} in a link.
+
 (Note that KiTTY itself supports an alternative form of this option,
 for backwards compatibility. If you execute \i\c{kitty @sessionname}
 it will have the same effect as \c{kitty \-load "sessionname"}. With

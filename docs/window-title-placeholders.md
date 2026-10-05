@@ -9,11 +9,11 @@ shown below in the **Window Title** field of a saved session.
 | Placeholder | Value shown in the window title |
 |-------------|---------------------------------|
 | `%%h` | Hostname (falls back to the configured host if no hostname is available) |
-| `%%s` | Saved session name |
+| `%%s` | Saved session name, folder path included (`Linux\web\srv01`) |
 | `%%u` | Username configured for the session |
 | `%%p` | Port number |
 | `%%P` | Protocol display name (e.g. `SSH`) |
-| `%%f` | Folder name the saved session belongs to |
+| `%%f` | Folder path of the saved session (`Linux\web`); for a session filed by its Folder value only, that value; `Default` for a session in no folder |
 | `%%l` | List of local forwarded ports (blank if none are configured) |
 | `%%d` | List of dynamic/SOCKS forwarded ports (blank if none are configured) |
 

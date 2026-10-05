@@ -146,13 +146,24 @@ does the same but first drops any folder filter, so the search
 covers every saved session. \c{filter=no} in \c{[ConfigBox]}
 restores the classic non-filtering box.
 
-\b \e{Session folders.} Sessions can be filed into folders, chosen
-from a \q{Folder} dropdown that filters the list, with controls to
-create, rename and delete folders (deleting a non-empty folder
-moves its sessions back to the root list). With
-\c{foldernavigation=yes} in \c{[ConfigBox]}, folders appear as rows
-of the list itself instead - stepped into like directories, with a
-\c{..} row leading back.
+\b \e{Session folders.} A session's name is its folder path plus its
+name, \c{Linux\\web\\srv01}, in the registry and in the folder store
+alike; the same name can exist in two folders. A folder drop-down
+filters the list, with controls to create, rename and delete
+folders. Renaming or deleting a folder moves its subfolders with it;
+deleting a folder that holds sessions puts up the question where they
+go, with the root preselected. With \c{foldernavigation=yes} in
+\c{[ConfigBox]}, folders appear as rows of the list itself instead:
+inside a folder its subfolders are rows, \c{..} goes up one level, and
+\q{New folder} inside \c{network} creates \c{network\\test}. See
+\k{kitty-cfg-folders}.
+
+\b \e{Exit and Cancel.} Before a session, the button beside \q{Open}
+reads \q{Exit} and ends the program; the Application settings are
+already saved as they change. Mid-session (\q{Change Settings}) it
+reads \q{Cancel} and drops the changes not yet applied. \q{Exit} has
+no Alt key, since its letters are taken on the panels; \q{Cancel}
+keeps Alt+C. Esc works for both.
 
 \b \e{Quick connect.} If the last thing you loaded was \q{Default
 Settings}, the box opens from Default Settings with the cursor
@@ -292,6 +303,9 @@ like
 
 \c log-server1.example.com-20010528-110859.dat
 \c log-unixbox.somewhere.org-20010611-221001.dat
+
+The name can also use Windows environment variables, such as
+\c{%OneDrive%\\Kitty-Logs\\Kitty.log}; see \k{kitty-cfg-envvars}.
 
 \S{config-logfileexists} \q{What to do if the log file already exists}
 
@@ -830,7 +844,8 @@ sound file to be used by KiTTY alone, or even by a particular
 individual KiTTY session. This allows you to distinguish your KiTTY
 beeps from any other beeps on the system. If you select this option,
 you will also need to enter the name of your sound file in the edit
-control \q{Custom sound file to play as a bell}.
+control \q{Custom sound file to play as a bell}. The name can use
+Windows environment variables (\k{kitty-cfg-envvars}).
 
 \S{config-belltaskbar} \q{\ii{Taskbar}/\I{window caption}caption
 indication on bell}
@@ -3268,6 +3283,9 @@ about public key authentication in SSH.
 This key must be in KiTTY's native format (\c{*.\i{PPK}}). If you have a
 private key in another format that you want to use with KiTTY, see
 \k{puttygen-conversions}.
+
+The file name can use Windows environment variables, such as
+\c{%USERPROFILE%\\.ssh\\id.ppk}; see \k{kitty-cfg-envvars}.
 
 You can use the authentication agent (\i{kageant}, KiTTY's build of
 \i{kageant}) so that you do not need to explicitly configure a key

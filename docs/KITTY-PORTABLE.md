@@ -9,8 +9,8 @@ directory instead of the Windows registry.
 
 | | `kitty.exe` (standard) | `kitty_portable.exe` |
 |---|---|---|
-| Saved sessions stored in | Windows registry (`HKCU\Software\kapper.net\KiTTY`) | local files beside the exe/config dir (`Sessions\<name>`, one file per session) |
-| SSH host keys / host CAs | Windows registry | `SshHostKeys\` / `SshHostCAs\` under the portable config dir |
+| Saved sessions stored in | Windows registry (`HKCU\Software\kapper.net\KiTTY`) | local files beside the exe/config dir, one file per session at its folder path (`Sessions\Linux\web\srv01`) |
+| SSH host keys / host CAs | Windows registry | `SshHostKeys\` (settable, `[KiTTY] sshhostkeys`) / `SshHostCAs\` under the portable config dir |
 | Random seed | user profile / normal PuTTY location | `PUTTY.RND` under the portable config dir |
 | Recent/jump-list/update state | Windows registry / profile state | portable files such as `Jumplist` and `KiTTYState` |
 | Global options (`kitty.ini`) | next to the exe / `%APPDATA%` | next to the exe/config dir |
@@ -19,18 +19,43 @@ directory instead of the Windows registry.
 
 Under the hood it's the same code with `MOD_PORTABLE` enabled, which makes KiTTY default
 to **directory save-mode** (`savemode=dir`) and resolve its config (`kitty.ini`) from the
-executable's own folder first. Auto-login passwords inside the session files are encrypted
-at rest with Windows DPAPI, exactly as in the registry path.
+executable's own folder first. Auto-login passwords inside the session files are protected
+at rest with a master password (the default) or with Windows DPAPI
+(`[KiTTY] PortablePasswordProtection`).
 
-**One file per session, folders included.** A session's folder is a line inside
-its own file (`Folder=work`), not a directory: `Sessions\` stays flat. Classic
-KiTTY could instead keep each folder as a real subdirectory
-(`[KiTTY] browsedirectory`), and **a store in that shape is not read by this
-version** — the sessions inside those subdirectories are not listed at all, and
-turning `browsedirectory` on does not change that. If you are moving such a
-folder across, copy the session files up into `Sessions\` yourself; each one
-still works, and you can re-file it from the configuration box afterwards. See
-[KNOWN-ISSUES.md](../KNOWN-ISSUES.md).
+**Session folders are folder paths.** A session's name is its folder path plus
+its name, `Linux\web\srv01`, kept as the file `Sessions\Linux\web\srv01` (a
+session folder that can live in Git). The same name can exist in two folders.
+Sessions filed by their Folder value only keep working by their bare name;
+Organize sessions > Arrange... moves them to their folder path.
+
+**Only session files are listed, and session files can carry a suffix.** The
+folder store lists a file only when it holds a `HostName` or `Protocol`
+setting, in either file format; dot-files and dot-folders (`.git`,
+`.gitignore`) are never looked at, so a README or a log beside the sessions
+stays out of the list. `[KiTTY] sessionsuffix` (Application > Config Window >
+Session Panel, "Session file suffix") adds an ending such as `.ktx` to every
+session file name; the list shows the names without it. A session file without
+the suffix is still listed and gets it on its next save, a save whose file name
+is already another session's is refused, and changing the suffix offers to
+rename the existing files. A session named `CON`, `NUL`, `COM1` or another
+Windows device name, or one ending in a dot or a space, can be saved.
+
+**The host-key folder can be set, and classic KiTTY's putty.conf is taken
+over.** Application > KiTTY++ Settings > Storage & Backup, group "This
+KiTTY++", has a "Host keys folder" field with a folder picker
+(`[KiTTY] sshhostkeys`); `keysuffix` adds an ending to host-key file names. A
+putty.conf's `Sessions`, `sessionsuffix`, `SshHostKeys` and `keysuffix` are
+copied into kitty.ini once and kitty.ini rules from then on; putty.conf itself
+is left as it is.
+
+**Migration copes with nested session folders.** Application > Migration:
+"Make a portable copy..." writes the copy's sessions into folders, "Take a
+folder store..." reads every subfolder (and the store's own
+`sessions`/`sshhostkeys` location and suffixes). Import of old KiTTY Folders
+lists only real session files inside Sessions too, and a "Suffix to remove from
+file names" field, filled in from the old store's putty.conf, shows the names
+as they will be imported.
 
 ## Current scope and password portability
 
@@ -41,8 +66,11 @@ config directory.
 
 One important exception remains: a DPAPI-encrypted session password is **machine-bound**.
 It protects the password at rest on the current Windows account, but it will not decrypt if
-you move the folder to another PC. A portable, opt-in **master-password** option for
-machine-independent protected passwords is still planned/not product-finished.
+you move the folder to another PC. For passwords that travel, use a **master
+password**: Application > KiTTY++ Settings > Storage & Backup, "Passwords in a
+folder store", "Passwords protected with: a master password"
+(`[KiTTY] PortablePasswordProtection=master`, the default in portable mode).
+Copy the files and know the master password to use them on another machine.
 
 ## Why use it
 
@@ -56,7 +84,8 @@ machine-independent protected passwords is still planned/not product-finished.
 ## How to use it
 
 1. Put `kitty_portable.exe` in its own folder (e.g. on a USB stick).
-2. Run it. It stores saved sessions in `Sessions\`, SSH host keys in `SshHostKeys\`,
+2. Run it. It stores saved sessions in `Sessions\`, SSH host keys in `SshHostKeys\`
+   (or the folder `sshhostkeys` names),
    host CAs in `SshHostCAs\`, and small state/cache files in the portable config folder.
 3. To pre-seed options, drop a `kitty.ini` next to the exe. The portable build already
    defaults to directory storage, so this is optional.
@@ -69,5 +98,6 @@ machine-independent protected passwords is still planned/not product-finished.
 > built-in default.
 
 ---
-*Part of the KiTTY → PuTTY 0.84 port. Built via the CMake/MinGW cross-compile flow,
-64-bit, Release-optimized, stripped, UPX-compressed.*
+*Part of the KiTTY++ port to PuTTY 0.85. Built via the CMake/MinGW cross-compile flow,
+Release-optimized, stripped. The standard ZIP ships plain, uncompressed executables; the
+`-upx.zip` flavour and the installers carry UPX-packed ones.*

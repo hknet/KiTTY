@@ -48,7 +48,10 @@ or KiTTY next changes the title.
 
 Toggle window transparency. When turning on, the transparency level comes from
 the session's configured value (*Window → Appearance → Background*); a session with no
-value configured starts fully opaque.
+value configured starts fully opaque. It acts on the terminal window. A
+Direct2D window opened opaque is left as it is: a Direct2D window that may be
+transparent is layered from its creation, and a transparency change applies
+to the next window.
 
 **Persists:** runtime only; the level is a session setting, and kitty.ini
 `transparency=yes/no` enables/disables the feature at startup.
@@ -133,8 +136,8 @@ like the other pop-up windows).
 
 Save the window's **live** settings back to its saved session — font, colours,
 window size, logging, everything the configuration box would save. If the
-window is not bound to a saved session, KiTTY tells you to use `/savenew`
-instead.
+window is not bound to a saved session, KiTTY++ shows a notice to use
+`/savenew` instead.
 
 **Persists:** session.
 
@@ -148,8 +151,8 @@ decorations show the new name).
 
 ### /savektx
 
-Export the live settings to a `.ktx` connection file (a file dialog asks
-where). A `.ktx` file double-clicked or passed on the command line opens that
+Export the live settings to a `.ktx` connection file (a file dialog prompts
+for the location). A `.ktx` file double-clicked or passed on the command line opens that
 connection directly.
 
 **Persists:** the exported file.
@@ -206,18 +209,20 @@ deleted first** and KiTTY-specific settings are stripped from the copies.
 
 ### /switchcrypt
 
-Switch the variant of the settings-encryption used for stored secrets (the
-`cryptsalt=` mechanism in kitty.ini). Advanced — only relevant when moving
-configurations between builds that differ in crypt mode.
+Removed. Encrypted configuration files are no longer written; the command only
+shows a notice. Existing encrypted `.ktx` files are still read.
 
-**Persists:** runtime only.
+**Persists:** nothing.
 
 ### /delfolder `<name>`
 
-Delete the session folder `<name>` from the folder list (the sessions in it
-are not deleted).
+Drops `<name>` from this window's folder list in memory. Nothing is saved
+(`[KiTTY] Folders` is unchanged), no session is moved or deleted, and the list
+is read again from the store the next time it is loaded (configuration box,
+Organize sessions). A folder that holds sessions is listed from them anyway.
+To delete a folder, use Del folder in the session list or Organize sessions.
 
-**Persists:** folder list.
+**Persists:** nothing.
 
 ### /loadinitscript `[file]`
 

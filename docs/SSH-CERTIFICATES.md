@@ -3,7 +3,7 @@
 An SSH certificate is a public key plus a statement, signed by a **certification
 authority (CA)**, about what that key is allowed to be. Instead of copying every
 user's public key into `~/.ssh/authorized_keys` on every server, each server is
-told to trust one CA — and every key that CA has signed is accepted, until its
+configured to trust one CA — and every key that CA has signed is accepted, until its
 certificate expires.
 
 There are two independent halves, and you can use either without the other:
@@ -25,7 +25,7 @@ items in the key generator nor the certificate fields in the configuration box.
 That is what the long-standing *"DetachedCertificate supported in PuTTY but not
 in KiTTY"* report is about.
 
-This port is built on PuTTY 0.84, so all of it is here — including the detached
+This port is built on PuTTY 0.85, so all of it is here — including the detached
 form that report names: *Connection → SSH → Auth → Credentials* → **"Certificate
 to use with the private key (optional)"**. A saved session stores it under the
 keyword `DetachedCertificate`, the same keyword PuTTY uses, so a session migrated
@@ -121,7 +121,7 @@ ssh-keygen -s user_ca -I alice -n alice,deploy -V +52w alice.pub
 
 ## The server side (OpenSSH `sshd`)
 
-Tell the server to trust the CA, and which principals map to which account:
+Configure the server to trust the CA, and which principals map to which account:
 
 ```
 # /etc/ssh/sshd_config
@@ -236,7 +236,7 @@ Stop the lab with `kill $(cat /tmp/certlab/sshd.pid)` and delete `/tmp/certlab`.
 
 ⚠️ **Revocation happens on the SERVER.** A certificate is a statement the CA made
 about a key; nothing the client does can take it back, and deleting the `.ppk` on
-one machine says nothing about the copy someone else may hold. Everything below
+one machine proves nothing about the copy someone else may hold. Everything below
 is `sshd` configuration.
 
 **The cheapest revocation is expiry.** A certificate signed with a short validity

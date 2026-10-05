@@ -49,11 +49,11 @@ The `[KiTTY]` key `savemode` selects the session store:
 
 | Value | Store |
 |---|---|
-| `registry` *(default)* | Windows registry, like stock PuTTY/KiTTY. |
-| `dir` | One file per session under the install folder — the **portable** mode (`kitty_portable.exe` forces this). |
+| `registry` *(default for `kitty.exe`)* | Windows registry, like stock PuTTY/KiTTY. |
+| `dir` *(default for `kitty_portable.exe`)* | One file per session under the install folder, at its folder path (`Sessions\Linux\web\srv01`) — the **portable** mode. |
 | `file` | **Not a file store, despite the name** — sessions stay in the registry exactly as in `registry` mode; all it adds is importing a `.sav` registry dump at startup when the hive is missing. Abandoned upstream and unmaintained; use `dir` if you want sessions in files. |
 
-When kitty.ini says `savemode=file` or `savemode=dir`, the ini is the
+When kitty.ini sets `savemode=file` or `savemode=dir`, the ini is the
 **authoritative store** for the companion tools too: kageant's tray toggles
 write back to the ini and the registry is never touched. A portable folder
 counts even without the savemode line — with `savemode` absent, a `Sessions`
@@ -83,7 +83,7 @@ Two other reasons a line can look dead:
 - **The key is misspelt.** Keys are matched exactly; an unrecognised key is
   silently ignored rather than reported.
 - **The value is not one the key accepts.** Several switches only act on one
-  of `yes`/`no` and ignore the other — each such key says so in
+  of `yes`/`no` and ignore the other — each such key is marked in
   [`kitty.ini.example`](examples/kitty.ini.example).
 
 ## kageant and the store — the `(kitty.ini mode)` and `(portable)` markers
@@ -91,8 +91,8 @@ Two other reasons a line can look dead:
 kageant (the SSH agent) follows the *same* store decision as the sessions,
 and the same decision governs three things at once: kageant's settings, its
 remembered **startup key list**, and the **offer order** of those keys. There
-are three cases, and kageant's window title and tray tooltip tell you which
-one you are in.
+are three cases, and kageant's window title and tray tooltip show which
+one applies.
 
 | Mode | Where settings + the key list + key order live | Markers shown |
 |---|---|---|
@@ -116,8 +116,8 @@ Reading the markers:
   is not true — a `savemode=file` install is kitty.ini mode without being
   portable, and shows only the first marker.
 
-So the two markers are levels, not duplicates: `(kitty.ini mode)` says *the ini
-is the store*, and the extra `(portable)` says *and that store lives next to the
+So the two markers are levels, not duplicates: `(kitty.ini mode)` means *the ini
+is the store*, and the extra `(portable)` means *and that store lives next to the
 exe*.
 
 ## Sections at a glance
@@ -125,12 +125,13 @@ exe*.
 | Section | What it configures |
 |---|---|
 | `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `FileZillaPath`, `rzcommand` and `szcommand`, `PSCPPath` and `pscpport` (the file-copy helper kscp and the port it transfers on), `downloaddir` and `uploaddir` (where received files land, and the local folder files are sent from), `transfernotification` (a system notification when a transfer finishes), `transfermaxmb` and `transferfullpath` (the global defaults for transfers over the session, kitten transfer: per-file size limit for arriving files, and whether the far end may request a file by full local path), `pscpdir` and `winscpdir` (legacy fallback folders), and `warnmissingfeatures` (name in the terminal whatever this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md), and `traymode` (`auto`, `own` or `launcher`: whether a window sent to the tray gets its own tray icon or hides into the launcher - see Send to tray in FEATURES.md), and `notes` with `notesonce` (the application notification: one note the first window of every KiTTY process shows near the clock until it is clicked, and whether a click silences it while the launcher runs), and the folder store's paths and file-name endings: `sessions` (session folder), `sessionsuffix` (session file ending), `sshhostkeys` (host-key folder) and `keysuffix` (host-key file ending) - copied once from classic KiTTY's putty.conf, recorded by `puttyconfmigrated=yes`. |
-| `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` asks every time), `autoencryptmode` + `autoencryptseconds` (re-encrypt keys after idle: `off` / `default` for keys without their own value / `enforce` for every key, and the time - seconds, `10m`, `2h`, `1d`, or `use` for right after each signature), `lockwithwindows` (what Windows locking does to the agent: `keep` it working, `lock` it, or `reencrypt` the keys too), `allowipclock` (`yes` lets programs lock and unlock the agent with `ssh-add -x` / `-X`; default `no`). |
+| `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` requires a gesture every time), `autoencryptmode` + `autoencryptseconds` (re-encrypt keys after idle: `off` / `default` for keys without their own value / `enforce` for every key, and the time - seconds, `10m`, `2h`, `1d`, or `use` for right after each signature), `lockwithwindows` (what Windows locking does to the agent: `keep` it working, `lock` it, or `reencrypt` the keys too), `allowipclock` (`yes` lets programs lock and unlock the agent with `ssh-add -x` / `-X`; default `no`). |
 | `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `supdup` and `rlogin` (`no` = that protocol's Connection leaf left out of the tree unless the session uses it), `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), `fixedsizewindow` (lock that size: no resize frame, size fields read-only), `applicationsettings` (`no` = no Application tab at all; kitty.ini only), `applicationpanel` (the Application tab's leaf, remembered between configuration windows), `switchpaint` (`erase` = paint a panel switch the old way, erase then repaint on screen, instead of the freeze frame; a diagnostic), and `collapsed` (the Category-tree folds the user changed by hand, by path - written by the window itself; they beat the categoryexpand default in both directions). |
 | `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`, and the `list` of key combinations that type a text; both are edited on KiTTY++ Settings > Keys & Mouse > Shortcuts (the shortcut editor), which writes the same syntax. The Tools menu's file-transfer entries are `winscp` (Start WinSCP, default Shift+F3), `sendfile` (Send File (kscp), Ctrl+F3), `getfile` (Get File (kscp), Ctrl+F4) and `filezilla` (Start FileZilla, Shift+F4; works while the Tools menu offers it); the keys that used to be fixed are actions too: `transparencyup` (Ctrl+Up), `transparencydown` (Ctrl+Down), `fontup` (Ctrl+Num+), `fontdown` (Ctrl+Num-) and `fontreset` (Ctrl+Num 0). |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
 | `[Launcher]` | The tray launcher, e.g. `reload=no` to keep a hand-edited launcher menu from being rebuilt, and `unhideafter=3`: the seconds after which windows hidden from the launcher's menu show themselves again when the launcher ends (`0` = never - they stay hidden until a launcher is started again). |
 | `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
+| `[TrustedHelpers]` | Helper programs (another kscp, PuTTY's pscp, rz, sz) allowed with Yes in the box that shows the file and its signer the first time: one line per file, its lower-case full path = its SHA-256. Written by KiTTY++, folder store (`savemode=dir`) only; the registry store keeps the same list in the `TrustedHelpers` key. Programs that carry the KiTTY++ signature, and Windows' own programs listed in a Windows catalog, start at once and are not listed; a file with a broken signature is not started. |
 
 ## Old PuTTY and KiTTY sessions — `[KiTTY] showforeignsessions`
 
@@ -164,7 +165,7 @@ clean top of the session, so a full-screen program is never corrupted by it.
 
 It is one switch for the whole suite. The launcher looks at its start and again
 after every 24 hours in the tray, and announces a newer release with a balloon,
-in its tooltip and with an "Update available" menu entry. kageant never asks the
+in its tooltip and with an "Update available" menu entry. kageant never queries the
 network - it holds the private keys - and reads, shortly after its start and then
 once a day, the answer the terminal or the launcher stored; its "Update
 available" entry starts the `kitty.exe` beside it with `-update`, which opens
@@ -219,7 +220,7 @@ windowwidth=520
 They are the same setting as the two fields on **Application > Config
 window** — dragging the window fills those fields in, and typing a number into
 them resizes the window you are looking at. Leave a key out (or set it to 0)
-and that dimension is whatever the window's own layout asks for.
+and that dimension is whatever the window's own layout requires.
 
 The numbers are *logical* pixels, so the same file gives the same apparent size
 on a display scaled to 150% as on one at 100%. Neither can make the window
@@ -289,6 +290,12 @@ and every session shares them. Set them on **Application > KiTTY++ Settings >
 Transfers & Tools**, which has a leaf per tool. The Tools menu of a terminal
 offers WinSCP and FileZilla only while the file each path names exists.
 
+`WinSCPPath`, `FileZillaPath`, `PSCPPath`, `rzcommand`, `szcommand`,
+`downloaddir`, `uploaddir` and `sav` expand Windows environment variables -
+`%OneDrive%\Kitty-Logs`, `%USERPROFILE%\Tools\WinSCP.exe`. The variable is
+resolved when the file is used; the setting keeps it as typed. An unknown
+`%name%` stays as it is.
+
 `PSCPPath` is normally left empty: KiTTY looks for `kscp.exe` beside itself at
 every start (then in `pscpdir`, then for PuTTY's `pscp.exe`) and writes nothing
 back. Set it only to force a particular binary. The key names keep their
@@ -298,10 +305,10 @@ historical `pscp` spelling; the program is kscp. Beside it on the same panel:
 |---|---|
 | `pscpport` | the port kscp transfers on; unset or `*` = the session's port |
 | `downloaddir` | where received files land - Get File (kscp), ZModem and transfers over the session - unless the session sets its own folder on *Connection > File-Transfer-Settings*; unset = your Downloads folder |
-| `uploaddir` | the local folder files are sent from: the Send File (kscp) picker opens in it, and a file the far end asks to read over the session (kitten transfer) is looked up in it - unless the session sets its own folder on *Connection > File-Transfer-Settings*; unset = your Documents folder |
+| `uploaddir` | the local folder files are sent from: the Send File (kscp) picker opens in it, and a file the far end requests over the session (kitten transfer) is looked up in it - unless the session sets its own folder on *Connection > File-Transfer-Settings*; unset = your Documents folder |
 | `transfernotification` | `yes` (default) / `no`: a system notification (tray balloon) when a transfer finishes - kscp Send File, Get File and drag-and-drop, ZModem receive and upload, and transfers over the session (kitten transfer) in both directions |
 | `transfermaxmb` | the global default of *Max transfer size (MB)* for files arriving over the session (kitten transfer), per file; `0` = no limit; default `1024`; a session can set its own on *Connection > File-Transfer-Settings* |
-| `transferfullpath` | the global default of *Allow full path Upload-Requests*: may the far end ask for a file by full local path (`/C:/...`)? `no` (default) = only names inside the upload folder are resolved, a full path is refused per file; a session can set its own on *Connection > File-Transfer-Settings* |
+| `transferfullpath` | the global default of *Allow full path Upload-Requests*: may the far end request a file by full local path (`/C:/...`)? `no` (default) = only names inside the upload folder are resolved, a full path is refused per file; a session can set its own on *Connection > File-Transfer-Settings* |
 | `notes` | the application notification: one note this installation shows to whoever starts KiTTY. The first window every KiTTY process opens - terminal, launcher or configuration window - raises it in the notice window near the clock, with no timeout, until it is clicked; only one copy is on the desktop at a time. Another notice from the same process borrows the screen and hands it back, so the note is not lost. ONE line here, with `\n` for a line break (`\r`, `\t` and `\\` likewise, and no other escapes); leading and trailing spaces are kept by wrapping the value in double quotes; empty (the default) displays nothing. Editable at *Application > Security > Application Notification*. Outside portable mode it is the registry value `Notes` under KiTTY's own key, where older versions kept the note they showed in a message box at every start |
 | `notesonce` | `no` (default) / `yes`: what clicking the application notification away means. `no` takes it off this desktop and the next KiTTY started shows it again; `yes` records that the note has been READ - the process that clicked remembers, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there. Editing the note makes it a different note, shown again. The checkbox is *"Show once while the launcher runs"* on the same panel |
 | `pscpdir` | legacy: a folder to search for `kscp.exe` / `pscp.exe`; prefer `PSCPPath` |

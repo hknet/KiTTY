@@ -70,7 +70,7 @@ current terminfo entry describes and what applications match against.
 ### Shift/Ctrl/Alt with the arrow keys — `Ctrl toggles app mode` or `xterm-style bitmap`
 
 `xterm-style bitmap` sends `ESC[1;<mod>C` style sequences, so the far end can
-tell Ctrl+Right from Right. `Ctrl toggles app mode` is PuTTY's older behaviour,
+distinguish Ctrl+Right from Right. `Ctrl toggles app mode` is PuTTY's older behaviour,
 where Ctrl switches the arrows between normal and application mode instead of
 being reported.
 
@@ -102,7 +102,7 @@ Two unrelated things with confusingly similar names:
 ### Initial state of cursor keys / numeric keypad — `Normal`, `Application`, `NetHack`
 
 The *initial* state only: full-screen programs switch these themselves through
-the connection, and the setting merely says how a session starts. `NetHack`
+the connection, and the setting merely sets how a session starts. `NetHack`
 maps the numeric keypad to `hjkl`-style movement.
 
 ---
@@ -110,7 +110,7 @@ maps the numeric keypad to `hjkl`-style movement.
 ## Questions people arrive with
 
 **"F13–F24 do nothing."** On any keyboard made this century those keys *are*
-Shift+F1…F12 — terminfo says so outright: xterm's `kf13` is `ESC[1;2P` and
+Shift+F1…F12 — terminfo states it outright: xterm's `kf13` is `ESC[1;2P` and
 `kf24` is `ESC[24;2~`, i.e. the ordinary function key with the Shift modifier
 encoded. Only **`Xterm 216+`** produces that. In every other mode Shift is
 folded into the key number, so Shift+F1 arrives as F11 and F13 upward simply
@@ -144,6 +144,25 @@ question in one step, and turns "it does nothing" into something reportable.
 
 Separate from everything above, KiTTY reserves some combinations for itself —
 shortcuts (*Application → KiTTY++ Settings → Keys & Mouse → Shortcuts*), the session launcher's global hotkeys, and the
-special-command keys. Those never reach the session. If a host application wants
-a combination KiTTY has taken, the shortcut can be changed or switched off; see
-[FEATURES.md](FEATURES.md).
+special-command keys. Those never reach the session; KiTTY++'s own shortcuts
+are off while far2l key events are on (below). If a host application wants a combination KiTTY has
+taken, the shortcut can be changed or switched off; see
+[FEATURES.md](../FEATURES.md).
+
+**Ctrl+Tab** switches only between windows that have "Switch Terminal Windows
+using Ctrl+TAB" on (*Window → Behaviour*, off by default; `[KiTTY] ctrltab`
+must not be `no`). A window with it off keeps Ctrl+Tab for the program inside
+it.
+
+## far2l key events
+
+While far2l has its terminal extensions on, every key press and release goes
+to it with left/right Ctrl and Alt, Shift, the lock states, virtual key, scan
+code and the character the layout gives, so Ctrl+Shift+arrows and similar
+combinations work. While far2l's key events are on, KiTTY++'s own shortcuts
+are off. The title then ends in `[far2l keys]`, and a notice shows when they
+turn on and off. A window locked by Protect keeps its keys locked. A terminal
+reset ends the extensions.
+
+Alt+F9 in far2l maximises and restores the window, from the real largest size
+on its monitor.
