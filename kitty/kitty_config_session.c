@@ -3075,6 +3075,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
             ssd->suppress_edit_valchange++;
             dlg_editbox_set(ctrl, dlg, ssd->savedsession);
+            /* A session deep in folders is "Linux\web\eu\srv01": the field
+             * shows the END of what was put in it, where the name is. Not
+             * while it has the focus - there the text may be selected to be
+             * typed over, and moving the caret would drop the selection. */
+            if (!dlg_is_focused(ctrl, dlg))
+                dlg_editbox_show_end(ctrl, dlg);
             if (ssd->listbox && !ssd->midsession)
                 dlg_editbox_set_updown_target(ctrl, ssd->listbox, dlg);
             ssd->suppress_edit_valchange--;

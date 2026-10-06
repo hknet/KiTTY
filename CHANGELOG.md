@@ -42,6 +42,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The session name field shows the end of a long path.** A session deep
+  in folders, such as `Linux\web\eu\srv01`, used to show its folders and
+  hide the session's own name. When the field is filled by Load, a click
+  in the list or a search, it now shows the end of the path. What it holds
+  and what Save writes are unchanged.
 - **Organize sessions is now Manage Sessions, and works like Explorer.** The
   window and its button are named Manage Sessions / Manage.... While
   dragging, the pointer carries the session (or "3 sessions"), the target

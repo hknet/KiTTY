@@ -3335,6 +3335,21 @@ void dlg_editbox_select_range(dlgcontrol *ctrl, dlgparam *dp,
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), EM_SETSEL, start, start+len);
 }
 
+/* KiTTY: the caret to the end of the text and the field scrolled to show it.
+ * EM_SETSEL alone leaves a single-line edit without the focus scrolled where
+ * it was; EM_SCROLLCARET brings the caret into view. */
+void dlg_editbox_show_end(dlgcontrol *ctrl, dlgparam *dp)
+{
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    HWND h;
+    LRESULT len;
+    assert(c && c->ctrl->type == CTRL_EDITBOX);
+    h = kitty_cfg_item(dp->hwnd, c->base_id+1);
+    len = SendMessage(h, WM_GETTEXTLENGTH, 0, 0);
+    SendMessage(h, EM_SETSEL, (WPARAM)len, (LPARAM)len);
+    SendMessage(h, EM_SCROLLCARET, 0, 0);
+}
+
 /* The `listbox' functions can also apply to combo boxes. */
 void dlg_listbox_clear(dlgcontrol *ctrl, dlgparam *dp)
 {

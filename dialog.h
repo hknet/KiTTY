@@ -621,6 +621,8 @@ char *dlg_editbox_get(dlgcontrol *ctrl, dlgparam *dp);   /* result must be freed
 char *dlg_editbox_get_utf8(dlgcontrol *ctrl, dlgparam *dp);   /* result must be freed by caller */
 void dlg_editbox_select_range(dlgcontrol *ctrl, dlgparam *dp,
                               size_t start, size_t len);
+/* KiTTY: caret to the end, scrolled into view (a long path shows its end). */
+void dlg_editbox_show_end(dlgcontrol *ctrl, dlgparam *dp);
 /* KiTTY: show/hide the masked text of a password editbox at runtime. */
 void dlg_editbox_set_masked(dlgcontrol *ctrl, dlgparam *dp, bool visible);
 /* The `listbox' functions can also apply to combo boxes. */
