@@ -5261,12 +5261,14 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         ctrl_columns(s, 2, 50, 50);
         {
             dlgcontrol *c2;
+            /* help: this panel's section, which describes them (they left
+             * the Session panel, whose section 4.1.2 F1 still opened) */
             c2 = ctrl_pushbutton(s, KT_SESSION_EXPORT_ALL, NO_SHORTCUT,
-                                 HELPCTX(session_saved),
+                                 HELPCTX(kitty_import_sessions),
                                  kitty_storexfer_handler, I(0));
             c2->column = 0;
             c2 = ctrl_pushbutton(s, KT_SESSION_IMPORT_ALL, NO_SHORTCUT,
-                                 HELPCTX(session_saved),
+                                 HELPCTX(kitty_import_sessions),
                                  kitty_storexfer_handler, I(1));
             c2->column = 1;
         }
@@ -5280,7 +5282,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         ctrl_columns(s, 2, 50, 50);
         {
             dlgcontrol *c3 = ctrl_pushbutton(s, KT_SP_ORG_MIGRATION, NO_SHORTCUT,
-                                             HELPCTX(session_saved),
+                                             HELPCTX(kitty_import_sessions),
                                              kitty_sessorg_handler, P(NULL));
             c3->column = 0;
         }

@@ -2775,10 +2775,23 @@ and switching the mode off returns every session to its own settings.
 
 \S{kitty-cfg-migration} The Migration panel
 
-Lists the sessions found in an older KiTTY's registry hive
-(\c{9bis.com}) or in PuTTY's, and imports the ones you select into
-KiTTY's own store. The panel appears only when such a hive holds
-sessions.
+Moves this KiTTY's sessions to another computer, opens Manage
+Sessions, and brings in sessions from older stores.
+
+\b \q{Move this KiTTY's sessions between computers}: \q{Export all...}
+writes every saved session, and the named proxy definitions, as
+protected \c{.ktx} bundle files; \q{Import all...} reads such files
+into this store. Passwords are re-protected by the store they arrive
+in.
+
+\b \q{Session folders}: \q{Manage Sessions...} opens the Manage
+Sessions window, the same as \q{Manage...} on the Session panel (see
+\k{kitty-cfg-folders}).
+
+The groups below them appear only on a registry-backed installation
+whose older KiTTY hive (\c{9bis.com}) or PuTTY hive holds sessions.
+They list those sessions and import the ones you select into KiTTY's
+own store.
 
 \b \q{Show / edit / delete old PuTTY or KiTTY sessions} makes those
 sessions visible in the saved-session list, where they can be opened,

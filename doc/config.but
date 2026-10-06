@@ -187,12 +187,15 @@ session it was left on. \c{kitty.exe -manage} opens it alone, without
 a configuration window; its \q{Edit} then opens the configuration
 window on the selected session. See \k{kitty-cfg-folders}.
 
-\b \e{Exit and Cancel.} Before a session, the button beside \q{Open}
-reads \q{Exit} and ends the program; the Application settings are
-already saved as they change. Mid-session (\q{Change Settings}) it
-reads \q{Cancel} and drops the changes not yet applied. \q{Exit} has
-no Alt key, since its letters are taken on the panels; \q{Cancel}
-keeps Alt+C. Esc works for both.
+\b \e{Exit, Cancel and Close.} Before a session, the button beside
+\q{Open} reads \q{Exit} and ends the program; the Application settings
+are already saved as they change. Mid-session (\q{Change Settings}) it
+reads \q{Cancel} and drops the changes not yet applied. Opened by
+\q{Edit} in Manage Sessions (\c{kitty.exe -manage}), it reads
+\q{Close} and closes only this window, and \q{Open} starts the session
+in a new window. \q{Exit} has no Alt key, since its letters are taken
+on the panels; \q{Cancel} and \q{Close} keep Alt+C. Esc works for all
+three.
 
 \b \e{Quick connect.} If the last thing you loaded was \q{Default
 Settings}, the box opens from Default Settings with the cursor
@@ -202,8 +205,9 @@ point when you connect by address rather than from the list. Load
 any other session to leave the mode; \c{loadlastsession=no} in
 \c{[ConfigBox]} makes it permanent.
 
-\b \e{Whole-store export and import.} The \q{Export all...} and
-\q{Import all...} buttons move every saved session (and named proxy
+\b \e{Whole-store export and import.} \q{Export all...} and
+\q{Import all...} on \k{kitty-cfg-migration}, in \q{Move this KiTTY's
+sessions between computers}, move every saved session (and named proxy
 definitions) as protected \c{.ktx} bundle files - passwords are
 re-protected by the store they arrive in.
 
