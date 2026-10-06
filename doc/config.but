@@ -1737,8 +1737,9 @@ terminal. You can check this using a command such as \c{infocmp}:
 \e         bbbbbbbbbb
 
 If you do not see \cq{colors#256} in the output, you may need to
-change your terminal setting. On modern Linux machines, you could
-try \cq{xterm-256color}.
+change your terminal setting: KiTTY++ sends \cq{xterm-256color} by
+default, but a session saved by an older version keeps the
+\cq{xterm} it was saved with.
 
 \S{config-truecolour} \q{Allow terminal to use 24-bit colour}
 
@@ -2113,10 +2114,12 @@ terminal, and what character sequences to expect the \i{keyboard}
 to generate.
 
 KiTTY attempts to emulate the Unix \i\c{xterm} program, and by default
-it reflects this by sending \c{xterm} as a terminal-type string. If
-you find this is not doing what you want - perhaps the remote
-system reports \q{Unknown terminal type} - you could try setting
-this to something different, such as \i\c{vt220}.
+it reflects this by sending \c{xterm-256color} as a terminal-type
+string, which also tells programs that 256 colours can be used. A
+session saved by an older version keeps the \c{xterm} it was saved
+with. If you find this is not doing what you want - perhaps an old
+remote system reports \q{Unknown terminal type} - you could try
+\c{xterm}, or something different, such as \i\c{vt220}.
 
 If you're not sure whether a problem is due to the terminal type
 setting or not, you probably need to consult the manual for your

@@ -550,7 +550,9 @@ CONF_OPTION(ssh_nc_port, /* port to connect to in `nc' mode */
 /* Telnet options */
 CONF_OPTION(termtype,
     VALUE_TYPE(STR),
-    DEFAULT_STR("xterm"),
+    /* KiTTY: xterm-256color, as Windows Terminal and most terminals send;
+     * with plain "xterm" many programs drop to 8 colours. Upstream: "xterm". */
+    DEFAULT_STR("xterm-256color"),
     SAVE_KEYWORD("TerminalType"),
 )
 CONF_OPTION(termspeed,

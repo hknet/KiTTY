@@ -60,6 +60,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The default terminal type is now `xterm-256color`** (was `xterm`), as
+  Windows Terminal and most terminals send, so programs use 256 colours. A
+  session saved before keeps the type it was saved with, and so do new
+  sessions made from a saved Default Settings. An old server that reports
+  "Unknown terminal type" works with `xterm` again (Connection > Login >
+  Terminal details > Terminal-type string).
 - **A ZIP copy beside an installed KiTTY++ no longer offers the installer
   update.** The updater asked whether a KiTTY++ installer package was on the
   machine at all; it now asks whether this kitty.exe is the one it installed.

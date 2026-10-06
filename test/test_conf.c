@@ -744,7 +744,7 @@ void test_simple(void)
     test_bool_simple(CONF_try_tis_auth, "AuthTIS", false);
     test_bool_simple(CONF_try_ki_auth, "AuthKI", true);
     test_bool_simple(CONF_ssh_no_shell, "SshNoShell", false);
-    test_str_simple(CONF_termtype, "TerminalType", "xterm");
+    test_str_simple(CONF_termtype, "TerminalType", "xterm-256color");
     test_str_simple(CONF_termspeed, "TerminalSpeed", "38400,38400");
     test_str_ambi_simple(CONF_username, "UserName", "", false);
     test_bool_simple(CONF_username_from_env, "UserNameFromEnvironment", false);
