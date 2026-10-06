@@ -1,9 +1,11 @@
 /*
  * kitty_hostnotify.c - desktop notifications from the host (OSC 9, OSC 777,
- * OSC 99) and taskbar progress (OSC 9;4): the Windows half.
+ * OSC 99), taskbar progress (OSC 9;4) and program status (OSC 7501, with the
+ * shell's prompt marks, OSC 133): the Windows half.
  *
- * The parsing, the limits and every decision are in kitty_oscnotify.c, which
- * has no Windows in it and is unit-tested (test/test_oscnotify.c). What is
+ * The parsing, the limits and every decision are in kitty_oscnotify.c and
+ * kitty_progstatus.c, which have no Windows in them and are unit-tested
+ * (test/test_oscnotify.c, test/test_progstatus.c). What is
  * here needs the window: whether it has the focus or can be seen, the notice
  * near the clock (kitty_notice.c), the flood timer, the replies down the
  * session, and the taskbar button.
@@ -15,6 +17,7 @@
  *
  * Compiled into the kitty and kitty_portable targets only.
  */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +36,7 @@
 #include "kitty_osc52.h"    /* kitty_osc52_send_raw: the raw reply seam */
 #include "kitty_text.h"
 #include "kitty_oscnotify.h"
+#include "kitty_progstatus.h"
 #include "kitty_hostnotify.h"
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
@@ -53,6 +57,8 @@ struct kitty_hostnotify {
     bool have_pending;
     OnNotice pending;
     struct hn_shown *shown;
+    PsStore ps;                  /* OSC 7501 records */
+    int last_exit;               /* OSC 133;D: the last command's exit code */
 };
 
 /* What a notice on screen needs when it goes: owned by the notice window
@@ -129,12 +135,18 @@ static void hn_trace_progress(int state, int value, bool cleared)
 
 /* ---- the terminal's state ---------------------------------------------- */
 
+/* The terminal whose program status is on the taskbar button: one window
+ * per process, so one at a time. */
+static struct kitty_hostnotify *hn_ps_owner;
+
 static struct kitty_hostnotify *hn_get(Terminal *term)
 {
     if (!term->hostnotify) {
         term->hostnotify = snew(struct kitty_hostnotify);
         memset(term->hostnotify, 0, sizeof(*term->hostnotify));
         term->hostnotify->term = term;
+        term->hostnotify->last_exit = -1;
+        hn_ps_owner = term->hostnotify;
     }
     return term->hostnotify;
 }
@@ -400,8 +412,11 @@ static void hn_progress(int state, int value)
     hn_trace_progress(state, value, false);
 }
 
+static void hn_ps_session_ended(void);
+
 void kitty_hostnotify_session_ended(void)
 {
+    hn_ps_session_ended();
     if (hn_prog_state == 0)
         return;
     hn_progress_apply(0, 0);
@@ -410,9 +425,13 @@ void kitty_hostnotify_session_ended(void)
     hn_trace_progress(0, 0, true);
 }
 
+static void hn_ps_icons_free(void);
+static void hn_ps_overlay_again(void);
+
 void kitty_hostnotify_shutdown(void)
 {
     hn_taskbar_release();
+    hn_ps_icons_free();
 }
 
 void kitty_hostnotify_taskbar_message(unsigned int msg)
@@ -426,6 +445,277 @@ void kitty_hostnotify_taskbar_message(unsigned int msg)
     hn_taskbar_release();
     if (hn_prog_state != 0)
         hn_progress_apply(hn_prog_state, hn_prog_value);
+    hn_ps_overlay_again();
+}
+
+/* ---- program status (OSC 7501) and prompt marks (OSC 133) -------------- */
+
+/* What the taskbar button shows for it: the overlay applied (PS_* of the
+ * summary; PS_IDLE = none) and the bar it drives (OSC 9;4 states). The bar is
+ * shared with OSC 9;4: it is set only when the summary's bar changes, so the
+ * last of the two to report wins. */
+static int hn_ps_overlay = PS_IDLE;
+static int hn_ps_overlay_kind;
+static int hn_ps_bar_state, hn_ps_bar_value;
+static HICON hn_ps_icons[PS_BLOCKED + 1];
+
+/* The words for a state, on the overlay (read by screen readers) and in the
+ * notice. */
+static const char *hn_ps_phrase(int state, int kind)
+{
+    switch (state) {
+      case PS_WORKING: return KT_PST_WORKING;
+      case PS_DONE:    return KT_PST_DONE;
+      case PS_ERROR:   return KT_PST_ERROR;
+      case PS_BLOCKED:
+        return kind == PS_KIND_PERMISSION ? KT_PST_BLOCKED_PERMISSION :
+               kind == PS_KIND_QUESTION   ? KT_PST_BLOCKED_QUESTION :
+               kind == PS_KIND_AUTH       ? KT_PST_BLOCKED_AUTH :
+                                            KT_PST_BLOCKED;
+      default:         return "";
+    }
+}
+
+/* The overlay: a dot in the state's colour with a white rim, drawn once at
+ * the small-icon size. Straight alpha, so the rim is smooth on any taskbar. */
+static HICON hn_ps_icon(int state)
+{
+    COLORREF col;
+    int sz, x, y;
+    size_t masklen;
+    BITMAPINFO bi;
+    DWORD *px = NULL;
+    HBITMAP color, mask;
+    ICONINFO ii;
+    unsigned char *zero;
+    double c, r;
+
+    if (state < 0 || state > PS_BLOCKED)
+        return NULL;
+    if (hn_ps_icons[state])
+        return hn_ps_icons[state];
+    col = state == PS_BLOCKED ? RGB(232, 152, 0) :
+          state == PS_ERROR   ? RGB(204, 36, 36) :
+          state == PS_WORKING ? RGB(40, 112, 204) : RGB(36, 148, 64);
+    sz = GetSystemMetrics(SM_CXSMICON);
+    if (sz < 8)
+        sz = 16;
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = sz;
+    bi.bmiHeader.biHeight = -sz;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    color = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, (void **)&px, NULL, 0);
+    if (!color || !px)
+        return NULL;
+    c = (sz - 1) / 2.0;
+    r = sz / 2.0 - 0.5;
+    for (y = 0; y < sz; y++) {
+        for (x = 0; x < sz; x++) {
+            double d = sqrt((x - c) * (x - c) + (y - c) * (y - c));
+            double a = r + 0.5 - d;          /* coverage of the whole dot */
+            double in = r - 1.0 - d;         /* coverage of the coloured part */
+            int rr, gg, bb, aa;
+            if (a > 1) a = 1;
+            if (a < 0) a = 0;
+            if (in > 1) in = 1;
+            if (in < 0) in = 0;
+            rr = (int)(GetRValue(col) * in + 255 * (1 - in));
+            gg = (int)(GetGValue(col) * in + 255 * (1 - in));
+            bb = (int)(GetBValue(col) * in + 255 * (1 - in));
+            aa = (int)(a * 255 + 0.5);
+            px[y * sz + x] = ((DWORD)aa << 24) | ((DWORD)rr << 16) |
+                             ((DWORD)gg << 8) | (DWORD)bb;
+        }
+    }
+    masklen = (size_t)((sz + 15) / 16 * 2) * (size_t)sz;
+    zero = snewn(masklen, unsigned char);
+    memset(zero, 0, masklen);
+    mask = CreateBitmap(sz, sz, 1, 1, zero);
+    sfree(zero);
+    memset(&ii, 0, sizeof(ii));
+    ii.fIcon = TRUE;
+    ii.hbmColor = color;
+    ii.hbmMask = mask;
+    hn_ps_icons[state] = CreateIconIndirect(&ii);
+    DeleteObject(color);
+    if (mask)
+        DeleteObject(mask);
+    return hn_ps_icons[state];
+}
+
+static void hn_ps_icons_free(void)
+{
+    int i;
+    for (i = 0; i <= PS_BLOCKED; i++) {
+        if (hn_ps_icons[i])
+            DestroyIcon(hn_ps_icons[i]);
+        hn_ps_icons[i] = NULL;
+    }
+}
+
+static void hn_ps_overlay_apply(int state, int kind)
+{
+    ITaskbarList3 *tb = hn_taskbar_get();
+    wchar_t *desc;
+    if (!tb || !MainHwnd)
+        return;
+    if (state == PS_IDLE) {
+        tb->lpVtbl->SetOverlayIcon(tb, MainHwnd, NULL, NULL);
+        return;
+    }
+    desc = dup_mb_to_wc(CP_ACP, hn_ps_phrase(state, kind));
+    tb->lpVtbl->SetOverlayIcon(tb, MainHwnd, hn_ps_icon(state), desc);
+    sfree(desc);
+}
+
+static void hn_ps_overlay_again(void)
+{
+    if (hn_ps_overlay != PS_IDLE)
+        hn_ps_overlay_apply(hn_ps_overlay, hn_ps_overlay_kind);
+}
+
+static void hn_trace_status(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    char line[96];
+    snprintf(line, sizeof(line), "status overlay=%d kind=%d bar=%d value=%d",
+             hn_ps_overlay, hn_ps_overlay_kind, hn_ps_bar_state,
+             hn_ps_bar_value);
+    hn_trace("KITTY_PROGRESS_TRACE", line);
+#endif
+}
+
+/* The taskbar button follows the records' summary. */
+static void hn_ps_refresh(struct kitty_hostnotify *st)
+{
+    Terminal *term = st->term;
+    bool on = term->conf && conf_get_bool(term->conf, CONF_taskbar_progress);
+    PsView v;
+    int ov, bar = 0, val = 0;
+
+    ps_view(&st->ps, &v);
+    ov = on ? v.state : PS_IDLE;
+    if (ov == PS_WORKING) {
+        bar = v.progress >= 0 ? 1 : 3;           /* normal / busy */
+        val = v.progress >= 0 ? v.progress : 0;
+    } else if (ov == PS_BLOCKED) {
+        bar = 4;                                 /* paused: yellow */
+        val = v.progress >= 0 ? v.progress : 100;
+    }
+    if (ov != hn_ps_overlay ||
+        (ov == PS_BLOCKED && v.kind != hn_ps_overlay_kind)) {
+        /* Newly blocked while the window is in the background: the button
+         * flashes until the window comes forward. */
+        if (ov == PS_BLOCKED && hn_ps_overlay != PS_BLOCKED &&
+            !term->has_focus && MainHwnd) {
+            FLASHWINFO fi;
+            memset(&fi, 0, sizeof(fi));
+            fi.cbSize = sizeof(fi);
+            fi.hwnd = MainHwnd;
+            fi.dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG;
+            FlashWindowEx(&fi);
+        }
+        hn_ps_overlay_apply(ov, v.kind);
+        hn_ps_overlay = ov;
+        hn_ps_overlay_kind = v.kind;
+    }
+    if (bar != hn_ps_bar_state || val != hn_ps_bar_value) {
+        if (bar != 0 || hn_ps_bar_state != 0)
+            hn_progress(bar, val);
+        hn_ps_bar_state = bar;
+        hn_ps_bar_value = val;
+    }
+    hn_trace_status();
+}
+
+/* A record became blocked, done or failed: a notice, under the same setting,
+ * limits and flood rule as the host's own notices. "<name>: <state>" on the
+ * first line, the program's message below. */
+static void hn_ps_notice(struct kitty_hostnotify *st, const PsRecord *r)
+{
+    OnNotice n;
+    const char *name = r->title[0] ? r->title : ps_app_of(&st->ps, r);
+    const char *phrase = hn_ps_phrase(r->state, r->kind);
+    char *first = name[0] ? dupprintf(KT_PST_NOTICE_FMT, name, phrase) :
+                            dupstr(phrase);
+    on_notice_set(&n, first, strlen(first), r->msg, strlen(r->msg));
+    sfree(first);
+    hn_offer(st, &n);
+}
+
+static void hn_ps_osc7501(Terminal *term, const char *s, size_t len,
+                          bool overflow)
+{
+    struct kitty_hostnotify *st;
+    PsRecord r;
+    PsEntry *e;
+    int prev;
+
+    if (overflow)
+        return;                          /* over the limit: discarded whole */
+    switch (ps_parse(s, len, &r)) {
+      case PS_QUERY:
+        /* The one reply: the fixed body. Nothing of a report goes back. */
+        if (hn_setting(term) != ON_SET_OFF ||
+            conf_get_bool(term->conf, CONF_taskbar_progress))
+            hn_reply(term, PS_QUERY_REPLY, strlen(PS_QUERY_REPLY));
+        return;
+      case PS_REPORT:
+        break;
+      default:
+        return;
+    }
+    st = hn_get(term);
+    e = ps_apply(&st->ps, &r, &prev);
+    if (e && (e->r.state == PS_DONE || e->r.state == PS_ERROR) &&
+        term->has_focus)
+        e->seen = 1;                     /* seen as it happened */
+    if (e && e->r.state != prev &&
+        (e->r.state == PS_BLOCKED || e->r.state == PS_DONE ||
+         e->r.state == PS_ERROR) && hn_setting(term) != ON_SET_OFF)
+        hn_ps_notice(st, &e->r);
+    hn_ps_refresh(st);
+}
+
+static void hn_ps_osc133(Terminal *term, const char *s, size_t len)
+{
+    struct kitty_hostnotify *st;
+    int code;
+    switch (ps_osc133(s, len, &code)) {
+      case PS133_PROMPT:
+        /* A prompt: whatever was running has ended. */
+        if (!term->hostnotify)
+            return;
+        st = term->hostnotify;
+        ps_drop_running(&st->ps);
+        hn_ps_refresh(st);
+        break;
+      case PS133_END:
+        hn_get(term)->last_exit = code;
+        break;
+      default:
+        break;
+    }
+}
+
+/* The session ended: nothing on the host runs any more. */
+static void hn_ps_session_ended(void)
+{
+    if (!hn_ps_owner)
+        return;
+    ps_drop_running(&hn_ps_owner->ps);
+    hn_ps_refresh(hn_ps_owner);
+}
+
+void kitty_hostnotify_focus(Terminal *term)
+{
+    if (!term || !term->hostnotify)
+        return;
+    ps_mark_seen(&term->hostnotify->ps);
+    hn_ps_refresh(term->hostnotify);
 }
 
 /* ---- entry points ------------------------------------------------------ */
@@ -460,6 +750,16 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
 
     if (!term || !term->conf || GetPuttyFlag())
         return;
+
+    if (osc == 7501) {
+        hn_ps_osc7501(term, s, len, overflow);
+        return;
+    }
+    if (osc == 133) {
+        if (!overflow)
+            hn_ps_osc133(term, s, len);
+        return;
+    }
 
     if (osc == 9) {
         int state, value;
@@ -584,6 +884,9 @@ void kitty_hostnotify_term_free(Terminal *term)
     expire_timer_context(st);
     if (st->shown)
         st->shown->owner = NULL;     /* the notice may outlive us */
+    ps_free(&st->ps);
+    if (hn_ps_owner == st)
+        hn_ps_owner = NULL;
     smemclr(st, sizeof(*st));
     sfree(st);
     term->hostnotify = NULL;

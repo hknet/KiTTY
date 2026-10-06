@@ -46,6 +46,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   "Create in Start menu" (a folder of its own, "KiTTY++ (portable)") and
   "Create on Desktop". A shortcut of the same name that points to another
   kitty.exe is replaced only after a question.
+- **Program status from the host (OSC 7501).** A program reports working,
+  blocked, done, failed or idle. The taskbar button shows the most urgent
+  state as a small icon, the percentage on its bar, and flashes when a
+  program becomes blocked in the background. Blocked, done and failed raise
+  a notice under the desktop notification setting.
+- **Prompt marks (OSC 133).** The shell's next prompt ends a running
+  program status. The exit code the shell reports is kept for later use.
+- **docs/OSC-INTEGRATION.md** lists what each OSC feature needs on the host,
+  with shell snippets for bash, zsh and fish (OSC 7 and OSC 133). It shows
+  what tmux, screen, zellij and dtach let through, the tmux settings, and a
+  `kpp-osc` helper that wraps a script's own notices for tmux and screen.
 
 ### Changed
 

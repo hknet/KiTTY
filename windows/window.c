@@ -6630,6 +6630,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         CreateCaret(hwnd, wgs->caretbm, wgs->font_width, wgs->font_height);
         ShowCaret(hwnd);
         flash_window(wgs, 0);               /* stop */
+#ifdef MOD_PERSO
+        /* KiTTY: a program's done/error (OSC 7501) has now been seen. */
+        kitty_hostnotify_focus(wgs->term);
+#endif
         wgs->compose_state = 0;
         term_update(wgs->term);
         break;

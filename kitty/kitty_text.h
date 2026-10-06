@@ -308,12 +308,21 @@
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
 /* Terminal/Features: notifications from the host (kitty/kitty_hostnotify.c) */
 #define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
-#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99)"
+#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501)"
 #define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
-#define KT_FEATURES_TASKBAR_PROGRESS                 "Show progress on the taskbar button (OSC 9;4)"
+#define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
 #define KT_HOSTNOTIFY_LOG_DROPPED                    "Notifications from the host: %d dropped (more than one in 2 seconds)."
+/* Program status (OSC 7501): the taskbar overlay's text and the notice */
+#define KT_PST_WORKING                               "Working"
+#define KT_PST_DONE                                  "Finished"
+#define KT_PST_ERROR                                 "Failed"
+#define KT_PST_BLOCKED                               "Waiting for input"
+#define KT_PST_BLOCKED_PERMISSION                    "Waiting for permission"
+#define KT_PST_BLOCKED_QUESTION                      "Waiting for an answer"
+#define KT_PST_BLOCKED_AUTH                          "Waiting for login"
+#define KT_PST_NOTICE_FMT                            "%s: %s"
 
 /* Window */
 #define KT_WINDOW_SET_THE_SIZE                       "Set the size of the window"

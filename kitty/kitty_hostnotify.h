@@ -1,8 +1,9 @@
 /*
  * kitty_hostnotify.h - desktop notifications from the host (OSC 9, OSC 777,
- * OSC 99) and taskbar progress (OSC 9;4): the Windows half
- * (kitty_hostnotify.c). The parsing and the decisions are in
- * kitty_oscnotify.c, which has no Windows in it.
+ * OSC 99), taskbar progress (OSC 9;4) and program status (OSC 7501, with the
+ * shell's prompt marks, OSC 133): the Windows half (kitty_hostnotify.c). The
+ * parsing and the decisions are in kitty_oscnotify.c and kitty_progstatus.c,
+ * which have no Windows in them.
  */
 #ifndef KITTY_HOSTNOTIFY_H
 #define KITTY_HOSTNOTIFY_H
@@ -12,9 +13,10 @@
 
 struct terminal_tag;
 
-/* terminal.c's do_osc hands OSC 9, 777 and 99 here, with the string after the
- * number and its first ';'. overflow: the string hit its ceiling and was cut
- * (an OSC 99 is then dropped whole; OSC 9 and 777 are cut anyway). */
+/* terminal.c's do_osc hands OSC 9, 777, 99, 7501 and 133 here, with the
+ * string after the number and its first ';'. overflow: the string hit its
+ * ceiling and was cut (an OSC 99, 7501 or 133 is then dropped whole; OSC 9
+ * and 777 are cut anyway). */
 void kitty_hostnotify_osc(struct terminal_tag *term, unsigned osc,
                           const char *s, size_t len, bool overflow);
 
@@ -38,6 +40,10 @@ void kitty_hostnotify_term_free(struct terminal_tag *term);
 /* The session ended (the window stays) or the window is closing: the
  * taskbar progress is cleared. window.c calls both. */
 void kitty_hostnotify_session_ended(void);
+
+/* The window got the focus: program status the user has now seen (done,
+ * error) leaves the taskbar button. window.c calls it. */
+void kitty_hostnotify_focus(struct terminal_tag *term);
 
 /* The window is going for good: the taskbar interface is released. */
 void kitty_hostnotify_shutdown(void);

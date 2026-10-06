@@ -3242,10 +3242,13 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
-\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99)}
+\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501)}
 
 Desktop notifications: lets a program on the host show a notice near
 the clock (OSC 9, OSC 777, OSC 99), for example when a long job ends.
+A program that reports its status (OSC 7501) raises one when it becomes
+blocked, finishes or fails: its name and the state on the first line,
+its message below.
 The notice is titled with this session's name. Off, only while this
 window is not focused, or always. A program can request less, never
 more.
@@ -3261,10 +3264,21 @@ not focused, 2 always).
 far2l's own notifications, sent over the far2l terminal extensions,
 show as the same notice and follow this setting too.
 
-\S{kitty-cfg-taskbarprogress} \q{Show progress on the taskbar button (OSC 9;4)}
+\S{kitty-cfg-taskbarprogress} \q{Progress and status on the taskbar button (OSC 9;4, 7501)}
 
 Taskbar progress: lets a program on the host show progress on this
 window's taskbar button (OSC 9;4), as Windows Terminal does.
+
+Program status (OSC 7501): a small icon on the taskbar button shows the
+most urgent state the window's programs report - blocked (amber),
+failed (red), working (blue), done (green). Done and failed go once the
+window has been in front. While working the bar shows the percentage
+(busy without one), while blocked it turns yellow, and the button
+flashes when a program becomes blocked while the window is in the
+background. Working and blocked end at the shell's next prompt (OSC
+133, which the shell sends only with the shell integration on the host;
+see \c{docs/OSC-INTEGRATION.md}) and when the session ends. OSC 9;4 and
+OSC 7501 share the bar: the last report wins.
 
 The progress is cleared when the session ends. On by default; stored
 with the session (\c{TaskbarProgress}).

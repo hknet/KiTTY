@@ -113,8 +113,8 @@ verified — reports welcome.
 > rework of the old KiTTY's "send file to the current directory" trick, which was retired
 > after that mechanism turned out to be a remote-code-execution hole
 > (**CVE-2024-23749**): the new one only ever *reads* a strictly-validated path and
-> never runs anything the remote sends. Two lines in your shell startup do it —
-> **[OSC 7 how-to →](docs/examples/osc7-shell-integration.md)**.
+> never runs anything the remote sends. A few lines in your shell startup do it —
+> **[shell integration how-to →](docs/OSC-INTEGRATION.md)**.
 
 Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with every supported key commented out; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
 

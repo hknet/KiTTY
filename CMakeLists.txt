@@ -202,6 +202,14 @@ add_executable(test_oscnotify
   test/test_oscnotify.c
   kitty/kitty_oscnotify.c)
 
+# KiTTY: unit test for program status reports (OSC 7501) and the shell's
+# prompt marks (OSC 133): parsing, limits, the record store and the window's
+# summary (kitty/kitty_progstatus.c; base64 from kitty_oscnotify.c).
+add_executable(test_progstatus
+  test/test_progstatus.c
+  kitty/kitty_progstatus.c
+  kitty/kitty_oscnotify.c)
+
 # KiTTY: unit test for the far2l key and mouse event encoding (self-contained;
 # the encoder lives in kitty/kitty_far2l_input.h, shared with windows/window.c).
 add_executable(test_far2l_keys
@@ -353,7 +361,7 @@ foreach(t
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
-    test_far2l test_oscnotify)
+    test_far2l test_oscnotify test_progstatus)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

@@ -7913,12 +7913,15 @@ static void do_osc(Terminal *term)
           case 9:
           case 777:
           case 99:
-            /* Desktop notifications from the host (OSC 9, OSC 777, OSC 99)
-             * and taskbar progress (OSC 9;4). The ConEmu numbers of OSC 9
-             * arrive here as the start of the string (the numeric parser
-             * stops at the first ';'), so they are told apart there. The
-             * per-session setting, the limits and the flood rule live in
-             * kitty/kitty_hostnotify.c. */
+          case 7501:
+          case 133:
+            /* Desktop notifications from the host (OSC 9, OSC 777, OSC 99),
+             * taskbar progress (OSC 9;4), program status (OSC 7501) and the
+             * shell's prompt marks (OSC 133, which end a running status).
+             * The ConEmu numbers of OSC 9 arrive here as the start of the
+             * string (the numeric parser stops at the first ';'), so they are
+             * told apart there. The per-session setting, the limits and the
+             * flood rule live in kitty/kitty_hostnotify.c. */
             kitty_hostnotify_osc(term, term->esc_args[0], term->osc_string,
                                  term->osc_strlen, term->osc_str_overflow);
             break;
@@ -10313,12 +10316,15 @@ static void term_out(Terminal *term, bool called_from_term_data)
                          *
                          * OSC 99 (desktop notifications) shares that ceiling:
                          * a 2048-byte body in base64 plus its metadata does
-                         * not fit the ordinary one. */
+                         * not fit the ordinary one. So does OSC 7501 (program
+                         * status), whose own limit is 4096 bytes: a report
+                         * over it is refused whole by its parser. */
                         osc_start(term,
                                   term->esc_args[0] == 52 ?
                                       clip_ceiling_bytes(term) :
                                   term->esc_args[0] == 5522 ||
                                   term->esc_args[0] == 5113 ||
+                                  term->esc_args[0] == 7501 ||
                                   term->esc_args[0] == 99 ? OSC_STR_MAX_5522 :
                                   OSC_STR_MAX);
 #else

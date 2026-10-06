@@ -91,7 +91,12 @@ exec tmux new -A -s "$KITTY_WINDOW"
 exec screen -D -R -S "$KITTY_WINDOW"
 exec abduco -A "$KITTY_WINDOW" "$SHELL"
 exec zellij attach --create "$KITTY_WINDOW"
+exec dtach -A "${XDG_RUNTIME_DIR:-/tmp}/dtach-$KITTY_WINDOW" -r winch "$SHELL"
 ```
+
+Which one decides what reaches KiTTY++ from inside it: the clipboard,
+hyperlinks, notices and the shell integration - see
+[section 5](#5-osc-features-inside-the-multiplexer).
 
 - `KITTY_ATTACHED` is inherited by every shell inside the multiplexer, so those
   shells do not try to attach again.
@@ -137,6 +142,7 @@ exec tmux new -A -s "$name"
 # exec screen -D -R -S "$name"
 # exec abduco -A "$name" "$SHELL"
 # exec zellij attach --create "$name"
+# exec dtach -A "${XDG_RUNTIME_DIR:-/tmp}/dtach-$name" -r winch "$SHELL"
 ```
 
 Remote command (full path - `PATH` may lack `~/.local/bin`):
@@ -174,6 +180,26 @@ alias ka '~/.local/bin/kitty-attach'     # fish: ~/.config/fish/config.fish
 | A rename is not seen | the running shell keeps the value at login; the next connection (Restart Session, a reconnect) carries the new value |
 | Every window attaches to the same session | the same **name** was given to several windows - names are per window, use the base + numbers instead |
 | klink / kscp / ksftp | the console tools do not fill in `%KITTY_...%` |
+
+## 5. OSC features inside the multiplexer
+
+tmux, screen and zellij draw the screen themselves and drop most of the
+sequences programs send to KiTTY++: the remote clipboard (OSC 52), hyperlinks
+(OSC 8), notices (OSC 9, 777, 99), taskbar progress and program status (OSC
+9;4, 7501), and the shell integration (OSC 7, 133). dtach passes all of them.
+
+| | What to do |
+|---|---|
+| **tmux** | Three lines in `~/.tmux.conf` let the clipboard, hyperlinks and the shell integration through. Notices, progress and status pass only when the program wraps them. |
+| **screen** | Nothing plain passes. The shell integration and `kpp-osc` wrap; anything wrapped over about 768 bytes is still dropped. |
+| **zellij** | The clipboard passes; nothing else does, wrapped or not. |
+| **dtach** | Everything passes. What arrives while no window is attached is lost. |
+| **abduco** | Not measured. |
+
+The measurements, the tmux lines, the shell snippets and the `kpp-osc` helper
+for your own scripts are in [OSC-INTEGRATION.md](OSC-INTEGRATION.md#tmux-screen-zellij-and-dtach).
+For a window per server session, with KiTTY++ doing the windows, dtach loses
+nothing on the way.
 
 The same text, with the details, is in the manual: *Terminal Name and
 %KITTY_WINDOW%*, and *Re-attaching tmux, screen, abduco or zellij*.
