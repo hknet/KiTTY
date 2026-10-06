@@ -103,6 +103,10 @@
 #ifndef IDI_FILEASSOC
 #define IDI_FILEASSOC 9904
 #endif
+/* Manage Sessions: the KiTTY++ icon with a gear in front of its terminals */
+#ifndef IDI_MANAGEICON
+#define IDI_MANAGEICON 9907
+#endif
 #ifndef IDI_MAINICON_0
 #define IDI_MAINICON_0 1
 #endif

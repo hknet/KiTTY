@@ -43,7 +43,7 @@
 #include "kitty_text.h"
 #include "kitty_sessorg.h"
 #include "kitty_auxpos.h"        /* the window's own place and size, per monitor layout */
-#include "kitty_inikeys.h"       /* KR_DLGPOS_ORGANIZE: its name there */
+#include "kitty_inikeys.h"       /* KR_DLGPOS_MANAGE: its name there */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -333,6 +333,97 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
     return r == KITTY_REKEY_OK;
 }
 
+/* ---- Clone and Copy to... -----------------------------------------------
+ * A session copied whole under a new identity: its settings loaded and saved
+ * under the new name, as a Save under another name in the configuration box
+ * does. Clone keeps the folder and adds "-1", "-2", ...; Copy to... keeps
+ * the name in the destination folder and adds a number only when the name
+ * is taken there. */
+static int so_id_taken(const struct so_names *s, char **made, int nmade,
+                       const char *id)
+{
+    int i;
+    for (i = 0; i < s->n; i++)
+        if (!stricmp(s->names[i], id))
+            return 1;
+    for (i = 0; i < nmade; i++)
+        if (!stricmp(made[i], id))
+            return 1;
+    if (store_is_file()) {
+        char *blk = ksf_path_blocker(id);
+        if (blk) {
+            sfree(blk);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* The first free identity for a copy of `src` ("" dest = the root; NULL =
+ * src's own folder, a clone). snewn'd. */
+static char *so_copy_target(const struct so_names *s, char **made, int nmade,
+                            const char *src, const char *dest, int clone)
+{
+    const char *leaf = ksp_leaf(src);
+    char *fld = dest ? (ksp_folder_is_root(dest) ? NULL : dupstr(dest))
+                     : ksp_folder_of(src);
+    int n;
+    for (n = clone ? 1 : 0; ; n++) {
+        char *nm = n ? dupprintf("%s-%d", leaf, n) : dupstr(leaf);
+        char *id = fld ? dupprintf("%s\\%s", fld, nm) : dupstr(nm);
+        sfree(nm);
+        if (!so_id_taken(s, made, nmade, id)) {
+            sfree(fld);
+            return id;
+        }
+        sfree(id);
+    }
+}
+
+/* Returns 1 done; 0 with *msg (snewn'd) naming the session that failed -
+ * the ones before it are copied. */
+static int so_copy_sessions(char **sel, int nsel, const char *dest, int clone,
+                            char **msg)
+{
+    struct so_names s;
+    char **made = snewn(nsel > 0 ? nsel : 1, char *);
+    int i, nmade = 0, ok = 1;
+    *msg = NULL;
+    if (!store_is_file())
+        SaveRegistryKeyNow();
+    so_names_load(&s);
+    for (i = 0; i < nsel && ok; i++) {
+        Conf *c = conf_new();
+        char *to, *err;
+        if (!load_settings(sel[i], c)) {
+            conf_free(c);
+            *msg = dupprintf(KT_SP_ORG_COPY_FAILED, sel[i], KT_MSG_UNKNOWN_ERROR);
+            ok = 0;
+            break;
+        }
+        to = so_copy_target(&s, made, nmade, sel[i], dest, clone);
+        if (dest)
+            conf_set_str(c, CONF_folder, ksp_folder_is_root(dest) ? "Default" : dest);
+        err = save_settings(to, c);
+        conf_free(c);
+        if (err) {
+            *msg = dupprintf(KT_SP_ORG_COPY_FAILED, sel[i], err);
+            sfree(err);
+            sfree(to);
+            ok = 0;
+            break;
+        }
+        made[nmade++] = to;
+    }
+    for (i = 0; i < nmade; i++)
+        sfree(made[i]);
+    sfree(made);
+    so_names_free(&s);
+    kitty_store_mark_dirty();
+    kitty_config_session_store_changed();
+    return ok;
+}
+
 /* ------------------------------------------------------------------------
  * Small pieces every box here shares
  * ------------------------------------------------------------------------ */
@@ -618,7 +709,11 @@ struct so_state {
     char *cur;                      /* the folder shown, "" = root */
     HWND sub;                       /* the Move / name / delete box, if open */
     int pane;                       /* 0 tree, 1 list: what Rename acts on */
-    int dragging;
+    int dragging;                   /* SO_DRAG_SESSIONS / SO_DRAG_FOLDER, 0 = none */
+    char *dragfolder;               /* the folder being dragged */
+    HIMAGELIST dragimg;             /* what the pointer carries */
+    HTREEITEM hover;                /* the folder under the pointer, and since when */
+    DWORD hover_since;
     int ready;
     long gen;                       /* kitty_store_generation() when read */
     RECT rects[lenof(so_anchors)];
@@ -723,6 +818,26 @@ static void so_reload(struct so_state *st)
     so_fill_list(st);
 }
 
+/* Select, focus and show the session `name` in the list, if it is there. */
+static void so_select_session(struct so_state *st, const char *name)
+{
+    int i, n = ListView_GetItemCount(st->list);
+    for (i = 0; i < n; i++) {
+        LVITEMA it;
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_PARAM;
+        it.iItem = i;
+        if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+            it.lParam >= 0 && it.lParam < st->s.n &&
+            !strcmp(st->s.names[it.lParam], name)) {
+            ListView_SetItemState(st->list, i, LVIS_SELECTED | LVIS_FOCUSED,
+                                  LVIS_SELECTED | LVIS_FOCUSED);
+            ListView_EnsureVisible(st->list, i, FALSE);
+            return;
+        }
+    }
+}
+
 /* The selected sessions' identities (snewn'd array of borrowed strings). */
 static char **so_selected(struct so_state *st, int *n)
 {
@@ -757,6 +872,7 @@ struct so_move {
     struct so_folders fs;
     char **sel;                 /* owned copies */
     int nsel;
+    int copy;                   /* Copy to...: the same box, copying */
 };
 
 static void so_move_free(struct so_move *m)
@@ -780,11 +896,15 @@ static INT_PTR CALLBACK so_move_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         m = (struct so_move *)lp;
         SetWindowLongPtr(h, GWLP_USERDATA, lp);
         SetWindowTextA(h, KT_SP_ORG_TITLE);
-        q = m->nsel == 1 ? dupstr(KT_SP_ORG_MOVE_ONE_Q)
-                         : dupprintf(KT_SP_ORG_MOVE_Q, m->nsel);
+        if (m->copy)
+            q = m->nsel == 1 ? dupstr(KT_SP_ORG_COPY_ONE_Q)
+                             : dupprintf(KT_SP_ORG_COPY_Q, m->nsel);
+        else
+            q = m->nsel == 1 ? dupstr(KT_SP_ORG_MOVE_ONE_Q)
+                             : dupprintf(KT_SP_ORG_MOVE_Q, m->nsel);
         SetDlgItemTextA(h, IDC_SOM_TEXT, q);
         sfree(q);
-        SetDlgItemTextA(h, IDOK, KT_SP_ORG_MOVE_BTN);
+        SetDlgItemTextA(h, IDOK, m->copy ? KT_SP_ORG_COPY_BTN : KT_SP_ORG_MOVE_BTN);
         SetDlgItemTextA(h, IDCANCEL, KT_SP_ORG_CANCEL);
         kitty_theme_mark_ink(GetDlgItem(h, IDC_SOM_WARN), KITTY_INK_BAD);
         so_fit_buttons_right(h, btns);
@@ -808,7 +928,8 @@ static INT_PTR CALLBACK so_move_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             }
             /* Any box the move raises (the jump-host result) belongs to the
              * Organize window: this one is destroyed right after. */
-            if (so_move_sessions(m->st ? m->st->h : GetWindow(h, GW_OWNER),
+            if (m->copy ? so_copy_sessions(m->sel, m->nsel, dest, 0, &err) :
+                so_move_sessions(m->st ? m->st->h : GetWindow(h, GW_OWNER),
                                  m->sel, m->nsel, dest, &err)) {
                 if (m->st)
                     so_reload(m->st);
@@ -1440,15 +1561,476 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
     sfree(dest);
 }
 
+/* ---- the right-click menus' own actions --------------------------------
+ * The menus carry the buttons' actions (Move to..., Rename..., New folder,
+ * Delete folder) and these, which have no button: Start Sessions, Copy
+ * to..., Clone, Delete for sessions, Select All. */
+#define SO_CMD_START        0x7101
+#define SO_CMD_COPY         0x7102
+#define SO_CMD_CLONE        0x7103
+#define SO_CMD_DELSESS      0x7104
+#define SO_CMD_SELALL       0x7105
+#define SO_CMD_RENAME_SESS  0x7106
+#define SO_CMD_RENAME_FOLD  0x7107
+
+/* Each marked session in its own terminal: kitty.exe -load "<name>". */
+static void so_start_sessions(struct so_state *st)
+{
+    char exe[MAX_PATH], **sel;
+    int nsel, i;
+    DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+    sel = so_selected(st, &nsel);
+    if (!nsel || !n || n >= sizeof(exe)) {
+        MessageBeep(MB_ICONWARNING);
+        sfree(sel);
+        return;
+    }
+    for (i = 0; i < nsel; i++) {
+        char *cmd = dupprintf("\"%s\" -load \"%s\"", exe, sel[i]);
+        STARTUPINFOA si;
+        PROCESS_INFORMATION pi;
+        memset(&si, 0, sizeof(si));
+        si.cb = sizeof(si);
+        memset(&pi, 0, sizeof(pi));
+        if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
+        sfree(cmd);
+    }
+    sfree(sel);
+}
+
+static void so_clone(struct so_state *st)
+{
+    char **sel, *err = NULL;
+    int nsel;
+    sel = so_selected(st, &nsel);
+    if (!nsel || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        sfree(sel);
+        return;
+    }
+    {
+        /* copies: the reload below frees the names `sel` borrows */
+        char **copy = snewn(nsel, char *);
+        int i;
+        for (i = 0; i < nsel; i++)
+            copy[i] = dupstr(sel[i]);
+        if (!so_copy_sessions(copy, nsel, NULL, 1, &err) && err)
+            kitty_info_modeless(st->h, KT_CAP_KITTYPP, err, NULL, NULL);
+        for (i = 0; i < nsel; i++)
+            sfree(copy[i]);
+        sfree(copy);
+    }
+    sfree(err);
+    sfree(sel);
+    so_reload(st);
+}
+
+/* Delete for sessions: a confirmation first, then each one deleted. */
+struct so_delsess {
+    char **names;
+    int n;
+};
+static void so_delete_sessions_answer(int yes, void *ctx)
+{
+    struct so_delsess *d = (struct so_delsess *)ctx;
+    int i;
+    if (yes && !GetReadOnlyFlag()) {
+        SaveRegistryKeyNow();           /* the backup, before the delete */
+        for (i = 0; i < d->n; i++)
+            del_settings(d->names[i]);
+        kitty_store_mark_dirty();
+        so_changed(so_window);
+    }
+    for (i = 0; i < d->n; i++)
+        sfree(d->names[i]);
+    sfree(d->names);
+    sfree(d);
+}
+static void so_delete_sessions(struct so_state *st)
+{
+    char **sel, *q;
+    int nsel, i;
+    struct so_delsess *d;
+    sel = so_selected(st, &nsel);
+    if (!nsel || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        sfree(sel);
+        return;
+    }
+    d = snew(struct so_delsess);
+    d->n = nsel;
+    d->names = snewn(nsel, char *);
+    for (i = 0; i < nsel; i++)
+        d->names[i] = dupstr(sel[i]);
+    q = nsel == 1 ? dupprintf(KT_SP_DEL_SESSION_Q, ksp_leaf(sel[0]))
+                  : dupprintf(KT_SP_ORG_DEL_Q, nsel);
+    if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
+                                      KT_SP_ORG_M_DELETE, KT_SP_ORG_CANCEL,
+                                      so_delete_sessions_answer, d)) {
+        for (i = 0; i < nsel; i++)
+            sfree(d->names[i]);
+        sfree(d->names);
+        sfree(d);
+    }
+    sfree(q);
+    sfree(sel);
+}
+
+/* ---- dragging: what the pointer carries, where it would drop -----------
+ * A session drag starts in the list, a folder drag in the tree; both drop
+ * on a folder of the tree. The pointer carries an image of what is dragged
+ * (the session's name, or "N sessions", or the folder's name); the folder it
+ * would land in is highlighted, a closed one opens after a short hover, and
+ * the tree scrolls at its top and bottom edge. Esc ends a drag. */
+#define SO_DRAG_SESSIONS    1
+#define SO_DRAG_FOLDER      2
+#define SO_TIMER_DRAG       0x5D01
+#define SO_HOVER_OPEN_MS    700
+
+static HIMAGELIST so_drag_image(HWND from, const char *text)
+{
+    HDC sdc = GetDC(from), mdc;
+    HFONT f = (HFONT)SendMessage(from, WM_GETFONT, 0, 0), of = NULL;
+    SIZE sz;
+    HBITMAP bm, obm;
+    HIMAGELIST il;
+    RECT r;
+    bool dark = kitty_theme_window_dark(GetAncestor(from, GA_ROOT));
+    COLORREF back = dark ? kitty_theme_row_colour(true, false) : GetSysColor(COLOR_HIGHLIGHT);
+    COLORREF ink = dark ? kitty_theme_text_colour(true) : GetSysColor(COLOR_HIGHLIGHTTEXT);
+    if (!sdc)
+        return NULL;
+    mdc = CreateCompatibleDC(sdc);
+    if (f)
+        of = SelectObject(mdc, f);
+    GetTextExtentPoint32A(mdc, text, (int)strlen(text), &sz);
+    r.left = r.top = 0;
+    r.right = sz.cx + 12;
+    r.bottom = sz.cy + 6;
+    bm = CreateCompatibleBitmap(sdc, r.right, r.bottom);
+    obm = SelectObject(mdc, bm);
+    {
+        HBRUSH b = CreateSolidBrush(back);
+        FillRect(mdc, &r, b);
+        DeleteObject(b);
+    }
+    SetBkMode(mdc, TRANSPARENT);
+    SetTextColor(mdc, ink);
+    TextOutA(mdc, 6, 3, text, (int)strlen(text));
+    SelectObject(mdc, obm);
+    if (of)
+        SelectObject(mdc, of);
+    DeleteDC(mdc);
+    ReleaseDC(from, sdc);
+    il = ImageList_Create(r.right, r.bottom, ILC_COLOR32, 1, 0);
+    if (il)
+        ImageList_Add(il, bm, NULL);
+    DeleteObject(bm);
+    return il;
+}
+
+static void so_drag_begin(struct so_state *st, int kind, const char *text)
+{
+    POINT pt;
+    st->dragging = kind;
+    st->hover = NULL;
+    st->hover_since = 0;
+    st->dragimg = so_drag_image(kind == SO_DRAG_FOLDER ? st->tree : st->list, text);
+    SetCapture(st->h);
+    if (st->dragimg && ImageList_BeginDrag(st->dragimg, 0, -12, -8)) {
+        GetCursorPos(&pt);
+        ImageList_DragEnter(NULL, pt.x, pt.y);
+    }
+    SetTimer(st->h, SO_TIMER_DRAG, 100, NULL);
+}
+
+/* May `target` take what is dragged? Not the folder the sessions are in,
+ * not a dragged folder itself, its own subfolders or its present parent. */
+static int so_drop_ok(struct so_state *st, HTREEITEM target)
+{
+    char *dest;
+    int ok;
+    if (!target)
+        return 0;
+    dest = so_tree_folder(st->tree, target, &st->fs);
+    if (!dest)
+        return 0;
+    if (st->dragging == SO_DRAG_FOLDER) {
+        char *parent = ksp_folder_parent(st->dragfolder);
+        ok = !(*dest && ksp_folder_within(dest, st->dragfolder)) &&
+             !ksp_folder_same(*dest ? dest : NULL,
+                              ksp_folder_is_root(parent) ? NULL : parent);
+        sfree(parent);
+    } else {
+        ok = !ksp_folder_same(*dest ? dest : NULL, *st->cur ? st->cur : NULL);
+    }
+    sfree(dest);
+    return ok;
+}
+
+static void so_drag_track(struct so_state *st)
+{
+    TVHITTESTINFO ht;
+    POINT pt, sp;
+    HTREEITEM over;
+    RECT tr;
+    int ok;
+    GetCursorPos(&sp);
+    pt = sp;
+    ScreenToClient(st->tree, &pt);
+    memset(&ht, 0, sizeof(ht));
+    ht.pt = pt;
+    over = TreeView_HitTest(st->tree, &ht);
+    if (!(ht.flags & (TVHT_ONITEM | TVHT_ONITEMBUTTON | TVHT_ONITEMINDENT |
+                      TVHT_ONITEMRIGHT)))
+        over = NULL;
+    ok = so_drop_ok(st, over);
+    if (over != st->hover) {
+        st->hover = over;
+        st->hover_since = GetTickCount();
+    }
+    ImageList_DragShowNolock(FALSE);
+    TreeView_SelectDropTarget(st->tree, ok ? over : NULL);
+    UpdateWindow(st->tree);
+    ImageList_DragShowNolock(TRUE);
+    ImageList_DragMove(sp.x, sp.y);
+    SetCursor(LoadCursor(NULL, ok ? IDC_ARROW : IDC_NO));
+    /* at the tree's top or bottom edge it scrolls */
+    GetClientRect(st->tree, &tr);
+    if (PtInRect(&tr, pt) || (pt.x >= tr.left && pt.x < tr.right)) {
+        int edge = GetSystemMetrics(SM_CYVSCROLL);
+        if (pt.y < tr.top + edge || pt.y >= tr.bottom - edge) {
+            ImageList_DragShowNolock(FALSE);
+            SendMessage(st->tree, WM_VSCROLL,
+                        pt.y < tr.top + edge ? SB_LINEUP : SB_LINEDOWN, 0);
+            UpdateWindow(st->tree);
+            ImageList_DragShowNolock(TRUE);
+        }
+    }
+}
+
+/* A dropped folder moves only after a confirmation (a drop is easily made by
+ * accident); the answer does the move, from and to as they were then. */
+struct so_folderdrop {
+    char *from, *to;
+};
+static void so_folder_drop_answer(int yes, void *ctx)
+{
+    struct so_folderdrop *d = (struct so_folderdrop *)ctx;
+    struct so_state *st = so_window;
+    if (yes && !GetReadOnlyFlag()) {
+        char *err = NULL, *rewritten = NULL;
+        if (kitty_sessorg_folder_move(d->from, d->to, KT_SP_MOVE_CLASH,
+                                      &err, &rewritten)) {
+            kitty_config_session_folder_moved(d->from, d->to, 0);
+            if (st && ksp_folder_within(st->cur, d->from)) {
+                char *np = ksp_folder_moved_path(st->cur, d->from, d->to);
+                sfree(st->cur);
+                st->cur = np;
+            }
+            so_report_rewritten(st ? st->h : NULL, rewritten);
+        } else if (err) {
+            kitty_info_modeless(st ? st->h : NULL, KT_CAP_KITTYPP, err, NULL, NULL);
+        }
+        sfree(err);
+        sfree(rewritten);
+        so_changed(st);
+    }
+    sfree(d->from);
+    sfree(d->to);
+    sfree(d);
+}
+
+static void so_drag_end(struct so_state *st, int drop)
+{
+    HTREEITEM target = TreeView_GetDropHilight(st->tree);
+    int kind = st->dragging;
+    st->dragging = 0;
+    KillTimer(st->h, SO_TIMER_DRAG);
+    if (st->dragimg) {
+        ImageList_DragLeave(NULL);
+        ImageList_EndDrag();
+        ImageList_Destroy(st->dragimg);
+        st->dragimg = NULL;
+    }
+    TreeView_SelectDropTarget(st->tree, NULL);
+    if (GetCapture() == st->h)
+        ReleaseCapture();
+    if (drop && target) {
+        if (kind == SO_DRAG_FOLDER) {
+            char *dest = so_tree_folder(st->tree, target, &st->fs);
+            if (dest && st->dragfolder) {
+                struct so_folderdrop *d = snew(struct so_folderdrop);
+                char *q;
+                d->from = dupstr(st->dragfolder);
+                d->to = *dest ? dupprintf("%s\\%s", dest, ksp_leaf(st->dragfolder))
+                              : dupstr(ksp_leaf(st->dragfolder));
+                q = dupprintf(KT_SP_ORG_FOLDER_DROP_Q, st->dragfolder,
+                              so_folder_label(dest));
+                if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
+                                                  KT_SP_ORG_FOLDER_DROP_BTN,
+                                                  KT_SP_ORG_CANCEL,
+                                                  so_folder_drop_answer, d)) {
+                    sfree(d->from);
+                    sfree(d->to);
+                    sfree(d);
+                }
+                sfree(q);
+            }
+            sfree(dest);
+        } else {
+            so_drop_on(st, target);
+        }
+    }
+    sfree(st->dragfolder);
+    st->dragfolder = NULL;
+}
+
+/* the drag timer: a closed folder opens after a hover; Esc ends the drag */
+static void so_drag_tick(struct so_state *st)
+{
+    if (!st->dragging)
+        return;
+    if (GetAsyncKeyState(VK_ESCAPE) & 0x8000) {
+        so_drag_end(st, 0);
+        return;
+    }
+    so_drag_track(st);
+    if (st->hover && GetTickCount() - st->hover_since >= SO_HOVER_OPEN_MS &&
+        TreeView_GetChild(st->tree, st->hover)) {
+        TVITEMA tv;
+        memset(&tv, 0, sizeof(tv));
+        tv.mask = TVIF_STATE;
+        tv.stateMask = TVIS_EXPANDED;
+        tv.hItem = st->hover;
+        if (SendMessageA(st->tree, TVM_GETITEMA, 0, (LPARAM)&tv) &&
+            !(tv.state & TVIS_EXPANDED)) {
+            ImageList_DragShowNolock(FALSE);
+            TreeView_Expand(st->tree, st->hover, TVE_EXPAND);
+            UpdateWindow(st->tree);
+            ImageList_DragShowNolock(TRUE);
+        }
+    }
+}
+
+/* ---- the right-click menus --------------------------------------------- */
+
+static void so_menu_add(HMENU m, UINT id, const char *text, int enabled)
+{
+    AppendMenuA(m, MF_STRING | (enabled ? 0 : MF_GRAYED), id, text);
+}
+
+static void so_command(struct so_state *st, int id);
+
+static void so_list_menu(struct so_state *st, int x, int y)
+{
+    HMENU m = CreatePopupMenu();
+    int nsel = ListView_GetSelectedCount(st->list), cmd;
+    int rw = !GetReadOnlyFlag();
+    if (!m)
+        return;
+    if (x == -1 && y == -1) {           /* the menu key: at the focused row */
+        RECT r;
+        int i = ListView_GetNextItem(st->list, -1, LVNI_FOCUSED);
+        POINT p = {8, 8};
+        if (i >= 0 && ListView_GetItemRect(st->list, i, &r, LVIR_LABEL)) {
+            p.x = r.left + 8;
+            p.y = r.bottom;
+        }
+        ClientToScreen(st->list, &p);
+        x = p.x;
+        y = p.y;
+    }
+    so_menu_add(m, SO_CMD_START, KT_SP_ORG_M_START, nsel > 0);
+    AppendMenuA(m, MF_SEPARATOR, 0, NULL);
+    so_menu_add(m, IDC_SO_MOVE, KT_SP_ORG_M_MOVE, nsel > 0 && rw);
+    so_menu_add(m, SO_CMD_COPY, KT_SP_ORG_M_COPY, nsel > 0 && rw);
+    so_menu_add(m, SO_CMD_RENAME_SESS, KT_SP_ORG_M_RENAME, nsel == 1 && rw);
+    so_menu_add(m, SO_CMD_CLONE, KT_SP_ORG_M_CLONE, nsel > 0 && rw);
+    so_menu_add(m, SO_CMD_DELSESS, KT_SP_ORG_M_DELETE, nsel > 0 && rw);
+    AppendMenuA(m, MF_SEPARATOR, 0, NULL);
+    so_menu_add(m, SO_CMD_SELALL, KT_SP_ORG_M_SELALL, ListView_GetItemCount(st->list) > 0);
+    cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, st->h, NULL);
+    DestroyMenu(m);
+    if (cmd)
+        so_command(st, cmd);
+}
+
+static void so_tree_menu(struct so_state *st, int x, int y)
+{
+    HMENU m;
+    int cmd, rw = !GetReadOnlyFlag();
+    if (x == -1 && y == -1) {
+        RECT r;
+        HTREEITEM it = TreeView_GetSelection(st->tree);
+        POINT p = {8, 8};
+        if (it && TreeView_GetItemRect(st->tree, it, &r, TRUE)) {
+            p.x = r.left + 8;
+            p.y = r.bottom;
+        }
+        ClientToScreen(st->tree, &p);
+        x = p.x;
+        y = p.y;
+    } else {
+        /* the folder under the pointer becomes the one acted on */
+        TVHITTESTINFO ht;
+        HTREEITEM it;
+        memset(&ht, 0, sizeof(ht));
+        ht.pt.x = x;
+        ht.pt.y = y;
+        ScreenToClient(st->tree, &ht.pt);
+        it = TreeView_HitTest(st->tree, &ht);
+        if (!it)
+            return;
+        TreeView_SelectItem(st->tree, it);
+    }
+    m = CreatePopupMenu();
+    if (!m)
+        return;
+    so_menu_add(m, IDC_SO_NEWFOLDER, KT_SP_ORG_M_NEWFOLDER, rw);
+    so_menu_add(m, SO_CMD_RENAME_FOLD, KT_SP_ORG_M_RENAME, *st->cur && rw);
+    so_menu_add(m, IDC_SO_DELFOLDER, KT_SP_ORG_M_DELETE, *st->cur && rw);
+    cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, st->h, NULL);
+    DestroyMenu(m);
+    if (cmd)
+        so_command(st, cmd);
+}
+
 static void so_command(struct so_state *st, int id)
 {
+    switch (id) {                       /* the menu actions with no box */
+      case SO_CMD_START:
+        so_start_sessions(st);
+        return;
+      case SO_CMD_SELALL:
+        ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
+        return;
+      case SO_CMD_RENAME_SESS:
+        st->pane = 1;
+        id = IDC_SO_RENAME;
+        break;
+      case SO_CMD_RENAME_FOLD:
+        st->pane = 0;
+        id = IDC_SO_RENAME;
+        break;
+    }
     if (st->sub && IsWindow(st->sub) && id != IDCANCEL) {
         /* One box at a time: the one already open comes to the front. */
         SetForegroundWindow(st->sub);
         return;
     }
     switch (id) {
-      case IDC_SO_MOVE: {
+      case SO_CMD_CLONE:
+        so_clone(st);
+        return;
+      case SO_CMD_DELSESS:
+        so_delete_sessions(st);
+        return;
+      case IDC_SO_MOVE:
+      case SO_CMD_COPY: {
         int nsel, i;
         char **sel = so_selected(st, &nsel);
         struct so_move *m;
@@ -1460,6 +2042,7 @@ static void so_command(struct so_state *st, int id)
         m = snew(struct so_move);
         memset(m, 0, sizeof(*m));
         m->st = st;
+        m->copy = (id == SO_CMD_COPY);
         m->nsel = nsel;
         m->sel = snewn(nsel, char *);
         for (i = 0; i < nsel; i++)
@@ -1566,7 +2149,22 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         SetDlgItemTextA(h, IDC_SO_DELFOLDER, KT_SP_ORG_DEL_FOLDER);
         SetDlgItemTextA(h, IDC_SO_ARRANGE, KT_SP_ORG_ARRANGE);
         SetDlgItemTextA(h, IDCANCEL, KT_SP_ORG_CLOSE);
-        kitty_dialog_icon(h, NULL);
+        /* its own icon: the KiTTY++ icon with a gear in front (kitty.rc) */
+        {
+            HINSTANCE inst = GetModuleHandle(NULL);
+            HICON big = (HICON)LoadImage(inst, MAKEINTRESOURCE(IDI_MANAGEICON), IMAGE_ICON,
+                                         GetSystemMetrics(SM_CXICON),
+                                         GetSystemMetrics(SM_CYICON), LR_SHARED);
+            HICON sm = (HICON)LoadImage(inst, MAKEINTRESOURCE(IDI_MANAGEICON), IMAGE_ICON,
+                                        GetSystemMetrics(SM_CXSMICON),
+                                        GetSystemMetrics(SM_CYSMICON), LR_SHARED);
+            if (big && sm) {
+                SendMessage(h, WM_SETICON, ICON_BIG, (LPARAM)big);
+                SendMessage(h, WM_SETICON, ICON_SMALL, (LPARAM)sm);
+            } else {
+                kitty_dialog_icon(h, NULL);
+            }
+        }
 
         /* The foot: the five actions from the left, Close at the right,
          * every button as wide as its caption, in one transaction. */
@@ -1605,8 +2203,19 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         col.cx = 100;
         SendMessageA(st->list, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
 
-        st->cur = dupstr("");
+        /* the folder and the session it was left on (a folder gone since
+         * falls back to the root in so_reload) */
+        {
+            char f[1024];
+            st->cur = dupstr(kitty_state_get_string(KR_MANAGE_FOLDER, f, sizeof(f)) &&
+                             !ksp_folder_is_root(f) ? f : "");
+        }
         so_reload(st);
+        {
+            char sn[1024];
+            if (kitty_state_get_string(KR_MANAGE_SESSION, sn, sizeof(sn)))
+                so_select_session(st, sn);
+        }
 
         {
             SIZE ignore;
@@ -1619,7 +2228,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         }
         /* where it was on this monitor layout, fully visible; the first
          * time, over its owner */
-        if (!kitty_auxpos_restore(h, KR_DLGPOS_ORGANIZE, 1, st->minsize.cx,
+        if (!kitty_auxpos_restore(h, KR_DLGPOS_MANAGE, 1, st->minsize.cx,
                                   st->minsize.cy))
             kitty_centre_on_owner(h);
         SetFocus(st->tree);
@@ -1662,48 +2271,116 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 }
             } else if (nm->code == NM_SETFOCUS) {
                 st->pane = 0;
+            } else if ((nm->code == TVN_BEGINDRAGA || nm->code == TVN_BEGINDRAGW) &&
+                       !GetReadOnlyFlag()) {
+                /* Drag a folder into another one (not the root row). */
+                NMTREEVIEWA *tv = (NMTREEVIEWA *)lp;
+                char *f = so_tree_folder(st->tree, tv->itemNew.hItem, &st->fs);
+                if (f && *f) {
+                    st->dragfolder = f;
+                    so_drag_begin(st, SO_DRAG_FOLDER, ksp_leaf(f));
+                } else {
+                    sfree(f);
+                }
             }
         } else if (nm->idFrom == IDC_SO_LIST) {
             if (nm->code == NM_SETFOCUS) {
+                /* Tab into the list: the focus frame shows at once, on the
+                 * first session (focused, not selected) */
                 st->pane = 1;
+                if (ListView_GetItemCount(st->list) > 0 &&
+                    ListView_GetNextItem(st->list, -1, LVNI_FOCUSED) < 0)
+                    ListView_SetItemState(st->list, 0, LVIS_FOCUSED, LVIS_FOCUSED);
+                InvalidateRect(st->list, NULL, TRUE);
+            } else if (nm->code == NM_KILLFOCUS) {
+                if (ListView_GetItemCount(st->list) == 0)
+                    InvalidateRect(st->list, NULL, TRUE);
+            } else if (nm->code == NM_CUSTOMDRAW &&
+                       ListView_GetItemCount(st->list) == 0) {
+                /* an empty list shows a line stating it, and the focus frame */
+                NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lp;
+                if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+                    SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_NOTIFYPOSTPAINT);
+                    return TRUE;
+                }
+                if (cd->nmcd.dwDrawStage == CDDS_POSTPAINT) {
+                    RECT r;
+                    HFONT f = (HFONT)SendMessage(st->list, WM_GETFONT, 0, 0), of = NULL;
+                    bool dark = kitty_theme_window_dark(h);
+                    GetClientRect(st->list, &r);
+                    InflateRect(&r, -2, -2);
+                    if (f)
+                        of = SelectObject(cd->nmcd.hdc, f);
+                    SetBkMode(cd->nmcd.hdc, TRANSPARENT);
+                    SetTextColor(cd->nmcd.hdc, dark ? kitty_theme_text_colour(true)
+                                                    : GetSysColor(COLOR_GRAYTEXT));
+                    {
+                        RECT t = r;
+                        t.top += 4;
+                        DrawTextA(cd->nmcd.hdc, KT_SP_ORG_EMPTY, -1, &t,
+                                  DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+                    }
+                    if (GetFocus() == st->list)
+                        DrawFocusRect(cd->nmcd.hdc, &r);
+                    if (of)
+                        SelectObject(cd->nmcd.hdc, of);
+                    SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_DODEFAULT);
+                    return TRUE;
+                }
             } else if (nm->code == LVN_KEYDOWN) {
                 NMLVKEYDOWN *kd = (NMLVKEYDOWN *)lp;
                 if (kd->wVKey == 'A' && (GetKeyState(VK_CONTROL) & 0x8000))
                     ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
-            } else if (nm->code == LVN_BEGINDRAG) {
-                /* Drag sessions onto a folder of the tree. */
-                st->dragging = 1;
-                SetCapture(h);
+            } else if (nm->code == LVN_BEGINDRAG && !GetReadOnlyFlag()) {
+                /* Drag sessions onto a folder of the tree: the pointer
+                 * carries the session's name, or "N sessions". */
+                int nsel = ListView_GetSelectedCount(st->list);
+                char *text;
+                if (nsel == 1) {
+                    char **sel;
+                    int n;
+                    sel = so_selected(st, &n);
+                    text = dupstr(n ? ksp_leaf(sel[0]) : "");
+                    sfree(sel);
+                } else {
+                    text = dupprintf(KT_SP_ORG_COUNT, nsel);
+                }
+                so_drag_begin(st, SO_DRAG_SESSIONS, text);
+                sfree(text);
             }
         }
         return FALSE;
       }
-      case WM_MOUSEMOVE:
-        if (st && st->dragging) {
-            TVHITTESTINFO ht;
-            POINT pt;
-            HTREEITEM over;
-            GetCursorPos(&pt);
-            ScreenToClient(st->tree, &pt);
-            memset(&ht, 0, sizeof(ht));
-            ht.pt = pt;
-            over = TreeView_HitTest(st->tree, &ht);
-            TreeView_SelectDropTarget(st->tree, over);
-            SetCursor(LoadCursor(NULL, over ? IDC_ARROW : IDC_NO));
+      case WM_CONTEXTMENU:
+        if (!st || st->dragging)
+            return FALSE;
+        if ((HWND)wp == st->list) {
+            so_list_menu(st, (short)LOWORD(lp), (short)HIWORD(lp));
+            return TRUE;
+        }
+        if ((HWND)wp == st->tree) {
+            so_tree_menu(st, (short)LOWORD(lp), (short)HIWORD(lp));
+            return TRUE;
         }
         return FALSE;
-      case WM_LBUTTONUP:
-      case WM_CAPTURECHANGED:
-        if (st && st->dragging) {
-            HTREEITEM target = TreeView_GetDropHilight(st->tree);
-            st->dragging = 0;
-            TreeView_SelectDropTarget(st->tree, NULL);
-            if (msg == WM_LBUTTONUP) {
-                ReleaseCapture();
-                if (target)
-                    so_drop_on(st, target);
-            }
+      case WM_TIMER:
+        if (st && wp == SO_TIMER_DRAG) {
+            so_drag_tick(st);
+            return TRUE;
         }
+        return FALSE;
+      case WM_MOUSEMOVE:
+        if (st && st->dragging)
+            so_drag_track(st);
+        return FALSE;
+      case WM_LBUTTONUP:
+        if (st && st->dragging)
+            so_drag_end(st, 1);
+        return FALSE;
+      case WM_CAPTURECHANGED:
+        /* the capture taken away (a box, Alt+Tab): the drag ends, no drop */
+        if (st && st->dragging && (HWND)lp != h)
+            so_drag_end(st, 0);
         return FALSE;
       case WM_COMMAND:
         if (st && HIWORD(wp) == BN_CLICKED)
@@ -1715,8 +2392,29 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
       case WM_DESTROY:
         ShinyRemoveAuxDialog(h);
         if (st && st->ready)
-            kitty_auxpos_save(h, KR_DLGPOS_ORGANIZE);
+            kitty_auxpos_save(h, KR_DLGPOS_MANAGE);
         if (st) {
+            if (st->dragging)
+                so_drag_end(st, 0);
+            if (st->ready && !GetReadOnlyFlag()) {
+                /* where it was left: the folder, and the session in focus */
+                int i = ListView_GetNextItem(st->list, -1, LVNI_FOCUSED);
+                const char *sn = "";
+                if (i < 0)
+                    i = ListView_GetNextItem(st->list, -1, LVNI_SELECTED);
+                if (i >= 0) {
+                    LVITEMA it;
+                    memset(&it, 0, sizeof(it));
+                    it.mask = LVIF_PARAM;
+                    it.iItem = i;
+                    if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+                        it.lParam >= 0 && it.lParam < st->s.n)
+                        sn = st->s.names[it.lParam];
+                }
+                kitty_state_set_string(KR_MANAGE_FOLDER, st->cur ? st->cur : "");
+                kitty_state_set_string(KR_MANAGE_SESSION, sn);
+            }
+            sfree(st->dragfolder);
             so_folders_free(&st->fs);
             so_names_free(&st->s);
             sfree(st->cur);

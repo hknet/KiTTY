@@ -75,9 +75,9 @@ below the destination. A name that already exists there stops the delete
 before anything moves, and the box names the sessions in the way. An
 empty folder is deleted without a question.
 
-\q{Organize...} (under \q{Del folder}, beside the comment field) and
-\q{Organize sessions...} on \k{kitty-cfg-migration} open the
-\q{Organize sessions} window: the folder tree on the left, the selected
+\q{Manage...} (under \q{Del folder}, beside the comment field) and
+\q{Manage Sessions...} on \k{kitty-cfg-migration} open the
+\q{Manage Sessions} window: the folder tree on the left, the selected
 folder's sessions on the right. The window opens where it was left and
 at the size it was given, for each monitor layout, and always fully on a
 screen. Ctrl+click picks single sessions,
@@ -91,13 +91,25 @@ password, jump list entry and launcher entries with it, and updates the
 sessions that use it as SSH jump host, which are listed afterwards. A
 name that already exists at the destination moves nothing.
 
+While dragging, the pointer carries the session's name (or the number
+of sessions), the folder it would land in is highlighted, a closed
+folder opens after a short hover, and the tree scrolls at its edges; Esc
+ends the drag. A folder dragged onto another folder (or onto the root)
+moves into it with everything in it, after a confirmation. A right
+click on the sessions offers \q{Start Sessions} (each in its own
+terminal), \q{Move to...}, \q{Copy to...} (copies in another folder,
+numbered \c{-1}, \c{-2} when the name is taken there), \q{Rename...},
+\q{Clone} (copies in the same folder named \c{name-1}, \c{name-2}, ...),
+\q{Delete} (with a confirmation) and \q{Select All}; a right click on
+the tree offers \q{New folder...}, \q{Rename...} and \q{Delete}.
+
 \q{Arrange} moves the sessions an older version filed by their
 \c{Folder} value only into their folder path: \c{srv01} with
 \c{Folder=Linux\\web} becomes \c{Linux\\web\\srv01}. The registry is
 backed up first; a folder store's files move into subfolders of
 Sessions. It is offered once, the first time the configuration window
 opens on a store that has such sessions; after \q{Later} it stays in
-Organize sessions.
+Manage Sessions.
 
 \S{kitty-cfg-proxy-override} \q{Proxy override options}
 

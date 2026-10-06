@@ -23,7 +23,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The saved-session list has a right-click menu and keys.** A session
   row offers Load, Rename... and Delete; a folder row Open, Rename... and
   Delete (that folder, not the one shown); `..` Open. F2 renames and Del
-  deletes the selected row, as the buttons and the Organize window do; a
+  deletes the selected row, as the buttons and Manage Sessions do; a
   session's Delete requests confirmation first, as in Explorer. With folders
   as rows Backspace goes up one level (hknet/KiTTY#26).
 - **Session files KiTTY++ cannot use are marked red.** A folder-store file
@@ -36,6 +36,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Organize sessions is now Manage Sessions, and works like Explorer.** The
+  window and its button are named Manage Sessions / Manage.... While
+  dragging, the pointer carries the session (or "3 sessions"), the target
+  folder is highlighted, a closed folder opens after a short hover and the
+  tree scrolls at its edges. Folders can be dragged into other folders, after
+  a confirmation. A right click on the sessions offers Start Sessions, Move
+  to..., Copy to..., Rename..., Clone (`name-1`, `name-2`, ...), Delete and
+  Select All; on the tree New folder..., Rename... and Delete. Tab into the
+  session list shows the focus at once, and an empty folder's list reads
+  "No sessions in this folder".
 - **kageant answers the agent protocol's `query` extension as RFC 9987
   defines it** (`SSH_AGENT_EXTENSION_RESPONSE`, the name `query`, then the
   supported extensions), as OpenSSH's agent does.
@@ -61,7 +71,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   question does not come back, Storage & Backup... opens that panel.
 - **The suite's windows keep their place for each monitor layout, and
   always open fully on a screen.** The configuration window (it remembered
-  one place for every layout), Organize sessions (it remembered nothing),
+  one place for every layout), Manage Sessions (it remembered nothing),
   kageant's key list and agent log (one geometry for every layout) and the
   About boxes now share one memory; the resizable ones keep their size too.
   The old stored places are carried over once. A portable copy keeps them
@@ -2380,6 +2390,16 @@ place the agent is actually operated from.
 
 ### Changed
 
+- **Organize sessions is now Manage Sessions, and works like Explorer.** The
+  window and its button are named Manage Sessions / Manage.... While
+  dragging, the pointer carries the session (or "3 sessions"), the target
+  folder is highlighted, a closed folder opens after a short hover and the
+  tree scrolls at its edges. Folders can be dragged into other folders, after
+  a confirmation. A right click on the sessions offers Start Sessions, Move
+  to..., Copy to..., Rename..., Clone (`name-1`, `name-2`, ...), Delete and
+  Select All; on the tree New folder..., Rename... and Delete. Tab into the
+  session list shows the focus at once, and an empty folder's list reads
+  "No sessions in this folder".
 - **kageant answers `-h`, `-help` and `--help`** with its actual options
   instead of silently starting. The PGP-fingerprints box now presents
   upstream PuTTY's master keys as the historic information they are, rather

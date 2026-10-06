@@ -190,6 +190,9 @@ int kitty_showforeign_ini_read(char *value, size_t size);
 int kitty_showforeign_may_persist(void);
 
 /* ---- exported from kitty/kitty_storage.c ---- */
+/* a remembered string (portable state file or the hive in use); "" removes */
+void kitty_state_set_string(const char *key, const char *value);
+int kitty_state_get_string(const char *key, char *buf, int buflen);
 int kitty_get_last_folder(char *buf, int buflen);
 int kitty_get_last_session(char *buf, int buflen);
 int kitty_has_foreign_sessions(void);

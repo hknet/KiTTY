@@ -73,6 +73,7 @@ IDI_MAINICON_47 ICON "kitty_icons/icon_47.ico"
 IDI_MAINICON_48 ICON "kitty_icons/icon_48.ico"
 IDI_MAINICON_49 ICON "kitty_icons/icon_49.ico"
 IDI_NOCON ICON "kitty_icons/nocon.ico"
+IDI_MANAGEICON ICON "kitty_pp_manage.ico"
 
 // Session-launcher icons (kitty.exe -launcher): IDI_PUTTY_LAUNCH and
 // IDI_BLACKBALL (the -oldicon fallback) are both IDI_MAINICON now, see
@@ -455,7 +456,7 @@ STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEB
 CAPTION KT_SP_ORG_TITLE
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    CONTROL         "", IDC_SO_TREE, "SysTreeView32", TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | TVS_DISABLEDRAGDROP | WS_BORDER | WS_TABSTOP,
+    CONTROL         "", IDC_SO_TREE, "SysTreeView32", TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
                     7, 7, 150, 214
     LTEXT           "", IDC_SO_COUNT, 164, 7, 269, 10
     CONTROL         "", IDC_SO_LIST, "SysListView32", LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,

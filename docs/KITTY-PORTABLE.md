@@ -13,7 +13,7 @@ directory instead of the Windows registry.
 | SSH host keys / host CAs | Windows registry | `SshHostKeys\` (settable, `[KiTTY] sshhostkeys`) / `SshHostCAs\` under the portable config dir |
 | Random seed | user profile / normal PuTTY location | `PUTTY.RND` under the portable config dir |
 | Recent/jump-list/update state | Windows registry / profile state | portable files such as `Jumplist` and `KiTTYState` |
-| Where windows were left (configuration window, Organize sessions, kageant's key list and agent log, About boxes, ...) | Windows registry (`AuxWinPos`) | `kitty_windowpos.ini` beside the exe |
+| Where windows were left (configuration window, Manage Sessions, kageant's key list and agent log, About boxes, ...) | Windows registry (`AuxWinPos`) | `kitty_windowpos.ini` beside the exe |
 | Global options (`kitty.ini`) | next to the exe / `%APPDATA%` | next to the exe/config dir |
 | Needs install / admin rights | no | no |
 | Roams with the Windows user profile | yes | no — the portable state travels with the folder instead |
@@ -28,7 +28,7 @@ at rest with a master password (the default) or with Windows DPAPI
 its name, `Linux\web\srv01`, kept as the file `Sessions\Linux\web\srv01` (a
 session folder that can live in Git). The same name can exist in two folders.
 Sessions filed by their Folder value only keep working by their bare name;
-Organize sessions > Arrange... moves them to their folder path.
+Manage Sessions > Arrange... moves them to their folder path.
 
 **Only session files are listed, and session files can carry a suffix.** The
 folder store lists a file only when it holds a `HostName` or `Protocol`

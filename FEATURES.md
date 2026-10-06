@@ -236,9 +236,9 @@ copied into kitty.ini once (as `sessions`, `fileextension`, `sshhostkeys` and
 as it is. 0.85.1.13 named the endings `sessionsuffix` / `keysuffix` in
 kitty.ini: they are copied over the same way and removed.
 
-**Organize sessions.** *Organize...* (under *Del folder*, beside the comment
+**Manage Sessions.** *Manage...* (under *Del folder*, beside the comment
 field; at the list's foot when the list is tall enough) and Application >
-Migration > *Organize sessions...* open a window of its own: the folder tree on
+Migration > *Manage Sessions...* open a window of its own: the folder tree on
 the left, *All sessions (root)* at its top, and the selected folder's sessions
 on the right. It opens where it was left and at the size it was given, for
 each monitor layout, and always fully on a screen. Ctrl+click picks single sessions, Shift+click a range, Ctrl+A the
@@ -253,6 +253,19 @@ moves nothing; the box names the clashes. The window does not hold up the
 configuration window, and it reads the store again when you come back to it
 after a change made there.
 
+While dragging, the pointer carries the session's name (or "3 sessions"), the
+folder it would land in is highlighted, a closed folder opens after a short
+hover so you can drop into a subfolder, and the tree scrolls at its edges; Esc
+ends the drag. A folder can be dragged too - into another folder, or onto
+*All sessions (root)* - and moves with everything in it after a confirmation.
+A right click on the sessions offers *Start Sessions* (each in its own
+terminal), *Move to...*, *Copy to...* (a copy in another folder, numbered
+`-1`, `-2` when the name is taken there), *Rename...*, *Clone* (a copy in the
+same folder named `name-1`, `name-2`, ...), *Delete* (with a confirmation) and
+*Select All*; a right click on the tree offers *New folder...*, *Rename...*
+and *Delete*. Tab into the list shows the focus on its first session at once;
+an empty folder's list reads "No sessions in this folder".
+
 **Arrange.** Sessions saved by an older version are filed by their `Folder=`
 value and keyed by their bare name. *Arrange...* moves each of them to its
 folder path (`srv01` with `Folder=Linux\web` becomes `Linux\web\srv01`), with
@@ -262,7 +275,7 @@ as one commit of moves. A session whose folder path another session already
 has (the list shows two sessions of one name in one folder) stays as it is;
 the others move, and the result names the taken paths. When the configuration window opens on a store with
 such a clash, *Arrange now* / *Later* is offered once; after *Later* the box
-states that Arrange is in Organize sessions. Without a clash there is no offer.
+states that Arrange is in Manage Sessions. Without a clash there is no offer.
 
 **Deleting a folder that holds sessions** puts up the question where they go: a droplist with
 *All sessions (root)* preselected, or any other folder. Subfolders move along
@@ -1551,7 +1564,7 @@ Seven behaviours of the configuration window itself:
   renamed class (`KiClassName`) keeps its own name in the title.
 - **It opens where you left it, for each monitor layout**, and always fully
   on a screen; its size is the one you dragged it to (`[ConfigBox]
-  windowwidth` / `windowheight`). The same memory serves Organize sessions,
+  windowwidth` / `windowheight`). The same memory serves Manage Sessions,
   kageant's key list and agent log, and the About boxes; a portable copy
   keeps it in `kitty_windowpos.ini` beside the exe.
 

@@ -374,6 +374,40 @@ int kitty_get_last_session(char *buf, int buflen)
     return buf[0] ? 1 : 0;
 }
 
+/* Any other remembered string of the same kind (Manage Sessions' folder and
+ * session): the portable state file, or a value of the hive in use. "" or
+ * NULL removes it. */
+void kitty_state_set_string(const char *key, const char *value)
+{
+    HKEY hk;
+    if (store_is_file()) {
+        kitty_portable_store_state_string(key, value ? value : "");
+        return;
+    }
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+        if (value && *value)
+            RegSetValueExA(hk, key, 0, REG_SZ, (const BYTE *)value,
+                           (DWORD)strlen(value) + 1);
+        else
+            RegDeleteValueA(hk, key);
+        RegCloseKey(hk);
+    }
+}
+int kitty_state_get_string(const char *key, char *buf, int buflen)
+{
+    DWORD sz = (DWORD)buflen;
+    if (!buf || buflen <= 0) return 0;
+    buf[0] = '\0';
+    if (store_is_file())
+        return kitty_portable_load_state_string(key, buf, buflen);
+    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, key,
+                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
+        return 0;
+    buf[buflen-1] = '\0';
+    return buf[0] ? 1 : 0;
+}
+
 void kitty_set_last_folder(const char *folder)
 {
     if (!folder || !*folder) folder = "Default";

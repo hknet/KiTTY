@@ -266,6 +266,9 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_KIVERS                           "KiVers"
 #define KR_LASTFOLDER                       "LastFolder"
 #define KR_LASTSESSION                      "LastSession"
+/* Manage Sessions: the folder and the session it was left on */
+#define KR_MANAGE_FOLDER                    "ManageFolder"
+#define KR_MANAGE_SESSION                   "ManageSession"
 #define KR_LAUNCHERHIDE                     "LauncherHide"
 #define KR_NOTES                            "Notes"
 #define KR_PASSWORD                         "Password"
@@ -280,7 +283,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_DLGPOS_CMDHELP                   "CmdHelp"
 #define KR_DLGPOS_CLIHELP                   "CliHelp"
 #define KR_DLGPOS_CONFIGBOX                 "ConfigBox"
-#define KR_DLGPOS_ORGANIZE                  "Organize"
+#define KR_DLGPOS_MANAGE                    "ManageSessions"
 /* kageant's (names kept from before, so remembered places stay) */
 #define KR_DLGPOS_KA_ABOUT                  "kageantAbout"
 #define KR_DLGPOS_KA_HELLOPROTECT           "kageantHelloProtect"

@@ -219,8 +219,8 @@ shows a notice. Existing encrypted `.ktx` files are still read.
 Drops `<name>` from this window's folder list in memory. Nothing is saved
 (`[KiTTY] Folders` is unchanged), no session is moved or deleted, and the list
 is read again from the store the next time it is loaded (configuration box,
-Organize sessions). A folder that holds sessions is listed from them anyway.
-To delete a folder, use Del folder in the session list or Organize sessions.
+Manage Sessions). A folder that holds sessions is listed from them anyway.
+To delete a folder, use Del folder in the session list or Manage Sessions.
 
 **Persists:** nothing.
 

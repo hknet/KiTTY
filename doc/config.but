@@ -151,7 +151,7 @@ the panel can do with it: a session \q{Load}, \q{Rename...} and
 \q{Delete}; a folder row \q{Open}, \q{Rename...} and \q{Delete} (that
 folder, not the one shown); \c{..} \q{Open}. In the list, F2 renames
 and Del deletes the selected session or folder, as the buttons and the
-Organize window do; a session's \q{Delete} requests confirmation
+Manage Sessions window do; a session's \q{Delete} requests confirmation
 first, as in Explorer. With folders as rows, Backspace goes up one level.
 
 \b \e{Session files KiTTY++ cannot use.} A session name is an ANSI
