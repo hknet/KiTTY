@@ -107,6 +107,11 @@
 #ifndef IDI_MANAGEICON
 #define IDI_MANAGEICON 9907
 #endif
+/* Quick-Connect: the KiTTY++ icon with an amber bolt (its Start menu and
+ * "Create shortcuts" entries take it from the exe by this id) */
+#ifndef IDI_QUICKICON
+#define IDI_QUICKICON 9908
+#endif
 #ifndef IDI_MAINICON_0
 #define IDI_MAINICON_0 1
 #endif

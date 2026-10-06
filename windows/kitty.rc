@@ -74,6 +74,7 @@ IDI_MAINICON_48 ICON "kitty_icons/icon_48.ico"
 IDI_MAINICON_49 ICON "kitty_icons/icon_49.ico"
 IDI_NOCON ICON "kitty_icons/nocon.ico"
 IDI_MANAGEICON ICON "kitty_pp_manage.ico"
+IDI_QUICKICON ICON "kitty_pp_quick.ico"
 
 // Session-launcher icons (kitty.exe -launcher): IDI_PUTTY_LAUNCH and
 // IDI_BLACKBALL (the -oldicon fallback) are both IDI_MAINICON now, see

@@ -2330,6 +2330,19 @@ unchecking removes exactly that entry. Shells already open keep the PATH
 they started with. A portable copy that is moved leaves the old entry
 behind: uncheck and check again from the new place.
 
+\q{Shortcuts} gives a copy unpacked from the ZIP the entries the
+installer makes: \e{KiTTY++}, \e{KiTTY++ Quick-Connect}
+(\c{-quickconnect}), \e{KiTTY++ Sessions} (\c{-manage}, Manage Sessions)
+and \e{KiTTY++ Launcher} (\c{-launcher}), each pointing to this
+\c{kitty.exe} where it is. \q{Create in Start menu} puts them in a Start
+menu folder of their own, \e{KiTTY++ (portable)}, never in the
+installer's; \q{Create on Desktop} puts them on the Desktop. A shortcut of
+the same name that points to another \c{kitty.exe} is replaced only after
+a question naming its target; one that points here is rewritten, so
+pressing the button again after moving the copy updates the set. A
+shortcut file cannot be shipped in the ZIP itself: it holds the absolute
+path of its target.
+
 The only key in \c{kitty.ini} here is \c{fileextension} under
 \c{[KiTTY]} - in the folder store also the ending of every session file
 (\q{Session File Extension} on Storage & Backup); the registrations

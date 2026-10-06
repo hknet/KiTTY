@@ -117,6 +117,50 @@ int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len)
     return ok;
 }
 
+int kitty_shortcut_write(const char *lnkpath, const char *target,
+                         const char *args, const char *workdir,
+                         const char *icon, int icon_index)
+{
+    IShellLinkA *psl = NULL;
+    IPersistFile *ppf = NULL;
+    HRESULT hr;
+    int ok = 0;
+    int couninit = 0;
+
+    hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (hr == S_OK || hr == S_FALSE)
+        couninit = 1;
+    else if (hr != RPC_E_CHANGED_MODE)
+        return 0;
+
+    hr = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IShellLinkA, (void **)&psl);
+    if (SUCCEEDED(hr) && psl) {
+        IShellLinkA_SetPath(psl, target);
+        if (args && *args)
+            IShellLinkA_SetArguments(psl, args);
+        if (workdir && *workdir)
+            IShellLinkA_SetWorkingDirectory(psl, workdir);
+        IShellLinkA_SetIconLocation(psl, (icon && *icon) ? icon : target,
+                                    icon_index);
+
+        hr = IShellLinkA_QueryInterface(psl, &IID_IPersistFile,
+                                        (void **)&ppf);
+        if (SUCCEEDED(hr) && ppf) {
+            WCHAR wlnk[MAX_PATH];
+            if (MultiByteToWideChar(CP_ACP, 0, lnkpath, -1, wlnk, MAX_PATH) > 0) {
+                hr = IPersistFile_Save(ppf, wlnk, TRUE);
+                ok = SUCCEEDED(hr);
+            }
+            IPersistFile_Release(ppf);
+        }
+        IShellLinkA_Release(psl);
+    }
+    if (couninit)
+        CoUninitialize();
+    return ok;
+}
+
 int kitty_startup_shortcut_set(const char *name, const char *target,
                                const char *args, const char *workdir,
                                const char *icon, int on)
@@ -129,44 +173,5 @@ int kitty_startup_shortcut_set(const char *name, const char *target,
         DeleteFileA(lnk);           /* absent is fine */
         return 1;
     }
-
-    {
-        IShellLinkA *psl = NULL;
-        IPersistFile *ppf = NULL;
-        HRESULT hr;
-        int ok = 0;
-        int couninit = 0;
-
-        hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
-        if (hr == S_OK || hr == S_FALSE)
-            couninit = 1;
-        else if (hr != RPC_E_CHANGED_MODE)
-            return 0;
-
-        hr = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
-                              &IID_IShellLinkA, (void **)&psl);
-        if (SUCCEEDED(hr) && psl) {
-            IShellLinkA_SetPath(psl, target);
-            if (args && *args)
-                IShellLinkA_SetArguments(psl, args);
-            if (workdir && *workdir)
-                IShellLinkA_SetWorkingDirectory(psl, workdir);
-            IShellLinkA_SetIconLocation(psl, (icon && *icon) ? icon : target, 0);
-
-            hr = IShellLinkA_QueryInterface(psl, &IID_IPersistFile,
-                                            (void **)&ppf);
-            if (SUCCEEDED(hr) && ppf) {
-                WCHAR wlnk[MAX_PATH];
-                if (MultiByteToWideChar(CP_ACP, 0, lnk, -1, wlnk, MAX_PATH) > 0) {
-                    hr = IPersistFile_Save(ppf, wlnk, TRUE);
-                    ok = SUCCEEDED(hr);
-                }
-                IPersistFile_Release(ppf);
-            }
-            IShellLinkA_Release(psl);
-        }
-        if (couninit)
-            CoUninitialize();
-        return ok;
-    }
+    return kitty_shortcut_write(lnk, target, args, workdir, icon, 0);
 }

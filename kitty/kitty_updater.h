@@ -20,5 +20,8 @@ int kitty_update_notice( char *buf, int n ) ;
 int kitty_update_available( char *latest_out, int latest_n, char *cur_out, int cur_n, int *beta_out ) ;
 // "kitty.exe -update": open the updater, run its windows to their end, return.
 void kitty_update_run_standalone( void ) ;
+// 1 when THIS kitty.exe is the one a KiTTY MSI installed (not merely "an MSI
+// is on the machine"): System > Shortcuts leaves the shortcuts to it.
+int kitty_exe_from_msi( void ) ;
 
 #endif

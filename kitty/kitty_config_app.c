@@ -43,6 +43,8 @@
 #include "kitty_exportbundle.h"
 #include "kitty_registry.h"
 #include "kitty_userpath.h"
+#include "kitty_startup_shortcut.h"   /* System > Shortcuts: kitty_shortcut_write */
+#include <shlobj.h>                   /* SHGetFolderPathA: the Desktop and the Start menu */
 #include "kitty_storemove.h"
 #include "kitty_store.h"   /* kitty_store_hostkey_rename */
 #include "kitty_mpw.h"
@@ -1965,6 +1967,151 @@ static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
 }
 
 /*
+ * System > Shortcuts: the installer's four entry points for a copy unpacked
+ * from the ZIP, written for wherever this exe really is (a .lnk stores its
+ * target's absolute path, so none can be shipped inside the ZIP). The Start
+ * menu set goes into a folder of its own, "KiTTY++ (portable)", never the
+ * installer's; the Desktop set beside whatever is there. A shortcut of the
+ * same name that points to ANOTHER kitty.exe is replaced only after a
+ * question (modeless, one at a time); one pointing here is simply rewritten,
+ * so pressing the button again updates the set. Icons come from the exe by
+ * resource id (negative index): no .ico file is needed beside it.
+ */
+static const struct ksc_item {
+    const char *name, *args;
+    int icon;                           /* 0 = the exe's own, <0 = a resource id */
+} ksc_items[] = {
+    { KT_SYSTEM_SC_NAME_MAIN,     "",              0 },
+    { KT_SYSTEM_SC_NAME_QUICK,    "-quickconnect", -IDI_QUICKICON },
+    { KT_SYSTEM_SC_NAME_MANAGE,   "-manage",       -IDI_MANAGEICON },
+    { KT_SYSTEM_SC_NAME_LAUNCHER, "-launcher",     0 },
+};
+
+struct ksc_job {
+    char dir[MAX_PATH], exe[MAX_PATH], workdir[MAX_PATH];
+    const char *where;                  /* KT_SYSTEM_SC_WHERE_* */
+    size_t i;
+    int made, skipped, failed;
+};
+
+static void ksc_step(struct ksc_job *j);
+
+static int ksc_same_exe(const char *a, const char *b)
+{
+    char la[MAX_PATH], lb[MAX_PATH];
+    if (!GetLongPathNameA(a, la, sizeof(la))) snprintf(la, sizeof(la), "%s", a);
+    if (!GetLongPathNameA(b, lb, sizeof(lb))) snprintf(lb, sizeof(lb), "%s", b);
+    return !stricmp(la, lb);
+}
+
+static void ksc_write(struct ksc_job *j)
+{
+    const struct ksc_item *it = &ksc_items[j->i];
+    char *lnk = dupprintf("%s\\%s.lnk", j->dir, it->name);
+    if (kitty_shortcut_write(lnk, j->exe, it->args, j->workdir, j->exe, it->icon))
+        j->made++;
+    else
+        j->failed++;
+    sfree(lnk);
+}
+
+static void ksc_answer(int yes, void *ctx)
+{
+    struct ksc_job *j = (struct ksc_job *)ctx;
+    if (yes)
+        ksc_write(j);
+    else
+        j->skipped++;
+    j->i++;
+    ksc_step(j);
+}
+
+/* The next shortcut; asks (and returns, the answer goes on) at a clash; the
+ * result line once all four are done. */
+static void ksc_step(struct ksc_job *j)
+{
+    for (; j->i < lenof(ksc_items); j->i++) {
+        char *lnk = dupprintf("%s\\%s.lnk", j->dir, ksc_items[j->i].name);
+        char other[MAX_PATH];
+        int clash = GetFileAttributesA(lnk) != INVALID_FILE_ATTRIBUTES &&
+            kitty_startup_shortcut_target(lnk, other, sizeof(other)) &&
+            !ksc_same_exe(other, j->exe);
+        sfree(lnk);
+        if (clash) {
+            char *q = dupprintf(KT_SYSTEM_SC_CLASH_Q, ksc_items[j->i].name,
+                                j->where, other);
+            HWND box = kitty_confirm_modeless_words(
+                kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, q, NULL,
+                KT_SYSTEM_SC_REPLACE, KT_SYSTEM_SC_SKIP, ksc_answer, j);
+            sfree(q);
+            if (box)
+                return;                 /* ksc_answer carries on */
+            j->skipped++;               /* no box: nothing is replaced */
+            continue;
+        }
+        ksc_write(j);
+    }
+    {
+        char *msg = dupprintf(KT_SYSTEM_SC_DONE, j->made, j->where), *t;
+        if (j->skipped) {
+            t = dupprintf("%s" KT_SYSTEM_SC_SKIPPED, msg, j->skipped);
+            sfree(msg);
+            msg = t;
+        }
+        if (j->failed) {
+            t = dupprintf("%s" KT_SYSTEM_SC_FAILED, msg, j->failed);
+            sfree(msg);
+            msg = t;
+        }
+        kitty_info_modeless(kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, msg,
+                            NULL, NULL);
+        sfree(msg);
+    }
+    sfree(j);
+}
+
+/* context.i: 0 Start menu, 1 Desktop */
+static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                       void *data, int event)
+{
+    struct ksc_job *j;
+    char base[MAX_PATH], *slash;
+    int desktop = ctrl->context.i;
+    (void)dlg; (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    j = snew(struct ksc_job);
+    memset(j, 0, sizeof(*j));
+    if (!GetModuleFileNameA(NULL, j->exe, sizeof(j->exe)) ||
+        SHGetFolderPathA(NULL, desktop ? CSIDL_DESKTOPDIRECTORY : CSIDL_PROGRAMS,
+                         NULL, SHGFP_TYPE_CURRENT, base) != S_OK) {
+        sfree(j);
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    snprintf(j->workdir, sizeof(j->workdir), "%s", j->exe);
+    if ((slash = strrchr(j->workdir, '\\')) != NULL)
+        *slash = '\0';
+    if (desktop) {
+        snprintf(j->dir, sizeof(j->dir), "%s", base);
+        j->where = KT_SYSTEM_SC_WHERE_DESKTOP;
+    } else {
+        snprintf(j->dir, sizeof(j->dir), "%s\\%s", base, KT_SYSTEM_SC_FOLDER);
+        j->where = KT_SYSTEM_SC_WHERE_START;
+        if (!CreateDirectoryA(j->dir, NULL) &&
+            GetLastError() != ERROR_ALREADY_EXISTS) {
+            char *msg = dupprintf(KT_SYSTEM_SC_NO_FOLDER, j->dir);
+            kitty_info_modeless(kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, msg,
+                                NULL, NULL);
+            sfree(msg);
+            sfree(j);
+            return;
+        }
+    }
+    ksc_step(j);
+}
+
+/*
  * Application > Launcher > Start (hknet/KiTTY#54): "Start Launcher at Login"
  * and "Start Launcher Now". Neither is a kitty.ini key: the checkbox is the
  * Startup-folder shortcut the tray menu's "Start at login" makes (one shared
@@ -2930,6 +3077,22 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
         ctrl_checkbox(s, KT_SYSTEM_PATH_CHECK, NO_SHORTCUT, HELPCTX(kitty_system),
                       kitty_syspath_handler, P(NULL));
         ctrl_text(s, KT_SYSTEM_PATH_NOTE, HELPCTX(kitty_system));
+        /* The installer's entry points, for a copy from the ZIP. */
+        s = ctrl_getset(b, KSET_PATH("System"), "shortcuts", KT_SYSTEM_SC_GROUP);
+        if (kitty_exe_from_msi()) {
+            /* the installer made them and removes them: no second set */
+            ctrl_text(s, KT_SYSTEM_SC_MSI, HELPCTX(kitty_system));
+        } else {
+            ctrl_text(s, KT_SYSTEM_SC_LINE, HELPCTX(kitty_system));
+            ctrl_columns(s, 2, 50, 50);
+            bc = ctrl_pushbutton(s, KT_SYSTEM_SC_STARTMENU, NO_SHORTCUT,
+                                 HELPCTX(kitty_system), kitty_sysshortcuts_handler, I(0));
+            bc->column = 0;
+            bc = ctrl_pushbutton(s, KT_SYSTEM_SC_DESKTOP, NO_SHORTCUT,
+                                 HELPCTX(kitty_system), kitty_sysshortcuts_handler, I(1));
+            bc->column = 1;
+            ctrl_columns(s, 1, 100);
+        }
     }
 }
 

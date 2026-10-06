@@ -24,7 +24,13 @@
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
     <Icon Id="klaunch.ico" SourceFile="kitty_pp_windows.ico" />
+    <!-- Manage Sessions phase 3: the Quick-Connect and Sessions entries' own icons -->
+    <Icon Id="kquick.ico" SourceFile="kitty_pp_quick.ico" />
+    <Icon Id="kmanage.ico" SourceFile="kitty_pp_manage.ico" />
     <Property Id="ARPPRODUCTICON" Value="kitty.ico" />
+    <!-- as in kitty-system.wxs: the installed folder in InstallLocation, so
+         kitty.exe can tell its own install from a ZIP copy beside it -->
+    <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
 
     <!-- KiTTY: close any running KiTTY before the file phase so an in-place
          upgrade never blocks on an in-use kitty.exe (the reliable escape path for
@@ -89,6 +95,10 @@
         <Shortcut Id="sc_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
+        <!-- Manage Sessions phase 3: as in kitty-system.wxs (each entry its
+             own icon file as an MSI Icon, kquick.ico / kmanage.ico). -->
+        <Shortcut Id="sc_quickconnect" Name="KiTTY++ Quick-Connect" Target="[INSTALLFOLDER]kitty.exe" Arguments="-quickconnect" Icon="kquick.ico" WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="sc_manage" Name="KiTTY++ Sessions" Target="[INSTALLFOLDER]kitty.exe" Arguments="-manage" Icon="kmanage.ico" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
         <!-- Shortcut bookkeeping under Software\kapper.net\KiTTY-installer, a
              SIBLING of the application's hive, never inside it: these HKCU

@@ -39,8 +39,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   tag chosen, whatever its folder, and Launch starts them all. Sessions
   dragged onto it take the tag; Del removes it after a confirmation
   (Refs hknet/KiTTY#60).
+- **Start menu entries for Quick-Connect and Manage Sessions.** The
+  installers add "KiTTY++ Quick-Connect" (`-quickconnect`) and "KiTTY++
+  Sessions" (`-manage`), each with its own icon. A copy from the ZIP gets the
+  same entry points from Application > KiTTY++ Settings > System > Shortcuts:
+  "Create in Start menu" (a folder of its own, "KiTTY++ (portable)") and
+  "Create on Desktop". A shortcut of the same name that points to another
+  kitty.exe is replaced only after a question.
 
 ### Changed
+
+- **A ZIP copy beside an installed KiTTY++ no longer offers the installer
+  update.** The updater asked whether a KiTTY++ installer package was on the
+  machine at all; it now asks whether this kitty.exe is the one it installed.
+  A copy from the ZIP is offered the download, as anywhere else.
 
 - **The session name field shows the end of a long path.** A session deep
   in folders, such as `Linux\web\eu\srv01`, used to show its folders and

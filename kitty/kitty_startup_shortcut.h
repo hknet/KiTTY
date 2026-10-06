@@ -21,6 +21,15 @@ int kitty_startup_shortcut_set(const char *name, const char *target,
                                const char *args, const char *workdir,
                                const char *icon, int on);
 
+/* Write the shortcut file lnkpath (any folder; overwritten when present):
+ * target with args, workdir (NULL = none), its icon from icon (NULL = the
+ * target) at icon_index - a NEGATIVE index is a resource id, so -9907 is
+ * IDI_MANAGEICON inside kitty.exe. Returns 1 on success. Used by the Startup
+ * shortcuts above and by System > Shortcuts (kitty_config_app.c). */
+int kitty_shortcut_write(const char *lnkpath, const char *target,
+                         const char *args, const char *workdir,
+                         const char *icon, int icon_index);
+
 /* 1 when "<per-user Startup>\<name>.lnk" exists (for a menu checkmark). */
 int kitty_startup_shortcut_exists(const char *name);
 

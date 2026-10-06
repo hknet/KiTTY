@@ -20,6 +20,8 @@
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
 #include <msi.h>       /* in-app updater: install-type detection by UpgradeCode */
+#include <shlobj.h>    /* SHGetFolderPathA: the installer's Start menu shortcut */
+#include "kitty_startup_shortcut.h"   /* kitty_startup_shortcut_target */
 #include "kitty_gui.h"
 #include "kitty.h"
 #include "kitty_storage.h"
@@ -63,22 +65,73 @@ typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitt
 #define KITTY_UPGRADE_SYSTEM  "{69EA2DD5-EF19-4811-B324-EF34CAA6942C}"
 #define KITTY_UPGRADE_PERUSER "{578952A6-AA7F-4146-918B-47803234700B}"
 
-static int kitty_msi_installed( const char *upgradecode ) {
-	char prodbuf[40] = "" ;   /* a ProductCode GUID is 38 chars + NUL */
-	return MsiEnumRelatedProductsA( upgradecode, 0, 0, prodbuf ) == ERROR_SUCCESS ;
+/* Two folders the same, after the long form and without a trailing '\'. */
+static int kitty_same_dir( const char *a, const char *b ) {
+	char la[MAX_PATH], lb[MAX_PATH] ;
+	size_t n ;
+	if( !GetLongPathNameA( a, la, sizeof(la) ) ) snprintf( la, sizeof(la), "%s", a ) ;
+	if( !GetLongPathNameA( b, lb, sizeof(lb) ) ) snprintf( lb, sizeof(lb), "%s", b ) ;
+	if( (n = strlen(la)) > 3 && la[n-1] == '\\' ) la[n-1] = '\0' ;
+	if( (n = strlen(lb)) > 3 && lb[n-1] == '\\' ) lb[n-1] = '\0' ;
+	return !stricmp( la, lb ) ;
+}
+
+/* The folder of a path ("C:\x\kitty.exe" -> "C:\x"), in place. */
+static void kitty_cut_to_dir( char *p ) {
+	char *s = strrchr( p, '\\' ) ;
+	if( s ) *s = '\0' ;
+}
+
+/* Is THIS kitty.exe the one the MSI of this UpgradeCode installed?
+ * -1 = no such MSI is installed, 0 = it is but this copy is not its exe (a ZIP
+ * copy beside it), 1 = it is this copy. "An MSI is installed" alone is a fact
+ * about the MACHINE: answered on its own it made a ZIP copy offer the MSI
+ * update. The installed folder comes from the product's InstallLocation (the
+ * packages set ARPINSTALLLOCATION); a package from before that records none,
+ * and then the target of the installer's own Start menu "KiTTY.lnk" says where
+ * it put kitty.exe (common = the all-users Start menu, the system package). */
+static int kitty_msi_owns_this_exe( const char *upgradecode, int common ) {
+	char prod[40] = "", loc[MAX_PATH] = "", dir[MAX_PATH] = "" ;
+	char lnk[MAX_PATH], tgt[MAX_PATH] ;
+	DWORD n = sizeof(loc) ;
+	if( MsiEnumRelatedProductsA( upgradecode, 0, 0, prod ) != ERROR_SUCCESS ) return -1 ;
+	if( !GetModuleFileNameA( NULL, dir, sizeof(dir)-1 ) ) return 0 ;
+	kitty_cut_to_dir( dir ) ;
+	if( MsiGetProductInfoA( prod, INSTALLPROPERTY_INSTALLLOCATION, loc, &n ) == ERROR_SUCCESS && loc[0] )
+		return kitty_same_dir( loc, dir ) ;
+	if( SHGetFolderPathA( NULL, common ? CSIDL_COMMON_PROGRAMS : CSIDL_PROGRAMS, NULL,
+	                      SHGFP_TYPE_CURRENT, lnk ) != S_OK ) return 0 ;
+	if( strlen( lnk ) + sizeof("\\KiTTY\\KiTTY.lnk") > sizeof(lnk) ) return 0 ;
+	strcat( lnk, "\\KiTTY\\KiTTY.lnk" ) ;
+	if( !kitty_startup_shortcut_target( lnk, tgt, sizeof(tgt) ) ) return 0 ;
+	kitty_cut_to_dir( tgt ) ;
+	return kitty_same_dir( tgt, dir ) ;
+}
+
+int kitty_exe_from_msi( void ) {
+#ifdef MOD_PORTABLE
+	return 0 ;
+#else
+	return kitty_msi_owns_this_exe( KITTY_UPGRADE_SYSTEM, 1 ) == 1 ||
+	       kitty_msi_owns_this_exe( KITTY_UPGRADE_PERUSER, 0 ) == 1 ;
+#endif
 }
 
 /* How was this copy installed? Decides which asset to fetch and how to run it.
  * Primary, robust signal: ask Windows Installer whether OUR product (by its
- * stable UpgradeCode) is installed, and which kind - this is independent of the
- * install path, locale, or whether the exe was copied elsewhere. The path sniff
- * is only a fallback. The portable build (MOD_PORTABLE) is always download-only. */
+ * stable UpgradeCode) installed THIS exe, and which kind. An MSI that is
+ * installed but is not this copy makes it portable: download-only, never the
+ * MSI run. The path sniff remains only for a machine with no MSI of ours at
+ * all. The portable build (MOD_PORTABLE) is always download-only. */
 static kitty_install_t kitty_detect_install_type( void ) {
 #ifdef MOD_PORTABLE
 	return KITTY_INST_PORTABLE ;
 #else
-	if( kitty_msi_installed( KITTY_UPGRADE_SYSTEM ) )  return KITTY_INST_SYSTEM ;
-	if( kitty_msi_installed( KITTY_UPGRADE_PERUSER ) ) return KITTY_INST_PERUSER ;
+	int sys = kitty_msi_owns_this_exe( KITTY_UPGRADE_SYSTEM, 1 ) ;
+	int usr = kitty_msi_owns_this_exe( KITTY_UPGRADE_PERUSER, 0 ) ;
+	if( sys == 1 ) return KITTY_INST_SYSTEM ;
+	if( usr == 1 ) return KITTY_INST_PERUSER ;
+	if( sys == 0 || usr == 0 ) return KITTY_INST_PORTABLE ;   /* an MSI, but not this copy */
 
 	/* Fallback: path sniff (older installs / unusual setups). */
 	char exe[MAX_PATH]="", env[MAX_PATH]="" ;
