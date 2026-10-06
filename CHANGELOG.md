@@ -45,7 +45,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   to..., Copy to..., Rename..., Clone (`name-1`, `name-2`, ...), Delete and
   Select All; on the tree New folder..., Rename... and Delete. Tab into the
   session list shows the focus at once, and an empty folder's list reads
-  "No sessions in this folder".
+  "No sessions in this folder". Enter starts the selected sessions, a double
+  click the one clicked; Enter in the tree goes to the folder's first session.
 - **`kitty.exe -manage` opens Manage Sessions alone**, without a
   configuration window behind it. Its Edit opens the configuration window in
   the same process on the selected session or folder; Open there starts the

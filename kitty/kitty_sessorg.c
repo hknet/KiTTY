@@ -780,10 +780,28 @@ static void so_fill_list(struct so_state *st)
 }
 
 /* Everything from the store again, the same folder shown if it still is. */
+static void so_select_session_add(struct so_state *st, const char *name);
+
 static void so_reload(struct so_state *st)
 {
     char *keep = dupstr(st->cur);
-    int i, found = !*keep, nopen = 0;
+    int i, found = !*keep, nopen = 0, nkeep = 0;
+    char **keepsel = NULL;
+    /* the selection by name, before the names are read again */
+    {
+        int j = -1;
+        while ((j = ListView_GetNextItem(st->list, j, LVNI_SELECTED)) >= 0) {
+            LVITEMA it;
+            memset(&it, 0, sizeof(it));
+            it.mask = LVIF_PARAM;
+            it.iItem = j;
+            if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+                it.lParam >= 0 && it.lParam < st->s.n) {
+                keepsel = sresize(keepsel, nkeep + 1, char *);
+                keepsel[nkeep++] = dupstr(st->s.names[it.lParam]);
+            }
+        }
+    }
     /* what was open, and how far the tree was scrolled, before the re-read */
     char **open = so_tree_expanded(st->tree, &st->fs, &nopen);
     HTREEITEM top = TreeView_GetFirstVisible(st->tree);
@@ -827,6 +845,31 @@ static void so_reload(struct so_state *st)
         sfree(open[i]);
     sfree(open);
     so_fill_list(st);
+    /* the sessions that were selected stay selected (a re-read on coming
+     * back from the configuration window must not drop them) */
+    for (i = 0; i < nkeep; i++) {
+        so_select_session_add(st, keepsel[i]);
+        sfree(keepsel[i]);
+    }
+    sfree(keepsel);
+}
+
+/* Add the session `name` to the list's selection, if it is there. */
+static void so_select_session_add(struct so_state *st, const char *name)
+{
+    int i, n = ListView_GetItemCount(st->list);
+    for (i = 0; i < n; i++) {
+        LVITEMA it;
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_PARAM;
+        it.iItem = i;
+        if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+            it.lParam >= 0 && it.lParam < st->s.n &&
+            !strcmp(st->s.names[it.lParam], name)) {
+            ListView_SetItemState(st->list, i, LVIS_SELECTED, LVIS_SELECTED);
+            return;
+        }
+    }
 }
 
 /* Select, focus and show the session `name` in the list, if it is there. */
@@ -1584,20 +1627,18 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
 #define SO_CMD_RENAME_SESS  0x7106
 #define SO_CMD_RENAME_FOLD  0x7107
 
-/* Each marked session in its own terminal: kitty.exe -load "<name>". */
-static void so_start_sessions(struct so_state *st)
+/* Sessions in their own terminals: kitty.exe -load "<name>" each. */
+static void so_start_named(char **names, int n_names)
 {
-    char exe[MAX_PATH], **sel;
-    int nsel, i;
+    char exe[MAX_PATH];
+    int i;
     DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-    sel = so_selected(st, &nsel);
-    if (!nsel || !n || n >= sizeof(exe)) {
+    if (!n_names || !n || n >= sizeof(exe)) {
         MessageBeep(MB_ICONWARNING);
-        sfree(sel);
         return;
     }
-    for (i = 0; i < nsel; i++) {
-        char *cmd = dupprintf("\"%s\" -load \"%s\"", exe, sel[i]);
+    for (i = 0; i < n_names; i++) {
+        char *cmd = dupprintf("\"%s\" -load \"%s\"", exe, names[i]);
         STARTUPINFOA si;
         PROCESS_INFORMATION pi;
         memset(&si, 0, sizeof(si));
@@ -1609,6 +1650,14 @@ static void so_start_sessions(struct so_state *st)
         }
         sfree(cmd);
     }
+}
+
+/* Start Sessions and Enter: every selected session. */
+static void so_start_sessions(struct so_state *st)
+{
+    int nsel;
+    char **sel = so_selected(st, &nsel);
+    so_start_named(sel, nsel);
     sfree(sel);
 }
 
@@ -2096,9 +2145,32 @@ static void so_tree_menu(struct so_state *st, int x, int y)
         so_command(st, cmd);
 }
 
+/* The list gets the focus with a session to act on: the first one selected
+ * and focused when none is selected yet (a Tab in, or Enter in the tree). */
+static void so_list_take_focus(struct so_state *st, int move_focus)
+{
+    if (ListView_GetItemCount(st->list) > 0 &&
+        ListView_GetSelectedCount(st->list) == 0) {
+        ListView_SetItemState(st->list, 0, LVIS_SELECTED | LVIS_FOCUSED,
+                              LVIS_SELECTED | LVIS_FOCUSED);
+        ListView_EnsureVisible(st->list, 0, FALSE);
+    }
+    if (move_focus)
+        PostMessage(st->h, WM_NEXTDLGCTL, (WPARAM)st->list, TRUE);
+}
+
 static void so_command(struct so_state *st, int id)
 {
     switch (id) {                       /* the menu actions with no box */
+      case IDOK:
+        /* Enter (no button is the default: Close was, and Enter closed the
+         * window): in the list it starts the selected sessions, in the tree
+         * it moves to the folder's first session */
+        if (GetFocus() == st->list)
+            so_start_sessions(st);
+        else if (GetFocus() == st->tree)
+            so_list_take_focus(st, 1);
+        return;
       case SO_CMD_START:
         so_start_sessions(st);
         return;
@@ -2399,12 +2471,11 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             }
         } else if (nm->idFrom == IDC_SO_LIST) {
             if (nm->code == NM_SETFOCUS) {
-                /* Tab into the list: the focus frame shows at once, on the
-                 * first session (focused, not selected) */
+                /* Tab into the list: the first session is selected and
+                 * focused when none is selected yet - a focus frame alone
+                 * left Edit and the menus with nothing to act on */
                 st->pane = 1;
-                if (ListView_GetItemCount(st->list) > 0 &&
-                    ListView_GetNextItem(st->list, -1, LVNI_FOCUSED) < 0)
-                    ListView_SetItemState(st->list, 0, LVIS_FOCUSED, LVIS_FOCUSED);
+                so_list_take_focus(st, 0);
                 InvalidateRect(st->list, NULL, TRUE);
             } else if (nm->code == NM_KILLFOCUS) {
                 if (ListView_GetItemCount(st->list) == 0)
@@ -2440,6 +2511,21 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                         SelectObject(cd->nmcd.hdc, of);
                     SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_DODEFAULT);
                     return TRUE;
+                }
+            } else if (nm->code == NM_DBLCLK) {
+                /* a double click starts the session clicked - only that
+                 * one, whatever else is selected, as Explorer opens the
+                 * item clicked; Enter starts the whole selection */
+                NMITEMACTIVATE *ia = (NMITEMACTIVATE *)lp;
+                LVITEMA it;
+                memset(&it, 0, sizeof(it));
+                it.mask = LVIF_PARAM;
+                it.iItem = ia->iItem;
+                if (ia->iItem >= 0 &&
+                    SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+                    it.lParam >= 0 && it.lParam < st->s.n) {
+                    char *one = st->s.names[it.lParam];
+                    so_start_named(&one, 1);
                 }
             } else if (nm->code == LVN_KEYDOWN) {
                 NMLVKEYDOWN *kd = (NMLVKEYDOWN *)lp;

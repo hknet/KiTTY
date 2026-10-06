@@ -174,6 +174,19 @@ inside a folder its subfolders are rows, \c{..} goes up one level, and
 \q{New folder} inside \c{network} creates \c{network\\test}. See
 \k{kitty-cfg-folders}.
 
+\b \e{Manage Sessions.} \q{Manage...} (below \q{Del folder}) opens a
+window of its own for a store with many sessions and nested folders:
+the folder tree on the left, the selected folder's sessions on the
+right, several selected at once. Sessions and folders are moved by
+drag and drop - a closed folder opens while a drag hovers over it -
+or with \q{Move to...}; a right click starts, copies, clones, renames
+or deletes the selected sessions, and creates, renames or deletes
+folders. Enter starts the selected sessions, a double click the one
+clicked; Enter in the tree goes to the folder's first session. The window reopens on the folder and the
+session it was left on. \c{kitty.exe -manage} opens it alone, without
+a configuration window; its \q{Edit} then opens the configuration
+window on the selected session. See \k{kitty-cfg-folders}.
+
 \b \e{Exit and Cancel.} Before a session, the button beside \q{Open}
 reads \q{Exit} and ends the program; the Application settings are
 already saved as they change. Mid-session (\q{Change Settings}) it

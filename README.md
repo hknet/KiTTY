@@ -94,6 +94,16 @@ verified — reports welcome.
 - **Workplace Proxy Mode** working on the go you sometimes have to set a proxy for all your needs.  If you have named proxies configured you can simply activate one on the go using the launcher or by starting the workplace-proxy in the KiTTY-config-window (Connection - Proxy) and you are set.
 - **Dark Mode** for the night shift: one setting draws every window in the suite — `[KiTTY] theme=system` (the default, follows Windows), `light` or `dark`, also in kageant under *Settings… → Agent*. Needs Windows 10 1809 or newer; see [`FEATURES.md`](FEATURES.md#dark-mode), limits in [`KNOWN-ISSUES.md`](KNOWN-ISSUES.md). Also set it in Application > KiTTY++ Settings > Appearance.
 
+> 🗂️ **Hundreds of sessions, in folders as deep as you like.** **Manage Sessions** (the
+> *Manage...* button, or `kitty.exe -manage` on its own) shows your folder tree beside the
+> folder's sessions: drag sessions and whole folders where they belong, start several at once,
+> copy, clone, rename or delete them from a right click, and press *Edit* to open one in the
+> configuration window. It reopens where you left it. Folders are real paths
+> (`Production\Web\web01`), in the registry and in the portable folder store alike - a
+> session folder can live in Git. See [`FEATURES.md`](FEATURES.md#sessions-filter-folders).
+>
+> ![Manage Sessions](screenshots/manage_sessions.png)
+
 > 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
 > drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote
 > directory** instead of always dropping into `$HOME`. It's the safe, **data-only**
