@@ -4182,9 +4182,24 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         {
             static const int row_ids[] = {
                 IDC_KEYLIST_FPTYPE_STATIC, IDC_KEYLIST_SHOWUNAVAIL,
-                IDC_KEYLIST_RETRY, IDC_KEYLIST_INISTATUS, 0
+                IDC_KEYLIST_RETRY, 0
             };
             kitty_theme_align_row(hwnd, IDC_KEYLIST_FPTYPE, row_ids);
+        }
+
+        /* The ini-path row exists only in kitty.ini mode; otherwise the
+         * list grows over it. Before the capture, so the anchors keep it. */
+        if (!kageant_ini_status()) {
+            HWND st = GetDlgItem(hwnd, IDC_KEYLIST_INISTATUS);
+            HWND lv = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
+            RECT rs, rl;
+            GetWindowRect(st, &rs);
+            GetWindowRect(lv, &rl);
+            MapWindowPoints(NULL, hwnd, (POINT *)&rs, 2);
+            MapWindowPoints(NULL, hwnd, (POINT *)&rl, 2);
+            ShowWindow(st, SW_HIDE);
+            SetWindowPos(lv, NULL, 0, 0, rl.right - rl.left,
+                         rs.bottom - rl.top, SWP_NOMOVE | SWP_NOZORDER);
         }
 
         keylist_capture_layout(hwnd);

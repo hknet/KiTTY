@@ -115,7 +115,12 @@ BEGIN
      * select, grid lines) are set at runtime in WM_INITDIALOG. */
     CONTROL "", IDC_KEYLIST_LISTBOX, "SysListView32",
         LVS_REPORT | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
-        10, 10, 420, 155
+        10, 10, 420, 141
+    /* KiTTY: the ini-path line, on its own row under the list it describes.
+     * It STRETCHES (LEFT|RIGHT|BOTTOM) and ellipsizes the path. Outside
+     * kitty.ini mode it is hidden and the list takes its row. */
+    LTEXT "", IDC_KEYLIST_INISTATUS, 10, 154, 420, 12,
+        SS_PATHELLIPSIS | SS_CENTERIMAGE
     PUSHBUTTON "&Add Key", IDC_KEYLIST_ADDKEY, 10, 187, 60, 14
     PUSHBUTTON KT_RC_KEYLIST_ADDKEY_ENC, IDC_KEYLIST_ADDKEY_ENC, 75, 187, 80, 14
     PUSHBUTTON KT_RC_KEYLIST_MOVEUP, IDC_KEYLIST_MOVEUP, 170, 187, 55, 14
@@ -152,15 +157,9 @@ BEGIN
      * collision at build time, which is exactly its job. */
     PUSHBUTTON "Agent &log...", IDC_KEYLIST_AUDITLOG, 318, 224, 56, 14
     DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 380, 224, 50, 14
-    /* The ini-path line rides beside "Show unavailable keys". It is the one control
-     * here that STRETCHES (LEFT|RIGHT|BOTTOM), so it starts narrow and takes
-     * every extra pixel the window is given - the Retry button beside it is
-     * RIGHT-anchored and simply moves, so the two never meet. */
     /* Same row, one height, one top - the combo lands on 14 whatever the
      * template says, so 14 is what the label and the checkbox beside it take
      * as well. */
-    LTEXT "", IDC_KEYLIST_INISTATUS, 285, 170, 40, 14,
-        SS_PATHELLIPSIS | SS_CENTERIMAGE
     LTEXT KT_RC_KEYLIST_FPTYPE_LABEL, IDC_KEYLIST_FPTYPE_STATIC, 10, 170, 64, 14,
         SS_CENTERIMAGE
     COMBOBOX IDC_KEYLIST_FPTYPE, 78, 170, 95, 12, CBS_DROPDOWNLIST

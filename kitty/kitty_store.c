@@ -839,13 +839,20 @@ bool ReadPortableValue(const char *buffer, const char * name, char * value, cons
 	char *b = (char*)malloc(strlen(name)+2), *pst ;
 	sprintf(b,"%s\\",name) ;
 	if( strstr(buffer,b)==buffer ) {
+		size_t n ;
 		pst = (char*)buffer + strlen(b) ;
 		test = true ;
 		value[0]='\0';
-		if( strlen(pst)>1 )
-		if( (strlen(pst)<=maxlen) && (pst[strlen(pst)-2]=='\\') ) {
-			memcpy( value, pst, strlen(pst)-2 ) ;
-			value[strlen(pst)-2] = '\0' ;
+		/* "value\" then the line's end. The line end is taken off FIRST: a
+		 * file's last line may have none (a file written by hand or by
+		 * another tool), and the old test looked for the closing '\' one
+		 * character before the end - such a line read as empty, a proxy's
+		 * port as 0. CR too, for a file copied with CRLF line ends. */
+		n = strlen(pst) ;
+		while( n>0 && (pst[n-1]=='\n' || pst[n-1]=='\r') ) n-- ;
+		if( n>0 && pst[n-1]=='\\' && (int)(n-1)<maxlen ) {
+			memcpy( value, pst, n-1 ) ;
+			value[n-1] = '\0' ;
 		}
 		unmungestr( value, value, MAX_VALUE_NAME ) ;
 	}

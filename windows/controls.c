@@ -1062,6 +1062,48 @@ void bigeditctrl(struct ctlpos *cp, const char *stext,
           WS_EX_CLIENTEDGE, "", eid);
 }
 
+/* KiTTY: bigeditctrl with a pushbutton to the right of the edit, its top
+ * level with the edit's. percentbtn is the button's share of the width;
+ * the edit gives that and one gap up. */
+void bigeditctrlbutton(struct ctlpos *cp, const char *stext,
+                       int sid, int eid, int lines,
+                       const char *btext, int bid, int percentbtn)
+{
+    RECT r;
+    int bwid, bpos, height;
+
+    if (stext) {
+        r.left = GAPBETWEEN;
+        r.top = cp->ypos;
+        r.right = cp->width;
+        r.bottom = STATICHEIGHT;
+        cp->ypos += r.bottom + GAPWITHIN;
+        doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    }
+
+    bwid = percentbtn * (cp->width + GAPBETWEEN) / 100;
+    bpos = cp->width + GAPBETWEEN - bwid;
+    height = EDITHEIGHT + (lines - 1) * STATICHEIGHT;
+
+    r.left = GAPBETWEEN;
+    r.top = cp->ypos;
+    r.right = bpos - 2 * GAPBETWEEN;
+    r.bottom = height;
+    doctl(cp, r, "EDIT",
+          WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | ES_MULTILINE,
+          WS_EX_CLIENTEDGE, "", eid);
+
+    r.left = bpos;
+    r.top = cp->ypos;
+    r.right = bwid;
+    r.bottom = PUSHBTNHEIGHT;
+    doctl(cp, r, "BUTTON",
+          WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+          0, btext, bid);
+
+    cp->ypos += height + GAPBETWEEN;
+}
+
 /*
  * KiTTY: a config-panel multiline edit box (label on its own line above,
  * `lines` rows tall). Modelled on bigeditctrl, but adds ES_WANTRETURN so

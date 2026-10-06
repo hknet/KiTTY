@@ -2794,6 +2794,7 @@
 #define KT_KGEN_MENU_NEW                             "&New (clear)"
 #define KT_KGEN_MENU_HELLO_DOORS                     "Windows Hello &doors..."
 #define KT_KGEN_ADD_CONFIRMATION                     "Add confirmation"
+#define KT_KGEN_COPY_PUBKEY                          "Copy"
 #define KT_KGEN_CONFIRMATION_TIP                     "Tip: include the word \"confirmation\" in the " \
         "comment so kageant asks before each use."
 #define KT_KGEN_HELLO_CHECKBOX                       "Protect with Windows &Hello " \

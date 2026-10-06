@@ -561,6 +561,9 @@ void staticpassedit(struct ctlpos *cp, const char *stext,
                     int sid, int eid, int percentedit);
 void bigeditctrl(struct ctlpos *cp, const char *stext,
                  int sid, int eid, int lines);
+void bigeditctrlbutton(struct ctlpos *cp, const char *stext,
+                       int sid, int eid, int lines,
+                       const char *btext, int bid, int percentbtn);
 void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
                int s2id);
 void editbutton(struct ctlpos *cp, const char *stext, int sid,

@@ -109,6 +109,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   About boxes now share one memory; the resizable ones keep their size too.
   The old stored places are carried over once. A portable copy keeps them
   in `kitty_windowpos.ini` beside the exe instead of the registry.
+- **kittygen copies the public key in one click.** A Copy button beside
+  the public-key box puts the key on the clipboard, ready for an
+  `authorized_keys` file. A click into the box selects the whole key.
+- **kageant's key list shows the kitty.ini path on its own line** under
+  the list, where it has room for the full path.
 
 ### Fixed
 
@@ -118,6 +123,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the same held for `%E4` and other `%xx` escapes, folders named that way
   and a `%` written by hand. Such a file is now opened and saved in place
   under its old name (hknet/KiTTY#59).
+- **A named proxy file without a final line break keeps its last value.**
+  In the folder store the last line was read as empty, so a hand-written
+  `ProxyPort\22\` came out as port 0.
 
 ## 0.85.1.13-beta — 2026-10-05
 

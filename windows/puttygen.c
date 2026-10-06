@@ -962,6 +962,7 @@ enum {
     IDC_HELLODOORS,    /* KiTTY: the sidecar door editor (menu item) */
     IDC_KGSIDEBOUND,   /* KiTTY: printout = code bound to the sidecar */
     IDC_KGNEW,         /* KiTTY: File > New - clear the mask */
+    IDC_COPYPUB,       /* KiTTY: public key to the clipboard */
 };
 
 /*
@@ -1134,12 +1135,40 @@ static void kg_hello_sync(HWND hwnd)
         CheckDlgButton(hwnd, IDC_KGSIDEBOUND, BST_UNCHECKED);
 }
 
+/* KiTTY: the public-key box's Copy button. The box holds one line (the
+ * edit only wraps it), so its text goes to the clipboard as it is. */
+static void kg_copy_pubkey(HWND hwnd)
+{
+    HWND edit = GetDlgItem(hwnd, IDC_KEYDISPLAY);
+    int len = GetWindowTextLength(edit);
+    HGLOBAL mem;
+    char *p;
+
+    if (len <= 0)
+        return;
+    mem = GlobalAlloc(GMEM_MOVEABLE, len + 1);
+    if (!mem)
+        return;
+    p = GlobalLock(mem);
+    GetWindowText(edit, p, len + 1);
+    GlobalUnlock(mem);
+    if (OpenClipboard(hwnd)) {
+        EmptyClipboard();
+        if (SetClipboardData(CF_TEXT, mem))
+            mem = NULL;            /* the clipboard owns it now */
+        CloseClipboard();
+    }
+    if (mem)
+        GlobalFree(mem);
+}
+
 static void setupbigedit1(HWND hwnd, RSAKey *key)
 {
     ShowWindow(GetDlgItem(hwnd, IDC_CERTSTATIC), SW_HIDE);
     ShowWindow(GetDlgItem(hwnd, IDC_CERTMOREINFO), SW_HIDE);
     ShowWindow(GetDlgItem(hwnd, IDC_PKSTATIC), SW_SHOW);
     ShowWindow(GetDlgItem(hwnd, IDC_KEYDISPLAY), SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_COPYPUB), SW_SHOW);
 
     SetDlgItemText(hwnd, IDC_PKSTATIC,
                    "&Public key for pasting into authorized_keys file:");
@@ -1156,6 +1185,7 @@ static void setupbigedit2(HWND hwnd, ssh2_userkey *key)
         ShowWindow(GetDlgItem(hwnd, IDC_CERTMOREINFO), SW_SHOW);
         ShowWindow(GetDlgItem(hwnd, IDC_PKSTATIC), SW_HIDE);
         ShowWindow(GetDlgItem(hwnd, IDC_KEYDISPLAY), SW_HIDE);
+        ShowWindow(GetDlgItem(hwnd, IDC_COPYPUB), SW_HIDE);
 
         SetDlgItemText(hwnd, IDC_CERTSTATIC,
                        "This public key contains an OpenSSH certificate.");
@@ -1164,6 +1194,7 @@ static void setupbigedit2(HWND hwnd, ssh2_userkey *key)
         ShowWindow(GetDlgItem(hwnd, IDC_CERTMOREINFO), SW_HIDE);
         ShowWindow(GetDlgItem(hwnd, IDC_PKSTATIC), SW_SHOW);
         ShowWindow(GetDlgItem(hwnd, IDC_KEYDISPLAY), SW_SHOW);
+        ShowWindow(GetDlgItem(hwnd, IDC_COPYPUB), SW_SHOW);
 
         SetDlgItemText(hwnd, IDC_PKSTATIC, "&Public key for pasting into "
                        "OpenSSH authorized_keys file:");
@@ -1204,8 +1235,9 @@ static const int gotkey_ids_unconditional[] = {
     IDC_KGSIDEBOUND, 0
 };
 static const int gotkey_ids_conditional[] = {
-    IDC_PKSTATIC, IDC_KEYDISPLAY,
+    IDC_PKSTATIC, IDC_KEYDISPLAY, IDC_COPYPUB,
     IDC_CERTSTATIC, IDC_CERTMOREINFO,
+    0  /* KiTTY: hidemany() stops at 0 - the list had none */
 };
 
 /*
@@ -2181,9 +2213,11 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             MakeDlgItemBorderless(hwnd, IDC_CERTSTATIC);
             cp2.xoff = cp2.width = cp2.width / 3;
             button(&cp2, "Certificate info...", IDC_CERTMOREINFO, false);
-            bigeditctrl(&cp,
+            /* KiTTY: the key box gives room to its Copy button */
+            bigeditctrlbutton(&cp,
                         "&Public key for pasting into authorized_keys file:",
-                        IDC_PKSTATIC, IDC_KEYDISPLAY, 5);
+                        IDC_PKSTATIC, IDC_KEYDISPLAY, 5,
+                        KT_KGEN_COPY_PUBKEY, IDC_COPYPUB, 16);
             SendDlgItemMessage(hwnd, IDC_KEYDISPLAY, EM_SETREADONLY, 1, 0);
             staticedit(&cp, "Key f&ingerprint:", IDC_FPSTATIC,
                        IDC_FINGERPRINT, 82);
@@ -2426,6 +2460,16 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
           }
           case IDC_QUIT:
             PostMessage(hwnd, WM_CLOSE, 0, 0);
+            break;
+          case IDC_COPYPUB:
+            if (HIWORD(wParam) == BN_CLICKED)
+                kg_copy_pubkey(hwnd);
+            break;
+          case IDC_KEYDISPLAY:
+            /* KiTTY: focus selects the whole key. Posted: a click sets
+             * the focus first and then drops the caret where it landed. */
+            if (HIWORD(wParam) == EN_SETFOCUS)
+                PostMessage((HWND)lParam, EM_SETSEL, 0, -1);
             break;
           case IDC_ADDCONFIRM:
             /* KiTTY: append the confirm-on-use marker to the comment, unless
@@ -3146,6 +3190,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             topic = WINHELP_CTX_puttygen_generate; break;
           case IDC_PKSTATIC:
           case IDC_KEYDISPLAY:
+          case IDC_COPYPUB:
             topic = WINHELP_CTX_puttygen_pastekey; break;
           case IDC_FPSTATIC:
           case IDC_FINGERPRINT:
