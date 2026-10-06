@@ -3025,7 +3025,20 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, KI_LAUNCHER_RELOAD, kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_SECOND, KI_LAUNCHER_ALREADYRUNCHECK, kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_DBLCLICK, KI_LAUNCHER_DBLCLICK, kitty_kset_launcher);
-    KSET_NUMBER(s, KT_KSET_LA_UNHIDE, KI_LAUNCHER_UNHIDEAFTER, kitty_kset_launcher);
+    {
+        /* the field, then its unit beside it ("ends: [ 3 ] s"), centred on
+         * the field by the framework (align_next_to) */
+        dlgcontrol *num, *unit;
+        ctrl_columns(s, 2, 94, 6);
+        num = ctrl_editbox(s, KT_KSET_LA_UNHIDE, NO_SHORTCUT, 11,
+                           HELPCTX(kitty_kset_launcher), kitty_kset_handler,
+                           KSET(KI_LAUNCHER_UNHIDEAFTER), ED_STR);
+        num->column = 0;
+        unit = ctrl_text(s, KT_KSET_UNIT_SECONDS, HELPCTX(kitty_kset_launcher));
+        unit->column = 1;
+        unit->align_next_to = num;
+        ctrl_columns(s, 1, 100);
+    }
     ctrl_text(s, KT_KSET_LA_UNHIDE_NEVER, HELPCTX(kitty_kset_launcher));
     s = ctrl_getset(b, KSET_PATH("Launcher"), "workplace", KT_KSET_LA_WORKPLACE);
     KSET_CHECKBOX(s, KT_KSET_LA_EXITWITH, KI_LAUNCHER_EXITWITHWORKPLACE, kitty_kset_launcher);

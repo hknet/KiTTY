@@ -1480,8 +1480,8 @@
 #define KT_KSET_KITTEN_NOTE                          "A session can set its own on Connection > File-Transfer-Settings."
 
 /* Application/KiTTY++ Settings/Launcher */
-#define KT_KSET_LA_TITLE                             "The launcher"
-#define KT_KSET_LA_MENU                              "Menu"
+#define KT_KSET_LA_TITLE                             "The Launcher"
+#define KT_KSET_LA_MENU                              "Launcher Tray Menu"
 #define KT_KSET_LA_RELOAD                            "Keep my hand-edited launcher menu"
 #define KT_KSET_LA_SECOND                            "A second launcher:"
 #define KT_KSET_LA_SECOND_EXITS                      "Exits"
@@ -1492,9 +1492,9 @@
 #define KT_KSET_LA_WORKPLACE                         "Workplace proxy mode"
 #define KT_KSET_LA_EXITWITH                          "Workplace mode closes the launcher it started"
 #define KT_KSET_LA_NOTICE                            "Workplace notice stays on screen, seconds:"
-#define KT_KSET_LA_UNHIDE                            "Show hidden windows again after the launcher ends, seconds:"
-#define KT_KSET_LA_UNHIDE_NEVER                      "0 = never: hidden windows stay hidden until a launcher is " \
-        "started again."
+#define KT_KSET_LA_UNHIDE                            "Show hidden windows again after the launcher ends:"
+#define KT_KSET_UNIT_SECONDS                         "s"
+#define KT_KSET_LA_UNHIDE_NEVER                      "0 = never: hidden windows stay hidden until Launcher restart."
 #define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a change here applies " \
         "the next time it starts."
 #define KT_KSET_LA_START                             "Start"

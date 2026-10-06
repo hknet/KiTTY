@@ -53,6 +53,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   update.** The updater asked whether a KiTTY++ installer package was on the
   machine at all; it now asks whether this kitty.exe is the one it installed.
   A copy from the ZIP is offered the download, as anywhere else.
+- **Application > Launcher reads more clearly.** The panel title is "The
+  Launcher", the group "Launcher Tray Menu", and the delay before hidden
+  windows come back fits on its row ("ends: [ 3 ] s").
 
 - **The session name field shows the end of a long path.** A session deep
   in folders, such as `Linux\web\eu\srv01`, used to show its folders and
