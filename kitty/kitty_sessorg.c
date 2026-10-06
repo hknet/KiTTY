@@ -44,6 +44,7 @@
 #include "kitty_sessorg.h"
 #include "kitty_auxpos.h"        /* the window's own place and size, per monitor layout */
 #include "kitty_inikeys.h"       /* KR_DLGPOS_MANAGE: its name there */
+#include "kitty_launcher.h"      /* RunConfig: -manage's Edit starts a session in a new process */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -699,6 +700,7 @@ static const struct kl_anchor so_anchors[] = {
     {IDC_SO_NEWFOLDER, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_SO_DELFOLDER, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_SO_ARRANGE,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_SO_EDIT,      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDCANCEL,         KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 
@@ -721,6 +723,15 @@ struct so_state {
 };
 
 static struct so_state *so_window = NULL;   /* one Organize window at a time */
+
+/* kitty.exe -manage: this window is the program (kitty_manage_WinMain), and
+ * its Edit opens the configuration window in this process. While that one is
+ * open, so_editing is set: the configuration window's Exit then reads Close
+ * and closes only itself, and its Open starts the session in a new process. */
+static int so_manage_mode = 0;
+static int so_editing = 0;
+static int so_quit_after_edit = 0;          /* closed while the edit stood */
+int kitty_manage_editing(void) { return so_editing; }
 
 static void so_fill_list(struct so_state *st)
 {
@@ -1916,6 +1927,72 @@ static void so_drag_tick(struct so_state *st)
     }
 }
 
+/* ---- Edit (kitty.exe -manage) -------------------------------------------
+ * The configuration window, in this process, on the selected session (loaded,
+ * in its folder), else on the selected folder, else on the root: it opens
+ * there because the last folder and session are set first, as a Load there
+ * would have left them. Open starts the session in a new process (RunConfig,
+ * the hand-off Start uses) and comes back here. */
+static void so_edit(struct so_state *st)
+{
+    Conf *conf;
+    char **sel, *name = NULL, *folder = NULL;
+    int nsel, i, open;
+    if (so_editing) {
+        MessageBeep(MB_ICONWARNING);    /* the one already open stays in front */
+        return;
+    }
+    sel = so_selected(st, &nsel);
+    if (nsel >= 1) {
+        name = dupstr(sel[0]);
+        for (i = 0; i < st->s.n; i++)
+            if (!strcmp(st->s.names[i], name)) {
+                folder = so_effective_folder(name, st->s.folders[i]);
+                break;
+            }
+    }
+    sfree(sel);
+    if (!folder)
+        folder = dupstr(st->cur ? st->cur : "");
+    kitty_set_last_folder(*folder ? folder : "Default");
+    kitty_set_last_session(name ? name : "");
+    conf = conf_new();
+    do_defaults(name, conf);
+    so_editing = 1;
+    EnableWindow(GetDlgItem(st->h, IDC_SO_EDIT), FALSE);
+    open = do_config(conf);             /* modal; this window keeps working */
+    so_editing = 0;
+    if (open && conf_launchable(conf))
+        RunConfig(conf);
+    conf_free(conf);
+    sfree(name);
+    sfree(folder);
+    if (so_window) {
+        EnableWindow(GetDlgItem(so_window->h, IDC_SO_EDIT), TRUE);
+        so_reload(so_window);           /* a save or a delete there */
+    } else if (so_quit_after_edit) {
+        PostQuitMessage(0);
+    }
+}
+
+/* kitty.exe -manage: Manage Sessions alone, without a configuration window
+ * behind it; closing it ends the process. */
+int kitty_manage_WinMain(void)
+{
+    MSG msg;
+    so_manage_mode = 1;
+    kitty_sessorg_open(NULL);
+    if (!so_window)
+        return 1;
+    while (GetMessage(&msg, NULL, 0, 0) > 0) {
+        if (!ShinyAuxDialogMessage(&msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
+    }
+    return 0;
+}
+
 /* ---- the right-click menus --------------------------------------------- */
 
 static void so_menu_add(HMENU m, UINT id, const char *text, int enabled)
@@ -2120,6 +2197,10 @@ static void so_command(struct so_state *st, int id)
       case IDC_SO_ARRANGE:
         kitty_sessorg_arrange(st->h, 0);
         return;
+      case IDC_SO_EDIT:
+        if (so_manage_mode)
+            so_edit(st);
+        return;
       case IDCANCEL:
         DestroyWindow(st->h);
         return;
@@ -2196,6 +2277,19 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                                  SWP_NOZORDER | SWP_NOACTIVATE);
         if (dwp)
             EndDeferWindowPos(dwp);
+        /* -manage: Edit, left of Close (hidden otherwise: there the
+         * configuration window is the one this window was opened from) */
+        if (so_manage_mode) {
+            HWND eb = GetDlgItem(h, IDC_SO_EDIT);
+            RECT er;
+            int we;
+            SetWindowTextA(eb, KT_SP_ORG_EDIT);
+            so_rect(h, IDC_SO_EDIT, &er);
+            we = kitty_theme_button_width(eb, er.right - er.left);
+            MoveWindow(eb, cr.right - a.left - w - gap - we, r.top, we,
+                       r.bottom - r.top, TRUE);
+            ShowWindow(eb, SW_SHOW);
+        }
 
         ListView_SetExtendedListViewStyle(st->list, LVS_EX_FULLROWSELECT);
         memset(&col, 0, sizeof(col));
@@ -2422,6 +2516,14 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 so_window = NULL;
             sfree(st);
             SetWindowLongPtr(h, GWLP_USERDATA, 0);
+            /* -manage: the window is the program. While Edit's configuration
+             * window stands, the end waits for it (so_edit). */
+            if (so_manage_mode) {
+                if (so_editing)
+                    so_quit_after_edit = 1;
+                else
+                    PostQuitMessage(0);
+            }
         }
         return FALSE;
     }

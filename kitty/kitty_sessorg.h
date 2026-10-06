@@ -13,6 +13,12 @@
 
 /* Open the Organize sessions window (or bring it to the front). */
 void kitty_sessorg_open(HWND owner);
+/* kitty.exe -manage: Manage Sessions alone (the process's own message loop);
+ * returns the exit code. */
+int kitty_manage_WinMain(void);
+/* 1 while -manage's Edit has the configuration window open: its Exit then
+ * reads Close and closes only that window (kitty_config_session.c). */
+int kitty_manage_editing(void);
 
 /* Arrange (sessions filed by their Folder value move to their folder path).
  * first_start: the one-time offer - shown only when there is something to

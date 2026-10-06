@@ -711,6 +711,9 @@ static const struct kset_choice kset_funkeys_choices[] = {
     { KT_KSET_FK_SCO,      "sco",      FUNKY_SCO } };
 static const struct kset_choice kset_second_launcher_choices[] = {
     { KT_KSET_LA_SECOND_EXITS, "yes", 1 }, { KT_KSET_LA_SECOND_STARTS, "no", 0 } };
+/* [Launcher] dblclick: what a double click on the tray icon opens */
+static const struct kset_choice kset_launcher_dblclick_choices[] = {
+    { KT_KSET_LA_DBL_CONFIG, "config", 0 }, { KT_KSET_LA_DBL_MANAGE, "manage", 1 } };
 static const struct kset_choice kset_pwprot_choices[] = {
     { KT_KSET_STORAGE_PWPROT_MASTER, "master", 0 },
     { KT_KSET_STORAGE_PWPROT_DPAPI,  "dpapi",  1 },
@@ -800,6 +803,8 @@ static const struct kset_key kset_keys[] = {
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD,           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_ALREADYRUNCHECK,  KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
       NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK,         KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_launcher_dblclick_choices, lenof(kset_launcher_dblclick_choices) },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_NOTICESECONDS,    KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
     /* read by the TERMINAL when a launcher hides it (windows/window.c) */

@@ -1157,6 +1157,12 @@
 ;    arming refuses a second holder, and that one exits like any duplicate.
 ;alreadyRunCheck=yes
 
+; dblclick: what a double click on the launcher's tray icon opens - config
+;    (a new configuration window, the default) or manage (Manage Sessions
+;    alone, as "kitty.exe -manage" opens it). Read at each double click.
+;    Set in Application > KiTTY++ Settings > Launcher.
+;dblclick=config
+
 ; classname: override the Win32 window class the launcher registers and
 ;    looks for. Only worth setting to keep two KiTTY installations from
 ;    recognising each other as "already running".

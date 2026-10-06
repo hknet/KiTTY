@@ -241,6 +241,8 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_LAUNCHER_NOTICESECONDS           "noticeseconds"
 #define KI_LAUNCHER_RELOAD                  "reload"
 #define KI_LAUNCHER_UNHIDEAFTER             "unhideafter"
+/* what a double click on the tray icon opens: config (default) | manage */
+#define KI_LAUNCHER_DBLCLICK                "dblclick"
 
 /* [FontFallback] */
 #define KI_FONTFALLBACK_ACTIVE              "active"

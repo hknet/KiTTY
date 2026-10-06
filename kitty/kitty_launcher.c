@@ -1734,9 +1734,17 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 		return ;
 	}
 	LauncherDblActionTick = now ;
-	snprintf( line, sizeof(line), "double click via %s: new configuration box", from ) ;
-	LauncherTrayTrace( line ) ;
-	RunPuTTY( hwnd, "" ) ;
+	{
+		/* [Launcher] dblclick=manage: Manage Sessions instead (read at each
+		 * double click, so the panel's choice applies without a restart) */
+		char what[32] = "", manage_arg[] = "-manage", none[] = "" ;
+		int manage = ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK, what, sizeof(what) )
+		             && !stricmp( what, "manage" ) ;
+		snprintf( line, sizeof(line), "double click via %s: %s", from,
+		          manage ? "Manage Sessions" : "new configuration box" ) ;
+		LauncherTrayTrace( line ) ;
+		RunPuTTY( hwnd, manage ? manage_arg : none ) ;
+	}
 }
 
 static void LauncherTrayLeftClick( HWND hwnd ) {

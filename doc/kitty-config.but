@@ -103,6 +103,14 @@ numbered \c{-1}, \c{-2} when the name is taken there), \q{Rename...},
 \q{Delete} (with a confirmation) and \q{Select All}; a right click on
 the tree offers \q{New folder...}, \q{Rename...} and \q{Delete}.
 
+\c{kitty.exe -manage} opens Manage Sessions alone, without a
+configuration window behind it; closing it ends the program. Its
+\q{Edit} opens the configuration window in the same process, on the
+selected session (loaded, in its folder), else on the selected folder,
+else on the root. There \q{Open} starts the session in a new window
+and returns to Manage Sessions, and \q{Close} (in place of \q{Exit})
+closes only the configuration window.
+
 \q{Arrange} moves the sessions an older version filed by their
 \c{Folder} value only into their folder path: \c{srv01} with
 \c{Folder=Linux\\web} becomes \c{Linux\\web\\srv01}. The registry is
@@ -2140,7 +2148,10 @@ time it starts.
 \b \q{Keep my hand-edited launcher menu} stops the launcher from
 rebuilding its menu; see below. \q{A second launcher} sets whether a
 launcher started while one is running exits, the default, or starts
-anyway.
+anyway. \q{Tray icon double-click opens} chooses what a double click on
+the launcher's tray icon opens: a new \q{Configuration} window, the
+default, or \q{Manage Sessions} alone (\c{kitty.exe -manage}); it
+applies at the next double click.
 
 \b \q{Show hidden windows again after the launcher ends} is for windows
 hidden from the launcher's menu: they have no taskbar button and no

@@ -1988,6 +1988,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                                            L"-launcher", 0);
                 return Launcher_WinMain(inst, prev, lcl, show);
             }
+            /* KiTTY: "kitty.exe -manage" opens Manage Sessions alone, with
+             * no configuration window behind it (kitty_sessorg.c); its Edit
+             * opens one in this process. */
+            if (kitty_cmdline_has_token(lcl, "-manage")) {
+                extern int kitty_manage_WinMain(void);
+                if (kitty_cmdline_has_token(lcl, "-restrict-acl") ||
+                    kitty_cmdline_has_token(lcl, "-restrict_acl") ||
+                    kitty_cmdline_has_token(lcl, "-restrictacl"))
+                    restrict_process_acl();
+                return kitty_manage_WinMain();
+            }
         }
 #endif
         /* KiTTY: terminal-session Restart Manager registration used to live here,

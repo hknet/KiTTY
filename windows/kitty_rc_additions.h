@@ -696,6 +696,9 @@
 #ifndef IDC_SO_DELFOLDER
 #define IDC_SO_DELFOLDER 1406
 #endif
+#ifndef IDC_SO_EDIT
+#define IDC_SO_EDIT 1408     /* kitty.exe -manage only: the configuration window */
+#endif
 #ifndef IDC_SO_ARRANGE
 #define IDC_SO_ARRANGE 1407
 #endif

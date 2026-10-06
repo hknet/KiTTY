@@ -263,7 +263,7 @@ terminal), *Move to...*, *Copy to...* (a copy in another folder, numbered
 `-1`, `-2` when the name is taken there), *Rename...*, *Clone* (a copy in the
 same folder named `name-1`, `name-2`, ...), *Delete* (with a confirmation) and
 *Select All*; a right click on the tree offers *New folder...*, *Rename...*
-and *Delete*. Tab into the list shows the focus on its first session at once;
+and *Delete*. `kitty.exe -manage` opens Manage Sessions alone, without a configuration window behind it; its *Edit* opens the configuration window in the same process on the selected session (or folder), where *Open* starts the session in a new process and *Close* goes back to Manage Sessions. The launcher can open it on a double click of its tray icon (Application > KiTTY++ Settings > Launcher). Tab into the list shows the focus on its first session at once;
 an empty folder's list reads "No sessions in this folder".
 
 **Arrange.** Sessions saved by an older version are filed by their `Folder=`

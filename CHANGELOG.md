@@ -46,6 +46,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Select All; on the tree New folder..., Rename... and Delete. Tab into the
   session list shows the focus at once, and an empty folder's list reads
   "No sessions in this folder".
+- **`kitty.exe -manage` opens Manage Sessions alone**, without a
+  configuration window behind it. Its Edit opens the configuration window in
+  the same process on the selected session or folder; Open there starts the
+  session in a new window and Close returns to Manage Sessions. The
+  launcher's tray icon can open it on a double click (Application > KiTTY++
+  Settings > Launcher, `[Launcher] dblclick=manage`).
 - **kageant answers the agent protocol's `query` extension as RFC 9987
   defines it** (`SSH_AGENT_EXTENSION_RESPONSE`, the name `query`, then the
   supported extensions), as OpenSSH's agent does.
@@ -2390,16 +2396,6 @@ place the agent is actually operated from.
 
 ### Changed
 
-- **Organize sessions is now Manage Sessions, and works like Explorer.** The
-  window and its button are named Manage Sessions / Manage.... While
-  dragging, the pointer carries the session (or "3 sessions"), the target
-  folder is highlighted, a closed folder opens after a short hover and the
-  tree scrolls at its edges. Folders can be dragged into other folders, after
-  a confirmation. A right click on the sessions offers Start Sessions, Move
-  to..., Copy to..., Rename..., Clone (`name-1`, `name-2`, ...), Delete and
-  Select All; on the tree New folder..., Rename... and Delete. Tab into the
-  session list shows the focus at once, and an empty folder's list reads
-  "No sessions in this folder".
 - **kageant answers `-h`, `-help` and `--help`** with its actual options
   instead of silently starting. The PGP-fingerprints box now presents
   upstream PuTTY's master keys as the historic information they are, rather

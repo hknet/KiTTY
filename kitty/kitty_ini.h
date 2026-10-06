@@ -250,10 +250,17 @@ char default_init_file_content[] =
 ;    key, read the same way. It keeps session files apart from other files in\n\
 ;    the folder. The list shows the names without it; a session file without\n\
 ;    it is still listed and gets it on its next save. Changing it in\n\
-;    Application > Config Window > Session Panel offers to rename the existing\n\
-;    files. Also the file type registered for double-clicked session files\n\
-;    (.ktx when empty). Folder store only. Default: none.\n\
+;    Application > KiTTY++ Settings > Storage & Backup offers to rename the\n\
+;    existing files. Changed here by hand, the configuration window puts up a\n\
+;    question at the next start: rename the session files to it? (Yes\n\
+;    renames, No keeps the names and the question does not come back.) Also the file type\n\
+;    registered for double-clicked session files (.ktx when empty).\n\
+;    Folder store only. Default: none.\n\
 ;fileextension=\n\
+\n\
+; fileextensionapplied: written by KiTTY - the ending the session files were\n\
+;    last renamed to, or the rename was declined for.\n\
+;fileextensionapplied=\n\
 \n\
 ; sshhostkeys: the folder store's host-key folder. Default (empty): the\n\
 ;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings\n\
@@ -262,13 +269,16 @@ char default_init_file_content[] =
 \n\
 ; hostkeyextension: an ending added to every host-key file name in the folder\n\
 ;    store, for example .khk (a dot is put in front if missing) - old KiTTY's\n\
-;    key. When it is set or changed, the host-key files are renamed to carry it\n\
-;    once, at the next start; a file arriving later without it is renamed when\n\
-;    its host is first used. Default: none.\n\
+;    key. Set in Application > KiTTY++ Settings > Storage & Backup, or here:\n\
+;    changed here by hand, the configuration window puts up a question at the\n\
+;    next start: rename the host-key files to it? (one question with the\n\
+;    session files'). After No, host keys under an old ending are not read.\n\
+;    A file arriving later without it is renamed when its host is first\n\
+;    used. Default: none.\n\
 ;hostkeyextension=\n\
 \n\
 ; hostkeyextensionapplied: written by KiTTY - the ending the host-key files\n\
-;    were last renamed to.\n\
+;    were last renamed to, or the rename was declined for.\n\
 ;hostkeyextensionapplied=\n\
 \n\
 ; sessionsuffix, keysuffix: the names 0.85.1.13 used for fileextension and\n\
@@ -1149,6 +1159,12 @@ char default_init_file_content[] =
 ;    check. Two launchers of the SAME install still cannot both arm: the\n\
 ;    arming refuses a second holder, and that one exits like any duplicate.\n\
 ;alreadyRunCheck=yes\n\
+\n\
+; dblclick: what a double click on the launcher's tray icon opens - config\n\
+;    (a new configuration window, the default) or manage (Manage Sessions\n\
+;    alone, as \"kitty.exe -manage\" opens it). Read at each double click.\n\
+;    Set in Application > KiTTY++ Settings > Launcher.\n\
+;dblclick=config\n\
 \n\
 ; classname: override the Win32 window class the launcher registers and\n\
 ;    looks for. Only worth setting to keep two KiTTY installations from\n\

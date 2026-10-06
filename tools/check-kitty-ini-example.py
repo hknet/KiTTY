@@ -102,6 +102,8 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "agentlogmaxkb"),
     ("Agent", "agentlogkeep"),
     ("Agent", "agentlogexpiredays"),
+    #   kitty_store_ending_applied(KI_FILEEXTENSIONAPPLIED, ...)  kitty/kitty_store.c
+    ("KiTTY", "fileextensionapplied"),
 }
 
 

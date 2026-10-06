@@ -4797,8 +4797,12 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * beside every panel, so its keys must be free on all of them, and E, X,
      * I and T are each taken somewhere (Esc still works: it is the cancel
      * button). */
+    /* Opened by Manage Sessions' Edit (kitty.exe -manage), the button closes
+     * only this window and Manage Sessions stays: "Close". */
     ssd->cancelbutton = ctrl_pushbutton(s,
-                                        (midsession ? KT_KITTY_CANCEL : KT_KITTY_EXIT),
+                                        (midsession ? KT_KITTY_CANCEL :
+                                         kitty_manage_editing() ? KT_SP_ORG_CLOSE :
+                                         KT_KITTY_EXIT),
                                         (char)(midsession ? 'c' : NO_SHORTCUT),
                                         HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
