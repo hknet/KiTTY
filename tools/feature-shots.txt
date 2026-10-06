@@ -17,24 +17,24 @@ docs/features/img/session_list_classic.png | MANUAL                           | 
 docs/features/img/session_list_rows.png    | MANUAL                           | Session panel, folders as rows (guest gate row shot_sessions_rows)
 docs/features/img/manage_sessions.png      | MANUAL                           | Manage Sessions window (guest gate row shot_manage)
 docs/features/img/config_hotkey.jpg        | Session/Startup                  | launcher global hotkey
-docs/features/img/config_workplace.jpg     | Connection/Proxy/Workplace       | workplace proxy mode switch
+docs/features/img/config_workplace.jpg     | Application/Workplace Proxy      | workplace proxy mode switch
 docs/features/img/config_rutty.jpg         | Session/Scripting                | login script (RuTTY) panel
 docs/features/img/config_hyperlinks.jpg    | Window/Hyperlinks                | URL hyperlink options
-docs/features/img/config_password.jpg      | Connection/Data                  | auto-login password field
-docs/features/img/config_autocommand.jpg   | Connection/Data                  | auto-command after login (same panel as the password - curation may prefer one image)
+docs/features/img/config_password.jpg      | Connection/Login                 | auto-login password field
+docs/features/img/config_autocommand.jpg   | Connection/Login                 | auto-command after login (same panel as the password - curation may prefer one image)
 docs/features/img/config_forcecrlf.jpg     | Terminal/Keyboard                | Enter sends CR LF
 docs/features/img/config_icon.jpg          | Window/Title                     | per-session icon chooser (the Title & Icon leaf)
 docs/features/img/config_sendtotray.jpg    | Window/Behaviour                 | send-to-tray options
 docs/features/img/config_transparency.jpg  | Window/Appearance/Background     | transparency options (the Background leaf)
 docs/features/img/config_winscp_integration.jpg | Connection/SSH/WinSCP          | WinSCP integration panel (KSCP has its own panel now)
 docs/features/img/config_zmodem.jpg        | Connection/ZModem                | ZModem transfer options
-docs/features/img/config_proxychoice.jpg   | Connection/Proxy                 | named-proxy choice droplist
-docs/features/img/config_proxyeditor.png   | MANUAL                           | the named-proxy editor is its own window, not a panel
-docs/features/img/menu_shortcuts.jpg       | MANUAL                           | terminal window menu
-docs/features/img/ex_launcher.jpg          | MANUAL                           | the tray launcher menu
-docs/features/img/config_kittygen.jpg      | MANUAL                           | kittygen, not the config box
-docs/features/img/ex_kageant.jpg           | MANUAL                           | kageant key list
-docs/features/img/StdoutToClipboard.png    | MANUAL                           | terminal menu scene
-docs/features/img/ex_protected.jpg         | MANUAL                           | protected-terminal scene
-docs/features/img/ex_fonts.jpg             | MANUAL                           | terminal font scene
-docs/features/img/ex_background.jpg        | MANUAL                           | terminal background-image scene
+docs/features/img/config_proxychoice.jpg   | Session                          | named-proxy choice droplist (Proxy override options, on the Session panel)
+docs/features/img/config_proxyeditor.png   | MANUAL                           | Named proxy editor (guest gate row shot_scene_proxyeditor)
+docs/features/img/menu_usercommands.png    | MANUAL                           | User commands with their Ctrl+Shift shortcuts in the terminal menu (guest gate row shot_scene_usercommands)
+docs/features/img/ex_launcher.png          | MANUAL                           | Session launcher: the tray menu with a folder open (guest gate row shot_scene_launcher)
+docs/features/img/config_kittygen.png      | MANUAL                           | kittygen with an Ed25519 key loaded (guest gate row shot_scene_kittygen)
+docs/features/img/ex_kageant.png           | MANUAL                           | kageant key list with a key loaded (guest gate row shot_scene_kageant)
+docs/features/img/StdoutToClipboard.png    | MANUAL                           | Remote-controlled printing to the Windows clipboard (guest gate row shot_scene_printclip)
+docs/features/img/ex_protected.png         | MANUAL                           | A protected terminal: (PROTECTED) in its title (guest gate row shot_scene_protected)
+docs/features/img/ex_fonts.png             | MANUAL                           | Font Up / Font Down, Invert colours, Black on white in the terminal menu (guest gate row shot_scene_fonts)
+docs/features/img/ex_background.png        | MANUAL                           | A terminal over a background image (guest gate row shot_scene_background)

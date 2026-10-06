@@ -13,11 +13,14 @@ PuTTY core (≈1,300 upstream commits newer than KiTTY's original 0.76b base).
 
 A terminal session with a clickable, underlined hyperlink:
 
-<a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="600" alt="KiTTY terminal with a clickable, underlined URL"></a>
+<a href="screenshots/terminal.png"><img src="screenshots/terminal.png" width="641" height="151" alt="KiTTY++ terminal with a clickable, underlined URL"></a>
 
-The configuration of the GPU-Renderer
+The configuration of the GPU-Renderer, in the light and the dark theme:
 
-<img width="420" alt="KiTTY++ GPU-Renderer" src="https://github.com/user-attachments/assets/b1bdcae0-ea23-4458-a77f-d393c2210fca" />
+<p>
+<a href="screenshots/renderer_light.png"><img src="screenshots/renderer_light.png" width="49%" alt="KiTTY++ GPU-Renderer settings, light theme"></a>
+<a href="screenshots/renderer_dark.png"><img src="screenshots/renderer_dark.png" width="49%" alt="KiTTY++ GPU-Renderer settings, dark theme"></a>
+</p>
 
 ---
 
@@ -102,7 +105,7 @@ verified — reports welcome.
 > (`Production\Web\web01`), in the registry and in the portable folder store alike - a
 > session folder can live in Git. See [`FEATURES.md`](FEATURES.md#sessions-filter-folders).
 >
-> ![Manage Sessions](screenshots/manage_sessions.png)
+> <img src="screenshots/manage_sessions.png" width="728" height="536" alt="Manage Sessions">
 
 > 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
 > drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote

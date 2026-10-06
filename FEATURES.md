@@ -118,7 +118,7 @@ If you manage a large number of saved sessions, KiTTY++ lets you organize them i
 
 **How to enable:** Automatic in KiTTY++ mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. To create a folder, pick the **`<new folder...>`** entry at the top of the dropdown, type the name, and click *New folder*. To rename a folder, select it, type the new name over it, and click *Rename* — the button renames itself. The sessions in it move with it. Deleting a folder that holds sessions puts up the question where they go - the root (preselected) or any other folder - rather than deleting them. Sessions that are in no folder live in the root list, shown as **All sessions (root)** — that is not a folder and cannot be deleted, but you can rename what it is called: select it, type your own name over the label, and the button changes to *Rename* to confirm what will happen. Typing the built-in name back restores it. The new name is cosmetic, so no session or setting is moved or changed by it (it is stored as `RootFolderLabel`, in the registry or in kitty.ini's `[KiTTY]` section depending on your save mode). To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. **Ctrl+G** does the same but searches *everywhere*: it first drops the folder filter back to the root list, so the search covers every saved session instead of only the selected folder. Nothing is loaded, moved or re-filed by it — only the folder filter changes. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
 
-![Sessions filter (folders): the folder dropdown on Production\Web, with web02 loaded](docs/features/img/session_list_classic.png)
+<img src="docs/features/img/session_list_classic.png" width="585" height="432" alt="Sessions filter (folders): the folder dropdown on Production\Web, with web02 loaded">
 
 *See also: [How session folders work (PDF)](docs/features/kitty-folders_list_feature.pdf)*
 
@@ -136,7 +136,7 @@ no folder — the rest are reached through their folder — which is the differe
 you will notice first, because the classic root list shows everything and marks
 the filed ones in brackets.
 
-![Folder navigation mode: the root lists its folders as rows, then the sessions in no folder](docs/features/img/session_list_rows.png)
+<img src="docs/features/img/session_list_rows.png" width="585" height="432" alt="Folder navigation mode: the root lists its folders as rows, then the sessions in no folder">
 
 - **Create a folder:** type the name in the session-name box and press
   **New folder**, which sits beside *Save*. No arming step, and creating a
@@ -279,7 +279,7 @@ sessions on after a confirmation. Sessions dragged from the list onto it take
 the tag. Del or *Remove from Tag* takes it off, after a confirmation. The
 window reopens on the last tag.
 
-![Manage Sessions](docs/features/img/manage_sessions.png)
+<img src="docs/features/img/manage_sessions.png" width="728" height="536" alt="Manage Sessions">
 
 **Arrange.** Sessions saved by an older version are filed by their `Folder=`
 value and keyed by their bare name. *Arrange...* moves each of them to its
@@ -400,7 +400,7 @@ letter with no command behind it is left alone, and an explicit binding in
 `eventlog={CONTROL}{SHIFT}L` without it being swallowed. To turn the whole
 mechanism off, set `shortcuts=no` in the `[KiTTY]` section of `kitty.ini`.
 
-![Shortcuts for pre-defined commands](docs/features/img/menu_shortcuts.jpg)
+<img src="docs/features/img/menu_usercommands.png" width="672" height="601" alt="User commands with their Ctrl+Shift shortcuts in the terminal menu">
 
 ### Session launcher
 
@@ -420,9 +420,9 @@ You can keep individual sessions out of the launcher menu while leaving them in 
 
 For favourite sessions, you can assign a **global hotkey** in the session's **Session → Startup** panel. The hotkey is registered only while `kitty.exe -launcher` is running; when you save a session, a running launcher is notified and refreshes its registered hotkeys automatically. The same panel includes a check button that reports whether the combination is currently available or already reserved by Windows/another application — and it names any saved session already holding the combination. When two sessions end up claiming one hotkey anyway (an import, save), the launcher balloons at startup naming who won; clicking the balloon opens the winner's settings.
 
-![Global hotkey](docs/features/img/config_hotkey.jpg)
+<img src="docs/features/img/config_hotkey.jpg" width="585" height="497" alt="Global hotkey">
 
-![Session launcher](docs/features/img/ex_launcher.jpg)
+<img src="docs/features/img/ex_launcher.png" width="599" height="300" alt="Session launcher: the tray menu with a folder open">
 
 ### Automatic logon script
 
@@ -460,7 +460,7 @@ secret123
 :: the line above waits for the server's "password:"
 ```
 
-![Automatic logon script (RuTTY patch)](docs/features/img/config_rutty.jpg)
+<img src="docs/features/img/config_rutty.jpg" width="585" height="497" alt="Automatic logon script (RuTTY patch)">
 
 ### URL hyperlinks
 
@@ -474,7 +474,7 @@ Programs that send OSC 8 hyperlinks (e.g. `ls --hyperlink` or Textual and Rich a
 
 **How to enable:** Configuration > **Window > Hyperlinks**: **Detect URLs in the output (regex)** (`HyperlinkScan`) and **Allow OSC 8 hyperlinks** (`HyperlinkOSC8`), per session, both on; **Show the target of OSC 8 hyperlinks on hover** (`HyperlinkPreview`). Also **Underline hyperlinks**, whether Ctrl is required to activate links, browser and optional hand cursor on hover. **Confirmation before opening a link** (`HyperlinkConfirm`) chooses Always, When the link looks risky (the default) or Only for non-web links. Ctrl+click a URL in the terminal to open it by default.
 
-![URL hyperlinks](docs/features/img/config_hyperlinks.jpg)
+<img src="docs/features/img/config_hyperlinks.jpg" width="585" height="497" alt="URL hyperlinks">
 
 ---
 
@@ -498,7 +498,7 @@ KiTTY++ can log you in automatically to telnet, SSH-1 and SSH-2 servers by stori
 
 **How to enable:** Configuration > **Connection > Login > Auto-login password**. It is stored with the session and sent automatically at SSH login. Tick **Show password** beside the field to reveal the stored value. As of 0.84.1.38 the password is **encrypted at rest with Windows DPAPI** (tied to your Windows account), rather than stored reversibly; existing/legacy passwords still load and are re-encrypted on the next save. NOTE: a one-time security warning still appears when you set one. DPAPI is machine-bound (it defeats offline/cross-user theft, not same-user malware, and does not move to another PC) — for the strongest security, prefer SSH public-key auth (kageant). In **portable mode** you can additionally protect it with a **master password** for cross-machine portability, which — unlike DPAPI — cannot be recovered if you forget it (see *Portable mode*). The master password is required **once per running KiTTY**: unlocking it once shares it with the session windows KiTTY opens next — from the config box, *New Session*, *Duplicate Session*, or the tray launcher — so you are not prompted again for each window. The unlock is handed only to KiTTY's own child processes (through an inherited handle, wrapped in memory with Windows CryptProtectMemory); the saved files stay master-password-encrypted at rest.
 
-![Automatic password](docs/features/img/config_password.jpg)
+<img src="docs/features/img/config_password.jpg" width="585" height="497" alt="Automatic password">
 
 ### Passwords in memory
 
@@ -524,8 +524,8 @@ When you store private keys in KiTTY's key agent (kageant), you can require an e
 
 **How to enable:** For all keys at once, tick **"Ask confirmation before each key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt naming the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen the **Add confirmation** button beside the comment field appends it for you), then load it into **kageant.exe** — only that key requires confirmation. Or from **kitty.ini**: `[Agent] askconfirmation=` with the classic three states — `yes` (every use), `auto` (per-key comments only; the default), `no` (never — also silences the per-key prompts, for automation). kageant finds the ini on its own (`KITTY_INI_FILE`, else next to the exe, else `%APPDATA%`); when that file sets `[KiTTY] savemode=file` or `dir` — or, with no savemode line, when a portable layout (a `Sessions` folder or `KiTTYState` file) sits beside it — the ini is the authoritative store and the tray toggle writes back to it, so a **portable** kageant never touches the registry; the key-list window and the tray tooltip show *kitty.ini mode* when this is in effect. The related **“Notify when a key is used”** tray balloon (default on) is controllable the same way with `[Agent] messageonkeyusage=yes/no`.
 
-![Private-key usage confirmation](docs/features/img/config_kittygen.jpg)
-![Private-key usage confirmation](docs/features/img/ex_kageant.jpg)
+<img src="docs/features/img/config_kittygen.png" width="653" height="590" alt="kittygen with an Ed25519 key loaded">
+<img src="docs/features/img/ex_kageant.png" width="732" height="488" alt="kageant key list with a key loaded">
 
 
 ### kageant — Windows OpenSSH agent integration
@@ -717,11 +717,11 @@ Either way, agent authentication to the jump host follows the *Attempt authentic
 
 **Multiple jump hops.** There is no comma-separated jump list; chain instead. Because a hand-typed proxy host that names a saved session inherits *that* session's proxy too, you can reach `A → B → C` by giving session C a proxy whose host is the saved session B, whose own proxy points at A. The chain is **bounded at 5 hops** so that a chain which loops back on itself fails with an error naming the limit instead of hanging; raise or lower it with `[KiTTY] proxychainmax=` in kitty.ini. Each link is written to the Event Log as `proxy chain link N: host port`.
 
-![Named proxy editor](docs/features/img/config_proxyeditor.png)
+<img src="docs/features/img/config_proxyeditor.png" width="585" height="468" alt="Named proxy editor">
 
 **How to enable:** The dropdown appears automatically once you have any named proxy defined — click **Edit** beside it (which opens the editor on the definition currently selected) or the button on the Connection/Proxy panel to add one. Pick it from the Session panel to override the next connection only, or use **Load into this window** on the Connection/Proxy panel to make it part of the session; that one requires a confirmation first, naming everything it replaces (including the username and password), and warns in red when the session has *Save settings on exit* enabled and the change would therefore persist without an explicit Save. To force the dropdown always on or off, set `[ConfigBox]` `proxyselection=yes` (or `no`) in kitty.ini; the default is `auto`.
 
-![Proxy choice](docs/features/img/config_proxychoice.jpg)
+<img src="docs/features/img/config_proxychoice.jpg" width="585" height="497" alt="Proxy choice">
 
 ### Workplace proxy mode
 
@@ -739,7 +739,7 @@ Workplace proxy mode is that switch. Pick one of your named proxies and the time
 
 **How to enable:** define at least one named proxy (above), then *Application → Workplace Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
 
-![Workplace proxy mode](docs/features/img/config_workplace.jpg)
+<img src="docs/features/img/config_workplace.jpg" width="585" height="497" alt="Workplace proxy mode">
 
 ### SSH handler (URL/OS integration)
 
@@ -795,7 +795,7 @@ Three `kitty.ini` `[KiTTY]` settings fine-tune the timing: **initdelay** — sec
 
 **How to enable:** Configuration > **Connection > Login > Auto-command**: a command sent to the server automatically right after login. The delay before the first send is `initdelay` (seconds, default 2.0) in the kitty.ini `[KiTTY]` section — raise it for hosts that are slow to present their prompt; the delay between subsequent lines is `commanddelay`.
 
-![Automatic command](docs/features/img/config_autocommand.jpg)
+<img src="docs/features/img/config_autocommand.jpg" width="585" height="497" alt="Automatic command">
 
 ### Force CR/LF on the Enter key
 
@@ -803,7 +803,7 @@ By default, pressing Enter sends a single carriage return to the remote host. In
 
 **How to enable:** Tick **Terminal > 'Enter key sends CR LF'** (session key `EnterSendsCrLf`). When on, pressing Enter sends CR+LF instead of CR only — for servers that need both.
 
-![Force CR/LF on the Enter key](docs/features/img/config_forcecrlf.jpg)
+<img src="docs/features/img/config_forcecrlf.jpg" width="585" height="497" alt="Force CR/LF on the Enter key">
 
 ### Run a locally saved script on a remote session
 
@@ -849,7 +849,7 @@ KiTTY can route a session's terminal output straight into the Windows clipboard.
 
 **How to enable:** Pick **'Windows clipboard'** as the printer in **Terminal > printing** (or tick *Print to clipboard*). Then send terminal output to the clipboard with the ANSI printer-controller sequence: `printf '\e[5i'; cat file; printf '\e[4i'`.
 
-![Standard output to the clipboard](docs/features/img/StdoutToClipboard.png)
+<img src="docs/features/img/StdoutToClipboard.png" width="585" height="432" alt="Remote-controlled printing to the Windows clipboard">
 
 ### Restricted process ACL (-restrict-acl)
 
@@ -955,7 +955,7 @@ KiTTY++ lets you shield a session against accidental or unintended keystrokes. W
 
 **How to enable:** System menu **Protect** — locks the keyboard so accidental keystrokes can't reach the session.
 
-![Protection against keyboard input](docs/features/img/ex_protected.jpg)
+<img src="docs/features/img/ex_protected.png" width="607" height="156" alt="A protected terminal: (PROTECTED) in its title">
 
 ### Word navigation modifier
 
@@ -1045,7 +1045,7 @@ KiTTY++ lets you assign a distinct window icon to each saved session, so you can
 
 **How to enable:** Configuration > **Window > Title & Icon**: choose a per-session icon (from the embedded icon set or a .ico file).
 
-![An icon for each session](docs/features/img/config_icon.jpg)
+<img src="docs/features/img/config_icon.jpg" width="585" height="497" alt="An icon for each session">
 
 ### Send to tray
 
@@ -1063,7 +1063,7 @@ With many windows, one tray icon each gets crowded, so where a window goes is a 
 
 A window hidden into the launcher shows itself again if that launcher is killed or crashes, after the delay set by `[Launcher] unhideafter`, like every window the launcher hid.
 
-![Send to tray](docs/features/img/config_sendtotray.jpg)
+<img src="docs/features/img/config_sendtotray.jpg" width="585" height="497" alt="Send to tray">
 
 ### One confirmation for many windows
 
@@ -1081,7 +1081,7 @@ KiTTY++ lets you make a terminal window see-through, so you can watch what's hap
 
 **How to enable:** Configuration > **Window > Appearance > Background** (set the level), and the system-menu **Transparency +/-** items to adjust it live. `0` is fully opaque and is the default for a new session; `255` is as see-through as it goes. Set a session to `-1` to lock it opaque — the menu entries are then not offered and the keyboard shortcuts decline, which is what you want when an accidental **CTRL+DOWN** must never dim that window. `transparency=no` in the kitty.ini `[KiTTY]` section removes the feature altogether, for every session. With Direct2D, a window that may be transparent is layered from its creation; one opened opaque stays opaque, and a transparency change applies to the next window. `/transparency` acts on the terminal window.
 
-![Transparency](docs/features/img/config_transparency.jpg)
+<img src="docs/features/img/config_transparency.jpg" width="585" height="497" alt="Transparency">
 
 ### Roll-up
 
@@ -1101,11 +1101,11 @@ Always on top (formerly "Always visible") keeps a KiTTY++ window in the foregrou
 
 ### Font management
 
-KiTTY++ adds a **Font settings** option to the main menu that lets you adjust the terminal's appearance on the fly. From here you can increase or decrease the font size, switch to negative colors, and toggle between black-on-white and white-on-black backgrounds. Font size can also be changed quickly by holding **CTRL** and scrolling the mouse wheel.
+KiTTY++ puts font and colour controls into the terminal's menu, under **Window**: **Font Up** and **Font Down** change the font size on the fly, **Invert colours** swaps the text and background colours, and **Black on white** switches to a light screen. Font size can also be changed quickly by holding **CTRL** and scrolling the mouse wheel.
 
-**How to enable:** System menu **Font Up / Font Down** to resize the terminal font on the fly.
+**How to enable:** terminal menu > **Window** > **Font Up / Font Down** to resize the terminal font on the fly.
 
-![Font management](docs/features/img/ex_fonts.jpg)
+<img src="docs/features/img/ex_fonts.png" width="660" height="642" alt="Font Up / Font Down, Invert colours, Black on white in the terminal menu">
 
 ### Line spacing
 
@@ -1153,7 +1153,7 @@ KiTTY++ can display a picture behind your terminal text, giving each session win
 
 **How to enable:** Add `bgimage=yes` to `[KiTTY]` in kitty.ini (the key is `bgimage`, not `backgroundimage`), then configure **Window > Appearance > Background** (image file, opacity, slideshow).
 
-![Background image](docs/features/img/ex_background.jpg)
+<img src="docs/features/img/ex_background.png" width="607" height="246" alt="A terminal over a background image">
 
 ### Terminal renderer (Direct2D)
 
@@ -1327,7 +1327,7 @@ KiTTY++ lets you transfer files without opening a separate program, reusing the 
 
 **How to enable:** kscp ships beside kitty.exe and is found at every start; the paths to WinSCP and FileZilla, the transfer port, the global download and upload folders and the notification switch are on **Application > KiTTY++ Settings > Transfers & Tools**. Per session: each tool has its own **Protocol:** and **Port:** on its own panel — kscp SFTP or SCP on **Connection > SSH > KSCP** (with the kscp options and the drag-and-drop switch), WinSCP's full list on **Connection > SSH > WinSCP** and FileZilla's four on **Connection > SSH > FileZilla**, each beside that tool's own options. An empty **Port:** shows the port in use in grey: the protocol's standard port — for SFTP and SCP the session's own port when the session is SSH, 22 otherwise, and for kscp the global transfer port before that; the fields take digits only. Where files go is on **Connection > File-Transfer-Settings**, and so is **Target override ([user@]hostname[:port]):** in its **Remote target** group (`SFTPConnect`) — the host WinSCP and FileZilla are pointed at instead of the session's own, with a port written into it winning over either tool's **Port:**.
 
-![kscp, WinSCP and FileZilla integration](docs/features/img/config_winscp_integration.jpg)
+<img src="docs/features/img/config_winscp_integration.jpg" width="585" height="497" alt="kscp, WinSCP and FileZilla integration">
 
 ### Binary compression
 
@@ -1411,7 +1411,7 @@ KiTTY integrates ZModem support (originally from LePuTTY) so you can transfer fi
 
 **How to enable:** On by default — set the rz/sz helper paths once for this PC on **Application > KiTTY++ Settings > Transfers & Tools > ZModem** (`rzcommand`, `szcommand` in `[KiTTY]`) and the Tools menu offers **ZModem Receive / Upload / Abort** (Receive needs `rz`, Upload needs `sz`; they are configured independently). The session's **Connection > ZModem** panel holds the options only; received files land in the folder set on **Connection > File-Transfer-Settings**. `zmodem=no` in `[KiTTY]` hides the session panel's settings and the menu entries.
 
-![ZModem file transfer](docs/features/img/config_zmodem.jpg)
+<img src="docs/features/img/config_zmodem.jpg" width="585" height="497" alt="ZModem file transfer">
 
 ### File transfers over the session (kitten transfer)
 
@@ -1448,7 +1448,7 @@ Other popular targets: `opennew=` (new session), `changesettings=`, `fullscreen=
 
 Two of these open KiTTY's *send-text* boxes: `input` (default CTRL+F8) pops up a one-line box and `inputm` (default SHIFT+F8, with CTRL+SHIFT+F8 as a fixed alias) a resizable multiline box pre-filled from the clipboard. Text is composed locally and sent to the terminal only when you confirm (OK, or SHIFT+RETURN in the multiline box; if you select part of the text, only the selection is sent) — handy on slow links, and for sending a multi-line snippet as one block. In the one-line box, a line starting with `/` is a KiTTY *internal command* executed locally instead of being sent — type **`/help`** for the full list; e.g. `/size` and `/wintitle` toggle the title-bar decorations at runtime, `/save` writes the live settings back to this window's saved session, `/savenew <name>` saves them as a new session and switches the window to it. The complete reference for every internal command — arguments, persistence, sharp edges — is in [docs/COMMANDS.md](docs/COMMANDS.md).
 
-![Menu key shortcuts definition](docs/features/img/menu_shortcuts.jpg)
+<img src="docs/features/img/menu_usercommands.png" width="672" height="601" alt="User commands with their Ctrl+Shift shortcuts in the terminal menu">
 
 #### The shortcut editor
 
