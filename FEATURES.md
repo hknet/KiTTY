@@ -118,7 +118,7 @@ If you manage a large number of saved sessions, KiTTY++ lets you organize them i
 
 **How to enable:** Automatic in KiTTY++ mode: the Session panel shows a **Folder** dropdown that filters the saved-session list to one folder, plus New folder / Delete folder controls. To create a folder, pick the **`<new folder...>`** entry at the top of the dropdown, type the name, and click *New folder*. To rename a folder, select it, type the new name over it, and click *Rename* — the button renames itself. The sessions in it move with it. Deleting a folder that holds sessions puts up the question where they go - the root (preselected) or any other folder - rather than deleting them. Sessions that are in no folder live in the root list, shown as **All sessions (root)** — that is not a folder and cannot be deleted, but you can rename what it is called: select it, type your own name over the label, and the button changes to *Rename* to confirm what will happen. Typing the built-in name back restores it. The new name is cosmetic, so no session or setting is moved or changed by it (it is stored as `RootFolderLabel`, in the registry or in kitty.ini's `[KiTTY]` section depending on your save mode). To search within the active folder filter, type in the Saved Sessions field; Up/Down moves into the filtered list and Enter loads or starts the highlighted visible session. Press **Ctrl+F** anywhere in the config window — from any settings panel, or right after starting a session with Enter — to jump back to the Session panel with the search field focused and its content selected, so just typing starts a new search. **Ctrl+G** does the same but searches *everywhere*: it first drops the folder filter back to the root list, so the search covers every saved session instead of only the selected folder. Nothing is loaded, moved or re-filed by it — only the folder filter changes. The two buttons differ in where the session opens: clicking **Open** opens the chosen session in the current window (the config box closes), while **Start** — like pressing Enter — starts it in a new window and keeps the config box open for launching the next one. If you prefer the classic behaviour where typing never narrows the list, set `filter=no` in the kitty.ini `[ConfigBox]` section.
 
-![Sessions filter (folders)](docs/features/img/config_folder.jpg)
+![Sessions filter (folders): the folder dropdown on Production\Web, with web02 loaded](docs/features/img/session_list_classic.png)
 
 *See also: [How session folders work (PDF)](docs/features/kitty-folders_list_feature.pdf)*
 
@@ -136,7 +136,7 @@ no folder — the rest are reached through their folder — which is the differe
 you will notice first, because the classic root list shows everything and marks
 the filed ones in brackets.
 
-![Folder navigation mode](docs/features/img/config_folder_nav.jpg)
+![Folder navigation mode: the root lists its folders as rows, then the sessions in no folder](docs/features/img/session_list_rows.png)
 
 - **Create a folder:** type the name in the session-name box and press
   **New folder**, which sits beside *Save*. No arming step, and creating a
