@@ -2946,6 +2946,9 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
                 ctrl->handler(ctrl, dp, dp->data, EVENT_VALCHANGE);
             } else if (HIWORD(wParam) == CBN_EDITCHANGE) {
                 ctrl->handler(ctrl, dp, dp->data, EVENT_VALCHANGE);
+            } else if (HIWORD(wParam) == CBN_DROPDOWN) {
+                if (ctrl->editbox.dropdown)
+                    ctrl->editbox.dropdown(ctrl, dp);
             } else if (HIWORD(wParam) == CBN_KILLFOCUS) {
                 ctrl->handler(ctrl, dp, dp->data, EVENT_REFRESH);
             }

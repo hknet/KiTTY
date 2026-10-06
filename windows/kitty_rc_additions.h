@@ -735,3 +735,16 @@
 #ifndef IDC_SOD_WARN
 #define IDC_SOD_WARN 1434
 #endif
+/* Manage Sessions' tag pane (hknet/KiTTY#60) */
+#ifndef IDC_SO_TAGLABEL
+#define IDC_SO_TAGLABEL 1440
+#endif
+#ifndef IDC_SO_TAGCOMBO
+#define IDC_SO_TAGCOMBO 1441
+#endif
+#ifndef IDC_SO_LAUNCH
+#define IDC_SO_LAUNCH 1442
+#endif
+#ifndef IDC_SO_TAGLIST
+#define IDC_SO_TAGLIST 1443
+#endif

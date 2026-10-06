@@ -260,6 +260,7 @@ dlgcontrol *ctrl_editbox(struct controlset *s, const char *label,
     c->editbox.multiline = false;
     c->editbox.lines = 1;
     c->editbox.readonly = false;
+    c->editbox.dropdown = NULL;
     c->context2 = context2;
     return c;
 }
@@ -282,6 +283,7 @@ dlgcontrol *ctrl_editbox_multiline(struct controlset *s, const char *label,
     c->editbox.multiline = true;
     c->editbox.lines = (lines > 0 ? lines : 1);
     c->editbox.readonly = readonly;
+    c->editbox.dropdown = NULL;
     c->context2 = context2;
     return c;
 }
@@ -300,6 +302,7 @@ dlgcontrol *ctrl_combobox(struct controlset *s, const char *label,
     c->editbox.multiline = false;
     c->editbox.lines = 1;
     c->editbox.readonly = false;
+    c->editbox.dropdown = NULL;
     c->context2 = context2;
     return c;
 }

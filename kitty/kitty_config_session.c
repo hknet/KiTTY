@@ -31,6 +31,7 @@
 #include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
 #include "kitty_sessionrekey.h"  /* moving a session with what hangs off its name */
 #include "kitty_sessorg.h"       /* Organize sessions, Arrange, the folder-delete box */
+#include "kitty_tags.h"          /* Session > Startup, "Session Tags" (hknet/KiTTY#60) */
 #include "kitty_dlgbox.h"        /* the modeless info box */
 #include "kitty_commun.h"
 #include "kitty.h"
@@ -4065,6 +4066,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 kitty_notify_launcher_sessions_changed();
             }
         } else if (ctrl == ssd->okbutton) {
+            /* Enter in Session > Startup's "New tag:" adds the tag. */
+            if (kitty_tags_enter(ctrl, dlg, conf))
+                return;
             /* Enter with a folder row highlighted steps into it, exactly as a
              * double-click does. This has to come before the keyboard-hub flow
              * below, which would otherwise try to launch the highlighted row -
@@ -5654,14 +5658,20 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
         kitty_broadcast_key_controls(b, s);
     }
 
-#ifdef MOD_LAUNCHER
     /* KiTTY: the Session/Startup panel - how a session can be STARTED from
-     * outside its own window. Holds the launcher global hotkey, moved here
-     * from Window/Behaviour: a machine-wide launch key is a session-startup
-     * concern, and Behaviour had grown past the dialog's command buttons. */
+     * outside its own window. Its tags (hknet/KiTTY#60) start it from
+     * Manage Sessions with the others of a tag. */
     if (!GetPuttyFlag()) {
         ctrl_settitle(b, "Session/Startup",
                       KT_STARTUP_OPTIONS_CONTROLLING_HOW_THIS_SESSION);
+        s = ctrl_getset(b, "Session/Startup", "tags", KT_STARTUP_TAGS_GROUP);
+        kitty_tags_controls(s);
+    }
+#ifdef MOD_LAUNCHER
+    /* The launcher global hotkey, moved here from Window/Behaviour: a
+     * machine-wide launch key is a session-startup concern, and Behaviour
+     * had grown past the dialog's command buttons. */
+    if (!GetPuttyFlag()) {
         s = ctrl_getset(b, "Session/Startup", "launcher_hotkey",
                         KT_STARTUP_KITTY_LAUNCHER_GLOBAL_HOTKEY);
         ctrl_checkbox(s, KT_STARTUP_ENABLE_GLOBAL_HOTKEY, NO_SHORTCUT,

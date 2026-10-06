@@ -725,6 +725,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_migrate.c
   ${KITTY_DIR}/kitty_sessionrekey.c   # KiTTY: move/rename a session and what hangs off its name (#55)
   ${KITTY_DIR}/kitty_sessorg.c   # KiTTY: Organize sessions, Arrange, the folder-delete box (#55)
+  ${KITTY_DIR}/kitty_tags.c   # KiTTY: session tags - Session > Startup, Manage Sessions' tag pane (#60)
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)

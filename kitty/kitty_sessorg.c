@@ -45,6 +45,7 @@
 #include "kitty_auxpos.h"        /* the window's own place and size, per monitor layout */
 #include "kitty_inikeys.h"       /* KR_DLGPOS_MANAGE: its name there */
 #include "kitty_launcher.h"      /* RunConfig: -manage's Edit starts a session in a new process */
+#include "kitty_tags.h"          /* the tag pane (hknet/KiTTY#60) */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -109,10 +110,13 @@ static void so_report_rewritten(HWND owner, const char *rewritten)
 }
 
 /* Every session identity and, for one stored by its bare name, its Folder
- * value (NULL for a path session: its path says where it is). */
+ * value (NULL for a path session: its path says where it is). Its tags are
+ * read only when the tag pane first needs them (so_tags_ensure): that is a
+ * read of every session, which a window without a tag chosen never pays. */
 struct so_names {
     char **names;
     char **folders;
+    char **tags;                    /* NULL = not read yet */
     int n;
 };
 static void so_names_load(struct so_names *s)
@@ -121,6 +125,7 @@ static void so_names_load(struct so_names *s)
     kitty_session_folder_cache_clear();
     s->names = kitty_session_names(&s->n);
     s->folders = snewn(s->n > 0 ? s->n : 1, char *);
+    s->tags = NULL;
     for (i = 0; i < s->n; i++)
         s->folders[i] = strchr(s->names[i], '\\') ? NULL :
             kitty_read_session_folder(s->names[i]);
@@ -128,8 +133,12 @@ static void so_names_load(struct so_names *s)
 static void so_names_free(struct so_names *s)
 {
     int i;
-    for (i = 0; i < s->n; i++)
+    for (i = 0; i < s->n; i++) {
         sfree(s->folders[i]);
+        if (s->tags)
+            sfree(s->tags[i]);
+    }
+    sfree(s->tags);
     sfree(s->folders);
     kitty_session_names_free(s->names, s->n);
     memset(s, 0, sizeof(*s));
@@ -720,6 +729,11 @@ struct so_state {
     long gen;                       /* kitty_store_generation() when read */
     RECT rects[lenof(so_anchors)];
     SIZE basesize, minsize;
+    /* the tag pane (hknet/KiTTY#60): the tag chosen ("" = none) and its
+     * sessions; a session drag over that list tags what it carries */
+    HWND tagcombo, taglist;
+    char *tag;
+    int tagdrop;
 };
 
 static struct so_state *so_window = NULL;   /* one Organize window at a time */
@@ -781,6 +795,7 @@ static void so_fill_list(struct so_state *st)
 
 /* Everything from the store again, the same folder shown if it still is. */
 static void so_select_session_add(struct so_state *st, const char *name);
+static void so_fill_tags(struct so_state *st);
 
 static void so_reload(struct so_state *st)
 {
@@ -852,6 +867,9 @@ static void so_reload(struct so_state *st)
         sfree(keepsel[i]);
     }
     sfree(keepsel);
+    /* the tag's sessions, read again only when a tag is chosen */
+    if (st->taglist)
+        so_fill_tags(st);
 }
 
 /* Add the session `name` to the list's selection, if it is there. */
@@ -892,24 +910,355 @@ static void so_select_session(struct so_state *st, const char *name)
     }
 }
 
-/* The selected sessions' identities (snewn'd array of borrowed strings). */
-static char **so_selected(struct so_state *st, int *n)
+/* The sessions of a list's rows - the selected ones, or all with flags
+ * LVNI_ALL - by identity (snewn'd array of borrowed strings). Both lists of
+ * the window, the folder's and the tag's, keep the index into st->s in each
+ * row's lParam. */
+static char **so_lv_names(struct so_state *st, HWND lv, unsigned flags, int *n)
 {
     int i = -1;
     char **sel = NULL;
     *n = 0;
-    while ((i = ListView_GetNextItem(st->list, i, LVNI_SELECTED)) >= 0) {
+    while ((i = ListView_GetNextItem(lv, i, flags)) >= 0) {
         LVITEMA it;
         memset(&it, 0, sizeof(it));
         it.mask = LVIF_PARAM;
         it.iItem = i;
-        if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+        if (SendMessageA(lv, LVM_GETITEMA, 0, (LPARAM)&it) &&
             it.lParam >= 0 && it.lParam < st->s.n) {
             sel = sresize(sel, *n + 1, char *);
             sel[(*n)++] = st->s.names[it.lParam];
         }
     }
     return sel;
+}
+
+/* The selected sessions of the folder's list. */
+static char **so_selected(struct so_state *st, int *n)
+{
+    return so_lv_names(st, st->list, LVNI_SELECTED, n);
+}
+
+/* ---- the tag pane (hknet/KiTTY#60) ---------------------------------------
+ * The tag chosen in the field above it, and every session carrying it,
+ * whatever folder it is in. The tags are read from the store on the first
+ * need and kept per session in st->s.tags, updated in place by every write
+ * made here. */
+
+static void so_tags_ensure(struct so_state *st)
+{
+    int i;
+    if (st->s.tags)
+        return;
+    st->s.tags = snewn(st->s.n > 0 ? st->s.n : 1, char *);
+    for (i = 0; i < st->s.n; i++)
+        st->s.tags[i] = kitty_session_tags(st->s.names[i]);
+}
+
+/* One session's tags, written to the store and kept here alike. */
+static void so_tags_write(struct so_state *st, const char *name, const char *tags)
+{
+    int i;
+    if (!kitty_session_set_tags(name, tags) || !st || !st->s.tags)
+        return;
+    for (i = 0; i < st->s.n; i++)
+        if (!strcmp(st->s.names[i], name)) {
+            sfree(st->s.tags[i]);
+            st->s.tags[i] = dupstr(tags);
+        }
+}
+
+/* What a row of the tag list shows: the session's folder path and name. */
+static char *so_tag_row_text(struct so_state *st, int i)
+{
+    char *f = so_effective_folder(st->s.names[i], st->s.folders[i]), *t;
+    t = *f ? dupprintf("%s\\%s", f, ksp_leaf(st->s.names[i]))
+           : dupstr(ksp_leaf(st->s.names[i]));
+    sfree(f);
+    return t;
+}
+
+struct so_tag_row { char *text; int idx; };
+static int so_tag_row_cmp(const void *a, const void *b)
+{
+    return stricmp(((const struct so_tag_row *)a)->text,
+                   ((const struct so_tag_row *)b)->text);
+}
+
+static void so_fill_tags(struct so_state *st)
+{
+    struct so_tag_row *rows;
+    int i, n = 0;
+    LVITEMA it;
+    SendMessage(st->taglist, WM_SETREDRAW, FALSE, 0);
+    ListView_DeleteAllItems(st->taglist);
+    if (st->tag && *st->tag) {
+        so_tags_ensure(st);
+        rows = snewn(st->s.n > 0 ? st->s.n : 1, struct so_tag_row);
+        for (i = 0; i < st->s.n; i++)
+            if (strcmp(st->s.names[i], "Default Settings") &&
+                kitty_tags_has(st->s.tags[i], st->tag)) {
+                rows[n].text = so_tag_row_text(st, i);
+                rows[n].idx = i;
+                n++;
+            }
+        if (n > 1)
+            qsort(rows, n, sizeof(*rows), so_tag_row_cmp);
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_TEXT | LVIF_PARAM;
+        for (i = 0; i < n; i++) {
+            it.iItem = i;
+            it.pszText = rows[i].text;
+            it.lParam = rows[i].idx;
+            SendMessageA(st->taglist, LVM_INSERTITEMA, 0, (LPARAM)&it);
+            sfree(rows[i].text);
+        }
+        sfree(rows);
+    }
+    ListView_SetColumnWidth(st->taglist, 0, LVSCW_AUTOSIZE_USEHEADER);
+    SendMessage(st->taglist, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(st->taglist, NULL, TRUE);
+    EnableWindow(GetDlgItem(st->h, IDC_SO_LAUNCH), n > 0);
+}
+
+/* The tag typed or picked: blanks around it do not count. */
+static void so_tag_set(struct so_state *st, const char *text)
+{
+    const char *a = text ? text : "";
+    size_t len;
+    while (*a == ' ' || *a == '\t')
+        a++;
+    len = strlen(a);
+    while (len && (a[len - 1] == ' ' || a[len - 1] == '\t'))
+        len--;
+    sfree(st->tag);
+    st->tag = dupprintf("%.*s", (int)len, a);
+    so_fill_tags(st);
+}
+
+/* The field's list, as it opens: every tag in use. */
+static void so_tag_combo_fill(struct so_state *st)
+{
+    char typed[256], **all = NULL;
+    int i, j, n = 0;
+    so_tags_ensure(st);
+    for (i = 0; i < st->s.n; i++) {
+        int nt;
+        char **v = kitty_tags_split(st->s.tags[i], &nt);
+        for (j = 0; j < nt; j++) {
+            int k, have = 0;
+            for (k = 0; k < n && !have; k++)
+                have = !stricmp(all[k], v[j]);
+            if (!have) {
+                all = sresize(all, n + 1, char *);
+                all[n++] = dupstr(v[j]);
+            }
+        }
+        kitty_tags_free(v, nt);
+    }
+    GetWindowTextA(st->tagcombo, typed, sizeof(typed));
+    SendMessageA(st->tagcombo, CB_RESETCONTENT, 0, 0);
+    for (i = 0; i < n; i++)
+        SendMessageA(st->tagcombo, CB_ADDSTRING, 0, (LPARAM)all[i]);   /* CBS_SORT */
+    SetWindowTextA(st->tagcombo, typed);
+    kitty_tags_free(all, n);
+}
+
+/* The sessions dragged onto the tag list carry the tag from now on. */
+static void so_tag_drop(struct so_state *st)
+{
+    int nsel, i, k;
+    char **sel;
+    if (GetReadOnlyFlag() || !st->tag || !kitty_tag_name_ok(st->tag)) {
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    so_tags_ensure(st);
+    sel = so_selected(st, &nsel);
+    for (k = 0; k < nsel; k++)
+        for (i = 0; i < st->s.n; i++)
+            if (!strcmp(st->s.names[i], sel[k]) &&
+                !kitty_tags_has(st->s.tags[i], st->tag)) {
+                char *t = kitty_tags_add(st->s.tags[i], st->tag);
+                /* so_tags_write replaces st->s.tags[i]: the name stays */
+                so_tags_write(st, st->s.names[i], t);
+                sfree(t);
+            }
+    sfree(sel);
+    so_fill_tags(st);
+    st->gen = kitty_store_generation();     /* written here: no re-read */
+}
+
+/* Remove from Tag, after a confirmation. */
+struct so_untag {
+    char **names;
+    int n;
+    char *tag;
+};
+static void so_untag_free(struct so_untag *u)
+{
+    int i;
+    for (i = 0; i < u->n; i++)
+        sfree(u->names[i]);
+    sfree(u->names);
+    sfree(u->tag);
+    sfree(u);
+}
+static void so_untag_answer(int yes, void *ctx)
+{
+    struct so_untag *u = (struct so_untag *)ctx;
+    struct so_state *st = so_window;
+    int i;
+    if (yes && !GetReadOnlyFlag()) {
+        for (i = 0; i < u->n; i++) {
+            char *now = kitty_session_tags(u->names[i]);
+            char *t = kitty_tags_remove(now, u->tag);
+            if (strcmp(now, t))
+                so_tags_write(st, u->names[i], t);
+            sfree(t);
+            sfree(now);
+        }
+        if (st) {
+            so_fill_tags(st);
+            st->gen = kitty_store_generation();
+        }
+    }
+    so_untag_free(u);
+}
+static void so_untag(struct so_state *st)
+{
+    int nsel, i;
+    char **sel = so_lv_names(st, st->taglist, LVNI_SELECTED, &nsel), *q;
+    struct so_untag *u;
+    if (!nsel || !st->tag || !*st->tag || GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        sfree(sel);
+        return;
+    }
+    u = snew(struct so_untag);
+    u->n = nsel;
+    u->names = snewn(nsel, char *);
+    for (i = 0; i < nsel; i++)
+        u->names[i] = dupstr(sel[i]);
+    u->tag = dupstr(st->tag);
+    q = nsel == 1 ? dupprintf(KT_SP_ORG_UNTAG_ONE_Q, st->tag)
+                  : dupprintf(KT_SP_ORG_UNTAG_Q, st->tag, nsel);
+    if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
+                                      KT_SP_ORG_UNTAG_BTN, KT_SP_ORG_CANCEL,
+                                      so_untag_answer, u))
+        so_untag_free(u);
+    sfree(q);
+    sfree(sel);
+}
+
+/* Launch: every session of the tag; from SO_LAUNCH_CONFIRM on, after a
+ * confirmation (a click there opens that many windows). */
+#define SO_LAUNCH_CONFIRM 10
+static void so_start_named(char **names, int n_names);
+struct so_launch {
+    char **names;
+    int n;
+};
+static void so_launch_answer(int yes, void *ctx)
+{
+    struct so_launch *l = (struct so_launch *)ctx;
+    int i;
+    if (yes)
+        so_start_named(l->names, l->n);
+    for (i = 0; i < l->n; i++)
+        sfree(l->names[i]);
+    sfree(l->names);
+    sfree(l);
+}
+static void so_launch(struct so_state *st)
+{
+    int n, i;
+    char **all = so_lv_names(st, st->taglist, LVNI_ALL, &n), *q;
+    struct so_launch *l;
+    if (!n) {
+        MessageBeep(MB_ICONWARNING);
+        sfree(all);
+        return;
+    }
+    if (n < SO_LAUNCH_CONFIRM) {
+        so_start_named(all, n);
+        sfree(all);
+        return;
+    }
+    l = snew(struct so_launch);
+    l->n = n;
+    l->names = snewn(n, char *);
+    for (i = 0; i < n; i++)
+        l->names[i] = dupstr(all[i]);
+    q = dupprintf(KT_SP_ORG_LAUNCH_Q, n);
+    if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
+                                      KT_SP_ORG_LAUNCH_BTN, KT_SP_ORG_CANCEL,
+                                      so_launch_answer, l))
+        so_launch_answer(0, l);
+    sfree(q);
+    sfree(all);
+}
+
+/* The pane beside the folder's list: the list keeps 55% of the width right
+ * of the tree; the tag row (label, field, Launch) sits on the count line,
+ * the tag's sessions below it, as tall as the list. The shared anchoring
+ * places the list first (it stretches with the window); this splits it. */
+static void so_split(struct so_state *st)
+{
+    static const int row[] = { IDC_SO_TAGLABEL, IDC_SO_LAUNCH, 0 };
+    HWND h = st->h, lbl = GetDlgItem(h, IDC_SO_TAGLABEL),
+        launch = GetDlgItem(h, IDC_SO_LAUNCH);
+    RECT tr, lr, cr, cnt, cb, br;
+    int gap, left, right, wl, x2, lw, bw, ch, y;
+    HDC dc;
+    HFONT f, of = NULL;
+    SIZE sz;
+    char text[64];
+    so_rect(h, IDC_SO_TREE, &tr);
+    so_rect(h, IDC_SO_LIST, &lr);
+    so_rect(h, IDC_SO_COUNT, &cnt);
+    so_rect(h, IDC_SO_TAGCOMBO, &cb);
+    so_rect(h, IDC_SO_LAUNCH, &br);
+    GetClientRect(h, &cr);
+    gap = lr.left - tr.right;
+    left = lr.left;
+    right = cr.right - tr.left;
+    wl = (right - left - gap) * 55 / 100;
+    x2 = left + wl + gap;
+    MoveWindow(st->list, left, lr.top, wl, lr.bottom - lr.top, TRUE);
+    MoveWindow(GetDlgItem(h, IDC_SO_COUNT), left, cnt.top, wl,
+               cnt.bottom - cnt.top, TRUE);
+    /* the label as wide as its text */
+    GetWindowTextA(lbl, text, sizeof(text));
+    {
+        char *s = text, *d = text;
+        for (; *s; s++)
+            if (*s != '&')
+                *d++ = *s;
+        *d = '\0';
+    }
+    dc = GetDC(lbl);
+    f = (HFONT)SendMessage(lbl, WM_GETFONT, 0, 0);
+    if (f)
+        of = SelectObject(dc, f);
+    GetTextExtentPoint32A(dc, text, (int)strlen(text), &sz);
+    if (of)
+        SelectObject(dc, of);
+    ReleaseDC(lbl, dc);
+    lw = sz.cx + 2;
+    bw = kitty_theme_button_width(launch, br.right - br.left);
+    ch = cb.bottom - cb.top;            /* a closed combo: its field's height */
+    y = lr.top - ch - 2;
+    if (y < 2)
+        y = 2;
+    MoveWindow(lbl, x2, y, lw, ch, TRUE);
+    /* a combo's height is its dropped list's: ten rows of the field */
+    MoveWindow(st->tagcombo, x2 + lw + gap / 2, y,
+               right - bw - gap / 2 - (x2 + lw + gap / 2), ch * 10, TRUE);
+    MoveWindow(launch, right - bw, y, bw, ch, TRUE);
+    kitty_theme_align_row(h, IDC_SO_TAGCOMBO, row);
+    MoveWindow(st->taglist, x2, lr.top, right - x2, lr.bottom - lr.top, TRUE);
+    ListView_SetColumnWidth(st->taglist, 0, LVSCW_AUTOSIZE_USEHEADER);
 }
 
 static void so_changed(struct so_state *st)
@@ -1626,6 +1975,9 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
 #define SO_CMD_SELALL       0x7105
 #define SO_CMD_RENAME_SESS  0x7106
 #define SO_CMD_RENAME_FOLD  0x7107
+#define SO_CMD_TAG_START    0x7108   /* the tag pane's menu */
+#define SO_CMD_TAG_REMOVE   0x7109
+#define SO_CMD_TAG_SELALL   0x710A
 
 /* Sessions in their own terminals: kitty.exe -load "<name>" each. */
 static void so_start_named(char **names, int n_names)
@@ -1847,7 +2199,19 @@ static void so_drag_track(struct so_state *st)
     if (!(ht.flags & (TVHT_ONITEM | TVHT_ONITEMBUTTON | TVHT_ONITEMINDENT |
                       TVHT_ONITEMRIGHT)))
         over = NULL;
-    ok = so_drop_ok(st, over);
+    /* sessions over the tag's list, with a usable tag chosen: they take it */
+    st->tagdrop = 0;
+    if (st->dragging == SO_DRAG_SESSIONS && st->tag &&
+        kitty_tag_name_ok(st->tag)) {
+        RECT lr;
+        POINT lp = sp;
+        GetClientRect(st->taglist, &lr);
+        ScreenToClient(st->taglist, &lp);
+        st->tagdrop = PtInRect(&lr, lp) != 0;
+    }
+    if (st->tagdrop)
+        over = NULL;
+    ok = st->tagdrop || so_drop_ok(st, over);
     if (over != st->hover) {
         st->hover = over;
         st->hover_since = GetTickCount();
@@ -1907,8 +2271,9 @@ static void so_folder_drop_answer(int yes, void *ctx)
 static void so_drag_end(struct so_state *st, int drop)
 {
     HTREEITEM target = TreeView_GetDropHilight(st->tree);
-    int kind = st->dragging;
+    int kind = st->dragging, tagdrop = st->tagdrop;
     st->dragging = 0;
+    st->tagdrop = 0;
     KillTimer(st->h, SO_TIMER_DRAG);
     if (st->dragimg) {
         ImageList_DragLeave(NULL);
@@ -1919,7 +2284,9 @@ static void so_drag_end(struct so_state *st, int drop)
     TreeView_SelectDropTarget(st->tree, NULL);
     if (GetCapture() == st->h)
         ReleaseCapture();
-    if (drop && target) {
+    if (drop && tagdrop && kind == SO_DRAG_SESSIONS) {
+        so_tag_drop(st);
+    } else if (drop && target) {
         if (kind == SO_DRAG_FOLDER) {
             char *dest = so_tree_folder(st->tree, target, &st->fs);
             if (dest && st->dragfolder) {
@@ -2105,6 +2472,35 @@ static void so_list_menu(struct so_state *st, int x, int y)
         so_command(st, cmd);
 }
 
+static void so_tag_menu(struct so_state *st, int x, int y)
+{
+    HMENU m = CreatePopupMenu();
+    int nsel = ListView_GetSelectedCount(st->taglist), cmd;
+    if (!m)
+        return;
+    if (x == -1 && y == -1) {           /* the menu key: at the focused row */
+        RECT r;
+        int i = ListView_GetNextItem(st->taglist, -1, LVNI_FOCUSED);
+        POINT p = {8, 8};
+        if (i >= 0 && ListView_GetItemRect(st->taglist, i, &r, LVIR_LABEL)) {
+            p.x = r.left + 8;
+            p.y = r.bottom;
+        }
+        ClientToScreen(st->taglist, &p);
+        x = p.x;
+        y = p.y;
+    }
+    so_menu_add(m, SO_CMD_TAG_START, KT_SP_ORG_M_START, nsel > 0);
+    so_menu_add(m, SO_CMD_TAG_REMOVE, KT_SP_ORG_M_UNTAG, nsel > 0 && !GetReadOnlyFlag());
+    AppendMenuA(m, MF_SEPARATOR, 0, NULL);
+    so_menu_add(m, SO_CMD_TAG_SELALL, KT_SP_ORG_M_SELALL,
+                ListView_GetItemCount(st->taglist) > 0);
+    cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, st->h, NULL);
+    DestroyMenu(m);
+    if (cmd)
+        so_command(st, cmd);
+}
+
 static void so_tree_menu(struct so_state *st, int x, int y)
 {
     HMENU m;
@@ -2147,16 +2543,29 @@ static void so_tree_menu(struct so_state *st, int x, int y)
 
 /* The list gets the focus with a session to act on: the first one selected
  * and focused when none is selected yet (a Tab in, or Enter in the tree). */
-static void so_list_take_focus(struct so_state *st, int move_focus)
+static void so_lv_take_focus(struct so_state *st, HWND lv, int move_focus)
 {
-    if (ListView_GetItemCount(st->list) > 0 &&
-        ListView_GetSelectedCount(st->list) == 0) {
-        ListView_SetItemState(st->list, 0, LVIS_SELECTED | LVIS_FOCUSED,
+    if (ListView_GetItemCount(lv) > 0 &&
+        ListView_GetSelectedCount(lv) == 0) {
+        ListView_SetItemState(lv, 0, LVIS_SELECTED | LVIS_FOCUSED,
                               LVIS_SELECTED | LVIS_FOCUSED);
-        ListView_EnsureVisible(st->list, 0, FALSE);
+        ListView_EnsureVisible(lv, 0, FALSE);
     }
     if (move_focus)
-        PostMessage(st->h, WM_NEXTDLGCTL, (WPARAM)st->list, TRUE);
+        PostMessage(st->h, WM_NEXTDLGCTL, (WPARAM)lv, TRUE);
+}
+static void so_list_take_focus(struct so_state *st, int move_focus)
+{
+    so_lv_take_focus(st, st->list, move_focus);
+}
+
+/* Start the selected sessions of the tag's list. */
+static void so_tag_start(struct so_state *st)
+{
+    int n;
+    char **sel = so_lv_names(st, st->taglist, LVNI_SELECTED, &n);
+    so_start_named(sel, n);
+    sfree(sel);
 }
 
 static void so_command(struct so_state *st, int id)
@@ -2170,9 +2579,29 @@ static void so_command(struct so_state *st, int id)
             so_start_sessions(st);
         else if (GetFocus() == st->tree)
             so_list_take_focus(st, 1);
+        else if (GetFocus() == st->taglist)
+            so_tag_start(st);
+        else if (GetFocus() == st->tagcombo ||
+                 GetParent(GetFocus()) == st->tagcombo) {
+            /* the field's edit is a child of the combo: the tag typed is
+             * shown, and the focus goes to its first session */
+            char typed[256];
+            GetWindowTextA(st->tagcombo, typed, sizeof(typed));
+            so_tag_set(st, typed);
+            so_lv_take_focus(st, st->taglist, 1);
+        }
         return;
       case SO_CMD_START:
         so_start_sessions(st);
+        return;
+      case SO_CMD_TAG_START:
+        so_tag_start(st);
+        return;
+      case SO_CMD_TAG_SELALL:
+        ListView_SetItemState(st->taglist, -1, LVIS_SELECTED, LVIS_SELECTED);
+        return;
+      case IDC_SO_LAUNCH:
+        so_launch(st);
         return;
       case SO_CMD_SELALL:
         ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
@@ -2197,6 +2626,9 @@ static void so_command(struct so_state *st, int id)
         return;
       case SO_CMD_DELSESS:
         so_delete_sessions(st);
+        return;
+      case SO_CMD_TAG_REMOVE:
+        so_untag(st);
         return;
       case IDC_SO_MOVE:
       case SO_CMD_COPY: {
@@ -2299,6 +2731,42 @@ static void so_command(struct so_state *st, int id)
     }
 }
 
+/* NM_CUSTOMDRAW of an empty list: a line stating why, and the focus frame.
+ * True when the message was answered (DWLP_MSGRESULT set). */
+static int so_draw_empty(HWND h, HWND lv, const char *text, LPARAM lp)
+{
+    NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lp;
+    if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+        SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_NOTIFYPOSTPAINT);
+        return 1;
+    }
+    if (cd->nmcd.dwDrawStage == CDDS_POSTPAINT) {
+        RECT r;
+        HFONT f = (HFONT)SendMessage(lv, WM_GETFONT, 0, 0), of = NULL;
+        bool dark = kitty_theme_window_dark(h);
+        GetClientRect(lv, &r);
+        InflateRect(&r, -2, -2);
+        if (f)
+            of = SelectObject(cd->nmcd.hdc, f);
+        SetBkMode(cd->nmcd.hdc, TRANSPARENT);
+        SetTextColor(cd->nmcd.hdc, dark ? kitty_theme_text_colour(true)
+                                        : GetSysColor(COLOR_GRAYTEXT));
+        {
+            RECT t = r;
+            t.top += 4;
+            DrawTextA(cd->nmcd.hdc, text, -1, &t,
+                      DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX);
+        }
+        if (GetFocus() == lv)
+            DrawFocusRect(cd->nmcd.hdc, &r);
+        if (of)
+            SelectObject(cd->nmcd.hdc, of);
+        SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_DODEFAULT);
+        return 1;
+    }
+    return 0;
+}
+
 static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct so_state *st = (struct so_state *)GetWindowLongPtr(h, GWLP_USERDATA);
@@ -2389,6 +2857,21 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         col.cx = 100;
         SendMessageA(st->list, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
 
+        /* the tag pane, on the tag it was left on (its sessions are read
+         * with the reload below - only when there is one) */
+        st->tagcombo = GetDlgItem(h, IDC_SO_TAGCOMBO);
+        st->taglist = GetDlgItem(h, IDC_SO_TAGLIST);
+        SetDlgItemTextA(h, IDC_SO_TAGLABEL, KT_SP_ORG_TAG_LABEL);
+        SetDlgItemTextA(h, IDC_SO_LAUNCH, KT_SP_ORG_BTN_LAUNCH);
+        SendMessageA(st->tagcombo, CB_LIMITTEXT, KITTY_TAG_MAXLEN, 0);
+        ListView_SetExtendedListViewStyle(st->taglist, LVS_EX_FULLROWSELECT);
+        SendMessageA(st->taglist, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
+        {
+            char t[256];
+            st->tag = dupstr(kitty_state_get_string(KR_MANAGE_TAG, t, sizeof(t)) ? t : "");
+            SetWindowTextA(st->tagcombo, st->tag);
+        }
+
         /* the folder and the session it was left on (a folder gone since
          * falls back to the root in so_reload) */
         {
@@ -2411,6 +2894,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             st->minsize.cx = wr.right - wr.left;
             st->minsize.cy = (wr.bottom - wr.top) * 2 / 3;
             st->ready = 1;
+            so_split(st);
         }
         /* where it was on this monitor layout, fully visible; the first
          * time, over its owner */
@@ -2424,6 +2908,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (st && st->ready && wp != SIZE_MINIMIZED) {
             anchored_relayout(h, so_anchors, lenof(so_anchors), st->rects,
                               st->basesize);
+            so_split(st);
             ListView_SetColumnWidth(st->list, 0, LVSCW_AUTOSIZE_USEHEADER);
         }
         return TRUE;
@@ -2482,36 +2967,8 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                     InvalidateRect(st->list, NULL, TRUE);
             } else if (nm->code == NM_CUSTOMDRAW &&
                        ListView_GetItemCount(st->list) == 0) {
-                /* an empty list shows a line stating it, and the focus frame */
-                NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lp;
-                if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
-                    SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_NOTIFYPOSTPAINT);
+                if (so_draw_empty(h, st->list, KT_SP_ORG_EMPTY, lp))
                     return TRUE;
-                }
-                if (cd->nmcd.dwDrawStage == CDDS_POSTPAINT) {
-                    RECT r;
-                    HFONT f = (HFONT)SendMessage(st->list, WM_GETFONT, 0, 0), of = NULL;
-                    bool dark = kitty_theme_window_dark(h);
-                    GetClientRect(st->list, &r);
-                    InflateRect(&r, -2, -2);
-                    if (f)
-                        of = SelectObject(cd->nmcd.hdc, f);
-                    SetBkMode(cd->nmcd.hdc, TRANSPARENT);
-                    SetTextColor(cd->nmcd.hdc, dark ? kitty_theme_text_colour(true)
-                                                    : GetSysColor(COLOR_GRAYTEXT));
-                    {
-                        RECT t = r;
-                        t.top += 4;
-                        DrawTextA(cd->nmcd.hdc, KT_SP_ORG_EMPTY, -1, &t,
-                                  DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
-                    }
-                    if (GetFocus() == st->list)
-                        DrawFocusRect(cd->nmcd.hdc, &r);
-                    if (of)
-                        SelectObject(cd->nmcd.hdc, of);
-                    SetWindowLongPtr(h, DWLP_MSGRESULT, CDRF_DODEFAULT);
-                    return TRUE;
-                }
             } else if (nm->code == NM_DBLCLK) {
                 /* a double click starts the session clicked - only that
                  * one, whatever else is selected, as Explorer opens the
@@ -2548,6 +3005,42 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 so_drag_begin(st, SO_DRAG_SESSIONS, text);
                 sfree(text);
             }
+        } else if (nm->idFrom == IDC_SO_TAGLIST) {
+            if (nm->code == NM_SETFOCUS) {
+                so_lv_take_focus(st, st->taglist, 0);
+                InvalidateRect(st->taglist, NULL, TRUE);
+            } else if (nm->code == NM_KILLFOCUS) {
+                if (ListView_GetItemCount(st->taglist) == 0)
+                    InvalidateRect(st->taglist, NULL, TRUE);
+            } else if (nm->code == NM_CUSTOMDRAW &&
+                       ListView_GetItemCount(st->taglist) == 0) {
+                if (so_draw_empty(h, st->taglist, st->tag && *st->tag ?
+                                  KT_SP_ORG_TAG_EMPTY : KT_SP_ORG_TAG_NONE, lp))
+                    return TRUE;
+            } else if (nm->code == NM_DBLCLK) {
+                /* as in the folder's list: only the session clicked */
+                NMITEMACTIVATE *ia = (NMITEMACTIVATE *)lp;
+                LVITEMA it;
+                memset(&it, 0, sizeof(it));
+                it.mask = LVIF_PARAM;
+                it.iItem = ia->iItem;
+                if (ia->iItem >= 0 &&
+                    SendMessageA(st->taglist, LVM_GETITEMA, 0, (LPARAM)&it) &&
+                    it.lParam >= 0 && it.lParam < st->s.n) {
+                    char *one = st->s.names[it.lParam];
+                    so_start_named(&one, 1);
+                }
+            } else if (nm->code == LVN_KEYDOWN) {
+                NMLVKEYDOWN *kd = (NMLVKEYDOWN *)lp;
+                /* braces: ListView_SetItemState is a block macro */
+                if (kd->wVKey == 'A' && (GetKeyState(VK_CONTROL) & 0x8000)) {
+                    ListView_SetItemState(st->taglist, -1, LVIS_SELECTED, LVIS_SELECTED);
+                } else if (kd->wVKey == VK_DELETE && !(GetKeyState(VK_CONTROL) & 0x8000) &&
+                           !(GetKeyState(VK_SHIFT) & 0x8000) &&
+                           !(GetKeyState(VK_MENU) & 0x8000)) {
+                    so_untag(st);
+                }
+            }
         }
         return FALSE;
       }
@@ -2556,6 +3049,10 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             return FALSE;
         if ((HWND)wp == st->list) {
             so_list_menu(st, (short)LOWORD(lp), (short)HIWORD(lp));
+            return TRUE;
+        }
+        if ((HWND)wp == st->taglist) {
+            so_tag_menu(st, (short)LOWORD(lp), (short)HIWORD(lp));
             return TRUE;
         }
         if ((HWND)wp == st->tree) {
@@ -2583,6 +3080,24 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             so_drag_end(st, 0);
         return FALSE;
       case WM_COMMAND:
+        if (st && LOWORD(wp) == IDC_SO_TAGCOMBO) {
+            /* the tag: picked from the list, or typed (each key shows the
+             * sessions of what is typed so far) */
+            if (HIWORD(wp) == CBN_DROPDOWN) {
+                so_tag_combo_fill(st);
+            } else if (HIWORD(wp) == CBN_SELCHANGE) {
+                char t[256];
+                int i = (int)SendMessageA(st->tagcombo, CB_GETCURSEL, 0, 0);
+                if (i >= 0 && SendMessageA(st->tagcombo, CB_GETLBTEXTLEN, i, 0) < (LRESULT)sizeof(t) &&
+                    SendMessageA(st->tagcombo, CB_GETLBTEXT, i, (LPARAM)t) != CB_ERR)
+                    so_tag_set(st, t);
+            } else if (HIWORD(wp) == CBN_EDITCHANGE) {
+                char t[256];
+                GetWindowTextA(st->tagcombo, t, sizeof(t));
+                so_tag_set(st, t);
+            }
+            return TRUE;
+        }
         if (st && HIWORD(wp) == BN_CLICKED)
             so_command(st, LOWORD(wp));
         return TRUE;
@@ -2613,7 +3128,9 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 }
                 kitty_state_set_string(KR_MANAGE_FOLDER, st->cur ? st->cur : "");
                 kitty_state_set_string(KR_MANAGE_SESSION, sn);
+                kitty_state_set_string(KR_MANAGE_TAG, st->tag ? st->tag : "");
             }
+            sfree(st->tag);
             sfree(st->dragfolder);
             so_folders_free(&st->fs);
             so_names_free(&st->s);

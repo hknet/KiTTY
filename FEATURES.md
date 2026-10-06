@@ -268,6 +268,17 @@ an empty folder's list reads "No sessions in this folder". Enter starts the
 selected sessions, a double click the one clicked; Enter in the tree goes to
 the folder's first session.
 
+**Session tags** (hknet/KiTTY#60). A tag names a group of sessions that are
+started together, such as `lab` or `switches`, whatever folders they are in;
+a session can carry any number of tags (`Tags=lab,switches`). Session > Startup
+> *Session Tags* lists the session's tags, each in a colour of its own, with
+*Remove* (or Del); *New tag:* offers every tag already in use, and *Add* or
+Enter puts one on. In Manage Sessions the tag pane beside the list shows every
+session carrying the tag chosen in *Tag:*. *Launch* starts them all, from ten
+sessions on after a confirmation. Sessions dragged from the list onto it take
+the tag. Del or *Remove from Tag* takes it off, after a confirmation. The
+window reopens on the last tag.
+
 ![Manage Sessions](docs/features/img/manage_sessions.png)
 
 **Arrange.** Sessions saved by an older version are filed by their `Folder=`

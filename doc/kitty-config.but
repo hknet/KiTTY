@@ -337,6 +337,22 @@ not an attacker off your machine.
 
 \H{kitty-cfg-startup} The Startup panel
 
+\S{kitty-cfg-session-tags} \q{Session Tags}
+
+A tag is a name for a group of sessions that are started together, for
+example \c{lab} or \c{switches}, whatever folders they are in. A session
+can carry any number of tags.
+
+The list shows this session's tags, each in a colour of its own; the
+same tag has the same colour wherever it is shown. \q{Remove} or
+\c{Del} takes the selected tags off. Type a name in \q{New tag:}, or
+pick one of the tags already in use from its list, then press \q{Add}
+or \c{Enter}. A tag cannot contain a comma.
+
+The change is part of the session's settings: \q{Save} on the Session
+panel writes it. In \e{Manage Sessions} the tag pane lists every session
+of a tag and starts them with \q{Launch} (\k{config-saving}).
+
 \S{kitty-cfg-launcher-hotkey} \q{Enable global hotkey for this session}
 
 Opens this session from anywhere on the desktop with one key

@@ -884,6 +884,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gpps_forced(sesskey, "Autocommand", conf, CONF_autocommand );
     gpps_forced(sesskey, "AutocommandOut", conf, CONF_autocommandout );
     gpps_forced(sesskey, "Folder", conf, CONF_folder );
+    gpps_forced(sesskey, "Tags", conf, CONF_tags );
     if( strlen(conf_get_str(conf, CONF_folder)) == 0 ) { conf_set_str( conf, CONF_folder, "Default" ) ; }
     gppi_forced(sesskey, "LogTimeRotation", conf, CONF_logtimerotation );
     gppi_forced(sesskey, "LogKeepDays", conf, CONF_logkeepdays );

@@ -208,6 +208,13 @@
 #define KT_STARTUP_CHECK_HOTKEY_AVAILABILITY         "Check hotkey availability"
 #define KT_STARTUP_EXAMPLE_CTRL_ALT_K                "Example: Ctrl+Alt+K. Works while KiTTY Launcher runs."
 #define KT_STARTUP_LAUNCHER_CONFIGURATION            "Launcher configuration"
+/* Session/Startup, "Session Tags" (kitty_tags.c, hknet/KiTTY#60) */
+#define KT_STARTUP_TAGS_GROUP                        "Session Tags"
+#define KT_STARTUP_TAGS_LIST                         "Tags of this session:"
+#define KT_STARTUP_TAGS_REMOVE                       "Remove"
+#define KT_STARTUP_TAGS_NEW                          "New tag:"
+#define KT_STARTUP_TAGS_ADD                          "Add"
+#define KT_STARTUP_TAGS_NOTE                         "Manage Sessions lists and starts the sessions of a tag."
 
 /* Terminal */
 #define KT_TERMINAL_OPTIONS_CONTROLLING_THE_TERMINAL_EMULATION "Options controlling the terminal emulation"
@@ -3703,6 +3710,18 @@
 #define KT_SP_DEL_BTN                                "Delete"
 #define KT_SP_DEL_CLASH                              "Nothing was moved. These sessions already exist in \"%s\":\n%s\n\n" \
         "Choose another folder or rename them first."
+/* Manage Sessions' tag pane (kitty_sessorg.c, hknet/KiTTY#60) */
+#define KT_SP_ORG_TAG_LABEL                          "&Tag:"
+#define KT_SP_ORG_BTN_LAUNCH                         "&Launch"
+#define KT_SP_ORG_M_UNTAG                            "Remove from Tag"
+#define KT_SP_ORG_UNTAG_Q                            "Remove the tag \"%s\" from %d sessions?"
+#define KT_SP_ORG_UNTAG_ONE_Q                        "Remove the tag \"%s\" from one session?"
+#define KT_SP_ORG_UNTAG_BTN                          "Remove"
+#define KT_SP_ORG_LAUNCH_Q                           "Start %d sessions?"
+#define KT_SP_ORG_LAUNCH_BTN                         "Start"
+#define KT_SP_ORG_TAG_EMPTY                          "No session carries this tag"
+#define KT_SP_ORG_TAG_NONE                           "Pick a tag, or drag sessions here to tag them"
+#define KT_SP_ORG_TAG_BAD                            "A tag cannot be empty, contain a comma or be longer than 64 characters."
 /* Application > Migration > old KiTTY Folders: the suffix of the old store. */
 #define KT_MIGF_SUFFIX                               "Suffix to remove from file names"
 

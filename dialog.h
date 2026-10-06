@@ -222,6 +222,10 @@ struct dlgcontrol {
             bool multiline;
             int lines;
             bool readonly;
+            /* KiTTY: a combo box's list is about to open (CBN_DROPDOWN), so
+             * a list that is costly to build is filled only then. NULL =
+             * nothing. Unconditional for the same reason as above. */
+            void (*dropdown)(dlgcontrol *ctrl, dlgparam *dp);
         } editbox;
         struct { /* for CTRL_RADIO */
             /*

@@ -182,8 +182,14 @@ drag and drop - a closed folder opens while a drag hovers over it -
 or with \q{Move to...}; a right click starts, copies, clones, renames
 or deletes the selected sessions, and creates, renames or deletes
 folders. Enter starts the selected sessions, a double click the one
-clicked; Enter in the tree goes to the folder's first session. The window reopens on the folder and the
-session it was left on. \c{kitty.exe -manage} opens it alone, without
+clicked; Enter in the tree goes to the folder's first session. Beside
+the list, the tag pane lists every session carrying the tag chosen in
+\q{Tag:}, whatever its folder; \q{Launch} starts them all (from ten on,
+after a confirmation), and sessions dragged onto that list take the tag.
+Del or the menu's \q{Remove from Tag} takes it off the selected ones,
+after a confirmation. A session's tags are set on
+\k{kitty-cfg-session-tags}. The window reopens on the folder, the
+session and the tag it was left on. \c{kitty.exe -manage} opens it alone, without
 a configuration window; its \q{Edit} then opens the configuration
 window on the selected session. See \k{kitty-cfg-folders}.
 

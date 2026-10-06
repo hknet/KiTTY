@@ -80,6 +80,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_named_proxies      "kitty-cfg-named-proxies"
 #define WINHELP_CTX_kitty_save_on_exit       "kitty-cfg-save-on-exit"
 #define WINHELP_CTX_kitty_hide_launcher      "kitty-cfg-hide-launcher"
+#define WINHELP_CTX_kitty_session_tags       "kitty-cfg-session-tags"
 #define WINHELP_CTX_kitty_scriptfile         "kitty-cfg-scriptfile"
 #define WINHELP_CTX_kitty_autologin          "kitty-cfg-autologin"
 #define WINHELP_CTX_kitty_antiidle           "kitty-cfg-antiidle"

@@ -33,6 +33,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   which renames the file in place to a name in ANSI characters. A folder
   named that way gets a red row of its own, as its sessions cannot be
   reached until it is renamed.
+- **Session tags start groups of sessions together.** A session can carry
+  any number of tags, set on Session > Startup > Session Tags. Manage
+  Sessions has a tag pane beside its list: it shows every session of the
+  tag chosen, whatever its folder, and Launch starts them all. Sessions
+  dragged onto it take the tag; Del removes it after a confirmation
+  (Refs hknet/KiTTY#60).
 
 ### Changed
 

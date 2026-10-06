@@ -1504,6 +1504,9 @@ CONF_OPTION(bg_opacity, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("BgOpacity
 CONF_OPTION(bg_slideshow, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("BgSlideshow"),)
 CONF_OPTION(bg_type, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("BgType"),)
 CONF_OPTION(folder, VALUE_TYPE(STR), DEFAULT_STR("Default"), SAVE_KEYWORD("Folder"),)
+/* KiTTY (hknet/KiTTY#60): the session's tags, comma-separated ("lab,switches"):
+ * Session > Startup, Manage Sessions' tag pane (kitty_tags.c). */
+CONF_OPTION(tags, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Tags"),)
 CONF_OPTION(icone, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Icone"),)
 CONF_OPTION(iconefile, VALUE_TYPE(FILENAME), SAVE_KEYWORD("IconeFile"),)
 CONF_OPTION(password, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Password"),)
