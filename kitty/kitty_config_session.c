@@ -4798,12 +4798,14 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * I and T are each taken somewhere (Esc still works: it is the cancel
      * button). */
     /* Opened by Manage Sessions' Edit (kitty.exe -manage), the button closes
-     * only this window and Manage Sessions stays: "Close". */
+     * only this window and Manage Sessions stays: "Close", with Alt+C as
+     * Cancel has mid-session (no panel of the startup box takes C). */
     ssd->cancelbutton = ctrl_pushbutton(s,
                                         (midsession ? KT_KITTY_CANCEL :
                                          kitty_manage_editing() ? KT_SP_ORG_CLOSE :
                                          KT_KITTY_EXIT),
-                                        (char)(midsession ? 'c' : NO_SHORTCUT),
+                                        (char)((midsession || kitty_manage_editing()) ?
+                                               'c' : NO_SHORTCUT),
                                         HELPCTX(no_help),
                                         sessionsaver_handler, P(ssd));
     ssd->cancelbutton->button.iscancel = true;

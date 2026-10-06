@@ -1937,7 +1937,7 @@ static void so_edit(struct so_state *st)
 {
     Conf *conf;
     char **sel, *name = NULL, *folder = NULL;
-    int nsel, i, open;
+    int nsel, i, open, focus_list;
     if (so_editing) {
         MessageBeep(MB_ICONWARNING);    /* the one already open stays in front */
         return;
@@ -1958,19 +1958,39 @@ static void so_edit(struct so_state *st)
     kitty_set_last_session(name ? name : "");
     conf = conf_new();
     do_defaults(name, conf);
+    if (name) {
+        /* loaded, not only selected: the box shows the name, the session
+         * label reads it as loaded, and Save writes it back without the
+         * overwrite warning - as the hotkey balloon's -cfgloaded does */
+        extern void kitty_cfgbox_open_loaded(void);
+        conf_set_str(conf, CONF_sessionname, name);
+        kitty_cfgbox_open_loaded();
+    }
     so_editing = 1;
+    /* afterwards the focus goes to the edited session in the list (or back
+     * to the list or the tree, wherever it was when no session was chosen) */
+    focus_list = name != NULL || st->pane == 1;
     EnableWindow(GetDlgItem(st->h, IDC_SO_EDIT), FALSE);
     open = do_config(conf);             /* modal; this window keeps working */
     so_editing = 0;
     if (open && conf_launchable(conf))
         RunConfig(conf);
     conf_free(conf);
+    if (so_window) {
+        struct so_state *w = so_window;
+        EnableWindow(GetDlgItem(w->h, IDC_SO_EDIT), TRUE);
+        so_reload(w);                   /* a save or a delete there */
+        if (name)
+            so_select_session(w, name); /* the reload cleared the selection */
+        SetForegroundWindow(w->h);
+        /* WM_NEXTDLGCTL, not SetFocus: the dialog manager then keeps the
+         * default button and its own focus memory right */
+        PostMessage(w->h, WM_NEXTDLGCTL,
+                    (WPARAM)(focus_list ? w->list : w->tree), TRUE);
+    }
     sfree(name);
     sfree(folder);
-    if (so_window) {
-        EnableWindow(GetDlgItem(so_window->h, IDC_SO_EDIT), TRUE);
-        so_reload(so_window);           /* a save or a delete there */
-    } else if (so_quit_after_edit) {
+    if (!so_window && so_quit_after_edit) {
         PostQuitMessage(0);
     }
 }
@@ -2224,12 +2244,12 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         st->tree = GetDlgItem(h, IDC_SO_TREE);
         st->list = GetDlgItem(h, IDC_SO_LIST);
         SetWindowTextA(h, KT_SP_ORG_TITLE);
-        SetDlgItemTextA(h, IDC_SO_MOVE, KT_SP_ORG_MOVE);
-        SetDlgItemTextA(h, IDC_SO_RENAME, KT_SP_ORG_RENAME);
-        SetDlgItemTextA(h, IDC_SO_NEWFOLDER, KT_SP_ORG_NEW_FOLDER);
-        SetDlgItemTextA(h, IDC_SO_DELFOLDER, KT_SP_ORG_DEL_FOLDER);
-        SetDlgItemTextA(h, IDC_SO_ARRANGE, KT_SP_ORG_ARRANGE);
-        SetDlgItemTextA(h, IDCANCEL, KT_SP_ORG_CLOSE);
+        SetDlgItemTextA(h, IDC_SO_MOVE, KT_SP_ORG_BTN_MOVE);
+        SetDlgItemTextA(h, IDC_SO_RENAME, KT_SP_ORG_BTN_RENAME);
+        SetDlgItemTextA(h, IDC_SO_NEWFOLDER, KT_SP_ORG_BTN_NEW_FOLDER);
+        SetDlgItemTextA(h, IDC_SO_DELFOLDER, KT_SP_ORG_BTN_DEL_FOLDER);
+        SetDlgItemTextA(h, IDC_SO_ARRANGE, KT_SP_ORG_BTN_ARRANGE);
+        SetDlgItemTextA(h, IDCANCEL, KT_SP_ORG_BTN_CLOSE);
         /* its own icon: the KiTTY++ icon with a gear in front (kitty.rc) */
         {
             HINSTANCE inst = GetModuleHandle(NULL);
@@ -2283,7 +2303,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             HWND eb = GetDlgItem(h, IDC_SO_EDIT);
             RECT er;
             int we;
-            SetWindowTextA(eb, KT_SP_ORG_EDIT);
+            SetWindowTextA(eb, KT_SP_ORG_BTN_EDIT);
             so_rect(h, IDC_SO_EDIT, &er);
             we = kitty_theme_button_width(eb, er.right - er.left);
             MoveWindow(eb, cr.right - a.left - w - gap - we, r.top, we,
