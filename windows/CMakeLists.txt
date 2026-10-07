@@ -565,6 +565,9 @@ target_link_libraries(bench_term
 add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/test/test_osc52.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
   # KiTTY: far2l images (request 'i'), called from terminal.c under MOD_FAR2L
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
@@ -615,6 +618,9 @@ target_link_libraries(test_wic ${platform_libraries})
 add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/test/test_textrun.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c        # KiTTY: far2l images, as test_osc52
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c

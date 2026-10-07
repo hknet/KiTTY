@@ -3283,6 +3283,25 @@ OSC 7501 share the bar: the last report wins.
 The progress is cleared when the session ends. On by default; stored
 with the session (\c{TaskbarProgress}).
 
+\S{kitty-cfg-failedmarks} \q{Mark failed commands (OSC 133)}
+
+With the shell integration on the host (\c{docs/OSC-INTEGRATION.md}),
+the shell marks every prompt and reports each command's exit code (OSC
+133). A command that ended with a code other than 0 gets a thin red
+line along the top of its prompt line, and a red tick in the mark strip
+beside the scrollbar shows where it is in the scrollback. \c{grep}
+without a match also exits 1 and is marked too.
+
+The prompt marks are kept either way: \c{Alt+PgUp} and \c{Alt+PgDn}
+jump to the previous and next prompt, \c{Alt+Shift+PgUp} and
+\c{Alt+Shift+PgDn} to the previous and next failed command,
+\c{Alt+End} selects a command's output and \c{Alt+Home} the command line
+itself, without the prompt (Application > KiTTY++ Settings > Keys & Mouse
+> Shortcuts). \c{Alt+Home} needs the B mark, the start of the typed
+command: the optional line of the shell integration for bash, zsh and
+fish, or a program that sends it, such as pi. On by default; stored with
+the session (\c{FailedCommandMarks}).
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

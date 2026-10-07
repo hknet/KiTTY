@@ -203,6 +203,12 @@ struct TShortcuts {
 	int fontreset ;
 	int transparencyup ;
 	int transparencydown ;
+	int promptprev ;		/* the shell's prompt marks (OSC 133) */
+	int promptnext ;
+	int failedprev ;
+	int failednext ;
+	int selectoutput ;
+	int selectcommand ;
 	} ;
 extern struct TShortcuts shortcuts_tab ;
 struct TShortcuts2 { int num ; char * st ; } ;

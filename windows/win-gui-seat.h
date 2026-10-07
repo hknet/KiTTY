@@ -63,6 +63,7 @@ struct WinGuiSeat {
     int font_width, font_height;
     bool font_dualwidth, font_varpitch;
     int offset_width, offset_height;
+    bool strip_dirty;  /* KiTTY: the mark strip is drawn in the next frame */
     bool was_zoomed;
     int prev_rows, prev_cols; // FIXME I don't think these are even used
 

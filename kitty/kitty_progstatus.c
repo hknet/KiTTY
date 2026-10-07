@@ -390,6 +390,10 @@ int ps_osc133(const char *s, size_t len, int *exit_code)
         return PS133_OTHER;
     if (s[0] == 'A')
         return PS133_PROMPT;
+    if (s[0] == 'B')
+        return PS133_INPUT;
+    if (s[0] == 'C')
+        return PS133_OUTPUT;
     if (s[0] == 'D') {
         if (len > 2) {
             int v = 0;

@@ -1580,6 +1580,11 @@ static void d2d_fill_outside(KittyPainter *p, const RECT *paint,
     fill(d, keep->right, keep->top, paint->right, keep->bottom, c);
 }
 
+static void d2d_fill_rect(KittyPainter *p, const RECT *r, COLORREF c)
+{
+    fill((D2DPainter *)p, r->left, r->top, r->right, r->bottom, c);
+}
+
 static bool d2d_char_width(KittyPainter *p, HFONT font, unsigned ch,
                            bool wide, int *width)
 {
@@ -1636,6 +1641,7 @@ static const KittyPainterVtable d2d_vt = {
     .pixel = d2d_pixel,
     .icon = d2d_icon,
     .fill_outside = d2d_fill_outside,
+    .fill_rect = d2d_fill_rect,
     .char_width = d2d_char_width,
     .hdc = d2d_hdc,
     .frame_signal = d2d_frame_signal,

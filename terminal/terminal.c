@@ -66,6 +66,15 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
 /* KiTTY desktop notifications from the host and taskbar progress (OSC 9, 777,
  * 99; kitty/kitty_hostnotify.c); stubbed by the test builds of this file. */
 #include "../kitty/kitty_hostnotify.h"
+/* KiTTY: the shell's prompt marks (OSC 133), parsed by kitty_progstatus.c. */
+#include "../kitty/kitty_progstatus.h"
+static void term_osc133(Terminal *term);
+/* KiTTY: the failed-command line list for the mark strip (defined with the
+ * prompt marks, used by scroll, term_size and term_clrsb above them). */
+static void fm_add_abs(Terminal *term, int absno);
+static void fm_sb_pushed(Terminal *term, int idx, unsigned lattr);
+static void fm_sb_evicted(Terminal *term);
+static void fm_clear(Terminal *term);
 #endif
 #if defined(MOD_PERSO) || defined(MOD_FAR2L)
 /* Send bytes down to the host. A seam rather than an ldisc_send() here so that the
@@ -1243,6 +1252,70 @@ static inline void free_compressed_line(compressed_scrollback_line *line)
 }
 
 #endif /* NO_SCROLLBACK_COMPRESSION */
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: a scrollback line's lattr, read without decompressing the line -
+ * the prompt marks (OSC 133) are looked for across the whole scrollback. The
+ * compressed form starts with the column count and then the lattr, each a
+ * 7-bit varint (compressline_no_free).
+ */
+static unsigned sb_peek_lattr(compressed_scrollback_line *c)
+{
+#ifndef NO_SCROLLBACK_COMPRESSION
+    const unsigned char *p = (const unsigned char *)(c + 1);
+    size_t i = 0, n;
+    unsigned v = 0;
+    int shift = 0;
+
+#ifdef KITTY_SB_DEFER
+    if (sb_is_raw(c))
+        return ((sb_raw_line *)c)->line->lattr;
+#endif
+    n = c->len;
+    while (i < n && (p[i] & 0x80))
+        i++;                           /* the column count */
+    i++;
+    while (i < n && shift < 28) {
+        v |= (unsigned)(p[i] & 0x7F) << shift;
+        shift += 7;
+        if (!(p[i++] & 0x80))
+            break;
+    }
+    return v & 0xFFFF;
+#else
+    return c->lattr;
+#endif
+}
+
+/* Sets (on) or clears lattr bits on scrollback entry idx: a compressed line
+ * is decompressed, changed and compressed again in its place. */
+static void sb_set_lattr_bits(Terminal *term, int idx, unsigned bits, bool on)
+{
+    compressed_scrollback_line *c = index234(term->scrollback, idx);
+    termline *line;
+
+    if (!c)
+        return;
+#if !defined NO_SCROLLBACK_COMPRESSION && defined KITTY_SB_DEFER
+    if (sb_is_raw(c)) {
+        line = ((sb_raw_line *)c)->line;
+        line->lattr = on ? (line->lattr | bits) : (line->lattr & ~bits);
+        return;
+    }
+#endif
+#ifndef NO_SCROLLBACK_COMPRESSION
+    line = decompressline_no_free(c);
+    line->lattr = on ? (line->lattr | bits) : (line->lattr & ~bits);
+    delpos234(term->scrollback, idx);
+    addpos234(term->scrollback, compressline_no_free(line), idx);
+    freetermline(line);
+    sfree(c);
+#else
+    c->lattr = on ? (c->lattr | bits) : (c->lattr & ~bits);
+#endif
+}
+#endif
 
 /*
  * Resize a line to make it `cols' columns wide.
@@ -2590,6 +2663,9 @@ void term_clrsb(Terminal *term)
 #ifdef KITTY_SB_DEFER
     term->sb_raw_lines = term->sb_raw_cells = 0;
 #endif
+#ifdef MOD_PERSO
+    fm_clear(term);                    /* KiTTY: no scrollback, no marks */
+#endif
 
     /*
      * When clearing the scrollback, we also truncate any termlines on
@@ -3022,6 +3098,10 @@ void term_free(Terminal *term)
             freetermline(term->disptext[i]);
     }
     sfree(term->disptext);
+#ifdef MOD_PERSO
+    sfree(term->fm_lines);             /* KiTTY: the mark strip's list */
+    sfree(term->im_marks);             /* KiTTY: the command columns */
+#endif
     while (term->beephead) {
         beep = term->beephead;
         term->beephead = beep->next;
@@ -3258,6 +3338,10 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         term->tempsblines = sblen;
     assert(count234(term->scrollback) <= newsavelines);
     assert(count234(term->scrollback) >= term->tempsblines);
+#ifdef MOD_PERSO
+    term->fm_rebuild = true;           /* KiTTY: lines moved, rescan the marks */
+    term->im_count = 0;                /* KiTTY: the command columns are stale */
+#endif
     term->disptop = 0;
 
     /* Make a new displayed text buffer. */
@@ -3720,6 +3804,9 @@ static void scroll(Terminal *term, int topline, int botline,
 
                     sblen--;
                     cline = delpos234(term->scrollback, 0);
+#ifdef MOD_PERSO
+                    fm_sb_evicted(term);   /* KiTTY: the mark strip's list */
+#endif
 #ifdef KITTY_SB_DEFER
                     /* KiTTY: an evicted line that was never compressed
                      * becomes the new bottom line (see below) */
@@ -3733,6 +3820,10 @@ static void scroll(Terminal *term, int topline, int botline,
                 } else
                     term->tempsblines += 1;
 
+#ifdef MOD_PERSO
+                /* KiTTY: a failed command's line enters the scrollback */
+                fm_sb_pushed(term, sblen, line->lattr);
+#endif
 #ifdef KITTY_SB_DEFER
                 /* KiTTY: kept uncompressed, the line itself goes to the
                  * scrollback, and the screen gets another one */
@@ -7910,11 +8001,15 @@ static void do_osc(Terminal *term)
              * in kitty/kitty_transfer.c. */
             kitty_transfer_osc(term);
             break;
+          case 133:
+            /* The prompt marks on the lines (term_osc133), then the
+             * program status they end (kitty_hostnotify.c). */
+            term_osc133(term);
+            /* fall through */
           case 9:
           case 777:
           case 99:
           case 7501:
-          case 133:
             /* Desktop notifications from the host (OSC 9, OSC 777, OSC 99),
              * taskbar progress (OSC 9;4), program status (OSC 7501) and the
              * shell's prompt marks (OSC 133, which end a running status).
@@ -9208,7 +9303,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     ldata = scrlineptr(term->curs.y);
                     check_line_size(term, ldata);
                     check_trust_status(term, ldata);
-                    ldata->lattr = nlattr;
+                    /* KiTTY: the size changes, the prompt marks stay */
+                    ldata->lattr = nlattr | (ldata->lattr & LATTR_MARKS);
                     seen_disp_event(term);
                     break;
                   }
@@ -11934,6 +12030,421 @@ void term_copyall(Terminal *term, const int *clipboards, int n_clipboards)
     bottom.x = term->cols;
     clipme(term, top, bottom, false, true, clipboards, n_clipboards);
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the shell's prompt marks (OSC 133). A line carries LATTR_PROMPT
+ * (133;A), LATTR_INPUT (133;B, the column in im_*), LATTR_OUTPUT (133;C)
+ * or LATTR_FAILED (133;D with an exit code other than 0, set on that
+ * command's prompt line), so the marks move with the lines into the
+ * scrollback. Lines are numbered as on the main screen:
+ * 0.. the screen, below 0 the scrollback. The alternate screen is never
+ * marked, and the prompt keys leave it alone.
+ */
+
+/*
+ * The failed commands' lines in the scrollback, kept as a sorted list of
+ * absolute line numbers (terminal.h fm_*) so the mark strip need not scan
+ * the scrollback on every frame. Scrollback entry idx has the absolute
+ * number fm_base + idx; eviction at the top moves fm_base up.
+ */
+static void fm_add_abs(Terminal *term, int absno)
+{
+    int lo = 0, hi = term->fm_count;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (term->fm_lines[mid] < absno)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    if (lo < term->fm_count && term->fm_lines[lo] == absno)
+        return;                        /* known */
+    sgrowarray(term->fm_lines, term->fm_size, term->fm_count);
+    memmove(term->fm_lines + lo + 1, term->fm_lines + lo,
+            (term->fm_count - lo) * sizeof(*term->fm_lines));
+    term->fm_lines[lo] = absno;
+    term->fm_count++;
+}
+
+/* A line scrolled off the screen becomes scrollback entry idx. */
+static void fm_sb_pushed(Terminal *term, int idx, unsigned lattr)
+{
+    if (lattr & LATTR_FAILED)
+        fm_add_abs(term, term->fm_base + idx);
+}
+
+/* Scrollback entry 0 was dropped. */
+static void fm_sb_evicted(Terminal *term)
+{
+    term->fm_base++;
+    if (term->fm_count > 0 && term->fm_lines[0] < term->fm_base) {
+        term->fm_count--;
+        memmove(term->fm_lines, term->fm_lines + 1,
+                term->fm_count * sizeof(*term->fm_lines));
+    }
+}
+
+static void fm_clear(Terminal *term)
+{
+    term->fm_count = 0;
+    term->fm_base = 0;
+    term->fm_rebuild = false;
+    term->im_count = 0;
+}
+
+/* The list from scratch: every scrollback entry's lattr, read compressed. */
+static void fm_rebuild_now(Terminal *term)
+{
+    int i, n = count234(term->scrollback);
+    term->fm_count = 0;
+    for (i = 0; i < term->im_count; i++)   /* the command columns follow */
+        term->im_marks[i].line -= term->fm_base;
+    term->fm_base = 0;
+    for (i = 0; i < n; i++) {
+        compressed_scrollback_line *c = index234(term->scrollback, i);
+        if (c && (sb_peek_lattr(c) & LATTR_FAILED))
+            fm_add_abs(term, i);
+    }
+    term->fm_rebuild = false;
+}
+
+int term_failed_marks(Terminal *term, int *out, int max, int *total)
+{
+    int sb = count234(term->scrollback);
+    int i, n = 0;
+
+    *total = sb + term->rows;
+    if (term->alt_which)
+        return 0;
+    if (term->fm_rebuild) {
+        unsigned long now = GETTICKCOUNT();
+        if (!term->fm_rebuild_not_before ||    /* never scanned yet */
+            (long)(now - term->fm_rebuild_not_before) >= 0) {
+            fm_rebuild_now(term);
+            term->fm_rebuild_not_before = now + TICKSPERSEC / 4;
+        }
+    }
+    for (i = 0; i < term->fm_count && n < max; i++) {
+        int rel = term->fm_lines[i] - term->fm_base;
+        if (rel >= 0 && rel < sb)
+            out[n++] = rel;
+    }
+    for (i = 0; i < term->rows && n < max; i++) {
+        termline *l = index234(term->screen, i);
+        if (l && (l->lattr & LATTR_FAILED))
+            out[n++] = sb + i;
+    }
+    return n;
+}
+
+static unsigned mark_get(Terminal *term, int y)
+{
+    if (y >= 0) {
+        termline *l = index234(term->screen, y);
+        return l ? l->lattr : 0;
+    } else {
+        compressed_scrollback_line *c =
+            index234(term->scrollback, y + count234(term->scrollback));
+        return c ? sb_peek_lattr(c) : 0;
+    }
+}
+
+static void mark_set(Terminal *term, int y, unsigned bits, bool on)
+{
+    if (y >= 0) {
+        termline *l = scrlineptr(y);   /* flags the row for the repaint */
+        l->lattr = on ? (l->lattr | bits) : (l->lattr & ~bits);
+    } else {
+        sb_set_lattr_bits(term, y + count234(term->scrollback), bits, on);
+        if (on && (bits & LATTR_FAILED))
+            fm_add_abs(term, term->fm_base + y + count234(term->scrollback));
+    }
+    if (bits & LATTR_FAILED)           /* the mark strip follows the scrollbar */
+        term->win_scrollbar_update_pending = true;
+    term_schedule_update(term);
+}
+
+/* The last line at or above y (down to the top of the scrollback) with all
+ * of `bits`, or INT_MIN. */
+static int mark_find_up(Terminal *term, int y, unsigned bits)
+{
+    int top = -count234(term->scrollback);
+    for (; y >= top; y--)
+        if ((mark_get(term, y) & bits) == bits)
+            return y;
+    return INT_MIN;
+}
+
+/* The first line at or below y (down to the cursor's line) with `bits`. */
+static int mark_find_down(Terminal *term, int y, unsigned bits)
+{
+    for (; y <= term->curs.y; y++)
+        if ((mark_get(term, y) & bits) == bits)
+            return y;
+    return INT_MIN;
+}
+
+/*
+ * The columns the typed commands start at (133;B), by absolute line number
+ * in the fm_* numbering (terminal.h im_*). At most IM_MAX entries, the
+ * oldest going first; entries whose lines were evicted are dropped on the
+ * way in and out.
+ */
+#define IM_MAX 4096
+
+static int im_abs(Terminal *term, int y)
+{
+    return term->fm_base + count234(term->scrollback) + y;
+}
+
+static void im_prune(Terminal *term)
+{
+    int n = 0;
+    while (n < term->im_count && term->im_marks[n].line < term->fm_base)
+        n++;
+    if (n) {
+        term->im_count -= n;
+        memmove(term->im_marks, term->im_marks + n,
+                term->im_count * sizeof(*term->im_marks));
+    }
+}
+
+/* The slot of absno, or where it would go. */
+static int im_slot(Terminal *term, int absno)
+{
+    int lo = 0, hi = term->im_count;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (term->im_marks[mid].line < absno)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return lo;
+}
+
+static void im_add(Terminal *term, int y, int col)
+{
+    int absno = im_abs(term, y), lo;
+    im_prune(term);
+    lo = im_slot(term, absno);
+    if (lo < term->im_count && term->im_marks[lo].line == absno) {
+        term->im_marks[lo].col = col;  /* the prompt was redrawn: the new one */
+        return;
+    }
+    if (term->im_count >= IM_MAX) {
+        term->im_count--;
+        memmove(term->im_marks, term->im_marks + 1,
+                term->im_count * sizeof(*term->im_marks));
+        lo = im_slot(term, absno);
+    }
+    sgrowarray(term->im_marks, term->im_size, term->im_count);
+    memmove(term->im_marks + lo + 1, term->im_marks + lo,
+            (term->im_count - lo) * sizeof(*term->im_marks));
+    term->im_marks[lo].line = absno;
+    term->im_marks[lo].col = col;
+    term->im_count++;
+}
+
+/* The column the command on line y starts at; 0 when unknown. */
+static int im_col(Terminal *term, int y)
+{
+    int absno = im_abs(term, y), lo;
+    im_prune(term);
+    lo = im_slot(term, absno);
+    if (lo < term->im_count && term->im_marks[lo].line == absno)
+        return term->im_marks[lo].col < term->cols ?
+               term->im_marks[lo].col : term->cols;
+    return 0;
+}
+
+/* do_osc: OSC 133. */
+static void term_osc133(Terminal *term)
+{
+    int code, y;
+
+    if (term->alt_which)
+        return;
+    switch (ps_osc133(term->osc_string, term->osc_strlen, &code)) {
+      case PS133_PROMPT:
+        mark_set(term, term->curs.y, LATTR_PROMPT, true);
+        term->marks_seen = true;
+        break;
+      case PS133_INPUT:
+        mark_set(term, term->curs.y, LATTR_INPUT, true);
+        im_add(term, term->curs.y, term->curs.x);
+        break;
+      case PS133_OUTPUT:
+        mark_set(term, term->curs.y, LATTR_OUTPUT, true);
+        break;
+      case PS133_END:
+        if (code > 0) {
+            y = mark_find_up(term, term->curs.y, LATTR_PROMPT);
+            if (y != INT_MIN)
+                mark_set(term, y, LATTR_FAILED, true);
+        }
+        break;
+      default:
+        break;
+    }
+}
+
+/* Where the prompt keys count from: the prompt of the last jump while the
+ * view is still where that jump left it; else the top line of the view, or
+ * - at the bottom - the cursor's line (the prompt being typed at). */
+static int mark_anchor(Terminal *term)
+{
+    int sb = count234(term->scrollback);
+    if (term->mark_jumped && term->disptop == term->mark_disptop &&
+        sb == term->mark_sblines)
+        return term->mark_anchor - sb;
+    term->mark_jumped = false;
+    return term->disptop < 0 ? term->disptop : term->curs.y;
+}
+
+int term_mark_jump(Terminal *term, int dir, bool failed_only)
+{
+    unsigned bits = LATTR_PROMPT | (failed_only ? LATTR_FAILED : 0);
+    int from, y, sb;
+
+    if (!term->marks_seen || term->alt_which)
+        return 0;                      /* the key goes to the host */
+    from = mark_anchor(term);
+    y = dir < 0 ? mark_find_up(term, from - 1, bits) :
+                  mark_find_down(term, from + 1, bits);
+    if (y == INT_MIN) {
+        if (dir > 0 && term->disptop < 0) {
+            term_scroll(term, -1, 0);  /* past the last one: the bottom */
+            term->mark_jumped = false;
+        }
+        return 1;
+    }
+    sb = count234(term->scrollback);
+    term_scroll(term, 0, y - term->disptop);
+    term->mark_jumped = true;
+    term->mark_anchor = y + sb;
+    term->mark_disptop = term->disptop;
+    term->mark_sblines = sb;
+    return 1;
+}
+
+static bool mark_line_blank(Terminal *term, int y)
+{
+    termline *l = lineptr(y);
+    bool blank = true;
+    int x;
+    for (x = 0; x < l->cols && blank; x++) {
+        unsigned long c = l->chars[x].chr;
+        if (c != 0 && c != ' ' && c != (CSET_ASCII | ' '))
+            blank = false;
+    }
+    unlineptr(l);
+    return blank;
+}
+
+/* The command the selection keys act on, as its prompt line *p and the
+ * line of the next prompt *q (the cursor's line + 1 while it still runs):
+ * the prompt the last jump went to; scrolled back, the command at the top
+ * of the view; else the one before the prompt at the cursor - the last
+ * command that ran. False when there is none. */
+static bool mark_command(Terminal *term, int *p, int *q)
+{
+    int y = mark_anchor(term);         /* forgets a jump the view has left */
+
+    if (term->mark_jumped) {
+        *p = y;
+    } else if (term->disptop < 0) {
+        *p = mark_find_up(term, term->disptop, LATTR_PROMPT);
+    } else {
+        int cur = mark_find_up(term, term->curs.y, LATTR_PROMPT);
+        if (cur == INT_MIN)
+            return false;
+        *p = mark_find_up(term, cur - 1, LATTR_PROMPT);
+    }
+    if (*p == INT_MIN)
+        return false;
+    *q = mark_find_down(term, *p + 1, LATTR_PROMPT);
+    if (*q == INT_MIN)
+        *q = term->curs.y + 1;
+    return true;
+}
+
+/* Lines start..end selected, from column sx, and copied as the mouse
+ * copies; the start scrolled into view unless the view already shows it. */
+static void mark_select(Terminal *term, int start, int sx, int end)
+{
+    term->selstart.y = start;
+    term->selstart.x = sx;
+    term->selend.y = end;
+    term->selend.x = term->cols;
+    term->seltype = LEXICOGRAPHIC;
+    term->selmode = SM_CHAR;
+    term->selstate = SELECTED;
+    clipme(term, term->selstart, term->selend, false, false,
+           term->mouse_select_clipboards, term->n_mouse_select_clipboards);
+    if (start < term->disptop || start >= term->disptop + term->rows)
+        term_scroll(term, 0, start - term->disptop);
+    term->mark_disptop = term->disptop;
+    term_schedule_update(term);
+}
+
+int term_mark_select_output(Terminal *term)
+{
+    int p, q, start, end, y;
+
+    if (!term->marks_seen || term->alt_which)
+        return 0;
+    if (!mark_command(term, &p, &q))
+        return 1;
+    start = p + 1;
+    for (y = p; y < q; y++)
+        if (mark_get(term, y) & LATTR_OUTPUT) {
+            start = y;
+            break;
+        }
+    end = q - 1;
+    while (end >= start && mark_line_blank(term, end))
+        end--;
+    if (end < start)
+        return 1;                      /* the command printed nothing */
+    mark_select(term, start, 0, end);
+    return 1;
+}
+
+/* The command line itself: from the B mark (133;B, the column from im_*)
+ * to the line before its output starts, trailing blank lines left out.
+ * Without a B mark nothing is selected: the prompt's end is not known. */
+int term_mark_select_command(Terminal *term)
+{
+    int p, q, b, end, y;
+
+    if (!term->marks_seen || term->alt_which)
+        return 0;
+    if (!mark_command(term, &p, &q))
+        return 1;
+    b = INT_MIN;
+    for (y = p; y < q; y++)
+        if (mark_get(term, y) & LATTR_INPUT) {
+            b = y;
+            break;
+        }
+    if (b == INT_MIN)
+        return 1;
+    end = q - 1;
+    for (y = b + 1; y < q; y++)
+        if (mark_get(term, y) & LATTR_OUTPUT) {
+            end = y - 1;
+            break;
+        }
+    while (end > b && mark_line_blank(term, end))
+        end--;
+    if (end < b)
+        end = b;
+    mark_select(term, b, im_col(term, b), end);
+    return 1;
+}
+#endif
 
 static void paste_from_clip_local(void *vterm)
 {

@@ -237,6 +237,15 @@ extern const int colour_indices_oscp_to_osc4[OSCP_NCOLOURS];
 #define LATTR_WRAPPED2 0x00000020UL    /* with WRAPPED: CJK wide character
                                           wrapped to next line, so last
                                           single-width cell is empty */
+/* KiTTY: the shell's prompt marks (OSC 133), kept on the line so they move
+ * with it into the scrollback. Not drawing attributes: the drawing code
+ * masks lattr with LATTR_MODE. */
+#define LATTR_PROMPT  0x00000100UL     /* 133;A: a prompt starts here */
+#define LATTR_OUTPUT  0x00000200UL     /* 133;C: a command's output starts */
+#define LATTR_FAILED  0x00000400UL     /* 133;D;n, n != 0: on the prompt line */
+#define LATTR_INPUT   0x00000800UL     /* 133;B: the typed command starts on
+                                          this line */
+#define LATTR_MARKS   0x00000F00UL
 
 #define ATTR_INVALID 0x03FFFFU
 
@@ -2099,6 +2108,19 @@ void term_pre_reconfig(Terminal *, Conf *);
 void term_reconfig(Terminal *, Conf *);
 void term_request_copy(Terminal *, const int *clipboards, int n_clipboards);
 void term_request_paste(Terminal *, int clipboard);
+#ifdef MOD_PERSO
+/* KiTTY: the shell's prompt marks (OSC 133). All return 0 when the key is
+ * not theirs - no mark has arrived, or a full-screen program is running -
+ * so it goes to the host. dir: -1 previous, +1 next. */
+int term_mark_jump(Terminal *, int dir, bool failed_only);
+int term_mark_select_output(Terminal *);
+int term_mark_select_command(Terminal *);
+/* KiTTY: the failed commands' lines, for the mark strip. out[] gets up to
+ * max line positions counted from the top of the scrollback (0 = the oldest
+ * kept line, sblines = the top screen row); *total = scrollback + screen
+ * lines. Returns how many; 0 on the alternate screen. */
+int term_failed_marks(Terminal *, int *out, int max, int *total);
+#endif
 void term_seen_key_event(Terminal *);
 size_t term_data(Terminal *, const void *data, size_t len);
 size_t term_data_wide(Terminal *, const wchar_t *widebuf, size_t len);

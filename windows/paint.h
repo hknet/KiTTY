@@ -89,6 +89,8 @@ typedef struct KittyPainterVtable {
     /* WM_PAINT's border: fill `paint` except the terminal area `keep`. */
     void (*fill_outside)(KittyPainter *p, const RECT *paint,
                          const RECT *keep, COLORREF c);
+    /* KiTTY: a solid rectangle (the mark strip and its ticks). */
+    void (*fill_rect)(KittyPainter *p, const RECT *r, COLORREF c);
 
     /* The advance width of `ch` in `font`, for the dual-width check
      * (`wide`: the character is UTF-16, else a font-direct byte). Returns
@@ -157,6 +159,7 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_pixel(p, x, y, c)             ((p)->vt->pixel((p), (x), (y), (c)))
 #define kp_icon(p, x, y, ic, w, h)       ((p)->vt->icon((p), (x), (y), (ic), (w), (h)))
 #define kp_fill_outside(p, pr, kr, c)    ((p)->vt->fill_outside((p), (pr), (kr), (c)))
+#define kp_fill_rect(p, r, c)            ((p)->vt->fill_rect((p), (r), (c)))
 #define kp_char_width(p, f, ch, w, out)  ((p)->vt->char_width((p), (f), (ch), (w), (out)))
 #define kp_hdc(p)                        ((p)->vt->hdc(p))
 #define kp_frame_signal(p)               ((p)->vt->frame_signal(p))

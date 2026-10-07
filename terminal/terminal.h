@@ -578,6 +578,40 @@ struct terminal_tag {
      * everything above. */
     struct kitty_hostnotify *hostnotify;
 
+    /* KiTTY: the shell's prompt marks (OSC 133, LATTR_PROMPT and friends on
+     * the lines). marks_seen: a prompt mark has arrived, so the prompt keys
+     * act. The jump anchor is the prompt the last jump went to, as a line
+     * number counted from the top of the scrollback; it holds while the view
+     * and the scrollback are where that jump left them. Unconditional storage,
+     * same ODR reason as everything above. */
+    bool marks_seen;
+    bool mark_jumped;
+    int mark_anchor;                   /* from the top of the scrollback */
+    int mark_disptop, mark_sblines;    /* the view the jump left */
+
+    /* KiTTY: the failed commands' lines in the scrollback, for the mark
+     * strip (term_failed_marks). fm_lines holds absolute line numbers,
+     * sorted: fm_base is the absolute number of scrollback entry 0 and
+     * grows as lines are evicted from the top. fm_rebuild asks for a scan
+     * of the whole scrollback (after term_size), done at most every 250 ms.
+     * Unconditional storage, same ODR reason as everything above. */
+    int *fm_lines;
+    int fm_count;
+    size_t fm_size;
+    int fm_base;
+    bool fm_rebuild;
+    unsigned long fm_rebuild_not_before;
+
+    /* KiTTY: where each typed command starts (133;B): the column, which the
+     * line bit LATTR_INPUT cannot hold. Sorted by absolute line number in
+     * the fm_* numbering (fm_base + scrollback index; a screen row y is
+     * fm_base + scrollback count + y); entries below fm_base are dropped as
+     * they are met. A miss falls back to column 0 of the LATTR_INPUT line.
+     * Unconditional storage, same ODR reason as everything above. */
+    struct kitty_input_mark { int line, col; } *im_marks;
+    int im_count;
+    size_t im_size;
+
     char id_string[1024];
 
     unsigned char *tabs;

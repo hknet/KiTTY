@@ -51,8 +51,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   state as a small icon, the percentage on its bar, and flashes when a
   program becomes blocked in the background. Blocked, done and failed raise
   a notice under the desktop notification setting.
-- **Prompt marks (OSC 133).** The shell's next prompt ends a running
-  program status. The exit code the shell reports is kept for later use.
+- **Prompt marks (OSC 133).** With the shell integration on the host, every
+  prompt, command output and failed command is marked on its line, and the
+  marks move into the scrollback. Alt+PgUp / Alt+PgDn jump to the previous /
+  next prompt, Alt+Shift+PgUp / Alt+Shift+PgDn to the previous / next failed
+  command, Alt+End selects a command's output and Alt+Home the command line
+  itself (the last two copy it). The keys are actions on the Keyboard
+  Shortcuts panel and go to the host in a window without marks or under a
+  full-screen program. A failed command gets a thin red line on its prompt
+  line and a red tick in a strip beside the scrollbar (Terminal > Features >
+  Mark failed commands, on by default; the window is 4 px wider for the same
+  columns while it is on). The shell's next prompt also ends a running
+  program status.
 - **docs/OSC-INTEGRATION.md** lists what each OSC feature needs on the host,
   with shell snippets for bash, zsh and fish (OSC 7 and OSC 133). It shows
   what tmux, screen, zellij and dtach let through, the tmux settings, and a

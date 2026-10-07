@@ -1019,6 +1019,13 @@
 ;    Example:  eventlog={CONTROL}{SHIFT}E
 ;eventlog=
 
+; The shell's prompt marks (OSC 133, sent by the shell integration on the
+; host): jump to the previous / next failed command, the prompt at the top
+; (default is ALT+SHIFT+PRIOR / ALT+SHIFT+NEXT). In a window without marks, or
+; under a full-screen program, the key goes to the host.
+;failednext=
+;failedprev=
+
 ; Start FileZilla (default is SHIFT+F4)
 ;    Works only while FileZilla is found (FileZillaPath in [KiTTY]) - the same
 ;    condition under which the Tools menu shows the entry.
@@ -1080,6 +1087,12 @@
 ; Print all window buffer content (default is F7)
 ;printall=
 
+; The shell's prompt marks (OSC 133): jump to the previous / next prompt, which
+; then stands at the top (default is ALT+PRIOR / ALT+NEXT). In a window
+; without marks, or under a full-screen program, the key goes to the host.
+;promptnext=
+;promptprev=
+
 ; Protect the window, disable keyboard and mouse input (default is CONTROL+F9)
 ;protect=
 
@@ -1092,6 +1105,16 @@
 
 ; Load a local script and run it remotely (default is CONTROL+F2)
 ;script=
+
+; The shell's prompt marks (OSC 133): select, and so copy, a command line - the
+; command you typed, without the prompt - of the command at the top of the
+; view, else the last one (default is ALT+HOME). Needs the B mark (the optional
+; line of the shell integration, or a program that sends it, such as pi).
+;selectcommand=
+
+; The shell's prompt marks (OSC 133): select, and so copy, a command's output -
+; the command at the top of the view, else the last one (default is ALT+END).
+;selectoutput=
 
 ; Send a local file with kscp - the same as Tools > Send File (kscp): a file
 ; window opens, the file goes to the remote directory set on Connection >

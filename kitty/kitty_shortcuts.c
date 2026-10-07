@@ -225,6 +225,15 @@ static const struct sc_action sc_actions[] = {
 	SC_ACT( keyexchange,       KI_SC_KEYEXCHANGE,       0,                         KT_SC_ACT_KEYEXCHANGE ),
 	SC_ACT( transparencyup,    KI_SC_TRANSPARENCYUP,    CONTROLKEY+VK_UP,          KT_SC_ACT_TRANSPARENCYUP ),
 	SC_ACT( transparencydown,  KI_SC_TRANSPARENCYDOWN,  CONTROLKEY+VK_DOWN,        KT_SC_ACT_TRANSPARENCYDOWN ),
+	/* The shell's prompt marks (OSC 133): next to the scroll keys
+	 * (Shift/Ctrl/Ctrl+Shift with PgUp/PgDn). In a window without marks,
+	 * or under a full-screen program, they go to the host. */
+	SC_ACT( promptprev,        KI_SC_PROMPTPREV,        ALTKEY+VK_PRIOR,           KT_SC_ACT_PROMPTPREV ),
+	SC_ACT( promptnext,        KI_SC_PROMPTNEXT,        ALTKEY+VK_NEXT,            KT_SC_ACT_PROMPTNEXT ),
+	SC_ACT( failedprev,        KI_SC_FAILEDPREV,        ALTKEY+SHIFTKEY+VK_PRIOR,  KT_SC_ACT_FAILEDPREV ),
+	SC_ACT( failednext,        KI_SC_FAILEDNEXT,        ALTKEY+SHIFTKEY+VK_NEXT,   KT_SC_ACT_FAILEDNEXT ),
+	SC_ACT( selectoutput,      KI_SC_SELECTOUTPUT,      ALTKEY+VK_END,             KT_SC_ACT_SELECTOUTPUT ),
+	SC_ACT( selectcommand,     KI_SC_SELECTCOMMAND,     ALTKEY+VK_HOME,            KT_SC_ACT_SELECTCOMMAND ),
 } ;
 #undef SC_ACT
 #define SC_SLOT( i ) ( (int *) ( (char *) &shortcuts_tab + sc_actions[i].offset ) )
@@ -526,6 +535,14 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	if( control_flag && shift_flag && (key_num==VK_F12) ) {
 		ResizeWinList( hwnd, conf_get_int(conf,CONF_width), conf_get_int(conf,CONF_height) ) ; return 1 ; 
 	} // Resize all PuTTY windows to the size of the current one
+
+	/* The shell's prompt marks: 0 (not handled) sends the key to the host. */
+	if( key == shortcuts_tab.promptprev ) return term_mark_jump( term, -1, false ) ;
+	if( key == shortcuts_tab.promptnext ) return term_mark_jump( term, 1, false ) ;
+	if( key == shortcuts_tab.failedprev ) return term_mark_jump( term, -1, true ) ;
+	if( key == shortcuts_tab.failednext ) return term_mark_jump( term, 1, true ) ;
+	if( key == shortcuts_tab.selectoutput ) return term_mark_select_output( term ) ;
+	if( key == shortcuts_tab.selectcommand ) return term_mark_select_command( term ) ;
 
 	if( key == shortcuts_tab.printall ) {		
 		SendMessage( hwnd, WM_COMMAND, IDM_COPYALL, 0 ) ;

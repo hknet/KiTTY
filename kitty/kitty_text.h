@@ -313,6 +313,8 @@
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
 #define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
+#define KT_FEATURES_SHELLINT_GROUP                   "Shell integration"
+#define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
 #define KT_HOSTNOTIFY_LOG_DROPPED                    "Notifications from the host: %d dropped (more than one in 2 seconds)."
 /* Program status (OSC 7501): the taskbar overlay's text and the notice */
 #define KT_PST_WORKING                               "Working"
@@ -1247,7 +1249,7 @@
 #define KT_HKS_LEFT                                  "Left as it is."
 #define KT_HOST_KEYS_CAS_JUMP                        "Certificate Authorities are configured for the whole installation: Application > Security."
 #define KT_KSET_TW_DEBUG                             "Extra tracing in the Event Log"
-#define KT_KSET_SC_TITLE                             "Keyboard shortcuts"
+#define KT_KSET_SC_TITLE                             "Keyboard Shortcuts"
 #define KT_KSET_SC_ENABLE                            "Keyboard shortcuts in the terminal window"
 /* The shortcut editor: the actions list, the AutoText list, their fields
  * and buttons, the messages (title KT_KSET_TITLE). */
@@ -1314,6 +1316,12 @@
 #define KT_SC_ACT_SHOWPORTFORWARD                    "Show port forwardings"
 #define KT_SC_ACT_SWITCHLOGMODE                      "Switch the log mode"
 #define KT_SC_ACT_TRANSPARENCYDOWN                   "Transparency: less"
+#define KT_SC_ACT_PROMPTPREV                         "Prompt: previous"
+#define KT_SC_ACT_PROMPTNEXT                         "Prompt: next"
+#define KT_SC_ACT_FAILEDPREV                         "Failed command: previous"
+#define KT_SC_ACT_FAILEDNEXT                         "Failed command: next"
+#define KT_SC_ACT_SELECTOUTPUT                       "Select command output"
+#define KT_SC_ACT_SELECTCOMMAND                      "Select command line"
 #define KT_SC_ACT_TRANSPARENCYUP                     "Transparency: more"
 #define KT_SC_ACT_TRAY                               "Send to the tray"
 #define KT_SC_ACT_VIEWER                             "Image viewer"

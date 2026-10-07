@@ -29,10 +29,14 @@ One snippet per shell sends two things before every prompt:
 
 - **OSC 7**, the current directory. Drag-and-drop uploads, *Send File* and
   *Start WinSCP* use it when tracking is on.
-- **OSC 133**, the prompt marks: `A` (a prompt starts) and, in bash and zsh,
-  `D;<exit code>` (the last command finished). A prompt ends a program's
-  *working* or *blocked* status (OSC 7501). KiTTY++ stores the exit code but
-  does not show it yet.
+- **OSC 133**, the prompt marks: `A` (a prompt starts), `C` (a command's
+  output starts) and `D;<exit code>` (the command finished; not after an empty
+  Enter). A prompt ends a program's *working* or *blocked* status (OSC 7501).
+  The marks let **Alt+PgUp** / **Alt+PgDn** jump between prompts,
+  **Alt+Shift+PgUp** / **Alt+Shift+PgDn** between failed commands, and
+  **Alt+End** select a command's output; a failed command is marked red.
+  **Alt+Home** selects the command line itself and needs the optional `B`
+  mark (the start of the typed command): one more line per shell, below.
 
 Many setups send OSC 7 already: Starship, several oh-my-zsh and oh-my-posh
 themes, `ble.sh`, and the `vte.sh` some Linux distributions install in
@@ -53,8 +57,8 @@ __kpp_osc() {
 }
 __kpp_prompt() {
     local ec=$?
-    [ -n "$__kpp_seen" ] && __kpp_osc "133;D;$ec"
-    __kpp_seen=1
+    [ -n "$__kpp_ran" ] && __kpp_osc "133;D;$ec"
+    __kpp_ran=$__kpp_always
     __kpp_osc "133;A"
     __kpp_osc "7;file://${HOSTNAME}${PWD}"
     return $ec
@@ -62,6 +66,33 @@ __kpp_prompt() {
 case "$PROMPT_COMMAND" in
   *__kpp_prompt*) ;;
   *) PROMPT_COMMAND="__kpp_prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac
+# Output starts (133;C), and a command ran: PS0, before each command (bash 4.4+).
+if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+    __kpp_C=$(__kpp_osc "133;C")
+    case "$PS0" in
+      *__kpp_C*) ;;
+      *) PS0='${__kpp_ran[__kpp_ran=1]}${__kpp_C}'"$PS0" ;;
+    esac
+else
+    __kpp_always=1      # no PS0: the exit code goes with every prompt
+fi
+```
+
+**Optional: the command's start (`133;B`)**, which **Alt+Home** (select the
+command line) needs. It goes at the end of `PS1`, so it must come after
+anything that sets the prompt: prompt themes (Starship, oh-my-posh, `ble.sh`)
+rewrite `PS1` on every prompt and drop it. With such a theme, the mark has to
+go into the theme's own prompt string. The variable is expanded after bash has
+processed the backslashes in `PS1`, so the tmux and screen wrapping survives.
+
+```bash
+# Optional: the start of the typed command (133;B), for Alt+Home. Last, after
+# any prompt theme.
+__kpp_B=$(__kpp_osc "133;B")
+case "$PS1" in
+  *__kpp_B*) ;;
+  *) PS1="$PS1"'\[${__kpp_B}\]' ;;
 esac
 ```
 
@@ -74,21 +105,36 @@ __kpp_osc() {
     elif [[ -n $STY ]]; then printf '\033P\033]%s\007\033\\' "$1"
     else printf '\033]%s\007' "$1"; fi
 }
+__kpp_preexec() { __kpp_ran=1; __kpp_osc "133;C"; }
 __kpp_precmd() {
     local ec=$?
-    [[ -n $__kpp_seen ]] && __kpp_osc "133;D;$ec"
-    __kpp_seen=1
+    [[ -n $__kpp_ran ]] && __kpp_osc "133;D;$ec"
+    __kpp_ran=
     __kpp_osc "133;A"
     __kpp_osc "7;file://${HOST}${PWD}"
 }
 autoload -Uz add-zsh-hook
+add-zsh-hook preexec __kpp_preexec
 add-zsh-hook precmd __kpp_precmd
+```
+
+**Optional: the command's start (`133;B`)**, which **Alt+Home** (select the
+command line) needs. It goes at the end of `PS1`, so it must come after
+anything that sets the prompt: prompt themes (oh-my-zsh, powerlevel10k,
+Starship) rewrite `PROMPT` on every prompt and drop it. With such a theme, the
+mark has to go into the theme's own prompt string.
+
+```zsh
+# Optional: the start of the typed command (133;B), for Alt+Home. Last, after
+# any prompt theme.
+[[ $PS1 == *$']133;B'* ]] || PS1+="%{$(__kpp_osc '133;B')%}"
 ```
 
 ### fish: `~/.config/fish/config.fish`
 
-fish 4 sends the OSC 133 marks itself, the exit code included; the `A` below
-is for older versions and does no harm twice.
+fish 4 sends the OSC 133 marks `A`, `C` and `D` itself, the exit code
+included; the `A` below is for older versions and does no harm twice. Older
+fish gets no output or failed-command marks.
 
 ```fish
 # KiTTY++ shell integration: current directory (OSC 7), prompt marks (OSC 133).
@@ -107,6 +153,23 @@ function __kpp_prompt --on-event fish_prompt
 end
 ```
 
+**Optional: the command's start (`133;B`)**, which **Alt+Home** (select the
+command line) needs; fish does not send it. It goes at the end of the prompt,
+so it must come after anything that defines `fish_prompt`: prompt themes
+(tide, Starship, oh-my-posh) replace the function and drop it.
+
+```fish
+# Optional: the start of the typed command (133;B), for Alt+Home. Last, after
+# any prompt theme.
+if not functions -q __kpp_prompt_orig
+    functions -c fish_prompt __kpp_prompt_orig
+    function fish_prompt
+        __kpp_prompt_orig
+        __kpp_osc "133;B"
+    end
+end
+```
+
 Reconnect, or source the file, to start.
 
 ### Notes
@@ -117,8 +180,11 @@ Reconnect, or source the file, to start.
   go to the home directory. Nothing reported is ever run.
 - **Older snippets.** The OSC 7 snippet KiTTY++ published before
   (`__osc7_cwd`) keeps working; it can stay or be replaced by the one above.
+- **bash older than 4.4** has no `PS0`: no output mark, and the exit code
+  goes with every prompt, an empty Enter included.
 - **Prompt themes** (oh-my-zsh, powerlevel10k, Starship) do not get in the
-  way: the snippets use the prompt hook, not `PS1`.
+  way: the snippets use the prompt hook, not `PS1`. The optional `B` line is
+  the exception: it is part of `PS1`, see above.
 
 ## Program status (OSC 7501)
 

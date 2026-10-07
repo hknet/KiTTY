@@ -1655,6 +1655,9 @@ CONF_OPTION(sync_output_hold_ms, VALUE_TYPE(INT), DEFAULT_INT(200), SAVE_KEYWORD
 CONF_OPTION(host_notify, VALUE_TYPE(INT), DEFAULT_INT(1), SAVE_KEYWORD("HostNotify"),)
 /* KiTTY: progress on this window's taskbar button (OSC 9;4). */
 CONF_OPTION(taskbar_progress, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("TaskbarProgress"),)
+/* KiTTY: failed commands (OSC 133;D with an exit code other than 0) marked
+ * with a red line on their prompt line and in the mark strip. */
+CONF_OPTION(failed_marks, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("FailedCommandMarks"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

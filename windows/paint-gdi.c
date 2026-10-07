@@ -311,6 +311,15 @@ static void gdi_icon(KittyPainter *p, int x, int y, HICON ic, int w, int h)
     DrawIconEx(g->hdc, x, y, ic, w, h, 0, NULL, DI_NORMAL);
 }
 
+static void gdi_fill_rect(KittyPainter *p, const RECT *r, COLORREF c)
+{
+    GdiPainter *g = (GdiPainter *)p;
+    HBRUSH brush = CreateSolidBrush(c);
+    gdi_touch(g, r->left, r->top, r->right, r->bottom);
+    FillRect(g->hdc, r, brush);
+    DeleteObject(brush);
+}
+
 static void gdi_fill_outside(KittyPainter *p, const RECT *paint,
                              const RECT *keep, COLORREF c)
 {
@@ -665,6 +674,7 @@ static const KittyPainterVtable gdi_vt = {
     .pixel = gdi_pixel,
     .icon = gdi_icon,
     .fill_outside = gdi_fill_outside,
+    .fill_rect = gdi_fill_rect,
     .char_width = gdi_char_width,
     .hdc = gdi_hdc,
     .frame_signal = gdi_frame_signal,

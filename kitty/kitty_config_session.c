@@ -5990,6 +5990,13 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
                       HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
                       I(CONF_taskbar_progress));
+
+        /* The shell's prompt marks (OSC 133): a group of its own. */
+        s = ctrl_getset(b, "Terminal/Features", "shellint",
+                        KT_FEATURES_SHELLINT_GROUP);
+        ctrl_checkbox(s, KT_FEATURES_FAILED_MARKS, NO_SHORTCUT,
+                      HELPCTX(kitty_failedmarks), conf_checkbox_handler,
+                      I(CONF_failed_marks));
     }
 }
 

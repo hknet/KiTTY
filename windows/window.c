@@ -789,6 +789,11 @@ static void wintw_set_raw_mouse_mode(TermWin *, bool enable);
 static void wintw_set_raw_mouse_mode_pointer(TermWin *, bool enable);
 static void wintw_set_scrollbar(TermWin *, int total, int start, int page);
 static void wintw_bell(TermWin *, int mode);
+/* Client-area layout helpers (defined by recompute_window_offset), used by
+ * the window set-up above them. */
+static int strip_width(WinGuiSeat *wgs);
+static void set_extra_from_rects(WinGuiSeat *wgs, const RECT *wr,
+                                 const RECT *cr);
 static void wintw_clip_write(
     TermWin *, int clipboard, wchar_t *text, int *attrs,
     truecolour *colours, int len, bool must_deselect);
@@ -2059,7 +2064,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     wgs->font_width = 10;
     wgs->font_height = 20;
-    wgs->extra_width = 25;
+    wgs->extra_width = 25 + strip_width(wgs);
     wgs->extra_height = 28;
     guess_width = wgs->extra_width + wgs->font_width * conf_get_int(
         wgs->conf, CONF_width);
@@ -2405,10 +2410,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         GetClientRect(wgs->term_hwnd, &cr);
         wgs->offset_width = wgs->offset_height =
             conf_get_int(wgs->conf, CONF_window_border);
-        wgs->extra_width =
-            wr.right - wr.left - cr.right + cr.left + wgs->offset_width*2;
-        wgs->extra_height =
-            wr.bottom - wr.top - cr.bottom + cr.top +wgs->offset_height*2;
+        set_extra_from_rects(wgs, &wr, &cr);
     }
 
     /*
@@ -4274,6 +4276,173 @@ static void wintw_request_resize(TermWin *tw, int w, int h)
     InvalidateRect(wgs->term_hwnd, NULL, true);
 }
 
+/*
+ * Client-area layout. Left to right the client area holds the left margin
+ * (offset_width), the text, the right margin and (KiTTY) the mark strip,
+ * a few pixels at the right edge where failed commands are ticked.
+ * extra_width/height is what the window is larger than the text, i.e. what
+ * to add to font_width*cols / font_height*rows for a window size. With no
+ * strip each helper equals the expression it replaced.
+ */
+#ifdef MOD_PERSO
+#define KITTY_STRIP_PX96 4             /* strip width at 96 dpi */
+#endif
+
+static int strip_width(WinGuiSeat *wgs)
+{
+#ifdef MOD_PERSO
+    int dpi;
+    if (!conf_get_bool(wgs->conf, CONF_failed_marks))
+        return 0;
+    dpi = wgs->dpi_info.cur_dpi.x > 0 ? wgs->dpi_info.cur_dpi.x : 96;
+    return MulDiv(KITTY_STRIP_PX96, dpi, 96);
+#else
+    (void)wgs;
+    return 0;
+#endif
+}
+
+/* The client width left for margins and text. */
+static int text_width_of(WinGuiSeat *wgs, int client_w)
+{
+    return client_w - strip_width(wgs);
+}
+
+static int centred_offset_width(WinGuiSeat *wgs, int client_w)
+{
+    return (text_width_of(wgs, client_w) - wgs->font_width*wgs->term->cols)/2;
+}
+
+static int centred_offset_height(WinGuiSeat *wgs, int client_h)
+{
+    return (client_h - wgs->font_height*wgs->term->rows)/2;
+}
+
+static void set_extra_from_rects(WinGuiSeat *wgs, const RECT *wr,
+                                 const RECT *cr)
+{
+    wgs->extra_width = wr->right - wr->left - cr->right + cr->left +
+        wgs->offset_width*2 + strip_width(wgs);
+    wgs->extra_height = wr->bottom - wr->top - cr->bottom + cr->top +
+        wgs->offset_height*2;
+}
+
+/* Is the client area exactly the text plus its margins (and strip)? */
+static bool client_fits_text(WinGuiSeat *wgs, int w, int h)
+{
+    return w == wgs->font_width*wgs->term->cols + wgs->offset_width*2 +
+                strip_width(wgs) &&
+           h == wgs->font_height*wgs->term->rows + wgs->offset_height*2;
+}
+
+#ifdef MOD_PERSO
+#define KITTY_STRIP_TICKS 4096         /* marks drawn per frame at most */
+
+/* KiTTY: the mark strip - the right-most strip_width() pixels of the client
+ * area, background colour with a red tick per failed command, placed by
+ * where its line is in scrollback + screen. Drawn into the current frame;
+ * `clip` limits the drawing (WM_PAINT), NULL draws the whole strip. */
+static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
+{
+    static int marks[KITTY_STRIP_TICKS];
+    RECT cr, strip, draw;
+    int sw, n, total, i, tick_h, dpi_y, h, last_bottom;
+    int track_top, track_len, thumb_len, maxpos;
+
+    sw = strip_width(wgs);
+    if (sw <= 0 || !wgs->painter || !wgs->term || !wgs->term_hwnd)
+        return;
+    if (!GetClientRect(wgs->term_hwnd, &cr))
+        return;
+    strip = cr;
+    strip.left = cr.right - sw;
+    if (strip.left < cr.left)
+        strip.left = cr.left;
+    if (clip) {
+        if (!IntersectRect(&draw, &strip, clip))
+            return;
+    } else {
+        draw = strip;
+    }
+    kp_fill_rect(wgs->painter, &draw,
+                 wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
+
+    n = term_failed_marks(wgs->term, marks, KITTY_STRIP_TICKS, &total);
+    h = cr.bottom - cr.top;
+    if (n <= 0 || total <= 0 || h <= 0)
+        return;
+    dpi_y = wgs->dpi_info.cur_dpi.y > 0 ? wgs->dpi_info.cur_dpi.y : 96;
+    tick_h = MulDiv(2, dpi_y, 96);
+    if (tick_h < 2)
+        tick_h = 2;
+
+    /* Where the ticks go: along the scrollbar's track, the way the thumb
+     * moves, so a tick is level with the thumb's top edge when its line is
+     * the top line of the view (a prompt key leaves it there). Windows keeps
+     * the thumb at a minimum size, so a line's place is the thumb position
+     * that shows it, not just its share of the track. Without a visible
+     * scrollbar the whole client height stands for scrollback + screen. */
+    track_top = cr.top;
+    track_len = h;
+    thumb_len = 0;
+    {
+        SCROLLBARINFO sbi;
+        memset(&sbi, 0, sizeof(sbi));
+        sbi.cbSize = sizeof(sbi);
+        if (GetScrollBarInfo(wgs->term_hwnd, OBJID_VSCROLL, &sbi) &&
+            !(sbi.rgstate[0] & (STATE_SYSTEM_INVISIBLE |
+                                STATE_SYSTEM_OFFSCREEN |
+                                STATE_SYSTEM_UNAVAILABLE))) {
+            POINT a, b;
+            a.x = b.x = 0;
+            a.y = sbi.rcScrollBar.top + sbi.dxyLineButton;
+            b.y = sbi.rcScrollBar.bottom - sbi.dxyLineButton;
+            ScreenToClient(wgs->term_hwnd, &a);
+            ScreenToClient(wgs->term_hwnd, &b);
+            if (b.y > a.y) {
+                track_top = a.y;
+                track_len = b.y - a.y;
+                thumb_len = sbi.xyThumbBottom - sbi.xyThumbTop;
+                if (thumb_len < 0 || thumb_len > track_len)
+                    thumb_len = 0;
+            }
+        }
+    }
+    maxpos = total - wgs->term->rows;  /* the top line when at the bottom */
+
+    last_bottom = cr.top - 1;
+    for (i = 0; i < n; i++) {
+        RECT tick, part;
+        int y;
+        if (thumb_len > 0 && maxpos > 0) {
+            if (marks[i] <= maxpos)
+                y = track_top + (int)((long long)marks[i] *
+                                      (track_len - thumb_len) / maxpos);
+            else                       /* on the last screen: inside the thumb */
+                y = track_top + track_len - thumb_len +
+                    (int)((long long)(marks[i] - maxpos) * thumb_len /
+                          wgs->term->rows);
+        } else {
+            y = track_top + (int)((long long)marks[i] * track_len / total);
+        }
+        if (y > cr.bottom - tick_h)
+            y = cr.bottom - tick_h;
+        if (y < cr.top)
+            y = cr.top;
+        if (y < last_bottom)
+            continue;                  /* overlaps the tick before */
+        tick.left = strip.left;
+        tick.right = strip.right;
+        tick.top = y;
+        tick.bottom = y + tick_h;
+        last_bottom = tick.bottom;
+        if (clip && !IntersectRect(&part, &tick, clip))
+            continue;
+        kp_fill_rect(wgs->painter, clip ? &part : &tick, RGB(220, 40, 40));
+    }
+}
+#endif
+
 static void recompute_window_offset(WinGuiSeat *wgs)
 {
     RECT cr;
@@ -4282,8 +4451,8 @@ static void recompute_window_offset(WinGuiSeat *wgs)
     int win_width  = cr.right - cr.left;
     int win_height = cr.bottom - cr.top;
 
-    int new_offset_width = (win_width-wgs->font_width*wgs->term->cols)/2;
-    int new_offset_height = (win_height-wgs->font_height*wgs->term->rows)/2;
+    int new_offset_width = centred_offset_width(wgs, win_width);
+    int new_offset_height = centred_offset_height(wgs, win_height);
 
     if (wgs->offset_width != new_offset_width ||
         wgs->offset_height != new_offset_height) {
@@ -4302,7 +4471,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
      * This function doesn't like to change the terminal size but if the
      * font size is locked that may be it's only soluion.
      */
-    int win_width, win_height, resize_action, window_border;
+    int win_width, win_height, text_w, resize_action, window_border;
     RECT cr, wr;
 
     /* Current window sizes ... */
@@ -4311,6 +4480,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
 
     win_width  = cr.right - cr.left;
     win_height = cr.bottom - cr.top;
+    text_w = text_width_of(wgs, win_width);   /* the client width for text */
 
     resize_action = conf_get_int(wgs->conf, CONF_resize_action);
     window_border = conf_get_int(wgs->conf, CONF_window_border);
@@ -4342,13 +4512,14 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
          * resizes the embedded window (which would break the host's layout).
          */
 
-        wgs->extra_width = wr.right - wr.left - cr.right + cr.left;
+        wgs->extra_width = wr.right - wr.left - cr.right + cr.left +
+            strip_width(wgs);
         wgs->extra_height = wr.bottom - wr.top - cr.bottom + cr.top;
 
         if (resize_action != RESIZE_TERM && !KITTY_IS_EMBEDDED(wgs->term_hwnd)) {
-            if (wgs->font_width != win_width/wgs->term->cols ||
+            if (wgs->font_width != text_w/wgs->term->cols ||
                 wgs->font_height != win_height/wgs->term->rows) {
-                int fw = (win_width - 2*window_border) / wgs->term->cols;
+                int fw = (text_w - 2*window_border) / wgs->term->cols;
                 int fh = (win_height - 2*window_border) / wgs->term->rows;
                 /* In case that subtraction made the font size go
                  * negative in an edge case, bound it below by 1 */
@@ -4356,24 +4527,22 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
                 if (fh < 1) fh = 1;
                 deinit_fonts(wgs);
                 init_fonts(wgs, fw, fh);
-                wgs->offset_width =
-                    (win_width - wgs->font_width*wgs->term->cols) / 2;
-                wgs->offset_height =
-                    (win_height - wgs->font_height*wgs->term->rows) / 2;
+                wgs->offset_width = centred_offset_width(wgs, win_width);
+                wgs->offset_height = centred_offset_height(wgs, win_height);
                 InvalidateRect(wgs->term_hwnd, NULL, true);
             }
         } else {
-            if (wgs->font_width * wgs->term->cols != win_width ||
+            if (wgs->font_width * wgs->term->cols != text_w ||
                 wgs->font_height * wgs->term->rows != win_height) {
                 /* Our only choice at this point is to change the
                  * size of the terminal; Oh well.
                  */
                 term_size(wgs->term,
                           (win_height - 2*window_border) / wgs->font_height,
-                          (win_width - 2*window_border) / wgs->font_width,
+                          (text_w - 2*window_border) / wgs->font_width,
                           conf_get_int(wgs->conf, CONF_savelines));
                 wgs->offset_width =
-                    (win_width - window_border - wgs->font_width*wgs->term->cols) / 2;
+                    (text_w - window_border - wgs->font_width*wgs->term->cols) / 2;
                 wgs->offset_height =
                     (win_height - window_border - wgs->font_height*wgs->term->rows) / 2;
                 InvalidateRect(wgs->term_hwnd, NULL, true);
@@ -4395,7 +4564,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
             &rect, GetWindowLongPtr(wgs->term_hwnd, GWL_STYLE),
             FALSE, GetWindowLongPtr(wgs->term_hwnd, GWL_EXSTYLE),
             wgs->dpi_info.cur_dpi.x);
-        rect.right += (window_border * 2);
+        rect.right += (window_border * 2) + strip_width(wgs);
         rect.bottom += (window_border * 2);
         OffsetRect(&wgs->dpi_info.new_wnd_rect,
                    ((wgs->dpi_info.new_wnd_rect.right -
@@ -4419,15 +4588,9 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
      */
     if (reinit>0) {
         wgs->offset_width = wgs->offset_height = window_border;
-        wgs->extra_width =
-            wr.right - wr.left - cr.right + cr.left + wgs->offset_width*2;
-        wgs->extra_height =
-            wr.bottom - wr.top - cr.bottom + cr.top + wgs->offset_height*2;
+        set_extra_from_rects(wgs, &wr, &cr);
 
-        if (win_width != (wgs->font_width*wgs->term->cols +
-                          wgs->offset_width*2) ||
-            win_height != (wgs->font_height*wgs->term->rows +
-                           wgs->offset_height*2)) {
+        if (!client_fits_text(wgs, win_width, win_height)) {
 
             /* If this is too large windows will resize it to the maximum
              * allowed window size, we will then be back in here and resize
@@ -4451,15 +4614,9 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         (resize_action == RESIZE_EITHER && reinit<0) ||
         reinit>0) {
         wgs->offset_width = wgs->offset_height = window_border;
-        wgs->extra_width =
-            wr.right - wr.left - cr.right + cr.left + wgs->offset_width*2;
-        wgs->extra_height =
-            wr.bottom - wr.top - cr.bottom + cr.top + wgs->offset_height*2;
+        set_extra_from_rects(wgs, &wr, &cr);
 
-        if (win_width != (wgs->font_width*wgs->term->cols +
-                          wgs->offset_width*2) ||
-            win_height != (wgs->font_height*wgs->term->rows +
-                           wgs->offset_height*2)) {
+        if (!client_fits_text(wgs, win_width, win_height)) {
 
             RECT ss;
             int width, height;
@@ -4509,19 +4666,16 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
 
     /* We're allowed to or must change the font but do we want to ?  */
 
-    if (wgs->font_width != (win_width-window_border*2)/wgs->term->cols ||
+    if (wgs->font_width != (text_w-window_border*2)/wgs->term->cols ||
         wgs->font_height != (win_height-window_border*2)/wgs->term->rows) {
 
         deinit_fonts(wgs);
-        init_fonts(wgs, (win_width-window_border*2)/wgs->term->cols,
+        init_fonts(wgs, (text_w-window_border*2)/wgs->term->cols,
                    (win_height-window_border*2)/wgs->term->rows);
-        wgs->offset_width = (win_width-wgs->font_width*wgs->term->cols)/2;
-        wgs->offset_height = (win_height-wgs->font_height*wgs->term->rows)/2;
+        wgs->offset_width = centred_offset_width(wgs, win_width);
+        wgs->offset_height = centred_offset_height(wgs, win_height);
 
-        wgs->extra_width =
-            wr.right - wr.left - cr.right + cr.left + wgs->offset_width*2;
-        wgs->extra_height =
-            wr.bottom - wr.top - cr.bottom + cr.top + wgs->offset_height*2;
+        set_extra_from_rects(wgs, &wr, &cr);
 
         InvalidateRect(wgs->term_hwnd, NULL, true);
     }
@@ -4700,7 +4854,7 @@ static void wm_size_resize_term(WinGuiSeat *wgs, LPARAM lParam)
     int height = HIWORD(lParam);
     int border_size = conf_get_int(wgs->conf, CONF_window_border);
 
-    int w = (width - border_size*2) / wgs->font_width;
+    int w = (text_width_of(wgs, width) - border_size*2) / wgs->font_width;
     int h = (height - border_size*2) / wgs->font_height;
 
     if (w < 1) w = 1;
@@ -6614,6 +6768,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             kp_fill_outside(wgs->painter, &p.rcPaint, &keep,
                             wgs->colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
         }
+#ifdef MOD_PERSO
+        kitty_strip_paint(wgs, &p.rcPaint);   /* KiTTY: the mark strip */
+#endif
         kp_end(wgs->painter);
         SelectObject(hdc, GetStockObject(SYSTEM_FONT));
         SelectObject(hdc, GetStockObject(WHITE_PEN));
@@ -7692,6 +7849,11 @@ static void do_text_internal(
     char *cbuf = NULL;
     size_t wbuflen = 0, cbuflen = 0;
     int len2; /* for SURROGATE PAIR */
+#ifdef MOD_PERSO
+    /* KiTTY: the prompt marks ride in lattr; the failed one is drawn. */
+    bool failed_mark = (lattr & LATTR_FAILED) &&
+                       conf_get_bool(wgs->conf, CONF_failed_marks);
+#endif
 
     lattr &= LATTR_MODE;
 
@@ -8149,6 +8311,17 @@ static void do_text_internal(
                 span0 = -1;
             }
         }
+    }
+
+    /* KiTTY: a failed command's prompt line (OSC 133) - a red line along
+     * the top of the line, about a sixteenth of the cell high. */
+    if (failed_mark && lattr != LATTR_BOT) {
+        int k, thick = wgs->font_height / 16;
+        if (thick < 1)
+            thick = 1;
+        for (k = 0; k < thick; k++)
+            kp_line(wgs->painter, line_box.left, line_box.top + k,
+                    line_box.right, line_box.top + k, RGB(220, 40, 40));
     }
 #endif
 
@@ -9928,6 +10101,11 @@ static void wintw_set_scrollbar(TermWin *tw, int total, int start, int page)
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     SCROLLINFO si;
 
+#ifdef MOD_PERSO
+    /* KiTTY: the scrollback changed, so the mark strip is drawn again with
+     * the next frame (wintw_free_draw_ctx). */
+    wgs->strip_dirty = true;
+#endif
     if (!conf_get_bool(wgs->conf, is_full_screen(wgs) ?
                        CONF_scrollbar_in_fullscreen : CONF_scrollbar))
         return;
@@ -10010,6 +10188,12 @@ static void wintw_free_draw_ctx(TermWin *tw)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     KP_T0;
+#ifdef MOD_PERSO
+    if (wgs->strip_dirty) {            /* KiTTY: the mark strip */
+        wgs->strip_dirty = false;
+        kitty_strip_paint(wgs, NULL);
+    }
+#endif
 #ifdef MOD_FAR2L
     far2l_overlay(wgs);     /* KiTTY: far2l images, over the frame's text */
 #endif
@@ -11040,7 +11224,7 @@ bool kitty_far2l_max_cells(Terminal *term, int *rows, int *cols)
         h = (work.bottom - work.top) -
             ((wr.bottom - wr.top) - (cr.bottom - cr.top) - 2 * fy);
     }
-    w -= 2 * border;
+    w -= 2 * border + strip_width(wgs);
     h -= 2 * border;
     if (w < wgs->font_width || h < wgs->font_height)
         return false;

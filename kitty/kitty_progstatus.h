@@ -107,6 +107,8 @@ void ps_view(const PsStore *st, PsView *v);
 #define PS133_OTHER  0
 #define PS133_PROMPT 1           /* A: a prompt starts */
 #define PS133_END    2           /* D[;exit]: a command finished */
+#define PS133_OUTPUT 3           /* C: a command's output starts */
+#define PS133_INPUT  4           /* B: the typed command starts */
 int ps_osc133(const char *s, size_t len, int *exit_code);
 
 #endif

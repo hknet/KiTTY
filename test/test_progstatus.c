@@ -9,7 +9,7 @@
  * are validated; text is base64 UTF-8 without control characters; a report
  * replaces its record; clear removes the record and its subtree; app is
  * inherited; the store cap drops the oldest; the window's summary; a prompt
- * drops working and blocked; OSC 133 A and D.
+ * drops working and blocked; OSC 133 A, B, C and D.
  *
  * Returns non-zero on any failure.
  */
@@ -193,8 +193,11 @@ static void test_osc133(void)
     int code;
     CHECK(ps_osc133("A", 1, &code) == PS133_PROMPT, "A");
     CHECK(ps_osc133("A;cl=m;aid=7", 12, &code) == PS133_PROMPT, "A with options");
-    CHECK(ps_osc133("B", 1, &code) == PS133_OTHER, "B");
-    CHECK(ps_osc133("C", 1, &code) == PS133_OTHER, "C");
+    CHECK(ps_osc133("B", 1, &code) == PS133_INPUT, "B");
+    CHECK(ps_osc133("B;", 2, &code) == PS133_INPUT, "B; (fish)");
+    CHECK(ps_osc133("Bx", 2, &code) == PS133_OTHER, "not B");
+    CHECK(ps_osc133("C", 1, &code) == PS133_OUTPUT, "C");
+    CHECK(ps_osc133("C;", 2, &code) == PS133_OUTPUT, "C; (fish)");
     CHECK(ps_osc133("D;0", 3, &code) == PS133_END && code == 0, "D;0");
     CHECK(ps_osc133("D;127", 5, &code) == PS133_END && code == 127, "D;127");
     CHECK(ps_osc133("D", 1, &code) == PS133_END && code == -1, "D alone");
