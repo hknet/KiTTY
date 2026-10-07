@@ -294,10 +294,21 @@ void gfx_store_init(GfxStore *st)
     st->pending_max = GFX_PENDING_MAX;
 }
 
+static void pend_free(GfxPending *p)
+{
+    free(p->buf);
+    memset(p, 0, sizeof(*p));
+}
+
 static void pending_free(GfxStore *st)
 {
-    free(st->pend.buf);
-    memset(&st->pend, 0, sizeof(st->pend));
+    pend_free(&st->pend);
+}
+
+static void iterm_free(GfxStore *st)
+{
+    pend_free(&st->iterm.data);
+    memset(&st->iterm, 0, sizeof(st->iterm));
 }
 
 void gfx_store_free(GfxStore *st)
@@ -308,6 +319,7 @@ void gfx_store_free(GfxStore *st)
     free(st->imgs);
     free(st->pls);
     pending_free(st);
+    iterm_free(st);
     memset(st, 0, sizeof(*st));
 }
 
@@ -401,23 +413,98 @@ static void sweep_anonymous(GfxStore *st)
             img_remove(st, i);
 }
 
+static bool grow(void **p, int *cap, int need, size_t elem);
+
+/* An anonymous image (no id, no number: nothing but its placements reaches
+ * it) whose every placement has scrolled into the main screen's scrollback,
+ * seen from the screen shown: it can go when room is needed, as kitty
+ * drops old images. Not `except`, the image being placed. */
+static bool img_parked(const GfxStore *st, const GfxEnv *env,
+                       const GfxImage *img, uint32_t except)
+{
+    int i, n = 0;
+    if (img->id || img->number || img->key == except || env->screen != 0)
+        return false;
+    for (i = 0; i < st->n_pls; i++) {
+        const GfxPlacement *pl = &st->pls[i];
+        if (pl->image_key != img->key)
+            continue;
+        if (pl->screen != 0 || pl->abs_line + pl->rows > env->top_abs)
+            return false;
+        n++;
+    }
+    return n > 0;
+}
+
+/* The oldest-used parked anonymous image, -1: none. */
+static int parked_victim(const GfxStore *st, const GfxEnv *env,
+                         uint32_t except)
+{
+    int i, victim = -1;
+    for (i = 0; i < st->n_imgs; i++)
+        if (img_parked(st, env, &st->imgs[i], except) &&
+            (victim < 0 || st->imgs[i].last_use < st->imgs[victim].last_use))
+            victim = i;
+    return victim;
+}
+
+/* The oldest-used image that may go: without placements first, then a
+ * parked anonymous one. -1: none. */
+static int evict_victim(const GfxStore *st, const GfxEnv *env,
+                        uint32_t except)
+{
+    int i, victim = -1;
+    for (i = 0; i < st->n_imgs; i++)
+        if (!placements_of(st, st->imgs[i].key) &&
+            (victim < 0 || st->imgs[i].last_use < st->imgs[victim].last_use))
+            victim = i;
+    if (victim >= 0)
+        return victim;
+    return parked_victim(st, env, except);
+}
+
 /* Make room for one more image of `bytes`: images without placements go
- * first, oldest use first. False when the caps still cannot be met. */
-static bool make_room(GfxStore *st, size_t bytes)
+ * first, then anonymous images left only in the scrollback, oldest use
+ * first. False when the caps still cannot be met. */
+static bool make_room(GfxStore *st, const GfxEnv *env, size_t bytes)
 {
     for (;;) {
-        int i, victim = -1;
+        int victim;
         if (st->bytes + bytes <= st->max_bytes && st->n_imgs < st->max_images)
             return true;
-        for (i = 0; i < st->n_imgs; i++)
-            if (!placements_of(st, st->imgs[i].key) &&
-                (victim < 0 ||
-                 st->imgs[i].last_use < st->imgs[victim].last_use))
-                victim = i;
+        victim = evict_victim(st, env, 0);
         if (victim < 0)
             return false;
         img_remove(st, victim);
     }
+}
+
+/* A new image in the store, no id, no number; takes px over (freed on
+ * failure). NULL when the store is full. */
+static GfxImage *img_insert(GfxStore *st, const GfxEnv *env,
+                            unsigned char *px, int w, int h, bool opaque)
+{
+    size_t bytes = (size_t)w * h * 4;
+    GfxImage *img;
+    if (!make_room(st, env, bytes) ||
+        !grow((void **)&st->imgs, &st->cap_imgs, st->n_imgs + 1,
+              sizeof(*st->imgs))) {
+        free(px);
+        return NULL;
+    }
+    img = &st->imgs[st->n_imgs++];
+    memset(img, 0, sizeof(*img));
+    img->key = st->next_key++;
+    if (!st->next_key)
+        st->next_key = 1;
+    img->w = w;
+    img->h = h;
+    img->px = px;
+    img->opaque = opaque;
+    img->serial = ++st->serial;
+    img->last_use = ++st->tick;
+    st->bytes += bytes;
+    return img;
 }
 
 static uint32_t free_id(GfxStore *st)
@@ -460,7 +547,7 @@ static void pl_fit(GfxPlacement *pl, int cw, int ch)
     long box_w, box_h;
     if (cw <= 0 || ch <= 0)
         return;
-    if (pl->clipped) {
+    if (pl->clipped || pl->fixed) {
         /* fixed in pixels; only the cell counts follow the cell size */
     } else if (!pl->req_c && !pl->req_r) {
         pl->dst_w = pl->src_w;
@@ -551,12 +638,15 @@ static void trace(const GfxEnv *env, char a, uint32_t id, const char *code)
 
 /* ---- placing ------------------------------------------------------------ */
 
+static const char *pl_insert(GfxStore *st, const GfxEnv *env, GfxImage *img,
+                             GfxPlacement *plp, GfxResult *res,
+                             const char **msg);
+
 /* Returns an error code or NULL. */
 static const char *place(GfxStore *st, const GfxEnv *env, GfxImage *img,
                          const GfxCmd *c, GfxResult *res, const char **msg)
 {
-    GfxPlacement pl, *slot = NULL;
-    int i;
+    GfxPlacement pl;
     long sx, sy, sw, sh;
 
     if (env->cell_w <= 0 || env->cell_h <= 0) {
@@ -591,6 +681,17 @@ static const char *place(GfxStore *st, const GfxEnv *env, GfxImage *img,
     pl.no_cursor = c->C == 1;
     pl.z = c->z;
     pl_fit(&pl, env->cell_w, env->cell_h);
+    return pl_insert(st, env, img, &pl, res, msg);
+}
+
+/* Stores pl (replacing the image's placement with the same placement id,
+ * if any) and sets the cursor move. Returns an error code or NULL. */
+static const char *pl_insert(GfxStore *st, const GfxEnv *env, GfxImage *img,
+                             GfxPlacement *plp, GfxResult *res,
+                             const char **msg)
+{
+    GfxPlacement pl = *plp, *slot = NULL;
+    int i;
 
     if (pl.placement_id)
         for (i = 0; i < st->n_pls; i++)
@@ -602,6 +703,15 @@ static const char *place(GfxStore *st, const GfxEnv *env, GfxImage *img,
     if (slot) {
         pl.serial = slot->serial;
     } else {
+        /* full: an anonymous image left only in the scrollback goes, as
+         * when the store's bytes run out */
+        while (st->n_pls >= st->max_placements) {
+            int v = parked_victim(st, env, img->key);
+            if (v < 0)
+                break;
+            img_remove(st, v);                  /* moves the array */
+            img = &st->imgs[img_index_by_key(st, pl.image_key)];
+        }
         if (st->n_pls >= st->max_placements) {
             *msg = "too many placements";
             return "ENOSPC";
@@ -640,10 +750,10 @@ static void pending_start(GfxStore *st, const GfxCmd *c, const char *err,
     }
 }
 
-static void pending_feed(GfxStore *st, const unsigned char *payload,
-                         size_t len)
+/* Base64 into p's buffer, at most max bytes (more marks it big). */
+static void pend_feed(GfxPending *p, size_t max, const unsigned char *payload,
+                      size_t len)
 {
-    GfxPending *p = &st->pend;
     size_t need, got;
     if (p->bad || p->big || p->err_code)
         return;
@@ -653,8 +763,8 @@ static void pending_feed(GfxStore *st, const unsigned char *payload,
         unsigned char *n;
         while (ncap < need)
             ncap *= 2;
-        if (ncap > st->pending_max + 3)
-            ncap = st->pending_max + 3;
+        if (ncap > max + 3)
+            ncap = max + 3;
         if (ncap < need) {
             p->big = true;
             return;
@@ -673,8 +783,78 @@ static void pending_feed(GfxStore *st, const unsigned char *payload,
         return;
     }
     p->len += got;
-    if (p->len > st->pending_max)
+    if (p->len > max)
         p->big = true;
+}
+
+static void pending_feed(GfxStore *st, const unsigned char *payload,
+                         size_t len)
+{
+    pend_feed(&st->pend, st->pending_max, payload, len);
+}
+
+/* The upload ended: the carried base64 tail is added and the buffer handed
+ * over (*data, the caller frees it). Returns an error code or NULL. */
+static const char *pend_take(GfxPending *p, unsigned char **data,
+                             size_t *datalen, const char **msg)
+{
+    unsigned char tailbuf[3];
+    size_t tail = 0;
+
+    *data = NULL;
+    *datalen = 0;
+    if (p->bad) {
+        *msg = "invalid base64 payload";
+        return "EINVAL";
+    }
+    if (p->big) {
+        *msg = "too much data";
+        return "EFBIG";
+    }
+    if (!b64_finish(p->carry, &p->ncarry, tailbuf, &tail)) {
+        *msg = "invalid base64 payload";
+        return "EINVAL";
+    }
+    if (tail) {
+        if (p->len + tail > p->cap) {
+            unsigned char *n = realloc(p->buf, p->len + tail);
+            if (!n) {
+                *msg = "out of memory";
+                return "ENOSPC";
+            }
+            p->buf = n;
+            p->cap = p->len + tail;
+        }
+        memcpy(p->buf + p->len, tailbuf, tail);
+        p->len += tail;
+    }
+    *data = p->buf;
+    *datalen = p->len;
+    p->buf = NULL;                      /* the caller's now */
+    return NULL;
+}
+
+/* A decoder's pixels against the limits (freed and NULL when over them),
+ * and whether they are opaque. Returns an error code or NULL. */
+static const char *decoded_check(const GfxStore *st, unsigned char **px,
+                                 int w, int h, bool *opaque, const char **msg)
+{
+    size_t i, n;
+    if (w <= 0 || h <= 0 || w > st->max_side || h > st->max_side ||
+        (uint64_t)w * (uint64_t)h > st->max_pixels) {
+        free(*px);
+        *px = NULL;
+        *msg = "image too large";
+        return "EFBIG";
+    }
+    n = (size_t)w * h;
+    *opaque = true;
+    for (i = 0; i < n; i++)
+        if ((*px)[i * 4 + 3] != 255) {
+            *opaque = false;
+            break;
+        }
+    return NULL;
 }
 
 /* The last chunk arrived: decode, store, place, reply. Returns success. */
@@ -685,8 +865,8 @@ static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
     GfxCmd c = p->cmd;
     const char *code = NULL, *msg = "";
     char errmsg[GFX_ERR_MAX];
-    unsigned char *data = NULL, *px = NULL, tailbuf[3];
-    size_t datalen = 0, tail = 0;
+    unsigned char *data = NULL, *px = NULL;
+    size_t datalen = 0;
     int w = 0, h = 0, idx;
     bool opaque = false;
     uint32_t reply_id = c.i;
@@ -696,37 +876,8 @@ static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
         code = p->err_code;
         memcpy(errmsg, p->err_msg, sizeof(errmsg));
         msg = errmsg;
-    } else if (p->bad) {
-        code = "EINVAL";
-        msg = "invalid base64 payload";
-    } else if (p->big) {
-        code = "EFBIG";
-        msg = "too much data";
-    } else if (!b64_finish(p->carry, &p->ncarry, tailbuf, &tail)) {
-        code = "EINVAL";
-        msg = "invalid base64 payload";
     } else {
-        if (tail) {
-            if (p->len + tail > p->cap) {
-                unsigned char *n = realloc(p->buf, p->len + tail);
-                if (!n) {
-                    code = "ENOSPC";
-                    msg = "out of memory";
-                } else {
-                    p->buf = n;
-                    p->cap = p->len + tail;
-                }
-            }
-            if (!code) {
-                memcpy(p->buf + p->len, tailbuf, tail);
-                p->len += tail;
-            }
-        }
-        if (!code) {
-            data = p->buf;
-            datalen = p->len;
-            p->buf = NULL;              /* ours now */
-        }
+        code = pend_take(p, &data, &datalen, &msg);
     }
 
     if (!code && c.o == 'z') {
@@ -748,20 +899,8 @@ static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
             !env->decode_png(env->ctx, data, datalen, &px, &w, &h) || !px) {
             code = "EBADPNG";
             msg = "PNG decode failed";
-        } else if (w <= 0 || h <= 0 || w > st->max_side || h > st->max_side ||
-                   (uint64_t)w * (uint64_t)h > st->max_pixels) {
-            free(px);
-            px = NULL;
-            code = "EFBIG";
-            msg = "image too large";
         } else {
-            size_t i, n = (size_t)w * h;
-            opaque = true;
-            for (i = 0; i < n; i++)
-                if (px[i * 4 + 3] != 255) {
-                    opaque = false;
-                    break;
-                }
+            code = decoded_check(st, &px, w, h, &opaque, &msg);
         }
     } else if (!code) {
         int bpp = (int)c.f / 8;
@@ -788,35 +927,20 @@ static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
         free(px);
         px = NULL;
     } else if (!code) {
-        size_t bytes = (size_t)w * h * 4;
         idx = -1;
         if (c.i) {
             idx = img_index_by_id(st, c.i);
             if (idx >= 0)
                 img_remove(st, idx);            /* data and placements go */
         }
-        if (!make_room(st, bytes) ||
-            !grow((void **)&st->imgs, &st->cap_imgs, st->n_imgs + 1,
-                  sizeof(*st->imgs))) {
+        img = img_insert(st, env, px, w, h, opaque);
+        px = NULL;
+        if (!img) {
             code = "ENOSPC";
             msg = "image store full";
-            free(px);
-            px = NULL;
         } else {
-            img = &st->imgs[st->n_imgs++];
-            memset(img, 0, sizeof(*img));
-            img->key = st->next_key++;
-            if (!st->next_key)
-                st->next_key = 1;
             img->id = c.i ? c.i : (c.I ? free_id(st) : 0);
             img->number = c.I;
-            img->w = w;
-            img->h = h;
-            img->px = px;
-            img->opaque = opaque;
-            img->serial = ++st->serial;
-            img->last_use = ++st->tick;
-            st->bytes += bytes;
             reply_id = img->id;
             res->changed = true;
             if (c.a == 'T')
@@ -1163,6 +1287,413 @@ bool gfx_command_cut(GfxStore *st, const GfxEnv *env, const unsigned char *s,
     return false;
 }
 
+/* ---- iTerm2 inline images (OSC 1337) ------------------------------------ */
+
+/* The longest side a size may ask for, by unit: as kitty's c/r for cells. */
+#define ITERM_MAX_CELLS    10000u
+#define ITERM_MAX_PX       100000u
+#define ITERM_MAX_PERCENT  1000u
+
+static bool has_prefix(const unsigned char *s, size_t len, const char *p)
+{
+    size_t n = strlen(p);
+    return len >= n && !memcmp(s, p, n);
+}
+
+static bool key_is(const unsigned char *k, size_t n, const char *name)
+{
+    return n == strlen(name) && !memcmp(k, name, n);
+}
+
+bool gfx_iterm_is_image(const unsigned char *s, size_t len)
+{
+    return has_prefix(s, len, "File=") ||
+           has_prefix(s, len, "MultipartFile=") ||
+           has_prefix(s, len, "FilePart=") ||
+           (len == 7 && !memcmp(s, "FileEnd", 7));
+}
+
+static bool iterm_flag(const unsigned char *v, size_t n, bool *out)
+{
+    if (n != 1 || (v[0] != '0' && v[0] != '1'))
+        return false;
+    *out = v[0] == '1';
+    return true;
+}
+
+/* "auto", N (cells), Npx, N% - N at least 1. */
+static bool iterm_dim(const unsigned char *v, size_t n, char *unit,
+                      uint32_t *val)
+{
+    size_t pos = 0;
+    uint32_t x;
+    if (key_is(v, n, "auto")) {
+        *unit = 0;
+        *val = 0;
+        return true;
+    }
+    if (!parse_uint(v, n, &pos, &x) || x == 0)
+        return false;
+    if (pos == n && x <= ITERM_MAX_CELLS)
+        *unit = 'c';
+    else if (n - pos == 2 && !memcmp(v + pos, "px", 2) && x <= ITERM_MAX_PX)
+        *unit = 'p';
+    else if (n - pos == 1 && v[pos] == '%' && x <= ITERM_MAX_PERCENT)
+        *unit = '%';
+    else
+        return false;
+    *val = x;
+    return true;
+}
+
+/* Bytes; a number too long to hold is simply huge (over every cap). */
+static bool iterm_size_arg(const unsigned char *v, size_t n, uint64_t *out)
+{
+    uint64_t acc = 0;
+    size_t i;
+    if (n == 0)
+        return false;
+    for (i = 0; i < n; i++) {
+        if (v[i] < '0' || v[i] > '9')
+            return false;
+        acc = acc > (UINT64_MAX - 9) / 10 ? UINT64_MAX
+                                          : acc * 10 + (uint64_t)(v[i] - '0');
+    }
+    *out = acc;
+    return true;
+}
+
+bool gfx_iterm_args(const unsigned char *s, size_t len, GfxItermArgs *a)
+{
+    size_t pos = 0;
+
+    memset(a, 0, sizeof(*a));
+    a->preserve = true;
+    while (pos < len) {
+        size_t start = pos, end, eq, klen, vlen;
+        const unsigned char *v;
+        bool ok = true;
+        while (pos < len && s[pos] != ';')
+            pos++;
+        end = pos;
+        if (pos < len)
+            pos++;                              /* ';' */
+        for (eq = start; eq < end && s[eq] != '='; eq++)
+            ;
+        if (eq >= end)
+            continue;                           /* empty, or no '=': ignored */
+        klen = eq - start;
+        v = s + eq + 1;
+        vlen = end - eq - 1;
+        if (key_is(s + start, klen, "inline"))
+            ok = iterm_flag(v, vlen, &a->inline_img);
+        else if (key_is(s + start, klen, "preserveAspectRatio"))
+            ok = iterm_flag(v, vlen, &a->preserve);
+        else if (key_is(s + start, klen, "doNotMoveCursor"))
+            ok = iterm_flag(v, vlen, &a->no_move);
+        else if (key_is(s + start, klen, "width"))
+            ok = iterm_dim(v, vlen, &a->w_unit, &a->w);
+        else if (key_is(s + start, klen, "height"))
+            ok = iterm_dim(v, vlen, &a->h_unit, &a->h);
+        else if (key_is(s + start, klen, "size")) {
+            ok = iterm_size_arg(v, vlen, &a->size);
+            a->have_size = ok;
+        }
+        /* name (a base64 file name) and unknown keys: ignored */
+        if (!ok)
+            return false;
+    }
+    return true;
+}
+
+/* A side asked for, in pixels; 0: auto. */
+static double iterm_dim_px(char unit, uint32_t v, int cell, long screen)
+{
+    double px;
+    switch (unit) {
+      case 'c': return (double)v * cell;
+      case 'p': return v;
+      case '%':
+        px = (double)screen * v / 100;
+        return px < 1 ? 1 : px;
+    }
+    return 0;
+}
+
+static int iterm_round(double v, long max)
+{
+    if (v < 1)
+        return 1;
+    if (v > (double)max)
+        return (int)max;
+    return (int)(v + 0.5);
+}
+
+/* The drawn size of an iw x ih image: width/height as given (one side and
+ * preserveAspectRatio: the other from the ratio; without it: native), both
+ * with the ratio kept: the largest that fits that box, at its top left. An
+ * auto width wider than the screen is brought down to the screen's. */
+static void iterm_geometry(const GfxItermArgs *a, const GfxEnv *env,
+                           int iw, int ih, int *dw, int *dh)
+{
+    long sw = (long)env->cols * env->cell_w;
+    long sh = (long)env->rows * env->cell_h;
+    double W = iterm_dim_px(a->w_unit, a->w, env->cell_w, sw);
+    double H = iterm_dim_px(a->h_unit, a->h, env->cell_h, sh);
+    double w, h;
+
+    if (W > 0 && H > 0) {
+        if (a->preserve) {
+            double sx = W / iw, sy = H / ih, sc = sx < sy ? sx : sy;
+            w = iw * sc;
+            h = ih * sc;
+        } else {
+            w = W;
+            h = H;
+        }
+    } else if (W > 0) {
+        w = W;
+        h = a->preserve ? W * ih / iw : ih;
+    } else {
+        h = H > 0 ? H : ih;
+        w = H > 0 && a->preserve ? H * iw / ih : iw;
+        if (sw > 0 && w > sw) {
+            if (a->preserve || H <= 0)
+                h = h * sw / w;
+            w = (double)sw;
+        }
+    }
+    *dw = iterm_round(w, (long)ITERM_MAX_CELLS * env->cell_w);
+    *dh = iterm_round(h, (long)ITERM_MAX_CELLS * env->cell_h);
+}
+
+/* Base64 with white space skipped (a wrapped base64 from a script). */
+static void iterm_feed(GfxPending *p, size_t max, const unsigned char *s,
+                       size_t len)
+{
+    size_t i = 0, start;
+    while (i < len) {
+        while (i < len && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' ||
+                           s[i] == '\n'))
+            i++;
+        start = i;
+        while (i < len && s[i] != ' ' && s[i] != '\t' && s[i] != '\r' &&
+               s[i] != '\n')
+            i++;
+        if (i > start)
+            pend_feed(p, max, s + start, i - start);
+    }
+}
+
+/* Decodes data (PNG, JPEG, GIF, TIFF, BMP, WebP or HEIF/AVIF by its
+ * signature), stores it as an anonymous image and places it at the cursor. Returns an error code or
+ * NULL. */
+static const char *iterm_place(GfxStore *st, const GfxEnv *env,
+                               const GfxItermArgs *a, unsigned char *data,
+                               size_t len, GfxResult *res, const char **msg)
+{
+    static const unsigned char png_sig[8] =
+        { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+    /* the other files, by the bytes they start with */
+    static const struct {
+        const char *sig;
+        size_t n;
+        int fmt;
+        const char *msg;
+    } files[] = {
+        { "\xFF\xD8\xFF", 3, GFX_FILE_JPEG, "JPEG decode failed" },
+        { "GIF87a", 6, GFX_FILE_GIF, "GIF decode failed" },
+        { "GIF89a", 6, GFX_FILE_GIF, "GIF decode failed" },
+        { "II*\0", 4, GFX_FILE_TIFF, "TIFF decode failed" },
+        { "MM\0*", 4, GFX_FILE_TIFF, "TIFF decode failed" },
+        { "BM", 2, GFX_FILE_BMP, "BMP decode failed" },
+    };
+    const char *bad = NULL, *code;
+    bool decoded;
+    int fmt = 0;
+    size_t k;
+    unsigned char *px = NULL;
+    int w = 0, h = 0, dw, dh;
+    bool opaque = false;
+    GfxImage *img;
+    GfxPlacement pl;
+
+    if (env->cell_w <= 0 || env->cell_h <= 0) {
+        *msg = "cell size unknown";
+        return "EINVAL";
+    }
+    if (len >= sizeof(png_sig) && !memcmp(data, png_sig, sizeof(png_sig))) {
+        bad = "EBADPNG";
+        *msg = "PNG decode failed";
+    } else {
+        for (k = 0; k < sizeof(files) / sizeof(files[0]); k++)
+            if (len >= files[k].n && !memcmp(data, files[k].sig, files[k].n)) {
+                fmt = files[k].fmt;
+                bad = "EBADIMG";
+                *msg = files[k].msg;
+                break;
+            }
+        /* WebP: RIFF <size> WEBP; HEIF and AVIF: <size> ftyp <brand> */
+        if (!fmt && len >= 12 && !memcmp(data, "RIFF", 4) &&
+            !memcmp(data + 8, "WEBP", 4)) {
+            fmt = GFX_FILE_WEBP;
+            bad = "EBADIMG";
+            *msg = "WebP decode failed";
+        }
+        if (!fmt && len >= 12 && !memcmp(data + 4, "ftyp", 4)) {
+            static const char brands[][5] = {
+                "heic", "heix", "hevc", "hevx", "heim", "heis", "mif1",
+                "msf1", "avif", "avis"
+            };
+            for (k = 0; k < sizeof(brands) / sizeof(brands[0]); k++)
+                if (!memcmp(data + 8, brands[k], 4)) {
+                    fmt = GFX_FILE_HEIF;
+                    bad = "EBADIMG";
+                    *msg = "HEIF decode failed";
+                    break;
+                }
+        }
+        if (!fmt) {
+            *msg = "unknown image format";
+            return "EINVAL";
+        }
+    }
+    if (fmt ? !env->decode_file : !env->decode_png) {
+        *msg = "image format not supported";
+        return "EINVAL";
+    }
+    decoded = fmt ? env->decode_file(env->ctx, fmt, data, len, &px, &w, &h)
+                  : env->decode_png(env->ctx, data, len, &px, &w, &h);
+    if (!decoded || !px) {
+        free(px);
+        return bad;
+    }
+    code = decoded_check(st, &px, w, h, &opaque, msg);
+    if (code)
+        return code;
+    iterm_geometry(a, env, w, h, &dw, &dh);
+    img = img_insert(st, env, px, w, h, opaque);
+    if (!img) {
+        *msg = "image store full";
+        return "ENOSPC";
+    }
+    res->changed = true;
+    memset(&pl, 0, sizeof(pl));
+    pl.image_key = img->key;
+    pl.screen = env->screen;
+    pl.abs_line = env->top_abs + env->cur_y;
+    pl.col = env->cur_x;
+    pl.src_w = w;
+    pl.src_h = h;
+    pl.dst_w = dw;
+    pl.dst_h = dh;
+    pl.fixed = true;
+    pl.no_cursor = a->no_move;
+    pl_fit(&pl, env->cell_w, env->cell_h);
+    return pl_insert(st, env, img, &pl, res, msg);
+}
+
+/* Ends the upload in progress: decoded and placed unless it was refused on
+ * the way. Returns an error code or NULL. */
+static const char *iterm_finish(GfxStore *st, const GfxEnv *env,
+                                GfxResult *res)
+{
+    GfxItermUpload *u = &st->iterm;
+    const char *code, *msg = "";
+    unsigned char *data = NULL;
+    size_t len = 0;
+
+    if (u->data.err_code)
+        code = u->data.err_code;
+    else
+        code = pend_take(&u->data, &data, &len, &msg);
+    if (!code)
+        code = iterm_place(st, env, &u->args, data, len, res, &msg);
+    free(data);
+    iterm_free(st);
+    sweep_anonymous(st);                /* an image whose placement failed */
+    return code;
+}
+
+/* Opens an upload with these arguments, abandoning an unfinished one; File=
+ * finishes it at once. A refusal is kept and reported at the end. */
+static void iterm_start(GfxStore *st, const unsigned char *args, size_t alen,
+                        bool cut)
+{
+    GfxItermUpload *u = &st->iterm;
+    iterm_free(st);
+    u->data.active = true;
+    if (cut)
+        u->data.err_code = "EFBIG";
+    else if (!gfx_iterm_args(args, alen, &u->args))
+        u->data.err_code = "EINVAL";
+    else if (!u->args.inline_img)
+        u->discard = true;
+    else if (u->args.have_size && u->args.size > st->pending_max)
+        u->data.err_code = "EFBIG";
+}
+
+bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
+               size_t len, bool cut, GfxResult *res)
+{
+    const char *code;
+
+    memset(res, 0, sizeof(*res));
+    if (has_prefix(s, len, "File=")) {
+        const unsigned char *a = s + 5, *colon;
+        colon = memchr(a, ':', len - 5);
+        /* cut before the ':' - the arguments themselves are incomplete */
+        iterm_start(st, a, colon ? (size_t)(colon - a) : len - 5,
+                    cut || !colon);
+        if (!colon && !cut)
+            st->iterm.data.err_code = "EINVAL";
+        if (st->iterm.discard) {
+            iterm_free(st);
+            trace(env, 'F', 0, "ENOTINLINE");
+            return true;
+        }
+        if (!st->iterm.data.err_code)
+            iterm_feed(&st->iterm.data, st->pending_max, colon + 1,
+                       len - (size_t)(colon + 1 - s));
+        code = iterm_finish(st, env, res);
+        trace(env, 'F', 0, code ? code : "OK");
+        return true;
+    }
+    if (has_prefix(s, len, "MultipartFile=")) {
+        iterm_start(st, s + 14, len - 14, cut);
+        return true;
+    }
+    if (has_prefix(s, len, "FilePart=")) {
+        GfxItermUpload *u = &st->iterm;
+        if (!u->data.active) {
+            trace(env, 'P', 0, "ENOENT");
+            return true;
+        }
+        if (u->discard)
+            return true;
+        if (cut)
+            u->data.big = true;
+        else
+            iterm_feed(&u->data, st->pending_max, s + 9, len - 9);
+        return true;
+    }
+    if (len == 7 && !memcmp(s, "FileEnd", 7)) {
+        if (!st->iterm.data.active) {
+            trace(env, 'E', 0, "ENOENT");
+            return true;
+        }
+        if (st->iterm.discard) {
+            iterm_free(st);
+            trace(env, 'E', 0, "ENOTINLINE");
+            return true;
+        }
+        code = iterm_finish(st, env, res);
+        trace(env, 'E', 0, code ? code : "OK");
+        return true;
+    }
+    return false;
+}
+
 /* ---- line movement ------------------------------------------------------ */
 
 void gfx_set_base(GfxStore *st, int screen, long base_abs)
@@ -1232,17 +1763,22 @@ static bool pl_clip(GfxPlacement *pl, int k, int cw, int ch)
 }
 
 void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
-                       int bot, int n, int cell_w, int cell_h)
+                       int bot, int n, int cell_w, int cell_h,
+                       bool to_bottom)
 {
     int i;
     for (i = st->n_pls - 1; i >= 0; i--) {
         GfxPlacement *pl = &st->pls[i];
         long row0, row1;
+        bool below;
         if (pl->screen != screen)
             continue;
         row0 = pl->abs_line - top_abs;
         row1 = row0 + pl->rows - 1;
-        if (row0 < top || row1 > bot)
+        /* reaching below the screen's last row: nothing is there to stay
+         * behind with, it moves with the band */
+        below = to_bottom && row1 > bot && row0 <= bot;
+        if (row0 < top || (row1 > bot && !below))
             continue;                       /* not entirely in the band */
         row0 -= n;
         row1 -= n;
@@ -1254,7 +1790,7 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         if (row0 < top) {
             if (!pl_clip(pl, (int)(top - row0), cell_w, cell_h))
                 pl_remove(st, i);
-        } else if (row1 > bot) {
+        } else if (row1 > bot && (n < 0 || !below)) {
             if (!pl_clip(pl, -(int)(row1 - bot), cell_w, cell_h))
                 pl_remove(st, i);
         }

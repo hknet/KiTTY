@@ -5461,6 +5461,16 @@ static void osc_addchar(Terminal *term, unsigned char c)
         term->osc_str_limit == OSC_STR_MAX &&
         conf_get_bool(term->conf, CONF_kitty_graphics))
         term->osc_str_limit = OSC_STR_MAX_GFX;
+    /* KiTTY: OSC 1337 File= / FilePart= carry an iTerm2 inline image; the
+     * other 1337 commands (and MultipartFile=, only arguments) keep the
+     * ordinary ceiling */
+    if ((term->osc_strlen == 5 || term->osc_strlen == 9) &&
+        term->osc_type == OSCLIKE_OSC && term->esc_args[0] == 1337 &&
+        term->osc_str_limit == OSC_STR_MAX &&
+        (term->osc_strlen == 5 ? !memcmp(term->osc_string, "File=", 5)
+                               : !memcmp(term->osc_string, "FilePart=", 9)) &&
+        conf_get_bool(term->conf, CONF_iterm_images))
+        term->osc_str_limit = OSC_STR_MAX_ITERM;
 #endif
 }
 
@@ -7972,6 +7982,29 @@ void term_osc52_write_answer(Terminal *term, bool yes)
 }
 #endif /* MOD_PERSO */
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the cursor after an image placement (kitty APC _G, iTerm2 OSC 1337)
+ * moves dy rows down and dx columns right. The rows go as line feeds, so an
+ * image placed near the bottom scrolls the screen (into the scrollback) and
+ * is seen whole, as in kitty and WezTerm, rather than cut off at the last
+ * row; the columns are then clamped to the line like any cursor move.
+ */
+static void gfx_cursor_advance(Terminal *term, int dx, int dy)
+{
+    if (!dx && !dy)
+        return;
+    while (dy-- > 0) {
+        if (term->curs.y == term->marg_b)
+            scroll(term, term->marg_t, term->marg_b, 1, true);
+        else if (term->curs.y < term->rows - 1)
+            term->curs.y++;
+    }
+    move(term, term->curs.x + dx, term->curs.y, 0);
+    seen_disp_event(term);
+}
+#endif
+
 /*
  * Process an OSC or similar sequence, with a whole embedded string,
  * like setting the window title or icon name.
@@ -7992,17 +8025,14 @@ static void do_osc(Terminal *term)
         term->osc_string[term->osc_strlen] = '\0';
 #ifdef MOD_PERSO
         /* KiTTY: the kitty graphics protocol, APC _G (kitty_gfx_term.c).
-         * The reply goes through the raw seam; the cursor moves as the
-         * placement says, clamped to the screen like every move. */
+         * The reply goes through the raw seam; the cursor moves past the
+         * placement (gfx_cursor_advance). */
         if (term->osc_strlen >= 1 && term->osc_string[0] == 'G' &&
             conf_get_bool(term->conf, CONF_kitty_graphics)) {
             int dx, dy;
             kitty_gfx_apc(term, term->osc_string + 1, term->osc_strlen - 1,
                           term->osc_str_overflow, &dx, &dy);
-            if (dx || dy) {
-                move(term, term->curs.x + dx, term->curs.y + dy, 0);
-                seen_disp_event(term);
-            }
+            gfx_cursor_advance(term, dx, dy);
             return;
         }
 #endif
@@ -8170,6 +8200,17 @@ static void do_osc(Terminal *term)
              * through the OSC 52 permission gates; writes may carry any MIME
              * type. */
             osc5522_process(term);
+            break;
+          case 1337:
+            /* OSC 1337: iTerm2 inline images (File=, MultipartFile=), into
+             * the kitty graphics store, under their own setting. The other
+             * 1337 commands stay ignored. */
+            if (conf_get_bool(term->conf, CONF_iterm_images)) {
+                int dx, dy;
+                kitty_gfx_iterm(term, term->osc_string, term->osc_strlen,
+                                term->osc_str_overflow, &dx, &dy);
+                gfx_cursor_advance(term, dx, dy);
+            }
             break;
           case 5113:
             /* OSC 5113: kitty's file-transfer protocol (`kitten transfer` on

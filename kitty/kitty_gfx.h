@@ -18,6 +18,12 @@
  * Lines are numbered absolutely: the glue hands over the absolute number of
  * the top screen row (top_abs); a placement keeps its anchor while text
  * scrolls into the scrollback and is dropped when its lines leave it.
+ *
+ * iTerm2 inline images (OSC 1337 File=, MultipartFile=/FilePart=/FileEnd)
+ * share the store: a PNG or JPEG placed at the cursor, sized in cells,
+ * pixels or percent of the screen. Such an image is anonymous - no id, no
+ * number, out of reach of every by-id command - and is freed with its last
+ * placement; the kitty deletions by position apply to it.
  */
 #ifndef KITTY_GFX_H
 #define KITTY_GFX_H
@@ -106,6 +112,7 @@ typedef struct GfxPlacement {
     int dst_w, dst_h;          /* the drawn image, pixels */
     int dst_dx, dst_dy;        /* letterbox offset inside the c x r box */
     bool clipped;              /* cut by a region scroll: dst fixed in pixels */
+    bool fixed;                /* an iTerm2 image: dst fixed in pixels */
     bool no_cursor;            /* C=1 */
     int32_t z;
     unsigned long serial;      /* creation order, the z tie-break */
@@ -125,6 +132,25 @@ typedef struct GfxPending {
     char err_msg[GFX_ERR_MAX];
 } GfxPending;
 
+/* The arguments of an iTerm2 File= / MultipartFile= (gfx_iterm_args).
+ * A side's unit: 0 auto, 'c' cells, 'p' pixels, '%' percent of the screen. */
+typedef struct GfxItermArgs {
+    bool inline_img;           /* inline=1; 0 (the default) is a download */
+    bool preserve;             /* preserveAspectRatio, default 1 */
+    bool no_move;              /* doNotMoveCursor=1 (WezTerm) */
+    bool have_size;
+    uint64_t size;             /* size= in bytes, if given */
+    char w_unit, h_unit;
+    uint32_t w, h;
+} GfxItermArgs;
+
+/* A multipart iTerm2 upload in progress (MultipartFile= ... FileEnd). */
+typedef struct GfxItermUpload {
+    GfxPending data;           /* the bytes; data.active: an upload is open */
+    GfxItermArgs args;
+    bool discard;              /* inline=0: parts swallowed, nothing placed */
+} GfxItermUpload;
+
 typedef struct GfxStore {
     GfxImage *imgs;
     int n_imgs, cap_imgs;
@@ -135,6 +161,7 @@ typedef struct GfxStore {
     uint32_t next_key;
     uint32_t next_id;          /* for images with a number but no id */
     GfxPending pend;
+    GfxItermUpload iterm;      /* OSC 1337 MultipartFile= */
     /* limits, from the defines; a test may lower them */
     int max_side;
     uint32_t max_pixels;
@@ -142,6 +169,14 @@ typedef struct GfxStore {
     int max_images, max_placements;
     size_t pending_max;
 } GfxStore;
+
+/* The picture files an iTerm2 image may be besides PNG (GfxEnv.decode_file). */
+#define GFX_FILE_JPEG 1
+#define GFX_FILE_GIF  2
+#define GFX_FILE_TIFF 3
+#define GFX_FILE_BMP  4
+#define GFX_FILE_WEBP 5
+#define GFX_FILE_HEIF 6   /* HEIC and AVIF */
 
 /* What a command needs from the terminal around it. */
 typedef struct GfxEnv {
@@ -153,6 +188,10 @@ typedef struct GfxEnv {
     /* PNG to premultiplied BGRA (malloc'd, w * 4 a row). NULL: PNG refused. */
     bool (*decode_png)(void *ctx, const unsigned char *data, size_t len,
                        unsigned char **px, int *w, int *h);
+    /* Another picture file (fmt GFX_FILE_*, told by its signature), the
+     * same way; only iTerm2 images use it. NULL: those refused. */
+    bool (*decode_file)(void *ctx, int fmt, const unsigned char *data,
+                        size_t len, unsigned char **px, int *w, int *h);
     /* zlib (RFC 1950) inflate into a malloc'd buffer of at most max_out
      * bytes; more than max_out is a failure. NULL: o=z refused. */
     bool (*inflate)(void *ctx, const unsigned char *in, size_t len,
@@ -201,7 +240,28 @@ bool gfx_command_cut(GfxStore *st, const GfxEnv *env, const unsigned char *s,
                      size_t len, GfxResult *res);
 
 /* Images with no placement, when the image has no id and no number, are
- * freed; capital deletions free the ones they emptied. */
+ * freed; capital deletions free the ones they emptied. When the store is
+ * full, images without a placement go first, then anonymous images whose
+ * every placement is in the scrollback, oldest use first. */
+
+/* ---- iTerm2 inline images (OSC 1337) ----------------------------------- */
+
+/* Whether s (the OSC 1337 string after "1337;") is one of the image
+ * commands: File=, MultipartFile=, FilePart=, FileEnd. */
+bool gfx_iterm_is_image(const unsigned char *s, size_t len);
+
+/* The ';'-separated key=value list of File= / MultipartFile= (everything
+ * before the ':'). Unknown keys are ignored, a malformed value of a known
+ * key is false. */
+bool gfx_iterm_args(const unsigned char *s, size_t len, GfxItermArgs *a);
+
+/* Serve one OSC 1337 string. False when it is not an image command (left
+ * alone). cut: the terminal dropped bytes past its ceiling - the image is
+ * refused whole. No reply is ever made; res carries the cursor move and
+ * whether to repaint. Traced: 'F' File=, 'E' FileEnd, with OK or the
+ * error code. */
+bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
+               size_t len, bool cut, GfxResult *res);
 
 /* ---- line movement, called by the terminal glue ------------------------ */
 
@@ -217,9 +277,13 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
 
 /* Screen rows top..bot scrolled by n (> 0 up, < 0 down) with nothing
  * entering the scrollback: placements entirely inside the band move,
- * those leaving it are clipped or dropped. */
+ * those leaving it are clipped or dropped. to_bottom: bot is the screen's
+ * last row - a placement starting in the band and reaching below the
+ * screen (an image placed near the bottom) moves with the band too, and
+ * is not cut at the bottom while the band scrolls up. */
 void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
-                       int bot, int n, int cell_w, int cell_h);
+                       int bot, int n, int cell_w, int cell_h,
+                       bool to_bottom);
 
 /* A screen row was deleted outright (a resize that cut the bottom): the
  * placements starting at or below abs_line are dropped. */

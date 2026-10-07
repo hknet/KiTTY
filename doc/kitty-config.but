@@ -3335,6 +3335,20 @@ memory a server names on this PC are never read. Off, the terminal does
 not answer the protocol and programs fall back to text. On by default;
 stored with the session (\c{KittyGraphics}).
 
+\S{kitty-cfg-itermimages} \q{Show inline images (iTerm2 OSC 1337)}
+
+Lets a program on the host show pictures with iTerm2's \c{OSC 1337
+File=} sequence, as \c{imgcat}, \c{chafa -f iterm} and several file
+managers do, also in parts (\c{MultipartFile=}). PNG, JPEG, GIF, TIFF
+and BMP are taken through the decoders Windows ships, WebP and HEIF/AVIF
+through Microsoft's Web Media and HEIF Image Extensions where they are
+installed; no other installed codec is ever used. The pictures are shown
+at their own size or at the width and height the program gives in cells,
+pixels or percent of the window. The pictures sit on the cells like the
+kitty graphics ones and share their limits. A download (\c{inline=0}) is
+never written to this PC. Off, the sequence is ignored. On by default;
+stored with the session (\c{ItermImages}).
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

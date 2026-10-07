@@ -253,6 +253,12 @@ struct terminal_tag {
  * answered EFBIG (gfx_command_cut). Raised in osc_addchar once the first byte
  * says 'G', with the setting on. */
 #define OSC_STR_MAX_GFX (256 * 1024)
+/* KiTTY: an OSC 1337 File= (iTerm2 inline image) carries the whole image in
+ * one sequence, a FilePart= a part of one: the image cap of the store
+ * (GFX_PENDING_MAX, 48 MB decoded) in base64, plus room for the arguments.
+ * Raised in osc_addchar once the string says "File=" or "FilePart=", with
+ * the kitty graphics setting on; a cut image is refused whole. */
+#define OSC_STR_MAX_ITERM ((size_t)48 * 1024 * 1024 / 3 * 4 + 4096)
 /* The spec's floor for a WRITE transaction: a terminal "must accept at least
  * 64MB of data" before it may answer EFBIG. The user's ClipboardMaxMB still
  * applies to OSC 52 and far2l unchanged; a 5522 write gets the larger of the two,

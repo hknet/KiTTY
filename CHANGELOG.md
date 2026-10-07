@@ -107,6 +107,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the host are never read. Terminal > Features > Images > Show inline images
   (`KittyGraphics`, on by default). `CSI 16 t` (cell size in pixels) is now
   answered.
+- **Inline images (iTerm2 OSC 1337).** `imgcat`, `chafa -f iterm` and other
+  programs can show PNG, JPEG, GIF, TIFF and BMP pictures, and WebP and
+  HEIF/AVIF where Microsoft's extensions for them are installed (no other
+  installed codec is used), with `OSC 1337 File=`, also in
+  parts (`MultipartFile=`), at their own size or at a width and height in
+  cells, pixels or percent. They behave like the kitty pictures and share
+  their limits; a download (`inline=0`) is never written to this PC.
+  Terminal > Features > Images > Show inline images (iTerm2 OSC 1337)
+  (`ItermImages`, on by default). A picture placed near the bottom scrolls
+  the screen so it shows whole, for both protocols.
 
 ### Changed
 

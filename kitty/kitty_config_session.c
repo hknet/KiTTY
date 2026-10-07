@@ -5998,12 +5998,15 @@ void scb_panel_terminal(struct controlbox *b)
                       HELPCTX(kitty_failedmarks), conf_checkbox_handler,
                       I(CONF_failed_marks));
 
-        /* Inline images (kitty graphics protocol): a group of its own. */
+        /* Inline images, one switch per protocol: a group of its own. */
         s = ctrl_getset(b, "Terminal/Features", "images",
                         KT_FEATURES_IMAGES_GROUP);
         ctrl_checkbox(s, KT_FEATURES_KITTY_GRAPHICS, NO_SHORTCUT,
                       HELPCTX(kitty_kittygraphics), conf_checkbox_handler,
                       I(CONF_kitty_graphics));
+        ctrl_checkbox(s, KT_FEATURES_ITERM_IMAGES, NO_SHORTCUT,
+                      HELPCTX(kitty_itermimages), conf_checkbox_handler,
+                      I(CONF_iterm_images));
 #ifdef MOD_FAR2L
         /* far2l's pictures, moved here from the Remote clipboard panel:
          * both image switches in one place. */

@@ -3297,6 +3297,380 @@ static void test_kitty_graphics(Mock *mk)
     term_notify_cell_size_pixels(term, 0, 0);
 }
 
+/*
+ * KiTTY: what chafa -f kitty sends for a 50 x 60 picture, exactly: its
+ * queries, then a=T,f=32,c=5,r=3,q=2 with m=1 and no payload, the RGBA in
+ * 4096-character continuation chunks, an empty m=0, then CR LF. The cursor
+ * has to end right of the picture's box on its last row (5 right, 2 down)
+ * before the CR LF, so the prompt comes below the picture - also when the
+ * command ran on the bottom row, where the screen has to scroll for it.
+ */
+static void chafa_replay(Mock *mk, const char *what, int row)
+{
+    Terminal *term = mk->term;
+    static const char *const queries[] = {
+        "\033]10;?\033\\", "\033]11;?\033\\", "\033[18t", "\033[14t",
+        "\033[16t", "\033[0c", "\033[?25l",
+    };
+    size_t i, raw = 50 * 60 * 4, blen, off;
+    unsigned char *px = snewn(raw, unsigned char);
+    char *b64 = snewn(raw / 3 * 4 + 8, char);
+    char chunk[4200], pos[32];
+    int x0, y0, want_y;
+    GfxVisible v[4];
+
+    feed_seq(mk, "\033c\033[r\033[2J\033[3J");
+    sprintf(pos, "\033[%d;11H", row);
+    feed_seq(mk, pos);
+    x0 = term->curs.x;
+    y0 = term->curs.y;
+    want_y = y0 + 2 < term->rows ? y0 + 2 : term->rows - 1;
+    for (i = 0; i < sizeof(queries) / sizeof(queries[0]); i++)
+        feed_seq(mk, queries[i]);
+    memset(px, 0, raw);
+    blen = gfx_b64(px, raw, b64);
+    feed_seq(mk, "\033_Ga=T,f=32,s=50,v=60,c=5,r=3,m=1,q=2\033\\");
+    for (off = 0; off < blen; off += 4096) {
+        size_t n = blen - off < 4096 ? blen - off : 4096;
+        int k = sprintf(chunk, "\033_Gm=1;");
+        memcpy(chunk + k, b64 + off, n);
+        memcpy(chunk + k + n, "\033\\", 3);
+        feed_seq(mk, chunk);
+    }
+    feed_seq(mk, "\033_Gm=0\033\\");
+    if (term_gfx_visible(term, v, 4) != 1 || v[0].r1 - v[0].r0 != 2 ||
+        v[0].c1 - v[0].c0 != 4 || v[0].r1 != want_y) {
+        printf("   %s: picture not whole on rows %d-%d\n", what, want_y - 2,
+               want_y);
+        fail("gfx: chafa", "the picture is not whole on the screen");
+    }
+    if (term->curs.x != x0 + 5 || term->curs.y != want_y) {
+        printf("   %s: cursor at %d,%d, want %d,%d\n", what, term->curs.x,
+               term->curs.y, x0 + 5, want_y);
+        fail("gfx: chafa", "the cursor did not move past the picture");
+    }
+    feed_seq(mk, "\r\n\033[?25h");
+    if (term_gfx_visible(term, v, 4) != 1 || term->curs.x != 0 ||
+        term->curs.y != v[0].r1 + 1) {
+        printf("   %s: next line on row %d\n", what, term->curs.y);
+        fail("gfx: chafa", "the next line is not below the picture");
+    }
+    sfree(px);
+    sfree(b64);
+}
+
+static void test_kitty_graphics_chafa(Mock *mk)
+{
+    Terminal *term = mk->term;
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+    term_size(term, 24, 80, 100);
+    term_notify_cell_size_pixels(term, 8, 16);
+    chafa_replay(mk, "row 6", 6);
+    chafa_replay(mk, "row 23", 23);
+    chafa_replay(mk, "bottom row", 24);
+    feed_seq(mk, "\033c");
+    term_notify_cell_size_pixels(term, 0, 0);
+}
+
+/*
+ * KiTTY: iTerm2 inline images (OSC 1337 File=, MultipartFile=) through the
+ * terminal: placed at the cursor into the kitty graphics store, the cursor
+ * moved, nothing answered; the setting off; the ceiling raised only for
+ * File= and FilePart=; other 1337 commands left alone. And the cursor move
+ * after a placement at the bottom row, for both protocols: the screen
+ * scrolls and the image is seen whole.
+ */
+static const unsigned char iterm_png_sig[8] =
+    { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+
+/* Stub decoders bound to the hooks: the real signature, then w and h (16
+ * bits each, little endian); a red picture. */
+static bool iterm_stub(const unsigned char *d, size_t len, size_t off,
+                       unsigned char **px, int *w, int *h)
+{
+    size_t i, n;
+    if (len < off + 4)
+        return false;
+    *w = d[off] | (d[off + 1] << 8);
+    *h = d[off + 2] | (d[off + 3] << 8);
+    if (*w <= 0 || *h <= 0)
+        return false;
+    n = (size_t)*w * *h;
+    *px = malloc(n * 4);              /* the core frees it with free() */
+    for (i = 0; i < n; i++) {
+        (*px)[i * 4] = 0; (*px)[i * 4 + 1] = 0;
+        (*px)[i * 4 + 2] = 255; (*px)[i * 4 + 3] = 255;
+    }
+    return true;
+}
+
+static bool iterm_stub_png(void *ctx, const unsigned char *d, size_t len,
+                           unsigned char **px, int *w, int *h)
+{
+    (void)ctx;
+    if (len < 8 || memcmp(d, iterm_png_sig, 8))
+        return false;
+    return iterm_stub(d, len, 8, px, w, h);
+}
+
+static bool iterm_stub_jpeg(void *ctx, int fmt, const unsigned char *d,
+                            size_t len, unsigned char **px, int *w, int *h)
+{
+    (void)ctx;
+    if (fmt != GFX_FILE_JPEG ||
+        len < 3 || d[0] != 0xFF || d[1] != 0xD8 || d[2] != 0xFF)
+        return false;
+    return iterm_stub(d, len, 3, px, w, h);
+}
+
+/* Sends ESC ] 1337 ; <prefix><args>[:<base64 of a w x h stub PNG>] BEL
+ * (no data part for w 0). */
+static void iterm_send(Mock *mk, const char *prefix, const char *args,
+                       int w, int h)
+{
+    char seq[512];
+    unsigned char d[12];
+    size_t len = (size_t)sprintf(seq, "\033]1337;%s%s", prefix, args);
+    if (w > 0) {
+        memcpy(d, iterm_png_sig, 8);
+        d[8] = (unsigned char)w; d[9] = (unsigned char)(w >> 8);
+        d[10] = (unsigned char)h; d[11] = (unsigned char)(h >> 8);
+        seq[len++] = ':';
+        len += gfx_b64(d, sizeof(d), seq + len);
+    }
+    seq[len++] = '\007';
+    counters_reset();
+    osc52_last_send[0] = '\0';
+    term_data(mk->term, seq, len);
+    term_update(mk->term);
+}
+
+/* The visible anonymous placement starting on screen row `row`, or NULL. */
+static const GfxVisible *iterm_vis_at(Mock *mk, int row)
+{
+    static GfxVisible v[16];
+    int n = term_gfx_visible(mk->term, v, 16), i;
+    for (i = 0; i < n; i++)
+        if (v[i].pl->image_id == 0 && v[i].r0 == row)
+            return &v[i];
+    return NULL;
+}
+
+static int iterm_count(Mock *mk)
+{
+    int i, n = 0;
+    if (!mk->term->gfx)
+        return 0;
+    for (i = 0; i < mk->term->gfx->n_pls; i++)
+        if (mk->term->gfx->pls[i].image_id == 0)
+            n++;
+    return n;
+}
+
+static void test_iterm_graphics(Mock *mk)
+{
+    Terminal *term = mk->term;
+    const GfxVisible *v;
+    int sb;
+
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+    term_size(term, 24, 80, 100);
+    term_notify_cell_size_pixels(term, 8, 16);
+    feed_seq(mk, "\033c\033[r\033[2J\033[3J\033[H");
+    kitty_gfx_decode_png_hook = iterm_stub_png;
+    kitty_gfx_decode_file_hook = iterm_stub_jpeg;
+
+    /* other 1337 commands: left alone, not even a store made */
+    kitty_gfx_free(term);
+    iterm_send(mk, "SetUserVar=", "foo=YmFy", 0, 0);
+    iterm_send(mk, "CurrentDir=", "/tmp", 0, 0);
+    if (term->gfx)
+        fail("iterm: other commands", "a store was made for them");
+    if (term->osc_str_limit != OSC_STR_MAX)
+        fail("iterm: other commands", "their ceiling was raised");
+
+    /* File=: a 16 x 32 image at row 5, column 3 - 2 x 2 cells, the cursor
+     * after its right edge on its last row, nothing sent back */
+    feed_seq(mk, "\033[5;3H");
+    iterm_send(mk, "File=", "name=YS5wbmc=;size=12;inline=1", 16, 32);
+    v = iterm_vis_at(mk, 4);
+    if (!v || v->c0 != 2 || v->c1 != 3 || v->r1 != 5 || v->dx0 != 16 ||
+        v->dy0 != 64 || v->dx1 != 32 || v->dy1 != 96)
+        fail("iterm: File=", "the image is not at the cursor cell");
+    if (term->curs.x != 4 || term->curs.y != 5)
+        fail("iterm: File=", "the cursor did not move past the image");
+    if (osc52_sends != 0)
+        fail("iterm: File=", "something was sent back");
+    if (term->osc_str_limit != OSC_STR_MAX_ITERM)
+        fail("iterm: File=", "the ceiling was not raised");
+
+    /* doNotMoveCursor */
+    feed_seq(mk, "\033[10;10H");
+    iterm_send(mk, "File=", "inline=1;doNotMoveCursor=1", 16, 16);
+    if (!iterm_vis_at(mk, 9) || term->curs.x != 9 || term->curs.y != 9)
+        fail("iterm: doNotMoveCursor", "the cursor moved");
+
+    /* inline=0 is a download: nothing at all */
+    iterm_send(mk, "File=", "inline=0", 16, 16);
+    iterm_send(mk, "File=", "name=YS5wbmc=", 16, 16);
+    if (iterm_count(mk) != 2 || term->curs.x != 9 || term->curs.y != 9 ||
+        osc52_sends != 0)
+        fail("iterm: inline=0", "something happened");
+
+    /* multipart: only FilePart= gets the large ceiling */
+    feed_seq(mk, "\033[12;1H");
+    iterm_send(mk, "MultipartFile=", "inline=1", 0, 0);
+    if (term->osc_str_limit != OSC_STR_MAX)
+        fail("iterm: MultipartFile=", "its ceiling was raised");
+    {
+        unsigned char d[12];
+        char b[32], part[64];
+        memcpy(d, iterm_png_sig, 8);
+        d[8] = 8; d[9] = 0; d[10] = 16; d[11] = 0;
+        gfx_b64(d, sizeof(d), b);
+        sprintf(part, "%.6s", b);
+        iterm_send(mk, "FilePart=", part, 0, 0);
+        if (term->osc_str_limit != OSC_STR_MAX_ITERM)
+            fail("iterm: FilePart=", "the ceiling was not raised");
+        iterm_send(mk, "FilePart=", b + 6, 0, 0);
+        if (iterm_vis_at(mk, 11))
+            fail("iterm: multipart", "placed before FileEnd");
+        iterm_send(mk, "FileEnd", "", 0, 0);
+        if (!iterm_vis_at(mk, 11) || term->curs.x != 1 || term->curs.y != 11)
+            fail("iterm: multipart", "not placed at FileEnd");
+    }
+
+    /* the kitty deletions by position reach them, by id not */
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=1", 8, 16);
+    gfx_send(mk, "a=d,d=I,i=1", 0, 0);
+    if (iterm_count(mk) != 3 || gfx_image_by_id(term->gfx, 1))
+        fail("iterm: kitty d=I", "an iTerm2 image went, or the kitty one stayed");
+    gfx_send(mk, "a=d", 0, 0);
+    if (iterm_count(mk) != 0 || term->gfx->n_imgs != 0)
+        fail("iterm: kitty d=a", "an iTerm2 image stayed");
+
+    /* its setting off: ignored, the ceiling not raised */
+    conf_set_bool(term->conf, CONF_iterm_images, false);
+    feed_seq(mk, "\033[2;1H");
+    iterm_send(mk, "File=", "inline=1", 16, 16);
+    if (iterm_count(mk) != 0 || term->curs.x != 0 || term->curs.y != 1)
+        fail("iterm: setting off", "the image was served");
+    if (term->osc_str_limit != OSC_STR_MAX)
+        fail("iterm: setting off", "the ceiling was raised");
+    conf_set_bool(term->conf, CONF_iterm_images, true);
+    /* the kitty protocol's setting off: iTerm2 images still served */
+    conf_set_bool(term->conf, CONF_kitty_graphics, false);
+    feed_seq(mk, "\033[2;1H");
+    iterm_send(mk, "File=", "inline=1", 16, 16);
+    if (iterm_count(mk) != 1)
+        fail("iterm: kitty setting off", "the iTerm2 image was not served");
+    gfx_send(mk, "a=d", 0, 0);         /* ignored: the kitty protocol is off */
+    if (iterm_count(mk) != 1)
+        fail("iterm: kitty setting off", "a kitty delete went through");
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+    gfx_send(mk, "a=d", 0, 0);
+    if (iterm_count(mk) != 0)
+        fail("iterm: kitty setting on again", "a=d left the iTerm2 image");
+
+    /* a JPEG, ended by ST */
+    {
+        char seq[128];
+        unsigned char d[7] = { 0xFF, 0xD8, 0xFF, 8, 0, 16, 0 };
+        size_t len = (size_t)sprintf(seq, "\033]1337;File=inline=1:");
+        len += gfx_b64(d, sizeof(d), seq + len);
+        seq[len++] = '\033';
+        seq[len++] = '\\';
+        feed_seq(mk, "\033[3;1H");
+        term_data(term, seq, len);
+        term_update(term);
+        if (!iterm_vis_at(mk, 2) || term->curs.x != 1)
+            fail("iterm: JPEG", "not placed");
+        gfx_send(mk, "a=d", 0, 0);
+    }
+
+    /* over the ceiling: refused whole */
+    {
+        size_t big = OSC_STR_MAX_ITERM + 16, n;
+        char *seq = snewn(big + 64, char);
+        static const char head[] = "\033]1337;File=inline=1:";
+        memcpy(seq, head, sizeof(head) - 1);
+        n = sizeof(head) - 1;
+        memset(seq + n, 'A', big);
+        n += big;
+        seq[n++] = '\007';
+        term_data(term, seq, n);
+        term_update(term);
+        sfree(seq);
+        if (iterm_count(mk) != 0 || term->gfx->n_imgs != 0)
+            fail("iterm: ceiling", "a cut image was placed");
+    }
+
+    /* the bottom row: an image 5 rows tall placed on row 24 scrolls the
+     * screen by 4, is seen whole on rows 20-24, the scrollback grows by 4 */
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    v = iterm_vis_at(mk, 19);
+    if (!v || v->r1 != 23 || v->dy0 != 19 * 16 || v->dy1 != 24 * 16)
+        fail("iterm: bottom row", "the image is not whole on the screen");
+    if (term->curs.y != 23 || term->curs.x != 1)
+        fail("iterm: bottom row", "the cursor is not after the image");
+    if (count234(term->scrollback) != sb + 4)
+        fail("iterm: bottom row", "the screen did not scroll by 4");
+    /* ... the same for the kitty protocol */
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    gfx_send(mk, "a=T,f=24,s=8,v=80,i=30", 8, 80);
+    v = gfx_vis(mk, 30);
+    if (!v || v->r0 != 19 || v->r1 != 23)
+        fail("gfx: bottom row", "the image is not whole on the screen");
+    if (term->curs.y != 23 || term->curs.x != 1 ||
+        count234(term->scrollback) != sb + 4)
+        fail("gfx: bottom row", "the screen did not scroll by 4");
+    if (!iterm_vis_at(mk, 15))
+        fail("gfx: bottom row", "the image above did not move up 4");
+    /* ... C=1: the cursor stays, nothing scrolls */
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    gfx_send(mk, "a=T,f=24,s=8,v=80,i=31,C=1", 8, 80);
+    if (term->curs.y != 23 || count234(term->scrollback) != sb)
+        fail("gfx: bottom row, C=1", "the screen scrolled");
+    gfx_send(mk, "a=d,d=A", 0, 0);
+
+    /* the alternate screen: the region scroll carries them */
+    feed_seq(mk, "\033[?1049h\033[24;1H");
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    v = iterm_vis_at(mk, 19);
+    if (!v || v->r1 != 23 || term->curs.y != 23)
+        fail("iterm: bottom row, alternate", "the image is not whole");
+    feed_seq(mk, "\033[24;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=80,i=32", 8, 80);
+    v = gfx_vis(mk, 32);
+    if (!v || v->r0 != 19 || v->r1 != 23 || !iterm_vis_at(mk, 15))
+        fail("gfx: bottom row, alternate", "the images are not whole");
+    feed_seq(mk, "\033[?1049l");
+
+    /* no scrollback: the same */
+    term_size(term, 24, 80, 0);
+    feed_seq(mk, "\033[2J\033[24;1H");
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    v = iterm_vis_at(mk, 19);
+    if (!v || v->r1 != 23 || term->curs.y != 23)
+        fail("iterm: bottom row, no scrollback", "the image is not whole");
+    term_size(term, 24, 80, 100);
+
+    /* a reset empties it all */
+    feed_seq(mk, "\033[5;1H");
+    iterm_send(mk, "File=", "inline=1", 8, 16);
+    feed_seq(mk, "\033c");
+    if (term->gfx->n_pls != 0 || term->gfx->n_imgs != 0)
+        fail("iterm: RIS", "the store was not emptied");
+
+    kitty_gfx_decode_png_hook = NULL;
+    kitty_gfx_decode_file_hook = NULL;
+    term_notify_cell_size_pixels(term, 0, 0);
+}
+
 static void test_write_confirm(Mock *mk)
 {
     static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
@@ -3634,6 +4008,8 @@ int main(void)
     test_modkeys_and_colour_scheme(mk); /* KiTTY: XTMODKEYS; mode 2031 reports */
     test_kitty_keyboard_stack(mk);      /* KiTTY: kitty keyboard protocol flags */
     test_kitty_graphics(mk);            /* KiTTY: kitty graphics placements */
+    test_kitty_graphics_chafa(mk);      /* KiTTY: chafa's chunked placement */
+    test_iterm_graphics(mk);            /* KiTTY: iTerm2 inline images */
 
     mock_free(mk);
 

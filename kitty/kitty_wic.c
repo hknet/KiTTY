@@ -24,20 +24,74 @@ static const GUID kw_GUID_WICPixelFormat32bppPBGRA =
 static const GUID kw_GUID_WICPixelFormat24bppBGR =
     { 0x6fddc324, 0x4e03, 0x4bfe, { 0xb1, 0x85, 0x3d, 0x77, 0x76, 0x8d, 0xc9, 0x0c } };
 
-/* Windows' own PNG and JPEG decoders and their container formats. Data is
- * decoded only by the decoder of the format the caller named, never by
- * whatever codec WIC would pick from its content: a host or a file must not
- * be able to feed other installed codecs (TIFF, ICO, third-party ones). */
+/* Windows' own PNG, JPEG, GIF, TIFF and BMP decoders (patched with Windows),
+ * Microsoft's WebP and HEIF decoders (Store packages, updated by the Store)
+ * and their container formats. Data is decoded only by the decoder of the
+ * format the caller named, never by whatever codec WIC would pick from its
+ * content: a host or a file must not be able to feed the codecs other
+ * programs install (camera RAW, vendors' ones), which are updated by
+ * whoever shipped them, if at all. */
 static const GUID kw_CLSID_WICPngDecoder =
     { 0x389ea17b, 0x5078, 0x4cde, { 0xb6, 0xef, 0x25, 0xc1, 0x51, 0x75, 0xc7, 0x51 } };
 static const GUID kw_CLSID_WICJpegDecoder =
     { 0x9456a480, 0xe88b, 0x43ea, { 0x9e, 0x73, 0x0b, 0x2d, 0x9b, 0x71, 0xb1, 0xca } };
+static const GUID kw_CLSID_WICGifDecoder =
+    { 0x381dda3c, 0x9ce9, 0x4834, { 0xa2, 0x3e, 0x1f, 0x98, 0xf8, 0xfc, 0x52, 0xbe } };
+static const GUID kw_CLSID_WICTiffDecoder =
+    { 0xb54e85d9, 0xfe23, 0x499f, { 0x8b, 0x88, 0x6a, 0xce, 0xa7, 0x13, 0x75, 0x2b } };
+static const GUID kw_CLSID_WICBmpDecoder =
+    { 0x6b462062, 0x7cbf, 0x400d, { 0x9f, 0xdb, 0x81, 0x3d, 0xd1, 0x0f, 0x27, 0x78 } };
+static const GUID kw_CLSID_WICWebpDecoder =
+    { 0x7693e886, 0x51c9, 0x4070, { 0x84, 0x19, 0x9f, 0x70, 0x73, 0x8e, 0xc8, 0xfa } };
+static const GUID kw_CLSID_WICHeifDecoder =
+    { 0xe9a4a80a, 0x44fe, 0x4de4, { 0x89, 0x71, 0x71, 0x50, 0xb1, 0x0a, 0x51, 0x99 } };
+static const GUID kw_GUID_VendorMicrosoft =
+    { 0xf0e749ca, 0xedef, 0x4589, { 0xa7, 0x3a, 0xee, 0x0e, 0x62, 0x6a, 0x2a, 0x2b } };
 static const GUID kw_IID_IWICBitmapDecoder =
     { 0x9edde9e7, 0x8dee, 0x47ea, { 0x99, 0xdf, 0xe6, 0xfa, 0xf2, 0xed, 0x44, 0xbf } };
 static const GUID kw_GUID_ContainerFormatPng =
     { 0x1b7cfaf4, 0x713f, 0x473c, { 0xbb, 0xcd, 0x61, 0x37, 0x42, 0x5f, 0xae, 0xaf } };
 static const GUID kw_GUID_ContainerFormatJpeg =
     { 0x19e4a5aa, 0x5662, 0x4fc5, { 0xa0, 0xc0, 0x17, 0x58, 0x02, 0x8e, 0x10, 0x57 } };
+static const GUID kw_GUID_ContainerFormatGif =
+    { 0x1f8a5601, 0x7d4d, 0x4cbd, { 0x9c, 0x82, 0x1b, 0xc8, 0xd4, 0xee, 0xb9, 0xa5 } };
+static const GUID kw_GUID_ContainerFormatTiff =
+    { 0x163bcc30, 0xe2e9, 0x4f0b, { 0x96, 0x1d, 0xa3, 0xe9, 0xfd, 0xb7, 0x88, 0xa3 } };
+static const GUID kw_GUID_ContainerFormatBmp =
+    { 0x0af1d87e, 0xfcfe, 0x4188, { 0xbd, 0xeb, 0xa7, 0x90, 0x64, 0x71, 0xcb, 0xe3 } };
+static const GUID kw_GUID_ContainerFormatWebp =
+    { 0xe094b0e2, 0x67f2, 0x45b3, { 0xb0, 0xea, 0x11, 0x53, 0x37, 0xca, 0x7c, 0xf3 } };
+static const GUID kw_GUID_ContainerFormatHeif =
+    { 0xe1e62521, 0x6787, 0x405b, { 0xa3, 0x39, 0x50, 0x07, 0x15, 0xb5, 0x76, 0x3f } };
+
+/* KITTY_WIC_* -> its decoder and its container format; NULL for no such. */
+static const GUID *wic_clsid(int fmt)
+{
+    switch (fmt) {
+      case KITTY_WIC_PNG: return &kw_CLSID_WICPngDecoder;
+      case KITTY_WIC_JPG: return &kw_CLSID_WICJpegDecoder;
+      case KITTY_WIC_GIF: return &kw_CLSID_WICGifDecoder;
+      case KITTY_WIC_TIFF: return &kw_CLSID_WICTiffDecoder;
+      case KITTY_WIC_BMP: return &kw_CLSID_WICBmpDecoder;
+      case KITTY_WIC_WEBP: return &kw_CLSID_WICWebpDecoder;
+      case KITTY_WIC_HEIF: return &kw_CLSID_WICHeifDecoder;
+    }
+    return NULL;
+}
+
+static const GUID *wic_container(int fmt)
+{
+    switch (fmt) {
+      case KITTY_WIC_PNG: return &kw_GUID_ContainerFormatPng;
+      case KITTY_WIC_JPG: return &kw_GUID_ContainerFormatJpeg;
+      case KITTY_WIC_GIF: return &kw_GUID_ContainerFormatGif;
+      case KITTY_WIC_TIFF: return &kw_GUID_ContainerFormatTiff;
+      case KITTY_WIC_BMP: return &kw_GUID_ContainerFormatBmp;
+      case KITTY_WIC_WEBP: return &kw_GUID_ContainerFormatWebp;
+      case KITTY_WIC_HEIF: return &kw_GUID_ContainerFormatHeif;
+    }
+    return NULL;
+}
 
 static IWICImagingFactory *wic_factory;
 static bool wic_tried;
@@ -45,9 +99,9 @@ static bool wic_tried;
 static IWICBitmapDecoder *wic_decoder(int fmt)
 {
     void *dec = NULL;
-    if (FAILED(CoCreateInstance(fmt == KITTY_WIC_PNG ? &kw_CLSID_WICPngDecoder
-                                                     : &kw_CLSID_WICJpegDecoder,
-                                NULL, CLSCTX_INPROC_SERVER,
+    const GUID *clsid = wic_clsid(fmt);
+    if (!clsid ||
+        FAILED(CoCreateInstance(clsid, NULL, CLSCTX_INPROC_SERVER,
                                 &kw_IID_IWICBitmapDecoder, &dec)))
         return NULL;
     return (IWICBitmapDecoder *)dec;
@@ -73,6 +127,41 @@ static IWICImagingFactory *wic_get(void)
     return wic_factory;
 }
 
+/* A decoder of a Store codec (WebP, HEIF): by its class where that is
+ * registered for this process, else through WIC's list of components -
+ * taken only when it is that very class from Microsoft, so another
+ * vendor's codec for the same format never gets the data. */
+static IWICBitmapDecoder *wic_store_decoder(IWICImagingFactory *fac, int fmt)
+{
+    IWICBitmapDecoder *dec = wic_decoder(fmt);
+    IWICBitmapDecoderInfo *info = NULL;
+    CLSID got;
+    GUID vendor;
+    bool ok = false;
+
+    if (dec)
+        return dec;
+    if (FAILED(IWICImagingFactory_CreateDecoder(fac, wic_container(fmt),
+                                                &kw_GUID_VendorMicrosoft,
+                                                &dec)) || !dec)
+        return NULL;
+    if (SUCCEEDED(IWICBitmapDecoder_GetDecoderInfo(dec, &info)) && info &&
+        SUCCEEDED(IWICComponentInfo_GetCLSID((IWICComponentInfo *)info,
+                                             &got)) &&
+        SUCCEEDED(IWICComponentInfo_GetVendorGUID((IWICComponentInfo *)info,
+                                                  &vendor)) &&
+        IsEqualGUID(&got, wic_clsid(fmt)) &&
+        IsEqualGUID(&vendor, &kw_GUID_VendorMicrosoft))
+        ok = true;
+    if (info)
+        IWICBitmapDecoderInfo_Release(info);
+    if (!ok) {
+        IWICBitmapDecoder_Release(dec);
+        return NULL;
+    }
+    return dec;
+}
+
 bool kitty_wic_available(void)
 {
     return wic_get() != NULL;
@@ -88,19 +177,18 @@ bool kitty_wic_decode(int fmt, const unsigned char *data, size_t len,
     IWICBitmapFrameDecode *frame = NULL;
     IWICFormatConverter *conv = NULL;
     GUID container;
-    const GUID *want = fmt == KITTY_WIC_PNG ? &kw_GUID_ContainerFormatPng
-                                            : &kw_GUID_ContainerFormatJpeg;
+    const GUID *want = wic_container(fmt);
     UINT uw = 0, uh = 0;
     bool ok = false;
 
     *px = NULL;
-    if (!fac || len == 0 || len > 0x7FFFFFFF ||
-        (fmt != KITTY_WIC_PNG && fmt != KITTY_WIC_JPG))
+    if (!fac || !want || len == 0 || len > 0x7FFFFFFF)
         return false;
     if (FAILED(IWICImagingFactory_CreateStream(fac, &stream)) ||
         FAILED(IWICStream_InitializeFromMemory(stream, (BYTE *)data,
                                                (DWORD)len)) ||
-        !(dec = wic_decoder(fmt)) ||
+        !(dec = fmt == KITTY_WIC_WEBP || fmt == KITTY_WIC_HEIF ?
+                    wic_store_decoder(fac, fmt) : wic_decoder(fmt)) ||
         FAILED(IWICBitmapDecoder_Initialize(dec, (IStream *)stream,
                                             WICDecodeMetadataCacheOnDemand)) ||
         FAILED(IWICBitmapDecoder_GetContainerFormat(dec, &container)) ||

@@ -17,12 +17,17 @@
 
 #define KITTY_WIC_PNG 1
 #define KITTY_WIC_JPG 2
+#define KITTY_WIC_GIF 3     /* the first frame */
+#define KITTY_WIC_TIFF 4    /* the first page */
+#define KITTY_WIC_BMP 5
+#define KITTY_WIC_WEBP 6    /* Microsoft's Web Media Extensions, if installed */
+#define KITTY_WIC_HEIF 7    /* Microsoft's HEIF Image Extensions (HEIC, AVIF) */
 
 /* Can PNG and JPEG be decoded on this Windows? */
 bool kitty_wic_available(void);
 
-/* Decode data of format fmt (KITTY_WIC_PNG or KITTY_WIC_JPG) with Windows'
- * own decoder of that format, never another codec WIC would pick from the
+/* Decode data of format fmt (KITTY_WIC_*) with Windows' own decoder of that
+ * format, never another codec WIC would pick from the
  * content. On success *px is 32 bpp premultiplied BGRA, top-down, w * 4 bytes
  * a row (malloc'd, the caller frees it); refused when a side exceeds max_side
  * or the picture max_pixels. */

@@ -83,6 +83,7 @@ one is available.
   - [far2l keys and mouse](#far2l-keys-and-mouse)
   - [far2l images](#far2l-images)
   - [Inline images (kitty graphics protocol)](#inline-images-kitty-graphics-protocol)
+  - [Inline images (iTerm2 OSC 1337)](#inline-images-iterm2-osc-1337)
   - [Paste size guard](#paste-size-guard)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
   - [kscp, WinSCP and FileZilla integration](#kscp-winscp-and-filezilla-integration)
@@ -1330,7 +1331,17 @@ A program on the host shows pictures in the window with the [kitty graphics prot
 
 PNG and raw RGB/RGBA pictures are taken, sent in the data stream, also zlib-compressed and in chunks. Files, temporary files or shared memory that the host names on this PC are never read, and animation, Unicode placeholders and relative placements are refused, so programs fall back. A picture is drawn over the text, or under it with a negative z-index: the text stays readable on top, and the picture covers coloured cell backgrounds too unless its z-index is below -1073741824, as the protocol defines. The block cursor stays over it. Limits: a picture at most 8192 pixels a side and 64 MB, a window at most 128 MB of pictures; a picture over a limit is refused with an error to the program. `CSI 16 t` (cell size in pixels) is answered, as programs ask it to size their pictures.
 
+A picture placed near the bottom of the window scrolls the screen so it shows whole, and the cursor ends right of the picture on its last row.
+
 **How to enable:** on by default; **Terminal → Features → Images → Show inline images (kitty graphics protocol)** (`KittyGraphics`). Off, the protocol is ignored as before and programs fall back to text.
+
+(no screenshot)
+
+### Inline images (iTerm2 OSC 1337)
+
+iTerm2's picture sequence, `OSC 1337 File=`, as `imgcat`, `chafa -f iterm` and several file managers send it, also in parts (`MultipartFile=`, `FilePart=`, `FileEnd`). PNG, JPEG, GIF (the first frame), TIFF (the first page) and BMP are taken, each decoded by the decoder Windows itself ships for that format; WebP and HEIF/AVIF through Microsoft's Web Media and HEIF Image Extensions where they are installed (Windows 11 usually has them; HEIC pictures also need the HEVC Video Extensions, AVIF the AV1 Video Extension). A codec another program installed is never used, and a format without its decoder is refused. Shown at their own size (narrowed to the window when wider) or at the `width` and `height` the program gives in cells, pixels or percent of the window, keeping the aspect ratio unless `preserveAspectRatio=0`. The pictures sit on the cells, scroll and are drawn like the kitty graphics ones and share their limits; kitty's delete commands by position remove them too. A download (`inline=0`) is never written to this PC, and no answer goes back to the program. WezTerm's `doNotMoveCursor=1` keeps the cursor where it was.
+
+**How to enable:** on by default; **Terminal → Features → Images → Show inline images (iTerm2 OSC 1337)** (`ItermImages`). Off, the sequence is ignored as before.
 
 (no screenshot)
 

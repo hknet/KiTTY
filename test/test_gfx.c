@@ -941,7 +941,7 @@ static void test_scroll(void)
     e.cur_y = 13; send(&st, &e, "a=p,i=1,p=3", NULL, 0);        /* 13-15 inside, at bottom */
     e.cur_y = 16; send(&st, &e, "a=p,i=1,p=4", NULL, 0);        /* 16-18 below */
     e.cur_y = 5;  send(&st, &e, "a=p,i=1,p=5", NULL, 0);        /* 5-7 inside, at top */
-    gfx_scroll_region(&st, 0, 200, 5, 15, 2, 8, 16);
+    gfx_scroll_region(&st, 0, 200, 5, 15, 2, 8, 16, false);
     CHECK(pl_of(&st, 1, 1)->abs_line == 204, "straddler untouched");
     CHECK(pl_of(&st, 1, 4)->abs_line == 216, "below untouched");
     CHECK(pl_of(&st, 1, 2)->abs_line == 206, "inside: moved up 2");
@@ -951,14 +951,14 @@ static void test_scroll(void)
           pl->src_y == 32 && pl->src_h == 16 && pl->dst_h == 16,
           "clipped at the top: last row remains (abs %ld rows %d src_y %d)",
           pl ? pl->abs_line : 0L, pl ? pl->rows : 0, pl ? pl->src_y : 0);
-    gfx_scroll_region(&st, 0, 200, 5, 15, 1, 8, 16);
+    gfx_scroll_region(&st, 0, 200, 5, 15, 1, 8, 16, false);
     CHECK(!pl_of(&st, 1, 5), "clipped out entirely: dropped");
     /* scroll down: the bottom one is clipped */
-    gfx_scroll_region(&st, 0, 200, 5, 15, -3, 8, 16);
+    gfx_scroll_region(&st, 0, 200, 5, 15, -3, 8, 16, false);
     pl = pl_of(&st, 1, 3);                /* was 210-212, now 213-215 */
     CHECK(pl && pl->abs_line == 213 && pl->rows == 3 && !pl->clipped,
           "down 3: fits");
-    gfx_scroll_region(&st, 0, 200, 5, 15, -2, 8, 16);
+    gfx_scroll_region(&st, 0, 200, 5, 15, -2, 8, 16, false);
     pl = pl_of(&st, 1, 3);                /* 215-217: rows 16,17 cut */
     CHECK(pl && pl->abs_line == 215 && pl->rows == 1 && pl->clipped &&
           pl->src_y == 0 && pl->src_h == 16 && pl->dst_h == 16,
@@ -969,7 +969,7 @@ static void test_scroll(void)
     /* clipping a letterboxed placement keeps the proportion */
     gfx_clear_all(&st, 0);
     e.cur_y = 5; send(&st, &e, "a=p,i=1,p=6,c=3,r=3", NULL, 0);  /* 8x48 in 24x48: dx 8 */
-    gfx_scroll_region(&st, 0, 200, 5, 15, 1, 8, 16);
+    gfx_scroll_region(&st, 0, 200, 5, 15, 1, 8, 16, false);
     pl = pl_of(&st, 1, 6);
     CHECK(pl && pl->rows == 2 && pl->cols == 3 && pl->dst_dx == 8 &&
           pl->src_y == 16 && pl->src_h == 32 && pl->dst_h == 32,
@@ -1061,6 +1061,615 @@ static void test_visible(void)
     gfx_store_free(&st);
 }
 
+/* ---- iTerm2 inline images (OSC 1337) ------------------------------------ */
+
+static const unsigned char png_sig[8] =
+    { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+
+/* Stub PNG: the real 8-byte signature, w and h (16 bits each, little
+ * endian), one RGBA colour for all pixels. */
+static size_t mk_png(unsigned char *b, int w, int h)
+{
+    memcpy(b, png_sig, 8);
+    b[8] = (unsigned char)w; b[9] = (unsigned char)(w >> 8);
+    b[10] = (unsigned char)h; b[11] = (unsigned char)(h >> 8);
+    b[12] = 0; b[13] = 0; b[14] = 255; b[15] = 255;
+    return 16;
+}
+
+/* Stub JPEG: FF D8 FF, then w, h, a colour as above. */
+static size_t mk_jpg(unsigned char *b, int w, int h)
+{
+    b[0] = 0xFF; b[1] = 0xD8; b[2] = 0xFF;
+    b[3] = (unsigned char)w; b[4] = (unsigned char)(w >> 8);
+    b[5] = (unsigned char)h; b[6] = (unsigned char)(h >> 8);
+    b[7] = 255; b[8] = 0; b[9] = 0; b[10] = 255;
+    return 11;
+}
+
+static bool stub_decode(const unsigned char *d, size_t len, size_t off,
+                        unsigned char **px, int *w, int *h)
+{
+    size_t i, n;
+    if (len < off + 8)
+        return false;
+    *w = d[off] | (d[off + 1] << 8);
+    *h = d[off + 2] | (d[off + 3] << 8);
+    if (*w <= 0 || *h <= 0)
+        return false;
+    n = (size_t)*w * *h;
+    *px = malloc(n * 4);
+    for (i = 0; i < n; i++)
+        gfx_to_bgra(d + off + 4, 4, 1, *px + i * 4);
+    return true;
+}
+
+static int n_png, n_jpg;
+
+static bool stub_png(void *ctx, const unsigned char *d, size_t len,
+                     unsigned char **px, int *w, int *h)
+{
+    (void)ctx;
+    n_png++;
+    if (len < 8 || memcmp(d, png_sig, 8))
+        return false;
+    return stub_decode(d, len, 8, px, w, h);
+}
+
+static int last_fmt;
+
+/* JPEG decodes (the stub's own layout after the signature); GIF, TIFF and
+ * BMP only count and fail, which names the format that was asked for */
+static bool stub_jpg(void *ctx, int fmt, const unsigned char *d, size_t len,
+                     unsigned char **px, int *w, int *h)
+{
+    (void)ctx;
+    n_jpg++;
+    last_fmt = fmt;
+    if (fmt != GFX_FILE_JPEG ||
+        len < 3 || d[0] != 0xFF || d[1] != 0xD8 || d[2] != 0xFF)
+        return false;
+    return stub_decode(d, len, 3, px, w, h);
+}
+
+static GfxEnv env_iterm(void)
+{
+    GfxEnv e = env_default();
+    e.decode_png = stub_png;
+    e.decode_file = stub_jpg;
+    return e;
+}
+
+/* Serves one OSC 1337 string; returns the trace code ("" when none). */
+static const char *iterm_s(GfxStore *st, const GfxEnv *env, const char *s,
+                           bool cut, bool *handled)
+{
+    bool h;
+    ntrace = 0;
+    trace_code[0] = '\0';
+    trace_a = 0;
+    h = gfx_iterm(st, env, (const unsigned char *)s, strlen(s), cut, &last);
+    if (handled)
+        *handled = h;
+    return trace_code;
+}
+
+/* "<prefix><args>:<base64 of data>" (no ':' part for data NULL). */
+static const char *iterm_file(GfxStore *st, const GfxEnv *env,
+                              const char *prefix, const char *args,
+                              const unsigned char *data, size_t n, bool cut)
+{
+    static char buf[1 << 16];
+    size_t len = (size_t)sprintf(buf, "%s%s", prefix, args);
+    if (data) {
+        buf[len++] = ':';
+        len += b64enc(data, n, buf + len);
+    }
+    buf[len] = '\0';
+    return iterm_s(st, env, buf, cut, NULL);
+}
+
+static const char *ifile(GfxStore *st, const GfxEnv *env, const char *args,
+                         const unsigned char *data, size_t n)
+{
+    return iterm_file(st, env, "File=", args, data, n, false);
+}
+
+static int anon_images(const GfxStore *st)
+{
+    int i, n = 0;
+    for (i = 0; i < st->n_imgs; i++)
+        if (!st->imgs[i].id && !st->imgs[i].number)
+            n++;
+    return n;
+}
+
+static void test_iterm_args(void)
+{
+    GfxItermArgs a;
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    bool h = true;
+    static const char *const bad[] = {
+        "width=abc", "width=0", "width=10em", "width=-1", "height=5pxx",
+        "width=", "inline=2", "inline=", "preserveAspectRatio=yes",
+        "doNotMoveCursor=11", "size=12a", "size=", "width=10001",
+        "width=100001px", "width=1001%", "height=%", "height=px",
+        "inline=1;width=5;height=bogus",
+    };
+    size_t i;
+
+#define ARGS(str) gfx_iterm_args((const unsigned char *)(str), strlen(str), &a)
+    CHECK(ARGS("") && !a.inline_img && a.preserve && !a.no_move &&
+          !a.have_size && !a.w_unit && !a.h_unit, "defaults");
+    CHECK(ARGS("inline=1;width=10;height=5px;preserveAspectRatio=0;"
+               "doNotMoveCursor=1;size=1234;name=Zm9vLnBuZw==") &&
+          a.inline_img && !a.preserve && a.no_move && a.have_size &&
+          a.size == 1234 && a.w_unit == 'c' && a.w == 10 &&
+          a.h_unit == 'p' && a.h == 5, "every key");
+    CHECK(ARGS("width=50%;height=auto") && a.w_unit == '%' && a.w == 50 &&
+          a.h_unit == 0, "percent and auto");
+    CHECK(ARGS("width=10000;height=100000px") && a.w == 10000 &&
+          a.h == 100000, "the largest sizes");
+    CHECK(ARGS("foo=bar;inline=1;junk;;x") && a.inline_img,
+          "unknown keys, no '=', empty: ignored");
+    CHECK(ARGS("inline=0;inline=1") && a.inline_img, "the last one wins");
+    CHECK(ARGS("size=99999999999999999999999") && a.size == UINT64_MAX,
+          "a huge size saturates");
+    for (i = 0; i < sizeof(bad) / sizeof(bad[0]); i++)
+        CHECK(!ARGS(bad[i]), "malformed: %s", bad[i]);
+#undef ARGS
+
+#define IS(str) gfx_iterm_is_image((const unsigned char *)(str), strlen(str))
+    CHECK(IS("File=inline=1:") && IS("MultipartFile=") && IS("FilePart=AA") &&
+          IS("FileEnd"), "image commands");
+    CHECK(!IS("SetMark") && !IS("FileEndX") && !IS("File") &&
+          !IS("CurrentDir=/tmp") && !IS("file=inline=1:"), "others");
+#undef IS
+
+    gfx_store_init(&st);
+    CHECK(!*iterm_s(&st, &e, "SetUserVar=foo=YmFy", false, &h) && !h &&
+          ntrace == 0 && st.n_imgs == 0, "other 1337 commands: not handled");
+    gfx_store_free(&st);
+}
+
+static void test_iterm_place(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    unsigned char d[64];
+    char wrapped[256];
+    size_t n;
+    const GfxPlacement *pl;
+
+    gfx_store_init(&st);
+    e.top_abs = 100;
+    e.cur_x = 3;
+    e.cur_y = 2;
+
+    /* a 16 x 32 PNG: 2 x 2 cells at the cursor, anonymous, no reply */
+    n = mk_png(d, 16, 32);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && trace_a == 'F' &&
+          trace_id == 0 && ntrace == 1, "PNG placed (%s)", trace_code);
+    pl = st.n_pls ? &st.pls[0] : NULL;
+    CHECK(st.n_imgs == 1 && st.imgs[0].id == 0 && st.imgs[0].number == 0 &&
+          st.imgs[0].w == 16 && st.imgs[0].h == 32, "anonymous image");
+    CHECK(pl && pl->image_id == 0 && pl->placement_id == 0 &&
+          pl->abs_line == 102 && pl->col == 3 && pl->cols == 2 &&
+          pl->rows == 2 && pl->dst_w == 16 && pl->dst_h == 32 &&
+          pl->z == 0 && pl->fixed && pl->screen == 0, "placement");
+    CHECK(last.cur_dx == 2 && last.cur_dy == 1 && last.changed &&
+          last.reply_len == 0, "cursor right 2, down 1; no reply");
+
+    /* doNotMoveCursor */
+    ifile(&st, &e, "inline=1;doNotMoveCursor=1", d, n);
+    CHECK(!strcmp(trace_code, "OK") && last.cur_dx == 0 && last.cur_dy == 0 &&
+          last.changed && st.n_pls == 2, "doNotMoveCursor: placed, stays");
+
+    /* JPEG; without a JPEG decoder refused */
+    n = mk_jpg(d, 8, 16);
+    n_jpg = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && n_jpg == 1 &&
+          st.n_pls == 3 && last.cur_dx == 1 && last.cur_dy == 0, "JPEG placed");
+    e.decode_file = NULL;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "EINVAL") &&
+          st.n_pls == 3 && st.n_imgs == 3 && !last.changed &&
+          last.cur_dx == 0, "JPEG without a decoder: refused");
+    e.decode_file = stub_jpg;
+
+    /* unknown formats, failed decodes */
+    memcpy(d, "GIF89a\1\0\1\0\0\0", 12);
+    n_png = n_jpg = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          n_png == 0 && n_jpg == 1 && last_fmt == GFX_FILE_GIF &&
+          st.n_imgs == 3, "GIF89a: to the file decoder as GIF");
+    memcpy(d, "GIF87a\1\0\1\0\0\0", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_GIF, "GIF87a: as GIF");
+    memcpy(d, "II*\0\10\0\0\0\0\0\0\0", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_TIFF, "TIFF little-endian: as TIFF");
+    memcpy(d, "MM\0*\0\0\0\10\0\0\0\0", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_TIFF, "TIFF big-endian: as TIFF");
+    memcpy(d, "BM\0\0\0\0\0\0\0\0\0\0", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_BMP, "BMP: as BMP");
+    memcpy(d, "RIFF\0\0\0\0WEBP", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_WEBP, "WebP: as WebP");
+    memcpy(d, "\0\0\0\30ftypheic", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_HEIF, "HEIC: as HEIF");
+    memcpy(d, "\0\0\0\30ftypavif", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") &&
+          last_fmt == GFX_FILE_HEIF, "AVIF: as HEIF");
+    memcpy(d, "\0\0\0\30ftypisom", 12);
+    n_jpg = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EINVAL") &&
+          n_png == 0 && n_jpg == 0 && st.n_imgs == 3,
+          "an MP4 (ftyp isom): refused, no decoder asked");
+    memcpy(d, "RIFF\0\0\0\0WAVE", 12);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EINVAL") &&
+          n_jpg == 0, "a RIFF that is not WebP: refused");
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", png_sig, 8), "EBADPNG") &&
+          st.n_imgs == 3, "a PNG that does not decode");
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 2), "EINVAL"),
+          "two bytes: no format");
+
+    /* inline=0 (or none): a download - nothing at all */
+    n = mk_png(d, 8, 8);
+    n_png = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=0", d, n), "ENOTINLINE") &&
+          n_png == 0 && st.n_imgs == 3 && !last.changed && last.cur_dx == 0,
+          "inline=0: nothing");
+    CHECK(!strcmp(ifile(&st, &e, "name=YQ==;size=16", d, n), "ENOTINLINE") &&
+          n_png == 0 && st.n_imgs == 3, "no inline: nothing");
+
+    /* malformed arguments, no ':', bad base64, cut */
+    CHECK(!strcmp(ifile(&st, &e, "inline=1;width=x", d, n), "EINVAL") &&
+          st.n_imgs == 3, "malformed width: refused");
+    CHECK(!strcmp(iterm_s(&st, &e, "File=inline=1", false, NULL), "EINVAL"),
+          "no ':': refused");
+    CHECK(!strcmp(iterm_s(&st, &e, "File=inline=1:iVBO@w==", false, NULL),
+                  "EINVAL") && st.n_imgs == 3, "bad base64: refused");
+    CHECK(!strcmp(iterm_s(&st, &e, "File=inline=1:iVBOR", false, NULL),
+                  "EINVAL"), "a dangling base64 char: refused");
+    n_png = 0;
+    CHECK(!strcmp(iterm_file(&st, &e, "File=", "inline=1", d, n, true),
+                  "EFBIG") && n_png == 0 && st.n_imgs == 3, "cut: refused");
+    CHECK(!strcmp(iterm_s(&st, &e, "File=inline=1;wid", true, NULL), "EFBIG"),
+          "cut in the arguments: refused");
+
+    /* base64 wrapped by a script: white space skipped */
+    {
+        char b[64];
+        b64enc(d, n, b);
+        sprintf(wrapped, "File=inline=1:%.5s\r\n%.7s \t%s", b, b + 5, b + 12);
+        CHECK(!strcmp(iterm_s(&st, &e, wrapped, false, NULL), "OK") &&
+              st.n_imgs == 4, "wrapped base64: placed");
+    }
+
+    /* the size cap: size= over it refused at once, data over it too */
+    st.pending_max = 15;
+    n_png = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1;size=16", d, n), "EFBIG") &&
+          n_png == 0, "size= over the cap: refused");
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "EFBIG") && n_png == 0,
+          "data over the cap: refused");
+    st.pending_max = 24;                    /* the decoder's slack */
+    CHECK(!strcmp(ifile(&st, &e, "inline=1;size=16", d, n), "OK"),
+          "under the cap: placed");
+    st.pending_max = GFX_PENDING_MAX;
+
+    /* the limits of kitty images */
+    st.max_side = 7;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "EFBIG"), "max side");
+    st.max_side = GFX_MAX_SIDE;
+    e.cell_w = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "EINVAL"),
+          "cell size unknown");
+    e.cell_w = 8;
+    CHECK(st.n_imgs == 5 && st.n_pls == 5, "nothing left behind (%d %d)",
+          st.n_imgs, st.n_pls);
+    gfx_store_free(&st);
+}
+
+/* Draws a w x h image with args; returns its placement (the newest). */
+static const GfxPlacement *geo(GfxStore *st, const GfxEnv *e, const char *args,
+                               int w, int h)
+{
+    unsigned char d[16];
+    size_t n = mk_png(d, w, h);
+    char a[128];
+    sprintf(a, "inline=1;%s", args);
+    gfx_clear_all(st, 0);
+    if (strcmp(ifile(st, e, a, d, n), "OK"))
+        return NULL;
+    return st->n_pls ? &st->pls[st->n_pls - 1] : NULL;
+}
+
+#define GEO(args, w, h, ew, eh, ec, er) do { \
+    const GfxPlacement *p_ = geo(&st, &e, args, w, h); \
+    CHECK(p_ && p_->dst_w == (ew) && p_->dst_h == (eh) && p_->cols == (ec) && \
+          p_->rows == (er) && p_->dst_dx == 0 && p_->dst_dy == 0, \
+          "%s %dx%d: got %dx%d %dx%d cells", args, w, h, \
+          p_ ? p_->dst_w : -1, p_ ? p_->dst_h : -1, p_ ? p_->cols : -1, \
+          p_ ? p_->rows : -1); } while (0)
+
+static void test_iterm_geometry(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();         /* 8 x 16 cells, 80 x 24: 640 x 384 */
+    const GfxPlacement *pl;
+
+    gfx_store_init(&st);
+    GEO("", 100, 50, 100, 50, 13, 4);                       /* native */
+    GEO("width=10", 100, 50, 80, 40, 10, 3);                /* cells */
+    GEO("height=2", 100, 50, 64, 32, 8, 2);
+    GEO("width=10;preserveAspectRatio=0", 100, 50, 80, 50, 10, 4);
+    GEO("height=40px;preserveAspectRatio=0", 100, 50, 100, 40, 13, 3);
+    GEO("width=200px", 100, 50, 200, 100, 25, 7);           /* pixels */
+    GEO("width=10;height=10", 100, 50, 80, 40, 10, 3);      /* fit the box */
+    GEO("width=40;height=2", 100, 50, 64, 32, 8, 2);
+    GEO("width=10;height=10;preserveAspectRatio=0", 100, 50, 80, 160, 10, 10);
+    GEO("width=50%", 100, 50, 320, 160, 40, 10);            /* percent */
+    GEO("height=25%", 100, 50, 192, 96, 24, 6);
+    GEO("width=auto;height=auto", 100, 50, 100, 50, 13, 4);
+    /* an auto width wider than the screen comes down to it */
+    GEO("", 1000, 100, 640, 64, 80, 4);
+    GEO("height=200px", 1000, 100, 640, 64, 80, 4);
+    GEO("height=200px;preserveAspectRatio=0", 1000, 100, 640, 200, 80, 13);
+    /* an explicit width is kept, also past the screen */
+    GEO("width=1000px", 1000, 100, 1000, 100, 125, 7);
+    GEO("width=200%", 100, 50, 1280, 640, 160, 40);
+
+    /* the cell size changes: the pixels stay, the cells follow */
+    pl = geo(&st, &e, "width=10", 100, 50);
+    gfx_rescale(&st, 16, 32);
+    CHECK(pl && pl->dst_w == 80 && pl->dst_h == 40 && pl->cols == 5 &&
+          pl->rows == 2, "rescale: fixed in pixels");
+    gfx_store_free(&st);
+}
+
+static void test_iterm_multipart(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    unsigned char d[16];
+    char b[64], part[128];
+    size_t n;
+
+    gfx_store_init(&st);
+    n = mk_png(d, 16, 16);
+    b64enc(d, n, b);                        /* 24 chars */
+
+    /* three parts, split off the 4-char groups */
+    CHECK(!*iterm_s(&st, &e, "MultipartFile=inline=1;size=16", false, NULL) &&
+          ntrace == 0 && st.iterm.data.active && !last.changed,
+          "MultipartFile: opened, silent");
+    sprintf(part, "FilePart=%.5s", b);
+    CHECK(!*iterm_s(&st, &e, part, false, NULL) && ntrace == 0, "part 1");
+    sprintf(part, "FilePart=%.11s", b + 5);
+    iterm_s(&st, &e, part, false, NULL);
+    sprintf(part, "FilePart=%s", b + 16);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(st.n_imgs == 0, "nothing before FileEnd");
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "OK") &&
+          trace_a == 'E' && st.n_pls == 1 && !st.iterm.data.active &&
+          last.changed && last.cur_dx == 2 && last.cur_dy == 0,
+          "FileEnd: placed");
+
+    /* a kitty command in between does not end it */
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    sprintf(part, "FilePart=%.12s", b);
+    iterm_s(&st, &e, part, false, NULL);
+    send(&st, &e, "a=t,f=24,s=1,v=1,i=9", red, 3);
+    sprintf(part, "FilePart=%s", b + 12);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "OK") &&
+          st.n_pls == 2, "kitty in between: placed");
+
+    /* abandoned by a new File= and by a new MultipartFile= */
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    sprintf(part, "FilePart=%.12s", b);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && st.n_pls == 3 &&
+          !st.iterm.data.active, "File= abandons the upload");
+    sprintf(part, "FilePart=%s", b + 12);
+    CHECK(!strcmp(iterm_s(&st, &e, part, false, NULL), "ENOENT") &&
+          trace_a == 'P', "a part with no upload: ignored");
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "ENOENT") &&
+          st.n_pls == 3, "an end with no upload: ignored");
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    sprintf(part, "FilePart=%.12s", b);
+    iterm_s(&st, &e, part, false, NULL);
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    sprintf(part, "FilePart=%s", b);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "OK") &&
+          st.n_pls == 4, "a new MultipartFile= starts over");
+
+    /* a cut part, a bad part, size= over the cap, inline=0 */
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    sprintf(part, "FilePart=%.12s", b);
+    iterm_s(&st, &e, part, true, NULL);
+    sprintf(part, "FilePart=%s", b + 12);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "EFBIG") &&
+          st.n_pls == 4, "a cut part: refused at the end");
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    iterm_s(&st, &e, "FilePart=*AAA", false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "EINVAL") &&
+          st.n_pls == 4, "bad base64: refused at the end");
+    sprintf(part, "MultipartFile=inline=1;size=%lu",
+            (unsigned long)GFX_PENDING_MAX + 1);
+    iterm_s(&st, &e, part, false, NULL);
+    sprintf(part, "FilePart=%s", b);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "EFBIG") &&
+          st.n_pls == 4, "size= over the cap: refused");
+    iterm_s(&st, &e, "MultipartFile=inline=1;width=?", false, NULL);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "EINVAL") &&
+          st.n_pls == 4, "malformed arguments: refused");
+    n_png = 0;
+    iterm_s(&st, &e, "MultipartFile=inline=0", false, NULL);
+    iterm_s(&st, &e, part, false, NULL);
+    CHECK(st.iterm.data.len == 0 && st.iterm.data.buf == NULL,
+          "inline=0: parts not kept");
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "ENOTINLINE") &&
+          st.n_pls == 4 && n_png == 0 && !last.changed, "inline=0: nothing");
+
+    /* a reset ends an upload */
+    iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
+    iterm_s(&st, &e, part, false, NULL);
+    gfx_reset(&st);
+    CHECK(!st.iterm.data.active && st.n_imgs == 0, "reset ends the upload");
+    CHECK(!strcmp(iterm_s(&st, &e, "FileEnd", false, NULL), "ENOENT"),
+          "nothing to end after a reset");
+    gfx_store_free(&st);
+}
+
+static void test_iterm_anonymous(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    unsigned char d[16];
+    size_t n;
+    int i;
+
+    gfx_store_init(&st);
+    n = mk_png(d, 8, 16);
+    e.top_abs = 100;
+    put_red(&st, &e, 1, 8, 16);             /* kitty id 1 at 0,0 */
+    send(&st, &e, "a=p,i=1", NULL, 0);
+    e.cur_x = 10; e.cur_y = 5;
+    ifile(&st, &e, "inline=1", d, n);       /* iTerm2 at 10,5 */
+    CHECK(st.n_imgs == 2 && anon_images(&st) == 1 && st.n_pls == 2,
+          "one of each");
+    CHECK(!gfx_image_by_id(&st, 0), "id 0 finds nothing");
+
+    /* the by-id commands do not reach it */
+    send(&st, &e, "a=d,d=I,i=1", NULL, 0);
+    send(&st, &e, "a=d,d=R,x=0,y=4294967295", NULL, 0);
+    send(&st, &e, "a=d,d=N,I=1", NULL, 0);
+    CHECK(st.n_pls == 1 && anon_images(&st) == 1, "by id: untouched");
+    CHECK(!strcmp(send(&st, &e, "a=p,i=0", NULL, 0), "") && st.n_pls == 1,
+          "a=p,i=0: nothing");
+    /* the kitty images get ids of their own, never 0 */
+    send(&st, &e, "a=t,f=24,s=1,v=1,I=7", red, 3);
+    CHECK(st.n_imgs == 2 && gfx_image_by_id(&st, 1) &&
+          gfx_image_by_id(&st, 1)->number == 7, "I= next to it: id 1");
+
+    /* by position: d=p at a cell it covers, d=c at the cursor, d=a */
+    send(&st, &e, "a=d,d=p,x=11,y=6", NULL, 0);
+    CHECK(st.n_pls == 0 && anon_images(&st) == 0, "d=p: placement and image");
+    e.cur_x = 10; e.cur_y = 5;
+    ifile(&st, &e, "inline=1", d, n);
+    send(&st, &e, "a=d,d=c", NULL, 0);
+    CHECK(anon_images(&st) == 0, "d=c: gone");
+    ifile(&st, &e, "inline=1", d, n);
+    send(&st, &e, "a=d", NULL, 0);
+    CHECK(anon_images(&st) == 0, "d=a: gone");
+    ifile(&st, &e, "inline=1", d, n);
+    send(&st, &e, "a=d,d=z,z=0", NULL, 0);
+    CHECK(anon_images(&st) == 0, "d=z: gone");
+
+    /* line movement */
+    ifile(&st, &e, "inline=1", d, n);       /* 105 */
+    gfx_set_base(&st, 0, 106);
+    CHECK(anon_images(&st) == 0, "scrolled off the scrollback: freed");
+    ifile(&st, &e, "inline=1", d, n);
+    gfx_clear_screen(&st, 0, 100);
+    CHECK(anon_images(&st) == 0, "ED 2: freed");
+    e.screen = 1; e.top_abs = 0;
+    ifile(&st, &e, "inline=1", d, n);
+    gfx_clear_all(&st, 1);
+    CHECK(anon_images(&st) == 0, "alternate screen left: freed");
+    e.cur_y = 23;
+    ifile(&st, &e, "inline=1", d, n);
+    gfx_scroll_region(&st, 1, 0, 0, 23, 1, 8, 16, true);
+    gfx_scroll_region(&st, 1, 0, 0, 23, 1, 8, 16, true);
+    CHECK(st.n_pls == 1 && st.pls[0].abs_line == 21, "region scroll moves it");
+    gfx_scroll_region(&st, 1, 0, 0, 23, 30, 8, 16, true);
+    CHECK(anon_images(&st) == 0, "scrolled out of the region: freed");
+    e.screen = 0; e.top_abs = 100;
+    ifile(&st, &e, "inline=1", d, n);
+    gfx_reset(&st);
+    CHECK(st.n_imgs == 0, "reset: freed");
+
+    /* eviction: images in the scrollback only make room */
+    st.max_images = 2;
+    for (i = 0; i < 2; i++) {
+        e.cur_y = i;
+        ifile(&st, &e, "inline=1", d, n);
+    }
+    e.cur_y = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "ENOSPC") &&
+          st.n_imgs == 2, "full, both on the screen: refused");
+    e.top_abs = 101;                        /* the one on row 0 scrolled out */
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && st.n_imgs == 2 &&
+          st.n_pls == 2 && st.pls[0].abs_line == 101, "the parked one went");
+    e.top_abs = 200;
+    send(&st, &e, "a=d,d=a", NULL, 0);      /* nothing on screen */
+    CHECK(st.n_pls == 2, "the parked ones stay");
+    gfx_reset(&st);
+    /* a kitty image with an id is never taken */
+    st.max_images = 2;
+    e.top_abs = 100; e.cur_y = 0;
+    put_red(&st, &e, 3, 8, 16);
+    send(&st, &e, "a=p,i=3", NULL, 0);
+    ifile(&st, &e, "inline=1", d, n);
+    e.top_abs = 300;
+    CHECK(!strcmp(send(&st, &e, "a=t,f=24,s=1,v=1,i=5", red, 3), "i=5;OK") &&
+          gfx_image_by_id(&st, 3) && anon_images(&st) == 0,
+          "the parked anonymous one went, id 3 stayed");
+    gfx_reset(&st);
+    /* the placement cap the same way */
+    st.max_placements = 2;
+    e.top_abs = 100;
+    ifile(&st, &e, "inline=1", d, n);
+    ifile(&st, &e, "inline=1", d, n);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "ENOSPC"),
+          "placements full: refused");
+    e.top_abs = 120;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && st.n_pls == 2 &&
+          anon_images(&st) == 2, "placements full, parked: one went");
+    gfx_store_free(&st);
+}
+
+/* A placement reaching below the screen's last row moves with the band. */
+static void test_scroll_to_bottom(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxPlacement *pl;
+
+    gfx_store_init(&st);
+    put_red(&st, &e, 1, 8, 80);             /* 1 x 5 cells */
+    e.screen = 1;
+    e.cur_y = 22;
+    send(&st, &e, "a=p,i=1,p=1", NULL, 0);  /* rows 22..26 */
+    gfx_scroll_region(&st, 1, 0, 0, 23, 1, 8, 16, false);
+    pl = pl_of(&st, 1, 1);
+    CHECK(pl && pl->abs_line == 22, "band only: stays (the old rule)");
+    gfx_scroll_region(&st, 1, 0, 0, 23, 3, 8, 16, true);
+    pl = pl_of(&st, 1, 1);
+    CHECK(pl && pl->abs_line == 19 && pl->rows == 5 && !pl->clipped,
+          "to the bottom: moved up 3, whole");
+    gfx_scroll_region(&st, 1, 0, 0, 23, -2, 8, 16, true);
+    pl = pl_of(&st, 1, 1);
+    CHECK(pl && pl->abs_line == 21 && pl->rows == 3 && pl->clipped,
+          "scrolled down: cut at the bottom (%ld %d)",
+          pl ? pl->abs_line : 0L, pl ? pl->rows : 0);
+    /* a band above the bottom keeps the old rule */
+    send(&st, &e, "a=p,i=1,p=2", NULL, 0);  /* rows 22..26 */
+    gfx_scroll_region(&st, 1, 0, 5, 22, 1, 8, 16, false);
+    CHECK(pl_of(&st, 1, 2)->abs_line == 22, "straddling a band: stays");
+    gfx_store_free(&st);
+}
+
 int main(void)
 {
     test_parser();
@@ -1075,6 +1684,12 @@ int main(void)
     test_delete();
     test_scroll();
     test_visible();
+    test_scroll_to_bottom();
+    test_iterm_args();
+    test_iterm_place();
+    test_iterm_geometry();
+    test_iterm_multipart();
+    test_iterm_anonymous();
     if (failures) {
         printf("test_gfx: %d of %d checks failed\n", failures, checks);
         return 1;

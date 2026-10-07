@@ -2,7 +2,8 @@
  * kitty_gfx_term.c - the kitty graphics protocol (APC _G): the terminal's
  * side.
  *
- * The command is parsed and the store kept by kitty_gfx.c; this file gives
+ * The command is parsed and the store kept by kitty_gfx.c - also for the
+ * iTerm2 inline images of OSC 1337, which share it; this file gives
  * it what only the terminal and the window know - the cell size the window
  * reported (term->cellpix_x/y), the cursor, which screen is shown, the
  * absolute number of the top screen row, the decoders the window bound -
@@ -35,8 +36,15 @@ bool (*kitty_gfx_decode_png_hook)(void *ctx, const unsigned char *data,
 bool (*kitty_gfx_inflate_hook)(void *ctx, const unsigned char *in,
                                size_t len, size_t max_out,
                                unsigned char **out, size_t *outlen);
+bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
+                                   const unsigned char *data, size_t len,
+                                   unsigned char **px, int *w, int *h);
 
 #define GFX_REPAINT_MAX 64
+
+/* terminal.h's OSC 1337 ceiling holds the store's image cap in base64 */
+typedef char gfx_iterm_ceiling_check[
+    OSC_STR_MAX_ITERM >= GFX_PENDING_MAX / 3 * 4 + 4096 ? 1 : -1];
 
 long kitty_gfx_top_abs(Terminal *term)
 {
@@ -83,6 +91,7 @@ static void env_init(Terminal *term, GfxEnv *env)
     env->cur_x = term->curs.x;
     env->cur_y = term->curs.y;
     env->decode_png = kitty_gfx_decode_png_hook;
+    env->decode_file = kitty_gfx_decode_file_hook;
     env->inflate = kitty_gfx_inflate_hook;
 #ifdef KITTY_TEST_BUILD_LABEL
     env->trace = gfx_trace;
@@ -131,13 +140,18 @@ static void repaint_covered(Terminal *term)
         paint_rects(term, rects, n);
 }
 
-void kitty_gfx_apc(Terminal *term, const char *s, int len, bool cut,
-                   int *dx, int *dy)
+/* The two protocols' commands, served the same way. */
+enum { GFX_KITTY, GFX_KITTY_CUT, GFX_ITERM, GFX_ITERM_CUT };
+
+static void serve(Terminal *term, int which, const char *s, int len,
+                  int *dx, int *dy)
 {
     GfxEnv env;
     GfxResult res;
     int before[GFX_REPAINT_MAX][4];
     int nbefore;
+    const unsigned char *u = (const unsigned char *)s;
+    size_t n = len > 0 ? (size_t)len : 0;
 
     *dx = *dy = 0;
     if (!term->gfx) {
@@ -146,12 +160,17 @@ void kitty_gfx_apc(Terminal *term, const char *s, int len, bool cut,
     }
     env_init(term, &env);
     nbefore = covered(term, before);
-    if (cut)
-        gfx_command_cut(term->gfx, &env, (const unsigned char *)s,
-                        len > 0 ? (size_t)len : 0, &res);
-    else
-        gfx_command(term->gfx, &env, (const unsigned char *)s,
-                    len > 0 ? (size_t)len : 0, &res);
+    switch (which) {
+      case GFX_KITTY_CUT:
+        gfx_command_cut(term->gfx, &env, u, n, &res);
+        break;
+      case GFX_KITTY:
+        gfx_command(term->gfx, &env, u, n, &res);
+        break;
+      default:
+        gfx_iterm(term->gfx, &env, u, n, which == GFX_ITERM_CUT, &res);
+        break;
+    }
     if (res.reply_len > 0)
         kitty_osc52_send_raw(term, res.reply, (size_t)res.reply_len);
     if (res.changed) {
@@ -161,6 +180,22 @@ void kitty_gfx_apc(Terminal *term, const char *s, int len, bool cut,
     }
     *dx = res.cur_dx;
     *dy = res.cur_dy;
+}
+
+void kitty_gfx_apc(Terminal *term, const char *s, int len, bool cut,
+                   int *dx, int *dy)
+{
+    serve(term, cut ? GFX_KITTY_CUT : GFX_KITTY, s, len, dx, dy);
+}
+
+void kitty_gfx_iterm(Terminal *term, const char *s, int len, bool cut,
+                     int *dx, int *dy)
+{
+    *dx = *dy = 0;
+    /* the other OSC 1337 commands stay ignored, and create no store */
+    if (len <= 0 || !gfx_iterm_is_image((const unsigned char *)s, (size_t)len))
+        return;
+    serve(term, cut ? GFX_ITERM_CUT : GFX_ITERM, s, len, dx, dy);
 }
 
 int term_gfx_visible(Terminal *term, struct GfxVisible *out, int max)
@@ -200,7 +235,8 @@ void kitty_gfx_scrolled(Terminal *term, int top, int bot, int lines,
             gfx_scroll_region_sb(term->gfx, 0, after, bot, (int)(after - before));
     } else {
         gfx_scroll_region(term->gfx, screen_of(term), after, top, bot, lines,
-                          term->cellpix_x, term->cellpix_y);
+                          term->cellpix_x, term->cellpix_y,
+                          bot >= term->rows - 1);
     }
 }
 

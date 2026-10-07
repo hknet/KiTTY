@@ -21,13 +21,26 @@ extern bool (*kitty_gfx_decode_png_hook)(void *ctx, const unsigned char *data,
 extern bool (*kitty_gfx_inflate_hook)(void *ctx, const unsigned char *in,
                                       size_t len, size_t max_out,
                                       unsigned char **out, size_t *outlen);
+/* JPEG, GIF, TIFF, BMP (fmt GFX_FILE_*) to premultiplied BGRA, for iTerm2
+ * images; NULL: those refused. */
+extern bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
+                                          const unsigned char *data,
+                                          size_t len, unsigned char **px,
+                                          int *w, int *h);
 
 /* Serve one APC _G: s/len is everything after the 'G'. cut: the sequence
  * was cut at its ceiling (answered EFBIG). dx and dy get how far the cursor
- * moves right/down (0 when it stays); terminal.c applies them with its own
- * clamping. Creates the store on the first call. */
+ * moves right/down (0 when it stays); terminal.c applies them, the rows as
+ * line feeds (scrolling at the bottom), the columns clamped to the line.
+ * Creates the store on the first call. */
 void kitty_gfx_apc(Terminal *term, const char *s, int len, bool cut,
                    int *dx, int *dy);
+
+/* Serve one OSC 1337 (iTerm2 inline images): s/len is the string after
+ * "1337;". Other 1337 commands are left alone. cut: the sequence was cut at
+ * its ceiling (the image is refused). No reply; dx and dy as above. */
+void kitty_gfx_iterm(Terminal *term, const char *s, int len, bool cut,
+                     int *dx, int *dy);
 
 /* The absolute line number of row 0 of the screen shown (alt_which):
  * gfx_sb_base + the scrollback count on the main screen, 0 on the alternate. */

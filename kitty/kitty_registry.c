@@ -737,6 +737,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "TaskbarProgress" ) ;
 					RegDeleteValue( hSubKey, "FailedCommandMarks" ) ;
 					RegDeleteValue( hSubKey, "KittyGraphics" ) ;
+					RegDeleteValue( hSubKey, "ItermImages" ) ;
 					RegDeleteValue( hSubKey, "KscpDropTypePath" ) ;
 					RegDeleteValue( hSubKey, "LinesAtAScroll" ) ;
 					RegDeleteValue( hSubKey, "DisableAltGr" ) ;

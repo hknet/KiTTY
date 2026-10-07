@@ -550,11 +550,12 @@ static int far2l_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
 #include "../kitty/kitty_gfx_term.h"           /* ...and the terminal's side */
 
 /*
- * KiTTY kitty graphics (kitty/kitty_gfx_term.c): the two decoders the core
- * takes from its environment. PNG through WIC, as the far2l images; zlib
- * through the SSH zlib decompressor (ssh/zlib.c), fed in slices and stopped
- * as soon as the output exceeds what the command declared, so a small
- * payload cannot inflate into an unbounded one.
+ * KiTTY kitty graphics (kitty/kitty_gfx_term.c): the decoders the core
+ * takes from its environment. PNG (and JPEG, for iTerm2 images) through
+ * WIC, as the far2l images; zlib through the SSH zlib decompressor
+ * (ssh/zlib.c), fed in slices and stopped as soon as the output exceeds
+ * what the command declared, so a small payload cannot inflate into an
+ * unbounded one.
  */
 static bool gfx_decode_png(void *ctx, const unsigned char *data, size_t len,
                            unsigned char **px, int *w, int *h)
@@ -565,6 +566,27 @@ static bool gfx_decode_png(void *ctx, const unsigned char *data, size_t len,
         return false;
     return kitty_wic_decode(KITTY_WIC_PNG, data, len, GFX_MAX_SIDE,
                             GFX_MAX_PIXELS, px, w, h);
+}
+
+/* JPEG, GIF, TIFF, BMP, WebP and HEIF the same way, for iTerm2 inline
+ * images (OSC 1337): each by Windows' own decoder of that format or
+ * Microsoft's Store one (kitty_wic.c), never by a codec another program
+ * installed. */
+static bool gfx_decode_file(void *ctx, int fmt, const unsigned char *data,
+                            size_t len, unsigned char **px, int *w, int *h)
+{
+    int wic = fmt == GFX_FILE_JPEG ? KITTY_WIC_JPG :
+              fmt == GFX_FILE_GIF ? KITTY_WIC_GIF :
+              fmt == GFX_FILE_TIFF ? KITTY_WIC_TIFF :
+              fmt == GFX_FILE_BMP ? KITTY_WIC_BMP :
+              fmt == GFX_FILE_WEBP ? KITTY_WIC_WEBP :
+              fmt == GFX_FILE_HEIF ? KITTY_WIC_HEIF : 0;
+    (void)ctx;
+    *px = NULL;
+    if (!wic || !kitty_wic_available())
+        return false;
+    return kitty_wic_decode(wic, data, len, GFX_MAX_SIDE, GFX_MAX_PIXELS,
+                            px, w, h);
 }
 
 static bool gfx_inflate(void *ctx, const unsigned char *in, size_t len,
@@ -2422,8 +2444,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* far2l images: the cell size and origin (kitty_far2l_image_term.c) */
         kitty_far2l_cell_hook = far2l_cell_size;
 #endif
-        /* kitty graphics: PNG and zlib decoding (kitty_gfx_term.c) */
+        /* kitty graphics: PNG and zlib decoding (kitty_gfx_term.c), and
+         * JPEG for iTerm2 images */
         kitty_gfx_decode_png_hook = gfx_decode_png;
+        kitty_gfx_decode_file_hook = gfx_decode_file;
         kitty_gfx_inflate_hook = gfx_inflate;
 #endif
 #ifdef MOD_PERSO

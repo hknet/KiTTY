@@ -97,6 +97,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_taskbarprogress    "kitty-cfg-taskbarprogress"
 #define WINHELP_CTX_kitty_failedmarks        "kitty-cfg-failedmarks"
 #define WINHELP_CTX_kitty_kittygraphics      "kitty-cfg-kittygraphics"
+#define WINHELP_CTX_kitty_itermimages        "kitty-cfg-itermimages"
 #define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
 #define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
 #define WINHELP_CTX_kitty_window_name        "kitty-cfg-window-name"
