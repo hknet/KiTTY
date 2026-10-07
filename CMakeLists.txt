@@ -216,6 +216,13 @@ add_executable(test_modkeys
   test/test_modkeys.c
   kitty/kitty_modkeys.c)
 
+# KiTTY: unit test for the environment a connection sends
+# (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
+# session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
+add_executable(test_termenv
+  test/test_termenv.c
+  kitty/kitty_termenv.c)
+
 # KiTTY: unit test for the kitty keyboard protocol encoding
 # (kitty/kitty_kittykeys.c, shared with windows/window.c): the bytes of each
 # key at each enhancement flag, and which keys stay legacy.
@@ -374,7 +381,8 @@ foreach(t
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
-    test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys)
+    test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
+    test_termenv)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

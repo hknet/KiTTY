@@ -1413,6 +1413,7 @@
 #define KT_KSET_WD_RENDERER_NOTE                     "Renderer and frame pacing apply to new terminal windows only."
 #define KT_KSET_WD_CTRLTAB                           "Ctrl+Tab window switching (needs per Session Setting too)"
 #define KT_KSET_WD_TRANSPARENCY                      "Window transparency"
+#define KT_KSET_WD_SENDTERMENV                       "Send COLORTERM and TERM_PROGRAM to the server"
 #define KT_KSET_WD_BGIMAGE                           "Background images"
 #define KT_KSET_WD_ICONS                             "Icons"
 #define KT_KSET_WD_SLIDEDELAY                        "Slideshow interval fallback, seconds (0 = none):"

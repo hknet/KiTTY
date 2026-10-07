@@ -747,6 +747,15 @@
 ;    the message and anything local could copy it.
 ;sendcmdgroup=
 
+; sendtermenv: each new SSH or Telnet connection also sends
+;    COLORTERM=truecolor and TERM_PROGRAM=KiTTY++, so programs on the host
+;    know they can use 24-bit colour. A session's own value for either
+;    variable (Connection > Login > Environment) wins; an empty value there
+;    means that variable is not sent. no sends only the session's variables.
+;    An SSH server drops them silently unless its sshd_config has
+;    "AcceptEnv COLORTERM TERM_PROGRAM". Running sessions keep what they sent.
+;sendtermenv=yes
+
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones
 ;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds
 ;    them, and they are what the Ctrl+Shift+letter predefined commands ride

@@ -75,6 +75,7 @@
 #define KI_SCRIPTMODE                       "scriptmode"
 #define KI_SENDCMDGROUP                     "sendcmdgroup"
 #define KI_SENDCMDMODE                      "sendcmdmode"
+#define KI_SENDTERMENV                      "sendtermenv"
 #define KI_SHORTCUTS                        "shortcuts"
 #define KI_SHOWFOREIGNSESSIONS              "showforeignsessions"
 #define KI_SHRINKBITMAP                     "shrinkbitmap"

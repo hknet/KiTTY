@@ -18,10 +18,32 @@ in KiTTY++ and what the host needs.
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
 | Clipboard with types, paste events | OSC 5522 | the same as OSC 52 | `kitten clipboard` |
 | File transfer through the terminal | OSC 5113 | **Connection > File-Transfer-Settings**, **Transfers & Tools > OSC 5113 (kitten)** | `kitten transfer` |
+| True colour and terminal name | `COLORTERM`, `TERM_PROGRAM` (environment, not OSC) | **Application > KiTTY++ Settings > Terminal > Send COLORTERM and TERM_PROGRAM to the server**, on | SSH: `AcceptEnv COLORTERM TERM_PROGRAM` in `sshd_config` ([below](#colorterm-and-term_program)) |
 
 Details of each feature: [FEATURES.md](../FEATURES.md). Inside tmux, GNU
 screen, zellij or dtach, most of these need more: see
 [tmux, screen, zellij and dtach](#tmux-screen-zellij-and-dtach).
+
+## COLORTERM and TERM_PROGRAM
+
+Each new SSH or Telnet connection sends `COLORTERM=truecolor` and
+`TERM_PROGRAM=KiTTY++`; programs read `COLORTERM` to decide on 24-bit
+colour. A session's own value (**Connection > Login > Environment**) wins;
+an empty value there means the variable is not sent.
+
+An SSH server accepts only the variables `sshd_config` names and drops the
+rest **silently** - the session opens, the variables are just not there.
+On the host, as root:
+
+```
+# /etc/ssh/sshd_config (or a file in /etc/ssh/sshd_config.d/)
+AcceptEnv COLORTERM TERM_PROGRAM
+```
+
+then reload sshd (`systemctl reload ssh` or `sshd`). Check from a new
+session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`. The Event Log lists a
+variable the server refused. Without access to `sshd_config`, set
+`COLORTERM=truecolor` in the shell's startup file instead.
 
 ## Shell integration (bash, zsh, fish)
 

@@ -84,6 +84,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   told `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light) when the terminal's
   background turns from one to the other, and answered the same on `CSI ?
   996 n`.
+- **The host learns the terminal draws true colour.** Each new SSH or
+  Telnet connection also sends `COLORTERM=truecolor` and
+  `TERM_PROGRAM=KiTTY++`; the pi coding agent and other programs read
+  `COLORTERM` for 24-bit colour. A session's own value (Connection > Login >
+  Environment) wins, an empty one means the variable is not sent.
+  Application > KiTTY++ Settings > Terminal turns it off (`[KiTTY]
+  sendtermenv`). The SSH server needs `AcceptEnv COLORTERM TERM_PROGRAM`;
+  without it the variables are dropped, noted in the Event Log only.
 
 ### Changed
 

@@ -2035,6 +2035,16 @@ interval is the fallback for a session that sets none, and \q{Resample a
 large image for Stretch+} trades a little repaint time for a cleaner
 downscale.
 
+\b \q{Send COLORTERM and TERM_PROGRAM to the server}, on by default:
+each new SSH or Telnet connection also sends \c{COLORTERM=truecolor} and
+\c{TERM_PROGRAM=KiTTY++}, so programs on the host know they can use
+24-bit colour. A session's own value for either variable
+(Connection > Login > Environment) wins; an empty value there means that
+variable is not sent. Off, a connection sends only the session's
+variables. An SSH server drops both silently unless its \c{sshd_config}
+has \c{AcceptEnv COLORTERM TERM_PROGRAM}. A running session keeps what
+it sent.
+
 \b \q{Terminal minimize to Tray/Launcher} decides what Send to tray does -
 the system menu entry, its shortcut, Ctrl+middle-click, a right click or a
 Ctrl+click on the window's minimize button, and \q{Send to tray on startup}.
@@ -2052,7 +2062,7 @@ a launcher.
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{wintitle}, \c{size},
 \c{winroll}, \c{renderer}, \c{framepace}, \c{ctrltab},
 \c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay},
-\c{shrinkbitmap} and \c{traymode}.
+\c{shrinkbitmap}, \c{sendtermenv} and \c{traymode}.
 
 \S{kitty-cfg-kset-fontfb} The Font Fallback leaf (under Terminal)
 

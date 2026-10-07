@@ -76,6 +76,7 @@ one is available.
   - [Automatic saving](#automatic-saving)
   - [Non-blocking connection errors](#non-blocking-connection-errors)
   - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
+  - [Terminal environment (COLORTERM, TERM_PROGRAM)](#terminal-environment-colorterm-term_program)
   - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
   - [Notifications from the host (OSC 9, OSC 777, OSC 99)](#notifications-from-the-host-osc-9-osc-777-osc-99)
   - [Program status (OSC 7501) and prompt marks (OSC 133)](#program-status-osc-7501-and-prompt-marks-osc-133)
@@ -1212,6 +1213,14 @@ When a connection drops, is closed by the remote host, or the server reports a n
 KiTTY++ can run the current Windows clipboard contents as a local command with the **Ctrl+F5** shortcut — handy for sending a prepared command line straight into execution. Because that runs whatever happens to be on the clipboard, KiTTY++ shows a **confirmation prompt** (displaying the command) before running it and a **tray notification** after launch, so nothing runs unexpectedly.
 
 **How to enable:** the shortcut is built in; the two safeguards are on by default and toggled per session in **Window → Copy & Paste** ("Running the clipboard as a local command").
+
+(no screenshot)
+
+### Terminal environment (COLORTERM, TERM_PROGRAM)
+
+Each new SSH or Telnet connection also sends `COLORTERM=truecolor` and `TERM_PROGRAM=KiTTY++`, so programs on the host can tell which terminal they run in and that it draws 24-bit colour: `TERM` (xterm, xterm-256color) says nothing about true colour, and tools such as the pi coding agent, editors and prompt themes read `COLORTERM` for it. A session's own value for either variable (**Connection > Login > Environment**) wins; an empty value there means that variable is not sent. An SSH server drops both silently unless its `sshd_config` has `AcceptEnv COLORTERM TERM_PROGRAM` (see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md)). A running session keeps what it sent.
+
+**How to enable:** on by default. **Application > KiTTY++ Settings > Terminal**, **Send COLORTERM and TERM_PROGRAM to the server** (`[KiTTY] sendtermenv`) turns it off for every session.
 
 (no screenshot)
 

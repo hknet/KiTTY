@@ -2889,6 +2889,8 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_TW_HYPERLINK, KI_HYPERLINK, kitty_kset_window);
     m->context2 = P(KSET_NUMBER(s, KT_KSET_WD_SLIDEDELAY, KI_SLIDEDELAY, kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_SHRINK, KI_SHRINKBITMAP, kitty_kset_window);
+    /* [KiTTY] sendtermenv: COLORTERM / TERM_PROGRAM for new connections */
+    KSET_CHECKBOX(s, KT_KSET_WD_SENDTERMENV, KI_SENDTERMENV, kitty_kset_window);
     /* [KiTTY] traymode: the label above a full-width list - the entries are
      * too long for the half-width droplist beside a label. */
     ctrl_droplist(s, KT_KSET_WD_TRAYMODE, NO_SHORTCUT, 100, HELPCTX(kitty_kset_window),

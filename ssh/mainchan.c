@@ -10,6 +10,7 @@
 #include "ssh.h"
 #include "ppl.h"
 #include "channel.h"
+#include "kitty/kitty_termenv.h"   /* KiTTY: COLORTERM / TERM_PROGRAM defaults */
 
 static void mainchan_free(Channel *chan);
 static void mainchan_open_confirmation(Channel *chan);
@@ -66,6 +67,8 @@ struct mainchan {
 
     bool req_x11, req_agent, req_pty, req_cmd_primary, req_cmd_fallback;
     int n_req_env, n_env_replies, n_env_fails;
+    KittyTermEnvList *env;   /* KiTTY: the variables requested, for the replies */
+    int n_env_own_fails;     /* KiTTY: refusals of the session's own variables */
     bool eof_pending, eof_sent, got_pty, ready;
 
     int term_width, term_height;
@@ -116,6 +119,7 @@ static void mainchan_free(Channel *chan)
     assert(chan->vt == &mainchan_channelvt);
     mainchan *mc = container_of(chan, mainchan, chan);
     conf_free(mc->conf);
+    kitty_termenv_list_free(mc->env);   /* KiTTY */
     sfree(mc);
 }
 
@@ -138,7 +142,7 @@ static void mainchan_open_confirmation(Channel *chan)
         /*
          * Send the CHANNEL_REQUESTS for the main session channel.
          */
-        char *key, *val, *cmd;
+        char *cmd;
         struct X11Display *x11disp;
         struct X11FakeAuth *x11auth;
         bool retry_cmd_now = false;
@@ -173,10 +177,14 @@ static void mainchan_open_confirmation(Channel *chan)
             mc->req_pty = true;
         }
 
-        for (val = conf_get_str_strs(mc->conf, CONF_environmt, NULL, &key);
-             val != NULL;
-             val = conf_get_str_strs(mc->conf, CONF_environmt, key, &key)) {
-            sshfwd_send_env_var(mc->sc, true, key, val);
+        /* KiTTY: the session's variables through the COLORTERM /
+         * TERM_PROGRAM rule (kitty/kitty_termenv.h); unchanged outside the
+         * KiTTY++ terminals. Kept for naming a refused one in the replies. */
+        kitty_termenv_list_free(mc->env);
+        mc->env = kitty_termenv_list_new(mc->conf);
+        for (size_t i = 0; i < mc->env->n; i++) {
+            sshfwd_send_env_var(mc->sc, true, mc->env->names[i],
+                                mc->env->values[i]);
             mc->n_req_env++;
         }
         if (mc->n_req_env)
@@ -266,16 +274,25 @@ static void mainchan_request_response(Channel *chan, bool success)
         int j = mc->n_env_replies++;
         if (!success) {
             ppl_logevent("Server refused to set environment variable %s",
-                         conf_get_str_nthstrkey(mc->conf,
-                                                CONF_environmt, j));
+                         mc->env->names[j]);   /* KiTTY: the list sent */
             mc->n_env_fails++;
+            if (!mc->env->added[j])
+                mc->n_env_own_fails++;
         }
 
         if (mc->n_env_replies == mc->n_req_env) {
+            /* KiTTY: a refused COLORTERM / TERM_PROGRAM default is only in
+             * the Event Log (a stock sshd refuses it); the terminal line is
+             * about the session's own variables. */
+            int n_own = mc->n_req_env - (int)mc->env->n_added;
             if (mc->n_env_fails == 0) {
                 ppl_logevent("All environment variables successfully set");
             } else if (mc->n_env_fails == mc->n_req_env) {
                 ppl_logevent("All environment variables refused");
+            }
+            if (mc->n_env_own_fails == 0) {
+                /* nothing of the session's own was refused */
+            } else if (mc->n_env_own_fails == n_own) {
                 ppl_printf("Server refused to set environment "
                            "variables\r\n");
             } else {

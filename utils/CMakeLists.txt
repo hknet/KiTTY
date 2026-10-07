@@ -85,4 +85,10 @@ add_sources_from_current_dir(utils
   x11_dehexify.c
   x11_identify_auth_proto.c
   x11_make_greeting.c
-  x11_parse_ip.c)
+  x11_parse_ip.c
+  # KiTTY: the environment list a connection sends (COLORTERM / TERM_PROGRAM
+  # defaults). Here because ssh/mainchan.c and otherbackends/telnet.c call it
+  # and are compiled without MOD_PERSO into libraries every program links;
+  # inert until a KiTTY++ terminal sets kitty_termenv_switch_hook.
+  ../kitty/kitty_termenv.c
+  ../kitty/kitty_termenv_conf.c)

@@ -52,6 +52,7 @@
 #include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
+#include "kitty_termenv.h"   /* the sendtermenv switch, read by the backends */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
@@ -291,6 +292,13 @@ int GetConfigBoxApplicationSettingsFlag(void) { return ConfigBoxApplicationSetti
 static int CtrlTabFlag = 1 ;
 int GetCtrlTabFlag(void) { return CtrlTabFlag  ; }
 void SetCtrlTabFlag( const int flag ) { CtrlTabFlag  = flag ; }
+
+/* [KiTTY] sendtermenv: a new connection also sends COLORTERM=truecolor and
+ * TERM_PROGRAM=KiTTY++ unless the session sets them (kitty_termenv.h). Read
+ * by the SSH and Telnet backends through kitty_termenv_switch_hook. */
+static int SendTermEnvFlag = 1 ;
+int GetSendTermEnvFlag(void) { return SendTermEnvFlag ; }
+void SetSendTermEnvFlag( const int flag ) { SendTermEnvFlag = flag ; }
 
 #ifdef MOD_RECONNECT
 // Flag to disable the automatic reconnection mechanism
@@ -619,6 +627,7 @@ static const IniParam ini_params[] = {
 #endif
 	INIP_KW( INIT_SECTION, 0, KI_SCRIPTMODE,		1, 0, IGN,	NULL, kitty_script_set_enabled ),
 	INIP_KW( INIT_SECTION, 0, KI_SENDCMDMODE,		1, 0, IGN,	NULL, kitty_broadcast_set_enabled ),
+	INIP_KW( INIT_SECTION, 0, KI_SENDTERMENV,		1, 0, IGN,	NULL, SetSendTermEnvFlag ),   /* symmetrical: a checkbox */
 #ifndef MOD_NOTRANSPARENCY
 	/* transparency: anything but an explicit yes disables */
 	INIP_KW( INIT_SECTION, 0, KI_TRANSPARENCY,	1, 0, 0,	NULL, SetTransparencyIni ),
@@ -706,6 +715,8 @@ void LoadParameters( void ) {
 
 	/* All the plain keyword/int keys, in table order ("debug" first). */
 	load_ini_params() ;
+	/* The backends ask this terminal for the sendtermenv switch. */
+	kitty_termenv_switch_hook = GetSendTermEnvFlag ;
 
 	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLE, buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }

@@ -750,6 +750,15 @@ char default_init_file_content[] =
 ;    the message and anything local could copy it.\n\
 ;sendcmdgroup=\n\
 \n\
+; sendtermenv: each new SSH or Telnet connection also sends\n\
+;    COLORTERM=truecolor and TERM_PROGRAM=KiTTY++, so programs on the host\n\
+;    know they can use 24-bit colour. A session's own value for either\n\
+;    variable (Connection > Login > Environment) wins; an empty value there\n\
+;    means that variable is not sent. no sends only the session's variables.\n\
+;    An SSH server drops them silently unless its sshd_config has\n\
+;    \"AcceptEnv COLORTERM TERM_PROGRAM\". Running sessions keep what they sent.\n\
+;sendtermenv=yes\n\
+\n\
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones\n\
 ;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds\n\
 ;    them, and they are what the Ctrl+Shift+letter predefined commands ride\n\

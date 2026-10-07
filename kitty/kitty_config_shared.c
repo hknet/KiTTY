@@ -621,6 +621,7 @@ extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int
 extern int  GetWinrolFlag(void);               extern void SetWinrolFlag(const int);
 extern int  GetCtrlTabFlag(void);              extern void SetCtrlTabFlag(const int);
 extern int  GetTransparencyFlag(void);         extern void SetTransparencyEnabled(const int);
+extern int  GetSendTermEnvFlag(void);          extern void SetSendTermEnvFlag(const int);
 extern int  GetBackgroundImageFlag(void);      extern void SetBackgroundImageFlag(const int);
 extern int  GetShrinkBitmapEnable(void);       extern void SetShrinkBitmapEnable(int);
 extern char *GetIconFile(void);                extern void SetIconFile(const char *);
@@ -746,6 +747,8 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_WINROLL,        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_CTRLTAB,        KSET_BOOL, false, GetCtrlTabFlag, SetCtrlTabFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_TRANSPARENCY,   KSET_BOOL, false, GetTransparencyFlag, SetTransparencyEnabled, NULL, 0, 0, 1 },
+    /* COLORTERM / TERM_PROGRAM defaults: the next connection reads it */
+    { INIT_SECTION, KI_SENDTERMENV,    KSET_BOOL, false, GetSendTermEnvFlag, SetSendTermEnvFlag, NULL, 0, 0, 1 },
     /* No setter: the renderer is read when a window is created, and choosing
      * Direct2D leaves window transparency alone - a Direct2D window where
      * transparency is allowed is layered from its creation (windows/window.c),

@@ -22,6 +22,9 @@ void SetConfigBoxNoExitFlag( const int flag ) ;
 // Flag to disable CTRL+TAB handling
 int GetCtrlTabFlag(void) ;
 void SetCtrlTabFlag( const int flag ) ;
+// [KiTTY] sendtermenv: send COLORTERM / TERM_PROGRAM by default
+int GetSendTermEnvFlag(void) ;
+void SetSendTermEnvFlag( const int flag ) ;
 #ifdef MOD_RECONNECT
 // Flag to disable the automatic reconnection mechanism
 int GetAutoreconnectFlag( void ) ;

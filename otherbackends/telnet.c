@@ -7,6 +7,7 @@
 #include <limits.h>
 
 #include "putty.h"
+#include "kitty/kitty_termenv.h"   /* KiTTY: COLORTERM / TERM_PROGRAM defaults */
 
 #define IAC     255                    /* interpret as command: */
 #define DONT    254                    /* you are not to use option */
@@ -450,16 +451,15 @@ static void process_subneg(Telnet *telnet)
             put_byte(sb, SB);
             put_byte(sb, telnet->sb_opt);
             put_byte(sb, TELQUAL_IS);
-            char *ekey, *eval;
-            for (eval = conf_get_str_strs(telnet->conf, CONF_environmt,
-                                          NULL, &ekey);
-                 eval != NULL;
-                 eval = conf_get_str_strs(telnet->conf, CONF_environmt,
-                                          ekey, &ekey)) {
+            /* KiTTY: the session's variables through the COLORTERM /
+             * TERM_PROGRAM rule (kitty/kitty_termenv.h); unchanged outside
+             * the KiTTY++ terminals. */
+            KittyTermEnvList *env = kitty_termenv_list_new(telnet->conf);
+            for (size_t ei = 0; ei < env->n; ei++) {
                 put_byte(sb, var);
-                put_datapl(sb, ptrlen_from_asciz(ekey));
+                put_datapl(sb, ptrlen_from_asciz(env->names[ei]));
                 put_byte(sb, value);
-                put_datapl(sb, ptrlen_from_asciz(eval));
+                put_datapl(sb, ptrlen_from_asciz(env->values[ei]));
             }
             char *user = get_remote_username(telnet->conf);
             if (user) {
@@ -478,18 +478,15 @@ static void process_subneg(Telnet *telnet)
             } else {
                 logeventf(telnet->logctx, "client subnegotiation: SB %s IS:",
                           telopt(telnet->sb_opt));
-                for (eval = conf_get_str_strs(telnet->conf, CONF_environmt,
-                                              NULL, &ekey);
-                     eval != NULL;
-                     eval = conf_get_str_strs(telnet->conf, CONF_environmt,
-                                              ekey, &ekey)) {
-                    logeventf(telnet->logctx, "    %s=%s", ekey, eval);
-                }
+                for (size_t ei = 0; ei < env->n; ei++)
+                    logeventf(telnet->logctx, "    %s=%s", env->names[ei],
+                              env->values[ei]);
                 if (user)
                     logeventf(telnet->logctx, "    USER=%s", user);
             }
             strbuf_free(sb);
             sfree(user);
+            kitty_termenv_list_free(env);   /* KiTTY */
         }
         break;
     }
