@@ -64,6 +64,11 @@ struct WinGuiSeat {
     bool font_dualwidth, font_varpitch;
     int offset_width, offset_height;
     bool strip_dirty;  /* KiTTY: the mark strip is drawn in the next frame */
+    /* KiTTY: the cell the left button went down on, for a link click: a
+     * link opens only when the button goes up on that same cell (a click,
+     * not a selection dragged onto a link) */
+    bool url_press_valid;
+    int url_press_x, url_press_y;
     /* KiTTY: the kitty graphics pictures under the text of the frame being
      * drawn (kitty_gfx_under_list): built at its first run, dropped at its
      * end */

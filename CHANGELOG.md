@@ -197,6 +197,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A selection that ends over a link no longer opens it.** A link opened
+  whenever the mouse button was released over it, so selecting text by
+  dragging onto a URL launched the browser. It now opens only for a click:
+  the button pressed and released on the same cell.
 - **A key with no key code no longer fires unassigned shortcut actions.**
   Injected input can carry virtual key 0, which every action without a key
   matched (Full screen, for one). Real keyboards never send it.

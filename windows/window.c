@@ -6823,6 +6823,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
 #endif
             if (press) {
+#ifdef MOD_PERSO
+                if (message == WM_LBUTTONDOWN) {
+                    wgs->url_press_valid = true;
+                    wgs->url_press_x = TO_CHR_X(X_POS(lParam));
+                    wgs->url_press_y = TO_CHR_Y(Y_POS(lParam));
+                }
+#endif
                 click(wgs, button,
                       TO_CHR_X(X_POS(lParam)), TO_CHR_Y(Y_POS(lParam)),
                       wParam & MK_SHIFT, wParam & MK_CONTROL,
@@ -6832,8 +6839,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
                 /* KiTTY URL hyperlinks: on left-button release, if (ctrl+)click
                  * lands on a detected URL region, launch it instead of
-                 * completing a selection. */
-                if (message == WM_LBUTTONUP && GetHyperlinkFlag() &&
+                 * completing a selection - only for a click: the button went
+                 * down on the same cell. A selection that merely ends over a
+                 * link opens nothing. */
+                bool url_same_cell = wgs->url_press_valid &&
+                    wgs->url_press_x == TO_CHR_X(X_POS(lParam)) &&
+                    wgs->url_press_y == TO_CHR_Y(Y_POS(lParam));
+                if (message == WM_LBUTTONUP)
+                    wgs->url_press_valid = false;
+                if (message == WM_LBUTTONUP && url_same_cell &&
+                    GetHyperlinkFlag() &&
                     kitty_url_click(wgs->term, wgs->conf, hwnd, wgs->logctx,
                                     TO_CHR_X(X_POS(lParam)),
                                     TO_CHR_Y(Y_POS(lParam)),
