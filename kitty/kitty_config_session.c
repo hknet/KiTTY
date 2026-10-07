@@ -8195,6 +8195,11 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
             ctrl_checkbox(s, KT_KSCP_DRAGDROP_UPLOAD, NO_SHORTCUT,
                           HELPCTX(kitty_winscp),
                           conf_checkbox_handler, I(CONF_kscp_dragdrop));
+            /* After a drop upload succeeds, its remote paths are typed into
+             * the terminal; Shift held at the drop does it for that drop. */
+            ctrl_checkbox(s, KT_KSCP_DROP_TYPE_PATH, NO_SHORTCUT,
+                          HELPCTX(kitty_winscp),
+                          conf_checkbox_handler, I(CONF_kscp_drop_typepath));
             /* The remote directory (OSC 7 / fixed) and the download folder
              * live on Connection > File-Transfer-Settings: they serve ZModem and transfers
              * over the session too, which are not SSH-only. */

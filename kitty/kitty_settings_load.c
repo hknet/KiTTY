@@ -868,6 +868,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gpps_forced(sesskey, "WinSCPPort", conf, CONF_winscp_port );
     gpps_forced(sesskey, "FileZillaPort", conf, CONF_filezilla_port );
     gppb_forced(sesskey, "KscpDragDrop", conf, CONF_kscp_dragdrop );
+    gppb_forced(sesskey, "KscpDropTypePath", conf, CONF_kscp_drop_typepath );
     gpps_forced(sesskey, "SFTPConnect", conf, CONF_sftpconnect );
     gpps_forced(sesskey, "PSCPOptions", conf, CONF_pscpoptions );
     gpps_forced(sesskey, "PSCPShell", conf, CONF_pscpshell );

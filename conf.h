@@ -1622,6 +1622,9 @@ CONF_OPTION(filezilla_port, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("File
 /* Off: the terminal window is not registered for drops at all, so the cursor
  * shows "forbidden" rather than silently swallowing the file. */
 CONF_OPTION(kscp_dragdrop, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("KscpDragDrop"),)
+/* KiTTY: after a drop upload succeeds, the remote paths are typed into the
+ * terminal (no Enter). Shift held at the drop does it for that drop. */
+CONF_OPTION(kscp_drop_typepath, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("KscpDropTypePath"),)
 CONF_OPTION(winscprawsettings, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("WinSCPRawSettings"),)
 CONF_OPTION(xpos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermXPos"),)
 CONF_OPTION(ypos, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("TermYPos"),)

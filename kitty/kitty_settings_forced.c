@@ -552,6 +552,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_s_forced(sesskey, "WinSCPPort", conf_get_str(conf, CONF_winscp_port));
     write_setting_s_forced(sesskey, "FileZillaPort", conf_get_str(conf, CONF_filezilla_port));
     write_setting_b_forced(sesskey, "KscpDragDrop", conf_get_bool(conf, CONF_kscp_dragdrop));
+    write_setting_b_forced(sesskey, "KscpDropTypePath", conf_get_bool(conf, CONF_kscp_drop_typepath));
     write_setting_s_forced(sesskey, "SFTPConnect", conf_get_str(conf, CONF_sftpconnect));
     write_setting_s_forced(sesskey, "PSCPOptions", conf_get_str(conf, CONF_pscpoptions));
     write_setting_s_forced(sesskey, "PSCPShell", conf_get_str(conf, CONF_pscpshell));

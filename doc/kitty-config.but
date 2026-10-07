@@ -949,6 +949,17 @@ refuses the file before you let go of it. The \q{Tools} menu entries are
 not affected - they have their own switches (\k{kitty-cfg-behaviour}).
 The key is \c{KscpDragDrop}.
 
+\b \q{Type the remote path after a drop upload} is off by default. On,
+once the files of a drop are uploaded, their remote paths are typed at
+the cursor, quoted for the shell and separated by spaces, without an
+Enter; a file whose upload failed is left out. The text goes in as a
+paste, so a program that asked for bracketed paste receives it as one.
+The path is the target directory and the name: the OSC 7 directory, the
+fixed remote upload directory (one starting with neither \c{/} nor
+\c{~} is taken under \c{~/}), else \c{~/name} in the home directory. A dropped folder gives
+the folder's path. Holding \c{Shift} while dropping does the same for
+that drop when the box is off. The key is \c{KscpDropTypePath}.
+
 \b \q{KSCP options} are the flags handed to \c{kscp}; the default
 \c{-r} is what makes a dropped folder upload recursively.
 

@@ -216,6 +216,13 @@ add_executable(test_modkeys
   test/test_modkeys.c
   kitty/kitty_modkeys.c)
 
+# KiTTY: unit test for the text typed after a drag-and-drop upload
+# (kitty/kitty_droppath.c, shared with kitty/kitty_xfer.c): the remote path in
+# each target case, its shell quoting, plain and bracketed.
+add_executable(test_droppath
+  test/test_droppath.c
+  kitty/kitty_droppath.c)
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -382,7 +389,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv)
+    test_termenv test_droppath)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

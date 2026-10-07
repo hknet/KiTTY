@@ -36,6 +36,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
+#include "kitty_droppath.h" /* the remote paths typed after a drop upload */
 
 /* The port inside a target override ([user@]hostname[:port]), 0 if it names
  * none. Defined beside kitty_xfer_default_port(), used by the builders above
@@ -658,9 +659,51 @@ static int kitty_helper_run( HWND hwnd, const char *path, char *cmdline ) {
 }
 #endif
 
+/* KiTTY: one drop whose remote paths are typed into the terminal once its
+ * uploads are over. Each dropped file is a kscp run of its own (its own
+ * transfer window); a run that succeeds keeps its file's path, and when the
+ * last run of the drop is over the kept paths are typed - nothing when none
+ * succeeded. Settled on the GUI thread only: at the start of a run that
+ * cannot start, and in the transfer window. */
+typedef struct { HWND hwnd ; int n, pending ; char **remote ; char *ok ; } kx_drop_t ;
+static kx_drop_t *kx_drop_new( HWND hwnd, int n ) {
+	kx_drop_t *d ;
+	if( n <= 0 ) return NULL ;
+	d = snew( kx_drop_t ) ;
+	d->hwnd = hwnd ; d->n = n ; d->pending = n ;
+	d->remote = snewn( n, char * ) ; d->ok = snewn( n, char ) ;
+	memset( d->remote, 0, n * sizeof(char *) ) ; memset( d->ok, 0, n ) ;
+	return d ;
+}
+static void kx_drop_settle( kx_drop_t *d, int idx, int ok ) {
+	int i ;
+	if( !d ) return ;
+	if( idx >= 0 && idx < d->n && ok ) d->ok[idx] = 1 ;
+	if( --d->pending > 0 ) return ;
+	{	const char **typed = snewn( d->n, const char * ) ;
+		char *text ;
+		for( i = 0 ; i < d->n ; i++ ) typed[i] = d->ok[i] ? d->remote[i] : NULL ;
+		/* Plain text: term_do_paste brackets it when the program asked
+		 * for bracketed paste (mode 2004). No newline: Enter is the user's. */
+		text = kitty_droppath_text( typed, d->n, 0 ) ;
+		if( text ) { kitty_paste_text( d->hwnd, text ) ; free( text ) ; }
+		sfree( typed ) ;
+	}
+	for( i = 0 ; i < d->n ; i++ ) free( d->remote[i] ) ;
+	sfree( d->remote ) ; sfree( d->ok ) ; sfree( d ) ;
+}
+static void kx_send_one( HWND hwnd, char * directory, char * filename, char * distantdir,
+                         kx_drop_t *drop, int drop_idx ) ;
+/* The dropped files uploaded, one kscp run each; typepath: type their
+ * remote paths once the runs are over. */
+static void kx_drop_upload( HWND hwnd, char **files, int nfiles, int typepath ) {
+	kx_drop_t *d = typepath ? kx_drop_new( hwnd, nfiles ) : NULL ;
+	for( int i = 0 ; i < nfiles ; i++ ) kx_send_one( hwnd, "", files[i], NULL, d, i ) ;
+}
+
 /* What kitty_helper_ready runs on a Yes: the user action again, which finds
  * its helper allowed this time. */
-typedef struct { HWND hwnd ; char *a, *b, *c ; char **files ; int nfiles ; } kx_again_t ;
+typedef struct { HWND hwnd ; char *a, *b, *c ; char **files ; int nfiles ; int typepath ; } kx_again_t ;
 static kx_again_t *kx_again( HWND hwnd ) {
 	kx_again_t *g = snew( kx_again_t ) ;
 	memset( g, 0, sizeof(*g) ) ; g->hwnd = hwnd ;
@@ -683,7 +726,7 @@ static void kx_again_winscp( void *v ) {
 #endif
 static void kx_again_drop( void *v ) {
 	kx_again_t *g = (kx_again_t *)v ;
-	for( int i = 0 ; i < g->nfiles ; i++ ) SendOneFile( g->hwnd, "", g->files[i], NULL ) ;
+	kx_drop_upload( g->hwnd, g->files, g->nfiles, g->typepath ) ;
 }
 
 /* Watch a launched transfer process (kscp/klink) on a background thread: wait
@@ -847,6 +890,8 @@ struct ktx_win {
 	HANDLE lock ;
 	int renamed ;                  /* files that had to be renamed on the move */
 	int cleanup_failed ;           /* the staging folder could not be removed */
+	kx_drop_t *drop ;              /* the drop whose paths are typed, NULL = none */
+	int drop_idx ;                 /* this run's file in it */
 	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
 	char curline[2048] ;   /* current uncommitted line */
@@ -1091,6 +1136,13 @@ static void ktx_subclass_child( HWND h ) {
 	SetProp( h, "ktxoldproc", (HANDLE)old ) ;
 }
 
+/* This run is over for its drop (ok: kscp succeeded); once only. */
+static void ktx_drop_done( struct ktx_win *w, int ok ) {
+	kx_drop_t *d = w->drop ;
+	w->drop = NULL ;
+	kx_drop_settle( d, w->drop_idx, ok ) ;
+}
+
 static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
 	struct ktx_win *w = (struct ktx_win *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
 	switch( msg ) {
@@ -1146,6 +1198,9 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			/* Wildcard/folder: move out of the staging folder now (kscp has
 			 * exited), renaming any clash to "name (1)" and counting it. */
 			kitty_xfer_finish_stage( w ) ;
+			/* KiTTY: a drop upload that types its remote paths: this file
+			 * landed; the paths are typed when the drop's last run is over. */
+			ktx_drop_done( w, 1 ) ;
 			/* [KiTTY] transfernotification: a Get File that produced the one
 			 * file opens that file, anything else opens its folder */
 			if( w->open_file && existfile( w->open_file ) )
@@ -1171,6 +1226,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 		} else {
 			char *m ;
+			ktx_drop_done( w, 0 ) ;   /* a failed upload types nothing */
 			/* Cancel or failure: drop the staging folder too (design: removed
 			 * after success, cancel or failure), without moving anything out. */
 			if( w->stage_dir ) {
@@ -1230,6 +1286,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0 ;
 	  case WM_DESTROY:
 		if( w ) {
+			ktx_drop_done( w, 0 ) ;   /* gone before kscp was done */
 			if( w->font ) DeleteObject( w->font ) ;
 			if( w->uifont ) DeleteObject( w->uifont ) ;
 			if( w->proc ) CloseHandle( w->proc ) ;
@@ -1250,10 +1307,13 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
  * arriving: 1 = a Get (files arriving), 0 = a Send. open_file / open_dir:
  * what the success balloon opens on a click - the file when it exists once
  * kscp is done (a Get File of one file), else the folder (the download
- * folder for a Get, the upload folder for a Send). */
+ * folder for a Get, the upload folder for a Send). drop / drop_idx: the drop
+ * upload this run belongs to, settled when it is over - left to the caller
+ * when the run does not start (-1). */
 static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro,
                            int arriving, const char *open_file, const char *open_dir,
-                           const char *stage_dir, const char *final_dir, HANDLE lock ) {
+                           const char *stage_dir, const char *final_dir, HANDLE lock,
+                           kx_drop_t *drop, int drop_idx ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -1307,6 +1367,8 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	sfree( title ) ;
 	if( !hwnd ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; sfree( w->what ) ;
 	              sfree( w->open_file ) ; sfree( w->open_dir ) ; free( w ) ; return -1 ; }
+	/* Taken only now that the window exists; kscp's end is posted to it. */
+	w->drop = drop ; w->drop_idx = drop_idx ;
 	/* The session's own icon, big and small, as every other window of ours
 	 * takes it - the class was registered with IDI_APPLICATION, which is the
 	 * generic Windows icon. */
@@ -1803,6 +1865,13 @@ static void kx_kscp_remote( char *out, size_t n ) {
 }
 
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
+	kx_send_one( hwnd, directory, filename, distantdir, NULL, 0 ) ;
+}
+
+/* drop / drop_idx: the drop upload this file belongs to (NULL = none); its
+ * remote path is noted here, and the run is settled whatever happens. */
+static void kx_send_one( HWND hwnd, char * directory, char * filename, char * distantdir,
+                         kx_drop_t *drop, int drop_idx ) {
 	char buffer[4096], remotedir[4096]=".", tgt[4096] ;
 	kx_kscp_line_t k ;               /* KiTTY: what the shared builder handed over, and where */
 
@@ -1827,7 +1896,7 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	if( strlen( remotedir ) == 0 ) strcpy( remotedir, "." ) ;
 
 	const size_t BC = sizeof(buffer) ;
-	if( !kx_kscp_line( buffer, BC, &k ) ) return ;
+	if( !kx_kscp_line( buffer, BC, &k ) ) { kx_drop_settle( drop, drop_idx, 0 ) ; return ; }
 
 	/* source path (single quoted argument) */
 	{
@@ -1840,6 +1909,10 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 			bcat(src,sizeof(src),filename) ;
 		}
 		qcat( buffer, BC, src ) ; bcat( buffer, BC, " " ) ;
+		/* KiTTY: where it lands, as kscp resolves remotedir ("." = home,
+		 * a relative dir = under home): typed if the upload succeeds. */
+		if( drop && drop_idx >= 0 && drop_idx < drop->n && !drop->remote[drop_idx] )
+			drop->remote[drop_idx] = kitty_droppath_remote( remotedir, src ) ;
 	}
 
 	/* destination user@host:remotedir (single quoted argument) */
@@ -1864,7 +1937,9 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
 	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
-	  kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE ) ;
+	  if( kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
+	                      drop, drop_idx ) != 0 )
+		kx_drop_settle( drop, drop_idx, 0 ) ;   /* not started: the window never took it */
 	  sfree( intro ) ; sfree( note ) ; }
 
 	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
@@ -2014,7 +2089,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
        * on success the files move to final_dir. The balloon opens final_dir. */
       kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one,
                       final_dir ? final_dir : dir,
-                      final_dir ? dir : NULL, final_dir, lock ) ;
+                      final_dir ? dir : NULL, final_dir, lock, NULL, 0 ) ;
       sfree( intro ) ; sfree( one ) ; sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
@@ -3264,7 +3339,7 @@ int SearchPSCP( void ) {
 }
 
 // Drag and drop handling
-void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
+void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop, int typepath ) {
         HDROP hDropInfo = *leDrop ;
         int nb,taille,i;
         taille=0;
@@ -3275,8 +3350,10 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 	/* Files to upload need kscp, checked first: while its confirmation box is open, the
 	 * names wait in the retry and are sent on its Yes. kitty.ini (the editor
 	 * below) is not a kscp job and goes on either way. */
-	int upload = 1 ;
+	int upload = 1, nup = 0, iup = 0 ;
+	kx_drop_t *drop = NULL ;         /* KiTTY: the paths to type, typepath only */
 	{ kx_again_t *g = kx_again( hwnd ) ;
+	  g->typepath = typepath ;
 	  g->files = snewn( nb > 0 ? nb : 1, char * ) ;
 	  for( i = 0 ; i < nb ; i++ ) {
 		UINT n = DragQueryFile( hDropInfo, i, NULL, 0 ) ;
@@ -3285,15 +3362,18 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 		if( strlen( f ) >= 10 && !strcmp( f+strlen(f)-10, "\\kitty.ini" ) ) sfree( f ) ;
 		else g->files[g->nfiles++] = f ;
 	  }
+	  nup = g->nfiles ;
 	  if( g->nfiles > 0 && kitty_xfer_tool_ready( 0 ) )
 		upload = kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_drop, g, kx_again_free ) ;
 	  else kx_again_free( g ) ;
 	}
+	if( upload && typepath ) drop = kx_drop_new( hwnd, nup ) ;
 	if( nb>0 ) for( i = 0; i < nb; i++ ) {
                 taille = DragQueryFile(hDropInfo, i, NULL, 0 ) ;   /* length, excluding NUL */
 		fic = (char*)malloc(taille+2) ;
+		if( !fic ) continue ;
                 { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching kscp ("...pdf\0") */
-		if( !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // load the config file in the internal editor
+		if( strlen(fic) >= 10 && !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // load the config file in the internal editor
 			char buffer[1024]="", shortname[1024]="" ;
 			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
 				if( GetShortPathName( buffer, shortname, 1023 ) ) {
@@ -3304,15 +3384,20 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop ) {
 			/* NULL target dir either way: the RemotePath store the auto-pwd
 			 * branch used to pass was never written on the 0.84 core (the
 			 * __pw title-scan was not forward-ported), so it was always NULL. */
-			SendOneFile( hwnd, "", fic, NULL ) ;
+			if( iup < nup ) kx_send_one( hwnd, "", fic, NULL, drop, iup ) ;
+			else SendOneFile( hwnd, "", fic, NULL ) ;
+			iup++ ;
 		}
 		free(fic);
 	}
+	/* KiTTY: a file the loop never sent counts as not uploaded, so the
+	 * drop still ends and types what did land. */
+	if( drop ) for( ; iup < nup ; iup++ ) kx_drop_settle( drop, iup, 0 ) ;
 	DragFinish(hDropInfo) ;  //free the memory...
         *leDrop = hDropInfo ;  //TOCHECK: parameter passing...
 }
 
-void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
+void OnDropFiles(HWND hwnd, HDROP hDropInfo, int shift) {
 	/* Upload on drop is a per-session switch. The window is unregistered for
 	 * drops when it is off (windows/window.c), so this message should not
 	 * arrive at all; refuse it here too rather than rely on that. */
@@ -3327,5 +3412,8 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo) {
 	 * the __pw OSC-title dispatcher - removed in 0.84 as the CVE-2024-23749 RCE -
 	 * so it no longer captured anything. Its safe, opt-in replacement is OSC 7
 	 * cwd tracking, which SendOneFile already consults via kitty_current_dir(). */
-	recupNomFichierDragDrop(hwnd, &hDropInfo) ;
+	/* KiTTY: the remote paths are typed after the upload when the session
+	 * says so, or for this drop when Shift was held at it. */
+	recupNomFichierDragDrop(hwnd, &hDropInfo,
+	                        conf_get_bool(conf,CONF_kscp_drop_typepath) || shift) ;
 }

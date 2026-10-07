@@ -764,6 +764,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_menuslots.c    # KiTTY: the payloads behind its IDM_USERCMD+n entries, no Win32 (test/test_menuslots.c)
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
+  ${KITTY_DIR}/kitty_droppath.c     # KiTTY: the remote paths typed after a drop upload, no Win32 (test/test_droppath.c)
   ${KITTY_DIR}/kitty_startup_shortcut.c
 )
 # No file outside the five may test MOD_PORTABLE: it would land in the

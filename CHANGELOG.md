@@ -92,6 +92,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Application > KiTTY++ Settings > Terminal turns it off (`[KiTTY]
   sendtermenv`). The SSH server needs `AcceptEnv COLORTERM TERM_PROGRAM`;
   without it the variables are dropped, noted in the Event Log only.
+- **A drop upload can type the remote path.** After files dropped on the
+  terminal are uploaded, their remote paths are typed at the cursor, quoted
+  for the shell, without an Enter; a failed upload types nothing. It goes in
+  as a paste, bracketed when the program asked for it, so pi and other
+  agents can read a dropped picture on the server. Connection > SSH > KSCP >
+  Type the remote path after a drop upload (`KscpDropTypePath`, off by
+  default); Shift held while dropping does it for that drop.
 
 ### Changed
 

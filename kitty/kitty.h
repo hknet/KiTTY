@@ -59,7 +59,7 @@ void SetProxySelectionFlag( const int flag ) ;
 #ifndef TIMER_DND
 #define TIMER_DND 8777
 #endif
-void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop) ;
+void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop, int typepath) ;
 
 // RuTTY script engine master switch: [KiTTY] scriptmode=yes|no (kitty_rutty.c)
 int kitty_script_enabled(void) ;
@@ -369,7 +369,10 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 BOOL kitty_helper_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
                          const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi ) ;
 void urlhack_launch_url(const char* app, const char *url) ;
-void OnDropFiles(HWND hwnd, HDROP hDropInfo) ;
+/* shift: Shift was held at the drop - type the remote paths after it */
+void OnDropFiles(HWND hwnd, HDROP hDropInfo, int shift) ;
+/* windows/window.c: text typed into the terminal window hwnd as a paste */
+void kitty_paste_text(HWND hwnd, const char *text) ;
 // Show a menu in the system tray
 // Get the window coordinates
 // Startup script handling

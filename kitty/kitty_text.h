@@ -835,6 +835,7 @@
         "folders recursively."
 #define KT_KSCP_KEEP_THE_TRANSFER_WINDOW_OPEN        "Keep the transfer window open after success"
 #define KT_KSCP_DRAGDROP_UPLOAD                      "Upload Drag & Dropped Files on the Terminal Window"
+#define KT_KSCP_DROP_TYPE_PATH                       "Type the remote path after a drop upload"
 
 /* Connection/SSH/WinSCP */
 #define KT_WINSCP_WINSCP_INTEGRATION                 "WinSCP integration"

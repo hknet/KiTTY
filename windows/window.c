@@ -4947,8 +4947,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         break;
 #ifdef MOD_PERSO
       case WM_DROPFILES:
-        /* KiTTY: a file was dropped on the terminal -> kscp upload. */
-        OnDropFiles(hwnd, (HDROP)wParam);
+        /* KiTTY: a file was dropped on the terminal -> kscp upload. Shift
+         * held at the drop types the remote paths once it succeeds. */
+        OnDropFiles(hwnd, (HDROP)wParam,
+                    (GetKeyState(VK_SHIFT) & 0x8000) != 0);
         return 0;
       case MYWM_NOTIFYICON:
         /* systray icon clicked -> restore the window sent to the tray */
@@ -11943,6 +11945,24 @@ int kitty_active_seat_workplace_proxied(void) {
 void do_eventlog(const char *st) {
     if (kitty_active_wgs && kitty_active_wgs->logctx)
         logevent(kitty_active_wgs->logctx, st);
+}
+/* KiTTY: text (in the ANSI code page) typed into the terminal window hwnd as
+ * a paste would be: through term_do_paste, so it is bracketed when the
+ * program asked for bracketed paste and goes through the line discipline.
+ * Nothing when the window or its connection is gone. */
+void kitty_paste_text(HWND hwnd, const char *text) {
+    WinGuiSeat *wgs;
+    wchar_t *w;
+    int n;
+    if (!hwnd || !text || !*text || !IsWindow(hwnd)) return;
+    wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    if (!wgs || wgs->term_hwnd != hwnd || !wgs->term || !wgs->ldisc) return;
+    n = MultiByteToWideChar(CP_ACP, 0, text, -1, NULL, 0);
+    if (n <= 1) return;
+    w = snewn(n, wchar_t);
+    MultiByteToWideChar(CP_ACP, 0, text, -1, w, n);
+    term_do_paste(wgs->term, w, n - 1);
+    sfree(w);
 }
 void SendStrToTerminal(const char *str, const int len) {
     int i;

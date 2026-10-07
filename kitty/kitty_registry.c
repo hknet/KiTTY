@@ -736,6 +736,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "HostNotify" ) ;
 					RegDeleteValue( hSubKey, "TaskbarProgress" ) ;
 					RegDeleteValue( hSubKey, "FailedCommandMarks" ) ;
+					RegDeleteValue( hSubKey, "KscpDropTypePath" ) ;
 					RegDeleteValue( hSubKey, "LinesAtAScroll" ) ;
 					RegDeleteValue( hSubKey, "DisableAltGr" ) ;
 					RegDeleteValue( hSubKey, "ProxySelection" ) ;
