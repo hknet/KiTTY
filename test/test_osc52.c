@@ -2800,6 +2800,90 @@ static void feed_seq(Mock *mk, const char *seq)
     term_update(mk->term);
 }
 
+/*
+ * KiTTY: xterm modifyOtherKeys (XTMODKEYS, its query and its reset forms)
+ * and the colour-scheme reports of private mode 2031: the query, DECRQM,
+ * the unsolicited report on a flip of the dark/light verdict and ONLY then,
+ * ONLY while the mode is set, and RIS resetting both.
+ */
+static void set_bg(Mock *mk, unsigned char r, unsigned char g, unsigned char b)
+{
+    conf_set_int_int(mk->conf, CONF_colours, CONF_COLOUR_bg*3+0, r);
+    conf_set_int_int(mk->conf, CONF_colours, CONF_COLOUR_bg*3+1, g);
+    conf_set_int_int(mk->conf, CONF_colours, CONF_COLOUR_bg*3+2, b);
+    counters_reset();
+    term_reconfig(mk->term, mk->conf);
+}
+
+static void expect_level(Mock *mk, const char *what, int want)
+{
+    if (mk->term->modify_other_keys != want) {
+        printf("   level is %d, want %d\n", mk->term->modify_other_keys, want);
+        fail(what, "modifyOtherKeys is not at the level it should be");
+    }
+}
+
+static void test_modkeys_and_colour_scheme(Mock *mk)
+{
+    expect_level(mk, "modifyOtherKeys default", 0);
+    feed_seq(mk, "\033[>4;2m");
+    expect_level(mk, "XTMODKEYS level 2", 2);
+    expect_reply(mk, "XTQMODKEYS at level 2", "\033[?4m", "\033[>4;2m");
+    feed_seq(mk, "\033[>4;1m");
+    expect_level(mk, "XTMODKEYS level 1", 1);
+    feed_seq(mk, "\033[>4;3m");
+    expect_level(mk, "XTMODKEYS level 3 is taken as 2", 2);
+    feed_seq(mk, "\033[>4m");
+    expect_level(mk, "XTMODKEYS Pv omitted resets", 0);
+    feed_seq(mk, "\033[>4;2m\033[>4n");
+    expect_level(mk, "CSI > 4 n disables", 0);
+    feed_seq(mk, "\033[>4;2m\033[>m");
+    expect_level(mk, "bare CSI > m resets", 0);
+    feed_seq(mk, "\033[>1;2m");
+    expect_level(mk, "another option leaves it alone", 0);
+    expect_reply(mk, "XTQMODKEYS at level 0", "\033[?4m", "\033[>4;0m");
+    expect_silence(mk, "XTQMODKEYS, another option", "\033[?1m");
+    expect_silence(mk, "CSI > 1 n, another option", "\033[>1n");
+    expect_level(mk, "still 0", 0);
+
+    /* --- colour-scheme reports --- */
+    set_bg(mk, 0x12, 0x34, 0x56);              /* dark */
+    if (osc52_sends)
+        fail("palette change with mode 2031 reset", "a report went out");
+    expect_reply(mk, "CSI ? 996 n, dark", "\033[?996n", "\033[?997;1n");
+    expect_reply(mk, "DECRQM 2031 reset", "\033[?2031$p", "\033[?2031;2$y");
+    feed_seq(mk, "\033[?2031h");
+    expect_reply(mk, "DECRQM 2031 set", "\033[?2031$p", "\033[?2031;1$y");
+    set_bg(mk, 0xff, 0xff, 0xff);              /* flips to light */
+    if (osc52_sends != 1 || strcmp(osc52_last_send, "\033[?997;2n") != 0) {
+        printf("   sends %d, last: %s\n", osc52_sends, osc52_last_send + 1);
+        fail("flip to light", "no single report of the new verdict");
+    }
+    set_bg(mk, 0xf0, 0xf0, 0xf0);              /* still light */
+    if (osc52_sends)
+        fail("palette change, same verdict", "a report went out");
+    set_bg(mk, 0x00, 0x00, 0x00);              /* flips to dark */
+    if (osc52_sends != 1 || strcmp(osc52_last_send, "\033[?997;1n") != 0)
+        fail("flip to dark", "no single report of the new verdict");
+    expect_reply(mk, "CSI ? 996 n after the flip", "\033[?996n",
+                 "\033[?997;1n");
+    feed_seq(mk, "\033[?2031l");
+    set_bg(mk, 0xff, 0xff, 0xff);              /* flips, mode reset */
+    if (osc52_sends)
+        fail("flip with mode 2031 reset", "a report went out");
+    expect_reply(mk, "CSI ? 996 n, light", "\033[?996n", "\033[?997;2n");
+    expect_silence(mk, "CSI ? 6 n, another query", "\033[?6n");
+
+    /* --- RIS resets both --- */
+    feed_seq(mk, "\033[>4;2m\033[?2031h");
+    expect_level(mk, "set before RIS", 2);
+    feed_seq(mk, "\033c");
+    expect_level(mk, "RIS resets modifyOtherKeys", 0);
+    expect_reply(mk, "RIS resets mode 2031", "\033[?2031$p", "\033[?2031;2$y");
+
+    set_bg(mk, 0x12, 0x34, 0x56);              /* as the colour tests left it */
+}
+
 static void test_write_confirm(Mock *mk)
 {
     static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
@@ -3134,6 +3218,7 @@ int main(void)
     test_hostnotify_dispatch(mk);
     test_far2l_arming_and_images(mk);   /* KiTTY: far2l events armed by 'x'; images */
     test_far2l_notify_and_overflow(mk); /* KiTTY: far2l 'n'; over-ceiling answers */
+    test_modkeys_and_colour_scheme(mk); /* KiTTY: XTMODKEYS; mode 2031 reports */
 
     mock_free(mk);
 

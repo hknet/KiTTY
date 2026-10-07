@@ -67,6 +67,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   with shell snippets for bash, zsh and fish (OSC 7 and OSC 133). It shows
   what tmux, screen, zellij and dtach let through, the tmux settings, and a
   `kpp-osc` helper that wraps a script's own notices for tmux and screen.
+- **Modified keys for programs that ask (xterm modifyOtherKeys).** A program
+  that sends `CSI > 4 ; 2 m` gets keys with modifiers as `CSI 27 ; mod ;
+  key ~`: Shift+Enter, Alt+Enter, Ctrl+- and the like arrive as themselves
+  instead of as Enter, Esc+Enter or nothing. Level 1 and the query `CSI ? 4
+  m` too. Without the request every key is sent as before.
+- **Light or dark, reported (mode 2031).** A program that sets mode 2031 is
+  told `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light) when the terminal's
+  background turns from one to the other, and answered the same on `CSI ?
+  996 n`.
 
 ### Changed
 
@@ -144,6 +153,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A key with no key code no longer fires unassigned shortcut actions.**
+  Injected input can carry virtual key 0, which every action without a key
+  matched (Full screen, for one). Real keyboards never send it.
 - **A session file written by old KiTTY or PuTTY with an escape in its
   name opens again.** `myserver.example.com%20(web).ktx` was listed as
   `myserver.example.com (web)` but could not be opened under that name;

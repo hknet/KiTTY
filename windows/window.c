@@ -61,6 +61,7 @@
 #define IDM_PASTE     0x01A0
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
+#include "../kitty/kitty_modkeys.h"   /* KiTTY: xterm modifyOtherKeys */
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
@@ -8551,6 +8552,56 @@ static void init_winfuncs(void)
     GET_WINDOWS_FUNCTION_NO_TYPECHECK(user32_module, AdjustWindowRectExForDpi);
 }
 
+#ifdef MOD_PERSO
+/* KiTTY xterm modifyOtherKeys: the sequence for this key at the terminal's
+ * level (kitty_modkeys.c has the rules), or 0 when the key keeps its
+ * ordinary encoding. Only the keys xterm calls ordinary come here: Enter,
+ * Tab, Backspace, Escape, Space and the digit, letter and OEM keys; the
+ * cursor, editing, keypad and function keys carry their modifiers in their
+ * own sequences. The character a key produces is looked up with Ctrl and
+ * Alt cleared from the keyboard state (Shift and Caps Lock kept), which is
+ * xterm's keysym, and without touching the dead-key state where Windows
+ * allows that (bit 2 of the flags, Windows 10 1607 on). A key that yields no
+ * single character - a dead key, an unassigned key - is left alone.
+ * output holds TranslateKey's 20 bytes; the longest sequence is 16. */
+static int kitty_modkeys_translate(WinGuiSeat *wgs, unsigned mods, WPARAM vk,
+                                   int scan, const BYTE *keystate, HKL layout,
+                                   unsigned char *output, size_t outsz)
+{
+    int key = KMK_KEY_CHAR;
+    unsigned ch = 0;
+
+    switch (vk) {
+      case VK_RETURN: key = KMK_KEY_ENTER; break;
+      case VK_TAB: key = KMK_KEY_TAB; break;
+      case VK_BACK: key = KMK_KEY_BACKSPACE; break;
+      case VK_ESCAPE: key = KMK_KEY_ESCAPE; break;
+      default: {
+        BYTE ks[256];
+        wchar_t wbuf[4];
+        int r;
+        if (!(vk == VK_SPACE || (vk >= '0' && vk <= '9') ||
+              (vk >= 'A' && vk <= 'Z') || (vk >= 0xBA && vk <= 0xE2)))
+            return 0;
+        if (!p_ToUnicodeEx)
+            return 0;
+        memcpy(ks, keystate, sizeof(ks));
+        ks[VK_CONTROL] = ks[VK_LCONTROL] = ks[VK_RCONTROL] = 0;
+        ks[VK_MENU] = ks[VK_LMENU] = ks[VK_RMENU] = 0;
+        r = p_ToUnicodeEx((UINT)vk, (UINT)scan, ks, wbuf, lenof(wbuf),
+                          1 << 2, layout);
+        if (r != 1 || IS_SURROGATE(wbuf[0]))
+            return 0;
+        ch = wbuf[0];
+        break;
+      }
+    }
+    return (int)kitty_modkeys_encode(
+        wgs->term->modify_other_keys, mods, key, ch,
+        conf_get_bool(wgs->conf, CONF_bksp_is_delete), (char *)output, outsz);
+}
+#endif
+
 /*
  * Translate a WM_(SYS)?KEY(UP|DOWN) message into a string of ASCII
  * codes. Returns number of bytes used, zero to drop the message,
@@ -8693,6 +8744,12 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
         left_alt = true;
 
     key_down = ((HIWORD(lParam) & KF_UP) == 0);
+
+#ifdef MOD_PERSO
+    /* KiTTY modifyOtherKeys: Ctrl with the left Alt, remembered before the
+     * AltGr fixup below may turn it into AltGr. */
+    bool ctrl_left_alt = left_alt && (keystate[VK_CONTROL] & 0x80);
+#endif
 
     /* Make sure Ctrl-ALT is not the same as AltGr for ToAscii unless told. */
     if (left_alt && (keystate[VK_CONTROL] & 0x80)) {
@@ -8904,6 +8961,25 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
             wgs->term->app_keypad_keys = !wgs->term->app_keypad_keys;
             return 0;
         }
+
+#ifdef MOD_PERSO
+        /* KiTTY: xterm modifyOtherKeys (CSI > 4 ; level m). A modified
+         * ordinary key goes out as CSI 27 ; mod ; code ~ in place of its
+         * character, control character or ESC-prefixed form. Level 0, the
+         * default, changes nothing. After the window's own keys above, which
+         * keep their priority; before the fixed encodings below, which it
+         * replaces. Keypad Enter is a keypad key and stays. */
+        if (wgs->term->modify_other_keys &&
+            !(wParam == VK_RETURN && (HIWORD(lParam) & KF_EXTENDED))) {
+            unsigned mods = ((shift_state & 1) ? KMK_SHIFT : 0) |
+                            ((shift_state & 2) ? KMK_CTRL : 0) |
+                            (left_alt ? KMK_ALT : 0);
+            int n = kitty_modkeys_translate(wgs, mods, wParam, scan, keystate,
+                                            kbd_layout, output, 20);
+            if (n)
+                return n;
+        }
+#endif
 
         if (wParam == VK_BACK && shift_state == 0) {    /* Backspace */
             *p++ = (conf_get_bool(wgs->conf, CONF_bksp_is_delete) ?
@@ -9292,6 +9368,21 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
             return p - output;
         }
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY modifyOtherKeys, Ctrl+Alt taken as AltGr ("Control-Alt is
+     * different from AltGr" off): a key AltGr turns into a character went
+     * out as that character above; one it does not is Ctrl+Alt+key. */
+    if (key_down && r == 0 && ctrl_left_alt && !wgs->compose_state &&
+        wgs->term->modify_other_keys) {
+        unsigned mods = KMK_CTRL | KMK_ALT |
+                        ((keystate[VK_SHIFT] & 0x80) ? KMK_SHIFT : 0);
+        int n = kitty_modkeys_translate(wgs, mods, wParam, scan, keystate,
+                                        kbd_layout, output, 20);
+        if (n)
+            return n;
+    }
+#endif
 
     /*
      * ALT alone may or may not want to bring up the System menu.

@@ -210,6 +210,12 @@ add_executable(test_progstatus
   kitty/kitty_progstatus.c
   kitty/kitty_oscnotify.c)
 
+# KiTTY: unit test for the xterm modifyOtherKeys encoding (kitty/kitty_modkeys.c,
+# shared with windows/window.c): which modified keys become CSI 27;mod;code~.
+add_executable(test_modkeys
+  test/test_modkeys.c
+  kitty/kitty_modkeys.c)
+
 # KiTTY: unit test for the far2l key and mouse event encoding (self-contained;
 # the encoder lives in kitty/kitty_far2l_input.h, shared with windows/window.c).
 add_executable(test_far2l_keys
@@ -361,7 +367,7 @@ foreach(t
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
-    test_far2l test_oscnotify test_progstatus)
+    test_far2l test_oscnotify test_progstatus test_modkeys)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

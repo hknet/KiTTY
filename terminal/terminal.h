@@ -503,6 +503,18 @@ struct terminal_tag {
     bool sync_hold;
     unsigned long sync_end;               /* the timer that ends the hold */
 
+    /* KiTTY xterm modifyOtherKeys (CSI > 4 ; level m): 0 off, 1 or 2. Read
+     * by the window's key translation (kitty_modkeys.c has the rules).
+     * Unconditional storage, same ODR reason as above. */
+    int modify_other_keys;
+
+    /* KiTTY colour-scheme reports (private mode 2031, CSI ? 996 n): the
+     * mode, and the last dark/light verdict of the default background, so a
+     * palette change reports only when the verdict flips (-1: not yet
+     * judged). Unconditional storage, same ODR reason as above. */
+    bool colour_scheme_reports;
+    int bg_dark;
+
     /* KiTTY deferred scrollback compression (terminal.c, term_sb_compact):
      * lines that scroll off stay uncompressed until output goes quiet.
      * Unconditional storage, same ODR reason as above. */

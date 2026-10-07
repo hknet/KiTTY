@@ -496,6 +496,9 @@ int ShortcutKeyReserved( int key ) {
 
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) {
 	int key, i ;
+	/* No key: an unassigned action holds 0, so a virtual key 0 (synthetic
+	 * input only - no keyboard sends it) would match every one of them. */
+	if( key_num <= 0 ) return 0 ;
 	key = key_num ;
 	if( alt_flag ) key = key + ALTKEY ;
 	if( altgr_flag ) key = key + ALTGRKEY ;

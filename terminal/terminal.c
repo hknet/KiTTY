@@ -2202,6 +2202,8 @@ static void power_on(Terminal *term, bool clear)
         osc5522_paste_disarm(term, false);
     term->esc_dollar = false;
     term->sync_hold = false;   /* the update scheduled below draws the screen */
+    term->modify_other_keys = 0;       /* KiTTY: XTMODKEYS, back to xterm's default */
+    term->colour_scheme_reports = false; /* KiTTY: DECSET 2031 */
 #endif
 #ifdef MOD_FAR2L
     /* KiTTY far2l: a reset (or a restarted session) ends the extensions. A
@@ -2729,6 +2731,27 @@ void term_setup_window_titles(Terminal *term, const char *title_hostname)
     term->win_icon_title_pending = true;
 }
 
+#ifdef MOD_PERSO
+/* KiTTY colour-scheme reports (private mode 2031): is the default
+ * background dark? The perceptual weighting kitty_theme.c uses, below
+ * mid-grey. */
+static bool term_bg_is_dark(Terminal *term)
+{
+    rgb c = term->palette[OSC4_COLOUR_bg];
+    return (c.r * 299 + c.g * 587 + c.b * 114) / 1000 < 128;
+}
+
+/* CSI ? 997 ; 1 n (dark) or ; 2 n (light): the answer to CSI ? 996 n, and
+ * the unsolicited report while mode 2031 is set. Straight to the backend
+ * like the other KiTTY replies, see kitty_osc52_send_raw(). */
+static void term_colour_scheme_report(Terminal *term)
+{
+    char rep[24];
+    snprintf(rep, sizeof(rep), "\033[?997;%dn", term_bg_is_dark(term) ? 1 : 2);
+    kitty_osc52_send_raw(term, rep, strlen(rep));
+}
+#endif
+
 static void palette_rebuild(Terminal *term)
 {
     unsigned min_changed = OSC4_NCOLOURS, max_changed = 0;
@@ -2784,6 +2807,19 @@ static void palette_rebuild(Terminal *term)
         term->win_palette_pending_limit = max_changed + 1;
         term_invalidate(term);
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY: every palette change (Change Settings, the platform's
+     * overrides, OSC P) ends here. The verdict is kept whatever the mode,
+     * and reported only when it flips while mode 2031 is set. */
+    {
+        int dark = term_bg_is_dark(term) ? 1 : 0;
+        bool flipped = term->bg_dark >= 0 && term->bg_dark != dark;
+        term->bg_dark = dark;
+        if (flipped && term->colour_scheme_reports)
+            term_colour_scheme_report(term);
+    }
+#endif
 }
 
 /*
@@ -2922,6 +2958,9 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
 
     term->bidi_ctx = bidi_new_context();
 
+#ifdef MOD_PERSO
+    term->bg_dark = -1;                /* KiTTY: the first palette only judges */
+#endif
     palette_reset(term, false);
 
     return term;
@@ -4379,6 +4418,11 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
             } else if (!state) {
                 term_sync_release(term);
             }
+            break;
+          case 2031:
+            /* KiTTY: colour-scheme reports - CSI ? 997 ; 1|2 n whenever the
+             * default background turns dark or light (palette_rebuild). */
+            term->colour_scheme_reports = state;
             break;
 #endif
         }
@@ -9432,7 +9476,49 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                      !term_sync_hold_ms(term) ? 0 :
                                      term->sync_hold ? 1 : 2);
                             kitty_osc52_send_raw(term, rep, strlen(rep));
+                        } else if (term->esc_dollar && term->esc_args[0] == 2031) {
+                            /* KiTTY: colour-scheme reports, set or reset */
+                            char rep[32];
+                            snprintf(rep, sizeof(rep), "\033[?2031;%d$y",
+                                     term->colour_scheme_reports ? 1 : 2);
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
                         }
+                        break;
+                      case ANSI('m', '>'):
+                        /*
+                         * KiTTY: XTMODKEYS, CSI > Pp ; Pv m. Only Pp = 4
+                         * (modifyOtherKeys) is kept; Pv omitted resets it, as
+                         * does the bare CSI > m (every option back to its
+                         * default). Level 3 is not implemented and is taken
+                         * as 2. The sub-parameter form (CSI > 4 : mask m) is
+                         * not parsed and stays ignored.
+                         */
+                        if (term->esc_nargs <= 1 && term->esc_args[0] == ARG_DEFAULT)
+                            term->modify_other_keys = 0;
+                        else if (term->esc_args[0] == 4) {
+                            unsigned v = term->esc_nargs >= 2 ? term->esc_args[1] : 0;
+                            term->modify_other_keys = v > 2 ? 2 : (int)v;
+                        }
+                        break;
+                      case ANSI('n', '>'):
+                        /* KiTTY: CSI > 4 n, modifyOtherKeys disabled. */
+                        if (term->esc_args[0] == 4)
+                            term->modify_other_keys = 0;
+                        break;
+                      case ANSI_QUE('m'):
+                        /* KiTTY: XTQMODKEYS, CSI ? 4 m, answered in the form
+                         * that sets it: CSI > 4 ; level m. */
+                        if (term->esc_args[0] == 4) {
+                            char rep[32];
+                            snprintf(rep, sizeof(rep), "\033[>4;%dm",
+                                     term->modify_other_keys);
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                        }
+                        break;
+                      case ANSI_QUE('n'):
+                        /* KiTTY: CSI ? 996 n, the colour-scheme query. */
+                        if (term->esc_args[0] == 996)
+                            term_colour_scheme_report(term);
                         break;
 #endif
                       case 'A':       /* CUU: move up N lines */
