@@ -1150,6 +1150,10 @@ CONF_OPTION(far2l_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("Fa
  * images that scroll with the text. Off: the sequence is ignored. */
 CONF_OPTION(kitty_graphics, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("KittyGraphics"),)
 CONF_OPTION(iterm_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ItermImages"),)
+/* KiTTY: Sixel pictures (DCS q, kitty/kitty_sixel.h), in the same store.
+ * On, DA1 answers ESC [ ? 62 ; 4 ; 22 c (Sixel); off, the sequence is
+ * ignored and DA1 stays ESC [ ? 6 c. */
+CONF_OPTION(sixel_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("SixelImages"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

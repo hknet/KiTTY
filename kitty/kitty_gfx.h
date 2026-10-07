@@ -24,6 +24,16 @@
  * pixels or percent of the screen. Such an image is anonymous - no id, no
  * number, out of reach of every by-id command - and is freed with its last
  * placement; the kitty deletions by position apply to it.
+ *
+ * Sixel pictures (kitty_sixel.h decodes them) are placed the same way, at
+ * their own size in pixels (gfx_place_pixels).
+ *
+ * The iTerm2 and Sixel pictures belong to the cells they cover, as in
+ * xterm, mintty and iTerm2 (cell_bound): a character written into one of
+ * those cells, or an erase of it, takes that cell's part of the picture
+ * away (gfx_mark_cells, called by the terminal glue); the visible list then
+ * leaves the cell out, and the picture goes when none of it is left. The
+ * kitty placements are drawn over the text and stay until deleted.
  */
 #ifndef KITTY_GFX_H
 #define KITTY_GFX_H
@@ -39,6 +49,13 @@
 #define GFX_MAX_IMAGES        256
 #define GFX_MAX_PLACEMENTS    1024
 #define GFX_PENDING_MAX       ((size_t)48u * 1024u * 1024u)
+/* The cut-out cells of a cell-bound picture, a bit a cell: at most this many
+ * cells a picture, and this many bytes of them in the store. A picture over
+ * either goes whole at its first cut-out cell. */
+#define GFX_MASK_MAX_CELLS    (2u * 1024u * 1024u)
+#define GFX_MASKS_MAX_BYTES   ((size_t)16u * 1024u * 1024u)
+/* Pieces of one cut picture in a visible list (gfx_visible_cut). */
+#define GFX_CUT_PIECES_MAX    64
 
 #define GFX_REPLY_MAX         192
 #define GFX_ERR_MAX           96
@@ -116,6 +133,13 @@ typedef struct GfxPlacement {
     bool no_cursor;            /* C=1 */
     int32_t z;
     unsigned long serial;      /* creation order, the z tie-break */
+    /* an iTerm2 or Sixel picture: its cells' parts go with what is written
+     * into them or erased (gfx_mark_cells). mask: a bit per covered cell,
+     * row by row (cols a row), set = cut out; NULL until the first one */
+    bool cell_bound;
+    unsigned char *mask;
+    int mask_cols, mask_rows;  /* the mask's shape, kept equal to cols/rows */
+    int n_marked;              /* bits set */
 } GfxPlacement;
 
 /* A chunked upload in progress (t=d, m=1). */
@@ -162,6 +186,8 @@ typedef struct GfxStore {
     uint32_t next_id;          /* for images with a number but no id */
     GfxPending pend;
     GfxItermUpload iterm;      /* OSC 1337 MultipartFile= */
+    int n_cellbound;           /* placements with cell_bound */
+    size_t mask_bytes;         /* their masks */
     /* limits, from the defines; a test may lower them */
     int max_side;
     uint32_t max_pixels;
@@ -185,6 +211,10 @@ typedef struct GfxEnv {
     int screen;                /* 0 main, 1 alternate */
     long top_abs;              /* absolute line of screen row 0 */
     int cur_x, cur_y;          /* the cursor cell */
+    /* an iTerm2 or Sixel picture is not to scroll the screen (mintty's
+     * ?7780): > 0, the rows from the cursor row to the bottom margin - a
+     * picture taller is cut there - and the cursor stays; 0: off */
+    int crop_rows;
     /* PNG to premultiplied BGRA (malloc'd, w * 4 a row). NULL: PNG refused. */
     bool (*decode_png)(void *ctx, const unsigned char *data, size_t len,
                        unsigned char **px, int *w, int *h);
@@ -263,6 +293,18 @@ bool gfx_iterm_args(const unsigned char *s, size_t len, GfxItermArgs *a);
 bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
                size_t len, bool cut, GfxResult *res);
 
+/* ---- Sixel (kitty_sixel.h decodes) ------------------------------------- */
+
+/* Places a decoded picture - premultiplied BGRA, malloc'd, taken over (freed
+ * on failure) - as an anonymous image at the cursor, drawn at its own size
+ * in pixels; the kitty deletions by position apply to it. res carries the
+ * cursor move of a placement (right past it, down to its last row) unless
+ * no_cursor, and whether to repaint. Returns an error code (EINVAL: no cell
+ * size, EFBIG, ENOSPC) or NULL. Traced 'S'. */
+const char *gfx_place_pixels(GfxStore *st, const GfxEnv *env,
+                             unsigned char *px, int w, int h, bool no_cursor,
+                             GfxResult *res);
+
 /* ---- line movement, called by the terminal glue ------------------------ */
 
 /* Lines before base_abs are gone (scrolled off the scrollback, scrollback
@@ -303,9 +345,33 @@ void gfx_rescale(GfxStore *st, int cell_w, int cell_h);
 
 /* The placements that touch the view (rows x cols cells from top_abs),
  * ordered for painting: z, then image id, then creation. Returns the count
- * (at most max written). */
+ * (at most max written). A cell-bound picture with cells cut out counts
+ * whole here (the cells to repaint). */
 int gfx_visible(const GfxStore *st, int screen, long top_abs, int rows,
                 int cols, int cell_w, int cell_h, GfxVisible *out, int max);
+
+/* The same for the painters: a cell-bound picture with cells cut out comes
+ * in pieces that leave those cells out - a band of rows with none cut out
+ * as one piece, each run of kept cells of the other rows as one - each with
+ * its part of the source rectangle (edges from one mapping, so neighbouring
+ * pieces meet without a seam). More than GFX_CUT_PIECES_MAX pieces, or more
+ * than max has room for: only the bands of whole rows, and if those do not
+ * fit either the picture is left out. Never a piece over a cut-out cell. */
+int gfx_visible_cut(const GfxStore *st, int screen, long top_abs, int rows,
+                    int cols, int cell_w, int cell_h, GfxVisible *out,
+                    int max);
+
+/* ---- cells of the cell-bound pictures ---------------------------------- */
+
+/* Cells c0..c1 of absolute lines line0..line1 (inclusive) of a screen were
+ * written into or erased: the cell-bound pictures there lose those cells,
+ * and a picture with none left goes (its anonymous image with it). Returns
+ * whether a picture changed. */
+bool gfx_mark_cells(GfxStore *st, int screen, long line0, long line1,
+                    int c0, int c1);
+
+/* Whether cell (c, r) of a placement (relative to its top-left) is cut out. */
+bool gfx_cell_marked(const GfxPlacement *pl, int c, int r);
 
 /* ---- helpers also used by the test ------------------------------------- */
 

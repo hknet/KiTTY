@@ -255,6 +255,13 @@ add_executable(test_gfx
   test/test_gfx.c
   kitty/kitty_gfx.c)
 
+# KiTTY: unit test for the Sixel decoder - palette, HLS, RGB, repeats,
+# bands, raster attributes, transparency, registers, caps (kitty/kitty_sixel.c
+# is plain C, no Windows headers).
+add_executable(test_sixel
+  test/test_sixel.c
+  kitty/kitty_sixel.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)
@@ -402,6 +409,7 @@ endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
 kitty_add_test(test_far2l_images) # KiTTY: far2l images
 kitty_add_test(test_gfx)          # KiTTY: kitty graphics protocol core
+kitty_add_test(test_sixel)        # KiTTY: Sixel decoder
 if(KITTY_CTEST_MACHINE_STATE)
   kitty_add_test(test_storage_roundtrip machine-state)
 endif()

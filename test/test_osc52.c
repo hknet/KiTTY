@@ -3671,6 +3671,546 @@ static void test_iterm_graphics(Mock *mk)
     term_notify_cell_size_pixels(term, 0, 0);
 }
 
+/*
+ * KiTTY: Sixel (DCS q): streamed to the decoder, placed at the cursor as an
+ * anonymous image, the cursor on its last row in the column it started in
+ * (xterm; ?8452 l alone - chafa - keeps that), below it once ?7730 was set
+ * or reset (mintty, mlterm, VTE, konsole; timg), ?8452 h right of it on its
+ * last row, DECSDM at the top-left and the cursor stays; the bottom row
+ * scrolling, the registers private or
+ * shared (?1070), the setting off; DA1, XTSMGRAPHICS and XTVERSION.
+ */
+static void sixel_send(Mock *mk, const char *params, const char *data)
+{
+    size_t n = strlen(params) + strlen(data) + 8;
+    char *seq = snewn(n, char);
+    sprintf(seq, "\033P%sq%s\033\\", params, data);
+    counters_reset();
+    term_data(mk->term, seq, strlen(seq));
+    term_update(mk->term);
+    sfree(seq);
+}
+
+/* The BGRA pixel x, y of the image a visible placement shows. */
+static const unsigned char *sixel_px(Mock *mk, const GfxVisible *v, int x,
+                                     int y)
+{
+    const GfxImage *img = gfx_image_by_key(mk->term->gfx, v->pl->image_key);
+    if (!img || x >= img->w || y >= img->h)
+        return NULL;
+    return img->px + ((size_t)y * img->w + x) * 4;
+}
+
+/* How many visible pictures have pixel 0,0 of this BGRA colour. */
+static int sixel_count_colour(Mock *mk, int b, int g, int r)
+{
+    GfxVisible vis[16];
+    int n = term_gfx_visible(mk->term, vis, 16), i, k = 0;
+    for (i = 0; i < n; i++) {
+        const unsigned char *px = sixel_px(mk, &vis[i], 0, 0);
+        if (px && px[0] == b && px[1] == g && px[2] == r && px[3] == 255)
+            k++;
+    }
+    return k;
+}
+
+static void test_sixel_graphics(Mock *mk)
+{
+    Terminal *term = mk->term;
+    const GfxVisible *v;
+    const unsigned char *px;
+    int sb;
+
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+    conf_set_bool(term->conf, CONF_sixel_images, true);
+    term_size(term, 24, 80, 100);
+    term_notify_cell_size_pixels(term, 8, 16);
+    feed_seq(mk, "\033c\033[r\033[2J\033[3J\033[H");
+
+    /* a 16 x 32 picture at row 5, column 3: 2 x 2 cells; ?8452 and ?7730
+     * untouched: the cursor on its last row, in the column it started in
+     * (xterm); nothing sent back */
+    feed_seq(mk, "\033[5;3H");
+    sixel_send(mk, "0;1;0", "\"1;1;16;32#1;2;100;0;0#1!16~");
+    v = iterm_vis_at(mk, 4);
+    if (!v || v->c0 != 2 || v->c1 != 3 || v->r1 != 5 || v->dx0 != 16 ||
+        v->dy0 != 64 || v->dx1 != 32 || v->dy1 != 96)
+        fail("sixel: place", "the picture is not at the cursor cell");
+    if (term->curs.x != 2 || term->curs.y != 5)
+        fail("sixel: place", "the cursor is not on the last row, same column");
+    if (osc52_sends != 0)
+        fail("sixel: place", "something was sent back");
+    if (term->sixel)
+        fail("sixel: place", "the decoder was left behind");
+    /* its pixels: red drawn, P2=1 transparent below the sixel row */
+    px = v ? sixel_px(mk, v, 0, 0) : NULL;
+    if (!px || px[0] != 0 || px[1] != 0 || px[2] != 255 || px[3] != 255)
+        fail("sixel: place", "the drawn pixel is not red");
+    px = v ? sixel_px(mk, v, 15, 31) : NULL;
+    if (!px || px[3] != 0)
+        fail("sixel: place", "an undrawn pixel is not transparent with P2=1");
+    /* P2 = 0: undrawn pixels are register 0, opaque */
+    feed_seq(mk, "\033[8;1H");
+    sixel_send(mk, "", "\"1;1;8;8@");
+    v = iterm_vis_at(mk, 7);
+    px = v ? sixel_px(mk, v, 7, 7) : NULL;
+    if (!px || px[3] != 255 || px[0] || px[1] || px[2])
+        fail("sixel: P2=0", "the background is not register 0");
+    gfx_send(mk, "a=d", 0, 0);
+
+    /* ?8452: right of the picture on its last row ... */
+    feed_seq(mk, "\033[?8452h\033[10;10H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (!iterm_vis_at(mk, 9) || term->curs.x != 11 || term->curs.y != 10)
+        fail("sixel: ?8452", "the cursor is not right of the picture");
+    /* ... and past the right edge the left edge of the next row */
+    feed_seq(mk, "\033[1;79H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (!iterm_vis_at(mk, 0) || term->curs.x != 0 || term->curs.y != 2)
+        fail("sixel: ?8452 edge", "the cursor did not go to the next row");
+    /* ... and it wins over ?7730 */
+    feed_seq(mk, "\033[?7730h\033[10;10H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->curs.x != 11 || term->curs.y != 10)
+        fail("sixel: ?8452 and ?7730", "?8452 did not win");
+    feed_seq(mk, "\033[?8452l");
+    if (!term->sixel_7730_seen)
+        fail("sixel: modes", "setting ?7730 was not noticed");
+    /* ?7730 alone: the line below, at its start */
+    feed_seq(mk, "\033[14;10H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (!iterm_vis_at(mk, 13) || term->curs.x != 0 || term->curs.y != 15)
+        fail("sixel: ?7730", "the cursor is not at the start of the line below");
+    /* RIS resets it, and the untouched rule is back: the last row */
+    feed_seq(mk, "\033c\033[3;5H");
+    if (term->sixel_cursor_line_start || term->sixel_7730_seen)
+        fail("sixel: ?7730 RIS", "the modes survived");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->curs.x != 4 || term->curs.y != 3)
+        fail("sixel: RIS", "the cursor is not on the last row, same column");
+    /* ?8452 l alone (chafa, before every picture): still xterm's rule, the
+     * last row, the column it started in */
+    feed_seq(mk, "\033[?8452l\033[8;5H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->sixel_7730_seen || term->curs.x != 4 || term->curs.y != 8)
+        fail("sixel: ?8452 l", "the cursor is not on the last row, same column");
+    /* ?7730 l alone (after a reset): below, at the left column */
+    feed_seq(mk, "\033c\033[?7730l\033[8;5H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->curs.x != 4 || term->curs.y != 9)
+        fail("sixel: ?7730 l", "the cursor is not below, at the left column");
+    /* ?7730 h alone (after a reset): below, at column 0 */
+    feed_seq(mk, "\033c\033[?7730h\033[8;5H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->curs.x != 0 || term->curs.y != 9)
+        fail("sixel: ?7730 h", "the cursor is not below, at column 0");
+    /* timg: ?8452 l ?7730 h - mintty's rule */
+    feed_seq(mk, "\033c\033[?8452l\033[?7730h\033[8;5H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (term->curs.x != 0 || term->curs.y != 9)
+        fail("sixel: timg modes", "the cursor is not below, at column 0");
+    feed_seq(mk, "\033c");
+
+    /* DECSDM: the top-left of the screen, the cursor stays, no scrolling */
+    feed_seq(mk, "\033[?80h\033[12;12H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    v = iterm_vis_at(mk, 0);
+    if (!v || v->c0 != 0 || term->curs.x != 11 || term->curs.y != 11)
+        fail("sixel: DECSDM", "not at the top-left, or the cursor moved");
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    if (term->curs.y != 23 || count234(term->scrollback) != sb)
+        fail("sixel: DECSDM", "the screen scrolled");
+    feed_seq(mk, "\033[?80l");
+    gfx_send(mk, "a=d", 0, 0);
+
+    /* the bottom row, modes untouched: 5 rows tall on row 24 scrolls by
+     * 4, the picture fits, the cursor on its last row */
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    v = iterm_vis_at(mk, 19);
+    if (!v || v->r1 != 23 || term->curs.y != 23 || term->curs.x != 0)
+        fail("sixel: bottom row, xterm", "the picture is not whole");
+    if (count234(term->scrollback) != sb + 4)
+        fail("sixel: bottom row, xterm", "the screen did not scroll by 4");
+    /* in the middle: the cursor on the last row */
+    feed_seq(mk, "\033[10;4H");
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    if (term->curs.y != 13 || term->curs.x != 3)
+        fail("sixel: middle, xterm", "the cursor is not on the last row");
+    gfx_send(mk, "a=d", 0, 0);
+    /* ?7730 touched: 5 rows tall on row 24 scrolls by 5 - the picture and
+     * the cursor line below it both on the screen */
+    feed_seq(mk, "\033[?7730l\033[24;1H");
+    sb = count234(term->scrollback);
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    v = iterm_vis_at(mk, 18);
+    if (!v || v->r1 != 22 || term->curs.y != 23 || term->curs.x != 0)
+        fail("sixel: bottom row", "the picture and the cursor line do not fit");
+    if (count234(term->scrollback) != sb + 5)
+        fail("sixel: bottom row", "the screen did not scroll by 5");
+    /* in the middle of the screen: no scrolling, the cursor below it */
+    feed_seq(mk, "\033[10;4H");
+    sb = count234(term->scrollback);
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    if (!iterm_vis_at(mk, 9) || term->curs.y != 14 || term->curs.x != 3 ||
+        count234(term->scrollback) != sb)
+        fail("sixel: middle", "the cursor is not on the line below");
+    gfx_send(mk, "a=d", 0, 0);
+
+    /* streamed: far past OSC_STR_MAX, the ceiling not raised, nothing in
+     * the string buffer; CR/LF inside do not end it */
+    {
+        size_t big = OSC_STR_MAX * 3;
+        char *data = snewn(big + 16, char);
+        memset(data, ' ', big);
+        memcpy(data, "~\r\n", 3);
+        strcpy(data + big - 4, "~~\r\n");
+        feed_seq(mk, "\033[3;1H");
+        sixel_send(mk, "0;1", data);
+        sfree(data);
+        v = iterm_vis_at(mk, 2);
+        if (!v || v->dx1 - v->dx0 != 3)
+            fail("sixel: streamed", "the long picture was not placed");
+        if (term->osc_str_limit != OSC_STR_MAX ||
+            term->osc_strsize > OSC_STR_MAX + 1 || term->osc_strlen != 0)
+            fail("sixel: streamed", "the OSC buffer was used or grown");
+        gfx_send(mk, "a=d", 0, 0);
+    }
+
+    /* abandoned by an ESC not followed by a backslash: nothing placed, the
+     * sequence after it served */
+    feed_seq(mk, "\033[5;1H\033Pq~~\033[H");
+    if (iterm_count(mk) != 0 || term->sixel || term->curs.y != 0)
+        fail("sixel: abandoned", "a half picture was placed or kept");
+
+    /* not Sixel: DECRQSS, four parameters, something before the q */
+    feed_seq(mk, "\033[5;1H");
+    sixel_send(mk, "$", "m");
+    sixel_send(mk, "1;2;3;4", "~");
+    sixel_send(mk, "+", "~");
+    sixel_send(mk, ">", "~");
+    if (iterm_count(mk) != 0 || term->sixel || osc52_sends != 0 ||
+        term->osc_str_limit != OSC_STR_MAX)
+        fail("sixel: other DCS", "a DCS that is not Sixel was served");
+
+    /* over the store's cap: nothing placed, the cursor stays */
+    term->gfx->max_side = 16;
+    feed_seq(mk, "\033[5;1H");
+    sixel_send(mk, "", "!17~$-~~~~~");
+    if (iterm_count(mk) != 0 || term->curs.y != 4 || term->curs.x != 0)
+        fail("sixel: cap", "a picture over the cap was placed");
+    term->gfx->max_side = GFX_MAX_SIDE;
+
+    /* registers: private by default, shared with ?1070 reset */
+    feed_seq(mk, "\033[2;1H");
+    sixel_send(mk, "0;1", "#5;2;100;0;0#5~");
+    feed_seq(mk, "\033[2;5H");
+    sixel_send(mk, "0;1", "#5~");
+    if (sixel_count_colour(mk, 0, 0, 255) != 1 ||
+        sixel_count_colour(mk, 0xCC, 0xCC, 0x33) != 1)
+        fail("sixel: private registers", "a define outlived its picture");
+    gfx_send(mk, "a=d", 0, 0);
+    feed_seq(mk, "\033[?1070l\033[2;1H");
+    sixel_send(mk, "0;1", "#5;2;100;0;0#5~");
+    feed_seq(mk, "\033[2;5H");
+    sixel_send(mk, "0;1", "#5~");
+    if (sixel_count_colour(mk, 0, 0, 255) != 2)
+        fail("sixel: shared registers", "the define was not kept");
+    /* RIS: private again, the shared registers back to the VT340's */
+    feed_seq(mk, "\033c");
+    if (term->sixel_shared_regs || term->sixel_palette || term->sixel_decsdm ||
+        term->sixel_scrolls_right || term->sixel_cursor_line_start ||
+        term->gfx->n_pls)
+        fail("sixel: RIS", "the modes or the registers survived");
+
+    /* XTSMGRAPHICS */
+    expect_reply(mk, "XTSMGRAPHICS colours read", "\033[?1;1;0S",
+                 "\033[?1;0;256S");
+    expect_reply(mk, "XTSMGRAPHICS colours reset", "\033[?1;2;0S",
+                 "\033[?1;0;256S");
+    expect_reply(mk, "XTSMGRAPHICS colours max", "\033[?1;4;0S",
+                 "\033[?1;0;256S");
+    expect_reply(mk, "XTSMGRAPHICS colours set", "\033[?1;3;16S",
+                 "\033[?1;3S");
+    expect_reply(mk, "XTSMGRAPHICS colours bad Pa", "\033[?1;7;0S",
+                 "\033[?1;2S");
+    expect_reply(mk, "XTSMGRAPHICS geometry read", "\033[?2;1;0S",
+                 "\033[?2;0;640;384S");
+    expect_reply(mk, "XTSMGRAPHICS geometry max", "\033[?2;4;0S",
+                 "\033[?2;0;4096;4096S");
+    expect_reply(mk, "XTSMGRAPHICS geometry set", "\033[?2;3;100S",
+                 "\033[?2;3S");
+    expect_reply(mk, "XTSMGRAPHICS geometry reset", "\033[?2;2;0S",
+                 "\033[?2;3S");
+    expect_reply(mk, "XTSMGRAPHICS ReGIS", "\033[?3;1;0S", "\033[?3;1S");
+    expect_silence(mk, "XTSMGRAPHICS two parameters", "\033[?1;1S");
+    expect_silence(mk, "XTSMGRAPHICS four parameters", "\033[?1;1;0;0S");
+
+    /* XTVERSION: the product and its version, without the suffix */
+    {
+        char want[128];
+        const char *paren = strstr(ver, " (");
+        int n = paren ? (int)(paren - ver) : (int)strlen(ver);
+        sprintf(want, "\033P>|KiTTY++ %.*s\033\\", n, ver);
+        expect_reply(mk, "XTVERSION", "\033[>q", want);
+        expect_reply(mk, "XTVERSION 0", "\033[>0q", want);
+        expect_silence(mk, "XTVERSION 1", "\033[>1q");
+        expect_silence(mk, "XTVERSION two parameters", "\033[>0;0q");
+        if (strchr(want, '(') || !strstr(want, "KiTTY++ 0."))
+            fail("XTVERSION", "the version is not the bare number");
+    }
+
+    /* DA1: Sixel reported with the setting on */
+    if (strcmp(term_da1_answer(term), "\033[?62;4;22c"))
+        fail("DA1 on", "Sixel is not reported");
+
+    /* mintty's ?7780: no scrolling - the picture cut at the bottom margin,
+     * the cursor stays; both Sixel and iTerm2; RIS resets it */
+    kitty_gfx_decode_png_hook = iterm_stub_png;
+    feed_seq(mk, "\033[?7780h\033[22;3H");
+    sb = count234(term->scrollback);
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    v = iterm_vis_at(mk, 21);
+    if (!v || v->r1 != 23 || v->dy1 != 24 * 16 || v->sh != 48 ||
+        term->curs.x != 2 || term->curs.y != 21 ||
+        count234(term->scrollback) != sb)
+        fail("sixel: ?7780", "scrolled, moved the cursor or not cut");
+    gfx_send(mk, "a=d", 0, 0);
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    v = iterm_vis_at(mk, 21);
+    if (!v || v->r1 != 23 || v->dy1 != 24 * 16 || v->sh != 48 ||
+        term->curs.x != 2 || term->curs.y != 21 ||
+        count234(term->scrollback) != sb)
+        fail("iterm: ?7780", "scrolled, moved the cursor or not cut");
+    gfx_send(mk, "a=d", 0, 0);
+    /* a scroll region: cut at its bottom margin, row 15 */
+    feed_seq(mk, "\033[5;15r\033[13;1H");
+    sixel_send(mk, "0;1", "\"1;1;8;80~");
+    v = iterm_vis_at(mk, 12);
+    if (!v || v->r1 != 14 || v->dy1 != 15 * 16 || term->curs.y != 12)
+        fail("sixel: ?7780 region", "not cut at the bottom margin");
+    gfx_send(mk, "a=d", 0, 0);
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    v = iterm_vis_at(mk, 12);
+    if (!v || v->r1 != 14 || v->dy1 != 15 * 16 || term->curs.y != 12)
+        fail("iterm: ?7780 region", "not cut at the bottom margin");
+    gfx_send(mk, "a=d", 0, 0);
+    feed_seq(mk, "\033[r");
+    /* the kitty protocol is not affected */
+    feed_seq(mk, "\033[24;1H");
+    sb = count234(term->scrollback);
+    gfx_send(mk, "a=T,f=24,s=8,v=80,i=40", 8, 80);
+    if (count234(term->scrollback) != sb + 4 || term->curs.y != 23)
+        fail("gfx: ?7780", "the kitty protocol did not scroll");
+    gfx_send(mk, "a=d,d=A", 0, 0);
+    /* reset: scrolls as before */
+    feed_seq(mk, "\033[?7780l\033[24;1H");
+    sb = count234(term->scrollback);
+    iterm_send(mk, "File=", "inline=1", 8, 80);
+    if (count234(term->scrollback) != sb + 4 || term->curs.y != 23)
+        fail("iterm: ?7780 reset", "did not scroll");
+    gfx_send(mk, "a=d", 0, 0);
+    feed_seq(mk, "\033[?7780h\033c");
+    if (term->gfx_no_scroll)
+        fail("?7780 RIS", "the mode survived");
+    kitty_gfx_decode_png_hook = NULL;
+
+    /* the setting off: DCS q ignored, DA1 the VT102 answer, XTSMGRAPHICS
+     * silent */
+    conf_set_bool(term->conf, CONF_sixel_images, false);
+    feed_seq(mk, "\033[6;1H");
+    sixel_send(mk, "0;1", "\"1;1;16;32~");
+    if (iterm_count(mk) != 0 || term->sixel || term->curs.y != 5 ||
+        term->curs.x != 0)
+        fail("sixel: setting off", "the picture was served");
+    if (strcmp(term_da1_answer(term), "\033[?6c"))
+        fail("DA1 off", "the answer is not the VT102 one");
+    expect_silence(mk, "XTSMGRAPHICS off", "\033[?1;1;0S");
+    conf_set_bool(term->conf, CONF_sixel_images, true);
+
+    /* an answer set by DECSCL 50 wins, on or off */
+    feed_seq(mk, "\033[50;1;2\"p");
+    if (strcmp(term_da1_answer(term), "\033[?1;2c"))
+        fail("DA1 CSI 50", "the custom answer does not win");
+    conf_set_bool(term->conf, CONF_sixel_images, false);
+    if (strcmp(term_da1_answer(term), "\033[?1;2c"))
+        fail("DA1 CSI 50 off", "the custom answer does not win");
+    conf_set_bool(term->conf, CONF_sixel_images, true);
+    strcpy(term->id_string, "\033[?6c");
+    term->da1_custom = false;
+
+    feed_seq(mk, "\033c");
+    term_notify_cell_size_pixels(term, 0, 0);
+}
+
+/*
+ * KiTTY: the iTerm2 and Sixel pictures belong to their cells (xterm,
+ * mintty, iTerm2): text written into a covered cell, and an erase of it,
+ * cut that cell out of the picture - the painters' pieces leave it to the
+ * text - and a picture with nothing left goes. Kitty placements stay whole.
+ */
+static int cut_pieces(Mock *mk, GfxVisible *v, int max)
+{
+    int n = term_gfx_visible(mk->term, v, max), i, k = 0;
+    for (i = 0; i < n; i++)
+        if (!v[i].pl->image_id)
+            v[k++] = v[i];
+    return k;
+}
+
+/* Whether a piece of a picture covers screen cell (x, y). */
+static bool cut_over(const GfxVisible *v, int n, int x, int y)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (v[i].c0 <= x && x <= v[i].c1 && v[i].r0 <= y && y <= v[i].r1)
+            return true;
+    return false;
+}
+
+static const GfxPlacement *cut_pl(Mock *mk)
+{
+    int i;
+    for (i = 0; mk->term->gfx && i < mk->term->gfx->n_pls; i++)
+        if (!mk->term->gfx->pls[i].image_id)
+            return &mk->term->gfx->pls[i];
+    return NULL;
+}
+
+static void test_cell_bound_pictures(Mock *mk)
+{
+    Terminal *term = mk->term;
+    GfxVisible v[64];
+    const GfxPlacement *pl;
+    const GfxVisible *kv;
+    int n, x;
+
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+    conf_set_bool(term->conf, CONF_sixel_images, true);
+    term_size(term, 24, 80, 100);
+    term_notify_cell_size_pixels(term, 8, 16);
+    feed_seq(mk, "\033c\033[r\033[2J\033[3J\033[H");
+
+    /* a 32 x 48 Sixel picture at row 5, column 3: rows 4..6, columns
+     * 2..5; text written into its 2nd row cuts those cells out */
+    feed_seq(mk, "\033[5;3H");
+    sixel_send(mk, "0;1", "\"1;1;32;48#1;2;100;0;0#1!32~");
+    pl = cut_pl(mk);
+    if (!pl || !pl->cell_bound || pl->cols != 4 || pl->rows != 3 ||
+        term->gfx->n_cellbound != 1)
+        fail("cell-bound: Sixel", "not placed as a 4 x 3 cell-bound picture");
+    feed_seq(mk, "\033[6;3HAB");
+    pl = cut_pl(mk);
+    if (!pl || pl->n_marked != 2 || !gfx_cell_marked(pl, 0, 1) ||
+        !gfx_cell_marked(pl, 1, 1) || gfx_cell_marked(pl, 2, 1))
+        fail("cell-bound: text", "the written cells are not cut out");
+    n = cut_pieces(mk, v, 64);
+    if (n != 3 || cut_over(v, n, 2, 5) || cut_over(v, n, 3, 5) ||
+        !cut_over(v, n, 4, 5) || !cut_over(v, n, 2, 4) ||
+        !cut_over(v, n, 5, 6))
+        fail("cell-bound: text", "the pieces do not leave the text alone");
+    /* a wide character through the ordinary writer: both its cells */
+    feed_seq(mk, "\033[5;5H\xe4\xb8\xad");
+    pl = cut_pl(mk);
+    if (!pl || !gfx_cell_marked(pl, 2, 0) || !gfx_cell_marked(pl, 3, 0) ||
+        pl->n_marked != 4)
+        fail("cell-bound: wide", "the wide character's cells not cut out");
+    /* EL on its last row from column 5: its cells 2 and 3 there */
+    feed_seq(mk, "\033[7;5H\033[K");
+    pl = cut_pl(mk);
+    if (!pl || !gfx_cell_marked(pl, 2, 2) || !gfx_cell_marked(pl, 3, 2) ||
+        gfx_cell_marked(pl, 1, 2) || pl->n_marked != 6)
+        fail("cell-bound: EL", "the erased cells not cut out");
+    /* ECH of a blank cell: nothing changes in the text, the cell is still
+     * drawn again (the picture's pixels must not stay there) */
+    term_update(term);
+    term_data(term, "\033[7;3H\033[X", 9);
+    pl = cut_pl(mk);
+    if (!pl || !gfx_cell_marked(pl, 0, 2) ||
+        !(term->disptext[6]->chars[2].attr & ATTR_INVALID))
+        fail("cell-bound: ECH", "not cut out, or the cell not drawn again");
+    term_update(term);
+    /* ED 2: gone */
+    feed_seq(mk, "\033[2J");
+    if (iterm_count(mk) != 0 || term->gfx->n_cellbound != 0)
+        fail("cell-bound: ED 2", "the picture survived");
+
+    /* the user's case: ?7780, the cursor stays on the picture, the prompt
+     * written over its first row */
+    feed_seq(mk, "\033[?7780h\033[3;1H");
+    sixel_send(mk, "0;1", "\"1;1;32;48#1;2;100;0;0#1!32~");
+    if (term->curs.y != 2 || term->curs.x != 0 || !cut_pl(mk))
+        fail("cell-bound: ?7780", "not placed, or the cursor moved");
+    feed_seq(mk, "root@automata:~# ");
+    n = cut_pieces(mk, v, 64);
+    for (x = 0; x < 4; x++)
+        if (cut_over(v, n, x, 2))
+            break;
+    if (x < 4 || n != 1 || !cut_over(v, n, 0, 3) || !cut_over(v, n, 3, 4))
+        fail("cell-bound: ?7780 prompt", "the prompt is under the picture");
+    feed_seq(mk, "\033[?7780l\033[2J");
+
+    /* an iTerm2 picture the same; DL inside it cuts the rows that moved */
+    kitty_gfx_decode_png_hook = iterm_stub_png;
+    feed_seq(mk, "\033[10;1H");
+    iterm_send(mk, "File=", "inline=1", 32, 48);
+    pl = cut_pl(mk);
+    if (!pl || !pl->cell_bound || pl->abs_line - kitty_gfx_top_abs(term) != 9)
+        fail("cell-bound: iTerm2", "not placed cell-bound at row 10");
+    feed_seq(mk, "\033[11;1Hxy");
+    pl = cut_pl(mk);
+    if (!pl || pl->n_marked != 2 || !gfx_cell_marked(pl, 1, 1))
+        fail("cell-bound: iTerm2 text", "the written cells not cut out");
+    feed_seq(mk, "\033[12;1H\033[M");
+    pl = cut_pl(mk);
+    if (!pl || pl->n_marked != 6 || !gfx_cell_marked(pl, 3, 2) ||
+        gfx_cell_marked(pl, 3, 0))
+        fail("cell-bound: DL", "the moved row not cut out");
+    /* ICH on its first row: from the cursor to its right edge */
+    feed_seq(mk, "\033[10;3H\033[@");
+    pl = cut_pl(mk);
+    if (!pl || !gfx_cell_marked(pl, 2, 0) || !gfx_cell_marked(pl, 3, 0) ||
+        gfx_cell_marked(pl, 1, 0))
+        fail("cell-bound: ICH", "the shifted cells not cut out");
+    /* the rest erased: the picture and its image go */
+    feed_seq(mk, "\033[10;1H\033[2K\033[11;1H\033[2K");
+    if (iterm_count(mk) != 0 || term->gfx->n_imgs != 0 ||
+        term->gfx->n_cellbound != 0)
+        fail("cell-bound: all erased", "the picture or its image stayed");
+    kitty_gfx_decode_png_hook = NULL;
+
+    /* a video (timg): frame after frame at one place - each replaces the
+     * last, the store keeps one */
+    {
+        int f;
+        bool ok = true;
+        for (f = 0; f < 300 && ok; f++) {
+            feed_seq(mk, "\033[2;1H");
+            sixel_send(mk, "0;1", "\"1;1;64;64#1;2;100;0;0#1!64~");
+            ok = iterm_count(mk) == 1 && term->gfx->n_imgs == 1;
+        }
+        if (!ok)
+            fail("cell-bound: video", "the frames piled up in the store");
+        feed_seq(mk, "\033[2J");
+    }
+
+    /* a kitty placement under the same writes stays whole */
+    feed_seq(mk, "\033[15;1H");
+    gfx_send(mk, "a=T,f=24,s=32,v=48,i=7,C=1", 32, 48);
+    feed_seq(mk, "\033[16;1Habc\033[17;1H\033[K\033[15;2H\033[X");
+    kv = gfx_vis(mk, 7);
+    if (!kv || kv->c0 != 0 || kv->c1 != 3 || kv->r0 != 14 || kv->r1 != 16 ||
+        kv->pl->mask || kv->pl->cell_bound)
+        fail("cell-bound: kitty", "the kitty placement was cut");
+    gfx_send(mk, "a=d,d=A", 0, 0);
+
+    feed_seq(mk, "\033c");
+    term_notify_cell_size_pixels(term, 0, 0);
+}
+
 static void test_write_confirm(Mock *mk)
 {
     static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
@@ -4010,6 +4550,8 @@ int main(void)
     test_kitty_graphics(mk);            /* KiTTY: kitty graphics placements */
     test_kitty_graphics_chafa(mk);      /* KiTTY: chafa's chunked placement */
     test_iterm_graphics(mk);            /* KiTTY: iTerm2 inline images */
+    test_sixel_graphics(mk);            /* KiTTY: Sixel, DA1, XTSMGRAPHICS, XTVERSION */
+    test_cell_bound_pictures(mk);       /* KiTTY: iTerm2/Sixel pictures own their cells */
 
     mock_free(mk);
 

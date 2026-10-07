@@ -339,6 +339,31 @@ struct terminal_tag {
     struct GfxStore *gfx;
     long gfx_sb_base;
     int cellpix_x, cellpix_y;
+    /* KiTTY: Sixel graphics (kitty/kitty_sixel.h, kitty_gfx_term.c): the
+     * decoder of the DCS ... q being received (NULL: none) - its bytes go
+     * to it as they arrive, never into osc_string - and the shared colour
+     * registers (NULL until a picture uses them). The modes: DECSDM (?80,
+     * set: pictures at the top-left, no scrolling, the cursor stays),
+     * xterm's ?8452 (the cursor right of the picture), mintty's ?7730
+     * (sixel_cursor_line_start: the cursor below the picture at the start
+     * of the line, not at its left column) and ?1070 reset
+     * (sixel_shared_regs: registers shared between pictures). da1_custom:
+     * CSI 50 ... c set the DA1 answer, which then wins over the Sixel one.
+     * Unconditional storage, as above. */
+    struct SixelDecoder *sixel;
+    struct SixelPalette *sixel_palette;
+    bool sixel_decsdm, sixel_scrolls_right, sixel_shared_regs;
+    bool sixel_cursor_line_start;
+    /* a program set or reset ?7730 since the last reset: the cursor after
+     * a Sixel picture follows mintty's rules (below it) instead of xterm's
+     * (on its last row). ?8452 does not count: chafa sends ?8452 l before
+     * every picture and expects xterm's rule; timg sends ?8452 l ?7730 h */
+    bool sixel_7730_seen;
+    /* KiTTY: mintty's ?7780 - an iTerm2 or Sixel picture never scrolls
+     * the screen: cut at the bottom margin, the cursor left where it was.
+     * Unconditional storage, as above. */
+    bool gfx_no_scroll;
+    bool da1_custom;
     /* The last paste gesture the window forwarded to far2l as a key or mouse
      * event (Ctrl+V, Shift+Ins, a middle-button press): GETTICKCOUNT() at the
      * time, valid once far2l_paste_gesture_seen is set. In event mode these
@@ -1130,5 +1155,10 @@ void term_sb_compact_now(Terminal *term);
  * far2l_paste_gesture_tick. */
 void term_far2l_paste_gesture(Terminal *term);
 #endif
+
+/* KiTTY: the answer to DA1 (CSI c) and DECID (ESC Z): the one CSI 50 set,
+ * else with Sixel on ESC [ ? 62 ; 4 ; 22 c, else id_string (ESC [ ? 6 c).
+ * Not guarded: the upstream query handlers call it in every build. */
+const char *term_da1_answer(Terminal *term);
 
 #endif

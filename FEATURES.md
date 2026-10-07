@@ -84,6 +84,7 @@ one is available.
   - [far2l images](#far2l-images)
   - [Inline images (kitty graphics protocol)](#inline-images-kitty-graphics-protocol)
   - [Inline images (iTerm2 OSC 1337)](#inline-images-iterm2-osc-1337)
+  - [Inline images (Sixel)](#inline-images-sixel)
   - [Paste size guard](#paste-size-guard)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
   - [kscp, WinSCP and FileZilla integration](#kscp-winscp-and-filezilla-integration)
@@ -1339,9 +1340,19 @@ A picture placed near the bottom of the window scrolls the screen so it shows wh
 
 ### Inline images (iTerm2 OSC 1337)
 
-iTerm2's picture sequence, `OSC 1337 File=`, as `imgcat`, `chafa -f iterm` and several file managers send it, also in parts (`MultipartFile=`, `FilePart=`, `FileEnd`). PNG, JPEG, GIF (the first frame), TIFF (the first page) and BMP are taken, each decoded by the decoder Windows itself ships for that format; WebP and HEIF/AVIF through Microsoft's Web Media and HEIF Image Extensions where they are installed (Windows 11 usually has them; HEIC pictures also need the HEVC Video Extensions, AVIF the AV1 Video Extension). A codec another program installed is never used, and a format without its decoder is refused. Shown at their own size (narrowed to the window when wider) or at the `width` and `height` the program gives in cells, pixels or percent of the window, keeping the aspect ratio unless `preserveAspectRatio=0`. The pictures sit on the cells, scroll and are drawn like the kitty graphics ones and share their limits; kitty's delete commands by position remove them too. A download (`inline=0`) is never written to this PC, and no answer goes back to the program. WezTerm's `doNotMoveCursor=1` keeps the cursor where it was.
+iTerm2's picture sequence, `OSC 1337 File=`, as `imgcat`, `chafa -f iterm` and several file managers send it, also in parts (`MultipartFile=`, `FilePart=`, `FileEnd`). PNG, JPEG, GIF (the first frame), TIFF (the first page) and BMP are taken, each decoded by the decoder Windows itself ships for that format; WebP and HEIF/AVIF through Microsoft's Web Media and HEIF Image Extensions where they are installed (Windows 11 usually has them; HEIC pictures also need the HEVC Video Extensions, AVIF the AV1 Video Extension). A codec another program installed is never used, and a format without its decoder is refused. Shown at their own size (narrowed to the window when wider) or at the `width` and `height` the program gives in cells, pixels or percent of the window, keeping the aspect ratio unless `preserveAspectRatio=0`. The pictures scroll and are drawn like the kitty graphics ones and share their limits, but they belong to their cells, as in iTerm2 and xterm: text written into a cell replaces that part of the picture, erasing removes it, and a new picture replaces the parts of older ones it covers (a video played frame by frame keeps one picture). kitty's delete commands by position remove them too. A download (`inline=0`) is never written to this PC, and no answer goes back to the program. WezTerm's `doNotMoveCursor=1` keeps the cursor where it was.
 
 **How to enable:** on by default; **Terminal → Features → Images → Show inline images (iTerm2 OSC 1337)** (`ItermImages`). Off, the sequence is ignored as before.
+
+(no screenshot)
+
+### Inline images (Sixel)
+
+The DEC Sixel pictures that img2sixel, `chafa -f sixels`, timg, lsix, gnuplot and many other programs draw. A picture is decoded while it arrives, so a large one never sits in a buffer; it is placed at the cursor at its own pixel size, scrolls with the text, is drawn by both renderers and shares the limits of the other pictures. Like iTerm2 pictures (and unlike kitty's) it belongs to its cells: text written over it replaces that part, erasing removes it, and a new picture replaces the parts of older ones it covers, so a video drawn frame by frame (timg) keeps one picture. RGB and HLS colours, 256 colour registers (VT340 defaults; each picture its own unless mode 1070 is reset), repeats and raster attributes; with background select 1 the undrawn pixels are transparent. After a picture the cursor stays on its last row, in its first column, as in xterm - what chafa expects - until a program sets mintty's mode 7730 (timg does, before every picture); from then on the line below the picture, at its first column (7730 reset, as in mlterm, konsole and GNOME Terminal) or at the start of the line (7730 set); with mode 8452 set always right of the picture on its last row; a terminal reset returns to xterm's rule; with mintty's mode 7780 nothing scrolls - a picture is cut at the bottom and the cursor stays (also for iTerm2 pictures); DECSDM (mode 80) puts the picture at the top-left without moving the cursor. A picture placed near the bottom scrolls the screen. XTSMGRAPHICS (`CSI ? Pi ; Pa ; Pv S`) answers the number of colour registers (256) and the largest picture.
+
+Programs find Sixel through the device-attributes answer: with the switch on, `CSI c` is answered `ESC [ ? 62 ; 4 ; 22 c` (a VT220 with Sixel), off it stays `ESC [ ? 6 c`. `CSI > q` (XTVERSION) is always answered with `KiTTY++` and its version.
+
+**How to enable:** on by default; **Terminal → Features → Images → Show inline images (Sixel)** (`SixelImages`). Off, Sixel is ignored as before and the old device-attributes answer stays.
 
 (no screenshot)
 

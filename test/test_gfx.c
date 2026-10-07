@@ -3,7 +3,7 @@
  * control-data parser, base64 chunking, the store and its caps, raw and
  * (fake) PNG decoding, replies and q, every deletion mode, the placement
  * geometry and cursor movement, every line-movement operation, the
- * visible list. Builds on its own:
+ * visible list, the cells cut out of the iTerm2 and Sixel pictures. Builds on its own:
  *   gcc -std=c99 -Wall -Wextra -Wpedantic -fsanitize=address,undefined \
  *       -fno-sanitize-recover=all -o t test/test_gfx.c kitty/kitty_gfx.c
  */
@@ -1140,15 +1140,23 @@ static GfxEnv env_iterm(void)
     return e;
 }
 
+/* > 0: every OSC 1337 string served one more step of this many columns to
+ * the right, so that the pictures of a test counting them do not cover (and
+ * so replace) each other */
+static int iterm_spread, iterm_spread_n;
+
 /* Serves one OSC 1337 string; returns the trace code ("" when none). */
 static const char *iterm_s(GfxStore *st, const GfxEnv *env, const char *s,
                            bool cut, bool *handled)
 {
     bool h;
+    GfxEnv e = *env;
+    if (iterm_spread)
+        e.cur_x += iterm_spread * ++iterm_spread_n;
     ntrace = 0;
     trace_code[0] = '\0';
     trace_a = 0;
-    h = gfx_iterm(st, env, (const unsigned char *)s, strlen(s), cut, &last);
+    h = gfx_iterm(st, &e, (const unsigned char *)s, strlen(s), cut, &last);
     if (handled)
         *handled = h;
     return trace_code;
@@ -1261,6 +1269,10 @@ static void test_iterm_place(void)
     CHECK(last.cur_dx == 2 && last.cur_dy == 1 && last.changed &&
           last.reply_len == 0, "cursor right 2, down 1; no reply");
 
+    /* the pictures below are counted: side by side, none replacing another */
+    iterm_spread = 4;
+    iterm_spread_n = 0;
+
     /* doNotMoveCursor */
     ifile(&st, &e, "inline=1;doNotMoveCursor=1", d, n);
     CHECK(!strcmp(trace_code, "OK") && last.cur_dx == 0 && last.cur_dy == 0 &&
@@ -1372,6 +1384,7 @@ static void test_iterm_place(void)
     e.cell_w = 8;
     CHECK(st.n_imgs == 5 && st.n_pls == 5, "nothing left behind (%d %d)",
           st.n_imgs, st.n_pls);
+    iterm_spread = 0;
     gfx_store_free(&st);
 }
 
@@ -1460,6 +1473,10 @@ static void test_iterm_multipart(void)
           last.changed && last.cur_dx == 2 && last.cur_dy == 0,
           "FileEnd: placed");
 
+    /* the pictures below are counted: side by side, none replacing another */
+    iterm_spread = 4;
+    iterm_spread_n = 0;
+
     /* a kitty command in between does not end it */
     iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
     sprintf(part, "FilePart=%.12s", b);
@@ -1522,6 +1539,7 @@ static void test_iterm_multipart(void)
           st.n_pls == 4 && n_png == 0 && !last.changed, "inline=0: nothing");
 
     /* a reset ends an upload */
+    iterm_spread = 0;
     iterm_s(&st, &e, "MultipartFile=inline=1", false, NULL);
     iterm_s(&st, &e, part, false, NULL);
     gfx_reset(&st);
@@ -1599,7 +1617,10 @@ static void test_iterm_anonymous(void)
     gfx_reset(&st);
     CHECK(st.n_imgs == 0, "reset: freed");
 
-    /* eviction: images in the scrollback only make room */
+    /* eviction: images in the scrollback only make room (the pictures side
+     * by side, none replacing another) */
+    iterm_spread = 4;
+    iterm_spread_n = 0;
     st.max_images = 2;
     for (i = 0; i < 2; i++) {
         e.cur_y = i;
@@ -1636,6 +1657,7 @@ static void test_iterm_anonymous(void)
     e.top_abs = 120;
     CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && st.n_pls == 2 &&
           anon_images(&st) == 2, "placements full, parked: one went");
+    iterm_spread = 0;
     gfx_store_free(&st);
 }
 
@@ -1670,6 +1692,337 @@ static void test_scroll_to_bottom(void)
     gfx_store_free(&st);
 }
 
+/* ---- cell-bound pictures (iTerm2, Sixel) -------------------------------- */
+
+/* The first anonymous placement (an iTerm2 or Sixel picture), or NULL. */
+static const GfxPlacement *anon_pl(const GfxStore *st)
+{
+    int i;
+    for (i = 0; i < st->n_pls; i++)
+        if (!st->pls[i].image_id)
+            return &st->pls[i];
+    return NULL;
+}
+
+/* A w x h opaque grey Sixel picture at the cursor. */
+static const char *place_sixel(GfxStore *st, const GfxEnv *env, int w, int h)
+{
+    unsigned char *px = malloc((size_t)w * h * 4);
+    size_t i;
+    for (i = 0; i < (size_t)w * h; i++) {
+        px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = 128;
+        px[i * 4 + 3] = 255;
+    }
+    return gfx_place_pixels(st, env, px, w, h, false, &last);
+}
+
+/* The piece of anonymous placements in v[0..n) starting on view row r0 and
+ * column c0, or NULL. */
+static const GfxVisible *piece_at(const GfxVisible *v, int n, int r0, int c0)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!v[i].pl->image_id && v[i].r0 == r0 && v[i].c0 == c0)
+            return &v[i];
+    return NULL;
+}
+
+/* Whether a piece of an anonymous placement covers view cell (c, r). */
+static bool piece_over(const GfxVisible *v, int n, int c, int r)
+{
+    int i;
+    for (i = 0; i < n; i++)
+        if (!v[i].pl->image_id && v[i].c0 <= c && c <= v[i].c1 &&
+            v[i].r0 <= r && r <= v[i].r1)
+            return true;
+    return false;
+}
+
+/* Marking cells: the mask, a second mark, other screens and cells, a kitty
+ * placement in the same cells untouched, the pieces of the visible list,
+ * a rescale keeping the marks, everything cut out deleting the picture. */
+static void test_cellbound_mark(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxPlacement *pl, *kp;
+    const GfxVisible *p;
+    GfxVisible v[16];
+    int n;
+
+    gfx_store_init(&st);
+    e.top_abs = 100;
+    e.cur_x = 2;
+    e.cur_y = 5;
+    CHECK(!place_sixel(&st, &e, 32, 48), "Sixel placed");
+    pl = anon_pl(&st);
+    CHECK(pl && pl->cell_bound && !pl->mask && pl->cols == 4 &&
+          pl->rows == 3 && pl->abs_line == 105 && st.n_cellbound == 1,
+          "the Sixel picture is cell-bound, 4 x 3 at line 105, no mask yet");
+    put_red(&st, &e, 1, 32, 48);
+    send(&st, &e, "a=p,i=1,p=1,C=1", NULL, 0);
+    kp = pl_of(&st, 1, 1);
+    CHECK(kp && !kp->cell_bound && st.n_cellbound == 1,
+          "the kitty placement is not cell-bound");
+
+    /* line 106 (its 2nd row), columns 0..3: its cells 0 and 1 */
+    CHECK(gfx_mark_cells(&st, 0, 106, 106, 0, 3), "marked");
+    pl = anon_pl(&st);
+    kp = pl_of(&st, 1, 1);
+    CHECK(pl && pl->mask && pl->n_marked == 2 && gfx_cell_marked(pl, 0, 1) &&
+          gfx_cell_marked(pl, 1, 1) && !gfx_cell_marked(pl, 2, 1) &&
+          !gfx_cell_marked(pl, 0, 0) && !gfx_cell_marked(pl, 0, 2),
+          "cells 0 and 1 of row 1 cut out (%d)", pl ? pl->n_marked : -1);
+    CHECK(kp && !kp->mask && !kp->n_marked, "the kitty placement untouched");
+    CHECK(!gfx_mark_cells(&st, 0, 106, 106, 0, 3), "again: nothing new");
+    CHECK(!gfx_mark_cells(&st, 1, 105, 107, 0, 79), "the other screen");
+    CHECK(!gfx_mark_cells(&st, 0, 108, 110, 0, 79) &&
+          !gfx_mark_cells(&st, 0, 100, 104, 0, 79) &&
+          !gfx_mark_cells(&st, 0, 105, 107, 6, 79) &&
+          !gfx_mark_cells(&st, 0, 105, 107, 0, 1), "cells outside it");
+
+    /* the visible list: whole for the repaint, in pieces for the painters */
+    n = gfx_visible(&st, 0, 100, 24, 80, 8, 16, v, 16);
+    CHECK(n == 2, "whole: two placements (%d)", n);
+    n = gfx_visible_cut(&st, 0, 100, 24, 80, 8, 16, v, 16);
+    CHECK(n == 4, "cut: the kitty one and three pieces (%d)", n);
+    p = piece_at(v, n, 5, 2);
+    CHECK(p && p->c1 == 5 && p->r1 == 5 && p->dx0 == 16 && p->dx1 == 48 &&
+          p->dy0 == 80 && p->dy1 == 96 && p->sx == 0 && p->sw == 32 &&
+          p->sy == 0 && p->sh == 16, "row 0 whole");
+    p = piece_at(v, n, 6, 4);
+    CHECK(p && p->c1 == 5 && p->r1 == 6 && p->dx0 == 32 && p->dx1 == 48 &&
+          p->dy0 == 96 && p->dy1 == 112 && p->sx == 16 && p->sw == 16 &&
+          p->sy == 16 && p->sh == 16, "row 1: its cells 2 and 3");
+    p = piece_at(v, n, 7, 2);
+    CHECK(p && p->c1 == 5 && p->r1 == 7 && p->sy == 32 && p->sh == 16 &&
+          p->sw == 32, "row 2 whole");
+    CHECK(!piece_over(v, n, 2, 6) && !piece_over(v, n, 3, 6),
+          "no piece over a cut-out cell");
+    p = NULL;
+    for (int i = 0; i < n; i++)
+        if (v[i].pl->image_id == 1)
+            p = &v[i];
+    CHECK(p && p->c0 == 2 && p->c1 == 5 && p->r0 == 5 && p->r1 == 7 &&
+          p->sw == 32 && p->sh == 48, "the kitty placement whole");
+
+    /* a rescale: the cut-out cells are text cells and stay */
+    gfx_rescale(&st, 16, 16);
+    pl = anon_pl(&st);
+    CHECK(pl && pl->cols == 2 && pl->rows == 3 && pl->n_marked == 2 &&
+          gfx_cell_marked(pl, 0, 1) && gfx_cell_marked(pl, 1, 1),
+          "rescaled to 2 x 3: both marks kept");
+    gfx_rescale(&st, 8, 16);
+    pl = anon_pl(&st);
+    CHECK(pl && pl->cols == 4 && pl->n_marked == 2 &&
+          gfx_cell_marked(pl, 1, 1) && !gfx_cell_marked(pl, 2, 1),
+          "back to 4 x 3: the same two cells");
+
+    /* everything cut out: the picture and its image go, kitty's stays */
+    CHECK(gfx_mark_cells(&st, 0, 105, 107, 0, 79), "the rest marked");
+    CHECK(!anon_pl(&st) && anon_images(&st) == 0 && st.n_cellbound == 0 &&
+          st.mask_bytes == 0 && pl_of(&st, 1, 1),
+          "the Sixel picture went, its image too; kitty's stayed");
+    CHECK(!gfx_mark_cells(&st, 0, 105, 107, 0, 79),
+          "no cell-bound picture: nothing to do");
+
+    /* a picture too large for a mask goes whole at its first mark */
+    e.cell_w = e.cell_h = 1;
+    e.cur_x = e.cur_y = 0;
+    CHECK(!place_sixel(&st, &e, 2048, 1025) && anon_pl(&st), "a big one");
+    CHECK(gfx_mark_cells(&st, 0, 100, 100, 0, 0) && !anon_pl(&st) &&
+          anon_images(&st) == 0, "too large to cut: gone whole");
+    gfx_store_free(&st);
+}
+
+/* Line movement: a band scroll over part of a picture cuts those rows out
+ * (IL/DL), a whole picture moves with its mask, a clipped one keeps its
+ * marks on the rows that stay, the scroll into the scrollback the same. */
+static void test_cellbound_scroll(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxPlacement *pl, *kp;
+
+    gfx_store_init(&st);
+    e.screen = 1;
+    e.top_abs = 0;
+    e.cur_y = 5;
+    place_sixel(&st, &e, 32, 48);                 /* rows 5..7 */
+    put_red(&st, &e, 1, 32, 48);
+    send(&st, &e, "a=p,i=1,p=1,C=1", NULL, 0);     /* the same cells */
+    gfx_mark_cells(&st, 1, 5, 5, 0, 0);
+    /* DL at row 6: rows 6..23 up by one - its rows 6 and 7 cut out */
+    gfx_scroll_region(&st, 1, 0, 6, 23, 1, 8, 16, true);
+    pl = anon_pl(&st);
+    kp = pl_of(&st, 1, 1);
+    CHECK(pl && pl->abs_line == 5 && pl->n_marked == 9 &&
+          gfx_cell_marked(pl, 3, 2) && !gfx_cell_marked(pl, 1, 0),
+          "straddling the band: its rows there cut out (%d)",
+          pl ? pl->n_marked : -1);
+    CHECK(kp && kp->abs_line == 5 && !kp->mask, "kitty's: stays, uncut");
+    /* the whole screen up by one: moves, the mask with it */
+    gfx_scroll_region(&st, 1, 0, 0, 23, 1, 8, 16, true);
+    pl = anon_pl(&st);
+    CHECK(pl && pl->abs_line == 4 && pl->n_marked == 9 &&
+          gfx_cell_marked(pl, 0, 0), "moved, its marks with it");
+    gfx_reset(&st);
+
+    /* clipped at the top: the marks of the rows that stay follow them */
+    place_sixel(&st, &e, 32, 48);                 /* rows 5..7 */
+    gfx_mark_cells(&st, 1, 6, 6, 1, 1);           /* its cell 1 of row 1 */
+    gfx_mark_cells(&st, 1, 7, 7, 3, 3);           /* its cell 3 of row 2 */
+    gfx_scroll_region(&st, 1, 0, 0, 23, 6, 8, 16, true);
+    pl = anon_pl(&st);
+    CHECK(pl && pl->abs_line == 0 && pl->rows == 2 && pl->n_marked == 2 &&
+          gfx_cell_marked(pl, 1, 0) && gfx_cell_marked(pl, 3, 1) &&
+          !gfx_cell_marked(pl, 0, 0), "clipped: the marks moved up a row");
+    gfx_reset(&st);
+
+    /* into the scrollback, a band above the bottom: a picture reaching
+     * below it keeps its screen row and loses its rows in the band */
+    e.screen = 0;
+    e.top_abs = 100;
+    e.cur_y = 9;
+    place_sixel(&st, &e, 32, 48);                 /* rows 9..11 */
+    gfx_scroll_region_sb(&st, 0, 101, 10, 1);
+    pl = anon_pl(&st);
+    CHECK(pl && pl->abs_line == 110 && pl->n_marked == 8 &&
+          gfx_cell_marked(pl, 0, 1) && !gfx_cell_marked(pl, 0, 2),
+          "below the band: rows 9 and 10 cut out (%d)",
+          pl ? pl->n_marked : -1);
+    gfx_store_free(&st);
+}
+
+/* The pieces of a scaled picture: source edges from one mapping, pieces
+ * meeting without a seam; the piece budget. */
+static void test_cellbound_pieces(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    unsigned char d[64];
+    size_t n;
+    const GfxPlacement *pl;
+    const GfxVisible *a, *b, *band;
+    GfxVisible v[GFX_CUT_PIECES_MAX + 8];
+    int k, c;
+
+    gfx_store_init(&st);
+    /* a 10 x 10 PNG three cells wide: drawn 24 x 24, 3 x 2 cells */
+    n = mk_png(d, 10, 10);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1;width=3", d, n), "OK"),
+          "iTerm2 picture placed");
+    pl = anon_pl(&st);
+    CHECK(pl && pl->cell_bound && pl->dst_w == 24 && pl->dst_h == 24 &&
+          pl->cols == 3 && pl->rows == 2, "24 x 24, 3 x 2 cells");
+    gfx_mark_cells(&st, 0, 0, 0, 1, 1);           /* row 0, the middle */
+    k = gfx_visible_cut(&st, 0, 0, 24, 80, 8, 16, v, 16);
+    a = piece_at(v, k, 0, 0);
+    b = piece_at(v, k, 0, 2);
+    band = piece_at(v, k, 1, 0);
+    CHECK(k == 3 && a && b && band, "three pieces (%d)", k);
+    CHECK(a && a->dx0 == 0 && a->dx1 == 8 && a->dy0 == 0 && a->dy1 == 16 &&
+          a->sx == 0 && a->sw == 3 && a->sy == 0 && a->sh == 6,
+          "left: pixels 0..8 from 0..3 (%d %d %d %d)",
+          a ? a->sx : -1, a ? a->sw : -1, a ? a->sy : -1, a ? a->sh : -1);
+    CHECK(b && b->dx0 == 16 && b->dx1 == 24 && b->sx == 6 && b->sw == 4 &&
+          b->sy == 0 && b->sh == 6, "right: pixels 16..24 from 6..10");
+    CHECK(band && band->c1 == 2 && band->dy0 == 16 && band->dy1 == 24 &&
+          band->sx == 0 && band->sw == 10 && band->sy == 6 && band->sh == 4,
+          "row 1 whole: the image's rows 6..10");
+    CHECK(a && band && a->sy + a->sh == band->sy &&
+          a->dy1 == band->dy0, "pieces meet: no seam, no overlap");
+    gfx_reset(&st);
+
+    /* the budget: 80 x 3 cells, every other cell of rows 0 and 1 cut out -
+     * 80 runs: only the whole rows (row 2) are drawn */
+    e = env_default();
+    place_sixel(&st, &e, 640, 48);
+    for (c = 0; c < 80; c += 2)
+        gfx_mark_cells(&st, 0, 0, 1, c, c);
+    k = gfx_visible_cut(&st, 0, 0, 24, 80, 8, 16, v, GFX_CUT_PIECES_MAX + 8);
+    CHECK(k == 1 && v[0].r0 == 2 && v[0].r1 == 2 && v[0].c0 == 0 &&
+          v[0].c1 == 79, "over the budget: the whole rows only (%d)", k);
+    /* row 0 kept whole again (a fresh picture): 1 band, 40 runs, 1 band */
+    gfx_reset(&st);
+    place_sixel(&st, &e, 640, 48);
+    for (c = 0; c < 80; c += 2)
+        gfx_mark_cells(&st, 0, 1, 1, c, c);
+    k = gfx_visible_cut(&st, 0, 0, 24, 80, 8, 16, v, GFX_CUT_PIECES_MAX + 8);
+    CHECK(k == 42, "within the budget: every run (%d)", k);
+    for (c = 0; c < 80; c += 2)
+        if (piece_over(v, k, c, 1))
+            break;
+    CHECK(c >= 80 && piece_over(v, k, 1, 1) && piece_over(v, k, 5, 0),
+          "no piece over a cut cell, the kept ones drawn");
+    /* room for one piece only: the two whole rows do not fit - left out */
+    k = gfx_visible_cut(&st, 0, 0, 24, 80, 8, 16, v, 1);
+    CHECK(k == 0, "no room: the picture left out (%d)", k);
+    gfx_store_free(&st);
+}
+
+/* A picture placed over older ones replaces their cells (a video drawn
+ * frame by frame at one place): 300 frames leave one placement and one
+ * image; a smaller one cuts only its own cells; kitty's are not touched. */
+static void test_cellbound_replace(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    unsigned char d[64];
+    size_t n;
+    const GfxPlacement *pl, *kp;
+    int i;
+    bool ok = true;
+
+    gfx_store_init(&st);
+    e.top_abs = 100;
+    e.cur_x = 1;
+    e.cur_y = 2;
+    for (i = 0; i < 300 && ok; i++)
+        ok = !place_sixel(&st, &e, 640, 360) && st.n_pls == 1 &&
+             st.n_imgs == 1;
+    CHECK(ok && st.n_cellbound == 1 && st.mask_bytes == 0 && anon_pl(&st) &&
+          !anon_pl(&st)->mask, "300 frames: one placement, one image (%d)",
+          i);
+    gfx_reset(&st);
+
+    /* a smaller picture over a bigger one: only its own cells */
+    e.cur_x = 0;
+    e.cur_y = 0;
+    place_sixel(&st, &e, 64, 64);                 /* 8 x 4 cells */
+    e.cur_x = 2;
+    e.cur_y = 1;
+    place_sixel(&st, &e, 16, 32);                 /* 2 x 2 cells */
+    pl = anon_pl(&st);
+    CHECK(st.n_pls == 2 && st.n_imgs == 2 && pl && pl->cols == 8 &&
+          pl->n_marked == 4 && gfx_cell_marked(pl, 2, 1) &&
+          gfx_cell_marked(pl, 3, 2) && !gfx_cell_marked(pl, 1, 1) &&
+          !gfx_cell_marked(pl, 4, 1), "the big one lost the small one's cells");
+    CHECK(!st.pls[1].mask, "the new one whole");
+    /* an iTerm2 picture over both, covering them whole: both go */
+    e.cur_x = 0;
+    e.cur_y = 0;
+    n = mk_png(d, 64, 64);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, n), "OK") && st.n_pls == 1 &&
+          st.n_imgs == 1 && anon_images(&st) == 1, "iTerm2 over Sixel: replaced");
+    gfx_reset(&st);
+
+    /* a kitty placement under a Sixel picture stays */
+    put_red(&st, &e, 1, 32, 48);
+    send(&st, &e, "a=p,i=1,p=1,C=1", NULL, 0);
+    place_sixel(&st, &e, 32, 48);
+    place_sixel(&st, &e, 32, 48);
+    kp = pl_of(&st, 1, 1);
+    CHECK(kp && !kp->mask && st.n_pls == 2 && anon_images(&st) == 1,
+          "kitty's stays under the Sixel frames");
+    /* a picture on the other screen is not covered */
+    e.screen = 1;
+    e.top_abs = 0;
+    place_sixel(&st, &e, 32, 48);
+    CHECK(st.n_pls == 3 && anon_images(&st) == 2, "other screen: kept");
+    gfx_store_free(&st);
+}
+
 int main(void)
 {
     test_parser();
@@ -1690,6 +2043,10 @@ int main(void)
     test_iterm_geometry();
     test_iterm_multipart();
     test_iterm_anonymous();
+    test_cellbound_mark();
+    test_cellbound_scroll();
+    test_cellbound_pieces();
+    test_cellbound_replace();
     if (failures) {
         printf("test_gfx: %d of %d checks failed\n", failures, checks);
         return 1;

@@ -112,14 +112,33 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   HEIF/AVIF where Microsoft's extensions for them are installed (no other
   installed codec is used), with `OSC 1337 File=`, also in
   parts (`MultipartFile=`), at their own size or at a width and height in
-  cells, pixels or percent. They behave like the kitty pictures and share
-  their limits; a download (`inline=0`) is never written to this PC.
+  cells, pixels or percent. They share the kitty pictures' limits but
+  belong to their cells, as in iTerm2: text written over a picture
+  replaces that part of it, and a new picture replaces the older ones it
+  covers. A download (`inline=0`) is never written to this PC.
   Terminal > Features > Images > Show inline images (iTerm2 OSC 1337)
   (`ItermImages`, on by default). A picture placed near the bottom scrolls
   the screen so it shows whole, for both protocols.
+- **Inline images (Sixel).** img2sixel, `chafa -f sixels`, timg, lsix,
+  gnuplot and other programs that draw Sixel pictures show them in the
+  window. Like iTerm2 pictures they belong to their cells, so a video
+  that timg draws frame by frame plays on without filling the picture
+  store. RGB and HLS colours, 256 registers, transparent background,
+  XTSMGRAPHICS. The cursor after a picture follows xterm (chafa) until a
+  program sets mintty's mode 7730 (timg), then mintty's rules; DECSDM and
+  mintty's 7780 (no scrolling, also for iTerm2 pictures) too.
+  Terminal > Features > Images > Show inline images (Sixel) (`SixelImages`,
+  on by default).
+- **The terminal says what it is (XTVERSION).** `CSI > q` is answered with
+  `KiTTY++` and its version.
 
 ### Changed
 
+- **The device-attributes answer (DA1) reports Sixel.** With Show inline
+  images (Sixel) on, `CSI c` is answered `ESC [ ? 62 ; 4 ; 22 c` (a VT220
+  with Sixel and ANSI colour) instead of `ESC [ ? 6 c` (a VT102), so
+  programs find the Sixel support; off, the old answer stays. An answer set
+  with DECSCL 50 (`CSI 50 ; ... " p`) still wins.
 - **"Show far2l images" moved to Terminal > Features > Images,** beside the
   new switch for inline images (it was on Window > Copy & Paste > Remote
   clipboard). The setting itself is unchanged.

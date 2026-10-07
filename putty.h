@@ -2152,7 +2152,9 @@ unsigned term_kkp_flags(Terminal *term);
 /* KiTTY: the kitty graphics placements that touch the view shown (the
  * scrolled-back position included), ordered for painting; out[] gets at most
  * max (GfxVisible of kitty/kitty_gfx.h, cell coordinates and pixels relative
- * to cell 0,0 of the view). Returns how many; 0 without a store. */
+ * to cell 0,0 of the view). An iTerm2 or Sixel picture with cells cut out
+ * comes in pieces that leave those cells to the text (gfx_visible_cut).
+ * Returns how many; 0 without a store. */
 struct GfxVisible;
 int term_gfx_visible(Terminal *term, struct GfxVisible *out, int max);
 #endif

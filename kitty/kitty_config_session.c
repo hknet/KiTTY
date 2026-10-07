@@ -6007,6 +6007,9 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_checkbox(s, KT_FEATURES_ITERM_IMAGES, NO_SHORTCUT,
                       HELPCTX(kitty_itermimages), conf_checkbox_handler,
                       I(CONF_iterm_images));
+        ctrl_checkbox(s, KT_FEATURES_SIXEL_IMAGES, NO_SHORTCUT,
+                      HELPCTX(kitty_sixelimages), conf_checkbox_handler,
+                      I(CONF_sixel_images));
 #ifdef MOD_FAR2L
         /* far2l's pictures, moved here from the Remote clipboard panel:
          * both image switches in one place. */

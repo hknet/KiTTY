@@ -1,7 +1,8 @@
 /*
  * kitty_gfx.c - the kitty graphics protocol, the plain-C core (kitty_gfx.h):
  * control-data parser, chunk assembler and base64, image store, placements,
- * deletion, replies, and the line-movement operations of the placement list.
+ * deletion, replies, the line-movement operations of the placement list,
+ * and the cells cut out of the cell-bound (iTerm2, Sixel) pictures.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -316,6 +317,8 @@ void gfx_store_free(GfxStore *st)
     int i;
     for (i = 0; i < st->n_imgs; i++)
         free(st->imgs[i].px);
+    for (i = 0; i < st->n_pls; i++)
+        free(st->pls[i].mask);
     free(st->imgs);
     free(st->pls);
     pending_free(st);
@@ -377,8 +380,28 @@ static int placements_of(const GfxStore *st, uint32_t key)
     return n;
 }
 
+static size_t mask_size(int cols, int rows)
+{
+    return ((size_t)cols * (size_t)rows + 7) / 8;
+}
+
+/* A placement leaves the list (or is overwritten): its mask and its count
+ * among the cell-bound ones go. */
+static void pl_forget(GfxStore *st, GfxPlacement *pl)
+{
+    if (pl->mask) {
+        st->mask_bytes -= mask_size(pl->mask_cols, pl->mask_rows);
+        free(pl->mask);
+        pl->mask = NULL;
+    }
+    pl->n_marked = 0;
+    if (pl->cell_bound)
+        st->n_cellbound--;
+}
+
 static void pl_remove(GfxStore *st, int i)
 {
+    pl_forget(st, &st->pls[i]);
     memmove(st->pls + i, st->pls + i + 1,
             (size_t)(st->n_pls - i - 1) * sizeof(*st->pls));
     st->n_pls--;
@@ -587,11 +610,24 @@ static void pl_fit(GfxPlacement *pl, int cw, int ch)
     if (pl->rows < 1) pl->rows = 1;
 }
 
+static bool pl_mask_fit(GfxStore *st, GfxPlacement *pl, int shift);
+static void sweep_anonymous(GfxStore *st);
+
 void gfx_rescale(GfxStore *st, int cell_w, int cell_h)
 {
     int i;
-    for (i = 0; i < st->n_pls; i++)
+    bool gone = false;
+    for (i = st->n_pls - 1; i >= 0; i--) {
         pl_fit(&st->pls[i], cell_w, cell_h);
+        /* the cut-out cells are text cells: they stay where they are while
+         * the picture covers more or fewer of them */
+        if (!pl_mask_fit(st, &st->pls[i], 0)) {
+            pl_remove(st, i);
+            gone = true;
+        }
+    }
+    if (gone)
+        sweep_anonymous(st);
 }
 
 /* ---- replies ------------------------------------------------------------ */
@@ -702,6 +738,7 @@ static const char *pl_insert(GfxStore *st, const GfxEnv *env, GfxImage *img,
             }
     if (slot) {
         pl.serial = slot->serial;
+        pl_forget(st, slot);
     } else {
         /* full: an anonymous image left only in the scrollback goes, as
          * when the store's bytes run out */
@@ -725,6 +762,8 @@ static const char *pl_insert(GfxStore *st, const GfxEnv *env, GfxImage *img,
         pl.serial = ++st->serial;
     }
     *slot = pl;
+    if (pl.cell_bound)
+        st->n_cellbound++;
     img->last_use = ++st->tick;
     res->changed = true;
     if (!pl.no_cursor) {
@@ -1485,6 +1524,22 @@ static void iterm_feed(GfxPending *p, size_t max, const unsigned char *s,
     }
 }
 
+static bool pl_clip(GfxPlacement *pl, int k, int cw, int ch);
+static bool pl_cover(GfxStore *st, const GfxPlacement *pl);
+
+/* mintty's ?7780 (env->crop_rows): a picture that would pass the bottom
+ * margin is cut there instead of scrolling, and the cursor stays. False:
+ * nothing of it is left. */
+static bool pl_crop(const GfxEnv *env, GfxPlacement *pl)
+{
+    if (env->crop_rows <= 0)
+        return true;
+    pl->no_cursor = true;
+    if (pl->rows <= env->crop_rows)
+        return true;
+    return pl_clip(pl, env->crop_rows - pl->rows, env->cell_w, env->cell_h);
+}
+
 /* Decodes data (PNG, JPEG, GIF, TIFF, BMP, WebP or HEIF/AVIF by its
  * signature), stores it as an anonymous image and places it at the cursor. Returns an error code or
  * NULL. */
@@ -1572,14 +1627,7 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
     if (code)
         return code;
     iterm_geometry(a, env, w, h, &dw, &dh);
-    img = img_insert(st, env, px, w, h, opaque);
-    if (!img) {
-        *msg = "image store full";
-        return "ENOSPC";
-    }
-    res->changed = true;
     memset(&pl, 0, sizeof(pl));
-    pl.image_key = img->key;
     pl.screen = env->screen;
     pl.abs_line = env->top_abs + env->cur_y;
     pl.col = env->cur_x;
@@ -1588,9 +1636,82 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
     pl.dst_w = dw;
     pl.dst_h = dh;
     pl.fixed = true;
+    pl.cell_bound = true;
     pl.no_cursor = a->no_move;
     pl_fit(&pl, env->cell_w, env->cell_h);
+    if (!pl_crop(env, &pl)) {
+        free(px);
+        *msg = "nothing left above the bottom margin";
+        return "EINVAL";
+    }
+    /* the older pictures lose these cells first, so a picture replaced
+     * frame after frame (a video) frees its image before the next is
+     * stored */
+    if (pl_cover(st, &pl))
+        res->changed = true;
+    img = img_insert(st, env, px, w, h, opaque);
+    if (!img) {
+        *msg = "image store full";
+        return "ENOSPC";
+    }
+    res->changed = true;
+    pl.image_key = img->key;
     return pl_insert(st, env, img, &pl, res, msg);
+}
+
+/* Sixel pictures (kitty_sixel.c decodes them): pixels placed at the
+ * cursor at their own size, anonymous like the iTerm2 images. */
+const char *gfx_place_pixels(GfxStore *st, const GfxEnv *env,
+                             unsigned char *px, int w, int h, bool no_cursor,
+                             GfxResult *res)
+{
+    const char *code, *msg = "";
+    bool opaque = false;
+    GfxImage *img;
+    GfxPlacement pl;
+
+    memset(res, 0, sizeof(*res));
+    if (env->cell_w <= 0 || env->cell_h <= 0) {
+        free(px);
+        code = "EINVAL";
+        goto out;
+    }
+    code = decoded_check(st, &px, w, h, &opaque, &msg);
+    if (code)
+        goto out;
+    memset(&pl, 0, sizeof(pl));
+    pl.screen = env->screen;
+    pl.abs_line = env->top_abs + env->cur_y;
+    pl.col = env->cur_x;
+    pl.src_w = w;
+    pl.src_h = h;
+    pl.dst_w = w;
+    pl.dst_h = h;
+    pl.fixed = true;
+    pl.cell_bound = true;
+    pl.no_cursor = no_cursor;
+    pl_fit(&pl, env->cell_w, env->cell_h);
+    if (!pl_crop(env, &pl)) {
+        free(px);
+        code = "EINVAL";
+        goto out;
+    }
+    /* as for iTerm2 images: the older pictures lose these cells first */
+    if (pl_cover(st, &pl))
+        res->changed = true;
+    img = img_insert(st, env, px, w, h, opaque);
+    if (!img) {
+        code = "ENOSPC";
+        goto out;
+    }
+    res->changed = true;
+    pl.image_key = img->key;
+    code = pl_insert(st, env, img, &pl, res, &msg);
+    if (code)
+        sweep_anonymous(st);            /* the image whose placement failed */
+  out:
+    trace(env, 'S', 0, code ? code : "OK");
+    return code;
 }
 
 /* Ends the upload in progress: decoded and placed unless it was refused on
@@ -1694,6 +1815,178 @@ bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
     return false;
 }
 
+/* ---- cells of the cell-bound pictures ---------------------------------- */
+
+/* A new mask of cols x rows, nothing cut out, counted against the store's
+ * budget; NULL when over a cap (or out of memory). */
+static unsigned char *mask_new(GfxStore *st, int cols, int rows)
+{
+    size_t b;
+    unsigned char *m;
+    if (cols <= 0 || rows <= 0 ||
+        (uint64_t)cols * (uint64_t)rows > GFX_MASK_MAX_CELLS)
+        return NULL;
+    b = mask_size(cols, rows);
+    if (st->mask_bytes + b > GFX_MASKS_MAX_BYTES)
+        return NULL;
+    m = calloc(b, 1);
+    if (m)
+        st->mask_bytes += b;
+    return m;
+}
+
+static bool mask_bit(const unsigned char *m, int stride, int c, int r)
+{
+    size_t k = (size_t)r * (size_t)stride + (size_t)c;
+    return (m[k >> 3] >> (k & 7)) & 1;
+}
+
+static void mask_set(unsigned char *m, int stride, int c, int r)
+{
+    size_t k = (size_t)r * (size_t)stride + (size_t)c;
+    m[k >> 3] |= (unsigned char)(1u << (k & 7));
+}
+
+bool gfx_cell_marked(const GfxPlacement *pl, int c, int r)
+{
+    if (!pl->mask || c < 0 || r < 0 || c >= pl->mask_cols ||
+        r >= pl->mask_rows)
+        return false;
+    return mask_bit(pl->mask, pl->mask_cols, c, r);
+}
+
+static bool pl_all_marked(const GfxPlacement *pl)
+{
+    return (long)pl->n_marked >= (long)pl->cols * pl->rows;
+}
+
+/* The placement's cells or anchor changed (a rescale, a clip): its mask
+ * follows - new row r is old row r + shift, columns as they were. False:
+ * nothing of it is left (every cell cut out), or no mask can be had for the
+ * new shape - the caller drops it, never shows a cut-out cell again. */
+static bool pl_mask_fit(GfxStore *st, GfxPlacement *pl, int shift)
+{
+    unsigned char *old = pl->mask, *nm;
+    int oc = pl->mask_cols, orows = pl->mask_rows, r, c, cmax;
+    if (!old)
+        return true;
+    if (!shift && pl->cols == oc && pl->rows == orows)
+        return true;
+    st->mask_bytes -= mask_size(oc, orows);
+    pl->mask = NULL;
+    pl->n_marked = 0;
+    nm = mask_new(st, pl->cols, pl->rows);
+    if (!nm) {
+        free(old);
+        return false;
+    }
+    cmax = pl->cols < oc ? pl->cols : oc;
+    for (r = 0; r < pl->rows; r++) {
+        int ro = r + shift;
+        if (ro < 0 || ro >= orows)
+            continue;
+        for (c = 0; c < cmax; c++)
+            if (mask_bit(old, oc, c, ro)) {
+                mask_set(nm, pl->cols, c, r);
+                pl->n_marked++;
+            }
+    }
+    free(old);
+    pl->mask = nm;
+    pl->mask_cols = pl->cols;
+    pl->mask_rows = pl->rows;
+    if (!pl->n_marked) {
+        st->mask_bytes -= mask_size(pl->cols, pl->rows);
+        free(nm);
+        pl->mask = NULL;
+    }
+    return !pl_all_marked(pl);
+}
+
+/* Cuts cells c0..c1 of rows r0..r1 (relative to the placement's top-left,
+ * clamped to it) out of placement i. 0: nothing new, 1: cut, 2: the
+ * placement went (all of it cut out, or no mask to be had). */
+static int pl_mark_local(GfxStore *st, int i, long r0, long r1, long c0,
+                         long c1)
+{
+    GfxPlacement *pl = &st->pls[i];
+    int r, c;
+    bool any = false;
+    if (r0 < 0) r0 = 0;
+    if (c0 < 0) c0 = 0;
+    if (r1 > pl->rows - 1) r1 = pl->rows - 1;
+    if (c1 > pl->cols - 1) c1 = pl->cols - 1;
+    if (r0 > r1 || c0 > c1)
+        return 0;
+    if (!pl->mask) {
+        pl->mask = mask_new(st, pl->cols, pl->rows);
+        if (!pl->mask) {
+            pl_remove(st, i);           /* too big to cut: it goes whole */
+            return 2;
+        }
+        pl->mask_cols = pl->cols;
+        pl->mask_rows = pl->rows;
+        pl->n_marked = 0;
+    }
+    for (r = (int)r0; r <= (int)r1; r++)
+        for (c = (int)c0; c <= (int)c1; c++)
+            if (!mask_bit(pl->mask, pl->mask_cols, c, r)) {
+                mask_set(pl->mask, pl->mask_cols, c, r);
+                pl->n_marked++;
+                any = true;
+            }
+    if (pl_all_marked(pl)) {
+        pl_remove(st, i);
+        return 2;
+    }
+    return any ? 1 : 0;
+}
+
+bool gfx_mark_cells(GfxStore *st, int screen, long line0, long line1,
+                    int c0, int c1)
+{
+    int i, k;
+    bool changed = false, gone = false;
+    if (!st->n_cellbound || line1 < line0 || c1 < c0)
+        return false;
+    for (i = st->n_pls - 1; i >= 0; i--) {
+        const GfxPlacement *pl = &st->pls[i];
+        if (!pl->cell_bound || pl->screen != screen)
+            continue;
+        if (line1 < pl->abs_line || line0 >= pl->abs_line + pl->rows ||
+            c1 < pl->col || c0 >= (long)pl->col + pl->cols)
+            continue;
+        if (line0 <= pl->abs_line && pl->abs_line + pl->rows - 1 <= line1 &&
+            c0 <= pl->col && (long)pl->col + pl->cols - 1 <= c1) {
+            pl_remove(st, i);           /* every cell of it: no mask needed */
+            changed = gone = true;
+            continue;
+        }
+        k = pl_mark_local(st, i, line0 - pl->abs_line, line1 - pl->abs_line,
+                          (long)c0 - pl->col, (long)c1 - pl->col);
+        if (k)
+            changed = true;
+        if (k == 2)
+            gone = true;
+    }
+    if (gone)
+        sweep_anonymous(st);
+    return changed;
+}
+
+/* A cell-bound picture is placed on pl's cells: as in xterm its pixels
+ * replace what was there, so the older cell-bound pictures of that screen
+ * lose those cells, one covered whole goes (its anonymous image with its
+ * last placement). Whole cells: a transparent pixel of the new picture
+ * does not show the old one through (xterm composites it). The kitty
+ * placements are not touched. Returns whether a picture changed. */
+static bool pl_cover(GfxStore *st, const GfxPlacement *pl)
+{
+    return gfx_mark_cells(st, pl->screen, pl->abs_line,
+                          pl->abs_line + pl->rows - 1, pl->col,
+                          pl->col + pl->cols - 1);
+}
+
 /* ---- line movement ------------------------------------------------------ */
 
 void gfx_set_base(GfxStore *st, int screen, long base_abs)
@@ -1711,7 +2004,8 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
 {
     long top_before = top_abs_after - n;
     int i;
-    for (i = 0; i < st->n_pls; i++) {
+    bool gone = false;
+    for (i = st->n_pls - 1; i >= 0; i--) {
         GfxPlacement *pl = &st->pls[i];
         long row0, row1;
         if (pl->screen != screen)
@@ -1720,8 +2014,19 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
         row1 = row0 + pl->rows - 1;
         if (row1 <= bot)
             continue;         /* in the band or the scrollback: moved with its text */
-        pl->abs_line += n;    /* reaches below the band: kept its screen row */
+        /* reaches below the band: kept its screen row. A cell-bound
+         * picture loses its rows in the band, whose text moved away under
+         * it (xterm would move that part with the text; a picture is not
+         * split here) */
+        if (pl->cell_bound && row0 <= bot &&
+            pl_mark_local(st, i, -row0, bot - row0, 0, pl->cols - 1) == 2) {
+            gone = true;
+            continue;
+        }
+        pl->abs_line += n;
     }
+    if (gone)
+        sweep_anonymous(st);
 }
 
 /* Cuts k rows off the top (k > 0) or bottom (k < 0) of a placement; false
@@ -1778,8 +2083,16 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         /* reaching below the screen's last row: nothing is there to stay
          * behind with, it moves with the band */
         below = to_bottom && row1 > bot && row0 <= bot;
-        if (row0 < top || (row1 > bot && !below))
-            continue;                       /* not entirely in the band */
+        if (row0 < top || (row1 > bot && !below)) {
+            /* not entirely in the band: it stays. A cell-bound picture
+             * loses its rows in the band, whose text moved away under it
+             * (IL, DL, a region scroll; xterm would move that part with
+             * the text - a picture is not split here) */
+            if (pl->cell_bound && row1 >= top && row0 <= bot)
+                pl_mark_local(st, i, top - row0, bot - row0, 0,
+                              pl->cols - 1);
+            continue;
+        }
         row0 -= n;
         row1 -= n;
         pl->abs_line -= n;
@@ -1788,10 +2101,13 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
             continue;
         }
         if (row0 < top) {
-            if (!pl_clip(pl, (int)(top - row0), cell_w, cell_h))
+            /* the mask's rows follow the cut (old row k is the new row 0) */
+            int k = (int)(top - row0);
+            if (!pl_clip(pl, k, cell_w, cell_h) || !pl_mask_fit(st, pl, k))
                 pl_remove(st, i);
         } else if (row1 > bot && (n < 0 || !below)) {
-            if (!pl_clip(pl, -(int)(row1 - bot), cell_w, cell_h))
+            if (!pl_clip(pl, -(int)(row1 - bot), cell_w, cell_h) ||
+                !pl_mask_fit(st, pl, 0))
                 pl_remove(st, i);
         }
     }
@@ -1854,8 +2170,117 @@ static int vis_cmp(const void *a, const void *b)
     return 0;
 }
 
-int gfx_visible(const GfxStore *st, int screen, long top_abs, int rows,
-                int cols, int cell_w, int cell_h, GfxVisible *out, int max)
+/* A source edge: drawn pixel p (placement pixels) to image pixels, one
+ * mapping for every piece, so two pieces meeting at p meet in the image. */
+static int src_edge(long long p, long long i0, int s, int sw, int dw)
+{
+    return s + (int)((p - i0) * sw / dw);
+}
+
+/* One piece of a cut picture: cells ca..cb of rows ra..rb (relative to the
+ * placement) into v, with the part of the image drawn there. False: no
+ * pixel of the image there (the letterbox). */
+static bool vis_piece(const GfxImage *img, const GfxPlacement *pl, long row0,
+                      int ca, int cb, int ra, int rb, int cw, int ch,
+                      GfxVisible *v)
+{
+    long long ix0 = (long long)pl->X + pl->dst_dx, ix1 = ix0 + pl->dst_w;
+    long long iy0 = (long long)pl->Y + pl->dst_dy, iy1 = iy0 + pl->dst_h;
+    long long p0 = (long long)ca * cw, p1 = (long long)(cb + 1) * cw;
+    long long q0 = (long long)ra * ch, q1 = (long long)(rb + 1) * ch;
+    int s0, s1, t0, t1, smax = pl->src_x + pl->src_w,
+        tmax = pl->src_y + pl->src_h;
+    if (p0 < ix0) p0 = ix0;
+    if (p1 > ix1) p1 = ix1;
+    if (q0 < iy0) q0 = iy0;
+    if (q1 > iy1) q1 = iy1;
+    if (p0 >= p1 || q0 >= q1 || pl->dst_w <= 0 || pl->dst_h <= 0 ||
+        pl->src_w <= 0 || pl->src_h <= 0)
+        return false;
+    s0 = src_edge(p0, ix0, pl->src_x, pl->src_w, pl->dst_w);
+    s1 = src_edge(p1, ix0, pl->src_x, pl->src_w, pl->dst_w);
+    t0 = src_edge(q0, iy0, pl->src_y, pl->src_h, pl->dst_h);
+    t1 = src_edge(q1, iy0, pl->src_y, pl->src_h, pl->dst_h);
+    /* a piece narrower than a source pixel (a picture drawn much larger
+     * than it is) still gets one, or the painters would leave a hole */
+    if (s1 <= s0) {
+        s1 = s0 + 1;
+        if (s1 > smax) { s1 = smax; s0 = s1 - 1; }
+    }
+    if (t1 <= t0) {
+        t1 = t0 + 1;
+        if (t1 > tmax) { t1 = tmax; t0 = t1 - 1; }
+    }
+    v->img = img;
+    v->pl = pl;
+    v->c0 = pl->col + ca;
+    v->c1 = pl->col + cb;
+    v->r0 = (int)(row0 + ra);
+    v->r1 = (int)(row0 + rb);
+    v->dx0 = pl->col * cw + (int)p0;
+    v->dx1 = pl->col * cw + (int)p1;
+    v->dy0 = (int)(row0 * ch + q0);
+    v->dy1 = (int)(row0 * ch + q1);
+    v->sx = s0;
+    v->sw = s1 - s0;
+    v->sy = t0;
+    v->sh = t1 - t0;
+    v->z = pl->z;
+    return true;
+}
+
+static bool row_whole(const GfxPlacement *pl, int r, int lc0, int lc1)
+{
+    int c;
+    for (c = lc0; c <= lc1; c++)
+        if (gfx_cell_marked(pl, c, r))
+            return false;
+    return true;
+}
+
+/* The pieces of a cut picture inside the view (rows lr0..lr1, columns
+ * lc0..lc1 of it): bands of rows with nothing cut out whole, each run of
+ * kept cells of the other rows on its own (rows_only: those rows left out
+ * entirely). At most room into out; -1 when more are needed. */
+static int vis_cut(const GfxImage *img, const GfxPlacement *pl, long row0,
+                   int lr0, int lr1, int lc0, int lc1, int cw, int ch,
+                   bool rows_only, GfxVisible *out, int room)
+{
+    int n = 0, r, c, band = -1;
+#define VIS_EMIT(ca, cb, ra, rb) do {                                       \
+        if (n >= room) return -1;                                           \
+        if (vis_piece(img, pl, row0, ca, cb, ra, rb, cw, ch, &out[n]))      \
+            n++;                                                            \
+    } while (0)
+    for (r = lr0; r <= lr1 + 1; r++) {
+        if (r <= lr1 && row_whole(pl, r, lc0, lc1)) {
+            if (band < 0)
+                band = r;
+            continue;
+        }
+        if (band >= 0) {
+            VIS_EMIT(lc0, lc1, band, r - 1);
+            band = -1;
+        }
+        if (r > lr1 || rows_only)
+            continue;
+        for (c = lc0; c <= lc1; c++) {
+            int a;
+            if (gfx_cell_marked(pl, c, r))
+                continue;
+            a = c;
+            while (c + 1 <= lc1 && !gfx_cell_marked(pl, c + 1, r))
+                c++;
+            VIS_EMIT(a, c, r, r);
+        }
+    }
+#undef VIS_EMIT
+    return n;
+}
+
+static int vis_list(const GfxStore *st, int screen, long top_abs, int rows,
+                    int cols, int cell_w, int cell_h, GfxVisible *out,
+                    int max, bool cut)
 {
     int i, n = 0;
     for (i = 0; i < st->n_pls && n < max; i++) {
@@ -1868,6 +2293,27 @@ int gfx_visible(const GfxStore *st, int screen, long top_abs, int rows,
             continue;
         if (pl->col >= cols || pl->col + pl->cols <= 0)
             continue;
+        if (cut && pl->mask && pl->n_marked && cell_w > 0 && cell_h > 0) {
+            /* cells cut out: the rest in pieces, none over a cut cell */
+            const GfxImage *img = gfx_image_by_key(st, pl->image_key);
+            int lr0 = row0 < 0 ? (int)-row0 : 0;
+            int lr1 = row0 + pl->rows - 1 < rows ? pl->rows - 1
+                                                 : (int)(rows - 1 - row0);
+            int lc0 = pl->col < 0 ? -pl->col : 0;
+            int lc1 = pl->col + pl->cols - 1 < cols ? pl->cols - 1
+                                                    : cols - 1 - pl->col;
+            int room = max - n, k;
+            if (room > GFX_CUT_PIECES_MAX)
+                room = GFX_CUT_PIECES_MAX;
+            k = vis_cut(img, pl, row0, lr0, lr1, lc0, lc1, cell_w, cell_h,
+                        false, out + n, room);
+            if (k < 0)                  /* too many: whole rows only */
+                k = vis_cut(img, pl, row0, lr0, lr1, lc0, lc1, cell_w,
+                            cell_h, true, out + n, room);
+            if (k > 0)                  /* still too many: left out */
+                n += k;
+            continue;
+        }
         v = &out[n++];
         v->img = gfx_image_by_key(st, pl->image_key);
         v->pl = pl;
@@ -1890,4 +2336,19 @@ int gfx_visible(const GfxStore *st, int screen, long top_abs, int rows,
     if (n > 1)
         qsort(out, (size_t)n, sizeof(*out), vis_cmp);
     return n;
+}
+
+int gfx_visible(const GfxStore *st, int screen, long top_abs, int rows,
+                int cols, int cell_w, int cell_h, GfxVisible *out, int max)
+{
+    return vis_list(st, screen, top_abs, rows, cols, cell_w, cell_h, out,
+                    max, false);
+}
+
+int gfx_visible_cut(const GfxStore *st, int screen, long top_abs, int rows,
+                    int cols, int cell_w, int cell_h, GfxVisible *out,
+                    int max)
+{
+    return vis_list(st, screen, top_abs, rows, cols, cell_w, cell_h, out,
+                    max, true);
 }

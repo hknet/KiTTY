@@ -3349,6 +3349,20 @@ kitty graphics ones and share their limits. A download (\c{inline=0}) is
 never written to this PC. Off, the sequence is ignored. On by default;
 stored with the session (\c{ItermImages}).
 
+\S{kitty-cfg-sixelimages} \q{Show inline images (Sixel)}
+
+Lets a program on the host show pictures with Sixel (\c{DCS q}), the
+DEC VT340 format that \c{img2sixel}, \c{chafa -f sixels}, \c{lsix},
+gnuplot and several file managers send. The picture is decoded as it
+arrives, with 256 colour registers in RGB or HLS; it sits on the cells
+like the kitty graphics ones and shares their limits. With this on, the
+terminal reports Sixel in its answer to the device attributes query
+(\c{ESC [ ? 62 ; 4 ; 22 c}, a VT220 with Sixel and ANSI colour), which
+is how programs find out; off, the sequence is ignored and the answer
+stays the VT102 one (\c{ESC [ ? 6 c}). An answer set with \c{CSI 50
+... c} is sent as it is either way. On by default; stored with the
+session (\c{SixelImages}).
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

@@ -124,6 +124,16 @@ static bool osc5522_paste_event(Terminal *term);
 #include "../kitty/kitty_far2l.h"
 #include "../kitty/kitty_far2l_image_term.h"   /* KiTTY: far2l images */
 #include "../kitty/kitty_gfx_term.h"           /* KiTTY: kitty graphics (APC _G) */
+#ifdef MOD_PERSO
+/* KiTTY: Sixel graphics. Needs both: the DCS reaches OSC_STRING whole only
+ * under MOD_FAR2L (see the DCS entry), the store is MOD_PERSO's. */
+#define KITTY_SIXEL 1
+/* KiTTY: the iTerm2 and Sixel pictures belong to their cells: every cell
+ * written into or erased is reported (screen rows y0..y1, columns x0..x1,
+ * inclusive); one test while no such picture exists (kitty_gfx_term.h) */
+#include "../kitty/kitty_gfx.h"
+#define GFX_CELLS(y0, y1, x0, x1) KITTY_GFX_CELLS(term, y0, y1, x0, x1)
+#endif
 /* Drop everything a far2l activation holds: the open box, the requests held
  * behind it, a chunked upload, the open clipboard. Declared here because
  * term_free() sits earlier in the file. */
@@ -210,6 +220,9 @@ static void term_userpass_state_free(struct term_userpass_state *s);
 /*
  * Internal prototypes.
  */
+#ifndef GFX_CELLS
+#define GFX_CELLS(y0, y1, x0, x1) ((void)0)   /* KiTTY: no picture store */
+#endif
 static void resizeline(Terminal *, termline *, int);
 static termline *lineptr(Terminal *, int, int);
 static void check_line_size(Terminal *, termline *);
@@ -2210,6 +2223,16 @@ static void power_on(Terminal *term, bool clear)
     term->kkp_depth[0] = term->kkp_depth[1] = 0;
     term->kkp_flags[0] = term->kkp_flags[1] = 0;
     term->colour_scheme_reports = false; /* KiTTY: DECSET 2031 */
+    /* KiTTY: Sixel - pictures at the cursor that scroll, the cursor on
+     * their last row (xterm) until a program sets or resets ?7730 (not
+     * ?8452: chafa sends ?8452 l and expects xterm's rule), private
+     * registers (DECSDM, ?8452, ?1070 as in xterm, ?7730 as in mintty) */
+    term->sixel_decsdm = false;
+    term->sixel_scrolls_right = false;
+    term->sixel_cursor_line_start = false;
+    term->sixel_7730_seen = false;
+    term->gfx_no_scroll = false;       /* KiTTY: mintty's ?7780 */
+    term->sixel_shared_regs = false;
 #endif
 #ifdef MOD_FAR2L
     /* KiTTY far2l: a reset (or a restarted session) ends the extensions. A
@@ -4106,6 +4129,7 @@ static void check_boundary(Terminal *term, int x, int y)
             clear_cc(ldata, x);
             ldata->chars[x-1].chr = ' ' | CSET_ASCII;
             ldata->chars[x] = ldata->chars[x-1];
+            GFX_CELLS(y, y, x-1, x);   /* KiTTY: both halves changed */
         }
     }
 }
@@ -4205,7 +4229,23 @@ static void erase_lots(Terminal *term,
         if (scrolllines > 0)
             scroll(term, 0, scrolllines - 1, scrolllines, true);
     } else {
-        termline *ldata = scrlineptr(start.y);
+        termline *ldata;
+#ifdef MOD_PERSO
+        /* KiTTY: the cells erased, row by row: the first from start.x, the
+         * last up to end.x (exclusive), those in between whole */
+        if (term->gfx && term->gfx->n_cellbound > 0) {
+            int y;
+            for (y = start.y; y <= end.y && y < term->rows; y++) {
+                int x0 = y == start.y ? start.x : 0;
+                int x1 = y == end.y ? end.x - 1 : term->cols - 1;
+                if (x1 > term->cols - 1)
+                    x1 = term->cols - 1;
+                if (x0 <= x1)
+                    GFX_CELLS(y, y, x0, x1);
+            }
+        }
+#endif
+        ldata = scrlineptr(start.y);
         check_trust_status(term, ldata);
         while (poslt(start, end)) {
             check_line_size(term, ldata);
@@ -4291,6 +4331,11 @@ static void insch(Terminal *term, int n)
         check_boundary(term, term->curs.x + n, term->curs.y);
     ldata = scrlineptr(term->curs.y);
     check_trust_status(term, ldata);
+    /* KiTTY: every cell from the cursor to the end of the line changes
+     * (moved or erased): a picture's cells there are cut out - xterm would
+     * shift that part of it, a picture is not split here */
+    if (n > 0)
+        GFX_CELLS(term->curs.y, term->curs.y, term->curs.x, term->cols - 1);
     if (dir < 0) {
         for (j = 0; j < m; j++)
             move_termchar(ldata,
@@ -4475,6 +4520,37 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
             /* KiTTY: colour-scheme reports - CSI ? 997 ; 1|2 n whenever the
              * default background turns dark or light (palette_rebuild). */
             term->colour_scheme_reports = state;
+            break;
+          case 80:
+            /* KiTTY: DECSDM, Sixel display mode: set, a picture goes to
+             * the top-left of the screen and nothing scrolls */
+            term->sixel_decsdm = state;
+            break;
+          case 1070:
+            /* KiTTY: xterm, each Sixel picture its own colour registers
+             * (set, the default); reset, they are shared */
+            term->sixel_shared_regs = !state;
+            break;
+          case 8452:
+            /* KiTTY: xterm, the cursor right of a Sixel picture. Not a
+             * sign of mintty's rules: chafa sends ?8452 l before every
+             * picture and means xterm's (the cursor on its last row) */
+            term->sixel_scrolls_right = state;
+            break;
+          case 7730:
+            /* KiTTY: mintty, the cursor below a Sixel picture at the start
+             * of the line (set) or at the picture's left column (reset,
+             * the default); ?8452 set wins. Either way the program expects
+             * mintty's rules (timg sends ?8452 l ?7730 h) */
+            term->sixel_cursor_line_start = state;
+            term->sixel_7730_seen = true;
+            break;
+          case 7780:
+            /* KiTTY: mintty, an iTerm2 or Sixel picture does not scroll:
+             * cut at the bottom margin, the cursor stays (set); scrolls
+             * so the picture fits (reset, the default). Not the kitty
+             * protocol, which has C=1 of its own. */
+            term->gfx_no_scroll = state;
             break;
 #endif
         }
@@ -5356,6 +5432,9 @@ void term_far2l_paste_gesture(Terminal *term)
  */
 static void osc_start(Terminal *term, size_t limit)
 {
+#ifdef KITTY_SIXEL
+    kitty_gfx_sixel_abort(term);       /* KiTTY: an abandoned Sixel */
+#endif
     term->osc_strlen = 0;
     term->osc_str_limit = limit;
     term->osc_str_overflow = false;
@@ -5397,8 +5476,48 @@ static size_t clip_ceiling_bytes(Terminal *term)
 }
 #endif
 
+#ifdef KITTY_SIXEL
+/*
+ * KiTTY: a DCS whose string so far is at most three numeric parameters and
+ * a final 'q' is Sixel (DCS P1 ; P2 ; P3 q): with the setting on, the
+ * decoder starts and every later byte goes to it as it arrives - the
+ * picture is never held in osc_string, whose ceiling stays OSC_STR_MAX for
+ * every other DCS. Anything else before the 'q' ("$q" DECRQSS, "+q"
+ * XTGETTCAP) is not Sixel.
+ */
+static void sixel_detect(Terminal *term)
+{
+    unsigned params[3] = { 0, 0, 0 };
+    int n = 0, i, len = term->osc_strlen;
+    const char *s = term->osc_string;
+
+    if (term->osc_type != OSCLIKE_DCS || len < 1 || len > 32 ||
+        s[len - 1] != 'q' || !conf_get_bool(term->conf, CONF_sixel_images))
+        return;
+    for (i = 0; i < len - 1; i++) {
+        if (s[i] == ';') {
+            if (++n > 2)
+                return;
+        } else if (s[i] >= '0' && s[i] <= '9') {
+            if (params[n] < 100000)
+                params[n] = params[n] * 10 + (unsigned)(s[i] - '0');
+        } else {
+            return;
+        }
+    }
+    kitty_gfx_sixel_start(term, params, n + 1);
+    term->osc_strlen = 0;
+}
+#endif
+
 static void osc_addchar(Terminal *term, unsigned char c)
 {
+#ifdef KITTY_SIXEL
+    if (term->sixel) {                 /* KiTTY: Sixel data, streamed */
+        kitty_gfx_sixel_feed(term, c);
+        return;
+    }
+#endif
     if ((size_t)term->osc_strlen >= term->osc_str_limit) {
         term->osc_str_overflow = true;
 #ifdef MOD_FAR2L
@@ -5471,6 +5590,10 @@ static void osc_addchar(Terminal *term, unsigned char c)
                                : !memcmp(term->osc_string, "FilePart=", 9)) &&
         conf_get_bool(term->conf, CONF_iterm_images))
         term->osc_str_limit = OSC_STR_MAX_ITERM;
+#endif
+#ifdef KITTY_SIXEL
+    if (c == 'q' && term->osc_type == OSCLIKE_DCS)
+        sixel_detect(term);
 #endif
 }
 
@@ -7982,6 +8105,65 @@ void term_osc52_write_answer(Terminal *term, bool yes)
 }
 #endif /* MOD_PERSO */
 
+#ifdef KITTY_SIXEL
+/*
+ * KiTTY: XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S, answered as xterm answers it
+ * (charproc.c, CASE_GRAPHICS_ATTRIBUTES): exactly three parameters or no
+ * answer; CSI ? Pi ; status [; value [; value]] S. Pi 1: the colour
+ * registers, read (Pa 1), reset (2) and read-maximum (4) answer 256; Pi 2:
+ * the Sixel geometry, read answers the screen in pixels capped at the
+ * largest picture, read-maximum the largest picture. The values are fixed,
+ * so a set (Pa 3) - and for the geometry a reset - is answered status 3
+ * (failure); an unknown Pa status 2, an unknown Pi (ReGIS, 3, too) status 1.
+ */
+#define SIXEL_GEOMETRY_MAX 4096        /* 4096 x 4096: the store's 16 Mpx */
+static void sixel_xtsmgraphics(Terminal *term)
+{
+    char rep[64];
+    unsigned pi = term->esc_args[0], pa = term->esc_args[1];
+    int status, v1 = 0, v2 = 0;
+
+    if (term->esc_nargs != 3)
+        return;
+    if (pi == 1) {
+        status = pa == 1 || pa == 2 || pa == 4 ? 0 : pa == 3 ? 3 : 2;
+        v1 = 256;
+    } else if (pi == 2) {
+        status = pa == 1 || pa == 4 ? 0 : pa == 2 || pa == 3 ? 3 : 2;
+        v1 = v2 = SIXEL_GEOMETRY_MAX;
+        if (pa == 1 && term->cellpix_x > 0 && term->cellpix_y > 0) {
+            if (term->cols * term->cellpix_x < v1)
+                v1 = term->cols * term->cellpix_x;
+            if (term->rows * term->cellpix_y < v2)
+                v2 = term->rows * term->cellpix_y;
+        }
+    } else {
+        status = 1;
+    }
+    if (status != 0)
+        snprintf(rep, sizeof(rep), "\033[?%u;%dS", pi, status);
+    else if (pi == 1)
+        snprintf(rep, sizeof(rep), "\033[?1;0;%dS", v1);
+    else
+        snprintf(rep, sizeof(rep), "\033[?2;0;%d;%dS", v1, v2);
+    kitty_osc52_send_raw(term, rep, strlen(rep));
+}
+#endif
+
+/*
+ * KiTTY: the answer to DA1 (CSI c) and DECID (ESC Z). One set by CSI 50 ...
+ * c is sent as it is; otherwise, with Sixel on, a VT220 with Sixel and ANSI
+ * colour (62 ; 4 ; 22, what foot answers), off the VT102 answer as before.
+ */
+const char *term_da1_answer(Terminal *term)
+{
+#ifdef KITTY_SIXEL
+    if (!term->da1_custom && conf_get_bool(term->conf, CONF_sixel_images))
+        return "\033[?62;4;22c";
+#endif
+    return term->id_string;
+}
+
 #ifdef MOD_PERSO
 /*
  * KiTTY: the cursor after an image placement (kitty APC _G, iTerm2 OSC 1337)
@@ -8011,6 +8193,16 @@ static void gfx_cursor_advance(Terminal *term, int dx, int dy)
  */
 static void do_osc(Terminal *term)
 {
+#ifdef KITTY_SIXEL
+    /* KiTTY: the ST of a Sixel picture: placed, the cursor moved as xterm
+     * moves it (kitty_gfx_sixel_end) */
+    if (term->sixel) {
+        int dx, dy;
+        kitty_gfx_sixel_end(term, &dx, &dy);
+        gfx_cursor_advance(term, dx, dy);
+        return;
+    }
+#endif
 #ifdef MOD_FAR2L
     /*
      * KiTTY far2l terminal extensions (APC-based).  far2l announces itself with
@@ -8383,6 +8575,8 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
             assert(term->wrap);    /* we handled the non-wrapping case above */
             copy_termchar(cline, term->curs.x,
                           &term->erase_char);
+            GFX_CELLS(term->curs.y, term->curs.y,   /* KiTTY: erased */
+                      term->curs.x, term->curs.x);
             cline->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
             if (term->curs.y == term->marg_b)
                 scroll(term, term->marg_t, term->marg_b,
@@ -8417,6 +8611,8 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
 #ifdef MOD_PERSO
         cline->chars[term->curs.x].link = term->curr_link;
 #endif
+        /* KiTTY: both cells written */
+        GFX_CELLS(term->curs.y, term->curs.y, term->curs.x - 1, term->curs.x);
 
         break;
       case 1:
@@ -8432,6 +8628,8 @@ static void term_display_graphic_char(Terminal *term, unsigned long c)
 #ifdef MOD_PERSO
         cline->chars[term->curs.x].link = term->curr_link;
 #endif
+        /* KiTTY: the cell written */
+        GFX_CELLS(term->curs.y, term->curs.y, term->curs.x, term->curs.x);
 
         break;
       case 0:
@@ -8629,6 +8827,7 @@ static size_t term_text_run(Terminal *term, const unsigned char *p, size_t n)
             cline->chars[x0 + i].link = term->curr_link;
         }
         kitty_kd_cols(term, term->curs.y, x0 > 0 ? x0 - 1 : 0, x0 + k + 1);
+        GFX_CELLS(term->curs.y, term->curs.y, x0, x0 + k - 1);
         /* exactly what the ordinary path logs: ASCII and code points below
          * U+0100, a byte each */
         if (term->logtype == LGTYP_ASCII && term->logctx)
@@ -9109,6 +9308,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                 check_boundary(term, term->curs.x+1, term->curs.y);
                 copy_termchar(scrlineptr(term->curs.y),
                               term->curs.x, &term->erase_char);
+                GFX_CELLS(term->curs.y, term->curs.y,   /* KiTTY: erased */
+                          term->curs.x, term->curs.x);
             }
             seen_disp_event(term);
         } else
@@ -9343,6 +9544,9 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     term->termstate = TOPLEVEL;
                     break;
                 }
+#ifdef KITTY_SIXEL
+                kitty_gfx_sixel_abort(term);   /* KiTTY: a Sixel abandoned */
+#endif
                 /* else fall through */
               case SEEN_ESC:
                 if (c >= ' ' && c <= '/') {
@@ -9447,8 +9651,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                   case 'Z':            /* DECID: terminal type query */
                     compatibility(VT100);
                     if (term->ldisc)
-                        ldisc_send(term->ldisc, term->id_string,
-                                   strlen(term->id_string), false);
+                        ldisc_send(term->ldisc, term_da1_answer(term),
+                                   strlen(term_da1_answer(term)), false);
                     break;
                   case 'c':            /* RIS: restore power-on settings */
                     compatibility(VT100);
@@ -9485,6 +9689,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         }
                         ldata->lattr = LATTR_NORM;
                     }
+                    /* KiTTY: every cell written */
+                    GFX_CELLS(0, term->rows - 1, 0, term->cols - 1);
                     if (term->scroll_on_disp)
                         term->disptop = 0;
                     seen_disp_event(term);
@@ -9693,6 +9899,27 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         if (term->esc_args[0] == 996)
                             term_colour_scheme_report(term);
                         break;
+#ifdef KITTY_SIXEL
+                      case ANSI_QUE('S'):
+                        /* KiTTY: XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S, with
+                         * Sixel on (off: silence, as before) */
+                        if (conf_get_bool(term->conf, CONF_sixel_images))
+                            sixel_xtsmgraphics(term);
+                        break;
+#endif
+                      case ANSI('q', '>'):
+                        /* KiTTY: XTVERSION, CSI > q or CSI > 0 q, answered
+                         * DCS > | KiTTY++ <version> ST; other parameters get
+                         * no answer, as in xterm */
+                        if (term->esc_nargs <= 1 && term->esc_args[0] == 0) {
+                            char rep[96];
+                            const char *paren = strstr(ver, " (");
+                            int n = paren ? (int)(paren - ver) : (int)strlen(ver);
+                            snprintf(rep, sizeof(rep), "\033P>|KiTTY++ %.*s\033\\",
+                                     n > 60 ? 60 : n, ver);
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                        }
+                        break;
                       case ANSI('u', '>'):
                         /* KiTTY: kitty keyboard protocol, push flags (0 when
                          * omitted) on the shown screen's stack; a full stack
@@ -9873,8 +10100,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         compatibility(VT100);
                         /* This is the response for a VT102 */
                         if (term->ldisc)
-                            ldisc_send(term->ldisc, term->id_string,
-                                       strlen(term->id_string), false);
+                            ldisc_send(term->ldisc, term_da1_answer(term),
+                                       strlen(term_da1_answer(term)), false);
                         break;
                       case 'n':       /* DSR: cursor position query */
                         if (term->ldisc) {
@@ -10437,6 +10664,8 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         check_boundary(term, term->curs.x, term->curs.y);
                         check_boundary(term, term->curs.x+n, term->curs.y);
                         check_selection(term, term->curs, cursplus);
+                        /* KiTTY: the cells erased */
+                        GFX_CELLS(term->curs.y, term->curs.y, p, p + n - 1);
                         while (n--)
                             copy_termchar(cline, p++,
                                           &term->erase_char);
@@ -10614,6 +10843,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                 strcat(term->id_string, lbuf);
                             }
                             strcat(term->id_string, "c");
+                            term->da1_custom = true;   /* KiTTY: it wins */
                         }
 #if 0
                         /* Is this a good idea ?
@@ -10788,6 +11018,12 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         osc_addchar(term, c);
                         break;
                     }
+#endif
+#ifdef KITTY_SIXEL
+                    /* KiTTY: nor for Sixel data, which xterm reads past
+                     * white space: an encoder may break its lines */
+                    if (term->sixel)
+                        break;
 #endif
                     /* CR or LF aborts */
                     term->termstate = TOPLEVEL;

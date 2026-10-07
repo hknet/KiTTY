@@ -575,6 +575,7 @@ add_executable(test_osc52
   # KiTTY: the kitty graphics protocol (APC _G), called from terminal.c under MOD_PERSO
   ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sixel.c   # KiTTY: Sixel, the decoder
   # far2l's own base64, and its include dir below: MOD_FAR2L makes terminal.c
   # include cdecode.h/cencode.h, which live under kitty/far2l/ and are not on the
   # default include path.
@@ -629,6 +630,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx.c               # KiTTY: kitty graphics, as test_osc52
   ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sixel.c             # KiTTY: Sixel, as test_osc52
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
   ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
@@ -760,6 +762,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_far2l_image_term.c   # KiTTY: far2l images - the terminal side
   ${KITTY_DIR}/kitty_gfx.c        # KiTTY: kitty graphics protocol (APC _G) - the store, parser and placements
   ${KITTY_DIR}/kitty_gfx_term.c   # KiTTY: kitty graphics protocol - the terminal side
+  ${KITTY_DIR}/kitty_sixel.c      # KiTTY: Sixel graphics - the decoder, into the same store
   ${KITTY_DIR}/kitty_wic.c   # KiTTY: PNG/JPEG through WIC - far2l images, background image, /screenshot
   ${KITTY_DIR}/kitty_transfer.c
   ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)

@@ -18,6 +18,9 @@ in KiTTY++ and what the host needs.
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
 | Clipboard with types, paste events | OSC 5522 | the same as OSC 52 | `kitten clipboard` |
 | File transfer through the terminal | OSC 5113 | **Connection > File-Transfer-Settings**, **Transfers & Tools > OSC 5113 (kitten)** | `kitten transfer` |
+| Inline images, kitty graphics | APC `_G` | **Terminal > Features > Images > Show inline images (kitty graphics protocol)**, on | Nothing; programs: `kitten icat`, `chafa -f kitty`, `timg -pk`, pi ([below](#inline-images)) |
+| Inline images, iTerm2 | OSC 1337 `File=` | **Terminal > Features > Images > Show inline images (iTerm2 OSC 1337)**, on | Nothing; programs: `imgcat`, `chafa -f iterm`, `timg -pi` |
+| Inline images, Sixel | DCS `q` | **Terminal > Features > Images > Show inline images (Sixel)**, on | Nothing; programs: `chafa -f sixels`, `timg` (finds it by itself), img2sixel, lsix |
 | True colour and terminal name | `COLORTERM`, `TERM_PROGRAM` (environment, not OSC) | **Application > KiTTY++ Settings > Terminal > Send COLORTERM and TERM_PROGRAM to the server**, on | SSH: `AcceptEnv COLORTERM TERM_PROGRAM` in `sshd_config` ([below](#colorterm-and-term_program)) |
 
 Details of each feature: [FEATURES.md](../FEATURES.md). Inside tmux, GNU
@@ -44,6 +47,29 @@ then reload sshd (`systemctl reload ssh` or `sshd`). Check from a new
 session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`. The Event Log lists a
 variable the server refused. Without access to `sshd_config`, set
 `COLORTERM=truecolor` in the shell's startup file instead.
+
+## Inline images
+
+Nothing to install on the host besides the program that draws: the three
+protocols travel in the terminal stream like text. How a program picks one:
+
+- **Sixel** is found by itself: KiTTY++ reports it in its device
+  attributes (`CSI c`). `timg` without options uses Sixel in KiTTY++.
+- **kitty graphics and iTerm2** are found by name. Programs look for
+  `TERM=xterm-kitty`, or match the terminal's name (`CSI > q`, answered
+  `KiTTY++ <version>`) against a list that does not know KiTTY++ yet. Name
+  the protocol: `timg -pk` (kitty), `timg -pi` (iTerm2), `chafa -f kitty`.
+  Setting the session's terminal type to `xterm-kitty` (**Connection >
+  Login > Terminal details > Terminal-type string**) also works, but needs
+  kitty's terminfo on the host (Debian/Ubuntu: `kitty-terminfo`) and
+  promises programs a few kitty features KiTTY++ does not have (curly and
+  coloured underlines, kitty's remote control).
+
+Inside tmux, pictures need passthrough (`set -g allow-passthrough on`,
+tmux 3.3 and later) and a program that wraps its sequences for tmux (chafa
+and timg do when they see tmux); tmux does not keep them on its redraws.
+Sixel inside tmux needs a tmux built with Sixel support (3.4 and later).
+Not measured here.
 
 ## Shell integration (bash, zsh, fish)
 

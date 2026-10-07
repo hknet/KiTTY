@@ -800,6 +800,7 @@ void test_simple(void)
     test_bool_simple(CONF_kscp_drop_typepath, "KscpDropTypePath", false);
     test_bool_simple(CONF_kitty_graphics, "KittyGraphics", true);   /* KiTTY: inline images */
     test_bool_simple(CONF_iterm_images, "ItermImages", true);       /* KiTTY: iTerm2 images */
+    test_bool_simple(CONF_sixel_images, "SixelImages", true);       /* KiTTY: Sixel */
     test_bool_simple(CONF_no_applic_c, "NoApplicationCursors", false);
     test_bool_simple(CONF_no_applic_k, "NoApplicationKeys", false);
     test_bool_simple(CONF_no_mouse_rep, "NoMouseReporting", false);
