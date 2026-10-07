@@ -248,6 +248,13 @@ add_executable(test_far2l_images
   test/test_far2l_images.c
   kitty/kitty_far2l_image.c)
 
+# KiTTY: unit test for the kitty graphics protocol core - parser, chunks,
+# store, placements, deletion, replies, line movement (kitty/kitty_gfx.c is
+# plain C, no Windows headers).
+add_executable(test_gfx
+  test/test_gfx.c
+  kitty/kitty_gfx.c)
+
 add_executable(test_cert_expr
   utils/cert-expr.c)
 target_compile_definitions(test_cert_expr PRIVATE TEST)
@@ -394,6 +401,7 @@ foreach(t
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
 kitty_add_test(test_far2l_images) # KiTTY: far2l images
+kitty_add_test(test_gfx)          # KiTTY: kitty graphics protocol core
 if(KITTY_CTEST_MACHINE_STATE)
   kitty_add_test(test_storage_roundtrip machine-state)
 endif()

@@ -32,6 +32,8 @@
 #include "terminal.h"
 #include "../kitty/kitty_far2l_image.h"        /* KiTTY: far2l images */
 #include "../kitty/kitty_far2l_image_term.h"
+#include "../kitty/kitty_gfx.h"                /* KiTTY: kitty graphics (APC _G) */
+#include "../kitty/kitty_gfx_term.h"
 #include <objbase.h>                    /* CoInitialize: WIC for far2l PNG */
 
 void modalfatalbox(const char *p, ...)
@@ -2993,6 +2995,308 @@ static void test_kitty_keyboard_stack(Mock *mk)
     feed_seq(mk, "\033[?1049l");
 }
 
+/*
+ * KiTTY: the kitty graphics protocol through the terminal (kitty_gfx_term.c):
+ * a raw image placed at the cursor, answered through the raw seam, visible
+ * through term_gfx_visible, the cursor moved; the anchors across every
+ * line-moving path - a scroll into the scrollback and off its end, a region
+ * scroll, IL/DL, ED 2, ED 3, the alternate screen, a resize; a sequence over
+ * the ceiling answered EFBIG; the setting off; CSI 16 t; a reset.
+ */
+static size_t gfx_b64(const unsigned char *in, size_t n, char *out)
+{
+    static const char tab[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t i, o = 0;
+    for (i = 0; i < n; i += 3) {
+        unsigned v = in[i] << 16;
+        if (i + 1 < n) v |= in[i + 1] << 8;
+        if (i + 2 < n) v |= in[i + 2];
+        out[o++] = tab[(v >> 18) & 63];
+        out[o++] = tab[(v >> 12) & 63];
+        out[o++] = i + 1 < n ? tab[(v >> 6) & 63] : '=';
+        out[o++] = i + 2 < n ? tab[v & 63] : '=';
+    }
+    out[o] = '\0';
+    return o;
+}
+
+/* Sends APC _G <ctl>;<base64 of w*h red RGB pixels> (no payload for w 0)
+ * and returns what went back (osc52_last_send, "" when nothing). */
+static const char *gfx_send(Mock *mk, const char *ctl, int w, int h)
+{
+    size_t npx = (size_t)w * h, len = 0, cap = strlen(ctl) + npx * 4 + 16;
+    char *seq = snewn(cap, char);
+    unsigned char *px = NULL;
+    size_t i;
+    memcpy(seq, "\033_G", 3); len = 3;
+    memcpy(seq + len, ctl, strlen(ctl)); len += strlen(ctl);
+    if (w > 0) {
+        px = snewn(npx * 3, unsigned char);
+        for (i = 0; i < npx; i++) {
+            px[i * 3] = 255; px[i * 3 + 1] = 0; px[i * 3 + 2] = 0;
+        }
+        seq[len++] = ';';
+        len += gfx_b64(px, npx * 3, seq + len);
+        sfree(px);
+    }
+    seq[len++] = '\033';
+    seq[len++] = '\\';
+    counters_reset();
+    osc52_last_send[0] = '\0';
+    term_data(mk->term, seq, len);
+    term_update(mk->term);
+    sfree(seq);
+    return osc52_last_send;
+}
+
+/* The visible placement of image id, or NULL. */
+static const GfxVisible *gfx_vis(Mock *mk, unsigned id)
+{
+    static GfxVisible v[16];
+    int n = term_gfx_visible(mk->term, v, 16), i;
+    for (i = 0; i < n; i++)
+        if (v[i].pl->image_id == id)
+            return &v[i];
+    return NULL;
+}
+
+static void gfx_expect_row(Mock *mk, const char *what, unsigned id, int row)
+{
+    const GfxVisible *v = gfx_vis(mk, id);
+    if (!v) {
+        if (row >= 0) {
+            printf("   image %u not visible, want row %d\n", id, row);
+            fail(what, "the placement is not where it should be");
+        }
+        return;
+    }
+    if (row < 0) {
+        printf("   image %u visible at row %d, want none\n", id, v->r0);
+        fail(what, "a placement that should have gone is still shown");
+    } else if (v->r0 != row) {
+        printf("   image %u at row %d, want %d\n", id, v->r0, row);
+        fail(what, "the placement is not where it should be");
+    }
+}
+
+static void test_kitty_graphics(Mock *mk)
+{
+    Terminal *term = mk->term;
+    const GfxVisible *v;
+    const char *r;
+    int i;
+
+    term_size(term, 24, 80, 100);
+    term_notify_cell_size_pixels(term, 8, 16);
+    feed_seq(mk, "\033[r\033[2J\033[H");
+
+    /* CSI 16 t: the cell size, height first, through the raw seam */
+    expect_reply(mk, "gfx: CSI 16 t", "\033[16t", "\033[6;16;8t");
+
+    /* a 16 x 32 image at row 5, column 3: 2 x 2 cells, answered OK, the
+     * cursor after its right edge on its last row */
+    feed_seq(mk, "\033[5;3H");
+    r = gfx_send(mk, "a=T,f=24,s=16,v=32,i=1", 16, 32);
+    if (strcmp(r, "\033_Gi=1;OK\033\\"))
+        fail("gfx: place", "the placement was not answered OK");
+    v = gfx_vis(mk, 1);
+    if (!v || v->c0 != 2 || v->r0 != 4 || v->c1 != 3 || v->r1 != 5 ||
+        v->dx0 != 16 || v->dy0 != 64 || v->dx1 != 32 || v->dy1 != 96)
+        fail("gfx: place", "the placement is not at the cursor cell");
+    if (term->curs.x != 4 || term->curs.y != 5)
+        fail("gfx: place", "the cursor did not move past the image");
+    /* C=1 leaves the cursor alone; at the right edge it clamps */
+    feed_seq(mk, "\033[1;80H");
+    gfx_send(mk, "a=T,f=24,s=16,v=16,i=2,C=1", 16, 16);
+    if (term->curs.x != 79 || term->curs.y != 0)
+        fail("gfx: C=1", "the cursor moved");
+    gfx_send(mk, "a=p,i=2", 0, 0);
+    if (term->curs.x != 79 || term->curs.y != 0)
+        fail("gfx: right edge", "the cursor was not clamped to the screen");
+    gfx_send(mk, "a=d,d=I,i=2", 0, 0);
+
+    /* a scroll into the scrollback: the image follows its text, is seen
+     * again when the view scrolls back, and goes when its lines are
+     * evicted */
+    feed_seq(mk, "\033[24;1H\n\n\n");
+    gfx_expect_row(mk, "gfx: scroll 3", 1, 1);
+    feed_seq(mk, "\n\n");
+    v = gfx_vis(mk, 1);
+    if (!v || v->r0 != 0 || v->r1 != 0 || v->dy0 != -16)
+        fail("gfx: half out", "the placement half above the screen");
+    feed_seq(mk, "\n\n");
+    gfx_expect_row(mk, "gfx: scrolled out", 1, -1);
+    term->disptop = -7;
+    gfx_expect_row(mk, "gfx: scrolled back", 1, 4);
+    term->disptop = 0;
+    if (!term->gfx || term->gfx->n_pls != 1)
+        fail("gfx: scrollback", "the placement in the scrollback went");
+    for (i = 0; i < 110; i++)
+        feed_seq(mk, "\n");
+    /* the placement goes; the image keeps its id for a later a=p */
+    if (term->gfx->n_pls != 0 || !gfx_image_by_id(term->gfx, 1))
+        fail("gfx: evicted", "a placement off the end of the scrollback stayed");
+
+    /* a region scroll moves what is inside the band and leaves the rest */
+    feed_seq(mk, "\033[10;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=3", 8, 16);
+    feed_seq(mk, "\033[20;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=4", 8, 16);
+    feed_seq(mk, "\033[5;15r\033[15;1H\n");
+    gfx_expect_row(mk, "gfx: region scroll", 3, 8);
+    gfx_expect_row(mk, "gfx: outside the region", 4, 19);
+    for (i = 0; i < 5; i++)
+        feed_seq(mk, "\n");
+    gfx_expect_row(mk, "gfx: scrolled out of the region", 3, -1);
+    gfx_expect_row(mk, "gfx: outside the region still", 4, 19);
+    feed_seq(mk, "\033[r");
+
+    /* IL and DL */
+    feed_seq(mk, "\033[10;1H\033[2L");
+    gfx_expect_row(mk, "gfx: IL", 4, 21);
+    feed_seq(mk, "\033[M");
+    gfx_expect_row(mk, "gfx: DL", 4, 20);
+    feed_seq(mk, "\033[21;1H\033[M");
+    gfx_expect_row(mk, "gfx: DL on the image", 4, -1);
+
+    /* ED 2 takes the screen's images, not the scrollback's; ED 3 takes
+     * the scrollback's */
+    feed_seq(mk, "\033[5;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=5", 8, 16);
+    feed_seq(mk, "\033[24;1H\n\n\n\n\n\n");
+    feed_seq(mk, "\033[12;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=6", 8, 16);
+    feed_seq(mk, "\033[2J");
+    gfx_expect_row(mk, "gfx: ED 2", 6, -1);
+    term->disptop = -6;
+    gfx_expect_row(mk, "gfx: ED 2 spares the scrollback", 5, 4);
+    term->disptop = 0;
+    feed_seq(mk, "\033[3J");
+    if (term->gfx->n_pls != 0)
+        fail("gfx: ED 3", "a placement survived the scrollback's clearing");
+
+    /* the alternate screen: its placements live while it is shown */
+    feed_seq(mk, "\033[8;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=7", 8, 16);
+    feed_seq(mk, "\033[?1049h\033[3;1H");
+    gfx_expect_row(mk, "gfx: alt hides main", 7, -1);
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=8", 8, 16);
+    gfx_expect_row(mk, "gfx: alt placement", 8, 2);
+    /* the alternate screen scrolled back (erase_to_scrollback's virtual
+     * scrollback) shows the main screen's lines: no placement is drawn */
+    term->disptop = -1;
+    gfx_expect_row(mk, "gfx: alt scrolled back", 8, -1);
+    gfx_expect_row(mk, "gfx: alt scrolled back, main", 7, -1);
+    term->disptop = 0;
+    gfx_expect_row(mk, "gfx: alt placement back", 8, 2);
+    feed_seq(mk, "\033[?1049l");
+    gfx_expect_row(mk, "gfx: alt left", 8, -1);
+    gfx_expect_row(mk, "gfx: main back", 7, 7);
+    feed_seq(mk, "\033[?1049h");
+    gfx_expect_row(mk, "gfx: alt starts blank", 8, -1);
+    feed_seq(mk, "\033[?1049l");
+
+    /* a resize: rows pushed into the scrollback keep the anchor, and give
+     * it back when they return */
+    feed_seq(mk, "\033[20;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=9", 8, 16);
+    feed_seq(mk, "\033[24;1H");
+    term_size(term, 20, 80, 100);
+    gfx_expect_row(mk, "gfx: shrink", 9, 15);
+    gfx_expect_row(mk, "gfx: shrink, the other", 7, 3);
+    term_size(term, 24, 80, 100);
+    gfx_expect_row(mk, "gfx: grow", 9, 19);
+    gfx_expect_row(mk, "gfx: grow, the other", 7, 7);
+    term_size(term, 24, 80, 2);        /* the scrollback trimmed */
+    gfx_expect_row(mk, "gfx: scrollback trimmed", 9, 19);
+    term_size(term, 24, 80, 100);
+    /* a shrink with the cursor at the top deletes the bottom rows: the
+     * image on them does not come back when the screen grows */
+    feed_seq(mk, "\033[22;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=17", 8, 16);
+    feed_seq(mk, "\033[1;1H");
+    term_size(term, 20, 80, 100);
+    gfx_expect_row(mk, "gfx: bottom rows cut", 17, -1);
+    gfx_expect_row(mk, "gfx: the last row kept", 9, 19);
+    term_size(term, 24, 80, 100);
+    gfx_expect_row(mk, "gfx: cut rows stay empty", 17, -1);
+    gfx_expect_row(mk, "gfx: the other survives the cut", 7, 7);
+
+    /* a region scroll from row 1 with a scrollback: the band's rows enter
+     * it, the rows below the band keep their place on the screen */
+    feed_seq(mk, "\033[10;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=14", 8, 16);
+    feed_seq(mk, "\033[20;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=15", 8, 16);
+    feed_seq(mk, "\033[1;15r\033[15;1H\n");
+    gfx_expect_row(mk, "gfx: region sb scroll, inside", 14, 8);
+    gfx_expect_row(mk, "gfx: region sb scroll, below", 15, 19);
+    feed_seq(mk, "\033[r");
+    gfx_send(mk, "a=d,d=i,i=14", 0, 0);
+    gfx_send(mk, "a=d,d=i,i=15", 0, 0);
+
+    /* no scrollback at all (the harness default): a scroll drops what
+     * leaves the screen instead of parking it */
+    term_size(term, 24, 80, 0);
+    feed_seq(mk, "\033[5;1H");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=16", 8, 16);
+    feed_seq(mk, "\033[24;1H\n\n");
+    gfx_expect_row(mk, "gfx: no scrollback, scrolled", 16, 2);
+    feed_seq(mk, "\n\n\n\n");
+    /* images 7 and 9 remain on the screen, 16 left it */
+    if (term->gfx->n_pls != 2 || gfx_vis(mk, 16) || !gfx_vis(mk, 7) ||
+        !gfx_vis(mk, 9))
+        fail("gfx: no scrollback", "a placement off the top was kept");
+    term_size(term, 24, 80, 100);
+
+    /* over the ceiling: cut, answered EFBIG, nothing kept */
+    {
+        size_t big = OSC_STR_MAX_GFX + 4096, n = 0;
+        char *seq = snewn(big + 64, char);
+        static const char ctl[] = "\033_Ga=T,f=24,s=1,v=1,i=10;";
+        memcpy(seq, ctl, sizeof(ctl) - 1); n = sizeof(ctl) - 1;
+        memset(seq + n, 'A', big); n += big;
+        seq[n++] = '\033';
+        seq[n++] = '\\';
+        counters_reset();
+        osc52_last_send[0] = '\0';
+        term_data(term, seq, n);
+        term_update(term);
+        sfree(seq);
+        if (strncmp(osc52_last_send, "\033_Gi=10;EFBIG:", 14))
+            fail("gfx: ceiling", "an over-long sequence was not answered EFBIG");
+        if (gfx_image_by_id(term->gfx, 10) || term->gfx->pend.active)
+            fail("gfx: ceiling", "something of the cut sequence was kept");
+    }
+    /* a chunked upload: the first chunk is silent, the last answers */
+    feed_seq(mk, "\033[2;1H");
+    r = gfx_send(mk, "a=T,f=24,s=8,v=16,i=11,m=1", 8, 8);
+    if (r[0])
+        fail("gfx: chunk", "the first chunk was answered");
+    r = gfx_send(mk, "m=0", 8, 8);
+    if (strcmp(r, "\033_Gi=11;OK\033\\"))
+        fail("gfx: chunk", "the last chunk was not answered OK");
+    gfx_expect_row(mk, "gfx: chunked placement", 11, 1);
+
+    /* the setting off: ignored, nothing stored, nothing answered */
+    conf_set_bool(term->conf, CONF_kitty_graphics, false);
+    r = gfx_send(mk, "a=T,f=24,s=8,v=16,i=12", 8, 16);
+    if (osc52_sends != 0 || gfx_image_by_id(term->gfx, 12))
+        fail("gfx: setting off", "the sequence was served");
+    conf_set_bool(term->conf, CONF_kitty_graphics, true);
+
+    /* a=d without keys: the screen's placements; a reset: everything */
+    gfx_send(mk, "a=d", 0, 0);
+    if (term->gfx->n_pls != 0)
+        fail("gfx: delete all", "placements remained");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=13", 8, 16);
+    feed_seq(mk, "\033c");
+    if (term->gfx->n_pls != 0 || term->gfx->n_imgs != 0)
+        fail("gfx: RIS", "the store was not emptied");
+    term_notify_cell_size_pixels(term, 0, 0);
+}
+
 static void test_write_confirm(Mock *mk)
 {
     static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
@@ -3329,6 +3633,7 @@ int main(void)
     test_far2l_notify_and_overflow(mk); /* KiTTY: far2l 'n'; over-ceiling answers */
     test_modkeys_and_colour_scheme(mk); /* KiTTY: XTMODKEYS; mode 2031 reports */
     test_kitty_keyboard_stack(mk);      /* KiTTY: kitty keyboard protocol flags */
+    test_kitty_graphics(mk);            /* KiTTY: kitty graphics placements */
 
     mock_free(mk);
 

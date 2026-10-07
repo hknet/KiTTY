@@ -5997,6 +5997,20 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_checkbox(s, KT_FEATURES_FAILED_MARKS, NO_SHORTCUT,
                       HELPCTX(kitty_failedmarks), conf_checkbox_handler,
                       I(CONF_failed_marks));
+
+        /* Inline images (kitty graphics protocol): a group of its own. */
+        s = ctrl_getset(b, "Terminal/Features", "images",
+                        KT_FEATURES_IMAGES_GROUP);
+        ctrl_checkbox(s, KT_FEATURES_KITTY_GRAPHICS, NO_SHORTCUT,
+                      HELPCTX(kitty_kittygraphics), conf_checkbox_handler,
+                      I(CONF_kitty_graphics));
+#ifdef MOD_FAR2L
+        /* far2l's pictures, moved here from the Remote clipboard panel:
+         * both image switches in one place. */
+        ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES, NO_SHORTCUT,
+                      HELPCTX(kitty_far2l_images),
+                      conf_checkbox_handler, I(CONF_far2l_images));
+#endif
     }
 }
 
@@ -6711,17 +6725,6 @@ void scb_panel_selection(struct controlbox *b)
     ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_ONLY_WHILE_THIS_WINDOW_HAS,
                   NO_SHORTCUT, HELPCTX(kitty_osc52),
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
-
-#ifdef MOD_FAR2L
-    /* KiTTY (far2l): the pictures far2l places over the text. Here, beside
-     * the far2l clipboard, because this panel is where the far2l extensions
-     * are set; a set of its own (no title), so it is not read as one more
-     * clipboard permission. */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard", "far2limages", NULL);
-    ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES, NO_SHORTCUT,
-                  HELPCTX(kitty_far2l_images),
-                  conf_checkbox_handler, I(CONF_far2l_images));
-#endif
 
     /*
      * The Window/Selection/Remote clipboard/Limits panel.

@@ -1146,6 +1146,9 @@ CONF_OPTION(far2l_client_ids, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Fa
 /* KiTTY (far2l): show the images far2l places over the text (request 'i').
  * Off: far2l is told the terminal has no image support. */
 CONF_OPTION(far2l_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("Far2lImages"),)
+/* KiTTY: the kitty graphics protocol (APC _G, kitty/kitty_gfx.h): inline
+ * images that scroll with the text. Off: the sequence is ignored. */
+CONF_OPTION(kitty_graphics, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("KittyGraphics"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*

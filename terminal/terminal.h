@@ -247,6 +247,12 @@ struct terminal_tag {
  * refuses anything absurd. A write packet that does not fit is a protocol
  * violation and is answered EINVAL, not a buffer problem. */
 #define OSC_STR_MAX_5522 (16 * 1024)
+/* KiTTY: an APC _G of the kitty graphics protocol (kitty/kitty_gfx.h) - the
+ * protocol chunks at 4 KB of base64, so one sequence is never large; 256 KB
+ * takes any sane chunk and refuses a stream that never ends. A cut sequence is
+ * answered EFBIG (gfx_command_cut). Raised in osc_addchar once the first byte
+ * says 'G', with the setting on. */
+#define OSC_STR_MAX_GFX (256 * 1024)
 /* The spec's floor for a WRITE transaction: a terminal "must accept at least
  * 64MB of data" before it may answer EFBIG. The user's ClipboardMaxMB still
  * applies to OSC 52 and far2l unchanged; a 5522 write gets the larger of the two,
@@ -317,6 +323,16 @@ struct terminal_tag {
     /* KiTTY far2l images: the per-terminal image store (kitty_far2l_image.h),
      * NULL until the first image request. Unconditional storage, as above. */
     struct Far2lImageStore *far2l_images;
+    /* KiTTY: the kitty graphics protocol (kitty/kitty_gfx_term.c): the
+     * image and placement store, NULL until the first APC _G; gfx_sb_base
+     * is the absolute number of scrollback entry 0 (grows as lines are
+     * evicted), so the main screen's row 0 is gfx_sb_base + the scrollback
+     * count and the alternate screen's is 0. cellpix_x/y is the cell size
+     * in pixels the window last reported (term_notify_cell_size_pixels;
+     * CSI 16 t), 0 until it has. Unconditional storage, as above. */
+    struct GfxStore *gfx;
+    long gfx_sb_base;
+    int cellpix_x, cellpix_y;
     /* The last paste gesture the window forwarded to far2l as a key or mouse
      * event (Ctrl+V, Shift+Ins, a middle-button press): GETTICKCOUNT() at the
      * time, valid once far2l_paste_gesture_seen is set. In event mode these

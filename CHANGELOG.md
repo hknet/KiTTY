@@ -99,9 +99,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   agents can read a dropped picture on the server. Connection > SSH > KSCP >
   Type the remote path after a drop upload (`KscpDropTypePath`, off by
   default); Shift held while dropping does it for that drop.
+- **Inline images (kitty graphics protocol).** pi, `kitten icat` and other
+  programs can show PNG and raw RGB/RGBA pictures in the window, sent in the
+  data stream. A picture sits on the cells it was placed on, scrolls with the
+  text into the scrollback and is drawn by both renderers; a picture placed
+  under the text (z < 0) is not drawn yet. Files or shared memory named by
+  the host are never read. Terminal > Features > Images > Show inline images
+  (`KittyGraphics`, on by default). `CSI 16 t` (cell size in pixels) is now
+  answered.
 
 ### Changed
 
+- **"Show far2l images" moved to Terminal > Features > Images,** beside the
+  new switch for inline images (it was on Window > Copy & Paste > Remote
+  clipboard). The setting itself is unchanged.
 - **The default terminal type is now `xterm-256color`** (was `xterm`), as
   Windows Terminal and most terminals send, so programs use 256 colours. A
   session saved before keeps the type it was saved with, and so do new

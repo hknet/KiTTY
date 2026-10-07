@@ -216,6 +216,7 @@ static void setup_clipboards(Terminal *, Conf *);
 #include "../kitty/kitty_far2l_input.h"
 #include "../kitty/kitty_far2l_image.h"        /* far2l images: the store */
 #include "../kitty/kitty_far2l_image_term.h"   /* ...and the terminal's side */
+#include "../kitty/kitty_wic.h"                /* ...PNG through WIC */
 
 static struct {
     /* The character each held key produced on its press, reported again with
@@ -505,23 +506,18 @@ static bool far2l_cell_size(TermWin *tw, int *cw, int *ch, int *ox, int *oy)
     return wgs->font_width > 0 && wgs->font_height > 0;
 }
 
-static void far2l_overlay(WinGuiSeat *wgs)
+/* The far2l images as overlay items (kitty_overlay_frame): at most max of
+ * them into items, those inside clip; returns the count. */
+static int far2l_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
+                               int max, const RECT *clip)
 {
-    KittyOverlayItem items[KITTY_OVERLAY_MAX];
     Far2lImageStore *st;
-    RECT clip;
     int i, n = 0;
 
-    if (!wgs->painter || !wgs->term)
-        return;
     if (wgs->session_closed)
         kitty_far2l_images_reset(wgs->term);
     st = wgs->term->far2l_images;
-    clip.left = wgs->offset_width;
-    clip.top = wgs->offset_height;
-    clip.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
-    clip.bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
-    for (i = 0; st && i < st->n && n < KITTY_OVERLAY_MAX; i++) {
+    for (i = 0; st && i < st->n && n < max; i++) {
         const Far2lImage *img = &st->imgs[i];
         Far2lRect r;
         KittyOverlayItem *it = &items[n];
@@ -531,20 +527,182 @@ static void far2l_overlay(WinGuiSeat *wgs)
         it->dst.top = r.y0 + wgs->offset_height;
         it->dst.right = r.x1 + wgs->offset_width;
         it->dst.bottom = r.y1 + wgs->offset_height;
-        if (it->dst.right <= clip.left || it->dst.left >= clip.right ||
-            it->dst.bottom <= clip.top || it->dst.top >= clip.bottom)
+        if (it->dst.right <= clip->left || it->dst.left >= clip->right ||
+            it->dst.bottom <= clip->top || it->dst.top >= clip->bottom)
             continue;
         it->bgra = img->px;
         it->w = img->w;
         it->h = img->h;
         it->opaque = img->opaque;
+        it->sx = it->sy = 0;           /* the whole image */
+        it->sw = img->w;
+        it->sh = img->h;
         it->serial = img->serial;
         n++;
     }
+    return n;
+}
+#endif /* MOD_FAR2L */
+
+#ifdef MOD_PERSO
+#include "../kitty/kitty_gfx.h"                /* kitty graphics: the store */
+#include "../kitty/kitty_gfx_term.h"           /* ...and the terminal's side */
+
+/*
+ * KiTTY kitty graphics (kitty/kitty_gfx_term.c): the two decoders the core
+ * takes from its environment. PNG through WIC, as the far2l images; zlib
+ * through the SSH zlib decompressor (ssh/zlib.c), fed in slices and stopped
+ * as soon as the output exceeds what the command declared, so a small
+ * payload cannot inflate into an unbounded one.
+ */
+static bool gfx_decode_png(void *ctx, const unsigned char *data, size_t len,
+                           unsigned char **px, int *w, int *h)
+{
+    (void)ctx;
+    *px = NULL;
+    if (!kitty_wic_available())
+        return false;
+    return kitty_wic_decode(KITTY_WIC_PNG, data, len, GFX_MAX_SIDE,
+                            GFX_MAX_PIXELS, px, w, h);
+}
+
+static bool gfx_inflate(void *ctx, const unsigned char *in, size_t len,
+                        size_t max_out, unsigned char **out, size_t *outlen)
+{
+    ssh_decompressor *d;
+    unsigned char *buf = NULL;
+    size_t have = 0, cap = 0, off;
+    bool ok = true;
+    (void)ctx;
+    *out = NULL;
+    *outlen = 0;
+    /* a complete RFC 1950 stream ends in its Adler-32; the SSH decompressor
+     * expects a stream that never ends and would read those four bytes as
+     * another block, so they are not fed */
+    if (len < 6)
+        return false;
+    len -= 4;
+    d = ssh_decompressor_new(&ssh_zlib);
+    for (off = 0; off < len && ok; off += 4096) {
+        unsigned char *blk = NULL;
+        int blklen = 0;
+        size_t n = len - off < 4096 ? len - off : 4096;
+        if (!ssh_decompressor_decompress(d, in + off, (int)n, &blk, &blklen)) {
+            ok = false;
+        } else if (blklen > 0) {
+            if (have + (size_t)blklen > max_out) {
+                ok = false;
+            } else {
+                if (have + (size_t)blklen > cap) {
+                    unsigned char *nb;
+                    size_t ncap = cap ? cap * 2 : 65536;
+                    while (ncap < have + (size_t)blklen)
+                        ncap *= 2;
+                    if (ncap > max_out)
+                        ncap = max_out;
+                    nb = realloc(buf, ncap);
+                    if (!nb)
+                        ok = false;
+                    else {
+                        buf = nb;
+                        cap = ncap;
+                    }
+                }
+                if (ok) {
+                    memcpy(buf + have, blk, (size_t)blklen);
+                    have += (size_t)blklen;
+                }
+            }
+        }
+        sfree(blk);
+    }
+    ssh_decompressor_free(d);
+    if (!ok || !buf) {
+        free(buf);
+        return false;
+    }
+    *out = buf;
+    *outlen = have;
+    return true;
+}
+
+/*
+ * KiTTY: the kitty graphics placements of the view as overlay items, at
+ * most max of them into items, those inside clip; returns the count. The
+ * core gives each placement in view pixels relative to cell (0,0) with the
+ * letterbox offset applied (dx0..dy1) and its source rectangle; here the
+ * terminal's origin is added. The painters clip to the text area.
+ * Only z >= 0 is drawn over the text here; z < 0 goes under it through the
+ * background-image path (not yet: those placements are skipped).
+ */
+static int kitty_gfx_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
+                                   int max, const RECT *clip)
+{
+    static GfxVisible vis[KITTY_OVERLAY_FRAME_MAX];
+    int i, n = 0, nvis;
+
+    if (max <= 0 || !kitty_gfx_any(wgs->term))
+        return 0;
+    if (max > KITTY_OVERLAY_FRAME_MAX)
+        max = KITTY_OVERLAY_FRAME_MAX;
+    nvis = term_gfx_visible(wgs->term, vis, max);
+    for (i = 0; i < nvis; i++) {
+        const GfxVisible *v = &vis[i];
+        KittyOverlayItem *it = &items[n];
+        if (v->z < 0 || !v->img || !v->img->px)
+            continue;
+        if (v->sw <= 0 || v->sh <= 0 || v->dx1 <= v->dx0 || v->dy1 <= v->dy0)
+            continue;
+        it->dst.left = v->dx0 + wgs->offset_width;
+        it->dst.top = v->dy0 + wgs->offset_height;
+        it->dst.right = v->dx1 + wgs->offset_width;
+        it->dst.bottom = v->dy1 + wgs->offset_height;
+        if (it->dst.right <= clip->left || it->dst.left >= clip->right ||
+            it->dst.bottom <= clip->top || it->dst.top >= clip->bottom)
+            continue;
+        it->bgra = v->img->px;
+        it->w = v->img->w;
+        it->h = v->img->h;
+        it->opaque = v->img->opaque;
+        it->sx = v->sx;
+        it->sy = v->sy;
+        it->sw = v->sw;
+        it->sh = v->sh;
+        it->serial = v->img->serial;
+        n++;
+    }
+    return n;
+}
+
+/*
+ * KiTTY: the overlay of one frame - far2l images, then the kitty graphics
+ * placements, in ONE call to the painter (Direct2D takes each call as the
+ * whole overlay of the frame), clipped to the text area (never the mark
+ * strip). Called at the end of every frame (wintw_free_draw_ctx) and from
+ * WM_PAINT before the border fill.
+ */
+static void kitty_overlay_frame(WinGuiSeat *wgs)
+{
+    static KittyOverlayItem items[KITTY_OVERLAY_FRAME_MAX];
+    RECT clip;
+    int n = 0;
+
+    if (!wgs->painter || !wgs->term ||
+        wgs->font_width <= 0 || wgs->font_height <= 0)
+        return;
+    clip.left = wgs->offset_width;
+    clip.top = wgs->offset_height;
+    clip.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
+    clip.bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
+#ifdef MOD_FAR2L
+    n = far2l_overlay_items(wgs, items, KITTY_OVERLAY_MAX, &clip);
+#endif
+    n += kitty_gfx_overlay_items(wgs, items + n, KITTY_OVERLAY_FRAME_MAX - n,
+                                 &clip);
     kp_overlay(wgs->painter, items, n, &clip,
                wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
 }
-#endif /* MOD_FAR2L */
+#endif /* MOD_PERSO */
 
 /* Window layout information */
 static void reset_window(WinGuiSeat *wgs, int reinit);
@@ -2191,6 +2349,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* far2l images: the cell size and origin (kitty_far2l_image_term.c) */
         kitty_far2l_cell_hook = far2l_cell_size;
 #endif
+        /* kitty graphics: PNG and zlib decoding (kitty_gfx_term.c) */
+        kitty_gfx_decode_png_hook = gfx_decode_png;
+        kitty_gfx_inflate_hook = gfx_inflate;
 #endif
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What
@@ -2294,6 +2455,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     wgs->term = term_init(wgs->conf, &wgs->ucsdata, &wgs->termwin);
 #ifdef MOD_PERSO
+    /* the fonts were measured before the terminal existed (CSI 16 t) */
+    term_notify_cell_size_pixels(wgs->term, wgs->font_width, wgs->font_height);
     kitty_set_active_seat(wgs);
     /* -loginscript: deferred here because ReadInitScript writes the GLOBAL conf,
      * which kitty_set_active_seat has only just made valid (it was NULL during
@@ -4134,6 +4297,11 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
     /* KiTTY: a painter that caches per HFONT must drop the old ones */
     if (wgs->painter)
         kp_fonts_changed(wgs->painter);
+    /* KiTTY: the cell size, for CSI 16 t and the kitty graphics grid (a
+     * font or DPI change comes through here) */
+    if (wgs->term)
+        term_notify_cell_size_pixels(wgs->term, wgs->font_width,
+                                     wgs->font_height);
 #endif
 }
 
@@ -6751,10 +6919,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                    (p.rcPaint.right-wgs->offset_width-1)/wgs->font_width,
                    (p.rcPaint.bottom-wgs->offset_height-1)/wgs->font_height,
                    !wgs->term->window_update_pending);
-#ifdef MOD_FAR2L
-        /* KiTTY: far2l images over what was just drawn - before the border
-         * fill, which leaves the DC's clipping changed */
-        far2l_overlay(wgs);
+#ifdef MOD_PERSO
+        /* KiTTY: the overlay (far2l images, kitty graphics) over what was
+         * just drawn - before the border fill, which leaves the DC's
+         * clipping changed */
+        kitty_overlay_frame(wgs);
 #endif
 
         if (p.fErase ||
@@ -7043,6 +7212,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             GetWindowRect(hwnd, &r);
             term_notify_window_size_pixels(
                 wgs->term, r.right - r.left, r.bottom - r.top);
+#ifdef MOD_PERSO
+            /* KiTTY: and the cell size (CSI 16 t, kitty graphics) */
+            term_notify_cell_size_pixels(wgs->term, wgs->font_width,
+                                         wgs->font_height);
+#endif
         }
         if (wParam == SIZE_MINIMIZED)
             sw_SetWindowText(hwnd,
@@ -10493,6 +10667,15 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines)
     if (kitty_far2l_images_any(wgs->term))
         return false;
 #endif
+    /* Nor with kitty graphics placements on the screen shown: they move
+     * with the text, but the band's rows are drawn again instead and the
+     * images over them (the safe form). Every cell of the band, not only
+     * those whose text changed: an image over blank rows would otherwise
+     * leave its old pixels where the text stayed blank. */
+    if (kitty_gfx_any(wgs->term)) {
+        term_paint(wgs->term, 0, top, wgs->term->cols - 1, bot, false);
+        return false;
+    }
     band.left = wgs->offset_width;
     band.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
     band.top = wgs->offset_height + top * wgs->font_height;
@@ -10515,8 +10698,8 @@ static void wintw_free_draw_ctx(TermWin *tw)
         kitty_strip_paint(wgs, NULL);
     }
 #endif
-#ifdef MOD_FAR2L
-    far2l_overlay(wgs);     /* KiTTY: far2l images, over the frame's text */
+#ifdef MOD_PERSO
+    kitty_overlay_frame(wgs);   /* KiTTY: images over the frame's text */
 #endif
     kp_end(wgs->painter);   /* Direct2D presents the frame here */
     KP_T1(KP_PAINT);

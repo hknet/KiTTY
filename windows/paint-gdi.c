@@ -9,13 +9,17 @@
 #include "paint.h"
 #include "paint-widthcache.h"
 
-/* KiTTY: one far2l image as the window shows it - scaled, composited on the
- * background colour, cut to the terminal area - in a memory DC, so a frame
- * copies the part it needs instead of scaling the picture again. */
+/* KiTTY: one overlay picture as the window shows it - its source rectangle
+ * scaled to the size it is drawn at, composited on the background colour -
+ * in a memory DC, so a frame copies the part it needs instead of scaling
+ * the picture again. Keyed by the pixels (serial), the source rectangle,
+ * the drawn size and the background, not by the place: a picture that
+ * scrolls with the text keeps its copy. */
 typedef struct GdiOvCache {
     unsigned long serial;
     COLORREF bg;
-    RECT dst, region;                  /* where the picture goes; the part kept */
+    int sx, sy, sw, sh;
+    int dw, dh;
     HDC mem;
     HBITMAP bmp;
     HGDIOBJ old;
@@ -46,9 +50,9 @@ typedef struct GdiPainter {
     RECT touched;
     bool touched_any, touched_all;
     /* KiTTY: the overlay's finished pictures (gdi_overlay), kept while they
-     * are shown. */
-    GdiOvCache ovc[KITTY_OVERLAY_MAX];
-    int novc;
+     * are shown; grown to the frame with the most of them. */
+    GdiOvCache *ovc;
+    int novc, ovc_cap;
 } GdiPainter;
 
 /* Widen this frame's drawn area (right and bottom exclusive). */
@@ -400,6 +404,7 @@ static void gdi_destroy(KittyPainter *p)
     int i;
     for (i = 0; i < g->novc; i++)       /* KiTTY: the overlay's pictures */
         gdi_ovc_free(&g->ovc[i]);
+    sfree(g->ovc);
     RemovePropA(((GdiPainter *)p)->hwnd, "KiTTY.renderer");
     kitty_wc_free(&((GdiPainter *)p)->wc);
     sfree(p);
@@ -460,10 +465,15 @@ static AlphaBlend_t gdi_alphablend(void)
     return fn;
 }
 
-/* One picture, opaque: straight from its pixels, stretched to dst. */
-static void gdi_stretch(HDC hdc, const KittyOverlayItem *it, const RECT *dst)
+/* The picture's pixels in a DIB section selected into a memory DC, so that
+ * StretchBlt and AlphaBlend can read a source rectangle of them. NULL when
+ * GDI cannot provide one. */
+static HDC gdi_dib(HDC hdc, const KittyOverlayItem *it, HBITMAP *dib,
+                   HGDIOBJ *old)
 {
     BITMAPINFO bi;
+    HDC mem;
+    void *bits = NULL;
     memset(&bi, 0, sizeof(bi));
     bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bi.bmiHeader.biWidth = it->w;
@@ -471,25 +481,54 @@ static void gdi_stretch(HDC hdc, const KittyOverlayItem *it, const RECT *dst)
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
-    StretchDIBits(hdc, dst->left, dst->top,
-                  dst->right - dst->left, dst->bottom - dst->top,
-                  0, 0, it->w, it->h, it->bgra, &bi, DIB_RGB_COLORS, SRCCOPY);
+    mem = CreateCompatibleDC(hdc);
+    if (!mem)
+        return NULL;
+    *dib = CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (!*dib || !bits) {
+        if (*dib)
+            DeleteObject(*dib);
+        DeleteDC(mem);
+        return NULL;
+    }
+    memcpy(bits, it->bgra, (size_t)it->w * it->h * 4);
+    *old = SelectObject(mem, *dib);
+    return mem;
+}
+
+static void gdi_dib_free(HDC mem, HBITMAP dib, HGDIOBJ old)
+{
+    SelectObject(mem, old);
+    DeleteObject(dib);
+    DeleteDC(mem);
+}
+
+/* One picture, opaque: its source rectangle stretched to dst. */
+static void gdi_stretch(HDC hdc, const KittyOverlayItem *it, const RECT *dst)
+{
+    HBITMAP dib;
+    HGDIOBJ old;
+    HDC mem = gdi_dib(hdc, it, &dib, &old);
+    if (!mem)
+        return;
+    StretchBlt(hdc, dst->left, dst->top,
+               dst->right - dst->left, dst->bottom - dst->top,
+               mem, it->sx, it->sy, it->sw, it->sh, SRCCOPY);
+    gdi_dib_free(mem, dib, old);
 }
 
 /* One picture with transparency: the background colour, then the picture
- * blended over it through a DIB section (AlphaBlend reads a DC). Without
- * AlphaBlend the premultiplied pixels are drawn as they are, which is the
- * picture over black. */
+ * blended over it (AlphaBlend reads a DC). Without AlphaBlend the
+ * premultiplied pixels are drawn as they are, which is the picture over
+ * black. */
 static void gdi_blend(HDC hdc, const KittyOverlayItem *it, const RECT *dst,
                       COLORREF bg)
 {
     AlphaBlend_t ab = gdi_alphablend();
     HBRUSH br;
-    BITMAPINFO bi;
     HDC mem;
     HBITMAP dib;
     HGDIOBJ old;
-    void *bits = NULL;
     BLENDFUNCTION bf;
 
     br = CreateSolidBrush(bg);
@@ -499,34 +538,16 @@ static void gdi_blend(HDC hdc, const KittyOverlayItem *it, const RECT *dst,
         gdi_stretch(hdc, it, dst);
         return;
     }
-    memset(&bi, 0, sizeof(bi));
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = it->w;
-    bi.bmiHeader.biHeight = -it->h;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
-    mem = CreateCompatibleDC(hdc);
+    mem = gdi_dib(hdc, it, &dib, &old);
     if (!mem)
         return;
-    dib = CreateDIBSection(mem, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
-    if (!dib || !bits) {
-        if (dib)
-            DeleteObject(dib);
-        DeleteDC(mem);
-        return;
-    }
-    memcpy(bits, it->bgra, (size_t)it->w * it->h * 4);
-    old = SelectObject(mem, dib);
     bf.BlendOp = AC_SRC_OVER;
     bf.BlendFlags = 0;
     bf.SourceConstantAlpha = 255;
     bf.AlphaFormat = AC_SRC_ALPHA;
     ab(hdc, dst->left, dst->top, dst->right - dst->left, dst->bottom - dst->top,
-       mem, 0, 0, it->w, it->h, bf);
-    SelectObject(mem, old);
-    DeleteObject(dib);
-    DeleteDC(mem);
+       mem, it->sx, it->sy, it->sw, it->sh, bf);
+    gdi_dib_free(mem, dib, old);
 }
 
 static void gdi_ovc_free(GdiOvCache *c)
@@ -536,29 +557,43 @@ static void gdi_ovc_free(GdiOvCache *c)
     DeleteDC(c->mem);
 }
 
-/* The cached, finished pixels of one picture: scaled, composited on the
- * background, and only the part inside the terminal area. Built once per
- * picture, size, place and background; NULL when it cannot be (or the
- * cache is full: the caller then draws straight from the pixels). */
+/* Whether a cached picture is this item as drawn on this background. */
+static bool gdi_ovc_match(const GdiOvCache *c, const KittyOverlayItem *it,
+                          COLORREF bg)
+{
+    return c->serial == it->serial && c->bg == bg &&
+           c->sx == it->sx && c->sy == it->sy &&
+           c->sw == it->sw && c->sh == it->sh &&
+           c->dw == it->dst.right - it->dst.left &&
+           c->dh == it->dst.bottom - it->dst.top;
+}
+
+/* The cached, finished pixels of one picture: its source rectangle scaled
+ * to the drawn size, composited on the background. Built once per picture,
+ * source rectangle, size and background; NULL when it cannot be (or the
+ * pixel budget is spent: the caller then draws straight from the pixels). */
 static GdiOvCache *gdi_ovc_get(GdiPainter *g, const KittyOverlayItem *it,
-                               const RECT *region, COLORREF bg)
+                               COLORREF bg)
 {
     GdiOvCache *c;
     RECT local;
-    int i, w = region->right - region->left, h = region->bottom - region->top;
+    int i, w = it->dst.right - it->dst.left, h = it->dst.bottom - it->dst.top;
     long long px = 0;
     for (i = 0; i < g->novc; i++) {
         c = &g->ovc[i];
-        if (c->serial == it->serial && c->bg == bg &&
-            EqualRect(&c->dst, &it->dst) && EqualRect(&c->region, region)) {
+        if (gdi_ovc_match(c, it, bg)) {
             c->used = true;
             return c;
         }
-        px += (long long)(c->region.right - c->region.left) *
-              (c->region.bottom - c->region.top);
+        px += (long long)c->dw * c->dh;
     }
-    if (g->novc >= KITTY_OVERLAY_MAX || px + (long long)w * h > GDI_OVC_MAX_PX)
+    if (g->novc >= KITTY_OVERLAY_FRAME_MAX ||
+        px + (long long)w * h > GDI_OVC_MAX_PX)
         return NULL;
+    if (g->novc >= g->ovc_cap) {
+        g->ovc_cap = g->ovc_cap ? g->ovc_cap * 2 : 8;
+        g->ovc = sresize(g->ovc, g->ovc_cap, GdiOvCache);
+    }
     c = &g->ovc[g->novc];
     c->mem = CreateCompatibleDC(g->hdc);
     if (!c->mem)
@@ -571,28 +606,29 @@ static GdiOvCache *gdi_ovc_get(GdiPainter *g, const KittyOverlayItem *it,
     c->old = SelectObject(c->mem, c->bmp);
     SetStretchBltMode(c->mem, HALFTONE);
     SetBrushOrgEx(c->mem, 0, 0, NULL);
-    local = it->dst;
-    OffsetRect(&local, -region->left, -region->top);
+    SetRect(&local, 0, 0, w, h);
     if (it->opaque)
         gdi_stretch(c->mem, it, &local);
     else
         gdi_blend(c->mem, it, &local, bg);
     c->serial = it->serial;
     c->bg = bg;
-    c->dst = it->dst;
-    c->region = *region;
+    c->sx = it->sx; c->sy = it->sy; c->sw = it->sw; c->sh = it->sh;
+    c->dw = w;
+    c->dh = h;
     c->used = true;
     g->novc++;
     return c;
 }
 
-/* KiTTY: the overlay (far2l images), over what this frame drew. The window
- * is the surface, so a picture is drawn again wherever text under it was
- * redrawn: only that part (the frame's bounding rectangle, within the
- * terminal area) is copied, from a cached copy of the finished picture.
- * Drawn over its own earlier pixels it changes nothing (opaque, or
- * composited on the background colour). Cached pictures not shown in this
- * frame are freed, so a deleted or replaced picture goes at the next frame. */
+/* KiTTY: the overlay (far2l images, kitty graphics), over what this frame
+ * drew. The window is the surface, so a picture is drawn again wherever
+ * text under it was redrawn: only that part (the frame's bounding
+ * rectangle, within the terminal area) is copied, from a cached copy of the
+ * finished picture. Drawn over its own earlier pixels it changes nothing
+ * (opaque, or composited on the background colour). Cached pictures not
+ * shown in this frame are freed, so a deleted or replaced picture goes at
+ * the next frame. */
 static void gdi_overlay(KittyPainter *p, const KittyOverlayItem *items,
                         int n, const RECT *clip, COLORREF bg)
 {
@@ -615,20 +651,21 @@ static void gdi_overlay(KittyPainter *p, const KittyOverlayItem *items,
         RECT region, part;
         GdiOvCache *c;
         if (it->w <= 0 || it->h <= 0 || !it->bgra ||
+            it->sw <= 0 || it->sh <= 0 ||
             !IntersectRect(&region, &it->dst, clip))
             continue;
         if (!IntersectRect(&part, &region, &eff)) {
             /* not drawn this frame, but still shown: keep its copy */
             for (j = 0; j < g->novc; j++)
-                if (g->ovc[j].serial == it->serial)
+                if (gdi_ovc_match(&g->ovc[j], it, bg))
                     g->ovc[j].used = true;
             continue;
         }
-        c = gdi_ovc_get(g, it, &region, bg);
+        c = gdi_ovc_get(g, it, bg);
         if (c) {
             BitBlt(g->hdc, part.left, part.top, part.right - part.left,
                    part.bottom - part.top, c->mem,
-                   part.left - region.left, part.top - region.top, SRCCOPY);
+                   part.left - it->dst.left, part.top - it->dst.top, SRCCOPY);
         } else {
             /* no copy to be had: straight from the pixels, clipped */
             if (!drew) {

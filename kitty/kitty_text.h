@@ -315,6 +315,8 @@
 #define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
 #define KT_FEATURES_SHELLINT_GROUP                   "Shell integration"
 #define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
+#define KT_FEATURES_IMAGES_GROUP                     "Images"
+#define KT_FEATURES_KITTY_GRAPHICS                   "Show inline images (kitty graphics protocol)"
 #define KT_HOSTNOTIFY_LOG_DROPPED                    "Notifications from the host: %d dropped (more than one in 2 seconds)."
 /* Program status (OSC 7501): the taskbar overlay's text and the notice */
 #define KT_PST_WORKING                               "Working"

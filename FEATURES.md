@@ -82,6 +82,7 @@ one is available.
   - [Program status (OSC 7501) and prompt marks (OSC 133)](#program-status-osc-7501-and-prompt-marks-osc-133)
   - [far2l keys and mouse](#far2l-keys-and-mouse)
   - [far2l images](#far2l-images)
+  - [Inline images (kitty graphics protocol)](#inline-images-kitty-graphics-protocol)
   - [Paste size guard](#paste-size-guard)
   - [In-app updater (Check for updates)](#in-app-updater-check-for-updates)
   - [kscp, WinSCP and FileZilla integration](#kscp-winscp-and-filezilla-integration)
@@ -1319,7 +1320,17 @@ far2l can show pictures in a KiTTY++ window - its image viewer, for one. They ar
 
 Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imaging component (Vista and later, and XP with the Microsoft .NET Framework 3.0 installed). A transparent part of a picture shows the terminal's background colour. Limits: one picture at most 4096 pixels a side and 8 megapixels, at most 64 pictures and 64 MB in all per window; a picture beyond a limit is refused and the refusal is reported to far2l.
 
-**How to enable:** on by default; **Window → Copy & Paste → Remote clipboard → Show far2l images**. Off reports to far2l that the terminal shows no images.
+**How to enable:** on by default; **Terminal → Features → Images → Show far2l images**. Off reports to far2l that the terminal shows no images.
+
+(no screenshot)
+
+### Inline images (kitty graphics protocol)
+
+A program on the host shows pictures in the window with the [kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/): the pi coding agent, `kitten icat` and several file managers do. A picture sits on the cells it was placed on, over the text, and scrolls with the text into the scrollback; the alternate screen's pictures go when a full-screen program ends. Programs can place one picture several times, at a size in cells or pixels, crop it, and delete pictures by id, position, cell or column. Both renderers (GDI and Direct2D) draw them.
+
+PNG and raw RGB/RGBA pictures are taken, sent in the data stream, also zlib-compressed and in chunks. Files, temporary files or shared memory that the host names on this PC are never read, and animation, Unicode placeholders and relative placements are refused, so programs fall back. A picture placed under the text (z < 0) is not drawn yet. Limits: a picture at most 8192 pixels a side and 64 MB, a window at most 128 MB of pictures; a picture over a limit is refused with an error to the program. `CSI 16 t` (cell size in pixels) is answered, as programs ask it to size their pictures.
+
+**How to enable:** on by default; **Terminal → Features → Images → Show inline images (kitty graphics protocol)** (`KittyGraphics`). Off, the protocol is ignored as before and programs fall back to text.
 
 (no screenshot)
 

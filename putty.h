@@ -2149,6 +2149,12 @@ int term_clipboard_activity(Terminal *term);
 /* KiTTY: the kitty keyboard protocol flags in force on the screen shown
  * (KKP_* of kitty_kittykeys.h), 0 when none were pushed. */
 unsigned term_kkp_flags(Terminal *term);
+/* KiTTY: the kitty graphics placements that touch the view shown (the
+ * scrolled-back position included), ordered for painting; out[] gets at most
+ * max (GfxVisible of kitty/kitty_gfx.h, cell coordinates and pixels relative
+ * to cell 0,0 of the view). Returns how many; 0 without a store. */
+struct GfxVisible;
+int term_gfx_visible(Terminal *term, struct GfxVisible *out, int max);
 #endif
 #ifdef MOD_FAR2L
 /* KiTTY far2l: the answer of the clipboard permission box (kitty/kitty_far2l.c
@@ -2169,6 +2175,8 @@ void term_notify_minimised(Terminal *term, bool minimised);
 void term_notify_palette_changed(Terminal *term);
 void term_notify_window_pos(Terminal *term, int x, int y);
 void term_notify_window_size_pixels(Terminal *term, int x, int y);
+/* KiTTY: the cell size in pixels (CSI 16 t; the kitty graphics cell grid). */
+void term_notify_cell_size_pixels(Terminal *term, int w, int h);
 void term_palette_override(Terminal *term, unsigned osc4_index, rgb rgb);
 void term_set_preedit_text(Terminal *term, char *preedit_text);
 

@@ -22,18 +22,24 @@
 
 typedef struct KittyPainter KittyPainter;
 
-/* KiTTY: one picture of the overlay drawn over the text (far2l images):
- * premultiplied BGRA, top-down, w * 4 bytes a row, stretched to `dst`
- * (client pixels). `serial` changes whenever the pixels do, so a painter
- * may keep its own copy of them. */
+/* KiTTY: one picture of the overlay drawn over the text (far2l images,
+ * kitty graphics placements): premultiplied BGRA, top-down, w * 4 bytes a
+ * row; its source rectangle sx/sy/sw/sh (image pixels; the whole image for
+ * far2l) stretched to `dst` (client pixels, may reach outside the clip).
+ * `serial` changes whenever the pixels do, so a painter may keep its own
+ * copy of them. */
 typedef struct KittyOverlayItem {
     const void *bgra;
     int w, h;
     bool opaque;
+    int sx, sy, sw, sh;
     RECT dst;
     unsigned long serial;
 } KittyOverlayItem;
+/* far2l images in one frame (the far2l store's own cap). */
 #define KITTY_OVERLAY_MAX 64
+/* Pictures of one frame's overlay, all sources together. */
+#define KITTY_OVERLAY_FRAME_MAX 256
 
 typedef struct KittyPainterVtable {
     /* A frame. `given` is the DC WM_PAINT already holds (BeginPaint), or
@@ -115,8 +121,9 @@ typedef struct KittyPainterVtable {
      * dropped, what came in is left for the caller to draw. False when the
      * painter did not (or could not completely) move them. */
     bool (*scroll_rows)(KittyPainter *p, const RECT *band, int dy);
-    /* KiTTY: the overlay of this frame (far2l images), called once per
-     * frame just before end(), with n == 0 when there is none. Drawn over
+    /* KiTTY: the overlay of this frame (far2l images, kitty graphics),
+     * called once per frame just before end(), with n == 0 when there is
+     * none (at most KITTY_OVERLAY_FRAME_MAX items). Drawn over
      * everything else, clipped to `clip` (the terminal area); a transparent
      * pixel shows the background colour `bg`, not the text, so drawing a
      * picture again over itself changes nothing. The items are copied; their

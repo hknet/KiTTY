@@ -123,6 +123,7 @@ static bool osc5522_paste_event(Terminal *term);
  * box, window size); the test targets stub them. */
 #include "../kitty/kitty_far2l.h"
 #include "../kitty/kitty_far2l_image_term.h"   /* KiTTY: far2l images */
+#include "../kitty/kitty_gfx_term.h"           /* KiTTY: kitty graphics (APC _G) */
 /* Drop everything a far2l activation holds: the open box, the requests held
  * behind it, a chunked upload, the open clipboard. Declared here because
  * term_free() sits earlier in the file. */
@@ -2227,6 +2228,9 @@ static void power_on(Terminal *term, bool clear)
      * allocated, empty). */
     kitty_far2l_images_reset(term);
 #endif
+#ifdef MOD_PERSO
+    kitty_gfx_reset(term);     /* KiTTY: kitty graphics - images, placements, upload */
+#endif
     term->srm_echo = false;
     {
         int i;
@@ -2659,6 +2663,11 @@ void term_clrsb(Terminal *term)
     /*
      * Clear the actual scrollback.
      */
+#ifdef MOD_PERSO
+    /* KiTTY: kitty graphics - the screen keeps its line numbers, the
+     * placements that were in the scrollback go */
+    kitty_gfx_sb_cleared(term, count234(term->scrollback));
+#endif
     while ((line = delpos234(term->scrollback, 0)) != NULL) {
 #ifdef KITTY_SB_DEFER
         /* KiTTY: an entry may be an uncompressed line (see sb_forget) */
@@ -3128,6 +3137,9 @@ void term_free(Terminal *term)
 #ifdef MOD_FAR2L
     kitty_far2l_images_free(term);     /* KiTTY: far2l images */
 #endif
+#ifdef MOD_PERSO
+    kitty_gfx_free(term);              /* KiTTY: kitty graphics */
+#endif
     while ((cline = delpos234(term->scrollback, 0)) != NULL)
         free_compressed_line(cline);
     freetree234(term->scrollback);
@@ -3347,6 +3359,11 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
             /* delete bottom row, unless it contains the cursor */
             line = delpos234(term->screen, term->rows - 1);
             freetermline(line);
+#ifdef MOD_PERSO
+            /* KiTTY: kitty graphics on the deleted row go with it */
+            kitty_gfx_row_deleted(term, term->gfx_sb_base + sblen +
+                                  term->rows - 1);
+#endif
         } else {
             /* push top row to scrollback */
             line = delpos234(term->screen, 0);
@@ -3376,6 +3393,7 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         sblen--;
 #ifdef MOD_PERSO
         viewtop--;
+        term->gfx_sb_base++;           /* KiTTY: kitty graphics - entry 0 went */
 #endif
     }
     if (sblen < term->tempsblines)
@@ -3385,6 +3403,12 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
 #ifdef MOD_PERSO
     term->fm_rebuild = true;           /* KiTTY: lines moved, rescan the marks */
     term->im_count = 0;                /* KiTTY: the command columns are stale */
+    /* KiTTY: kitty graphics - the screen rows that moved to or from the
+     * scrollback kept their absolute numbers (row 0 is the base plus the
+     * scrollback count), so only what fell off the top goes; the alternate
+     * screen is rebuilt blank below. */
+    kitty_gfx_sb_trimmed(term);
+    kitty_gfx_alt_cleared(term, false);
 #endif
     term->disptop = 0;
 
@@ -3555,6 +3579,12 @@ static void swap_screen(Terminal *term, int which,
                 term->disptop = 0;
         }
 
+#ifdef MOD_PERSO
+        /* KiTTY: kitty graphics - the alternate screen's placements live
+         * only while it is shown: entering it starts blank, leaving it
+         * takes them away (the main screen's keep their anchors). */
+        kitty_gfx_alt_cleared(term, true);
+#endif
         term->alt_which = which;
 
         ttr = term->alt_screen;
@@ -3789,6 +3819,12 @@ static void scroll(Terminal *term, int topline, int botline,
 {
     termline *line;
     int seltop, scrollwinsize;
+#ifdef MOD_PERSO
+    /* KiTTY: kitty graphics - the top row's number and the move asked for,
+     * read before the loops change either (kitty_gfx_scrolled at the end) */
+    long gfx_before = term->gfx ? kitty_gfx_top_abs(term) : 0;
+    int gfx_lines = lines;
+#endif
 
     if (topline != 0 || term->alt_which != 0)
         sb = false;
@@ -3850,6 +3886,7 @@ static void scroll(Terminal *term, int topline, int botline,
                     cline = delpos234(term->scrollback, 0);
 #ifdef MOD_PERSO
                     fm_sb_evicted(term);   /* KiTTY: the mark strip's list */
+                    term->gfx_sb_base++;   /* KiTTY: kitty graphics - entry 0 went */
 #endif
 #ifdef KITTY_SB_DEFER
                     /* KiTTY: an evicted line that was never compressed
@@ -3954,6 +3991,10 @@ static void scroll(Terminal *term, int topline, int botline,
         }
     }
 
+#ifdef MOD_PERSO
+    if (term->gfx)                     /* KiTTY: kitty graphics follow the rows */
+        kitty_gfx_scrolled(term, topline, botline, gfx_lines, gfx_before);
+#endif
     seen_disp_event(term);
 }
 
@@ -4138,8 +4179,14 @@ static void erase_lots(Terminal *term,
     check_selection(term, start, end);
 
     /* Clear screen also forces a full window redraw, just in case. */
-    if (start.y == 0 && start.x == 0 && end.y == term->rows)
+    if (start.y == 0 && start.x == 0 && end.y == term->rows) {
         term_invalidate(term);
+#ifdef MOD_PERSO
+        /* KiTTY: kitty graphics - ED 2 takes the screen's images with it,
+         * whether the lines are then erased or scrolled into the scrollback */
+        kitty_gfx_clear_screen(term);
+#endif
+    }
 
     /* Lines scrolled away shouldn't be brought back on if the terminal
      * resizes. */
@@ -5404,6 +5451,16 @@ static void osc_addchar(Terminal *term, unsigned char c)
         term->osc_str_limit == OSC_STR_MAX &&
         !memcmp(term->osc_string, FAR2L_DATA_PREFIX, FAR2L_DATA_PREFIX_LEN))
         term->osc_str_limit = clip_ceiling_bytes(term);
+#endif
+#ifdef MOD_PERSO
+    /* KiTTY: an APC whose first byte is 'G' is the kitty graphics protocol;
+     * its ceiling is raised the same way, only with the setting on - off,
+     * the sequence stays at the ordinary ceiling and is ignored in do_osc. */
+    if (term->osc_strlen == 1 && c == 'G' &&
+        term->osc_type == OSCLIKE_APC &&
+        term->osc_str_limit == OSC_STR_MAX &&
+        conf_get_bool(term->conf, CONF_kitty_graphics))
+        term->osc_str_limit = OSC_STR_MAX_GFX;
 #endif
 }
 
@@ -7933,6 +7990,22 @@ static void do_osc(Terminal *term)
      */
     if (term->osc_type == OSCLIKE_APC) {
         term->osc_string[term->osc_strlen] = '\0';
+#ifdef MOD_PERSO
+        /* KiTTY: the kitty graphics protocol, APC _G (kitty_gfx_term.c).
+         * The reply goes through the raw seam; the cursor moves as the
+         * placement says, clamped to the screen like every move. */
+        if (term->osc_strlen >= 1 && term->osc_string[0] == 'G' &&
+            conf_get_bool(term->conf, CONF_kitty_graphics)) {
+            int dx, dy;
+            kitty_gfx_apc(term, term->osc_string + 1, term->osc_strlen - 1,
+                          term->osc_str_overflow, &dx, &dy);
+            if (dx || dy) {
+                move(term, term->curs.x + dx, term->curs.y + dy, 0);
+                seen_disp_event(term);
+            }
+            return;
+        }
+#endif
         if (strncmp(term->osc_string, "far2l", 5) == 0) {
             const char *arg = term->osc_string + 5;
             if (arg[0] == '1') {
@@ -10186,6 +10259,21 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                     ldisc_send(term->ldisc, buf, len, false);
                                 }
                                 break;
+#ifdef MOD_PERSO
+                              case 16:
+                                /* KiTTY: the cell size in pixels (xterm),
+                                 * what a kitty graphics client measures
+                                 * with. Through the raw seam, not ldisc:
+                                 * see the far2lok note in do_osc. */
+                                if (term->cellpix_x > 0 &&
+                                    term->cellpix_y > 0) {
+                                    len = sprintf(buf, "\033[6;%d;%dt",
+                                                  term->cellpix_y,
+                                                  term->cellpix_x);
+                                    kitty_osc52_send_raw(term, buf, len);
+                                }
+                                break;
+#endif
                               case 18:
                                 if (term->ldisc) {
                                     len = sprintf(buf, "\033[8;%d;%dt",
@@ -11934,12 +12022,19 @@ void term_paint(Terminal *term,
 void term_scroll(Terminal *term, int rel, int where)
 {
     int sbtop = -sblines(term);
+#ifdef MOD_PERSO
+    int before = term->disptop;        /* KiTTY: kitty graphics */
+#endif
 
     term->disptop = (rel < 0 ? 0 : rel > 0 ? sbtop : term->disptop) + where;
     if (term->disptop < sbtop)
         term->disptop = sbtop;
     if (term->disptop > 0)
         term->disptop = 0;
+#ifdef MOD_PERSO
+    if (term->disptop != before)
+        kitty_gfx_view_moved(term);    /* KiTTY: images moved with the view */
+#endif
     term->win_scrollbar_update_pending = true;
     term_schedule_update(term);
 }
@@ -14037,6 +14132,17 @@ void term_notify_window_size_pixels(Terminal *term, int x, int y)
 {
     term->winpixsize_x = x;
     term->winpixsize_y = y;
+}
+
+void term_notify_cell_size_pixels(Terminal *term, int w, int h)
+{
+    if (w == term->cellpix_x && h == term->cellpix_y)
+        return;
+    term->cellpix_x = w;
+    term->cellpix_y = h;
+#ifdef MOD_PERSO
+    kitty_gfx_cell_size_changed(term);   /* KiTTY: kitty graphics re-fitted */
+#endif
 }
 
 /*

@@ -3323,6 +3323,18 @@ command: the optional line of the shell integration for bash, zsh and
 fish, or a program that sends it, such as pi. On by default; stored with
 the session (\c{FailedCommandMarks}).
 
+\S{kitty-cfg-kittygraphics} \q{Show inline images (kitty graphics protocol)}
+
+Lets a program on the host show pictures in the terminal with the kitty
+graphics protocol, as the pi coding agent, \c{kitten icat} and several
+file managers do. An image sits on the cells where it was placed and
+scrolls with the text into the scrollback. PNG and raw RGB/RGBA images
+are taken, sent in the data stream; an image is at most 8192 pixels on a
+side and 64 MB, a window holds at most 128 MB of them. Files or shared
+memory a server names on this PC are never read. Off, the terminal does
+not answer the protocol and programs fall back to text. On by default;
+stored with the session (\c{KittyGraphics}).
+
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 
 How far one notch of the mouse wheel scrolls the terminal. The system

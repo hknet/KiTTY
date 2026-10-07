@@ -798,6 +798,7 @@ void test_simple(void)
     test_str_simple(CONF_filezilla_port, "FileZillaPort", "");
     test_bool_simple(CONF_kscp_dragdrop, "KscpDragDrop", true);
     test_bool_simple(CONF_kscp_drop_typepath, "KscpDropTypePath", false);
+    test_bool_simple(CONF_kitty_graphics, "KittyGraphics", true);   /* KiTTY: inline images */
     test_bool_simple(CONF_no_applic_c, "NoApplicationCursors", false);
     test_bool_simple(CONF_no_applic_k, "NoApplicationKeys", false);
     test_bool_simple(CONF_no_mouse_rep, "NoMouseReporting", false);

@@ -952,6 +952,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
     gppi_forced(sesskey, "HostNotify", conf, CONF_host_notify);
     gppb_forced(sesskey, "TaskbarProgress", conf, CONF_taskbar_progress);
     gppb_forced(sesskey, "FailedCommandMarks", conf, CONF_failed_marks);
+    gppb_forced(sesskey, "KittyGraphics", conf, CONF_kitty_graphics);
     gppi_forced(sesskey, "LinesAtAScroll", conf, CONF_scrolllines);
     gppb_forced(sesskey, "SSHTunnelInTitle", conf, CONF_ssh_tunnel_print_in_title);
     /* OSC 52 clipboard policy. The old BOOL "OSC52WarnBeforeClipboardSync" is

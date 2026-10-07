@@ -612,6 +612,7 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_i_forced(sesskey, "HostNotify", conf_get_int(conf, CONF_host_notify));
     write_setting_b_forced(sesskey, "TaskbarProgress", conf_get_bool(conf, CONF_taskbar_progress));
     write_setting_b_forced(sesskey, "FailedCommandMarks", conf_get_bool(conf, CONF_failed_marks));
+    write_setting_b_forced(sesskey, "KittyGraphics", conf_get_bool(conf, CONF_kitty_graphics));
     write_setting_i_forced(sesskey, "LinesAtAScroll", conf_get_int(conf, CONF_scrolllines));
     write_setting_b_forced(sesskey, "SSHTunnelInTitle", conf_get_bool(conf, CONF_ssh_tunnel_print_in_title));
     write_setting_i_forced(sesskey, "OSC52Clipboard", conf_get_int(conf, CONF_osc52_clipboard));

@@ -265,17 +265,18 @@ typedef struct D2DPainter {
     DWORD fail_tick;                   /* GetTickCount of the last failure */
     DWORD retry_at;                    /* no re-creation before this tick */
     HRESULT last_hr;                   /* the last loss's code, for the event log */
-    /* KiTTY: the overlay of the frame being drawn (far2l images), drawn by
-     * d2d_end onto the back buffer, never into the canvas; a signature of it
-     * (what, where) to see when it changed; and the pictures uploaded for
-     * it, by serial, kept while they are shown. */
-    KittyOverlayItem ov[KITTY_OVERLAY_MAX];
-    int nov;
+    /* KiTTY: the overlay of the frame being drawn (far2l images, kitty
+     * graphics), drawn by d2d_end onto the back buffer, never into the
+     * canvas; a signature of it (what, which part, where) to see when it
+     * changed; and the pictures uploaded for it, by serial, kept while they
+     * are shown. Both arrays grow to the frame with the most items. */
+    KittyOverlayItem *ov;
+    int nov, ov_cap;
     RECT ovclip;
     COLORREF ovbg;
     unsigned long ovsig, ovsig_shown;
-    struct { unsigned long serial; ID2D1Bitmap *bmp; bool used; } ovc[KITTY_OVERLAY_MAX];
-    int novc;
+    struct D2DOvCache { unsigned long serial; ID2D1Bitmap *bmp; bool used; } *ovc;
+    int novc, ovc_cap;
 #ifdef KITTY_TEST_BUILD_LABEL
     unsigned long npresent;            /* presents so far, KITTY_D2D_FAIL_PRESENT */
     unsigned long inj_from, inj_count;
@@ -682,18 +683,25 @@ static void d2d_overlay(KittyPainter *p, const KittyOverlayItem *items,
     D2DPainter *d = (D2DPainter *)p;
     unsigned long h = 2166136261u;
     int i;
-    if (n > KITTY_OVERLAY_MAX)
-        n = KITTY_OVERLAY_MAX;
+    if (n > KITTY_OVERLAY_FRAME_MAX)
+        n = KITTY_OVERLAY_FRAME_MAX;
     d->nov = n > 0 ? n : 0;
+    if (d->nov > d->ov_cap) {
+        d->ov_cap = d->nov;
+        d->ov = sresize(d->ov, d->ov_cap, KittyOverlayItem);
+    }
     if (d->nov)
         memcpy(d->ov, items, (size_t)d->nov * sizeof(*items));
     d->ovclip = *clip;
     d->ovbg = bg;
-    /* what is shown and where, folded together (FNV-1a over the fields) */
+    /* what is shown, which part of it and where, folded together (FNV-1a
+     * over the fields) */
 #define OVMIX(v) (h = (h ^ (unsigned long)(v)) * 16777619u)
     OVMIX(d->nov);
     for (i = 0; i < d->nov; i++) {
         OVMIX(d->ov[i].serial);
+        OVMIX(d->ov[i].sx); OVMIX(d->ov[i].sy);
+        OVMIX(d->ov[i].sw); OVMIX(d->ov[i].sh);
         OVMIX(d->ov[i].dst.left); OVMIX(d->ov[i].dst.top);
         OVMIX(d->ov[i].dst.right); OVMIX(d->ov[i].dst.bottom);
     }
@@ -730,14 +738,17 @@ static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
             ID2D1Bitmap *bmp = NULL;
             D2D1_RECT_F dst = rectf(it->dst.left, it->dst.top,
                                     it->dst.right, it->dst.bottom);
+            D2D1_RECT_F src = rectf(it->sx, it->sy, it->sx + it->sw,
+                                    it->sy + it->sh);
+            if (it->sw <= 0 || it->sh <= 0)
+                continue;
             for (j = 0; j < d->novc; j++)
                 if (d->ovc[j].serial == it->serial) {
                     bmp = d->ovc[j].bmp;
                     d->ovc[j].used = true;
                     break;
                 }
-            if (!bmp && d->novc < KITTY_OVERLAY_MAX && it->bgra &&
-                it->w > 0 && it->h > 0 &&
+            if (!bmp && it->bgra && it->w > 0 && it->h > 0 &&
                 (UINT32)it->w <= maxsz && (UINT32)it->h <= maxsz) {
                 D2D1_BITMAP_PROPERTIES props;
                 D2D1_SIZE_U size;
@@ -747,6 +758,11 @@ static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
                     D2D1_ALPHA_MODE_IGNORE : D2D1_ALPHA_MODE_PREMULTIPLIED;
                 props.dpiX = 96; props.dpiY = 96;
                 size.width = it->w; size.height = it->h;
+                if (d->novc >= d->ovc_cap) {
+                    /* one entry per picture shown: never more than items */
+                    d->ovc_cap = d->ovc_cap ? d->ovc_cap * 2 : 8;
+                    d->ovc = sresize(d->ovc, d->ovc_cap, struct D2DOvCache);
+                }
                 if (SUCCEEDED(ID2D1RenderTarget_CreateBitmap(
                                   rt, size, it->bgra, (UINT32)it->w * 4,
                                   &props, &bmp)) && bmp) {
@@ -767,7 +783,7 @@ static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
             }
             ID2D1RenderTarget_DrawBitmap(rt, bmp, &dst, 1.0f,
                                          D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
-                                         NULL);
+                                         &src);
         }
         ID2D1RenderTarget_PopAxisAlignedClip(rt);
     }
@@ -1946,6 +1962,8 @@ static void d2d_destroy(D2DPainter *d)
     if (d->dwritedll) FreeLibrary(d->dwritedll);
     if (d->d2d1dll) FreeLibrary(d->d2d1dll);
     if (d->d3d11dll) FreeLibrary(d->d3d11dll);
+    sfree(d->ov);                      /* KiTTY: the overlay's arrays */
+    sfree(d->ovc);
     sfree(d);
 }
 
