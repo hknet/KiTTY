@@ -508,6 +508,17 @@ struct terminal_tag {
      * Unconditional storage, same ODR reason as above. */
     int modify_other_keys;
 
+    /* KiTTY kitty keyboard protocol (CSI > flags u, CSI < n u, CSI = flags ;
+     * mode u, CSI ? u): one flag stack per screen ([0] main, [1] alternate;
+     * 16 entries, kitty_kittykeys.h KKP_STACK_MAX, the oldest dropping out)
+     * and the current flags of each, the top entry or 0. Read by the
+     * window's key translation (kitty_kittykeys.c has the encoding), which
+     * it beats over modifyOtherKeys. Unconditional storage, same ODR reason
+     * as above. */
+    unsigned kkp_stack[2][16];
+    int kkp_depth[2];
+    unsigned kkp_flags[2];
+
     /* KiTTY colour-scheme reports (private mode 2031, CSI ? 996 n): the
      * mode, and the last dark/light verdict of the default background, so a
      * palette change reports only when the verdict flips (-1: not yet

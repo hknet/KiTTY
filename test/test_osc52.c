@@ -2884,6 +2884,115 @@ static void test_modkeys_and_colour_scheme(Mock *mk)
     set_bg(mk, 0x12, 0x34, 0x56);              /* as the colour tests left it */
 }
 
+/*
+ * KiTTY: the kitty keyboard protocol's flag stacks (CSI > flags u push,
+ * CSI < n u pop, CSI = flags ; mode u set, CSI ? u query): the query answers
+ * the top entry, the stacks of the main and the alternate screen are
+ * separate, a full stack drops its oldest entry, an emptied one is flags 0,
+ * and RIS empties both.
+ */
+static void expect_kkp(Mock *mk, const char *what, unsigned want)
+{
+    char rep[32];
+    snprintf(rep, sizeof(rep), "\033[?%uu", want);
+    expect_reply(mk, what, "\033[?u", rep);
+    if (term_kkp_flags(mk->term) != want) {
+        printf("   term_kkp_flags %u, want %u\n", term_kkp_flags(mk->term),
+               want);
+        fail(what, "the window would read other flags than the query");
+    }
+}
+
+static void test_kitty_keyboard_stack(Mock *mk)
+{
+    int i;
+
+    expect_kkp(mk, "kkp: default", 0);
+    feed_seq(mk, "\033[>1u");
+    expect_kkp(mk, "kkp: push 1", 1);
+    feed_seq(mk, "\033[>15u");
+    expect_kkp(mk, "kkp: push 15", 15);
+    feed_seq(mk, "\033[>u");
+    expect_kkp(mk, "kkp: push nothing is 0", 0);
+    feed_seq(mk, "\033[<u");
+    expect_kkp(mk, "kkp: pop one", 15);
+    feed_seq(mk, "\033[>3u\033[>7u\033[<2u");
+    expect_kkp(mk, "kkp: pop two", 15);
+    feed_seq(mk, "\033[<9u");
+    expect_kkp(mk, "kkp: pop past the bottom resets", 0);
+    feed_seq(mk, "\033[>99u");
+    expect_kkp(mk, "kkp: unknown bits are masked", 99 & 31);
+    feed_seq(mk, "\033[<u");
+
+    /* set: replace, or, clear; with and without a stack entry */
+    feed_seq(mk, "\033[=5u");
+    expect_kkp(mk, "kkp: set 5 (mode 1 default)", 5);
+    feed_seq(mk, "\033[=2;2u");
+    expect_kkp(mk, "kkp: set 2 mode 2 ors", 7);
+    feed_seq(mk, "\033[=4;3u");
+    expect_kkp(mk, "kkp: set 4 mode 3 clears", 3);
+    feed_seq(mk, "\033[=8;1u");
+    expect_kkp(mk, "kkp: set 8 mode 1 replaces", 8);
+    feed_seq(mk, "\033[<u");
+    expect_kkp(mk, "kkp: pop with no entry leaves 0", 0);
+    feed_seq(mk, "\033[>1u\033[=3;2u");
+    expect_kkp(mk, "kkp: set changes the top entry", 3);
+    feed_seq(mk, "\033[>8u\033[<u");
+    expect_kkp(mk, "kkp: ...which the pop returns to", 3);
+    feed_seq(mk, "\033[=0u");
+    expect_kkp(mk, "kkp: set 0", 0);
+    feed_seq(mk, "\033[<u");
+
+    /* plain CSI u is still the cursor restore, and CSI ? 1 u is nothing */
+    expect_silence(mk, "kkp: CSI u stays SCORC", "\033[u");
+    expect_silence(mk, "kkp: CSI ? 1 u is not the query", "\033[?1u");
+
+    /* the stacks of the two screens */
+    feed_seq(mk, "\033[>1u");
+    expect_kkp(mk, "kkp: main screen 1", 1);
+    feed_seq(mk, "\033[?1049h");
+    expect_kkp(mk, "kkp: alternate screen starts at 0", 0);
+    feed_seq(mk, "\033[>11u");
+    expect_kkp(mk, "kkp: alternate screen 11", 11);
+    feed_seq(mk, "\033[?1049l");
+    expect_kkp(mk, "kkp: back on main, still 1", 1);
+    feed_seq(mk, "\033[?1049h");
+    expect_kkp(mk, "kkp: alternate keeps its 11", 11);
+    feed_seq(mk, "\033[<u");
+    expect_kkp(mk, "kkp: alternate popped", 0);
+    feed_seq(mk, "\033[?1049l");
+    expect_kkp(mk, "kkp: main unchanged by the alternate's pop", 1);
+    feed_seq(mk, "\033[?47h\033[>2u\033[?47l");
+    expect_kkp(mk, "kkp: mode 47 is the alternate screen too", 1);
+    feed_seq(mk, "\033[?47h");
+    expect_kkp(mk, "kkp: ...with its own 2", 2);
+    feed_seq(mk, "\033[<u\033[?47l\033[<u");
+    expect_kkp(mk, "kkp: both emptied", 0);
+
+    /* the depth: the oldest entry drops out */
+    for (i = 1; i <= 20; i++) {
+        char seq[16];
+        snprintf(seq, sizeof(seq), "\033[>%du", i & 31);
+        feed_seq(mk, seq);
+    }
+    expect_kkp(mk, "kkp: 20 pushes, top is the last", 20);
+    feed_seq(mk, "\033[<15u");
+    expect_kkp(mk, "kkp: 15 popped of the 16 kept", 5);
+    feed_seq(mk, "\033[<u");
+    expect_kkp(mk, "kkp: the 16th pop empties it", 0);
+    feed_seq(mk, "\033[<u");
+    expect_kkp(mk, "kkp: pop of an empty stack", 0);
+
+    /* RIS empties both */
+    feed_seq(mk, "\033[>1u\033[?1049h\033[>9u");
+    expect_kkp(mk, "kkp: alternate before RIS", 9);
+    feed_seq(mk, "\033c");
+    expect_kkp(mk, "kkp: RIS, main screen, 0", 0);
+    feed_seq(mk, "\033[?1049h");
+    expect_kkp(mk, "kkp: RIS, alternate screen, 0", 0);
+    feed_seq(mk, "\033[?1049l");
+}
+
 static void test_write_confirm(Mock *mk)
 {
     static const char *const M = "type=wdata:mime=dGV4dC9wbGFpbg==";  /* text/plain */
@@ -3219,6 +3328,7 @@ int main(void)
     test_far2l_arming_and_images(mk);   /* KiTTY: far2l events armed by 'x'; images */
     test_far2l_notify_and_overflow(mk); /* KiTTY: far2l 'n'; over-ceiling answers */
     test_modkeys_and_colour_scheme(mk); /* KiTTY: XTMODKEYS; mode 2031 reports */
+    test_kitty_keyboard_stack(mk);      /* KiTTY: kitty keyboard protocol flags */
 
     mock_free(mk);
 

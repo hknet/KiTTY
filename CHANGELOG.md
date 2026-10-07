@@ -72,6 +72,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   key ~`: Shift+Enter, Alt+Enter, Ctrl+- and the like arrive as themselves
   instead of as Enter, Esc+Enter or nothing. Level 1 and the query `CSI ? 4
   m` too. Without the request every key is sent as before.
+- **The kitty keyboard protocol.** A program that pushes enhancement flags
+  (`CSI > flags u`) gets keys the way the protocol defines them: `CSI code ;
+  modifiers u` with Shift, Alt, Ctrl, Super and the lock keys told apart,
+  Escape and Ctrl+key unambiguous, repeat and release events, the shifted
+  and base-layout key, every key as an escape code, the text a key types.
+  Push, pop, set and query (`CSI ? u`), one stack per screen, cleared by a
+  reset. The pi coding agent asks for it, and KiTTY++'s own shortcuts and
+  scroll keys keep priority. Without flags every key is sent as before.
 - **Light or dark, reported (mode 2031).** A program that sets mode 2031 is
   told `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light) when the terminal's
   background turns from one to the other, and answered the same on `CSI ?

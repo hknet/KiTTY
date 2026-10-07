@@ -2146,6 +2146,9 @@ bool term_osc5522_paste_tokens(Terminal *term);
 /* KiTTY: which directions the host has touched the clipboard in recently
  * (CLIP_ACT_* bits), or 0 once that has lapsed. */
 int term_clipboard_activity(Terminal *term);
+/* KiTTY: the kitty keyboard protocol flags in force on the screen shown
+ * (KKP_* of kitty_kittykeys.h), 0 when none were pushed. */
+unsigned term_kkp_flags(Terminal *term);
 #endif
 #ifdef MOD_FAR2L
 /* KiTTY far2l: the answer of the clipboard permission box (kitty/kitty_far2l.c

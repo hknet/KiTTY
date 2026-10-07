@@ -68,6 +68,8 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
 #include "../kitty/kitty_hostnotify.h"
 /* KiTTY: the shell's prompt marks (OSC 133), parsed by kitty_progstatus.c. */
 #include "../kitty/kitty_progstatus.h"
+/* KiTTY: the kitty keyboard protocol's flags (the encoding is the window's). */
+#include "../kitty/kitty_kittykeys.h"
 static void term_osc133(Terminal *term);
 /* KiTTY: the failed-command line list for the mark strip (defined with the
  * prompt marks, used by scroll, term_size and term_clrsb above them). */
@@ -2203,6 +2205,9 @@ static void power_on(Terminal *term, bool clear)
     term->esc_dollar = false;
     term->sync_hold = false;   /* the update scheduled below draws the screen */
     term->modify_other_keys = 0;       /* KiTTY: XTMODKEYS, back to xterm's default */
+    /* KiTTY: kitty keyboard protocol, both screens' stacks emptied */
+    term->kkp_depth[0] = term->kkp_depth[1] = 0;
+    term->kkp_flags[0] = term->kkp_flags[1] = 0;
     term->colour_scheme_reports = false; /* KiTTY: DECSET 2031 */
 #endif
 #ifdef MOD_FAR2L
@@ -7307,6 +7312,60 @@ bool term_osc5522_paste_events(Terminal *term)
     return term && term->osc5522_paste_events;
 }
 
+/*
+ * KiTTY: the kitty keyboard protocol's flag stacks, one per screen (the
+ * specification wants the alternate screen's program to leave the main
+ * screen's mode alone). The current flags are the top entry, or 0 with the
+ * stack empty; a push of a full stack drops the oldest entry; a set without
+ * a stack entry changes the current flags alone, so the next pop still
+ * returns to 0. A reset (power_on) empties both.
+ */
+unsigned term_kkp_flags(Terminal *term)
+{
+    return term ? term->kkp_flags[term->alt_which ? 1 : 0] : 0;
+}
+
+static void kkp_push(Terminal *term, unsigned flags)
+{
+    int s = term->alt_which ? 1 : 0;
+
+    if (term->kkp_depth[s] == KKP_STACK_MAX) {
+        memmove(term->kkp_stack[s], term->kkp_stack[s] + 1,
+                (KKP_STACK_MAX - 1) * sizeof(term->kkp_stack[s][0]));
+        term->kkp_depth[s]--;
+    }
+    term->kkp_stack[s][term->kkp_depth[s]++] = flags & KKP_ALL_FLAGS;
+    term->kkp_flags[s] = flags & KKP_ALL_FLAGS;
+}
+
+static void kkp_pop(Terminal *term, unsigned n)
+{
+    int s = term->alt_which ? 1 : 0;
+
+    if (n >= (unsigned)term->kkp_depth[s])
+        term->kkp_depth[s] = 0;
+    else
+        term->kkp_depth[s] -= (int)n;
+    term->kkp_flags[s] = term->kkp_depth[s] ?
+        term->kkp_stack[s][term->kkp_depth[s] - 1] : 0;
+}
+
+static void kkp_set(Terminal *term, unsigned flags, unsigned mode)
+{
+    int s = term->alt_which ? 1 : 0;
+    unsigned cur = term->kkp_flags[s];
+
+    flags &= KKP_ALL_FLAGS;
+    switch (mode) {
+      case 2: cur |= flags; break;
+      case 3: cur &= ~flags; break;
+      default: cur = flags; break;
+    }
+    term->kkp_flags[s] = cur;
+    if (term->kkp_depth[s])
+        term->kkp_stack[s][term->kkp_depth[s] - 1] = cur;
+}
+
 /* Are pastes still carrying a token? The wall clock is judged here, so a machine
  * that slept through the timer still comes to the same answer on the next paste
  * or title refresh. The expiry is logged once, whichever path notices first. */
@@ -9519,6 +9578,35 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         /* KiTTY: CSI ? 996 n, the colour-scheme query. */
                         if (term->esc_args[0] == 996)
                             term_colour_scheme_report(term);
+                        break;
+                      case ANSI('u', '>'):
+                        /* KiTTY: kitty keyboard protocol, push flags (0 when
+                         * omitted) on the shown screen's stack; a full stack
+                         * loses its oldest entry. */
+                        kkp_push(term, term->esc_args[0]);
+                        break;
+                      case ANSI('u', '<'):
+                        /* KiTTY: pop n entries (1 when omitted); an emptied
+                         * stack is flags 0. */
+                        kkp_pop(term, def(term->esc_args[0], 1));
+                        break;
+                      case ANSI('u', '='):
+                        /* KiTTY: set the current flags: mode 1 (default)
+                         * replaces them, 2 sets the bits given, 3 clears
+                         * them. */
+                        kkp_set(term, term->esc_args[0],
+                                term->esc_nargs >= 2 ?
+                                def(term->esc_args[1], 1) : 1);
+                        break;
+                      case ANSI_QUE('u'):
+                        /* KiTTY: query, answered CSI ? flags u. */
+                        if (term->esc_nargs <= 1 &&
+                            term->esc_args[0] == ARG_DEFAULT) {
+                            char rep[32];
+                            snprintf(rep, sizeof(rep), "\033[?%uu",
+                                     term_kkp_flags(term));
+                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                        }
                         break;
 #endif
                       case 'A':       /* CUU: move up N lines */

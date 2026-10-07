@@ -62,6 +62,7 @@
 #define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
 #include "../kitty/kitty_modkeys.h"   /* KiTTY: xterm modifyOtherKeys */
+#include "../kitty/kitty_kittykeys.h" /* KiTTY: kitty keyboard protocol */
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
@@ -7380,7 +7381,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * we get the translations under _our_ control.
          */
         {
+#ifdef MOD_PERSO
+            /* KiTTY: room for a kitty keyboard protocol sequence with
+             * alternates, event type and text (KKP_BUFFER_SIZE). */
+            unsigned char buf[64];
+#else
             unsigned char buf[20];
+#endif
             int len;
 
             if (wParam == VK_PROCESSKEY || /* IME PROCESS key */
@@ -8563,7 +8570,7 @@ static void init_winfuncs(void)
  * xterm's keysym, and without touching the dead-key state where Windows
  * allows that (bit 2 of the flags, Windows 10 1607 on). A key that yields no
  * single character - a dead key, an unassigned key - is left alone.
- * output holds TranslateKey's 20 bytes; the longest sequence is 16. */
+ * output holds 20 bytes at least; the longest sequence is 16. */
 static int kitty_modkeys_translate(WinGuiSeat *wgs, unsigned mods, WPARAM vk,
                                    int scan, const BYTE *keystate, HKL layout,
                                    unsigned char *output, size_t outsz)
@@ -8600,6 +8607,159 @@ static int kitty_modkeys_translate(WinGuiSeat *wgs, unsigned mods, WPARAM vk,
         wgs->term->modify_other_keys, mods, key, ch,
         conf_get_bool(wgs->conf, CONF_bksp_is_delete), (char *)output, outsz);
 }
+
+/* KiTTY kitty keyboard protocol: ToUnicodeEx for one key with the modifier
+ * state given (KKP_SHIFT: Shift held; nothing else, Caps Lock included),
+ * without touching the dead-key state where Windows allows that (bit 2 of
+ * the flags, Windows 10 1607 on). Returns the code point, 0 when the key
+ * yields no single character. */
+static unsigned kitty_kkp_probe(WPARAM vk, int scan, const BYTE *keystate,
+                                HKL layout, unsigned mods)
+{
+    BYTE ks[256];
+    wchar_t wbuf[4];
+    int r;
+
+    memcpy(ks, keystate, sizeof(ks));
+    ks[VK_SHIFT] = ks[VK_LSHIFT] = ks[VK_RSHIFT] = (mods & KKP_SHIFT) ? 0x80 : 0;
+    ks[VK_CONTROL] = ks[VK_LCONTROL] = ks[VK_RCONTROL] = 0;
+    ks[VK_MENU] = ks[VK_LMENU] = ks[VK_RMENU] = 0;
+    ks[VK_CAPITAL] = 0;
+    /* as a press: the key-up bit of the scan code is not what is asked */
+    r = p_ToUnicodeEx((UINT)vk, (UINT)(scan & ~KF_UP), ks, wbuf, lenof(wbuf),
+                      1 << 2, layout);
+    if (r == 2 && IS_SURROGATE_PAIR(wbuf[0], wbuf[1]))
+        return FROM_SURROGATES(wbuf[0], wbuf[1]);
+    if (r != 1 || IS_SURROGATE(wbuf[0]))
+        return 0;
+    return wbuf[0];
+}
+
+/* KiTTY kitty keyboard protocol: the sequence for this key event at the
+ * flags in force on the shown screen (kitty_kittykeys.c has the rules), or
+ * 0 when the key keeps its ordinary encoding - every key at flags 0 - or -1
+ * when the message is consumed with nothing to send: a dead key pressed
+ * with flag 8, whose state is now pending exactly as the ordinary path
+ * would have left it, and which that path would compose twice. After the
+ * window's own keys, which keep their priority; before the fixed encodings
+ * it replaces.
+ *
+ * vk and ext: the virtual key and its extended bit as Windows sent them,
+ * before the keypad sanitising of TranslateKey, so a keypad key is known
+ * as one. The key is looked up with Shift, Ctrl, Alt and Caps Lock cleared
+ * (the protocol's unshifted key), the shifted key with Shift alone, the
+ * base-layout key from the scan code; the text a key types with the real
+ * state, which for a press with flag 8 consumes the dead-key state as the
+ * ordinary path would. The right Alt is AltGr here and never a reported
+ * modifier key. output needs KKP_BUFFER_SIZE bytes. */
+static int kitty_kkp_translate(WinGuiSeat *wgs, unsigned flags, unsigned mods,
+                               int event, WPARAM vk, bool ext, int scan,
+                               const BYTE *keystate, HKL layout,
+                               unsigned char *output, size_t outsz)
+{
+    KittyKeyEvent ev;
+    bool charkey = false, textkey = false;
+    int n;
+
+    memset(&ev, 0, sizeof(ev));
+    ev.mods = mods;
+    ev.event = event;
+
+    switch (vk) {
+      case VK_ESCAPE: ev.key = KKP_KEY_ESCAPE; break;
+      case VK_RETURN: ev.key = ext ? KKP_KEY_KP_ENTER : KKP_KEY_ENTER; break;
+      case VK_TAB: ev.key = KKP_KEY_TAB; break;
+      case VK_BACK: ev.key = KKP_KEY_BACKSPACE; break;
+      case VK_INSERT: ev.key = ext ? KKP_KEY_INSERT : KKP_KEY_KP_INSERT; break;
+      case VK_DELETE: ev.key = ext ? KKP_KEY_DELETE : KKP_KEY_KP_DELETE; break;
+      case VK_HOME: ev.key = ext ? KKP_KEY_HOME : KKP_KEY_KP_HOME; break;
+      case VK_END: ev.key = ext ? KKP_KEY_END : KKP_KEY_KP_END; break;
+      case VK_PRIOR: ev.key = ext ? KKP_KEY_PAGE_UP : KKP_KEY_KP_PAGE_UP; break;
+      case VK_NEXT: ev.key = ext ? KKP_KEY_PAGE_DOWN : KKP_KEY_KP_PAGE_DOWN; break;
+      case VK_UP: ev.key = ext ? KKP_KEY_UP : KKP_KEY_KP_UP; break;
+      case VK_DOWN: ev.key = ext ? KKP_KEY_DOWN : KKP_KEY_KP_DOWN; break;
+      case VK_LEFT: ev.key = ext ? KKP_KEY_LEFT : KKP_KEY_KP_LEFT; break;
+      case VK_RIGHT: ev.key = ext ? KKP_KEY_RIGHT : KKP_KEY_KP_RIGHT; break;
+      case VK_CLEAR: ev.key = KKP_KEY_KP_BEGIN; break;
+      case VK_DECIMAL: ev.key = KKP_KEY_KP_DECIMAL; textkey = true; break;
+      case VK_DIVIDE: ev.key = KKP_KEY_KP_DIVIDE; textkey = true; break;
+      case VK_MULTIPLY: ev.key = KKP_KEY_KP_MULTIPLY; textkey = true; break;
+      case VK_SUBTRACT: ev.key = KKP_KEY_KP_SUBTRACT; textkey = true; break;
+      case VK_ADD: ev.key = KKP_KEY_KP_ADD; textkey = true; break;
+      case VK_CAPITAL: ev.key = KKP_KEY_CAPS_LOCK; break;
+      case VK_SCROLL: ev.key = KKP_KEY_SCROLL_LOCK; break;
+      case VK_NUMLOCK: ev.key = KKP_KEY_NUM_LOCK; break;
+      case VK_SNAPSHOT: ev.key = KKP_KEY_PRINT_SCREEN; break;
+      case VK_PAUSE: ev.key = KKP_KEY_PAUSE; break;
+      case VK_APPS: ev.key = KKP_KEY_MENU; break;
+      case VK_MEDIA_PLAY_PAUSE: ev.key = KKP_KEY_MEDIA_PLAY_PAUSE; break;
+      case VK_MEDIA_STOP: ev.key = KKP_KEY_MEDIA_STOP; break;
+      case VK_MEDIA_NEXT_TRACK: ev.key = KKP_KEY_MEDIA_TRACK_NEXT; break;
+      case VK_MEDIA_PREV_TRACK: ev.key = KKP_KEY_MEDIA_TRACK_PREVIOUS; break;
+      case VK_VOLUME_DOWN: ev.key = KKP_KEY_LOWER_VOLUME; break;
+      case VK_VOLUME_UP: ev.key = KKP_KEY_RAISE_VOLUME; break;
+      case VK_VOLUME_MUTE: ev.key = KKP_KEY_MUTE_VOLUME; break;
+      case VK_SHIFT:
+        ev.key = (scan & 0xff) == 0x36 ? KKP_KEY_RIGHT_SHIFT : KKP_KEY_LEFT_SHIFT;
+        break;
+      case VK_CONTROL:
+        ev.key = ext ? KKP_KEY_RIGHT_CONTROL : KKP_KEY_LEFT_CONTROL;
+        break;
+      case VK_MENU:
+        if (ext)
+            return 0;                  /* AltGr */
+        ev.key = KKP_KEY_LEFT_ALT;
+        break;
+      case VK_LWIN: ev.key = KKP_KEY_LEFT_SUPER; break;
+      case VK_RWIN: ev.key = KKP_KEY_RIGHT_SUPER; break;
+      default:
+        if (vk >= VK_F1 && vk <= VK_F24) {
+            ev.key = KKP_KEY_F1 + (unsigned)(vk - VK_F1);
+        } else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) {
+            ev.key = KKP_KEY_KP_0 + (unsigned)(vk - VK_NUMPAD0);
+            textkey = true;
+        } else if (vk == VK_SPACE || (vk >= '0' && vk <= '9') ||
+                   (vk >= 'A' && vk <= 'Z') || (vk >= 0xBA && vk <= 0xE2)) {
+            charkey = true;
+        } else {
+            return 0;                  /* not a key this knows */
+        }
+        break;
+    }
+
+    if ((charkey || textkey) && !p_ToUnicodeEx)
+        return 0;
+    if (charkey) {
+        ev.key = kitty_kkp_probe(vk, scan, keystate, layout, 0);
+        if (mods & KKP_SHIFT)
+            ev.shifted = kitty_kkp_probe(vk, scan, keystate, layout, KKP_SHIFT);
+        ev.base = kitty_kkp_base_key((unsigned)scan & 0xff);
+    }
+    if ((charkey || textkey) && event != KKP_RELEASE &&
+        !(mods & (KKP_CTRL | KKP_ALT | KKP_SUPER))) {
+        wchar_t wbuf[4];
+        int r;
+        if (flags & KKP_ALL_KEYS) {
+            /* the one look-up that may change the dead-key state */
+            r = p_ToUnicodeEx((UINT)vk, (UINT)scan, keystate, wbuf,
+                              lenof(wbuf), 0, layout);
+            if (r < 0)
+                return -1;             /* a dead key: pending, consumed */
+        } else {
+            r = p_ToUnicodeEx((UINT)vk, (UINT)(scan & ~KF_UP), keystate,
+                              wbuf, lenof(wbuf), 1 << 2, layout);
+            if (r < 0)
+                return 0;              /* a dead key types text: legacy */
+        }
+        if (r == 2 && IS_SURROGATE_PAIR(wbuf[0], wbuf[1]))
+            ev.text = FROM_SURROGATES(wbuf[0], wbuf[1]);
+        else if (r >= 1 && !IS_SURROGATE(wbuf[r - 1]))
+            ev.text = wbuf[r - 1];     /* r == 2: a failed compose, its key */
+    }
+
+    n = kitty_kkp_encode(flags, &ev, (char *)output, outsz);
+    return n > 0 ? n : 0;
+}
 #endif
 
 /*
@@ -8623,6 +8783,20 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
     char keypad_key = '\0';
 
     HKL kbd_layout = GetKeyboardLayout(0);
+
+#ifdef MOD_PERSO
+    /* KiTTY kitty keyboard protocol: the key as Windows sent it, before
+     * the Num Lock and keypad rewriting of wParam below. */
+    WPARAM kkp_vk = wParam;
+    bool kkp_ext = (HIWORD(lParam) & KF_EXTENDED) != 0;
+#define KKP_MODS(alt) \
+    (((keystate[VK_SHIFT] & 0x80) ? KKP_SHIFT : 0) | \
+     ((keystate[VK_CONTROL] & 0x80) ? KKP_CTRL : 0) | \
+     ((alt) ? KKP_ALT : 0) | \
+     (((keystate[VK_LWIN] | keystate[VK_RWIN]) & 0x80) ? KKP_SUPER : 0) | \
+     ((keystate[VK_CAPITAL] & 1) ? KKP_CAPS : 0) | \
+     ((keystate[VK_NUMLOCK] & 1) ? KKP_NUM : 0))
+#endif
 
     r = GetKeyboardState(keystate);
     if (!r)
@@ -8963,13 +9137,34 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
         }
 
 #ifdef MOD_PERSO
+        /* KiTTY: kitty keyboard protocol. With flags pushed on the shown
+         * screen (CSI > flags u) every key the protocol covers goes out as
+         * it says - the CSI u forms, the legacy functional forms, or
+         * today's bytes where it leaves them alone - and modifyOtherKeys
+         * below does not apply. Flags 0, the default, changes nothing. After
+         * the window's own keys above, which keep their priority; before
+         * the fixed encodings and the key switch below, which it replaces. */
+        {
+            unsigned kkp_flags = term_kkp_flags(wgs->term);
+            if (kkp_flags) {
+                int n = kitty_kkp_translate(
+                    wgs, kkp_flags, KKP_MODS(left_alt),
+                    (HIWORD(lParam) & KF_REPEAT) ? KKP_REPEAT : KKP_PRESS,
+                    kkp_vk, kkp_ext, scan, keystate, kbd_layout, output,
+                    KKP_BUFFER_SIZE);
+                if (n > 0)
+                    return n;
+                if (n < 0)
+                    return 0;
+            }
+        }
         /* KiTTY: xterm modifyOtherKeys (CSI > 4 ; level m). A modified
          * ordinary key goes out as CSI 27 ; mod ; code ~ in place of its
          * character, control character or ESC-prefixed form. Level 0, the
          * default, changes nothing. After the window's own keys above, which
          * keep their priority; before the fixed encodings below, which it
          * replaces. Keypad Enter is a keypad key and stays. */
-        if (wgs->term->modify_other_keys &&
+        if (wgs->term->modify_other_keys && !term_kkp_flags(wgs->term) &&
             !(wParam == VK_RETURN && (HIWORD(lParam) & KF_EXTENDED))) {
             unsigned mods = ((shift_state & 1) ? KMK_SHIFT : 0) |
                             ((shift_state & 2) ? KMK_CTRL : 0) |
@@ -9235,6 +9430,25 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
         }
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: kitty keyboard protocol, a key released with flag 2 (report
+     * event types) in force: the release event, where the protocol has one
+     * for the key. Without the flag a release sends nothing, as it always
+     * did. Not with AltGr held or a compose pending, like the presses. */
+    if (!key_down && (keystate[VK_RMENU] & 0x80) == 0 &&
+        !wgs->compose_state) {
+        unsigned kkp_flags = term_kkp_flags(wgs->term);
+        if (kkp_flags & KKP_EVENT_TYPES) {
+            int n = kitty_kkp_translate(
+                wgs, kkp_flags, KKP_MODS(left_alt), KKP_RELEASE,
+                kkp_vk, kkp_ext, scan, keystate, kbd_layout, output,
+                KKP_BUFFER_SIZE);
+            if (n > 0)
+                return n;
+        }
+    }
+#endif
+
     /* Okay we've done everything interesting; let windows deal with
      * the boring stuff */
     {
@@ -9373,15 +9587,29 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
     /* KiTTY modifyOtherKeys, Ctrl+Alt taken as AltGr ("Control-Alt is
      * different from AltGr" off): a key AltGr turns into a character went
      * out as that character above; one it does not is Ctrl+Alt+key. */
-    if (key_down && r == 0 && ctrl_left_alt && !wgs->compose_state &&
-        wgs->term->modify_other_keys) {
-        unsigned mods = KMK_CTRL | KMK_ALT |
-                        ((keystate[VK_SHIFT] & 0x80) ? KMK_SHIFT : 0);
-        int n = kitty_modkeys_translate(wgs, mods, wParam, scan, keystate,
-                                        kbd_layout, output, 20);
-        if (n)
-            return n;
+    if (key_down && r == 0 && ctrl_left_alt && !wgs->compose_state) {
+        unsigned kkp_flags = term_kkp_flags(wgs->term);
+        if (kkp_flags) {
+            /* KiTTY: the kitty keyboard protocol first, as above */
+            int n = kitty_kkp_translate(
+                wgs, kkp_flags, KKP_MODS(true) | KKP_CTRL,
+                (HIWORD(lParam) & KF_REPEAT) ? KKP_REPEAT : KKP_PRESS,
+                kkp_vk, kkp_ext, scan, keystate, kbd_layout, output,
+                KKP_BUFFER_SIZE);
+            if (n > 0)
+                return n;
+            if (n < 0)
+                return 0;
+        } else if (wgs->term->modify_other_keys) {
+            unsigned mods = KMK_CTRL | KMK_ALT |
+                            ((keystate[VK_SHIFT] & 0x80) ? KMK_SHIFT : 0);
+            int n = kitty_modkeys_translate(wgs, mods, wParam, scan, keystate,
+                                            kbd_layout, output, 20);
+            if (n)
+                return n;
+        }
     }
+#undef KKP_MODS
 #endif
 
     /*

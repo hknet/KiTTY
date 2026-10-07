@@ -216,6 +216,13 @@ add_executable(test_modkeys
   test/test_modkeys.c
   kitty/kitty_modkeys.c)
 
+# KiTTY: unit test for the kitty keyboard protocol encoding
+# (kitty/kitty_kittykeys.c, shared with windows/window.c): the bytes of each
+# key at each enhancement flag, and which keys stay legacy.
+add_executable(test_kittykeys
+  test/test_kittykeys.c
+  kitty/kitty_kittykeys.c)
+
 # KiTTY: unit test for the far2l key and mouse event encoding (self-contained;
 # the encoder lives in kitty/kitty_far2l_input.h, shared with windows/window.c).
 add_executable(test_far2l_keys
@@ -367,7 +374,7 @@ foreach(t
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
-    test_far2l test_oscnotify test_progstatus test_modkeys)
+    test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
