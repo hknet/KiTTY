@@ -102,8 +102,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Inline images (kitty graphics protocol).** pi, `kitten icat` and other
   programs can show PNG and raw RGB/RGBA pictures in the window, sent in the
   data stream. A picture sits on the cells it was placed on, scrolls with the
-  text into the scrollback and is drawn by both renderers; a picture placed
-  under the text (z < 0) is not drawn yet. Files or shared memory named by
+  text into the scrollback and is drawn by both renderers, over the text or
+  under it (z < 0) with the text readable on top. Files or shared memory named by
   the host are never read. Terminal > Features > Images > Show inline images
   (`KittyGraphics`, on by default). `CSI 16 t` (cell size in pixels) is now
   answered.

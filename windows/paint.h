@@ -35,6 +35,10 @@ typedef struct KittyOverlayItem {
     int sx, sy, sw, sh;
     RECT dst;
     unsigned long serial;
+    /* a kitty graphics picture under the text (z < 0): drawn run by run
+     * (kp_under), handed to the overlay call only so the painter keeps its
+     * copy of the pixels */
+    bool under;
 } KittyOverlayItem;
 /* far2l images in one frame (the far2l store's own cap). */
 #define KITTY_OVERLAY_MAX 64
@@ -131,6 +135,13 @@ typedef struct KittyPainterVtable {
      * Direct2D draws onto the back buffer, never into its canvas. */
     void (*overlay)(KittyPainter *p, const KittyOverlayItem *items, int n,
                     const RECT *clip, COLORREF bg);
+    /* KiTTY: a picture under the text (kitty graphics, z < 0), the part
+     * `part` of it, drawn over the run's background before its glyphs; a
+     * transparent pixel shows the run's background `bg`. Into the frame
+     * itself (the canvas under Direct2D), like the text. The item also
+     * goes to this frame's overlay call, which keeps or frees the copy. */
+    void (*under)(KittyPainter *p, const KittyOverlayItem *it,
+                  const RECT *part, COLORREF bg);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -173,5 +184,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_fonts_changed(p)              ((p)->vt->fonts_changed(p))
 #define kp_scroll_rows(p, band, dy)      ((p)->vt->scroll_rows((p), (band), (dy)))
 #define kp_overlay(p, it, n, clip, bg)   ((p)->vt->overlay((p), (it), (n), (clip), (bg)))
+#define kp_under(p, it, part, bg)        ((p)->vt->under((p), (it), (part), (bg)))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

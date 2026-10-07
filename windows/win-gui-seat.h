@@ -64,6 +64,11 @@ struct WinGuiSeat {
     bool font_dualwidth, font_varpitch;
     int offset_width, offset_height;
     bool strip_dirty;  /* KiTTY: the mark strip is drawn in the next frame */
+    /* KiTTY: the kitty graphics pictures under the text of the frame being
+     * drawn (kitty_gfx_under_list): built at its first run, dropped at its
+     * end */
+    bool gfx_under_ready;
+    int gfx_under_n;
     bool was_zoomed;
     int prev_rows, prev_cols; // FIXME I don't think these are even used
 

@@ -650,6 +650,19 @@ static void gdi_overlay(KittyPainter *p, const KittyOverlayItem *items,
         const KittyOverlayItem *it = &items[i];
         RECT region, part;
         GdiOvCache *c;
+        if (it->under) {
+            /* drawn by the runs (gdi_under), on their backgrounds: every
+             * copy of it is kept while it is shown */
+            for (j = 0; j < g->novc; j++) {
+                GdiOvCache *k = &g->ovc[j];
+                if (k->serial == it->serial && k->sx == it->sx &&
+                    k->sy == it->sy && k->sw == it->sw && k->sh == it->sh &&
+                    k->dw == it->dst.right - it->dst.left &&
+                    k->dh == it->dst.bottom - it->dst.top)
+                    k->used = true;
+            }
+            continue;
+        }
         if (it->w <= 0 || it->h <= 0 || !it->bgra ||
             it->sw <= 0 || it->sh <= 0 ||
             !IntersectRect(&region, &it->dst, clip))
@@ -695,6 +708,40 @@ static void gdi_overlay(KittyPainter *p, const KittyOverlayItem *items,
     g->novc = j;
 }
 
+/* KiTTY: a picture under the text, the part of it in one run: from the
+ * cached copy composited on the run's background, else straight from the
+ * pixels, clipped. */
+static void gdi_under(KittyPainter *p, const KittyOverlayItem *it,
+                      const RECT *part, COLORREF bg)
+{
+    GdiPainter *g = (GdiPainter *)p;
+    GdiOvCache *c;
+    int saved;
+
+    if (!g->hdc || it->w <= 0 || it->h <= 0 || !it->bgra ||
+        it->sw <= 0 || it->sh <= 0 ||
+        part->right <= part->left || part->bottom <= part->top)
+        return;
+    gdi_touch_rect(g, part);
+    c = gdi_ovc_get(g, it, bg);
+    if (c) {
+        BitBlt(g->hdc, part->left, part->top, part->right - part->left,
+               part->bottom - part->top, c->mem,
+               part->left - it->dst.left, part->top - it->dst.top, SRCCOPY);
+        return;
+    }
+    saved = SaveDC(g->hdc);
+    IntersectClipRect(g->hdc, part->left, part->top, part->right, part->bottom);
+    SetStretchBltMode(g->hdc, HALFTONE);
+    SetBrushOrgEx(g->hdc, 0, 0, NULL);
+    if (it->opaque)
+        gdi_stretch(g->hdc, it, &it->dst);
+    else
+        gdi_blend(g->hdc, it, &it->dst, bg);
+    RestoreDC(g->hdc, saved);
+    g->st_valid = false;               /* RestoreDC put back the old state */
+}
+
 static const KittyPainterVtable gdi_vt = {
     .begin = gdi_begin,
     .end = gdi_end,
@@ -718,6 +765,7 @@ static const KittyPainterVtable gdi_vt = {
     .fonts_changed = gdi_fonts_changed,
     .scroll_rows = gdi_scroll_rows,
     .overlay = gdi_overlay,
+    .under = gdi_under,
 };
 
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)

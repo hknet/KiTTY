@@ -538,6 +538,7 @@ static int far2l_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
         it->sw = img->w;
         it->sh = img->h;
         it->serial = img->serial;
+        it->under = false;
         n++;
     }
     return n;
@@ -632,11 +633,14 @@ static bool gfx_inflate(void *ctx, const unsigned char *in, size_t len,
  * core gives each placement in view pixels relative to cell (0,0) with the
  * letterbox offset applied (dx0..dy1) and its source rectangle; here the
  * terminal's origin is added. The painters clip to the text area.
- * Only z >= 0 is drawn over the text here; z < 0 goes under it through the
- * background-image path (not yet: those placements are skipped).
+ * under: the placements with z < 0, drawn under the text run by run
+ * (kitty_gfx_under_run); else those with z >= 0, drawn over it. deep (may
+ * be NULL) gets, per item, whether it stays under cells of a background
+ * other than the default too (z below INT32_MIN / 2, as the protocol has it).
  */
 static int kitty_gfx_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
-                                   int max, const RECT *clip)
+                                   int max, const RECT *clip, bool under,
+                                   bool *deep)
 {
     static GfxVisible vis[KITTY_OVERLAY_FRAME_MAX];
     int i, n = 0, nvis;
@@ -649,7 +653,7 @@ static int kitty_gfx_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
     for (i = 0; i < nvis; i++) {
         const GfxVisible *v = &vis[i];
         KittyOverlayItem *it = &items[n];
-        if (v->z < 0 || !v->img || !v->img->px)
+        if ((v->z < 0) != under || !v->img || !v->img->px)
             continue;
         if (v->sw <= 0 || v->sh <= 0 || v->dx1 <= v->dx0 || v->dy1 <= v->dy0)
             continue;
@@ -669,9 +673,73 @@ static int kitty_gfx_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
         it->sw = v->sw;
         it->sh = v->sh;
         it->serial = v->img->serial;
+        it->under = under;
+        if (deep)
+            deep[n] = v->z < -1073741824;
         n++;
     }
     return n;
+}
+
+/* The text area, the clip of every picture. */
+static void kitty_text_area(WinGuiSeat *wgs, RECT *clip)
+{
+    clip->left = wgs->offset_width;
+    clip->top = wgs->offset_height;
+    clip->right = wgs->offset_width + wgs->font_width * wgs->term->cols;
+    clip->bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
+}
+
+/* KiTTY: the pictures under the text in the frame being drawn, built once
+ * per frame at its first run and forgotten at its end (kitty_overlay_frame);
+ * no pictures cost one test per run. */
+static KittyOverlayItem gfx_under[KITTY_OVERLAY_FRAME_MAX];
+static bool gfx_under_deep[KITTY_OVERLAY_FRAME_MAX];
+
+static int kitty_gfx_under_list(WinGuiSeat *wgs)
+{
+    RECT clip;
+    if (wgs->gfx_under_ready)
+        return wgs->gfx_under_n;
+    wgs->gfx_under_ready = true;
+    wgs->gfx_under_n = 0;
+    if (!wgs->term || wgs->font_width <= 0 || wgs->font_height <= 0 ||
+        !kitty_gfx_any(wgs->term))
+        return 0;
+    kitty_text_area(wgs, &clip);
+    wgs->gfx_under_n = kitty_gfx_overlay_items(
+        wgs, gfx_under, KITTY_OVERLAY_FRAME_MAX, &clip, true, gfx_under_deep);
+    return wgs->gfx_under_n;
+}
+
+/* KiTTY: the pictures under the text inside one run's cells, drawn over its
+ * background (filled here unless the background image already is) before
+ * the glyphs; returns whether any was, and the glyphs are then drawn
+ * without erasing. Not under the block cursor, which stays visible; under a
+ * cell of a background other than the default only a picture above
+ * INT32_MIN / 2, as the protocol has it. */
+static bool kitty_gfx_under_run(WinGuiSeat *wgs, const RECT *box,
+                                COLORREF bg, bool filled, bool is_cursor)
+{
+    int i, n;
+    bool drew = false;
+    bool defbg = bg == wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT];
+
+    if (is_cursor || box->right <= box->left)
+        return false;
+    n = kitty_gfx_under_list(wgs);
+    for (i = 0; i < n; i++) {
+        RECT part;
+        if (gfx_under_deep[i] && !defbg)
+            continue;
+        if (!IntersectRect(&part, &gfx_under[i].dst, box))
+            continue;
+        if (!drew && !filled)
+            kp_fill_rect(wgs->painter, box, bg);
+        drew = true;
+        kp_under(wgs->painter, &gfx_under[i], &part, bg);
+    }
+    return drew;
 }
 
 /*
@@ -690,15 +758,20 @@ static void kitty_overlay_frame(WinGuiSeat *wgs)
     if (!wgs->painter || !wgs->term ||
         wgs->font_width <= 0 || wgs->font_height <= 0)
         return;
-    clip.left = wgs->offset_width;
-    clip.top = wgs->offset_height;
-    clip.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
-    clip.bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
+    kitty_text_area(wgs, &clip);
 #ifdef MOD_FAR2L
     n = far2l_overlay_items(wgs, items, KITTY_OVERLAY_MAX, &clip);
 #endif
     n += kitty_gfx_overlay_items(wgs, items + n, KITTY_OVERLAY_FRAME_MAX - n,
-                                 &clip);
+                                 &clip, false, NULL);
+    /* the pictures under the text go along so the painter keeps their
+     * copies (they were drawn by the runs) */
+    {
+        int i, nu = kitty_gfx_under_list(wgs);
+        for (i = 0; i < nu && n < KITTY_OVERLAY_FRAME_MAX; i++)
+            items[n++] = gfx_under[i];
+    }
+    wgs->gfx_under_ready = false;      /* the next frame builds its own */
     kp_overlay(wgs->painter, items, n, &clip,
                wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
 }
@@ -8293,6 +8366,14 @@ static void do_text_internal(
             kp_opaque(wgs->painter, false);
             opaque = false;            /* don't ETO_OPAQUE over the image */
         }
+    }
+#endif
+#ifdef MOD_PERSO
+    /* KiTTY: kitty graphics pictures under the text (z < 0), between the
+     * background and the glyphs */
+    if (kitty_gfx_under_run(wgs, &line_box, bg, !opaque, is_cursor)) {
+        kp_opaque(wgs->painter, false);
+        opaque = false;
     }
 #endif
     for (remaining = len; remaining > 0;

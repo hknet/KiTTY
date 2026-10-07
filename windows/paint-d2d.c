@@ -713,6 +713,76 @@ static void d2d_overlay(KittyPainter *p, const KittyOverlayItem *items,
     d->ovsig = d->nov ? h : 0;        /* none: the same as no call at all */
 }
 
+/* KiTTY: the uploaded copy of a picture's pixels, uploaded at its first
+ * use; NULL when it cannot be (the picture is then skipped). */
+static ID2D1Bitmap *ov_bitmap(D2DPainter *d, const KittyOverlayItem *it)
+{
+    ID2D1RenderTarget *rt = (ID2D1RenderTarget *)d->dc;
+    ID2D1Bitmap *bmp = NULL;
+    D2D1_BITMAP_PROPERTIES props;
+    D2D1_SIZE_U size;
+    UINT32 maxsz;
+    int j;
+
+    for (j = 0; j < d->novc; j++)
+        if (d->ovc[j].serial == it->serial) {
+            d->ovc[j].used = true;
+            return d->ovc[j].bmp;
+        }
+    maxsz = ID2D1RenderTarget_GetMaximumBitmapSize(rt);
+    if (!it->bgra || it->w <= 0 || it->h <= 0 ||
+        (UINT32)it->w > maxsz || (UINT32)it->h > maxsz)
+        return NULL;
+    memset(&props, 0, sizeof(props));
+    props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    props.pixelFormat.alphaMode = it->opaque ?
+        D2D1_ALPHA_MODE_IGNORE : D2D1_ALPHA_MODE_PREMULTIPLIED;
+    props.dpiX = 96; props.dpiY = 96;
+    size.width = it->w; size.height = it->h;
+    if (d->novc >= d->ovc_cap) {
+        /* one entry per picture shown: never more than items */
+        d->ovc_cap = d->ovc_cap ? d->ovc_cap * 2 : 8;
+        d->ovc = sresize(d->ovc, d->ovc_cap, struct D2DOvCache);
+    }
+    if (FAILED(ID2D1RenderTarget_CreateBitmap(rt, size, it->bgra,
+                                              (UINT32)it->w * 4, &props,
+                                              &bmp)) || !bmp)
+        return NULL;
+    d->ovc[d->novc].serial = it->serial;
+    d->ovc[d->novc].bmp = bmp;
+    d->ovc[d->novc].used = true;
+    d->novc++;
+    return bmp;
+}
+
+/* KiTTY: a picture under the text, the part of it in one run, into the
+ * canvas over the run's background (already drawn), before the glyphs. */
+static void d2d_under(KittyPainter *p, const KittyOverlayItem *it,
+                      const RECT *part, COLORREF bg)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    ID2D1RenderTarget *rt = (ID2D1RenderTarget *)d->dc;
+    ID2D1Bitmap *bmp;
+    D2D1_RECT_F clip, dst, src;
+    (void)bg;                          /* the run filled it */
+
+    if (!d->in_frame || it->sw <= 0 || it->sh <= 0 ||
+        part->right <= part->left || part->bottom <= part->top)
+        return;
+    bmp = ov_bitmap(d, it);
+    if (!bmp)
+        return;
+    touch(d, part->left, part->top, part->right, part->bottom);
+    clip = rectf(part->left, part->top, part->right, part->bottom);
+    dst = rectf(it->dst.left, it->dst.top, it->dst.right, it->dst.bottom);
+    src = rectf(it->sx, it->sy, it->sx + it->sw, it->sy + it->sh);
+    ID2D1RenderTarget_PushAxisAlignedClip(rt, &clip,
+                                          D2D1_ANTIALIAS_MODE_ALIASED);
+    ID2D1RenderTarget_DrawBitmap(rt, bmp, &dst, 1.0f,
+                                 D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &src);
+    ID2D1RenderTarget_PopAxisAlignedClip(rt);
+}
+
 /* Onto the back buffer, after the canvas went there, inside `all` - the
  * part of the back buffer this frame rewrote; outside it the buffer holds
  * an older frame, overlay included, and is left alone. */
@@ -720,17 +790,22 @@ static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
 {
     ID2D1RenderTarget *rt = (ID2D1RenderTarget *)d->dc;
     D2D1_RECT_F clip;
-    UINT32 maxsz;
     int i, j;
 
     for (j = 0; j < d->novc; j++)
         d->ovc[j].used = false;
+    /* the pictures under the text were drawn into the canvas by the runs
+     * (d2d_under): only their copies are kept */
+    for (i = 0; i < d->nov; i++)
+        if (d->ov[i].under)
+            for (j = 0; j < d->novc; j++)
+                if (d->ovc[j].serial == d->ov[i].serial)
+                    d->ovc[j].used = true;
     clip.left = max(all->left, (float)d->ovclip.left);
     clip.top = max(all->top, (float)d->ovclip.top);
     clip.right = min(all->right, (float)d->ovclip.right);
     clip.bottom = min(all->bottom, (float)d->ovclip.bottom);
     if (d->nov > 0 && clip.right > clip.left && clip.bottom > clip.top) {
-        maxsz = ID2D1RenderTarget_GetMaximumBitmapSize(rt);
         ID2D1RenderTarget_PushAxisAlignedClip(rt, &clip,
                                               D2D1_ANTIALIAS_MODE_ALIASED);
         for (i = 0; i < d->nov; i++) {
@@ -740,39 +815,9 @@ static void overlay_draw(D2DPainter *d, const D2D1_RECT_F *all)
                                     it->dst.right, it->dst.bottom);
             D2D1_RECT_F src = rectf(it->sx, it->sy, it->sx + it->sw,
                                     it->sy + it->sh);
-            if (it->sw <= 0 || it->sh <= 0)
+            if (it->under || it->sw <= 0 || it->sh <= 0)
                 continue;
-            for (j = 0; j < d->novc; j++)
-                if (d->ovc[j].serial == it->serial) {
-                    bmp = d->ovc[j].bmp;
-                    d->ovc[j].used = true;
-                    break;
-                }
-            if (!bmp && it->bgra && it->w > 0 && it->h > 0 &&
-                (UINT32)it->w <= maxsz && (UINT32)it->h <= maxsz) {
-                D2D1_BITMAP_PROPERTIES props;
-                D2D1_SIZE_U size;
-                memset(&props, 0, sizeof(props));
-                props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
-                props.pixelFormat.alphaMode = it->opaque ?
-                    D2D1_ALPHA_MODE_IGNORE : D2D1_ALPHA_MODE_PREMULTIPLIED;
-                props.dpiX = 96; props.dpiY = 96;
-                size.width = it->w; size.height = it->h;
-                if (d->novc >= d->ovc_cap) {
-                    /* one entry per picture shown: never more than items */
-                    d->ovc_cap = d->ovc_cap ? d->ovc_cap * 2 : 8;
-                    d->ovc = sresize(d->ovc, d->ovc_cap, struct D2DOvCache);
-                }
-                if (SUCCEEDED(ID2D1RenderTarget_CreateBitmap(
-                                  rt, size, it->bgra, (UINT32)it->w * 4,
-                                  &props, &bmp)) && bmp) {
-                    d->ovc[d->novc].serial = it->serial;
-                    d->ovc[d->novc].bmp = bmp;
-                    d->ovc[d->novc].used = true;
-                    d->novc++;
-                } else
-                    bmp = NULL;
-            }
+            bmp = ov_bitmap(d, it);
             if (!bmp)
                 continue;              /* that picture is skipped, not the frame */
             if (!it->opaque) {
@@ -1664,6 +1709,7 @@ static const KittyPainterVtable d2d_vt = {
     .fonts_changed = d2d_fonts_changed,
     .scroll_rows = d2d_scroll_rows,
     .overlay = d2d_overlay,
+    .under = d2d_under,
 };
 
 /* ---- the device ---------------------------------------------------- */
