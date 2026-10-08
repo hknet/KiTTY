@@ -355,8 +355,8 @@ int main(void)
     /* the defaults' line, as approved */
     if (strcmp(KT_TERMENV_REFUSED_DEFAULT_LINE,
                NOTE_HEAD "this server drops COLORTERM and TERM_PROGRAM; add "
-               "\"AcceptEnv COLORTERM TERM_PROGRAM\" to its sshd_config for "
-               "true colour.\r\n")) {
+               "\"AcceptEnv COLORTERM TERM_PROGRAM\" to its sshd_config and "
+               "reload sshd for true colour.\r\n")) {
         printf("FAIL [defaults line]: wording changed\n");
         failures++;
     }
