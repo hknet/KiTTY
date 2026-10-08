@@ -184,7 +184,7 @@ name. The other
 file is a red row under its real file name ("Two files for one session name:
 this one cannot be opened until it is renamed"), with *Show in Explorer* and
 *Rename...*, which renames that file to a session name not in use yet. A
-terminal opened for such a session says so in a yellow NOTE line at its top
+terminal opened for such a session reports this in a yellow NOTE line at its top
 and in the Event Log, naming the file it opened and the other one.
 
 Turning the setting off puts the classic dropdown back exactly as it was, with
@@ -1241,11 +1241,11 @@ Each new SSH or Telnet connection also sends `COLORTERM=truecolor` and `TERM_PRO
 
 ### What the terminal reports
 
-Programs ask the terminal what it can do, and every answer is built from what **this session** has switched on at that moment:
+Programs query the terminal for what it can do, and every answer is built from what **this session** has switched on at that moment:
 
 - **Device attributes** (`CSI c`, DA1): answered as a VT220, `ESC [ ? 62 ; ... c`, with only the attributes this session has - 1 (132 columns), 2 (a printer is set), 4 (Sixel), 22 (ANSI colour), 52 (the remote clipboard may be written). Not a higher class: a VT420 or VT510 answer would promise left/right margins and rectangular editing, which KiTTY++ does not have. An answer set with DECSCL 50 wins.
 - **Terminal name** (`CSI > q`, XTVERSION): `KiTTY++` and its version.
-- **Terminfo capabilities** (`DCS + q`, XTGETTCAP): `TN`, colours, true colour (`RGB`, `Tc`), the OSC 52 clipboard (`Ms`, only while it may be written), synchronized output (`Sync`), bracketed paste and focus reports - each in its own answer, as neovim reads them. Over SSH this tells a program more than `TERM` does.
+- **Terminfo capabilities** (`DCS + q`, XTGETTCAP): `TN`, colours, true colour (`RGB`, `Tc`), the OSC 52 clipboard (`Ms`, only while it may be written), synchronized output (`Sync`), bracketed paste and focus reports - each in its own answer, as neovim reads them. Over SSH this gives a program more than `TERM` does.
 - **Feature tags** (`OSC 1337 ; Capabilities`, iTerm2's form): true colour (both SGR forms), clipboard, mouse, cursor shapes, UTF-8, title, bracketed paste, focus, strikethrough, synchronized output, hyperlinks, notifications, Sixel, inline images, progress - each only while its switch is on.
 - **Cursor shape and colours from programs**: `CSI Ps SP q` (DECSCUSR, Ps 1-6: blinking or steady block, underline, bar) overrides the session's cursor until `CSI 0 SP q` or a terminal reset - vim and neovim use it for a bar in insert mode; true colour is taken in both forms, `38;2;r;g;b` and the colon form `38:2::r:g:b` / `38:2:r:g:b` / `38:5:n` (and 48).
 - **Modes** (`CSI ? Ps $ p` and `CSI Ps $ p`, DECRQM): every mode KiTTY++ implements answers set or reset, "permanently reset" when a session setting turns the feature off, and "not recognised" for the rest.
@@ -1357,7 +1357,7 @@ Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imagin
 
 A program on the host shows pictures in the window with the [kitty graphics protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/): the pi coding agent, `kitten icat` and several file managers do. A picture sits on the cells it was placed on and scrolls with the text into the scrollback; the alternate screen's pictures go when a full-screen program ends. Programs can place one picture several times, at a size in cells or pixels, crop it, and delete pictures by id, position, cell or column. Both renderers (GDI and Direct2D) draw them.
 
-PNG and raw RGB/RGBA pictures are taken, sent in the data stream, also zlib-compressed and in chunks. Files, temporary files or shared memory that the host names on this PC are never read, and animation, Unicode placeholders and relative placements are refused, so programs fall back. A picture is drawn over the text, or under it with a negative z-index: the text stays readable on top, and the picture covers coloured cell backgrounds too unless its z-index is below -1073741824, as the protocol defines. The block cursor stays over it. Limits: a picture at most 8192 pixels a side and 64 MB, a window at most 128 MB of pictures; a picture over a limit is refused with an error to the program. `CSI 16 t` (cell size in pixels) is answered, as programs ask it to size their pictures.
+PNG and raw RGB/RGBA pictures are taken, sent in the data stream, also zlib-compressed and in chunks. Files, temporary files or shared memory that the host names on this PC are never read, and animation, Unicode placeholders and relative placements are refused, so programs fall back. A picture is drawn over the text, or under it with a negative z-index: the text stays readable on top, and the picture covers coloured cell backgrounds too unless its z-index is below -1073741824, as the protocol defines. The block cursor stays over it. Limits: a picture at most 8192 pixels a side and 64 MB, a window at most 128 MB of pictures; a picture over a limit is refused with an error to the program. `CSI 16 t` (cell size in pixels) is answered, as programs query it to size their pictures.
 
 A picture placed near the bottom of the window scrolls the screen so it shows whole, and the cursor ends right of the picture on its last row.
 

@@ -715,8 +715,10 @@ void LoadParameters( void ) {
 
 	/* All the plain keyword/int keys, in table order ("debug" first). */
 	load_ini_params() ;
-	/* The backends ask this terminal for the sendtermenv switch. */
+	/* The backends ask this terminal for the sendtermenv switch, and SSH
+	 * whether a refused default is still news for that host. */
 	kitty_termenv_switch_hook = GetSendTermEnvFlag ;
+	kitty_termenv_hint_hook = kitty_termenv_hint_first ;
 
 	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLE, buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }

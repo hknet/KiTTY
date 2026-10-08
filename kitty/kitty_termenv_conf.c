@@ -35,11 +35,13 @@ KittyTermEnvList *kitty_termenv_list_new(Conf *conf)
     list->names = snewn(list->n + 1, char *);
     list->values = snewn(list->n + 1, char *);
     list->added = snewn(list->n + 1, bool);
+    list->refused = snewn(list->n + 1, bool);
     list->n_added = 0;
     for (i = 0; i < list->n; i++) {
         list->names[i] = dupstr(vars[i].name);
         list->values[i] = dupstr(vars[i].value);
         list->added[i] = vars[i].added;
+        list->refused[i] = false;
         if (vars[i].added)
             list->n_added++;
     }
@@ -61,5 +63,6 @@ void kitty_termenv_list_free(KittyTermEnvList *list)
     sfree(list->names);
     sfree(list->values);
     sfree(list->added);
+    sfree(list->refused);
     sfree(list);
 }

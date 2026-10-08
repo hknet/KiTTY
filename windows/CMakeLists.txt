@@ -297,6 +297,7 @@ kitty_selfcheck_target(pageant)
 
 add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
@@ -308,6 +309,7 @@ kitty_selfcheck_target(plink)
 
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
@@ -317,6 +319,7 @@ kitty_selfcheck_target(pscp)
 
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
@@ -527,6 +530,23 @@ target_link_libraries(test_storage_roundtrip
   crypto utils settings utils ${platform_libraries}
   crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
 
+# KiTTY: the once-per-host mark for a refused COLORTERM / TERM_PROGRAM
+# (kitty/kitty_termenv_hint.c) through the real folder store, in a %TEMP%
+# tree (deleted). Never writes the registry.
+add_executable(test_termenv_hint
+  test/test_termenv_hint.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_termenv_hint.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  noise.c
+  no-jump-list.c
+  ${CMAKE_SOURCE_DIR}/sshrand.c)
+target_include_directories(test_termenv_hint PRIVATE
+  ${CMAKE_SOURCE_DIR}/kitty ${CMAKE_SOURCE_DIR}/kitty/bcrypt)
+target_compile_definitions(test_termenv_hint PRIVATE MOD_PERSO)
+target_link_libraries(test_termenv_hint
+  crypto utils settings utils ${platform_libraries}
+  crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
+
 add_executable(test_lineedit
   ${CMAKE_SOURCE_DIR}/test/test_lineedit.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
@@ -703,6 +723,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_far2l.c         # KiTTY: far2l's clipboard and permission box (the seams in kitty_far2l.h)
   ${KITTY_DIR}/kitty.c
   ${KITTY_DIR}/kitty_params.c   # the application-wide flags, delays, paths and the kitty.ini parameter table
+  ${KITTY_DIR}/kitty_termenv_hint.c   # KiTTY: "this host refused COLORTERM / TERM_PROGRAM" shown once, in the store
   ${KITTY_DIR}/kitty_commands.c   # the /commands console (once pasted into kitty.c as text)
   ${KITTY_DIR}/kitty_broadcast.c
   ${KITTY_DIR}/kitty_portfwd.c

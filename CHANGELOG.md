@@ -67,7 +67,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   with shell snippets for bash, zsh and fish (OSC 7 and OSC 133). It shows
   what tmux, screen, zellij and dtach let through, the tmux settings, and a
   `kpp-osc` helper that wraps a script's own notices for tmux and screen.
-- **Modified keys for programs that ask (xterm modifyOtherKeys).** A program
+- **Modified keys for programs that request them (xterm modifyOtherKeys).** A program
   that sends `CSI > 4 ; 2 m` gets keys with modifiers as `CSI 27 ; mod ;
   key ~`: Shift+Enter, Alt+Enter, Ctrl+- and the like arrive as themselves
   instead of as Enter, Esc+Enter or nothing. Level 1 and the query `CSI ? 4
@@ -78,7 +78,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Escape and Ctrl+key unambiguous, repeat and release events, the shifted
   and base-layout key, every key as an escape code, the text a key types.
   Push, pop, set and query (`CSI ? u`), one stack per screen, cleared by a
-  reset. The pi coding agent asks for it, and KiTTY++'s own shortcuts and
+  reset. The pi coding agent requests it, and KiTTY++'s own shortcuts and
   scroll keys keep priority. Without flags every key is sent as before.
 - **Light or dark, reported (mode 2031).** A program that sets mode 2031 is
   told `CSI ? 997 ; 1 n` (dark) or `; 2 n` (light) when the terminal's
@@ -91,11 +91,19 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Environment) wins, an empty one means the variable is not sent.
   Application > KiTTY++ Settings > Terminal turns it off (`[KiTTY]
   sendtermenv`). The SSH server needs `AcceptEnv COLORTERM TERM_PROGRAM`;
-  without it the variables are dropped, noted in the Event Log only.
+  without it the variables are dropped, and a NOTE line in the terminal reports this
+  once per host, naming the line its sshd_config needs.
+- **Refused environment variables are named, with the fix.** When an SSH
+  server refuses variables set in Connection > Login > Environment, a NOTE
+  line in the terminal names them and the `AcceptEnv` line its sshd_config
+  needs, on every connection; the Event Log names the fix for every
+  refused variable. klink, kscp and ksftp print the same NOTE in place of
+  "Server refused to set environment variables": yellow on a console,
+  plain text when their output is redirected.
 - **A drop upload can type the remote path.** After files dropped on the
   terminal are uploaded, their remote paths are typed at the cursor, quoted
   for the shell, without an Enter; a failed upload types nothing. It goes in
-  as a paste, bracketed when the program asked for it, so pi and other
+  as a paste, bracketed when the program requested it, so pi and other
   agents can read a dropped picture on the server. Connection > SSH > KSCP >
   Type the remote path after a drop upload (`KscpDropTypePath`, off by
   default); Shift held while dropping does it for that drop.
@@ -133,7 +141,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   hold and release the screen like mode 2026 (tmux sends this form under
   `TERM=xterm-kitty`), and `ESC P = 1 ; N s` holds for at most N ms, as in
   mintty. The session's hold limit applies to both.
-- **The terminal says what it is (XTVERSION).** `CSI > q` is answered with
+- **The terminal reports what it is (XTVERSION).** `CSI > q` is answered with
   `KiTTY++` and its version.
 - **Programs can set the cursor shape (DECSCUSR).** `CSI Ps SP q` with Ps
   1-6 picks a blinking or steady block, underline or bar - vim and neovim
@@ -142,14 +150,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **True colour in the colon form.** `38:2::r:g:b`, `38:2:r:g:b`,
   `38:5:n` and the same for 48 (ITU T.416, as neovim and others send them)
   now set the colour.
-- **Programs can ask what this session supports.** XTGETTCAP (`DCS + q`)
+- **Programs can query what this session supports.** XTGETTCAP (`DCS + q`)
   answers terminfo capabilities from the session - true colour, the OSC 52
   clipboard (only while it may be written), synchronized output, bracketed
   paste, focus reports; iTerm2's `OSC 1337 ; Capabilities` answers its
   feature tags (Sixel, inline images, hyperlinks, notifications ... as
   switched on); DECRQM (`CSI ? Ps $ p`, and `CSI Ps $ p`) answers every
-  mode KiTTY++ implements, "permanently reset" for one a session setting
-  turns off. Neovim and tmux use these over SSH whatever `TERM` says.
+  mode KiTTY++ implements; a mode that a session setting has switched off
+  is reported as "permanently reset", so a program knows that switching it
+  on will not work. Neovim and tmux use these over SSH whatever `TERM` is set to.
 
 ### Changed
 
@@ -160,7 +169,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   menus of open terminals right away - before, other windows changed only
   when activated again, or not at all until reopened. A portable copy and
   an installed one keep the setting apart.
-- **The device-attributes answer (DA1) says what the session can do.**
+- **The device-attributes answer (DA1) reports what the session can do.**
   `CSI c` is now answered as a VT220 (`ESC [ ? 62 ; ... c`) instead of a
   VT102 (`ESC [ ? 6 c`), listing only what this session really has: 1 (132
   columns), 2 (a printer is set), 4 (Sixel), 22 (ANSI colour), 52 (the
@@ -178,8 +187,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   "Unknown terminal type" works with `xterm` again (Connection > Login >
   Terminal details > Terminal-type string).
 - **A ZIP copy beside an installed KiTTY++ no longer offers the installer
-  update.** The updater asked whether a KiTTY++ installer package was on the
-  machine at all; it now asks whether this kitty.exe is the one it installed.
+  update.** The updater checked whether a KiTTY++ installer package was on the
+  machine at all; it now checks whether this kitty.exe is the one it installed.
   A copy from the ZIP is offered the download, as anywhere else.
 - **Application > Launcher reads more clearly.** The panel title is "The
   Launcher", the group "Launcher Tray Menu", and the delay before hidden
@@ -263,13 +272,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   kageant's menu could each pick a different one. One rule now decides
   which file a name means; the other file is a red row under its real
   file name, with Show in Explorer and Rename..., until it is renamed.
-  Opening such a session says so in the new terminal (a NOTE line) and in
+  Opening such a session reports this in the new terminal (a NOTE line) and in
   the Event Log.
   Looking up a session name that has no file no longer scans the whole
   session folder: only files written with another escape are looked at.
 - **"Disable focus reporting" works again, as in old KiTTY.** The box
   (Terminal > Features, `NoFocusReporting`) did nothing: 0.85.1.13 sent
-  focus reports (`ESC [ I` / `ESC [ O`) to every program that asked,
+  focus reports (`ESC [ I` / `ESC [ O`) to every program that requested them,
   ticked or not. Ticked, it now stops them. New sessions have it unticked,
   so vim, tmux `focus-events` and far2l get the reports; a stored value is
   honoured - sessions saved by 0.85.1.12/13 stored it ticked, so untick it

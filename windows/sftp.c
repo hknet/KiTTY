@@ -14,6 +14,7 @@
 #include "security-api.h"
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
+#include "../kitty/kitty_termenv.h"       /* KiTTY: the refused-variables NOTE */
 
 SeatPromptResult filexfer_get_userpass_input(Seat *seat, prompts_t *p)
 {
@@ -674,6 +675,8 @@ int main(int argc, char *argv[])
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(0))
         return 1;
+    /* KiTTY: the refused-variables NOTE, yellow on a console */
+    kitty_termenv_note_hook = kitty_termenv_console_note;
 
     CmdlineArgList *arglist = cmdline_arg_list_from_GetCommandLineW();
     ret = psftp_main(arglist);

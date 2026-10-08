@@ -417,6 +417,10 @@ Socket *platform_make_agent_socket(Plug *plug, const char *dirprefix,
                                    char **error, char **name);
 
 LogContext *ssh_get_logctx(Ssh *ssh);
+/* KiTTY: the host and port the host-key cache is keyed on (CONF_loghost
+ * applied, the port defaulted to 22). */
+const char *ssh_get_savedhost(Ssh *ssh);
+int ssh_get_savedport(Ssh *ssh);
 
 /* Communications back to ssh.c from connection layers */
 void ssh_throttle_conn(Ssh *ssh, int adjust);

@@ -154,6 +154,18 @@ LogContext *ssh_get_logctx(Ssh *ssh)
     return ssh->logctx;
 }
 
+/* KiTTY: for mainchan.c's once-per-host note on refused COLORTERM /
+ * TERM_PROGRAM defaults (kitty/kitty_termenv.h). */
+const char *ssh_get_savedhost(Ssh *ssh)
+{
+    return ssh->savedhost;
+}
+
+int ssh_get_savedport(Ssh *ssh)
+{
+    return ssh->savedport;
+}
+
 static void ssh_connect_bpp(Ssh *ssh)
 {
     ssh->bpp->ssh = ssh;

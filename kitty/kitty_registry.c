@@ -609,6 +609,7 @@ BOOL RegCleanPuTTY( void ) {
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Commands" ) ;
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Folders" ) ;
 	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Launcher" ) ;
+	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\TermEnvHint" ) ;   /* kitty_termenv_hint.c */
 	
 	// Open the key
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions", 0, KEY_READ|KEY_WRITE, &hKey) != ERROR_SUCCESS ) return 0;

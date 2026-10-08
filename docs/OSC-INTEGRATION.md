@@ -52,9 +52,9 @@ variable the server refused. Without access to `sshd_config`, set
 
 ## What KiTTY++ reports about itself
 
-A program on the host can ask the terminal what it can do. KiTTY++ builds
+A program on the host can query the terminal what it can do. KiTTY++ builds
 every answer from this session's settings at the time of the question, so
-it holds over SSH whatever `TERM` says:
+it holds over SSH whatever `TERM` is set to:
 
 | Question | Answer |
 |---|---|
@@ -75,8 +75,8 @@ Programs use these by themselves; nothing to set up on the host.
 
 | Feature | Sequence | Programs | KiTTY++ setting |
 |---|---|---|---|
-| kitty keyboard protocol | `CSI > flags u`, `CSI ? u` | pi, neovim | none; only for a program that asks |
-| xterm modifyOtherKeys | `CSI > 4 ; 2 m` | neovim, vim | none; only for a program that asks |
+| kitty keyboard protocol | `CSI > flags u`, `CSI ? u` | pi, neovim | none; only for a program that requests it |
+| xterm modifyOtherKeys | `CSI > 4 ; 2 m` | neovim, vim | none; only for a program that requests it |
 | Light or dark background | mode 2031, `CSI ? 996 n` | neovim | none |
 | Cursor shape | DECSCUSR, `CSI Ps SP q` | vim, neovim (bar in insert mode) | `CSI 0 SP q` gives back the session's cursor (**Window > Appearance**) |
 | Synchronized output | mode 2026; DCS `ESC P = 1 s` / `ESC P = 2 s` (tmux sends it under `TERM=xterm-kitty`); mintty's `ESC P = 1 ; N s` | neovim, tmux | **Terminal > Features > Synchronized output (mode 2026) max hold, ms** (`SyncOutputHoldMs`); 0 turns it off |

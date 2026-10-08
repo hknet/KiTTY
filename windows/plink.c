@@ -11,6 +11,7 @@
 #include "../kitty/kitty_hostkey_scan.h"   /* KiTTY: -scan / -knownhosts */
 #include "../kitty/kitty_renameguard.h"    /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"      /* KiTTY: refuse a file changed after release */
+#include "../kitty/kitty_termenv.h"        /* KiTTY: the refused-variables NOTE */
 #include "ssh.h"
 #include "storage.h"
 #include "tree234.h"
@@ -332,6 +333,8 @@ int main(int argc, char **argv)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(0))
         return 1;
+    /* KiTTY: the refused-variables NOTE, yellow on a console */
+    kitty_termenv_note_hook = kitty_termenv_console_note;
 
     /*
      * Initialise port and protocol to sensible defaults. (These

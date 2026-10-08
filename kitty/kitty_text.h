@@ -1922,6 +1922,28 @@
 #define KT_WIN_MISSING_FEATURES_LINE                 "\r\n\x1b[1;33mNOTE:\x1b[0m this version of Windows cannot do: " \
         "%s. Everything else works as usual. Silence this with " \
         "warnmissingfeatures=no in kitty.ini.\r\n"
+/* An SSH server refused COLORTERM or TERM_PROGRAM that KiTTY++ added
+ * (ssh/mainchan.c, kitty/kitty_termenv.h): the Event Log line for each one,
+ * and the terminal line - once per host, ever. */
+#define KT_TERMENV_REFUSED_DEFAULT_LOG               "Server refused to set environment variable %s - " \
+        "its sshd_config needs \"AcceptEnv COLORTERM TERM_PROGRAM\""
+#define KT_TERMENV_REFUSED_DEFAULT_LINE              "\r\n\x1b[1;33mNOTE:\x1b[0m this server drops COLORTERM and " \
+        "TERM_PROGRAM; add \"AcceptEnv COLORTERM TERM_PROGRAM\" to its " \
+        "sshd_config for true colour.\r\n"
+/* The session's own variables (Connection > Login > Environment) that the
+ * server refused: the Event Log line for each one, and on EVERY connection
+ * one terminal line naming them all, in the order sent - "the server refused
+ * LANG, EDITOR; its sshd_config needs "AcceptEnv LANG EDITOR"." The line is
+ * put together by kitty_termenv_refused_own_note from the three parts. */
+#define KT_TERMENV_REFUSED_OWN_LOG                   "Server refused to set environment variable %s - " \
+        "its sshd_config needs \"AcceptEnv %s\""
+#define KT_TERMENV_REFUSED_OWN_HEAD                  "\r\n\x1b[1;33mNOTE:\x1b[0m the server refused "
+/* The same head without colour sequences, for klink / kscp / ksftp, which
+ * colour the tag through the console instead (kitty_termenv_console.c). */
+#define KT_TERMENV_REFUSED_OWN_HEAD_PLAIN            "\r\nNOTE: the server refused "
+#define KT_TERMENV_NOTE_TAG                          "NOTE:"
+#define KT_TERMENV_REFUSED_OWN_MID                   "; its sshd_config needs \"AcceptEnv "
+#define KT_TERMENV_REFUSED_OWN_TAIL                  "\".\r\n"
 #define KT_WIN_AGENT_UNVERIFIED                      "This KiTTY terminal window checked which program answers its " \
         "SSH agent requests. The answer came from an unverified " \
         "program:\n\n%s\n\nThat program sees, and can sign with, every " \

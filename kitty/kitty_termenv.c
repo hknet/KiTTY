@@ -3,11 +3,15 @@
  * connection sends. Plain C, no PuTTY headers (test/test_termenv.c).
  * See kitty_termenv.h.
  */
+#include <stdio.h>
 #include <string.h>
 
 #include "kitty_termenv.h"
+#include "kitty_text.h"   /* the refusal's wording */
 
 int (*kitty_termenv_switch_hook)(void) = NULL;
+bool (*kitty_termenv_hint_hook)(const char *host_id) = NULL;
+bool (*kitty_termenv_note_hook)(const char *plain_note) = NULL;
 
 KittyTermEnvMode kitty_termenv_mode(void)
 {
@@ -59,4 +63,95 @@ size_t kitty_termenv_merge(const char *const *names, const char *const *values,
                 out[count++] = defaults[i];
     }
     return count;
+}
+
+size_t kitty_termenv_host_id(const char *host, int port, char *buf,
+                             size_t size)
+{
+    char portstr[16];
+    size_t hlen, need, i, at = 0;
+    bool bracket;
+
+    if (!host || !*host || !buf || !size)
+        return 0;
+    hlen = strlen(host);
+    portstr[0] = '\0';
+    if (port != 22)
+        snprintf(portstr, sizeof(portstr), ":%d", port);
+    /* "::1:2222" would not say where the address ends */
+    bracket = *portstr && strchr(host, ':') != NULL;
+    need = hlen + strlen(portstr) + (bracket ? 2 : 0);
+    if (need + 1 > size)
+        return 0;
+    if (bracket)
+        buf[at++] = '[';
+    for (i = 0; i < hlen; i++) {
+        char c = host[i];
+        buf[at++] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+    }
+    if (bracket)
+        buf[at++] = ']';
+    strcpy(buf + at, portstr);
+    return need;
+}
+
+/* Appends s to buf as far as size allows, counting the whole length. */
+static void note_put(char *buf, size_t size, size_t *len, const char *s)
+{
+    size_t l = strlen(s);
+    if (*len + 1 < size) {
+        size_t room = size - 1 - *len;
+        memcpy(buf + *len, s, l < room ? l : room);
+    }
+    *len += l;
+}
+
+size_t kitty_termenv_refused_own_note(const char *const *names,
+                                      const bool *added, const bool *refused,
+                                      size_t n, bool colour, char *buf,
+                                      size_t size)
+{
+    size_t i, len = 0, own = 0;
+    int pass;
+
+    for (i = 0; i < n; i++)
+        if (refused[i] && !added[i])
+            own++;
+    if (!own) {
+        if (buf && size)
+            *buf = '\0';
+        return 0;
+    }
+    if (!buf)
+        size = 0;
+    note_put(buf, size, &len, colour ? KT_TERMENV_REFUSED_OWN_HEAD
+                                     : KT_TERMENV_REFUSED_OWN_HEAD_PLAIN);
+    for (pass = 0; pass < 2; pass++) {
+        bool first = true;
+        if (pass)
+            note_put(buf, size, &len, KT_TERMENV_REFUSED_OWN_MID);
+        for (i = 0; i < n; i++) {
+            if (!refused[i] || added[i])
+                continue;
+            if (!first)
+                note_put(buf, size, &len, pass ? " " : ", ");
+            note_put(buf, size, &len, names[i]);
+            first = false;
+        }
+    }
+    note_put(buf, size, &len, KT_TERMENV_REFUSED_OWN_TAIL);
+    if (size)
+        buf[len < size ? len : size - 1] = '\0';
+    return len;
+}
+
+bool kitty_termenv_hint_due(const KittyTermEnvHintStore *store,
+                            const char *host_id)
+{
+    if (!store || !host_id || !*host_id)
+        return false;
+    if (store->said(store->ctx, host_id))
+        return false;
+    store->mark(store->ctx, host_id);
+    return true;
 }

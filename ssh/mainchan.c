@@ -11,6 +11,7 @@
 #include "ppl.h"
 #include "channel.h"
 #include "kitty/kitty_termenv.h"   /* KiTTY: COLORTERM / TERM_PROGRAM defaults */
+#include "kitty/kitty_text.h"      /* KiTTY: their refusal's wording */
 
 static void mainchan_free(Channel *chan);
 static void mainchan_open_confirmation(Channel *chan);
@@ -69,6 +70,7 @@ struct mainchan {
     int n_req_env, n_env_replies, n_env_fails;
     KittyTermEnvList *env;   /* KiTTY: the variables requested, for the replies */
     int n_env_own_fails;     /* KiTTY: refusals of the session's own variables */
+    int n_env_default_fails; /* KiTTY: refusals of the COLORTERM / TERM_PROGRAM defaults */
     bool eof_pending, eof_sent, got_pty, ready;
 
     int term_width, term_height;
@@ -273,31 +275,54 @@ static void mainchan_request_response(Channel *chan, bool success)
     if (mc->n_env_replies < mc->n_req_env) {
         int j = mc->n_env_replies++;
         if (!success) {
-            ppl_logevent("Server refused to set environment variable %s",
-                         mc->env->names[j]);   /* KiTTY: the list sent */
-            mc->n_env_fails++;
-            if (!mc->env->added[j])
+            /* KiTTY: the list sent; each refusal names the sshd_config fix */
+            mc->env->refused[j] = true;
+            if (mc->env->added[j]) {
+                ppl_logevent(KT_TERMENV_REFUSED_DEFAULT_LOG,
+                             mc->env->names[j]);
+                mc->n_env_default_fails++;
+            } else {
+                ppl_logevent(KT_TERMENV_REFUSED_OWN_LOG,
+                             mc->env->names[j], mc->env->names[j]);
                 mc->n_env_own_fails++;
+            }
+            mc->n_env_fails++;
         }
 
         if (mc->n_env_replies == mc->n_req_env) {
-            /* KiTTY: a refused COLORTERM / TERM_PROGRAM default is only in
-             * the Event Log (a stock sshd refuses it); the terminal line is
-             * about the session's own variables. */
-            int n_own = mc->n_req_env - (int)mc->env->n_added;
+            /* KiTTY: the session's own refused variables get a NOTE naming
+             * them and the AcceptEnv line, on every connection, in place of
+             * upstream's "Server refused to set ..." lines: yellow in the
+             * terminals, and in klink / kscp / ksftp on a console; plain
+             * when their stderr is redirected. A refused COLORTERM /
+             * TERM_PROGRAM default (a stock sshd refuses it; only the
+             * KiTTY++ terminal adds them) gets its own NOTE, only the first
+             * time that host refuses it (kitty/kitty_termenv.h). */
             if (mc->n_env_fails == 0) {
                 ppl_logevent("All environment variables successfully set");
             } else if (mc->n_env_fails == mc->n_req_env) {
                 ppl_logevent("All environment variables refused");
             }
-            if (mc->n_env_own_fails == 0) {
-                /* nothing of the session's own was refused */
-            } else if (mc->n_env_own_fails == n_own) {
-                ppl_printf("Server refused to set environment "
-                           "variables\r\n");
-            } else {
-                ppl_printf("Server refused to set all environment "
-                           "variables\r\n");
+            if (mc->n_env_own_fails) {
+                bool colour = !kitty_termenv_note_hook;
+                size_t len = kitty_termenv_refused_own_note(
+                    (const char *const *)mc->env->names, mc->env->added,
+                    mc->env->refused, mc->env->n, colour, NULL, 0);
+                char *note = snewn(len + 1, char);
+                kitty_termenv_refused_own_note(
+                    (const char *const *)mc->env->names, mc->env->added,
+                    mc->env->refused, mc->env->n, colour, note, len + 1);
+                if (colour || !kitty_termenv_note_hook(note))
+                    ppl_printf("%s", note);
+                sfree(note);
+            }
+            if (mc->n_env_default_fails && kitty_termenv_hint_hook) {
+                char id[KITTY_TERMENV_HOST_ID_MAX];
+                if (kitty_termenv_host_id(ssh_get_savedhost(mc->ppl->ssh),
+                                          ssh_get_savedport(mc->ppl->ssh),
+                                          id, sizeof(id)) &&
+                    kitty_termenv_hint_hook(id))
+                    ppl_printf("%s", KT_TERMENV_REFUSED_DEFAULT_LINE);
             }
         }
         return;
