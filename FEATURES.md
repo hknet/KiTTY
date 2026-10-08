@@ -1303,7 +1303,7 @@ Three protections apply to every clipboard protocol at once:
 
 A program on the host can show a notice near the clock, for example when a long build or a backup ends: `printf '\e]9;Build done\a'` (OSC 9, iTerm2), `printf '\e]777;notify;Backup;Finished\a'` (OSC 777, urxvt), or the kitty terminal's OSC 99 (as `kitten notify` sends it). The notice is KiTTY++'s own window, not a Windows toast: it is titled with the session's name (the host name for an unnamed session), so it always shows where it came from, and nothing of it is kept in the Action Center after it goes. The program's title is its first line, its text follows. A click brings the terminal window forward.
 
-**Terminal → Features → Desktop notifications (OSC 9, 777, 99)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
+**Terminal → Features → Desktop notifications (OSC 9, 777, 99, 7501)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
 
 OSC 99 is supported in its core: ids, text sent in chunks and base64, `p=close` and `p=alive`, `p=?` (which answers with what is supported), urgency (`u=2` stays until clicked and is drawn in red, `u=0` goes after 5 seconds), the display time (`w`), and the click and close reports (`a=report`, `c=1`), which send the host only the notice's id. Icons, buttons and sounds are not. ConEmu's numbered OSC 9 commands are not shown as notices.
 

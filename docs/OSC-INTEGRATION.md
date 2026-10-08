@@ -10,18 +10,20 @@ in KiTTY++ and what the host needs.
 | Feature | Sequence | KiTTY++ setting | On the host |
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Prompt marks | OSC 133 | none | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Program status | OSC 7501 | **Terminal > Features**, both settings of the group | A program that reports its status ([below](#program-status-osc-7501)) |
-| Desktop notifications | OSC 9, 777, 99 | **Terminal > Features > Desktop notifications** | A program that sends them: `printf`, `kitten notify` |
+| Prompt marks | OSC 133 | **Terminal > Features > Shell integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
+| Program status | OSC 7501 | **Terminal > Features > Notifications from the host**, both settings of the group | A program that reports its status ([below](#program-status-osc-7501)) |
+| Desktop notifications | OSC 9, 777, 99 | **Terminal > Features > Desktop notifications (OSC 9, 777, 99, 7501)** | A program that sends them: `printf`, `kitten notify` |
 | Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
 | Hyperlinks | OSC 8 | **Window > Hyperlinks > Allow OSC 8 hyperlinks**, on | Programs that write them: `ls --hyperlink=auto`, Rich/Textual applications |
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
 | Clipboard with types, paste events | OSC 5522 | the same as OSC 52 | `kitten clipboard` |
-| File transfer through the terminal | OSC 5113 | **Connection > File-Transfer-Settings**, **Transfers & Tools > OSC 5113 (kitten)** | `kitten transfer` |
+| File transfer through the terminal | OSC 5113 | **Connection > File-Transfer-Settings**, **Application > KiTTY++ Settings > Transfers & Tools > OSC 5113 (kitten)** | `kitten transfer` |
 | Inline images, kitty graphics | APC `_G` | **Terminal > Features > Images > Show inline images (kitty graphics protocol)**, on | Nothing; programs: `kitten icat`, `chafa -f kitty`, `timg -pk`, pi ([below](#inline-images)) |
 | Inline images, iTerm2 | OSC 1337 `File=` | **Terminal > Features > Images > Show inline images (iTerm2 OSC 1337)**, on | Nothing; programs: `imgcat`, `chafa -f iterm`, `timg -pi` |
-| Inline images, Sixel | DCS `q` | **Terminal > Features > Images > Show inline images (Sixel)**, on | Nothing; programs: `chafa -f sixels`, `timg` (finds it by itself), img2sixel, lsix |
+| Inline images, Sixel | DCS `q` | **Terminal > Features > Images > Show inline images (Sixel)**, on | Nothing; programs: `chafa -f sixels`, `timg` (finds it through `CSI c`, [below](#inline-images)), img2sixel, lsix |
 | True colour and terminal name | `COLORTERM`, `TERM_PROGRAM` (environment, not OSC) | **Application > KiTTY++ Settings > Terminal > Send COLORTERM and TERM_PROGRAM to the server**, on | SSH: `AcceptEnv COLORTERM TERM_PROGRAM` in `sshd_config` ([below](#colorterm-and-term_program)) |
+| What the session reports | `CSI c`, `CSI > q`, `DCS + q`, OSC 1337 `Capabilities`, `CSI ? Ps $ p` | **Terminal > Features > Report as a VT220 with this session's features (CSI c)**, on; the other answers follow the session's switches | Nothing ([below](#what-kitty-reports-about-itself)) |
+| Keys, cursor shape, colour, focus, synchronized output | CSI, DCS, OSC 4/10/11/12 | per feature ([below](#understood-without-anything-on-the-host)) | Nothing |
 
 Details of each feature: [FEATURES.md](../FEATURES.md). Inside tmux, GNU
 screen, zellij or dtach, most of these need more: see
@@ -48,13 +50,51 @@ session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`. The Event Log lists a
 variable the server refused. Without access to `sshd_config`, set
 `COLORTERM=truecolor` in the shell's startup file instead.
 
+## What KiTTY++ reports about itself
+
+A program on the host can ask the terminal what it can do. KiTTY++ builds
+every answer from this session's settings at the time of the question, so
+it holds over SSH whatever `TERM` says:
+
+| Question | Answer |
+|---|---|
+| Device attributes, DA1 (`CSI c`) | A VT220, `ESC [ ? 62 ; ... c`, with only the attributes the session has: 1 (132 columns; not with remote resizing disabled), 2 (a printer is set), 4 (Sixel), 22 (ANSI colour), 52 (the remote clipboard may be written). **Terminal > Features > Report as a VT220 with this session's features (CSI c)** (`ReportVT220`, the first box on the panel, on by default); off, the old VT102 answer `ESC [ ? 6 c`. An answer a program set with DECSCL 50 wins. |
+| Terminal name, XTVERSION (`CSI > q`) | `DCS > \| KiTTY++ <version> ST` |
+| Terminfo capabilities, XTGETTCAP (`DCS + q <hex names> ST`) | One reply per name, `DCS 1 + r` with the value or `DCS 0 + r` for a name not answered. `TN` (the session's terminal type), `Co` / `colors`, true colour `RGB` / `Tc` / `setrgbf` / `setrgbb`, `Ms` (only while the remote clipboard may be written), `Sync` (only with a hold limit above 0), cursor shape `Ss` / `Se`, bracketed paste `BE` / `BD` / `PS` / `PE`, focus reports `fe` / `fd` / `kxIN` / `kxOUT` (only with focus reporting allowed). |
+| Feature tags, iTerm2's `OSC 1337 ; Capabilities` | `OSC 1337 ; Capabilities=<tags>`: true colour, clipboard, mouse, cursor shapes, UTF-8, title, bracketed paste, focus, strikethrough, synchronized output, hyperlinks, notifications, Sixel, inline images, progress, each only while its switch is on. |
+| Modes, DECRQM (`CSI ? Ps $ p`, `CSI Ps $ p`) | Every mode KiTTY++ implements: set or reset, "permanently reset" when a session setting turns it off, "not recognised" for the rest. Mode 2026 with a hold limit of 0 is "not recognised". |
+
+This is how neovim and tmux find true colour, the clipboard and synchronized
+output without `TERM=xterm-kitty`. Setting that terminal type is the worse
+way: it needs kitty's terminfo on the host and promises features KiTTY++
+does not have (see [Inline images](#inline-images)).
+
+## Understood without anything on the host
+
+Programs use these by themselves; nothing to set up on the host.
+
+| Feature | Sequence | Programs | KiTTY++ setting |
+|---|---|---|---|
+| kitty keyboard protocol | `CSI > flags u`, `CSI ? u` | pi, neovim | none; only for a program that asks |
+| xterm modifyOtherKeys | `CSI > 4 ; 2 m` | neovim, vim | none; only for a program that asks |
+| Light or dark background | mode 2031, `CSI ? 996 n` | neovim | none |
+| Cursor shape | DECSCUSR, `CSI Ps SP q` | vim, neovim (bar in insert mode) | `CSI 0 SP q` gives back the session's cursor (**Window > Appearance**) |
+| Synchronized output | mode 2026; DCS `ESC P = 1 s` / `ESC P = 2 s` (tmux sends it under `TERM=xterm-kitty`); mintty's `ESC P = 1 ; N s` | neovim, tmux | **Terminal > Features > Synchronized output (mode 2026) max hold, ms** (`SyncOutputHoldMs`); 0 turns it off |
+| True colour | SGR `38;2;r;g;b` and the colon form `38:2::r:g:b` (and 48) | neovim, most | none |
+| Colour queries | OSC 4, 10, 11, 12 with `?` | vim, neovim (light or dark scheme) | none; setting colours this way is not supported |
+| Focus reports | DECSET 1004 | vim, tmux `focus-events`, far2l | **Terminal > Features > Disable focus reporting**, unticked for new sessions. Sessions saved by 0.85.1.12 and 0.85.1.13 stored it ticked: untick it there to get the reports. |
+
 ## Inline images
 
 Nothing to install on the host besides the program that draws: the three
 protocols travel in the terminal stream like text. How a program picks one:
 
-- **Sixel** is found by itself: KiTTY++ reports it in its device
-  attributes (`CSI c`). `timg` without options uses Sixel in KiTTY++.
+- **Sixel** is found through the device attributes (`CSI c`): KiTTY++
+  reports Sixel there while **Terminal > Features > Report as a VT220 with
+  this session's features (CSI c)** and **Images > Show inline images
+  (Sixel)** are on (the default). With the first off, `CSI c` is
+  answered `ESC [ ? 6 c` and programs do not find Sixel; name it
+  (`chafa -f sixels`). `timg` without options uses Sixel in KiTTY++.
 - **kitty graphics and iTerm2** are found by name. Programs look for
   `TERM=xterm-kitty`, or match the terminal's name (`CSI > q`, answered
   `KiTTY++ <version>`) against a list that does not know KiTTY++ yet. Name
@@ -82,9 +122,12 @@ One snippet per shell sends two things before every prompt:
   Enter). A prompt ends a program's *working* or *blocked* status (OSC 7501).
   The marks let **Alt+PgUp** / **Alt+PgDn** jump between prompts,
   **Alt+Shift+PgUp** / **Alt+Shift+PgDn** between failed commands, and
-  **Alt+End** select a command's output; a failed command is marked red.
-  **Alt+Home** selects the command line itself and needs the optional `B`
-  mark (the start of the typed command): one more line per shell, below.
+  **Alt+End** select a command's output; a failed command is marked red
+  (**Terminal > Features > Shell integration > Mark failed commands (OSC
+  133)**). **Alt+Home** selects the command line itself and needs the
+  optional `B` mark (the start of the typed command): one more line per
+  shell, below. The keys are actions on **Application > KiTTY++ Settings >
+  Keys & Mouse > Shortcuts**.
 
 Many setups send OSC 7 already: Starship, several oh-my-zsh and oh-my-posh
 themes, `ble.sh`, and the `vte.sh` some Linux distributions install in
@@ -255,7 +298,8 @@ These follow **Progress and status on the taskbar button (OSC 9;4, 7501)**.
 OSC 9;4 uses the same bar, so whichever program reports last wins.
 
 **Notices:** blocked, done and failed raise a notice, "app: state" with the
-program's message below. It follows **Desktop notifications** (by default only
+program's message below. It follows **Desktop notifications (OSC 9, 777, 99,
+7501)** (by default only
 while the window is not focused) and its limits: one notice every 2 seconds
 per window.
 
@@ -291,10 +335,15 @@ sequence:
 | OSC 8 hyperlinks | dropped | passed | dropped | dropped | passed |
 | OSC 7, 133 (the shell snippets above) | dropped | passed (the snippets wrap) | passed (the snippets wrap) | dropped, wrapped too | passed |
 | OSC 9, 777, 99 notices, 9;4 progress, 7501 status | dropped | wrapped only | wrapped only, at most 768 bytes | dropped, wrapped too | passed |
+| Inline images: kitty graphics, iTerm2 OSC 1337, Sixel | not measured | not measured | not measured | not measured | not measured |
 
 "Wrapped only": the sequence gets through only when the program wraps it for
 the multiplexer, as the shell snippets and `kpp-osc` below do. Most programs
 do not.
+
+Inline images inside tmux need `allow-passthrough on` and a program that
+wraps its sequences for tmux (chafa and timg do); Sixel needs tmux 3.4 or
+later built with Sixel support. See [Inline images](#inline-images).
 
 ### tmux: `~/.tmux.conf`
 
