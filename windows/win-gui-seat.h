@@ -37,6 +37,8 @@ enum UnderlineMode {
 struct _dpi_info {
     POINT cur_dpi;
     RECT new_wnd_rect;
+    UINT win_dpi;      /* KiTTY: GetDpiForWindow as of the last WM_DPICHANGED
+                        * (0 = not known yet), see WM_SIZE */
 };
 
 /*

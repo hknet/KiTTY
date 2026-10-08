@@ -980,6 +980,7 @@ DECL_WINDOWS_FUNCTION(static, HMONITOR, MonitorFromWindow, (HWND, DWORD));
 DECL_WINDOWS_FUNCTION(static, HRESULT, GetDpiForMonitor, (HMONITOR hmonitor, enum MONITOR_DPI_TYPE dpiType, UINT *dpiX, UINT *dpiY));
 DECL_WINDOWS_FUNCTION(static, HRESULT, GetSystemMetricsForDpi, (int nIndex, UINT dpi));
 DECL_WINDOWS_FUNCTION(static, HRESULT, AdjustWindowRectExForDpi, (LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle, UINT dpi));
+DECL_WINDOWS_FUNCTION(static, UINT, GetDpiForWindow, (HWND hwnd));
 
 static UINT wm_mousewheel = WM_MOUSEWHEEL;
 
@@ -7369,6 +7370,30 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
         wgs->processed_resize = true;
 
+#ifdef MOD_PERSO
+        /* KiTTY: a live DPI change. Windows has already moved the window to
+         * the new DPI (its frame is rescaled, so the client shrank or grew),
+         * but our WM_DPICHANGED has not run yet and the fonts are still the
+         * old DPI's. Re-gridding now loses rows and columns for good (24 x 80
+         * became 22 x 78 at 100 -> 150 %, either renderer, whichever message
+         * Windows delivered first). Leave the grid alone: reset_window(3)
+         * then resizes the window to keep it, and the WM_SIZE that sends
+         * comes back here with the new fonts. Maximise and restore keep
+         * their own handling; an embedded window gets no WM_DPICHANGED. */
+        if (p_GetDpiForWindow && !KITTY_IS_EMBEDDED(hwnd) &&
+            wParam != SIZE_MINIMIZED &&
+            !(wParam == SIZE_MAXIMIZED && !wgs->was_zoomed) &&
+            !(wParam == SIZE_RESTORED && wgs->was_zoomed)) {
+            UINT now = p_GetDpiForWindow(hwnd);
+            if (!wgs->dpi_info.win_dpi)
+                wgs->dpi_info.win_dpi = now;            /* first sight */
+            else if (now && now != wgs->dpi_info.win_dpi) {
+                sys_cursor_update(wgs);
+                return 0;
+            }
+        }
+#endif
+
         if (resize_action == RESIZE_DISABLED) {
             /* A resize, well it better be a minimize. */
             reset_window(wgs, -1);
@@ -7440,6 +7465,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         wgs->dpi_info.cur_dpi.x = LOWORD(wParam);
         wgs->dpi_info.cur_dpi.y = HIWORD(wParam);
         wgs->dpi_info.new_wnd_rect = *(RECT*)(lParam);
+        /* KiTTY: the DPI the fonts are now made for, before reset_window,
+         * so the WM_SIZE its own SetWindowPos sends re-grids (see WM_SIZE) */
+        wgs->dpi_info.win_dpi = LOWORD(wParam);
         reset_window(wgs, 3);
         return 0;
       case WM_VSCROLL:
@@ -8867,6 +8895,7 @@ static void init_winfuncs(void)
     GET_WINDOWS_FUNCTION_NO_TYPECHECK(shcore_module, GetDpiForMonitor);
     GET_WINDOWS_FUNCTION_NO_TYPECHECK(user32_module, GetSystemMetricsForDpi);
     GET_WINDOWS_FUNCTION_NO_TYPECHECK(user32_module, AdjustWindowRectExForDpi);
+    GET_WINDOWS_FUNCTION_NO_TYPECHECK(user32_module, GetDpiForWindow);
 }
 
 #ifdef MOD_PERSO

@@ -238,6 +238,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A display scaling change no longer shrinks the terminal.** Changing
+  Windows' scaling while a window was open (100 % to 150 % and back) could
+  leave it at 22 x 78 instead of 24 x 80: Windows sometimes resized the
+  window before telling it the new scaling, and the grid was recomputed
+  with the old font. Such a resize now waits for the new fonts. Seen
+  mostly with the Direct2D renderer, possible with GDI too; 0.85.1.13 had
+  it as well.
 - **A colour or attribute with a colon no longer swallows its neighbours.**
   An SGR sequence holding any `:` (`ESC [ 1 ; 38:2::10:20:30 ; 4 m`) was
   dropped whole, so bold and underline beside it were lost too. Unknown
