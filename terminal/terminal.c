@@ -236,6 +236,11 @@ static void deselect(Terminal *);
 static void term_print_finish(Terminal *);
 static void scroll(Terminal *, int, int, int, bool);
 static void parse_optionalrgb(optionalrgb *out, unsigned *values);
+#ifdef MOD_PERSO
+static void term_cursor_row_redraw(Terminal *term);
+static void term_set_cursor_style(Terminal *term, unsigned ps);
+static bool term_sgr_subparams(Terminal *term, int *ip);
+#endif
 static void term_added_data(Terminal *term, bool);
 static void term_update_raw_mouse_mode(Terminal *term);
 static void term_out_cb(void *);
@@ -2234,6 +2239,11 @@ static void power_on(Terminal *term, bool clear)
     term->big_cursor = false;
 #ifdef MOD_PERSO
     term->kd_all = true;               /* KiTTY: a reset, every row walked */
+    /* KiTTY: DECSCUSR, back to the session's cursor shape and blink */
+    if (term->decscusr)
+        term_cursor_row_redraw(term);
+    term->decscusr = 0;
+    term->blink_cur = term->conf_blink_cur;
 #endif
     term->default_attr = term->save_attr =
         term->alt_save_attr = term->curr_attr = ATTR_DEFAULT;
@@ -2495,6 +2505,14 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->no_bracketed_paste = conf_get_bool(term->conf, CONF_no_bracketed_paste);
     term->bksp_is_delete = conf_get_bool(term->conf, CONF_bksp_is_delete);
     term->blink_cur = conf_get_bool(term->conf, CONF_blink_cur);
+#ifdef MOD_PERSO
+    /* KiTTY: the session's blink, kept apart from the one in force: a
+     * program's DECSCUSR outlives Change Settings, until CSI 0 SP q or a
+     * reset gives the cursor back to the session. */
+    term->conf_blink_cur = term->blink_cur;
+    if (term->decscusr)
+        term->blink_cur = (term->decscusr & 1) != 0;
+#endif
     term->blinktext = conf_get_bool(term->conf, CONF_blinktext);
     term->cjk_ambig_wide = conf_get_bool(term->conf, CONF_cjk_ambig_wide);
     term->conf_height = conf_get_int(term->conf, CONF_height);
@@ -8367,15 +8385,123 @@ const char *term_da1_answer(Terminal *term)
 }
 
 #ifdef MOD_PERSO
+/* KiTTY: the cursor's row is drawn again whole at the next update, for a
+ * cursor that changed shape or blink where it stands: its cell alone would
+ * compare equal and keep the old cursor's pixels. */
+static void term_cursor_row_redraw(Terminal *term)
+{
+    int y = term->curs.y - term->disptop;
+    if (term->disptext && y >= 0 && y < term->rows) {
+        for (int j = 0; j < term->cols; j++)
+            term->disptext[y]->chars[j].attr |= ATTR_INVALID;
+        kitty_kd_row(term, y);
+    }
+    term_schedule_update(term);
+}
+
+/*
+ * KiTTY: DECSCUSR, CSI Ps SP q, as xterm: 1 blinking block, 2 steady block,
+ * 3 blinking underline, 4 steady underline, 5 blinking bar, 6 steady bar.
+ * 0 (or no Ps) gives the cursor back to the session's shape and blink
+ * (Window > Appearance) - xterm's 0 is a blinking block, but here the
+ * user's choice is the default. A Ps above 6 is ignored. The program's
+ * choice stays until 0 or a reset (RIS, Reset terminal; power_on); Change
+ * Settings keeps it (term_copy_stuff_from_conf). The front end reads the
+ * shape through term_cursor_type(); WYULCURM's big cursor still wins.
+ */
+static void term_set_cursor_style(Terminal *term, unsigned ps)
+{
+    if (ps > 6)
+        return;
+    term->decscusr = ps;
+    term->blink_cur = ps ? (ps & 1) != 0 : term->conf_blink_cur;
+    term->cblinker = true;             /* a new shape starts visible */
+    term_schedule_cblink(term);
+    term_cursor_row_redraw(term);
+}
+
+/*
+ * KiTTY: a colour in ':' sub-parameters (ITU T.416), the values after the
+ * 38 / 48: "5:n" a palette index (0-255), "2:<cs>:r:g:b" true colour with
+ * the colour-space id (empty in the common 38:2::r:g:b; ITU's unused and
+ * tolerance fields after b are allowed and ignored), "2:r:g:b" xterm's form
+ * without the id. Returns 5 with *index, 2 with *rgb, 0 for anything else.
+ * SGR 58 (underline colour) is to read its colour through this as well.
+ */
+static int term_sgr_sub_colour(unsigned *sub, int n, unsigned *index,
+                               optionalrgb *rgb)
+{
+    if (n == 2 && sub[0] == 5 && sub[1] < 256) {
+        *index = sub[1];
+        return 5;
+    }
+    if (sub[0] == 2 && n == 4) {
+        parse_optionalrgb(rgb, sub + 1);
+        return 2;
+    }
+    if (sub[0] == 2 && n >= 5 && n <= 8) {
+        parse_optionalrgb(rgb, sub + 2);
+        return 2;
+    }
+    return 0;
+}
+
+/*
+ * KiTTY: SGR, one parameter at *ip of a sequence with sub-parameters. A
+ * plain one (none follow it) returns false for the ordinary switch. One
+ * with sub-parameters is taken whole and *ip moved past them: 38 and 48
+ * set the colour, anything else - 4:n underline styles, 58 / 59 underline
+ * colour, a malformed list - is ignored without touching the parameters
+ * around it. A stray sub-parameter (after a parameter the switch took with
+ * its ';' arguments) is skipped.
+ */
+static bool term_sgr_subparams(Terminal *term, int *ip)
+{
+    int i = *ip, n = 0, kind;
+    unsigned index = 0;
+    optionalrgb rgb = optionalrgb_none;
+
+    if (term->esc_sub[i])
+        return true;
+    while (i + 1 + n < term->esc_nargs && term->esc_sub[i + 1 + n])
+        n++;
+    if (!n)
+        return false;
+    *ip = i + n;
+    kind = term_sgr_sub_colour(term->esc_args + i + 1, n, &index, &rgb);
+    if (!kind)
+        return true;
+    switch (term->esc_args[i]) {
+      case 38:
+        if (kind == 5) {
+            term->curr_attr &= ~ATTR_FGMASK;
+            term->curr_attr |= index << ATTR_FGSHIFT;
+            term->curr_truecolour.fg = optionalrgb_none;
+        } else
+            term->curr_truecolour.fg = rgb;
+        break;
+      case 48:
+        if (kind == 5) {
+            term->curr_attr &= ~ATTR_BGMASK;
+            term->curr_attr |= index << ATTR_BGSHIFT;
+            term->curr_truecolour.bg = optionalrgb_none;
+        } else
+            term->curr_truecolour.bg = rgb;
+        break;
+    }
+    return true;
+}
+
 /*
  * KiTTY: OSC 1337 ; Capabilities, iTerm2's "Terminal Feature Reporting"
  * (iterm2.com/feature-reporting): answered OSC 1337 ; Capabilities=<tags>
  * BEL, the tags in the order and with the terminator of iTerm2's own
  * encoder. Every tag from this session's state at the time of the query:
- *   T1  24-bit colour, the 38;2;r;g;b form only (the colon form is not
- *       parsed) - true colour and ANSI colour on
+ *   T3  24-bit colour, both the 38;2;r;g;b form (1) and the colon forms
+ *       38:2::r:g:b / 38:2:r:g:b (2) - true colour and ANSI colour on
  *   Cw  OSC 52 writes not set to Deny (Ask counts, as the spec allows)
  *   M   mouse reporting 1000/1002/1003/1006 - not with it disabled
+ *   Sc7 DECSCUSR: Ps 1-4 (1), 5-6 (2) and 0 back to the default (4)
  *   U, Aw, Uw<n>  UTF-8 as the line character set; ambiguous-width
  *       characters wide; the Unicode version of the width tables
  *   Ts2 OSC 0/1/2 title setting (no title stack) - not with remote
@@ -8391,7 +8517,7 @@ const char *term_da1_answer(Terminal *term)
  *       the same letter as FOCUS_REPORTING; iTerm2 and mintty both send it
  *       twice like this.
  *   P   OSC 9;4 progress - TaskbarProgress
- * Never: Lr (no left/right margins), Sc (no DECSCUSR), Go (no overline).
+ * Never: Lr (no left/right margins), Go (no overline).
  */
 static void term_capabilities_report(Terminal *term)
 {
@@ -8400,11 +8526,12 @@ static void term_capabilities_report(Terminal *term)
 
     put_dataz(sb, "\033]1337;Capabilities=");
     if (term->ansi_colour && term->true_colour)
-        put_dataz(sb, "T1");
+        put_dataz(sb, "T3");
     if (term->osc52_allowed != OSC52_CLIPBOARD_DENY)
         put_dataz(sb, "Cw");
     if (!term->xterm_mouse_forbidden)
         put_dataz(sb, "M");
+    put_dataz(sb, "Sc7");
     if (utf8) {
         put_dataz(sb, "U");
         if (term->cjk_ambig_wide)
@@ -8485,6 +8612,11 @@ static int xtgettcap_value(Terminal *term, const char *name, const char **val)
         *val = "\\E]52;%p1%s;%p2%s\\E\\\\";
         return 1;
     }
+    /* DECSCUSR (term_set_cursor_style); Se as ncurses' xterm+tmux and
+     * xterm-kitty: a steady block. CSI 0 SP q would give the session's
+     * cursor back, but terminfo's convention is 2. */
+    if (!strcmp(name, "Ss")) { *val = "\\E[%p1%d q"; return 1; }
+    if (!strcmp(name, "Se")) { *val = "\\E[2 q"; return 1; }
     if (!strcmp(name, "Sync") && term_sync_hold_ms(term)) {
         *val = "\\EP=%p1%ds\\E\\\\";
         return 1;
@@ -9977,6 +10109,10 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     term->esc_args[0] = ARG_DEFAULT;
                     term->esc_query = 0;
                     term->esc_dollar = false;
+#ifdef MOD_PERSO
+                    term->esc_sub[0] = false;
+                    term->esc_colon = false;
+#endif
                     break;
                   case ']':             /* OSC: xterm escape sequences */
                     /* Compatibility is nasty here, xterm, linux, decterm yuk! */
@@ -10218,11 +10354,31 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     }
                     term->termstate = SEEN_CSI;
                 } else if (c == ';') {
-                    if (term->esc_nargs < ARGS_MAX)
+                    if (term->esc_nargs < ARGS_MAX) {
+#ifdef MOD_PERSO
+                        term->esc_sub[term->esc_nargs] = false;
+#endif
                         term->esc_args[term->esc_nargs++] = ARG_DEFAULT;
+                    }
                     term->termstate = SEEN_CSI;
                 } else if (c < '@') {
 #ifdef MOD_PERSO
+                    /* KiTTY: ':' separates sub-parameters (ITU T.416, SGR
+                     * 38:2::r:g:b): a new argument, marked in esc_sub. One
+                     * that does not fit makes the sequence unrecognised, so
+                     * values never run into each other. After a private
+                     * marker or an intermediate, a ':' spoils the sequence
+                     * as before. */
+                    if (c == ':' && term->esc_query == 0) {
+                        if (term->esc_nargs < ARGS_MAX) {
+                            term->esc_sub[term->esc_nargs] = true;
+                            term->esc_args[term->esc_nargs++] = ARG_DEFAULT;
+                            term->esc_colon = true;
+                        } else
+                            term->esc_query = -1;
+                        term->termstate = SEEN_CSI;
+                        break;
+                    }
                     /* KiTTY: the '$' intermediate of DECRQM (CSI ? Ps $ p) is
                      * remembered instead of spoiling the query, so the final
                      * byte can be dispatched on it. Only after '?': a '$' in any
@@ -10242,7 +10398,15 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     term->termstate = SEEN_CSI;
                 } else
 #define CLAMP(arg, lim) ((arg) = ((arg) > (lim)) ? (lim) : (arg))
+#ifdef MOD_PERSO
+                    /* KiTTY: sub-parameters only in a plain SGR; with any
+                     * other final byte the sequence stays unrecognised. */
+                    switch (ANSI(c, term->esc_colon &&
+                                 (c != 'm' || term->esc_query) ?
+                                 -1 : term->esc_query)) {
+#else
                     switch (ANSI(c, term->esc_query)) {
+#endif
 #ifdef MOD_PERSO
                       case ANSI('p', 1):
                         /* KiTTY: DECRQM for a private mode, CSI ? Ps $ p,
@@ -10298,6 +10462,11 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             sixel_xtsmgraphics(term);
                         break;
 #endif
+                      case ANSI('q', ' '):
+                        /* KiTTY: DECSCUSR, CSI Ps SP q - the cursor's shape
+                         * and blink (term_set_cursor_style) */
+                        term_set_cursor_style(term, def(term->esc_args[0], 0));
+                        break;
                       case ANSI('q', '>'):
                         /* KiTTY: XTVERSION, CSI > q or CSI > 0 q, answered
                          * DCS > | KiTTY++ <version> ST; other parameters get
@@ -10614,6 +10783,13 @@ static void term_out(Terminal *term, bool called_from_term_data)
                          * unimplemented.
                          */
                         for (int i = 0; i < term->esc_nargs; i++)
+#ifdef MOD_PERSO
+                        /* KiTTY: a parameter with ':' sub-parameters
+                         * (38:2::r:g:b) is taken whole here */
+                        if (term->esc_colon && term_sgr_subparams(term, &i))
+                            continue;
+                        else
+#endif
                         switch (def(term->esc_args[i], 0)) {
                           case 0:       /* restore defaults */
                             term->curr_attr = term->default_attr;

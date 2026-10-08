@@ -4793,7 +4793,8 @@ static void test_capability_reports(Mock *mk)
     tcap_val(mk, "XTGETTCAP kxOUT", "kxOUT", "\\E[O");
     tcap_unknown(mk, "XTGETTCAP Smulx (not implemented)", "Smulx");
     tcap_unknown(mk, "XTGETTCAP Setulc (not implemented)", "Setulc");
-    tcap_unknown(mk, "XTGETTCAP Ss (no DECSCUSR)", "Ss");
+    tcap_val(mk, "XTGETTCAP Ss", "Ss", "\\E[%p1%d q");
+    tcap_val(mk, "XTGETTCAP Se", "Se", "\\E[2 q");
     tcap_unknown(mk, "XTGETTCAP key name", "kf1");
     tcap(mk, "XTGETTCAP odd hex", "544", "\033P0+r544\033\\", 1);
     tcap(mk, "XTGETTCAP not hex", "zz", "\033P0+rzz\033\\", 1);
@@ -4839,14 +4840,14 @@ static void test_capability_reports(Mock *mk)
 
     /* --- OSC 1337 ; Capabilities --- */
     expect_reply(mk, "Capabilities, defaults", "\033]1337;Capabilities\007",
-                 "\033]1337;Capabilities=T1CwMUUw16Ts2BFGsSyHNoSxFP\007");
+                 "\033]1337;Capabilities=T3CwMSc7UUw16Ts2BFGsSyHNoSxFP\007");
     expect_reply(mk, "Capabilities, ST", "\033]1337;Capabilities\033\\",
-                 "\033]1337;Capabilities=T1CwMUUw16Ts2BFGsSyHNoSxFP\007");
+                 "\033]1337;Capabilities=T3CwMSc7UUw16Ts2BFGsSyHNoSxFP\007");
     conf_set_bool(mk->conf, CONF_cjk_ambig_wide, true);
     cap_conf(mk);
     expect_reply(mk, "Capabilities, ambiguous wide",
                  "\033]1337;Capabilities\007",
-                 "\033]1337;Capabilities=T1CwMUAwUw16Ts2BFGsSyHNoSxFP\007");
+                 "\033]1337;Capabilities=T3CwMSc7UAwUw16Ts2BFGsSyHNoSxFP\007");
     conf_set_bool(mk->conf, CONF_true_colour, false);
     conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
     conf_set_bool(mk->conf, CONF_no_mouse_rep, true);
@@ -4862,10 +4863,10 @@ static void test_capability_reports(Mock *mk)
     cap_conf(mk);
     expect_reply(mk, "Capabilities, every switch off",
                  "\033]1337;Capabilities\007",
-                 "\033]1337;Capabilities=UUw16FGs\007");
+                 "\033]1337;Capabilities=Sc7UUw16FGs\007");
     term->ucsdata->line_codepage = CP_437;
     expect_reply(mk, "Capabilities, not UTF-8", "\033]1337;Capabilities\007",
-                 "\033]1337;Capabilities=FGs\007");
+                 "\033]1337;Capabilities=Sc7FGs\007");
     term->ucsdata->line_codepage = CP_UTF8;
     expect_silence(mk, "OSC 1337 other command",
                    "\033]1337;Capabilitiesx\007");
@@ -4916,6 +4917,289 @@ static void test_capability_reports(Mock *mk)
     term->da1_custom = false;
     cap_defaults(mk);
     feed_seq(mk, "\033c");
+}
+
+/*
+ * KiTTY: SGR colours in the ':' sub-parameter form (ITU T.416) beside the
+ * ';' form: 38:2:<cs>:r:g:b (the colour-space id empty or not), xterm's
+ * 38:2:r:g:b, 38:5:n, the same for 48. Anything else with sub-parameters -
+ * malformed lists, 58 / 59 (underline colour, not drawn yet), 4:n - is
+ * ignored whole, without touching the parameters around it; a ':' in any
+ * sequence other than SGR keeps it unrecognised.
+ */
+static optionalrgb sgr_rgb(unsigned char r, unsigned char g, unsigned char b)
+{
+    optionalrgb c;
+    c.enabled = true;
+    c.r = r;
+    c.g = g;
+    c.b = b;
+    return c;
+}
+
+static bool sgr_rgb_eq(optionalrgb a, optionalrgb b)
+{
+    if (a.enabled != b.enabled)
+        return false;
+    return !a.enabled || (a.r == b.r && a.g == b.g && a.b == b.b);
+}
+
+/* SGR 0, then seq: the attributes and both true colours it leaves */
+static void sgr_expect(Mock *mk, const char *what, const char *seq,
+                       unsigned long attr, optionalrgb fg, optionalrgb bg)
+{
+    Terminal *term = mk->term;
+    feed_seq(mk, "\033[0m");
+    feed_seq(mk, seq);
+    if (term->curr_attr != attr ||
+        !sgr_rgb_eq(term->curr_truecolour.fg, fg) ||
+        !sgr_rgb_eq(term->curr_truecolour.bg, bg)) {
+        printf("   got:  attr %08lx fg %d/%u,%u,%u bg %d/%u,%u,%u\n",
+               (unsigned long)term->curr_attr,
+               term->curr_truecolour.fg.enabled,
+               term->curr_truecolour.fg.r, term->curr_truecolour.fg.g,
+               term->curr_truecolour.fg.b,
+               term->curr_truecolour.bg.enabled,
+               term->curr_truecolour.bg.r, term->curr_truecolour.bg.g,
+               term->curr_truecolour.bg.b);
+        printf("   want: attr %08lx fg %d/%u,%u,%u bg %d/%u,%u,%u\n",
+               attr, fg.enabled, fg.r, fg.g, fg.b,
+               bg.enabled, bg.r, bg.g, bg.b);
+        fail(what, "the rendition differs");
+    }
+}
+
+static void test_sgr_colon(Mock *mk)
+{
+    Terminal *term = mk->term;
+    const unsigned long def = ATTR_DEFAULT;
+    const optionalrgb none = optionalrgb_none;
+    const optionalrgb red = sgr_rgb(255, 0, 0);
+    const optionalrgb mix = sgr_rgb(10, 20, 30);
+    unsigned long fg196 = (def & ~ATTR_FGMASK) | (196UL << ATTR_FGSHIFT);
+    unsigned long bg196 = (def & ~ATTR_BGMASK) | (196UL << ATTR_BGSHIFT);
+
+    feed_seq(mk, "\033c");
+    cap_defaults(mk);
+
+    /* the ';' forms, unchanged */
+    sgr_expect(mk, "SGR 38;2;r;g;b", "\033[38;2;255;0;0m", def, red, none);
+    sgr_expect(mk, "SGR 48;5;n", "\033[48;5;196m", bg196, none, none);
+
+    /* the ':' forms */
+    sgr_expect(mk, "SGR 38:2::r:g:b", "\033[38:2::255:0:0m", def, red, none);
+    sgr_expect(mk, "SGR 38:2:r:g:b (xterm)", "\033[38:2:255:0:0m",
+               def, red, none);
+    sgr_expect(mk, "SGR 38:2:cs:r:g:b", "\033[38:2:0:255:0:0m",
+               def, red, none);
+    sgr_expect(mk, "SGR 38:2:cs:r:g:b and ITU's tolerance fields",
+               "\033[38:2:0:255:0:0:0:1:0m", def, red, none);
+    sgr_expect(mk, "SGR 48:2::r:g:b", "\033[48:2::10:20:30m", def, none, mix);
+    sgr_expect(mk, "SGR 48:2:r:g:b (xterm)", "\033[48:2:10:20:30m",
+               def, none, mix);
+    sgr_expect(mk, "SGR 38:5:n", "\033[38:5:196m", fg196, none, none);
+    sgr_expect(mk, "SGR 48:5:n", "\033[48:5:196m", bg196, none, none);
+    sgr_expect(mk, "SGR 38:2 value over 255 is 0, as the ; form",
+               "\033[38:2::300:20:30m", def, sgr_rgb(0, 20, 30), none);
+
+    /* mixed with ';' parameters around them */
+    sgr_expect(mk, "SGR 1;38:2::r:g:b;4", "\033[1;38:2::10:20:30;4m",
+               def | ATTR_BOLD | ATTR_UNDER, mix, none);
+    sgr_expect(mk, "SGR 38:5:n;48:2::r:g:b;7",
+               "\033[38:5:196;48:2::10:20:30;7m",
+               fg196 | ATTR_REVERSE, none, mix);
+    sgr_expect(mk, "SGR 38:2::r:g:b then 39", "\033[38:2::255:0:0;39m",
+               def, none, none);
+    sgr_expect(mk, "SGR 38;5;n then 38:2::r:g:b",
+               "\033[38;5;196;38:2::10:20:30m", fg196, mix, none);
+
+    /* malformed or short lists: ignored whole, the neighbours applied */
+    sgr_expect(mk, "SGR 38:2:r:g (short)", "\033[38:2:1:2m", def, none, none);
+    sgr_expect(mk, "SGR 1;38:2:r:g;4 (short)", "\033[1;38:2:1:2;4m",
+               def | ATTR_BOLD | ATTR_UNDER, none, none);
+    sgr_expect(mk, "SGR 38:5 (no index)", "\033[38:5m", def, none, none);
+    sgr_expect(mk, "SGR 38:5:n:x (extra)", "\033[38:5:196:1m",
+               def, none, none);
+    sgr_expect(mk, "SGR 38:5:256 (out of range)", "\033[38:5:256m",
+               def, none, none);
+    sgr_expect(mk, "SGR 38:7:1 (unknown kind)", "\033[38:7:1m",
+               def, none, none);
+    sgr_expect(mk, "SGR 38:2::r:g:b with 40 values (too many)",
+               "\033[38:2::1:2:3:4:5:6:7:8:9:10:11:12:13:14:15:16:17:18:19"
+               ":20:21:22:23:24:25:26:27:28:29:30:31:32:33:34:35:36:37:38m",
+               def, none, none);
+    sgr_expect(mk, "SGR :5 (a stray sub-parameter)", "\033[:5m",
+               def, none, none);
+    sgr_expect(mk, "SGR 1;:5;4 (stray between)", "\033[1;:5;4m",
+               def | ATTR_BOLD | ATTR_UNDER, none, none);
+
+    /* 58 / 59 (underline colour) and 4:n (underline style) are not drawn
+     * yet: ignored, never read as other attributes */
+    sgr_expect(mk, "SGR 58:2::r:g:b ignored", "\033[58:2::1:2:3m",
+               def, none, none);
+    sgr_expect(mk, "SGR 58:2:r:g:b ignored", "\033[58:2:5:4:2m",
+               def, none, none);
+    sgr_expect(mk, "SGR 58:5:n ignored", "\033[58:5:9m", def, none, none);
+    sgr_expect(mk, "SGR 1;58:2::r:g:b;4", "\033[1;58:2::1:2:3;4m",
+               def | ATTR_BOLD | ATTR_UNDER, none, none);
+    sgr_expect(mk, "SGR 59 ignored", "\033[59m", def, none, none);
+    sgr_expect(mk, "SGR 4:3 ignored (TODO 4c)", "\033[4:3m",
+               def, none, none);
+    sgr_expect(mk, "SGR 4:0 ignored (TODO 4c)", "\033[4;4:0m",
+               def | ATTR_UNDER, none, none);
+
+    /* a ':' outside SGR: the sequence stays unrecognised */
+    feed_seq(mk, "\033[1;1H");
+    feed_seq(mk, "\033[5:7H");
+    if (term->curs.y != 0 || term->curs.x != 0)
+        fail("CUP with ':'", "the cursor moved");
+    feed_seq(mk, "\033[?25:1l");
+    if (!term->cursor_on)
+        fail("DECRST with ':'", "the mode was reset");
+    sgr_expect(mk, "SGR after a private marker and ':' (XTMODKEYS form)",
+               "\033[>4:1m", def, none, none);
+    feed_seq(mk, "\033[0m\033c");
+}
+
+/*
+ * KiTTY: DECSCUSR, CSI Ps SP q. Each Ps sets the shape and blink read back
+ * through term_cursor_type() and blink_cur; 0 (and no Ps) and RIS give the
+ * session's back; Change Settings keeps a program's choice, and a later 0
+ * gives the NEW session setting. Every change marks the cursor's row for
+ * a redraw, so no old cursor pixels stay.
+ */
+static void scusr_expect(Mock *mk, const char *what, int shape, bool blink)
+{
+    Terminal *term = mk->term;
+    int got = term_cursor_type(term, conf_get_int(mk->conf, CONF_cursor_type));
+    if (got != shape || term->blink_cur != blink) {
+        printf("   got:  shape %d blink %d\n   want: shape %d blink %d\n",
+               got, term->blink_cur, shape, blink);
+        fail(what, "the cursor differs");
+    }
+}
+
+/* every display cell marked painted, then seq: is the cursor's row (and
+ * only it) marked for a redraw? */
+static void scusr_redraw(Mock *mk, const char *what, const char *seq)
+{
+    Terminal *term = mk->term;
+    int y = term->curs.y - term->disptop;
+    bool cur = true, other = false;
+    for (int i = 0; i < term->rows; i++)
+        for (int j = 0; j < term->cols; j++)
+            term->disptext[i]->chars[j].attr &= ~ATTR_INVALID;
+    feed_seq(mk, seq);
+    for (int i = 0; i < term->rows; i++)
+        for (int j = 0; j < term->cols; j++) {
+            bool inv = (term->disptext[i]->chars[j].attr & ATTR_INVALID) != 0;
+            if (i == y && !inv)
+                cur = false;
+            if (i != y && inv)
+                other = true;
+        }
+    if (!cur)
+        fail(what, "the cursor's row was not marked for a redraw");
+    if (other)
+        fail(what, "another row was marked for a redraw");
+}
+
+static void test_decscusr(Mock *mk)
+{
+    static const struct {
+        const char *seq, *what;
+        int shape;
+        bool blink;
+    } ps[] = {
+        { "\033[1 q", "DECSCUSR 1 blinking block", CURSOR_BLOCK, true },
+        { "\033[2 q", "DECSCUSR 2 steady block", CURSOR_BLOCK, false },
+        { "\033[3 q", "DECSCUSR 3 blinking underline", CURSOR_UNDERLINE, true },
+        { "\033[4 q", "DECSCUSR 4 steady underline", CURSOR_UNDERLINE, false },
+        { "\033[5 q", "DECSCUSR 5 blinking bar", CURSOR_VERTICAL_LINE, true },
+        { "\033[6 q", "DECSCUSR 6 steady bar", CURSOR_VERTICAL_LINE, false },
+    };
+
+    feed_seq(mk, "\033c");
+    cap_defaults(mk);
+    conf_set_int(mk->conf, CONF_cursor_type, CURSOR_UNDERLINE);
+    conf_set_bool(mk->conf, CONF_blink_cur, false);
+    cap_conf(mk);
+    scusr_expect(mk, "DECSCUSR session cursor", CURSOR_UNDERLINE, false);
+
+    for (size_t k = 0; k < lenof(ps); k++) {
+        feed_seq(mk, ps[k].seq);
+        scusr_expect(mk, ps[k].what, ps[k].shape, ps[k].blink);
+    }
+    feed_seq(mk, "\033[0 q");
+    scusr_expect(mk, "DECSCUSR 0 back to the session's", CURSOR_UNDERLINE,
+                 false);
+    feed_seq(mk, "\033[5 q\033[ q");
+    scusr_expect(mk, "DECSCUSR without Ps back to the session's",
+                 CURSOR_UNDERLINE, false);
+    feed_seq(mk, "\033[6 q\033[7 q");
+    scusr_expect(mk, "DECSCUSR 7 ignored", CURSOR_VERTICAL_LINE, false);
+    feed_seq(mk, "\033[1:2 q");
+    scusr_expect(mk, "DECSCUSR with ':' ignored", CURSOR_VERTICAL_LINE,
+                 false);
+    feed_seq(mk, "\033[?1 q");
+    scusr_expect(mk, "DECSCUSR after '?' ignored", CURSOR_VERTICAL_LINE,
+                 false);
+    feed_seq(mk, "\033[1q");
+    scusr_expect(mk, "DECLL (no space) is not DECSCUSR",
+                 CURSOR_VERTICAL_LINE, false);
+
+    /* a reset gives the session's back */
+    feed_seq(mk, "\033[5 q\033c");
+    scusr_expect(mk, "DECSCUSR 5 then RIS", CURSOR_UNDERLINE, false);
+    feed_seq(mk, "\033[3 q");
+    term_pwron(mk->term, false);
+    scusr_expect(mk, "DECSCUSR 3 then Reset terminal", CURSOR_UNDERLINE,
+                 false);
+
+    /* Change Settings keeps the program's; 0 then gives the new setting */
+    feed_seq(mk, "\033[5 q");
+    conf_set_int(mk->conf, CONF_cursor_type, CURSOR_BLOCK);
+    conf_set_bool(mk->conf, CONF_blink_cur, false);
+    cap_conf(mk);
+    scusr_expect(mk, "DECSCUSR 5 kept over Change Settings",
+                 CURSOR_VERTICAL_LINE, true);
+    conf_set_bool(mk->conf, CONF_blink_cur, true);
+    cap_conf(mk);
+    feed_seq(mk, "\033[6 q");
+    scusr_expect(mk, "DECSCUSR 6 under a blinking session",
+                 CURSOR_VERTICAL_LINE, false);
+    feed_seq(mk, "\033[0 q");
+    scusr_expect(mk, "DECSCUSR 0 gives the changed setting", CURSOR_BLOCK,
+                 true);
+
+    /* with the focus, a blinking Ps arms the blink timer, a steady one
+     * stops it with the cursor shown */
+    {
+        bool had_focus = mk->term->has_focus;
+        term_set_focus(mk->term, true);
+        feed_seq(mk, "\033[5 q");
+        if (!mk->term->cblink_pending)
+            fail("DECSCUSR 5 focused", "no blink timer was armed");
+        feed_seq(mk, "\033[6 q");
+        if (mk->term->cblink_pending)
+            fail("DECSCUSR 6 focused", "the blink timer is still armed");
+        if (!mk->term->cblinker)
+            fail("DECSCUSR 6 focused", "the steady cursor is hidden");
+        feed_seq(mk, "\033[0 q");
+        term_set_focus(mk->term, had_focus);
+    }
+
+    /* the cursor's row is drawn again at once */
+    feed_seq(mk, "\033[5;10H");
+    scusr_redraw(mk, "DECSCUSR 6 redraw", "\033[6 q");
+    scusr_redraw(mk, "DECSCUSR 0 redraw", "\033[0 q");
+    scusr_redraw(mk, "DECSCUSR 4 redraw", "\033[4 q");
+
+    feed_seq(mk, "\033c");
+    cap_defaults(mk);
+    conf_set_int(mk->conf, CONF_cursor_type, CURSOR_BLOCK);
+    conf_set_bool(mk->conf, CONF_blink_cur, false);
+    cap_conf(mk);
 }
 
 int main(void)
@@ -5027,6 +5311,8 @@ int main(void)
     test_sixel_graphics(mk);            /* KiTTY: Sixel, DA1, XTSMGRAPHICS, XTVERSION */
     test_cell_bound_pictures(mk);       /* KiTTY: iTerm2/Sixel pictures own their cells */
     test_capability_reports(mk);        /* KiTTY: DECRQM, XTGETTCAP, Capabilities, DA1 */
+    test_sgr_colon(mk);                 /* KiTTY: SGR 38/48 in the ':' form */
+    test_decscusr(mk);                  /* KiTTY: DECSCUSR cursor shape */
 
     mock_free(mk);
 

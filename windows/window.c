@@ -8177,7 +8177,13 @@ static void do_text_internal(
     y += wgs->offset_height;
 
     if ((attr & ATTR_ACTCURS) &&
+#ifdef MOD_PERSO
+        /* KiTTY: the shape a program set with DECSCUSR, else the session's */
+        (term_cursor_type(wgs->term, wgs->cursor_type) == CURSOR_BLOCK ||
+         wgs->term->big_cursor)) {
+#else
         (wgs->cursor_type == CURSOR_BLOCK || wgs->term->big_cursor)) {
+#endif
         truecolour.fg = truecolour.bg = optionalrgb_none;
         attr &= ~(ATTR_REVERSE|ATTR_BLINK|ATTR_COLOURS|ATTR_DIM);
         /* cursor fg and bg */
@@ -8694,7 +8700,12 @@ static void wintw_draw_cursor(
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     int fnt_width;
     int char_width;
+#ifdef MOD_PERSO
+    /* KiTTY: the shape a program set with DECSCUSR, else the session's */
+    int ctype = term_cursor_type(wgs->term, wgs->cursor_type);
+#else
     int ctype = wgs->cursor_type;
+#endif
     /* KITTY_PERF: a block cursor returns through win_draw_text, which counts
      * itself; only the drawing below is counted here. */
     KP_T0;

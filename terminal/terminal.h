@@ -186,6 +186,12 @@ struct terminal_tag {
     bool app_cursor_keys, app_keypad_keys, vt52_mode;
     bool repeat_off, srm_echo, cr_lf_return;
     bool big_cursor;
+    /* KiTTY: DECSCUSR (CSI Ps SP q): the Ps a program set, 1..6, or 0 for
+     * the session's cursor shape and blink. blink_cur below is the blink in
+     * force; conf_blink_cur the session's. term_cursor_type() gives the
+     * shape. */
+    int decscusr;
+    bool conf_blink_cur;
 
     bool xterm_mouse_forbidden;
     int xterm_mouse;                   /* send mouse messages to host */
@@ -218,6 +224,12 @@ struct terminal_tag {
     unsigned esc_args[ARGS_MAX];
     int esc_nargs;
     int esc_query;
+    /* KiTTY: ':' sub-parameters (ITU T.416, SGR 38:2::r:g:b). esc_sub[i]
+     * marks an argument that followed a ':' rather than a ';', esc_colon
+     * that any did. Only SGR reads them; any other sequence with a ':'
+     * stays unrecognised, as before. */
+    bool esc_sub[ARGS_MAX];
+    bool esc_colon;
 #define ANSI(x,y)       ((x)+((y)*256))
 #define ANSI_QUE(x)     ANSI(x,1)
 
@@ -1165,6 +1177,19 @@ void term_far2l_paste_gesture(Terminal *term);
  * MOD_PERSO it is id_string, as upstream. */
 const char *term_da1_answer(Terminal *term);
 #ifdef MOD_PERSO
+/* KiTTY: the cursor shape to draw (CURSOR_BLOCK, ...): the one a program set
+ * with DECSCUSR, else the session's, which the caller passes in (the front
+ * end caches CONF_cursor_type). WYULCURM's big cursor still wins over both
+ * in the front end. */
+static inline int term_cursor_type(Terminal *term, int session_type)
+{
+    switch (term->decscusr) {
+      case 1: case 2: return CURSOR_BLOCK;
+      case 3: case 4: return CURSOR_UNDERLINE;
+      case 5: case 6: return CURSOR_VERTICAL_LINE;
+    }
+    return session_type;
+}
 /* KiTTY: the DA1 attributes this session really has ("1;4;22;52") */
 void term_da1_attributes(Terminal *term, char *buf, size_t size);
 #endif

@@ -135,6 +135,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   mintty. The session's hold limit applies to both.
 - **The terminal says what it is (XTVERSION).** `CSI > q` is answered with
   `KiTTY++` and its version.
+- **Programs can set the cursor shape (DECSCUSR).** `CSI Ps SP q` with Ps
+  1-6 picks a blinking or steady block, underline or bar - vim and neovim
+  switch to a bar in insert mode this way. `CSI 0 SP q` and a terminal
+  reset bring back the session's own cursor (Window > Appearance).
+- **True colour in the colon form.** `38:2::r:g:b`, `38:2:r:g:b`,
+  `38:5:n` and the same for 48 (ITU T.416, as neovim and others send them)
+  now set the colour.
 - **Programs can ask what this session supports.** XTGETTCAP (`DCS + q`)
   answers terminfo capabilities from the session - true colour, the OSC 52
   clipboard (only while it may be written), synchronized output, bracketed
@@ -231,6 +238,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A colour or attribute with a colon no longer swallows its neighbours.**
+  An SGR sequence holding any `:` (`ESC [ 1 ; 38:2::10:20:30 ; 4 m`) was
+  dropped whole, so bold and underline beside it were lost too. Unknown
+  colon forms (curly underline `4:3`, underline colour `58:...`) are now
+  skipped on their own.
 - **Two session files for one name no longer get mixed up** (follow-up of
   hknet/KiTTY#59). When two files decode to the same session name - old
   KiTTY's `srv%20(web).ktx` beside `srv (web).ktx` - the list, opening and
