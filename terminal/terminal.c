@@ -1936,6 +1936,55 @@ static void term_sync_release(Terminal *term)
     term->sync_hold = false;
     term_schedule_update(term);
 }
+
+/* Start the hold of mode 2026 for at most ms (the session's limit caps it);
+ * a hold already running is not re-armed. */
+static void term_sync_begin(Terminal *term, long ms)
+{
+    int limit = term_sync_hold_ms(term);
+    if (term->sync_hold || !limit)
+        return;
+    if (ms < 0 || ms > limit)
+        ms = limit;
+    if (!ms)
+        return;
+    term->sync_hold = true;
+    term->sync_end = schedule_timer(ms * TICKSPERSEC / 1000, term_timer, term);
+}
+
+/*
+ * KiTTY: synchronized output in the DCS form iTerm2 proposed first, which
+ * kitty's terminfo names (Sync=\EP=%p1%ds\E\\) and tmux therefore sends
+ * under TERM=xterm-kitty: DCS = 1 s starts the hold of mode 2026, DCS = 2 s
+ * ends it; mintty's DCS = 1 ; N s holds for at most N ms (within the
+ * session's limit). Returns whether the DCS was one of these.
+ */
+static bool term_sync_dcs(Terminal *term)
+{
+    const char *s = term->osc_string;
+    int len = term->osc_strlen, i;
+    long n = -1;
+
+    if (len < 3 || s[0] != '=' || s[len - 1] != 's')
+        return false;
+    if (len == 3 && s[1] == '2') {
+        term_sync_release(term);
+        return true;
+    }
+    if (s[1] != '1')
+        return false;
+    if (len > 3) {
+        if (s[2] != ';' || len == 4 || len > 4 + 9)
+            return false;
+        for (n = 0, i = 3; i < len - 1; i++) {
+            if (s[i] < '0' || s[i] > '9')
+                return false;
+            n = n * 10 + (s[i] - '0');
+        }
+    }
+    term_sync_begin(term, n);
+    return true;
+}
 #endif
 
 #ifdef KITTY_SB_DEFER
@@ -4505,14 +4554,9 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
             /* KiTTY: synchronized output, see term_sync_release(). A second
              * set during a hold does not re-arm the limit: a program that
              * never resets the mode cannot keep the screen frozen. */
-            if (state && !term->sync_hold) {
-                int ms = term_sync_hold_ms(term);
-                if (ms) {
-                    term->sync_hold = true;
-                    term->sync_end = schedule_timer(
-                        (long)ms * TICKSPERSEC / 1000, term_timer, term);
-                }
-            } else if (!state) {
+            if (state) {
+                term_sync_begin(term, -1);
+            } else {
                 term_sync_release(term);
             }
             break;
@@ -8193,6 +8237,12 @@ static void gfx_cursor_advance(Terminal *term, int dx, int dy)
  */
 static void do_osc(Terminal *term)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: the DCS form of synchronized output (term_sync_dcs) */
+    if (term->osc_type == OSCLIKE_DCS && !term->osc_str_overflow &&
+        term_sync_dcs(term))
+        return;
+#endif
 #ifdef KITTY_SIXEL
     /* KiTTY: the ST of a Sixel picture: placed, the cursor moved as xterm
      * moves it (kitty_gfx_sixel_end) */

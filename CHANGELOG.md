@@ -129,6 +129,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   mintty's 7780 (no scrolling, also for iTerm2 pictures) too.
   Terminal > Features > Images > Show inline images (Sixel) (`SixelImages`,
   on by default).
+- **Synchronized output in its DCS form.** `ESC P = 1 s` / `ESC P = 2 s`
+  hold and release the screen like mode 2026 (tmux sends this form under
+  `TERM=xterm-kitty`), and `ESC P = 1 ; N s` holds for at most N ms, as in
+  mintty. The session's hold limit applies to both.
 - **The terminal says what it is (XTVERSION).** `CSI > q` is answered with
   `KiTTY++` and its version.
 
