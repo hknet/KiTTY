@@ -1480,15 +1480,33 @@ set on \k{kitty-cfg-transfers-panel} (the panel names it). \c{Ctrl+X}
 aborts a transfer that has begun. The \e{paths} to \c{rz} and \c{sz}
 are per PC and live on \k{kitty-cfg-external-tools}.
 
-\b \i{ZModem with WSL}: a PC with the Windows Subsystem for Linux needs no
-Windows build of \c{rz} and \c{sz}. Install them in the distribution
-(\c{sudo apt install lrzsz}), set both paths to
-\c{C:\\Windows\\System32\\wsl.exe}, and give this panel's options as
-\c{-e rz} and \c{-e sz}. KiTTY++ starts \c{rz} in the download folder and
-\c{sz} in the folder of the chosen files with bare file names, which WSL
-maps to the same folders under \c{/mnt}. \c{wsl.exe} is a Windows
-component and starts without the helper confirmation
-(\k{kitty-cfg-external-tools}); a changed or planted copy does not.
+\i{ZModem with WSL}: on a PC with the Windows Subsystem for Linux,
+\c{rz} and \c{sz} can come from the Linux distribution instead of a
+Windows build:
+
+\n In the distribution: \c{sudo apt install lrzsz}.
+
+\n Application > KiTTY++ Settings > Transfers & Tools > ZModem, group
+\q{Helper programs}: set both \q{Receive command (rz):} and \q{Send
+command (sz):} to \c{C:\\Windows\\System32\\wsl.exe}. This is set once
+for the PC.
+
+\n In the session, Connection > ZModem: put \c{-e rz} in front of
+\q{Options} under \q{Receive command (rz)} and \c{-e sz} in front of
+\q{Options} under \q{Send command (sz)}, then save the session. With the
+default options they read \c{-e rz -e -v} and \c{-e sz -e -v}: the first
+\c{-e} is \c{wsl.exe}'s (run this command), the rest are \c{rz}'s and
+\c{sz}'s own options.
+
+Downloads still land in the session's download folder: KiTTY++ starts
+\c{wsl.exe} in that folder, and WSL opens it as the matching \c{/mnt}
+path (\c{D:\\Downloads} is \c{/mnt/d/Downloads}). Uploads work the same
+way from the folder of the chosen files.
+
+\c{wsl.exe} starts without the helper-program confirmation
+(\k{kitty-cfg-external-tools}): it is listed in a Windows catalog this PC
+trusts, as Windows' own files are. A modified copy is not listed and gets
+the confirmation like any other helper program.
 
 \H{kitty-cfg-knocking} \ii{Port knocking}
 
