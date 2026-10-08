@@ -3243,12 +3243,30 @@ Brings the window to the front when the host rings the bell
 (\k{config-bell}), so a long job that finishes with a bell fetches your
 attention rather than waiting for you to look.
 
+\S{kitty-cfg-reportvt220} \q{Report as a VT220 with this session's features (CSI c)}
+
+How KiTTY answers the device attributes query (\c{CSI c}, and \c{ESC
+Z}), which programs send to find out what the terminal can do. On, the
+answer is a VT220 (\c{ESC [ ? 62 ; ... c}) with the attributes this
+session really has at that moment, in ascending order: \c{1} 132
+columns (not with remote resizing disabled), \c{2} a printer port (a
+printer is set), \c{4} Sixel (with \k{kitty-cfg-sixelimages} on),
+\c{22} ANSI colour (not with ANSI colour off) and \c{52} the OSC 52
+clipboard (while the host may write the clipboard). Off, the answer is
+\c{ESC [ ? 6 c} (a VT102), and programs no longer find Sixel by
+themselves. An answer set with \c{CSI 50 ... c} is sent as it is either
+way. On by default; stored with the session (\c{ReportVT220}).
+
 \S{kitty-cfg-nofocusrep} \q{Disable focus reporting}
 
-Stops KiTTY telling the host when the window gains or loses focus.
-Programs that use it - editors that redraw or save on focus change -
-stop doing so; the reason to turn it off is a program that misbehaves
-on the reports, or leaks them as stray characters at the prompt.
+Off (the default), a program that asks for it (\c{CSI ? 1004 h}) - vim,
+neovim, tmux with \c{focus-events}, far2l - gets \c{ESC [ I} when the
+window gains the keyboard focus and \c{ESC [ O} when it loses it, to
+redraw, reload or save; far2l uses it to know when the window is in
+front. On, the request is ignored and the terminal reports the mode as
+not available - for a program that misbehaves on the reports or leaks
+them as stray characters at the prompt. Stored with the session
+(\c{NoFocusReporting}, old KiTTY's setting; a stored value is honoured).
 
 \S{kitty-cfg-syncoutput} \q{Synchronized output (mode 2026) max hold, ms}
 
@@ -3356,12 +3374,10 @@ DEC VT340 format that \c{img2sixel}, \c{chafa -f sixels}, \c{lsix},
 gnuplot and several file managers send. The picture is decoded as it
 arrives, with 256 colour registers in RGB or HLS; it sits on the cells
 like the kitty graphics ones and shares their limits. With this on, the
-terminal reports Sixel in its answer to the device attributes query
-(\c{ESC [ ? 62 ; 4 ; 22 c}, a VT220 with Sixel and ANSI colour), which
-is how programs find out; off, the sequence is ignored and the answer
-stays the VT102 one (\c{ESC [ ? 6 c}). An answer set with \c{CSI 50
-... c} is sent as it is either way. On by default; stored with the
-session (\c{SixelImages}).
+terminal reports Sixel (\c{4}) in its answer to the device attributes
+query, which is how programs find out (\k{kitty-cfg-reportvt220}); off,
+the sequence is ignored and the answer carries no \c{4}. On by default;
+stored with the session (\c{SixelImages}).
 
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 

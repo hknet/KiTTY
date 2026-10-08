@@ -348,7 +348,8 @@ struct terminal_tag {
      * (sixel_cursor_line_start: the cursor below the picture at the start
      * of the line, not at its left column) and ?1070 reset
      * (sixel_shared_regs: registers shared between pictures). da1_custom:
-     * CSI 50 ... c set the DA1 answer, which then wins over the Sixel one.
+     * CSI 50 ... c set the DA1 answer, which then wins over the computed
+     * one (da1_buf, rebuilt on every query by term_da1_answer).
      * Unconditional storage, as above. */
     struct SixelDecoder *sixel;
     struct SixelPalette *sixel_palette;
@@ -364,6 +365,7 @@ struct terminal_tag {
      * Unconditional storage, as above. */
     bool gfx_no_scroll;
     bool da1_custom;
+    char da1_buf[64];
     /* The last paste gesture the window forwarded to far2l as a key or mouse
      * event (Ctrl+V, Shift+Ins, a middle-button press): GETTICKCOUNT() at the
      * time, valid once far2l_paste_gesture_seen is set. In event mode these
@@ -1157,8 +1159,14 @@ void term_far2l_paste_gesture(Terminal *term);
 #endif
 
 /* KiTTY: the answer to DA1 (CSI c) and DECID (ESC Z): the one CSI 50 set,
- * else with Sixel on ESC [ ? 62 ; 4 ; 22 c, else id_string (ESC [ ? 6 c).
- * Not guarded: the upstream query handlers call it in every build. */
+ * else with ReportVT220 on ESC [ ? 62 ; <attributes> c built from this
+ * session (term_da1_attributes), else id_string (ESC [ ? 6 c). Not
+ * guarded: the upstream query handlers call it in every build; without
+ * MOD_PERSO it is id_string, as upstream. */
 const char *term_da1_answer(Terminal *term);
+#ifdef MOD_PERSO
+/* KiTTY: the DA1 attributes this session really has ("1;4;22;52") */
+void term_da1_attributes(Terminal *term, char *buf, size_t size);
+#endif
 
 #endif

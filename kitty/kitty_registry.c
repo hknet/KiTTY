@@ -739,6 +739,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "KittyGraphics" ) ;
 					RegDeleteValue( hSubKey, "ItermImages" ) ;
 					RegDeleteValue( hSubKey, "SixelImages" ) ;
+					RegDeleteValue( hSubKey, "ReportVT220" ) ;
 					RegDeleteValue( hSubKey, "KscpDropTypePath" ) ;
 					RegDeleteValue( hSubKey, "LinesAtAScroll" ) ;
 					RegDeleteValue( hSubKey, "DisableAltGr" ) ;

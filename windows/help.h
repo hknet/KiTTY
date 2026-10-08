@@ -99,6 +99,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_kittygraphics      "kitty-cfg-kittygraphics"
 #define WINHELP_CTX_kitty_itermimages        "kitty-cfg-itermimages"
 #define WINHELP_CTX_kitty_sixelimages        "kitty-cfg-sixelimages"
+#define WINHELP_CTX_kitty_reportvt220        "kitty-cfg-reportvt220"
 #define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
 #define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
 #define WINHELP_CTX_kitty_window_name        "kitty-cfg-window-name"

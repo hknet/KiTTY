@@ -77,6 +77,7 @@ one is available.
   - [Non-blocking connection errors](#non-blocking-connection-errors)
   - [Run the clipboard as a command](#run-the-clipboard-as-a-command)
   - [Terminal environment (COLORTERM, TERM_PROGRAM)](#terminal-environment-colorterm-term_program)
+  - [What the terminal reports](#what-the-terminal-reports)
   - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
   - [Notifications from the host (OSC 9, OSC 777, OSC 99)](#notifications-from-the-host-osc-9-osc-777-osc-99)
   - [Program status (OSC 7501) and prompt marks (OSC 133)](#program-status-osc-7501-and-prompt-marks-osc-133)
@@ -1227,6 +1228,20 @@ Each new SSH or Telnet connection also sends `COLORTERM=truecolor` and `TERM_PRO
 
 (no screenshot)
 
+### What the terminal reports
+
+Programs ask the terminal what it can do, and every answer is built from what **this session** has switched on at that moment:
+
+- **Device attributes** (`CSI c`, DA1): answered as a VT220, `ESC [ ? 62 ; ... c`, with only the attributes this session has - 1 (132 columns), 2 (a printer is set), 4 (Sixel), 22 (ANSI colour), 52 (the remote clipboard may be written). Not a higher class: a VT420 or VT510 answer would promise left/right margins and rectangular editing, which KiTTY++ does not have. An answer set with DECSCL 50 wins.
+- **Terminal name** (`CSI > q`, XTVERSION): `KiTTY++` and its version.
+- **Terminfo capabilities** (`DCS + q`, XTGETTCAP): `TN`, colours, true colour (`RGB`, `Tc`), the OSC 52 clipboard (`Ms`, only while it may be written), synchronized output (`Sync`), bracketed paste and focus reports - each in its own answer, as neovim reads them. Over SSH this tells a program more than `TERM` does.
+- **Feature tags** (`OSC 1337 ; Capabilities`, iTerm2's form): true colour, clipboard, mouse, UTF-8, title, bracketed paste, focus, strikethrough, synchronized output, hyperlinks, notifications, Sixel, inline images, progress - each only while its switch is on.
+- **Modes** (`CSI ? Ps $ p` and `CSI Ps $ p`, DECRQM): every mode KiTTY++ implements answers set or reset, "permanently reset" when a session setting turns the feature off, and "not recognised" for the rest.
+
+**How to enable:** answered always. **Terminal → Features → Report as a VT220 with this session's features (CSI c)** (`ReportVT220`, on by default) - off, `CSI c` is answered `ESC [ ? 6 c` (a VT102) as before 0.85.1.14, and programs no longer find Sixel by themselves.
+
+(no screenshot)
+
 ### The remote clipboard (OSC 52, OSC 5522, far2l)
 
 A program on the remote host — `tmux`, `vim`, `nvim`, or anything that emits the standard **OSC 52** sequence — can put text straight onto your Windows clipboard, so yanking in a remote editor gives you something you can paste locally without selecting it with the mouse first. Only **text** travels this way; the sequence carries nothing else, so images and other clipboard formats are unaffected. A payload that arrives truncated or malformed is refused whole rather than pasted in part.
@@ -1264,7 +1279,7 @@ Three protections apply to every clipboard protocol at once:
 - **Reads follow a paste.** far2l gets the clipboard only within 5 seconds of a paste you sent from this window (Ctrl+V, Shift+Ins, a menu or mouse paste), and up to three more reads that follow it, as far2l's own terminal does. Any other read gets an empty clipboard, so a `cat` of a hostile file cannot take what you copied. Every served read is an Event Log line and lights the clipboard marker; refused ones are logged too. There is no setting for this.
 - **The question.** With **far2l shared clipboard** on Ask, a box on the terminal window puts up the question - "far2l wants to read/write the Windows clipboard." - with **Allow**, **Deny** (the default) and **Always allow this far2l**. The window keeps working while it is open. After the first box, another one comes only after a paste of yours, so a host cannot raise it again and again; a refusal stands until then. Allow lets far2l read only when you pasted just before the question. "Always allow" remembers that far2l's client ID in the session (`Far2lClientIds`), and it opens the clipboard without the question from then on; the paste rule still applies. **Forget always-allowed far2l clients** on the same panel empties the list.
 - **Formats.** A far2l copy keeps all its formats together - text, its vertical-block mark and HTML (as the Windows HTML format). Large copies arrive in 16 KB parts, and far2l can check an unchanged clipboard by its data ID instead of reading it again.
-- **Window.** far2l's Alt+F9 maximises and restores the window; it requests the largest size the window can have on its monitor. Focus reports (`ESC [ ? 1004 h`) are answered, so far2l knows when the window is in front.
+- **Window.** far2l's Alt+F9 maximises and restores the window; it requests the largest size the window can have on its monitor. Focus reports (`ESC [ ? 1004 h`) are answered, so far2l knows when the window is in front - with **Terminal → Features → Disable focus reporting** unticked (the default for new sessions).
 
 **How to enable:** **Window → Copy & Paste → Remote clipboard** for the three permissions and the focus rule; **→ Limits** for the numbers; **→ Notices** for the title and tray markers.
 
@@ -1350,7 +1365,7 @@ iTerm2's picture sequence, `OSC 1337 File=`, as `imgcat`, `chafa -f iterm` and s
 
 The DEC Sixel pictures that img2sixel, `chafa -f sixels`, timg, lsix, gnuplot and many other programs draw. A picture is decoded while it arrives, so a large one never sits in a buffer; it is placed at the cursor at its own pixel size, scrolls with the text, is drawn by both renderers and shares the limits of the other pictures. Like iTerm2 pictures (and unlike kitty's) it belongs to its cells: text written over it replaces that part, erasing removes it, and a new picture replaces the parts of older ones it covers, so a video drawn frame by frame (timg) keeps one picture. RGB and HLS colours, 256 colour registers (VT340 defaults; each picture its own unless mode 1070 is reset), repeats and raster attributes; with background select 1 the undrawn pixels are transparent. After a picture the cursor stays on its last row, in its first column, as in xterm - what chafa expects - until a program sets mintty's mode 7730 (timg does, before every picture); from then on the line below the picture, at its first column (7730 reset, as in mlterm, konsole and GNOME Terminal) or at the start of the line (7730 set); with mode 8452 set always right of the picture on its last row; a terminal reset returns to xterm's rule; with mintty's mode 7780 nothing scrolls - a picture is cut at the bottom and the cursor stays (also for iTerm2 pictures); DECSDM (mode 80) puts the picture at the top-left without moving the cursor. A picture placed near the bottom scrolls the screen. XTSMGRAPHICS (`CSI ? Pi ; Pa ; Pv S`) answers the number of colour registers (256) and the largest picture.
 
-Programs find Sixel through the device-attributes answer: with the switch on, `CSI c` is answered `ESC [ ? 62 ; 4 ; 22 c` (a VT220 with Sixel), off it stays `ESC [ ? 6 c`. `CSI > q` (XTVERSION) is always answered with `KiTTY++` and its version.
+Programs find Sixel through the device-attributes answer, which lists `4` while this switch is on (see [What the terminal reports](#what-the-terminal-reports)).
 
 **How to enable:** on by default; **Terminal → Features → Images → Show inline images (Sixel)** (`SixelImages`). Off, Sixel is ignored as before and the old device-attributes answer stays.
 

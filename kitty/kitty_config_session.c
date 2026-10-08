@@ -5921,6 +5921,10 @@ void scb_panel_terminal(struct controlbox *b)
                   KT_FEATURES_ENABLING_AND_DISABLING_ADVANCED_TERMINAL);
 
     s = ctrl_getset(b, "Terminal/Features", "main", NULL);
+    /* KiTTY: the answer to CSI c (term_da1_answer), first on the panel */
+    ctrl_checkbox(s, KT_FEATURES_REPORT_VT220, NO_SHORTCUT,
+                  HELPCTX(kitty_reportvt220), conf_checkbox_handler,
+                  I(CONF_report_vt220));
     ctrl_checkbox(s, KT_FEATURES_DISABLE_APPLICATION_CURSOR_KEYS_MODE, 'u',
                   HELPCTX(features_application),
                   conf_checkbox_handler, I(CONF_no_applic_c));

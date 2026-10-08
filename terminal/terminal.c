@@ -15,6 +15,7 @@
 #include "kitty_perf.h"
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions */
+#include "unicode/version.h"       /* KiTTY: Uw of OSC 1337 Capabilities */
 
 /*
  * KiTTY OSC 52 clipboard-READ seams. Implemented on the platform side
@@ -4542,8 +4543,11 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
           case 1004:
             /* KiTTY: xterm focus reports - ESC [ I when the window gains the
              * keyboard focus, ESC [ O when it loses it (term_set_focus).
-             * far2l asks for them to know when to show a notification. */
-            term->focus_reports = state;
+             * far2l asks for them to know when to show a notification.
+             * With the session's NoFocusReporting on (the default, as in old
+             * KiTTY) the request is ignored. */
+            term->focus_reports = state &&
+                !conf_get_bool(term->conf, CONF_no_focus_rep);
             break;
           case 5522:
             /* KiTTY: kitty's clipboard-protocol paste events. See
@@ -4616,6 +4620,121 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
         }
     }
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: DECRQM, the state of one mode for CSI ? Ps $ p (dec) or CSI Ps $ p:
+ * 1 set, 2 reset, 4 permanently reset - the mode exists but a session
+ * setting keeps it from doing anything, whatever a program sets - and 0 for
+ * a mode this terminal does not implement. Read from the live state on
+ * every query, one case for each mode toggle_mode() handles. Mode 2026 off
+ * (a hold limit of 0) answers 0, as it always has: programs take 0 there to
+ * mean "no synchronized output".
+ */
+static int term_mode_state(Terminal *term, bool dec, unsigned mode)
+{
+#define MODE_BOOL(b) ((b) ? 1 : 2)
+    if (dec) {
+        switch (mode) {
+          case 1:                      /* DECCKM; the keys ignore it while
+                                        * application cursor keys are off */
+            return term->no_applic_c ? 4 : MODE_BOOL(term->app_cursor_keys);
+          case 2:                      /* DECANM: set = ANSI, reset = VT52 */
+            return MODE_BOOL(!term->vt52_mode);
+          case 3:                      /* DECCOLM; no 132 columns without
+                                        * remote resizing */
+            return term->no_remote_resize ? 4 : MODE_BOOL(term->reset_132);
+          case 5:                      /* DECSCNM */
+            return MODE_BOOL(term->rvideo);
+          case 6:                      /* DECOM */
+            return MODE_BOOL(term->dec_om);
+          case 7:                      /* DECAWM */
+            return MODE_BOOL(term->wrap);
+          case 8:                      /* DECARM */
+            return MODE_BOOL(!term->repeat_off);
+          case 25:                     /* DECTCEM */
+            return MODE_BOOL(term->cursor_on);
+          case 47:
+          case 1047:
+          case 1049:                   /* the alternate screen */
+            return term->no_alt_screen ? 4 : MODE_BOOL(term->alt_which != 0);
+          case 1048:
+            /* save/restore cursor is an action, never a state that stays
+             * set: mintty's answer */
+            return 4;
+          case 1000:                   /* xterm mouse tracking, one level */
+            return term->xterm_mouse_forbidden ? 4 :
+                MODE_BOOL(term->xterm_mouse == 1);
+          case 1002:
+            return term->xterm_mouse_forbidden ? 4 :
+                MODE_BOOL(term->xterm_mouse == 2);
+          case 1003:
+            return term->xterm_mouse_forbidden ? 4 :
+                MODE_BOOL(term->xterm_mouse == 3);
+          case 1006:
+            return term->xterm_mouse_forbidden ? 4 :
+                MODE_BOOL(term->xterm_extended_mouse);
+          case 1015:
+            return term->xterm_mouse_forbidden ? 4 :
+                MODE_BOOL(term->urxvt_extended_mouse);
+          case 2004:
+            return term->no_bracketed_paste ? 4 :
+                MODE_BOOL(term->bracketed_paste);
+          case 1004:
+            return conf_get_bool(term->conf, CONF_no_focus_rep) ? 4 :
+                MODE_BOOL(term->focus_reports);
+          case 5522:
+            (void)term_osc5522_paste_events(term);  /* retire if due */
+            return MODE_BOOL(term->osc5522_paste_events);
+          case 2026:
+            return !term_sync_hold_ms(term) ? 0 : MODE_BOOL(term->sync_hold);
+          case 2031:
+            return MODE_BOOL(term->colour_scheme_reports);
+          case 80:                     /* the Sixel modes need Sixel on */
+            return !conf_get_bool(term->conf, CONF_sixel_images) ? 4 :
+                MODE_BOOL(term->sixel_decsdm);
+          case 1070:
+            return !conf_get_bool(term->conf, CONF_sixel_images) ? 4 :
+                MODE_BOOL(!term->sixel_shared_regs);
+          case 8452:
+            return !conf_get_bool(term->conf, CONF_sixel_images) ? 4 :
+                MODE_BOOL(term->sixel_scrolls_right);
+          case 7730:
+            return !conf_get_bool(term->conf, CONF_sixel_images) ? 4 :
+                MODE_BOOL(term->sixel_cursor_line_start);
+          case 7780:                   /* Sixel and iTerm2 pictures */
+            return !conf_get_bool(term->conf, CONF_sixel_images) &&
+                !conf_get_bool(term->conf, CONF_iterm_images) ? 4 :
+                MODE_BOOL(term->gfx_no_scroll);
+        }
+    } else {
+        switch (mode) {
+          case 4:                      /* IRM */
+            return MODE_BOOL(term->insert);
+          case 12:                     /* SRM: set = local echo off */
+            return MODE_BOOL(!term->srm_echo);
+          case 20:                     /* LNM */
+            return MODE_BOOL(term->cr_lf_return);
+          case 34:                     /* WYULCURM: reset = the big cursor */
+            return MODE_BOOL(!term->big_cursor);
+        }
+    }
+    return 0;
+#undef MODE_BOOL
+}
+
+/* KiTTY: the DECRQM answer, through the reply seam as the other KiTTY
+ * replies (kitty_osc52_send_raw). */
+static void term_decrqm(Terminal *term, bool dec, unsigned mode)
+{
+    char rep[48];
+    if (mode == ARG_DEFAULT)
+        mode = 0;
+    snprintf(rep, sizeof(rep), "\033[%s%u;%d$y", dec ? "?" : "", mode,
+             mode ? term_mode_state(term, dec, mode) : 0);
+    kitty_osc52_send_raw(term, rep, strlen(rep));
+}
+#endif
 
 #ifdef MOD_FAR2L
 /*
@@ -8194,19 +8313,247 @@ static void sixel_xtsmgraphics(Terminal *term)
 }
 #endif
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the DA1 attributes this session really has, ';'-separated in
+ * ascending order, without the class: 1 132 columns (DECCOLM, not with
+ * remote resizing off), 2 printer port (a printer is set for the session,
+ * MC prints to it), 4 Sixel (SixelImages), 22 ANSI colour (not with ANSI
+ * colour off), 52 OSC 52 clipboard (writes not set to Deny). The rest of
+ * xterm's and mintty's list (selective erase, user-defined keys, national
+ * character sets, rectangular editing, ...) is not implemented here and
+ * never claimed. Built on every call.
+ */
+void term_da1_attributes(Terminal *term, char *buf, size_t size)
+{
+    strbuf *sb = strbuf_new();
+    if (!term->no_remote_resize)
+        put_dataz(sb, ";1");
+    if (*conf_get_str(term->conf, CONF_printer))
+        put_dataz(sb, ";2");
+#ifdef KITTY_SIXEL
+    if (conf_get_bool(term->conf, CONF_sixel_images))
+        put_dataz(sb, ";4");
+#endif
+    if (term->ansi_colour)
+        put_dataz(sb, ";22");
+    if (term->osc52_allowed != OSC52_CLIPBOARD_DENY)
+        put_dataz(sb, ";52");
+    if (size)
+        snprintf(buf, size, "%s", sb->len ? sb->s + 1 : "");
+    strbuf_free(sb);
+}
+#endif
+
 /*
  * KiTTY: the answer to DA1 (CSI c) and DECID (ESC Z). One set by CSI 50 ...
- * c is sent as it is; otherwise, with Sixel on, a VT220 with Sixel and ANSI
- * colour (62 ; 4 ; 22, what foot answers), off the VT102 answer as before.
+ * c is sent as it is. Otherwise, with ReportVT220 on (the default), a
+ * VT220 with the attributes this session has at the time of the query,
+ * ESC [ ? 62 ; <term_da1_attributes> c; off, the VT102 answer, id_string
+ * (ESC [ ? 6 c).
  */
 const char *term_da1_answer(Terminal *term)
 {
-#ifdef KITTY_SIXEL
-    if (!term->da1_custom && conf_get_bool(term->conf, CONF_sixel_images))
-        return "\033[?62;4;22c";
+#ifdef MOD_PERSO
+    if (!term->da1_custom && conf_get_bool(term->conf, CONF_report_vt220)) {
+        char attrs[48];
+        term_da1_attributes(term, attrs, sizeof(attrs));
+        snprintf(term->da1_buf, sizeof(term->da1_buf), "\033[?62%s%sc",
+                 *attrs ? ";" : "", attrs);
+        return term->da1_buf;
+    }
 #endif
     return term->id_string;
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: OSC 1337 ; Capabilities, iTerm2's "Terminal Feature Reporting"
+ * (iterm2.com/feature-reporting): answered OSC 1337 ; Capabilities=<tags>
+ * BEL, the tags in the order and with the terminator of iTerm2's own
+ * encoder. Every tag from this session's state at the time of the query:
+ *   T1  24-bit colour, the 38;2;r;g;b form only (the colon form is not
+ *       parsed) - true colour and ANSI colour on
+ *   Cw  OSC 52 writes not set to Deny (Ask counts, as the spec allows)
+ *   M   mouse reporting 1000/1002/1003/1006 - not with it disabled
+ *   U, Aw, Uw<n>  UTF-8 as the line character set; ambiguous-width
+ *       characters wide; the Unicode version of the width tables
+ *   Ts2 OSC 0/1/2 title setting (no title stack) - not with remote
+ *       retitling disabled
+ *   B   bracketed paste - not with it disabled
+ *   F   focus reporting (DECSET 1004)
+ *   Gs  strikethrough (SGR 9 / 29)
+ *   Sy  synchronized output - a hold limit above 0
+ *   H   OSC 8 hyperlinks - not with them off
+ *   No  OSC 9 notifications - not with host notifications off
+ *   Sx  Sixel - SixelImages
+ *   F   iTerm2's OSC 1337 File= images - ItermImages. The spec gives FILE
+ *       the same letter as FOCUS_REPORTING; iTerm2 and mintty both send it
+ *       twice like this.
+ *   P   OSC 9;4 progress - TaskbarProgress
+ * Never: Lr (no left/right margins), Sc (no DECSCUSR), Go (no overline).
+ */
+static void term_capabilities_report(Terminal *term)
+{
+    bool utf8 = term->ucsdata && term->ucsdata->line_codepage == CP_UTF8;
+    strbuf *sb = strbuf_new();
+
+    put_dataz(sb, "\033]1337;Capabilities=");
+    if (term->ansi_colour && term->true_colour)
+        put_dataz(sb, "T1");
+    if (term->osc52_allowed != OSC52_CLIPBOARD_DENY)
+        put_dataz(sb, "Cw");
+    if (!term->xterm_mouse_forbidden)
+        put_dataz(sb, "M");
+    if (utf8) {
+        put_dataz(sb, "U");
+        if (term->cjk_ambig_wide)
+            put_dataz(sb, "Aw");
+        put_fmt(sb, "Uw%d", atoi(UNICODE_VERSION_SHORT));
+    }
+    if (!term->no_remote_wintitle)
+        put_dataz(sb, "Ts2");
+    if (!term->no_bracketed_paste)
+        put_dataz(sb, "B");
+    if (!conf_get_bool(term->conf, CONF_no_focus_rep))
+        put_dataz(sb, "F");
+    put_dataz(sb, "Gs");
+    if (term_sync_hold_ms(term))
+        put_dataz(sb, "Sy");
+    if (conf_get_int(term->conf, CONF_url_osc8))
+        put_dataz(sb, "H");
+    if (conf_get_int(term->conf, CONF_host_notify))
+        put_dataz(sb, "No");
+#ifdef KITTY_SIXEL
+    if (conf_get_bool(term->conf, CONF_sixel_images))
+        put_dataz(sb, "Sx");
+#endif
+    if (conf_get_bool(term->conf, CONF_iterm_images))
+        put_dataz(sb, "F");
+    if (conf_get_bool(term->conf, CONF_taskbar_progress))
+        put_dataz(sb, "P");
+    put_byte(sb, '\007');
+    kitty_osc52_send_raw(term, sb->s, sb->len);
+    strbuf_free(sb);
+}
+#endif
+
+#if defined(MOD_PERSO) && defined(MOD_FAR2L)
+/*
+ * KiTTY: XTGETTCAP, DCS + q <names> ST, each name hex-encoded, the names
+ * separated by ';'. Each name gets its own reply, DCS 1 + r <name> = <value>
+ * ST (the value hex-encoded; a boolean capability has no "= value") or
+ * DCS 0 + r <name> ST for a name not answered here - the form kitty, foot
+ * and WezTerm send and neovim's parser expects (one reply per name). xterm
+ * puts every pair in one reply and stops at the first unknown name, which
+ * neovim would not read. Only capabilities this session really has right
+ * now are answered; any other name, key names included, is unknown.
+ * Returns -1 unknown, 0 a boolean, 1 a value in *val.
+ */
+static int xtgettcap_value(Terminal *term, const char *name, const char **val)
+{
+    bool rgb = term->ansi_colour && term->true_colour;
+    bool paste = !term->no_bracketed_paste;
+
+    *val = NULL;
+    if (!strcmp(name, "TN") || !strcmp(name, "name")) {
+        *val = conf_get_str(term->conf, CONF_termtype);
+        return **val ? 1 : -1;
+    }
+    if (!strcmp(name, "Co") || !strcmp(name, "colors")) {
+        if (!term->ansi_colour)
+            return -1;
+        *val = term->xterm_256_colour ? "256" : "16";
+        return 1;
+    }
+    if (!strcmp(name, "RGB") && rgb) {
+        *val = "8";                    /* bits per channel, as xterm */
+        return 1;
+    }
+    if (!strcmp(name, "Tc") && rgb)
+        return 0;
+    if (!strcmp(name, "setrgbf") && rgb) {
+        *val = "\\E[38;2;%p1%d;%p2%d;%p3%dm";
+        return 1;
+    }
+    if (!strcmp(name, "setrgbb") && rgb) {
+        *val = "\\E[48;2;%p1%d;%p2%d;%p3%dm";
+        return 1;
+    }
+    if (!strcmp(name, "Ms") &&
+        term->osc52_allowed != OSC52_CLIPBOARD_DENY) {
+        *val = "\\E]52;%p1%s;%p2%s\\E\\\\";
+        return 1;
+    }
+    if (!strcmp(name, "Sync") && term_sync_hold_ms(term)) {
+        *val = "\\EP=%p1%ds\\E\\\\";
+        return 1;
+    }
+    /* ncurses' xterm+bracketed and xterm+focus extended names */
+    if (!strcmp(name, "BE") && paste) { *val = "\\E[?2004h"; return 1; }
+    if (!strcmp(name, "BD") && paste) { *val = "\\E[?2004l"; return 1; }
+    if (!strcmp(name, "PS") && paste) { *val = "\\E[200~"; return 1; }
+    if (!strcmp(name, "PE") && paste) { *val = "\\E[201~"; return 1; }
+    if (!conf_get_bool(term->conf, CONF_no_focus_rep)) {
+        if (!strcmp(name, "fe")) { *val = "\\E[?1004h"; return 1; }
+        if (!strcmp(name, "fd")) { *val = "\\E[?1004l"; return 1; }
+        if (!strcmp(name, "kxIN")) { *val = "\\E[I"; return 1; }
+        if (!strcmp(name, "kxOUT")) { *val = "\\E[O"; return 1; }
+    }
+    return -1;
+}
+
+static int xtgettcap_hex(char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static void term_xtgettcap(Terminal *term)
+{
+    const char *s = term->osc_string + 2;
+    const char *end = term->osc_string + term->osc_strlen;
+
+    while (1) {
+        const char *seg = s, *val = NULL;
+        char name[33];
+        int n = 0, kind = -1;
+        bool ok;
+        strbuf *sb;
+
+        while (s < end && *s != ';')
+            s++;
+        ok = s > seg && (s - seg) % 2 == 0 &&
+            s - seg <= 2 * (int)(sizeof(name) - 1);
+        for (const char *q = seg; ok && q < s; q += 2) {
+            int hi = xtgettcap_hex(q[0]), lo = xtgettcap_hex(q[1]);
+            if (hi < 0 || lo < 0 || !(hi | lo))
+                ok = false;
+            else
+                name[n++] = (char)(hi * 16 + lo);
+        }
+        name[n] = '\0';
+        if (ok)
+            kind = xtgettcap_value(term, name, &val);
+        sb = strbuf_new();
+        put_fmt(sb, "\033P%c+r", kind >= 0 ? '1' : '0');
+        put_data(sb, seg, s - seg);
+        if (kind > 0) {
+            put_byte(sb, '=');
+            for (const char *v = val; *v; v++)
+                put_fmt(sb, "%02X", (unsigned)(unsigned char)*v);
+        }
+        put_dataz(sb, "\033\\");
+        kitty_osc52_send_raw(term, sb->s, sb->len);
+        strbuf_free(sb);
+        if (s >= end)
+            break;
+        s++;                           /* the ';' */
+    }
+}
+#endif
 
 #ifdef MOD_PERSO
 /*
@@ -8242,6 +8589,16 @@ static void do_osc(Terminal *term)
     if (term->osc_type == OSCLIKE_DCS && !term->osc_str_overflow &&
         term_sync_dcs(term))
         return;
+#endif
+#if defined(MOD_PERSO) && defined(MOD_FAR2L)
+    /* KiTTY: XTGETTCAP (term_xtgettcap); the Sixel detection never takes
+     * a "+q" string */
+    if (term->osc_type == OSCLIKE_DCS && !term->osc_str_overflow &&
+        term->osc_strlen >= 2 && term->osc_string[0] == '+' &&
+        term->osc_string[1] == 'q') {
+        term_xtgettcap(term);
+        return;
+    }
 #endif
 #ifdef KITTY_SIXEL
     /* KiTTY: the ST of a Sixel picture: placed, the cursor moved as xterm
@@ -8446,7 +8803,13 @@ static void do_osc(Terminal *term)
           case 1337:
             /* OSC 1337: iTerm2 inline images (File=, MultipartFile=), into
              * the kitty graphics store, under their own setting. The other
-             * 1337 commands stay ignored. */
+             * 1337 commands stay ignored, except the Capabilities query,
+             * answered whatever the settings (term_capabilities_report). */
+            if (!term->osc_str_overflow &&
+                !strcmp(term->osc_string, "Capabilities")) {
+                term_capabilities_report(term);
+                break;
+            }
             if (conf_get_bool(term->conf, CONF_iterm_images)) {
                 int dx, dy;
                 kitty_gfx_iterm(term, term->osc_string, term->osc_strlen,
@@ -9882,36 +10245,14 @@ static void term_out(Terminal *term, bool called_from_term_data)
                     switch (ANSI(c, term->esc_query)) {
 #ifdef MOD_PERSO
                       case ANSI('p', 1):
-                        /*
-                         * KiTTY: DECRQM for private modes 5522 and 2026 ONLY
-                         * (CSI ? Ps $ p), the detection queries the
-                         * paste-events and synchronized-output specs
-                         * prescribe. Answered CSI ? Ps ; 1 $ y (set) or ; 2
-                         * (reset); 2026 switched off by the session answers
-                         * ; 0 (not recognised). Every other mode keeps today's silence: a
-                         * general DECRQM that answered "not recognised" for
-                         * modes this terminal does implement would be a lie,
-                         * and a truthful one is its own piece of work.
-                         */
-                        if (term->esc_dollar && term->esc_args[0] == 5522) {
-                            char rep[32];
-                            (void)term_osc5522_paste_events(term); /* retire if due */
-                            snprintf(rep, sizeof(rep), "\033[?5522;%d$y",
-                                     term->osc5522_paste_events ? 1 : 2);
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
-                        } else if (term->esc_dollar && term->esc_args[0] == 2026) {
-                            char rep[32];
-                            snprintf(rep, sizeof(rep), "\033[?2026;%d$y",
-                                     !term_sync_hold_ms(term) ? 0 :
-                                     term->sync_hold ? 1 : 2);
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
-                        } else if (term->esc_dollar && term->esc_args[0] == 2031) {
-                            /* KiTTY: colour-scheme reports, set or reset */
-                            char rep[32];
-                            snprintf(rep, sizeof(rep), "\033[?2031;%d$y",
-                                     term->colour_scheme_reports ? 1 : 2);
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
-                        }
+                        /* KiTTY: DECRQM for a private mode, CSI ? Ps $ p,
+                         * answered CSI ? Ps ; Pm $ y (term_mode_state). */
+                        if (term->esc_dollar)
+                            term_decrqm(term, true, term->esc_args[0]);
+                        break;
+                      case ANSI('p', '$'):
+                        /* KiTTY: DECRQM for an ANSI mode, CSI Ps $ p. */
+                        term_decrqm(term, false, term->esc_args[0]);
                         break;
                       case ANSI('m', '>'):
                         /*
@@ -10148,7 +10489,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                         break;
                       case 'c':       /* DA: terminal type query */
                         compatibility(VT100);
-                        /* This is the response for a VT102 */
+                        /* KiTTY: term_da1_answer() builds it from this session */
                         if (term->ldisc)
                             ldisc_send(term->ldisc, term_da1_answer(term),
                                        strlen(term_da1_answer(term)), false);
@@ -14154,7 +14495,8 @@ void term_set_focus(Terminal *term, bool has_focus)
     /* KiTTY: DECSET 1004 focus reports. Straight to the host through the reply
      * seam, not ldisc: with local line editing on, ldisc would append them to
      * the line the user is typing. */
-    if (changed && term->focus_reports)
+    if (changed && term->focus_reports &&
+        !conf_get_bool(term->conf, CONF_no_focus_rep))
         kitty_osc52_send_raw(term, has_focus ? "\033[I" : "\033[O", 3);
 #endif
 }

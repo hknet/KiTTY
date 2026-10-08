@@ -135,14 +135,25 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   mintty. The session's hold limit applies to both.
 - **The terminal says what it is (XTVERSION).** `CSI > q` is answered with
   `KiTTY++` and its version.
+- **Programs can ask what this session supports.** XTGETTCAP (`DCS + q`)
+  answers terminfo capabilities from the session - true colour, the OSC 52
+  clipboard (only while it may be written), synchronized output, bracketed
+  paste, focus reports; iTerm2's `OSC 1337 ; Capabilities` answers its
+  feature tags (Sixel, inline images, hyperlinks, notifications ... as
+  switched on); DECRQM (`CSI ? Ps $ p`, and `CSI Ps $ p`) answers every
+  mode KiTTY++ implements, "permanently reset" for one a session setting
+  turns off. Neovim and tmux use these over SSH whatever `TERM` says.
 
 ### Changed
 
-- **The device-attributes answer (DA1) reports Sixel.** With Show inline
-  images (Sixel) on, `CSI c` is answered `ESC [ ? 62 ; 4 ; 22 c` (a VT220
-  with Sixel and ANSI colour) instead of `ESC [ ? 6 c` (a VT102), so
-  programs find the Sixel support; off, the old answer stays. An answer set
-  with DECSCL 50 (`CSI 50 ; ... " p`) still wins.
+- **The device-attributes answer (DA1) says what the session can do.**
+  `CSI c` is now answered as a VT220 (`ESC [ ? 62 ; ... c`) instead of a
+  VT102 (`ESC [ ? 6 c`), listing only what this session really has: 1 (132
+  columns), 2 (a printer is set), 4 (Sixel), 22 (ANSI colour), 52 (the
+  remote clipboard may be written) - so programs find Sixel by themselves.
+  Terminal > Features > Report as a VT220 with this session's features
+  (`ReportVT220`, on by default) brings the old `ESC [ ? 6 c` back. An
+  answer set with DECSCL 50 (`CSI 50 ; ... " p`) still wins.
 - **"Show far2l images" moved to Terminal > Features > Images,** beside the
   new switch for inline images (it was on Window > Copy & Paste > Remote
   clipboard). The setting itself is unchanged.
@@ -220,6 +231,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **"Disable focus reporting" works again, as in old KiTTY.** The box
+  (Terminal > Features, `NoFocusReporting`) did nothing: 0.85.1.13 sent
+  focus reports (`ESC [ I` / `ESC [ O`) to every program that asked,
+  ticked or not. Ticked, it now stops them. New sessions have it unticked,
+  so vim, tmux `focus-events` and far2l get the reports; a stored value is
+  honoured - sessions saved by 0.85.1.12/13 stored it ticked, so untick it
+  there to get the reports.
 - **A selection that ends over a link no longer opens it.** A link opened
   whenever the mouse button was released over it, so selecting text by
   dragging onto a URL launched the browser. It now opens only for a click:

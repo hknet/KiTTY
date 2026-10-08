@@ -116,6 +116,9 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
  * empty as a decision and refuses without prompting. */
 static bool stub_clip_busy = false;
 static void counters_reset(void);
+typedef struct Mock Mock;
+static void expect_reply(Mock *mk, const char *what, const char *seq,
+                         const char *want);
 
 
 wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
@@ -419,6 +422,8 @@ static void mock_draw_cursor(TermWin *win, int x, int y, wchar_t *text,
                              int len, unsigned long attrs, int lattrs,
                              truecolour tc) {}
 static void mock_set_raw_mouse_mode(TermWin *win, bool enable) {}
+/* the scrollbar follows the model during a synchronized-output hold */
+static void mock_set_scrollbar(TermWin *win, int total, int start, int page) {}
 static void mock_set_raw_mouse_mode_pointer(TermWin *win, bool enable) {}
 static void mock_palette_set(TermWin *win, unsigned start, unsigned ncolours,
                              const rgb *colours) {}
@@ -467,6 +472,7 @@ static const TermWinVtable mock_termwin_vt = {
     .set_title = mock_set_title,
     .set_icon_title = mock_set_icon_title,
     .set_raw_mouse_mode = mock_set_raw_mouse_mode,
+    .set_scrollbar = mock_set_scrollbar,
     .set_raw_mouse_mode_pointer = mock_set_raw_mouse_mode_pointer,
     .palette_set = mock_palette_set,
     .palette_get_overrides = mock_palette_get_overrides,
@@ -1186,12 +1192,8 @@ static void test_osc5522_paste_events(Mock *mk)
     if (osc52_sends != 1)
         fail("DECRQM 5522 off", "expected exactly one reply");
 
-    /* DECRQM for another mode stays silent, as before */
-    counters_reset();
-    term_data(term, "\033[?2004$p", 9);
-    term_update(term);
-    if (osc52_sends != 0)
-        fail("DECRQM other mode", "a mode this build does not report was answered");
+    /* DECRQM for another mode answers it too (test_capability_reports) */
+    expect_reply(mk, "DECRQM other mode", "\033[?2004$p", "\033[?2004;2$y");
 
     /* set the mode: DECRQM says set (1), the marker function agrees */
     counters_reset();
@@ -2426,7 +2428,9 @@ static void test_far2l_protocol(Mock *mk)
         fail("far2l block", "a late Allow gave the permission back");
     conf_set_int(mk->term->conf, CONF_shared_clipboard, 2);
 
-    /* --- the focus reports far2l asks for (DECSET 1004) --- */
+    /* --- the focus reports far2l asks for (DECSET 1004), with the
+     * session's NoFocusReporting off (the default) --- */
+    conf_set_bool(mk->term->conf, CONF_no_focus_rep, false);
     osc52_all_len = 0;
     osc52_all[0] = '\0';
     term_set_focus(mk->term, false);
@@ -2438,6 +2442,17 @@ static void test_far2l_protocol(Mock *mk)
     term_set_focus(mk->term, true);
     if (osc52_all_len != 6 || memcmp(osc52_all, "\033[O\033[I", 6))
         fail("focus reports", "not ESC [ O then ESC [ I");
+    /* NoFocusReporting on: no report, even with the mode already set */
+    conf_set_bool(mk->term->conf, CONF_no_focus_rep, true);
+    osc52_all_len = 0;
+    term_set_focus(mk->term, false);
+    term_set_focus(mk->term, true);
+    if (osc52_all_len != 0)
+        fail("focus reports", "sent with NoFocusReporting on");
+    /* ... and a new request is ignored */
+    term_data(mk->term, "\033[?1004l\033[?1004h", 16);
+    if (mk->term->focus_reports)
+        fail("focus reports", "DECSET 1004 taken with NoFocusReporting on");
     term_data(mk->term, "\033[?1004l", 8);
 
     f2l_fake_empty();
@@ -3963,8 +3978,10 @@ static void test_sixel_graphics(Mock *mk)
             fail("XTVERSION", "the version is not the bare number");
     }
 
-    /* DA1: Sixel reported with the setting on */
-    if (strcmp(term_da1_answer(term), "\033[?62;4;22c"))
+    /* DA1: Sixel reported with the setting on (the whole answer in
+     * test_capability_reports) */
+    if (strncmp(term_da1_answer(term), "\033[?62;", 6) ||
+        !strstr(term_da1_answer(term), ";4;"))
         fail("DA1 on", "Sixel is not reported");
 
     /* mintty's ?7780: no scrolling - the picture cut at the bottom margin,
@@ -4018,7 +4035,7 @@ static void test_sixel_graphics(Mock *mk)
         fail("?7780 RIS", "the mode survived");
     kitty_gfx_decode_png_hook = NULL;
 
-    /* the setting off: DCS q ignored, DA1 the VT102 answer, XTSMGRAPHICS
+    /* the setting off: DCS q ignored, DA1 without 4, XTSMGRAPHICS
      * silent */
     conf_set_bool(term->conf, CONF_sixel_images, false);
     feed_seq(mk, "\033[6;1H");
@@ -4026,8 +4043,9 @@ static void test_sixel_graphics(Mock *mk)
     if (iterm_count(mk) != 0 || term->sixel || term->curs.y != 5 ||
         term->curs.x != 0)
         fail("sixel: setting off", "the picture was served");
-    if (strcmp(term_da1_answer(term), "\033[?6c"))
-        fail("DA1 off", "the answer is not the VT102 one");
+    if (strncmp(term_da1_answer(term), "\033[?62;", 6) ||
+        strstr(term_da1_answer(term), ";4;"))
+        fail("DA1 off", "Sixel is still reported");
     expect_silence(mk, "XTSMGRAPHICS off", "\033[?1;1;0S");
     conf_set_bool(term->conf, CONF_sixel_images, true);
 
@@ -4444,6 +4462,462 @@ static void test_hostnotify_dispatch(Mock *mk)
     sfree(seq);
 }
 
+/*
+ * KiTTY: capability reporting from what THIS session has on, computed per
+ * query: DECRQM for every mode toggle_mode() handles (1 set, 2 reset, 4 a
+ * session switch keeps it off, 0 unknown), the ANSI form, XTGETTCAP (one
+ * reply per name), OSC 1337 ; Capabilities and DA1 / DECID.
+ */
+static void cap_conf(Mock *mk)
+{
+    term_reconfig(mk->term, mk->conf);
+    counters_reset();
+}
+
+static void cap_defaults(Mock *mk)
+{
+    conf_set_bool(mk->conf, CONF_no_applic_c, false);
+    conf_set_bool(mk->conf, CONF_no_alt_screen, false);
+    conf_set_bool(mk->conf, CONF_no_mouse_rep, false);
+    conf_set_bool(mk->conf, CONF_no_remote_resize, false);
+    conf_set_bool(mk->conf, CONF_no_remote_wintitle, false);
+    conf_set_bool(mk->conf, CONF_no_bracketed_paste, false);
+    conf_set_bool(mk->conf, CONF_no_focus_rep, false);
+    conf_set_bool(mk->conf, CONF_ansi_colour, true);
+    conf_set_bool(mk->conf, CONF_xterm_256_colour, true);
+    conf_set_bool(mk->conf, CONF_true_colour, true);
+    conf_set_bool(mk->conf, CONF_sixel_images, true);
+    conf_set_bool(mk->conf, CONF_iterm_images, true);
+    conf_set_bool(mk->conf, CONF_taskbar_progress, true);
+    conf_set_bool(mk->conf, CONF_cjk_ambig_wide, false);
+    conf_set_int(mk->conf, CONF_url_osc8, 1);
+    conf_set_int(mk->conf, CONF_host_notify, 1);
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 200);
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ASK);
+    conf_set_str(mk->conf, CONF_printer, "");
+    conf_set_str(mk->conf, CONF_termtype, "xterm-256color");
+    conf_set_bool(mk->conf, CONF_report_vt220, true);
+    cap_conf(mk);
+}
+
+static void rqm(Mock *mk, const char *what, const char *query,
+                const char *want)
+{
+    expect_reply(mk, what, query, want);
+}
+
+/* hex of s, uppercase, as XTGETTCAP carries it */
+static const char *cap_hex(const char *s)
+{
+    static char buf[4][256];
+    static int which;
+    char *out = buf[which = (which + 1) % 4], *o = out;
+    for (; *s; s++, o += 2)
+        sprintf(o, "%02X", (unsigned)(unsigned char)*s);
+    *o = '\0';
+    return out;
+}
+
+/* XTGETTCAP query with the names given (hex, ';'-separated); the replies,
+ * one per name, compared as one string */
+static void tcap(Mock *mk, const char *what, const char *names,
+                 const char *want, int replies)
+{
+    char *seq = dupprintf("\033P+q%s\033\\", names);
+    counters_reset();
+    feed_seq(mk, seq);
+    sfree(seq);
+    if (osc52_sends != replies) {
+        printf("   %d replies, want %d\n", osc52_sends, replies);
+        fail(what, "not one reply per name");
+    }
+    if (strcmp(osc52_all, want)) {
+        printf("   got:  %s\n   want: %s\n", osc52_all + 1, want + 1);
+        fail(what, "the reply differs");
+    }
+}
+
+/* one name known with a value */
+static void tcap_val(Mock *mk, const char *what, const char *name,
+                     const char *value)
+{
+    char *want = dupprintf("\033P1+r%s=%s\033\\", cap_hex(name),
+                           cap_hex(value));
+    tcap(mk, what, cap_hex(name), want, 1);
+    sfree(want);
+}
+
+static void tcap_unknown(Mock *mk, const char *what, const char *name)
+{
+    char *want = dupprintf("\033P0+r%s\033\\", cap_hex(name));
+    tcap(mk, what, cap_hex(name), want, 1);
+    sfree(want);
+}
+
+/* DECID and DA1 go out through ldisc, not the reply seam: a small backend
+ * catches them. */
+typedef struct CapBackend {
+    strbuf *sent;
+    Backend backend;
+} CapBackend;
+static size_t cap_seat_output(Seat *seat, SeatOutputType type,
+                              const void *data, size_t len)
+{ return 0; }
+static void cap_be_send(Backend *be, const char *buf, size_t len)
+{
+    CapBackend *cb = container_of(be, CapBackend, backend);
+    put_data(cb->sent, buf, len);
+}
+static bool cap_be_option(Backend *be, int option) { return false; }
+static void cap_be_provide_ldisc(Backend *be, Ldisc *ldisc) {}
+static bool cap_be_sendok(Backend *be) { return true; }
+static const SeatVtable cap_seat_vt = {
+    .output = cap_seat_output,
+    .echoedit_update = nullseat_echoedit_update,
+};
+static const BackendVtable cap_backend_vt = {
+    .sendok = cap_be_sendok,
+    .send = cap_be_send,
+    .ldisc_option_state = cap_be_option,
+    .provide_ldisc = cap_be_provide_ldisc,
+    .id = "captest",
+};
+
+static void da1_wire(Mock *mk, const char *what, const char *seq,
+                     const char *want)
+{
+    CapBackend cb;
+    Seat seat;
+    Ldisc *ld;
+    Ldisc *was = mk->term->ldisc;
+
+    cb.sent = strbuf_new();
+    cb.backend.vt = &cap_backend_vt;
+    seat.vt = &cap_seat_vt;
+    ld = ldisc_create(mk->conf, mk->term, &cb.backend, &seat);
+    feed_seq(mk, seq);
+    run_toplevel_callbacks();
+    if (strcmp(cb.sent->s, want)) {
+        printf("   got:  %s\n   want: %s\n", cb.sent->s + 1, want + 1);
+        fail(what, "the answer on the wire differs");
+    }
+    ldisc_free(ld);
+    mk->term->ldisc = was;
+    strbuf_free(cb.sent);
+}
+
+static void da1_attrs(Mock *mk, const char *what, const char *want)
+{
+    char got[64];
+    term_da1_attributes(mk->term, got, sizeof(got));
+    if (strcmp(got, want)) {
+        printf("   got:  %s\n   want: %s\n", got, want);
+        fail(what, "the attribute list differs");
+    }
+}
+
+static void test_capability_reports(Mock *mk)
+{
+    Terminal *term = mk->term;
+
+    feed_seq(mk, "\033c");
+    cap_defaults(mk);
+
+    /* --- DECRQM, private modes --- */
+    rqm(mk, "DECRQM 1 reset", "\033[?1$p", "\033[?1;2$y");
+    feed_seq(mk, "\033[?1h");
+    rqm(mk, "DECRQM 1 set", "\033[?1$p", "\033[?1;1$y");
+    conf_set_bool(mk->conf, CONF_no_applic_c, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 1 switched off", "\033[?1$p", "\033[?1;4$y");
+    conf_set_bool(mk->conf, CONF_no_applic_c, false);
+    cap_conf(mk);
+    feed_seq(mk, "\033[?1l");
+    rqm(mk, "DECRQM 2 (ANSI, not VT52)", "\033[?2$p", "\033[?2;1$y");
+    rqm(mk, "DECRQM 3 reset", "\033[?3$p", "\033[?3;2$y");
+    conf_set_bool(mk->conf, CONF_no_remote_resize, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 3 no remote resize", "\033[?3$p", "\033[?3;4$y");
+    conf_set_bool(mk->conf, CONF_no_remote_resize, false);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 5 reset", "\033[?5$p", "\033[?5;2$y");
+    feed_seq(mk, "\033[?5h");
+    rqm(mk, "DECRQM 5 set", "\033[?5$p", "\033[?5;1$y");
+    feed_seq(mk, "\033[?5l");
+    rqm(mk, "DECRQM 6 reset", "\033[?6$p", "\033[?6;2$y");
+    feed_seq(mk, "\033[?6h");
+    rqm(mk, "DECRQM 6 set", "\033[?6$p", "\033[?6;1$y");
+    feed_seq(mk, "\033[?6l");
+    rqm(mk, "DECRQM 7 set", "\033[?7$p", "\033[?7;1$y");
+    feed_seq(mk, "\033[?7l");
+    rqm(mk, "DECRQM 7 reset", "\033[?7$p", "\033[?7;2$y");
+    feed_seq(mk, "\033[?7h");
+    rqm(mk, "DECRQM 8 set", "\033[?8$p", "\033[?8;1$y");
+    feed_seq(mk, "\033[?8l");
+    rqm(mk, "DECRQM 8 reset", "\033[?8$p", "\033[?8;2$y");
+    feed_seq(mk, "\033[?8h");
+    rqm(mk, "DECRQM 25 set", "\033[?25$p", "\033[?25;1$y");
+    feed_seq(mk, "\033[?25l");
+    rqm(mk, "DECRQM 25 reset", "\033[?25$p", "\033[?25;2$y");
+    feed_seq(mk, "\033[?25h");
+    rqm(mk, "DECRQM 1049 reset", "\033[?1049$p", "\033[?1049;2$y");
+    feed_seq(mk, "\033[?1049h");
+    rqm(mk, "DECRQM 1049 set", "\033[?1049$p", "\033[?1049;1$y");
+    rqm(mk, "DECRQM 47 on the alternate screen", "\033[?47$p", "\033[?47;1$y");
+    rqm(mk, "DECRQM 1047 on the alternate screen", "\033[?1047$p",
+        "\033[?1047;1$y");
+    feed_seq(mk, "\033[?1049l");
+    rqm(mk, "DECRQM 47 reset", "\033[?47$p", "\033[?47;2$y");
+    rqm(mk, "DECRQM 1048 (an action)", "\033[?1048$p", "\033[?1048;4$y");
+    conf_set_bool(mk->conf, CONF_no_alt_screen, true);
+    cap_conf(mk);
+    feed_seq(mk, "\033[?1049h");
+    rqm(mk, "DECRQM 1049 no alternate screen", "\033[?1049$p",
+        "\033[?1049;4$y");
+    rqm(mk, "DECRQM 47 no alternate screen", "\033[?47$p", "\033[?47;4$y");
+    feed_seq(mk, "\033[?1049l");
+    conf_set_bool(mk->conf, CONF_no_alt_screen, false);
+    cap_conf(mk);
+    feed_seq(mk, "\033[?1002h\033[?1006h");
+    rqm(mk, "DECRQM 1000 under 1002", "\033[?1000$p", "\033[?1000;2$y");
+    rqm(mk, "DECRQM 1002 set", "\033[?1002$p", "\033[?1002;1$y");
+    rqm(mk, "DECRQM 1003 reset", "\033[?1003$p", "\033[?1003;2$y");
+    rqm(mk, "DECRQM 1006 set", "\033[?1006$p", "\033[?1006;1$y");
+    rqm(mk, "DECRQM 1015 reset", "\033[?1015$p", "\033[?1015;2$y");
+    conf_set_bool(mk->conf, CONF_no_mouse_rep, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 1002 mouse reporting off", "\033[?1002$p",
+        "\033[?1002;4$y");
+    rqm(mk, "DECRQM 1006 mouse reporting off", "\033[?1006$p",
+        "\033[?1006;4$y");
+    conf_set_bool(mk->conf, CONF_no_mouse_rep, false);
+    cap_conf(mk);
+    feed_seq(mk, "\033[?1002l\033[?1006l");
+    rqm(mk, "DECRQM 1002 reset", "\033[?1002$p", "\033[?1002;2$y");
+    rqm(mk, "DECRQM 2004 reset", "\033[?2004$p", "\033[?2004;2$y");
+    feed_seq(mk, "\033[?2004h");
+    rqm(mk, "DECRQM 2004 set", "\033[?2004$p", "\033[?2004;1$y");
+    conf_set_bool(mk->conf, CONF_no_bracketed_paste, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 2004 bracketed paste off", "\033[?2004$p",
+        "\033[?2004;4$y");
+    conf_set_bool(mk->conf, CONF_no_bracketed_paste, false);
+    cap_conf(mk);
+    feed_seq(mk, "\033[?2004l");
+    rqm(mk, "DECRQM 1004 reset", "\033[?1004$p", "\033[?1004;2$y");
+    feed_seq(mk, "\033[?1004h");
+    rqm(mk, "DECRQM 1004 set", "\033[?1004$p", "\033[?1004;1$y");
+    feed_seq(mk, "\033[?1004l");
+    conf_set_bool(mk->conf, CONF_no_focus_rep, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 1004 with NoFocusReporting on", "\033[?1004$p", "\033[?1004;4$y");
+    tcap_unknown(mk, "XTGETTCAP fe with NoFocusReporting on", "fe");
+    conf_set_bool(mk->conf, CONF_no_focus_rep, false);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 2026 reset", "\033[?2026$p", "\033[?2026;2$y");
+    feed_seq(mk, "\033[?2026h");
+    rqm(mk, "DECRQM 2026 set", "\033[?2026$p", "\033[?2026;1$y");
+    feed_seq(mk, "\033[?2026l");
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 0);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 2026 off answers 0, as before", "\033[?2026$p",
+        "\033[?2026;0$y");
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 200);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 2031 reset", "\033[?2031$p", "\033[?2031;2$y");
+    rqm(mk, "DECRQM 5522 reset", "\033[?5522$p", "\033[?5522;2$y");
+    rqm(mk, "DECRQM 80 reset", "\033[?80$p", "\033[?80;2$y");
+    feed_seq(mk, "\033[?80h");
+    rqm(mk, "DECRQM 80 set", "\033[?80$p", "\033[?80;1$y");
+    feed_seq(mk, "\033[?80l");
+    rqm(mk, "DECRQM 1070 set (the default)", "\033[?1070$p", "\033[?1070;1$y");
+    rqm(mk, "DECRQM 8452 reset", "\033[?8452$p", "\033[?8452;2$y");
+    rqm(mk, "DECRQM 7730 reset", "\033[?7730$p", "\033[?7730;2$y");
+    rqm(mk, "DECRQM 7780 reset", "\033[?7780$p", "\033[?7780;2$y");
+    conf_set_bool(mk->conf, CONF_sixel_images, false);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 80 Sixel off", "\033[?80$p", "\033[?80;4$y");
+    rqm(mk, "DECRQM 1070 Sixel off", "\033[?1070$p", "\033[?1070;4$y");
+    rqm(mk, "DECRQM 8452 Sixel off", "\033[?8452$p", "\033[?8452;4$y");
+    rqm(mk, "DECRQM 7730 Sixel off", "\033[?7730$p", "\033[?7730;4$y");
+    rqm(mk, "DECRQM 7780 iTerm2 still on", "\033[?7780$p", "\033[?7780;2$y");
+    conf_set_bool(mk->conf, CONF_iterm_images, false);
+    cap_conf(mk);
+    rqm(mk, "DECRQM 7780 both off", "\033[?7780$p", "\033[?7780;4$y");
+    conf_set_bool(mk->conf, CONF_sixel_images, true);
+    conf_set_bool(mk->conf, CONF_iterm_images, true);
+    cap_conf(mk);
+    rqm(mk, "DECRQM unknown private mode", "\033[?9999$p", "\033[?9999;0$y");
+    rqm(mk, "DECRQM 12 (no blinking-cursor mode)", "\033[?12$p",
+        "\033[?12;0$y");
+    rqm(mk, "DECRQM 1005 (no UTF-8 mouse)", "\033[?1005$p", "\033[?1005;0$y");
+    rqm(mk, "DECRQM private 4 is not IRM", "\033[?4$p", "\033[?4;0$y");
+    rqm(mk, "DECRQM no parameter", "\033[?$p", "\033[?0;0$y");
+
+    /* --- DECRQM, ANSI modes --- */
+    rqm(mk, "DECRQM IRM reset", "\033[4$p", "\033[4;2$y");
+    feed_seq(mk, "\033[4h");
+    rqm(mk, "DECRQM IRM set", "\033[4$p", "\033[4;1$y");
+    feed_seq(mk, "\033[4l");
+    rqm(mk, "DECRQM SRM set (no local echo)", "\033[12$p", "\033[12;1$y");
+    feed_seq(mk, "\033[12l");
+    rqm(mk, "DECRQM SRM reset", "\033[12$p", "\033[12;2$y");
+    feed_seq(mk, "\033[12h");
+    rqm(mk, "DECRQM LNM reset", "\033[20$p", "\033[20;2$y");
+    feed_seq(mk, "\033[20h");
+    rqm(mk, "DECRQM LNM set", "\033[20$p", "\033[20;1$y");
+    feed_seq(mk, "\033[20l");
+    rqm(mk, "DECRQM WYULCURM set", "\033[34$p", "\033[34;1$y");
+    feed_seq(mk, "\033[34l");
+    rqm(mk, "DECRQM WYULCURM reset", "\033[34$p", "\033[34;2$y");
+    feed_seq(mk, "\033[34h");
+    rqm(mk, "DECRQM unknown ANSI mode", "\033[99$p", "\033[99;0$y");
+    rqm(mk, "DECRQM ANSI 2026 is not the private one", "\033[2026$p",
+        "\033[2026;0$y");
+
+    /* --- XTGETTCAP --- */
+    tcap_val(mk, "XTGETTCAP TN", "TN", "xterm-256color");
+    tcap_val(mk, "XTGETTCAP name", "name", "xterm-256color");
+    tcap_val(mk, "XTGETTCAP Co", "Co", "256");
+    tcap_val(mk, "XTGETTCAP colors", "colors", "256");
+    tcap_val(mk, "XTGETTCAP RGB", "RGB", "8");
+    tcap(mk, "XTGETTCAP Tc (boolean)", cap_hex("Tc"),
+         "\033P1+r5463\033\\", 1);
+    tcap_val(mk, "XTGETTCAP setrgbf", "setrgbf",
+             "\\E[38;2;%p1%d;%p2%d;%p3%dm");
+    tcap_val(mk, "XTGETTCAP Ms", "Ms", "\\E]52;%p1%s;%p2%s\\E\\\\");
+    tcap_val(mk, "XTGETTCAP Sync", "Sync", "\\EP=%p1%ds\\E\\\\");
+    tcap_val(mk, "XTGETTCAP BE", "BE", "\\E[?2004h");
+    tcap_val(mk, "XTGETTCAP PE", "PE", "\\E[201~");
+    tcap_val(mk, "XTGETTCAP fe", "fe", "\\E[?1004h");
+    tcap_val(mk, "XTGETTCAP kxOUT", "kxOUT", "\\E[O");
+    tcap_unknown(mk, "XTGETTCAP Smulx (not implemented)", "Smulx");
+    tcap_unknown(mk, "XTGETTCAP Setulc (not implemented)", "Setulc");
+    tcap_unknown(mk, "XTGETTCAP Ss (no DECSCUSR)", "Ss");
+    tcap_unknown(mk, "XTGETTCAP key name", "kf1");
+    tcap(mk, "XTGETTCAP odd hex", "544", "\033P0+r544\033\\", 1);
+    tcap(mk, "XTGETTCAP not hex", "zz", "\033P0+rzz\033\\", 1);
+    tcap(mk, "XTGETTCAP no name", "", "\033P0+r\033\\", 1);
+    tcap(mk, "XTGETTCAP lower-case hex echoed", "746e",
+         "\033P0+r746e\033\\", 1);
+    tcap(mk, "XTGETTCAP upper-case hex", "544E",
+         "\033P1+r544E=787465726D2D323536636F6C6F72\033\\", 1);
+    {
+        char *names = dupprintf("%s;%s;%s", cap_hex("Tc"), cap_hex("Smulx"),
+                                cap_hex("Co"));
+        tcap(mk, "XTGETTCAP three names, one unknown", names,
+             "\033P1+r5463\033\\"
+             "\033P0+r536D756C78\033\\"
+             "\033P1+r436F=323536\033\\", 3);
+        sfree(names);
+    }
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
+    cap_conf(mk);
+    tcap_unknown(mk, "XTGETTCAP Ms, clipboard writes denied", "Ms");
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ALLOW);
+    cap_conf(mk);
+    tcap_val(mk, "XTGETTCAP Ms, writes allowed", "Ms",
+             "\\E]52;%p1%s;%p2%s\\E\\\\");
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ASK);
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 0);
+    cap_conf(mk);
+    tcap_unknown(mk, "XTGETTCAP Sync at hold 0", "Sync");
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 200);
+    conf_set_bool(mk->conf, CONF_true_colour, false);
+    conf_set_bool(mk->conf, CONF_xterm_256_colour, false);
+    conf_set_bool(mk->conf, CONF_no_bracketed_paste, true);
+    cap_conf(mk);
+    tcap_unknown(mk, "XTGETTCAP RGB, true colour off", "RGB");
+    tcap_unknown(mk, "XTGETTCAP Tc, true colour off", "Tc");
+    tcap_unknown(mk, "XTGETTCAP setrgbb, true colour off", "setrgbb");
+    tcap_val(mk, "XTGETTCAP Co, 256 colours off", "Co", "16");
+    tcap_unknown(mk, "XTGETTCAP BE, bracketed paste off", "BE");
+    conf_set_bool(mk->conf, CONF_ansi_colour, false);
+    cap_conf(mk);
+    tcap_unknown(mk, "XTGETTCAP Co, ANSI colour off", "Co");
+    cap_defaults(mk);
+
+    /* --- OSC 1337 ; Capabilities --- */
+    expect_reply(mk, "Capabilities, defaults", "\033]1337;Capabilities\007",
+                 "\033]1337;Capabilities=T1CwMUUw16Ts2BFGsSyHNoSxFP\007");
+    expect_reply(mk, "Capabilities, ST", "\033]1337;Capabilities\033\\",
+                 "\033]1337;Capabilities=T1CwMUUw16Ts2BFGsSyHNoSxFP\007");
+    conf_set_bool(mk->conf, CONF_cjk_ambig_wide, true);
+    cap_conf(mk);
+    expect_reply(mk, "Capabilities, ambiguous wide",
+                 "\033]1337;Capabilities\007",
+                 "\033]1337;Capabilities=T1CwMUAwUw16Ts2BFGsSyHNoSxFP\007");
+    conf_set_bool(mk->conf, CONF_true_colour, false);
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
+    conf_set_bool(mk->conf, CONF_no_mouse_rep, true);
+    conf_set_bool(mk->conf, CONF_cjk_ambig_wide, false);
+    conf_set_bool(mk->conf, CONF_no_remote_wintitle, true);
+    conf_set_bool(mk->conf, CONF_no_bracketed_paste, true);
+    conf_set_int(mk->conf, CONF_sync_output_hold_ms, 0);
+    conf_set_int(mk->conf, CONF_url_osc8, 0);
+    conf_set_int(mk->conf, CONF_host_notify, 0);
+    conf_set_bool(mk->conf, CONF_sixel_images, false);
+    conf_set_bool(mk->conf, CONF_iterm_images, false);
+    conf_set_bool(mk->conf, CONF_taskbar_progress, false);
+    cap_conf(mk);
+    expect_reply(mk, "Capabilities, every switch off",
+                 "\033]1337;Capabilities\007",
+                 "\033]1337;Capabilities=UUw16FGs\007");
+    term->ucsdata->line_codepage = CP_437;
+    expect_reply(mk, "Capabilities, not UTF-8", "\033]1337;Capabilities\007",
+                 "\033]1337;Capabilities=FGs\007");
+    term->ucsdata->line_codepage = CP_UTF8;
+    expect_silence(mk, "OSC 1337 other command",
+                   "\033]1337;Capabilitiesx\007");
+    cap_defaults(mk);
+
+    /* --- DA1 and DECID: a VT220 with this session's attributes, or the
+     * VT102 answer with ReportVT220 off; DECSCL 50 wins either way --- */
+    da1_attrs(mk, "DA1 attributes, defaults", "1;4;22;52");
+    da1_wire(mk, "DA1 on the wire", "\033[c", "\033[?62;1;4;22;52c");
+    da1_wire(mk, "DECID on the wire", "\033Z", "\033[?62;1;4;22;52c");
+    conf_set_bool(mk->conf, CONF_sixel_images, false);
+    cap_conf(mk);
+    da1_attrs(mk, "DA1 attributes, Sixel off drops 4 only", "1;22;52");
+    da1_wire(mk, "DA1 Sixel off", "\033[c", "\033[?62;1;22;52c");
+    da1_wire(mk, "DECID Sixel off", "\033Z", "\033[?62;1;22;52c");
+    conf_set_bool(mk->conf, CONF_sixel_images, true);
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
+    cap_conf(mk);
+    da1_attrs(mk, "DA1 attributes, clipboard writes denied", "1;4;22");
+    da1_wire(mk, "DA1 clipboard writes denied drop 52", "\033[c",
+             "\033[?62;1;4;22c");
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ALLOW);
+    conf_set_str(mk->conf, CONF_printer, "Some Printer");
+    cap_conf(mk);
+    da1_attrs(mk, "DA1 attributes, a printer", "1;2;4;22;52");
+    conf_set_str(mk->conf, CONF_printer, "");
+    conf_set_bool(mk->conf, CONF_no_remote_resize, true);
+    conf_set_bool(mk->conf, CONF_ansi_colour, false);
+    cap_conf(mk);
+    da1_attrs(mk, "DA1 attributes, no resize, no colour", "4;52");
+    conf_set_bool(mk->conf, CONF_sixel_images, false);
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
+    cap_conf(mk);
+    da1_attrs(mk, "DA1 attributes, everything off", "");
+    da1_wire(mk, "DA1 no attributes", "\033[c", "\033[?62c");
+    cap_defaults(mk);
+    conf_set_bool(mk->conf, CONF_report_vt220, false);
+    cap_conf(mk);
+    da1_wire(mk, "DA1 ReportVT220 off", "\033[c", "\033[?6c");
+    da1_wire(mk, "DECID ReportVT220 off", "\033Z", "\033[?6c");
+    feed_seq(mk, "\033[50;1;2\"p");
+    da1_wire(mk, "DA1 DECSCL 50 wins, switch off", "\033[c", "\033[?1;2c");
+    conf_set_bool(mk->conf, CONF_report_vt220, true);
+    cap_conf(mk);
+    da1_wire(mk, "DA1 DECSCL 50 wins", "\033[c", "\033[?1;2c");
+    da1_wire(mk, "DECID DECSCL 50 wins", "\033Z", "\033[?1;2c");
+    strcpy(term->id_string, "\033[?6c");
+    term->da1_custom = false;
+    cap_defaults(mk);
+    feed_seq(mk, "\033c");
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -4552,6 +5026,7 @@ int main(void)
     test_iterm_graphics(mk);            /* KiTTY: iTerm2 inline images */
     test_sixel_graphics(mk);            /* KiTTY: Sixel, DA1, XTSMGRAPHICS, XTVERSION */
     test_cell_bound_pictures(mk);       /* KiTTY: iTerm2/Sixel pictures own their cells */
+    test_capability_reports(mk);        /* KiTTY: DECRQM, XTGETTCAP, Capabilities, DA1 */
 
     mock_free(mk);
 

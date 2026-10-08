@@ -290,6 +290,7 @@
 /* Terminal/Features */
 #define KT_FEATURES_ENABLING_AND_DISABLING_ADVANCED_TERMINAL "Enabling and disabling advanced terminal features"
 #define KT_FEATURES_DISABLE_APPLICATION_CURSOR_KEYS_MODE "Disable application cursor keys mode"
+#define KT_FEATURES_REPORT_VT220 "Report as a VT220 with this session's features (CSI c)"
 #define KT_FEATURES_DISABLE_APPLICATION_KEYPAD_MODE  "Disable application keypad mode"
 #define KT_FEATURES_DISABLE_XTERM_STYLE_MOUSE_REPORTING "Disable xterm-style mouse reporting"
 #define KT_FEATURES_DISABLE_REMOTE_CONTROLLED_TERMINAL_RESIZING "Disable remote-controlled terminal resizing"

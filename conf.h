@@ -1151,9 +1151,14 @@ CONF_OPTION(far2l_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("Fa
 CONF_OPTION(kitty_graphics, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("KittyGraphics"),)
 CONF_OPTION(iterm_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ItermImages"),)
 /* KiTTY: Sixel pictures (DCS q, kitty/kitty_sixel.h), in the same store.
- * On, DA1 answers ESC [ ? 62 ; 4 ; 22 c (Sixel); off, the sequence is
- * ignored and DA1 stays ESC [ ? 6 c. */
+ * On, DA1 reports Sixel (attribute 4, with ReportVT220 on); off, the
+ * sequence is ignored and DA1 carries no 4. */
 CONF_OPTION(sixel_images, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("SixelImages"),)
+/* KiTTY: DA1 (CSI c) and DECID (ESC Z) answered as a VT220, ESC [ ? 62 ;
+ * <attributes> c, with the attributes this session really has at the time
+ * (term_da1_attributes); off, ESC [ ? 6 c (a VT102). An answer set with
+ * DECSCL 50 wins either way. */
+CONF_OPTION(report_vt220, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ReportVT220"),)
 CONF_OPTION(colours,
     /*
      * Subkeys in this setting are indexed based on the CONF_COLOUR_*
@@ -1709,7 +1714,10 @@ CONF_OPTION(window_has_sysmenu, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWO
 CONF_OPTION(window_closable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowClosable"),)
 CONF_OPTION(window_minimizable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowMinimizable"),)
 CONF_OPTION(window_maximizable, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("WindowMaximizable"),)
-CONF_OPTION(no_focus_rep, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("NoFocusReporting"),)
+/* KiTTY: old KiTTY's switch: focus reports (DECSET 1004) are only sent with
+ * it off (terminal.c toggle_mode, term_set_focus). Off by default here (old
+ * KiTTY: on), so new sessions get the reports; a stored value is honoured. */
+CONF_OPTION(no_focus_rep, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("NoFocusReporting"),)
 CONF_OPTION(scrolllines, VALUE_TYPE(INT), DEFAULT_INT(-1), SAVE_KEYWORD("LinesAtAScroll"),)
 CONF_OPTION(ssh_tunnel_print_in_title, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SSHTunnelInTitle"),)
 CONF_OPTION(disablealtgr, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("DisableAltGr"),)
