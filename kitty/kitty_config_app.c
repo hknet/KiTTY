@@ -1321,11 +1321,12 @@ const char *scb_title_appname(void)
  * not session values, so the handlers read and write there directly - there is
  * no Save on an application setting and no Conf that could carry them.
  *
- * WARNING: NONE of them can take effect in the window you are looking at. The box's
- * geometry is decided when it is built, and the theme is applied to windows as
- * they are created; changing either here writes the file and the next
- * configuration window comes up with it. The panel says so rather than leaving
- * someone to wonder why nothing moved.
+ * WARNING: the box's geometry cannot take effect in the window you are looking
+ * at - it is decided when the box is built, so a change here writes the file
+ * and the next configuration window comes up with it. The theme is the
+ * exception: it is applied at once, here and in every other open KiTTY++
+ * window (kitty_cfgwin_theme_handler). The panel says which is which rather
+ * than leaving someone to wonder why nothing moved.
  */
 static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                        void *data, int event)
@@ -1354,13 +1355,12 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /*
              * And show it, here, now.
              *
-             * The colours DID change without a restart - on the next
-             * activation, because the CBT hook re-themes a window whose
-             * remembered darkness no longer matches. So the setting looked
-             * inert until you clicked away and back. This is that same call,
-             * made at the moment the choice is made; the theme reads the file
-             * we have just written. Other open windows follow when they are
-             * next activated, which is the behaviour that was already there.
+             * Without this the colours changed only on the next activation,
+             * when the CBT hook re-themes a window whose remembered darkness
+             * no longer matches, so the setting looked inert until you
+             * clicked away and back. This is that same call, made at the
+             * moment the choice is made; the theme reads the store we have
+             * just written.
              */
             kitty_theme_apply(kitty_cfg_modal_owner(), kitty_theme_app_dark());
             /* ...and the terminal's own title bar and border, through the
@@ -1370,6 +1370,13 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /* ...and the popup menus of this process, from the next one
              * opened (the app mode, then FlushMenuThemes). */
             kitty_theme_app_mode(kitty_theme_app_pref());
+            /* ...and every other open KiTTY++ window, in this process and in
+             * all the others - Manage Sessions, other configuration windows,
+             * the launcher, kageant, kittygen, the terminals' frames. Each
+             * re-reads its own store, so a copy keeping the setting elsewhere
+             * (portable next to installed) stays as it is. Our own windows get
+             * it too and find nothing left to change. */
+            kitty_theme_announce_change();
         }
     }
 }
@@ -2817,9 +2824,9 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_droplist(s, KT_CONFIG_WINDOW_COLOURS, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
                   kitty_cfgwin_theme_handler, P(NULL));
     ctrl_text(s, KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE, HELPCTX(kitty_appearance));
-    /* Said beside the control: someone changes the colours and looks at
-     * this window to see whether anything happened. It cannot - a theme is
-     * applied to a window when it is created, and this one already was. */
+    /* Said beside the control: a change reaches every open KiTTY++ window at
+     * once, not only this one and the windows opened afterwards
+     * (kitty_cfgwin_theme_handler announces it). */
     ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED, HELPCTX(kitty_appearance));
 
     /* ---- Keys & Mouse, and its Shortcuts leaf ---- */

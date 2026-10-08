@@ -2146,6 +2146,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * first window, so none is created untreated. The TERMINAL is not a dialog
      * and is deliberately untouched: its colours are its own settings. */
     kitty_theme_hook_dialogs(kitty_theme_app_dark);
+    /* ...and re-read, cache dropped, when any KiTTY++ window announces that
+     * the Appearance setting was stored (kitty_theme_announce_change). */
+    kitty_theme_hook_pref(kitty_theme_app_pref, kitty_theme_app_pref_forget);
     /* The popup menus follow the same setting - the terminal's right-click
      * menu and system menu included. They are drawn by Windows from the
      * process-wide app mode, so it is set here, before the first menu exists;
@@ -7958,6 +7961,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
 #endif
       default:
+#ifdef MOD_PERSO
+        /* KiTTY: the Appearance setting was stored, here or in another KiTTY++
+         * window (kitty_theme_announce_change). The terminal is not a themed
+         * dialog, so it re-reads here what the subclass re-reads there: the
+         * cache dropped, the preference read again from this copy's own store,
+         * the popup menus' app mode set from it. Then the FRAME only - title
+         * bar, border, scroll bar - through the resting-state path, the one a
+         * system switch takes (a workplace green stays green). The terminal's
+         * colours, its renderer and its layered state are not touched. Only
+         * when the darkness moved: an unchanged store leaves a clipboard tint
+         * that is up at the moment alone. */
+        if (kitty_theme_is_change_message(message)) {
+            bool was_dark;
+            kitty_theme_app_pref_forget();
+            kitty_theme_app_mode(kitty_theme_app_pref());
+            if (!kitty_theme_frame_dark(MainHwnd, &was_dark) ||
+                was_dark != kitty_theme_app_dark())
+                kitty_frame_restore_resting();
+            return 0;
+        }
+#endif
         if (message == wm_mousewheel || message == WM_MOUSEWHEEL
                                                 || message == WM_MOUSEHWHEEL) {
             bool shift_pressed = false, control_pressed = false;

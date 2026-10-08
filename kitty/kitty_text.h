@@ -940,8 +940,7 @@
 #define KT_CONFIG_WINDOW_COLOURS                     "Choose the default Appearance:"
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
-#define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply to windows opened afterwards - this " \
-        "configuration window keeps the colours it opened with."
+#define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply at once to all open KiTTY++ windows."
 #define KT_CONFIG_WINDOW_CATEGORY_TREE_OPENS_SHOWING "Levels of the trees to open:"
 #define KT_CONFIG_WINDOW_DISPLAY_SUPDUP              "Display SUPDUP"
 #define KT_CONFIG_WINDOW_DISPLAY_RLOGIN              "Display Rlogin"

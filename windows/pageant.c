@@ -4017,6 +4017,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK) {
                     kitty_theme_pref_set(sel);
                     kitty_theme_app_mode(sel);   /* the tray menu follows */
+                    /* ...and every open KiTTY++ window, kageant's own
+                     * included: the same announcement the configuration
+                     * window makes. */
+                    kitty_theme_announce_change();
                 }
             }
             kageant_unload_on_remove_set(
@@ -5815,6 +5819,17 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
      * trailing button-up so it doesn't re-arm the single-click timer */
     static bool trayignoreup;
 
+    /* KiTTY: the Appearance setting was stored, by kageant or by another
+     * KiTTY++ program (kitty_theme_announce_change). This hidden window is
+     * the one that is always there, so the tray menu's app mode is re-read
+     * here, from this copy's store; the dialogs re-read in the dialog hook.
+     * The tray glyph is not the setting's business: it follows the
+     * taskbar's colour, which only the system switch changes. */
+    if (kitty_theme_is_change_message(message)) {
+        kitty_theme_app_mode(kitty_theme_pref_get());
+        return 0;
+    }
+
     switch (message) {
       case WM_SETTINGCHANGE:
         /* The taskbar switched colour: the glyph on it must follow. */
@@ -6570,6 +6585,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * paints in the chosen theme. Installed before the first window exists,
      * because it works by catching them as they appear. */
     kitty_theme_hook_dialogs(kitty_theme_pref_dark);
+    /* ...re-read when any KiTTY++ window announces that the Appearance setting
+     * was stored (kitty_theme_announce_change); the store keeps no cache. */
+    kitty_theme_hook_pref(kitty_theme_pref_get, NULL);
     /* ...and the tray menu and every other popup menu: Windows draws them from
      * the process-wide app mode, set here before the first one exists. */
     kitty_theme_app_mode(kitty_theme_pref_get());

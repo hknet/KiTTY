@@ -1689,11 +1689,13 @@ away the only place they can be edited.
 whole suite}: \c{kitty}, \c{kageant} and \c{kittygen} all read it, which
 is why it lives here and not on the Config Window panel. Dark mode
 needs Windows 10 1809 or newer, which is where Windows gained the dark
-control themes it is built on. A change applies to windows opened
-afterwards - the configuration window you change it in keeps the
-colours it opened with, because a theme is applied to a window when it
-is created. It colours the windows and dialogs; a terminal's own colours
-are a per-session setting and are not touched.
+control themes it is built on. A change applies at once to all open
+KiTTY++ windows: configuration windows, Manage Sessions, the launcher,
+\c{kageant}, \c{kittygen}, and the title bar, border, scroll bar and
+menus of open terminals. A portable copy and an installed one keep the
+setting in different places, so a change made here in one leaves the
+other as it is. It colours the windows and dialogs; a terminal's own colours are a
+per-session setting and are not touched.
 
 \b \q{\i{Shared window position}} shows the terminal-window position
 that windows without a session of their own keep - an unnamed session,

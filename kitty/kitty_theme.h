@@ -52,6 +52,35 @@ void kitty_theme_system_changed(void);
 bool kitty_theme_is_system_switch(HWND w, LPARAM lParam);
 
 /*
+ * KiTTY++'s own "the Appearance setting changed" announcement, the twin of
+ * the system's ImmersiveColorSet broadcast. Whoever STORES a new preference
+ * calls kitty_theme_announce_change(), which posts the registered message to
+ * every top-level window on the desktop; only KiTTY++ windows know it. It
+ * carries nothing: each receiver re-reads ITS OWN store, so a portable copy
+ * and an installed one, which keep the preference in different places, each
+ * end up with what their own store says - unchanged when it did not change.
+ *
+ * Themed dialogs answer it in the dialog hook's subclass, with nothing to do
+ * in the program beyond kitty_theme_hook_pref(). A window the hook does not
+ * theme (the terminal, a hidden tray window) compares the message itself
+ * with kitty_theme_is_change_message() and re-reads there.
+ */
+UINT kitty_theme_change_message(void);
+bool kitty_theme_is_change_message(UINT msg);
+void kitty_theme_announce_change(void);
+/*
+ * Where the preference behind the dialog hook's resolver comes from, for the
+ * announcement above: get_pref reads it (it sets the process's app mode, which
+ * paints the popup menus), forget drops a cached copy first (NULL when the
+ * reader keeps none). Call next to kitty_theme_hook_dialogs().
+ */
+void kitty_theme_hook_pref(int (*get_pref)(void), void (*forget)(void));
+/* The darkness kitty_theme_frame() last gave this window. False when the
+ * frame was never painted through it (or another window was since): the
+ * caller cannot tell, and should paint. */
+bool kitty_theme_frame_dark(HWND w, bool *dark);
+
+/*
  * The preference's wire form, shared by every store so a value written by one
  * binary reads back the same in the next. from_string returns -1 for anything
  * it does not recognise, which is how a caller tells "not set" or "set to

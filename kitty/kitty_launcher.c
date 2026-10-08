@@ -2912,6 +2912,16 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 				Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 			}
+			/* The Appearance setting was stored (kitty_theme_announce_change),
+			 * in this process or another. The menus are the launcher's own
+			 * themed part: their app mode is re-read now, cache dropped, from
+			 * this copy's store, so a menu already open once does not keep the
+			 * old theme. Its dialogs follow through the dialog hook. */
+			if( kitty_theme_is_change_message( uMsg ) ) {
+				kitty_theme_app_pref_forget() ;
+				kitty_theme_app_mode( kitty_theme_app_pref() ) ;
+				return 0 ;
+			}
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
 	return -1 ;

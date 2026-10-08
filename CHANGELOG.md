@@ -153,6 +153,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **A colour-theme change reaches every open KiTTY++ window at once.**
+  Switching Application > KiTTY++ Settings > Appearance (light, dark,
+  follow the system) recolours the open Manage Sessions, the other
+  configuration windows, the launcher, kageant, kittygen and the frame and
+  menus of open terminals right away - before, other windows changed only
+  when activated again, or not at all until reopened. A portable copy and
+  an installed one keep the setting apart.
 - **The device-attributes answer (DA1) says what the session can do.**
   `CSI c` is now answered as a VT220 (`ESC [ ? 62 ; ... c`) instead of a
   VT102 (`ESC [ ? 6 c`), listing only what this session really has: 1 (132

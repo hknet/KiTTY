@@ -371,6 +371,56 @@ void kitty_theme_app_mode(int pref)
 }
 
 /*
+ * The Appearance announcement (see kitty_theme.h). A registered message, so
+ * every process that asks for the same name gets the same number and no other
+ * program on the desktop has a meaning for it. Registered by
+ * kitty_theme_hook_pref(), before the program's first window exists, or by
+ * the first comparison against it in a window procedure.
+ *
+ * Posted, not sent: a hung window anywhere on the desktop cannot hold up the
+ * configuration window, and the receivers re-read the store after the writer
+ * has finished with it. HWND_BROADCAST reaches every top-level window -
+ * owned dialogs and hidden tray windows included, child windows and
+ * HWND_MESSAGE windows not - and the sender's own windows as well; a window
+ * already in the stored theme finds nothing to change.
+ *
+ * Windows' privilege isolation drops a registered message posted to a process
+ * of a higher integrity level, so an elevated KiTTY++ would not hear a change
+ * made in an ordinary one. The message is let through that filter for this
+ * process when it is registered (ChangeWindowMessageFilter, Vista and later,
+ * bound at run time): it carries nothing but "read the stored setting
+ * again", which a lower process could not abuse. Where the call is missing
+ * (XP has no such isolation) nothing needs letting through.
+ */
+static UINT kt_change_msg;
+
+UINT kitty_theme_change_message(void)
+{
+    if (!kt_change_msg) {
+        typedef BOOL (WINAPI *cwmf_t)(UINT, DWORD);
+        HMODULE u32 = GetModuleHandleA("user32.dll");
+        cwmf_t cwmf = u32 ? (cwmf_t)(void *)GetProcAddress(
+                                u32, "ChangeWindowMessageFilter") : NULL;
+        kt_change_msg = RegisterWindowMessageA("KiTTY++.AppearanceChanged");
+        if (kt_change_msg && cwmf)
+            cwmf(kt_change_msg, 1 /* MSGFLT_ADD */);
+    }
+    return kt_change_msg;
+}
+
+bool kitty_theme_is_change_message(UINT msg)
+{
+    return msg && msg == kitty_theme_change_message();
+}
+
+void kitty_theme_announce_change(void)
+{
+    UINT msg = kitty_theme_change_message();
+    if (msg)
+        PostMessage(HWND_BROADCAST, msg, 0, 0);
+}
+
+/*
  * Is this WM_SETTINGCHANGE the system's light/dark switch? The area name in
  * lParam arrives in the RECEIVING WINDOW's character set, whatever the program
  * was compiled as: a Unicode window gets a wide string, and a narrow compare
@@ -748,6 +798,20 @@ void kitty_theme_refresh(HWND dlg)
     EnumChildWindows(dlg, kt_theme_child, (LPARAM)known->dark);
 }
 
+/* The last frame kitty_theme_frame() painted and its darkness, for
+ * kitty_theme_frame_dark(). One slot: the terminal is the one such window a
+ * process has. */
+static HWND kt_frame_window;
+static bool kt_frame_was_dark;
+
+bool kitty_theme_frame_dark(HWND w, bool *dark)
+{
+    if (!w || w != kt_frame_window || !IsWindow(w))
+        return false;
+    *dark = kt_frame_was_dark;
+    return true;
+}
+
 /*
  * The title bar and border of a window that is NOT a dialog - the terminal.
  * The same two layers the dialogs get (see kitty_theme_apply below): the
@@ -767,6 +831,8 @@ void kitty_theme_frame(HWND w, bool dark)
 
     if (!w || !kitty_theme_available() || !p_DwmSetWindowAttribute)
         return;
+    kt_frame_window = w;
+    kt_frame_was_dark = dark;
     if (FAILED(p_DwmSetWindowAttribute(w, DWMWA_USE_IMMERSIVE_DARK_MODE,
                                        &on, sizeof(on))))
         p_DwmSetWindowAttribute(w, DWMWA_USE_IMMERSIVE_DARK_MODE_PRE20H1,
@@ -1889,11 +1955,49 @@ static bool kt_want_dark_for(const struct kt_window *known)
     return kt_want_dark ? kt_want_dark() : false;
 }
 
+/* Where the resolver's preference comes from (kitty_theme_hook_pref): read
+ * again, after dropping any cached copy, when the Appearance announcement
+ * arrives. */
+static int (*kt_get_pref)(void);
+static void (*kt_forget_pref)(void);
+
+void kitty_theme_hook_pref(int (*get_pref)(void), void (*forget)(void))
+{
+    kt_get_pref = get_pref;
+    kt_forget_pref = forget;
+    kitty_theme_change_message();   /* registered before the first window */
+}
+
 static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR id,
                                         DWORD_PTR ref)
 {
     (void)id; (void)ref;
+
+    /* The Appearance setting was stored, in this process or another one (a
+     * registered message, so not a case label below). The same as a system
+     * switch, except that it is the STORE that moved: the cached copy is
+     * dropped, the preference read again from this program's own store, and
+     * the popup menus' app mode set from it. A window already in the theme
+     * that store asks for - the one that made the change, every window of a
+     * copy whose store did not change, a dialog showing an unsaved preview -
+     * is left alone. Every top-level window of the process gets its own copy
+     * of the broadcast; after the first the re-read finds nothing new. */
+    if (kitty_theme_is_change_message(msg)) {
+        if (kt_want_dark) {
+            struct kt_window *known;
+            bool dark;
+            if (kt_forget_pref)
+                kt_forget_pref();
+            if (kt_get_pref)
+                kitty_theme_app_mode(kt_get_pref());
+            known = kt_find_window(hwnd);
+            dark = kt_want_dark_for(known);
+            if (known && known->dark != dark)
+                kitty_theme_apply(hwnd, dark);
+        }
+        return 0;
+    }
 
     switch (msg) {
       case KT_WM_RETHEME:

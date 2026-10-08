@@ -641,7 +641,7 @@ The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses
 
 KiTTY++'s windows follow a colour theme: the terminal window's title bar, border and scroll bar (its client area keeps the session's own colours), the configuration box and the dialogs around it, every kittygen window, and in kageant the key list, key details, the agent log and its record view, settings, About and the modal message boxes, the kscp transfer window, the host key dialog, and the popup menus of every program - right-click, Alt+Space, the launcher's and kageant's tray menus, kittygen's menus. The choice is **Follow the system** — the default, which tracks the Windows app-colour setting and changes with it while a window is open — or **Always light**, or **Always dark**. On Windows 11 the title bar is painted in the window's own colour rather than the system's, so it reads as part of the window instead of a band sitting on top of it.
 
-It is **one setting for the whole suite**, not one per program: set it in any of them and all of them follow.
+It is **one setting for the whole suite**, not one per program: set it in any of them and all of them follow - **at once, in every open window**: configuration windows, Manage Sessions, the launcher, kageant, kittygen, and the frame and menus of open terminals, also those running as administrator. A portable copy and an installed one keep the setting in different places, so a change in one leaves the other as it is.
 
 It only paints the WINDOWS elements. A terminal's own colours are a per-session setting and are left alone, so a dark KiTTY++ still opens each session in the colours that are set in the session's settings.
 
