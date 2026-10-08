@@ -544,16 +544,14 @@ immediately.
 \S{config-answerback} \q{\ii{Answerback} to ^E}
 
 This option controls what KiTTY will send back to the server if the
-server sends it the ^E \i{enquiry character}. Normally it just sends
-the string \q{KiTTY}.
+server sends it the ^E \i{enquiry character}. By default it sends
+nothing, as xterm and Windows Terminal do.
 
-If you accidentally write the contents of a binary file to your
-terminal, you will probably find that it contains more than one ^E
-character, and as a result your next command line will probably read
-\q{KiTTYKiTTYKiTTY...} as if you had typed the answerback string
-multiple times at the keyboard. If you set the answerback string to
-be empty, this problem should go away, but doing so might cause
-other problems.
+A string set here is sent for every ^E. If you accidentally write the
+contents of a binary file to your terminal, it probably contains more
+than one ^E character, and your next command line then reads the
+answerback string several times over, as if you had typed it. Set a
+string only for a host or device that expects one.
 
 Note that this is \e{not} the feature of KiTTY which the server will
 typically use to determine your terminal type. That feature is the

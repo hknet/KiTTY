@@ -877,7 +877,7 @@ void test_simple(void)
     test_bool_simple(CONF_hide_mouseptr, "HideMousePtr", false);
     test_bool_simple(CONF_sunken_edge, "SunkenEdge", false);
     test_int_simple(CONF_window_border, "WindowBorder", 1);
-    test_str_simple(CONF_answerback, "Answerback", "PuTTY");
+    test_str_simple(CONF_answerback, "Answerback", "");   /* KiTTY: empty by default */
     test_str_simple(CONF_printer, "Printer", "");
     test_bool_simple(CONF_no_arabicshaping, "DisableArabicShaping", false);
     test_bool_simple(CONF_no_bidi, "DisableBidi", false);

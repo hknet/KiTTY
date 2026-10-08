@@ -1073,7 +1073,9 @@ CONF_OPTION(window_border,
 )
 CONF_OPTION(answerback,
     VALUE_TYPE(STR),
-    DEFAULT_STR("PuTTY"),
+    DEFAULT_STR(""),   /* KiTTY: no answer to ^E by default, as in xterm and
+                        * Windows Terminal - a stray ^E (a binary file shown
+                        * in the terminal) types nothing into the shell */
     SAVE_KEYWORD("Answerback"),
 )
 CONF_OPTION(printer,

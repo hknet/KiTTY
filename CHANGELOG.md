@@ -162,6 +162,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **^E gets no answer by default.** The answerback string (Terminal >
+  Answerback to ^E) is empty by default, as in xterm and Windows Terminal:
+  a stray ^E, from a binary file shown in the terminal, no longer types
+  text into the shell. Sessions with a stored value keep it.
 - **A colour-theme change reaches every open KiTTY++ window at once.**
   Switching Application > KiTTY++ Settings > Appearance (light, dark,
   follow the system) recolours the open Manage Sessions, the other
