@@ -656,6 +656,62 @@ char *ksp_ambiguous_text(const char *wanted, char *const *list, int nlist,
     return out;
 }
 
+/* ---- which file a session name reaches ----
+ * Two files can decode to one session name: old KiTTY's "srv%20web.ktx"
+ * beside today's "srv web.ktx", "%e4" beside "%E4", a hand-written '%' beside
+ * "%25", or a session's file in "Web%20Servers" beside its twin in
+ * "Web Servers". Only one of them can be reached by the name, and every place
+ * that picks it - the store's lookup (ksf_session_find), the list, kageant's
+ * menu - picks it by this order:
+ *   0  the same path without the suffix (an older layout, read while it
+ *      exists: a save migrates it, or is refused when today's file is there);
+ *   1  the flat pre-path file, ksf_munge of the whole name (older still);
+ *   2  today's spelling, ksp_path_to_relfile with the suffix;
+ *   3  any other escape - and of those, the path that sorts first without
+ *      case (then with it), never the order a directory listing returns.
+ * 0 and 1 count only where they differ from 2. `rel` is the file's path below
+ * the session directory as it is on disk. */
+static int ksp_reach_rank(const char *id, const char *rel, const char *suffix)
+{
+    char *target = ksp_path_to_relfile(id, suffix);
+    char *nosuf = ksp_path_to_relfile(id, "");
+    char *flat = ksf_munge(id);
+    int rank;
+    if (stricmp(nosuf, target) && !stricmp(rel, nosuf))
+        rank = 0;
+    else if (stricmp(flat, target) && !stricmp(rel, flat))
+        rank = 1;
+    else if (!stricmp(rel, target))
+        rank = 2;
+    else
+        rank = 3;
+    sfree(target);
+    sfree(nosuf);
+    sfree(flat);
+    return rank;
+}
+
+int ksp_reach_cmp(const char *id, const char *rela, const char *relb,
+                  const char *suffix)
+{
+    int ra = ksp_reach_rank(id, rela, suffix);
+    int rb = ksp_reach_rank(id, relb, suffix);
+    int c;
+    if (ra != rb)
+        return ra < rb ? -1 : 1;
+    if ((c = stricmp(rela, relb)) != 0)
+        return c;
+    return strcmp(rela, relb);
+}
+
+int ksp_is_today_spelling(const char *id, const char *rel, const char *suffix)
+{
+    char *target = ksp_path_to_relfile(id, suffix);
+    int yes = !stricmp(rel, target);
+    sfree(target);
+    return yes;
+}
+
 /* ---- walking a folder store ----
  * Every session file below `dir`, as path identities. Dot-files and
  * dot-directories are never looked at (a session folder kept in Git holds .git
@@ -663,38 +719,113 @@ char *ksp_ambiguous_text(const char *wanted, char *const *list, int nlist,
  * (the verdict cache, ksp_file_verdict). Junctions and symlinks are not
  * followed, and the depth is capped, so a loop cannot hang the list. The
  * terminal's store (ksf_enum_sessions) and kageant's tray menu both walk
- * through here, so the two cannot disagree on what a session is. */
-static void ksp_walk_add(struct ksp_store_file **v, int *count, int *alloc,
-                         char *id, const char *path, const WIN32_FIND_DATAA *fd)
+ * through here, so the two cannot disagree on what a session is.
+ *
+ * Files that decode to one identity are listed once, by the file the name
+ * reaches (ksp_reach_cmp); the others are "shadowed" and handed back
+ * separately when asked for, as are the folders walked with their last-write
+ * times (ksp_walk_store_ex). */
+struct ksp_walk_ctx {
+    size_t rootlen;                      /* the session directory and its '\' */
+    const char *suffix, *leaf;
+    struct ksp_store_file *v;
+    int count, alloc;
+    int want_extra;                      /* collect sh[] and dirs[] */
+    int names_only;                      /* every file, unread, none shadowed */
+    int no_descent;                      /* subfolders listed, not walked */
+    struct ksp_store_file *sh;
+    int nsh, ash;
+    struct ksp_store_dir *dirs;
+    int ndirs, adirs;
+};
+
+static volatile LONG ksp_listings;
+
+static void ksp_walk_push(struct ksp_store_file **v, int *count, int *alloc,
+                          const struct ksp_store_file *f)
 {
-    int j;
-    for (j = 0; j < *count; j++)
-        if (!stricmp((*v)[j].id, id)) {      /* "foo" and "foo<suffix>" */
-            sfree(id);
-            return;
-        }
     if (*count >= *alloc) {
         *alloc = *alloc ? *alloc * 2 : 16;
         *v = sresize(*v, *alloc, struct ksp_store_file);
     }
-    (*v)[*count].id = id;
-    (*v)[*count].path = dupstr(path);
-    (*v)[*count].size =
-        ((unsigned long long)fd->nFileSizeHigh << 32) | fd->nFileSizeLow;
-    (*v)[*count].mtime =
-        ((unsigned long long)fd->ftLastWriteTime.dwHighDateTime << 32) |
-        fd->ftLastWriteTime.dwLowDateTime;
-    (*count)++;
+    (*v)[(*count)++] = *f;
 }
 
-static void ksp_walk_dir(const char *dir, const char *prefix, int depth,
-                         const char *suffix, const char *leaf,
-                         struct ksp_store_file **v, int *count, int *alloc)
+static void ksp_walk_add(struct ksp_walk_ctx *w, char *id, const char *path,
+                         const WIN32_FIND_DATAA *fd)
 {
-    char *pat = dupprintf("%s\\*", dir);
+    struct ksp_store_file f;
+    int j;
+    f.id = id;
+    f.path = dupstr(path);
+    f.size = ((unsigned long long)fd->nFileSizeHigh << 32) | fd->nFileSizeLow;
+    f.mtime = ((unsigned long long)fd->ftLastWriteTime.dwHighDateTime << 32) |
+        fd->ftLastWriteTime.dwLowDateTime;
+    if (!w->names_only)
+        for (j = 0; j < w->count; j++)
+            if (!stricmp(w->v[j].id, id)) {  /* "foo" and "foo<suffix>", ... */
+                struct ksp_store_file loser;
+                if (ksp_reach_cmp(id, f.path + w->rootlen,
+                                  w->v[j].path + w->rootlen, w->suffix) < 0) {
+                    loser = w->v[j];
+                    w->v[j] = f;
+                } else {
+                    loser = f;
+                }
+                if (w->want_extra) {
+                    ksp_walk_push(&w->sh, &w->nsh, &w->ash, &loser);
+                } else {
+                    sfree(loser.id);
+                    sfree(loser.path);
+                }
+                return;
+            }
+    ksp_walk_push(&w->v, &w->count, &w->alloc, &f);
+}
+
+static struct ksp_store_dir *ksp_walk_new_dir(struct ksp_walk_ctx *w,
+                                              const char *prefix, const char *dir)
+{
+    struct ksp_store_dir *d;
+    if (w->ndirs >= w->adirs) {
+        w->adirs = w->adirs ? w->adirs * 2 : 16;
+        w->dirs = sresize(w->dirs, w->adirs, struct ksp_store_dir);
+    }
+    d = &w->dirs[w->ndirs++];
+    d->folder = dupstr(prefix);
+    if (d->folder[0])                    /* "Linux\web\" -> "Linux\web" */
+        d->folder[strlen(d->folder) - 1] = '\0';
+    d->path = dupstr(dir);
+    d->mtime = d->seen = 0;
+    return d;
+}
+
+static void ksp_walk_dir(struct ksp_walk_ctx *w, const char *dir,
+                         const char *prefix, int depth)
+{
+    char *pat;
     WIN32_FIND_DATAA fd;
-    HANDLE hf = FindFirstFileA(pat, &fd);
+    HANDLE hf;
+    if (w->want_extra) {
+        /* The folder's own time, read before its entries: an entry added,
+         * removed or renamed in it from now on changes it. Asked of the
+         * folder itself - the copy in its parent's listing can lag. */
+        WIN32_FILE_ATTRIBUTE_DATA ad;
+        if (GetFileAttributesExA(dir, GetFileExInfoStandard, &ad)) {
+            struct ksp_store_dir *d = ksp_walk_new_dir(w, prefix, dir);
+            FILETIME now;
+            GetSystemTimeAsFileTime(&now);
+            d->mtime =
+                ((unsigned long long)ad.ftLastWriteTime.dwHighDateTime << 32) |
+                ad.ftLastWriteTime.dwLowDateTime;
+            d->seen = ((unsigned long long)now.dwHighDateTime << 32) |
+                now.dwLowDateTime;
+        }
+    }
+    pat = dupprintf("%s\\*", dir);
+    hf = FindFirstFileA(pat, &fd);
     sfree(pat);
+    InterlockedIncrement(&ksp_listings);
     if (hf == INVALID_HANDLE_VALUE)
         return;
     do {
@@ -712,25 +843,28 @@ static void ksp_walk_dir(const char *dir, const char *prefix, int depth,
             comp = ksp_component_unmunge(fd.cFileName);
             if (depth < KSP_WALK_MAXDEPTH && comp[0] && !strchr(comp, '\\')) {
                 char *sub = dupcat(prefix, comp, "\\");
-                ksp_walk_dir(full, sub, depth + 1, suffix, leaf, v, count, alloc);
+                if (w->no_descent)
+                    ksp_walk_new_dir(w, sub, full);   /* time 0: not read */
+                else
+                    ksp_walk_dir(w, full, sub, depth + 1);
                 sfree(sub);
             }
             sfree(comp);
         } else {
             char *fname = dupstr(fd.cFileName);
-            ksp_strip_suffix(fname, suffix);
+            ksp_strip_suffix(fname, w->suffix);
             comp = ksp_component_unmunge(fname);
             sfree(fname);
             /* A '\' inside one component cannot be told from a folder; only
              * the flat legacy files at the top level carry one (that is what
              * they mean: a whole path in one file name). */
             if (comp[0] && (!prefix[0] || !strchr(comp, '\\')) &&
-                (!leaf || !stricmp(ksp_leaf(comp), leaf)) &&
-                ksp_file_verdict(full,
+                (!w->leaf || !stricmp(ksp_leaf(comp), w->leaf)) &&
+                (w->names_only || ksp_file_verdict(full,
                     ((unsigned long long)fd.nFileSizeHigh << 32) | fd.nFileSizeLow,
                     ((unsigned long long)fd.ftLastWriteTime.dwHighDateTime << 32) |
-                    fd.ftLastWriteTime.dwLowDateTime))
-                ksp_walk_add(v, count, alloc, dupcat(prefix, comp), full, &fd);
+                    fd.ftLastWriteTime.dwLowDateTime)))
+                ksp_walk_add(w, dupcat(prefix, comp), full, &fd);
             sfree(comp);
         }
         sfree(full);
@@ -738,23 +872,106 @@ static void ksp_walk_dir(const char *dir, const char *prefix, int depth,
     FindClose(hf);
 }
 
-struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
-                                      const char *leaf, int *count)
+static struct ksp_store_file *ksp_walk_run(const char *dir, const char *suffix,
+                                           const char *leaf, int *count,
+                                           struct ksp_walk_ctx *w)
 {
-    struct ksp_store_file *v = NULL;
-    int alloc = 0;
-    *count = 0;
-    if (!dir || !*dir || (leaf && !*leaf))
-        return NULL;
+    w->rootlen = strlen(dir) + 1;        /* the path below dir, after its '\' */
+    w->suffix = suffix ? suffix : "";
+    w->leaf = leaf;
     if (!leaf) {
         /* The whole store is met: verdicts of files gone since are dropped. */
         unsigned long gen = ksp_verdict_walk_begin();
-        ksp_walk_dir(dir, "", 0, suffix ? suffix : "", NULL, &v, count, &alloc);
+        ksp_walk_dir(w, dir, "", 0);
         ksp_verdict_walk_end(gen);
     } else {
-        ksp_walk_dir(dir, "", 0, suffix ? suffix : "", leaf, &v, count, &alloc);
+        ksp_walk_dir(w, dir, "", 0);
     }
+    *count = w->count;
+    return w->v;
+}
+
+struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
+                                      const char *leaf, int *count)
+{
+    struct ksp_walk_ctx w;
+    *count = 0;
+    if (!dir || !*dir || (leaf && !*leaf))
+        return NULL;
+    memset(&w, 0, sizeof(w));
+    return ksp_walk_run(dir, suffix, leaf, count, &w);
+}
+
+struct ksp_store_file *ksp_walk_store_ex(const char *dir, const char *suffix,
+                                         int *count,
+                                         struct ksp_store_file **shadowed,
+                                         int *nshadowed,
+                                         struct ksp_store_dir **dirs, int *ndirs)
+{
+    struct ksp_walk_ctx w;
+    struct ksp_store_file *v;
+    *count = *nshadowed = *ndirs = 0;
+    *shadowed = NULL;
+    *dirs = NULL;
+    if (!dir || !*dir)
+        return NULL;
+    memset(&w, 0, sizeof(w));
+    w.want_extra = 1;
+    v = ksp_walk_run(dir, suffix, NULL, count, &w);
+    *shadowed = w.sh;
+    *nshadowed = w.nsh;
+    *dirs = w.dirs;
+    *ndirs = w.ndirs;
     return v;
+}
+
+struct ksp_store_file *ksp_walk_names(const char *root, const char *dir,
+                                      const char *folder, int descend,
+                                      const char *suffix, int *count,
+                                      struct ksp_store_dir **dirs, int *ndirs)
+{
+    struct ksp_walk_ctx w;
+    const char *p;
+    char *prefix;
+    int depth = 0;
+    *count = *ndirs = 0;
+    *dirs = NULL;
+    if (!root || !*root || !dir || !*dir)
+        return NULL;
+    memset(&w, 0, sizeof(w));
+    w.rootlen = strlen(root) + 1;
+    w.suffix = suffix ? suffix : "";
+    w.want_extra = 1;
+    w.names_only = 1;
+    w.no_descent = !descend;
+    if (folder && *folder) {
+        depth = 1;
+        for (p = folder; *p; p++)
+            if (*p == '\\')
+                depth++;
+    }
+    prefix = (folder && *folder) ? dupcat(folder, "\\") : dupstr("");
+    ksp_walk_dir(&w, dir, prefix, depth);
+    sfree(prefix);
+    *count = w.count;
+    *dirs = w.dirs;
+    *ndirs = w.ndirs;
+    return w.v;
+}
+
+unsigned long ksp_dir_listings(void)
+{
+    return (unsigned long)ksp_listings;
+}
+
+void ksp_walk_dirs_free(struct ksp_store_dir *d, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        sfree(d[i].folder);
+        sfree(d[i].path);
+    }
+    sfree(d);
 }
 
 void ksp_walk_store_free(struct ksp_store_file *v, int n)
@@ -848,6 +1065,7 @@ static void ksp_walk_bad_dir(const wchar_t *wdir, const char *prefix, int depth,
             (*v)[*count].shown = ksp_component_unmunge(ansi);
             (*v)[*count].wpath = full;
             (*v)[*count].isdir = 1;
+            (*v)[*count].twin = 0;
             full = NULL;
             (*count)++;
         } else if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -882,6 +1100,7 @@ static void ksp_walk_bad_dir(const wchar_t *wdir, const char *prefix, int depth,
             (*v)[*count].shown = comp;
             (*v)[*count].wpath = full;
             (*v)[*count].isdir = 0;
+            (*v)[*count].twin = 0;
             full = NULL;
             (*count)++;
         }

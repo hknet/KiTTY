@@ -176,6 +176,17 @@ shows the file's real name - to a name in ANSI characters. A folder named that
 way is a red row too (`??????/`): its sessions cannot be reached until it is
 renamed the same way.
 
+Two files can also stand for one session name: an old KiTTY file
+`srv%20(web).ktx` beside `srv (web).ktx`. One rule decides which file the name
+means - for the list, opening, saving and kageant alike: an older layout
+while one exists, else the file under today's spelling, else the first by
+name. The other
+file is a red row under its real file name ("Two files for one session name:
+this one cannot be opened until it is renamed"), with *Show in Explorer* and
+*Rename...*, which renames that file to a session name not in use yet. A
+terminal opened for such a session says so in a yellow NOTE line at its top
+and in the Event Log, naming the file it opened and the other one.
+
 Turning the setting off puts the classic dropdown back exactly as it was, with
 every session where it was: the setting changes how you look at the folders,
 not where the sessions are stored. The setting is off by default.

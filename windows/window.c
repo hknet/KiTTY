@@ -2985,6 +2985,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * which is also the Restart Session path: this runs once per window, so a
      * reconnect does not repeat the note. */
     kitty_print_session_comment(wgs->term, wgs->conf);
+    /* KiTTY: other files that decode to this saved session's name - which
+     * one was opened, in the Event Log and as a NOTE line (folder store). */
+    kitty_report_session_twins(wgs->term, wgs->conf);
 #endif
     NETDBG_TS("win: before start_backend");
     start_backend(wgs);

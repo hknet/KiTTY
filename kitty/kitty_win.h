@@ -19,6 +19,7 @@
 // (upstream cyd01/KiTTY #548)
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal) ;
 void kitty_print_session_comment(Terminal *term, Conf *conf) ;   /* framed Comment at session start */
+void kitty_report_session_twins(Terminal *term, Conf *conf) ;    /* other files of the session's name */
 
 /* One line in the terminal, and the whole list in the Event Log, naming what
  * this version of Windows is too old to provide. Once per process; silent when

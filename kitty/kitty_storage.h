@@ -138,8 +138,18 @@ char *ksf_session_target_path(const char *sessionname);  /* where a save writes 
 char *ksf_session_legacy_path(const char *sessionname);  /* older file, or NULL */
 char *ksf_session_find(const char *sessionname);  /* file read from, or NULL */
 /* A file of another escape (old KiTTY's %20, a hand-written '%', ...) that the
- * list shows under this name, or NULL; read and saved in place (#59). */
+ * list shows under this name, or NULL; read and saved in place (#59). Looked
+ * up in the table the last full walk kept, walking again only when it may be
+ * stale. */
 char *ksf_session_inplace_path(const char *sessionname);
+/* The session files no name reaches because another file decodes to the same
+ * name (ksp_reach_cmp): the list's red rows, `twin` set. ksp_bad_free. */
+struct ksp_bad_file *ksf_enum_twins(int *count);
+/* The other files of one session name: paths below the session folder as on
+ * disk (*count of them, snewn'd, free each and the array), and in *reached
+ * the file the name opens (NULL when there are none). NULL, 0 without any.
+ * Lists only the folders on the name's path, never the whole store. */
+char **ksf_session_others(const char *sessionname, char **reached, int *count);
 void ksf_make_parent_dirs(const char *path);
 void ksf_prune_empty_dirs(const char *path);
 /* What stands where a session's file or a folder would go (a directory where

@@ -585,6 +585,15 @@ static void part_store_escapes(void)
         ok_eq_str(h, "today.example", "twin.ktx and tw%69n.ktx: twin.ktx is the one opened");
         sfree(h);
     }
+    {
+        int n, i, c = 0;
+        char **names = kitty_session_names(&n);
+        for (i = 0; i < n; i++)
+            if (!stricmp(names[i], "twin"))
+                c++;
+        ok(c == 1, "and the list shows the name once");
+        kitty_session_names_free(names, n);
+    }
 
     head("delete finds the old-escape file");
     del_settings("100%");
@@ -1264,6 +1273,476 @@ static void part_perf(const char *tmp)
     kitty_set_session_dir(g_dir);
 }
 
+/* A fresh store of its own in g_dir (the caller keeps the old g_dir). */
+static void fresh_store(const char *tmp, const char *name)
+{
+    char cmd[1300];
+    snprintf(g_dir, sizeof(g_dir), "%s\\%s", tmp, name);
+    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    system(cmd);
+    CreateDirectoryA(g_dir, NULL);
+    kitty_set_session_dir(g_dir);
+}
+static void drop_store(const char *save_dir)
+{
+    char cmd[1300];
+    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    system(cmd);
+    strcpy(g_dir, save_dir);
+    kitty_set_session_dir(g_dir);
+}
+
+/* A folder's last-write time an hour back, as an untouched store's. */
+static void set_dir_age(const char *rel, int seconds_ago)
+{
+    char *p = rel[0] ? dupprintf("%s\\%s", g_dir, rel) : dupstr(g_dir);
+    HANDLE h = CreateFileA(p, FILE_WRITE_ATTRIBUTES,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    FILETIME ft;
+    ULARGE_INTEGER u;
+    sfree(p);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    GetSystemTimeAsFileTime(&ft);
+    u.LowPart = ft.dwLowDateTime;
+    u.HighPart = ft.dwHighDateTime;
+    u.QuadPart -= (ULONGLONG)seconds_ago * 10000000ULL;
+    ft.dwLowDateTime = u.LowPart;
+    ft.dwHighDateTime = u.HighPart;
+    SetFileTime(h, NULL, NULL, &ft);
+    CloseHandle(h);
+}
+
+/* How often the name is in the list. */
+static int list_count(const char *name)
+{
+    int n, i, c = 0;
+    char **names = kitty_session_names(&n);
+    for (i = 0; i < n; i++)
+        if (!stricmp(names[i], name))
+            c++;
+    kitty_session_names_free(names, n);
+    return c;
+}
+
+/* The file the walk lists the name by (kageant's menu reads it), or NULL. */
+static char *list_path(const char *name)
+{
+    int n, i;
+    char *p = NULL;
+    struct ksp_store_file *v = ksp_walk_store(g_dir, kitty_session_suffix(),
+                                              NULL, &n);
+    for (i = 0; i < n; i++)
+        if (!p && !stricmp(v[i].id, name))
+            p = dupstr(v[i].path);
+    ksp_walk_store_free(v, n);
+    return p;
+}
+
+/* Does the found file end in `rel`? */
+static bool found_is(const char *name, const char *rel)
+{
+    char *p = ksf_session_find(name);
+    char *want = dupprintf("%s\\%s", g_dir, rel);
+    bool yes = p && !stricmp(p, want);
+    if (!yes)
+        printf("        (%s -> %s)\n", name, p ? p : "(null)");
+    sfree(p);
+    sfree(want);
+    return yes;
+}
+
+/* Is there a red row for exactly this file, at this level, under this name? */
+static bool twin_row(const char *rel, const char *folder, const char *shown)
+{
+    int n, i;
+    bool yes = false;
+    char *want = dupprintf("%s\\%s", g_dir, rel);
+    struct ksp_bad_file *v = ksf_enum_twins(&n);
+    for (i = 0; i < n; i++) {
+        char path[1200];
+        WideCharToMultiByte(CP_ACP, 0, v[i].wpath, -1, path, sizeof(path), NULL, NULL);
+        if (!stricmp(path, want) && !strcmp(v[i].folder, folder) &&
+            !strcmp(v[i].shown, shown) && v[i].twin && !v[i].isdir)
+            yes = true;
+    }
+    ksp_bad_free(v, n);
+    sfree(want);
+    return yes;
+}
+static int twin_count(void)
+{
+    int n;
+    struct ksp_bad_file *v = ksf_enum_twins(&n);
+    ksp_bad_free(v, n);
+    return n;
+}
+
+/* ksf_session_others as one string: "reached|other,other", or "" for none. */
+static char *others_of(const char *name)
+{
+    char *reached = NULL, **o;
+    int n = 0, i;
+    strbuf *sb = strbuf_new();
+    o = ksf_session_others(name, &reached, &n);
+    if (n) {
+        put_dataz(sb, reached ? reached : "(null)");
+        put_byte(sb, '|');
+        for (i = 0; i < n; i++) {
+            if (i)
+                put_byte(sb, ',');
+            put_dataz(sb, o[i]);
+            sfree(o[i]);
+        }
+    } else if (reached) {
+        put_dataz(sb, "(reached without others)");
+    }
+    sfree(o);
+    sfree(reached);
+    return strbuf_to_str(sb);
+}
+
+/* Two files decoding to one session name: the name reaches one of them -
+ * the older layouts, then today's spelling, then the other escapes sorted
+ * by path without case - and the list shows that one once; every other is
+ * a red row under its real file name. */
+static void part_store_twins(const char *tmp)
+{
+    char save_dir[1024];
+
+    head("two files, one name: one reached, the other a red row");
+    strcpy(save_dir, g_dir);
+    fresh_store(tmp, "kitty_test_sessionpath_twins");
+    kitty_set_session_suffix(".ktx");
+
+    write_file("pair%20x.ktx", "HostName=old.example\n");   /* old first */
+    write_file("pair x.ktx", "HostName=today.example\n");
+    ok(list_count("pair x") == 1, "pair%20x.ktx + 'pair x.ktx': listed once");
+    ok(found_is("pair x", "pair x.ktx"), "the name reaches today's spelling");
+    {
+        char *lp = list_path("pair x"), *fp = ksf_session_find("pair x");
+        ok(lp && fp && !stricmp(lp, fp), "the list row is that same file");
+        sfree(lp);
+        sfree(fp);
+    }
+    ok(twin_row("pair%20x.ktx", "", "pair%20x.ktx"),
+       "pair%20x.ktx is a red row under its file name, the ending kept");
+    ok(twin_count() == 1, "and the only one");
+
+    head("two files of other escapes: the path sorted first, either order");
+    write_file("dd%61.ktx", "HostName=a61.example\n");
+    write_file("dd%41.ktx", "HostName=a41.example\n");
+    write_file("o2\\dd%41.ktx", "HostName=b41.example\n");
+    write_file("o2\\dd%61.ktx", "HostName=b61.example\n");
+    ok(found_is("ddA", "dd%41.ktx"), "dd%61 made first, dd%41 second: dd%41 reached");
+    ok(found_is("o2\\dda", "o2\\dd%41.ktx"), "made the other way round: dd%41 again");
+    {
+        char *lp = list_path("dda"), *h = read_host("dda");
+        ok(lp && strstr(lp, "dd%41.ktx") != NULL, "the list row is dd%41 too");
+        ok_eq_str(h, "a41.example", "and it is what opens");
+        sfree(lp);
+        sfree(h);
+    }
+    ok(twin_row("dd%61.ktx", "", "dd%61.ktx") && twin_row("o2\\dd%61.ktx", "o2", "dd%61.ktx"),
+       "dd%61 is the red row in both folders");
+
+    head("a hand-written '%' beside %25");
+    write_file("50%.ktx", "HostName=hand.example\n");
+    write_file("50%25.ktx", "HostName=esc.example\n");
+    ok(found_is("50%", "50%25.ktx"), "50%25.ktx (today's spelling) is reached");
+    ok(twin_row("50%.ktx", "", "50%.ktx"), "50%.ktx is the red row");
+
+    head("an older layout beside today's file: the older one is reached");
+    write_file("lay", "HostName=nosuffix.example\n");
+    write_file("lay.ktx", "HostName=suffix.example\n");
+    ok(found_is("lay", "lay"), "'lay' (no suffix) is reached while it exists");
+    ok(twin_row("lay.ktx", "", "lay.ktx"), "lay.ktx is the red row");
+
+    head("two folders, one name: merged, only a clash is red");
+    write_file("Web%20Farm\\a.ktx", "HostName=a.example\n");
+    write_file("Web Farm\\b.ktx", "HostName=b.example\n");
+    write_file("Web%20Farm\\c.ktx", "HostName=c-old.example\n");
+    write_file("Web Farm\\c.ktx", "HostName=c-today.example\n");
+    ok(list_count("Web Farm\\a") == 1 && list_count("Web Farm\\b") == 1 &&
+       list_count("Web Farm\\c") == 1, "a, b and c listed once each under 'Web Farm'");
+    {
+        char *ha = read_host("Web Farm\\a"), *hb = read_host("Web Farm\\b");
+        char *hc = read_host("Web Farm\\c");
+        ok_eq_str(ha, "a.example", "a (only in Web%20Farm) opens");
+        ok_eq_str(hb, "b.example", "b (only in 'Web Farm') opens");
+        ok_eq_str(hc, "c-today.example", "c opens from 'Web Farm' (today's spelling)");
+        sfree(ha);
+        sfree(hb);
+        sfree(hc);
+    }
+    ok(twin_row("Web%20Farm\\c.ktx", "Web Farm", "c.ktx"),
+       "Web%20Farm\\c.ktx is the red row, at the 'Web Farm' level");
+    ok(!twin_row("Web%20Farm\\a.ktx", "Web Farm", "a.ktx"), "a is no red row");
+
+    head("opening a session with other files: which file, which others");
+    {
+        char *o;
+        unsigned long w;
+        o = others_of("pair x");
+        ok_eq_str(o, "pair x.ktx|pair%20x.ktx", "'pair x': opened from 'pair x.ktx', pair%20x.ktx the other");
+        sfree(o);
+        o = others_of("dda");
+        ok_eq_str(o, "dd%41.ktx|dd%61.ktx", "'dda': dd%41.ktx, dd%61.ktx the other");
+        sfree(o);
+        o = others_of("lay");
+        ok_eq_str(o, "lay|lay.ktx", "'lay': the older layout, lay.ktx (today's spelling) the other");
+        sfree(o);
+        o = others_of("Web Farm\\c");
+        ok_eq_str(o, "Web Farm\\c.ktx|Web%20Farm\\c.ktx", "'Web Farm\\c': the twin in Web%20Farm named with its folder");
+        sfree(o);
+        o = others_of("Web Farm\\a");
+        ok_eq_str(o, "", "'Web Farm\\a' (one file): none");
+        sfree(o);
+        o = others_of("no such");
+        ok_eq_str(o, "", "a name without a file: none");
+        sfree(o);
+        o = others_of("o2\\dda");
+        ok_eq_str(o, "o2\\dd%41.ktx|o2\\dd%61.ktx", "'o2\\dda': dd%41.ktx in o2, its twin there");
+        sfree(o);
+        /* asked at every start of a saved session: the folders on the
+         * name's path only, never a walk of the store (for a name with a
+         * file under today's spelling, the open itself walks nothing) */
+        w = ksp_dir_listings();
+        o = others_of("Web Farm\\c");
+        sfree(o);
+        o = others_of("pair x");
+        sfree(o);
+        ok(ksp_dir_listings() == w, "and no walk of the store for them");
+    }
+
+    head("the red row gone: renamed, or its twin deleted");
+    {
+        char *from = dupprintf("%s\\pair%%20x.ktx", g_dir);
+        char *to = dupprintf("%s\\pair y.ktx", g_dir);
+        ok(MoveFileA(from, to), "pair%20x.ktx renamed to 'pair y.ktx' (as Rename... does)");
+        kitty_store_mark_dirty();
+        sfree(from);
+        sfree(to);
+    }
+    ok(list_count("pair x") == 1 && list_count("pair y") == 1,
+       "both names are normal rows");
+    ok(!twin_row("pair%20x.ktx", "", "pair%20x.ktx"), "and no red row is left for it");
+    {
+        char *p = dupprintf("%s\\50%%25.ktx", g_dir);
+        DeleteFileA(p);                 /* from outside: no dirty mark */
+        sfree(p);
+    }
+    ok(found_is("50%", "50%.ktx"), "the reached file deleted: 50%.ktx is reached now");
+    ok(!twin_row("50%.ktx", "", "50%.ktx"), "and is no red row any more");
+
+    kitty_set_session_suffix("");
+    drop_store(save_dir);
+}
+
+/* The table of files of another escape: a miss looks only there, and lists
+ * again only a folder that changed. */
+static bool miss(const char *name)
+{
+    char *p = ksf_session_find(name);
+    bool yes = p == NULL;
+    sfree(p);
+    return yes;
+}
+
+static void part_store_alts(const char *tmp)
+{
+    char save_dir[1024];
+    unsigned long w;
+    int i, misses;
+
+    head("a miss looks in the table of old-escape files, not the folders");
+    strcpy(save_dir, g_dir);
+    fresh_store(tmp, "kitty_test_sessionpath_alts");
+    kitty_set_session_suffix(".ktx");
+    write_file("t1\\a.ktx", "HostName=a.example\n");
+    write_file("t2\\b.ktx", "HostName=b.example\n");
+    set_dir_age("t1", 3600);
+    set_dir_age("t2", 3600);
+    set_dir_age("", 3600);
+
+    w = ksp_dir_listings();
+    ok(miss("t1\\none"), "the first miss, before any list: nothing");
+    ok(ksp_dir_listings() == w + 3, "and it listed the store once (3 folders)");
+    w = ksp_dir_listings();
+    for (i = misses = 0; i < 100; i++) {
+        char *name = dupprintf((i & 1) ? "t%d\\none%d" : "none%d%d", i % 3, i);
+        if (miss(name))
+            misses++;
+        sfree(name);
+    }
+    ok(misses == 100 && ksp_dir_listings() == w,
+       "100 misses in a store KiTTY++ wrote (empty table): no folder listed");
+
+    write_file("t2\\new%20one.ktx", "HostName=new.example\n");   /* from outside */
+    {
+        char *h = read_host("t2\\new one");
+        ok_eq_str(h, "new.example", "an old-escape file added from outside is found");
+        sfree(h);
+    }
+    w = ksp_dir_listings();
+    ok(miss("t1\\none") && ksp_dir_listings() == w,
+       "a change in t2 leaves a miss in t1 without a listing");
+    write_file("Old%20Dir\\x.ktx", "HostName=x.example\n");
+    {
+        char *h = read_host("Old Dir\\x");
+        ok_eq_str(h, "x.example", "so is a new old-escape folder");
+        sfree(h);
+    }
+    {
+        char *p = dupprintf("%s\\t2\\new%%20one.ktx", g_dir);
+        DeleteFileA(p);
+        sfree(p);
+    }
+    ok(miss("t2\\new one"), "one deleted from outside is not");
+
+    head("our own save lists its folder again, no other");
+    set_dir_age("t1", 3600);
+    set_dir_age("t2", 3600);
+    set_dir_age("Old%20Dir", 3600);
+    set_dir_age("", 3600);
+    list_count("x");                    /* a list builds the table */
+    w = ksp_dir_listings();
+    ok(miss("t1\\none") && ksp_dir_listings() == w, "after a list, a miss lists nothing");
+    make_session("t1\\c", "c.example", NULL);
+    w = ksp_dir_listings();
+    ok(miss("t1\\none") && ksp_dir_listings() == w + 1,
+       "after a save into t1, a miss in t1 lists t1 alone");
+    w = ksp_dir_listings();
+    ok(miss("t2\\none") && ksp_dir_listings() == w, "and a miss in t2 lists nothing");
+    {
+        char *h = read_host("Old Dir\\x");
+        ok_eq_str(h, "x.example", "old-escape files are still found");
+        sfree(h);
+    }
+    {
+        char *p = dupprintf("%s\\Old%%20Dir\\x.ktx", g_dir);
+        char *d = dupprintf("%s\\Old%%20Dir", g_dir);
+        DeleteFileA(p);
+        RemoveDirectoryA(d);
+        sfree(p);
+        sfree(d);
+    }
+    ok(miss("Old Dir\\x"), "a folder removed from outside takes its files along");
+
+    kitty_set_session_suffix("");
+    drop_store(save_dir);
+}
+
+/* A miss - a name with no file under today's spelling (each new session
+ * name, the window-position and import exists checks) - in a store of 2000
+ * sessions in 300 folders, timed over 1000 lookups (a measurement, not a
+ * verdict). `oldesc` puts one file in a hundred under old KiTTY's escape. */
+static void miss_fixture(const char *dir, bool oldesc)
+{
+    int i;
+    for (i = 0; i < 2000; i++) {
+        char *p = (oldesc && i % 100 == 0) ?
+            dupprintf("%s\\f%03d\\srv%04d%%20old.ktx", dir, i % 300, i) :
+            dupprintf("%s\\f%03d\\srv%04d.ktx", dir, i % 300, i);
+        FILE *fp;
+        ksf_make_parent_dirs(p);
+        fp = fopen(p, "wb");
+        if (fp) {
+            fprintf(fp, "HostName=srv%04d.example\n", i);
+            fclose(fp);
+            set_age_full(p, 3600);
+        }
+        sfree(p);
+    }
+}
+
+static void miss_time(const char *what, bool oldesc)
+{
+    double t0, t1, tfirst = 0;
+    int i, misses = 0, hits = 0;
+    t0 = now_ms();
+    for (i = 0; i < 1000; i++) {
+        char *name = (i & 1) ? dupprintf("f%03d\\nosuch%04d", i % 300, i) :
+            dupprintf("nosuch%04d", i);
+        char *p = ksf_session_find(name);
+        if (!p)
+            misses++;
+        sfree(p);
+        sfree(name);
+        if (i == 0)
+            tfirst = now_ms() - t0;
+    }
+    t1 = now_ms();
+    printf("  TIME  %s: 1000 misses in %.1f ms (the first %.1f ms)\n", what,
+           t1 - t0, tfirst);
+    ok(misses == 1000, "every miss finds nothing");
+    if (oldesc) {
+        t0 = now_ms();
+        for (i = 0; i < 2000; i += 100) {
+            char *name = dupprintf("f%03d\\srv%04d old", i % 300, i);
+            char *p = ksf_session_find(name);
+            if (p)
+                hits++;
+            sfree(p);
+            sfree(name);
+        }
+        t1 = now_ms();
+        printf("  TIME  %s: 20 old-escape lookups in %.1f ms\n", what, t1 - t0);
+        ok(hits == 20, "every old-escape file is found");
+    }
+}
+
+static void part_miss_perf(const char *tmp)
+{
+    char dir[1100], cmd[1300];
+    int n, pass;
+    char **names;
+
+    head("1000 misses in 2000 sessions / 300 folders (a measurement, not a verdict)");
+    snprintf(dir, sizeof(dir), "%s\\kitty_test_sessionpath_miss", tmp);
+    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", dir);
+    kitty_set_session_suffix(".ktx");
+    for (pass = 0; pass < 2; pass++) {
+        system(cmd);
+        kitty_set_session_dir(dir);
+        CreateDirectoryA(dir, NULL);
+        miss_fixture(dir, pass == 1);
+        Sleep(3200);                    /* the folders' times settle */
+        miss_time(pass ? "with 20 old-escape files, before any list" :
+                  "a store KiTTY++ wrote, before any list", pass == 1);
+        names = kitty_session_names(&n);
+        ok(n == 2000, "all 2000 listed");
+        kitty_session_names_free(names, n);
+        miss_time(pass ? "with 20 old-escape files, after a list" :
+                  "a store KiTTY++ wrote, after a list", pass == 1);
+        {
+            /* an import: a save into a folder, then the next name's check */
+            double t0 = now_ms(), t1;
+            int i, m = 0;
+            for (i = 0; i < 50; i++) {
+                char *nm = dupprintf("f012\\imp%02d", i);
+                char *chk = dupprintf("f012\\nosuch%02d", i);
+                char *f;
+                make_session(nm, "imp.example", NULL);
+                f = ksf_session_find(chk);
+                if (!f)
+                    m++;
+                sfree(f);
+                sfree(nm);
+                sfree(chk);
+            }
+            t1 = now_ms();
+            printf("  TIME  %s: 50 saves into f012, each with a miss there: %.1f ms\n",
+                   pass ? "with 20 old-escape files" : "a store KiTTY++ wrote", t1 - t0);
+            ok(m == 50, "every check after a save misses");
+        }
+    }
+    kitty_set_session_suffix("");
+    system(cmd);
+    kitty_set_session_dir(g_dir);
+}
+
 int main(int argc, char **argv)
 {
     const char *tmp = getenv("TEMP");
@@ -1285,9 +1764,12 @@ int main(int argc, char **argv)
     if (store_is_file()) {
         part_store();
         part_store_escapes();
+        part_store_twins(tmp);
+        part_store_alts(tmp);
         part_store_blockers();
         part_verdict_cache(tmp);
         part_perf(tmp);
+        part_miss_perf(tmp);
     } else
         ok(false, "storage is in file mode against the fixture");
     kitty_set_storage_mode(0);

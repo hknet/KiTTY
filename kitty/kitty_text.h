@@ -1912,6 +1912,14 @@
         "--------------------\x1b[0m\r\n%s\r\n" \
         "\x1b[1;36m---------------------------------------------" \
         "-----------------\x1b[0m\r\n"
+/* A saved session opened while other files decode to its name: the Event Log
+ * line (one per other file) and the terminal's NOTE line (kitty_win.c). The
+ * second %s of the NOTE is "the file X stands" or "the files X, Y stand". */
+#define KT_WIN_SESSION_TWIN_LOG                      "Session \"%s\": opened from %s; %s stands for the same name and is not used"
+#define KT_WIN_SESSION_TWIN_LINE                     "\r\n\x1b[1;33mNOTE:\x1b[0m session \"%s\" was opened from %s; " \
+        "%s for the same name. Rename one of them in the session list.\r\n"
+#define KT_WIN_SESSION_TWIN_ONE                      "the file %s stands"
+#define KT_WIN_SESSION_TWIN_MANY                     "the files %s stand"
 #define KT_WIN_MISSING_FEATURES_LINE                 "\r\n\x1b[1;33mNOTE:\x1b[0m this version of Windows cannot do: " \
         "%s. Everything else works as usual. Silence this with " \
         "warnmissingfeatures=no in kitty.ini.\r\n"
@@ -3655,6 +3663,12 @@
  * outside the ANSI code page (red), and the list's right-click menu. */
 #define KT_SP_BAD_TIP                                "This session file needs to be renamed to ANSI characters before KiTTY++ can use it."
 #define KT_SP_BAD_TIP_FOLDER                         "This folder needs to be renamed to ANSI characters before KiTTY++ can use the sessions in it."
+/* the other red row: a file another file of the same session name hides
+ * (srv%20web.ktx beside srv web.ktx), its Rename... prompt, and the refusal
+ * of a name that is taken */
+#define KT_SP_TWIN_TIP                               "Two files for one session name: this one cannot be opened until it is renamed."
+#define KT_SP_TWIN_RENAME_PROMPT                     "New session name:"
+#define KT_SP_TWIN_NAME_TAKEN                        "A session \"%s\" already exists."
 #define KT_SP_BAD_RENAME_CAP                         "Rename session file"
 #define KT_SP_BAD_RENAME_FOLDER_CAP                  "Rename folder"
 #define KT_SP_DEL_SESSION_Q                          "Delete the session \"%s\"?"

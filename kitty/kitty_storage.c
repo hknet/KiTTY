@@ -1065,75 +1065,494 @@ char *ksf_session_legacy_path(const char *sessionname)
  * old KiTTY's and PuTTY's (a space as %20, a byte above '~' as %E4), a '%'
  * written by hand ("100%"), any %xx this store's escape would not write. The
  * list shows such a file under its DECODED name (ksp_component_unmunge, the
- * ending stripped), so it is found the same way: each path component matched
- * against the decoded names of the folder's entries, without case, following
- * every folder whose name decodes to the component. Dot-entries are skipped,
- * as the list skips them. NULL when nothing matches. Such a file is read and
+ * ending stripped), so it is found the same way. Such a file is read and
  * SAVED IN PLACE (windows/storage.c): renaming it would split an old folder
  * like "Web%20Servers" from its new twin and take it from an old KiTTY
  * reading the same folder - a rename is the user's (Rename, Organize).
+ *
+ * A name without a file under today's spelling - each new session name, the
+ * window-position and import exists checks - must not walk the folders each
+ * time. So the store keeps a table of the session files whose path is NOT
+ * today's spelling of the name it decodes to (ksp_is_today_spelling; a file
+ * in "Web%20Servers" is one too), with the folders it was read from and
+ * their last-write times, and a lookup looks only there. A store KiTTY++
+ * wrote has an empty table. Several files for one name: the one
+ * ksp_reach_cmp puts first, the file the list shows; the others are the red
+ * rows of ksf_enum_twins. The list's full walk (ksf_enum_names) builds the
+ * table; the first lookup before any list builds it by the names alone (no
+ * file read: the few a name finds are judged then).
+ *
+ * Before each lookup (ksf_alts_check) the folders the name could sit in -
+ * the session directory and every folder whose list path is a folder of the
+ * name - are asked for their time. A file or folder added, removed or renamed
+ * in one changes it, and that folder alone is listed again (ksf_alts_relist),
+ * with any folder new in it; a folder gone, or another session directory or
+ * suffix, builds the table anew. A time less than KSF_ALTS_SETTLE old when it
+ * was read is not trusted (a second change within the clock tick would not
+ * move it): such a folder is listed again at each lookup until it settles. KiTTY++'s own saves, deletes,
+ * renames and moves change their folders' times like any other writer's, so
+ * the store's write count (kitty_store_generation) is not asked: it also
+ * counts host keys, proxies and tags, which change no session file name.
+ * Not seen until a list: a file whose CONTENT turns it into a session (no
+ * name changes), and changes on a file system that keeps no folder times.
  */
-static char *ksf_scan_find(const char *dir, char **comps, int ncomp)
+struct ksf_alt {
+    char *id;                           /* the name the file decodes to */
+    char *path;
+};
+static struct {
+    int built;
+    char *root, *suffix;
+    struct ksf_alt *e;                  /* by id without case, then reach */
+    int n;
+    size_t ae;
+    struct ksp_store_dir *dirs;         /* every folder of the store */
+    int ndirs;
+    size_t adirs;
+    struct ksp_store_file *sh;          /* the list walk's shadowed files */
+    int nsh;
+    int sh_judged;                      /* sh is from the list's walk, and
+                                         * nothing was listed again since */
+} ksf_alts;
+static CRITICAL_SECTION ksf_alts_cs;
+static volatile LONG ksf_alts_cs_state;  /* 0 none, 1 being set up, 2 up */
+#define KSF_ALTS_SETTLE (3ULL * 10000000ULL)   /* 100 ns units */
+
+/* Lists run on whatever thread asks, so the table is under a lock, set up
+ * lazily as the verdict cache's is (no Vista+ import: the 32-bit build loads
+ * on XP). The list's walk reads files outside it; a relist by names holds
+ * it (it reads no file). */
+static void ksf_alts_lock(void)
 {
-    char *pat = dupprintf("%s\\*", dir), *found = NULL;
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pat, &fd);
-    sfree(pat);
-    if (h == INVALID_HANDLE_VALUE)
-        return NULL;
-    do {
-        int isdir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-        char *name, *dec, *full;
-        if (fd.cFileName[0] == '.')
-            continue;
-        if (isdir != (ncomp > 1))
-            continue;                   /* folders above, a file at the end */
-        if (isdir && (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
-            continue;                   /* not followed, as the list does not */
-        name = dupstr(fd.cFileName);
-        if (!isdir)
-            ksp_strip_suffix(name, g_sess_suffix);
-        dec = ksp_component_unmunge(name);
-        sfree(name);
-        if (stricmp(dec, comps[0])) {
-            sfree(dec);
-            continue;
+    if (ksf_alts_cs_state != 2) {
+        if (InterlockedCompareExchange(&ksf_alts_cs_state, 1, 0) == 0) {
+            InitializeCriticalSection(&ksf_alts_cs);
+            InterlockedExchange(&ksf_alts_cs_state, 2);
+        } else {
+            while (ksf_alts_cs_state != 2)
+                Sleep(0);
         }
-        sfree(dec);
-        full = dupprintf("%s\\%s", dir, fd.cFileName);
-        if (isdir)
-            found = ksf_scan_find(full, comps + 1, ncomp - 1);
-        else if (ksp_file_is_session(full))
-            found = dupstr(full);
-        sfree(full);
-    } while (!found && FindNextFileA(h, &fd));
-    FindClose(h);
-    return found;
+    }
+    EnterCriticalSection(&ksf_alts_cs);
+}
+static void ksf_alts_unlock(void)
+{
+    LeaveCriticalSection(&ksf_alts_cs);
+}
+
+static int ksf_alt_cmp(const void *av, const void *bv)
+{
+    const struct ksf_alt *a = (const struct ksf_alt *)av;
+    const struct ksf_alt *b = (const struct ksf_alt *)bv;
+    size_t base = strlen(g_sess_dir) + 1;
+    int c = stricmp(a->id, b->id);
+    if (c)
+        return c;
+    return ksp_reach_cmp(a->id, a->path + base, b->path + base, g_sess_suffix);
+}
+
+/* Is `path` directly in the folder `dir` (both full paths)? Below it? */
+static bool ksf_path_in(const char *path, const char *dir)
+{
+    size_t dl = strlen(dir);
+    return !strnicmp(path, dir, dl) && path[dl] == '\\' &&
+        !strchr(path + dl + 1, '\\');
+}
+static bool ksf_path_below(const char *path, const char *dir)
+{
+    size_t dl = strlen(dir);
+    return !strnicmp(path, dir, dl) && path[dl] == '\\';
+}
+
+/* Under the lock: the table emptied; files added (those not of today's
+ * spelling); folders added (copied, the unread ones left out). */
+static void ksf_alts_clear(void)
+{
+    int i;
+    for (i = 0; i < ksf_alts.n; i++) {
+        sfree(ksf_alts.e[i].id);
+        sfree(ksf_alts.e[i].path);
+    }
+    sfree(ksf_alts.e);
+    ksf_alts.e = NULL;
+    ksf_alts.n = 0;
+    ksf_alts.ae = 0;
+    ksp_walk_dirs_free(ksf_alts.dirs, ksf_alts.ndirs);
+    ksf_alts.dirs = NULL;
+    ksf_alts.ndirs = 0;
+    ksf_alts.adirs = 0;
+    ksp_walk_store_free(ksf_alts.sh, ksf_alts.nsh);
+    ksf_alts.sh = NULL;
+    ksf_alts.nsh = 0;
+    ksf_alts.sh_judged = 0;
+    sfree(ksf_alts.root);
+    sfree(ksf_alts.suffix);
+    ksf_alts.root = dupstr(g_sess_dir);
+    ksf_alts.suffix = dupstr(g_sess_suffix);
+    ksf_alts.built = 1;
+}
+static void ksf_alts_add_files(const struct ksp_store_file *f, int n)
+{
+    size_t base = strlen(g_sess_dir) + 1;
+    int i;
+    for (i = 0; i < n; i++) {
+        if (ksp_is_today_spelling(f[i].id, f[i].path + base, g_sess_suffix))
+            continue;
+        sgrowarray(ksf_alts.e, ksf_alts.ae, ksf_alts.n);
+        ksf_alts.e[ksf_alts.n].id = dupstr(f[i].id);
+        ksf_alts.e[ksf_alts.n].path = dupstr(f[i].path);
+        ksf_alts.n++;
+    }
+}
+static void ksf_alts_add_dirs(const struct ksp_store_dir *d, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        if (!d[i].seen)
+            continue;
+        sgrowarray(ksf_alts.dirs, ksf_alts.adirs, ksf_alts.ndirs);
+        ksf_alts.dirs[ksf_alts.ndirs] = d[i];
+        ksf_alts.dirs[ksf_alts.ndirs].folder = dupstr(d[i].folder);
+        ksf_alts.dirs[ksf_alts.ndirs].path = dupstr(d[i].path);
+        ksf_alts.ndirs++;
+    }
+}
+static void ksf_alts_sort(void)
+{
+    if (ksf_alts.n > 1)
+        qsort(ksf_alts.e, ksf_alts.n, sizeof(*ksf_alts.e), ksf_alt_cmp);
+}
+
+/* The list's full walk becomes the table (`sh` and `dirs` handed over, `v`
+ * only read). */
+static void ksf_alts_take(const struct ksp_store_file *v, int n,
+                          struct ksp_store_file *sh, int nsh,
+                          struct ksp_store_dir *dirs, int ndirs)
+{
+    ksf_alts_lock();
+    ksf_alts_clear();
+    ksf_alts_add_files(v, n);
+    ksf_alts_add_files(sh, nsh);
+    ksf_alts_add_dirs(dirs, ndirs);
+    ksf_alts_sort();
+    ksf_alts.sh = sh;
+    ksf_alts.nsh = nsh;
+    ksf_alts.sh_judged = 1;
+    ksf_alts_unlock();
+    ksp_walk_dirs_free(dirs, ndirs);
+}
+
+/* The list's full walk, with the table built from it. Returns the walk's
+ * files (free with ksp_walk_store_free). */
+static struct ksp_store_file *ksf_walk_full(int *count)
+{
+    struct ksp_store_file *v, *sh;
+    struct ksp_store_dir *dirs;
+    int nsh, ndirs;
+    v = ksp_walk_store_ex(g_sess_dir, g_sess_suffix, count, &sh, &nsh,
+                          &dirs, &ndirs);
+    ksf_alts_take(v, *count, sh, nsh, dirs, ndirs);
+    return v;
+}
+
+/* Under the lock: the table built anew by the names alone. */
+static void ksf_alts_rebuild(void)
+{
+    struct ksp_store_file *f;
+    struct ksp_store_dir *d;
+    int n, nd;
+    f = ksp_walk_names(g_sess_dir, g_sess_dir, "", 1, g_sess_suffix, &n, &d, &nd);
+    ksf_alts_clear();
+    ksf_alts_add_files(f, n);
+    ksf_alts_add_dirs(d, nd);
+    ksf_alts_sort();
+    ksp_walk_store_free(f, n);
+    ksp_walk_dirs_free(d, nd);
+}
+
+/* Under the lock: the folder ksf_alts.dirs[k] listed again - its own files
+ * replaced, a subfolder gone dropped with all below it, a new one walked
+ * whole. False when it cannot be listed (the caller rebuilds). */
+static bool ksf_alts_relist(int k)
+{
+    char *dpath = dupstr(ksf_alts.dirs[k].path);
+    struct ksp_store_file *f;
+    struct ksp_store_dir *d;
+    int n, nd, i, j, keep;
+    bool ok;
+    f = ksp_walk_names(g_sess_dir, dpath, ksf_alts.dirs[k].folder, 0,
+                       g_sess_suffix, &n, &d, &nd);
+    ok = nd > 0 && d[0].seen && !stricmp(d[0].path, dpath);
+    if (ok) {
+        /* its own files */
+        for (i = keep = 0; i < ksf_alts.n; i++) {
+            if (ksf_path_in(ksf_alts.e[i].path, dpath)) {
+                sfree(ksf_alts.e[i].id);
+                sfree(ksf_alts.e[i].path);
+            } else {
+                ksf_alts.e[keep++] = ksf_alts.e[i];
+            }
+        }
+        ksf_alts.n = keep;
+        ksf_alts_add_files(f, n);
+        /* its time; the subfolders it no longer has, and all below them */
+        for (i = 0; i < ksf_alts.ndirs; i++) {
+            struct ksp_store_dir *r = &ksf_alts.dirs[i];
+            bool gone;
+            if (!stricmp(r->path, dpath)) {
+                r->mtime = d[0].mtime;
+                r->seen = d[0].seen;
+                continue;
+            }
+            if (!ksf_path_in(r->path, dpath))
+                continue;
+            gone = true;
+            for (j = 1; j < nd && gone; j++)
+                if (!stricmp(d[j].path, r->path))
+                    gone = false;
+            if (gone) {
+                char *sub = dupstr(r->path);
+                int e2;
+                for (j = keep = 0; j < ksf_alts.n; j++) {
+                    if (ksf_path_below(ksf_alts.e[j].path, sub)) {
+                        sfree(ksf_alts.e[j].id);
+                        sfree(ksf_alts.e[j].path);
+                    } else {
+                        ksf_alts.e[keep++] = ksf_alts.e[j];
+                    }
+                }
+                ksf_alts.n = keep;
+                for (j = e2 = 0; j < ksf_alts.ndirs; j++) {
+                    struct ksp_store_dir *q = &ksf_alts.dirs[j];
+                    if (!stricmp(q->path, sub) || ksf_path_below(q->path, sub)) {
+                        sfree(q->folder);
+                        sfree(q->path);
+                    } else {
+                        ksf_alts.dirs[e2++] = *q;
+                    }
+                }
+                ksf_alts.ndirs = e2;
+                sfree(sub);
+                i = -1;                 /* the array moved: from the start */
+            }
+        }
+        /* the subfolders new in it, walked whole */
+        for (j = 1; j < nd; j++) {
+            bool known = false;
+            for (i = 0; i < ksf_alts.ndirs && !known; i++)
+                if (!stricmp(ksf_alts.dirs[i].path, d[j].path))
+                    known = true;
+            if (!known) {
+                struct ksp_store_file *f2;
+                struct ksp_store_dir *d2;
+                int n2, nd2;
+                f2 = ksp_walk_names(g_sess_dir, d[j].path, d[j].folder, 1,
+                                    g_sess_suffix, &n2, &d2, &nd2);
+                ksf_alts_add_files(f2, n2);
+                ksf_alts_add_dirs(d2, nd2);
+                ksp_walk_store_free(f2, n2);
+                ksp_walk_dirs_free(d2, nd2);
+            }
+        }
+        ksf_alts_sort();
+        ksf_alts.sh_judged = 0;
+    }
+    ksp_walk_store_free(f, n);
+    ksp_walk_dirs_free(d, nd);
+    sfree(dpath);
+    return ok;
+}
+
+/* Under the lock: is the folder's time still what was read (and was it old
+ * enough then to be trusted)? 0 yes, 1 changed, 2 gone. */
+static int ksf_alts_dir_state(const struct ksp_store_dir *d)
+{
+    WIN32_FILE_ATTRIBUTE_DATA ad;
+    unsigned long long mt;
+    if (!GetFileAttributesExA(d->path, GetFileExInfoStandard, &ad) ||
+        !(ad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        return 2;
+    mt = ((unsigned long long)ad.ftLastWriteTime.dwHighDateTime << 32) |
+        ad.ftLastWriteTime.dwLowDateTime;
+    if (mt != d->mtime || d->mtime + KSF_ALTS_SETTLE > d->seen)
+        return 1;
+    return 0;
+}
+
+/* Under the lock: is the folder one `norm` (a normalised name) could sit in
+ * - the session directory, or a folder of the name? */
+static bool ksf_alts_dir_matters(const struct ksp_store_dir *d, const char *norm)
+{
+    size_t fl = strlen(d->folder);
+    return !fl || (!strnicmp(norm, d->folder, fl) && norm[fl] == '\\');
+}
+
+/* Under the lock: the table made good for `norm` - built when it is not, or
+ * is of another store; the folders that matter and changed listed again,
+ * the session directory's change or a folder gone rebuilding it. */
+static void ksf_alts_check(const char *norm)
+{
+    char **stale = NULL;
+    int nstale = 0, i, k;
+    size_t astale = 0;
+    bool rebuild = !ksf_alts.built || stricmp(ksf_alts.root, g_sess_dir) ||
+        strcmp(ksf_alts.suffix, g_sess_suffix);
+    for (i = 0; !rebuild && i < ksf_alts.ndirs; i++) {
+        const struct ksp_store_dir *d = &ksf_alts.dirs[i];
+        int st;
+        if (!ksf_alts_dir_matters(d, norm))
+            continue;
+        st = ksf_alts_dir_state(d);
+        if (st == 2) {
+            rebuild = true;
+        } else if (st == 1) {
+            sgrowarray(stale, astale, nstale);
+            stale[nstale++] = dupstr(d->path);
+        }
+    }
+    if (!rebuild) {
+        bool root = false;
+        for (i = 0; i < ksf_alts.ndirs && !root; i++)
+            root = !ksf_alts.dirs[i].folder[0];
+        rebuild = !root;                /* the session directory not walked */
+    }
+    /* parents first: the list is in walk order, a folder before its own */
+    for (i = 0; !rebuild && i < nstale; i++) {
+        for (k = 0; k < ksf_alts.ndirs; k++)
+            if (!stricmp(ksf_alts.dirs[k].path, stale[i]))
+                break;
+        if (k < ksf_alts.ndirs && !ksf_alts_relist(k))
+            rebuild = true;
+    }
+    if (rebuild)
+        ksf_alts_rebuild();
+    for (i = 0; i < nstale; i++)
+        sfree(stale[i]);
+    sfree(stale);
+}
+
+/* Under the lock: has nothing changed in any folder of the store? */
+static bool ksf_alts_unchanged(void)
+{
+    int i;
+    bool root = false;
+    if (!ksf_alts.built || stricmp(ksf_alts.root, g_sess_dir) ||
+        strcmp(ksf_alts.suffix, g_sess_suffix))
+        return false;
+    for (i = 0; i < ksf_alts.ndirs; i++) {
+        if (!ksf_alts.dirs[i].folder[0])
+            root = true;
+        if (ksf_alts_dir_state(&ksf_alts.dirs[i]))
+            return false;
+    }
+    return root;
 }
 
 char *ksf_session_inplace_path(const char *sessionname)
 {
-    char *norm, *p, **comps = NULL, *found = NULL;
-    size_t n = 0, cap = 0;
+    char *norm, *found = NULL, **cand = NULL;
+    int ncand = 0, i, lo, hi;
     if (!g_sess_dir[0] || !sessionname || !*sessionname)
         return NULL;
     norm = ksp_normalise(sessionname);
-    for (p = norm; *p; ) {
-        char *e = strchr(p, '\\');
-        size_t len = e ? (size_t)(e - p) : strlen(p);
-        sgrowarray(comps, cap, n);
-        comps[n++] = dupprintf("%.*s", (int)len, p);
-        p += len;
-        if (*p == '\\')
-            p++;
+    if (!norm[0]) {
+        sfree(norm);
+        return NULL;
     }
-    if (n > 0 && comps[n - 1][0])
-        found = ksf_scan_find(g_sess_dir, comps, (int)n);
-    while (n > 0)
-        sfree(comps[--n]);
-    sfree(comps);
+    ksf_alts_lock();
+    ksf_alts_check(norm);
+    /* the first entry of the name, then each of it in reach order */
+    lo = 0;
+    hi = ksf_alts.n;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (stricmp(ksf_alts.e[mid].id, norm) < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (i = lo; i < ksf_alts.n && !stricmp(ksf_alts.e[i].id, norm); i++)
+        ncand++;
+    if (ncand) {
+        cand = snewn(ncand, char *);
+        for (i = 0; i < ncand; i++)
+            cand[i] = dupstr(ksf_alts.e[lo + i].path);
+    }
+    ksf_alts_unlock();
+    for (i = 0; i < ncand; i++) {
+        if (!found && ksp_file_is_session(cand[i]))
+            found = cand[i];
+        else
+            sfree(cand[i]);
+    }
+    sfree(cand);
     sfree(norm);
     return found;
+}
+
+/* The red rows of the list for files no name reaches: each file the walk
+ * shadowed (another file of its name is reached, ksp_reach_cmp), unless the
+ * lookup reaches it after all. From the last full walk while that still holds
+ * for the whole store, else from a new one. */
+struct ksp_bad_file *ksf_enum_twins(int *count)
+{
+    struct ksp_store_file *sh = NULL;
+    struct ksp_bad_file *out = NULL;
+    int nsh = 0, nout = 0, i;
+    size_t aout = 0;
+    size_t base = strlen(g_sess_dir) + 1;
+    *count = 0;
+    if (!g_sess_dir[0])
+        return NULL;
+    ksf_alts_lock();
+    if (!ksf_alts.sh_judged || !ksf_alts_unchanged()) {
+        struct ksp_store_file *v;
+        int n;
+        ksf_alts_unlock();
+        v = ksf_walk_full(&n);
+        ksp_walk_store_free(v, n);
+        ksf_alts_lock();
+    }
+    if (ksf_alts.nsh) {
+        nsh = ksf_alts.nsh;
+        sh = snewn(nsh, struct ksp_store_file);
+        for (i = 0; i < nsh; i++) {
+            sh[i] = ksf_alts.sh[i];
+            sh[i].id = dupstr(ksf_alts.sh[i].id);
+            sh[i].path = dupstr(ksf_alts.sh[i].path);
+        }
+    }
+    ksf_alts_unlock();
+    for (i = 0; i < nsh; i++) {
+        char *reach = ksf_session_find(sh[i].id);
+        bool twin = !reach || stricmp(reach, sh[i].path);
+        sfree(reach);
+        if (twin) {
+            const char *rel = sh[i].path + base;
+            const char *slash = strrchr(sh[i].id, '\\');
+            const char *fname = strrchr(sh[i].path, '\\');
+            int wn;
+            sgrowarray(out, aout, nout);
+            /* listed at the level of the folder it sits in; a flat file at
+             * the top (a whole path in one name) at the top */
+            out[nout].folder = (strchr(rel, '\\') && slash) ?
+                dupprintf("%.*s", (int)(slash - sh[i].id), sh[i].id) : dupstr("");
+            /* its file name as on disk, the ending kept: never mistaken
+             * for the session name beside it ("both" and "both.ktx") */
+            out[nout].shown = dupstr(fname ? fname + 1 : sh[i].path);
+            wn = MultiByteToWideChar(CP_ACP, 0, sh[i].path, -1, NULL, 0);
+            out[nout].wpath = snewn(wn > 0 ? wn : 1, wchar_t);
+            if (wn <= 0 ||
+                !MultiByteToWideChar(CP_ACP, 0, sh[i].path, -1, out[nout].wpath, wn))
+                out[nout].wpath[0] = L'\0';
+            out[nout].isdir = 0;
+            out[nout].twin = 1;
+            nout++;
+        }
+    }
+    ksp_walk_store_free(sh, nsh);
+    *count = nout;
+    return out;
 }
 
 /* The file the session is read from: the legacy one while it exists, else the
@@ -1149,6 +1568,128 @@ char *ksf_session_find(const char *sessionname)
         return p;
     sfree(p);
     return ksf_session_inplace_path(sessionname);
+}
+
+/* The files besides the reached one that decode to this session name (the
+ * red rows of the list), for the terminal's notice when such a session is
+ * opened - at every start of a saved session, so it must cost little and
+ * never walks the store: only the folders on the name's own path are listed,
+ * each entry decoded and compared without case (a session file at the end,
+ * every folder that decodes to the component on the way; the flat pre-path
+ * file at the top too). A name with one file lists the session directory and
+ * one folder per level. */
+struct ksf_others {
+    char **v;
+    int n;
+    size_t a;
+};
+static void ksf_others_scan(const char *dir, char **comps, int ncomp,
+                            const char *whole, struct ksf_others *o)
+{
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        int isdir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        char *name, *dec, *full;
+        int hit;
+        if (fd.cFileName[0] == '.')
+            continue;                   /* as the list skips them */
+        if (isdir && (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            continue;                   /* not followed, as the list does not */
+        name = dupstr(fd.cFileName);
+        if (!isdir)
+            ksp_strip_suffix(name, g_sess_suffix);
+        dec = ksp_component_unmunge(name);
+        sfree(name);
+        if (isdir)
+            hit = ncomp > 1 && !stricmp(dec, comps[0]);
+        else
+            hit = ncomp == 1 ? !stricmp(dec, comps[0]) :
+                (whole && !stricmp(dec, whole));     /* the flat older file */
+        sfree(dec);
+        if (!hit)
+            continue;
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
+        if (isdir) {
+            ksf_others_scan(full, comps + 1, ncomp - 1, NULL, o);
+            sfree(full);
+        } else if (ksp_file_is_session(full)) {
+            sgrowarray(o->v, o->a, o->n);
+            o->v[o->n++] = full;
+        } else {
+            sfree(full);
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+static const char *ksf_others_id;
+static int ksf_others_cmp(const void *av, const void *bv)
+{
+    return ksp_reach_cmp(ksf_others_id, *(char *const *)av, *(char *const *)bv,
+                         g_sess_suffix);
+}
+
+char **ksf_session_others(const char *sessionname, char **reached, int *count)
+{
+    char *found, *norm, *p, **comps = NULL;
+    size_t n = 0, cap = 0, base = strlen(g_sess_dir) + 1;
+    struct ksf_others o = { NULL, 0, 0 };
+    int i, keep;
+    *count = 0;
+    if (reached)
+        *reached = NULL;
+    if (!g_sess_dir[0] || !sessionname || !*sessionname)
+        return NULL;
+    found = ksf_session_find(sessionname);
+    if (!found)
+        return NULL;
+    norm = ksp_normalise(sessionname);
+    for (p = norm; *p; ) {
+        char *e = strchr(p, '\\');
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        sgrowarray(comps, cap, n);
+        comps[n++] = dupprintf("%.*s", (int)len, p);
+        p += len;
+        if (*p == '\\')
+            p++;
+    }
+    if (n > 0 && comps[n - 1][0])
+        ksf_others_scan(g_sess_dir, comps, (int)n, n > 1 ? norm : NULL, &o);
+    /* the files below the session folder, the opened one left out, in the
+     * order the name would reach them */
+    for (i = keep = 0; i < o.n; i++) {
+        if (stricmp(o.v[i], found)) {
+            char *rel = dupstr(o.v[i] + base);
+            sfree(o.v[i]);
+            o.v[keep++] = rel;
+        } else {
+            sfree(o.v[i]);
+        }
+    }
+    o.n = keep;
+    if (o.n > 1) {
+        ksf_others_id = norm;
+        qsort(o.v, o.n, sizeof(*o.v), ksf_others_cmp);
+        ksf_others_id = NULL;
+    }
+    if (o.n && reached)
+        *reached = dupstr(found + base);
+    while (n > 0)
+        sfree(comps[--n]);
+    sfree(comps);
+    sfree(norm);
+    sfree(found);
+    if (!o.n) {
+        sfree(o.v);
+        return NULL;
+    }
+    *count = o.n;
+    return o.v;
 }
 
 char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
@@ -1221,7 +1762,9 @@ static char **ksf_enum_names(const char *leaf, int *count)
     *count = 0;
     if (!g_sess_dir[0])
         return NULL;
-    v = ksp_walk_store(g_sess_dir, g_sess_suffix, leaf, &n);
+    /* the whole store also builds the table of files of another escape */
+    v = leaf ? ksp_walk_store(g_sess_dir, g_sess_suffix, leaf, &n) :
+        ksf_walk_full(&n);
     if (n > 0) {
         names = snewn(n, char *);
         for (i = 0; i < n; i++) {

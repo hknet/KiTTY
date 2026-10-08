@@ -2593,7 +2593,10 @@ static bool sessionsaver_enter_selected_folder(struct sessionsaver_data *ssd,
  * is ANSI everywhere - so it is listed in red at its level, with a tip
  * stating that, and offers Show in Explorer and Rename... Its id is below every other
  * kind (KITTY_ROW_BAD_BASE - i), so like a folder row it can never be loaded,
- * saved over or commented on.
+ * saved over or commented on. The same for a file that decodes to the name of
+ * another file, the one the name reaches (old KiTTY's "srv%20web.ktx" beside
+ * "srv web.ktx", ksf_enum_twins): shown under its file name as on disk, the
+ * ending kept, renamed to a free session name.
  *
  * The menu and the keys (hknet/KiTTY#26 refinements) carry the actions the
  * panel already has, through the same routes: Load and Delete as the
@@ -2619,9 +2622,19 @@ static void kcs_bad_reload(void)
     ksp_bad_free(kcs_bad, kcs_nbad);
     kcs_bad = NULL;
     kcs_nbad = 0;
-    if (store_is_file())
+    if (store_is_file()) {
+        struct ksp_bad_file *tw;
+        int ntw = 0;
         kcs_bad = ksp_walk_unusable(kitty_session_dir(), kitty_session_suffix(),
                                     &kcs_nbad);
+        tw = ksf_enum_twins(&ntw);
+        if (ntw > 0) {
+            kcs_bad = sresize(kcs_bad, kcs_nbad + ntw, struct ksp_bad_file);
+            memcpy(kcs_bad + kcs_nbad, tw, ntw * sizeof(*tw));
+            kcs_nbad += ntw;
+        }
+        sfree(tw);                      /* the entries moved, not freed */
+    }
 }
 
 /* At the level shown: folder rows show one level; the classic root shows
@@ -2669,15 +2682,20 @@ static const char *kcs_row_tip(dlgcontrol *ctrl, int id)
     (void)ctrl;
     if (i < 0)
         return NULL;
+    if (kcs_bad[i].twin)
+        return KT_SP_TWIN_TIP;
     return kcs_bad[i].isdir ? KT_SP_BAD_TIP_FOLDER : KT_SP_BAD_TIP;
 }
 
 /* Rename... on a red row: the new name typed (ANSI only), the file (or the
  * folder) renamed in its own folder with this store's escape - and, for a
- * file, its ending. */
+ * file, its ending. A file is not renamed to a session name that exists
+ * already, whatever file holds it: that would only make another twin. */
 struct kcs_badren {
     wchar_t *wpath;
+    char *folder;                       /* its folder in the list, "" = top */
     int isdir;
+    HWND box;                           /* the rename box, owner of its refusals */
 };
 
 static wchar_t *kcs_acp_to_w(const char *s)
@@ -2700,6 +2718,7 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
     size_t dl;
     if (!text) {                        /* Cancel or closed */
         sfree(r->wpath);
+        sfree(r->folder);
         sfree(r);
         return 1;
     }
@@ -2715,6 +2734,21 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
         MessageBeep(MB_ICONWARNING);
         return 0;
     }
+    if (!r->isdir) {
+        char *id = r->folder[0] ? dupprintf("%s\\%s", r->folder, name) : dupstr(name);
+        char *held = ksf_session_find(id);
+        if (held) {
+            char *msg = dupprintf(KT_SP_TWIN_NAME_TAKEN, id);
+            /* owned by the rename box: closing it gives the box back */
+            kitty_info_modeless(r->box ? r->box : kitty_cfg_modal_owner(),
+                                KT_CAP_KITTYPP, msg, NULL, NULL);
+            sfree(msg);
+            sfree(held);
+            sfree(id);
+            return 0;
+        }
+        sfree(id);
+    }
     comp = ksp_component_munge(name);
     file = dupcat(comp, r->isdir ? "" : kitty_session_suffix());
     wfile = kcs_acp_to_w(file);
@@ -2725,7 +2759,8 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
     wcscpy(target + dl, wfile);
     if (GetFileAttributesW(target) != INVALID_FILE_ATTRIBUTES) {
         char *msg = dupprintf(KT_SP_SAVE_CLASH, file);
-        kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg, NULL, NULL);
+        kitty_info_modeless(r->box ? r->box : kitty_cfg_modal_owner(),
+                            KT_CAP_KITTYPP, msg, NULL, NULL);
         sfree(msg);
         n = 0;
     } else if (!MoveFileW(r->wpath, target)) {
@@ -2741,6 +2776,7 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
     if (!n)
         return 0;
     sfree(r->wpath);
+    sfree(r->folder);
     sfree(r);
     kitty_store_mark_dirty();
     kitty_config_session_store_changed();
@@ -2761,12 +2797,22 @@ static void kcs_bad_rename(int i)
     r->wpath = snewn(wcslen(kcs_bad[i].wpath) + 1, wchar_t);
     wcscpy(r->wpath, kcs_bad[i].wpath);
     r->isdir = kcs_bad[i].isdir;
-    /* prefilled with the real name, a file's ending off */
+    r->folder = dupstr(kcs_bad[i].folder);
+    /* prefilled with the real name, a file's ending off - a twin with the
+     * session name it decodes to, the name to change */
     base = wcsrchr(r->wpath, L'\\');
     base = base ? base + 1 : r->wpath;
     init = snewn(wcslen(base) + 1, wchar_t);
     wcscpy(init, base);
-    if (!r->isdir) {
+    if (kcs_bad[i].twin) {
+        char *stem = dupstr(kcs_bad[i].shown), *dec;
+        ksp_strip_suffix(stem, kitty_session_suffix());
+        dec = ksp_component_unmunge(stem);
+        sfree(stem);
+        sfree(init);
+        init = kcs_acp_to_w(dec);
+        sfree(dec);
+    } else if (!r->isdir) {
         wchar_t *wsuf = kcs_acp_to_w(kitty_session_suffix());
         size_t il = wcslen(init);
         sl = wcslen(wsuf);
@@ -2774,10 +2820,13 @@ static void kcs_bad_rename(int i)
             init[il - sl] = L'\0';
         sfree(wsuf);
     }
-    if (!kitty_ask_text(kitty_cfg_modal_owner(),
+    r->box = NULL;
+    if (!(r->box = kitty_ask_text(kitty_cfg_modal_owner(),
                         r->isdir ? KT_SP_BAD_RENAME_FOLDER_CAP : KT_SP_BAD_RENAME_CAP,
-                        KT_SP_BAD_RENAME_PROMPT, init, kcs_bad_rename_done, r)) {
+                        kcs_bad[i].twin ? KT_SP_TWIN_RENAME_PROMPT :
+                        KT_SP_BAD_RENAME_PROMPT, init, kcs_bad_rename_done, r))) {
         sfree(r->wpath);
+        sfree(r->folder);
         sfree(r);
     }
     sfree(init);

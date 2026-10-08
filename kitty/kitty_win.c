@@ -85,6 +85,43 @@ void kitty_print_session_comment(Terminal *term, Conf *conf)
     sfree(body);
 }
 
+/* KiTTY: a saved session of the folder store opened while other files decode
+ * to its name (old KiTTY's "srv%20web.ktx" beside "srv web.ktx"): which file
+ * was opened and which are not used - in the Event Log, one line each, and as
+ * one yellow NOTE line in the terminal. Printed with the Comment, once per
+ * window, never on a reconnect. The list shows the other files as red rows. */
+void kitty_report_session_twins(Terminal *term, Conf *conf)
+{
+    const char *name = conf ? conf_get_str(conf, CONF_sessionname) : NULL;
+    char **others, *reached = NULL;
+    int n = 0, i;
+    if (!store_is_file() || !name || !*name)
+        return;
+    others = ksf_session_others(name, &reached, &n);
+    if (n > 0 && reached) {
+        strbuf *list = strbuf_new();
+        char *which, *line;
+        for (i = 0; i < n; i++) {
+            debug_logevent(KT_WIN_SESSION_TWIN_LOG, name, reached, others[i]);
+            if (i)
+                put_dataz(list, ", ");
+            put_dataz(list, others[i]);
+        }
+        which = dupprintf(n == 1 ? KT_WIN_SESSION_TWIN_ONE : KT_WIN_SESSION_TWIN_MANY,
+                          list->s);
+        line = dupprintf(KT_WIN_SESSION_TWIN_LINE, name, reached, which);
+        if (term)
+            term_data(term, line, strlen(line));
+        sfree(line);
+        sfree(which);
+        strbuf_free(list);
+    }
+    for (i = 0; i < n; i++)
+        sfree(others[i]);
+    sfree(others);
+    sfree(reached);
+}
+
 void kitty_term_print_inline_error(Terminal *term, const char *msg, int fatal)
 {
     size_t mlen = msg ? strlen(msg) : 0;

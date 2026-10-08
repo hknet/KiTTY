@@ -133,17 +133,61 @@ struct ksp_store_file *ksp_walk_store(const char *dir, const char *suffix,
                                       const char *leaf, int *count);
 void ksp_walk_store_free(struct ksp_store_file *v, int n);
 
+/* Files that decode to one session name (old KiTTY's "srv%20web.ktx" beside
+ * "srv web.ktx", %e4 beside %E4, a twin in "Web%20Servers"): the one the name
+ * reaches is picked by ksp_reach_cmp - the older layouts first, then today's
+ * spelling, then the other escapes by their path sorted without case. `rela`
+ * and `relb` are paths below the session directory as on disk, `id` the
+ * name both decode to; < 0 when rela is reached first. The walk lists each
+ * name once, by that file. ksp_is_today_spelling: is `rel` the file name a
+ * save under `id` would write today (ksp_path_to_relfile, without case)? */
+int ksp_reach_cmp(const char *id, const char *rela, const char *relb,
+                  const char *suffix);
+int ksp_is_today_spelling(const char *id, const char *rel, const char *suffix);
+
+/* The full walk again, with what the list and the store's lookup need
+ * besides: the files the walk left out because another file of the same name
+ * is reached (`shadowed`, freed with ksp_walk_store_free), and every folder
+ * walked with its last-write time, read before its entries, and when that was
+ * (`dirs`: the folder path as the list shows it, "" = the session directory,
+ * freed with ksp_walk_dirs_free). */
+struct ksp_store_dir {
+    char *folder;
+    char *path;
+    unsigned long long mtime, seen;     /* FILETIMEs; 0 = not read */
+};
+struct ksp_store_file *ksp_walk_store_ex(const char *dir, const char *suffix,
+                                         int *count,
+                                         struct ksp_store_file **shadowed,
+                                         int *nshadowed,
+                                         struct ksp_store_dir **dirs, int *ndirs);
+/* One folder of the store `root` by the names alone: every file, none read
+ * and none left out for a twin. `dir` is the folder on disk, `folder` its
+ * path as the list shows it ("" = root). With `descend` the folders below
+ * are walked too; without, dirs[0] is `dir` and the rest are its subfolders,
+ * not looked into (times 0). */
+struct ksp_store_file *ksp_walk_names(const char *root, const char *dir,
+                                      const char *folder, int descend,
+                                      const char *suffix, int *count,
+                                      struct ksp_store_dir **dirs, int *ndirs);
+void ksp_walk_dirs_free(struct ksp_store_dir *d, int n);
+/* Folder listings (FindFirstFile) the walks made so far, for the unit test. */
+unsigned long ksp_dir_listings(void);
+
 /* The session files and folders below `dir` whose own name does not fit the
  * ANSI code page, so they cannot be used (walked with the W APIs; a folder
  * named that way is listed itself and not looked into): the folder path they
  * sit in ("" = the root), the name as the list shows it (a file's ending off,
  * '?' for what does not fit), the full wide path, and whether it is a folder.
- * Free with ksp_bad_free. */
+ * Free with ksp_bad_free. `twin` marks the other kind of red row, made by
+ * ksf_enum_twins (kitty_storage.h): a file whose name another file of the
+ * same session name takes (`shown` is then its real file name). */
 struct ksp_bad_file {
     char *folder;
     char *shown;
     wchar_t *wpath;
     int isdir;
+    int twin;
 };
 struct ksp_bad_file *ksp_walk_unusable(const char *dir, const char *suffix,
                                        int *count);

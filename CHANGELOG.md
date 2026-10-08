@@ -231,6 +231,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Two session files for one name no longer get mixed up** (follow-up of
+  hknet/KiTTY#59). When two files decode to the same session name - old
+  KiTTY's `srv%20(web).ktx` beside `srv (web).ktx` - the list, opening and
+  kageant's menu could each pick a different one. One rule now decides
+  which file a name means; the other file is a red row under its real
+  file name, with Show in Explorer and Rename..., until it is renamed.
+  Opening such a session says so in the new terminal (a NOTE line) and in
+  the Event Log.
+  Looking up a session name that has no file no longer scans the whole
+  session folder: only files written with another escape are looked at.
 - **"Disable focus reporting" works again, as in old KiTTY.** The box
   (Terminal > Features, `NoFocusReporting`) did nothing: 0.85.1.13 sent
   focus reports (`ESC [ I` / `ESC [ O`) to every program that asked,
