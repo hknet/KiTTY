@@ -2194,7 +2194,11 @@ under \c{[Print]}: \c{height}, \c{maxline} and \c{maxchar}.
 \b \q{Reconnect automatically when the link drops} is the master switch
 for every session's reconnect boxes on its Connection panel; with it
 off those boxes are not offered. \q{Wait between reconnect attempts}
-is the retry pause, in seconds.
+is the first retry pause, in seconds; each attempt multiplies it by
+\q{Backoff factor} (1 = fixed, default 2 = doubling, up to 10), up to
+\q{Max retry timer} (a cap on the wait, not on the number of attempts).
+\q{When reconnecting fails} sets, per failure
+condition, what follows; see \k{kitty-cfg-reconnect-rules}.
 
 \b \q{Confirmations} chooses, for connection errors and for the three
 host-key questions, between a pop-up box and a prompt inside the
@@ -2203,9 +2207,80 @@ one requires the word \q{confirmed} as a separate answer before it
 replaces a stored key.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
-\c{ReconnectDelay}, \c{modalerrors}, \c{modalnewhostkeyconfirmation},
-\c{modalchangedhostkeyconfirmation}, \c{modalweakkeyconfirmation} and
-\c{proxychainmax}.
+\c{ReconnectDelay}, \c{reconnectmaxdelay}, \c{reconnectbackoff}, the \c{reconnect...} keys of
+\k{kitty-cfg-reconnect-rules}, \c{modalerrors},
+\c{modalnewhostkeyconfirmation}, \c{modalchangedhostkeyconfirmation},
+\c{modalweakkeyconfirmation} and \c{proxychainmax}.
+
+\S{kitty-cfg-reconnect-rules} When reconnecting fails
+
+A reconnect attempt that fails is classified by how far it got; the
+condition's setting decides what follows. Every decision is in the
+Event Log with the error text.
+
+\b \q{Name does not resolve} - DNS. Default: keep retrying.
+\c{reconnectdns}
+
+\b \q{No TCP connection} - refused, timed out, unreachable; sshd logs
+nothing. Default: keep retrying. \c{reconnecttcp}
+
+\b \q{Closed before login} - banner or key exchange (sshd restart,
+\c{MaxStartups}); sshd logs \c{[preauth]}. Default: retry 3 times.
+\c{reconnectprelogin}
+
+\b \q{Agent key locked} - the agent held the signature (kageant prompting
+for the passphrase). \q{wait for unlock}: no server contact, the agent
+is checked locally every 5 s, one attempt once the key is usable. A
+retry instead connects and waits on the open passphrase prompt (no
+second prompt) until the server's \c{LoginGraceTime} closes the
+connection. Default: wait for unlock. \c{reconnectagentlocked}
+
+\b \q{Login prompt not answered} - password / passphrase prompt open
+at the close, or cancelled. Default: stop. \c{reconnectprompt}
+
+\b \q{No agent, no key} - the server offers no method the session can
+use: no agent key (agent not running, holding no key, or \q{Attempt
+authentication using kageant} off), no key or certificate file, and no
+GSSAPI on offer. A server that offers a password is not this case: the
+stored password is sent, or the prompt follows. Default: stop.
+\c{reconnectnokey}
+
+\b \q{Closed during login} - nothing outstanding on our side (PAM /
+LDAP timeout, sshd restart). Default: retry once. \c{reconnectloginclosed}
+
+\b \q{Login refused} - all methods rejected. Each retry is a failed
+login in the server's log (fail2ban). With \q{Too many authentication
+failures} the Event Log also mentions the server's \c{MaxAuthTries}: the
+agent offers too many keys. Default: stop. \c{reconnectrefused}
+
+\b \q{Not recognised} - none of the above; the Event Log requests a
+report. Default: retry once. \c{reconnectother}
+
+The values:
+
+\b \c{retry} - no limit: attempts go on until a login succeeds or the
+window is closed.
+
+\b \c{3} / \c{1} - that many attempts for this condition, then
+reconnecting stops. Each condition counts its own attempts.
+
+\b \c{stop} - no further attempt.
+
+\b \c{wait} (agent row only) - no attempt until the key is usable,
+then one; stops if the key or the agent is gone.
+
+After a stop the window stays open; Enter reconnects by hand. A login
+resets all counters.
+
+The wait between attempts starts at \c{ReconnectDelay} and is
+multiplied by \c{reconnectbackoff} per attempt (default 2), up to
+\c{reconnectmaxdelay} (default 300). That limit caps the wait only; it
+never ends the retries. With the defaults: 5, 10, 20, 40, 80, 160, 300,
+300 ... seconds.
+
+Per session, \q{Retries after a failed login: never} (Connection
+panel) stops the login rows - closed before or during login, refused,
+not recognised - for that session.
 
 \S{kitty-cfg-kset-launcher} The Launcher panel
 

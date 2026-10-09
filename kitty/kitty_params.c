@@ -309,6 +309,14 @@ void SetAutoreconnectFlag( const int flag ) { AutoreconnectFlag = flag ; }
 static int ReconnectDelay = 5 ;
 int GetReconnectDelay(void) { return ReconnectDelay ; }
 void SetReconnectDelay( const int flag ) { ReconnectDelay = flag ; }
+// The cap of the reconnect backoff: the wait doubles per attempt up to this
+static int ReconnectMaxDelay = 300 ;
+int GetReconnectMaxDelay(void) { return ReconnectMaxDelay ; }
+void SetReconnectMaxDelay( const int flag ) { ReconnectMaxDelay = flag ; }
+// The backoff factor: each wait is the last one times this (1 = fixed, 1..10)
+static int ReconnectBackoff = 2 ;
+int GetReconnectBackoff(void) { return ReconnectBackoff ; }
+void SetReconnectBackoff( const int flag ) { ReconnectBackoff = flag ; }
 #endif
 
 // Where the session list shows "Default Settings":
@@ -626,6 +634,8 @@ static const IniParam ini_params[] = {
 	 * the default rather than meaning nothing (same as the ConfigBox keys). */
 	INIP_KW( INIT_SECTION, 0, KI_AUTORECONNECT,	1, 0, IGN,	&AutoreconnectFlag, NULL ),
 	INIP_NUM( INIT_SECTION, 0, KI_RECONNECTDELAY,	1,		&ReconnectDelay, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_RECONNECTMAXDELAY,	1,		&ReconnectMaxDelay, NULL ),
+	INIP_NUM( INIT_SECTION, 0, KI_RECONNECTBACKOFF,	1,		&ReconnectBackoff, NULL ),
 #endif
 	INIP_KW( INIT_SECTION, 0, KI_SCRIPTMODE,		1, 0, IGN,	NULL, kitty_script_set_enabled ),
 	INIP_KW( INIT_SECTION, 0, KI_SENDCMDMODE,		1, 0, IGN,	NULL, kitty_broadcast_set_enabled ),

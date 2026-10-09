@@ -85,6 +85,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_autologin          "kitty-cfg-autologin"
 #define WINHELP_CTX_kitty_antiidle           "kitty-cfg-antiidle"
 #define WINHELP_CTX_kitty_reconnect          "kitty-cfg-reconnect"
+#define WINHELP_CTX_kitty_reconnect_rules    "kitty-cfg-reconnect-rules"
 #define WINHELP_CTX_kitty_keypin             "kitty-cfg-keypin"
 #define WINHELP_CTX_kitty_proxy_buttons      "kitty-cfg-named-proxy-buttons"
 #define WINHELP_CTX_kitty_dynports           "kitty-cfg-dynports"

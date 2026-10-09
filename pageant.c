@@ -215,7 +215,19 @@ struct PageantPrivateKey {
     PageantKeyRequestNode blocked_requests;
     PageantClientDialogId dlgid;
     bool moribund;       /* have we been unlinked from privkeytree? */
+    /* KiTTY (hknet/KiTTY#66): an unlock that arrives after the request
+     * which opened the prompt has gone away (its connection died) is
+     * RESERVED for the process that requested it, for one signature within
+     * KAGEANT_UNLOCK_RESERVE_MS - and only for a key re-encrypted right after
+     * each use, which would otherwise lock again before that process could
+     * come back. Everyone else meanwhile sees it locked and is refused. */
+    unsigned long prompt_pid;      /* the requester whose sign opened the prompt */
+    bool prompt_reserve;           /* ...and its key re-encrypts after each use */
+    unsigned long reserved_pid;    /* 0 = no reservation */
+    unsigned long reserved_at;     /* GETTICKCOUNT() when it began */
 };
+#define KAGEANT_UNLOCK_RESERVE_MS 30000
+static bool priv_reserved_for_other(PageantPrivateKey *priv, unsigned long pid);
 static tree234 *privkeytree;
 
 struct PageantPublicKey {
@@ -733,7 +745,10 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
         strbuf *sb = strbuf_new();
 
         uint32_t flags = 0;
-        if (!priv->skey && !priv->protected_skey)
+        /* KiTTY: a key reserved for another process reads as locked
+         * (hknet/KiTTY#66) - only its asker may use it */
+        if ((!priv->skey && !priv->protected_skey) ||
+            priv_reserved_for_other(priv, pageant_external_pid))
             flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
         if (priv->encrypted_key_file)
             flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
@@ -968,6 +983,24 @@ ptrlen pageant_dlgid_pubblob(PageantClientDialogId *dlgid)
  * comment is not unique and is often empty. NULL everywhere but the GUI. */
 /* KiTTY: a key just signed - the idle re-encrypt timer's "last use". */
 void (*kageant_keysigned_hook)(ptrlen pubblob) = NULL;
+/* KiTTY: does this key re-encrypt right after each use? Then an unlock with
+ * no request left waiting is reserved for the asker (hknet/KiTTY#66). NULL
+ * (no reservation) everywhere but kageant. */
+bool (*kageant_unlock_reserve_hook)(ptrlen pubblob) = NULL;
+
+/* KiTTY: the reservation (see PageantPrivateKey): true when it is live and
+ * pid is NOT the process it is for. An expired one is cleared here. */
+static bool priv_reserved_for_other(PageantPrivateKey *priv, unsigned long pid)
+{
+    if (!priv->reserved_pid)
+        return false;
+    if ((unsigned long)(GETTICKCOUNT() - priv->reserved_at) >=
+        KAGEANT_UNLOCK_RESERVE_MS) {
+        priv->reserved_pid = 0;
+        return false;
+    }
+    return pid != priv->reserved_pid;
+}
 void (*kageant_keyuse_hook)(const char *fingerprint, const char *comment,
                             int allowed, unsigned long req_pid) = NULL;
 
@@ -1187,6 +1220,16 @@ static void signop_coroutine(PageantAsyncOp *pao)
 
     crBegin(so->crLine);
 
+    /* KiTTY (hknet/KiTTY#66): an unlock reserved for another process is not
+     * this one's to use; the asker's own one signature uses it up */
+    if (priv_reserved_for_other(so->priv, so->req_pid)) {
+        response = strbuf_new();
+        failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
+                "key is reserved for the program whose request unlocked it");
+        goto respond;
+    }
+    so->priv->reserved_pid = 0;
+
     while (!so->priv->skey && !so->priv->protected_skey &&
            gui_request_in_progress) {
         signop_link_to_pending_gui_request(so);
@@ -1197,6 +1240,10 @@ static void signop_coroutine(PageantAsyncOp *pao)
     if (!so->priv->skey && !so->priv->protected_skey) {
         assert(so->priv->encrypted_key_file);
 
+        /* KiTTY: which process requested it, in case the unlock outlives the request */
+        so->priv->prompt_pid = so->req_pid;
+        so->priv->prompt_reserve = kageant_unlock_reserve_hook &&
+            kageant_unlock_reserve_hook(ptrlen_from_strbuf(so->pubblob));
         if (!request_passphrase(so->pao.info->pc, so->priv)) {
             response = strbuf_new();
             failure(so->pao.info->pc, so->pao.reqid, response,
@@ -1440,6 +1487,16 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
             protect_priv_skey_if_possible(priv);
             sfree(skey->comment);
             sfree(skey);
+            /* KiTTY (hknet/KiTTY#66): the request that opened the prompt
+             * has gone (its connection died) and the key re-encrypts after
+             * each use - it would be locked again before the asker could
+             * come back for it. Reserve it for that process: one signature,
+             * within KAGEANT_UNLOCK_RESERVE_MS. */
+            if (priv->blocked_requests.next == &priv->blocked_requests &&
+                priv->prompt_reserve && priv->prompt_pid) {
+                priv->reserved_pid = priv->prompt_pid;
+                priv->reserved_at = GETTICKCOUNT();
+            }
             keylist_update();
         }
     }
@@ -2547,6 +2604,17 @@ bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob)
     if (!pub)
         return false;
     return reencrypt_key(pub);
+}
+
+/* KiTTY: is this key's unlock reserved for its asker right now (hknet/KiTTY#66)?
+ * The idle re-encrypt leaves it alone until the reservation is used or
+ * expires. */
+bool pageant_key_reserved_by_blob(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    if (!pub)
+        return false;
+    return priv_reserved_for_other(pub_to_priv(pub), 0);   /* 0 is nobody's pid */
 }
 
 void pageant_delete_all(void)

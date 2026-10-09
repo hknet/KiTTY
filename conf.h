@@ -1653,6 +1653,9 @@ CONF_OPTION(scriptfile, VALUE_TYPE(FILENAME), SAVE_KEYWORD("Scriptfile"),)
 CONF_OPTION(antiidle, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AntiIdle"),)
 CONF_OPTION(wakeup_reconnect, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("WakeupReconnect"),)
 CONF_OPTION(failure_reconnect, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("FailureReconnect"),)
+/* KiTTY (hknet/KiTTY#66): retries after a failed login - 0 as in KiTTY++
+ * Settings, 1 never (kitty/kitty_reconnect.c) */
+CONF_OPTION(reconnect_login, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("ReconnectLogin"),)
 CONF_OPTION(logtimestamp, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("LogTimestamp"),)
 CONF_OPTION(autocommandout, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("AutocommandOut"),)
 CONF_OPTION(logtimerotation, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("LogTimeRotation"),)

@@ -805,6 +805,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 #ifdef MOD_RECONNECT
     gppi_forced(sesskey, "WakeupReconnect", conf, CONF_wakeup_reconnect );
     gppi_forced(sesskey, "FailureReconnect", conf, CONF_failure_reconnect );
+    gppi_forced(sesskey, "ReconnectLogin", conf, CONF_reconnect_login );
 #endif
 #ifdef MOD_BACKGROUNDIMAGE
     gppi_forced(sesskey, "BgOpacity", conf, CONF_bg_opacity );

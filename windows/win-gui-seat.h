@@ -152,12 +152,13 @@ struct WinGuiSeat {
      * writing to a bogus terminal during the inline host-key prompt. Keeping them
      * always present makes the layout identical in every TU. */
     time_t last_reconnect;   /* KiTTY auto-reconnect: wakeup de-bounce, per window */
-    int    reconnect_tries;  /* KiTTY auto-reconnect: backoff/loop cap */
     bool   ever_authenticated; /* KiTTY: THIS session reached post-auth at least once.
                                 * Gates auto-reconnect so an authentication failure is
                                 * never re-dialed (which would burn auth attempts and get
                                 * the client IP banned). Per-session, unlike the process-
                                 * global is_backend_first_connected. */
+    int    kr_delay_ms;      /* KiTTY: the wait the reconnect decision chose
+                              * (kitty/kitty_reconnect.c, hknet/KiTTY#66) */
 
     const SessionSpecial *specials;
     HMENU specials_menu;

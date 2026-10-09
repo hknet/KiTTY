@@ -71,6 +71,9 @@
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_params.h"
+#ifdef MOD_RECONNECT
+#include "../kitty/kitty_reconnect.h"   /* KiTTY: reconnect by failure condition */
+#endif
 #include "../kitty/kitty_regbackup.h"
 #include "../kitty/kitty_startup.h"
 #include "../kitty/kitty_broadcast.h"
@@ -979,6 +982,9 @@ void kitty_launcher_watch_arm(HWND hwnd, HWND launcher)
 #endif
 #ifdef MOD_RECONNECT
 #define TIMER_RECONNECT 8705
+/* KiTTY (hknet/KiTTY#66): a locked agent key - the agent is polled locally
+ * until the key is usable, no server contact meanwhile */
+#define TIMER_RECONNECT_WAIT 8717
 #endif
 #ifdef MOD_PERSO
 /* A terminal window has been created in this process. Decides whether
@@ -1167,6 +1173,7 @@ static void win_seat_notify_session_started(Seat *seat)
      * later network drop is a genuine reconnect candidate (an auth failure,
      * which never reaches here, is not). */
     wgs->ever_authenticated = true;
+    kitty_reconnect_logged_in();   /* hknet/KiTTY#66: counters and backoff reset */
 #endif
     /* KiTTY: SSH session is (re)connected post-auth - restore the normal
      * window icon so a prior SetConnBreakIcon() drop no longer shows. */
@@ -1274,6 +1281,87 @@ static const SeatVtable win_seat_vt = {
 
 #ifdef MOD_RECONNECT
 static void close_session(void *vctx);   /* defined below; used by reconnect path */
+
+/*
+ * KiTTY (hknet/KiTTY#66): reconnect by failure condition.
+ *
+ * kitty/kitty_reconnect.c keeps what the current attempt reached; the SSH
+ * layer reports it through kitty_connstage_hook. Only this window's own Seat
+ * counts - a jump host's connection runs on a Seat of its own - and a
+ * TempSeat (the host-key phase) stands for the real one.
+ */
+static WinGuiSeat *kr_wgs;
+
+static void kitty_reconnect_stage_hook(Seat *seat, KittyConnStage stage,
+                                       ptrlen data)
+{
+    if (seat && is_tempseat(seat))
+        seat = tempseat_get_real(seat);
+    if (kr_wgs && seat == &kr_wgs->seat)
+        kitty_reconnect_stage(stage, data);
+}
+
+static void kitty_reconnect_attempt_start(WinGuiSeat *wgs)
+{
+    kr_wgs = wgs;
+    kitty_connstage_hook = kitty_reconnect_stage_hook;
+    kitty_reconnect_attempt_begin();
+}
+
+/* The decision after a failed attempt. True: an attempt is scheduled -
+ * TIMER_RECONNECT after wgs->kr_delay_ms, or, with *wait set, the agent
+ * poll TIMER_RECONNECT_WAIT. False: stop; the caller shows the error. Every
+ * decision goes to the Event Log with the error text, on one line. */
+static bool kitty_reconnect_failure(WinGuiSeat *wgs, const char *msg,
+                                    bool *wait)
+{
+    KrDecision d;
+    char *line, *p, *ev;
+
+    *wait = false;
+    if (kitty_reconnect_attempt_logged_in()) {
+        /* a session that was in has dropped: reconnect, as always */
+        wgs->kr_delay_ms = kitty_reconnect_drop_delay(
+            GetReconnectDelay(), GetReconnectMaxDelay(), GetReconnectBackoff());
+        return true;
+    }
+    /* what this session could log in with: the agent only when the session
+     * uses it and it holds a key (an empty agent offers nothing); a key file
+     * or a certificate file; GSSAPI when the session tries it */
+    d = kitty_reconnect_decide(
+        msg,
+        conf_get_bool(wgs->conf, CONF_tryagent) && kitty_reconnect_agent_keys() > 0,
+        !filename_is_null(conf_get_filename(wgs->conf, CONF_keyfile)) ||
+        !filename_is_null(conf_get_filename(wgs->conf, CONF_detached_cert)),
+        conf_get_bool(wgs->conf, CONF_try_gssapi_auth),
+        conf_get_int(wgs->conf, CONF_reconnect_login) != 0,
+        GetReconnectDelay(), GetReconnectMaxDelay(), GetReconnectBackoff());
+    line = dupstr(msg ? msg : "");
+    for (p = line; *p; p++)
+        if (*p == '\r' || *p == '\n')
+            *p = ' ';
+    if (d.wait_unlock) {
+        ev = dupprintf(KT_RC_LOG_WAIT, kitty_reconnect_cond_label(d.cond), line);
+        *wait = true;
+    } else if (d.retry) {
+        ev = dupprintf(KT_RC_LOG_RETRY, kitty_reconnect_cond_label(d.cond), line,
+                       kitty_reconnect_action_label(d.action), d.attempt,
+                       d.delay_ms / 1000);
+    } else {
+        ev = dupprintf(KT_RC_LOG_STOP, kitty_reconnect_cond_label(d.cond), line);
+    }
+    lp_eventlog(&wgs->logpolicy, ev);
+    if (d.wait_unlock && wgs->term)
+        kitty_term_print_inline_error(wgs->term, ev, 0);
+    sfree(ev);
+    sfree(line);
+    if (d.cond == KR_OTHER)
+        lp_eventlog(&wgs->logpolicy, KT_RC_LOG_REPORT);
+    if (kitty_reconnect_hint(msg))
+        lp_eventlog(&wgs->logpolicy, kitty_reconnect_hint(msg));
+    wgs->kr_delay_ms = d.delay_ms;
+    return d.retry || d.wait_unlock;
+}
 #endif
 static void start_backend(WinGuiSeat *wgs)
 {
@@ -1282,6 +1370,13 @@ static void start_backend(WinGuiSeat *wgs)
     int i;
 
     wgs->cmdline_get_passwd_state = cmdline_get_passwd_input_state_new;
+
+#ifdef MOD_RECONNECT
+    kitty_reconnect_attempt_start(wgs);   /* a new attempt: nothing reached yet */
+    /* any attempt ends a wait for an agent key - Enter or Restart Session
+     * during the wait must not leave the poll to start a second one later */
+    KillTimer(wgs->term_hwnd, TIMER_RECONNECT_WAIT);
+#endif
 
     vt = backend_vt_from_conf(wgs->conf);
 
@@ -1440,8 +1535,13 @@ static void start_backend(WinGuiSeat *wgs)
         }
         sfree(error);
 #ifdef MOD_RECONNECT
+        /* hknet/KiTTY#66: a connect that failed here never reached a login
+         * (a name lookup, a refused or timed-out connection) - the condition
+         * table decides, with the backoff */
+        bool rc_wait = false;
         if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect)
-            && wgs->ever_authenticated) {
+            && wgs->ever_authenticated &&
+            kitty_reconnect_failure(wgs, msg, &rc_wait)) {
             lp_eventlog(&wgs->logpolicy, msg);
             sfree(str); sfree(msg);
             SetSSHConnected(0);
@@ -1453,11 +1553,9 @@ static void start_backend(WinGuiSeat *wgs)
             queue_toplevel_callback(close_session, wgs);
             lp_eventlog(&wgs->logpolicy,
                         KT_TWIN_LOG_CONNECT_FAILED_RECONNECT);
-            if (wgs->reconnect_tries < 1000) {
-                wgs->reconnect_tries++;
-                SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
-                         GetReconnectDelay()*1000, NULL);
-            }
+            SetTimer(wgs->term_hwnd,
+                     rc_wait ? TIMER_RECONNECT_WAIT : TIMER_RECONNECT,
+                     wgs->kr_delay_ms, NULL);
             return;
         }
 #endif
@@ -1629,12 +1727,12 @@ static void start_backend(WinGuiSeat *wgs)
     if (conf_get_int(wgs->conf, CONF_protocol) != PROT_SSH) {
         is_backend_first_connected = 1;
         wgs->ever_authenticated = true; /* non-SSH has no auth phase; a connect counts */
+        kitty_reconnect_connected();    /* ...but keeps the reconnect backoff (#66) */
         /* Non-SSH (re)connect: restore the normal icon (SSH does this from
          * notify_session_started once auth completes). */
         kitty_restore_icon(wgs->term_hwnd, wgs->conf);
     }
     wgs->last_reconnect = time(NULL);
-    wgs->reconnect_tries = 0;
 #endif
     wgs->autopw_tried = false;   /* new connection: allow one auto-password answer */
     wgs->session_closed = false;
@@ -3731,29 +3829,6 @@ static void wintw_set_raw_mouse_mode_pointer(TermWin *tw, bool activate)
     update_mouse_pointer(wgs);
 }
 
-#ifdef MOD_RECONNECT
-/* A fatal disconnect whose reason is authentication-related must NOT trigger
- * auto-reconnect: re-dialing with the same rejected credentials just burns the
- * server's MaxAuthTries and gets the client IP banned. PuTTY's fatal messages
- * for these cases all contain the word "authentication" (e.g. "Too many
- * authentication failures", "No supported authentication methods available").
- * Case-insensitive substring scan, no platform-specific helpers. */
-static bool kitty_is_auth_failure_msg(const char *msg)
-{
-    static const char needle[] = "authentication";
-    if (!msg)
-        return false;
-    for (const char *p = msg; *p; p++) {
-        size_t k = 0;
-        while (needle[k] && p[k] &&
-               tolower((unsigned char)p[k]) == needle[k])
-            k++;
-        if (!needle[k])
-            return true;
-    }
-    return false;
-}
-#endif
 
 /* Some network devices (switches/routers) emit a channel-referencing packet
  * (e.g. SSH2_MSG_CHANNEL_REQUEST) for a channel they just tore down, right after
@@ -3915,9 +3990,16 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * quiet. A session that is not going to retry now falls through to the
      * normal inline-error path, like the other three call sites of this flag
      * pair (start_backend, the wakeup handler, the keypress handler). */
+    /* hknet/KiTTY#66: whether, when and how is the condition table's
+     * (kitty/kitty_reconnect.c): a session that was in and dropped gets its
+     * reconnect; a failed reconnect attempt is classified by how far it got -
+     * a refused login stops, a locked agent key waits for its unlock. It
+     * replaces the "message contains authentication" test of 0.84.1.37, which
+     * missed a login the server closed while the agent held the signature. */
+    bool rc_wait = false;
     if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect) &&
         !wgs->session_closed &&
-        wgs->ever_authenticated && !kitty_is_auth_failure_msg(msg)) {
+        wgs->ever_authenticated && kitty_reconnect_failure(wgs, msg, &rc_wait)) {
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
         wgs->session_closed = true;
@@ -3933,11 +4015,9 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         wgs->error_close = true;
         queue_toplevel_callback(close_session, wgs);
         lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_LOST_RECONNECT);
-        if (wgs->reconnect_tries < 1000) {
-            wgs->reconnect_tries++;
-            SetTimer(wgs->term_hwnd, TIMER_RECONNECT,
-                     GetReconnectDelay()*1000, NULL);
-        }
+        SetTimer(wgs->term_hwnd,
+                 rc_wait ? TIMER_RECONNECT_WAIT : TIMER_RECONNECT,
+                 wgs->kr_delay_ms, NULL);
         return;
     }
 #endif
@@ -5460,6 +5540,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 lp_eventlog(&wgs->logpolicy,
                             KT_TWIN_LOG_NO_BACKEND_RECONNECT);
                 PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
+            }
+            return 0;
+        }
+        /* hknet/KiTTY#66: a locked agent key - queried locally, never the
+         * server: still locked, query again in 5 s; usable, one attempt;
+         * gone (or no agent), stop and report it */
+        if ((UINT_PTR)wParam == TIMER_RECONNECT_WAIT) {
+            KillTimer(hwnd, TIMER_RECONNECT_WAIT);
+            if (wgs && !wgs->backend) {
+                int locked = kitty_reconnect_key_locked();
+                if (locked > 0) {
+                    SetTimer(hwnd, TIMER_RECONNECT_WAIT, 5000, NULL);
+                } else if (locked == 0) {
+                    lp_eventlog(&wgs->logpolicy, KT_RC_LOG_UNLOCKED);
+                    PostMessage(hwnd, WM_COMMAND, IDM_RESTART, 0);
+                } else {
+                    lp_eventlog(&wgs->logpolicy, KT_RC_LOG_KEYGONE);
+                    if (wgs->term)
+                        kitty_term_print_inline_error(wgs->term,
+                                                      KT_RC_LOG_KEYGONE, 1);
+                }
             }
             return 0;
         }
@@ -12269,6 +12370,12 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
         spr = term_get_userpass_input(wgs->term, p);
 #ifdef MOD_FAR2L
     far2l_keys_sync(wgs);    /* KiTTY: a prompt in the window holds the events */
+#endif
+#ifdef MOD_RECONNECT
+    /* hknet/KiTTY#66: a prompt of THIS session still open (a jump host's is
+     * not) - a server that closes now did so on a user who did not answer */
+    if (!p->from_proxy_hop)
+        kitty_reconnect_prompt_open(spr.kind == SPRK_INCOMPLETE);
 #endif
     return spr;
 }

@@ -628,6 +628,8 @@ extern char *GetIconFile(void);                extern void SetIconFile(const cha
 extern int  GetFontFallbackFlag(void);         extern void SetFontFallbackFlag(int);
 extern int  GetAutoreconnectFlag(void);        extern void SetAutoreconnectFlag(const int);
 extern int  GetReconnectDelay(void);           extern void SetReconnectDelay(const int);
+extern int  GetReconnectMaxDelay(void);        extern void SetReconnectMaxDelay(const int);
+extern int  GetReconnectBackoff(void);         extern void SetReconnectBackoff(const int);
 extern int  GetProxyChainMax(void);            extern void SetProxyChainMax(const int);
 extern int  GetUserPassSSHNoSave(void);        extern void SetUserPassSSHNoSave(const int);
 extern int  GetModalErrorsFlag(void);          extern void SetModalErrorsFlag(const int);
@@ -662,6 +664,18 @@ static int  kset_get_debug(void) { return debug_flag; }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
+
+/* Reconnect by failure condition (kitty/kitty_reconnect.c): the stored words
+ * are what kitty_reconnect.c reads; the values are its KRA_* codes. Every
+ * row offers every action - the defaults carry the advice, the choice is the
+ * admin's; a locked agent key can also wait for the unlock. */
+static const struct kset_choice kset_rc_choices[] = {
+    { KT_RC_ACT_RETRY, "retry", -1 }, { KT_RC_ACT_THREE, "3", 3 },
+    { KT_RC_ACT_ONCE, "1", 1 },       { KT_RC_ACT_STOP, "stop", 0 } };
+static const struct kset_choice kset_rc_agent_choices[] = {
+    { KT_RC_ACT_WAIT, "wait", -2 },   { KT_RC_ACT_RETRY, "retry", -1 },
+    { KT_RC_ACT_THREE, "3", 3 },      { KT_RC_ACT_ONCE, "1", 1 },
+    { KT_RC_ACT_STOP, "stop", 0 } };
 
 /* Terminal: the renderer and the frame pacing ([KiTTY] renderer /
  * framepace, read when a window is created / at startup). */
@@ -772,6 +786,26 @@ static const struct kset_key kset_keys[] = {
     /* Connection & reconnect */
     { INIT_SECTION, KI_AUTORECONNECT,  KSET_BOOL, false, GetAutoreconnectFlag, SetAutoreconnectFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_RECONNECTDELAY, KSET_INT, false, GetReconnectDelay, SetReconnectDelay, NULL, 1, 3600, 5 },
+    { INIT_SECTION, KI_RECONNECTMAXDELAY, KSET_INT, false, GetReconnectMaxDelay, SetReconnectMaxDelay, NULL, 1, 86400, 300 },
+    { INIT_SECTION, KI_RECONNECTBACKOFF,  KSET_INT, false, GetReconnectBackoff, SetReconnectBackoff, NULL, 1, 10, 2 },
+    { INIT_SECTION, KI_RECONNECT_DNS,         KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, -1,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_TCP,         KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, -1,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_PRELOGIN,    KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 3,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_AGENTLOCKED, KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, -2,
+      NULL, NULL, kset_rc_agent_choices, lenof(kset_rc_agent_choices) },
+    { INIT_SECTION, KI_RECONNECT_PROMPT,      KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_NOKEY,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_LOGINCLOSED, KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_REFUSED,     KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
+    { INIT_SECTION, KI_RECONNECT_OTHER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
+      NULL, NULL, kset_rc_choices, lenof(kset_rc_choices) },
     { INIT_SECTION, KI_PROXYCHAINMAX,  KSET_INT, false, GetProxyChainMax, SetProxyChainMax, NULL, 1, 100, 5 },
     { INIT_SECTION, KI_USERPASSSSHNOSAVE, KSET_BOOL, false, GetUserPassSSHNoSave, SetUserPassSSHNoSave, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_MODALERRORS,    KSET_BOOL, false, GetModalErrorsFlag, SetModalErrorsFlag, NULL, 0, 0, 0 },

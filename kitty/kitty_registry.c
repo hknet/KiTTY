@@ -674,6 +674,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "Cygterm64" ) ;
 					RegDeleteValue( hSubKey, "WakeupReconnect" ) ;
 					RegDeleteValue( hSubKey, "FailureReconnect" ) ;
+					RegDeleteValue( hSubKey, "ReconnectLogin" ) ;
 					RegDeleteValue( hSubKey, "Scriptfile" ) ;
 					RegDeleteValue( hSubKey, "ScriptfileContent" ) ;
 					RegDeleteValue( hSubKey, "HostAlt" ) ;

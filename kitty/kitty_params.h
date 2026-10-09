@@ -31,6 +31,12 @@ int GetAutoreconnectFlag( void ) ;
 void SetAutoreconnectFlag( const int flag ) ;
 // Delay before attempting an automatic reconnection
 int GetReconnectDelay(void) ;
+// The cap of the reconnect backoff
+int GetReconnectMaxDelay(void) ;
+void SetReconnectMaxDelay( const int flag ) ;
+// The backoff factor (1 = a fixed wait)
+int GetReconnectBackoff(void) ;
+void SetReconnectBackoff( const int flag ) ;
 #endif
 
 // Delay before sending the password and before sending the window to the

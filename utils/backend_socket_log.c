@@ -3,6 +3,7 @@
 
 #include "putty.h"
 #include "network.h"
+#include "kitty/kitty_connstage.h"   /* KiTTY: how far a connection got */
 
 void backend_socket_log(Seat *seat, LogContext *logctx, Socket *sock,
                         PlugLogType type, SockAddr *addr, int port,
@@ -30,6 +31,8 @@ void backend_socket_log(Seat *seat, LogContext *logctx, Socket *sock,
         else /* fallback if address unavailable */
             sprintf(addrbuf, "remote host");
         msg = dupprintf("Connected to %s", addrbuf);
+        /* KiTTY: the attempt reached the server (hknet/KiTTY#66) */
+        kitty_connstage(seat, KCS_TCP_UP, PTRLEN_LITERAL(""));
         if (sock) {
             SocketEndpointInfo *local_end = sk_endpoint_info(sock, false);
             if (local_end) {

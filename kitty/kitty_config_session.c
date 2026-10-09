@@ -5787,6 +5787,28 @@ static void kitty_hostnotify_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* Connection > Reconnect options: "Retries after a failed login" -
+ * 0 = as in KiTTY++ Settings, 1 = never (hknet/KiTTY#66) */
+static void kitty_reconnect_login_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                          void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        /* The value first: refilling the list sends a SELCHANGE. */
+        int v = conf_get_int(conf, ctrl->context.i) ? 1 : 0;
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        dlg_listbox_addwithid(ctrl, dlg, KT_RC_SESS_ASSETTINGS, 0);
+        dlg_listbox_addwithid(ctrl, dlg, KT_RC_SESS_NEVER, 1);
+        dlg_listbox_select(ctrl, dlg, v);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int i = dlg_listbox_index(ctrl, dlg);
+        conf_set_int(conf, ctrl->context.i,
+                     i < 0 ? 0 : dlg_listbox_getid(ctrl, dlg, i));
+    }
+}
+
 /* The Terminal panel and its Keyboard/Bell/Features sub-panels. */
 void scb_panel_terminal(struct controlbox *b)
 {
@@ -7051,6 +7073,13 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
                                   NO_SHORTCUT, HELPCTX(kitty_reconnect),
                                   kitty_checkbox_int_handler,
                                   I(CONF_failure_reconnect));
+                    /* hknet/KiTTY#66: this server's tolerance for failed
+                     * logins (a fail2ban bastion vs a lab VM) - the global
+                     * table, or no retry where the server saw a login */
+                    ctrl_droplist(s, KT_RC_SESS_LOGIN, NO_SHORTCUT, 50,
+                                  HELPCTX(kitty_reconnect_rules),
+                                  kitty_reconnect_login_handler,
+                                  I(CONF_reconnect_login));
                 } else {
                     /* The master switch is off (it is on by default): one
                      * short line saying so and where it is, rather than
@@ -7720,7 +7749,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
 
             s = ctrl_getset(b, "Connection/SSH/Auth", "methods",
                             KT_AUTH_AUTHENTICATION_METHODS);
-            ctrl_checkbox(s, KT_AUTH_ATTEMPT_AUTHENTICATION_USING_KAGEANT_PAGEANT, 'p',
+            ctrl_checkbox(s, KT_AUTH_ATTEMPT_AUTHENTICATION_USING_KAGEANT, 'p',
                           HELPCTX(ssh_auth_pageant),
                           conf_checkbox_handler,
                           I(CONF_tryagent));

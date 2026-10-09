@@ -41,6 +41,7 @@ void ssh_userauth_set_credentials_hook(
 #include "bpp.h"
 #include "ppl.h"
 #include "sshcr.h"
+#include "kitty/kitty_connstage.h"   /* KiTTY: how far a connection got */
 
 #ifndef NO_GSSAPI
 #include "gssc.h"
@@ -518,6 +519,9 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
     ssh2_userauth_filter_queue(s);     /* no matter why we were called */
 
     crBegin(s->crState);
+
+    /* KiTTY: the login has begun (hknet/KiTTY#66) */
+    kitty_connstage(s->ppl.seat, KCS_USERAUTH_START, PTRLEN_LITERAL(""));
 
 #ifndef NO_GSSAPI
     s->tried_gssapi = false;
@@ -1194,9 +1198,18 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     put_stringsb(agentreq, sigdata);
                     /* And finally the flags word. */
                     put_uint32(agentreq, s->signflags);
+                    /* KiTTY: a signature is outstanding at the agent - a
+                     * locked key waits there for its passphrase, and a
+                     * reconnect must not hammer the server meanwhile
+                     * (hknet/KiTTY#66) */
+                    kitty_connstage(s->ppl.seat, KCS_AGENT_SIGN_BEGIN,
+                                    ptrlen_from_strbuf(
+                                        s->agent_keys[s->agent_key_index].blob));
                     ssh2_userauth_agent_query(s, agentreq);
                     strbuf_free(agentreq);
                     crWaitUntilV(!s->auth_agent_query);
+                    kitty_connstage(s->ppl.seat, KCS_AGENT_SIGN_END,
+                                    PTRLEN_LITERAL(""));
 
                     if (s->agent_response.ptr) {
                         ptrlen sigblob;

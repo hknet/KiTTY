@@ -31,9 +31,25 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   another drive letter. Where the settings travel with the program (a folder
   store, `savemode=file`, the portable build) the log default is
   `%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log`, beside it.
+- **Connection > SSH > Auth: "Attempt authentication using kageant"**, without
+  the "(Pageant)" it carried. The setting and its key (`TryAgent`) are
+  unchanged.
 
 ### Fixed
 
+- **Auto-reconnect no longer hammers a server with failed logins**
+  (hknet/KiTTY#66). A session that had been logged in reconnected after
+  every error not saying "authentication", every 5 s, without end -
+  including attempts that reached sshd and waited for a key locked in
+  kageant, one failed login each, until fail2ban banned the user. A failed
+  attempt is now classified by how far it got, and each condition has its
+  own action, set in Application > KiTTY++ Settings > Reconnect & Prompts:
+  name lookup and TCP failures keep retrying, closed before login 3 times,
+  a locked agent key waits locally for its unlock and then tries once, an
+  unanswered prompt, no key and a refused login stop, closed during login
+  once. These are the defaults: every condition offers every action. Retries back off from the configured wait, times "Backoff factor"
+  per retry (1 = fixed, default 2), up to "Longest wait" (300 s). Per session, "Retries after a failed login: never" stops every
+  retry the server would see as a login. Each decision is in the Event Log.
 - **A log whose folder does not exist yet is written** (hknet/KiTTY#65).
   The missing folders of the log path are created when the log opens, and
   the Event Log records which. A variable the machine does not have creates

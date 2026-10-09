@@ -598,7 +598,38 @@
 ;pscpport=*
 
 ; ReconnectDelay: the delay before trying to reconnect automatically (in seconds)
+;    - the first one; each further retry multiplies it by reconnectbackoff,
+;    up to reconnectmaxdelay.
 ;ReconnectDelay=5
+
+; reconnectmaxdelay: the max retry timer, the longest wait between reconnect attempts (seconds).
+;reconnectmaxdelay=300
+
+; reconnectbackoff: the factor each wait is multiplied by for the next retry
+;    (1 = a fixed wait, 2 = doubling, up to 10).
+;reconnectbackoff=2
+
+; reconnect<condition>: what follows a failed reconnect attempt, by how far it
+;    got (Settings > Reconnect & Prompts > When reconnecting fails). Values:
+;    retry (keep retrying), 3, 1 (that many retries), stop, wait (agent row
+;    only: no server contact until the agent's key is unlocked). A login
+;    resets the counts. Each decision is in the session's Event Log.
+;    dns: the name does not resolve. tcp: no TCP connection (refused, timed
+;    out, unreachable). prelogin: closed before the login began. agentlocked:
+;    the agent held the signature (a locked key). prompt: a login prompt left
+;    unanswered, or cancelled. nokey: nothing to log in with (no agent key,
+;    no key or certificate file, no GSSAPI on offer). loginclosed: closed
+;    during the login, nothing outstanding here. refused: the login refused.
+;    other: not recognised - please report the Event Log line.
+;reconnectdns=retry
+;reconnecttcp=retry
+;reconnectprelogin=3
+;reconnectagentlocked=wait
+;reconnectprompt=stop
+;reconnectnokey=stop
+;reconnectloginclosed=1
+;reconnectrefused=stop
+;reconnectother=1
 
 ; readonly: refuse to write to the CONFIGURATION FILE side of the settings.
 ;    With yes, KiTTY will not write or delete entries in kitty.ini, will not

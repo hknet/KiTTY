@@ -3009,6 +3009,20 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     m = KSET_MASTER_CHECKBOX(s, KT_KSET_CN_AUTORECONNECT, KI_AUTORECONNECT, kitty_kset_connection);
     ctrl_text(s, KT_KSET_CN_AUTORECONNECT_NOTE, HELPCTX(kitty_kset_connection));
     m->context2 = P(KSET_NUMBER(s, KT_KSET_CN_DELAY, KI_RECONNECTDELAY, kitty_kset_connection));
+    KSET_NUMBER(s, KT_KSET_CN_MAXDELAY, KI_RECONNECTMAXDELAY, kitty_kset_connection);
+    KSET_NUMBER(s, KT_KSET_CN_BACKOFF, KI_RECONNECTBACKOFF, kitty_kset_connection);
+    /* hknet/KiTTY#66: what follows a failed reconnect attempt, by condition
+     * (kitty/kitty_reconnect.c holds the table and its defaults) */
+    ctrl_text(s, KT_RC_WHEN, HELPCTX(kitty_reconnect_rules));
+    KSET_DROPLIST(s, KT_RC_COND_DNS,         KI_RECONNECT_DNS,         kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_TCP,         KI_RECONNECT_TCP,         kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_PRELOGIN,    KI_RECONNECT_PRELOGIN,    kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_AGENTLOCKED, KI_RECONNECT_AGENTLOCKED, kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_PROMPT,      KI_RECONNECT_PROMPT,      kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_NOKEY,       KI_RECONNECT_NOKEY,       kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_LOGINCLOSED, KI_RECONNECT_LOGINCLOSED, kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_REFUSED,     KI_RECONNECT_REFUSED,     kitty_reconnect_rules);
+    KSET_DROPLIST(s, KT_RC_COND_OTHER,       KI_RECONNECT_OTHER,       kitty_reconnect_rules);
     s = ctrl_getset(b, KSET_PATH("Reconnect & Prompts"), "confirm", KT_KSET_CN_CONFIRM);
     KSET_CHECKBOX(s, KT_KSET_CN_MODALERRORS, KI_MODALERRORS, kitty_kset_connection);
     KSET_DROPLIST(s, KT_KSET_CN_NEWKEY, KI_MODALNEWHOSTKEYCONFIRMATION, kitty_kset_connection);

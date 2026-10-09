@@ -174,6 +174,11 @@ extern void (*kageant_lock_changed_hook)(void);
 bool pageant_reencrypt_nth_ssh2_key(int i);
 /* KiTTY: in-agent re-encrypt by public blob, same rationale as the delete. */
 bool pageant_reencrypt_ssh2_key_by_blob(ptrlen blob);
+/* KiTTY (hknet/KiTTY#66): an unlock reserved for the process that requested it -
+ * live right now? And whether a key's unlock should be reserved at all (its
+ * re-encryption is "right after each use"); set by kageant. */
+bool pageant_key_reserved_by_blob(ptrlen blob);
+extern bool (*kageant_unlock_reserve_hook)(ptrlen pubblob);
 void pageant_delete_all(void);
 void pageant_reencrypt_all(void);
 

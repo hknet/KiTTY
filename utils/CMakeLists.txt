@@ -91,4 +91,9 @@ add_sources_from_current_dir(utils
   # and are compiled without MOD_PERSO into libraries every program links;
   # inert until a KiTTY++ terminal sets kitty_termenv_switch_hook.
   ../kitty/kitty_termenv.c
-  ../kitty/kitty_termenv_conf.c)
+  ../kitty/kitty_termenv_conf.c
+  # KiTTY: how far a connection attempt got (TCP up, login started, an agent
+  # signature outstanding) - reported by utils/backend_socket_log.c and
+  # ssh/userauth2-client.c, read by the terminal's reconnect decision
+  # (hknet/KiTTY#66); inert until a KiTTY++ terminal sets the hook.
+  ../kitty/kitty_connstage.c)

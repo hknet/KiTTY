@@ -490,6 +490,11 @@ int kageant_idle_tick(void)
         if (secs != KAGEANT_AUTOENC_USE &&
             now - g_idle[i].last_use < (ULONGLONG)secs * 1000)
             continue;
+        /* An unlock reserved for the process that requested it (its request died
+         * before the passphrase came, hknet/KiTTY#66): left alone until
+         * that process has used it or the reservation has expired. */
+        if (pageant_key_reserved_by_blob(ptrlen_from_strbuf(g_idle[i].blob)))
+            continue;
         /* Refused (a sign request is pending on the key): keep the entry
          * and try again next tick. */
         if (pageant_reencrypt_ssh2_key_by_blob(ptrlen_from_strbuf(g_idle[i].blob))) {
@@ -501,9 +506,17 @@ int kageant_idle_tick(void)
 }
 
 extern void (*kageant_keysigned_hook)(ptrlen pubblob);   /* pageant.c */
+/* An unlock with no request left waiting is reserved for its asker only for
+ * keys re-encrypted right after each use (hknet/KiTTY#66): a key with a time
+ * stays usable for that time anyway, as before. */
+static bool kageant_idle_reserve(ptrlen blob)
+{
+    return kageant_idle_effective(blob) == KAGEANT_AUTOENC_USE;
+}
 void kageant_idle_install(void)
 {
     kageant_keysigned_hook = kageant_idle_note_use;
+    kageant_unlock_reserve_hook = kageant_idle_reserve;
 }
 
 /* The stored-entry token for a per-key value: ",autoencrypt=<seconds|use|off>",

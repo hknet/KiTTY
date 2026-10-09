@@ -715,6 +715,28 @@ The **Remote command** box (Connection > SSH) can start a server-side SSH **subs
 
 (no screenshot)
 
+### Reconnect by failure condition
+
+A failed reconnect attempt is classified by how far it got; each condition has its own action. Built so auto-reconnect never feeds fail2ban (hknet/KiTTY#66). Each decision is in the Event Log with the error text.
+
+| Condition | Default | Why |
+|---|---|---|
+| Name does not resolve | keep retrying | the server never sees it |
+| No TCP connection (refused, timeout, unreachable) | keep retrying | sshd logs nothing |
+| Closed before login (banner, key exchange) | retry 3 times | sshd logs `[preauth]` |
+| Agent key locked | wait for unlock | no server contact; agent checked locally every 5 s, one attempt once usable |
+| Login prompt not answered (or cancelled) | stop | nobody at the keyboard |
+| No agent, no key (no agent key, no key or certificate file, no GSSAPI on offer) | stop | nothing to log in with |
+| Closed during login | retry once | PAM/LDAP timeout, sshd restart |
+| Login refused | stop | retrying = fail2ban |
+| Not recognised | retry once | the Event Log requests a report |
+
+Retries back off: *Wait between reconnect attempts*, times *Backoff factor* per retry (1 = fixed, default 2, up to 10), up to *Max retry timer* (default 300 s) - a cap on the wait, not on the attempts: `retry` goes on until a login succeeds or the window is closed. Every row offers every action; the defaults are the advice. A login resets all counts. A session that was logged in and drops still reconnects right away.
+
+**How to enable:** Application > KiTTY++ Settings > **Reconnect & Prompts**, group Reconnect, *When reconnecting fails* (kitty.ini `[KiTTY]` `reconnectmaxdelay`, `reconnectbackoff`, `reconnectdns` … `reconnectother`: `retry` / `3` / `1` / `stop` / `wait`). Per session: Connection > *Retries after a failed login*: `never` stops the login rows (closed before/during login, refused, not recognised) for that server.
+
+(no screenshot)
+
 ### Proxy choice
 
 When you regularly reach hosts through a bastion, jump server, or a corporate HTTP/SOCKS proxy, Proxy choice saves you from setting up the same proxy by hand for every session. You define your proxies once as reusable **named proxies**, then use one of two controls: the **Proxy override options** dropdown in the Session panel amends the *next connection only* and never writes anything into the session, while **Load into this window** on the Connection/Proxy panel adopts a preset into the settings you are editing, so a Save keeps it. The caption of the dropdown changes to **PROXY OVERRIDE ACTIVE** in bold red whenever the choice would make the connection differ from what the stored session holds — including picking *No proxy* for a session that has one. This is handy when you keep a SOCKS proxy open on a bastion (for example via a dynamic port forward), or route through a company HTTP proxy, and don't want to re-enter it on the Connection/Proxy panel every time.
@@ -734,7 +756,7 @@ A named proxy can also be an **SSH jump host**: pick one of the *SSH jump host* 
 - **A named proxy states what its Name indicates** — the *.. this is ..* setting in the editor, beside the Name/IP field. *A hostname or IP-address* uses your **Default Settings** with the proxy's own host, port, username and password applied on top. *Possibly the name of a saved session* keeps PuTTY's rule, where a Host matching a saved session loads that entire session as the jump configuration. A proxy that states neither follows `[KiTTY] namedproxy=` in kitty.ini, which is `sessionorhostname` — PuTTY's behaviour, and the default — unless you set it to `hostname`. The choice exists because the old rule is invisible when it fires: a jump host that happens to share a name with a saved session drags that session's own proxy in with it, so an SSH jump can silently run through an unrelated HTTP proxy. The Event Log names which reading was used on every connection.
 - **A host typed by hand on the Connection/Proxy panel** keeps the upstream PuTTY behaviour: if it matches the name of one of your **saved sessions**, that whole session is used — its private-key file, username, port, agent setting and its own proxy — otherwise it is a bare hostname and Default Settings apply.
 
-Either way, agent authentication to the jump host follows the *Attempt authentication using kageant (Pageant)* checkbox (Connection → SSH → Auth) of *that* configuration, not of the target session. So if the jump host needs a specific private key rather than an agent key, save a session for it and type that session's name as the proxy host by hand.
+Either way, agent authentication to the jump host follows the *Attempt authentication using kageant* checkbox (Connection → SSH → Auth) of *that* configuration, not of the target session. So if the jump host needs a specific private key rather than an agent key, save a session for it and type that session's name as the proxy host by hand.
 
 **Multiple jump hops.** There is no comma-separated jump list; chain instead. Because a hand-typed proxy host that names a saved session inherits *that* session's proxy too, you can reach `A → B → C` by giving session C a proxy whose host is the saved session B, whose own proxy points at A. The chain is **bounded at 5 hops** so that a chain which loops back on itself fails with an error naming the limit instead of hanging; raise or lower it with `[KiTTY] proxychainmax=` in kitty.ini. Each link is written to the Event Log as `proxy chain link N: host port`.
 
