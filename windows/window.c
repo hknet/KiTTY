@@ -8313,6 +8313,91 @@ static void draw_horizontal_line_on_text(
 }
 
 /*
+ * KiTTY: a row of the cell for the underline, mapped as the helper above
+ * maps it for double-height lines; false when it falls outside the cell.
+ */
+static bool underline_row(WinGuiSeat *wgs, int y, int lattr, int *out)
+{
+    if (lattr == LATTR_TOP || lattr == LATTR_BOT) {
+        y *= 2;
+        if (lattr == LATTR_BOT)
+            y -= wgs->font_height;
+    }
+    if (!(0 <= y && y < wgs->font_height))
+        return false;
+    *out = y;
+    return true;
+}
+
+/*
+ * KiTTY: the underline in the style SGR 4:n chose (UL_STYLE_*). Every
+ * pattern takes its phase from the window x, not from the run's left edge:
+ * a partial redraw repaints a single run, and patterns started per run would
+ * show seams. Lines are clamped into the cell; the same pixels go to both
+ * renderers (kp_line / kp_pixel), so GDI and Direct2D match.
+ */
+static void draw_underline_styled(
+    WinGuiSeat *wgs, int style, int lattr, RECT box, COLORREF colour)
+{
+    int y = wgs->descent, fh = wgs->font_height, row, x;
+
+    switch (style) {
+      case UL_STYLE_DOUBLE: {
+        int y2 = (y + 2 < fh) ? y + 2 : y - 2;
+        draw_horizontal_line_on_text(wgs, y, lattr, box, colour);
+        draw_horizontal_line_on_text(wgs, y2, lattr, box, colour);
+        break;
+      }
+      case UL_STYLE_DOTTED:
+        if (!underline_row(wgs, y, lattr, &row))
+            break;
+        for (x = box.left; x < box.right; x++)
+            if (!(x & 1))
+                kp_pixel(wgs->painter, x, box.top + row, colour);
+        break;
+      case UL_STYLE_DASHED: {
+        int dash = wgs->font_width / 2, gap = wgs->font_width / 4, period;
+        if (dash < 2) dash = 2;
+        if (gap < 1) gap = 1;
+        period = dash + gap;
+        if (!underline_row(wgs, y, lattr, &row))
+            break;
+        for (x = box.left; x < box.right; ) {
+            int ph = x % period, end;
+            if (ph >= dash) {               /* in a gap: to the next dash */
+                x += period - ph;
+                continue;
+            }
+            end = x + (dash - ph);
+            if (end > box.right)
+                end = box.right;
+            kp_line(wgs->painter, x, box.top + row, end, box.top + row, colour);
+            x = end;
+        }
+        break;
+      }
+      case UL_STYLE_CURLY: {
+        /* a triangle wave, amplitude 1 (2 on large fonts), one period per
+         * cell; its centre is moved up when the cell has no room below */
+        int a = (fh >= 24) ? 2 : 1, p = wgs->font_width, base = y;
+        if (p < 4) p = 4;
+        if (base + a > fh - 1) base = fh - 1 - a;
+        if (base - a < 0) base = a;
+        for (x = box.left; x < box.right; x++) {
+            int q = ((x % p) * 4 * a) / p;          /* 0 .. 4a-1 */
+            int dy = (q <= 2 * a) ? q - a : 3 * a - q;
+            if (underline_row(wgs, base + dy, lattr, &row))
+                kp_pixel(wgs->painter, x, box.top + row, colour);
+        }
+        break;
+      }
+      default:                              /* UL_STYLE_SINGLE */
+        draw_horizontal_line_on_text(wgs, y, lattr, box, colour);
+        break;
+    }
+}
+
+/*
  * Draw a line of text in the window, at given character
  * coordinates, in given attributes.
  *
@@ -8374,6 +8459,8 @@ static void do_text_internal(
         (wgs->cursor_type == CURSOR_BLOCK || wgs->term->big_cursor)) {
 #endif
         truecolour.fg = truecolour.bg = optionalrgb_none;
+        /* KiTTY: the underline keeps its style, in the cursor's text colour */
+        truecolour.ul.mode &= UL_STYLE_MASK;
         attr &= ~(ATTR_REVERSE|ATTR_BLINK|ATTR_COLOURS|ATTR_DIM);
         /* cursor fg and bg */
         attr |= (260 << ATTR_FGSHIFT) | (261 << ATTR_BGSHIFT);
@@ -8454,7 +8541,12 @@ static void do_text_internal(
     nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
     if (wgs->bold_font_mode == BOLD_FONT && (attr & ATTR_BOLD))
         nfont |= FONT_BOLD;
-    if (wgs->und_mode == UND_FONT && (attr & ATTR_UNDER))
+    /* KiTTY: the font's own underline only for the plain single line in the
+     * text colour; a styled or coloured one (SGR 4:n, 58) is drawn by hand,
+     * or the font's solid line would show under the wave or the dots */
+    if ((attr & ATTR_UNDER) && truecolour.ul.mode != 0)
+        force_manual_underline = true;
+    else if (wgs->und_mode == UND_FONT && (attr & ATTR_UNDER))
         nfont |= FONT_UNDERLINE;
     another_font(wgs, nfont);
     if (!wgs->fonts[nfont]) {
@@ -8781,10 +8873,19 @@ static void do_text_internal(
         opaque = false;
     }
 
-    if (lattr != LATTR_TOP && 
+    if (lattr != LATTR_TOP &&
         (force_manual_underline || (wgs->und_mode == UND_LINE &&
-                                    (attr & ATTR_UNDER))))
-        draw_horizontal_line_on_text(wgs, wgs->descent, lattr, line_box, fg);
+                                    (attr & ATTR_UNDER)))) {
+        /* KiTTY: the underline colour (SGR 58) where one is set, else the
+         * text's - so DIM and the TuTTY under_fg slot still apply to it */
+        COLORREF ulc = fg;
+        if ((truecolour.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_RGB && !wgs->pal)
+            ulc = RGB(truecolour.ul.r, truecolour.ul.g, truecolour.ul.b);
+        else if ((truecolour.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_INDEX)
+            ulc = wgs->colours[truecolour.ul.r];
+        draw_underline_styled(wgs, truecolour.ul.mode & UL_STYLE_MASK,
+                              lattr, line_box, ulc);
+    }
 
     if (attr & ATTR_STRIKE)
         draw_horizontal_line_on_text(wgs, wgs->font_strikethrough_y, lattr,

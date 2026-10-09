@@ -201,7 +201,8 @@ static bool same_termchar_colour(const termchar *a, const termchar *b)
         a->truecolour.bg.enabled == b->truecolour.bg.enabled &&
         a->truecolour.bg.r == b->truecolour.bg.r &&
         a->truecolour.bg.g == b->truecolour.bg.g &&
-        a->truecolour.bg.b == b->truecolour.bg.b;
+        a->truecolour.bg.b == b->truecolour.bg.b &&
+        ulattr_equal(a->truecolour.ul, b->truecolour.ul);   /* KiTTY 4c */
 }
 
 /* Every observable piece of state the text path writes, fast vs ordinary. */
@@ -366,6 +367,9 @@ static void test_fixed_cases(void)
          "0123456789012345678\r\n");
     CASE("colours: SGR, 256, true colour",
          "\033[1;31mred\033[0m \033[38;5;42mgreen\033[48;2;10;20;30mtc\033[0m end");
+    CASE("underline styles and colours (4c)",
+         "\033[4:3;58:2::255:0:0mcurly\033[4:2;58:5:42mdouble\033[59;4:4m"
+         "dots\033[24mplain\033[4:5mdash\033[0m end");
     CASE("erase in line mid-run", "abcdef\033[3D\033[Kxyz");
     CASE("UTF-8 width 1", "h\xc3\xa9llo w\xc3\xb6rld \xc3\x9f \xe2\x82\xac \xd0\x96");
     CASE("wide characters", "ab\xe4\xb8\xad\xe6\x96\x87" "cd");

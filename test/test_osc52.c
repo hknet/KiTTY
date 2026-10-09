@@ -4791,8 +4791,9 @@ static void test_capability_reports(Mock *mk)
     tcap_val(mk, "XTGETTCAP PE", "PE", "\\E[201~");
     tcap_val(mk, "XTGETTCAP fe", "fe", "\\E[?1004h");
     tcap_val(mk, "XTGETTCAP kxOUT", "kxOUT", "\\E[O");
-    tcap_unknown(mk, "XTGETTCAP Smulx (not implemented)", "Smulx");
-    tcap_unknown(mk, "XTGETTCAP Setulc (not implemented)", "Setulc");
+    tcap_val(mk, "XTGETTCAP Smulx", "Smulx", "\\E[4:%p1%dm");
+    tcap_val(mk, "XTGETTCAP Setulc", "Setulc",
+             "\\E[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%dm");
     tcap_val(mk, "XTGETTCAP Ss", "Ss", "\\E[%p1%d q");
     tcap_val(mk, "XTGETTCAP Se", "Se", "\\E[2 q");
     tcap_unknown(mk, "XTGETTCAP key name", "kf1");
@@ -4804,11 +4805,11 @@ static void test_capability_reports(Mock *mk)
     tcap(mk, "XTGETTCAP upper-case hex", "544E",
          "\033P1+r544E=787465726D2D323536636F6C6F72\033\\", 1);
     {
-        char *names = dupprintf("%s;%s;%s", cap_hex("Tc"), cap_hex("Smulx"),
+        char *names = dupprintf("%s;%s;%s", cap_hex("Tc"), cap_hex("Smxx"),
                                 cap_hex("Co"));
         tcap(mk, "XTGETTCAP three names, one unknown", names,
              "\033P1+r5463\033\\"
-             "\033P0+r536D756C78\033\\"
+             "\033P0+r536D7878\033\\"
              "\033P1+r436F=323536\033\\", 3);
         sfree(names);
     }
@@ -4981,6 +4982,24 @@ static void sgr_expect(Mock *mk, const char *what, const char *seq,
     }
 }
 
+/* KiTTY 4c: the rendition's attributes and its underline (style + colour) */
+static void sgr_ul_expect(Mock *mk, const char *what, const char *seq,
+                          unsigned long attr, ulattr ul)
+{
+    Terminal *term = mk->term;
+    feed_seq(mk, "\033[0m");
+    feed_seq(mk, seq);
+    if (term->curr_attr != attr || !ulattr_equal(term->curr_truecolour.ul, ul)) {
+        printf("   got:  attr %08lx ul %02x/%u,%u,%u\n",
+               (unsigned long)term->curr_attr, term->curr_truecolour.ul.mode,
+               term->curr_truecolour.ul.r, term->curr_truecolour.ul.g,
+               term->curr_truecolour.ul.b);
+        printf("   want: attr %08lx ul %02x/%u,%u,%u\n",
+               attr, ul.mode, ul.r, ul.g, ul.b);
+        fail(what, "the underline differs");
+    }
+}
+
 static void test_sgr_colon(Mock *mk)
 {
     Terminal *term = mk->term;
@@ -5045,20 +5064,63 @@ static void test_sgr_colon(Mock *mk)
     sgr_expect(mk, "SGR 1;:5;4 (stray between)", "\033[1;:5;4m",
                def | ATTR_BOLD | ATTR_UNDER, none, none);
 
-    /* 58 / 59 (underline colour) and 4:n (underline style) are not drawn
-     * yet: ignored, never read as other attributes */
-    sgr_expect(mk, "SGR 58:2::r:g:b ignored", "\033[58:2::1:2:3m",
+    /* 58 / 59 (underline colour) and 4:n (underline style): the text's
+     * colours stay untouched, the underline is checked by sgr_ul_expect */
+    sgr_expect(mk, "SGR 58:2::r:g:b leaves fg/bg", "\033[58:2::1:2:3m",
                def, none, none);
-    sgr_expect(mk, "SGR 58:2:r:g:b ignored", "\033[58:2:5:4:2m",
-               def, none, none);
-    sgr_expect(mk, "SGR 58:5:n ignored", "\033[58:5:9m", def, none, none);
     sgr_expect(mk, "SGR 1;58:2::r:g:b;4", "\033[1;58:2::1:2:3;4m",
                def | ATTR_BOLD | ATTR_UNDER, none, none);
-    sgr_expect(mk, "SGR 59 ignored", "\033[59m", def, none, none);
-    sgr_expect(mk, "SGR 4:3 ignored (TODO 4c)", "\033[4:3m",
-               def, none, none);
-    sgr_expect(mk, "SGR 4:0 ignored (TODO 4c)", "\033[4;4:0m",
-               def | ATTR_UNDER, none, none);
+    sgr_expect(mk, "SGR 59 alone", "\033[59m", def, none, none);
+    {
+        const ulattr plain = ulattr_none;
+        ulattr u;
+        static const struct { const char *seq; unsigned char style; } st[] = {
+            { "\033[4:1m", UL_STYLE_SINGLE }, { "\033[4:2m", UL_STYLE_DOUBLE },
+            { "\033[4:3m", UL_STYLE_CURLY },  { "\033[4:4m", UL_STYLE_DOTTED },
+            { "\033[4:5m", UL_STYLE_DASHED } };
+        int k;
+        for (k = 0; k < (int)lenof(st); k++) {
+            u = plain; u.mode = st[k].style;
+            sgr_ul_expect(mk, "SGR 4:n sets the style", st[k].seq,
+                          def | ATTR_UNDER, u);
+        }
+        sgr_ul_expect(mk, "SGR 4:0 is no underline", "\033[4:3;4:0m", def, plain);
+        sgr_ul_expect(mk, "SGR 4:6 (unknown style) ignored", "\033[4:6m",
+                      def, plain);
+        u = plain; u.mode = UL_STYLE_CURLY;
+        sgr_ul_expect(mk, "SGR 4:3 then a plain 4 is single again",
+                      "\033[4:3;4m", def | ATTR_UNDER, plain);
+        sgr_ul_expect(mk, "SGR 4:3 then 24", "\033[4:3;24m", def, plain);
+        u = plain; u.mode = UL_STYLE_DOUBLE;
+        sgr_ul_expect(mk, "SGR 21 is double (xterm)", "\033[21m",
+                      def | ATTR_UNDER, u);
+
+        u = plain; u.mode = UL_COLOUR_RGB; u.r = 1; u.g = 2; u.b = 3;
+        sgr_ul_expect(mk, "SGR 58:2::r:g:b", "\033[58:2::1:2:3m", def, u);
+        sgr_ul_expect(mk, "SGR 58:2:r:g:b (xterm)", "\033[58:2:1:2:3m", def, u);
+        sgr_ul_expect(mk, "SGR 58;2;r;g;b", "\033[58;2;1;2;3m", def, u);
+        u = plain; u.mode = UL_COLOUR_INDEX; u.r = 196;
+        sgr_ul_expect(mk, "SGR 58:5:n", "\033[58:5:196m", def, u);
+        sgr_ul_expect(mk, "SGR 58;5;n", "\033[58;5;196m", def, u);
+        u = plain; u.mode = UL_STYLE_CURLY | UL_COLOUR_RGB; u.r = 255;
+        sgr_ul_expect(mk, "SGR 4:3;58:2::255:0:0 (style and colour)",
+                      "\033[4:3;58:2::255:0:0m", def | ATTR_UNDER, u);
+        u = plain; u.mode = UL_STYLE_CURLY;
+        sgr_ul_expect(mk, "SGR 59 drops the colour, keeps the style",
+                      "\033[4:3;58:2::255:0:0;59m", def | ATTR_UNDER, u);
+        sgr_ul_expect(mk, "SGR 0 resets the underline whole",
+                      "\033[4:3;58:5:9;0m", def, plain);
+
+        /* the ';' forms were read as other codes before 4c: 58;5;196
+         * switched on blink, 58;2;255;0;0 dim and then a reset */
+        u = plain; u.mode = UL_COLOUR_RGB; u.r = 255;
+        sgr_ul_expect(mk, "SGR 1;58;2;255;0;0;4 - no dim, no reset",
+                      "\033[1;58;2;255;0;0;4m",
+                      def | ATTR_BOLD | ATTR_UNDER, u);
+        u = plain; u.mode = UL_COLOUR_INDEX; u.r = 196;
+        sgr_ul_expect(mk, "SGR 58;5;196 - no blink",
+                      "\033[58;5;196m", def, u);
+    }
 
     /* a ':' outside SGR: the sequence stays unrecognised */
     feed_seq(mk, "\033[1;1H");

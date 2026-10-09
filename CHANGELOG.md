@@ -8,6 +8,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Curly, dotted, dashed and double underlines, in their own colour.**
+  `4:0`..`4:5` choose the style (none, single, double, curly, dotted,
+  dashed) and `58` the underline colour (`58:2::r:g:b`, `58:5:n` and the
+  `;` forms; `59` gives the text's colour back), as neovim sends them for
+  diagnostics and spell checking. `21` is now a double underline, as in
+  xterm. Both renderers draw the same lines, the styles survive the
+  scrollback, and XTGETTCAP answers `Smulx` and `Setulc`.
+
 - **klink, kscp and ksftp log in with the session's stored password.**
   With a session loaded (`-load`, `@name`, or a host argument that is a saved
   session's name), its stored password answers the server's password prompt once, as
@@ -84,6 +92,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Requesting keys.", "Trying kageant key #0", ...) show kageant too.
 
 ### Fixed
+
+- **`58;5;n` and `58;2;r;g;b` no longer switch on blink or dim.** The
+  underline colour in its `;` form was read as separate codes: `58;5;196`
+  made the text blink, `58;2;255;0;0` made it dim and then reset every
+  attribute.
 
 - **Auto-reconnect no longer hammers a server with failed logins**
   (hknet/KiTTY#66). A session that had been logged in reconnected after

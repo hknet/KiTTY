@@ -795,8 +795,12 @@ static void makeliteral_truecolour(strbuf *b, termchar *c, unsigned long *state)
     /*
      * Put the used parts of the colour info into the buffer.
      */
+    /* KiTTY: bit 4 = an underline style or colour follows (4 bytes); a
+     * plain underline - the zero ulattr - costs nothing */
+    bool ul = !ulattr_equal(c->truecolour.ul, ulattr_none);
     put_byte(b, ((c->truecolour.fg.enabled ? 1 : 0) |
-                 (c->truecolour.bg.enabled ? 2 : 0)));
+                 (c->truecolour.bg.enabled ? 2 : 0) |
+                 (ul ? 4 : 0)));
     if (c->truecolour.fg.enabled) {
         put_byte(b, c->truecolour.fg.r);
         put_byte(b, c->truecolour.fg.g);
@@ -806,6 +810,12 @@ static void makeliteral_truecolour(strbuf *b, termchar *c, unsigned long *state)
         put_byte(b, c->truecolour.bg.r);
         put_byte(b, c->truecolour.bg.g);
         put_byte(b, c->truecolour.bg.b);
+    }
+    if (ul) {
+        put_byte(b, c->truecolour.ul.mode);
+        put_byte(b, c->truecolour.ul.r);
+        put_byte(b, c->truecolour.ul.g);
+        put_byte(b, c->truecolour.ul.b);
     }
 }
 #ifdef MOD_PERSO
@@ -1094,6 +1104,15 @@ static void readliteral_truecolour(
         c->truecolour.bg.b = get_byte(bs);
     } else {
         c->truecolour.bg = optionalrgb_none;
+    }
+
+    if (flags & 4) {   /* KiTTY: the underline's style and colour */
+        c->truecolour.ul.mode = get_byte(bs);
+        c->truecolour.ul.r = get_byte(bs);
+        c->truecolour.ul.g = get_byte(bs);
+        c->truecolour.ul.b = get_byte(bs);
+    } else {
+        c->truecolour.ul = ulattr_none;
     }
 }
 #ifdef MOD_PERSO
@@ -2248,6 +2267,7 @@ static void power_on(Terminal *term, bool clear)
     term->default_attr = term->save_attr =
         term->alt_save_attr = term->curr_attr = ATTR_DEFAULT;
     term->curr_truecolour.fg = term->curr_truecolour.bg = optionalrgb_none;
+    term->curr_truecolour.ul = ulattr_none;
     term->save_truecolour = term->alt_save_truecolour = term->curr_truecolour;
 #ifdef MOD_PERSO
     /* KiTTY OSC 8: a reset ends an open link. The table stays: the
@@ -2810,6 +2830,7 @@ void term_clrsb(Terminal *term)
 }
 
 const optionalrgb optionalrgb_none = {0, 0, 0, 0};
+const ulattr ulattr_none = {0, 0, 0, 0};   /* KiTTY: plain underline, text colour */
 
 void term_setup_window_titles(Terminal *term, const char *title_hostname)
 {
@@ -3040,6 +3061,7 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
     term->basic_erase_char.attr = ATTR_DEFAULT;
     term->basic_erase_char.truecolour.fg = optionalrgb_none;
     term->basic_erase_char.truecolour.bg = optionalrgb_none;
+    term->basic_erase_char.truecolour.ul = ulattr_none;
     term->basic_erase_char.link = 0;   /* KiTTY OSC 8: erasing links nothing */
     term->erase_char = term->basic_erase_char;
 
@@ -8450,10 +8472,11 @@ static int term_sgr_sub_colour(unsigned *sub, int n, unsigned *index,
  * KiTTY: SGR, one parameter at *ip of a sequence with sub-parameters. A
  * plain one (none follow it) returns false for the ordinary switch. One
  * with sub-parameters is taken whole and *ip moved past them: 38 and 48
- * set the colour, anything else - 4:n underline styles, 58 / 59 underline
- * colour, a malformed list - is ignored without touching the parameters
- * around it. A stray sub-parameter (after a parameter the switch took with
- * its ';' arguments) is skipped.
+ * set the colour, 58 the underline colour, 4:n the underline style (0 none,
+ * 1 single, 2 double, 3 curly, 4 dotted, 5 dashed); anything else - a
+ * malformed list, an unknown style - is ignored without touching the
+ * parameters around it. A stray sub-parameter (after a parameter the switch
+ * took with its ';' arguments) is skipped.
  */
 static bool term_sgr_subparams(Terminal *term, int *ip)
 {
@@ -8468,6 +8491,21 @@ static bool term_sgr_subparams(Terminal *term, int *ip)
     if (!n)
         return false;
     *ip = i + n;
+    if (term->esc_args[i] == 4) {
+        static const unsigned char styles[] = {
+            0, UL_STYLE_SINGLE, UL_STYLE_DOUBLE, UL_STYLE_CURLY,
+            UL_STYLE_DOTTED, UL_STYLE_DASHED };
+        unsigned s = term->esc_args[i + 1];
+        if (n != 1 || s >= lenof(styles))
+            return true;
+        if (s == 0)
+            term->curr_attr &= ~ATTR_UNDER;
+        else
+            term->curr_attr |= ATTR_UNDER;
+        term->curr_truecolour.ul.mode =
+            (term->curr_truecolour.ul.mode & ~UL_STYLE_MASK) | styles[s];
+        return true;
+    }
     kind = term_sgr_sub_colour(term->esc_args + i + 1, n, &index, &rgb);
     if (!kind)
         return true;
@@ -8487,6 +8525,19 @@ static bool term_sgr_subparams(Terminal *term, int *ip)
             term->curr_truecolour.bg = optionalrgb_none;
         } else
             term->curr_truecolour.bg = rgb;
+        break;
+      case 58:
+        term->curr_truecolour.ul.mode =
+            (term->curr_truecolour.ul.mode & UL_STYLE_MASK) |
+            (kind == 5 ? UL_COLOUR_INDEX : UL_COLOUR_RGB);
+        if (kind == 5) {
+            term->curr_truecolour.ul.r = (unsigned char)index;
+            term->curr_truecolour.ul.g = term->curr_truecolour.ul.b = 0;
+        } else {
+            term->curr_truecolour.ul.r = rgb.r;
+            term->curr_truecolour.ul.g = rgb.g;
+            term->curr_truecolour.ul.b = rgb.b;
+        }
         break;
     }
     return true;
@@ -8610,6 +8661,13 @@ static int xtgettcap_value(Terminal *term, const char *name, const char **val)
     if (!strcmp(name, "Ms") &&
         term->osc52_allowed != OSC52_CLIPBOARD_DENY) {
         *val = "\\E]52;%p1%s;%p2%s\\E\\\\";
+        return 1;
+    }
+    /* styled underlines (SGR 4:n) and the underline colour (SGR 58), the
+     * extended names of kitty's and ncurses' terminfo */
+    if (!strcmp(name, "Smulx")) { *val = "\\E[4:%p1%dm"; return 1; }
+    if (!strcmp(name, "Setulc") && term->ansi_colour) {
+        *val = "\\E[58:2::%p1%{65536}%/%d:%p1%{256}%/%{255}%&%d:%p1%{255}%&%dm";
         return 1;
     }
     /* DECSCUSR (term_set_cursor_style); Se as ncurses' xterm+tmux and
@@ -10806,9 +10864,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             break;
                           case 21:      /* (enable double underline) */
                             compatibility(OTHER);
+                            /* KiTTY: double, as xterm and ECMA-48 have it */
+                            term->curr_attr |= ATTR_UNDER;
+                            term->curr_truecolour.ul.mode =
+                                (term->curr_truecolour.ul.mode &
+                                 ~UL_STYLE_MASK) | UL_STYLE_DOUBLE;
+                            break;
                           case 4:       /* enable underline */
                             compatibility(VT100AVO);
                             term->curr_attr |= ATTR_UNDER;
+                            /* KiTTY: a plain 4 is a single underline again */
+                            term->curr_truecolour.ul.mode &= ~UL_STYLE_MASK;
                             break;
                           case 5:       /* enable blink */
                             compatibility(VT100AVO);
@@ -10845,6 +10911,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                           case 24:      /* disable underline */
                             compatibility2(OTHER, VT220);
                             term->curr_attr &= ~ATTR_UNDER;
+                            term->curr_truecolour.ul.mode &= ~UL_STYLE_MASK;
                             break;
                           case 25:      /* disable blink */
                             compatibility2(OTHER, VT220);
@@ -10976,6 +11043,39 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                     term->esc_args + (i+2));
                                 i += 4;
                             }
+                            break;
+                          case 58:  /* KiTTY: underline colour, 58;5;n / 58;2;r;g;b */
+                            /* Taken WITH its arguments, as 38: without
+                             * this case "58;5;196" switched on blink (the
+                             * 5) and "58;2;255;0;0" dim, then a reset */
+                            if (i+2 < term->esc_nargs &&
+                                term->esc_args[i+1] == 5) {
+                                term->curr_truecolour.ul.mode =
+                                    (term->curr_truecolour.ul.mode &
+                                     UL_STYLE_MASK) | UL_COLOUR_INDEX;
+                                term->curr_truecolour.ul.r =
+                                    (unsigned char)(term->esc_args[i+2] & 0xFF);
+                                term->curr_truecolour.ul.g =
+                                    term->curr_truecolour.ul.b = 0;
+                                i += 2;
+                            } else if (i + 4 < term->esc_nargs &&
+                                       term->esc_args[i+1] == 2) {
+                                optionalrgb rgb;
+                                parse_optionalrgb(&rgb, term->esc_args + (i+2));
+                                term->curr_truecolour.ul.mode =
+                                    (term->curr_truecolour.ul.mode &
+                                     UL_STYLE_MASK) | UL_COLOUR_RGB;
+                                term->curr_truecolour.ul.r = rgb.r;
+                                term->curr_truecolour.ul.g = rgb.g;
+                                term->curr_truecolour.ul.b = rgb.b;
+                                i += 4;
+                            }
+                            break;
+                          case 59:  /* KiTTY: underline colour back to the text's */
+                            term->curr_truecolour.ul.mode &= UL_STYLE_MASK;
+                            term->curr_truecolour.ul.r =
+                                term->curr_truecolour.ul.g =
+                                term->curr_truecolour.ul.b = 0;
                             break;
                         }
                         set_erase_char(term);
@@ -12446,7 +12546,21 @@ static void do_paint(Terminal *term)
                 tc = d->truecolour;
             } else {
                 tc.fg = tc.bg = optionalrgb_none;
+                /* KiTTY: the underline's style stays; an rgb underline
+                 * colour goes with the other true colours */
+                tc.ul = d->truecolour.ul;
+                if ((tc.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_RGB)
+                    tc.ul.mode &= ~UL_COLOUR_MASK;
             }
+            /* KiTTY: a palette underline colour follows the colour settings
+             * as the text's palette colours do */
+            if ((tc.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_INDEX &&
+                (!term->ansi_colour ||
+                 (!term->xterm_256_colour && tc.ul.r >= 16)))
+                tc.ul.mode &= ~UL_COLOUR_MASK;
+            if (!term->ansi_colour &&
+                (tc.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_RGB)
+                tc.ul.mode &= ~UL_COLOUR_MASK;
 
             switch (tchar & CSET_MASK) {
               case CSET_ASCII:

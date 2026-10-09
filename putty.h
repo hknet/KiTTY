@@ -1036,15 +1036,42 @@ typedef struct optionalrgb {
     unsigned char r, g, b;
 } optionalrgb;
 extern const optionalrgb optionalrgb_none;
+/*
+ * KiTTY: the underline's style and colour (SGR 4:n, 58, 59), riding in
+ * 'truecolour' so they travel with the cell through every copy, compare,
+ * run break, save/restore and draw_text call that already carries it.
+ * ATTR_UNDER stays the on/off switch; all-zero = a plain single underline
+ * in the text colour, exactly the old behaviour.
+ */
+typedef struct ulattr {
+    unsigned char mode;     /* UL_STYLE_* | UL_COLOUR_* */
+    unsigned char r, g, b;  /* UL_COLOUR_RGB: the colour; UL_COLOUR_INDEX: r */
+} ulattr;
+#define UL_STYLE_MASK    0x07
+#define UL_STYLE_SINGLE  0x00
+#define UL_STYLE_DOUBLE  0x01
+#define UL_STYLE_CURLY   0x02
+#define UL_STYLE_DOTTED  0x03
+#define UL_STYLE_DASHED  0x04
+#define UL_COLOUR_MASK   0x18
+#define UL_COLOUR_DEFAULT 0x00
+#define UL_COLOUR_RGB    0x08
+#define UL_COLOUR_INDEX  0x10
+extern const ulattr ulattr_none;
 typedef struct truecolour {
     optionalrgb fg, bg;
+    ulattr ul;
 } truecolour;
 #define optionalrgb_equal(r1,r2) (                              \
         (r1).enabled==(r2).enabled &&                           \
         (r1).r==(r2).r && (r1).g==(r2).g && (r1).b==(r2).b)
+#define ulattr_equal(u1,u2) (                                   \
+        (u1).mode==(u2).mode &&                                 \
+        (u1).r==(u2).r && (u1).g==(u2).g && (u1).b==(u2).b)
 #define truecolour_equal(c1,c2) (               \
         optionalrgb_equal((c1).fg, (c2).fg) &&  \
-        optionalrgb_equal((c1).bg, (c2).bg))
+        optionalrgb_equal((c1).bg, (c2).bg) &&  \
+        ulattr_equal((c1).ul, (c2).ul))
 
 /*
  * Enumeration of clipboards. We provide some standard ones cross-
