@@ -2249,12 +2249,27 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
     }
 }
 
+/* The re-encrypt time fields (Settings > Security, a key's details): an
+ * editable combo box listing the usual values; anything else may be typed
+ * (seconds, 10m / 2h / 1d, 30 s to 7 d). "immediately" is stored as "use". */
+static void autoenc_combo_fill(HWND combo)
+{
+    static const char *const values[] = { "immediately", "10m", "2h", "1d" };
+    size_t i;
+    if (!combo || SendMessage(combo, CB_GETCOUNT, 0, 0) > 0)
+        return;
+    for (i = 0; i < lenof(values); i++)
+        SendMessageA(combo, CB_ADDSTRING, 0, (LPARAM)values[i]);
+    SendMessage(combo, CB_LIMITTEXT, 16, 0);
+}
+
 static void keydetail_autoenc_refresh(HWND hwnd, int pending)
 {
     char t[24], note[96];
     int mode = kageant_autoenc_mode();
     int own = (keydetail_blob && keydetail_blob->len) ?
               kageant_idle_get_key(ptrlen_from_strbuf(keydetail_blob)) : -1;
+    autoenc_combo_fill(GetDlgItem(hwnd, IDC_KEYDETAIL_AUTOENC));
     if (own >= 0) kageant_autoenc_format(own, t, sizeof(t)); else t[0] = '\0';
     SetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t);
     kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
@@ -2528,13 +2543,20 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             return 0;
           case IDC_KEYDETAIL_AUTOENC:
             /* KiTTY: the key's own idle re-encrypt time, applied when the
-             * field is left: blank = agent default, garbage = unchanged. */
-            if (HIWORD(wParam) == EN_KILLFOCUS &&
+             * field is left or a listed value picked: blank = agent default,
+             * garbage = unchanged. On a pick the edit part still holds the
+             * old text, so the list entry is read instead. */
+            if ((HIWORD(wParam) == CBN_KILLFOCUS || HIWORD(wParam) == CBN_SELCHANGE) &&
                 keydetail_blob && keydetail_blob->len &&
                 IsWindowEnabled(GetDlgItem(hwnd, IDC_KEYDETAIL_AUTOENC))) {
                 char t[32];
                 int v;
-                GetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t, sizeof(t));
+                LRESULT sel = SendDlgItemMessage(hwnd, IDC_KEYDETAIL_AUTOENC, CB_GETCURSEL, 0, 0);
+                if (HIWORD(wParam) == CBN_SELCHANGE && sel != CB_ERR &&
+                    SendDlgItemMessage(hwnd, IDC_KEYDETAIL_AUTOENC, CB_GETLBTEXTLEN, sel, 0) < (LRESULT)sizeof(t))
+                    SendDlgItemMessageA(hwnd, IDC_KEYDETAIL_AUTOENC, CB_GETLBTEXT, sel, (LPARAM)t);
+                else
+                    GetDlgItemTextA(hwnd, IDC_KEYDETAIL_AUTOENC, t, sizeof(t));
                 v = t[0] ? kageant_autoenc_parse(t) : -1;
                 if (t[0] && v < 0) {
                     keydetail_autoenc_refresh(hwnd, 0);   /* put the old one back */
@@ -3835,9 +3857,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 SendMessage(cb, CB_SETDROPPEDWIDTH,
                             widest + GetSystemMetrics(SM_CXVSCROLL) + 12, 0);
             }
+            autoenc_combo_fill(GetDlgItem(hwnd, IDC_SET_AUTOENC));
             kageant_autoenc_format(kageant_autoenc_seconds(), t, sizeof(t));
             SetDlgItemTextA(hwnd, IDC_SET_AUTOENC, t);
-            SendDlgItemMessage(hwnd, IDC_SET_AUTOENC, EM_SETLIMITTEXT, 12, 0);
             EnableWindow(GetDlgItem(hwnd, IDC_SET_AUTOENC), mode != 0);
         }
         /* Hello gating: greyed (and shown unticked) when Windows Hello has

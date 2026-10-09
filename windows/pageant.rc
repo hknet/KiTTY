@@ -234,8 +234,10 @@ BEGIN
      * default; greyed while the agent setting is enforced. */
     LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 232, 78, 11,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_AUTOENC, 92, 232, 48, 11, ES_AUTOHSCROLL
-    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 146, 232, 264, 11, SS_CENTERIMAGE
+    /* an editable combo box: the usual values listed, any other typed */
+    COMBOBOX IDC_KEYDETAIL_AUTOENC, 92, 232, 70, 60,
+        CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 168, 232, 242, 11, SS_CENTERIMAGE
     PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 250, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
@@ -353,9 +355,11 @@ BEGIN
      * their own value / enforced for every key) and a time. */
     LTEXT KT_RC_KEYSETTINGS_AUTOENC_LABEL, IDC_SET_L_AUTOENC,
         16, 153, 94, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_AUTOENCMODE, 112, 153, 118, 60,
+    COMBOBOX IDC_SET_AUTOENCMODE, 112, 153, 100, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    EDITTEXT IDC_SET_AUTOENC, 236, 153, 48, 11, ES_AUTOHSCROLL
+    /* an editable combo box: the usual values listed, any other typed */
+    COMBOBOX IDC_SET_AUTOENC, 216, 153, 68, 60,
+        CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
     LTEXT KT_RC_KEYSETTINGS_AUTOENC_HINT,
         IDC_SET_L_AUTOENCHINT, 16, 169, 268, 10
     /* When Windows locks: keep the agent working / lock it / re-encrypt the

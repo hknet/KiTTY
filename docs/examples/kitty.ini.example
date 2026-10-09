@@ -1408,7 +1408,8 @@
 ; applies to keys without their own value; enforce = the time below applies
 ; to EVERY key and the per-key values are ignored, for a site or a network
 ; whose rules demand it. autoencryptseconds: seconds, or 10m / 2h / 1d, or
-; "use" = right after each signature. 30 s to 7 d. Default off, 600.
+; "use" (or "immediately", the same) = right after each signature. 30 s to
+; 7 d. Default off, 600.
 ;autoencryptmode=off
 ;autoencryptseconds=600
 

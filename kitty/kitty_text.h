@@ -3980,7 +3980,7 @@
 #define KT_RC_KEYSETTINGS_HELLOTTL_LABEL             "Windows Hello cach&e (seconds):"
 #define KT_RC_KEYSETTINGS_HELLOTTL_HINT              "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300."
 #define KT_RC_KEYSETTINGS_AUTOENC_LABEL              "Re-encr&ypt keys after idle:"
-#define KT_RC_KEYSETTINGS_AUTOENC_HINT               "Seconds, or 10m / 2h / 1d; \"use\" = right after each use. 30 s to 7 d."
+#define KT_RC_KEYSETTINGS_AUTOENC_HINT               "immediately = re-encrypt right after each use; otherwise 30 s to 7 d"
 #define KT_RC_KEYSETTINGS_RETRY_LABEL                "&Retry startup keys to load, when a drive appears:"
 #define KT_RC_KEYSETTINGS_UNLOAD                     "&Unload a key when its media is removed"
 #define KT_RC_KEYSETTINGS_QUIET                      "Do not &warn about missing startup keys"

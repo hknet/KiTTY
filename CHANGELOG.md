@@ -8,6 +8,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **kageant: the re-encrypt time is a combo box.** Settings > Security
+  "Re-encrypt keys after idle" and a key's own value in its details list
+  `immediately`, `10m`, `2h` and `1d`; any other time can still be typed.
+  `immediately` is the new word for `use` (re-encrypt right after each
+  signature), which stays valid and is still what is stored, so a
+  kitty.ini shared with an older kageant keeps its meaning.
 - **The launcher's shortcut is called "KiTTY++ Launcher".** The installers'
   Start menu and Startup entries and "Start at login" create it under the
   new name; an upgrade replaces the installed "KiTTY Launcher" ones. A

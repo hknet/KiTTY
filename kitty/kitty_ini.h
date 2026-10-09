@@ -1411,7 +1411,8 @@ char default_init_file_content[] =
 ; applies to keys without their own value; enforce = the time below applies\n\
 ; to EVERY key and the per-key values are ignored, for a site or a network\n\
 ; whose rules demand it. autoencryptseconds: seconds, or 10m / 2h / 1d, or\n\
-; \"use\" = right after each signature. 30 s to 7 d. Default off, 600.\n\
+; \"use\" (or \"immediately\", the same) = right after each signature. 30 s to\n\
+; 7 d. Default off, 600.\n\
 ;autoencryptmode=off\n\
 ;autoencryptseconds=600\n\
 \n\

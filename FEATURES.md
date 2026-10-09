@@ -609,7 +609,7 @@ mode - *Off*, *Default for keys without their own setting*, or *Enforced for
 every key* (per-key values ignored, for a site whose rules demand it) - and the
 time; a key's own time lives in its key details. From **kitty.ini**:
 `[Agent] autoencryptmode=off|default|enforce` and `autoencryptseconds=` (seconds,
-`10m`, `2h`, `1d`, or `use` for right after each signature; 30 s to 7 d).
+`10m`, `2h`, `1d`, or `use` / `immediately` for right after each signature; 30 s to 7 d). In kageant both time fields are combo boxes listing these values; any other time can be typed.
 
 ### kageant — load keys on startup
 

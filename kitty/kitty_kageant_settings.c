@@ -641,7 +641,12 @@ int kageant_autoenc_parse(const char *text)
     int unit = 1;
     while (text && (*text == ' ' || *text == '\t')) text++;
     if (!text || !*text) return -1;
-    if (!stricmp(text, "use")) return KAGEANT_AUTOENC_USE;
+    /* "immediately" is the word the settings show since 0.85.1.15; "use" is
+     * what every version stores and reads, and what is still written, so a
+     * kitty.ini shared with an older kageant keeps its meaning. A later
+     * release switches the writing to "immediately". */
+    if (!stricmp(text, "use") || !stricmp(text, "immediately"))
+        return KAGEANT_AUTOENC_USE;
     if (!stricmp(text, "off") || !stricmp(text, "no") || !stricmp(text, "0")) return 0;
     v = strtol(text, &end, 10);
     if (end == text || v < 0) return -1;
@@ -660,7 +665,8 @@ int kageant_autoenc_parse(const char *text)
 
 void kageant_autoenc_format(int seconds, char *buf, size_t len)
 {
-    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, len, "use");
+    /* display only - the stored word is still "use" (see the parser) */
+    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, len, "immediately");
     else if (seconds <= 0) snprintf(buf, len, "off");
     else if (seconds % 86400 == 0) snprintf(buf, len, "%d d", seconds / 86400);
     else if (seconds % 3600 == 0) snprintf(buf, len, "%d h", seconds / 3600);

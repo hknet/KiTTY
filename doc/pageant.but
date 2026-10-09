@@ -445,9 +445,11 @@ then show the field greyed with the enforced value, and the tray tip
 says so.
 
 The time is seconds, or a number with \c{m}, \c{h} or \c{d} (\c{10m},
-\c{2h}, \c{1d}), from 30 seconds to 7 days. The word \c{use} means
-right after each signature, so every use costs the passphrase; a login
-that signs twice in one handshake then asks twice. In \c{kitty.ini}
+\c{2h}, \c{1d}), from 30 seconds to 7 days - or \c{immediately}: right
+after each signature, so every use costs the passphrase; a login that
+signs twice in one handshake then prompts twice. Both fields are combo
+boxes listing these values; any other time can be typed. The stored
+word is \c{use}, which \c{immediately} means as well. In \c{kitty.ini}
 these are \c{autoencryptmode} and \c{autoencryptseconds} in the
 \c{[Agent]} section; a key's own value travels on its startup entry.
 
