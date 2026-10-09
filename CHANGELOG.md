@@ -313,6 +313,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **A named proxy file without a final line break keeps its last value.**
   In the folder store the last line was read as empty, so a hand-written
   `ProxyPort\22\` came out as port 0.
+- **The help for ZModem through WSL names every field and the right
+  options.** It said to set the session's rz/sz options to `-e rz` and
+  `-e sz`, which dropped rz's and sz's own `-e -v`. Put `-e rz` and `-e sz`
+  in front of the existing options instead: `-e rz -e -v` and `-e sz -e -v`
+  with the defaults.
 
 ## 0.85.1.13-beta — 2026-10-05
 
