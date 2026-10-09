@@ -2290,7 +2290,7 @@ closing backslash.
 A left click on the launcher's icon in the system tray opens its menu:
 the saved sessions, a session folder as a submenu, and below them the
 entries of the launcher itself. A double click opens what \q{Tray icon
-double-click opens} names (the configuration box unless set otherwise),
+double-click opens} is set to (the configuration box unless set otherwise),
 and a right click opens \q{Open Sessions} directly.
 
 A right click on a session folder inside the open menu offers \q{Open

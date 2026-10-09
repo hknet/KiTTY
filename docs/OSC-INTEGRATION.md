@@ -36,7 +36,7 @@ Each new SSH or Telnet connection sends `COLORTERM=truecolor` and
 colour. A session's own value (**Connection > Login > Environment**) wins;
 an empty value there means the variable is not sent.
 
-An SSH server accepts only the variables `sshd_config` names and drops the
+An SSH server accepts only the variables listed in `sshd_config` and drops the
 rest **silently** - the session opens, the variables are just not there.
 On the host, as root:
 

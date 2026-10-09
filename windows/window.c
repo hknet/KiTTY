@@ -194,6 +194,30 @@ static void flip_full_screen(WinGuiSeat *wgs);
 static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode);
 static void setup_clipboards(Terminal *, Conf *);
 
+/* KiTTY: cell <-> pixel in client coordinates, one place for the margin
+ * arithmetic. A column's left edge for a given cell
+ * width (a double-width line passes twice the font width), a row's top
+ * edge, and back: a client pixel to the cell under it, flooring below 0 the
+ * way the old TO_CHR_X/Y macros did. */
+static inline int col_to_px(const WinGuiSeat *wgs, int col, int cell_w)
+{
+    return wgs->offset_width + col * cell_w;
+}
+static inline int row_to_px(const WinGuiSeat *wgs, int row)
+{
+    return wgs->offset_height + row * wgs->font_height;
+}
+static inline int px_to_col(const WinGuiSeat *wgs, int x)
+{
+    return ((x < 0 ? x - wgs->font_width + 1 : x) - wgs->offset_width) /
+        wgs->font_width;
+}
+static inline int px_to_row(const WinGuiSeat *wgs, int y)
+{
+    return ((y < 0 ? y - wgs->font_height + 1 : y) - wgs->offset_height) /
+        wgs->font_height;
+}
+
 #ifdef MOD_FAR2L
 /*
  * KiTTY far2l key and mouse events (hknet/KiTTY#57).
@@ -269,6 +293,7 @@ static bool far2l_events_on(WinGuiSeat *wgs)
  * after every far2l_input_gen step, the end of the session and a prompt.
  */
 static Far2lKeysNote far2l_keys_note;
+
 static void far2l_keys_sync(WinGuiSeat *wgs);
 static void far2l_title_refresh(WinGuiSeat *wgs);
 
@@ -706,10 +731,10 @@ static int kitty_gfx_overlay_items(WinGuiSeat *wgs, KittyOverlayItem *items,
 /* The text area, the clip of every picture. */
 static void kitty_text_area(WinGuiSeat *wgs, RECT *clip)
 {
-    clip->left = wgs->offset_width;
-    clip->top = wgs->offset_height;
-    clip->right = wgs->offset_width + wgs->font_width * wgs->term->cols;
-    clip->bottom = wgs->offset_height + wgs->font_height * wgs->term->rows;
+    clip->left = col_to_px(wgs, 0, wgs->font_width);
+    clip->top = row_to_px(wgs, 0);
+    clip->right = col_to_px(wgs, wgs->term->cols, wgs->font_width);
+    clip->bottom = row_to_px(wgs, wgs->term->rows);
 }
 
 /* KiTTY: the pictures under the text in the frame being drawn, built once
@@ -1048,6 +1073,7 @@ static void wintw_bell(TermWin *, int mode);
 /* Client-area layout helpers (defined by recompute_window_offset), used by
  * the window set-up above them. */
 static int strip_width(WinGuiSeat *wgs);
+
 static void set_extra_from_rects(WinGuiSeat *wgs, const RECT *wr,
                                  const RECT *cr);
 static void wintw_clip_write(
@@ -6693,10 +6719,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #define X_POS(l) ((int)(short)LOWORD(l))
 #define Y_POS(l) ((int)(short)HIWORD(l))
 
-#define TO_CHR_X(x) ((((x)<0 ? (x)-wgs->font_width+1 :                  \
-                       (x))-wgs->offset_width) / wgs->font_width)
-#define TO_CHR_Y(y) ((((y)<0 ? (y)-wgs->font_height+1 :                 \
-                       (y))-wgs->offset_height) / wgs->font_height)
+#define TO_CHR_X(x) px_to_col(wgs, (x))   /* KiTTY: the shared helpers */
+#define TO_CHR_Y(y) px_to_row(wgs, (y))
       case WM_LBUTTONDOWN:
       case WM_MBUTTONDOWN:
       case WM_RBUTTONDOWN:
@@ -7032,6 +7056,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #else
         kp_begin(wgs->painter, hdc);
 #endif
+        /* KiTTY: deliberately not px_to_col/px_to_row - this range
+         * truncates where they floor, which differs for an empty rcPaint
+         * (right or bottom 0); kept as upstream has it. */
         term_paint(wgs->term,
                    (p.rcPaint.left-wgs->offset_width)/wgs->font_width,
                    (p.rcPaint.top-wgs->offset_height)/wgs->font_height,
@@ -7046,17 +7073,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
 
         if (p.fErase ||
-            p.rcPaint.left  < wgs->offset_width  ||
-            p.rcPaint.top   < wgs->offset_height ||
-            p.rcPaint.right >= (wgs->offset_width +
-                                wgs->font_width*wgs->term->cols) ||
-            p.rcPaint.bottom>= (wgs->offset_height +
-                                wgs->font_height*wgs->term->rows)) {
+            p.rcPaint.left  < col_to_px(wgs, 0, wgs->font_width) ||
+            p.rcPaint.top   < row_to_px(wgs, 0) ||
+            p.rcPaint.right >= col_to_px(wgs, wgs->term->cols, wgs->font_width) ||
+            p.rcPaint.bottom>= row_to_px(wgs, wgs->term->rows)) {
             RECT keep;
-            keep.left = wgs->offset_width;
-            keep.top = wgs->offset_height;
-            keep.right = wgs->offset_width+wgs->font_width*wgs->term->cols;
-            keep.bottom = wgs->offset_height+wgs->font_height*wgs->term->rows;
+            keep.left = col_to_px(wgs, 0, wgs->font_width);
+            keep.top = row_to_px(wgs, 0);
+            keep.right = col_to_px(wgs, wgs->term->cols, wgs->font_width);
+            keep.bottom = row_to_px(wgs, wgs->term->rows);
             kp_fill_outside(wgs->painter, &p.rcPaint, &keep,
                             wgs->colours[ATTR_DEFBG>>ATTR_BGSHIFT]);
         }
@@ -8119,8 +8144,8 @@ static void wintw_set_cursor_pos(TermWin *tw, int x, int y)
      * Avoid gratuitously re-updating the cursor position and IMM
      * window if there's no actual change required.
      */
-    cx = x * wgs->font_width + wgs->offset_width;
-    cy = y * wgs->font_height + wgs->offset_height;
+    cx = col_to_px(wgs, x, wgs->font_width);
+    cy = row_to_px(wgs, y);
     if (cx == wgs->caret_x && cy == wgs->caret_y)
         return;
     wgs->caret_x = cx;
@@ -8223,10 +8248,8 @@ static void do_text_internal(
     int kitty_url_col = x, kitty_url_row = y;
 #endif
 
-    x *= fnt_width;
-    y *= wgs->font_height;
-    x += wgs->offset_width;
-    y += wgs->offset_height;
+    x = col_to_px(wgs, x, fnt_width);
+    y = row_to_px(wgs, y);
 
     if ((attr & ATTR_ACTCURS) &&
 #ifdef MOD_PERSO
@@ -8408,8 +8431,8 @@ static void do_text_internal(
     }
 
     /* Only want the left half of double width lines */
-    if (line_box.right > wgs->font_width*wgs->term->cols+wgs->offset_width)
-        line_box.right = wgs->font_width*wgs->term->cols+wgs->offset_width;
+    if (line_box.right > col_to_px(wgs, wgs->term->cols, wgs->font_width))
+        line_box.right = col_to_px(wgs, wgs->term->cols, wgs->font_width);
 
     if (wgs->font_varpitch) {
         /*
@@ -8777,10 +8800,8 @@ static void wintw_draw_cursor(
     fnt_width = char_width = wgs->font_width * (1 + (lattr != LATTR_NORM));
     if (attr & ATTR_WIDE)
         char_width *= 2;
-    x *= fnt_width;
-    y *= wgs->font_height;
-    x += wgs->offset_width;
-    y += wgs->offset_height;
+    x = col_to_px(wgs, x, fnt_width);
+    y = row_to_px(wgs, y);
 
     if ((attr & ATTR_PASCURS) &&
         (ctype == CURSOR_BLOCK || wgs->term->big_cursor)) {
@@ -8831,10 +8852,8 @@ static void wintw_draw_trust_sigil(TermWin *tw, int x, int y)
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
 
-    x *= wgs->font_width;
-    y *= wgs->font_height;
-    x += wgs->offset_width;
-    y += wgs->offset_height;
+    x = col_to_px(wgs, x, wgs->font_width);
+    y = row_to_px(wgs, y);
 
     kp_icon(wgs->painter, x, y, trust_icon,
             wgs->font_width * 2, wgs->font_height);
@@ -10863,10 +10882,10 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines)
         term_paint(wgs->term, 0, top, wgs->term->cols - 1, bot, false);
         return false;
     }
-    band.left = wgs->offset_width;
-    band.right = wgs->offset_width + wgs->font_width * wgs->term->cols;
-    band.top = wgs->offset_height + top * wgs->font_height;
-    band.bottom = wgs->offset_height + (bot + 1) * wgs->font_height;
+    band.left = col_to_px(wgs, 0, wgs->font_width);
+    band.right = col_to_px(wgs, wgs->term->cols, wgs->font_width);
+    band.top = row_to_px(wgs, top);
+    band.bottom = row_to_px(wgs, bot + 1);
     if (!kp_scroll_rows(wgs->painter, &band, -lines * wgs->font_height))
         return false;
     /* link underlines moved with the pixels (kitty_url_frame_done) */

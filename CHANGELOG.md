@@ -12,7 +12,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   After each wrong passphrase the next unlock is refused for 0.1 s per
   wrong passphrase so far, at most 10 s. After the tenth wrong passphrase
   programs can no longer unlock the agent, the right passphrase included,
-  until Unlock agent in the tray menu; a notice names the program. The
+  until Unlock agent in the tray menu; a notice shows the program. The
   keys stay loaded. Only with `allowipclock=yes`.
 - **The bundled JPEG library is gone.** A JPEG background image is now
   read by Windows' own imaging component, which Windows Update keeps
@@ -102,11 +102,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Application > KiTTY++ Settings > Terminal turns it off (`[KiTTY]
   sendtermenv`). The SSH server needs `AcceptEnv COLORTERM TERM_PROGRAM`;
   without it the variables are dropped, and a NOTE line in the terminal reports this
-  once per host, naming the line its sshd_config needs.
-- **Refused environment variables are named, with the fix.** When an SSH
+  once per host, with the line its sshd_config needs.
+- **Refused environment variables are listed, with the fix.** When an SSH
   server refuses variables set in Connection > Login > Environment, a NOTE
-  line in the terminal names them and the `AcceptEnv` line its sshd_config
-  needs, on every connection; the Event Log names the fix for every
+  line in the terminal lists them and the `AcceptEnv` line its sshd_config
+  needs, on every connection; the Event Log records the fix for every
   refused variable. klink, kscp and ksftp print the same NOTE in place of
   "Server refused to set environment variables": yellow on a console,
   plain text when their output is redirected.
@@ -121,8 +121,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   programs can show PNG and raw RGB/RGBA pictures in the window, sent in the
   data stream. A picture sits on the cells it was placed on, scrolls with the
   text into the scrollback and is drawn by both renderers, over the text or
-  under it (z < 0) with the text readable on top. Files or shared memory named by
-  the host are never read. Terminal > Features > Images > Show inline images
+  under it (z < 0) with the text readable on top. Files or shared memory the host
+  points to are never read. Terminal > Features > Images > Show inline images
   (`KittyGraphics`, on by default). `CSI 16 t` (cell size in pixels) is now
   answered.
 - **Inline images (iTerm2 OSC 1337).** `imgcat`, `chafa -f iterm` and other
@@ -214,7 +214,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   in the list or a search, it now shows the end of the path. What it holds
   and what Save writes are unchanged.
 - **Organize sessions is now Manage Sessions, and works like Explorer.** The
-  window and its button are named Manage Sessions / Manage.... While
+  window and its button are now called Manage Sessions / Manage.... While
   dragging, the pointer carries the session (or "3 sessions"), the target
   folder is highlighted, a closed folder opens after a short hover and the
   tree scrolls at its edges. Folders can be dragged into other folders, after
@@ -313,7 +313,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **A named proxy file without a final line break keeps its last value.**
   In the folder store the last line was read as empty, so a hand-written
   `ProxyPort\22\` came out as port 0.
-- **The help for ZModem through WSL names every field and the right
+- **The help for ZModem through WSL describes every field and the right
   options.** It said to set the session's rz/sz options to `-e rz` and
   `-e sz`, which dropped rz's and sz's own `-e -v`. Put `-e rz` and `-e sz`
   in front of the existing options instead: `-e rz -e -v` and `-e sz -e -v`

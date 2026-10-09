@@ -756,7 +756,7 @@
 ;    means that variable is not sent. no sends only the session's variables.
 ;    An SSH server drops them unless its sshd_config has
 ;    "AcceptEnv COLORTERM TERM_PROGRAM"; the terminal then shows a NOTE
-;    naming that line, once per host. Running sessions keep what they sent.
+;    with that line, once per host. Running sessions keep what they sent.
 ;sendtermenv=yes
 
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones

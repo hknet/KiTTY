@@ -736,6 +736,15 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 static HWND kitty_about_dlg = NULL;
 static void kitty_show_about_modeless(HWND owner);
 
+/* KiTTY: the product name a person reads. appname is also the window class
+ * ("KiTTY"), which the launcher, Ctrl+Tab and other programs match, so it
+ * cannot change; the terminal's About box shows KiTTY++ instead. The other
+ * programs that share this file (PuTTY, KiTTYtel, pterm) keep their name. */
+static const char *about_product_name(void)
+{
+    return strcmp(appname, "KiTTY") ? appname : "KiTTY++";
+}
+
 static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
                                   WPARAM wParam, LPARAM lParam)
 {
@@ -743,7 +752,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
-        str = dupprintf("About %s", appname);
+        str = dupprintf("About %s", about_product_name());
         SetWindowText(hwnd, str);
         sfree(str);
         char *buildinfo_text = buildinfo("\r\n");
@@ -775,7 +784,7 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
          * CP1252 bytes, set as Unicode below so they render on any system codepage. */
         char *text = dupprintf(
             KT_DLG_ABOUT_FMT,
-            appname, ver, netdbg, testbuild, aclnote, buildinfo_text,
+            about_product_name(), ver, netdbg, testbuild, aclnote, buildinfo_text,
             KT_DLG_ABOUT_PORT,
             KT_DLG_ABOUT_KITTY,
             KT_DLG_ABOUT_PUTTY,

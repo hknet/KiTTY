@@ -759,7 +759,7 @@ char default_init_file_content[] =
 ;    means that variable is not sent. no sends only the session's variables.\n\
 ;    An SSH server drops them unless its sshd_config has\n\
 ;    \"AcceptEnv COLORTERM TERM_PROGRAM\"; the terminal then shows a NOTE\n\
-;    naming that line, once per host. Running sessions keep what they sent.\n\
+;    with that line, once per host. Running sessions keep what they sent.\n\
 ;sendtermenv=yes\n\
 \n\
 ; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones\n\

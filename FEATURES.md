@@ -185,7 +185,7 @@ file is a red row under its real file name ("Two files for one session name:
 this one cannot be opened until it is renamed"), with *Show in Explorer* and
 *Rename...*, which renames that file to a session name not in use yet. A
 terminal opened for such a session reports this in a yellow NOTE line at its top
-and in the Event Log, naming the file it opened and the other one.
+and in the Event Log, with the file it opened and the other one.
 
 Turning the setting off puts the classic dropdown back exactly as it was, with
 every session where it was: the setting changes how you look at the folders,
@@ -285,7 +285,7 @@ an empty folder's list reads "No sessions in this folder". Enter starts the
 selected sessions, a double click the one clicked; Enter in the tree goes to
 the folder's first session.
 
-**Session tags** (hknet/KiTTY#60). A tag names a group of sessions that are
+**Session tags** (hknet/KiTTY#60). A tag is the name of a group of sessions that are
 started together, such as `lab` or `switches`, whatever folders they are in;
 a session can carry any number of tags (`Tags=lab,switches`). Session > Startup
 > *Session Tags* lists the session's tags, each in a colour of its own, with
@@ -633,7 +633,7 @@ kageant offers its loaded keys to a server in list order, and the server tries t
 
 The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses them until **Unlock agent**. Settings > Security, **When Windows locks**: **Keep the agent working** (the default), **Lock the agent**, or **Re-encrypt the keys**. A disconnected remote desktop counts as locked. Re-encrypted keys that have a key file require their passphrase when Windows unlocks, the others on first use.
 
-`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice names the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
+`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice shows the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
 
 **How to enable:** right-click the kageant tray icon → **Lock agent**; Settings > Security for the rest. From **kitty.ini**: `[Agent] lockwithwindows=keep|lock|reencrypt` and `allowipclock=yes`.
 

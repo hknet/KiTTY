@@ -1858,7 +1858,7 @@
 #define KT_CMD_HELP_SCREENSHOT                       "save a screenshot of the terminal"
 
 /* kitty_launcher.c: tray tip, balloons, notices, About, the Startup-folder shortcut */
-#define KT_LAUNCHER_UPDATE_BALLOON                   "KiTTY %s is available%s.\nClick here to install it."
+#define KT_LAUNCHER_UPDATE_BALLOON                   "KiTTY++ %s is available%s.\nClick here to install it."
 #define KT_LAUNCHER_TIP                              "KiTTY++ Launcher"
 #define KT_LAUNCHER_TIP_UPDATE                       "KiTTY++ Launcher - update %s%s available"
 #define KT_LAUNCHER_TIP_PORTABLE                     "KiTTY++ Launcher\r\n(portable)"
@@ -1868,10 +1868,10 @@
 #define KT_LAUNCHER_HOTKEY_DUP                       "%s%s: \"%s\" has it, \"%s\" does not."
 #define KT_LAUNCHER_HOTKEY_HELD                      "%s%s (\"%s\"): held by another application."
 #define KT_LAUNCHER_HOTKEY_OVERFLOW                  "%s%d more session hotkey%s beyond the %d-slot limit."
-#define KT_LAUNCHER_WP_ON_LEFT                       "Every connection now uses the proxy \"%.200s\", whatever each " \
-        "session says. Switches off in %s, or when this launcher stops."
-#define KT_LAUNCHER_WP_ON                            "Every connection now uses the proxy \"%.200s\", whatever each " \
-        "session says. It stays on until you switch it off or this " \
+#define KT_LAUNCHER_WP_ON_LEFT                       "Every connection now uses the proxy \"%.200s\" instead of each " \
+        "session's own. Switches off in %s, or when this launcher stops."
+#define KT_LAUNCHER_WP_ON                            "Every connection now uses the proxy \"%.200s\" instead of each " \
+        "session's own. It stays on until you switch it off or this " \
         "launcher stops."
 #define KT_LAUNCHER_WP_TIMEOUT                       "The time you set for workplace proxy mode has run out, so it is off. " \
         "New connections use each session's own proxy settings again. Click " \
@@ -1880,13 +1880,13 @@
         "proxy settings again; connections already open keep the proxy they " \
         "connected through."
 /* About box: BUILD_VERSION / KITTY_TEST_BUILD_LABEL are pasted in between these where they are used */
-#define KT_LAUNCHER_ABOUT_PREFIX                     "KiTTY Launcher "
+#define KT_LAUNCHER_ABOUT_PREFIX                     "KiTTY++ Launcher "
 #define KT_LAUNCHER_ABOUT_TESTBUILD                  "TEST BUILD: "
-#define KT_LAUNCHER_ABOUT_BODY                       "\r\nQuick-launch for your saved KiTTY sessions, from the system tray.\r\n" \
-        "Part of the KiTTY suite \xe2\x80\x94 a fork of PuTTY 0.84.\r\n\r\n" \
+#define KT_LAUNCHER_ABOUT_BODY                       "\r\nQuick-launch for your saved KiTTY++ sessions, from the system tray.\r\n" \
+        "Part of the KiTTY++ suite \xe2\x80\x94 a fork of PuTTY 0.85.\r\n\r\n" \
         "\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n" \
         "Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham."
-#define KT_LAUNCHER_STARTUP_ALLUSERS                 "This KiTTY already starts at login for all users " \
+#define KT_LAUNCHER_STARTUP_ALLUSERS                 "This KiTTY++ already starts at login for all users " \
         "(an all-users Startup shortcut, usually placed by " \
         "the installer). To stop it, disable it in Settings " \
         "> Apps > Startup (that leaves the shortcut in place " \
@@ -1894,9 +1894,9 @@
         "itself needs administrator access to the all-users " \
         "Startup folder."
 #define KT_LAUNCHER_STARTUP_OTHER_KITTY              "A \"KiTTY Launcher\" startup shortcut for a different " \
-        "KiTTY already exists in your Startup folder, so none " \
+        "KiTTY++ already exists in your Startup folder, so none " \
         "was added.\n\nDelete it from your Startup folder " \
-        "(open shell:startup) first if you want THIS KiTTY to " \
+        "(open shell:startup) first if you want THIS KiTTY++ to " \
         "start at login - disabling it in Settings does not " \
         "remove the file, and its name would still clash."
 
@@ -1944,7 +1944,7 @@
         "sshd_config and reload sshd for true colour.\r\n"
 /* The session's own variables (Connection > Login > Environment) that the
  * server refused: the Event Log line for each one, and on EVERY connection
- * one terminal line naming them all, in the order sent - "the server refused
+ * one terminal line listing them all, in the order sent - "the server refused
  * LANG, EDITOR; its sshd_config needs "AcceptEnv LANG EDITOR"." The line is
  * put together by kitty_termenv_refused_own_note from the three parts. */
 #define KT_TERMENV_REFUSED_OWN_LOG                   "Server refused to set environment variable %s - " \

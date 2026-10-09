@@ -2759,7 +2759,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					MultiByteToWideChar( CP_UTF8, 0, ab, -1, wab, 512 ) ;
 					/* Modal, no sound (plain MB_OK, no MB_ICON* asterisk). MessageBoxW
 					 * renders the title and Unicode text correctly at any DPI. */
-					MessageBoxW( hwnd, wab, L"About KiTTY Launcher", MB_OK ) ;
+					MessageBoxW( hwnd, wab, L"About KiTTY++ Launcher", MB_OK ) ;
 					break ; }
 				case IDM_QUIT:
 					ResShell = Shell_NotifyIcon(NIM_DELETE, &TrayIcone) ;
