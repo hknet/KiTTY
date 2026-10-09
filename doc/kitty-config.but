@@ -1677,9 +1677,19 @@ once, six or more; the list grows past it to fill whatever height the
 configuration window has, so a taller window shows more sessions. It
 takes effect at once, in the window you type it in.
 
-\b \q{Show \q{Default Settings} in the list} keeps the defaults entry
-visible. Quick connect needs it: loading \q{Default Settings} is how
-you get back to that mode.
+\b \q{Show \q{Default Settings}} chooses where the list shows the
+defaults entry: \q{always} (the default), \q{never}, or \q{only in
+root}, at the top level of the list and not inside folders. The entry
+is the template every new session starts from, so it exists either
+way. Loading it is one way into quick connect; \c{kitty.exe
+-quickconnect}, the Start menu entry \q{KiTTY++ Quick-Connect} and the
+launcher reach quick connect without it.
+
+\b \q{Reset Default Settings} rewrites \q{Default Settings} with the
+KiTTY++ defaults, after a confirmation. Everything set there is
+replaced, a host name or a stored password too; to keep it, load
+\q{Default Settings} first and save it under a new session name. Saved
+sessions do not change.
 
 \b \q{Foldernavigation in the List} lists the folders in the session
 list itself instead of in a drop-down above it, which is worth it once

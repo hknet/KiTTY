@@ -1383,6 +1383,17 @@ static bool kitty_searching_all_folders(struct sessionsaver_data *ssd)
         ssd->searchfilter && ssd->searchfilter[0];
 }
 
+/* Does the list show "Default Settings" right now? [ConfigBox]
+ * defaultsettings: 0 never, 1 always, 2 only at the top level. BOTH loops -
+ * the population and sessionsaver_folder_visible_position - ask this, so the
+ * index->row mapping cannot drift between them. */
+static bool kitty_default_row_shown(void)
+{
+    extern int GetDefaultSettingsFlag(void);
+    int f = GetDefaultSettingsFlag();
+    return f == 1 || (f == 2 && kitty_at_root_level());
+}
+
 static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
 {
     char *fld;
@@ -1456,14 +1467,14 @@ static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
     for (int k = 0; k < ssd->sesslist.nsessions; k++) {
         int i = order[k];
         /* Must mirror the listbox population loop exactly, or index->row mapping
-         * drifts. defaultsettings=no hides "Default Settings", so it occupies no
-         * row (without this the whole selection was off by one). */
-        { extern int GetDefaultSettingsFlag(void);
-          if (!GetDefaultSettingsFlag() &&
-              !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION)) {
-              if (i == sessindex) break;   /* the hidden row has no position */
-              continue;
-          } }
+         * drifts. A hidden "Default Settings" (defaultsettings=no, or root
+         * below the top level) occupies no row (without this the whole
+         * selection was off by one). */
+        if (!kitty_default_row_shown() &&
+            !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION)) {
+            if (i == sessindex) break;   /* the hidden row has no position */
+            continue;
+        }
         if (!kitty_session_on_level(ssd, i))
             continue;
         if (i == sessindex) {
@@ -3208,15 +3219,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             for (int k = 0; k < ssd->sesslist.nsessions; k++) {
                 int smatch;
                 i = roworder[k];
-                /* KiTTY [ConfigBox] defaultsettings=no: hide "Default Settings"
-                 * from the saved-session list. It still exists as the new-session
-                 * template (loaded by name). Row IDs are session indices, not
-                 * positions, so skipping it here keeps the selection mapping
-                 * correct. */
-                { extern int GetDefaultSettingsFlag(void);
-                  if (!GetDefaultSettingsFlag() &&
-                      !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
-                      continue; }
+                /* KiTTY [ConfigBox] defaultsettings=no, or =root below the top
+                 * level: hide "Default Settings" from the saved-session list.
+                 * It still exists as the new-session template (loaded by
+                 * name). Row IDs are session indices, not positions, so
+                 * skipping it here keeps the selection mapping correct. */
+                if (!kitty_default_row_shown() &&
+                    !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION))
+                    continue;
                 /* KiTTY folder filter: show only the sessions of the level
                  * being displayed, always keeping entry 0 ("Default Settings").
                  * What "this level" means differs between the classic combo and

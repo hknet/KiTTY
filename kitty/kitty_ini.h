@@ -48,13 +48,15 @@ char default_init_file_content[] =
 ;    - start: launch it in a new window and keep the configuration box open (like the Start button)\n\
 ;dblclick=open\n\
 \n\
-; defaultsettings: when no, 'Default Settings' is hidden from the saved-session\n\
-;    list in the config box. The session itself is always there either way - it\n\
-;    is the template every new session starts from - so this only decides\n\
-;    whether you can see and click it. Default yes (shown, like stock PuTTY).\n\
-;    Note it is also the way into quick connect, where you type a host instead\n\
-;    of picking a session: you get there by loading Default Settings once. Hide\n\
-;    the row and that route is gone unless you set loadlastsession=no below.\n\
+; defaultsettings: where the saved-session list in the config box shows\n\
+;    'Default Settings' - yes (always, the default, like stock PuTTY), no\n\
+;    (never) or root (only at the top level of the list, not inside folders).\n\
+;    The session itself is always there either way - it is the template every\n\
+;    new session starts from - so this only decides whether you can see and\n\
+;    click it. Loading it is one way into quick connect, where you type a host\n\
+;    instead of picking a session; kitty.exe -quickconnect, the Start menu\n\
+;    entry and the launcher reach it without the row.\n\
+;    Set in Application > Config Window > Session Panel.\n\
 ;    https://github.com/hknet/KiTTY/blob/kitty-0.84/FEATURES.md#quick-connect-type-a-host-instead-of-picking-a-session\n\
 ;defaultsettings=yes\n\
 \n\

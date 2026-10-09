@@ -1550,9 +1550,20 @@
 #define KT_SESSION_PARAMETER_THE_LIST                "The List-View settings"
 #define KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7        "Least length, in rows (" \
         KITTY_STR(KITTY_CFG_SESSION_ROWS_MIN) " or more):"
-#define KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS   "Show \"Default Settings\" in the list"
-#define KT_SESSION_PARAMETER_QUICK_CONNECT_NEEDS_IT_LOADING "Quick connect needs it: loading Default Settings is how you " \
-        "get back to that mode."
+#define KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS   "Show \"Default Settings\":"
+#define KT_SESSION_PARAMETER_DEFAULT_NEVER           "never"
+#define KT_SESSION_PARAMETER_DEFAULT_ALWAYS          "always"
+#define KT_SESSION_PARAMETER_DEFAULT_ROOT            "only in root"
+#define KT_SESSION_PARAMETER_RESET_DEFAULT           "Reset Default Settings"
+#define KT_SESSION_PARAMETER_RESET_DEFAULT_Q         "Reset \"Default Settings\" to the KiTTY++ defaults?\n\n" \
+        "Everything set in \"Default Settings\" is replaced. To keep it, choose Cancel, " \
+        "load \"Default Settings\", save it under a new session name, then reset.\n\n" \
+        "New sessions start from \"Default Settings\"; saved sessions do not change."
+#define KT_SESSION_PARAMETER_RESET_DEFAULT_YES       "Reset"
+#define KT_SESSION_PARAMETER_RESET_DEFAULT_NO        "Cancel"
+#define KT_SESSION_PARAMETER_RESET_DEFAULT_DONE      "\"Default Settings\" reset to the KiTTY++ defaults."
+/* %s = the store's error */
+#define KT_SESSION_PARAMETER_RESET_DEFAULT_FAILED    "\"Default Settings\" could not be written: %s"
 #define KT_SESSION_PARAMETER_SHOW_FOLDERS_AS_ROWS_NOT "Foldernavigation in the List"
 #define KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU  "Search the list as you type"
 #define KT_SESSION_PARAMETER_OPENING                 "Load Last Session / Quick-Connect-Mode"

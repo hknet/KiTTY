@@ -1402,7 +1402,6 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
     int cur;
 
     if (!strcmp(key, KI_CONFIGBOX_FILTER))              cur = GetSessionFilterFlag();
-    else if (!strcmp(key, KI_CONFIGBOX_DEFAULTSETTINGS)) cur = GetDefaultSettingsFlag();
     else if (!strcmp(key, KI_CONFIGBOX_FOLDERNAVIGATION)) cur = GetFolderNavigationFlag();
     else if (!strcmp(key, KI_CONFIGBOX_SUPDUP))          cur = GetConfigBoxSupdupFlag();
     else if (!strcmp(key, KI_CONFIGBOX_RLOGIN))          cur = GetConfigBoxRloginFlag();
@@ -1417,12 +1416,90 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * only the file leaves the box redisplaying the old state the moment
          * the panel is left and re-entered. */
         if (!strcmp(key, KI_CONFIGBOX_FILTER))               SetSessionFilterFlag(on);
-        else if (!strcmp(key, KI_CONFIGBOX_DEFAULTSETTINGS)) SetDefaultSettingsFlag(on);
         else if (!strcmp(key, KI_CONFIGBOX_FOLDERNAVIGATION)) SetFolderNavigationFlag(on);
         else if (!strcmp(key, KI_CONFIGBOX_SUPDUP))          SetConfigBoxSupdupFlag(on);
         else if (!strcmp(key, KI_CONFIGBOX_RLOGIN))          SetConfigBoxRloginFlag(on);
         else                                       SetLoadLastSessionFlag(on);
     }
+}
+
+/* Show "Default Settings": never / always / only in root - [ConfigBox]
+ * defaultsettings=no|yes|root (kitty_params.c; the list asks
+ * kitty_default_row_shown in kitty_config_session.c). */
+static void kitty_cfgwin_defaultrow_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                            void *data, int event)
+{
+    static const int vals[] = { 0, 1, 2 };
+    static const char *const names[] = {
+        KT_SESSION_PARAMETER_DEFAULT_NEVER, KT_SESSION_PARAMETER_DEFAULT_ALWAYS,
+        KT_SESSION_PARAMETER_DEFAULT_ROOT };
+    static const char *const keys[] = { "no", "yes", "root" };
+    int i;
+    (void)data;
+
+    if (event == EVENT_REFRESH) {
+        int cur = GetDefaultSettingsFlag();
+        dlg_update_start(ctrl, dlg);
+        dlg_listbox_clear(ctrl, dlg);
+        for (i = 0; i < 3; i++)
+            dlg_listbox_addwithid(ctrl, dlg, names[i], vals[i]);
+        for (i = 0; i < 3; i++)
+            if (vals[i] == cur)
+                dlg_listbox_select(ctrl, dlg, i);
+        dlg_update_done(ctrl, dlg);
+    } else if (event == EVENT_SELCHANGE) {
+        int idx = dlg_listbox_index(ctrl, dlg);
+        if (idx >= 0 && idx < 3) {
+            WriteParameter(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, (char *)keys[idx]);
+            SetDefaultSettingsFlag(vals[idx]);   /* the list follows without a restart */
+        }
+    }
+}
+
+/* Reset Default Settings: after a confirmation, "Default Settings" is
+ * rewritten with the built-in defaults. load_open_settings(NULL) reads no
+ * stored key, so every value is conf.h's default - the KiTTY++ defaults,
+ * which test_conf pins. Written with save_settings, the Save button's call,
+ * so the registry and the session folder both land where a Save lands; the
+ * store is backed up first, as before any overwrite of a saved session. */
+static void kitty_reset_default_answer(int yes, void *ctx)
+{
+    extern void SaveRegistryKeyNow(void);
+    Conf *conf;
+    char *err;
+    (void)ctx;
+    if (!yes)
+        return;
+    conf = conf_new();
+    load_open_settings(NULL, conf);
+    SaveRegistryKeyNow();
+    err = save_settings(KITTY_DEFAULT_SESSION, conf);
+    conf_free(conf);
+    if (err) {
+        char *msg = dupprintf(KT_SESSION_PARAMETER_RESET_DEFAULT_FAILED, err);
+        kitty_info_modeless(kitty_cfg_modal_owner(), KT_SESSION_PARAMETER_RESET_DEFAULT,
+                            msg, NULL, NULL);
+        sfree(msg);
+        sfree(err);
+        return;
+    }
+    kitty_info_modeless(kitty_cfg_modal_owner(), KT_SESSION_PARAMETER_RESET_DEFAULT,
+                        KT_SESSION_PARAMETER_RESET_DEFAULT_DONE, NULL, NULL);
+}
+
+static void kitty_reset_default_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    (void)ctrl; (void)dlg; (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(),
+                                      KT_SESSION_PARAMETER_RESET_DEFAULT,
+                                      KT_SESSION_PARAMETER_RESET_DEFAULT_Q, NULL,
+                                      KT_SESSION_PARAMETER_RESET_DEFAULT_YES,
+                                      KT_SESSION_PARAMETER_RESET_DEFAULT_NO,
+                                      kitty_reset_default_answer, NULL))
+        MessageBeep(MB_ICONWARNING);   /* no box: nothing is reset */
 }
 
 /* Two droplists in the same group: the named-proxy chooser's visibility, and
@@ -4627,10 +4704,10 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     ctrl_editbox(s, KT_SESSION_PARAMETER_LENGTH_IN_ROWS_7, NO_SHORTCUT, 30,
                  HELPCTX(kitty_folders), kitty_cfgwin_num_handler, P(KI_CONFIGBOX_HEIGHT),
                  ED_STR);
-    ctrl_checkbox(s, KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS,
-                  NO_SHORTCUT, HELPCTX(kitty_folders),
-                  kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_DEFAULTSETTINGS));
-    ctrl_text(s, KT_SESSION_PARAMETER_QUICK_CONNECT_NEEDS_IT_LOADING, HELPCTX(kitty_folders));
+    ctrl_droplist(s, KT_SESSION_PARAMETER_SHOW_DEFAULT_SETTINGS, NO_SHORTCUT, 55,
+                  HELPCTX(kitty_folders), kitty_cfgwin_defaultrow_handler, P(NULL));
+    ctrl_pushbutton(s, KT_SESSION_PARAMETER_RESET_DEFAULT, NO_SHORTCUT,
+                    HELPCTX(kitty_folders), kitty_reset_default_handler, P(NULL));
     ctrl_checkbox(s, KT_SESSION_PARAMETER_SHOW_FOLDERS_AS_ROWS_NOT,
                   NO_SHORTCUT, HELPCTX(kitty_folders),
                   kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_FOLDERNAVIGATION));

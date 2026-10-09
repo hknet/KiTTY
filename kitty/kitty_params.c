@@ -311,8 +311,10 @@ int GetReconnectDelay(void) { return ReconnectDelay ; }
 void SetReconnectDelay( const int flag ) { ReconnectDelay = flag ; }
 #endif
 
-// Flag to disable the automatic creation of the Default Settings session
-// [ConfigBox] defaultsettings=yes
+// Where the session list shows "Default Settings":
+// [ConfigBox] defaultsettings=no (0, never) | yes (1, always, the default) |
+// root (2, only at the top level of the list) - Application > Config Window >
+// Session Panel, "Show "Default Settings":"
 static int DefaultSettingsFlag = 1 ;
 int GetDefaultSettingsFlag(void) { return DefaultSettingsFlag ; }
 void SetDefaultSettingsFlag( const int flag ) { DefaultSettingsFlag = flag ; }
@@ -715,6 +717,13 @@ void LoadParameters( void ) {
 
 	/* All the plain keyword/int keys, in table order ("debug" first). */
 	load_ini_params() ;
+	/* [ConfigBox] defaultsettings=root: the third value the yes/no table row
+	 * leaves alone (its "other" is ignored). Through ReadParameterN like the
+	 * row itself - the panel writes it with WriteParameter, which in registry
+	 * mode stores in the hive. */
+	if( ReadParameterN( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, buffer, sizeof(buffer) )
+	    && !stricmp( buffer, "root" ) )
+		DefaultSettingsFlag = 2 ;
 	/* The backends ask this terminal for the sendtermenv switch, and SSH
 	 * whether a refused default is still news for that host. */
 	kitty_termenv_switch_hook = GetSendTermEnvFlag ;
