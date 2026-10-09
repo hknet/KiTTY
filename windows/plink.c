@@ -17,6 +17,7 @@
 #include "storage.h"
 #include "tree234.h"
 #include "security-api.h"
+#include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 
 void cmdline_error(const char *fmt, ...)
 {
@@ -176,8 +177,8 @@ static void usage(void)
     printf("  -4 -6     force use of IPv4 or IPv6\n");
     printf("  -C        enable compression\n");
     printf("  -i key    private key file for user authentication\n");
-    printf("  -noagent  disable use of Pageant\n");
-    printf("  -agent    enable use of Pageant\n");
+    printf(KT_CLI_USAGE_NOAGENT);
+    printf(KT_CLI_USAGE_AGENT);
     printf("  -no-trivial-auth\n");
     printf("            disconnect if SSH authentication succeeds trivially\n");
     printf("  -noshare  disable use of connection sharing\n");
@@ -519,6 +520,29 @@ int main(int argc, char **argv)
     /* KiTTY: the loaded session's stored password, unless -pw/-pwfile (cmdline.c) */
     { extern void kitty_cmdline_use_stored_password(Conf *conf);
       kitty_cmdline_use_stored_password(conf); }
+
+    /*
+     * KiTTY: no pseudo-terminal when standard input is not a console, as
+     * OpenSSH's ssh does - unless -t requested one. A pty requested only by
+     * the loaded session (its "Don't allocate a pseudo-terminal" unticked, the
+     * default) turned a script's `klink -load s < file` into a hang: sshd does
+     * not pass the end of input on to a program reading a pty, so a remote
+     * `read` waited for ever. A command on the command line already meant no
+     * pty (above); this covers the session's RemoteCommand and a login shell.
+     * Reported under -v only - a script may parse stderr.
+     */
+    {
+        extern bool kitty_cmdline_pty_forced(void);
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD cmode;
+        if (!conf_get_bool(conf, CONF_nopty) && !kitty_cmdline_pty_forced() &&
+            (in == NULL || in == INVALID_HANDLE_VALUE || !GetConsoleMode(in, &cmode))) {
+            conf_set_bool(conf, CONF_nopty, true);
+            if (cmdline_verbose())
+                fprintf(stderr, "No pseudo-terminal: standard input is not a "
+                        "console (-t requests one)\n");
+        }
+    }
 
     /*
      * Apply subsystem status.

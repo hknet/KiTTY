@@ -41,6 +41,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   password. The option is read before any other, so `-load s
   -masterpwfile f` now works as `-masterpwfile f -load s` always did.
 
+- **klink requests no pseudo-terminal when standard input is not a
+  console, as ssh does.** A session's remote command that reads its input
+  hung in a script with redirected stdin (`klink -load s < file`, or an
+  empty file): the session's default requested a pty, and sshd does not
+  pass the end of input on to a program reading a pty. `-t` still requests
+  one, and `-v` reports the decision. **A session that needs a terminal
+  when started from such a script now needs `-t`.**
+
 - **kageant: the re-encrypt time is a combo box.** Settings > Security
   "Re-encrypt keys after idle" and a key's own value in its details list
   `immediately`, `10m`, `2h` and `1d`; any other time can still be typed.
@@ -71,7 +79,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log`, beside it.
 - **Connection > SSH > Auth: "Attempt authentication using kageant"**, without
   the "(Pageant)" it carried. The setting and its key (`TryAgent`) are
-  unchanged.
+  unchanged. The help of klink, kscp and ksftp (`-agent` / `-noagent`) and
+  the agent lines of the Event Log and of `-v` ("kageant is running.
+  Requesting keys.", "Trying kageant key #0", ...) show kageant too.
 
 ### Fixed
 

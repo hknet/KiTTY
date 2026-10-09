@@ -1019,6 +1019,13 @@ These options are equivalent to the \q{Don't allocate a
 pseudo-terminal} checkbox in the SSH panel of the KiTTY
 configuration box (see \k{config-ssh-pty}).
 
+Without \c{\-t}, \c{klink} requests no pseudo-terminal when its
+standard input is not a console - a pipe or a file - as \c{ssh} does,
+whatever the session's checkbox is set to. Over a pseudo-terminal the server
+does not pass the end of that input on, so a remote command that reads
+it would wait for ever. \c{\-v} reports the decision. A command given on
+the command line requests none anyway.
+
 These options are not available in the file transfer tools kscp and
 ksftp.
 

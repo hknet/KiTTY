@@ -3157,6 +3157,30 @@
         "  -bundlepwfile <file>   (the password on the first line)\n\n" \
         "Nothing was taken."
 
+/* ssh/userauth2-client.c, ssh/login1.c: the agent's Event Log / -v lines
+ * (upstream's "Pageant ..." texts, with our agent's name). SIZEu is defined where
+ * these are used (putty.h), so the formats expand there. */
+#define KT_AGENT_LOG_RUNNING                         "kageant is running. Requesting keys."
+#define KT_AGENT_LOG_TRUNCATED                       "kageant's response was truncated"
+#define KT_AGENT_LOG_NKEYS2                          "kageant has %"SIZEu" SSH-2 keys"
+#define KT_AGENT_LOG_NKEYS1                          "kageant has %"SIZEu" SSH-1 keys"
+#define KT_AGENT_LOG_KEY_MATCHES                     "kageant key #%"SIZEu" matches configured key file"
+#define KT_AGENT_LOG_KEYFILE_MISSING                 "Configured key file not in kageant"
+#define KT_AGENT_LOG_NO_REPLY                        "Failed to get reply from kageant"
+#define KT_AGENT_LOG_TRYING                          "Trying kageant key #%"SIZEu
+#define KT_AGENT_LOG_SENDING                         "Sending kageant's response"
+#define KT_AGENT_LOG_REFUSED                         "kageant refused signing request"
+#define KT_AGENT_MSG_NO_SIGNATURE                    "kageant failed to provide a signature\r\n"
+#define KT_AGENT_LOG_NO_SIGN_REPLY                   "kageant failed to respond to signing request"
+#define KT_AGENT_MSG_NO_SIGN_REPLY                   "kageant failed to respond to signing request\r\n"
+#define KT_AGENT_LOG_ACCEPTED                        "kageant's response accepted"
+#define KT_AGENT_LOG_NOT_ACCEPTED                    "kageant's response not accepted"
+#define KT_AGENT_LOG_NO_CHALLENGE_ANSWER             "kageant failed to answer challenge"
+#define KT_AGENT_LOG_NO_REPLY_RECEIVED               "No reply received from kageant"
+/* windows/plink.c, pscp.c, psftp.c: the -agent / -noagent help lines */
+#define KT_CLI_USAGE_NOAGENT                         "  -noagent  disable use of kageant\n"
+#define KT_CLI_USAGE_AGENT                           "  -agent    enable use of kageant\n"
+
 /* cmdline.c: -masterpwfile */
 #define KT_CLI_MPWFILE_CONFLICT                      "-masterpwfile conflicts with PortablePasswordProtection=dpapi" \
         " in kitty.ini: that store protects passwords with Windows" \

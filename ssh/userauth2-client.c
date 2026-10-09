@@ -42,6 +42,7 @@ void ssh_userauth_set_credentials_hook(
 #include "ppl.h"
 #include "sshcr.h"
 #include "kitty/kitty_connstage.h"   /* KiTTY: how far a connection got */
+#include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 
 #ifndef NO_GSSAPI
 #include "gssc.h"
@@ -672,7 +673,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
      * key configured, filter out all others).
      */
     if (s->tryagent && agent_exists()) {
-        ppl_logevent("Pageant is running. Requesting keys.");
+        ppl_logevent(KT_AGENT_LOG_RUNNING);
 
         /* Request the keys held by the agent. */
         {
@@ -696,7 +697,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 get_string(s->asrc);   /* blob */
                 get_string(s->asrc);   /* comment */
                 if (get_err(s->asrc)) {
-                    ppl_logevent("Pageant's response was truncated");
+                    ppl_logevent(KT_AGENT_LOG_TRUNCATED);
                     goto done_agent_query;
                 }
             }
@@ -718,7 +719,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     ptrlen_from_strbuf(s->agent_keys[i].blob));
             }
 
-            ppl_logevent("Pageant has %"SIZEu" SSH-2 keys", nkeys);
+            ppl_logevent(KT_AGENT_LOG_NKEYS2, nkeys);
 
             if (s->publickey_blob) {
                 /*
@@ -736,12 +737,11 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 }
 
                 if (i < nkeys) {
-                    ppl_logevent("Pageant key #%"SIZEu" matches "
-                                 "configured key file", i);
+                    ppl_logevent(KT_AGENT_LOG_KEY_MATCHES, i);
                     s->agent_key_index = i;
                     s->agent_key_limit = i+1;
                 } else {
-                    ppl_logevent("Configured key file not in Pageant");
+                    ppl_logevent(KT_AGENT_LOG_KEYFILE_MISSING);
                     s->agent_key_index = 0;
                     s->agent_key_limit = 0;
                 }
@@ -753,7 +753,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 s->agent_key_limit = nkeys;
             }
         } else {
-            ppl_logevent("Failed to get reply from Pageant");
+            ppl_logevent(KT_AGENT_LOG_NO_REPLY);
         }
       done_agent_query:;
     }
@@ -1137,7 +1137,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
 
                 s->ppl.bpp->pls->actx = SSH2_PKTCTX_PUBLICKEY;
 
-                ppl_logevent("Trying Pageant key #%"SIZEu, s->agent_key_index);
+                ppl_logevent(KT_AGENT_LOG_TRYING, s->agent_key_index);
 
                 /* See if server will accept it */
                 s->pktout = ssh_bpp_new_pktout(
@@ -1219,7 +1219,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                         get_uint32(src); /* skip length field */
                         if (get_byte(src) == SSH2_AGENT_SIGN_RESPONSE &&
                             (sigblob = get_string(src), !get_err(src))) {
-                            ppl_logevent("Sending Pageant's response");
+                            ppl_logevent(KT_AGENT_LOG_SENDING);
                             ssh2_userauth_add_sigblob(
                                 s, s->pktout,
                                 ptrlen_from_strbuf(
@@ -1229,17 +1229,14 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                             s->type = AUTH_TYPE_PUBLICKEY;
                             s->is_trivial_auth = false;
                         } else {
-                            ppl_logevent("Pageant refused signing request");
-                            ppl_printf("Pageant failed to "
-                                       "provide a signature\r\n");
+                            ppl_logevent(KT_AGENT_LOG_REFUSED);
+                            ppl_printf(KT_AGENT_MSG_NO_SIGNATURE);
                             s->suppress_wait_for_response_packet = true;
                             ssh_free_pktout(s->pktout);
                         }
                     } else {
-                        ppl_logevent("Pageant failed to respond to "
-                                     "signing request");
-                        ppl_printf("Pageant failed to "
-                                   "respond to signing request\r\n");
+                        ppl_logevent(KT_AGENT_LOG_NO_SIGN_REPLY);
+                        ppl_printf(KT_AGENT_MSG_NO_SIGN_REPLY);
                         s->suppress_wait_for_response_packet = true;
                         ssh_free_pktout(s->pktout);
                     }

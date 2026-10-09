@@ -77,6 +77,10 @@ static char *cmdline_password = NULL;
  * prompt comes next, instead of the "Configured password was not accepted"
  * abort a -pw gets. */
 static bool cmdline_password_stored = false;
+/* KiTTY: -t was given - a pseudo-terminal by explicit request, which klink's
+ * "no pty when stdin is not a console" rule (windows/plink.c) leaves alone */
+static bool kitty_pty_forced = false;
+bool kitty_cmdline_pty_forced(void) { return kitty_pty_forced; }
 
 void cmdline_cleanup(void)
 {
@@ -1098,6 +1102,7 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         UNAVAILABLE_IN(TOOLTYPE_FILETRANSFER | TOOLTYPE_NONNETWORK);
         SAVEABLE(1);    /* lower priority than -m */
         conf_set_bool(conf, CONF_nopty, false);
+        kitty_pty_forced = true;    /* KiTTY: wins over klink's stdin rule */
     }
     if (!strcmp(p, "-T")) {
         RETURN(1);

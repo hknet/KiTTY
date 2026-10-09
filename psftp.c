@@ -12,6 +12,7 @@
 #include "psftp.h"
 #include "storage.h"
 #include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
+#include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 #include "ssh.h"
 #include "ssh/sftp.h"
 
@@ -2556,8 +2557,8 @@ static void usage(void)
     printf("  -4 -6     force use of IPv4 or IPv6\n");
     printf("  -C        enable compression\n");
     printf("  -i key    private key file for user authentication\n");
-    printf("  -noagent  disable use of Pageant\n");
-    printf("  -agent    enable use of Pageant\n");
+    printf(KT_CLI_USAGE_NOAGENT);
+    printf(KT_CLI_USAGE_AGENT);
     printf("  -no-trivial-auth\n");
     printf("            disconnect if SSH authentication succeeds trivially\n");
     printf("  -hostkey keyid\n");

@@ -11,6 +11,7 @@
 #include "bpp.h"
 #include "ppl.h"
 #include "sshcr.h"
+#include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 
 /* KiTTY: a login the user TYPES at the SSH prompts - the same hook the
  * SSH-2 layer uses, defined in ssh/userauth2-client.c. See the comment on
@@ -490,7 +491,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
              */
             s->authed = false;
             s->tried_agent = true;
-            ppl_logevent("Pageant is running. Requesting keys.");
+            ppl_logevent(KT_AGENT_LOG_RUNNING);
 
             /* Request the keys held by the agent. */
             {
@@ -514,7 +515,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     get_rsa_ssh1_pub(s->asrc, NULL, RSA_SSH1_EXPONENT_FIRST);
                     get_string(s->asrc); /* comment */
                     if (get_err(s->asrc)) {
-                        ppl_logevent("Pageant's response was truncated");
+                        ppl_logevent(KT_AGENT_LOG_TRUNCATED);
                         goto parsed_agent_query;
                     }
                 }
@@ -541,7 +542,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                         blobstart, blobend - blobstart);
                 }
 
-                ppl_logevent("Pageant has %"SIZEu" SSH-1 keys", nkeys);
+                ppl_logevent(KT_AGENT_LOG_NKEYS1, nkeys);
 
                 if (s->publickey_blob) {
                     /*
@@ -559,12 +560,11 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     }
 
                     if (i < nkeys) {
-                        ppl_logevent("Pageant key #%"SIZEu" matches "
-                                     "configured key file", i);
+                        ppl_logevent(KT_AGENT_LOG_KEY_MATCHES, i);
                         s->agent_key_index = i;
                         s->agent_key_limit = i+1;
                     } else {
-                        ppl_logevent("Configured key file not in Pageant");
+                        ppl_logevent(KT_AGENT_LOG_KEYFILE_MISSING);
                         s->agent_key_index = 0;
                         s->agent_key_limit = 0;
                     }
@@ -576,13 +576,13 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     s->agent_key_limit = nkeys;
                 }
             } else {
-                ppl_logevent("Failed to get reply from Pageant");
+                ppl_logevent(KT_AGENT_LOG_NO_REPLY);
             }
           parsed_agent_query:;
 
             for (; s->agent_key_index < s->agent_key_limit;
                  s->agent_key_index++) {
-                ppl_logevent("Trying Pageant key #%"SIZEu, s->agent_key_index);
+                ppl_logevent(KT_AGENT_LOG_TRYING, s->agent_key_index);
                 pkt = ssh_bpp_new_pktout(s->ppl.bpp, SSH1_CMSG_AUTH_RSA);
                 put_mp_ssh1(pkt,
                             s->agent_keys[s->agent_key_index].key.modulus);
@@ -627,7 +627,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     if (ret) {
                         if (s->agent_response.len >= 5+16 &&
                             ret[4] == SSH1_AGENT_RSA_RESPONSE) {
-                            ppl_logevent("Sending Pageant's response");
+                            ppl_logevent(KT_AGENT_LOG_SENDING);
                             pkt = ssh_bpp_new_pktout(
                                 s->ppl.bpp, SSH1_CMSG_AUTH_RSA_RESPONSE);
                             put_data(pkt, ret + 5, 16);
@@ -637,8 +637,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                                 (pktin = ssh1_login_pop(s))
                                 != NULL);
                             if (pktin->type == SSH1_SMSG_SUCCESS) {
-                                ppl_logevent("Pageant's response "
-                                             "accepted");
+                                ppl_logevent(KT_AGENT_LOG_ACCEPTED);
                                 if (seat_verbose(s->ppl.seat)) {
                                     ptrlen comment = ptrlen_from_strbuf(
                                         s->agent_keys[s->agent_key_index].
@@ -650,15 +649,13 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                                 }
                                 s->authed = true;
                             } else
-                                ppl_logevent("Pageant's response not "
-                                             "accepted");
+                                ppl_logevent(KT_AGENT_LOG_NOT_ACCEPTED);
                         } else {
-                            ppl_logevent("Pageant failed to answer "
-                                         "challenge");
+                            ppl_logevent(KT_AGENT_LOG_NO_CHALLENGE_ANSWER);
                             sfree((char *)ret);
                         }
                     } else {
-                        ppl_logevent("No reply received from Pageant");
+                        ppl_logevent(KT_AGENT_LOG_NO_REPLY_RECEIVED);
                     }
                 }
                 if (s->authed)
