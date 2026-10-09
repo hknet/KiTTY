@@ -1512,6 +1512,7 @@
 #define KT_KSET_LA_DBLCLICK                          "Tray icon double-click opens:"
 #define KT_KSET_LA_DBL_CONFIG                        "Configuration"
 #define KT_KSET_LA_DBL_MANAGE                        "Manage Sessions"
+#define KT_KSET_LA_DBL_QUICK                         "Quick Connect"
 #define KT_KSET_LA_WORKPLACE                         "Workplace proxy mode"
 #define KT_KSET_LA_EXITWITH                          "Workplace mode closes the launcher it started"
 #define KT_KSET_LA_NOTICE                            "Workplace notice stays on screen, seconds:"

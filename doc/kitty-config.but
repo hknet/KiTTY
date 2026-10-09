@@ -2217,8 +2217,9 @@ rebuilding its menu; see below. \q{A second launcher} sets whether a
 launcher started while one is running exits, the default, or starts
 anyway. \q{Tray icon double-click opens} chooses what a double click on
 the launcher's tray icon opens: a new \q{Configuration} window, the
-default, or \q{Manage Sessions} alone (\c{kitty.exe -manage}); it
-applies at the next double click.
+default, \q{Manage Sessions} alone (\c{kitty.exe -manage}), or \q{Quick
+Connect} (\c{kitty.exe -quickconnect}); a running launcher follows a
+change at the next double click.
 
 \b \q{Show hidden windows again after the launcher ends} is for windows
 hidden from the launcher's menu: they have no taskbar button and no
@@ -2288,8 +2289,9 @@ closing backslash.
 
 A left click on the launcher's icon in the system tray opens its menu:
 the saved sessions, a session folder as a submenu, and below them the
-entries of the launcher itself. A double click opens the configuration
-box instead, and a right click opens \q{Open Sessions} directly.
+entries of the launcher itself. A double click opens what \q{Tray icon
+double-click opens} names (the configuration box unless set otherwise),
+and a right click opens \q{Open Sessions} directly.
 
 A right click on a session folder inside the open menu offers \q{Open
 all ... sessions in} that folder: the sessions directly in it, not those

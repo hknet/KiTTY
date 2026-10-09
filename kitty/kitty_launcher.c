@@ -1735,15 +1735,17 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 	}
 	LauncherDblActionTick = now ;
 	{
-		/* [Launcher] dblclick=manage: Manage Sessions instead (read at each
-		 * double click, so the panel's choice applies without a restart) */
-		char what[32] = "", manage_arg[] = "-manage", none[] = "" ;
-		int manage = ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK, what, sizeof(what) )
-		             && !stricmp( what, "manage" ) ;
+		/* [Launcher] dblclick=manage: Manage Sessions, =quickconnect: Quick
+		 * Connect, else a configuration box (read at each double click, so
+		 * the panel's choice applies to a running launcher without a restart) */
+		char what[32] = "", manage_arg[] = "-manage", quick_arg[] = "-quickconnect", none[] = "" ;
+		int got = ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK, what, sizeof(what) ) ;
+		int manage = got && !stricmp( what, "manage" ) ;
+		int quick = got && !stricmp( what, "quickconnect" ) ;
 		snprintf( line, sizeof(line), "double click via %s: %s", from,
-		          manage ? "Manage Sessions" : "new configuration box" ) ;
+		          manage ? "Manage Sessions" : quick ? "Quick Connect" : "new configuration box" ) ;
 		LauncherTrayTrace( line ) ;
-		RunPuTTY( hwnd, manage ? manage_arg : none ) ;
+		RunPuTTY( hwnd, manage ? manage_arg : quick ? quick_arg : none ) ;
 	}
 }
 

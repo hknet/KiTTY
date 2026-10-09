@@ -714,7 +714,8 @@ static const struct kset_choice kset_second_launcher_choices[] = {
     { KT_KSET_LA_SECOND_EXITS, "yes", 1 }, { KT_KSET_LA_SECOND_STARTS, "no", 0 } };
 /* [Launcher] dblclick: what a double click on the tray icon opens */
 static const struct kset_choice kset_launcher_dblclick_choices[] = {
-    { KT_KSET_LA_DBL_CONFIG, "config", 0 }, { KT_KSET_LA_DBL_MANAGE, "manage", 1 } };
+    { KT_KSET_LA_DBL_CONFIG, "config", 0 }, { KT_KSET_LA_DBL_MANAGE, "manage", 1 },
+    { KT_KSET_LA_DBL_QUICK, "quickconnect", 2 } };
 static const struct kset_choice kset_pwprot_choices[] = {
     { KT_KSET_STORAGE_PWPROT_MASTER, "master", 0 },
     { KT_KSET_STORAGE_PWPROT_DPAPI,  "dpapi",  1 },

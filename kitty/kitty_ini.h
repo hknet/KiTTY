@@ -1196,8 +1196,10 @@ char default_init_file_content[] =
 ;alreadyRunCheck=yes\n\
 \n\
 ; dblclick: what a double click on the launcher's tray icon opens - config\n\
-;    (a new configuration window, the default) or manage (Manage Sessions\n\
-;    alone, as \"kitty.exe -manage\" opens it). Read at each double click.\n\
+;    (a new configuration window, the default), manage (Manage Sessions\n\
+;    alone, as \"kitty.exe -manage\" opens it) or quickconnect (Quick Connect,\n\
+;    as \"kitty.exe -quickconnect\" opens it). Read at each double click, so a\n\
+;    running launcher follows a change at once.\n\
 ;    Set in Application > KiTTY++ Settings > Launcher.\n\
 ;dblclick=config\n\
 \n\

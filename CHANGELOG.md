@@ -52,6 +52,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   entry is not repeated inside folders. "Reset Default Settings" rewrites
   it with the KiTTY++ defaults after a confirmation that advises saving it
   under another name first; saved sessions do not change.
+- **The launcher's tray icon double-click can open Quick Connect.**
+  Application > KiTTY++ Settings > Launcher, "Tray icon double-click
+  opens:", has Quick Connect beside Configuration and Manage Sessions. A
+  running launcher follows the choice at its next double click.
 - **Program status from the host (OSC 7501).** A program reports working,
   blocked, done, failed or idle. The taskbar button shows the most urgent
   state as a small icon, the percentage on its bar, and flashes when a
