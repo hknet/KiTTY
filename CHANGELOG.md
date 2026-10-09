@@ -8,6 +8,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **iTerm2's `ReportCellSize` is answered.** `OSC 1337 ; ReportCellSize`
+  gets the cell height and width in points and the scale (DPI / 96), as
+  iTerm2's own tools query it instead of `CSI 16 t`.
 - **Curly, dotted, dashed and double underlines, in their own colour.**
   `4:0`..`4:5` choose the style (none, single, double, curly, dotted,
   dashed) and `58` the underline colour (`58:2::r:g:b`, `58:5:n` and the

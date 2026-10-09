@@ -3109,6 +3109,25 @@ static void test_kitty_graphics(Mock *mk)
     /* CSI 16 t: the cell size, height first, through the raw seam */
     expect_reply(mk, "gfx: CSI 16 t", "\033[16t", "\033[6;16;8t");
 
+    /* iTerm2's ReportCellSize: height;width in points, the scale - before
+     * a DPI report 96 is assumed, at 144 DPI the same cell is 1.5 x smaller
+     * in points; answered with ItermImages off as well (a query) */
+    expect_reply(mk, "ReportCellSize, no DPI yet", "\033]1337;ReportCellSize\007",
+                 "\033]1337;ReportCellSize=16.00;8.00;1.00\007");
+    term_notify_dpi(term, 144);
+    expect_reply(mk, "ReportCellSize at 144 DPI", "\033]1337;ReportCellSize\033\\",
+                 "\033]1337;ReportCellSize=10.67;5.33;1.50\007");
+    /* 125 %: the scale exact, 1.25 - one decimal gave 1.2, and 12.80 pt
+     * times 1.2 is 15.4 px instead of the 16 px cell */
+    term_notify_dpi(term, 120);
+    expect_reply(mk, "ReportCellSize at 120 DPI", "\033]1337;ReportCellSize\007",
+                 "\033]1337;ReportCellSize=12.80;6.40;1.25\007");
+    term_notify_dpi(term, 96);
+    term_notify_cell_size_pixels(term, 0, 0);
+    expect_silence(mk, "ReportCellSize before the cell size is known",
+                   "\033]1337;ReportCellSize\007");
+    term_notify_cell_size_pixels(term, 8, 16);
+
     /* a 16 x 32 image at row 5, column 3: 2 x 2 cells, answered OK, the
      * cursor after its right edge on its last row */
     feed_seq(mk, "\033[5;3H");

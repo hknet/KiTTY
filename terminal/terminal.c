@@ -8614,6 +8614,28 @@ static void term_capabilities_report(Terminal *term)
     kitty_osc52_send_raw(term, sb->s, sb->len);
     strbuf_free(sb);
 }
+
+/*
+ * KiTTY: OSC 1337 ; ReportCellSize - iTerm2's answer, OSC 1337 ;
+ * ReportCellSize=<height>;<width>;<scale> BEL: the cell in points and the
+ * pixels per point. On Windows a point is 1/96 inch, so the scale is
+ * dpi/96 and the cell in points is the cell in pixels divided by it. The
+ * scale has two decimals: Windows' 125 % and 175 % are 1.25 and 1.75, and
+ * one decimal made a client that multiplies back get the cell wrong.
+ * Nothing before the window has reported the cell size.
+ */
+static void term_report_cell_size(Terminal *term)
+{
+    double scale = (term->dpi > 0 ? term->dpi : 96) / 96.0;
+    char *s;
+
+    if (term->cellpix_x <= 0 || term->cellpix_y <= 0)
+        return;
+    s = dupprintf("\033]1337;ReportCellSize=%.2f;%.2f;%.2f\007",
+                  term->cellpix_y / scale, term->cellpix_x / scale, scale);
+    kitty_osc52_send_raw(term, s, strlen(s));
+    sfree(s);
+}
 #endif
 
 #if defined(MOD_PERSO) && defined(MOD_FAR2L)
@@ -8998,6 +9020,13 @@ static void do_osc(Terminal *term)
             if (!term->osc_str_overflow &&
                 !strcmp(term->osc_string, "Capabilities")) {
                 term_capabilities_report(term);
+                break;
+            }
+            /* KiTTY: iTerm2's ReportCellSize - a query like CSI 16 t,
+             * answered whatever the settings */
+            if (!term->osc_str_overflow &&
+                !strcmp(term->osc_string, "ReportCellSize")) {
+                term_report_cell_size(term);
                 break;
             }
             if (conf_get_bool(term->conf, CONF_iterm_images)) {
@@ -15102,6 +15131,12 @@ void term_notify_cell_size_pixels(Terminal *term, int w, int h)
 #ifdef MOD_PERSO
     kitty_gfx_cell_size_changed(term);   /* KiTTY: kitty graphics re-fitted */
 #endif
+}
+
+/* KiTTY: the window's DPI, for OSC 1337 ; ReportCellSize (points) */
+void term_notify_dpi(Terminal *term, int dpi)
+{
+    term->dpi = dpi;
 }
 
 /*

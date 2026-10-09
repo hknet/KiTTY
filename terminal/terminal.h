@@ -351,6 +351,9 @@ struct terminal_tag {
     struct GfxStore *gfx;
     long gfx_sb_base;
     int cellpix_x, cellpix_y;
+    /* KiTTY: the window's DPI (term_notify_dpi), 0 until reported - for
+     * iTerm2's ReportCellSize, which answers in points */
+    int dpi;
     /* KiTTY: Sixel graphics (kitty/kitty_sixel.h, kitty_gfx_term.c): the
      * decoder of the DCS ... q being received (NULL: none) - its bytes go
      * to it as they arrive, never into osc_string - and the shared colour

@@ -2686,6 +2686,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
     /* the fonts were measured before the terminal existed (CSI 16 t) */
     term_notify_cell_size_pixels(wgs->term, wgs->font_width, wgs->font_height);
+    term_notify_dpi(wgs->term, wgs->dpi_info.cur_dpi.y);   /* ReportCellSize */
     kitty_set_active_seat(wgs);
     /* -loginscript: deferred here because ReadInitScript writes the GLOBAL conf,
      * which kitty_set_active_seat has only just made valid (it was NULL during
@@ -4513,9 +4514,11 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
         kp_fonts_changed(wgs->painter);
     /* KiTTY: the cell size, for CSI 16 t and the kitty graphics grid (a
      * font or DPI change comes through here) */
-    if (wgs->term)
+    if (wgs->term) {
         term_notify_cell_size_pixels(wgs->term, wgs->font_width,
                                      wgs->font_height);
+        term_notify_dpi(wgs->term, wgs->dpi_info.cur_dpi.y);
+    }
 #endif
 }
 
@@ -7474,6 +7477,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* KiTTY: and the cell size (CSI 16 t, kitty graphics) */
             term_notify_cell_size_pixels(wgs->term, wgs->font_width,
                                          wgs->font_height);
+            term_notify_dpi(wgs->term, wgs->dpi_info.cur_dpi.y);
 #endif
         }
         if (wParam == SIZE_MINIMIZED)

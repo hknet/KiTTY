@@ -2206,6 +2206,7 @@ void term_notify_window_pos(Terminal *term, int x, int y);
 void term_notify_window_size_pixels(Terminal *term, int x, int y);
 /* KiTTY: the cell size in pixels (CSI 16 t; the kitty graphics cell grid). */
 void term_notify_cell_size_pixels(Terminal *term, int w, int h);
+void term_notify_dpi(Terminal *term, int dpi);   /* KiTTY: ReportCellSize */
 void term_palette_override(Terminal *term, unsigned osc4_index, rgb rgb);
 void term_set_preedit_text(Terminal *term, char *preedit_text);
 

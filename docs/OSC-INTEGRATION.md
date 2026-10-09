@@ -62,6 +62,7 @@ it holds over SSH whatever `TERM` is set to:
 | Terminal name, XTVERSION (`CSI > q`) | `DCS > \| KiTTY++ <version> ST` |
 | Terminfo capabilities, XTGETTCAP (`DCS + q <hex names> ST`) | One reply per name, `DCS 1 + r` with the value or `DCS 0 + r` for a name not answered. `TN` (the session's terminal type), `Co` / `colors`, true colour `RGB` / `Tc` / `setrgbf` / `setrgbb`, `Ms` (only while the remote clipboard may be written), `Sync` (only with a hold limit above 0), cursor shape `Ss` / `Se`, bracketed paste `BE` / `BD` / `PS` / `PE`, focus reports `fe` / `fd` / `kxIN` / `kxOUT` (only with focus reporting allowed). |
 | Feature tags, iTerm2's `OSC 1337 ; Capabilities` | `OSC 1337 ; Capabilities=<tags>`: true colour, clipboard, mouse, cursor shapes, UTF-8, title, bracketed paste, focus, strikethrough, synchronized output, hyperlinks, notifications, Sixel, inline images, progress, each only while its switch is on. |
+| Cell size, iTerm2's `OSC 1337 ; ReportCellSize` | `OSC 1337 ; ReportCellSize=<height>;<width>;<scale>`: the cell in points (1/96 inch on Windows) and the pixels per point (DPI / 96), whatever the switches - a query like `CSI 16 t`. |
 | Modes, DECRQM (`CSI ? Ps $ p`, `CSI Ps $ p`) | Every mode KiTTY++ implements: set or reset, "permanently reset" when a session setting turns it off, "not recognised" for the rest. Mode 2026 with a hold limit of 0 is "not recognised". |
 
 This is how neovim and tmux find true colour, the clipboard and synchronized
