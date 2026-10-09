@@ -16,8 +16,13 @@ FontSpec *platform_default_fontspec(const char *name)
 
 Filename *platform_default_filename(const char *name)
 {
+    /* KiTTY: a log path that works as it stands, one folder per host and a
+     * file per day - instead of "putty.log" in whatever the current folder
+     * happens to be. Logging itself stays off by default; this is what the
+     * box offers once it is switched on. The folders are made at the first
+     * open (filename_make_parent_dirs, hknet/KiTTY#65). */
     if (!strcmp(name, "LogFileName"))
-        return filename_from_str("putty.log");
+        return filename_from_str("%APPDATA%\\KiTTY++\\logs\\&H\\&Y-&M-&D.log");
     else
         return filename_from_str("");
 }

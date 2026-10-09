@@ -3137,6 +3137,7 @@
 #define KT_CLI_MPWFILE_READ_FAILED                   "unable to read a master password from file '%s'"
 
 /* logging.c: Event Log lines */
+#define KT_LOG_FOLDER_CREATED                        "Created the missing log folder %s"
 #define KT_LOG_ROTATION_SKIPPED                      "Log rotation skipped: the log file name does not " \
         "change with time (use &T, or &Y&M&D, in it) - rotating " \
         "into the same name would overwrite the log"

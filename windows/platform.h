@@ -80,6 +80,9 @@ FILE *f_open(const Filename *filename, const char *mode, bool isprivate);
  */
 wchar_t *filename_expand_wstr(const Filename *fn);
 char *filename_expand_str(const Filename *fn);
+/* KiTTY: create the missing folders of fn's expanded path (hknet/KiTTY#65);
+ * returns how many were made, *first_made = the outermost (caller sfrees). */
+int filename_make_parent_dirs(const Filename *fn, char **first_made);
 
 #ifndef SUPERSEDE_FONTSPEC_FOR_TESTING
 struct FontSpec {

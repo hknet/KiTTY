@@ -15,6 +15,19 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   folder still counts as this launcher's: "Start at login" shows it ticked,
   and unticking removes it. Message boxes and the hotkey texts read
   "KiTTY++ Launcher" too.
+- **New sessions log to `%APPDATA%\KiTTY++\logs\&H\&Y-&M-&D.log`** once
+  logging is switched on: one folder per host, one file per day, instead of
+  `putty.log` in whatever the current folder happened to be. Logging itself
+  stays off by default. Sessions that already store a log file name keep it.
+
+### Fixed
+
+- **A log whose folder does not exist yet is written** (hknet/KiTTY#65).
+  The missing folders of the log path are created when the log opens, and
+  the Event Log records which. A variable the machine does not have creates
+  nothing, so a mistyped `%NAME%` cannot plant a folder of that name. The
+  log messages show the path with `%VAR%` expanded, so an error shows the
+  folder actually tried.
 
 ## 0.85.1.14-beta — 2026-10-09
 

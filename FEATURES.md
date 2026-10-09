@@ -840,6 +840,8 @@ The stamp is a **strftime** pattern, so you choose the layout: `%Y-%m-%d %H:%M:%
 
 The **log file name** takes its own substitutions, which is how you keep one file per host or per day instead of overwriting a single file: **`&H`** host name, **`&P`** port, **`&Y` `&M` `&D`** year/month/day, **`&T`** time as HHMMSS, and `&&` for a literal `&`. So `kitty_&H_&Y&M&D.log` becomes `kitty_server1_20260812.log`. Characters that are illegal in a Windows file name are replaced automatically, so an IPv6 address in `&H` cannot produce an unusable name.
 
+The default name is `%APPDATA%\KiTTY++\logs\&H\&Y-&M-&D.log` — a folder per host, a file per day. **Missing folders of the path are created** when the log opens (the Event Log names the first one created), so a per-host folder like `&H` works from the first connection. A `%VAR%` the machine does not have creates nothing; the error then shows the path with the variable's name.
+
 Timestamps apply to the session logs — *Printable output* and *All session output*. The SSH packet and raw-data logs are deliberately left alone: they already timestamp every record in their own format, which other tools parse.
 
 If you would rather not learn strftime to try it, the button under the field fills in a sensible pattern; press it again to clear it. Its label always shows which of the two it will do.

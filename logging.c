@@ -190,6 +190,22 @@ static void logfopen_callback(void *vctx, int mode)
         ctx->state = L_ERROR;          /* disable logging */
     } else {
         fmode = (mode == 1 ? "ab" : "wb");
+#ifdef MOD_PERSO
+        /* KiTTY: the log's folder is part of the path the user typed, so a
+         * missing one is made first, and recorded in the Event Log - a mistyped
+         * path then shows as a new folder rather than passing silently
+         * (hknet/KiTTY#65). A failure here is reported by the open below. */
+        {
+            char *made = NULL;
+            if (filename_make_parent_dirs(ctx->currlogfilename, &made) > 0 &&
+                made) {
+                char *ev = dupprintf(KT_LOG_FOLDER_CREATED, made);
+                lp_eventlog(ctx->lp, ev);
+                sfree(ev);
+            }
+            sfree(made);
+        }
+#endif
         ctx->lgfp = f_open(ctx->currlogfilename, fmode, false);
         if (ctx->lgfp) {
             ctx->state = L_OPEN;
@@ -213,6 +229,11 @@ static void logfopen_callback(void *vctx, int mode)
                   " =~=~=~=~=~=~=~=~=~=~=~=\r\n", buf);
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: the path as opened, %VAR% expanded - the typed form
+     * ("%USERPROFILE%\logs\...") does not show which folder was meant */
+    char *shownname = filename_expand_str(ctx->currlogfilename);
+#endif
     event = dupprintf("%s session log (%s mode) to file: %s",
                       ctx->state == L_ERROR ?
                       (mode == 0 ? "Disabled writing" : "Error writing") :
@@ -222,7 +243,12 @@ static void logfopen_callback(void *vctx, int mode)
                        ctx->logtype == LGTYP_PACKETS ? "SSH packets" :
                        ctx->logtype == LGTYP_SSHRAW ? "SSH raw data" :
                        "unknown"),
+#ifdef MOD_PERSO
+                      shownname);
+    sfree(shownname);
+#else
                       filename_to_str(ctx->currlogfilename));
+#endif
     lp_eventlog(ctx->lp, event);
     if (shout) {
         /*

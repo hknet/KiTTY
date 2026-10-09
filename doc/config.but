@@ -346,6 +346,13 @@ like
 The name can also use Windows environment variables, such as
 \c{%OneDrive%\\Kitty-Logs\\Kitty.log}; see \k{kitty-cfg-envvars}.
 
+The default is \c{%APPDATA%\\KiTTY++\\logs\\&H\\&Y-&M-&D.log}: one
+folder per host, one file per day. Folders of the path that do not exist
+yet are created when the log is first opened, and the Event Log records it.
+A variable this machine does not have (the \c{%OneDrive%} above without
+OneDrive) creates nothing; the log then fails to open, and the error
+shows the path with the variable's name in it.
+
 \S{config-logfileexists} \q{What to do if the log file already exists}
 
 This control allows you to specify what KiTTY should do if it tries

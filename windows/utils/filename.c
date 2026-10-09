@@ -53,6 +53,80 @@ char *filename_expand_str(const Filename *fn)
     return c;
 }
 
+/*
+ * KiTTY: create the folders a file's (expanded) path needs and does not have
+ * yet, so a log whose folder is missing can still be opened - the folder is
+ * part of the path the user typed (hknet/KiTTY#65). Folder by folder from the
+ * root down; the root itself ("C:\", "\\server\share", "\") is never created.
+ * Returns how many folders were made; *first_made (if given) receives the
+ * outermost one, for the Event Log. Nothing happens when the folder exists,
+ * and a failure stops quietly - the open that follows reports it.
+ */
+static bool is_sep_w(wchar_t c) { return c == L'\\' || c == L'/'; }
+
+int filename_make_parent_dirs(const Filename *fn, char **first_made)
+{
+    wchar_t *p = expand_env_wstr(fn->wpath), *q, *last = NULL;
+    int made = 0;
+
+    if (first_made)
+        *first_made = NULL;
+    for (q = p; *q; q++)
+        if (is_sep_w(*q))
+            last = q;
+    if (!last || last == p) {          /* no folder part, or just "\" */
+        sfree(p);
+        return 0;
+    }
+    *last = L'\0';                     /* p is the folder now */
+    /* A '%' left after expansion is a variable this machine does not have
+     * ("%OneDrive%\logs" without OneDrive): the path is then relative and
+     * literal, and making it would plant a folder named "%OneDrive%" in the
+     * current folder. Leave it to the open, whose error shows the name. */
+    if (wcschr(p, L'%')) {
+        sfree(p);
+        return 0;
+    }
+    if (GetFileAttributesW(p) != INVALID_FILE_ATTRIBUTES) {
+        sfree(p);                      /* there already (or a file: the open reports it) */
+        return 0;
+    }
+
+    /* past the root */
+    q = p;
+    if (q[0] && q[1] == L':') {
+        q += 2;
+    } else if (is_sep_w(q[0]) && is_sep_w(q[1])) {
+        q += 2;                        /* \\server\share */
+        while (*q && !is_sep_w(*q)) q++;
+        if (*q) q++;
+        while (*q && !is_sep_w(*q)) q++;
+    }
+    while (is_sep_w(*q)) q++;
+
+    while (*q) {
+        wchar_t *sep = q, save;
+        while (*sep && !is_sep_w(*sep)) sep++;
+        save = *sep;
+        *sep = L'\0';
+        if (GetFileAttributesW(p) == INVALID_FILE_ATTRIBUTES) {
+            if (!CreateDirectoryW(p, NULL) &&
+                GetLastError() != ERROR_ALREADY_EXISTS) {
+                *sep = save;
+                break;
+            }
+            if (!made && first_made)
+                *first_made = dup_wc_to_mb(DEFAULT_CODEPAGE, p, "?");
+            made++;
+        }
+        *sep = save;
+        q = sep;
+        while (is_sep_w(*q)) q++;
+    }
+    sfree(p);
+    return made;
+}
+
 Filename *filename_from_str(const char *str)
 {
     Filename *fn = snew(Filename);
