@@ -19,6 +19,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   logging is switched on: one folder per host, one file per day, instead of
   `putty.log` in whatever the current folder happened to be. Logging itself
   stays off by default. Sessions that already store a log file name keep it.
+- **klink, kscp and ksftp use the store kitty.exe uses.** With
+  `savemode=dir` in the `kitty.ini` they find (or a portable layout beside
+  it), they load sessions and check host keys in that folder store instead
+  of the registry. A script that relied on the registry from such a folder
+  points `KITTY_INI_FILE` at an ini without `savemode=dir`. Passwords a
+  master password protects there are not unlocked by these tools yet: the
+  session asks for the password, or fails under `-batch`.
+- **`KITTYPP_DIR`: every program sets it to its own folder at start**, so
+  `%KITTYPP_DIR%\...` in a file or folder setting follows a USB stick to
+  another drive letter. Where the settings travel with the program (a folder
+  store, `savemode=file`, the portable build) the log default is
+  `%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log`, beside it.
 
 ### Fixed
 

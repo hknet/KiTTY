@@ -41,6 +41,12 @@ static Filename *xlatlognam(const Filename *s,
                             const char *hostname, int port,
                             const struct tm *tm);
 
+#if defined(_WIN32) && !defined(MOD_PERSO)
+/* KiTTY: the log-folder Event Log line below reaches the console tools too,
+ * which compile this file without MOD_PERSO */
+#include "kitty/kitty_text.h"
+#endif
+
 #ifdef MOD_PERSO
 #include <sys/time.h>                  /* gettimeofday, for the %f expansion */
 #include "kitty/kitty_text.h"          /* KiTTY: the Event Log wordings below */
@@ -190,11 +196,13 @@ static void logfopen_callback(void *vctx, int mode)
         ctx->state = L_ERROR;          /* disable logging */
     } else {
         fmode = (mode == 1 ? "ab" : "wb");
-#ifdef MOD_PERSO
+#ifdef _WIN32
         /* KiTTY: the log's folder is part of the path the user typed, so a
          * missing one is made first, and recorded in the Event Log - a mistyped
          * path then shows as a new folder rather than passing silently
-         * (hknet/KiTTY#65). A failure here is reported by the open below. */
+         * (hknet/KiTTY#65). A failure here is reported by the open below.
+         * _WIN32, not MOD_PERSO: klink, kscp and ksftp compile this file
+         * without MOD_PERSO, and their log default has a per-host folder too. */
         {
             char *made = NULL;
             if (filename_make_parent_dirs(ctx->currlogfilename, &made) > 0 &&
@@ -229,7 +237,7 @@ static void logfopen_callback(void *vctx, int mode)
                   " =~=~=~=~=~=~=~=~=~=~=~=\r\n", buf);
     }
 
-#ifdef MOD_PERSO
+#ifdef _WIN32
     /* KiTTY: the path as opened, %VAR% expanded - the typed form
      * ("%USERPROFILE%\logs\...") does not show which folder was meant */
     char *shownname = filename_expand_str(ctx->currlogfilename);
@@ -243,7 +251,7 @@ static void logfopen_callback(void *vctx, int mode)
                        ctx->logtype == LGTYP_PACKETS ? "SSH packets" :
                        ctx->logtype == LGTYP_SSHRAW ? "SSH raw data" :
                        "unknown"),
-#ifdef MOD_PERSO
+#ifdef _WIN32
                       shownname);
     sfree(shownname);
 #else

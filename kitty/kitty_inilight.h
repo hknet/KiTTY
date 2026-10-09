@@ -17,5 +17,7 @@ int kitty_inilight_write(const char *section, const char *key,
 /* 1 when the sessions live in the folder store (savemode=dir), with its
  * directory and session file suffix; 0 when they are in the registry. */
 int kitty_inilight_folder_store(char *dir, int dirlen, char *suffix, int suflen);
+/* That store's host-key folder (empty = its own SshHostKeys) and ending. */
+int kitty_inilight_hostkey_store(char *dir, int dirlen, char *suffix, int suflen);
 
 #endif

@@ -324,6 +324,8 @@ int main(int argc, char **argv)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(0))
         return 1;
+    /* KiTTY: KITTYPP_DIR, this program's folder (windows/utils/defaults.c) */
+    kitty_publish_kittypp_dir();
 #endif
 
     /* derive program name from argv[0] */

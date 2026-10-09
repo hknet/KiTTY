@@ -83,6 +83,10 @@ char *filename_expand_str(const Filename *fn);
 /* KiTTY: create the missing folders of fn's expanded path (hknet/KiTTY#65);
  * returns how many were made, *first_made = the outermost (caller sfrees). */
 int filename_make_parent_dirs(const Filename *fn, char **first_made);
+/* KiTTY (windows/utils/defaults.c): KITTYPP_DIR = this program's folder, and
+ * the LogFileName default beside the program for a store that travels */
+void kitty_publish_kittypp_dir(void);
+void kitty_set_log_default_beside_program(bool on);
 
 #ifndef SUPERSEDE_FONTSPEC_FOR_TESTING
 struct FontSpec {

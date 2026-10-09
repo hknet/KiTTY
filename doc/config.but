@@ -347,7 +347,11 @@ The name can also use Windows environment variables, such as
 \c{%OneDrive%\\Kitty-Logs\\Kitty.log}; see \k{kitty-cfg-envvars}.
 
 The default is \c{%APPDATA%\\KiTTY++\\logs\\&H\\&Y-&M-&D.log}: one
-folder per host, one file per day. Folders of the path that do not exist
+folder per host, one file per day. Where the settings travel with the
+program (a folder store, \c{savemode=file}, the portable build) it is
+\c{%KITTYPP_DIR%\\logs\\&H\\&Y-&M-&D.log} instead: \c{KITTYPP_DIR} is the
+program's own folder, set fresh at every start, so the logs stay beside it
+on a USB stick whatever its drive letter. Folders of the path that do not exist
 yet are created when the log is first opened, and the Event Log records it.
 A variable this machine does not have (the \c{%OneDrive%} above without
 OneDrive) creates nothing; the log then fails to open, and the error

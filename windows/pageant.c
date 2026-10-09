@@ -6561,6 +6561,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(1))
         ExitProcess(1);
+    /* KiTTY: KITTYPP_DIR, this program's folder (windows/utils/defaults.c) */
+    kitty_publish_kittypp_dir();
 
     /* KiTTY: a portable copy (its kitty.ini has savemode=file/dir, or a
      * portable layout) remembers its windows in kitty_windowpos.ini beside

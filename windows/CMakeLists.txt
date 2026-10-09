@@ -303,6 +303,7 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(plink generated_licence_h)
 kitty_selfcheck_target(plink)
@@ -313,6 +314,7 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(pscp generated_licence_h)
 kitty_selfcheck_target(pscp)
@@ -323,6 +325,7 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(psftp generated_licence_h)
 kitty_selfcheck_target(psftp)

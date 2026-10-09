@@ -354,7 +354,9 @@ To convert everything in one go, use **Export all…** followed by **Import all�
 
 **If you have forgotten the master password there is no way back.** It is not stored anywhere and the protected values carry everything needed to check a password but nothing that can reveal one, so no setting, button or reinstall can recover them. The only remedy is to clear those passwords and type them in again. KiTTY++ deliberately offers no "remove protection" button, because the only thing such a button could honestly do is destroy the passwords it was protecting.
 
-**Command-line tools use the registry:** `klink`/`kscp`/`ksftp` (plink/pscp/psftp) read saved sessions from the Windows registry, not from a portable store — so a portable install's sessions, and any passwords a master password protects there, are usable from the KiTTY++ GUI but not from the command-line tools.
+**Command-line tools use the same store:** `klink`/`kscp`/`ksftp` find the `kitty.ini` the way kitty.exe and kageant do (`KITTY_INI_FILE`, else beside the exe, else `%APPDATA%`). When it sets `savemode=dir` — or a portable layout sits beside it — they load sessions and check host keys in that folder store, with its file endings, instead of the registry. To make one call use the registry anyway, point `KITTY_INI_FILE` at an ini without `savemode=dir`. Passwords a **master password** protects in a portable store cannot be unlocked by the command-line tools yet: such a session asks for the password (or fails under `-batch`).
+
+**`KITTYPP_DIR`:** every program of the suite sets this environment variable to its own folder when it starts, fresh each time — so `%KITTYPP_DIR%\…` in a file or folder setting follows a USB stick to another drive letter. Programs it starts inherit it.
 
 **How to enable:** Use the dedicated **kitty_portable.exe** (defaults to file mode), or place a `kitty.ini` next to `kitty.exe` containing `[KiTTY]` then `savemode=dir`. The release includes `kitty.ini.example` as a commented, inert starting point; copy/rename it only when you want an active config file.
 
@@ -840,7 +842,7 @@ The stamp is a **strftime** pattern, so you choose the layout: `%Y-%m-%d %H:%M:%
 
 The **log file name** takes its own substitutions, which is how you keep one file per host or per day instead of overwriting a single file: **`&H`** host name, **`&P`** port, **`&Y` `&M` `&D`** year/month/day, **`&T`** time as HHMMSS, and `&&` for a literal `&`. So `kitty_&H_&Y&M&D.log` becomes `kitty_server1_20260812.log`. Characters that are illegal in a Windows file name are replaced automatically, so an IPv6 address in `&H` cannot produce an unusable name.
 
-The default name is `%APPDATA%\KiTTY++\logs\&H\&Y-&M-&D.log` — a folder per host, a file per day. **Missing folders of the path are created** when the log opens (the Event Log names the first one created), so a per-host folder like `&H` works from the first connection. A `%VAR%` the machine does not have creates nothing; the error then shows the path with the variable's name.
+The default name is `%APPDATA%\KiTTY++\logs\&H\&Y-&M-&D.log` — a folder per host, a file per day; where the settings travel with the program (a folder store, `savemode=file`, the portable build) it is `%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log`, beside the program. **Missing folders of the path are created** when the log opens (the Event Log names the first one created), so a per-host folder like `&H` works from the first connection. A `%VAR%` the machine does not have creates nothing; the error then shows the path with the variable's name.
 
 Timestamps apply to the session logs — *Printable output* and *All session output*. The SSH packet and raw-data logs are deliberately left alone: they already timestamp every record in their own format, which other tools parse.
 

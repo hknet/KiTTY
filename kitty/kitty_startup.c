@@ -215,6 +215,10 @@ void InitWinMain( void ) {
 
 	NETDBG_TS("InitWinMain: enter");
 
+	/* KiTTY: KITTYPP_DIR, this program's folder, before any setting is read
+	 * or expanded (windows/utils/defaults.c) */
+	kitty_publish_kittypp_dir() ;
+
 	/* KiTTY: install the client-side serving-agent check (security). */
 	{ extern void kitty_install_agent_check(void); kitty_install_agent_check(); }
 	srand(time(NULL));
@@ -546,6 +550,11 @@ void InitWinMain( void ) {
 		free( defaultfile ) ;
 		*/
 	}
+
+	/* KiTTY: settings that travel with the program (folder store, kitty.sav)
+	 * keep the log default beside it: %KITTYPP_DIR%\logs\... instead of the
+	 * account's %APPDATA% (windows/utils/defaults.c) */
+	kitty_set_log_default_beside_program( IniFileFlag == SAVEMODE_DIR || IniFileFlag == SAVEMODE_FILE ) ;
 
 	/* This asks the storage layer which backend is active, so it must
 	 * run AFTER kitty_set_storage_mode() above - not next to the other one-time

@@ -275,3 +275,56 @@ int kitty_inilight_folder_store(char *dir, int dirlen, char *suffix, int suflen)
         strcpy(suffix, v);
     return 1;
 }
+
+/* The folder store's host keys, as kitty.exe sets them up
+ * (kitty_store_ini_takeover): sshhostkeys= resolved like sessions= above
+ * (empty = the store's own SshHostKeys folder, which the storage layer
+ * finds by itself), and hostkeyextension= - else 0.85.1.13's keysuffix= -
+ * with a dot put in front. Meaningful only after kitty_inilight_folder_store()
+ * returned 1; returns 0 when no ini was resolved. */
+int kitty_inilight_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
+{
+    char v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
+    char path[4 * MAX_PATH + 8];
+    char *slash;
+    DWORD n;
+
+    if (dirlen > 0)
+        dir[0] = '\0';
+    if (suflen > 0)
+        suffix[0] = '\0';
+    if (!kitty_inilight_file())
+        return 0;
+
+    GetPrivateProfileStringA(inilight_mainsection, KI_SSHHOSTKEYS, "",
+                             v, sizeof(v), inilight_path);
+    inilight_rtrim(v, " \n\r\t");
+    n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
+    if (v[0] && n > 0 && n < MAX_PATH && (slash = strrchr(exedir, '\\'))) {
+        DWORD xn;
+        *slash = '\0';
+        xn = ExpandEnvironmentStringsA(v, x, sizeof(x));
+        if (xn == 0 || xn > sizeof(x))
+            snprintf(x, sizeof(x), "%s", v);
+        if (x[0] == '\\' || x[0] == '/')
+            snprintf(path, sizeof(path), "%s%s", exedir, x);
+        else if (x[0] && x[1] == ':')
+            snprintf(path, sizeof(path), "%s", x);
+        else
+            snprintf(path, sizeof(path), "%s\\%s", exedir, x);
+        inilight_rtrim(path, " \n\r\t\\");
+        if ((int)strlen(path) < dirlen)
+            strcpy(dir, path);
+    }
+
+    GetPrivateProfileStringA(inilight_mainsection, KI_HOSTKEYEXTENSION, "",
+                             v, sizeof(v), inilight_path);
+    inilight_rtrim(v, " \n\r\t");
+    if (!v[0])
+        GetPrivateProfileStringA(inilight_mainsection, KI_KEYSUFFIX, "",
+                                 v, sizeof(v), inilight_path);
+    kitty_ext_dot(v, sizeof(v));
+    if ((int)strlen(v) < suflen)
+        strcpy(suffix, v);     /* kitty_set_hostkey_suffix refuses a bad one */
+    return 1;
+}

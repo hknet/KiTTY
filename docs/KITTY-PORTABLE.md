@@ -80,6 +80,12 @@ config directory. Where its windows were left (and how big) is kept in
 `kitty_windowpos.ini` beside the exe, per monitor layout, by every program of the suite
 that runs from the folder - not in the registry.
 
+`klink`, `kscp` and `ksftp` from the same folder load those sessions and check those host
+keys too. Every program sets `KITTYPP_DIR` to its own folder at each start, so a setting
+written as `%KITTYPP_DIR%\...` - the log default here is
+`%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log` - keeps working when the stick gets another drive
+letter.
+
 One important exception remains: a DPAPI-encrypted session password is **machine-bound**.
 It protects the password at rest on the current Windows account, but it will not decrypt if
 you move the folder to another PC. For passwords that travel, use a **master
