@@ -1,4 +1,4 @@
-# KiTTY++ 0.85.1.13 — Known issues & limitations
+# KiTTY++ 0.85.1.14 — Known issues & limitations
 
 Known limitations of this release:
 
@@ -339,7 +339,7 @@ Known limitations of this release:
   and the installers carry UPX-compressed `kitty.exe`/`kitty_portable.exe` for
   the smallest download; UPX can trip heuristic AV/SmartScreen, so if your
   antivirus objects, take the standard ZIP.
-- **Version string:** binaries report `0.85.1.13-beta @ 2026-10-05`.
+- **Version string:** binaries report `0.85.1.14-beta @ 2026-10-09`.
 - **The configuration box's Exit button has no Alt key.** It reads Exit
   before a session; its letters are taken on the panels. Mid-session (Change
   Settings) it reads Cancel and keeps Alt+C. Esc works for both.

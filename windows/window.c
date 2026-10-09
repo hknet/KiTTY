@@ -7295,6 +7295,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         sys_cursor_update(wgs);
 #ifdef MOD_PERSO
         kitty_note_normal_rect(wgs, hwnd);
+        /* The background image lies in screen coordinates: a moved window
+         * keeps the pixels it had (the DWM moves them along), so the image
+         * would travel with it, and every line painted later would show a
+         * seam against the rest. Repaint all of it at the new place. */
+        {
+            extern HDC backgrounddc;   /* kitty_image.c, NULL until loaded */
+            if (backgrounddc)
+                InvalidateRect(hwnd, NULL, false);
+        }
 #endif
         break;
       case WM_SIZE:

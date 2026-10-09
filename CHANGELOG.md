@@ -4,7 +4,7 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.14-beta — 2026-10-05
+## 0.85.1.14-beta — 2026-10-09
 
 ### Security
 
@@ -268,6 +268,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A background image stays in place when the window moves.** The image
+  lies in screen coordinates, but a moved window kept its old pixels: the
+  image travelled with the window, and every line written afterwards showed
+  a seam against the rest until the whole window was repainted. A move now
+  repaints the window. Older versions had it as well.
 - **A display scaling change no longer shrinks the terminal.** Changing
   Windows' scaling while a window was open (100 % to 150 % and back) could
   leave it at 22 x 78 instead of 24 x 80: Windows sometimes resized the
