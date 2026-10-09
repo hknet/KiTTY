@@ -548,45 +548,62 @@ static void LauncherBuildWinList( HMENU menu, char * label, size_t lablen ) {
 
 // Build a menu from a registry key
 /*
- * "Start at login" for the launcher: a "KiTTY Launcher" shortcut (this exe
+ * "Start at login" for the launcher: a "KiTTY++ Launcher" shortcut (this exe
  * -launcher) in the USER Startup folder. One implementation for the tray menu
  * and the configuration box's Launcher panel (kitty_config_app.c), so the two
  * can never behave differently. Everything keys off whether a shortcut
  * targeting THIS exe exists, so the generic name never makes us act on
- * another KiTTY's entry:
+ * another KiTTY++'s entry:
  *  - our own per-user shortcut     -> remove it (turn off);
  *  - an all-users shortcut for us  -> installer-managed, cannot be removed
  *                                     without elevation, so just explain;
- *  - none for us, but a per-user shortcut for a DIFFERENT KiTTY exists
+ *  - none for us, but a per-user shortcut for a DIFFERENT KiTTY++ exists
  *                                  -> leave it, explain;
  *  - nothing                       -> create ours.
+ * The name is the lookup key, and versions up to 0.85.1.14 (and their
+ * installers) wrote "KiTTY Launcher": both names count everywhere, only the
+ * new one is ever created.
  */
+static const char *const launcher_shortcut_names[] = { "KiTTY++ Launcher", "KiTTY Launcher" } ;
+#define LAUNCHER_SHORTCUT_NEW launcher_shortcut_names[0]
+
+static int launcher_shortcut_points_here( int common, const char *exe ) {
+	size_t i ;
+	for( i = 0 ; i < lenof(launcher_shortcut_names) ; i++ )
+		if( kitty_startup_shortcut_points_to( launcher_shortcut_names[i], common, exe ) ) return 1 ;
+	return 0 ;
+}
+
 int kitty_launcher_autostart_on( void ) {
 	char mx[MAX_PATH] ;
 	DWORD mn = GetModuleFileNameA( NULL, mx, sizeof(mx) ) ;
 	return mn && mn < sizeof(mx) &&
-	       ( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, mx)
-	         || kitty_startup_shortcut_points_to("KiTTY Launcher", 1, mx) ) ;
+	       ( launcher_shortcut_points_here( 0, mx ) || launcher_shortcut_points_here( 1, mx ) ) ;
 }
 
 /* Toggles it; the explanations go to `owner`. Returns the state afterwards
  * (unchanged when a refusal was explained). */
 int kitty_launcher_autostart_toggle( HWND owner ) {
 	char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+	size_t i ;
 	DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
 	if( n && n < sizeof(exe) ) {
-		if( kitty_startup_shortcut_points_to("KiTTY Launcher", 0, exe) ) {
-			kitty_startup_shortcut_set("KiTTY Launcher", NULL, NULL, NULL, NULL, 0) ;
-		} else if( kitty_startup_shortcut_points_to("KiTTY Launcher", 1, exe) ) {
+		if( launcher_shortcut_points_here( 0, exe ) ) {
+			/* whichever name points here - never another KiTTY++'s */
+			for( i = 0 ; i < lenof(launcher_shortcut_names) ; i++ )
+				if( kitty_startup_shortcut_points_to( launcher_shortcut_names[i], 0, exe ) )
+					kitty_startup_shortcut_set( launcher_shortcut_names[i], NULL, NULL, NULL, NULL, 0 ) ;
+		} else if( launcher_shortcut_points_here( 1, exe ) ) {
 			MessageBox( owner, KT_LAUNCHER_STARTUP_ALLUSERS,
 			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
-		} else if( kitty_startup_shortcut_exists("KiTTY Launcher") ) {
+		} else if( kitty_startup_shortcut_exists( launcher_shortcut_names[0] )
+		           || kitty_startup_shortcut_exists( launcher_shortcut_names[1] ) ) {
 			MessageBox( owner, KT_LAUNCHER_STARTUP_OTHER_KITTY,
 			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
 		} else {
 			snprintf( dir, sizeof(dir), "%s", exe ) ;
 			slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
-			kitty_startup_shortcut_set("KiTTY Launcher", exe, "-launcher", dir, exe, 1) ;
+			kitty_startup_shortcut_set( LAUNCHER_SHORTCUT_NEW, exe, "-launcher", dir, exe, 1 ) ;
 		}
 	}
 	return kitty_launcher_autostart_on() ;
@@ -729,8 +746,8 @@ static HMENU InitLauncherMenu( char * Key ) {
 		}
 		AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 	}
-	/* KiTTY: "Start at login" - ticked only when a "KiTTY Launcher" shortcut
-	 * pointing at THIS exe exists (kitty_launcher_autostart_on). */
+	/* KiTTY: "Start at login" - ticked only when a launcher shortcut (either
+	 * name) pointing at THIS exe exists (kitty_launcher_autostart_on). */
 	AppendMenu( menu, MF_ENABLED | (kitty_launcher_autostart_on() ? MF_CHECKED : MF_UNCHECKED),
 	            IDM_LAUNCHER+8, KT_MENU_START_AT_LOGIN ) ;
 	AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;

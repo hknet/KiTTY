@@ -202,11 +202,11 @@
 
 /* Session/Startup */
 #define KT_STARTUP_OPTIONS_CONTROLLING_HOW_THIS_SESSION "Options controlling how this session starts"
-#define KT_STARTUP_KITTY_LAUNCHER_GLOBAL_HOTKEY      "KiTTY Launcher global hotkey"
+#define KT_STARTUP_KITTY_LAUNCHER_GLOBAL_HOTKEY      "KiTTY++ Launcher global hotkey"
 #define KT_STARTUP_ENABLE_GLOBAL_HOTKEY              "Enable global hotkey for this session"
 #define KT_STARTUP_HOTKEY                            "Hotkey:"
 #define KT_STARTUP_CHECK_HOTKEY_AVAILABILITY         "Check hotkey availability"
-#define KT_STARTUP_EXAMPLE_CTRL_ALT_K                "Example: Ctrl+Alt+K. Works while KiTTY Launcher runs."
+#define KT_STARTUP_EXAMPLE_CTRL_ALT_K                "Example: Ctrl+Alt+K. Works while KiTTY++ Launcher runs."
 #define KT_STARTUP_LAUNCHER_CONFIGURATION            "Launcher configuration"
 /* Session/Startup, "Session Tags" (kitty_tags.c, hknet/KiTTY#60) */
 #define KT_STARTUP_TAGS_GROUP                        "Session Tags"
@@ -1620,8 +1620,8 @@
 #define KT_CAP_KITTYGEN_FATAL                        "KiTTYgen Fatal Error"
 #define KT_CAP_HELLO                                 "Windows Hello"
 #define KT_CAP_HELLO_KEYS                            "Windows Hello protected keys"
-#define KT_CAP_LAUNCHER                              "KiTTY Launcher"
-#define KT_CAP_LAUNCHER_HOTKEY                       "KiTTY Launcher hotkey"
+#define KT_CAP_LAUNCHER                              "KiTTY++ Launcher"
+#define KT_CAP_LAUNCHER_HOTKEY                       "KiTTY++ Launcher hotkey"
 #define KT_CAP_SESSION_IMPORT                        KT_MIG_BOX_TITLE  /* the Migration panel's box carries the same title */
 #define KT_CAP_SESSION_EXPORT                        "KiTTY session export"
 #define KT_CAP_UPDATE                                "KiTTY Update"
@@ -1893,7 +1893,7 @@
         "but prevents it running); deleting the shortcut " \
         "itself needs administrator access to the all-users " \
         "Startup folder."
-#define KT_LAUNCHER_STARTUP_OTHER_KITTY              "A \"KiTTY Launcher\" startup shortcut for a different " \
+#define KT_LAUNCHER_STARTUP_OTHER_KITTY              "A \"KiTTY++ Launcher\" (or older \"KiTTY Launcher\") startup shortcut for a different " \
         "KiTTY++ already exists in your Startup folder, so none " \
         "was added.\n\nDelete it from your Startup folder " \
         "(open shell:startup) first if you want THIS KiTTY++ to " \
@@ -3412,7 +3412,7 @@
         "already assigned to the saved session%s: %s.\n\n" \
         "A hotkey works for only one session; the launcher gives " \
         "it to the first one it finds."
-#define KT_CFG_HOTKEY_FREE                           "This hotkey is currently available.\n\nNote: it is only registered while KiTTY Launcher is running."
+#define KT_CFG_HOTKEY_FREE                           "This hotkey is currently available.\n\nNote: it is only registered while KiTTY++ Launcher is running."
 #define KT_CFG_HOTKEY_IN_USE_SAVED                   "This hotkey is already in use - it is assigned to the saved " \
         "session%s: %s.\n\n" \
         "A hotkey works for only one session; the launcher gives it " \

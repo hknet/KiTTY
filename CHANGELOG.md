@@ -4,6 +4,18 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.15-beta — 2026-10-09
+
+### Changed
+
+- **The launcher's shortcut is called "KiTTY++ Launcher".** The installers'
+  Start menu and Startup entries and "Start at login" create it under the
+  new name; an upgrade replaces the installed "KiTTY Launcher" ones. A
+  "KiTTY Launcher" shortcut that an earlier version put in the Startup
+  folder still counts as this launcher's: "Start at login" shows it ticked,
+  and unticking removes it. Message boxes and the hotkey texts read
+  "KiTTY++ Launcher" too.
+
 ## 0.85.1.14-beta — 2026-10-09
 
 ### Security

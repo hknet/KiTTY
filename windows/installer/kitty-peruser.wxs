@@ -92,7 +92,7 @@
         <Shortcut Id="sc_tel" Name="KiTTY Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
         </Shortcut>
-        <Shortcut Id="sc_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <!-- Manage Sessions phase 3: as in kitty-system.wxs (each entry its
@@ -123,7 +123,7 @@
     <!-- Startup-folder shortcut: auto-run the tray session-launcher at login -->
     <StandardDirectory Id="StartupFolder">
       <Component Id="c_startup_launcher" Guid="A1B2C3D4-0085-4005-9001-000000000003">
-        <Shortcut Id="sc_startup_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_startup_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />

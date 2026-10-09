@@ -359,14 +359,14 @@ Opens this session from anywhere on the desktop with one key
 combination, for example \c{Ctrl+Alt+K} or \c{Ctrl+Shift+F12}.
 
 The hotkey is registered machine-wide, so it works while another
-program has the focus - and it works only while \e{KiTTY Launcher} is
+program has the focus - and it works only while \e{KiTTY++ Launcher} is
 running, because the launcher is what holds the registration. If two
 sessions claim the same combination the launcher reports so with a
 balloon, and the first registration wins.
 
 \S{kitty-cfg-hide-launcher} \q{Hide this session from the launcher}
 
-Keeps this session out of the KiTTY Launcher's tray menu
+Keeps this session out of the KiTTY++ Launcher's tray menu
 (\k{kitty-cfg-launcher-hotkey}). The session is otherwise unchanged: it
 still appears in the configuration box and still opens from the command
 line. Use it for the sessions that exist as building blocks - a jump

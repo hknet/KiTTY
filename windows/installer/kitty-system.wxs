@@ -116,7 +116,7 @@
         <Shortcut Id="sc_tel" Name="KiTTY Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
         </Shortcut>
-        <Shortcut Id="sc_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <!-- Quick-Connect and Manage Sessions, each with its own icon file as
@@ -165,7 +165,7 @@
            this package: the per-user MSI uses the same value as ITS KeyPath,
            and both packages may be installed at once. -->
       <Component Id="c_startup_launcher" Guid="B1B2C3D4-0085-4005-9002-000000000003">
-        <Shortcut Id="sc_startup_launcher" Name="KiTTY Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_startup_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
         <RegistryValue Root="HKLM" Key="Software\kapper.net\KiTTY-installer" Name="startuplauncher" Type="string" Value="" KeyPath="yes" />
