@@ -16,13 +16,16 @@
  * kitty_pwmem.h above: klink, kscp and ksftp resolve a -load name through the
  * settings library's copy of this file. */
 #include "kitty/kitty_sessionpath.h"
-#ifdef MOD_PERSO
+/* KiTTY: -masterpwfile, in EVERY build of this file since 0.85.1.15: the
+ * console tools take it too, and the settings library they link carries the
+ * secret store and the permission check it calls. */
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
 #ifdef MOD_PERSO
 #include "kitty/kitty_storage.h"
 #endif
 #include "kitty/kitty_secretstore.h"   /* -masterpwfile: the store mode and the passphrase */
-#endif
+#include "kitty/kitty_fileperm.h"      /* -masterpwfile: nobody else may read the file */
+#include <shellapi.h>                  /* -masterpwfile: CommandLineToArgvW, ahead of the rest */
 
 /*
  * Some command-line parameters need to be saved up until after
@@ -69,6 +72,11 @@ static void cmdline_save_param(CmdlineArg *p, CmdlineArg *value, int pri)
 }
 
 static char *cmdline_password = NULL;
+/* KiTTY: cmdline_password came from the loaded session, not from -pw/-pwfile
+ * (kitty_cmdline_use_stored_password): if the server refuses it, the console
+ * prompt comes next, instead of the "Configured password was not accepted"
+ * abort a -pw gets. */
+static bool cmdline_password_stored = false;
 
 void cmdline_cleanup(void)
 {
@@ -127,7 +135,8 @@ SeatPromptResult cmdline_get_passwd_input(
      * to try).
      */
     if (state->tried)
-        return SPR_SW_ABORT("Configured password was not accepted");
+        return cmdline_password_stored ? SPR_INCOMPLETE   /* KiTTY: then the prompt */
+                                       : SPR_SW_ABORT("Configured password was not accepted");
 
     /*
      * If we never had a password available in the first place, we
@@ -223,6 +232,27 @@ bool cmdline_verbose(void) { return seen_verbose_option; }
 bool cmdline_seat_verbose(Seat *seat) { return cmdline_verbose(); }
 bool cmdline_lp_verbose(LogPolicy *lp) { return cmdline_verbose(); }
 bool cmdline_loaded_session(void) { return loaded_session; }
+
+/* KiTTY: klink, kscp and ksftp log in with the loaded session's stored
+ * password, as kitty.exe does - since they read the folder store too
+ * (0.85.1.15). Called once all options are in (after cmdline_run_saved):
+ * -pw / -pwfile, given, win. Only for a session actually loaded (-load, @name,
+ * or a host argument that is one's name) - never from Default Settings, whose
+ * password would otherwise go to any host typed on the command line. One
+ * try, through the -pw path (key and agent come first, a jump host's prompt
+ * is never answered); refused, the console prompt follows. */
+void kitty_cmdline_use_stored_password(Conf *conf)
+{
+    char pw[KITTY_PW_MAX + 1];
+
+    if (cmdline_password || !loaded_session)
+        return;
+    if (!kitty_pw_get(conf, CONF_password, pw, sizeof(pw)))
+        return;
+    cmdline_password = dupstr(pw);
+    cmdline_password_stored = true;
+    smemclr(pw, sizeof(pw));
+}
 
 static void set_protocol(Conf *conf, int protocol)
 {
@@ -961,20 +991,18 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         filename_free(fn);
     }
 
-#ifdef MOD_PERSO
     /* KiTTY: -masterpwfile <path> unlocks the master-password at-rest secret
      * store (windows/storage.c). File form only (a literal master password on
      * argv is readable by other same-user processes). NOT SSH-gated - it unlocks
      * a local store regardless of protocol - and distinct from -pwfile, which
      * sets the SSH login password. Non-interactive, so -batch-safe.
      *
-     * WARNING: GUARDED, because this file is compiled twice: once into the
-     * kitty targets with MOD_PERSO, and once into the shared settings library
-     * WITHOUT it, which the stock console tools (plink, pscp, psftp) link.
-     * Unguarded, the two KiTTY symbols below left those three unlinkable - and
-     * it went unnoticed for weeks because an INCREMENTAL build relinks nothing
-     * that has not changed. It only surfaced on the next build from a clean
-     * tree. */
+     * Unguarded since 0.85.1.15 (klink, kscp and ksftp take it): this file is
+     * compiled twice, into the kitty targets with MOD_PERSO and into the
+     * settings library without it, and every symbol below now lives in that
+     * library (kitty_secretstore.c, kitty_fileperm.c). Until then a guard was
+     * needed - unguarded, the console tools did not link, which an incremental
+     * build hid for weeks. A clean build is the test for this block. */
     if (!strcmp(p, "-masterpwfile")) {
         RETURN(2);
         /* NOT saveable, deliberately. SAVEABLE() defers an option to the second
@@ -986,35 +1014,16 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
          * therefore impossible, which is to say a master-password store could
          * not be used unattended at all.
          * This is store state needed TO READ a session, not a session setting,
-         * so it must take effect the moment it is parsed. */
-        /* The two non-interactive ways to protect a portable store are mutually
-         * exclusive, and honouring either one silently would misreport where the
-         * protection came from: kitty.ini has already said "protect with DPAPI,
-         * never a master password", and this switch says the opposite. Refuse
-         * rather than pick a winner. kitty.ini is read at startup (InitWinMain),
-         * before the command line, so the mode is already known here. */
-        if (kitty_portable_password_dpapi()) {
-            cmdline_error(KT_CLI_MPWFILE_CONFLICT);
+         * so it must take effect the moment it is parsed. The console tools go
+         * further and take it before ANY argument (kitty_console_store_init),
+         * so `-load s -masterpwfile f` works there too; it is then done here. */
+        if (!kitty_masterpwfile_done) {
+            Filename *fn = strcmp(value, "-") ? cmdline_arg_to_filename(nextarg) : NULL;
+            kitty_masterpwfile_apply(value, fn);
+            if (fn)
+                filename_free(fn);
         }
-        Filename *fn = cmdline_arg_to_filename(nextarg);
-        FILE *fp = f_open(fn, "r", false);
-        if (!fp) {
-            cmdline_error(KT_CLI_MPWFILE_OPEN_FAILED, value);
-        } else {
-            char *mpw = chomp(fgetline(fp));
-            fclose(fp);
-            if (!mpw)
-                cmdline_error(KT_CLI_MPWFILE_READ_FAILED,
-                              value);
-            else {
-                kitty_set_master_passphrase(mpw);
-                smemclr(mpw, strlen(mpw));
-                sfree(mpw);
-            }
-        }
-        filename_free(fn);
     }
-#endif /* MOD_PERSO: -masterpwfile */
 
     if (!strcmp(p, "-agent") || !strcmp(p, "-pagent") ||
         !strcmp(p, "-pageant")) {
@@ -1367,4 +1376,122 @@ bool cmdline_host_ok(Conf *conf)
         return false;
 
     return true;
+}
+
+/* KiTTY: -masterpwfile before ANY argument is processed. -load reads the
+ * session the moment it is parsed, so `-load s -masterpwfile f` met the
+ * protected password before the master password - kitty.exe prompted in its
+ * dialog, a console tool under -batch stopped with "give -masterpwfile"
+ * although it was given. Called once the store is set up (the
+ * PortablePasswordProtection conflict needs it): by the console tools in
+ * kitty_console_store_init, by kitty.exe right after InitWinMain
+ * (windows/window.c). The option itself is then a no-op. */
+void kitty_masterpwfile_prescan(void)
+{
+    int argc = 0, i;
+    LPWSTR *argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+    for (i = 1; argv && i + 1 < argc; i++) {
+        if (wcscmp(argv[i], L"-masterpwfile"))
+            continue;
+        char *shown = dup_wc_to_mb(CP_UTF8, argv[i + 1], "");
+        Filename *fn = wcscmp(argv[i + 1], L"-") ? filename_from_wstr(argv[i + 1]) : NULL;
+        kitty_masterpwfile_apply(shown, fn);
+        if (fn)
+            filename_free(fn);
+        sfree(shown);
+        break;
+    }
+    if (argv)
+        LocalFree(argv);
+}
+
+/* KiTTY: -masterpwfile, applied - from the option above, or before any
+ * argument (kitty_masterpwfile_prescan). `shown` is the
+ * argument as typed ("-" = the first line of standard input), `fn` the file
+ * (NULL for "-"). Every refusal is a cmdline_error, which ends the run. */
+bool kitty_masterpwfile_done = false;
+
+void kitty_masterpwfile_apply(const char *shown, Filename *fn)
+{
+    kitty_masterpwfile_done = true;
+    /* The two non-interactive ways to protect a portable store are mutually
+     * exclusive, and honouring either one silently would misreport where the
+     * protection came from: kitty.ini already specifies "protect with DPAPI,
+     * never a master password", and this switch specifies the opposite. Refuse
+     * rather than pick a winner. kitty.ini is read at startup (InitWinMain,
+     * kitty_console_store_init), before the command line. */
+    if (kitty_portable_password_dpapi()) {
+        cmdline_error(KT_CLI_MPWFILE_CONFLICT);
+    }
+    if (!fn) {
+        /* "-": the master password is the first line of standard input,
+         * for a script that pipes it in (echo %X% | kscp -masterpwfile -).
+         * Read a byte at a time straight from the handle, never through
+         * stdio: klink and ksftp read the REST of stdin themselves, and a
+         * buffered read would swallow it. On a console there is nothing
+         * to read ahead - the no-echo prompt comes when a protected value
+         * is actually met (kitty_console_mpw.c). */
+        HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+        DWORD cmode;
+        if (in && in != INVALID_HANDLE_VALUE && !GetConsoleMode(in, &cmode)) {
+            char line[1024];
+            size_t n = 0;
+            DWORD got;
+            char c;
+            while (n < sizeof(line) - 1 &&
+                   ReadFile(in, &c, 1, &got, NULL) && got == 1 && c != '\n')
+                line[n++] = c;
+            if (n && line[n - 1] == '\r')
+                n--;
+            line[n] = '\0';
+            if (!n)
+                cmdline_error(KT_CLI_MPWFILE_STDIN_EMPTY);
+            kitty_set_master_passphrase(line);
+            smemclr(line, sizeof(line));
+        } else if (!in || in == INVALID_HANDLE_VALUE) {
+            cmdline_error(KT_CLI_MPWFILE_STDIN_EMPTY);
+        }
+        return;
+    }
+    {
+        /* nobody but the user may read it: the file IS the protection of
+         * every password it unlocks (kitty_fileperm.c) */
+        char who[300];
+        switch (kitty_secret_file_check(filename_to_wstr(fn), who, sizeof(who))) {
+          case KFP_PRIVATE:
+            break;
+          case KFP_READABLE:
+            cmdline_error(KT_CLI_MPWFILE_PERM_READABLE, shown, who, shown);
+            break;
+          case KFP_OWNER:
+            cmdline_error(KT_CLI_MPWFILE_PERM_OWNER, shown, who[0] ? who : "an unknown account", shown);
+            break;
+          case KFP_NO_ACL:
+            cmdline_error(KT_CLI_MPWFILE_PERM_NOACL, shown);
+            break;
+          case KFP_NULL_DACL:
+            cmdline_error(KT_CLI_MPWFILE_PERM_NULLDACL, shown, shown);
+            break;
+          case KFP_MISSING:     /* the open below reports it */
+            break;
+          default:
+            cmdline_error(KT_CLI_MPWFILE_PERM_UNKNOWN, shown, who);
+            break;
+        }
+    }
+    FILE *fp = f_open(fn, "r", false);
+    if (!fp) {
+        cmdline_error(KT_CLI_MPWFILE_OPEN_FAILED, shown);
+    } else {
+        char *mpw = chomp(fgetline(fp));
+        fclose(fp);
+        if (!mpw)
+            cmdline_error(KT_CLI_MPWFILE_READ_FAILED, shown);
+        else {
+            kitty_set_master_passphrase(mpw);
+            smemclr(mpw, strlen(mpw));
+            sfree(mpw);
+        }
+    }
 }

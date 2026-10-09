@@ -6,7 +6,40 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.15-beta — 2026-10-09
 
+### New
+
+- **klink, kscp and ksftp log in with the session's stored password.**
+  With a session loaded (`-load`, `@name`, or a host argument that is a saved
+  session's name), its stored password answers the server's password prompt once, as
+  in kitty.exe - after key and agent, and only when no `-pw` / `-pwfile` is
+  given. A wrong one is followed by the console prompt (under `-batch`: the
+  tool stops). Default Settings never lends its password to a host typed on
+  the command line. Scripts that relied on the password prompt no longer get it
+  for a session with a stored password.
+- **klink, kscp and ksftp unlock the master password.** A stored password
+  (session or proxy), or a `-pwfile` / `-proxypwfile` line, that the
+  master password protects is now usable from the command-line tools. They
+  prompt on the console - no echo, before connecting, three tries - only when
+  such a password is met. Scripts give it with `-masterpwfile <file>` or
+  `-masterpwfile -` (the first line of standard input; klink sends the rest
+  on to the server). The file must be readable by its user alone, as
+  Windows OpenSSH requires of a private key: another account or group that
+  can read it, or a FAT/exFAT drive, is refused, and the message gives the fix. Under
+  `-batch` or without a console for the prompt, a missing or wrong master
+  password stops the tool instead of going on without the password.
+
 ### Changed
+
+- **`-masterpwfile` checks the file's permissions, in kitty.exe and
+  kitty_portable.exe too, and its place on the command line no longer
+  matters.** The master-password file must be readable by its user alone
+  (owner the user, Administrators or SYSTEM; no other account or group
+  with read access). A file others can read, or one on a FAT/exFAT drive
+  such as a USB stick, is refused with the reason and the `icacls` fix.
+  **This breaks a setup that keeps the file on the stick beside a portable
+  KiTTY++** - keep it on an NTFS drive of the PC, or type the master
+  password. The option is read before any other, so `-load s
+  -masterpwfile f` now works as `-masterpwfile f -load s` always did.
 
 - **kageant: the re-encrypt time is a combo box.** Settings > Security
   "Re-encrypt keys after idle" and a key's own value in its details list
@@ -29,9 +62,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `savemode=dir` in the `kitty.ini` they find (or a portable layout beside
   it), they load sessions and check host keys in that folder store instead
   of the registry. A script that relied on the registry from such a folder
-  points `KITTY_INI_FILE` at an ini without `savemode=dir`. Passwords a
-  master password protects there are not unlocked by these tools yet: the
-  session asks for the password, or fails under `-batch`.
+  points `KITTY_INI_FILE` at an ini without `savemode=dir`. A master password
+  protecting a password there is unlocked too (see New).
 - **`KITTYPP_DIR`: every program sets it to its own folder at start**, so
   `%KITTYPP_DIR%\...` in a file or folder setting follows a USB stick to
   another drive letter. Where the settings travel with the program (a folder

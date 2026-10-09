@@ -16,10 +16,10 @@
  * A script that wants the registry instead points KITTY_INI_FILE at an ini
  * without savemode=dir for that one call.
  *
- * Master-password-protected passwords (MPW2) of a portable store are not
- * unlocked here: the console tools do not carry the MPW code yet, so such a
- * value reads as no stored password (kitty_secretstore.c, never the wrapped
- * text) and the tool asks, or fails under -batch.
+ * Master-password-protected passwords (MPW2) of a portable store are unlocked
+ * since 0.85.1.15: the tools link the MPW crypto (kitty_mpw.c), take
+ * -masterpwfile (cmdline.c) and otherwise prompt on the console
+ * (kitty_console_mpw.c, installed below).
  */
 
 #include "putty.h"
@@ -35,6 +35,7 @@ void kitty_console_store_init(void)
     char pp[32];
 
     kitty_publish_kittypp_dir();
+    kitty_console_mpw_init();
 
     if (kitty_inilight_folder_store(dir, sizeof(dir), suffix, sizeof(suffix))) {
         kitty_set_storage_mode(2);      /* SAVEMODE_DIR, as kitty_startup.c */
@@ -52,4 +53,8 @@ void kitty_console_store_init(void)
     /* the settings travel with the program (folder store, or savemode=file):
      * the log default stays beside it, as in kitty.exe */
     kitty_set_log_default_beside_program(!kitty_inilight_registry_authoritative());
+
+    /* -masterpwfile before ANY argument is processed (cmdline.c). After the
+     * store setup above: the PortablePasswordProtection conflict needs it. */
+    kitty_masterpwfile_prescan();
 }

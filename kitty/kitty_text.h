@@ -3163,6 +3163,32 @@
         " DPAPI and has no master password. Remove one of the two."
 #define KT_CLI_MPWFILE_OPEN_FAILED                   "unable to open master-password file '%s'"
 #define KT_CLI_MPWFILE_READ_FAILED                   "unable to read a master password from file '%s'"
+#define KT_CLI_MPWFILE_STDIN_EMPTY                   "-masterpwfile -: no master password on standard input" \
+        " (the first line is taken)"
+/* the file's permissions (kitty_fileperm.c): as Windows OpenSSH checks a key */
+#define KT_CLI_MPWFILE_PERM_READABLE                 "master-password file '%s' is readable by %s - refused." \
+        " Make it readable by you alone:\n  icacls \"%s\" /inheritance:r /grant:r \"%%USERNAME%%\":R"
+#define KT_CLI_MPWFILE_PERM_OWNER                    "master-password file '%s' is owned by %s - refused." \
+        " It must be owned by you (or Administrators):\n  takeown /f \"%s\""
+#define KT_CLI_MPWFILE_PERM_NOACL                    "master-password file '%s' is on a drive without" \
+        " file permissions (FAT or exFAT, e.g. a USB stick), so anyone can read it - refused." \
+        " Keep it on an NTFS drive, or pipe it in: -masterpwfile -"
+#define KT_CLI_MPWFILE_PERM_NULLDACL                 "master-password file '%s' has no permission list," \
+        " so everyone has full access - refused. Make it readable by you alone:\n" \
+        "  icacls \"%s\" /inheritance:r /grant:r \"%%USERNAME%%\":R"
+#define KT_CLI_MPWFILE_PERM_UNKNOWN                  "master-password file '%s': its permissions could not" \
+        " be read (%s) - refused"
+/* klink, kscp, ksftp: the master-password prompt (kitty_console_mpw.c) */
+#define KT_CLI_MPW_PROMPT                            "Master password for the KiTTY++ settings: "
+#define KT_CLI_MPW_WRONG_RETRY                       "Wrong master password."
+#define KT_CLI_MPW_WRONG_FINAL                       "Wrong master password - giving up.\n"
+#define KT_CLI_MPW_WRONG_SUPPLIED                    "The master password from -masterpwfile is wrong.\n"
+#define KT_CLI_MPW_NEEDED_BATCH                      "A stored password is protected by the KiTTY++ master" \
+        " password, and -batch allows no prompt. Hand it over using -masterpwfile <file>" \
+        " or -masterpwfile - (first line of standard input).\n"
+#define KT_CLI_MPW_NEEDED_NOCONSOLE                  "A stored password is protected by the KiTTY++ master" \
+        " password, and standard input is not a console for a prompt. Hand it over using" \
+        " -masterpwfile <file> or -masterpwfile - (first line of standard input).\n"
 
 /* logging.c: Event Log lines */
 #define KT_LOG_FOLDER_CREATED                        "Created the missing log folder %s"

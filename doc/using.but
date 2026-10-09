@@ -872,6 +872,16 @@ The password given this way belongs to the host you are connecting to.
 A proxy or an SSH jump host in front of it asks for its own login,
 which these options do not answer; see \k{using-cmdline-proxypw}.
 
+Without either option, \c{klink}, \c{kscp} and \c{ksftp} use the
+password stored in the session they loaded - by \c{\-load}, \c{@name},
+or a host argument that is a saved session's name - as \c{kitty.exe} does.
+It answers the server's password prompt once, after any key or agent;
+if the server refuses it, the tool prompts on the console (under
+\c{\-batch} it stops). The password stored in Default Settings is
+never used this way, so it cannot go to a host typed on the command
+line. A stored password the master password protects needs that master
+password first; see \k{using-cmdline-masterpwfile}.
+
 \S2{using-cmdline-proxypw} \i\c{\-proxytype}, \i\c{\-proxyhost},
 \i\c{\-proxyport}, \i\c{\-proxyuser}, \i\c{\-proxypwfile}: a proxy for
 this run
@@ -900,12 +910,59 @@ proxy mode - whatever the terminal connected through, the transfer
 goes through as well.
 
 The file may hold the password as it is, or as KiTTY++ writes it in
-one of its protected forms. In \c{kitty.exe} a line copied from a
-session file that is wrapped with the master password is read once the
-master password has been given (\c{\-masterpwfile}, or the prompt);
-\c{klink}, \c{kscp} and \c{ksftp} cannot be given a master password and
-refuse such a line with \q{unable to read a password from file} - use
-the password itself, or the DPAPI form, in their files.
+one of its protected forms. A line copied from a session file that is
+wrapped with the master password is read once the master password has
+been given - \c{\-masterpwfile}, or the prompt; see
+\k{using-cmdline-masterpwfile}.
+
+\S2{using-cmdline-masterpwfile} \i\c{\-masterpwfile}: the master
+password of the KiTTY++ settings
+
+A folder store (\c{savemode=dir}, the portable build) can protect its
+stored passwords with a master password. When \c{kitty.exe},
+\c{klink}, \c{kscp} or \c{ksftp} meets such a password - in the
+session it loads, or in a \c{\-pwfile} or \c{\-proxypwfile} line - it
+needs that master password. Nothing protected, no prompt.
+
+\b Interactively, \c{klink}, \c{kscp} and \c{ksftp} prompt on the
+console, with no echo, before the connection opens; \c{kitty.exe}
+prompts in a dialog. Three wrong answers end the run.
+
+\b \c{\-masterpwfile} \e{file} takes it from the first line of a file,
+for scripts and shortcuts - in \c{kitty.exe}, \c{kitty_portable.exe}
+and the three console tools alike. Its place on the command line does
+not matter: it is read before any other option, \c{\-load} included.
+
+\b The file must be readable by you alone, in every program that takes
+it: its owner is you, Administrators or SYSTEM, and no other account or
+group may read it - the check Windows OpenSSH makes on a private key. A
+file on a drive without file permissions (FAT or exFAT, e.g. a USB
+stick) is refused: anyone can read it there, and a password should not
+travel with the files it protects - so a master-password file kept on
+the stick beside a portable KiTTY++ no longer works. The refusal shows
+who can read the file and the fix, e.g.
+\c{icacls "file" /inheritance:r /grant:r "%USERNAME%":R}.
+
+\b \c{\-masterpwfile -} takes the first line of standard input, so
+\c{echo %SECRET% | kscp -masterpwfile - ...} needs no file. Only that
+line is taken; \c{klink} still sends the rest of standard input to the
+server. On a console the console tools prompt, as above. \c{kitty.exe}
+has a standard input only when one is piped to it; otherwise it
+refuses \c{-} and its dialog is the way.
+
+\b Under \c{\-batch}, or when standard input is not a console, there
+nobody can answer a prompt: without \c{\-masterpwfile} a console tool
+stops with a message. A wrong master password from \c{\-masterpwfile} stops it too;
+\c{kitty.exe} then goes on without the stored password, and the login
+prompts for one.
+
+A master password in a file, an environment variable or a script is
+readable by anything that runs as you. Tools that KiTTY++ starts
+itself (Send File, Get File) never need it: the terminal hands over the
+session's password, protected for your Windows account.
+\c{\-masterpwfile} cannot be combined with
+\c{PortablePasswordProtection=dpapi}, a store that has no master
+password.
 
 \S2{using-cmdline-agentauth} \i\c{\-agent} and \i\c{\-noagent}:
 control use of kageant for authentication

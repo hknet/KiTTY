@@ -784,8 +784,19 @@ static void test_script_lines(void)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    /* --wrap PASSPHRASE PLAINTEXT: print the self-contained MPW2 value, and
+     * nothing else (no hive, no files) - a fixed test value for the console
+     * tools' master-password tests is made this way */
+    if (argc == 4 && !strcmp(argv[1], "--wrap")) {
+        char *w = ksec_wrap_with_passphrase(argv[3], argv[2]);
+        if (!w)
+            return 1;
+        printf("%s\n", w);
+        free(w);
+        return 0;
+    }
     printf("== registry backend (DPAPI) ==\n");
     test_registry();
     printf("== portable backend (master password) ==\n");

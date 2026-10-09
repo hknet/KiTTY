@@ -4459,6 +4459,8 @@ see the Portability section of the KiTTY additions chapter
 (\k{kitty-features}) for that, and for the details of converting an
 existing store.
 
-Note that the command-line tools (\c{klink}, \c{kscp}, \c{ksftp})
-read saved sessions from the Registry only, not from a portable
-store.
+The command-line tools (\c{klink}, \c{kscp}, \c{ksftp}) use the same
+store: they find \c{kitty.ini} as \c{kitty.exe} does and read sessions
+and host keys from the folder store when it sets \c{savemode=dir}. A
+master password is prompted for on the console or given with
+\c{\-masterpwfile}; see \k{using-cmdline-masterpwfile}.

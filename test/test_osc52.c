@@ -4819,6 +4819,18 @@ static void test_capability_reports(Mock *mk)
     cap_conf(mk);
     tcap_val(mk, "XTGETTCAP Ms, writes allowed", "Ms",
              "\\E]52;%p1%s;%p2%s\\E\\\\");
+    /* Ask: answered - a write may still be allowed - until the box is
+     * answered No, which latches Deny for the session: then unknown */
+    conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ASK);
+    cap_conf(mk);
+    tcap_val(mk, "XTGETTCAP Ms, Ask before the first write", "Ms",
+             "\\E]52;%p1%s;%p2%s\\E\\\\");
+    wc_reset(mk);
+    feed_seq(mk, "\033]52;c;SGVsbG8=\007");
+    if (osc52_wconfirms != 1)
+        fail("XTGETTCAP Ms, Ask answered No", "the write did not open the box");
+    term_osc52_write_answer(mk->term, false);
+    tcap_unknown(mk, "XTGETTCAP Ms, Ask answered No", "Ms");
     conf_set_int(mk->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_ASK);
     conf_set_int(mk->conf, CONF_sync_output_hold_ms, 0);
     cap_conf(mk);

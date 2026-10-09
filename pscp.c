@@ -356,6 +356,9 @@ static void do_cmd(char *host, char *user, char *cmd)
      * Enact command-line overrides.
      */
     cmdline_run_saved(conf);
+    /* KiTTY: the loaded session's stored password, unless -pw/-pwfile (cmdline.c) */
+    { extern void kitty_cmdline_use_stored_password(Conf *conf);
+      kitty_cmdline_use_stored_password(conf); }
 
     /*
      * Muck about with the hostname in various ways.
@@ -2221,6 +2224,8 @@ static void usage(void)
     printf("  -P port   connect to specified port\n");
     printf("  -l user   connect with specified username\n");
     printf("  -pwfile file   login with password read from specified file\n");
+    printf("  -masterpwfile file|-\n");
+    printf("            the KiTTY++ master password (from file, - = stdin)\n");
     printf("  -proxytype none|socks4|socks5|http|telnet|cmd|ssh\n");
     printf("  -proxyhost host  -proxyport port  [-proxylocalhost]\n");
     printf("            connect through this proxy or SSH jump host\n");

@@ -2262,6 +2262,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     NETDBG_TS("before InitWinMain");
     InitWinMain();
     NETDBG_TS("after InitWinMain");
+    /* KiTTY: -masterpwfile before any argument - the store is set up now
+     * (InitWinMain), and -load must find the master password already there
+     * whatever the order on the command line (cmdline.c) */
+    { extern void kitty_masterpwfile_prescan(void); kitty_masterpwfile_prescan(); }
 
     /* KiTTY: from here on every dialog this thread creates - the configuration
      * box, the auxiliary windows, and the message boxes whose window procedure

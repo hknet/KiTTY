@@ -260,6 +260,12 @@ void kitty_set_master_passphrase(const char *pass)
     g_mpw_declined = 0;                           /* fresh passphrase -> allow another try */
 }
 void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; }
+/* Called when the master password given was WRONG - every try of the prompt, or
+ * the one try of a supplied passphrase - never on a cancel. The console tools
+ * refuse there (kitty_console_mpw.c); the GUI sets none and goes on as it did:
+ * the value reads as no stored password. */
+static void (*g_mpw_wrong)(int supplied) = NULL;
+void kitty_set_master_pw_wrong(void (*fn)(int supplied)) { g_mpw_wrong = fn; }
 
 /* Backend-scoped MPW store state (salt + verifier). The registry hive is only
  * right for registry-backed stores; in portable mode these MUST live next to
@@ -368,7 +374,7 @@ static int mpw_ensure_unlocked(int creating)
      * interactive prompt gets a few, re-prompting on a wrong master password. */
     int from_supplied = (g_mpw_passphrase != NULL);
     int tries = from_supplied ? 1 : 3;
-    int ok = 0;
+    int ok = 0, wrong = 0;
 
     while (tries-- > 0 && !ok) {
         char *pass = from_supplied ? ksec_dup(g_mpw_passphrase)
@@ -385,7 +391,7 @@ static int mpw_ensure_unlocked(int creating)
             char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_key, &vpt);
             ok = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
             if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
-            if (!ok) SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); /* wrong: re-prompt */
+            if (!ok) { SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); wrong++; } /* wrong: re-prompt */
         } else {                                 /* first time: persist salt + verifier */
             if (!have_salt) {
                 char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
@@ -414,6 +420,8 @@ static int mpw_ensure_unlocked(int creating)
     if (!from_supplied && g_mpw_prompt)
         g_mpw_declined = 1;
     SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+    if (wrong && g_mpw_wrong)
+        g_mpw_wrong(from_supplied);
     return 0;
 }
 
@@ -489,6 +497,8 @@ static int mpw_unprotect_with_salt(const char *m1blob,
      * times. A hand-started action clears it (kitty_mpw_allow_prompt_again). */
     if (!from_supplied)
         g_mpw_declined = 1;
+    if (g_mpw_wrong)                    /* every try ran and none opened it */
+        g_mpw_wrong(from_supplied);
     return 0;
 }
 

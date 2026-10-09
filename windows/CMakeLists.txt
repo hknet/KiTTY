@@ -193,6 +193,8 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
 # file check (hknet/KiTTY#55, #56). Listed beside kitty_storage.c everywhere.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c)
+# KiTTY: is a secret file readable by anyone but its user (-masterpwfile, cmdline.c)
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_fileperm.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
@@ -304,6 +306,8 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
+  ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(plink generated_licence_h)
 kitty_selfcheck_target(plink)
@@ -315,6 +319,8 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
+  ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(pscp generated_licence_h)
 kitty_selfcheck_target(pscp)
@@ -326,6 +332,8 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
+  ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(psftp generated_licence_h)
 kitty_selfcheck_target(psftp)

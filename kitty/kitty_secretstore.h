@@ -87,6 +87,13 @@ void kitty_set_defer_mpw_prompt(int on);
 void kitty_set_legacy_migrate_warn(int (*fn)(void));
 void kitty_set_master_passphrase(const char *pass);
 void kitty_set_master_pw_prompt(char *(*fn)(int creating));
+void kitty_set_master_pw_wrong(void (*fn)(int supplied));
+/* -masterpwfile, applied (cmdline.c): from the option, or by the console tools
+ * before any argument (kitty_console_store.c). fn NULL = "-", standard input. */
+extern bool kitty_masterpwfile_done;
+void kitty_masterpwfile_apply(const char *shown, Filename *fn);
+/* ...the same, found on the command line before any argument is processed */
+void kitty_masterpwfile_prescan(void);
 void kitty_set_portable_password_protection(const char *mode);
 
 #endif /* KITTY_SECRETSTORE_H */
