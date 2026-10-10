@@ -617,6 +617,20 @@ static bool gfx_decode_file(void *ctx, int fmt, const unsigned char *data,
                             px, w, h);
 }
 
+/* An animated GIF for iTerm2 images: every frame, by Windows' own GIF
+ * decoder (kitty_wic.c). */
+static bool gfx_decode_anim(void *ctx, const unsigned char *data, size_t len,
+                            size_t max_bytes, unsigned char ***frames,
+                            int **gaps, int *n, int *w, int *h)
+{
+    (void)ctx;
+    if (!kitty_wic_available())
+        return false;
+    return kitty_wic_decode_gif(data, len, GFX_MAX_SIDE, GFX_MAX_PIXELS,
+                                max_bytes, GFX_MAX_FRAMES, frames, gaps, n,
+                                w, h);
+}
+
 /* The animations wait while the terminal window cannot be seen. */
 static bool gfx_paused(void *ctx)
 {
@@ -2589,6 +2603,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * JPEG for iTerm2 images */
         kitty_gfx_decode_png_hook = gfx_decode_png;
         kitty_gfx_decode_file_hook = gfx_decode_file;
+        kitty_gfx_decode_anim_hook = gfx_decode_anim;
         kitty_gfx_inflate_hook = gfx_inflate;
         /* the animations wait while the window cannot be seen */
         kitty_gfx_paused_hook = gfx_paused;

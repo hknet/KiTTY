@@ -225,6 +225,166 @@ bool kitty_wic_decode(int fmt, const unsigned char *data, size_t len,
     return ok;
 }
 
+/* A number from a GIF's metadata (VT_UI1 or VT_UI2), def when absent. */
+static unsigned gif_meta(IWICMetadataQueryReader *qr, const wchar_t *name,
+                         unsigned def)
+{
+    PROPVARIANT pv;
+    unsigned v = def;
+    if (!qr)
+        return def;
+    PropVariantInit(&pv);
+    if (SUCCEEDED(IWICMetadataQueryReader_GetMetadataByName(qr, name, &pv))) {
+        if (pv.vt == VT_UI1)
+            v = pv.bVal;
+        else if (pv.vt == VT_UI2)
+            v = pv.uiVal;
+    }
+    PropVariantClear(&pv);
+    return v;
+}
+
+bool kitty_wic_decode_gif(const unsigned char *data, size_t len,
+                          unsigned max_side, uint64_t max_pixels,
+                          size_t max_bytes, int max_frames,
+                          unsigned char ***frames, int **gaps, int *n,
+                          int *w, int *h)
+{
+    IWICImagingFactory *fac = wic_get();
+    IWICStream *stream = NULL;
+    IWICBitmapDecoder *dec = NULL;
+    IWICMetadataQueryReader *qr = NULL;
+    GUID container;
+    UINT count = 0, i;
+    unsigned W, H;
+    size_t fbytes;
+    unsigned char *canvas = NULL, *saved = NULL;
+    unsigned char **fr = NULL;
+    int *gp = NULL, got = 0;
+    bool ok = false;
+
+    *frames = NULL;
+    *gaps = NULL;
+    *n = 0;
+    if (!fac || len == 0 || len > 0x7FFFFFFF)
+        return false;
+    if (FAILED(IWICImagingFactory_CreateStream(fac, &stream)) ||
+        FAILED(IWICStream_InitializeFromMemory(stream, (BYTE *)data, (DWORD)len)) ||
+        !(dec = wic_decoder(KITTY_WIC_GIF)) ||
+        FAILED(IWICBitmapDecoder_Initialize(dec, (IStream *)stream,
+                                            WICDecodeMetadataCacheOnDemand)) ||
+        FAILED(IWICBitmapDecoder_GetContainerFormat(dec, &container)) ||
+        !IsEqualGUID(&container, &kw_GUID_ContainerFormatGif) ||
+        FAILED(IWICBitmapDecoder_GetFrameCount(dec, &count)) || count < 2)
+        goto out;
+    if (FAILED(IWICBitmapDecoder_GetMetadataQueryReader(dec, &qr)))
+        qr = NULL;
+    W = gif_meta(qr, L"/logscrdesc/Width", 0);
+    H = gif_meta(qr, L"/logscrdesc/Height", 0);
+    if (qr) { IWICMetadataQueryReader_Release(qr); qr = NULL; }
+    if (W == 0 || H == 0 || W > max_side || H > max_side ||
+        (uint64_t)W * H > max_pixels)
+        goto out;
+    fbytes = (size_t)W * H * 4;
+    if (max_frames > (int)count)
+        max_frames = (int)count;
+    canvas = calloc(1, fbytes);
+    fr = calloc((size_t)max_frames, sizeof(*fr));
+    gp = calloc((size_t)max_frames, sizeof(*gp));
+    if (!canvas || !fr || !gp)
+        goto out;
+
+    for (i = 0; i < count && got < max_frames; i++) {
+        IWICBitmapFrameDecode *frame = NULL;
+        IWICMetadataQueryReader *fq = NULL;
+        IWICFormatConverter *conv = NULL;
+        UINT fw = 0, fh = 0, x, y;
+        unsigned left, top, disposal, delay;
+        unsigned char *buf = NULL;
+        bool fok = false;
+
+        if ((size_t)(got + 1) * fbytes > max_bytes)
+            break;                          /* the rest would not fit */
+        if (FAILED(IWICBitmapDecoder_GetFrame(dec, i, &frame)))
+            break;
+        if (FAILED(IWICBitmapFrameDecode_GetMetadataQueryReader(frame, &fq)))
+            fq = NULL;
+        left = gif_meta(fq, L"/imgdesc/Left", 0);
+        top = gif_meta(fq, L"/imgdesc/Top", 0);
+        disposal = gif_meta(fq, L"/grctlext/Disposal", 0);
+        delay = gif_meta(fq, L"/grctlext/Delay", 10);
+        if (fq) IWICMetadataQueryReader_Release(fq);
+        if (SUCCEEDED(IWICImagingFactory_CreateFormatConverter(fac, &conv)) &&
+            SUCCEEDED(IWICFormatConverter_Initialize(
+                conv, (IWICBitmapSource *)frame, &kw_GUID_WICPixelFormat32bppPBGRA,
+                WICBitmapDitherTypeNone, NULL, 0.0, WICBitmapPaletteTypeCustom)) &&
+            SUCCEEDED(IWICFormatConverter_GetSize(conv, &fw, &fh)) &&
+            fw && fh && fw <= max_side && fh <= max_side &&
+            (buf = malloc((size_t)fw * fh * 4)) != NULL &&
+            SUCCEEDED(IWICFormatConverter_CopyPixels(conv, NULL, fw * 4,
+                                                     fw * fh * 4, buf)))
+            fok = true;
+        if (conv) IWICFormatConverter_Release(conv);
+        IWICBitmapFrameDecode_Release(frame);
+        if (!fok) {
+            free(buf);
+            break;
+        }
+        /* disposal 3: what was there comes back after this frame */
+        if (disposal == 3) {
+            if (!saved)
+                saved = malloc(fbytes);
+            if (saved)
+                memcpy(saved, canvas, fbytes);
+        }
+        /* the frame over the canvas at its offset (GIF pixels are opaque or
+         * clear, so a copy where not clear) */
+        for (y = 0; y < fh && top + y < H; y++)
+            for (x = 0; x < fw && left + x < W; x++) {
+                const unsigned char *s = buf + ((size_t)y * fw + x) * 4;
+                if (s[3])
+                    memcpy(canvas + ((size_t)(top + y) * W + left + x) * 4, s, 4);
+            }
+        free(buf);
+        fr[got] = malloc(fbytes);
+        if (!fr[got])
+            break;
+        memcpy(fr[got], canvas, fbytes);
+        gp[got] = delay < 2 ? 100 : (int)delay * 10;
+        got++;
+        if (disposal == 2) {
+            for (y = top; y < top + fh && y < H; y++)
+                for (x = left; x < left + fw && x < W; x++)
+                    memset(canvas + ((size_t)y * W + x) * 4, 0, 4);
+        } else if (disposal == 3 && saved) {
+            memcpy(canvas, saved, fbytes);
+        }
+    }
+    if (got >= 2) {
+        *frames = fr;
+        *gaps = gp;
+        *n = got;
+        *w = (int)W;
+        *h = (int)H;
+        fr = NULL;
+        gp = NULL;
+        ok = true;
+    }
+  out:
+    if (fr) {
+        int k;
+        for (k = 0; k < got; k++)
+            free(fr[k]);
+        free(fr);
+    }
+    free(gp);
+    free(canvas);
+    free(saved);
+    if (dec) IWICBitmapDecoder_Release(dec);
+    if (stream) IWICStream_Release(stream);
+    return ok;
+}
+
 /* A background image: up to 16384 pixels a side, 64 megapixels. */
 #define KW_FILE_MAX_BYTES  (256u * 1024u * 1024u)
 #define KW_FILE_MAX_SIDE   16384u

@@ -48,6 +48,10 @@ bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
                                    const unsigned char *data, size_t len,
                                    unsigned char **px, int *w, int *h);
 bool (*kitty_gfx_paused_hook)(void *ctx);
+bool (*kitty_gfx_decode_anim_hook)(void *ctx, const unsigned char *data,
+                                   size_t len, size_t max_bytes,
+                                   unsigned char ***frames, int **gaps,
+                                   int *n, int *w, int *h);
 
 #define GFX_REPAINT_MAX 64
 
@@ -102,6 +106,7 @@ static void env_init(Terminal *term, GfxEnv *env)
     env->now_ms = GETTICKCOUNT();
     env->decode_png = kitty_gfx_decode_png_hook;
     env->decode_file = kitty_gfx_decode_file_hook;
+    env->decode_anim = kitty_gfx_decode_anim_hook;
     env->inflate = kitty_gfx_inflate_hook;
 #ifdef KITTY_TEST_BUILD_LABEL
     env->trace = gfx_trace;

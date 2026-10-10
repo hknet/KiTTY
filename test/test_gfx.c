@@ -1130,6 +1130,79 @@ static bool stub_jpg(void *ctx, int fmt, const unsigned char *d, size_t len,
     return stub_decode(d, len, 3, px, w, h);
 }
 
+/* An animated GIF for the stub: "GIF89a" then 'A' - two frames of 8x16,
+ * red then blue, 70 and 90 ms. Anything else: not animated. */
+static int n_anim;
+static bool stub_anim(void *ctx, const unsigned char *d, size_t len,
+                      size_t max_bytes, unsigned char ***frames, int **gaps,
+                      int *n, int *w, int *h)
+{
+    static const unsigned char rgba[2][4] = { { 255, 0, 0, 255 }, { 0, 0, 255, 255 } };
+    int f;
+    size_t i;
+    (void)ctx;
+    (void)max_bytes;
+    n_anim++;
+    if (len < 7 || memcmp(d, "GIF89aA", 7))
+        return false;
+    *frames = malloc(2 * sizeof(**frames));
+    *gaps = malloc(2 * sizeof(**gaps));
+    for (f = 0; f < 2; f++) {
+        (*frames)[f] = malloc(8 * 16 * 4);
+        for (i = 0; i < 8 * 16; i++)
+            gfx_to_bgra(rgba[f], 4, 1, (*frames)[f] + i * 4);
+    }
+    (*gaps)[0] = 70;
+    (*gaps)[1] = 90;
+    *n = 2;
+    *w = 8;
+    *h = 16;
+    return true;
+}
+
+static GfxEnv env_iterm(void);
+static const char *ifile(GfxStore *st, const GfxEnv *env, const char *args,
+                         const unsigned char *data, size_t n);
+
+/* iTerm2: an animated GIF plays (for ever), with its gaps; a GIF that is
+ * not animated goes to the file decoder; no room for the frames: still. */
+static void test_iterm_gif(void)
+{
+    GfxStore st;
+    GfxEnv e = env_iterm();
+    const GfxImage *img;
+    unsigned char d[16];
+
+    gfx_store_init(&st);
+    e.decode_anim = stub_anim;
+    e.now_ms = 5000;
+    memcpy(d, "GIF89aA", 7);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 7), "OK") && st.n_imgs == 1,
+          "an animated GIF placed");
+    img = &st.imgs[0];
+    CHECK(img->frames && img->n_frames == 2 && img->anim == 'p' && img->cur == 0 &&
+          st.bytes == (size_t)2 * 8 * 16 * 4, "two frames, playing, both counted");
+    CHECK(gfx_anim_next(&st, 5000) == 70, "frame 1's gap: %ld", gfx_anim_next(&st, 5000));
+    CHECK(gfx_animate(&st, 5070) && st.imgs[0].cur == 1, "-> frame 2");
+    CHECK(gfx_animate(&st, 5160) && st.imgs[0].cur == 0, "-> frame 1: it loops");
+
+    /* not animated: the file decoder (the stub fails GIFs: EBADIMG) */
+    memcpy(d, "GIF89a\1\0\1\0\0\0", 12);
+    n_anim = n_jpg = 0;
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 12), "EBADIMG") && n_anim == 1 &&
+          n_jpg == 1, "a still GIF: the file decoder after the frames' one");
+
+    /* no room for the second frame: a still picture */
+    gfx_store_free(&st);
+    gfx_store_init(&st);
+    st.max_bytes = (size_t)8 * 16 * 4 + 100;
+    memcpy(d, "GIF89aA", 7);
+    CHECK(!strcmp(ifile(&st, &e, "inline=1", d, 7), "OK") && st.n_imgs == 1 &&
+          !st.imgs[0].frames && st.bytes == (size_t)8 * 16 * 4,
+          "no room for the frames: frame 1 alone");
+    gfx_store_free(&st);
+}
+
 static GfxEnv env_iterm(void)
 {
     GfxEnv e = env_default();
@@ -2314,6 +2387,7 @@ int main(void)
     test_scroll_region_carry();
     test_relative();
     test_animation();
+    test_iterm_gif();
     test_iterm_args();
     test_iterm_place();
     test_iterm_geometry();

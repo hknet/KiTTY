@@ -261,6 +261,13 @@ typedef struct GfxEnv {
      * same way; only iTerm2 images use it. NULL: those refused. */
     bool (*decode_file)(void *ctx, int fmt, const unsigned char *data,
                         size_t len, unsigned char **px, int *w, int *h);
+    /* An animated GIF (iTerm2 images): n >= 2 whole frames of w x h, each
+     * malloc'd, with their gaps in ms, at most max_bytes of frames. False:
+     * not animated or not decodable - decode_file takes its first frame.
+     * NULL: GIFs show their first frame. */
+    bool (*decode_anim)(void *ctx, const unsigned char *data, size_t len,
+                        size_t max_bytes, unsigned char ***frames, int **gaps,
+                        int *n, int *w, int *h);
     /* zlib (RFC 1950) inflate into a malloc'd buffer of at most max_out
      * bytes; more than max_out is a failure. NULL: o=z refused. */
     bool (*inflate)(void *ctx, const unsigned char *in, size_t len,

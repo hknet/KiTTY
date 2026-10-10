@@ -35,6 +35,19 @@ bool kitty_wic_decode(int fmt, const unsigned char *data, size_t len,
                       unsigned max_side, uint64_t max_pixels,
                       unsigned char **px, int *w, int *h);
 
+/* An animated GIF, every frame as a viewer shows it: composed onto the
+ * logical screen (w x h) with each frame's offset and disposal (none, back
+ * to transparent, back to the previous picture), premultiplied BGRA, each
+ * malloc'd. gaps: ms per frame (a delay under 20 ms is shown at 100, as the
+ * browsers do). Stops early at max_frames or max_bytes of frames. False
+ * when it is not a GIF of two or more frames, or cannot be decoded (the
+ * caller then takes the first frame as a still picture). */
+bool kitty_wic_decode_gif(const unsigned char *data, size_t len,
+                          unsigned max_side, uint64_t max_pixels,
+                          size_t max_bytes, int max_frames,
+                          unsigned char ***frames, int **gaps, int *n,
+                          int *w, int *h);
+
 #ifdef _WIN32
 #include <windows.h>
 /* A file of format fmt, read whole (at most 256 MB) and decoded as above,

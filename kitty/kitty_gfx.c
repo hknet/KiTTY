@@ -2118,6 +2118,19 @@ static bool pl_crop(const GfxEnv *env, GfxPlacement *pl)
     return pl_clip(pl, env->crop_rows - pl->rows, env->cell_w, env->cell_h);
 }
 
+/* An animated GIF's frames after the first (the first is px, freed or kept
+ * apart), and the arrays. */
+static void anim_extra_free(unsigned char **frames, int *gaps, int n)
+{
+    int k;
+    if (!frames)
+        return;
+    for (k = 1; k < n; k++)
+        free(frames[k]);
+    free(frames);
+    free(gaps);
+}
+
 /* Decodes data (PNG, JPEG, GIF, TIFF, BMP, WebP or HEIF/AVIF by its
  * signature), stores it as an anonymous image and places it at the cursor. Returns an error code or
  * NULL. */
@@ -2150,6 +2163,8 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
     bool opaque = false;
     GfxImage *img;
     GfxPlacement pl;
+    unsigned char **aframes = NULL;    /* an animated GIF's frames, [0] = px */
+    int *agaps = NULL, an = 0;
 
     if (env->cell_w <= 0 || env->cell_h <= 0) {
         *msg = "cell size unknown";
@@ -2195,6 +2210,13 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
         *msg = "image format not supported";
         return "EINVAL";
     }
+    /* an animated GIF: every frame, played as iTerm2 plays it (for ever) */
+    if (fmt == GFX_FILE_GIF && env->decode_anim &&
+        env->decode_anim(env->ctx, data, len, st->max_bytes, &aframes, &agaps,
+                         &an, &w, &h)) {
+        px = aframes[0];
+        decoded = true;
+    } else
     decoded = fmt ? env->decode_file(env->ctx, fmt, data, len, &px, &w, &h)
                   : env->decode_png(env->ctx, data, len, &px, &w, &h);
     if (!decoded || !px) {
@@ -2202,8 +2224,10 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
         return bad;
     }
     code = decoded_check(st, &px, w, h, &opaque, msg);
-    if (code)
+    if (code) {
+        anim_extra_free(aframes, agaps, an);
         return code;
+    }
     iterm_geometry(a, env, w, h, &dw, &dh);
     memset(&pl, 0, sizeof(pl));
     pl.screen = env->screen;
@@ -2219,6 +2243,7 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
     pl_fit(&pl, env->cell_w, env->cell_h);
     if (!pl_crop(env, &pl)) {
         free(px);
+        anim_extra_free(aframes, agaps, an);
         *msg = "nothing left above the bottom margin";
         return "EINVAL";
     }
@@ -2229,8 +2254,32 @@ static const char *iterm_place(GfxStore *st, const GfxEnv *env,
         res->changed = true;
     img = img_insert(st, env, px, w, h, opaque);
     if (!img) {
+        anim_extra_free(aframes, agaps, an);
         *msg = "image store full";
         return "ENOSPC";
+    }
+    if (aframes) {
+        /* frame 1 is stored; the others too when there is room, else the
+         * picture stays still */
+        size_t more = (size_t)w * h * 4 * (size_t)(an - 1);
+        uint32_t key = img->key;
+        if (make_room_for(st, env, more, key)) {
+            int k;
+            img = &st->imgs[img_index_by_key(st, key)];
+            img->frames = aframes;
+            img->gaps = agaps;
+            img->n_frames = an;
+            img->cur = 0;
+            for (k = 1; k < an && img->opaque; k++)
+                if (!px_opaque(aframes[k], (size_t)w * h))
+                    img->opaque = false;
+            st->bytes += more;
+            img->anim = 'p';               /* loops for ever, as in iTerm2 */
+            img->due = env->now_ms + (unsigned long)agaps[0];
+        } else {
+            anim_extra_free(aframes, agaps, an);
+            img = &st->imgs[img_index_by_key(st, key)];
+        }
     }
     res->changed = true;
     pl.image_key = img->key;

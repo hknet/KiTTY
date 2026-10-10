@@ -28,6 +28,13 @@ extern bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
                                           size_t len, unsigned char **px,
                                           int *w, int *h);
 
+/* An animated GIF's frames for iTerm2 images (the GfxEnv decode_anim
+ * signature); NULL: GIFs show their first frame. */
+extern bool (*kitty_gfx_decode_anim_hook)(void *ctx, const unsigned char *data,
+                                          size_t len, size_t max_bytes,
+                                          unsigned char ***frames, int **gaps,
+                                          int *n, int *w, int *h);
+
 /* Set by the window: true while it cannot be seen (minimised, in the tray).
  * The animations wait meanwhile instead of drawing frames nobody sees.
  * NULL: never paused. */

@@ -8,6 +8,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Animated GIFs play.** An iTerm2 picture (`OSC 1337 File=`) that is an
+  animated GIF plays, looping, with its frames' delays and disposal, as in
+  iTerm2; before, only its first frame showed. Its frames count against
+  the picture memory; when they do not fit, the first frame shows.
 - **kitty graphics: animation.** Frames (`a=f`, on a base frame or a
   background colour, edited with `r`), the terminal playing them with
   their gaps or the program choosing one (`a=a`: `s`, `v`, `c`, `z`),
