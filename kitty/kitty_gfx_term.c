@@ -397,6 +397,24 @@ void kitty_gfx_scrolled(Terminal *term, int top, int bot, int lines,
     }
 }
 
+void kitty_gfx_carry_begin(Terminal *term)
+{
+    if (term->gfx)
+        gfx_set_carry(term->gfx, true, screen_of(term),
+                      kitty_gfx_top_abs(term) + term->curs.y, term->curs.x);
+}
+
+void kitty_gfx_carry_end(Terminal *term)
+{
+    bool moved;
+    if (!term->gfx)
+        return;
+    moved = term->gfx->carry_moved;
+    gfx_set_carry(term->gfx, false, 0, 0, 0);
+    if (moved)
+        term_paint(term, 0, 0, term->cols - 1, term->rows - 1, false);
+}
+
 void kitty_gfx_sb_cleared(Terminal *term, int sblen)
 {
     term->gfx_sb_base += sblen;

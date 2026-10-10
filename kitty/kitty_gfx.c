@@ -1999,6 +1999,22 @@ void gfx_set_base(GfxStore *st, int screen, long base_abs)
     sweep_anonymous(st);
 }
 
+void gfx_set_carry(GfxStore *st, bool on, int screen, long abs_line, int col)
+{
+    st->carry_on = on;
+    st->carry_moved = false;
+    st->carry_screen = screen;
+    st->carry_abs = abs_line;
+    st->carry_col = col;
+}
+
+/* the picture gfx_set_carry named, while its line feeds run */
+static bool pl_carried(const GfxStore *st, const GfxPlacement *pl)
+{
+    return st->carry_on && pl->screen == st->carry_screen &&
+        pl->abs_line == st->carry_abs && pl->col == st->carry_col;
+}
+
 void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
                           int bot, int n)
 {
@@ -2014,6 +2030,11 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
         row1 = row0 + pl->rows - 1;
         if (row1 <= bot)
             continue;         /* in the band or the scrollback: moved with its text */
+        if (pl_carried(st, pl)) {
+            /* just placed on the margin row: it climbs with its text */
+            st->carry_moved = true;
+            continue;
+        }
         /* reaches below the band: kept its screen row. A cell-bound
          * picture loses its rows in the band, whose text moved away under
          * it (xterm would move that part with the text; a picture is not
@@ -2082,7 +2103,7 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         row1 = row0 + pl->rows - 1;
         /* reaching below the screen's last row: nothing is there to stay
          * behind with, it moves with the band */
-        below = to_bottom && row1 > bot && row0 <= bot;
+        below = (to_bottom || pl_carried(st, pl)) && row1 > bot && row0 <= bot;
         if (row0 < top || (row1 > bot && !below)) {
             /* not entirely in the band: it stays. A cell-bound picture
              * loses its rows in the band, whose text moved away under it
@@ -2095,6 +2116,10 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         }
         row0 -= n;
         row1 -= n;
+        if (pl_carried(st, pl)) {
+            st->carry_abs -= n;    /* still the same picture after the move */
+            st->carry_moved = true;
+        }
         pl->abs_line -= n;
         if (row1 < top || row0 > bot) {
             pl_remove(st, i);

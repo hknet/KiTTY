@@ -1692,6 +1692,59 @@ static void test_scroll_to_bottom(void)
     gfx_store_free(&st);
 }
 
+/*
+ * 0.85.1.15: a picture placed on the bottom margin of a scroll region (rows
+ * 3..17 of 24) hangs below it. Its own line feeds (gfx_set_carry) move it
+ * up into the region whole, as on a whole-screen scroll; another picture
+ * straddling the margin keeps the old rule; the same through the
+ * scrollback path (a region with its top at row 0 on the main screen).
+ */
+static void test_scroll_region_carry(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxPlacement *pl;
+    int k;
+
+    gfx_store_init(&st);
+    put_red(&st, &e, 1, 8, 80);             /* 1 x 5 cells */
+    e.screen = 1;
+    e.cur_y = 17;
+    e.cur_x = 10;
+    send(&st, &e, "a=p,i=1,p=2", NULL, 0);  /* an older one, rows 17..21 col 10 */
+    e.cur_x = 0;
+    send(&st, &e, "a=p,i=1,p=1", NULL, 0);  /* the new one, rows 17..21 col 0 */
+
+    gfx_scroll_region(&st, 1, 0, 3, 17, 1, 8, 16, false);
+    CHECK(pl_of(&st, 1, 1)->abs_line == 17, "no carry: straddling stays");
+
+    gfx_set_carry(&st, true, 1, 17, 0);
+    for (k = 0; k < 4; k++)
+        gfx_scroll_region(&st, 1, 0, 3, 17, 1, 8, 16, false);
+    pl = pl_of(&st, 1, 1);
+    CHECK(pl && pl->abs_line == 13 && pl->rows == 5 && !pl->clipped,
+          "carried: climbed 4 rows, whole (%ld %d)",
+          pl ? pl->abs_line : 0L, pl ? pl->rows : 0);
+    CHECK(st.carry_moved && st.carry_abs == 13, "carry followed the picture");
+    CHECK(pl_of(&st, 1, 2)->abs_line == 17, "the other straddling picture stays");
+    gfx_set_carry(&st, false, 0, 0, 0);
+    gfx_scroll_region(&st, 1, 0, 3, 17, 1, 8, 16, false);
+    CHECK(pl_of(&st, 1, 1)->abs_line == 12, "after the carry: inside the band, moves");
+
+    /* the scrollback path: rows 0..17 scrolled up by 1, top_abs 0 -> 1 */
+    e.cur_y = 17;
+    e.cur_x = 20;
+    send(&st, &e, "a=p,i=1,p=3", NULL, 0);
+    gfx_set_carry(&st, true, 1, 17, 20);
+    gfx_scroll_region_sb(&st, 1, 1, 17, 1);
+    CHECK(pl_of(&st, 1, 3)->abs_line == 17,
+          "scrollback path, carried: keeps its anchor (climbs with its text)");
+    CHECK(pl_of(&st, 1, 2)->abs_line == 18,
+          "scrollback path, not carried: keeps its screen row");
+    gfx_set_carry(&st, false, 0, 0, 0);
+    gfx_store_free(&st);
+}
+
 /* ---- cell-bound pictures (iTerm2, Sixel) -------------------------------- */
 
 /* The first anonymous placement (an iTerm2 or Sixel picture), or NULL. */
@@ -2038,6 +2091,7 @@ int main(void)
     test_scroll();
     test_visible();
     test_scroll_to_bottom();
+    test_scroll_region_carry();
     test_iterm_args();
     test_iterm_place();
     test_iterm_geometry();

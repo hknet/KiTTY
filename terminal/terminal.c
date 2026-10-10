@@ -8779,12 +8779,16 @@ static void gfx_cursor_advance(Terminal *term, int dx, int dy)
 {
     if (!dx && !dy)
         return;
+    /* the picture at the cursor climbs with a region scroll its own line
+     * feeds cause, even where it hangs below the bottom margin */
+    kitty_gfx_carry_begin(term);
     while (dy-- > 0) {
         if (term->curs.y == term->marg_b)
             scroll(term, term->marg_t, term->marg_b, 1, true);
         else if (term->curs.y < term->rows - 1)
             term->curs.y++;
     }
+    kitty_gfx_carry_end(term);
     move(term, term->curs.x + dx, term->curs.y, 0);
     seen_disp_event(term);
 }

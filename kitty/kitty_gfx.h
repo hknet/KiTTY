@@ -194,6 +194,13 @@ typedef struct GfxStore {
     size_t max_bytes;
     int max_images, max_placements;
     size_t pending_max;
+    /* a picture just placed, while the line feeds that follow it run
+     * (gfx_set_carry): anchored at carry_abs/carry_col on carry_screen, it
+     * moves with a region scroll although it hangs below the bottom margin,
+     * as it does on a whole-screen scroll; carry_moved: it did */
+    bool carry_on, carry_moved;
+    int carry_screen, carry_col;
+    long carry_abs;
 } GfxStore;
 
 /* The picture files an iTerm2 image may be besides PNG (GfxEnv.decode_file). */
@@ -316,6 +323,14 @@ void gfx_set_base(GfxStore *st, int screen, long base_abs);
  * their anchor, those reaching below it follow their screen row (+n). */
 void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
                           int bot, int n);
+
+/* The picture anchored at abs_line/col on screen was just placed and its
+ * line feeds are about to run (on), or have (off): during them it moves
+ * with the scroll region even where it hangs below the bottom margin - a
+ * picture placed on the margin row climbs into the region, as on a
+ * whole-screen scroll. Every other placement keeps the old rule (kitty's:
+ * only a placement entirely inside the margins moves). */
+void gfx_set_carry(GfxStore *st, bool on, int screen, long abs_line, int col);
 
 /* Screen rows top..bot scrolled by n (> 0 up, < 0 down) with nothing
  * entering the scrollback: placements entirely inside the band move,

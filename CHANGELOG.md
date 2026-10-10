@@ -96,6 +96,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A picture placed on the bottom line of a scroll region shows whole.**
+  An inline image (kitty, iTerm2, Sixel) placed on a scroll region's
+  bottom margin stayed hanging below the region while its own line feeds
+  scrolled the text above it, so its lower part covered the lines below
+  the region. It now climbs into the region with its text, as it does at
+  the bottom of the screen. Other pictures that reach below the margin
+  stay where they are, as in the other kitty terminal.
 - **`58;5;n` and `58;2;r;g;b` no longer switch on blink or dim.** The
   underline colour in its `;` form was read as separate codes: `58;5;196`
   made the text blink, `58;2;255;0;0` made it dim and then reset every

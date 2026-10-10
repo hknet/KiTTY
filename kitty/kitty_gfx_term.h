@@ -76,6 +76,14 @@ long kitty_gfx_top_abs(Terminal *term);
 void kitty_gfx_scrolled(Terminal *term, int top, int bot, int lines,
                         long before);
 
+/* Around the line feeds after a picture was placed at the cursor
+ * (terminal.c gfx_cursor_advance): that picture moves with a region scroll
+ * even where it hangs below the bottom margin (gfx_set_carry). The end
+ * paints the screen again when it moved: the rows below the margin it left
+ * are outside the scrolled band, and GDI would keep its pixels there. */
+void kitty_gfx_carry_begin(Terminal *term);
+void kitty_gfx_carry_end(Terminal *term);
+
 /* The scrollback was cleared (term_clrsb): sblen entries went, the screen
  * keeps its numbers. */
 void kitty_gfx_sb_cleared(Terminal *term, int sblen);
