@@ -45,6 +45,11 @@ void kitty_hostnotify_session_ended(void);
  * error) leaves the taskbar button. window.c calls it. */
 void kitty_hostnotify_focus(struct terminal_tag *term);
 
+/* The program-status marker for the window title (" (45%)", " (blocked)"
+ * ...), "" when nothing reports. window.c appends it under [KiTTY] wintitle;
+ * a change calls kitty_refresh_title(). */
+const char *kitty_hostnotify_title_marker(void);
+
 /* The window is going for good: the taskbar interface is released. */
 void kitty_hostnotify_shutdown(void);
 

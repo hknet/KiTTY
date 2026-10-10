@@ -2949,6 +2949,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     /* The help follows the panel the group sits on: F1 opens the Terminal
      * panel's page, not the Appearance one. */
     KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, KI_WINTITLE, kitty_kset_window);
+    ctrl_text(s, KT_KSET_WD_WINTITLE_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_SIZE, KI_SIZE, kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_WINROLL, KI_WINROLL, kitty_kset_window);
     /* The shared terminal-window position, after Colours on Appearance.

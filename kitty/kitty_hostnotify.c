@@ -38,6 +38,7 @@
 #include "kitty_oscnotify.h"
 #include "kitty_progstatus.h"
 #include "kitty_hostnotify.h"
+#include "kitty_win.h"        /* kitty_refresh_title: the program-status marker */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -138,6 +139,9 @@ static void hn_trace_progress(int state, int value, bool cleared)
 /* The terminal whose program status is on the taskbar button: one window
  * per process, so one at a time. */
 static struct kitty_hostnotify *hn_ps_owner;
+
+/* The title bar's program-status marker as last shown (ps_title_marker). */
+static char hn_ps_title[PS_TITLE_MARKER_MAX];
 
 static struct kitty_hostnotify *hn_get(Terminal *term)
 {
@@ -597,6 +601,16 @@ static void hn_ps_refresh(struct kitty_hostnotify *st)
     int ov, bar = 0, val = 0;
 
     ps_view(&st->ps, &v);
+    /* The title marker follows the records whatever the taskbar setting:
+     * [KiTTY] wintitle decides whether the title shows it. */
+    {
+        char t[PS_TITLE_MARKER_MAX];
+        ps_title_marker(&v, t);
+        if (strcmp(t, hn_ps_title)) {
+            strcpy(hn_ps_title, t);
+            kitty_refresh_title();
+        }
+    }
     ov = on ? v.state : PS_IDLE;
     if (ov == PS_WORKING) {
         bar = v.progress >= 0 ? 1 : 3;           /* normal / busy */
@@ -708,6 +722,11 @@ static void hn_ps_session_ended(void)
         return;
     ps_drop_running(&hn_ps_owner->ps);
     hn_ps_refresh(hn_ps_owner);
+}
+
+const char *kitty_hostnotify_title_marker(void)
+{
+    return hn_ps_title;
 }
 
 void kitty_hostnotify_focus(Terminal *term)

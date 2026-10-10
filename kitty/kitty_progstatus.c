@@ -3,11 +3,13 @@
  * the shell's prompt marks (OSC 133): parsing, limits, the record store and
  * the window's summary. Platform-free; see kitty_progstatus.h.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "kitty_oscnotify.h"     /* on_base64_decode */
 #include "kitty_progstatus.h"
+#include "kitty_text.h"          /* KT_TITLE_PS_*: the title bar's marker */
 
 /* ---- parsing ------------------------------------------------------------ */
 
@@ -379,6 +381,25 @@ void ps_view(const PsStore *st, PsView *v)
             best_prog_order = e->order;
         }
     }
+}
+
+void ps_title_marker(const PsView *v, char *buf)
+{
+    const char *t;
+    switch (v->state) {
+      case PS_WORKING:
+        if (v->progress >= 0) {
+            snprintf(buf, PS_TITLE_MARKER_MAX, KT_TITLE_PS_PERCENT, v->progress);
+            return;
+        }
+        t = KT_TITLE_PS_WORKING;
+        break;
+      case PS_BLOCKED: t = KT_TITLE_PS_BLOCKED; break;
+      case PS_ERROR:   t = KT_TITLE_PS_FAILED;  break;
+      case PS_DONE:    t = KT_TITLE_PS_DONE;    break;
+      default:         t = "";                  break;
+    }
+    snprintf(buf, PS_TITLE_MARKER_MAX, "%s", t);
 }
 
 /* ---- OSC 133 ------------------------------------------------------------ */

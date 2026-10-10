@@ -30,8 +30,9 @@ decorations and the suffix on — "show me the size" always works.
 
 ### /wintitle
 
-Toggle the KiTTY title decorations (the bracketed session/size markers) on or
-off for this KiTTY instance.
+Toggle the status information in the title bar (the size suffix, the
+PROTECTED / ONTOP / BROADCAST / RESTRICTED markers and a program's reported
+status) on or off for this KiTTY++ instance.
 
 **Persists:** runtime only; kitty.ini `wintitle=no` disables decorations at
 startup (only `no` has an effect — decorations are the default).

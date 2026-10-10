@@ -10269,6 +10269,9 @@ static char *kitty_decorate_title(WinGuiSeat *wgs, const char *title)
      * wrong kitty.ini leaves the user believing they are hardened in silence. */
     if (restricted_acl())
         put_dataz(sb, KT_TITLE_RESTRICTED);
+    /* KiTTY: what a program on the host reports (OSC 7501): 45%, working,
+     * blocked, failed, done. Refreshed by kitty_hostnotify.c on a change. */
+    put_dataz(sb, kitty_hostnotify_title_marker());
     /*
      * KiTTY: a clipboard permission is live. Agreeing to be read once is not
      * agreeing to be read invisibly from then on, so while the permission lasts it

@@ -1388,7 +1388,8 @@
  * leaves; the shared position and the icon library sit on Appearance */
 #define KT_KSET_WD_TITLE                             "Terminal Windows"
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
-#define KT_KSET_WD_WINTITLE                          "Decorate the window title (size, PROTECTED, ONTOP, BROADCAST, RESTRICTED)"
+#define KT_KSET_WD_WINTITLE                          "Show status information in the title bar"
+#define KT_KSET_WD_WINTITLE_NOTE                     "Size, PROTECTED, ONTOP, BROADCAST, RESTRICTED and what a program reports: 45%, working, blocked, failed, done."
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
 /* Appearance > Shared window position: the entry written by windows without
@@ -1844,7 +1845,7 @@
 #define KT_CMD_CAT_ALLWIN                            "All KiTTY windows"
 #define KT_CMD_CAT_DIAG                              "Behaviour & diagnostics"
 #define KT_CMD_HELP_SIZE                             "toggle the [cols x rows] title suffix"
-#define KT_CMD_HELP_WINTITLE                         "toggle the title decorations"
+#define KT_CMD_HELP_WINTITLE                         "toggle the status information in the title bar"
 #define KT_CMD_HELP_TITLE                            "set the window title"
 #define KT_CMD_HELP_TRANSPARENCY                     "toggle window transparency"
 #define KT_CMD_HELP_BACKGROUNDIMAGE                  "toggle the background image feature"
@@ -3027,6 +3028,13 @@
 /* The window actually receives broadcasts: the session accepts them AND the
  * installation's master switch is on. Ticked but globally off shows nothing. */
 #define KT_TITLE_BROADCAST                           " (BROADCAST)"
+/* What a program on the host reports (OSC 7501, kitty_progstatus.c): the
+ * window's most urgent state; working with a percentage shows the number. */
+#define KT_TITLE_PS_PERCENT                          " (%d%%)"
+#define KT_TITLE_PS_WORKING                          " (working)"
+#define KT_TITLE_PS_BLOCKED                          " (blocked)"
+#define KT_TITLE_PS_FAILED                           " (failed)"
+#define KT_TITLE_PS_DONE                             " (done)"
 #define KT_TITLE_WORKPLACE_LEAD                      L"⇄ workplace proxy"
 #define KT_TITLE_QUICK_CONNECT                       "%s - quick connect"
 #define KT_TITLE_QUICK_CONNECT_STAMPED               "%.*s - quick connect%s"

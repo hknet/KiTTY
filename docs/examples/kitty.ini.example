@@ -935,8 +935,9 @@
 ;winscpdir=
 
 ; wintitle: enable KiTTY's window-title decorations: the live size suffix
-;    (size=yes) and the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)
-;    status markers. no = plain stock
+;    (size=yes), the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)
+;    status markers and what a program reports (OSC 7501): (45%) /
+;    (working) / (blocked) / (failed) / (done). no = plain stock
 ;    titles. Unlike classic KiTTY the title text is never parsed, only
 ;    decorated - the old remote title-command channel stays removed.
 ;wintitle=yes

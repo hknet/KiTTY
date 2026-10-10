@@ -18,6 +18,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   diagnostics and spell checking. `21` is now a double underline, as in
   xterm. Both renderers draw the same lines, the styles survive the
   scrollback, and XTGETTCAP answers `Smulx` and `Setulc`.
+- **The title bar shows what a program reports.** A program's status
+  (OSC 7501) appears in the window title as `(45%)`, `(working)`,
+  `(blocked)`, `(failed)` or `(done)`, beside the size and the other
+  markers. The setting is now "Show status information in the title bar"
+  (Application > KiTTY++ Settings > Terminal, `wintitle`), with a line
+  below that lists what it shows.
 
 - **klink, kscp and ksftp log in with the session's stored password.**
   With a session loaded (`-load`, `@name`, or a host argument that is a saved

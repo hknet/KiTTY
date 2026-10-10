@@ -205,11 +205,40 @@ static void test_osc133(void)
     CHECK(ps_osc133("", 0, &code) == PS133_OTHER, "empty");
 }
 
+static void test_title_marker(void)
+{
+    PsView v;
+    char t[PS_TITLE_MARKER_MAX];
+    v.kind = PS_KIND_NONE;
+    v.state = PS_IDLE; v.progress = -1;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, ""), "idle: no marker");
+    v.state = PS_WORKING; v.progress = 45;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (45%)"), "working with a percentage");
+    v.progress = 100;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (100%)"), "working at 100%");
+    v.progress = -1;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (working)"), "working without one");
+    v.state = PS_BLOCKED; v.progress = 30; v.kind = PS_KIND_AUTH;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (blocked)"), "blocked, whatever its percentage");
+    v.state = PS_ERROR; v.progress = -1; v.kind = PS_KIND_NONE;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (failed)"), "failed");
+    v.state = PS_DONE;
+    ps_title_marker(&v, t);
+    CHECK(!strcmp(t, " (done)"), "done");
+}
+
 int main(void)
 {
     test_parse();
     test_store();
     test_osc133();
+    test_title_marker();
     if (failures)
         printf("%d failure(s)\n", failures);
     else

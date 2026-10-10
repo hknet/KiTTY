@@ -1348,7 +1348,7 @@ far2l's own notifications, sent over the far2l terminal extensions, show as the 
 
 A program on the host reports what it is doing: working (with a percentage or without), blocked (waiting for a permission, an answer or a login), done, failed or idle. Coding agents, build and deploy tools are the programs it was made for ([OSC 7501](https://www.superlogical.com/rex/docs/build/program-status)). A program can report several parts of its work at once, each under an id of its own.
 
-The window's taskbar button shows the most urgent of them as a small icon: blocked (amber), failed (red), working (blue), done (green); done and failed go once the window has been in front. While working the bar shows the percentage, or runs busy without one; while blocked it turns yellow. A program that becomes blocked while the window is in the background makes the button flash. Blocked, done and failed raise a notice, the program's name and the state on the first line, its message below, under the desktop notification setting and its limits.
+The window's taskbar button shows the most urgent of them as a small icon: blocked (amber), failed (red), working (blue), done (green); done and failed go once the window has been in front. While working the bar shows the percentage, or runs busy without one; while blocked it turns yellow. A program that becomes blocked while the window is in the background makes the button flash. The title bar shows the same state as `(45%)`, `(working)`, `(blocked)`, `(failed)` or `(done)` (**Application > KiTTY++ Settings > Terminal > Show status information in the title bar**, on by default). Blocked, done and failed raise a notice, the program's name and the state on the first line, its message below, under the desktop notification setting and its limits.
 
 Working and blocked end at the shell's next prompt, which the shell marks with OSC 133 when the shell integration is installed on the host, and when the session ends.
 
@@ -1815,7 +1815,7 @@ the port):**
 - `[KiTTY] size=yes` — appends the live terminal size `[cols x rows]` to the
   window title, updated as you resize, on a maximised window too.
 - `[KiTTY] wintitle` — KiTTY's title decorations, reimplemented safely: the
-  size suffix plus the `(PROTECTED)`, `(ONTOP)`, `(BROADCAST)` and `(RESTRICTED)` status markers, refreshed live
+  size suffix plus the `(PROTECTED)`, `(ONTOP)`, `(BROADCAST)` and `(RESTRICTED)` status markers and a program's reported status (`(45%)`, `(working)`, `(blocked)`, `(failed)`, `(done)`), refreshed live
   when the state changes. `wintitle=no` gives plain stock titles. **Security
   note:** in classic KiTTY this same title machinery also *parsed* titles for
   `__xy` remote commands — that channel stays removed; decoration here is

@@ -103,6 +103,11 @@ typedef struct {
 } PsView;
 void ps_view(const PsStore *st, PsView *v);
 
+/* The title bar's marker for that summary (" (45%)", " (blocked)" ...), ""
+ * when idle. buf holds PS_TITLE_MARKER_MAX bytes. */
+#define PS_TITLE_MARKER_MAX 24
+void ps_title_marker(const PsView *v, char *buf);
+
 /* OSC 133 (everything after "133;"). */
 #define PS133_OTHER  0
 #define PS133_PROMPT 1           /* A: a prompt starts */

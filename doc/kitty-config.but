@@ -2051,8 +2051,11 @@ How the terminal windows look and behave, for every session. Two
 leaves below this panel hold the rest: \k{kitty-cfg-kset-fontfb} and
 \k{kitty-cfg-kset-printing}.
 
-\b \q{Title bar}: \q{Decorate the window title} enables the size suffix
-and the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers; \q{Show the terminal size in the
+\b \q{Title bar}: \q{Show status information in the title bar} enables the size suffix,
+the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers and what a program on
+the host reports (OSC 7501): \c{(45%)}, \c{(working)}, \c{(blocked)},
+\c{(failed)} or \c{(done)}, failed and done until the window has been in
+front; \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 
