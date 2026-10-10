@@ -75,8 +75,10 @@ void kitty_set_remote_cwd(const char *osc7) { }
  *
  * Three separate counters, because three different things can happen and two of
  * them look alike from the outside:
- *  - osc52_sends is the one that matters. It counts the clipboard actually
- *    LEAVING the machine, which is the event the whole design exists to control;
+ *  - osc52_sends counts every reply sent to the host (kitty_term_send_reply);
+ *    osc52_clip_sends only the ones that went through the clipboard seam
+ *    (kitty_osc52_send_raw), the clipboard LEAVING the machine, which is the
+ *    event the whole design exists to control;
  *  - osc52_dialogs counts times the engine tried to ASK, so "refused without
  *    prompting" and "prompted, and the user said no" can be told apart;
  *  - osc52_gets counts clipboard fetches, which happens on the ask path too
@@ -84,7 +86,8 @@ void kitty_set_remote_cwd(const char *osc7) { }
  */
 static const wchar_t *stub_clip = L"secret";
 static int osc52_gets;             /* times the clipboard was fetched */
-static int osc52_sends;            /* times it was actually sent to the host */
+static int osc52_sends;            /* replies sent to the host, of any kind */
+static int osc52_clip_sends;       /* of those, clipboard contents */
 static int osc52_dialogs;          /* times the engine tried to ask */
 static bool osc52_dialog_answer;   /* what the fake user says */
 static int osc52_dialog_grant;     /* and for how long */
@@ -97,7 +100,7 @@ static char osc52_all[262144];     /* every reply of the current feed, concatena
 static size_t osc52_all_len;
 static int osc52_last_len;
 
-void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
+void kitty_term_send_reply(Terminal *term, const char *data, size_t len)
 {
     osc52_sends++;
     if (osc52_all_len + len < sizeof(osc52_all) - 1) {
@@ -109,6 +112,13 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
                            ? len : sizeof(osc52_last_send) - 1);
     memcpy(osc52_last_send, data, osc52_last_len);
     osc52_last_send[osc52_last_len] = '\0';
+}
+
+/* The clipboard seam passes on to the reply seam, as the real one does. */
+void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
+{
+    osc52_clip_sends++;
+    kitty_term_send_reply(term, data, len);
 }
 
 /* stub_clip_busy models the clipboard being HELD by another program - a state
@@ -563,6 +573,7 @@ static void feed_read(Mock *mk)
 {
     osc52_gets = 0;
     osc52_sends = 0;
+    osc52_clip_sends = 0;
     osc52_dialogs = 0;
     term_data(mk->term, READ_SEQ, strlen(READ_SEQ));
     term_update(mk->term);
@@ -579,6 +590,8 @@ static void expect_read(Mock *mk, const char *what, int want_sends,
         fail(what, osc52_sends > want_sends
              ? "the clipboard was SENT when it should not have been"
              : "the clipboard was not sent when it should have been");
+    if (osc52_clip_sends != osc52_sends)
+        fail(what, "the clipboard went out past the clipboard seam");
     if (osc52_dialogs != want_dialogs)
         fail(what, osc52_dialogs > want_dialogs
              ? "the user was asked when they should not have been"
@@ -832,6 +845,7 @@ static void counters_reset(void)
 {
     osc52_gets = 0;
     osc52_sends = 0;
+    osc52_clip_sends = 0;
     osc52_all_len = 0;
     osc52_all[0] = '\0';
     osc52_dialogs = 0;
@@ -2738,6 +2752,8 @@ static void expect_reply(Mock *mk, const char *what, const char *seq,
         fail(what, osc52_sends ? "more than one reply" : "no reply was sent");
         return;
     }
+    if (osc52_clip_sends)
+        fail(what, "a reply went out through the clipboard seam");
     if (strcmp(osc52_last_send, want) != 0) {
         printf("   got:  %s\n   want: %s\n", osc52_last_send + 1, want + 1);
         fail(what, "the reply differs");

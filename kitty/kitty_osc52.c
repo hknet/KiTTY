@@ -29,6 +29,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_gui.h"
 #include "kitty_osc52.h"
+#include "kitty_reply.h"    /* kitty_term_send_reply: kitty_osc52_send_raw passes on to it */
 #include "kitty_dlgbox.h"  /* kitty_confirm_modeless: the write confirmation */
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
 #include "kitty_win.h"     /* kitty_theme_app_dark */
@@ -382,41 +383,22 @@ bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
 }
 
 /*
- * Send a complete, already-built sequence to the host. Used by both OSC 52 and
- * OSC 5522; the caller builds the whole thing, because the two protocols frame
- * their replies differently and this end has no business knowing which is which.
+ * Send the CLIPBOARD to the host: an OSC 52 read answer or an OSC 5522 reply,
+ * built whole by the caller, because the two protocols frame their replies
+ * differently and this end has no business knowing which is which.
  *
- * It is a seam rather than an ldisc_send() inside terminal.c so that the one event
- * that must never happen by accident - the clipboard leaving the machine - is a
- * single function, which the tests can count and which is the obvious place to put
- * a breakpoint when asking "did it actually go out?".
+ * Only clipboard contents come here - every other reply takes
+ * kitty_term_send_reply (kitty_reply.c), which this passes on to. So the one
+ * event that must never happen by accident - the clipboard leaving the
+ * machine - is a single function, which the tests can count and which is the
+ * obvious place to put a breakpoint when asking "did it actually go out?".
+ * Like every reply it goes straight to the connection, never through the local
+ * line editor: a reply that carries clipboard contents must not sit in a
+ * buffer, visible on screen, until an unrelated keystroke pushes it out.
  */
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
 {
-    if (!term || !data || !len)
-        return;
-
-    /*
-     * Straight at the BACKEND, deliberately, and NOT through ldisc_send().
-     *
-     * ldisc_send() feeds the LOCAL LINE EDITOR. With local line editing on -
-     * which is the default for Raw, and which anyone may switch on for any
-     * protocol - our reply is not sent at all: it is appended to the line the
-     * user is typing and leaves only when they press Return. Found the only way
-     * it could be found, by watching the wire: an allowed read produced the
-     * amber activity marker and the "clipboard sent" log line, and the host got
-     * nothing until a Ctrl+D flushed the buffer minutes later.
-     *
-     * A protocol reply is not typed input. It must not be echoed, must not be
-     * editable, and must not queue behind a half-typed command. PuTTY's own
-     * DA/DSR replies do go through ldisc and have the same quirk; that is
-     * upstream's business, and this is not the place to change it - but a reply
-     * that carries CLIPBOARD CONTENTS must not be able to sit in a buffer,
-     * visible on screen, until an unrelated keystroke pushes it out.
-     */
-    if (!term->backend)
-        return;                        /* no connection to reply down */
-    backend_send(term->backend, data, (int)len);
+    kitty_term_send_reply(term, data, len);
 }
 
 /* ------------------------------------------------------------------------

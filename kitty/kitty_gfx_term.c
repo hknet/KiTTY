@@ -35,7 +35,7 @@
 #include "kitty_gfx.h"
 #include "kitty_gfx_term.h"
 #include "kitty_sixel.h"
-#include "kitty_osc52.h"           /* kitty_osc52_send_raw: the raw reply seam */
+#include "kitty_reply.h"           /* kitty_term_send_reply: the reply seam */
 #include "kitty_buildlabel.h"      /* the test build's trace hook */
 
 bool (*kitty_gfx_decode_png_hook)(void *ctx, const unsigned char *data,
@@ -204,7 +204,7 @@ static void serve(Terminal *term, int which, const char *s, int len,
         break;
     }
     if (res.reply_len > 0)
-        kitty_osc52_send_raw(term, res.reply, (size_t)res.reply_len);
+        kitty_term_send_reply(term, res.reply, (size_t)res.reply_len);
     if (res.changed) {
         if (nbefore)
             paint_rects(term, before, nbefore);

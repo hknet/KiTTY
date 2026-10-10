@@ -142,6 +142,7 @@ static void far2l_reset_state(Terminal *term);
 #ifdef MOD_PERSO
 #include "kitty/kitty.h"
 #include "kitty/kitty_osc52.h"
+#include "kitty/kitty_reply.h"   /* KiTTY: kitty_term_send_reply, the reply seam */
 #include "windows/kitty_gui.h"
 #endif
 #endif
@@ -2869,12 +2870,12 @@ static bool term_bg_is_dark(Terminal *term)
 
 /* CSI ? 997 ; 1 n (dark) or ; 2 n (light): the answer to CSI ? 996 n, and
  * the unsolicited report while mode 2031 is set. Straight to the backend
- * like the other KiTTY replies, see kitty_osc52_send_raw(). */
+ * like the other KiTTY replies, see kitty_term_send_reply(). */
 static void term_colour_scheme_report(Terminal *term)
 {
     char rep[24];
     snprintf(rep, sizeof(rep), "\033[?997;%dn", term_bg_is_dark(term) ? 1 : 2);
-    kitty_osc52_send_raw(term, rep, strlen(rep));
+    kitty_term_send_reply(term, rep, strlen(rep));
 }
 #endif
 
@@ -4764,7 +4765,7 @@ static int term_mode_state(Terminal *term, bool dec, unsigned mode)
 }
 
 /* KiTTY: the DECRQM answer, through the reply seam as the other KiTTY
- * replies (kitty_osc52_send_raw). */
+ * replies (kitty_term_send_reply). */
 static void term_decrqm(Terminal *term, bool dec, unsigned mode)
 {
     char rep[48];
@@ -4772,7 +4773,7 @@ static void term_decrqm(Terminal *term, bool dec, unsigned mode)
         mode = 0;
     snprintf(rep, sizeof(rep), "\033[%s%u;%d$y", dec ? "?" : "", mode,
              mode ? term_mode_state(term, dec, mode) : 0);
-    kitty_osc52_send_raw(term, rep, strlen(rep));
+    kitty_term_send_reply(term, rep, strlen(rep));
 }
 #endif
 
@@ -4811,7 +4812,7 @@ static void far2l_send_reply(Terminal *term, const unsigned char *reply, int rep
     put_dataz(sb, "\x1b_far2l");
     put_data(sb, out, count);
     put_byte(sb, '\x07');
-    kitty_osc52_send_raw(term, sb->s, sb->len);
+    kitty_term_send_reply(term, sb->s, sb->len);
     strbuf_free(sb);
     smemclr(out, outsize);             /* a get reply carries the clipboard */
     sfree(out);
@@ -8349,7 +8350,7 @@ static void sixel_xtsmgraphics(Terminal *term)
         snprintf(rep, sizeof(rep), "\033[?1;0;%dS", v1);
     else
         snprintf(rep, sizeof(rep), "\033[?2;0;%d;%dS", v1, v2);
-    kitty_osc52_send_raw(term, rep, strlen(rep));
+    kitty_term_send_reply(term, rep, strlen(rep));
 }
 #endif
 
@@ -8611,7 +8612,7 @@ static void term_capabilities_report(Terminal *term)
     if (conf_get_bool(term->conf, CONF_taskbar_progress))
         put_dataz(sb, "P");
     put_byte(sb, '\007');
-    kitty_osc52_send_raw(term, sb->s, sb->len);
+    kitty_term_send_reply(term, sb->s, sb->len);
     strbuf_free(sb);
 }
 
@@ -8633,7 +8634,7 @@ static void term_report_cell_size(Terminal *term)
         return;
     s = dupprintf("\033]1337;ReportCellSize=%.2f;%.2f;%.2f\007",
                   term->cellpix_y / scale, term->cellpix_x / scale, scale);
-    kitty_osc52_send_raw(term, s, strlen(s));
+    kitty_term_send_reply(term, s, strlen(s));
     sfree(s);
 }
 #endif
@@ -8758,7 +8759,7 @@ static void term_xtgettcap(Terminal *term)
                 put_fmt(sb, "%02X", (unsigned)(unsigned char)*v);
         }
         put_dataz(sb, "\033\\");
-        kitty_osc52_send_raw(term, sb->s, sb->len);
+        kitty_term_send_reply(term, sb->s, sb->len);
         strbuf_free(sb);
         if (s >= end)
             break;
@@ -8878,7 +8879,7 @@ static void do_osc(Terminal *term)
                      * this one survived because it is the one far2l message that
                      * was not going through the seam. */
                     static const char ok[] = "\x1b_far2lok\x07";
-                    kitty_osc52_send_raw(term, ok, sizeof(ok) - 1);
+                    kitty_term_send_reply(term, ok, sizeof(ok) - 1);
                 }
             } else if (arg[0] == '0') {
                 term->far2l_ext = 0;
@@ -8966,7 +8967,7 @@ static void do_osc(Terminal *term)
              * ldisc_send(): with local line editing on the line discipline
              * would append it to the line being typed, and with local echo
              * on it would paint it on this screen first. See
-             * kitty_osc52_send_raw() for the full account.
+             * kitty_term_send_reply() for the full account.
              */
             if (strcmp(term->osc_string, "?") != 0)
                 break;
@@ -8987,7 +8988,7 @@ static void do_osc(Terminal *term)
                           (unsigned)colour.r * 0x0101,
                           (unsigned)colour.g * 0x0101,
                           (unsigned)colour.b * 0x0101);
-            kitty_osc52_send_raw(term, reply_buf, strlen(reply_buf));
+            kitty_term_send_reply(term, reply_buf, strlen(reply_buf));
             sfree(reply_buf);
             break;
           }
@@ -10537,7 +10538,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             char rep[32];
                             snprintf(rep, sizeof(rep), "\033[>4;%dm",
                                      term->modify_other_keys);
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                            kitty_term_send_reply(term, rep, strlen(rep));
                         }
                         break;
                       case ANSI_QUE('n'):
@@ -10568,7 +10569,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             int n = paren ? (int)(paren - ver) : (int)strlen(ver);
                             snprintf(rep, sizeof(rep), "\033P>|KiTTY++ %.*s\033\\",
                                      n > 60 ? 60 : n, ver);
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                            kitty_term_send_reply(term, rep, strlen(rep));
                         }
                         break;
                       case ANSI('u', '>'):
@@ -10597,7 +10598,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                             char rep[32];
                             snprintf(rep, sizeof(rep), "\033[?%uu",
                                      term_kkp_flags(term));
-                            kitty_osc52_send_raw(term, rep, strlen(rep));
+                            kitty_term_send_reply(term, rep, strlen(rep));
                         }
                         break;
 #endif
@@ -11238,7 +11239,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                     len = sprintf(buf, "\033[6;%d;%dt",
                                                   term->cellpix_y,
                                                   term->cellpix_x);
-                                    kitty_osc52_send_raw(term, buf, len);
+                                    kitty_term_send_reply(term, buf, len);
                                 }
                                 break;
 #endif
@@ -14820,7 +14821,7 @@ void term_set_focus(Terminal *term, bool has_focus)
      * the line the user is typing. */
     if (changed && term->focus_reports &&
         !conf_get_bool(term->conf, CONF_no_focus_rep))
-        kitty_osc52_send_raw(term, has_focus ? "\033[I" : "\033[O", 3);
+        kitty_term_send_reply(term, has_focus ? "\033[I" : "\033[O", 3);
 #endif
 }
 

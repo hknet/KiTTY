@@ -791,6 +791,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_colours.c
   ${KITTY_DIR}/kitty_inputbox.c
   ${KITTY_DIR}/kitty_osc52.c
+  ${KITTY_DIR}/kitty_reply.c         # KiTTY: the terminal replies to the host (kitty_term_send_reply)
   ${KITTY_DIR}/kitty_far2l_image.c        # KiTTY: far2l images - the store and the request parser
   ${KITTY_DIR}/kitty_far2l_image_term.c   # KiTTY: far2l images - the terminal side
   ${KITTY_DIR}/kitty_gfx.c        # KiTTY: kitty graphics protocol (APC _G) - the store, parser and placements

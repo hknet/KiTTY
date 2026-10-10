@@ -33,7 +33,7 @@
 #include "kitty_commun.h"   /* GetPuttyFlag */
 #include "kitty_notice.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
-#include "kitty_osc52.h"    /* kitty_osc52_send_raw: the raw reply seam */
+#include "kitty_reply.h"    /* kitty_term_send_reply: the reply seam */
 #include "kitty_text.h"
 #include "kitty_oscnotify.h"
 #include "kitty_progstatus.h"
@@ -170,7 +170,7 @@ static bool hn_may_show(Terminal *term, const OnNotice *n)
 static void hn_reply(Terminal *term, const char *buf, size_t len)
 {
     if (term && len)
-        kitty_osc52_send_raw(term, buf, len);
+        kitty_term_send_reply(term, buf, len);
 }
 
 /* ---- the notice -------------------------------------------------------- */

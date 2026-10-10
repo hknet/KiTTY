@@ -21,7 +21,7 @@
  * stands, and the answer continues the session from a completion
  * (kt_send_decide / kt_recv_decide) rather than from where it was asked.
  *
- * Every reply goes out through kitty_osc52_send_raw(), straight to the
+ * Every reply goes out through kitty_term_send_reply(), straight to the
  * backend and never through the line editor (see that function for why).
  *
  * What is refused on purpose: the bypass password (a dialog is always the
@@ -59,6 +59,7 @@
 #define KT5113_PARSE_IMPL
 #include "kitty_transfer.h"
 #include "kitty_osc52.h"
+#include "kitty_reply.h"        /* kitty_term_send_reply */
 
 extern HWND MainHwnd;            /* kitty.c: the terminal window */
 /* The reply channel (kitty_osc52.c): a complete sequence to the backend. */
@@ -434,7 +435,7 @@ static void kt_put_b64(strbuf *sb, const char *key, const void *data, size_t n)
 static void kt_send_seq(Terminal *term, strbuf *sb)
 {
     put_data(sb, "\033\\", 2);
-    kitty_osc52_send_raw(term, sb->s, sb->len);
+    kitty_term_send_reply(term, sb->s, sb->len);
     strbuf_free(sb);
 }
 
