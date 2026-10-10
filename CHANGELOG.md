@@ -147,6 +147,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   user may not write to, so no file came to be and nothing reported it. It
   now goes to `Pictures\KiTTY++` (a portable copy keeps its own folder),
   named by date and time.
+- **`/savereg`, `/loadreg` and `/savesessions` do what they report.**
+  `/savereg` went through the routine backup, which writes only when the
+  store changed, so it often wrote nothing; it now always writes and shows
+  the file. `/loadreg` read only a fixed file name that no backup carries
+  any more, so it loaded an old file or nothing; it now loads the newest
+  backup, as start-up does, and shows which. `/savesessions` wrote
+  `kitty.ses` into the program folder; it now goes beside the backups.
 - **The command box shows what a command did.** A line under the input
   field (Ctrl+F8) shows the result of the last `/command`: a setting's new
   state, a file with its full path, why something failed, or that a `/line`

@@ -177,24 +177,30 @@ remove the `savemode=` key.
 ### /savereg
 
 Export the complete KiTTY registry configuration (sessions, host keys,
-settings) immediately, without waiting for one of the events that normally
-triggers a backup. The file is a timestamped `kittynew-YYYYMMDD-HHMMSS.sav`
-written beside `kitty.ini` in `%APPDATA%\KiTTY`, or at the `[KiTTY] sav=`
-path if one is set, and the oldest are pruned to `[KiTTY] savbackupcount`.
+settings) now, whether or not anything changed since the last backup, and wait
+for it. The file is a timestamped `kittynew-YYYYMMDD-HHMMSS.sav` written
+beside `kitty.ini` in `%APPDATA%\KiTTY`, or at the `[KiTTY] sav=` path if one
+is set, and the oldest are pruned to `[KiTTY] savbackupcount`. A portable copy
+writes a dated copy of its folder store to `Backups\kitty-portable-...`
+instead (`portablebackupcount`). The result line shows the file or folder
+written, or that backups are switched off (a count of 0).
 
 **Persists:** the exported file.
 
 ### /loadreg
 
-Import the backup file (see `/savereg`) back into the registry. Backups
-written by older KiTTY versions are recognised and read as well.
+Import the newest backup (see `/savereg`) back into the registry - the one
+start-up would restore from. Backups written by older KiTTY versions are
+recognised and read as well. The result line shows the file loaded, or that
+there was none.
 
 **Persists:** registry.
 
 ### /delreg
 
 **Deletes the whole KiTTY registry tree** — all saved sessions, host keys and
-settings stored in the registry, without further confirmation. Configurations
+settings stored in the registry, after a Yes/No question that shows the key and
+defaults to No. Configurations
 saved in file/dir mode are not touched. Use with care; `/savereg` first makes
 a backup.
 
@@ -203,7 +209,8 @@ a backup.
 ### /savesessions
 
 Export only the saved sessions (not host keys or global settings) to
-`kitty.ses` next to the exe.
+`kitty.ses` beside the `/savereg` backups (`%APPDATA%\KiTTY` for an installed
+copy). The result line shows the file with its full path.
 
 **Persists:** the exported file.
 

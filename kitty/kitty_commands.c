@@ -312,17 +312,41 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* /savereg: a backup of the store NOW, and its file on the result line. It
+ * used to go through the routine snapshot, which writes only when the store
+ * changed since the last one - so the command often did nothing, silently. */
 static int cmd_savereg( HWND hwnd, char * arg ) {
+	char path[4096] ;
 	(void)hwnd ; (void)arg ;
-	chdir( InitialDirectory ) ;
-	SaveRegistryKey() ;
+	switch( kitty_sav_backup_report( path, sizeof(path) ) ) {
+	  case 1:  cmd_say( KT_CMD_RES_SAVED, path ) ; break ;
+	  case -1: cmd_say( "%s", IniFileFlag == SAVEMODE_DIR ? KT_CMD_RES_BACKUP_OFF_DIR
+	                                                      : KT_CMD_RES_BACKUP_OFF ) ; break ;
+	  case -2: cmd_say( "%s", KT_CMD_RES_BACKUP_NONE ) ; break ;
+	  default: cmd_say( KT_CMD_RES_NOT_SAVED, path ) ; break ;
+	}
 	return 1 ;
 }
 
+/* /loadreg: the backup a restore takes - the NEWEST dated one, as start-up
+ * picks it (sav_find_for_restore). It used to read only the fixed name
+ * kittynew.sav, which nothing writes any more (backups are dated), and so
+ * loaded an old kitty.sav or nothing, without a word either way. */
 static int cmd_loadreg( HWND hwnd, char * arg ) {
+	char found[4096], dir[4096] ;
 	(void)hwnd ; (void)arg ;
-	chdir( InitialDirectory ) ;
-	LoadRegistryKey(NULL) ;
+	if( (KittySavFile == NULL) || !KittySavFile[0] ||
+	    !sav_find_for_restore( KittySavFile, found, sizeof(found) ) ) {
+		kitty_sav_dir( dir, sizeof(dir) ) ;
+		cmd_say( KT_CMD_RES_NOTHING_TO_LOAD, dir ) ;
+		return 1 ;
+	}
+	{	char * saved = KittySavFile ;
+		KittySavFile = found ;          /* LoadRegistryKey reads the global */
+		LoadRegistryKey( NULL ) ;
+		KittySavFile = saved ;
+	}
+	cmd_say( KT_CMD_RES_LOADED, found ) ;
 	return 1 ;
 }
 
@@ -353,12 +377,30 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* /savesessions: the Sessions key as kitty.ses, beside the .sav backups. It
+ * used to go to the program folder (a relative name after chdir there), which
+ * an installed copy cannot write to - so no file, and no word about it. */
 static int cmd_savesessions( HWND hwnd, char * arg ) {
-	char buffer[4096] ;
+	char buffer[4096], dir[4096], file[4200] ;
 	(void)hwnd ; (void)arg ;
-	chdir( InitialDirectory ) ;
+	kitty_sav_dir( dir, sizeof(dir) ) ;
+	CreateDirectoryA( dir, NULL ) ;
+	snprintf( file, sizeof(file), "%s\\kitty.ses", dir ) ;
 	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
-	SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, "kitty.ses" ) ;
+	{	/* no Sessions key: reg.exe has nothing to export - say why, rather
+		 * than a bare "not saved" */
+		HKEY k ;
+		if( RegOpenKeyExA( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &k ) != ERROR_SUCCESS ) {
+			cmd_say( KT_CMD_RES_NO_SESSIONS, buffer ) ;
+			return 1 ;
+		}
+		RegCloseKey( k ) ;
+	}
+	SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, file ) ;
+	if( GetFileAttributesA( file ) != INVALID_FILE_ATTRIBUTES )
+		cmd_say( KT_CMD_RES_SAVED, file ) ;
+	else
+		cmd_say( KT_CMD_RES_NOT_SAVED, file ) ;
 	return 1 ;
 }
 

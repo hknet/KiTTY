@@ -326,14 +326,16 @@ static void portable_backup_write_one( const char *dst ) {
 	FindClose( h ) ;
 }
 
-static void SavePortableDirBackup( void ) {
+/* out (may be NULL) gets the dated folder written. Returns as
+ * kitty_sav_backup_report. */
+static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 	char root[4096], latest[4096], stampdir[4096], buffer[64] ;
 	int keep = 5 ;
 	time_t now ;
 	struct tm *tmnow ;
-	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return ;
+	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return -2 ;
 	if( ReadParameterN( INIT_SECTION, KI_PORTABLEBACKUPCOUNT, buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
-	if( keep <= 0 ) return ;
+	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
 	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
 	CreateDirectoryA( root, NULL ) ;
@@ -349,7 +351,11 @@ static void SavePortableDirBackup( void ) {
 	portable_backup_write_one( stampdir ) ;
 	portable_backup_write_one( latest ) ;
 	portable_backup_prune( root, keep ) ;
+	if( out ) snprintf( out, outlen, "%s", stampdir ) ;
+	return GetFileAttributesA( stampdir ) != INVALID_FILE_ATTRIBUTES ;
 }
+
+static void SavePortableDirBackup( void ) { SavePortableDirBackupEx( NULL, 0 ) ; }
 
 /* Split a sav path into dir / base / ext (e.g. "C:\x\kittynew.sav" ->
  * "C:\x", "kittynew", ".sav"). */
@@ -570,6 +576,30 @@ void SaveRegistryKey( void ) { sav_backup( 1 ) ; }
 
 /* Snapshot that must be on disk before the caller changes anything. */
 void SaveRegistryKeyNow( void ) { sav_backup( 0 ) ; }
+
+/* /savereg. The routine snapshot (SaveRegistryKey) writes only when the store
+ * changed since the last one, and on a worker - right for the background,
+ * wrong for a command typed to get a backup: it often wrote nothing, and reported
+ * nothing. This one always writes, waits, and reports the file. */
+int kitty_sav_backup_report( char * path, size_t n ) {
+	int keep = 5 ; char kb[64] ;
+	path[0] = '\0' ;
+	if( IniFileFlag == SAVEMODE_DIR ) return SavePortableDirBackupEx( path, n ) ;
+	if( NoKittyFileFlag || (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
+	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
+	if( keep <= 0 ) return -1 ;
+	if( keep > 50 ) keep = 50 ;
+	sav_timestamped_path( KittySavFile, path, n ) ;
+	SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), path ) ;
+	sav_prune( KittySavFile, keep ) ;
+	return existfile( path ) ? 1 : 0 ;
+	}
+
+void kitty_sav_dir( char * out, size_t n ) {
+	char base[256], ext[64] ;
+	if( (KittySavFile==NULL) || !KittySavFile[0] ) { snprintf( out, n, "%s", InitialDirectory ) ; return ; }
+	sav_split( KittySavFile, out, n, base, sizeof(base), ext, sizeof(ext) ) ;
+	}
 
 // Load the registry key
 void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)

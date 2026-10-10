@@ -1935,6 +1935,14 @@
 #define KT_CMD_RES_SHOT_FAILED                       "Not saved: %s (%s)"
 #define KT_CMD_RES_SHOT_NO_DIR                       "Not saved: the folder %s could not be made"
 #define KT_CMD_RES_SHOT_NO_PICTURE                   "the picture could not be taken"
+#define KT_CMD_RES_SAVED                             "Saved: %s"
+#define KT_CMD_RES_NOT_SAVED                         "Not saved: %s"
+#define KT_CMD_RES_LOADED                            "Loaded: %s"
+#define KT_CMD_RES_NO_SESSIONS                       "Nothing saved: there are no saved sessions (HKCU\\%s)"
+#define KT_CMD_RES_NOTHING_TO_LOAD                   "Nothing loaded: no backup in %s"
+#define KT_CMD_RES_BACKUP_OFF                        "No backup written: backups are switched off (savbackupcount=0 in kitty.ini)"
+#define KT_CMD_RES_BACKUP_OFF_DIR                    "No backup written: backups are switched off (portablebackupcount=0 in kitty.ini)"
+#define KT_CMD_RES_BACKUP_NONE                       "No backup written: this copy runs without kitty.ini, so it has no backup file"
 
 /* kitty_launcher.c: tray tip, balloons, notices, About, the Startup-folder shortcut */
 #define KT_LAUNCHER_UPDATE_BALLOON                   "KiTTY++ %s is available%s.\nClick here to install it."
