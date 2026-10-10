@@ -218,6 +218,12 @@ int TitleBarFlag = 1 ;
 int GetTitleBarFlag(void) { return TitleBarFlag ; }
 void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 
+// [KiTTY] psnotify: a notice when a program in a background window becomes
+// blocked, fails or is done (OSC 7501, kitty_hostnotify.c).
+int PsNotifyFlag = 1 ;
+int GetPsNotifyFlag(void) { return PsNotifyFlag ; }
+void SetPsNotifyFlag( const int flag ) { PsNotifyFlag = flag ; }
+
 // Window height used by the WinHeight function
 int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
@@ -622,6 +628,7 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, KI_WINROLL,		1, 0, IGN,	&WinrolFlag, NULL ),
 	/* wintitle: symmetrical since the settings tree offers it as a checkbox */
 	INIP_KW( INIT_SECTION, 0, KI_WINTITLE,		1, 0, IGN,	&TitleBarFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_PSNOTIFY,		1, 0, IGN,	&PsNotifyFlag, NULL ),
 #ifdef MOD_PROXY
 	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_PROXYSELECTION,	1, -1, 0,	NULL, SetProxySelectionFlag ),

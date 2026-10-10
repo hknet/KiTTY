@@ -39,6 +39,9 @@
 #include "kitty_progstatus.h"
 #include "kitty_hostnotify.h"
 #include "kitty_win.h"        /* kitty_refresh_title: the program-status marker */
+#include "kitty_inikeys.h"    /* KI_*: wintitle, the one-time title pointer */
+#include "kitty.h"            /* INIT_SECTION */
+#include "kitty_params.h"     /* [KiTTY] wintitle, psnotify; the store */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -46,6 +49,11 @@ extern HWND MainHwnd;          /* kitty.c: the terminal window */
  * notices), and red for a critical one (OSC 99 u=2). */
 #define HN_ACCENT          RGB(90, 60, 150)
 #define HN_ACCENT_CRITICAL RGB(170, 30, 30)
+/* A program-status notice takes its state's colour, darker than the taskbar
+ * icon's so the white text stays readable: blocked amber, failed red, done
+ * green. */
+#define HN_ACCENT_BLOCKED  RGB(160, 85, 0)
+#define HN_ACCENT_DONE     RGB(25, 110, 45)
 
 struct hn_shown;
 
@@ -69,6 +77,7 @@ struct hn_shown {
     struct kitty_hostnotify *owner;
     char id[ON_ID_MAX + 1];
     bool focus, report, close_report;
+    bool title_link;             /* it offers "Show it in the title" */
 };
 
 /* ---- test hooks: test builds only, and only when asked for ------------- */
@@ -115,6 +124,24 @@ static void hn_trace_notice(COLORREF accent, const char *text)
 #else
     (void)accent;
     (void)text;
+#endif
+}
+
+/* What a notice offers beyond its text, as a line of its own after the
+ * notice's: "extras action=<label> link=<words>", either part empty. */
+static void hn_trace_extras(const char *action, const char *link)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    char *line;
+    if (!getenv("KITTY_NOTICE_TRACE"))
+        return;
+    line = dupprintf("extras action=%s link=%s", action ? action : "",
+                     link ? link : "");
+    hn_trace("KITTY_NOTICE_TRACE", line);
+    sfree(line);
+#else
+    (void)action;
+    (void)link;
 #endif
 }
 
@@ -167,6 +194,11 @@ static bool hn_visible(void)
 
 static bool hn_may_show(Terminal *term, const OnNotice *n)
 {
+    /* A program's status has its own rule, not the host-notification
+     * setting: only for a window in the background, under [KiTTY] psnotify.
+     * In front, the title bar and the taskbar button already show it. */
+    if (n->ps_state)
+        return GetPsNotifyFlag() && !term->has_focus;
     return on_should_show(hn_setting(term), n->meta.occasion,
                           term->has_focus ? 1 : 0, hn_visible() ? 1 : 0) != 0;
 }
@@ -223,9 +255,16 @@ static void hn_on_close(void *ctx, int clicked)
         Terminal *term = st->term;
         if (st->shown == sh)
             st->shown = NULL;
-        if (clicked && sh->focus)
+        if (clicked == KITTY_NOTICE_LINK && sh->title_link) {
+            /* "Show it in the title": [KiTTY] wintitle on, in the store and
+             * in this window now. Other open windows take it at their next
+             * start, as from the configuration window. */
+            SetTitleBarFlag(1);
+            WriteParameter(INIT_SECTION, KI_WINTITLE, "yes");
+            kitty_refresh_title();
+        } else if (clicked && sh->focus)
             hn_focus_terminal();
-        if (clicked && sh->report && sh->id[0])
+        if (clicked == 1 && sh->report && sh->id[0])
             hn_reply(term, buf, on_reply_activated(sh->id, buf));
         if (sh->close_report && sh->id[0])
             hn_reply(term, buf, on_reply_closed(sh->id, buf));
@@ -255,6 +294,10 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
 
     seconds = on_seconds(n->meta.urgency, n->meta.expire, &critical);
     accent = critical ? HN_ACCENT_CRITICAL : HN_ACCENT;
+    if (n->ps_state)
+        accent = n->ps_state == PS_BLOCKED ? HN_ACCENT_BLOCKED :
+                 n->ps_state == PS_ERROR   ? HN_ACCENT_CRITICAL :
+                                             HN_ACCENT_DONE;
 
     sh = snew(struct hn_shown);
     memset(sh, 0, sizeof(*sh));
@@ -272,10 +315,35 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
 
     text_a = hn_utf8_to_ansi(text);
     name_a = dupstr(hn_session_name(term));   /* titled with the session's name */
-    kitty_notice_show_ex(name_a, text_a, accent, seconds, NULL, 0,
-                         hn_on_close, sh);
-    if (st->shown)
-        hn_trace_notice(accent, text_a);
+    if (n->ps_state) {
+        /* The button labels what a click does. The line about the title bar
+         * is offered while the title shows nothing, once per installation:
+         * a pointer to the setting, not a nag. */
+        KittyNoticeExtras x;
+        char seen[8];
+        memset(&x, 0, sizeof(x));
+        x.action = KT_PST_GOTO;
+        if (!GetTitleBarFlag() &&
+            !(ReadParameterN(INIT_SECTION, KI_PSTITLEHINTSHOWN, seen,
+                             sizeof(seen)) && seen[0] == '1')) {
+            x.link_lead = KT_PST_TITLE_LEAD;
+            x.link = KT_PST_TITLE_LINK;
+            sh->title_link = true;
+        }
+        kitty_notice_show_x(name_a, text_a, accent, seconds, NULL, 0,
+                            hn_on_close, sh, &x);
+        if (st->shown) {
+            hn_trace_notice(accent, text_a);
+            hn_trace_extras(x.action, x.link);
+            if (x.link)
+                WriteParameter(INIT_SECTION, KI_PSTITLEHINTSHOWN, "1");
+        }
+    } else {
+        kitty_notice_show_ex(name_a, text_a, accent, seconds, NULL, 0,
+                             hn_on_close, sh);
+        if (st->shown)
+            hn_trace_notice(accent, text_a);
+    }
     sfree(name_a);
     sfree(text_a);
     sfree(text);
@@ -645,9 +713,10 @@ static void hn_ps_refresh(struct kitty_hostnotify *st)
     hn_trace_status();
 }
 
-/* A record became blocked, done or failed: a notice, under the same setting,
- * limits and flood rule as the host's own notices. "<name>: <state>" on the
- * first line, the program's message below. */
+/* A record became blocked, done or failed: a line in the Event Log, as a
+ * record, and a notice while the window is in the background ([KiTTY]
+ * psnotify), under the limits and the flood rule of the host's own notices.
+ * "<name>: <state>" on the first line, the program's message below. */
 static void hn_ps_notice(struct kitty_hostnotify *st, const PsRecord *r)
 {
     OnNotice n;
@@ -655,7 +724,10 @@ static void hn_ps_notice(struct kitty_hostnotify *st, const PsRecord *r)
     const char *phrase = hn_ps_phrase(r->state, r->kind);
     char *first = name[0] ? dupprintf(KT_PST_NOTICE_FMT, name, phrase) :
                             dupstr(phrase);
+    if (st->term->logctx)
+        logeventf(st->term->logctx, KT_PST_LOG_FMT, first);
     on_notice_set(&n, first, strlen(first), r->msg, strlen(r->msg));
+    n.ps_state = r->state;
     sfree(first);
     hn_offer(st, &n);
 }
@@ -672,9 +744,12 @@ static void hn_ps_osc7501(Terminal *term, const char *s, size_t len,
         return;                          /* over the limit: discarded whole */
     switch (ps_parse(s, len, &r)) {
       case PS_QUERY:
-        /* The one reply: the fixed body. Nothing of a report goes back. */
+        /* The one reply: the fixed body. Nothing of a report goes back.
+         * Answered while anything shows a report: the notices, the taskbar
+         * button or the title bar. */
         if (hn_setting(term) != ON_SET_OFF ||
-            conf_get_bool(term->conf, CONF_taskbar_progress))
+            conf_get_bool(term->conf, CONF_taskbar_progress) ||
+            GetPsNotifyFlag() || GetTitleBarFlag())
             hn_reply(term, PS_QUERY_REPLY, strlen(PS_QUERY_REPLY));
         return;
       case PS_REPORT:
@@ -689,7 +764,7 @@ static void hn_ps_osc7501(Terminal *term, const char *s, size_t len,
         e->seen = 1;                     /* seen as it happened */
     if (e && e->r.state != prev &&
         (e->r.state == PS_BLOCKED || e->r.state == PS_DONE ||
-         e->r.state == PS_ERROR) && hn_setting(term) != ON_SET_OFF)
+         e->r.state == PS_ERROR))
         hn_ps_notice(st, &e->r);
     hn_ps_refresh(st);
 }

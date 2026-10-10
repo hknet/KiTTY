@@ -24,6 +24,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   markers. The setting is now "Show status information in the title bar"
   (Application > KiTTY++ Settings > Terminal, `wintitle`), with a line
   below that lists what it shows.
+- **A notice when a program in a background window needs attention.**
+  Blocked, failed and done raise the notice near the clock only for a
+  window that is not in front, with a "Go to the window" button, under
+  the new setting "Notify when a program in a background window needs
+  attention" (Application > KiTTY++ Settings > Terminal, `psnotify`, on).
+  The session's "Desktop notifications" setting no longer applies to
+  them and is now labelled "(OSC 9, 777, 99)". While the title bar shows
+  no status, the first such notice also offers "Show it in the title",
+  once per installation. Each change is a line in the Event Log.
 
 - **klink, kscp and ksftp log in with the session's stored password.**
   With a session loaded (`-load`, `@name`, or a host argument that is a saved

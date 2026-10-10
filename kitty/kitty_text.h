@@ -309,7 +309,7 @@
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
 /* Terminal/Features: notifications from the host (kitty/kitty_hostnotify.c) */
 #define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
-#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501)"
+#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99)"
 #define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
@@ -330,6 +330,12 @@
 #define KT_PST_BLOCKED_QUESTION                      "Waiting for an answer"
 #define KT_PST_BLOCKED_AUTH                          "Waiting for login"
 #define KT_PST_NOTICE_FMT                            "%s: %s"
+/* The program-status notice: its button, and the one-time line about the
+ * title bar (shown while [KiTTY] wintitle is off); the Event Log record. */
+#define KT_PST_GOTO                                  "Go to the window"
+#define KT_PST_TITLE_LEAD                            "The title bar can show this too."
+#define KT_PST_TITLE_LINK                            "Show it in the title"
+#define KT_PST_LOG_FMT                               "Program status: %s"
 
 /* Window */
 #define KT_WINDOW_SET_THE_SIZE                       "Set the size of the window"
@@ -1390,6 +1396,7 @@
 #define KT_KSET_WD_TITLEBAR                          "Title bar"
 #define KT_KSET_WD_WINTITLE                          "Show status information in the title bar"
 #define KT_KSET_WD_WINTITLE_NOTE                     "Size, PROTECTED, ONTOP, BROADCAST, RESTRICTED and what a program reports: 45%, working, blocked, failed, done."
+#define KT_KSET_WD_PSNOTIFY                          "Notify when a program in a background window needs attention"
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
 /* Appearance > Shared window position: the entry written by windows without

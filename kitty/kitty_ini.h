@@ -938,11 +938,23 @@ char default_init_file_content[] =
 ;winscpdir=\n\
 \n\
 ; wintitle: enable KiTTY's window-title decorations: the live size suffix\n\
-;    (size=yes) and the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)\n\
-;    status markers. no = plain stock\n\
+;    (size=yes), the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)\n\
+;    status markers and what a program reports (OSC 7501): (45%) /\n\
+;    (working) / (blocked) / (failed) / (done). no = plain stock\n\
 ;    titles. Unlike classic KiTTY the title text is never parsed, only\n\
 ;    decorated - the old remote title-command channel stays removed.\n\
 ;wintitle=yes\n\
+\n\
+; psnotify: a notice near the clock when a program in a window that is not in\n\
+;    front becomes blocked, fails or is done (OSC 7501), with a \"Go to the\n\
+;    window\" button. no = the title bar and the taskbar button only.\n\
+;psnotify=yes\n\
+\n\
+; PsTitleHintShown: written by KiTTY++ (1) once such a notice has offered\n\
+;    \"Show it in the title\" while wintitle=no. Remove the line to be offered\n\
+;    it once more.\n\
+;PsTitleHintShown=\n\
+\n\
 \n\
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both\n\
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and\n\

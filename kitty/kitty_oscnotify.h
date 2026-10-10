@@ -68,6 +68,8 @@ typedef struct {
     size_t title_len;
     char body[ON_BODY_MAX + 1];
     size_t body_len;
+    int ps_state;                /* a program-status notice (OSC 7501): its
+                                  * PS_* state; 0 for every other notice */
 } OnNotice;
 
 /* What a whole OSC 99 sequence asks for (on_osc99). */

@@ -39,6 +39,25 @@ void kitty_notice_show_ex(const char *title, const char *text, COLORREF accent,
                           int seconds, HWND click_hwnd, unsigned int click_msg,
                           void (*on_close)(void *ctx, int clicked), void *ctx);
 
+/* The same, plus what a notice offers beyond its text (NULL = nothing):
+ *  - action: drawn as a button under the text. It labels the click: a click
+ *    anywhere on the notice except the link does what any click does.
+ *  - link_lead + link: one more line below a separator, the lead as text and
+ *    the link as clickable words. A click on the link finishes the notice with
+ *    clicked = KITTY_NOTICE_LINK and posts no click_msg.
+ * A sticky notice that gets parked loses its extras: no sticky notice has any. */
+typedef struct {
+    const char *action;
+    const char *link_lead;
+    const char *link;
+} KittyNoticeExtras;
+#define KITTY_NOTICE_LINK 2
+
+void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
+                         int seconds, HWND click_hwnd, unsigned int click_msg,
+                         void (*on_close)(void *ctx, int clicked), void *ctx,
+                         const KittyNoticeExtras *x);
+
 /* Is the notice raised with this on_close context the one on screen? And
  * close it if so - on_close runs with clicked = 0, as for a notice that ran
  * out. For a caller that tracks its own notice (notifications from the host:

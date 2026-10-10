@@ -62,6 +62,8 @@ void SetSizeFlag( const int flag ) ;
 
 // [KiTTY] wintitle: enable the title decorations (size suffix, PROTECTED/ONTOP markers)
 int GetTitleBarFlag(void) ;
+int GetPsNotifyFlag(void) ;
+void SetPsNotifyFlag( const int flag ) ;
 void SetTitleBarFlag( const int flag ) ;
 
 // Flag to switch to image-viewer mode

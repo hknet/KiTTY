@@ -11,8 +11,8 @@ in KiTTY++ and what the host needs.
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
 | Prompt marks | OSC 133 | **Terminal > Features > Shell integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Program status | OSC 7501 | **Terminal > Features > Notifications from the host**, both settings of the group | A program that reports its status ([below](#program-status-osc-7501)) |
-| Desktop notifications | OSC 9, 777, 99 | **Terminal > Features > Desktop notifications (OSC 9, 777, 99, 7501)** | A program that sends them: `printf`, `kitten notify` |
+| Program status | OSC 7501 | **Terminal > Features > Progress and status on the taskbar button (OSC 9;4, 7501)**, and the **Title bar** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
+| Desktop notifications | OSC 9, 777, 99 | **Terminal > Features > Desktop notifications (OSC 9, 777, 99)** | A program that sends them: `printf`, `kitten notify` |
 | Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
 | Hyperlinks | OSC 8 | **Window > Hyperlinks > Allow OSC 8 hyperlinks**, on | Programs that write them: `ls --hyperlink=auto`, Rich/Textual applications |
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
@@ -298,18 +298,27 @@ KiTTY++ shows on the window's taskbar button:
 These follow **Progress and status on the taskbar button (OSC 9;4, 7501)**.
 OSC 9;4 uses the same bar, so whichever program reports last wins.
 
-**Notices:** blocked, done and failed raise a notice, "app: state" with the
-program's message below. It follows **Desktop notifications (OSC 9, 777, 99,
-7501)** (by default only
-while the window is not focused) and its limits: one notice every 2 seconds
-per window.
+**Title bar:** `(45%)`, `(working)`, `(blocked)`, `(failed)` or `(done)` after
+the title, under **Show status information in the title bar** (Application >
+KiTTY++ Settings > Terminal, on by default).
+
+**Notices:** blocked, done and failed in a window in the background raise a
+notice, "app: state" with the program's message below and a **Go to the
+window** button. It follows **Notify when a program in a background window
+needs attention** (Application > KiTTY++ Settings > Terminal, on by default)
+and the limits of the other notices: one every 2 seconds per window. While the
+title bar shows no status, the first such notice also offers **Show it in the
+title**, once per installation. Each of these changes is also a line in the
+Event Log.
 
 *Working* and *blocked* end at the next prompt (OSC 133, see the shell
 snippets) and when the session ends. Without the snippets they stay until the
 program reports again.
 
 The one reply KiTTY++ sends is to the feature query `OSC 7501 ; ?`. It is
-answered with the same `?` while either setting is on. Nothing a program
+answered with the same `?` while anything shows a report: the taskbar button,
+the title bar, the background notice or the session's desktop notifications.
+Nothing a program
 reports is sent back.
 
 Try it by hand:

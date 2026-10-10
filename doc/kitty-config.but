@@ -2055,7 +2055,11 @@ leaves below this panel hold the rest: \k{kitty-cfg-kset-fontfb} and
 the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers and what a program on
 the host reports (OSC 7501): \c{(45%)}, \c{(working)}, \c{(blocked)},
 \c{(failed)} or \c{(done)}, failed and done until the window has been in
-front; \q{Show the terminal size in the
+front; \q{Notify when a program in a background window needs attention}
+shows a notice near the clock when a program in a window that is not in
+front becomes blocked, fails or is done, with a \q{Go to the window}
+button (\c{psnotify}, on by default; while the title bar shows no status,
+the first such notice also offers \q{Show it in the title}, once); \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 
@@ -3391,13 +3395,13 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
-\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501)}
+\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99)}
 
 Desktop notifications: lets a program on the host show a notice near
 the clock (OSC 9, OSC 777, OSC 99), for example when a long job ends.
-A program that reports its status (OSC 7501) raises one when it becomes
-blocked, finishes or fails: its name and the state on the first line,
-its message below.
+A program that reports its status (OSC 7501) has its own setting:
+\q{Notify when a program in a background window needs attention} on the
+Terminal panel of the KiTTY++ Settings (\k{kitty-cfg-kset-window}).
 The notice is titled with this session's name. Off, only while this
 window is not focused, or always. A program can request less, never
 more.

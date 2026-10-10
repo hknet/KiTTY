@@ -942,6 +942,17 @@
 ;    decorated - the old remote title-command channel stays removed.
 ;wintitle=yes
 
+; psnotify: a notice near the clock when a program in a window that is not in
+;    front becomes blocked, fails or is done (OSC 7501), with a "Go to the
+;    window" button. no = the title bar and the taskbar button only.
+;psnotify=yes
+
+; PsTitleHintShown: written by KiTTY++ (1) once such a notice has offered
+;    "Show it in the title" while wintitle=no. Remove the line to be offered
+;    it once more.
+;PsTitleHintShown=
+
+
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and
 ;   the session settings on the Connection > ZModem panel: with it off, neither
