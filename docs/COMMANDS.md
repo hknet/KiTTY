@@ -190,7 +190,9 @@ written, or that backups are switched off (a count of 0).
 ### /loadreg
 
 Import the newest backup (see `/savereg`) back into the registry - the one
-start-up would restore from. Backups written by older KiTTY versions are
+start-up would restore from, and only a backup of the hive in use (a copy
+with `KiClassName=PuTTY` skips the backups of the default hive and the other
+way round). Backups written by older KiTTY versions are
 recognised and read as well. The result line shows the file loaded, or that
 there was none.
 

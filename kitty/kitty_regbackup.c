@@ -382,41 +382,83 @@ static void sav_timestamped_path( const char *savfile, char *out, size_t outlen 
 	snprintf( out, outlen, "%s\\%s-%s%s", dir, base, stamp, ext ) ;
 }
 
-/* Keep only the `keep` newest <base>-*<ext> timestamped backups next to savfile. */
-static void sav_prune( const char *savfile, int keep ) {
-	char dir[4096], base[256], ext[64], pattern[4096], path[4096] ;
-	struct portable_backup_name backups[256] ;
-	WIN32_FIND_DATAA fd ; HANDLE h ; int n = 0, i ;
-	if( keep < 0 ) keep = 0 ;
-	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
-	snprintf( pattern, sizeof(pattern), "%s\\%s-*%s", dir, base, ext ) ;
-	h = FindFirstFileA( pattern, &fd ) ;
-	if( h == INVALID_HANDLE_VALUE ) return ;
-	do {
-		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
-		if( n < (int)(sizeof(backups)/sizeof(backups[0])) ) { snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ; n++ ; }
-	} while( FindNextFileA( h, &fd ) ) ;
-	FindClose( h ) ;
-	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;   /* newest name first */
-	for( i = keep ; i < n ; i++ ) { snprintf( path, sizeof(path), "%s\\%s", dir, backups[i].name ) ; unlink( path ) ; }
+/* Which hive a backup holds, from its first key line
+ * "[HKEY_CURRENT_USER\<base>]" or "...\<base>\...": 1 = the hive this run
+ * uses, 0 = another one, -1 = cannot tell (an encrypted backup of the retired
+ * format, an unreadable file). A KiClassName=PuTTY copy and a normal one keep
+ * their backups in the same folder; reg import writes a backup back to the
+ * hive it came from, so restoring the other one's file filled the hive NOT in
+ * use and left the one in use empty. */
+static int sav_hive_of_file( const char *path ) {
+	unsigned char raw[8192] ; char text[8192] ;
+	size_t n, i, t = 0, bl ;
+	int wide ;
+	const char *base = kitty_registry_base(), *p ;
+	FILE *fp = fopen( path, "rb" ) ;
+	if( fp == NULL ) return -1 ;
+	n = fread( raw, 1, sizeof(raw), fp ) ;
+	fclose( fp ) ;
+	/* reg.exe writes UTF-16LE with a BOM, the retired format ASCII; the key
+	 * names compared are ASCII, anything wider becomes '?' */
+	wide = ( n >= 2 && raw[0] == 0xFF && raw[1] == 0xFE ) ;
+	for( i = wide ? 2 : 0 ; i < n && t < sizeof(text) - 1 ; i += wide ? 2 : 1 )
+		text[t++] = ( wide && i + 1 < n && raw[i+1] ) ? '?' : (char)raw[i] ;
+	text[t] = '\0' ;
+	p = strstr( text, "[HKEY_CURRENT_USER\\" ) ;
+	if( p == NULL ) return -1 ;
+	p += strlen( "[HKEY_CURRENT_USER\\" ) ;
+	bl = strlen( base ) ;
+	return ( _strnicmp( p, base, bl ) == 0 && ( p[bl] == ']' || p[bl] == '\\' ) ) ? 1 : 0 ;
 }
 
-/* Newest <base>-*<ext> backup next to savfile (for the first-run restore).
- * Returns 1 + path in out, else 0. */
-static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
-	char dir[4096], base[256], ext[64], pattern[4096], best[MAX_PATH] = "" ;
-	WIN32_FIND_DATAA fd ; HANDLE h ;
-	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+/* A backup of the hive in use. One whose hive cannot be read counts only for
+ * the default hive, which is all the retired format ever held. */
+static int sav_is_ours( const char *path ) {
+	int h = sav_hive_of_file( path ) ;
+	return h == 1 || ( h < 0 && !_stricmp( kitty_registry_base(), PUTTY_REG_POS ) ) ;
+}
+
+/* The <base>-*<ext> timestamped backups of the hive in use next to savfile,
+ * newest name first, into backups[]; returns how many. */
+static int sav_list_ours( const char *savfile, char *dir, size_t dl,
+                          struct portable_backup_name *backups, int max ) {
+	char base[256], ext[64], pattern[4096], path[4096] ;
+	WIN32_FIND_DATAA fd ; HANDLE h ; int n = 0 ;
+	sav_split( savfile, dir, dl, base, sizeof(base), ext, sizeof(ext) ) ;
 	snprintf( pattern, sizeof(pattern), "%s\\%s-*%s", dir, base, ext ) ;
 	h = FindFirstFileA( pattern, &fd ) ;
 	if( h == INVALID_HANDLE_VALUE ) return 0 ;
 	do {
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
-		if( best[0] == '\0' || strcmp( fd.cFileName, best ) > 0 ) snprintf( best, sizeof(best), "%s", fd.cFileName ) ;
+		if( n >= max ) break ;
+		snprintf( path, sizeof(path), "%s\\%s", dir, fd.cFileName ) ;
+		if( !sav_is_ours( path ) ) continue ;
+		snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ;
+		n++ ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
-	if( best[0] == '\0' ) return 0 ;
-	snprintf( out, outlen, "%s\\%s", dir, best ) ;
+	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;
+	return n ;
+}
+
+/* Keep only the `keep` newest timestamped backups of the hive in use next to
+ * savfile; the other hive's backups are not counted and not removed. */
+static void sav_prune( const char *savfile, int keep ) {
+	char dir[4096], path[4096] ;
+	struct portable_backup_name backups[256] ;
+	int n, i ;
+	if( keep < 0 ) keep = 0 ;
+	n = sav_list_ours( savfile, dir, sizeof(dir), backups, (int)(sizeof(backups)/sizeof(backups[0])) ) ;
+	for( i = keep ; i < n ; i++ ) { snprintf( path, sizeof(path), "%s\\%s", dir, backups[i].name ) ; unlink( path ) ; }
+}
+
+/* Newest timestamped backup of the hive in use next to savfile (for the
+ * first-run restore and /loadreg). Returns 1 + path in out, else 0. */
+static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
+	char dir[4096] ;
+	struct portable_backup_name backups[256] ;
+	if( sav_list_ours( savfile, dir, sizeof(dir), backups, (int)(sizeof(backups)/sizeof(backups[0])) ) == 0 ) return 0 ;
+	snprintf( out, outlen, "%s\\%s", dir, backups[0].name ) ;
 	return 1 ;
 }
 
@@ -436,15 +478,16 @@ static int sav_find_newest_legacy( const char *savfile, char *out, size_t outlen
 	if( strcmp( base, dbase ) ) return 0 ;              /* custom sav=: no fallback */
 	snprintf( legacy, sizeof(legacy), "%s\\%s", dir, LEGACY_SAV_FILE ) ;
 	if( sav_find_newest( legacy, out, outlen ) ) return 1 ;
-	if( existfile( legacy ) ) { snprintf( out, outlen, "%s", legacy ) ; return 1 ; }
+	if( existfile( legacy ) && sav_is_ours( legacy ) ) { snprintf( out, outlen, "%s", legacy ) ; return 1 ; }
 	return 0 ;
 }
 
 /* The one place that decides WHICH backup to restore from: newest timestamped,
- * else the fixed-name file, else the legacy name above. */
+ * else the fixed-name file, else the legacy name above - each only a backup of
+ * the hive in use. */
 int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
 	if( sav_find_newest( savfile, out, outlen ) ) return 1 ;
-	if( existfile( savfile ) ) { snprintf( out, outlen, "%s", savfile ) ; return 1 ; }
+	if( existfile( savfile ) && sav_is_ours( savfile ) ) { snprintf( out, outlen, "%s", savfile ) ; return 1 ; }
 	return sav_find_newest_legacy( savfile, out, outlen ) ;
 }
 

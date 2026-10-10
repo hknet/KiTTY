@@ -154,6 +154,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   any more, so it loaded an old file or nothing; it now loads the newest
   backup, as start-up does, and shows which. `/savesessions` wrote
   `kitty.ses` into the program folder; it now goes beside the backups.
+- **A backup is restored only into the hive it was taken of.** A copy that
+  uses PuTTY's hive (`KiClassName=PuTTY`) keeps its backups in the same
+  folder as a normal one. A first start, and `/loadreg`, restored the
+  newest of them even when it was the other copy's: that filled the hive
+  not in use and left the one in use empty. Only backups of the hive in
+  use are restored now, and only those count toward `savbackupcount` and
+  are pruned.
 - **The command box shows what a command did.** A line under the input
   field (Ctrl+F8) shows the result of the last `/command`: a setting's new
   state, a file with its full path, why something failed, or that a `/line`
