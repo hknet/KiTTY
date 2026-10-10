@@ -224,6 +224,12 @@ int PsNotifyFlag = 1 ;
 int GetPsNotifyFlag(void) { return PsNotifyFlag ; }
 void SetPsNotifyFlag( const int flag ) { PsNotifyFlag = flag ; }
 
+// [KiTTY] psoverlay: the program status overlay while two or more jobs report
+// (kitty_psoverlay.c).
+int PsOverlayFlag = 1 ;
+int GetPsOverlayFlag(void) { return PsOverlayFlag ; }
+void SetPsOverlayFlag( const int flag ) { PsOverlayFlag = flag ; }
+
 // Window height used by the WinHeight function
 int WinHeight = -1 ;
 int GetWinHeight(void) { return WinHeight ; }
@@ -629,6 +635,7 @@ static const IniParam ini_params[] = {
 	/* wintitle: symmetrical since the settings tree offers it as a checkbox */
 	INIP_KW( INIT_SECTION, 0, KI_WINTITLE,		1, 0, IGN,	&TitleBarFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, KI_PSNOTIFY,		1, 0, IGN,	&PsNotifyFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_PSOVERLAY,		1, 0, IGN,	&PsOverlayFlag, NULL ),
 #ifdef MOD_PROXY
 	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_PROXYSELECTION,	1, -1, 0,	NULL, SetProxySelectionFlag ),

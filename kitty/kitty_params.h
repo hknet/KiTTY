@@ -64,6 +64,8 @@ void SetSizeFlag( const int flag ) ;
 int GetTitleBarFlag(void) ;
 int GetPsNotifyFlag(void) ;
 void SetPsNotifyFlag( const int flag ) ;
+int GetPsOverlayFlag(void) ;
+void SetPsOverlayFlag( const int flag ) ;
 void SetTitleBarFlag( const int flag ) ;
 
 // Flag to switch to image-viewer mode

@@ -108,6 +108,22 @@ void ps_view(const PsStore *st, PsView *v);
 #define PS_TITLE_MARKER_MAX 24
 void ps_title_marker(const PsView *v, char *buf);
 
+/* The overlay's rows (kitty_psoverlay.c): every record that is not idle,
+ * grouped by the first segment of its id, the most urgent group first
+ * (blocked, failed, working, done), a record's children right below it. */
+typedef struct {
+    const PsEntry *e;
+    int depth;                       /* '/' in the id: 0 at the top */
+    const char *name;                /* the title, else the id's last segment,
+                                      * else the app */
+    char parent[PS_ID_SEG_MAX + 1];  /* the parent's last segment, "" at the top */
+} PsRow;
+/* rows holds PS_RECORDS_MAX; returns how many were filled. */
+int ps_rows(const PsStore *st, PsRow *rows);
+/* Two or more rows, and something to look at: a record still working or
+ * blocked, or a done or failed one not yet seen. */
+int ps_overlay_due(const PsStore *st);
+
 /* OSC 133 (everything after "133;"). */
 #define PS133_OTHER  0
 #define PS133_PROMPT 1           /* A: a prompt starts */

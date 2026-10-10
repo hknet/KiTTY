@@ -802,6 +802,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)
   ${KITTY_DIR}/kitty_oscnotify.c    # KiTTY: their parsing and decisions, no Win32 (test/test_oscnotify.c)
   ${KITTY_DIR}/kitty_progstatus.c   # KiTTY: program status (OSC 7501) and prompt marks (OSC 133), no Win32 (test/test_progstatus.c)
+  ${KITTY_DIR}/kitty_psoverlay.c    # KiTTY: the program status overlay (OSC 7501), top right in the window
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)
   ${KITTY_DIR}/kitty_kittykeys.c    # KiTTY: kitty keyboard protocol encoding for window.c, no Win32 (test/test_kittykeys.c)
   ${KITTY_DIR}/kitty_specialmenu.c

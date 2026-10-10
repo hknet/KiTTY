@@ -383,6 +383,109 @@ void ps_view(const PsStore *st, PsView *v)
     }
 }
 
+/* ---- the overlay's rows ------------------------------------------------- */
+
+/* The id's first segment: the group a record belongs to. */
+static size_t ps_top_len(const char *id)
+{
+    const char *slash = strchr(id, '/');
+    return slash ? (size_t)(slash - id) : strlen(id);
+}
+
+/* The most urgent state in a group (PS_* rise with urgency: done, working,
+ * error, blocked). */
+static int ps_group_rank(const PsStore *st, const char *id)
+{
+    size_t n = ps_top_len(id);
+    int i, best = PS_IDLE;
+    for (i = 0; i < st->n; i++) {
+        const char *o = st->e[i]->r.id;
+        if (ps_top_len(o) == n && !strncmp(o, id, n) && st->e[i]->r.state > best)
+            best = st->e[i]->r.state;
+    }
+    return best;
+}
+
+/* Ids compared with '/' below every other character, so a record's children
+ * follow it straight away ("build", "build/test", "build-x"). */
+static int ps_id_cmp(const char *a, const char *b)
+{
+    for (;; a++, b++) {
+        int ca = *a == '/' ? 1 : (unsigned char)*a;
+        int cb = *b == '/' ? 1 : (unsigned char)*b;
+        if (ca != cb || !ca)
+            return ca - cb;
+    }
+}
+
+static int ps_row_before(const PsStore *st, const PsEntry *a, const PsEntry *b)
+{
+    int ra = ps_group_rank(st, a->r.id), rb = ps_group_rank(st, b->r.id);
+    size_t na = ps_top_len(a->r.id), nb = ps_top_len(b->r.id);
+    if (ra != rb)
+        return ra > rb;
+    if (na != nb || strncmp(a->r.id, b->r.id, na)) {
+        int c = strncmp(a->r.id, b->r.id, na < nb ? na : nb);
+        return c ? c < 0 : na < nb;
+    }
+    return ps_id_cmp(a->r.id, b->r.id) < 0;
+}
+
+int ps_rows(const PsStore *st, PsRow *rows)
+{
+    int i, j, n = 0;
+    for (i = 0; i < st->n; i++) {
+        const PsEntry *e = st->e[i];
+        const char *slash, *seg;
+        PsRow row;
+        if (e->r.state == PS_IDLE)
+            continue;
+        memset(&row, 0, sizeof(row));
+        row.e = e;
+        for (seg = e->r.id; *seg; seg++)
+            if (*seg == '/')
+                row.depth++;
+        slash = strrchr(e->r.id, '/');
+        if (e->r.title[0])
+            row.name = e->r.title;
+        else if (e->r.id[0])
+            row.name = slash ? slash + 1 : e->r.id;
+        else
+            row.name = ps_app_of(st, &e->r);
+        if (slash) {
+            const char *p = slash;
+            size_t len;
+            while (p > e->r.id && p[-1] != '/')
+                p--;
+            len = (size_t)(slash - p);
+            if (len > PS_ID_SEG_MAX)
+                len = PS_ID_SEG_MAX;
+            memcpy(row.parent, p, len);
+            row.parent[len] = '\0';
+        }
+        /* Insertion: there are at most PS_RECORDS_MAX. */
+        for (j = n; j > 0 && ps_row_before(st, e, rows[j - 1].e); j--)
+            rows[j] = rows[j - 1];
+        rows[j] = row;
+        n++;
+    }
+    return n;
+}
+
+int ps_overlay_due(const PsStore *st)
+{
+    int i, rows = 0, live = 0;
+    for (i = 0; i < st->n; i++) {
+        int s = st->e[i]->r.state;
+        if (s == PS_IDLE)
+            continue;
+        rows++;
+        if (s == PS_WORKING || s == PS_BLOCKED || !st->e[i]->seen)
+            live = 1;
+    }
+    return rows >= 2 && live;
+}
+
 void ps_title_marker(const PsView *v, char *buf)
 {
     const char *t;

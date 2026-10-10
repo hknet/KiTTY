@@ -311,6 +311,10 @@ title bar shows no status, the first such notice also offers **Show it in the
 title**, once per installation. Each of these changes is also a line in the
 Event Log.
 
+**Overlay:** while two or more jobs report, a panel at the top right of the
+terminal lists them, under **Show the program status overlay** (same panel, on
+by default). A job's id places it: `build/test` is drawn below `build`.
+
 *Working* and *blocked* end at the next prompt (OSC 133, see the shell
 snippets) and when the session ends. Without the snippets they stay until the
 program reports again.

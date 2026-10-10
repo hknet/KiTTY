@@ -336,6 +336,19 @@
 #define KT_PST_TITLE_LEAD                            "The title bar can show this too."
 #define KT_PST_TITLE_LINK                            "Show it in the title"
 #define KT_PST_LOG_FMT                               "Program status: %s"
+/* The program status overlay (kitty_psoverlay.c): its header, the state
+ * column and the detail line of a row. */
+#define KT_PSO_HEAD                                  "Program status - %s"
+#define KT_PSO_JOBS                                  "%d jobs"
+#define KT_PSO_MORE                                  "and %d more"
+#define KT_PSO_DETAIL                                "%s - %s"
+#define KT_PSO_WORKING                               "working"
+#define KT_PSO_DONE                                  "done"
+#define KT_PSO_FAILED                                "failed"
+#define KT_PSO_WAITING                               "waiting for you"
+#define KT_PSO_PERMISSION                            "waiting for permission"
+#define KT_PSO_QUESTION                              "waiting for an answer"
+#define KT_PSO_LOGIN                                 "waiting for login"
 
 /* Window */
 #define KT_WINDOW_SET_THE_SIZE                       "Set the size of the window"
@@ -1397,6 +1410,8 @@
 #define KT_KSET_WD_WINTITLE                          "Show status information in the title bar"
 #define KT_KSET_WD_WINTITLE_NOTE                     "Size, PROTECTED, ONTOP, BROADCAST, RESTRICTED and what a program reports: 45%, working, blocked, failed, done."
 #define KT_KSET_WD_PSNOTIFY                          "Notify when a program in a background window needs attention"
+#define KT_KSET_WD_PSOVERLAY                         "Show the program status overlay"
+#define KT_KSET_WD_PSOVERLAY_NOTE                    "Top right in the window while two or more jobs report."
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"
 #define KT_KSET_WD_WINROLL                           "Double-click the title bar rolls the window up"
 /* Appearance > Shared window position: the entry written by windows without
@@ -2330,6 +2345,7 @@
 #define KT_WINFEAT_DARK_TITLEBARS                    "dark title bars"
 #define KT_WINFEAT_ACCENT                            "matching the desktop's accent colour"
 #define KT_WINFEAT_DPI                               "per-monitor DPI scaling"
+#define KT_WINFEAT_ULWINDIRECT                       "redrawing only the moving parts of the program status overlay"
 #define KT_WINFEAT_PASSWORD_IN_MEMORY                "keeping passwords encrypted in memory"
 #define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
 #define KT_WINFEAT_TASKBAR_PROGRESS                  "progress on the taskbar button"

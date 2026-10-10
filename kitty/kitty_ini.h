@@ -955,6 +955,10 @@ char default_init_file_content[] =
 ;    it once more.\n\
 ;PsTitleHintShown=\n\
 \n\
+; psoverlay: the program status overlay, a panel at the top right of the\n\
+;    terminal while two or more jobs report (OSC 7501). Its place is kept in\n\
+;    each session (PsOverlayPos).\n\
+;psoverlay=yes\n\
 \n\
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both\n\
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and\n\

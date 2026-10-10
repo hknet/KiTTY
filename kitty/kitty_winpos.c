@@ -45,6 +45,7 @@
 #define KWP_SHARED_SUBDIR   "WindowPos"     /* registry subkey and portable folder */
 #define KWP_SHARED_PREFIX   "WinPos"
 #define KWP_SESSION_PREFIX  "TermPos"
+#define KWP_OVERLAY_KEY     "PsOverlayPos"  /* the program status overlay */
 
 /* Each monitor contributes FNV-1a of its rectangle and the per-monitor
  * hashes are SUMMED: EnumDisplayMonitors does not promise the same order in
@@ -130,6 +131,46 @@ int kitty_winpos_session_get(const char *session, unsigned long layout,
         sfree(v);
     }
     return ok;
+}
+
+int kitty_winpos_overlay_get(const char *session, int *dx, int *dy)
+{
+    settings_r *r;
+    char *v;
+    int ok = 0;
+    if (kitty_winpos_is_shared_window(session)) return 0;
+    r = open_settings_r(session);
+    if (!r) return 0;
+    v = read_setting_s(r, KWP_OVERLAY_KEY);
+    close_settings_r(r);
+    if (v) {
+        ok = sscanf(v, "%d,%d", dx, dy) == 2;
+        sfree(v);
+    }
+    return ok;
+}
+
+int kitty_winpos_overlay_set(const char *session, int dx, int dy)
+{
+    char val[32];
+    settings_r *r;
+    settings_w *w;
+    char *err = NULL;
+    if (kitty_winpos_is_shared_window(session)) return 0;
+    /* Our own store only, never a phantom session: see the next function. */
+    r = open_settings_r(session);
+    if (!r) return 0;
+    if (!kitty_settings_r_is_own(r)) { close_settings_r(r); return 0; }
+    close_settings_r(r);
+    snprintf(val, sizeof(val), "%d,%d", dx, dy);
+    w = open_settings_w(session, &err);
+    if (!w) {
+        sfree(err);
+        return 0;
+    }
+    write_setting_s(w, KWP_OVERLAY_KEY, val);
+    close_settings_w(w);
+    return 1;
 }
 
 int kitty_winpos_session_set(const char *session, unsigned long layout,

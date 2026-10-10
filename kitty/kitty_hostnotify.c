@@ -38,6 +38,7 @@
 #include "kitty_oscnotify.h"
 #include "kitty_progstatus.h"
 #include "kitty_hostnotify.h"
+#include "kitty_psoverlay.h"   /* the overlay follows the records */
 #include "kitty_win.h"        /* kitty_refresh_title: the program-status marker */
 #include "kitty_inikeys.h"    /* KI_*: wintitle, the one-time title pointer */
 #include "kitty.h"            /* INIT_SECTION */
@@ -502,6 +503,7 @@ static void hn_ps_overlay_again(void);
 
 void kitty_hostnotify_shutdown(void)
 {
+    kitty_psoverlay_close();
     hn_taskbar_release();
     hn_ps_icons_free();
 }
@@ -711,6 +713,11 @@ static void hn_ps_refresh(struct kitty_hostnotify *st)
         hn_ps_bar_value = val;
     }
     hn_trace_status();
+    /* The panel in the window, for two or more jobs ([KiTTY] psoverlay). Its
+     * place is kept in the stored session; the header shows the name. */
+    kitty_psoverlay_update(&st->ps,
+                           term->conf ? conf_get_str(term->conf, CONF_sessionname) : "",
+                           hn_session_name(term), GetPsOverlayFlag() != 0);
 }
 
 /* A record became blocked, done or failed: a line in the Event Log, as a

@@ -150,6 +150,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
  * one-time pointer to the title bar in that notice, once it has been shown. */
 #define KI_PSNOTIFY                         "psnotify"
 #define KI_PSTITLEHINTSHOWN                 "PsTitleHintShown"
+#define KI_PSOVERLAY                        "psoverlay"
 #define KI_ZMODEM                           "zmodem"
 
 /* [ConfigBox] */

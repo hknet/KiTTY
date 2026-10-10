@@ -233,12 +233,60 @@ static void test_title_marker(void)
     CHECK(!strcmp(t, " (done)"), "done");
 }
 
+static void test_rows(void)
+{
+    PsStore st;
+    PsRow rows[PS_RECORDS_MAX];
+    int prev, n;
+
+    memset(&st, 0, sizeof(st));
+    report(&st, "state=working:id=build:app=make:progress=45", &prev);
+    CHECK(!ps_overlay_due(&st), "one job: no overlay");
+    report(&st, "state=working:id=build/test:app=ctest", &prev);
+    CHECK(ps_overlay_due(&st), "two jobs: the overlay");
+    report(&st, "state=done:id=lint", &prev);
+    report(&st, "state=idle:id=zzz", &prev);
+    report(&st, "state=blocked:id=deploy/push:kind=question", &prev);
+    report(&st, "state=working:id=build-x", &prev);
+    n = ps_rows(&st, rows);
+    CHECK(n == 5, "idle is not a row");
+    if (n == 5) {
+        CHECK(!strcmp(rows[0].e->r.id, "deploy/push"), "the blocked group first");
+        CHECK(rows[0].depth == 1 && !strcmp(rows[0].parent, "deploy") &&
+              !strcmp(rows[0].name, "push"), "depth, parent and name");
+        CHECK(!strcmp(rows[1].e->r.id, "build") &&
+              !strcmp(rows[2].e->r.id, "build/test"), "a child right below its parent");
+        CHECK(rows[1].depth == 0 && !rows[1].parent[0], "the top has no parent");
+        CHECK(!strcmp(rows[3].e->r.id, "build-x"), "then the next group of that rank");
+        CHECK(!strcmp(rows[4].e->r.id, "lint"), "done last");
+    }
+    report(&st, "state=working:id=lint:title=TGludA==", &prev);
+    n = ps_rows(&st, rows);
+    {
+        int i, found = 0;
+        for (i = 0; i < n; i++)
+            if (!strcmp(rows[i].e->r.id, "lint") && !strcmp(rows[i].name, "Lint"))
+                found = 1;
+        CHECK(found, "the title is the row's name");
+    }
+
+    /* Nothing left to look at: every record done and seen. */
+    ps_free(&st);
+    report(&st, "state=done:id=a", &prev);
+    report(&st, "state=error:id=b", &prev);
+    CHECK(ps_overlay_due(&st), "two unseen results: the overlay");
+    ps_mark_seen(&st);
+    CHECK(!ps_overlay_due(&st), "seen: no overlay");
+    ps_free(&st);
+}
+
 int main(void)
 {
     test_parse();
     test_store();
     test_osc133();
     test_title_marker();
+    test_rows();
     if (failures)
         printf("%d failure(s)\n", failures);
     else

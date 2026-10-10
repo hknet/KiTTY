@@ -908,6 +908,7 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 #include "../kitty/kitty_theme_pref.h"   /* KiTTY: the theme preference, readable before InitWinMain */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_hostnotify.h"  /* taskbar progress, cleared at session end */
+#include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -7398,6 +7399,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_FULLSCR_ON_MAX:
         wgs->fullscr_on_max = true;
         break;
+#ifdef MOD_PERSO
+      case WM_SHOWWINDOW:
+        /* Sent to the tray and back: an owned window is hidden with a
+         * minimised owner, not with a hidden one. */
+        kitty_psoverlay_owner_shown(wParam != 0);
+        break;
+#endif
       case WM_MOVE:
         term_notify_window_pos(wgs->term, LOWORD(lParam), HIWORD(lParam));
         sys_cursor_update(wgs);
@@ -7412,6 +7420,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (backgrounddc)
                 InvalidateRect(hwnd, NULL, false);
         }
+        kitty_psoverlay_follow();      /* the program status overlay */
 #endif
         break;
       case WM_SIZE:
@@ -7422,6 +7431,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
 #ifdef MOD_PERSO
         kitty_note_normal_rect(wgs, hwnd);
+        /* The overlay keeps its corner; minimised, it goes with the window. */
+        kitty_psoverlay_follow();
 #endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be

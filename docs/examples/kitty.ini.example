@@ -952,6 +952,10 @@
 ;    it once more.
 ;PsTitleHintShown=
 
+; psoverlay: the program status overlay, a panel at the top right of the
+;    terminal while two or more jobs report (OSC 7501). Its place is kept in
+;    each session (PsOverlayPos).
+;psoverlay=yes
 
 ; zmodem: enable ZModem transfers (the sz/rz commands). The switch gates both
 ;   the ZModem Receive/Upload/Abort entries in the terminal's Tools menu and

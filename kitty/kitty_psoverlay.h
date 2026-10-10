@@ -1,0 +1,29 @@
+/*
+ * kitty_psoverlay.h - the program status overlay (kitty_psoverlay.c): a small
+ * panel at the top right of the terminal window while two or more jobs report
+ * their status (OSC 7501).
+ */
+#ifndef KITTY_PSOVERLAY_H
+#define KITTY_PSOVERLAY_H
+
+#include <stdbool.h>
+#include "kitty_progstatus.h"
+
+/* The records changed (kitty_hostnotify.c, after every report, a prompt, a
+ * focus change and the end of the session). session: the stored session's
+ * name, where the overlay's place is kept; title: what the header shows.
+ * on: [KiTTY] psoverlay. */
+void kitty_psoverlay_update(const PsStore *ps, const char *session,
+                            const char *title, bool on);
+
+/* The terminal window moved, was resized, minimised or restored: the overlay
+ * follows it (window.c). */
+void kitty_psoverlay_follow(void);
+
+/* The terminal window is being shown or hidden (WM_SHOWWINDOW: the tray). */
+void kitty_psoverlay_owner_shown(bool shown);
+
+/* The window is going: the overlay goes with it. */
+void kitty_psoverlay_close(void);
+
+#endif

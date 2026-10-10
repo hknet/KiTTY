@@ -43,6 +43,13 @@ int kitty_winpos_session_set(const char *session, unsigned long layout,
  * of entries copied; entries the target already holds are overwritten. */
 int kitty_winpos_session_copy(const char *from, const char *to);
 
+/* The program status overlay's place in this session's window (PsOverlayPos
+ * inside the session): its distance from the terminal area's top-right
+ * corner in 96-dpi pixels. Same rules as the session's own entry: a shared
+ * window has none, and set never creates a session. */
+int kitty_winpos_overlay_get(const char *session, int *dx, int *dy);
+int kitty_winpos_overlay_set(const char *session, int dx, int dy);
+
 /* The SHARED entry (WindowPos\WinPos_<layout> in the registry, or the
  * WindowPos folder of a portable store), written only by windows that have
  * no session of their own. get returns 1 for a current entry, 2 for a

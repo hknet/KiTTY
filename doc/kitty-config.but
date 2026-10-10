@@ -2059,7 +2059,13 @@ front; \q{Notify when a program in a background window needs attention}
 shows a notice near the clock when a program in a window that is not in
 front becomes blocked, fails or is done, with a \q{Go to the window}
 button (\c{psnotify}, on by default; while the title bar shows no status,
-the first such notice also offers \q{Show it in the title}, once); \q{Show the terminal size in the
+the first such notice also offers \q{Show it in the title}, once);
+\q{Show the program status overlay} puts a panel at the top right of the
+terminal while two or more jobs report: each job with its state, its
+percentage or a busy bar and its message, a blocked one highlighted, done
+ones faded. Drag it by its header to move it; the place is kept in the
+session. The x hides it until a new job starts (\c{psoverlay}, on by
+default); \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 

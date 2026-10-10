@@ -33,6 +33,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   them and is now labelled "(OSC 9, 777, 99)". While the title bar shows
   no status, the first such notice also offers "Show it in the title",
   once per installation. Each change is a line in the Event Log.
+- **The program status overlay.** While two or more jobs report, a panel
+  at the top right of the terminal lists them with their state, percentage
+  or busy bar and message, the blocked one highlighted and done ones
+  faded. It can be dragged by its header, keeps its place per session, and
+  the x hides it until a new job starts ("Show the program status
+  overlay", `psoverlay`, on).
 
 - **klink, kscp and ksftp log in with the session's stored password.**
   With a session loaded (`-load`, `@name`, or a host argument that is a saved
