@@ -12,6 +12,7 @@
 
 #include <dirent.h>
 #include <io.h>
+#include <stdarg.h>
 #include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,7 @@
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include <psapi.h>
 #include <iphlpapi.h>
+#include <shlobj.h>         /* SHGetFolderPathA: Pictures, for /screenshot */
 
 // KiTTY includes
 #include "kitty.h"
@@ -64,6 +66,7 @@
 #include "kitty_exportbundle.h"
 #include "mini/mini.h"
 #include "kitty_commands.h"
+#include "kitty_theme.h"   /* kitty_theme_apply_hooked: /help dark from its first frame */
 
 /* /save + /savenew <name>: write the LIVE settings to a saved session. With a
  * name, the window's session identity switches to it first (save-as), so later
@@ -105,6 +108,25 @@ typedef enum {
  * input is then sent to the host like any other text). */
 typedef int (*IntCmdHandler)( HWND hwnd, char * arg ) ;
 
+/* What the last command did, for the command box's result line. A handler
+ * that has something to report writes it with cmd_say(); one that writes
+ * nothing gets "Done: /name" from InternalCommand. A file is always named
+ * with its full path - the person typing it must never have to guess. */
+static char cmd_result[1024] ;
+
+static void cmd_say( const char * fmt, ... ) {
+	va_list ap ;
+	va_start( ap, fmt ) ;
+	vsnprintf( cmd_result, sizeof(cmd_result), fmt, ap ) ;
+	va_end( ap ) ;
+}
+
+static void cmd_say_toggle( const char * what, int on ) {
+	cmd_say( KT_CMD_RES_TOGGLE, what, on ? KT_CMD_RES_ON : KT_CMD_RES_OFF ) ;
+}
+
+const char * kitty_cmd_result( void ) { return cmd_result ; }
+
 /* ---- Window & title ---- */
 
 static int cmd_size( HWND hwnd, char * arg ) {
@@ -120,6 +142,7 @@ static int cmd_size( HWND hwnd, char * arg ) {
 		SizeFlag = abs( SizeFlag - 1 ) ;
 	}
 	kitty_refresh_title() ;
+	cmd_say_toggle( KT_CMD_RES_SIZE, SizeFlag ) ;
 	return 1 ;
 }
 
@@ -127,12 +150,14 @@ static int cmd_wintitle( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	TitleBarFlag = abs( TitleBarFlag - 1 ) ;
 	kitty_refresh_title() ;
+	cmd_say_toggle( KT_CMD_RES_WINTITLE, TitleBarFlag ) ;
 	return 1 ;
 }
 
 static int cmd_title( HWND hwnd, char * arg ) {
 	(void)hwnd ;
 	set_title( NULL, arg ) ;
+	cmd_say( "%s", KT_CMD_RES_TITLE ) ;
 	return 1 ;
 }
 
@@ -142,8 +167,10 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 	/* The same two opt-outs as the menu and the keyboard: a session at -1 is
 	 * not to be dimmed, and transparency=no in kitty.ini is not a state this
 	 * command may leave. */
-	if( conf_get_int(conf,CONF_transparencynumber) == -1 ) return 1 ;
-	if( !GetTransparencyAllowed() ) return 1 ;
+	if( conf_get_int(conf,CONF_transparencynumber) == -1 || !GetTransparencyAllowed() ) {
+		cmd_say( "%s", KT_CMD_RES_TRANSPARENCY_NO ) ;
+		return 1 ;
+	}
 	/* A Direct2D window is layered from its creation or not at all: its
 	 * layered style is never switched while it is open (windows/window.c,
 	 * kitty_window_may_layer), so "off" keeps it layered at full opacity. */
@@ -155,6 +182,7 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 		if( conf_get_int(conf,CONF_transparencynumber) == -1 ) conf_set_int(conf,CONF_transparencynumber,0) ;
 		SetTransparency( MainHwnd, 255-conf_get_int(conf,CONF_transparencynumber) ) ;
 		SetForegroundWindow( hwnd ) ;
+		cmd_say_toggle( KT_CMD_RES_TRANSPARENCY, 1 ) ;
 	} else {
 		TransparencyFlag = 0 ;
 		SetTransparency( MainHwnd, 255 ) ;
@@ -164,6 +192,7 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 			SetWindowPos( MainHwnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE|SWP_NOZORDER ) ;
 		}
 		SetForegroundWindow( hwnd ) ;
+		cmd_say_toggle( KT_CMD_RES_TRANSPARENCY, 0 ) ;
 	}
 #else
 	(void)hwnd ;
@@ -174,30 +203,35 @@ static int cmd_transparency( HWND hwnd, char * arg ) {
 static int cmd_backgroundimage( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	SetBackgroundImageFlag( abs( GetBackgroundImageFlag() - 1 ) ) ;
+	cmd_say_toggle( KT_CMD_RES_BACKGROUND, GetBackgroundImageFlag() ) ;
 	return 1 ;
 }
 
 static int cmd_hyperlink( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	HyperlinkFlag = abs( HyperlinkFlag - 1 ) ;
+	cmd_say_toggle( KT_CMD_RES_HYPERLINK, HyperlinkFlag ) ;
 	return 1 ;
 }
 
 static int cmd_winroll( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	WinrolFlag = abs( WinrolFlag - 1 ) ;
+	cmd_say_toggle( KT_CMD_RES_WINROLL, WinrolFlag ) ;
 	return 1 ;
 }
 
 static int cmd_redraw( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	InvalidateRect( MainHwnd, NULL, TRUE ) ;
+	cmd_say( "%s", KT_CMD_RES_REDRAW ) ;
 	return 1 ;
 }
 
 static int cmd_refresh( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	RefreshBackground( MainHwnd ) ;
+	cmd_say( "%s", KT_CMD_RES_REDRAW ) ;
 	return 1 ;
 }
 
@@ -415,42 +449,49 @@ static int cmd_sizeall( HWND hwnd, char * arg ) {
 static int cmd_shortcuts( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	InitShortcuts() ;
+	cmd_say( "%s", KT_CMD_RES_SHORTCUTS ) ;
 	return 1 ;
 }
 
 static int cmd_noshortcuts( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	ShortcutsFlag = 0 ;
+	cmd_say( "%s", KT_CMD_RES_NOSHORTCUTS ) ;
 	return 1 ;
 }
 
 static int cmd_nomouseshortcuts( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	MouseShortcutsFlag = 0 ;
+	cmd_say( "%s", KT_CMD_RES_NOMOUSESHORTCUTS ) ;
 	return 1 ;
 }
 
 static int cmd_bcdelay( HWND hwnd, char * arg ) {
 	(void)hwnd ;
 	between_char_delay = (arg==NULL) ? 3 : atoi( arg ) ;
+	cmd_say( KT_CMD_RES_BCDELAY, between_char_delay ) ;
 	return 1 ;
 }
 
 static int cmd_printcharsize( HWND hwnd, char * arg ) {
 	(void)hwnd ;
 	PrintCharSize = atoi( arg ) ;
+	cmd_say( KT_CMD_RES_NUMBER, "PrintCharSize", PrintCharSize ) ;
 	return 1 ;
 }
 
 static int cmd_printmaxline( HWND hwnd, char * arg ) {
 	(void)hwnd ;
 	PrintMaxLinePerPage = atoi( arg ) ;
+	cmd_say( KT_CMD_RES_NUMBER, "PrintMaxLinePerPage", PrintMaxLinePerPage ) ;
 	return 1 ;
 }
 
 static int cmd_printmaxchar( HWND hwnd, char * arg ) {
 	(void)hwnd ;
 	PrintMaxCharPerLine = atoi( arg ) ;
+	cmd_say( KT_CMD_RES_NUMBER, "PrintMaxCharPerLine", PrintMaxCharPerLine ) ;
 	return 1 ;
 }
 
@@ -458,6 +499,7 @@ static int cmd_printmaxchar( HWND hwnd, char * arg ) {
 static int cmd_zmodem( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	SetZModemFlag( abs(GetZModemFlag()-1) ) ;
+	cmd_say_toggle( KT_CMD_RES_ZMODEM, GetZModemFlag() ) ;
 	return 1 ;
 }
 #endif
@@ -483,6 +525,7 @@ static int cmd_initlauncher( HWND hwnd, char * arg ) {
 static int cmd_debug( HWND hwnd, char * arg ) {
 	(void)hwnd ; (void)arg ;
 	debug_flag = abs( debug_flag - 1 ) ;
+	cmd_say_toggle( KT_CMD_RES_DEBUG, debug_flag ) ;
 	return 1 ;
 }
 
@@ -504,13 +547,57 @@ static int cmd_passwd( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* /screenshot: the terminal's client area as a PNG.
+ *
+ * Where: an installed copy writes to the user's Pictures\KiTTY++ (made when
+ * missing). It used to write next to kitty.exe, which for an MSI install is
+ * C:\Program Files\KiTTY++ - not writable for a user, so the file never came
+ * to be, and the result was not checked, so nothing reported it. A portable copy
+ * keeps its own folder, which is writable by being portable.
+ * The result line shows the file with its full path, or why it is not there. */
 static int cmd_screenshot( HWND hwnd, char * arg ) {
-	char screenShotFile[1024] ;
+	char dir[MAX_PATH], file[MAX_PATH + 64] ;
+	time_t now = time( 0 ) ;
+	struct tm * t = localtime( &now ) ;
+	HANDLE h ;
 	(void)arg ;
-	/* time_t is 64-bit here; %lu of the value cast down fits every target's
-	 * printf (old msvcrt has no %lld) and is unique until 2106 */
-	snprintf( screenShotFile, sizeof(screenShotFile), "%s\\screenshot-%d-%lu.png", InitialDirectory, getpid(), (unsigned long)time(0) );
-	screenCaptureClientRect( GetParent(hwnd), screenShotFile ) ;
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		snprintf( dir, sizeof(dir), "%s", InitialDirectory ) ;
+	} else {
+		char pics[MAX_PATH] ;
+		if( SHGetFolderPathA( NULL, CSIDL_MYPICTURES | CSIDL_FLAG_CREATE, NULL,
+		                      SHGFP_TYPE_CURRENT, pics ) != S_OK )
+			snprintf( pics, sizeof(pics), "%s", InitialDirectory ) ;
+		snprintf( dir, sizeof(dir), "%s\\KiTTY++", pics ) ;
+		if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
+			cmd_say( KT_CMD_RES_SHOT_NO_DIR, dir ) ;
+			return 1 ;
+		}
+	}
+	snprintf( file, sizeof(file), "%s\\screenshot-%04d%02d%02d-%02d%02d%02d.png", dir,
+	          t ? t->tm_year + 1900 : 0, t ? t->tm_mon + 1 : 0, t ? t->tm_mday : 0,
+	          t ? t->tm_hour : 0, t ? t->tm_min : 0, t ? t->tm_sec : 0 ) ;
+	/* Can it be written? Tried first, so the line can give the reason. */
+	h = CreateFileA( file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+	                 FILE_ATTRIBUTE_NORMAL, NULL ) ;
+	if( h == INVALID_HANDLE_VALUE ) {
+		char why[256] ;
+		DWORD e = GetLastError(), n ;
+		n = FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		                    NULL, e, 0, why, sizeof(why), NULL ) ;
+		while( n > 0 && (why[n-1] == '\r' || why[n-1] == '\n' || why[n-1] == '.') )
+			why[--n] = '\0' ;
+		if( !n ) snprintf( why, sizeof(why), "error %lu", (unsigned long)e ) ;
+		cmd_say( KT_CMD_RES_SHOT_FAILED, file, why ) ;
+		return 1 ;
+	}
+	CloseHandle( h ) ;
+	if( screenCaptureClientRect( GetParent(hwnd), file ) )
+		cmd_say( KT_CMD_RES_SHOT_SAVED, file ) ;
+	else {
+		DeleteFileA( file ) ;              /* not the empty file the test left */
+		cmd_say( KT_CMD_RES_SHOT_FAILED, file, KT_CMD_RES_SHOT_NO_PICTURE ) ;
+	}
 	return 1 ;
 }
 
@@ -643,6 +730,8 @@ static INT_PTR CALLBACK HelpBoxProc( HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
 			if( !kitty_auxpos_restore( hwnd, kitty_help_poskey, 1, 300, 200 ) )
 				kitty_auxpos_apply( hwnd, kitty_help_poskey, GetWindow(hwnd, GW_OWNER), 0 ) ;
 			help_box_layout( hwnd ) ;
+			/* in the theme from its first frame, as the command box */
+			kitty_theme_apply_hooked( hwnd ) ;
 			return 1 ;
 		}
 		case WM_SIZE:
@@ -722,7 +811,12 @@ static int cmd_help( HWND hwnd, char * arg ) {
 		HCAT( c->name ) ;
 		if( c->argname != NULL ) { HCAT( " " ) ; HCAT( c->argname ) ; }
 		HCAT( " - " ) ;
-		HCAT( c->help ) ;
+		if( c->handler == cmd_fileassoc ) {
+			char h[256] ;
+			snprintf( h, sizeof(h), c->help, FileExtension[0] ? FileExtension : ".ktx" ) ;
+			HCAT( h ) ;
+		} else
+			HCAT( c->help ) ;
 		HCAT( "\r\n" ) ;
 	}
 #undef HCAT
@@ -741,10 +835,18 @@ int InternalCommand( HWND hwnd, char * st ) {
 	for( i = 0 ; i < lenof(internal_commands) ; i++ ) {
 		const struct InternalCmdDef * c = &internal_commands[i] ;
 		size_t l = strlen( c->name ) ;
-		if( (c->arg != IC_ARG_REQUIRED) && !strcmp( st, c->name ) )
-			return c->handler( hwnd, NULL ) ;
-		if( (c->arg != IC_ARG_NONE) && !strncmp( st, c->name, l ) && (st[l] == ' ') )
-			return c->handler( hwnd, st+l+1 ) ;
+		int r ;
+		if( (c->arg != IC_ARG_REQUIRED) && !strcmp( st, c->name ) ) {
+			cmd_result[0] = '\0' ;
+			r = c->handler( hwnd, NULL ) ;
+		} else if( (c->arg != IC_ARG_NONE) && !strncmp( st, c->name, l ) && (st[l] == ' ') ) {
+			cmd_result[0] = '\0' ;
+			r = c->handler( hwnd, st+l+1 ) ;
+		} else
+			continue ;
+		if( r && !cmd_result[0] )
+			cmd_say( KT_CMD_RES_DONE, c->name ) ;
+		return r ;
 	}
 	return 0 ;
 }

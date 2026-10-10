@@ -142,6 +142,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **`/screenshot` saves where it can, and reports where.** An installed
+  KiTTY++ wrote the picture next to kitty.exe, into the program folder a
+  user may not write to, so no file came to be and nothing reported it. It
+  now goes to `Pictures\KiTTY++` (a portable copy keeps its own folder),
+  named by date and time.
+- **The command box shows what a command did.** A line under the input
+  field (Ctrl+F8) shows the result of the last `/command`: a setting's new
+  state, a file with its full path, why something failed, or that a `/line`
+  was no command and went to the host. The box and the `/help` window are
+  in the dark theme from their first frame, not only once they had the
+  focus. `/help` now shows the extension `/fileassoc` registers, the
+  session file extension in force (`.ktx` unless set otherwise).
 - **A picture placed on the bottom line of a scroll region shows whole.**
   An inline image (kitty, iTerm2, Sixel) placed on a scroll region's
   bottom margin stayed hanging below the region while its own line feeds

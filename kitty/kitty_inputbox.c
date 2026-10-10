@@ -16,7 +16,8 @@
 #include <windows.h>
 
 #include "kitty.h"
-#include "kitty_commands.h"   /* InternalCommand */
+#include "kitty_commands.h"   /* InternalCommand, kitty_cmd_result */
+#include "kitty_theme.h"      /* kitty_theme_apply_hooked: dark from the first frame */
 #include "kitty_broadcast.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
 
@@ -75,6 +76,38 @@ void InfoBoxClose( HWND hwnd ) { EndDialog(hwnd, LOWORD(0)) ; DestroyWindow( hwn
 //Callback of the InputBox dialog
 static int InputBox_Flag = 0 ;
 
+/* The command box's result line: what the last /command did, under the input
+ * field (kitty_commands.c kitty_cmd_result). Made here, not in the template:
+ * IDD_INPUTBOX is shared with the Terminal Name and text-prompt boxes, which have
+ * nothing to report. A read-only multi-line edit of two lines that wraps, so a
+ * long path shows WHOLE and can be selected and copied - never cut to "...". */
+#define IDC_INPUTBOX_STATUS 1990
+
+static void inputbox_add_status( HWND hwnd ) {
+	RECT r, g, wr ;
+	HWND st ;
+	/* below the input row (it ends at 34 of the template's 50 dialog units):
+	 * two lines from 38, the box 22 units taller */
+	r.left = 7 ; r.top = 38 ; r.right = 7 + 233 ; r.bottom = 38 + 18 ;
+	MapDialogRect( hwnd, &r ) ;
+	g.left = g.top = g.right = 0 ; g.bottom = 22 ;
+	MapDialogRect( hwnd, &g ) ;
+	st = CreateWindowExA( 0, "EDIT", "", WS_CHILD | WS_VISIBLE | ES_MULTILINE |
+	                      ES_READONLY | ES_NOHIDESEL,
+	                      r.left, r.top, r.right - r.left, r.bottom - r.top,
+	                      hwnd, (HMENU)(INT_PTR)IDC_INPUTBOX_STATUS,
+	                      GetModuleHandle(NULL), NULL ) ;
+	if( !st ) return ;
+	SendMessage( st, WM_SETFONT, SendMessage( hwnd, WM_GETFONT, 0, 0 ), FALSE ) ;
+	GetWindowRect( hwnd, &wr ) ;
+	SetWindowPos( hwnd, NULL, 0, 0, wr.right - wr.left, wr.bottom - wr.top + g.bottom,
+	              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
+}
+
+static void inputbox_status( HWND hwnd, const char * text ) {
+	SetDlgItemTextA( hwnd, IDC_INPUTBOX_STATUS, text ? text : "" ) ;
+}
+
 /* The single-line send-text box is modeless (unlike the multiline and password
  * boxes, which stay modal): it doubles as the /command console, and /help opens
  * its own modeless window, so both must coexist with working Esc/Tab keyboard
@@ -95,6 +128,11 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 			if( InputBoxResult == NULL ) SetWindowText(handle,"") ;
 			else SetWindowText( handle, InputBoxResult ) ;
 			kitty_dialog_icon( hwnd, NULL ) ;   /* its owner's icon */
+			inputbox_add_status( hwnd ) ;
+			/* In the theme from its first frame: the dialog hook themes a
+			 * window on its ACTIVATION, so a box shown before it had the
+			 * focus came up light and turned dark only once clicked. */
+			kitty_theme_apply_hooked( hwnd ) ;
 			break;
 		case WM_COMMAND:
 			if (LOWORD(wParam) == IDOK)
@@ -108,8 +146,16 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 				 * it and re-focus the edit) so several lines can be sent in a
 				 * row, exactly as the old modal box did (it never EndDialog'd
 				 * on OK either). */
-				if( !InternalCommand( hwnd, InputBoxResult ) )
+				if( InternalCommand( hwnd, InputBoxResult ) )
+					inputbox_status( hwnd, kitty_cmd_result() ) ;
+				else {
+					/* "/something" that is no command still goes to the host,
+					 * as always - but the line reports it; plain text needs no
+					 * word, sending it is what the box is for */
+					inputbox_status( hwnd, InputBoxResult[0] == '/' ?
+					                 KT_CMD_RES_NOT_A_COMMAND : "" ) ;
 					SendKeyboardPlus( MainHwnd, InputBoxResult );
+				}
 				SetWindowText(handle,"") ;
 				SetFocus(handle) ;
 

@@ -7,6 +7,13 @@ treated as an **internal command** and executed locally by KiTTY itself. Typing
 document is the full reference. A `/line` that matches no internal command is
 sent to the host as ordinary text.
 
+The line under the input field shows what the last command did: `Done: /name`,
+a setting's new state (`The size in the title: on`), a file written with its
+full path (`Saved: C:\Users\...\Pictures\KiTTY++\screenshot-....png`) or why
+not (`Not saved: ... (Access is denied)`), or `Not a command: sent to the host
+as text`. It wraps rather than cutting a long path, and can be selected and
+copied.
+
 Each entry below notes whether the effect **persists**:
 
 - *runtime only* — lasts until the window is closed;
@@ -305,8 +312,12 @@ Toggle the ZModem file-transfer feature (the `rz`/`sz` integration).
 
 ### /fileassoc
 
-Register the `.ktx` file association for the current user, so double-clicking
-a `.ktx` connection file opens it with this kitty.exe.
+Register the session file extension for the current user, so double-clicking
+such a file opens it with this kitty.exe. The extension is the one set in
+kitty.ini (`fileextension`, shown at Application > KiTTY++ Settings > Storage &
+Backup as "Session file extension"), `.ktx` when none is set; `/help` shows the
+one in force. An extension another program owns is left alone and named in
+the report.
 
 **Persists:** registry (per-user file association).
 
@@ -332,8 +343,11 @@ it to the clipboard** — remember the clipboard keeps it until overwritten.
 
 ### /screenshot
 
-Save a screenshot of the terminal window as `screenshot-<pid>-<time>.png`
-next to the exe. Written with Windows' imaging component: on XP only with
-the Microsoft .NET Framework 3.0 installed.
+Save a screenshot of the terminal window as
+`screenshot-<YYYYMMDD>-<HHMMSS>.png`: an installed KiTTY++ writes to the
+user's `Pictures\KiTTY++` (made when missing), a portable one next to its exe.
+The result line shows the file with its full path, or why it was not written.
+Written with Windows' imaging component: on XP only with the Microsoft .NET
+Framework 3.0 installed.
 
 **Persists:** the image file.
