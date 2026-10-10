@@ -12362,6 +12362,98 @@ static termchar *term_bidi_line(Terminal *term, struct termline *ldata,
     return lchars;
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the kitty Unicode placeholders of the view (kitty_gfx_term.h). A
+ * cell holding U+10EEEE shows a part of a picture: the image id is its
+ * foreground colour (true colour, or a 256-colour index), the placement id
+ * its underline colour (SGR 58, 0 when it has none), the picture's row and
+ * column the first two combining diacritics, the image id's top byte the
+ * third. A cell that leaves some out takes them from the cell to its left
+ * when that one is a placeholder of the same image and placement: no
+ * diacritic - the same row, the next column; a row only - when the row is
+ * the same, the next column; row and column - when they follow on, the
+ * same top byte. What cannot be read that way is row 0, column 0, top
+ * byte 0, as in the other kitty terminal.
+ */
+int term_kitty_placeholders(Terminal *term, KittyPhCell *out, int max)
+{
+    int i, j, n = 0;
+    for (i = 0; i < term->rows && n < max; i++) {
+        termline *ld = lineptr(i + term->disptop);
+        bool prev = false;
+        uint32_t pfg = 0, ppid = 0;
+        int prow = 0, pcol = 0, pmsb = 0;
+        for (j = 0; j < term->cols && n < max; j++) {
+            termchar *d = ld->chars + j, *dd = d;
+            uint32_t fg, pid = 0;
+            int dia[3], nd = 0, row, col, msb;
+            unsigned kind;
+            if (d->chr != GFX_PLACEHOLDER) {
+                prev = false;
+                continue;
+            }
+            if (d->truecolour.fg.enabled) {
+                fg = ((uint32_t)d->truecolour.fg.r << 16) |
+                     ((uint32_t)d->truecolour.fg.g << 8) | d->truecolour.fg.b;
+            } else {
+                unsigned c = (unsigned)((d->attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+                if (c >= 256) {         /* the default colour: no image */
+                    prev = false;
+                    continue;
+                }
+                fg = c;
+            }
+            kind = d->truecolour.ul.mode & UL_COLOUR_MASK;
+            if (kind == UL_COLOUR_RGB)
+                pid = ((uint32_t)d->truecolour.ul.r << 16) |
+                      ((uint32_t)d->truecolour.ul.g << 8) | d->truecolour.ul.b;
+            else if (kind == UL_COLOUR_INDEX)
+                pid = d->truecolour.ul.r;
+            while (dd->cc_next && nd < 3) {
+                dd += dd->cc_next;
+                dia[nd++] = gfx_diacritic(dd->chr);
+            }
+            if ((nd > 0 && dia[0] < 0) || (nd > 1 && dia[1] < 0) ||
+                (nd > 2 && dia[2] < 0)) {
+                prev = false;           /* not a placeholder we can read */
+                continue;
+            }
+            row = nd > 0 ? dia[0] : 0;
+            col = nd > 1 ? dia[1] : 0;
+            msb = nd > 2 ? dia[2] : 0;
+            if (prev && fg == pfg && pid == ppid) {
+                if (nd == 0) {
+                    row = prow;
+                    col = pcol + 1;
+                    msb = pmsb;
+                } else if (nd == 1 && row == prow) {
+                    col = pcol + 1;
+                    msb = pmsb;
+                } else if (nd == 2 && row == prow && col == pcol + 1) {
+                    msb = pmsb;
+                }
+            }
+            out[n].vrow = i;
+            out[n].vcol = j;
+            out[n].id = ((uint32_t)msb << 24) | fg;
+            out[n].pid = pid;
+            out[n].prow = row;
+            out[n].pcol = col;
+            n++;
+            prev = true;
+            pfg = fg;
+            ppid = pid;
+            prow = row;
+            pcol = col;
+            pmsb = msb;
+        }
+        unlineptr(ld);
+    }
+    return n;
+}
+#endif
+
 static void do_paint_draw(Terminal *term, termline *ldata, int x, int y,
                           wchar_t *ch, int ccount,
                           unsigned long attr, truecolour tc)
@@ -12607,6 +12699,13 @@ static void do_paint(Terminal *term)
                 tchar = term->ucsdata->unitab_scoacs[tchar&0xFF];
                 break;
             }
+#ifdef MOD_PERSO
+            /* KiTTY: a kitty Unicode placeholder is a picture's cell: the
+             * text shows a blank there (its diacritics too, see the third
+             * loop) and the painters draw the picture over it */
+            if (tchar == GFX_PLACEHOLDER)
+                tchar = term->ucsdata->unitab_line[(unsigned char)' '];
+#endif
             if (j < (in_preedit ? preedit_end : term->cols) - 1
                 && d[1].chr == UCSWIDE)
                 tattr |= ATTR_WIDE;
@@ -12836,7 +12935,11 @@ static void do_paint(Terminal *term)
 #endif /* PLATFORM_IS_UTF16 */
             ch[ccount++] = (wchar_t) tchar;
 
+#ifdef MOD_PERSO
+            if (d->cc_next && d->chr != GFX_PLACEHOLDER) {
+#else
             if (d->cc_next) {
+#endif
                 termchar *dd = d;
 
                 while (dd->cc_next) {

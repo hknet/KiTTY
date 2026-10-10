@@ -114,6 +114,38 @@ static void env_init(Terminal *term, GfxEnv *env)
     env->ctx = term;
 }
 
+/* The pictures on the view's Unicode placeholders, one piece a run of
+ * cells (a row of a picture, columns in order), at most max into out. */
+static int placeholder_pieces(Terminal *term, GfxVisible *out, int max)
+{
+    KittyPhCell *cells;
+    int n, i, k = 0, cap;
+    if (max <= 0 || !term->gfx || !gfx_any_virtual(term->gfx) ||
+        term->cellpix_x <= 0 || term->cellpix_y <= 0)
+        return 0;
+    cap = term->rows * term->cols;
+    cells = snewn(cap, KittyPhCell);
+    n = term_kitty_placeholders(term, cells, cap);
+    for (i = 0; i < n && k < max; ) {
+        int j = i + 1;
+        while (j < n && cells[j].vrow == cells[i].vrow &&
+               cells[j].vcol == cells[j - 1].vcol + 1 &&
+               cells[j].id == cells[i].id && cells[j].pid == cells[i].pid &&
+               cells[j].prow == cells[i].prow &&
+               cells[j].pcol == cells[j - 1].pcol + 1)
+            j++;
+        if (gfx_placeholder_piece(term->gfx, cells[i].id, cells[i].pid,
+                                  cells[i].prow, cells[i].pcol,
+                                  cells[j - 1].pcol, cells[i].vrow,
+                                  cells[i].vcol, term->cellpix_x,
+                                  term->cellpix_y, &out[k]))
+            k++;
+        i = j;
+    }
+    sfree(cells);
+    return k;
+}
+
 /* The cells the visible placements cover, as rectangles (inclusive), at
  * most GFX_REPAINT_MAX; returns -1 when there are more (paint everything). */
 static int covered(Terminal *term, int rects[GFX_REPAINT_MAX][4])
@@ -129,6 +161,9 @@ static int covered(Terminal *term, int rects[GFX_REPAINT_MAX][4])
                     kitty_gfx_top_abs(term) + term->disptop, term->rows,
                     term->cols, term->cellpix_x, term->cellpix_y, vis,
                     GFX_REPAINT_MAX + 1);
+    /* and the pictures on placeholders */
+    if (n <= GFX_REPAINT_MAX)
+        n += placeholder_pieces(term, vis + n, GFX_REPAINT_MAX + 1 - n);
     if (n > GFX_REPAINT_MAX)
         return -1;
     for (i = 0; i < n; i++) {
@@ -402,10 +437,14 @@ int term_gfx_visible(Terminal *term, struct GfxVisible *out, int max)
      * screen's */
     if (term->alt_which && term->disptop < 0)
         return 0;
-    return gfx_visible_cut(term->gfx, screen_of(term),
-                           kitty_gfx_top_abs(term) + term->disptop,
-                           term->rows, term->cols, term->cellpix_x,
-                           term->cellpix_y, out, max);
+    {
+        int n = gfx_visible_cut(term->gfx, screen_of(term),
+                                kitty_gfx_top_abs(term) + term->disptop,
+                                term->rows, term->cols, term->cellpix_x,
+                                term->cellpix_y, out, max);
+        /* the pictures on Unicode placeholders, after the placed ones */
+        return n + placeholder_pieces(term, out + n, max - n);
+    }
 }
 
 void kitty_gfx_cells_changed(Terminal *term, int y0, int y1, int x0, int x1)
@@ -560,7 +599,7 @@ bool kitty_gfx_any(Terminal *term)
         return false;
     screen = screen_of(term);
     for (i = 0; i < term->gfx->n_pls; i++)
-        if (term->gfx->pls[i].screen == screen)
+        if (term->gfx->pls[i].screen == screen || term->gfx->pls[i].virt)
             return true;
     return false;
 }

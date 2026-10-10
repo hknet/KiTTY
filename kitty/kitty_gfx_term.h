@@ -11,6 +11,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* Set by the window (windows/window.c): PNG to premultiplied BGRA, and zlib
  * inflate with an output cap. NULL where no window decodes (tests): the
@@ -134,8 +135,24 @@ void kitty_gfx_cell_size_changed(Terminal *term);
 void kitty_gfx_cells_changed(Terminal *term, int y0, int y1, int x0, int x1);
 #define KITTY_GFX_CELLS(term, y0, y1, x0, x1) do {                                  if ((term)->gfx && (term)->gfx->n_cellbound > 0)                                kitty_gfx_cells_changed(term, y0, y1, x0, x1);                      } while (0)
 
-/* Whether any placement exists on the screen shown. */
+/* Whether any placement exists on the screen shown (or a virtual one, which
+ * shows wherever its placeholders are). */
 bool kitty_gfx_any(Terminal *term);
+
+/* A Unicode placeholder cell of the view (terminal.c reads the text): view
+ * row and column, the image id (foreground colour, the most significant
+ * byte from the third diacritic), the placement id (underline colour, 0:
+ * none), the picture's row and column (the first two diacritics, or carried
+ * on from the cell to the left as kitty's rules have it). */
+typedef struct {
+    int vrow, vcol;
+    uint32_t id, pid;
+    int prow, pcol;
+} KittyPhCell;
+
+/* The view's placeholder cells, left to right, top to bottom; at most max.
+ * Defined in terminal.c, which owns the lines. */
+int term_kitty_placeholders(Terminal *term, KittyPhCell *out, int max);
 
 /* The view moved (term_scroll changed disptop) with placements on the
  * screen shown: every row is drawn again. The comparison alone redraws

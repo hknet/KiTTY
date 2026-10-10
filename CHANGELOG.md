@@ -8,6 +8,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **kitty graphics: Unicode placeholders.** A virtual placement (`U=1`)
+  shows where the text holds the placeholder character U+10EEEE, its
+  image id in the foreground colour, its placement id in the underline
+  colour, row and column as combining marks (left out ones carried on
+  from the cell to the left). The picture is part of the text: it
+  scrolls with it and survives tmux, screen and full-screen redraws.
+  The placeholder characters themselves are not drawn. Before, `U=1` was
+  refused.
 - **Animated GIFs play.** An iTerm2 picture (`OSC 1337 File=`) that is an
   animated GIF plays, looping, with its frames' delays and disposal, as in
   iTerm2; before, only its first frame showed. Its frames count against

@@ -5035,6 +5035,60 @@ static void sgr_ul_expect(Mock *mk, const char *what, const char *seq,
     }
 }
 
+/*
+ * KiTTY: kitty's Unicode placeholders read back from the text
+ * (term_kitty_placeholders): the image id from the foreground colour, the
+ * placement id from the underline colour, row / column / top byte from the
+ * diacritics, and what a cell that leaves them out takes from the one on its
+ * left. U+10EEEE is F4 8E BB AE; U+0305 (0) CC 85, U+030D (1) CC 8D,
+ * U+030E (2) CC 8E.
+ */
+#define PH  "\xf4\x8e\xbb\xae"
+#define D0  "\xcc\x85"
+#define D1  "\xcc\x8d"
+#define D2  "\xcc\x8e"
+static void test_placeholders(Mock *mk)
+{
+    Terminal *term = mk->term;
+    KittyPhCell c[16];
+    int n;
+
+    feed_seq(mk, "\033c");
+    /* row 0, palette colour 7: row 0 col 0; none (-> col 1); a row (-> col 2) */
+    feed_seq(mk, "\033[H\033[38;5;7m" PH D0 D0 PH PH D0);
+    /* row 1, true colour 0,0,42 and underline colour 3: row 1 col 2 top
+     * byte 2; then none (-> row 1 col 3, top byte 2) */
+    feed_seq(mk, "\033[2;1H\033[0;38;2;0;0;42;58;5;3m" PH D1 D2 D2 PH);
+    /* row 2: the default colour - not a picture's cell; then plain text */
+    feed_seq(mk, "\033[3;1H\033[0m" PH "x");
+    n = term_kitty_placeholders(term, c, 16);
+    if (n != 5) {
+        printf("   %d cells\n", n);
+        fail("placeholders", "not the five cells written");
+        return;
+    }
+    if (c[0].vrow != 0 || c[0].vcol != 0 || c[0].id != 7 || c[0].pid != 0 ||
+        c[0].prow != 0 || c[0].pcol != 0)
+        fail("placeholder 0,0", "explicit row 0 col 0, id 7");
+    if (c[1].vcol != 1 || c[1].prow != 0 || c[1].pcol != 1 || c[1].id != 7)
+        fail("placeholder, no diacritic", "not the next column of the same row");
+    if (c[2].vcol != 2 || c[2].prow != 0 || c[2].pcol != 2)
+        fail("placeholder, a row only", "not the next column");
+    if (c[3].vrow != 1 || c[3].id != ((2u << 24) | 42u) || c[3].pid != 3 ||
+        c[3].prow != 1 || c[3].pcol != 2) {
+        printf("   id %08x pid %u row %d col %d\n", (unsigned)c[3].id,
+               (unsigned)c[3].pid, c[3].prow, c[3].pcol);
+        fail("placeholder, true colour", "id with its top byte, placement id, row, col");
+    }
+    if (c[4].vcol != 1 || c[4].id != c[3].id || c[4].prow != 1 || c[4].pcol != 3)
+        fail("placeholder after a full one", "the next column, the same top byte");
+    feed_seq(mk, "\033c");
+}
+#undef PH
+#undef D0
+#undef D1
+#undef D2
+
 static void test_sgr_colon(Mock *mk)
 {
     Terminal *term = mk->term;
@@ -5421,6 +5475,7 @@ int main(void)
     test_cell_bound_pictures(mk);       /* KiTTY: iTerm2/Sixel pictures own their cells */
     test_capability_reports(mk);        /* KiTTY: DECRQM, XTGETTCAP, Capabilities, DA1 */
     test_sgr_colon(mk);                 /* KiTTY: SGR 38/48 in the ':' form */
+    test_placeholders(mk);              /* KiTTY: kitty Unicode placeholders */
     test_decscusr(mk);                  /* KiTTY: DECSCUSR cursor shape */
 
     mock_free(mk);

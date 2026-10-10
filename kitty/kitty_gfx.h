@@ -12,9 +12,10 @@
  *
  * Supported: a=t/T/p/d/q, t=d, f=24/32/100, o=z, m, q, i, I, p, x/y/w/h,
  * X/Y, c/r, C, z, every d mode, N (ignored), relative placements (P/Q/H/V),
- * animation (a=f frames, a=a control, a=c composing, d=f/F). Refused with
- * EINVAL so programs fall back: files and shared memory (t=f/t/s), Unicode
- * placeholders (U=1).
+ * animation (a=f frames, a=a control, a=c composing, d=f/F), Unicode
+ * placeholders (U=1: virtual placements, drawn where the text holds
+ * U+10EEEE). Refused with EINVAL so programs fall back: files and shared
+ * memory (t=f/t/s).
  *
  * An animated picture holds every frame whole (premultiplied BGRA, w x h),
  * counted against the store's bytes; frame 1 is the picture transmitted.
@@ -171,6 +172,11 @@ typedef struct GfxPlacement {
      * cells from its top-left; screen, abs_line and col follow the parent */
     unsigned long parent;
     int rel_h, rel_v;
+    /* a virtual placement (U=1): drawn only where the text holds its
+     * Unicode placeholders (gfx_placeholder_piece); cols x rows is the box
+     * the picture is fitted into; it has no place of its own and goes only
+     * with d=i/I/r/R/n/N */
+    bool virt;
 } GfxPlacement;
 
 /* A chunked upload in progress (t=d, m=1). */
@@ -350,6 +356,30 @@ bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
 const char *gfx_place_pixels(GfxStore *st, const GfxEnv *env,
                              unsigned char *px, int w, int h, bool no_cursor,
                              GfxResult *res);
+
+/* ---- Unicode placeholders (U=1) ---------------------------------------- */
+
+/* The placeholder character: a cell holding it shows a part of a picture. */
+#define GFX_PLACEHOLDER 0x10EEEEu
+
+/* The index of a row/column diacritic (kitty's rowcolumn-diacritics list:
+ * U+0305 is 0, U+030D 1, ...), -1 for any other code point. */
+int gfx_diacritic(unsigned long cp);
+
+/* Whether any virtual placement exists (the text then has to be read for
+ * placeholders when painting). */
+bool gfx_any_virtual(const GfxStore *st);
+
+/* One run of placeholder cells on a view row: image id (with its most
+ * significant byte), placement id (0: any virtual placement of the image),
+ * the picture's row prow and its columns pcol0..pcol1, on view row vrow
+ * starting at view column vcol0. The picture fills its virtual placement's
+ * box (cols x rows cells), scaled to fit, centred. Fills out (its cells,
+ * and the picture's part over them, in view pixels) and returns 1, or 0
+ * when nothing of a picture is there. */
+int gfx_placeholder_piece(const GfxStore *st, uint32_t id, uint32_t pid,
+                          int prow, int pcol0, int pcol1, int vrow, int vcol0,
+                          int cell_w, int cell_h, GfxVisible *out);
 
 /* ---- animation ---------------------------------------------------------- */
 

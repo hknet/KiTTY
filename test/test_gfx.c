@@ -607,10 +607,15 @@ static void test_refusals_and_quiet(void)
     CHECK(!strncmp(r, "i=2;EINVAL:", 11), "t=f: '%s'", r);
     r = send(&st, &e, "a=t,f=24,s=1,v=1,t=s,i=2", red, 3);
     CHECK(!strncmp(r, "i=2;EINVAL:", 11), "t=s: '%s'", r);
+    /* U=1 is taken now (test_virtual); the two go again for the counts below */
     r = send(&st, &e, "a=T,f=24,s=1,v=1,U=1,i=2", red, 3);
-    CHECK(!strncmp(r, "i=2;EINVAL:", 11), "U=1: '%s'", r);
+    CHECK(!strcmp(r, "i=2;OK"), "U=1 with a=T: a virtual placement: '%s'", r);
     r = send(&st, &e, "a=p,i=1,U=1", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "U=1 on put: '%s'", r);
+    CHECK(!strcmp(r, "i=1;OK"), "U=1 on put: '%s'", r);
+    send(&st, &e, "a=d,d=I,i=2", NULL, 0);
+    send(&st, &e, "a=d,d=i,i=1", NULL, 0);
+    CHECK(st.n_pls == 0 && gfx_image_by_id(&st, 1) && !gfx_image_by_id(&st, 2),
+          "d=I / d=i take them away");
     r = send(&st, &e, "a=p,i=1,P=3,Q=1", NULL, 0);
     CHECK(!strncmp(r, "i=1;ENOPARENT:", 14), "relative, no such parent: '%s'", r);
     r = send(&st, &e, "a=p,i=1,H=2", NULL, 0);
@@ -1992,6 +1997,81 @@ static void test_animation(void)
     gfx_store_free(&st);
 }
 
+/* Unicode placeholders: the virtual placement, the diacritics, and the part
+ * of the picture a run of placeholder cells shows. */
+static void test_virtual(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    GfxVisible v, vis[8];
+    const GfxPlacement *pl;
+    const char *r;
+
+    CHECK(gfx_diacritic(0x0305) == 0 && gfx_diacritic(0x030D) == 1 &&
+          gfx_diacritic(0x030E) == 2 && gfx_diacritic(0x1D244) == 296 &&
+          gfx_diacritic(0x0300) == -1 && gfx_diacritic(0x10EEEE) == -1,
+          "the diacritics table");
+
+    gfx_store_init(&st);
+    put_red(&st, &e, 7, 16, 32);            /* 2 x 2 cells of 8 x 16 */
+    e.cur_x = 3;
+    e.cur_y = 4;
+    r = send(&st, &e, "a=p,i=7,U=1,c=4,r=2", NULL, 0);
+    pl = pl_of(&st, 7, 0);
+    CHECK(!strcmp(r, "i=7;OK") && pl && pl->virt && pl->cols == 4 && pl->rows == 2,
+          "a virtual placement, 4 x 2 cells: '%s'", r);
+    CHECK(last.cur_dx == 0 && last.cur_dy == 0, "the cursor did not move");
+    CHECK(gfx_visible(&st, 0, 0, 24, 80, 8, 16, vis, 8) == 0,
+          "not in the visible list: it shows only on placeholders");
+    CHECK(gfx_any_virtual(&st), "gfx_any_virtual");
+
+    /* the box is 32 x 32 px; the picture 16 x 32 fits at scale 1, centred:
+     * x 8..24, y 0..32. Row 0, columns 0-3 on view row 5 from column 10. */
+    CHECK(gfx_placeholder_piece(&st, 7, 0, 0, 0, 3, 5, 10, 8, 16, &v) &&
+          v.dx0 == 88 && v.dx1 == 104 && v.dy0 == 80 && v.dy1 == 96 &&
+          v.sx == 0 && v.sy == 0 && v.sw == 16 && v.sh == 16 &&
+          v.c0 == 10 && v.c1 == 13 && v.r0 == 5 && v.r1 == 5 && v.pl == pl,
+          "row 0: the top half, centred (%d,%d-%d,%d src %d,%d %dx%d)",
+          v.dx0, v.dy0, v.dx1, v.dy1, v.sx, v.sy, v.sw, v.sh);
+    CHECK(gfx_placeholder_piece(&st, 7, 0, 1, 1, 1, 6, 11, 8, 16, &v) &&
+          v.sx == 0 && v.sw == 8 && v.sy == 16 && v.sh == 16 &&
+          v.dx0 == 88 && v.dx1 == 96, "row 1, column 1 alone: the left half's bottom");
+    CHECK(!gfx_placeholder_piece(&st, 7, 0, 0, 3, 3, 5, 13, 8, 16, &v),
+          "column 3: beside the picture, nothing");
+    CHECK(!gfx_placeholder_piece(&st, 7, 0, 2, 0, 0, 5, 10, 8, 16, &v),
+          "row 2: outside the box");
+    CHECK(!gfx_placeholder_piece(&st, 7, 9, 0, 0, 0, 5, 10, 8, 16, &v),
+          "placement id 9: none");
+    CHECK(!gfx_placeholder_piece(&st, 8, 0, 0, 0, 0, 5, 10, 8, 16, &v),
+          "image 8: none");
+
+    /* a placement id picks that one */
+    send(&st, &e, "a=p,i=7,p=3,U=1,c=2,r=2", NULL, 0);
+    CHECK(gfx_placeholder_piece(&st, 7, 3, 0, 0, 1, 0, 0, 8, 16, &v) &&
+          v.pl == pl_of(&st, 7, 3) && v.dx0 == 0 && v.dx1 == 16,
+          "p=3: its own box (16 x 32 into 16 x 32, filled: %d..%d)", v.dx0, v.dx1);
+
+    /* relative to a virtual one, or a virtual relative one: refused */
+    r = send(&st, &e, "a=p,i=7,p=4,P=7,Q=3", NULL, 0);
+    CHECK(!strncmp(r, "i=7,p=4;ENOPARENT:", 18), "a virtual parent: '%s'", r);
+    r = send(&st, &e, "a=p,i=7,p=5,U=1,P=7,Q=3", NULL, 0);
+    CHECK(!strncmp(r, "i=7,p=5;EINVAL:", 15), "a virtual relative one: '%s'", r);
+
+    /* positions never reach it: scrolls, clears, deletions by place */
+    gfx_scroll_region(&st, 0, 0, 0, 23, 30, 8, 16, false);
+    gfx_clear_screen(&st, 0, 0);
+    gfx_clear_all(&st, 0);
+    gfx_set_base(&st, 0, 1000);
+    send(&st, &e, "a=d,d=a", NULL, 0);
+    send(&st, &e, "a=d,d=p,x=4,y=5", NULL, 0);
+    CHECK(pl_of(&st, 7, 0) && pl_of(&st, 7, 3), "still there after scrolls, clears and d=a/p");
+    send(&st, &e, "a=d,d=i,i=7,p=3", NULL, 0);
+    CHECK(pl_of(&st, 7, 0) && !pl_of(&st, 7, 3), "d=i with p: that one goes");
+    send(&st, &e, "a=d,d=i,i=7", NULL, 0);
+    CHECK(!pl_of(&st, 7, 0) && !gfx_any_virtual(&st), "d=i: gone");
+    gfx_store_free(&st);
+}
+
 static void test_scroll_region_carry(void)
 {
     GfxStore st;
@@ -2388,6 +2468,7 @@ int main(void)
     test_relative();
     test_animation();
     test_iterm_gif();
+    test_virtual();
     test_iterm_args();
     test_iterm_place();
     test_iterm_geometry();
