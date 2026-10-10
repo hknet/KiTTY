@@ -438,6 +438,78 @@ static void sweep_anonymous(GfxStore *st)
 
 static bool grow(void **p, int *cap, int need, size_t elem);
 
+/* ---- relative placements ------------------------------------------------- */
+
+static int pl_index_by_serial(const GfxStore *st, unsigned long serial)
+{
+    int i;
+    for (i = 0; i < st->n_pls; i++)
+        if (st->pls[i].serial == serial)
+            return i;
+    return -1;
+}
+
+/* Links from pl up to a placement that has no parent (0 for that one). A
+ * chain longer than allowed counts as too deep. */
+static int rel_depth(const GfxStore *st, const GfxPlacement *pl)
+{
+    int d = 0;
+    while (pl->parent && d <= GFX_REL_DEPTH + 1) {
+        int p = pl_index_by_serial(st, pl->parent);
+        if (p < 0)
+            break;
+        pl = &st->pls[p];
+        d++;
+    }
+    return d;
+}
+
+/* The relative placements follow their parents: placed at the parent's
+ * top-left plus their offset, and gone with a parent that has gone (and so
+ * on down the chain). Run after anything that moves or deletes placements.
+ * Returns whether something changed. */
+static bool rel_follow(GfxStore *st)
+{
+    bool changed = false, any = false;
+    int pass, i;
+    for (i = 0; i < st->n_pls && !any; i++)
+        any = st->pls[i].parent != 0;
+    if (!any)
+        return false;
+    /* one pass per link at most: a parent placed in this pass is right
+     * for its children in the next */
+    for (pass = 0; pass <= GFX_REL_DEPTH + 1; pass++) {
+        bool moved = false;
+        for (i = st->n_pls - 1; i >= 0; i--) {
+            GfxPlacement *pl = &st->pls[i];
+            const GfxPlacement *par;
+            int p;
+            if (!pl->parent)
+                continue;
+            p = pl_index_by_serial(st, pl->parent);
+            if (p < 0) {
+                pl_remove(st, i);
+                moved = changed = true;
+                continue;
+            }
+            par = &st->pls[p];
+            if (pl->screen != par->screen ||
+                pl->abs_line != par->abs_line + pl->rel_v ||
+                pl->col != par->col + pl->rel_h) {
+                pl->screen = par->screen;
+                pl->abs_line = par->abs_line + pl->rel_v;
+                pl->col = par->col + pl->rel_h;
+                moved = changed = true;
+            }
+        }
+        if (!moved)
+            break;
+    }
+    if (changed)
+        sweep_anonymous(st);
+    return changed;
+}
+
 /* An anonymous image (no id, no number: nothing but its placements reaches
  * it) whose every placement has scrolled into the main screen's scrollback,
  * seen from the screen shown: it can go when room is needed, as kitty
@@ -628,6 +700,7 @@ void gfx_rescale(GfxStore *st, int cell_w, int cell_h)
     }
     if (gone)
         sweep_anonymous(st);
+    rel_follow(st);
 }
 
 /* ---- replies ------------------------------------------------------------ */
@@ -678,6 +751,62 @@ static const char *pl_insert(GfxStore *st, const GfxEnv *env, GfxImage *img,
                              GfxPlacement *plp, GfxResult *res,
                              const char **msg);
 
+/* A relative placement (P/Q/H/V): finds the parent and anchors pl to it.
+ * The parent is image P's placement Q; Q=0 is its newest placement without
+ * an id. Returns an error code or NULL. */
+static const char *rel_parent(const GfxStore *st, const GfxImage *img,
+                              const GfxCmd *c, GfxPlacement *pl,
+                              const char **msg)
+{
+    const GfxPlacement *par = NULL;
+    int i, pi;
+    if (!(c->have & GFX_K_P) || !c->P ||
+        (pi = img_index_by_id(st, c->P)) < 0) {
+        *msg = "no parent image";
+        return "ENOPARENT";
+    }
+    for (i = 0; i < st->n_pls; i++) {
+        const GfxPlacement *o = &st->pls[i];
+        if (o->image_key != st->imgs[pi].key || o->placement_id != c->Q)
+            continue;
+        if (!par || o->serial > par->serial)
+            par = o;
+    }
+    if (!par) {
+        *msg = "no parent placement";
+        return "ENOPARENT";
+    }
+    /* This placement replaces one of its own ancestors (or itself): a loop. */
+    if (pl->placement_id) {
+        const GfxPlacement *a = par;
+        int d = 0;
+        for (;;) {
+            if (a->image_key == img->key && a->placement_id == pl->placement_id) {
+                *msg = "the placement would be its own ancestor";
+                return "ECYCLE";
+            }
+            if (!a->parent || ++d > GFX_REL_DEPTH + 1)
+                break;
+            i = pl_index_by_serial(st, a->parent);
+            if (i < 0)
+                break;
+            a = &st->pls[i];
+        }
+    }
+    if (rel_depth(st, par) + 1 > GFX_REL_DEPTH) {
+        *msg = "chain of relative placements too long";
+        return "ETOODEEP";
+    }
+    pl->parent = par->serial;
+    pl->rel_h = c->H;
+    pl->rel_v = c->V;
+    pl->screen = par->screen;
+    pl->abs_line = par->abs_line + c->V;
+    pl->col = par->col + c->H;
+    pl->no_cursor = true;              /* never moves the cursor */
+    return NULL;
+}
+
 /* Returns an error code or NULL. */
 static const char *place(GfxStore *st, const GfxEnv *env, GfxImage *img,
                          const GfxCmd *c, GfxResult *res, const char **msg)
@@ -716,6 +845,11 @@ static const char *place(GfxStore *st, const GfxEnv *env, GfxImage *img,
     pl.req_r = (int)(c->r > 10000 ? 10000 : c->r);
     pl.no_cursor = c->C == 1;
     pl.z = c->z;
+    if (c->have & (GFX_K_P | GFX_K_Q | GFX_K_H | GFX_K_V)) {
+        const char *code = rel_parent(st, img, c, &pl, msg);
+        if (code)
+            return code;
+    }
     pl_fit(&pl, env->cell_w, env->cell_h);
     return pl_insert(st, env, img, &pl, res, msg);
 }
@@ -1004,10 +1138,6 @@ static const char *transmit_check(const GfxStore *st, const GfxEnv *env,
         *msg = "Unicode placeholders are not supported";
         return "EINVAL";
     }
-    if (c->have & (GFX_K_P | GFX_K_Q | GFX_K_H | GFX_K_V)) {
-        *msg = "relative placements are not supported";
-        return "EINVAL";
-    }
     if (c->o == 'z' && !env->inflate) {
         *msg = "compression is not supported";
         return "EINVAL";
@@ -1199,8 +1329,21 @@ static const char *do_delete(GfxStore *st, const GfxEnv *env, const GfxCmd *c,
 
 /* ---- the command -------------------------------------------------------- */
 
+static bool command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
+                    size_t len, GfxResult *res);
+
 bool gfx_command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
                  size_t len, GfxResult *res)
+{
+    bool ok = command(st, env, s, len, res);
+    /* a deletion or a replaced parent: the relative placements follow */
+    if (rel_follow(st))
+        res->changed = true;
+    return ok;
+}
+
+static bool command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
+                    size_t len, GfxResult *res)
 {
     GfxCmd c;
     char err[GFX_ERR_MAX];
@@ -1249,9 +1392,6 @@ bool gfx_command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
         if (c.U) {
             code = "EINVAL";
             msg = "Unicode placeholders are not supported";
-        } else if (c.have & (GFX_K_P | GFX_K_Q | GFX_K_H | GFX_K_V)) {
-            code = "EINVAL";
-            msg = "relative placements are not supported";
         } else {
             i = c.i ? img_index_by_id(st, c.i) : img_index_by_number(st, c.I);
             if (i < 0) {
@@ -1997,6 +2137,7 @@ void gfx_set_base(GfxStore *st, int screen, long base_abs)
             st->pls[i].abs_line + st->pls[i].rows <= base_abs)
             pl_remove(st, i);
     sweep_anonymous(st);
+    rel_follow(st);
 }
 
 void gfx_set_carry(GfxStore *st, bool on, int screen, long abs_line, int col)
@@ -2026,6 +2167,8 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
         long row0, row1;
         if (pl->screen != screen)
             continue;
+        if (pl->parent)
+            continue;         /* placed by its parent (rel_follow) */
         row0 = pl->abs_line - top_before;
         row1 = row0 + pl->rows - 1;
         if (row1 <= bot)
@@ -2048,6 +2191,7 @@ void gfx_scroll_region_sb(GfxStore *st, int screen, long top_abs_after,
     }
     if (gone)
         sweep_anonymous(st);
+    rel_follow(st);
 }
 
 /* Cuts k rows off the top (k > 0) or bottom (k < 0) of a placement; false
@@ -2099,6 +2243,8 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         bool below;
         if (pl->screen != screen)
             continue;
+        if (pl->parent)
+            continue;         /* placed by its parent (rel_follow) */
         row0 = pl->abs_line - top_abs;
         row1 = row0 + pl->rows - 1;
         /* reaching below the screen's last row: nothing is there to stay
@@ -2137,6 +2283,7 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
         }
     }
     sweep_anonymous(st);
+    rel_follow(st);
 }
 
 void gfx_clear_below(GfxStore *st, int screen, long abs_line)
@@ -2146,6 +2293,7 @@ void gfx_clear_below(GfxStore *st, int screen, long abs_line)
         if (st->pls[i].screen == screen && st->pls[i].abs_line >= abs_line)
             pl_remove(st, i);
     sweep_anonymous(st);
+    rel_follow(st);
 }
 
 void gfx_clear_screen(GfxStore *st, int screen, long top_abs)
@@ -2156,6 +2304,7 @@ void gfx_clear_screen(GfxStore *st, int screen, long top_abs)
             st->pls[i].abs_line + st->pls[i].rows > top_abs)
             pl_remove(st, i);
     sweep_anonymous(st);
+    rel_follow(st);
 }
 
 void gfx_clear_all(GfxStore *st, int screen)
@@ -2165,6 +2314,7 @@ void gfx_clear_all(GfxStore *st, int screen)
         if (st->pls[i].screen == screen)
             pl_remove(st, i);
     sweep_anonymous(st);
+    rel_follow(st);
 }
 
 void gfx_reset(GfxStore *st)

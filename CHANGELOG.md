@@ -8,6 +8,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **kitty graphics: relative placements.** A placement given `P` and `Q`
+  (the parent's image and placement id) and `H` / `V` (cells right and
+  down) is anchored to that parent: it moves with it, goes with it, and
+  leaves the cursor where it is. A missing parent is answered
+  `ENOPARENT`, a loop `ECYCLE`, a chain over 8 links `ETOODEEP`. Before,
+  they were refused.
 - **iTerm2's `ReportCellSize` is answered.** `OSC 1337 ; ReportCellSize`
   gets the cell height and width in points and the scale (DPI / 96), as
   iTerm2's own tools query it instead of `CSI 16 t`.

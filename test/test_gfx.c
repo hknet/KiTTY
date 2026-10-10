@@ -612,9 +612,9 @@ static void test_refusals_and_quiet(void)
     r = send(&st, &e, "a=p,i=1,U=1", NULL, 0);
     CHECK(!strncmp(r, "i=1;EINVAL:", 11), "U=1 on put: '%s'", r);
     r = send(&st, &e, "a=p,i=1,P=3,Q=1", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "relative: '%s'", r);
+    CHECK(!strncmp(r, "i=1;ENOPARENT:", 14), "relative, no such parent: '%s'", r);
     r = send(&st, &e, "a=p,i=1,H=2", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "H alone: '%s'", r);
+    CHECK(!strncmp(r, "i=1;ENOPARENT:", 14), "H alone: '%s'", r);
     r = send(&st, &e, "a=f,i=1,f=24,s=1,v=1", red, 3);
     CHECK(!strncmp(r, "i=1;EINVAL:", 11), "a=f: '%s'", r);
     r = send(&st, &e, "a=a,i=1,s=3", NULL, 0);
@@ -1699,6 +1699,96 @@ static void test_scroll_to_bottom(void)
  * straddling the margin keeps the old rule; the same through the
  * scrollback path (a region with its top at row 0 on the main screen).
  */
+/* Relative placements (P/Q/H/V): anchored to a parent, moving and going
+ * with it, never moving the cursor; the three refusals. */
+static void test_relative(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxPlacement *par, *ch;
+    const char *r;
+    char ctl[64];
+    int k;
+
+    gfx_store_init(&st);
+    put_red(&st, &e, 1, 16, 32);            /* 2 x 2 cells */
+    put_red(&st, &e, 2, 8, 16);             /* 1 x 1 */
+    e.cur_x = 10;
+    e.cur_y = 5;
+    r = send(&st, &e, "a=p,i=1,p=1", NULL, 0);
+    CHECK(!strcmp(r, "i=1,p=1;OK"), "parent placed: '%s'", r);
+    e.cur_x = 40;                           /* wherever the cursor is */
+    e.cur_y = 20;
+    r = send(&st, &e, "a=p,i=2,p=7,P=1,Q=1,H=3,V=1", NULL, 0);
+    CHECK(!strcmp(r, "i=2,p=7;OK"), "child placed: '%s'", r);
+    ch = pl_of(&st, 2, 7);
+    CHECK(ch && ch->col == 13 && ch->abs_line == 6 && ch->parent,
+          "at the parent's top-left plus H/V (%d %ld)", ch ? ch->col : -1,
+          ch ? ch->abs_line : -1L);
+    CHECK(last.cur_dx == 0 && last.cur_dy == 0, "the cursor did not move");
+    r = send(&st, &e, "a=p,i=2,p=8,P=1,Q=1,H=-2,V=-1", NULL, 0);
+    ch = pl_of(&st, 2, 8);
+    CHECK(!strcmp(r, "i=2,p=8;OK") && ch && ch->col == 8 && ch->abs_line == 4,
+          "negative offsets: '%s'", r);
+
+    /* the parent moves: a region scroll (rows 0..23 by 2), its children too */
+    gfx_scroll_region(&st, 0, 0, 0, 23, 2, 8, 16, false);
+    par = pl_of(&st, 1, 1);
+    ch = pl_of(&st, 2, 7);
+    CHECK(par && par->abs_line == 3 && ch && ch->abs_line == 4 && ch->col == 13,
+          "moved with the parent (%ld %ld)", par ? par->abs_line : -1L,
+          ch ? ch->abs_line : -1L);
+    /* the parent is placed again elsewhere (same id): the child follows */
+    e.cur_x = 0;
+    e.cur_y = 0;
+    send(&st, &e, "a=p,i=1,p=1", NULL, 0);
+    ch = pl_of(&st, 2, 7);
+    CHECK(ch && ch->col == 3 && ch->abs_line == 1, "re-placed parent: followed");
+
+    /* a chain: grandchild of the parent */
+    r = send(&st, &e, "a=p,i=2,p=9,P=2,Q=7,H=1", NULL, 0);
+    ch = pl_of(&st, 2, 9);
+    CHECK(!strcmp(r, "i=2,p=9;OK") && ch && ch->col == 4, "a child of a child: '%s'", r);
+
+    /* a loop: the parent made a child of its own grandchild */
+    r = send(&st, &e, "a=p,i=1,p=1,P=2,Q=9", NULL, 0);
+    CHECK(!strncmp(r, "i=1,p=1;ECYCLE:", 15), "loop refused: '%s'", r);
+    CHECK(pl_of(&st, 1, 1) && !pl_of(&st, 1, 1)->parent, "the parent is unchanged");
+    r = send(&st, &e, "a=p,i=2,p=7,P=2,Q=7", NULL, 0);
+    CHECK(!strncmp(r, "i=2,p=7;ECYCLE:", 15), "its own parent: '%s'", r);
+    r = send(&st, &e, "a=p,i=2,p=10,P=1,Q=55", NULL, 0);
+    CHECK(!strncmp(r, "i=2,p=10;ENOPARENT:", 19), "no such placement: '%s'", r);
+
+    /* deleting the parent deletes the chain below it */
+    send(&st, &e, "a=d,d=i,i=1,p=1", NULL, 0);
+    CHECK(!pl_of(&st, 2, 7) && !pl_of(&st, 2, 8) && !pl_of(&st, 2, 9),
+          "children and grandchild gone with the parent");
+    CHECK(last.changed, "a repaint is due");
+
+    /* depth: a chain of GFX_REL_DEPTH links is fine, one more is not */
+    send(&st, &e, "a=p,i=1,p=1", NULL, 0);
+    for (k = 1; k <= GFX_REL_DEPTH; k++) {
+        sprintf(ctl, "a=p,i=2,p=%d,P=%d,Q=%d,H=1", 100 + k, k == 1 ? 1 : 2,
+                k == 1 ? 1 : 100 + k - 1);
+        r = send(&st, &e, ctl, NULL, 0);
+        CHECK(strstr(r, ";OK") != NULL, "link %d: '%s'", k, r);
+    }
+    sprintf(ctl, "a=p,i=2,p=200,P=2,Q=%d", 100 + GFX_REL_DEPTH);
+    r = send(&st, &e, ctl, NULL, 0);
+    CHECK(!strncmp(r, "i=2,p=200;ETOODEEP:", 19), "one link too many: '%s'", r);
+
+    /* the parent scrolls off the scrollback: the chain goes with it */
+    gfx_set_base(&st, 0, 100);
+    CHECK(st.n_pls == 0, "all gone with the parent (%d left)", st.n_pls);
+
+    /* a=T places too, with a parent */
+    send(&st, &e, "a=p,i=1,p=1", NULL, 0);
+    r = send(&st, &e, "a=T,f=24,s=1,v=1,i=3,p=1,P=1,Q=1,V=2", red, 3);
+    ch = pl_of(&st, 3, 1);
+    CHECK(!strcmp(r, "i=3,p=1;OK") && ch && ch->abs_line == 2, "a=T with a parent: '%s'", r);
+    gfx_store_free(&st);
+}
+
 static void test_scroll_region_carry(void)
 {
     GfxStore st;
@@ -2092,6 +2182,7 @@ int main(void)
     test_visible();
     test_scroll_to_bottom();
     test_scroll_region_carry();
+    test_relative();
     test_iterm_args();
     test_iterm_place();
     test_iterm_geometry();

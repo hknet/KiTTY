@@ -11,9 +11,15 @@
  * move. Decoding (PNG, inflate) comes in through the environment.
  *
  * Supported: a=t/T/p/d/q, t=d, f=24/32/100, o=z, m, q, i, I, p, x/y/w/h,
- * X/Y, c/r, C, z, every d mode, N (ignored). Refused with EINVAL so programs
- * fall back: files and shared memory (t=f/t/s), animation (a=f/a/c, d=f/F),
- * Unicode placeholders (U=1), relative placements (P/Q/H/V).
+ * X/Y, c/r, C, z, every d mode, N (ignored), relative placements (P/Q/H/V).
+ * Refused with EINVAL so programs fall back: files and shared memory
+ * (t=f/t/s), animation (a=f/a/c, d=f/F), Unicode placeholders (U=1).
+ *
+ * A relative placement (P/Q: the parent's image id and placement id, H/V:
+ * cells right and down from the parent's top-left, negative allowed) moves
+ * with its parent and goes when the parent goes; it never moves the cursor.
+ * Chains are kept to GFX_REL_DEPTH links (ETOODEEP), a loop is ECYCLE, a
+ * parent not found ENOPARENT.
  *
  * Lines are numbered absolutely: the glue hands over the absolute number of
  * the top screen row (top_abs); a placement keeps its anchor while text
@@ -56,6 +62,10 @@
 #define GFX_MASKS_MAX_BYTES   ((size_t)16u * 1024u * 1024u)
 /* Pieces of one cut picture in a visible list (gfx_visible_cut). */
 #define GFX_CUT_PIECES_MAX    64
+
+/* Links in a chain of relative placements (the specification requires at
+ * least 8). */
+#define GFX_REL_DEPTH         8
 
 #define GFX_REPLY_MAX         192
 #define GFX_ERR_MAX           96
@@ -140,6 +150,10 @@ typedef struct GfxPlacement {
     unsigned char *mask;
     int mask_cols, mask_rows;  /* the mask's shape, kept equal to cols/rows */
     int n_marked;              /* bits set */
+    /* a relative placement: the parent's serial (0: none) and the offset in
+     * cells from its top-left; screen, abs_line and col follow the parent */
+    unsigned long parent;
+    int rel_h, rel_v;
 } GfxPlacement;
 
 /* A chunked upload in progress (t=d, m=1). */
