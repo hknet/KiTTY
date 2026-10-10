@@ -8,6 +8,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **kitty graphics: animation.** Frames (`a=f`, on a base frame or a
+  background colour, edited with `r`), the terminal playing them with
+  their gaps or the program choosing one (`a=a`: `s`, `v`, `c`, `z`),
+  composing (`a=c`) and deleting frames (`d=f` / `d=F`). Before, they were
+  refused. Frames count against the
+  picture memory (at most 1000 a picture); a minimised window, or one in
+  the tray, waits instead of drawing.
 - **kitty graphics: relative placements.** A placement given `P` and `Q`
   (the parent's image and placement id) and `H` / `V` (cells right and
   down) is anchored to that parent: it moves with it, goes with it, and

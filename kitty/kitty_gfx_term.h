@@ -28,6 +28,11 @@ extern bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
                                           size_t len, unsigned char **px,
                                           int *w, int *h);
 
+/* Set by the window: true while it cannot be seen (minimised, in the tray).
+ * The animations wait meanwhile instead of drawing frames nobody sees.
+ * NULL: never paused. */
+extern bool (*kitty_gfx_paused_hook)(void *ctx);
+
 /* Serve one APC _G: s/len is everything after the 'G'. cut: the sequence
  * was cut at its ceiling (answered EFBIG). dx and dy get how far the cursor
  * moves right/down (0 when it stays); terminal.c applies them, the rows as

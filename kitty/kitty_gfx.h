@@ -11,9 +11,15 @@
  * move. Decoding (PNG, inflate) comes in through the environment.
  *
  * Supported: a=t/T/p/d/q, t=d, f=24/32/100, o=z, m, q, i, I, p, x/y/w/h,
- * X/Y, c/r, C, z, every d mode, N (ignored), relative placements (P/Q/H/V).
- * Refused with EINVAL so programs fall back: files and shared memory
- * (t=f/t/s), animation (a=f/a/c, d=f/F), Unicode placeholders (U=1).
+ * X/Y, c/r, C, z, every d mode, N (ignored), relative placements (P/Q/H/V),
+ * animation (a=f frames, a=a control, a=c composing, d=f/F). Refused with
+ * EINVAL so programs fall back: files and shared memory (t=f/t/s), Unicode
+ * placeholders (U=1).
+ *
+ * An animated picture holds every frame whole (premultiplied BGRA, w x h),
+ * counted against the store's bytes; frame 1 is the picture transmitted.
+ * The terminal glue drives the clock: gfx_animate at the time
+ * gfx_anim_next gives, then repaints the pictures' cells.
  *
  * A relative placement (P/Q: the parent's image id and placement id, H/V:
  * cells right and down from the parent's top-left, negative allowed) moves
@@ -54,6 +60,8 @@
 #define GFX_STORE_MAX_BYTES   ((size_t)128u * 1024u * 1024u)
 #define GFX_MAX_IMAGES        256
 #define GFX_MAX_PLACEMENTS    1024
+#define GFX_MAX_FRAMES        1000         /* an animated picture's frames */
+#define GFX_DEFAULT_GAP       40           /* ms, a new frame without z */
 #define GFX_PENDING_MAX       ((size_t)48u * 1024u * 1024u)
 /* The cut-out cells of a cell-bound picture, a bit a cell: at most this many
  * cells a picture, and this many bytes of them in the store. A picture over
@@ -123,6 +131,15 @@ typedef struct GfxImage {
     bool opaque;
     unsigned long serial;      /* new for every change of the pixels */
     unsigned long last_use;    /* store tick of the last transmit/placement */
+    /* animation (a=f, an iTerm2 GIF): every frame held whole, px is the
+     * shown one (frames[cur]); frames NULL: a single picture */
+    unsigned char **frames;
+    int *gaps;                 /* ms per frame; 0: passed over while playing */
+    int n_frames, cur;
+    char anim;                 /* 0 stopped, 'l' loading (waits at the last
+                                * frame), 'p' playing (loops) */
+    int max_loops, loops;      /* v-1 loops, 0: for ever */
+    unsigned long due;         /* GfxEnv.now_ms the next frame is due */
 } GfxImage;
 
 typedef struct GfxPlacement {
@@ -232,6 +249,7 @@ typedef struct GfxEnv {
     int screen;                /* 0 main, 1 alternate */
     long top_abs;              /* absolute line of screen row 0 */
     int cur_x, cur_y;          /* the cursor cell */
+    unsigned long now_ms;      /* a millisecond clock, for the animations */
     /* an iTerm2 or Sixel picture is not to scroll the screen (mintty's
      * ?7780): > 0, the rows from the cursor row to the bottom margin - a
      * picture taller is cut there - and the cursor stays; 0: off */
@@ -325,6 +343,15 @@ bool gfx_iterm(GfxStore *st, const GfxEnv *env, const unsigned char *s,
 const char *gfx_place_pixels(GfxStore *st, const GfxEnv *env,
                              unsigned char *px, int w, int h, bool no_cursor,
                              GfxResult *res);
+
+/* ---- animation ---------------------------------------------------------- */
+
+/* The playing animations move on to the frame due at now_ms. Returns
+ * whether a shown frame changed (the cells of the placements to repaint). */
+bool gfx_animate(GfxStore *st, unsigned long now_ms);
+
+/* Milliseconds until the next frame is due (0: now), -1 when nothing plays. */
+long gfx_anim_next(const GfxStore *st, unsigned long now_ms);
 
 /* ---- line movement, called by the terminal glue ------------------------ */
 

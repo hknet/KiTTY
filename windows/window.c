@@ -617,6 +617,14 @@ static bool gfx_decode_file(void *ctx, int fmt, const unsigned char *data,
                             px, w, h);
 }
 
+/* The animations wait while the terminal window cannot be seen. */
+static bool gfx_paused(void *ctx)
+{
+    HWND h = GetMainHwnd();
+    (void)ctx;
+    return !h || IsIconic(h) || !IsWindowVisible(h);
+}
+
 static bool gfx_inflate(void *ctx, const unsigned char *in, size_t len,
                         size_t max_out, unsigned char **out, size_t *outlen)
 {
@@ -2582,6 +2590,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kitty_gfx_decode_png_hook = gfx_decode_png;
         kitty_gfx_decode_file_hook = gfx_decode_file;
         kitty_gfx_inflate_hook = gfx_inflate;
+        /* the animations wait while the window cannot be seen */
+        kitty_gfx_paused_hook = gfx_paused;
 #endif
 #ifdef MOD_PERSO
         /* KiTTY: a terminal window has existed in this process. What

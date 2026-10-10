@@ -351,6 +351,10 @@ struct terminal_tag {
     struct GfxStore *gfx;
     long gfx_sb_base;
     int cellpix_x, cellpix_y;
+    /* KiTTY: the animations' clock (kitty_gfx_term.c): the time the timer
+     * set last is due, and whether one is set */
+    unsigned long gfx_anim_due;
+    bool gfx_anim_set;
     /* KiTTY: the window's DPI (term_notify_dpi), 0 until reported - for
      * iTerm2's ReportCellSize, which answers in points */
     int dpi;

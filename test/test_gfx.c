@@ -615,15 +615,13 @@ static void test_refusals_and_quiet(void)
     CHECK(!strncmp(r, "i=1;ENOPARENT:", 14), "relative, no such parent: '%s'", r);
     r = send(&st, &e, "a=p,i=1,H=2", NULL, 0);
     CHECK(!strncmp(r, "i=1;ENOPARENT:", 14), "H alone: '%s'", r);
-    r = send(&st, &e, "a=f,i=1,f=24,s=1,v=1", red, 3);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "a=f: '%s'", r);
-    r = send(&st, &e, "a=a,i=1,s=3", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "a=a: '%s'", r);
+    r = send(&st, &e, "a=f,i=9,f=24,s=1,v=1", red, 3);
+    CHECK(!strncmp(r, "i=9;ENOENT:", 11), "a=f, no such picture: '%s'", r);
     r = send(&st, &e, "a=c,i=1,r=1,c=2", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "a=c: '%s'", r);
+    CHECK(!strncmp(r, "i=1;ENOENT:", 11), "a=c, no frame 2: '%s'", r);
     r = send(&st, &e, "a=d,d=f,i=1", NULL, 0);
-    CHECK(!strncmp(r, "i=1;EINVAL:", 11) && gfx_image_by_id(&st, 1),
-          "d=f: '%s'", r);
+    CHECK(!r[0] && gfx_image_by_id(&st, 1),
+          "d=f on a single frame: nothing, not answered: '%s'", r);
     r = send(&st, &e, "a=T,f=24,s=1,v=1,N=1,i=3", red, 3);
     CHECK(!strcmp(r, "i=3;OK"), "N is accepted and ignored: '%s'", r);
     CHECK(st.n_pls == 1, "placed with N");
@@ -1789,6 +1787,138 @@ static void test_relative(void)
     gfx_store_free(&st);
 }
 
+/* The colour of frame f of image id at pixel (x, y): premultiplied B,G,R,A
+ * packed 0xAARRGGBB. */
+static uint32_t frame_px(const GfxStore *st, uint32_t id, int f, int x, int y)
+{
+    const GfxImage *img = gfx_image_by_id(st, id);
+    const unsigned char *p;
+    if (!img || !img->frames || f >= img->n_frames)
+        return 0xdeadbeef;
+    p = img->frames[f] + ((size_t)y * img->w + x) * 4;
+    return ((uint32_t)p[3] << 24) | ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0];
+}
+
+/* Animation: frames (a=f), control (a=a), composing (a=c), deleting
+ * (d=f/F), the clock (gfx_animate / gfx_anim_next). */
+static void test_animation(void)
+{
+    GfxStore st;
+    GfxEnv e = env_default();
+    const GfxImage *img;
+    const char *r;
+    unsigned char blue[2 * 2 * 3], green4[4];
+    unsigned long serial;
+    int k;
+
+    for (k = 0; k < 4; k++) { blue[k * 3] = 0; blue[k * 3 + 1] = 0; blue[k * 3 + 2] = 255; }
+    green4[0] = 0; green4[1] = 255; green4[2] = 0; green4[3] = 255;
+    gfx_store_init(&st);
+    put_red(&st, &e, 1, 4, 4);
+    send(&st, &e, "a=p,i=1", NULL, 0);
+    e.now_ms = 1000;
+
+    /* frame 2: blue 2x2 at 1,1 over a transparent background */
+    r = send(&st, &e, "a=f,i=1,f=24,s=2,v=2,x=1,y=1,z=100", blue, sizeof(blue));
+    img = gfx_image_by_id(&st, 1);
+    CHECK(!strcmp(r, "i=1;OK") && img && img->n_frames == 2, "a=f adds frame 2: '%s'", r);
+    CHECK(frame_px(&st, 1, 1, 0, 0) == 0 && frame_px(&st, 1, 1, 1, 1) == 0xff0000ffu,
+          "frame 2: background transparent, blue at 1,1 (%08x %08x)",
+          frame_px(&st, 1, 1, 0, 0), frame_px(&st, 1, 1, 1, 1));
+    CHECK(img && img->gaps[1] == 100 && img->cur == 0 && !img->opaque,
+          "its gap, frame 1 still shown, no longer opaque");
+    /* frame 3 on frame 1 (red), one green pixel at 3,3, Y ignored */
+    r = send(&st, &e, "a=f,i=1,f=32,s=1,v=1,x=3,y=3,c=1", green4, 4);
+    CHECK(!strcmp(r, "i=1;OK") && frame_px(&st, 1, 2, 0, 0) == 0xffff0000u
+          && frame_px(&st, 1, 2, 3, 3) == 0xff00ff00u,
+          "frame 3 on frame 1: red, green at 3,3 (%08x %08x)",
+          frame_px(&st, 1, 2, 0, 0), frame_px(&st, 1, 2, 3, 3));
+    img = gfx_image_by_id(&st, 1);
+    CHECK(img && img->gaps[2] == GFX_DEFAULT_GAP, "default gap %d", img ? img->gaps[2] : -1);
+    /* frame 4 on an opaque yellow background (Y = RRGGBBAA) */
+    r = send(&st, &e, "a=f,i=1,f=32,s=1,v=1,Y=4294902015", green4, 4);
+    CHECK(frame_px(&st, 1, 3, 2, 2) == 0xffffff00u && frame_px(&st, 1, 3, 0, 0) == 0xff00ff00u,
+          "frame 4: yellow background, green at 0,0 (%08x)", frame_px(&st, 1, 3, 2, 2));
+    /* edit frame 2 (r=2): replace a pixel */
+    r = send(&st, &e, "a=f,i=1,f=32,s=1,v=1,x=0,y=0,r=2,X=1", green4, 4);
+    CHECK(!strcmp(r, "i=1;OK") && frame_px(&st, 1, 1, 0, 0) == 0xff00ff00u &&
+          gfx_image_by_id(&st, 1)->n_frames == 4, "r=2 edits frame 2, no new frame");
+    r = send(&st, &e, "a=f,i=1,f=32,s=1,v=1,c=9", green4, 4);
+    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "base frame 9: '%s'", r);
+
+    /* client-driven: c=3 shows frame 3 */
+    serial = gfx_image_by_id(&st, 1)->serial;
+    last.changed = false;
+    r = send(&st, &e, "a=a,i=1,c=3", NULL, 0);
+    img = gfx_image_by_id(&st, 1);
+    CHECK(!strcmp(r, "i=1;OK") && img->cur == 2 && img->px == img->frames[2] &&
+          img->serial != serial && last.changed, "a=a,c=3 shows frame 3");
+
+    /* the clock: frame 1 has no gap (passed over), 2: 100, 3: 40, 4: 40 */
+    send(&st, &e, "a=a,i=1,c=1", NULL, 0);
+    CHECK(gfx_anim_next(&st, e.now_ms) < 0, "stopped: nothing due");
+    send(&st, &e, "a=a,i=1,s=3,v=3", NULL, 0);          /* v=3: two passes */
+    CHECK(gfx_anim_next(&st, e.now_ms) == 0, "playing: frame 1 has no gap, due now");
+    CHECK(gfx_animate(&st, 1000) && gfx_image_by_id(&st, 1)->cur == 1, "-> frame 2");
+    CHECK(gfx_anim_next(&st, 1000) == 100, "frame 2's gap: %ld", gfx_anim_next(&st, 1000));
+    CHECK(!gfx_animate(&st, 1050), "not yet");
+    CHECK(gfx_animate(&st, 1100) && gfx_image_by_id(&st, 1)->cur == 2, "-> frame 3");
+    CHECK(gfx_animate(&st, 1140) && gfx_image_by_id(&st, 1)->cur == 3, "-> frame 4");
+    CHECK(gfx_animate(&st, 1180) && gfx_image_by_id(&st, 1)->cur == 1,
+          "the loop: frame 1 passed over, -> frame 2");
+    gfx_animate(&st, 1280);
+    gfx_animate(&st, 1320);
+    gfx_animate(&st, 1360);
+    img = gfx_image_by_id(&st, 1);
+    CHECK(img->cur == 3 && !img->anim, "v=3: two passes, stopped on the last frame (%d %c)",
+          img->cur, img->anim ? img->anim : '0');
+    CHECK(gfx_anim_next(&st, 1400) < 0, "stopped: nothing due");
+    /* a gap through a=a */
+    send(&st, &e, "a=a,i=1,r=1,z=250", NULL, 0);
+    CHECK(gfx_image_by_id(&st, 1)->gaps[0] == 250, "a=a,r=1,z=250 sets frame 1's gap");
+
+    /* loading: waits at the last frame */
+    send(&st, &e, "a=a,i=1,c=4,s=2", NULL, 0);
+    e.now_ms = 2000;
+    CHECK(!gfx_animate(&st, 2000) && gfx_image_by_id(&st, 1)->cur == 3 &&
+          gfx_anim_next(&st, 2000) < 0, "loading: stays on the last frame");
+    send(&st, &e, "a=a,i=1,s=1", NULL, 0);
+
+    /* a=c: frame 4's green pixel onto frame 2 at 3,0, replacing */
+    r = send(&st, &e, "a=c,i=1,r=4,c=2,X=0,Y=0,x=3,y=0,w=1,h=1,C=1", NULL, 0);
+    CHECK(!strcmp(r, "i=1;OK") && frame_px(&st, 1, 1, 3, 0) == 0xff00ff00u, "a=c composes: '%s'", r);
+    r = send(&st, &e, "a=c,i=1,r=2,c=2,X=0,Y=0,x=1,y=0,w=2,h=2", NULL, 0);
+    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "overlapping in one frame: '%s'", r);
+    r = send(&st, &e, "a=c,i=1,r=2,c=3,x=3,w=2", NULL, 0);
+    CHECK(!strncmp(r, "i=1;EINVAL:", 11), "outside the picture: '%s'", r);
+
+    /* d=f: frame 2 goes, the frame shown stays the same frame */
+    send(&st, &e, "a=a,i=1,c=3", NULL, 0);
+    send(&st, &e, "a=d,d=f,i=1,r=2", NULL, 0);
+    img = gfx_image_by_id(&st, 1);
+    CHECK(img && img->n_frames == 3 && img->cur == 1 && frame_px(&st, 1, 1, 3, 3) == 0xff00ff00u,
+          "d=f,r=2: three left, frame shown kept (%d %d)", img ? img->n_frames : -1, img ? img->cur : -1);
+    send(&st, &e, "a=d,d=f,i=1,r=9", NULL, 0);            /* the last */
+    send(&st, &e, "a=d,d=f,i=1,r=1", NULL, 0);            /* the root */
+    img = gfx_image_by_id(&st, 1);
+    CHECK(img && img->n_frames == 1 && st.bytes == (size_t)4 * 4 * 4,
+          "down to one frame, the bytes counted back (%zu)", st.bytes);
+    send(&st, &e, "a=d,d=f,i=1", NULL, 0);
+    CHECK(gfx_image_by_id(&st, 1) != NULL, "d=f on the last frame: kept");
+    send(&st, &e, "a=d,d=F,i=1", NULL, 0);
+    CHECK(gfx_image_by_id(&st, 1) == NULL && st.n_pls == 0, "d=F on the last frame: the picture goes");
+
+    /* frames count against the store's bytes */
+    put_red(&st, &e, 2, 4, 4);
+    st.max_bytes = (size_t)4 * 4 * 4 * 3;
+    send(&st, &e, "a=f,i=2,f=24,s=2,v=2", blue, sizeof(blue));
+    send(&st, &e, "a=f,i=2,f=24,s=2,v=2", blue, sizeof(blue));
+    r = send(&st, &e, "a=f,i=2,f=24,s=2,v=2", blue, sizeof(blue));
+    CHECK(!strncmp(r, "i=2;ENOSPC:", 11) && gfx_image_by_id(&st, 2) &&
+          gfx_image_by_id(&st, 2)->n_frames == 3, "the store full: ENOSPC, the picture kept: '%s'", r);
+    gfx_store_free(&st);
+}
+
 static void test_scroll_region_carry(void)
 {
     GfxStore st;
@@ -2183,6 +2313,7 @@ int main(void)
     test_scroll_to_bottom();
     test_scroll_region_carry();
     test_relative();
+    test_animation();
     test_iterm_args();
     test_iterm_place();
     test_iterm_geometry();

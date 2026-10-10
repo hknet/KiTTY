@@ -47,6 +47,7 @@ bool (*kitty_gfx_inflate_hook)(void *ctx, const unsigned char *in,
 bool (*kitty_gfx_decode_file_hook)(void *ctx, int fmt,
                                    const unsigned char *data, size_t len,
                                    unsigned char **px, int *w, int *h);
+bool (*kitty_gfx_paused_hook)(void *ctx);
 
 #define GFX_REPAINT_MAX 64
 
@@ -98,6 +99,7 @@ static void env_init(Terminal *term, GfxEnv *env)
     env->top_abs = kitty_gfx_top_abs(term);
     env->cur_x = term->curs.x;
     env->cur_y = term->curs.y;
+    env->now_ms = GETTICKCOUNT();
     env->decode_png = kitty_gfx_decode_png_hook;
     env->decode_file = kitty_gfx_decode_file_hook;
     env->inflate = kitty_gfx_inflate_hook;
@@ -152,6 +154,57 @@ static void repaint_covered(Terminal *term)
     int n = covered(term, rects);
     if (n)
         paint_rects(term, rects, n);
+}
+
+/* ---- the animations' clock ---------------------------------------------- */
+
+/* While the window cannot be seen, the frames wait: a look this often. */
+#define GFX_ANIM_PAUSED_MS 500
+/* The shortest step between two frames, whatever gap a picture sets. */
+#define GFX_ANIM_MIN_MS    10
+
+static void anim_timer(void *ctx, unsigned long now);
+
+/* A timer for the next frame due, unless one is set for that time or
+ * earlier. PuTTY's timers cannot be taken back: one that fires late for its
+ * time finds gfx_anim_due moved on and does nothing. */
+static void anim_schedule(Terminal *term, long ms)
+{
+    unsigned long when;
+    if (ms < 0)
+        return;
+    if (ms < GFX_ANIM_MIN_MS)
+        ms = GFX_ANIM_MIN_MS;
+    when = GETTICKCOUNT() + (unsigned long)ms;
+    if (term->gfx_anim_set && (long)(term->gfx_anim_due - when) <= 0)
+        return;
+    term->gfx_anim_due = schedule_timer((int)ms, anim_timer, term);
+    term->gfx_anim_set = true;
+}
+
+static void anim_timer(void *ctx, unsigned long now)
+{
+    Terminal *term = (Terminal *)ctx;
+    if (!term->gfx_anim_set || now != term->gfx_anim_due || !term->gfx)
+        return;
+    term->gfx_anim_set = false;
+    if (kitty_gfx_paused_hook && kitty_gfx_paused_hook(term)) {
+        if (gfx_anim_next(term->gfx, now) >= 0)
+            anim_schedule(term, GFX_ANIM_PAUSED_MS);
+        return;
+    }
+    /* a new frame: its cells drawn again (the painters take the new pixels
+     * by the picture's serial) */
+    if (gfx_animate(term->gfx, now))
+        repaint_covered(term);
+    anim_schedule(term, gfx_anim_next(term->gfx, now));
+}
+
+/* After anything that may have started an animation or added a frame. */
+static void anim_kick(Terminal *term)
+{
+    if (term->gfx)
+        anim_schedule(term, gfx_anim_next(term->gfx, GETTICKCOUNT()));
 }
 
 /* The two protocols' commands, served the same way. */
@@ -210,6 +263,7 @@ static void serve(Terminal *term, int which, const char *s, int len,
             paint_rects(term, before, nbefore);
         repaint_covered(term);
     }
+    anim_kick(term);
     *dx = res.cur_dx;
     *dy = res.cur_dy;
 }

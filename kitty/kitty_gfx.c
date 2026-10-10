@@ -312,11 +312,13 @@ static void iterm_free(GfxStore *st)
     memset(&st->iterm, 0, sizeof(st->iterm));
 }
 
+static void img_free_pixels(GfxImage *img);
+
 void gfx_store_free(GfxStore *st)
 {
     int i;
     for (i = 0; i < st->n_imgs; i++)
-        free(st->imgs[i].px);
+        img_free_pixels(&st->imgs[i]);
     for (i = 0; i < st->n_pls; i++)
         free(st->pls[i].mask);
     free(st->imgs);
@@ -415,12 +417,30 @@ static void img_drop_placements(GfxStore *st, uint32_t key)
             pl_remove(st, i);
 }
 
+/* An image's pixels, every frame of an animated one. */
+static void img_free_pixels(GfxImage *img)
+{
+    if (img->frames) {
+        int k;
+        for (k = 0; k < img->n_frames; k++)
+            free(img->frames[k]);
+        free(img->frames);
+        free(img->gaps);
+        img->frames = NULL;
+        img->gaps = NULL;
+    } else {
+        free(img->px);
+    }
+    img->px = NULL;
+}
+
 static void img_remove(GfxStore *st, int i)
 {
     GfxImage *img = &st->imgs[i];
     img_drop_placements(st, img->key);
-    st->bytes -= (size_t)img->w * img->h * 4;
-    free(img->px);
+    st->bytes -= (size_t)img->w * img->h * 4 *
+                 (size_t)(img->frames ? img->n_frames : 1);
+    img_free_pixels(img);
     memmove(st->imgs + i, st->imgs + i + 1,
             (size_t)(st->n_imgs - i - 1) * sizeof(*st->imgs));
     st->n_imgs--;
@@ -550,12 +570,28 @@ static int evict_victim(const GfxStore *st, const GfxEnv *env,
 {
     int i, victim = -1;
     for (i = 0; i < st->n_imgs; i++)
-        if (!placements_of(st, st->imgs[i].key) &&
+        if (!placements_of(st, st->imgs[i].key) && st->imgs[i].key != except &&
             (victim < 0 || st->imgs[i].last_use < st->imgs[victim].last_use))
             victim = i;
     if (victim >= 0)
         return victim;
     return parked_victim(st, env, except);
+}
+
+/* Room for `bytes` more pixels of the image `keep` (a new frame): others
+ * go as for a new image, never keep. False when it cannot be found. */
+static bool make_room_for(GfxStore *st, const GfxEnv *env, size_t bytes,
+                          uint32_t keep)
+{
+    for (;;) {
+        int victim;
+        if (st->bytes + bytes <= st->max_bytes)
+            return true;
+        victim = evict_victim(st, env, keep);
+        if (victim < 0)
+            return false;
+        img_remove(st, victim);
+    }
 }
 
 /* Make room for one more image of `bytes`: images without placements go
@@ -1030,6 +1066,14 @@ static const char *decoded_check(const GfxStore *st, unsigned char **px,
     return NULL;
 }
 
+static const char *frame_load(GfxStore *st, const GfxEnv *env,
+                              const GfxCmd *c, unsigned char *px, int pw,
+                              int ph, GfxResult *res, uint32_t *reply_id,
+                              const char **msg);
+static bool grow_frames(GfxImage *img);
+static void frame_delete(GfxStore *st, const GfxCmd *c, bool cap,
+                         GfxResult *res);
+
 /* The last chunk arrived: decode, store, place, reply. Returns success. */
 static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
                            GfxResult *res)
@@ -1099,6 +1143,9 @@ static bool pending_finish(GfxStore *st, const GfxEnv *env, uint32_t q,
     if (!code && c.a == 'q') {
         free(px);
         px = NULL;
+    } else if (!code && c.a == 'f') {
+        code = frame_load(st, env, &c, px, w, h, res, &reply_id, &msg);
+        px = NULL;                          /* taken over */
     } else if (!code) {
         idx = -1;
         if (c.i) {
@@ -1319,12 +1366,393 @@ static const char *do_delete(GfxStore *st, const GfxEnv *env, const GfxCmd *c,
       case 'z': case 'Z':
         delete_filtered(st, env, c, f_z, cap, res);
         break;
+      case 'f': case 'F':
+        frame_delete(st, c, cap, res);
+        break;
       default:
-        *msg = "animation frames are not supported";
+        *msg = "unknown deletion";
         return "EINVAL";
     }
     sweep_anonymous(st);
     return NULL;
+}
+
+/* ---- animation ---------------------------------------------------------- */
+
+/* The frame shown is px; a new one is new pixels to the painters. */
+static void img_show(GfxStore *st, GfxImage *img)
+{
+    if (img->frames)
+        img->px = img->frames[img->cur];
+    img->serial = ++st->serial;
+}
+
+/* A single picture becomes frame 1 of an animation. */
+static bool img_frames_init(GfxImage *img)
+{
+    if (img->frames)
+        return true;
+    img->frames = malloc(sizeof(*img->frames));
+    img->gaps = malloc(sizeof(*img->gaps));
+    if (!img->frames || !img->gaps) {
+        free(img->frames);
+        free(img->gaps);
+        img->frames = NULL;
+        img->gaps = NULL;
+        return false;
+    }
+    img->frames[0] = img->px;
+    img->gaps[0] = 0;                  /* the root frame: no gap of its own */
+    img->n_frames = 1;
+    img->cur = 0;
+    return true;
+}
+
+static bool px_opaque(const unsigned char *px, size_t n)
+{
+    size_t i;
+    for (i = 0; i < n; i++)
+        if (px[i * 4 + 3] != 255)
+            return false;
+    return true;
+}
+
+/* sw x sh pixels of src (stride sstride pixels) onto dst (stride dstride)
+ * at their top-lefts: replaced, or blended over (premultiplied). */
+static void px_put(unsigned char *dst, int dstride, const unsigned char *src,
+                   int sstride, int sw, int sh, bool replace)
+{
+    int x, y;
+    for (y = 0; y < sh; y++) {
+        unsigned char *d = dst + (size_t)y * dstride * 4;
+        const unsigned char *s = src + (size_t)y * sstride * 4;
+        if (replace) {
+            memmove(d, s, (size_t)sw * 4);
+            continue;
+        }
+        for (x = 0; x < sw * 4; x += 4) {
+            unsigned ia = 255 - s[x + 3];
+            d[x]     = (unsigned char)(s[x]     + (d[x]     * ia + 127) / 255);
+            d[x + 1] = (unsigned char)(s[x + 1] + (d[x + 1] * ia + 127) / 255);
+            d[x + 2] = (unsigned char)(s[x + 2] + (d[x + 2] * ia + 127) / 255);
+            d[x + 3] = (unsigned char)(s[x + 3] + (d[x + 3] * ia + 127) / 255);
+        }
+    }
+}
+
+/* Y: the background as 0xRRGGBBAA, premultiplied BGRA into four bytes. */
+static void px_rgba(uint32_t rgba, unsigned char out[4])
+{
+    unsigned a = rgba & 0xff;
+    out[0] = (unsigned char)(((rgba >> 8) & 0xff) * a / 255);
+    out[1] = (unsigned char)(((rgba >> 16) & 0xff) * a / 255);
+    out[2] = (unsigned char)(((rgba >> 24) & 0xff) * a / 255);
+    out[3] = (unsigned char)a;
+}
+
+/* a=f: a frame's pixels (px, pw x ph, taken over) arrived. Into frame r
+ * (edited), or a new frame on frame c (or on the background Y), at x,y;
+ * X=1 replaces, else blends. Returns an error code or NULL. */
+static const char *frame_load(GfxStore *st, const GfxEnv *env,
+                              const GfxCmd *c, unsigned char *px, int pw,
+                              int ph, GfxResult *res, uint32_t *reply_id,
+                              const char **msg)
+{
+    int i = c->i ? img_index_by_id(st, c->i) : img_index_by_number(st, c->I);
+    GfxImage *img;
+    unsigned char *canvas;
+    size_t bytes;
+    int target, cw, chh;
+    bool fresh;
+
+    if (i < 0) {
+        free(px);
+        *msg = "no image with this id";
+        return "ENOENT";
+    }
+    img = &st->imgs[i];
+    *reply_id = img->id;
+    bytes = (size_t)img->w * img->h * 4;
+    if (c->x >= (uint32_t)img->w || c->y >= (uint32_t)img->h) {
+        free(px);
+        *msg = "frame rectangle outside the image";
+        return "EINVAL";
+    }
+    if (!img_frames_init(img)) {
+        free(px);
+        *msg = "out of memory";
+        return "ENOSPC";
+    }
+    fresh = !(c->r >= 1 && c->r <= (uint32_t)img->n_frames);
+    if (fresh) {
+        if (c->c > (uint32_t)img->n_frames) {
+            free(px);
+            *msg = "no such base frame";
+            return "EINVAL";
+        }
+        if (img->n_frames >= GFX_MAX_FRAMES) {
+            free(px);
+            *msg = "too many frames";
+            return "ENOSPC";
+        }
+        if (!make_room_for(st, env, bytes, img->key)) {
+            free(px);
+            *msg = "image store full";
+            return "ENOSPC";
+        }
+        i = img_index_by_key(st, img->key);  /* make_room moved the array */
+        img = &st->imgs[i];
+        canvas = malloc(bytes);
+        if (!canvas || !grow_frames(img)) {
+            free(canvas);
+            free(px);
+            *msg = "out of memory";
+            return "ENOSPC";
+        }
+        if (c->c) {
+            memcpy(canvas, img->frames[c->c - 1], bytes);
+        } else {
+            unsigned char bg[4];
+            size_t k;
+            px_rgba(c->Y, bg);
+            for (k = 0; k < (size_t)img->w * img->h; k++)
+                memcpy(canvas + k * 4, bg, 4);
+        }
+        target = img->n_frames;
+        img->frames[target] = canvas;
+        img->gaps[target] = c->z > 0 ? c->z : c->z < 0 ? 0 : GFX_DEFAULT_GAP;
+        img->n_frames++;
+        st->bytes += bytes;
+    } else {
+        target = (int)c->r - 1;
+        canvas = img->frames[target];
+        if (c->z)
+            img->gaps[target] = c->z > 0 ? c->z : 0;
+    }
+    cw = pw < img->w - (int)c->x ? pw : img->w - (int)c->x;
+    chh = ph < img->h - (int)c->y ? ph : img->h - (int)c->y;
+    px_put(canvas + ((size_t)c->y * img->w + c->x) * 4, img->w, px, pw, cw, chh,
+           c->X == 1);
+    free(px);
+    if (!px_opaque(canvas, (size_t)img->w * img->h))
+        img->opaque = false;
+    img->last_use = ++st->tick;
+    if (target == img->cur) {
+        img_show(st, img);
+        res->changed = true;
+    }
+    return NULL;
+}
+
+/* a=a: s state (1 stop, 2 loading, 3 loop), v loops, c the frame shown,
+ * r + z a frame's gap. Returns an error code or NULL. */
+static const char *anim_control(GfxStore *st, const GfxEnv *env,
+                                const GfxCmd *c, GfxResult *res,
+                                const char **msg)
+{
+    int i = c->i ? img_index_by_id(st, c->i) : img_index_by_number(st, c->I);
+    GfxImage *img;
+    if (i < 0) {
+        *msg = "no image with this id";
+        return "ENOENT";
+    }
+    img = &st->imgs[i];
+    if (!img_frames_init(img)) {
+        *msg = "out of memory";
+        return "ENOSPC";
+    }
+    if (c->r >= 1 && c->r <= (uint32_t)img->n_frames && (c->have & GFX_K_z))
+        img->gaps[c->r - 1] = c->z > 0 ? c->z : 0;
+    if (c->v)
+        img->max_loops = c->v == 1 ? 0 : (int)c->v - 1;
+    if (c->c >= 1) {
+        int f = (int)(c->c > (uint32_t)img->n_frames ? img->n_frames : c->c) - 1;
+        if (f != img->cur) {
+            img->cur = f;
+            img_show(st, img);
+            res->changed = true;
+        }
+        img->due = env->now_ms + (unsigned long)img->gaps[img->cur];
+    }
+    if (c->s == 1) {
+        img->anim = 0;
+        img->loops = 0;
+    } else if (c->s == 2 || c->s == 3) {
+        if (!img->anim)
+            img->due = env->now_ms + (unsigned long)img->gaps[img->cur];
+        img->anim = c->s == 2 ? 'l' : 'p';
+    }
+    return NULL;
+}
+
+/* a=c: rectangle w x h of frame r at X,Y onto frame c at x,y (C=1 replaces,
+ * else blends). Returns an error code or NULL. */
+static const char *frame_compose(GfxStore *st, const GfxCmd *c,
+                                 GfxResult *res, const char **msg)
+{
+    int i = c->i ? img_index_by_id(st, c->i) : img_index_by_number(st, c->I);
+    GfxImage *img;
+    uint32_t w, h;
+    unsigned char *src, *dst, *tmp;
+    if (i < 0) {
+        *msg = "no image with this id";
+        return "ENOENT";
+    }
+    img = &st->imgs[i];
+    if (!img_frames_init(img)) {
+        *msg = "out of memory";
+        return "ENOSPC";
+    }
+    if (!c->r || !c->c || c->r > (uint32_t)img->n_frames ||
+        c->c > (uint32_t)img->n_frames) {
+        *msg = "no such frame";
+        return "ENOENT";
+    }
+    w = c->w ? c->w : (uint32_t)img->w;
+    h = c->h ? c->h : (uint32_t)img->h;
+    if ((uint64_t)c->X + w > (uint64_t)img->w || (uint64_t)c->Y + h > (uint64_t)img->h ||
+        (uint64_t)c->x + w > (uint64_t)img->w || (uint64_t)c->y + h > (uint64_t)img->h) {
+        *msg = "rectangle outside the image";
+        return "EINVAL";
+    }
+    if (c->r == c->c && c->X < c->x + w && c->x < c->X + w &&
+        c->Y < c->y + h && c->y < c->Y + h) {
+        *msg = "the rectangles overlap in one frame";
+        return "EINVAL";
+    }
+    src = img->frames[c->r - 1] + ((size_t)c->Y * img->w + c->X) * 4;
+    dst = img->frames[c->c - 1] + ((size_t)c->y * img->w + c->x) * 4;
+    /* a copy first: source and destination may be the same frame */
+    tmp = malloc((size_t)w * h * 4);
+    if (!tmp) {
+        *msg = "out of memory";
+        return "ENOSPC";
+    }
+    px_put(tmp, (int)w, src, img->w, (int)w, (int)h, true);
+    px_put(dst, img->w, tmp, (int)w, (int)w, (int)h, c->C == 1);
+    free(tmp);
+    if (!px_opaque(img->frames[c->c - 1], (size_t)img->w * img->h))
+        img->opaque = false;
+    if ((int)c->c - 1 == img->cur) {
+        img_show(st, img);
+        res->changed = true;
+    }
+    return NULL;
+}
+
+/* d=f/F: frame r (1 and past the last clamp to the first and last) goes;
+ * the frame shown stays the same frame where it can. F on a picture with
+ * one frame left: the picture goes. */
+static void frame_delete(GfxStore *st, const GfxCmd *c, bool cap,
+                         GfxResult *res)
+{
+    int i = c->i ? img_index_by_id(st, c->i) : img_index_by_number(st, c->I);
+    GfxImage *img;
+    int f;
+    if (i < 0)
+        return;
+    img = &st->imgs[i];
+    if (!img->frames || img->n_frames <= 1) {
+        if (cap) {
+            img_remove(st, i);
+            res->changed = true;
+        }
+        return;
+    }
+    f = c->r == 0 ? 0 : (int)(c->r > (uint32_t)img->n_frames ? img->n_frames : c->r) - 1;
+    free(img->frames[f]);
+    memmove(img->frames + f, img->frames + f + 1,
+            (size_t)(img->n_frames - f - 1) * sizeof(*img->frames));
+    memmove(img->gaps + f, img->gaps + f + 1,
+            (size_t)(img->n_frames - f - 1) * sizeof(*img->gaps));
+    img->n_frames--;
+    st->bytes -= (size_t)img->w * img->h * 4;
+    if (img->cur > f || img->cur >= img->n_frames)
+        img->cur = img->cur > f ? img->cur - 1 : img->n_frames - 1;
+    img_show(st, img);
+    res->changed = true;
+}
+
+/* frames and gaps one bigger (realloc), the count unchanged */
+static bool grow_frames(GfxImage *img)
+{
+    unsigned char **f = realloc(img->frames, sizeof(*f) * (size_t)(img->n_frames + 1));
+    int *g;
+    if (!f)
+        return false;
+    img->frames = f;
+    g = realloc(img->gaps, sizeof(*g) * (size_t)(img->n_frames + 1));
+    if (!g)
+        return false;
+    img->gaps = g;
+    img->px = img->frames[img->cur];
+    return true;
+}
+
+/* One playing picture at now: the frame due, gapless frames passed over. */
+static bool anim_step(GfxStore *st, GfxImage *img, unsigned long now)
+{
+    int guard;
+    bool moved = false;
+    if (!img->anim || !img->frames || img->n_frames < 2)
+        return false;
+    if ((long)(now - img->due) < 0)
+        return false;
+    for (guard = 0; guard <= img->n_frames; guard++) {
+        int next = img->cur + 1;
+        if (next >= img->n_frames) {
+            if (img->anim == 'l')
+                break;                 /* waits at the last frame for more */
+            img->loops++;
+            if (img->max_loops && img->loops >= img->max_loops) {
+                img->anim = 0;         /* stops on the last frame */
+                break;
+            }
+            next = 0;
+        }
+        img->cur = next;
+        moved = true;
+        if (img->gaps[next] > 0)
+            break;
+    }
+    if (moved)
+        img_show(st, img);
+    /* far behind (a window that slept): from now, not a burst of frames */
+    if ((long)(now - img->due) > 1000)
+        img->due = now;
+    img->due += (unsigned long)(img->gaps[img->cur] > 0 ? img->gaps[img->cur] : 1000);
+    return moved;
+}
+
+bool gfx_animate(GfxStore *st, unsigned long now_ms)
+{
+    int i;
+    bool changed = false;
+    for (i = 0; i < st->n_imgs; i++)
+        if (anim_step(st, &st->imgs[i], now_ms) &&
+            placements_of(st, st->imgs[i].key))
+            changed = true;
+    return changed;
+}
+
+long gfx_anim_next(const GfxStore *st, unsigned long now_ms)
+{
+    int i;
+    long best = -1;
+    for (i = 0; i < st->n_imgs; i++) {
+        const GfxImage *img = &st->imgs[i];
+        long d;
+        if (!img->anim || !img->frames || img->n_frames < 2)
+            continue;
+        if (img->anim == 'l' && img->cur == img->n_frames - 1)
+            continue;                  /* waiting for frames, not for time */
+        d = (long)(img->due - now_ms);
+        if (d < 0)
+            d = 0;
+        if (best < 0 || d < best)
+            best = d;
+    }
+    return best;
 }
 
 /* ---- the command -------------------------------------------------------- */
@@ -1377,9 +1805,11 @@ static bool command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
         pending_free(st);                   /* aborted by another command */
 
     switch (c.a) {
-      case 't': case 'T': case 'q':
+      case 't': case 'T': case 'q': case 'f':
         if (c.a == 'q' && !c.i)
             return false;                   /* a query needs an id */
+        if (c.a == 'f' && !c.i && !c.I)
+            return false;                   /* a frame needs its picture */
         code = transmit_check(st, env, &c, &msg);
         pending_start(st, &c, code, msg);
         pending_feed(st, c.payload, c.payload_len);
@@ -1417,8 +1847,16 @@ static bool command(GfxStore *st, const GfxEnv *env, const unsigned char *s,
         }
         trace(env, 'd', c.i, "OK");
         return true;                        /* deletions are not answered */
-      default:                              /* a=f, a=a, a=c */
-        reply(res, &c, c.i, c.q, "EINVAL", "animation is not supported");
+      case 'a': case 'c':
+        if (!c.i && !c.I)
+            return false;
+        code = c.a == 'a' ? anim_control(st, env, &c, res, &msg)
+                          : frame_compose(st, &c, res, &msg);
+        reply(res, &c, c.i, c.q, code ? code : "OK", msg);
+        trace(env, c.a, c.i, code ? code : "OK");
+        return code == NULL;
+      default:
+        reply(res, &c, c.i, c.q, "EINVAL", "unknown action");
         trace(env, c.a, c.i, "EINVAL");
         return false;
     }
