@@ -47,6 +47,8 @@
 #include "kitty_inikeys.h"       /* KR_DLGPOS_MANAGE: its name there */
 #include "kitty_launcher.h"      /* RunConfig: -manage's Edit starts a session in a new process */
 #include "kitty_tags.h"          /* the tag pane (hknet/KiTTY#60) */
+#include "kitty_secretstore.h"   /* the master key handed to the sessions it starts */
+#include "kitty_winutil.h"       /* kitty_create_process_with_handles */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -2005,7 +2007,13 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
 #define SO_CMD_TAG_REMOVE   0x7109
 #define SO_CMD_TAG_SELALL   0x710A
 
-/* Sessions in their own terminals: kitty.exe -load "<name>" each. */
+/* Sessions in their own terminals: kitty.exe -load "<name>" each - with the
+ * master key ahead of -load, so the stored password opens without a prompt.
+ * Every session started from here prompted for it again; under -manage,
+ * which had nothing unlocked, the first start now prompts once for all
+ * (kitty_mpw_startup_unlock, a no-op once unlocked or without a master
+ * password), the way the launcher does. A key mapping per start: the child
+ * closes what it inherits. */
 static void so_start_named(char **names, int n_names)
 {
     char exe[MAX_PATH];
@@ -2015,14 +2023,26 @@ static void so_start_named(char **names, int n_names)
         MessageBeep(MB_ICONWARNING);
         return;
     }
+    kitty_mpw_startup_unlock();
     for (i = 0; i < n_names; i++) {
-        char *cmd = dupprintf("\"%s\" -load \"%s\"", exe, names[i]);
+        char mpwtok[80] = "";
+        HANDLE mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok));
+        char *cmd = dupprintf("\"%s\"%s%s -load \"%s\"", exe,
+                              restricted_acl() ? " -restrict-acl" : "",
+                              mpwtok, names[i]);
         STARTUPINFOA si;
         PROCESS_INFORMATION pi;
+        BOOL ok;
         memset(&si, 0, sizeof(si));
         si.cb = sizeof(si);
         memset(&pi, 0, sizeof(pi));
-        if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        ok = kitty_create_process_with_handles(NULL, cmd, 0, NULL, &si, &pi, &mpwmap, 1);
+        if (mpwmap) {
+            DWORD err = GetLastError();
+            CloseHandle(mpwmap);
+            SetLastError(err);
+        }
+        if (ok) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
         } else {

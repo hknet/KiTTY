@@ -118,6 +118,9 @@ static void RunSessionWithConfSettings(Conf *conf) {
     void *p;
     int size;
 
+    HANDLE mpwmap = NULL;
+    char mpwtok[64] = "";
+
     argprefix = restricted_acl() ? "&R" : "";
 
     /* The password fields travel WRAPPED FOR THE LOGON: the reader is another
@@ -140,7 +143,7 @@ static void RunSessionWithConfSettings(Conf *conf) {
 
     sa.nLength = sizeof(sa);
     sa.lpSecurityDescriptor = NULL;
-    sa.bInheritHandle = true;
+    sa.bInheritHandle = false;   /* given to the one child below only */
     filemap = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE,
                                 0, size, NULL);
     if (filemap && filemap != INVALID_HANDLE_VALUE) {
@@ -149,7 +152,11 @@ static void RunSessionWithConfSettings(Conf *conf) {
     }
     strbuf_free(serbuf);
 
-    cl = dupprintf("putty %s&%p:%u", argprefix, filemap, (unsigned)size);
+    /* The master key as Duplicate Session passes it (window.c), when this
+     * window holds it: a session started with the current settings could open
+     * its jump host's or a later saved session's password without a prompt. */
+    mpwmap = kitty_mpw_export_inherit_blob("&K", mpwtok, sizeof(mpwtok));
+    cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok, filemap, (unsigned)size);
     GetModuleFileName(NULL, b, sizeof(b) - 1);
     si.cb = sizeof(si);
     si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
@@ -157,8 +164,9 @@ static void RunSessionWithConfSettings(Conf *conf) {
     /* pi is filled only by a successful start: closing its handles after a
      * failed one closed whatever the stack held (upstream checks this; the
      * port of this function did not) - and the user learns why */
-    if (CreateProcess(b, cl, NULL, NULL, true /*inherit_handles*/,
-                      NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+    HANDLE give[2] = { filemap, mpwmap };
+    if (kitty_create_process_with_handles(b, cl, NORMAL_PRIORITY_CLASS, NULL,
+                                          &si, &pi, give, 2)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     } else {
@@ -168,6 +176,7 @@ static void RunSessionWithConfSettings(Conf *conf) {
         sfree(msg);
     }
     if (filemap) CloseHandle(filemap);
+    if (mpwmap) CloseHandle(mpwmap);
     sfree(cl);
 }
 
@@ -214,7 +223,7 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
 
     sa.nLength = sizeof(sa);
     sa.lpSecurityDescriptor = NULL;
-    sa.bInheritHandle = true;
+    sa.bInheritHandle = false;   /* given to the one child below only */
     filemap = CreateFileMapping(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE,
                                 0, size, NULL);
     if (filemap && filemap != INVALID_HANDLE_VALUE) {
@@ -241,8 +250,9 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
     si.cb = sizeof(si);
     si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
     si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
-    if (CreateProcess(exe, cl, NULL, NULL, true /*inherit_handles*/,
-                      NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+    HANDLE give[2] = { filemap, mpwmap };
+    if (kitty_create_process_with_handles(exe, cl, NORMAL_PRIORITY_CLASS, NULL,
+                                          &si, &pi, give, 2)) {
         AllowSetForegroundWindow(pi.dwProcessId);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -354,12 +364,19 @@ HWND kitty_launcher_window(void) {
 /* Starts a launcher the way a user does - this kitty.exe with -launcher, in
  * its own folder, restricted if this process is - and returns at once. The
  * configuration box's "Start Launcher Now" uses it as it is: the launcher
- * announces itself (KITTY_LAUNCHER_STATE_MESSAGE), so nothing has to wait. */
+ * announces itself (KITTY_LAUNCHER_STATE_MESSAGE), so nothing has to wait.
+ * The master key goes with it when this process holds one (window.c reads
+ * it before Launcher_WinMain): a launcher started from an unlocked
+ * configuration box prompted for the master password again. No prompt here
+ * when nothing is unlocked - sending a window to the tray must not prompt. */
 BOOL kitty_launcher_spawn(void) {
-    char exe[MAX_PATH + 1], dir[MAX_PATH + 1], cmd[MAX_PATH + 64];
+    char exe[MAX_PATH + 1], dir[MAX_PATH + 1], cmd[MAX_PATH + 160];
+    char mpwtok[80] = "";
+    HANDLE mpwmap;
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     DWORD n;
+    BOOL ok;
     char *slash;
     n = GetModuleFileNameA(NULL, exe, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
@@ -368,13 +385,20 @@ BOOL kitty_launcher_spawn(void) {
     strcpy(dir, exe);
     slash = strrchr(dir, '\\');
     if (slash) *slash = '\0'; else dir[0] = '\0';
-    snprintf(cmd, sizeof(cmd), "\"%s\"%s -launcher", exe,
-             restricted_acl() ? " -restrict-acl" : "");
+    mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok));
+    snprintf(cmd, sizeof(cmd), "\"%s\"%s%s -launcher", exe,
+             restricted_acl() ? " -restrict-acl" : "", mpwtok);
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
     memset(&pi, 0, sizeof(pi));
-    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL,
-                        dir[0] ? dir : NULL, &si, &pi))
+    ok = kitty_create_process_with_handles(NULL, cmd, 0, dir[0] ? dir : NULL,
+                                           &si, &pi, &mpwmap, 1);
+    if (mpwmap) {
+        DWORD err = GetLastError();
+        CloseHandle(mpwmap);
+        SetLastError(err);
+    }
+    if (!ok)
         return FALSE;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);

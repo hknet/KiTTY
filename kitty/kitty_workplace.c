@@ -310,22 +310,33 @@ void kitty_workplace_left_text(char *out, int len)
 
 int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes)
 {
-    char exe[MAX_PATH + 1], cmd[MAX_PATH + 320];
+    /* kitty_secretstore.c, kitty_winutil.c: the master key goes with the
+     * launcher when this process holds it, as kitty_launcher_spawn does */
+    extern HANDLE kitty_mpw_export_inherit_blob(const char *, char *, size_t);
+    extern BOOL kitty_create_process_with_handles(const char *, char *, DWORD,
+        const char *, STARTUPINFOA *, PROCESS_INFORMATION *, const HANDLE *, int);
+    char exe[MAX_PATH + 1], cmd[MAX_PATH + 400], mpwtok[80] = "";
+    HANDLE mpwmap;
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     DWORD n;
+    BOOL ok;
     if (!proxyname || !proxyname[0] || strchr(proxyname, '"'))
         return 0;
     n = GetModuleFileNameA(NULL, exe, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
         return 0;
     exe[n] = '\0';
-    snprintf(cmd, sizeof(cmd), "\"%s\" -launcher -workplace \"%s\" -workplaceminutes %u",
-             exe, proxyname, minutes);
+    mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok));
+    snprintf(cmd, sizeof(cmd), "\"%s\"%s -launcher -workplace \"%s\" -workplaceminutes %u",
+             exe, mpwtok, proxyname, minutes);
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
     memset(&pi, 0, sizeof(pi));
-    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+    ok = kitty_create_process_with_handles(NULL, cmd, 0, NULL, &si, &pi, &mpwmap, 1);
+    if (mpwmap)
+        CloseHandle(mpwmap);
+    if (!ok)
         return 0;
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);

@@ -2391,6 +2391,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             }
         }
         {
+            extern void kitty_mpw_consume_cmdline_switch(char *);
             char *lcl = handle_restrict_acl_cmdline_prefix(cl);
             if (kitty_cmdline_has_token(lcl, "-launcher")) {
                 if (kitty_cmdline_has_token(lcl, "-restrict-acl") ||
@@ -2402,6 +2403,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 RegisterApplicationRestart(restricted_acl() ?
                                            L"-restrict-acl -launcher" :
                                            L"-launcher", 0);
+                /* the master key of the window that started it */
+                kitty_mpw_consume_cmdline_switch(lcl);
                 return Launcher_WinMain(inst, prev, lcl, show);
             }
             /* KiTTY: "kitty.exe -manage" opens Manage Sessions alone, with
@@ -2413,6 +2416,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                     kitty_cmdline_has_token(lcl, "-restrict_acl") ||
                     kitty_cmdline_has_token(lcl, "-restrictacl"))
                     restrict_process_acl();
+                kitty_mpw_consume_cmdline_switch(lcl);
                 return kitty_manage_WinMain();
             }
         }
@@ -6187,7 +6191,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
                 sa.nLength = sizeof(sa);
                 sa.lpSecurityDescriptor = NULL;
+#ifdef MOD_PERSO
+                /* KiTTY: inheritable for the start below only, by that child
+                 * only (kitty_create_process_with_handles) */
+                sa.bInheritHandle = false;
+#else
                 sa.bInheritHandle = true;
+#endif
                 filemap = CreateFileMapping(INVALID_HANDLE_VALUE,
                                             &sa,
                                             PAGE_READWRITE,
@@ -6228,8 +6238,26 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             si.dwFlags = 0;
             si.cbReserved2 = 0;
             si.lpReserved2 = NULL;
-            if (CreateProcess(b, cl, NULL, NULL, inherit_handles,
-                          NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+            BOOL started;
+#ifdef MOD_PERSO
+            /* KiTTY: the settings and master-key mappings go to this child
+             * and no other (inherit_handles is implied by the handles) */
+            {
+                extern BOOL kitty_create_process_with_handles(
+                    const char *, char *, DWORD, const char *, STARTUPINFOA *,
+                    PROCESS_INFORMATION *, const HANDLE *, int);
+                HANDLE give[2];
+                give[0] = filemap;
+                give[1] = mpwmap;
+                (void)inherit_handles;
+                started = kitty_create_process_with_handles(
+                    b, cl, NORMAL_PRIORITY_CLASS, NULL, &si, &pi, give, 2);
+            }
+#else
+            started = CreateProcess(b, cl, NULL, NULL, inherit_handles,
+                                    NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi);
+#endif
+            if (started) {
 #ifdef MOD_PERSO
                 /* Hand the foreground right to the spawned window. Without this
                  * the Windows foreground lock keeps focus on the parent window,

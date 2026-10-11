@@ -587,6 +587,76 @@ int RunCommand( HWND hwnd, const char * cmd ) {
 	return 1 ;
 }
 
+/* STARTUPINFOEXA and the handle-list attribute, spelt out here: the headers
+ * declare them only for a Vista target. This build also runs on XP, so the
+ * functions are looked up at run time instead. */
+typedef struct { STARTUPINFOA StartupInfo ; void * lpAttributeList ; } kitty_startupinfoex ;
+#define KITTY_PTA_HANDLE_LIST              0x00020002
+#define KITTY_EXTENDED_STARTUPINFO_PRESENT 0x00080000
+#define KITTY_SPAWN_MAX_HANDLES            4
+
+/* Start a process that receives exactly the handles in h[] - the settings and
+ * master-key mappings of a hand-over - and no other handle of this process.
+ * The callers create those mappings NOT inheritable; they are inheritable only
+ * for this call. Where Windows has PROC_THREAD_ATTRIBUTE_HANDLE_LIST (Vista
+ * and later) the child gets these and nothing else, so a program started from
+ * another thread at the same moment cannot pick up the master key. On XP it
+ * falls back to plain inheritance for that moment. No usable handle: an
+ * ordinary start without inheritance. Returns CreateProcessA's result, with
+ * its GetLastError() kept for the caller. */
+BOOL kitty_create_process_with_handles( const char * app, char * cmdline, DWORD flags,
+                                        const char * dir, STARTUPINFOA * si,
+                                        PROCESS_INFORMATION * pi,
+                                        const HANDLE * h, int nh ) {
+	typedef BOOL (WINAPI *init_fn)( void *, DWORD, DWORD, SIZE_T * ) ;
+	typedef BOOL (WINAPI *update_fn)( void *, DWORD, DWORD_PTR, void *, SIZE_T, void *, SIZE_T * ) ;
+	typedef void (WINAPI *delete_fn)( void * ) ;
+	HANDLE list[KITTY_SPAWN_MAX_HANDLES] ;
+	HMODULE k32 ;
+	init_fn pinit = NULL ; update_fn pupd = NULL ; delete_fn pdel = NULL ;
+	void * attrs = NULL ;
+	SIZE_T sz = 0 ;
+	int n = 0, i ;
+	BOOL ok ;
+	DWORD err ;
+
+	for( i = 0 ; i < nh && n < KITTY_SPAWN_MAX_HANDLES ; i++ )
+		if( h[i] != NULL && h[i] != INVALID_HANDLE_VALUE ) list[n++] = h[i] ;
+	if( n == 0 )
+		return CreateProcessA( app, cmdline, NULL, NULL, FALSE, flags, NULL, dir, si, pi ) ;
+
+	for( i = 0 ; i < n ; i++ ) SetHandleInformation( list[i], HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT ) ;
+	if( ( k32 = GetModuleHandleA( "kernel32.dll" ) ) != NULL ) {
+		pinit = (init_fn)GetProcAddress( k32, "InitializeProcThreadAttributeList" ) ;
+		pupd = (update_fn)GetProcAddress( k32, "UpdateProcThreadAttribute" ) ;
+		pdel = (delete_fn)GetProcAddress( k32, "DeleteProcThreadAttributeList" ) ;
+	}
+	if( pinit && pupd && pdel ) {
+		pinit( NULL, 1, 0, &sz ) ;   /* fails by design: it returns the size */
+		if( sz && ( attrs = malloc( sz ) ) != NULL && !pinit( attrs, 1, 0, &sz ) ) { free( attrs ) ; attrs = NULL ; }
+		if( attrs && !pupd( attrs, 0, KITTY_PTA_HANDLE_LIST, list, n * sizeof(HANDLE), NULL, NULL ) ) {
+			pdel( attrs ) ; free( attrs ) ; attrs = NULL ;
+		}
+	}
+	if( attrs ) {
+		kitty_startupinfoex six ;
+		memset( &six, 0, sizeof(six) ) ;
+		six.StartupInfo = *si ;
+		six.StartupInfo.cb = sizeof(six) ;
+		six.lpAttributeList = attrs ;
+		ok = CreateProcessA( app, cmdline, NULL, NULL, TRUE, flags | KITTY_EXTENDED_STARTUPINFO_PRESENT,
+		                     NULL, dir, &six.StartupInfo, pi ) ;
+		err = GetLastError() ;
+		pdel( attrs ) ; free( attrs ) ;
+	} else {
+		ok = CreateProcessA( app, cmdline, NULL, NULL, TRUE, flags, NULL, dir, si, pi ) ;
+		err = GetLastError() ;
+	}
+	for( i = 0 ; i < n ; i++ ) SetHandleInformation( list[i], HANDLE_FLAG_INHERIT, 0 ) ;
+	SetLastError( err ) ;
+	return ok ;
+}
+
 void RunPuttyEd( HWND hwnd, char * filename ) {
 	char module[MAX_PATH+1]="", cmd[4096]="" ;
 	/* Do not rely on GetShortPathName(): 8.3 short names can be disabled on

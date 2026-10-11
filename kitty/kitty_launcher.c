@@ -7,7 +7,7 @@
  * "update available" tray balloon, workplace proxy mode arming with its
  * notices and timers, and the optional Startup-folder shortcut.
  * The tray part is compiled only when MOD_LAUNCHER is defined; the spawning
- * helpers after it (RunConfig, RunPuTTY, RunSession) are always built and
+ * helpers after it (RunConfig, RunKiTTYpp, RunSession) are always built and
  * assemble the child command lines, passing on the restricted ACL and the
  * shared master-password unlock.
  */
@@ -129,7 +129,7 @@
 #define MOD_NOREPEAT 0x4000
 #endif
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
-static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
+static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
 
 /* KiTTY: runtime registry base (windows/storage.c). The launcher must read
  * KiTTY's own hive (Software\9bis.com\KiTTY) -- where sessions actually live --
@@ -1797,7 +1797,7 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 		snprintf( line, sizeof(line), "double click via %s: %s", from,
 		          manage ? "Manage Sessions" : quick ? "Quick Connect" : "new configuration box" ) ;
 		LauncherTrayTrace( line ) ;
-		RunPuTTY( hwnd, manage ? manage_arg : quick ? quick_arg : none ) ;
+		RunKiTTYpp( hwnd, manage ? manage_arg : quick ? quick_arg : none ) ;
 	}
 }
 
@@ -2591,7 +2591,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 								conf_free( wc ) ;
 							}
 							kitty_set_last_session( LauncherHotkeyWinner ) ;
-							RunPuTTYAtPanel( hwnd, "Session/Startup", 1 ) ;
+							RunKiTTYppAtPanel( hwnd, "Session/Startup", 1 ) ;
 						}
 					}
 					/* The update balloon is the only balloon left: the workplace
@@ -2828,10 +2828,10 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					break ;
 				case IDM_LAUNCHER+1:
 					LauncherTrayTrace( "menu entry: new configuration box" ) ;
-					RunPuTTY( hwnd, "" ) ;
+					RunKiTTYpp( hwnd, "" ) ;
 					break ;
 				case IDM_LAUNCHER+2:
-					RunPuTTY( hwnd, "-ed" ) ;
+					RunKiTTYpp( hwnd, "-ed" ) ;
 					break ;
 				case IDM_LAUNCHER+3:
 					ManageHideAll( hwnd ) ;
@@ -3176,7 +3176,7 @@ void RunConfig( Conf * conf ) {
 
 	sa.nLength = sizeof(sa);
 	sa.lpSecurityDescriptor = NULL;
-	sa.bInheritHandle = TRUE;
+	sa.bInheritHandle = FALSE;   /* given to the one child below only */
 	filemap = CreateFileMapping(INVALID_HANDLE_VALUE,
 		&sa,
 		PAGE_READWRITE,
@@ -3208,8 +3208,9 @@ void RunConfig( Conf * conf ) {
 	si.dwFlags = 0;
 	si.cbReserved2 = 0;
 	si.lpReserved2 = NULL;
-	if( CreateProcess(b, cl, NULL, NULL, inherit_handles,
-		NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi) ) {
+	(void)inherit_handles;
+	HANDLE give[2] = { filemap, mpwmap } ;
+	if( kitty_create_process_with_handles( b, cl, NORMAL_PRIORITY_CLASS, NULL, &si, &pi, give, 2 ) ) {
 		/* let the spawned KiTTY window come to the foreground (see RunCommand) */
 		AllowSetForegroundWindow( pi.dwProcessId ) ;
 		CloseHandle(pi.hProcess);
@@ -3225,15 +3226,29 @@ void RunConfig( Conf * conf ) {
 
 static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) ;
 
-void RunPuTTY( HWND hwnd, char * param ) {
+void RunKiTTYpp( HWND hwnd, char * param ) {
 	char buffer[4096]="",shortname[1024]="" ; ;
 	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
 		if( GetShortPathName( buffer, shortname, 1023 ) ) {
-			if( strlen(param) > 0 ) {
-				/* A prefix-dispatched mode (e.g. "-ed" editor): don't inject
-				 * "-mpwkey" - it would break the "-ed" cmdline detection. */
+			if( !strcmp( param, "-ed" ) ) {
+				/* The built-in editor: a prefix-dispatched mode, where an
+				 * "-mpwkey" in front would break its command-line detection -
+				 * and it reads no stored password. */
 				snprintf( buffer, sizeof(buffer), "%s %s", shortname, param ) ;
 				RunCommand( hwnd, buffer ) ;
+			} else if( strlen(param) > 0 ) {
+				/* -quickconnect, -manage: they open saved sessions, so the
+				 * master password goes with them - Quick Connect used to
+				 * prompt for it again in every launcher run. -manage reads
+				 * the key itself (window.c), Quick Connect in the argument
+				 * parser; -restrict-acl as for a new configuration box. */
+				HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
+				const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
+				kitty_mpw_startup_unlock() ;
+				mpwmap = kitty_mpw_export_inherit_blob( " -mpwkey ", mpwtok, sizeof(mpwtok) ) ;
+				snprintf( buffer, sizeof(buffer), "%s%s%s %s", shortname, aclprefix, mpwtok, param ) ;
+				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+				if( mpwmap ) CloseHandle( mpwmap ) ;
 			} else {
 				/* New configuration box: share the master-password unlock so the
 				 * config box - and the session it opens - doesn't re-prompt
@@ -3261,13 +3276,13 @@ void RunPuTTY( HWND hwnd, char * param ) {
 		}
 }
 
-/* Open a new configuration box exactly like RunPuTTY(hwnd,"") - same restricted
+/* Open a new configuration box exactly like RunKiTTYpp(hwnd,"") - same restricted
  * ACL and master-password sharing - but landed on a named panel via -cfgpanel,
  * the switch the workplace-proxy notice already opens Connection/Proxy with.
  * The hotkey-conflict balloon uses it for Session/Startup, where the hotkey
  * controls are. Quote the path if it contains spaces (window.c's -cfgpanel
  * scan understands quotes). */
-static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
+static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
 	char buffer[4096]="",shortname[1024]="" ;
 	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
 		if( GetShortPathName( buffer, shortname, 1023 ) ) {
@@ -3287,14 +3302,15 @@ static void RunPuTTYAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
 }
 
 /* Spawn a launcher session command line. When `inheritmap` is non-NULL the child
- * must inherit it (the shared master-key mapping, launcher-mpw-sharing), so spawn
- * with handle inheritance; otherwise use the plain RunCommand path. */
+ * must inherit it (the shared master-key mapping, launcher-mpw-sharing) - it
+ * alone, see kitty_create_process_with_handles; otherwise use the plain
+ * RunCommand path. */
 static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) {
 	if( inheritmap == NULL ) { RunCommand( hwnd, cmd ) ; return ; }
-	STARTUPINFO si ; PROCESS_INFORMATION pi ;
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
 	ZeroMemory( &si, sizeof(si) ) ; si.cb = sizeof(si) ;
 	ZeroMemory( &pi, sizeof(pi) ) ;
-	if( CreateProcess( NULL, cmd, NULL, NULL, TRUE, NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi ) ) {
+	if( kitty_create_process_with_handles( NULL, cmd, NORMAL_PRIORITY_CLASS, NULL, &si, &pi, &inheritmap, 1 ) ) {
 		AllowSetForegroundWindow( pi.dwProcessId ) ;
 		WaitForInputIdle( pi.hProcess, INFINITE ) ;
 		CloseHandle( pi.hProcess ) ; CloseHandle( pi.hThread ) ;

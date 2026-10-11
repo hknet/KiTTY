@@ -38,6 +38,13 @@ int SetTextToClipboard( const char * buf ) ;
 // Run a command
 int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */
 
+/* Start a process that inherits exactly h[0..nh-1] (hand-over mappings) and no
+ * other handle; CreateProcessA's result and GetLastError(). */
+BOOL kitty_create_process_with_handles( const char * app, char * cmdline, DWORD flags,
+                                        const char * dir, STARTUPINFOA * si,
+                                        PROCESS_INFORMATION * pi,
+                                        const HANDLE * h, int nh ) ;
+
 // Start the built-in editor
 void RunPuttyEd( HWND hwnd, char * filename ) ;
 

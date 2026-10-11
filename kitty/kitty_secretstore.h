@@ -73,6 +73,7 @@ char *ksec_to_utf8(char *s);
 char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
 unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
 void kitty_mpw_consume_handle_str(const char *s);
+void kitty_mpw_consume_cmdline_switch(char *cl);   /* -launcher / -manage: "-mpwkey x" consumed + blanked */
 HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen);
 char *kitty_mpw_import_inherit_blob(char *p);
 int kitty_mpw_startup_unlock(void);

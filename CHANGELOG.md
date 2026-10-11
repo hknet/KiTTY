@@ -47,6 +47,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`TERM_PROGRAM` or `COLORTERM`), not both.
 - **The launcher picks up "Keep my hand-edited launcher menu" when it is
   changed**, without a restart.
+- **The portable master password is entered once.** Sessions started from
+  Manage Sessions (also `-manage`), the launcher's Quick Connect and Manage,
+  and a launcher started from the configuration box take over the unlocked
+  master password instead of prompting again. The key reaches only the
+  program started, no other program started at the same moment.
 
 ## 0.85.1.15-beta — 2026-10-11
 

@@ -705,10 +705,13 @@ static void kmpw_consume(HANDLE fm, unsigned sz) {
 }
 
 /* Parent: if the portable master password is unlocked, publish the key into a
- * fresh inheritable mapping and write "<prefix><hex>:<size>" into tok for the
- * child command line (prefix e.g. "&K" for the @/& dispatch, " -mpwkey " for the
- * argument parser). Returns the mapping HANDLE (close it AFTER CreateProcess), or
- * NULL (and tok emptied) when there is nothing to share. */
+ * fresh mapping and write "<prefix><hex>:<size>" into tok for the child command
+ * line (prefix e.g. "&K" for the @/& dispatch, " -mpwkey " for the argument
+ * parser). Returns the mapping HANDLE, or NULL (and tok emptied) when there is
+ * nothing to share. The handle is NOT inheritable: it reaches the one child
+ * through kitty_create_process_with_handles (kitty_winutil.c) only - it used
+ * to be inheritable from creation, so any program started with inheritance
+ * before it was closed received the key as well. Close it after the start. */
 HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen) {
     if (tok && toklen) tok[0] = '\0' ;
     if (!store_is_file() || !g_mpw_unlocked || !g_mpw_salt_valid) return NULL ;
@@ -717,8 +720,7 @@ HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t tokle
     memcpy(blob.salt, g_mpw_salt, KSEC_MPW_SALTLEN) ;
     memcpy(blob.key, g_mpw_key, KSEC_MPW_KEYLEN) ;
     blob.wrapped = kmpw_mem("CryptProtectMemory", blob.key, KSEC_MPW_KEYLEN) ;
-    SECURITY_ATTRIBUTES sa ; memset(&sa,0,sizeof(sa)) ; sa.nLength=sizeof(sa) ; sa.bInheritHandle=TRUE ;
-    HANDLE fm = CreateFileMappingA(INVALID_HANDLE_VALUE, &sa, PAGE_READWRITE, 0, sizeof(blob), NULL) ;
+    HANDLE fm = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(blob), NULL) ;
     if (!fm || fm==INVALID_HANDLE_VALUE) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
     void *p = MapViewOfFile(fm, FILE_MAP_WRITE, 0, 0, sizeof(blob)) ;
     if (!p) { CloseHandle(fm) ; SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
@@ -744,6 +746,32 @@ char *kitty_mpw_import_inherit_blob(char *p) {
 void kitty_mpw_consume_handle_str(const char *s) {
     HANDLE fm=NULL ; unsigned sz=0 ;
     if (s && sscanf(s, "%p:%u", &fm, &sz) == 2) kmpw_consume(fm, sz) ;
+}
+
+/* Child (modes that never reach the argument parser: -launcher, -manage):
+ * consume a "-mpwkey <hex>:<size>" pair from the raw command line `cl` and
+ * blank it there, so it is neither taken for something else nor handed on.
+ * They read none, so a key passed to them was never used and its handle stayed
+ * open in them for their whole run. */
+void kitty_mpw_consume_cmdline_switch(char *cl) {
+    char *p = cl ;
+    if (!cl) return ;
+    while ((p = strstr(p, "-mpwkey")) != NULL) {
+        char *q = p + strlen("-mpwkey"), *v, *e ;
+        if ((p > cl && !isspace((unsigned char)p[-1])) || !isspace((unsigned char)*q)) { p = q ; continue ; }
+        v = q ;
+        while (*v && isspace((unsigned char)*v)) v++ ;
+        e = v ;
+        while (*e && !isspace((unsigned char)*e)) e++ ;
+        if (e > v) {
+            char val[64] ;
+            size_t n = (size_t)(e - v) < sizeof(val) - 1 ? (size_t)(e - v) : sizeof(val) - 1 ;
+            memcpy(val, v, n) ; val[n] = '\0' ;
+            kitty_mpw_consume_handle_str(val) ;
+        }
+        while (p < e) *p++ = ' ' ;
+        return ;
+    }
 }
 
 /* Root process: prompt once at startup to unlock the portable master password so
