@@ -842,7 +842,8 @@ static const struct kset_key kset_keys[] = {
      * follows until it sets its own (Connection > File-Transfer-Settings) */
     { INIT_SECTION, KI_TRANSFERMAXMB, KSET_INT, false, NULL, NULL, NULL, 0, 0, 1024 },   /* max 0 = unbounded; 0 = no limit */
     { INIT_SECTION, KI_TRANSFERFULLPATH, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
-    /* Launcher: a separate process reads these from the store when it starts */
+    /* Launcher: a separate process, which reads each of these from the store
+     * when it uses it (reload at every menu rebuild, see kset_write) */
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD,           KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_ALREADYRUNCHECK,  KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
       NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
@@ -907,6 +908,13 @@ void kset_write(const struct kset_key *k, const char *text)
     }
     if (ok) {
         if (failed_last == k) failed_last = NULL;
+        /* A running launcher rebuilds its menu on the refresh broadcast, and
+         * reads [Launcher] reload at that rebuild: unticking "Keep my
+         * hand-edited launcher menu" reached it only at the next Save or
+         * Refresh. Ticked, the refresh leaves the hand-edited menu alone. */
+        if (!strcmp(k->section, KI_SECTION_LAUNCHER) &&
+            !strcmp(k->key, KI_LAUNCHER_RELOAD))
+            kitty_notify_launcher_sessions_changed();
         return;
     }
     if (failed_last != k) {

@@ -45,8 +45,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `~/.ssh/config`.
 - **The sshd NOTE shows only the variable the server refused**
   (`TERM_PROGRAM` or `COLORTERM`), not both.
-- **The launcher picks up "Keep my hand-edited launcher menu" when it is
-  changed**, without a restart.
+- **A running launcher follows "Keep my hand-edited launcher menu" at
+  once** when it is changed, without a restart.
 - **The portable master password is entered once.** Sessions started from
   Manage Sessions (also `-manage`), the launcher's Quick Connect and Manage,
   and a launcher started from the configuration box take over the unlocked

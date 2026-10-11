@@ -2297,8 +2297,8 @@ not recognised - for that session.
 
 \S{kitty-cfg-kset-launcher} The Launcher panel
 
-The launcher is a separate program: a change here applies the next
-time it starts.
+The launcher is a separate program: a running launcher follows a
+change here at once.
 
 \b \q{Keep my hand-edited launcher menu} stops the launcher from
 rebuilding its menu; see below. \q{A second launcher} sets whether a

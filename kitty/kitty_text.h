@@ -1570,8 +1570,8 @@
 #define KT_KSET_LA_UNHIDE                            "Show hidden windows again after the launcher ends:"
 #define KT_KSET_UNIT_SECONDS                         "s"
 #define KT_KSET_LA_UNHIDE_NEVER                      "0 = never: hidden windows stay hidden until Launcher restart."
-#define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a change here applies " \
-        "the next time it starts."
+#define KT_KSET_LA_READ_AT_START                     "The launcher is a separate program: a running launcher " \
+        "follows a change here at once."
 #define KT_KSET_LA_START                             "Start"
 #define KT_KSET_LA_START_AT_LOGIN                    "Start Launcher at Login"
 #define KT_KSET_LA_START_NOW                         "Start Launcher Now"
