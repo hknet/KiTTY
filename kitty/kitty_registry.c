@@ -15,6 +15,8 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_dlgbox.h"   /* kitty_info_modeless: an outcome beside a live session */
 #include "kitty_inikeys.h"  /* KI_* and KR_*: the stored value names */
 #include "kitty_store.h"
 #include "kitty_tools.h"
@@ -124,37 +126,37 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	// the create failed, which is what made the failure silent.)
 int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
 	HKEY hKey = NULL ;
-	int ok ;
+	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		if( RegCreateKey( hMainKey, lpSubKey, &hKey ) != ERROR_SUCCESS ) return 0 ;
+		/* the reason stays in GetLastError() for the caller's report */
+		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
 		}
-	ok = 1 ;
-	if( name != NULL ) {
-		if( RegSetValueEx( hKey, TEXT( name ), 0, REG_SZ, (const BYTE *)value, strlen(value)+1 ) != ERROR_SUCCESS )
-			ok = 0 ;
-		}
+	rc = ERROR_SUCCESS ;
+	if( name != NULL )
+		rc = RegSetValueEx( hKey, TEXT( name ), 0, REG_SZ, (const BYTE *)value, strlen(value)+1 ) ;
 	RegCloseKey( hKey ) ;
-	return ok ;
+	if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
+	return 1 ;
 	}
 
 // Test whether a key or a DWORD value exists and create it otherwise
 int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) {
 	HKEY hKey = NULL ;
-	int ok ;
+	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		if( RegCreateKey( hMainKey, lpSubKey, &hKey ) != ERROR_SUCCESS ) return 0 ;
+		/* the reason stays in GetLastError() for the caller's report */
+		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
 		}
-	ok = 1 ;
-	if( name != NULL ) {
-		if( RegSetValueEx( hKey, TEXT( name ), 0, REG_DWORD, (LPBYTE)&value, sizeof(DWORD) ) != ERROR_SUCCESS )
-			ok = 0 ;
-		}
+	rc = ERROR_SUCCESS ;
+	if( name != NULL )
+		rc = RegSetValueEx( hKey, TEXT( name ), 0, REG_DWORD, (LPBYTE)&value, sizeof(DWORD) ) ;
 	RegCloseKey( hKey ) ;
-	return ok ;
+	if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
+	return 1 ;
 	}
 	
 
@@ -267,15 +269,19 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 		}
 	}
 	
-// Delete a registry key value
+// Delete a registry key value. TRUE when it is gone - deleted, or never
+// there; FALSE with the reason in GetLastError() when it is still there.
+// It returned TRUE whatever happened.
 BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
 	HKEY hKey;
 	LONG lResult;
 	if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
-		RegDeleteValue( hKey, lpValue ) ;
+		lResult = RegDeleteValue( hKey, lpValue ) ;
 		RegCloseKey(hKey) ;
 		}
-	return TRUE;   
+	if( lResult == ERROR_SUCCESS || lResult == ERROR_FILE_NOT_FOUND ) return TRUE ;
+	SetLastError( (DWORD)lResult ) ;
+	return FALSE ;
 	}
 
 // Delete a registry key and its subkeys
@@ -345,7 +351,10 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
 void MigrateOldKittyHive( void ) {
 	if( !RegTestKey( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" )
 	    && RegTestKey( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY" ) ) {
-		kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY", "Software\\kapper.net\\KiTTY" ) ;
+		/* a partial copy must not stay: the key's presence is what marks the
+		 * migration done, so it would never be tried again */
+		if( !kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY", "Software\\kapper.net\\KiTTY" ) )
+			RegDelTree( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" ) ;
 	}
 }
 
@@ -382,6 +391,7 @@ void RepairSharrowDefaults( void ) {
 	char cur[cstMaxRegLength+2], old[cstMaxRegLength+2] ;
 	char name[MAX_KEY_LENGTH+1], kpath[512], oldsess[512] ;
 	DWORD idx, len ;
+	int failed = 0 ;
 
 	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
 	 * point the store at another hive): the repair reads and marks THAT hive
@@ -405,16 +415,17 @@ void RepairSharrowDefaults( void ) {
 			 * that proves the 0 is our persisted default, not the user's choice. */
 			if( RegTestKey( HKEY_CURRENT_USER, oldsess )
 			    && GetValueDataN( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys", old, sizeof(old) ) == NULL ) {
-				RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ;
+				if( !RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ) failed = 1 ;
 			}
 		}
 		RegCloseKey( hSess ) ;
 	}
 
-	/* set the marker regardless, so we don't rescan every boot (even if the old
-	 * 9bis hive is gone and nothing could be repaired). RegTestOrCreateDWORD hides
-	 * the RegSetValueEx byte-buffer boilerplate and creates the base key if needed. */
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, 1 ) ;
+	/* set the marker, so we don't rescan every boot (even if the old 9bis hive
+	 * is gone and nothing could be repaired) - but not after a repair that
+	 * failed: the next start tries it again. RegTestOrCreateDWORD hides the
+	 * RegSetValueEx byte-buffer boilerplate and creates the base key if needed. */
+	if( !failed ) RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, 1 ) ;
 }
 
 /* One-time migration: the per-session "Send file in current
@@ -428,6 +439,7 @@ void RepairSharrowDefaults( void ) {
  * portable sessions simply stop persisting the key once it is no longer saved. */
 void MigrateScpAutoPwd( void ) {
 	HKEY hSess ;
+	int failed = 0 ;
 	char cur[cstMaxRegLength+2] ;
 	char name[MAX_KEY_LENGTH+1], kpath[512] ;
 	DWORD idx, len ;
@@ -448,128 +460,90 @@ void MigrateScpAutoPwd( void ) {
 			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
 			if( GetValueDataN( HKEY_CURRENT_USER, kpath, "SCPAutoPwd", cur, sizeof(cur) ) == NULL ) continue ;
 			/* the old option was on -> turn on its safe replacement */
-			if( strcmp( cur, "1" ) == 0 )
-				RegTestOrCreateDWORD( HKEY_CURRENT_USER, kpath, "OSC7CwdTracking", 1 ) ;
+			if( strcmp( cur, "1" ) == 0
+			    && !RegTestOrCreateDWORD( HKEY_CURRENT_USER, kpath, "OSC7CwdTracking", 1 ) ) {
+				/* the replacement is not stored: keep the old value, the
+				 * next start tries again - deleting it lost the setting */
+				failed = 1 ;
+				continue ;
+			}
 			/* drop the retired key regardless of its value */
-			RegDelValue( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ;
+			if( !RegDelValue( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ) failed = 1 ;
 		}
 		RegCloseKey( hSess ) ;
 	}
 
-	/* set the marker regardless, so we don't rescan every boot */
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, 1 ) ;
+	/* set the marker, so we don't rescan every boot - unless a session was
+	 * left unmigrated, which the next start tries again */
+	if( !failed )
+		RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, 1 ) ;
 }
 
-// Copy one registry key onto another
-void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
+/* Copy one registry key onto another, every value at its full size and every
+ * subkey. 1 the whole tree was copied; 0 not (the source key missing, or a
+ * read or write failed), with Windows' reason in GetLastError() - a caller
+ * that deletes the source afterwards (RegRenameTree) must stop on 0.
+ *
+ * Values used to be read into a 1024-byte buffer and ANY longer one was
+ * skipped without a word (a guard against overrunning that buffer): a long
+ * PortForwardings or a multi-line comment did not reach the copy and the
+ * rename that deleted the source then lost it. Each value is now read into
+ * a buffer of its own size. */
+int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	HKEY hKey, hDestKey ;
-    TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
-    DWORD    cbName;                   // size of name string 
-    TCHAR    achClass[MAX_PATH] = TEXT("");  // buffer for class name 
-    DWORD    cchClassName = MAX_PATH;  // size of class string 
-    DWORD    cSubKeys=0;               // number of subkeys 
-    DWORD    cbMaxSubKey;              // longest subkey size 
-    DWORD    cchMaxClass;              // longest class string 
-    DWORD    cValues;              // number of values for key 
-    DWORD    cchMaxValue;          // longest value name 
-    DWORD    cbMaxValueData;       // longest value data 
-    DWORD    cbSecurityDescriptor; // size of security descriptor 
-    FILETIME ftLastWriteTime;      // last write time 
- 
-    DWORD i, retCode; 
- 
-    TCHAR  achValue[MAX_VALUE_NAME]; 
-    DWORD cchValue = MAX_VALUE_NAME; 
-	
-	DWORD lpType, dwDataSize = 1024 ;
-	char * buffer = NULL, * destbuffer = NULL ;
-	
-	// Open the key
-	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
-	if( RegCreateKey( hMainKey, TEXT(lpDestKey), &hDestKey ) == ERROR_SUCCESS )
-					RegCloseKey( hDestKey ) ;
+	TCHAR achKey[MAX_KEY_LENGTH], achValue[MAX_VALUE_NAME] ;
+	DWORD cbName, cchValue, cSubKeys = 0, cValues = 0, cbMaxValueData = 0 ;
+	DWORD i, type, size ;
+	LONG rc ;
+	unsigned char * data = NULL ;
+	int ok = 1 ;
 
-    // Get the class name and the value count. 
-    retCode = RegQueryInfoKey(
-        hKey,                    // key handle 
-        achClass,                // buffer for class name 
-        &cchClassName,           // size of class string 
-        NULL,                    // reserved 
-        &cSubKeys,               // number of subkeys 
-        &cbMaxSubKey,            // longest subkey size 
-        &cchMaxClass,            // longest class string 
-        &cValues,                // number of values for this key 
-        &cchMaxValue,            // longest value name 
-        &cbMaxValueData,         // longest value data 
-        &cbSecurityDescriptor,   // security descriptor 
-        &ftLastWriteTime);       // last write time 
- 
-    // Enumerate the key values. 
-    if (cValues) 
-    {
-        //printf( "\nNumber of values: %d\n", cValues);
+	if( ( rc = RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey ) ) != ERROR_SUCCESS ) {
+		SetLastError( (DWORD)rc ) ; return 0 ; }
+	if( ( rc = RegCreateKeyEx( hMainKey, TEXT(lpDestKey), 0, NULL, 0, KEY_WRITE, NULL, &hDestKey, NULL ) ) != ERROR_SUCCESS ) {
+		RegCloseKey( hKey ) ; SetLastError( (DWORD)rc ) ; return 0 ; }
+	if( ( rc = RegQueryInfoKey( hKey, NULL, NULL, NULL, &cSubKeys, NULL, NULL,
+	                            &cValues, NULL, &cbMaxValueData, NULL, NULL ) ) != ERROR_SUCCESS ) {
+		ok = 0 ; goto done ; }
+	data = (unsigned char *) malloc( cbMaxValueData ? cbMaxValueData : 1 ) ;
+	if( data == NULL ) { rc = ERROR_NOT_ENOUGH_MEMORY ; ok = 0 ; goto done ; }
 
-        for (i=0, retCode=ERROR_SUCCESS; i<cValues; i++) 
-        { 
-            cchValue = MAX_VALUE_NAME; 
-            achValue[0] = '\0'; 
-            retCode = RegEnumValue(hKey, i, 
-                achValue, 
-                &cchValue, 
-                NULL, 
-                NULL,
-                NULL,
-                NULL);
- 
-            if (retCode == ERROR_SUCCESS ) 
-            { 
-				unsigned char lpData[1024] ;
-				dwDataSize = 1024 ;
-				/* SECURITY: a value >1024 bytes returns ERROR_MORE_DATA and sets
-				 * dwDataSize to the full length while lpData holds only 1024 bytes;
-				 * copying dwDataSize bytes then reads off the end of the stack
-				 * buffer. Only propagate values that fit. */
-				if( RegQueryValueEx( hKey, TEXT( achValue ), 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
-					if( RegOpenKeyEx( hMainKey, TEXT(lpDestKey), 0, KEY_WRITE, &hDestKey) != ERROR_SUCCESS ) return ;
-					RegSetValueEx( hDestKey, TEXT( achValue ), 0, lpType, lpData, dwDataSize );
-					RegCloseKey( hDestKey ) ;
-				}
-            } 
-        }
-    }
-	
-    // Enumerate the subkeys, until RegEnumKeyEx fails.
-    if (cSubKeys)
-    {
-        //printf( "\nNumber of subkeys: %d\n", cSubKeys);
+	for( i = 0 ; i < cValues ; i++ ) {
+		cchValue = MAX_VALUE_NAME ;
+		size = cbMaxValueData ;
+		rc = RegEnumValue( hKey, i, achValue, &cchValue, NULL, &type, data, &size ) ;
+		if( rc == ERROR_MORE_DATA ) {
+			/* grew since the query: read it again at its size */
+			unsigned char * bigger = (unsigned char *) realloc( data, size ) ;
+			if( bigger == NULL ) { rc = ERROR_NOT_ENOUGH_MEMORY ; ok = 0 ; goto done ; }
+			data = bigger ; cbMaxValueData = size ;
+			cchValue = MAX_VALUE_NAME ;
+			rc = RegEnumValue( hKey, i, achValue, &cchValue, NULL, &type, data, &size ) ;
+		}
+		if( rc == ERROR_NO_MORE_ITEMS ) break ;
+		if( rc != ERROR_SUCCESS ) { ok = 0 ; goto done ; }
+		if( ( rc = RegSetValueEx( hDestKey, achValue, 0, type, data, size ) ) != ERROR_SUCCESS ) { ok = 0 ; goto done ; }
+	}
 
-        for (i=0; i<cSubKeys; i++) 
-        { 
-            cbName = MAX_KEY_LENGTH;
-            retCode = RegEnumKeyEx(hKey, i,
-                     achKey, 
-                     &cbName, 
-                     NULL, 
-                     NULL, 
-                     NULL, 
-                     &ftLastWriteTime); 
-            if (retCode == ERROR_SUCCESS) 
-            {
-				buffer = (char*) malloc( strlen( TEXT(lpSubKey) ) + strlen( achKey ) + 3 ) ;
-				sprintf( buffer, "%s\\%s", TEXT(lpSubKey), achKey ) ;
-				destbuffer = (char*) malloc( strlen( TEXT(lpDestKey) ) + strlen( achKey ) + 3 ) ;
-				sprintf( destbuffer, "%s\\%s", TEXT(lpDestKey), achKey ) ;
-				if( RegCreateKey( hMainKey, destbuffer, &hDestKey ) == ERROR_SUCCESS )
-					RegCloseKey( hDestKey ) ;
-					
-				kitty_RegCopyTree( hMainKey, buffer, destbuffer ) ;
-				free( buffer );
-				free( destbuffer );
-            }
-        }
-    } 
- 
+	for( i = 0 ; i < cSubKeys ; i++ ) {
+		char * src, * dst ;
+		cbName = MAX_KEY_LENGTH ;
+		rc = RegEnumKeyEx( hKey, i, achKey, &cbName, NULL, NULL, NULL, NULL ) ;
+		if( rc == ERROR_NO_MORE_ITEMS ) break ;
+		if( rc != ERROR_SUCCESS ) { ok = 0 ; goto done ; }
+		src = dupprintf( "%s\\%s", TEXT(lpSubKey), achKey ) ;
+		dst = dupprintf( "%s\\%s", TEXT(lpDestKey), achKey ) ;
+		ok = kitty_RegCopyTree( hMainKey, src, dst ) ;
+		rc = ok ? ERROR_SUCCESS : (LONG)GetLastError() ;
+		sfree( src ) ; sfree( dst ) ;
+		if( !ok ) goto done ;
+	}
+  done:
+	free( data ) ;
+	RegCloseKey( hDestKey ) ;
 	RegCloseKey( hKey ) ;
+	if( !ok ) SetLastError( rc != ERROR_SUCCESS ? (DWORD)rc : ERROR_WRITE_FAULT ) ;
+	return ok ;
 }
 
 // Clean the PuTTY key: remove the keys and values specific to KiTTY
@@ -860,6 +834,99 @@ static int CliConfirm( const char *title, const char *text ) {
 	return yes ;
 }
 
+/* ---- where a report or a question goes ------------------------------- */
+
+/* A terminal window on this thread: a session runs here. A modal box
+ * would stop it - PuTTY handles the network in run_toplevel_callbacks, which
+ * a modal box's own message loop never calls. The terminal's window class is
+ * appname. */
+static BOOL CALLBACK reach_find_terminal( HWND h, LPARAM lp ) {
+	char cls[128] ;
+	if( GetClassNameA( h, cls, sizeof(cls) ) && !strcmp( cls, appname ) ) {
+		*(int *)lp = 1 ;
+		return FALSE ;
+	}
+	return TRUE ;
+}
+
+/* Can anybody see a window from this process? Not in a service, nor in a
+ * scheduled task that runs whether a user is logged on or not: their window
+ * station is invisible. When it cannot be told, someone is assumed there. */
+static int reach_desktop_visible( void ) {
+	USEROBJECTFLAGS uof ;
+	DWORD need = 0 ;
+	HWINSTA ws = GetProcessWindowStation() ;
+	if( ws == NULL || !GetUserObjectInformationA( ws, UOI_FLAGS, &uof, sizeof(uof), &need ) )
+		return 1 ;
+	return ( uof.dwFlags & WSF_VISIBLE ) != 0 ;
+}
+
+/* The console of the shell that started this run, if there is one. */
+static int reach_shell( void ) {
+	int attached = kitty_attach_parent_console() ? 1 : 0 ;
+	HANDLE h = CreateFileA( "CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE|FILE_SHARE_READ,
+				NULL, OPEN_EXISTING, 0, NULL ) ;
+	int ok = ( h != INVALID_HANDLE_VALUE ) ;
+	if( ok ) CloseHandle( h ) ;
+	if( attached ) FreeConsole() ;
+	return ok ;
+}
+
+int kitty_reach( void ) {
+	int term = 0 ;
+	EnumThreadWindows( GetCurrentThreadId(), reach_find_terminal, (LPARAM)&term ) ;
+	if( term ) return KITTY_REACH_SESSION ;
+	/* the shell only for a do-and-exit run: a terminal started from a prompt
+	 * still reports in windows, as does the configuration box driving a
+	 * registration */
+	if( !g_report_gui && kitty_cli_do_and_exit() && reach_shell() ) return KITTY_REACH_SHELL ;
+	if( !reach_desktop_visible() ) return KITTY_REACH_NOBODY ;
+	return KITTY_REACH_DESKTOP ;
+}
+
+/* stderr, when the caller redirected it to a file or a pipe */
+static void reach_stderr( const char *text ) {
+	HANDLE h = GetStdHandle( STD_ERROR_HANDLE ) ;
+	DWORD written ;
+	if( h == NULL || h == INVALID_HANDLE_VALUE ) return ;
+	WriteFile( h, text, (DWORD)strlen( text ), &written, NULL ) ;
+	WriteFile( h, "\r\n", 2, &written, NULL ) ;
+}
+
+int kitty_reach_confirm( HWND owner, const char *title, const char *question,
+                         const char *notdone ) {
+	if( kitty_cli_answer_yes() ) return 1 ;
+	/* a caller without a window of its own (kitty_sessorg_folder_move): the
+	 * one in front on this thread, so the question is not left behind it */
+	if( owner == NULL ) owner = GetActiveWindow() ;
+	switch( kitty_reach() ) {
+	  case KITTY_REACH_DESKTOP:
+		return MessageBox( owner, question, title,
+				   MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) == IDYES ;
+	  case KITTY_REACH_SESSION:
+		/* a modal question would stop the session; a modeless one cannot
+		 * hold the step back: not done and reported */
+		if( notdone ) kitty_info_modeless( owner, title, notdone, NULL, NULL ) ;
+		return 0 ;
+	  case KITTY_REACH_SHELL:
+		/* no question at the prompt yet (an interactive prompt does not wait
+		 * for this GUI program and can take the answer): the safe answer */
+		if( notdone ) {
+			char *msg = dupprintf( "%s\r\n%s", notdone, KT_REACH_GIVE_YES ) ;
+			KittyCliPrint( msg ) ;
+			sfree( msg ) ;
+		}
+		return 0 ;
+	  default:   /* KITTY_REACH_NOBODY: a box nobody answers hangs the caller */
+		if( notdone ) {
+			char *msg = dupprintf( "%s\r\n%s", notdone, KT_REACH_GIVE_YES ) ;
+			reach_stderr( msg ) ;
+			sfree( msg ) ;
+		}
+		return 0 ;
+	}
+}
+
 /* KiTTY: is this exe the machine-wide installation? The system MSI installs
  * into %ProgramFiles%\KiTTY (kitty-system.wxs uses ProgramFiles64Folder); the
  * per-user MSI and every portable copy live elsewhere. Used to decide whether
@@ -937,27 +1004,36 @@ static int ClassKeyBackup( HKEY root, const char *subkey, const char *tag,
 	PROCESS_INFORMATION pi ;
 	DWORD rc = 1, n ;
 
+	/* `file` is empty on every failure: it was filled in before reg.exe ran,
+	 * so a failed backup still offered "undo: import <file>" for a file that
+	 * was never written (the callers' no-backup wording keys off it). */
+	if( filelen ) file[0] = '\0' ;
 	n = GetEnvironmentVariableA( "LOCALAPPDATA", dir, sizeof(dir) ) ;
 	if( n == 0 || n >= sizeof(dir) ) return 0 ;
 	strncat( dir, "\\KiTTY", sizeof(dir)-strlen(dir)-1 ) ;
-	CreateDirectoryA( dir, NULL ) ;   /* fine if it is already there */
+	if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) return 0 ;
 
 	GetLocalTime( &st ) ;
 	snprintf( file, filelen, "%s\\%s-%s-%04d%02d%02d-%02d%02d%02d.reg",
 		  dir, hive, tag, st.wYear, st.wMonth, st.wDay,
 		  st.wHour, st.wMinute, st.wSecond ) ;
 
-	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) return 0 ;
+	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) { file[0] = '\0' ; return 0 ; }
 	snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" export \"%s\\%s\" \"%s\" /y",
 		  sysdir, hive, subkey, file ) ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
 	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
-			     NULL, NULL, &si, &pi ) ) return 0 ;
+			     NULL, NULL, &si, &pi ) ) { file[0] = '\0' ; return 0 ; }
 	WaitForSingleObject( pi.hProcess, 30000 ) ;
 	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
-	return rc == 0 ;
+	if( rc != 0 || GetFileAttributesA( file ) == INVALID_FILE_ATTRIBUTES ) {
+		DeleteFileA( file ) ;   /* a part-written export is no backup */
+		file[0] = '\0' ;
+		return 0 ;
+	}
+	return 1 ;
 }
 
 /* KiTTY: where should a class registration (URL handler, file association) be
@@ -1025,8 +1101,18 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 			}
 			return 0 ;   /* the elevated copy did the work and reported */
 		}
-		KittyCliReport( title,
-			KT_REG_ELEVATION_REFUSED, 1 ) ;
+		/* a cancelled UAC prompt is the user's answer, anything else is
+		 * a failure with a reason: a missing file, a policy, a denial */
+		{
+			DWORD err = GetLastError() ;
+			if( err == ERROR_CANCELLED )
+				KittyCliReport( title, KT_REG_ELEVATION_REFUSED, 1 ) ;
+			else {
+				char *msg = dupprintf( KT_REG_ELEVATION_FAILED_FMT, kitty_win_reason( err ) ) ;
+				KittyCliReport( title, msg, 1 ) ;
+				sfree( msg ) ;
+			}
+		}
 		return 0 ;
 	}
 	*root = HKEY_CURRENT_USER ;
@@ -1252,6 +1338,9 @@ void RemoveSSHHandler( void ) {
 				if( backup[0] )
 					len += snprintf( report+len, sizeof(report)-len,
 						 KT_REG_URL_UNDO_IMPORT, backup ) ;
+				else
+					len += snprintf( report+len, sizeof(report)-len,
+						 KT_REG_URL_NO_BACKUP ) ;
 			} else {
 				len += snprintf( report+len, sizeof(report)-len,
 					 KT_REG_URL_NOT_REMOVED,
@@ -1346,7 +1435,13 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	}
 	// Create the file association
 	snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
-	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
+	/* the one value that IS the association: it went unchecked and a failed
+	 * write still ended in "done" */
+	if( !RegTestOrCreate( root, key, "", "kitty.connect.1") ) {
+		snprintf( report+len, sizeof(report)-len, KT_REG_ASSOC_NOT_WRITTEN ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
+		return ;
+	}
 	RegTestOrCreate( root, key, "PerceivedType", "Connection") ;
 	RegTestOrCreate( root, key, "Content Type", "connection/ssh") ;
 	RegTestOrCreate( root, key, "OpenWithProgids", "kitty.connect.1") ;
@@ -1413,6 +1508,9 @@ void RemoveFileAssoc( void ) {
 				if( backup[0] )
 					len += snprintf( report+len, sizeof(report)-len,
 						 KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
+				else
+					len += snprintf( report+len, sizeof(report)-len,
+						 KT_REG_ASSOC_NO_BACKUP ) ;
 			} else {
 				len += snprintf( report+len, sizeof(report)-len,
 					 KT_REG_ASSOC_NOT_REMOVED, ext, hives[h].label,

@@ -1464,7 +1464,8 @@ static void kitty_cfgwin_defaultrow_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * store is backed up first, as before any overwrite of a saved session. */
 static void kitty_reset_default_answer(int yes, void *ctx)
 {
-    extern void SaveRegistryKeyNow(void);
+    extern int kitty_backup_before(HWND owner, int own_report);
+    extern char *kitty_backup_not_done(void);
     Conf *conf;
     char *err;
     (void)ctx;
@@ -1472,8 +1473,10 @@ static void kitty_reset_default_answer(int yes, void *ctx)
         return;
     conf = conf_new();
     load_open_settings(NULL, conf);
-    SaveRegistryKeyNow();
-    err = save_settings(KITTY_DEFAULT_SESSION, conf);
+    /* no backup and not chosen to go on without one: the stop takes the
+     * reset's own failure path */
+    err = kitty_backup_before(kitty_cfg_modal_owner(), 1)
+        ? save_settings(KITTY_DEFAULT_SESSION, conf) : kitty_backup_not_done();
     conf_free(conf);
     if (err) {
         char *msg = dupprintf(KT_SESSION_PARAMETER_RESET_DEFAULT_FAILED, err);

@@ -38,6 +38,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
 #include "kitty_pageant_int.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: a setting not stored */
 
 /*
  * KiTTY: the notify/confirm settings live in the registry by default, but
@@ -64,16 +65,79 @@ static int kageant_reg_read_dword(const char *name, int *val_out)
     return 1;
 }
 
-void kageant_reg_write_dword(const char *name, int val)
+/* One value under the agent's registry key: 1 when stored, 0 with the reason
+ * in GetLastError(). */
+static int kageant_reg_set(const char *name, DWORD type, const void *data,
+                           DWORD len)
 {
     HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)val;
-        RegSetValueExA(hk, name, 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
+    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                              KEY_SET_VALUE, NULL, &hk, NULL);
+    if (rc == ERROR_SUCCESS) {
+        rc = RegSetValueExA(hk, name, 0, type, (const BYTE *)data, len);
         RegCloseKey(hk);
     }
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
+}
+
+int kageant_reg_write_dword(const char *name, int val)
+{
+    DWORD v = (DWORD)val;
+    return kageant_reg_set(name, REG_DWORD, &v, sizeof(v));
+}
+
+/*
+ * The first setting that could not be stored since the last report, with the
+ * reason. The settings dialog writes some twenty values on OK; one box with
+ * the first failure shows that the settings did not stick. Twenty would not
+ * show more.
+ */
+static char kageant_set_fail_key[64];
+static DWORD kageant_set_fail_err;
+
+int kageant_set_note(int ok, const char *key)
+{
+    if (!ok && !kageant_set_fail_key[0]) {
+        kageant_set_fail_err = GetLastError();
+        snprintf(kageant_set_fail_key, sizeof(kageant_set_fail_key), "%s", key);
+    }
+    return ok;
+}
+
+void kageant_setting_failure_box(HWND parent)
+{
+    const char *ini = kageant_ini_status();
+    char *msg;
+    if (!kageant_set_fail_key[0])
+        return;
+    msg = dupprintf(KT_KA_SETTING_NOT_STORED_FMT, kageant_set_fail_key,
+                    ini ? ini : "HKCU\\" KAGEANT_REG_BASE,
+                    kitty_win_reason(kageant_set_fail_err));
+    kageant_set_fail_key[0] = '\0';
+    MessageBox(parent, msg, KT_CAP_KA_ERROR, MB_OK | MB_ICONERROR);
+    sfree(msg);
+}
+
+/*
+ * THE writer of an [Agent] setting: the store in charge and only that one -
+ * kitty.ini when it is authoritative, the registry otherwise. Settings used
+ * to be written through to both, so a portable install wrote the registry
+ * and a registry install wrote any kitty.ini lying beside it; the reads
+ * already fall back to the other store when the one in charge has no value,
+ * so nothing set before is lost. Returns 1 when stored, 0 (recorded for
+ * kageant_setting_failure_box) when not.
+ */
+int kageant_setting_write(const char *inikey, const char *ini_text,
+                          const char *regname, int regval)
+{
+    if (!kitty_inilight_registry_authoritative())
+        return kageant_set_note(
+            kitty_inilight_write(KI_SECTION_AGENT, inikey, ini_text), inikey);
+    return kageant_set_note(kageant_reg_write_dword(regname, regval), inikey);
 }
 
 /*
@@ -91,9 +155,9 @@ int kageant_reg_read(const char *name, int *val_out)
     return 1;
 }
 
-void kageant_reg_write(const char *name, int on)
+int kageant_reg_write(const char *name, int on)
 {
-    kageant_reg_write_dword(name, on ? 1 : 0);
+    return kageant_reg_write_dword(name, on ? 1 : 0);
 }
 
 
@@ -137,19 +201,17 @@ int kageant_setting_str_get(const char *inikey, const char *regname,
     return 0;
 }
 
-void kageant_setting_str_set(const char *inikey, const char *regname,
-                             const char *value)
+/* A failed kitty.ini write no longer falls back to the registry: that wrote
+ * a value the ini-mode reads never look at first. */
+int kageant_setting_str_set(const char *inikey, const char *regname,
+                            const char *value)
 {
-    if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write(KI_SECTION_AGENT, inikey, value))
-        return;
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, regname, 0, REG_SZ, (const BYTE *)value,
-                       (DWORD)(strlen(value) + 1));
-        RegCloseKey(hk);
-    }
+    if (!kitty_inilight_registry_authoritative())
+        return kageant_set_note(
+            kitty_inilight_write(KI_SECTION_AGENT, inikey, value), inikey);
+    return kageant_set_note(
+        kageant_reg_set(regname, REG_SZ, value, (DWORD)(strlen(value) + 1)),
+        inikey);
 }
 
 /* KiTTY: "notify on key use" tray-balloon toggle ([Agent] messageonkeyusage).
@@ -170,12 +232,10 @@ int kageant_notify_get(void)
     return kageant_reg_read(KAGEANT_REG_NOTIFY, &reg_val) ? reg_val : 1;
 }
 
-void kageant_notify_set(int on)
+int kageant_notify_set(int on)
 {
-    if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_MESSAGEONKEYUSAGE, on ? "yes" : "no"))
-        return;
-    kageant_reg_write(KAGEANT_REG_NOTIFY, on);
+    return kageant_setting_write(KI_AGENT_MESSAGEONKEYUSAGE, on ? "yes" : "no",
+                                 KAGEANT_REG_NOTIFY, on ? 1 : 0);
 }
 
 /* KiTTY: how long a notice stays up, [Agent] noticetimeout (seconds). One
@@ -268,24 +328,24 @@ int kageant_confirm_get(void)
     return kageant_confirm_mode() == KAGEANT_CONFIRM_YES;
 }
 
-void kageant_confirm_set(int on)
+int kageant_confirm_set(int on)
 {
     /* The two-state tray toggle: on = confirm every use, off = by comment. */
-    kageant_confirm_set_mode(on ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO);
+    return kageant_confirm_set_mode(on ? KAGEANT_CONFIRM_YES : KAGEANT_CONFIRM_AUTO);
 }
 
-/* Set the full three-state mode (the key-list radio buttons), written
- * THROUGH to both stores so an export/import lands the same value whichever
- * store the other machine reads. The registry now holds all three states
- * (0 = auto, 1 = yes, 2 = no; the first two unchanged from the old form). */
-void kageant_confirm_set_mode(int mode)
+/* Set the full three-state mode (the key-list radio buttons). The registry
+ * holds all three states (0 = auto, 1 = yes, 2 = no; the first two unchanged
+ * from the old form) - the DWORD writer, not the boolean one, which would
+ * store "no" (2) as 1. */
+int kageant_confirm_set_mode(int mode)
 {
     const char *s = (mode == KAGEANT_CONFIRM_YES) ? "yes" :
                     (mode == KAGEANT_CONFIRM_NO)  ? "no"  : "auto";
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_ASKCONFIRMATION, s);
-    /* _dword, not the boolean writer: it would store "no" (2) as 1. */
-    kageant_reg_write_dword(KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
+    int ok = kageant_setting_write(KI_AGENT_ASKCONFIRMATION, s,
+                                   KAGEANT_REG_CONFIRM, kageant_mode_to_reg(mode));
     kageant_confirm_mode_cached = -1;      /* the next request re-reads */
+    return ok;
 }
 
 /* KiTTY: "kitty.ini mode" indicator for the key-list window and the tray
@@ -383,11 +443,9 @@ const char *kageant_confirm_token(int mode)
  * case the user genuinely needs to act on, which is why this is not the
  * "quietkeyfailures" it started out as.
  *
- * Written THROUGH to both stores and read from the authoritative one, the
- * same rule as every other agent setting: a registry-mode user
- * with keys on removable media wants these too, and keeping both stores equal
- * removes the "which store?" ambiguity the earlier ini-only rule was meant to
- * avoid.
+ * Stored in the store in charge, the same rule as every other agent setting
+ * (kageant_setting_write): a registry-mode user with keys on removable media
+ * wants these too.
  */
 int kageant_bool_get(const char *inikey, const char *regname, int def)
 {
@@ -455,9 +513,8 @@ int kageant_hello_get(void)
 }
 int kageant_hello_set(int on)
 {
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_HELLOCONFIRM, on ? "yes" : "no");
-    kageant_reg_write("HelloConfirm", on ? 1 : 0);
-    return 1;
+    return kageant_setting_write(KI_AGENT_HELLOCONFIRM, on ? "yes" : "no",
+                                 "HelloConfirm", on ? 1 : 0);
 }
 
 /* [Agent] retrykeys: when a drive appears, try the startup keys that were not
@@ -546,13 +603,11 @@ int kageant_hello_ttl(void)
            kageant_clamp_ttl(reg_v) : KAGEANT_TTL_DEFAULT;
 }
 
-/* Setters - write THROUGH to both stores so the value is consistent whichever
- * is authoritative and survives export/import. */
+/* Setters - to the store in charge (kageant_setting_write). */
 int kageant_quiet_missing_set(int on)
 {
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_QUIETMISSINGKEYS, on ? "yes" : "no");
-    kageant_reg_write("QuietMissingKeys", on ? 1 : 0);
-    return 1;
+    return kageant_setting_write(KI_AGENT_QUIETMISSINGKEYS, on ? "yes" : "no",
+                                 "QuietMissingKeys", on ? 1 : 0);
 }
 int kageant_retry_keys_set(int mode)
 {
@@ -560,11 +615,10 @@ int kageant_retry_keys_set(int mode)
         mode = 1;
     /* Value-preserving on BOTH ends - routed through the boolean pair this
      * would write mode 2 as 1 and the third state could never exist. */
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_RETRYKEYS,
-                         mode == KAGEANT_RETRY_ANYDRIVE ? "ignoredriveletter" :
-                         mode ? "yes" : "no");
-    kageant_reg_write_dword("RetryKeys", mode);
-    return 1;
+    return kageant_setting_write(KI_AGENT_RETRYKEYS,
+                                 mode == KAGEANT_RETRY_ANYDRIVE ? "ignoredriveletter" :
+                                 mode ? "yes" : "no",
+                                 "RetryKeys", mode);
 }
 /* The colour theme is application-wide and lives in kitty_theme_pref.c, not
  * here: kittygen and kitty read the same setting. */
@@ -578,50 +632,32 @@ int kageant_settings_tab_get(void)
         return 0;
     return v;
 }
-void kageant_settings_tab_set(int page)
+int kageant_settings_tab_set(int page)
 {
     if (page < 0 || page > 15)
         page = 0;
-    kageant_reg_write_dword("SettingsTab", page);
+    return kageant_reg_write_dword("SettingsTab", page);
 }
 int kageant_unload_on_remove_set(int on)
 {
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_UNLOADONREMOVE, on ? "yes" : "no");
-    kageant_reg_write("UnloadOnRemove", on ? 1 : 0);
-    return 1;
+    return kageant_setting_write(KI_AGENT_UNLOADONREMOVE, on ? "yes" : "no",
+                                 "UnloadOnRemove", on ? 1 : 0);
 }
 int kageant_passphrase_ttl_set(int seconds)
 {
     char buf[16];
-    HKEY hk;
     seconds = kageant_clamp_ttl(seconds);
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_PASSPHRASECACHESECONDS, buf);
-    /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)seconds;
-        RegSetValueExA(hk, "PassphraseCacheSeconds", 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
-    return 1;
+    return kageant_setting_write(KI_AGENT_PASSPHRASECACHESECONDS, buf,
+                                 "PassphraseCacheSeconds", seconds);
 }
 int kageant_hello_ttl_set(int seconds)
 {
     char buf[16];
-    HKEY hk;
     seconds = kageant_clamp_ttl(seconds);
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_HELLOCACHESECONDS, buf);
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)seconds;
-        RegSetValueExA(hk, "HelloCacheSeconds", 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
-    return 1;
+    return kageant_setting_write(KI_AGENT_HELLOCACHESECONDS, buf,
+                                 "HelloCacheSeconds", seconds);
 }
 
 /* ---- re-encrypt keys after idle (see kitty_pageant.h) ------------------ */
@@ -717,13 +753,14 @@ int kageant_autoenc_mode_read(void)
 int kageant_autoenc_mode_set(int mode)
 {
     static const char *const words[] = { "off", "default", "enforce" };
+    int ok;
     if (mode < 0 || mode > 2) mode = 0;
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, words[mode]);
-    kageant_reg_write_dword("AutoEncryptMode", mode);
+    ok = kageant_setting_write(KI_AGENT_AUTOENCRYPTMODE, words[mode],
+                               "AutoEncryptMode", mode);
     kageant_autoenc_mode_cached = -1;
     if (kageant_tick_arm_hook)
         kageant_tick_arm_hook();           /* the heartbeat may be needed now */
-    return 1;
+    return ok;
 }
 int kageant_autoenc_seconds(void)
 {
@@ -744,9 +781,8 @@ int kageant_autoenc_seconds_set(int seconds)
     seconds = kageant_autoenc_clamp(seconds);
     if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, sizeof(buf), "use");
     else snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf);
-    kageant_reg_write_dword("AutoEncryptSeconds", seconds);
-    return 1;
+    return kageant_setting_write(KI_AGENT_AUTOENCRYPTSECONDS, buf,
+                                 "AutoEncryptSeconds", seconds);
 }
 
 /* KiTTY: notice for a key-set mutation that arrived over an external
@@ -812,33 +848,32 @@ int kageant_lockdown_get(void)
     return kageant_policy_get(KI_AGENT_LOCKDOWNMODE, "LockdownMode");
 }
 
-/* Write a yes/no policy through to BOTH stores, like the confirm mode, so
- * the value is consistent in either mode and survives export/import. */
-static void kageant_policy_set(const char *inikey, const char *regname, int on)
+/* A yes/no policy, to the store in charge like every agent setting. */
+static int kageant_policy_set(const char *inikey, const char *regname, int on)
 {
-    kitty_inilight_write(KI_SECTION_AGENT, inikey, on ? "yes" : "no");
-    kageant_reg_write(regname, on ? 1 : 0);
+    int ok = kageant_setting_write(inikey, on ? "yes" : "no", regname, on ? 1 : 0);
     memset(kageant_policy_cache, 0, sizeof(kageant_policy_cache));
+    return ok;
 }
-void kageant_lockdown_set(int on)
+int kageant_lockdown_set(int on)
 {
-    kageant_policy_set(KI_AGENT_LOCKDOWNMODE, "LockdownMode", on);
+    return kageant_policy_set(KI_AGENT_LOCKDOWNMODE, "LockdownMode", on);
 }
 int  kageant_blockadd_get(void)
 {
     return kageant_policy_get(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd");
 }
-void kageant_blockadd_set(int on)
+int kageant_blockadd_set(int on)
 {
-    kageant_policy_set(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd", on);
+    return kageant_policy_set(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd", on);
 }
 int  kageant_blockremove_get(void)
 {
     return kageant_policy_get(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove");
 }
-void kageant_blockremove_set(int on)
+int kageant_blockremove_set(int on)
 {
-    kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", on);
+    return kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", on);
 }
 /* "Allow locking the agent over IPC (ssh-add -x / -X)" - default OFF: the
  * agent never supported the lock before, so nothing depends on it, and any
@@ -847,9 +882,9 @@ int  kageant_allowipclock_get(void)
 {
     return kageant_policy_get(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock");
 }
-void kageant_allowipclock_set(int on)
+int kageant_allowipclock_set(int on)
 {
-    kageant_policy_set(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock", on);
+    return kageant_policy_set(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock", on);
 }
 
 /* "When Windows locks": 0 keep the agent working (default), 1 lock the
@@ -872,12 +907,12 @@ int kageant_winlock_mode(void)
     return kageant_reg_read_dword("LockWithWindows", &reg_v) ?
            (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : 0;
 }
-void kageant_winlock_mode_set(int mode)
+int kageant_winlock_mode_set(int mode)
 {
     static const char *const words[] = { "keep", "lock", "reencrypt" };
     if (mode < 0 || mode > 2) mode = 0;
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOCKWITHWINDOWS, words[mode]);
-    kageant_reg_write_dword("LockWithWindows", mode);
+    return kageant_setting_write(KI_AGENT_LOCKWITHWINDOWS, words[mode],
+                                 "LockWithWindows", mode);
 }
 
 /* The raw configured notice display time (0 = unset = per-notice default). */
@@ -894,20 +929,12 @@ int kageant_notice_timeout_get(void)
         return ini_v;
     return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v : 0;
 }
-void kageant_notice_timeout_set(int seconds)
+int kageant_notice_timeout_set(int seconds)
 {
     char buf[16];
-    HKEY hk;
     if (seconds < 0) seconds = 0;
     if (seconds > 120) seconds = 120;
     snprintf(buf, sizeof(buf), "%d", seconds);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf);
-    /* kageant_reg_write only stores 0/1, so write this DWORD directly. */
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD v = (DWORD)seconds;
-        RegSetValueExA(hk, KAGEANT_REG_NOTICESECS, 0, REG_DWORD,
-                       (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
+    return kageant_setting_write(KI_AGENT_NOTICETIMEOUT, buf,
+                                 KAGEANT_REG_NOTICESECS, seconds);
 }

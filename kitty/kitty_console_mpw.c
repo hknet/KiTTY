@@ -100,8 +100,14 @@ static void kcm_wrong(int supplied)
     cleanup_exit(1);
 }
 
+static void kcm_store_failed(const char *reason)
+{
+    fprintf(stderr, KT_CLI_MPW_STORE_FAILED_FMT, reason ? reason : "");
+}
+
 void kitty_console_mpw_init(void)
 {
     kitty_set_master_pw_prompt(kcm_prompt);
     kitty_set_master_pw_wrong(kcm_wrong);
+    kitty_set_master_pw_store_failed(kcm_store_failed);
 }

@@ -471,7 +471,8 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 		 * appeared to work, and it came back with the old value for ever.
 		 * Read and write now name the same key - the one this process uses. */
 		strcpy( buffer, kitty_registry_base() ) ;
-		RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ; 
+		/* its result: a failed write returned 1 like a stored one */
+		ret = RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ;
 	}
 	return ret ;
 }

@@ -10,8 +10,12 @@
 
 
 /* Settings helpers that kitty_kageant_audit.c shares with kitty_pageant.c. */
-void kageant_reg_write(const char *name, int on);
-void kageant_reg_write_dword(const char *name, int val);
+int kageant_reg_write(const char *name, int on);
+int kageant_reg_write_dword(const char *name, int val);
+/* an [Agent] setting, to the store in charge only; 1 stored, 0 recorded for
+ * kageant_setting_failure_box */
+int kageant_setting_write(const char *inikey, const char *ini_text,
+                          const char *regname, int regval);
 int kageant_bool_get(const char *inikey, const char *regname, int def);
 int kageant_int_setting(const char *inikey, const char *regname, int def, int lo, int hi);
 /* The audit sink, called from the mutating agent paths in kitty_pageant.c. */

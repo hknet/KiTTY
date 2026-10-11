@@ -23,6 +23,7 @@
 #include "kitty.h"
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
@@ -532,8 +533,12 @@ int SetTextToClipboard( const char * buf ) {
 	return 1 ;
 }
 
-// Run a command
-void RunCommand( HWND hwnd, const char * cmd ) {
+/* Run a command: 1 started; 0 neither CreateProcess nor the ShellExecute
+ * fallback could start it, with the command and Windows' reason shown to
+ * the user. It closed the ADDRESSES of its two structs (leaking both handles of
+ * every program it started) and never looked at the fallback's result, so
+ * WinSCP, FileZilla, the ini editor and the launcher's starts failed silently. */
+int RunCommand( HWND hwnd, const char * cmd ) {
 	PROCESS_INFORMATION ProcessInformation ;
 	ZeroMemory( &ProcessInformation, sizeof(ProcessInformation) );
 	
@@ -560,7 +565,15 @@ void RunCommand( HWND hwnd, const char * cmd ) {
 //MessageBox(hwnd,cmd,"Info",MB_OK);
 
 	if( !CreateProcess(NULL,(CHAR*)cmd,NULL,NULL,FALSE,NORMAL_PRIORITY_CLASS,NULL,NULL,&StartUpInfo,&ProcessInformation) ) {
-		ShellExecute(hwnd, "open", cmd ,0 , 0, SW_SHOWDEFAULT);
+		DWORD err = GetLastError() ;
+		INT_PTR r = (INT_PTR)ShellExecute(hwnd, "open", cmd ,0 , 0, SW_SHOWDEFAULT);
+		if( r <= 32 ) {   /* ShellExecute's own failure codes; GetLastError has the reason */
+			DWORD e2 = GetLastError() ;
+			char *msg = dupprintf( KT_START_FAILED_FMT, cmd, kitty_win_reason( (int)( e2 ? e2 : err ) ) ) ;
+			MessageBox( hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+			sfree( msg ) ;
+			return 0 ;
+		}
 	} else {
 		/* Grant the spawned session the right to bring its window to the
 		 * foreground. Without this, the new KiTTY window's SetForegroundWindow()
@@ -568,9 +581,10 @@ void RunCommand( HWND hwnd, const char * cmd ) {
 		 * the tray launcher, so the window opens behind and never gets focus. */
 		AllowSetForegroundWindow( ProcessInformation.dwProcessId ) ;
 		WaitForInputIdle(ProcessInformation.hProcess, INFINITE );
-		CloseHandle( &StartUpInfo );
-		CloseHandle( &ProcessInformation );
+		CloseHandle( ProcessInformation.hThread );
+		CloseHandle( ProcessInformation.hProcess );
 	}
+	return 1 ;
 }
 
 void RunPuttyEd( HWND hwnd, char * filename ) {

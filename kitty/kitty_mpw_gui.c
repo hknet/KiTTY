@@ -252,8 +252,18 @@ static int gui_legacy_migrate_warn(void)
     return 0;
 }
 
+/* The master password's salt or verifier could not be stored (a save had just
+ * set it up): the save goes ahead with Windows' own protection - report that. */
+static void gui_master_pw_store_failed(const char *reason)
+{
+    char msg[1024];
+    snprintf(msg, sizeof(msg), KT_MPW_STORE_FAILED_FMT, reason ? reason : "");
+    MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+}
+
 static void __attribute__((constructor)) kitty_mpw_gui_autoreg(void)
 {
     kitty_set_master_pw_prompt(gui_master_pw_prompt);
     kitty_set_legacy_migrate_warn(gui_legacy_migrate_warn);
+    kitty_set_master_pw_store_failed(gui_master_pw_store_failed);
 }

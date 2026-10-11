@@ -43,10 +43,10 @@ int kageant_audit_get(void)
 }
 int kageant_audit_set(int on)
 {
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOG, on ? "yes" : "no");
-    kageant_reg_write("AgentLog", on ? 1 : 0);
+    int ok = kageant_setting_write(KI_AGENT_AGENTLOG, on ? "yes" : "no",
+                                   "AgentLog", on ? 1 : 0);
     kageant_audit_setup();
-    return 1;
+    return ok;
 }
 
 /* The knobs, for the settings dialog. Same defaults and clamps as the
@@ -86,14 +86,12 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
     kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                             path ? path : "");
     snprintf(num, sizeof(num), "%d", maxkb);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGMAXKB, num);
-    kageant_reg_write_dword("AgentLogMaxKB", maxkb);
+    kageant_setting_write(KI_AGENT_AGENTLOGMAXKB, num, "AgentLogMaxKB", maxkb);
     snprintf(num, sizeof(num), "%d", keep);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGKEEP, num);
-    kageant_reg_write_dword("AgentLogKeep", keep);
+    kageant_setting_write(KI_AGENT_AGENTLOGKEEP, num, "AgentLogKeep", keep);
     snprintf(num, sizeof(num), "%d", expiredays);
-    kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_AGENTLOGEXPIREDAYS, num);
-    kageant_reg_write_dword("AgentLogExpireDays", expiredays);
+    kageant_setting_write(KI_AGENT_AGENTLOGEXPIREDAYS, num,
+                          "AgentLogExpireDays", expiredays);
     kageant_audit_setup();
 }
 

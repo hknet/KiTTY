@@ -20,7 +20,7 @@
 int kitty_theme_pref_get(void);
 
 /* Store it in both places, the way every other satellite setting is stored. */
-void kitty_theme_pref_set(int pref);
+int kitty_theme_pref_set(int pref);
 
 /* The resolver to hand to kitty_theme_hook_dialogs(). */
 bool kitty_theme_pref_dark(void);

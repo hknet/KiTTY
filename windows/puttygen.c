@@ -32,6 +32,7 @@
 #include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"    /* KiTTY: refuse a file changed after release */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+#include "../kitty/kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -2855,17 +2856,34 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                               *passphrase ? passphrase : NULL);
                     }
                     if (ret <= 0) {
-                        /* upstream's reason when there is one; our title */
-                        MessageBox(hwnd, err ? err : "Unable to save key file",
-                                   KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
+                        /* upstream's reason when there is one, else
+                         * Windows'; always the file (it showed "Unable to save
+                         * key file", with neither) */
+                        DWORD werr = GetLastError();
+                        char *m = dupprintf(KT_KGEN_NOT_SAVED_FMT,
+                                            filename_to_str(fn),
+                                            err ? err : kitty_win_reason(werr));
+                        MessageBox(hwnd, m, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
+                        sfree(m);
                     } else if (hello) {
                         /* KiTTY: the sidecar is the protected file's doors -
-                         * no sidecar, no protected file. */
+                         * no sidecar, no protected file. Whether that file
+                         * really went is checked, not claimed. */
                         if (!kageant_hello_write_sidecar(filename_to_str(fn),
                                                          hello_container)) {
-                            DeleteFileA(filename_to_str(fn));
-                            MessageBox(hwnd, KT_KGEN_SIDECAR_WRITE_FAILED,
-                                       KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
+                            DWORD werr = GetLastError();
+                            char *why = dupstr(kitty_win_reason(werr));
+                            char *m;
+                            if (DeleteFileA(filename_to_str(fn)) ||
+                                GetLastError() == ERROR_FILE_NOT_FOUND)
+                                m = dupprintf(KT_KGEN_SIDECAR_WRITE_FAILED_FMT,
+                                              filename_to_str(fn), why);
+                            else
+                                m = dupprintf(KT_KGEN_SIDECAR_KEY_LEFT_FMT,
+                                              filename_to_str(fn), why,
+                                              kitty_win_reason(GetLastError()));
+                            MessageBox(hwnd, m, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
+                            sfree(m); sfree(why);
                         } else {
                             sfree(state->hello_saved_path);
                             state->hello_saved_path =
@@ -2882,7 +2900,12 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                          * sidecar would lie about the new file. */
                         char *sc = kageant_hello_sidecar_path(
                             filename_to_str(fn));
-                        DeleteFileA(sc);
+                        if (!DeleteFileA(sc) && GetLastError() != ERROR_FILE_NOT_FOUND) {
+                            char *m = dupprintf(KT_KGEN_SIDECAR_STALE_FMT, sc,
+                                                kitty_win_reason(GetLastError()));
+                            MessageBox(hwnd, m, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONWARNING);
+                            sfree(m);
+                        }
                         sfree(sc);
                     }
                     /* A disarmed save does NOT disarm the OTHER copies of

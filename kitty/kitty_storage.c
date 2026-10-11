@@ -31,6 +31,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
 #include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report names */
+#include "kitty_winerr.h"   /* kitty_win_reason: a session file that would not move */
 #include "kitty_pwmem.h"    /* the -pwfile helpers, defined in kitty_secretstore.c */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty.h"
@@ -1935,6 +1936,14 @@ static int ksf_suffix_walk(const char *dir, const char *rel, int depth,
                     n++;
                 } else if (MoveFileA(full, to)) {
                     n++;
+                } else if (clashes) {
+                    /* listed with Windows' reason - it used to drop out
+                     * of the count and the list alike */
+                    DWORD err = GetLastError();
+                    if (clashes->len)
+                        put_byte(clashes, '\n');
+                    put_fmt(clashes, "%s%s: %s", rel, fd.cFileName,
+                            kitty_win_reason(err));
                 }
             }
             sfree(to);
@@ -2142,21 +2151,35 @@ char *portable_item_path(const char *subdir, const char *name)
 int portable_write_text_file(const char *subdir, const char *name,
                                     const char *value)
 {
+    /* Written to a temporary file and moved over the old one only once it is
+     * whole: an fopen("wb") of the file itself emptied it first, so a write
+     * failing then left a host key or the master password's check value
+     * truncated. 1 written; 0 not, the old file untouched, Windows' reason in
+     * GetLastError(). */
     char *dir = portable_subdir_path(subdir);
     char *path = portable_item_path(subdir, name);
+    char *tmp = NULL;
     FILE *fp;
     int ok = 0;
+    DWORD err = ERROR_PATH_NOT_FOUND;
     if (!dir || !path) goto out;
-    CreateDirectoryA(dir, NULL);
-    fp = fopen(path, "wb");
-    if (!fp) goto out;
-    fputs(value ? value : "", fp);
-    fputc('\n', fp);
-    ok = (fclose(fp) == 0);
-    fp = NULL;
+    if (!CreateDirectoryA(dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        err = GetLastError(); goto out;
+    }
+    tmp = dupprintf("%s.%lu.tmp", path, (unsigned long)GetCurrentProcessId());
+    fp = fopen(tmp, "wb");
+    if (!fp) { err = GetLastError(); goto out; }
+    ok = fputs(value ? value : "", fp) >= 0 && fputc('\n', fp) != EOF;
+    if (fclose(fp) != 0) ok = 0;
+    if (!ok) { err = GetLastError(); DeleteFileA(tmp); goto out; }
+    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        err = GetLastError(); DeleteFileA(tmp); ok = 0;
+    }
 out:
+    sfree(tmp);
     sfree(dir);
     sfree(path);
+    if (!ok) SetLastError(err ? err : ERROR_WRITE_FAULT);
     return ok;
 }
 

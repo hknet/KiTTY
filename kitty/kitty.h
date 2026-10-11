@@ -150,9 +150,9 @@ void GetSessionFolderName( const char * session_in, char * folder ) ;
 char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
-void RunCommand( HWND hwnd, const char * cmd ) ;
+int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */
 void load_open_settings_forced(char *filename, Conf *conf) ;
-void save_open_settings_forced(char *filename, Conf *conf) ;
+int save_open_settings_forced(char *filename, Conf *conf) ;   /* 1 written, 0 not (GetLastError) */
 int SwitchCryptFlag( void ) ;
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) ;
 void InitSpecialMenuTab( void ) ;
@@ -246,7 +246,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 // Count the windows of the same class as KiTTY
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
 // Rename a registry key
-void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
+int RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;   /* 1 renamed, 0 source untouched (GetLastError) */
 void RenewPassword( Conf *conf ) ;
 // Put a login typed at the SSH prompt into the running session (hknet/KiTTY#50)
 void SetPasswordInConfig( const char * password ) ;
@@ -266,7 +266,7 @@ void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
-void SaveCurrentSetting( HWND hwnd ) ;
+int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) ;   /* 1 saved, 0 cancelled, -1 not (out: file + reason) */
 void SendFile( HWND hwnd ) ;
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;
 
@@ -397,7 +397,7 @@ void CreateIniFile( const char * filename ) ;
 void ManageShortcutsFlag( HWND hwnd ) ;
 
 #ifdef MOD_LAUNCHER
-void InitLauncherRegistry( void ) ;
+int InitLauncherRegistry( int * failed, DWORD * err ) ;
 #endif
 
 // Section name of the configuration file

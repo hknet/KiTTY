@@ -844,11 +844,30 @@ static const char * kitty_launcher_sessions_root( void ) {
 	return root ;
 	}
 
+/* What InitLauncherRegistry wrote and what it could not, with the first
+ * reason: /initlauncher reports them, the launcher's own refreshes do not
+ * report. */
+static int ilr_ok, ilr_fail ;
+static DWORD ilr_err ;
+static void ilr_note( int ok ) {
+	if( ok ) ilr_ok++ ;
+	else { if( !ilr_fail ) ilr_err = GetLastError() ; ilr_fail++ ; }
+	}
+/* one menu entry file: "<text>", checked to the close */
+static void ilr_write_file( const char * path, const char * text ) {
+	FILE * fp = fopen( path, "wb" ) ;
+	int ok = fp != NULL ;
+	if( fp != NULL ) {
+		if( fputs( text, fp ) < 0 ) ok = 0 ;
+		if( fclose( fp ) != 0 ) ok = 0 ;
+		}
+	ilr_note( ok ) ;
+	}
+
 static void InitLauncherDir( const char * directory ) {
 	char fullpath[MAX_VALUE_NAME], buffer[MAX_VALUE_NAME] ;
 	DIR * dir ;
 	struct dirent * de ;
-	FILE * fp ;
 	
 	if( strlen(directory)>0 ) {
 		snprintf( fullpath, sizeof(fullpath), "%s\\%s", kitty_launcher_sessions_root(), directory ) ;
@@ -868,12 +887,13 @@ static void InitLauncherDir( const char * directory ) {
 			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
 				if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
-				snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
-				if( (fp=fopen(buffer,"wb")) != NULL ) {
-					unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
-					fprintf( fp, "%s\\%s\\", buffer, directory ) ;
-					fclose( fp ) ; 
-					}
+				{
+					char text[2 * MAX_VALUE_NAME + 4], name[MAX_VALUE_NAME] ;
+					snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
+					unmungestr( de->d_name, name, MAX_VALUE_NAME) ;
+					snprintf( text, sizeof(text), "%s\\%s\\", name, directory ) ;
+					ilr_write_file( buffer, text ) ;
+				}
 				}
 			else if( (GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;
@@ -886,11 +906,14 @@ static void InitLauncherDir( const char * directory ) {
 	closedir( dir ) ;
 	}
 
-// Fill the Launcher registry key with the saved sessions
-void InitLauncherRegistry( void ) {
+// Fill the Launcher registry key with the saved sessions. Returns the
+// entries written; *failed (when wanted) the ones that were not and
+// *err the first one's reason.
+int InitLauncherRegistry( int * failed, DWORD * err ) {
 	HKEY hKey ;
 	char buffer[MAX_VALUE_NAME] ;
 	int i;
+	ilr_ok = ilr_fail = 0 ; ilr_err = 0 ;
 
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		TCHAR folder[MAX_VALUE_NAME], achClass[MAX_PATH] = TEXT("");
@@ -902,7 +925,7 @@ void InitLauncherRegistry( void ) {
 		RegDelTree (HKEY_CURRENT_USER, buffer ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 		snprintf( buffer, sizeof(buffer), "%s\\Sessions", kitty_registry_base() ) ;
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
+		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) goto done ;
 
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
 
@@ -948,7 +971,7 @@ void InitLauncherRegistry( void ) {
 					/* The entry is labelled with the session's own name; the
 					 * data is the full path that -load takes. */
 					if( strlen(folder) > 0 )
-						RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( folder ), folder ) ;
+						ilr_note( RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( folder ), folder ) ) ;
 				}
 			}
 		RegCloseKey( hKey ) ;
@@ -959,7 +982,6 @@ void InitLauncherRegistry( void ) {
 		 * the session's own name - the menu reader splits at the FIRST '\',
 		 * so it must hold none - and the session is the full path. */
 		char fullpath[MAX_VALUE_NAME], folder[MAX_VALUE_NAME] ;
-		FILE * fp ;
 		int nn = 0, k ;
 		char ** names ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
@@ -998,10 +1020,11 @@ void InitLauncherRegistry( void ) {
 				}
 			else
 				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s", ConfigDirectory, mleaf ) ;
-			if( (fp=fopen(fullpath,"wb")) != NULL ) {
-				fprintf( fp, "%s\\%s\\", leaf, names[k] ) ;
-				fclose( fp ) ;
-				}
+			{
+				char * text = dupprintf( "%s\\%s\\", leaf, names[k] ) ;
+				ilr_write_file( fullpath, text ) ;
+				sfree( text ) ;
+			}
 			}
 		kitty_session_names_free( names, nn ) ;
 	} else if( (IniFileFlag == SAVEMODE_DIR)&&DirectoryBrowseFlag ) {
@@ -1011,6 +1034,10 @@ void InitLauncherRegistry( void ) {
 		if( !MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
 		InitLauncherDir( "" ) ;
 	}
+done:
+	if( failed ) *failed = ilr_fail ;
+	if( err ) *err = ilr_err ;
+	return ilr_ok ;
 }
 
 /* KiTTY #544: the launcher menu shows "Ctrl+Shift+<letter>" accelerators for the
@@ -1440,7 +1467,7 @@ static void LauncherRefreshInPlace( HWND hwnd ) {
 	LauncherRefreshTick = GetTickCount() ;
 	LauncherRefreshSpin = 0 ;
 	LauncherRefreshSpinPaint( '-' ) ;          /* seen before the work starts */
-	if( LauncherConfReload() ) InitLauncherRegistry() ;
+	if( LauncherConfReload() ) InitLauncherRegistry( NULL, NULL ) ;
 	/* NOT RefreshMenuLauncher(): that destroys the menu that is on the screen. */
 	LauncherPendingMenu = InitLauncherMenu( "Launcher" ) ;
 	/* An explicit request for the current state, so a changed hotkey-conflict
@@ -2163,7 +2190,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 	if( LauncherConfReload() ) {
 		LAUNCHER_TIMING_START ;
-		InitLauncherRegistry() ;
+		InitLauncherRegistry( NULL, NULL ) ;
 		LAUNCHER_TIMING_END( "store" ) ;
 	}
 	RefreshMenuLauncher() ;
@@ -2493,7 +2520,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				LauncherStoreCopyPending = 0 ;
 				{
 					LAUNCHER_TIMING_START ;
-					InitLauncherRegistry() ;
+					InitLauncherRegistry( NULL, NULL ) ;
 					LAUNCHER_TIMING_END( "store-first" ) ;
 				}
 				RefreshMenuLauncher() ;
@@ -2853,7 +2880,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					  CheckVersionFromWebSite( hwnd, 0 ) ; }
 					break ;
 				case IDM_LAUNCHER+7:
-					if( LauncherConfReload() ) InitLauncherRegistry() ;
+					if( LauncherConfReload() ) InitLauncherRegistry( NULL, NULL ) ;
 					RefreshMenuLauncher() ;
 					/* Manual Refresh is an explicit request for the current
 					 * state, so a changed conflict report balloons here too. */
@@ -3061,7 +3088,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 		if( (IniFileFlag == SAVEMODE_DIR) && (DirectoryBrowseFlag == 0) )
 			LauncherStoreCopyPending = 1 ;   /* posted from WM_CREATE */
 		else
-			InitLauncherRegistry() ;
+			InitLauncherRegistry( NULL, NULL ) ;
 	}
 		
 	MainHwnd = CreateWindowEx(0, className, "KiTTYLauncher",

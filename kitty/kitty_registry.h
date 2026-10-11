@@ -56,7 +56,7 @@ BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) ;
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
 
 // Copy one registry key onto another
-void kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;
+int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;   /* 1 whole tree copied, 0 not (GetLastError) */
 // One-time migration of the old hive (9bis.com\KiTTY) to kapper.net\KiTTY
 void MigrateOldKittyHive( void ) ;
 
@@ -76,6 +76,22 @@ BOOL RegCleanPuTTY( void ) ;
 void KittyCliReport( const char *title, const char *text, int warn ) ;
 // the console half alone: 1 = written to the parent console, 0 = there is none
 int KittyCliPrint( const char *text ) ;
+
+// KiTTY: where a report or a question goes: a window
+// of a live session (modeless only), the desktop (a modal box is allowed),
+// the shell of a do-and-exit run, or nobody at all (no box: the safe answer
+// and an exit code)
+enum { KITTY_REACH_SESSION, KITTY_REACH_DESKTOP, KITTY_REACH_SHELL, KITTY_REACH_NOBODY } ;
+int kitty_reach( void ) ;
+// a yes/no question with No as the safe answer, put where kitty_reach() points;
+// 1 only for an explicit yes, or -yes on a do-and-exit run. `notdone` is the
+// outcome when the answer is no: shown where nobody can answer the question
+// (a live session, nobody there); NULL when the caller reports it itself
+int kitty_reach_confirm( HWND owner, const char *title, const char *question,
+                         const char *notdone ) ;
+// kitty_startup.c: a do-and-exit command-line run and -yes given on one
+int kitty_cli_do_and_exit( void ) ;
+int kitty_cli_answer_yes( void ) ;
 
 // Create the SSH handler
 // KiTTY: force = also take over protocols another program already handles;

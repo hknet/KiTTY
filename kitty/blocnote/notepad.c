@@ -12,6 +12,7 @@
 #include <winsock2.h>   /* before notepad.h's windows.h: putty.h pulls it in further down */
 #include "notepad.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
+#include "kitty_text.h"         /* KT_NOTEPAD_SAVE_FAILED_FMT */
 
 LRESULT CALLBACK Notepad_WndProc(HWND, UINT, WPARAM, LPARAM);
 int Notepad_open( HWND hwnd, HWND hEdit ) ;
@@ -362,8 +363,8 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				
 				// SAVE command
 				case NOTEPAD_IDM_SAVE:
-					Notepad_save( Notepad_filename, hEdit ) ;
-					Notepad_SetNoModify( hEdit ) ;
+					if( Notepad_save( Notepad_filename, hEdit ) )
+						Notepad_SetNoModify( hEdit ) ;
 					break ;
 
 				//COPYRIGHT command
@@ -594,19 +595,52 @@ int Notepad_open( HWND hwnd, HWND hEdit ) {
 	return 1 ;
 	}
 	
+/* Written to a temporary file beside it and swapped in only when whole: it
+ * opened the file itself with CREATE_ALWAYS, which emptied it first, never
+ * checked the write and returned 1 - a full disk or a locked kitty.ini lost
+ * the file without a report. A failure now leaves the file as it was and the
+ * text still in the editor, with the reason shown. */
 int Notepad_save( char * szFile, HWND hEdit ) {
-	HANDLE fp = CreateFile(szFile, GENERIC_WRITE, 0, 0, CREATE_ALWAYS,FILE_FLAG_SEQUENTIAL_SCAN, NULL);
-	strcpy( Notepad_filename, szFile ) ;
+	char tmp[MAX_PATH + 32], reason[256], msg[MAX_PATH + 512] ;
+	LPSTR tampon ;
+	int lenbloc, ok = 0 ;
+	DWORD s = 0, err = 0 ;
+	HANDLE fp ;
 
-	LPSTR tampon;
-	int lenbloc;
-	DWORD s;
-	lenbloc = GetWindowTextLength(hEdit);
-	tampon = (LPSTR)GlobalAlloc(LMEM_FIXED, lenbloc + 1);
-	GetWindowText(hEdit,tampon,lenbloc + 1);
-	WriteFile(fp,tampon, lenbloc, &s, NULL);
-	GlobalFree(tampon);
-	CloseHandle(fp);
+	if( snprintf( tmp, sizeof(tmp), "%s.%lu.tmp", szFile, (unsigned long)GetCurrentProcessId() ) >= (int)sizeof(tmp) )
+		err = ERROR_FILENAME_EXCED_RANGE ;
+	else if( ( fp = CreateFile( tmp, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_FLAG_SEQUENTIAL_SCAN, NULL ) ) == INVALID_HANDLE_VALUE )
+		err = GetLastError() ;
+	else {
+		lenbloc = GetWindowTextLength(hEdit);
+		tampon = (LPSTR)GlobalAlloc(LMEM_FIXED, lenbloc + 1);
+		if( tampon == NULL ) err = ERROR_NOT_ENOUGH_MEMORY ;
+		else {
+			GetWindowText(hEdit,tampon,lenbloc + 1);
+			ok = WriteFile( fp, tampon, lenbloc, &s, NULL ) && s == (DWORD)lenbloc ;
+			if( !ok ) err = GetLastError() ;
+			GlobalFree(tampon);
+		}
+		if( !CloseHandle(fp) && ok ) { ok = 0 ; err = GetLastError() ; }
+		if( ok ) {
+			if( GetFileAttributesA( szFile ) == INVALID_FILE_ATTRIBUTES )
+				ok = MoveFileExA( tmp, szFile, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) ;
+			else
+				ok = ReplaceFileA( szFile, tmp, NULL, REPLACEFILE_IGNORE_MERGE_ERRORS, NULL, NULL ) ;
+			if( !ok ) err = GetLastError() ;
+		}
+		if( !ok ) DeleteFileA( tmp ) ;
+	}
+	if( !ok ) {
+		if( !FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+		                     err ? err : ERROR_WRITE_FAULT, 0, reason, sizeof(reason), NULL ) )
+			snprintf( reason, sizeof(reason), "error %lu", (unsigned long)err ) ;
+		{ size_t l = strlen( reason ) ; while( l && ( reason[l-1] == '\n' || reason[l-1] == '\r' || reason[l-1] == '.' ) ) reason[--l] = '\0' ; }
+		snprintf( msg, sizeof(msg), KT_NOTEPAD_SAVE_FAILED_FMT, szFile, reason ) ;
+		MessageBox( GetParent( hEdit ), msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+		return 0 ;
+	}
+	strcpy( Notepad_filename, szFile ) ;
 	return 1 ;
 	}
 	

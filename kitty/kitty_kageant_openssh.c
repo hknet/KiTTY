@@ -38,6 +38,7 @@
 #include "kitty_gui.h"
 #include "kitty_kageant_openssh.h"
 #include "kitty_pageant_int.h"   /* KAGEANT_REG_BASE */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 /* ------------------------------------------------------------------ *
  * KiTTY: optional integration with the Windows OpenSSH client.        *
  *                                                                     *
@@ -66,16 +67,13 @@ int kageant_openssh_get(void)
     return val ? 1 : 0;
 }
 
-void kageant_openssh_set(int on)
+/* Registry only, in either store mode: the flag describes THIS machine's
+ * %USERPROFILE%\.ssh\config. A kitty.ini carried to another machine
+ * must not claim an integration that machine never had. */
+int kageant_openssh_set(int on)
 {
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        DWORD val = on ? 1 : 0;
-        RegSetValueExA(hk, KAGEANT_REG_VALUE, 0, REG_DWORD,
-                       (const BYTE *)&val, sizeof(val));
-        RegCloseKey(hk);
-    }
+    return kageant_set_note(kageant_reg_write(KAGEANT_REG_VALUE, on),
+                            KAGEANT_REG_VALUE);
 }
 
 /* Return malloc'd "%USERPROFILE%\.ssh\<leaf>", or NULL if no USERPROFILE. */
@@ -98,113 +96,208 @@ void kageant_write_identityagent(FILE *fp, const char *pipename)
     fputs("\"\n", fp);
 }
 
-/* Read a whole file into a malloc'd NUL-terminated buffer (binary), or NULL. */
-static char *kageant_read_file(const char *path)
+/* Read a whole file into a malloc'd NUL-terminated buffer: 1 read whole,
+ * 0 no such file (the path or the file missing), -1 it is there but could
+ * not be read whole (the Windows error left in GetLastError()). A file that
+ * cannot be read must never be taken for an empty one: writing our block in
+ * its place would replace the user's config. */
+static int kageant_read_file(const char *path, char **out, size_t *outlen)
 {
-    FILE *fp = fopen(path, "rb");
-    if (!fp)
-        return NULL;
-    fseek(fp, 0, SEEK_END);
-    long n = ftell(fp);
-    if (n < 0) { fclose(fp); return NULL; }
-    fseek(fp, 0, SEEK_SET);
-    char *buf = snewn(n + 1, char);
-    size_t got = fread(buf, 1, n, fp);
-    fclose(fp);
-    buf[got] = '\0';
-    return buf;
+    HANDLE h = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD size, got = 0, err;
+    char *buf;
+    *out = NULL; *outlen = 0;
+    if (h == INVALID_HANDLE_VALUE) {
+        err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND)
+            return 0;
+        SetLastError(err);
+        return -1;
+    }
+    size = GetFileSize(h, NULL);
+    if (size == INVALID_FILE_SIZE || size > 16 * 1024 * 1024) {
+        err = size == INVALID_FILE_SIZE ? GetLastError() : ERROR_FILE_TOO_LARGE;
+        CloseHandle(h);
+        SetLastError(err);
+        return -1;
+    }
+    buf = snewn(size + 1, char);
+    if (!ReadFile(h, buf, size, &got, NULL) || got != size) {
+        err = GetLastError();
+        CloseHandle(h);
+        sfree(buf);
+        SetLastError(err ? err : ERROR_READ_FAULT);
+        return -1;
+    }
+    CloseHandle(h);
+    buf[size] = '\0';
+    *out = buf; *outlen = size;
+    return 1;
 }
 
-/* Atomically replace `path` contents with `data` (temp file + rename). */
+/* Atomically replace `path` contents with `data` (temp file + rename). 1 or
+ * 0 with the Windows error in GetLastError(); the file is untouched then. */
 static int kageant_write_file_atomic(const char *path, const char *data)
 {
     char *tmp = dupprintf("%s.kageant.tmp", path);
+    size_t len = strlen(data);
+    DWORD put = 0, err = 0;
+    HANDLE h = CreateFileA(tmp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, NULL);
     int ok = 0;
-    FILE *fp = fopen(tmp, "wb");
-    if (fp) {
-        ok = (fputs(data, fp) >= 0);
-        if (fclose(fp) != 0) ok = 0;
+    if (h != INVALID_HANDLE_VALUE) {
+        ok = WriteFile(h, data, (DWORD)len, &put, NULL) && put == len;
+        if (!ok) err = GetLastError();
+        if (!CloseHandle(h) && ok) { ok = 0; err = GetLastError(); }
+    } else {
+        err = GetLastError();
     }
-    if (ok)
-        ok = MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING) ? 1 : 0;
-    if (!ok)
-        remove(tmp);
+    if (ok && !MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING)) {
+        ok = 0; err = GetLastError();
+    }
+    if (!ok) {
+        DeleteFileA(tmp);
+        SetLastError(err ? err : ERROR_WRITE_FAULT);
+    }
     sfree(tmp);
     return ok;
 }
 
-/* One-time backup of config before kageant first edits it (never clobbers). */
-static void kageant_backup_config_once(const char *cfgpath)
+/* One-time backup of config before kageant first edits it (never clobbers):
+ * 1 there is one (made now or earlier), 0 it could not be made. */
+static int kageant_backup_config_once(const char *cfgpath)
 {
     char *bak = dupprintf("%s.kageant.bak", cfgpath);
-    CopyFileA(cfgpath, bak, TRUE);   /* bFailIfExists = TRUE */
+    int ok = CopyFileA(cfgpath, bak, TRUE)   /* bFailIfExists = TRUE */
+             || GetLastError() == ERROR_FILE_EXISTS;
     sfree(bak);
+    return ok;
+}
+
+/* "<what> <path>: <Windows' reason>" into err. */
+static void kageant_ossh_err(char *err, size_t errlen, const char *what,
+                             const char *path)
+{
+    snprintf(err, errlen, "%s %s: %s", what, path,
+             kitty_win_reason((int)GetLastError()));
 }
 
 /* Apply (on=1) or remove (on=0) the OpenSSH integration. Touches only our
- * managed block in ~/.ssh/config; the rest is preserved byte-for-byte. */
-void kageant_openssh_apply(int on)
+ * managed block in ~/.ssh/config; the rest is preserved byte-for-byte. A
+ * config that cannot be read whole, or is not plain text (UTF-16 carries zero
+ * bytes), is never written. 1 done; 0 not, with the file and Windows' reason
+ * in err and ~/.ssh/config as it was. *backup is set to 1 when a
+ * config.kageant.bak exists (only when the config existed). */
+int kageant_openssh_apply(int on, int *backup, char *err, size_t errlen)
 {
     char *cfgpath  = kageant_ssh_path("config");
     char *confpath = kageant_ssh_path("kageant.conf");
     char *sshdir   = kageant_ssh_path("");   /* "...\.ssh\" */
+    char *cfg = NULL;
+    size_t cfglen = 0;
+    int ok = 0, r;
+    if (backup) *backup = 0;
+    err[0] = '\0';
     if (!cfgpath || !confpath || !sshdir) {
-        sfree(cfgpath); sfree(confpath); sfree(sshdir);
-        return;
+        snprintf(err, errlen, "%s", KT_KA_OPENSSH_ERR_NOPROFILE);
+        goto done;
     }
     { size_t L = strlen(sshdir); if (L && sshdir[L-1] == '\\') sshdir[L-1] = '\0'; }
-    CreateDirectoryA(sshdir, NULL);   /* harmless if it already exists */
+    if (!CreateDirectoryA(sshdir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_DIR, sshdir);
+        goto done;
+    }
+
+    r = kageant_read_file(cfgpath, &cfg, &cfglen);
+    if (r < 0) {
+        kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_READ, cfgpath);
+        goto done;
+    }
+    if (r > 0 && strlen(cfg) != cfglen) {
+        snprintf(err, errlen, KT_KA_OPENSSH_ERR_NOTTEXT_FMT, cfgpath);
+        goto done;
+    }
 
     if (on) {
         /* (1) (re)write kageant.conf with the current pipe name */
         char *pipename = agent_named_pipe_name();
-        FILE *fp = fopen(confpath, "wb");
-        if (fp) { kageant_write_identityagent(fp, pipename); fclose(fp); }
+        char *line = dupprintf("IdentityAgent \"%s\"\n", pipename);
+        for (char *p = line; *p; p++) if (*p == '\\') *p = '/';
         sfree(pipename);
+        r = kageant_write_file_atomic(confpath, line);
+        sfree(line);
+        if (!r) {
+            kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_WRITE, confpath);
+            goto done;
+        }
 
         /* (2) ensure ~/.ssh/config Include's it via our managed block, but
          * never add a duplicate if a block or a manual Include already exists */
-        char *cfg = kageant_read_file(cfgpath);
-        int present = cfg && (strstr(cfg, KAGEANT_SSH_BEGIN) ||
-                              strstr(cfg, "Include kageant.conf"));
-        if (!present) {
-            kageant_backup_config_once(cfgpath);
-            /* block ends in \n; placed before existing content with no extra
-             * separator, so a later remove restores the file byte-for-byte */
-            char *block = dupprintf(
-                "%s\n"
-                "# kageant rewrites kageant.conf on each launch; do not edit by hand.\n"
-                "Include kageant.conf\n"
-                "%s\n",
-                KAGEANT_SSH_BEGIN, KAGEANT_SSH_END);
-            char *newcfg = dupprintf("%s%s", block, (cfg && *cfg) ? cfg : "");
-            kageant_write_file_atomic(cfgpath, newcfg);
-            sfree(block); sfree(newcfg);
+        if (cfg && (strstr(cfg, KAGEANT_SSH_BEGIN) ||
+                    strstr(cfg, "Include kageant.conf"))) {
+            if (backup && cfg) {
+                char *bak = dupprintf("%s.kageant.bak", cfgpath);
+                *backup = GetFileAttributesA(bak) != INVALID_FILE_ATTRIBUTES;
+                sfree(bak);
+            }
+            ok = 1;
+            goto done;
         }
-        sfree(cfg);
+        if (cfg) {
+            if (!kageant_backup_config_once(cfgpath)) {
+                kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_BACKUP, cfgpath);
+                goto done;
+            }
+            if (backup) *backup = 1;
+        }
+        /* block ends in \n; placed before existing content with no extra
+         * separator, so a later remove restores the file byte-for-byte */
+        char *newcfg = dupprintf(
+            "%s\n"
+            "# kageant rewrites kageant.conf on each launch; do not edit by hand.\n"
+            "Include kageant.conf\n"
+            "%s\n%s",
+            KAGEANT_SSH_BEGIN, KAGEANT_SSH_END, cfg ? cfg : "");
+        r = kageant_write_file_atomic(cfgpath, newcfg);
+        sfree(newcfg);
+        if (!r) {
+            kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_WRITE, cfgpath);
+            goto done;
+        }
     } else {
         /* (1) remove ONLY our managed block from ~/.ssh/config */
-        char *cfg = kageant_read_file(cfgpath);
-        if (cfg) {
-            char *b = strstr(cfg, KAGEANT_SSH_BEGIN);
-            char *e = b ? strstr(b, KAGEANT_SSH_END) : NULL;
-            if (b && e) {
-                kageant_backup_config_once(cfgpath);
-                e += strlen(KAGEANT_SSH_END);
-                if (*e == '\r') e++;
-                if (*e == '\n') e++;
-                size_t headlen = (size_t)(b - cfg);
-                char *newcfg = snewn(headlen + strlen(e) + 1, char);
-                memcpy(newcfg, cfg, headlen);
-                strcpy(newcfg + headlen, e);
-                kageant_write_file_atomic(cfgpath, newcfg);
-                sfree(newcfg);
+        char *b = cfg ? strstr(cfg, KAGEANT_SSH_BEGIN) : NULL;
+        char *e = b ? strstr(b, KAGEANT_SSH_END) : NULL;
+        if (b && e) {
+            if (!kageant_backup_config_once(cfgpath)) {
+                kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_BACKUP, cfgpath);
+                goto done;
             }
-            sfree(cfg);
+            e += strlen(KAGEANT_SSH_END);
+            if (*e == '\r') e++;
+            if (*e == '\n') e++;
+            size_t headlen = (size_t)(b - cfg);
+            char *newcfg = snewn(headlen + strlen(e) + 1, char);
+            memcpy(newcfg, cfg, headlen);
+            strcpy(newcfg + headlen, e);
+            r = kageant_write_file_atomic(cfgpath, newcfg);
+            sfree(newcfg);
+            if (!r) {
+                kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_WRITE, cfgpath);
+                goto done;
+            }
         }
         /* (2) empty kageant.conf so any lingering Include is inert */
-        FILE *fp = fopen(confpath, "wb");
-        if (fp) fclose(fp);
+        if (GetFileAttributesA(confpath) != INVALID_FILE_ATTRIBUTES &&
+            !kageant_write_file_atomic(confpath, "")) {
+            kageant_ossh_err(err, errlen, KT_KA_OPENSSH_ERR_WRITE, confpath);
+            goto done;
+        }
     }
+    ok = 1;
+  done:
+    sfree(cfg);
     sfree(cfgpath); sfree(confpath); sfree(sshdir);
+    return ok;
 }

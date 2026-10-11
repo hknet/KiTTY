@@ -55,10 +55,24 @@
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "../kitty/kitty_update_state.h"   /* KiTTY: the STORED update answer - no network here */
+#include "../kitty/kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
 #endif
+
+/* KiTTY: a program kageant starts did not start - report what and why (the
+ * kittygen button, Quick Connect and the session menu, the updater, Explorer
+ * and the browser did nothing, or showed "Unable to execute KiTTY!" with
+ * neither the program nor the reason). Windows' reason from GetLastError,
+ * which ShellExecute sets. */
+static void kageant_start_failed(HWND hwnd, const char *what)
+{
+    char *msg = dupprintf(KT_START_FAILED_FMT, what,
+                          kitty_win_reason(GetLastError()));
+    MessageBox(hwnd, msg, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
+    sfree(msg);
+}
 
 #define WM_SYSTRAY   (WM_APP + 6)
 #define WM_SYSTRAY2  (WM_APP + 7)
@@ -129,7 +143,7 @@ static bool kageant_kitty_launch_allowed(HWND owner)
         return true;
     MessageBox(owner,
                KT_KA_LAUNCH_BLOCKED,
-               KT_CAP_KA_LAUNCH_BLOCKED,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
+               KT_CAP_KA_LAUNCH_BLOCKED,MB_ICONERROR | MB_OK);
     return false;
 }
 
@@ -208,7 +222,7 @@ void modalfatalbox(const char *fmt, ...)
     buf = dupvprintf(fmt, ap);
     va_end(ap);
     MessageBox(traywindow, buf, KT_CAP_KA_FATAL,
-               MB_SYSTEMMODAL | MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+               MB_SYSTEMMODAL | MB_ICONERROR | MB_OK);
     sfree(buf);
     exit(1);
 }
@@ -400,9 +414,10 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
             return 0;
           case IDC_ABOUT_WEBSITE:
             /* Load web browser */
-            ShellExecute(hwnd, "open",
+            if ((INT_PTR)ShellExecute(hwnd, "open",
                          "https://www.chiark.greenend.org.uk/~sgtatham/putty/",
-                         0, 0, SW_SHOWDEFAULT);
+                         0, 0, SW_SHOWDEFAULT) <= 32)
+                kageant_start_failed(hwnd, "https://www.chiark.greenend.org.uk/~sgtatham/putty/");
             return 0;
         }
         return 0;
@@ -498,7 +513,7 @@ static void kageant_hello_offer_enrol(HWND owner, const char *path,
     if (r != KAGEANT_HELLO_OK) {
         msg = dupprintf(KT_KA_HELLO_NOT_ADDED_FMT,
                         err ? err : KT_MSG_UNKNOWN_ERROR);
-        MessageBox(owner, msg, KT_CAP_KAGEANT, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+        MessageBox(owner, msg, KT_CAP_KAGEANT, MB_ICONWARNING | MB_OK);
         sfree(msg);
     }
     sfree(err);
@@ -739,7 +754,7 @@ void old_keyfile_warning(void)
         "You can perform this conversion by loading the key\n"
         "into PuTTYgen and then saving it again.";
 
-    MessageBox(NULL, message, mbtitle,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+    MessageBox(NULL, message, mbtitle,MB_ICONINFORMATION | MB_OK);
 }
 
 struct keylist_update_ctx {
@@ -1572,7 +1587,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
             sfree(msg);
         } else {
             char *msg = dupprintf("%s\n\n    %s", err, path);
-            message_box(traywindow, msg, APPNAME,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR, false,
+            message_box(traywindow, msg, APPNAME,MB_ICONERROR | MB_OK, false,
                         HELPCTXID(errors_cantloadkey));
             sfree(msg);
         }
@@ -2054,8 +2069,9 @@ static INT_PTR CALLBACK HelloProtectProc(HWND hwnd, UINT msg,
           }
           case IDC_HP_OPENFOLDER: {
             char *arg = dupprintf("/select,\"%s\"", c->src);
-            ShellExecute(hwnd, "open", "explorer.exe", arg, NULL,
-                         SW_SHOWNORMAL);
+            if ((INT_PTR)ShellExecute(hwnd, "open", "explorer.exe", arg, NULL,
+                         SW_SHOWNORMAL) <= 32)
+                kageant_start_failed(hwnd, c->src);
             sfree(arg);
             return 0;
           }
@@ -2607,7 +2623,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                 MessageBox(hwnd,
                            KT_KAKEYS_CANNOT_READ_FILE,
                            KT_CAP_KA_CANNOT_READ_FILE,
-                           MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           MB_ICONWARNING | MB_OK);
                 return 0;
             }
             msg = dupprintf(
@@ -2630,14 +2646,14 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                     != KITTY_HELLO_VERIFIED) {
                 MessageBox(hwnd,
                            KT_KAKEYS_ACCEPT_HELLO_FAILED,
-                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING | MB_OK);
                 return 0;
             }
 
             if (!kageant_accept_pending_key(keypath)) {
                 MessageBox(hwnd,
                            KT_KAKEYS_ACCEPT_LOAD_FAILED,
-                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           KT_CAP_KA_NOT_ACCEPTED, MB_ICONWARNING | MB_OK);
                 keylist_update();
                 return 0;
             }
@@ -2772,7 +2788,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                        r == 0 ?
                        KT_KAKEYS_LOCATE_DIFFERENT :
                        KT_KAKEYS_LOCATE_UNLOADABLE,
-                       KT_CAP_KA_NOT_REPOINTED, MB_ICONWARNING |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                       KT_CAP_KA_NOT_REPOINTED, MB_ICONWARNING | MB_OK);
             sfree(newpath);
             keylist_update();
             return 0;
@@ -4022,7 +4038,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
           case IDOK: {
             kageant_notify_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
-            /* All agent settings write through to both stores now, so these
+            /* Every agent setting goes to the store in charge, so these
              * apply in either mode - no kitty.ini gate. */
             {
                 int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_RETRY,
@@ -4037,7 +4053,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_THEME,
                                                   CB_GETCURSEL, 0, 0);
                 if (sel >= KITTY_THEME_SYSTEM && sel <= KITTY_THEME_DARK) {
-                    kitty_theme_pref_set(sel);
+                    kageant_set_note(kitty_theme_pref_set(sel), KI_THEME);
                     kitty_theme_app_mode(sel);   /* the tray menu follows */
                     /* ...and every open KiTTY++ window, kageant's own
                      * included: the same announcement the configuration
@@ -4121,6 +4137,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                     IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
                         == BST_CHECKED);
             }
+            kageant_setting_failure_box(hwnd);
             /* Side-effectful toggles: fire the tray handler only on a real
              * change (it may prompt or refuse, and it is the authority). */
             int want = IsDlgButtonChecked(hwnd, IDC_SET_OPENSSH) == BST_CHECKED;
@@ -4562,6 +4579,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 if (moved) {
                     kageant_save_key_order();
                     keylist_update();
+                    kageant_setting_failure_box(hwnd);
                 }
             }
             strbuf_free(blob);
@@ -4647,18 +4665,25 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             kageant_setting_str_set(KI_AGENT_SHOWUNAVAILABLEKEYS,
                                     "ShowUnavailableKeys",
                                     keylist_show_unavail ? "yes" : "no");
+            kageant_setting_failure_box(hwnd);
             keylist_update();
             return 0;
           case IDC_KEYLIST_CONFIRM_YES:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_YES);
+            kageant_setting_failure_box(hwnd);
+            keylist_sync_confirm_radios();   /* back to what is stored */
             tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_AUTO:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_AUTO);
+            kageant_setting_failure_box(hwnd);
+            keylist_sync_confirm_radios();
             tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_NO:
             kageant_confirm_set_mode(KAGEANT_CONFIRM_NO);
+            kageant_setting_failure_box(hwnd);
+            keylist_sync_confirm_radios();
             tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_MOVEUP:
@@ -4681,6 +4706,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 if (pageant_reorder_key(ptrlen_from_strbuf(disp->blob), dir)) {
                     kageant_save_key_order();
                     keylist_update();
+                    kageant_setting_failure_box(hwnd);
                 }
             }
             return 0;
@@ -4860,7 +4886,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 if (!g) {
                     MessageBox(hwnd,
                         KT_KA_KITTYGEN_MISSING, APPNAME,
-                       MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONINFORMATION);
+                       MB_ICONINFORMATION | MB_OK);
                 } else {
                     /* Verify, but let the user override a failure: they can
                      * run the generator by hand anyway, so a hard refusal
@@ -4879,9 +4905,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         /* KiTTY: a restricted agent must launch a restricted
                          * key generator - the new private key would otherwise
                          * sit in an unrestricted process. */
-                        ShellExecute(hwnd, NULL, g,
+                        if ((INT_PTR)ShellExecute(hwnd, NULL, g,
                                      restricted_acl() ? "-restrict-acl" : NULL,
-                                     NULL, SW_SHOWNORMAL);
+                                     NULL, SW_SHOWNORMAL) <= 32)
+                            kageant_start_failed(hwnd, g);
                     sfree(g);
                 }
             }
@@ -5667,16 +5694,19 @@ static void kageant_update_run(HWND hwnd)
 {
     char *kitty = find_kitty_exe();
     int go = 1;
-    if (!kitty)
+    if (!kitty) {
+        /* it returned without a word */
+        MessageBox(hwnd, KT_KA_UPDATER_NO_KITTY, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
         return;
+    }
     if (!kitty_verify_sibling(kitty)) {
         int r = MessageBox(hwnd, KT_KA_UPDATER_UNVERIFIED_Q,
                            KT_CAP_KA_UPDATER_UNVERIFIED,
                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
         go = (r == IDYES);
     }
-    if (go)
-        ShellExecute(hwnd, NULL, kitty, "-update", NULL, SW_SHOWNORMAL);
+    if (go && (INT_PTR)ShellExecute(hwnd, NULL, kitty, "-update", NULL, SW_SHOWNORMAL) <= 32)
+        kageant_start_failed(hwnd, kitty);
     sfree(kitty);
 }
 
@@ -6136,10 +6166,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             strcat(cmdline, "-quickconnect");
 
             if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, cmdline,
-                                      _T(""), SW_SHOW) <= 32) {
-                MessageBox(NULL, KT_MSG_EXEC_KITTY_FAILED,
-                           KT_CAP_ERROR,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
-            }
+                                      _T(""), SW_SHOW) <= 32)
+                kageant_start_failed(NULL, putty_path);
             break;
           }
           case IDM_CLOSE:
@@ -6240,19 +6268,33 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             int on = !kageant_openssh_get();
             if (on && !should_have_security()) {
                 MessageBox(NULL, KT_KA_OPENSSH_NO_PIPE,
-                           KT_CAP_KAGEANT, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                           KT_CAP_KAGEANT, MB_ICONERROR | MB_OK);
                 break;
             }
-            kageant_openssh_set(on);
-            kageant_openssh_apply(on);
-            CheckMenuItem(systray_menu, IDM_OPENSSH_INTEGRATION,
-                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
-            if (on) {
-                char *cfg = kageant_ssh_path("config");
-                char *msg = dupprintf(
-                    KT_KA_OPENSSH_REGISTERED_FMT, cfg ? cfg : "~/.ssh/config");
-                MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
-                sfree(msg); sfree(cfg);
+            {
+                /* the switch flips only once the files are written: a failure
+                 * leaves both the setting and ~/.ssh/config as they were */
+                char oerr[1024];
+                int bak = 0;
+                if (!kageant_openssh_apply(on, &bak, oerr, sizeof(oerr))) {
+                    char *msg = dupprintf(on ? KT_KA_OPENSSH_ON_FAILED_FMT
+                                             : KT_KA_OPENSSH_OFF_FAILED_FMT, oerr);
+                    MessageBox(NULL, msg, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
+                    sfree(msg);
+                    break;
+                }
+                kageant_openssh_set(on);
+                kageant_setting_failure_box(NULL);
+                CheckMenuItem(systray_menu, IDM_OPENSSH_INTEGRATION,
+                              MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+                if (on) {
+                    char *cfg = kageant_ssh_path("config");
+                    const char *c = cfg ? cfg : "~/.ssh/config";
+                    char *msg = bak ? dupprintf(KT_KA_OPENSSH_REGISTERED_FMT, c, c)
+                                    : dupprintf(KT_KA_OPENSSH_REGISTERED_NEW_FMT, c);
+                    MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION | MB_OK);
+                    sfree(msg); sfree(cfg);
+                }
             }
             break;
           }
@@ -6283,7 +6325,18 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * portable mode, the HKCU ...\Run entry otherwise. Either way it is
              * machine-local (an absolute path) and does not travel, but that is
              * what unattended/fixed installs want; disabling removes it. */
-            kageant_set_autostart(on);
+            /* the tick and the "added" box only when the entry really
+             * changed - both followed regardless before */
+            if (!kageant_set_autostart(on) || kageant_autostart_active() != on) {
+                char *msg = dupprintf(on ? KT_KA_AUTOSTART_ON_FAILED_FMT
+                                         : KT_KA_AUTOSTART_OFF_FAILED_FMT,
+                                      kitty_win_reason((int)GetLastError()));
+                MessageBox(NULL, msg, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
+                sfree(msg);
+                CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
+                              MF_BYCOMMAND | (kageant_autostart_active() ? MF_CHECKED : MF_UNCHECKED));
+                break;
+            }
             CheckMenuItem(systray_menu, IDM_LOAD_ON_STARTUP,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             if (on) {
@@ -6293,7 +6346,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                   : dupprintf(
                     KT_KA_AUTOSTART_REGISTRY_FMT,
                     kageant_nloaded(), KAGEANT_RUN_NAME);
-                MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION | MB_OK);
                 sfree(msg);
             }
             break;
@@ -6304,7 +6357,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * item. Key FILE PATHS are stored, never passphrases or key
              * material, and they come back encrypted (deferred). */
             int on = !kageant_startup_get();
-            kageant_startup_set(on);
+            if (!kageant_startup_set(on)) {
+                kageant_setting_failure_box(NULL);
+                break;
+            }
             /* Snapshot the current key set - but ONLY if there is one. Turning
              * this on means "remember what I have loaded"; with nothing loaded
              * it must not mean "forget what you remembered". Disable, restart
@@ -6320,7 +6376,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_NOTIFY_KEYUSE: {
             /* KiTTY: toggle the "a key was used to authenticate" tray balloon. */
             int on = !kageant_notify_get();
-            kageant_notify_set(on);
+            if (!kageant_notify_set(on)) {
+                kageant_setting_failure_box(NULL);
+                break;
+            }
             CheckMenuItem(systray_menu, IDM_NOTIFY_KEYUSE,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             break;
@@ -6328,7 +6387,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_CONFIRM_KEYUSE: {
             /* KiTTY: toggle the confirm-before-every-key-use prompt. */
             int on = !kageant_confirm_get();
-            kageant_confirm_set(on);
+            if (!kageant_confirm_set(on)) {
+                kageant_setting_failure_box(NULL);
+                break;
+            }
             CheckMenuItem(systray_menu, IDM_CONFIRM_KEYUSE,
                           MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
             keylist_sync_confirm_radios();   /* an open key list, too */
@@ -6353,10 +6415,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                 param = dupcat(restrict_putty_acl ? "&R" : "", "@",
                                kageant_sess_ids[k]);
                 if ((INT_PTR)ShellExecute(hwnd, NULL, putty_path, param,
-                                          _T(""), SW_SHOW) <= 32) {
-                    MessageBox(NULL, KT_MSG_EXEC_KITTY_FAILED, KT_CAP_ERROR,
-                              MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONERROR);
-                }
+                                          _T(""), SW_SHOW) <= 32)
+                    kageant_start_failed(NULL, putty_path);
                 sfree(param);
             }
             break;
@@ -6442,7 +6502,7 @@ void spawn_cmd(const char *cmdline, const char *args, int show)
         char *msg;
         msg = dupprintf("Failed to run \"%s\": %s", cmdline,
                         win_strerror(GetLastError()));
-        MessageBox(NULL, msg, APPNAME,MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK | MB_ICONEXCLAMATION);
+        MessageBox(NULL, msg, APPNAME,MB_ICONEXCLAMATION | MB_OK);
         sfree(msg);
     }
 }
@@ -6484,7 +6544,7 @@ static NORETURN void opt_error(const char *fmt, ...)
     char *msg = dupvprintf(fmt, ap);
     va_end(ap);
 
-    MessageBox(NULL, msg, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+    MessageBox(NULL, msg, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR | MB_OK);
 
     exit(1);
 }
@@ -6528,7 +6588,7 @@ static void show_cmdline_help(void)
         FreeConsole();
 
     MessageBox(NULL, help, KT_CAP_KA_CMDLINE,
-               MB_ICONINFORMATION |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+               MB_ICONINFORMATION | MB_OK);
 }
 
 #ifdef LEGACY_WINDOWS
@@ -6651,7 +6711,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             MessageBox(NULL,
                        "Unable to access security APIs. kageant will\n"
                        "not run, in case it causes a security breach.",
-                       KT_CAP_KA_FATAL, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                       KT_CAP_KA_FATAL, MB_ICONERROR | MB_OK);
             return 1;
         }
     }
@@ -6769,7 +6829,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         mutex = lock_interprocess_mutex(mutexname, &err);
         sfree(mutexname);
         if (!mutex) {
-            MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+            MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
             return 1;
         }
     }
@@ -6858,7 +6918,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open named pipe at %s "
                                       "for SSH agent:\n%s", pipename,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);
@@ -6874,7 +6934,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                         "Unable to write OpenSSH config file to %s",
                         filename_to_str(openssh_config_file));
                     MessageBox(NULL, err, KT_CAP_KA_ERROR,
-                               MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                               MB_ICONERROR | MB_OK);
                     return 1;
                 }
                 kageant_write_identityagent(fp, pipename);
@@ -6886,8 +6946,17 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             /* KiTTY: if the user has enabled OpenSSH integration (tray
              * toggle, default off), refresh ~/.ssh/kageant.conf + the managed
              * Include now that the pipe listener is up. */
-            if (kageant_openssh_get())
-                kageant_openssh_apply(1);
+            if (kageant_openssh_get()) {
+                char oerr[1024];
+                if (!kageant_openssh_apply(1, NULL, oerr, sizeof(oerr)) && traywindow) {
+                    char *msg = dupprintf(KT_KA_OPENSSH_ON_FAILED_FMT, oerr);
+                    kitty_notice_show(KT_KA_NOTICE_OPENSSH_FAILED, msg,
+                                      KAGEANT_NOTICE_WARN,
+                                      kageant_notice_seconds(12), traywindow,
+                                      KAGEANT_WM_NOTICE_CLICK);
+                    sfree(msg);
+                }
+            }
         }
 
         /*
@@ -6908,7 +6977,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 char *err = dupprintf("Unable to open AF_UNIX socket at %s "
                                       "for SSH agent:\n%s", unixsocket,
                                       sk_socket_error(sock));
-                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR |MB_ICONINFORMATION |MB_ICONINFORMATION | MB_OK);
+                MessageBox(NULL, err, KT_CAP_KA_ERROR, MB_ICONERROR | MB_OK);
                 return 1;
             }
             pageant_listener_got_socket(pl, sock);

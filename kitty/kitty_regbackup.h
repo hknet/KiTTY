@@ -9,10 +9,19 @@
 #include "putty.h"
 #include <windows.h>
 
-void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;
+int SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) ;   /* 1 a whole export, 0 not: kitty_sav_save_reason() */
+const char *kitty_sav_save_reason( void ) ;   /* "<file> (<reason>)" of the last failed save */
 void SaveRegistryKey( void ) ;
-void SaveRegistryKeyNow( void ) ;
-void LoadRegistryKey( HWND hdlg );
+int SaveRegistryKeyNow( void ) ;   /* 1 written (or backups off), 0 failed: kitty_sav_save_reason() */
+/* The backup before a delete, a move or an overwrite: 1 go on, 0 stop (a
+ * failed backup the user did not choose to go on without - the question or
+ * the stop goes where kitty_reach() puts it). Use this, not SaveRegistryKeyNow, before a
+ * destructive change. own_report: the caller shows kitty_backup_not_done()
+ * on its own result line after a stop, so it is not reported twice. */
+int kitty_backup_before( HWND owner, int own_report ) ;
+char *kitty_backup_not_done( void ) ;   /* "Not done: ..." for a result line; snewn'd */
+int LoadRegistryKey( HWND hdlg );   /* 1 loaded, 0 not: kitty_sav_load_reason() */
+const char *kitty_sav_load_reason( void );   /* "<file> (<reason>)" of the last failed load */
 void DelRegistryKey( void ) ;
 
 /* /savereg: a backup now, whether or not the store changed since the last

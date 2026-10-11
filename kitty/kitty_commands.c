@@ -67,6 +67,7 @@
 #include "mini/mini.h"
 #include "kitty_commands.h"
 #include "kitty_theme.h"   /* kitty_theme_apply_hooked: /help dark from its first frame */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 
 /* /save + /savenew <name>: write the LIVE settings to a saved session. With a
  * name, the window's session identity switches to it first (save-as), so later
@@ -291,24 +292,40 @@ static int cmd_savenew( HWND hwnd, char * arg ) {
 }
 
 static int cmd_savektx( HWND hwnd, char * arg ) {
+	char out[4400] ;
 	(void)arg ;
-	SaveCurrentSetting(hwnd);
+	switch( SaveCurrentSetting( hwnd, out, sizeof(out) ) ) {
+	  case 1:  cmd_say( KT_CMD_RES_SAVED, out ) ; break ;
+	  case 0:  cmd_say( "%s", KT_CMD_RES_CANCELLED ) ; break ;
+	  default: cmd_say( KT_CMD_RES_NOT_SAVED, out ) ; break ;
+	}
 	return 1 ;
 }
 
+/* /savemode: the next mode and whether kitty.ini now holds it - judged by
+ * reading it back (delINI also returns 0 when there was nothing to remove).
+ * It wrote unchecked and showed a fixed box, so a kitty.ini that could not
+ * be written still read "Savemode is ..." although the next start would use
+ * the old mode. */
 static int cmd_savemode( HWND hwnd, char * arg ) {
+	const char * mode ;
+	char v[32] = "" ;
+	int stored, have ;
+	DWORD err = 0 ;
 	(void)hwnd ; (void)arg ;
 	IniFileFlag++ ; if( IniFileFlag>SAVEMODE_DIR ) IniFileFlag = 0 ;
-	if( IniFileFlag == SAVEMODE_REG )  {
-		delINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE ) ;
-		MessageBox( NULL, KT_CMD_SAVEMODE_REGISTRY, KT_CAP_INFO, MB_OK ) ;
-	} else if( IniFileFlag == SAVEMODE_FILE ) {
-		if(!NoKittyFileFlag) writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "file" ) ;
-		MessageBox( NULL, KT_CMD_SAVEMODE_FILE, KT_CAP_INFO, MB_OK ) ;
-	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		delINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE ) ;
-		MessageBox( NULL, KT_CMD_SAVEMODE_DIR, KT_CAP_INFO, MB_OK ) ;
+	mode = IniFileFlag == SAVEMODE_FILE ? "file" : IniFileFlag == SAVEMODE_DIR ? "dir" : "registry" ;
+	if( NoKittyFileFlag || KittyIniFile == NULL || !KittyIniFile[0] ) {
+		cmd_say( KT_CMD_RES_SAVEMODE_NOINI, mode ) ;
+		return 1 ;
 	}
+	if( IniFileFlag == SAVEMODE_FILE ) {
+		if( !writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "file" ) ) err = GetLastError() ;
+	} else if( !delINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE ) ) err = GetLastError() ;
+	have = readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, v, sizeof(v) ) && v[0] ;
+	stored = IniFileFlag == SAVEMODE_FILE ? ( have && !stricmp( v, "file" ) ) : !have ;
+	if( stored ) cmd_say( KT_CMD_RES_SAVEMODE, mode, KittyIniFile ) ;
+	else cmd_say( KT_CMD_RES_SAVEMODE_NOT_STORED, mode, KittyIniFile, kitty_win_reason( (int)( err ? err : ERROR_WRITE_FAULT ) ) ) ;
 	return 1 ;
 }
 
@@ -323,7 +340,7 @@ static int cmd_savereg( HWND hwnd, char * arg ) {
 	  case -1: cmd_say( "%s", IniFileFlag == SAVEMODE_DIR ? KT_CMD_RES_BACKUP_OFF_DIR
 	                                                      : KT_CMD_RES_BACKUP_OFF ) ; break ;
 	  case -2: cmd_say( "%s", KT_CMD_RES_BACKUP_NONE ) ; break ;
-	  default: cmd_say( KT_CMD_RES_NOT_SAVED, path ) ; break ;
+	  default: cmd_say( KT_CMD_RES_NOT_SAVED, kitty_sav_save_reason()[0] ? kitty_sav_save_reason() : path ) ; break ;
 	}
 	return 1 ;
 }
@@ -342,9 +359,12 @@ static int cmd_loadreg( HWND hwnd, char * arg ) {
 		return 1 ;
 	}
 	{	char * saved = KittySavFile ;
+		int loaded ;
 		KittySavFile = found ;          /* LoadRegistryKey reads the global */
-		LoadRegistryKey( NULL ) ;
+		loaded = LoadRegistryKey( NULL ) ;
 		KittySavFile = saved ;
+		/* "Loaded:" only when the import did: reg.exe's result was thrown away */
+		if( !loaded ) { cmd_say( KT_CMD_RES_NOT_LOADED, kitty_sav_load_reason() ) ; return 1 ; }
 	}
 	cmd_say( KT_CMD_RES_LOADED, found ) ;
 	return 1 ;
@@ -371,9 +391,16 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 		KT_CMD_DELREG_QUESTION,
 		kitty_registry_base() ) ;
 	if( MessageBox( hwnd, question, KT_CAP_DELETE_HIVE,
-	                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) != IDYES )
+	                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) != IDYES ) {
+		cmd_say( "%s", KT_CMD_RES_NOTHING_DELETED ) ;
 		return 1 ;
-	RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) ;
+	}
+	/* judged by the key being gone: RegDelTree's own answer is not trusted
+	 * alone, a key still there is the failure that matters */
+	if( RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) && !RegTestKey( HKEY_CURRENT_USER, kitty_registry_base() ) )
+		cmd_say( KT_CMD_RES_DELETED, kitty_registry_base() ) ;
+	else
+		cmd_say( KT_CMD_RES_NOT_DELETED, kitty_registry_base(), kitty_win_reason( GetLastError() ) ) ;
 	return 1 ;
 }
 
@@ -396,11 +423,10 @@ static int cmd_savesessions( HWND hwnd, char * arg ) {
 		}
 		RegCloseKey( k ) ;
 	}
-	SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, file ) ;
-	if( GetFileAttributesA( file ) != INVALID_FILE_ATTRIBUTES )
+	if( SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, file ) )
 		cmd_say( KT_CMD_RES_SAVED, file ) ;
 	else
-		cmd_say( KT_CMD_RES_NOT_SAVED, file ) ;
+		cmd_say( KT_CMD_RES_NOT_SAVED, kitty_sav_save_reason() ) ;
 	return 1 ;
 }
 
@@ -416,12 +442,46 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 			KT_CAP_COPY_TO_PUTTY, MB_OK | MB_ICONINFORMATION ) ;
 		return 1 ;
 	}
-	RegDelTree (HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
-	kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\Sessions" ) ;
-	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_hostkeys() ) ;
-	kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ;
-	RegCleanPuTTY() ;
+	/* Copied into a staging key FIRST, PuTTY's sessions replaced only by
+	 * a whole copy: they were deleted before an unchecked copy, so a copy
+	 * that failed left PuTTY with nothing - and the command reported nothing. */
+	{
+		static const char *stage = "Software\\SimonTatham\\PuTTY\\Sessions.kittycopy" ;
+		static const char *dest = "Software\\SimonTatham\\PuTTY\\Sessions" ;
+		DWORD n = 0 ;
+		HKEY k ;
+		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
+		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) {
+			cmd_say( KT_CMD_RES_NO_SESSIONS, buffer ) ;
+			return 1 ;
+		}
+		RegDelTree( HKEY_CURRENT_USER, stage ) ;
+		if( !kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, stage ) ) {
+			DWORD err = GetLastError() ;
+			RegDelTree( HKEY_CURRENT_USER, stage ) ;
+			cmd_say( KT_CMD_RES_NOT_COPIED_TO_PUTTY, kitty_win_reason( err ) ) ;
+			return 1 ;
+		}
+		RegDelTree( HKEY_CURRENT_USER, dest ) ;
+		if( !RegRenameTree( NULL, HKEY_CURRENT_USER, stage, dest ) ) {
+			cmd_say( KT_CMD_RES_NOT_COPIED_TO_PUTTY, kitty_win_reason( GetLastError() ) ) ;
+			return 1 ;
+		}
+		if( RegOpenKeyExA( HKEY_CURRENT_USER, dest, 0, KEY_READ, &k ) == ERROR_SUCCESS ) {
+			RegQueryInfoKeyA( k, NULL, NULL, NULL, &n, NULL, NULL, NULL, NULL, NULL, NULL, NULL ) ;
+			RegCloseKey( k ) ;
+		}
+		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_hostkeys() ) ;
+		if( RegTestKey( HKEY_CURRENT_USER, buffer ) &&
+		    !kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ) {
+			DWORD err = GetLastError() ;
+			RegCleanPuTTY() ;
+			cmd_say( KT_CMD_RES_HOSTKEYS_NOT_COPIED, (unsigned long)n, kitty_win_reason( err ) ) ;
+			return 1 ;
+		}
+		RegCleanPuTTY() ;
+		cmd_say( KT_CMD_RES_COPIED_TO_PUTTY, (unsigned long)n ) ;
+	}
 	return 1 ;
 }
 
@@ -558,8 +618,14 @@ static int cmd_fileassoc( HWND hwnd, char * arg ) {
 
 #ifdef MOD_LAUNCHER
 static int cmd_initlauncher( HWND hwnd, char * arg ) {
+	int failed = 0, n ;
+	DWORD err = 0 ;
 	(void)hwnd ; (void)arg ;
-	InitLauncherRegistry() ;
+	n = InitLauncherRegistry( &failed, &err ) ;
+	if( failed )
+		cmd_say( KT_CMD_RES_LAUNCHER_PARTLY, n, failed, kitty_win_reason( err ) ) ;
+	else
+		cmd_say( KT_CMD_RES_LAUNCHER_REBUILT, n ) ;
 	return 1 ;
 }
 #endif

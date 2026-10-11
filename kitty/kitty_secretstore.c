@@ -54,6 +54,7 @@
  * new saves convert to DPAPI1:.
  * ===================================================================== */
 #include <wincrypt.h>
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 
 
 int kitty_secret_slot(const char *key)
@@ -296,19 +297,27 @@ static char *mpw_state_get(const char *name)    /* malloc'd (ksec_dup) or NULL *
         != ERROR_SUCCESS) return NULL;
     return ksec_dup(b);
 }
-static void mpw_state_set(const char *name, const char *val)
+/* 1 stored; 0 not, with Windows' reason in GetLastError(). */
+static int mpw_state_set(const char *name, const char *val)
 {
-    if (store_is_file()) {
-        portable_write_text_file(KSEC_MPW_SUBDIR, name, val);
-        return;
-    }
+    if (store_is_file())
+        return portable_write_text_file(KSEC_MPW_SUBDIR, name, val);
     HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, name, 0, REG_SZ, (const BYTE *)val, (DWORD)strlen(val) + 1);
+    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
+                              KEY_SET_VALUE, NULL, &hk, NULL);
+    if (rc == ERROR_SUCCESS) {
+        rc = RegSetValueExA(hk, name, 0, REG_SZ, (const BYTE *)val, (DWORD)strlen(val) + 1);
         RegCloseKey(hk);
     }
+    if (rc != ERROR_SUCCESS) { SetLastError((DWORD)rc); return 0; }
+    return 1;
 }
+
+/* The master password's salt or verifier could not be stored: reported to
+ * the user by the front end (a message box in the GUI, stderr in the console
+ * tools); the save that set it up falls back to Windows' own protection. */
+static void (*g_mpw_store_failed)(const char *reason) = NULL;
+void kitty_set_master_pw_store_failed(void (*fn)(const char *reason)) { g_mpw_store_failed = fn; }
 static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
 {
     char *b = mpw_state_get("MasterPwSalt");
@@ -393,13 +402,33 @@ static int mpw_ensure_unlocked(int creating)
             if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
             if (!ok) { SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); wrong++; } /* wrong: re-prompt */
         } else {                                 /* first time: persist salt + verifier */
+            /* The master password exists only once BOTH are stored. It used
+             * to count as set either way, so a failed write left a store
+             * whose next start prompted for a NEW master password - with the
+             * values saved now needing the old one - and nothing reported it. */
+            int stored = 1;
+            DWORD err = 0;
             if (!have_salt) {
                 char *sb = ksec_b64_encode(salt, KSEC_MPW_SALTLEN);
-                if (sb) { mpw_state_set("MasterPwSalt", sb); free(sb); }
-                have_salt = 1;
+                stored = sb && mpw_state_set("MasterPwSalt", sb);
+                if (!stored) err = sb ? GetLastError() : ERROR_NOT_ENOUGH_MEMORY;
+                if (sb) free(sb);
+                if (stored) have_salt = 1;
             }
-            char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key); /* snew'd by kitty_mpw */
-            if (vb) { mpw_state_set("MasterPwVerifier", vb); sfree(vb); }
+            if (stored) {
+                char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key); /* snew'd by kitty_mpw */
+                stored = vb && mpw_state_set("MasterPwVerifier", vb);
+                if (!stored) err = vb ? GetLastError() : ERROR_NOT_ENOUGH_MEMORY;
+                if (vb) sfree(vb);
+            }
+            if (!stored) {
+                kitty_pwdebug("mpw setup: salt/verifier not stored (error %lu)", (unsigned long)err);
+                SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+                g_mpw_declined = 1;              /* no further setup prompts this run */
+                if (g_mpw_store_failed)
+                    g_mpw_store_failed(kitty_win_reason((int)err));
+                break;
+            }
             ok = 1;
         }
     }

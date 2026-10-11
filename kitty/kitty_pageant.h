@@ -27,25 +27,29 @@ int  kageant_noload(void);
 /* The STORED setting (get) versus whether the mechanism runs THIS RUN
  * (active). Display and edit use the getter; behaviour uses active. */
 int  kageant_startup_active(void);
-void kageant_startup_set(int on);
+int kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
 int kageant_notice_seconds(int fallback);  /* [Agent] noticetimeout */
-void kageant_notify_set(int on);
+int kageant_notify_set(int on);
 int kageant_confirm_get(void);         /* default off */
-void kageant_confirm_set(int on);
+int kageant_confirm_set(int on);
 /* [Agent] askconfirmation modes (classic three-state) */
 #define KAGEANT_CONFIRM_NO    0        /* never, even per-key comment opt-ins */
 #define KAGEANT_CONFIRM_YES   1        /* prompt for every key use */
 #define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment asks for it */
 int kageant_confirm_mode(void);
-void kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
+int kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
 /* string settings following the same store precedence as the toggles
  * (key-list window geometry + column widths live here) */
 int kageant_setting_str_get(const char *inikey, const char *regname,
                             char *buf, size_t len);
-void kageant_setting_str_set(const char *inikey, const char *regname,
-                             const char *value);
+int kageant_setting_str_set(const char *inikey, const char *regname,
+                            const char *value);
+/* one box with the first [Agent] setting not stored since the last one */
+void kageant_setting_failure_box(HWND parent);
+/* record a failed write of `key` (the first one wins) for that box; passes ok on */
+int kageant_set_note(int ok, const char *key);
 int kitty_inilight_registry_authoritative(void);  /* kitty_inilight.c */
 int kitty_inilight_read(const char *section, const char *key,
                         char *value, int len);        /* kitty_inilight.c */
@@ -102,7 +106,7 @@ int  kageant_audit_pathsetting_get(char *buf, size_t len);
  * say so instead of leaving an empty box. `create` makes the directory; the
  * dialog passes 0, because opening a dialog must not create directories. */
 int  kageant_audit_default_path(char *buf, size_t len, int create);
-/* write the whole set through to both stores and re-arm the sink;
+/* write the whole set to the store in charge and re-arm the sink;
  * path NULL/"" clears the override back to the default location */
 void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
                            int expiredays);
@@ -141,7 +145,7 @@ void kageant_idle_install(void);                       /* hook the agent core */
  * option: it lives in the registry only and deliberately has no kitty.ini
  * spelling, the same rule the window geometry follows. */
 int  kageant_settings_tab_get(void);
-void kageant_settings_tab_set(int page);
+int  kageant_settings_tab_set(int page);
 void kageant_note_pending(const char *path, int encrypted, int slot);
 void kageant_forget_loaded_by_blob(ptrlen blob);   /* removed in View Keys */
 char *kageant_paths_of_blob(ptrlen blob);  /* every file it came from; free it */
@@ -211,10 +215,10 @@ int  kageant_lifetime_count(void);
 void kageant_forget_startup_key(const char *path);  /* drop one stored entry */
 void kageant_notify_startup_missing(void);
 void kageant_warn_unprotected_memory(void);  /* once: CryptProtectMemory dead */
-void kageant_save_startup_keys(void);
+int kageant_save_startup_keys(void);   /* 1 written, 0 a write failed (GetLastError) */
 void kageant_load_startup_keys(void);
-void kageant_set_run_entry(int on);    /* HKCU ...\Run autostart entry */
-void kageant_set_autostart(int on);    /* Startup shortcut (portable) or Run key */
+int kageant_set_run_entry(int on);     /* HKCU ...\Run autostart entry; 1 done, 0 not (GetLastError) */
+int kageant_set_autostart(int on);     /* Startup shortcut (portable) or Run key; 1 done, 0 not */
 int kageant_autostart_active(void);    /* is our autostart artifact actually present? */
 int kageant_autostart_conflict(char *desc, size_t len);  /* another agent registered? */
 void kageant_save_key_order(void);
@@ -228,15 +232,15 @@ int  kageant_ipc_blocked(int op);   /* IPC access-control policy */
 void kageant_confirm_resume(void);  /* lift the confirm-suppress latch */
 int  kageant_confirm_suppressed(void);  /* is the latch engaged? */
 int  kageant_lockdown_get(void);
-void kageant_lockdown_set(int on);
+int  kageant_lockdown_set(int on);
 int  kageant_blockadd_get(void);
-void kageant_blockadd_set(int on);
+int  kageant_blockadd_set(int on);
 int  kageant_blockremove_get(void);
-void kageant_blockremove_set(int on);
+int  kageant_blockremove_set(int on);
 int  kageant_allowipclock_get(void);    /* ssh-add -x / -X allowed (default no) */
-void kageant_allowipclock_set(int on);
+int  kageant_allowipclock_set(int on);
 int  kageant_winlock_mode(void);        /* When Windows locks: 0 keep, 1 lock, 2 re-encrypt */
-void kageant_winlock_mode_set(int mode);
+int  kageant_winlock_mode_set(int mode);
 /* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
 void kageant_audit_use(const char *ev, const char *fp, const char *comment,
                        const char *result, const char *reason, unsigned long pid);
@@ -245,7 +249,7 @@ int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);
 void kageant_winlock_session(int locked);   /* the Windows session locked / unlocked */
 int  kageant_notice_timeout_get(void);   /* raw seconds, 0 = default */
-void kageant_notice_timeout_set(int seconds);
+int  kageant_notice_timeout_set(int seconds);
 int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment, const char *fingerprint);
 /* the hook pointers themselves live in the agent core (../pageant.c) */

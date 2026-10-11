@@ -59,6 +59,7 @@
 #include "kitty_b64.h"
 #include "kitty_store.h"
 #include "kitty_startup.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* InitProxyList, kitty_migrate_old_proxies (kitty.c includes it mid-file) */
 #endif
@@ -178,7 +179,33 @@ void kitty_netdbg_ts( const char *msg ) {
  * it hangs the caller until something kills it.
  * Deliberately conservative: an unrecognised switch counts as interactive, so
  * the worst case is asking a question rather than swallowing one. */
-static int kitty_cli_do_and_exit( void ) {
+/* `word` on the raw command line, as a whole word */
+static int kitty_cli_has_word( const char * word ) {
+	const char * cl = GetCommandLineA() ;
+	size_t len = strlen( word ) ;
+	const char * p = cl ;
+	if( cl == NULL ) return 0 ;
+	while( ( p = strstr( p, word ) ) != NULL ) {
+		char before = ( p == cl ) ? ' ' : p[-1] ;
+		char after  = p[len] ;
+		/* whole word only: "-h" must not match inside "-hwndparent" */
+		if( ( before == ' ' || before == '\t' || before == '"' )
+		 && ( after == '\0' || after == ' ' || after == '\t' || after == '"' ) )
+			return 1 ;
+		p += len ;
+		}
+	return 0 ;
+	}
+
+/* -yes answers a question in advance - on a do-and-exit run only. On any
+ * other run someone is there to answer. This scan cannot distinguish a switch
+ * from the same word inside a session name or a path: that must never skip a
+ * question by accident. */
+int kitty_cli_answer_yes( void ) {
+	return kitty_cli_do_and_exit() && kitty_cli_has_word( "-yes" ) ;
+	}
+
+int kitty_cli_do_and_exit( void ) {
 	static const char * const batch[] = {
 		"-importdir", "-exportall", "-portablecopy", "-takefolder", "-backupnow",
 		"-update",          /* someone asked for the updater, not for startup questions */
@@ -189,25 +216,27 @@ static int kitty_cli_do_and_exit( void ) {
 		 * path and would silence the box in a genuinely interactive run. */
 		"-help", "--help",
 		"-demo-config-box", "-demo-terminal", NULL } ;
-	const char * cl = GetCommandLineA() ;
 	int i ;
-	if( cl == NULL ) return 0 ;
-	for( i = 0 ; batch[i] != NULL ; i++ ) {
-		size_t len = strlen( batch[i] ) ;
-		const char * p = cl ;
-		while( ( p = strstr( p, batch[i] ) ) != NULL ) {
-			char before = ( p == cl ) ? ' ' : p[-1] ;
-			char after  = p[len] ;
-			/* whole word only: "-h" must not match inside "-hwndparent" */
-			if( ( before == ' ' || before == '\t' || before == '"' )
-			 && ( after == '\0' || after == ' ' || after == '\t' || after == '"' ) )
-				return 1 ;
-			p += len ;
-			}
-		}
+	for( i = 0 ; batch[i] != NULL ; i++ )
+		if( kitty_cli_has_word( batch[i] ) )
+			return 1 ;
 	return 0 ;
 	}
 #endif
+
+/* A start-up load from a backup (the first-run restore, savemode=file's
+ * kitty.sav) failed: report which file and why - KiTTY++ goes on without what
+ * did not load. Not news when the file is simply not there yet (a first
+ * file-mode start); a scripted run gets it on stderr, never a box. */
+static void kitty_startup_load_failed( const char *file ) {
+	char msg[2048] ;
+	if( file == NULL || GetFileAttributesA( file ) == INVALID_FILE_ATTRIBUTES ) return ;
+	snprintf( msg, sizeof(msg), KT_MAIN_LOAD_FAILED_FMT, kitty_sav_load_reason() ) ;
+#ifdef MOD_PERSO
+	if( kitty_cli_do_and_exit() ) { fprintf( stderr, "%s\n", msg ) ; return ; }
+#endif
+	MessageBox( NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+	}
 
 void InitWinMain( void ) {
 	char buffer[4096];
@@ -398,8 +427,15 @@ void InitWinMain( void ) {
 					InfoBoxSetText( hdlg, KT_MAIN_INFO_RESTORING ) ;
 					/* Copies the parked tree over the working copy and removes
 					 * the parked key, so the question cannot come back. */
-					RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_park, kitty_reg_live ) ;
-					InfoBoxClose( hdlg ) ;
+					if( !RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_park, kitty_reg_live ) ) {
+						char failed[1600] ;
+						snprintf( failed, sizeof(failed), KT_MAIN_RESTORE_FAILED_FMT,
+							kitty_reg_park, kitty_win_reason( (int)GetLastError() ) ) ;
+						InfoBoxClose( hdlg ) ;
+						MessageBox( NULL, failed, KT_CAP_RESTORE_REG_SESSIONS, MB_OK | MB_ICONERROR ) ;
+						}
+					else
+						InfoBoxClose( hdlg ) ;
 					}
 				else {
 					RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_reg_park, KR_RESTOREDECLINED, 1 ) ;
@@ -432,8 +468,8 @@ void InitWinMain( void ) {
 				KittySavFile = newestsav ;   /* LoadRegistryKey reads the global */
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_FROM_FILE ) ;
-				LoadRegistryKey( hdlg ) ;
-				InfoBoxClose( hdlg ) ;
+				if( !LoadRegistryKey( hdlg ) ) { InfoBoxClose( hdlg ) ; hdlg = NULL ; kitty_startup_load_failed( newestsav ) ; }
+				if( hdlg ) InfoBoxClose( hdlg ) ;
 				KittySavFile = savedptr ;
 			} else { // Otherwise look for PuTTY's key and take it over
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
@@ -470,8 +506,8 @@ void InitWinMain( void ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 			InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_FROM_FILE ) ;
-			LoadRegistryKey( hdlg ) ;
-			InfoBoxClose( hdlg ) ;
+			if( !LoadRegistryKey( hdlg ) ) { InfoBoxClose( hdlg ) ; hdlg = NULL ; kitty_startup_load_failed( KittySavFile ) ; }
+			if( hdlg ) InfoBoxClose( hdlg ) ;
 			}
 #ifdef MOD_PERSO
 		else { // the registry key already exists
@@ -489,7 +525,17 @@ void InitWinMain( void ) {
 				 * If the parked key already exists, the current one is just the
 				 * last run's .sav content and can be replaced. */
 				if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_park ) ) {
-					RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_live, kitty_reg_park ) ;
+					if( !RegRenameTree( hdlg, HKEY_CURRENT_USER, kitty_reg_live, kitty_reg_park ) ) {
+						/* kitty.sav would be loaded over the store still in
+						 * place: stop instead (nothing changed, the reason reported) */
+						char failed[1600] ;
+						snprintf( failed, sizeof(failed), KT_MAIN_SET_ASIDE_FAILED_FMT,
+							kitty_reg_park, kitty_win_reason( (int)GetLastError() ) ) ;
+						InfoBoxClose( hdlg ) ;
+						if( kitty_cli_do_and_exit() ) fprintf( stderr, "%s\n", failed ) ;
+						else MessageBox( NULL, failed, KT_CAP_REG_SESSIONS_SET_ASIDE, MB_OK | MB_ICONERROR ) ;
+						exit( 1 ) ;
+						}
 					InfoBoxClose( hdlg ) ;
 					/* SAY SO. Silence here is the actual harm: the sessions
 					 * simply vanish from normal mode, with nothing pointing at
@@ -509,8 +555,8 @@ void InitWinMain( void ) {
 					hdlg = InfoBox( hinst, NULL ) ;
 					}
 				InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_SESSIONS ) ;
-				LoadRegistryKey( hdlg ) ;
-				InfoBoxClose( hdlg ) ;
+				if( !LoadRegistryKey( hdlg ) ) { InfoBoxClose( hdlg ) ; hdlg = NULL ; kitty_startup_load_failed( KittySavFile ) ; }
+				if( hdlg ) InfoBoxClose( hdlg ) ;
 				}
 			}
 #endif
@@ -579,7 +625,7 @@ void InitWinMain( void ) {
 	// Initiate launcher
 	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Launcher" ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) )  
-		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry() ; }
+		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry( NULL, NULL ) ; }
 #endif
 	NETDBG_TS("after registry/savemode block");
 	// Initiate folders list

@@ -8,8 +8,11 @@
 #include <stdio.h>
 
 int kageant_openssh_get(void);
-void kageant_openssh_set(int on);
-void kageant_openssh_apply(int on);    /* add/remove the managed ~/.ssh block */
+int kageant_openssh_set(int on);
+/* add/remove the managed ~/.ssh block: 1 done, 0 not (err: the file and
+ * Windows' reason, ~/.ssh/config left as it was); *backup 1 when a
+ * config.kageant.bak exists */
+int kageant_openssh_apply(int on, int *backup, char *err, size_t errlen);
 char *kageant_ssh_path(const char *leaf);  /* malloc'd %USERPROFILE%\.ssh\<leaf>, or NULL */
 void kageant_write_identityagent(FILE *fp, const char *pipename);
 

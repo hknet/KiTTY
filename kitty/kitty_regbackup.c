@@ -58,29 +58,50 @@
 #include "kitty_store.h"
 #include "kitty_regbackup.h"
 #include "kitty_int.h"   /* the paths and flags kitty.c owns */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 
 /* Run Windows' own registry tool, hidden, and report whether it succeeded.
  * `hive` is NULL for verbs that take only a file (import). */
+/* Why the last kitty_reg_tool call failed, for the caller's report: reg.exe's
+ * exit code, or Windows' error when it could not even be started. */
+static DWORD kitty_reg_tool_exit = 0, kitty_reg_tool_winerr = 0 ;
 static int kitty_reg_tool( const char *verb, const char *hive, const char *path ) {
 	char sysdir[MAX_PATH], cmd[8192] ;
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ; DWORD rc = 1 ;
-	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) return 0 ;
+	kitty_reg_tool_exit = 0 ; kitty_reg_tool_winerr = 0 ;
+	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) { kitty_reg_tool_winerr = GetLastError() ; return 0 ; }
 	if( hive != NULL )
 		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\" \"%s\" /y", sysdir, verb, hive, path ) ;
 	else
 		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\"", sysdir, verb, path ) ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
-	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) return 0 ;
+	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) {
+		kitty_reg_tool_winerr = GetLastError() ; return 0 ; }
 	WaitForSingleObject( pi.hProcess, 60000 ) ;
-	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
+	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;   /* STILL_ACTIVE after 60 s: a failure too */
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
+	kitty_reg_tool_exit = rc ;
 	return ( rc == 0 ) ;
 	}
 
 /* Import a .reg file produced by SaveRegistryKeyEx(). */
 static int kitty_reg_import( const char *filename ) {
 	return kitty_reg_tool( "import", NULL, filename ) ;
+	}
+
+/* Why the last LoadRegistryKey failed: the file and the reason, for the
+ * caller's report (/loadreg's result line, the start-up messages). */
+static char kitty_sav_load_why[1024] = "" ;
+const char *kitty_sav_load_reason( void ) { return kitty_sav_load_why ; }
+static int sav_load_fail_win( const char *path, DWORD err ) {
+	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), "%s: %s", path, kitty_win_reason( (int)( err ? err : ERROR_READ_FAULT ) ) ) ;
+	return 0 ;
+	}
+static int sav_load_fail_regexe( const char *path ) {
+	if( kitty_reg_tool_winerr ) return sav_load_fail_win( path, kitty_reg_tool_winerr ) ;
+	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), KT_SAV_IMPORT_FAILED_FMT, path, (unsigned long)kitty_reg_tool_exit ) ;
+	return 0 ;
 	}
 
 // Backup of the registry key
@@ -116,19 +137,21 @@ static int kitty_reg_line_closes( const wchar_t *l, size_t n, size_t from ) {
 	for( i = n - 1 ; i > from && l[i-1] == L'\\' ; i-- ) bs++ ;
 	return ( bs % 2 ) == 0 ;
 }
-static void kitty_reg_fix_multiline( const char *filename ) {
+/* 1 repaired or nothing to repair; 0 the repaired file could not be written
+ * (the export left as reg.exe wrote it, GetLastError) */
+static int kitty_reg_fix_multiline( const char *filename ) {
 	FILE *fp ; long size ; unsigned char *buf ; wchar_t *w, *out ; size_t n, pos, o = 0, cap ; int changed = 0 ;
-	if( ( fp = fopen( filename, "rb" ) ) == NULL ) return ;
+	if( ( fp = fopen( filename, "rb" ) ) == NULL ) return 0 ;
 	fseek( fp, 0, SEEK_END ) ; size = ftell( fp ) ; fseek( fp, 0, SEEK_SET ) ;
-	if( size < 4 ) { fclose( fp ) ; return ; }
+	if( size < 4 ) { fclose( fp ) ; return 1 ; }
 	buf = (unsigned char *)malloc( size + 2 ) ;
-	if( buf == NULL ) { fclose( fp ) ; return ; }
-	if( fread( buf, 1, size, fp ) != (size_t)size ) { fclose( fp ) ; free( buf ) ; return ; }
+	if( buf == NULL ) { fclose( fp ) ; SetLastError( ERROR_NOT_ENOUGH_MEMORY ) ; return 0 ; }
+	if( fread( buf, 1, size, fp ) != (size_t)size ) { fclose( fp ) ; free( buf ) ; SetLastError( ERROR_READ_FAULT ) ; return 0 ; }
 	fclose( fp ) ;
-	if( buf[0] != 0xFF || buf[1] != 0xFE ) { free( buf ) ; return ; }   /* not reg.exe's Unicode file */
+	if( buf[0] != 0xFF || buf[1] != 0xFE ) { free( buf ) ; return 1 ; }   /* not reg.exe's Unicode file */
 	w = (wchar_t *)( buf + 2 ) ; n = ( size - 2 ) / 2 ;
 	cap = n * 6 + 64 ; out = (wchar_t *)malloc( cap * sizeof(wchar_t) ) ;
-	if( out == NULL ) { free( buf ) ; return ; }
+	if( out == NULL ) { free( buf ) ; SetLastError( ERROR_NOT_ENOUGH_MEMORY ) ; return 0 ; }
 	pos = 0 ;
 	while( pos < n ) {
 		size_t ls = pos, le, vs ;
@@ -188,23 +211,55 @@ static void kitty_reg_fix_multiline( const char *filename ) {
 		memcpy( out + o, w + ls, ( pos - ls ) * sizeof(wchar_t) ) ; o += pos - ls ;
 	}
 	free( buf ) ;
-	if( changed && ( fp = fopen( filename, "wb" ) ) != NULL ) {
-		fwrite( "\xFF\xFE", 1, 2, fp ) ;
-		fwrite( out, sizeof(wchar_t), o, fp ) ;
-		fclose( fp ) ;
+	/* the repaired file goes in only when whole: it was rewritten in place
+	 * with fopen "wb", unchecked, so a failed write left a truncated backup
+	 * that was then reported as saved */
+	if( changed ) {
+		char *tmp = dupprintf( "%s.%lu.tmp", filename, (unsigned long)GetCurrentProcessId() ) ;
+		int ok = 0 ;
+		DWORD err = 0 ;
+		if( ( fp = fopen( tmp, "wb" ) ) != NULL ) {
+			ok = fwrite( "\xFF\xFE", 1, 2, fp ) == 2 && fwrite( out, sizeof(wchar_t), o, fp ) == o ;
+			if( fclose( fp ) != 0 ) ok = 0 ;
+			if( !ok ) err = GetLastError() ;
+			if( ok && !MoveFileExA( tmp, filename, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) ) { ok = 0 ; err = GetLastError() ; }
+			if( !ok ) DeleteFileA( tmp ) ;
+		} else err = GetLastError() ;
+		sfree( tmp ) ;
+		free( out ) ;
+		if( !ok ) SetLastError( err ? err : ERROR_WRITE_FAULT ) ;
+		return ok ;
 	}
 	free( out ) ;
+	return 1 ;
 }
-void SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
+/* Export the key to filename with reg.exe, multi-line values repaired. 1 the
+ * file is a whole export; 0 not (no file, or not repaired), with the reason
+ * for the caller in kitty_sav_save_reason(). */
+static char kitty_sav_save_why[1024] = "" ;
+const char *kitty_sav_save_reason( void ) { return kitty_sav_save_why ; }
+int SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
 	char hive[4096] ;
 	const char * root ;
+	kitty_sav_save_why[0] = '\0' ;
 	if( hMainKey == HKEY_CURRENT_USER ) root = "HKCU" ;
 	else if( hMainKey == HKEY_LOCAL_MACHINE ) root = "HKLM" ;
-	else return ;
+	else return 0 ;
 	snprintf( hive, sizeof(hive), "%s\\%s", root, TEXT(lpSubKey) ) ;
 	/* reg.exe /y overwrites, but a stale file must not survive a failed export. */
 	unlink( filename ) ;
-	if( kitty_reg_tool( "export", hive, filename ) ) kitty_reg_fix_multiline( filename ) ;
+	if( !kitty_reg_tool( "export", hive, filename ) ) {
+		if( kitty_reg_tool_winerr )
+			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", filename, kitty_win_reason( (int)kitty_reg_tool_winerr ) ) ;
+		else
+			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), KT_SAV_EXPORT_FAILED_FMT, filename, (unsigned long)kitty_reg_tool_exit ) ;
+		return 0 ;
+		}
+	if( !kitty_reg_fix_multiline( filename ) ) {
+		snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", filename, kitty_win_reason( (int)GetLastError() ) ) ;
+		return 0 ;
+		}
+	return 1 ;
 	}
 
 static int portable_backup_copy_tree( const char *src, const char *dst ) {
@@ -297,33 +352,40 @@ static int portable_backup_skip( const WIN32_FIND_DATAA *fd ) {
 	return 0 ;
 }
 
-static void portable_backup_write_one( const char *dst ) {
+/* 1 the whole folder store copied to dst; 0 a copy failed (GetLastError) -
+ * the CopyFile results were not looked at, so /savereg called a backup
+ * "Saved" whenever the dated folder merely existed. */
+static int portable_backup_write_one( const char *dst ) {
 	char pattern[4096], s[4096], d[4096] ;
 	WIN32_FIND_DATAA fd ;
 	HANDLE h ;
+	int ok = 1 ;
+	DWORD err = 0 ;
 	DelDir( dst ) ;
-	CreateDirectoryA( dst, NULL ) ;
+	if( !CreateDirectoryA( dst, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) return 0 ;
 	/* kitty.ini can be resolved from outside the portable directory, so it is
 	 * copied by its resolved path and under its canonical name. When it does
 	 * live here, the sweep below simply copies it again over the same file. */
 	if( KittyIniFile != NULL && strlen(KittyIniFile)>0 && existfile(KittyIniFile) ) {
 		snprintf( d, sizeof(d), "%s\\kitty.ini", dst ) ;
-		CopyFileA( KittyIniFile, d, FALSE ) ;
+		if( !CopyFileA( KittyIniFile, d, FALSE ) ) { ok = 0 ; err = GetLastError() ; }
 	}
-	if( ConfigDirectory == NULL || strlen(ConfigDirectory) == 0 ) return ;
+	if( ConfigDirectory == NULL || strlen(ConfigDirectory) == 0 ) { if( !ok ) SetLastError( err ) ; return ok ; }
 	snprintf( pattern, sizeof(pattern), "%s\\*", ConfigDirectory ) ;
 	h = FindFirstFileA( pattern, &fd ) ;
-	if( h == INVALID_HANDLE_VALUE ) return ;
+	if( h == INVALID_HANDLE_VALUE ) { if( !ok ) SetLastError( err ) ; return ok ; }
 	do {
 		if( portable_backup_skip( &fd ) ) continue ;
 		snprintf( s, sizeof(s), "%s\\%s", ConfigDirectory, fd.cFileName ) ;
 		snprintf( d, sizeof(d), "%s\\%s", dst, fd.cFileName ) ;
-		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
-			portable_backup_copy_tree( s, d ) ;
-		else
-			CopyFileA( s, d, FALSE ) ;
+		if( !( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? portable_backup_copy_tree( s, d )
+		                                                      : CopyFileA( s, d, FALSE ) ) && ok ) {
+			ok = 0 ; err = GetLastError() ;
+		}
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
+	if( !ok ) SetLastError( err ? err : ERROR_WRITE_FAULT ) ;
+	return ok ;
 }
 
 /* out (may be NULL) gets the dated folder written. Returns as
@@ -338,7 +400,10 @@ static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
 	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
-	CreateDirectoryA( root, NULL ) ;
+	if( !CreateDirectoryA( root, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
+		if( out ) snprintf( out, outlen, "%s", root ) ;
+		return 0 ;
+		}
 	now = time(NULL) ;
 	tmnow = localtime( &now ) ;
 	if( tmnow != NULL )
@@ -348,11 +413,18 @@ static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 	else snprintf( buffer, sizeof(buffer), "%ld", (long)now ) ;
 	snprintf( stampdir, sizeof(stampdir), "%s\\kitty-portable-%s", root, buffer ) ;
 	snprintf( latest, sizeof(latest), "%s\\kitty-portable-latest", root ) ;
-	portable_backup_write_one( stampdir ) ;
-	portable_backup_write_one( latest ) ;
-	portable_backup_prune( root, keep ) ;
 	if( out ) snprintf( out, outlen, "%s", stampdir ) ;
-	return GetFileAttributesA( stampdir ) != INVALID_FILE_ATTRIBUTES ;
+	if( !portable_backup_write_one( stampdir ) ) {
+		/* a partial dated copy must not pose as a backup, nor push a whole one
+		 * out of the retention window */
+		DWORD err = GetLastError() ;
+		DelDir( stampdir ) ;
+		SetLastError( err ) ;
+		return 0 ;
+		}
+	portable_backup_write_one( latest ) ;   /* the convenience copy; the dated one is the backup */
+	portable_backup_prune( root, keep ) ;
+	return 1 ;
 }
 
 static void SavePortableDirBackup( void ) { SavePortableDirBackupEx( NULL, 0 ) ; }
@@ -572,7 +644,10 @@ static DWORD WINAPI sav_worker( LPVOID param ) {
  * BEFORE the change, and a worker thread could just as easily snapshot it after.
  * Portable (dir) mode is always synchronous; it copies files rather than
  * spawning a process, and its backup has the same ordering requirement. */
-static void sav_backup( int async ) {
+/* 1 the backup is written (or there is nothing to do: unchanged store,
+ * backups off, no backup file, a worker started); 0 the synchronous one
+ * failed - its reason in kitty_sav_save_reason(). */
+static int sav_backup( int async ) {
 	int keep = 5 ; char kb[64] ;
 	/* Routine snapshots happen only when the store actually changed since the
 	 * last one. The path that triggers them is also what plain Enter in the
@@ -581,13 +656,21 @@ static void sav_backup( int async ) {
 	 * deliberately ignores the flag: it runs BEFORE a destructive edit, where
 	 * capturing the prior state is the whole point whether or not anything was
 	 * edited first. */
-	if( async && !kitty_store_take_dirty() ) return ;
-	if( IniFileFlag == SAVEMODE_DIR ) { SavePortableDirBackup() ; return ; }
-	if( NoKittyFileFlag || (KittySavFile==NULL) ) return ;
-	if( strlen(KittySavFile)==0 ) return ;
+	if( async && !kitty_store_take_dirty() ) return 1 ;
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		char where[MAX_PATH * 2] ;
+		int r = SavePortableDirBackupEx( where, sizeof(where) ) ;
+		if( r == 0 ) {
+			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", where, kitty_win_reason( (int)GetLastError() ) ) ;
+			return 0 ;
+			}
+		return 1 ;
+		}
+	if( NoKittyFileFlag || (KittySavFile==NULL) ) return 1 ;
+	if( strlen(KittySavFile)==0 ) return 1 ;
 
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
-	if( keep <= 0 ) return ;              /* savbackupcount=0 disables the backup */
+	if( keep <= 0 ) return 1 ;            /* savbackupcount=0 disables the backup */
 	if( keep > 50 ) keep = 50 ;
 	/* Write a FRESH timestamped file now (kittynew-YYYYMMDD-HHMMSS.sav) so its
 	 * name matches its content's save time, then keep only the newest `keep`.
@@ -596,29 +679,56 @@ static void sav_backup( int async ) {
 	{ char dated[4096] ;
 	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
 	  if( !async ) {
-		SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), dated ) ;
-		sav_prune( KittySavFile, keep ) ;
-		return ;
+		int ok = SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), dated ) ;
+		if( ok ) sav_prune( KittySavFile, keep ) ;   /* never prune for a backup that failed */
+		return ok ;
 		}
-	  if( InterlockedCompareExchange( &sav_worker_busy, 1, 0 ) != 0 ) return ;
+	  if( InterlockedCompareExchange( &sav_worker_busy, 1, 0 ) != 0 ) return 1 ;
 	  { struct sav_job * j = (struct sav_job *)malloc( sizeof(*j) ) ;
 	    HANDLE th ;
-	    if( j == NULL ) { InterlockedExchange( &sav_worker_busy, 0 ) ; return ; }
+	    if( j == NULL ) { InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
 	    snprintf( j->dated, sizeof(j->dated), "%s", dated ) ;
 	    snprintf( j->base, sizeof(j->base), "%s", KittySavFile ) ;
 	    j->keep = keep ;
 	    th = CreateThread( NULL, 0, sav_worker, j, 0, NULL ) ;
-	    if( th == NULL ) { free( j ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return ; }
+	    if( th == NULL ) { free( j ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
 	    CloseHandle( th ) ;
 	  }
 	}
+	return 1 ;
 	}
 
 /* Routine snapshot after a deliberate config change - never blocks the UI. */
 void SaveRegistryKey( void ) { sav_backup( 1 ) ; }
 
-/* Snapshot that must be on disk before the caller changes anything. */
-void SaveRegistryKeyNow( void ) { sav_backup( 0 ) ; }
+/* Snapshot that must be on disk before the caller changes anything: 1 it is
+ * (or backups are off), 0 it failed - kitty_sav_save_reason() holds the reason. */
+int SaveRegistryKeyNow( void ) { return sav_backup( 0 ) ; }
+
+/* The backup before a delete, a move or an overwrite of saved sessions. 1 go
+ * on: it is written, backups are off, or the user chose to go on without
+ * one; 0 stop - the change is not made. A failed backup used to pass
+ * unnoticed and the change ran with nothing to come back to. The question
+ * goes where kitty_reach() puts it, No being the default. Where nobody can
+ * answer it (beside a live session, nobody there) the change is not made
+ * and the stop is reported - unless the caller reports it itself
+ * (own_report: its result line takes kitty_backup_not_done()), so that it
+ * is not reported twice. */
+int kitty_backup_before( HWND owner, int own_report ) {
+	char *q, *nd ;
+	int go ;
+	if( SaveRegistryKeyNow() ) return 1 ;
+	q = dupprintf( KT_BACKUP_BEFORE_Q_FMT, kitty_sav_save_reason() ) ;
+	nd = own_report ? NULL : dupprintf( KT_BACKUP_BEFORE_NOT_DONE_FMT, kitty_sav_save_reason() ) ;
+	go = kitty_reach_confirm( owner, KT_CAP_BACKUP, q, nd ) ;
+	sfree( q ) ;
+	sfree( nd ) ;
+	return go ;
+	}
+/* The text a caller with its own result line shows after a stop. snewn'd. */
+char *kitty_backup_not_done( void ) {
+	return dupprintf( KT_BACKUP_BEFORE_NOT_DONE_FMT, kitty_sav_save_reason() ) ;
+	}
 
 /* /savereg. The routine snapshot (SaveRegistryKey) writes only when the store
  * changed since the last one, and on a worker - right for the background,
@@ -627,15 +737,21 @@ void SaveRegistryKeyNow( void ) { sav_backup( 0 ) ; }
 int kitty_sav_backup_report( char * path, size_t n ) {
 	int keep = 5 ; char kb[64] ;
 	path[0] = '\0' ;
-	if( IniFileFlag == SAVEMODE_DIR ) return SavePortableDirBackupEx( path, n ) ;
+	kitty_sav_save_why[0] = '\0' ;
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		int r = SavePortableDirBackupEx( path, n ) ;
+		if( r == 0 )
+			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", path, kitty_win_reason( (int)GetLastError() ) ) ;
+		return r ;
+		}
 	if( NoKittyFileFlag || (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
 	sav_timestamped_path( KittySavFile, path, n ) ;
-	SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), path ) ;
+	if( !SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), path ) ) return 0 ;
 	sav_prune( KittySavFile, keep ) ;
-	return existfile( path ) ? 1 : 0 ;
+	return 1 ;
 	}
 
 void kitty_sav_dir( char * out, size_t n ) {
@@ -644,24 +760,32 @@ void kitty_sav_dir( char * out, size_t n ) {
 	sav_split( KittySavFile, out, n, base, sizeof(base), ext, sizeof(ext) ) ;
 	}
 
-// Load the registry key
-void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
+/* Load the registry key. 1 loaded; 0 not, the file and the reason in
+ * kitty_sav_load_reason() - it returned nothing and threw the import's result
+ * away, so /loadreg showed "Loaded:" and a start-up restore went on as if the
+ * sessions were there, whatever reg.exe had done. A file that is not there is
+ * a failure too (the caller decides whether that is news). */
+int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 	FILE *fp ;
 	HKEY hKey = NULL ;
 	char buffer[4096], KeyName[1024] = "", ValueName[1024], *Value ;
 	char savpath[4096] ;
-	int nb=0 ;
-	
-	if( KittySavFile==NULL ) return ;
-	if( strlen(KittySavFile)==0 ) return ;
+	int nb=0, ok = 1 ;
+	LONG rc ;
+	DWORD err = 0 ;
+
+	kitty_sav_load_why[0] = '\0' ;
+	if( KittySavFile==NULL || strlen(KittySavFile)==0 )
+		return sav_load_fail_win( "(no backup file set)", ERROR_FILE_NOT_FOUND ) ;
 	snprintf( savpath, sizeof(savpath), "%s", KittySavFile ) ;
 
 	if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
+		err = GetLastError() ;
 		/* Nothing under the current name: a store written by a pre-fix build is
 		 * still called kitty*.sav. Read it rather than come up empty - this path
 		 * matters most in savemode=file, where the .sav IS the session store. */
-		if( !sav_find_newest_legacy( KittySavFile, savpath, sizeof(savpath) ) ) return ;
-		if( ( fp = fopen( savpath, "rb" ) ) == NULL ) return ;
+		if( !sav_find_newest_legacy( KittySavFile, savpath, sizeof(savpath) ) ) return sav_load_fail_win( KittySavFile, err ) ;
+		if( ( fp = fopen( savpath, "rb" ) ) == NULL ) return sav_load_fail_win( savpath, GetLastError() ) ;
 		}
 
 	/* Current backups are what reg.exe writes: UTF-16LE with a BOM. Let Windows
@@ -672,8 +796,8 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 		if( ( fread( bom, 1, 2, fp ) == 2 ) && ( bom[0] == 0xFF ) && ( bom[1] == 0xFE ) ) {
 			fclose( fp ) ;
 			if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_LOADING_SESSIONS ) ;
-			kitty_reg_import( savpath ) ;
-			return ;
+			if( !kitty_reg_import( savpath ) ) return sav_load_fail_regexe( savpath ) ;
+			return 1 ;
 			}
 		rewind( fp ) ;
 		}
@@ -706,13 +830,16 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			snprintf( KeyName, sizeof(KeyName), "%s", buffer+19 ) ; // +19 to strip [HKEY_CURRENT_USER
 			{ size_t _kl=strlen(KeyName); if(_kl>0) KeyName[_kl-1] = '\0' ; }
 			if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
-			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) 
+			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS )
 				{
 					if( hdlg != NULL ) {
 						snprintf( buffer, sizeof(buffer), KT_MAIN_INFO_LOADING_KEY, KeyName ) ;
 						InfoBoxSetText( hdlg, buffer ) ;
 						}
-					RegCreateKey( HKEY_CURRENT_USER, TEXT(KeyName), &hKey ) ; 
+					if( ( rc = RegCreateKey( HKEY_CURRENT_USER, TEXT(KeyName), &hKey ) ) != ERROR_SUCCESS ) {
+						hKey = NULL ;
+						if( ok ) { ok = 0 ; err = (DWORD)rc ; }
+						}
 					}
 			}
 		else {
@@ -724,13 +851,15 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			  	Value++;
 			  	{ size_t _vl=strlen(Value); if(_vl>0) Value[_vl-1] = '\0' ; }
 				DelDoubleBackSlash( Value ) ;
-			  	RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_SZ, (LPBYTE)Value, strlen(Value)+1 ) ;
+			  	rc = hKey ? RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_SZ, (LPBYTE)Value, strlen(Value)+1 ) : ERROR_INVALID_HANDLE ;
+				if( rc != ERROR_SUCCESS && ok ) { ok = 0 ; err = (DWORD)rc ; }
 			  	}
 			else if( strstr(Value,"dword:") == Value ) { //REG_DWORD
-				int dwData = 0 ;			  	
+				int dwData = 0 ;
 				Value = Value + 6 ;
 				sscanf( Value, "%08x", (int*)&dwData ) ;
-				RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_DWORD, (LPBYTE)&dwData, sizeof(DWORD) ) ;
+				rc = hKey ? RegSetValueEx( hKey, TEXT( ValueName ), 0, REG_DWORD, (LPBYTE)&dwData, sizeof(DWORD) ) : ERROR_INVALID_HANDLE ;
+				if( rc != ERROR_SUCCESS && ok ) { ok = 0 ; err = (DWORD)rc ; }
 				}
 			else { // error
 				MessageBox( NULL, KT_MAIN_SAV_UNKNOWN_TYPE, KT_CAP_ERROR, MB_OK|MB_ICONERROR );
@@ -741,6 +870,8 @@ void LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 		}
 	if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
 	fclose( fp ) ;
+	if( !ok ) return sav_load_fail_win( savpath, err ) ;
+	return 1 ;
 	}
 
 void DelRegistryKey( void ) {

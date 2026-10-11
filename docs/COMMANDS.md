@@ -161,7 +161,7 @@ decorations show the new name).
 
 Export the live settings to a `.ktx` connection file (a file dialog prompts
 for the location). A `.ktx` file double-clicked or passed on the command line opens that
-connection directly.
+connection directly. The result line shows the file written, or why not.
 
 **Persists:** the exported file.
 
@@ -170,7 +170,9 @@ connection directly.
 Cycle the configuration save mode: **registry → file → dir → registry…**.
 The mode applies immediately to this instance; "file" is also written to
 kitty.ini (`savemode=file`) so it survives a restart. Registry and dir modes
-remove the `savemode=` key.
+remove the `savemode=` key. The result line shows the new mode and whether
+kitty.ini now holds it; when kitty.ini could not be written, the mode holds
+for this window only and the line gives the reason.
 
 **Persists:** kitty.ini for "file"; runtime only for the others.
 
@@ -204,7 +206,7 @@ there was none.
 settings stored in the registry, after a Yes/No question that shows the key and
 defaults to No. Configurations
 saved in file/dir mode are not touched. Use with care; `/savereg` first makes
-a backup.
+a backup. The result line shows the key deleted, or why it is still there.
 
 **Persists:** destructive registry action.
 
@@ -220,7 +222,10 @@ copy). The result line shows the file with its full path.
 
 Copy KiTTY's saved sessions and SSH host keys into stock PuTTY's registry
 location (`Software\SimonTatham\PuTTY`). **PuTTY's existing sessions are
-deleted first** and KiTTY-specific settings are stripped from the copies.
+replaced** - only by a complete copy: the sessions are copied aside first,
+and when that fails PuTTY's own sessions stay as they were. KiTTY-specific
+settings are stripped from the copies. The result line shows how many
+sessions were copied, or why nothing was.
 
 **Persists:** registry (PuTTY's).
 
@@ -332,9 +337,12 @@ the report.
 
 ### /initlauncher
 
-(Re)create the registry key used by the KiTTY launcher's menu.
+Rebuild the launcher's menu from the saved sessions. The result line shows the
+entries written. When some could not be written, it shows how many and the
+first reason.
 
-**Persists:** registry.
+**Persists:** the `Launcher` key in the registry store, the `Launcher` folder
+in a folder store.
 
 ### /debug
 

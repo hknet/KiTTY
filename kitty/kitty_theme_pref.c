@@ -39,16 +39,22 @@ static int theme_reg_read(int *pref_out)
     return 1;
 }
 
-static void theme_reg_write(int pref)
+static int theme_reg_write(int pref)
 {
     HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE, 0, NULL,
+                              0, KEY_SET_VALUE, NULL, &hk, NULL);
+    if (rc == ERROR_SUCCESS) {
         const char *s = kitty_theme_pref_to_string(pref);
-        RegSetValueExA(hk, KITTY_THEME_REG_VALUE, 0, REG_SZ,
-                       (const BYTE *)s, (DWORD)(strlen(s) + 1));
+        rc = RegSetValueExA(hk, KITTY_THEME_REG_VALUE, 0, REG_SZ,
+                            (const BYTE *)s, (DWORD)(strlen(s) + 1));
         RegCloseKey(hk);
     }
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
 }
 
 /*
@@ -78,13 +84,17 @@ int kitty_theme_pref_get(void)
     return KITTY_THEME_SYSTEM;
 }
 
-void kitty_theme_pref_set(int pref)
+/* To the store in charge only, the same rule: it used to be written to both,
+ * so a portable install wrote the registry. 1 when stored, 0 with the reason
+ * in GetLastError(). */
+int kitty_theme_pref_set(int pref)
 {
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
         pref = KITTY_THEME_SYSTEM;
-    kitty_inilight_write(KI_SECTION_KITTY, KI_THEME,
-                         kitty_theme_pref_to_string(pref));
-    theme_reg_write(pref);
+    if (!kitty_inilight_registry_authoritative())
+        return kitty_inilight_write(KI_SECTION_KITTY, KI_THEME,
+                                    kitty_theme_pref_to_string(pref));
+    return theme_reg_write(pref);
 }
 
 bool kitty_theme_pref_dark(void)

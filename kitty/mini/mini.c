@@ -9,6 +9,7 @@
  */
 #include "mini.h"
 #include <time.h>   /* time(): the cache compares the file's timestamp */
+#include <windows.h>   /* storeINI: ReplaceFile and Windows' reason on failure */
 
 #ifdef DEBUG_MODE
 #include "leaktracker.h"
@@ -370,8 +371,23 @@ int loadINI( SINI * Ini, const char * filename ) {
 				}
 			}
 		}
+	/* a read that stopped early is a failure: what was loaded is only part of
+	 * the file and writeINI would store that part over the whole */
+	if( ferror( fp ) ) { fclose( fp ) ; SetLastError( ERROR_READ_FAULT ) ; return 0 ; }
 	fclose( fp ) ;
 	return 1 ;
+	}
+
+/* loadINI for a file about to be rewritten: 1 loaded (or there is no file
+ * yet, an empty one is right), 0 the file is there but could not be read -
+ * writing then would replace the whole file with the one key. */
+static int loadINIForWrite( SINI * Ini, const char * filename ) {
+	DWORD err ;
+	if( loadINI( Ini, filename ) ) return 1 ;
+	err = GetLastError() ;
+	if( GetFileAttributesA( filename ) == INVALID_FILE_ATTRIBUTES ) return 1 ;
+	SetLastError( err ? err : ERROR_READ_FAULT ) ;
+	return 0 ;
 	}
 
 int storeKEY( SKEY * Key, FILE * fp ) {
@@ -391,20 +407,42 @@ int storeSECTION( SSECTION * Section, FILE * fp ) {
 	return 1 ;
 	}
 
+/* The whole file is written to a temporary one beside it and swapped in only
+ * once every byte is on disk. fopen(filename, "w") emptied kitty.ini first, so
+ * a full disk, a locked file or a crash between the two left it truncated -
+ * while this reported success. Now a failure leaves the old file untouched and
+ * returns 0, with Windows' reason in GetLastError(). ReplaceFile keeps the
+ * file's rights and attributes; a file that is not there yet is moved in. */
 int storeINI( SINI * Ini, const char * filename ) {
 	FILE * fp ;
+	char tmp[4096] ;
+	DWORD err = 0 ;
+	int ok, tries ;
 	if( filename==NULL ) return 0 ;
 	if( strlen(filename)<=0 ) return 0 ;
-	if( ( fp = fopen( filename, "w" ) ) == NULL ) return 0 ;
-	
-	if( _locking( fileno(fp) , LK_LOCK, 1000000L ) == -1 ) { fclose(fp) ; return 0 ; }
-		
+	if( snprintf( tmp, sizeof(tmp), "%s.%lu.tmp", filename, (unsigned long)GetCurrentProcessId() ) >= (int)sizeof(tmp) ) {
+		SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
+	if( ( fp = fopen( tmp, "w" ) ) == NULL ) return 0 ;
+
 	storeSECTION( getINI( Ini ), fp ) ;
+	ok = !ferror( fp ) && fflush( fp ) == 0 ;
+	if( fclose( fp ) != 0 ) ok = 0 ;
+	if( !ok ) { err = GetLastError() ; DeleteFileA( tmp ) ; SetLastError( err ? err : ERROR_WRITE_FAULT ) ; return 0 ; }
 
-	_locking( fileno(fp) , LK_UNLCK, 1000000L );
-
-	fclose( fp ) ;
-	return 1 ;
+	/* another process may have the file open for a moment (a reader) */
+	for( tries = 0 ; tries < 10 ; tries++ ) {
+		if( GetFileAttributesA( filename ) == INVALID_FILE_ATTRIBUTES ) {
+			if( MoveFileExA( tmp, filename, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) ) return 1 ;
+		} else if( ReplaceFileA( filename, tmp, NULL, REPLACEFILE_IGNORE_MERGE_ERRORS, NULL, NULL ) ) {
+			return 1 ;
+		}
+		err = GetLastError() ;
+		if( err != ERROR_SHARING_VIOLATION && err != ERROR_LOCK_VIOLATION && err != ERROR_UNABLE_TO_REMOVE_REPLACED ) break ;
+		Sleep( 50 ) ;
+	}
+	DeleteFileA( tmp ) ;
+	SetLastError( err ) ;
+	return 0 ;
 	}
 	
 /* Improvement so that the file is not read again every time */
@@ -486,7 +524,7 @@ int writeINI( const char * filename, const char * section, const char * key, con
 	if( mini_filename!=NULL ) { free(mini_filename); mini_filename=NULL; }
 	
 	if( ( Ini = newINI() ) != NULL ) {
-		loadINI( Ini, filename ) ;
+		if( !loadINIForWrite( Ini, filename ) ) { DWORD e = GetLastError() ; freeINI( &Ini ) ; SetLastError( e ) ; return 0 ; }
 		if( ( Section = getSECTION( getINI( Ini ), section ) ) == NULL ) {
 			if( ( Section = newSECTION( section ) ) != NULL ) {
 				addINI( Ini, Section ) ;
@@ -529,7 +567,7 @@ int delINI( const char * filename, const char * section, const char * key ) {
 	if( mini_filename!=NULL ) { free(mini_filename); mini_filename=NULL; }
 		
 	if( ( Ini = newINI() ) != NULL ) {
-		loadINI( Ini, filename ) ;
+		if( !loadINIForWrite( Ini, filename ) ) { DWORD e = GetLastError() ; freeINI( &Ini ) ; SetLastError( e ) ; return 0 ; }
 		if( ( Section = getSECTION( getINI( Ini ), section ) ) != NULL ) {
 			if( (key!=NULL) && (strlen(key)>0) ){
 				delKEY( Section, key ) ;

@@ -487,14 +487,18 @@ void kitty_store_ini_takeover(void) {
 			{ KSTORE_PC_SSHHOSTKEYS, KI_SSHHOSTKEYS, kstore_pc_sshhostkeys },
 			{ KSTORE_PC_KEYSUFFIX, KI_HOSTKEYEXTENSION, kstore_pc_keysuffix },
 		} ;
-		int i ;
+		int i, all = 1 ;
 		/* An EMPTY key in kitty.ini (a template line such as "sessions=")
-		 * says nothing either: putty.conf's value is carried over it. */
+		 * holds nothing either: putty.conf's value is carried over it. The
+		 * move counts as done only when every key arrived: it was marked
+		 * done regardless and a key that failed to write was then neither
+		 * in kitty.ini nor read from putty.conf any more. */
 		for( i = 0 ; i < (int)(sizeof(keys)/sizeof(keys[0])) ; i++ )
 			if( (kstore_pc_found & keys[i].bit) &&
-			    ( !readINI( ini, INIT_SECTION, keys[i].key, v, sizeof(v) ) || !v[0] ) )
-				writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) ;
-		if( writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
+			    ( !readINI( ini, INIT_SECTION, keys[i].key, v, sizeof(v) ) || !v[0] ) &&
+			    !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
+				all = 0 ;
+		if( all && writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
 			migrated = 1 ;
 	}
 	/* 0.85.1.13's names for the endings: into old KiTTY's keys, then gone */
@@ -508,8 +512,10 @@ void kitty_store_ini_takeover(void) {
 			if( readINI( ini, INIT_SECTION, renames[i][0], v, sizeof(v) ) ) {
 				char cur[64] ;
 				str_rtrim( v, " \n\r\t" ) ;
-				if( v[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) )
-					writeINI( ini, INIT_SECTION, renames[i][1], v ) ;
+				/* the old name goes only once its value is under the new one */
+				if( v[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) &&
+				    !writeINI( ini, INIT_SECTION, renames[i][1], v ) )
+					continue ;
 				delINI( ini, INIT_SECTION, renames[i][0] ) ;
 			}
 	}

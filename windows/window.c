@@ -64,6 +64,7 @@
 #include "../kitty/kitty_modkeys.h"   /* KiTTY: xterm modifyOtherKeys */
 #include "../kitty/kitty_kittykeys.h" /* KiTTY: kitty keyboard protocol */
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions and menu words */
+#include "../kitty/kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "../kitty/kitty_renameguard.h"   /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
@@ -6737,7 +6738,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                          : NULL;
             if (lf) {
                 logflush(wgs->logctx);
-                ShellExecute(hwnd, "open", lf, NULL, NULL, SW_SHOWNORMAL);
+                if ((INT_PTR)ShellExecute(hwnd, "open", lf, NULL, NULL, SW_SHOWNORMAL) <= 32) {
+                    /* the menu item did nothing, silently */
+                    char *msg = dupprintf(KT_START_FAILED_FMT, lf,
+                                          kitty_win_reason(GetLastError()));
+                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                    sfree(msg);
+                }
             } else {
                 /* No log open: nothing to show. The menu greys this out, so
                  * getting here means the state changed under the menu. */
@@ -8078,6 +8085,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);
                     CloseHandle(pi.hProcess);
+                } else {
+                    /* the notice's click did nothing, silently */
+                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
+                                          kitty_win_reason(GetLastError()));
+                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                    sfree(msg);
                 }
             }
         }
@@ -8103,6 +8116,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);
                     CloseHandle(pi.hProcess);
+                } else {
+                    /* the notice's click did nothing, silently */
+                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
+                                          kitty_win_reason(GetLastError()));
+                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                    sfree(msg);
                 }
             }
         }
@@ -8134,6 +8153,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    &si, &pi)) {
                     CloseHandle(pi.hThread);
                     CloseHandle(pi.hProcess);
+                } else {
+                    /* the notice's click did nothing, silently */
+                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
+                                          kitty_win_reason(GetLastError()));
+                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                    sfree(msg);
                 }
             }
         }

@@ -41,6 +41,7 @@
 #include "kitty_theme.h"         /* button widths, ink marks, the row aligner */
 #include "kitty_anchor.h"        /* the shared resize */
 #include "kitty_text.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_sessorg.h"
 #include "kitty_auxpos.h"        /* the window's own place and size, per monitor layout */
 #include "kitty_inikeys.h"       /* KR_DLGPOS_MANAGE: its name there */
@@ -245,8 +246,14 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
         so_names_free(&s);
         return 0;
     }
-    if (!store_is_file())
-        SaveRegistryKeyNow();           /* the regbackup, before anything moves */
+    /* the regbackup, before anything moves; none written and not chosen to
+     * go on without: nothing moves */
+    if (!store_is_file() && !kitty_backup_before(NULL, 1)) {
+        *msg = kitty_backup_not_done();
+        ksp_plan_free(&p);
+        so_names_free(&s);
+        return 0;
+    }
     rw = strbuf_new();
     cl = strbuf_new();
     r = kitty_session_rekey_many(p.from, p.to, p.n, rw, cl, &err);
@@ -314,8 +321,14 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
             mt[nm] = p.to[i];
             nm++;
         }
-    if (!store_is_file())
-        SaveRegistryKeyNow();
+    if (!store_is_file() && !kitty_backup_before(owner, 1)) {
+        *msg = kitty_backup_not_done();
+        sfree(mf);
+        sfree(mt);
+        ksp_plan_free(&p);
+        so_names_free(&s);
+        return 0;
+    }
     rw = strbuf_new();
     cl = strbuf_new();
     r = kitty_session_rekey_many(mf, mt, nm, rw, cl, &err);
@@ -399,8 +412,13 @@ static int so_copy_sessions(char **sel, int nsel, const char *dest, int clone,
     char **made = snewn(nsel > 0 ? nsel : 1, char *);
     int i, nmade = 0, ok = 1;
     *msg = NULL;
-    if (!store_is_file())
-        SaveRegistryKeyNow();
+    /* the copies overwrite nothing, but a Clone that fails half-way leaves
+     * part of them: the backup is what undoes it */
+    if (!store_is_file() && !kitty_backup_before(NULL, 1)) {
+        *msg = kitty_backup_not_done();
+        sfree(made);
+        return 0;
+    }
     so_names_load(&s);
     for (i = 0; i < nsel && ok; i++) {
         Conf *c = conf_new();
@@ -1409,9 +1427,10 @@ static char *so_name_apply(HWND h, struct so_name *nm, const char *v)
                 sfree(blk);
             }
         }
+        if (!err && !store_is_file() &&
+            !kitty_backup_before(nm->st ? nm->st->h : GetParent(h), 1))
+            err = kitty_backup_not_done();
         if (!err) {
-            if (!store_is_file())
-                SaveRegistryKeyNow();
             r = kitty_session_rekey(nm->target, to, rw, cl, &err);
             if (r == KITTY_REKEY_OK) {
                 /* A session filed by its Folder value only keeps it: a
@@ -1833,8 +1852,15 @@ static void so_arrange_run(HWND owner)
         so_names_free(&s);
         return;
     }
-    if (!store_is_file())
-        SaveRegistryKeyNow();           /* "The registry sessions are backed up first." */
+    /* "The registry sessions are backed up first." - or nothing moves */
+    if (!store_is_file() && !kitty_backup_before(owner, 1)) {
+        msg = kitty_backup_not_done();
+        kitty_info_modeless(owner, KT_CAP_KITTYPP, msg, NULL, NULL);
+        sfree(msg);
+        ksp_plan_free(&p);
+        so_names_free(&s);
+        return;
+    }
     rw = strbuf_new();
     cl = strbuf_new();
     r = kitty_session_rekey_many(p.from, p.to, p.n, rw, cl, &err);
@@ -1999,6 +2025,14 @@ static void so_start_named(char **names, int n_names)
         if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
             CloseHandle(pi.hThread);
             CloseHandle(pi.hProcess);
+        } else {
+            /* Start / Enter used to do nothing, silently */
+            char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
+                                  kitty_win_reason(GetLastError()));
+            MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+            sfree(msg);
+            sfree(cmd);
+            break;      /* the next would fail the same way */
         }
         sfree(cmd);
     }
@@ -2049,8 +2083,9 @@ static void so_delete_sessions_answer(int yes, void *ctx)
 {
     struct so_delsess *d = (struct so_delsess *)ctx;
     int i;
-    if (yes && !GetReadOnlyFlag()) {
-        SaveRegistryKeyNow();           /* the backup, before the delete */
+    /* the backup, before the delete - or no delete */
+    if (yes && !GetReadOnlyFlag() &&
+        kitty_backup_before(so_window ? so_window->h : NULL, 0)) {
         for (i = 0; i < d->n; i++)
             del_settings(d->names[i]);
         kitty_store_mark_dirty();

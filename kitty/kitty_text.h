@@ -1664,6 +1664,11 @@
 #define KT_CAP_KITTY                                 "KiTTY"
 #define KT_CAP_ERROR                                 "Error"
 #define KT_CAP_INFO                                  "Info"
+#define KT_NOTEPAD_SAVE_FAILED_FMT                   "Not saved: %s\n%s.\n\n" \
+        "The file is as it was. The text is still in the editor."
+#define KT_START_FAILED_FMT                          "Could not be started:\n%s\n\n%s"
+#define KT_URL_OPEN_FAILED_FMT                       "The link could not be opened:\n%s\n\n%s"
+#define KT_URL_OPEN_FAILED_APP_FMT                   "The link could not be opened:\n%s\n\nwith the browser set for links:\n%s\n\n%s"
 #define KT_CAP_KAGEANT                               "kageant"
 #define KT_CAP_KITTYGEN                              "KiTTYgen"
 #define KT_CAP_KITTYGEN_ERROR                        "KiTTYgen Error"
@@ -1821,6 +1826,20 @@
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "Start KiTTY without savemode=file and it will offer to put " \
         "them back."
+#define KT_MAIN_SET_ASIDE_FAILED_FMT                 "KiTTY++ could not set your registry sessions aside before " \
+        "loading kitty.sav (savemode=file in kitty.ini):\n\n" \
+        "    HKEY_CURRENT_USER\\%s\n    %s\n\n" \
+        "Nothing was changed. KiTTY++ stops here, so that kitty.sav " \
+        "cannot overwrite those sessions."
+#define KT_MAIN_RESTORE_FAILED_FMT                   "The sessions set aside at\n\n" \
+        "    HKEY_CURRENT_USER\\%s\n\n" \
+        "could not be put back:\n    %s\n\n" \
+        "They are still set aside. The next start offers it again."
+#define KT_MAIN_LOAD_FAILED_FMT                      "The sessions could not be loaded from the backup:\n\n" \
+        "    %s\n\n" \
+        "KiTTY++ goes on without what did not load. The file is unchanged."
+#define KT_SAV_IMPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not import it, exit code %lu)"
+#define KT_SAV_EXPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not export the store, exit code %lu)"
 
 /* kitty_commands.c: the /commands console */
 #define KT_CMD_INIT_INFO                             "ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
@@ -1828,9 +1847,9 @@
 #define KT_CMD_NO_SESSION_NAME                       "No session name."
 #define KT_CMD_SAVE_NO_SESSION                       "No saved session is associated with this window.\n" \
         "Use  /savenew <name>  to create one."
-#define KT_CMD_SAVEMODE_REGISTRY                     "Savemode is \"registry\""
-#define KT_CMD_SAVEMODE_FILE                         "Savemode is \"file\""
-#define KT_CMD_SAVEMODE_DIR                          "Savemode is \"dir\""
+#define KT_CMD_RES_SAVEMODE                          "Savemode is \"%s\", stored in %s"
+#define KT_CMD_RES_SAVEMODE_NOINI                    "Savemode is \"%s\" for this window only: there is no kitty.ini to store it in"
+#define KT_CMD_RES_SAVEMODE_NOT_STORED               "Savemode is \"%s\" for this window only: %s could not be written: %s"
 #define KT_CMD_DELREG_QUESTION                       "Delete KiTTY's registry hive?\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "This removes every saved session, named proxy, cached host key and " \
@@ -1938,6 +1957,17 @@
 #define KT_CMD_RES_SAVED                             "Saved: %s"
 #define KT_CMD_RES_NOT_SAVED                         "Not saved: %s"
 #define KT_CMD_RES_LOADED                            "Loaded: %s"
+#define KT_CMD_RES_NOT_LOADED                        "Not loaded: %s"
+#define KT_CMD_RES_CANCELLED                         "Cancelled: nothing was saved"
+#define KT_CMD_RES_LAUNCHER_REBUILT                  "Launcher menu rebuilt: %d entries"
+#define KT_CMD_RES_LAUNCHER_PARTLY                   "Launcher menu rebuilt: %d entries, %d NOT written: %s"
+#define KT_CMD_RES_NOTHING_DELETED                   "Nothing deleted"
+#define KT_CMD_RES_DELETED                           "Deleted: HKCU\\%s"
+#define KT_CMD_RES_NOT_DELETED                       "Not deleted: HKCU\\%s: %s"
+#define KT_CMD_RES_COPIED_TO_PUTTY                   "Copied to PuTTY: %lu session(s) and the host keys (HKCU\\Software\\SimonTatham\\PuTTY)"
+#define KT_CMD_RES_NOT_COPIED_TO_PUTTY               "Not copied: %s - PuTTY's own sessions are as they were"
+#define KT_CMD_RES_HOSTKEYS_NOT_COPIED               "Copied to PuTTY: %lu session(s), but NOT the host keys: %s"
+#define KT_EXPORT_NOT_SAVED_FMT                      "Not saved: %s\n\n%s"
 #define KT_CMD_RES_NO_SESSIONS                       "Nothing saved: there are no saved sessions (HKCU\\%s)"
 #define KT_CMD_RES_NOTHING_TO_LOAD                   "Nothing loaded: no backup in %s"
 #define KT_CMD_RES_BACKUP_OFF                        "No backup written: backups are switched off (savbackupcount=0 in kitty.ini)"
@@ -2157,8 +2187,12 @@
         "Those entries stay behind when this copy is removed, and then " \
         "point at nothing."
 #define KT_REG_NOTHING_REGISTERED                    "Nothing was registered."
-#define KT_REG_ELEVATION_REFUSED                     "This is the machine-wide installation of KiTTY, so this belongs " \
-        "to the whole machine - and that was refused or cancelled.\r\n" \
+#define KT_REG_ELEVATION_FAILED_FMT                  "This is the machine-wide installation of KiTTY++, so this belongs " \
+        "to the whole machine - and the administrator copy could not be started: %s\r\n" \
+        "Re-run from an administrator prompt, or add -user to register " \
+        "for your account only."
+#define KT_REG_ELEVATION_REFUSED                     "This is the machine-wide installation of KiTTY++, so this belongs " \
+        "to the whole machine - and the administrator prompt was cancelled.\r\n" \
         "Re-run from an administrator prompt, or add -user to register " \
         "for your account only."
 #define KT_REG_URL_WHAT                              "the telnet://, ssh:// and kitty:// handlers"
@@ -2397,6 +2431,8 @@
 #define KT_CAP_KA_FATAL                              "kageant Fatal Error"
 #define KT_CAP_KA_ERROR                              "kageant Error"
 #define KT_CAP_KA_CMDLINE_ERROR                      "kageant command line error"
+#define KT_KA_SETTING_NOT_STORED_FMT                 "Setting not stored: %s\n\nStore: %s\n%s\n\n" \
+        "The setting keeps its old value."
 #define KT_CAP_KA_CMDLINE                            "kageant command line"
 #define KT_CAP_KA_KEY_LIST                           "kageant Key List"
 #define KT_CAP_KA_KEY_DETAILS                        "kageant - key details"
@@ -2580,6 +2616,8 @@
 #define KT_KA_NOTICE_UPDATE_TEXT_FMT                 "KiTTY++ %s%s is available.\nClick here to install it."
 #define KT_KA_NOTICE_UPDATE_NOKITTY_FMT              "KiTTY++ %s%s is available."
 #define KT_CAP_KA_UPDATER_UNVERIFIED                 "kageant - updater not verified"
+#define KT_KA_UPDATER_NO_KITTY                       "The updater runs in kitty.exe. There is no kitty.exe " \
+        "next to this kageant."
 #define KT_KA_UPDATER_UNVERIFIED_Q                   "The kitty.exe next to kageant could not be " \
         "verified as a genuine, matching KiTTY++ build - its " \
         "signature or version did not check out.\n\n" \
@@ -2593,9 +2631,25 @@
 #define KT_KA_OPENSSH_NO_PIPE                        "Cannot register as the Windows OpenSSH agent: " \
         "this kageant has no named-pipe listener."
 #define KT_KA_OPENSSH_REGISTERED_FMT                 "kageant is now the Windows OpenSSH agent.\n\n" \
-        "Added an \"Include kageant.conf\" block to:\n%s\n\n" \
-        "(A one-time .kageant.bak backup was saved. Untick this " \
-        "item to remove the block again.)"
+        "\"Include kageant.conf\" is in:\n%s\n\n" \
+        "The file as it was before kageant's first change: %s.kageant.bak\n" \
+        "Untick this item to remove the block again."
+#define KT_KA_OPENSSH_REGISTERED_NEW_FMT             "kageant is now the Windows OpenSSH agent.\n\n" \
+        "\"Include kageant.conf\" is in the new file:\n%s\n\n" \
+        "Untick this item to remove the block again."
+#define KT_KA_OPENSSH_ON_FAILED_FMT                  "kageant is not the Windows OpenSSH agent:\n\n%s\n\n" \
+        "~/.ssh/config was left as it was."
+#define KT_KA_OPENSSH_OFF_FAILED_FMT                 "The kageant block could not be removed:\n\n%s\n\n" \
+        "~/.ssh/config was left as it was. kageant is still set as its agent."
+#define KT_KA_NOTICE_OPENSSH_FAILED                  "kageant: the Windows OpenSSH agent setup failed"
+#define KT_KA_OPENSSH_ERR_NOPROFILE                  "No user profile folder (%USERPROFILE% is not set)"
+#define KT_KA_OPENSSH_ERR_DIR                        "Could not create the folder"
+#define KT_KA_OPENSSH_ERR_READ                       "Could not read"
+#define KT_KA_OPENSSH_ERR_WRITE                      "Could not write"
+#define KT_KA_OPENSSH_ERR_BACKUP                     "Could not back up"
+#define KT_KA_OPENSSH_ERR_NOTTEXT_FMT                "%s is not a plain text file (saved as UTF-16?). " \
+        "kageant changes plain text only: add the line " \
+        "\"Include kageant.conf\" at its top by hand."
 #define KT_KA_AUTOSTART_CONFLICT_FMT                 "Another SSH agent is already set to start at login:\n\n" \
         "    %s\n\n" \
         "If you add this kageant too, BOTH start at login and " \
@@ -2623,6 +2677,10 @@
         "An autostart entry was added (HKCU ...\\Run\\%s), so you can " \
         "remove any manual kageant Startup shortcut. Newly added keys " \
         "are remembered automatically while this stays enabled."
+#define KT_KA_AUTOSTART_ON_FAILED_FMT                "kageant could not be set to start at login: %s.\n\n" \
+        "Nothing was changed."
+#define KT_KA_AUTOSTART_OFF_FAILED_FMT               "kageant's start at login could not be removed: %s.\n\n" \
+        "It still starts at login."
 
 /* kageant: the "Protect with Windows Hello" dialog (windows/pageant.c) */
 #define KT_KA_HP_EXPLAIN_FMT                         "%s" \
@@ -2842,8 +2900,8 @@
         "Cancel = Do not add it to the startup list"
 #define KT_KA_PORTABLE_KEY_NOPASS_WARN               "\n\nWARNING: this key has no passphrase - copying it onto " \
         "portable media lets anyone holding the media use it."
-#define KT_KA_PORTABLE_COPY_FAILED                   "Could not copy the key into the portable " \
-        "folder; it will be referenced at its current location " \
+#define KT_KA_PORTABLE_COPY_FAILED_FMT               "Could not copy the key into the portable " \
+        "folder: %s\n%s\n\nIt will be referenced at its current location " \
         "instead."
 #define KT_KA_AUTOSTART_RUN_DESC_FMT                 "%s  ->  %s\n(%s\\...\\CurrentVersion\\Run)"
 #define KT_KA_AUTOSTART_SHORTCUT_DESC_FMT            "%s  ->  %s\n(%s Startup folder)"
@@ -3001,8 +3059,16 @@
 #define KT_KGEN_HELLO_FAILED_NOT_SAVED               "Windows Hello protection failed - " \
         "the key was NOT saved."
 #define KT_KGEN_PPK_PARAMS_INVALID                   "PPK parameters invalid: "
-#define KT_KGEN_SIDECAR_WRITE_FAILED                 "Could not write the .hello " \
-        "sidecar; the key file was removed."
+#define KT_KGEN_NOT_SAVED_FMT                        "Not saved: %s\n\n%s"
+#define KT_KGEN_SIDECAR_WRITE_FAILED_FMT             "Could not write the .hello sidecar " \
+        "beside\n%s\n%s.\n\nThe key file was removed: without its " \
+        "sidecar it is not protected."
+#define KT_KGEN_SIDECAR_KEY_LEFT_FMT                 "Could not write the .hello sidecar " \
+        "beside\n%s\n%s.\n\nThe key file could NOT be removed either: " \
+        "%s. Delete it by hand - without its sidecar it is not protected."
+#define KT_KGEN_SIDECAR_STALE_FMT                    "The key was saved without Windows Hello, " \
+        "but the old .hello sidecar beside it could not be removed:\n%s\n%s.\n\n" \
+        "Delete it by hand: it no longer matches the key."
 #define KT_KGEN_STILL_PROTECTED_FMT                  "Note: this key is still Windows Hello " \
         "protected at\n\n    %s\n\nThe agent keeps " \
         "asking Windows Hello for that file (its " \
@@ -3213,8 +3279,15 @@
         "  -bundlepwfile <file>   (the password on the first line)\n\n" \
         "Nothing was imported."
 #define KT_CLI_IMPORT_DONE                           "Imported %d session(s), %d prox(ies), %d failed, from:\n%s"
-#define KT_CAP_BACKUP                                "KiTTY backup"
+#define KT_CAP_BACKUP                                "KiTTY++ backup"
 #define KT_CLI_BACKUP_DONE                           "Backup written beside:\n%s"
+#define KT_CLI_BACKUP_FAILED_FMT                     "No backup was written:\n%s"
+/* the backup before a delete, a move or an overwrite (kitty_backup_before) */
+#define KT_BACKUP_BEFORE_Q_FMT                       "No backup could be written before this change:\n%s\n\n" \
+        "Go on without a backup?"
+#define KT_BACKUP_BEFORE_NOT_DONE_FMT                "Not done: no backup could be written before this change:\n%s"
+/* a question nobody can answer here (kitty_reach_confirm) */
+#define KT_REACH_GIVE_YES                            "To go on regardless, add -yes to the command line."
 #define KT_CLI_BACKUP_NO_TARGET                      "(no backup target)"
 #define KT_CAP_PORTABLE_COPY                         KT_INIMIG_OUT_GROUP  /* the panel's group box carries the same words */
 #define KT_CLI_PORTABLECOPY_NEEDS_PROTECTION         "Say how the copy's passwords should be protected:\n\n" \
@@ -3277,6 +3350,9 @@
 #define KT_CLI_MPW_PROMPT                            "Master password for the KiTTY++ settings: "
 #define KT_CLI_MPW_WRONG_RETRY                       "Wrong master password."
 #define KT_CLI_MPW_WRONG_FINAL                       "Wrong master password - giving up.\n"
+#define KT_CLI_MPW_STORE_FAILED_FMT                  "The master password could not be set up: its check value " \
+        "could not be stored: %s. The password is protected for this " \
+        "Windows account on this PC only.\n"
 #define KT_CLI_MPW_WRONG_SUPPLIED                    "The master password from -masterpwfile is wrong.\n"
 #define KT_CLI_MPW_NEEDED_BATCH                      "A stored password is protected by the KiTTY++ master" \
         " password, and -batch allows no prompt. Hand it over using -masterpwfile <file>" \
@@ -3529,6 +3605,8 @@
         "Configuration file:\n%s"
 #define KT_CFG_DEFAULT_WRITE_FAILED                  "Could not write to the configuration file:\n%s\n\n" \
         "\"%s\" is still shown."
+#define KT_KSET_WRITE_FAILED_FMT                     "Setting not stored: [%s] %s\n\nStore: %s\n%s\n\n" \
+        "The panel shows the new value, but it is not kept."
 #define KT_CAP_OVERWRITE_SESSION                     "Overwrite saved session?"
 #define KT_CFG_OVERWRITE_HIGHLIGHT_Q                 "Replace the saved session \"%s\"?\n\n" \
         "The name box is empty, so the highlighted entry in " \
@@ -3736,6 +3814,11 @@
 #define KT_MPW_PROMPT_UNLOCK                         "Enter your master password to unlock the saved session password."
 #define KT_MPW_EMPTY                                 "Please enter a master password."
 #define KT_MPW_MISMATCH                              "The two master passwords do not match."
+#define KT_MPW_STORE_FAILED_FMT                      "The master password could not be set up: its check value " \
+        "could not be stored: %s.\n\n" \
+        "The password just saved is protected for this Windows account " \
+        "on this PC only. Setting up the master password is offered " \
+        "again at the next start."
 
 /* kitty_inputbox.c: the text-input / command console box */
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
@@ -3818,7 +3901,7 @@
         "A file whose new name already exists is left as it is and listed afterwards."
 #define KT_SP_SUFFIX_NONE                            "(none)"
 #define KT_SP_SUFFIX_RENAMED                         "%d session files renamed."
-#define KT_SP_SUFFIX_LEFT                            "%d left as they are because the new name already exists:"
+#define KT_SP_SUFFIX_LEFT                            "%d left as they are - the new name already exists, unless a reason follows the name:"
 #define KT_SP_JUMP_REWRITTEN                         "Jump host updated in these sessions:\n%s"
 #define KT_SP_MOVE_CLASH                             "Nothing was moved. These sessions already exist in \"%s\":\n%s"
 /* Application > KiTTY++ Settings > Storage & Backup (kitty_config_app.c):

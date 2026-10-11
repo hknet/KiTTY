@@ -526,12 +526,19 @@ static void ksm_strip_ext_cb(const char *dir, const char *name, void *ctx)
         sfree(stem);
     }
 }
+/* ctx: where to and the failure count - a proxy that did not move used to
+ * show only as a lower number in the box */
+struct ksm_move_ctx {
+    const char *to;
+    int *fail;
+};
 static void ksm_move_file_cb(const char *dir, const char *name, void *ctx)
 {
-    const char *to = (const char *)ctx;
+    struct ksm_move_ctx *mc = (struct ksm_move_ctx *)ctx;
     char *a = dupprintf("%s\\%s", dir, name);
-    char *b = dupprintf("%s\\%s", to, name);
-    MoveFileExA(a, b, MOVEFILE_REPLACE_EXISTING);
+    char *b = dupprintf("%s\\%s", mc->to, name);
+    if (!MoveFileExA(a, b, MOVEFILE_REPLACE_EXISTING) && mc->fail)
+        (*mc->fail)++;
     sfree(a);
     sfree(b);
 }
@@ -542,8 +549,11 @@ static void ksm_bundle_to_store_layout(const char *dir, int *fail)
     char *to = dupprintf("%s\\Proxies", dir);
     ksm_each_file(sess, ksm_strip_ext_cb, fail);
     if (ksm_dir_exists(from)) {
+        struct ksm_move_ctx mc;
+        mc.to = to;
+        mc.fail = fail;
         CreateDirectoryA(to, NULL);
-        ksm_each_file(from, ksm_move_file_cb, to);
+        ksm_each_file(from, ksm_move_file_cb, &mc);
         RemoveDirectoryA(from);
     }
     sfree(to);
@@ -567,6 +577,7 @@ struct ksm_stage_ctx {
     const char *stage, *suffix;
     strbuf *dups;               /* NULL = not wanted */
     int ndup;
+    int nfail;                  /* could not be staged: not taken */
 };
 static void ksm_stage_walk(const char *dir, const char *rel, int depth,
                            struct ksm_stage_ctx *sc)
@@ -593,12 +604,17 @@ static void ksm_stage_walk(const char *dir, const char *rel, int depth,
             char *ident = ksp_import_name(r, sc->suffix);
             char *m = ksp_component_munge(ident);
             char *b = dupprintf("%s\\%s%s", sc->stage, m, KSM_BUNDLE_EXT);
-            if (!CopyFileA(full, b, TRUE) && GetLastError() == ERROR_FILE_EXISTS) {
-                sc->ndup++;
-                if (sc->dups) {
-                    if (sc->dups->len)
-                        put_byte(sc->dups, '\n');
-                    put_dataz(sc->dups, r);
+            if (!CopyFileA(full, b, TRUE)) {
+                if (GetLastError() == ERROR_FILE_EXISTS) {
+                    sc->ndup++;
+                    if (sc->dups) {
+                        if (sc->dups->len)
+                            put_byte(sc->dups, '\n');
+                        put_dataz(sc->dups, r);
+                    }
+                } else {
+                    /* it used to drop out without a count */
+                    sc->nfail++;
                 }
             }
             sfree(b);
@@ -610,11 +626,14 @@ static void ksm_stage_walk(const char *dir, const char *rel, int depth,
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 }
-/* snewn'd or NULL. dups / ndup: see ksm_stage_walk; NULL = not wanted. */
-static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup)
+/* snewn'd or NULL. dups / ndup: see ksm_stage_walk; NULL = not wanted.
+ * *nfail: sessions and proxies that could not be staged; NULL = not wanted. */
+static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup,
+                                    int *nfail)
 {
     char tmp[MAX_PATH];
     char *stage, *sess, *prox, *sprox;
+    int nf = 0;
     if (ndup) *ndup = 0;
     if (!GetTempPathA(sizeof(tmp), tmp)) return NULL;
     ksm_trim_slashes(tmp);
@@ -638,14 +657,15 @@ static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup)
         sc.suffix = suffix;
         sc.dups = dups;
         sc.ndup = 0;
+        sc.nfail = 0;
         ksm_stage_walk(sess, "", 0, &sc);
         if (ndup) *ndup = sc.ndup;
+        nf += sc.nfail;
         sfree(suffix);
     }
-    if (ksm_dir_exists(prox)) {
-        int f = 0;
-        ksm_copy_dir_files(prox, sprox, &f);
-    }
+    if (ksm_dir_exists(prox))
+        ksm_copy_dir_files(prox, sprox, &nf);
+    if (nfail) *nfail = nf;
     sfree(prox);
     sfree(sess);
     sfree(sprox);
@@ -771,9 +791,13 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
     /* kitty.ini: every global, then the layout of the copy */
     r->settings = ksm_globals_to_ini(ini, &r->fail);
-    WritePrivateProfileStringA(INIT_SECTION, KI_SAVEMODE, "dir", ini);
-    WritePrivateProfileStringA(INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION,
-                               dpapi ? "dpapi" : "master", ini);
+    /* without savemode=dir the copy is not a folder store: counted, so
+     * the box does not report a copy that will not work as done */
+    if (!WritePrivateProfileStringA(INIT_SECTION, KI_SAVEMODE, "dir", ini))
+        r->fail++;
+    if (!WritePrivateProfileStringA(INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION,
+                                    dpapi ? "dpapi" : "master", ini))
+        r->fail++;
 
     r->programs = ksm_copy_programs(dir, &r->fail);
 
@@ -800,7 +824,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
 int kitty_take_folder_needs_password(const char *dir)
 {
-    char *stage = ksm_stage_folder_store(dir, NULL, NULL);
+    char *stage = ksm_stage_folder_store(dir, NULL, NULL, NULL);
     int need = stage ? kitty_bundle_needs_password(stage) : 0;
     ksm_unstage(stage);
     return need;
@@ -813,11 +837,11 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     char *stage;
     char t[256];
     strbuf *dups = strbuf_new();
-    int ndup = 0;
+    int ndup = 0, nstagefail = 0;
     memset(r, 0, sizeof(*r));
     msg[0] = '\0';
 
-    stage = ksm_stage_folder_store(dir, dups, &ndup);
+    stage = ksm_stage_folder_store(dir, dups, &ndup, &nstagefail);
     if (!stage) {
         snprintf(msg, msglen, KT_STOREMOVE_NO_TEMP);
         strbuf_free(dups);
@@ -836,7 +860,7 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     ksm_unstage(stage);
     /* a session file left out because another file gives the same session
      * is not taken: it counts as such and is named below */
-    r->fail += ndup;
+    r->fail += ndup + nstagefail;
 
     r->hostkeys = ksm_hostkeys_from_dir(dir, &r->fail);
     if (ksm_file_exists(ini)) r->settings = ksm_globals_from_ini(ini, &r->fail);
@@ -939,7 +963,7 @@ void kitty_take_folder_store(HWND hwnd)
 
     /* The folder's master password, asked once - the bundle unlock scans the
      * staged copy, which is the shape it knows. */
-    stage = ksm_stage_folder_store(dir, NULL, NULL);
+    stage = ksm_stage_folder_store(dir, NULL, NULL, NULL);
     if (!stage || !kitty_unlock_import_bundle(hwnd, stage, &pw)) {
         ksm_unstage(stage);
         return;

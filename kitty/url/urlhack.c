@@ -9,6 +9,9 @@
 #include "misc.h"
 #include "puttymem.h"
 #include <assert.h>
+#include <stdio.h>
+#include "../kitty_text.h"     /* KT_URL_OPEN_FAILED_* */
+#include "../kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 
 int urlhack_mouse_old_x = -1, urlhack_mouse_old_y = -1, urlhack_current_region = -1;
 
@@ -181,6 +184,17 @@ void urlhack_launch_url(const char* app, const char *url)
         urlhack_foreground_launched_process(sei.hProcess);
         if (sei.hProcess != NULL)
             CloseHandle(sei.hProcess);
+    } else if (GetLastError() != ERROR_CANCELLED) {
+        /* a click that did nothing used to report nothing: no program for the
+         * link, a configured browser that is not there (a cancel by the user
+         * is no failure) */
+        char msg[2600];
+        DWORD err = GetLastError();
+        if (app)
+            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_APP_FMT, url, app, kitty_win_reason(err));
+        else
+            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_FMT, url, kitty_win_reason(err));
+        MessageBoxA(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
     }
 }
 

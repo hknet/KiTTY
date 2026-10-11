@@ -19,6 +19,7 @@
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_storage.h"
@@ -455,8 +456,15 @@ static INT_PTR CALLBACK mpwmoved_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
             return TRUE;
           }
           case IDC_MPWM_OPEN:
-            if (g_mpwm_path)
-                ShellExecuteA(hdlg, "open", g_mpwm_path, NULL, NULL, SW_SHOWDEFAULT);
+            /* ShellExecute's answer is above 32 when it opened; the button
+             * did nothing, silently, otherwise */
+            if (g_mpwm_path &&
+                (INT_PTR)ShellExecuteA(hdlg, "open", g_mpwm_path, NULL, NULL, SW_SHOWDEFAULT) <= 32) {
+                char *msg = dupprintf(KT_START_FAILED_FMT, g_mpwm_path,
+                                      kitty_win_reason(GetLastError()));
+                MessageBox(hdlg, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                sfree(msg);
+            }
             return TRUE;
           case IDOK:
           case IDCANCEL:

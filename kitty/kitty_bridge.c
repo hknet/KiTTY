@@ -39,6 +39,7 @@
 #include "kitty_tools.h"
 #include "kitty_ssh.h"
 #include "kitty_bridge.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #endif
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
@@ -153,10 +154,19 @@ static void RunSessionWithConfSettings(Conf *conf) {
     si.cb = sizeof(si);
     si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
     si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
-    CreateProcess(b, cl, NULL, NULL, true /*inherit_handles*/,
-                  NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
+    /* pi is filled only by a successful start: closing its handles after a
+     * failed one closed whatever the stack held (upstream checks this; the
+     * port of this function did not) - and the user learns why */
+    if (CreateProcess(b, cl, NULL, NULL, true /*inherit_handles*/,
+                      NORMAL_PRIORITY_CLASS, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    } else {
+        char *msg = dupprintf(KT_START_FAILED_FMT, b,
+                              kitty_win_reason((int)GetLastError()));
+        MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
+    }
     if (filemap) CloseHandle(filemap);
     sfree(cl);
 }
@@ -835,8 +845,12 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     }
     strcat(buffer, "All files (*.*)|*.*|");
     if (buffer[strlen(buffer)-1] != '|') strcat(buffer, "|");
-    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer)) {
-        save_open_settings_forced(filename, conf);
+    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer) &&
+        !save_open_settings_forced(filename, conf)) {
+        char *msg = dupprintf(KT_EXPORT_NOT_SAVED_FMT, filename,
+                              kitty_win_reason(GetLastError()));
+        MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
     }
 }
 

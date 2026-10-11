@@ -2864,8 +2864,9 @@ static void kcs_delete_session_answer(int yes, void *ctx)
 {
     char *name = (char *)ctx;
     struct sessionsaver_data *ssd = session_filter_ssd;
-    if (yes && ssd && kcs_dlg && ssd->listbox) {
-        SaveRegistryKeyNow();           /* the backup, before the delete */
+    /* the backup, before the delete - or no delete */
+    if (yes && ssd && kcs_dlg && ssd->listbox &&
+        kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
         del_settings(name);
         get_sesslist(&ssd->sesslist, false);
         get_sesslist(&ssd->sesslist, true);
@@ -2933,9 +2934,10 @@ static void kcs_row_action(struct sessionsaver_data *ssd, int row, int id,
                 sfree(name);
             sfree(q);
         } else if ((folder = kcs_row_folder(ssd, id)) != NULL) {
-            SaveRegistryKeyNow();       /* as the Del folder button does */
-            kitty_sessorg_delete_any_folder(kitty_cfg_modal_owner(), folder,
-                                            kcs_delete_folder_done, NULL);
+            /* as the Del folder button does: the backup first, or no delete */
+            if (kitty_backup_before(kitty_cfg_modal_owner(), 0))
+                kitty_sessorg_delete_any_folder(kitty_cfg_modal_owner(), folder,
+                                                kcs_delete_folder_done, NULL);
             sfree(folder);
         } else {
             dlg_beep(dlg);
@@ -3705,7 +3707,18 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         strbuf *rw = strbuf_new(), *cl = strbuf_new();
                         char *err = NULL;
                         int r;
-                        SaveRegistryKeyNow();
+                        /* the backup before the move; none and not chosen
+                         * to go on without: neither move nor save */
+                        if (!kitty_backup_before(kitty_cfg_modal_owner(), 1)) {
+                            char *msg = kitty_backup_not_done();
+                            kcs_tell(msg);
+                            sfree(msg);
+                            strbuf_free(rw);
+                            strbuf_free(cl);
+                            sfree(move_from);
+                            sfree(target);
+                            return;
+                        }
                         r = kitty_session_rekey(move_from, target, rw, cl, &err);
                         if (r != KITTY_REKEY_OK) {
                             char rootlabel[256], *msg, *fld = ksp_folder_of(target);
@@ -3886,15 +3899,19 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * name does not exist yet: a new session overwrites nothing, so
                  * there is nothing to preserve, and the routine snapshot after
                  * the save records the addition anyway. An empty name means
-                 * Default Settings, which does exist and is worth preserving. */
+                 * Default Settings, which does exist and is worth preserving.
+                 * No backup and not chosen to go on without one: no save -
+                 * the stop takes the save's own error path below. */
+                int backup_ok = 1;
                 {
                     settings_r *existing = open_settings_r(ssd->savedsession);
                     if (existing) {
                         close_settings_r(existing);
-                        SaveRegistryKeyNow();
+                        backup_ok = kitty_backup_before(kitty_cfg_modal_owner(), 1);
                     }
                 }
-                char *errmsg = save_settings(ssd->savedsession, conf);
+                char *errmsg = backup_ok ? save_settings(ssd->savedsession, conf)
+                                         : kitty_backup_not_done();
                 if (errmsg) {
                     /* KiTTY: modeless, like every box of this window's flow -
                      * the save clash and the name-on-disk clash of the folder
@@ -3978,10 +3995,10 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 sessionsaver_offer_hide_default(ssd, dlg);
             } else if (i < 0) {
                 dlg_beep(dlg);          /* nothing selected */
-            } else {
+            } else if (kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
                 /* Deleting a session is the case a backup exists for. Must be
-                 * on disk BEFORE the delete, hence the blocking variant. */
-                SaveRegistryKeyNow();
+                 * on disk BEFORE the delete, hence the blocking variant; none
+                 * written and not chosen to go on without one: no delete. */
                 del_settings(ssd->sesslist.sessions[i]);
                 get_sesslist(&ssd->sesslist, false);
                 get_sesslist(&ssd->sesslist, true);
@@ -4086,14 +4103,17 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (!ssd->midsession &&
                    ssd->delfolderbutton && ctrl == ssd->delfolderbutton) {
             /* Delete the currently selected folder. */
-            /* Back up before the chain below is even evaluated: its condition
-             * has side effects - the member-count branch already rewrites the
-             * sessions' Folder values - so a backup taken later would miss
-             * exactly the state worth keeping. It therefore also runs when the
-             * delete is refused or declined, which is a cheap price. */
-            SaveRegistryKeyNow();
+            /* Back up before the rest of the chain is even evaluated: its
+             * conditions have side effects - the member-count branch already
+             * rewrites the sessions' Folder values - so a backup taken later
+             * would miss exactly the state worth keeping. It therefore also
+             * runs when the delete is declined, which is a cheap price. Only
+             * the root check comes first: it changes nothing. No backup, and
+             * not chosen to go on without one: nothing is touched. */
             if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
                 kitty_root_folder_cannot_delete(dlg);
+            } else if (!kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
+                /* the stop has been reported */
             } else if (sessionsaver_folder_member_count(ssd) > 0) {
                 /* KiTTY (hknet/KiTTY#55): ask, in a modeless box that also
                  * offers where the sessions go (the root preselected); the

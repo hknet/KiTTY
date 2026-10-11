@@ -247,10 +247,14 @@ static void write_clip_setting_forced(void *sesskey, const char *savekey, Conf *
     }
 }
 
-/* ---- main entry: export current settings to a KiTTY .ktx file ---- */
-void save_open_settings_forced(char *filename, Conf *conf) {
+/* ---- main entry: export current settings to a KiTTY .ktx file ----
+ * 1 written; 0 not, with Windows' reason in GetLastError() - it returned
+ * nothing, so /savektx and Export reported nothing either way. */
+int save_open_settings_forced(char *filename, Conf *conf) {
     FILE *sesskey;
-    if ((sesskey = fopen(filename, "w")) == NULL) { return; }
+    int ok;
+    DWORD err;
+    if ((sesskey = fopen(filename, "w")) == NULL) return 0;
 
     int i;
     const char *p;
@@ -642,5 +646,9 @@ void save_open_settings_forced(char *filename, Conf *conf) {
     write_setting_b_forced(sesskey, "OSC52TitleMark", conf_get_bool(conf, CONF_osc52_title_mark));
     write_setting_b_forced(sesskey, "OSC52ColourFrame", conf_get_bool(conf, CONF_osc52_colour_frame));
 #endif
-    fclose(sesskey);
+    ok = !ferror(sesskey);
+    err = GetLastError();
+    if (fclose(sesskey) != 0 && ok) { ok = 0; err = GetLastError(); }
+    if (!ok) SetLastError(err ? err : ERROR_WRITE_FAULT);
+    return ok;
 }

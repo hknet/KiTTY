@@ -814,8 +814,14 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         cleanup_exit(0);
     }
     if (kitty_cli_backupnow) {
-        char msg[600];
-        SaveRegistryKeyNow();
+        char msg[1200];
+        /* it reported "written" whether or not anything was */
+        if (!SaveRegistryKeyNow()) {
+            snprintf(msg, sizeof(msg), KT_CLI_BACKUP_FAILED_FMT,
+                     kitty_sav_save_reason());
+            MessageBoxA(NULL, msg, KT_CAP_BACKUP, MB_OK | MB_ICONERROR);
+            cleanup_exit(1);
+        }
         snprintf(msg, sizeof(msg), KT_CLI_BACKUP_DONE,
                  GetKittySavFile() ? GetKittySavFile() : KT_CLI_BACKUP_NO_TARGET);
         MessageBoxA(NULL, msg, KT_CAP_BACKUP, MB_OK | MB_ICONINFORMATION);

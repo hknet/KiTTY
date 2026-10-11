@@ -207,6 +207,15 @@ def source_options() -> set[tuple[str, str]]:
             section, key = m.groups()
             if section in SECTIONS:
                 opts.add((section, key))
+        # kageant's [Agent] settings go through its own helpers, which take
+        # the key first and the section implicitly (kitty_kageant_settings.c).
+        # Not the string pair: it carries window state (column widths) as
+        # well, which the templates leave out on purpose.
+        for m in re.finditer(
+            r'kageant_(?:bool_get|int_setting|policy_get|policy_set|setting_write)'
+            r'\s*\(\s*"([^"]+)"', text
+        ):
+            opts.add(("Agent", m.group(1)))
         # readINI with the INIT_SECTION macro (kitty.h) also targets [KiTTY].
         for m in re.finditer(r'readINI\s*\([^;\n]*?\bINIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))

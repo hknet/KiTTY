@@ -8,13 +8,41 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
-- **The sshd NOTE shows only the variable the server refused**
-  (`TERM_PROGRAM` or `COLORTERM`), not both.
-
-## 0.85.1.16-beta — 2026-10-11
-
-### Fixed
-
+- **Writes that fail are reported and leave nothing half done.** Every
+  write KiTTY++ makes to a file, the registry or another program now
+  reports its outcome with Windows' reason, instead of going on as if it
+  had worked:
+  - kitty.ini, the built-in editor, the portable store files and
+    `~/.ssh/config` (kageant's OpenSSH integration) are written to a
+    temporary file and swapped in, so a file held open by an editor or a
+    scanner stays as it was. A kitty.ini that exists but cannot be read is
+    no longer rewritten from nothing.
+  - Registry copies (the old-hive migration, renames, `/copytoputty`) delete
+    the source only after a complete copy. A partial copy is removed.
+  - Start-up: a store that cannot be set aside or restored stops with a
+    message instead of starting on the wrong one. A master password whose
+    salt or verifier was not stored is not taken as set.
+  - `/savereg`, `/loadreg`, `/savemode`, `/delreg`, `/copytoputty`,
+    `/savektx` and `/initlauncher` give the real outcome on the result line.
+    A backup that failed no longer prunes the older ones.
+  - The backup taken before a session is deleted, moved, renamed, copied or
+    overwritten: when it cannot be written, a question comes up first (go
+    on without one?), with No as the default. It used to go on regardless.
+    Beside a running session, or on a command line with nobody there to
+    answer, the change is not made and the reason is given. `-yes` answers
+    in advance. `-backupnow` reports a backup that was not written and exits
+    with 1.
+  - A program that could not be started is reported: Duplicate Session,
+    Open log file, Start in the session organiser, kageant's links and menu
+    items. So is a URL that does not open.
+  - A setting on the Application tab, or in kageant's Settings, that could
+    not be stored brings up a message box. It no longer looks stored until
+    the next start.
+- **kageant stores its settings in the store in charge only:** kitty.ini when
+  it is authoritative, the registry otherwise. They used to be written to
+  both, so a portable install wrote the registry. The Windows OpenSSH
+  integration flag stays in the registry: it describes this machine's
+  `~/.ssh/config`.
 - **The sshd NOTE shows only the variable the server refused**
   (`TERM_PROGRAM` or `COLORTERM`), not both.
 - **The launcher picks up "Keep my hand-edited launcher menu" when it is

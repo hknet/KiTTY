@@ -38,6 +38,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: a key copy that failed */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -198,12 +199,10 @@ int kageant_startup_get(void)
     return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val : 0;
 }
 
-void kageant_startup_set(int on)
+int kageant_startup_set(int on)
 {
-    if (!kitty_inilight_registry_authoritative() &&
-        kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP, on ? "yes" : "no"))
-        return;
-    kageant_reg_write(KAGEANT_REG_STARTUP, on);
+    return kageant_setting_write(KI_AGENT_LOADKEYSONSTARTUP, on ? "yes" : "no",
+                                 KAGEANT_REG_STARTUP, on ? 1 : 0);
 }
 
 
@@ -250,25 +249,54 @@ static void kageant_apply_confirm_by_path(const char *abspath, int mode)
 /* Persist the tracked key set. Portable (ini authoritative): numbered
  * [Agent] startupkeyN entries, relative where possible, with a trailing
  * ,encrypted marker. Otherwise: the StartupKeys REG_MULTI_SZ value, each
- * entry "path,encrypted" or "path,plain". */
-void kageant_save_startup_keys(void)
+ * entry "path,encrypted" or "path,plain".
+ *
+ * 1 the whole list was written; 0 a write failed (Windows' reason in
+ * GetLastError()). The ini entries are written over the old ones FIRST and
+ * only the surplus ones removed afterwards: it used to clear the whole list
+ * before writing, so a write failing partway left the remembered keys gone. */
+/* A numbered [Agent] list (<prefix>1, <prefix>2, ...) rewritten in place: the
+ * n items over the old entries first, then the entries past the new end
+ * removed. 1 all written; 0 a write failed (GetLastError) and what could not
+ * be written still holds its old value - never a cleared list. */
+static int kageant_ini_numbered_write(const char *prefix,
+                                      const char *const *items, int n)
+{
+    char key[48], probe[MAX_PATH + 32];
+    int i, gap, ok = 1;
+    DWORD err = 0;
+    for (i = 0; i < n; i++) {
+        snprintf(key, sizeof(key), "%s%d", prefix, i + 1);
+        if (!kitty_inilight_write(KI_SECTION_AGENT, key, items[i]) && ok) {
+            ok = 0; err = GetLastError();
+        }
+    }
+    for (i = n + 1, gap = 0; gap < 8; i++) {
+        snprintf(key, sizeof(key), "%s%d", prefix, i);
+        kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+        if (!probe[0]) { gap++; continue; }
+        gap = 0;
+        if (!kitty_inilight_write(KI_SECTION_AGENT, key, NULL) && ok) {
+            ok = 0; err = GetLastError();
+        }
+    }
+    if (!ok) SetLastError(err);
+    return ok;
+}
+
+int kageant_save_startup_keys(void)
 {
     const char *f;
-    int i;
+    int i, ok = 1;
+    DWORD err = 0;
 
     if (g_noload)   /* clean-slate run: never touch the stored list */
-        return;
+        return 1;
 
     if (!kitty_inilight_registry_authoritative() &&
         (f = kitty_inilight_file()) != NULL) {
         char key[32], val[MAX_PATH + 32], store[MAX_PATH + 1], probe[MAX_PATH + 32];
-        int gap;
-        for (i = 1, gap = 0; gap < 8; i++) {          /* clear the old list */
-            snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
-            if (probe[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
-            else gap++;
-        }
+        int gap, written = 0;
         /*
          * Loaded keys AND the ones waiting for their drive, IN ORDER.
          *
@@ -329,11 +357,26 @@ void kageant_save_startup_keys(void)
                          kageant_confirm_token(conf),
                          kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                          fp ? "," : "", fp ? fp : "");
-                kitty_inilight_write(KI_SECTION_AGENT, key, val);
+                if (!kitty_inilight_write(KI_SECTION_AGENT, key, val) && ok) {
+                    ok = 0; err = GetLastError();
+                }
                 sfree(fp_owned);
             }
+            written = n;
         }
-        return;
+        /* now the entries past the new end */
+        for (i = written + 1, gap = 0; gap < 8; i++) {
+            snprintf(key, sizeof(key), "startupkey%d", i);
+            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+            if (probe[0]) {
+                if (!kitty_inilight_write(KI_SECTION_AGENT, key, NULL) && ok) {
+                    ok = 0; err = GetLastError();
+                }
+                gap = 0;
+            } else gap++;
+        }
+        if (!ok) SetLastError(err);
+        return ok;
     }
 
     {
@@ -377,14 +420,19 @@ void kageant_save_startup_keys(void)
         }
         *p = '\0';
         sfree(entries);
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-            RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
-                           (const BYTE *)buf, (DWORD)total);
-            RegCloseKey(hk);
+        {
+            LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
+                                      NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL);
+            if (rc == ERROR_SUCCESS) {
+                rc = RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
+                                    (const BYTE *)buf, (DWORD)total);
+                RegCloseKey(hk);
+            }
+            if (rc != ERROR_SUCCESS) { ok = 0; SetLastError((DWORD)rc); }
         }
         sfree(buf);
     }
+    return ok;
 }
 
 /* Best-effort "does this key need a passphrase" for the copy warning. */
@@ -1927,6 +1975,7 @@ void kageant_drop_pending(const char *path)
         }
     }
     kageant_forget_startup_key(path);
+    kageant_setting_failure_box(NULL);
     /* the entry just dropped may have been one of the held-back ones */
     kageant_refresh_tray_tip();
 }
@@ -2034,17 +2083,15 @@ void kageant_forget_startup_key(const char *path)
                 continue;                               /* the one being dropped */
             snprintf(keep[n++], MAX_PATH + 32, "%s", raw);
         }
-        /* Clear the old numbering before writing the survivors back: the list
-         * is positional, so a shorter list must not leave a stale tail. */
-        for (i = 1, gap = 0; gap < 8; i++) {
-            snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
-            if (val[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
-            else gap++;
-        }
-        for (i = 0; i < n; i++) {
-            snprintf(key, sizeof(key), "startupkey%d", i + 1);
-            kitty_inilight_write(KI_SECTION_AGENT, key, keep[i]);
+        /* the survivors written back in place, a shorter list leaving no
+         * stale tail - never cleared first (kageant_ini_numbered_write) */
+        {
+            const char **items = snewn(n ? n : 1, const char *);
+            for (i = 0; i < n; i++) items[i] = keep[i];
+            kageant_set_note(
+                kageant_ini_numbered_write("startupkey", items, n),
+                "startupkey");
+            sfree(items);
         }
         sfree(keep);
         return;
@@ -2072,8 +2119,13 @@ void kageant_forget_startup_key(const char *path)
                     memcpy(o, p, strlen(p) + 1); o += strlen(p) + 1;
                 }
                 *o++ = '\0';
-                RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
-                               (const BYTE *)out, (DWORD)(o - out));
+                {
+                    LONG rc = RegSetValueExA(hk, KAGEANT_REG_KEYS, 0,
+                                             REG_MULTI_SZ, (const BYTE *)out,
+                                             (DWORD)(o - out));
+                    if (rc != ERROR_SUCCESS) SetLastError((DWORD)rc);
+                    kageant_set_note(rc == ERROR_SUCCESS, KAGEANT_REG_KEYS);
+                }
                 sfree(out);
             }
             sfree(buf);
@@ -2125,25 +2177,43 @@ void kageant_track_keypath(const char *path, int encrypted)
                 snprintf(keysdir, sizeof(keysdir), "%s\\keys", dir);
                 CreateDirectoryA(keysdir, NULL);
                 snprintf(dest, sizeof(dest), "%s\\%s", keysdir, base);
-                if (strlen(dest) <= MAX_PATH &&
-                    (CopyFileA(abspath, dest, TRUE) ||
-                     GetLastError() == ERROR_FILE_EXISTS)) {
+                {
+                    int created = 0, ok;
+                    DWORD err = ERROR_FILENAME_EXCED_RANGE;
+                    if (strlen(dest) > MAX_PATH)
+                        ok = 0;
+                    else if (CopyFileA(abspath, dest, TRUE))
+                        ok = created = 1;
+                    else
+                        ok = (err = GetLastError()) == ERROR_FILE_EXISTS;
                     /* KiTTY: a Hello-protected key travels WITH its
                      * sidecar, or the copy could only be opened by the
-                     * printed secret. */
-                    if (kageant_hello_has_sidecar(abspath)) {
+                     * printed secret. A sidecar that does not copy takes the
+                     * key copy back out: referencing the original keeps a
+                     * key that opens; the copy would not. */
+                    if (ok && kageant_hello_has_sidecar(abspath)) {
                         char *s1 = kageant_hello_sidecar_path(abspath);
                         char *s2 = kageant_hello_sidecar_path(dest);
-                        CopyFileA(s1, s2, TRUE);
+                        if (!CopyFileA(s1, s2, TRUE) &&
+                            (err = GetLastError()) != ERROR_FILE_EXISTS) {
+                            if (created)
+                                DeleteFileA(dest);
+                            ok = 0;
+                        }
                         sfree(s1);
                         sfree(s2);
                     }
-                    snprintf(abspath, sizeof(abspath), "%s", dest);
-                    for (i = 0; i < g_nloaded; i++)   /* re-dedup on the copy */
-                        if (!stricmp(g_loaded_keypaths[i], abspath))
-                            return;
-                } else {
-                    MessageBox(NULL, KT_KA_PORTABLE_COPY_FAILED, KT_CAP_KAGEANT, MB_ICONWARNING | MB_OK);
+                    if (ok) {
+                        snprintf(abspath, sizeof(abspath), "%s", dest);
+                        for (i = 0; i < g_nloaded; i++)   /* re-dedup on the copy */
+                            if (!stricmp(g_loaded_keypaths[i], abspath))
+                                return;
+                    } else {
+                        char *msg = dupprintf(KT_KA_PORTABLE_COPY_FAILED_FMT,
+                                              dest, kitty_win_reason(err));
+                        MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONWARNING | MB_OK);
+                        sfree(msg);
+                    }
                 }
             }
         }
@@ -2166,28 +2236,38 @@ void kageant_track_keypath(const char *path, int encrypted)
 }
 
 /* Add/remove the HKCU ...\Run entry that autostarts kageant at login. */
-void kageant_set_run_entry(int on)
+/* 1 done; 0 not, Windows' reason in GetLastError(). */
+int kageant_set_run_entry(int on)
 {
     HKEY hk;
+    LONG rc;
     if (on) {
         char exe[MAX_PATH + 3];
         DWORD n = GetModuleFileNameA(NULL, exe + 1, MAX_PATH);
-        if (!n || n >= MAX_PATH)
-            return;
+        if (!n || n >= MAX_PATH) {
+            SetLastError(n ? ERROR_FILENAME_EXCED_RANGE : GetLastError());
+            return 0;
+        }
         exe[0] = '"'; exe[n + 1] = '"'; exe[n + 2] = '\0';
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0, NULL, 0,
-                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-            RegSetValueExA(hk, KAGEANT_RUN_NAME, 0, REG_SZ,
-                           (const BYTE *)exe, (DWORD)strlen(exe) + 1);
+        rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0, NULL, 0,
+                             KEY_SET_VALUE, NULL, &hk, NULL);
+        if (rc == ERROR_SUCCESS) {
+            rc = RegSetValueExA(hk, KAGEANT_RUN_NAME, 0, REG_SZ,
+                                (const BYTE *)exe, (DWORD)strlen(exe) + 1);
             RegCloseKey(hk);
         }
     } else {
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                          KEY_SET_VALUE, &hk) == ERROR_SUCCESS) {
-            RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+        rc = RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
+                           KEY_SET_VALUE, &hk);
+        if (rc == ERROR_FILE_NOT_FOUND) return 1;    /* nothing to remove */
+        if (rc == ERROR_SUCCESS) {
+            rc = RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+            if (rc == ERROR_FILE_NOT_FOUND) rc = ERROR_SUCCESS;
             RegCloseKey(hk);
         }
     }
+    if (rc != ERROR_SUCCESS) { SetLastError((DWORD)rc); return 0; }
+    return 1;
 }
 
 /* ---- autostart: registry-free Startup shortcut (portable) + a warn-only
@@ -2355,7 +2435,9 @@ int kageant_autostart_active(void)
 
 /* Install/remove kageant's login autostart: a Startup-folder shortcut in
  * portable mode (registry-free), the HKCU Run entry otherwise. */
-void kageant_set_autostart(int on)
+/* 1 done; 0 not, Windows' reason in GetLastError() - the tray item's tick and
+ * its "An autostart entry was added" followed regardless. */
+int kageant_set_autostart(int on)
 {
     if (!kitty_inilight_registry_authoritative()) {
         char exe[MAX_PATH], dir[MAX_PATH];
@@ -2364,21 +2446,20 @@ void kageant_set_autostart(int on)
         /* Clear only OUR OWN leftover Run entry (from a prior registry-mode
          * enable); never touch another kageant's same-named entry. */
         kageant_clear_own_run_entry();
-        if (!on) {
-            kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, NULL, NULL,
-                                       NULL, NULL, 0);
-            return;
-        }
+        if (!on)
+            return kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, NULL, NULL,
+                                              NULL, NULL, 0) ? 1 : 0;
         n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-        if (!n || n >= sizeof(exe))
-            return;
+        if (!n || n >= sizeof(exe)) {
+            SetLastError(n ? ERROR_FILENAME_EXCED_RANGE : GetLastError());
+            return 0;
+        }
         snprintf(dir, sizeof(dir), "%s", exe);
         slash = strrchr(dir, '\\');
         if (slash) *slash = '\0';
-        kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, exe, "", dir, exe, 1);
-        return;
+        return kitty_startup_shortcut_set(KAGEANT_SHORTCUT_NAME, exe, "", dir, exe, 1) ? 1 : 0;
     }
-    kageant_set_run_entry(on);
+    return kageant_set_run_entry(on);
 }
 
 /* A stored "path" that is really a stray format token. 0.84.1.71's registry
@@ -2669,32 +2750,29 @@ void kageant_save_key_order(void)
      * one of the attempts before a lockout.
      */
     if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
-        char key[32];
-        int i, gap;
-        /* clear the old numbering first - a shorter list must leave no tail */
-        for (i = 1, gap = 0; gap < 8; i++) {
-            char probe[512];
-            snprintf(key, sizeof(key), "keyorder%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
-            if (probe[0]) { kitty_inilight_write(KI_SECTION_AGENT, key, NULL); gap = 0; }
-            else gap++;
-        }
-        i = 0;
-        for (char *q = buf; *q; q += strlen(q) + 1) {
-            snprintf(key, sizeof(key), "keyorder%d", ++i);
-            kitty_inilight_write(KI_SECTION_AGENT, key, q);
-        }
+        /* written in place, a shorter list leaving no tail - never cleared
+         * first (kageant_ini_numbered_write) */
+        const char **items = snewn(n ? n : 1, const char *);
+        int k = 0;
+        for (char *q = buf; *q && k < n; q += strlen(q) + 1)
+            items[k++] = q;
+        kageant_set_note(kageant_ini_numbered_write("keyorder", items, k),
+                         "keyorder");
+        sfree(items);
         sfree(buf);
         return;
     }
 
     HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, KAGEANT_REG_ORDER, 0, REG_MULTI_SZ,
-                       (const BYTE *)buf, (DWORD)total);
+    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                              KEY_SET_VALUE, NULL, &hk, NULL);
+    if (rc == ERROR_SUCCESS) {
+        rc = RegSetValueExA(hk, KAGEANT_REG_ORDER, 0, REG_MULTI_SZ,
+                            (const BYTE *)buf, (DWORD)total);
         RegCloseKey(hk);
     }
+    if (rc != ERROR_SUCCESS) SetLastError((DWORD)rc);
+    kageant_set_note(rc == ERROR_SUCCESS, KAGEANT_REG_ORDER);
     sfree(buf);
 }
 

@@ -38,6 +38,7 @@
 #include "kitty_gui.h"
 #include "mini/mini.h"
 #include "kitty_bridge.h"
+#include "kitty_winerr.h"  /* kitty_win_reason: a failed setting write */
 #include "kitty_registry.h"
 #include "kitty_userpath.h"
 #include "kitty_storemove.h"
@@ -889,14 +890,38 @@ static int kset_read(const struct kset_key *k, char *buf, size_t size)
     return ReadParameterN(k->section, k->key, buf, size) != 0;
 }
 
+/* A failed write used to go unnoticed: the panel showed the new value, the
+ * next start the old one. It is reported now, once per setting until that
+ * setting stores again - an edit box writes on every keystroke. A box per
+ * character would be worse than none. */
 void kset_write(const struct kset_key *k, const char *text)
 {
+    static const struct kset_key *failed_last = NULL;
+    const char *ini = GetKittyIniFile();
+    int ok = 1;
     if (k->file_only) {
-        const char *ini = GetKittyIniFile();
         if (ini && ini[0] && !GetReadOnlyFlag())
-            writeINI(ini, k->section, k->key, text);
+            ok = writeINI(ini, k->section, k->key, text);
     } else {
-        WriteParameter(k->section, (char *)k->key, (char *)text);
+        ok = WriteParameter(k->section, (char *)k->key, (char *)text);
+    }
+    if (ok) {
+        if (failed_last == k) failed_last = NULL;
+        return;
+    }
+    if (failed_last != k) {
+        DWORD err = GetLastError();
+        char *where, *msg;
+        failed_last = k;
+        if (k->file_only || IniFileFlag == SAVEMODE_DIR)
+            where = dupstr(ini && ini[0] ? ini : "kitty.ini");
+        else
+            where = dupprintf("HKCU\\%s", kitty_registry_base());
+        msg = dupprintf(KT_KSET_WRITE_FAILED_FMT, k->section, k->key, where,
+                        kitty_win_reason(err));
+        MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
+        sfree(where);
     }
 }
 

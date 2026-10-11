@@ -58,6 +58,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings */
+#include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
@@ -589,16 +590,26 @@ void SaveFolderList( void ) {
 
 // Save a registry key into a file
 
-// Rename a registry key
-void RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg = information box
+/* Rename a registry key: copy, then delete the source - only once the copy
+ * is whole. 1 renamed; 0 not, with the source untouched, the partial copy
+ * removed and Windows' reason in GetLastError(). It used to delete the
+ * source after a copy it never checked. */
+int RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg = information box
+	DWORD err ;
 	if( RegTestKey( hMainKey, lpDestKey ) ) {
 		if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_CLEANING_BACKUP ) ;
 		RegDelTree( hMainKey, lpDestKey ) ;
 		}
 	if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_SAVING_REGISTRY ) ;
-	kitty_RegCopyTree( hMainKey, lpSubKey, lpDestKey ) ;
+	if( !kitty_RegCopyTree( hMainKey, lpSubKey, lpDestKey ) ) {
+		err = GetLastError() ;
+		RegDelTree( hMainKey, lpDestKey ) ;
+		SetLastError( err ) ;
+		return 0 ;
+		}
 	if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_PREPARING_REGISTRY ) ;
 	RegDelTree( hMainKey, lpSubKey ) ;
+	return 1 ;
 	}
 
 int license_make_with_first( char * license, int length, int modulo, int result ) ;
@@ -1177,8 +1188,11 @@ void GetInitialDirectory( char * InitialDirectory ) {
 /* The User-Command special menu (ReadSpecialMenu / InitSpecialMenu /
  * ManageSpecialCommand) lives in kitty_specialmenu.c. */
 	
-void SaveCurrentSetting( HWND hwnd ) {
+/* 1 saved (the file in out), 0 the file dialog was cancelled, -1 not saved
+ * (out: "<file>: <Windows' reason>"). */
+int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
 	char filename[4096], buffer[4096] ;
+	if( outlen ) out[0] = '\0' ;
 	if( strlen(FileExtension)>0 ) {
 		strcpy( buffer, "Connection files (*" ) ;
 		strcat( buffer, FileExtension ) ; strcat( buffer, ")|*" ) ;
@@ -1188,9 +1202,13 @@ void SaveCurrentSetting( HWND hwnd ) {
 	}
 	strcat( buffer, "All files (*.*)|*.*|" ) ;
 	if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
-	if( SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) {
-		save_open_settings_forced( filename, conf ) ;
+	if( !SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) return 0 ;
+	if( !save_open_settings_forced( filename, conf ) ) {
+		snprintf( out, outlen, "%s: %s", filename, kitty_win_reason( GetLastError() ) ) ;
+		return -1 ;
 		}
+	snprintf( out, outlen, "%s", filename ) ;
+	return 1 ;
 	}
 
 

@@ -36,7 +36,7 @@ void ManagePrint( HWND hwnd ) ;
 int SetTextToClipboard( const char * buf ) ;
 
 // Run a command
-void RunCommand( HWND hwnd, const char * cmd ) ;
+int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */
 
 // Start the built-in editor
 void RunPuttyEd( HWND hwnd, char * filename ) ;
