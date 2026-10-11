@@ -83,6 +83,7 @@ verified — reports welcome.
 - **Transfers / backends:** ZModem send/receive, WinSCP, FileZilla, kitten-in-terminal-filetransfer & **kscp/ksftp** file transfer with
   **directory-aware uploads/downloads** (OSC 7 — see the callout below), **adb** (Android) backend.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
+- **See it for yourself:** copy [`docs/examples/kittypp-demo.sh`](docs/examples/kittypp-demo.sh) to your SSH server and run `bash kittypp-demo.sh` in a KiTTY++ window. It walks through the display and notification features one step at a time - underline styles, inline pictures and animation, the program status in the title bar, the notice and the overlay - and shows at each step what you should see.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration,
   and a **portable copy** made from the configuration window (Migration > KiTTY storage) - or a folder
   store taken back into the registry.

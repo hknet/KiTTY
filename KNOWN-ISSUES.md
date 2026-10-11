@@ -165,12 +165,6 @@ Known limitations of this release:
   fallback (GDI's font linking, Direct2D's DirectWrite system fallback),
   which keeps drawing on both, so a character it recognises (many common
   symbols and CJK) can still show with the switch off.
-- **Command-line tools use the registry session store.** `klink`/`kscp`/`ksftp`
-  (plink/pscp/psftp) read saved sessions from the Windows **registry**, not from a
-  portable (`savemode=dir`) store — so a portable install's sessions, and any
-  passwords a **master password** protects there, are usable from the KiTTY
-  **GUI** but not from the command-line tools. Registry-mode sessions (with their
-  DPAPI-protected passwords) work from the CLI tools as before.
 - **The restricted process ACL cannot be inspected or undone.** `[KiTTY]
   restrictacl=yes` (and the older `-restrict-acl` switch) hardens the process so
   nothing running as you can inspect it — which also **blocks accessibility
@@ -247,6 +241,11 @@ Known limitations of this release:
   **Connection → SSH → Auth → GSSAPI → untick "Attempt GSSAPI authentication"**
   (and "Attempt GSSAPI key exchange"), then save — set it in **Default Settings** to
   apply to new sessions. Connect time drops to ~1 s.
+- **klink requests no terminal when its input is not a console.** As ssh does:
+  started from a script with redirected input (`klink -load s < file`), it
+  requests no pseudo-terminal, so a remote command that reads its input sees the
+  end of it. A session that needs a terminal from such a script needs `-t`; `-v`
+  reports which was chosen.
 
 ## Security
 
