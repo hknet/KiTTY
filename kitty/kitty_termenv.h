@@ -99,6 +99,14 @@ size_t kitty_termenv_refused_own_note(const char *const *names,
                                       size_t n, bool colour, char *buf,
                                       size_t size);
 
+/* The once-per-host NOTE for refused DEFAULTS (added[i]), with only those:
+ * "NOTE: this server drops TERM_PROGRAM; add "AcceptEnv TERM_PROGRAM" to its
+ * sshd_config and reload sshd." - with "for true colour" when COLORTERM is
+ * among them. Same buffer convention; 0 = no default was refused. */
+size_t kitty_termenv_refused_default_note(const char *const *names,
+                                          const bool *added, const bool *refused,
+                                          size_t n, char *buf, size_t size);
+
 /* Set by klink / kscp / ksftp at startup to kitty_termenv_console_note: gets
  * the plain NOTE and writes it to a console stderr with "NOTE:" in yellow
  * (true), or returns false when stderr is not a console, and the plain NOTE

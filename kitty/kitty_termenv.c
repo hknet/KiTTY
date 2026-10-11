@@ -145,6 +145,54 @@ size_t kitty_termenv_refused_own_note(const char *const *names,
     return len;
 }
 
+/* The once-per-host NOTE for the REFUSED defaults only (the ones KiTTY++
+ * added, COLORTERM / TERM_PROGRAM): "this server drops TERM_PROGRAM; add
+ * "AcceptEnv TERM_PROGRAM" ...". It used to be one fixed text with both,
+ * also where the server took one of them (Debian's stock sshd_config accepts
+ * COLORTERM). "for true colour" only when COLORTERM is among them. Same
+ * buffer convention as the note above; 0 when none was refused. */
+size_t kitty_termenv_refused_default_note(const char *const *names,
+                                          const bool *added, const bool *refused,
+                                          size_t n, char *buf, size_t size)
+{
+    size_t i, len = 0, k, cnt = 0;
+    bool colorterm = false;
+    int pass;
+
+    for (i = 0; i < n; i++)
+        if (refused[i] && added[i]) {
+            cnt++;
+            if (!strcmp(names[i], "COLORTERM"))
+                colorterm = true;
+        }
+    if (!cnt) {
+        if (buf && size)
+            *buf = '\0';
+        return 0;
+    }
+    if (!buf)
+        size = 0;
+    note_put(buf, size, &len, KT_TERMENV_REFUSED_DEFAULT_HEAD);
+    for (pass = 0; pass < 2; pass++) {
+        if (pass)
+            note_put(buf, size, &len, KT_TERMENV_REFUSED_DEFAULT_MID);
+        for (i = 0, k = 0; i < n; i++) {
+            if (!refused[i] || !added[i])
+                continue;
+            if (k)
+                note_put(buf, size, &len, pass ? " " :
+                         (k == cnt - 1 ? " and " : ", "));
+            note_put(buf, size, &len, names[i]);
+            k++;
+        }
+    }
+    note_put(buf, size, &len, colorterm ? KT_TERMENV_REFUSED_DEFAULT_TAIL_COLOUR
+                                        : KT_TERMENV_REFUSED_DEFAULT_TAIL);
+    if (size)
+        buf[len < size ? len : size - 1] = '\0';
+    return len;
+}
+
 bool kitty_termenv_hint_due(const KittyTermEnvHintStore *store,
                             const char *host_id)
 {

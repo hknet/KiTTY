@@ -279,7 +279,7 @@ static void mainchan_request_response(Channel *chan, bool success)
             mc->env->refused[j] = true;
             if (mc->env->added[j]) {
                 ppl_logevent(KT_TERMENV_REFUSED_DEFAULT_LOG,
-                             mc->env->names[j]);
+                             mc->env->names[j], mc->env->names[j]);
                 mc->n_env_default_fails++;
             } else {
                 ppl_logevent(KT_TERMENV_REFUSED_OWN_LOG,
@@ -321,8 +321,18 @@ static void mainchan_request_response(Channel *chan, bool success)
                 if (kitty_termenv_host_id(ssh_get_savedhost(mc->ppl->ssh),
                                           ssh_get_savedport(mc->ppl->ssh),
                                           id, sizeof(id)) &&
-                    kitty_termenv_hint_hook(id))
-                    ppl_printf("%s", KT_TERMENV_REFUSED_DEFAULT_LINE);
+                    kitty_termenv_hint_hook(id)) {
+                    /* only the ones refused (Debian accepts COLORTERM) */
+                    size_t dlen = kitty_termenv_refused_default_note(
+                        (const char *const *)mc->env->names, mc->env->added,
+                        mc->env->refused, mc->env->n, NULL, 0);
+                    char *dnote = snewn(dlen + 1, char);
+                    kitty_termenv_refused_default_note(
+                        (const char *const *)mc->env->names, mc->env->added,
+                        mc->env->refused, mc->env->n, dnote, dlen + 1);
+                    ppl_printf("%s", dnote);
+                    sfree(dnote);
+                }
             }
         }
         return;

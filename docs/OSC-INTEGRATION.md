@@ -45,9 +45,13 @@ On the host, as root:
 AcceptEnv COLORTERM TERM_PROGRAM
 ```
 
-then reload sshd (`systemctl reload ssh` or `sshd`). Check from a new
-session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`. The Event Log lists a
-variable the server refused. Without access to `sshd_config`, set
+A file in `/etc/ssh/sshd_config.d/` needs the `.conf` ending
+(`accept-env.conf`): Debian and Ubuntu include only `*.conf` there, and
+their own `sshd_config` already accepts `COLORTERM`, so a file without the
+ending shows as `TERM_PROGRAM` alone missing. `sshd -T | grep -i acceptenv`
+shows what sshd really reads. Then reload sshd (`systemctl reload ssh` or
+`sshd`). Check from a new session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`.
+The Event Log lists each variable the server refused. Without access to `sshd_config`, set
 `COLORTERM=truecolor` in the shell's startup file instead.
 
 ## What KiTTY++ reports about itself

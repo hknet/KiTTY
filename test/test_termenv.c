@@ -352,13 +352,42 @@ int main(void)
                   "sshd_config needs \"AcceptEnv LANG PAGER\".\r\n");
         check_own("empty list", names, added, none, 0, NULL);
     }
-    /* the defaults' line, as approved */
-    if (strcmp(KT_TERMENV_REFUSED_DEFAULT_LINE,
-               NOTE_HEAD "this server drops COLORTERM and TERM_PROGRAM; add "
-               "\"AcceptEnv COLORTERM TERM_PROGRAM\" to its sshd_config and "
-               "reload sshd for true colour.\r\n")) {
-        printf("FAIL [defaults line]: wording changed\n");
-        failures++;
+    /* the defaults' NOTE shows only the refused ones (a Debian
+     * sshd accepts COLORTERM and refused TERM_PROGRAM, while the fixed text
+     * still showed both); "for true colour" only with COLORTERM */
+    {
+        const char *const names[] = { "LANG", "COLORTERM", "TERM_PROGRAM" };
+        const bool added[] = { false, true, true };
+        const bool both[] = { false, true, true };
+        const bool tp[] = { false, false, true };
+        const bool ct[] = { true, true, false };
+        const bool own[] = { true, false, false };
+        const struct { const char *what; const bool *refused; const char *want; } c[] = {
+            { "both refused", both, NOTE_HEAD "this server drops COLORTERM and "
+              "TERM_PROGRAM; add \"AcceptEnv COLORTERM TERM_PROGRAM\" to its "
+              "sshd_config and reload sshd for true colour.\r\n" },
+            { "TERM_PROGRAM only", tp, NOTE_HEAD "this server drops "
+              "TERM_PROGRAM; add \"AcceptEnv TERM_PROGRAM\" to its sshd_config "
+              "and reload sshd.\r\n" },
+            { "COLORTERM only (and an own one)", ct, NOTE_HEAD "this server "
+              "drops COLORTERM; add \"AcceptEnv COLORTERM\" to its sshd_config "
+              "and reload sshd for true colour.\r\n" },
+            { "no default refused", own, NULL },
+        };
+        size_t k;
+        for (k = 0; k < sizeof(c) / sizeof(c[0]); k++) {
+            char buf[512];
+            size_t len = kitty_termenv_refused_default_note(
+                names, added, c[k].refused, 3, buf, sizeof(buf));
+            size_t len0 = kitty_termenv_refused_default_note(
+                names, added, c[k].refused, 3, NULL, 0);
+            const char *want = c[k].want ? c[k].want : "";
+            if (len != len0 || len != strlen(want) || strcmp(buf, want)) {
+                printf("FAIL [defaults note, %s]: got \"%s\" (%u/%u), want \"%s\"\n",
+                       c[k].what, buf, (unsigned)len, (unsigned)len0, want);
+                failures++;
+            }
+        }
     }
     {
         char line[200];
@@ -370,10 +399,10 @@ int main(void)
             failures++;
         }
         snprintf(line, sizeof(line), KT_TERMENV_REFUSED_DEFAULT_LOG,
-                 "COLORTERM");
+                 "TERM_PROGRAM", "TERM_PROGRAM");
         if (strcmp(line, "Server refused to set environment variable "
-                         "COLORTERM - its sshd_config needs \"AcceptEnv "
-                         "COLORTERM TERM_PROGRAM\"")) {
+                         "TERM_PROGRAM - its sshd_config needs \"AcceptEnv "
+                         "TERM_PROGRAM\"")) {
             printf("FAIL [default log line]: %s\n", line);
             failures++;
         }

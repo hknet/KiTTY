@@ -4,6 +4,13 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.16-beta — 2026-10-11
+
+### Fixed
+
+- **The sshd NOTE shows only the variable the server refused**
+  (`TERM_PROGRAM` or `COLORTERM`), not both.
+
 ## 0.85.1.15-beta — 2026-10-11
 
 ### New

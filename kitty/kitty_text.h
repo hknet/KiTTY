@@ -2025,10 +2025,14 @@
  * (ssh/mainchan.c, kitty/kitty_termenv.h): the Event Log line for each one,
  * and the terminal line - once per host, ever. */
 #define KT_TERMENV_REFUSED_DEFAULT_LOG               "Server refused to set environment variable %s - " \
-        "its sshd_config needs \"AcceptEnv COLORTERM TERM_PROGRAM\""
-#define KT_TERMENV_REFUSED_DEFAULT_LINE              "\r\n\x1b[1;33mNOTE:\x1b[0m this server drops COLORTERM and " \
-        "TERM_PROGRAM; add \"AcceptEnv COLORTERM TERM_PROGRAM\" to its " \
-        "sshd_config and reload sshd for true colour.\r\n"
+        "its sshd_config needs \"AcceptEnv %s\""
+/* the once-per-host NOTE, built from the refused defaults only
+ * (kitty_termenv_refused_default_note): HEAD, the variables, MID, the
+ * variables again, TAIL */
+#define KT_TERMENV_REFUSED_DEFAULT_HEAD              "\r\n\x1b[1;33mNOTE:\x1b[0m this server drops "
+#define KT_TERMENV_REFUSED_DEFAULT_MID               "; add \"AcceptEnv "
+#define KT_TERMENV_REFUSED_DEFAULT_TAIL              "\" to its sshd_config and reload sshd.\r\n"
+#define KT_TERMENV_REFUSED_DEFAULT_TAIL_COLOUR       "\" to its sshd_config and reload sshd for true colour.\r\n"
 /* The session's own variables (Connection > Login > Environment) that the
  * server refused: the Event Log line for each one, and on EVERY connection
  * one terminal line listing them all, in the order sent - "the server refused
