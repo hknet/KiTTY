@@ -4,7 +4,7 @@ KiTTY++ is basically the full old KiTTY feature set forward-ported and then some
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.15-beta — 2026-10-09
+## 0.85.1.15-beta — 2026-10-11
 
 ### New
 
@@ -18,18 +18,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   refused.
 - **Animated GIFs play.** An iTerm2 picture (`OSC 1337 File=`) that is an
   animated GIF plays, looping, with its frames' delays and disposal, as in
-  iTerm2; before, only its first frame showed. Its frames count against
-  the picture memory; when they do not fit, the first frame shows.
+  iTerm2; before, only its first frame was shown. Its frames count against
+  the picture memory; when they do not fit, only the first frame is shown.
 - **kitty graphics: animation.** Frames (`a=f`, on a base frame or a
   background colour, edited with `r`), the terminal playing them with
   their gaps or the program choosing one (`a=a`: `s`, `v`, `c`, `z`),
   composing (`a=c`) and deleting frames (`d=f` / `d=F`). Before, they were
-  refused. Frames count against the
-  picture memory (at most 1000 a picture); a minimised window, or one in
-  the tray, waits instead of drawing.
+  refused. Frames count against the picture memory (at most 1000 a picture);
+  a minimised window, or one in the tray, stops the animation
+  a restored window continues the animation.
 - **kitty graphics: relative placements.** A placement given `P` and `Q`
   (the parent's image and placement id) and `H` / `V` (cells right and
-  down) is anchored to that parent: it moves with it, goes with it, and
+  down) is anchored to that parent: it moves with it, drops with it, and
   leaves the cursor where it is. A missing parent is answered
   `ENOPARENT`, a loop `ECYCLE`, a chain over 8 links `ETOODEEP`. Before,
   they were refused.
@@ -63,7 +63,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   or busy bar and message, the blocked one highlighted and done ones
   faded. It can be dragged by its header, keeps its place per session, and
   the x hides it until a new job starts ("Show the program status
-  overlay", `psoverlay`, on).
+  overlay", `psoverlay`, on). This reads complicated, but once you see this
+  being done (see `docs/examples/kittypp-demo.sh`) it gets visible and clear :).
 
 - **klink, kscp and ksftp log in with the session's stored password.**
   With a session loaded (`-load`, `@name`, or a host argument that is a saved
@@ -77,12 +78,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (session or proxy), or a `-pwfile` / `-proxypwfile` line, that the
   master password protects is now usable from the command-line tools. They
   prompt on the console - no echo, before connecting, three tries - only when
-  such a password is met. Scripts give it with `-masterpwfile <file>` or
+  such a password is met. Scripts hand it over with `-masterpwfile <file>` or
   `-masterpwfile -` (the first line of standard input; klink sends the rest
   on to the server). The file must be readable by its user alone, as
   Windows OpenSSH requires of a private key: another account or group that
-  can read it, or a FAT/exFAT drive, is refused, and the message gives the fix. Under
-  `-batch` or without a console for the prompt, a missing or wrong master
+  can read it, or a FAT/exFAT drive, is refused, and the message shows the fix.
+  Under `-batch` or without a console for the prompt, a missing or wrong master
   password stops the tool instead of going on without the password.
 
 ### Changed
@@ -93,7 +94,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (owner the user, Administrators or SYSTEM; no other account or group
   with read access). A file others can read, or one on a FAT/exFAT drive
   such as a USB stick, is refused with the reason and the `icacls` fix.
-  **This breaks a setup that keeps the file on the stick beside a portable
+  **This might break a setup that keeps the file on the stick beside a portable
   KiTTY++** - keep it on an NTFS drive of the PC, or type the master
   password. The option is read before any other, so `-load s
   -masterpwfile f` now works as `-masterpwfile f -load s` always did.
@@ -112,6 +113,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `immediately` is the new word for `use` (re-encrypt right after each
   signature), which stays valid and is still what is stored, so a
   kitty.ini shared with an older kageant keeps its meaning.
+  The `use` value in the config will move to `immediately` in the future.
+
 - **The launcher's shortcut is called "KiTTY++ Launcher".** The installers'
   Start menu and Startup entries and "Start at login" create it under the
   new name; an upgrade replaces the installed "KiTTY Launcher" ones. A
@@ -119,42 +122,46 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   folder still counts as this launcher's: "Start at login" shows it ticked,
   and unticking removes it. Message boxes and the hotkey texts read
   "KiTTY++ Launcher" too.
+
 - **New sessions log to `%APPDATA%\KiTTY++\logs\&H\&Y-&M-&D.log`** once
   logging is switched on: one folder per host, one file per day, instead of
   `putty.log` in whatever the current folder happened to be. Logging itself
   stays off by default. Sessions that already store a log file name keep it.
+
 - **klink, kscp and ksftp use the store kitty.exe uses.** With
   `savemode=dir` in the `kitty.ini` they find (or a portable layout beside
   it), they load sessions and check host keys in that folder store instead
   of the registry. A script that relied on the registry from such a folder
   points `KITTY_INI_FILE` at an ini without `savemode=dir`. A master password
   protecting a password there is unlocked too (see New).
+
 - **`KITTYPP_DIR`: every program sets it to its own folder at start**, so
   `%KITTYPP_DIR%\...` in a file or folder setting follows a USB stick to
   another drive letter. Where the settings travel with the program (a folder
   store, `savemode=file`, the portable build) the log default is
   `%KITTYPP_DIR%\logs\&H\&Y-&M-&D.log`, beside it.
+
 - **Connection > SSH > Auth: "Attempt authentication using kageant"**, without
   the "(Pageant)" it carried. The setting and its key (`TryAgent`) are
   unchanged. The help of klink, kscp and ksftp (`-agent` / `-noagent`) and
   the agent lines of the Event Log and of `-v` ("kageant is running.
-  Requesting keys.", "Trying kageant key #0", ...) show kageant too.
+  Requesting keys.", "Trying kageant key 0", ...) show kageant too.
 
 ### Fixed
 
-- **`/screenshot` saves where it can, and reports where.** An installed
+- **`/screenshot` saves where it can, and shows where.** An (MSI) installed
   KiTTY++ wrote the picture next to kitty.exe, into the program folder a
   user may not write to, so no file came to be and nothing reported it. It
-  now goes to `Pictures\KiTTY++` (a portable copy keeps its own folder),
+  now saves to `Pictures\KiTTY++` (a portable copy keeps its own folder),
   named by date and time.
-- **`/savereg`, `/loadreg` and `/savesessions` do what they report.**
+- **`/savereg`, `/loadreg` and `/savesessions` do what they claim.**
   `/savereg` went through the routine backup, which writes only when the
   store changed, so it often wrote nothing; it now always writes and shows
   the file. `/loadreg` read only a fixed file name that no backup carries
   any more, so it loaded an old file or nothing; it now loads the newest
   backup, as start-up does, and shows which. `/savesessions` wrote
-  `kitty.ses` into the program folder; it now goes beside the backups.
-- **A backup is restored only into the hive it was taken of.** A copy that
+  `kitty.ses` into the program folder; it now writes beside the backups.
+- **A backup is restored only into the hive it was taken from.** A copy that
   uses PuTTY's hive (`KiClassName=PuTTY`) keeps its backups in the same
   folder as a normal one. A first start, and `/loadreg`, restored the
   newest of them even when it was the other copy's: that filled the hive
@@ -164,11 +171,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The command box shows what a command did.** A line under the input
   field (Ctrl+F8) shows the result of the last `/command`: a setting's new
   state, a file with its full path, why something failed, or that a `/line`
-  was no command and went to the host. The box and the `/help` window are
-  in the dark theme from their first frame, not only once they had the
+  was no command and went to the host. The box and the `/help` window switch
+  to the dark theme from their first frame, not only once they had the
   focus. `/help` now shows the extension `/fileassoc` registers, the
   session file extension in force (`.ktx` unless set otherwise).
-- **A picture placed on the bottom line of a scroll region shows whole.**
+- **A picture placed on the bottom line of a scroll region shows as a whole.**
   An inline image (kitty, iTerm2, Sixel) placed on a scroll region's
   bottom margin stayed hanging below the region while its own line feeds
   scrolled the text above it, so its lower part covered the lines below
@@ -182,23 +189,27 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - **Auto-reconnect no longer hammers a server with failed logins**
   (hknet/KiTTY#66). A session that had been logged in reconnected after
-  every error not saying "authentication", every 5 s, without end -
+  every error not mentioning "authentication", every 5 s, without end -
   including attempts that reached sshd and waited for a key locked in
   kageant, one failed login each, until fail2ban banned the user. A failed
   attempt is now classified by how far it got, and each condition has its
   own action, set in Application > KiTTY++ Settings > Reconnect & Prompts:
-  name lookup and TCP failures keep retrying, closed before login 3 times,
-  a locked agent key waits locally for its unlock and then tries once, an
-  unanswered prompt, no key and a refused login stop, closed during login
-  once. These are the defaults: every condition offers every action. Retries back off from the configured wait, times "Backoff factor"
-  per retry (1 = fixed, default 2), up to "Longest wait" (300 s). Per session, "Retries after a failed login: never" stops every
-  retry the server would see as a login. Each decision is in the Event Log.
-- **A log whose folder does not exist yet is written** (hknet/KiTTY#65).
-  The missing folders of the log path are created when the log opens, and
-  the Event Log records which. A variable the machine does not have creates
-  nothing, so a mistyped `%NAME%` cannot plant a folder of that name. The
-  log messages show the path with `%VAR%` expanded, so an error shows the
-  folder actually tried.
+  The defaults: DNS and TCP failures keep retrying,
+  closed before login try for 3 times, a locked agent key waits locally
+  for its unlock and then tries once, an unanswered prompt, no key and
+  a refused login stop, closed during login retries once.
+  One can adopt those: every condition offers every action.
+  Retries back off from the configured wait, times "Backoff factor"
+  per retry (1 = fixed, default 2), up to "Max retry timer" (300 s).
+  The per session, "Retries after a failed login: never" stops every
+  retry the server would see as a login. Retry decisions are in the Event Log.
+
+- **A log folder that does not exist yet is created** (hknet/KiTTY#65).
+  The missing folders of the session's log path are created when the log
+  opens, and the Event Log records which.
+  A variable the machine does not have creates nothing, so a mistyped
+  `%NAME%` cannot plant a folder of that name. The log messages show the
+  path with `%VAR%` expanded, so an error shows the folder it actually tried.
 
 ## 0.85.1.14-beta — 2026-10-09
 
