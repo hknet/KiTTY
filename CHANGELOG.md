@@ -11,6 +11,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **The sshd NOTE shows only the variable the server refused**
   (`TERM_PROGRAM` or `COLORTERM`), not both.
 
+## 0.85.1.16-beta — 2026-10-11
+
+### Fixed
+
+- **The sshd NOTE shows only the variable the server refused**
+  (`TERM_PROGRAM` or `COLORTERM`), not both.
+- **The launcher picks up "Keep my hand-edited launcher menu" when it is
+  changed**, without a restart.
+
 ## 0.85.1.15-beta — 2026-10-11
 
 ### New

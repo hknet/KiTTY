@@ -147,7 +147,15 @@ static HMENU HideMenu ;
 /* A Refresh chosen in the open tray menu (see LauncherRefreshInPlace). */
 static int LauncherRefreshBusy = 0 ;
 static HMENU LauncherPendingMenu = NULL ;
-static int LauncherConfReload = 1 ;
+/* [Launcher] reload (the configuration box's "Keep my hand-edited launcher
+ * menu", reversed): read at EVERY rebuild, not once at start-up - a
+ * launcher that was running when the box was unticked kept the old value
+ * and refreshed nothing until it was restarted. */
+static int LauncherConfReload( void ) {
+	char buffer[16] ;
+	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD, buffer, sizeof(buffer) ) && !stricmp( buffer, "NO" ) ) return 0 ;
+	return 1 ;
+}
 /* Folder store: the start-up copy of the store waits until the tray icon is
  * up. It reads every session file the launcher has not judged yet (the
  * content decides what is a session), which on a cold disk takes a second
@@ -1432,7 +1440,7 @@ static void LauncherRefreshInPlace( HWND hwnd ) {
 	LauncherRefreshTick = GetTickCount() ;
 	LauncherRefreshSpin = 0 ;
 	LauncherRefreshSpinPaint( '-' ) ;          /* seen before the work starts */
-	if( LauncherConfReload ) InitLauncherRegistry() ;
+	if( LauncherConfReload() ) InitLauncherRegistry() ;
 	/* NOT RefreshMenuLauncher(): that destroys the menu that is on the screen. */
 	LauncherPendingMenu = InitLauncherMenu( "Launcher" ) ;
 	/* An explicit request for the current state, so a changed hotkey-conflict
@@ -2153,7 +2161,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 }
 
 static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
-	if( LauncherConfReload ) {
+	if( LauncherConfReload() ) {
 		LAUNCHER_TIMING_START ;
 		InitLauncherRegistry() ;
 		LAUNCHER_TIMING_END( "store" ) ;
@@ -2845,7 +2853,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					  CheckVersionFromWebSite( hwnd, 0 ) ; }
 					break ;
 				case IDM_LAUNCHER+7:
-					if( LauncherConfReload ) InitLauncherRegistry() ;
+					if( LauncherConfReload() ) InitLauncherRegistry() ;
 					RefreshMenuLauncher() ;
 					/* Manual Refresh is an explicit request for the current
 					 * state, so a changed conflict report balloons here too. */
@@ -3046,13 +3054,10 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 
 	if( !RegisterClass(&wndclass) ) return 1 ;
 
-	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD, buffer, sizeof(buffer) ) ) {
-		if( !stricmp( buffer, "NO" ) ) LauncherConfReload = 0 ;
-	}
 	/* KiTTY 0.84: the launcher can run before the main terminal (e.g. the boot Startup
 	 * shortcut), so migrate the old 9bis.com\KiTTY hive here too before reading sessions. */
 	MigrateOldKittyHive() ;
-	if( LauncherConfReload ) {
+	if( LauncherConfReload() ) {
 		if( (IniFileFlag == SAVEMODE_DIR) && (DirectoryBrowseFlag == 0) )
 			LauncherStoreCopyPending = 1 ;   /* posted from WM_CREATE */
 		else
