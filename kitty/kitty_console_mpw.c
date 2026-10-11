@@ -19,11 +19,10 @@
  * session had no stored password.
  */
 
-#include <windows.h>
+#include "putty.h"   /* first: it brings winsock2.h, which must precede windows.h */
 #include <shellapi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "putty.h"
 #include "kitty_console_store.h"
 #include "kitty_secretstore.h"
 #include "kitty_text.h"
