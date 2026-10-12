@@ -6,6 +6,23 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.16-beta — 2026-10-11
 
+### Changed
+
+- **A program's status notice follows the session.** OSC 7501 raises a
+  notice when the session's **Terminal > Desktop Notifications** allows it,
+  as OSC 9, 777 and 99 do. Its default, When not focused, is the old
+  behaviour. The global switch "Notify when a program in a background window
+  needs attention" (`psnotify`) is gone: `psnotify=no` no longer applies. Off
+  on a session now also mutes OSC 9, 777 and 99. Always shows the notices in
+  front as well.
+- **How long a notice stays is a setting:** **Notices stay on screen,
+  seconds** (Application > KiTTY++ Settings > Terminal, group **Title bar &
+  Notifications**, `noticeseconds`, default 15). A time the program on the
+  host set keeps its own, as does a notice that waits for an answer.
+- **Session > Terminal has two new panels**, **Desktop Notifications** and
+  **Image Protocols**, taken out of **Features**. The settings stay as they
+  were.
+
 ### Fixed
 
 - **Writes that fail are reported and leave nothing half done.** Every

@@ -121,7 +121,7 @@ int on_should_show(int setting, int occasion, int focused, int visible);
 
 /* Display time in seconds (ON_STICKY_SECONDS for sticky) and whether the
  * notice carries the critical accent. */
-int on_seconds(int urgency, long expire_ms, int *critical);
+int on_seconds(int urgency, long expire_ms, int normal_s, int *critical);   /* normal_s: [KiTTY] noticeseconds */
 
 /* Replies, NUL-terminated into buf (at least ON_REPLY_MAX bytes); return the
  * length. The terminator is ESC \. */

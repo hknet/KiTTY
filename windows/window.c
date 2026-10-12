@@ -1228,7 +1228,7 @@ static void win_seat_notify_session_started(Seat *seat)
             kitty_notice_show(
                 KT_TWIN_OLDSESS_TITLE,
                 KT_TWIN_OLDSESS_TEXT,
-                RGB(0, 100, 0), 20, wgs->term_hwnd,
+                RGB(0, 100, 0), GetNoticeSeconds(), wgs->term_hwnd,
                 WM_KITTY_FOREIGN_SESSIONS);
         }
     }
@@ -4078,7 +4078,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
             char *note = dupprintf(
                 KT_TWIN_WORKPLACE_NOTICE_TEXT, wp);
             kitty_notice_show(KT_TWIN_WORKPLACE_NOTICE_TITLE, note,
-                              RGB(0, 100, 0), 20, wgs->term_hwnd,
+                              RGB(0, 100, 0), GetNoticeSeconds(), wgs->term_hwnd,
                               WM_KITTY_WORKPLACE_DISARM);
             sfree(note);
         }

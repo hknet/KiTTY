@@ -307,16 +307,16 @@
 #define KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE     "Disable bracketed paste mode"
 #define KT_FEATURES_DISABLE_FOCUS_REPORTING          "Disable focus reporting"
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
-/* Terminal/Features: notifications from the host (kitty/kitty_hostnotify.c) */
+/* Terminal/Desktop Notifications: notifications from the host (kitty/kitty_hostnotify.c) */
 #define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
-#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99)"
+#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501)"
 #define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
 #define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
-#define KT_FEATURES_SHELLINT_GROUP                   "Shell integration"
+#define KT_FEATURES_SHELLINT_GROUP                   "Shell Integration"
 #define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
-#define KT_FEATURES_IMAGES_GROUP                     "Images"
+#define KT_FEATURES_IMAGES_GROUP                     "Images shown in the terminal"   /* the Image Protocols panel title */
 #define KT_FEATURES_KITTY_GRAPHICS                   "Show inline images (kitty graphics protocol)"
 #define KT_FEATURES_ITERM_IMAGES                     "Show inline images (iTerm2 OSC 1337)"
 #define KT_FEATURES_SIXEL_IMAGES                     "Show inline images (Sixel)"
@@ -1406,10 +1406,10 @@
 /* Application/KiTTY++ Settings/Terminal, with its Font Fallback and Printing
  * leaves; the shared position and the icon library sit on Appearance */
 #define KT_KSET_WD_TITLE                             "Terminal Windows"
-#define KT_KSET_WD_TITLEBAR                          "Title bar"
+#define KT_KSET_WD_TITLEBAR                          "Title bar && Notifications"   /* && = one & in a group title */
 #define KT_KSET_WD_WINTITLE                          "Show status information in the title bar"
 #define KT_KSET_WD_WINTITLE_NOTE                     "Size, PROTECTED, ONTOP, BROADCAST, RESTRICTED and what a program reports: 45%, working, blocked, failed, done."
-#define KT_KSET_WD_PSNOTIFY                          "Notify when a program in a background window needs attention"
+#define KT_KSET_WD_NOTICESECS                        "Notices stay on screen, seconds:"
 #define KT_KSET_WD_PSOVERLAY                         "Show the program status overlay"
 #define KT_KSET_WD_PSOVERLAY_NOTE                    "Top right in the window while two or more jobs report."
 #define KT_KSET_WD_SIZE                              "Show the terminal size in the title"

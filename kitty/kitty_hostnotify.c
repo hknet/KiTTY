@@ -42,7 +42,7 @@
 #include "kitty_win.h"        /* kitty_refresh_title: the program-status marker */
 #include "kitty_inikeys.h"    /* KI_*: wintitle, the one-time title pointer */
 #include "kitty.h"            /* INIT_SECTION */
-#include "kitty_params.h"     /* [KiTTY] wintitle, psnotify; the store */
+#include "kitty_params.h"     /* [KiTTY] wintitle, noticeseconds; the store */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -195,11 +195,10 @@ static bool hn_visible(void)
 
 static bool hn_may_show(Terminal *term, const OnNotice *n)
 {
-    /* A program's status has its own rule, not the host-notification
-     * setting: only for a window in the background, under [KiTTY] psnotify.
-     * In front, the title bar and the taskbar button already show it. */
-    if (n->ps_state)
-        return GetPsNotifyFlag() && !term->has_focus;
+    /* Every notice of the host follows the session's setting (Terminal >
+     * Desktop Notifications), a program's status (OSC 7501) included. It had
+     * a global switch of its own, [KiTTY] psnotify, background windows only
+     * - which is what the setting's default, When not focused, does. */
     return on_should_show(hn_setting(term), n->meta.occasion,
                           term->has_focus ? 1 : 0, hn_visible() ? 1 : 0) != 0;
 }
@@ -293,7 +292,8 @@ static void hn_show(struct kitty_hostnotify *st, const OnNotice *n)
     /* The program's title on the first line, then its body. */
     text = tl && bl ? dupcat(title, "\n", body) : dupstr(tl ? title : body);
 
-    seconds = on_seconds(n->meta.urgency, n->meta.expire, &critical);
+    seconds = on_seconds(n->meta.urgency, n->meta.expire, GetNoticeSeconds(),
+                         &critical);
     accent = critical ? HN_ACCENT_CRITICAL : HN_ACCENT;
     if (n->ps_state)
         accent = n->ps_state == PS_BLOCKED ? HN_ACCENT_BLOCKED :
@@ -756,7 +756,7 @@ static void hn_ps_osc7501(Terminal *term, const char *s, size_t len,
          * button or the title bar. */
         if (hn_setting(term) != ON_SET_OFF ||
             conf_get_bool(term->conf, CONF_taskbar_progress) ||
-            GetPsNotifyFlag() || GetTitleBarFlag())
+            GetTitleBarFlag())
             hn_reply(term, PS_QUERY_REPLY, strlen(PS_QUERY_REPLY));
         return;
       case PS_REPORT:
@@ -970,7 +970,7 @@ void kitty_far2l_keys_notice(Terminal *term, bool on)
         serial = 1;
     ctx = (void *)serial;
     hn_keys_shown = ctx;
-    kitty_notice_show_ex(hn_session_name(term), text, HN_ACCENT_KEYS, 10,
+    kitty_notice_show_ex(hn_session_name(term), text, HN_ACCENT_KEYS, GetNoticeSeconds(),
                          NULL, 0, hn_keys_on_close, ctx);
     if (hn_keys_shown == ctx)
         hn_trace_notice(HN_ACCENT_KEYS, text);

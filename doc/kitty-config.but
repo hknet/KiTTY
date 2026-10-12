@@ -2051,15 +2051,17 @@ How the terminal windows look and behave, for every session. Two
 leaves below this panel hold the rest: \k{kitty-cfg-kset-fontfb} and
 \k{kitty-cfg-kset-printing}.
 
-\b \q{Title bar}: \q{Show status information in the title bar} enables the size suffix,
+\b \q{Title bar & Notifications}: \q{Show status information in the title bar} enables the size suffix,
 the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers and what a program on
 the host reports (OSC 7501): \c{(45%)}, \c{(working)}, \c{(blocked)},
 \c{(failed)} or \c{(done)}, failed and done until the window has been in
-front; \q{Notify when a program in a background window needs attention}
-shows a notice near the clock when a program in a window that is not in
-front becomes blocked, fails or is done, with a \q{Go to the window}
-button (\c{psnotify}, on by default; while the title bar shows no status,
-the first such notice also offers \q{Show it in the title}, once);
+front; \q{Notices stay on screen, seconds} sets how long a notice of
+kitty.exe stays near the clock (\c{noticeseconds}, 15 by default): a
+program's status, the desktop notifications and KiTTY++'s own - not a time
+the program on the host set, nor a notice that waits for an answer.
+When a program's status raises a notice is the session's
+\k{kitty-cfg-hostnotify}; while the title bar shows no status, the first
+such notice also offers \q{Show it in the title}, once;
 \q{Show the program status overlay} puts a panel at the top right of the
 terminal while two or more jobs report: each job with its state, its
 percentage or a busy bar and its message, a blocked one highlighted, done
@@ -3401,16 +3403,16 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
-\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99)}
+\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501)}
 
-Desktop notifications: lets a program on the host show a notice near
-the clock (OSC 9, OSC 777, OSC 99), for example when a long job ends.
-A program that reports its status (OSC 7501) has its own setting:
-\q{Notify when a program in a background window needs attention} on the
-Terminal panel of the KiTTY++ Settings (\k{kitty-cfg-kset-window}).
+Desktop notifications, on the Terminal > Desktop Notifications panel:
+lets a program on the host show a notice near the clock (OSC 9, OSC 777,
+OSC 99), for example when a long job ends. A program that reports its
+status (OSC 7501) raises one when it becomes blocked, fails or is done.
 The notice is titled with this session's name. Off, only while this
-window is not focused, or always. A program can request less, never
-more.
+window is not focused (the default), or always. A program can request
+less, never more. How long a notice stays: \q{Notices stay on screen,
+seconds} (\k{kitty-cfg-kset-window}).
 
 The default is \q{When not focused}. The program's own title is the
 first line of the notice, its text follows. Titles are cut at 256 bytes

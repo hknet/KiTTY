@@ -2953,7 +2953,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * panel's page, not the Appearance one. */
     KSET_CHECKBOX(s, KT_KSET_WD_WINTITLE, KI_WINTITLE, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_WINTITLE_NOTE, HELPCTX(kitty_kset_window));
-    KSET_CHECKBOX(s, KT_KSET_WD_PSNOTIFY, KI_PSNOTIFY, kitty_kset_window);
+    KSET_NUMBER(s, KT_KSET_WD_NOTICESECS, KI_NOTICESECONDS, kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_PSOVERLAY, KI_PSOVERLAY, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_PSOVERLAY_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_SIZE, KI_SIZE, kitty_kset_window);

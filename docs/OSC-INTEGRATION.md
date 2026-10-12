@@ -10,17 +10,17 @@ in KiTTY++ and what the host needs.
 | Feature | Sequence | KiTTY++ setting | On the host |
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Prompt marks | OSC 133 | **Terminal > Features > Shell integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Program status | OSC 7501 | **Terminal > Features > Progress and status on the taskbar button (OSC 9;4, 7501)**, and the **Title bar** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
-| Desktop notifications | OSC 9, 777, 99 | **Terminal > Features > Desktop notifications (OSC 9, 777, 99)** | A program that sends them: `printf`, `kitten notify` |
+| Prompt marks | OSC 133 | **Terminal > Features > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
+| Program status | OSC 7501 | **Terminal > Desktop Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
+| Desktop notifications | OSC 9, 777, 99 | **Terminal > Desktop Notifications > Desktop notifications (OSC 9, 777, 99, 7501)** | A program that sends them: `printf`, `kitten notify` |
 | Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
 | Hyperlinks | OSC 8 | **Window > Hyperlinks > Allow OSC 8 hyperlinks**, on | Programs that write them: `ls --hyperlink=auto`, Rich/Textual applications |
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
 | Clipboard with types, paste events | OSC 5522 | the same as OSC 52 | `kitten clipboard` |
 | File transfer through the terminal | OSC 5113 | **Connection > File-Transfer-Settings**, **Application > KiTTY++ Settings > Transfers & Tools > OSC 5113 (kitten)** | `kitten transfer` |
-| Inline images, kitty graphics | APC `_G` | **Terminal > Features > Images > Show inline images (kitty graphics protocol)**, on | Nothing; programs: `kitten icat`, `chafa -f kitty`, `timg -pk`, pi ([below](#inline-images)) |
-| Inline images, iTerm2 | OSC 1337 `File=` | **Terminal > Features > Images > Show inline images (iTerm2 OSC 1337)**, on | Nothing; programs: `imgcat`, `chafa -f iterm`, `timg -pi` |
-| Inline images, Sixel | DCS `q` | **Terminal > Features > Images > Show inline images (Sixel)**, on | Nothing; programs: `chafa -f sixels`, `timg` (finds it through `CSI c`, [below](#inline-images)), img2sixel, lsix |
+| Inline images, kitty graphics | APC `_G` | **Terminal > Image Protocols > Show inline images (kitty graphics protocol)**, on | Nothing; programs: `kitten icat`, `chafa -f kitty`, `timg -pk`, pi ([below](#inline-images)) |
+| Inline images, iTerm2 | OSC 1337 `File=` | **Terminal > Image Protocols > Show inline images (iTerm2 OSC 1337)**, on | Nothing; programs: `imgcat`, `chafa -f iterm`, `timg -pi` |
+| Inline images, Sixel | DCS `q` | **Terminal > Image Protocols > Show inline images (Sixel)**, on | Nothing; programs: `chafa -f sixels`, `timg` (finds it through `CSI c`, [below](#inline-images)), img2sixel, lsix |
 | True colour and terminal name | `COLORTERM`, `TERM_PROGRAM` (environment, not OSC) | **Application > KiTTY++ Settings > Terminal > Send COLORTERM and TERM_PROGRAM to the server**, on | SSH: `AcceptEnv COLORTERM TERM_PROGRAM` in `sshd_config` ([below](#colorterm-and-term_program)) |
 | What the session reports | `CSI c`, `CSI > q`, `DCS + q`, OSC 1337 `Capabilities`, `CSI ? Ps $ p` | **Terminal > Features > Report as a VT220 with this session's features (CSI c)**, on; the other answers follow the session's switches | Nothing ([below](#what-kitty-reports-about-itself)) |
 | Keys, cursor shape, colour, focus, synchronized output | CSI, DCS, OSC 4/10/11/12 | per feature ([below](#understood-without-anything-on-the-host)) | Nothing |
@@ -128,7 +128,7 @@ One snippet per shell sends two things before every prompt:
   The marks let **Alt+PgUp** / **Alt+PgDn** jump between prompts,
   **Alt+Shift+PgUp** / **Alt+Shift+PgDn** between failed commands, and
   **Alt+End** select a command's output; a failed command is marked red
-  (**Terminal > Features > Shell integration > Mark failed commands (OSC
+  (**Terminal > Features > Shell Integration > Mark failed commands (OSC
   133)**). **Alt+Home** selects the command line itself and needs the
   optional `B` mark (the start of the typed command): one more line per
   shell, below. The keys are actions on **Application > KiTTY++ Settings >
@@ -306,11 +306,12 @@ OSC 9;4 uses the same bar, so whichever program reports last wins.
 the title, under **Show status information in the title bar** (Application >
 KiTTY++ Settings > Terminal, on by default).
 
-**Notices:** blocked, done and failed in a window in the background raise a
-notice, "app: state" with the program's message below and a **Go to the
-window** button. It follows **Notify when a program in a background window
-needs attention** (Application > KiTTY++ Settings > Terminal, on by default)
-and the limits of the other notices: one every 2 seconds per window. While the
+**Notices:** blocked, done and failed raise a notice, "app: state" with the
+program's message below and a **Go to the window** button, when the session's
+**Terminal > Desktop Notifications** allows it: When not focused (the default)
+for a window in the background, Always in front as well, Off never. One every
+2 seconds per window; it stays for **Notices stay on screen, seconds**
+(Application > KiTTY++ Settings > Terminal, 15 by default). While the
 title bar shows no status, the first such notice also offers **Show it in the
 title**, once per installation. Each of these changes is also a line in the
 Event Log.

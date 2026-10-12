@@ -545,7 +545,7 @@ void kitty_agent_unverified_notice(char *name)
     HWND GetMainHwnd(void);
     char *msg = dupprintf(KT_WIN_AGENT_UNVERIFIED, name);
     kitty_notice_show(KT_CAP_AGENT_UNVERIFIED, msg,
-                      RGB(190, 110, 0), 15,
+                      RGB(190, 110, 0), GetNoticeSeconds(),
                       GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
     sfree(msg);
     sfree(name);

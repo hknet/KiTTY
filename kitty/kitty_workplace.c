@@ -385,7 +385,7 @@ void kitty_workplace_show_pending_notice(void)
      * switch it on here would be guessing that they do. */
     kitty_notice_show(KT_CAP_WORKPLACE_INACTIVE,
                       KT_WORKPLACE_INACTIVE_TEXT,
-                      RGB(0, 100, 0), 15, NULL, 0);
+                      RGB(0, 100, 0), GetNoticeSeconds(), NULL, 0);
 }
 
 int kitty_workplace_query(char *name, int len)

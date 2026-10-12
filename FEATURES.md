@@ -1332,13 +1332,13 @@ Three protections apply to every clipboard protocol at once:
 
 A program on the host can show a notice near the clock, for example when a long build or a backup ends: `printf '\e]9;Build done\a'` (OSC 9, iTerm2), `printf '\e]777;notify;Backup;Finished\a'` (OSC 777, urxvt), or the kitty terminal's OSC 99 (as `kitten notify` sends it). The notice is KiTTY++'s own window, not a Windows toast: it is titled with the session's name (the host name for an unnamed session), so it always shows where it came from, and nothing of it is kept in the Action Center after it goes. The program's title is its first line, its text follows. A click brings the terminal window forward.
 
-**Terminal → Features → Desktop notifications (OSC 9, 777, 99)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
+**Terminal → Desktop Notifications → Desktop notifications (OSC 9, 777, 99, 7501)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
 
 OSC 99 is supported in its core: ids, text sent in chunks and base64, `p=close` and `p=alive`, `p=?` (which answers with what is supported), urgency (`u=2` stays until clicked and is drawn in red, `u=0` goes after 5 seconds), the display time (`w`), and the click and close reports (`a=report`, `c=1`), which send the host only the notice's id. Icons, buttons and sounds are not. ConEmu's numbered OSC 9 commands are not shown as notices.
 
 Limits: titles are cut at 256 bytes and texts at 2048, control characters and invalid UTF-8 are removed, and a window shows at most one notice every 2 seconds - a newer one replaces the one waiting, and the Event Log counts the ones dropped.
 
-**Taskbar progress (OSC 9;4).** `ESC ] 9 ; 4 ; <state> ; <percent> BEL`, the form ConEmu and Windows Terminal use, shows progress on this window's taskbar button: 0 hides it, 1 normal, 2 error, 3 busy without a percentage, 4 paused. It is cleared when the session ends. **Terminal → Features → Progress and status on the taskbar button (OSC 9;4, 7501)**, on by default (`TaskbarProgress`). Windows 7 and later.
+**Taskbar progress (OSC 9;4).** `ESC ] 9 ; 4 ; <state> ; <percent> BEL`, the form ConEmu and Windows Terminal use, shows progress on this window's taskbar button: 0 hides it, 1 normal, 2 error, 3 busy without a percentage, 4 paused. It is cleared when the session ends. **Terminal → Desktop Notifications → Progress and status on the taskbar button (OSC 9;4, 7501)**, on by default (`TaskbarProgress`). Windows 7 and later.
 
 far2l's own notifications, sent over the far2l terminal extensions, show as the same notice, under the same setting and limits.
 
@@ -1350,7 +1350,7 @@ far2l's own notifications, sent over the far2l terminal extensions, show as the 
 
 A program on the host reports what it is doing: working (with a percentage or without), blocked (waiting for a permission, an answer or a login), done, failed or idle. Coding agents, build and deploy tools are the programs it was made for ([OSC 7501](https://www.superlogical.com/rex/docs/build/program-status)). A program can report several parts of its work at once, each under an id of its own.
 
-The window's taskbar button shows the most urgent of them as a small icon: blocked (amber), failed (red), working (blue), done (green); done and failed go once the window has been in front. While working the bar shows the percentage, or runs busy without one; while blocked it turns yellow. A program that becomes blocked while the window is in the background makes the button flash. The title bar shows the same state as `(45%)`, `(working)`, `(blocked)`, `(failed)` or `(done)` (**Application > KiTTY++ Settings > Terminal > Show status information in the title bar**, on by default). Blocked, done and failed in a window in the background raise a notice near the clock, the program's name and the state on the first line, its message below, and a **Go to the window** button (**Application > KiTTY++ Settings > Terminal > Notify when a program in a background window needs attention**, on by default, `psnotify`; one notice every 2 seconds per window). While the title bar shows no status, the first such notice also offers **Show it in the title**, once per installation. Each of these changes is a line in the Event Log too.
+The window's taskbar button shows the most urgent of them as a small icon: blocked (amber), failed (red), working (blue), done (green); done and failed go once the window has been in front. While working the bar shows the percentage, or runs busy without one; while blocked it turns yellow. A program that becomes blocked while the window is in the background makes the button flash. The title bar shows the same state as `(45%)`, `(working)`, `(blocked)`, `(failed)` or `(done)` (**Application > KiTTY++ Settings > Terminal > Show status information in the title bar**, on by default). Blocked, done and failed raise a notice near the clock, the program's name and the state on the first line, its message below and a **Go to the window** button (when the session's **Terminal → Desktop Notifications** allows it - When not focused by default; one notice every 2 seconds per window, for **Notices stay on screen, seconds**). While the title bar shows no status, the first such notice also offers **Show it in the title**, once per installation. Each of these changes is a line in the Event Log too.
 
 While two or more jobs report, a panel at the top right of the terminal lists them: a state icon, the job below its parent, the percentage or a busy bar, the program's message; a blocked job is highlighted, done ones are faded. It is about 90 % opaque, follows the light or dark theme, and never takes the keyboard. Drag it by its header to move it (the place is kept in the session); the x hides it until a new job starts (**Application > KiTTY++ Settings > Terminal > Show the program status overlay**, on by default, `psoverlay`).
 
@@ -1358,7 +1358,7 @@ Working and blocked end at the shell's next prompt, which the shell marks with O
 
 **The prompt marks in the scrollback.** With the shell integration, every prompt, every command's output and every failed command (an exit code other than 0) is marked on its line, and the marks move with the lines into the scrollback. **Alt+PgUp** and **Alt+PgDn** jump to the previous and next prompt, which then stands at the top of the window; **Alt+Shift+PgUp** and **Alt+Shift+PgDn** jump to the previous and next failed command; **Alt+End** selects, and so copies, a command's output: the command the last jump went to, the one at the top of the view when scrolled back, else the last one; **Alt+Home** selects the command line itself, without the prompt. Alt+Home needs the B mark (the start of the typed command): the optional line of the shell integration for bash, zsh and fish, or a program that sends it, such as pi. The keys are actions on Application > KiTTY++ Settings > Keys & Mouse > Shortcuts. In a window that has no marks, or under a full-screen program, they go to the host as before. A failed command's prompt line carries a thin red line along its top edge, and a strip of 4 px beside the scrollbar shows a red tick at each failed command's place in the scrollback, level with the scrollbar thumb when that line is the top line (**Terminal → Features → Mark failed commands (OSC 133)**, on by default, `FailedCommandMarks`; while it is on the window is 4 px wider for the same columns); `grep` without a match also exits 1 and is marked too. The only reply is the one to the feature query (`OSC 7501 ; ?`); nothing a program reports goes back. Reports over the specification's limits, and texts with control characters, are refused.
 
-**How to enable:** **Terminal → Features**: **Progress and status on the taskbar button (OSC 9;4, 7501)** for the icon, the bar and the flashing; **Application > KiTTY++ Settings > Terminal**, group **Title bar**, for the title and the notices. On the host: a program that reports its status, and the shell integration for the prompt marks - see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md), which also lists what every other OSC feature needs on the host.
+**How to enable:** **Terminal → Desktop Notifications**: **Progress and status on the taskbar button (OSC 9;4, 7501)** for the icon, the bar and the flashing, the droplist for when a notice is raised; **Application > KiTTY++ Settings > Terminal**, group **Title bar & Notifications**, for the title and how long a notice stays. On the host: a program that reports its status and the shell integration for the prompt marks - see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md), which also lists what every other OSC feature needs on the host.
 
 (no screenshot)
 
@@ -1382,7 +1382,7 @@ far2l can show pictures in a KiTTY++ window - its image viewer, for one. They ar
 
 Raw RGB and RGBA pictures always work; PNG and JPEG where Windows has the imaging component (Vista and later, and XP with the Microsoft .NET Framework 3.0 installed). A transparent part of a picture shows the terminal's background colour. Limits: one picture at most 4096 pixels a side and 8 megapixels, at most 64 pictures and 64 MB in all per window; a picture beyond a limit is refused and the refusal is reported to far2l.
 
-**How to enable:** on by default; **Terminal → Features → Images → Show far2l images**. Off reports to far2l that the terminal shows no images.
+**How to enable:** on by default; **Terminal → Image Protocols → Show far2l images**. Off reports to far2l that the terminal shows no images.
 
 (no screenshot)
 
@@ -1394,7 +1394,7 @@ PNG and raw RGB/RGBA pictures are taken, sent in the data stream, also zlib-comp
 
 A picture placed near the bottom of the window scrolls the screen so it shows whole, and the cursor ends right of the picture on its last row.
 
-**How to enable:** on by default; **Terminal → Features → Images → Show inline images (kitty graphics protocol)** (`KittyGraphics`). Off, the protocol is ignored as before and programs fall back to text.
+**How to enable:** on by default; **Terminal → Image Protocols → Show inline images (kitty graphics protocol)** (`KittyGraphics`). Off, the protocol is ignored as before and programs fall back to text.
 
 (no screenshot)
 
@@ -1402,7 +1402,7 @@ A picture placed near the bottom of the window scrolls the screen so it shows wh
 
 iTerm2's picture sequence, `OSC 1337 File=`, as `imgcat`, `chafa -f iterm` and several file managers send it, also in parts (`MultipartFile=`, `FilePart=`, `FileEnd`). PNG, JPEG, GIF (an animated one plays, looping, with its frames' delays and disposal, as in iTerm2), TIFF (the first page) and BMP are taken, each decoded by the decoder Windows itself ships for that format; WebP and HEIF/AVIF through Microsoft's Web Media and HEIF Image Extensions where they are installed (Windows 11 usually has them; HEIC pictures also need the HEVC Video Extensions, AVIF the AV1 Video Extension). A codec another program installed is never used, and a format without its decoder is refused. Shown at their own size (narrowed to the window when wider) or at the `width` and `height` the program gives in cells, pixels or percent of the window, keeping the aspect ratio unless `preserveAspectRatio=0`. The pictures scroll and are drawn like the kitty graphics ones and share their limits, but they belong to their cells, as in iTerm2 and xterm: text written into a cell replaces that part of the picture, erasing removes it, and a new picture replaces the parts of older ones it covers (a video played frame by frame keeps one picture). kitty's delete commands by position remove them too. A download (`inline=0`) is never written to this PC, and no answer goes back to the program. WezTerm's `doNotMoveCursor=1` keeps the cursor where it was.
 
-**How to enable:** on by default; **Terminal → Features → Images → Show inline images (iTerm2 OSC 1337)** (`ItermImages`). Off, the sequence is ignored as before.
+**How to enable:** on by default; **Terminal → Image Protocols → Show inline images (iTerm2 OSC 1337)** (`ItermImages`). Off, the sequence is ignored as before.
 
 (no screenshot)
 
@@ -1412,7 +1412,7 @@ The DEC Sixel pictures that img2sixel, `chafa -f sixels`, timg, lsix, gnuplot an
 
 Programs find Sixel through the device-attributes answer, which lists `4` while this switch is on (see [What the terminal reports](#what-the-terminal-reports)).
 
-**How to enable:** on by default; **Terminal → Features → Images → Show inline images (Sixel)** (`SixelImages`). Off, Sixel is ignored as before and the old device-attributes answer stays.
+**How to enable:** on by default; **Terminal → Image Protocols → Show inline images (Sixel)** (`SixelImages`). Off, Sixel is ignored as before and the old device-attributes answer stays.
 
 (no screenshot)
 

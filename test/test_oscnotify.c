@@ -188,16 +188,23 @@ static void test_should_show(void)
 static void test_seconds(void)
 {
     int crit;
-    CHECK(on_seconds(-1, -1, &crit) == ON_DEFAULT_SECONDS && !crit, "default");
-    CHECK(on_seconds(1, -1, &crit) == ON_DEFAULT_SECONDS, "u=1");
-    CHECK(on_seconds(0, -1, &crit) == ON_SHORT_SECONDS, "u=0 short");
-    CHECK(on_seconds(2, -1, &crit) == ON_STICKY_SECONDS && crit, "u=2 sticky red");
-    CHECK(on_seconds(2, 3000, &crit) == ON_STICKY_SECONDS && crit, "u=2 beats w");
-    CHECK(on_seconds(-1, 0, &crit) == ON_STICKY_SECONDS && !crit, "w=0 sticky");
-    CHECK(on_seconds(-1, 1, &crit) == 1, "w=1 rounds up");
-    CHECK(on_seconds(-1, 1500, &crit) == 2, "w=1500 -> 2");
-    CHECK(on_seconds(0, 3000, &crit) == 3, "w beats u=0");
-    CHECK(on_seconds(-1, 999999999, &crit) == ON_STICKY_SECONDS, "w capped");
+    CHECK(on_seconds(-1, -1, ON_DEFAULT_SECONDS, &crit) == ON_DEFAULT_SECONDS && !crit, "default");
+    CHECK(on_seconds(1, -1, ON_DEFAULT_SECONDS, &crit) == ON_DEFAULT_SECONDS, "u=1");
+    CHECK(on_seconds(0, -1, ON_DEFAULT_SECONDS, &crit) == ON_SHORT_SECONDS, "u=0 short");
+    CHECK(on_seconds(2, -1, ON_DEFAULT_SECONDS, &crit) == ON_STICKY_SECONDS && crit, "u=2 sticky red");
+    CHECK(on_seconds(2, 3000, ON_DEFAULT_SECONDS, &crit) == ON_STICKY_SECONDS && crit, "u=2 beats w");
+    CHECK(on_seconds(-1, 0, ON_DEFAULT_SECONDS, &crit) == ON_STICKY_SECONDS && !crit, "w=0 sticky");
+    CHECK(on_seconds(-1, 1, ON_DEFAULT_SECONDS, &crit) == 1, "w=1 rounds up");
+    CHECK(on_seconds(-1, 1500, ON_DEFAULT_SECONDS, &crit) == 2, "w=1500 -> 2");
+    CHECK(on_seconds(0, 3000, ON_DEFAULT_SECONDS, &crit) == 3, "w beats u=0");
+    CHECK(on_seconds(-1, 999999999, ON_DEFAULT_SECONDS, &crit) == ON_STICKY_SECONDS, "w capped");
+    /* [KiTTY] noticeseconds sets the normal time only: not the short one of a
+     * low urgency, not a time the program set, not a sticky one */
+    CHECK(on_seconds(1, -1, 30, &crit) == 30, "noticeseconds: u=1 takes it");
+    CHECK(on_seconds(-1, -1, 30, &crit) == 30, "noticeseconds: no u takes it");
+    CHECK(on_seconds(0, -1, 30, &crit) == ON_SHORT_SECONDS, "noticeseconds: u=0 stays short");
+    CHECK(on_seconds(-1, 3000, 30, &crit) == 3, "noticeseconds: w wins");
+    CHECK(on_seconds(2, -1, 30, &crit) == ON_STICKY_SECONDS, "noticeseconds: u=2 stays sticky");
 }
 
 static void test_replies(void)

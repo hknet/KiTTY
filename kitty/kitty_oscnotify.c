@@ -440,7 +440,7 @@ int on_should_show(int setting, int occasion, int focused, int visible)
     return 1;
 }
 
-int on_seconds(int urgency, long expire_ms, int *critical)
+int on_seconds(int urgency, long expire_ms, int normal_s, int *critical)
 {
     *critical = (urgency == 2);
     if (urgency == 2 || expire_ms == 0)
@@ -449,7 +449,8 @@ int on_seconds(int urgency, long expire_ms, int *critical)
         long s = (expire_ms + 999) / 1000;
         return s > ON_STICKY_SECONDS ? ON_STICKY_SECONDS : (int)s;
     }
-    return urgency == 0 ? ON_SHORT_SECONDS : ON_DEFAULT_SECONDS;
+    return urgency == 0 ? ON_SHORT_SECONDS :
+           (normal_s > 0 ? normal_s : ON_DEFAULT_SECONDS);
 }
 
 /* ---- replies ----------------------------------------------------------- */

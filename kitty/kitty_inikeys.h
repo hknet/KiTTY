@@ -148,7 +148,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_WORKPLACEWASARMED                "WorkplaceWasArmed"
 /* Program status (OSC 7501): notify for a background window; and the
  * one-time pointer to the title bar in that notice, once it has been shown. */
-#define KI_PSNOTIFY                         "psnotify"
+#define KI_NOTICESECONDS                    "noticeseconds"   /* [KiTTY]; [Launcher] has its own */
 #define KI_PSTITLEHINTSHOWN                 "PsTitleHintShown"
 #define KI_PSOVERLAY                        "psoverlay"
 #define KI_ZMODEM                           "zmodem"

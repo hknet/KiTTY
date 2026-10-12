@@ -220,9 +220,14 @@ void SetTitleBarFlag( const int flag ) { TitleBarFlag = flag ; }
 
 // [KiTTY] psnotify: a notice when a program in a background window becomes
 // blocked, fails or is done (OSC 7501, kitty_hostnotify.c).
-int PsNotifyFlag = 1 ;
-int GetPsNotifyFlag(void) { return PsNotifyFlag ; }
-void SetPsNotifyFlag( const int flag ) { PsNotifyFlag = flag ; }
+int GetNoticeSeconds( void ) {
+	char buffer[32] ;
+	int v = 15 ;
+	if( ReadParameterN( INIT_SECTION, KI_NOTICESECONDS, buffer, sizeof(buffer) ) ) v = atoi( buffer ) ;
+	if( v < 1 ) v = 15 ;
+	if( v > 600 ) v = 600 ;
+	return v ;
+}
 
 // [KiTTY] psoverlay: the program status overlay while two or more jobs report
 // (kitty_psoverlay.c).
@@ -635,7 +640,6 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, KI_WINROLL,		1, 0, IGN,	&WinrolFlag, NULL ),
 	/* wintitle: symmetrical since the settings tree offers it as a checkbox */
 	INIP_KW( INIT_SECTION, 0, KI_WINTITLE,		1, 0, IGN,	&TitleBarFlag, NULL ),
-	INIP_KW( INIT_SECTION, 0, KI_PSNOTIFY,		1, 0, IGN,	&PsNotifyFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, KI_PSOVERLAY,		1, 0, IGN,	&PsOverlayFlag, NULL ),
 #ifdef MOD_PROXY
 	/* proxyselection: yes = always, no = never, auto (or anything else) = when defined */

@@ -62,8 +62,7 @@ void SetSizeFlag( const int flag ) ;
 
 // [KiTTY] wintitle: enable the title decorations (size suffix, PROTECTED/ONTOP markers)
 int GetTitleBarFlag(void) ;
-int GetPsNotifyFlag(void) ;
-void SetPsNotifyFlag( const int flag ) ;
+int GetNoticeSeconds( void ) ;   /* [KiTTY] noticeseconds, 1..600, default 15 */
 int GetPsOverlayFlag(void) ;
 void SetPsOverlayFlag( const int flag ) ;
 void SetTitleBarFlag( const int flag ) ;

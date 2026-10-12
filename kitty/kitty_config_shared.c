@@ -618,7 +618,6 @@ extern int  GetPasteSize(void);                extern void SetPasteSize(const in
 extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
 extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
 extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
-extern int  GetPsNotifyFlag(void);             extern void SetPsNotifyFlag(const int);
 extern int  GetPsOverlayFlag(void);            extern void SetPsOverlayFlag(const int);
 extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
 extern int  GetWinrolFlag(void);               extern void SetWinrolFlag(const int);
@@ -761,7 +760,9 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_SENDCMDGROUP,   KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_broadcast_set_group },
     /* Window & display */
     { INIT_SECTION, KI_WINTITLE,       KSET_BOOL, false, GetTitleBarFlag, SetTitleBarFlag, NULL, 0, 0, 1 },
-    { INIT_SECTION, KI_PSNOTIFY,       KSET_BOOL, false, GetPsNotifyFlag, SetPsNotifyFlag, NULL, 0, 0, 1 },
+    /* how long a notice of kitty.exe stays when nothing else sets its time;
+     * read at each notice (GetNoticeSeconds), so a change applies at once */
+    { INIT_SECTION, KI_NOTICESECONDS,  KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
     { INIT_SECTION, KI_PSOVERLAY,      KSET_BOOL, false, GetPsOverlayFlag, SetPsOverlayFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SIZE,           KSET_BOOL, false, GetSizeFlag, SetSizeFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_WINROLL,        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },

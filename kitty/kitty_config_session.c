@@ -5782,7 +5782,7 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
 #endif
 }
 
-/* Terminal/Features, "Desktop notifications": Off / When not focused /
+/* Terminal/Desktop Notifications, "Desktop notifications": Off / When not focused /
  * Always, stored as HostNotify 0 / 1 / 2 (the item id is the value). */
 static void kitty_hostnotify_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
@@ -6083,19 +6083,7 @@ void scb_panel_terminal(struct controlbox *b)
                      I(CONF_sync_output_hold_ms), ED_INT);
     }
 
-    /* Notifications from the host (OSC 9, 777, 99) and taskbar progress
-     * (OSC 9;4): a group of its own (kitty/kitty_hostnotify.c). The droplist
-     * takes the full width, so its label sits above it and is never cut. */
     if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Terminal/Features", "hostnotify",
-                        KT_FEATURES_HOSTNOTIFY_GROUP);
-        ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
-                      HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
-                      I(CONF_host_notify));
-        ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
-                      HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
-                      I(CONF_taskbar_progress));
-
         /* The shell's prompt marks (OSC 133): a group of its own. */
         s = ctrl_getset(b, "Terminal/Features", "shellint",
                         KT_FEATURES_SHELLINT_GROUP);
@@ -6103,9 +6091,25 @@ void scb_panel_terminal(struct controlbox *b)
                       HELPCTX(kitty_failedmarks), conf_checkbox_handler,
                       I(CONF_failed_marks));
 
-        /* Inline images, one switch per protocol: a group of its own. */
-        s = ctrl_getset(b, "Terminal/Features", "images",
-                        KT_FEATURES_IMAGES_GROUP);
+        /* Notifications from the host (OSC 9, 777 and 99, a program's status
+         * OSC 7501 too) and taskbar progress (OSC 9;4): a panel of their
+         * own below Terminal, out of Features (kitty/kitty_hostnotify.c). The
+         * droplist takes the full width, so its label sits above it and is
+         * never cut. */
+        ctrl_settitle(b, "Terminal/Desktop Notifications",
+                      KT_FEATURES_HOSTNOTIFY_GROUP);
+        s = ctrl_getset(b, "Terminal/Desktop Notifications", "hostnotify", NULL);
+        ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
+                      HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
+                      I(CONF_host_notify));
+        ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
+                      HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
+                      I(CONF_taskbar_progress));
+
+        /* Inline images, one switch per protocol: a panel of their own below
+         * Terminal, out of Features. */
+        ctrl_settitle(b, "Terminal/Image Protocols", KT_FEATURES_IMAGES_GROUP);
+        s = ctrl_getset(b, "Terminal/Image Protocols", "images", NULL);
         ctrl_checkbox(s, KT_FEATURES_KITTY_GRAPHICS, NO_SHORTCUT,
                       HELPCTX(kitty_kittygraphics), conf_checkbox_handler,
                       I(CONF_kitty_graphics));

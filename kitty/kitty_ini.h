@@ -945,10 +945,12 @@ char default_init_file_content[] =
 ;    decorated - the old remote title-command channel stays removed.\n\
 ;wintitle=yes\n\
 \n\
-; psnotify: a notice near the clock when a program in a window that is not in\n\
-;    front becomes blocked, fails or is done (OSC 7501), with a \"Go to the\n\
-;    window\" button. no = the title bar and the taskbar button only.\n\
-;psnotify=yes\n\
+; noticeseconds: how long a notice of kitty.exe stays on screen, 1-600\n\
+;    seconds (default 15) - a program's status (OSC 7501), the desktop\n\
+;    notifications and KiTTY++'s own. Not a time the program on the host\n\
+;    set, nor a notice that waits for an answer. When a program's\n\
+;    status raises a notice is the session's Desktop Notifications setting.\n\
+;noticeseconds=15\n\
 \n\
 ; PsTitleHintShown: written by KiTTY++ (1) once such a notice has offered\n\
 ;    \"Show it in the title\" while wintitle=no. Remove the line to be offered\n\
