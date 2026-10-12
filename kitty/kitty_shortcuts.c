@@ -364,15 +364,80 @@ int ShortcutKeyText( int key, char * buf, size_t size ) {
 	return (int) n ;
 }
 
-/* The shortcut bound to a menu command, for the Tools entries that have one;
- * 0 for any other command. window.c does not see shortcuts_tab. */
-int GetShortcutKey( int idm ) {
+/* The [Shortcuts] key of a window-menu command: 1 and *key (0 = unset) for
+ * a command that has one, 0 for any other. window.c does not see
+ * shortcuts_tab. */
+static int MenuShortcut( int idm, int * key ) {
 	switch( idm ) {
-		case IDM_WINSCP:    return shortcuts_tab.winscp ;
-		case IDM_PSCP:      return shortcuts_tab.sendfile ;
-		case IDM_GETFILE:   return shortcuts_tab.getfile ;
-		case IDM_FILEZILLA: return shortcuts_tab.filezilla ;
-		default:            return 0 ;
+		case IDM_WINSCP:        *key = shortcuts_tab.winscp ; return 1 ;
+		case IDM_PSCP:          *key = shortcuts_tab.sendfile ; return 1 ;
+		case IDM_GETFILE:       *key = shortcuts_tab.getfile ; return 1 ;
+		case IDM_FILEZILLA:     *key = shortcuts_tab.filezilla ; return 1 ;
+		case IDM_SHOWLOG:       *key = shortcuts_tab.eventlog ; return 1 ;
+		case IDM_DUPSESS:       *key = shortcuts_tab.duplicate ; return 1 ;
+		case IDM_NEWDUPSESS:    *key = shortcuts_tab.opennewcurrent ; return 1 ;
+		case IDM_RESTARTSESSION:*key = shortcuts_tab.closerestart ; return 1 ;
+		case IDM_RECONF:        *key = shortcuts_tab.changesettings ; return 1 ;
+		case IDM_COPYALL:       *key = shortcuts_tab.copyall ; return 1 ;
+		case IDM_CLRSB:         *key = shortcuts_tab.clearscrollback ; return 1 ;
+		case IDM_RESET:         *key = shortcuts_tab.resetterminal ; return 1 ;
+		case IDM_FULLSCREEN:    *key = shortcuts_tab.fullscreen ; return 1 ;
+		case IDM_TRANSPARUP:    *key = shortcuts_tab.transparencyup ; return 1 ;
+		case IDM_TRANSPARDOWN:  *key = shortcuts_tab.transparencydown ; return 1 ;
+		case IDM_FONTUP:        *key = shortcuts_tab.fontup ; return 1 ;
+		case IDM_FONTDOWN:      *key = shortcuts_tab.fontdown ; return 1 ;
+		case IDM_FONTNEGATIVE:  *key = shortcuts_tab.fontnegative ; return 1 ;
+		case IDM_FONTBLACKANDWHITE: *key = shortcuts_tab.fontblackandwhite ; return 1 ;
+		case IDM_VISIBLE:       *key = shortcuts_tab.visible ; return 1 ;
+		case IDM_WINROL:        *key = shortcuts_tab.rollup ; return 1 ;
+		case IDM_TOTRAY:        *key = shortcuts_tab.tray ; return 1 ;
+		case IDM_PROTECT:       *key = shortcuts_tab.protect ; return 1 ;
+		case IDM_SHOWPORTFWD:   *key = shortcuts_tab.showportforward ; return 1 ;
+		case IDM_OPENLOGFILE:   *key = shortcuts_tab.openlogfile ; return 1 ;
+		case IDM_CLEARLOGFILE:  *key = shortcuts_tab.clearlogfile ; return 1 ;
+		case IDM_REKEY:         *key = shortcuts_tab.keyexchange ; return 1 ;
+		case IDM_PRINT:         *key = shortcuts_tab.print ; return 1 ;
+		default:                *key = 0 ; return 0 ;
+	}
+}
+
+/* The shortcut bound to a menu command, 0 for none. */
+int GetShortcutKey( int idm ) {
+	int key ;
+	MenuShortcut( idm, &key ) ;
+	return key ;
+}
+
+/* Each time a window menu opens: every item whose command has a [Shortcuts]
+ * key shows it after a tab, and loses it again while the Shortcuts switch is
+ * off (ShortcutMenuText) - both can change while the window is open. Full
+ * Screen without a key of its own shows Alt+Enter while the session lets that
+ * key toggle it (altenter). Items of other commands are left as they are. */
+void kitty_menu_show_shortcuts( HMENU m, int altenter ) {
+	int i, n = GetMenuItemCount( m ) ;
+	for( i = 0 ; i < n ; i++ ) {
+		MENUITEMINFOA mi ;
+		char old[256], base[256], label[320], * tab ;
+		int key ;
+		memset( &mi, 0, sizeof(mi) ) ;
+		mi.cbSize = sizeof(mi) ;
+		mi.fMask = MIIM_ID | MIIM_FTYPE | MIIM_SUBMENU | MIIM_STRING ;
+		mi.dwTypeData = old ;
+		mi.cch = sizeof(old) ;
+		if( !GetMenuItemInfoA( m, i, TRUE, &mi ) ) continue ;
+		if( mi.hSubMenu || ( mi.fType & ( MFT_SEPARATOR | MFT_OWNERDRAW | MFT_BITMAP ) ) ) continue ;
+		if( !MenuShortcut( (int)mi.wID, &key ) ) continue ;
+		strncpy( base, old, sizeof(base) - 1 ) ; base[sizeof(base) - 1] = '\0' ;
+		if( ( tab = strchr( base, '\t' ) ) != NULL ) *tab = '\0' ;
+		if( mi.wID == IDM_FULLSCREEN && altenter && !( GetShortcutsFlag() && key ) )
+			snprintf( label, sizeof(label), "%s\t%s", base, KT_KEYTEXT_ALTENTER ) ;
+		else
+			ShortcutMenuText( base, key, label, sizeof(label) ) ;
+		if( strcmp( label, old ) ) {
+			mi.fMask = MIIM_STRING ;
+			mi.dwTypeData = label ;
+			SetMenuItemInfoA( m, i, TRUE, &mi ) ;
+		}
 	}
 }
 

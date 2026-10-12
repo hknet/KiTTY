@@ -3192,6 +3192,8 @@
 #define KT_SYSMENU_SEND_TO_TRAY                      "Send to tra&y"
 #define KT_SYSMENU_PROTECT                           "Prote&ct"
 #define KT_SYSMENU_NAME_WINDOW                       "Terminal &Name..."
+#define KT_SYSMENU_FULL_SCREEN                       "&Full Screen"
+#define KT_KEYTEXT_ALTENTER                          "Alt+Enter"
 #define KT_SYSMENU_SAVE_AS_NEW                       "Save &as New Session..."
 #define KT_SYSMENU_WINDOW                            "&Window"
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"

@@ -2989,6 +2989,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_ENABLED, IDM_COPYALL, "C&opy All to Clipboard");
             AppendMenu(m, MF_ENABLED, IDM_CLRSB, "C&lear Scrollback");
             AppendMenu(m, MF_ENABLED, IDM_RESET, "Rese&t Terminal");
+#ifndef MOD_PERSO
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             /* Full Screen: when Alt+Enter toggling is enabled for this
              * session, advertise the key in the label so the user knows
@@ -2998,6 +2999,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                        IDM_FULLSCREEN,
                        conf_get_bool(wgs->conf, CONF_fullscreenonaltenter)
                        ? "&Full Screen (Alt+Enter)" : "&Full Screen");
+#endif
 #ifdef MOD_PERSO
             /* ---- "Window" submenu: appearance & window state ---- */
             winmenu = CreatePopupMenu();
@@ -3017,6 +3019,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTNEGATIVE, KT_SYSMENU_INVERT_COLOURS);
             AppendMenu(winmenu, MF_ENABLED, IDM_FONTBLACKANDWHITE, KT_SYSMENU_BLACK_ON_WHITE);
             AppendMenu(winmenu, MF_SEPARATOR, 0, 0);
+            /* Full Screen with the window's other states; its key (Alt+Enter
+             * or a [Shortcuts] one) is shown by kitty_menu_show_shortcuts */
+            AppendMenu(winmenu, (conf_get_int(wgs->conf, CONF_resize_action)
+                                 == RESIZE_DISABLED) ? MF_GRAYED : MF_ENABLED,
+                       IDM_FULLSCREEN, KT_SYSMENU_FULL_SCREEN);
             AppendMenu(winmenu, MF_ENABLED, IDM_VISIBLE,      KT_SYSMENU_ALWAYS_ON_TOP);
             AppendMenu(winmenu, MF_ENABLED, IDM_WINROL,       KT_SYSMENU_ROLLUP);
             AppendMenu(winmenu, MF_ENABLED, IDM_TOTRAY,       KT_SYSMENU_SEND_TO_TRAY);
@@ -6017,6 +6024,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
         }
 #endif
+#endif
+#ifdef MOD_PERSO
+        /* the [Shortcuts] keys after a tab, in whichever menu opens - last,
+         * after the blocks above have set the items' texts */
+        kitty_menu_show_shortcuts((HMENU)wParam,
+                                  wgs && conf_get_bool(wgs->conf, CONF_fullscreenonaltenter));
 #endif
         if ((HMENU)wParam == wgs->savedsess_menu) {
             /* About to pop up Saved Sessions sub-menu.

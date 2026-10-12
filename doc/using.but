@@ -328,7 +328,8 @@ happens, selecting Reset Terminal should sort it out.
 \S2{using-fullscreen} \ii{Full screen} mode
 
 If you find the title bar on a maximised window to be ugly or
-distracting, you can select Full Screen mode to maximise KiTTY
+distracting, you can select Full Screen mode (KiTTY++: \q{Window} >
+\q{Full Screen} in the system menu) to maximise KiTTY
 \q{even more}. When you select this, KiTTY will expand to fill the
 whole screen and its borders, title bar and scrollbar will
 disappear. (You can configure the scrollbar not to disappear in

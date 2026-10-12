@@ -1558,6 +1558,8 @@ KiTTY++ lets you assign a keyboard shortcut to almost any item in its main menu,
 
 **How to enable:** Define key shortcuts in the kitty.ini `[Shortcuts]` section (e.g. `editor=`, `print=`, `input=`, `inputm=` ...; the full commented list is in `kitty.ini.example`).
 
+The terminal window's menu shows each entry's key beside it - Duplicate Session, Change Settings, Transparency +/-, Font +/-, Always on Top, Full Screen and the others with a key bound - and drops the keys while the shortcuts are switched off. Full Screen without a key of its own shows **Alt+Enter** while the session lets that key toggle it.
+
 **Syntax:** modifiers in braces, then the key — `{CONTROL}`, `{SHIFT}`, `{ALT}`, `{ALTGR}`, `{WIN}` combined freely, followed by a single letter/digit or a named key (`{F1}`…`{F12}`, `{RETURN}`, `{SPACE}`, `{TAB}`, `{HOME}`, `{END}`, `{DEL}`, …). For example, to make **Ctrl+N duplicate the current session**:
 
 ```ini

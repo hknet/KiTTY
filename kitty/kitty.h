@@ -230,6 +230,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 int ShortcutKeyText( int key, char * buf, size_t size ) ;
 int GetShortcutKey( int idm ) ;
 const char * ShortcutMenuText( const char * text, int key, char * buf, size_t size ) ;
+void kitty_menu_show_shortcuts( HMENU m, int altenter ) ;   /* a menu opening: keys after a tab */
 /* The action table behind the Shortcuts panel: one row per [Shortcuts]
  * action - its ini key, its display name, the key in force, its default. */
 int ShortcutActionCount( void ) ;
