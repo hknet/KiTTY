@@ -5136,6 +5136,13 @@ static void kitty_inline_confirm_free(struct kitty_inline_confirm_ctx *c)
     sfree(c);
 }
 
+/* KiTTY: told when a NEW host key is accepted and stored for a connection -
+ * Accept in the box, or yes at the terminal's prompt; not Connect Once, not
+ * a changed key. The terminal window offers to keep the connection as a
+ * session after its login (window.c). NULL: nothing is told. Not fenced:
+ * this file is in the shared GUI library. */
+void (*kitty_hostkey_stored_hook)(Seat *seat) = NULL;
+
 /*
  * Toplevel callback fired when the inline "yes/no" line has been entered (or
  * the prompt aborted, e.g. via ^C or a missing ldisc). Interprets the response
@@ -5151,8 +5158,11 @@ static void kitty_inline_confirm_done(void *vctx)
         prompt_get_result_ref(p->prompts[0]) : NULL;
 
     if (resp && kitty_response_is_yes(resp)) {
-        if (c->store_on_yes)
+        if (c->store_on_yes) {
             store_host_key(c->seat, c->host, c->port, c->keytype, c->keystr);
+            if (kitty_hostkey_stored_hook)
+                kitty_hostkey_stored_hook(c->seat);
+        }
         spr = SPR_OK;
     } else if (resp && c->store_on_yes && kitty_response_is_word(resp, "once")) {
         /* New host key only: connect this once without caching it (parity with
@@ -5499,7 +5509,11 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
         wgs->term_hwnd, HostKeyDialogProc, ctx);
     assert(mbret==IDC_HK_ACCEPT || mbret==IDC_HK_ONCE || mbret==IDCANCEL);
     if (mbret == IDC_HK_ACCEPT) {
+        /* 1 = no key stored for this host yet; 2 = a different one */
+        bool was_new = check_stored_host_key(host, port, keytype, keystr) == 1;
         store_host_key(seat, host, port, keytype, keystr);
+        if (was_new && kitty_hostkey_stored_hook)
+            kitty_hostkey_stored_hook(seat);
         return SPR_OK;
     } else if (mbret == IDC_HK_ONCE) {
         return SPR_OK;

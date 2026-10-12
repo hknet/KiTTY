@@ -2536,6 +2536,15 @@ its own command line once read, so a task list shows
 the start; a log of process starts and the browser's history still hold
 it.
 
+\q{Offer to save new Sessions at first login} (\c{offernewsessioncreation}, on by default): a window with no saved session
+- a link, Quick Connect, a typed host - that has just logged in to a host
+whose key was accepted for the first time (Accept, or yes at the prompt in
+the terminal; not Connect Once) puts up a notice. \q{Save Session} opens
+Change Settings with the host in the session name field; the window then
+belongs to the session saved there. \q{Not Now}, or the notice running out,
+leaves it; \q{Don't ask again} clears this box. The host's key is stored by
+then, so the offer does not come back for that host.
+
 The link types are registered with Windows on \k{kitty-cfg-system}.
 
 \S{kitty-cfg-external-tools} The Transfers & Tools panel

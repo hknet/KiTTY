@@ -37,6 +37,17 @@ void ssh_userauth_set_credentials_hook(
 {
     kitty_userauth_credentials_hook = fn;
 }
+
+/* KiTTY: told once the server has let the session in, whichever way it
+ * logged in (password, key, agent, keyboard-interactive), with the user name
+ * it logged in as. The terminal window offers there to keep a new
+ * connection as a saved session. NULL (every other frontend) does nothing. */
+static void (*kitty_userauth_done_hook)(Seat *seat, const char *username) = NULL;
+
+void ssh_userauth_set_done_hook(void (*fn)(Seat *seat, const char *username))
+{
+    kitty_userauth_done_hook = fn;
+}
 #include "ssh.h"
 #include "bpp.h"
 #include "ppl.h"
@@ -2240,6 +2251,8 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
     if (s->kitty_pw_candidate && kitty_userauth_credentials_hook)
         kitty_userauth_credentials_hook(s->ppl.seat, NULL, s->kitty_pw_candidate);
     kitty_userauth_drop_candidate(s);
+    if (kitty_userauth_done_hook)
+        kitty_userauth_done_hook(s->ppl.seat, s->username);
 
     /*
      * We've just received USERAUTH_SUCCESS, and we haven't sent

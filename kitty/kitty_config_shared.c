@@ -770,6 +770,8 @@ static const struct kset_key kset_keys[] = {
      * (GetUrlSessionsFlag), so a change applies to the next link */
     { INIT_SECTION, KI_URLSESSIONS,    KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_urlsessions_choices, lenof(kset_urlsessions_choices) },
+    /* read after each first login to a new host (GetOfferSessionFlag) */
+    { INIT_SECTION, KI_OFFERSESSION,   KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_PSOVERLAY,      KSET_BOOL, false, GetPsOverlayFlag, SetPsOverlayFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SIZE,           KSET_BOOL, false, GetSizeFlag, SetSizeFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_WINROLL,        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },

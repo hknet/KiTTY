@@ -150,6 +150,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
  * one-time pointer to the title bar in that notice, once it has been shown. */
 #define KI_NOTICESECONDS                    "noticeseconds"   /* [KiTTY]; [Launcher] has its own */
 #define KI_URLSESSIONS                      "urlsessions"     /* [KiTTY] no|yes: a link opens a matching saved session */
+#define KI_OFFERSESSION                     "offernewsessioncreation"    /* [KiTTY] yes|no: offer to save a new connection as a session */
 #define KI_PSTITLEHINTSHOWN                 "PsTitleHintShown"
 #define KI_PSOVERLAY                        "psoverlay"
 #define KI_ZMODEM                           "zmodem"

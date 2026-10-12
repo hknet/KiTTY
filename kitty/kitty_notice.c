@@ -41,6 +41,7 @@
 #define NOTICE_PAD     14     /* inside padding, at 96 dpi */
 #define NOTICE_WIDTH   340    /* at 96 dpi; the height is measured from the text */
 #define NOTICE_LINK_PROP "KiTTY.noticelink"   /* the link's centre, see below */
+#define NOTICE_BTN_PROP  "KiTTY.noticebtn%d"  /* each button's centre, 1-3 */
 
 struct notice_state {
     char title[128];
@@ -61,12 +62,13 @@ struct notice_state {
     int expired;              /* the time ran out while the pointer was on it */
     int tracking;             /* TrackMouseEvent is armed for WM_MOUSELEAVE */
     int seconds;              /* its full display time */
-    /* kitty_notice_show_x: the button and the link line, NULL when none.
-     * The rectangles are set by WM_PAINT, in client coordinates. */
-    char *action;
+    /* kitty_notice_show_x: up to three buttons and the link line, NULL when
+     * none. The rectangles are set by WM_PAINT, in client coordinates. */
+    char *action[3];
+    int nbtn;
     char *link_lead;
     char *link;
-    RECT action_rc, link_rc;
+    RECT action_rc[3], link_rc;
 };
 
 static void notice_state_free(struct notice_state *st)
@@ -74,7 +76,9 @@ static void notice_state_free(struct notice_state *st)
     if (st->title_font) DeleteObject(st->title_font);
     if (st->body_font)  DeleteObject(st->body_font);
     free(st->text);
-    free(st->action);
+    free(st->action[0]);
+    free(st->action[1]);
+    free(st->action[2]);
     free(st->link_lead);
     free(st->link);
     free(st);
@@ -85,6 +89,37 @@ static void notice_state_free(struct notice_state *st)
 #define NOTICE_BTN_PADX  12
 #define NOTICE_BTN_PADY   5
 #define NOTICE_GAP       10
+#define NOTICE_BTN_SPACE  8   /* between two buttons on a row */
+#define NOTICE_BTN_ROWGAP 6   /* between two rows of buttons */
+
+static int notice_scale(int v, UINT dpi);
+
+/* The buttons laid out left to right in the width `avail`, a button that does
+ * not fit starting a new row: the row each one is on and its width. Returns
+ * the number of rows. WM_PAINT and the height measured before the window
+ * exists both ask this, so the two cannot disagree. */
+static int notice_button_rows(HDC dc, const struct notice_state *st, int avail,
+                              int rowof[3], int width[3])
+{
+    int padx = notice_scale(NOTICE_BTN_PADX, st->dpi);
+    int sp = notice_scale(NOTICE_BTN_SPACE, st->dpi);
+    int i, rows = 0, x = 0;
+    HFONT old = (HFONT)SelectObject(dc, st->title_font);
+    for (i = 0; i < st->nbtn; i++) {
+        SIZE s;
+        GetTextExtentPoint32A(dc, st->action[i], (int)strlen(st->action[i]), &s);
+        width[i] = s.cx + padx * 2;
+        if (rows == 0 || x + sp + width[i] > avail) {
+            rows++;
+            x = width[i];
+        } else {
+            x += sp + width[i];
+        }
+        rowof[i] = rows - 1;
+    }
+    SelectObject(dc, old);
+    return rows;
+}
 
 /* Grace period after the pointer leaves an already-expired notice, so a hand
  * that slips off it does not take the notice with it. */
@@ -336,12 +371,15 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
         return 0;
       case WM_SETCURSOR:
         /* The hand over what is clickable on its own: the button and the link. */
-        if (st && (st->action || st->link)) {
+        if (st && (st->nbtn || st->link)) {
             POINT pt;
+            int i, on = 0;
             GetCursorPos(&pt);
             ScreenToClient(hwnd, &pt);
-            if ((st->action && PtInRect(&st->action_rc, pt)) ||
-                (st->link && PtInRect(&st->link_rc, pt))) {
+            for (i = 0; i < st->nbtn; i++)
+                if (PtInRect(&st->action_rc[i], pt))
+                    on = 1;
+            if (on || (st->link && PtInRect(&st->link_rc, pt))) {
                 SetCursor(LoadCursor(NULL, IDC_HAND));
                 return TRUE;
             }
@@ -352,14 +390,27 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
          * either way - a notice you cannot get rid of is a nuisance. The link
          * is the one exception to "whatever it was given": it is its own
          * action, and the owner hears of it through on_close. */
+        /* With two or three buttons, each one is its own answer and the
+         * rest of the notice only closes it - an answer by accident would be
+         * worse than none; closed so, it counts as a notice that ran out. */
         POINT pt;
-        int on_link;
+        int on_link, b = -1, i, reason;
         pt.x = (short)LOWORD(lp);
         pt.y = (short)HIWORD(lp);
         on_link = st && st->link && PtInRect(&st->link_rc, pt);
-        if (!on_link && st && st->click_hwnd && st->click_msg)
+        for (i = 0; st && i < st->nbtn; i++)
+            if (PtInRect(&st->action_rc[i], pt))
+                b = i;
+        if (on_link)
+            reason = KITTY_NOTICE_LINK;
+        else if (st && st->nbtn >= 2)
+            reason = b == 0 ? 1 : b == 1 ? KITTY_NOTICE_BUTTON2 :
+                     b == 2 ? KITTY_NOTICE_BUTTON3 : 0;
+        else
+            reason = 1;
+        if (reason == 1 && st && st->click_hwnd && st->click_msg)
             PostMessage(st->click_hwnd, st->click_msg, 0, 0);
-        notice_close_reason(hwnd, on_link ? KITTY_NOTICE_LINK : 1);
+        notice_close_reason(hwnd, reason);
         /* A click dismisses THIS notice. A sticky one it had displaced has
          * still not been read, so it comes back. */
         notice_restore_parked();
@@ -408,7 +459,7 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             SelectObject(dc, st->body_font);
             /* The extras sit at the bottom, laid out upwards from it, so a text
              * cut at the work area's height clips itself and never them. */
-            if (st->action || st->link) {
+            if (st->nbtn || st->link) {
                 TEXTMETRICA tm;
                 int y = rc.bottom - pad;
                 int gap = notice_scale(NOTICE_GAP, st->dpi);
@@ -448,37 +499,68 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
                     }
                     SelectObject(dc, st->body_font);
                     SetRect(&st->link_rc, x - 2, ly - 2, x + ks.cx + 2, ly + ks.cy + 3);
+                    SetPropA(hwnd, NOTICE_LINK_PROP,
+                             (HANDLE)(ULONG_PTR)MAKELONG((st->link_rc.left + st->link_rc.right) / 2,
+                                                         (st->link_rc.top + st->link_rc.bottom) / 2));
                     y = ly - gap;
                 }
-                if (st->action) {
-                    SIZE as;
+                if (st->nbtn) {
+                    /* The first button filled, as the one a notice with a
+                     * single button has always had; the others outlined. */
+                    int rowof[3], width[3], i, rows, bh, top, x = tr.left, row = 0;
                     int padx = notice_scale(NOTICE_BTN_PADX, st->dpi);
                     int pady = notice_scale(NOTICE_BTN_PADY, st->dpi);
+                    int sp = notice_scale(NOTICE_BTN_SPACE, st->dpi);
+                    int rgap = notice_scale(NOTICE_BTN_ROWGAP, st->dpi);
                     int r = notice_scale(6, st->dpi);
-                    RECT b;
-                    HBRUSH fill = CreateSolidBrush(hc ? GetSysColor(COLOR_BTNFACE)
-                                                      : RGB(255, 255, 255));
-                    HPEN edge = CreatePen(PS_SOLID, notice_scale(1, st->dpi),
-                                          hc ? GetSysColor(COLOR_BTNTEXT)
-                                             : RGB(255, 255, 255));
-                    HBRUSH oldb = (HBRUSH)SelectObject(dc, fill);
-                    HPEN oldp = (HPEN)SelectObject(dc, edge);
+                    TEXTMETRICA tb;
+                    rows = notice_button_rows(dc, st, tr.right - tr.left, rowof, width);
                     SelectObject(dc, st->title_font);
-                    GetTextExtentPoint32A(dc, st->action, (int)strlen(st->action), &as);
-                    SetRect(&b, tr.left, y - (as.cy + pady * 2),
-                            tr.left + as.cx + padx * 2, y);
-                    RoundRect(dc, b.left, b.top, b.right, b.bottom, r, r);
-                    SetTextColor(dc, hc ? GetSysColor(COLOR_BTNTEXT) : st->accent);
-                    TextOutA(dc, b.left + padx, b.top + pady, st->action,
-                             (int)strlen(st->action));
-                    SetTextColor(dc, fg);
-                    SelectObject(dc, oldb);
-                    SelectObject(dc, oldp);
-                    DeleteObject(fill);
-                    DeleteObject(edge);
+                    GetTextMetricsA(dc, &tb);
+                    bh = tb.tmHeight + pady * 2;
+                    top = y - (rows * bh + (rows - 1) * rgap);
+                    for (i = 0; i < st->nbtn; i++) {
+                        RECT b;
+                        int by;
+                        HBRUSH fill = NULL, oldb;
+                        HPEN edge, oldp;
+                        if (rowof[i] != row) {
+                            row = rowof[i];
+                            x = tr.left;
+                        }
+                        by = top + row * (bh + rgap);
+                        SetRect(&b, x, by, x + width[i], by + bh);
+                        if (i == 0)
+                            fill = CreateSolidBrush(hc ? GetSysColor(COLOR_BTNFACE)
+                                                       : RGB(255, 255, 255));
+                        edge = CreatePen(PS_SOLID, notice_scale(1, st->dpi),
+                                         hc ? GetSysColor(COLOR_BTNTEXT) : fg);
+                        oldb = (HBRUSH)SelectObject(dc, fill ? (HGDIOBJ)fill
+                                                             : GetStockObject(NULL_BRUSH));
+                        oldp = (HPEN)SelectObject(dc, edge);
+                        RoundRect(dc, b.left, b.top, b.right, b.bottom, r, r);
+                        SetTextColor(dc, i == 0 ? (hc ? GetSysColor(COLOR_BTNTEXT) : st->accent)
+                                                : fg);
+                        TextOutA(dc, b.left + padx, b.top + pady, st->action[i],
+                                 (int)strlen(st->action[i]));
+                        SetTextColor(dc, fg);
+                        SelectObject(dc, oldb);
+                        SelectObject(dc, oldp);
+                        if (fill)
+                            DeleteObject(fill);
+                        DeleteObject(edge);
+                        st->action_rc[i] = b;
+                        x = b.right + sp;
+                        {
+                            char prop[32];
+                            snprintf(prop, sizeof(prop), NOTICE_BTN_PROP, i + 1);
+                            SetPropA(hwnd, prop,
+                                     (HANDLE)(ULONG_PTR)MAKELONG((b.left + b.right) / 2,
+                                                                 (b.top + b.bottom) / 2));
+                        }
+                    }
                     SelectObject(dc, st->body_font);
-                    st->action_rc = b;
-                    y = b.top - gap;
+                    y = top - gap;
                 }
                 tr.bottom = y + gap - notice_scale(4, st->dpi);
             }
@@ -491,6 +573,14 @@ static LRESULT CALLBACK notice_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
       }
       case WM_DESTROY:
         RemovePropA(hwnd, NOTICE_LINK_PROP);
+        {
+            int i;
+            for (i = 1; i <= 3; i++) {
+                char prop[32];
+                snprintf(prop, sizeof(prop), NOTICE_BTN_PROP, i);
+                RemovePropA(hwnd, prop);
+            }
+        }
         if (notice_hwnd == hwnd)
             notice_hwnd = NULL;
         return 0;
@@ -595,8 +685,14 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
             on_close(ctx, 0);
         return;
     }
-    if (x && x->action && x->action[0])
-        st->action = strdup(x->action);
+    if (x) {
+        const char *a[3];
+        int i;
+        a[0] = x->action; a[1] = x->action2; a[2] = x->action3;
+        for (i = 0; i < 3; i++)
+            if (a[i] && a[i][0])
+                st->action[st->nbtn++] = strdup(a[i]);
+    }
     if (x && x->link && x->link[0]) {
         st->link = strdup(x->link);
         st->link_lead = strdup(x->link_lead ? x->link_lead : "");
@@ -624,11 +720,14 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
             GetTextMetricsA(dc, &tm);
             h += notice_scale(NOTICE_GAP, dpi) + tm.tmHeight;
         }
-        if (st->action) {
+        if (st->nbtn) {
+            int rowof[3], width[3], rows;
+            rows = notice_button_rows(dc, st, w - pad * 2, rowof, width);
             SelectObject(dc, st->title_font);
             GetTextMetricsA(dc, &tm);
-            h += notice_scale(NOTICE_GAP, dpi) + tm.tmHeight +
-                 notice_scale(NOTICE_BTN_PADY, dpi) * 2;
+            h += notice_scale(NOTICE_GAP, dpi) +
+                 rows * (tm.tmHeight + notice_scale(NOTICE_BTN_PADY, dpi) * 2) +
+                 (rows - 1) * notice_scale(NOTICE_BTN_ROWGAP, dpi);
         }
         SelectObject(dc, old);
         ReleaseDC(NULL, dc);
@@ -699,13 +798,11 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
     /* SHOWNOACTIVATE, and nothing that focuses it afterwards. */
     ShowWindow(hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(hwnd);
-    /* UpdateWindow painted it, which laid out the link. Its centre, in client
-     * coordinates, goes on the window as a property, for the reason the title
-     * goes in the window name: a harness can click it. */
-    if (st->link)
-        SetPropA(hwnd, NOTICE_LINK_PROP,
-                 (HANDLE)(ULONG_PTR)MAKELONG((st->link_rc.left + st->link_rc.right) / 2,
-                                             (st->link_rc.top + st->link_rc.bottom) / 2));
+    /* UpdateWindow painted it, which laid out the link and the buttons and
+     * put their centres, in client coordinates, on the window as properties
+     * (WM_PAINT does it at every paint, so they follow a new layout) - for
+     * the reason the title goes in the window name: a harness can click
+     * them. */
     /* A sticky notice sets no timer: it goes when it is clicked, when a later
      * notice replaces it, or when the process ends. */
     if (st->seconds > 0)

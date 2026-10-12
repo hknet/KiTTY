@@ -2078,6 +2078,7 @@ void settings_set_load_hook(settings_load_hook_fn hook);
  * only into the session that OWNS that seat: an SSH jump host is a second
  * client inside the same process, behind a seat of its own, and its
  * accepted password is not the session's. */
+void ssh_userauth_set_done_hook(void (*fn)(Seat *seat, const char *username));   /* KiTTY */
 void ssh_userauth_set_credentials_hook(
     void (*fn)(Seat *seat, const char *username, const char *password));
 void load_open_settings(settings_r *sesskey, Conf *conf);

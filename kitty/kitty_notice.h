@@ -50,8 +50,17 @@ typedef struct {
     const char *action;
     const char *link_lead;
     const char *link;
+    /* A second and a third button, beside the first on its row (a row too
+     * narrow wraps). With two or more, a click on a button finishes the
+     * notice with its own number - clicked = 1, KITTY_NOTICE_BUTTON2,
+     * KITTY_NOTICE_BUTTON3; only the first posts click_msg - and a click
+     * anywhere else closes it as a notice that ran out (clicked = 0). */
+    const char *action2;
+    const char *action3;
 } KittyNoticeExtras;
 #define KITTY_NOTICE_LINK 2
+#define KITTY_NOTICE_BUTTON2 3
+#define KITTY_NOTICE_BUTTON3 4
 
 void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
                          int seconds, HWND click_hwnd, unsigned int click_msg,

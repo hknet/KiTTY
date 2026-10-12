@@ -274,6 +274,13 @@ char default_init_file_content[] =
 ;    Integration.\n\
 ;urlsessions=no\n\
 \n\
+; offernewsessioncreation: after the first login to a host whose key was new, in a window\n\
+;    with no saved session (a link, Quick Connect, a typed host), a notice\n\
+;    offers to keep the connection as a session: Save Session, Not Now,\n\
+;    Don't ask again (which writes no here). yes (default) or no.\n\
+;    Application > KiTTY++ Settings > System > Session Integration.\n\
+;offernewsessioncreation=yes\n\
+\n\
 ; sshhostkeys: the folder store's host-key folder. Default (empty): the\n\
 ;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings\n\
 ;    > Storage & Backup. Folder store only.\n\

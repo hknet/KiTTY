@@ -1052,6 +1052,8 @@ A login you typed at the SSH prompts counts as part of those settings. Once the 
 
 **Save as New Session...** in the system menu keeps a window's connection as a saved session - one opened from an `ssh://` link, Quick Connect or a typed host, with its user name and the password it logged in with. It opens **Change Settings** on the Session panel with the host in the name field (`user@host` when a session of the host's name exists); **Save** there writes the session, and asks first when the name exists already. A window that had no saved session belongs to the new one from then on: a later `/save` writes there, and Windows reopens it after a restart. A window that has a saved session keeps it - for it, Save under another name is a copy. `/savenew <name>` in the command box saves and always switches the window.
 
+**After the first login to a new host** - a window with no saved session whose host key was accepted for the first time, with Accept or a typed yes (not Connect Once) - a notice offers to keep the connection: **Save Session** opens the same Change Settings, **Not Now** (or letting it run out, 15 s by default) leaves it, **Don't ask again** switches the offer off (`offernewsessioncreation=no`; back on with *Application → KiTTY++ Settings → System → Session Integration*). The host's key is stored by then, so the offer does not come back for that host.
+
 #### Working through a cluster, one key at a time
 
 Put the two together and a room full of near-identical machines takes one keystroke each.

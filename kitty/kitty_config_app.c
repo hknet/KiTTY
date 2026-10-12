@@ -3221,6 +3221,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("System/Session Integration"), "links", NULL);
     ctrl_text(s, KT_URLSESS_NOTE, HELPCTX(kitty_urlsessions));
     KSET_DROPLIST(s, KT_URLSESS_OPEN, KI_URLSESSIONS, kitty_urlsessions);
+    KSET_CHECKBOX(s, KT_URLSESS_OFFER, KI_OFFERSESSION, kitty_urlsessions);
 }
 
 /* ---- Storage & Backup > KiTTY.ini ------------------------------------- */

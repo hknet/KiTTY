@@ -5,6 +5,7 @@
  * session ([KiTTY] urlsessions=yes). */
 
 int GetUrlSessionsFlag(void);
+int GetOfferSessionFlag(void);   /* [KiTTY] offernewsessioncreation, default yes */
 
 /* windows/putty.c, after the command line is read and before its saved
  * options are replayed. Loads the session the link matches into conf (the

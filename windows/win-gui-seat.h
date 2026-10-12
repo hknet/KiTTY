@@ -227,6 +227,10 @@ struct WinGuiSeat {
     WPARAM last_wm_mousemove_wParam, last_wm_ncmousemove_wParam;
     LPARAM last_wm_mousemove_lParam, last_wm_ncmousemove_lParam;
     wchar_t pending_surrogate;
+    /* KiTTY: the first-connect offer - a new host key was stored for this
+     * connection, and the offer was made (once per window). */
+    bool kitty_newkey_stored;
+    bool kitty_offer_made;
 };
 
 extern const LogPolicyVtable win_gui_logpolicy_vt; /* in dialog.c */

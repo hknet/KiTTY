@@ -1055,6 +1055,15 @@
 #define KT_URLSESS_CHOOSER_TEXT                      "%s matches these sessions. Choose one to open:"
 #define KT_URLSESS_CHOOSER_OPEN                      "Open"
 #define KT_URLSESS_CHOOSER_CANCEL                    "Cancel"
+#define KT_URLSESS_OFFER                             "Offer to save new Sessions at first login"
+/* the first-connect offer (window.c kitty_offer_session) */
+#define KT_OFFER_TITLE                               "Save this Session-Config?"
+#define KT_OFFER_TEXT                                "First login as %s on %s. Save this session and config for future use?"
+#define KT_OFFER_SAVE                                "Save Session"
+#define KT_OFFER_NOTNOW                              "Not Now"
+#define KT_OFFER_NEVER                               "Don't ask again"
+#define KT_OFFER_NOT_WRITTEN_TITLE                   "Offer not switched off"
+#define KT_OFFER_NOT_WRITTEN                         "offernewsessioncreation=no could not be written. Switch it off in Application > KiTTY++ Settings > System > Session Integration."
 
 /* Application/KiTTY++ Settings/System */
 #define KT_SYSTEM_TITLE                              "Windows integration"

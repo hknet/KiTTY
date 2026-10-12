@@ -19,6 +19,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Settings with the host in the session name field. A window that had no
   saved session belongs to the one saved from Change Settings from then on.
   A window that has one keeps it.
+- **After the first login to a new host, a notice offers to keep the
+  connection as a session**: Save Session, Not Now, Don't ask again
+  (`offernewsessioncreation`, on the Session Integration panel). It comes for a window
+  with no saved session whose host key was new.
 
 ### Changed
 

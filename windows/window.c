@@ -923,6 +923,14 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
  * seat, where it stays true for the life of that connection. Declared here
  * rather than by including a KiTTY header, to leave this shared file's includes
  * as they are; every use is inside MOD_PERSO. */
+#ifdef MOD_PERSO
+/* the first-connect offer (defined with the seat helpers at the end) */
+static void kitty_userauth_done(Seat *seat, const char *username);
+static void kitty_hostkey_stored(Seat *seat);
+extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
+#include "../kitty/kitty_urlsession.h"   /* GetOfferSessionFlag */
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the offer's trace */
+#endif
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #include "../kitty/kitty_notes.h"   /* the application notification, shown by the first window */
@@ -2632,6 +2640,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * Refs hknet/KiTTY#50. */
         {
             ssh_userauth_set_credentials_hook(kitty_userauth_credentials);
+            /* the first-connect offer: a new host key, then the login */
+            ssh_userauth_set_done_hook(kitty_userauth_done);
+            kitty_hostkey_stored_hook = kitty_hostkey_stored;
         }
 #endif
 #ifdef MOD_PERSO
@@ -12666,6 +12677,101 @@ Conf *kitty_seat_conf(Seat *seat)
             return wgs->conf;
     }
     return NULL;
+}
+
+/* ---- The first-connect offer: a window with no saved session (an ssh://
+ * link, Quick Connect, a typed host) that has just logged in for the first
+ * time to a host whose key was new offers to keep the connection as a
+ * session - once per window, while [KiTTY] offernewsessioncreation is not no. A notice:
+ * modeless, it never takes the keyboard from the session. ---- */
+/* A test build, KITTY_NOTICE_TRACE set: one line per step of the offer, for
+ * the harness (the notices' own trace file, kitty_hostnotify.c). */
+static void kitty_offer_trace(const char *fmt, ...)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    const char *path = getenv("KITTY_NOTICE_TRACE");
+    FILE *f;
+    va_list ap;
+    if (!path || !*path || !(f = fopen(path, "a")))
+        return;
+    fputs("offer ", f);
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fputc('\n', f);
+    fclose(f);
+#else
+    (void)fmt;
+#endif
+}
+
+static WinGuiSeat *kitty_seat_wgs(Seat *seat)
+{
+    struct WinGuiSeatListNode *node;
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *wgs = container_of(node, WinGuiSeat, wgslistnode);
+        if (&wgs->seat == seat)
+            return wgs;
+    }
+    return NULL;   /* a jump host's own seat: not a window's connection */
+}
+
+/* dialog.c, kitty_hostkey_stored_hook: a new host key was accepted */
+static void kitty_hostkey_stored(Seat *seat)
+{
+    WinGuiSeat *wgs = kitty_seat_wgs(seat);
+    if (wgs)
+        wgs->kitty_newkey_stored = true;
+}
+
+/* Save as session: Change Settings with the name filled in, as the window
+ * menu's Save as New Session... does. Don't ask again: offernewsessioncreation=no.
+ * Not now, the time running out, a click beside the buttons: nothing. */
+static void kitty_offer_closed(void *ctx, int clicked)
+{
+    HWND hwnd = (HWND)ctx;
+    kitty_offer_trace("closed clicked=%d window=%d", clicked, IsWindow(hwnd) ? 1 : 0);
+    if (clicked == 1) {
+        if (IsWindow(hwnd))
+            kitty_offer_trace("save posted=%d",
+                              PostMessage(hwnd, WM_SYSCOMMAND, IDM_SAVENEWSESS, 0) ? 1 : 0);
+    } else if (clicked == KITTY_NOTICE_BUTTON3) {
+        int ok = WriteParameter(INIT_SECTION, KI_OFFERSESSION, "no");
+        kitty_offer_trace("never written=%d", ok);
+        if (!ok)
+            kitty_notice_show(KT_OFFER_NOT_WRITTEN_TITLE, KT_OFFER_NOT_WRITTEN,
+                              RGB(0, 100, 0), GetNoticeSeconds(), NULL, 0);
+    }
+}
+
+/* ssh_userauth_set_done_hook: the server let the session in */
+static void kitty_userauth_done(Seat *seat, const char *username)
+{
+    WinGuiSeat *wgs = kitty_seat_wgs(seat);
+    const char *sn, *host;
+    char *where, *text;
+    int port;
+    KittyNoticeExtras x;
+
+    if (!wgs || !wgs->kitty_newkey_stored || wgs->kitty_offer_made)
+        return;
+    wgs->kitty_offer_made = true;
+    sn = conf_get_str(wgs->conf, CONF_sessionname);
+    if ((sn && *sn) || !GetOfferSessionFlag())
+        return;
+    host = conf_get_str(wgs->conf, CONF_host);
+    port = conf_get_int(wgs->conf, CONF_port);
+    where = port == 22 ? dupstr(host) : dupprintf("%s:%d", host, port);
+    text = dupprintf(KT_OFFER_TEXT, username && *username ? username : "", where);
+    memset(&x, 0, sizeof(x));
+    x.action = KT_OFFER_SAVE;
+    x.action2 = KT_OFFER_NOTNOW;
+    x.action3 = KT_OFFER_NEVER;
+    kitty_offer_trace("shown user=%s where=%s", username ? username : "", where);
+    kitty_notice_show_x(KT_OFFER_TITLE, text, RGB(0, 100, 0), GetNoticeSeconds(),
+                        NULL, 0, kitty_offer_closed, (void *)wgs->term_hwnd, &x);
+    sfree(text);
+    sfree(where);
 }
 
 void kitty_set_active_seat(WinGuiSeat *wgs) {

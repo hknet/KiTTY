@@ -55,6 +55,16 @@ int GetUrlSessionsFlag(void)
     return !stricmp(buffer, "yes");
 }
 
+/* [KiTTY] offernewsessioncreation: after the first login to a new host, offer to keep
+ * the connection as a session. Anything but "no" (and no key) offers. */
+int GetOfferSessionFlag(void)
+{
+    char buffer[16];
+    if (!ReadParameterN(INIT_SECTION, KI_OFFERSESSION, buffer, sizeof(buffer)))
+        return 1;
+    return stricmp(buffer, "no") != 0;
+}
+
 /* The protocol a session's stored "Protocol" names, or -1. */
 static int us_proto(const char *s)
 {
