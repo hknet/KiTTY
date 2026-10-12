@@ -457,21 +457,81 @@ int ResizeWinList( HWND hwnd, int width, int height ) {
 	return NbWindows ;
 }
 
+/* Is the program behind `pid` a KiTTY++? The window classes are not ours
+ * alone - old KiTTY's terminal is "KiTTY" as well, and every PuTTY's
+ * configuration box is "PuTTYConfigBox" - so the program's own version
+ * resource decides: its ProductVersion names KiTTY++ ("0.85.1.15-beta
+ * (KiTTY++, PuTTY 0.85 base)"). This process always is; one that cannot be
+ * opened or read is not, which for both callers (the "first window" tests in
+ * kitty_startup.c) means acting as the first. Answers are kept per process
+ * for one count. */
+#define WINCOUNT_CACHE 32
+static struct { DWORD pid ; int ours ; } wincount_cache[WINCOUNT_CACHE] ;
+static int wincount_n = 0 ;
+
+static int kitty_process_is_kittypp( DWORD pid ) {
+	char path[MAX_PATH] ;
+	HANDLE proc ;
+	DWORD dummy, sz ;
+	void *buf ;
+	int i, ours = 0 ;
+
+	if( pid == GetCurrentProcessId() ) return 1 ;
+	for( i = 0 ; i < wincount_n ; i++ )
+		if( wincount_cache[i].pid == pid ) return wincount_cache[i].ours ;
+	/* PROCESS_QUERY_LIMITED_INFORMATION is Vista and later; the older right
+	 * pair is what kitty_process_image_path's XP way needs */
+	proc = OpenProcess( 0x1000, FALSE, pid ) ;
+	if( !proc ) proc = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid ) ;
+	if( proc ) {
+		if( kitty_process_image_path( proc, path, sizeof(path) )
+		    && ( sz = GetFileVersionInfoSizeA( path, &dummy ) ) > 0
+		    && ( buf = malloc( sz ) ) != NULL ) {
+			if( GetFileVersionInfoA( path, 0, sz, buf ) ) {
+				struct { WORD lang, cp ; } *xlat = NULL ;
+				UINT n = 0, j ;
+				if( VerQueryValueA( buf, "\\VarFileInfo\\Translation", (void **)&xlat, &n ) && xlat != NULL )
+					for( j = 0 ; j < n / sizeof(*xlat) && !ours ; j++ ) {
+						char sub[64] ; char *val = NULL ; UINT vlen = 0 ;
+						snprintf( sub, sizeof(sub), "\\StringFileInfo\\%04x%04x\\ProductVersion",
+						          xlat[j].lang, xlat[j].cp ) ;
+						if( VerQueryValueA( buf, sub, (void **)&val, &vlen ) && val != NULL && vlen > 0
+						    && strstr( val, "KiTTY++" ) != NULL )
+							ours = 1 ;
+					}
+			}
+			free( buf ) ;
+		}
+		CloseHandle( proc ) ;
+	}
+	if( wincount_n < WINCOUNT_CACHE ) {
+		wincount_cache[wincount_n].pid = pid ;
+		wincount_cache[wincount_n].ours = ours ;
+		wincount_n++ ;
+	}
+	return ours ;
+}
+
 static BOOL CALLBACK EnumWindowsProc( HWND hwnd, LPARAM lParam ) {
 	char buffer[256] ;
+	DWORD pid = 0 ;
 	GetClassName( hwnd, buffer, 256 ) ;
 	
 	if( (!strcmp( buffer, appname )) || (!strcmp( buffer, "PuTTYConfigBox" )) ) {
-		NbWindows++ ;
+		GetWindowThreadProcessId( hwnd, &pid ) ;
+		if( kitty_process_is_kittypp( pid ) )
+			NbWindows++ ;
 	}
 	
 	return TRUE ;
 }
 
-// Count the windows of the same class as KiTTY
+// Count the KiTTY++ windows: terminals and configuration boxes of KiTTY++
+// programs, this one's included - not old KiTTY's, not stock PuTTY's
 int WindowsCount( HWND hwnd ) {
 	char buffer[256] ;
 	NbWindows = 0 ;
+	wincount_n = 0 ;
 	
 	if( GetClassName( hwnd, buffer, 256 ) == 0 ) {
 		NbWindows = 1 ;

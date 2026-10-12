@@ -48,6 +48,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A stock PuTTY or old KiTTY window no longer counts as a KiTTY++ window**
+  when KiTTY++ starts in `savemode=file`. A PuTTY configuration box open on
+  the desktop made it skip the backup of the registry sessions and the offer
+  to restore parked ones, as if it were not the first window.
 - **Writes that fail are reported and leave nothing half done.** Every
   write KiTTY++ makes to a file, the registry or another program now
   reports its outcome with Windows' reason, instead of going on as if it
