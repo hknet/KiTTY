@@ -885,15 +885,19 @@ static void InitLauncherDir( const char * directory ) {
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
 			snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", kitty_launcher_sessions_root(), directory, de->d_name ) ;
 			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				unmungestr( de->d_name, buffer, MAX_VALUE_NAME) ;
-				if( !strcmp( buffer, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
-				{
-					char text[2 * MAX_VALUE_NAME + 4], name[MAX_VALUE_NAME] ;
-					snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, de->d_name ) ;
-					unmungestr( de->d_name, name, MAX_VALUE_NAME) ;
-					snprintf( text, sizeof(text), "%s\\%s\\", name, directory ) ;
-					ilr_write_file( buffer, text ) ;
-				}
+				/* The session's name is the file's name WITHOUT the session file
+				 * ending ([KiTTY] fileextension, e.g. .ktx): compared with it,
+				 * "Default Settings.ktx" passed as a session (hknet/KiTTY#53
+				 * again), and every entry was labelled and loaded with it. */
+				char text[2 * MAX_VALUE_NAME + 4], name[MAX_VALUE_NAME], mname[MAX_VALUE_NAME] ;
+				unmungestr( de->d_name, name, MAX_VALUE_NAME) ;
+				ksp_strip_suffix( name, kitty_session_suffix() ) ;
+				if( !strcmp( name, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
+				if( strlen( name ) * 3 + 1 >= MAX_VALUE_NAME ) continue ;
+				mungestr( name, mname ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, mname ) ;
+				snprintf( text, sizeof(text), "%s\\%s\\", name, directory ) ;
+				ilr_write_file( buffer, text ) ;
 				}
 			else if( (GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;

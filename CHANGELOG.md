@@ -51,6 +51,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **The launcher no longer lists Default Settings, or shows `.ktx` on its
+  entries, with `browsedirectory=yes` and a session file ending** in a
+  portable store (hknet/KiTTY#53). It compared the file names with their
+  ending still on.
 - **A stock PuTTY or old KiTTY window no longer counts as a KiTTY++ window**
   when KiTTY++ starts in `savemode=file`. A PuTTY configuration box open on
   the desktop made it skip the backup of the registry sessions and the offer
