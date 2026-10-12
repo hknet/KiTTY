@@ -1050,6 +1050,8 @@ KiTTY++ lets you instantly open a second window that inherits all of the current
 
 A login you typed at the SSH prompts counts as part of those settings. Once the server has accepted it, the user name and password go into the running session, so the duplicate logs in without a prompt — and WinSCP, FileZilla and kscp are started with the same login, not only with one that was stored in the session. A password the server refused is discarded, and so is the answer to a one-time code or any other challenge put on top of the password. Nothing reaches the settings store unless you save the session yourself, and **Application > Security > Interactive Login** (`userpasssshnosave=yes` in `kitty.ini`) switches the whole thing off.
 
+**Save as New Session...** in the system menu keeps a window's connection as a saved session - one opened from an `ssh://` link, Quick Connect or a typed host, with its user name and the password it logged in with. It opens **Change Settings** on the Session panel with the host in the name field (`user@host` when a session of the host's name exists); **Save** there writes the session, and asks first when the name exists already. A window that had no saved session belongs to the new one from then on: a later `/save` writes there, and Windows reopens it after a restart. A window that has a saved session keeps it - for it, Save under another name is a copy. `/savenew <name>` in the command box saves and always switches the window.
+
 #### Working through a cluster, one key at a time
 
 Put the two together and a room full of near-identical machines takes one keystroke each.

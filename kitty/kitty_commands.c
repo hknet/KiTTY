@@ -68,34 +68,53 @@
 #include "kitty_commands.h"
 #include "kitty_theme.h"   /* kitty_theme_apply_hooked: /help dark from its first frame */
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_sessionpath.h"   /* kitty_session_resolve: does a name exist */
 
 /* /save + /savenew <name>: write the LIVE settings to a saved session. With a
  * name, the window's session identity switches to it first (save-as), so later
  * /save calls and save-on-exit land there. Mirrors the config-box Save button
  * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
- * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx. */
-static void kitty_save_current_session( HWND hwnd, const char * newname ) {
-	char buffer[1024] ;
+ * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx.
+ * The outcome goes to out, for the command box's result line: no box, which
+ * would stop the session while it is open. 1 = saved. */
+static int kitty_save_current_session( const char * newname, char * out, size_t outsize ) {
 	char * errmsg ;
 	if( newname != NULL ) {
 		while( newname[0]==' ' ) newname++ ;
-		if( newname[0]=='\0' ) return ;
+		if( newname[0]=='\0' ) { out[0] = '\0' ; return 0 ; }
 		conf_set_str( conf, CONF_sessionname, newname ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
 	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
 	if( errmsg != NULL ) {
-		MessageBox( hwnd, errmsg, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONERROR ) ;
+		snprintf( out, outsize, KT_CMD_RES_NOT_SAVED, errmsg ) ;
 		sfree( errmsg ) ;
-		return ;
+		return 0 ;
 	}
 	if( newname != NULL ) kitty_set_last_session( conf_get_str(conf,CONF_sessionname) ) ;
 	{	/* same best-effort refresh broadcast as the config-box Save button */
 		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
 		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
 	}
-	snprintf( buffer, sizeof(buffer), KT_MAIN_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
-	MessageBox( hwnd, buffer, KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
+	snprintf( out, outsize, KT_CMD_RES_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
+	return 1 ;
+}
+
+/* Window menu "Save as New Session...": Change Settings, opened on the
+ * Session panel with the name field holding a new name - the host, or
+ * user@host when a session of the host's name exists. Its Save writes the
+ * session, and asks first when the name exists already. */
+void kitty_savenew_box( HWND hwnd ) {
+	const char * host = conf_get_str( conf, CONF_host ) ;
+	const char * user = conf_get_str_ambi( conf, CONF_username, NULL ) ;   /* STR_AMBI: conf_get_str asserts */
+	char * suggest ;
+	if( host && *host && user && *user && kitty_session_resolve( host, NULL, NULL, 0 ) == KSP_EXACT )
+		suggest = dupprintf( "%s@%s", user, host ) ;
+	else
+		suggest = dupstr( host ? host : "" ) ;
+	kitty_cfgbox_prefill_session_name( suggest ) ;
+	sfree( suggest ) ;
+	PostMessage( hwnd, WM_SYSCOMMAND, IDM_RECONF, 0 ) ;
 }
 
 
@@ -276,18 +295,22 @@ static int cmd_help( HWND hwnd, char * arg ) ;
 /* ---- Settings & storage ---- */
 
 static int cmd_save( HWND hwnd, char * arg ) {
-	(void)arg ;
+	char out[1200] ;
+	(void)hwnd ; (void)arg ;
 	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
-		kitty_save_current_session( hwnd, NULL ) ;
+		kitty_save_current_session( NULL, out, sizeof(out) ) ;
+		cmd_say( "%s", out ) ;
 	} else {
-		MessageBox( hwnd, KT_CMD_SAVE_NO_SESSION,
-		            KT_CAP_SAVE_SESSION, MB_OK|MB_ICONINFORMATION ) ;
+		cmd_say( "%s", KT_CMD_RES_SAVE_NO_SESSION ) ;
 	}
 	return 1 ;
 }
 
 static int cmd_savenew( HWND hwnd, char * arg ) {
-	kitty_save_current_session( hwnd, arg ) ;
+	char out[1200] ;
+	(void)hwnd ;
+	kitty_save_current_session( arg, out, sizeof(out) ) ;
+	if( out[0] ) cmd_say( "%s", out ) ;
 	return 1 ;
 }
 

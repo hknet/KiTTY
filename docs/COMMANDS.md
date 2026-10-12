@@ -144,8 +144,9 @@ like the other pop-up windows).
 
 Save the window's **live** settings back to its saved session — font, colours,
 window size, logging, everything the configuration box would save. If the
-window is not bound to a saved session, KiTTY++ shows a notice to use
-`/savenew` instead.
+window is not bound to a saved session, the result line points to
+`/savenew` instead. The result line also shows the session written, or why
+not.
 
 **Persists:** session.
 
@@ -153,7 +154,10 @@ window is not bound to a saved session, KiTTY++ shows a notice to use
 
 Save the live settings as a **new** session called `<name>` and switch this
 window's identity to it (later `/save` calls write there, and the title
-decorations show the new name).
+decorations show the new name). **Save as New Session...** in the window menu
+opens Change Settings with the host (`user@host` when a session of the host's
+name exists) in the session name field; its **Save** asks before it replaces
+a session of that name.
 
 **Persists:** session.
 

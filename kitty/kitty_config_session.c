@@ -3121,6 +3121,14 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * list highlight follows it (the listbox refresh selects by
              * this field), and Save-back-to-it stops warning because
              * loaded_from now equals the box. */
+            /* Save as New Session... (kitty_savenew_box): the field holds
+             * the new name instead, and nothing counts as loaded, so a Save
+             * onto a name that exists asks first. Taken once. */
+            if (!ssd->savedsession[0] && kitty_cfgbox_prefill_name) {
+                sfree(ssd->savedsession);
+                ssd->savedsession = kitty_cfgbox_prefill_name;
+                kitty_cfgbox_prefill_name = NULL;
+            }
             if (!ssd->savedsession[0]) {
                 const char *sn = conf_get_str(conf, CONF_sessionname);
                 if (sn && *sn) {
@@ -3932,6 +3940,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         sfree(ssd->loaded_from);
                         ssd->loaded_from = dupstr(ssd->savedsession);
                     }
+                    /* A window with no saved session belongs to this one now
+                     * - at once, Cancel or not, as the store already holds
+                     * it; the box's copy follows, so OK keeps it. A window
+                     * that has a session keeps it: the Save was a copy. */
+                    if (ssd->midsession && !isdef && ssd->savedsession[0] &&
+                        kitty_window_adopt_session(ssd->savedsession))
+                        conf_set_str(conf, CONF_sessionname, ssd->savedsession);
                     /* KiTTY: Top/Left and Columns/Rows edit this session's
                      * remembered entry for the current monitor layout, so a
                      * Save writes it back too, after the copy, so what the

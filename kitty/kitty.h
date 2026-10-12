@@ -125,6 +125,13 @@ char * GetInputBoxResult( void ) ;
 /* "Terminal Name..." (hknet/KiTTY#54): the modeless box (kitty_inputbox.c)
  * and the window's name it edits (window.c). */
 void kitty_winname_box( HWND owner ) ;
+void kitty_savenew_box( HWND owner ) ;   /* Save as New Session... (kitty_commands.c) */
+/* The name the next configuration box offers in its session field
+ * (kitty_config_session.c); NULL or "" = none. Taken once. */
+void kitty_cfgbox_prefill_session_name( const char * name ) ;
+/* window.c: a window with no saved session takes the one just saved under
+ * a new name; 1 = it did. */
+int kitty_window_adopt_session( const char * name ) ;
 const wchar_t * kitty_window_name_get( void ) ;
 /* A modeless text question on the same template (kitty_inputbox.c): done
  * returns 1 to close, 0 to keep the box; done(NULL) once on Cancel/close. */

@@ -87,6 +87,7 @@ struct hk_data {
 };
 extern struct hk_data *kitty_hk_active;   /* kitty_config.c */
 extern int kitty_cfgbox_loaded_deliberate;   /* kitty_config.c */
+extern char *kitty_cfgbox_prefill_name;      /* kitty_config.c */
 #define HOST_BOX_TITLE "Host Name (or IP address)"
 #define PORT_BOX_TITLE "Port"
 void conf_radiobutton_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */

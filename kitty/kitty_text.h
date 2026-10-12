@@ -1805,7 +1805,6 @@
 #define KT_MAIN_KCHAT_LIB_FAILED                     "Unable to load library kchat.dll"
 #define KT_MAIN_KCHAT_FUNC_FAILED                    "Unable to load main chat function from library kchat.dll"
 #define KT_MAIN_PORTFWD_LEGEND                       "\n[C] Listening in the current process\n[X] Listening in another process\n[-] No Listening\n"
-#define KT_MAIN_SESSION_SAVED                        "Settings saved to session\n-%s-"
 #define KT_MAIN_CFGDIR_DIAG_DRIVE                    "Drive %c: is not available, so this looks like a " \
         "disconnected disk rather than a missing folder."
 #define KT_MAIN_CFGDIR_DIAG_PARENT                   "The folder above it does exist, so only the last part " \
@@ -1856,8 +1855,6 @@
 #define KT_CMD_INIT_INFO                             "ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
 #define KT_CMD_SESSION_NAME_IS                       "Your session name is\n-%s-"
 #define KT_CMD_NO_SESSION_NAME                       "No session name."
-#define KT_CMD_SAVE_NO_SESSION                       "No saved session is associated with this window.\n" \
-        "Use  /savenew <name>  to create one."
 #define KT_CMD_RES_SAVEMODE                          "Savemode is \"%s\", stored in %s"
 #define KT_CMD_RES_SAVEMODE_NOINI                    "Savemode is \"%s\" for this window only: there is no kitty.ini to store it in"
 #define KT_CMD_RES_SAVEMODE_NOT_STORED               "Savemode is \"%s\" for this window only: %s could not be written: %s"
@@ -1967,6 +1964,8 @@
 #define KT_CMD_RES_SHOT_NO_PICTURE                   "the picture could not be taken"
 #define KT_CMD_RES_SAVED                             "Saved: %s"
 #define KT_CMD_RES_NOT_SAVED                         "Not saved: %s"
+#define KT_CMD_RES_SESSION_SAVED                     "Saved to session %s"
+#define KT_CMD_RES_SAVE_NO_SESSION                   "This window has no saved session: use /savenew <name>"
 #define KT_CMD_RES_LOADED                            "Loaded: %s"
 #define KT_CMD_RES_NOT_LOADED                        "Not loaded: %s"
 #define KT_CMD_RES_CANCELLED                         "Cancelled: nothing was saved"
@@ -3193,6 +3192,7 @@
 #define KT_SYSMENU_SEND_TO_TRAY                      "Send to tra&y"
 #define KT_SYSMENU_PROTECT                           "Prote&ct"
 #define KT_SYSMENU_NAME_WINDOW                       "Terminal &Name..."
+#define KT_SYSMENU_SAVE_AS_NEW                       "Save &as New Session..."
 #define KT_SYSMENU_WINDOW                            "&Window"
 #define KT_SYSMENU_PORT_FORWARDINGS                  "Port forwar&dings"
 #define KT_SYSMENU_START_WINSCP                      "Start Win&SCP"

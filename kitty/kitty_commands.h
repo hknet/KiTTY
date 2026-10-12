@@ -10,6 +10,9 @@
 
 int InternalCommand( HWND hwnd, char * st ) ;
 
+/* Window menu "Save as New Session...": a name box, then /savenew. */
+void kitty_savenew_box( HWND hwnd ) ;
+
 /* What the last command did, for the command box's result line: a full
  * sentence, a file always with its full path ("" before any command). */
 const char * kitty_cmd_result( void ) ;

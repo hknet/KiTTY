@@ -14,9 +14,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   or session name, protocol, port and user. Several matches put up a list
   to choose from. The link's user and password apply to the session found
   for that connection only.
+- **Save as New Session...** in the window menu keeps the window's
+  connection as a saved session, with the login it used. It opens Change
+  Settings with the host in the session name field. A window that had no
+  saved session belongs to the one saved from Change Settings from then on.
+  A window that has one keeps it.
 
 ### Changed
 
+- **`/save` and `/savenew` report on the command box's result line** instead
+  of in a box that stopped the session until it was closed.
 - **A program's status notice follows the session.** OSC 7501 raises a
   notice when the session's **Terminal > Desktop Notifications** allows it,
   as OSC 9, 777 and 99 do. Its default, When not focused, is the old

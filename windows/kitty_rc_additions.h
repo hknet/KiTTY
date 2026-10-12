@@ -385,6 +385,9 @@
 #ifndef IDM_WINNAME
 #define IDM_WINNAME 0xB220
 #endif
+#ifndef IDM_SAVENEWSESS
+#define IDM_SAVENEWSESS 0xB230   /* Save as New Session... (kitty_savenew_box) */
+#endif
 
 /* KiTTY send-text input boxes ([Shortcuts] input / inputm and the password
  * variant) and the InfoBox banner. The 0.76 originals were ordinals 117-120,

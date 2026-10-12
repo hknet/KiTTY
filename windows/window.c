@@ -2980,6 +2980,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #endif
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)wgs->savedsess_menu,
                        "Sa&ved Sessions");
+#ifdef MOD_PERSO
+            AppendMenu(m, MF_ENABLED, IDM_SAVENEWSESS, KT_SYSMENU_SAVE_AS_NEW);
+#endif
             AppendMenu(m, MF_ENABLED, IDM_RECONF, "Chan&ge Settings...");
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_PASTE, "&Paste");
@@ -6734,6 +6737,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_WINNAME:
             /* the box calls kitty_window_name_set on OK */
             kitty_winname_box(wgs->term_hwnd);
+            break;
+          case IDM_SAVENEWSESS:
+            /* the name box, then /savenew (kitty_commands.c) */
+            kitty_savenew_box(wgs->term_hwnd);
             break;
           case IDM_PRINT:
             kitty_print(wgs->term_hwnd);
@@ -12614,6 +12621,25 @@ static bool win_seat_get_window_pixel_size(Seat *seat, int *x, int *y)
  * Intermediate step toward the no-global integration. */
 Conf *conf = NULL;
 static WinGuiSeat *kitty_active_wgs = NULL;
+
+/* A Save under a new name in Change Settings: a window with no saved session
+ * (an ssh:// link, Quick Connect, a typed host) belongs to the session saved
+ * from then on - later saves land there, and Windows reopens it after a
+ * restart. A window that has one keeps it: there the Save is a copy.
+ * 1 = the window took the name. */
+int kitty_window_adopt_session(const char *name)
+{
+    WinGuiSeat *wgs = kitty_active_wgs;
+    const char *cur;
+    if (!wgs || !name || !*name)
+        return 0;
+    cur = conf_get_str(wgs->conf, CONF_sessionname);
+    if (cur && *cur)
+        return 0;
+    conf_set_str(wgs->conf, CONF_sessionname, name);
+    kitty_restart_register_session(name);
+    return 1;
+}
 /* The session behind a Seat, or NULL for a seat no terminal window owns -
  * an SSH jump host's inner client, for one, which authenticates behind a
  * seat of its own (proxy/sshproxy.c) and whose login must never be written

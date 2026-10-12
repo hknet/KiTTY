@@ -105,6 +105,16 @@ void kitty_cfgbox_open_loaded(void)
 {
     kitty_cfgbox_loaded_deliberate = 1;
 }
+
+/* Save as New Session... (kitty_savenew_box): the name the next box puts in
+ * its session field, taken by the field's first refresh. */
+char *kitty_cfgbox_prefill_name = NULL;
+
+void kitty_cfgbox_prefill_session_name(const char *name)
+{
+    sfree(kitty_cfgbox_prefill_name);
+    kitty_cfgbox_prefill_name = (name && *name) ? dupstr(name) : NULL;
+}
 /*
  * The per-panel hooks windows/dialog.c calls: which control a panel lets
  * grow with the box (fill), what to do once the panel is laid out (placed),
