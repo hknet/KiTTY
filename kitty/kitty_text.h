@@ -2285,6 +2285,7 @@
 #define KT_XFER_PW_FILE_PLAIN                        "Password handover: plain, in a private file (this helper does not read the encrypted form)"
 #define KT_XFER_PW_CMDLINE_ENCRYPTED                 "Password handover: encrypted, on the command line (no private file could be created)"
 #define KT_XFER_PW_CMDLINE_PLAIN                     "Password handover: on the command line (no private file could be created)"
+#define KT_XFER_PW_HANDLE                            "Password handover: encrypted, in memory handed to this helper alone"
 #define KT_XFER_TRANSFER                             "Transfer"
 #define KT_XFER_FILE                                 "file"
 #define KT_XFER_BTN_CANCEL                           "&Cancel"

@@ -989,6 +989,35 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         }
     }
 
+    /* KiTTY: the session's password from KiTTY++ itself, in memory handed to
+     * this process alone - "-pwhandle <handle>:<size>" is an inherited file
+     * mapping KiTTY++ wrote it into (kitty_xfer.c). Nothing on disk, nothing
+     * readable in the command line. Taken once: kitty_pwhandle_take wipes the
+     * memory and closes the handle. Unguarded, as the -pwfile reader: this
+     * file compiles into the settings library without MOD_PERSO. */
+    if (!strcmp(p, "-pwhandle")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(1);
+        if (conf_get_int(conf, CONF_protocol) != PROT_SSH)
+            cmdline_error("the -pwhandle option can only be used with the "
+                          "SSH protocol");
+        else {
+            char *pw = kitty_pwhandle_take(value);
+            if (!pw) {
+                cmdline_error("unable to read a password from handle '%s'",
+                              value);
+            } else {
+                if (cmdline_password) {
+                    smemclr(cmdline_password, strlen(cmdline_password));
+                    sfree(cmdline_password);
+                }
+                cmdline_password = pw;
+                cmdline_password_stored = false;
+            }
+        }
+    }
+
     /* KiTTY: the proxy's user and password for this run - above all an SSH
      * jump host's, whose password prompt -pw and -pwfile do not answer. They
      * take the place of what the session stores. File form only, as for every

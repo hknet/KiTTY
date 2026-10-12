@@ -590,8 +590,26 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
  * arguments are CreateProcessA's. FALSE with ERROR_ACCESS_DENIED when the
  * check said no (one event-log line).
  */
+static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
+                      const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi,
+                      const HANDLE *h, int nh ) ;
 BOOL kitty_helper_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
                          const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi ) {
+	return kh_start( path, cmdline, inherit, flags, workdir, si, pi, NULL, 0 ) ;
+}
+
+/* The same check, the child inheriting exactly h[0..nh-1] and no other
+ * handle (kitty_create_process_with_handles): kscp's output pipe and the
+ * mapping that holds its password. */
+static BOOL kitty_helper_start_handles( const char *path, char *cmdline, DWORD flags,
+                                        const char *workdir, STARTUPINFOA *si,
+                                        PROCESS_INFORMATION *pi, const HANDLE *h, int nh ) {
+	return kh_start( path, cmdline, TRUE, flags, workdir, si, pi, h, nh ) ;
+}
+
+static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
+                      const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi,
+                      const HANDLE *h, int nh ) {
 	char full[MAX_PATH*4], signer[256], hex[65] ;
 	HANDLE held ;
 	int j ;
@@ -608,8 +626,13 @@ BOOL kitty_helper_start( const char *path, char *cmdline, BOOL inherit, DWORD fl
 		SetLastError( ERROR_ACCESS_DENIED ) ;
 		return FALSE ;
 	}
-	ok = CreateProcessA( full, cmdline, NULL, NULL, inherit, flags, NULL,
-	                     ( workdir && workdir[0] ) ? workdir : NULL, si, pi ) ;
+	if( nh > 0 )
+		ok = kitty_create_process_with_handles( full, cmdline, flags,
+		                                        ( workdir && workdir[0] ) ? workdir : NULL,
+		                                        si, pi, h, nh ) ;
+	else
+		ok = CreateProcessA( full, cmdline, NULL, NULL, inherit, flags, NULL,
+		                     ( workdir && workdir[0] ) ? workdir : NULL, si, pi ) ;
 	{ DWORD e = GetLastError() ; CloseHandle( held ) ; SetLastError( e ) ; }
 	return ok ;
 }
@@ -1313,7 +1336,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro,
                            int arriving, const char *open_file, const char *open_dir,
                            const char *stage_dir, const char *final_dir, HANDLE lock,
-                           kx_drop_t *drop, int drop_idx ) {
+                           kx_drop_t *drop, int drop_idx, HANDLE pwmap ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -1338,8 +1361,12 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	si.dwFlags = STARTF_USESTDHANDLES ;
 	si.hStdOutput = wr ; si.hStdError = wr ; si.hStdInput = GetStdHandle( STD_INPUT_HANDLE ) ;
 	memset( &pi, 0, sizeof(pi) ) ;
-	/* kscp is PSCPPath: started only through the signature check */
-	if( !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
+	/* kscp is PSCPPath: started only through the signature check. With its
+	 * password in a mapping (-pwhandle), it inherits that and its output pipe
+	 * and nothing else; the caller closes the mapping after the start. */
+	if( pwmap ? !kitty_helper_start_handles( PSCPPath, cmdline, CREATE_NO_WINDOW, NULL, &si, &pi,
+	                                         (HANDLE[]){ wr, pwmap }, 2 )
+	          : !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
 		MessageBox( NULL, KT_XFER_LAUNCH_FAILED,
 		            KT_CAP_XFER, MB_OK|MB_ICONERROR ) ;
@@ -1507,6 +1534,7 @@ static void kx_pwfiles_sweep( void ) {
 #define KX_PW_FILE_PLAIN  2
 #define KX_PW_CMD_ENC     3
 #define KX_PW_CMD_PLAIN   4
+#define KX_PW_HANDLE      5   /* in memory handed to the helper alone (-pwhandle) */
 
 static const char *kx_pw_handover_line( int mode ) {
 	switch( mode ) {
@@ -1514,6 +1542,7 @@ static const char *kx_pw_handover_line( int mode ) {
 		case KX_PW_FILE_PLAIN: return KT_XFER_PW_FILE_PLAIN ;
 		case KX_PW_CMD_ENC:    return KT_XFER_PW_CMDLINE_ENCRYPTED ;
 		case KX_PW_CMD_PLAIN:  return KT_XFER_PW_CMDLINE_PLAIN ;
+		case KX_PW_HANDLE:     return KT_XFER_PW_HANDLE ;
 		default:               return NULL ;
 	}
 }
@@ -1752,6 +1781,7 @@ static int kx_helper_has_flag( const char *path, const char *flag ) {
  */
 typedef struct {
 	int pwfiles ;              /* password files to delete once kscp has them */
+	HANDLE pwmap ;             /* the password's mapping (-pwhandle), closed after the start */
 	int pw_mode ;              /* how the password travelled (kx_pw_handover_line) */
 	size_t pw_at, pw_len ;     /* where the password landed, for the redacted log */
 	size_t px_at, px_len ;     /* ... and the proxy password file's path */
@@ -1820,20 +1850,36 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		 * so even the command-line fallback carries no readable password;
 		 * every released helper, and stock pscp/psftp, gets the plain value.
 		 * The window says which of the four it was - kx_pw_handover_line(). */
+		/* A helper of ours that says so in its version resource
+		 * ("KiTTYPasswordHandle") gets it in MEMORY instead: a mapping only
+		 * it inherits (kitty_pwhandle_make), "-pwhandle <handle>:<size>" on
+		 * its command line - no file on disk at all. The file stays for the
+		 * others, and for this one if no mapping can be made. */
 		char pw[KITTY_PW_MAX+1] ; const char *pf ; char *line = NULL ; int enc ;
+		char tok[64] ;
 		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
-		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
-		enc = kitty_pwfile_line_is_protected( line ) ;
-		pf = kx_password_file( line ? line : pw ) ;
-		bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
-		k->pw_at = strlen( buffer ) ;
-		qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
-		k->pw_len = strlen( buffer ) - k->pw_at ;   /* the span covers whatever was written */
-		bcat( buffer, BC, " " ) ;
-		if( pf ) k->pwfiles++ ;
-		k->pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
-		                : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
-		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+		if( kx_helper_has_flag( PSCPPath, "KiTTYPasswordHandle" )
+		    && ( k->pwmap = kitty_pwhandle_make( pw, tok, sizeof(tok) ) ) != NULL ) {
+			bcat( buffer, BC, "-pwhandle " ) ;
+			k->pw_at = strlen( buffer ) ;
+			bcat( buffer, BC, tok ) ;
+			k->pw_len = strlen( buffer ) - k->pw_at ;
+			bcat( buffer, BC, " " ) ;
+			k->pw_mode = KX_PW_HANDLE ;
+		} else {
+			if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
+			enc = kitty_pwfile_line_is_protected( line ) ;
+			pf = kx_password_file( line ? line : pw ) ;
+			bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
+			k->pw_at = strlen( buffer ) ;
+			qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
+			k->pw_len = strlen( buffer ) - k->pw_at ;   /* the span covers whatever was written */
+			bcat( buffer, BC, " " ) ;
+			if( pf ) k->pwfiles++ ;
+			k->pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
+			                : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
+			if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+		}
 		smemclr( pw, sizeof(pw) ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
@@ -1938,7 +1984,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
 	  if( kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
-	                      drop, drop_idx ) != 0 )
+	                      drop, drop_idx, k.pwmap ) != 0 )
 		kx_drop_settle( drop, drop_idx, 0 ) ;   /* not started: the window never took it */
 	  sfree( intro ) ; sfree( note ) ; }
 
@@ -1946,6 +1992,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 
 	memset(buffer,0,strlen(buffer));
 	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
+	if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
 	}
 
 void SendFileList( HWND hwnd, char * filelist ) {
@@ -2089,13 +2136,14 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
        * on success the files move to final_dir. The balloon opens final_dir. */
       kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one,
                       final_dir ? final_dir : dir,
-                      final_dir ? dir : NULL, final_dir, lock, NULL, 0 ) ;
+                      final_dir ? dir : NULL, final_dir, lock, NULL, 0, k.pwmap ) ;
       sfree( intro ) ; sfree( one ) ; sfree( note ) ; }
 
     //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
 
     memset(buffer,0,strlen(buffer));
     if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
+    if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
 }
 
 /* --- Where received files go ------------------------------------------------

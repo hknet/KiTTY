@@ -74,6 +74,9 @@ BEGIN
 	     * only if the FORMAT changes, never for an ordinary release.
 	     */
 	    VALUE "KiTTYPasswordFile",	"1"
+	    /* reads the session password from an inherited mapping:
+	     * -pwhandle (cmdline.c, kitty_secretstore.c kitty_pwhandle_take) */
+	    VALUE "KiTTYPasswordHandle",	"1"
 	    /*
 	     * The same shape for the proxy options (-proxytype, -proxyhost,
 	     * -proxyport, -proxylocalhost, -proxyuser, -proxypwfile): a helper

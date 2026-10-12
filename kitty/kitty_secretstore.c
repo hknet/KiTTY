@@ -1013,6 +1013,97 @@ char *kitty_pwfile_decode(char *line)
     return res;
 }
 
+/* ---- the session password handed to OUR helpers in memory (-pwhandle) ------
+ * kscp/ksftp started by Send/Get file get the session's password in a file
+ * mapping that only they inherit (kitty_xfer.c, through
+ * kitty_create_process_with_handles): nothing on disk, nothing readable in the
+ * command line, which carries only "<handle>:<size>". The password in the
+ * record is wrapped with CryptProtectMemory for this logon - the helper runs
+ * in it and unwraps; a dump of the pagefile does not show it. The helper
+ * takes it once: the record is wiped and the handle closed. Same transport as
+ * the master-key handover (kmpw_*, above). */
+#define KPWH_MAGIC 0x4B505748u   /* "KPWH" */
+#define KPWH_DATA  (((KITTY_PW_MAX + 1) + 15) / 16 * 16)   /* CryptProtectMemory blocks */
+struct kpwh_record {
+    unsigned magic, version;
+    unsigned wrapped;              /* 1 = data is CryptProtectMemory'd */
+    unsigned len;                  /* the password's length, without the NUL */
+    unsigned char data[KPWH_DATA];
+};
+
+HANDLE kitty_pwhandle_make(const char *plain, char *tok, size_t toklen)
+{
+    struct kpwh_record *r;
+    size_t len = plain ? strlen(plain) : 0;
+    HANDLE fm;
+    void *p;
+
+    if (tok && toklen)
+        tok[0] = '\0';
+    if (len == 0 || len > KITTY_PW_MAX || !tok || toklen < 24)
+        return NULL;
+    r = snew(struct kpwh_record);
+    memset(r, 0, sizeof(*r));
+    r->magic = KPWH_MAGIC;
+    r->version = 1;
+    r->len = (unsigned)len;
+    memcpy(r->data, plain, len);
+    r->wrapped = kmpw_mem("CryptProtectMemory", r->data, KPWH_DATA);
+    fm = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0,
+                            sizeof(*r), NULL);
+    if (!fm) {
+        smemclr(r, sizeof(*r));
+        sfree(r);
+        return NULL;
+    }
+    p = MapViewOfFile(fm, FILE_MAP_WRITE, 0, 0, sizeof(*r));
+    if (!p) {
+        CloseHandle(fm);
+        smemclr(r, sizeof(*r));
+        sfree(r);
+        return NULL;
+    }
+    memcpy(p, r, sizeof(*r));
+    UnmapViewOfFile(p);
+    smemclr(r, sizeof(*r));
+    sfree(r);
+    snprintf(tok, toklen, "%p:%u", fm, (unsigned)sizeof(struct kpwh_record));
+    return fm;
+}
+
+char *kitty_pwhandle_take(const char *value)
+{
+    struct kpwh_record *r;
+    HANDLE fm = NULL;
+    unsigned sz = 0;
+    void *p;
+    char *res = NULL;
+
+    if (!value || sscanf(value, "%p:%u", &fm, &sz) != 2 || !fm ||
+        sz != sizeof(struct kpwh_record))
+        return NULL;
+    p = MapViewOfFile(fm, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sz);
+    if (!p) {
+        CloseHandle(fm);
+        return NULL;
+    }
+    r = snew(struct kpwh_record);
+    memcpy(r, p, sizeof(*r));
+    SecureZeroMemory(p, sz);       /* taken once: nothing is left behind */
+    UnmapViewOfFile(p);
+    CloseHandle(fm);
+    if (r->magic == KPWH_MAGIC && r->version == 1 && r->len > 0 &&
+        r->len <= KITTY_PW_MAX &&
+        (!r->wrapped || kmpw_mem("CryptUnprotectMemory", r->data, KPWH_DATA))) {
+        res = snewn(r->len + 1, char);
+        memcpy(res, r->data, r->len);
+        res[r->len] = '\0';
+    }
+    smemclr(r, sizeof(*r));
+    sfree(r);
+    return res;
+}
+
 /* ---- does the active store hold anything wrapped with the master password? --
  * Answered by a scan of the sessions and proxies, in whichever backend is in
  * use. kitty_migrate_portable_mpw_state() asks before it copies any

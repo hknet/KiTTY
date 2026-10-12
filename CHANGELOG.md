@@ -26,6 +26,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **Send File and Get File hand kscp/ksftp the session's password in memory**,
+  not in a file: a block only that helper inherits, the password encrypted
+  for your logon. Older helpers and stock pscp/psftp keep the private file.
 - **The terminal window's menu shows the keyboard shortcuts** beside its
   entries while the shortcuts are on. **Full Screen** moved into the
   **Window** submenu.

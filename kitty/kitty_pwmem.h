@@ -167,6 +167,21 @@ int kitty_pwfile_line_is_protected(const char *line);
 char *kitty_pwfile_decode_copy(const char *value);
 char *kitty_pwfile_decode(char *line);
 
+/*
+ * The session password handed to OUR helpers in memory: a file mapping that
+ * only the started helper inherits, "-pwhandle <handle>:<size>" on its
+ * command line. _make writes it (the password wrapped for this logon) and
+ * puts "<handle>:<size>" into tok; it answers the mapping, NOT inheritable -
+ * it reaches the one child through kitty_create_process_with_handles - which
+ * the caller closes after the start, or NULL. _take is the helper's side:
+ * the password (a fresh string the caller frees), the memory wiped and the
+ * handle closed; NULL when it cannot be read.
+ *
+ * Implemented in kitty/kitty_secretstore.c, beside kitty_pwfile_line.
+ */
+HANDLE kitty_pwhandle_make(const char *plain, char *tok, size_t toklen);
+char *kitty_pwhandle_take(const char *value);
+
 #else /* !_WINDOWS */
 
 /* No CryptProtectMemory outside Windows: the shared files that call these
@@ -211,6 +226,8 @@ static inline int kitty_pwfile_line_is_protected(const char *line)
 static inline char *kitty_pwfile_decode_copy(const char *value)
 { return value ? dupstr(value) : NULL; }
 static inline char *kitty_pwfile_decode(char *line) { return line; }
+static inline char *kitty_pwhandle_take(const char *value)
+{ (void)value; return NULL; }
 
 #endif /* _WINDOWS */
 
