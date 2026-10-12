@@ -84,12 +84,6 @@ void CleanFolderName( char * folder ) ;
 // Delete a directory tree
 void DelDir( const char * directory ) ;
 
-// Read a parameter either from the configuration file or from the registry
-int ReadParameterLightN( const char * key, const char * name, char * value, size_t size ) ;
-
-/* test if we are in portable mode by looking for putty.ini or kitty.ini in running directory */
-int LoadParametersLight( void ) ;
-
 // Flag saying whether we are connected
 extern int is_backend_connected ;
 #ifdef MOD_RECONNECT
