@@ -1045,6 +1045,17 @@
 #define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
 #define KT_KSET_INTRO_WHERE                          "Each leaf's help also refers to the relevant kitty.ini settings."
 
+/* Application/KiTTY++ Settings/System/Session Integration (kitty_urlsession.c) */
+#define KT_URLSESS_TITLE                             "Links to ssh:// and telnet:// addresses"
+#define KT_URLSESS_NOTE                              "When a browser or mail program opens an ssh:// or telnet:// link, KiTTY++ can start it from a session saved here instead of from Default Settings."
+#define KT_URLSESS_OPEN                              "Open links with:"
+#define KT_URLSESS_OPEN_DEFAULT                      "Default Settings"
+#define KT_URLSESS_OPEN_SAVED                        "A matching saved session"
+#define KT_URLSESS_CHOOSER_TITLE                     "Several saved sessions match this link"
+#define KT_URLSESS_CHOOSER_TEXT                      "%s matches these sessions. Choose one to open:"
+#define KT_URLSESS_CHOOSER_OPEN                      "Open"
+#define KT_URLSESS_CHOOSER_CANCEL                    "Cancel"
+
 /* Application/KiTTY++ Settings/System */
 #define KT_SYSTEM_TITLE                              "Windows integration"
 #define KT_SYSTEM_STATE_GROUP                        "Registered with Windows"

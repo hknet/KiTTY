@@ -753,3 +753,13 @@
 #ifndef IDC_SO_TAGLIST
 #define IDC_SO_TAGLIST 1443
 #endif
+/* the chooser of a link several saved sessions match (kitty_urlsession.c) */
+#ifndef IDD_URLCHOOSE
+#define IDD_URLCHOOSE 174
+#endif
+#ifndef IDC_URLCHOOSE_TEXT
+#define IDC_URLCHOOSE_TEXT 1450
+#endif
+#ifndef IDC_URLCHOOSE_LIST
+#define IDC_URLCHOOSE_LIST 1451
+#endif

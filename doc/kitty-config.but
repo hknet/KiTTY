@@ -2491,6 +2491,53 @@ The only key in \c{kitty.ini} here is \c{fileextension} under
 (\q{Session File Extension} on Storage & Backup); the registrations
 themselves live in the Windows registry, not in the file.
 
+\S{kitty-cfg-urlsessions} The Session Integration panel
+
+What an \c{ssh://} or \c{telnet://} link opens - from a browser, a mail
+program, or the command line (\c{kitty.exe ssh://host}). \q{Open links
+with} is \c{urlsessions} under \c{[KiTTY]} in \c{kitty.ini}:
+
+\b \q{Default Settings} (\c{no}, the default): a new connection on
+Default Settings with the link's host, port and user.
+
+\b \q{A matching saved session} (\c{yes}): a saved session the link
+matches opens with all its settings.
+
+A saved session matches when all four hold:
+
+\b its Host Name equals the link's host, case ignored - or its own name
+does, the folder ignored (\c{ssh://srv01} finds \c{Linux\\web\\srv01});
+
+\b its protocol is the link's: \c{ssh://} an SSH session, \c{telnet://}
+a Telnet one;
+
+\b its port equals the link's, 22 (SSH) or 23 (Telnet) when the link has
+none;
+
+\b a link with a user: the session stores that user or none. A session
+saved with another user never matches. A link without a user: any.
+
+One match opens. Several put up \q{Several saved sessions match this
+link}: choose one and \q{Open}, or \q{Cancel}, and nothing opens. No
+match opens on Default Settings, as with the setting off.
+
+The link overrides only what it carries, for this connection only: its
+user name and its password apply to the session found; a field the link
+does not carry leaves the stored one in force. A link with only the host`ntherefore logs in with the session's stored user and password. They go
+only to the host and port the session was saved for, so a link to another
+host or port matches nothing. Nothing is written to the store. Options
+given with the link on the command line (\c{-hostkey}, \c{-l}, ...)
+apply on top of the session, as with \c{-load}.
+
+A password in a link (\c{ssh://user:password@host}) logs in like
+\c{-pw}'s: tried once, ahead of a stored one. KiTTY++ overwrites it in
+its own command line once read, so a task list shows
+\c{ssh://user:****@host}. That shortens the exposure to the moment of
+the start; a log of process starts and the browser's history still hold
+it.
+
+The link types are registered with Windows on \k{kitty-cfg-system}.
+
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
 KiTTY drives programs it does not contain: \i{WinSCP} or \i{FileZilla}
@@ -2780,11 +2827,15 @@ settings and logs in without a question. The programs KiTTY starts for the
 session - WinSCP, FileZilla and \c{kscp} - are given the same login,
 just as they are given one held in the session. And \q{Change Settings}
 in the terminal window, followed by \q{Save}, writes them into the saved
-session - the password protected the way every stored password is, by
+session, as do the commands \c{/save} and \c{/savenew} - the password protected the way every stored password is, by
 this Windows account in the registry or by the master password in a
 folder store, but stored, without you having asked for it. Nothing is
 written to the store on its own: until you save the session, the typed
 login lives only in that window.
+
+A password from the command line (\c{-pw}, or one in an
+\c{ssh://user:password@host} link) fills the same prompt and is kept the
+same way.
 
 Only a login the server accepted is kept. A password it refused is
 discarded, and so is the answer to a one-time code or any other
@@ -2794,7 +2845,8 @@ challenge the server requires on top of the password.
 both: the settings are left as they were, so a duplicate prompts again and
 a later Save writes only what the Login panel held before. A user name
 or password you stored on the Login panel on purpose is not affected and
-is still used to log in. The switch is off by default.
+is still used to log in. The switch is off by default; in \c{kitty.ini}
+it is \c{userpasssshnosave} under \c{[KiTTY]} (\c{yes} or \c{no}).
 
 \S{kitty-cfg-client-identity} The Client identity panel
 

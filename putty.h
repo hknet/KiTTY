@@ -2580,6 +2580,7 @@ SeatPromptResult cmdline_get_passwd_input(
 bool cmdline_host_ok(Conf *);
 bool cmdline_verbose(void);
 bool cmdline_loaded_session(void);
+bool cmdline_link(int *proto, const char **host, int *port, const char **user);   /* KiTTY: the ssh:// / telnet:// link given */
 
 /*
  * Abstraction provided by each platform to represent a command-line

@@ -522,6 +522,20 @@ BEGIN
     DEFPUSHBUTTON   KT_SP_ORG_CANCEL, IDCANCEL, 203, 85, 50, 14
 END
 
+/* An ssh:// or telnet:// link several saved sessions match: pick one, or
+ * Cancel and nothing opens. Modal - no terminal exists yet. The text grows
+ * to fit (kitty_fit_text); kitty/kitty_urlsession.c. */
+IDD_URLCHOOSE DIALOGEX DISCARDABLE 0, 0, 260, 140
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_URLSESS_CHOOSER_TITLE
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_URLCHOOSE_TEXT, 7, 7, 246, 10
+    LISTBOX         IDC_URLCHOOSE_LIST, 7, 22, 246, 92, LBS_NOINTEGRALHEIGHT | LBS_NOTIFY | WS_VSCROLL | WS_BORDER | WS_TABSTOP
+    DEFPUSHBUTTON   KT_URLSESS_CHOOSER_OPEN, IDOK, 149, 120, 50, 14
+    PUSHBUTTON      KT_URLSESS_CHOOSER_CANCEL, IDCANCEL, 203, 120, 50, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

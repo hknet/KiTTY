@@ -261,6 +261,16 @@
 ;    last renamed to, or the rename was declined for.
 ;fileextensionapplied=
 
+; urlsessions: what an ssh:// or telnet:// link opens. no (default): Default
+;    Settings with the link's host, port and user. yes: a saved session the
+;    link matches - by Host Name or session name, protocol, port (22 / 23
+;    when the link has none) and user; a session that stores another user
+;    never matches. Several matches put up a list to choose from. The
+;    link's user and password apply to the session found, for that
+;    connection only. Application > KiTTY++ Settings > System > Session
+;    Integration.
+;urlsessions=no
+
 ; sshhostkeys: the folder store's host-key folder. Default (empty): the
 ;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings
 ;    > Storage & Backup. Folder store only.

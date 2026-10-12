@@ -13,6 +13,7 @@ void kitty_demo_templates(void);
 /* KiTTY helpers (putty.c does not include kitty.h) */
 #include "../kitty/kitty_storemove.h"
 #include "../kitty/kitty_text.h"   /* shared captions + command-line wordings */
+#include "../kitty/kitty_urlsession.h"   /* a link opens a matching saved session */
 #include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
@@ -742,6 +743,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: an ssh:// or telnet:// link opens the saved session it matches
+     * ([KiTTY] urlsessions). Before the replay below, so an option given
+     * with the link still applies on top of the session, as with -load. */
+    kitty_urlsession_apply(conf);
+#endif
     NETDBG_TS("cmdline: before cmdline_run_saved");
     cmdline_run_saved(conf);
     NETDBG_TS("cmdline: after cmdline_run_saved");

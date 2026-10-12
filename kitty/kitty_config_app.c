@@ -3214,6 +3214,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
             ctrl_columns(s, 1, 100);
         }
     }
+
+    /* ---- System > Session Integration: what an ssh:// or telnet:// link
+     * opens (kitty_urlsession.c; the match rule is in the help) ---- */
+    ctrl_settitle(b, KSET_PATH("System/Session Integration"), KT_URLSESS_TITLE);
+    s = ctrl_getset(b, KSET_PATH("System/Session Integration"), "links", NULL);
+    ctrl_text(s, KT_URLSESS_NOTE, HELPCTX(kitty_urlsessions));
+    KSET_DROPLIST(s, KT_URLSESS_OPEN, KI_URLSESSIONS, kitty_urlsessions);
 }
 
 /* ---- Storage & Backup > KiTTY.ini ------------------------------------- */

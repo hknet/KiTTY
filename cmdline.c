@@ -238,6 +238,32 @@ bool cmdline_seat_verbose(Seat *seat) { return cmdline_verbose(); }
 bool cmdline_lp_verbose(LogPolicy *lp) { return cmdline_verbose(); }
 bool cmdline_loaded_session(void) { return loaded_session; }
 
+/* KiTTY: what an ssh:// or telnet:// link on the command line carried, for
+ * kitty.exe to look for a saved session it matches (kitty_urlsession.c). The
+ * port is the link's, or the protocol's default when the link has none; the
+ * user is NULL when the link names none. Never the password: that stays in
+ * cmdline_password. */
+static int link_proto = -1;
+static char *link_host = NULL, *link_user = NULL;
+static int link_port = 0;
+bool cmdline_link(int *proto, const char **host, int *port, const char **user)
+{
+    if (link_proto < 0 || !link_host)
+        return false;
+    *proto = link_proto;
+    *host = link_host;
+    *port = link_port;
+    *user = link_user;
+    return true;
+}
+static void cmdline_link_record(int proto, const char *host, int port)
+{
+    link_proto = proto;
+    sfree(link_host);
+    link_host = dupstr(host);
+    link_port = port;
+}
+
 /* KiTTY: klink, kscp and ksftp log in with the loaded session's stored
  * password, as kitty.exe does - since they read the folder store too
  * (0.85.1.15). Called once all options are in (after cmdline_run_saved):
@@ -398,7 +424,8 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                     if (userlen) {
                         buf = kitty_url_unescape(start, userlen);
                         conf_set_str(conf, CONF_username, buf);
-                        sfree(buf);
+                        sfree(link_user);
+                        link_user = buf;
                     }
                     host = at + 1;
                 } else {
@@ -430,6 +457,8 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                     set_port(conf, vt && vt->default_port ?
                              vt->default_port : 22);
                 }
+                cmdline_link_record(PROT_SSH, conf_get_str(conf, CONF_host),
+                                    conf_get_int(conf, CONF_port));
             } else
             if (!strncmp(p, "telnet:", 7)) {
                 /*
@@ -489,6 +518,12 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
 #else
                     conf_set_int(conf, CONF_port, -1);
 #endif
+                }
+                {
+                    int lp = conf_get_int(conf, CONF_port);
+                    cmdline_link_record(PROT_TELNET,
+                                        conf_get_str(conf, CONF_host),
+                                        lp > 0 ? lp : 23);
                 }
             } else {
                 char *user = NULL, *hostname = NULL;

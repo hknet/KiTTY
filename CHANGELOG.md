@@ -6,6 +6,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.16-beta — 2026-10-11
 
+### New
+
+- **An `ssh://` or `telnet://` link can open a saved session**
+  (cyd01/KiTTY#540): **Application > KiTTY++ Settings > System > Session
+  Integration**, `urlsessions`, default off. A session matches by Host Name
+  or session name, protocol, port and user. Several matches put up a list
+  to choose from. The link's user and password apply to the session found
+  for that connection only.
+
 ### Changed
 
 - **A program's status notice follows the session.** OSC 7501 raises a

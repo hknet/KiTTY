@@ -149,6 +149,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 /* Program status (OSC 7501): notify for a background window; and the
  * one-time pointer to the title bar in that notice, once it has been shown. */
 #define KI_NOTICESECONDS                    "noticeseconds"   /* [KiTTY]; [Launcher] has its own */
+#define KI_URLSESSIONS                      "urlsessions"     /* [KiTTY] no|yes: a link opens a matching saved session */
 #define KI_PSTITLEHINTSHOWN                 "PsTitleHintShown"
 #define KI_PSOVERLAY                        "psoverlay"
 #define KI_ZMODEM                           "zmodem"
@@ -307,6 +308,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
  * (kitty_auxpos.c: AuxWinPos\<name>_<layout>, or kitty_windowpos.ini) */
 #define KR_DLGPOS_ABOUT                     "About"
 #define KR_DLGPOS_TITLEVARS                 "TitleVars"
+#define KR_DLGPOS_URLCHOOSE                 "UrlChoose"
 #define KR_DLGPOS_CMDHELP                   "CmdHelp"
 #define KR_DLGPOS_CLIHELP                   "CliHelp"
 #define KR_DLGPOS_CONFIGBOX                 "ConfigBox"

@@ -732,6 +732,9 @@ static const struct kset_choice kset_second_launcher_choices[] = {
 static const struct kset_choice kset_launcher_dblclick_choices[] = {
     { KT_KSET_LA_DBL_CONFIG, "config", 0 }, { KT_KSET_LA_DBL_MANAGE, "manage", 1 },
     { KT_KSET_LA_DBL_QUICK, "quickconnect", 2 } };
+/* [KiTTY] urlsessions: what an ssh:// or telnet:// link opens */
+static const struct kset_choice kset_urlsessions_choices[] = {
+    { KT_URLSESS_OPEN_DEFAULT, "no", 0 }, { KT_URLSESS_OPEN_SAVED, "yes", 1 } };
 static const struct kset_choice kset_pwprot_choices[] = {
     { KT_KSET_STORAGE_PWPROT_MASTER, "master", 0 },
     { KT_KSET_STORAGE_PWPROT_DPAPI,  "dpapi",  1 },
@@ -763,6 +766,10 @@ static const struct kset_key kset_keys[] = {
     /* how long a notice of kitty.exe stays when nothing else sets its time;
      * read at each notice (GetNoticeSeconds), so a change applies at once */
     { INIT_SECTION, KI_NOTICESECONDS,  KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
+    /* System > Session Integration: read when a link starts kitty.exe
+     * (GetUrlSessionsFlag), so a change applies to the next link */
+    { INIT_SECTION, KI_URLSESSIONS,    KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_urlsessions_choices, lenof(kset_urlsessions_choices) },
     { INIT_SECTION, KI_PSOVERLAY,      KSET_BOOL, false, GetPsOverlayFlag, SetPsOverlayFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SIZE,           KSET_BOOL, false, GetSizeFlag, SetSizeFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_WINROLL,        KSET_BOOL, false, GetWinrolFlag, SetWinrolFlag, NULL, 0, 0, 1 },
