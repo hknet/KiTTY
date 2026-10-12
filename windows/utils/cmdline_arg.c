@@ -193,6 +193,57 @@ void cmdline_arg_wipe(CmdlineArg *argp)
     }
 }
 
+/*
+ * KiTTY: the password of an "ssh://user:password@host" argument, overwritten
+ * with '*' in the command line other programs read (the buffer
+ * cmdline_arg_wipe overwrites), the rest of the URL left readable. Called
+ * once the password has been taken: it is used for the login now. A task
+ * list must not show it for the whole session. Process-creation logs
+ * and the browser history saw it before this ran - nothing here reaches them.
+ * Not fenced with MOD_PERSO: this file is built into the utility library,
+ * which is compiled without it.
+ */
+void cmdline_arg_wipe_url_password(CmdlineArg *argp)
+{
+    if (!argp)
+        return;
+
+    CmdlineArgWin *arg = container_of(argp, CmdlineArgWin, argp);
+    if (arg->index == (size_t)-1)
+        return;
+    CmdlineArgList *listp = argp->list;
+    CmdlineArgListWin *list = container_of(listp, CmdlineArgListWin, listp);
+
+    wchar_t *p = list->argstart[arg->index + 1];
+    wchar_t *end = (arg->index + 2 < list->argc ?
+                    list->argstart[arg->index + 2] : p + wcslen(p));
+    wchar_t *s, *q, *at = NULL, *colon = NULL;
+
+    /* past the scheme and its "//" (a leading quote is part of the word) */
+    for (s = p; s < end && *s != L':'; s++);
+    if (s >= end)
+        return;
+    s++;
+    if (s + 1 < end && s[0] == L'/' && s[1] == L'/')
+        s += 2;
+    /* the authority runs to the first '/', quote or blank; its LAST '@'
+     * ends the user info, whose FIRST ':' starts the password */
+    for (q = s; q < end && *q != L'/' && *q != L'"' && *q != L' '; q++)
+        if (*q == L'@')
+            at = q;
+    if (!at)
+        return;
+    for (q = s; q < at; q++)
+        if (*q == L':') {
+            colon = q;
+            break;
+        }
+    if (!colon)
+        return;
+    for (q = colon + 1; q < at; q++)
+        *q = L'*';
+}
+
 const wchar_t *cmdline_arg_remainder_wide(CmdlineArg *argp)
 {
     CmdlineArgWin *arg = container_of(argp, CmdlineArgWin, argp);

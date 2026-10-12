@@ -47,6 +47,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`TERM_PROGRAM` or `COLORTERM`), not both.
 - **A running launcher follows "Keep my hand-edited launcher menu" at
   once** when it is changed, without a restart.
+- **The password in an `ssh://user:password@host` link logs in.** It used to
+  be thrown away, so a link carrying one prompted anyway. It is used like
+  `-pw`'s and overwritten in the command line once read, so a task list
+  shows `ssh://user:****@host`. `-pw` was already blanked there. User and
+  password are percent-decoded (`%40` for `@`). klink now reads `ssh://`
+  links too.
 - **The portable master password is entered once.** Sessions started from
   Manage Sessions (also `-manage`), the launcher's Quick Connect and Manage,
   and a launcher started from the configuration box take over the unlocked

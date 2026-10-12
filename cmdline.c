@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <ctype.h>   /* KiTTY: isxdigit, the URL's %XX escapes */
 #include "putty.h"
 /* KiTTY: -pwfile may carry a protected line, in EVERY build of this file -
  * the console tools link the settings library, which compiles it without
@@ -270,6 +271,27 @@ static void set_port(Conf *conf, int port)
     conf_set_int(conf, CONF_port, port);
 }
 
+/* KiTTY: the first len bytes of s with %XX escapes decoded (RFC 3986), as a
+ * new string; a '%' not followed by two hex digits stays as it is. Not fenced
+ * with MOD_PERSO, like the "ssh:" branch that uses it (see there). */
+static char *kitty_url_unescape(const char *s, size_t len)
+{
+    char *out = snewn(len + 1, char), *o = out;
+    size_t i;
+    for (i = 0; i < len; i++) {
+        if (s[i] == '%' && i + 2 < len &&
+            isxdigit((unsigned char)s[i + 1]) && isxdigit((unsigned char)s[i + 2])) {
+            char hex[3] = { s[i + 1], s[i + 2], '\0' };
+            *o++ = (char)strtol(hex, NULL, 16);
+            i += 2;
+        } else {
+            *o++ = s[i];
+        }
+    }
+    *o = '\0';
+    return out;
+}
+
 int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                           int need_save, Conf *conf)
 {
@@ -312,7 +334,10 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
              * the default session and never be able to do anything
              * else).
              */
-#ifdef MOD_PERSO
+            /* KiTTY: not fenced with MOD_PERSO. klink reaches this file
+             * through the settings library, compiled without the define:
+             * fenced, klink never read an ssh:// link at all - and left
+             * its password readable in the command line. */
             if (!strncmp(p, "ssh:", 4)) {
                 /*
                  * KiTTY (hknet/KiTTY#23): the same treatment for an
@@ -325,11 +350,15 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                  * A trailing path is not meaningful for a terminal
                  * session and is ignored rather than refused, since
                  * URLs are routinely copied around with one attached.
-                 * A password in the URL is parsed only so that it
-                 * cannot be mistaken for part of the host or the port,
-                 * and is then discarded: classic KiTTY accepted one
-                 * here, which put the password in the command line of
-                 * a process any other user of the machine can read.
+                 * User and password are percent-decoded (RFC 3986: a
+                 * '@' or ':' in them arrives as %40 / %3A).
+                 * The password is used as -pw's is: one try at the
+                 * password prompt, ahead of a stored one. It used to be
+                 * discarded, so a link carrying one prompted anyway;
+                 * what that guarded against - the password readable in
+                 * the command line for the whole session - is now
+                 * handled by overwriting it there once it is taken
+                 * (cmdline_arg_wipe_url_password).
                  */
                 const char *start, *authend, *host, *q, *at = NULL;
                 char *buf;
@@ -353,10 +382,21 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                 if (at) {
                     size_t userlen = at - start;
                     const char *colon = memchr(start, ':', userlen);
-                    if (colon)
-                        userlen = colon - start;   /* drop the password */
+                    if (colon) {
+                        size_t pwlen = at - (colon + 1);
+                        userlen = colon - start;
+                        if (pwlen) {
+                            if (cmdline_password) {
+                                smemclr(cmdline_password, strlen(cmdline_password));
+                                sfree(cmdline_password);
+                            }
+                            cmdline_password = kitty_url_unescape(colon + 1, pwlen);
+                            cmdline_password_stored = false;
+                        }
+                        cmdline_arg_wipe_url_password(arg);
+                    }
                     if (userlen) {
-                        buf = dupprintf("%.*s", (int)userlen, start);
+                        buf = kitty_url_unescape(start, userlen);
                         conf_set_str(conf, CONF_username, buf);
                         sfree(buf);
                     }
@@ -391,7 +431,6 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                              vt->default_port : 22);
                 }
             } else
-#endif
             if (!strncmp(p, "telnet:", 7)) {
                 /*
                  * If the argument starts with "telnet:", set the
