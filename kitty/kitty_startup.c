@@ -71,13 +71,44 @@
 // In registry mode the configuration file is looked for
 // - in the KITTY_INI_FILE environment variable
 // - kitty.ini in the directory kitty.exe was started from, if it exists
-// - else putty.ini in the directory kitty.exe was started from, if it exists
 // - else kitty.ini in the %APPDATA%/KiTTY directory, if it exists
 //
 // In portable mode the configuration file is looked for
 // - kitty.ini in the directory kitty.exe was started from, if it exists
-// - else putty.ini in the directory kitty.exe was started from, if it exists
 //
+// A putty.ini is not read: kitty.exe never created one and read only its
+// [KiTTY] section, so the name is retired for the whole suite. One that
+// carries a [KiTTY] section is copied to kitty.ini once (MigratePuttyIni).
+//
+
+/* The putty.ini beside the exe was kitty.exe's settings file when no kitty.ini
+ * was there - read from its [KiTTY] section only, and wholly (every section is
+ * kitty.exe's own). Copied to kitty.ini once, as it is, and said so: at the
+ * prompt that started kitty.exe, else in a box - never a box in a scripted
+ * do-and-exit run. A putty.ini with no [KiTTY] keys (classic KiTTY's own,
+ * [PuTTY]) did nothing here and is left alone: copying it would create a
+ * kitty.ini that hides %APPDATA%\KiTTY\kitty.ini. putty.ini stays as it is. */
+static void MigratePuttyIni( const char * kittyini ) {
+	char puttyini[4096], keys[64], err[256], msg[4096 + 512] ;
+	int ok ;
+	snprintf( puttyini, sizeof(puttyini), "%s\\putty.ini", InitialDirectory ) ;
+	if( !existfile( puttyini ) || existfile( kittyini ) ) return ;
+	if( GetPrivateProfileSectionA( KI_SECTION_KITTY, keys, sizeof(keys), puttyini ) == 0 ) return ;
+	ok = CopyFileA( puttyini, kittyini, TRUE ) ;
+	if( ok ) snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPIED_FMT, kittyini ) ;
+	else {
+		DWORD e = GetLastError() ;
+		err[0] = '\0' ;
+		FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, e, 0, err, sizeof(err), NULL ) ;
+		str_rtrim( err, "\r\n .\t" ) ;
+		snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
+	}
+#ifdef MOD_PERSO
+	if( KittyCliPrint( msg ) || kitty_cli_do_and_exit() ) return ;
+#endif
+	MessageBoxA( NULL, msg, KT_CAP_KITTYPP, MB_OK | (ok ? MB_ICONINFORMATION : MB_ICONWARNING) ) ;
+}
+
 static void InitNameConfigFile( void ) {
 	char buffer[4096] = "" ;   /* the KITTY_INI_FILE test below reads this even
 	                            * when the variable is unset - it used to be
@@ -91,19 +122,14 @@ static void InitNameConfigFile( void ) {
 	if( getenv("KITTY_INI_FILE") != NULL ) { snprintf( buffer, sizeof(buffer), "%s", getenv("KITTY_INI_FILE") ) ; }
 	if( !existfile( buffer ) ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
-		if( !existfile( buffer ) ) {
-			snprintf( buffer, sizeof(buffer), "%s\\putty.ini", InitialDirectory ) ;
+		MigratePuttyIni( buffer ) ;
+		/* portable: the kitty.ini beside the exe, also while it is not there yet */
+		if( !existfile( buffer ) && IniFileFlag != SAVEMODE_DIR ) {
+			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
 			if( !existfile( buffer ) ) {
-				if( IniFileFlag != SAVEMODE_DIR ) {
-					snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
-					if( !existfile( buffer ) ) {
-						snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
-						CreateDirectory( buffer, NULL ) ;
-						snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
-					}
-				} else {
-					snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
-				}
+				snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
+				CreateDirectory( buffer, NULL ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
 			}
 		}
 	}

@@ -1857,6 +1857,13 @@
 #define KT_MAIN_LOAD_FAILED_FMT                      "The sessions could not be loaded from the backup:\n\n" \
         "    %s\n\n" \
         "KiTTY++ goes on without what did not load. The file is unchanged."
+/* kitty_startup.c: putty.ini is retired; its settings move to kitty.ini once */
+#define KT_MAIN_PUTTYINI_COPIED_FMT                  "KiTTY++ no longer reads putty.ini. Its settings were copied to\n" \
+        "    %s\n" \
+        "which is read from now on. putty.ini is left as it is and can be deleted."
+#define KT_MAIN_PUTTYINI_COPY_FAILED_FMT             "KiTTY++ no longer reads putty.ini, and it could not be copied to\n" \
+        "    %s\n" \
+        "(%s). Rename putty.ini to kitty.ini to keep its settings."
 #define KT_SAV_IMPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not import it, exit code %lu)"
 #define KT_SAV_EXPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not export the store, exit code %lu)"
 

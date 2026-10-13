@@ -15,7 +15,7 @@
  * three console targets only (windows/CMakeLists.txt lists this file and
  * kitty_inifile.c beside them). It answers through the kitty.ini resolver, so
  * the ini that kageant and the GUI resolve is the ini the tools read:
- * %KITTY_INI_FILE%, then kitty.ini / putty.ini beside the exe, then the
+ * %KITTY_INI_FILE%, then kitty.ini beside the exe, then the
  * per-user copies. The main section is the same [KiTTY] the GUI reads.
  */
 

@@ -1304,8 +1304,8 @@
 [Agent]
 
 ; kageant (the SSH agent) settings. kageant finds this file on its own:
-; %KITTY_INI_FILE%, else kitty.ini/putty.ini next to kageant.exe, else
-; %APPDATA%\KiTTY\kitty.ini / %APPDATA%\PuTTY\putty.ini. When the file
+; %KITTY_INI_FILE%, else kitty.ini next to kageant.exe, else
+; %APPDATA%\KiTTY\kitty.ini. When the file
 ; sets [KiTTY] savemode=file or savemode=dir, the ini is the authoritative
 ; store: the tray toggles write back here and the registry is never touched
 ; (portable mode). A portable folder counts even without the savemode

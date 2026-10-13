@@ -34,8 +34,12 @@ The first match wins:
 
 1. the file named by the **`KITTY_INI_FILE`** environment variable, if it exists;
 2. **`kitty.ini` next to the executable**;
-3. `putty.ini` next to the executable;
-4. `%APPDATA%\KiTTY\kitty.ini` — registry mode only (auto-created on first run).
+3. `%APPDATA%\KiTTY\kitty.ini` — registry mode only (auto-created on first run).
+
+A `putty.ini` is not read. One beside kitty.exe that has a `[KiTTY]` section,
+with no `kitty.ini` next to it, is copied to `kitty.ini` at the next start of
+kitty.exe, which says so; the `putty.ini` itself is left as it is. The
+settings are always read from the `[KiTTY]` section.
 
 A **portable** install (`savemode=dir`) uses only the locations next to the
 executable — it never falls back to `%APPDATA%`. The companion binaries

@@ -1,6 +1,6 @@
 /*
- * kitty_inifile.c: the suite's kitty.ini / putty.ini resolver - which file,
- * which main section, and which store it puts in charge. Dependency-free
+ * kitty_inifile.c: the suite's kitty.ini resolver - which file, and which
+ * store it puts in charge. Dependency-free
  * (the Win32 profile API directly), so every program links it: kageant,
  * kittygen, klink/kscp/ksftp (kitty_console_store.c), the theme preference.
  * Formerly kitty_inilight.c: no longer a "light" reader beside kitty.exe's,
@@ -10,8 +10,10 @@
  * never the process cwd (kageant is commonly autostarted with cwd=system32):
  *   1. %KITTY_INI_FILE%
  *   2. <exedir>\kitty.ini
- *   3. <exedir>\putty.ini
- *   4. %APPDATA%\KiTTY\kitty.ini
+ *   3. %APPDATA%\KiTTY\kitty.ini
+ * No putty.ini anywhere: kitty.exe read only [KiTTY] from one, so a classic
+ * [PuTTY] file did nothing there, and the name is retired for the suite.
+ * The main section is always [KiTTY] (KI_SECTION_KITTY).
  *
  * The resolved file is the authoritative settings store when its main
  * section says savemode=file or savemode=dir, or - with no savemode key at
@@ -33,7 +35,6 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 static char inifile_path[MAX_PATH + 1];
-static char inifile_mainsection[8];    /* "KiTTY" or "PuTTY" */
 static int inifile_state = 0;          /* 0 = unresolved, 1 = found, -1 = none */
 
 static int inifile_isfile(const char *p)
@@ -53,7 +54,6 @@ static void inifile_resolve(void)
         return;
     inifile_state = -1;
     inifile_path[0] = '\0';
-    strcpy(inifile_mainsection, KI_SECTION_KITTY);
 
     env = getenv("KITTY_INI_FILE");
     if (env && *env && strlen(env) <= MAX_PATH && inifile_isfile(env)) {
@@ -68,13 +68,6 @@ static void inifile_resolve(void)
         snprintf(cand, sizeof(cand), "%s\\kitty.ini", exedir);
         if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
             strcpy(inifile_path, cand);
-            inifile_state = 1;
-            return;
-        }
-        snprintf(cand, sizeof(cand), "%s\\putty.ini", exedir);
-        if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            strcpy(inifile_path, cand);
-            strcpy(inifile_mainsection, "PuTTY");
             inifile_state = 1;
             return;
         }
@@ -145,7 +138,7 @@ int kitty_inifile_registry_authoritative(void)
     char buf[32];
     if (!kitty_inifile_file())
         return 1;
-    GetPrivateProfileStringA(inifile_mainsection, KI_SAVEMODE, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",
                              buf, sizeof(buf), inifile_path);
     if (!stricmp(buf, "file") || !stricmp(buf, "dir"))
         return 0;
@@ -213,7 +206,7 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
         suffix[0] = '\0';
     if (!kitty_inifile_file())
         return 0;
-    GetPrivateProfileStringA(inifile_mainsection, KI_SAVEMODE, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",
                              mode, sizeof(mode), inifile_path);
     inifile_rtrim(mode, " \t\r\n");
     if (stricmp(mode, "dir") && (mode[0] || !inifile_portable_layout()))
@@ -224,7 +217,7 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
         return 0;
     *slash = '\0';
 
-    GetPrivateProfileStringA(inifile_mainsection, KI_SESSIONS, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SESSIONS, "",
                              v, sizeof(v), inifile_path);
     if (v[0]) {
         DWORD xn = ExpandEnvironmentStringsA(v, x, sizeof(x));
@@ -240,7 +233,7 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
         if (strlen(path) == 2 && path[1] == ':')
             strcat(path, "\\");          /* "C:" alone is drive C's cwd */
     } else {
-        GetPrivateProfileStringA(inifile_mainsection, KI_CONFIGDIR, "",
+        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_CONFIGDIR, "",
                                  v, sizeof(v), inifile_path);
         inifile_rtrim(v, " \n\r\t\\");
         if (!v[0])
@@ -256,11 +249,11 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
 
     /* kitty.exe keeps at most 63 characters and refuses a suffix with a
      * character its escape would rewrite (kitty_set_session_suffix). */
-    GetPrivateProfileStringA(inifile_mainsection, KI_FILEEXTENSION, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_FILEEXTENSION, "",
                              v, sizeof(v), inifile_path);
     inifile_rtrim(v, " \n\r\t");
     if (!v[0])
-        GetPrivateProfileStringA(inifile_mainsection, KI_SESSIONSUFFIX, "",
+        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SESSIONSUFFIX, "",
                                  v, sizeof(v), inifile_path);
     kitty_ext_dot(v, sizeof(v));
     for (p = v; *p; p++)
@@ -293,7 +286,7 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
     if (!kitty_inifile_file())
         return 0;
 
-    GetPrivateProfileStringA(inifile_mainsection, KI_SSHHOSTKEYS, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SSHHOSTKEYS, "",
                              v, sizeof(v), inifile_path);
     inifile_rtrim(v, " \n\r\t");
     n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
@@ -314,11 +307,11 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
             strcpy(dir, path);
     }
 
-    GetPrivateProfileStringA(inifile_mainsection, KI_HOSTKEYEXTENSION, "",
+    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_HOSTKEYEXTENSION, "",
                              v, sizeof(v), inifile_path);
     inifile_rtrim(v, " \n\r\t");
     if (!v[0])
-        GetPrivateProfileStringA(inifile_mainsection, KI_KEYSUFFIX, "",
+        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_KEYSUFFIX, "",
                                  v, sizeof(v), inifile_path);
     kitty_ext_dot(v, sizeof(v));
     if ((int)strlen(v) < suflen)

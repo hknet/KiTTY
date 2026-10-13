@@ -64,6 +64,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the working directory, where a shortcut with another "Start in" or a script
   run from another folder could feed it a stranger's paths. Once its keys are
   in kitty.ini (`puttyconfmigrated=yes`) it is not read at all.
+- **putty.ini is no longer read, by any program.** kitty.exe only ever read
+  its `[KiTTY]` section, so a classic KiTTY putty.ini (`[PuTTY]`) did nothing
+  there, while kageant and the console tools read its `[PuTTY]` section. A
+  putty.ini beside kitty.exe with a `[KiTTY]` section and no kitty.ini next
+  to it is copied to kitty.ini at the next start, and kitty.exe says so at
+  the prompt it was started from, or in a box. putty.ini itself is left as
+  it is.
 
 ### Fixed
 

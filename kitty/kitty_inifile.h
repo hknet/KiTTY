@@ -1,5 +1,5 @@
 /*
- * kitty_inifile.h: interface of the kitty.ini/putty.ini resolver for
+ * kitty_inifile.h: interface of the kitty.ini resolver for
  * satellite binaries (see kitty_inifile.c for the search order and the
  * authoritative-store rule).
  */
