@@ -76,6 +76,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A red row in the session list can be right-clicked again.** Its
+  tooltip was laid over the row, hid it and took the click, so Show in
+  Explorer and Rename... were reachable by keyboard only. The tooltip now
+  opens below the pointer and wraps.
 - **An exported `.ktx` carries every setting, and opening one reads every
   setting.** The export left out 59 of them (the background image, the
   transfer and Tools-menu settings, line spacing, the reconnect rules and

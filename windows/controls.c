@@ -1221,6 +1221,7 @@ void listbox(struct ctlpos *cp, const char *stext,
 #define KT_HL_PAD 2             /* the drawer's inset of a cell's text */
 #define KT_HL_GAP 10            /* between a column's widest text and the next */
 #define KT_HL_GAP_TIGHT 4       /* the same, in a list whose texts do not all fit */
+static char *kt_hl_wrap(HWND list, const char *text, int maxw);
 
 struct kt_hl {
     dlgcontrol *ctrl;
@@ -1533,6 +1534,31 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
     sfree(st->tip_text);
     st->tip_text = dupstr(p);
     sfree(text);
+    if (own) {
+        RECT lr;
+        int w = 300;
+        char *wrapped;
+        if (GetWindowRect(list, &lr) && lr.right - lr.left > w)
+            w = lr.right - lr.left;
+        wrapped = kt_hl_wrap(list, st->tip_text, w - 2 * KT_HL_PAD - 8);
+        sfree(st->tip_text);
+        st->tip_text = wrapped;
+    }
+
+    /* The width the tip wraps at goes in BEFORE its text: a tip lays its
+     * text out when the text arrives, and a width set after that leaves it
+     * on one line. A row's own tip wraps at the list's width; a cut cell's
+     * text stays on one line, as the cell shows it. */
+    {
+        RECT lr;
+        int maxw = -1;
+        if (own) {
+            maxw = 300;
+            if (GetWindowRect(list, &lr) && lr.right - lr.left > maxw)
+                maxw = lr.right - lr.left;
+        }
+        SendMessage(st->tip, TTM_SETMAXTIPWIDTH, 0, maxw);
+    }
 
     memset(&ti, 0, sizeof(ti));
     ti.cbSize = TTTOOLINFOA_V1_SIZE;
@@ -1550,18 +1576,65 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
                 (WPARAM)SendMessage(list, WM_GETFONT, 0, 0), FALSE);
     kitty_theme_tooltip(st->tip, st->dlg && kitty_theme_window_dark(st->dlg));
 
-    /* The tip's TEXT goes where the cell's text is: the rectangle of the text
-     * is turned into the rectangle of the window around it. */
-    rc.left = ir.left + left + KT_HL_PAD;
-    rc.top = ir.top + 1;
-    rc.right = rc.left + sz.cx;
-    rc.bottom = rc.top + sz.cy;
-    MapWindowPoints(list, NULL, (LPPOINT)&rc, 2);
-    SendMessage(st->tip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
-    SendMessage(st->tip, TTM_TRACKPOSITION, 0, MAKELPARAM(rc.left, rc.top));
+    if (own) {
+        /* A row's own tip is a message about the row, not its text: below
+         * and to the right of the pointer, wrapped at the list's width, so
+         * the row stays in view and keeps its clicks. Laid over the row, as
+         * a cut cell's tip is, it took the right-click - the tip is a popup
+         * window, and its context menu went nowhere - and the row's menu
+         * (Show in Explorer, Rename...) was reachable by keyboard only. */
+        POINT cp;
+        if (!GetCursorPos(&cp)) {
+            cp.x = ir.left;
+            cp.y = ir.bottom;
+            ClientToScreen(list, &cp);
+        }
+        SendMessage(st->tip, TTM_TRACKPOSITION, 0,
+                    MAKELPARAM(cp.x + GetSystemMetrics(SM_CXCURSOR) / 2,
+                               cp.y + GetSystemMetrics(SM_CYCURSOR) * 2 / 3));
+    } else {
+        /* The tip's TEXT goes where the cell's text is: the rectangle of the
+         * text is turned into the rectangle of the window around it. */
+        rc.left = ir.left + left + KT_HL_PAD;
+        rc.top = ir.top + 1;
+        rc.right = rc.left + sz.cx;
+        rc.bottom = rc.top + sz.cy;
+        MapWindowPoints(list, NULL, (LPPOINT)&rc, 2);
+        SendMessage(st->tip, TTM_ADJUSTRECT, TRUE, (LPARAM)&rc);
+        SendMessage(st->tip, TTM_TRACKPOSITION, 0, MAKELPARAM(rc.left, rc.top));
+    }
     SendMessage(st->tip, TTM_TRACKACTIVATE, TRUE, (LPARAM)&ti);
     st->tip_shown = true;
     SetTimer(list, KT_HL_TIMER_ID, 100, NULL);
+}
+
+/* A row's own tip text broken into lines no wider than maxw pixels at the
+ * list's font, at the spaces. The tracked tip did not wrap at the width
+ * TTM_SETMAXTIPWIDTH gave it and stayed one line, wider than the list; with
+ * a width set it does honour '\n', so the breaks are put in here. snewn'd. */
+static char *kt_hl_wrap(HWND list, const char *text, int maxw)
+{
+    char *out = snewn(strlen(text) + 1, char);
+    HDC hdc = GetDC(list);
+    HFONT font = hdc ? (HFONT)SendMessage(list, WM_GETFONT, 0, 0) : NULL;
+    HGDIOBJ old = (hdc && font) ? SelectObject(hdc, font) : NULL;
+    size_t line = 0, i, lastsp = (size_t)-1;
+    strcpy(out, text);
+    for (i = 0; out[i]; i++) {
+        SIZE sz;
+        if (out[i] == '\n') { line = i + 1; lastsp = (size_t)-1; continue; }
+        if (out[i] == ' ') lastsp = i;
+        if (hdc && lastsp != (size_t)-1 && lastsp >= line &&
+            GetTextExtentPoint32(hdc, out + line, (int)(i - line + 1), &sz) &&
+            sz.cx > maxw) {
+            out[lastsp] = '\n';
+            line = lastsp + 1;
+            lastsp = (size_t)-1;
+        }
+    }
+    if (old) SelectObject(hdc, old);
+    if (hdc) ReleaseDC(list, hdc);
+    return out;
 }
 
 /* Is the cursor still over the cell the tip was shown for? */
