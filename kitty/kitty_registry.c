@@ -767,12 +767,36 @@ int KittyCliPrint( const char *text ) {
 	return 1 ;
 }
 
+/* A standard handle the caller redirected to a file or a pipe (a script
+ * capturing our output): the text written there, 1. 0 when there is none -
+ * a GUI program started normally has no standard handles at all. */
+static int cli_std_write( DWORD which, const char *text ) {
+	HANDLE h = GetStdHandle( which ) ;
+	DWORD type, written ;
+	if( h == NULL || h == INVALID_HANDLE_VALUE ) return 0 ;
+	type = GetFileType( h ) ;
+	if( type != FILE_TYPE_DISK && type != FILE_TYPE_PIPE ) return 0 ;
+	WriteFile( h, text, (DWORD)strlen( text ), &written, NULL ) ;
+	WriteFile( h, "\r\n", 2, &written, NULL ) ;
+	return 1 ;
+}
+static int reach_desktop_visible( void ) ;   /* below */
+
+/* The result of a command-line run. A script reads it, and its exit code
+ * carries the verdict, so a box nobody may click must never hold it up:
+ * redirected output first (stderr for a failure, stdout otherwise), then
+ * the console of the shell that started us, then a box - only where a
+ * desktop can be seen. A service or a task run whether the user is logged
+ * on or not gets the exit code alone. */
 void KittyCliReport( const char *title, const char *text, int warn ) {
 	if( g_report_gui ) {
 		MessageBoxA( NULL, text, title,
 			     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
 		return ;
 	}
+	if( cli_std_write( warn ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE, text ) ||
+	    cli_std_write( warn ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE, text ) )
+		return ;
 	HANDLE h ;
 	DWORD written ;
 	int attached = kitty_attach_parent_console() ? 1 : 0 ;
@@ -793,6 +817,7 @@ void KittyCliReport( const char *title, const char *text, int warn ) {
 		return ;
 	}
 	if( attached ) FreeConsole() ;
+	if( !reach_desktop_visible() ) return ;
 	MessageBoxA( NULL, text, title,
 		     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
 }
@@ -824,6 +849,14 @@ static int CliConfirm( const char *title, const char *text ) {
 			yes = ( answer[0] == 'y' || answer[0] == 'Y' ) ;
 		}
 		WriteFile( hout, "\r\n", 2, &written, NULL ) ;
+	} else if( !reach_desktop_visible() ||
+		   GetFileType( GetStdHandle( STD_ERROR_HANDLE ) ) == FILE_TYPE_DISK ||
+		   GetFileType( GetStdHandle( STD_ERROR_HANDLE ) ) == FILE_TYPE_PIPE ) {
+		/* nobody to ask, or a script that captured our output: the safe
+		 * answer, and how to give the other one */
+		char *msg = dupprintf( "%s\r\n%s", text, KT_REACH_GIVE_YES ) ;
+		cli_std_write( STD_ERROR_HANDLE, msg ) ;
+		sfree( msg ) ;
 	} else {
 		yes = ( MessageBoxA( NULL, text, title,
 				     MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 ) == IDYES ) ;

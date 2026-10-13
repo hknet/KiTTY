@@ -152,6 +152,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
     answer, the change is not made and the reason is given. `-yes` answers
     in advance. `-backupnow` reports a backup that was not written and exits
     with 1.
+  - `-exportall`, `-importdir`, `-backupnow`, `-portablecopy`, `-takefolder`,
+    `-sshhandler`, `-fileassoc` and `-mungestr` report their result where the caller can
+    read it: on redirected output (a failure on stderr), else at the prompt
+    they were typed at, else in a box when someone can see the desktop. A
+    scheduled run no longer hangs on a box nobody clicks. The exit code
+    carries the result.
   - A program that could not be started is reported: Duplicate Session,
     Open log file, Start in the session organiser, kageant's links and menu
     items. So is a URL that does not open.

@@ -492,7 +492,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 const char *in = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 char *b = snewn(4 * strlen(in) + 1, char);
                 mungestr(in, b);
-                MessageBox(NULL, b, "mungestr", MB_OK);
+                KittyCliReport("mungestr", b, 0);
                 SetTextToClipboard(b);
                 sfree(b);
                 cleanup_exit(0);
@@ -766,9 +766,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * switches this used to CREATE a master password for the user's own
          * store as a side effect. Say what to pass instead of doing that. */
         if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
-            MessageBoxA(NULL,
-                KT_CLI_EXPORT_NEEDS_PROTECTION,
-                KT_CAP_SESSION_EXPORT, MB_OK | MB_ICONWARNING);
+            KittyCliReport(KT_CAP_SESSION_EXPORT, KT_CLI_EXPORT_NEEDS_PROTECTION, 1);
             cleanup_exit(1);
         }
         if (kitty_cli_bundle_thispc) kitty_set_bundle_dpapi_only(1);
@@ -781,8 +779,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  (kitty_cli_bundle_thispc || wrapfailed)
                    ? KT_CLI_EXPORT_THISPC_NOTE
                    : "");
-        MessageBoxA(NULL, msg, KT_CAP_SESSION_EXPORT,
-                    MB_OK | ((fail || wrapfailed) ? MB_ICONWARNING : MB_ICONINFORMATION));
+        KittyCliReport(KT_CAP_SESSION_EXPORT, msg, (fail || wrapfailed));
         cleanup_exit(fail ? 1 : 0);
     }
     if (kitty_cli_importdir) {
@@ -792,9 +789,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * to the master-password prompt - which is interactive, and this path
          * exists for scripts. Refuse with the switch name instead. */
         if (kitty_bundle_needs_password(kitty_cli_importdir) && !kitty_cli_bundlepw) {
-            MessageBoxA(NULL,
-                KT_CLI_IMPORT_NEEDS_PASSWORD,
-                KT_CAP_SESSION_IMPORT, MB_OK | MB_ICONWARNING);
+            KittyCliReport(KT_CAP_SESSION_IMPORT, KT_CLI_IMPORT_NEEDS_PASSWORD, 1);
             cleanup_exit(1);
         }
         if (kitty_cli_bundlepw) {
@@ -807,8 +802,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         kitty_notify_launcher_sessions_changed();
         snprintf(msg, sizeof(msg), KT_CLI_IMPORT_DONE,
                  n, prox, fail, kitty_cli_importdir);
-        MessageBoxA(NULL, msg, KT_CAP_SESSION_IMPORT,
-                    MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        KittyCliReport(KT_CAP_SESSION_IMPORT, msg, fail);
         cleanup_exit(fail ? 1 : 0);
     }
     /* Whole-store moves between the registry and a folder (do-and-exit),
@@ -825,28 +819,25 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         if (!SaveRegistryKeyNow()) {
             snprintf(msg, sizeof(msg), KT_CLI_BACKUP_FAILED_FMT,
                      kitty_sav_save_reason());
-            MessageBoxA(NULL, msg, KT_CAP_BACKUP, MB_OK | MB_ICONERROR);
+            KittyCliReport(KT_CAP_BACKUP, msg, 1);
             cleanup_exit(1);
         }
         snprintf(msg, sizeof(msg), KT_CLI_BACKUP_DONE,
                  GetKittySavFile() ? GetKittySavFile() : KT_CLI_BACKUP_NO_TARGET);
-        MessageBoxA(NULL, msg, KT_CAP_BACKUP, MB_OK | MB_ICONINFORMATION);
+        KittyCliReport(KT_CAP_BACKUP, msg, 0);
         cleanup_exit(0);
     }
     if (kitty_cli_portablecopy) {
         struct ksm_result r;
         char msg[2048];
         if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
-            MessageBoxA(NULL,
-                KT_CLI_PORTABLECOPY_NEEDS_PROTECTION,
-                KT_CAP_PORTABLE_COPY, MB_OK | MB_ICONWARNING);
+            KittyCliReport(KT_CAP_PORTABLE_COPY, KT_CLI_PORTABLECOPY_NEEDS_PROTECTION, 1);
             cleanup_exit(1);
         }
         kitty_portable_copy_core(kitty_cli_portablecopy,
                                  kitty_cli_bundle_thispc ? NULL : kitty_cli_bundlepw,
                                  kitty_cli_bundle_thispc, &r, msg, sizeof(msg));
-        MessageBoxA(NULL, msg, KT_CAP_PORTABLE_COPY,
-                    MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        KittyCliReport(KT_CAP_PORTABLE_COPY, msg, r.fail);
         cleanup_exit(r.fail ? 1 : 0);
     }
     if (kitty_cli_takefolder) {
@@ -854,16 +845,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         char msg[2048];
         if (kitty_take_folder_needs_password(kitty_cli_takefolder) &&
             !kitty_cli_bundlepw) {
-            MessageBoxA(NULL,
-                KT_CLI_TAKEFOLDER_NEEDS_PASSWORD,
-                KT_CAP_TAKE_FOLDER, MB_OK | MB_ICONWARNING);
+            KittyCliReport(KT_CAP_TAKE_FOLDER, KT_CLI_TAKEFOLDER_NEEDS_PASSWORD, 1);
             cleanup_exit(1);
         }
         kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
                                &r, msg, sizeof(msg));
         kitty_notify_launcher_sessions_changed();
-        MessageBoxA(NULL, msg, KT_CAP_TAKE_FOLDER,
-                    MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+        KittyCliReport(KT_CAP_TAKE_FOLDER, msg, r.fail);
         cleanup_exit(r.fail ? 1 : 0);
     }
 #endif
