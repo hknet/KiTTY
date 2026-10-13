@@ -26,6 +26,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **kageant, kittygen and klink/kscp/ksftp no longer read
+  `%APPDATA%\PuTTY\putty.ini`**, which kitty.exe never read. They find
+  kitty.ini where kitty.exe does.
 - **Send File and Get File hand kscp/ksftp the session's password in memory**,
   not in a file: a block only that helper inherits, the password encrypted
   for your logon. Older helpers and stock pscp/psftp keep the private file.

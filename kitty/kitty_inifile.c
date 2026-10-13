@@ -6,14 +6,12 @@
  * Formerly kitty_inilight.c: no longer a "light" reader beside kitty.exe's,
  * but the one the other programs take their store from.
  *
- * Search order (the suite's canonical one, with one deliberate difference:
- * "running directory" means the EXE's directory, not the process cwd -
- * kageant is commonly autostarted with cwd=system32):
+ * Search order - kitty.exe's own (kitty_startup.c), the EXE's directory,
+ * never the process cwd (kageant is commonly autostarted with cwd=system32):
  *   1. %KITTY_INI_FILE%
  *   2. <exedir>\kitty.ini
  *   3. <exedir>\putty.ini
  *   4. %APPDATA%\KiTTY\kitty.ini
- *   5. %APPDATA%\PuTTY\putty.ini
  *
  * The resolved file is the authoritative settings store when its main
  * section says savemode=file or savemode=dir, or - with no savemode key at
@@ -88,13 +86,8 @@ static void inifile_resolve(void)
             inifile_state = 1;
             return;
         }
-        snprintf(cand, sizeof(cand), "%s\\PuTTY\\putty.ini", env);
-        if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            strcpy(inifile_path, cand);
-            strcpy(inifile_mainsection, "PuTTY");
-            inifile_state = 1;
-            return;
-        }
+        /* No %APPDATA%\PuTTY\putty.ini: kitty.exe never read one there, and
+         * a helper that did found a file its kitty.exe ignores. */
     }
 }
 
