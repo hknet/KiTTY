@@ -74,6 +74,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **The folder store's backup copies session files and folders named
+  outside the Windows code page** (a Cyrillic name on a Western system).
+  It failed on them, so a delete, move or overwrite of sessions asked
+  whether to go on without a backup, and an older backup left them out.
+  Deleting a backup folder that holds such names removes them too.
 - **The launcher no longer lists Default Settings, or shows `.ktx` on its
   entries, with `browsedirectory=yes` and a session file ending** in a
   portable store (hknet/KiTTY#53). It compared the file names with their

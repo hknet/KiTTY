@@ -262,25 +262,40 @@ int SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) 
 	return 1 ;
 	}
 
-static int portable_backup_copy_tree( const char *src, const char *dst ) {
-	char pattern[4096], s[4096], d[4096] ;
-	WIN32_FIND_DATAA fd ;
+/* a\b into out (n wide characters); 0 when it does not fit */
+static int pb_wjoin( wchar_t *out, size_t n, const wchar_t *a, const wchar_t *b ) {
+	size_t la = wcslen( a ), lb = wcslen( b ) ;
+	if( la + 1 + lb + 1 > n ) return 0 ;
+	wcscpy( out, a ) ;
+	out[la] = L'\\' ;
+	wcscpy( out + la + 1, b ) ;
+	return 1 ;
+}
+
+/* The copy works in wide characters: the ANSI functions hand back '?' for
+ * every character outside the code page, a name with '?' cannot be copied,
+ * and so one session named in Cyrillic failed the whole backup - and with it
+ * every delete, move and overwrite that waits for one. */
+static int portable_backup_copy_tree( const wchar_t *src, const wchar_t *dst ) {
+	wchar_t pattern[4096], s[4096], d[4096] ;
+	WIN32_FIND_DATAW fd ;
 	HANDLE h ;
-	DWORD attr = GetFileAttributesA( src ) ;
+	DWORD attr = GetFileAttributesW( src ) ;
 	if( attr == INVALID_FILE_ATTRIBUTES ) return 1 ;
-	if( !(attr & FILE_ATTRIBUTE_DIRECTORY) ) return CopyFileA( src, dst, FALSE ) ? 1 : 0 ;
-	CreateDirectoryA( dst, NULL ) ;
-	snprintf( pattern, sizeof(pattern), "%s\\*", src ) ;
-	h = FindFirstFileA( pattern, &fd ) ;
+	if( !(attr & FILE_ATTRIBUTE_DIRECTORY) ) return CopyFileW( src, dst, FALSE ) ? 1 : 0 ;
+	CreateDirectoryW( dst, NULL ) ;
+	if( !pb_wjoin( pattern, 4096, src, L"*" ) ) { SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
+	h = FindFirstFileW( pattern, &fd ) ;
 	if( h == INVALID_HANDLE_VALUE ) return 1 ;
 	do {
-		if( !strcmp(fd.cFileName,".") || !strcmp(fd.cFileName,"..") ) continue ;
-		snprintf( s, sizeof(s), "%s\\%s", src, fd.cFileName ) ;
-		snprintf( d, sizeof(d), "%s\\%s", dst, fd.cFileName ) ;
+		if( !wcscmp(fd.cFileName,L".") || !wcscmp(fd.cFileName,L"..") ) continue ;
+		if( !pb_wjoin( s, 4096, src, fd.cFileName ) || !pb_wjoin( d, 4096, dst, fd.cFileName ) ) {
+			FindClose(h) ; SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ;
+		}
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
 			if( !portable_backup_copy_tree( s, d ) ) { FindClose(h) ; return 0 ; }
-		} else if( !CopyFileA( s, d, FALSE ) ) { FindClose(h) ; return 0 ; }
-	} while( FindNextFileA( h, &fd ) ) ;
+		} else if( !CopyFileW( s, d, FALSE ) ) { FindClose(h) ; return 0 ; }
+	} while( FindNextFileW( h, &fd ) ) ;
 	FindClose( h ) ;
 	return 1 ;
 }
@@ -334,21 +349,21 @@ static void portable_backup_prune( const char *root, int keep ) {
  * backups); the programs; and the bulky by-products that are not configuration
  * - session logs, and any leftover .dmp diagnostic dumps from the removed
  * savedump feature, which are large and hold secrets. */
-static int portable_backup_skip( const WIN32_FIND_DATAA *fd ) {
-	static const char *skipdirs[] = { "Backups", NULL } ;
-	static const char *skipexts[] = { ".exe", ".dll", ".log", ".dmp", NULL } ;
-	const char *dot ;
+static int portable_backup_skip( const WIN32_FIND_DATAW *fd ) {
+	static const wchar_t *skipdirs[] = { L"Backups", NULL } ;
+	static const wchar_t *skipexts[] = { L".exe", L".dll", L".log", L".dmp", NULL } ;
+	const wchar_t *dot ;
 	int i ;
-	if( !strcmp(fd->cFileName,".") || !strcmp(fd->cFileName,"..") ) return 1 ;
+	if( !wcscmp(fd->cFileName,L".") || !wcscmp(fd->cFileName,L"..") ) return 1 ;
 	if( fd->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
 		for( i=0 ; skipdirs[i]!=NULL ; i++ )
-			if( !stricmp( fd->cFileName, skipdirs[i] ) ) return 1 ;
+			if( !_wcsicmp( fd->cFileName, skipdirs[i] ) ) return 1 ;
 		return 0 ;
 	}
-	dot = strrchr( fd->cFileName, '.' ) ;
+	dot = wcsrchr( fd->cFileName, L'.' ) ;
 	if( dot != NULL )
 		for( i=0 ; skipexts[i]!=NULL ; i++ )
-			if( !stricmp( dot, skipexts[i] ) ) return 1 ;
+			if( !_wcsicmp( dot, skipexts[i] ) ) return 1 ;
 	return 0 ;
 }
 
@@ -356,8 +371,9 @@ static int portable_backup_skip( const WIN32_FIND_DATAA *fd ) {
  * the CopyFile results were not looked at, so /savereg called a backup
  * "Saved" whenever the dated folder merely existed. */
 static int portable_backup_write_one( const char *dst ) {
-	char pattern[4096], s[4096], d[4096] ;
-	WIN32_FIND_DATAA fd ;
+	char d[4096] ;
+	wchar_t wroot[4096], wdst[4096], pattern[4096], s[4096], wd[4096] ;
+	WIN32_FIND_DATAW fd ;
 	HANDLE h ;
 	int ok = 1 ;
 	DWORD err = 0 ;
@@ -371,18 +387,22 @@ static int portable_backup_write_one( const char *dst ) {
 		if( !CopyFileA( KittyIniFile, d, FALSE ) ) { ok = 0 ; err = GetLastError() ; }
 	}
 	if( ConfigDirectory == NULL || strlen(ConfigDirectory) == 0 ) { if( !ok ) SetLastError( err ) ; return ok ; }
-	snprintf( pattern, sizeof(pattern), "%s\\*", ConfigDirectory ) ;
-	h = FindFirstFileA( pattern, &fd ) ;
+	if( !MultiByteToWideChar( CP_ACP, 0, ConfigDirectory, -1, wroot, 4096 ) ||
+	    !MultiByteToWideChar( CP_ACP, 0, dst, -1, wdst, 4096 ) ||
+	    !pb_wjoin( pattern, 4096, wroot, L"*" ) ) { SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
+	h = FindFirstFileW( pattern, &fd ) ;
 	if( h == INVALID_HANDLE_VALUE ) { if( !ok ) SetLastError( err ) ; return ok ; }
 	do {
 		if( portable_backup_skip( &fd ) ) continue ;
-		snprintf( s, sizeof(s), "%s\\%s", ConfigDirectory, fd.cFileName ) ;
-		snprintf( d, sizeof(d), "%s\\%s", dst, fd.cFileName ) ;
-		if( !( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? portable_backup_copy_tree( s, d )
-		                                                      : CopyFileA( s, d, FALSE ) ) && ok ) {
+		if( !pb_wjoin( s, 4096, wroot, fd.cFileName ) || !pb_wjoin( wd, 4096, wdst, fd.cFileName ) ) {
+			if( ok ) { ok = 0 ; err = ERROR_FILENAME_EXCED_RANGE ; }
+			continue ;
+		}
+		if( !( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? portable_backup_copy_tree( s, wd )
+		                                                      : CopyFileW( s, wd, FALSE ) ) && ok ) {
 			ok = 0 ; err = GetLastError() ;
 		}
-	} while( FindNextFileA( h, &fd ) ) ;
+	} while( FindNextFileW( h, &fd ) ) ;
 	FindClose( h ) ;
 	if( !ok ) SetLastError( err ? err : ERROR_WRITE_FAULT ) ;
 	return ok ;
