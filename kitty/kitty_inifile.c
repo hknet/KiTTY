@@ -274,12 +274,22 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
         GetPrivateProfileStringA(KI_SECTION_KITTY, KI_CONFIGDIR, "",
                                  v, sizeof(v), inifile_path);
         inifile_rtrim(v, " \n\r\t\\");
+        if (v[0] && v[0] != '\\' && v[0] != '/' && v[1] != ':') {
+            snprintf(x, sizeof(x), "%s\\%s", exedir, v);   /* below the exe's folder */
+            snprintf(v, sizeof(v), "%s", x);
+        }
+        /* A configdir that is not there counts as not set, as in kitty.exe
+         * once its question is answered (kitty_params.c): the sessions
+         * beside the exe, not a folder of nothing. */
+        if (v[0]) {
+            DWORD a = GetFileAttributesA(v);
+            if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_DIRECTORY))
+                v[0] = '\0';
+        }
         if (!v[0])
             snprintf(path, sizeof(path), "%s\\Sessions", exedir);
-        else if (v[0] == '\\' || v[1] == ':')
-            snprintf(path, sizeof(path), "%s\\Sessions", v);
         else
-            snprintf(path, sizeof(path), "%s\\%s\\Sessions", exedir, v);
+            snprintf(path, sizeof(path), "%s\\Sessions", v);
     }
     if ((int)strlen(path) >= dirlen)
         return 0;

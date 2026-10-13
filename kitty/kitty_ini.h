@@ -221,7 +221,9 @@ char default_init_file_content[] =
 \n\
 ; configdir: where the settings directories live - Sessions, SshHostKeys and\n\
 ;    the rest. Portable mode uses it; by default it is the directory kitty.exe\n\
-;    sits in.\n\
+;    sits in. A relative path is below that directory. A directory that is\n\
+;    not there is asked about at start; going on uses the default, and\n\
+;    kageant and the console tools then use the default too.\n\
 ;    It does NOT move kitty.ini. This file has to be found before anything in\n\
 ;    it can be read, so KiTTY is already holding it by the time it learns where\n\
 ;    configdir points - kitty.ini stays where it was.\n\

@@ -74,6 +74,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **A relative `configdir` is taken below the exe's folder**, as kageant and
+  the console tools take it. kitty.exe tested it against the working
+  directory, so a shortcut with another "Start in" found another folder. A
+  `configdir` that is not there now sends kageant and the console tools to
+  the default folder, as kitty.exe does once its question is answered.
 - **The folder store's backup copies session files and folders named
   outside the Windows code page** (a Cyrillic name on a Western system).
   It failed on them, so a delete, move or overwrite of sessions asked

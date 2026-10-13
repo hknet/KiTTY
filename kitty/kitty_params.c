@@ -764,6 +764,15 @@ void LoadParameters( void ) {
 	}
 	if( ReadParameterN( INIT_SECTION, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) {
 		if( strlen( buffer ) > 0 ) {
+			/* A relative configdir is below the exe's folder, as sessions= is
+			 * and as kageant and the console tools take it (kitty_inifile.c).
+			 * It was tested against the working directory, so a shortcut with
+			 * another "Start in" found another folder, or none. */
+			if( buffer[0] != '\\' && buffer[0] != '/' && buffer[1] != ':' ) {
+				char rel[4096] ;
+				snprintf( rel, sizeof(rel), "%s", buffer ) ;
+				snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, rel ) ;
+			}
 			if( existdirectory(buffer) ) { SetConfigDirectory( buffer ) ; }
 			else {
 				/*

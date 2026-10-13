@@ -218,7 +218,9 @@
 
 ; configdir: where the settings directories live - Sessions, SshHostKeys and
 ;    the rest. Portable mode uses it; by default it is the directory kitty.exe
-;    sits in.
+;    sits in. A relative path is below that directory. A directory that is
+;    not there is asked about at start; going on uses the default, and
+;    kageant and the console tools then use the default too.
 ;    It does NOT move kitty.ini. This file has to be found before anything in
 ;    it can be read, so KiTTY is already holding it by the time it learns where
 ;    configdir points - kitty.ini stays where it was.
