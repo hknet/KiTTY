@@ -244,7 +244,7 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size)
 }
 /* The console tools' way to the ONE ini key this file needs: the strong
  * definition lives in kitty_showforeign_ini.c, linked into klink, kscp and
- * ksftp only, and answers through the light kitty.ini resolver. Everywhere
+ * ksftp only, and answers through the kitty.ini resolver. Everywhere
  * else this stub says "not set" and ReadParameterN above has already
  * answered - the GUI's reading does not change. */
 __attribute__((weak))
@@ -289,7 +289,7 @@ int kitty_get_show_foreign_sessions(void)
             char ini[32];
             ini[0] = '\0';
             /* The GUI reads it through kitty.c; a console tool through the
-             * light resolver (the second call, a stub everywhere else). */
+             * kitty.ini resolver (the second call, a stub everywhere else). */
             /* The [KiTTY] section by NAME. This file is compiled into the
              * settings library, without the fork's define, and kitty.h then
              * spells INIT_SECTION "PuTTY": a read through that macro looked

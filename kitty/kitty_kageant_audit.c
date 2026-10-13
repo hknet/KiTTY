@@ -18,7 +18,7 @@
 #include "kitty_pageant_int.h"      /* what kitty_pageant.c and its split-off files share */
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -119,8 +119,8 @@ int kageant_audit_default_path(char *buf, size_t len, int create)
 
     /* A portable install logs beside its kitty.ini, so the whole install
      * stays on the stick. */
-    if (!kitty_inilight_registry_authoritative() &&
-        (ini = kitty_inilight_file()) != NULL) {
+    if (!kitty_inifile_registry_authoritative() &&
+        (ini = kitty_inifile_file()) != NULL) {
         const char *sl = strrchr(ini, '\\');
         if (sl)
             snprintf(buf, len, "%.*s\\kageant.log", (int)(sl - ini), ini);

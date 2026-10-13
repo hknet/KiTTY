@@ -267,7 +267,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_update_state.c  # KiTTY: the STORED update answer - kageant asks no network (no wininet here, on purpose)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c  # KiTTY: light kitty.ini resolver for satellite binaries
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c  # KiTTY: session paths + the folder-store walk (no settings library needed)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessmenu.c     # KiTTY: the Saved Sessions menu as the folder tree
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
@@ -304,7 +304,7 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
-  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
@@ -317,7 +317,7 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
-  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
@@ -330,7 +330,7 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
-  ../kitty/kitty_inilight.c        # KiTTY: light kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
@@ -404,7 +404,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: shared CryptProtectMemory key holder (#4)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inilight.c # KiTTY: light kitty.ini resolver (kitty_theme_pref.c reads it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c # KiTTY: kitty.ini resolver (kitty_theme_pref.c reads it)
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   no-jump-list.c
@@ -778,7 +778,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
   ${KITTY_DIR}/kitty_theme_pref.c   # KiTTY: the theme preference read straight from the stores - the dialog hook goes in BEFORE InitWinMain, when ReadParameter has nothing loaded yet
-  ${KITTY_DIR}/kitty_inilight.c   # KiTTY: the light kitty.ini resolver kitty_theme_pref.c reads through
+  ${KITTY_DIR}/kitty_inifile.c   # KiTTY: the kitty.ini resolver kitty_theme_pref.c reads through
   ${KITTY_DIR}/kitty_userpath.c
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c

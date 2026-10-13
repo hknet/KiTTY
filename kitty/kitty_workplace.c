@@ -23,10 +23,10 @@
  * The section name is keyed to the INSTALL - the hash of the directory the
  * running EXE sits in - so a portable KiTTY on a stick and an installed one
  * cannot arm each other. That is the identify-by-target-path rule
- * kitty_inilight.c already follows; do not add a second scheme.
+ * kitty_inifile.c already follows; do not add a second scheme.
  *
  * Deliberately dependency-free (windows.h and the CRT only), like
- * kitty_inilight.c: it is called from the launcher, from the connection path
+ * kitty_inifile.c: it is called from the launcher, from the connection path
  * and from the config box, none of which should have to agree on headers.
  */
 

@@ -2287,7 +2287,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * read-only medium the store setup says it cannot create kitty.ini or the
      * sessions directory - and a dialog created before the theming hook is
      * in place stays light. Hook them too, with the preference read straight
-     * from kitty.ini, the registry or the system by the light resolver, which
+     * from kitty.ini, the registry or the system by the kitty.ini resolver, which
      * needs nothing loaded (kageant and kittygen start this way). Re-pointed
      * to the application's own reading right after InitWinMain, below. */
     kitty_theme_hook_dialogs(kitty_theme_pref_dark);

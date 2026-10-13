@@ -14,7 +14,7 @@
 
 #include "kitty_theme.h"
 #include "kitty_theme_pref.h"
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
@@ -59,7 +59,7 @@ static int theme_reg_write(int pref)
 
 /*
  * Which store wins is the rule every other satellite setting follows: when the
- * ini kitty_inilight resolved is authoritative (a portable install), it decides
+ * ini kitty_inifile resolved is authoritative (a portable install), it decides
  * and the registry is only a fallback; otherwise the registry decides and the
  * ini acts as a first-run default.
  */
@@ -68,11 +68,11 @@ int kitty_theme_pref_get(void)
     char buf[32];
     int ini_v = -1, reg_v;
 
-    if (kitty_inilight_read(KI_SECTION_KITTY, KI_THEME,
+    if (kitty_inifile_read(KI_SECTION_KITTY, KI_THEME,
                             buf, sizeof(buf)))
         ini_v = kitty_theme_pref_from_string(buf);
 
-    if (kitty_inilight_registry_authoritative()) {
+    if (kitty_inifile_registry_authoritative()) {
         if (theme_reg_read(&reg_v))
             return reg_v;
         return ini_v >= 0 ? ini_v : KITTY_THEME_SYSTEM;
@@ -91,8 +91,8 @@ int kitty_theme_pref_set(int pref)
 {
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
         pref = KITTY_THEME_SYSTEM;
-    if (!kitty_inilight_registry_authoritative())
-        return kitty_inilight_write(KI_SECTION_KITTY, KI_THEME,
+    if (!kitty_inifile_registry_authoritative())
+        return kitty_inifile_write(KI_SECTION_KITTY, KI_THEME,
                                     kitty_theme_pref_to_string(pref));
     return theme_reg_write(pref);
 }

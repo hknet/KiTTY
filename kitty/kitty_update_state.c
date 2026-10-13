@@ -5,7 +5,7 @@
  * Where kitty_updater.c stores it: the portable state file KiTTYState beside
  * kitty.ini when the settings live in files, else the values UpdateLatest
  * (REG_SZ) and UpdateLatestBeta (REG_DWORD) in the KiTTY hive. The same rule
- * decides here which one to read: kitty_inilight_registry_authoritative().
+ * decides here which one to read: kitty_inifile_registry_authoritative().
  */
 #include <windows.h>
 #include <stdio.h>
@@ -13,7 +13,7 @@
 #include <string.h>
 
 #include "kitty_update_state.h"
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 #include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegGetValue via oldwin */
 
@@ -25,7 +25,7 @@ int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls); 
  * %XX-escaped - a version number and a 0/1 flag contain nothing to escape. */
 static int kus_state_file_value(const char *key, char *out, int n)
 {
-    const char *ini = kitty_inilight_file();
+    const char *ini = kitty_inifile_file();
     char path[MAX_PATH + 32], line[512], *slash;
     size_t klen = strlen(key);
     FILE *fp;
@@ -58,7 +58,7 @@ static int kus_state_file_value(const char *key, char *out, int n)
 static int kus_stored(char *latest, int n, int *beta)
 {
     *beta = 0;
-    if (!kitty_inilight_registry_authoritative()) {
+    if (!kitty_inifile_registry_authoritative()) {
         char b[16];
         if (!kus_state_file_value("UpdateLatest", latest, n))
             return 0;
@@ -92,10 +92,10 @@ int kitty_update_state_enabled(void)
 {
     char buf[32];
     DWORD sz = sizeof(buf);
-    int have = kitty_inilight_read("KiTTY", KI_CHECKUPDATE, buf, sizeof(buf));
+    int have = kitty_inifile_read("KiTTY", KI_CHECKUPDATE, buf, sizeof(buf));
 
     /* the store that is authoritative decides; the other is a fallback */
-    if (kitty_inilight_registry_authoritative()) {
+    if (kitty_inifile_registry_authoritative()) {
         char rb[32];
         if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, KI_CHECKUPDATE,
                          RRF_RT_REG_SZ, NULL, rb, &sz) == ERROR_SUCCESS) {

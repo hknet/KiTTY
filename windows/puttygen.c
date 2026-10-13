@@ -526,7 +526,7 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 /* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
 #include "../kitty/kitty_auxpos.h"
 #include "../kitty/kitty_inikeys.h"   /* KR_DLGPOS_*: the remembered windows' names */
-int kitty_inilight_registry_authoritative(void);   /* kitty_inilight.c */
+int kitty_inifile_registry_authoritative(void);   /* kitty_inifile.c */
 
 /* KiTTY: the About box is now a single NON-modal (modeless) window. */
 static HWND kitty_about_dlg = NULL;
@@ -3348,7 +3348,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* KiTTY: a portable copy remembers its windows in kitty_windowpos.ini
      * beside the exe, never in the registry. */
-    if (!kitty_inilight_registry_authoritative())
+    if (!kitty_inifile_registry_authoritative())
         kitty_auxpos_set_file_beside_exe();
 
     init_common_controls();

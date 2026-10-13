@@ -4,7 +4,7 @@
  * and store what they learn (kitty_updater.c); kageant, which holds the private
  * keys, only reads that and compares it with its own version.
  *
- * No network code, no PuTTY dependencies: the registry, the light kitty.ini
+ * No network code, no PuTTY dependencies: the registry, the kitty.ini
  * resolver and the version resource of the running program.
  */
 #ifndef KITTY_UPDATE_STATE_H

@@ -29,7 +29,7 @@
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
 #include "../kitty/kitty_foreground.h"  /* KiTTY: one place for the foreground dance */
 #include "../kitty/kitty_title.h"     /* KiTTY: shared title-suffix composer */
-#include "../kitty/kitty_inilight.h"  /* KiTTY: portable-layout probe */
+#include "../kitty/kitty_inifile.h"  /* KiTTY: portable-layout probe */
 #include "../kitty/kitty_sessmenu.h"  /* KiTTY: Saved Sessions as the folder tree */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
@@ -191,7 +191,7 @@ static filereq_saved_dir *keypath = NULL;
  *
  * kageant cannot call kitty_registry_base(): that lives in kitty_storage.c,
  * part of the `settings` library the terminal links and this binary does not.
- * It can read kitty.ini though - kitty_inilight is exactly the resolver the
+ * It can read kitty.ini though - kitty_inifile is exactly the resolver the
  * satellite binaries use - so the same answer is worked out here, once. */
 static const char *kageant_sessions_key(void)
 {
@@ -200,7 +200,7 @@ static const char *kageant_sessions_key(void)
     if (key[0])
         return key;                     /* settled on the first call */
     cls[0] = '\0';
-    if (kitty_inilight_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls, sizeof(cls)) &&
+    if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls, sizeof(cls)) &&
         !stricmp(cls, "PuTTY"))
         strcpy(key, "Software\\SimonTatham\\PuTTY\\Sessions");
     else
@@ -271,7 +271,7 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 
 /* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
 #include "../kitty/kitty_auxpos.h"
-int kitty_inilight_registry_authoritative(void);   /* kitty_inilight.c */
+int kitty_inifile_registry_authoritative(void);   /* kitty_inifile.c */
 
 /* KiTTY: the KiTTY key generator, sitting next to us - kittygen.exe in a
  * release, puttygen.exe in a dev build. Returns a malloc'd path if present,
@@ -2310,7 +2310,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         kageant_set_window_icon(hwnd);
         {
             char *t = kitty_title_compose(KT_CAP_KA_KEY_DETAILS,
-                                          kitty_inilight_portable(),
+                                          kitty_inifile_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
             sfree(t);
@@ -3382,7 +3382,7 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
         kageant_set_window_icon(hwnd);
         {
             char *t = kitty_title_compose(KT_CAP_KA_AGENT_LOG,
-                                          kitty_inilight_portable(),
+                                          kitty_inifile_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
             sfree(t);
@@ -3799,7 +3799,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         kageant_set_window_icon(hwnd);
         {
             char *t = kitty_title_compose(KT_CAP_KA_SETTINGS,
-                                          kitty_inilight_portable(),
+                                          kitty_inifile_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
             sfree(t);
@@ -4200,7 +4200,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * here. Suffixes composed in kitty/kitty_title.c - one place. */
         {
             char *t = kitty_title_compose(KT_CAP_KA_KEY_LIST,
-                                          kitty_inilight_portable(),
+                                          kitty_inifile_portable(),
                                           restricted_acl(), false);
             SetWindowText(hwnd, t);
             sfree(t);
@@ -5067,7 +5067,7 @@ static BOOL AddTrayIcon(HWND hwnd)
             kageant_ini_status()
                 ? KT_KA_TIP_INI
                 : KT_KA_TIP,
-            "\r\n", kitty_inilight_portable(), restricted_acl(), false);
+            "\r\n", kitty_inifile_portable(), restricted_acl(), false);
         strncpy(tnid.szTip, tip, sizeof(tnid.szTip) - 1);
         tnid.szTip[sizeof(tnid.szTip) - 1] = '\0';
         sfree(tip);
@@ -5180,7 +5180,7 @@ static void update_sessions(void)
     kageant_sess_ids = NULL;
     kageant_sess_nids = 0;
 
-    if (kitty_inilight_folder_store(sdir, sizeof(sdir), suffix, sizeof(suffix)))
+    if (kitty_inifile_folder_store(sdir, sizeof(sdir), suffix, sizeof(suffix)))
         n = ksm_folder_store_rows(sdir, suffix, &ids, &folders);
     else
         n = kageant_registry_rows(&ids, &folders);
@@ -5737,7 +5737,7 @@ void kageant_refresh_tray_tip(void)
         kageant_ini_status()
             ? KT_KA_TIP_INI
             : KT_KA_TIP,
-        "\r\n", kitty_inilight_portable(), restricted_acl(), false);
+        "\r\n", kitty_inifile_portable(), restricted_acl(), false);
 
     /*
      * The existing lines - kitty.ini mode, portable, restricted ACL - all stay:
@@ -6304,7 +6304,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             /* Base the toggle on the real autostart artifact, not just the
              * saved flag, so a hand-deleted shortcut re-syncs correctly. */
             int on = !kageant_autostart_active();
-            int portable = !kitty_inilight_registry_authoritative();
+            int portable = !kitty_inifile_registry_authoritative();
 
             /* Pre-flight: when enabling, if another agent is already set to
              * start at login, ASK before adding ours - do not silently create
@@ -6649,7 +6649,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY: a portable copy (its kitty.ini has savemode=file/dir, or a
      * portable layout) remembers its windows in kitty_windowpos.ini beside
      * the exe, never in the registry. */
-    if (!kitty_inilight_registry_authoritative())
+    if (!kitty_inifile_registry_authoritative())
         kitty_auxpos_set_file_beside_exe();
 
     hinst = inst;
@@ -6684,9 +6684,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * terminal windows. Done here, at the top of WinMain, so the ACL is in
      * place before any key is loaded.
      *
-     * Read through kitty_inilight (the satellite-binary resolver, keyed off
+     * Read through kitty_inifile (the satellite-binary resolver, keyed off
      * OUR exe's folder) and deliberately WITHOUT consulting
-     * kitty_inilight_registry_authoritative(): that rule decides whether the
+     * kitty_inifile_registry_authoritative(): that rule decides whether the
      * ini or the registry owns a *setting*, and for this one the ini is the
      * only place it is ever honoured - in kitty.exe too, where the key is
      * read with readINI rather than the registry-first ReadParameterN. See
@@ -6698,7 +6698,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     {
         char b[16];
-        if (kitty_inilight_read(KI_SECTION_KITTY, KI_RESTRICTACL, b, sizeof(b)) &&
+        if (kitty_inifile_read(KI_SECTION_KITTY, KI_RESTRICTACL, b, sizeof(b)) &&
             !stricmp(b, "yes"))
             restrict_process_acl();
     }

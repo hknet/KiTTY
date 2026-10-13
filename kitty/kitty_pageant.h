@@ -50,9 +50,9 @@ int kageant_setting_str_set(const char *inikey, const char *regname,
 void kageant_setting_failure_box(HWND parent);
 /* record a failed write of `key` (the first one wins) for that box; passes ok on */
 int kageant_set_note(int ok, const char *key);
-int kitty_inilight_registry_authoritative(void);  /* kitty_inilight.c */
-int kitty_inilight_read(const char *section, const char *key,
-                        char *value, int len);        /* kitty_inilight.c */
+int kitty_inifile_registry_authoritative(void);  /* kitty_inifile.c */
+int kitty_inifile_read(const char *section, const char *key,
+                        char *value, int len);        /* kitty_inifile.c */
 
 /* ---- Windows OpenSSH client integration ---- */
 

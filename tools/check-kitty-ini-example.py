@@ -202,8 +202,8 @@ def source_options() -> set[tuple[str, str]]:
         #   SC_ACT( field, "key", default, name ),
         for m in re.finditer(r'SC_ACT\s*\(\s*\w+\s*,\s*"([^"]+)"', text):
             opts.add(("Shortcuts", m.group(1)))
-        # satellite binaries read the ini through kitty_inilight.
-        for m in re.finditer(r'kitty_inilight_(?:read|write)\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
+        # satellite binaries read the ini through kitty_inifile.
+        for m in re.finditer(r'kitty_inifile_(?:read|write)\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
             section, key = m.groups()
             if section in SECTIONS:
                 opts.add((section, key))

@@ -17,7 +17,7 @@
 
 #include "kitty_pageant.h"
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,

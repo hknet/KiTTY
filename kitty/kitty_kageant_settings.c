@@ -18,7 +18,7 @@
 #include "kitty_pageant_int.h"      /* what kitty_pageant.c and its split-off files share */
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -43,7 +43,7 @@
 /*
  * KiTTY: the notify/confirm settings live in the registry by default, but
  * honour the classic kitty.ini [Agent] keys (hknet/KiTTY#14). When the ini
- * resolved by kitty_inilight is authoritative (found, with an explicit
+ * resolved by kitty_inifile is authoritative (found, with an explicit
  * savemode=file/dir), a present [Agent] key wins and the tray toggles write
  * back to the ini, so a portable install never touches the registry. When
  * the registry is authoritative, ini keys act as first-run defaults only.
@@ -134,9 +134,9 @@ void kageant_setting_failure_box(HWND parent)
 int kageant_setting_write(const char *inikey, const char *ini_text,
                           const char *regname, int regval)
 {
-    if (!kitty_inilight_registry_authoritative())
+    if (!kitty_inifile_registry_authoritative())
         return kageant_set_note(
-            kitty_inilight_write(KI_SECTION_AGENT, inikey, ini_text), inikey);
+            kitty_inifile_write(KI_SECTION_AGENT, inikey, ini_text), inikey);
     return kageant_set_note(kageant_reg_write_dword(regname, regval), inikey);
 }
 
@@ -183,9 +183,9 @@ int kageant_setting_str_get(const char *inikey, const char *regname,
                             char *buf, size_t len)
 {
     char ini[256];
-    int have_ini = kitty_inilight_read(KI_SECTION_AGENT, inikey, ini, sizeof(ini)) &&
+    int have_ini = kitty_inifile_read(KI_SECTION_AGENT, inikey, ini, sizeof(ini)) &&
         ini[0];
-    if (kitty_inilight_registry_authoritative()) {
+    if (kitty_inifile_registry_authoritative()) {
         if (kageant_reg_read_str(regname, buf, len))
             return 1;
     } else if (have_ini) {
@@ -206,9 +206,9 @@ int kageant_setting_str_get(const char *inikey, const char *regname,
 int kageant_setting_str_set(const char *inikey, const char *regname,
                             const char *value)
 {
-    if (!kitty_inilight_registry_authoritative())
+    if (!kitty_inifile_registry_authoritative())
         return kageant_set_note(
-            kitty_inilight_write(KI_SECTION_AGENT, inikey, value), inikey);
+            kitty_inifile_write(KI_SECTION_AGENT, inikey, value), inikey);
     return kageant_set_note(
         kageant_reg_set(regname, REG_SZ, value, (DWORD)(strlen(value) + 1)),
         inikey);
@@ -220,11 +220,11 @@ int kageant_notify_get(void)
 {
     char buf[32];
     int ini_val = -1, reg_val;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_MESSAGEONKEYUSAGE, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_MESSAGEONKEYUSAGE, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read(KAGEANT_REG_NOTIFY, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 1);
     if (ini_val >= 0)
@@ -245,9 +245,9 @@ int kageant_notice_seconds(int fallback)
 {
     char buf[16];
     int ini_v = -1, reg_v, v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         v = kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
             (ini_v > 0 ? ini_v : 0);
     else
@@ -294,14 +294,14 @@ static int kageant_confirm_mode_read(void)
 {
     char buf[32];
     int ini_mode = -1, reg_val;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_ASKCONFIRMATION, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_ASKCONFIRMATION, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_mode = KAGEANT_CONFIRM_YES;
         else if (!stricmp(buf, "no")) ini_mode = KAGEANT_CONFIRM_NO;
         else if (!stricmp(buf, "auto")) ini_mode = KAGEANT_CONFIRM_AUTO;
     }
     /* _dword, not the boolean reader: this setting has three states and the
      * boolean one would fold "no" (2) into "yes" (1). */
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword(KAGEANT_REG_CONFIRM, &reg_val) ?
                kageant_reg_to_mode(reg_val) :
                (ini_mode >= 0 ? ini_mode : KAGEANT_CONFIRM_AUTO);
@@ -353,15 +353,15 @@ int kageant_confirm_set_mode(int mode)
  * store, NULL when the registry is. */
 const char *kageant_ini_status(void)
 {
-    return kitty_inilight_registry_authoritative() ? NULL
-                                                   : kitty_inilight_file();
+    return kitty_inifile_registry_authoritative() ? NULL
+                                                   : kitty_inifile_file();
 }
 
 /* Directory holding the resolved authoritative ini (no trailing separator);
  * 0 when there is none. */
 int kageant_inidir(char *out, size_t outlen)
 {
-    const char *f = kitty_inilight_file();
+    const char *f = kitty_inifile_file();
     char *slash, *s2;
     if (!f || strlen(f) >= outlen)
         return 0;
@@ -451,11 +451,11 @@ int kageant_bool_get(const char *inikey, const char *regname, int def)
 {
     char buf[8];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_v = 1;
         else if (!stricmp(buf, "no")) ini_v = 0;
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read(regname, &reg_v) ? reg_v :
                (ini_v >= 0 ? ini_v : def);
     if (ini_v >= 0)
@@ -485,12 +485,12 @@ int kageant_int_setting(const char *inikey, const char *regname,
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= lo && v <= hi)
             ini_v = v;
     }
-    if (kitty_inilight_registry_authoritative()) {
+    if (kitty_inifile_registry_authoritative()) {
         if (kageant_reg_read_dword(regname, &reg_v) &&
             reg_v >= lo && reg_v <= hi)
             return reg_v;
@@ -530,12 +530,12 @@ int kageant_retry_keys(void)
 {
     char buf[24];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_RETRYKEYS, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_RETRYKEYS, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_v = 1;
         else if (!stricmp(buf, "no")) ini_v = 0;
         else if (!stricmp(buf, "ignoredriveletter")) ini_v = KAGEANT_RETRY_ANYDRIVE;
     }
-    if (kitty_inilight_registry_authoritative()) {
+    if (kitty_inifile_registry_authoritative()) {
         if (kageant_reg_read_dword("RetryKeys", &reg_v))
             return (reg_v >= 0 && reg_v <= KAGEANT_RETRY_ANYDRIVE) ? reg_v : 1;
         return ini_v >= 0 ? ini_v : 1;
@@ -565,13 +565,13 @@ int kageant_passphrase_ttl(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_PASSPHRASECACHESECONDS,
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_PASSPHRASECACHESECONDS,
                             buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
             ini_v = kageant_clamp_ttl(v);
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword("PassphraseCacheSeconds", &reg_v) ?
                kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
@@ -588,13 +588,13 @@ int kageant_hello_ttl(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_HELLOCACHESECONDS,
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_HELLOCACHESECONDS,
                             buf, sizeof(buf))) {
         int v = atoi(buf);
         if (v >= 0)
             ini_v = kageant_clamp_ttl(v);
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword("HelloCacheSeconds", &reg_v) ?
                kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
@@ -741,9 +741,9 @@ int kageant_autoenc_mode_read(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, buf, sizeof(buf)))
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, buf, sizeof(buf)))
         ini_v = kageant_autoenc_mode_parse(buf);
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword("AutoEncryptMode", &reg_v) ?
                (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
     if (ini_v >= 0) return ini_v;
@@ -766,9 +766,9 @@ int kageant_autoenc_seconds(void)
 {
     char buf[32];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf, sizeof(buf)))
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf, sizeof(buf)))
         ini_v = kageant_autoenc_parse(buf);
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword("AutoEncryptSeconds", &reg_v) ?
                kageant_autoenc_clamp(reg_v) : (ini_v >= 0 ? ini_v : 600);
     if (ini_v >= 0) return ini_v;
@@ -798,11 +798,11 @@ static int kageant_policy_read(const char *inikey, const char *regname)
 {
     char buf[32];
     int ini_val = -1, reg_val;
-    if (kitty_inilight_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, inikey, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read(regname, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 0);
     if (ini_val >= 0)
@@ -895,12 +895,12 @@ int kageant_winlock_mode(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOCKWITHWINDOWS, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_LOCKWITHWINDOWS, buf, sizeof(buf))) {
         if (!stricmp(buf, "keep")) ini_v = 0;
         else if (!stricmp(buf, "lock")) ini_v = 1;
         else if (!stricmp(buf, "reencrypt")) ini_v = 2;
     }
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword("LockWithWindows", &reg_v) ?
                (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
     if (ini_v >= 0) return ini_v;
@@ -920,9 +920,9 @@ int kageant_notice_timeout_get(void)
 {
     char buf[16];
     int ini_v = -1, reg_v;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
                (ini_v > 0 ? ini_v : 0);
     if (ini_v >= 0)

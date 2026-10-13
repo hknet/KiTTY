@@ -19,7 +19,7 @@
 #include "kitty_pageant_int.h"      /* what kitty_pageant.c and its split-off files share */
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
-#include "kitty_inilight.h"
+#include "kitty_inifile.h"
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -155,26 +155,26 @@ int kageant_startup_active(void)
  * as "start the agent" - the thing the tray item next to it actually does -
  * while this one only decides whether the REMEMBERED KEYS are re-added. The
  * old name is still read once and rewritten under the new one; there is no
- * delete in the inilight API, so the old key is blanked rather than removed,
+ * delete in the inifile API, so the old key is blanked rather than removed,
  * which is enough to stop it being authoritative. */
 static int kageant_startup_read_ini(void)
 {
     char buf[8];
     int val = -1;
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) val = 1;
         else if (!stricmp(buf, "no")) val = 0;
         if (val >= 0)
             return val;
     }
-    if (kitty_inilight_read(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, buf, sizeof(buf))) {
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, buf, sizeof(buf))) {
         if (!stricmp(buf, "yes")) val = 1;
         else if (!stricmp(buf, "no")) val = 0;
         if (val >= 0) {
             /* migrate: write the new name, retire the old one */
-            if (kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP,
+            if (kitty_inifile_write(KI_SECTION_AGENT, KI_AGENT_LOADKEYSONSTARTUP,
                                      val ? "yes" : "no"))
-                kitty_inilight_write(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, "");
+                kitty_inifile_write(KI_SECTION_AGENT, KI_AGENT_LOADONSTARTUP, "");
         }
     }
     return val;
@@ -191,7 +191,7 @@ static int kageant_startup_read_ini(void)
 int kageant_startup_get(void)
 {
     int ini_val = kageant_startup_read_ini(), reg_val;
-    if (kitty_inilight_registry_authoritative())
+    if (kitty_inifile_registry_authoritative())
         return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 0);
     if (ini_val >= 0)
@@ -267,16 +267,16 @@ static int kageant_ini_numbered_write(const char *prefix,
     DWORD err = 0;
     for (i = 0; i < n; i++) {
         snprintf(key, sizeof(key), "%s%d", prefix, i + 1);
-        if (!kitty_inilight_write(KI_SECTION_AGENT, key, items[i]) && ok) {
+        if (!kitty_inifile_write(KI_SECTION_AGENT, key, items[i]) && ok) {
             ok = 0; err = GetLastError();
         }
     }
     for (i = n + 1, gap = 0; gap < 8; i++) {
         snprintf(key, sizeof(key), "%s%d", prefix, i);
-        kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+        kitty_inifile_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
         if (!probe[0]) { gap++; continue; }
         gap = 0;
-        if (!kitty_inilight_write(KI_SECTION_AGENT, key, NULL) && ok) {
+        if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
             ok = 0; err = GetLastError();
         }
     }
@@ -293,8 +293,8 @@ int kageant_save_startup_keys(void)
     if (g_noload)   /* clean-slate run: never touch the stored list */
         return 1;
 
-    if (!kitty_inilight_registry_authoritative() &&
-        (f = kitty_inilight_file()) != NULL) {
+    if (!kitty_inifile_registry_authoritative() &&
+        (f = kitty_inifile_file()) != NULL) {
         char key[32], val[MAX_PATH + 32], store[MAX_PATH + 1], probe[MAX_PATH + 32];
         int gap, written = 0;
         /*
@@ -357,7 +357,7 @@ int kageant_save_startup_keys(void)
                          kageant_confirm_token(conf),
                          kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                          fp ? "," : "", fp ? fp : "");
-                if (!kitty_inilight_write(KI_SECTION_AGENT, key, val) && ok) {
+                if (!kitty_inifile_write(KI_SECTION_AGENT, key, val) && ok) {
                     ok = 0; err = GetLastError();
                 }
                 sfree(fp_owned);
@@ -367,9 +367,9 @@ int kageant_save_startup_keys(void)
         /* now the entries past the new end */
         for (i = written + 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
+            kitty_inifile_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
             if (probe[0]) {
-                if (!kitty_inilight_write(KI_SECTION_AGENT, key, NULL) && ok) {
+                if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
                     ok = 0; err = GetLastError();
                 }
                 gap = 0;
@@ -2062,8 +2062,8 @@ void kageant_forget_startup_key(const char *path)
     if (!_fullpath(want, path, sizeof(want)))
         snprintf(want, sizeof(want), "%s", path);
 
-    if (!kitty_inilight_registry_authoritative() &&
-        (f = kitty_inilight_file()) != NULL) {
+    if (!kitty_inifile_registry_authoritative() &&
+        (f = kitty_inifile_file()) != NULL) {
         typedef char kageant_entry[MAX_PATH + 32];   /* snewn casts to (T *) */
         kageant_entry *keep;
         char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
@@ -2073,7 +2073,7 @@ void kageant_forget_startup_key(const char *path)
         for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
             char raw[MAX_PATH + 32];
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
+            kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,markers */
@@ -2147,7 +2147,7 @@ void kageant_track_keypath(const char *path, int encrypted)
             return;
 
     if (!g_startup_loading && kageant_startup_active() &&
-        !kitty_inilight_registry_authoritative()) {
+        !kitty_inifile_registry_authoritative()) {
         char dir[MAX_PATH + 1];
         if (kageant_inidir(dir, sizeof(dir)) &&
             !kageant_path_under(dir, abspath)) {
@@ -2402,7 +2402,7 @@ static void kageant_clear_own_run_entry(void)
  * Startup shortcut in portable mode, our own Run entry in registry mode. */
 int kageant_autostart_active(void)
 {
-    if (!kitty_inilight_registry_authoritative()) {
+    if (!kitty_inifile_registry_authoritative()) {
         /* KiTTY: a shortcut of that NAME existing is not the question - it may
          * point at another kageant entirely, in which case "starts at login"
          * would be a claim about somebody else's agent. Check the target, as
@@ -2439,7 +2439,7 @@ int kageant_autostart_active(void)
  * its "An autostart entry was added" followed regardless. */
 int kageant_set_autostart(int on)
 {
-    if (!kitty_inilight_registry_authoritative()) {
+    if (!kitty_inifile_registry_authoritative()) {
         char exe[MAX_PATH], dir[MAX_PATH];
         char *slash;
         DWORD n;
@@ -2492,8 +2492,8 @@ void kageant_load_startup_keys(void)
     int startup_unchecked = 0, startup_mismatch = 0;
     g_startup_missing = 0;
 
-    if (!kitty_inilight_registry_authoritative() &&
-        (f = kitty_inilight_file()) != NULL) {
+    if (!kitty_inifile_registry_authoritative() &&
+        (f = kitty_inifile_file()) != NULL) {
         char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
         int i, gap;
         g_startup_loading = 1;
@@ -2507,7 +2507,7 @@ void kageant_load_startup_keys(void)
             char fp[160];
             fp[0] = '\0';
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
+            kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             /* Trailing tokens, in any order and any of them absent:
@@ -2749,7 +2749,7 @@ void kageant_save_key_order(void)
      * which keys a server is offered first, and each key it does not want costs
      * one of the attempts before a lockout.
      */
-    if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
+    if (!kitty_inifile_registry_authoritative() && kitty_inifile_file()) {
         /* written in place, a shorter list leaving no tail - never cleared
          * first (kageant_ini_numbered_write) */
         const char **items = snewn(n ? n : 1, const char *);
@@ -2784,13 +2784,13 @@ void kageant_apply_saved_order(void)
     DWORD type = 0, sz = 0;
 
     /* The ini first, where it is authoritative - see kageant_save_key_order. */
-    if (!kitty_inilight_registry_authoritative() && kitty_inilight_file()) {
+    if (!kitty_inifile_registry_authoritative() && kitty_inifile_file()) {
         char key[32], val[512];
         char **fps = NULL;
         int n = 0, i, gap;
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "keyorder%d", i);
-            kitty_inilight_read(KI_SECTION_AGENT, key, val, sizeof(val));
+            kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;
             fps = sresize(fps, n + 1, char *);
