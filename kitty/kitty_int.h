@@ -33,7 +33,6 @@ extern char * IconFile ;
 
 /* kitty.c helpers the startup sequence calls once. */
 void CountUp( void ) ;
-void GetSaveMode( void ) ;
 void SetConfigDirectory( const char * Directory ) ;
 void GetInitialDirectory( char * InitialDirectory ) ;
 

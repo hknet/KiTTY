@@ -8,6 +8,9 @@
 #define KITTY_INIFILE_H
 
 const char *kitty_inifile_file(void);
+int kitty_inifile_find(int skip_appdata, char *out, int outlen);
+void kitty_inifile_pin(const char *path);          /* kitty.exe only */
+void kitty_inifile_pin_authority(int registry);    /* kitty.exe only */
 int kitty_inifile_portable(void);   /* portable storage layout beside the exe? */
 int kitty_inifile_registry_authoritative(void);
 int kitty_inifile_read(const char *section, const char *key,

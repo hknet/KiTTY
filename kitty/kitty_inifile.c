@@ -15,6 +15,12 @@
  * [PuTTY] file did nothing there, and the name is retired for the suite.
  * The main section is always [KiTTY] (KI_SECTION_KITTY).
  *
+ * kitty.exe takes the same walk (kitty_inifile_find, without step 3 in the
+ * portable build) and then pins what it decided for its own process
+ * (kitty_inifile_pin, kitty_inifile_pin_authority): the file it names even
+ * before it exists, and its savemode - the key, else its build default,
+ * never the layout guess below.
+ *
  * The resolved file is the authoritative settings store when its main
  * section says savemode=file or savemode=dir, or - with no savemode key at
  * all - when a portable layout sits beside it (a Sessions\ store or a
@@ -35,7 +41,9 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
 static char inifile_path[MAX_PATH + 1];
-static int inifile_state = 0;          /* 0 = unresolved, 1 = found, -1 = none */
+static int inifile_state = 0;          /* 0 = unresolved, 1 = found, -1 = none,
+                                        * 2 = pinned by kitty.exe */
+static int inifile_pinned_registry = -1;   /* -1 = not pinned */
 
 static int inifile_isfile(const char *p)
 {
@@ -43,23 +51,22 @@ static int inifile_isfile(const char *p)
     return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-static void inifile_resolve(void)
+/* The search, the one list of places: the first existing file into out.
+ * skip_appdata leaves %APPDATA%\KiTTY\kitty.ini out (the portable kitty.exe
+ * never reads an installed copy's file). 1 = found, 0 = none. */
+int kitty_inifile_find(int skip_appdata, char *out, int outlen)
 {
     char exedir[MAX_PATH + 1], cand[MAX_PATH + 32];
     const char *env;
     char *slash;
     DWORD n;
 
-    if (inifile_state)
-        return;
-    inifile_state = -1;
-    inifile_path[0] = '\0';
-
+    if (outlen > 0)
+        out[0] = '\0';
     env = getenv("KITTY_INI_FILE");
     if (env && *env && strlen(env) <= MAX_PATH && inifile_isfile(env)) {
-        strcpy(inifile_path, env);
-        inifile_state = 1;
-        return;
+        snprintf(out, outlen, "%s", env);
+        return 1;
     }
 
     n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
@@ -67,29 +74,58 @@ static void inifile_resolve(void)
         *slash = '\0';
         snprintf(cand, sizeof(cand), "%s\\kitty.ini", exedir);
         if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            strcpy(inifile_path, cand);
-            inifile_state = 1;
-            return;
+            snprintf(out, outlen, "%s", cand);
+            return 1;
         }
     }
 
     env = getenv("APPDATA");
-    if (env && *env) {
+    if (!skip_appdata && env && *env) {
         snprintf(cand, sizeof(cand), "%s\\KiTTY\\kitty.ini", env);
         if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            strcpy(inifile_path, cand);
-            inifile_state = 1;
-            return;
+            snprintf(out, outlen, "%s", cand);
+            return 1;
         }
         /* No %APPDATA%\PuTTY\putty.ini: kitty.exe never read one there, and
          * a helper that did found a file its kitty.exe ignores. */
     }
+    return 0;
 }
 
-/* Absolute path of the resolved ini, or NULL when none was found. */
+static void inifile_resolve(void)
+{
+    if (inifile_state)
+        return;
+    inifile_state = kitty_inifile_find(0, inifile_path, sizeof(inifile_path)) ? 1 : -1;
+}
+
+/* kitty.exe: the file it reads and writes, named before it may exist (a
+ * kitty.ini it creates later - the template, the portable savemode key - is
+ * then found by every reader in the process). A path longer than MAX_PATH is
+ * not pinned: the resolver's own answer stays. */
+void kitty_inifile_pin(const char *path)
+{
+    if (!path || !path[0] || strlen(path) > MAX_PATH)
+        return;
+    strcpy(inifile_path, path);
+    inifile_state = 2;
+}
+
+/* kitty.exe: whether its own store is the registry (savemode=registry, or
+ * no key in the registry build) - the key and the build default, without
+ * the layout guess the helpers need. */
+void kitty_inifile_pin_authority(int registry)
+{
+    inifile_pinned_registry = registry ? 1 : 0;
+}
+
+/* Absolute path of the resolved ini, or NULL when none was found. A pinned
+ * path counts while the file exists. */
 const char *kitty_inifile_file(void)
 {
     inifile_resolve();
+    if (inifile_state == 2)
+        return inifile_isfile(inifile_path) ? inifile_path : NULL;
     return (inifile_state == 1) ? inifile_path : NULL;
 }
 
@@ -136,6 +172,8 @@ int kitty_inifile_portable(void)
 int kitty_inifile_registry_authoritative(void)
 {
     char buf[32];
+    if (inifile_pinned_registry >= 0)
+        return inifile_pinned_registry;
     if (!kitty_inifile_file())
         return 1;
     GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",

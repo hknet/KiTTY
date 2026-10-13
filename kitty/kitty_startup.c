@@ -38,6 +38,7 @@
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
 #include "kitty_tools.h"
+#include "kitty_inifile.h"   /* the suite's kitty.ini resolver: the search, savemode */
 #include "kitty_win.h"
 #include "kitty_updater.h"
 #include "kitty_winutil.h"
@@ -117,23 +118,29 @@ static void InitNameConfigFile( void ) {
 	if( KittyIniFile != NULL ) { free( KittyIniFile ) ; }
 	KittyIniFile=NULL ;
 
-	/* snprintf, not strcpy: the value comes from the environment and is not
-	 * length-bounded. */
-	if( getenv("KITTY_INI_FILE") != NULL ) { snprintf( buffer, sizeof(buffer), "%s", getenv("KITTY_INI_FILE") ) ; }
-	if( !existfile( buffer ) ) {
+	/* The putty.ini copy is for the kitty.ini beside the exe - not when
+	 * %KITTY_INI_FILE% names a file that is there. */
+	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		MigratePuttyIni( buffer ) ;
-		/* portable: the kitty.ini beside the exe, also while it is not there yet */
-		if( !existfile( buffer ) && IniFileFlag != SAVEMODE_DIR ) {
+	}
+	/* The search is the resolver's, the one list of places every program
+	 * walks (kitty_inifile.c); the portable build leaves %APPDATA% out. What
+	 * only kitty.exe does stays here: naming the file when none is there -
+	 * beside the exe for the portable build, %APPDATA%\KiTTY\kitty.ini
+	 * (folder created) otherwise. */
+	if( !kitty_inifile_find( IniFileFlag == SAVEMODE_DIR, buffer, sizeof(buffer) ) ) {
+		if( IniFileFlag == SAVEMODE_DIR ) {
+			snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
+		} else {
+			snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
+			CreateDirectory( buffer, NULL ) ;
 			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
-			if( !existfile( buffer ) ) {
-				snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
-				CreateDirectory( buffer, NULL ) ;
-				snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
-			}
 		}
 	}
 	KittyIniFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittyIniFile, buffer) ;
+	/* every reader in this process (theme, update check) takes this file */
+	kitty_inifile_pin( KittyIniFile ) ;
 
 	if( KittySavFile != NULL ) { free( KittySavFile ) ; } 
 	KittySavFile=NULL ;
@@ -178,6 +185,23 @@ static void PortableWriteSaveMode( void ) {
 	writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "dir" ) ;
 }
 #endif
+
+/* Which store kitty.exe uses: kitty.ini's savemode (registry, file, dir),
+ * else the build's default - the folder store for kitty_portable.exe, the
+ * registry otherwise. Never the helpers' layout guess (a Sessions\ folder
+ * beside the exe): an installed copy with a stray one stays on the registry.
+ * The answer is pinned in the resolver, so this process's theme and update
+ * check follow the same store. */
+static void GetSaveMode( void ) {
+	char buffer[256] ;
+	if( kitty_inifile_read( KI_SECTION_KITTY, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
+		str_rtrim( buffer, "\n\r \t" ) ;
+		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
+		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
+		else if( !stricmp( buffer, "dir" ) ) IniFileFlag = SAVEMODE_DIR ;
+	}
+	kitty_inifile_pin_authority( IniFileFlag == SAVEMODE_REG ) ;
+}
 
 // Write the counter increment
 static void WriteCountUpAndPath( void ) {

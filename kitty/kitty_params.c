@@ -512,21 +512,6 @@ int DelParameter( const char * key, const char * name ) {
 	return 1 ;
 	}
 	
-// Check the configuration (file or registry mode) and load kitty.sav if needed
-void GetSaveMode( void ) {
-	char buffer[256] ;
-	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
-		str_rtrim( buffer, "\n\r \t" ) ;
-		if( !stricmp( buffer, "registry" ) ) IniFileFlag = SAVEMODE_REG ;
-		else if( !stricmp( buffer, "file" ) ) IniFileFlag = SAVEMODE_FILE ;
-		/* savemode=dir no longer implies browsedirectory: the sessions it
-		 * writes are flat files carrying Folder=, so the subdirectory lookup
-		 * this used to switch on could never find anything. browsedirectory=yes
-		 * still selects it explicitly. */
-		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; }
-	}
-}
-
 // Initialise the parameters from the kitty.ini file
 #ifdef MOD_BACKGROUNDIMAGE
 #endif
