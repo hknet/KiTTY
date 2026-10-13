@@ -70,7 +70,7 @@ void SettingsLoad( HSettingsList list, const char * filename ) ;
 int loadPath(void) ;
 /* savemode=dir: take putty.conf's path keys over into kitty.ini once, then
  * apply kitty.ini's (hknet/KiTTY#56). After loadPath(), before the store starts. */
-void kitty_store_ini_takeover(void) ;
+int kitty_store_ini_takeover(void) ;   /* 1 = putty.conf moved on this start */
 /* the host-key files renamed to a new hostkeyextension, once; after the
  * store is switched on. Returns the count renamed (dry_run: would be, and
  * nothing changes); `clashes` (may be NULL) gets the names left as they are,

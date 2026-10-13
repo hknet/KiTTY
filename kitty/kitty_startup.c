@@ -82,6 +82,15 @@
 // carries a [KiTTY] section is copied to kitty.ini once (MigratePuttyIni).
 //
 
+/* A start-up notice about kitty.exe's own files: at the prompt that started
+ * kitty.exe, else in a box - never a box in a scripted do-and-exit run. */
+static void StartupNotice( const char * msg, int warn ) {
+#ifdef MOD_PERSO
+	if( KittyCliPrint( msg ) || kitty_cli_do_and_exit() ) return ;
+#endif
+	MessageBoxA( NULL, msg, KT_CAP_KITTYPP, MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+}
+
 /* The putty.ini beside the exe was kitty.exe's settings file when no kitty.ini
  * was there - read from its [KiTTY] section only, and wholly (every section is
  * kitty.exe's own). Copied to kitty.ini once, as it is, and said so: at the
@@ -104,10 +113,7 @@ static void MigratePuttyIni( const char * kittyini ) {
 		str_rtrim( err, "\r\n .\t" ) ;
 		snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
 	}
-#ifdef MOD_PERSO
-	if( KittyCliPrint( msg ) || kitty_cli_do_and_exit() ) return ;
-#endif
-	MessageBoxA( NULL, msg, KT_CAP_KITTYPP, MB_OK | (ok ? MB_ICONINFORMATION : MB_ICONWARNING) ) ;
+	StartupNotice( msg, !ok ) ;
 }
 
 static void InitNameConfigFile( void ) {
@@ -645,7 +651,11 @@ void InitWinMain( void ) {
 		 * values are the ones in force (session folder, session file
 		 * ending, host-key folder and ending). Before the store starts,
 		 * because it may move the session folder. */
-		kitty_store_ini_takeover() ;
+		if( kitty_store_ini_takeover() ) {   /* moved just now: say so, once */
+			char msg[4096 + 256] ;
+			snprintf( msg, sizeof(msg), KT_MAIN_PUTTYCONF_MOVED_FMT, KittyIniFile ) ;
+			StartupNotice( msg, 0 ) ;
+		}
 		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
 		 * now that sesspath is known. Sessions are then read/written as one file per
 		 * session under sesspath, instead of the registry. Decoupled setters so

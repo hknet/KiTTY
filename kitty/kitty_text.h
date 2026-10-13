@@ -1861,6 +1861,9 @@
 #define KT_MAIN_PUTTYINI_COPIED_FMT                  "KiTTY++ no longer reads putty.ini. Its settings were copied to\n" \
         "    %s\n" \
         "which is read from now on. putty.ini is left as it is and can be deleted."
+#define KT_MAIN_PUTTYCONF_MOVED_FMT                  "KiTTY++ no longer reads putty.conf. Its settings were copied to\n" \
+        "    %s\n" \
+        "which is read from now on. putty.conf is left as it is and can be deleted."
 #define KT_MAIN_PUTTYINI_COPY_FAILED_FMT             "KiTTY++ no longer reads putty.ini, and it could not be copied to\n" \
         "    %s\n" \
         "(%s). Rename putty.ini to kitty.ini to keep its settings."

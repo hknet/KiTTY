@@ -61,7 +61,8 @@ both names exist the one with the ending is read. The `Sessions`,
 (one in the working directory is not read) are copied into kitty.ini once (as
 `sessions`, `fileextension`, `sshhostkeys` and `hostkeyextension`) and
 kitty.ini rules from then on: putty.conf is left as it is and not read any
-more. 0.85.1.13's
+more. kitty.exe says so when it copies them, at the prompt it was started
+from or in a box. 0.85.1.13's
 `sessionsuffix` / `keysuffix` in kitty.ini are copied over the same way and
 removed.
 

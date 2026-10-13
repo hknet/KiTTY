@@ -475,11 +475,11 @@ void kitty_set_session_suffix(const char *suffix);
 void kitty_set_hostkey_dir(const char *dir);
 void kitty_set_hostkey_suffix(const char *suffix);
 
-void kitty_store_ini_takeover(void) {
+int kitty_store_ini_takeover(void) {
 	const char *ini = GetKittyIniFile() ;
 	char v[2 * MAX_PATH], path[2 * MAX_PATH] ;
 	int can_write = ini && ini[0] && !GetNoKittyFileFlag() && !GetReadOnlyFlag() ;
-	int migrated = 0, ini_only ;
+	int migrated = 0, moved_now = 0, ini_only ;
 	const char *suffix = "", *hkdir = "", *keysuf = "" ;
 	static char suffix_buf[64], hkdir_buf[2 * MAX_PATH], keysuf_buf[64] ;
 
@@ -504,7 +504,7 @@ void kitty_store_ini_takeover(void) {
 			    !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
 				all = 0 ;
 		if( all && writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
-			migrated = 1 ;
+			migrated = moved_now = 1 ;   /* the caller says so (kitty_startup.c) */
 	}
 	/* 0.85.1.13's names for the endings: into old KiTTY's keys, then gone */
 	if( can_write ) {
@@ -576,6 +576,7 @@ void kitty_store_ini_takeover(void) {
 	 * this): the same value, also when it was copied over just now */
 	if( suffix[0] && strlen( suffix ) < sizeof(FileExtension) )
 		snprintf( FileExtension, sizeof(FileExtension), "%s", suffix ) ;
+	return moved_now ;
 }
 
 /*
