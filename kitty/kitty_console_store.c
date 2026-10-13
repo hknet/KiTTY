@@ -6,12 +6,13 @@
  * (kitty_startup.c), which they do not carry. A klink beside a portable
  * KiTTY++ therefore did not find the sessions that copy had just saved.
  *
- * This runs first in their main()s. It resolves kitty.ini the way kageant and
- * kitty.exe do (kitty_inifile.c: %KITTY_INI_FILE%, beside the exe, the
- * per-user copies) and, for a folder store, sets what kitty.exe sets from the
- * same keys: the session folder and file ending, the host-key folder and
- * ending, the portable password policy. It writes nothing - no folder is
- * created, no ini key copied over; kitty.exe's first start does that.
+ * This runs first in their main()s. It takes kitty.ini's start-up keys from
+ * the resolver (kitty_inifile.c kitty_inifile_startup: %KITTY_INI_FILE%,
+ * beside the exe, the per-user copy) and, for a folder store, sets what
+ * kitty.exe sets from the same keys: the session folder and file ending, the
+ * host-key folder and ending, the portable password policy. It writes
+ * nothing - no folder is created, no ini key copied over; kitty.exe's first
+ * start does that.
  *
  * A script that wants the registry instead points KITTY_INI_FILE at an ini
  * without savemode=dir for that one call.
@@ -31,28 +32,25 @@
 
 void kitty_console_store_init(void)
 {
-    char dir[4 * MAX_PATH + 8], suffix[80], hkdir[4 * MAX_PATH + 8], hksuf[80];
-    char pp[32];
+    static struct kitty_ini_startup ini;   /* static: two paths' worth */
 
     kitty_publish_kittypp_dir();
     kitty_console_mpw_init();
 
-    if (kitty_inifile_folder_store(dir, sizeof(dir), suffix, sizeof(suffix))) {
+    kitty_inifile_startup(&ini);
+    if (ini.folder_store) {
         kitty_set_storage_mode(2);      /* SAVEMODE_DIR, as kitty_startup.c */
-        kitty_set_session_dir(dir);
-        kitty_set_session_suffix(suffix);
-        if (kitty_inifile_hostkey_store(hkdir, sizeof(hkdir), hksuf, sizeof(hksuf))) {
-            kitty_set_hostkey_dir(hkdir);
-            kitty_set_hostkey_suffix(hksuf);
-        }
-        if (kitty_inifile_read(KI_SECTION_KITTY, KI_PORTABLEPASSWORDPROTECTION,
-                                pp, sizeof(pp)))
-            kitty_set_portable_password_protection(pp);
+        kitty_set_session_dir(ini.session_dir);
+        kitty_set_session_suffix(ini.session_suffix);
+        kitty_set_hostkey_dir(ini.hostkey_dir);
+        kitty_set_hostkey_suffix(ini.hostkey_suffix);
+        if (ini.portable_password_protection[0])
+            kitty_set_portable_password_protection(ini.portable_password_protection);
     }
 
     /* the settings travel with the program (folder store, or savemode=file):
      * the log default stays beside it, as in kitty.exe */
-    kitty_set_log_default_beside_program(!kitty_inifile_registry_authoritative());
+    kitty_set_log_default_beside_program(!ini.registry_authoritative);
 
     /* -masterpwfile before ANY argument is processed (cmdline.c). After the
      * store setup above: the PortablePasswordProtection conflict needs it. */

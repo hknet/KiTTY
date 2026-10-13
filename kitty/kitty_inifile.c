@@ -197,7 +197,7 @@ static void inifile_rtrim(char *s, const char *set)
         s[--n] = '\0';
 }
 
-int kitty_inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
+static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
 {
     char mode[32], v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
     char path[4 * MAX_PATH + 8];
@@ -275,9 +275,9 @@ int kitty_inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
  * (kitty_store_ini_takeover): sshhostkeys= resolved like sessions= above
  * (empty = the store's own SshHostKeys folder, which the storage layer
  * finds by itself), and hostkeyextension= - else 0.85.1.13's keysuffix= -
- * with a dot put in front. Meaningful only after kitty_inifile_folder_store()
+ * with a dot put in front. Meaningful only after inifile_folder_store()
  * returned 1; returns 0 when no ini was resolved. */
-int kitty_inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
+static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
 {
     char v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
     char path[4 * MAX_PATH + 8];
@@ -322,4 +322,20 @@ int kitty_inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
     if ((int)strlen(v) < suflen)
         strcpy(suffix, v);     /* kitty_set_hostkey_suffix refuses a bad one */
     return 1;
+}
+
+void kitty_inifile_startup(struct kitty_ini_startup *s)
+{
+    memset(s, 0, sizeof(*s));
+    s->registry_authoritative = kitty_inifile_registry_authoritative();
+    s->folder_store = inifile_folder_store(s->session_dir, sizeof(s->session_dir),
+                                           s->session_suffix,
+                                           sizeof(s->session_suffix));
+    if (!s->folder_store)
+        return;
+    inifile_hostkey_store(s->hostkey_dir, sizeof(s->hostkey_dir),
+                          s->hostkey_suffix, sizeof(s->hostkey_suffix));
+    kitty_inifile_read(KI_SECTION_KITTY, KI_PORTABLEPASSWORDPROTECTION,
+                       s->portable_password_protection,
+                       sizeof(s->portable_password_protection));
 }

@@ -14,10 +14,23 @@ int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value);
-/* 1 when the sessions live in the folder store (savemode=dir), with its
- * directory and session file suffix; 0 when they are in the registry. */
-int kitty_inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen);
-/* That store's host-key folder (empty = its own SshHostKeys) and ending. */
-int kitty_inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen);
+
+/* The start-up keys of the resolved kitty.ini, read in one go: which store
+ * is in charge and, for the folder store, where its sessions and host keys
+ * are. Read fresh at every call (a running kageant sees an edited kitty.ini).
+ * The console tools set their store from it (kitty_console_store.c), kageant
+ * its session menu. */
+#define KITTY_INIFILE_PATHLEN (4 * 260 + 8)
+struct kitty_ini_startup {
+    int registry_authoritative;      /* kitty_inifile_registry_authoritative() */
+    int folder_store;                /* the sessions are in the folder store */
+    /* the rest is filled only for the folder store */
+    char session_dir[KITTY_INIFILE_PATHLEN];
+    char session_suffix[80];         /* empty = none */
+    char hostkey_dir[KITTY_INIFILE_PATHLEN];  /* empty = the store's own SshHostKeys */
+    char hostkey_suffix[80];
+    char portable_password_protection[32];    /* empty = not set */
+};
+void kitty_inifile_startup(struct kitty_ini_startup *s);
 
 #endif
