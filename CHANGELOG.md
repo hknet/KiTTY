@@ -76,6 +76,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **kitty.exe saves kitty.ini line by line, and a save that fails says so.**
+  It rewrote the whole file for every setting, which dropped the template's
+  comments at the first save and was refused while anything held the file
+  open - its own read included (error 1175) - so a setting could be lost
+  without a word. It now writes through the same Windows ini functions as
+  kageant and the console tools, and the first save of a run that fails is
+  reported with the file and Windows' reason.
+- **A kitty.ini with a section or a setting written twice is merged once at
+  start**, keeping the values KiTTY++ was using, with a copy of the file as
+  it was beside it (`kitty.ini.<date>.bak`) and a notice.
 - **A red row in the session list can be right-clicked again.** Its
   tooltip was laid over the row, hid it and took the click, so Show in
   Explorer and Rename... were reachable by keyboard only. The tooltip now

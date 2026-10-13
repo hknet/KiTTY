@@ -43,6 +43,8 @@
 #include "kitty_tools.h"
 #include "kitty_win.h"
 #include "kitty_updater.h"
+#include "kitty_dlgbox.h"     /* kitty_info_modeless */
+#include "kitty_winerr.h"     /* kitty_win_reason */
 #include "kitty_winutil.h"
 #include "kitty_dlgbox.h"
 #include "kitty_launcher.h"
@@ -451,13 +453,44 @@ void CreateDefaultIniFile( void ) {
 	}
 }
 
+/* A setting kitty.ini did not take is reported once per run, with Windows'
+ * reason and the file. The save swaps a full copy in (mini.c storeINI,
+ * ReplaceFile), which another program holding the file open or mapped
+ * refuses; the panel then just kept the old value at the next start, and
+ * nobody knew why. Where the report goes follows kitty_reach(): a box on the
+ * desktop, a modeless one beside a live session, the prompt for a scripted
+ * run, nothing where nobody can see it. */
+static void ini_write_failed_once( DWORD err ) {
+	static int told = 0 ;
+	char *msg ;
+	if( told ) return ;
+	told = 1 ;
+	msg = dupprintf( KT_INI_WRITE_FAILED_FMT, KittyIniFile ? KittyIniFile : "kitty.ini",
+	                 kitty_win_reason( err ) ) ;
+	switch( kitty_reach() ) {
+	  case KITTY_REACH_DESKTOP:
+		kitty_info_box( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL ) ;   /* themed, as every KiTTY++ box */
+		break ;
+	  case KITTY_REACH_SESSION:
+		kitty_info_modeless( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL, NULL ) ;
+		break ;
+	  case KITTY_REACH_SHELL:
+		KittyCliPrint( msg ) ;
+		break ;
+	  default:
+		break ;
+	}
+	sfree( msg ) ;
+}
+
 // Write a parameter either to the registry or to the configuration file
 int WriteParameter( const char * key, const char * name, char * value ) {
 	int ret = 1 ;
 	char buffer[4096] ;
 	if( IniFileFlag == SAVEMODE_DIR ) { 
 		if( !GetReadOnlyFlag() ) {
-			ret = writeINI( KittyIniFile, key, name, value ) ; 
+			ret = writeINI( KittyIniFile, key, name, value ) ;
+			if( !ret ) ini_write_failed_once( GetLastError() ) ; 
 		}
 	} else { 
 		/* The hive in use, matching ReadParameterN.

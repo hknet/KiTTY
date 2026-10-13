@@ -88,7 +88,8 @@ static void StartupNotice( const char * msg, int warn ) {
 #ifdef MOD_PERSO
 	if( KittyCliPrint( msg ) || kitty_cli_do_and_exit() ) return ;
 #endif
-	MessageBoxA( NULL, msg, KT_CAP_KITTYPP, MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+	(void)warn ;
+	kitty_info_box( NULL, KT_CAP_KITTYPP, msg, NULL ) ;   /* themed, as every KiTTY++ box */
 }
 
 /* The putty.ini beside the exe was kitty.exe's settings file when no kitty.ini
@@ -114,6 +115,178 @@ static void MigratePuttyIni( const char * kittyini ) {
 		snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
 	}
 	StartupNotice( msg, !ok ) ;
+}
+
+
+/*
+ * kitty.ini written by hand can carry a section twice ([KiTTY] near the top
+ * and again further down) or a setting twice. KiTTY++ read it with its own
+ * parser, which merged the sections and took a setting's LAST value; it now
+ * reads through Windows' ini functions (mini.c), which see a section only
+ * where it first appears and a setting's first value. So the file is made
+ * unambiguous once, keeping what was read: a later part of a section joins
+ * the first (its lines, comments included, at that part's end), a setting
+ * written twice keeps one line at the first place with the last value, and
+ * names are compared without case, as Windows does. Only when something
+ * changes: a copy of the file as it was beside it (kitty.ini.<date>.bak),
+ * the new file swapped in, and the notice. Never where kitty.ini says
+ * readonly=yes or conf=no, and a file that cannot be written stays as it is.
+ */
+struct ci_line { char *text; char *key; };           /* key: NULL = no setting */
+struct ci_sec { char *name; struct ci_line *l; int n; size_t a; int gone; };
+
+static char *ci_read_line( FILE *fp ) {
+	size_t cap = 256, len = 0 ;
+	char *buf = snewn( cap, char ) ;
+	int c = EOF ;
+	while( ( c = fgetc( fp ) ) != EOF && c != '\n' ) {
+		if( len + 2 > cap ) { cap *= 2 ; buf = sresize( buf, cap, char ) ; }
+		buf[len++] = (char)c ;
+	}
+	if( c == EOF && len == 0 ) { sfree( buf ) ; return NULL ; }
+	if( len && buf[len-1] == '\r' ) len-- ;
+	buf[len] = '\0' ;
+	return buf ;
+}
+
+/* "  name = value" -> name (snewn'd), NULL for a comment, a header or no '=' */
+static char *ci_key_of( const char *t ) {
+	const char *p = t, *eq ;
+	size_t n ;
+	while( *p == ' ' || *p == '\t' ) p++ ;
+	if( !*p || *p == ';' || *p == '#' || *p == '[' ) return NULL ;
+	if( ( eq = strchr( p, '=' ) ) == NULL || eq == p ) return NULL ;
+	n = (size_t)( eq - p ) ;
+	while( n && ( p[n-1] == ' ' || p[n-1] == '\t' ) ) n-- ;
+	return n ? dupprintf( "%.*s", (int)n, p ) : NULL ;
+}
+
+static void ci_add( struct ci_sec *s, char *text ) {
+	sgrowarray( s->l, s->a, s->n ) ;
+	s->l[s->n].text = text ;
+	s->l[s->n].key = ci_key_of( text ) ;
+	s->n++ ;
+}
+
+static const char *ci_value( const struct ci_sec *s, const char *key ) {
+	int i ;
+	const char *v = NULL ;
+	for( i = 0 ; i < s->n ; i++ )
+		if( s->l[i].key && !stricmp( s->l[i].key, key ) )
+			v = strchr( s->l[i].text, '=' ) + 1 ;
+	return v ;
+}
+
+static void ConsolidateKittyIni( const char *path ) {
+	FILE *fp ;
+	char *line, *tmp = NULL, *bak = NULL ;
+	struct ci_sec *sec = NULL ;
+	int nsec = 0, i, j, k, changed = 0 ;
+	size_t asec = 0 ;
+	if( !path || !path[0] || ( fp = fopen( path, "rb" ) ) == NULL ) return ;
+	sgrowarray( sec, asec, nsec ) ;
+	memset( &sec[0], 0, sizeof(sec[0]) ) ;          /* the lines before any header */
+	nsec = 1 ;
+	while( ( line = ci_read_line( fp ) ) != NULL ) {
+		const char *p = line ;
+		while( *p == ' ' || *p == '\t' ) p++ ;
+		if( *p == '[' && strchr( p, ']' ) ) {
+			sgrowarray( sec, asec, nsec ) ;
+			memset( &sec[nsec], 0, sizeof(sec[nsec]) ) ;
+			sec[nsec].name = dupprintf( "%.*s", (int)( strchr( p, ']' ) - p - 1 ), p + 1 ) ;
+			nsec++ ;
+		}
+		ci_add( &sec[nsec-1], line ) ;
+	}
+	fclose( fp ) ;
+
+	/* a later part of a section joins the first */
+	for( i = 1 ; i < nsec ; i++ )
+		for( j = 1 ; j < i ; j++ )
+			if( !sec[j].gone && !stricmp( sec[j].name, sec[i].name ) ) {
+				for( k = 1 ; k < sec[i].n ; k++ ) {   /* its header (line 0) goes */
+					sgrowarray( sec[j].l, sec[j].a, sec[j].n ) ;
+					sec[j].l[sec[j].n++] = sec[i].l[k] ;
+				}
+				sec[i].n = 1 ;
+				sec[i].gone = 1 ;
+				changed = 1 ;
+				break ;
+			}
+	/* a setting written twice: one line at the first place, the last value */
+	for( i = 0 ; i < nsec ; i++ ) {
+		if( sec[i].gone ) continue ;
+		for( j = 0 ; j < sec[i].n ; j++ ) {
+			const char *last ;
+			int dup = 0 ;
+			if( !sec[i].l[j].key ) continue ;
+			for( k = j + 1 ; k < sec[i].n ; k++ )
+				if( sec[i].l[k].key && !stricmp( sec[i].l[k].key, sec[i].l[j].key ) ) dup = 1 ;
+			if( !dup ) continue ;
+			last = ci_value( &sec[i], sec[i].l[j].key ) ;
+			{
+				char *t = dupprintf( "%s=%s", sec[i].l[j].key, last ) ;
+				for( k = j + 1 ; k < sec[i].n ; k++ )
+					if( sec[i].l[k].key && !stricmp( sec[i].l[k].key, sec[i].l[j].key ) ) {
+						sfree( sec[i].l[k].key ) ; sec[i].l[k].key = NULL ;
+						sfree( sec[i].l[k].text ) ; sec[i].l[k].text = NULL ;   /* dropped */
+					}
+				sfree( sec[i].l[j].text ) ;
+				sec[i].l[j].text = t ;
+			}
+			changed = 1 ;
+		}
+	}
+
+	if( changed ) {
+		/* readonly=yes / conf=no, as kitty.exe reads them: the file stays */
+		for( i = 1 ; i < nsec ; i++ )
+			if( !sec[i].gone && !stricmp( sec[i].name, INIT_SECTION ) ) {
+				const char *ro = ci_value( &sec[i], KI_READONLY ), *cf = ci_value( &sec[i], KI_CONF ) ;
+				while( ro && ( *ro == ' ' || *ro == '\t' ) ) ro++ ;
+				while( cf && ( *cf == ' ' || *cf == '\t' ) ) cf++ ;
+				if( ( ro && !strnicmp( ro, "yes", 3 ) ) || ( cf && !strnicmp( cf, "no", 2 ) ) ) changed = 0 ;
+			}
+	}
+	if( changed ) {
+		time_t now = time( NULL ) ;
+		struct tm *tm = localtime( &now ) ;
+		char stamp[32] = "" ;
+		FILE *out ;
+		int ok ;
+		if( tm ) strftime( stamp, sizeof(stamp), "%Y%m%d-%H%M%S", tm ) ;
+		bak = dupprintf( "%s.%s.bak", path, stamp ) ;
+		tmp = dupprintf( "%s.%lu.tmp", path, (unsigned long)GetCurrentProcessId() ) ;
+		ok = CopyFileA( path, bak, TRUE ) && ( out = fopen( tmp, "wb" ) ) != NULL ;
+		if( ok ) {
+			for( i = 0 ; i < nsec ; i++ ) {
+				if( sec[i].gone ) continue ;
+				for( j = 0 ; j < sec[i].n ; j++ )
+					if( sec[i].l[j].text ) fprintf( out, "%s\r\n", sec[i].l[j].text ) ;
+			}
+			ok = !ferror( out ) ;
+			if( fclose( out ) != 0 ) ok = 0 ;
+			/* Windows' ini cache may hold the file this process read */
+			WritePrivateProfileStringA( NULL, NULL, NULL, path ) ;
+			if( ok ) ok = ReplaceFileA( path, tmp, NULL, REPLACEFILE_IGNORE_MERGE_ERRORS, NULL, NULL ) ;
+			if( !ok ) DeleteFileA( tmp ) ;
+		}
+		if( ok ) {
+			char msg[4096 + 512] ;
+			snprintf( msg, sizeof(msg), KT_MAIN_INI_CONSOLIDATED_FMT, bak ) ;
+			StartupNotice( msg, 0 ) ;
+		} else if( bak )
+			DeleteFileA( bak ) ;
+	}
+
+	for( i = 0 ; i < nsec ; i++ ) {
+		for( j = 0 ; j < sec[i].n ; j++ ) { sfree( sec[i].l[j].text ) ; sfree( sec[i].l[j].key ) ; }
+		sfree( sec[i].l ) ;
+		sfree( sec[i].name ) ;
+	}
+	sfree( sec ) ;
+	sfree( tmp ) ;
+	sfree( bak ) ;
 }
 
 static void InitNameConfigFile( void ) {
@@ -145,6 +318,10 @@ static void InitNameConfigFile( void ) {
 		}
 	}
 	KittyIniFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittyIniFile, buffer) ;
+	/* one section of each name and one line per setting, before anything
+	 * reads it (not a file %KITTY_INI_FILE% names: that one is the caller's) */
+	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) )
+		ConsolidateKittyIni( KittyIniFile ) ;
 	/* every reader in this process (theme, update check) takes this file */
 	kitty_inifile_pin( KittyIniFile ) ;
 

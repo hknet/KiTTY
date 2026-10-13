@@ -1857,10 +1857,18 @@
 #define KT_MAIN_LOAD_FAILED_FMT                      "The sessions could not be loaded from the backup:\n\n" \
         "    %s\n\n" \
         "KiTTY++ goes on without what did not load. The file is unchanged."
+/* kitty_params.c WriteParameter: a setting kitty.ini did not take, once per run */
+#define KT_INI_WRITE_FAILED_FMT                      "KiTTY++ could not save a setting to\n" \
+        "    %s\n" \
+        "(%s). The change is not saved. Another program may have the file open.\n\n" \
+        "This is reported once."
 /* kitty_startup.c: putty.ini is retired; its settings move to kitty.ini once */
 #define KT_MAIN_PUTTYINI_COPIED_FMT                  "KiTTY++ no longer reads putty.ini. Its settings were copied to\n" \
         "    %s\n" \
         "which is read from now on. putty.ini is left as it is and can be deleted."
+#define KT_MAIN_INI_CONSOLIDATED_FMT                 "kitty.ini carried sections or settings twice. KiTTY++ merged them: each is\n" \
+        "now there once, with the value KiTTY++ was using. The file as it was is kept as\n" \
+        "    %s"
 #define KT_MAIN_PUTTYCONF_MOVED_FMT                  "KiTTY++ no longer reads putty.conf. Its settings were copied to\n" \
         "    %s\n" \
         "which is read from now on. putty.conf is left as it is and can be deleted."

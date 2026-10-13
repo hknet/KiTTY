@@ -378,18 +378,6 @@ int loadINI( SINI * Ini, const char * filename ) {
 	return 1 ;
 	}
 
-/* loadINI for a file about to be rewritten: 1 loaded (or there is no file
- * yet, an empty one is right), 0 the file is there but could not be read -
- * writing then would replace the whole file with the one key. */
-static int loadINIForWrite( SINI * Ini, const char * filename ) {
-	DWORD err ;
-	if( loadINI( Ini, filename ) ) return 1 ;
-	err = GetLastError() ;
-	if( GetFileAttributesA( filename ) == INVALID_FILE_ATTRIBUTES ) return 1 ;
-	SetLastError( err ? err : ERROR_READ_FAULT ) ;
-	return 0 ;
-	}
-
 int storeKEY( SKEY * Key, FILE * fp ) {
 	if( Key == NULL ) return 0 ;
 	if( fp==NULL ) return 0 ;
@@ -447,140 +435,56 @@ int storeINI( SINI * Ini, const char * filename ) {
 	
 /* Improvement so that the file is not read again every time */
 static char * mini_filename = NULL ;
-static time_t mini_mtime = 0 ;
 static SINI * mini_Ini = NULL ;
-static time_t mini_last_stat = 0 ;   /* when the file's date was last looked at */
+
+/*
+ * kitty.ini is read and written through Windows' own ini functions, the ones
+ * kageant, kittygen and the console tools have always used (kitty_inifile.c):
+ * one reader and one writer for the file across the suite. A write changes
+ * its one line and leaves the rest of the file - the template's comments,
+ * the order, the layout - as it was; the whole-file rewrite this replaced
+ * dropped every comment line at the first save, and its swap (ReplaceFile)
+ * was refused while anything held the file open, Windows' own ini cache in
+ * this very process included (error 1175). Windows reads a section written
+ * twice only where it first appears; kitty.exe merges such files once at
+ * start (kitty_startup.c ConsolidateKittyIni), keeping what was read here.
+ */
+
+/* A value GetPrivateProfileString returns when the key is not there - the
+ * call cannot tell "absent" from "empty" otherwise. */
+static const char mini_absent[] = "\x01kitty.ini:absent\x01" ;
 
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) {
-	int return_code = 0 ;
-	struct stat buf ;
-	time_t now ;
-
-	//SINI * Ini = NULL ;
-	SSECTION * Section = NULL ;
-	SKEY * Key = NULL ;
-	if( filename==NULL ) return 0 ;
-	if( strlen(filename)<=0 ) return 0 ;
-	if( section==NULL ) return 0 ;
-	if( strlen(section)<=0 ) return 0 ;
-
-	/* The file's date is compared with the copy in memory, so an edit by
-	 * hand is picked up - but at most once a second: this reader answers
-	 * every parameter lookup, and a stat() per lookup was a file-system
-	 * call on paths that ask hundreds of times. */
-	now = time( NULL ) ;
-	if( mini_filename != NULL && now != mini_last_stat ) {
-		mini_last_stat = now ;
-		if( stat(filename, &buf) != -1 ) {
-			if( buf.st_mtime > mini_mtime ) {
-				free( mini_filename ) ;
-				mini_filename = NULL ;
-				mini_mtime = 0 ;
-			}
-		}
-	}
-	
-	if( (mini_filename!=NULL)&&(!strcmp( filename, mini_filename )) ) {
-		if( ( Section = getSECTION( getINI( mini_Ini ), section ) ) != NULL ) {
-			if( ( Key = getKEY( Section, key ) ) != NULL ) {
-				{ const char *_v = getvalueKEY( Key ); size_t _n = strlen(_v); if( pStrSize>0 && _n >= pStrSize ) _n = pStrSize-1; if( pStrSize>0 ) { memcpy( pStr, _v, _n ); pStr[_n] = '\0'; } }
-				return_code = 1 ;
-				}
-			}
-		}
-	else {
-		freeINI( &mini_Ini ) ;
-		if( mini_filename!=NULL ) { free(mini_filename); mini_filename=NULL;mini_mtime=0; }
-		mini_filename=(char*)malloc( strlen(filename)+1 ); strcpy(mini_filename,filename);
-	if( ( mini_Ini = newINI() ) != NULL ) {
-		loadINI( mini_Ini, filename ) ;
-		if( stat(filename, &buf) != 1 ) {
-			mini_mtime = buf.st_mtime ;
-		}
-		if( ( Section = getSECTION( getINI( mini_Ini ), section ) ) != NULL ) {
-			if( ( Key = getKEY( Section, key ) ) != NULL ) {
-				{ const char *_v = getvalueKEY( Key ); size_t _n = strlen(_v); if( pStrSize>0 && _n >= pStrSize ) _n = pStrSize-1; if( pStrSize>0 ) { memcpy( pStr, _v, _n ); pStr[_n] = '\0'; } }
-				return_code = 1 ;
-				}
-			}
-		//freeINI( &mini_Ini ) ;
-		}
+	char * buf ;
+	DWORD cap ;
+	if( filename == NULL || !filename[0] || section == NULL || !section[0] || key == NULL ) return 0 ;
+	if( pStr == NULL || pStrSize == 0 ) return 0 ;
+	cap = pStrSize < 65536 ? (DWORD)pStrSize : 65536 ;
+	if( cap < sizeof(mini_absent) ) cap = sizeof(mini_absent) ;
+	if( ( buf = (char*)malloc( cap ) ) == NULL ) return 0 ;
+	GetPrivateProfileStringA( section, key, mini_absent, buf, cap, filename ) ;
+	if( !strcmp( buf, mini_absent ) ) { free( buf ) ; return 0 ; }
+	{ size_t n = strlen( buf ) ; if( n >= pStrSize ) n = pStrSize - 1 ; memcpy( pStr, buf, n ) ; pStr[n] = '\0' ; }
+	free( buf ) ;
+	return 1 ;
 	}
 
-	return return_code ;
-	}
-	
+/* 1 written; 0 not, Windows' reason in GetLastError(). A NULL key makes sure
+ * the section exists (an empty one is written only where there is none). */
 int writeINI( const char * filename, const char * section, const char * key, const char * value ) {
-	int return_code = 0 ;
-	SINI * Ini = NULL ;
-	SSECTION * Section = NULL ;
-	SKEY * Key ;
-	if( filename==NULL ) return 0 ;
-	if( strlen(filename)<=0 ) return 0 ;
-	if( section==NULL ) return 0 ;
-	if( strlen(section)<=0 ) return 0 ;
-	
-	freeINI( &mini_Ini ) ;
-	if( mini_filename!=NULL ) { free(mini_filename); mini_filename=NULL; }
-	
-	if( ( Ini = newINI() ) != NULL ) {
-		if( !loadINIForWrite( Ini, filename ) ) { DWORD e = GetLastError() ; freeINI( &Ini ) ; SetLastError( e ) ; return 0 ; }
-		if( ( Section = getSECTION( getINI( Ini ), section ) ) == NULL ) {
-			if( ( Section = newSECTION( section ) ) != NULL ) {
-				addINI( Ini, Section ) ;
-				}
-			else return 0 ;
-			}
-		if( key != NULL ) if( strlen(key)>0 ) {
-			if( ( Key = newKEY( key, value ) ) != NULL ) {
-				if( !addKEY( Section, Key ) )
-					{ freeKEY( &Key ) ; }
-				}
-			}
-		if( storeINI( Ini, filename ) )
-			return_code = 1 ;
-		freeINI( &Ini ) ;
+	if( filename == NULL || !filename[0] || section == NULL || !section[0] ) return 0 ;
+	if( key == NULL || !key[0] ) {
+		char probe[4] ;
+		if( GetPrivateProfileSectionA( section, probe, sizeof(probe), filename ) > 0 ) return 1 ;
+		return WritePrivateProfileSectionA( section, "\0", filename ) ? 1 : 0 ;
 		}
-	return return_code ;
+	return WritePrivateProfileStringA( section, key, value ? value : "", filename ) ? 1 : 0 ;
 	}
-	
-int writeINISec( const char * filename, const char * section, const char * key, const char * value ) {
-	int return_code = 0 ;
-	char * newname = NULL ;
-	if( (newname=(char*)malloc( strlen(filename)+5 )) == NULL ) return 0 ;
-	sprintf( newname, "%s.new", filename );
-	return_code = writeINI( newname, section, key, value ) ;
-	free(newname) ;
-	return return_code ;
-	}
-	
+
+/* One key, or with a NULL key the whole section. */
 int delINI( const char * filename, const char * section, const char * key ) {
-	int return_code = 0 ;
-	SINI * Ini = NULL ;
-	SSECTION * Section = NULL ;
-	if( filename==NULL ) return 0 ;
-	if( strlen(filename)<=0 ) return 0 ;
-	if( section==NULL ) return 0 ;
-	if( strlen(section)<=0 ) return 0 ;
-	
-	freeINI( &mini_Ini ) ;
-	if( mini_filename!=NULL ) { free(mini_filename); mini_filename=NULL; }
-		
-	if( ( Ini = newINI() ) != NULL ) {
-		if( !loadINIForWrite( Ini, filename ) ) { DWORD e = GetLastError() ; freeINI( &Ini ) ; SetLastError( e ) ; return 0 ; }
-		if( ( Section = getSECTION( getINI( Ini ), section ) ) != NULL ) {
-			if( (key!=NULL) && (strlen(key)>0) ){
-				delKEY( Section, key ) ;
-				}
-			else {
-				delSECTION( getINI( Ini ), section ) ;
-				}
-			if( storeINI( Ini, filename ) )
-				return_code = 1 ;
-			}
-		freeINI( &Ini ) ;
-		}
-	return return_code ;
+	if( filename == NULL || !filename[0] || section == NULL || !section[0] ) return 0 ;
+	return WritePrivateProfileStringA( section, ( key && key[0] ) ? key : NULL, NULL, filename ) ? 1 : 0 ;
 	}
 
 int delINISec( const char * filename, const char * section, const char * key ) {
