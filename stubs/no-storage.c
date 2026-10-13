@@ -8,6 +8,8 @@
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
 { return NULL; }
+char *kitty_session_locked_msg(const char *sessionname)
+{ return NULL; }
 void write_setting_s(settings_w *handle, const char *key, const char *value)
 { unreachable("where did you get a settings_w from?"); }
 void write_setting_i(settings_w *handle, const char *key, int value)

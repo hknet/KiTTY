@@ -9,6 +9,8 @@
 #include "storage.h"
 #include "kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #include "kitty/kitty_url_regex.h"   /* KiTTY: old URL defaults replaced */
+/* KiTTY (hknet/KiTTY#61): Session Lockdown, windows/storage.c */
+char *kitty_session_locked_msg(const char *sessionname);
 #ifndef NO_GSSAPI
 #include "ssh/gssc.h"
 #include "ssh/gss.h"
@@ -522,6 +524,23 @@ char *save_settings(const char *section, Conf *conf)
 {
     struct settings_w *sesskey;
     char *errmsg;
+
+    /*
+     * KiTTY (hknet/KiTTY#61): Session Lockdown. A locked session's settings
+     * are not written - by Save, a running window's save, /save, or the
+     * remembered answers that save the whole session - so a stub keeps
+     * inheriting what it leaves out. Every save comes through here. Default
+     * Settings is never locked, and never takes the switch from the window
+     * it is saved from: every new session is made from it. Not behind
+     * MOD_PERSO (settings.c is shared; see the Folder rule in load_settings).
+     */
+    {
+        char *locked = kitty_session_locked_msg(section);
+        if (locked)
+            return locked;
+    }
+    if (!section || !*section || !strcmp(section, "Default Settings"))
+        conf_set_bool(conf, CONF_session_lockdown, false);
 
     sesskey = open_settings_w(section, &errmsg);
     if (!sesskey)

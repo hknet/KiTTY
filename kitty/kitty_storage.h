@@ -96,6 +96,10 @@ void kitty_settings_r_raw_secrets(settings_r *handle);
 void kitty_set_inherit_default_settings(int on);
 int kitty_inherit_default_settings(void);
 void kitty_settings_r_inherit(settings_r *handle, const char *sessionname);
+/* Session Lockdown: the session's own switch, and writing it alone. */
+int kitty_session_locked(const char *sessionname);
+int kitty_session_set_lockdown(const char *sessionname, int on);
+char *kitty_session_locked_msg(const char *sessionname);   /* NULL = not locked */
 settings_w *kitty_open_settings_w_items(void);
 struct ksf_item *kitty_settings_w_take_items(settings_w *handle);
 /* Walk a parsed file's keys, in file order (the import asks which keys the

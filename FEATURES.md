@@ -1499,7 +1499,9 @@ A session can be a stub: write a session file - or a registry key - with only wh
 - **switch off** (the default): from the **built-in defaults**, as KiTTY and PuTTY always did;
 - **switch on** - Application > KiTTY++ Settings > Storage & Backup > **Inherit Default Settings** (`[KiTTY] inheritdefaultsettings=yes`): from **Default Settings** (the top-level one), which works as a template in the background. Every setting is inherited, a user name and password kept there included - which is what makes stubs useful, and why ticking the box asks first.
 
-It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it. Keep stubs as files you write (or generate) yourself, and do not save them from the configuration window.
+It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it.
+
+**Session Lockdown keeps a stub a stub.** Session > Comment & Lock > **Session Lockdown** (session key `SessionLockdown=1`, off by default) blocks every write to that session's settings - Save, saving from a running window, `/save`, the remembered answers that save a session. Rename and move still work, and window positions and tags are still stored. A stub you write yourself can carry `SessionLockdown=1` from the start.
 
 ### Export all / Import all sessions
 

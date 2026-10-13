@@ -8,6 +8,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Session Lockdown** (hknet/KiTTY#61). Session > Comment & Lock > "Session
+  Lockdown" (`SessionLockdown=1`, off by default) blocks every write to that
+  session's settings - Save, saving from a running window, `/save`, the
+  remembered answers that save a session - so a stub that inherits Default
+  Settings stays a stub. Rename and move still work, and window positions
+  and tags are still stored. The Comment panel is now "Comment & Lock".
 - **Sessions can inherit Default Settings** (hknet/KiTTY#61). With
   Application > KiTTY++ Settings > Storage & Backup > "Inherit Default
   Settings" (`inheritdefaultsettings=yes`), a session that leaves a setting

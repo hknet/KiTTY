@@ -13,6 +13,7 @@
 #include "../kitty/kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 #include "../kitty/kitty_storage.h"  /* the KiTTY half of this file (registry root, portable store, at-rest crypto) */
 #include "../kitty/kitty_secretstore.h"
+#include "../kitty/kitty_text.h"     /* KT_SESSION_LOCKED_FMT */
 #include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
 #include "../kitty/kitty_text.h"     /* KT_SP_SAVE_CLASH: the folder store's save clash */
 
@@ -387,6 +388,50 @@ settings_r *open_settings_r(const char *sessionname)
     if (sessionname && *sessionname)    /* NULL / "" is Default Settings itself */
         kitty_settings_r_inherit(h, sessionname);
     return h;
+}
+
+/* hknet/KiTTY#61, Session Lockdown: the session's OWN SessionLockdown - never
+ * inherited from Default Settings, or one lock there would lock every stub -
+ * and Default Settings itself is never locked (every new session is made
+ * from it). */
+int kitty_session_locked(const char *sessionname)
+{
+    settings_r *h;
+    int on;
+    if (!sessionname || !*sessionname || !strcmp(sessionname, KITTY_DEFAULT_SESSION))
+        return 0;
+    h = open_settings_r_own(sessionname);
+    if (!h)
+        return 0;
+    on = read_setting_i(h, "SessionLockdown", 0) != 0;
+    close_settings_r(h);
+    return on;
+}
+
+/* The switch alone into the stored session: unlocking must not need a Save,
+ * which the lock refuses. 1 written. */
+int kitty_session_set_lockdown(const char *sessionname, int on)
+{
+    char *errmsg = NULL;
+    settings_w *w;
+    if (!sessionname || !*sessionname || !strcmp(sessionname, KITTY_DEFAULT_SESSION))
+        return 0;
+    w = open_settings_w(sessionname, &errmsg);
+    if (!w) {
+        sfree(errmsg);
+        return 0;
+    }
+    write_setting_i(w, "SessionLockdown", on ? 1 : 0);
+    close_settings_w(w);
+    return 1;
+}
+
+/* save_settings' refusal for a locked session, NULL when it is not locked.
+ * snewn'd. */
+char *kitty_session_locked_msg(const char *sessionname)
+{
+    return kitty_session_locked(sessionname)
+        ? dupprintf(KT_SESSION_LOCKED_FMT, sessionname) : NULL;
 }
 
 /* Default Settings behind a handle when the switch is on: a stored session's

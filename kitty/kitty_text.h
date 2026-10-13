@@ -1426,7 +1426,7 @@
 /* Application/KiTTY++ Settings/Terminal, with its Font Fallback and Printing
  * leaves; the shared position and the icon library sit on Appearance */
 #define KT_KSET_WD_TITLE                             "Terminal Windows"
-#define KT_KSET_WD_TITLEBAR                          "Title bar && Notifications"   /* && = one & in a group title */
+#define KT_KSET_WD_TITLEBAR                          "Title bar & Notifications"   /* a group title shows its text as it is: one & (&& only on buttons and menus) */
 #define KT_KSET_WD_WINTITLE                          "Show status information in the title bar"
 #define KT_KSET_WD_WINTITLE_NOTE                     "Size, PROTECTED, ONTOP, BROADCAST, RESTRICTED and what a program reports: 45%, working, blocked, failed, done."
 #define KT_KSET_WD_NOTICESECS                        "Notices stay on screen, seconds:"
@@ -3952,6 +3952,11 @@
 #define KT_SP_KEYEXT_LABEL                           "Host Key File Extension"
 #define KT_SP_KEYEXT_RENAMED                         "%d host-key files renamed."
 #define KT_SP_STORAGE_THIS_KITTYPP                   "This KiTTY++"
+/* hknet/KiTTY#61: Session > Comment & Lock, Session Lockdown */
+#define KT_SESSION_LOCK_GROUP                        "Session Lock"
+#define KT_SESSION_LOCKDOWN                          "Session Lockdown"
+#define KT_SESSION_LOCKDOWN_NOTE                     "Session Lockdown blocks every write to this session's settings - Save, saving from a running window, remembered answers - so a session that leaves settings out keeps inheriting them. Rename and move still work, and window positions and tags are still stored. This box itself is written into the stored session at once - no Save needed, and is greyed out while no stored session is loaded."
+#define KT_SESSION_LOCKED_FMT                        "The session \"%s\" is locked (Session Lockdown): its settings are not saved. Untick Session Lockdown under Session > Comment & Lock to save it."
 /* hknet/KiTTY#61: Storage & Backup, the switch, its line and its question */
 #define KT_SP_INHERIT_LABEL                          "Inherit Default Settings"
 #define KT_SP_INHERIT_HELP                           "A session that leaves a setting out takes it from Default Settings instead of the built-in default."

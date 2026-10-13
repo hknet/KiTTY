@@ -1691,6 +1691,12 @@ CONF_OPTION(ctrl_tab_switch, VALUE_TYPE(INT), DEFAULT_INT(0), SAVE_KEYWORD("Ctrl
 CONF_OPTION(comment, VALUE_TYPE(STR), DEFAULT_STR(""), SAVE_KEYWORD("Comment"),)
 /* KiTTY: print the Comment into the terminal once the session is up. */
 CONF_OPTION(comment_notify, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("CommentNotify"),)
+/* KiTTY (hknet/KiTTY#61): Session Lockdown - no save writes this session's
+ * settings (settings.c save_settings asks kitty_session_locked), so a stub
+ * that leaves settings out keeps inheriting them. Rename, move, tags and
+ * window positions still write; the switch itself is written alone
+ * (kitty_session_set_lockdown). Off by default. */
+CONF_OPTION(session_lockdown, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("SessionLockdown"),)
 /* KiTTY: the base of %KITTY_WINDOW% for this session's unnamed windows -
  * "<base>-<n>", n the window's number among the open windows of that base,
  * the first window the base alone; Windows %VAR% in it are expanded, e.g.

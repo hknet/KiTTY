@@ -1522,7 +1522,7 @@ knock, so
 
 knocks 2001 over TCP, waits a second, then knocks 2002 over UDP.
 
-\H{kitty-cfg-comment} The Comment panel
+\H{kitty-cfg-comment} The Comment & Lock panel
 
 A free-text note stored with the saved session: what the machine is
 for, who owns it, the change that had you connect to it.
@@ -1545,6 +1545,20 @@ that note is moved into the comment - appended after a blank line if
 the comment already has text - and \q{Notify the user at login} is
 switched on. The old value is dropped the next time the session is
 saved, and the two keys are gone.
+
+\q{Session Lockdown}, in the group \q{Session Lock} (off by default,
+session key \c{SessionLockdown}), blocks every write to this session's
+settings: \q{Save}, saving from a running window, \c{/save}, and the
+remembered answers that save the session (\q{always deny} for a host's
+clipboard reads, \q{always allow} for a far2l). A session that leaves
+settings out - a stub that inherits the rest from Default Settings, see
+\q{Inherit Default Settings} on the Storage & Backup panel - therefore
+keeps inheriting them. Rename and move still work (they move the session
+as it is), and window positions and tags are still stored. Ticking or
+unticking the box for a loaded session writes that one setting into it
+at once, so unlocking needs no \q{Save}. With no stored session
+loaded, or Default Settings, the box is greyed out. Default Settings is
+never locked.
 
 \H{kitty-cfg-application} The Application tab
 
@@ -2721,15 +2735,11 @@ kept there included, which is why ticking the box asks first.
 
 }
 
-\lcont{
-
 It applies to stored sessions in both stores, to session files opened
 directly (\c{-kload}, a double-click) and to klink, kscp and ksftp. Saving
 such a session writes every field, so it becomes a full session and no
 longer inherits: a later change to Default Settings does not reach it.
 \c{kitty.ini}: \c{[KiTTY] inheritdefaultsettings}.
-
-}
 
 \b \q{Registry backups to keep} is how many timestamped \c{.sav}
 exports of the hive an installed copy keeps; in a folder store the

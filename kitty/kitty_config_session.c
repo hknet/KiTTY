@@ -3906,14 +3906,18 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * No backup and not chosen to go on without one: no save -
                  * the stop takes the save's own error path below. */
                 int backup_ok = 1;
-                {
+                /* hknet/KiTTY#61: a locked session is refused here, before
+                 * a backup is taken for a save that will not happen */
+                char *locked = kitty_session_locked_msg(ssd->savedsession);
+                if (!locked) {
                     settings_r *existing = open_settings_r(ssd->savedsession);
                     if (existing) {
                         close_settings_r(existing);
                         backup_ok = kitty_backup_before(kitty_cfg_modal_owner(), 1);
                     }
                 }
-                char *errmsg = backup_ok ? save_settings(ssd->savedsession, conf)
+                char *errmsg = locked ? locked
+                             : backup_ok ? save_settings(ssd->savedsession, conf)
                                          : kitty_backup_not_done();
                 if (errmsg) {
                     /* KiTTY: modeless, like every box of this window's flow -
@@ -8932,6 +8936,50 @@ void scb_panel_zmodem(struct controlbox *b)
 #endif
 }
 
+/* hknet/KiTTY#61: Session Lockdown. The tick is the window's setting; for a
+ * stored session that is loaded it is also written into that session at
+ * once and alone (kitty_session_set_lockdown) - unlocking must not need a
+ * Save, which the lock refuses, and locking must not save the window's
+ * other settings into a stub. Default Settings is never locked. With no
+ * stored session loaded the box is greyed out: a tick there would only
+ * reach the next Save, which writes a full session, never a stub. The
+ * panel is refreshed whenever it is shown, and Load and Save sit on another
+ * panel, so the state is always current when the box can be seen. */
+
+/* The stored session the box writes to: the loaded one, mid-session the
+ * window's own. NULL for none, Default Settings, or a name not in the store
+ * (writing the key would create a session holding only it). */
+static const char *kcs_lockdown_target(Conf *conf)
+{
+    struct sessionsaver_data *ssd = kitty_session_ssd;
+    const char *name = ssd ? ssd->loaded_from : NULL;
+    if ((!name || !*name) && ssd && ssd->midsession)
+        name = conf_get_str(conf, CONF_sessionname);
+    if (!name || !*name || !strcmp(name, KITTY_DEFAULT_SESSION) ||
+        !kitty_session_exists_own(name))
+        return NULL;
+    return name;
+}
+
+static void kcs_lockdown_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                 void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, conf_get_bool(conf, CONF_session_lockdown));
+        kitty_dlg_enable(ctrl, dlg, kcs_lockdown_target(conf) != NULL);
+    } else if (event == EVENT_VALCHANGE) {
+        bool on = dlg_checkbox_get(ctrl, dlg);
+        const char *name = kcs_lockdown_target(conf);
+        conf_set_bool(conf, CONF_session_lockdown, on);
+        if (name && !kitty_session_set_lockdown(name, on)) {
+            /* not written: the stored session keeps its lock as it was */
+            conf_set_bool(conf, CONF_session_lockdown, kitty_session_locked(name));
+            dlg_checkbox_set(ctrl, dlg, conf_get_bool(conf, CONF_session_lockdown));
+        }
+    }
+}
+
 /* The Comment panel (KiTTY): a free-text note attached to this session. */
 void scb_panel_comment(struct controlbox *b)
 {
@@ -8943,8 +8991,8 @@ void scb_panel_comment(struct controlbox *b)
      * subtree. (Classic KiTTY had it as a top-level category.)
      */
     if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Session/Comment", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
-        s = ctrl_getset(b, "Session/Comment", "main", NULL);
+        ctrl_settitle(b, "Session/Comment & Lock", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
+        s = ctrl_getset(b, "Session/Comment & Lock", "main", NULL);
         /* Multiline (~5 lines). Newlines round-trip to storage: REG_SZ holds
          * CRLF directly, and file/dir mode mungestr()-encodes control chars. */
         ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
@@ -8954,5 +9002,10 @@ void scb_panel_comment(struct controlbox *b)
          * starts - see kitty_print_session_comment. */
         ctrl_checkbox(s, KT_COMMENT_NOTIFY, NO_SHORTCUT, HELPCTX(kitty_comment),
                       conf_checkbox_handler, I(CONF_comment_notify));
+        /* hknet/KiTTY#61 */
+        s = ctrl_getset(b, "Session/Comment & Lock", "lock", KT_SESSION_LOCK_GROUP);
+        ctrl_checkbox(s, KT_SESSION_LOCKDOWN, NO_SHORTCUT, HELPCTX(kitty_comment),
+                      kcs_lockdown_handler, P(NULL));
+        ctrl_text(s, KT_SESSION_LOCKDOWN_NOTE, HELPCTX(kitty_comment));
     }
 }
