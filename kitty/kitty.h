@@ -411,8 +411,9 @@ int InitLauncherRegistry( int * failed, DWORD * err ) ;
 // Section name of the configuration file
 #ifdef MOD_PERSO
 
+#include "kitty_inikeys.h"   /* KI_SECTION_KITTY: the one spelling of it */
 #ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
+#define INIT_SECTION KI_SECTION_KITTY
 #endif
 #ifndef DEFAULT_INIT_FILE
 #define DEFAULT_INIT_FILE "kitty.ini"

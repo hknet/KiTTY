@@ -56,10 +56,12 @@ as a rename at the next start of the configuration window (Yes / No /
 Storage & Backup...; after No, host keys under an old ending are not read).
 A file
 arriving later without it is renamed when its host is first used, and where
-both names exist the one with the ending is read. A putty.conf's `Sessions`,
-`sessionsuffix`, `SshHostKeys` and `keysuffix` are copied into kitty.ini once
-(as `sessions`, `fileextension`, `sshhostkeys` and `hostkeyextension`) and
-kitty.ini rules from then on; putty.conf itself is left as it is. 0.85.1.13's
+both names exist the one with the ending is read. The `Sessions`,
+`sessionsuffix`, `SshHostKeys` and `keysuffix` of a putty.conf beside the exe
+(one in the working directory is not read) are copied into kitty.ini once (as
+`sessions`, `fileextension`, `sshhostkeys` and `hostkeyextension`) and
+kitty.ini rules from then on: putty.conf is left as it is and not read any
+more. 0.85.1.13's
 `sessionsuffix` / `keysuffix` in kitty.ini are copied over the same way and
 removed.
 

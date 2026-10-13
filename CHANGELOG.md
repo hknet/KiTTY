@@ -60,6 +60,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   kscp and ksftp beside it then find the same store from the key. A
   `savemode` already there stays, and nothing is written with `readonly=yes`
   or `conf=no`.
+- **Classic KiTTY's putty.conf is read beside the exe only**, no longer from
+  the working directory, where a shortcut with another "Start in" or a script
+  run from another folder could feed it a stranger's paths. Once its keys are
+  in kitty.ini (`puttyconfmigrated=yes`) it is not read at all.
 
 ### Fixed
 

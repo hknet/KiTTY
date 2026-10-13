@@ -72,7 +72,7 @@
  * portable mode). Declared rather than included so this file keeps its short
  * include list; it is compiled only into the KiTTY targets. */
 #ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
+#define INIT_SECTION KI_SECTION_KITTY
 #endif
 
 /* ReadParameterN answers into a 4096-byte buffer of its own, so that is the

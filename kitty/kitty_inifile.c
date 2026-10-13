@@ -53,7 +53,7 @@ static void inifile_resolve(void)
         return;
     inifile_state = -1;
     inifile_path[0] = '\0';
-    strcpy(inifile_mainsection, "KiTTY");
+    strcpy(inifile_mainsection, KI_SECTION_KITTY);
 
     env = getenv("KITTY_INI_FILE");
     if (env && *env && strlen(env) <= MAX_PATH && inifile_isfile(env)) {

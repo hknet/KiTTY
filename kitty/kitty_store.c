@@ -255,6 +255,8 @@ static char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 	return pcDest;
 }
 
+extern char *GetKittyIniFile(void);
+
 /*
  * JK: init path variables from config or otherwise
  * as of 1.5 GetModuleFileName solves our currentDirectory problem
@@ -274,27 +276,21 @@ int loadPath(void) {
 	/* JK:  save path/curdir */
 	GetCurrentDirectory( (MAX_PATH*2), oldpath);
 
-	/* JK: try curdir for putty.conf first */
-	hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
-
-	if (hFile != INVALID_HANDLE_VALUE)
+	/* KiTTY: putty.conf is read beside the exe only. Classic KiTTY looked in
+	 * the working directory first, so a shortcut with another "Start in", or
+	 * a script run from another folder, fed it whatever putty.conf sat there:
+	 * its paths were copied into kitty.ini once on a copy not yet migrated,
+	 * and acted on at every start where kitty.ini cannot be written. */
+	if (GetModuleFileName(NULL, puttypath, (MAX_PATH*2)) != 0)
 	{
-		/* JK: there is a putty.conf in curdir - use it and use curdir as puttypath */
-		GetCurrentDirectory( (MAX_PATH*2), puttypath);
-		CloseHandle(hFile);
-	} else {
-		/* JK: get where putty.exe is */
-		if (GetModuleFileName(NULL, puttypath, (MAX_PATH*2)) != 0)
+		p = strrchr(puttypath, '\\');
+		if (p)
 		{
-			p = strrchr(puttypath, '\\');
-			if (p)
-			{
-				*p = '\0';
-			}
-			SetCurrentDirectory(puttypath);
+			*p = '\0';
 		}
-		else GetCurrentDirectory( (MAX_PATH*2), puttypath);
+		SetCurrentDirectory(puttypath);
 	}
+	else GetCurrentDirectory( (MAX_PATH*2), puttypath);
 
 	/* JK: set default values - if there is a config file, it will be overwitten */
 	if( GetConfigDirectory() != NULL ) { // another config directory is set
@@ -317,7 +313,17 @@ int loadPath(void) {
 	snprintf(kstore_default_sesspath, sizeof(kstore_default_sesspath), "%s", sesspath);
 	kstore_pc_found = 0;
 
-	hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+	/* Once kitty_store_ini_takeover() has moved putty.conf's keys into
+	 * kitty.ini (puttyconfmigrated=yes), kitty.ini is the one source and
+	 * putty.conf is not opened at all. */
+	{
+		const char *ini = GetKittyIniFile() ;
+		char mig[8] ;
+		if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, mig, sizeof(mig) ) && !stricmp( mig, "yes" ) )
+			hFile = INVALID_HANDLE_VALUE ;
+		else
+			hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
+	}
 	/* Test Sessions directory */
 	if(get_param("INIFILE")==SAVEMODE_DIR)
 	if( !existdirectory(sesspath) ) {
@@ -462,7 +468,6 @@ char * SetSessPath( const char * dec ) {
  * (conf=no, readonly=yes) nothing moves and putty.conf keeps working, with a
  * key kitty.ini does carry still winning.
  */
-extern char *GetKittyIniFile(void);
 extern int GetNoKittyFileFlag(void);
 extern int writeINI(const char *filename, const char *section, const char *key, const char *value);
 extern int delINI(const char *filename, const char *section, const char *key);

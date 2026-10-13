@@ -8,8 +8,9 @@
 #ifndef KITTY_CONFIG_INT_H
 #define KITTY_CONFIG_INT_H
 
+#include "kitty_inikeys.h"   /* KI_SECTION_KITTY */
 #ifndef INIT_SECTION
-#define INIT_SECTION "KiTTY"
+#define INIT_SECTION KI_SECTION_KITTY
 #endif
 
 /* The panel paths more than one of these files names. Everything under
@@ -152,7 +153,6 @@ void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int
 #define KITTY_PROXY_LABEL_ACTIVE "PROXY OVERRIDE ACTIVE:"
 #define KITTY_LINESPC_LABEL "Line spacing (100-300 %)"
 extern bool g_linespc_out_of_range;   /* kitty_config_shared.c */
-#define INIT_SECTION "KiTTY"
 struct wpmode_data {
     char *name; unsigned int minutes;
     /* Whether `name` is a choice the USER made in this box, as opposed to

@@ -306,9 +306,11 @@ char default_init_file_content[] =
 \n\
 ; puttyconfmigrated: written by KiTTY (yes) once classic KiTTY's putty.conf\n\
 ;    keys Sessions, sessionsuffix, SshHostKeys and keysuffix have been copied\n\
-;    into sessions, fileextension, sshhostkeys and hostkeyextension. From then\n\
-;    on only kitty.ini counts: a key edited or removed here is never copied\n\
-;    back, and putty.conf is left as it was for older copies. Not copied:\n\
+;    into sessions, fileextension, sshhostkeys and hostkeyextension. Only a\n\
+;    putty.conf beside the exe is read, never one in the working directory.\n\
+;    From then on only kitty.ini counts: a key edited or removed here is never\n\
+;    copied back, and putty.conf is left as it was for older copies but not\n\
+;    read any more. Not copied:\n\
 ;    Jumplist, seedfile. 0.85.1.13's sessionsuffix / keysuffix in this file are\n\
 ;    copied the same way and then removed.\n\
 ;puttyconfmigrated=\n\

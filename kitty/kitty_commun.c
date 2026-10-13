@@ -164,7 +164,6 @@ void DelDir( const char * directory ) {
 
 // Read a parameter either from the configuration file or from the registry
 char  * IniFile = NULL ;
-char INIT_SECTION[10];
 
 // Flag saying whether we are connected
 int is_backend_connected = 0 ;
