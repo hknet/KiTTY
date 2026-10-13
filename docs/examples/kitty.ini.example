@@ -230,12 +230,10 @@
 ;    across instead of stranding it.
 ;configdir=
 
-; browsedirectory: classic KiTTY's switch for session folders as
-;    subdirectories (yes/no, default no). Not needed: a folder store keeps
-;    every session at its folder path anyway - Sessions\Linux\web\srv01 is
-;    the session "srv01" in the folder Linux\web - and lists every
-;    subdirectory, whatever this is set to. Leave it off; on, it only sends the
-;    old tray-menu folder lookup down a path of its own.
+; browsedirectory: retired - read and ignored. Classic KiTTY's switch for
+;    session folders as subdirectories. A folder store keeps every session at
+;    its folder path anyway - Sessions\Linux\web\srv01 is the session "srv01"
+;    in the folder Linux\web - and lists every subdirectory.
 ;browsedirectory=
 
 ; sessions: the folder store's session folder (savemode=dir). Default: the

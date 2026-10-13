@@ -46,7 +46,6 @@ int GetIniFileFlag(void) { return IniFileFlag ; }
  * not listed at all - turning this on does not make a legacy tree readable, it
  * only changes where a folder NAME is looked for.
  */
-int DirectoryBrowseFlag = 0 ;
 
 // Flag to fall back to plain PuTTY mode
 int PuttyFlag = 0 ;

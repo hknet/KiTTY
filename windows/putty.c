@@ -376,7 +376,6 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 const char *fld = cmdline_arg_to_str(arglist->args[arglistpos++]);
                 conf_set_str(conf, CONF_folder, fld);
-                if (GetDirectoryBrowseFlag()) SetSessPath(fld);
             } else if (!strcmp(p, "-cmd")) {
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);

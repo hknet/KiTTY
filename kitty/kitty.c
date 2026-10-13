@@ -150,7 +150,6 @@ char *dupvprintf(const char *fmt, va_list ap) ;
 int get_param( const char * val ) {
 	if( !stricmp( val, "PUTTY" ) ) return GetPuttyFlag() ;
 	else if( !stricmp( val, "INIFILE" ) ) return IniFileFlag ;
-	else if( !stricmp( val, "DIRECTORYBROWSE" ) ) return DirectoryBrowseFlag ;
 	else if( !stricmp( val, "HYPERLINK" ) ) return HyperlinkFlag ;
 	else if( !stricmp( val, "TRANSPARENCY" ) )return TransparencyFlag ;
 #ifdef MOD_ZMODEM
@@ -308,7 +307,7 @@ void InitFolderList( void ) {
 			} 
 		RegCloseKey( hKey ) ;
 		}
-	else if( (IniFileFlag == SAVEMODE_DIR)&&(!DirectoryBrowseFlag) ) {
+	else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): through the store, which knows where the
 		 * session folder is (kitty.ini sessions= may move it away from
 		 * ConfigDirectory\Sessions), the suffix and the nested folders. The
@@ -364,35 +363,6 @@ static const char * kitty_sessions_root( void ) {
 	return root ;
 	}
 
-static int GetSessionFolderNameInSubDir( const char * session, const char * subdir, char * folder ) {
-	int return_code=0;
-	char buffer[2048], buf[2048] ;
-	DIR * dir ;
-	struct dirent * de ;
-	if( !strcmp(subdir,"") ) snprintf( buffer, sizeof(buffer), "%s", kitty_sessions_root() ) ;
-	else snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_sessions_root(), subdir ) ;
-	if( (dir=opendir(buffer))!=NULL ) {
-		while( (de=readdir(dir)) != NULL )
-			if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-				if( !strcmp(subdir,"") ) snprintf( buf, sizeof(buf), "%s\\%s", kitty_sessions_root(), de->d_name ) ;
-				else snprintf( buf, sizeof(buf), "%s\\%s\\%s", kitty_sessions_root(), subdir, de->d_name ) ;
-				if( existdirectory( buf ) ) {
-					if( !strcmp(subdir,"") ) snprintf( buf, sizeof(buf), "%s", de->d_name ) ;
-					else sprintf( buf, "%s\\%s", subdir, de->d_name ) ;
-					return_code = GetSessionFolderNameInSubDir( session, buf, folder ) ;
-					if( return_code ) break ;
-				} else if( !strcmp(session,de->d_name) ) {
-					strcpy( folder, subdir ) ;
-					return_code=1;
-					break ;
-				}
-		}			
-		closedir(dir) ;
-	}
-		
-	return return_code ;
-}
-
 // Get the name of the folder a session belongs to
 void GetSessionFolderName( const char * session_in, char * folder ) {
 	HKEY hKey ;
@@ -425,16 +395,11 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 			RegCloseKey( hKey ) ;
 		}
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
-		mungestr(session_in, session ) ;
-		if( DirectoryBrowseFlag ) {
-			GetSessionFolderNameInSubDir( session, "", folder ) ;
-		} else {
-			/* KiTTY (hknet/KiTTY#55): through the store - it knows where the
-			 * session folder is (kitty.ini sessions=), the suffix, nested paths
-			 * and both line formats. */
-			char * f = kitty_read_session_folder( session_in ) ;
-			if( f != NULL ) { snprintf( folder, 1024, "%s", f ) ; sfree( f ) ; }
-		}
+		/* KiTTY (hknet/KiTTY#55): through the store - it knows where the
+		 * session folder is (kitty.ini sessions=), the suffix, nested paths
+		 * and both line formats. */
+		char * f = kitty_read_session_folder( session_in ) ;
+		if( f != NULL ) { snprintf( folder, 1024, "%s", f ) ; sfree( f ) ; }
 	}
 }
 
@@ -469,7 +434,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 			RegCloseKey( hKey ) ;
 			}
 		}
-	else if( (IniFileFlag==SAVEMODE_DIR) && !DirectoryBrowseFlag ) {
+	else if( IniFileFlag==SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): through the store itself - it knows the
 		 * nested folders, the suffix and both line formats. */
 		settings_r * r ;
@@ -484,33 +449,6 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 				res = 1 ;
 				}
 			close_settings_r( r ) ;
-			}
-		}
-	else if( IniFileFlag==SAVEMODE_DIR ) {
-		if( DirectoryBrowseFlag ) {
-			if( !strcmp(folder,"Default") || !strcmp(folder,"") ) snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_sessions_root(), session ) ;
-			else snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", kitty_sessions_root(), folder, session ) ;
-			}
-		else {
-			snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_sessions_root(), session ) ;
-			}
-
-		if( debug_flag ) { debug_logevent( "GetSessionField(%s,%s,%s,%s)=%s", ConfigDirectory, session, folder, field, buffer ) ; }
-		if( (fp=fopen(buffer,"r"))!=NULL ) {
-			while( fgets(buffer,1024,fp)!=NULL ) {
-				str_rtrim( buffer, "\n\r" ) ;
-				if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' )
-					if( (strstr( buffer, field )==buffer) && ((buffer+strlen(field))[0]=='\\') ) {
-						if( buffer[strlen(field)]=='\\' ) strcpy( result, buffer+strlen(field)+1 ) ;
-						{ size_t _rl=strlen(result); if(_rl>0) result[_rl-1] = '\0' ; }
-						unmungestr(result, buffer,MAX_PATH) ;
-						strcpy( result, buffer) ;
-						if( debug_flag ) debug_logevent( "Result=%s", result );
-						res = 1 ;
-						break ;
-						}
-				}
-			fclose(fp);
 			}
 		}
 	return res ;

@@ -63,10 +63,6 @@
 #include "kitty_params.h"
 
 
-// Flag enabling the folder tree when savemode=dir, defined in
-// kitty_commun.c
-int GetDirectoryBrowseFlag(void) { return DirectoryBrowseFlag ; }
-
 
 // Stuff for drag-n-drop transfers
 int dnd_delay = 250;
@@ -529,7 +525,6 @@ void GetSaveMode( void ) {
 		 * still selects it explicitly. */
 		else if( !stricmp( buffer, "dir" ) ) { IniFileFlag = SAVEMODE_DIR ; }
 	}
-	if( IniFileFlag!=SAVEMODE_DIR ) DirectoryBrowseFlag = 0 ;
 }
 
 // Initialise the parameters from the kitty.ini file
@@ -773,10 +768,11 @@ void LoadParameters( void ) {
 		if( secs > 86400 ) secs = 86400 ;
 		if( secs > 0 ) AntiIdleSeconds = secs < 5 ? 5 : secs ;
 	}
-	if( ReadParameterN( INIT_SECTION, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ) { 
-		if( !stricmp( buffer, "NO" ) ) { DirectoryBrowseFlag = 0 ; }
-		else if( (!stricmp( buffer, "YES" )) && (IniFileFlag==SAVEMODE_DIR) ) DirectoryBrowseFlag = 1 ;
-	}
+	/* browsedirectory: classic KiTTY's switch to believe folders as
+	 * subdirectories of the session folder. Retired: the folder store reads a
+	 * session's folder from its path whatever it says. Still read, so a
+	 * kitty.ini that sets it holds a known key; nothing is done with it. */
+	(void)ReadParameterN( INIT_SECTION, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ;
 	if( ReadParameterN( INIT_SECTION, KI_COMMANDDELAY, buffer, sizeof(buffer) ) ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 

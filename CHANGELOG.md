@@ -51,6 +51,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Session > Terminal has two new panels**, **Desktop Notifications** and
   **Image Protocols**, taken out of **Features**. The settings stay as they
   were.
+- **`browsedirectory` is retired.** A folder store keeps every session at
+  its folder path whatever its value, so `browsedirectory=yes` changes
+  nothing any more. The key is read and ignored.
 
 ### Fixed
 

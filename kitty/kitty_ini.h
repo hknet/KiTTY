@@ -233,12 +233,10 @@ char default_init_file_content[] =
 ;    across instead of stranding it.\n\
 ;configdir=\n\
 \n\
-; browsedirectory: classic KiTTY's switch for session folders as\n\
-;    subdirectories (yes/no, default no). Not needed: a folder store keeps\n\
-;    every session at its folder path anyway - Sessions\\Linux\\web\\srv01 is\n\
-;    the session \"srv01\" in the folder Linux\\web - and lists every\n\
-;    subdirectory, whatever this is set to. Leave it off; on, it only sends the\n\
-;    old tray-menu folder lookup down a path of its own.\n\
+; browsedirectory: retired - read and ignored. Classic KiTTY's switch for\n\
+;    session folders as subdirectories. A folder store keeps every session at\n\
+;    its folder path anyway - Sessions\\Linux\\web\\srv01 is the session \"srv01\"\n\
+;    in the folder Linux\\web - and lists every subdirectory.\n\
 ;browsedirectory=\n\
 \n\
 ; sessions: the folder store's session folder (savemode=dir). Default: the\n\

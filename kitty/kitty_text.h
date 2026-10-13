@@ -1861,7 +1861,7 @@
 #define KT_SAV_EXPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not export the store, exit code %lu)"
 
 /* kitty_commands.c: the /commands console */
-#define KT_CMD_INIT_INFO                             "ConfigDirectory=%s\nIniFileFlag=%d\nDirectoryBrowseFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
+#define KT_CMD_INIT_INFO                             "ConfigDirectory=%s\nIniFileFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
 #define KT_CMD_SESSION_NAME_IS                       "Your session name is\n-%s-"
 #define KT_CMD_NO_SESSION_NAME                       "No session name."
 #define KT_CMD_RES_SAVEMODE                          "Savemode is \"%s\", stored in %s"

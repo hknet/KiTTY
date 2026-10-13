@@ -864,52 +864,6 @@ static void ilr_write_file( const char * path, const char * text ) {
 	ilr_note( ok ) ;
 	}
 
-static void InitLauncherDir( const char * directory ) {
-	char fullpath[MAX_VALUE_NAME], buffer[MAX_VALUE_NAME] ;
-	DIR * dir ;
-	struct dirent * de ;
-	
-	if( strlen(directory)>0 ) {
-		snprintf( fullpath, sizeof(fullpath), "%s\\%s", kitty_launcher_sessions_root(), directory ) ;
-		snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", ConfigDirectory, directory ) ;
-	} else {
-		snprintf( fullpath, sizeof(fullpath), "%s", kitty_launcher_sessions_root() ) ;
-		snprintf( buffer, sizeof(buffer), "%s\\Launcher", ConfigDirectory ) ;
-	}
-	if( !MakeDir( buffer ) ) { 
-		//MessageBox(NULL,buffer,"Error",MB_OK|MB_ICONERROR); 
-		MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); 
-	}
-	if( (dir=opendir(fullpath)) != NULL ) {
-		while( (de=readdir(dir)) != NULL ) 
-		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
-			snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", kitty_launcher_sessions_root(), directory, de->d_name ) ;
-			if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				/* The session's name is the file's name WITHOUT the session file
-				 * ending ([KiTTY] fileextension, e.g. .ktx): compared with it,
-				 * "Default Settings.ktx" passed as a session (hknet/KiTTY#53
-				 * again), and every entry was labelled and loaded with it. */
-				char text[2 * MAX_VALUE_NAME + 4], name[MAX_VALUE_NAME], mname[MAX_VALUE_NAME] ;
-				unmungestr( de->d_name, name, MAX_VALUE_NAME) ;
-				ksp_strip_suffix( name, kitty_session_suffix() ) ;
-				if( !strcmp( name, KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, in whatever directory */
-				if( strlen( name ) * 3 + 1 >= MAX_VALUE_NAME ) continue ;
-				mungestr( name, mname ) ;
-				snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s\\%s", ConfigDirectory, directory, mname ) ;
-				snprintf( text, sizeof(text), "%s\\%s\\", name, directory ) ;
-				ilr_write_file( buffer, text ) ;
-				}
-			else if( (GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				snprintf( buffer, sizeof(buffer), "%s\\%s", directory, de->d_name ) ;
-				if( buffer[0]=='\\' ) InitLauncherDir( buffer+1 ) ;
-				else InitLauncherDir( buffer ) ;
-				}
-
-			}
-		}
-	closedir( dir ) ;
-	}
-
 // Fill the Launcher registry key with the saved sessions. Returns the
 // entries written; *failed (when wanted) the ones that were not and
 // *err the first one's reason.
@@ -979,7 +933,7 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 				}
 			}
 		RegCloseKey( hKey ) ;
-	} else if( (IniFileFlag == SAVEMODE_DIR)&&(DirectoryBrowseFlag==0) ) {
+	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): every session of the folder tree, by the
 		 * store's own enumeration (nested folders, dot-files and non-session
 		 * files left out). One file per entry, "label\session\": the label is
@@ -1031,12 +985,6 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 			}
 			}
 		kitty_session_names_free( names, nn ) ;
-	} else if( (IniFileFlag == SAVEMODE_DIR)&&DirectoryBrowseFlag ) {
-		char fullpath[MAX_VALUE_NAME] ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
-		DelDir( fullpath ) ;
-		if( !MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
-		InitLauncherDir( "" ) ;
 	}
 done:
 	if( failed ) *failed = ilr_fail ;
@@ -1392,8 +1340,7 @@ static void LauncherFolderOpenNext( HWND hwnd ) {
 	if( LauncherFolderItems != NULL && LauncherFolderNext < LauncherFolderCount ) {
 		struct LauncherFolderItem * it = &LauncherFolderItems[LauncherFolderNext++] ;
 		/* The same two forms the menu's own click uses. */
-		if( DirectoryBrowseFlag ) RunSession( hwnd, it->payload, it->label ) ;
-		else RunSession( hwnd, it->payload, it->payload ) ;
+		RunSession( hwnd, it->payload, it->payload ) ;
 	}
 	if( LauncherFolderItems == NULL || LauncherFolderNext >= LauncherFolderCount ) {
 		KillTimer( hwnd, LAUNCHER_OPENFOLDER_TIMER ) ;
@@ -2944,12 +2891,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					char * sess = kitty_menuslots_get( nb ) ? dupstr( kitty_menuslots_get( nb ) ) : NULL ;
 					if( sess != NULL )
 						{
-						if( DirectoryBrowseFlag ) {
-							char buffer[1024]="" ;
-							GetMenuString( MenuLauncher, nb+IDM_USERCMD, buffer, 1024, MF_BYCOMMAND ) ;
-							RunSession( hwnd, sess, buffer ) ;
-							}
-						else RunSession( hwnd, sess, sess ) ;
+						RunSession( hwnd, sess, sess ) ;
 						sfree( sess ) ;
 						RefreshMenuLauncher() ;
 						}
@@ -3089,7 +3031,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	 * shortcut), so migrate the old 9bis.com\KiTTY hive here too before reading sessions. */
 	MigrateOldKittyHive() ;
 	if( LauncherConfReload() ) {
-		if( (IniFileFlag == SAVEMODE_DIR) && (DirectoryBrowseFlag == 0) )
+		if( IniFileFlag == SAVEMODE_DIR )
 			LauncherStoreCopyPending = 1 ;   /* posted from WM_CREATE */
 		else
 			InitLauncherRegistry( NULL, NULL ) ;
@@ -3382,11 +3324,6 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 			RunCommand( hwnd, session_in ) ;
 		}
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
-		if( DirectoryBrowseFlag ) {
-			if( (folder_in!=NULL)&&strcmp(folder_in,"")&&strcmp(folder_in,"Default") ) {
-				{ size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, " -folder \"%s\"", folder_in ) ; }
-			}
-		}
 		strcpy( session, session_in ) ;
 		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 			session[strlen(session)-1]='\0' ;
@@ -3398,13 +3335,6 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 			else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			//else sprintf( buffer, "%s @%s", shortname, session ) ;
 		}
-/*		if( DirectoryBrowseFlag ) {
-			if( strcmp(folder_in,"")&&strcmp(folder_in,"Default") ) {
-				strcat( buffer, " -folder \"" ) ;
-				strcat( buffer, folder_in ) ;
-				strcat( buffer, "\"" ) ;
-				}
-			}*/
 //MessageBox( hwnd, buffer, "Info", MB_OK ) ;
 		launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 		return_code = 1 ;

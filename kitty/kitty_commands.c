@@ -261,7 +261,7 @@ static int cmd_init( HWND hwnd, char * arg ) {
 	char buffer[4096] ;
 	(void)arg ;
 	snprintf( buffer, sizeof(buffer),KT_CMD_INIT_INFO
-		,ConfigDirectory,IniFileFlag,DirectoryBrowseFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
+		,ConfigDirectory,IniFileFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
 	MessageBox(hwnd,buffer,KT_CAP_CONFIG_INFO,MB_OK);
 	return 1 ;
 }

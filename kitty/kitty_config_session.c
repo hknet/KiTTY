@@ -1757,14 +1757,9 @@ static bool kitty_folder_row_visible(const char *name, const char *filter)
  *    nothing in it still exists and must still be shown; no session names it, so
  *    scanning sessions alone would silently drop it.
  *
- * The union matters in practice, not just in theory: FolderList is NOT filled
- * from sessions in portable/dir mode. InitFolderList's dir branch is guarded
- * `IniFileFlag == SAVEMODE_DIR && !DirectoryBrowseFlag` (kitty.c:676), while
- * savemode=dir sets DirectoryBrowseFlag (kitty.c:1072) - so that scan never
- * runs, and the legacy path it guards looks for folders as SUBDIRECTORIES,
- * which is not how sessions are stored (kitty_storage.c: one flat file per
- * session, carrying Folder=). Deriving the rows from the attribute sidesteps
- * that disagreement entirely rather than depending on which mode is active.
+ * The union matters because FolderList is a stored list: deriving the rows
+ * from the attribute too shows a folder as soon as a session names it,
+ * whether or not the stored list has caught up.
  */
 static int kitty_folder_row_cmp(const void *av, const void *bv)
 {
