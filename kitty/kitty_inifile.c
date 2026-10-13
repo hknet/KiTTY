@@ -16,7 +16,9 @@
  * The resolved file is the authoritative settings store when its main
  * section says savemode=file or savemode=dir, or - with no savemode key at
  * all - when a portable layout sits beside it (a Sessions\ store or a
- * KiTTYState file; portable builds force dir mode without writing the key).
+ * KiTTYState file). The portable build writes savemode=dir on its first
+ * start; the layout covers a copy whose kitty.ini has no key yet (kageant
+ * started at logon before that first start) or cannot be written.
  * Otherwise (savemode=registry, or absent with no such layout, matching
  * kitty.exe's default) the registry stays authoritative and ini keys serve
  * as first-run defaults only (see kitty_inifile_registry_authoritative()).
@@ -131,8 +133,8 @@ static int inifile_portable_layout(void)
  * in a recognisable portable layout. An absent savemode key means registry
  * mode, exactly as in kitty.exe - registry-mode installs routinely carry an
  * auto-created kitty.ini whose savemode key was deleted when the mode was
- * selected - except that portable builds force dir mode without ever
- * writing a savemode key, so their on-disk layout counts as evidence. */
+ * selected - except beside a portable layout: a portable copy whose
+ * kitty.exe has not written its savemode=dir yet, or cannot. */
 int kitty_inifile_portable(void)
 {
     return inifile_portable_layout();
@@ -178,8 +180,8 @@ int kitty_inifile_write(const char *section, const char *key,
 
 /* The folder store, as kitty.exe finds it (kitty_store.c loadPath and
  * kitty_store_ini_takeover). It is in use when the ini says savemode=dir, or
- * says no savemode at all beside a portable layout (the portable build forces
- * dir mode without the key); savemode=file keeps its sessions in the
+ * says no savemode at all beside a portable layout (a portable copy before
+ * kitty.exe wrote the key); savemode=file keeps its sessions in the
  * registry. The session directory is sessions= (environment strings
  * expanded; a leading '\' or '/' is below the program folder, "X:..." is
  * absolute, anything else is relative to the program folder), else

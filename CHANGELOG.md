@@ -54,6 +54,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **`browsedirectory` is retired.** A folder store keeps every session at
   its folder path whatever its value, so `browsedirectory=yes` changes
   nothing any more. The key is read and ignored.
+- **The portable build writes `savemode=dir` into kitty.ini on its first
+  start** when the line is missing, and creates kitty.ini from the template
+  when there is none (the ZIP ships only kitty.ini.example). kageant, klink,
+  kscp and ksftp beside it then find the same store from the key. A
+  `savemode` already there stays, and nothing is written with `readonly=yes`
+  or `conf=no`.
 
 ### Fixed
 

@@ -130,6 +130,29 @@ static void InitNameConfigFile( void ) {
 		if( existfile( buffer ) ) rename( buffer, KittyIniFile ) ;
 }
 	
+#ifdef MOD_PORTABLE
+/* The portable build is the folder store without a savemode key, and the
+ * programs beside it (kageant, klink, kscp, ksftp) take their store from
+ * kitty.ini (kitty_inifile.c). The first start writes the key down for them:
+ * a kitty.ini that is not there yet is created from the template, which then
+ * carries savemode=dir, and one without the key gets it. A savemode already
+ * there is the user's and stays. Nothing is written with conf=no or
+ * readonly=yes, and a failed write raises no message - on a read-only stick it
+ * would come at every start; the resolver's layout guess covers that copy. */
+static void PortableWriteSaveMode( void ) {
+	char buffer[64] = "" ;
+	if( GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	if( (KittyIniFile == NULL) || !KittyIniFile[0] ) return ;
+	if( IniFileFlag != SAVEMODE_DIR ) return ;
+	if( !existfile( KittyIniFile ) ) { CreateIniFile( KittyIniFile ) ; return ; }
+	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
+		str_rtrim( buffer, "\n\r \t" ) ;
+		if( buffer[0] ) return ;
+	}
+	writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "dir" ) ;
+}
+#endif
+
 // Write the counter increment
 static void WriteCountUpAndPath( void ) {
 	// Save the folder list
@@ -320,6 +343,9 @@ void InitWinMain( void ) {
 	// Initialise the parameters from the kitty.ini file
 	LoadParameters() ;
 	NETDBG_TS("after LoadParameters (kitty.ini read)");
+#ifdef MOD_PORTABLE
+	PortableWriteSaveMode() ;
+#endif
 
 	// Add the InitialDirectory and ConfigDirectory directories to PATH
 
