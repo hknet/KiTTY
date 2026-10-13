@@ -1492,6 +1492,15 @@ KiTTY++ can export the settings of your running session to a plain-text file wit
 
 (no screenshot)
 
+### Inherit Default Settings
+
+A session can be a stub: write a session file - or a registry key - with only what makes it different, for example `HostName` and `UserName`. Every setting it leaves out is filled in when it loads:
+
+- **switch off** (the default): from the **built-in defaults**, as KiTTY and PuTTY always did;
+- **switch on** - Application > KiTTY++ Settings > Storage & Backup > **Inherit Default Settings** (`[KiTTY] inheritdefaultsettings=yes`): from **Default Settings** (the top-level one), which works as a template in the background. Every setting is inherited, a user name and password kept there included - which is what makes stubs useful, and why ticking the box asks first.
+
+It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it. Keep stubs as files you write (or generate) yourself, and do not save them from the configuration window.
+
 ### Export all / Import all sessions
 
 Beyond exporting a single session, KiTTY++ can move your **whole set of saved sessions** — and your named proxy definitions — between installs or machines. **Export all…** writes every saved session as a `.ktx` file into a folder you choose (plus a `Proxies\` folder for named proxies); **Import all…** reads them back from a folder. When you import into a store that already contains sessions or proxies of the same name, KiTTY puts up one question whether to overwrite them or import only the new ones, and then reports how many sessions and proxies were imported, kept, or failed. Both pickers are the modern folder dialog with an address bar you can paste a path into.

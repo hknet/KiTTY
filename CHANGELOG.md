@@ -8,6 +8,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **Sessions can inherit Default Settings** (hknet/KiTTY#61). With
+  Application > KiTTY++ Settings > Storage & Backup > "Inherit Default
+  Settings" (`inheritdefaultsettings=yes`), a session that leaves a setting
+  out takes it from Default Settings instead of the built-in default, so a
+  session file naming only a host and a user is enough. It covers stored
+  sessions, session files opened directly and klink, kscp and ksftp. Ticking
+  it asks first: a user name and password kept in Default Settings then go
+  into every such session.
 - **An `ssh://` or `telnet://` link can open a saved session**
   (cyd01/KiTTY#540): **Application > KiTTY++ Settings > System > Session
   Integration**, `urlsessions`, default off. A session matches by Host Name

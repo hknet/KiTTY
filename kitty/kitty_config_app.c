@@ -4211,6 +4211,37 @@ static void kitty_sp_suffix_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * Declining keeps the files as they are and still applies the suffix: a file
  * without it stays listed and gets it on its next save.
  */
+/* hknet/KiTTY#61: Inherit Default Settings - kitty.ini [KiTTY]
+ * inheritdefaultsettings. Ticking it asks first, in the themed box, No the
+ * default: a user name and password kept in Default Settings then go into
+ * every session that leaves them out. In effect at once for this process
+ * (windows/storage.c); a write that fails leaves the tick as it was and is
+ * reported by WriteParameter. */
+static void kitty_sp_inherit_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                     void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, kitty_inherit_default_settings() != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        bool on = dlg_checkbox_get(ctrl, dlg);
+        if (on) {
+            char *q = FileExtension[0] ? dupprintf(KT_SP_INHERIT_Q_FMT, FileExtension)
+                                       : dupstr(KT_SP_INHERIT_Q_NOEXT);
+            int yes = kitty_confirm_box(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, q, NULL);
+            sfree(q);
+            if (!yes) {
+                dlg_checkbox_set(ctrl, dlg, false);
+                return;
+            }
+        }
+        if (WriteParameter(INIT_SECTION, KI_INHERITDEFAULTSETTINGS, on ? "yes" : "no"))
+            kitty_set_inherit_default_settings(on);
+        else
+            dlg_checkbox_set(ctrl, dlg, kitty_inherit_default_settings() != 0);
+    }
+}
+
 static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
@@ -4630,6 +4661,9 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
         c->align_next_to = ksp_suffix_edit;
         ctrl_columns(s, 1, 100);
     }
+    ctrl_checkbox(s, KT_SP_INHERIT_LABEL, NO_SHORTCUT, HELPCTX(kitty_storage),
+                  kitty_sp_inherit_handler, P(NULL));
+    ctrl_text(s, KT_SP_INHERIT_HELP, HELPCTX(kitty_storage));
     if (GetReadOnlyFlag())
         ctrl_text(s, KT_KSET_STORAGE_READONLY, HELPCTX(kitty_storage));
     if (GetNoKittyFileFlag())

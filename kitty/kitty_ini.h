@@ -668,6 +668,17 @@ char default_init_file_content[] =
 ;    it protects the ini file, not everything KiTTY stores.\n\
 ;readonly=no\n\
 \n\
+; inheritdefaultsettings: a session that leaves a setting out takes it from\n\
+;    Default Settings (the top-level one) instead of the built-in default -\n\
+;    every setting, a user name and password stored there included, so stub\n\
+;    session files that name only a host are enough. Applies to stored\n\
+;    sessions, to session files opened directly (-kload, a double-click) and\n\
+;    to klink, kscp and ksftp. A session saved in KiTTY++ writes every\n\
+;    setting, so it no longer inherits after its first save. Set in\n\
+;    Application > KiTTY++ Settings > Storage & Backup, which asks first.\n\
+;    Default no: the built-in defaults, as before.\n\
+;inheritdefaultsettings=no\n\
+\n\
 ; restrictacl: apply the restricted process ACL to every KiTTY process, so you\n\
 ;    do not have to add -restrict-acl to each shortcut target. It denies other\n\
 ;    processes running as you the access rights used to read or write another\n\

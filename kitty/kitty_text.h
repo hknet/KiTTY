@@ -3952,6 +3952,11 @@
 #define KT_SP_KEYEXT_LABEL                           "Host Key File Extension"
 #define KT_SP_KEYEXT_RENAMED                         "%d host-key files renamed."
 #define KT_SP_STORAGE_THIS_KITTYPP                   "This KiTTY++"
+/* hknet/KiTTY#61: Storage & Backup, the switch, its line and its question */
+#define KT_SP_INHERIT_LABEL                          "Inherit Default Settings"
+#define KT_SP_INHERIT_HELP                           "A session that leaves a setting out takes it from Default Settings instead of the built-in default."
+#define KT_SP_INHERIT_Q_FMT                          "Every session that leaves a setting out will take it from Default Settings, also a session opened from a %s file.\n\nA user name and password stored in Default Settings are then sent to whatever host such a session names.\n\nTurn it on?"
+#define KT_SP_INHERIT_Q_NOEXT                        "Every session that leaves a setting out will take it from Default Settings, also a session file opened directly.\n\nA user name and password stored in Default Settings are then sent to whatever host such a session names.\n\nTurn it on?"
 #define KT_SP_HOSTKEYS_FOLDER                        "Host Keys Folder"
 #define KT_SP_HOSTKEYS_BROWSE                        "Browse..."
 #define KT_SP_HOSTKEYS_REGISTRY                      "HKCU\\%s (registry)"

@@ -48,6 +48,30 @@ void kitty_console_store_init(void)
             kitty_set_portable_password_protection(ini.portable_password_protection);
     }
 
+    /* hknet/KiTTY#61: a setting a session leaves out comes from Default
+     * Settings when kitty.exe's switch says so - read where kitty.exe keeps
+     * it: the registry first in registry mode (WriteParameter), kitty.ini
+     * otherwise and as the registry's fallback (ReadParameterN). */
+    {
+        char v[16] = "";
+        if (ini.registry_authoritative) {
+            HKEY k;
+            if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", 0,
+                              KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
+                DWORD type = 0, n = sizeof(v) - 1;
+                if (RegQueryValueExA(k, KI_INHERITDEFAULTSETTINGS, NULL, &type,
+                                     (LPBYTE)v, &n) != ERROR_SUCCESS || type != REG_SZ)
+                    v[0] = '\0';
+                else
+                    v[n < sizeof(v) ? n : sizeof(v) - 1] = '\0';
+                RegCloseKey(k);
+            }
+        }
+        if (!v[0])
+            kitty_inifile_read(KI_SECTION_KITTY, KI_INHERITDEFAULTSETTINGS, v, sizeof(v));
+        kitty_set_inherit_default_settings(!stricmp(v, "yes"));
+    }
+
     /* the settings travel with the program (folder store, or savemode=file):
      * the log default stays beside it, as in kitty.exe */
     kitty_set_log_default_beside_program(!ini.registry_authoritative);

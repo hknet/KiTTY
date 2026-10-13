@@ -2705,6 +2705,32 @@ the next start, as it does when the window is closed unanswered.
 \c{fileextensionapplied} and \c{hostkeyextensionapplied} in
 \c{kitty.ini} record the ending last applied.
 
+\b \q{Inherit Default Settings} lets a session be a stub. Write a
+session - a session file, or a registry key - with only what makes it
+different, for example \c{HostName} and \c{UserName}. Every setting it
+leaves out is then filled in when the session loads:
+
+\lcont{
+
+\b switch off (the default): from the built-in defaults, as KiTTY and
+PuTTY always did;
+
+\b switch on: from Default Settings (the top-level one), which works as
+a template in the background - every setting, a user name and password
+kept there included, which is why ticking the box asks first.
+
+}
+
+\lcont{
+
+It applies to stored sessions in both stores, to session files opened
+directly (\c{-kload}, a double-click) and to klink, kscp and ksftp. Saving
+such a session writes every field, so it becomes a full session and no
+longer inherits: a later change to Default Settings does not reach it.
+\c{kitty.ini}: \c{[KiTTY] inheritdefaultsettings}.
+
+}
+
 \b \q{Registry backups to keep} is how many timestamped \c{.sav}
 exports of the hive an installed copy keeps; in a folder store the
 field is \q{Folder-store backups to keep} instead, the number of copies

@@ -361,9 +361,47 @@ struct settings_r {
     int is_file;
     struct ksf_item *items;
     int raw_secrets;  /* KiTTY: .ktx read - passwords come back as stored */
+    settings_r *defaults;  /* KiTTY (#61): Default Settings, for what this one leaves out */
 };
 
+/*
+ * KiTTY (hknet/KiTTY#61): kitty.ini [KiTTY] inheritdefaultsettings=yes - a
+ * session that leaves a setting out takes it from Default Settings (the
+ * top-level one) instead of the built-in default. Every key, passwords and
+ * commands included: a user who turns it on may keep a user name and a
+ * password there on purpose, so that stub session files are enough; the
+ * panel warns about exactly that when it is ticked. kitty.exe sets it from
+ * kitty.ini at start and from the panel, klink/kscp/ksftp from the resolver.
+ */
+static int g_inherit_defaults = 0;
+void kitty_set_inherit_default_settings(int on) { g_inherit_defaults = on ? 1 : 0; }
+int kitty_inherit_default_settings(void) { return g_inherit_defaults; }
+
+static settings_r *open_settings_r_own(const char *sessionname);
+
+/* A session of the store, with Default Settings behind it when the switch is
+ * on - not for Default Settings itself (asked for by name or as NULL). */
 settings_r *open_settings_r(const char *sessionname)
+{
+    settings_r *h = open_settings_r_own(sessionname);
+    if (sessionname && *sessionname)    /* NULL / "" is Default Settings itself */
+        kitty_settings_r_inherit(h, sessionname);
+    return h;
+}
+
+/* Default Settings behind a handle when the switch is on: a stored session's
+ * (sessionname, never Default Settings itself), or one made elsewhere - a
+ * .ktx file's (sessionname NULL). */
+void kitty_settings_r_inherit(settings_r *handle, const char *sessionname)
+{
+    if (!handle || !g_inherit_defaults || handle->defaults)
+        return;
+    if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
+        return;
+    handle->defaults = open_settings_r_own(KITTY_DEFAULT_SESSION);
+}
+
+static settings_r *open_settings_r_own(const char *sessionname)
 {
     if (!sessionname || !*sessionname)
         sessionname = KITTY_DEFAULT_SESSION;
@@ -373,6 +411,7 @@ settings_r *open_settings_r(const char *sessionname)
         if (!path) return NULL;
         settings_r *handle = snew(settings_r);
         handle->raw_secrets = 0;
+        handle->defaults = NULL;
         handle->sesskey = NULL;
         handle->src_hive = KSEC_HIVE_PRIMARY;
         handle->is_file = 1;
@@ -408,6 +447,7 @@ settings_r *open_settings_r(const char *sessionname)
 
     settings_r *handle = snew(settings_r);
     handle->raw_secrets = 0;
+    handle->defaults = NULL;
     handle->sesskey = sesskey;
     handle->src_hive = src;
     handle->is_file = 0;
@@ -446,6 +486,7 @@ settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive)
 
     settings_r *handle = snew(settings_r);
     handle->raw_secrets = 0;
+    handle->defaults = NULL;
     handle->sesskey = sesskey;
     handle->src_hive = hive;
     handle->is_file = 0;
@@ -459,6 +500,7 @@ settings_r *kitty_open_settings_r_items(struct ksf_item *items)
         return NULL;
     settings_r *handle = snew(settings_r);
     handle->raw_secrets = 0;
+    handle->defaults = NULL;
     handle->sesskey = NULL;
     handle->src_hive = KSEC_HIVE_PRIMARY;
     handle->is_file = 1;
@@ -476,6 +518,7 @@ settings_r *kitty_open_settings_r_file(const char *path)
         return NULL;
     settings_r *handle = snew(settings_r);
     handle->raw_secrets = 0;
+    handle->defaults = NULL;
     handle->sesskey = NULL;
     handle->src_hive = KSEC_HIVE_PRIMARY;
     handle->is_file = 1;
@@ -549,6 +592,8 @@ char *read_setting_s(settings_r *handle, const char *key)
             }
         }
     }
+    if (!raw && handle->defaults)
+        return read_setting_s(handle->defaults, key);   /* #61: Default Settings' */
     int slot = kitty_secret_slot(key);
     if (slot >= 0 && raw && !handle->raw_secrets) {
         char *pt = NULL;
@@ -600,7 +645,9 @@ int read_setting_i(settings_r *handle, const char *key, int defvalue)
             kitty_read_watch_note(was);
             v = ksf_list_get(handle->items, was);
         }
-        return v ? atoi(v) : defvalue;
+        if (v)
+            return atoi(v);
+        return handle->defaults ? read_setting_i(handle->defaults, key, defvalue) : defvalue;
     }
     DWORD val;
     if (get_reg_dword(handle->sesskey, key, &val))
@@ -610,7 +657,7 @@ int read_setting_i(settings_r *handle, const char *key, int defvalue)
         if (get_reg_dword(handle->sesskey, was, &val))
             return val;
     }
-    return defvalue;
+    return handle->defaults ? read_setting_i(handle->defaults, key, defvalue) : defvalue;
 }
 
 FontSpec *read_setting_fontspec(settings_r *handle, const char *name)
@@ -706,6 +753,8 @@ void write_setting_filename(settings_w *handle,
 void close_settings_r(settings_r *handle)
 {
     if (handle) {
+        if (handle->defaults)
+            close_settings_r(handle->defaults);
         if (handle->is_file)
             ksf_list_free(handle->items);
         else

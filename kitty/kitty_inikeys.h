@@ -63,6 +63,7 @@
 #define KI_PSCPPATH                         "PSCPPath"
 #define KI_PSCPPORT                         "pscpport"
 #define KI_READONLY                         "readonly"
+#define KI_INHERITDEFAULTSETTINGS           "inheritdefaultsettings"   /* hknet/KiTTY#61 */
 #define KI_RECONNECTDELAY                   "ReconnectDelay"
 /* reconnect by failure condition (kitty_reconnect.c): retry | 3 | 1 | stop | wait */
 #define KI_RECONNECTMAXDELAY                "reconnectmaxdelay"

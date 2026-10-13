@@ -186,6 +186,7 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	}
 	src = kitty_open_settings_r_items( items ) ;   /* owns items now */
 	kitty_settings_r_raw_secrets( src ) ;
+	kitty_settings_r_inherit( src, NULL ) ;   /* #61: Default Settings behind it, when switched on */
 
 	/* every key, from the file or its built-in default - the loader a stored
 	 * session goes through */

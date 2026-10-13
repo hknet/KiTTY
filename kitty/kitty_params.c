@@ -642,6 +642,8 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, KI_MODALCHANGEDHOSTKEYCONFIRMATION,	1, 0, IGN,	NULL, SetModalChangedHostKeyConfirmationFlag ),
 	INIP_KW( INIT_SECTION, 0, KI_MODALWEAKKEYCONFIRMATION,	1, 0, IGN,	NULL, SetModalWeakKeyConfirmationFlag ),
 	INIP_KW( INIT_SECTION, 0, KI_READONLY,		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
+	/* hknet/KiTTY#61: a setting a session leaves out comes from Default Settings */
+	INIP_KW( INIT_SECTION, 0, KI_INHERITDEFAULTSETTINGS,	1, 0, IGN,	NULL, kitty_set_inherit_default_settings ),
 	/* restrictacl=yes: -restrict-acl for every process; no way back off.
 	 * use_readini=1 (kitty.ini ONLY) is deliberate and unlike its [KiTTY]
 	 * neighbours - see the comment on SetRestrictAclFlag. */

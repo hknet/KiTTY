@@ -91,6 +91,11 @@ settings_r *kitty_open_settings_r_items(struct ksf_item *items);
 /* The .ktx reader and writer (kitty_settings_load.c, kitty_settings_forced.c):
  * passwords as stored on read, left out on write, nothing to the store. */
 void kitty_settings_r_raw_secrets(settings_r *handle);
+/* hknet/KiTTY#61: kitty.ini inheritdefaultsettings - a setting a session
+ * leaves out comes from Default Settings (windows/storage.c). */
+void kitty_set_inherit_default_settings(int on);
+int kitty_inherit_default_settings(void);
+void kitty_settings_r_inherit(settings_r *handle, const char *sessionname);
 settings_w *kitty_open_settings_w_items(void);
 struct ksf_item *kitty_settings_w_take_items(settings_w *handle);
 /* Walk a parsed file's keys, in file order (the import asks which keys the
