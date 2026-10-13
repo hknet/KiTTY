@@ -387,11 +387,9 @@ static int kitty_import_one_ktx(const char *path, int overwrite) {
     char *name, *err;
     const char *base;
     int ret = 0;
-    /* Populate every setting with its default first: a .ktx only carries the
-     * fields it was written with, and load_open_settings_forced() (unlike the
-     * normal load path) does NOT seed defaults - so any key the file omits would
-     * stay unset and later conf_get_*() would assert (utils/conf.c "entry"). */
-    do_defaults(NULL, conf);
+    /* Every key from the file or its built-in default: the .ktx reader runs
+     * KiTTY++'s session loader (kitty_settings_load.c), as a stored session's
+     * load does. */
     load_open_settings_forced((char *)path, conf);
     base = strrchr(path, '\\');
     base = base ? base + 1 : path;

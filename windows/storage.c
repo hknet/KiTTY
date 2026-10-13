@@ -54,6 +54,7 @@ struct settings_w {
     struct ksf_item *items;
     int mig_answer;   /* legacy->protected consent for THIS save: -1 unasked */
     char *legacy;     /* KiTTY: older file of this session, removed once saved */
+    int raw_secrets;  /* KiTTY: .ktx export - passwords are the caller's (no protection here) */
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -65,6 +66,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
 
     if (store_is_file()) {
         settings_w *handle = snew(settings_w);
+        handle->raw_secrets = 0;
         handle->sesskey = NULL;
         handle->is_file = 1;
         handle->items = NULL;
@@ -140,6 +142,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     strbuf_free(sb);
 
     settings_w *handle = snew(settings_w);
+    handle->raw_secrets = 0;
     handle->sesskey = sesskey;
     handle->is_file = 0;
     handle->fpath = NULL;
@@ -166,6 +169,8 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
     if (!handle)
         return;
     int slot = kitty_secret_slot(key);
+    if (slot >= 0 && handle->raw_secrets)
+        return;                        /* the .ktx writer sets them itself */
     if (slot >= 0) {
         /* KiTTY: what the caller hands over is the wrapped in-memory form
          * (kitty_pwmem.c). Unwrap it here - this is the one place every writer
@@ -355,6 +360,7 @@ struct settings_r {
     int src_hive;
     int is_file;
     struct ksf_item *items;
+    int raw_secrets;  /* KiTTY: .ktx read - passwords come back as stored */
 };
 
 settings_r *open_settings_r(const char *sessionname)
@@ -366,6 +372,7 @@ settings_r *open_settings_r(const char *sessionname)
         char *path = ksf_session_find(sessionname);   /* KiTTY: path, suffix, legacy */
         if (!path) return NULL;
         settings_r *handle = snew(settings_r);
+        handle->raw_secrets = 0;
         handle->sesskey = NULL;
         handle->src_hive = KSEC_HIVE_PRIMARY;
         handle->is_file = 1;
@@ -400,6 +407,7 @@ settings_r *open_settings_r(const char *sessionname)
         return NULL;
 
     settings_r *handle = snew(settings_r);
+    handle->raw_secrets = 0;
     handle->sesskey = sesskey;
     handle->src_hive = src;
     handle->is_file = 0;
@@ -437,6 +445,7 @@ settings_r *kitty_open_settings_r_hive(const char *sessionname, int hive)
         return NULL;
 
     settings_r *handle = snew(settings_r);
+    handle->raw_secrets = 0;
     handle->sesskey = sesskey;
     handle->src_hive = hive;
     handle->is_file = 0;
@@ -449,6 +458,7 @@ settings_r *kitty_open_settings_r_items(struct ksf_item *items)
     if (!items)
         return NULL;
     settings_r *handle = snew(settings_r);
+    handle->raw_secrets = 0;
     handle->sesskey = NULL;
     handle->src_hive = KSEC_HIVE_PRIMARY;
     handle->is_file = 1;
@@ -465,11 +475,52 @@ settings_r *kitty_open_settings_r_file(const char *path)
     if (!items)
         return NULL;
     settings_r *handle = snew(settings_r);
+    handle->raw_secrets = 0;
     handle->sesskey = NULL;
     handle->src_hive = KSEC_HIVE_PRIMARY;
     handle->is_file = 1;
     handle->items = items;
     return handle;
+}
+
+/* KiTTY: a .ktx file read through the ordinary loader. Its passwords come
+ * back as the file holds them - the .ktx reader decodes them itself
+ * (kitty_secret_decode_imported) - and never reach the never-wipe guard,
+ * which belongs to sessions of this store. */
+void kitty_settings_r_raw_secrets(settings_r *handle)
+{
+    if (handle)
+        handle->raw_secrets = 1;
+}
+
+/* KiTTY: a write handle over a list in memory - the .ktx export runs the
+ * ordinary save_open_settings into it and writes the file itself. Nothing is
+ * written to the store, and passwords are left out (the export wraps them in
+ * the bundle's envelope). Collect the list with kitty_settings_w_take_items,
+ * never close_settings_w. */
+settings_w *kitty_open_settings_w_items(void)
+{
+    settings_w *handle = snew(settings_w);
+    handle->sesskey = NULL;
+    handle->is_file = 1;
+    handle->fpath = NULL;
+    handle->items = NULL;
+    handle->mig_answer = 1;
+    handle->legacy = NULL;
+    handle->raw_secrets = 1;
+    return handle;
+}
+
+struct ksf_item *kitty_settings_w_take_items(settings_w *handle)
+{
+    struct ksf_item *items;
+    if (!handle)
+        return NULL;
+    items = handle->items;
+    sfree(handle->fpath);
+    sfree(handle->legacy);
+    sfree(handle);
+    return items;
 }
 
 char *read_setting_s(settings_r *handle, const char *key)
@@ -499,7 +550,7 @@ char *read_setting_s(settings_r *handle, const char *key)
         }
     }
     int slot = kitty_secret_slot(key);
-    if (slot >= 0 && raw) {
+    if (slot >= 0 && raw && !handle->raw_secrets) {
         char *pt = NULL;
         /* Old-KiTTY hive "Password" (slot 0): always legacy-encrypted there (we
          * never wrote to that hive). Decrypt it; the next Save re-stores it

@@ -76,6 +76,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **An exported `.ktx` carries every setting, and opening one reads every
+  setting.** The export left out 59 of them (the background image, the
+  transfer and Tools-menu settings, line spacing, the reconnect rules and
+  more), and a double-clicked or `-kload`ed `.ktx` took 33 from Default
+  Settings whatever the file said. Both now go through the same loader and
+  saver as a stored session.
 - **A relative `configdir` is taken below the exe's folder**, as kageant and
   the console tools take it. kitty.exe tested it against the working
   directory, so a shortcut with another "Start in" found another folder. A
