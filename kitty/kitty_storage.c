@@ -814,7 +814,7 @@ int kitty_session_origin(const char *sessionname)
  * round-trip). Folders are just a normal "Folder" value inside the file,
  * exactly as the registry treats them (no folder-nested subdirectories).
  *
- * Self-contained (no kitty_store.c / kitty_commun.c dependency) so libsettings
+ * Self-contained (no kitty_store.c / kitty_common.c dependency) so libsettings
  * still links into plink/pscp/puttygen, which never call the setters below and
  * therefore stay registry-only (g_store_mode == 0). The dispatch sits BELOW the
  * credential-crypto hooks in read/write_setting_s, so portable passwords are

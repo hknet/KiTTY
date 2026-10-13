@@ -12,7 +12,7 @@
 #include "storage.h"       /* read_setting_s/i: per-session hotkey scan */
 #include "kitty.h"
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
-#include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
+#include "kitty_common.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */

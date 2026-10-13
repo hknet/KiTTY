@@ -44,7 +44,7 @@
 #include "kitty_startup.h"    /* InitWinMain */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
@@ -86,7 +86,7 @@
 // The configuration structure is instantiated in window.c
 
 // Flag for "portable" mode (settings kept in files), defined in
-// kitty_commun.c
+// kitty_common.c
 extern int IniFileFlag ;
 
 // Name of the application window class

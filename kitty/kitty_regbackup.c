@@ -32,7 +32,7 @@
 #include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
 #include "kitty_portfwd.h"     /* the port-forward display */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"

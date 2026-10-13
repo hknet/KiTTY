@@ -23,7 +23,7 @@
 #include "kitty_dlgbox.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_gui.h"

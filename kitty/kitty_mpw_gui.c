@@ -28,7 +28,7 @@
 #include "kitty_win.h"
 #include "kitty_dlgbox.h"
 #include "kitty.h"
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "mini/mini.h"
 #include "kitty_mpw.h"
 

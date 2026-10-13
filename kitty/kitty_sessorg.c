@@ -31,7 +31,7 @@
 #include <commctrl.h>
 
 #include "kitty.h"               /* FolderList, InitFolderList, SaveFolderList */
-#include "kitty_commun.h"        /* GetReadOnlyFlag */
+#include "kitty_common.h"        /* GetReadOnlyFlag */
 #include "kitty_tools.h"         /* StringList_Add / _Del */
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"

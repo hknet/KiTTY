@@ -21,7 +21,7 @@
 #include "kitty_portfwd.h"
 #include "kitty_broadcast.h"
 #include "kitty_defs.h"    /* KITTY_DEFAULT_SESSION, KITTY_LAUNCHER_HOTKEY_MAX */
-#include "kitty_commun.h"  /* GetCryptSaltFlag, MASKPASS */
+#include "kitty_common.h"  /* GetCryptSaltFlag, MASKPASS */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */

@@ -20,7 +20,7 @@
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_broadcast.h"
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_crypt.h"
 #include "kitty_tools.h"
 #include "kitty_text.h"     /* KT_KEYTEXT_*: the key names shown in menus */

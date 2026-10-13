@@ -27,7 +27,7 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty.h"
 #include "kitty_launcher.h"
 #include "kitty_tools.h"

@@ -80,7 +80,7 @@
 #include "../kitty/kitty_broadcast.h"
 #include "kitty_gui.h"
 #include "../kitty/kitty_bridge.h"
-#include "../kitty/kitty_commun.h"
+#include "../kitty/kitty_common.h"
 #include "../kitty/kitty_url.h"
 #include "../kitty/kitty_zmodem.h"
 #include "../kitty/kitty_rutty.h"
@@ -870,7 +870,7 @@ static Conf *kitty_winident_conf(WinGuiSeat *wgs, Conf *src); /* %KITTY_*% for t
 #endif
 #define MYWM_NOTIFYICON (WM_USER+3)  /* tray-icon click callback (matches kitty.c) */
 extern int force_reconf;   /* kitty_bridge.c: 0 => apply conf silently (no dialog) */
-/* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_commun.c) */
+/* KiTTY shortcut/ctrl-tab engine (kitty.c / kitty_common.c) */
 int ManageShortcuts(Terminal *term, Conf *conf, HWND hwnd,
                     const int *clips_system, int key_num, int shift_flag,
                     int control_flag, int alt_flag, int altgr_flag, int win_flag);

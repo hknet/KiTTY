@@ -44,7 +44,7 @@
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
 #include "kitty_storage.h"       /* kitty_read_session_folder */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
@@ -813,7 +813,7 @@ static void RefreshMenuLauncher( void ) {
 	LAUNCHER_TIMING_END( "menu" ) ;
 }
 	
-// Delete a directory tree   ==> moved to kitty_commun.c
+// Delete a directory tree   ==> moved to kitty_common.c
 /*
 void DelDir( const char * directory ) {
 	DIR * dir ;

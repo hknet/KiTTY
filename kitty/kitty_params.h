@@ -118,7 +118,7 @@ int GetHyperlinkFlag(void) ;
 void SetHyperlinkFlag( const int flag ) ;
 
 // Flag enabling the folder tree when savemode=dir, defined in
-// kitty_commun.c
+// kitty_common.c
 
 // Send the window to the tray automatically (for tunnels); goes with the
 // -send-to-tray option

@@ -33,7 +33,7 @@
 #include "kitty_sessorg.h"       /* Organize sessions, Arrange, the folder-delete box */
 #include "kitty_tags.h"          /* Session > Startup, "Session Tags" (hknet/KiTTY#60) */
 #include "kitty_dlgbox.h"        /* the modeless info box */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_regbackup.h"

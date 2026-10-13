@@ -29,7 +29,7 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_broadcast.h"
@@ -607,7 +607,7 @@ struct kset_key {
     int nchoices;
 };
 
-/* kitty.c, kitty_commun.c, kitty_bridge.c, kitty_image.c, winfont_fallback.c:
+/* kitty.c, kitty_common.c, kitty_bridge.c, kitty_image.c, winfont_fallback.c:
  * the running values. Declared here because this file has no
  * header for them. */
 extern int  GetShortcutsFlag(void);            extern void SetShortcutsFlag(const int);

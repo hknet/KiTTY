@@ -24,7 +24,7 @@
 
 #include "kitty.h"
 #include "kitty_params.h"
-#include "kitty_commun.h"    /* MASKPASS */
+#include "kitty_common.h"    /* MASKPASS */
 
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
 #include "kitty_win.h"       /* OpenFileName */

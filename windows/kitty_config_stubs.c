@@ -38,7 +38,7 @@ bool kitty_proxy_panel_dirty(void) { return false; }
 int kitty_proxy_choice_shown(void) { return 0; }  /* no Proxy-choice droplist row */
 
 /* Inline-first security prompts: 1 = keep the confirmation MODAL, i.e. the
- * stock PuTTY message box. The real flags (kitty/kitty_commun.c) are driven by
+ * stock PuTTY message box. The real flags (kitty/kitty_common.c) are driven by
  * the [KiTTY] modal*confirmation settings, which these targets do not read. */
 int GetModalNewHostKeyConfirmationFlag(void)     { return 1; }
 int GetModalChangedHostKeyConfirmationFlag(void) { return 1; }

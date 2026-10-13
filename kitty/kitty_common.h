@@ -1,13 +1,13 @@
 /*
- * kitty_commun.h - the declarations for kitty_commun.c: the global flags and
+ * kitty_common.h - the declarations for kitty_common.c: the global flags and
  * helpers shared by every program in the suite (kitty, pscp, psftp, plink,
  * pageant). Save mode and configuration directory, the feature and
  * compatibility flags read from kitty.ini, folder-name cleaning, the
  * light parameter reader used before the full store is up, the %XY name
  * escaping, and access to the session password.
  */
-#ifndef KITTY_COMMUN
-#define KITTY_COMMUN
+#ifndef KITTY_COMMON
+#define KITTY_COMMON
 
 #include <stdlib.h>
 #include <stdio.h>

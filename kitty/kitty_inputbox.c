@@ -21,7 +21,7 @@
 #include "kitty_broadcast.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
 
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */

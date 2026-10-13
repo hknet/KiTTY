@@ -12,7 +12,7 @@
 
 
 #include "kitty_store.h"
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_tools.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_msgbox.h"   /* themed MessageBox routing */

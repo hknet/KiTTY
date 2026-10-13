@@ -21,7 +21,7 @@
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
 
 #include "kitty_defs.h"      /* KITTY_DEFAULT_SESSION */
-#include "kitty_commun.h"    /* ConfigDirectory, mungestr/unmungestr */
+#include "kitty_common.h"    /* ConfigDirectory, mungestr/unmungestr */
 #include "kitty_registry.h"  /* MAX_VALUE_NAME */
 #include "kitty_tools.h"     /* str_rtrim */
 #include "kitty_text.h"      /* the menu wording */

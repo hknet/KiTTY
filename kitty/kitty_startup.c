@@ -33,7 +33,7 @@
 #include "kitty_regbackup.h"   /* the .sav export/import and the backup rotation */
 #include "kitty_int.h"         /* what the split-off files share with this one */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"

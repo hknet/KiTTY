@@ -17,7 +17,7 @@
 #include "kitty_sessionrekey.h"
 #include "kitty_registry.h"
 #include "kitty_migrate.h"
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_text.h"
 
 bool kitty_session_exists_own(const char *name)

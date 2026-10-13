@@ -3,7 +3,7 @@
  * pageant programs
  */
 
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_tools.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */

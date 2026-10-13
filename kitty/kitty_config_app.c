@@ -31,7 +31,7 @@
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_broadcast.h"
@@ -4555,7 +4555,7 @@ void kitty_sp_endings_offer(HWND owner)
 
 static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
 {
-    /* kitty_commun.c's values, which this file has no header for */
+    /* kitty_common.c's values, which this file has no header for */
     enum { KSET_SAVEMODE_REG = 0, KSET_SAVEMODE_FILE = 1, KSET_SAVEMODE_DIR = 2 };
     static const char *const storage = KSET_PATH("Storage & Backup");
     struct controlset *s;

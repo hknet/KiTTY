@@ -66,7 +66,7 @@ int kitty_script_enabled(void) ;
 void kitty_script_set_enabled( int on ) ;
 
 // Flag for "portable" mode (settings kept in files), defined in
-// kitty_commun.c
+// kitty_common.c
 extern int IniFileFlag ;
 int GetIniFileFlag(void) ;
 
@@ -79,7 +79,7 @@ void SetZModemFlag( const int flag ) ;
 
 // Flag disabling the automatic saving of the login details (user/password)
 // on an SSH connection
-// extern int UserPassSSHNoSave ; ==> defined in kitty_commun.c
+// extern int UserPassSSHNoSave ; ==> defined in kitty_common.c
 int GetUserPassSSHNoSave(void) ;
 void SetUserPassSSHNoSave( const int flag ) ;
 

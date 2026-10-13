@@ -30,7 +30,7 @@
 #include <shobjidl.h>       /* ITaskbarList3, TBPF_* */
 
 #include "kitty_buildlabel.h"   /* the test hooks below: test builds only */
-#include "kitty_commun.h"   /* GetPuttyFlag */
+#include "kitty_common.h"   /* GetPuttyFlag */
 #include "kitty_notice.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_reply.h"    /* kitty_term_send_reply: the reply seam */

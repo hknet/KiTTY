@@ -523,7 +523,7 @@ add_executable(test_storage_roundtrip
   # decoder and the mungestr/salt helpers it decodes through
   ${CMAKE_SOURCE_DIR}/kitty/kitty_settings_load.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crypt.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_commun.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_common.c
   no-jump-list.c
   ${CMAKE_SOURCE_DIR}/sshrand.c)
 target_include_directories(test_storage_roundtrip PRIVATE
@@ -722,7 +722,7 @@ endif()
 
 # The kitty/ sources BOTH terminals compile identically: MOD_PORTABLE is
 # tested by five files only (kitty_launcher.c, kitty_registry.c,
-# kitty_updater.c, kitty_commun.c, kitty_startup.c - checked below), and no
+# kitty_updater.c, kitty_common.c, kitty_startup.c - checked below), and no
 # header branches on it, so the rest is the same object twice. An OBJECT
 # library compiles it once per width and both terminals take every object
 # of it, exactly as listing the sources did; a static library would link
@@ -821,7 +821,7 @@ foreach(f ${KITTY_CORE_SCAN})
   file(READ ${f} _c)
   if(_c MATCHES "MOD_PORTABLE")
     get_filename_component(_n ${f} NAME)
-    if(NOT _n MATCHES "^(kitty_launcher|kitty_registry|kitty_updater|kitty_commun|kitty_startup)\\.c$")
+    if(NOT _n MATCHES "^(kitty_launcher|kitty_registry|kitty_updater|kitty_common|kitty_startup)\\.c$")
       list(APPEND KITTY_CORE_BAD ${f})
     endif()
   endif()
@@ -872,7 +872,7 @@ add_executable(kitty
   kitty.rc
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_startup.c
-  ${KITTY_DIR}/kitty_commun.c
+  ${KITTY_DIR}/kitty_common.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_updater.c
@@ -960,7 +960,7 @@ add_executable(kitty_portable
   kitty.rc
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_startup.c
-  ${KITTY_DIR}/kitty_commun.c
+  ${KITTY_DIR}/kitty_common.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/blocnote/notepad.rc
   ${KITTY_DIR}/kitty_updater.c

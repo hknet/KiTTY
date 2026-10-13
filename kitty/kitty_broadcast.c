@@ -29,7 +29,7 @@
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
-#include "kitty_commun.h"
+#include "kitty_common.h"
 #include "kitty_image.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"

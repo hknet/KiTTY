@@ -23,7 +23,7 @@
 #include <limits.h>
 #include "kitty.h"
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
-#include "kitty_commun.h"  /* GetCryptSaltFlag */
+#include "kitty_common.h"  /* GetCryptSaltFlag */
 #include "kitty_crypt.h"   /* decryptstring */
 #include "kitty_text.h"    /* shared captions */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
@@ -34,7 +34,7 @@
 #include "kitty_secretstore.h"
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
-/* unmungestr is declared in kitty_commun.h (const char *in). */
+/* unmungestr is declared in kitty_common.h (const char *in). */
 
 /* Constants that were file-local in the original KiTTY tree. */
 #ifndef PRINT_TO_CLIPBOARD_STRING
