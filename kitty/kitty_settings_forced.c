@@ -73,11 +73,16 @@ int save_open_settings_forced(char *filename, Conf *conf) {
         if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }
     {
-        /* the proxy password as the file has always carried it */
+        /* the proxy password in the same envelope. The reader
+         * (ktx_decode_password) takes the envelope and, from files written
+         * before, the plain value. */
         char pxpw[KITTY_PW_MAX + 1];
+        char *blob = NULL;
         kitty_pw_get(conf, CONF_proxy_password, pxpw, sizeof(pxpw));
-        ksf_list_set(&items, "ProxyPassword", pxpw);
+        if (pxpw[0]) blob = kitty_secret_wrap_portable(pxpw);
         smemclr(pxpw, sizeof(pxpw));
+        ksf_list_set(&items, "ProxyPassword", blob ? blob : "");
+        if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }
 
     if ((fp = fopen(filename, "w")) == NULL) {

@@ -188,6 +188,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   cannot be decrypted for Save.** It reported the error and then went on as
   if the file had been written, and with Windows Hello off it removed the
   `.hello` files of the other key files of that name.
+- **An exported `.ktx` no longer carries the proxy password in plain text.**
+  It goes into the same protected form as the session password. `.ktx` files
+  written before still open.
 
 ## 0.85.1.15-beta — 2026-10-11
 
