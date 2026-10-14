@@ -7,6 +7,7 @@
  * integration is switched off.
  */
 #include <stdio.h>
+#include "kitty_atomicfile.h"   /* a file written whole or not at all */
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -136,32 +137,12 @@ static int kageant_read_file(const char *path, char **out, size_t *outlen)
     return 1;
 }
 
-/* Atomically replace `path` contents with `data` (temp file + rename). 1 or
- * 0 with the Windows error in GetLastError(); the file is untouched then. */
+/* Replace `path` contents with `data`, whole or not at all (the shared
+ * kitty_write_file_whole). 1 or 0 with the Windows error in GetLastError();
+ * the file is untouched then. */
 static int kageant_write_file_atomic(const char *path, const char *data)
 {
-    char *tmp = dupprintf("%s.kageant.tmp", path);
-    size_t len = strlen(data);
-    DWORD put = 0, err = 0;
-    HANDLE h = CreateFileA(tmp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                           FILE_ATTRIBUTE_NORMAL, NULL);
-    int ok = 0;
-    if (h != INVALID_HANDLE_VALUE) {
-        ok = WriteFile(h, data, (DWORD)len, &put, NULL) && put == len;
-        if (!ok) err = GetLastError();
-        if (!CloseHandle(h) && ok) { ok = 0; err = GetLastError(); }
-    } else {
-        err = GetLastError();
-    }
-    if (ok && !MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING)) {
-        ok = 0; err = GetLastError();
-    }
-    if (!ok) {
-        DeleteFileA(tmp);
-        SetLastError(err ? err : ERROR_WRITE_FAULT);
-    }
-    sfree(tmp);
-    return ok;
+    return kitty_write_file_whole(path, data, strlen(data));
 }
 
 /* One-time backup of config before kageant first edits it (never clobbers):

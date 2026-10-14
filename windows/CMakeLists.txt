@@ -189,6 +189,7 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
 # kittygen_cli and test_storage_roundtrip source lists below, or those
 # targets fail to link.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)   # KiTTY: a file written whole or not at all (kitty_storage.c)
 # KiTTY: a session name as a folder path, the name resolver and the session
 # file check (hknet/KiTTY#55, #56). Listed beside kitty_storage.c everywhere.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
@@ -258,6 +259,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auxpos.c   # KiTTY: About-box placement + memory
   ${CMAKE_SOURCE_DIR}/kitty/kitty_pageant.c   # KiTTY: kageant additions (split out of pageant.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_openssh.c   # KiTTY: the Windows OpenSSH client integration
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_audit.c   # KiTTY: the agent audit log
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_settings.c   # KiTTY: the agent settings facade
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
@@ -411,6 +413,7 @@ add_executable(puttygen
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   help.c
@@ -448,6 +451,7 @@ add_executable(kittygen_cli
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   no-jump-list.c
@@ -515,6 +519,7 @@ add_executable(test_storage_roundtrip
   storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
@@ -645,6 +650,15 @@ add_executable(test_wic
   ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c)
 target_include_directories(test_wic PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
 target_link_libraries(test_wic ${platform_libraries})
+
+# A file written whole keeps the permissions and attributes of the file it
+# replaces (test/test_atomicfile.c): a narrowed access list, an inheriting
+# one, a hidden file, a new file.
+add_executable(test_atomicfile
+  ${CMAKE_SOURCE_DIR}/test/test_atomicfile.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)
+target_include_directories(test_atomicfile PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
+target_link_libraries(test_atomicfile ${platform_libraries})
 
 # The plain-text fast path in term_out() against the ordinary path, cell for
 # cell (test/test_textrun.c). Same build of terminal.c as test_osc52 and the

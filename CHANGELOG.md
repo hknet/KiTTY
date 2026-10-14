@@ -135,8 +135,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   - kitty.ini, the built-in editor, the portable store files and
     `~/.ssh/config` (kageant's OpenSSH integration) are written to a
     temporary file and swapped in, so a file held open by an editor or a
-    scanner stays as it was. A kitty.ini that exists but cannot be read is
-    no longer rewritten from nothing.
+    scanner stays as it was. The new file keeps the old one's permissions
+    and attributes: a `~/.ssh/config` tightened by hand stays tightened.
+    A kitty.ini that exists but cannot be read is no longer rewritten from
+    nothing.
   - Registry copies (the old-hive migration, renames, `/copytoputty`) delete
     the source only after a complete copy. A partial copy is removed.
   - Start-up: a store that cannot be set aside or restored stops with a

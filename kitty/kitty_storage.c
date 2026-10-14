@@ -19,6 +19,7 @@
  */
 
 #include <stdio.h>
+#include "kitty_atomicfile.h"   /* a file written whole or not at all */
 #include <stdlib.h>
 #include <stdarg.h>
 #include <limits.h>
@@ -2158,25 +2159,18 @@ int portable_write_text_file(const char *subdir, const char *name,
      * GetLastError(). */
     char *dir = portable_subdir_path(subdir);
     char *path = portable_item_path(subdir, name);
-    char *tmp = NULL;
-    FILE *fp;
+    char *text = NULL;
     int ok = 0;
     DWORD err = ERROR_PATH_NOT_FOUND;
     if (!dir || !path) goto out;
     if (!CreateDirectoryA(dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
         err = GetLastError(); goto out;
     }
-    tmp = dupprintf("%s.%lu.tmp", path, (unsigned long)GetCurrentProcessId());
-    fp = fopen(tmp, "wb");
-    if (!fp) { err = GetLastError(); goto out; }
-    ok = fputs(value ? value : "", fp) >= 0 && fputc('\n', fp) != EOF;
-    if (fclose(fp) != 0) ok = 0;
-    if (!ok) { err = GetLastError(); DeleteFileA(tmp); goto out; }
-    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        err = GetLastError(); DeleteFileA(tmp); ok = 0;
-    }
+    text = dupprintf("%s\n", value ? value : "");
+    ok = kitty_write_file_whole(path, text, strlen(text));
+    if (!ok) err = GetLastError();
 out:
-    sfree(tmp);
+    if (text) { smemclr(text, strlen(text)); sfree(text); }
     sfree(dir);
     sfree(path);
     if (!ok) SetLastError(err ? err : ERROR_WRITE_FAULT);
