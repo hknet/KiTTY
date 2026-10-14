@@ -8,6 +8,7 @@
 #include <io.h>
 #include <process.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <sys/locking.h>
 #include <sys/stat.h>
@@ -177,7 +178,7 @@ static const char *ci_value( const struct ci_sec *s, const char *key ) {
 	return v ;
 }
 
-static void ConsolidateKittyIni( const char *path ) {
+static void ConsolidateKittyIniLocked( const char *path ) {
 	FILE *fp ;
 	char *line, *tmp = NULL, *bak = NULL ;
 	struct ci_sec *sec = NULL ;
@@ -253,11 +254,32 @@ static void ConsolidateKittyIni( const char *path ) {
 		struct tm *tm = localtime( &now ) ;
 		char stamp[32] = "" ;
 		FILE *out ;
-		int ok ;
+		int ok, made_bak ;
 		if( tm ) strftime( stamp, sizeof(stamp), "%Y%m%d-%H%M%S", tm ) ;
-		bak = dupprintf( "%s.%s.bak", path, stamp ) ;
-		tmp = dupprintf( "%s.%lu.tmp", path, (unsigned long)GetCurrentProcessId() ) ;
-		ok = CopyFileA( path, bak, TRUE ) && ( out = fopen( tmp, "wb" ) ) != NULL ;
+		/* The backup never replaces a file: kitty.ini.<stamp>.bak, or
+		 * .<stamp>-2.bak and on when that name is taken (a second merge in
+		 * the same second, a file left from before). */
+		made_bak = 0 ;
+		for( k = 1 ; k <= 99 && !made_bak ; k++ ) {
+			sfree( bak ) ;
+			bak = ( k == 1 ) ? dupprintf( "%s.%s.bak", path, stamp )
+			                 : dupprintf( "%s.%s-%d.bak", path, stamp, k ) ;
+			made_bak = CopyFileA( path, bak, TRUE ) ;
+			if( !made_bak && GetLastError() != ERROR_FILE_EXISTS ) break ;
+		}
+		/* the new content goes to a file Windows names (and creates) in
+		 * kitty.ini's own folder - ReplaceFile needs the same drive */
+		{
+			char dir[MAX_PATH], tbuf[MAX_PATH] ;
+			char *slash ;
+			snprintf( dir, sizeof(dir), "%s", path ) ;
+			slash = strrchr( dir, '\\' ) ;
+			if( slash == NULL ) slash = strrchr( dir, '/' ) ;
+			if( slash ) *slash = '\0' ; else snprintf( dir, sizeof(dir), "." ) ;
+			if( GetTempFileNameA( dir, "kti", 0, tbuf ) ) tmp = dupstr( tbuf ) ;
+		}
+		ok = made_bak && tmp != NULL && ( out = fopen( tmp, "wb" ) ) != NULL ;
+		if( !ok && tmp ) DeleteFileA( tmp ) ;   /* GetTempFileName made it */
 		if( ok ) {
 			for( i = 0 ; i < nsec ; i++ ) {
 				if( sec[i].gone ) continue ;
@@ -275,7 +297,7 @@ static void ConsolidateKittyIni( const char *path ) {
 			char msg[4096 + 512] ;
 			snprintf( msg, sizeof(msg), KT_MAIN_INI_CONSOLIDATED_FMT, bak ) ;
 			StartupNotice( msg, 0 ) ;
-		} else if( bak )
+		} else if( made_bak )
 			DeleteFileA( bak ) ;
 	}
 
@@ -287,6 +309,32 @@ static void ConsolidateKittyIni( const char *path ) {
 	sfree( sec ) ;
 	sfree( tmp ) ;
 	sfree( bak ) ;
+}
+
+/* One merge per kitty.ini at a time: several kitty.exe starting together
+ * all read the file at start. The lock is named from the file's full path,
+ * so two kitty.ini files never wait for each other; the read happens inside
+ * it, so a start that waited finds the file already merged. A lock that
+ * cannot be had within 10 s: no merge this time, the next start does it. */
+static void ConsolidateKittyIni( const char *path ) {
+	char full[MAX_PATH], name[64] ;
+	unsigned long h = 2166136261UL ;   /* FNV-1a over the lower-cased path */
+	const char *c ;
+	HANDLE mx ;
+	DWORD w ;
+	if( !path || !path[0] ) return ;
+	if( !GetFullPathNameA( path, sizeof(full), full, NULL ) )
+		snprintf( full, sizeof(full), "%s", path ) ;
+	for( c = full ; *c ; c++ )
+		h = ( ( h ^ (unsigned char)tolower( (unsigned char)*c ) ) * 16777619UL ) & 0xffffffffUL ;
+	snprintf( name, sizeof(name), "Local\\KiTTYpp-ini-%08lx", h ) ;
+	if( ( mx = CreateMutexA( NULL, FALSE, name ) ) == NULL ) return ;
+	w = WaitForSingleObject( mx, 10000 ) ;
+	if( w == WAIT_OBJECT_0 || w == WAIT_ABANDONED ) {
+		ConsolidateKittyIniLocked( path ) ;
+		ReleaseMutex( mx ) ;
+	}
+	CloseHandle( mx ) ;
 }
 
 static void InitNameConfigFile( void ) {
