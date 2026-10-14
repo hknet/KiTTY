@@ -651,8 +651,9 @@ static DWORD WINAPI sav_worker( LPVOID param ) {
 	 * a "backup" containing nothing but our migration markers. Worse than
 	 * useless - it looks like a backup right up to the day someone needs it. */
 	{ extern const char *kitty_registry_base( void ) ;
-	  SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), j->dated ) ; }
-	sav_prune( j->base, j->keep ) ;
+	  /* never prune for a backup that failed - as sav_backup's own path */
+	  if( SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), j->dated ) )
+		sav_prune( j->base, j->keep ) ; }
 	free( j ) ;
 	InterlockedExchange( &sav_worker_busy, 0 ) ;
 	return 0 ;
