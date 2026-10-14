@@ -306,6 +306,7 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
 		return TRUE ; 
 	} else {
 		//printf("Error opening key.\n") ;
+		SetLastError( (DWORD)lResult ) ;   /* the caller reports the reason */
 		return FALSE ;
 	}
     }
@@ -333,6 +334,7 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
 	lResult = RegDeleteKey(hKeyRoot, lpSubKey);
 
 	if (lResult == ERROR_SUCCESS) return TRUE;
+	SetLastError( (DWORD)lResult ) ;   /* the caller reports the reason */
 	return FALSE;
 	}
 
