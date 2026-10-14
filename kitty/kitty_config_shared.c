@@ -657,7 +657,7 @@ static const char *kset_get_pscpport(void)
 }
 
 const struct kset_key *kset_find(const char *key);
-void kset_write(const struct kset_key *k, const char *text);
+int kset_write(const struct kset_key *k, const char *text);
 /* "Locate..." beside the download folder: the Explorer folder picker
  * (OpenDirName, kitty_winutil.c), the pick written like a typed value and the
  * box (the button's context) refreshed. */
@@ -905,7 +905,9 @@ static int kset_read(const struct kset_key *k, char *buf, size_t size)
  * next start the old one. It is reported now, once per setting until that
  * setting stores again - an edit box writes on every keystroke. A box per
  * character would be worse than none. */
-void kset_write(const struct kset_key *k, const char *text)
+/* 1 stored. 0 not: said once per setting in a row, and the caller leaves the
+ * running value alone and shows the stored one again (kitty_kset_handler). */
+int kset_write(const struct kset_key *k, const char *text)
 {
     static const struct kset_key *failed_last = NULL;
     const char *ini = GetKittyIniFile();
@@ -914,7 +916,7 @@ void kset_write(const struct kset_key *k, const char *text)
         if (ini && ini[0] && !GetReadOnlyFlag())
             ok = writeINI(ini, k->section, k->key, text);
     } else {
-        ok = WriteParameter(k->section, (char *)k->key, (char *)text);
+        ok = WriteParameterNoReport(k->section, (char *)k->key, (char *)text);
     }
     if (ok) {
         if (failed_last == k) failed_last = NULL;
@@ -925,7 +927,7 @@ void kset_write(const struct kset_key *k, const char *text)
         if (!strcmp(k->section, KI_SECTION_LAUNCHER) &&
             !strcmp(k->key, KI_LAUNCHER_RELOAD))
             kitty_notify_launcher_sessions_changed();
-        return;
+        return 1;
     }
     if (failed_last != k) {
         DWORD err = GetLastError();
@@ -941,6 +943,7 @@ void kset_write(const struct kset_key *k, const char *text)
         sfree(msg);
         sfree(where);
     }
+    return 0;
 }
 
 /*
@@ -1108,11 +1111,18 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
         }
         cfgwin_refreshing = 0;
     } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
+        /* A write that fails changes nothing: the running value stays, and
+         * the control shows the stored value again (dlg_refresh re-enters
+         * this handler with EVENT_REFRESH). In a number or text field every
+         * keystroke is a write, so a store that cannot be written takes no
+         * typing there - nothing typed could be kept. */
         switch (k->kind) {
           case KSET_BOOL: {
             int on = (dlg_checkbox_get(ctrl, dlg) != 0) != kset_shown_reversed(k) ? 1 : 0;
-            kset_write(k, on ? "yes" : "no");
-            kset_set_int(k, on);
+            if (kset_write(k, on ? "yes" : "no"))
+                kset_set_int(k, on);
+            else
+                dlg_refresh(ctrl, dlg);
             break;
           }
           case KSET_INT: {
@@ -1123,8 +1133,10 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                 if (v < k->min) v = k->min;
                 if (k->max > 0 && v > k->max) v = k->max;
                 sprintf(buf, "%d", v);
-                kset_write(k, buf);
-                kset_set_int(k, v);
+                if (kset_write(k, buf))
+                    kset_set_int(k, v);
+                else
+                    dlg_refresh(ctrl, dlg);
             }
             sfree(s);
             break;
@@ -1136,18 +1148,22 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                 int ms = (int)(secs * 1000.0 + 0.5);
                 if (ms < k->min) ms = k->min;
                 sprintf(buf, "%g", ms / 1000.0);
-                kset_write(k, buf);
-                kset_set_int(k, ms);
+                if (kset_write(k, buf))
+                    kset_set_int(k, ms);
+                else
+                    dlg_refresh(ctrl, dlg);
             }
             sfree(s);
             break;
           }
           case KSET_TEXT: {
             char *s = dlg_editbox_get(ctrl, dlg);
-            kset_write(k, s);
-            if (k->set_str) k->set_str(s);
+            int stored = kset_write(k, s);
+            if (stored && k->set_str) k->set_str(s);
             sfree(s);
-            if (!strcmp(k->key, KI_SSHVERSION))
+            if (!stored)
+                dlg_refresh(ctrl, dlg);
+            else if (!strcmp(k->key, KI_SSHVERSION))
                 kset_show_banner(dlg);
             break;
           }
@@ -1169,9 +1185,12 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
           case KSET_FILE: {
             Filename *fn = dlg_filesel_get(ctrl, dlg);
             snprintf(buf, sizeof(buf), "%s", filename_to_str(fn));
-            kset_write(k, buf);
-            if (k->set_str) k->set_str(buf);
             filename_free(fn);
+            if (kset_write(k, buf)) {
+                if (k->set_str) k->set_str(buf);
+            } else {
+                dlg_refresh(ctrl, dlg);
+            }
             break;
           }
           case KSET_CHOICE:
@@ -1188,7 +1207,10 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                 cfgwin_refreshing = 0;
                 return;
             }
-            kset_write(k, k->choices[idx].stored);
+            if (!kset_write(k, k->choices[idx].stored)) {
+                dlg_refresh(ctrl, dlg);
+                return;
+            }
             kset_set_int(k, k->choices[idx].value);
             /* Direct2D and window transparency do not exclude each other
              * (a Direct2D window is layered from its creation when

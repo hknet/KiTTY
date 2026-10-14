@@ -483,16 +483,22 @@ static void ini_write_failed_once( DWORD err ) {
 	sfree( msg ) ;
 }
 
-// Write a parameter either to the registry or to the configuration file
-int WriteParameter( const char * key, const char * name, char * value ) {
+// Write a parameter either to the registry or to the configuration file.
+// report: say a failed kitty.ini write (once per run); 0 = the caller says
+// it, naming the setting, with Windows' reason still in GetLastError().
+static int write_parameter( const char * key, const char * name, char * value, int report ) {
 	int ret = 1 ;
 	char buffer[4096] ;
-	if( IniFileFlag == SAVEMODE_DIR ) { 
+	if( IniFileFlag == SAVEMODE_DIR ) {
 		if( !GetReadOnlyFlag() ) {
 			ret = writeINI( KittyIniFile, key, name, value ) ;
-			if( !ret ) ini_write_failed_once( GetLastError() ) ; 
+			if( !ret && report ) {
+				DWORD err = GetLastError() ;
+				ini_write_failed_once( err ) ;
+				SetLastError( err ) ;
+			}
 		}
-	} else { 
+	} else {
 		/* The hive in use, matching ReadParameterN.
 		 *
 		 * This used to write to PUTTY_REG_PARENT\\<key> - "Software\\kapper.net"
@@ -509,6 +515,14 @@ int WriteParameter( const char * key, const char * name, char * value ) {
 		ret = RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ;
 	}
 	return ret ;
+}
+int WriteParameter( const char * key, const char * name, char * value ) {
+	return write_parameter( key, name, value, 1 ) ;
+}
+/* The Application tab (kset_write) reports a failed write itself, naming the
+ * setting: one box, not this file's generic one first. */
+int WriteParameterNoReport( const char * key, const char * name, char * value ) {
+	return write_parameter( key, name, value, 0 ) ;
 }
 
 // Read a parameter either from the configuration file or from the registry.

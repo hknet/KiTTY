@@ -1685,7 +1685,7 @@
 #define KT_CAP_ERROR                                 "Error"
 #define KT_CAP_INFO                                  "Info"
 #define KT_NOTEPAD_SAVE_FAILED_FMT                   "Not saved: %s\n%s.\n\n" \
-        "The file is as it was. The text is still in the editor."
+        "The file is left as it was. The text is still in the editor."
 #define KT_START_FAILED_FMT                          "Could not be started:\n%s\n\n%s"
 #define KT_URL_OPEN_FAILED_FMT                       "The link could not be opened:\n%s\n\n%s"
 #define KT_URL_OPEN_FAILED_APP_FMT                   "The link could not be opened:\n%s\n\nwith the browser set for links:\n%s\n\n%s"
@@ -2654,7 +2654,7 @@
 #define KT_KA_NOTICE_UPDATE_TEXT_FMT                 "KiTTY++ %s%s is available.\nClick here to install it."
 #define KT_KA_NOTICE_UPDATE_NOKITTY_FMT              "KiTTY++ %s%s is available."
 #define KT_CAP_KA_UPDATER_UNVERIFIED                 "kageant - updater not verified"
-#define KT_KA_UPDATER_NO_KITTY                       "The updater runs in kitty.exe. There is no kitty.exe " \
+#define KT_KA_UPDATER_NO_KITTY                       "The updater runs kitty.exe. There is no kitty.exe " \
         "next to this kageant."
 #define KT_KA_UPDATER_UNVERIFIED_Q                   "The kitty.exe next to kageant could not be " \
         "verified as a genuine, matching KiTTY++ build - its " \
@@ -2718,7 +2718,7 @@
 #define KT_KA_AUTOSTART_ON_FAILED_FMT                "kageant could not be set to start at login: %s.\n\n" \
         "Nothing was changed."
 #define KT_KA_AUTOSTART_OFF_FAILED_FMT               "kageant's start at login could not be removed: %s.\n\n" \
-        "It still starts at login."
+        "It probably still starts at login."
 
 /* kageant: the "Protect with Windows Hello" dialog (windows/pageant.c) */
 #define KT_KA_HP_EXPLAIN_FMT                         "%s" \
@@ -3393,7 +3393,7 @@
 #define KT_CLI_MPW_WRONG_FINAL                       "Wrong master password - giving up.\n"
 #define KT_CLI_MPW_STORE_FAILED_FMT                  "The master password could not be set up: its check value " \
         "could not be stored: %s. The password is protected for this " \
-        "Windows account on this PC only.\n"
+        "Windows account on this PC only (DPAPI).\n"
 #define KT_CLI_MPW_WRONG_SUPPLIED                    "The master password from -masterpwfile is wrong.\n"
 #define KT_CLI_MPW_NEEDED_BATCH                      "A stored password is protected by the KiTTY++ master" \
         " password, and -batch allows no prompt. Hand it over using -masterpwfile <file>" \
@@ -3647,7 +3647,7 @@
 #define KT_CFG_DEFAULT_WRITE_FAILED                  "Could not write to the configuration file:\n%s\n\n" \
         "\"%s\" is still shown."
 #define KT_KSET_WRITE_FAILED_FMT                     "Setting not stored: [%s] %s\n\nStore: %s\n%s\n\n" \
-        "The panel shows the new value, but it is not kept."
+        "The setting keeps its stored value."
 #define KT_CAP_OVERWRITE_SESSION                     "Overwrite saved session?"
 #define KT_CFG_OVERWRITE_HIGHLIGHT_Q                 "Replace the saved session \"%s\"?\n\n" \
         "The name box is empty, so the highlighted entry in " \
@@ -3858,8 +3858,10 @@
 #define KT_MPW_STORE_FAILED_FMT                      "The master password could not be set up: its check value " \
         "could not be stored: %s.\n\n" \
         "The password just saved is protected for this Windows account " \
-        "on this PC only. Setting up the master password is offered " \
-        "again at the next start."
+        "on this PC only (DPAPI). Setting up the master password is offered " \
+        "again at the next start. Then already saved Session will carry the " \
+        "old encryption (DPAPI) and need to be saved again with the master " \
+        "password active to change the encryption-mode."
 
 /* kitty_inputbox.c: the text-input / command console box */
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
@@ -3942,7 +3944,7 @@
         "A file whose new name already exists is left as it is and listed afterwards."
 #define KT_SP_SUFFIX_NONE                            "(none)"
 #define KT_SP_SUFFIX_RENAMED                         "%d session files renamed."
-#define KT_SP_SUFFIX_LEFT                            "%d left as they are - the new name already exists, unless a reason follows the name:"
+#define KT_SP_SUFFIX_LEFT                            "%d left as they are. A name alone: a file with the new name exists already. Otherwise the reason follows the name:"
 #define KT_SP_JUMP_REWRITTEN                         "Jump host updated in these sessions:\n%s"
 #define KT_SP_MOVE_CLASH                             "Nothing was moved. These sessions already exist in \"%s\":\n%s"
 /* Application > KiTTY++ Settings > Storage & Backup (kitty_config_app.c):

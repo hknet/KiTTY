@@ -180,7 +180,7 @@ int kitty_kset_backupcount(const char *key);   /* kitty_config_shared.c */
 void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */
 extern dlgcontrol *kset_sshver_preview;   /* kitty_config_shared.c */
 const struct kset_key *kset_find(const char *key);   /* kitty_config_shared.c */
-void kset_write(const struct kset_key *k, const char *text);   /* kitty_config_shared.c */
+int kset_write(const struct kset_key *k, const char *text);   /* kitty_config_shared.c; 1 stored */
 void kset_defer_write(const struct kset_key *k, const char *text);   /* kitty_config_shared.c */
 int kset_get_int(const struct kset_key *k);   /* kitty_config_shared.c */
 void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */

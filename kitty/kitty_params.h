@@ -204,6 +204,7 @@ extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
 int WriteParameter( const char * key, const char * name, char * value ) ;
+int WriteParameterNoReport( const char * key, const char * name, char * value ) ;   /* the caller reports a failure */
 int DelParameter( const char * key, const char * name ) ;
 void CreateDefaultIniFile( void ) ;
 char * GetKittyIniFile(void) ;

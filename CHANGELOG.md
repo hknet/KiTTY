@@ -165,7 +165,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
     items. So is a URL that does not open.
   - A setting on the Application tab, or in kageant's Settings, that could
     not be stored brings up a message box. It no longer looks stored until
-    the next start.
+    the next start: the panel shows the stored value again, and KiTTY++ goes
+    on with it.
 - **kageant stores its settings in the store in charge only:** kitty.ini when
   it is authoritative, the registry otherwise. They used to be written to
   both, so a portable install wrote the registry. The Windows OpenSSH
