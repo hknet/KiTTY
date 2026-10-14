@@ -179,6 +179,34 @@ static int kitty_broadcast_armed( WinGuiSeat *wgs )
 
 static Mouse_Button translate_button(WinGuiSeat *wgs, Mouse_Button button);
 static void show_mouseptr(WinGuiSeat *wgs, bool show);
+#ifdef MOD_PERSO
+/* KiTTY: a notice was clicked - put the user in front of the setting, in a
+ * NEW window on that configuration panel (the Application tab and the
+ * SSH/Auth panel are not built mid-session). A start that fails is said,
+ * the click would otherwise do nothing at all. */
+static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
+{
+    char exe[MAX_PATH], cmd[MAX_PATH + 128];
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
+    if (!n || n >= sizeof(exe))
+        return;
+    memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+    memset(&pi, 0, sizeof(pi));
+    snprintf(cmd, sizeof(cmd), "\"%s\" -cfgpanel \"%s\"", exe, panel);
+    if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    } else {
+        char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
+                              kitty_win_reason(GetLastError()));
+        MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
+    }
+}
+#endif
+
 static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
                         LPARAM lParam, unsigned char *output);
@@ -8130,29 +8158,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * panel is not offered mid-session, so Change Settings would open on a
          * box that does not contain the thing they came for.
          */
-        {
-            char exe[MAX_PATH], cmd[MAX_PATH + 64];
-            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-            if (n && n < sizeof(exe)) {
-                STARTUPINFOA si;
-                PROCESS_INFORMATION pi;
-                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
-                memset(&pi, 0, sizeof(pi));
-                /* The workplace switch lives on its own leaf now. */
-                sprintf(cmd, "\"%s\" -cfgpanel \"Application/Workplace proxy\"", exe);
-                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
-                                   &si, &pi)) {
-                    CloseHandle(pi.hThread);
-                    CloseHandle(pi.hProcess);
-                } else {
-                    /* the notice's click did nothing, silently */
-                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
-                                          kitty_win_reason(GetLastError()));
-                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
-                    sfree(msg);
-                }
-            }
-        }
+        kitty_open_cfgpanel_window(hwnd, "Application/Workplace proxy");
         return 0;
       case WM_KITTY_FOREIGN_SESSIONS:
         /*
@@ -8162,28 +8168,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * built mid-session, so Change Settings would open on a box that does
          * not contain what they clicked for.
          */
-        {
-            char exe[MAX_PATH], cmd[MAX_PATH + 64];
-            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-            if (n && n < sizeof(exe)) {
-                STARTUPINFOA si;
-                PROCESS_INFORMATION pi;
-                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
-                memset(&pi, 0, sizeof(pi));
-                sprintf(cmd, "\"%s\" -cfgpanel \"Application/Migration\"", exe);
-                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
-                                   &si, &pi)) {
-                    CloseHandle(pi.hThread);
-                    CloseHandle(pi.hProcess);
-                } else {
-                    /* the notice's click did nothing, silently */
-                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
-                                          kitty_win_reason(GetLastError()));
-                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
-                    sfree(msg);
-                }
-            }
-        }
+        kitty_open_cfgpanel_window(hwnd, "Application/Migration");
         return 0;
       case WM_KITTY_AGENT_CHECKED:
         /* The agent check's worker thread (kitty_win.c) found that the
@@ -8199,28 +8184,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * NEW window rather than Change Settings, because the SSH/Auth
          * panel is not offered mid-session.
          */
-        {
-            char exe[MAX_PATH], cmd[MAX_PATH + 64];
-            DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-            if (n && n < sizeof(exe)) {
-                STARTUPINFOA si;
-                PROCESS_INFORMATION pi;
-                memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
-                memset(&pi, 0, sizeof(pi));
-                sprintf(cmd, "\"%s\" -cfgpanel Connection/SSH/Auth", exe);
-                if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL,
-                                   &si, &pi)) {
-                    CloseHandle(pi.hThread);
-                    CloseHandle(pi.hProcess);
-                } else {
-                    /* the notice's click did nothing, silently */
-                    char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
-                                          kitty_win_reason(GetLastError()));
-                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
-                    sfree(msg);
-                }
-            }
-        }
+        kitty_open_cfgpanel_window(hwnd, "Connection/SSH/Auth");
         return 0;
 #endif
       default:
