@@ -56,7 +56,10 @@ void kitty_console_store_init(void)
         char v[16] = "";
         if (ini.registry_authoritative) {
             HKEY k;
-            if (RegOpenKeyExA(HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", 0,
+            /* the hive in use, the one WriteParameter writes (in the console
+             * tools the default one: they do not apply KiClassName) */
+            extern const char *kitty_registry_base(void);
+            if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
                               KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
                 DWORD type = 0, n = sizeof(v) - 1;
                 if (RegQueryValueExA(k, KI_INHERITDEFAULTSETTINGS, NULL, &type,
