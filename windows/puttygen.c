@@ -2732,6 +2732,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 if (fn) {
                     int ret;
                     char *err = NULL;
+                    /* the key could not be decrypted: nothing was written,
+                     * so no sidecar may be written or removed either */
+                    bool not_written = false;
                     char *hello_printed = NULL, *hello_container = NULL;
                     char *hello_handout = NULL;
                     FILE *fp = f_open(fn, "r", false);
@@ -2818,6 +2821,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             MessageBox(hwnd, KT_KGEN_DECRYPT_FAILED,
                                        KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                             ret = 1;   /* error already reported */
+                            not_written = true;
                         } else {
                             ssh_key *standin = state->ssh2key.key;
                             state->ssh2key.key = livekey;
@@ -2855,7 +2859,10 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             ret = rsa1_save_f(fn, &state->key,
                                               *passphrase ? passphrase : NULL);
                     }
-                    if (ret <= 0) {
+                    if (not_written) {
+                        /* reported above; the file on disk and its sidecar
+                         * are left as they were */
+                    } else if (ret <= 0) {
                         /* upstream's reason when there is one, else
                          * Windows'; always the file (it showed "Unable to save
                          * key file", with neither) */
@@ -2914,7 +2921,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                      * keep their sidecars - and the agent keeps asking
                      * Windows Hello for them. Surprising enough to say out
                      * loud. */
-                    if (ret > 0 && !hello) {
+                    if (ret > 0 && !hello && !not_written) {
                         const char *others[2];
                         int no = 0, oi;
                         if (state->loaded_path &&

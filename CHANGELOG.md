@@ -184,6 +184,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   and a launcher started from the configuration box take over the unlocked
   master password instead of prompting again. The key reaches only the
   program started, no other program started at the same moment.
+- **kittygen leaves a Windows Hello protected key's files alone when the key
+  cannot be decrypted for Save.** It reported the error and then went on as
+  if the file had been written, and with Windows Hello off it removed the
+  `.hello` files of the other key files of that name.
 
 ## 0.85.1.15-beta — 2026-10-11
 
