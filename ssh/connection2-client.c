@@ -11,6 +11,7 @@
 #include "channel.h"
 #include "sshcr.h"
 #include "connection2.h"
+#include "kitty/kitty_termenv.h"   /* KiTTY: the terminal type sent */
 
 static ChanopenResult chan_open_x11(
     struct ssh2_connection_state *s, SshChannel *sc,
@@ -430,7 +431,12 @@ void ssh2channel_request_pty(
 
     PktOut *pktout = ssh2_chanreq_init(
         c, "pty-req", want_reply ? ssh2_channel_response : NULL, NULL);
-    put_stringz(pktout, conf_get_str(conf, CONF_termtype));
+    {
+        /* KiTTY: no "-256color" while the window draws 16 colours */
+        char *termtype = kitty_termtype_new(conf);
+        put_stringz(pktout, termtype);
+        sfree(termtype);
+    }
     put_uint32(pktout, w);
     put_uint32(pktout, h);
     put_uint32(pktout, 0);             /* pixel width */

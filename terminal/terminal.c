@@ -15,6 +15,7 @@
 #include "kitty_perf.h"
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"   /* KiTTY: shared captions */
+#include "../kitty/kitty_termenv.h" /* KiTTY: XTGETTCAP TN = the type sent */
 #include "unicode/version.h"       /* KiTTY: Uw of OSC 1337 Capabilities */
 
 /*
@@ -8658,7 +8659,12 @@ static int xtgettcap_value(Terminal *term, const char *name, const char **val)
 
     *val = NULL;
     if (!strcmp(name, "TN") || !strcmp(name, "name")) {
-        *val = conf_get_str(term->conf, CONF_termtype);
+        /* the type the connection sent, "-256color" cut as there; kept
+         * until the next query - the caller copies it at once */
+        static char *sent = NULL;
+        sfree(sent);
+        sent = kitty_termtype_new(term->conf);
+        *val = sent;
         return **val ? 1 : -1;
     }
     if (!strcmp(name, "Co") || !strcmp(name, "colors")) {

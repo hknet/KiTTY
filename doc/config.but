@@ -1735,11 +1735,23 @@ This option is enabled by default. If it is disabled, KiTTY will
 ignore any control sequences sent by the server which use the
 extended 256-colour mode supported by recent versions of \cw{xterm}.
 
+The server only uses 256 colours when it knows the terminal has them,
+and it learns that from the terminal type: with this option on, set
+the terminal-type string (Connection > Login > Terminal details, see
+\k{config-termtype}) to \cq{xterm-256color}. A plain \cq{xterm} tells
+the server 8 colours, and most programs stay with those. While this
+option is off, KiTTY++ sends a terminal type ending in
+\cq{-256color} without that ending - \cq{xterm-256color} goes as
+\cq{xterm} - so the server does not use colours this window would not
+show; the stored terminal type stays as it is. A name with a dot, such
+as \cq{screen.xterm-256color}, is sent unchanged: the part after the dot
+names the terminal \c{screen} runs in, and the shortened name
+(\cq{screen.xterm}) is missing from many terminfo databases.
+
 If you have an application which is supposed to use 256-colour mode
-and it isn't working, you may find you need to tell your server that
-your terminal supports 256 colours. On Unix, you do this by ensuring
-that the setting of \i\cw{TERM} describes a 256-colour-capable
-terminal. You can check this using a command such as \c{infocmp}:
+and it isn't working, check what the server made of it. On Unix,
+\i\cw{TERM} must describe a 256-colour-capable terminal. You can
+check this using a command such as \c{infocmp}:
 
 \c $ infocmp | grep colors
 \c         colors#256, cols#80, it#8, lines#24, pairs#256,
@@ -1756,6 +1768,14 @@ This option is enabled by default. If it is disabled, KiTTY will
 ignore any control sequences sent by the server which use the control
 sequences supported by modern terminals to specify arbitrary 24-bit
 RGB colour value.
+
+Programs learn that the terminal has 24-bit colour from the
+\cw{COLORTERM} variable, not from the terminal type: KiTTY++ sends
+\cw{COLORTERM=truecolor} with every SSH or Telnet connection (unless
+\q{Send COLORTERM and TERM_PROGRAM to the server} in Application >
+KiTTY++ Settings > Terminal is off). While
+this option or \q{Allow terminal to specify ANSI colours} is off, it
+is not sent.
 
 \S{config-boldcolour} \q{Indicate bolded text by changing...}
 
@@ -2129,6 +2149,10 @@ session saved by an older version keeps the \c{xterm} it was saved
 with. If you find this is not doing what you want - perhaps an old
 remote system reports \q{Unknown terminal type} - you could try
 \c{xterm}, or something different, such as \i\c{vt220}.
+
+While \q{Allow terminal to use xterm 256-colour mode} is off
+(\k{config-xtermcolour}), a terminal type ending in \c{-256color} is
+sent without that ending, unless the name contains a dot.
 
 If you're not sure whether a problem is due to the terminal type
 setting or not, you probably need to consult the manual for your

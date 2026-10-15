@@ -1,8 +1,24 @@
 # KiTTY changelog
 
-KiTTY++ is the old KiTTY feature set forward-ported and some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is the old KiTTY plus serious speed enhancements and lots of features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
+
+## 0.85.1.17-beta — 2026-10-15
+
+### Changed
+
+- **`COLORTERM=truecolor` is sent only while the terminal draws 24-bit
+  colour.** With "Allow terminal to specify ANSI colours" or "Allow terminal
+  to use 24-bit colours" (Window > Appearance > Colours) unticked, a session
+  no longer tells the host it has true colour. A `COLORTERM` the session
+  sets itself is sent anyways.
+- **The terminal type reports without `-256color` while 256 colours are off.**
+  With "Allow terminal to use xterm 256-colour mode" or ANSI colours
+  disabled, `xterm-256color` is sent as `xterm` (SSH, Telnet, rlogin, ...)
+  so the host does not paint colours the window displays in the default colour.
+  A name with a dot (`screen.xterm-256color`) stays unchanged.
+  The stored terminal type stays and is not modified.
 
 ## 0.85.1.16-beta — 2026-10-15
 

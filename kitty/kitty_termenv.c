@@ -37,7 +37,7 @@ static bool session_has(const char *const *names, size_t n, const char *name)
 }
 
 size_t kitty_termenv_merge(const char *const *names, const char *const *values,
-                           size_t n, KittyTermEnvMode mode,
+                           size_t n, KittyTermEnvMode mode, bool truecolour,
                            KittyTermEnvVar *out)
 {
     static const KittyTermEnvVar defaults[KITTY_TERMENV_EXTRA] = {
@@ -58,11 +58,32 @@ size_t kitty_termenv_merge(const char *const *names, const char *const *values,
         count++;
     }
     if (mode == KITTY_TERMENV_DEFAULTS) {
-        for (i = 0; i < KITTY_TERMENV_EXTRA; i++)
+        for (i = 0; i < KITTY_TERMENV_EXTRA; i++) {
+            /* COLORTERM=truecolor promises 24-bit colour: not while the
+             * session's terminal would not draw it */
+            if (!truecolour &&
+                !strcmp(defaults[i].name, KITTY_TERMENV_COLORTERM))
+                continue;
             if (!session_has(names, n, defaults[i].name))
                 out[count++] = defaults[i];
+        }
     }
     return count;
+}
+
+size_t kitty_termtype_len(const char *stored, KittyTermEnvMode mode,
+                          bool colours256)
+{
+    size_t len, suf = strlen(KITTY_TERMTYPE_256_SUFFIX);
+
+    if (!stored)
+        return 0;
+    len = strlen(stored);
+    if (mode == KITTY_TERMENV_AS_IS || colours256 || len <= suf ||
+        strchr(stored, '.') ||
+        strcmp(stored + len - suf, KITTY_TERMTYPE_256_SUFFIX))
+        return len;
+    return len - suf;
 }
 
 size_t kitty_termenv_host_id(const char *host, int port, char *buf,

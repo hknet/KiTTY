@@ -31,6 +31,8 @@ KittyTermEnvList *kitty_termenv_list_new(Conf *conf)
 
     vars = snewn(n + KITTY_TERMENV_EXTRA, KittyTermEnvVar);
     list->n = kitty_termenv_merge(names, values, i, kitty_termenv_mode(),
+                                  conf_get_bool(conf, CONF_ansi_colour) &&
+                                  conf_get_bool(conf, CONF_true_colour),
                                   vars);
     list->names = snewn(list->n + 1, char *);
     list->values = snewn(list->n + 1, char *);
@@ -65,4 +67,16 @@ void kitty_termenv_list_free(KittyTermEnvList *list)
     sfree(list->added);
     sfree(list->refused);
     sfree(list);
+}
+
+char *kitty_termtype_new(Conf *conf)
+{
+    const char *stored = conf_get_str(conf, CONF_termtype);
+    size_t len = kitty_termtype_len(stored, kitty_termenv_mode(),
+                                    conf_get_bool(conf, CONF_ansi_colour) &&
+                                    conf_get_bool(conf, CONF_xterm_256_colour));
+    char *out = snewn(len + 1, char);
+    memcpy(out, stored, len);
+    out[len] = '\0';
+    return out;
 }

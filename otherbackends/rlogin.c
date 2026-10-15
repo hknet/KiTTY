@@ -8,6 +8,7 @@
 #include <ctype.h>
 
 #include "putty.h"
+#include "kitty/kitty_termenv.h"   /* KiTTY: the terminal type sent */
 
 #define RLOGIN_MAX_BACKLOG 4096
 
@@ -186,8 +187,12 @@ static void rlogin_startup(Rlogin *rlogin, SeatPromptResult spr,
         sk_write(rlogin->s, &z, 1);
         sk_write(rlogin->s, ruser, strlen(ruser));
         sk_write(rlogin->s, &z, 1);
-        p = conf_get_str(rlogin->conf, CONF_termtype);
-        sk_write(rlogin->s, p, strlen(p));
+        {
+            /* KiTTY: no "-256color" while the window draws 16 colours */
+            char *termtype = kitty_termtype_new(rlogin->conf);
+            sk_write(rlogin->s, termtype, strlen(termtype));
+            sfree(termtype);
+        }
         sk_write(rlogin->s, "/", 1);
         p = conf_get_str(rlogin->conf, CONF_termspeed);
         sk_write(rlogin->s, p, strspn(p, "0123456789"));

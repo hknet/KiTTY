@@ -16,6 +16,10 @@
 
 static int failures = 0;
 
+/* The session's ANSI colour && 24-bit colour, as kitty_termenv_list_new
+ * passes it; on unless a case says otherwise. */
+static bool truecolour = true;
+
 /* want: "NAME=value" entries in order, a leading '+' marking an added
  * default; NULL-terminated. */
 static void check(const char *what, const char *const *names,
@@ -29,7 +33,7 @@ static void check(const char *what, const char *const *names,
     while (want[nwant])
         nwant++;
     memset(out, 0, sizeof(out));
-    count = kitty_termenv_merge(names, values, n, mode, out);
+    count = kitty_termenv_merge(names, values, n, mode, truecolour, out);
     if (count > n + KITTY_TERMENV_EXTRA) {
         printf("FAIL [%s]: %u entries, room for %u\n", what,
                (unsigned)count, (unsigned)(n + KITTY_TERMENV_EXTRA));
@@ -267,6 +271,75 @@ int main(void)
                                      "+TERM_PROGRAM=KiTTY++", NULL };
         check("lower-case name", names, values, 1, KITTY_TERMENV_DEFAULTS,
               want);
+    }
+
+    /* 24-bit colour (or ANSI colour) off: no COLORTERM default, the
+     * session's own COLORTERM still goes, TERM_PROGRAM is unaffected */
+    truecolour = false;
+    {
+        const char *const *none = NULL;
+        const char *const want[] = { "+TERM_PROGRAM=KiTTY++", NULL };
+        const char *const want_empty[] = { NULL };
+        check("no true colour, switch on", none, none, 0,
+              KITTY_TERMENV_DEFAULTS, want);
+        check("no true colour, switch off", none, none, 0,
+              KITTY_TERMENV_NO_DEFAULTS, want_empty);
+    }
+    {
+        const char *const names[] = { "COLORTERM", "LANG" };
+        const char *const values[] = { "24bit", "C" };
+        const char *const want[] = { "COLORTERM=24bit", "LANG=C",
+                                     "+TERM_PROGRAM=KiTTY++", NULL };
+        check("no true colour, own COLORTERM", names, values, 2,
+              KITTY_TERMENV_DEFAULTS, want);
+    }
+    {
+        const char *const names[] = { "LANG" };
+        const char *const values[] = { "C" };
+        const char *const want[] = { "LANG=C", NULL };
+        check("no true colour, not KiTTY++", names, values, 1,
+              KITTY_TERMENV_AS_IS, want);
+    }
+    truecolour = true;
+
+    /* the terminal type sent: "-256color" cut only in a KiTTY++ terminal
+     * with 256 colours off, only that exact ending, no '.' in the name */
+    {
+        static const struct {
+            const char *stored;
+            KittyTermEnvMode mode;
+            bool c256;
+            const char *want;
+        } tt[] = {
+            { "xterm-256color", KITTY_TERMENV_DEFAULTS, false, "xterm" },
+            { "xterm-256color", KITTY_TERMENV_NO_DEFAULTS, false, "xterm" },
+            { "xterm-256color", KITTY_TERMENV_DEFAULTS, true, "xterm-256color" },
+            { "xterm-256color", KITTY_TERMENV_AS_IS, false, "xterm-256color" },
+            { "screen-256color", KITTY_TERMENV_DEFAULTS, false, "screen" },
+            { "rxvt-unicode-256color", KITTY_TERMENV_DEFAULTS, false, "rxvt-unicode" },
+            { "screen.xterm-256color", KITTY_TERMENV_DEFAULTS, false, "screen.xterm-256color" },
+            { "screen-256color-bce", KITTY_TERMENV_DEFAULTS, false, "screen-256color-bce" },
+            { "-256color", KITTY_TERMENV_DEFAULTS, false, "-256color" },
+            { "xterm-256COLOR", KITTY_TERMENV_DEFAULTS, false, "xterm-256COLOR" },
+            { "xterm", KITTY_TERMENV_DEFAULTS, false, "xterm" },
+            { "", KITTY_TERMENV_DEFAULTS, false, "" },
+        };
+        size_t k;
+        for (k = 0; k < sizeof(tt) / sizeof(tt[0]); k++) {
+            size_t len = kitty_termtype_len(tt[k].stored, tt[k].mode,
+                                            tt[k].c256);
+            if (len != strlen(tt[k].want) ||
+                strncmp(tt[k].stored, tt[k].want, len)) {
+                printf("FAIL [termtype %s, mode %d, 256 %d]: %.*s, want %s\n",
+                       tt[k].stored, (int)tt[k].mode, (int)tt[k].c256,
+                       (int)len, tt[k].stored, tt[k].want);
+                failures++;
+            }
+        }
+        if (kitty_termtype_len(NULL, KITTY_TERMENV_DEFAULTS, false) != 0) {
+            printf("FAIL [termtype NULL]: not 0\n");
+            failures++;
+        }
     }
 
     /* the switch hook */

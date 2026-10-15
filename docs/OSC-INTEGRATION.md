@@ -33,7 +33,9 @@ screen, zellij or dtach, most of these need more: see
 
 Each new SSH or Telnet connection sends `COLORTERM=truecolor` and
 `TERM_PROGRAM=KiTTY++`; programs read `COLORTERM` to decide on 24-bit
-colour. A session's own value (**Connection > Login > Environment**) wins;
+colour. `COLORTERM` is left out while the session's ANSI colour or 24-bit
+colour (**Window > Appearance > Colours**) is off. A session's own value
+(**Connection > Login > Environment**) wins;
 an empty value there means the variable is not sent.
 
 An SSH server accepts only the variables listed in `sshd_config` and drops the

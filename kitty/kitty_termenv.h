@@ -6,7 +6,8 @@
  * Rules (KiTTY++ terminals only; every other program sends the session's
  * variables exactly as stored):
  *  - with [KiTTY] sendtermenv on (the default), a session that does not set
- *    COLORTERM / TERM_PROGRAM itself sends the default value;
+ *    COLORTERM / TERM_PROGRAM itself sends the default value - COLORTERM
+ *    only while the session's ANSI colour and 24-bit colour are both on;
  *  - a session's own value for either one wins;
  *  - a session's EMPTY value for either one means it is not sent at all.
  *    Other empty variables go out as before.
@@ -45,10 +46,12 @@ typedef struct KittyTermEnvVar {
  * The merge rule, pure. names[i] / values[i] are the session's n variables;
  * out has room for n + KITTY_TERMENV_EXTRA entries. The session's variables
  * come first in their order, the defaults after them. Returns the count.
- * out[] points into names / values or at static strings.
+ * out[] points into names / values or at static strings. truecolour false
+ * (the session's ANSI colour or 24-bit colour is off) leaves the COLORTERM
+ * default out; a COLORTERM the session sets itself still goes.
  */
 size_t kitty_termenv_merge(const char *const *names, const char *const *values,
-                           size_t n, KittyTermEnvMode mode,
+                           size_t n, KittyTermEnvMode mode, bool truecolour,
                            KittyTermEnvVar *out);
 
 /* Set by a KiTTY++ terminal at startup: returns the [KiTTY] sendtermenv
@@ -70,6 +73,25 @@ typedef struct KittyTermEnvList {
 struct conf_tag;
 KittyTermEnvList *kitty_termenv_list_new(struct conf_tag *conf);
 void kitty_termenv_list_free(KittyTermEnvList *list);
+
+/*
+ * The terminal type a connection sends. A KiTTY++ terminal whose session has
+ * 256-colour mode (or ANSI colour) off sends a type ending in "-256color"
+ * without that ending - "xterm-256color" goes as "xterm" - so the host does
+ * not paint colours 16-255 the window draws in the default colour. Only that
+ * exact ending, a base that is left, and no '.' in the name (screen.xterm-
+ * 256color has no "screen.xterm" entry); anything else, and every program
+ * that is not a KiTTY++ terminal, sends the stored type. The stored setting
+ * never changes.
+ *
+ * kitty_termtype_len: how many leading bytes of `stored` to send (pure).
+ * kitty_termtype_new: that string from a Conf (CONF_termtype,
+ * CONF_ansi_colour, CONF_xterm_256_colour, kitty_termenv_mode()); sfree it.
+ */
+#define KITTY_TERMTYPE_256_SUFFIX "-256color"
+size_t kitty_termtype_len(const char *stored, KittyTermEnvMode mode,
+                          bool colours256);
+char *kitty_termtype_new(struct conf_tag *conf);
 
 /*
  * A server that refuses a default (an `added` entry) gets, besides its

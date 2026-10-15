@@ -385,7 +385,8 @@ static void process_subneg(Telnet *telnet)
         break;
       case TELOPT_TTYPE:
         if (telnet->sb_buf->len == 1 && telnet->sb_buf->u[0] == TELQUAL_SEND) {
-            char *termtype = conf_get_str(telnet->conf, CONF_termtype);
+            /* KiTTY: no "-256color" while the window draws 16 colours */
+            char *termtype = kitty_termtype_new(telnet->conf);
             strbuf *sb = strbuf_new();
             put_byte(sb, IAC);
             put_byte(sb, SB);
@@ -404,6 +405,7 @@ static void process_subneg(Telnet *telnet)
             logeventf(telnet->logctx, "client subnegotiation: SB TTYPE IS %s",
                       sb->s + tt_start);
             strbuf_free(sb);
+            sfree(termtype);
         } else
             logevent(telnet->logctx,
                      "server subnegotiation: SB TTYPE <something weird>\r\n");
