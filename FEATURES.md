@@ -551,7 +551,7 @@ When you store private keys in KiTTY's key agent (kageant), you can require an e
 
 ### kageant — Windows OpenSSH agent integration
 
-kageant (KiTTY++'s SSH agent) can act as the agent for the **Windows OpenSSH client** (`ssh.exe`), so the keys you load in kageant are usable by `ssh`, `git`, `scp` and any tool that uses Windows OpenSSH. When enabled, kageant writes `%USERPROFILE%\.ssh\kageant.conf` (an `IdentityAgent` line pointing at its named pipe) and adds a marker-delimited managed block to `%USERPROFILE%\.ssh\config` that includes it. It is **off by default** so kageant never alters your SSH configuration unless you ask, and only its own marker block is touched (the rest of `~/.ssh/config` is preserved byte-for-byte, written atomically, with a one-time `config.kageant.bak` backup). By tools like `ssh-add` this handler is not used, a future agent release will cover this additional pipe-configuration.
+kageant (KiTTY++'s SSH agent) can act as the agent for the **Windows OpenSSH client** (`ssh.exe`), so the keys you load in kageant are usable by `ssh`, `git`, `scp` and any tool that uses Windows OpenSSH. When enabled, kageant writes `%USERPROFILE%\.ssh\kageant.conf` (an `IdentityAgent` line pointing at its named pipe) and adds a marker-delimited managed block to `%USERPROFILE%\.ssh\config` that includes it. It is **off by default** so kageant never alters your SSH configuration unless you ask, and only its own marker block is touched (the rest of `~/.ssh/config` is preserved byte-for-byte, written atomically and keeping the file's permissions, with a one-time `config.kageant.bak` backup). By tools like `ssh-add` this handler is not used, a future agent release will cover this additional pipe-configuration.
 
 **How to enable:** right-click the kageant tray icon → **Register as Windows OpenSSH agent**. Untick to remove the managed block again.
 
@@ -1869,6 +1869,18 @@ the port):**
   *Private-key usage confirmation* section.
 - `[PuTTY] keys` — the KiTTY→PuTTY registry replication it triggered had no
   remaining caller.
+- `[KiTTY] browsedirectory` - retired in 0.85.1.16: a folder store keeps every
+  session at its folder path whatever its value. Read and ignored.
+- `[KiTTY] psnotify` - retired in 0.85.1.16: program status notices (OSC 7501)
+  follow the session's Terminal > Desktop Notifications, as OSC 9, 777 and 99 do.
+- `putty.ini` - no program reads it any more (0.85.1.16). A putty.ini with a
+  `[KiTTY]` section beside kitty.exe and no kitty.ini is copied into kitty.ini once.
+
+**A kitty.ini written by hand** with a section or a setting twice is merged
+once at start: classic KiTTY used a setting's last value, Windows' ini
+functions (which KiTTY++ now reads through) take the first. The later parts
+of a section join the first, a setting keeps one line with its last value,
+comments stay, and the file as it was is kept beside it (`kitty.ini.<date>.bak`).
 
 Everything else in `docs/examples/kitty.ini.example` is verified honored.
 
