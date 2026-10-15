@@ -173,6 +173,10 @@ void urlhack_launch_url(const char* app, const char *url)
     sei.nShow = SW_SHOWNORMAL;
 
     if (app) {
+        /* KiTTY: %VAR% in the browser setting ("%ProgramFiles%\...") is
+         * expanded by the shell - only for the program: a URL may carry a
+         * '%' that must reach it unchanged (hknet/KiTTY#70 sweep) */
+        sei.fMask |= SEE_MASK_DOENVSUBST;
         sei.lpFile = app;
         sei.lpParameters = url;
     } else {

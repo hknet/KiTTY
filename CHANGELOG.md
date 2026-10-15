@@ -41,6 +41,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   A name with a dot (`screen.xterm-256color`) stays unchanged.
   The stored terminal type stays and is not modified.
 
+### Fixed
+
+- **Tools > Open log file works with a variable in the log name**
+  (hknet/KiTTY#70). A log file name such as
+  `%USERPROFILE%\logs\kitty &H.log` was written correctly, but opening it
+  from the menu failed with "Can not find specified file (error 2)".
+- **A Windows variable such as `%USERPROFILE%` now works in every file
+  setting.** The session icon file, the URL browser, the background image's
+  Next/Previous and slideshow, the key file for Send File and Get File, and
+  a custom GSSAPI library each passed the path to Windows as typed.
+
 ## 0.85.1.16-beta — 2026-10-15
 
 ### New

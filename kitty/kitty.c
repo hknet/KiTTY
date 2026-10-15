@@ -35,6 +35,7 @@
 #include <iphlpapi.h>
 
 // KiTTY includes
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: bg_trace_switch */
 #include "kitty.h"
 #include "kitty_params.h"   /* the application-wide flags, delays, paths and the parameter table */
 #include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
@@ -995,13 +996,33 @@ static int GetExt( const char * filename, char * ext, size_t extsz) {
 	return 1;
 	}
 
+/* Test builds with KITTY_BG_SELFTEST=<file>: the image Next / Previous moved
+ * to, one line appended ("bg_switch file=<path>") - for a test harness, as a
+ * switch leaves nothing else it can read (kitty_bridge.c writes the same
+ * file once, at the start). */
+static void bg_trace_switch( const char * path ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	const char * st = getenv( "KITTY_BG_SELFTEST" ) ;
+	FILE * f ;
+	if( !st || !*st || ( f = fopen( st, "a" ) ) == NULL ) return ;
+	fprintf( f, "bg_switch file=%s\n", path ) ;
+	fclose( f ) ;
+#else
+	(void)path ;
+#endif
+}
+
 int PreviousBgImage( HWND hwnd ) {
-	char buffer[1024], basename[1024], ext[10], previous[1024]="" ;
+	char buffer[1024], basename[1024], ext[10], previous[1024]="", current[1024] ;
 	int i ;
 	DIR * dir ;
 	struct dirent * de ;
 
-	strcpy( basename, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) ;
+	/* the image's folder as it is on disk: %VAR% expanded (hknet/KiTTY#70
+	 * sweep) - opendir() and the comparison below see real paths */
+	{ char *cur = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
+	  snprintf( current, sizeof(current), "%s", cur ) ; sfree( cur ) ; }
+	strcpy( basename, current ) ;
 
 	for( i=(strlen(basename)-1) ; i>=0 ; i-- ) 
 		if( (basename[i]=='\\')||(basename[i]=='/') ) { basename[i]='\0' ; break ; }
@@ -1013,7 +1034,7 @@ int PreviousBgImage( HWND hwnd ) {
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				if( !strcmp(buffer, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) )
+				if( !strcmp(buffer, current ) )
 					if( strcmp( previous, "" ) ) break ;
 		
 				GetExt( de->d_name, ext, sizeof(ext) ) ;
@@ -1024,6 +1045,7 @@ int PreviousBgImage( HWND hwnd ) {
 		}
 	if( strcmp( previous, "" ) ){
 		Filename * fn = filename_from_str( previous ) ;
+		bg_trace_switch( previous ) ;
 		conf_set_filename(conf,CONF_bg_image_filename,fn); 
 		filename_free(fn);
 		RefreshBackground( hwnd ) ;
@@ -1032,12 +1054,16 @@ int PreviousBgImage( HWND hwnd ) {
 	}
 
 int NextBgImage( HWND hwnd ) {
-	char buffer[1024], basename[1024], ext[10] ;
+	char buffer[1024], basename[1024], ext[10], current[1024] ;
 	int i ;
 	DIR * dir ;
 	struct dirent * de ;
 
-	strcpy( basename, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) ;
+	/* the image's folder as it is on disk: %VAR% expanded (hknet/KiTTY#70
+	 * sweep) - opendir() and the comparison below see real paths */
+	{ char *cur = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
+	  snprintf( current, sizeof(current), "%s", cur ) ; sfree( cur ) ; }
+	strcpy( basename, current ) ;
 
 	for( i=(strlen(basename)-1) ; i>=0 ; i-- ) 
 		if( (basename[i]=='\\')||(basename[i]=='/') ) { basename[i]='\0' ; break ; }
@@ -1053,7 +1079,7 @@ int NextBgImage( HWND hwnd ) {
 			) {
 			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				if( !stricmp( buffer, filename_to_str(conf_get_filename(conf,CONF_bg_image_filename)) ) ) {
+				if( !stricmp( buffer, current ) ) {
 					if( ( de = readdir(dir) ) != NULL ) 
 						GetExt( de->d_name, ext, sizeof(ext) ) ; 
 					else 
@@ -1079,6 +1105,7 @@ int NextBgImage( HWND hwnd ) {
 	if( de != NULL  ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
 		Filename * fn = filename_from_str( buffer ) ;
+		bg_trace_switch( buffer ) ;
 		conf_set_filename( conf,CONF_bg_image_filename,fn);
 		filename_free(fn);
 		RefreshBackground( hwnd );

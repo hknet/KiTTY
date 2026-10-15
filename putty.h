@@ -2306,8 +2306,9 @@ void logfile_rotate(LogContext *logctx);
 /* KiTTY: truncate the log being written, whatever the "file already exists"
  * setting says - an explicit clear is not the same question. */
 void logfile_clear(LogContext *logctx);
-/* KiTTY: the file currently being written (&-codes substituted), or NULL. */
-const char *logfile_current_name(LogContext *logctx);
+/* KiTTY: the file currently being written (&-codes substituted, %VAR% not:
+ * expand it before a Win32 API gets it), or NULL. */
+const Filename *logfile_current_file(LogContext *logctx);
 /* KiTTY: would a reopen land on a different file? Distinguishes "rotate" from
  * "clear", so a menu can say which it is about to do. */
 bool logfile_name_varies(LogContext *logctx);

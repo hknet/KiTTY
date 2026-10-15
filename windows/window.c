@@ -5944,7 +5944,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * it can only truncate the one we have (clear). Say which. */
             HMENU mp = (HMENU)wParam;
             bool haslog = (wgs && wgs->logctx &&
-                           logfile_current_name(wgs->logctx) != NULL);
+                           logfile_current_file(wgs->logctx) != NULL);
             EnableMenuItem(mp, IDM_OPENLOGFILE, MF_BYCOMMAND |
                            (haslog ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)));
             EnableMenuItem(mp, IDM_CLEARLOGFILE, MF_BYCOMMAND |
@@ -6835,18 +6835,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* KiTTY: open the session's own log in whatever the system uses
              * for it (hknet/KiTTY#31). Flush first - with "flush log file
              * frequently" off, the newest lines are still in the C buffer,
-             * and those are exactly the ones being looked for. */
-            const char *lf = wgs->logctx ? logfile_current_name(wgs->logctx)
-                                         : NULL;
+             * and those are exactly the ones being looked for. The path is
+             * the one f_open wrote to: %VAR% expanded (hknet/KiTTY#70), and
+             * wide, so a profile folder outside the ANSI code page opens. */
+            const Filename *lf = wgs->logctx ? logfile_current_file(wgs->logctx)
+                                             : NULL;
             if (lf) {
+                wchar_t *wlf = filename_expand_wstr(lf);
                 logflush(wgs->logctx);
-                if ((INT_PTR)ShellExecute(hwnd, "open", lf, NULL, NULL, SW_SHOWNORMAL) <= 32) {
+                if ((INT_PTR)ShellExecuteW(hwnd, L"open", wlf, NULL, NULL, SW_SHOWNORMAL) <= 32) {
                     /* the menu item did nothing, silently */
-                    char *msg = dupprintf(KT_START_FAILED_FMT, lf,
-                                          kitty_win_reason(GetLastError()));
+                    DWORD err = GetLastError();
+                    char *shown = filename_expand_str(lf);
+                    char *msg = dupprintf(KT_START_FAILED_FMT, shown,
+                                          kitty_win_reason(err));
                     MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
                     sfree(msg);
+                    sfree(shown);
                 }
+                sfree(wlf);
             } else {
                 /* No log open: nothing to show. The menu greys this out, so
                  * getting here means the state changed under the menu. */

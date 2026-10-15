@@ -354,13 +354,16 @@ void logfopen(LogContext *ctx)
 /*
  * KiTTY: the log file currently being written, with the &-codes in the name
  * already substituted. NULL when nothing is open, which is what the menu uses
- * to decide whether there is anything to offer.
+ * to decide whether there is anything to offer. A Filename, not a string: the
+ * %VAR% in it are expanded only where a path meets a Win32 API (f_open does it
+ * for the log itself), and handing out the typed text is how "Open log file"
+ * asked Windows for "%USERPROFILE%\..." literally (hknet/KiTTY#70).
  */
-const char *logfile_current_name(LogContext *ctx)
+const Filename *logfile_current_file(LogContext *ctx)
 {
     if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
         return NULL;
-    return filename_to_str(ctx->currlogfilename);
+    return ctx->currlogfilename;
 }
 
 /*

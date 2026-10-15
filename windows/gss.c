@@ -243,7 +243,11 @@ struct ssh_gss_liblist *ssh_gss_setup(Conf *conf)
     module = NULL;
     Filename *customlib = conf_get_filename(conf, CONF_ssh_gss_custom);
     if (!filename_is_null(customlib)) {
-        const wchar_t *path = customlib->wpath;
+        /* KiTTY: %VAR% expanded like every other file setting
+         * (hknet/KiTTY#70 sweep); freed after the load below. No
+         * MOD_PERSO guard: this file reaches kitty.exe through a library
+         * built without it, and filename_expand_wstr() is in every build. */
+        wchar_t *path = filename_expand_wstr(customlib);
         if (p_AddDllDirectory) {
 
             /* Add the custom directory as well in case it chainloads
@@ -271,6 +275,7 @@ struct ssh_gss_liblist *ssh_gss_setup(Conf *conf)
                                 LOAD_LIBRARY_SEARCH_SYSTEM32 |
                                 LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
                                 LOAD_LIBRARY_SEARCH_USER_DIRS);
+        sfree(path);
     }
     if (module) {
         struct ssh_gss_library *lib =

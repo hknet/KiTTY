@@ -746,13 +746,16 @@ void kitty_start_filezilla(HWND hwnd) { StartFileZilla(hwnd); }
 /* Per-session icon: the external icon file (CONF_iconefile) if the session
  * names one, otherwise the embedded icon indexed by CONF_icone. */
 void kitty_apply_icon(HWND hwnd, Conf *conf) {
-    const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
+    /* %VAR% expanded: the stored path keeps the typed form, Windows gets
+     * the real one (hknet/KiTTY#70 sweep) */
+    char *iconfile = filename_expand_str(conf_get_filename(conf, CONF_iconefile));
     char buf[1024];
     buf[0] = '\0';
     if (iconfile && iconfile[0]) {
         strncpy(buf, iconfile, sizeof(buf)-1);
         buf[sizeof(buf)-1] = '\0';
     }
+    sfree(iconfile);
     SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 
@@ -760,13 +763,16 @@ void kitty_apply_icon(HWND hwnd, Conf *conf) {
  * SetConnBreakIcon(), so the broken-connection icon never sticks once the
  * session is back up. */
 void kitty_restore_icon(HWND hwnd, Conf *conf) {
-    const char *iconfile = filename_to_str(conf_get_filename(conf, CONF_iconefile));
+    /* %VAR% expanded: the stored path keeps the typed form, Windows gets
+     * the real one (hknet/KiTTY#70 sweep) */
+    char *iconfile = filename_expand_str(conf_get_filename(conf, CONF_iconefile));
     char buf[1024];
     buf[0] = '\0';
     if (iconfile && iconfile[0]) {
         strncpy(buf, iconfile, sizeof(buf)-1);
         buf[sizeof(buf)-1] = '\0';
     }
+    sfree(iconfile);
     SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 

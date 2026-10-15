@@ -1042,9 +1042,9 @@ This is **not** the same as *"AltGr acts as Compose key"* on the same panel. Tha
 
 ### Quick start of a duplicate session
 
-KiTTY++ lets you instantly open a second window that inherits all of the current session's settings, so you can run another connection to the same host without reopening the launcher or re-entering details. For an even faster shortcut, hold **CTRL + SHIFT** and click the middle of the active window with the **left mouse button** to launch the duplicate.
+KiTTY++ lets you instantly open a second window that inherits all of the current session's settings, so you can run another connection to the same host without reopening the launcher or re-entering details. For an even faster shortcut, hold **CTRL + SHIFT** and left-click anywhere in the window to launch the duplicate (needs the mouse chords setting, `mouseshortcuts` in `[KiTTY]`, on by default).
 
-**How to enable:** System menu **Duplicate Session** — opens a new window with the current session's settings.
+**How to enable:** the duplicate itself needs nothing - it is the **Duplicate Session** entry of the terminal window's menu (right-click the title bar, or Ctrl+right-click inside the window). The Ctrl+Shift click needs the mouse chords: Application > KiTTY++ Settings > Keys & Mouse > **Mouse chords (duplicate session, send to tray)**, on by default (`mouseshortcuts=yes` in `[KiTTY]`).
 
 **Inherit New Session...** is the same idea with a stop: the new window comes up at the **configuration box** carrying those settings, so something can be changed before connecting. Otherwise the box opens without a host, ready for a fresh one.
 
@@ -1102,9 +1102,9 @@ KiTTY++ lets you assign a distinct window icon to each saved session, so you can
 
 When you run long background batches or just keep KiTTY open to maintain SSH tunnels, you can tuck the window away into the Windows system tray (the notification area in the bottom-right corner of the screen) so it stays out of your way. You can send an open session to the tray on demand, have a session start there automatically, or launch one straight into the tray from the command line. Clicking the tray icon brings the window back when you need it.
 
-**How to enable:** System menu **Send to tray** for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
+**How to enable:** **Window > Send to tray** in the terminal window's menu (right-click the title bar, or Ctrl+right-click inside the window) for a window that is already open. To have a session start there, tick **Send to tray on startup** in Configuration > **Window > Behaviour**; on the command line, `-send-to-tray` does the same for one launch. A session starting in the tray stays visible until it is actually connected, so host-key and password prompts are never hidden behind the tray icon. With the option on, minimising the window also sends it to the tray. Click the tray icon to restore it.
 
-A **right click or a Ctrl+click on the window's minimize button** sends it to the tray too, like the system menu entry (**Ctrl+F6** and **Ctrl+middle-click** do the same).
+A **right click or a Ctrl+click on the window's minimize button** sends it to the tray too, like the menu entry. So do **Ctrl+F6** and a **Ctrl+middle-click anywhere in the window**; the latter needs the mouse chords: Application > KiTTY++ Settings > Keys & Mouse > **Mouse chords (duplicate session, send to tray)**, on by default.
 
 With many windows, one tray icon each gets crowded, so where a window goes is a setting: **Application > KiTTY++ Settings > Terminal**, **Terminal minimize to Tray/Launcher** (`[KiTTY] traymode`):
 

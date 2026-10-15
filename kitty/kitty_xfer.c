@@ -174,9 +174,10 @@ static bool kx_agent_holds(const char *keypath)
  * Hello-protected and the agent does not hold it - NULL when there is
  * nothing to say. Caller sfrees.
  */
+static const char *kx_keyfile_path(Conf *c) ;
 static char *kx_hello_agent_note(Conf *c)
 {
-    const char *path = filename_to_str( conf_get_filename( c, CONF_keyfile ) ) ;
+    const char *path = kx_keyfile_path( c ) ;
     if( path==NULL || strlen(path)==0 ) return NULL ;
     if( !kageant_hello_has_sidecar( path ) ) return NULL ;
     if( kx_agent_holds( path ) ) return NULL ;
@@ -184,9 +185,21 @@ static char *kx_hello_agent_note(Conf *c)
         KT_XFER_HELLO_NOTE, path ) ;
 }
 
+/* The session's key file as it is on disk: %VAR% expanded, so the Hello
+ * sidecar is found next to it (hknet/KiTTY#70 sweep). A static buffer,
+ * used before the next call. */
+static const char *kx_keyfile_path(Conf *c)
+{
+    static char path[4096] ;
+    char *e = filename_expand_str( conf_get_filename( c, CONF_keyfile ) ) ;
+    snprintf( path, sizeof(path), "%s", e ? e : "" ) ;
+    sfree( e ) ;
+    return path ;
+}
+
 static const char *kx_helper_keyfile(Conf *c)
 {
-    const char *path = filename_to_str(conf_get_filename(c, CONF_keyfile)) ;
+    const char *path = kx_keyfile_path( c ) ;
     if( path==NULL || strlen(path)==0 ) return NULL ;
     if( kageant_hello_has_sidecar(path) ) {
         debug_logevent("transfer: key file is Hello-protected, left to the agent: %s", path) ;
