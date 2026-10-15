@@ -1,10 +1,10 @@
 # KiTTY changelog
 
-KiTTY++ is basically the full old KiTTY feature set forward-ported and then some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is the old KiTTY feature set forward-ported and some more and really serious speed enhancements and features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.16-beta — 2026-10-11
+## 0.85.1.16-beta — 2026-10-15
 
 ### New
 
@@ -14,34 +14,35 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   remembered answers that save a session - so a stub that inherits Default
   Settings stays a stub. Rename and move still work, and window positions
   and tags are still stored. The Comment panel is now "Comment & Lock".
+  This way one can also protect a session config from accidential saves.
 - **Sessions can inherit Default Settings** (hknet/KiTTY#61). With
   Application > KiTTY++ Settings > Storage & Backup > "Inherit Default
   Settings" (`inheritdefaultsettings=yes`), a session that leaves a setting
   out takes it from Default Settings instead of the built-in default, so a
-  session file naming only a host and a user is enough. It covers stored
+  session file setting only a host and a user is enough. It covers stored
   sessions, session files opened directly and klink, kscp and ksftp. Ticking
-  it asks first: a user name and password kept in Default Settings then go
-  into every such session.
+  it notifies the user: a user name and password kept in Default Settings then
+  go into every such session as this might or might not be intended.
 - **An `ssh://` or `telnet://` link can open a saved session**
   (cyd01/KiTTY#540): **Application > KiTTY++ Settings > System > Session
   Integration**, `urlsessions`, default off. A session matches by Host Name
-  or session name, protocol, port and user. Several matches put up a list
-  to choose from. The link's user and password apply to the session found
-  for that connection only.
-- **Save as New Session...** in the window menu keeps the window's
-  connection as a saved session, with the login it used. It opens Change
+  or session name, protocol, port and user. Several matches show a list
+  to choose. The link's user and password apply to the session found
+  for that connection only. The password is removed from the visible tasklist.
+- **Save as New Session...** in the terminal-window menu saves the current
+  connection as a new session, keeping the login it used. It opens Change
   Settings with the host in the session name field. A window that had no
   saved session belongs to the one saved from Change Settings from then on.
   A window that has one keeps it.
 - **After the first login to a new host, a notice offers to keep the
   connection as a session**: Save Session, Not Now, Don't ask again
-  (`offernewsessioncreation`, on the Session Integration panel). It comes for a window
-  with no saved session whose host key was new.
+  (`offernewsessioncreation`, on the Session Integration panel).
+  The trigger is if we already have a hostkey or not.
 
 ### Changed
 
 - **kageant, kittygen and klink/kscp/ksftp no longer read
-  `%APPDATA%\PuTTY\putty.ini`**, which kitty.exe never read. They find
+  `%APPDATA%\PuTTY\putty.ini`**, which kitty.exe never read. They now find
   kitty.ini where kitty.exe does.
 - **Send File and Get File hand kscp/ksftp the session's password in memory**,
   not in a file: a block only that helper inherits, the password encrypted
@@ -50,10 +51,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   entries while the shortcuts are on. **Full Screen** moved into the
   **Window** submenu.
 - **`/save` and `/savenew` report on the command box's result line** instead
-  of in a box that stopped the session until it was closed.
+  of in a box that stopped the terminal-session-flow until it was closed.
 - **A program's status notice follows the session.** OSC 7501 raises a
   notice when the session's **Terminal > Desktop Notifications** allows it,
-  as OSC 9, 777 and 99 do. Its default, When not focused, is the old
+  as OSC 9, 777 and 99 do. Its default "When not focused" is the old
   behaviour. The global switch "Notify when a program in a background window
   needs attention" (`psnotify`) is gone: `psnotify=no` no longer applies. Off
   on a session now also mutes OSC 9, 777 and 99. Always shows the notices in
@@ -61,32 +62,33 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **How long a notice stays is a setting:** **Notices stay on screen,
   seconds** (Application > KiTTY++ Settings > Terminal, group **Title bar &
   Notifications**, `noticeseconds`, default 15). A time the program on the
-  host set keeps its own, as does a notice that waits for an answer.
+  host set keeps its own value, as does a notice that waits for an answer.
 - **Session > Terminal has two new panels**, **Desktop Notifications** and
   **Image Protocols**, taken out of **Features**. The settings stay as they
   were.
 - **`browsedirectory` is retired.** A folder store keeps every session at
   its folder path whatever its value, so `browsedirectory=yes` changes
-  nothing any more. The key is read and ignored.
+  nothing any more. The key is read and ignored and will be removed in the
+  future.
 - **The portable build writes `savemode=dir` into kitty.ini on its first
   start** when the line is missing, and creates kitty.ini from the template
   when there is none (the ZIP ships only kitty.ini.example). kageant, klink,
-  kscp and ksftp beside it then find the same store from the key. A
-  `savemode` already there stays, and nothing is written with `readonly=yes`
+  kscp and ksftp beside it then find the same store from this key. A
+  `savemode` already there is kept, and nothing is written with `readonly=yes`
   or `conf=no`.
 - **Classic KiTTY's putty.conf is read beside the exe only**, no longer from
   the working directory, where a shortcut with another "Start in" or a script
   run from another folder could feed it a stranger's paths. Once its keys are
   in kitty.ini (`puttyconfmigrated=yes`) it is not read at all, and
-  kitty.exe says so when it copies them, at the prompt it was started from
-  or in a box.
+  kitty.exe reports when the switch is done, at the prompt it was started from
+  or in a messagebox.
 - **putty.ini is no longer read, by any program.** kitty.exe only ever read
   its `[KiTTY]` section, so a classic KiTTY putty.ini (`[PuTTY]`) did nothing
   there, while kageant and the console tools read its `[PuTTY]` section. A
   putty.ini beside kitty.exe with a `[KiTTY]` section and no kitty.ini next
-  to it is copied to kitty.ini at the next start, and kitty.exe says so at
-  the prompt it was started from, or in a box. putty.ini itself is left as
-  it is.
+  to it is copied into kitty.ini at the next start, and kitty.exe Also
+  reports it at the prompt it was started from, or in a messagebox.
+  putty.ini itself is left as it is (in case you need it still there).
 
 ### Fixed
 
@@ -97,21 +99,21 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   without a word. It now writes through the same Windows ini functions as
   kageant and the console tools, and the first save of a run that fails is
   reported with the file and Windows' reason.
-- **A kitty.ini with a section or a setting written twice is merged once at
-  start**, keeping the values KiTTY++ was using, with a copy of the file as
-  it was beside it (`kitty.ini.<date>.bak`) and a notice.
-- **A red row in the session list can be right-clicked again.** Its
+- **A kitty.ini with a section or a setting written twice or more is merged
+  once at start**, keeping the values KiTTY++ was using, with a copy of the
+  file as it was beside it (`kitty.ini.<date>.bak`) and a notice.
+- **A red row in the session list can be right-clicked.** Its
   tooltip was laid over the row, hid it and took the click, so Show in
   Explorer and Rename... were reachable by keyboard only. The tooltip now
   opens below the pointer and wraps.
-- **An exported `.ktx` carries every setting, and opening one reads every
+- **An exported `.ktx` saves all settings, and opening one reads every
   setting.** The export left out 59 of them (the background image, the
   transfer and Tools-menu settings, line spacing, the reconnect rules and
   more), and a double-clicked or `-kload`ed `.ktx` took 33 from Default
   Settings whatever the file said. Both now go through the same loader and
   saver as a stored session.
-- **A relative `configdir` is taken below the exe's folder**, as kageant and
-  the console tools take it. kitty.exe tested it against the working
+- **A relative `configdir` is taken as from the exe's folder**, as kageant and
+  the console tools already did. kitty.exe tested it against the working
   directory, so a shortcut with another "Start in" found another folder. A
   `configdir` that is not there now sends kageant and the console tools to
   the default folder, as kitty.exe does once its question is answered.
@@ -127,7 +129,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **A stock PuTTY or old KiTTY window no longer counts as a KiTTY++ window**
   when KiTTY++ starts in `savemode=file`. A PuTTY configuration box open on
   the desktop made it skip the backup of the registry sessions and the offer
-  to restore parked ones, as if it were not the first window.
+  to restore parked ones, as if it were not the first window of its family.
 - **Writes that fail are reported and leave nothing half done.** Every
   write KiTTY++ makes to a file, the registry or another program now
   reports its outcome with Windows' reason, instead of going on as if it
@@ -140,31 +142,32 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
     A kitty.ini that exists but cannot be read is no longer rewritten from
     nothing.
   - Registry copies (the old-hive migration, renames, `/copytoputty`) delete
-    the source only after a complete copy. A partial copy is removed.
+    the source only after a complete copy is done. A partial copy is removed.
   - Start-up: a store that cannot be set aside or restored stops with a
     message instead of starting on the wrong one. A master password whose
     salt or verifier was not stored is not taken as set.
   - `/savereg`, `/loadreg`, `/savemode`, `/delreg`, `/copytoputty`,
-    `/savektx` and `/initlauncher` give the real outcome on the result line.
+    `/savektx` and `/initlauncher` report the real outcome on the result line.
     A backup that failed no longer prunes the older ones.
   - The backup taken before a session is deleted, moved, renamed, copied or
     overwritten: when it cannot be written, a question comes up first (go
     on without one?), with No as the default. It used to go on regardless.
     Beside a running session, or on a command line with nobody there to
-    answer, the change is not made and the reason is given. `-yes` answers
+    answer, the change is not made and the reason is reported. `-yes` answers
     in advance. `-backupnow` reports a backup that was not written and exits
     with 1.
   - `-exportall`, `-importdir`, `-backupnow`, `-portablecopy`, `-takefolder`,
-    `-sshhandler`, `-fileassoc` and `-mungestr` report their result where the caller can
-    read it: on redirected output (a failure on stderr), else at the prompt
-    they were typed at, else in a box when someone can see the desktop. A
-    scheduled run no longer hangs on a box nobody clicks. The exit code
+    `-sshhandler`, `-fileassoc` and `-mungestr` report their result where the
+	caller can read it: on redirected output (a failure on stderr),
+	else at the prompt they were typed at,
+	else in a box when someone can see the desktop.
+    A scheduled run no longer hangs on a box nobody clicks. The exit code
     carries the result.
   - A program that could not be started is reported: Duplicate Session,
     Open log file, Start in the session organiser, kageant's links and menu
     items. So is a URL that does not open.
   - A setting on the Application tab, or in kageant's Settings, that could
-    not be stored brings up a message box. It no longer looks stored until
+    not be saved brings up a message box. It no longer looks stored until
     the next start: the panel shows the stored value again, and KiTTY++ goes
     on with it.
 - **kageant stores its settings in the store in charge only:** kitty.ini when
@@ -173,7 +176,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   integration flag stays in the registry: it describes this machine's
   `~/.ssh/config`.
 - **The sshd NOTE shows only the variable the server refused**
-  (`TERM_PROGRAM` or `COLORTERM`), not both.
+  (`TERM_PROGRAM` or `COLORTERM`), not both and as before only once per host.
 - **A running launcher follows "Keep my hand-edited launcher menu" at
   once** when it is changed, without a restart.
 - **The password in an `ssh://user:password@host` link logs in.** It used to
