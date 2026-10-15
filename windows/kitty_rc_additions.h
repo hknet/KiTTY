@@ -766,3 +766,25 @@
 #ifndef IDC_URLCHOOSE_LIST
 #define IDC_URLCHOOSE_LIST 1451
 #endif
+/* the Get File box (kitty_xfer.c, hknet/KiTTY#71) */
+#ifndef IDD_GETFILEBOX
+#define IDD_GETFILEBOX 175
+#endif
+#ifndef IDC_GF_WHY
+#define IDC_GF_WHY 1460
+#endif
+#ifndef IDC_GF_LABEL
+#define IDC_GF_LABEL 1461
+#endif
+#ifndef IDC_GF_EDIT
+#define IDC_GF_EDIT 1462
+#endif
+#ifndef IDC_GF_FROM
+#define IDC_GF_FROM 1463
+#endif
+#ifndef IDC_GF_FOLDERS
+#define IDC_GF_FOLDERS 1464
+#endif
+#ifndef IDC_GF_TIP
+#define IDC_GF_TIP 1465
+#endif

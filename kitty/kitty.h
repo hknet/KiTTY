@@ -649,6 +649,13 @@ char *kitty_loginscript_from_text( const char *text );
 char *kitty_loginscript_to_text( const char *stored );
 void kitty_netdbg_ts( const char *msg );
 void kitty_set_remote_cwd( const char * osc7 );
+/* The host an OSC 7 reports when it is not the session's (the first OSC 7's)
+ * one; NULL when it is, or nothing tells. */
+const char * kitty_remote_cwd_moved_host( void );
+/* The shell in that terminal window is on another machine than the
+ * connection's (OSC 3008, then OSC 7): 1, *where = its name or NULL
+ * (window.c). */
+int kitty_shell_moved( HWND hwnd, const char ** where );
 void set_title( TermWin *tw, const char *title );
 extern char BuildVersionTime[256];
 extern char **FolderList;

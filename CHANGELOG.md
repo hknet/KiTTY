@@ -21,6 +21,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   switched to with `run0 -u`: "Tinted background as root or as a switched
   user (OSC 3008)" (`ContextRootTint=1`, on by default). The Application
   Appearance Setting can change the color intensity.
+- **Get File (kscp) checks the path on the clipboard** before it asks
+  where to save (hknet/KiTTY#71): a file found on the server raises a
+  notice and the Save-As opens as before; anything else opens a box that
+  says why and holds the path to correct or type. A session that shares
+  its SSH connection lets kscp ride on it, without a second login.
 
 ### Changed
 

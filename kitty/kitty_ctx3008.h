@@ -108,6 +108,13 @@ bool ctx_elevated(const CtxStack *s);
  * context further in with a user= of its own). */
 typedef enum { CTX_AS_PLAIN, CTX_AS_ROOT, CTX_AS_SWITCHED } CtxAs;
 CtxAs ctx_runs_as(const CtxStack *s);
+/* Is the shell on another machine than the connection's? True when an open
+ * context is of type remote (an ssh onward: its targethost= is where), or
+ * when the innermost context with a machineid= names another machine than
+ * the outermost one with it (its hostname= is where). *where gets that
+ * host name, NULL when the context sends none. Get File asks this before
+ * it checks a path on the connection's host. */
+bool ctx_moved_machine(const CtxStack *s, const char **where);
 
 const char *ctx_type_name(int type);         /* "" for CTX_TYPE_NONE */
 const char *ctx_field_name(int field);

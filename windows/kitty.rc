@@ -536,6 +536,27 @@ BEGIN
     PUSHBUTTON      KT_URLSESS_CHOOSER_CANCEL, IDCANCEL, 203, 120, 50, 14
 END
 
+/* The Get File box (kitty/kitty_xfer.c, hknet/KiTTY#71): why the clipboard
+ * path was not settled, the remote paths to edit (one per line; Ctrl+Enter
+ * starts a new line, Enter is OK), and how a path is read. MODELESS - the
+ * session keeps running while it waits - so no DS_MODALFRAME. The reason
+ * and the "fetched from" line grow to their text at run time (kitty_fit_text)
+ * and move what is below. SS_NOPREFIX: paths may contain '&'. */
+IDD_GETFILEBOX DIALOGEX DISCARDABLE 0, 0, 300, 140
+STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_GETFILE_BOX_CAP
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_GF_WHY, 7, 7, 286, 10, SS_NOPREFIX
+    LTEXT           KT_GETFILE_BOX_LABEL, IDC_GF_LABEL, 7, 22, 286, 10, SS_NOPREFIX
+    EDITTEXT        IDC_GF_EDIT, 7, 34, 286, 40, ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "", IDC_GF_FROM, 7, 79, 286, 10, SS_NOPREFIX
+    LTEXT           KT_GETFILE_BOX_FOLDERS, IDC_GF_FOLDERS, 7, 91, 286, 10, SS_NOPREFIX
+    LTEXT           KT_GETFILE_BOX_TIP, IDC_GF_TIP, 7, 103, 286, 10, SS_NOPREFIX
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 189, 120, 50, 14
+    PUSHBUTTON      KT_XFER_BTN_CANCEL_PLAIN, IDCANCEL, 243, 120, 50, 14
+END
+
 #ifndef NO_MANIFESTS
 1 RT_MANIFEST "putty.mft"
 #endif /* NO_MANIFESTS */

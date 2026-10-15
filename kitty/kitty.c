@@ -191,12 +191,17 @@ char * get_param_str( const char * val ) {
  * the safe replacement for the removed __pw/__ws title-scan dispatcher
  * (CVE-2024-23749 RCE), which stays dead. */
 static char RemoteCwd[2048] = "" ;     /* validated path portion; "" = none  */
-static char RemoteCwdHost[256] = "" ;  /* host portion (future nested-SSH use) */
+static char RemoteCwdHost[256] = "" ;  /* host portion of the latest one */
+/* The host of the FIRST OSC 7 with a host: the session's machine, as it
+ * names itself. A later host that differs means the shell moved on
+ * (kitty_remote_cwd_moved_host, Get File's check). */
+static char RemoteCwdHostFirst[256] = "" ;
 
 /* The OSC 7 path validators (osc7_urldecode / osc7_path_ok and their helpers)
  * live in a dependency-free header shared verbatim with the regression test
  * test/test_osc7.c, so this security-critical parsing is unit-tested. */
 #include "kitty_osc7_parse.h"
+#include "kitty_getfile_parse.h"   /* gf_osc7_moved */
 
 void kitty_set_remote_cwd( const char * osc7 ) {
 	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return ;
@@ -214,8 +219,17 @@ void kitty_set_remote_cwd( const char * osc7 ) {
 	if( !osc7_path_ok( path ) ) return ;
 	/* commit only once fully validated */
 	memcpy( RemoteCwdHost, host, hostlen ) ; RemoteCwdHost[hostlen] = '\0' ;
-	osc7_urldecode( RemoteCwdHost ) ;         /* host unused in phase 1; NUL harmless */
+	osc7_urldecode( RemoteCwdHost ) ;         /* an embedded NUL only shortens it */
+	if( !RemoteCwdHostFirst[0] ) strcpy( RemoteCwdHostFirst, RemoteCwdHost ) ;
 	strcpy( RemoteCwd, path ) ;
+}
+
+/* The host the shell reports when it is not the one the first OSC 7 named
+ * (gf_osc7_moved: case and short/long name forms do not count), else NULL.
+ * NULL too with tracking off or no OSC 7 seen. */
+const char * kitty_remote_cwd_moved_host( void ) {
+	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return NULL ;
+	return gf_osc7_moved( RemoteCwdHostFirst, RemoteCwdHost ) ? RemoteCwdHost : NULL ;
 }
 
 char * kitty_current_dir(void) {

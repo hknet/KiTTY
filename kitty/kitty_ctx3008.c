@@ -436,6 +436,35 @@ bool ctx_elevated(const CtxStack *s)
 
 /* The same walk as ctx_effective_user, remembering whether the user came
  * from a switch. */
+bool ctx_moved_machine(const CtxStack *s, const char **where)
+{
+    const CtxContext *outer = NULL, *inner = NULL;
+    int i;
+
+    if (where)
+        *where = NULL;
+    for (i = s->depth - 1; i >= 0; i--) {
+        if (s->ctx[i].type == CTX_TYPE_REMOTE) {
+            if (where)
+                *where = s->ctx[i].field[CTX_F_TARGETHOST];
+            return true;
+        }
+    }
+    for (i = 0; i < s->depth; i++) {
+        if (s->ctx[i].field[CTX_F_MACHINEID]) {
+            if (!outer)
+                outer = &s->ctx[i];
+            inner = &s->ctx[i];
+        }
+    }
+    if (!outer || inner == outer ||
+        !strcmp(outer->field[CTX_F_MACHINEID], inner->field[CTX_F_MACHINEID]))
+        return false;
+    if (where)
+        *where = inner->field[CTX_F_HOSTNAME];
+    return true;
+}
+
 CtxAs ctx_runs_as(const CtxStack *s)
 {
     const char *u = NULL;

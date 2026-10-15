@@ -864,6 +864,7 @@ void kitty_demo_templates( void ) {
 		{ "IDD_MIGRATEWARN",                IDD_MIGRATEWARN },
 		{ "IDD_OSC52READ",                  IDD_OSC52READ },
 		{ "IDD_HELPBOX",                    IDD_HELPBOX },
+		{ "IDD_GETFILEBOX",                 IDD_GETFILEBOX },
 	} ;
 	size_t i ;
 	/* IDD_HOSTKEY names a window CLASS that ShinyDialogBox normally

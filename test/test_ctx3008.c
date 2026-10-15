@@ -847,6 +847,48 @@ static void test_runs_as(void)
     ctx_clear(&s);
 }
 
+#define MID_A "0123456789abcdef0123456789abcdef"
+#define MID_B "fedcba9876543210fedcba9876543210"
+
+static void test_moved_machine(void)
+{
+    CtxStack s;
+    const char *where = "x";
+    ctx_init(&s);
+
+    CHECK(!ctx_moved_machine(&s, &where) && where == NULL, "moved: nothing");
+    st(&s, "start=a;type=shell;user=carol;hostname=server01;machineid=" MID_A);
+    CHECK(!ctx_moved_machine(&s, &where), "moved: one machine");
+    st(&s, "start=b;type=elevate");
+    CHECK(!ctx_moved_machine(&s, &where), "moved: run0 stays");
+    st(&s, "start=c;type=shell;user=root;hostname=server01;machineid=" MID_A);
+    CHECK(!ctx_moved_machine(&s, &where), "moved: same machineid");
+    st(&s, "start=d;type=remote;targethost=db02");
+    CHECK(ctx_moved_machine(&s, &where) && where && !strcmp(where, "db02"),
+          "moved: ssh onward, its targethost");
+    st(&s, "start=e;type=shell;user=dave;hostname=db02;machineid=" MID_B);
+    CHECK(ctx_moved_machine(&s, &where) && where && !strcmp(where, "db02"),
+          "moved: the far shell");
+    ctx_clear(&s);
+
+    /* no remote context, only the machine ids differ */
+    st(&s, "start=a;type=shell;hostname=server01;machineid=" MID_A);
+    st(&s, "start=b;type=container;hostname=box1;machineid=" MID_B);
+    CHECK(ctx_moved_machine(&s, &where) && where && !strcmp(where, "box1"),
+          "moved: container machineid");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=shell;machineid=" MID_A);
+    st(&s, "start=b;type=shell;machineid=" MID_B);
+    CHECK(ctx_moved_machine(&s, &where) && where == NULL,
+          "moved: no hostname sent");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=shell;user=carol");
+    CHECK(ctx_moved_machine(&s, NULL) == false, "moved: NULL where, no ids");
+    ctx_clear(&s);
+}
+
 static void test_effective_user(void)
 {
     CtxStack s;
@@ -985,6 +1027,7 @@ int main(void)
     test_end_fields();
     test_effective_user();
     test_runs_as();
+    test_moved_machine();
     test_seq_max();
     test_names();
 

@@ -28,6 +28,7 @@
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 
 static bool list = false;
+static bool statmode = false;   /* KiTTY: -stat, the check of Get File */
 static bool verbose = false;
 static bool recursive = false;
 static bool preserve = false;
@@ -2205,6 +2206,77 @@ static void get_dir_list(CmdlineArg **args, size_t nargs)
 }
 
 /*
+ * KiTTY: -stat [user@]host:path - what is at a remote path? For the
+ * terminal's Get File (hknet/KiTTY#71), which asks before it opens a
+ * window: one SFTP stat (it follows a link) and ONE line on stdout -
+ * "file <bytes>", "dir", "other", "missing" or "error <text>" - parsed by
+ * kitty/kitty_getfile_parse.h. Exit code 0 only for a file or a folder.
+ * The terminal starts it with -batch, so it never waits for an answer.
+ */
+static void get_stat(CmdlineArg **args)
+{
+    char *wsrc_orig, *wsrc, *host, *user;
+    const char *src;
+    struct sftp_packet *pktin;
+    struct sftp_request *req;
+    struct fxp_attrs attrs;
+    bool ret;
+
+    wsrc = wsrc_orig = dupstr(cmdline_arg_to_str(args[0]));
+
+    host = wsrc;
+    wsrc = colon(wsrc);
+    if (wsrc == NULL)
+        bump("Local file listing not supported");
+    *wsrc++ = '\0';
+    src = *wsrc ? wsrc : ".";
+
+    user = host;
+    host = strrchr(host, '@');
+    if (host == NULL) {
+        host = user;
+        user = NULL;
+    } else {
+        *host++ = '\0';
+        if (*user == '\0')
+            user = NULL;
+    }
+
+    do_cmd(host, user, "");
+    if (!using_sftp) {
+        printf("error no SFTP on the server\n");
+        errs++;
+    } else if (!fxp_init()) {
+        printf("error %s\n", fxp_error());
+        errs++;
+    } else {
+        req = fxp_stat_send(src);
+        pktin = sftp_wait_for_reply(req);
+        ret = fxp_stat_recv(pktin, req, &attrs);
+        if (!ret) {
+            if (fxp_error_type() == SSH_FX_NO_SUCH_FILE)
+                printf("missing\n");
+            else
+                printf("error %s\n", fxp_error());
+            errs++;
+        } else if (!(attrs.flags & SSH_FILEXFER_ATTR_PERMISSIONS)) {
+            printf("other\n");
+            errs++;
+        } else if ((attrs.permissions & 0170000) == 0100000) {
+            printf("file %llu\n", (attrs.flags & SSH_FILEXFER_ATTR_SIZE) ?
+                   (unsigned long long)attrs.size : 0ULL);
+        } else if ((attrs.permissions & 0170000) == 0040000) {
+            printf("dir\n");
+        } else {
+            printf("other\n");
+            errs++;
+        }
+    }
+    fflush(stdout);
+    sfree(wsrc_orig);
+}
+
+/*
  *  Short description of parameters.
  */
 static void usage(void)
@@ -2214,6 +2286,7 @@ static void usage(void)
     printf("Usage: kscp [options] [user@]host:source target\n");
     printf("       kscp [options] source [source...] [user@]host:target\n");
     printf("       kscp [options] -ls [user@]host:filespec\n");
+    printf("       kscp [options] -stat [user@]host:path\n");
     printf("Options:\n");
     printf("  -V        print version information and exit\n");
     printf("  -pgpfp    print PGP key fingerprints and exit\n");
@@ -2341,6 +2414,8 @@ int psftp_main(CmdlineArgList *arglist)
             version();
         } else if (strcmp(argstr, "-ls") == 0) {
             list = true;
+        } else if (strcmp(argstr, "-stat") == 0) {
+            statmode = true;
         } else if (strcmp(argstr, "-unsafe") == 0) {
             scp_unsafe_mode = true;
         } else if (strcmp(argstr, "-sftp") == 0) {
@@ -2374,7 +2449,15 @@ int psftp_main(CmdlineArgList *arglist)
     while (scpargs[nscpargs])
         nscpargs++;
 
-    if (list) {
+    if (statmode) {
+        /* KiTTY: SFTP only - SCP has no stat to ask */
+        if (nscpargs != 1)
+            cmdline_error("expected a single argument with -stat");
+        try_scp = false;
+        try_sftp = true;
+        get_stat(scpargs);
+
+    } else if (list) {
         if (nscpargs != 1)
             cmdline_error("expected a single argument with -ls");
         get_dir_list(scpargs, nscpargs);

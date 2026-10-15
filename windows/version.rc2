@@ -85,6 +85,10 @@ BEGIN
 	     * that declares it reads them. Reader: kx_helper_has_flag().
 	     */
 	    VALUE "KiTTYProxyOptions",	"1"
+	    /* kscp -stat [user@]host:path, the check of Get File: one line
+	     * on stdout (pscp.c get_stat). A helper without it gets no check
+	     * and Get File opens its box. Reader: kx_helper_has_flag(). */
+	    VALUE "KiTTYStat",	"1"
 	    /*
 	     * All three layers, because all three hold copyright in what ships:
 	     * PuTTY upstream, the original KiTTY features, and this port. The

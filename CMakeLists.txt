@@ -188,6 +188,12 @@ target_link_libraries(test_wildcard utils ${platform_libraries})
 add_executable(test_osc7
   test/test_osc7.c)
 
+# KiTTY: unit test for Get File's clipboard check (self-contained; the code
+# lives in kitty/kitty_getfile_parse.h, shared with kitty/kitty_xfer.c and
+# kitty/kitty.c).
+add_executable(test_getfile
+  test/test_getfile.c)
+
 # KiTTY: unit test for the OSC 5113 file-transfer command parser and the
 # file-name rules (self-contained; the code lives in kitty/kitty_transfer.h,
 # shared with kitty/kitty_transfer.c).
@@ -409,7 +415,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath)
+    test_termenv test_droppath test_getfile)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

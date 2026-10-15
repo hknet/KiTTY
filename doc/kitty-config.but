@@ -924,9 +924,9 @@ where the window is not on screen.
 
 The two lines at the top name the \q{Tools} menu entries that run
 \c{kscp}: \q{Send File (kscp)} (\c{Ctrl+F3}) sends a local file to the
-remote directory, \q{Get File (kscp)} (\c{Ctrl+F4}) fetches the path on
-the clipboard into the download folder - \k{kitty-cfg-get-file} walks
-through it.
+remote directory, \q{Get File (kscp)...} (\c{Ctrl+F4}) fetches a remote
+file into the download folder; a path on the clipboard is checked and
+filled in - \k{kitty-cfg-get-file} walks through it.
 
 \b \q{Protocol} is how \c{kscp} runs: \q{SFTP} (the default) in SFTP
 mode, \q{SCP} in SCP mode. Each transfer tool has its own protocol now -
@@ -1281,12 +1281,25 @@ Either prints \c{/home/you/reports/report.pdf}.
 clipboard as you release the button.
 
 \n Right-click the title bar (or open the window menu) and choose
-\q{Tools} > \q{Get File (kscp)}, or press \c{Ctrl+F4}. A folder
-window opens on your download folder; keep it or pick another; OK.
+\q{Tools} > \q{Get File (kscp)...}, or press \c{Ctrl+F4}. KiTTY++
+asks the server whether that path is a file, in the background and
+for 3 seconds at most. If it is, a notice says so and a Save-As
+window opens on your download folder with the name filled in; keep it
+or change it; Save.
 
-\n \c{kscp} fetches the file into that folder. The transfer window shows
-the progress and closes on success unless \q{Keep the transfer window
-open after success} is on (\k{kitty-cfg-kscp}).
+\n \c{kscp} fetches the file. The transfer window shows the progress
+and closes on success unless \q{Keep the transfer window open after
+success} is on (\k{kitty-cfg-kscp}).
+
+When the path cannot be settled, the \q{Get File (kscp)} box opens
+instead: its top line says why, the field below holds the clipboard
+text to correct or to type in (one path per line, \c{Ctrl+Enter}
+starts a new line), and OK goes on as above - a Save-As for one file,
+a folder window for several. The reasons: nothing or a local path on
+the clipboard, several lines or a pattern (not checked), a folder, not
+found, the shell on another host than the session's (OSC 3008 or
+OSC 7 tell), no answer in time, or a login that would need you
+(below).
 
 Worth knowing:
 
@@ -1297,11 +1310,19 @@ and your shell announces its directory: \c{report.pdf} copied from an
 \b Without OSC 7 a bare name is fetched from your login directory - copy
 the full path instead.
 
-\b Several lines on the clipboard are several files, fetched one after
-the other into the folder you chose.
+\b Several lines are several files, fetched one after the other into
+the folder you chose. A line ending in \c{/} fetches a folder; \c{*}
+and \c{?} work.
 
-\b A Windows path on the clipboard (\c{C:\\...}) is refused with a
-message: it is not a remote path.
+\b The check logs in again only where nobody has to answer: the
+session shares its connection (\q{Share SSH connections if possible},
+Connection > SSH - then \c{kscp} rides on the terminal's connection,
+no second password or 2FA, and so does the transfer), or it holds the
+password (stored, or typed and accepted), a key file or an agent.
+Otherwise there is no check and the box opens: a login that fails in
+the background still counts in the server's log.
+
+\b A \c{kscp} older than this release cannot check; the box opens.
 
 \b The menu entry is greyed while \c{kscp} cannot be found
 (\k{kitty-cfg-external-tools}).
@@ -1875,8 +1896,8 @@ Ctrl+Num 0.
 
 \b \q{Full screen} - the terminal over the whole screen, and back.
 
-\b \q{Get File (kscp)} - fetch the remote path on the clipboard into the
-download folder; Ctrl+F4.
+\b \q{Get File (kscp)...} - fetch a remote file into the download
+folder; a path on the clipboard is checked and filled in; Ctrl+F4.
 
 \b \q{Image viewer} - switch the background-image viewer on and off;
 Shift+F11.

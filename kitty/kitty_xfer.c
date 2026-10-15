@@ -37,6 +37,9 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_droppath.h" /* the remote paths typed after a drop upload */
+#include "kitty_getfile_parse.h" /* Get File's check: the clipboard text, kscp's reply */
+#include "kitty_notice.h"   /* Get File's "found" notice */
+#include "kitty_buildlabel.h" /* KITTY_TEST_BUILD_LABEL: the notice trace below */
 
 /* The port inside a target override ([user@]hostname[:port]), 0 if it names
  * none. Defined beside kitty_xfer_default_port(), used by the builders above
@@ -1811,6 +1814,12 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
 	}
 	bcat( buffer, BC, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
+	/* The session shares its connection (Connection > SSH > "Share SSH
+	 * connections if possible"): kscp rides on the terminal's connection
+	 * and does not log in again - no second password, no second 2FA. Only
+	 * then: switching sharing on for a session that has it off is not
+	 * kscp's to decide. */
+	if( conf_get_bool(conf, CONF_ssh_connection_sharing) ) bcat( buffer, BC, "-share " ) ;
 
 	/* The session's own kscp port first; an empty field falls through to the
 	 * global kscp port and then to the session's port (kitty_xfer_default_port). */
@@ -2371,65 +2380,21 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
  * kitty/kitty_settings_load.c, not here: the .ktx reader is linked into targets
  * that have no transfer code at all (windows/test/test_storage_roundtrip). */
 
-/* Tools > Get file (kscp), and the [Shortcuts] getfile key (Ctrl+F4).
- *
- * The remote path is the text on the clipboard: select the file's name or
- * path in the terminal and it is there. An absolute path (or ~) is taken as
- * it is; a bare name is joined to the OSC 7 tracked directory when tracking
- * is on, else kscp resolves it against the login directory. Several lines
- * mean several files, fetched one after the other. Then the folder picker
- * opens on the download folder (kitty_xfer_download_dir) and the transfer
- * runs into the chosen folder, through GetOneFileTo() - so the port,
- * protocol, key-file and password handling are the ones every kscp download
- * uses, and "Keep the transfer window open after success" applies.
- *
- * A Windows path on the clipboard is refused with a message: it is not a
- * remote path, and handing "C:\..." to kscp only produces a puzzling error. */
-static int getfile_is_windows_path( const char * s ) {
-    if( strchr( s, '\\' ) != NULL ) return 1 ;
-    if( isalpha( (unsigned char)s[0] ) && s[1] == ':' ) return 1 ;
-    return 0 ;
-}
-
-void GetFile( HWND hwnd ) {
-    char * clip = NULL, * line, * next ;
+/* Get File's transfers, once the remote paths are settled - by the check
+ * below or by the user in the Get File box. `clip` is the text, trimmed
+ * (dupstr'd; freed here): one path per line. An absolute path (or ~) is
+ * taken as it is; a bare name is joined to the OSC 7 tracked directory when
+ * tracking is on, else kscp resolves it against the login directory. Several
+ * lines mean several files, fetched one after the other, into a folder the
+ * picker asks for (it opens on kitty_xfer_download_dir); one named file goes
+ * through a Save-As instead. The transfer runs through GetOneFileTo() and its
+ * relatives - so the port, protocol, key-file and password handling are the
+ * ones every kscp download uses, and "Keep the transfer window open after
+ * success" applies. */
+static void kx_getfile_go( HWND hwnd, char * clip ) {
+    char * line = clip, * next ;
     char dir[4096], defdir[4096], remote[4096] ;
     int nfiles = 0 ;
-
-    if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-        MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-        return ;
-    }
-    if( !kitty_xfer_tool_ready( 0 ) ) {
-        MessageBox( hwnd, KT_XFER_KSCP_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-        return ;
-    }
-    if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_getfile, kx_again( hwnd ), kx_again_free ) )
-        return ;
-
-    /* Take a private copy of the clipboard text: the picker below pumps
-     * messages, and a locked clipboard across that would be a hold. */
-    if( IsClipboardFormatAvailable(CF_TEXT) && OpenClipboard(NULL) ) {
-        HGLOBAL hglb = GetClipboardData( CF_TEXT ) ;
-        if( hglb != NULL ) {
-            char * pst = GlobalLock( hglb ) ;
-            if( pst != NULL ) { clip = dupstr( pst ) ; GlobalUnlock( hglb ) ; }
-        }
-        CloseClipboard() ;
-    }
-    if( clip == NULL ) clip = dupstr( "" ) ;
-    str_rtrim( clip, "\n\r \t" ) ;
-    /* leading blanks and blank lines are noise from the selection */
-    line = clip ; while( *line == ' ' || *line == '\t' || *line == '\r' || *line == '\n' ) line++ ;
-    if( *line == '\0' ) {
-        MessageBox( hwnd, KT_XFER_GETFILE_NO_PATH, KT_CAP_ERROR, MB_OK|MB_ICONINFORMATION ) ;
-        sfree( clip ) ; return ;
-    }
-    if( getfile_is_windows_path( line ) ) {
-        char * msg = dupprintf( KT_XFER_GETFILE_WINDOWS_PATH, line ) ;
-        MessageBox( hwnd, msg, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-        sfree( msg ) ; sfree( clip ) ; return ;
-    }
 
     /* ONE named file (no interior newline, no wildcard, not a trailing-slash
      * folder): a Save-As dialog with the remote name filled in, so Windows' own
@@ -2527,6 +2492,474 @@ void GetFile( HWND hwnd ) {
     }
     sfree( clip ) ;
     (void)nfiles ;
+}
+
+/* ---- Get File: the clipboard check and the box (hknet/KiTTY#71) ----------
+ *
+ * Tools > Get File (kscp)..., and the [Shortcuts] getfile key (Ctrl+F4).
+ *
+ * ONE remote path on the clipboard is asked about first: kscp -stat in the
+ * background (no window; -batch, so it never waits for an answer; 3 s at
+ * most). A regular file on the connection's host: a notice says so and the
+ * Save-As opens as Get File always did. Anything else opens the Get File box
+ * with the reason on top and the paths to edit - nothing or several paths on
+ * the clipboard, a local path, a folder, not found, the shell on another host,
+ * no silent login, a kscp without -stat, no answer. Its OK takes the routes of
+ * kx_getfile_go.
+ *
+ * MODELESS throughout: kscp runs in a worker thread whose result is posted to
+ * a message-only window, and the box is modeless, so the session keeps
+ * running while either waits. A modal loop would stall it (no output, no
+ * keepalives).
+ *
+ * The check runs only when kscp can log in without asking: a shared
+ * connection, a password the session holds (stored, or typed and accepted),
+ * a key file or an agent. Otherwise there is no attempt: a -batch login that
+ * fails still lands in the server's auth log, and fail2ban counts those. */
+#define KX_GF_TIMEOUT_MS 3000
+#define KX_GF_WM_DONE    ( WM_APP + 1 )
+#define KX_GF_ACCENT     RGB( 25, 110, 45 )
+
+typedef struct {
+	HWND owner ;                  /* the terminal window that asked */
+	char *text ;                  /* the clipboard path, trimmed */
+	char *remote ;                /* the same, joined to the OSC 7 directory */
+	char host[256] ;              /* the connection's host, for the texts */
+	HANDLE proc, rd_out, rd_err ;
+	int result ;                  /* GFS_*, or -1 = no answer in time */
+	unsigned long long size ;
+	char err[512] ;
+} kx_gf_check_t ;
+
+static HWND kx_gf_msgwin = NULL ;     /* takes the worker's result */
+/* The "Checking ..." notice: shown while kscp asks - the sign that something
+ * is happening (the terminal resets a busy cursor on every mouse move). The
+ * "Found" notice replaces it; before the box it is closed. Its context is
+ * this token, so only that notice is closed, never another one. */
+static int kx_gf_checking_token ;
+static void kx_gf_checking_closed( void *ctx, int clicked ) { (void)ctx ; (void)clicked ; }
+
+/* Test builds with KITTY_NOTICE_TRACE=<file>: the notice's text, one line
+ * appended in the format kitty_hostnotify.c writes - for a test harness, as
+ * a notice's text is painted and cannot be read from outside. */
+static void kx_gf_trace_notice( const char *text ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	const char *path = getenv( "KITTY_NOTICE_TRACE" ) ;
+	FILE *f ;
+	if( !path || !*path || ( f = fopen( path, "a" ) ) == NULL ) return ;
+	fprintf( f, "notice accent=%06X text=%s\n", (unsigned)KX_GF_ACCENT, text ) ;
+	fclose( f ) ;
+#else
+	(void)text ;
+#endif
+}
+static HWND kx_gf_box = NULL ;        /* the Get File box, while it is open */
+static int kx_gf_checking = 0 ;       /* a check is running */
+
+static void kx_gf_check_free( kx_gf_check_t *c ) {
+	if( !c ) return ;
+	if( c->proc ) CloseHandle( c->proc ) ;
+	if( c->rd_out ) CloseHandle( c->rd_out ) ;
+	if( c->rd_err ) CloseHandle( c->rd_err ) ;
+	sfree( c->text ) ; sfree( c->remote ) ;
+	sfree( c ) ;
+}
+
+/* Whatever the pipe holds now, appended to buf (cap bytes, NUL-terminated);
+ * past cap it is read and dropped, so kscp never blocks on a full pipe. */
+static void kx_gf_drain( HANDLE rd, char *buf, size_t cap, size_t *len ) {
+	DWORD avail = 0, got = 0 ;
+	char tmp[1024] ;
+	while( PeekNamedPipe( rd, NULL, 0, NULL, &avail, NULL ) && avail > 0 ) {
+		if( !ReadFile( rd, tmp, avail < sizeof(tmp) ? avail : (DWORD)sizeof(tmp), &got, NULL ) || got == 0 )
+			break ;
+		if( *len < cap - 1 ) {
+			size_t take = got ;
+			if( take > cap - 1 - *len ) take = cap - 1 - *len ;
+			memcpy( buf + *len, tmp, take ) ;
+			*len += take ;
+			buf[*len] = '\0' ;
+		}
+	}
+}
+
+/* The last line with text in it (kscp's reason on stderr), into out. */
+static void kx_gf_last_line( const char *s, char *out, size_t n ) {
+	const char *e = s + strlen( s ), *b ;
+	out[0] = '\0' ;
+	while( e > s && ( e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ' ) ) e-- ;
+	b = e ;
+	while( b > s && b[-1] != '\n' && b[-1] != '\r' ) b-- ;
+	if( e > b ) snprintf( out, n, "%.*s", (int)( e - b ), b ) ;
+}
+
+static DWORD WINAPI kx_gf_thread( LPVOID p ) {
+	kx_gf_check_t *c = (kx_gf_check_t *)p ;
+	char out[4096] = "", err[4096] = "" ;
+	size_t lo = 0, le = 0 ;
+	DWORD start = GetTickCount() ;
+	for( ;; ) {
+		DWORD w ;
+		kx_gf_drain( c->rd_out, out, sizeof(out), &lo ) ;
+		kx_gf_drain( c->rd_err, err, sizeof(err), &le ) ;
+		if( GetTickCount() - start >= KX_GF_TIMEOUT_MS ) {
+			TerminateProcess( c->proc, 1 ) ;
+			c->result = -1 ;
+			break ;
+		}
+		w = WaitForSingleObject( c->proc, 50 ) ;
+		if( w == WAIT_OBJECT_0 ) {
+			kx_gf_drain( c->rd_out, out, sizeof(out), &lo ) ;
+			kx_gf_drain( c->rd_err, err, sizeof(err), &le ) ;
+			c->result = gf_parse_stat( out, &c->size, c->err, sizeof(c->err) ) ;
+			if( c->result == GFS_NONE ) kx_gf_last_line( err, c->err, sizeof(c->err) ) ;
+			break ;
+		}
+		if( w == WAIT_FAILED ) { c->result = GFS_NONE ; break ; }
+	}
+	if( !kx_gf_msgwin || !PostMessage( kx_gf_msgwin, KX_GF_WM_DONE, 0, (LPARAM)c ) ) {
+		kx_gf_checking = 0 ;
+		kx_gf_check_free( c ) ;
+	}
+	return 0 ;
+}
+
+/* Can kscp log in without asking anybody? See the head comment. */
+static int kx_gf_silent_login( void ) {
+	if( conf_get_bool( conf, CONF_ssh_connection_sharing ) ) return 1 ;
+	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
+	if( kx_helper_keyfile( conf ) != NULL ) return 1 ;
+	if( conf_get_bool( conf, CONF_tryagent ) && agent_exists() ) return 1 ;
+	return 0 ;
+}
+
+/* Start kscp -stat for c->remote; 1 = running (the worker owns c), 0 = not
+ * started (c->err says why when there is something to say). */
+static int kx_gf_start_check( kx_gf_check_t *c ) {
+	char buffer[8192], tgt[4096], path[4096] ;
+	kx_kscp_line_t k ;
+	SECURITY_ATTRIBUTES sa ;
+	HANDLE wr_out = NULL, wr_err = NULL, hs[3], t ;
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
+	int nh = 0, ok ;
+
+	if( !kx_kscp_line( buffer, sizeof(buffer), &k ) ) return 0 ;
+	bcat( buffer, sizeof(buffer), "-batch -stat " ) ;
+	kx_kscp_remote( tgt, sizeof(tgt) ) ;
+	gf_stat_path( c->remote, path, sizeof(path) ) ;
+	bcat( tgt, sizeof(tgt), path ) ;
+	qcat( buffer, sizeof(buffer), tgt ) ;
+	debug_logevent_redacted2( "Run", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
+
+	memset( &sa, 0, sizeof(sa) ) ; sa.nLength = sizeof(sa) ; sa.bInheritHandle = TRUE ;
+	if( !CreatePipe( &c->rd_out, &wr_out, &sa, 0 ) || !CreatePipe( &c->rd_err, &wr_err, &sa, 0 ) ) {
+		if( wr_out ) CloseHandle( wr_out ) ;
+		if( k.pwmap ) CloseHandle( k.pwmap ) ;
+		if( k.pwfiles ) kx_pwfiles_release( 1 ) ;
+		return 0 ;
+	}
+	SetHandleInformation( c->rd_out, HANDLE_FLAG_INHERIT, 0 ) ;
+	SetHandleInformation( c->rd_err, HANDLE_FLAG_INHERIT, 0 ) ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	si.dwFlags = STARTF_USESTDHANDLES ;
+	si.hStdOutput = wr_out ; si.hStdError = wr_err ; si.hStdInput = NULL ;
+	memset( &pi, 0, sizeof(pi) ) ;
+	hs[nh++] = wr_out ; hs[nh++] = wr_err ;
+	if( k.pwmap ) hs[nh++] = k.pwmap ;
+	chdir( InitialDirectory ) ;
+	ok = kitty_helper_start_handles( PSCPPath, buffer, CREATE_NO_WINDOW, NULL, &si, &pi, hs, nh ) ;
+	smemclr( buffer, sizeof(buffer) ) ;
+	CloseHandle( wr_out ) ; CloseHandle( wr_err ) ;
+	if( k.pwmap ) CloseHandle( k.pwmap ) ;
+	if( k.pwfiles ) kx_pwfiles_release( ok ? 0 : 1 ) ;   /* once kscp has had it */
+	if( !ok ) return 0 ;
+	CloseHandle( pi.hThread ) ;
+	c->proc = pi.hProcess ;
+	t = CreateThread( NULL, 0, kx_gf_thread, c, 0, NULL ) ;
+	if( !t ) {
+		TerminateProcess( c->proc, 1 ) ;
+		return 0 ;
+	}
+	CloseHandle( t ) ;
+	return 1 ;
+}
+
+/* ---- the box ---- */
+typedef struct {
+	HWND owner ;
+	char *why ;
+	char *text ;
+} kx_gf_box_t ;
+
+/* Move the controls by dy and the window's foot with them. */
+static void kx_gf_shift( HWND h, const int *ids, int n, int dy ) {
+	RECT r, wr ;
+	int i ;
+	for( i = 0 ; i < n ; i++ ) {
+		HWND c = GetDlgItem( h, ids[i] ) ;
+		if( !c ) continue ;
+		GetWindowRect( c, &r ) ; MapWindowPoints( NULL, h, (POINT*)&r, 2 ) ;
+		MoveWindow( c, r.left, r.top + dy, r.right - r.left, r.bottom - r.top, TRUE ) ;
+	}
+	GetWindowRect( h, &wr ) ;
+	SetWindowPos( h, NULL, 0, 0, wr.right - wr.left, ( wr.bottom - wr.top ) + dy,
+	              SWP_NOMOVE | SWP_NOZORDER ) ;
+}
+
+/* The reason line: its text, its height, what is below moved along. */
+static void kx_gf_set_why( HWND h, const char *why ) {
+	static const int below[] = { IDC_GF_LABEL, IDC_GF_EDIT, IDC_GF_FROM, IDC_GF_FOLDERS,
+	                             IDC_GF_TIP, IDOK, IDCANCEL } ;
+	int dy ;
+	SetDlgItemTextA( h, IDC_GF_WHY, why ? why : "" ) ;
+	dy = kitty_fit_text( h, IDC_GF_WHY, why, 0 ) ;
+	if( why && *why ) ShowWindow( GetDlgItem( h, IDC_GF_WHY ), SW_SHOW ) ;
+	if( dy ) kx_gf_shift( h, below, sizeof(below)/sizeof(below[0]), dy ) ;
+}
+
+/* "\n" -> "\r\n" for the edit control; the caller frees. */
+static char *kx_gf_crlf( const char *s ) {
+	size_t n = 0 ; const char *p ; char *o, *q ;
+	for( p = s ; *p ; p++ ) n += ( *p == '\n' && ( p == s || p[-1] != '\r' ) ) ? 2 : 1 ;
+	o = snewn( n + 1, char ) ;
+	for( p = s, q = o ; *p ; p++ ) {
+		if( *p == '\n' && ( p == s || p[-1] != '\r' ) ) *q++ = '\r' ;
+		*q++ = *p ;
+	}
+	*q = '\0' ;
+	return o ;
+}
+
+static INT_PTR CALLBACK kx_gf_box_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	kx_gf_box_t *b = (kx_gf_box_t *)GetWindowLongPtr( h, DWLP_USER ) ;
+	switch( msg ) {
+	  case WM_INITDIALOG: {
+		static const int below_from[] = { IDC_GF_FOLDERS, IDC_GF_TIP, IDOK, IDCANCEL } ;
+		const char *cwd = kitty_current_dir() ;
+		char *from = dupprintf( KT_GETFILE_BOX_FROM, ( cwd && cwd[0] ) ? cwd : KT_GETFILE_BOX_LOGINDIR ) ;
+		char *text ;
+		int dy ;
+		b = (kx_gf_box_t *)lp ;
+		SetWindowLongPtr( h, DWLP_USER, (LONG_PTR)b ) ;
+		SetDlgItemTextA( h, IDC_GF_FROM, from ) ;
+		dy = kitty_fit_text( h, IDC_GF_FROM, from, 0 ) ;
+		if( dy ) kx_gf_shift( h, below_from, sizeof(below_from)/sizeof(below_from[0]), dy ) ;
+		sfree( from ) ;
+		kx_gf_set_why( h, b->why ) ;
+		text = kx_gf_crlf( b->text ? b->text : "" ) ;
+		SetDlgItemTextA( h, IDC_GF_EDIT, text ) ;
+		sfree( text ) ;
+		kitty_dialog_icon( h, b->owner ) ;
+		kitty_centre_on_owner( h ) ;
+		SetFocus( GetDlgItem( h, IDC_GF_EDIT ) ) ;
+		SendDlgItemMessage( h, IDC_GF_EDIT, EM_SETSEL, 0, -1 ) ;
+		return FALSE ;                 /* focus set here */
+	  }
+	  case WM_COMMAND:
+		if( !b ) return FALSE ;
+		if( LOWORD(wp) == IDOK ) {
+			HWND e = GetDlgItem( h, IDC_GF_EDIT ) ;
+			int n = GetWindowTextLengthA( e ) ;
+			char *t = snewn( n + 1, char ), *trim = snewn( n + 1, char ) ;
+			int cls ;
+			GetWindowTextA( e, t, n + 1 ) ;
+			cls = gf_classify( t, trim, n + 1 ) ;
+			sfree( t ) ;
+			if( cls == GF_WINPATH ) {
+				/* a local path typed or left in: say so, the box stays */
+				kx_gf_set_why( h, KT_GETFILE_WHY_WINPATH ) ;
+				sfree( trim ) ;
+				return TRUE ;
+			}
+			{	HWND owner = b->owner ;
+				DestroyWindow( h ) ;           /* frees b */
+				if( cls != GF_EMPTY && IsWindow( owner ) ) kx_getfile_go( owner, trim ) ;
+				else sfree( trim ) ;
+			}
+			return TRUE ;
+		}
+		if( LOWORD(wp) == IDCANCEL ) { DestroyWindow( h ) ; return TRUE ; }
+		return FALSE ;
+	  case WM_CLOSE:
+		DestroyWindow( h ) ;
+		return TRUE ;
+	  case WM_DESTROY:
+		ShinyRemoveAuxDialog( h ) ;
+		if( b ) {
+			SetWindowLongPtr( h, DWLP_USER, 0 ) ;
+			sfree( b->why ) ; sfree( b->text ) ; sfree( b ) ;
+		}
+		if( kx_gf_box == h ) kx_gf_box = NULL ;
+		return FALSE ;
+	}
+	return FALSE ;
+}
+
+/* why and text: dupstr'd, the box's from here on. */
+static void kx_gf_open_box( HWND owner, char *why, char *text ) {
+	kx_gf_box_t *b = snew( kx_gf_box_t ) ;
+	HWND h ;
+	b->owner = owner ; b->why = why ; b->text = text ;
+	h = CreateDialogParamA( GetModuleHandle( NULL ), MAKEINTRESOURCEA( IDD_GETFILEBOX ), owner,
+	                        kx_gf_box_proc, (LPARAM)b ) ;
+	if( !h ) {
+		/* no box: the reason at least, never nothing */
+		MessageBox( owner, why, KT_GETFILE_BOX_CAP, MB_OK|MB_ICONINFORMATION ) ;
+		sfree( why ) ; sfree( text ) ; sfree( b ) ;
+		return ;
+	}
+	kx_gf_box = h ;
+	ShinyAddAuxDialog( h ) ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+}
+
+/* The worker's result, on the window's thread. */
+static void kx_gf_checked( kx_gf_check_t *c ) {
+	char *why = NULL, *msg ;
+	char size[32] ;
+	kx_gf_checking = 0 ;
+	if( c->result != GFS_FILE ) kitty_notice_close_ctx( &kx_gf_checking_token ) ;
+	if( !IsWindow( c->owner ) ) { kx_gf_check_free( c ) ; return ; }
+	switch( c->result ) {
+	  case GFS_FILE:
+		gf_size_text( c->size, size, sizeof(size) ) ;
+		msg = dupprintf( KT_GETFILE_FOUND, c->host, c->remote, size ) ;
+		kitty_notice_show( KT_GETFILE_FOUND_CAP, msg, KX_GF_ACCENT, 0, NULL, 0 ) ;
+		kx_gf_trace_notice( msg ) ;
+		sfree( msg ) ;
+		kx_getfile_go( c->owner, dupstr( c->text ) ) ;
+		kx_gf_check_free( c ) ;
+		return ;
+	  case GFS_DIR:
+		why = dupprintf( KT_GETFILE_WHY_FOLDER, c->remote ) ;
+		break ;
+	  case GFS_MISSING:
+		why = dupprintf( KT_GETFILE_WHY_MISSING, c->host, c->remote ) ;
+		break ;
+	  case GFS_OTHER:
+		msg = dupprintf( KT_GETFILE_NOT_REGULAR, c->remote ) ;
+		why = dupprintf( KT_GETFILE_WHY_ERROR, msg ) ;
+		sfree( msg ) ;
+		break ;
+	  case -1:
+		why = dupprintf( KT_GETFILE_WHY_TIMEOUT, c->host ) ;
+		break ;
+	  default:   /* GFS_ERROR, GFS_NONE */
+		why = dupprintf( KT_GETFILE_WHY_ERROR, c->err[0] ? c->err : KT_GETFILE_NO_ANSWER ) ;
+		break ;
+	}
+	kx_gf_open_box( c->owner, why, dupstr( c->text ) ) ;
+	kx_gf_check_free( c ) ;
+}
+
+static LRESULT CALLBACK kx_gf_wndproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	if( msg == KX_GF_WM_DONE ) { kx_gf_checked( (kx_gf_check_t *)lp ) ; return 0 ; }
+	return DefWindowProc( h, msg, wp, lp ) ;
+}
+
+static HWND kx_gf_window( void ) {
+	if( !kx_gf_msgwin ) {
+		WNDCLASSA wc ;
+		memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = kx_gf_wndproc ;
+		wc.hInstance = GetModuleHandle( NULL ) ;
+		wc.lpszClassName = "KiTTYgetfilemsg" ;
+		RegisterClassA( &wc ) ;   /* already registered = fine */
+		kx_gf_msgwin = CreateWindowExA( 0, wc.lpszClassName, "", 0, 0, 0, 0, 0,
+		                                HWND_MESSAGE, NULL, wc.hInstance, NULL ) ;
+	}
+	return kx_gf_msgwin ;
+}
+
+void GetFile( HWND hwnd ) {
+	char * clip = NULL, * text, * why = NULL ;
+	const char * where = NULL ;
+	int cls ;
+
+	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
+		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	if( !kitty_xfer_tool_ready( 0 ) ) {
+		MessageBox( hwnd, KT_XFER_KSCP_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		return ;
+	}
+	if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_getfile, kx_again( hwnd ), kx_again_free ) )
+		return ;
+	/* one at a time: a second Ctrl+F4 brings the box back, or waits for the check */
+	if( kx_gf_box && IsWindow( kx_gf_box ) ) { SetForegroundWindow( kx_gf_box ) ; return ; }
+	if( kx_gf_checking ) return ;
+
+	/* Take a private copy of the clipboard text: nothing below may hold the
+	 * clipboard open. */
+	if( IsClipboardFormatAvailable(CF_TEXT) && OpenClipboard(NULL) ) {
+		HGLOBAL hglb = GetClipboardData( CF_TEXT ) ;
+		if( hglb != NULL ) {
+			char * pst = GlobalLock( hglb ) ;
+			if( pst != NULL ) { clip = dupstr( pst ) ; GlobalUnlock( hglb ) ; }
+		}
+		CloseClipboard() ;
+	}
+	if( clip == NULL ) clip = dupstr( "" ) ;
+	text = snewn( strlen( clip ) + 1, char ) ;
+	cls = gf_classify( clip, text, strlen( clip ) + 1 ) ;
+	sfree( clip ) ;
+
+	switch( cls ) {
+	  case GF_EMPTY:
+		why = dupstr( KT_GETFILE_WHY_EMPTY ) ;
+		break ;
+	  case GF_WINPATH:
+		why = dupstr( KT_GETFILE_WHY_WINPATH ) ;
+		text[0] = '\0' ;               /* a local path is no start for a remote one */
+		break ;
+	  case GF_SEVERAL:
+		why = dupstr( KT_GETFILE_WHY_SEVERAL ) ;
+		break ;
+	  case GF_FOLDER:
+		why = dupprintf( KT_GETFILE_WHY_FOLDER, text ) ;
+		break ;
+	  default: {   /* GF_ONE: ask the server */
+		const char * host = conf_get_str( conf, CONF_host ) ;
+		if( kitty_shell_moved( hwnd, &where ) ) {
+			why = where ? dupprintf( KT_GETFILE_WHY_MOVED, where, host )
+			            : dupprintf( KT_GETFILE_WHY_MOVED_UNNAMED, host ) ;
+		} else if( !kx_helper_has_flag( PSCPPath, "KiTTYStat" ) ) {
+			why = dupstr( KT_GETFILE_WHY_OLDKSCP ) ;
+		} else if( !kx_gf_silent_login() ) {
+			why = dupstr( KT_GETFILE_WHY_NOLOGIN ) ;
+		} else if( kx_gf_window() ) {
+			kx_gf_check_t * c = snew( kx_gf_check_t ) ;
+			const char * cwd = kitty_current_dir() ;
+			memset( c, 0, sizeof(*c) ) ;
+			c->owner = hwnd ;
+			c->text = text ;
+			c->remote = ( text[0] == '/' || text[0] == '~' || cwd == NULL )
+			            ? dupstr( text ) : dupprintf( "%s/%s", cwd, text ) ;
+			snprintf( c->host, sizeof(c->host), "%s", host ) ;
+			kx_gf_checking = 1 ;
+			char * msg = dupprintf( KT_GETFILE_CHECKING, host, c->remote ) ;   /* before c is the worker's */
+			if( kx_gf_start_check( c ) ) {          /* the worker takes it from here */
+				kitty_notice_show_ex( KT_GETFILE_FOUND_CAP, msg, KX_GF_ACCENT,
+				                      ( KX_GF_TIMEOUT_MS / 1000 ) + 2, NULL, 0,
+				                      kx_gf_checking_closed, &kx_gf_checking_token ) ;
+				kx_gf_trace_notice( msg ) ;
+				sfree( msg ) ;
+				return ;
+			}
+			sfree( msg ) ;
+			kx_gf_checking = 0 ;
+			why = dupprintf( KT_GETFILE_WHY_ERROR, c->err[0] ? c->err : KT_GETFILE_NO_ANSWER ) ;
+			c->text = NULL ;               /* still ours, for the box */
+			kx_gf_check_free( c ) ;
+		} else {
+			why = dupprintf( KT_GETFILE_WHY_ERROR, KT_GETFILE_NO_ANSWER ) ;
+		}
+		break ;
+	  }
+	}
+	kx_gf_open_box( hwnd, why, text ) ;
 }
 
 // Start a local command (Internet Explorer for example)

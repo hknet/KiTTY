@@ -12883,6 +12883,30 @@ void kitty_ctx3008_user_changed(Terminal *term)
     }
 }
 
+/* KiTTY: is the shell in window hwnd on another machine than the
+ * connection's? OSC 3008 first (ctx_moved_machine), then the OSC 7
+ * baseline (kitty_remote_cwd_moved_host). 1 = moved, *where = the host
+ * name when one was sent (else NULL); 0 = not moved, or nothing tells. */
+int kitty_shell_moved(HWND hwnd, const char **where)
+{
+    WinGuiSeat *wgs;
+    const struct CtxStack *s;
+    const char *h;
+
+    *where = NULL;
+    if (hwnd && IsWindow(hwnd)) {
+        wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        if (wgs && wgs->term_hwnd == hwnd && wgs->term &&
+            (s = term_ctx3008(wgs->term)) != NULL && ctx_moved_machine(s, where))
+            return 1;
+    }
+    if ((h = kitty_remote_cwd_moved_host()) != NULL) {
+        *where = h;
+        return 1;
+    }
+    return 0;
+}
+
 void do_eventlog(const char *st) {
     if (kitty_active_wgs && kitty_active_wgs->logctx)
         logevent(kitty_active_wgs->logctx, st);
