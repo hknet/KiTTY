@@ -605,6 +605,7 @@ add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_ctx3008.c   # KiTTY: OSC 3008 contexts, kitty_osc.c's
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
   # KiTTY: far2l images (request 'i'), called from terminal.c under MOD_FAR2L
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c
@@ -673,6 +674,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_ctx3008.c   # KiTTY: OSC 3008 contexts, kitty_osc.c's
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c        # KiTTY: far2l images, as test_osc52
   ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
@@ -821,6 +823,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_hostnotify.c   # KiTTY: notifications from the host (OSC 9, 777, 99) and taskbar progress (OSC 9;4)
   ${KITTY_DIR}/kitty_oscnotify.c    # KiTTY: their parsing and decisions, no Win32 (test/test_oscnotify.c)
   ${KITTY_DIR}/kitty_progstatus.c   # KiTTY: program status (OSC 7501) and prompt marks (OSC 133), no Win32 (test/test_progstatus.c)
+  ${KITTY_DIR}/kitty_ctx3008.c      # KiTTY: OSC 3008 hierarchical contexts, no Win32 (test/test_ctx3008.c)
   ${KITTY_DIR}/kitty_psoverlay.c    # KiTTY: the program status overlay (OSC 7501), top right in the window
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)
   ${KITTY_DIR}/kitty_kittykeys.c    # KiTTY: kitty keyboard protocol encoding for window.c, no Win32 (test/test_kittykeys.c)

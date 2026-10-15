@@ -3038,6 +3038,7 @@ void term_free(Terminal *term)
     sfree(term->osc_string);
 #ifdef MOD_PERSO
     kitty_links_free(term);
+    kitty_ctx3008_free(term);   /* OSC 3008 contexts */
     sfree(term->kd_full);
     sfree(term->kd_x0);
     sfree(term->kd_x1);

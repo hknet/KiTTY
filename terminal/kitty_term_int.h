@@ -90,6 +90,7 @@ void osc52_set_clipboard(Terminal *term);
 bool kitty_osc_dispatch(Terminal *term);
 bool kitty_osc_dcs(Terminal *term);
 void kitty_links_free(Terminal *term);
+void kitty_ctx3008_free(Terminal *term);
 int im_col(Terminal *term, int y);
 
 /* terminal.c: the KiTTY++ helpers the moved code calls */

@@ -3,7 +3,8 @@
  * over (kitty_osc_dispatch, kitty_osc_dcs), and the handlers that lived in
  * terminal/terminal.c: OSC 8 hyperlinks and their link table, OSC 1337
  * Capabilities and ReportCellSize, XTGETTCAP (DCS +q), the DCS form of
- * synchronized output, OSC 133's prompt marks with the command columns.
+ * synchronized output, OSC 133's prompt marks with the command columns,
+ * OSC 3008's context stack.
  * Moved as they were; the clipboard protocols are in kitty_clipboard.c.
  */
 
@@ -31,6 +32,7 @@
 #include "kitty/kitty_reply.h"
 #include "windows/kitty_gui.h"
 #include "kitty_term_int.h"
+#include "../kitty/kitty_ctx3008.h"
 #ifdef MOD_FAR2L
 #include "../kitty/kitty_far2l_image_term.h"
 #endif
@@ -551,6 +553,98 @@ static void term_osc133(Terminal *term)
 
 
 /*
+ * OSC 3008: hierarchical context signalling (UAPI.15). The parsing and the
+ * stack are kitty/kitty_ctx3008.c; here the stack is the terminal's. Not a
+ * thing the ordinary resets touch (power_on leaves it): a program deeper
+ * down must not hide what is above it. A new connection clears it
+ * (term_ctx3008_reset), since the far end's hangup never reaches us.
+ */
+#ifdef KITTY_TEST_BUILD_LABEL
+/* KITTY_CTX3008_TRACE=<file>: one line per sequence that changed the stack,
+ * appended. Test builds only; without the variable nothing is written. */
+static void ctx3008_trace(Terminal *term, const CtxEvent *ev)
+{
+    static const char *const what[] = {
+        "ignored", "started", "updated", "ended", "dropped" };
+    const char *path = getenv("KITTY_CTX3008_TRACE");
+    const CtxStack *s = term->ctx3008;
+    const CtxContext *c;
+    FILE *f;
+    int i;
+
+    if (!path || !*path)
+        return;
+    f = fopen(path, "a");
+    if (!f)
+        return;
+    fprintf(f, "ctx3008 %s depth=%d elevated=%d", what[ev->what], s->depth,
+            ctx_elevated(s) ? 1 : 0);
+    if (ev->what == CTX_ENDED) {
+        fprintf(f, " ended=%s type=%s children=%d exit=%s status=%d signal=%s",
+                ev->ended.id, ctx_type_name(ev->ended.type), ev->children,
+                ctx_exit_name(ev->exit), ev->status, ev->signal);
+    } else if ((c = ctx_active(s)) != NULL) {
+        fprintf(f, " active=%s type=%s children=%d", c->id,
+                ctx_type_name(c->type), ev->children);
+        for (i = 0; i < CTX_F_COUNT; i++)
+            if (c->field[i])
+                fprintf(f, " %s=%s", ctx_field_name(i), c->field[i]);
+    }
+    fputc('\n', f);
+    fclose(f);
+}
+#endif
+
+static void term_osc3008(Terminal *term)
+{
+    CtxEvent ev;
+    bool elevated;
+
+    if (term->osc_str_overflow)
+        return;                        /* cut short: no part of it is used */
+    if (!term->ctx3008) {
+        term->ctx3008 = snew(CtxStack);
+        ctx_init(term->ctx3008);
+    }
+    elevated = ctx_elevated(term->ctx3008);
+    if (ctx_apply(term->ctx3008, term->osc_string, term->osc_strlen,
+                  &ev) == CTX_IGNORED)
+        return;
+#ifdef KITTY_TEST_BUILD_LABEL
+    ctx3008_trace(term, &ev);
+#endif
+    ctx_event_free(&ev);
+    if (ctx_elevated(term->ctx3008) != elevated)
+        kitty_osc52_state_changed(term);   /* the window frame follows */
+}
+
+const struct CtxStack *term_ctx3008(Terminal *term)
+{
+    return term->ctx3008;
+}
+
+void term_ctx3008_reset(Terminal *term)
+{
+    bool elevated;
+
+    if (!term->ctx3008)
+        return;
+    elevated = ctx_elevated(term->ctx3008);
+    ctx_clear(term->ctx3008);
+    if (elevated)
+        kitty_osc52_state_changed(term);   /* the window frame follows */
+}
+
+void kitty_ctx3008_free(Terminal *term)
+{
+    if (term->ctx3008) {
+        ctx_clear(term->ctx3008);
+        sfree(term->ctx3008);
+        term->ctx3008 = NULL;
+    }
+}
+
+/*
  * do_osc's OSC switch for the numbers KiTTY++ adds or answers. The string
  * is NUL-terminated. True when the number is one of them (handled, or
  * ignored on purpose); false leaves it to do_osc's own switch (window
@@ -677,6 +771,10 @@ bool kitty_osc_dispatch(Terminal *term)
          * flood rule live in kitty/kitty_hostnotify.c. */
         kitty_hostnotify_osc(term, term->esc_args[0], term->osc_string,
                              term->osc_strlen, term->osc_str_overflow);
+        break;
+      case 3008:
+        /* OSC 3008: the host's hierarchical contexts (term_osc3008) */
+        term_osc3008(term);
         break;
       default:
         return false;

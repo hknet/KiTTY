@@ -1798,6 +1798,8 @@ static void start_backend(WinGuiSeat *wgs)
     wgs->session_closed = false;
 #ifdef MOD_PERSO
     kitty_winprop_closed(wgs->term_hwnd, false);   /* the launcher's "(disconnected)" */
+    if (wgs->term)
+        term_ctx3008_reset(wgs->term);   /* the host's OSC 3008 contexts */
 #endif
     wgs->error_close = false;    /* #548: new connection clears the error titlebar marker */
 }

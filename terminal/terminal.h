@@ -703,6 +703,12 @@ struct terminal_tag {
     int im_count;
     size_t im_size;
 
+    /* KiTTY: the host's OSC 3008 contexts (kitty/kitty_ctx3008.c,
+     * kitty_osc.c term_osc3008), created on first use. The ordinary resets
+     * leave it alone; a new connection clears it (term_ctx3008_reset).
+     * Unconditional storage, same ODR reason as everything above. */
+    struct CtxStack *ctx3008;
+
     char id_string[1024];
 
     unsigned char *tabs;
@@ -1153,6 +1159,14 @@ extern bool (*kitty_term_scroll_hook)(TermWin *win, int top, int bot, int lines)
  * handle is 0 or its slot has been reused since. The string belongs to the
  * terminal and is valid until the next output is processed. */
 const char *term_link_uri(Terminal *term, unsigned int link);
+
+/* KiTTY OSC 3008: the contexts the host has opened (NULL before the first
+ * one; kitty/kitty_ctx3008.h), and their end when a new connection starts:
+ * the far end's hangup never reaches the client, so the window clears them
+ * where the next connection begins (window.c start_backend). */
+struct CtxStack;
+const struct CtxStack *term_ctx3008(Terminal *term);
+void term_ctx3008_reset(Terminal *term);
 #endif
 
 #if defined(MOD_PERSO) && defined(KITTY_TEST_HOOKS)

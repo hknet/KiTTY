@@ -210,6 +210,12 @@ add_executable(test_progstatus
   kitty/kitty_progstatus.c
   kitty/kitty_oscnotify.c)
 
+# KiTTY: unit test for OSC 3008 hierarchical context signalling: parsing,
+# the limits and the context stack (kitty/kitty_ctx3008.c).
+add_executable(test_ctx3008
+  test/test_ctx3008.c
+  kitty/kitty_ctx3008.c)
+
 # KiTTY: unit test for the xterm modifyOtherKeys encoding (kitty/kitty_modkeys.c,
 # shared with windows/window.c): which modified keys become CSI 27;mod;code~.
 add_executable(test_modkeys

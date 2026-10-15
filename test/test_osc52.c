@@ -34,6 +34,7 @@
 #include "../kitty/kitty_far2l_image_term.h"
 #include "../kitty/kitty_gfx.h"                /* KiTTY: kitty graphics (APC _G) */
 #include "../kitty/kitty_gfx_term.h"
+#include "../kitty/kitty_ctx3008.h"           /* KiTTY: OSC 3008 contexts */
 #include <objbase.h>                    /* CoInitialize: WIC for far2l PNG */
 
 void modalfatalbox(const char *p, ...)
@@ -5365,6 +5366,85 @@ static void test_decscusr(Mock *mk)
     cap_conf(mk);
 }
 
+/*
+ * KiTTY: OSC 3008 through the terminal. The parser and the stack have their
+ * own tests (test_ctx3008); these lock in what the terminal adds: the
+ * sequence reaches the stack with either terminator, RIS and the soft reset
+ * leave it alone (a program deeper down must not hide what is above it), a
+ * string cut short at the OSC buffer's ceiling is not used at all, and
+ * term_ctx3008_reset - the new connection - empties it.
+ */
+static void test_osc3008(Mock *mk)
+{
+    const struct CtxStack *s;
+    const CtxContext *c;
+    char *seq;
+    size_t n;
+    int changes, notices = hn_notice_calls;
+
+    term_ctx3008_reset(mk->term);
+    changes = osc52_state_changes;
+    feed_seq(mk, "\033]3008;start=a1;type=shell;user=carol;"
+                 "hostname=web1\033\\");
+    feed_seq(mk, "\033]3008;start=b2;type=elevate;user=carol;"
+                 "targetuser=root\007");
+    s = term_ctx3008(mk->term);
+    if (!s || s->depth != 2) {
+        fail("osc3008 start", "two contexts expected");
+        return;
+    }
+    c = ctx_active(s);
+    if (strcmp(c->id, "b2") || c->type != CTX_TYPE_ELEVATE)
+        fail("osc3008 start", "the elevate context is not the active one");
+    if (!ctx_elevated(s))
+        fail("osc3008 start", "targetuser=root is not elevated");
+    /* the window frame is re-applied when root starts, and only then */
+    if (osc52_state_changes != changes + 1)
+        fail("osc3008 start", "the frame was not re-applied exactly once");
+    if (!s->ctx[0].field[CTX_F_HOSTNAME] ||
+        strcmp(s->ctx[0].field[CTX_F_HOSTNAME], "web1"))
+        fail("osc3008 start", "the shell's hostname= was not kept");
+
+    feed_seq(mk, "\033c");                     /* RIS */
+    feed_seq(mk, "\033[!p");                   /* soft reset */
+    if (term_ctx3008(mk->term)->depth != 2)
+        fail("osc3008 reset", "RIS or the soft reset touched the stack");
+
+    feed_seq(mk, "\033]3008;end=b2;exit=success;status=0\033\\");
+    if (s->depth != 1 || ctx_elevated(s))
+        fail("osc3008 end", "the elevate context did not end");
+    if (osc52_state_changes != changes + 2)
+        fail("osc3008 end", "the frame was not re-applied when root ended");
+
+    /* longer than the OSC buffer holds: cut short, so not used */
+    seq = snewn(OSC_STR_MAX + 64, char);
+    n = strlen("\033]3008;start=c3;type=shell;user=");
+    memcpy(seq, "\033]3008;start=c3;type=shell;user=", n);
+    memset(seq + n, 'x', OSC_STR_MAX);
+    n += OSC_STR_MAX;
+    seq[n++] = '\007';
+    term_data(mk->term, seq, n);
+    term_update(mk->term);
+    sfree(seq);
+    if (s->depth != 1)
+        fail("osc3008 overflow", "a string cut short opened a context");
+
+    /* an unknown id ends nothing; a known one at the root ends everything */
+    feed_seq(mk, "\033]3008;end=nope\007");
+    if (s->depth != 1)
+        fail("osc3008 end", "an unknown id ended a context");
+
+    /* root again, then the new connection: the frame follows the reset */
+    feed_seq(mk, "]3008;start=e5;type=elevate");
+    term_ctx3008_reset(mk->term);
+    if (s->depth != 0)
+        fail("osc3008 new connection", "the stack was not emptied");
+    if (osc52_state_changes != changes + 4)
+        fail("osc3008 new connection", "the frame did not follow root and the reset");
+    if (hn_notice_calls != notices)
+        fail("osc3008", "a notice was raised");
+}
+
 int main(void)
 {
     Mock *mk = mock_new();
@@ -5477,6 +5557,7 @@ int main(void)
     test_sgr_colon(mk);                 /* KiTTY: SGR 38/48 in the ':' form */
     test_placeholders(mk);              /* KiTTY: kitty Unicode placeholders */
     test_decscusr(mk);                  /* KiTTY: DECSCUSR cursor shape */
+    test_osc3008(mk);                   /* KiTTY: OSC 3008 contexts */
 
     mock_free(mk);
 
