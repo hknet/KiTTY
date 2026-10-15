@@ -3420,7 +3420,7 @@
 #define KT_LOGKEEP_RULE_DAYS                         "older than %d days"
 #define KT_LOGKEEP_RULE_MB                           "total over %d MB"
 
-/* terminal/terminal.c: remote clipboard (OSC 52, OSC 5522, far2l) */
+/* terminal/kitty_clipboard.c, terminal.c: remote clipboard (OSC 52, OSC 5522, far2l) */
 #define KT_CLIP_WHAT_FAR2L                           "A far2l clipboard payload"
 #define KT_CLIP_WHAT_OSC52                           "A remote clipboard write (OSC 52)"
 #define KT_CLIP_WHAT_OSC5522                         "A clipboard request (OSC 5522)"

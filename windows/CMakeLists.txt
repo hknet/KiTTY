@@ -601,6 +601,8 @@ target_link_libraries(bench_term
 add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/test/test_osc52.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
@@ -667,6 +669,8 @@ target_link_libraries(test_atomicfile ${platform_libraries})
 add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/test/test_textrun.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
@@ -868,6 +872,8 @@ add_executable(kitty
   # so it can carry MOD_FAR2L; the directly-listed object takes precedence over
   # guiterminal's terminal.o, leaving other binaries untouched.
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
   # actually compiled: the settings library is built without MOD_PERSO, where
   # such a block would be silently dead.
@@ -966,6 +972,8 @@ add_executable(kitty_portable
   putty.c
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c: see the comment on the kitty target above (and the note there on
   # why config.c must NOT be listed)
   ${CMAKE_SOURCE_DIR}/cmdline.c

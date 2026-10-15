@@ -1,10 +1,10 @@
 /*
  * KiTTY OSC 52 clipboard-READ support: the platform half.
  *
- * The permission logic lives in terminal/terminal.c, which is cross-platform and
+ * The permission logic lives in terminal/kitty_clipboard.c, which is cross-platform and
  * stays free of Win32 and of dialog code. Everything that needs a window, the
  * Windows clipboard, or the registry is here, reached through the seams declared
- * at the top of terminal.c. The split is not cosmetic: it is what lets
+ * in terminal/kitty_term_int.h. The split is not cosmetic: it is what lets
  * test_osc52 exercise the whole permission engine with stubs, so the rules about
  * expiry, rate limits and focus are covered by tests that never open a window.
  *
@@ -429,7 +429,7 @@ void ShinyAddAuxDialog(HWND hwnd);
 void ShinyRemoveAuxDialog(HWND hwnd);
 static void osc52_rconfirm_apply(void *ctx);
 
-/* Match terminal.c's enum. Kept in step by hand: it is four values that have not
+/* Match kitty_term_int.h's enum. Kept in step by hand: it is four values that have not
  * changed since the design, and exporting it through a header would drag the
  * cross-platform file's internals into every Windows TU that includes putty.h. */
 enum {
@@ -773,7 +773,7 @@ static void osc52_rconfirm_open(void *ctx)
 }
 
 /*
- * The read box, modeless (terminal.c holds the request and what the box shows
+ * The read box, modeless (kitty_clipboard.c holds the request and what the box shows
  * until the answer). It keeps its own dialog rather than the shared Yes/No box:
  * the masked summary, View, the four durations, "always deny for this host" and
  * the countdown are the decision, and the shared box has none of them. Deny
@@ -785,7 +785,7 @@ void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
     struct osc52_ask *ask;
 
     if (osc52_rconfirm)
-        return;                        /* one box (terminal.c refuses meanwhile) */
+        return;                        /* one box (kitty_clipboard.c refuses meanwhile) */
     ask = snew(struct osc52_ask);
     memset(ask, 0, sizeof(*ask));
     ask->term = term;
@@ -820,7 +820,7 @@ void kitty_osc52_read_confirm_end(Terminal *term)
 /*
  * Modeless, on the shared confirmation box: its default is No, it sits on the
  * terminal window that wants the write, and the terminal keeps running while
- * it is open (terminal.c clip_write_gate holds the write). The box is opened
+ * it is open (kitty_clipboard.c clip_write_gate holds the write). The box is opened
  * and its answer handed on from toplevel callbacks, never from inside the
  * parser that raised it: creating a window there sends focus messages into
  * the terminal mid-parse, and the answer goes back only once the box is gone

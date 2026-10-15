@@ -109,7 +109,7 @@ static unsigned char *kitty_url_rowend = NULL;
 /*
  * The link under the pointer, for Underline hyperlinks = On hover: an OSC 8
  * link is its handle - every piece of it on the screen, since pieces with the
- * same id= and target share one handle (terminal.c kitty_link_intern) - and a
+ * same id= and target share one handle (kitty_osc.c kitty_link_intern) - and a
  * detected link is its region. Rows whose underline the pointer changed wait
  * in kitty_url_hoverdirty for the window to repaint them.
  */

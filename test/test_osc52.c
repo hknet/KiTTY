@@ -17,7 +17,7 @@
  *  - and every OTHER OSC sequence still stops at the size it always did, so the
  *    clipboard feature cannot be used to hand us a multi-megabyte window title.
  *
- * Built against terminal.c compiled WITH MOD_PERSO: the OSC 52 handler lives
+ * Built against terminal.c and kitty_clipboard.c compiled WITH MOD_PERSO: the OSC 52 handler lives
  * behind that define, and the guiterminal library is built without it, so
  * linking the library instead would silently test nothing at all.
  *
@@ -559,7 +559,7 @@ static void expect_refused(Mock *mk, const char *what, const char *seq)
  * The READ direction
  * ------------------------------------------------------------------------- */
 
-/* Mirrors the grant kinds in terminal.c. Four values that the design settled;
+/* Mirrors the grant kinds in kitty_term_int.h. Four values that the design settled;
  * kept in step by hand rather than exported, for the same reason the platform
  * half does it. */
 enum {
