@@ -11,7 +11,7 @@ in KiTTY++ and what the host needs.
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
 | Prompt marks | OSC 133 | **Terminal > Features > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Contexts: failed commands | OSC 3008 | **Terminal > Features > Shell Integration > Notice for failed commands (OSC 3008)**, off by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
+| Contexts: failed commands, root, switched user | OSC 3008 | **Terminal > Features > Shell Integration > Notice for failed commands (OSC 3008)**, **Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)**, the notice off and the other two on by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
 | Program status | OSC 7501 | **Terminal > Desktop Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
 | Desktop notifications | OSC 9, 777, 99 | **Terminal > Desktop Notifications > Desktop notifications (OSC 9, 777, 99, 7501, 3008)** | A program that sends them: `printf`, `kitten notify` |
 | Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
@@ -363,10 +363,25 @@ a new connection starts with none. Nothing is sent back.
   (`cmdline=`, else `comm=`) and its `status=` or `signal=`, under the
   session's **Terminal > Desktop Notifications**. `exit=interrupt` raises
   none.
+- **Red frame while the host reports root (OSC 3008)** (same group, on by
+  default): the title bar and border turn dark red while the innermost
+  context runs as root: an `elevate` context without `targetuser=` (run0's
+  default), `targetuser=root`, or a shell with `user=root` (a root login);
+  a context deeper down with another `user=` ends it. Windows 11 only.
+- **Tinted background as root or as a switched user (OSC 3008)** (same
+  group, on by default): in the same cases the default background shifts
+  a tenth of the way towards red; towards yellow while the innermost
+  context runs as another user through a switch - an `elevate` or
+  `chpriv` context with `targetuser=` (`run0 -u`), and the contexts
+  further in that keep that user. A login as another user is not tinted.
+  Cells with their own colour keep it, and OSC 11 reports the configured
+  background.
 
 Try it by hand:
 
 ```sh
+printf '\033]3008;start=demo0;type=elevate;user=%s\033\\' "$USER"
+printf '\033]3008;end=demo0\033\\'
 printf '\033]3008;start=demo1;type=command;cmdline=false\033\\'
 printf '\033]3008;end=demo1;exit=failure;status=1\033\\'
 ```

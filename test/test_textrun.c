@@ -86,6 +86,7 @@ bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
 bool kitty_osc52_title_visible(void) { return true; }
 void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a) { }
 void kitty_osc52_state_changed(Terminal *term) { }
+void kitty_ctx3008_user_changed(Terminal *term) { }
 void kitty_osc52_write_confirm(Terminal *term) { }
 void kitty_osc52_write_confirm_end(Terminal *term) { }
 void kitty_transfer_osc(Terminal *term) { (void)term; }

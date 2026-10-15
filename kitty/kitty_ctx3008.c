@@ -433,3 +433,32 @@ bool ctx_elevated(const CtxStack *s)
     const char *u = ctx_effective_user(s);
     return u && !strcmp(u, "root");
 }
+
+/* The same walk as ctx_effective_user, remembering whether the user came
+ * from a switch. */
+CtxAs ctx_runs_as(const CtxStack *s)
+{
+    const char *u = NULL;
+    bool switched = false;
+    int i;
+
+    for (i = 0; i < s->depth; i++) {
+        const CtxContext *c = &s->ctx[i];
+        if (c->field[CTX_F_TARGETUSER]) {
+            u = c->field[CTX_F_TARGETUSER];
+            switched = true;
+        } else if (c->type == CTX_TYPE_ELEVATE) {
+            u = "root";
+            switched = true;
+        } else if (c->field[CTX_F_USER]) {
+            if (!u || strcmp(u, c->field[CTX_F_USER]))
+                switched = false;
+            u = c->field[CTX_F_USER];
+        }
+    }
+    if (!u)
+        return CTX_AS_PLAIN;
+    if (!strcmp(u, "root"))
+        return CTX_AS_ROOT;
+    return switched ? CTX_AS_SWITCHED : CTX_AS_PLAIN;
+}

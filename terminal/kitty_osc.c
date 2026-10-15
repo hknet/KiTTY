@@ -630,10 +630,18 @@ static void ctx3008_failed_notice(Terminal *term, const CtxEvent *ev)
     sfree(body);
 }
 
+/* Is the user shown at all (ContextRootFrame, ContextRootTint)? With both
+ * off a switch of user costs the window nothing. */
+static bool ctx3008_user_shown(Terminal *term)
+{
+    return conf_get_bool(term->conf, CONF_ctx3008_root_frame) ||
+           conf_get_bool(term->conf, CONF_ctx3008_root_tint);
+}
+
 static void term_osc3008(Terminal *term)
 {
     CtxEvent ev;
-    bool elevated;
+    CtxAs as;
 
     if (term->osc_str_overflow)
         return;                        /* cut short: no part of it is used */
@@ -641,7 +649,7 @@ static void term_osc3008(Terminal *term)
         term->ctx3008 = snew(CtxStack);
         ctx_init(term->ctx3008);
     }
-    elevated = ctx_elevated(term->ctx3008);
+    as = ctx_runs_as(term->ctx3008);
     if (ctx_apply(term->ctx3008, term->osc_string, term->osc_strlen,
                   &ev) == CTX_IGNORED)
         return;
@@ -651,8 +659,8 @@ static void term_osc3008(Terminal *term)
     if (ev.what == CTX_ENDED)
         ctx3008_failed_notice(term, &ev);
     ctx_event_free(&ev);
-    if (ctx_elevated(term->ctx3008) != elevated)
-        kitty_osc52_state_changed(term);   /* the window frame follows */
+    if (ctx_runs_as(term->ctx3008) != as && ctx3008_user_shown(term))
+        kitty_ctx3008_user_changed(term);  /* the frame and the tint follow */
 }
 
 const struct CtxStack *term_ctx3008(Terminal *term)
@@ -662,14 +670,14 @@ const struct CtxStack *term_ctx3008(Terminal *term)
 
 void term_ctx3008_reset(Terminal *term)
 {
-    bool elevated;
+    CtxAs as;
 
     if (!term->ctx3008)
         return;
-    elevated = ctx_elevated(term->ctx3008);
+    as = ctx_runs_as(term->ctx3008);
     ctx_clear(term->ctx3008);
-    if (elevated)
-        kitty_osc52_state_changed(term);   /* the window frame follows */
+    if (as != CTX_AS_PLAIN && ctx3008_user_shown(term))
+        kitty_ctx3008_user_changed(term);  /* the frame and the tint follow */
 }
 
 void kitty_ctx3008_free(Terminal *term)

@@ -6107,6 +6107,12 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
                       HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
                       I(CONF_ctx3008_fail_notice));
+        ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_FRAME, NO_SHORTCUT,
+                      HELPCTX(kitty_ctxrootframe), conf_checkbox_handler,
+                      I(CONF_ctx3008_root_frame));
+        ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_TINT, NO_SHORTCUT,
+                      HELPCTX(kitty_ctxroottint), conf_checkbox_handler,
+                      I(CONF_ctx3008_root_tint));
 
         /* Notifications from the host (OSC 9, 777 and 99, a program's status
          * OSC 7501 too) and taskbar progress (OSC 9;4): a panel of their

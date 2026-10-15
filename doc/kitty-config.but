@@ -1739,6 +1739,12 @@ setting in different places, so a change made here in one leaves the
 other as it is. It colours the windows and dialogs; a terminal's own colours are a
 per-session setting and are not touched.
 
+\b \q{Background tint}: how strong the tint is that a session with
+\q{Tinted background as root or as a switched user (OSC 3008)}
+(\k{kitty-cfg-ctxroottint}) shows - red as root, yellow as a switched
+user. Subtle goes a tenth of the way (the default), Medium a fifth,
+Strong three tenths. Open terminals follow a change at once.
+
 \b \q{\i{Shared window position}} shows the terminal-window position
 that windows without a session of their own keep - an unnamed session,
 or a window opened as \q{Default Settings} - for the monitor layout the
@@ -1765,8 +1771,8 @@ The title bar settings are on \k{kitty-cfg-kset-window}, and the fonts
 that draw a character the terminal font lacks on
 \k{kitty-cfg-kset-fontfb}.
 
-The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours)
-and \c{iconfile}.
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours),
+\c{ctxtint} (the background tint) and \c{iconfile}.
 
 \S{kitty-cfg-kset-terminal} The Keys & Mouse panel
 
@@ -3574,6 +3580,34 @@ Terminal > Desktop Notifications setting (when not focused, by
 default). An interrupted command (Ctrl+C) raises none. Off by
 default; stored with the session (\c{ContextFailNotice}). See
 \c{docs/OSC-INTEGRATION.md}.
+
+\S{kitty-cfg-ctxrootframe} \q{Red frame while the host reports root (OSC 3008)}
+
+With OSC 3008 on the host (systemd 257 or later), the window's title
+bar and border turn dark red while the innermost context runs as root:
+\c{run0} without \c{-u}, a context whose target user is
+\c{root}, or a shell logged in as root. They return to normal when that context ends or the
+connection does. This is what the host reports, not a check KiTTY++
+makes. A clipboard tint wins for its few seconds, and workplace proxy
+mode's green wins over the red. Windows 11 only: Windows 10 does not
+let a program colour the frame. On by default; stored with the
+session (\c{ContextRootFrame}).
+
+\S{kitty-cfg-ctxroottint} \q{Tinted background as root or as a switched user (OSC 3008)}
+
+With OSC 3008 on the host (systemd 257 or later), the terminal's
+default background shifts slightly towards red while the innermost
+context runs as root: \c{run0} without \c{-u}, a context whose target
+user is \c{root}, or a shell logged in as root. It shifts towards
+yellow while it runs as another user through a switch (\c{run0 -u}),
+as run0 itself does; a login as another user is not tinted. A quieter
+sign than the red frame, for the working day rather than an alarm.
+Text and cells with a colour of their own keep it, and what
+the terminal reports as its background (OSC 11) stays the configured
+colour. This is what the host reports, not a check KiTTY++ makes.
+How strong the tint is: Application > KiTTY++ Settings > Appearance >
+\q{Background tint} (\k{kitty-cfg-appearance}). On by default; stored
+with the session (\c{ContextRootTint}).
 
 \S{kitty-cfg-kittygraphics} \q{Show inline images (kitty graphics protocol)}
 

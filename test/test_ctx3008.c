@@ -807,6 +807,46 @@ static void test_end_fields(void)
     ctx_clear(&s);
 }
 
+static void test_runs_as(void)
+{
+    CtxStack s;
+    ctx_init(&s);
+
+    CHECK(ctx_runs_as(&s) == CTX_AS_PLAIN, "as: nothing plain");
+    st(&s, "start=a;type=shell;user=carol");
+    CHECK(ctx_runs_as(&s) == CTX_AS_PLAIN, "as: login carol plain");
+    st(&s, "start=b;type=elevate");
+    CHECK(ctx_runs_as(&s) == CTX_AS_ROOT, "as: run0 root");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=shell;user=root");
+    CHECK(ctx_runs_as(&s) == CTX_AS_ROOT, "as: login root");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=shell;user=carol");
+    st(&s, "start=b;type=elevate;targetuser=bob");
+    CHECK(ctx_runs_as(&s) == CTX_AS_SWITCHED, "as: run0 -u bob switched");
+    st(&s, "start=c;type=shell;user=bob");
+    CHECK(ctx_runs_as(&s) == CTX_AS_SWITCHED, "as: bob's shell keeps it");
+    st(&s, "start=d;type=command");
+    CHECK(ctx_runs_as(&s) == CTX_AS_SWITCHED, "as: a command keeps it");
+    st(&s, "start=e;type=remote;user=dave");
+    CHECK(ctx_runs_as(&s) == CTX_AS_PLAIN, "as: onward login dave plain");
+    st(&s, "start=f;type=elevate");
+    CHECK(ctx_runs_as(&s) == CTX_AS_ROOT, "as: root over everything");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=chpriv;targetuser=bob");
+    CHECK(ctx_runs_as(&s) == CTX_AS_SWITCHED, "as: chpriv bob switched");
+    ctx_clear(&s);
+
+    st(&s, "start=a;type=elevate;targetuser=root");
+    CHECK(ctx_runs_as(&s) == CTX_AS_ROOT, "as: targetuser=root");
+    st(&s, "start=b;type=shell;user=carol");
+    CHECK(ctx_runs_as(&s) == CTX_AS_PLAIN, "as: carol inside root plain");
+    ctx_clear(&s);
+}
+
 static void test_effective_user(void)
 {
     CtxStack s;
@@ -944,6 +984,7 @@ int main(void)
     test_malformed();
     test_end_fields();
     test_effective_user();
+    test_runs_as();
     test_seq_max();
     test_names();
 

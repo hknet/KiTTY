@@ -1682,6 +1682,14 @@ CONF_OPTION(failed_marks, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("Fa
 /* KiTTY: a command whose OSC 3008 context ends as failed or crashed raises
  * a notice (terminal/kitty_osc.c, through kitty_host_notice). */
 CONF_OPTION(ctx3008_fail_notice, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ContextFailNotice"),)
+/* KiTTY: the window frame (title bar and border) is dark red while the
+ * host's OSC 3008 contexts say the active one runs as root
+ * (kitty/kitty_osc52.c, kitty_frame_resting_colour). Windows 11 only. */
+CONF_OPTION(ctx3008_root_frame, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ContextRootFrame"),)
+/* KiTTY: the default background takes a slight red shift while the host's
+ * OSC 3008 contexts say the active one runs as root, a yellow one as a
+ * switched user (windows/window.c, kitty_ctx_tint_apply). Both painters. */
+CONF_OPTION(ctx3008_root_tint, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ContextRootTint"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

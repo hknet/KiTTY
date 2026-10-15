@@ -55,6 +55,11 @@ void ResetWindow(int reinit);
 void SendStrToTerminal(const char *str, const int len);
 void do_eventlog(const char *st);
 int kitty_active_seat_workplace_proxied(void);
+int kitty_active_seat_root(void);   /* OSC 3008 root, ContextRootFrame on */
+/* OSC 3008: who the host's active context runs as changed (ctx_runs_as) -
+ * the frame and the background tint follow (terminal/kitty_osc.c calls
+ * it, windows/window.c has it) */
+void kitty_ctx3008_user_changed(Terminal *term);
 void kitty_apply_transparency(struct WinGuiSeat *wgs);
 bool kitty_apply_window_pos(struct WinGuiSeat *wgs);   /* true: open maximised */
 bool kitty_window_may_layer(HWND hwnd);

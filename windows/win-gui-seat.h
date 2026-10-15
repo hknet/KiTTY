@@ -102,6 +102,11 @@ struct WinGuiSeat {
                               * itself is font_height, which already includes the
                               * extra; this is only about where the text sits in
                               * it, and about descent, which follows the glyph. */
+    COLORREF kitty_bg_untinted[2];  /* KiTTY: the default background and its
+                              * bold form as the terminal set them, before
+                              * the OSC 3008 tint (window.c,
+                              * kitty_ctx_tint_apply). Unconditional for the
+                              * reason given under workplace_proxied. */
     bool workplace_proxied;  /* KiTTY: THIS connection was routed through workplace
                               * proxy mode's proxy. A property of the connection,
                               * not of the mode: a session already open when the

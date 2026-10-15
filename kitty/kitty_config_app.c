@@ -2908,6 +2908,12 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * once, not only this one and the windows opened afterwards
      * (kitty_cfgwin_theme_handler announces it). */
     ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED, HELPCTX(kitty_appearance));
+    /* How strong the OSC 3008 background tint is - red as root, yellow as a
+     * switched user. Whether a session shows it at all is its own setting. */
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "ctxtint", KT_APPEARANCE_CTXTINT_GROUP);
+    ctrl_droplist(s, KT_APPEARANCE_CTXTINT, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
+                  kitty_kset_handler, KSET(KI_CTXTINT));
+    ctrl_text(s, KT_APPEARANCE_CTXTINT_NOTE, HELPCTX(kitty_appearance));
 
     /* ---- Keys & Mouse, and its Shortcuts leaf ---- */
     ctrl_settitle(b, KSET_PATH("Keys & Mouse"), KT_KSET_TW_TITLE);

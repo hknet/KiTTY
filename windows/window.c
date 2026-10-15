@@ -967,6 +967,7 @@ extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
 #include "../kitty/kitty_theme_pref.h"   /* KiTTY: the theme preference, readable before InitWinMain */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_hostnotify.h"  /* taskbar progress, cleared at session end */
+#include "../kitty/kitty_ctx3008.h"     /* OSC 3008: the red frame asks ctx_elevated */
 #include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
@@ -1157,6 +1158,11 @@ static void wintw_move(TermWin *, int x, int y);
 static void wintw_set_zorder(TermWin *, bool top);
 static void wintw_palette_set(TermWin *, unsigned, unsigned, const rgb *);
 static void wintw_palette_get_overrides(TermWin *, Terminal *);
+#ifdef MOD_PERSO
+static bool kitty_ctx_tint_apply(WinGuiSeat *wgs);
+static void kitty_ctx_tint_forget(void);
+static void kitty_ctx_tint_repaint(WinGuiSeat *wgs);
+#endif
 static void wintw_unthrottle(TermWin *win, size_t bufsize);
 
 static const TermWinVtable windows_termwin_vt = {
@@ -6468,6 +6474,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* the Ctrl+Tab flag the other windows look for follows a change
              * made here at once, not at the next title change */
             kitty_winprops_publish(wgs);
+            /* the red frame of an OSC 3008 root context follows its switch */
+            if (conf_get_bool(wgs->conf, CONF_ctx3008_root_frame) !=
+                conf_get_bool(prev_conf, CONF_ctx3008_root_frame))
+                kitty_osc52_state_changed(wgs->term);
+            /* and so does the background tint */
+            if (kitty_ctx_tint_apply(wgs))
+                kitty_ctx_tint_repaint(wgs);
 #endif
 
             /* Reinitialise the colour palette, in case the terminal
@@ -8208,6 +8221,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (!kitty_theme_frame_dark(MainHwnd, &was_dark) ||
                 was_dark != kitty_theme_app_dark())
                 kitty_frame_restore_resting();
+            /* the strength of the OSC 3008 tint is an Appearance setting */
+            kitty_ctx_tint_forget();
+            if (kitty_ctx_tint_apply(wgs))
+                kitty_ctx_tint_repaint(wgs);
             return 0;
         }
 #endif
@@ -11283,7 +11300,17 @@ static void wintw_palette_set(TermWin *tw, unsigned start,
         out->peBlue = in->b;
         wgs->colours[i + start] =
             RGB(in->r, in->g, in->b) ^ wgs->colorref_modifier;
+#ifdef MOD_PERSO
+        /* KiTTY: the default background as the terminal set it; the OSC
+         * 3008 tint goes on top of this (kitty_ctx_tint_apply) */
+        if (i + start == OSC4_COLOUR_bg || i + start == OSC4_COLOUR_bg_bold)
+            wgs->kitty_bg_untinted[i + start - OSC4_COLOUR_bg] =
+                RGB(in->r, in->g, in->b);
+#endif
     }
+#ifdef MOD_PERSO
+    kitty_ctx_tint_apply(wgs);
+#endif
 
     bool got_new_palette = false;
 
@@ -12757,6 +12784,103 @@ void kitty_set_active_seat(WinGuiSeat *wgs) {
  * directions. */
 int kitty_active_seat_workplace_proxied(void) {
     return kitty_active_wgs && kitty_active_wgs->workplace_proxied;
+}
+
+/* Does the host say the active window's session runs as root (OSC 3008),
+ * with ContextRootFrame on? The frame's resting colour asks this
+ * (kitty/kitty_osc52.c). */
+int kitty_active_seat_root(void) {
+    const struct CtxStack *s;
+    if (!kitty_active_wgs || !kitty_active_wgs->term ||
+        !conf_get_bool(kitty_active_wgs->conf, CONF_ctx3008_root_frame))
+        return 0;
+    s = term_ctx3008(kitty_active_wgs->term);
+    return s && ctx_elevated(s);
+}
+
+/* [KiTTY] ctxtint: how far the tint below goes, in percent - subtle (the
+ * default) 10, medium 20, strong 30 (Application > KiTTY++ Settings >
+ * Appearance). Read once, and again after the Appearance broadcast. */
+static int kitty_ctx_tint_pct = -1;
+
+static void kitty_ctx_tint_forget(void)
+{
+    kitty_ctx_tint_pct = -1;
+}
+
+static int kitty_ctx_tint_strength(void)
+{
+    if (kitty_ctx_tint_pct < 0) {
+        char buf[16] = "";
+        ReadParameterN(KI_SECTION_KITTY, KI_CTXTINT, buf, sizeof(buf));
+        kitty_ctx_tint_pct = !stricmp(buf, "strong") ? 30 :
+                             !stricmp(buf, "medium") ? 20 : 10;
+    }
+    return kitty_ctx_tint_pct;
+}
+
+/* A slight shift of the default background while the host says who the
+ * session runs as (OSC 3008, ContextRootTint): part of the way to pure red
+ * as root - at 10% black becomes (25,0,0), white (255,229,229) - and to
+ * pure yellow as a switched user (run0 -u) - black (25,25,0), white
+ * (255,255,229) - the hues run0 tints with itself. Information, not an
+ * alarm - the frame (ContextRootFrame) is the louder one. Only the
+ * window's copy changes: the terminal's palette, and with it what OSC 11
+ * reports, stays the configured colour. Cells with a colour of their own
+ * keep it. Both painters take it from wgs->colours. True when the colours
+ * changed, for the caller to repaint. */
+static bool kitty_ctx_tint_apply(WinGuiSeat *wgs)
+{
+    const struct CtxStack *s;
+    CtxAs as = CTX_AS_PLAIN;
+    bool changed = false;
+
+    s = wgs->term ? term_ctx3008(wgs->term) : NULL;
+    if (s && conf_get_bool(wgs->conf, CONF_ctx3008_root_tint))
+        as = ctx_runs_as(s);
+    for (int i = 0; i < 2; i++) {
+        COLORREF c = wgs->kitty_bg_untinted[i];
+        int r = GetRValue(c), g = GetGValue(c), b = GetBValue(c);
+        int p = kitty_ctx_tint_strength();
+        if (as == CTX_AS_ROOT)
+            c = RGB(r + (255 - r) * p / 100, g * (100 - p) / 100,
+                    b * (100 - p) / 100);
+        else if (as == CTX_AS_SWITCHED)
+            c = RGB(r + (255 - r) * p / 100, g + (255 - g) * p / 100,
+                    b * (100 - p) / 100);
+        c ^= wgs->colorref_modifier;
+        if (wgs->colours[OSC4_COLOUR_bg + i] != c) {
+            wgs->colours[OSC4_COLOUR_bg + i] = c;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/* Every cell again, not only the window: the text has not changed, so the
+ * terminal would leave the old background on screen (palette_rebuild does
+ * the same for a palette change). */
+static void kitty_ctx_tint_repaint(WinGuiSeat *wgs)
+{
+    if (wgs->term)
+        term_invalidate(wgs->term);
+    InvalidateRect(wgs->term_hwnd, NULL, true);
+}
+
+void kitty_ctx3008_user_changed(Terminal *term)
+{
+    struct WinGuiSeatListNode *node;
+
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *wgs = container_of(node, WinGuiSeat, wgslistnode);
+        if (wgs->term != term)
+            continue;
+        if (conf_get_bool(wgs->conf, CONF_ctx3008_root_frame))
+            kitty_osc52_state_changed(term);
+        if (kitty_ctx_tint_apply(wgs))
+            kitty_ctx_tint_repaint(wgs);
+        return;
+    }
 }
 
 void do_eventlog(const char *st) {

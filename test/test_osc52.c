@@ -271,6 +271,8 @@ void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a)
     osc52_notify_action = a;
 }
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
+static int ctx_root_changes;
+void kitty_ctx3008_user_changed(Terminal *term) { ctx_root_changes++; }
 /* The write confirmation box: opened, never answered here - the tests answer
  * through term_osc52_write_answer, as the platform side does once it closes. */
 static int osc52_wconfirms;
@@ -5382,8 +5384,40 @@ static void test_osc3008(Mock *mk)
     size_t n;
     int changes, notices = hn_notice_calls;
 
+    /* ContextRootFrame and ContextRootTint off: root comes and goes, the
+     * window is not told */
+    conf_set_bool(mk->conf, CONF_ctx3008_root_frame, false);
+    conf_set_bool(mk->conf, CONF_ctx3008_root_tint, false);
+    term_reconfig(mk->term, mk->conf);
+    changes = ctx_root_changes;
+    feed_seq(mk, "\033]3008;start=z9;type=elevate\033\\");
+    feed_seq(mk, "\033]3008;end=z9\033\\");
+    feed_seq(mk, "\033]3008;start=z9;type=elevate\033\\");
     term_ctx3008_reset(mk->term);
-    changes = osc52_state_changes;
+    if (ctx_root_changes != changes)
+        fail("osc3008 root off",
+             "the window was told with ContextRootFrame and ContextRootTint off");
+
+    /* the tint alone is enough */
+    conf_set_bool(mk->conf, CONF_ctx3008_root_tint, true);
+    term_reconfig(mk->term, mk->conf);
+    feed_seq(mk, "\033]3008;start=z9;type=elevate\033\\");
+    term_ctx3008_reset(mk->term);
+    if (ctx_root_changes != changes + 2)
+        fail("osc3008 root tint",
+             "the window was not told with ContextRootTint on");
+    /* a switched user (run0 -u) is news for the tint too */
+    feed_seq(mk, "\033]3008;start=y8;type=elevate;targetuser=bob\033\\");
+    feed_seq(mk, "\033]3008;end=y8\033\\");
+    if (ctx_root_changes != changes + 4)
+        fail("osc3008 switched user",
+             "the window was not told about run0 -u");
+    conf_set_bool(mk->conf, CONF_ctx3008_root_tint, false);
+
+    conf_set_bool(mk->conf, CONF_ctx3008_root_frame, true);
+    term_reconfig(mk->term, mk->conf);
+    term_ctx3008_reset(mk->term);
+    changes = ctx_root_changes;
     feed_seq(mk, "\033]3008;start=a1;type=shell;user=carol;"
                  "hostname=web1\033\\");
     feed_seq(mk, "\033]3008;start=b2;type=elevate;user=carol;"
@@ -5399,8 +5433,8 @@ static void test_osc3008(Mock *mk)
     if (!ctx_elevated(s))
         fail("osc3008 start", "targetuser=root is not elevated");
     /* the window frame is re-applied when root starts, and only then */
-    if (osc52_state_changes != changes + 1)
-        fail("osc3008 start", "the frame was not re-applied exactly once");
+    if (ctx_root_changes != changes + 1)
+        fail("osc3008 start", "the window was not told exactly once");
     if (!s->ctx[0].field[CTX_F_HOSTNAME] ||
         strcmp(s->ctx[0].field[CTX_F_HOSTNAME], "web1"))
         fail("osc3008 start", "the shell's hostname= was not kept");
@@ -5413,7 +5447,7 @@ static void test_osc3008(Mock *mk)
     feed_seq(mk, "\033]3008;end=b2;exit=success;status=0\033\\");
     if (s->depth != 1 || ctx_elevated(s))
         fail("osc3008 end", "the elevate context did not end");
-    if (osc52_state_changes != changes + 2)
+    if (ctx_root_changes != changes + 2)
         fail("osc3008 end", "the frame was not re-applied when root ended");
 
     /* longer than the OSC buffer holds: cut short, so not used */
@@ -5435,11 +5469,11 @@ static void test_osc3008(Mock *mk)
         fail("osc3008 end", "an unknown id ended a context");
 
     /* root again, then the new connection: the frame follows the reset */
-    feed_seq(mk, "]3008;start=e5;type=elevate");
+    feed_seq(mk, "\033]3008;start=e5;type=elevate\007");
     term_ctx3008_reset(mk->term);
     if (s->depth != 0)
         fail("osc3008 new connection", "the stack was not emptied");
-    if (osc52_state_changes != changes + 4)
+    if (ctx_root_changes != changes + 4)
         fail("osc3008 new connection", "the frame did not follow root and the reset");
     if (hn_notice_calls != notices)
         fail("osc3008", "a notice was raised");

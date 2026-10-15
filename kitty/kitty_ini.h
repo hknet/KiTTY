@@ -929,6 +929,14 @@ char default_init_file_content[] =
 ;    sets.\n\
 ;theme=system\n\
 \n\
+; ctxtint: how strong the background tint is in a session with \"Tinted\n\
+;    background as root or as a switched user (OSC 3008)\" switched on - red\n\
+;    as root, yellow as a user switched to with run0 -u. subtle (the\n\
+;    default) goes a tenth of the way, medium a fifth, strong three tenths.\n\
+;    Open windows follow a change at once. Also on the configuration window,\n\
+;    Application > KiTTY++ Settings > Appearance.\n\
+;ctxtint=subtle\n\
+\n\
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the\n\
 ;    user name and password typed at a login prompt are copied into the\n\
 ;    running session's settings, as if entered on its Login panel - so a\n\

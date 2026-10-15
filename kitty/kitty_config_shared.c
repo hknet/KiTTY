@@ -718,6 +718,18 @@ static void kset_set_framepace(int v)
     if (v < 0) strcpy(buf, "auto"); else sprintf(buf, "%d", v);
     kitty_pace_set_setting(buf);
 }
+/* Appearance: how far the OSC 3008 background tint goes ([KiTTY] ctxtint,
+ * percent of the way to red or yellow; windows/window.c reads it). The
+ * Appearance broadcast makes every open terminal read it again. */
+static const struct kset_choice kset_ctxtint_choices[] = {
+    { KT_APPEARANCE_CTXTINT_SUBTLE, "subtle", 10 },
+    { KT_APPEARANCE_CTXTINT_MEDIUM, "medium", 20 },
+    { KT_APPEARANCE_CTXTINT_STRONG, "strong", 30 } };
+static void kset_set_ctxtint(int v)
+{
+    (void)v;
+    kitty_theme_announce_change();
+}
 static const struct kset_choice kset_funkeys_choices[] = {
     { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 },   /* the built-in default */
     { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
@@ -787,6 +799,8 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
     { INIT_SECTION, KI_FRAMEPACE,      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
+    { INIT_SECTION, KI_CTXTINT,        KSET_CHOICE, false, NULL, kset_set_ctxtint, NULL, 0, 0, 10,
+      NULL, NULL, kset_ctxtint_choices, lenof(kset_ctxtint_choices) },
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },

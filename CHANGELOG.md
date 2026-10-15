@@ -13,7 +13,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   host opens, and a command whose context ends as failed or crashed can
   raise a notice with its command line and exit status: Terminal >
   Features > Shell Integration > "Notice for failed commands (OSC 3008)"
-  (`ContextFailNotice=1`, off by default).
+  (`ContextFailNotice=1`, off by default), and the window's title bar and
+  border can turn dark red while the host reports a context running as
+  root: "Red frame while the host reports root (OSC 3008)"
+  (`ContextRootFrame=1`, on by default, Windows 11). The quieter sign is
+  a slight shift of the background, red as root and yellow as a user
+  switched to with `run0 -u`: "Tinted background as root or as a switched
+  user (OSC 3008)" (`ContextRootTint=1`, on by default). The Application
+  Appearance Setting can change the color intensity.
 
 ### Changed
 

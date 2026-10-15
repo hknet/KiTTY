@@ -926,6 +926,14 @@
 ;    sets.
 ;theme=system
 
+; ctxtint: how strong the background tint is in a session with "Tinted
+;    background as root or as a switched user (OSC 3008)" switched on - red
+;    as root, yellow as a user switched to with run0 -u. subtle (the
+;    default) goes a tenth of the way, medium a fifth, strong three tenths.
+;    Open windows follow a change at once. Also on the configuration window,
+;    Application > KiTTY++ Settings > Appearance.
+;ctxtint=subtle
+
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the
 ;    user name and password typed at a login prompt are copied into the
 ;    running session's settings, as if entered on its Login panel - so a

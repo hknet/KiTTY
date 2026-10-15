@@ -1169,6 +1169,12 @@ static COLORREF kitty_frame_resting_colour(void)
 {
     if (kitty_active_seat_workplace_proxied())
         return RGB(0, 100, 0);                 /* dark green */
+    /* The host says the session runs as root (OSC 3008, ContextRootFrame).
+     * Below green: green is KiTTY++'s own fact about the connection, this
+     * is only what the host claims. Above the standing permission colours,
+     * which the title spells out as well. */
+    if (kitty_active_seat_root())
+        return RGB(96, 16, 16);                /* dark red, not alarm red */
     return (COLORREF)DWMWA_COLOR_DEFAULT;
 }
 

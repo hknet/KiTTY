@@ -317,6 +317,8 @@
 #define KT_FEATURES_SHELLINT_GROUP                   "Shell Integration"
 #define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
 #define KT_FEATURES_CTX_FAIL_NOTICE                  "Notice for failed commands (OSC 3008)"
+#define KT_FEATURES_CTX_ROOT_FRAME                   "Red frame while the host reports root (OSC 3008)"
+#define KT_FEATURES_CTX_ROOT_TINT                    "Tinted background as root or as a switched user (OSC 3008)"
 /* terminal/kitty_osc.c: the notice for a failed command (OSC 3008) */
 #define KT_CTX3008_FAILED                            "Command failed"
 #define KT_CTX3008_CRASHED                           "Command crashed"
@@ -962,6 +964,14 @@
 #define KT_APPEARANCE_TITLE                          "Appearance"
 #define KT_APPEARANCE_COLOURS                        "Colours"
 #define KT_CONFIG_WINDOW_COLOURS                     "Choose the default Appearance:"
+/* Appearance: the strength of the OSC 3008 background tint ([KiTTY] ctxtint) */
+#define KT_APPEARANCE_CTXTINT_GROUP                  "Background tint"
+#define KT_APPEARANCE_CTXTINT                        "Strength as root or as a switched user:"
+#define KT_APPEARANCE_CTXTINT_SUBTLE                 "Subtle (10%)"
+#define KT_APPEARANCE_CTXTINT_MEDIUM                 "Medium (20%)"
+#define KT_APPEARANCE_CTXTINT_STRONG                 "Strong (30%)"
+#define KT_APPEARANCE_CTXTINT_NOTE                   "A session switches the tint on: Terminal > Features > " \
+        "Shell Integration (OSC 3008)."
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply at once to all open KiTTY++ windows."

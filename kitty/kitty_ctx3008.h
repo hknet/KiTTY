@@ -100,6 +100,14 @@ const CtxContext *ctx_active(const CtxStack *s);
 const char *ctx_effective_user(const CtxStack *s);
 /* ctx_effective_user is root. */
 bool ctx_elevated(const CtxStack *s);
+/* Who the active context runs as, for the window's background tint:
+ * CTX_AS_ROOT when ctx_effective_user is root; CTX_AS_SWITCHED when it is
+ * another user that a switch put there - an elevate context's user
+ * (run0 -u) or targetuser=, and the contexts further in that keep that
+ * user; CTX_AS_PLAIN otherwise (nothing said, or a login as that user, or a
+ * context further in with a user= of its own). */
+typedef enum { CTX_AS_PLAIN, CTX_AS_ROOT, CTX_AS_SWITCHED } CtxAs;
+CtxAs ctx_runs_as(const CtxStack *s);
 
 const char *ctx_type_name(int type);         /* "" for CTX_TYPE_NONE */
 const char *ctx_field_name(int field);

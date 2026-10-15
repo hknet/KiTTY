@@ -1374,7 +1374,11 @@ The host says which program has control and how programs nest - a shell, a comma
 
 **Notice for failed commands:** a command whose context ends as failed or crashed raises a notice near the clock with its command line and its exit status or signal, under the session's **Terminal → Desktop Notifications** setting (When not focused by default). An interrupted command (Ctrl+C) raises none.
 
-**How to enable:** **Terminal → Features → Shell Integration → Notice for failed commands (OSC 3008)**, off by default, `ContextFailNotice`. On the host: systemd 257 or later, see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md).
+**Red frame while the host reports root:** the window's title bar and border turn dark red while the innermost context runs as root - `run0` without `-u`, a context whose target user is `root`, or a shell logged in as root - and return to normal when it ends or the connection does. A clipboard tint wins for its few seconds, workplace proxy mode's green wins over the red. Windows 11 only.
+
+**Tinted background as root or as a switched user:** the quieter sign - the default background shifts slightly towards red in the same cases, and towards yellow while the context runs as another user through a switch (`run0 -u`), as run0 itself does; a login as another user is not tinted. Every Windows version. How far it goes is one setting for all sessions: **Application → KiTTY++ Settings → Appearance → Background tint**, Subtle (10%, the default), Medium (20%) or Strong (30%), `ctxtint` in kitty.ini; open windows follow a change at once. Cells with a colour of their own keep it; OSC 11 still reports the configured background.
+
+**How to enable:** **Terminal → Features → Shell Integration → Notice for failed commands (OSC 3008)**, **Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)**, the notice off and the other two on by default, `ContextFailNotice`, `ContextRootFrame`, `ContextRootTint`. On the host: systemd 257 or later, see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md).
 
 (no screenshot)
 
