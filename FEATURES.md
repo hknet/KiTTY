@@ -1338,7 +1338,7 @@ Three protections apply to every clipboard protocol at once:
 
 A program on the host can show a notice near the clock, for example when a long build or a backup ends: `printf '\e]9;Build done\a'` (OSC 9, iTerm2), `printf '\e]777;notify;Backup;Finished\a'` (OSC 777, urxvt), or the kitty terminal's OSC 99 (as `kitten notify` sends it). The notice is KiTTY++'s own window, not a Windows toast: it is titled with the session's name (the host name for an unnamed session), so it always shows where it came from, and nothing of it is kept in the Action Center after it goes. The program's title is its first line, its text follows. A click brings the terminal window forward.
 
-**Terminal → Desktop Notifications → Desktop notifications (OSC 9, 777, 99, 7501)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
+**Terminal → Desktop Notifications → Desktop notifications (OSC 9, 777, 99, 7501, 3008)**: Off, When not focused (the default), or Always (`HostNotify`). A program can request less (OSC 99 `o=unfocused`, `o=invisible`), never for more.
 
 OSC 99 is supported in its core: ids, text sent in chunks and base64, `p=close` and `p=alive`, `p=?` (which answers with what is supported), urgency (`u=2` stays until clicked and is drawn in red, `u=0` goes after 5 seconds), the display time (`w`), and the click and close reports (`a=report`, `c=1`), which send the host only the notice's id. Icons, buttons and sounds are not. ConEmu's numbered OSC 9 commands are not shown as notices.
 
@@ -1365,6 +1365,16 @@ Working and blocked end at the shell's next prompt, which the shell marks with O
 **The prompt marks in the scrollback.** With the shell integration, every prompt, every command's output and every failed command (an exit code other than 0) is marked on its line, and the marks move with the lines into the scrollback. **Alt+PgUp** and **Alt+PgDn** jump to the previous and next prompt, which then stands at the top of the window; **Alt+Shift+PgUp** and **Alt+Shift+PgDn** jump to the previous and next failed command; **Alt+End** selects, and so copies, a command's output: the command the last jump went to, the one at the top of the view when scrolled back, else the last one; **Alt+Home** selects the command line itself, without the prompt. Alt+Home needs the B mark (the start of the typed command): the optional line of the shell integration for bash, zsh and fish, or a program that sends it, such as pi. The keys are actions on Application > KiTTY++ Settings > Keys & Mouse > Shortcuts. In a window that has no marks, or under a full-screen program, they go to the host as before. A failed command's prompt line carries a thin red line along its top edge, and a strip of 4 px beside the scrollbar shows a red tick at each failed command's place in the scrollback, level with the scrollbar thumb when that line is the top line (**Terminal → Features → Mark failed commands (OSC 133)**, on by default, `FailedCommandMarks`; while it is on the window is 4 px wider for the same columns); `grep` without a match also exits 1 and is marked too. The only reply is the one to the feature query (`OSC 7501 ; ?`); nothing a program reports goes back. Reports over the specification's limits, and texts with control characters, are refused.
 
 **How to enable:** **Terminal → Desktop Notifications**: **Progress and status on the taskbar button (OSC 9;4, 7501)** for the icon, the bar and the flashing, the droplist for when a notice is raised; **Application > KiTTY++ Settings > Terminal**, group **Title bar & Notifications**, for the title and how long a notice stays. On the host: a program that reports its status and the shell integration for the prompt marks - see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md), which also lists what every other OSC feature needs on the host.
+
+(no screenshot)
+
+### Contexts (OSC 3008)
+
+The host says which program has control and how programs nest - a shell, a command, `run0` taking root, a container, a virtual machine ([OSC 3008, UAPI.15](https://uapi-group.org/specifications/specs/osc_context/)). systemd 257 and later sends it from `run0`, `systemd-nspawn`, `systemd-vmspawn` and its shell profile script. KiTTY++ keeps the contexts a session has open, up to 32 deep; ordinary resets (`ESC c`) leave them alone, a new connection starts with none, and nothing is sent back. What a context says is the host's claim, shown as information, never a security check.
+
+**Notice for failed commands:** a command whose context ends as failed or crashed raises a notice near the clock with its command line and its exit status or signal, under the session's **Terminal → Desktop Notifications** setting (When not focused by default). An interrupted command (Ctrl+C) raises none.
+
+**How to enable:** **Terminal → Features → Shell Integration → Notice for failed commands (OSC 3008)**, off by default, `ContextFailNotice`. On the host: systemd 257 or later, see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md).
 
 (no screenshot)
 

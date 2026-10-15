@@ -6,6 +6,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.17-beta — 2026-10-15
 
+### New
+
+- **OSC 3008 contexts** (UAPI.15, sent by systemd 257 and later: `run0`,
+  `systemd-nspawn`, `systemd-vmspawn`). The terminal keeps the contexts the
+  host opens, and a command whose context ends as failed or crashed can
+  raise a notice with its command line and exit status: Terminal >
+  Features > Shell Integration > "Notice for failed commands (OSC 3008)"
+  (`ContextFailNotice=1`, off by default).
+
 ### Changed
 
 - **`COLORTERM=truecolor` is sent only while the terminal draws 24-bit

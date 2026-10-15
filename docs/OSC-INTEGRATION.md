@@ -11,8 +11,9 @@ in KiTTY++ and what the host needs.
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
 | Prompt marks | OSC 133 | **Terminal > Features > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
+| Contexts: failed commands | OSC 3008 | **Terminal > Features > Shell Integration > Notice for failed commands (OSC 3008)**, off by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
 | Program status | OSC 7501 | **Terminal > Desktop Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
-| Desktop notifications | OSC 9, 777, 99 | **Terminal > Desktop Notifications > Desktop notifications (OSC 9, 777, 99, 7501)** | A program that sends them: `printf`, `kitten notify` |
+| Desktop notifications | OSC 9, 777, 99 | **Terminal > Desktop Notifications > Desktop notifications (OSC 9, 777, 99, 7501, 3008)** | A program that sends them: `printf`, `kitten notify` |
 | Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
 | Hyperlinks | OSC 8 | **Window > Hyperlinks > Allow OSC 8 hyperlinks**, on | Programs that write them: `ls --hyperlink=auto`, Rich/Textual applications |
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
@@ -340,6 +341,34 @@ printf '\033]7501;state=working:app=demo:progress=40\033\\'
 printf '\033]7501;state=blocked:kind=question:app=demo:msg=%s\033\\' "$(b64 'Continue?')"
 printf '\033]7501;state=done:app=demo\033\\'
 printf '\033]7501;state=clear\033\\'
+```
+
+## Contexts (OSC 3008)
+
+The host says which program has control and how programs nest: a shell, a
+command, `run0` taking root, a container, a virtual machine. The
+specification is at
+<https://uapi-group.org/specifications/specs/osc_context/>. systemd 257
+and later sends it from `run0`, `systemd-nspawn`, `systemd-vmspawn` and
+its shell profile script; nothing else is needed on the host.
+
+KiTTY++ keeps the contexts a session has open, up to 32 deep. Unknown or
+malformed fields are ignored, the others kept; a field with a control
+character is ignored. Ordinary resets (`ESC c`) leave the contexts alone;
+a new connection starts with none. Nothing is sent back.
+
+- **Notice for failed commands (OSC 3008)** (Terminal > Features > Shell
+  Integration, off by default): a `command` context that ends with
+  `exit=failure` or `exit=crash` raises a notice with its command line
+  (`cmdline=`, else `comm=`) and its `status=` or `signal=`, under the
+  session's **Terminal > Desktop Notifications**. `exit=interrupt` raises
+  none.
+
+Try it by hand:
+
+```sh
+printf '\033]3008;start=demo1;type=command;cmdline=false\033\\'
+printf '\033]3008;end=demo1;exit=failure;status=1\033\\'
 ```
 
 ## tmux, screen, zellij and dtach

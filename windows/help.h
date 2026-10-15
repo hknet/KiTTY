@@ -98,6 +98,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_hostnotify         "kitty-cfg-hostnotify"
 #define WINHELP_CTX_kitty_taskbarprogress    "kitty-cfg-taskbarprogress"
 #define WINHELP_CTX_kitty_failedmarks        "kitty-cfg-failedmarks"
+#define WINHELP_CTX_kitty_ctxfailnotice      "kitty-cfg-ctxfailnotice"
 #define WINHELP_CTX_kitty_kittygraphics      "kitty-cfg-kittygraphics"
 #define WINHELP_CTX_kitty_itermimages        "kitty-cfg-itermimages"
 #define WINHELP_CTX_kitty_sixelimages        "kitty-cfg-sixelimages"

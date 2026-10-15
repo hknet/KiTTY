@@ -3500,12 +3500,15 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
-\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501)}
+\S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501, 3008)}
 
 Desktop notifications, on the Terminal > Desktop Notifications panel:
 lets a program on the host show a notice near the clock (OSC 9, OSC 777,
 OSC 99), for example when a long job ends. A program that reports its
 status (OSC 7501) raises one when it becomes blocked, fails or is done.
+A command that fails or crashes raises one too (OSC 3008), when
+\q{Notice for failed commands (OSC 3008)} is on
+(\k{kitty-cfg-ctxfailnotice}).
 The notice is titled with this session's name. Off, only while this
 window is not focused (the default), or always. A program can request
 less, never more. How long a notice stays: \q{Notices stay on screen,
@@ -3559,6 +3562,18 @@ itself, without the prompt (Application > KiTTY++ Settings > Keys & Mouse
 command: the optional line of the shell integration for bash, zsh and
 fish, or a program that sends it, such as pi. On by default; stored with
 the session (\c{FailedCommandMarks}).
+
+\S{kitty-cfg-ctxfailnotice} \q{Notice for failed commands (OSC 3008)}
+
+With OSC 3008 on the host (systemd 257 or later: \c{run0},
+\c{systemd-nspawn}, \c{systemd-vmspawn} and its shell profile script),
+every command the shell runs is a context that ends with how it ended.
+A command that ends as failed or crashed raises a notice with its
+command line and its exit status or signal, under the session's
+Terminal > Desktop Notifications setting (when not focused, by
+default). An interrupted command (Ctrl+C) raises none. Off by
+default; stored with the session (\c{ContextFailNotice}). See
+\c{docs/OSC-INTEGRATION.md}.
 
 \S{kitty-cfg-kittygraphics} \q{Show inline images (kitty graphics protocol)}
 

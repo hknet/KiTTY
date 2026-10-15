@@ -5443,6 +5443,37 @@ static void test_osc3008(Mock *mk)
         fail("osc3008 new connection", "the frame did not follow root and the reset");
     if (hn_notice_calls != notices)
         fail("osc3008", "a notice was raised");
+
+    /* ContextFailNotice: a failed command raises the host's notice */
+    conf_set_bool(mk->conf, CONF_ctx3008_fail_notice, true);
+    term_reconfig(mk->term, mk->conf);
+    feed_seq(mk, "\033]3008;start=s1;type=shell\007");
+    feed_seq(mk, "\033]3008;start=c1;type=command;cmdline=make all\007");
+    feed_seq(mk, "\033]3008;end=c1;exit=failure;status=2\007");
+    if (hn_notice_calls != notices + 1 ||
+        strcmp(hn_notice_title, "Command failed") ||
+        strcmp(hn_notice_body, "make all: exit status 2"))
+        fail("osc3008 failed notice", "no notice, or the wrong text");
+    feed_seq(mk, "\033]3008;start=c2;type=command;comm=sleep\007");
+    feed_seq(mk, "\033]3008;end=c2;exit=crash;signal=SIGSEGV\007");
+    if (hn_notice_calls != notices + 2 ||
+        strcmp(hn_notice_title, "Command crashed") ||
+        strcmp(hn_notice_body, "sleep: SIGSEGV"))
+        fail("osc3008 crash notice", "no notice, or the wrong text");
+    /* none for an interrupt, a success, a shell, or with the setting off */
+    feed_seq(mk, "\033]3008;start=c3;type=command;cmdline=top\007");
+    feed_seq(mk, "\033]3008;end=c3;exit=interrupt;signal=SIGINT\007");
+    feed_seq(mk, "\033]3008;start=c4;type=command;cmdline=true\007");
+    feed_seq(mk, "\033]3008;end=c4;exit=success;status=0\007");
+    feed_seq(mk, "\033]3008;start=c5;type=app;comm=vi\007");
+    feed_seq(mk, "\033]3008;end=c5;exit=failure\007");
+    conf_set_bool(mk->conf, CONF_ctx3008_fail_notice, false);
+    term_reconfig(mk->term, mk->conf);
+    feed_seq(mk, "\033]3008;start=c6;type=command;cmdline=false\007");
+    feed_seq(mk, "\033]3008;end=c6;exit=failure;status=1\007");
+    if (hn_notice_calls != notices + 2)
+        fail("osc3008 failed notice", "a notice that should not be");
+    term_ctx3008_reset(mk->term);
 }
 
 int main(void)

@@ -595,6 +595,41 @@ static void ctx3008_trace(Terminal *term, const CtxEvent *ev)
 }
 #endif
 
+/*
+ * A command context that ended as failed or crashed, as a notice
+ * (ContextFailNotice, off by default): the command line, else the
+ * program's name, and the exit status or the signal. It goes through the
+ * host's notice, so HostNotify, its focus rule and the flood rule apply.
+ * An interrupt (Ctrl+C) is not a failure.
+ */
+static void ctx3008_failed_notice(Terminal *term, const CtxEvent *ev)
+{
+    const CtxContext *c = &ev->ended;
+    const char *what = c->field[CTX_F_CMDLINE];
+    char *how, *body;
+
+    if (!conf_get_bool(term->conf, CONF_ctx3008_fail_notice) ||
+        c->type != CTX_TYPE_COMMAND ||
+        (ev->exit != CTX_EXIT_FAILURE && ev->exit != CTX_EXIT_CRASH))
+        return;
+    if (!what || !*what)
+        what = c->field[CTX_F_COMM];
+    if (*ev->signal)
+        how = dupstr(ev->signal);
+    else if (ev->status >= 0)
+        how = dupprintf(KT_CTX3008_STATUS, ev->status);
+    else
+        how = dupstr("");
+    if (what && *how)
+        body = dupprintf("%s: %s", what, how);
+    else
+        body = dupstr(what ? what : how);
+    kitty_host_notice(term, ev->exit == CTX_EXIT_CRASH ?
+                      KT_CTX3008_CRASHED : KT_CTX3008_FAILED, body);
+    sfree(how);
+    sfree(body);
+}
+
 static void term_osc3008(Terminal *term)
 {
     CtxEvent ev;
@@ -613,6 +648,8 @@ static void term_osc3008(Terminal *term)
 #ifdef KITTY_TEST_BUILD_LABEL
     ctx3008_trace(term, &ev);
 #endif
+    if (ev.what == CTX_ENDED)
+        ctx3008_failed_notice(term, &ev);
     ctx_event_free(&ev);
     if (ctx_elevated(term->ctx3008) != elevated)
         kitty_osc52_state_changed(term);   /* the window frame follows */

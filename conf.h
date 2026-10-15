@@ -1679,6 +1679,9 @@ CONF_OPTION(taskbar_progress, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD
 /* KiTTY: failed commands (OSC 133;D with an exit code other than 0) marked
  * with a red line on their prompt line and in the mark strip. */
 CONF_OPTION(failed_marks, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("FailedCommandMarks"),)
+/* KiTTY: a command whose OSC 3008 context ends as failed or crashed raises
+ * a notice (terminal/kitty_osc.c, through kitty_host_notice). */
+CONF_OPTION(ctx3008_fail_notice, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("ContextFailNotice"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

@@ -309,13 +309,18 @@
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
 /* Terminal/Desktop Notifications: notifications from the host (kitty/kitty_hostnotify.c) */
 #define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
-#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501)"
+#define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501, 3008)"
 #define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
 #define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
 #define KT_FEATURES_SHELLINT_GROUP                   "Shell Integration"
 #define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
+#define KT_FEATURES_CTX_FAIL_NOTICE                  "Notice for failed commands (OSC 3008)"
+/* terminal/kitty_osc.c: the notice for a failed command (OSC 3008) */
+#define KT_CTX3008_FAILED                            "Command failed"
+#define KT_CTX3008_CRASHED                           "Command crashed"
+#define KT_CTX3008_STATUS                            "exit status %d"
 #define KT_FEATURES_IMAGES_GROUP                     "Images shown in the terminal"   /* the Image Protocols panel title */
 #define KT_FEATURES_KITTY_GRAPHICS                   "Show inline images (kitty graphics protocol)"
 #define KT_FEATURES_ITERM_IMAGES                     "Show inline images (iTerm2 OSC 1337)"

@@ -714,6 +714,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "HostNotify" ) ;
 					RegDeleteValue( hSubKey, "TaskbarProgress" ) ;
 					RegDeleteValue( hSubKey, "FailedCommandMarks" ) ;
+					RegDeleteValue( hSubKey, "ContextFailNotice" ) ;
 					RegDeleteValue( hSubKey, "KittyGraphics" ) ;
 					RegDeleteValue( hSubKey, "ItermImages" ) ;
 					RegDeleteValue( hSubKey, "SixelImages" ) ;
