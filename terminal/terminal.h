@@ -676,6 +676,11 @@ struct terminal_tag {
      * and the scrollback are where that jump left them. Unconditional storage,
      * same ODR reason as everything above. */
     bool marks_seen;
+    /* KiTTY: the last prompt mark was 133;A or B - the shell sits at its
+     * prompt, no command has started (133;C) or ended (D) since. A width
+     * change then leaves the prompt line as the shell drew it
+     * (kitty_reflow.c). */
+    bool at_prompt;
     bool mark_jumped;
     int mark_anchor;                   /* from the top of the scrollback */
     int mark_disptop, mark_sblines;    /* the view the jump left */
@@ -845,6 +850,18 @@ struct terminal_tag {
     int conf_width;
     bool crhaslf;
     bool erase_to_scrollback;
+    /* KiTTY: re-wrap the lines when the width changes (CONF_rewrap_on_resize,
+     * terminal/kitty_reflow.c). Unconditional storage, the ODR reason above. */
+    bool rewrap;
+    /* KiTTY: the older scrollback rows the last width change left for the
+     * timer (kitty_reflow_step): where they end, as an absolute line number
+     * (gfx_sb_base + index), 0 when none; rf_due the timer's own tick. */
+    long rf_pend;
+    unsigned long rf_due;
+    /* KiTTY: the window frame is being dragged (term_set_dragging): a
+     * resize at a rest re-wraps the screen and two screens above it only,
+     * the older rows wait for the end of the drag. */
+    bool rf_dragging;
     int funky_type, sharrow_type;
     bool lfhascr;
     bool logflush;
@@ -1177,6 +1194,10 @@ void term_ctx3008_reset(Terminal *term);
  * and the strip's marks. kitty_search_forget: a key in the terminal after
  * the bar closed drops the hit it left lit. */
 enum { KS_STATE_IDLE, KS_STATE_SEARCHING, KS_STATE_DONE, KS_STATE_NOT_AVAILABLE };
+/* KiTTY: the window frame is being dragged (windows/window.c: from
+ * WM_ENTERSIZEMOVE to WM_EXITSIZEMOVE). Meanwhile a resize re-wraps only
+ * what is near the screen (terminal/kitty_reflow.c); at the end the rest. */
+void term_set_dragging(Terminal *term, bool on);
 void term_search_open(Terminal *term);
 void term_search_close(Terminal *term);
 void term_search_set(Terminal *term, const wchar_t *text);
@@ -1200,6 +1221,10 @@ extern bool term_textrun_off;
  * compresses whatever is still waiting. Both for test/test_textrun.c. */
 extern bool term_sbdefer_off;
 void term_sb_compact_now(Terminal *term);
+/* The rows a width change re-wraps at once and per timer tick after it
+ * (terminal/kitty_reflow.c): small in test/test_reflow.c, so the timer's
+ * part runs on little text. */
+extern int kitty_rf_sync_rows, kitty_rf_slice_rows;
 #endif
 
 #ifdef MOD_FAR2L

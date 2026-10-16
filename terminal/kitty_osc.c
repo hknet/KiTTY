@@ -531,15 +531,19 @@ static void term_osc133(Terminal *term)
       case PS133_PROMPT:
         mark_set(term, term->curs.y, LATTR_PROMPT, true);
         term->marks_seen = true;
+        term->at_prompt = true;
         break;
       case PS133_INPUT:
         mark_set(term, term->curs.y, LATTR_INPUT, true);
         im_add(term, term->curs.y, term->curs.x);
+        term->at_prompt = true;
         break;
       case PS133_OUTPUT:
         mark_set(term, term->curs.y, LATTR_OUTPUT, true);
+        term->at_prompt = false;
         break;
       case PS133_END:
+        term->at_prompt = false;
         if (code > 0) {
             y = mark_find_up(term, term->curs.y, LATTR_PROMPT);
             if (y != INT_MIN)

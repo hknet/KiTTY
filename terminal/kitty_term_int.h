@@ -11,6 +11,28 @@
  * released with term_release_line. */
 termline *kitty_term_lineptr(Terminal *term, int y);
 
+/* terminal.c for terminal/kitty_reflow.c: the line store's tools. A
+ * scrollback entry is a void *, compressed or not. */
+termline *kitty_tl_new(Terminal *term, int cols);
+void kitty_tl_free(termline *line);
+void kitty_tl_copychar(termline *dst, int x, termchar *src);
+void kitty_sb_peek(void *entry, int *cols, unsigned *lattr, bool *trusted);
+termline *kitty_sb_view(void *entry);
+termline *kitty_sb_take(Terminal *term, void *entry);
+void *kitty_sb_make(Terminal *term, termline *line);
+void kitty_sb_drop(Terminal *term, void *entry);
+
+/* kitty_reflow.c for term_size: the main screen and the scrollback cut
+ * again at newcols. viewtop (may be NULL): an index into scrollback +
+ * screen, moved to where its text went. */
+void kitty_reflow(Terminal *term, int newcols, int *viewtop);
+/* kitty_reflow.c's timer: the next slice of the older rows. */
+void kitty_reflow_step(Terminal *term);
+/* terminal.c for kitty_reflow.c: scrollback rows above screen row y (< 0)
+ * changed - the selection there goes, the marks, the search and the
+ * scrollbar are brought up to date, the view repainted. */
+void kitty_term_rows_moved(Terminal *term, int y);
+
 /* kitty_search.c for terminal.c: the hooks where lines leave the top, the
  * lines are re-laid, output arrives, the settings are read again and the
  * terminal goes; and the hit spans one row is painted with. */

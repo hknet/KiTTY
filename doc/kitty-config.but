@@ -3682,6 +3682,21 @@ stored with the session (\c{SixelImages}).
 How far one notch of the mouse wheel scrolls the terminal. The system
 default is three.
 
+\S{kitty-cfg-rewrap} \q{Re-wrap lines when the width changes}
+
+When the window gets narrower or wider, lines that wrapped are joined
+and cut again at the new width, in the scrollback and on the screen, as
+in Windows Terminal. A line the program ended stays a line of its own,
+and pictures move with their line. Full-screen programs (vim, less, mc)
+redraw themselves and are left alone, and so are double-width rows and
+the local prompts before the session starts. While the shell sits at
+its prompt and sends the prompt marks (OSC 133, shell integration), the
+prompt line stays as the shell drew it and the shell draws it again at
+the new width; without the marks, a shell that redraws its prompt on a
+resize (bash, zsh, fish) can leave a doubled prompt row.
+Off: each row keeps the width it was written at, as in PuTTY. On by
+default; stored with the session (\c{RewrapOnResize}).
+
 \S{kitty-cfg-behaviour} Window behaviour
 
 \b \q{Closing the window} holds PuTTY's \q{Close window on exit}

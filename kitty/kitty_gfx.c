@@ -2939,6 +2939,18 @@ void gfx_clear_all(GfxStore *st, int screen)
     rel_follow(st);
 }
 
+void gfx_remap(GfxStore *st, int screen,
+               void (*map)(void *ctx, long *abs_line, int *col), void *ctx)
+{
+    int i;
+    for (i = 0; i < st->n_pls; i++) {
+        GfxPlacement *pl = &st->pls[i];
+        if (!pl->virt && !pl->parent && pl->screen == screen)
+            map(ctx, &pl->abs_line, &pl->col);
+    }
+    rel_follow(st);
+}
+
 void gfx_reset(GfxStore *st)
 {
     GfxStore fresh;

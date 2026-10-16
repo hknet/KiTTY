@@ -106,6 +106,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_sixelimages        "kitty-cfg-sixelimages"
 #define WINHELP_CTX_kitty_reportvt220        "kitty-cfg-reportvt220"
 #define WINHELP_CTX_kitty_wheel              "kitty-cfg-wheel"
+#define WINHELP_CTX_kitty_rewrap             "kitty-cfg-rewrap"
 #define WINHELP_CTX_kitty_behaviour          "kitty-cfg-behaviour"
 #define WINHELP_CTX_kitty_window_name        "kitty-cfg-window-name"
 #define WINHELP_CTX_kitty_winpos_remember    "kitty-cfg-winpos-remember"

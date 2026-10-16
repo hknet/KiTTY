@@ -2025,6 +2025,119 @@ bool term_sbdefer_off = true;          /* no compression to defer */
 void term_sb_compact_now(Terminal *term) { (void)term; }
 #endif
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the line store's tools for terminal/kitty_reflow.c
+ * (kitty_term_int.h). A scrollback entry is passed as void *: compressed or
+ * kept as it is (KITTY_SB_DEFER), each of these takes either.
+ */
+termline *kitty_tl_new(Terminal *term, int cols)
+{
+    return newtermline(term, cols, false);
+}
+
+void kitty_tl_free(termline *line)
+{
+    freetermline(line);
+}
+
+void kitty_tl_copychar(termline *dst, int x, termchar *src)
+{
+    copy_termchar(dst, x, src);
+}
+
+/* The entry's column count, line attributes and trust, without unpacking
+ * it: the compressed form starts with them (compressline_no_free). */
+void kitty_sb_peek(void *entry, int *cols, unsigned *lattr, bool *trusted)
+{
+    compressed_scrollback_line *c = entry;
+    const unsigned char *p = (const unsigned char *)(c + 1);
+    size_t i = 0;
+    unsigned v[2] = { 0, 0 };
+    int k, shift;
+
+#ifdef KITTY_SB_DEFER
+    if (sb_is_raw(c)) {
+        termline *line = ((sb_raw_line *)c)->line;
+        *cols = line->cols;
+        *lattr = line->lattr;
+        *trusted = line->trusted;
+        return;
+    }
+#endif
+    for (k = 0; k < 2; k++)            /* the column count, then the lattr */
+        for (shift = 0; i < c->len && shift < 28; shift += 7) {
+            v[k] |= (unsigned)(p[i] & 0x7F) << shift;
+            if (!(p[i++] & 0x80))
+                break;
+        }
+    *cols = (int)v[0];
+    *lattr = v[1] & 0xFFFF;
+    *trusted = (v[1] & 0x10000) != 0;
+}
+
+/* The entry's line to read; release it with term_release_line. */
+termline *kitty_sb_view(void *entry)
+{
+    return decompressline_no_free(entry);
+}
+
+/* The entry's line to keep (a screen row now); the entry is gone. */
+termline *kitty_sb_take(Terminal *term, void *entry)
+{
+    termline *line;
+#ifdef KITTY_SB_DEFER
+    sb_forget(term, entry);
+#endif
+    line = decompressline_and_free(entry);
+    line->temporary = false;
+    return line;
+}
+
+/* A scrollback entry made of line, which is gone. */
+void *kitty_sb_make(Terminal *term, termline *line)
+{
+    (void)term;
+    return compressline_and_free(line);
+}
+
+void kitty_term_rows_moved(Terminal *term, int y)
+{
+    int sblen;
+
+    /* more rows than the scrollback holds: the oldest go, as with output */
+    while ((sblen = count234(term->scrollback)) > term->savelines) {
+        compressed_scrollback_line *c = delpos234(term->scrollback, 0);
+        fm_sb_evicted(term);
+        kitty_search_sb_evicted(term);
+        term->gfx_sb_base++;
+        sb_forget(term, c);
+        free_compressed_line(c);
+    }
+    kitty_gfx_sb_trimmed(term);
+    if (term->tempsblines > sblen)
+        term->tempsblines = sblen;
+    if (term->disptop < -sblen)
+        term->disptop = -sblen;
+    if (term->selstate != NO_SELECTION && term->selstart.y < y)
+        deselect(term);
+    term->fm_rebuild = true;           /* the marks' line numbers */
+    term->im_count = 0;                /* the command columns */
+    kitty_search_relaid(term);
+    term->kd_all = true;
+    term->win_scrollbar_update_pending = true;
+    term_schedule_update(term);
+}
+
+void kitty_sb_drop(Terminal *term, void *entry)
+{
+#ifdef KITTY_SB_DEFER
+    sb_forget(term, entry);
+#endif
+    free_compressed_line(entry);
+}
+#endif
+
 /*
  * Call this whenever the terminal window state changes, to queue an
  * update. This also resets the phase of cursor blinking, so that the
@@ -2460,6 +2573,9 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->osc52_allowed = conf_get_int(term->conf, CONF_osc52_clipboard);
 #endif
     term->erase_to_scrollback = conf_get_bool(term->conf, CONF_erase_to_scrollback);
+#ifdef MOD_PERSO
+    term->rewrap = conf_get_bool(term->conf, CONF_rewrap_on_resize);
+#endif
     term->funky_type = conf_get_int(term->conf, CONF_funky_type);
     term->sharrow_type = conf_get_int(term->conf, CONF_sharrow_type);
     term->lfhascr = conf_get_bool(term->conf, CONF_lfhascr);
@@ -3187,6 +3303,14 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         term->tempsblines = 0;
         term->rows = 0;
     }
+#ifdef MOD_PERSO
+    /* KiTTY: a new width joins the wrapped rows and cuts them again
+     * (kitty_reflow.c), at the old row count; the rows are then moved
+     * below as before. The remembered top line moves with its text. */
+    if (term->rewrap && newcols != term->cols && term->cols > 0 &&
+        term->rows > 0)
+        kitty_reflow(term, newcols, keepview ? &viewtop : NULL);
+#endif
 
     /*
      * Resize the screen and scrollback. We only need to shift

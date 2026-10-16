@@ -424,6 +424,12 @@ void gfx_scroll_region(GfxStore *st, int screen, long top_abs, int top,
  * placements starting at or below abs_line are dropped. */
 void gfx_clear_below(GfxStore *st, int screen, long abs_line);
 
+/* The lines were cut again at another width (terminal/kitty_reflow.c):
+ * map moves each placement's anchor to where its cell went; the relative
+ * placements follow their parents. The picture itself is not changed. */
+void gfx_remap(GfxStore *st, int screen,
+               void (*map)(void *ctx, long *abs_line, int *col), void *ctx);
+
 /* ED 2 and a=d without keys: every placement not entirely above the screen. */
 void gfx_clear_screen(GfxStore *st, int screen, long top_abs);
 

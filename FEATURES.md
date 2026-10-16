@@ -1180,6 +1180,20 @@ Past 100 %, line-drawing characters no longer join up between rows — the gap b
 
 **How to enable:** nothing to switch on. The key is `search` in `[Shortcuts]` (Application > KiTTY++ Settings > Keys & Mouse > Shortcuts); Ctrl+Shift+F takes precedence over a sixth User Command, whose Ctrl+Shift+F would otherwise fire.
 
+### Lines re-wrap when the width changes
+
+When the window gets narrower or wider, lines that wrapped are joined and cut again at the new width, in the scrollback and on the screen, as in Windows Terminal: a long line that wrapped in a narrow window becomes one row again when the window grows.
+
+- A line the program ended stays a line of its own; the cursor stays on the same character, so the shell goes on writing in the right place.
+- Pictures (kitty graphics, Sixel, iTerm2) move with their line; search hits and the failed-command marks follow their text.
+- Rows a shorter window pushed into the scrollback still come back when it grows, also after a width change.
+- With a long scrollback the newest rows and the rows in view are re-wrapped at once, the rest within a second or two after.
+- While the window frame is dragged, the lines re-wrap each time the frame rests a moment, and the server is told the new size then; the older scrollback follows when the drag ends.
+- Left alone: full-screen programs (vim, less, mc), which redraw themselves; double-width rows; the local prompts before the session starts.
+- While the shell sits at its prompt and sends the prompt marks (OSC 133, shell integration), the prompt line stays as the shell drew it and the shell draws it again at the new width. Without the marks, a shell that redraws its prompt on a resize (bash, zsh, fish) can leave a doubled prompt row, as in Windows Terminal.
+
+**How to enable:** on by default. **Window > Re-wrap lines when the width changes** (`RewrapOnResize`); off, each row keeps the width it was written at, as in PuTTY.
+
 ### Scroll position across a resize
 
 Resizing the window keeps the scroll position: a view scrolled up into the scrollback goes on showing the same lines after the window grows or shrinks, and only a view that was at the bottom follows the bottom. New output still resets the view only when **Window > Reset scrollback on display activity** is on; output arriving within a second after a resize, the remote side redrawing for the new size, does not reset the view either.

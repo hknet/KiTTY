@@ -532,6 +532,14 @@ void kitty_gfx_row_deleted(Terminal *term, long abs_line)
         gfx_clear_below(term->gfx, 0, abs_line);
 }
 
+void kitty_gfx_reflowed(Terminal *term,
+                        void (*map)(void *ctx, long *abs_line, int *col),
+                        void *ctx)
+{
+    if (term->gfx)
+        gfx_remap(term->gfx, 0, map, ctx);
+}
+
 void kitty_gfx_clear_screen(Terminal *term)
 {
     if (!term->gfx)

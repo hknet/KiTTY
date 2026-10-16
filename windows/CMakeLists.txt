@@ -603,6 +603,7 @@ add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
   ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
@@ -673,6 +674,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
   ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
@@ -696,6 +698,42 @@ target_include_directories(test_textrun PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
 # build only.
 target_compile_definitions(test_textrun PRIVATE MOD_PERSO MOD_FAR2L KITTY_TEST_HOOKS)
 target_link_libraries(test_textrun
+  guiterminal settings eventloop utils ${platform_libraries})
+
+# A new width re-wraps the main screen and the scrollback
+# (test/test_reflow.c): written at one width and resized must read as
+# written at the other. Same build of terminal.c as test_textrun, whose
+# switches (KITTY_TEST_HOOKS) it uses to keep the scrollback compressed or
+# not.
+add_executable(test_reflow
+  ${CMAKE_SOURCE_DIR}/test/test_reflow.c
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
+  # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_ctx3008.c   # KiTTY: OSC 3008 contexts, kitty_osc.c's
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c        # KiTTY: far2l images, as test_osc52
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx.c               # KiTTY: kitty graphics, as test_osc52
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sixel.c             # KiTTY: Sixel, as test_osc52
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  no-jump-list.c)
+target_include_directories(test_reflow PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
+# KITTY_TEST_HOOKS: the switches the test flips (terminal.h) exist in this
+# build only.
+target_compile_definitions(test_reflow PRIVATE MOD_PERSO MOD_FAR2L KITTY_TEST_HOOKS)
+target_link_libraries(test_reflow
   guiterminal settings eventloop utils ${platform_libraries})
 
 # The master password's Argon2id cost, checked against the limits PuTTY 0.85
@@ -880,6 +918,7 @@ add_executable(kitty
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
   ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
   # actually compiled: the settings library is built without MOD_PERSO, where
@@ -981,6 +1020,7 @@ add_executable(kitty_portable
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
   ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c: see the comment on the kitty target above (and the note there on
   # why config.c must NOT be listed)

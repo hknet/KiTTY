@@ -110,6 +110,13 @@ void kitty_gfx_sb_trimmed(Terminal *term);
  * blank rows when the screen grows). */
 void kitty_gfx_row_deleted(Terminal *term, long abs_line);
 
+/* The main screen and the scrollback were cut again at another width
+ * (terminal/kitty_reflow.c): each placement moves with the cell it is
+ * anchored to; map gives the new absolute line and column. */
+void kitty_gfx_reflowed(Terminal *term,
+                        void (*map)(void *ctx, long *abs_line, int *col),
+                        void *ctx);
+
 /* ED 2: every placement on the screen shown goes. */
 void kitty_gfx_clear_screen(Terminal *term);
 

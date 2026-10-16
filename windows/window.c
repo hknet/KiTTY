@@ -991,6 +991,8 @@ extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
  * 8707). */
 #define TIMER_LOGROTATION 8713
 #define TIMER_MODALPUMP   8714   /* KiTTY: pending work during a move or a menu */
+#define TIMER_RESIZEREST  8718   /* KiTTY: the frame rested during a drag */
+#define RESIZE_REST_MS    150
 #endif
 #ifdef MOD_LAUNCHER
 /* A window the launcher hid has no taskbar button and no tray icon: only that
@@ -5368,6 +5370,13 @@ static void wm_size_resize_term(WinGuiSeat *wgs, LPARAM lParam)
          * numbers of resize events.
          */
         wgs->need_backend_resize = true;
+#ifdef MOD_PERSO
+        /* KiTTY: once the frame rests RESIZE_REST_MS the terminal takes the
+         * size after all (TIMER_RESIZEREST), the lines re-wrapped and the
+         * server told - one resize per rest, not one per mouse step - so
+         * the drag shows what the size will look like. */
+        SetTimer(wgs->term_hwnd, TIMER_RESIZEREST, RESIZE_REST_MS, NULL);
+#endif
     } else {
         term_size(wgs->term, h, w,
                   conf_get_int(wgs->conf, CONF_savelines));
@@ -5464,6 +5473,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             gui_timing_pump();
             kitty_pace_frame_pump();
             run_toplevel_callbacks();
+            return 0;
+        }
+        if ((UINT_PTR)wParam == TIMER_RESIZEREST) {
+            KillTimer(hwnd, TIMER_RESIZEREST);
+            if (wgs && wgs->resizing && wgs->need_backend_resize) {
+                wgs->need_backend_resize = false;
+                term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
+                          conf_get_int(wgs->conf, CONF_width),
+                          conf_get_int(wgs->conf, CONF_savelines));
+                InvalidateRect(hwnd, NULL, true);
+            }
             return 0;
         }
         if ((UINT_PTR)wParam == TIMER_CLIPACTIVITY) {
@@ -7412,6 +7432,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         wgs->resizing = true;
         wgs->need_backend_resize = false;
 #ifdef MOD_PERSO
+        term_set_dragging(wgs->term, true);
         /* Windows' own loop owns the thread until the move ends; ours,
          * where network data is digested and the window updated, is
          * parked - the cursor blinks (a timer message) while `top` stands
@@ -7437,6 +7458,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                       conf_get_int(wgs->conf, CONF_savelines));
             InvalidateRect(hwnd, NULL, true);
         }
+#ifdef MOD_PERSO
+        KillTimer(hwnd, TIMER_RESIZEREST);
+        term_set_dragging(wgs->term, false);   /* the older rows now */
+#endif
         recompute_window_offset(wgs);
         break;
 #ifdef MOD_PERSO

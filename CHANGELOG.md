@@ -28,6 +28,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the searchfield turns red when nothing is found. The view stays put while the
   bar is open; Esc closes it and selects nothing. The bar can be dragged
   and a stored session keeps its place.
+- **Lines re-wrap when the width changes**, as in Windows Terminal: a
+  narrower or wider window joins the rows of a wrapped line and cuts them
+  again, in the scrollback and on the screen. The cursor, pictures, search
+  hits and command marks move with their text; full-screen programs are
+  left alone, and so is the prompt while the shell sends the prompt marks
+  (OSC 133), so the shell's own redraw does not double it. Window >
+  "Re-wrap lines when the width changes" (`RewrapOnResize`, on by
+  default).
 - **Get File (kscp) checks the path on the clipboard** before it asks
   where to save (hknet/KiTTY#71): a file found on the server raises a
   notice and the Save-As opens as before; anything else opens a box that

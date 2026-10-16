@@ -6329,6 +6329,9 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     if (!GetPuttyFlag())
         ctrl_text(s, KT_WINDOW_TURN_OFF_WHERE_A_CLEARED,
                   HELPCTX(window_erased));
+    ctrl_checkbox(s, KT_WINDOW_REWRAP, NO_SHORTCUT,
+                  HELPCTX(kitty_rewrap), conf_checkbox_handler,
+                  I(CONF_rewrap_on_resize));
 
     /*
      * The Window/Appearance panel.

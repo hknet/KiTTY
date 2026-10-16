@@ -3339,6 +3339,29 @@ static void test_kitty_graphics(Mock *mk)
         fail("gfx: setting off", "the sequence was served");
     conf_set_bool(term->conf, CONF_kitty_graphics, true);
 
+    /* a new width: a picture moves with the line it was placed on
+     * (terminal/kitty_reflow.c) - the two rows of a wrapped line above it
+     * join and split; the lines of a running session are not trusted */
+    gfx_send(mk, "a=d", 0, 0);
+    term_set_trust_status(term, false);
+    feed_seq(mk, "\033[2J\033[H");
+    {
+        char line[101];
+        memset(line, 'w', 100);
+        line[100] = '\0';
+        feed_seq(mk, line);            /* rows 0 and 1 at 80 columns */
+    }
+    feed_seq(mk, "\r\n");
+    gfx_send(mk, "a=T,f=24,s=8,v=16,i=18", 8, 16);
+    gfx_expect_row(mk, "gfx: re-wrap, placed", 18, 2);
+    term_size(term, 24, 120, 100);
+    gfx_expect_row(mk, "gfx: re-wrap, wider", 18, 1);
+    term_size(term, 24, 40, 100);
+    gfx_expect_row(mk, "gfx: re-wrap, narrower", 18, 3);
+    term_size(term, 24, 80, 100);
+    gfx_expect_row(mk, "gfx: re-wrap, back", 18, 2);
+    term_set_trust_status(term, true);
+
     /* a=d without keys: the screen's placements; a reset: everything */
     gfx_send(mk, "a=d", 0, 0);
     if (term->gfx->n_pls != 0)

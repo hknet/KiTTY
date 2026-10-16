@@ -371,6 +371,7 @@
 #define KT_WINDOW_RESET_SCROLLBACK_ON_DISPLAY_ACTIVITY "Reset scrollback on display activity"
 #define KT_WINDOW_PUSH_ERASED_TEXT_INTO_SCROLLBACK   "Push erased text into scrollback"
 #define KT_WINDOW_TURN_OFF_WHERE_A_CLEARED           "Turn off where a cleared screen must not stay readable."
+#define KT_WINDOW_REWRAP                             "Re-wrap lines when the width changes"
 
 /* Window/Appearance */
 #define KT_APPEARANCE_ADJUST_THE_USE                 "Adjust the use of the cursor"
