@@ -911,6 +911,31 @@ static void kitty_tray_balloon_async( const char *title, const char *msg, const 
 #define KTX_WM_DONE   (WM_APP+12)
 #define KTX_ID_EDIT   2001
 #define KTX_ID_CLOSE  2002
+/* KiTTY: a run on the session's shared connection (-share) for which the
+ * server refused another channel (OpenSSH MaxSessions, "Server refused to
+ * open main channel") is started once more on kscp's own login. The starter
+ * leaves here what starting it again takes; kitty_run_xfer hands it to the
+ * transfer window, whose end starts it. kx_noshare: the builder
+ * (kx_kscp_line) leaves -share out, for that one run. */
+#define KX_REFUSED_CHANNEL "Server refused to open"
+/* kscp -batch met a prompt it may not show (a one-time code, a password it
+ * was not given) - windows/console.c */
+#define KX_BATCH_PROMPT    "Cannot answer interactive prompts"
+typedef struct {
+	int kind ;                     /* 0 none, 1 Send (kx_send_one), 2 Get (GetOneFileStaged) */
+	char *dir, *file, *dist, *localdir, *localfile, *final ;
+	kx_drop_t *drop ;
+	int drop_idx ;
+	HANDLE lock ;
+} kx_rerun_t ;
+static kx_rerun_t kx_rerun_next ;      /* for the next kitty_run_xfer */
+static int kx_noshare ;
+static void kx_rerun_free( kx_rerun_t *r ) {
+	sfree( r->dir ) ; sfree( r->file ) ; sfree( r->dist ) ;
+	sfree( r->localdir ) ; sfree( r->localfile ) ; sfree( r->final ) ;
+	memset( r, 0, sizeof(*r) ) ;
+}
+
 struct ktx_win {
 	HWND hwnd, edit, closebtn, parent ;
 	HANDLE proc, rd, thread ;
@@ -931,6 +956,7 @@ struct ktx_win {
 	int cleanup_failed ;           /* the staging folder could not be removed */
 	kx_drop_t *drop ;              /* the drop whose paths are typed, NULL = none */
 	int drop_idx ;                 /* this run's file in it */
+	kx_rerun_t rerun ;             /* how to start it again without -share */
 	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
 	char curline[2048] ;   /* current uncommitted line */
@@ -1176,6 +1202,17 @@ static void ktx_subclass_child( HWND h ) {
 }
 
 /* This run is over for its drop (ok: kscp succeeded); once only. */
+/* Does kscp's output contain s? */
+static int ktx_said( struct ktx_win *w, const char *s ) {
+	int n = GetWindowTextLengthA( w->edit ), hit ;
+	char *t = snewn( n + 1, char ) ;
+	t[0] = '\0' ;
+	GetWindowTextA( w->edit, t, n + 1 ) ;
+	hit = strstr( t, s ) != NULL ;
+	sfree( t ) ;
+	return hit ;
+}
+
 static void ktx_drop_done( struct ktx_win *w, int ok ) {
 	kx_drop_t *d = w->drop ;
 	w->drop = NULL ;
@@ -1265,6 +1302,25 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 		} else {
 			char *m ;
+			if( !w->cancelled && w->rerun.kind && ktx_said( w, KX_REFUSED_CHANNEL ) ) {
+				/* The shared connection would not carry this run: once more
+				 * on kscp's own login, in a window of its own that shows why.
+				 * That run takes over the drop and the staging folder. */
+				kx_rerun_t r = w->rerun ;
+				memset( &w->rerun, 0, sizeof(w->rerun) ) ;
+				w->drop = NULL ;
+				if( r.kind == 2 ) {
+					w->lock = NULL ;
+					sfree( w->stage_dir ) ; w->stage_dir = NULL ;
+				}
+				kx_noshare = 1 ;
+				if( r.kind == 1 ) kx_send_one( w->parent, r.dir, r.file, r.dist, r.drop, r.drop_idx ) ;
+				else GetOneFileStaged( w->parent, r.dir, r.file, r.localdir, r.localfile, r.final, r.lock ) ;
+				kx_noshare = 0 ;
+				kx_rerun_free( &r ) ;
+				DestroyWindow( hwnd ) ;
+				return 0 ;
+			}
 			ktx_drop_done( w, 0 ) ;   /* a failed upload types nothing */
 			/* Cancel or failure: drop the staging folder too (design: removed
 			 * after success, cancel or failure), without moving anything out. */
@@ -1278,6 +1334,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			} else {
 				const char *hint = ( code==127 )
 					? KT_XFER_HINT_127
+					: ktx_said( w, KX_BATCH_PROMPT ) ? KT_XFER_HINT_PROMPT
 					: "" ;
 				m = dupprintf( KT_XFER_FAILED_LINE,
 				               what, (unsigned long)code, hint ) ;
@@ -1334,6 +1391,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			sfree( w->open_file ) ; sfree( w->open_dir ) ;
 			if( w->lock && w->lock != INVALID_HANDLE_VALUE ) CloseHandle( w->lock ) ;
 			sfree( w->stage_dir ) ; sfree( w->final_dir ) ;
+			kx_rerun_free( &w->rerun ) ;
 			free( w ) ;
 			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
 		}
@@ -1370,7 +1428,7 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	}
 	SECURITY_ATTRIBUTES sa ; HANDLE rd=NULL, wr=NULL ;
 	memset( &sa, 0, sizeof(sa) ) ; sa.nLength = sizeof(sa) ; sa.bInheritHandle = TRUE ;
-	if( !CreatePipe( &rd, &wr, &sa, 0 ) ) return -1 ;
+	if( !CreatePipe( &rd, &wr, &sa, 0 ) ) { kx_rerun_free( &kx_rerun_next ) ; return -1 ; }
 	SetHandleInformation( rd, HANDLE_FLAG_INHERIT, 0 ) ;
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
@@ -1384,14 +1442,17 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	                                         (HANDLE[]){ wr, pwmap }, 2 )
 	          : !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
+		kx_rerun_free( &kx_rerun_next ) ;
 		MessageBox( NULL, KT_XFER_LAUNCH_FAILED,
 		            KT_CAP_XFER, MB_OK|MB_ICONERROR ) ;
 		return -1 ;
 	}
 	CloseHandle( wr ) ; CloseHandle( pi.hThread ) ;
 	struct ktx_win *w = (struct ktx_win *)malloc( sizeof(*w) ) ;
-	if( !w ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; return -1 ; }
+	if( !w ) { CloseHandle( pi.hProcess ) ; CloseHandle( rd ) ; kx_rerun_free( &kx_rerun_next ) ; return -1 ; }
 	memset( w, 0, sizeof(*w) ) ;
+	w->rerun = kx_rerun_next ;              /* the window owns it now */
+	memset( &kx_rerun_next, 0, sizeof(kx_rerun_next) ) ;
 	w->parent = parent ; w->proc = pi.hProcess ; w->rd = rd ;
 	w->what = dupstr( what ? what : KT_XFER_TRANSFER ) ;
 	w->open_file = ( open_file && open_file[0] ) ? dupstr( open_file ) : NULL ;
@@ -1419,12 +1480,16 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	SetForegroundWindow( hwnd ) ;          /* bring the transfer window to the front */
 	BringWindowToTop( hwnd ) ;
 	SetFocus( w->closebtn ) ;              /* Esc reaches the button, not the bare frame */
-	if( intro && *intro ) {          /* show the target (user@host:dir) up top */
+	{ /* a re-run without -share shows why first */
+	  char *again = kx_noshare ? dupprintf( "%s\r\n\r\n%s", KT_XFER_SHARE_REFUSED, intro ? intro : "" ) : NULL ;
+	  const char *top = again ? again : intro ;
+	  if( top && *top ) {            /* show the target (user@host:dir) up top */
 		int n = GetWindowTextLength( w->edit ) ;
 		SendMessageA( w->edit, EM_SETSEL, n, n ) ;
-		SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)intro ) ;
+		SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)top ) ;
 		w->committed = GetWindowTextLength( w->edit ) ;
-	}
+	  }
+	  sfree( again ) ; }
 	w->thread = CreateThread( NULL, 0, ktx_reader_thread, w, 0, NULL ) ;
 	return 0 ;
 }
@@ -1801,6 +1866,7 @@ typedef struct {
 	int pw_mode ;              /* how the password travelled (kx_pw_handover_line) */
 	size_t pw_at, pw_len ;     /* where the password landed, for the redacted log */
 	size_t px_at, px_len ;     /* ... and the proxy password file's path */
+	int shared ;               /* -share went on the line */
 } kx_kscp_line_t ;
 
 /* Starts `buffer` (BC bytes); 0 when there is no helper to start. */
@@ -1832,7 +1898,10 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 	 * and does not log in again - no second password, no second 2FA. Only
 	 * then: switching sharing on for a session that has it off is not
 	 * kscp's to decide. */
-	if( conf_get_bool(conf, CONF_ssh_connection_sharing) ) bcat( buffer, BC, "-share " ) ;
+	if( conf_get_bool(conf, CONF_ssh_connection_sharing) && !kx_noshare ) {
+		bcat( buffer, BC, "-share " ) ;
+		k->shared = 1 ;
+	}
 
 	/* The session's own kscp port first; an empty field falls through to the
 	 * global kscp port and then to the session's port (kitty_xfer_default_port). */
@@ -1965,6 +2034,10 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 
 	const size_t BC = sizeof(buffer) ;
 	if( !kx_kscp_line( buffer, BC, &k ) ) { kx_drop_settle( drop, drop_idx, 0 ) ; return ; }
+	/* kscp runs without a console anybody sees: a question (a one-time
+	 * code) would wait there unseen. -batch ends the run with the reason,
+	 * and the window shows the cure (KT_XFER_HINT_PROMPT). */
+	bcat( buffer, BC, "-batch " ) ;
 
 	/* source path (single quoted argument) */
 	{
@@ -2005,6 +2078,14 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	  if( k.shared ) {              /* a refused channel: again on its own login */
+		kx_rerun_next.kind = 1 ;
+		kx_rerun_next.dir = dupstr( directory ) ;
+		kx_rerun_next.file = dupstr( filename ) ;
+		kx_rerun_next.dist = dupstr( distantdir ) ;
+		kx_rerun_next.drop = drop ;
+		kx_rerun_next.drop_idx = drop_idx ;
+	  }
 	  if( kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
 	                      drop, drop_idx, k.pwmap ) != 0 )
 		kx_drop_settle( drop, drop_idx, 0 ) ;   /* not started: the window never took it */
@@ -2110,6 +2191,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
 
     const size_t BC = sizeof(buffer) ;
     if( !kx_kscp_line( buffer, BC, &k ) ) return ;
+    bcat( buffer, BC, "-batch " ) ;    /* no unseen questions: see kx_send_one */
 
     /* remote source user@host:path (single quoted argument) */
     {
@@ -2156,6 +2238,15 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
       char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
       /* Staged (wildcard/folder): kscp wrote into `dir` (the staging folder);
        * on success the files move to final_dir. The balloon opens final_dir. */
+      if( k.shared ) {              /* a refused channel: again on its own login */
+          kx_rerun_next.kind = 2 ;
+          kx_rerun_next.dir = dupstr( directory ) ;
+          kx_rerun_next.file = dupstr( filename ) ;
+          kx_rerun_next.localdir = dupstr( localdir ) ;
+          kx_rerun_next.localfile = dupstr( localfile ) ;
+          kx_rerun_next.final = dupstr( final_dir ) ;
+          kx_rerun_next.lock = lock ;
+      }
       kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one,
                       final_dir ? final_dir : dir,
                       final_dir ? dir : NULL, final_dir, lock, NULL, 0, k.pwmap ) ;
@@ -2542,6 +2633,7 @@ typedef struct {
 	int result ;                  /* GFS_*, or -1 = no answer in time */
 	unsigned long long size ;
 	char err[512] ;
+	int shared, retried ;         /* ran with -share; already ran again without */
 } kx_gf_check_t ;
 
 static HWND kx_gf_msgwin = NULL ;     /* takes the worker's result */
@@ -2637,6 +2729,15 @@ static DWORD WINAPI kx_gf_thread( LPVOID p ) {
 	return 0 ;
 }
 
+/* Can kscp log in on its own without a prompt: a password, a key file
+ * or an agent? */
+static int kx_gf_own_login( void ) {
+	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
+	if( kx_helper_keyfile( conf ) != NULL ) return 1 ;
+	if( conf_get_bool( conf, CONF_tryagent ) && agent_exists() ) return 1 ;
+	return 0 ;
+}
+
 /* Can kscp log in without asking anybody? See the head comment. */
 static int kx_gf_silent_login( void ) {
 	if( conf_get_bool( conf, CONF_ssh_connection_sharing ) ) return 1 ;
@@ -2688,6 +2789,7 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	if( !ok ) return 0 ;
 	CloseHandle( pi.hThread ) ;
 	c->proc = pi.hProcess ;
+	c->shared = k.shared ;
 	t = CreateThread( NULL, 0, kx_gf_thread, c, 0, NULL ) ;
 	if( !t ) {
 		TerminateProcess( c->proc, 1 ) ;
@@ -2831,6 +2933,21 @@ static void kx_gf_open_box( HWND owner, char *why, char *text ) {
 static void kx_gf_checked( kx_gf_check_t *c ) {
 	char *why = NULL, *msg ;
 	char size[32] ;
+	/* the shared connection refused the check another channel: once more on
+	 * kscp's own login, where it needs nobody to answer anything */
+	if( c->shared && !c->retried && c->result == GFS_NONE && strstr( c->err, KX_REFUSED_CHANNEL )
+	    && kx_gf_own_login() && IsWindow( c->owner ) ) {
+		int ok ;
+		c->retried = 1 ;
+		if( c->proc ) { CloseHandle( c->proc ) ; c->proc = NULL ; }
+		if( c->rd_out ) { CloseHandle( c->rd_out ) ; c->rd_out = NULL ; }
+		if( c->rd_err ) { CloseHandle( c->rd_err ) ; c->rd_err = NULL ; }
+		c->result = GFS_NONE ; c->size = 0 ; c->err[0] = '\0' ;
+		kx_noshare = 1 ;
+		ok = kx_gf_start_check( c ) ;
+		kx_noshare = 0 ;
+		if( ok ) return ;          /* the worker has it again; still checking */
+	}
 	kx_gf_checking = 0 ;
 	if( c->result != GFS_FILE ) kitty_notice_close_ctx( &kx_gf_checking_token ) ;
 	if( !IsWindow( c->owner ) ) { kx_gf_check_free( c ) ; return ; }

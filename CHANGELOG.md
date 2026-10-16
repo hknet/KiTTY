@@ -66,6 +66,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   setting.** The session icon file, the URL browser, the background image's
   Next/Previous and slideshow, the key file for Send File and Get File, and
   a custom GSSAPI library each passed the path to Windows as typed.
+- **A transfer whose login requires a one-time passcode no longer waits
+  forever unseen.** kscp had no visible place for the prompt, so Send and Get
+  waited until Cancel. Now the transfer ends with the reason, and its window
+  shows the possible cure:
+  Connection > SSH > "Share SSH connections if possible",
+  so transfers can ride on the open connection without a second login.
+- **A transfer on a shared connection that the server refuses another
+  channel** (OpenSSH `MaxSessions`) starts once more on its own login
+  instead of failing.
 
 ## 0.85.1.16-beta — 2026-10-15
 

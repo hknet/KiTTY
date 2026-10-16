@@ -2367,6 +2367,14 @@
         "subsystem (command not found). Try switching the transfer " \
         "protocol (Connection -> SSH -> WinSCP) between SCP " \
         "and SFTP, or check the server's sftp-server/scp."
+/* kitty_xfer.c: kscp -batch met a prompt it may not show (KX_BATCH_PROMPT) */
+#define KT_XFER_HINT_PROMPT                          "\r\n\r\nThe login needs an answer kscp cannot give here, such " \
+        "as a one-time code for a second login step. A session that shares " \
+        "its connection does not log in again: Connection > SSH > \"Share SSH " \
+        "connections if possible\"."
+/* kitty_xfer.c: the first line of a transfer started again without -share */
+#define KT_XFER_SHARE_REFUSED                        "The server refused another channel on the shared connection, " \
+        "so this transfer logs in on its own."
 #define KT_XFER_FAILED_LINE                          "\r\n==== %s FAILED  (kscp exit code %lu) ====%s\r\n"
 #define KT_XFER_FAILED_TITLE                         "KiTTY++ transfer - FAILED (exit %lu)"
 #define KT_XFER_LAUNCH_FAILED                        "Could not launch the transfer client (kscp)."

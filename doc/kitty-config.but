@@ -970,6 +970,13 @@ in that window, which shows kscp's output as it arrives; when it succeeds
 a tray balloon reports the completion, and the window closes unless this
 box is on.
 
+\b \c{kscp} has no window of its own and cannot prompt for a one-time
+code: a transfer whose login requires one ends with that reason. With
+\q{Share SSH connections if possible} (Connection > SSH) transfers ride
+on the terminal's connection instead - no second login. When the server
+allows no further channel there, the transfer starts once more on its
+own login.
+
 Sending a file from this PC to the host, with \c{kscp}:
 
 \n Right-click the title bar (or open the window menu) and choose
