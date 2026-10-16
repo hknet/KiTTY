@@ -61,7 +61,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
-- **Tools > Open log file works with a variable in the log name**
+- **Tools > Open Logfile works with a variable in the log name**
   (hknet/KiTTY#70). A log file name such as
   `%USERPROFILE%\logs\kitty &H.log` was written correctly, but opening it
   from the menu failed with "Can not find specified file (error 2)".

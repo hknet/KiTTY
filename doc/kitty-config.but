@@ -1924,7 +1924,7 @@ the current settings.
 \b \q{Open the editor with the clipboard} - the editor loaded with the
 clipboard; Ctrl+Shift+F2.
 
-\b \q{Open the log file} - open this session's log file with whatever
+\b \q{Open the Logfile} - open this session's log file with whatever
 opens .log files.
 
 \b \q{Print all} - print the whole buffer; F7.
