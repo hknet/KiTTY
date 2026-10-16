@@ -897,7 +897,7 @@ permission reachable two ways. And there is no \e{Allow} for reads: a
 standing permission to read the clipboard comes from the dialog and
 its grant, never from a setting.
 
-\S{kitty-cfg-osc52-notices} The Notices panel
+\S{kitty-cfg-osc52-notices} The Notifications panel
 
 How KiTTY shows you a permission is live or has just been used. A
 permission you have forgotten about is the thing that makes a standing
@@ -3548,9 +3548,62 @@ for full-screen programs whose redraws arrive slowly over a slow link.
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
 
+\S{kitty-cfg-failedmarks} \q{Mark failed commands (OSC 133)}
+
+On the Terminal > Shell Integration panel.
+
+With the shell integration on the host (\c{docs/OSC-INTEGRATION.md}),
+the shell marks every prompt and reports each command's exit code (OSC
+133). A command that ended with a code other than 0 gets a thin red
+line along the top of its prompt line, and a red tick in the mark strip
+beside the scrollbar shows where it is in the scrollback. \c{grep}
+without a match also exits 1 and is marked too.
+
+The prompt marks are kept either way: \c{Alt+PgUp} and \c{Alt+PgDn}
+jump to the previous and next prompt, \c{Alt+Shift+PgUp} and
+\c{Alt+Shift+PgDn} to the previous and next failed command,
+\c{Alt+End} selects a command's output and \c{Alt+Home} the command line
+itself, without the prompt (Application > KiTTY++ Settings > Keys & Mouse
+> Shortcuts). \c{Alt+Home} needs the B mark, the start of the typed
+command: the optional line of the shell integration for bash, zsh and
+fish, or a program that sends it, such as pi. On by default; stored with
+the session (\c{FailedCommandMarks}).
+
+\S{kitty-cfg-ctxrootframe} \q{Red frame while the host reports root (OSC 3008)}
+
+On the Terminal > Shell Integration panel.
+
+With OSC 3008 on the host (systemd 257 or later), the window's title
+bar and border turn dark red while the innermost context runs as root:
+\c{run0} without \c{-u}, a context whose target user is
+\c{root}, or a shell logged in as root. They return to normal when that context ends or the
+connection does. This is what the host reports, not a check KiTTY++
+makes. A clipboard tint wins for its few seconds, and workplace proxy
+mode's green wins over the red. Windows 11 only: Windows 10 does not
+let a program colour the frame. On by default; stored with the
+session (\c{ContextRootFrame}).
+
+\S{kitty-cfg-ctxroottint} \q{Tinted background as root or as a switched user (OSC 3008)}
+
+On the Terminal > Shell Integration panel.
+
+With OSC 3008 on the host (systemd 257 or later), the terminal's
+default background shifts slightly towards red while the innermost
+context runs as root: \c{run0} without \c{-u}, a context whose target
+user is \c{root}, or a shell logged in as root. It shifts towards
+yellow while it runs as another user through a switch (\c{run0 -u}),
+as run0 itself does; a login as another user is not tinted. A quieter
+sign than the red frame, for the working day rather than an alarm.
+Text and cells with a colour of their own keep it, and what
+the terminal reports as its background (OSC 11) stays the configured
+colour. This is what the host reports, not a check KiTTY++ makes.
+How strong the tint is: Application > KiTTY++ Settings > Appearance >
+\q{Background tint} (\k{kitty-cfg-appearance}). On by default; stored
+with the session (\c{ContextRootTint}).
+
 \S{kitty-cfg-hostnotify} \q{Desktop notifications (OSC 9, 777, 99, 7501, 3008)}
 
-Desktop notifications, on the Terminal > Desktop Notifications panel:
+Desktop notifications, on the Terminal > Notifications panel:
 lets a program on the host show a notice near the clock (OSC 9, OSC 777,
 OSC 99), for example when a long job ends. A program that reports its
 status (OSC 7501) raises one when it becomes blocked, fails or is done.
@@ -3573,6 +3626,18 @@ not focused, 2 always).
 far2l's own notifications, sent over the far2l terminal extensions,
 show as the same notice and follow this setting too.
 
+\S{kitty-cfg-ctxfailnotice} \q{Notice for failed commands (OSC 3008)}
+
+With OSC 3008 on the host (systemd 257 or later: \c{run0},
+\c{systemd-nspawn}, \c{systemd-vmspawn} and its shell profile script),
+every command the shell runs is a context that ends with how it ended.
+A command that ends as failed or crashed raises a notice with its
+command line and its exit status or signal, under the session's
+Terminal > Notifications setting (when not focused, by
+default). An interrupted command (Ctrl+C) raises none. Off by
+default; stored with the session (\c{ContextFailNotice}). See
+\c{docs/OSC-INTEGRATION.md}.
+
 \S{kitty-cfg-taskbarprogress} \q{Progress and status on the taskbar button (OSC 9;4, 7501)}
 
 Taskbar progress: lets a program on the host show progress on this
@@ -3591,65 +3656,6 @@ OSC 7501 share the bar: the last report wins.
 
 The progress is cleared when the session ends. On by default; stored
 with the session (\c{TaskbarProgress}).
-
-\S{kitty-cfg-failedmarks} \q{Mark failed commands (OSC 133)}
-
-With the shell integration on the host (\c{docs/OSC-INTEGRATION.md}),
-the shell marks every prompt and reports each command's exit code (OSC
-133). A command that ended with a code other than 0 gets a thin red
-line along the top of its prompt line, and a red tick in the mark strip
-beside the scrollbar shows where it is in the scrollback. \c{grep}
-without a match also exits 1 and is marked too.
-
-The prompt marks are kept either way: \c{Alt+PgUp} and \c{Alt+PgDn}
-jump to the previous and next prompt, \c{Alt+Shift+PgUp} and
-\c{Alt+Shift+PgDn} to the previous and next failed command,
-\c{Alt+End} selects a command's output and \c{Alt+Home} the command line
-itself, without the prompt (Application > KiTTY++ Settings > Keys & Mouse
-> Shortcuts). \c{Alt+Home} needs the B mark, the start of the typed
-command: the optional line of the shell integration for bash, zsh and
-fish, or a program that sends it, such as pi. On by default; stored with
-the session (\c{FailedCommandMarks}).
-
-\S{kitty-cfg-ctxfailnotice} \q{Notice for failed commands (OSC 3008)}
-
-With OSC 3008 on the host (systemd 257 or later: \c{run0},
-\c{systemd-nspawn}, \c{systemd-vmspawn} and its shell profile script),
-every command the shell runs is a context that ends with how it ended.
-A command that ends as failed or crashed raises a notice with its
-command line and its exit status or signal, under the session's
-Terminal > Desktop Notifications setting (when not focused, by
-default). An interrupted command (Ctrl+C) raises none. Off by
-default; stored with the session (\c{ContextFailNotice}). See
-\c{docs/OSC-INTEGRATION.md}.
-
-\S{kitty-cfg-ctxrootframe} \q{Red frame while the host reports root (OSC 3008)}
-
-With OSC 3008 on the host (systemd 257 or later), the window's title
-bar and border turn dark red while the innermost context runs as root:
-\c{run0} without \c{-u}, a context whose target user is
-\c{root}, or a shell logged in as root. They return to normal when that context ends or the
-connection does. This is what the host reports, not a check KiTTY++
-makes. A clipboard tint wins for its few seconds, and workplace proxy
-mode's green wins over the red. Windows 11 only: Windows 10 does not
-let a program colour the frame. On by default; stored with the
-session (\c{ContextRootFrame}).
-
-\S{kitty-cfg-ctxroottint} \q{Tinted background as root or as a switched user (OSC 3008)}
-
-With OSC 3008 on the host (systemd 257 or later), the terminal's
-default background shifts slightly towards red while the innermost
-context runs as root: \c{run0} without \c{-u}, a context whose target
-user is \c{root}, or a shell logged in as root. It shifts towards
-yellow while it runs as another user through a switch (\c{run0 -u}),
-as run0 itself does; a login as another user is not tinted. A quieter
-sign than the red frame, for the working day rather than an alarm.
-Text and cells with a colour of their own keep it, and what
-the terminal reports as its background (OSC 11) stays the configured
-colour. This is what the host reports, not a check KiTTY++ makes.
-How strong the tint is: Application > KiTTY++ Settings > Appearance >
-\q{Background tint} (\k{kitty-cfg-appearance}). On by default; stored
-with the session (\c{ContextRootTint}).
 
 \S{kitty-cfg-kittygraphics} \q{Show inline images (kitty graphics protocol)}
 

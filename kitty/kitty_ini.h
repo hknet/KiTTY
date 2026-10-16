@@ -989,7 +989,7 @@ char default_init_file_content[] =
 ;    seconds (default 15) - a program's status (OSC 7501), the desktop\n\
 ;    notifications and KiTTY++'s own. Not a time the program on the host\n\
 ;    set, nor a notice that waits for an answer. When a program's\n\
-;    status raises a notice is the session's Desktop Notifications setting.\n\
+;    status raises a notice is the session's Notifications setting.\n\
 ;noticeseconds=15\n\
 \n\
 ; PsTitleHintShown: written by KiTTY++ (1) once such a notice has offered\n\

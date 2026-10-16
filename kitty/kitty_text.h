@@ -307,14 +307,16 @@
 #define KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE     "Disable bracketed paste mode"
 #define KT_FEATURES_DISABLE_FOCUS_REPORTING          "Disable focus reporting"
 #define KT_FEATURES_SYNC_OUTPUT_MAX_HOLD             "Synchronized output (mode 2026) max hold, ms:"
-/* Terminal/Desktop Notifications: notifications from the host (kitty/kitty_hostnotify.c) */
+/* Terminal/Notifications: notifications from the host (kitty/kitty_hostnotify.c) */
 #define KT_FEATURES_HOSTNOTIFY_GROUP                 "Notifications from the host"
 #define KT_FEATURES_HOSTNOTIFY                       "Desktop notifications (OSC 9, 777, 99, 7501, 3008)"
 #define KT_FEATURES_HOSTNOTIFY_OFF                   "Off"
 #define KT_FEATURES_HOSTNOTIFY_UNFOCUSED             "When not focused"
 #define KT_FEATURES_HOSTNOTIFY_ALWAYS                "Always"
 #define KT_FEATURES_TASKBAR_PROGRESS                 "Progress and status on the taskbar button (OSC 9;4, 7501)"
+/* Terminal/Shell Integration: the panel title and its pointer to OSC 7 */
 #define KT_FEATURES_SHELLINT_GROUP                   "Shell Integration"
+#define KT_FEATURES_SHELLINT_OSC7                    "Track remote directory (OSC 7): Connection > File-Transfer-Settings."
 #define KT_FEATURES_FAILED_MARKS                     "Mark failed commands (OSC 133)"
 #define KT_FEATURES_CTX_FAIL_NOTICE                  "Notice for failed commands (OSC 3008)"
 #define KT_FEATURES_CTX_ROOT_FRAME                   "Red frame while the host reports root (OSC 3008)"
@@ -580,8 +582,8 @@
 #define KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES        "this many minutes (0 = always):"
 #define KT_LIMITS_PASTE_TOKEN_SECONDS                "Paste token valid for, in seconds:"
 
-/* Window/Selection/Remote clipboard/Notices */
-#define KT_NOTICES_BEING_TOLD_ABOUT_REMOTE_CLIPBOARD "Being told about remote clipboard use"
+/* Window/Selection/Remote clipboard/Notifications */
+#define KT_NOTICES_ABOUT_REMOTE_CLIPBOARD "Notifications about remote clipboard use"
 #define KT_NOTICES_TITLE_BAR                         "Title bar"
 #define KT_NOTICES_MARK_WHILE_A_PERMISSION           "Mark while a permission is live  (end, in brackets)"
 #define KT_NOTICES_ALSO_MARK_A_STANDING_ALLOW        "Also mark a standing \"Allow\""
@@ -997,7 +999,7 @@
 #define KT_APPEARANCE_CTXTINT_SUBTLE                 "Subtle (10%)"
 #define KT_APPEARANCE_CTXTINT_MEDIUM                 "Medium (20%)"
 #define KT_APPEARANCE_CTXTINT_STRONG                 "Strong (30%)"
-#define KT_APPEARANCE_CTXTINT_NOTE                   "A session switches the tint on: Terminal > Features > " \
+#define KT_APPEARANCE_CTXTINT_NOTE                   "A session switches the tint on: Terminal > " \
         "Shell Integration (OSC 3008)."
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."

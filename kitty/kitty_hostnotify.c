@@ -196,7 +196,7 @@ static bool hn_visible(void)
 static bool hn_may_show(Terminal *term, const OnNotice *n)
 {
     /* Every notice of the host follows the session's setting (Terminal >
-     * Desktop Notifications), a program's status (OSC 7501) included. It had
+     * Notifications), a program's status (OSC 7501) included. It had
      * a global switch of its own, [KiTTY] psnotify, background windows only
      * - which is what the setting's default, When not focused, does. */
     return on_should_show(hn_setting(term), n->meta.occasion,

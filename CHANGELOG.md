@@ -12,10 +12,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `systemd-nspawn`, `systemd-vmspawn`). The terminal keeps the contexts the
   host opens, and a command whose context ends as failed or crashed can
   raise a notice with its command line and exit status: Terminal >
-  Features > Shell Integration > "Notice for failed commands (OSC 3008)"
+  Notifications > "Notice for failed commands (OSC 3008)"
   (`ContextFailNotice=1`, off by default), and the window's title bar and
   border can turn dark red while the host reports a context running as
-  root: "Red frame while the host reports root (OSC 3008)"
+  root: Terminal > Shell Integration > "Red frame while the host reports
+  root (OSC 3008)"
   (`ContextRootFrame=1`, on by default, Windows 11). The quieter sign is
   a slight shift of the background, red as root and yellow as a user
   switched to with `run0 -u`: "Tinted background as root or as a switched
@@ -58,6 +59,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   so the host does not paint colours the window displays in the default colour.
   A name with a dot (`screen.xterm-256color`) stays unchanged.
   The stored terminal type stays and is not modified.
+- **The notification settings sit under Notifications, the shell's under
+  Shell Integration.** Terminal > Desktop Notifications is now Terminal >
+  Notifications, and the remote clipboard's Notices leaf is now
+  Notifications. "Mark failed commands (OSC 133)" moved from Terminal >
+  Features to the new Terminal > Shell Integration leaf. Stored settings are
+  unchanged.
 
 ### Fixed
 

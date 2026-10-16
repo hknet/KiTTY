@@ -986,7 +986,7 @@
 ;    seconds (default 15) - a program's status (OSC 7501), the desktop
 ;    notifications and KiTTY++'s own. Not a time the program on the host
 ;    set, nor a notice that waits for an answer. When a program's
-;    status raises a notice is the session's Desktop Notifications setting.
+;    status raises a notice is the session's Notifications setting.
 ;noticeseconds=15
 
 ; PsTitleHintShown: written by KiTTY++ (1) once such a notice has offered

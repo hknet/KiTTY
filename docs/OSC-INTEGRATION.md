@@ -10,11 +10,11 @@ in KiTTY++ and what the host needs.
 | Feature | Sequence | KiTTY++ setting | On the host |
 |---|---|---|---|
 | Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Prompt marks | OSC 133 | **Terminal > Features > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Contexts: failed commands, root, switched user | OSC 3008 | **Terminal > Features > Shell Integration > Notice for failed commands (OSC 3008)**, **Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)**, the notice off and the other two on by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
-| Program status | OSC 7501 | **Terminal > Desktop Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
-| Desktop notifications | OSC 9, 777, 99 | **Terminal > Desktop Notifications > Desktop notifications (OSC 9, 777, 99, 7501, 3008)** | A program that sends them: `printf`, `kitten notify` |
-| Taskbar progress | OSC 9;4 | **Terminal > Features > Progress and status on the taskbar button** | A program that sends it |
+| Prompt marks | OSC 133 | **Terminal > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
+| Contexts: failed commands, root, switched user | OSC 3008 | **Terminal > Notifications > Notice for failed commands (OSC 3008)**, off by default; **Terminal > Shell Integration > Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)**, on by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
+| Program status | OSC 7501 | **Terminal > Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
+| Desktop notifications | OSC 9, 777, 99 | **Terminal > Notifications > Desktop notifications (OSC 9, 777, 99, 7501, 3008)** | A program that sends them: `printf`, `kitten notify` |
+| Taskbar progress | OSC 9;4 | **Terminal > Notifications > Progress and status on the taskbar button** | A program that sends it |
 | Hyperlinks | OSC 8 | **Window > Hyperlinks > Allow OSC 8 hyperlinks**, on | Programs that write them: `ls --hyperlink=auto`, Rich/Textual applications |
 | Remote clipboard | OSC 52 | **Window > Copy & Paste > Remote clipboard** | Neovim 0.10 and later has it built in; Vim needs a plugin (vim-oscyank) |
 | Clipboard with types, paste events | OSC 5522 | the same as OSC 52 | `kitten clipboard` |
@@ -131,7 +131,7 @@ One snippet per shell sends two things before every prompt:
   The marks let **Alt+PgUp** / **Alt+PgDn** jump between prompts,
   **Alt+Shift+PgUp** / **Alt+Shift+PgDn** between failed commands, and
   **Alt+End** select a command's output; a failed command is marked red
-  (**Terminal > Features > Shell Integration > Mark failed commands (OSC
+  (**Terminal > Shell Integration > Mark failed commands (OSC
   133)**). **Alt+Home** selects the command line itself and needs the
   optional `B` mark (the start of the typed command): one more line per
   shell, below. The keys are actions on **Application > KiTTY++ Settings >
@@ -311,7 +311,7 @@ KiTTY++ Settings > Terminal, on by default).
 
 **Notices:** blocked, done and failed raise a notice, "app: state" with the
 program's message below and a **Go to the window** button, when the session's
-**Terminal > Desktop Notifications** allows it: When not focused (the default)
+**Terminal > Notifications** allows it: When not focused (the default)
 for a window in the background, Always in front as well, Off never. One every
 2 seconds per window; it stays for **Notices stay on screen, seconds**
 (Application > KiTTY++ Settings > Terminal, 15 by default). While the
@@ -357,14 +357,14 @@ malformed fields are ignored, the others kept; a field with a control
 character is ignored. Ordinary resets (`ESC c`) leave the contexts alone;
 a new connection starts with none. Nothing is sent back.
 
-- **Notice for failed commands (OSC 3008)** (Terminal > Features > Shell
-  Integration, off by default): a `command` context that ends with
+- **Notice for failed commands (OSC 3008)** (Terminal > Notifications,
+  off by default): a `command` context that ends with
   `exit=failure` or `exit=crash` raises a notice with its command line
   (`cmdline=`, else `comm=`) and its `status=` or `signal=`, under the
-  session's **Terminal > Desktop Notifications**. `exit=interrupt` raises
+  session's **Terminal > Notifications**. `exit=interrupt` raises
   none.
-- **Red frame while the host reports root (OSC 3008)** (same group, on by
-  default): the title bar and border turn dark red while the innermost
+- **Red frame while the host reports root (OSC 3008)** (Terminal > Shell
+  Integration, on by default): the title bar and border turn dark red while the innermost
   context runs as root: an `elevate` context without `targetuser=` (run0's
   default), `targetuser=root`, or a shell with `user=root` (a root login);
   a context deeper down with another `user=` ends it. Windows 11 only.

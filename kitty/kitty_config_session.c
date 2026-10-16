@@ -5796,7 +5796,7 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
 #endif
 }
 
-/* Terminal/Desktop Notifications, "Desktop notifications": Off / When not focused /
+/* Terminal/Notifications, "Desktop notifications": Off / When not focused /
  * Always, stored as HostNotify 0 / 1 / 2 (the item id is the value). */
 static void kitty_hostnotify_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
@@ -6098,33 +6098,39 @@ void scb_panel_terminal(struct controlbox *b)
     }
 
     if (!GetPuttyFlag()) {
-        /* The shell's prompt marks (OSC 133): a group of its own. */
-        s = ctrl_getset(b, "Terminal/Features", "shellint",
-                        KT_FEATURES_SHELLINT_GROUP);
+        /* What the shell on the host reports about itself: prompt marks
+         * (OSC 133) and contexts (OSC 3008), a panel of their own below
+         * Terminal, out of Features. OSC 7 stays on Connection >
+         * File-Transfer-Settings, paired with the fixed upload directory it
+         * excludes; a line here points there. */
+        ctrl_settitle(b, "Terminal/Shell Integration",
+                      KT_FEATURES_SHELLINT_GROUP);
+        s = ctrl_getset(b, "Terminal/Shell Integration", "shellint", NULL);
         ctrl_checkbox(s, KT_FEATURES_FAILED_MARKS, NO_SHORTCUT,
                       HELPCTX(kitty_failedmarks), conf_checkbox_handler,
                       I(CONF_failed_marks));
-        ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
-                      HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
-                      I(CONF_ctx3008_fail_notice));
         ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_FRAME, NO_SHORTCUT,
                       HELPCTX(kitty_ctxrootframe), conf_checkbox_handler,
                       I(CONF_ctx3008_root_frame));
         ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_TINT, NO_SHORTCUT,
                       HELPCTX(kitty_ctxroottint), conf_checkbox_handler,
                       I(CONF_ctx3008_root_tint));
+        ctrl_text(s, KT_FEATURES_SHELLINT_OSC7, HELPCTX(kitty_transfers_remote));
 
         /* Notifications from the host (OSC 9, 777 and 99, a program's status
-         * OSC 7501 too) and taskbar progress (OSC 9;4): a panel of their
-         * own below Terminal, out of Features (kitty/kitty_hostnotify.c). The
-         * droplist takes the full width, so its label sits above it and is
-         * never cut. */
-        ctrl_settitle(b, "Terminal/Desktop Notifications",
+         * OSC 7501 too, a failed command OSC 3008) and taskbar progress
+         * (OSC 9;4): a panel of their own below Terminal, out of Features
+         * (kitty/kitty_hostnotify.c). The droplist takes the full width, so
+         * its label sits above it and is never cut. */
+        ctrl_settitle(b, "Terminal/Notifications",
                       KT_FEATURES_HOSTNOTIFY_GROUP);
-        s = ctrl_getset(b, "Terminal/Desktop Notifications", "hostnotify", NULL);
+        s = ctrl_getset(b, "Terminal/Notifications", "hostnotify", NULL);
         ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
                       HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
                       I(CONF_host_notify));
+        ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
+                      HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
+                      I(CONF_ctx3008_fail_notice));
         ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
                       HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
                       I(CONF_taskbar_progress));
@@ -6224,8 +6230,8 @@ static void scb_window_tree(struct controlbox *b)
                   KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY);
     ctrl_settitle(b, "Window/Selection/Remote clipboard/Limits",
                   KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED);
-    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notices",
-                  KT_NOTICES_BEING_TOLD_ABOUT_REMOTE_CLIPBOARD);
+    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notifications",
+                  KT_NOTICES_ABOUT_REMOTE_CLIPBOARD);
     if (!GetPuttyFlag())
         ctrl_settitle(b, "Window/Hyperlinks",
                       KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
@@ -6927,9 +6933,9 @@ void scb_panel_selection(struct controlbox *b)
                  I(CONF_osc5522_paste_token_secs), ED_INT);
 
     /*
-     * The Window/Selection/Remote clipboard/Notices panel.
+     * The Window/Selection/Remote clipboard/Notifications panel.
      */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notices", "title",
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notifications", "title",
                     KT_NOTICES_TITLE_BAR);
     /* The two markers answer different questions: permission says what COULD
      * happen, activity says what DID. Icons rather than words - the title bar is
@@ -6953,7 +6959,7 @@ void scb_panel_selection(struct controlbox *b)
                   NO_SHORTCUT, HELPCTX(kitty_osc52),
                   conf_checkbox_handler, I(CONF_osc52_colour_frame));
 
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notices", "tray",
+    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notifications", "tray",
                     KT_NOTICES_NOTIFICATION_AREA);
     /* One switch for every remote-clipboard balloon - permission granted or
      * expired, request refused, payload too large - across all three protocols.
