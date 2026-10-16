@@ -1289,8 +1289,8 @@ clipboard as you release the button.
 
 \n Right-click the title bar (or open the window menu) and choose
 \q{Tools} > \q{Get File (kscp)...}, or press \c{Ctrl+F4}. KiTTY++
-asks the server whether that path is a file, in the background and
-for 3 seconds at most. If it is, a notice says so and a Save-As
+checks on the server whether that path is a file, in the background
+and for 3 seconds at most. If it is, a notice reports it and a Save-As
 window opens on your download folder with the name filled in; keep it
 or change it; Save.
 
@@ -1299,14 +1299,15 @@ and closes on success unless \q{Keep the transfer window open after
 success} is on (\k{kitty-cfg-kscp}).
 
 When the path cannot be settled, the \q{Get File (kscp)} box opens
-instead: its top line says why, the field below holds the clipboard
+instead: its top line shows why, the field below holds the clipboard
 text to correct or to type in (one path per line, \c{Ctrl+Enter}
 starts a new line), and OK goes on as above - a Save-As for one file,
 a folder window for several. The reasons: nothing or a local path on
-the clipboard, several lines or a pattern (not checked), a folder, not
-found, the shell on another host than the session's (OSC 3008 or
-OSC 7 tell), no answer in time, or a login that would need you
-(below).
+the clipboard, several lines or a pattern (not checked), a URL, a text
+with control characters (a tab) or longer than a path can be, a path
+on another host (below), a folder, not found, the shell on another host
+than the session's (as OSC 3008 or OSC 7 report it), no answer in
+time, or a login that would need you (below).
 
 Worth knowing:
 
@@ -1328,6 +1329,10 @@ no second password or 2FA, and so does the transfer), or it holds the
 password (stored, or typed and accepted), a key file or an agent.
 Otherwise there is no check and the box opens: a login that fails in
 the background still counts in the server's log.
+
+\b \c{user@host:/path}, the form \c{scp} prints, works when host and
+account are the session's (or its target override's): the path after
+the colon is fetched. Another host or account opens the box.
 
 \b A \c{kscp} older than this release cannot check; the box opens.
 

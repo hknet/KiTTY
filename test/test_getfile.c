@@ -21,6 +21,17 @@ static void cls( const char *text, int want, const char *want_out ) {
 	}
 }
 
+/* The same with the target's host and account: the scp form. */
+static void cat( const char *text, const char *host, const char *user, int want, const char *want_out ) {
+	char out[8192] ;
+	int got = gf_classify_at( text, out, sizeof(out), host, user ) ;
+	if( got != want || ( want_out && strcmp( out, want_out ) ) ) {
+		printf( "FAIL classify_at \"%.60s\" (%s@%s): %d \"%.60s\" (wanted %d \"%s\")\n",
+			text, user ? user : "", host ? host : "", got, out, want, want_out ? want_out : "" ) ;
+		failures++ ;
+	}
+}
+
 static void sp( const char *in, const char *want ) {
 	char out[256] ;
 	gf_stat_path( in, out, sizeof(out) ) ;
@@ -68,6 +79,44 @@ int main( void ) {
 	cls( "d:/temp/x.txt",            GF_WINPATH, NULL ) ;
 	cls( "dir\\file",                GF_WINPATH, NULL ) ;
 	cls( "/ok\nC:\\later",           GF_SEVERAL, NULL ) ;   /* the first line decides */
+
+	/* text that cannot be a path: no check, no login */
+	cls( "https://example.com/x.tgz",  GF_URL,     NULL ) ;
+	cls( "sftp://host/etc/hosts",      GF_URL,     NULL ) ;
+	cls( "git+ssh://h/r.git",          GF_URL,     NULL ) ;
+	cls( "a\tb.txt",                   GF_CONTROL, NULL ) ;   /* a tab from a table */
+	cls( "x\x7f.txt",                  GF_CONTROL, NULL ) ;
+	cls( "x\x01y",                     GF_CONTROL, NULL ) ;
+	cls( "/var/log/app.log",           GF_ONE,     NULL ) ;   /* not a URL: no "://" */
+	cls( "3dfiles://x",                GF_ONE,     NULL ) ;   /* a scheme starts with a letter */
+	{	char name[300], path[4200] ;
+		memset( name, 'n', 256 ) ; name[256] = '\0' ;
+		cls( name, GF_TOOLONG, NULL ) ;                     /* a part over 255 bytes */
+		name[255] = '\0' ;
+		cls( name, GF_ONE, NULL ) ;                         /* 255 is still a name */
+		memset( path, 'p', sizeof(path) - 1 ) ; path[sizeof(path) - 1] = '\0' ;
+		for( int i = 100 ; i < (int)sizeof(path) - 1 ; i += 100 ) path[i] = '/' ;
+		cls( path, GF_TOOLONG, NULL ) ;                     /* over 4095 in all */
+		path[4095] = '\0' ;
+		cls( path, GF_ONE, NULL ) ;                         /* 4095 is still a path */
+	}
+
+	/* the scp form: this host's path is taken, another host is not */
+	cat( "srv:/var/log/app.log",           "srv", "bob", GF_ONE,       "/var/log/app.log" ) ;
+	cat( "bob@srv:/var/log/app.log",       "srv", "bob", GF_ONE,       "/var/log/app.log" ) ;
+	cat( "bob@SRV:~/notes.txt",            "srv", "bob", GF_ONE,       "~/notes.txt" ) ;   /* host names ignore case */
+	cat( "bob@srv:notes.txt",              "srv", "bob", GF_ONE,       "notes.txt" ) ;     /* a user: the form */
+	cat( "srv:/var/log/",                  "srv", "bob", GF_FOLDER,    "/var/log/" ) ;
+	cat( "srv:",                           "srv", "bob", GF_FOLDER,    "~/" ) ;            /* the login dir */
+	cat( "bob@[::1]:/x.txt",               "::1", "bob", GF_ONE,       "/x.txt" ) ;
+	cat( "other:/var/log/app.log",         "srv", "bob", GF_ELSEWHERE, "other:/var/log/app.log" ) ;
+	cat( "eve@srv:/var/log/app.log",       "srv", "bob", GF_ELSEWHERE, NULL ) ;   /* another account */
+	cat( "eve@srv:/x",                     "srv", "",    GF_ONE,       "/x" ) ;   /* no account known: the host decides */
+	cat( "notes:2026.txt",                 "srv", "bob", GF_ONE,       "notes:2026.txt" ) ;   /* a file name */
+	cat( "dir/a:/b",                       "srv", "bob", GF_ONE,       "dir/a:/b" ) ;   /* '/' before ':': a path */
+	cat( "srv:/x\ty",                      "srv", "bob", GF_CONTROL,   NULL ) ;
+	cat( "srv:/a/*.log",                   "srv", "bob", GF_SEVERAL,   "/a/*.log" ) ;
+	cls( "srv:/var/log/app.log",           GF_ONE, "srv:/var/log/app.log" ) ;   /* no session: literal */
 
 	/* SFTP has no ~ */
 	sp( "~",              "." ) ;

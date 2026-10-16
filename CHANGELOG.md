@@ -36,11 +36,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (OSC 133), so the shell's own redraw does not double it. Window >
   "Re-wrap lines when the width changes" (`RewrapOnResize`, on by
   default).
-- **Get File (kscp) checks the path on the clipboard** before it asks
-  where to save (hknet/KiTTY#71): a file found on the server raises a
+- **Get File (kscp) checks the path on the clipboard** before the
+  Save-As opens (hknet/KiTTY#71): a file found on the server raises a
   notice and the Save-As opens as before; anything else opens a box that
-  says why and holds the path to correct or type. A session that shares
-  its SSH connection lets kscp ride on it, without a second login.
+  shows why and holds the path to correct or type. A URL, a text with
+  control characters or a name too long for a path opens the box at
+  once, and `user@host:/path` of the session's own host is fetched by its
+  path. A session that shares its SSH connection lets kscp ride on it,
+  without a second login.
 
 ### Changed
 

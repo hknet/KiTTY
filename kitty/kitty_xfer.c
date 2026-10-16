@@ -2001,6 +2001,46 @@ static void kx_kscp_remote( char *out, size_t n ) {
 	bcat( out, n, ":" ) ;
 }
 
+/* The host and account Get File fetches from, as kx_kscp_remote: the target
+ * override's ([user@]host[:port], the port dropped) when set, else the
+ * session's. An override without a user leaves user empty. */
+static void kx_gf_target( char *host, size_t hn, char *user, size_t un ) {
+	const char *o = conf_get_str( conf, CONF_sftpconnect ), *at ;
+	user[0] = host[0] = '\0' ;
+	if( o && o[0] ) {
+		char *c ;
+		at = strchr( o, '@' ) ;
+		if( at ) snprintf( user, un, "%.*s", (int)( at - o ), o ) ;
+		snprintf( host, hn, "%s", at ? at + 1 : o ) ;
+		if( host[0] == '[' ) {                 /* [v6]:port */
+			if( ( c = strchr( host, ']' ) ) != NULL ) *c = '\0' ;
+			memmove( host, host + 1, strlen( host ) ) ;
+		} else if( ( c = strchr( host, ':' ) ) != NULL && !strchr( c + 1, ':' ) )
+			*c = '\0' ;                           /* host:port */
+	} else {
+		snprintf( user, un, "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+		snprintf( host, hn, "%s", conf_get_str( conf, CONF_host ) ) ;
+	}
+}
+
+/* The reason for a clipboard text that cannot be a path on the target: the
+ * class's text, NULL for the classes that go on. text: the trimmed text. */
+static char *kx_gf_why_not_path( int cls, const char *text, const char *th, const char *tu ) {
+	char su[256], sh[256], whom[600], there[600] ;
+	const char *rest ;
+	switch( cls ) {
+	  case GF_URL:     return dupstr( KT_GETFILE_WHY_URL ) ;
+	  case GF_CONTROL: return dupstr( KT_GETFILE_WHY_CONTROL ) ;
+	  case GF_TOOLONG: return dupstr( KT_GETFILE_WHY_TOOLONG ) ;
+	  case GF_ELSEWHERE:
+		if( !gf_scp_form( text, su, sizeof(su), sh, sizeof(sh), &rest ) ) su[0] = sh[0] = '\0' ;
+		snprintf( whom, sizeof(whom), "%s%s%s", su, su[0] ? "@" : "", sh ) ;
+		snprintf( there, sizeof(there), "%s%s%s", tu, tu[0] ? "@" : "", th ) ;
+		return dupprintf( KT_GETFILE_WHY_ELSEWHERE, whom, there ) ;
+	  default:         return NULL ;
+	}
+}
+
 void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdir) {
 	kx_send_one( hwnd, directory, filename, distantdir, NULL, 0 ) ;
 }
@@ -2877,9 +2917,17 @@ static INT_PTR CALLBACK kx_gf_box_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp )
 			int n = GetWindowTextLengthA( e ) ;
 			char *t = snewn( n + 1, char ), *trim = snewn( n + 1, char ) ;
 			int cls ;
+			char th[256], tu[256], *nw ;
 			GetWindowTextA( e, t, n + 1 ) ;
-			cls = gf_classify( t, trim, n + 1 ) ;
+			kx_gf_target( th, sizeof(th), tu, sizeof(tu) ) ;
+			cls = gf_classify_at( t, trim, n + 1, th, tu ) ;
 			sfree( t ) ;
+			if( ( nw = kx_gf_why_not_path( cls, trim, th, tu ) ) != NULL ) {
+				/* not a path on the target: the reason, the box stays */
+				kx_gf_set_why( h, nw ) ;
+				sfree( nw ) ; sfree( trim ) ;
+				return TRUE ;
+			}
 			if( cls == GF_WINPATH ) {
 				/* a local path typed or left in: say so, the box stays */
 				kx_gf_set_why( h, KT_GETFILE_WHY_WINPATH ) ;
@@ -3033,10 +3081,14 @@ void GetFile( HWND hwnd ) {
 	}
 	if( clip == NULL ) clip = dupstr( "" ) ;
 	text = snewn( strlen( clip ) + 1, char ) ;
-	cls = gf_classify( clip, text, strlen( clip ) + 1 ) ;
+	{	char th[256], tu[256] ;
+		kx_gf_target( th, sizeof(th), tu, sizeof(tu) ) ;
+		cls = gf_classify_at( clip, text, strlen( clip ) + 1, th, tu ) ;
+		why = kx_gf_why_not_path( cls, text, th, tu ) ;
+	}
 	sfree( clip ) ;
 
-	switch( cls ) {
+	if( !why ) switch( cls ) {
 	  case GF_EMPTY:
 		why = dupstr( KT_GETFILE_WHY_EMPTY ) ;
 		break ;

@@ -21,8 +21,14 @@ enum {
     GF_WINPATH,      /* the first line is a Windows path ('\' or "C:") */
     GF_ONE,          /* one line, no wildcard, no trailing '/': the checked case */
     GF_FOLDER,       /* one line ending in '/' */
-    GF_SEVERAL       /* several lines, or a wildcard (* ?) */
+    GF_SEVERAL,      /* several lines, or a wildcard (* ?) */
+    GF_URL,          /* scheme://... - an address, not a path */
+    GF_CONTROL,      /* a control character inside the line (a tab) */
+    GF_TOOLONG,      /* a name part over 255 bytes, or over 4095 in all */
+    GF_ELSEWHERE     /* [user@]host:path for another host or account */
 };
+#define GF_NAME_MAX 255      /* Linux NAME_MAX */
+#define GF_PATH_MAX 4095     /* Linux PATH_MAX, less its NUL */
 
 static inline int gf_is_blank( char c ) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' ; }
 
@@ -32,13 +38,49 @@ static inline int gf_is_windows_path( const char *s ) {
     return 0 ;
 }
 
+/* "[user@]host:rest" (scp's form) in s: the parts, 1 when it is that form.
+ * Only with a user, or with "/", "~" or nothing after the ':' - so a file
+ * named "notes:2026.txt" stays a file name. The host part has no '/'; an
+ * IPv6 address is in brackets. */
+static inline int gf_scp_form( const char *s, char *user, size_t un,
+                               char *host, size_t hn, const char **rest ) {
+    const char *at = NULL, *h = s, *c, *p ;
+    for( p = s ; *p && *p != ':' && *p != '/' && *p != '[' ; p++ )
+        if( *p == '@' ) at = p ;
+    if( at ) h = at + 1 ;
+    if( *h == '[' ) {
+        c = strchr( h, ']' ) ;
+        if( !c || c[1] != ':' ) return 0 ;
+        c++ ;
+    } else {
+        for( c = h ; *c && *c != ':' && *c != '/' ; c++ ) ;
+        if( *c != ':' ) return 0 ;
+    }
+    if( c == h ) return 0 ;                  /* no host */
+    if( !at && c[1] && c[1] != '/' && c[1] != '~' ) return 0 ;
+    snprintf( user, un, "%.*s", at ? (int)( at - s ) : 0, s ) ;
+    if( *h == '[' ) snprintf( host, hn, "%.*s", (int)( c - h - 2 ), h + 1 ) ;
+    else snprintf( host, hn, "%.*s", (int)( c - h ), h ) ;
+    *rest = c + 1 ;
+    return 1 ;
+}
+
+static inline int gf_same_host( const char *a, const char *b ) {
+    for( ; *a && *b ; a++, b++ )
+        if( tolower( (unsigned char)*a ) != tolower( (unsigned char)*b ) ) return 0 ;
+    return *a == *b ;
+}
+
 /* Copies the text without its outer blanks into out (n bytes); returns
  * the class. The first line alone decides GF_WINPATH, as Get File always
- * has. */
-static inline int gf_classify( const char *text, char *out, size_t n ) {
-    const char *b = text ? text : "", *e, *nl ;
-    size_t len, fl ;
-    char first[4096] ;
+ * has. host / user: the session's; with them the scp form "[user@]host:path"
+ * of this host and account is taken as its path (out holds the path), of
+ * another as GF_ELSEWHERE. NULL: no scp form. */
+static inline int gf_classify_at( const char *text, char *out, size_t n,
+                                  const char *host, const char *user ) {
+    const char *b = text ? text : "", *e, *nl, *p, *rest ;
+    size_t len, fl, part ;
+    char first[4096], su[256], sh[256] ;
     while( *b && gf_is_blank( *b ) ) b++ ;
     e = b + strlen( b ) ;
     while( e > b && gf_is_blank( e[-1] ) ) e-- ;
@@ -51,13 +93,34 @@ static inline int gf_classify( const char *text, char *out, size_t n ) {
     nl = b ;
     while( nl < e && *nl != '\r' && *nl != '\n' ) nl++ ;
     fl = (size_t)( nl - b ) ;
-    if( fl >= sizeof(first) ) fl = sizeof(first) - 1 ;
+    if( fl > GF_PATH_MAX ) return GF_TOOLONG ;
     memcpy( first, b, fl ) ; first[fl] = '\0' ;
     if( gf_is_windows_path( first ) ) return GF_WINPATH ;
     if( nl < e ) return GF_SEVERAL ;
+    for( p = first ; *p ; p++ )
+        if( (unsigned char)*p < 0x20 || *p == 0x7F ) return GF_CONTROL ;
+    for( p = first ; *p && ( isalpha( (unsigned char)*p ) ||
+                            ( p > first && ( isdigit( (unsigned char)*p ) || strchr( "+.-", *p ) ) ) ) ; p++ ) ;
+    if( p > first && !strncmp( p, "://", 3 ) ) return GF_URL ;
+    if( host && gf_scp_form( first, su, sizeof(su), sh, sizeof(sh), &rest ) ) {
+        if( !gf_same_host( sh, host ) || ( su[0] && user && user[0] && strcmp( su, user ) ) )
+            return GF_ELSEWHERE ;      /* out keeps the text, to correct */
+        memmove( first, rest, strlen( rest ) + 1 ) ;   /* this host: its path */
+        if( !first[0] ) snprintf( first, sizeof(first), "~/" ) ;   /* "host:" = the login dir */
+        if( n ) snprintf( out, n, "%s", first ) ;
+    }
+    for( p = first, part = 0 ; *p ; p++ ) {
+        part = ( *p == '/' ) ? 0 : part + 1 ;
+        if( part > GF_NAME_MAX ) return GF_TOOLONG ;
+    }
     if( strpbrk( first, "*?" ) ) return GF_SEVERAL ;
     if( first[strlen(first)-1] == '/' ) return GF_FOLDER ;
     return GF_ONE ;
+}
+
+/* Without a session: no scp form. */
+static inline int gf_classify( const char *text, char *out, size_t n ) {
+    return gf_classify_at( text, out, n, NULL, NULL ) ;
 }
 
 /* The path as SFTP takes it: SFTP knows no "~", and its relative paths are
