@@ -536,6 +536,24 @@ COLORREF kitty_theme_ink(bool dark, kitty_ink which)
  * flag above uses.
  */
 #define KT_PROP_INK "KiTTYInk"
+#define KT_PROP_FIELD "KiTTYFieldBad"
+
+/* An edit field whose text is wrong (nothing found): its background turns
+ * red, a tint per theme, the text keeps its ink. */
+#define KT_FIELD_BAD_DARK  RGB(0x5c, 0x24, 0x24)
+#define KT_FIELD_BAD_LIGHT RGB(0xff, 0xdd, 0xdd)
+static HBRUSH kt_field_bad_brush[2];
+
+void kitty_theme_mark_field_bad(HWND edit, bool bad)
+{
+    if (!edit)
+        return;
+    if (bad)
+        SetPropA(edit, KT_PROP_FIELD, (HANDLE)1);
+    else
+        RemovePropA(edit, KT_PROP_FIELD);
+    InvalidateRect(edit, NULL, TRUE);
+}
 
 void kitty_theme_mark_ink(HWND ctl, kitty_ink which)
 {
@@ -2093,6 +2111,15 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_CTLCOLOREDIT:
       case WM_CTLCOLORLISTBOX: {
         HBRUSH b = kitty_theme_ctlcolor(hwnd, msg, wParam, lParam);
+        if (msg == WM_CTLCOLOREDIT && GetPropA((HWND)lParam, KT_PROP_FIELD)) {
+            bool dark = kt_is_dark_window(hwnd);
+            COLORREF bk = dark ? KT_FIELD_BAD_DARK : KT_FIELD_BAD_LIGHT;
+            if (!kt_field_bad_brush[dark])
+                kt_field_bad_brush[dark] = CreateSolidBrush(bk);
+            SetTextColor((HDC)wParam, kitty_theme_ink(dark, KITTY_INK_NORMAL));
+            SetBkColor((HDC)wParam, bk);
+            return (LRESULT)kt_field_bad_brush[dark];
+        }
         if (msg == WM_CTLCOLORSTATIC) {
             /*
              * A line marked with a MEANING (kitty_theme_mark_ink): the

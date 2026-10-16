@@ -967,6 +967,7 @@ extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
 #include "../kitty/kitty_theme_pref.h"   /* KiTTY: the theme preference, readable before InitWinMain */
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_hostnotify.h"  /* taskbar progress, cleared at session end */
+#include "../kitty/kitty_searchbar.h"   /* KiTTY: the scrollback search's bar */
 #include "../kitty/kitty_ctx3008.h"     /* OSC 3008: the red frame asks ctx_elevated */
 #include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
 /* KiTTY: whether to look for a new release at startup - an application
@@ -3034,6 +3035,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             AppendMenu(m, MF_ENABLED, IDM_PASTE, "&Paste");
             AppendMenu(m, MF_ENABLED, IDM_COPYALL, "C&opy All to Clipboard");
+#ifdef MOD_PERSO
+            {   /* KiTTY: the scrollback search's bar, with its key shown */
+                char label[256];
+                AppendMenu(m, MF_ENABLED, IDM_SEARCH,
+                           ShortcutMenuText(KT_SYSMENU_FIND, GetShortcutKey(IDM_SEARCH),
+                                            label, sizeof label));
+            }
+#endif
             AppendMenu(m, MF_ENABLED, IDM_CLRSB, "C&lear Scrollback");
             AppendMenu(m, MF_ENABLED, IDM_RESET, "Rese&t Terminal");
 #ifndef MOD_PERSO
@@ -4819,9 +4828,9 @@ static bool client_fits_text(WinGuiSeat *wgs, int w, int h)
  * `clip` limits the drawing (WM_PAINT), NULL draws the whole strip. */
 static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
 {
-    static int marks[KITTY_STRIP_TICKS];
+    static int marks[KITTY_STRIP_TICKS], smarks[KITTY_STRIP_TICKS];
     RECT cr, strip, draw;
-    int sw, n, total, i, tick_h, dpi_y, h, last_bottom;
+    int sw, n, ns, scur, total, i, tick_h, dpi_y, h, last_bottom, pass;
     int track_top, track_len, thumb_len, maxpos;
 
     sw = strip_width(wgs);
@@ -4843,8 +4852,10 @@ static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
                  wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
 
     n = term_failed_marks(wgs->term, marks, KITTY_STRIP_TICKS, &total);
+    /* the scrollback search's hits, amber, the current one taller */
+    ns = term_search_marks(wgs->term, smarks, KITTY_STRIP_TICKS, &scur);
     h = cr.bottom - cr.top;
-    if (n <= 0 || total <= 0 || h <= 0)
+    if ((n <= 0 && ns <= 0 && scur < 0) || total <= 0 || h <= 0)
         return;
     dpi_y = wgs->dpi_info.cur_dpi.y > 0 ? wgs->dpi_info.cur_dpi.y : 96;
     tick_h = MulDiv(2, dpi_y, 96);
@@ -4885,35 +4896,46 @@ static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
     }
     maxpos = total - wgs->term->rows;  /* the top line when at the bottom */
 
-    last_bottom = cr.top - 1;
-    for (i = 0; i < n; i++) {
-        RECT tick, part;
-        int y;
-        if (thumb_len > 0 && maxpos > 0) {
-            if (marks[i] <= maxpos)
-                y = track_top + (int)((long long)marks[i] *
-                                      (track_len - thumb_len) / maxpos);
-            else                       /* on the last screen: inside the thumb */
-                y = track_top + track_len - thumb_len +
-                    (int)((long long)(marks[i] - maxpos) * thumb_len /
-                          wgs->term->rows);
-        } else {
-            y = track_top + (int)((long long)marks[i] * track_len / total);
+    /* pass 0: the failed commands, red; pass 1: the search's hits, amber;
+     * pass 2: the current hit, bright amber and three ticks tall */
+    for (pass = 0; pass < 3; pass++) {
+        const int *list = pass == 0 ? marks : pass == 1 ? smarks : &scur;
+        int count = pass == 0 ? n : pass == 1 ? ns : (scur >= 0 ? 1 : 0);
+        COLORREF col = pass == 0 ? RGB(220, 40, 40) :
+                       pass == 1 ? RGB(160, 105, 0) : RGB(255, 191, 0);
+        int th = pass == 2 ? tick_h * 3 : tick_h;
+        last_bottom = cr.top - 1;
+        for (i = 0; i < count; i++) {
+            RECT tick, part;
+            int y;
+            if (thumb_len > 0 && maxpos > 0) {
+                if (list[i] <= maxpos)
+                    y = track_top + (int)((long long)list[i] *
+                                          (track_len - thumb_len) / maxpos);
+                else                   /* on the last screen: inside the thumb */
+                    y = track_top + track_len - thumb_len +
+                        (int)((long long)(list[i] - maxpos) * thumb_len /
+                              wgs->term->rows);
+            } else {
+                y = track_top + (int)((long long)list[i] * track_len / total);
+            }
+            if (pass == 2)
+                y -= tick_h;           /* centred on the line */
+            if (y > cr.bottom - th)
+                y = cr.bottom - th;
+            if (y < cr.top)
+                y = cr.top;
+            if (y < last_bottom)
+                continue;              /* overlaps the tick before */
+            tick.left = strip.left;
+            tick.right = strip.right;
+            tick.top = y;
+            tick.bottom = y + th;
+            last_bottom = tick.bottom;
+            if (clip && !IntersectRect(&part, &tick, clip))
+                continue;
+            kp_fill_rect(wgs->painter, clip ? &part : &tick, col);
         }
-        if (y > cr.bottom - tick_h)
-            y = cr.bottom - tick_h;
-        if (y < cr.top)
-            y = cr.top;
-        if (y < last_bottom)
-            continue;                  /* overlaps the tick before */
-        tick.left = strip.left;
-        tick.right = strip.right;
-        tick.top = y;
-        tick.bottom = y + tick_h;
-        last_bottom = tick.bottom;
-        if (clip && !IntersectRect(&part, &tick, clip))
-            continue;
-        kp_fill_rect(wgs->painter, clip ? &part : &tick, RGB(220, 40, 40));
     }
 }
 #endif
@@ -6831,6 +6853,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     logfile_clear(wgs->logctx);
             }
             break;
+          case IDM_SEARCH:
+            /* KiTTY: search the scrollback (kitty_searchbar.c) */
+            kitty_searchbar_open(wgs->term_hwnd);
+            break;
           case IDM_OPENLOGFILE: {
             /* KiTTY: open the session's own log in whatever the system uses
              * for it (hknet/KiTTY#31). Flush first - with "flush log file
@@ -7562,6 +7588,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 InvalidateRect(hwnd, NULL, false);
         }
         kitty_psoverlay_follow();      /* the program status overlay */
+        kitty_searchbar_follow(hwnd);  /* the scrollback search's bar */
 #endif
         break;
       case WM_SIZE:
@@ -7574,6 +7601,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         kitty_note_normal_rect(wgs, hwnd);
         /* The overlay keeps its corner; minimised, it goes with the window. */
         kitty_psoverlay_follow();
+        kitty_searchbar_follow(hwnd);  /* the scrollback search's bar too */
 #endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
@@ -7880,6 +7908,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * number noise.
          */
         noise_ultralight(NOISE_SOURCE_KEY, lParam);
+#ifdef MOD_PERSO
+        /* KiTTY: a key after the find bar closed: the hit it left lit goes */
+        if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) && wgs->term)
+            kitty_search_forget(wgs->term);
+#endif
 
 #ifdef MOD_PERSO
         /* When the session is inactive (ended/disconnected, no backend), let
@@ -12888,6 +12921,29 @@ void kitty_ctx3008_user_changed(Terminal *term)
             kitty_ctx_tint_repaint(wgs);
         return;
     }
+}
+
+/* KiTTY: the terminal of terminal window hwnd, for the find bar. */
+const char *kitty_searchbar_session(HWND hwnd)
+{
+    WinGuiSeat *wgs;
+    if (!hwnd || !IsWindow(hwnd))
+        return "";
+    wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    if (!wgs || wgs->term_hwnd != hwnd || !wgs->conf)
+        return "";
+    return conf_get_str(wgs->conf, CONF_sessionname);
+}
+
+Terminal *kitty_searchbar_term(HWND hwnd)
+{
+    WinGuiSeat *wgs;
+    if (!hwnd || !IsWindow(hwnd))
+        return NULL;
+    wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    if (!wgs || wgs->term_hwnd != hwnd)
+        return NULL;
+    return wgs->term;
 }
 
 /* KiTTY: is the shell in window hwnd on another machine than the

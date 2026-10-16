@@ -7,6 +7,7 @@
 #define KITTY_PSOVERLAY_H
 
 #include <stdbool.h>
+#include <windows.h>
 #include "kitty_progstatus.h"
 
 /* The records changed (kitty_hostnotify.c, after every report, a prompt, a
@@ -19,6 +20,10 @@ void kitty_psoverlay_update(const PsStore *ps, const char *session,
 /* The terminal window moved, was resized, minimised or restored: the overlay
  * follows it (window.c). */
 void kitty_psoverlay_follow(void);
+
+/* The panel's screen rectangle while it is shown (the find bar keeps clear
+ * of it); false when hidden. */
+bool kitty_psoverlay_rect(RECT *r);
 
 /* The terminal window is being shown or hidden (WM_SHOWWINDOW: the tray). */
 void kitty_psoverlay_owner_shown(bool shown);

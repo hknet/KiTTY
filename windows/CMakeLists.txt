@@ -602,6 +602,7 @@ add_executable(test_osc52
   ${CMAKE_SOURCE_DIR}/test/test_osc52.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
@@ -671,6 +672,7 @@ add_executable(test_textrun
   ${CMAKE_SOURCE_DIR}/test/test_textrun.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
@@ -825,6 +827,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_progstatus.c   # KiTTY: program status (OSC 7501) and prompt marks (OSC 133), no Win32 (test/test_progstatus.c)
   ${KITTY_DIR}/kitty_ctx3008.c      # KiTTY: OSC 3008 hierarchical contexts, no Win32 (test/test_ctx3008.c)
   ${KITTY_DIR}/kitty_psoverlay.c    # KiTTY: the program status overlay (OSC 7501), top right in the window
+  ${KITTY_DIR}/kitty_searchbar.c    # KiTTY: the scrollback search's find bar (Ctrl+Shift+F)
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)
   ${KITTY_DIR}/kitty_kittykeys.c    # KiTTY: kitty keyboard protocol encoding for window.c, no Win32 (test/test_kittykeys.c)
   ${KITTY_DIR}/kitty_specialmenu.c
@@ -876,6 +879,7 @@ add_executable(kitty
   # guiterminal's terminal.o, leaving other binaries untouched.
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c likewise, so its MOD_PERSO section (the "ssh:" URL form) is
   # actually compiled: the settings library is built without MOD_PERSO, where
@@ -976,6 +980,7 @@ add_executable(kitty_portable
   help.c
   ${CMAKE_SOURCE_DIR}/terminal/terminal.c
   ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
   ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
   # cmdline.c: see the comment on the kitty target above (and the note there on
   # why config.c must NOT be listed)

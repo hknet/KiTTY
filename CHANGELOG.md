@@ -21,6 +21,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   switched to with `run0 -u`: "Tinted background as root or as a switched
   user (OSC 3008)" (`ContextRootTint=1`, on by default). The Application
   Appearance Setting can change the color intensity.
+- **Search the scrollback** with **Ctrl+Shift+F** (or Find... in the
+  window menu, cyd01/KiTTY#509): a find bar at the top, hits in amber in the
+  text and beside the scrollbar, a counter, Up (Enter, F3) to older output and
+  Down towards newer, smart case. The rows in view are searched first, and
+  the searchfield turns red when nothing is found. The view stays put while the
+  bar is open; Esc closes it and selects nothing. The bar can be dragged
+  and a stored session keeps its place.
 - **Get File (kscp) checks the path on the clipboard** before it asks
   where to save (hknet/KiTTY#71): a file found on the server raises a
   notice and the Save-As opens as before; anything else opens a box that

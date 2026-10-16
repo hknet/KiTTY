@@ -197,6 +197,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_SC_FONTUP                        "fontup"
 #define KI_SC_FULLSCREEN                    "fullscreen"
 #define KI_SC_GETFILE                       "getfile"
+#define KI_SC_SEARCH                        "search"
 #define KI_SC_IMAGECHANGE                   "imagechange"
 #define KI_SC_INPUT                         "input"
 #define KI_SC_INPUTM                        "inputm"

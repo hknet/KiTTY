@@ -1930,6 +1930,15 @@ pressed again; Ctrl+F9.
 
 \b \q{Run a command} - run a local command typed in a box; Ctrl+F5.
 
+\b \q{Search the scrollback} - the find bar at the top right of the
+window: type, and the hits turn amber in the text and beside the
+scrollbar; \q{Up} (Enter, F3) goes towards older output, \q{Down}
+(Shift+Enter, Shift+F3) towards newer; case counts only when the text
+holds a capital letter; the field turns red when nothing is found; Esc
+closes it and selects nothing. Drag it by its grip to move it; a stored
+session keeps the place. Not available while a full-screen program runs.
+Ctrl+Shift+F, or \q{Find...} in the window menu.
+
 \b \q{Send a script file} - type a local file's lines into the session;
 Ctrl+F2.
 

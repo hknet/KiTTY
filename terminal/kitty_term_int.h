@@ -7,6 +7,22 @@
 #define KITTY_TERM_INT_H
 #ifdef MOD_PERSO
 
+/* terminal.c for terminal/kitty_search.c: a row (negative = scrollback),
+ * released with term_release_line. */
+termline *kitty_term_lineptr(Terminal *term, int y);
+
+/* kitty_search.c for terminal.c: the hooks where lines leave the top, the
+ * lines are re-laid, output arrives, the settings are read again and the
+ * terminal goes; and the hit spans one row is painted with. */
+typedef struct { int x0, x1, cur; } kitty_search_span;
+void kitty_search_sb_evicted(Terminal *term);
+void kitty_search_relaid(Terminal *term);
+void kitty_search_output(Terminal *term);
+void kitty_search_reconfig(Terminal *term);
+void kitty_search_destroy(Terminal *term);
+void kitty_search_free(Terminal *term);
+int kitty_search_row(Terminal *term, int y, kitty_search_span *sp, int max);
+
 /*
  * KiTTY OSC 52 clipboard-READ seams. Implemented on the platform side
  * (kitty/kitty_osc52.c) so this cross-platform file stays free of Win32 and of

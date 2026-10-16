@@ -1059,6 +1059,13 @@ void kitty_psoverlay_follow(void)
         po_show();
 }
 
+bool kitty_psoverlay_rect(RECT *r)
+{
+    if (!po_hwnd || !IsWindowVisible(po_hwnd))
+        return false;
+    return GetWindowRect(po_hwnd, r) != 0;
+}
+
 void kitty_psoverlay_owner_shown(bool shown)
 {
     if (!po_hwnd)

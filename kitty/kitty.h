@@ -198,6 +198,7 @@ struct TShortcuts {
 	int clearscrollback ;
 	int clearlogfile ;
 	int openlogfile ;
+	int search ;
 	int closerestart ;
 	int eventlog ;
 	int fullscreen ;

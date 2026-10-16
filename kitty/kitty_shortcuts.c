@@ -213,6 +213,7 @@ static const struct sc_action sc_actions[] = {
 	SC_ACT( clearscrollback,   KI_SC_CLEARSCROLLBACK,   0,                         KT_SC_ACT_CLEARSCROLLBACK ),
 	SC_ACT( clearlogfile,      KI_SC_CLEARLOGFILE,      0,                         KT_SC_ACT_CLEARLOGFILE ),
 	SC_ACT( openlogfile,       KI_SC_OPENLOGFILE,       0,                         KT_SC_ACT_OPENLOGFILE ),
+	SC_ACT( search,            KI_SC_SEARCH,            CONTROLKEY+SHIFTKEY+'F',   KT_SC_ACT_SEARCH ),
 	SC_ACT( closerestart,      KI_SC_CLOSERESTART,      0,                         KT_SC_ACT_CLOSERESTART ),
 	SC_ACT( eventlog,          KI_SC_EVENTLOG,          0,                         KT_SC_ACT_EVENTLOG ),
 	SC_ACT( fullscreen,        KI_SC_FULLSCREEN,        0,                         KT_SC_ACT_FULLSCREEN ),
@@ -394,6 +395,7 @@ static int MenuShortcut( int idm, int * key ) {
 		case IDM_PROTECT:       *key = shortcuts_tab.protect ; return 1 ;
 		case IDM_SHOWPORTFWD:   *key = shortcuts_tab.showportforward ; return 1 ;
 		case IDM_OPENLOGFILE:   *key = shortcuts_tab.openlogfile ; return 1 ;
+		case IDM_SEARCH:        *key = shortcuts_tab.search ; return 1 ;
 		case IDM_CLEARLOGFILE:  *key = shortcuts_tab.clearlogfile ; return 1 ;
 		case IDM_REKEY:         *key = shortcuts_tab.keyexchange ; return 1 ;
 		case IDM_PRINT:         *key = shortcuts_tab.print ; return 1 ;
@@ -691,6 +693,8 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		{ SendMessage( hwnd, WM_COMMAND, IDM_CLEARLOGFILE, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.openlogfile )		// Open the current log file
 		{ SendMessage( hwnd, WM_COMMAND, IDM_OPENLOGFILE, 0 ) ; return 1 ; }
+	else if( key == shortcuts_tab.search )			// Search the scrollback
+		{ SendMessage( hwnd, WM_COMMAND, IDM_SEARCH, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.closerestart )		// Close + restart
 		{ SendMessage( hwnd, WM_COMMAND, IDM_RESTARTSESSION, 0 ) ; return 1 ; }
 	else if( key == shortcuts_tab.eventlog )		// Event log

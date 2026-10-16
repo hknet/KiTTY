@@ -181,6 +181,13 @@ COLORREF kitty_theme_ink(bool dark, kitty_ink which);
 void kitty_theme_mark_ink(HWND ctl, kitty_ink which);
 
 /*
+ * Mark one EDIT field as holding text that found nothing: its background is
+ * tinted red for the theme in force (both themes), until cleared with
+ * bad = false. Same reason as above: this module answers WM_CTLCOLOREDIT.
+ */
+void kitty_theme_mark_field_bad(HWND edit, bool bad);
+
+/*
  * The width a push button needs for the caption it is CARRYING RIGHT NOW.
  *
  * A template gives a button the width its template caption needed, and a

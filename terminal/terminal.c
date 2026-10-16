@@ -1662,6 +1662,14 @@ static termline *lineptr(Terminal *term, int y, int lineno)
  * double-evaluating its argument.
  */
 #define lineptr(x) (lineptr)(term,x,__LINE__)
+#ifdef MOD_PERSO
+/* KiTTY: lineptr for terminal/kitty_search.c (kitty_term_int.h); release
+ * with term_release_line. */
+termline *kitty_term_lineptr(Terminal *term, int y)
+{
+    return lineptr(y);
+}
+#endif
 #define scrlineptr(x) (lineptr)(term,checkscr(x,__LINE__),__LINE__)
 #define unlineptr(line) term_release_line(line)
 
@@ -2026,6 +2034,9 @@ void term_sb_compact_now(Terminal *term) { (void)term; }
  */
 static void seen_disp_event(Terminal *term)
 {
+#ifdef MOD_PERSO
+    kitty_search_output(term);         /* KiTTY: the search's tail, or its end */
+#endif
     if (term->scroll_on_disp) {
 #ifdef MOD_PERSO
         /* Output within one second of a resize is the remote side redrawing
@@ -2471,6 +2482,9 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->remote_qtitle_action = conf_get_int(term->conf, CONF_remote_qtitle_action);
     term->rxvt_homeend = conf_get_bool(term->conf, CONF_rxvt_homeend);
     term->scroll_on_disp = conf_get_bool(term->conf, CONF_scroll_on_disp);
+#ifdef MOD_PERSO
+    kitty_search_reconfig(term);       /* KiTTY: pinned while searching */
+#endif
     term->scroll_on_key = conf_get_bool(term->conf, CONF_scroll_on_key);
     term->xterm_mouse_forbidden = conf_get_bool(term->conf, CONF_no_mouse_rep);
     term->xterm_256_colour = conf_get_bool(term->conf, CONF_xterm_256_colour);
@@ -2690,6 +2704,7 @@ void term_clrsb(Terminal *term)
 #endif
 #ifdef MOD_PERSO
     fm_clear(term);                    /* KiTTY: no scrollback, no marks */
+    kitty_search_relaid(term);         /* KiTTY: the search starts over */
 #endif
 
     /*
@@ -3003,6 +3018,7 @@ void term_free(Terminal *term)
 #endif
 #ifdef MOD_PERSO
     kitty_gfx_free(term);              /* KiTTY: kitty graphics */
+    kitty_search_destroy(term);        /* KiTTY: the scrollback search */
 #endif
     while ((cline = delpos234(term->scrollback, 0)) != NULL)
         free_compressed_line(cline);
@@ -3344,6 +3360,12 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
     term->rows = newrows;
     term->cols = newcols;
     term->savelines = newsavelines;
+#ifdef MOD_PERSO
+    /* KiTTY: the search's hits again - only here, with the display
+     * buffer rebuilt: its repaint walks disptext with term->rows, which
+     * the loops above already grew. */
+    kitty_search_relaid(term);
+#endif
 
     swap_screen(term, save_alt_which, false, false);
 
@@ -3426,6 +3448,8 @@ static void swap_screen(Terminal *term, int which,
         reset = false;                 /* do no weird resetting if which==0 */
 #ifdef MOD_PERSO
     term->kd_all = true;               /* KiTTY: the other screen, every row */
+    if (!which)
+        kitty_search_relaid(term);     /* KiTTY: the main screen's hits again */
 #endif
 
     if (which != term->alt_which) {
@@ -3751,6 +3775,7 @@ static void scroll(Terminal *term, int topline, int botline,
                     cline = delpos234(term->scrollback, 0);
 #ifdef MOD_PERSO
                     fm_sb_evicted(term);   /* KiTTY: the mark strip's list */
+                    kitty_search_sb_evicted(term);   /* KiTTY: the search's hits */
                     term->gfx_sb_base++;   /* KiTTY: kitty graphics - entry 0 went */
 #endif
 #ifdef KITTY_SB_DEFER
@@ -9528,6 +9553,11 @@ static void do_paint(Terminal *term)
 #endif
 
         scrpos.y = i + term->disptop;
+#ifdef MOD_PERSO
+        /* KiTTY: the scrollback search's hits on this row */
+        kitty_search_span ks[16];
+        int ksn = term->search ? kitty_search_row(term, scrpos.y, ks, 16) : 0;
+#endif
         ldata = lineptr(scrpos.y);
 
         /* Do Arabic shaping and bidi. */
@@ -9676,6 +9706,27 @@ static void do_paint(Terminal *term)
 #else
             tattr = (tattr ^ rv
                      ^ (selected ? ATTR_REVERSE : 0));
+#endif
+#ifdef MOD_PERSO
+            /* KiTTY: a search hit is amber, the current one brighter, the
+             * text on it black; a selection drawn over a hit wins. Under
+             * reverse video the painter swaps the two, so they go in
+             * swapped. */
+            if (ksn && !selected) {
+                int k;
+                for (k = 0; k < ksn; k++)
+                    if (scrpos.x >= ks[k].x0 && scrpos.x < ks[k].x1) {
+                        optionalrgb amber, ink;
+                        amber.enabled = ink.enabled = true;
+                        amber.r = ks[k].cur ? 255 : 160;
+                        amber.g = ks[k].cur ? 191 : 105;
+                        amber.b = 0;
+                        ink.r = ink.g = ink.b = 0;
+                        if (tattr & ATTR_REVERSE) { tc.fg = amber; tc.bg = ink; }
+                        else { tc.bg = amber; tc.fg = ink; }
+                        break;
+                    }
+            }
 #endif
 
             /* 'Real' blinking ? */

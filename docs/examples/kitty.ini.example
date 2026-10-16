@@ -1108,6 +1108,10 @@
 ;    (default is CONTROL+ALT+T)
 ;duplicate=
 
+; Search the scrollback: the find bar at the top right of the window
+;    (default is CONTROL+SHIFT+F)
+;search=
+
 ; open text editor connected to the main window (default is SHIFT+F2)
 ;editor=
 

@@ -386,7 +386,10 @@
 #define IDM_WINNAME 0xB220
 #endif
 #ifndef IDM_SAVENEWSESS
-#define IDM_SAVENEWSESS 0xB230   /* Save as New Session... (kitty_savenew_box) */
+#define IDM_SAVENEWSESS 0xB230
+#ifndef IDM_SEARCH
+#define IDM_SEARCH 0xB240        /* Find... - the scrollback search's bar */
+#endif   /* Save as New Session... (kitty_savenew_box) */
 #endif
 
 /* KiTTY send-text input boxes ([Shortcuts] input / inputm and the password
@@ -787,4 +790,20 @@
 #endif
 #ifndef IDC_GF_TIP
 #define IDC_GF_TIP 1465
+#endif
+/* the find bar of the scrollback search (kitty_searchbar.c) */
+#ifndef IDD_SEARCHBAR
+#define IDD_SEARCHBAR 176
+#endif
+#ifndef IDC_SB_EDIT
+#define IDC_SB_EDIT 1470
+#endif
+#ifndef IDC_SB_DOWN
+#define IDC_SB_DOWN 1471
+#endif
+#ifndef IDC_SB_COUNT
+#define IDC_SB_COUNT 1472
+#endif
+#ifndef IDC_SB_GRIP
+#define IDC_SB_GRIP 1473
 #endif

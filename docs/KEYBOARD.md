@@ -149,6 +149,11 @@ are off while far2l key events are on (below). If a host application wants a com
 taken, the shortcut can be changed or switched off; see
 [FEATURES.md](../FEATURES.md).
 
+**Ctrl+Shift+F** opens the scrollback search's find bar (the `search`
+shortcut). While the bar has the focus nothing typed reaches the session;
+Esc closes it. A program that wants Ctrl+Shift+F itself gets it back by
+changing or clearing the shortcut.
+
 **Ctrl+Tab** switches only between windows that have "Switch Terminal Windows
 using Ctrl+TAB" on (*Window → Behaviour*, off by default; `[KiTTY] ctrltab`
 must not be `no`). A window with it off keeps Ctrl+Tab for the program inside

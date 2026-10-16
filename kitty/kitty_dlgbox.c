@@ -865,6 +865,7 @@ void kitty_demo_templates( void ) {
 		{ "IDD_OSC52READ",                  IDD_OSC52READ },
 		{ "IDD_HELPBOX",                    IDD_HELPBOX },
 		{ "IDD_GETFILEBOX",                 IDD_GETFILEBOX },
+		{ "IDD_SEARCHBAR",                  IDD_SEARCHBAR },
 	} ;
 	size_t i ;
 	/* IDD_HOSTKEY names a window CLASS that ShinyDialogBox normally

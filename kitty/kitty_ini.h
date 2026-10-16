@@ -1111,6 +1111,10 @@ char default_init_file_content[] =
 ;    (default is CONTROL+ALT+T)\n\
 ;duplicate=\n\
 \n\
+; Search the scrollback: the find bar at the top right of the window\n\
+;    (default is CONTROL+SHIFT+F)\n\
+;search=\n\
+\n\
 ; open text editor connected to the main window (default is SHIFT+F2)\n\
 ;editor=\n\
 \n\

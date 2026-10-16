@@ -46,6 +46,7 @@
 #define KWP_SHARED_PREFIX   "WinPos"
 #define KWP_SESSION_PREFIX  "TermPos"
 #define KWP_OVERLAY_KEY     "PsOverlayPos"  /* the program status overlay */
+#define KWP_SEARCHBAR_KEY   "SearchBarPos"  /* the scrollback search's bar */
 
 /* Each monitor contributes FNV-1a of its rectangle and the per-monitor
  * hashes are SUMMED: EnumDisplayMonitors does not promise the same order in
@@ -133,7 +134,7 @@ int kitty_winpos_session_get(const char *session, unsigned long layout,
     return ok;
 }
 
-int kitty_winpos_overlay_get(const char *session, int *dx, int *dy)
+static int kwp_offset_get(const char *session, const char *key, int *dx, int *dy)
 {
     settings_r *r;
     char *v;
@@ -141,7 +142,7 @@ int kitty_winpos_overlay_get(const char *session, int *dx, int *dy)
     if (kitty_winpos_is_shared_window(session)) return 0;
     r = open_settings_r(session);
     if (!r) return 0;
-    v = read_setting_s(r, KWP_OVERLAY_KEY);
+    v = read_setting_s(r, key);
     close_settings_r(r);
     if (v) {
         ok = sscanf(v, "%d,%d", dx, dy) == 2;
@@ -150,7 +151,7 @@ int kitty_winpos_overlay_get(const char *session, int *dx, int *dy)
     return ok;
 }
 
-int kitty_winpos_overlay_set(const char *session, int dx, int dy)
+static int kwp_offset_set(const char *session, const char *key, int dx, int dy)
 {
     char val[32];
     settings_r *r;
@@ -168,9 +169,29 @@ int kitty_winpos_overlay_set(const char *session, int dx, int dy)
         sfree(err);
         return 0;
     }
-    write_setting_s(w, KWP_OVERLAY_KEY, val);
+    write_setting_s(w, key, val);
     close_settings_w(w);
     return 1;
+}
+
+int kitty_winpos_overlay_get(const char *session, int *dx, int *dy)
+{
+    return kwp_offset_get(session, KWP_OVERLAY_KEY, dx, dy);
+}
+
+int kitty_winpos_overlay_set(const char *session, int dx, int dy)
+{
+    return kwp_offset_set(session, KWP_OVERLAY_KEY, dx, dy);
+}
+
+int kitty_winpos_searchbar_get(const char *session, int *dx, int *dy)
+{
+    return kwp_offset_get(session, KWP_SEARCHBAR_KEY, dx, dy);
+}
+
+int kitty_winpos_searchbar_set(const char *session, int dx, int dy)
+{
+    return kwp_offset_set(session, KWP_SEARCHBAR_KEY, dx, dy);
 }
 
 int kitty_winpos_session_set(const char *session, unsigned long layout,
