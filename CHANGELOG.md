@@ -6,6 +6,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.18-beta
 
+### New
+
+- **[docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md)** for tools that
+  generate a session folder themselves: where it is, the layout, the name
+  escaping, which files count as sessions, the file format with the keys that
+  matter, and the same session in the registry store.
+
 ### Fixed
 
 - **The search's marks beside the scrollbar show as soon as the search

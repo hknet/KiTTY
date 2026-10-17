@@ -234,7 +234,9 @@ in the folder (Application > KiTTY++ Settings > Storage & Backup, *Session
 File Extension*; none by default, as in old KiTTY); the list shows the names without it, a file without it is still
 listed and gets it on its next save, and changing it offers to rename the
 existing files once. It is also the file type registered for double-clicked
-session files.
+session files. For tools that generate a session folder themselves,
+[docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md) has the layout, the name
+escaping, the file format and the registry counterpart.
 
 **Folder store: the host-key folder can be set, and classic KiTTY's
 putty.conf is taken over.** Storage & Backup, group "This KiTTY++", has a

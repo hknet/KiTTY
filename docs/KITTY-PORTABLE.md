@@ -44,6 +44,8 @@ the suffix is still listed and gets it on its next save, a save whose file name
 is already another session's is refused, and changing the suffix offers to
 rename the existing files. A session named `CON`, `NUL`, `COM1` or another
 Windows device name, or one ending in a dot or a space, can be saved.
+Tools that write the session files themselves: [SESSION-FOLDERS.md](SESSION-FOLDERS.md)
+has the layout, the name escaping and the file format.
 
 **The host-key folder can be set, and classic KiTTY's putty.conf is taken
 over.** Application > KiTTY++ Settings > Storage & Backup, group "This

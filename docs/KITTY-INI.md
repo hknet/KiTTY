@@ -65,9 +65,11 @@ folder or `KiTTYState` file next to the ini also makes it authoritative.
 Otherwise (`savemode=registry`, or absent with no portable layout) the
 registry stays authoritative and the ini keys act as first-run defaults only.
 
-Note: the command-line tools (`klink`/`kscp`/`ksftp`) always read the
-**registry** session store — a portable `savemode=dir` store is usable from
-the GUI only (see [KNOWN-ISSUES.md](../KNOWN-ISSUES.md)).
+The command-line tools (`klink`/`kscp`/`ksftp`) follow the same rule: with
+`savemode=dir`, or with `savemode` absent and a `Sessions` folder or
+`KiTTYState` file next to the ini, they load the sessions and check the host
+keys of that folder store; otherwise they read the registry. Tools that write
+session files themselves: [SESSION-FOLDERS.md](SESSION-FOLDERS.md).
 
 ## When an edited kitty.ini appears to do nothing
 
