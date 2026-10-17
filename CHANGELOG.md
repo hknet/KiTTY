@@ -88,6 +88,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Manage Sessions opened with the Manage... button follows a theme switch
   at once.** It kept its old light or dark look until it was clicked,
   while Manage Sessions started with `kitty.exe -manage` followed at once.
+- **Help (F1) on a setting opens the section of its own panel.** 73
+  settings opened another panel's text, a whole chapter or nothing.
+  Line spacing has a help text now, and Storage & Backup shows the legacy
+  password salt as 0, the value in use, when none is set.
 
 ## 0.85.1.16-beta — 2026-10-15
 

@@ -231,13 +231,88 @@ Windows Application event log.
 
 \H{kitty-cfg-scripting} The Scripting panel
 
-\S{kitty-cfg-loginscript} \q{Login script}
+\S{kitty-cfg-scriptfile} Running a script file
 
-A list of expect/send pairs - wait for this text, then send that -
-carried out when the session opens. It is stored in the session, so it
-travels with it; \c{-loginscript} loads one from a file on the command
-line, and the button beneath the box fills the box from a file so what
-is saved is what you can see.
+A script file is a plain text file whose lines are typed into the
+session for you, one after another, as if you typed them - the RuTTY
+mechanism, and the right tool when the same sequence must go into many
+hosts. \e{Everything on this panel acts only while a script is
+running}: without a script, none of these fields does anything.
+
+A script \e{starts} in one of two ways: automatically when the session
+connects, if \q{Run the script on connect} is ticked and \q{Script
+file} names the file; or on demand in a live session from the system
+menu, \q{Tools > Send recorded script}, which opens a file picker. Only
+one script runs at a time, and every start, stop and timeout is
+reported in the Event Log.
+
+The simplest possible script is just the commands, one per line:
+
+\c uname -a
+\c df -h
+\c exit
+
+Sent like that, lines go out on a timer alone. The panel's real value
+is making the script \e{wait for the host}:
+
+\b \q{Wait for a prompt before sending} is the master switch for
+waiting. With it on, the next line is sent only after the host's
+output \e{ends with} the \q{Wait-for text} - your prompt's tail, for
+example \c{$\_} or \c{>\_} (note the trailing space most prompts
+have). This is what lets a script survive a slow login or a command
+that takes a minute: nothing is typed into a prompt that is not there
+yet.
+
+\b \q{Except for first command} belongs to that switch: the FIRST line
+is sent immediately, without waiting for a prompt first. Use it when
+the host greets you with something that is not your prompt - a menu, a
+\q{press enter to continue} - and the first line is what answers it.
+
+\b \q{Halt-on text}: if the host's output ever contains this text
+while the script runs, the script \e{stops at once} and reports so in the
+Event Log. It is the emergency brake - set it to the failure word your
+commands produce, e.g. \c{denied} or \c{No such file}, and a script
+cannot keep typing into a session where step three already failed.
+Leave it empty and nothing stops the script early.
+
+\b \q{Timeout} bounds every wait: if the wait-for text has not arrived
+after this many seconds, the script gives up entirely (\q{script
+timeout !} in the Event Log) rather than hang for ever. \q{Line delay}
+and \q{Character delay} pace the typing itself, for hosts that drop
+input sent faster than a human types.
+
+A line's wait can also be set \e{from inside the file}, per line:
+
+\b \q{Start of condition/comment line} names one character, \c{:} by
+default. With \q{Use conditions from file} OFF, every line starting
+with it is simply a \e{comment} and is skipped.
+
+\b With \q{Use conditions from file} ON, a line starting with that
+character is a \e{condition}: it names the wait-for text for the
+\e{next line only}, overriding the global \q{Wait-for text} for that
+one line. A line starting with the character \e{doubled} (\c{::}) is a
+comment. Lines with no condition of their own still use the global
+wait-for text, and \q{Halt-on text} stays armed throughout - the
+switch adds per-line conditions, it disables nothing.
+
+\c :login:
+\c root
+\c :assword:
+\c wrong-example
+\c :$
+\c uname -a
+
+\b \q{CR/LF translation} decides the line ending each line is sent
+with - \q{Off} sends the file's own endings, \q{no LF} strips the
+linefeed, \q{CR} sends carriage return only (what most interactive
+hosts expect), \q{Rec} the recorded form.
+
+A worked example ships as
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/examples/logon-script.ksh}{docs/examples/logon-script.ksh}.
+The whole engine can be disabled machine-wide with \cw{[KiTTY]
+scriptmode=no} in \c{kitty.ini}; the \e{login script} on
+\e{Connection > Login} is a different, simpler mechanism
+(\k{kitty-cfg-loginscript}) that needs none of this panel.
 
 \H{kitty-cfg-broadcast} The Broadcast panel
 
@@ -713,22 +788,6 @@ an empty clipboard. There is no setting for this.
 With \e{Ask}, the question offers \q{Always allow this far2l}: that far2l
 (by the client ID it sends) gets no question again in this session.
 \q{Forget always-allowed far2l clients} empties that list.
-
-\S{kitty-cfg-far2l-images} \q{Show far2l images}
-
-far2l can place pictures over the text: its image viewer, for one. On
-by default. The pictures sit over the text until far2l removes them and
-do not scroll with it; a terminal reset, far2l's exit and the end of the
-session remove them too. Raw RGB and RGBA pictures always work, PNG and
-JPEG where Windows has the imaging component (Vista and later, and XP
-with the Microsoft .NET Framework 3.0 installed). far2l
-draws them with its ImageViewer plugin, opened from the plugins menu
-(F11) - F3 and the quick view (Ctrl+Q) show the file as text - which
-needs ImageMagick's
-\c{convert} on the far2l host.
-
-Off: KiTTY++ reports to far2l that the terminal shows no images, and far2l
-sends none.
 
 \S{kitty-cfg-far2l-keys} \i{far2l key and mouse events}
 
@@ -2806,6 +2865,14 @@ switch is read from \c{kitty.ini} only - never the registry, so a stale
 registry value can never cancel it - which is why it is not editable
 here.
 
+\b \q{Legacy password salt variant} shows \c{cryptsalt}, a setting of
+old KiTTY's password scrambling, which KiTTY++ reads but never writes:
+it stores passwords with DPAPI or the master password. \c{0} (the
+default) and \c{1} decode such values, in an encrypted \c{.ktx} file and
+in an old KiTTY's configuration password; \c{2} or higher takes them as
+plain text. Shown, not editable: a wrong value leaves those values
+unreadable.
+
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{savemode} and
 \c{KiClassName} (shown), \c{savbackupcount}, \c{portablebackupcount},
 \c{sav}, \c{fileextension}, \c{cryptsalt}, \c{restrictacl} (shown), and
@@ -3314,114 +3381,6 @@ line with \c{kitty.exe -update}, which does that and exits.
 
 \H{kitty-cfg-more-session} Further session settings
 
-\S{kitty-cfg-scriptfile} Running a script file
-
-A script file is a plain text file whose lines are typed into the
-session for you, one after another, as if you typed them - the RuTTY
-mechanism, and the right tool when the same sequence must go into many
-hosts. \e{Everything on this panel acts only while a script is
-running}: without a script, none of these fields does anything.
-
-A script \e{starts} in one of two ways: automatically when the session
-connects, if \q{Run the script on connect} is ticked and \q{Script
-file} names the file; or on demand in a live session from the system
-menu, \q{Tools > Send recorded script}, which opens a file picker. Only
-one script runs at a time, and every start, stop and timeout is
-reported in the Event Log.
-
-The simplest possible script is just the commands, one per line:
-
-\c uname -a
-\c df -h
-\c exit
-
-Sent like that, lines go out on a timer alone. The panel's real value
-is making the script \e{wait for the host}:
-
-\b \q{Wait for a prompt before sending} is the master switch for
-waiting. With it on, the next line is sent only after the host's
-output \e{ends with} the \q{Wait-for text} - your prompt's tail, for
-example \c{$\_} or \c{>\_} (note the trailing space most prompts
-have). This is what lets a script survive a slow login or a command
-that takes a minute: nothing is typed into a prompt that is not there
-yet.
-
-\b \q{Except for first command} belongs to that switch: the FIRST line
-is sent immediately, without waiting for a prompt first. Use it when
-the host greets you with something that is not your prompt - a menu, a
-\q{press enter to continue} - and the first line is what answers it.
-
-\b \q{Halt-on text}: if the host's output ever contains this text
-while the script runs, the script \e{stops at once} and reports so in the
-Event Log. It is the emergency brake - set it to the failure word your
-commands produce, e.g. \c{denied} or \c{No such file}, and a script
-cannot keep typing into a session where step three already failed.
-Leave it empty and nothing stops the script early.
-
-\b \q{Timeout} bounds every wait: if the wait-for text has not arrived
-after this many seconds, the script gives up entirely (\q{script
-timeout !} in the Event Log) rather than hang for ever. \q{Line delay}
-and \q{Character delay} pace the typing itself, for hosts that drop
-input sent faster than a human types.
-
-A line's wait can also be set \e{from inside the file}, per line:
-
-\b \q{Start of condition/comment line} names one character, \c{:} by
-default. With \q{Use conditions from file} OFF, every line starting
-with it is simply a \e{comment} and is skipped.
-
-\b With \q{Use conditions from file} ON, a line starting with that
-character is a \e{condition}: it names the wait-for text for the
-\e{next line only}, overriding the global \q{Wait-for text} for that
-one line. A line starting with the character \e{doubled} (\c{::}) is a
-comment. Lines with no condition of their own still use the global
-wait-for text, and \q{Halt-on text} stays armed throughout - the
-switch adds per-line conditions, it disables nothing.
-
-\c :login:
-\c root
-\c :assword:
-\c wrong-example
-\c :$
-\c uname -a
-
-\b \q{CR/LF translation} decides the line ending each line is sent
-with - \q{Off} sends the file's own endings, \q{no LF} strips the
-linefeed, \q{CR} sends carriage return only (what most interactive
-hosts expect), \q{Rec} the recorded form.
-
-A worked example ships as
-\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/examples/logon-script.ksh}{docs/examples/logon-script.ksh}.
-The whole engine can be disabled machine-wide with \cw{[KiTTY]
-scriptmode=no} in \c{kitty.ini}; the \e{login script} on
-\e{Connection > Login} is a different, simpler mechanism
-(\k{kitty-cfg-loginscript}) that needs none of this panel.
-
-\S{kitty-cfg-autologin} \q{Auto-login password} and \q{Auto-command}
-
-The password KiTTY sends when the host prompts for one, and a command it
-sends once the shell is there.
-
-The password is stored \e{protected at rest}: DPAPI in registry mode,
-or under the store's master password in a portable store. It is not
-kept in the clear, and \q{Show password} is the only way to see it
-again.
-
-While the session is running the password is \e{also} kept encrypted in
-memory, and is decrypted only for the moment it is used - at login, or
-when a helper tool is started - so that a crash dump or the pagefile
-does not carry it.
-
-An automatic password is a convenience with a cost: anything that can
-read your account can make KiTTY use it, and a host you did not
-expect will be sent it just the same. Prefer key authentication where
-you can, and keep automatic passwords for machines where a key is not
-possible.
-
-\q{Auto-command after login} is sent once, after authentication. It is
-the place for \c{sudo -i} or attaching to a \c{tmux} session, not for a
-sequence - use a script file (\k{kitty-cfg-scriptfile}) for that.
-
 \S{kitty-cfg-antiidle} \q{Anti-idle string}
 
 Text KiTTY sends to the host at intervals to stop an idle session being
@@ -3452,36 +3411,13 @@ automatically when the link drops} on \k{kitty-cfg-kset-connection},
 which is on by default. With it off the panel shows one line stating
 so, and where the switch is, instead of the boxes.
 
-KiTTY does \e{not} re-dial after an authentication failure. A password
-or key the server rejected will be rejected again, and retrying it is
-how an account gets locked out.
-
-\S{kitty-cfg-keypin} \q{Pinned key fingerprint}
-
-A session that authenticates with a private key file can record that
-file's SHA256 fingerprint. Every connection then checks the file
-against the record \e{before} offering the key or prompting for its
-passphrase, so a file that has been replaced or pointed somewhere else
-is refused - with both fingerprints named in the terminal and the Event
-Log - rather than used.
-
-\q{Record fingerprint of the key file} fills the field in from the key
-you have configured; it reads only the public half, so no passphrase is
-involved. Clearing the field switches the check off, which is the
-default.
-
-The pin is always over the key itself, never over a detached
-certificate, so renewing a certificate from an SSH CA does not disturb
-it. The command-line tools honour the pin of a session they load.
-
-\S{kitty-cfg-named-proxy-buttons} \q{Edit named proxies} and \q{Load named proxy pre-sets}
-
-Two ways into the named-proxy definitions from a session's own Proxy
-panel. \q{Edit named proxies} opens the panel where they live
-(\k{kitty-cfg-named-proxies}). \q{Load named proxy pre-sets} copies one
-definition's settings \e{into this session}, which is the opposite of
-choosing it by name (\k{kitty-cfg-proxy-override}): the session then
-has its own copy and stops following the definition.
+\q{Retries after a failed login}: \q{as in KiTTY++ Settings} (the
+default) follows the global rules for a login that failed
+(\k{kitty-cfg-reconnect-rules}); \q{never} makes no new attempt for this
+session once the server has seen a login - closed before or during
+login, refused, not recognised. That suits a server that locks an
+account or bans an address after failed logins (fail2ban). Stored with
+the session (\c{ReconnectLogin}).
 
 \S{kitty-cfg-dynports} \q{Print dynamic ports in window title}
 
@@ -3694,6 +3630,22 @@ terminal reports Sixel (\c{4}) in its answer to the device attributes
 query, which is how programs find out (\k{kitty-cfg-reportvt220}); off,
 the sequence is ignored and the answer carries no \c{4}. On by default;
 stored with the session (\c{SixelImages}).
+
+\S{kitty-cfg-far2l-images} \q{Show far2l images}
+
+far2l can place pictures over the text: its image viewer, for one. On
+by default. The pictures sit over the text until far2l removes them and
+do not scroll with it; a terminal reset, far2l's exit and the end of the
+session remove them too. Raw RGB and RGBA pictures always work, PNG and
+JPEG where Windows has the imaging component (Vista and later, and XP
+with the Microsoft .NET Framework 3.0 installed). far2l
+draws them with its ImageViewer plugin, opened from the plugins menu
+(F11) - F3 and the quick view (Ctrl+Q) show the file as text - which
+needs ImageMagick's
+\c{convert} on the far2l host.
+
+Off: KiTTY++ reports to far2l that the terminal shows no images, and far2l
+sends none.
 
 \S{kitty-cfg-wheel} \q{Lines scrolled per wheel turn}
 

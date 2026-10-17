@@ -235,28 +235,6 @@ KiTTY's portable mode (\c{kitty_portable.exe}, or \c{savemode=dir}
 in \c{kitty.ini}), which keeps every session as a file beside the
 program; \k{config-file} describes the classic manual method.
 
-\S{config-closeonexit} \q{\ii{Close window} on exit}
-
-On the Window > Behaviour panel, under \q{Closing the window}, there
-is an option labelled \q{Close window on exit}. This controls whether
-the KiTTY \i{terminal window} disappears as soon as the session inside
-it terminates. If you are likely to want to copy and paste text out of
-the session after it has terminated, or restart the session, you
-should arrange for this option to be off.
-
-When automatic reconnection is on (\k{kitty-cfg-reconnect}), a dropped
-link is re-dialled before this setting is consulted; it decides what
-happens once the session has ended, and a closed window has nothing
-left to restart.
-
-\q{Close window on exit} has three settings. \q{Always} means always
-close the window on exit; \q{Never} means never close on exit
-(always leave the window open, but \I{inactive window}inactive). The
-third setting, and the default one, is \q{Only on clean exit}. In this
-mode, a session which terminates normally will cause its window to
-close, but one which is aborted unexpectedly by network trouble or a
-confusing message from the server will leave the window up.
-
 \H{config-logging} The Logging panel
 
 The Logging configuration panel allows you to save \i{log file}s of your
@@ -1246,6 +1224,15 @@ variable-width fonts as well: if you select one of these, the font
 will be coerced into fixed-size character cells, which will probably
 not look very good (but can work OK with some fonts).
 
+\S{kitty-cfg-linespacing} \q{Line spacing (100-300 %)} (KiTTY++)
+
+Stretches each row to a percentage of the font's own line height, so
+text is easier to read without changing the font size. 100 % (the
+default) leaves the font's metrics untouched; above that, the extra
+height is shared evenly above and below the text. Past 100 %,
+line-drawing characters no longer join up between rows. Stored with the
+session (\c{LineSpacing}).
+
 \S{config-mouseptr} \q{Hide \i{mouse pointer} when typing in window}
 
 If you enable this option, the mouse pointer will disappear if the
@@ -1281,6 +1268,28 @@ the behaviour of \I{KiTTY window}KiTTY's window. Its first group,
 \q{Save settings on exit} (\k{kitty-cfg-save-on-exit}). Where the
 window opens - \q{Remember window position} and the fixed position - is
 on Window > Appearance > Position (\k{kitty-cfg-winpos-remember}).
+
+\S{config-closeonexit} \q{\ii{Close window} on exit}
+
+On the Window > Behaviour panel, under \q{Closing the window}, there
+is an option labelled \q{Close window on exit}. This controls whether
+the KiTTY \i{terminal window} disappears as soon as the session inside
+it terminates. If you are likely to want to copy and paste text out of
+the session after it has terminated, or restart the session, you
+should arrange for this option to be off.
+
+When automatic reconnection is on (\k{kitty-cfg-reconnect}), a dropped
+link is re-dialled before this setting is consulted; it decides what
+happens once the session has ended, and a closed window has nothing
+left to restart.
+
+\q{Close window on exit} has three settings. \q{Always} means always
+close the window on exit; \q{Never} means never close on exit
+(always leave the window open, but \I{inactive window}inactive). The
+third setting, and the default one, is \q{Only on clean exit}. In this
+mode, a session which terminates normally will cause its window to
+close, but one which is aborted unexpectedly by network trouble or a
+confusing message from the server will leave the window up.
 
 \S{config-warnonclose} \q{Warn before \i{closing window}}
 
@@ -2111,6 +2120,29 @@ friends; a script can also be loaded from a file). For the strongest
 security prefer public-key authentication (\k{pubkey}) over a stored
 password; the details, cautions and portable-mode password handling
 are in the KiTTY additions chapter (\k{kitty-features}).
+
+While the session is running the password is \e{also} kept encrypted in
+memory, and is decrypted only for the moment it is used - at login, or
+when a helper tool is started - so that a crash dump or the pagefile
+does not carry it.
+
+An automatic password is a convenience with a cost: anything that can
+read your account can make KiTTY use it, and a host you did not
+expect will be sent it just the same. Prefer key authentication where
+you can, and keep automatic passwords for machines where a key is not
+possible.
+
+\q{Auto-command after login} is sent once, after authentication. It is
+the place for \c{sudo -i} or attaching to a \c{tmux} session, not for a
+sequence - use a script file (\k{kitty-cfg-scriptfile}) for that.
+
+\S{kitty-cfg-loginscript} \q{Login script}
+
+A list of expect/send pairs - wait for this text, then send that -
+carried out when the session opens. It is stored in the session, so it
+travels with it; \c{-loginscript} loads one from a file on the command
+line, and the button beneath the box fills the box from a file so what
+is saved is what you can see.
 
 \S{config-username-from-env} Use of system username
 
@@ -3386,7 +3418,8 @@ key, replaced, or tampered with - naming both fingerprints in the
 terminal and the Event Log. Clear the field to switch the check off
 (empty, the default, means no check). The pin is always over the key
 itself, never over a detached certificate (\k{config-ssh-cert}), so
-certificate renewals do not disturb it.
+certificate renewals do not disturb it. The command-line tools honour the
+pin of a session they load.
 
 \S{config-ssh-cert} \q{\ii{Certificate} to use with the private key}
 

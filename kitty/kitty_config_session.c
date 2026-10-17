@@ -4708,9 +4708,9 @@ static void hks_setup(struct controlbox *b, void *ctx)
 
     s = ctrl_getset(b, "Main", "keys", NULL);
     line = dupprintf(KT_HKS_INTRO, d->host, d->port);
-    ctrl_text(s, line, HELPCTX(kitty_host_keys));
+    ctrl_text(s, line, HELPCTX(kitty_ssh_hostscan));
     sfree(line);
-    d->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    d->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                               kitty_hks_handler, P(d));
     d->listbox->context2 = I(0);
     d->listbox->listbox.height = d->nrows + 1;
@@ -4724,21 +4724,21 @@ static void hks_setup(struct controlbox *b, void *ctx)
     d->listbox->listbox.percentages[2] = 40;   /* SHA256 */
     d->listbox->listbox.percentages[3] = 20;   /* Status */
     d->detail = ctrl_editbox_multiline(s, NULL, NO_SHORTCUT, 4, true,
-                                       HELPCTX(kitty_host_keys),
+                                       HELPCTX(kitty_ssh_hostscan),
                                        kitty_hks_handler, P(d), P(NULL));
     d->detail->context2 = I(1);
-    d->banner = ctrl_text(s, " ", HELPCTX(kitty_host_keys));
+    d->banner = ctrl_text(s, " ", HELPCTX(kitty_ssh_hostscan));
     ctrl_columns(s, 4, 25, 25, 25, 25);
-    c = ctrl_pushbutton(s, KT_HKS_ACCEPT, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    c = ctrl_pushbutton(s, KT_HKS_ACCEPT, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                         kitty_hks_handler, P(d));
     c->context2 = I(2); c->column = 0; d->accept = c;
-    c = ctrl_pushbutton(s, KT_HKS_DECLINE, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    c = ctrl_pushbutton(s, KT_HKS_DECLINE, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                         kitty_hks_handler, P(d));
     c->context2 = I(3); c->column = 1; d->decline = c;
-    c = ctrl_pushbutton(s, KT_HKS_PIN, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    c = ctrl_pushbutton(s, KT_HKS_PIN, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                         kitty_hks_handler, P(d));
     c->context2 = I(5); c->column = 2;
-    c = ctrl_pushbutton(s, KT_HKS_CLOSE, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    c = ctrl_pushbutton(s, KT_HKS_CLOSE, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                         kitty_hks_handler, P(d));
     c->context2 = I(4); c->column = 3; c->button.iscancel = true; d->closebtn = c;
     ctrl_columns(s, 1, 100);
@@ -5034,7 +5034,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * to announce, which a caption gives for nothing. */
     if (kitty_folder_rows_active(ssd)) {
         ssd->createbutton = ctrl_pushbutton(s, KT_SESSION_NEW_FOLDER, NO_SHORTCUT,
-                                            HELPCTX(session_saved),
+                                            HELPCTX(kitty_session_folders),
                                             sessionsaver_handler, P(ssd));
         ssd->createbutton->column = 2;
         ssd->createbutton->align_next_to = ssd->editbox;
@@ -5056,12 +5056,12 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * NOT affected - it works on the folder you are currently inside. */
     if (!GetPuttyFlag() && !kitty_folder_rows_on()) {
         ssd->folderlist = ctrl_combobox(s, NULL, NO_SHORTCUT, 100,
-                                        HELPCTX(session_saved),
+                                        HELPCTX(kitty_session_folders),
                                         sessionsaver_handler, P(ssd), P(NULL));
         ssd->folderlist->column = 0;
         if (!midsession) {
             ssd->createbutton = ctrl_pushbutton(s, KT_SESSION_NEW_FOLDER, NO_SHORTCUT,
-                                                HELPCTX(session_saved),
+                                                HELPCTX(kitty_session_folders),
                                                 sessionsaver_handler, P(ssd));
             ssd->createbutton->column = 1;
             ssd->createbutton->align_next_to = ssd->folderlist; /* centre on combo */
@@ -5091,7 +5091,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
         pc->column = 0;
         if (!midsession) {
             dlgcontrol *pe = ctrl_pushbutton(s, KT_SESSION_EDIT, NO_SHORTCUT,
-                                             HELPCTX(session_saved),
+                                             HELPCTX(kitty_proxy_override),
                                              kitty_proxyedit_handler, P(NULL));
             pe->column = 1;
             pe->align_next_to = pc;   /* centre the button on the droplist */
@@ -5150,7 +5150,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * beside the session list. */
     if (!midsession && !GetPuttyFlag()) {
         ssd->delfolderbutton = ctrl_pushbutton(s, KT_SESSION_DEL_FOLDER, NO_SHORTCUT,
-                                               HELPCTX(session_saved),
+                                               HELPCTX(kitty_session_folders),
                                                sessionsaver_handler, P(ssd));
         ssd->delfolderbutton->column = 1;      /* upper-centre, just under Delete */
         /* The whole-store Export all / Import all buttons used to sit at the
@@ -5207,7 +5207,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
         if (!midsession) {
             ssd->commentbox->column = 0;
             ssd->organizebutton = ctrl_pushbutton(s, KT_SP_ORG_BUTTON, NO_SHORTCUT,
-                                                  HELPCTX(session_saved),
+                                                  HELPCTX(kitty_session_folders),
                                                   sessionsaver_handler, P(ssd));
             ssd->organizebutton->column = 1;
             ctrl_columns(s, 1, 100);
@@ -5401,7 +5401,7 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
         c->text.wrap = false;
         logtime_rows[logtime_nrows++] = c;
         c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_logging_stamps),
+                         HELPCTX(kitty_log_rotation),
                          conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
         c->column = 1;
         logtime_rows[logtime_nrows++] = c;
@@ -5599,7 +5599,7 @@ static void kitty_broadcast_key_controls(struct controlbox *b, struct controlset
     ctrl_text(s, KT_LOGGING_BROADCAST_KEY, HELPCTX(kitty_broadcast_key));
     ctrl_columns(s, 3, 60, 20, 20);
     c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
-                     HELPCTX(no_help), kitty_bkey_box_handler,
+                     HELPCTX(kitty_broadcast_key), kitty_bkey_box_handler,
                      P(st), ED_STR);
     c->column = 0;
     st->box = c;
@@ -5619,7 +5619,7 @@ static void kitty_broadcast_key_controls(struct controlbox *b, struct controlset
      * Conf to read: the first EVENT_REFRESH replaces it with the real state.
      * The placeholder sets the control's HEIGHT, which cannot change later, so
      * it must be as long as the longest wording. */
-    st->prov = ctrl_text(s, KT_LOGGING_DEFAULT_KEY_GENERATED, HELPCTX(no_help));
+    st->prov = ctrl_text(s, KT_LOGGING_DEFAULT_KEY_GENERATED, HELPCTX(kitty_broadcast_key));
 }
 
 static void kitty_bkey_box_handler(dlgcontrol *ctrl, dlgparam *dp,
@@ -6317,8 +6317,8 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
          * its own line - instead of wherever the panel width happens to put
          * it. */
         ctrl_text(s, KT_WINDOW_1_HALF_A_SCREEN,
-                  HELPCTX(no_help));
-        ctrl_text(s, KT_WINDOW_OR_A_POSITIVE_NUMBER, HELPCTX(no_help));
+                  HELPCTX(kitty_wheel));
+        ctrl_text(s, KT_WINDOW_OR_A_POSITIVE_NUMBER, HELPCTX(kitty_wheel));
     }
     ctrl_checkbox(s, KT_WINDOW_RESET_SCROLLBACK_ON_KEYPRESS, 'k',
                   HELPCTX(window_scrollback),
@@ -6369,7 +6369,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
          * The caveat (line-drawing characters stop joining up above 100) lives
          * in FEATURES.md instead. */
         ctrl_editbox(s, KITTY_LINESPC_LABEL, NO_SHORTCUT,
-                     25, HELPCTX(no_help),
+                     25, HELPCTX(kitty_line_spacing),
                      kitty_linespacing_handler, I(CONF_line_spacing), ED_INT);
     }
 
@@ -6523,7 +6523,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                       conf_checkbox_handler, I(CONF_tools_sendfile));
         /* F1 on Get File lands on its walk-through, not on this panel. */
         ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_GETFILE, NO_SHORTCUT,
-                      HELPCTX(kitty_transfers_getfile),
+                      HELPCTX(kitty_behaviour),
                       conf_checkbox_handler, I(CONF_tools_getfile));
         ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_WINSCP, NO_SHORTCUT,
                       HELPCTX(kitty_behaviour),
@@ -6828,7 +6828,7 @@ void scb_panel_selection(struct controlbox *b)
      * they do not switch a feature on. The SHARED_CLIPBOARD_* value names still
      * read DISABLED/ENABLED - stored values are unchanged either way. */
     ctrl_radiobuttons(s, KT_REMOTE_CLIPBOARD_FAR2L_SHARED_CLIPBOARD, NO_SHORTCUT, 3,
-                      HELPCTX(kitty_osc52), conf_radiobutton_handler,
+                      HELPCTX(kitty_osc52_far2l), conf_radiobutton_handler,
                       I(CONF_shared_clipboard),
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(SHARED_CLIPBOARD_DISABLED),
                       KT_REMOTE_CLIPBOARD_ALLOW, NO_SHORTCUT, I(SHARED_CLIPBOARD_ENABLED),
@@ -6837,14 +6837,14 @@ void scb_panel_selection(struct controlbox *b)
      * are kept per session (Far2lClientIds) - this takes that back without
      * editing the session store. */
     ctrl_pushbutton(s, KT_REMOTE_CLIPBOARD_FAR2L_FORGET, NO_SHORTCUT,
-                    HELPCTX(kitty_osc52), kitty_far2l_forget_handler, P(NULL));
+                    HELPCTX(kitty_osc52_far2l), kitty_far2l_forget_handler, P(NULL));
 #endif
     /* KiTTY (OSC 52): let the remote host put text on the local clipboard.
      * Same three-way shape as the far2l control above, on purpose. "Ask"
      * answers latch for the rest of the session. */
     ctrl_radiobuttons(s, KT_REMOTE_CLIPBOARD_WRITES_HOST_SETS_YOUR_CLIPBOARD,
                       NO_SHORTCUT, 3,
-                      HELPCTX(kitty_osc52), conf_radiobutton_handler,
+                      HELPCTX(kitty_osc52_writes), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard),
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(OSC52_CLIPBOARD_DENY),
                       KT_REMOTE_CLIPBOARD_ALLOW, NO_SHORTCUT, I(OSC52_CLIPBOARD_ALLOW),
@@ -6863,14 +6863,14 @@ void scb_panel_selection(struct controlbox *b)
      * something that was forgotten. */
     ctrl_radiobuttons(s, KT_REMOTE_CLIPBOARD_READS_HOST_ASKS_FOR_YOUR,
                       NO_SHORTCUT, 2,
-                      HELPCTX(kitty_osc52), conf_radiobutton_handler,
+                      HELPCTX(kitty_osc52_reads), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard_read),
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(OSC52_READ_DENY),
                       KT_REMOTE_CLIPBOARD_ASK, NO_SHORTCUT, I(OSC52_READ_ASK));
     /* Covers OSC 52, OSC 5522 AND far2l, which is why the label names none of
      * them: a rule with an exception in it is not the rule people remember. */
     ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_ONLY_WHILE_THIS_WINDOW_HAS,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_reads),
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
 
     /*
@@ -6886,12 +6886,12 @@ void scb_panel_selection(struct controlbox *b)
      * gives up after, in seconds (0 = never)" lost its unit off the right edge,
      * which is precisely the word that makes the number mean anything. */
     ctrl_editbox(s, KT_LIMITS_LARGEST_PAYLOAD_IN_MB, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_clipboard_max_mb), ED_INT);
     /* A cap per second rather than a gap between writes: a gap would make the
      * FIRST write of a burst win, leaving a stale clipboard, which is backwards. */
     ctrl_editbox(s, KT_LIMITS_MOST_WRITES_PER_SECOND_0,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_clipboard_writes_per_sec), ED_INT);
 
     /* The numbers behind the read dialog. They are settings because the values
@@ -6901,35 +6901,35 @@ void scb_panel_selection(struct controlbox *b)
     s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "read",
                     KT_LIMITS_A_GRANTED_CLIPBOARD_READ);
     ctrl_editbox(s, KT_LIMITS_GRANT_OFFERED_IN_MINUTES, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_minutes), ED_INT);
     ctrl_editbox(s, KT_LIMITS_GRANT_OFFERED_IN_REQUESTS, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_requests), ED_INT);
     ctrl_editbox(s, KT_LIMITS_SHORTEST_GAP_BETWEEN_READS,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_interval), ED_INT);
     ctrl_editbox(s, KT_LIMITS_MOST_READS_PER_WINDOW_0,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_max), ED_INT);
     /* "in seconds" has to survive: without a unit the number is meaningless, and
      * it was the unit that fell off the edge. The "(0 = never)" the longer wording
      * carried is the natural reading of a zero timeout anyway. */
     ctrl_editbox(s, KT_LIMITS_UNANSWERED_PROMPT_EXPIRES_IN_SECONDS,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_timeout), ED_INT);
     ctrl_editbox(s, KT_LIMITS_MOST_PROMPTS_PER_TEN_SECONDS, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
                  I(CONF_osc52_read_dialogs), ED_INT);
     /* OSC 5522 paste events: a privilege an application arms with one mode
      * switch and a keypress then exercises without a dialog, so it gets a
      * clock; the mode itself outlives the clock, the reads then ask. */
-    ctrl_text(s, KT_LIMITS_PASTE_EVENTS_TEXT, HELPCTX(kitty_osc52));
+    ctrl_text(s, KT_LIMITS_PASTE_EVENTS_TEXT, HELPCTX(kitty_osc52_paste));
     ctrl_editbox(s, KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_paste), conf_editbox_handler,
                  I(CONF_osc5522_paste_minutes), ED_INT);
     ctrl_editbox(s, KT_LIMITS_PASTE_TOKEN_SECONDS, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_paste), conf_editbox_handler,
                  I(CONF_osc5522_paste_token_secs), ED_INT);
 
     /*
@@ -6942,21 +6942,21 @@ void scb_panel_selection(struct controlbox *b)
      * shared with the connection name - with the standing one bracketed at the end
      * and the transient one bare at the front. */
     ctrl_checkbox(s, KT_NOTICES_MARK_WHILE_A_PERMISSION,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_osc52_title_mark));
     ctrl_checkbox(s, KT_NOTICES_ALSO_MARK_A_STANDING_ALLOW,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_clipboard_mark_always));
     ctrl_checkbox(s, KT_NOTICES_MARK_WHEN_THE_HOST_ACTUALLY,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_clipboard_activity_mark));
     ctrl_editbox(s, KT_NOTICES_THAT_MARKER_STAYS_UP,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_notices), conf_editbox_handler,
                  I(CONF_clipboard_activity_secs), ED_INT);
     /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
      * is why the title marker above has to carry the meaning by itself. */
     ctrl_checkbox(s, KT_NOTICES_TINT_THE_TITLE_BAR,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_osc52_colour_frame));
 
     s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notifications", "tray",
@@ -6966,7 +6966,7 @@ void scb_panel_selection(struct controlbox *b)
      * The balloons are rate-limited and say so, and clicking one opens the Event
      * Log, which is where the events actually all are. */
     ctrl_checkbox(s, KT_NOTICES_SHOW_TRAY_NOTIFICATIONS_FOR_CLIPBOARD,
-                  NO_SHORTCUT, HELPCTX(kitty_osc52),
+                  NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_clipboard_notify));
 
     /*
@@ -7133,7 +7133,7 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
                      * logins (a fail2ban bastion vs a lab VM) - the global
                      * table, or no retry where the server saw a login */
                     ctrl_droplist(s, KT_RC_SESS_LOGIN, NO_SHORTCUT, 50,
-                                  HELPCTX(kitty_reconnect_rules),
+                                  HELPCTX(kitty_reconnect),
                                   kitty_reconnect_login_handler,
                                   I(CONF_reconnect_login));
                 } else {
@@ -7712,7 +7712,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
         /* SSH-1 or connection-sharing downstream */
         if (midsession && (protcfginfo == 1 || protcfginfo == -1)) {
             s = ctrl_getset(b, "Connection/SSH", "disclaimer", NULL);
-            ctrl_text(s, KT_SSH_NOTHING_ON_THIS_PANEL_MAY, HELPCTX(no_help));
+            ctrl_text(s, KT_SSH_NOTHING_ON_THIS_PANEL_MAY, HELPCTX(kitty_ssh_panel));
         }
 
         if (!midsession) {
@@ -7954,7 +7954,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                           I(CONF_ssh_warn_pre_quantum));
 #ifndef NO_GSSAPI
             ctrl_checkbox(s, KT_KEX_ATTEMPT_GSSAPI_KEY_EXCHANGE,
-                          'k', HELPCTX(ssh_gssapi),
+                          'k', HELPCTX(kitty_gssapi_kex),
                           conf_checkbox_handler,
                           I(CONF_try_gssapi_kex));
 #endif
@@ -8078,14 +8078,14 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
          * store's side of this panel (kitty_hostkey_scan_box). */
         if (!GetPuttyFlag()) {
             s = ctrl_getset(b, "Connection/SSH/Host keys", "scan", KT_HKSCAN_GROUP);
-            hkscan_line = ctrl_text(s, " ", HELPCTX(kitty_host_keys));
+            hkscan_line = ctrl_text(s, " ", HELPCTX(kitty_ssh_hostscan));
             /* The types line is laid out for the LONGEST list there can be
              * (every type KiTTY knows), so it never gets clipped when the
              * real list wraps onto a second line; the refresh puts the
              * real text in. */
-            hkscan_types = ctrl_text(s, KT_HKSCAN_TYPES_WORST, HELPCTX(kitty_host_keys));
+            hkscan_types = ctrl_text(s, KT_HKSCAN_TYPES_WORST, HELPCTX(kitty_ssh_hostscan));
             ctrl_columns(s, 3, 34, 33, 33);
-            c = ctrl_pushbutton(s, KT_HKSCAN_BUTTON, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+            c = ctrl_pushbutton(s, KT_HKSCAN_BUTTON, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
                                 kitty_hkscan_handler, P(NULL));
             c->column = 2;
             ctrl_columns(s, 1, 100);
@@ -8552,7 +8552,7 @@ void scb_panel_other_protocols(struct controlbox *b, bool midsession, int protoc
          * 1970s PDP-10 protocol. The manual already answers that (using-supdup),
          * so the line points there rather than repeating it. */
         s = ctrl_getset(b, "Connection/SUPDUP", "what", NULL);
-        ctrl_text(s, KT_SUPDUP_WHAT, HELPCTX(using_supdup));
+        ctrl_text(s, KT_SUPDUP_WHAT, HELPCTX(kitty_supdup_panel));
 
         s = ctrl_getset(b, "Connection/SUPDUP", "main", NULL);
 

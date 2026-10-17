@@ -3118,27 +3118,27 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * off and points here instead. */
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "global", NULL);
     ctrl_checkbox(s, KT_ZMODEM_GLOBAL_ENABLE, NO_SHORTCUT,
-                  HELPCTX(kitty_zmodem), kitty_kset_handler,
+                  HELPCTX(kitty_helper_paths), kitty_kset_handler,
                   P((void *)kset_find(KI_ZMODEM)));
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools/ZModem"), "cmds", KT_EXTERNAL_TOOLS_HELPER_PROGRAMS);
     ctrl_filesel(s, KT_ZMODEM_RECEIVE_COMMAND_RZ_2, NO_SHORTCUT,
                  FILTER_ALL_FILES, false,
                  KT_ZMODEM_SELECT_COMMAND_TO_RECEIVE_ZMODEM,
-                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P(KI_RZCOMMAND));
+                 HELPCTX(kitty_helper_paths), kitty_toolpath_handler, P(KI_RZCOMMAND));
     ctrl_filesel(s, KT_ZMODEM_SEND_COMMAND_SZ_2, NO_SHORTCUT,
                  FILTER_ALL_FILES, false,
                  KT_ZMODEM_SELECT_COMMAND_TO_SEND_ZMODEM,
-                 HELPCTX(kitty_zmodem), kitty_toolpath_handler, P(KI_SZCOMMAND));
+                 HELPCTX(kitty_helper_paths), kitty_toolpath_handler, P(KI_SZCOMMAND));
     /* Two lines, two controls: the panel machinery takes no newline. */
-    ctrl_text(s, KT_ZMODEM_NOTE_OPTIONS, HELPCTX(kitty_zmodem));
-    ctrl_text(s, KT_ZMODEM_NOTE_RECEIVED, HELPCTX(kitty_zmodem));
+    ctrl_text(s, KT_ZMODEM_NOTE_OPTIONS, HELPCTX(kitty_helper_paths));
+    ctrl_text(s, KT_ZMODEM_NOTE_RECEIVED, HELPCTX(kitty_helper_paths));
 
     /* ---- Launcher ---- */
     ctrl_settitle(b, KSET_PATH("Launcher"), KT_KSET_LA_TITLE);
     s = ctrl_getset(b, KSET_PATH("Launcher"), "intro", NULL);
     ctrl_text(s, KT_KSET_LA_READ_AT_START, HELPCTX(kitty_kset_launcher));
     s = ctrl_getset(b, KSET_PATH("Launcher"), "menu", KT_KSET_LA_MENU);
-    KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, KI_LAUNCHER_RELOAD, kitty_kset_launcher);
+    KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, KI_LAUNCHER_RELOAD, kitty_kset_launcher_menu);
     KSET_DROPLIST(s, KT_KSET_LA_SECOND, KI_LAUNCHER_ALREADYRUNCHECK, kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_DBLCLICK, KI_LAUNCHER_DBLCLICK, kitty_kset_launcher);
     {
@@ -4734,7 +4734,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     ctrl_text(s, line, HELPCTX(kitty_storage));
     buf[0] = '\0';
     ReadParameterN(INIT_SECTION, KI_CRYPTSALT, buf, sizeof(buf));
-    snprintf(line, sizeof(line), KT_KSET_STORAGE_CRYPTSALT, buf[0] ? buf : "1");
+    snprintf(line, sizeof(line), KT_KSET_STORAGE_CRYPTSALT, buf[0] ? buf : "0");
     ctrl_text(s, line, HELPCTX(kitty_storage));
     if (mode == KSET_SAVEMODE_DIR) {
         s = ctrl_getset(b, storage, "passwords", KT_KSET_STORAGE_PWGROUP);
@@ -4798,9 +4798,9 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
 
     s = ctrl_getset(b, "Application/Config Window/Session Panel", "proxy", KT_SESSION_PARAMETER_PROXY);
     ctrl_droplist(s, KT_SESSION_PARAMETER_SHOW_THE_PROXY_CHOOSER, NO_SHORTCUT, 55,
-                  HELPCTX(kitty_named_proxies), kitty_cfgwin_proxysel_handler, P(NULL));
+                  HELPCTX(kitty_folders), kitty_cfgwin_proxysel_handler, P(NULL));
     /* Said here because "Never" does more than hide one droplist. */
-    ctrl_text(s, KT_SESSION_PARAMETER_NEVER_ALSO_HIDES_THE_EDIT, HELPCTX(kitty_named_proxies));
+    ctrl_text(s, KT_SESSION_PARAMETER_NEVER_ALSO_HIDES_THE_EDIT, HELPCTX(kitty_folders));
 }
 
 /*
@@ -5123,7 +5123,7 @@ void scb_app_footer(struct controlbox *b, const char *path)
     s = ctrl_getset(b, path, "footer", NULL);
     {
         dlgcontrol *c = ctrl_text(s, KT_APP_SAVED_LIVE,
-                                  HELPCTX(kitty_folders));
+                                  HELPCTX(kitty_application_tab));
         if (n_app_footers < app_footers_cap) {
             app_footers[n_app_footers].path = path;
             app_footers[n_app_footers].ctrl = c;
