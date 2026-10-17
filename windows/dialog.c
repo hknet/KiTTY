@@ -1693,10 +1693,6 @@ static void kitty_cfg_layout_relayout(HWND hwnd)
      * with the button row, and has to be told so. */
     kitty_cfg_buttonrow_top = kitty_cfg_buttonrow_top_base +
         ((rc.bottom - rc.top) - kitty_cfg_basesize.cy);
-    /* The visible panel now has more (or less) area to be seen in. Keep where
-     * the reader had scrolled to; the bar clamps it. */
-    if (kitty_cfg_active_panel)
-        kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel, true);
     /* Everything pinned to the panel area's bottom edge - the Proxy panel's
      * pre-set loader and the application panels' footers - follows the edge,
      * which just moved. (Stubbed to nothing in the stock variants.) */
@@ -1704,6 +1700,20 @@ static void kitty_cfg_layout_relayout(HWND hwnd)
         extern void kitty_config_pin_bottoms(void);
         kitty_config_pin_bottoms();
     }
+    /* ...which changes how tall those panels are: a footer pinned to the
+     * bottom of a tall box made its panel as tall as that box, and the height
+     * measured then stayed when the box was made shorter again - the panel
+     * scrolled, top cut off, over empty space. So every cached panel is
+     * measured again, now the pins have moved; their controls all sit at the
+     * host's scroll offset, which is added back. */
+    for (size_t i = 0; i < kitty_cfg_npanels; i++) {
+        int m = kitty_cfg_panel_measure(kitty_cfg_panels[i]);
+        kitty_cfg_panels[i]->content_h = m ? m + kitty_cfg_scroll_y : 0;
+    }
+    /* The visible panel now has more (or less) area to be seen in. Keep where
+     * the reader had scrolled to; the bar clamps it. */
+    if (kitty_cfg_active_panel)
+        kitty_cfg_panel_scrollbar(hwnd, kitty_cfg_active_panel, true);
 }
 
 /* EVENT_REFRESH for one cached panel, in creation order - the scoped

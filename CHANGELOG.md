@@ -36,6 +36,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   The Hello prompt during the login runs beside it: a server that gives up
   meanwhile is seen at once, and closing the window does not wait for the
   prompt.
+- **Application panels no longer scroll over empty space after the
+  configuration window is made shorter.** A panel laid out in a tall window
+  kept that window's height, so made shorter again it scrolled, its top cut
+  off, although everything fit.
 
 ## 0.85.1.17-beta — 2026-10-17
 
