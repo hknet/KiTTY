@@ -4,6 +4,13 @@ KiTTY++ is the old KiTTY plus serious speed enhancements and lots of features on
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.18-beta
+
+### Fixed
+
+- **The search's marks beside the scrollbar show as soon as the search
+  ends** (hknet/KiTTY#72). They appeared only after the view was scrolled.
+
 ## 0.85.1.17-beta — 2026-10-17
 
 ### New

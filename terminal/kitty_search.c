@@ -109,6 +109,14 @@ static int ks_sb(Terminal *term) { return count234(term->scrollback); }
 static int ks_y(struct kitty_search *s, int abs) { return abs - s->base - ks_sb(s->term); }
 static int ks_abs(struct kitty_search *s, int y) { return y + ks_sb(s->term) + s->base; }
 
+/* The hits changed: the rows are painted again, and the mark strip with
+ * them - the front end draws the strip only after a scrollbar update. */
+static void ks_redraw(Terminal *term)
+{
+    term->win_scrollbar_update_pending = true;
+    term_invalidate(term);
+}
+
 static unsigned ks_lattr(Terminal *term, int y)
 {
     termline *l = kitty_term_lineptr(term, y);
@@ -233,7 +241,7 @@ static void ks_timer(void *ctx, unsigned long now)
         s->nvis = s->nhits;
         s->nhits = s->total = 0;
         ks_schedule(s, 0);
-        term_invalidate(term);
+        ks_redraw(term);
         return;
     }
     if (s->scan_next >= 0) {
@@ -254,7 +262,7 @@ static void ks_timer(void *ctx, unsigned long now)
             s->scan_next = ks_abs(s, y);
             ks_schedule(s, 10);
         }
-        term_invalidate(term);
+        ks_redraw(term);
         return;
     }
     if (s->tail_dirty && s->scanned_once) {
@@ -278,7 +286,7 @@ static void ks_timer(void *ctx, unsigned long now)
                 break;
             }
         s->tail = ks_abs(s, ks_logical_start(term, 0));
-        term_invalidate(term);
+        ks_redraw(term);
     }
 }
 
@@ -295,7 +303,7 @@ static void ks_restart(struct kitty_search *s, int delay_ms)
     s->scan_next = s->nn > 0 ? s->base : -1;
     if (s->nn > 0)
         ks_schedule(s, delay_ms);
-    term_invalidate(s->term);
+    ks_redraw(s->term);
 }
 
 /* ---- the API for the front end --------------------------------------- */
@@ -338,7 +346,7 @@ void term_search_close(Terminal *term)
         s->nvis = 0;
         s->cur = 0;
         s->lingering = true;
-        term_invalidate(term);
+        ks_redraw(term);
     } else {
         kitty_search_free(term);
     }
@@ -394,7 +402,7 @@ int term_search_move(Terminal *term, int dir)
     y = ks_y(s, s->hits[i].line);
     if (y < term->disptop || ks_y(s, s->hits[i].eline) > term->disptop + term->rows - 1)
         term_scroll(term, 0, (y - term->rows / 2) - term->disptop);
-    term_invalidate(term);
+    ks_redraw(term);
     return 1;
 }
 
@@ -472,7 +480,7 @@ void kitty_search_free(Terminal *term)
     if (!term->search)
         return;
     kitty_search_destroy(term);
-    term_invalidate(term);
+    ks_redraw(term);
 }
 
 /* term_reconfig read "Reset scrollback on display activity" again: while
