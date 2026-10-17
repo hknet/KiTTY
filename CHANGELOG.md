@@ -28,6 +28,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   they are open: output keeps arriving, keepalives are answered, and a
   server that closes ends a weak-algorithm question as it does the host-key
   one. The log keeps what arrives meanwhile and writes it once answered.
+- **The folder and file pickers of a kitten transfer no longer stop the
+  session** ("Always open Save Dialog", Change folder... and Locate...):
+  they run beside it, so keepalives and the rest of the connection carry on
+  while you pick.
 
 ## 0.85.1.17-beta — 2026-10-17
 

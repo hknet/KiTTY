@@ -111,6 +111,7 @@ struct kt_send {
     int accepted;
     int in_dialog, cancel_pending, abort_pending;
     HWND dlg;                           /* the request dialog while it stands */
+    void *pick;                         /* the folder picker while it stands */
     wchar_t *dest;
     uint64_t ceiling;                   /* per-file byte limit, 0 = none */
     time_t last;
@@ -591,6 +592,8 @@ struct kt_dl_dlg {
     char folder[4096];                  /* the folder shown */
     char picked[4096];                  /* set by Change folder... */
     int picked_set;
+    HWND h;                             /* this dialog */
+    void *pick;                         /* Change folder...'s picker while it stands */
 };
 
 /* The completion: everything kt_send_begin used to do after the dialog. */
@@ -697,6 +700,25 @@ static void kt_dl_finish(HWND h, int verdict)
     kt_send_decide(st, verdict, folder, picked);
 }
 
+/* Change folder...'s picker has gone (path NULL: nothing picked). A pick is
+ * an Allow into that folder; Cancel leaves the dialog as it was - unless the
+ * far end gave up meanwhile (the WM_CLOSE posted for it was refused while
+ * the picker stood), then the window goes now. */
+static void kt_dl_picked(void *vctx, const char *path)
+{
+    struct kt_dl_dlg *d = (struct kt_dl_dlg *)vctx;
+    d->pick = NULL;
+    if (path) {
+        strncpy(d->picked, path, sizeof(d->picked) - 1);
+        d->picked[sizeof(d->picked) - 1] = '\0';
+        d->picked_set = 1;
+        kt_dl_finish(d->h, 1);
+    } else if (d->st && d->st->send &&
+               (d->st->send->cancel_pending || d->st->send->abort_pending)) {
+        kt_dl_finish(d->h, 0);
+    }
+}
+
 static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
@@ -747,18 +769,16 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             /* The same picker "Always open Save Dialog" uses, owned by this
              * dialog and opened on the folder shown. A pick is an Allow into
              * that folder; Cancel leaves the dialog as it was. */
-            if (!d)
+            if (!d || d->pick)
                 return TRUE;
-            if (OpenDirNameFrom(h, d->picked, d->folder, KT_XFER5113_PICK_TITLE) &&
-                d->picked[0]) {
-                d->picked_set = 1;
-                kt_dl_finish(h, 1);
-            } else if (d->st && d->st->send &&
-                       (d->st->send->cancel_pending || d->st->send->abort_pending)) {
-                /* The far end gave up while the picker was open: the WM_CLOSE
-                 * posted for it was refused below, so take the window down
-                 * now that the picker has gone. */
-                kt_dl_finish(h, 0);
+            /* beside the session (kitty_pick_async); the answer arrives in
+             * kt_dl_picked */
+            d->pick = kitty_pick_async(h, 1, d->folder, KT_XFER5113_PICK_TITLE,
+                                       NULL, kt_dl_picked, d);
+            if (!d->pick) {
+                char chosen[4096];
+                kt_dl_picked(d, OpenDirNameFrom(h, chosen, d->folder,
+                                                KT_XFER5113_PICK_TITLE) ? chosen : NULL);
             }
             return TRUE;
           case IDNO:
@@ -771,7 +791,7 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         /* Not while a picker of ours is up: it owns this window, and
          * destroying the owner of a live common dialog frees state it is
          * still standing on. The picker's own return path closes instead. */
-        if (!IsWindowEnabled(h))
+        if (!IsWindowEnabled(h) || (d && d->pick))
             return TRUE;
         kt_dl_finish(h, 0);             /* closing means Deny */
         return TRUE;
@@ -780,6 +800,7 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
          * completion is NOT called here - see kt_dl_finish. */
         ShinyRemoveAuxDialog(h);
         if (d) {
+            kitty_pick_cancel(d->pick);   /* its answer must not reach d */
             if (d->st && d->st->send && d->st->send->dlg == h)
                 d->st->send->dlg = NULL;
             sfree(d);
@@ -806,6 +827,7 @@ static int kt_dl_dialog_open(struct kt_state *st, const char *folder)
         sfree(d);
         return 0;
     }
+    d->h = h;
     st->send->dlg = h;
     return 1;
 }
@@ -836,6 +858,7 @@ static void kt_send_free(struct kt_state *st)
     if (!s)
         return;
     st->send = NULL;
+    kitty_pick_cancel(s->pick);         /* its answer must not reach us */
     for (f = s->files; f; f = fn) { fn = f->next; kt_file_free(f); }
     for (d = s->dirs; d; d = dn) { dn = d->next; sfree(d->name); sfree(d->local); sfree(d); }
     sfree(s->dest);
@@ -1256,12 +1279,15 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
  * land; `picked` says it came from "Change folder...", which is what makes
  * the "Always open Save Dialog" picker stand down.
  */
+static void kt_send_picked(void *vctx, const char *path);
+static void kt_send_accept(struct kt_state *st, const char *folder);
+
 static void kt_send_decide(struct kt_state *st, int allowed,
                            const char *folder_in, int picked)
 {
     Terminal *term = st->term;
     struct kt_send *s = st->send;
-    char folder[4096], *a;
+    char folder[4096];
 
     if (!s)
         return;                         /* the session went while the dialog stood */
@@ -1294,34 +1320,62 @@ static void kt_send_decide(struct kt_state *st, int allowed,
         return;
     }
     /* "Always open Save Dialog": the picker before the first file, unless
-     * the dialog's Change folder... already produced the folder. */
+     * the dialog's Change folder... already produced the folder. It runs
+     * beside the session (kitty_pick_async), and a command arriving
+     * meanwhile is held over as during the request dialog. */
     if (conf_get_bool(term->conf, CONF_xfer_ask_destination) && !picked) {
         char chosen[4096];
-        int ok;
         s->in_dialog = 1;
-        ok = OpenDirNameFrom(MainHwnd, chosen, folder, KT_XFER5113_PICK_TITLE);
-        s->in_dialog = 0;
-        if (st->dead) {
-            kt_send_free(st);
-            kt_state_maybe_drop(st);
-            return;
-        }
-        if (s->cancel_pending || s->abort_pending) {
-            if (s->cancel_pending)
-                kt_ack(term, s, NULL, "CANCELED", NULL, -1);
-            kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, s->id));
-            kt_send_free(st);
-            return;
-        }
-        if (!ok) {
-            kt_err(term, s, NULL, "EPERM", KT_XFER5113_ST_REFUSED);
-            kt_log(term, dupprintf(KT_XFER5113_LOG_NO_DEST, s->id));
-            kt_send_free(st);
-            return;
-        }
-        strncpy(folder, chosen, sizeof(folder) - 1);
-        folder[sizeof(folder) - 1] = '\0';
+        s->pick = kitty_pick_async(MainHwnd, 1, folder, KT_XFER5113_PICK_TITLE,
+                                   NULL, kt_send_picked, st);
+        if (s->pick)
+            return;                     /* answered in kt_send_picked */
+        kt_send_picked(st, OpenDirNameFrom(MainHwnd, chosen, folder,
+                                           KT_XFER5113_PICK_TITLE) ? chosen : NULL);
+        return;
     }
+    kt_send_accept(st, folder);
+}
+
+/* The folder picker's answer (NULL: none picked). */
+static void kt_send_picked(void *vctx, const char *path)
+{
+    struct kt_state *st = (struct kt_state *)vctx;
+    Terminal *term = st->term;
+    struct kt_send *s = st->send;
+
+    if (!s)
+        return;
+    s->pick = NULL;
+    s->in_dialog = 0;
+    if (st->dead) {
+        kt_send_free(st);
+        kt_state_maybe_drop(st);
+        return;
+    }
+    if (s->cancel_pending || s->abort_pending) {
+        if (s->cancel_pending)
+            kt_ack(term, s, NULL, "CANCELED", NULL, -1);
+        kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, s->id));
+        kt_send_free(st);
+        return;
+    }
+    if (!path) {
+        kt_err(term, s, NULL, "EPERM", KT_XFER5113_ST_REFUSED);
+        kt_log(term, dupprintf(KT_XFER5113_LOG_NO_DEST, s->id));
+        kt_send_free(st);
+        return;
+    }
+    kt_send_accept(st, path);
+}
+
+/* The files land in `folder`: the OK to the far end. */
+static void kt_send_accept(struct kt_state *st, const char *folder)
+{
+    Terminal *term = st->term;
+    struct kt_send *s = st->send;
+    char *a;
+
     s->dest = kt_mb_to_wide(CP_ACP, folder, -1);
     if (!s->dest || !kt_is_dir(s->dest)) {
         kt_err(term, s, NULL, "ENOENT", KT_XFER5113_ST_NOT_FOUND);
@@ -1722,6 +1776,10 @@ static const struct kl_anchor kt_req_anchors[] = {
 
 struct kt_req_dlg {
     struct kt_state *st;
+    HWND h;                             /* this dialog */
+    void *pick;                         /* Locate...'s picker while it stands */
+    struct kt_entry *loc_e;             /* ...and the row it answers */
+    int loc_i;
     int ready;                          /* the baseline below has been captured */
     RECT rects[lenof(kt_req_anchors)];
     SIZE basesize, minsize;
@@ -1874,25 +1932,58 @@ static struct kt_entry *kt_req_selected(HWND list, int *index)
  * answers to. The row becomes that file, checked, and its spec stops being
  * refused - but `posix` is left alone, so what leaves this PC still carries
  * the name the far end asked for. */
+static void kt_req_located(void *vctx, const char *path);
+static void kt_req_finish(HWND h, int verdict);
+
 static void kt_req_locate(HWND h, struct kt_req_dlg *d)
 {
     HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
     struct kt_recv *r = d->st->recv;
     struct kt_entry *e;
-    struct kt_spec *sp;
-    WIN32_FILE_ATTRIBUTE_DATA ad;
     char path[4096];
-    wchar_t *w, *text;
     int i = -1;
 
-    if (!r)
+    if (!r || d->pick)
         return;
     e = kt_req_selected(list, &i);
     if (!e || !e->missing)
         return;
+    d->loc_e = e;
+    d->loc_i = i;
+    /* beside the session (kitty_pick_async); the answer arrives in
+     * kt_req_located */
+    d->pick = kitty_pick_async(h, 0, NULL, KT_XFER5113_REQ_LOCATE_TITLE,
+                               KT_XFER5113_REQ_LOCATE_FILTER, kt_req_located, d);
+    if (d->pick)
+        return;
     path[0] = '\0';
-    if (!OpenFileNameFrom(h, path, KT_XFER5113_REQ_LOCATE_TITLE,
-                          KT_XFER5113_REQ_LOCATE_FILTER, NULL) || !path[0])
+    kt_req_located(d, OpenFileNameFrom(h, path, KT_XFER5113_REQ_LOCATE_TITLE,
+                                       KT_XFER5113_REQ_LOCATE_FILTER, NULL) &&
+                      path[0] ? path : NULL);
+}
+
+/* Locate...'s picker has gone (path NULL: nothing picked). */
+static void kt_req_located(void *vctx, const char *path)
+{
+    struct kt_req_dlg *d = (struct kt_req_dlg *)vctx;
+    HWND h = d->h;
+    HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
+    struct kt_recv *r = d->st->recv;
+    struct kt_entry *e = d->loc_e;
+    struct kt_spec *sp;
+    WIN32_FILE_ATTRIBUTE_DATA ad;
+    wchar_t *w, *text;
+    int i = d->loc_i;
+
+    d->pick = NULL;
+    d->loc_e = NULL;
+    /* A cancel that arrived while the picker was up had its WM_CLOSE
+     * refused (see WM_CLOSE in kt_req_dlgproc): act on it now. */
+    if (r && (r->cancel_pending || r->abort_pending)) {
+        kt_req_finish(h, 0);
+        return;
+    }
+    if (!path || !r || !e || !e->missing)
         return;
     w = kt_mb_to_wide(CP_ACP, path, -1);
     if (!w)
@@ -2104,12 +2195,7 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
           case IDC_XFERREQ_LOCATE:
             if (!d)
                 return TRUE;
-            kt_req_locate(h, d);
-            /* A cancel that arrived while the picker was up had its WM_CLOSE
-             * refused (see WM_CLOSE below): act on it now. */
-            if (d->st && d->st->recv &&
-                (d->st->recv->cancel_pending || d->st->recv->abort_pending))
-                kt_req_finish(h, 0);
+            kt_req_locate(h, d);        /* answered in kt_req_located */
             return TRUE;
           case IDYES: {
             /* Unchecked files stay listed and are refused when asked for.
@@ -2146,13 +2232,14 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         /* Not while the "Locate..." picker is up: it owns this window, and
          * destroying the owner of a live common dialog frees state it is
          * still standing on. The picker's own return path closes instead. */
-        if (!IsWindowEnabled(h))
+        if (!IsWindowEnabled(h) || (d && d->pick))
             return TRUE;
         kt_req_finish(h, 0);            /* closing means Deny */
         return TRUE;
       case WM_DESTROY:
         ShinyRemoveAuxDialog(h);
         if (d) {
+            kitty_pick_cancel(d->pick);   /* its answer must not reach d */
             if (d->st && d->st->recv && d->st->recv->dlg == h)
                 d->st->recv->dlg = NULL;
             sfree(d);
@@ -2181,6 +2268,7 @@ static int kt_req_dialog_open(struct kt_state *st)
         sfree(d);
         return 0;
     }
+    d->h = h;
     st->recv->dlg = h;
     return 1;
 }

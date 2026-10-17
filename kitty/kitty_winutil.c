@@ -15,6 +15,7 @@
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include <process.h>   /* _beginthreadex: kitty_pick_async */
 #include <wininet.h>   /* CheckVersionFromWebSite: GitHub releases query */
 #include <wintrust.h>  /* in-app updater: Authenticode trust verification */
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -310,6 +311,92 @@ static int CALLBACK browse_start_folder( HWND hwnd, UINT msg, LPARAM lParam, LPA
 
 int OpenDirName( HWND hFrame, char * dirname ) {
 	return OpenDirNameFrom( hFrame, dirname, NULL, NULL ) ;
+}
+
+/*
+ * KiTTY: the file and folder pickers without stopping the session. The
+ * common dialogs run a message loop of their own that serves no network
+ * events, so a picker opened from the terminal's thread stood the session
+ * still - keepalives unanswered, a server's close unseen. Here the picker
+ * runs on a thread of its own (COM is set up per thread by the pickers
+ * themselves); the owner is disabled by the dialog as usual, and the
+ * terminal's thread goes on. The answer comes back to the thread that asked,
+ * through a message-only window it owns: done(ctx, path or NULL) runs there.
+ * kitty_pick_cancel: done is not called (the asker went); the thread ends
+ * with its dialog.
+ */
+#define WM_KITTY_PICK_DONE ( WM_APP + 0x3A2 )
+struct kitty_pick {
+	HWND owner ;
+	int folder ;                        /* 1 = folder picker, 0 = open a file */
+	char initial[4096], title[512], filter[1024] ;
+	char result[4096] ;
+	int ok ;
+	volatile LONG cancelled ;
+	void (*done)( void *ctx, const char *path ) ;
+	void *ctx ;
+} ;
+static HWND kitty_pick_sink = NULL ;
+
+static LRESULT CALLBACK kitty_pick_sink_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
+	if( msg == WM_KITTY_PICK_DONE ) {
+		struct kitty_pick *p = (struct kitty_pick *)lp ;
+		if( !p->cancelled ) p->done( p->ctx, p->ok && p->result[0] ? p->result : NULL ) ;
+		free( p ) ;
+		return 0 ;
+	}
+	return DefWindowProc( h, msg, wp, lp ) ;
+}
+
+static unsigned __stdcall kitty_pick_thread( void *v ) {
+	struct kitty_pick *p = (struct kitty_pick *)v ;
+	if( p->folder )
+		p->ok = OpenDirNameFrom( p->owner, p->result, p->initial[0] ? p->initial : NULL,
+			p->title[0] ? p->title : NULL ) ;
+	else
+		p->ok = OpenFileNameFrom( p->owner, p->result, p->title, p->filter,
+			p->initial[0] ? p->initial : NULL ) ;
+	PostMessage( kitty_pick_sink, WM_KITTY_PICK_DONE, 0, (LPARAM)p ) ;
+	return 0 ;
+}
+
+/* Start the picker; the token for kitty_pick_cancel, or NULL when no thread
+ * could be started (the caller then asks with OpenDirNameFrom /
+ * OpenFileNameFrom as before). Call from the terminal's thread. */
+void *kitty_pick_async( HWND owner, int folder, const char *initial, const char *title,
+                        const char *filter, void (*done)( void *ctx, const char *path ), void *ctx ) {
+	struct kitty_pick *p ;
+	uintptr_t th ;
+	if( !kitty_pick_sink ) {
+		WNDCLASSA wc ;
+		memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = kitty_pick_sink_proc ;
+		wc.hInstance = GetModuleHandle( NULL ) ;
+		wc.lpszClassName = "KiTTYPickSink" ;
+		RegisterClassA( &wc ) ;
+		kitty_pick_sink = CreateWindowExA( 0, "KiTTYPickSink", "", 0, 0, 0, 0, 0,
+			HWND_MESSAGE, NULL, GetModuleHandle( NULL ), NULL ) ;
+		if( !kitty_pick_sink ) return NULL ;
+	}
+	p = calloc( 1, sizeof(*p) ) ;
+	if( !p ) return NULL ;
+	p->owner = owner ;
+	p->folder = folder ;
+	if( initial ) snprintf( p->initial, sizeof(p->initial), "%s", initial ) ;
+	if( title ) snprintf( p->title, sizeof(p->title), "%s", title ) ;
+	if( filter ) snprintf( p->filter, sizeof(p->filter), "%s", filter ) ;
+	p->done = done ;
+	p->ctx = ctx ;
+	th = _beginthreadex( NULL, 0, kitty_pick_thread, p, 0, NULL ) ;
+	if( !th ) { free( p ) ; return NULL ; }
+	CloseHandle( (HANDLE)th ) ;
+	return p ;
+}
+
+/* The asker is going: its done() must not run. The picker stays up until it
+ * is answered or its owner goes; the token is freed then. */
+void kitty_pick_cancel( void *token ) {
+	if( token ) InterlockedExchange( &((struct kitty_pick *)token)->cancelled, 1 ) ;
 }
 
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {

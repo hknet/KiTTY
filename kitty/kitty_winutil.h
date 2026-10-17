@@ -23,6 +23,13 @@ int OpenDirName( HWND hFrame, char * dirname ) ;
 /* Same picker, opened on `initial` (when that folder exists) with `title`
  * (NULL = the default caption). */
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
+/* The folder picker (folder = 1) or the open-file picker on a thread of its
+ * own, so the session keeps running: done(ctx, path or NULL) on the calling
+ * thread. A token, or NULL = not started (ask synchronously instead).
+ * kitty_pick_cancel(token): done is not called any more. */
+void *kitty_pick_async( HWND owner, int folder, const char *initial, const char *title,
+                        const char *filter, void (*done)( void *ctx, const char *path ), void *ctx ) ;
+void kitty_pick_cancel( void *token ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 
