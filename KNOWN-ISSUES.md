@@ -1,4 +1,4 @@
-# KiTTY++ 0.85.1.16 — Known issues & limitations
+# KiTTY++ 0.85.1.17 — Known issues & limitations
 
 Known limitations of this release:
 
@@ -70,6 +70,10 @@ Known limitations of this release:
 - **The mid-session Change Settings list does not navigate folders.**
 - **Inline SSH security prompts are not available during a rekey**: the
   connection is closed instead.
+- **Search keeps the first 1,000,000 hits.** The counter counts on, but
+  hits after those are not marked and Up and Down do not reach them.
+- **Re-wrap on resize is untested with fish.** That the prompt is not drawn
+  twice after a resize is measured with bash 5.3 and zsh only.
 
 ## Connectivity tips
 
@@ -107,7 +111,7 @@ Known limitations of this release:
 - **Antivirus & UPX:** the standard ZIP holds plain signed executables. The
   `-upx.zip` and the installers carry UPX-compressed ones, which some
   antivirus tools object to - take the standard ZIP then.
-- **Version string:** binaries report `0.85.1.16-beta @ 2026-10-15`.
+- **Version string:** binaries report `0.85.1.17-beta @ 2026-10-17`.
 - **The configuration box's Exit button has no Alt key.** Esc works.
 - **Script with `kittygen-cli.exe`, not `kittygen.exe`**: the window version
   reports an unknown switch in a dialog and waits for OK.
