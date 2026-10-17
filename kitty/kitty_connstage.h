@@ -22,6 +22,8 @@ typedef enum {
                              * when SSH shuts down at once (an error), empty
                              * when the end is read in order - which waits
                              * behind NEWKEYS while a host-key question is open */
+    KCS_SSH_GONE,           /* the SSH layers are freed (any reason): a question
+                             * still open must never call them back */
 } KittyConnStage;
 
 /* seat: the Seat of the connection (a jump host's has its own); data: see

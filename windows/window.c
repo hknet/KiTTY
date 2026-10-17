@@ -1377,6 +1377,10 @@ static void kitty_reconnect_stage_hook(Seat *seat, KittyConnStage stage,
             kr_wgs->closed_unanswered = true;
         return;
     }
+    if (stage == KCS_SSH_GONE) {
+        kitty_seat_questions_drop(seat);   /* never call the freed layers */
+        return;
+    }
     kitty_reconnect_stage(stage, data);
 }
 
@@ -5447,6 +5451,57 @@ static BOOL CALLBACK CtrlTabWindowProc(HWND hwnd, LPARAM lParam) {
 }
 #endif
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the exit confirmation is modeless. A modal box stopped the session
+ * it asks about - no output, no keepalive answered, a server's close unseen -
+ * for as long as it stood. One at a time per window; the answer arrives in
+ * kitty_close_answer, and Yes closes from a top-level callback, outside the
+ * box's own message. Where no modeless box can be made, the modal one is
+ * asked as before.
+ */
+extern HWND kitty_confirm_modeless_yes(HWND owner, const char *caption,
+                                       const char *text, int front,
+                                       void (*done)(int yes, void *ctx),
+                                       void *ctx);
+static HWND kitty_close_box = NULL;
+static bool kitty_close_box_group = false;   /* leads a group (TIMER_CLOSEGROUP) */
+
+static void kitty_close_go(void *vctx)
+{
+    WinGuiSeat *wgs = (WinGuiSeat *)vctx;
+    if (!wgs->term_hwnd || !IsWindow(wgs->term_hwnd))
+        return;
+    kitty_window_leaving(wgs->term_hwnd);
+    DestroyWindow(wgs->term_hwnd);
+}
+
+static void kitty_close_answer(int yes, void *vctx)
+{
+    bool group = kitty_close_box_group;
+    kitty_close_box = NULL;
+    kitty_close_box_group = false;
+    if (group)
+        kitty_closegroup_answer(yes);
+    if (yes)
+        queue_toplevel_callback(kitty_close_go, vctx);
+}
+
+/* Ask modeless; false: no box made (the caller asks modal). */
+static bool kitty_close_ask(WinGuiSeat *wgs, const char *title,
+                            const char *msg, bool group)
+{
+    HWND box = kitty_confirm_modeless_yes(wgs->term_hwnd, title, msg,
+                                          group ? 1 : 0, kitty_close_answer,
+                                          wgs);
+    if (!box)
+        return false;
+    kitty_close_box = box;
+    kitty_close_box_group = group;
+    return true;
+}
+#endif
+
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -5579,6 +5634,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * windows of the group allowed this process the foreground when
              * they joined (kitty_closegroup_request). */
             SetForegroundWindow(hwnd);
+            if (kitty_close_ask(wgs, title, msg, true)) {
+                sfree(title);              /* answered in kitty_close_answer */
+                sfree(msg);
+                sfree(additional);
+                return 0;
+            }
             yes = kitty_confirm_box_yes_front(hwnd, title, msg, NULL);
             kitty_closegroup_answer(yes);
             sfree(title);
@@ -5809,6 +5870,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
         show_mouseptr(wgs, true);
 #ifdef MOD_PERSO
+        /* KiTTY: the exit confirmation is already up (kitty_close_ask): a
+         * second close request only brings it forward */
+        if (kitty_close_box && IsWindow(kitty_close_box)) {
+            SetForegroundWindow(kitty_close_box);
+            return 0;
+        }
         /* KiTTY: windows closed together (the taskbar's "Close all windows")
          * share one confirmation: this one joins or leads a group and the
          * answer arrives by TIMER_CLOSEGROUP (kitty_bridge.c). */
@@ -5828,6 +5895,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         msg = dupprintf("Are you sure you want to close this session?%s%s",
                         additional ? "\n" : "",
                         additional ? additional : "");
+#ifdef MOD_PERSO
+        if (!wgs->session_closed &&
+            conf_get_bool(wgs->conf, CONF_warn_on_close) &&
+            kitty_close_ask(wgs, title, msg, false)) {
+            sfree(title);                  /* answered in kitty_close_answer */
+            sfree(msg);
+            sfree(additional);
+            return 0;
+        }
+#endif
         if (wgs->session_closed ||
             !conf_get_bool(wgs->conf, CONF_warn_on_close) ||
             kitty_confirm_box_yes(hwnd, title, msg, NULL)) {

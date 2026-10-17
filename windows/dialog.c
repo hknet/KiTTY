@@ -5603,22 +5603,112 @@ static void kitty_hk_box_done(void *vctx, int result)
     queue_toplevel_callback(kitty_hk_box_deliver, a);
 }
 
+/*
+ * KiTTY: the weak-algorithm and weak-cached-host-key questions, modeless
+ * for the same reason as the host-key box: asked inside the key exchange
+ * the server is timing, a modal box stopped the session.
+ */
+struct kitty_weak_async {
+    WinGuiSeat *wgs;
+    HWND box;                          /* NULL once answered */
+    int yes;
+    void (*callback)(void *ctx, SeatPromptResult result);
+    void *cbctx;
+    bool closed, gone, quiet;          /* as in struct kitty_hk_async */
+    struct kitty_weak_async *next;     /* kitty_weak_open */
+};
+static struct kitty_weak_async *kitty_weak_open = NULL;
+
+static void kitty_weak_deliver(void *vctx)
+{
+    struct kitty_weak_async *a = (struct kitty_weak_async *)vctx, **pp;
+    void (*cb)(void *, SeatPromptResult) = a->callback;
+    void *cbctx = a->cbctx;
+    bool deliver = !a->gone;
+    SeatPromptResult spr = a->closed ? SPR_SW_ABORT(KT_DLG_PEER_CLOSED_MSG) :
+                           a->yes ? SPR_OK : SPR_USER_ABORT;
+    for (pp = &kitty_weak_open; *pp; pp = &(*pp)->next)
+        if (*pp == a) {
+            *pp = a->next;
+            break;
+        }
+    if (a->closed && a->gone && !a->quiet)
+        kitty_term_wrapped(a->wgs->term, KT_DLG_PEER_CLOSED);
+    sfree(a);
+    if (deliver)
+        cb(cbctx, spr);
+}
+
+/* kitty_confirm_modeless: called from the box's own message; the answer
+ * goes to SSH from a top-level callback */
+static void kitty_weak_done(int yes, void *vctx)
+{
+    struct kitty_weak_async *a = (struct kitty_weak_async *)vctx;
+    a->box = NULL;
+    a->yes = yes;
+    queue_toplevel_callback(kitty_weak_deliver, a);
+}
+
+/* The question as a modeless box; SPR_INCOMPLETE, or the old modal box
+ * where no modeless one can be made. */
+static SeatPromptResult kitty_weak_confirm(
+    WinGuiSeat *wgs, SeatDialogText *text,
+    void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
+{
+    extern HWND kitty_confirm_modeless(
+        HWND owner, const char *caption, const char *text, const char *detail,
+        const char *warn_red, void (*done)(int yes, void *ctx), void *ctx);
+    extern int kitty_confirm_box(HWND owner, const char *caption,
+                                 const char *text, const char *warn_red);
+    strbuf *dlg_text = strbuf_new();
+    const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
+    struct kitty_weak_async *a = snew(struct kitty_weak_async);
+    memset(a, 0, sizeof(*a));
+    a->wgs = wgs;
+    a->callback = callback;
+    a->cbctx = ctx;
+    a->next = kitty_weak_open;
+    kitty_weak_open = a;
+    a->box = kitty_confirm_modeless(wgs->term_hwnd, dlg_title, dlg_text->s,
+                                    NULL, NULL, kitty_weak_done, a);
+    if (a->box) {
+        strbuf_free(dlg_text);
+        return SPR_INCOMPLETE;
+    }
+    kitty_weak_open = a->next;         /* no modeless box here: as before */
+    sfree(a);
+    int confirmed = kitty_confirm_box(NULL, dlg_title, dlg_text->s, NULL);
+    socket_reselect_all();
+    strbuf_free(dlg_text);
+    return confirmed ? SPR_OK : SPR_USER_ABORT;
+}
+
 /* End every question still open for `seat`: the in-terminal ones through
- * kitty_inline_closed_end, a host-key box by closing it. Nothing answered
- * afterwards is stored. gone: the SSH layer is not called back. True when
- * a question was open. */
-static bool kitty_seat_questions_end(Seat *seat, bool gone, bool quiet)
+ * kitty_inline_closed_end, a box by closing it. Nothing answered afterwards
+ * is stored. peer: the server closed (the terminal is told why); else the
+ * session ends here and the question goes without a word. gone: the SSH
+ * layers are freed, so they are never called back - also for a question
+ * the server's close is already ending, whose answer may still be on its
+ * way (an error the SSH layer reads itself shuts it down meanwhile). True
+ * when a question was open. */
+static bool kitty_seat_questions_end(Seat *seat, bool peer, bool gone)
 {
     struct kitty_inline_confirm_ctx *c;
     struct kitty_hk_async *a;
+    struct kitty_weak_async *w;
     bool any = false;
     for (c = kitty_inline_open; c; c = c->next) {
-        if (c->seat != seat || c->peer_closed)
+        if (c->seat != seat)
             continue;
+        any = true;
+        if (c->peer_closed) {          /* already ending */
+            if (gone)
+                c->ssh_gone = true;
+            continue;
+        }
         c->peer_closed = true;
         c->ssh_gone = gone;
-        c->quiet = quiet;
-        any = true;
+        c->quiet = !peer;
         /* a prompt being asked ends at once, its callback sees peer_closed;
          * otherwise the callback already queued (the first text, the next
          * step of a changed key) sees it */
@@ -5626,14 +5716,34 @@ static bool kitty_seat_questions_end(Seat *seat, bool gone, bool quiet)
             term_userpass_abort(c->term, c->prompts);
     }
     for (a = kitty_hk_open; a; a = a->next) {
-        if (&a->wgs->seat != seat || a->closed)
+        if (&a->wgs->seat != seat)
             continue;
+        any = true;
+        if (a->closed) {
+            if (gone)
+                a->gone = true;
+            continue;
+        }
         a->closed = true;
         a->gone = gone;
-        a->quiet = quiet;
-        any = true;
+        a->quiet = !peer;
         if (a->hwnd)
             PostMessage(a->hwnd, WM_COMMAND, IDCANCEL, 0);
+    }
+    for (w = kitty_weak_open; w; w = w->next) {
+        if (&w->wgs->seat != seat)
+            continue;
+        any = true;
+        if (w->closed) {
+            if (gone)
+                w->gone = true;
+            continue;
+        }
+        w->closed = true;
+        w->gone = gone;
+        w->quiet = !peer;
+        if (w->box)
+            PostMessage(w->box, WM_CLOSE, 0, 0);
     }
     return any;
 }
@@ -5644,14 +5754,15 @@ static bool kitty_seat_questions_end(Seat *seat, bool gone, bool quiet)
  * was open. */
 bool kitty_seat_peer_closed(Seat *seat, bool now)
 {
-    return kitty_seat_questions_end(seat, now, false);
+    return kitty_seat_questions_end(seat, true, now);
 }
 
-/* KiTTY (window.c, close_session): the backend is about to be freed, so a
- * question still open must never call it back. Ends it without a word. */
+/* KiTTY (window.c: KCS_SSH_GONE, close_session): the SSH layers are freed,
+ * so a question still open must never call them back. One the server's
+ * close was ending keeps its line; any other ends without a word. */
 void kitty_seat_questions_drop(Seat *seat)
 {
-    kitty_seat_questions_end(seat, true, true);
+    kitty_seat_questions_end(seat, false, true);
 }
 
 SeatPromptResult win_seat_confirm_ssh_host_key(
@@ -5759,19 +5870,7 @@ SeatPromptResult win_seat_confirm_weak_crypto_primitive(
             callback, ctx);
     }
 
-    strbuf *dlg_text = strbuf_new();
-    const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
-
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red);
-    int confirmed = kitty_confirm_box(NULL, dlg_title, dlg_text->s, NULL);
-    socket_reselect_all();
-    strbuf_free(dlg_text);
-
-    if (confirmed)
-        return SPR_OK;
-    else
-        return SPR_USER_ABORT;
+    return kitty_weak_confirm(wgs, text, callback, ctx);
 }
 
 SeatPromptResult win_seat_confirm_weak_cached_hostkey(
@@ -5794,24 +5893,61 @@ SeatPromptResult win_seat_confirm_weak_cached_hostkey(
             callback, ctx);
     }
 
-    strbuf *dlg_text = strbuf_new();
-    const char *dlg_title = process_seatdialogtext(dlg_text, NULL, text);
+    return kitty_weak_confirm(wgs, text, callback, ctx);
+}
 
-    extern int kitty_confirm_box(HWND owner, const char *caption,
-                                 const char *text, const char *warn_red);
-    int confirmed = kitty_confirm_box(NULL, dlg_title, dlg_text->s, NULL);
-    socket_reselect_all();
-    strbuf_free(dlg_text);
+/*
+ * KiTTY: the question is asked modeless, the answer given later through
+ * logging.c's callback (the log holds its output meanwhile). The box used to
+ * be modal and stopped the session while it stood - and it is asked in the
+ * middle of the login, when the first output arrives.
+ */
+struct kitty_askappend {
+    void (*callback)(void *ctx, int result);
+    void *ctx;                         /* the LogContext */
+    HWND box;
+    bool dropped;                      /* the log was closed: no answer */
+    struct kitty_askappend *next;
+};
+static struct kitty_askappend *kitty_askappend_open = NULL;
 
-    if (confirmed)
-        return SPR_OK;
-    else
-        return SPR_USER_ABORT;
+static void kitty_askappend_unlink(struct kitty_askappend *a)
+{
+    struct kitty_askappend **pp;
+    for (pp = &kitty_askappend_open; *pp; pp = &(*pp)->next)
+        if (*pp == a) {
+            *pp = a->next;
+            break;
+        }
+}
+
+/* kitty_confirm_modeless3: 1 = Yes (wipe), 2 = No (append), 3 = Cancel or
+ * 0 = closed (don't log) */
+static void kitty_askappend_done(int answer, void *vctx)
+{
+    struct kitty_askappend *a = (struct kitty_askappend *)vctx;
+    kitty_askappend_unlink(a);
+    if (!a->dropped)
+        a->callback(a->ctx, answer == 1 ? 2 : answer == 2 ? 1 : 0);
+    sfree(a);
+}
+
+/* logging.c: this log is closed or freed while its question stands */
+static void kitty_askappend_dropped(void *logctx)
+{
+    struct kitty_askappend *a;
+    for (a = kitty_askappend_open; a; a = a->next)
+        if (a->ctx == logctx && !a->dropped) {
+            a->dropped = true;
+            if (a->box)
+                PostMessage(a->box, WM_CLOSE, 0, 0);
+        }
 }
 
 /*
  * Ask whether to wipe a session log file before writing to it.
- * Returns 2 for wipe, 1 for append, 0 for cancel (don't log).
+ * Returns 2 for wipe, 1 for append, 0 for cancel (don't log), or -1 when
+ * the answer comes later through callback (KiTTY: the modeless box).
  */
 static int win_gui_askappend(LogPolicy *lp, Filename *filename,
                              void (*callback)(void *ctx, int result),
@@ -5830,6 +5966,33 @@ static int win_gui_askappend(LogPolicy *lp, Filename *filename,
 
     message = dupprintf(msgtemplate, FILENAME_MAX, filename->utf8path);
     mbtitle = dupprintf("%s Log to File", appname);
+
+    {
+        extern void (*kitty_log_question_dropped_hook)(void *logctx);
+        extern HWND kitty_confirm_modeless3(
+            HWND owner, const char *caption, const char *text,
+            const char *detail, const char *b_yes, const char *b_third,
+            const char *b_no, void (*done)(int answer, void *ctx), void *ctx);
+        WinGuiSeat *wgs = container_of(lp, WinGuiSeat, logpolicy);
+        struct kitty_askappend *a = snew(struct kitty_askappend);
+        a->callback = callback;
+        a->ctx = ctx;
+        a->dropped = false;
+        a->next = kitty_askappend_open;
+        kitty_askappend_open = a;
+        /* the same words and the same default (Cancel) as the box was */
+        a->box = kitty_confirm_modeless3(
+            wgs->term_hwnd, mbtitle, message, NULL, "&Yes", "&No", "Cancel",
+            kitty_askappend_done, a);
+        if (a->box) {
+            kitty_log_question_dropped_hook = kitty_askappend_dropped;
+            sfree(message);
+            sfree(mbtitle);
+            return -1;
+        }
+        kitty_askappend_unlink(a);     /* no modeless box here: as before */
+        sfree(a);
+    }
 
     mbret = message_box(NULL, message, mbtitle,
                         MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON3,

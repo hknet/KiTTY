@@ -452,8 +452,15 @@ void logfile_session_end(LogContext *ctx)
 }
 #endif
 
+/* KiTTY: told when a log whose "overwrite / append?" question is still open
+ * (L_OPENING) is closed or freed: the answer must never reach it. NULL:
+ * nothing is told (every program but kitty.exe). */
+void (*kitty_log_question_dropped_hook)(void *logctx) = NULL;
+
 void logfclose(LogContext *ctx)
 {
+    if (ctx->state == L_OPENING && kitty_log_question_dropped_hook)
+        kitty_log_question_dropped_hook(ctx);
     if (ctx->lgfp) {
         fclose(ctx->lgfp);
         ctx->lgfp = NULL;

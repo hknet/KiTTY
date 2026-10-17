@@ -415,6 +415,10 @@ static void ssh_bpp_output_raw_data_callback(void *vctx)
 
 static void ssh_shutdown_internal(Ssh *ssh)
 {
+    /* KiTTY: the layers a question may be waiting to answer go below */
+    if (ssh->base_layer)
+        kitty_connstage(ssh->seat, KCS_SSH_GONE, PTRLEN_LITERAL(""));
+
     expire_timer_context(ssh);
 
     if (ssh->connshare) {

@@ -604,6 +604,22 @@ static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
 	return h ;
 }
 
+/* kitty_confirm_box_yes (front: kitty_confirm_box_yes_front), modeless: Yes
+ * stays the default, front puts the box on top of every window. done(yes,
+ * ctx) once; NULL = not made, no callback. For the exit confirmation, which
+ * must not stop the session it asks about. */
+HWND kitty_confirm_modeless_yes( HWND owner, const char *caption, const char *text,
+                                 int front, void (*done)( int yes, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->defyes = 1 ;
+	cf->front = front ? 1 : 0 ;
+	cf->done = done ; cf->ctx = ctx ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
+}
+
 /* kitty_confirm_modeless with the two buttons named (b_yes, b_no; NULL keeps
  * the template's word). The second stays the default, so a reflex Return
  * does not agree. Same answer rules; NULL = not made, no callback. */

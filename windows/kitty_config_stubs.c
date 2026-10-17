@@ -129,6 +129,34 @@ int kitty_confirm_box_yes(HWND owner, const char *caption, const char *text,
                        MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON1) == IDYES;
 }
 
+/* No modeless box in the stock variants: NULL makes the caller ask with the
+ * classic box, as before. */
+HWND kitty_confirm_modeless3(HWND owner, const char *caption, const char *text,
+                             const char *detail, const char *b_yes,
+                             const char *b_third, const char *b_no,
+                             void (*done)(int answer, void *ctx), void *ctx);
+HWND kitty_confirm_modeless3(HWND owner, const char *caption, const char *text,
+                             const char *detail, const char *b_yes,
+                             const char *b_third, const char *b_no,
+                             void (*done)(int answer, void *ctx), void *ctx)
+{
+    (void)owner; (void)caption; (void)text; (void)detail; (void)b_yes;
+    (void)b_third; (void)b_no; (void)done; (void)ctx;
+    return NULL;
+}
+
+HWND kitty_confirm_modeless(HWND owner, const char *caption, const char *text,
+                            const char *detail, const char *warn_red,
+                            void (*done)(int yes, void *ctx), void *ctx);
+HWND kitty_confirm_modeless(HWND owner, const char *caption, const char *text,
+                            const char *detail, const char *warn_red,
+                            void (*done)(int yes, void *ctx), void *ctx)
+{
+    (void)owner; (void)caption; (void)text; (void)detail; (void)warn_red;
+    (void)done; (void)ctx;
+    return NULL;
+}
+
 /* The stock variants have no themed boxes at all, so the routed MessageBox
  * calls in shared files (windows/controls.c) stay real MessageBoxes here. */
 int kitty_message_box(HWND owner, const char *text, const char *caption,

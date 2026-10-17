@@ -23,6 +23,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   store the key of a connection that was already gone, and the window then
   sat there doing nothing. The host-key box no longer stops the session
   while it is open.
+- **The log file's "overwrite or append?" question, the weak-algorithm
+  warnings and the exit confirmation no longer stop the session** while
+  they are open: output keeps arriving, keepalives are answered, and a
+  server that closes ends a weak-algorithm question as it does the host-key
+  one. The log keeps what arrives meanwhile and writes it once answered.
 
 ## 0.85.1.17-beta — 2026-10-17
 
