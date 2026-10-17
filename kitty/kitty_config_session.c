@@ -5973,9 +5973,9 @@ void scb_panel_terminal(struct controlbox *b)
 
     /* KiTTY: the application-keypad pair is its own leaf, which gives the
      * key-mapping block above the room the extra rows need. */
-    ctrl_settitle(b, "Terminal/Keyboard/Application keypad",
+    ctrl_settitle(b, "Terminal/Keyboard/App Keypad & Cursor",
                   KT_KEYBOARD_OPTIONS_CONTROLLING_THE_APPLICATION_KEYPAD);
-    s = ctrl_getset(b, "Terminal/Keyboard/Application keypad", "appkeypad",
+    s = ctrl_getset(b, "Terminal/Keyboard/App Keypad & Cursor", "appkeypad",
                     KT_KEYBOARD_APPLICATION_KEYPAD_SETTINGS);
     ctrl_radiobuttons(s, KT_KEYBOARD_INITIAL_STATE_OF_CURSOR_KEYS, 'r', 3,
                       HELPCTX(keyboard_appcursor),
@@ -6196,11 +6196,10 @@ static bool scb_background_leaf_wanted(void)
  *
  * A leaf appears in the tree where its title set is created, so the order of
  * the whole branch is decided here and nowhere else; the panel functions below
- * only add their control sets to these paths. Paths are IDENTIFIERS - the
- * settings code, remembered panels, help and the QA harnesses key on them -
- * and kitty_tree_text.h holds what the tree shows: "Window/Selection" reads
- * "Copy & Paste", "Window/Title" reads "Title & Icon". A leaf whose feature
- * is switched off is not created at all.
+ * only add their control sets to these paths. A path is what the tree shows,
+ * component for component; renamed panels keep their old path as an alias
+ * (kitty_panel_path.h). A leaf whose feature is switched off is not created
+ * at all.
  */
 static void scb_window_tree(struct controlbox *b)
 {
@@ -6222,22 +6221,22 @@ static void scb_window_tree(struct controlbox *b)
     str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Behaviour", str);
     sfree(str);
-    ctrl_settitle(b, "Window/Selection",
+    ctrl_settitle(b, "Window/Copy & Paste",
                   KT_SELECTION_OPTIONS_CONTROLLING_COPY_AND_PASTE);
-    ctrl_settitle(b, "Window/Selection/Copy",
+    ctrl_settitle(b, "Window/Copy & Paste/Character classes",
                   KT_COPY_CLASSES_OF_CHARACTER_THAT_GROUP);
-    ctrl_settitle(b, "Window/Selection/Remote clipboard",
+    ctrl_settitle(b, "Window/Copy & Paste/Remote clipboard",
                   KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY);
-    ctrl_settitle(b, "Window/Selection/Remote clipboard/Limits",
+    ctrl_settitle(b, "Window/Copy & Paste/Remote clipboard/Limits",
                   KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED);
-    ctrl_settitle(b, "Window/Selection/Remote clipboard/Notifications",
+    ctrl_settitle(b, "Window/Copy & Paste/Remote clipboard/Notifications",
                   KT_NOTICES_ABOUT_REMOTE_CLIPBOARD);
     if (!GetPuttyFlag())
         ctrl_settitle(b, "Window/Hyperlinks",
                       KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
     ctrl_settitle(b, "Window/Charset translation",
                   KT_CHARSET_TRANSLATION_OPTIONS_CONTROLLING_CHARACTER_SET_TRANSLATION);
-    ctrl_settitle(b, "Window/Title", KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS);
+    ctrl_settitle(b, "Window/Title & Icon", KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS);
 }
 
 /* Window > Behaviour: Windows draws no caption button on a window without
@@ -6423,9 +6422,9 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                       I(CONF_saveonexit));
     }
 
-    /* The Window/Title panel ("Title & Icon" in the tree): the title group,
+    /* The Window/Title & Icon panel: the title group,
      * then the icon group - both are about how the window is told apart. */
-    s = ctrl_getset(b, "Window/Title", "title",
+    s = ctrl_getset(b, "Window/Title & Icon", "title",
                     KT_TITLE_ADJUST_THE_BEHAVIOUR);
     ctrl_editbox(s, KT_TITLE_WINDOW_TITLE, 't', 100,
                  HELPCTX(appearance_title),
@@ -6653,7 +6652,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
         /* KiTTY: the icon group shares the "Title & Icon" leaf with the
          * window title (appended to Appearance it once pushed that panel
          * past the dialog's command buttons). */
-        s = ctrl_getset(b, "Window/Title", "icon",
+        s = ctrl_getset(b, "Window/Title & Icon", "icon",
                         KT_ICON_DEFINE_THE_WINDOW_ICON);
         ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 40,
                      HELPCTX(kitty_icon), conf_editbox_handler,
@@ -6715,8 +6714,8 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 #endif
 }
 
-/* The Window/Charset translation, Window/Selection (Copy & Paste, with its
- * Character classes and Remote clipboard leaves) and Colours panels. */
+/* The Window/Charset translation, Window/Copy & Paste (with its Character
+ * classes and Remote clipboard leaves) and Colours panels. */
 void scb_panel_selection(struct controlbox *b)
 {
     struct charclass_data *ccd;
@@ -6756,9 +6755,9 @@ void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_utf8linedraw));
 
     /*
-     * The Window/Selection panel.
+     * The Window/Copy & Paste panel.
      */
-    s = ctrl_getset(b, "Window/Selection", "mouse",
+    s = ctrl_getset(b, "Window/Copy & Paste", "mouse",
                     KT_SELECTION_CONTROL_USE_OF_MOUSE);
     ctrl_checkbox(s, KT_SELECTION_SHIFT_OVERRIDES_APPLICATION_S_USE, 'p',
                   HELPCTX(selection_shiftdrag),
@@ -6772,7 +6771,7 @@ void scb_panel_selection(struct controlbox *b)
                       KT_KEYBOARD_NORMAL, 'n', I(false),
                       KT_SELECTION_RECTANGULAR_BLOCK, 'r', I(true));
 
-    s = ctrl_getset(b, "Window/Selection", "clipboards",
+    s = ctrl_getset(b, "Window/Copy & Paste", "clipboards",
                     KT_SELECTION_ASSIGN_COPY_PASTE_ACTIONS);
     ctrl_checkbox(s, KT_CFG_AUTOCOPY_SELECTED_TEXT_TO
                   CLIPNAME_EXPLICIT_OBJECT,
@@ -6787,7 +6786,7 @@ void scb_panel_selection(struct controlbox *b)
     clipboard_control(s, KT_CFG_CTRL_SHIFT_CV, NO_SHORTCUT, 60,
                       HELPCTX(selection_clipactions),
                       CONF_ctrlshiftcv, CONF_ctrlshiftcv_custom);
-    s = ctrl_getset(b, "Window/Selection", "paste",
+    s = ctrl_getset(b, "Window/Copy & Paste", "paste",
                     KT_SELECTION_CONTROL_PASTING_OF_TEXT);
     ctrl_checkbox(s, KT_SELECTION_PERMIT_CONTROL_CHARACTERS_IN_PASTED,
                   NO_SHORTCUT, HELPCTX(selection_pastectrl),
@@ -6796,10 +6795,10 @@ void scb_panel_selection(struct controlbox *b)
     /* "Formatting of copied characters" (the RTF box) is Windows-side, in
      * windows/config.c; the set is made here so it sits above the
      * clipboard-command group instead of at the foot of the panel. */
-    ctrl_getset(b, "Window/Selection", "format",
+    ctrl_getset(b, "Window/Copy & Paste", "format",
                 KT_COPY_FORMATTING_OF_COPIED_CHARACTERS);
 
-    s = ctrl_getset(b, "Window/Selection", "runclipcmd",
+    s = ctrl_getset(b, "Window/Copy & Paste", "runclipcmd",
                     KT_SELECTION_RUNNING_THE_CLIPBOARD);
     ctrl_checkbox(s, KT_SELECTION_CONFIRM_BEFORE_RUNNING_THE_CLIPBOARD,
                   NO_SHORTCUT, HELPCTX(kitty_clipcmd),
@@ -6809,16 +6808,16 @@ void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_runcmdnotify));
 
     /*
-     * The Window/Selection/Remote clipboard panels (KiTTY).
+     * The Window/Copy & Paste/Remote clipboard panels (KiTTY).
      *
-     * These controls were all on Window/Selection until they outgrew it: the
+     * These controls were all on Window/Copy & Paste until they outgrew it: the
      * clipboard-read work added eleven settings to a panel that already carried
      * the mouse buttons and the clipboard assignments, and the result ran off
      * the bottom of the dialog with half the labels truncated. Split three ways
      * by the question each answers - may the host do it, how much of it, and do
      * I get told - which also keeps every label short enough to read.
      */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard", "policy",
+    s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard", "policy",
                     KT_REMOTE_CLIPBOARD_PERMISSIONS);
 #ifdef MOD_FAR2L
     /* KiTTY (far2l): let a remote far2l session read/write the local clipboard.
@@ -6874,9 +6873,9 @@ void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_clipboard_require_focus));
 
     /*
-     * The Window/Selection/Remote clipboard/Limits panel.
+     * The Window/Copy & Paste/Remote clipboard/Limits panel.
      */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "size",
+    s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Limits", "size",
                     KT_LIMITS_ANY_PROTOCOL_OSC_52_OSC);
     /* One ceiling for OSC 52 and far2l both. Clamped in code (CLIP_MAX_MB_CAP):
      * lowering it only ever helps, but it must not be possible to type a number
@@ -6898,7 +6897,7 @@ void scb_panel_selection(struct controlbox *b)
      * shipped are guesses - no other terminal implements a hand-over rate limit
      * to copy from - and because someone who wants a five-minute grant instead of
      * ten should not have to argue with us about it. */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Limits", "read",
+    s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Limits", "read",
                     KT_LIMITS_A_GRANTED_CLIPBOARD_READ);
     ctrl_editbox(s, KT_LIMITS_GRANT_OFFERED_IN_MINUTES, NO_SHORTCUT, 18,
                  HELPCTX(kitty_osc52_limits), conf_editbox_handler,
@@ -6933,9 +6932,9 @@ void scb_panel_selection(struct controlbox *b)
                  I(CONF_osc5522_paste_token_secs), ED_INT);
 
     /*
-     * The Window/Selection/Remote clipboard/Notifications panel.
+     * The Window/Copy & Paste/Remote clipboard/Notifications panel.
      */
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notifications", "title",
+    s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Notifications", "title",
                     KT_NOTICES_TITLE_BAR);
     /* The two markers answer different questions: permission says what COULD
      * happen, activity says what DID. Icons rather than words - the title bar is
@@ -6959,7 +6958,7 @@ void scb_panel_selection(struct controlbox *b)
                   NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_osc52_colour_frame));
 
-    s = ctrl_getset(b, "Window/Selection/Remote clipboard/Notifications", "tray",
+    s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Notifications", "tray",
                     KT_NOTICES_NOTIFICATION_AREA);
     /* One switch for every remote-clipboard balloon - permission granted or
      * expired, request refused, payload too large - across all three protocols.
@@ -6970,10 +6969,10 @@ void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_clipboard_notify));
 
     /*
-     * The Window/Selection/Copy panel ("Character classes" in the tree): the
+     * The Window/Copy & Paste/Character classes panel: the
      * class list alone - the RTF box moved up to the Copy & Paste panel.
      */
-    s = ctrl_getset(b, "Window/Selection/Copy", "charclass",
+    s = ctrl_getset(b, "Window/Copy & Paste/Character classes", "charclass",
                     KT_COPY_CLASSES_OF_CHARACTER_THAT_GROUP);
     ctrl_text(s, KT_COPY_CLASSES_EXPLAIN, HELPCTX(copy_charclasses));
     ccd = (struct charclass_data *)
@@ -8792,14 +8791,14 @@ void scb_panel_transfers(struct controlbox *b)
 
     if (GetPuttyFlag()) return;
 
-    ctrl_settitle(b, "Connection/Transfers", KT_TRANSFERS_TITLE);
+    ctrl_settitle(b, "Connection/File-Transfer-Settings", KT_TRANSFERS_TITLE);
 
     /* First, because it says WHICH HOST the tool-specific matter below is
      * about. Moved off the WinSCP panel: it serves FileZilla too, and a
      * setting for two tools cannot sit on one of their leaves. Stored as
      * SFTPConnect. A port inside the string wins over the tool's Port field
      * (kitty_xfer.c). */
-    s = ctrl_getset(b, "Connection/Transfers", "target", KT_TRANSFERS_TARGET_GROUP);
+    s = ctrl_getset(b, "Connection/File-Transfer-Settings", "target", KT_TRANSFERS_TARGET_GROUP);
     ctrl_editbox(s, KT_TRANSFERS_TARGET_OVERRIDE, NO_SHORTCUT, 100,
                  HELPCTX(kitty_transfers),
                  conf_editbox_handler, I(CONF_sftpconnect), ED_STR);
@@ -8807,7 +8806,7 @@ void scb_panel_transfers(struct controlbox *b)
     ctrl_text(s, KT_TRANSFERS_TARGET_NOTE,
               HELPCTX(kitty_transfers))->text.lines = 2;
 
-    s = ctrl_getset(b, "Connection/Transfers", "received", KT_TRANSFERS_RECEIVED);
+    s = ctrl_getset(b, "Connection/File-Transfer-Settings", "received", KT_TRANSFERS_RECEIVED);
     kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the rows' Locate... */
     ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
                  FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
@@ -8832,7 +8831,7 @@ void scb_panel_transfers(struct controlbox *b)
 
     /* Moved from the KSCP panel: the two are mutually exclusive, the
      * handlers keep them so through the captured sibling controls. */
-    s = ctrl_getset(b, "Connection/Transfers", "remote", KT_TRANSFERS_REMOTE_DIR);
+    s = ctrl_getset(b, "Connection/File-Transfer-Settings", "remote", KT_TRANSFERS_REMOTE_DIR);
     g_osc7_track_ctrl = ctrl_checkbox(s,
                   KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7,
                   NO_SHORTCUT, HELPCTX(kitty_transfers_remote),
@@ -8849,7 +8848,7 @@ void scb_panel_transfers(struct controlbox *b)
      * save dialog, the per-file ceiling for files arriving and the full-path
      * rule for files leaving. The last two default to the OSC 5113 (kitten)
      * leaf under Transfers & Tools. */
-    s = ctrl_getset(b, "Connection/Transfers", "kitten", KT_TRANSFERS_KITTEN);
+    s = ctrl_getset(b, "Connection/File-Transfer-Settings", "kitten", KT_TRANSFERS_KITTEN);
     ctrl_text(s, KT_TRANSFERS_FAR_END_NOTE, HELPCTX(kitty_transfers_kitten));
     /* Two columns: three abreast cut "Ask once per session" at 200%. */
     ctrl_radiobuttons(s, NULL, NO_SHORTCUT, 2,
@@ -8930,7 +8929,7 @@ void scb_panel_zmodem(struct controlbox *b)
             btn = ctrl_pushbutton(s, KT_ZMODEM_OPEN_TRANSFERS_PANEL, NO_SHORTCUT,
                                   HELPCTX(kitty_zmodem),
                                   kitty_global_jump_handler,
-                                  P("Connection/Transfers"));
+                                  P("Connection/File-Transfer-Settings"));
             btn->column = 1;
             ctrl_columns(s, 1, 100);
         }

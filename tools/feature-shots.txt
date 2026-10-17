@@ -23,7 +23,7 @@ docs/features/img/config_hyperlinks.jpg    | Window/Hyperlinks                | 
 docs/features/img/config_password.jpg      | Connection/Login                 | auto-login password field
 docs/features/img/config_autocommand.jpg   | Connection/Login                 | auto-command after login (same panel as the password - curation may prefer one image)
 docs/features/img/config_forcecrlf.jpg     | Terminal/Keyboard                | Enter sends CR LF
-docs/features/img/config_icon.jpg          | Window/Title                     | per-session icon chooser (the Title & Icon leaf)
+docs/features/img/config_icon.jpg          | Window/Title & Icon              | per-session icon chooser
 docs/features/img/config_sendtotray.jpg    | Window/Behaviour                 | send-to-tray options
 docs/features/img/config_transparency.jpg  | Window/Appearance/Background     | transparency options (the Background leaf)
 docs/features/img/config_winscp_integration.jpg | Connection/SSH/WinSCP          | WinSCP integration panel (KSCP has its own panel now)

@@ -905,9 +905,8 @@ struct treeview_faff {
  * link kitty.c, still resolve it and simply keep the full-expansion default. */
 int kitty_category_expand_depth = 99;
 
-/* KiTTY: the tree's display names live in one table, so a translation can
- * change what is SHOWN while every path stays the identifier it is. */
-#include "../kitty/kitty_tree_text.h"
+/* KiTTY: a remembered panel path from before a rename reaches today's. */
+#include "../kitty/kitty_panel_path.h"
 
 static HTREEITEM treeview_insert(struct treeview_faff *faff,
                                  int level, char *text, char *path)
@@ -915,7 +914,6 @@ static HTREEITEM treeview_insert(struct treeview_faff *faff,
     TVINSERTSTRUCT ins;
     int i;
     HTREEITEM newitem;
-    text = (char *)kitty_tree_label(text);
     ins.hParent = (level > 0 ? faff->lastat[level - 1] : TVI_ROOT);
     ins.hInsertAfter = faff->lastat[level];
 #if _WIN32_IE >= 0x0400 && defined NONAMELESSUNION
@@ -2825,11 +2823,11 @@ static void kitty_cfg_remember_app_panel(const char *path)
 
 static const char *kitty_cfg_remembered_app_panel(void)
 {
-    static char buf[256];
+    static char buf[256], resolved[256];
     buf[0] = '\0';
     if (!ReadParameterN(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_APPLICATIONPANEL, buf, sizeof(buf)))
         return NULL;
-    return buf[0] ? buf : NULL;
+    return buf[0] ? kitty_panel_path_resolve(buf, resolved, sizeof(resolved)) : NULL;
 }
 
 /* The tree item carrying a given path, or NULL. Walks children and siblings

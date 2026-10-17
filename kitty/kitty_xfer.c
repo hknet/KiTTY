@@ -3148,7 +3148,7 @@ void GetFile( HWND hwnd ) {
 /* #9 hardening: RunCmd() runs text taken straight from the Windows clipboard as
  * a local command (default Ctrl+F5), so attacker-planted clipboard content could
  * execute on a single keypress. Two independent, PER-SESSION safeguards, both ON
- * by default and each toggled in the config dialog (Window/Selection): a
+ * by default and each toggled in the config dialog (Window/Copy & Paste): a
  * confirmation prompt (CONF_runcmdconfirm) and a post-launch tray balloon
  * (CONF_runcmdnotify, mirroring kageant's key-use balloon). */
 typedef struct { HWND hwnd ; char cmd[4096] ; } kx_runcmd_t ;

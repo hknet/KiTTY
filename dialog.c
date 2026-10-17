@@ -12,6 +12,10 @@
 
 #include "putty.h"
 #include "dialog.h"
+/* KiTTY: panels renamed since upstream's paths keep their old path as an
+ * alias, so upstream code building "Window/Selection" reaches the panel of
+ * today's name. */
+#include "kitty/kitty_panel_path.h"
 
 int ctrl_path_elements(const char *path)
 {
@@ -131,7 +135,10 @@ struct controlset *ctrl_settitle(struct controlbox *b,
 {
 
     struct controlset *s = snew(struct controlset);
-    int index = ctrl_find_set(b, path, true);
+    char pathbuf[256];
+    int index;
+    path = kitty_panel_path_resolve(path, pathbuf, sizeof(pathbuf));
+    index = ctrl_find_set(b, path, true);
     s->pathname = dupstr(path);
     s->boxname = NULL;
     s->boxtitle = dupstr(title);
@@ -152,7 +159,10 @@ struct controlset *ctrl_getset(struct controlbox *b, const char *path,
                                const char *name, const char *boxtitle)
 {
     struct controlset *s;
-    int index = ctrl_find_set(b, path, true);
+    char pathbuf[256];
+    int index;
+    path = kitty_panel_path_resolve(path, pathbuf, sizeof(pathbuf));
+    index = ctrl_find_set(b, path, true);
     while (index < b->nctrlsets &&
            !strcmp(b->ctrlsets[index]->pathname, path)) {
         if (b->ctrlsets[index]->boxname &&

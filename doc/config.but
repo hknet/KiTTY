@@ -735,6 +735,9 @@ fiddle with it.
 
 \S{config-appcursor} Controlling \i{Application Cursor Keys} mode
 
+This setting and the next one (\k{config-appkeypad}) are on the
+\q{App Keypad & Cursor} leaf below the Keyboard panel.
+
 Application Cursor Keys mode is a way for the server to change the
 control sequences sent by the arrow keys. In normal mode, the arrow
 keys send \c{ESC [A} through to \c{ESC [D}. In application mode,

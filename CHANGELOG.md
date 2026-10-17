@@ -13,6 +13,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   escaping, which files count as sessions, the file format with the keys that
   matter, and the same session in the registry store.
 
+### Changed
+
+- **`-cfgpanel` takes the panel names the configuration window shows.**
+  `Window/Copy & Paste`, `Window/Copy & Paste/Character classes`,
+  `Window/Title & Icon`, `Connection/File-Transfer-Settings`,
+  `Terminal/Keyboard/App Keypad & Cursor` and `Application/Migration/(old)
+  KiTTY Folders`; the old paths (`Window/Selection`, `Connection/Transfers`,
+  ...) still open the same panels. The tree item "App Keypad/Cursor" is now
+  "App Keypad & Cursor".
+
 ### Fixed
 
 - **The search's marks beside the scrollbar show as soon as the search

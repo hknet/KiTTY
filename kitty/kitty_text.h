@@ -45,7 +45,7 @@
 #define KT_INIMIG_IN_BUTTON  "Take a folder store..."
 #define KT_INIMIG_IN_NOTE    "The folder is merged into the registry: what it holds replaces, what it lacks stays."
 
-/* Application > Migration > old KiTTY Folders (kitty_migrate.c) */
+/* Application > Migration > (old) KiTTY Folders (kitty_migrate.c) */
 #define KT_MIGF_TITLE        "Import an old KiTTY Folder Store"
 #define KT_MIGF_SCAN_GROUP   "Where to look"
 #define KT_MIGF_SCAN_INTRO   "The folder and its subfolders are searched for session files."
@@ -389,7 +389,7 @@
 #define KT_APPEARANCE_ADJUST_THE_WINDOW_BORDER       "Adjust the window border"
 #define KT_APPEARANCE_GAP_BETWEEN_TEXT_AND_WINDOW    "Gap between text and window edge:"
 
-/* Window/Title */
+/* Window/Title & Icon */
 #define KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS       "Window Title and Icon Options"
 #define KT_TITLE_ADJUST_THE_BEHAVIOUR                "Adjust the behaviour of the window title"
 #define KT_TITLE_WINDOW_TITLE                        "Window title:"
@@ -537,7 +537,7 @@
 #define KT_CHARSET_TRANSLATION_COPY_AND_PASTE_LINE_DRAWING "Copy and paste line drawing characters as lqqqk"
 #define KT_CHARSET_TRANSLATION_ENABLE_VT100_LINE_DRAWING_EVEN "Enable VT100 line drawing even in UTF-8 mode"
 
-/* Window/Selection */
+/* Window/Copy & Paste */
 #define KT_SELECTION_OPTIONS_CONTROLLING_COPY_AND_PASTE "Options controlling copy and paste"
 #define KT_SELECTION_CONTROL_USE_OF_MOUSE            "Control use of mouse"
 #define KT_SELECTION_SHIFT_OVERRIDES_APPLICATION_S_USE "Shift overrides application's use of mouse"
@@ -550,7 +550,7 @@
 #define KT_SELECTION_CONFIRM_BEFORE_RUNNING_THE_CLIPBOARD "Confirm before running the clipboard as a command"
 #define KT_SELECTION_SHOW_A_TRAY_NOTIFICATION_AFTER  "Show a tray notification after running a clipboard command"
 
-/* Window/Selection/Remote clipboard */
+/* Window/Copy & Paste/Remote clipboard */
 #define KT_REMOTE_CLIPBOARD_WHAT_A_REMOTE_HOST_MAY   "What a remote host may do with your clipboard"
 #define KT_REMOTE_CLIPBOARD_PERMISSIONS              "Permissions"
 #define KT_REMOTE_CLIPBOARD_FAR2L_SHARED_CLIPBOARD   "far2l shared clipboard:"
@@ -565,7 +565,7 @@
 /* KiTTY far2l images: per session, on the same panel as the far2l clipboard */
 #define KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES        "Show far2l images"
 
-/* Window/Selection/Remote clipboard/Limits */
+/* Window/Copy & Paste/Remote clipboard/Limits */
 #define KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED         "Bounds on what a permitted host can do"
 #define KT_LIMITS_ANY_PROTOCOL_OSC_52_OSC            "Any protocol (OSC 52, OSC 5522, far2l)"
 #define KT_LIMITS_LARGEST_PAYLOAD_IN_MB              "Largest payload, in MB:"
@@ -582,7 +582,7 @@
 #define KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES        "this many minutes (0 = always):"
 #define KT_LIMITS_PASTE_TOKEN_SECONDS                "Paste token valid for, in seconds:"
 
-/* Window/Selection/Remote clipboard/Notifications */
+/* Window/Copy & Paste/Remote clipboard/Notifications */
 #define KT_NOTICES_ABOUT_REMOTE_CLIPBOARD "Notifications about remote clipboard use"
 #define KT_NOTICES_TITLE_BAR                         "Title bar"
 #define KT_NOTICES_MARK_WHILE_A_PERMISSION           "Mark while a permission is live  (end, in brackets)"
@@ -593,7 +593,7 @@
 #define KT_NOTICES_NOTIFICATION_AREA                 "Notification area"
 #define KT_NOTICES_SHOW_TRAY_NOTIFICATIONS_FOR_CLIPBOARD "Show tray notifications for clipboard events"
 
-/* Window/Selection/Copy */
+/* Window/Copy & Paste/Character classes */
 #define KT_COPY_CLASSES_EXPLAIN                      "These Classes decide which characters can be combined to words. " \
         "Selecting words in the Terminal is steered by these Classes."
 #define KT_COPY_FORMATTING_OF_COPIED_CHARACTERS      "Formatting of copied characters"
@@ -3782,7 +3782,7 @@
 #define KT_CFG_LINEDRAW_TITLE_FMT                    "Adjust how %s handles line drawing characters"
 #define KT_CFG_PRECISE_COLOURS_TITLE_FMT             "Adjust the precise colours %s displays"
 
-/* kitty_config.c: Window/Hyperlinks, Window/Selection */
+/* kitty_config.c: Window/Hyperlinks, Window/Copy & Paste */
 #define KT_CAP_RESET_URL_REGEX                       "Reset the URL regular expression?"
 #define KT_CFG_RESET_URL_REGEX_Q                     "The custom regular expression is REPLACED by " \
         "KiTTY's default pattern.\n\n" \
@@ -4169,7 +4169,7 @@
 #define KT_SP_ORG_TAG_EMPTY                          "No session carries this tag"
 #define KT_SP_ORG_TAG_NONE                           "Pick a tag, or drag sessions here to tag them"
 #define KT_SP_ORG_TAG_BAD                            "A tag cannot be empty, contain a comma or be longer than 64 characters."
-/* Application > Migration > old KiTTY Folders: the suffix of the old store. */
+/* Application > Migration > (old) KiTTY Folders: the suffix of the old store. */
 #define KT_MIGF_SUFFIX                               "Suffix to remove from file names"
 
 /* ---- resource scripts ---- */

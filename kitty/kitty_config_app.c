@@ -5133,7 +5133,7 @@ void scb_app_footer(struct controlbox *b, const char *path)
     }
 }
 
-/* ---- Migration > old KiTTY Folders ------------------------------------ */
+/* ---- Migration > (old) KiTTY Folders ------------------------------------ */
 
 static int migf_refreshing = 0;        /* dlg_editbox_set fires VALCHANGE */
 
@@ -5699,7 +5699,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         }
     }
 
-    /* Migration > old KiTTY Folders: sessions kept in files. */
+    /* Migration > (old) KiTTY Folders: sessions kept in files. */
     scb_panel_folder_import(b);
 
     ctrl_settitle(b, "Application/Updates", KT_UPDATES_KEEPING_KITTY_UP_TO_DATE);

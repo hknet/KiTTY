@@ -50,6 +50,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_panel_path.h"   /* old panel paths -> today's */
 
 /* The workplace controls of the config box that is open, so the poll below can
  * find them. One config box at a time; cleared when its panel is rebuilt. */
@@ -71,11 +72,14 @@ struct hk_data *kitty_hk_active = NULL;
  * which is how the "your workplace proxy did not answer" notice puts the user
  * in front of the switch rather than switching anything off for them: a single
  * stray click should not tear down a proxy setup they may still want.
+ * A path from before a panel rename ("Window/Selection") opens today's panel.
  */
 static char kitty_cfgbox_panel[128] = "";
 
 void kitty_cfgbox_open_on_panel(const char *path)
 {
+    char resolved[128];
+    path = kitty_panel_path_resolve(path, resolved, sizeof(resolved));
     if (!path || !path[0] || strlen(path) >= sizeof(kitty_cfgbox_panel))
         kitty_cfgbox_panel[0] = '\0';
     else

@@ -71,7 +71,7 @@ removed.
 **Migration copes with nested session folders.** Application > Migration:
 "Make a portable copy..." writes the copy's sessions into folders, "Take a
 folder store..." reads every subfolder (and the store's own
-`sessions`/`sshhostkeys` location and suffixes). Import of old KiTTY Folders
+`sessions`/`sshhostkeys` location and suffixes). Migration > (old) KiTTY Folders
 lists only real session files inside Sessions too, and a "Suffix to remove from
 file names" field, filled in from the old store's putty.conf, shows the names
 as they will be imported.

@@ -18,7 +18,7 @@
 #define KCFG_PATH_HOSTKEYS      "Application/Security/Host keys"
 #define KCFG_PATH_APPLICATIONS  "Application/Security/Applications"
 #define KCFG_PATH_INIVIEW       "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"
-#define KCFG_PATH_OLD_FOLDERS   "Application/Migration/old KiTTY Folders"
+#define KCFG_PATH_OLD_FOLDERS   "Application/Migration/(old) KiTTY Folders"
 #define KCFG_PATH_AUTOTEXT      "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts/AutoText"
 #define KCFG_PATH_SHORTCUTS     "Application/KiTTY++ Settings/Keys & Mouse/Shortcuts"
 #define KCFG_PATH_WORKPLACE     "Application/Workplace Proxy"
@@ -43,7 +43,7 @@ struct iniview_data {
 };
 extern struct iniview_data *kitty_iniview_active;   /* kitty_config.c */
 /*
- * KiTTY: Migration > old KiTTY Folders - sessions in FILES, imported from a
+ * KiTTY: Migration > (old) KiTTY Folders - sessions in FILES, imported from a
  * folder tree. The engine is
  * kitty_migrate.c; this is the panel's state for one configuration box.
  */
