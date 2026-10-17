@@ -25,6 +25,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Sessions imported from an "Export all" folder through Application >
+  Migration > (old) KiTTY Folders no longer keep `.ktx` in their names.**
+  When the scanned folder names no suffix of its own and every session file
+  ends in `.ktx`, the scan fills in `.ktx` as the suffix to remove.
 - **The search's marks beside the scrollbar show as soon as the search
   ends** (hknet/KiTTY#72). They appeared only after the view was scrolled.
 - **A server that closes while the host-key question is open ends it.** The

@@ -5258,6 +5258,10 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 char *suf = kitty_store_suffix_of(m->root);
                 snprintf(m->suffix, sizeof(m->suffix), "%s", suf);
                 sfree(suf);
+                /* No store setting names one, and every file ends in .ktx:
+                 * an Export all folder, whose names must not keep the ending. */
+                if (!m->suffix[0] && kitty_folder_scan_all_end_in(m->found, ".ktx"))
+                    snprintf(m->suffix, sizeof(m->suffix), "%s", ".ktx");
                 if (m->suffixbox)
                     dlg_refresh(m->suffixbox, dlg);
             }

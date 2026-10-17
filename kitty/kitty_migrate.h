@@ -97,6 +97,9 @@ void kitty_folder_scan_free(struct kitty_folder_scan *s);
 /* The scanned rows' names again, with `suffix` (may be empty) taken off the
  * file names - the old store's session file suffix (hknet/KiTTY#56). */
 void kitty_folder_scan_set_suffix(struct kitty_folder_scan *s, const char *suffix);
+/* 1 when every scanned file name ends in `ending` (case ignored) and at
+ * least one was found: an Export all folder is all ".ktx" files. */
+int kitty_folder_scan_all_end_in(const struct kitty_folder_scan *s, const char *ending);
 /* The session file suffix an old store was kept with: its kitty.ini [KiTTY]
  * fileextension (old KiTTY's key) or sessionsuffix (0.85.1.13's), else its
  * putty.conf sessionsuffix=, looked for in `root`

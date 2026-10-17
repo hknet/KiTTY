@@ -522,6 +522,21 @@ void kitty_folder_scan_set_suffix(struct kitty_folder_scan *s, const char *suffi
     }
 }
 
+int kitty_folder_scan_all_end_in(const struct kitty_folder_scan *s, const char *ending)
+{
+    size_t el = strlen(ending);
+    int i;
+    if (!s || !s->n || !el)
+        return 0;
+    for (i = 0; i < s->n; i++) {
+        const char *f = s->items[i].fname;
+        size_t fl = f ? strlen(f) : 0;
+        if (fl <= el || _stricmp(f + fl - el, ending))
+            return 0;
+    }
+    return 1;
+}
+
 /* One "key=value" of a putty.conf, or NULL. snewn'd. */
 static char *putty_conf_value(const char *path, const char *key)
 {
