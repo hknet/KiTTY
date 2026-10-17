@@ -19,6 +19,15 @@ char *(*kitty_hello_keyfile_unlock_hook)(const char *path) = NULL;
 char *(*kitty_hello_keyfile_translate_hook)(const char *path,
                                             const char *typed) = NULL;
 int (*kitty_hello_keyfile_protected_hook)(const char *path) = NULL;
+/* The unlock without stopping the session (the terminal): started here,
+ * answered later through done(ctx, passphrase or NULL), which this layer
+ * waits for; 0 = nothing to unlock this way (go on to the prompt). cancel:
+ * this layer is freed first, done must not come. Preferred over the plain
+ * unlock hook when both are set. */
+int (*kitty_hello_keyfile_unlock_async_hook)(
+    const char *path, void (*done)(void *ctx, char *pass), void *ctx,
+    void **token) = NULL;
+void (*kitty_hello_keyfile_unlock_cancel_hook)(void *token) = NULL;
 
 /* KiTTY: a login the user TYPES at the SSH prompts. A frontend installs
  * this to copy an interactively entered user name and password into the
@@ -155,9 +164,23 @@ struct ssh2_userauth_state {
     char *kitty_pw_candidate;
     uint32_t kitty_ki_answers;     /* prompts answered this k-i attempt */
     bool kitty_capture_done;       /* one secret was accepted; the rest is 2FA */
+    void *kitty_hello_token;       /* the Hello unlock while it runs */
+    char *kitty_hello_pass;        /* ...and its answer, once it came */
+    bool kitty_hello_done;
 
     PacketProtocolLayer ppl;
 };
+
+/* KiTTY: the Hello unlock's answer (kitty_hello_keyfile_unlock_async_hook):
+ * the login goes on from where it waits. */
+static void ssh2_userauth_hello_done(void *vctx, char *pass)
+{
+    struct ssh2_userauth_state *s = (struct ssh2_userauth_state *)vctx;
+    s->kitty_hello_token = NULL;
+    s->kitty_hello_pass = pass;
+    s->kitty_hello_done = true;
+    ssh_ppl_process_queue(&s->ppl);
+}
 
 /* KiTTY: forget the candidate secret, overwriting it first. */
 static void kitty_userauth_drop_candidate(struct ssh2_userauth_state *s)
@@ -276,6 +299,12 @@ static void ssh2_userauth_free(PacketProtocolLayer *ppl)
     struct ssh2_userauth_state *s =
         container_of(ppl, struct ssh2_userauth_state, ppl);
     bufchain_clear(&s->banner);
+
+    /* KiTTY: a Hello unlock still running must not answer a freed layer */
+    if (s->kitty_hello_token && kitty_hello_keyfile_unlock_cancel_hook)
+        kitty_hello_keyfile_unlock_cancel_hook(s->kitty_hello_token);
+    if (s->kitty_hello_pass)
+        burnstr(s->kitty_hello_pass);
 
     if (s->successor_layer)
         ssh_ppl_free(s->successor_layer);
@@ -1331,11 +1360,29 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     /* KiTTY: a Hello-protected file opens through Windows
                      * Hello first - ONE try; denied or unavailable falls
                      * through to the prompt, where the recovery doors are
-                     * accepted (translated below). */
+                     * accepted (translated below). The asynchronous unlock
+                     * lets the session run while the prompt stands: this
+                     * layer waits for its answer here. */
                     if (s->privatekey_encrypted &&
-                        kitty_hello_keyfile_unlock_hook) {
-                        char *hp = kitty_hello_keyfile_unlock_hook(
-                            filename_to_str(s->keyfile));
+                        kitty_hello_keyfile_unlock_async_hook) {
+                        s->kitty_hello_done = false;
+                        s->kitty_hello_pass = NULL;
+                        if (kitty_hello_keyfile_unlock_async_hook(
+                                filename_to_str(s->keyfile),
+                                ssh2_userauth_hello_done, s,
+                                &s->kitty_hello_token))
+                            crMaybeWaitUntilV(s->kitty_hello_done);
+                        key = NULL;   /* not live over the wait */
+                    }
+                    if (s->privatekey_encrypted &&
+                        (s->kitty_hello_pass ||
+                         (!kitty_hello_keyfile_unlock_async_hook &&
+                          kitty_hello_keyfile_unlock_hook))) {
+                        char *hp = s->kitty_hello_pass;
+                        s->kitty_hello_pass = NULL;
+                        if (!hp)
+                            hp = kitty_hello_keyfile_unlock_hook(
+                                filename_to_str(s->keyfile));
                         if (hp) {
                             const char *herror;
                             key = ppk_load_f(s->keyfile, hp, &herror);

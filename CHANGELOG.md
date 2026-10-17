@@ -32,6 +32,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   session** ("Always open Save Dialog", Change folder... and Locate...):
   they run beside it, so keepalives and the rest of the connection carry on
   while you pick.
+- **Unlocking a key file with Windows Hello no longer stops the session.**
+  The Hello prompt during the login runs beside it: a server that gives up
+  meanwhile is seen at once, and closing the window does not wait for the
+  prompt.
 
 ## 0.85.1.17-beta — 2026-10-17
 

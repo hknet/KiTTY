@@ -209,6 +209,10 @@ char *kitty_hello_owner_tag(void);
  * and opens over near_window). For apps with several instances - the
  * terminal. Consumed by the operation; NULL clears. */
 void kitty_hello_set_context(const char *line, HWND near_window);
+/* Call first on a worker thread that runs a Hello operation while the UI
+ * thread goes on (the terminal's key-file unlock): the WebAuthn call then
+ * runs on that thread, with no nested pump of the UI's events. */
+void kitty_hello_on_worker(void);
 
 /* A fresh 32-byte secret from the OS CSPRNG (1 = ok, 0 = failed). */
 int kitty_hello_new_secret(unsigned char secret[KITTY_HELLO_SECRET_LEN]);

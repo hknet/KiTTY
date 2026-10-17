@@ -1360,11 +1360,32 @@ static DWORD WINAPI khw_job_thread(LPVOID p)
 
 static bool khw_busy = false;
 
+/* KiTTY: set on a thread that is not the UI's - the terminal unlocks a key
+ * file on a worker of its own (kitty_hello_terminal.c), so the session runs
+ * on. There the WebAuthn call runs right here: that thread is the plain one
+ * the platform wants, and the pump below - the main loop's events, the
+ * callbacks - belongs to the UI thread alone. */
+static THREADLOCAL bool khw_on_worker = false;
+void kitty_hello_on_worker(void)
+{
+    khw_on_worker = true;
+}
+
 static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
 {
     struct khw_job j;
     HANDLE h;
     bool disabled = false;
+    if (khw_on_worker) {
+        if (caller && IsWindow(caller) && IsWindowEnabled(caller)) {
+            EnableWindow(caller, FALSE);
+            disabled = true;
+        }
+        fn(arg);
+        if (disabled)
+            EnableWindow(caller, TRUE);
+        return true;
+    }
     if (khw_busy)
         return false;          /* no re-entry from the pumped messages */
     j.fn = fn;
