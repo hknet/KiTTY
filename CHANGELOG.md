@@ -85,6 +85,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **A transfer on a shared connection that the server refuses another
   channel** (OpenSSH `MaxSessions`) starts once more on its own login
   instead of failing.
+- **Manage Sessions opened with the Manage... button follows a theme switch
+  at once.** It kept its old light or dark look until it was clicked,
+  while Manage Sessions started with `kitty.exe -manage` followed at once.
 
 ## 0.85.1.16-beta — 2026-10-15
 

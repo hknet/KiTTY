@@ -2920,6 +2920,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			if( kitty_theme_is_change_message( uMsg ) ) {
 				kitty_theme_app_pref_forget() ;
 				kitty_theme_app_mode( kitty_theme_app_pref() ) ;
+				kitty_theme_follow_store() ;	/* the dialogs this process has open */
 				return 0 ;
 			}
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);

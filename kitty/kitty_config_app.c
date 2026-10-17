@@ -1363,6 +1363,9 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * just written.
              */
             kitty_theme_apply(kitty_cfg_modal_owner(), kitty_theme_app_dark());
+            /* ...and the other windows of this process: Manage Sessions
+             * opened by Manage..., Arrange, the boxes it owns. */
+            kitty_theme_follow_store();
             /* ...and the terminal's own title bar and border, through the
              * resting-state path (a workplace green stays green). In the
              * hand-off process there is no terminal and the call is a no-op. */

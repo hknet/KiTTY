@@ -5881,6 +5881,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
      * taskbar's colour, which only the system switch changes. */
     if (kitty_theme_is_change_message(message)) {
         kitty_theme_app_mode(kitty_theme_pref_get());
+        kitty_theme_follow_store();   /* the dialogs kageant has open */
         return 0;
     }
 

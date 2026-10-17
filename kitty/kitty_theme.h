@@ -104,6 +104,13 @@ void kitty_theme_preview(HWND dlg, int pref);
  * its controls hidden and wants its FIRST frame themed: called at the end of
  * WM_INITDIALOG, before the window is shown. Does nothing without a hook. */
 void kitty_theme_apply_hooked(HWND dlg);
+/* Every themed window of the calling thread, to the theme the dialog hook's
+ * resolver answers NOW (a window showing an unsaved preview follows that).
+ * A window already right is left alone. Called when the Appearance setting
+ * was stored, here or in another process (kitty_theme_announce_change), so
+ * that the windows of this process do not depend on each one receiving its
+ * own copy of the announcement. Does nothing without a hook. */
+void kitty_theme_follow_store(void);
 /* A tooltip in the theme. It is a top-level popup that kitty_theme_apply's
  * pass over the children never reaches: its creator calls this, again
  * whenever the tip is about to be shown, so it follows a live theme change. */

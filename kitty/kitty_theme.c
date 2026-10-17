@@ -1986,6 +1986,32 @@ void kitty_theme_hook_pref(int (*get_pref)(void), void (*forget)(void))
     kitty_theme_change_message();   /* registered before the first window */
 }
 
+/* Every window in the table that belongs to this thread, not only the one a
+ * copy of the announcement reached. The announcement is a broadcast, and an
+ * OWNED window - Manage Sessions opened by the configuration window's
+ * Manage... button - kept the old theme until it was activated, while the
+ * same window as a process of its own (kitty.exe -manage) followed at once.
+ * So the first copy that arrives in a process, and the switch itself, bring
+ * all of the process's windows along. */
+void kitty_theme_follow_store(void)
+{
+    DWORD me = GetCurrentThreadId();
+    int i;
+
+    if (!kt_want_dark)
+        return;
+    for (i = 0; i < KT_MAX_WINDOWS; i++) {
+        struct kt_window *e = &kt_windows[i];
+        bool dark;
+        if (!e->w || !IsWindow(e->w) ||
+            GetWindowThreadProcessId(e->w, NULL) != me)
+            continue;
+        dark = kt_want_dark_for(e);
+        if (e->dark != dark)
+            kitty_theme_apply(e->w, dark);
+    }
+}
+
 static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
                                         LPARAM lParam, UINT_PTR id,
                                         DWORD_PTR ref)
@@ -1999,20 +2025,16 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
      * the popup menus' app mode set from it. A window already in the theme
      * that store asks for - the one that made the change, every window of a
      * copy whose store did not change, a dialog showing an unsaved preview -
-     * is left alone. Every top-level window of the process gets its own copy
-     * of the broadcast; after the first the re-read finds nothing new. */
+     * is left alone. The first copy that arrives brings EVERY window of the
+     * process along (kitty_theme_follow_store) - an owned window's own copy
+     * cannot be relied on; the later copies find nothing left to change. */
     if (kitty_theme_is_change_message(msg)) {
         if (kt_want_dark) {
-            struct kt_window *known;
-            bool dark;
             if (kt_forget_pref)
                 kt_forget_pref();
             if (kt_get_pref)
                 kitty_theme_app_mode(kt_get_pref());
-            known = kt_find_window(hwnd);
-            dark = kt_want_dark_for(known);
-            if (known && known->dark != dark)
-                kitty_theme_apply(hwnd, dark);
+            kitty_theme_follow_store();
         }
         return 0;
     }

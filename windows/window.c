@@ -8283,6 +8283,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             bool was_dark;
             kitty_theme_app_pref_forget();
             kitty_theme_app_mode(kitty_theme_app_pref());
+            kitty_theme_follow_store();   /* the dialogs this process has open */
             if (!kitty_theme_frame_dark(MainHwnd, &was_dark) ||
                 was_dark != kitty_theme_app_dark())
                 kitty_frame_restore_resting();
