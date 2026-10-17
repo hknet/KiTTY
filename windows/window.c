@@ -956,6 +956,7 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 static void kitty_userauth_done(Seat *seat, const char *username);
 static void kitty_hostkey_stored(Seat *seat);
 extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
+extern void kitty_seat_questions_drop(Seat *seat);      /* dialog.c */
 #include "../kitty/kitty_urlsession.h"   /* GetOfferSessionFlag */
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the offer's trace */
 #endif
@@ -1360,14 +1361,23 @@ static void close_session(void *vctx);   /* defined below; used by reconnect pat
  * TempSeat (the host-key phase) stands for the real one.
  */
 static WinGuiSeat *kr_wgs;
+extern bool kitty_seat_peer_closed(Seat *seat, bool now);   /* dialog.c */
 
 static void kitty_reconnect_stage_hook(Seat *seat, KittyConnStage stage,
                                        ptrlen data)
 {
     if (seat && is_tempseat(seat))
         seat = tempseat_get_real(seat);
-    if (kr_wgs && seat == &kr_wgs->seat)
-        kitty_reconnect_stage(stage, data);
+    if (!kr_wgs || seat != &kr_wgs->seat)
+        return;
+    if (stage == KCS_PEER_CLOSED) {
+        /* the server closed: a host-key question still open ends with it
+         * (dialog.c), and a key press may then connect again */
+        if (kitty_seat_peer_closed(seat, ptrlen_eq_string(data, "now")))
+            kr_wgs->closed_unanswered = true;
+        return;
+    }
+    kitty_reconnect_stage(stage, data);
 }
 
 static void kitty_reconnect_attempt_start(WinGuiSeat *wgs)
@@ -1442,6 +1452,7 @@ static void start_backend(WinGuiSeat *wgs)
 
 #ifdef MOD_RECONNECT
     kitty_reconnect_attempt_start(wgs);   /* a new attempt: nothing reached yet */
+    wgs->closed_unanswered = false;
     /* any attempt ends a wait for an agent key - Enter or Restart Session
      * during the wait must not leave the poll to start a second one later */
     KillTimer(wgs->term_hwnd, TIMER_RECONNECT_WAIT);
@@ -2056,6 +2067,9 @@ static void close_session(void *vctx)
     sfree(newtitle);
 #ifdef MOD_PERSO
     sfree(base);
+    /* a host-key question still open must never call the backend freed
+     * below (dialog.c) */
+    kitty_seat_questions_drop(&wgs->seat);
 #endif
 
     if (wgs->ldisc) {
@@ -7958,9 +7972,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * close, Ctrl-Tab switching and the shortcuts dispatcher keep working
          * on a dead window. Gated like the other MOD_RECONNECT paths:
          * autoreconnect enabled and the session authenticated at least once
-         * (never re-dial on a failed login). */
+         * (never re-dial on a failed login) - or the server closed while
+         * the host-key question was still open, which is no failed login
+         * either. */
         if (message == WM_KEYDOWN && !wgs->backend && wgs->session_closed &&
-            GetAutoreconnectFlag() && wgs->ever_authenticated &&
+            GetAutoreconnectFlag() &&
+            (wgs->ever_authenticated || wgs->closed_unanswered) &&
             !(GetKeyState(VK_CONTROL) & 0x8000) &&
             !(GetKeyState(VK_MENU) & 0x8000) &&
             wParam != VK_CONTROL && wParam != VK_SHIFT && wParam != VK_MENU &&

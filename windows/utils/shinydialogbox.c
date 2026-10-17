@@ -20,7 +20,14 @@ struct ShinyDialogBoxState {
     int result;
     ShinyDlgProc proc;
     void *ctx;
+    /* KiTTY: ShinyDialogBoxModeless - told the result, then the box goes */
+    void (*done)(void *dctx, int result);
+    void *dctx;
 };
+
+/* KiTTY: posted by ShinyEndDialog to a modeless box, which then ends itself
+ * outside the procedure that asked it to */
+#define WM_SHINY_MODELESS_END (WM_APP + 0x3A1)
 
 /*
  * For use in re-entrant calls to the dialog procedure from
@@ -45,6 +52,18 @@ static INT_PTR CALLBACK ShinyRealDlgProc(HWND hwnd, UINT msg,
                                          WPARAM wParam, LPARAM lParam)
 {
     struct ShinyDialogBoxState *state = ShinyDialogGetState(hwnd);
+    if (!state)
+        return FALSE;                  /* a modeless box after its end */
+    if (msg == WM_SHINY_MODELESS_END && state->done) {
+        void (*done)(void *, int) = state->done;
+        void *dctx = state->dctx;
+        int result = state->result;
+        ShinyRemoveAuxDialog(hwnd);
+        DestroyWindow(hwnd);           /* its messages still see the state */
+        sfree(state);
+        done(dctx, result);
+        return TRUE;
+    }
     return state->proc(hwnd, msg, wParam, lParam, state->ctx);
 }
 
@@ -81,6 +100,8 @@ int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     state->ended = false;
     state->proc = proc;
     state->ctx = ctx;
+    state->done = NULL;
+    state->dctx = NULL;
 
     sdb_tempstate = state;
     HWND hwnd = CreateDialog(hinst, tmpl, hwndparent, ShinyRealDlgProc);
@@ -144,6 +165,8 @@ int ShinyDialogBoxPumped(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     state->ended = false;
     state->proc = proc;
     state->ctx = ctx;
+    state->done = NULL;
+    state->dctx = NULL;
 
     sdb_tempstate = state;
     hwnd = CreateDialog(hinst, tmpl, hwndparent, ShinyRealDlgProc);
@@ -177,9 +200,69 @@ int ShinyDialogBoxPumped(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
     return state->result;
 }
 
+/*
+ * KiTTY: ShinyDialogBox without a message loop of its own, for a question
+ * asked while the terminal's session has to keep running (the SSH host key:
+ * the server's close must be seen while the box is up). The box is shown and
+ * the call returns; the caller's main loop drives it, and Esc, Tab and Enter
+ * reach it as an aux dialog. When the procedure calls ShinyEndDialog,
+ * done(dctx, result) runs once, after the box is gone. NULL: no box.
+ */
+HWND ShinyDialogBoxModeless(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
+                            HWND hwndparent, ShinyDlgProc proc, void *ctx,
+                            void (*done)(void *dctx, int result), void *dctx)
+{
+    WNDCLASS wc;
+    struct ShinyDialogBoxState *state;
+    HWND hwnd;
+
+    wc.style = CS_DBLCLKS | CS_SAVEBITS | CS_BYTEALIGNWINDOW;
+    wc.lpfnWndProc = DefDlgProc;
+    wc.cbClsExtra = 0;
+    wc.cbWndExtra = DLGWINDOWEXTRA + sizeof(LONG_PTR);
+    wc.hInstance = hinst;
+    wc.hIcon = NULL;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH) (COLOR_BACKGROUND +1);
+    wc.lpszMenuName = NULL;
+    wc.lpszClassName = winclass;
+    RegisterClass(&wc);
+
+    state = snew(struct ShinyDialogBoxState);
+    state->ended = false;
+    state->result = 0;
+    state->proc = proc;
+    state->ctx = ctx;
+    state->done = done;
+    state->dctx = dctx;
+
+    sdb_tempstate = state;
+    hwnd = CreateDialog(hinst, tmpl, hwndparent, ShinyRealDlgProc);
+    sdb_tempstate = NULL;
+    if (!hwnd) {
+        sfree(state);
+        return NULL;
+    }
+    SetWindowLongPtr(hwnd, DLGWINDOWEXTRA, (LONG_PTR)state);
+    ShinyAddAuxDialog(hwnd);
+    if (state->ended)                  /* ended from WM_INITDIALOG already */
+        PostMessage(hwnd, WM_SHINY_MODELESS_END, 0, 0);
+    return hwnd;
+}
+
 void ShinyEndDialog(HWND hwnd, int ret)
 {
     struct ShinyDialogBoxState *state = ShinyDialogGetState(hwnd);
+    if (state->done) {
+        /* modeless: the first end counts; the box goes from its own
+         * message, not from inside the procedure asking for it */
+        if (!state->ended) {
+            state->result = ret;
+            state->ended = true;
+            PostMessage(hwnd, WM_SHINY_MODELESS_END, 0, 0);
+        }
+        return;
+    }
     state->result = ret;
     state->ended = true;
 }

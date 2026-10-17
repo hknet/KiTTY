@@ -18,6 +18,10 @@ typedef enum {
     KCS_USERAUTH_START,     /* SSH user authentication has begun */
     KCS_AGENT_SIGN_BEGIN,   /* a signature requested from the agent; data = key blob */
     KCS_AGENT_SIGN_END,     /* ...and the agent answered */
+    KCS_PEER_CLOSED,        /* the server ended the connection; data = "now"
+                             * when SSH shuts down at once (an error), empty
+                             * when the end is read in order - which waits
+                             * behind NEWKEYS while a host-key question is open */
 } KittyConnStage;
 
 /* seat: the Seat of the connection (a jump host's has its own); data: see

@@ -2196,6 +2196,7 @@ void term_far2l_block(Terminal *term);
 #endif
 char *term_get_ttymode(Terminal *term, const char *mode);
 SeatPromptResult term_get_userpass_input(Terminal *term, prompts_t *p);
+void term_userpass_abort(Terminal *term, prompts_t *p);   /* KiTTY */
 void term_set_trust_status(Terminal *term, bool trusted);
 void term_keyinput(Terminal *, int codepage, const void *buf, int len);
 void term_keyinputw(Terminal *, const wchar_t *widebuf, int len);

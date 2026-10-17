@@ -3630,6 +3630,11 @@
 #define KT_DLG_CONNECT_ONCE                          "Connecting once; the key was not cached.\r\n"
 #define KT_DLG_ABANDONED                             "Connection abandoned.\r\n"
 #define KT_DLG_ABANDONED_NL                          "\r\nConnection abandoned.\r\n"
+/* the server closed while the host-key (or weak-algorithm) question was open:
+ * the session's closing error, and the line for an SSH layer already gone */
+#define KT_DLG_PEER_CLOSED_MSG                       "Server closed the connection before the question was " \
+        "answered: nothing was stored"
+#define KT_DLG_PEER_CLOSED                           "\r\n" KT_DLG_PEER_CLOSED_MSG ".\r\n"
 #define KT_DLG_KEY_REPLACED                          "\r\nStored host key replaced. Continuing.\r\n"
 #define KT_DLG_KEY_KEPT_ONCE                         "\nKeeping the previously stored key; continuing this once " \
         "(you will be asked again next time).\n"

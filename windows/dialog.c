@@ -4902,6 +4902,10 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
           case IDC_HK_ACCEPT:
           case IDC_HK_ONCE:
           case IDCANCEL:
+            /* KiTTY: the box is modeless and its terminal disabled behind
+             * it: enabled again BEFORE the box goes, or Windows activates
+             * some other program's window */
+            EnableWindow(GetWindow(hwnd, GW_OWNER), TRUE);
             ShinyEndDialog(hwnd, LOWORD(wParam));
             return 0;
           case IDHELP: {
@@ -5120,10 +5124,31 @@ struct kitty_inline_confirm_ctx {
     void (*ssh_callback)(void *ctx, SeatPromptResult result);
     void *ssh_cbctx;
     int changed_step;                  /* changed-key double opt-in: 0=n/a, 1..3 */
+    bool peer_closed;                  /* the server closed while it was open */
+    bool ssh_gone;                     /* ...and SSH shut down at once: no callback */
+    bool quiet;                        /* the session was ended here: no line */
+    struct kitty_inline_confirm_ctx *next;   /* kitty_inline_open */
 };
+
+/* Every question still open, so the server's close can end it
+ * (kitty_seat_peer_closed). */
+static struct kitty_inline_confirm_ctx *kitty_inline_open = NULL;
+
+static void kitty_inline_open_add(struct kitty_inline_confirm_ctx *c)
+{
+    c->peer_closed = c->ssh_gone = c->quiet = false;
+    c->next = kitty_inline_open;
+    kitty_inline_open = c;
+}
 
 static void kitty_inline_confirm_free(struct kitty_inline_confirm_ctx *c)
 {
+    struct kitty_inline_confirm_ctx **pp;
+    for (pp = &kitty_inline_open; *pp; pp = &(*pp)->next)
+        if (*pp == c) {
+            *pp = c->next;
+            break;
+        }
     if (c->prompts)
         free_prompts(c->prompts);
     if (c->facts)
@@ -5143,6 +5168,23 @@ static void kitty_inline_confirm_free(struct kitty_inline_confirm_ctx *c)
  * this file is in the shared GUI library. */
 void (*kitty_hostkey_stored_hook)(Seat *seat) = NULL;
 
+/* The server closed while the question was open: whatever was or will be
+ * typed, nothing is stored and the connection ends. An SSH layer still
+ * waiting for the answer ends it with KT_DLG_PEER_CLOSED_MSG as its error;
+ * one already shut down (ssh_gone) is not called back - its own error is on
+ * the way - and the terminal gets the line instead. */
+static void kitty_inline_closed_end(struct kitty_inline_confirm_ctx *c)
+{
+    void (*cb)(void *, SeatPromptResult) = c->ssh_callback;
+    void *cbctx = c->ssh_cbctx;
+    bool gone = c->ssh_gone;
+    if (gone && !c->quiet)
+        kitty_term_wrapped(c->term, KT_DLG_PEER_CLOSED);
+    kitty_inline_confirm_free(c);
+    if (!gone)
+        cb(cbctx, SPR_SW_ABORT(KT_DLG_PEER_CLOSED_MSG));
+}
+
 /*
  * Toplevel callback fired when the inline "yes/no" line has been entered (or
  * the prompt aborted, e.g. via ^C or a missing ldisc). Interprets the response
@@ -5153,6 +5195,11 @@ static void kitty_inline_confirm_done(void *vctx)
     struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
     prompts_t *p = c->prompts;
     SeatPromptResult spr;
+
+    if (c->peer_closed) {              /* a late answer counts for nothing */
+        kitty_inline_closed_end(c);
+        return;
+    }
 
     const char *resp = (p->spr.kind == SPRK_OK) ?
         prompt_get_result_ref(p->prompts[0]) : NULL;
@@ -5191,6 +5238,10 @@ static void kitty_inline_dispatch(void *vctx)
 {
     struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
 
+    if (c->peer_closed) {              /* closed before it was even asked */
+        kitty_inline_closed_end(c);
+        return;
+    }
     if (c->facts && c->facts->len)
         term_data(c->term, c->facts->s, c->facts->len);
     strbuf_free(c->facts);
@@ -5255,6 +5306,7 @@ static SeatPromptResult kitty_inline_confirm(
     c->ssh_callback = callback;
     c->ssh_cbctx = cbctx;
     c->changed_step = 0;
+    kitty_inline_open_add(c);
 
     queue_toplevel_callback(kitty_inline_dispatch, c);
     return SPR_INCOMPLETE;
@@ -5330,6 +5382,10 @@ static void kitty_changed_arm_prompt(struct kitty_inline_confirm_ctx *c,
 static void kitty_inline_changed_arm(void *vctx)
 {
     struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    if (c->peer_closed) {              /* closed between two steps */
+        kitty_inline_closed_end(c);
+        return;
+    }
     switch (c->changed_step) {
       case 1:
         kitty_term_wrapped(c->term, KCH_ACK_INTRO);
@@ -5350,6 +5406,10 @@ static void kitty_inline_changed_arm(void *vctx)
 static void kitty_inline_changed_dispatch(void *vctx)
 {
     struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
+    if (c->peer_closed) {
+        kitty_inline_closed_end(c);
+        return;
+    }
     if (c->facts && c->facts->len)
         term_data(c->term, c->facts->s, c->facts->len);
     strbuf_free(c->facts);
@@ -5377,6 +5437,10 @@ static void kitty_inline_changed_done(void *vctx)
 {
     struct kitty_inline_confirm_ctx *c = (struct kitty_inline_confirm_ctx *)vctx;
     prompts_t *p = c->prompts;
+    if (c->peer_closed) {              /* "confirmed" too late replaces nothing */
+        kitty_inline_closed_end(c);
+        return;
+    }
     bool ok = (p->spr.kind == SPRK_OK);
     const char *resp = ok ? prompt_get_result_ref(p->prompts[0]) : NULL;
     bool is_yes = ok && kitty_response_is_yes(resp);
@@ -5451,8 +5515,143 @@ static SeatPromptResult kitty_inline_confirm_changed(
     c->ssh_callback = callback;
     c->ssh_cbctx = cbctx;
     c->changed_step = 0;
+    kitty_inline_open_add(c);
     queue_toplevel_callback(kitty_inline_changed_dispatch, c);
     return SPR_INCOMPLETE;
+}
+
+/*
+ * KiTTY: the host-key box is modeless. A box with a message loop of its own
+ * stopped the session - no network events are served there - so the
+ * server's close went unseen while it was up, and an Accept stored the key
+ * of a dead connection. The SSH layer gets its answer later, through its
+ * callback, as for the in-terminal question. The terminal window is disabled
+ * while the box is up, as it was behind the modal box.
+ */
+struct kitty_hk_async {
+    struct hostkey_dialog_ctx dctx;    /* dctx.text: our own copy */
+    HWND hwnd;                         /* NULL once the box is gone */
+    WinGuiSeat *wgs;
+    char *host, *keytype, *keystr;
+    int port, result;
+    void (*callback)(void *ctx, SeatPromptResult result);
+    void *cbctx;
+    bool closed;                       /* the server closed: nothing counts */
+    bool gone;                         /* ...and SSH is gone: no callback */
+    bool quiet;                        /* the session was ended here: no line */
+    struct kitty_hk_async *next;       /* kitty_hk_open */
+};
+static struct kitty_hk_async *kitty_hk_open = NULL;
+
+/* The caller frees its text when the call returns; the box outlives it. */
+static SeatDialogText *kitty_sdt_copy(SeatDialogText *t)
+{
+    SeatDialogText *c = seat_dialog_text_new();
+    for (size_t i = 0; i < t->nitems; i++)
+        seat_dialog_text_append(c, t->items[i].type, "%s",
+                                t->items[i].text ? t->items[i].text : "");
+    return c;
+}
+
+static void kitty_hk_box_deliver(void *vctx)
+{
+    struct kitty_hk_async *a = (struct kitty_hk_async *)vctx, **pp;
+    SeatPromptResult spr = SPR_USER_ABORT;
+    void (*cb)(void *, SeatPromptResult) = a->callback;
+    void *cbctx = a->cbctx;
+    bool deliver = !a->gone;
+
+    for (pp = &kitty_hk_open; *pp; pp = &(*pp)->next)
+        if (*pp == a) {
+            *pp = a->next;
+            break;
+        }
+    if (a->wgs->term_hwnd)
+        EnableWindow(a->wgs->term_hwnd, TRUE);
+    if (a->closed) {
+        /* an Accept in the same moment stores nothing */
+        spr = SPR_SW_ABORT(KT_DLG_PEER_CLOSED_MSG);
+        if (a->gone && !a->quiet)
+            kitty_term_wrapped(a->wgs->term, KT_DLG_PEER_CLOSED);
+    } else if (a->result == IDC_HK_ACCEPT) {
+        /* 1 = no key stored for this host yet; 2 = a different one */
+        bool was_new = check_stored_host_key(a->host, a->port, a->keytype,
+                                             a->keystr) == 1;
+        store_host_key(&a->wgs->seat, a->host, a->port, a->keytype, a->keystr);
+        if (was_new && kitty_hostkey_stored_hook)
+            kitty_hostkey_stored_hook(&a->wgs->seat);
+        spr = SPR_OK;
+    } else if (a->result == IDC_HK_ONCE) {
+        spr = SPR_OK;
+    }
+    seat_dialog_text_free(a->dctx.text);
+    sfree(a->host);
+    sfree(a->keytype);
+    sfree(a->keystr);
+    sfree(a);
+    if (deliver)
+        cb(cbctx, spr);
+}
+
+/* ShinyDialogBoxModeless: the box is gone; the answer goes to SSH from a
+ * top-level callback, outside the box's own messages */
+static void kitty_hk_box_done(void *vctx, int result)
+{
+    struct kitty_hk_async *a = (struct kitty_hk_async *)vctx;
+    a->hwnd = NULL;
+    a->result = result;
+    queue_toplevel_callback(kitty_hk_box_deliver, a);
+}
+
+/* End every question still open for `seat`: the in-terminal ones through
+ * kitty_inline_closed_end, a host-key box by closing it. Nothing answered
+ * afterwards is stored. gone: the SSH layer is not called back. True when
+ * a question was open. */
+static bool kitty_seat_questions_end(Seat *seat, bool gone, bool quiet)
+{
+    struct kitty_inline_confirm_ctx *c;
+    struct kitty_hk_async *a;
+    bool any = false;
+    for (c = kitty_inline_open; c; c = c->next) {
+        if (c->seat != seat || c->peer_closed)
+            continue;
+        c->peer_closed = true;
+        c->ssh_gone = gone;
+        c->quiet = quiet;
+        any = true;
+        /* a prompt being asked ends at once, its callback sees peer_closed;
+         * otherwise the callback already queued (the first text, the next
+         * step of a changed key) sees it */
+        if (c->prompts)
+            term_userpass_abort(c->term, c->prompts);
+    }
+    for (a = kitty_hk_open; a; a = a->next) {
+        if (&a->wgs->seat != seat || a->closed)
+            continue;
+        a->closed = true;
+        a->gone = gone;
+        a->quiet = quiet;
+        any = true;
+        if (a->hwnd)
+            PostMessage(a->hwnd, WM_COMMAND, IDCANCEL, 0);
+    }
+    return any;
+}
+
+/* KiTTY (window.c, KCS_PEER_CLOSED): the server ended the connection of
+ * `seat`; every question still open for it ends with it. `now`: SSH shuts
+ * down at once (an error), so it is not called back. True when a question
+ * was open. */
+bool kitty_seat_peer_closed(Seat *seat, bool now)
+{
+    return kitty_seat_questions_end(seat, now, false);
+}
+
+/* KiTTY (window.c, close_session): the backend is about to be freed, so a
+ * question still open must never call it back. Ends it without a word. */
+void kitty_seat_questions_drop(Seat *seat)
+{
+    kitty_seat_questions_end(seat, true, true);
 }
 
 SeatPromptResult win_seat_confirm_ssh_host_key(
@@ -5499,27 +5698,41 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
         }
     }
 
-    /* Classic modal dialog (default). */
-    struct hostkey_dialog_ctx ctx[1];
-    ctx->text = text;
-    ctx->helpctx = helpctx;
-
-    int mbret = ShinyDialogBox(
+    /* The box (default), modeless: see struct kitty_hk_async. */
+    struct kitty_hk_async *a = snew(struct kitty_hk_async);
+    memset(a, 0, sizeof(*a));
+    a->dctx.text = kitty_sdt_copy(text);
+    a->dctx.helpctx = helpctx;
+    /* the title row is there for a scary heading (a changed key); upstream
+     * left the field unset, so the row depended on what was on the stack */
+    for (size_t i = 0; i < text->nitems; i++)
+        if (text->items[i].type == SDT_SCARY_HEADING)
+            a->dctx.has_title = true;
+    a->wgs = wgs;
+    a->host = dupstr(host);
+    a->keytype = dupstr(keytype);
+    a->keystr = dupstr(keystr);
+    a->port = port;
+    a->callback = callback;
+    a->cbctx = cbctx;
+    a->next = kitty_hk_open;
+    kitty_hk_open = a;
+    a->hwnd = ShinyDialogBoxModeless(
         hinst, MAKEINTRESOURCE(IDD_HOSTKEY), "PuTTYHostKeyDialog",
-        wgs->term_hwnd, HostKeyDialogProc, ctx);
-    assert(mbret==IDC_HK_ACCEPT || mbret==IDC_HK_ONCE || mbret==IDCANCEL);
-    if (mbret == IDC_HK_ACCEPT) {
-        /* 1 = no key stored for this host yet; 2 = a different one */
-        bool was_new = check_stored_host_key(host, port, keytype, keystr) == 1;
-        store_host_key(seat, host, port, keytype, keystr);
-        if (was_new && kitty_hostkey_stored_hook)
-            kitty_hostkey_stored_hook(seat);
-        return SPR_OK;
-    } else if (mbret == IDC_HK_ONCE) {
-        return SPR_OK;
+        wgs->term_hwnd, HostKeyDialogProc, &a->dctx, kitty_hk_box_done, a);
+    if (!a->hwnd) {
+        /* no box, no answer: as Cancel */
+        kitty_hk_open = a->next;
+        seat_dialog_text_free(a->dctx.text);
+        sfree(a->host);
+        sfree(a->keytype);
+        sfree(a->keystr);
+        sfree(a);
+        return SPR_USER_ABORT;
     }
-
-    return SPR_USER_ABORT;
+    if (wgs->term_hwnd)
+        EnableWindow(wgs->term_hwnd, FALSE);   /* as behind the modal box */
+    return SPR_INCOMPLETE;
 }
 
 /*

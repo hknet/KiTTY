@@ -12170,6 +12170,24 @@ SeatPromptResult term_get_userpass_input(Terminal *term, prompts_t *p)
     return SPR_INCOMPLETE;
 }
 
+/*
+ * KiTTY: end the open prompt p as ^C would - its callback runs with
+ * SPR_USER_ABORT - for a question whose answer no longer matters (the
+ * connection that asked it has gone). Nothing happens unless p is the
+ * prompt being asked.
+ */
+void term_userpass_abort(Terminal *term, prompts_t *p)
+{
+    struct term_userpass_state *s = term->userpass_state;
+    if (!s || s->prompts != p || s->prompt_state == TUS_ABORTED)
+        return;
+    if (term->ldisc)
+        ldisc_provide_userpass_le(term->ldisc, NULL);
+    s->prompt_state = TUS_ABORTED;
+    term_write(term, PTRLEN_LITERAL("\x0D\x0A"));
+    signal_prompts_t(term, p, SPR_USER_ABORT);
+}
+
 void term_notify_minimised(Terminal *term, bool minimised)
 {
     term->minimised = minimised;

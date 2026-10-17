@@ -160,6 +160,10 @@ int ShinyDialogBox(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
 int ShinyDialogBoxPumped(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
                          HWND hwndparent, ShinyDlgProc proc, void *ctx,
                          void (*wait)(void));
+/* KiTTY: the box without a loop of its own; done() gets the result */
+HWND ShinyDialogBoxModeless(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
+                            HWND hwndparent, ShinyDlgProc proc, void *ctx,
+                            void (*done)(void *dctx, int result), void *dctx);
 void ShinyEndDialog(HWND hwnd, int ret);
 /* KiTTY: register a modeless aux dialog (About box, /help command list) so
  * message loops can keep its dialog keyboard handling (Esc/Tab) working via

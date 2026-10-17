@@ -19,6 +19,7 @@
 #include "bpp.h"
 #include "ppl.h"
 #include "channel.h"
+#include "kitty/kitty_connstage.h"   /* KiTTY: the server's close, told early */
 #ifndef NO_GSSAPI
 #include "gssc.h"
 #include "gss.h"
@@ -714,6 +715,14 @@ static void ssh_socket_log(Plug *plug, Socket *s, PlugLogType type,
 static void ssh_closing(Plug *plug, PlugCloseType type, const char *error_msg)
 {
     Ssh *ssh = container_of(plug, Ssh, plug);
+    /* KiTTY: a question the user has not answered yet (the host key) ends
+     * with the connection. Told before anything below: an orderly end is
+     * only read once the packet layer gets past NEWKEYS, which waits for that
+     * very answer. */
+    if (type != PLUGCLOSE_USER_ABORT)
+        kitty_connstage(ssh->seat, KCS_PEER_CLOSED,
+                        type == PLUGCLOSE_NORMAL ? PTRLEN_LITERAL("") :
+                        PTRLEN_LITERAL("now"));
     if (type == PLUGCLOSE_USER_ABORT) {
         ssh_user_close(ssh, "%s", error_msg);
     } else if (type != PLUGCLOSE_NORMAL) {

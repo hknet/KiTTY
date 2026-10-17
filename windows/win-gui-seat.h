@@ -164,6 +164,10 @@ struct WinGuiSeat {
                                 * global is_backend_first_connected. */
     int    kr_delay_ms;      /* KiTTY: the wait the reconnect decision chose
                               * (kitty/kitty_reconnect.c, hknet/KiTTY#66) */
+    bool   closed_unanswered; /* KiTTY: the server closed while a host-key or
+                               * weak-algorithm question was open (dialog.c): a
+                               * key press connects again, as after a drop.
+                               * Cleared when the next connection starts. */
 
     const SessionSpecial *specials;
     HMENU specials_menu;

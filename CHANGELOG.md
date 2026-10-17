@@ -17,6 +17,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - **The search's marks beside the scrollbar show as soon as the search
   ends** (hknet/KiTTY#72). They appeared only after the view was scrolled.
+- **A server that closes while the host-key question is open ends it.** The
+  box closes, or the question typed in the terminal ends, nothing is stored,
+  the terminal shows why, and Enter connects again. A late answer used to
+  store the key of a connection that was already gone, and the window then
+  sat there doing nothing. The host-key box no longer stops the session
+  while it is open.
 
 ## 0.85.1.17-beta — 2026-10-17
 
