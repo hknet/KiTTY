@@ -1404,6 +1404,16 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
     const char *key = (const char *)ctrl->context.p;
     int cur;
 
+    /* read from kitty.ini at every use, no running copy: nothing to set */
+    if (!strcmp(key, KI_CONFIGBOX_CONFIRMDELETE)) {
+        if (event == EVENT_REFRESH)
+            dlg_checkbox_set(ctrl, dlg, kitty_cfg_confirm_delete() != 0);
+        else if (event == EVENT_VALCHANGE)
+            WriteParameter(KI_SECTION_CONFIGBOX, (char *)key,
+                           dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
+        return;
+    }
+
     if (!strcmp(key, KI_CONFIGBOX_FILTER))              cur = GetSessionFilterFlag();
     else if (!strcmp(key, KI_CONFIGBOX_FOLDERNAVIGATION)) cur = GetFolderNavigationFlag();
     else if (!strcmp(key, KI_CONFIGBOX_SUPDUP))          cur = GetConfigBoxSupdupFlag();
@@ -4793,6 +4803,10 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU,
                   NO_SHORTCUT, HELPCTX(kitty_folders),
                   kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_FILTER));
+    /* the Delete button, the list's Delete menu item and the Del key */
+    ctrl_checkbox(s, KT_SESSION_PARAMETER_CONFIRM_DELETE,
+                  NO_SHORTCUT, HELPCTX(kitty_folders),
+                  kitty_cfgwin_flag_handler, P(KI_CONFIGBOX_CONFIRMDELETE));
 
     s = ctrl_getset(b, "Application/Config Window/Session Panel", "opening", KT_SESSION_PARAMETER_OPENING);
     ctrl_checkbox(s, KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED,

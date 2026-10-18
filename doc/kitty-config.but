@@ -1803,6 +1803,11 @@ you have more than a handful.
 
 \b \q{Search the list as you type} filters the list from the keyboard.
 
+\b \q{Require confirmation before deleting a session} (on by default):
+the \q{Delete} button, the list's Delete menu item and the Del key put up
+the question \q{Delete the session ...?} first. Off, they delete at once. A backup of the store is
+taken before the delete either way.
+
 \b \q{Open on the last used session} starts each KiTTY on the session
 you used last. Off, KiTTY starts in \e{quick connect}: every window
 opens on \q{Default Settings} with the cursor already in \q{Host Name},

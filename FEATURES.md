@@ -164,7 +164,10 @@ the filed ones in brackets.
   panel can do with it - a session *Load*, *Rename...*, *Delete*; a folder row
   *Open*, *Rename...*, *Delete* (that folder, not the one you are in); `..`
   *Open*. F2 renames and Del deletes the selected row the same way - a
-  session's Delete requests confirmation first, as in Explorer - and
+  session's Delete requests confirmation first, as in Explorer, and so does
+  the **Delete** button beside the list (Application > Config Window >
+  Session Panel > *Require confirmation before deleting a session* turns
+  that off) - and
   Backspace goes up one level. The menu, F2 and Del work in the classic mode too.
 
 **Session files KiTTY++ cannot use are marked red.** A session name is an ANSI

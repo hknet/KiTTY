@@ -1693,6 +1693,7 @@
 #define KT_SESSION_PARAMETER_RESET_DEFAULT_FAILED    "\"Default Settings\" could not be written: %s"
 #define KT_SESSION_PARAMETER_SHOW_FOLDERS_AS_ROWS_NOT "Foldernavigation in the List"
 #define KT_SESSION_PARAMETER_SEARCH_THE_LIST_AS_YOU  "Search the list as you type"
+#define KT_SESSION_PARAMETER_CONFIRM_DELETE          "Require confirmation before deleting a session"
 #define KT_SESSION_PARAMETER_OPENING                 "Load Last Session / Quick-Connect-Mode"
 #define KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED   "Open on the last used session (off = quick connect)"
 #define KT_SESSION_PARAMETER_QUICK_CONNECT_STARTS_EVERY_KITTY "Quick connect starts every KiTTY on Default Settings with the " \

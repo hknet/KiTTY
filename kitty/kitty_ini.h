@@ -90,6 +90,14 @@ char default_init_file_content[] =
 ;    [KiTTY] shortcuts.\n\
 ;filter=yes\n\
 \n\
+; confirmdelete: with yes (the default), deleting a saved session from the\n\
+;    configuration box's list - the Delete button, the Delete menu item, the\n\
+;    Del key - requires a confirmation (\"Delete the session ...?\") first; no\n\
+;    deletes at once. The\n\
+;    store backup before the delete is taken either way.\n\
+;    Set in Application > Config Window > Session Panel.\n\
+;confirmdelete=yes\n\
+\n\
 ; foldernavigation: with yes, session folders become ROWS of the saved-session\n\
 ;    list instead of entries in a drop-down. Folders are listed first, then the\n\
 ;    sessions at that level; double-click or Enter on a folder row steps into it\n\

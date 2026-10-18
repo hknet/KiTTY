@@ -164,6 +164,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_CONFIGBOX_APPLICATIONSETTINGS    "applicationsettings"
 #define KI_CONFIGBOX_CATEGORYEXPAND         "categoryexpand"
 #define KI_CONFIGBOX_COLLAPSED              "collapsed"
+#define KI_CONFIGBOX_CONFIRMDELETE          "confirmdelete"
 #define KI_CONFIGBOX_DBLCLICK               "dblclick"
 #define KI_CONFIGBOX_DEFAULTSETTINGS        "defaultsettings"
 #define KI_CONFIGBOX_FILTER                 "filter"

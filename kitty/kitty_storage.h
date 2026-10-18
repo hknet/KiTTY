@@ -33,6 +33,11 @@
  * session's Folder value; the cache also expires by itself after 2 s. */
 void kitty_session_folder_cache_clear(void);
 
+/* [ConfigBox] confirmdelete: does deleting a session from the config box's
+ * list require a confirmation first? 1 unless kitty.ini holds no
+ * (kitty_config_session.c). */
+int kitty_cfg_confirm_delete(void);
+
 /* Marker prefix of a password deliberately supplied in the CLEAR by an external
  * provisioning script, e.g. Password\PLAIN:hunter2\ in a rolled-out .ktx. It is
  * an input format only: KiTTY recognises it on import and never writes it, and

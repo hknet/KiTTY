@@ -2872,6 +2872,48 @@ static void kcs_delete_session_answer(int yes, void *ctx)
     sfree(name);
 }
 
+/* [ConfigBox] confirmdelete (Application > Config Window > Session Panel):
+ * a confirmation before a session is deleted - yes unless kitty.ini holds
+ * no. Read at
+ * every use, so a change counts in every open box. */
+int kitty_cfg_confirm_delete(void)
+{
+    char buf[16] = "";
+    ReadParameterN(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CONFIRMDELETE, buf, sizeof(buf));
+    return stricmp(buf, "no") != 0;
+}
+
+/* The ONE way the list deletes a session - the Delete button, the Delete menu
+ * item and the Del key all come here. Row id 0, "Default Settings", cannot go
+ * and is offered to be hidden; nothing marked beeps; a session needs a confirmation
+ * (unless confirmdelete=no), then backed up, then deleted
+ * (kcs_delete_session_answer). */
+static void kcs_delete_session(struct sessionsaver_data *ssd, dlgparam *dlg,
+                               int id)
+{
+    char *name, *q;
+    if (id == 0) {
+        sessionsaver_offer_hide_default(ssd, dlg);
+        return;
+    }
+    if (id < 0 || id >= ssd->sesslist.nsessions) {
+        dlg_beep(dlg);
+        return;
+    }
+    name = dupstr(ssd->sesslist.sessions[id]);
+    if (!kitty_cfg_confirm_delete()) {
+        kcs_delete_session_answer(1, name);
+        return;
+    }
+    q = dupprintf(KT_SP_DEL_SESSION_Q, name);
+    if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP,
+                                      q, NULL, KT_SP_MENU_DELETE,
+                                      KT_SP_DEL_SESSION_CANCEL,
+                                      kcs_delete_session_answer, name))
+        sfree(name);
+    sfree(q);
+}
+
 /* The folder a row stands for, copied (the rows are rebuilt by what the
  * action does), or NULL for "..", a session or a red row. */
 static char *kcs_row_folder(struct sessionsaver_data *ssd, int id)
@@ -2915,19 +2957,11 @@ static void kcs_row_action(struct sessionsaver_data *ssd, int row, int id,
         }
         break;
       case KCS_M_DELETE:
-        if (id == 0 && ssd->delbutton) {
-            /* Default Settings: the button's offer to hide it, as before */
-            sessionsaver_handler(ssd->delbutton, dlg, kcs_conf, EVENT_ACTION);
-        } else if (id > 0 && id < ssd->sesslist.nsessions) {
-            /* unlike the button, a confirmation first, as Explorer has one */
-            char *name = dupstr(ssd->sesslist.sessions[id]);
-            char *q = dupprintf(KT_SP_DEL_SESSION_Q, name);
-            if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP,
-                                              q, NULL, KT_SP_MENU_DELETE,
-                                              KT_SP_DEL_SESSION_CANCEL,
-                                              kcs_delete_session_answer, name))
-                sfree(name);
-            sfree(q);
+        if ((id == 0 && ssd->delbutton) ||
+            (id > 0 && id < ssd->sesslist.nsessions)) {
+            /* the Delete button's path: Default Settings offered to be
+             * hidden, a session confirmed, backed up, deleted */
+            kcs_delete_session(ssd, dlg, id);
         } else if ((folder = kcs_row_folder(ssd, id)) != NULL) {
             /* as the Del folder button does: the backup first, or no delete */
             if (kitty_backup_before(kitty_cfg_modal_owner(), 0))
@@ -4001,27 +4035,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                    ssd->delbutton && ctrl == ssd->delbutton) {
             int i = dlg_listbox_index(ssd->listbox, dlg);
             if (i >= 0) i = dlg_listbox_getid(ssd->listbox, dlg, i);
-            if (i == 0) {
-                /* KiTTY: "Default Settings" is the template every new session
-                 * starts from, so it cannot be deleted - but silently beeping
-                 * looks like a broken button. Explain, and offer the one thing
-                 * the user can actually have: hide it from the list. */
-                sessionsaver_offer_hide_default(ssd, dlg);
-            } else if (i < 0) {
-                dlg_beep(dlg);          /* nothing selected */
-            } else if (kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
-                /* Deleting a session is the case a backup exists for. Must be
-                 * on disk BEFORE the delete, hence the blocking variant; none
-                 * written and not chosen to go on without one: no delete. */
-                del_settings(ssd->sesslist.sessions[i]);
-                get_sesslist(&ssd->sesslist, false);
-                get_sesslist(&ssd->sesslist, true);
-                kitty_session_folder_cache_clear();
-                dlg_refresh(ssd->listbox, dlg);
-                /* A running launcher still lists the session, and still holds
-                 * its global hotkey, until it is told. */
-                kitty_notify_launcher_sessions_changed();
-            }
+            /* KiTTY: the one delete path (kcs_delete_session). "Default
+             * Settings" is the template every new session starts from, so it
+             * cannot be deleted - but silently beeping looks like a broken
+             * button: it is offered to be hidden instead. */
+            kcs_delete_session(ssd, dlg, i);
         } else if (!ssd->midsession &&
                    ssd->createbutton && ctrl == ssd->createbutton) {
             /* Dual-purpose button - its label always says which one applies

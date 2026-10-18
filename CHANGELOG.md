@@ -38,6 +38,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   KiTTY Folders`; the old paths (`Window/Selection`, `Connection/Transfers`,
   ...) still open the same panels. The tree item "App Keypad/Cursor" is now
   "App Keypad & Cursor".
+- **The Delete button beside the saved-session list requires a
+  confirmation first.** The question "Delete the session ...?" comes first,
+  as with the list's Delete menu item and the Del key; before, the button
+  deleted the marked session at once. All three now share one path, and
+  Application > Config Window > Session Panel > "Require confirmation before
+  deleting a session" (`[ConfigBox] confirmdelete`, on by default) turns the
+  question off.
 
 ### Fixed
 
