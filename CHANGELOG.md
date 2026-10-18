@@ -22,6 +22,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`ctxbreadcrumbopacity`, 70% by default; `ctxbreadcrumbplace`). Place
   "Terminal area, top right" puts it there instead, where it can be
   dragged; the program status panel (OSC 7501) then opens below it.
+- **Scrollback search: first and last hit, and the last search kept.** In
+  the find bar, Ctrl+Enter or Ctrl+F3 goes to the first hit and
+  Ctrl+Shift+Enter or Ctrl+Shift+F3 to the last; while there are hits a
+  second line of the bar shows them. Opened again in the same
+  window, the bar shows the last text and the hit it was closed on
+  (hknet/KiTTY#76).
 
 ### Changed
 

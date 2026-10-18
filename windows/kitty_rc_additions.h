@@ -807,3 +807,6 @@
 #ifndef IDC_SB_GRIP
 #define IDC_SB_GRIP 1473
 #endif
+#ifndef IDC_SB_HINT
+#define IDC_SB_HINT 1474
+#endif

@@ -2012,9 +2012,11 @@ pressed again; Ctrl+F9.
 \b \q{Search the scrollback} - the find bar at the top right of the
 window: type, and the hits turn amber in the text and beside the
 scrollbar; \q{Up} (Enter, F3) goes towards older output, \q{Down}
-(Shift+Enter, Shift+F3) towards newer; case counts only when the text
-holds a capital letter; the field turns red when nothing is found; Esc
-closes it and selects nothing. Drag it by its grip to move it; a stored
+(Shift+Enter, Shift+F3) towards newer; Ctrl+Enter or Ctrl+F3 goes to
+the first hit, Ctrl+Shift+Enter or Ctrl+Shift+F3 to the last; case
+counts only when the text holds a capital letter; the field turns red
+when nothing is found; Esc closes it and selects nothing. Opened again,
+it shows the last text and the hit it was closed on. Drag it by its grip to move it; a stored
 session keeps the place. Not available while a full-screen program runs.
 Ctrl+Shift+F, or \q{Find...} in the window menu.
 

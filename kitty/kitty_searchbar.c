@@ -15,8 +15,13 @@
  * it and goes with it. While it has the focus nothing typed reaches the host.
  *
  * Keys in the field: Enter, F3 and Up = Up (older output); Shift+Enter,
- * Shift+F3 and Down = Down; Esc closes; Ctrl+Shift+F selects the text;
- * Ctrl+Backspace deletes the word before the caret.
+ * Shift+F3 and Down = Down; Ctrl+Enter and Ctrl+F3 = the first hit (the
+ * oldest), Ctrl+Shift+Enter and Ctrl+Shift+F3 = the last one; Esc closes;
+ * Ctrl+Shift+F selects the text; Ctrl+Backspace deletes the word before the
+ * caret. Opened again, the bar shows the text it was closed with, selected,
+ * and the terminal makes the hit it was closed on current again. While
+ * there are hits, a second line - the two Ctrl keys - slides open below the
+ * controls (ksb_hint), and shut again when there are none.
  */
 #include <stdio.h>
 #include <string.h>
@@ -42,6 +47,9 @@
 
 #define KSB_TIMER        1
 #define KSB_TIMER_MS     100
+#define KSB_ANIM         2            /* the hint line sliding open or shut */
+#define KSB_ANIM_MS      16
+#define KSB_ANIM_STEPS   8            /* ~130 ms either way */
 #define KSB_MARGIN_PX96  8
 
 typedef struct ksb {
@@ -53,6 +61,8 @@ typedef struct ksb {
     char session[256];            /* where the place is kept, "" = nowhere */
     int dx, dy;                   /* from the area's top right, 96-dpi px */
     bool placed;                  /* dx/dy read or dragged (not the default) */
+    int h_shut, h_open, h_now;    /* the bar's height without / with the hint */
+    bool hint;                    /* the hint line is (or is going) open */
 } ksb;
 
 static ksb *ksb_list = NULL;
@@ -205,6 +215,36 @@ static void ksb_fill(const char *tmpl, const wchar_t *a, const wchar_t *b,
     out[n] = L'\0';
 }
 
+/* The hint line (Ctrl+Enter / Ctrl+Shift+Enter) slides open while there
+ * are hits and shut when there are none: the bar's height moves a step per
+ * KSB_ANIM tick, its top right staying where it is. */
+static void ksb_hint(ksb *b, bool show)
+{
+    if (show == b->hint || !b->h_open)
+        return;
+    b->hint = show;
+    SetTimer(b->h, KSB_ANIM, KSB_ANIM_MS, NULL);
+}
+
+static void ksb_anim_step(ksb *b)
+{
+    int target = b->hint ? b->h_open : b->h_shut;
+    int step = (b->h_open - b->h_shut + KSB_ANIM_STEPS - 1) / KSB_ANIM_STEPS;
+    RECT wr;
+    if (step < 1)
+        step = 1;
+    if (b->h_now < target)
+        b->h_now = b->h_now + step < target ? b->h_now + step : target;
+    else if (b->h_now > target)
+        b->h_now = b->h_now - step > target ? b->h_now - step : target;
+    if (GetWindowRect(b->h, &wr))
+        SetWindowPos(b->h, NULL, 0, 0, wr.right - wr.left, b->h_now,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    ksb_place(b);                     /* still inside the terminal area */
+    if (b->h_now == target)
+        KillTimer(b->h, KSB_ANIM);
+}
+
 static void ksb_counter(ksb *b)
 {
     Terminal *term = kitty_searchbar_term(b->owner);
@@ -244,6 +284,7 @@ static void ksb_counter(ksb *b)
             b->bad = bad;
             kitty_theme_mark_field_bad(b->edit, bad);
         }
+        ksb_hint(b, (st == KS_STATE_DONE || st == KS_STATE_SEARCHING) && total > 0);
     }
 }
 
@@ -255,8 +296,17 @@ static void ksb_move(ksb *b, int dir)
     ksb_counter(b);
 }
 
-/* The field: Up/Down/F3 move, Ctrl+Shift+F selects, Ctrl+Backspace deletes
- * the word before the caret. */
+/* The first hit (dir < 0) or the last one (dir > 0). */
+static void ksb_jump(ksb *b, int dir)
+{
+    Terminal *term = kitty_searchbar_term(b->owner);
+    if (term)
+        term_search_jump(term, dir);
+    ksb_counter(b);
+}
+
+/* The field: Up/Down/F3 move, Ctrl+F3 jumps, Ctrl+Shift+F selects,
+ * Ctrl+Backspace deletes the word before the caret. */
 static LRESULT CALLBACK ksb_edit_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     ksb *b = ksb_of(h);
@@ -265,9 +315,12 @@ static LRESULT CALLBACK ksb_edit_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     if (b && msg == WM_KEYDOWN) {
         if (wp == VK_UP)  { ksb_move(b, -1); return 0; }
         if (wp == VK_DOWN) { ksb_move(b, +1); return 0; }
+        if (wp == VK_F3 && ctrl) { ksb_jump(b, shift ? +1 : -1); return 0; }
         if (wp == VK_F3)  { ksb_move(b, shift ? +1 : -1); return 0; }
         if (wp == 'F' && ctrl && shift) { SendMessageW(h, EM_SETSEL, 0, -1); return 0; }
     }
+    if (b && msg == WM_CHAR && wp == 0x0A)        /* Ctrl+Enter: no line feed */
+        return 0;
     if (b && msg == WM_CHAR && wp == 0x7F) {      /* Ctrl+Backspace */
         DWORD s0 = 0, s1 = 0;
         int n = GetWindowTextLengthW(h), i;
@@ -313,6 +366,14 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         SendMessageW(b->edit, EM_SETCUEBANNER, TRUE, (LPARAM)KSB_W(KT_SEARCH_CUE));
         b->edit_proc = (WNDPROC)SetWindowLongPtrW(b->edit, GWLP_WNDPROC,
                                                   (LONG_PTR)ksb_edit_proc);
+        {   /* the text it was last closed with, selected: typing replaces it */
+            Terminal *term = kitty_searchbar_term(b->owner);
+            wchar_t last[512];
+            if (term && term_search_text(term, last, lenof(last)) > 0) {
+                SetWindowTextW(b->edit, last);
+                SendMessageW(b->edit, EM_SETSEL, 0, -1);
+            }
+        }
         {   /* rounded corners where Windows 11 offers them */
             typedef HRESULT (WINAPI *setattr_t)(HWND, DWORD, LPCVOID, DWORD);
             setattr_t setattr = (setattr_t)kitty_api("dwmapi.dll",
@@ -320,6 +381,18 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             DWORD round = 2;              /* DWMWCP_ROUND */
             if (setattr)
                 setattr(h, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &round, sizeof(round));
+        }
+        {   /* the hint line, below the template's height: the two heights */
+            HWND hint = GetDlgItem(h, IDC_SB_HINT);
+            RECT wr, hr;
+            SetWindowTextW(hint, KSB_W(KT_SEARCH_HINT));
+            kitty_theme_mark_ink(hint, KITTY_INK_HINT);
+            if (GetWindowRect(h, &wr) && hint && GetWindowRect(hint, &hr)) {
+                int gap = (hr.top - wr.top) - (wr.bottom - wr.top);
+                b->h_shut = b->h_now = wr.bottom - wr.top;
+                /* below the hint as much air as above it, and the border */
+                b->h_open = (hr.bottom - wr.top) + (gap > 0 ? gap : 0) + 2;
+            }
         }
         ksb_place(b);
         SetTimer(h, KSB_TIMER, KSB_TIMER_MS, NULL);
@@ -329,6 +402,8 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
       case WM_TIMER:
         if (b && wp == KSB_TIMER)
             ksb_counter(b);
+        else if (b && wp == KSB_ANIM)
+            ksb_anim_step(b);
         return TRUE;
       case WM_NCHITTEST:
         /* Only the bar itself and its texts (statics are transparent to
@@ -363,10 +438,17 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             if (HIWORD(wp) == EN_CHANGE)
                 ksb_text_changed(b);
             return TRUE;
-          case IDOK:                      /* Enter / the Up button */
-            ksb_move(b, GetKeyState(VK_SHIFT) < 0 ? +1 : -1);
+          case IDOK: {                    /* Enter / the Up button */
+            int dir = GetKeyState(VK_SHIFT) < 0 ? +1 : -1;
+            /* Ctrl+Enter in the field jumps; a click on Up with Ctrl held
+             * stays a step (the focus is on the button then) */
+            if (GetKeyState(VK_CONTROL) < 0 && GetFocus() == b->edit)
+                ksb_jump(b, dir);
+            else
+                ksb_move(b, dir);
             SetFocus(b->edit);
             return TRUE;
+          }
           case IDC_SB_DOWN:
             ksb_move(b, +1);
             SetFocus(b->edit);
@@ -383,6 +465,7 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return TRUE;
       case WM_DESTROY:
         KillTimer(h, KSB_TIMER);
+        KillTimer(h, KSB_ANIM);
         ShinyRemoveAuxDialog(h);
         if (b) {
             ksb **pp;

@@ -524,6 +524,8 @@ COLORREF kitty_theme_ink(bool dark, kitty_ink which)
         return dark ? RGB(0xff, 0x7b, 0x72) : RGB(0xb2, 0x00, 0x00);
       case KITTY_INK_INFO:
         return dark ? RGB(0x6c, 0xb6, 0xff) : RGB(0x00, 0x4c, 0xa0);
+      case KITTY_INK_HINT:
+        return dark ? RGB(0xa0, 0xa0, 0xa0) : GetSysColor(COLOR_GRAYTEXT);
       case KITTY_INK_NORMAL:
       default:
         return dark ? KT_DARK_TEXT : GetSysColor(COLOR_WINDOWTEXT);

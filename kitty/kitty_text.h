@@ -3313,6 +3313,8 @@
 #define KT_SEARCH_SEARCHING                          "searching... %s"
 #define KT_SEARCH_NO_MATCH                           "no match"
 #define KT_SEARCH_NOT_AVAILABLE                      "Not available while a full-screen program runs"
+/* the line the bar slides open while there are hits */
+#define KT_SEARCH_HINT                               "Ctrl+Enter: jump to top   Ctrl+Shift+Enter: jump to bottom"
 #define KT_SYSMENU_CLEAR_LOG_FILE                    "Clear Logfil&e"
 #define KT_SYSMENU_NEW_LOG_FILE                      "Start a new Logfile &now"
 #define KT_SYSMENU_EXPORT_SETTINGS                   "Export &current settings"

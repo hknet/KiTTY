@@ -166,7 +166,8 @@ typedef enum {
     KITTY_INK_GOOD,     /* loaded, allowed, done */
     KITTY_INK_WARN,     /* unavailable, rotated, degraded */
     KITTY_INK_BAD,      /* denied, blocked, failed */
-    KITTY_INK_INFO      /* agent lifecycle, retries */
+    KITTY_INK_INFO,     /* agent lifecycle, retries */
+    KITTY_INK_HINT      /* a quiet hint beside the controls (the find bar's keys) */
 } kitty_ink;
 COLORREF kitty_theme_ink(bool dark, kitty_ink which);
 

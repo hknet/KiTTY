@@ -1194,9 +1194,10 @@ bool term_alt_screen_shown(Terminal *term);
 
 /* KiTTY: search the scrollback (Ctrl+Shift+F, terminal/kitty_search.c).
  * The find bar opens / closes the search, hands over the text (UTF-16) on
- * every change, moves Up (dir < 0, older) and Down, and reads the counter
- * and the strip's marks. kitty_search_forget: a key in the terminal after
- * the bar closed drops the hit it left lit. */
+ * every change, moves Up (dir < 0, older) and Down, jumps to the first or
+ * last hit, reads the counter and the strip's marks, and the text it was
+ * last closed with. kitty_search_forget: a key in the terminal after the
+ * bar closed drops the hit it left lit. */
 enum { KS_STATE_IDLE, KS_STATE_SEARCHING, KS_STATE_DONE, KS_STATE_NOT_AVAILABLE };
 /* KiTTY: the window frame is being dragged (windows/window.c: from
  * WM_ENTERSIZEMOVE to WM_EXITSIZEMOVE). Meanwhile a resize re-wraps only
@@ -1206,6 +1207,8 @@ void term_search_open(Terminal *term);
 void term_search_close(Terminal *term);
 void term_search_set(Terminal *term, const wchar_t *text);
 int term_search_move(Terminal *term, int dir);
+int term_search_jump(Terminal *term, int dir);
+int term_search_text(Terminal *term, wchar_t *out, int size);
 int term_search_status(Terminal *term, int *cur, int *total);
 int term_search_marks(Terminal *term, int *out, int max, int *cur_out);
 bool term_search_active(Terminal *term);

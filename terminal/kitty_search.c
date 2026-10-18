@@ -20,8 +20,10 @@
  *
  * While the bar is open the view stays where it is: "Reset scrollback on
  * display activity" is set aside and restored on close. Closing keeps the
- * current hit highlighted until the next key or output, then everything
- * goes.
+ * current hit highlighted until the next key or output, then the hits go.
+ * The text and the place of the current hit stay for the life of the
+ * terminal: opened again, the bar shows the text and, once the scan has
+ * found it again, that hit is current (ks_park, the memo).
  */
 #ifdef MOD_PERSO
 
@@ -62,6 +64,8 @@ struct kitty_search {
     bool scanned_once;
     bool tail_dirty;
     bool open, lingering;          /* bar open / closed but the hit still shown */
+    bool memo;                     /* closed on a hit: reopened, it is current again */
+    int memo_line, memo_col;       /* that hit, absolute line + column */
     bool saved_sod;                /* scroll_on_disp while pinned */
     unsigned long due;             /* the one timer that does the work */
     int maxspan;                   /* rows the widest stored hit spans */
@@ -207,6 +211,36 @@ static void ks_truncate(struct kitty_search *s, int from)
 
 static void ks_timer(void *ctx, unsigned long now);
 
+/* Hit i becomes current, brought into the view - in its middle when it was
+ * outside. */
+static void ks_go(struct kitty_search *s, int i)
+{
+    Terminal *term = s->term;
+    int y;
+    s->cur = i;
+    y = ks_y(s, s->hits[i].line);
+    if (y < term->disptop || ks_y(s, s->hits[i].eline) > term->disptop + term->rows - 1)
+        term_scroll(term, 0, (y - term->rows / 2) - term->disptop);
+    ks_redraw(term);
+}
+
+/* The scan is complete and the bar was closed on a hit: that hit is
+ * current again, or the nearest one above it when its text has gone. */
+static void ks_memo_restore(struct kitty_search *s)
+{
+    int i, best = -1;
+    if (!s->memo)
+        return;
+    s->memo = false;
+    for (i = 0; i < s->nhits && s->hits[i].line <= s->memo_line; i++) {
+        best = i;
+        if (s->hits[i].line == s->memo_line && s->hits[i].col == s->memo_col)
+            break;
+    }
+    if (best >= 0)
+        ks_go(s, best);
+}
+
 /* The work happens in ms from now: the latest request wins, a timer set
  * earlier finds it is no longer due and does nothing. Never
  * expire_timer_context + schedule_timer here: a timer set again for the
@@ -258,6 +292,7 @@ static void ks_timer(void *ctx, unsigned long now)
             s->nvis = 0;               /* all in the full list now */
             s->scanned_once = true;
             s->tail = ks_abs(s, ks_logical_start(term, 0));
+            ks_memo_restore(s);
         } else {
             s->scan_next = ks_abs(s, y);
             ks_schedule(s, 10);
@@ -324,15 +359,41 @@ void term_search_open(Terminal *term)
         s->open = true;
         s->saved_sod = term->scroll_on_disp;
         term->scroll_on_disp = false;      /* the view stays put */
-    }
-    if (s->lingering) {                    /* reopened: search everything again */
         s->lingering = false;
-        ks_restart(s, 0);
+        if (s->nn > 0)                     /* reopened: the kept text again */
+            ks_restart(s, 0);
     }
 }
 
+/* The text the bar was closed with (kept for the life of the terminal), as
+ * UTF-16 in out; returns its length, 0 = none. */
+int term_search_text(Terminal *term, wchar_t *out, int size)
+{
+    struct kitty_search *s = term->search;
+    int i, n = 0;
+    if (size < 1)
+        return 0;
+    for (i = 0; s && i < s->nn; i++) {
+        unsigned c = s->needle[i];
+        if (c >= 0x10000) {
+            if (n + 2 >= size)
+                break;
+            c -= 0x10000;
+            out[n++] = (wchar_t)(0xD800 + (c >> 10));
+            out[n++] = (wchar_t)(0xDC00 + (c & 0x3FF));
+        } else {
+            if (n + 1 >= size)
+                break;
+            out[n++] = (wchar_t)c;
+        }
+    }
+    out[n] = L'\0';
+    return n;
+}
+
 /* The bar closes: the view is free again, the current hit stays lit until
- * the next key or output (kitty_search_forget). */
+ * the next key or output (kitty_search_forget), and its place is kept for
+ * the next open. */
 void term_search_close(Terminal *term)
 {
     struct kitty_search *s = term->search;
@@ -340,6 +401,11 @@ void term_search_close(Terminal *term)
         return;
     s->open = false;
     term->scroll_on_disp = s->saved_sod;
+    s->memo = s->cur >= 0;
+    if (s->memo) {
+        s->memo_line = s->hits[s->cur].line;
+        s->memo_col = s->hits[s->cur].col;
+    }
     if (s->cur >= 0) {
         s->hits[0] = s->hits[s->cur];
         s->nhits = s->total = 1;
@@ -356,18 +422,27 @@ void term_search_set(Terminal *term, const wchar_t *text)
 {
     struct kitty_search *s = term->search;
     size_t i, n = 0;
+    ksm_char *needle;
     if (!s)
         return;
-    sfree(s->needle);
-    s->needle = snewn(wcslen(text) + 1, ksm_char);
+    needle = snewn(wcslen(text) + 1, ksm_char);
     for (i = 0; text[i]; i++) {
         unsigned c = text[i];
         if (c >= 0xD800 && c < 0xDC00 && text[i + 1] >= 0xDC00 && text[i + 1] < 0xE000) {
             c = 0x10000 + ((c - 0xD800) << 10) + (text[i + 1] - 0xDC00);
             i++;
         }
-        s->needle[n++] = c;
+        needle[n++] = c;
     }
+    /* the same text - the bar reopened with the kept one: the search
+     * term_search_open started goes on, and so does the kept hit */
+    if ((int)n == s->nn && (n == 0 || !memcmp(needle, s->needle, n * sizeof(*needle)))) {
+        sfree(needle);
+        return;
+    }
+    sfree(s->needle);
+    s->needle = needle;
+    s->memo = false;
     s->nn = (int)n;
     s->cs = ksm_case_sensitive(s->needle, s->nn, ks_lower);
     ks_restart(s, KS_DEBOUNCE_MS);
@@ -380,9 +455,10 @@ void term_search_set(Terminal *term, const wchar_t *text)
 int term_search_move(Terminal *term, int dir)
 {
     struct kitty_search *s = term->search;
-    int i, y, top, bottom;
+    int i, top, bottom;
     if (!s || !s->open || s->nhits == 0 || term->alt_which)
         return 0;
+    s->memo = false;                   /* the user moved: the kept hit is done */
     top = ks_abs(s, term->disptop);
     bottom = ks_abs(s, term->disptop + term->rows - 1);
     if (s->cur < 0) {
@@ -398,11 +474,20 @@ int term_search_move(Terminal *term, int dir)
         if (i < 0 || i >= s->nhits)
             return 0;              /* the end: no wrap-around */
     }
-    s->cur = i;
-    y = ks_y(s, s->hits[i].line);
-    if (y < term->disptop || ks_y(s, s->hits[i].eline) > term->disptop + term->rows - 1)
-        term_scroll(term, 0, (y - term->rows / 2) - term->disptop);
-    ks_redraw(term);
+    ks_go(s, i);
+    return 1;
+}
+
+/* The first hit (dir < 0, the oldest output) or the last one (dir > 0).
+ * While the scan still runs, the last one so far. Returns 1 when a hit
+ * became current. */
+int term_search_jump(Terminal *term, int dir)
+{
+    struct kitty_search *s = term->search;
+    if (!s || !s->open || s->nhits == 0 || term->alt_which)
+        return 0;
+    s->memo = false;
+    ks_go(s, dir < 0 ? 0 : s->nhits - 1);
     return 1;
 }
 
@@ -475,11 +560,25 @@ void kitty_search_destroy(Terminal *term)
     term->search = NULL;
 }
 
+/* The hits go; the text and the kept hit (memo) stay for the next open. */
 void kitty_search_free(Terminal *term)
 {
-    if (!term->search)
+    struct kitty_search *s = term->search;
+    if (!s)
         return;
-    kitty_search_destroy(term);
+    sfree(s->hits);
+    s->hits = NULL;
+    s->hsize = 0;
+    sfree(s->vis);
+    s->vis = NULL;
+    s->vsize = 0;
+    s->nhits = s->total = s->nvis = 0;
+    s->cur = -1;
+    s->lingering = false;
+    s->vis_due = false;
+    s->scan_next = -1;
+    s->scanned_once = false;
+    s->tail_dirty = false;
     ks_redraw(term);
 }
 
@@ -553,11 +652,12 @@ void kitty_search_relaid(Terminal *term)
     struct kitty_search *s = term->search;
     if (!s)
         return;
-    if (s->lingering) {
+    s->base = 0;
+    s->memo = false;           /* the lines the kept hit was counted on are gone */
+    if (!s->open) {
         kitty_search_free(term);
         return;
     }
-    s->base = 0;
     ks_restart(s, 0);
 }
 
