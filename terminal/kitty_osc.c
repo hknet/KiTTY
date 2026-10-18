@@ -665,6 +665,8 @@ static void term_osc3008(Terminal *term)
     ctx_event_free(&ev);
     if (ctx_runs_as(term->ctx3008) != as && ctx3008_user_shown(term))
         kitty_ctx3008_user_changed(term);  /* the frame and the tint follow */
+    if (conf_get_bool(term->conf, CONF_ctx3008_breadcrumb))
+        kitty_ctx3008_chain_changed(term); /* and the breadcrumb */
 }
 
 const struct CtxStack *term_ctx3008(Terminal *term)
@@ -675,13 +677,31 @@ const struct CtxStack *term_ctx3008(Terminal *term)
 void term_ctx3008_reset(Terminal *term)
 {
     CtxAs as;
+    int depth;
 
     if (!term->ctx3008)
         return;
     as = ctx_runs_as(term->ctx3008);
+    depth = term->ctx3008->depth;
     ctx_clear(term->ctx3008);
     if (as != CTX_AS_PLAIN && ctx3008_user_shown(term))
         kitty_ctx3008_user_changed(term);  /* the frame and the tint follow */
+    if (depth && conf_get_bool(term->conf, CONF_ctx3008_breadcrumb))
+        kitty_ctx3008_chain_changed(term); /* and the breadcrumb */
+}
+
+/* The alternate screen came or went (swap_screen): the breadcrumb hides
+ * while a full-screen program has it. Nothing to report without a context. */
+void term_ctx3008_screen_swapped(Terminal *term)
+{
+    if (term->ctx3008 && term->ctx3008->depth &&
+        conf_get_bool(term->conf, CONF_ctx3008_breadcrumb))
+        kitty_ctx3008_chain_changed(term);
+}
+
+bool term_alt_screen_shown(Terminal *term)
+{
+    return term->alt_which != 0;
 }
 
 void kitty_ctx3008_free(Terminal *term)

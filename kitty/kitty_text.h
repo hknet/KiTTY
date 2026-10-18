@@ -321,6 +321,7 @@
 #define KT_FEATURES_CTX_FAIL_NOTICE                  "Notice for failed commands (OSC 3008)"
 #define KT_FEATURES_CTX_ROOT_FRAME                   "Red frame while the host reports root (OSC 3008)"
 #define KT_FEATURES_CTX_ROOT_TINT                    "Tinted background as root or as a switched user (OSC 3008)"
+#define KT_FEATURES_CTX_BREADCRUMB                   "Context breadcrumb in the title bar (OSC 3008)"
 /* terminal/kitty_osc.c: the notice for a failed command (OSC 3008) */
 #define KT_CTX3008_FAILED                            "Command failed"
 #define KT_CTX3008_CRASHED                           "Command crashed"
@@ -1001,6 +1002,15 @@
 #define KT_APPEARANCE_CTXTINT_STRONG                 "Strong (30%)"
 #define KT_APPEARANCE_CTXTINT_NOTE                   "A session switches the tint on: Terminal > " \
         "Shell Integration (OSC 3008)."
+/* Appearance: the opacity of the OSC 3008 breadcrumb ([KiTTY] ctxbreadcrumbopacity) */
+#define KT_APPEARANCE_CRUMB_GROUP                    "Context breadcrumb"
+#define KT_APPEARANCE_CRUMB_OPACITY                  "Opacity in percent (40-100):"
+/* where it goes ([KiTTY] ctxbreadcrumbplace) */
+#define KT_APPEARANCE_CRUMB_PLACE                    "Place:"
+#define KT_APPEARANCE_CRUMB_PLACE_TITLE              "Title bar"
+#define KT_APPEARANCE_CRUMB_PLACE_WINDOW             "Terminal area, top right"
+#define KT_APPEARANCE_CRUMB_NOTE                     "A session switches the breadcrumb on: Terminal > " \
+        "Notifications (OSC 3008)."
 #define KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE   "One setting for the whole suite - kitty, kageant and " \
         "kittygen all read it. Dark needs Windows 10 1809 or newer."
 #define KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED "Changes apply at once to all open KiTTY++ windows."

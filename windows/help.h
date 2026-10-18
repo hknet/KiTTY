@@ -112,6 +112,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_taskbarprogress    "kitty-cfg-taskbarprogress"
 #define WINHELP_CTX_kitty_failedmarks        "kitty-cfg-failedmarks"
 #define WINHELP_CTX_kitty_ctxfailnotice      "kitty-cfg-ctxfailnotice"
+#define WINHELP_CTX_kitty_ctxbreadcrumb      "kitty-cfg-ctxbreadcrumb"
 #define WINHELP_CTX_kitty_ctxrootframe       "kitty-cfg-ctxrootframe"
 #define WINHELP_CTX_kitty_ctxroottint        "kitty-cfg-ctxroottint"
 #define WINHELP_CTX_kitty_kittygraphics      "kitty-cfg-kittygraphics"

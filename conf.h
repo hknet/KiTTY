@@ -1694,6 +1694,10 @@ CONF_OPTION(ctx3008_root_frame, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWO
  * OSC 3008 contexts say the active one runs as root, a yellow one as a
  * switched user (windows/window.c, kitty_ctx_tint_apply). Both painters. */
 CONF_OPTION(ctx3008_root_tint, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ContextRootTint"),)
+/* KiTTY: the breadcrumb of the host's OSC 3008 contexts - "alice@web01 >
+ * root > nginx-test" - at the top left of the terminal while something has
+ * switched (kitty/kitty_ctxcrumb.c). */
+CONF_OPTION(ctx3008_breadcrumb, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("ContextBreadcrumb"),)
 /* KiTTY: pins the window to CONF_xpos/ypos - it sets a position, it saves
  * none. Stored as "SaveWindowPos" up to 0.84.1.67; a session that still has
  * the old name is read through it (windows/storage.c, kitty_retired_keys),

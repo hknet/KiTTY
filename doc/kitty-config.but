@@ -1837,6 +1837,12 @@ per-session setting and are not touched.
 user. Subtle goes a tenth of the way (the default), Medium a fifth,
 Strong three tenths. Open terminals follow a change at once.
 
+\b \q{Context breadcrumb}: how opaque the breadcrumb is that a session
+with \q{Context breadcrumb in the title bar (OSC 3008)}
+(\k{kitty-cfg-ctxbreadcrumb}) shows, in percent from 40 to 100 (70 by
+default), and its \q{Place}: \q{Title bar} (the default) or
+\q{Terminal area, top right}. Open terminals follow a change at once.
+
 \b \q{\i{Shared window position}} shows the terminal-window position
 that windows without a session of their own keep - an unnamed session,
 or a window opened as \q{Default Settings} - for the monitor layout the
@@ -1864,7 +1870,9 @@ that draw a character the terminal font lacks on
 \k{kitty-cfg-kset-fontfb}.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours),
-\c{ctxtint} (the background tint) and \c{iconfile}.
+\c{ctxtint} (the background tint), \c{ctxbreadcrumbopacity} and
+\c{ctxbreadcrumbplace} (the breadcrumb's opacity and place) and
+\c{iconfile}.
 
 \S{kitty-cfg-kset-terminal} The Keys & Mouse panel
 
@@ -3573,6 +3581,31 @@ Terminal > Notifications setting (when not focused, by
 default). An interrupted command (Ctrl+C) raises none. Off by
 default; stored with the session (\c{ContextFailNotice}). See
 \c{docs/OSC-INTEGRATION.md}.
+
+\S{kitty-cfg-ctxbreadcrumb} \q{Context breadcrumb in the title bar (OSC 3008)}
+
+With OSC 3008 on the host, one line at the right end of the title bar,
+left of the minimise, maximise and close buttons, shows where the shell
+is: \c{alice@web01 > root > nginx-test}. A segment stands for every place
+where the user or the machine changes - the login, a switch to root or to
+another user (\c{run0}), a container or a VM by its name, an ssh onward -
+never for a single command. It shows only while something has switched: a
+plain login shows nothing. The root segment is on dark red, a switched
+user on dark yellow, as the frame and the tint mark them. Clicks pass
+through it, so the title bar still drags the window there. A long chain
+shows the first segment, \q{...} and the last two. A window without a
+title bar (full screen, title bar off) shows it at the top right of the
+terminal area.
+
+This is what the host reports, not a check KiTTY++ makes. How opaque it
+is and where it goes: Application > KiTTY++ Settings > Appearance >
+\q{Context breadcrumb} (\k{kitty-cfg-appearance}). On by default; stored
+with the session (\c{ContextBreadcrumb}). \q{Place: Terminal area, top
+right} (\c{ctxbreadcrumbplace=window} in \c{kitty.ini}) puts it at the
+top right of the terminal area instead: dragged with the
+mouse (a stored session keeps that place, \c{ContextBreadcrumbPos}), the
+whole chain in its tooltip, hidden while a full-screen program uses the
+alternate screen (vim, less, htop).
 
 \S{kitty-cfg-taskbarprogress} \q{Progress and status on the taskbar button (OSC 9;4, 7501)}
 

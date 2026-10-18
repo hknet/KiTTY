@@ -52,6 +52,11 @@ int kitty_winpos_overlay_set(const char *session, int dx, int dy);
 /* The same for the scrollback search's find bar (SearchBarPos). */
 int kitty_winpos_searchbar_get(const char *session, int *dx, int *dy);
 int kitty_winpos_searchbar_set(const char *session, int dx, int dy);
+/* The OSC 3008 breadcrumb's place (ContextBreadcrumbPos), counted from the
+ * terminal area's top-RIGHT corner (dx: from its right edge to the
+ * breadcrumb's right edge). */
+int kitty_winpos_ctxcrumb_get(const char *session, int *dx, int *dy);
+int kitty_winpos_ctxcrumb_set(const char *session, int dx, int dy);
 
 /* The SHARED entry (WindowPos\WinPos_<layout> in the registry, or the
  * WindowPos folder of a portable store), written only by windows that have

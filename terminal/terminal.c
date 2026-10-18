@@ -3599,6 +3599,9 @@ static void swap_screen(Terminal *term, int which,
         kitty_gfx_alt_cleared(term, true);
 #endif
         term->alt_which = which;
+#ifdef MOD_PERSO
+        term_ctx3008_screen_swapped(term);  /* KiTTY: the breadcrumb hides on it */
+#endif
 
         ttr = term->alt_screen;
         term->alt_screen = term->screen;

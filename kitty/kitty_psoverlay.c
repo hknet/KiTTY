@@ -32,6 +32,8 @@
 #include "putty.h"
 #include "kitty_progstatus.h"
 #include "kitty_psoverlay.h"
+#include "kitty_overlay_draw.h"   /* the canvas and its rounded rectangles */
+#include "kitty_ctxcrumb.h"       /* the breadcrumb it keeps clear of */
 #include "kitty_text.h"
 #include "kitty_win.h"        /* kitty_theme_app_dark */
 #include "kitty_winpos.h"     /* the overlay's place, per session */
@@ -209,72 +211,15 @@ static void po_fonts(UINT dpi)
 
 /* ---- shapes on the pixels ------------------------------------------------ */
 
-typedef struct {
-    DWORD *px;                         /* 0x00RRGGBB, top-down */
-    int w, h;
-} PoCanvas;
+/* The canvas and the rounded rectangles are kitty_overlay_draw.c's, shared
+ * with the breadcrumb; the icons below are the panel's own. */
 
-static void po_put(PoCanvas *c, int x, int y, COLORREF col, double a)
-{
-    DWORD *p;
-    int r, g, b;
-    if (a <= 0 || x < 0 || y < 0 || x >= c->w || y >= c->h)
-        return;
-    if (a > 1)
-        a = 1;
-    p = &c->px[y * c->w + x];
-    r = (*p >> 16) & 0xFF; g = (*p >> 8) & 0xFF; b = *p & 0xFF;
-    r = (int)(r + (GetRValue(col) - r) * a + 0.5);
-    g = (int)(g + (GetGValue(col) - g) * a + 0.5);
-    b = (int)(b + (GetBValue(col) - b) * a + 0.5);
-    *p = ((DWORD)r << 16) | ((DWORD)g << 8) | (DWORD)b;
-}
-
-/* Coverage of a pixel whose centre is d pixels outside a shape's edge. */
-static double po_cov(double d)
-{
-    return d <= -0.5 ? 1 : d >= 0.5 ? 0 : 0.5 - d;
-}
-
-static double po_sd_rrect(double px, double py, double x0, double y0,
-                          double x1, double y1, double r)
-{
-    double cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-    double qx = fabs(px - cx) - ((x1 - x0) / 2 - r);
-    double qy = fabs(py - cy) - ((y1 - y0) / 2 - r);
-    double ox = qx > 0 ? qx : 0, oy = qy > 0 ? qy : 0;
-    double in = qx > qy ? qx : qy;
-    return sqrt(ox * ox + oy * oy) + (in < 0 ? in : 0) - r;
-}
-
-static void po_rrect(PoCanvas *c, double x0, double y0, double x1, double y1,
-                     double r, COLORREF col, double a)
-{
-    int x, y;
-    for (y = (int)floor(y0) - 1; y <= (int)ceil(y1); y++)
-        for (x = (int)floor(x0) - 1; x <= (int)ceil(x1); x++)
-            po_put(c, x, y, col,
-                   a * po_cov(po_sd_rrect(x + .5, y + .5, x0, y0, x1, y1, r)));
-}
-
-/* The outline only, w wide, inside the edge. */
-static void po_rrect_edge(PoCanvas *c, double x0, double y0, double x1,
-                          double y1, double r, double w, COLORREF col)
-{
-    int x, y;
-    for (y = (int)floor(y0) - 1; y <= (int)ceil(y1); y++)
-        for (x = (int)floor(x0) - 1; x <= (int)ceil(x1); x++) {
-            double d = po_sd_rrect(x + .5, y + .5, x0, y0, x1, y1, r);
-            po_put(c, x, y, col, po_cov(fabs(d + w / 2) - w / 2));
-        }
-}
-
-static void po_circle(PoCanvas *c, double cx, double cy, double r, COLORREF col)
+static void po_circle(KovCanvas *c, double cx, double cy, double r, COLORREF col)
 {
     int x, y;
     for (y = (int)floor(cy - r) - 1; y <= (int)ceil(cy + r); y++)
         for (x = (int)floor(cx - r) - 1; x <= (int)ceil(cx + r); x++)
-            po_put(c, x, y, col, po_cov(hypot(x + .5 - cx, y + .5 - cy) - r));
+            kov_put(c, x, y, col, kov_cov(hypot(x + .5 - cx, y + .5 - cy) - r));
 }
 
 /* A stroke from (x0,y0) to (x1,y1), w wide, with round ends. */
@@ -287,7 +232,7 @@ static double po_sd_seg(double px, double py, double x0, double y0,
     return hypot(px - (x0 + t * dx), py - (y0 + t * dy));
 }
 
-static void po_seg(PoCanvas *c, double x0, double y0, double x1, double y1,
+static void po_seg(KovCanvas *c, double x0, double y0, double x1, double y1,
                    double w, COLORREF col)
 {
     int x, y;
@@ -295,13 +240,13 @@ static void po_seg(PoCanvas *c, double x0, double y0, double x1, double y1,
     double ly = (y0 < y1 ? y0 : y1) - w, hy = (y0 > y1 ? y0 : y1) + w;
     for (y = (int)floor(ly); y <= (int)ceil(hy); y++)
         for (x = (int)floor(lx); x <= (int)ceil(hx); x++)
-            po_put(c, x, y, col,
-                   po_cov(po_sd_seg(x + .5, y + .5, x0, y0, x1, y1) - w / 2));
+            kov_put(c, x, y, col,
+                   kov_cov(po_sd_seg(x + .5, y + .5, x0, y0, x1, y1) - w / 2));
 }
 
 /* A ring of radius r, w wide; only the part from angle a0 over span
  * (radians, clockwise on screen) when span < 2 pi, with round ends. */
-static void po_arc(PoCanvas *c, double cx, double cy, double r, double w,
+static void po_arc(KovCanvas *c, double cx, double cy, double r, double w,
                    double a0, double span, COLORREF col, double a)
 {
     const double tau = 6.283185307179586;
@@ -318,12 +263,12 @@ static void po_arc(PoCanvas *c, double cx, double cy, double r, double w,
                 double d0 = hypot(px - ex0, py - ey0), d1 = hypot(px - ex1, py - ey1);
                 d = (d0 < d1 ? d0 : d1) - w / 2;
             }
-            po_put(c, x, y, col, a * po_cov(d));
+            kov_put(c, x, y, col, a * kov_cov(d));
         }
 }
 
 /* A state icon, sz pixels, top-left at (x,y). */
-static void po_icon(PoCanvas *c, const PoTheme *t, int state, double x,
+static void po_icon(KovCanvas *c, const PoTheme *t, int state, double x,
                     double y, double sz, bool fade, DWORD tick)
 {
     double cx = x + sz / 2, cy = y + sz / 2, k = sz / 18.0;
@@ -337,8 +282,8 @@ static void po_icon(PoCanvas *c, const PoTheme *t, int state, double x,
       }
       case PS_BLOCKED:
         po_circle(c, cx, cy, 8 * k, po_fade(t->blk_icon, t->bg, fade));
-        po_rrect(c, x + 6.2 * k, y + 5.2 * k, x + 8.1 * k, y + 12.8 * k, .8 * k, mark, 1);
-        po_rrect(c, x + 9.9 * k, y + 5.2 * k, x + 11.8 * k, y + 12.8 * k, .8 * k, mark, 1);
+        kov_rrect(c, x + 6.2 * k, y + 5.2 * k, x + 8.1 * k, y + 12.8 * k, .8 * k, mark, 1);
+        kov_rrect(c, x + 9.9 * k, y + 5.2 * k, x + 11.8 * k, y + 12.8 * k, .8 * k, mark, 1);
         break;
       case PS_ERROR:
         po_circle(c, cx, cy, 8 * k, po_fade(t->err_icon, t->bg, fade));
@@ -415,6 +360,14 @@ static void po_place(int w, int h, double s, POINT *pt)
     y = tl.y + (int)(po_dy * s + .5);
     if (x + w > right) x = right - w;
     if (x < tl.x) x = tl.x;
+    {
+        /* The OSC 3008 breadcrumb shares the top right when it is in the
+         * terminal area: the panel opens below it, never over it. */
+        RECT br, mine, both;
+        SetRect(&mine, x, y, x + w, y + h);
+        if (kitty_ctxcrumb_rect(&br) && IntersectRect(&both, &mine, &br))
+            y = br.bottom + (int)(6 * s + .5);
+    }
     if (y + h > bottom) y = bottom - h;
     if (y < tl.y) y = tl.y;
     pt->x = x;
@@ -504,7 +457,7 @@ static bool po_canvas(int w, int h)
 }
 
 /* What moves, drawn at this moment. */
-static void po_anim_draw(PoCanvas *cv, const PoAnim *a, DWORD tick)
+static void po_anim_draw(KovCanvas *cv, const PoAnim *a, DWORD tick)
 {
     if (a->kind == 0) {
         po_icon(cv, &po_t, PS_WORKING, a->x, a->y, a->sz, false, tick);
@@ -514,7 +467,7 @@ static void po_anim_draw(PoCanvas *cv, const PoAnim *a, DWORD tick)
         for (py = (int)a->by; py < (int)(a->by + 4 * s + .5); py++)
             for (px = (int)a->bx0 + 1; px < (int)a->bx1 - 1; px++)
                 if (fmod(px - py - off + 100 * period, period) < period / 2)
-                    po_put(cv, px, py, RGB(255, 255, 255), .28);
+                    kov_put(cv, px, py, RGB(255, 255, 255), .28);
     }
 }
 
@@ -588,7 +541,7 @@ static void po_render(void)
     UINT dpi = po_dpi();
     double s = dpi / 96.0;
     int w = (int)(PO_WIDTH * s + .5), h = (int)(po_height96() * s + .5);
-    PoCanvas cv;
+    KovCanvas cv;
     HDC dc;
     DWORD tick = GetTickCount();
     POINT pt;
@@ -625,7 +578,7 @@ static void po_render(void)
             po_seg(&cv, cx + k, cy - k, cx - k, cy + k, 1.4 * s, po_t.dim);
         }
         for (x = 0; x < w; x++)
-            po_put(&cv, x, po_head_px - 1, po_t.line, 1);
+            kov_put(&cv, x, po_head_px - 1, po_t.line, 1);
     }
 
     /* The rows: their backgrounds, icons and bars first, the text after.
@@ -640,8 +593,8 @@ static void po_render(void)
         double ix = pad + 8 * s + indent, iy = y + 8 * s;
         bool fade = r->state == PS_DONE;
         if (r->state == PS_BLOCKED) {
-            po_rrect(&cv, pad, y, w - pad, y + rh, 7 * s, po_t.blk_bg, 1);
-            po_rrect_edge(&cv, pad, y, w - pad, y + rh, 7 * s, 1 * s, po_t.blk_edge);
+            kov_rrect(&cv, pad, y, w - pad, y + rh, 7 * s, po_t.blk_bg, 1);
+            kov_rrect_edge(&cv, pad, y, w - pad, y + rh, 7 * s, 1 * s, po_t.blk_edge);
         }
         if (r->state == PS_WORKING && po_nanim < PO_MAXROWS * 2) {
             PoAnim *a = &po_anim[po_nanim++];
@@ -655,14 +608,14 @@ static void po_render(void)
             double by = y + rh - 7 * s - 4 * s, bx0 = tx, bx1 = w - pad - 8 * s;
             COLORREF bc = r->state == PS_ERROR ? po_t.err_icon :
                           r->state == PS_BLOCKED ? po_t.blk_icon : po_t.run;
-            po_rrect(&cv, bx0, by, bx1, by + 4 * s, 2 * s, po_t.track, 1);
+            kov_rrect(&cv, bx0, by, bx1, by + 4 * s, 2 * s, po_t.track, 1);
             if (r->progress >= 0) {
                 if (r->progress > 0)
-                    po_rrect(&cv, bx0, by, bx0 + (bx1 - bx0) * r->progress / 100.0,
+                    kov_rrect(&cv, bx0, by, bx0 + (bx1 - bx0) * r->progress / 100.0,
                              by + 4 * s, 2 * s, bc, 1);
             } else {
                 /* Busy without a percentage: the bar stands, its stripes move. */
-                po_rrect(&cv, bx0, by, bx1, by + 4 * s, 2 * s, bc, .55);
+                kov_rrect(&cv, bx0, by, bx1, by + 4 * s, 2 * s, bc, .55);
                 if (po_nanim < PO_MAXROWS * 2) {
                     PoAnim *a = &po_anim[po_nanim++];
                     a->kind = 1;
@@ -675,7 +628,7 @@ static void po_render(void)
     }
 
     /* The panel's edge, then the text (GDI, on the finished colours). */
-    po_rrect_edge(&cv, 0, 0, w, h, PO_RADIUS * s, 1 * s, po_t.line);
+    kov_rrect_edge(&cv, 0, 0, w, h, PO_RADIUS * s, 1 * s, po_t.line);
     GdiFlush();
     SetBkMode(dc, TRANSPARENT);
     po_text(dc, po_f_head, po_t.fg, po_head, (int)(32 * s), 0,
@@ -732,7 +685,7 @@ static void po_render(void)
     memcpy(po_base, po_px, sizeof(DWORD) * (size_t)w * h);
     for (y = 0; y < h; y++)
         for (x = 0; x < w; x++)
-            po_mask[y * w + x] = (BYTE)(po_cov(po_sd_rrect(x + .5, y + .5, 0, 0, w, h,
+            po_mask[y * w + x] = (BYTE)(kov_cov(kov_sd_rrect(x + .5, y + .5, 0, 0, w, h,
                                                            PO_RADIUS * s)) * po_t.alpha + .5);
     for (i = 0; i < po_nanim; i++)
         po_anim_draw(&cv, &po_anim[i], tick);
@@ -754,7 +707,7 @@ static void po_render(void)
 /* One frame: only what moves, from the kept picture. */
 static void po_tick(void)
 {
-    PoCanvas cv;
+    KovCanvas cv;
     DWORD tick = GetTickCount();
     int i, y;
     if (!po_hwnd || !po_dc || !po_nanim)

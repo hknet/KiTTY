@@ -6131,6 +6131,9 @@ void scb_panel_terminal(struct controlbox *b)
         ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
                       HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
                       I(CONF_ctx3008_fail_notice));
+        ctrl_checkbox(s, KT_FEATURES_CTX_BREADCRUMB, NO_SHORTCUT,
+                      HELPCTX(kitty_ctxbreadcrumb), conf_checkbox_handler,
+                      I(CONF_ctx3008_breadcrumb));
         ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
                       HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
                       I(CONF_taskbar_progress));

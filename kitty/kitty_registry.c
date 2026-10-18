@@ -717,6 +717,7 @@ BOOL RegCleanPuTTY( void ) {
 					RegDeleteValue( hSubKey, "ContextFailNotice" ) ;
 					RegDeleteValue( hSubKey, "ContextRootFrame" ) ;
 					RegDeleteValue( hSubKey, "ContextRootTint" ) ;
+					RegDeleteValue( hSubKey, "ContextBreadcrumb" ) ;
 					RegDeleteValue( hSubKey, "KittyGraphics" ) ;
 					RegDeleteValue( hSubKey, "ItermImages" ) ;
 					RegDeleteValue( hSubKey, "SixelImages" ) ;

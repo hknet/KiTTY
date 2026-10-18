@@ -12,6 +12,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   generate a session folder themselves: where it is, the layout, the name
   escaping, which files count as sessions, the file format with the keys that
   matter, and the same session in the registry store.
+- **Context breadcrumb (OSC 3008).** One line at the right end of the
+  title bar shows where the shell is - `alice@web01 › root › nginx-test` -
+  while something has switched: root or another user through `run0`, a
+  container, a VM, `ssh` onward. Root is marked dark red, a switched user
+  dark yellow. Clicks pass through it to the title bar. On by default
+  (Terminal > Notifications, `ContextBreadcrumb`); its opacity and
+  place are on Application > KiTTY++ Settings > Appearance
+  (`ctxbreadcrumbopacity`, 70% by default; `ctxbreadcrumbplace`). Place
+  "Terminal area, top right" puts it there instead, where it can be
+  dragged; the program status panel (OSC 7501) then opens below it.
 
 ### Changed
 

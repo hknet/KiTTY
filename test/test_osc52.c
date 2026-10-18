@@ -273,6 +273,7 @@ void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a)
 void kitty_osc52_state_changed(Terminal *term) { osc52_state_changes++; }
 static int ctx_root_changes;
 void kitty_ctx3008_user_changed(Terminal *term) { ctx_root_changes++; }
+void kitty_ctx3008_chain_changed(Terminal *term) { }
 /* The write confirmation box: opened, never answered here - the tests answer
  * through term_osc52_write_answer, as the platform side does once it closes. */
 static int osc52_wconfirms;

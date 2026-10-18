@@ -3,6 +3,7 @@
  * parsing, the limits and the context stack. See kitty_ctx3008.h; the
  * terminal side is term_osc3008 in terminal/kitty_osc.c.
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -490,4 +491,99 @@ CtxAs ctx_runs_as(const CtxStack *s)
     if (!strcmp(u, "root"))
         return CTX_AS_ROOT;
     return switched ? CTX_AS_SWITCHED : CTX_AS_PLAIN;
+}
+
+/* "a@b", "a" or "b" into a segment's text, cut at the segment's size. */
+static void seg_text(char *dst, const char *a, const char *b)
+{
+    if (a && *a && b && *b)
+        snprintf(dst, CTX_SEG_TEXT, "%s@%s", a, b);
+    else
+        snprintf(dst, CTX_SEG_TEXT, "%s", (a && *a) ? a : (b ? b : ""));
+}
+
+int ctx_breadcrumb(const CtxStack *s, CtxSeg *out, int max)
+{
+    const char *u = NULL, *host = NULL;
+    bool switched = false, first = true;
+    int i, n = 0;
+    char text[CTX_SEG_TEXT], last[CTX_SEG_TEXT] = "";
+
+    for (i = 0; i < s->depth; i++) {
+        const CtxContext *c = &s->ctx[i];
+        const char *pu = u, *ph = host;
+        bool emit = false;
+
+        /* the user from here on: the same walk as ctx_runs_as */
+        if (c->field[CTX_F_TARGETUSER]) {
+            u = c->field[CTX_F_TARGETUSER];
+            switched = true;
+        } else if (c->type == CTX_TYPE_ELEVATE) {
+            u = "root";
+            switched = true;
+        } else if (c->field[CTX_F_USER]) {
+            if (!u || strcmp(u, c->field[CTX_F_USER]))
+                switched = false;
+            u = c->field[CTX_F_USER];
+        }
+        text[0] = '\0';
+        if (first) {
+            /* the login: the outermost context that carries who or where */
+            if (c->field[CTX_F_USER] || c->field[CTX_F_HOSTNAME]) {
+                host = c->field[CTX_F_HOSTNAME];
+                seg_text(text, u, host);
+                emit = true;
+                first = false;
+            }
+        } else switch (c->type) {
+          case CTX_TYPE_ELEVATE:
+          case CTX_TYPE_CHPRIV:
+          case CTX_TYPE_SESSION:
+            if (u && (!pu || strcmp(u, pu))) {
+                seg_text(text, u, NULL);
+                emit = true;
+            }
+            break;
+          case CTX_TYPE_CONTAINER:
+          case CTX_TYPE_VM: {
+            const char *name = c->field[c->type == CTX_TYPE_VM ? CTX_F_VM : CTX_F_CONTAINER];
+            if (!name)
+                name = c->field[CTX_F_HOSTNAME];
+            seg_text(text, name ? name : ctx_type_name(c->type), NULL);
+            host = c->field[CTX_F_HOSTNAME] ? c->field[CTX_F_HOSTNAME] : name;
+            emit = true;
+            break;
+          }
+          case CTX_TYPE_REMOTE:
+            seg_text(text, c->field[CTX_F_TARGETUSER], c->field[CTX_F_TARGETHOST]);
+            if (c->field[CTX_F_TARGETHOST])
+                host = c->field[CTX_F_TARGETHOST];
+            emit = text[0] != '\0';
+            break;
+          default:
+            /* shell, command, app, ...: a segment only where the user or
+             * the machine changes, never per command */
+            if (c->field[CTX_F_HOSTNAME] &&
+                (!ph || strcmp(ph, c->field[CTX_F_HOSTNAME]))) {
+                host = c->field[CTX_F_HOSTNAME];
+                seg_text(text, u, host);
+                emit = true;
+            } else if (u && (!pu || strcmp(u, pu))) {
+                seg_text(text, u, NULL);
+                emit = true;
+            }
+            break;
+        }
+        if (!emit || !text[0] || !strcmp(text, last))
+            continue;                  /* two equal segments in a row: one */
+        snprintf(last, sizeof(last), "%s", text);
+        if (n < max) {
+            snprintf(out[n].text, CTX_SEG_TEXT, "%s", text);
+            out[n].as = !u ? CTX_AS_PLAIN :
+                        !strcmp(u, "root") ? CTX_AS_ROOT :
+                        switched ? CTX_AS_SWITCHED : CTX_AS_PLAIN;
+        }
+        n++;
+    }
+    return n;
 }

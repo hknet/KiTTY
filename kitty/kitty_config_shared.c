@@ -730,6 +730,18 @@ static void kset_set_ctxtint(int v)
     (void)v;
     kitty_theme_announce_change();
 }
+/* Appearance: the OSC 3008 breadcrumb's opacity ([KiTTY] ctxbreadcrumbopacity,
+ * percent; kitty/kitty_ctxcrumb.c reads it). Announced like the tint, so the
+ * open terminals draw it again. */
+static void kset_set_ctxcrumb(int v)
+{
+    (void)v;
+    kitty_theme_announce_change();
+}
+/* ... and its place ([KiTTY] ctxbreadcrumbplace), announced the same way. */
+static const struct kset_choice kset_ctxcrumbplace_choices[] = {
+    { KT_APPEARANCE_CRUMB_PLACE_TITLE,  "title",  0 },
+    { KT_APPEARANCE_CRUMB_PLACE_WINDOW, "window", 1 } };
 static const struct kset_choice kset_funkeys_choices[] = {
     { KT_KSET_FK_XTERM216, "xterm216", FUNKY_XTERM_216 },   /* the built-in default */
     { KT_KSET_FK_TILDE,    "tilde",    FUNKY_TILDE },
@@ -801,6 +813,9 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
     { INIT_SECTION, KI_CTXTINT,        KSET_CHOICE, false, NULL, kset_set_ctxtint, NULL, 0, 0, 10,
       NULL, NULL, kset_ctxtint_choices, lenof(kset_ctxtint_choices) },
+    { INIT_SECTION, KI_CTXBREADCRUMBOPACITY, KSET_INT, false, NULL, kset_set_ctxcrumb, NULL, 40, 100, 70 },
+    { INIT_SECTION, KI_CTXBREADCRUMBPLACE, KSET_CHOICE, false, NULL, kset_set_ctxcrumb, NULL, 0, 0, 0,
+      NULL, NULL, kset_ctxcrumbplace_choices, lenof(kset_ctxcrumbplace_choices) },
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },

@@ -937,6 +937,25 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > Appearance.\n\
 ;ctxtint=subtle\n\
 \n\
+; ctxbreadcrumbopacity: how opaque the OSC 3008 breadcrumb is, in percent\n\
+;    from 40 to 100 (70 by default) - the line that shows where the shell is\n\
+;    (\"alice@web01 > root > nginx-test\") in a session with \"Context\n\
+;    breadcrumb in the title bar (OSC 3008)\" switched on. Open windows follow\n\
+;    a change at once. Also on the configuration window, Application >\n\
+;    KiTTY++ Settings > Appearance.\n\
+;ctxbreadcrumbopacity=70\n\
+\n\
+; ctxbreadcrumbplace: where the OSC 3008 breadcrumb goes. title (the\n\
+;    default): over the right end of the title bar, left of the minimise,\n\
+;    maximise and close buttons; clicks pass through it to the title bar, and\n\
+;    it stays while a full-screen program uses the alternate screen. window:\n\
+;    at the top right of the terminal area, dragged with the mouse (its place\n\
+;    kept per session, ContextBreadcrumbPos), the whole chain in a tooltip,\n\
+;    hidden on the alternate screen. A window without a title bar (full\n\
+;    screen, title bar off) uses the window place either way. Set in\n\
+;    Application > KiTTY++ Settings > Appearance > Context breadcrumb > Place.\n\
+;ctxbreadcrumbplace=title\n\
+\n\
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the\n\
 ;    user name and password typed at a login prompt are copied into the\n\
 ;    running session's settings, as if entered on its Login panel - so a\n\

@@ -971,6 +971,7 @@ extern void kitty_seat_questions_drop(Seat *seat);      /* dialog.c */
 #include "../kitty/kitty_searchbar.h"   /* KiTTY: the scrollback search's bar */
 #include "../kitty/kitty_ctx3008.h"     /* OSC 3008: the red frame asks ctx_elevated */
 #include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
+#include "../kitty/kitty_ctxcrumb.h"    /* and the OSC 3008 breadcrumb */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -1166,6 +1167,7 @@ static void wintw_palette_get_overrides(TermWin *, Terminal *);
 static bool kitty_ctx_tint_apply(WinGuiSeat *wgs);
 static void kitty_ctx_tint_forget(void);
 static void kitty_ctx_tint_repaint(WinGuiSeat *wgs);
+static void kitty_ctxcrumb_refresh(WinGuiSeat *wgs);
 #endif
 static void wintw_unthrottle(TermWin *win, size_t bufsize);
 
@@ -6614,6 +6616,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             /* and so does the background tint */
             if (kitty_ctx_tint_apply(wgs))
                 kitty_ctx_tint_repaint(wgs);
+            /* and the breadcrumb: its switch, and the font's line height */
+            kitty_ctxcrumb_refresh(wgs);
 #endif
 
             /* Reinitialise the colour palette, in case the terminal
@@ -7687,6 +7691,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         /* Sent to the tray and back: an owned window is hidden with a
          * minimised owner, not with a hidden one. */
         kitty_psoverlay_owner_shown(wParam != 0);
+        kitty_ctxcrumb_owner_shown(wParam != 0);
         break;
 #endif
       case WM_MOVE:
@@ -7705,6 +7710,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         kitty_psoverlay_follow();      /* the program status overlay */
         kitty_searchbar_follow(hwnd);  /* the scrollback search's bar */
+        kitty_ctxcrumb_follow();       /* the OSC 3008 breadcrumb */
 #endif
         break;
       case WM_SIZE:
@@ -7718,6 +7724,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         /* The overlay keeps its corner; minimised, it goes with the window. */
         kitty_psoverlay_follow();
         kitty_searchbar_follow(hwnd);  /* the scrollback search's bar too */
+        kitty_ctxcrumb_follow();       /* and the breadcrumb */
 #endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
@@ -8385,6 +8392,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             kitty_ctx_tint_forget();
             if (kitty_ctx_tint_apply(wgs))
                 kitty_ctx_tint_repaint(wgs);
+            /* the breadcrumb's colours and its opacity, an Appearance setting too */
+            kitty_ctxcrumb_restyle();
             return 0;
         }
 #endif
@@ -13040,6 +13049,41 @@ void kitty_ctx3008_user_changed(Terminal *term)
         if (kitty_ctx_tint_apply(wgs))
             kitty_ctx_tint_repaint(wgs);
         return;
+    }
+}
+
+/* OSC 3008: the breadcrumb follows the chain, the screen and the setting
+ * (kitty/kitty_ctxcrumb.c, which decides where it goes and when it shows:
+ * the session has it on and something has switched - two segments or
+ * more; in the terminal area not while the alternate screen is up). */
+static void kitty_ctxcrumb_refresh(WinGuiSeat *wgs)
+{
+    CtxSeg seg[CTX_DEPTH_MAX];
+    const struct CtxStack *s;
+    int n = 0;
+
+    if (!wgs || !wgs->term || !wgs->conf)
+        return;
+    s = term_ctx3008(wgs->term);
+    if (s)
+        n = ctx_breadcrumb(s, seg, CTX_DEPTH_MAX);
+    if (n > CTX_DEPTH_MAX)
+        n = CTX_DEPTH_MAX;
+    kitty_ctxcrumb_update(seg, n, conf_get_bool(wgs->conf, CONF_ctx3008_breadcrumb),
+                          term_alt_screen_shown(wgs->term),
+                          conf_get_str(wgs->conf, CONF_sessionname), wgs->font_height);
+}
+
+void kitty_ctx3008_chain_changed(Terminal *term)
+{
+    struct WinGuiSeatListNode *node;
+
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *wgs = container_of(node, WinGuiSeat, wgslistnode);
+        if (wgs->term == term) {
+            kitty_ctxcrumb_refresh(wgs);
+            return;
+        }
     }
 }
 

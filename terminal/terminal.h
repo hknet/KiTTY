@@ -1187,6 +1187,10 @@ const char *term_link_uri(Terminal *term, unsigned int link);
 struct CtxStack;
 const struct CtxStack *term_ctx3008(Terminal *term);
 void term_ctx3008_reset(Terminal *term);
+/* the alternate screen came or went (swap_screen), and whether it is shown:
+ * the breadcrumb hides while a full-screen program has it */
+void term_ctx3008_screen_swapped(Terminal *term);
+bool term_alt_screen_shown(Terminal *term);
 
 /* KiTTY: search the scrollback (Ctrl+Shift+F, terminal/kitty_search.c).
  * The find bar opens / closes the search, hands over the text (UTF-16) on

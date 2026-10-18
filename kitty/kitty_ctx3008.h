@@ -120,4 +120,19 @@ const char *ctx_type_name(int type);         /* "" for CTX_TYPE_NONE */
 const char *ctx_field_name(int field);
 const char *ctx_exit_name(int code);         /* "" for CTX_EXIT_NONE */
 
+/* The breadcrumb, outermost first: a segment where the user or the machine
+ * changes - the login (user@host, the outermost context that carries either),
+ * an elevate/chpriv/session to another user (run0: "root"), a container or
+ * VM by its name, an ssh onward (targetuser@targethost), and a shell or
+ * command context only when it carries another user or host (never per
+ * command). Two equal segments in a row are one. Each carries who runs
+ * there (CTX_AS_* as ctx_runs_as finds it at that point). Returns the number of
+ * segments; at most max are written. */
+#define CTX_SEG_TEXT    (2 * CTX_FIELD_MAX + 2)
+typedef struct {
+    char text[CTX_SEG_TEXT];
+    CtxAs as;
+} CtxSeg;
+int ctx_breadcrumb(const CtxStack *s, CtxSeg *out, int max);
+
 #endif

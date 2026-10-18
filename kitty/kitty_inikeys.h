@@ -35,6 +35,8 @@
 #define KI_FOLDERS                          "Folders"
 #define KI_FRAMEPACE                        "framepace"
 #define KI_CTXTINT                          "ctxtint"
+#define KI_CTXBREADCRUMBOPACITY             "ctxbreadcrumbopacity"
+#define KI_CTXBREADCRUMBPLACE               "ctxbreadcrumbplace"
 #define KI_FUNKEYS                          "funkeys"
 #define KI_HYPERLINK                        "hyperlink"
 #define KI_ICONFILE                         "iconfile"

@@ -865,6 +865,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_progstatus.c   # KiTTY: program status (OSC 7501) and prompt marks (OSC 133), no Win32 (test/test_progstatus.c)
   ${KITTY_DIR}/kitty_ctx3008.c      # KiTTY: OSC 3008 hierarchical contexts, no Win32 (test/test_ctx3008.c)
   ${KITTY_DIR}/kitty_psoverlay.c    # KiTTY: the program status overlay (OSC 7501), top right in the window
+  ${KITTY_DIR}/kitty_ctxcrumb.c     # KiTTY: the OSC 3008 breadcrumb, top left in the window
+  ${KITTY_DIR}/kitty_overlay_draw.c # KiTTY: shapes for the layered overlays (status panel, breadcrumb)
   ${KITTY_DIR}/kitty_searchbar.c    # KiTTY: the scrollback search's find bar (Ctrl+Shift+F)
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)
   ${KITTY_DIR}/kitty_kittykeys.c    # KiTTY: kitty keyboard protocol encoding for window.c, no Win32 (test/test_kittykeys.c)

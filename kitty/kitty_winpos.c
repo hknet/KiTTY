@@ -47,6 +47,7 @@
 #define KWP_SESSION_PREFIX  "TermPos"
 #define KWP_OVERLAY_KEY     "PsOverlayPos"  /* the program status overlay */
 #define KWP_SEARCHBAR_KEY   "SearchBarPos"  /* the scrollback search's bar */
+#define KWP_CRUMB_KEY       "ContextBreadcrumbPos"  /* the OSC 3008 breadcrumb */
 
 /* Each monitor contributes FNV-1a of its rectangle and the per-monitor
  * hashes are SUMMED: EnumDisplayMonitors does not promise the same order in
@@ -192,6 +193,16 @@ int kitty_winpos_searchbar_get(const char *session, int *dx, int *dy)
 int kitty_winpos_searchbar_set(const char *session, int dx, int dy)
 {
     return kwp_offset_set(session, KWP_SEARCHBAR_KEY, dx, dy);
+}
+
+int kitty_winpos_ctxcrumb_get(const char *session, int *dx, int *dy)
+{
+    return kwp_offset_get(session, KWP_CRUMB_KEY, dx, dy);
+}
+
+int kitty_winpos_ctxcrumb_set(const char *session, int dx, int dy)
+{
+    return kwp_offset_set(session, KWP_CRUMB_KEY, dx, dy);
 }
 
 int kitty_winpos_session_set(const char *session, unsigned long layout,

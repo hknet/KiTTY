@@ -10,7 +10,7 @@
  * UTF-8 validation, machineid/bootid/pid formats, type-specific fields,
  * field order, malformed segments, duplicates, end fields (exit, status,
  * signal), the effective user and elevation, the whole-string limit, an
- * embedded NUL and the name functions.
+ * embedded NUL, the name functions and the breadcrumb's segments.
  *
  * Returns non-zero on any failure.
  */
@@ -1005,8 +1005,104 @@ static void test_names(void)
     CHECK(ctx_field_name(CTX_F_COUNT) != NULL, "name: field out of range");
 }
 
+/* The breadcrumb's segments, joined " > " for the checks; *as_last gets the
+ * last segment's CTX_AS_*. */
+static int crumb(const CtxStack *s, char *out, size_t n, int *as_last)
+{
+    CtxSeg seg[CTX_DEPTH_MAX];
+    int k = ctx_breadcrumb(s, seg, CTX_DEPTH_MAX), i;
+    out[0] = '\0';
+    for (i = 0; i < k && i < CTX_DEPTH_MAX; i++) {
+        if (i) strncat(out, " > ", n - strlen(out) - 1);
+        strncat(out, seg[i].text, n - strlen(out) - 1);
+    }
+    if (as_last) *as_last = k ? (int)seg[k - 1].as : -1;
+    return k;
+}
+
+static void test_breadcrumb(void)
+{
+    CtxStack s;
+    CtxSeg one[1];
+    char b[1024];
+    int as, k;
+
+    ctx_init(&s);
+    CHECK(crumb(&s, b, sizeof b, &as) == 0, "crumb: nothing open, no segment");
+
+    /* the login: one segment, user@host */
+    st(&s, "start=l;type=shell;user=alice;hostname=web01");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 1 && !strcmp(b, "alice@web01") && as == CTX_AS_PLAIN, "crumb: login");
+
+    /* commands never make a segment, with or without fields */
+    st(&s, "start=c1;type=command;cmdline=ls");
+    CHECK(crumb(&s, b, sizeof b, NULL) == 1, "crumb: a command adds nothing");
+    ap(&s, "end=c1", NULL);
+    st(&s, "start=c2;type=command;user=alice;hostname=web01");
+    CHECK(crumb(&s, b, sizeof b, NULL) == 1, "crumb: same user/host again adds nothing");
+    ap(&s, "end=c2", NULL);
+
+    /* run0: root, as ROOT; its shell (user=root) folds into it */
+    st(&s, "start=e;type=elevate");
+    st(&s, "start=rs;type=shell;user=root;hostname=web01");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 2 && !strcmp(b, "alice@web01 > root") && as == CTX_AS_ROOT,
+          "crumb: run0 root, its shell folded");
+
+    /* a container by its name, run as root inside */
+    st(&s, "start=ct;type=container;container=nginx-test;hostname=nginx-test");
+    st(&s, "start=cs;type=shell;user=root;hostname=nginx-test");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 3 && !strcmp(b, "alice@web01 > root > nginx-test") && as == CTX_AS_ROOT,
+          "crumb: container by name, its shell folded");
+
+    /* ending the container takes its segment away */
+    ap(&s, "end=ct", NULL);
+    CHECK(crumb(&s, b, sizeof b, NULL) == 2, "crumb: container ended");
+    ap(&s, "end=e", NULL);
+    CHECK(crumb(&s, b, sizeof b, NULL) == 1, "crumb: back to the login");
+    ctx_clear(&s);
+
+    /* run0 -u bob: a switched user */
+    ctx_init(&s);
+    st(&s, "start=l;type=shell;user=alice;hostname=web01");
+    st(&s, "start=e;type=elevate;targetuser=bob");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 2 && !strcmp(b, "alice@web01 > bob") && as == CTX_AS_SWITCHED,
+          "crumb: run0 -u bob switched");
+    ctx_clear(&s);
+
+    /* ssh onward, a VM without a name, a plain su to another user */
+    ctx_init(&s);
+    st(&s, "start=l;type=shell;user=alice;hostname=web01");
+    st(&s, "start=r;type=remote;targetuser=ops;targethost=db02");
+    st(&s, "start=v;type=vm");
+    st(&s, "start=s;type=shell;user=carol");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 4 && !strcmp(b, "alice@web01 > ops@db02 > vm > carol") &&
+          as == CTX_AS_PLAIN, "crumb: remote, vm, another user");
+    ctx_clear(&s);
+
+    /* a root login is one segment (hidden by the overlay), as ROOT */
+    ctx_init(&s);
+    st(&s, "start=l;type=shell;user=root;hostname=web01");
+    k = crumb(&s, b, sizeof b, &as);
+    CHECK(k == 1 && as == CTX_AS_ROOT, "crumb: root login one segment");
+    ctx_clear(&s);
+
+    /* only a hostname for the login, and the count beyond max */
+    ctx_init(&s);
+    st(&s, "start=l;type=boot;hostname=box");
+    st(&s, "start=e;type=elevate");
+    CHECK(ctx_breadcrumb(&s, one, 1) == 2 && !strcmp(one[0].text, "box"),
+          "crumb: host-only login; the count is the whole chain");
+    ctx_clear(&s);
+}
+
 int main(void)
 {
+    test_breadcrumb();
     test_start_basic();
     test_nesting_and_end();
     test_end_parent();

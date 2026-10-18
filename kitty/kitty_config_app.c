@@ -2917,6 +2917,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_droplist(s, KT_APPEARANCE_CTXTINT, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
                   kitty_kset_handler, KSET(KI_CTXTINT));
     ctrl_text(s, KT_APPEARANCE_CTXTINT_NOTE, HELPCTX(kitty_appearance));
+    /* How opaque the OSC 3008 breadcrumb is and where it goes; whether a
+     * session shows it is its own setting (Terminal > Notifications). */
+    s = ctrl_getset(b, KSET_PATH("Appearance"), "ctxcrumb", KT_APPEARANCE_CRUMB_GROUP);
+    KSET_NUMBER(s, KT_APPEARANCE_CRUMB_OPACITY, KI_CTXBREADCRUMBOPACITY, kitty_appearance);
+    ctrl_droplist(s, KT_APPEARANCE_CRUMB_PLACE, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
+                  kitty_kset_handler, KSET(KI_CTXBREADCRUMBPLACE));
+    ctrl_text(s, KT_APPEARANCE_CRUMB_NOTE, HELPCTX(kitty_appearance));
 
     /* ---- Keys & Mouse, and its Shortcuts leaf ---- */
     ctrl_settitle(b, KSET_PATH("Keys & Mouse"), KT_KSET_TW_TITLE);
