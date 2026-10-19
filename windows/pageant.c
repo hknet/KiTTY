@@ -1481,9 +1481,9 @@ void win_add_keyfile(Filename *filename, bool encrypted)
 
     /*
      * KiTTY: a Hello-protected file answers through Windows Hello first.
-     * DENIED is final (no typed prompt behind a refused face); a sidecar
-     * without a door for this account falls through to the typed prompt,
-     * where a recovery passphrase or the printed secret opens it.
+     * A refused or cancelled prompt and a sidecar without a door for this
+     * account both fall through to the typed prompt, where a recovery
+     * passphrase, a recovery code or the printed secret opens it.
      */
     {
         const char *hp = filename_to_str(filename);

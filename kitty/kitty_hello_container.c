@@ -809,7 +809,7 @@ char *kitty_hello_owner_tag(void)
         strcpy(dom, "?");
     if (!GetComputerNameA(host, &hlen))
         strcpy(host, "?");
-    return dupprintf("%s\%s@%s", dom, user, host);
+    return dupprintf("%s\\%s@%s", dom, user, host);
 }
 
 char *kitty_hello_container_owners_text(const char *container)

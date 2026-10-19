@@ -435,6 +435,16 @@ int main(int argc, char **argv)
             o = kitty_hello_container_w_owner(c, 0);
             check(o && !strcmp(o, "DOM\\alice@PC1"), "owner tag round-trips");
             sfree(o);
+            {
+                /* This account's own tag: DOMAIN\user@MACHINE, the
+                 * backslash written (a "\%" in the format dropped it) */
+                char *t = kitty_hello_owner_tag();
+                const char *bs = t ? strchr(t, '\\') : NULL;
+                const char *at = t ? strrchr(t, '@') : NULL;
+                check(bs && at && bs > t && at > bs + 1 && at[1],
+                      "own owner tag is DOMAIN\\user@MACHINE");
+                sfree(t);
+            }
             c2 = kitty_hello_container_append_prf(c, wrong_kek, credid2,
                                                   sizeof(credid2),
                                                   "DOM\\bob@PC2", secret);
@@ -470,7 +480,7 @@ int main(int argc, char **argv)
                       "recovery untouched by the append");
                 all = kitty_hello_container_owners_text(c2);
                 check(all && !strcmp(all, "DOM\\alice@PC1, DOM\\bob@PC2"),
-                      "owners line names both accounts");
+                      "owners line lists both accounts");
                 sfree(all);
                 check(kitty_hello_container_append_prf("garbage", kek, credid,
                                                        sizeof(credid), NULL,
