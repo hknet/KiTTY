@@ -37,6 +37,8 @@ one is available.
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
   - [SSH certificates (user and host)](#ssh-certificates-user-and-host)
   - [Port knocking](#port-knocking)
+  - [Remote command as an SSH subsystem](#remote-command-as-an-ssh-subsystem)
+  - [Reconnect by failure condition](#reconnect-by-failure-condition)
   - [Proxy choice](#proxy-choice)
   - [Workplace proxy mode](#workplace-proxy-mode)
   - [SSH handler (URL/OS integration)](#ssh-handler-urlos-integration)
@@ -65,6 +67,8 @@ one is available.
   - [Always on top](#always-on-top)
   - [Font management](#font-management)
   - [Line spacing](#line-spacing)
+  - [Search the scrollback](#search-the-scrollback)
+  - [Lines re-wrap when the width changes](#lines-re-wrap-when-the-width-changes)
   - [Scroll position across a resize](#scroll-position-across-a-resize)
   - [A fixed window position](#a-fixed-window-position)
   - [The window position, per session and per monitor layout](#the-window-position-per-session-and-per-monitor-layout)
@@ -81,6 +85,7 @@ one is available.
   - [The remote clipboard (OSC 52, OSC 5522, far2l)](#the-remote-clipboard-osc-52-osc-5522-far2l)
   - [Notifications from the host (OSC 9, OSC 777, OSC 99)](#notifications-from-the-host-osc-9-osc-777-osc-99)
   - [Program status (OSC 7501) and prompt marks (OSC 133)](#program-status-osc-7501-and-prompt-marks-osc-133)
+  - [Contexts (OSC 3008)](#contexts-osc-3008)
   - [far2l keys and mouse](#far2l-keys-and-mouse)
   - [far2l images](#far2l-images)
   - [Inline images (kitty graphics protocol)](#inline-images-kitty-graphics-protocol)
@@ -94,6 +99,7 @@ one is available.
   - [Start Cygwin or cmd.exe inside KiTTY](#start-cygwin-or-cmdexe-inside-kitty)
   - [Local terminal (kitty_pterm)](#local-terminal-kitty_pterm)
   - [File association](#file-association)
+  - [Inherit Default Settings](#inherit-default-settings)
   - [Export all / Import all sessions](#export-all--import-all-sessions)
   - [ZModem file transfer](#zmodem-file-transfer)
   - [File transfers over the session (kitten transfer)](#file-transfers-over-the-session-kitten-transfer)
@@ -113,6 +119,8 @@ one is available.
   - [A session note at login](#a-session-note-at-login)
 - **Bonus**
   - [Hidden text editor](#hidden-text-editor)
+- [Differences vs classic KiTTY: retired and revived kitty.ini settings](#differences-vs-classic-kitty-retired-and-revived-kittyini-settings)
+- [Credits](#credits)
 
 ---
 

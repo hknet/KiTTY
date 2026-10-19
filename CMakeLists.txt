@@ -488,6 +488,21 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking kitty.ini templates against the options the source reads")
   add_custom_target(check_kitty_ini ALL DEPENDS ${KITTY_INI_CHECK_STAMP})
 
+  # FEATURES.md's table of contents against its headings: a section added
+  # without its TOC line could not be found from the top.
+  # tools/gen-features-toc.py rewrites the TOC.
+  set(KITTY_FEATURES_TOC_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_features_toc.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_FEATURES_TOC_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-features-toc.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_FEATURES_TOC_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-features-toc.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/FEATURES.md
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking the FEATURES.md table of contents against its headings")
+  add_custom_target(check_features_toc ALL DEPENDS ${KITTY_FEATURES_TOC_STAMP})
+
   # Menu command ids. The mistakes this catches do not break the build - they
   # produce a menu item or a shortcut that silently does nothing, which is only
   # found by using the feature. See the comment in the script.
