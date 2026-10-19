@@ -179,11 +179,13 @@ static int kitty_broadcast_armed( WinGuiSeat *wgs )
 
 static Mouse_Button translate_button(WinGuiSeat *wgs, Mouse_Button button);
 static void show_mouseptr(WinGuiSeat *wgs, bool show);
+#include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
+                                     * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #ifdef MOD_PERSO
 /* KiTTY: a notice was clicked - put the user in front of the setting, in a
  * NEW window on that configuration panel (the Application tab and the
- * SSH/Auth panel are not built mid-session). A start that fails is said,
- * the click would otherwise do nothing at all. */
+ * SSH/Auth panel are not built mid-session). A start that fails is
+ * reported, the click would otherwise do nothing at all. */
 static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
 {
     char exe[MAX_PATH], cmd[MAX_PATH + 128];
@@ -199,9 +201,14 @@ static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     } else {
-        char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
-                              kitty_win_reason(GetLastError()));
-        MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        /* Reported in the notice window (it never takes the focus) and
+         * the Event Log: a modal box here stood in front of the live
+         * session and stopped it until it was answered. */
+        const char *why = kitty_win_reason(GetLastError());
+        char *msg = dupprintf(KT_START_FAILED_FMT, cmd, why);
+        debug_logevent(KT_START_FAILED_EVENT_FMT, cmd, why);
+        kitty_notice_show(KT_CAP_START_FAILED, msg, RGB(190, 110, 0),
+                          GetNoticeSeconds(), NULL, 0);
         sfree(msg);
     }
 }
@@ -956,12 +963,14 @@ void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
 static void kitty_userauth_done(Seat *seat, const char *username);
 static void kitty_hostkey_stored(Seat *seat);
 extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
+/* the session log could not be opened: a notice, not a line in the terminal */
+static bool kitty_logging_error(Seat *seat, const char *event);
+extern bool (*kitty_logging_error_hook)(Seat *seat, const char *event); /* dialog.c */
 extern void kitty_seat_questions_drop(Seat *seat);      /* dialog.c */
+extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
 #include "../kitty/kitty_urlsession.h"   /* GetOfferSessionFlag */
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the offer's trace */
 #endif
-#include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
-                                     * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #include "../kitty/kitty_notes.h"   /* the application notification, shown by the first window */
 #include "../kitty/kitty_storage.h" /* the one-time old-sessions notice bits */
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
@@ -1448,6 +1457,70 @@ static bool kitty_reconnect_failure(WinGuiSeat *wgs, const char *msg,
     return d.retry || d.wait_unlock;
 }
 #endif
+#ifdef MOD_PERSO
+/*
+ * KiTTY: a key file in an old or weakly protected PPK format - a notice and
+ * an Event Log line of this window, never a box: the login goes on. Version
+ * 1 has no integrity check (PuTTY's modal box for it came in the middle of
+ * the SSH login). An encrypted version 2 file derives its key from the
+ * passphrase with SHA-1, where version 3 - kittygen's default - uses Argon2.
+ * An unencrypted version 2 file has no passphrase to protect: nothing to
+ * report. Every key file a login opens comes here (ppk_format_hook,
+ * sshpubk.c): the session's own and a jump host's. The session's own is
+ * also looked at before each connection, so it is reported even when the
+ * connection never gets to the login. Once per file per process: a
+ * reconnect or Restart Session repeats nothing. true = handled (sshpubk.c
+ * then leaves out the old-format box); false before the window has a seat.
+ */
+static WinGuiSeat *kf_wgs = NULL;
+static bool kitty_ppk_format_hook(const Filename *kf, unsigned ver, bool enc)
+{
+    static char *seen[16];
+    static int nseen = 0;
+    WinGuiSeat *wgs = kf_wgs;
+    const char *path, *title, *fmt;
+    char *text;
+    int i;
+
+    if (!wgs)
+        return false;
+    if (ver == 1) {
+        title = KT_KEYFILE_OLD_TITLE;
+        fmt = KT_KEYFILE_OLD_FMT;
+    } else if (ver == 2 && enc) {
+        title = KT_KEYFILE_WEAK_TITLE;
+        fmt = KT_KEYFILE_WEAK_FMT;
+    } else {
+        return true;
+    }
+    path = filename_to_str(kf);
+    for (i = 0; i < nseen; i++)
+        if (!strcmp(seen[i], path))
+            return true;
+    if (nseen < (int)lenof(seen))
+        seen[nseen++] = dupstr(path);
+    text = dupprintf(fmt, path);
+    lp_eventlog(&wgs->logpolicy, text);
+    kitty_notice_show(title, text, RGB(190, 110, 0), GetNoticeSeconds(),
+                      NULL, 0);
+    sfree(text);
+    return true;
+}
+
+/* Before each connection: the hook armed for this window, and the
+ * session's own key file looked at. */
+static void kitty_report_keyfile_format(WinGuiSeat *wgs)
+{
+    Filename *kf = conf_get_filename(wgs->conf, CONF_keyfile);
+    unsigned ver = 0;
+    bool enc = false;
+
+    kf_wgs = wgs;
+    ppk_format_hook = kitty_ppk_format_hook;
+    if (kf && !filename_is_null(kf) && ppk_format_f(kf, &ver, &enc))
+        kitty_ppk_format_hook(kf, ver, enc);
+}
+#endif
 static void start_backend(WinGuiSeat *wgs)
 {
     const struct BackendVtable *vt;
@@ -1591,6 +1664,9 @@ static void start_backend(WinGuiSeat *wgs)
         connconf = identconf;
 #endif
 
+#ifdef MOD_PERSO
+    kitty_report_keyfile_format(wgs);
+#endif
     seat_set_trust_status(&wgs->seat, true);
     /* connconf == wgs->conf unless a proxy override is in force, in which case it
      * is the throwaway copy carrying it (see the MOD_PROXY note above). Host,
@@ -1610,7 +1686,7 @@ static void start_backend(WinGuiSeat *wgs)
     if (proxyconf) { conf_free(proxyconf); proxyconf = NULL; connconf = wgs->conf; }
 #endif
     if (error) {
-        char *str = dupprintf("%s Error", appname);
+        char *str = dupprintf("%s Error", kitty_product_name());
         char *msg;
         if (cmdline_tooltype & TOOLTYPE_NONNETWORK) {
             /* Special case for pterm. */
@@ -1657,7 +1733,11 @@ static void start_backend(WinGuiSeat *wgs)
          * It replaces the ordinary failure box rather than adding a second one,
          * and it states what happened rather than blaming the proxy: the failure
          * could equally be the far end. Answering No leaves the mode alone.
+         * After the question the window stays, as below (Restart Session
+         * connects again, without the proxy if Yes switched the mode off);
+         * PuTTY-compat mode and a missing terminal keep the exit.
          */
+        bool wp_asked = false;
         {
             char wp[256];
             if (wgs->workplace_proxied && kitty_workplace_query(wp, sizeof(wp))) {
@@ -1666,9 +1746,12 @@ static void start_backend(WinGuiSeat *wgs)
                 if (kitty_confirm_box(NULL, KT_CAP_CONNECTION_FAILED, q, NULL))
                     kitty_workplace_request(0, 0);
                 sfree(q);
-                sfree(str);
-                sfree(msg);
-                exit(0);
+                if (GetPuttyFlag() || !wgs->term) {
+                    sfree(str);
+                    sfree(msg);
+                    exit(0);
+                }
+                wp_asked = true;
             }
         }
 #endif
@@ -1686,11 +1769,16 @@ static void start_backend(WinGuiSeat *wgs)
          * can be read (and copied) and the user closes when ready. Restart
          * Session is right there for a typo.
          *
-         * The box is still used where boxes are configured (modalerrors),
-         * in PuTTY-compat mode, or when there is no terminal to print into -
-         * printing where nothing can be seen is worse than a box.
+         * Where boxes are configured (modalerrors) the box comes first and
+         * the window then stays the same way: a failed Restart Session or
+         * auto-reconnect no longer closes a window that was open. The box
+         * and exit(0) remain in PuTTY-compat mode and when there is no
+         * terminal to print into - printing where nothing can be seen is
+         * worse than a box.
          */
-        if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
+        if (!GetPuttyFlag() && wgs->term) {
+            if (GetModalErrorsFlag() && !wp_asked)
+                kitty_info_box(NULL, str, msg, NULL);
             /* Name the window after what we FAILED to reach, before closing the
              * session down: the normal title is set further below, which this
              * path never reaches, so without this a failed window is called
@@ -1711,6 +1799,22 @@ static void start_backend(WinGuiSeat *wgs)
         sfree(msg);
         exit(0);
     }
+#ifdef KITTY_TEST_BUILD_LABEL
+    /* Test builds only: KITTY_TEST_NONFATAL="<text>" raises a non-fatal
+     * error once, after the first start. On Windows only a jump host relays
+     * one (proxy/sshproxy.c) and nothing raises one there, so a test of
+     * win_seat_nonfatal's box has no other way in. */
+    {
+        static bool test_nonfatal_done = false;
+        char tnf[256];
+        DWORD tn = GetEnvironmentVariableA("KITTY_TEST_NONFATAL", tnf,
+                                           sizeof(tnf));
+        if (!test_nonfatal_done && tn && tn < sizeof(tnf)) {
+            test_nonfatal_done = true;
+            seat_nonfatal(&wgs->seat, "%s", tnf);
+        }
+    }
+#endif
 #ifdef MOD_PERSO
     /*
      * KiTTY: START the Session > Scripting (rutty) script for this connection,
@@ -2060,14 +2164,14 @@ static void close_session(void *vctx)
      * state suffix at the end, so the connection name stays in the first few
      * characters and survives taskbar truncation. */
     if (wgs->error_close) {
-        newtitle = dupprintf(KT_TITLE_DISCONNECTED, base ? base : appname);
+        newtitle = dupprintf(KT_TITLE_DISCONNECTED, base ? base : kitty_product_name());
         title_cp = CP_UTF8;
     } else if (base) {
         newtitle = dupprintf(KT_TITLE_INACTIVE, base);
         title_cp = CP_UTF8;
     } else
 #endif
-        newtitle = dupprintf("%s (inactive)", appname);
+        newtitle = dupprintf("%s (inactive)", kitty_product_name());
     win_set_icon_title(&wgs->termwin, newtitle, title_cp);
     win_set_title(&wgs->termwin, newtitle, title_cp);
     sfree(newtitle);
@@ -2076,6 +2180,9 @@ static void close_session(void *vctx)
     /* a host-key question still open must never call the backend freed
      * below (dialog.c) */
     kitty_seat_questions_drop(&wgs->seat);
+    /* and a master password prompt standing beside the session: cancelled,
+     * its caller gets "locked" */
+    kitty_mpw_session_ended();
 #endif
 
     if (wgs->ldisc) {
@@ -2123,7 +2230,7 @@ static void close_and_restart(void *vctx)
     if (!wgs->backend) {         /* always true after close_session */
         lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_SESSION_RESTARTED);
         term_pwron(wgs->term, false);
-        start_backend(wgs);      /* may MessageBox+exit(0) on connect fail (inherited) */
+        start_backend(wgs);      /* a connect failure leaves the window up (exit(0) only in PuTTY mode) */
     }
 }
 #endif
@@ -2381,6 +2488,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* The same for the host-key Security Alert, which ShinyDialogBox creates
      * with a class of its own too (windows/dialog.c, IDD_HOSTKEY)... */
     kitty_theme_hook_class("PuTTYHostKeyDialog");
+    /* ...and its "More info" window (IDD_HK_MOREINFO), a class of its own */
+    kitty_theme_hook_class("PuTTYHostKeyMoreInfo");
     /* ...and for the kscp transfer window of Send File / Get File
      * (kitty/kitty_xfer.c), a PLAIN window: no dialog manager behind it, its
      * background is the class brush, which the hook repaints while dark. */
@@ -2518,7 +2627,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     hr = CoInitialize(NULL);
     if (hr != S_OK && hr != S_FALSE) {
-        char *str = dupprintf("%s Fatal Error", appname);
+        char *str = dupprintf("%s Fatal Error", kitty_product_name());
         kitty_info_box(NULL, str, "Failed to initialize COM subsystem", NULL);
         sfree(str);
         return 1;
@@ -2702,6 +2811,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             /* the first-connect offer: a new host key, then the login */
             ssh_userauth_set_done_hook(kitty_userauth_done);
             kitty_hostkey_stored_hook = kitty_hostkey_stored;
+            kitty_logging_error_hook = kitty_logging_error;
         }
 #endif
 #ifdef MOD_PERSO
@@ -3208,7 +3318,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             AppendMenu(m, MF_SEPARATOR, 0, 0);
             if (has_help())
                 AppendMenu(m, MF_ENABLED, IDM_HELP, "&Help");
-            str = dupprintf("&About %s", appname);
+            str = dupprintf("&About %s", kitty_product_name());
             AppendMenu(m, MF_ENABLED, IDM_ABOUT, str);
             sfree(str);
 #ifdef MOD_PERSO
@@ -4186,7 +4296,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         return;
     }
 #endif
-    char *title = dupprintf("%s Fatal Error", appname);
+    char *title = dupprintf("%s Fatal Error", kitty_product_name());
     show_mouseptr(wgs, true);
     kitty_info_box(wgs->term_hwnd, title, msg, NULL);
     sfree(title);
@@ -4232,9 +4342,15 @@ static void win_seat_nonfatal(Seat *seat, const char *msg)
         return;
     }
 #endif
-    char *title = dupprintf("%s Error", appname);
+    char *title = dupprintf("%s Error", kitty_product_name());
     show_mouseptr(wgs, true);
-    kitty_info_box(wgs->term_hwnd, title, msg, NULL);
+#ifdef MOD_PERSO
+    /* KiTTY: the box modelessly - the error is non-fatal, the session goes
+     * on, and a modal box stood in front of it until it was answered. The
+     * modal one only when the modeless one could not be made. */
+    if (!kitty_info_modeless(wgs->term_hwnd, title, msg, NULL, NULL))
+#endif
+        kitty_info_box(wgs->term_hwnd, title, msg, NULL);
     sfree(title);
 }
 
@@ -4259,7 +4375,7 @@ void cmdline_error(const char *fmt, ...)
     va_start(ap, fmt);
     message = dupvprintf(fmt, ap);
     va_end(ap);
-    title = dupprintf("%s Command Line Error", appname);
+    title = dupprintf("%s Command Line Error", kitty_product_name());
     kitty_info_box(find_window_for_msgbox(), title, message, NULL);
     sfree(message);
     sfree(title);
@@ -5339,12 +5455,12 @@ static void exit_callback(void *vctx)
                 if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
                     char *line = dupprintf(
                         KT_TWIN_CLOSED_BY_HOST_INLINE,
-                        appname);
+                        kitty_product_name());
                     term_data(wgs->term, line, strlen(line));
                     sfree(line);
                 } else
 #endif
-                kitty_info_box(wgs->term_hwnd, appname,
+                kitty_info_box(wgs->term_hwnd, kitty_product_name(),
                                "Connection closed by remote host", NULL);
             }
         }
@@ -5501,6 +5617,90 @@ static bool kitty_close_ask(WinGuiSeat *wgs, const char *title,
     kitty_close_box = box;
     kitty_close_box_group = group;
     return true;
+}
+
+/*
+ * KiTTY: what the user starts from the terminal runs beside the session -
+ * the pickers on a thread of their own (kitty_pick_async), the questions
+ * modeless. A modal box or a common dialog on this thread runs a message
+ * loop of its own that serves no network events, and the session stood
+ * still for as long as it was open. The answers come back here with the
+ * window, not the seat: the window may have gone in the meantime.
+ */
+static WinGuiSeat *kitty_wgs_of(HWND hwnd)
+{
+    return (hwnd && IsWindow(hwnd)) ?
+        (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA) : NULL;
+}
+
+/* Send script file (RuTTY, IDM_SCRIPTSEND): the script is sent once a file
+ * has been picked. One picker at a time. */
+static void *kitty_script_pick = NULL;
+
+static void kitty_script_picked(void *ctx, const char *path)
+{
+    WinGuiSeat *wgs = kitty_wgs_of((HWND)ctx);
+    kitty_script_pick = NULL;
+    if (path && wgs && wgs->backend && !kitty_script_active()) {
+        Filename *sf = filename_from_str(path);
+        kitty_script_send_file(wgs->conf, wgs->backend, sf);
+        filename_free(sf);
+    }
+}
+
+/* [KiTTY] pastesize: the question before a large paste, modeless. It holds
+ * the text; Yes pastes it into the session as it is then, anything else
+ * drops it. One question at a time: a second large paste brings the open
+ * one to the front and is dropped. */
+typedef struct { HWND hwnd; wchar_t *text; size_t len; } kitty_paste_ask_t;
+static HWND kitty_paste_box = NULL;
+
+static void kitty_paste_answer(int yes, void *ctx)
+{
+    kitty_paste_ask_t *pa = (kitty_paste_ask_t *)ctx;
+    WinGuiSeat *wgs = kitty_wgs_of(pa->hwnd);
+    kitty_paste_box = NULL;
+    if (yes && wgs && wgs->term)
+        term_do_paste(wgs->term, pa->text, pa->len);
+    smemclr(pa->text, pa->len * sizeof(wchar_t));
+    sfree(pa->text);
+    sfree(pa);
+}
+
+/* The clipboard balloon's click: "block this server's clipboard writes?",
+ * modeless. Yes blocks them, No opens the Event Log, as before. One question
+ * at a time. */
+static HWND kitty_clipblock_box = NULL;
+
+static void kitty_clipblock_apply(WinGuiSeat *wgs)
+{
+    if (wgs->term)
+        wgs->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
+    /* the live Conf too, so Change Settings shows the truth and
+     * far2l's own policy is not left at something else */
+    conf_set_int(wgs->conf, CONF_osc52_clipboard, OSC52_CLIPBOARD_DENY);
+    if (wgs->term)
+        wgs->term->clip_allowed = 0;
+#ifdef MOD_FAR2L
+    /* and a far2l box that is open closes as refused */
+    if (wgs->term)
+        term_far2l_block(wgs->term);
+#endif
+    conf_set_int(wgs->conf, CONF_shared_clipboard, SHARED_CLIPBOARD_DISABLED);
+    logevent(wgs->logctx, KT_TWIN_LOG_CLIP_WRITES_BLOCKED);
+}
+
+static void kitty_clipblock_answer(int yes, void *ctx)
+{
+    HWND hwnd = (HWND)ctx;
+    WinGuiSeat *wgs = kitty_wgs_of(hwnd);
+    kitty_clipblock_box = NULL;
+    if (!wgs)
+        return;
+    if (yes)
+        kitty_clipblock_apply(wgs);
+    else if (IsWindowVisible(hwnd))     /* not the window closing under it */
+        showeventlog(hwnd);
 }
 #endif
 
@@ -6282,29 +6482,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                  * that is no use without a way to stop it, and hunting through
                  * the configuration box while it is still happening is not a way
                  * to stop it - so the click IS the fix, behind one confirmation.
+                 * The confirmation is modeless (kitty_clipblock_answer): a
+                 * modal one stopped the session while it stood.
                  */
-                if (kitty_confirm_box_yes(hwnd,
-                        KT_CAP_BLOCK_CLIP_WRITES,
-                        KT_TWIN_BLOCK_CLIP_WRITES_Q,
-                        NULL)) {
-                    if (wgs->term)
-                        wgs->term->osc52_allowed = OSC52_CLIPBOARD_DENY;
-                    /* the live Conf too, so Change Settings shows the truth and
-                     * far2l's own policy is not left saying something else */
-                    conf_set_int(wgs->conf, CONF_osc52_clipboard,
-                                 OSC52_CLIPBOARD_DENY);
-                    if (wgs->term)
-                        wgs->term->clip_allowed = 0;
-#ifdef MOD_FAR2L
-                    /* and a far2l box that is open closes as refused */
-                    if (wgs->term)
-                        term_far2l_block(wgs->term);
-#endif
-                    conf_set_int(wgs->conf, CONF_shared_clipboard,
-                                 SHARED_CLIPBOARD_DISABLED);
-                    logevent(wgs->logctx, KT_TWIN_LOG_CLIP_WRITES_BLOCKED);
+                if (kitty_clipblock_box && IsWindow(kitty_clipblock_box)) {
+                    SetForegroundWindow(kitty_clipblock_box);
                 } else {
-                    showeventlog(hwnd);
+                    kitty_clipblock_box = kitty_confirm_modeless_yes(hwnd,
+                        KT_CAP_BLOCK_CLIP_WRITES, KT_TWIN_BLOCK_CLIP_WRITES_Q,
+                        0, kitty_clipblock_answer, (void *)hwnd);
+                    /* no modeless box here: the box as before */
+                    if (!kitty_clipblock_box) {
+                        if (kitty_confirm_box_yes(hwnd,
+                                KT_CAP_BLOCK_CLIP_WRITES,
+                                KT_TWIN_BLOCK_CLIP_WRITES_Q,
+                                NULL))
+                            kitty_clipblock_apply(wgs);
+                        else
+                            showeventlog(hwnd);
+                    }
                 }
             } else {
                 showeventlog(hwnd);
@@ -6465,6 +6661,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 CloseHandle(pi.hProcess);
                 CloseHandle(pi.hThread);
             }
+#ifdef MOD_PERSO
+            else {
+                /* KiTTY: a start that failed (kitty.exe renamed or moved
+                 * while this window runs) did nothing visible at all: the
+                 * menu item seemed dead. The notice window and this
+                 * window's Event Log, as for the other programs started
+                 * from a session (RunCommand, kitty_winutil.c). */
+                const char *why = kitty_win_reason(GetLastError());
+                char *msg = dupprintf(KT_START_FAILED_FMT, b, why);
+                char *ev = dupprintf(KT_START_FAILED_EVENT_FMT, b, why);
+                lp_eventlog(&wgs->logpolicy, ev);
+                kitty_notice_show(KT_CAP_START_FAILED, msg, RGB(190, 110, 0),
+                                  GetNoticeSeconds(), NULL, 0);
+                sfree(ev);
+                sfree(msg);
+            }
+#endif
 
             if (filemap)
                 CloseHandle(filemap);
@@ -6886,12 +7099,24 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_SCRIPTSEND: {
             char fn[4096];
             if (!kitty_script_enabled()) {
-                kitty_info_box(wgs->term_hwnd, KT_CAP_KITTY,
-                               KT_TWIN_SCRIPT_DISABLED, NULL);
+                /* a report: modeless, the session goes on */
+                if (!kitty_info_modeless(wgs->term_hwnd, KT_CAP_KITTY,
+                                         KT_TWIN_SCRIPT_DISABLED, NULL, NULL))
+                    kitty_info_box(wgs->term_hwnd, KT_CAP_KITTY,
+                                   KT_TWIN_SCRIPT_DISABLED, NULL);
                 break;
             }
-            if (wgs->backend && !kitty_script_active() &&
-                OpenFileName(wgs->term_hwnd, fn, KT_TWIN_SCRIPT_FILE_TITLE,
+            if (!wgs->backend || kitty_script_active() || kitty_script_pick)
+                break;
+            /* the picker beside the session (kitty_script_picked) */
+            kitty_script_pick = kitty_pick_async(wgs->term_hwnd,
+                KITTY_PICK_OPEN, NULL, KT_TWIN_SCRIPT_FILE_TITLE,
+                KT_TWIN_SCRIPT_FILE_FILTER, kitty_script_picked,
+                (void *)wgs->term_hwnd);
+            if (kitty_script_pick)
+                break;
+            /* no thread for the picker: on this one, as before */
+            if (OpenFileName(wgs->term_hwnd, fn, KT_TWIN_SCRIPT_FILE_TITLE,
                     KT_TWIN_SCRIPT_FILE_FILTER)) {
                 Filename *sf = filename_from_str(fn);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
@@ -6984,13 +7209,31 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (lf) {
                 wchar_t *wlf = filename_expand_wstr(lf);
                 logflush(wgs->logctx);
-                if ((INT_PTR)ShellExecuteW(hwnd, L"open", wlf, NULL, NULL, SW_SHOWNORMAL) <= 32) {
-                    /* the menu item did nothing, silently */
+                /* SEE_MASK_FLAG_NO_UI: without it the shell puts up its own
+                 * modal error box (association pointing at a missing program)
+                 * in front of the session before the report below. */
+                SHELLEXECUTEINFOW sei;
+                memset(&sei, 0, sizeof(sei));
+                sei.cbSize = sizeof(sei);
+                sei.fMask = SEE_MASK_FLAG_NO_UI;
+                sei.hwnd = hwnd;
+                sei.lpVerb = L"open";
+                sei.lpFile = wlf;
+                sei.nShow = SW_SHOWNORMAL;
+                if (!ShellExecuteExW(&sei)) {
+                    /* Reported, never silent - but in the notice window and
+                     * the Event Log: a modal box here stood in front of the
+                     * live session and stopped it until it was answered. The
+                     * log itself keeps being written. */
                     DWORD err = GetLastError();
                     char *shown = filename_expand_str(lf);
-                    char *msg = dupprintf(KT_START_FAILED_FMT, shown,
-                                          kitty_win_reason(err));
-                    MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+                    const char *why = kitty_win_reason(err);
+                    char *msg = dupprintf(KT_OPEN_LOG_FAILED_FMT, shown, why);
+                    char *ev = dupprintf(KT_OPEN_LOG_FAILED_EVENT_FMT, shown, why);
+                    logevent(wgs->logctx, ev);
+                    kitty_notice_show(KT_CAP_OPEN_LOG_FILE, msg, RGB(190, 110, 0),
+                                      GetNoticeSeconds(), NULL, 0);
+                    sfree(ev);
                     sfree(msg);
                     sfree(shown);
                 }
@@ -12022,8 +12265,28 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
         int limit = GetPasteSize();
         if (limit > 0 && clipboard_length > (size_t)limit) {
             char msg[160];
+            kitty_paste_ask_t *pa;
+            if (kitty_paste_box && IsWindow(kitty_paste_box)) {
+                /* one question at a time: this paste is dropped */
+                SetForegroundWindow(kitty_paste_box);
+                sfree(clipboard_contents);
+                return;
+            }
             sprintf(msg, KT_TWIN_PASTE_LIMIT_Q,
                     (unsigned long)clipboard_length, limit);
+            /* modeless (kitty_paste_answer), holding the text: the
+             * clipboard thread waits on this message, and a modal box
+             * stopped the session as well */
+            pa = snew(kitty_paste_ask_t);
+            pa->hwnd = wgs->term_hwnd;
+            pa->text = clipboard_contents;
+            pa->len = clipboard_length;
+            kitty_paste_box = kitty_confirm_modeless(wgs->term_hwnd,
+                KT_CAP_PASTE, msg, NULL, NULL, kitty_paste_answer, pa);
+            if (kitty_paste_box)
+                return;                  /* the text is the question's now */
+            sfree(pa);
+            /* no modeless box here: the box as before */
             if (!kitty_confirm_box(wgs->term_hwnd, KT_CAP_PASTE, msg,
                                    NULL)) {
                 sfree(clipboard_contents);
@@ -12077,7 +12340,7 @@ void modalfatalbox(const char *fmt, ...)
     message = dupvprintf(fmt, ap);
     va_end(ap);
     show_mouseptr(NULL, true);
-    title = dupprintf("%s Fatal Error", appname);
+    title = dupprintf("%s Fatal Error", kitty_product_name());
     /* Deliberately still a raw MessageBox: it must be MB_SYSTEMMODAL and must
      * work when the process is too broken to load a dialog template. */
     MessageBox(find_window_for_msgbox(), message, title,
@@ -12099,7 +12362,7 @@ void nonfatal(const char *fmt, ...)
     message = dupvprintf(fmt, ap);
     va_end(ap);
     show_mouseptr(NULL, true);
-    title = dupprintf("%s Error", appname);
+    title = dupprintf("%s Error", kitty_product_name());
     kitty_info_box(find_window_for_msgbox(), title, message, NULL);
     sfree(message);
     sfree(title);
@@ -12211,24 +12474,44 @@ static void wintw_bell(TermWin *tw, int mode)
          * played; the stored setting keeps the variable (cyd01/KiTTY#472). */
         wchar_t *bell_wpath = filename_expand_wstr(bell_wavefile);
         char *bell_cpath = filename_expand_str(bell_wavefile);
-        bool success = (
-            p_PlaySoundW ? p_PlaySoundW(bell_wpath, NULL,
-                                        SND_ASYNC | SND_FILENAME) :
-            p_PlaySoundA ? p_PlaySoundA(bell_cpath, NULL,
-                                        SND_ASYNC | SND_FILENAME) : false);
+        DWORD snd = SND_ASYNC | SND_FILENAME;
+        bool success;
+#ifdef MOD_PERSO
+        /* KiTTY: SND_ASYNC queues the sound and returns success before the
+         * file is even opened - a file that is not there played the system's
+         * default sound and "Unable to play sound file ... Using default
+         * sound instead" below never came. That case is checked here. */
+        if (GetFileAttributesW(bell_wpath) == INVALID_FILE_ATTRIBUTES)
+            success = false;
+        else
+#endif
+        success = (
+            p_PlaySoundW ? p_PlaySoundW(bell_wpath, NULL, snd) :
+            p_PlaySoundA ? p_PlaySoundA(bell_cpath, NULL, snd) : false);
         sfree(bell_wpath);
         sfree(bell_cpath);
         if (!success) {
+#ifdef MOD_PERSO
+            /* KiTTY: the bell rings in the middle of the output, so the
+             * report goes to the notice window (it never takes the focus):
+             * a modal box stopped the session until it was answered. */
+            char *buf = dupprintf(KT_BELL_WAV_FAILED_FMT,
+                                  bell_wavefile->utf8path);
+            kitty_notice_show(KT_CAP_BELL_SOUND_ERROR, buf, RGB(190, 110, 0),
+                              GetNoticeSeconds(), NULL, 0);
+            sfree(buf);
+#else
             char *buf, *otherbuf;
             show_mouseptr(wgs, true);
             buf = dupprintf(
                 "Unable to play sound file\n%s\nUsing default sound instead",
                 bell_wavefile->utf8path);
-            otherbuf = dupprintf("%s Sound Error", appname);
+            otherbuf = dupprintf("%s Sound Error", kitty_product_name());
             message_box(wgs->term_hwnd, buf, otherbuf,
                         MB_OK | MB_ICONEXCLAMATION, true, 0);
             sfree(buf);
             sfree(otherbuf);
+#endif
             conf_set_int(wgs->conf, CONF_beep, BELL_DEFAULT);
         }
     } else if (mode == BELL_PCSPEAKER) {
@@ -12884,6 +13167,21 @@ static void kitty_hostkey_stored(Seat *seat)
     WinGuiSeat *wgs = kitty_seat_wgs(seat);
     if (wgs)
         wgs->kitty_newkey_stored = true;
+}
+
+/* dialog.c, kitty_logging_error_hook: the session log could not be opened.
+ * The session goes on without it. Reported in the notice window, which never
+ * takes the focus; logging.c has written the Event Log line already. PuTTY
+ * wrote the line into the terminal, in the middle of the remote's output. */
+static bool kitty_logging_error(Seat *seat, const char *event)
+{
+    char *text;
+    (void)seat;
+    text = dupprintf(KT_LOG_OPEN_FAILED_FMT, event);
+    kitty_notice_show(KT_CAP_LOG_OPEN_FAILED, text, RGB(190, 110, 0),
+                      GetNoticeSeconds(), NULL, 0);
+    sfree(text);
+    return true;
 }
 
 /* Save as session: Change Settings with the name filled in, as the window

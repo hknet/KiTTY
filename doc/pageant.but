@@ -29,17 +29,17 @@ bring up a file dialog, labelled \q{Select Private Key File}. Find
 your private key file in this dialog, and press \q{Open}.
 
 kageant will now load the private key. If the key is protected by a
-passphrase, kageant will ask you to type the passphrase. When the
+passphrase, kageant will prompt you to type the passphrase. When the
 key has been loaded, it will appear in the list in the kageant
 window.
 
-Now start KiTTY and open an SSH session to a site that accepts your
-key. KiTTY will notice that kageant is running, retrieve the key
+Now start KiTTY++ and open an SSH session to a site that accepts your
+key. KiTTY++ will notice that kageant is running, retrieve the key
 automatically from kageant, and use it to authenticate. You can now
-open as many KiTTY sessions as you like without having to type your
+open as many KiTTY++ sessions as you like without having to type your
 passphrase again.
 
-(KiTTY can be configured not to try to use kageant, but it will try
+(KiTTY++ can be configured not to try to use kageant, but it will try
 by default. See \k{config-ssh-tryagent} and
 \k{using-cmdline-agentauth} for more information.)
 
@@ -79,7 +79,7 @@ something like this:
 \c Ed25519    SHA256:TddlQk20DVs4LRcAsIfDN9pInKpY06D+h4kSHwWAj4w
 \c RSA  2048  SHA256:8DFtyHm3kQihgy52nzX96qMcEVOq7/yJmmwQQhBWYFg
 
-For each key, the list box will tell you:
+For each key, the list box will show you:
 
 \b The type of the key. Currently, this can be
 \q{RSA} (an RSA key for use with the SSH-2 protocol),
@@ -134,7 +134,7 @@ select multiple files using Shift-click (to select several adjacent
 files) or Ctrl-click (to select non-adjacent files).
 
 kageant will now load the private key(s). If a key is protected by a
-passphrase, kageant will ask you to type the passphrase.
+passphrase, kageant will prompt you to type the passphrase.
 
 (This is not the only way to add a private key to kageant. You can
 also add one from a remote system by using agent forwarding; see
@@ -212,7 +212,7 @@ these keys; see \k{pageant-deferred-decryption}.
 
 You can arrange for kageant to start another program once it has
 initialised itself and loaded any keys specified on its command
-line. This program (perhaps a KiTTY, or a WinCVS making use of
+line. This program (perhaps a KiTTY++, or a WinCVS making use of
 klink, or whatever) will then be able to use the keys kageant has
 loaded.
 
@@ -229,7 +229,7 @@ OpenSSH can talk directly to kageant, if it knows where to find
 kageant's named pipe.
 
 When kageant starts up, it can optionally write out a file containing
-an OpenSSH configuration directive that tells the Windows \c{ssh.exe}
+an OpenSSH configuration directive that shows the Windows \c{ssh.exe}
 where to find kageant. If you include this file from your Windows SSH
 configuration, then \c{ssh.exe} should automatically use kageant as
 its agent, so that you can keep your keys in one place and have both
@@ -289,7 +289,7 @@ and in WSL 1, set the environment variable
 \c SSH_AUTH_SOCK=/mnt/c/Users/Simon/.ssh/agent.sock
 
 Alternatively, you can add a line to your \cw{.ssh/config} file inside
-WSL that says
+WSL that reads
 
 \c IdentityAgent /mnt/c/Users/Simon/.ssh/agent.sock
 
@@ -315,11 +315,11 @@ as soon as it starts up.
 \S{pageant-cmdline-restrict-acl} Restricting the \i{Windows process ACL}
 
 kageant supports the same \i\c{\-restrict\-acl} option as the other
-KiTTY utilities to lock down the kageant process's access control;
+KiTTY++ utilities to lock down the kageant process's access control;
 see \k{using-cmdline-restrict-acl} for why you might want to do this.
 
 By default, if kageant is started with \c{\-restrict\-acl}, it won't
-pass this to any KiTTY sessions started from its System Tray submenu.
+pass this to any KiTTY++ sessions started from its System Tray submenu.
 Use \i\c{\-restrict\-kitty\-acl} to change this. (Again, see
 \k{using-cmdline-restrict-acl} for details.)
 
@@ -331,9 +331,9 @@ server machine to talk to the agent on your client machine.
 Note that at present, whether agent forwarding in SSH-2 is available
 depends on your server. kageant's protocol is compatible with the
 \i{OpenSSH} server, but the \i\cw{ssh.com} server uses a different
-agent protocol, which KiTTY does not yet support.
+agent protocol, which KiTTY++ does not yet support.
 
-To enable agent forwarding, first start kageant. Then set up a KiTTY
+To enable agent forwarding, first start kageant. Then set up a KiTTY++
 SSH session in which \q{Allow agent forwarding} is enabled (see
 \k{config-ssh-agentfwd}). Open the session as normal. (Alternatively,
 you can use the \c{\-A} command line option; see
@@ -341,7 +341,7 @@ you can use the \c{\-A} command line option; see
 
 If this has worked, your applications on the server should now have
 access to a Unix domain socket which the SSH server will forward
-back to KiTTY, and KiTTY will forward on to the agent. To check that
+back to KiTTY++, and KiTTY++ will forward on to the agent. To check that
 this has actually happened, you can try this command on Unix server
 machines:
 
@@ -391,13 +391,13 @@ dialog box prompting for the passphrase so that the key can be
 decrypted.
 
 This works the same way whether the key is used by an instance of
-KiTTY running locally, or a remote client connecting to kageant
+KiTTY++ running locally, or a remote client connecting to kageant
 through agent forwarding.
 
 To add a key to kageant in this encrypted form, press the \q{Add Key
 (encrypted)} button in the kageant main window. kageant will bring up a file dialog, in
 just the same way as it would for the plain \q{Add Key} button. But it
-won't ask for a passphrase. Instead, the key will be listed in the
+won't prompt for a passphrase. Instead, the key will be listed in the
 main window with \q{(encrypted)} after it.
 
 To start kageant up in the first place with encrypted keys loaded into
@@ -430,7 +430,7 @@ might be sent to somewhere you didn't want to trust with it!
 A decrypted key stays usable until kageant stops. \q{Re-encrypt keys
 after idle}, on the Security page of the settings, puts a key back into
 its encrypted state once the given time has passed since it was
-decrypted or last signed, whichever is later; the next use asks for
+decrypted or last signed, whichever is later; the next use prompts for
 the passphrase and the clock starts again. kageant
 keeps the encrypted copy in memory, so nothing is read from disk and
 the key stays listed. Only keys that have a passphrase take part.
@@ -442,7 +442,7 @@ value of its own, and a key's own value wins for that key. \q{Enforced
 for every key} applies the time to every key and ignores the per-key
 values, for a site or a network whose rules demand it; key details
 then show the field greyed with the enforced value, and the tray tip
-says so.
+reports this.
 
 The time is seconds, or a number with \c{m}, \c{h} or \c{d} (\c{10m},
 \c{2h}, \c{1d}), from 30 seconds to 7 days - or \c{immediately}: right
@@ -456,10 +456,10 @@ these are \c{autoencryptmode} and \c{autoencryptseconds} in the
 \H{pageant-lock} Locking the agent
 
 A \i{locked agent} keeps its keys but neither offers nor uses them: a
-client asking for the key list gets an empty one and falls back to its
+client requesting the key list gets an empty one and falls back to its
 other ways of logging in, and a request to sign, add or remove a key is
 refused. The key list shows every key as \q{locked}, and the tray tip
-says \q{agent LOCKED}. The lock is a gate, not encryption: it stops
+reads \q{agent LOCKED}. The lock is a gate, not encryption: it stops
 programs from using the agent while it lasts, and adds nothing against
 someone who can read kageant's memory.
 
@@ -475,9 +475,9 @@ leaves it alone, so a job that uses the agent keeps running while the
 screen is locked. \q{Lock the agent} locks it when Windows locks or a
 remote desktop disconnects, and unlocks it when Windows unlocks.
 \q{Re-encrypt the keys} also puts every key that has a passphrase back
-into its encrypted state; when Windows unlocks, kageant asks for the
+into its encrypted state; when Windows unlocks, kageant prompts for the
 passphrase of each key it re-encrypted that has a key file to read it
-from, and the others ask on first use. In \c{kitty.ini} this is
+from, and the others prompt on first use. In \c{kitty.ini} this is
 \c{lockwithwindows} (\c{keep}, \c{lock} or \c{reencrypt}) in the
 \c{[Agent]} section.
 
@@ -485,12 +485,12 @@ from, and the others ask on first use. In \c{kitty.ini} this is
 passphrase of the program's choosing - but only with \q{Allow locking
 the agent over IPC} ticked on the Security page (\c{allowipclock=yes});
 otherwise they are refused and the agent log notes it. A program's lock
-raises a notice naming the program, and the tray menu's \q{Unlock agent}
+raises a notice identifying the program, and the tray menu's \q{Unlock agent}
 clears it without the passphrase. After each wrong passphrase the next
 unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s.
 After the tenth wrong passphrase programs can no longer unlock the agent,
 the right passphrase included, until \q{Unlock agent} in the tray menu; a
-notice names the program, and the keys stay loaded.
+notice identifies the program, and the keys stay loaded.
 
 \H{pageant-security} Security considerations
 

@@ -27,8 +27,6 @@
 #include "kitty_secretstore.h"
 #include "kitty_text.h"
 
-static int kcm_asked = 0;
-
 /* -batch anywhere on the command line. Read from the command line itself, not
  * from console_batch_mode alone: the prompt can come while -load is parsed,
  * before a later -batch has been. */
@@ -67,8 +65,13 @@ static char *kcm_prompt(int creating)
         fputs(KT_CLI_MPW_NEEDED_NOCONSOLE, stderr);
         cleanup_exit(1);
     }
-    if (kcm_asked++)
-        fprintf(stderr, "%s\n", KT_CLI_MPW_WRONG_RETRY);
+    {
+        /* a retry: the try before was wrong - as the dialog's red line */
+        int no = 0, max = 0;
+        kitty_mpw_prompt_try(&no, &max);
+        if (no > 1)
+            fprintf(stderr, KT_MPW_WRONG_TRY_FMT "\n", no, max);
+    }
     fputs(KT_CLI_MPW_PROMPT, stderr);
     fflush(stderr);
     SetConsoleMode(in, (mode | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT) &

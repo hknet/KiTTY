@@ -276,6 +276,8 @@ void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
 int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) ;   /* 1 saved, 0 cancelled, -1 not (out: file + reason) */
+void SaveCurrentSettingFilter( char * buffer, size_t size ) ;        /* the Save-As filter for a .ktx */
+int SaveCurrentSettingTo( const char * filename, char * out, size_t outlen ) ;   /* 1 saved, -1 not */
 void SendFile( HWND hwnd ) ;
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;
 
@@ -640,13 +642,17 @@ int kitty_hotkey_conflict_scan( unsigned int mods, unsigned int vk,
                                 const char * exclude, char * names, int nameslen ) ;
 int kitty_hotkey_enabled_count( const char * exclude ) ;
 int kitty_hotkey_conflict_report( char * buf, int buflen ) ;
+int kitty_launcher_global_hotkey( unsigned int * mods, unsigned int * vk,
+                                  char * spec_out, int speclen ) ;
 int RestoreFromTray( HWND hwnd );
 void SetConnBreakIcon( HWND hwnd );
 void debug_log( const char *fmt, ... );
 int get_param( const char * val );
 char * kitty_current_dir(void);
 void kitty_fontfallback_apply_list( const char * list );
-char *kitty_loginscript_from_text( const char *text );
+/* locked: set when the master password is locked - NULL then, the stored
+ * script stays (kitty_secret_wrap_current_backend_kept) */
+char *kitty_loginscript_from_text( const char *text, int *locked );
 char *kitty_loginscript_to_text( const char *stored );
 void kitty_netdbg_ts( const char *msg );
 void kitty_set_remote_cwd( const char * osc7 );

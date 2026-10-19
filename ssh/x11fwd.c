@@ -448,7 +448,11 @@ static void x11_send_init_error(struct X11Connection *xconn,
     int msglen, msgsize;
     unsigned char *reply;
 
-    full_message = dupprintf("%s X11 proxy: %s\n", appname, err_message);
+    /* KiTTY: the product name, not kitty.exe's window class ("KiTTY");
+     * the other programs sharing this file keep their name */
+    full_message = dupprintf("%s X11 proxy: %s\n",
+                             strcmp(appname, "KiTTY") ? appname : "KiTTY++",
+                             err_message);
 
     msglen = strlen(full_message);
     reply = snewn(8 + msglen+1 + 4, unsigned char); /* include zero */

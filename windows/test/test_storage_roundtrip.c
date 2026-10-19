@@ -180,6 +180,23 @@ static int write_text(const char *dir, const char *name, const char *val)
     return fclose(fp) == 0;
 }
 
+/* The "Password=..." line of a session file's text, malloc'd, or NULL. */
+static char *password_line(const char *buf)
+{
+    const char *p = buf;
+    while (p && *p) {
+        if (!strncmp(p, "Password=", 9)) {
+            size_t n = strcspn(p, "\r\n");
+            char *l = malloc(n + 1);
+            if (l) { memcpy(l, p, n); l[n] = '\0'; }
+            return l;
+        }
+        p = strchr(p, '\n');
+        if (p) p++;
+    }
+    return NULL;
+}
+
 static char *read_whole_file(const char *path)   /* malloc'd or NULL */
 {
     FILE *fp = fopen(path, "rb");
@@ -273,6 +290,27 @@ static void test_portable(void)
     fbuf = read_whole_file(fpath);
     check(fbuf && strstr(fbuf, "MPW2") != NULL,
           "portable: never-wipe kept the undecryptable blob");
+
+    /* A CHANGED password saved while the master password is locked (the
+     * supplied one is wrong): the stored line stays as it was, and is never
+     * replaced by a DPAPI1 value (it used to be: the save fell back to DPAPI
+     * and changed the password's protection without a word). */
+    {
+        char *before = fbuf ? password_line(fbuf) : NULL;
+        char *after = NULL, *fb2;
+        w = open_settings_w(PSESS, &err);
+        if (w) {
+            write_setting_s(w, "Password", "changed-while-locked");
+            close_settings_w(w);
+        }
+        fb2 = read_whole_file(fpath);
+        if (fb2) after = password_line(fb2);
+        check(before && after && !strcmp(before, after),
+              "portable: a password changed while locked keeps the stored line");
+        check(fb2 && !strstr(fb2, "DPAPI1:") && !strstr(fb2, "changed-while-locked"),
+              "portable: ...and is neither DPAPI1 nor plain");
+        free(before); free(after); free(fb2);
+    }
     if (fbuf) free(fbuf);
 
     /* right password: fresh re-derive + verify against the seeded verifier,
@@ -295,6 +333,58 @@ static void test_portable(void)
           "portable: wrap/unwrap helper round-trips");
     if (blob) free(blob);
     if (out) free(out);
+
+    /* The unlocked key is kept wrapped in memory (CryptProtectMemory, this
+     * process) and unwrapped for each use: every use opens what the others
+     * wrapped. */
+    {
+        static const char *const vals[] = { "k-one", "k-two-longer", "k3" };
+        int good = 1;
+        for (int i = 0; i < 3; i++) {
+            char *b = kitty_secret_wrap_current_backend(vals[i]);
+            char *o = NULL;
+            int r2 = b ? kitty_secret_unwrap(b, &o) : 0;
+            if (!(r2 == 1 && o && !strcmp(o, vals[i]))) good = 0;
+            free(b); free(o);
+        }
+        check(good, "portable: the key kept wrapped in memory opens every value it wrapped");
+    }
+    /* The hand-off to a child (the key of a running window to the window it
+     * starts) carries the derived key itself, wrapped for this logon - not
+     * the in-process wrapping, which the child could not open. */
+    {
+        char tok[80];
+        HANDLE fm = kitty_mpw_export_inherit_blob("", tok, sizeof(tok));
+        int same = 0;
+        check(fm != NULL, "portable: the unlocked key is handed off");
+        if (fm) {
+            struct {
+                unsigned magic, version, wrapped;
+                unsigned char salt[KITTY_MPW_SALT_LEN];
+                unsigned char key[KITTY_MPW_DERIVED_LEN];
+            } hb;
+            void *v = MapViewOfFile(fm, FILE_MAP_READ, 0, 0, sizeof(hb));
+            if (v) {
+                memcpy(&hb, v, sizeof(hb));
+                UnmapViewOfFile(v);
+                if (hb.wrapped) {
+                    HMODULE c = LoadLibraryA("crypt32.dll");
+                    BOOL (WINAPI *unprot)(LPVOID, DWORD, DWORD) = c
+                        ? (BOOL (WINAPI *)(LPVOID, DWORD, DWORD))
+                              GetProcAddress(c, "CryptUnprotectMemory")
+                        : NULL;
+                    if (!unprot || !unprot(hb.key, sizeof(hb.key), 0x02))   /* SAME_LOGON */
+                        hb.wrapped = 2;
+                }
+                same = hb.wrapped != 2 && !memcmp(hb.key, key, sizeof(key)) &&
+                       !memcmp(hb.salt, salt, sizeof(salt));
+                SecureZeroMemory(&hb, sizeof(hb));
+            }
+            CloseHandle(fm);
+        }
+        check(same, "portable: the handed-off key is the derived key");
+    }
+    SecureZeroMemory(key, sizeof(key));
 
     kitty_set_storage_mode(0);
 

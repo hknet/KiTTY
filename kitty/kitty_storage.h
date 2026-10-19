@@ -193,6 +193,8 @@ void kitty_set_hostkey_suffix(const char *suffix);
 const char *kitty_hostkey_suffix(void);
 struct ksf_item *ksf_load(const char *path);      /* parsed list (may be NULL) */
 bool ksf_save(const char *path, struct ksf_item *h);   /* true = all written */
+/* The same; a changed or new line as "key\value\" (the named-proxy files) */
+bool ksf_save_classic(const char *path, struct ksf_item *h);
 char *portable_root_dir(void);                    /* snewn'd or NULL */
 char *portable_subdir_path(const char *subdir);   /* snewn'd */
 char *portable_item_path(const char *subdir, const char *name);

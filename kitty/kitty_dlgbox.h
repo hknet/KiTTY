@@ -59,6 +59,15 @@ HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,
                           const char *detail, const char *warn_red );
 int kitty_message_box( HWND owner, const char *text, const char *caption, unsigned type );
 void kitty_notice_box( HWND owner, const char *caption, const char *text );
+/* DialogBoxParam for a box of the caller's own template (tmpl: its resource
+ * id): raised from inside the mid-session Change Settings box (a pumped box,
+ * windows/utils/shinydialogbox.c), it waits through that box's wait step,
+ * so the session behind keeps running; anywhere else it is DialogBoxParam.
+ * The procedure ends the box with kitty_dialog_end instead of EndDialog.
+ * Returns the end value; IDCANCEL when the box went without an answer;
+ * -1 when it could not be made. */
+INT_PTR kitty_dialog_box( HWND owner, int tmpl, DLGPROC proc, LPARAM lp );
+void kitty_dialog_end( HWND h, INT_PTR r );
 void kitty_demo_templates( void );
 
 #endif

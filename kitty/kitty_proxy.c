@@ -135,7 +135,10 @@ void InitProxyList(void) {
 		DIR * dir ;
 		struct dirent * de ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies", ConfigDirectory ) ;
-		if(!MakeDir( fullpath ) ) { MessageBox(NULL,KT_PROXYDEF_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
+		/* Reading only: this runs at every connect. No Proxies folder = no
+		 * named proxies; the folder is made by the first save (SaveProxyInfo).
+		 * It used to be made here, with a box when that failed - at every
+		 * connect from a write-protected store. */
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
@@ -294,6 +297,8 @@ static int proxy_method_from_conf( Conf *conf ) {
 }
 
 /* Create/update a named proxy definition from the current CONF_proxy_* values.
+ * 1 saved; 0 the folder store's file (or its Proxies folder) not written,
+ * Windows' reason in GetLastError().
  * name must be a real definition (not a built-in). Registry -> PUTTY_REG_POS\
  * Proxies\<name>; portable -> ConfigDirectory\Proxies\<name>, one "Key\value\"
  * line per field (the format ReadPortableValue expects). ProxyPassword is
@@ -310,8 +315,12 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 	 * create/unlock the master password in portable mode; empty -> "", no prompt). */
 	char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
 	kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
-	char *pwblob = kitty_secret_wrap_current_backend( pxpw ) ;
-	smemclr( pxpw, sizeof(pxpw) ) ;
+	/* the master password locked: the stored password stays, never DPAPI
+	 * or an empty value in its place, and the user learns it */
+	int pwlocked = 0 ;
+	int saved = 1 ;          /* 0: the folder store's file not written */
+	DWORD saverr = 0 ;
+	char *pwblob = kitty_secret_wrap_current_backend_kept( pxpw, &pwlocked ) ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
 		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
@@ -325,7 +334,8 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyHost", conf_get_str(conf, CONF_proxy_host) ) ;
 		RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyPort", conf_get_int(conf, CONF_proxy_port) ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyUsername", conf_get_str(conf, CONF_proxy_username) ) ;
-		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyPassword", pwblob ? pwblob : "" ) ;
+		if( !pwlocked )
+			RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyPassword", pwblob ? pwblob : "" ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 		RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
 		if( conf_get_int(conf, CONF_proxy_host_kind) < 0 )
@@ -333,35 +343,58 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		else
 			RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		char dir[2048], fullpath[2048], mv[4096] ;
+		/* Read first and saved through the folder store's line list
+		 * (kitty_storage.c ksf_*), as a session file is: the lines keep their
+		 * order, a comment, a blank line or a tool's key stays where it is, an
+		 * unchanged value keeps its line as written and its line ending, a
+		 * changed one is replaced in its place and a new key goes at the end -
+		 * in the classic "Key\value\" form the proxy readers take
+		 * (ReadPortableValue). The file used to be written afresh in a fixed
+		 * order, so every save was a diff of the whole file.
+		 * The Proxies folder is made here, by the first save, and nowhere else. */
+		char dir[2048], fullpath[2048], num[16] ;
+		struct ksf_item *items ;
 		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
 		snprintf( dir, sizeof(dir), "%s\\Proxies", ConfigDirectory ) ;
-		MakeDir( dir ) ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\%s", dir, fn ) ;
 		free( fn ) ;
-		FILE *fp = fopen( fullpath, "w" ) ;
-		if( fp ) {
-			#define WPS(K,V) do { mungestr((V), mv) ; fprintf(fp, "%s\\%s\\\n", (K), mv) ; } while(0)
-			#define WPD(K,D) fprintf(fp, "%s\\%d\\\n", (K), (D))
-			WPS( "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
-			WPD( "ProxyDNS", dns ) ;
-			WPD( "ProxyLocalhost", local ) ;
-			WPD( "ProxyMethod", method ) ;
-			WPS( "ProxyHost", conf_get_str(conf, CONF_proxy_host) ) ;
-			WPD( "ProxyPort", conf_get_int(conf, CONF_proxy_port) ) ;
-			WPS( "ProxyUsername", conf_get_str(conf, CONF_proxy_username) ) ;
-			WPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
-			WPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
-			WPD( "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
-			if( conf_get_int(conf, CONF_proxy_host_kind) >= 0 )
-				WPD( "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
-			#undef WPS
-			#undef WPD
-			fclose( fp ) ;
+		if( !MakeDir( dir ) ) {
+			saverr = GetLastError() ;
+			saved = 0 ;
 		}
+		items = saved ? ksf_load( fullpath ) : NULL ;
+		#define SPS(K,V) ksf_list_set( &items, (K), (V) )
+		#define SPD(K,D) do { snprintf( num, sizeof(num), "%d", (D) ) ; ksf_list_set( &items, (K), num ) ; } while(0)
+		SPS( "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
+		SPD( "ProxyDNS", dns ) ;
+		SPD( "ProxyLocalhost", local ) ;
+		SPD( "ProxyMethod", method ) ;
+		SPS( "ProxyHost", conf_get_str(conf, CONF_proxy_host) ) ;
+		SPD( "ProxyPort", conf_get_int(conf, CONF_proxy_port) ) ;
+		SPS( "ProxyUsername", conf_get_str(conf, CONF_proxy_username) ) ;
+		/* the master password locked, or the same password as stored: its
+		 * line stays as it is (a fresh wrap differs on every save) */
+		if( !pwlocked && !ksec_stored_keeps( ksf_list_get( items, "ProxyPassword" ), pxpw, store_is_file() ) )
+			SPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
+		SPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
+		SPD( "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
+		if( conf_get_int(conf, CONF_proxy_host_kind) >= 0 )
+			SPD( "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
+		else
+			ksf_list_del( &items, "ProxyHostIs" ) ;   /* none given */
+		#undef SPS
+		#undef SPD
+		if( saved && !ksf_save_classic( fullpath, items ) ) {
+			saverr = GetLastError() ;
+			saved = 0 ;
+		}
+		ksf_list_free( items ) ;
 	}
+	smemclr( pxpw, sizeof(pxpw) ) ;
 	if( pwblob ) { memset( pwblob, 0, strlen(pwblob) ) ; free( pwblob ) ; }
-	return 1 ;
+	if( pwlocked && saved ) ksec_report_locked_save( KSEC_KEPT_PROXY, name ) ;
+	if( !saved ) SetLastError( saverr ? saverr : ERROR_WRITE_FAULT ) ;
+	return saved ;
 }
 
 /* Delete a named proxy definition (registry key or portable file). */
@@ -464,7 +497,10 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 		char path[2048] ; snprintf( path, sizeof(path), "%s\\%s", pdir, fn ) ; free( fn ) ;
 		char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
 		kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
-		char *pwblob = kitty_secret_wrap_portable( pxpw ) ;  /* MPW2 */
+		/* MPW2 (or DPAPI1 for "this PC only"); a failed wrap writes no
+		 * password line, the summary lists it - never DPAPI in its place */
+		int pwlocked = 0, pwskipped = 0 ;
+		char *pwblob = kitty_secret_wrap_export( pxpw, KSEC_EXPORT_PROXY_PW, proxies[i].name, &pwlocked, &pwskipped ) ;
 		smemclr( pxpw, sizeof(pxpw) ) ;
 		FILE *fp = fopen( path, "w" ) ;
 		if( fp ) {
@@ -480,7 +516,8 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 			WPS( "ProxyHost", conf_get_str(conf, CONF_proxy_host) ) ;
 			WPD( "ProxyPort", conf_get_int(conf, CONF_proxy_port) ) ;
 			WPS( "ProxyUsername", conf_get_str(conf, CONF_proxy_username) ) ;
-			WPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
+			if( !pwskipped && !pwlocked )
+				WPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
 			WPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 			WPD( "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
 			if( conf_get_int(conf, CONF_proxy_host_kind) >= 0 )
@@ -490,6 +527,7 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 			fclose( fp ) ; count++ ;
 		}
 		if( pwblob ) { memset(pwblob,0,strlen(pwblob)) ; free(pwblob) ; }
+		if( pwlocked ) ksec_report_locked_save( KSEC_KEPT_EXPORT, path ) ;
 		conf_free( conf ) ;
 	}
 	return count ;
@@ -579,7 +617,7 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 		unmungestr( fd.cFileName, name, MAX_VALUE_NAME ) ;
 		if( name[0] ) {
 			if( overwrite || !kitty_proxy_name_exists(name) ) {
-				SaveProxyInfo( conf, name ) ; count++ ;   /* re-wraps per dest backend */
+				if( SaveProxyInfo( conf, name ) ) count++ ;   /* re-wraps per dest backend */
 			} else skipped++ ;                            /* keep the existing proxy */
 		}
 		free( name ) ;

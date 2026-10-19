@@ -924,14 +924,31 @@ void RunScriptFile( HWND hwnd, const char * filename ) {
 		}
 	}
 
+/* The script file's picker runs beside the session (kitty_pick_async): the
+ * common dialog's own loop serves no network events, and the session stood
+ * still while it was open. The script is sent once a file has been picked.
+ * One picker at a time: the token is set while it is open. */
+static void * script_file_pick = NULL ;
+
+static void script_file_picked( void * ctx, const char * path ) {
+    HWND hwnd = (HWND)ctx ;
+    script_file_pick = NULL ;
+    if( path != NULL && IsWindow( hwnd ) ) RunScriptFile( hwnd, path ) ;
+}
+
 void OpenAndSendScriptFile( HWND hwnd ) {
     char filename[4096], buffer[4096] ;
+    if( script_file_pick != NULL ) return ;   /* its picker is open already */
     if( ReadParameterN( INIT_SECTION, KI_SCRIPTFILEFILTER, buffer, sizeof(buffer) ) ) {
         buffer[4090]='\0';
-    } else { 
+    } else {
         strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
     }
     if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
+    script_file_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, NULL, KT_CAP_OPEN_FILE, buffer,
+                                         script_file_picked, (void *)hwnd ) ;
+    if( script_file_pick != NULL ) return ;
+    /* no thread for the picker: on this one, as before */
     if( OpenFileName( hwnd, filename, KT_CAP_OPEN_FILE, buffer ) ) {
         RunScriptFile( hwnd, filename ) ;
     }
@@ -1167,27 +1184,34 @@ void GetInitialDirectory( char * InitialDirectory ) {
 /* The User-Command special menu (ReadSpecialMenu / InitSpecialMenu /
  * ManageSpecialCommand) lives in kitty_specialmenu.c. */
 	
-/* 1 saved (the file in out), 0 the file dialog was cancelled, -1 not saved
- * (out: "<file>: <Windows' reason>"). */
-int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
-	char filename[4096], buffer[4096] ;
-	if( outlen ) out[0] = '\0' ;
-	if( strlen(FileExtension)>0 ) {
-		strcpy( buffer, "Connection files (*" ) ;
-		strcat( buffer, FileExtension ) ; strcat( buffer, ")|*" ) ;
-		strcat( buffer, FileExtension ) ; strcat( buffer, "|" ) ;
-	} else {
-		strcpy( buffer, "Connection files (*.ktx)|*.ktx|" ) ;
+/* The Save-As filter for a connection file: the session file extension in
+ * force (.ktx when none is set), then all files. */
+void SaveCurrentSettingFilter( char * buffer, size_t size ) {
+	snprintf( buffer, size, "Connection files (*%s)|*%s|All files (*.*)|*.*|",
+	          FileExtension[0] ? FileExtension : ".ktx", FileExtension[0] ? FileExtension : ".ktx" ) ;
 	}
-	strcat( buffer, "All files (*.*)|*.*|" ) ;
-	if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
-	if( !SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) return 0 ;
-	if( !save_open_settings_forced( filename, conf ) ) {
+
+/* The live settings into `filename`: 1 saved (the file in out), -1 not
+ * (out: "<file>: <Windows' reason>"). */
+int SaveCurrentSettingTo( const char * filename, char * out, size_t outlen ) {
+	if( !save_open_settings_forced( (char *)filename, conf ) ) {
 		snprintf( out, outlen, "%s: %s", filename, kitty_win_reason( GetLastError() ) ) ;
 		return -1 ;
 		}
 	snprintf( out, outlen, "%s", filename ) ;
 	return 1 ;
+	}
+
+/* 1 saved (the file in out), 0 the file dialog was cancelled, -1 not saved
+ * (out: "<file>: <Windows' reason>"). The picker on this thread: /savektx
+ * opens it beside the session (kitty_pick_async) and comes here only when
+ * no thread could be started for it. */
+int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
+	char filename[4096], buffer[4096] ;
+	if( outlen ) out[0] = '\0' ;
+	SaveCurrentSettingFilter( buffer, sizeof(buffer) ) ;
+	if( !SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) return 0 ;
+	return SaveCurrentSettingTo( filename, out, outlen ) ;
 	}
 
 
@@ -1272,8 +1296,9 @@ char *kitty_loginscript_to_text( const char *stored )
 	return out ;
 }
 
-/* text (one entry per line) -> the protected stored form. Caller frees. */
-char *kitty_loginscript_from_text( const char *text )
+/* text (one entry per line) -> the protected stored form. Caller frees.
+ * NULL and *locked = 1: the master password is locked, nothing to store. */
+char *kitty_loginscript_from_text( const char *text, int *locked )
 {
 	unsigned char *raw ;
 	int rawlen = 0 ;
@@ -1285,8 +1310,9 @@ char *kitty_loginscript_from_text( const char *text )
 	b64 = ksec_b64_encode( raw, rawlen ) ;
 	smemclr( raw, rawlen ) ; sfree( raw ) ;
 	if( !b64 ) return dupstr( "" ) ;
-	wrapped = kitty_secret_wrap_current_backend( b64 ) ;
+	wrapped = kitty_secret_wrap_current_backend_kept( b64, locked ) ;
 	smemclr( b64, strlen(b64) ) ; sfree( b64 ) ;
+	if( !wrapped && locked && *locked ) return NULL ;
 	return wrapped ? wrapped : dupstr( "" ) ;
 }
 
@@ -1349,7 +1375,11 @@ void ReadInitScript( const char * filename ) {
 				 */
 				{
 					char *b64 = ksec_b64_encode( (const unsigned char*)ScriptFileContent, (int)l ) ;
-					char *wrapped = b64 ? kitty_secret_wrap_current_backend( b64 ) : NULL ;
+					int locked = 0 ;
+					char *wrapped = b64 ? kitty_secret_wrap_current_backend_kept( b64, &locked ) : NULL ;
+					/* the master password locked: the stored script stays */
+					if( locked )
+						ksec_report_locked_save( KSEC_KEPT_SCRIPT, conf_get_str( conf, CONF_sessionname ) ) ;
 					/*
 					 * The stored form MUST carry a marker, whatever the backend. In
 					 * PortablePasswordProtection=legacy mode the wrap hands the base64

@@ -1,6 +1,6 @@
 \C{psftp} Using \i{ksftp} to transfer files securely
 
-\i{ksftp}, the KiTTY SFTP client, is a tool for \i{transferring files}
+\i{ksftp}, the KiTTY++ SFTP client, is a tool for \i{transferring files}
 securely between computers using an SSH connection.
 
 ksftp differs from kscp in the following ways:
@@ -37,7 +37,7 @@ or perhaps
 
 Alternatively, if you just type \c{ksftp} on its own (or
 double-click the ksftp icon in the Windows GUI), you will see the
-ksftp prompt, and a message telling you ksftp has not connected to
+ksftp prompt, and a message stating ksftp has not connected to
 any server:
 
 \c C:\>ksftp
@@ -48,7 +48,7 @@ At this point you can type \c{open server.example.com} or \c{open
 fred@server.example.com} to start a session.
 
 ksftp accepts all the general command line options supported by the
-KiTTY tools, except the ones which make no sense in a file transfer
+KiTTY++ tools, except the ones which make no sense in a file transfer
 utility. See \k{using-general-opts} for a description of these
 options. (The ones not supported by ksftp are clearly marked.)
 
@@ -128,7 +128,7 @@ interactive prompts
 If you use the \c{\-batch} option, ksftp will never give an
 interactive prompt while establishing the connection. If the
 server's host key is invalid, for example (see \k{gs-hostkey}), then
-the connection will simply be abandoned instead of asking you what
+the connection will simply be abandoned instead of prompting you for what
 to do next.
 
 This may help ksftp's behaviour when it is used in automated
@@ -569,13 +569,13 @@ using the Windows \c{ren} command to rename files on your local PC.
 
 \H{psftp-pubkey} Using \i{public key authentication} with ksftp
 
-Like KiTTY, ksftp can authenticate using a public key instead of a
+Like KiTTY++, ksftp can authenticate using a public key instead of a
 password. There are three ways you can do this.
 
-Firstly, ksftp can use KiTTY saved sessions in place of hostnames.
+Firstly, ksftp can use KiTTY++ saved sessions in place of hostnames.
 So you might do this:
 
-\b Run KiTTY, and create a KiTTY saved session (see
+\b Run KiTTY++, and create a KiTTY++ saved session (see
 \k{config-saving}) which specifies your private key file (see
 \k{config-ssh-privkey}). You will probably also want to specify a
 username to log in as (see \k{config-username}).

@@ -29,4 +29,12 @@
 #define KITTY_URL_REGEX_OLD_2 \
     "(((https?|ftp):\\/\\/)|www\\.)(([0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+)|localhost|([a-zA-Z0-9\\-]+\\.)*[a-zA-Z0-9\\-]+\\.(aero|asia|biz|cat|com|coop|info|int|jobs|mobi|museum|name|net|org|post|pro|tel|travel|xxx|edu|gov|mil|[a-zA-Z][a-zA-Z]))(:[0-9]+)?((\\/|\\?)[^ \"]*[^ ,;\\.:\">)])?"
 
+/* Does `pattern` compile with the engine the terminal scans with
+ * (kitty/url/urlhack.c)? NULL when it does, and for NULL or an empty
+ * pattern; otherwise the engine's error ("unmatched ()"), in a static buffer
+ * that the next compile overwrites. Compiles a copy and frees it: the
+ * expression a running session uses is not touched. UI thread only - the
+ * engine keeps its parse state in globals. */
+const char *kitty_urlregex_error(const char *pattern);
+
 #endif

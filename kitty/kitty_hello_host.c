@@ -101,7 +101,7 @@ static void khw_ui_load(void)
                                   "dark title bars");
             khw_ui.Extend = (pDwmExtend_t)
                 kitty_api_from(dwm, "dwmapi.dll", "DwmExtendFrameIntoClientArea", KITTY_API_OPTIONAL,
-                                  "the glass frame on KiTTY dialogs");
+                                  "the glass frame on KiTTY++ dialogs");
             khw_ui.Color = (pDwmColor_t)
                 kitty_api_from(dwm, "dwmapi.dll", "DwmGetColorizationColor", KITTY_API_OPTIONAL,
                                   "matching the desktop's accent colour");
@@ -112,13 +112,13 @@ static void khw_ui_load(void)
         if (ux) {
             khw_ui.OpenTheme = (pOpenTheme_t)
                 kitty_api_from(ux, "uxtheme.dll", "OpenThemeData", KITTY_API_OPTIONAL,
-                                  "themed text in KiTTY dialogs");
+                                  "themed text in KiTTY++ dialogs");
             khw_ui.CloseTheme = (pCloseTheme_t)
                 kitty_api_from(ux, "uxtheme.dll", "CloseThemeData", KITTY_API_OPTIONAL,
-                                  "themed text in KiTTY dialogs");
+                                  "themed text in KiTTY++ dialogs");
             khw_ui.DrawTextEx = (pDrawThemeTextEx_t)
                 kitty_api_from(ux, "uxtheme.dll", "DrawThemeTextEx", KITTY_API_OPTIONAL,
-                                  "themed text in KiTTY dialogs");
+                                  "themed text in KiTTY++ dialogs");
         }
     }
     khw_ui.DpiForWindow = (pGetDpiForWindow_t)

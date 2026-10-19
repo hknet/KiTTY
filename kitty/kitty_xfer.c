@@ -41,6 +41,16 @@
 #include "kitty_notice.h"   /* Get File's "found" notice */
 #include "kitty_buildlabel.h" /* KITTY_TEST_BUILD_LABEL: the notice trace below */
 
+/* A user action that cannot go on (no SSH, a tool not found, kscp not
+ * started) is reported in the notice window near the clock, which never takes
+ * the focus: a box here stood in front of a live session and stopped it -
+ * no output, no keepalive - until it was answered. Amber, the suite's
+ * warning accent. */
+#define KX_ERR_ACCENT RGB( 190, 110, 0 )
+static void kx_report( const char *caption, const char *text ) {
+	kitty_notice_show( caption, text, KX_ERR_ACCENT, GetNoticeSeconds(), NULL, 0 ) ;
+}
+
 /* The port inside a target override ([user@]hostname[:port]), 0 if it names
  * none. Defined beside kitty_xfer_default_port(), used by the builders above
  * it as well. */
@@ -1443,8 +1453,7 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	          : !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
 		kx_rerun_free( &kx_rerun_next ) ;
-		MessageBox( NULL, KT_XFER_LAUNCH_FAILED,
-		            KT_CAP_XFER, MB_OK|MB_ICONERROR ) ;
+		kx_report( KT_CAP_XFER, KT_XFER_LAUNCH_FAILED ) ;
 		return -1 ;
 	}
 	CloseHandle( wr ) ; CloseHandle( pi.hThread ) ;
@@ -2164,7 +2173,26 @@ void SendFileList( HWND hwnd, char * filelist ) {
 		SendOneFile( hwnd, dir, pname, NULL ) ;
 		pname=pname+i+1 ; i=0;
 		}
-		
+
+	}
+
+/* Send File's picker runs beside the session (kitty_pick_async): the
+ * common dialog's own loop serves no network events, and the session stood
+ * still while it was open. The upload starts when the file has been picked.
+ * One picker at a time: the token is set while it is open. */
+static void * kx_send_pick = NULL ;
+
+static void kx_send_picked( void * ctx, const char * path ) {
+	HWND hwnd = (HWND)ctx ;
+	char * list ;
+	kx_send_pick = NULL ;
+	if( path == NULL || !path[0] || !IsWindow( hwnd ) ) return ;
+	/* two NULs at the end: SendFileList reads the byte after the first */
+	list = calloc( strlen( path ) + 2, 1 ) ;
+	if( list == NULL ) return ;
+	strcpy( list, path ) ;
+	SendFileList( hwnd, list ) ;
+	free( list ) ;
 	}
 
 void SendFile( HWND hwnd ) {
@@ -2175,19 +2203,30 @@ void SendFile( HWND hwnd ) {
 	char filename[32768] = "" ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		kx_report( KT_CAP_XFER, KT_MSG_SSH_ONLY ) ;
 		return ;
 		}
+	if( kx_send_pick != NULL ) return ;   /* its picker is open already */
 
+	/* kscp not there: reported before the picker, as Get File does - the
+	 * picker opened, and the files picked then went nowhere, silently */
+	if( !kitty_xfer_tool_ready( 0 ) ) {
+		kx_report( KT_CAP_XFER, KT_XFER_KSCP_NOT_FOUND ) ;
+		debug_logevent( "%s", KT_XFER_KSCP_NOT_FOUND ) ;
+		return ;
+	}
 	/* kscp checked before the picker: a Yes in its confirmation box re-opens Send File */
-	if( kitty_xfer_tool_ready( 0 ) &&
-	    !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_sendfile, kx_again( hwnd ), kx_again_free ) )
+	if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_sendfile, kx_again( hwnd ), kx_again_free ) )
 		return ;
 
 	/* The picker opens in the upload folder (Connection > File-Transfer-Settings, else
 	 * the global one, else Documents). */
 	char updir[4096] ;
 	kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	kx_send_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, updir, KT_CAP_SEND_FILE,
+	                                 "All files (*.*)|*.*|", kx_send_picked, (void *)hwnd ) ;
+	if( kx_send_pick != NULL ) return ;
+	/* no thread for the picker: on this one, as before */
 	if( OpenFileNameFrom( hwnd, filename, KT_CAP_SEND_FILE, "All files (*.*)|*.*|", updir ) )
 		if( strlen( filename ) > 0 ) {
 			SendFileList( hwnd, filename ) ;
@@ -2432,7 +2471,8 @@ int kitty_xfer_tool_shown( Conf * cf, int which ) {
 
 /* Is the helper behind a Tools-menu entry there? 0 = kscp, 1 = WinSCP. The
  * menu greys an entry whose tool is missing instead of offering a click that
- * ends in nothing (registry mode) or in a "not found" box. */
+ * ends in nothing (registry mode) or in a "not found" notice. A stored path
+ * that is gone runs the search again; what it finds is used for this run. */
 int kitty_xfer_tool_ready( int which ) {
     if( which == 0 ) {
         if( PSCPPath == NULL || !existfile( PSCPPath ) ) SearchPSCP() ;
@@ -2534,72 +2574,39 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
  * through a Save-As instead. The transfer runs through GetOneFileTo() and its
  * relatives - so the port, protocol, key-file and password handling are the
  * ones every kscp download uses, and "Keep the transfer window open after
- * success" applies. */
-static void kx_getfile_go( HWND hwnd, char * clip ) {
-    char * line = clip, * next ;
-    char dir[4096], defdir[4096], remote[4096] ;
-    int nfiles = 0 ;
+ * success" applies.
+ *
+ * Every step that waits for the user runs beside the session: the Save-As
+ * and the folder picker on a thread of their own (kitty_call_async,
+ * kitty_pick_async), the "already exist" question modeless. Each of them
+ * stood the session still while it was open - no output, no keepalive, a
+ * server's close unseen. The steps share one context, kx_getgo_t, and one
+ * Get File at a time goes through them. */
+typedef struct {
+    HWND hwnd ;
+    char * clip ;             /* the paths, one per line (freed with this) */
+    char defdir[4096] ;       /* the download folder the pickers open on */
+    char save[4096] ;         /* Save-As: the remote name in, the chosen path out */
+    char dir[4096] ;          /* the folder picked */
+    int ok ;                  /* Save-As: a file was chosen */
+    int keepboth ;
+} kx_getgo_t ;
+static kx_getgo_t * kx_getgo_cur = NULL ;   /* a Get File waits for the user */
+static HWND kx_getgo_box = NULL ;           /* its "already exist" question */
 
-    /* ONE named file (no interior newline, no wildcard, not a trailing-slash
-     * folder): a Save-As dialog with the remote name filled in, so Windows' own
-     * replace prompt guards an overwrite; kscp then writes to that exact path.
-     * Several files, wildcards and folders keep the folder picker below. */
-    if( !strpbrk( line, "\r\n" ) && !strpbrk( line, "*?" ) && line[0] && line[strlen(line)-1] != '/' ) {
-        char save[4096] ;
-        const char *base = strrchr( line, '/' ) ; base = base ? base + 1 : line ;
-        kitty_xfer_download_dir( conf, defdir, sizeof(defdir) ) ;
-        snprintf( save, sizeof(save), "%s\\%s", defdir, base ) ;
-        if( !SaveFileNameFrom( hwnd, save, KT_XFER_SAVE_AS_TITLE, "All files (*.*)|*.*|", defdir ) ) {
-            sfree( clip ) ; return ;
-        }
-        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL )
-            snprintf( remote, sizeof(remote), "%s", line ) ;
-        else
-            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
-        GetOneFileToPath( hwnd, NULL, remote, NULL, save ) ;
-        sfree( clip ) ; return ;
-    }
+static void kx_getgo_free( kx_getgo_t * g ) {
+    if( kx_getgo_cur == g ) kx_getgo_cur = NULL ;
+    sfree( g->clip ) ;
+    sfree( g ) ;
+}
 
-    kitty_xfer_download_dir( conf, defdir, sizeof(defdir) ) ;
-    if( !OpenDirNameFrom( hwnd, dir, defdir, KT_XFER_GETFILE_PICK_TITLE ) || !dir[0] || !existdirectory( dir ) ) {
-        sfree( clip ) ; return ;
-    }
-
-    /* Are any lines a wildcard (*?) or a folder (trailing '/')? Those download
-     * through a staging folder; a selection of named files instead gets the
-     * "already exists" box below. Scans on a copy, so `line` stays intact. */
-    int any_glob = 0 ;
-    { char *scan = dupstr( line ) ; char *l = scan, *nx ;
-      for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
-        str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
-        if( strpbrk( l, "*?" ) || l[strlen(l)-1]=='/' ) { any_glob = 1 ; break ; } }
-      sfree( scan ) ; }
-
-    /* CASE 2: several NAMED files. If any already exist in dir, ask once -
-     * Overwrite / Keep both / Cancel (the shared themed 3-way box). */
-    int keepboth = 0 ;
-    if( !any_glob ) {
-        char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
-        char *scan = dupstr( line ) ; char *l = scan, *nx ;
-        for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
-            str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
-            const char *base = strrchr( l, '/' ) ; base = base ? base+1 : l ;
-            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
-            if( existfile( cand ) ) {
-                size_t el = strlen( existing ) ;
-                if( el < sizeof(existing)-260 ) snprintf( existing+el, sizeof(existing)-el, "%s\r\n", base ) ;
-                nexist++ ;
-            } }
-        sfree( scan ) ;
-        if( nexist > 0 ) {
-            char *body = dupprintf( KT_XFER_FILES_EXIST_TEXT, dir, existing ) ;
-            int ch = kitty_confirm_box3( hwnd, KT_CAP_XFER_FILES_EXIST, body,
-                        KT_XFER_BTN_OVERWRITE, KT_XFER_BTN_KEEPBOTH, KT_XFER_BTN_CANCEL_PLAIN ) ;
-            sfree( body ) ;
-            if( ch == 0 ) { sfree( clip ) ; return ; }   /* Cancel: nothing */
-            keepboth = ( ch == 2 ) ;
-        }
-    }
+/* The transfers: every line of g->clip into g->dir. */
+static void kx_getgo_run( kx_getgo_t * g ) {
+    HWND hwnd = g->hwnd ;
+    char * line = g->clip, * next ;
+    char * dir = g->dir ;
+    char remote[4096] ;
+    int keepboth = g->keepboth ;
 
     for( ; line != NULL && *line ; line = next ) {
         next = strpbrk( line, "\r\n" ) ;
@@ -2632,10 +2639,134 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
         } else {
             GetOneFileTo( hwnd, NULL, remote, dir ) ;   /* Overwrite / no clash */
         }
-        nfiles++ ;
     }
-    sfree( clip ) ;
-    (void)nfiles ;
+    kx_getgo_free( g ) ;
+}
+
+/* ONE named file: the Save-As, on the worker thread (kitty_call_async). */
+static void kx_getgo_saveas_run( void * v ) {
+    kx_getgo_t * g = (kx_getgo_t *)v ;
+    g->ok = SaveFileNameFrom( g->hwnd, g->save, KT_XFER_SAVE_AS_TITLE, "All files (*.*)|*.*|", g->defdir ) ;
+}
+
+/* ...and its answer, back on the terminal's thread: kscp writes to that path. */
+static void kx_getgo_saved( void * v ) {
+    kx_getgo_t * g = (kx_getgo_t *)v ;
+    const char * line = g->clip ;
+    char remote[4096] ;
+    if( g->ok && IsWindow( g->hwnd ) ) {
+        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL )
+            snprintf( remote, sizeof(remote), "%s", line ) ;
+        else
+            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
+        GetOneFileToPath( g->hwnd, NULL, remote, NULL, g->save ) ;
+    }
+    kx_getgo_free( g ) ;
+}
+
+/* The "already exist" question answered: 1 Overwrite, 2 Keep both; Cancel,
+ * Escape or the window going (0, 3) fetch nothing. */
+static void kx_getgo_exist_done( int answer, void * v ) {
+    kx_getgo_t * g = (kx_getgo_t *)v ;
+    kx_getgo_box = NULL ;
+    if( ( answer == 1 || answer == 2 ) && IsWindow( g->hwnd ) ) {
+        g->keepboth = ( answer == 2 ) ;
+        kx_getgo_run( g ) ;
+    } else {
+        kx_getgo_free( g ) ;
+    }
+}
+
+/* The folder picked (path NULL = cancelled): the clash check, then the
+ * transfers. Called on the terminal's thread (kitty_pick_async's done). */
+static void kx_getgo_folder( void * v, const char * path ) {
+    kx_getgo_t * g = (kx_getgo_t *)v ;
+    const char * line = g->clip ;
+    char * dir = g->dir ;
+    if( path != dir ) snprintf( dir, sizeof(g->dir), "%s", path ? path : "" ) ;
+    if( !dir[0] || !existdirectory( dir ) || !IsWindow( g->hwnd ) ) {
+        kx_getgo_free( g ) ; return ;
+    }
+
+    /* Are any lines a wildcard (*?) or a folder (trailing '/')? Those download
+     * through a staging folder; a selection of named files instead gets the
+     * "already exists" box below. Scans on a copy, so `line` stays intact. */
+    int any_glob = 0 ;
+    { char *scan = dupstr( line ) ; char *l = scan, *nx ;
+      for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
+        str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
+        if( strpbrk( l, "*?" ) || l[strlen(l)-1]=='/' ) { any_glob = 1 ; break ; } }
+      sfree( scan ) ; }
+
+    /* CASE 2: several NAMED files. If any already exist in dir, ask once -
+     * Overwrite / Keep both / Cancel (the shared themed 3-way box, modeless;
+     * the transfers follow its answer, kx_getgo_exist_done). */
+    if( !any_glob ) {
+        char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
+        char *scan = dupstr( line ) ; char *l = scan, *nx ;
+        for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
+            str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
+            const char *base = strrchr( l, '/' ) ; base = base ? base+1 : l ;
+            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
+            if( existfile( cand ) ) {
+                size_t el = strlen( existing ) ;
+                if( el < sizeof(existing)-260 ) snprintf( existing+el, sizeof(existing)-el, "%s\r\n", base ) ;
+                nexist++ ;
+            } }
+        sfree( scan ) ;
+        if( nexist > 0 ) {
+            char *body = dupprintf( KT_XFER_FILES_EXIST_TEXT, dir, existing ) ;
+            int ch ;
+            kx_getgo_box = kitty_confirm_modeless3( g->hwnd, KT_CAP_XFER_FILES_EXIST, body, NULL,
+                        KT_XFER_BTN_OVERWRITE, KT_XFER_BTN_KEEPBOTH, KT_XFER_BTN_CANCEL_PLAIN,
+                        kx_getgo_exist_done, g ) ;
+            if( kx_getgo_box != NULL ) { sfree( body ) ; return ; }
+            /* no modeless box here: the box as before */
+            ch = kitty_confirm_box3( g->hwnd, KT_CAP_XFER_FILES_EXIST, body,
+                        KT_XFER_BTN_OVERWRITE, KT_XFER_BTN_KEEPBOTH, KT_XFER_BTN_CANCEL_PLAIN ) ;
+            sfree( body ) ;
+            if( ch == 0 ) { kx_getgo_free( g ) ; return ; }   /* Cancel: nothing */
+            g->keepboth = ( ch == 2 ) ;
+        }
+    }
+    kx_getgo_run( g ) ;
+}
+
+static void kx_getfile_go( HWND hwnd, char * clip ) {
+    const char * line = clip ;
+    kx_getgo_t * g ;
+
+    if( kx_getgo_cur != NULL ) {
+        /* one Get File at a time: its picker or question is open */
+        if( kx_getgo_box != NULL && IsWindow( kx_getgo_box ) ) SetForegroundWindow( kx_getgo_box ) ;
+        sfree( clip ) ; return ;
+    }
+    g = snew( kx_getgo_t ) ;
+    memset( g, 0, sizeof(*g) ) ;
+    g->hwnd = hwnd ;
+    g->clip = clip ;
+    kitty_xfer_download_dir( conf, g->defdir, sizeof(g->defdir) ) ;
+    kx_getgo_cur = g ;
+
+    /* ONE named file (no interior newline, no wildcard, not a trailing-slash
+     * folder): a Save-As dialog with the remote name filled in, so Windows' own
+     * replace prompt guards an overwrite; kscp then writes to that exact path.
+     * Several files, wildcards and folders keep the folder picker below. */
+    if( !strpbrk( line, "\r\n" ) && !strpbrk( line, "*?" ) && line[0] && line[strlen(line)-1] != '/' ) {
+        const char *base = strrchr( line, '/' ) ; base = base ? base + 1 : line ;
+        snprintf( g->save, sizeof(g->save), "%s\\%s", g->defdir, base ) ;
+        if( kitty_call_async( kx_getgo_saveas_run, kx_getgo_saved, g ) ) return ;
+        kx_getgo_saveas_run( g ) ;    /* no thread for it: here, as before */
+        kx_getgo_saved( g ) ;
+        return ;
+    }
+
+    if( kitty_pick_async( hwnd, KITTY_PICK_FOLDER, g->defdir, KT_XFER_GETFILE_PICK_TITLE, NULL,
+                          kx_getgo_folder, g ) != NULL )
+        return ;
+    /* no thread for the picker: on this one, as before */
+    if( !OpenDirNameFrom( hwnd, g->dir, g->defdir, KT_XFER_GETFILE_PICK_TITLE ) ) g->dir[0] = '\0' ;
+    kx_getgo_folder( g, g->dir ) ;
 }
 
 /* ---- Get File: the clipboard check and the box (hknet/KiTTY#71) ----------
@@ -3056,11 +3187,12 @@ void GetFile( HWND hwnd ) {
 	int cls ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		kx_report( KT_GETFILE_BOX_CAP, KT_MSG_SSH_ONLY ) ;
 		return ;
 	}
 	if( !kitty_xfer_tool_ready( 0 ) ) {
-		MessageBox( hwnd, KT_XFER_KSCP_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		kx_report( KT_GETFILE_BOX_CAP, KT_XFER_KSCP_NOT_FOUND ) ;
+		debug_logevent( "%s", KT_XFER_KSCP_NOT_FOUND ) ;
 		return ;
 	}
 	if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_getfile, kx_again( hwnd ), kx_again_free ) )
@@ -3296,13 +3428,18 @@ static int adopt_tool_path_if_exists( char **out, const char *candidate,
 static int set_winscp_path_if_exists(const char *path)
 {
 	/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see
-	 * adopt_tool_path_if_exists() above. */
+	 * adopt_tool_path_if_exists() above. A path found here is used for this
+	 * run and NOT written to the store, as for FileZilla and kscp: WinSCP
+	 * moved, or a drive not there today, must not rewrite the user's
+	 * setting. Application > KiTTY++ Settings > Transfers & Tools > WinSCP
+	 * shows the found path as a hint while nothing is stored
+	 * (kitty_config_app.c kitty_toolpath_hint). */
 	char *expanded ;
 	if( path == NULL || !path[0] ) return 0 ;
 	expanded = kitty_expand_env_dup( path ) ;
 	if( existfile(expanded) ) {
+		if( WinSCPPath != NULL ) free( WinSCPPath ) ;
 		WinSCPPath = expanded ;
-		WriteParameter( INIT_SECTION, KI_WINSCPPATH, WinSCPPath ) ;
 		return 1 ;
 	}
 	free( expanded ) ;
@@ -3321,11 +3458,17 @@ static int probe_winscp_env_dir(const char *envname, const char *subpath, char *
 int SearchWinSCP( void ) {
 	char buffer[4096] ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
+	/* A stored path whose file is missing stays stored (here and for FileZilla
+	 * and kscp): the drive may only be unmounted today, and the setting is
+	 * the user's - the search below covers this run only. */
 	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( adopt_tool_path_if_exists( &WinSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, KI_WINSCPPATH ) ; }
 	}
+	/* ProgramW6432 as well: a 32-bit process gets ProgramFiles = the x86
+	 * folder, and a 64-bit WinSCP is under ProgramW6432 (in a 64-bit process
+	 * Windows sets ProgramFiles from it, so the probe repeats harmlessly). */
 	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
+	if( probe_winscp_env_dir("ProgramW6432", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
 	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
 	if( probe_winscp_env_dir("LOCALAPPDATA", "Programs\\WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
 	if( probe_winscp_env_dir("ProgramFiles", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
@@ -3341,6 +3484,64 @@ int SearchWinSCP( void ) {
 		if( set_winscp_path_if_exists(buffer) ) return 1 ;
 	}
 	return 0 ;
+}
+
+/*
+ * "Start ... anyway?" for WinSCP and FileZilla: the session's key is
+ * Hello-protected and the agent does not hold it, so the tool can only fail
+ * to log in with it. The question is a modeless box - a modal one stopped the
+ * session behind it until it was answered - and its Yes starts the tool again
+ * past the question. It comes before the command line is built: no password
+ * file, no temporary FileZilla directory and no password in memory waits on
+ * the answer. One question at a time; a second start brings it forward.
+ */
+static HWND kx_anyway_box = NULL ;
+static int kx_anyway_yes = 0 ;     /* set for the one start a Yes makes */
+
+/* 1 = start now; 0 = not now: a question stands (its Yes starts again) or
+ * the answer was No. g (what the start needs again) is freed here or by the
+ * question. */
+static int kx_anyway( HWND hwnd, const char *fmt, void (*done)( int yes, void *ctx ), kx_again_t *g ) {
+	char *note, *text ;
+	int go ;
+	if( kx_anyway_yes ) { kx_anyway_yes = 0 ; kx_again_free( g ) ; return 1 ; }
+	if( kx_anyway_box && IsWindow( kx_anyway_box ) ) {
+		SetForegroundWindow( kx_anyway_box ) ;
+		kx_again_free( g ) ;
+		return 0 ;
+	}
+	note = kx_hello_agent_note( conf ) ;
+	if( note == NULL ) { kx_again_free( g ) ; return 1 ; }
+	text = dupprintf( fmt, note ) ;
+	sfree( note ) ;
+	kx_anyway_box = kitty_confirm_modeless( hwnd, KT_CAP_KEY_NOT_IN_AGENT, text, NULL, NULL, done, g ) ;
+	if( kx_anyway_box ) { sfree( text ) ; return 0 ; }
+	kx_again_free( g ) ;               /* no modeless box here: the box as before */
+	go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT, MB_OKCANCEL|MB_ICONWARNING ) ;
+	sfree( text ) ;
+	return go == IDOK ;
+}
+
+static void kx_anyway_winscp_done( int yes, void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	kx_anyway_box = NULL ;
+	if( yes && IsWindow( g->hwnd ) ) {
+		kx_anyway_yes = 1 ;
+		StartWinSCP( g->hwnd, g->a, g->b, g->c ) ;
+		kx_anyway_yes = 0 ;        /* a start that returned before the question */
+	}
+	kx_again_free( g ) ;
+}
+
+static void kx_anyway_filezilla_done( int yes, void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	kx_anyway_box = NULL ;
+	if( yes && IsWindow( g->hwnd ) ) {
+		kx_anyway_yes = 1 ;
+		StartFileZilla( g->hwnd ) ;
+		kx_anyway_yes = 0 ;
+	}
+	kx_again_free( g ) ;
 }
 
 // Start WinSCP from the current session, optionally in the current directory
@@ -3369,11 +3570,14 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 
 	kx_pwfiles_sweep() ;             /* anything an earlier start left behind */
 	if( directory == NULL ) { directory = kitty_current_dir(); }
-	if( WinSCPPath==NULL ) {
-		if( !SearchWinSCP() ) return ;
-	}
-	if( !existfile( WinSCPPath ) ) {
-		if( !SearchWinSCP() ) return ;
+	/* The stored path gone (WinSCP uninstalled, moved, another drive): the
+	 * search runs again, and what it finds is used for this run. Nothing
+	 * found: reported in the notice window and the Event Log, as for
+	 * FileZilla and kscp - this returned silently before. */
+	if( !kitty_xfer_tool_ready( 1 ) ) {
+		kx_report( KT_BEHAVIOUR_TOOLS_WINSCP, KT_XFER_WINSCP_NOT_FOUND ) ;
+		debug_logevent( "%s", KT_XFER_WINSCP_NOT_FOUND ) ;
+		return ;
 	}
 #if KX_CHECK_SELF_UPDATING_TOOLS
 	/* checked before any password file exists; a Yes starts WinSCP again */
@@ -3384,6 +3588,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	  if( !kitty_helper_ready( hwnd, WinSCPPath, 1, 0, kx_again_winscp, g, kx_again_free ) ) return ;
 	}
 #endif
+	/* the key the agent does not hold: "Start WinSCP anyway?" first */
+	{ kx_again_t *g = kx_again( hwnd ) ;
+	  g->a = directory ? dupstr( directory ) : NULL ;
+	  g->b = host ? dupstr( host ) : NULL ;
+	  g->c = user ? dupstr( user ) : NULL ;
+	  if( !kx_anyway( hwnd, KT_XFER_START_WINSCP_ANYWAY, kx_anyway_winscp_done, g ) ) return ;
+	}
 
 	if( !GetShortPathName( WinSCPPath, shortpath, 4095 ) ) return ;
 
@@ -3605,18 +3816,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
 		bcat( cmd, sizeof(cmd), " Shell=" ) ; rawcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ;
 	}
-	
-	/* WinSCP is a separate program with a window of its own, so there is
-	 * nowhere of ours to write a note into - ask before launching it. */
-	{ char *note = kx_hello_agent_note( conf ) ;
-	  if( note != NULL ) {
-		char *text = dupprintf( KT_XFER_START_WINSCP_ANYWAY, note ) ;
-		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT,
-		                     MB_OKCANCEL|MB_ICONWARNING ) ;
-		sfree( text ) ; sfree( note ) ;
-		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_pwfiles_release( 1 ) ; return ; }
-	  }
-	}
+
 	/* Every password above went into a file: tell WinSCP so. Without a
 	 * password there is no switch and the command line is what it always was
 	 * (key files and the agent are untouched by this). */
@@ -3699,9 +3899,10 @@ int SearchFileZilla( void ) {
 	if( FileZillaPath != NULL ) { free( FileZillaPath ) ; FileZillaPath = NULL ; }
 	if( ReadParameterN( INIT_SECTION, KI_FILEZILLAPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, KI_FILEZILLAPATH ) ; }
 	}
 	if( probe_filezilla_env_dir( "ProgramFiles", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
+	/* a 64-bit FileZilla seen from a 32-bit process: see SearchWinSCP */
+	if( probe_filezilla_env_dir( "ProgramW6432", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
 	if( probe_filezilla_env_dir( "ProgramFiles(x86)", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
 	if( probe_filezilla_env_dir( "LOCALAPPDATA", "Programs\\FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
 	snprintf( buffer, sizeof(buffer), "%s\\filezilla.exe", InitialDirectory ) ;
@@ -3846,7 +4047,8 @@ void StartFileZilla( HWND hwnd ) {
 
 	kx_fzdir_sweep() ;
 	if( !kitty_xfer_tool_ready( 2 ) ) {
-		MessageBox( hwnd, KT_XFER_FILEZILLA_NOT_FOUND, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		kx_report( KT_BEHAVIOUR_TOOLS_FILEZILLA, KT_XFER_FILEZILLA_NOT_FOUND ) ;
+		debug_logevent( "%s", KT_XFER_FILEZILLA_NOT_FOUND ) ;
 		smemclr( pw, sizeof(pw) ) ;
 		return ;
 	}
@@ -3858,6 +4060,13 @@ void StartFileZilla( HWND hwnd ) {
 		return ;
 	}
 #endif
+	/* A Hello-protected key the agent is not holding: FileZilla has no way to
+	 * take a key file from us, so it can only fail - "Start FileZilla
+	 * anyway?" first, as for WinSCP. */
+	if( !kx_anyway( hwnd, KT_XFER_START_FILEZILLA_ANYWAY, kx_anyway_filezilla_done, kx_again( hwnd ) ) ) {
+		smemclr( pw, sizeof(pw) ) ;
+		return ;
+	}
 	/* The REAL path, quoted - not GetShortPathName(): started through its 8.3
 	 * name (C:\PROGRA~1\FILEZI~1\FILEZI~1.EXE) FileZilla exits at once, before
 	 * any window, because it locates its resources from its own module path. */
@@ -3937,17 +4146,6 @@ void StartFileZilla( HWND hwnd ) {
 		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str( conf, CONF_filezilla_options ) ) ;
 	}
 
-	/* A Hello-protected key the agent is not holding: FileZilla has no way to
-	 * take a key file from us, so it can only fail - ask first, as for WinSCP. */
-	{ char *note = kx_hello_agent_note( conf ) ;
-	  if( note != NULL ) {
-		char *text = dupprintf( KT_XFER_START_FILEZILLA_ANYWAY, note ) ;
-		int go = MessageBox( hwnd, text, KT_CAP_KEY_NOT_IN_AGENT, MB_OKCANCEL|MB_ICONWARNING ) ;
-		sfree( text ) ; sfree( note ) ;
-		if( go != IDOK ) { memset( cmd, 0, strlen(cmd) ) ; kx_fzdir_release( 1 ) ; smemclr( pw, sizeof(pw) ) ; return ; }
-	  }
-	}
-
 	debug_logevent_redacted( "Start FileZilla", cmd, pw_at, pw_len ) ;
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", fzdir ) ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
@@ -3972,7 +4170,6 @@ int SearchPSCP( void ) {
 	// In the registry
 	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
 		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		else { DelParameter( INIT_SECTION, KI_PSCPPATH ) ; }
 	}
 
 	// In the ini file
@@ -4066,7 +4263,8 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo, int shift) {
 	 * arrive at all; refuse it here too rather than rely on that. */
 	if( !conf_get_bool(conf,CONF_kscp_dragdrop) ) { DragFinish(hDropInfo) ; return ; }
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
-		MessageBox( hwnd, KT_MSG_SSH_ONLY, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		DragFinish( hDropInfo ) ;   /* the drop is over either way */
+		kx_report( KT_CAP_XFER, KT_MSG_SSH_ONLY ) ;
 		return ;
 	}
 	/* Drag-drop always uses the normal path now. The former "Send file in

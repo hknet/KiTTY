@@ -17,6 +17,11 @@ void kitty_savenew_box( HWND hwnd ) ;
  * sentence, a file always with its full path ("" before any command). */
 const char * kitty_cmd_result( void ) ;
 
+/* kitty_inputbox.c: a result that comes after the command returned (an
+ * answered question, a picked file) onto the command box's result line;
+ * nothing when the box has been closed meanwhile. */
+void kitty_inputbox_result( const char * text ) ;
+
 /* "kitty.exe -h" without a console: the option list in the scrolling
  * command-list window. 0 = the window could not be made. */
 int kitty_cli_help_box( const char * caption, const char * text ) ;

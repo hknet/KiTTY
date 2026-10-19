@@ -21,6 +21,13 @@ int SaveRegistryKeyNow( void ) ;   /* 1 written (or backups off), 0 failed: kitt
 int kitty_backup_before( HWND owner, int own_report ) ;
 char *kitty_backup_not_done( void ) ;   /* "Not done: ..." for a result line; snewn'd */
 int LoadRegistryKey( HWND hdlg );   /* 1 loaded, 0 not: kitty_sav_load_reason() */
+/* The same from a terminal with a live session (/loadreg): an old encrypted
+ * backup (no password prompt in a running session), or a value type it
+ * cannot read, is a failure with its reason - never the end of the process, which is what
+ * the start-up load still does (it runs before any session exists, and in
+ * savemode=file going on without the store could later write an empty one
+ * over it). */
+int LoadRegistryKeyLive( void );
 const char *kitty_sav_load_reason( void );   /* "<file> (<reason>)" of the last failed load */
 void DelRegistryKey( void ) ;
 

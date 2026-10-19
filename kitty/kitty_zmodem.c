@@ -38,6 +38,7 @@
 #include "kitty_zmodem.h"
 #include "kitty_tools.h"    /* existfile: the helper paths must name a file */
 #include "kitty_winutil.h"  /* kitty_expand_env_dup: %VAR% in the rz/sz paths */
+#include "kitty_notice.h"   /* zm_report: the notice window */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -381,6 +382,17 @@ static kitty_zmodem_state *zm_spawn(const char *command, const char *params,
     return zm;
 }
 
+/* A helper that cannot be found or started is reported in the notice window
+ * near the clock, which never takes the focus: a receive starts when the
+ * host's sz begins, in the middle of the session's output, and a box then
+ * stopped the session until it was answered. Amber, the suite's warning
+ * accent. */
+static void zm_report(const char *text)
+{
+    kitty_notice_show(KT_CAP_ZMODEM, text, RGB(190, 110, 0),
+                      GetNoticeSeconds(), NULL, 0);
+}
+
 /* A Yes in the helper box (kitty_helper_ready): the menu command again. */
 typedef struct { HWND owner; UINT cmd; } zm_again_t;
 static void zm_again(void *v)
@@ -413,7 +425,8 @@ int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, L
         char b[1024];
         _snprintf(b, sizeof(b) - 1, KT_ZM_RZ_NOT_FOUND,
                   cmd ? cmd : KT_ZM_UNSET);
-        MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
+        b[sizeof(b) - 1] = '\0';
+        zm_report(b);
         return 0;
     }
     /* rz checked first: a Yes in its confirmation box starts the receive again */
@@ -421,8 +434,7 @@ int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, L
         return 0;
     zm = zm_spawn(cmd, opts, dir, backend, logctx, term);
     if (!zm) {
-        MessageBox(NULL, KT_ZM_RZ_START_FAILED, KT_CAP_ZMODEM,
-                   MB_OK | MB_ICONERROR);
+        zm_report(KT_ZM_RZ_START_FAILED);
         return 0;
     }
     zm->send = 0;
@@ -431,11 +443,56 @@ int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, L
     return 1;
 }
 
+/*
+ * The upload's file picker runs beside the session (kitty_call_async):
+ * GetOpenFileName's own loop serves no network events, and the session stood
+ * still while it was open. Its answer comes back to the terminal's thread,
+ * is kept in zm_picked, and the menu command is posted again: the upload
+ * then starts from kitty_zmodem_send with the session as it is at that
+ * moment. One picker at a time (zm_picking).
+ */
+#define ZM_FILES_SIZE 32000
+typedef struct {
+    HWND owner;
+    UINT cmd;
+    OPENFILENAME fn;
+    char files[ZM_FILES_SIZE];   /* the picker's answer: a path, or dir\0name\0...\0\0 */
+    int ok;
+} zm_pick_t;
+static int zm_picking = 0;
+static char *zm_picked = NULL;   /* the files picked, for the posted command */
+
+static void zm_picked_drop(void)
+{
+    sfree(zm_picked);
+    zm_picked = NULL;
+}
+
+static void zm_pick_run(void *v)
+{
+    zm_pick_t *p = (zm_pick_t *)v;
+    p->ok = GetOpenFileName(&p->fn) ? 1 : 0;
+}
+
+static void zm_pick_done(void *v)
+{
+    zm_pick_t *p = (zm_pick_t *)v;
+    zm_picking = 0;
+    if (p->ok && IsWindow(p->owner)) {
+        zm_picked_drop();
+        zm_picked = snewn(ZM_FILES_SIZE, char);
+        memcpy(zm_picked, p->files, ZM_FILES_SIZE);
+        PostMessage(p->owner, WM_COMMAND, p->cmd, 0);
+    }
+    smemclr(p, sizeof(*p));
+    sfree(p);
+}
+
 /* Start a ZModem SEND (sz <files>): prompt for files, spawn sz. Returns 1. */
 int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
     OPENFILENAME fn;
-    static char filenames[32000];
+    static char filenames[ZM_FILES_SIZE];
     const char *cmd = kitty_zmodem_command(1);
     const char *opts = conf_get_str(conf, CONF_szoptions);
     char dir[4096];
@@ -445,29 +502,55 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
     char *senddir = "";   /* directory the chosen files live in (see below) */
 
     kitty_xfer_download_dir(conf, dir, sizeof(dir));   /* where the picker opens */
-    if (kitty_zmodem_active()) return 0;
+    if (kitty_zmodem_active()) { zm_picked_drop(); return 0; }
     if (!existfile(cmd)) {
         char b[1024];
+        zm_picked_drop();
         _snprintf(b, sizeof(b) - 1, KT_ZM_SZ_NOT_FOUND,
                   cmd ? cmd : KT_ZM_UNSET);
-        MessageBox(NULL, b, KT_CAP_ZMODEM, MB_OK | MB_ICONERROR);
+        b[sizeof(b) - 1] = '\0';
+        zm_report(b);
         return 0;
     }
     /* sz checked before the picker: a Yes in its confirmation box re-opens the upload */
-    if (!kitty_helper_ready(owner, cmd, 0, 1, zm_again, zm_again_new(owner, again), zm_again_free))
+    if (!kitty_helper_ready(owner, cmd, 0, 1, zm_again, zm_again_new(owner, again), zm_again_free)) {
+        zm_picked_drop();
         return 0;
+    }
 
-    memset(&fn, 0, sizeof(fn));
     memset(filenames, 0, sizeof(filenames));
-    fn.lStructSize = sizeof(fn);
-    fn.hwndOwner = owner;
-    fn.lpstrFile = filenames;
-    fn.nMaxFile = sizeof(filenames) - 1;
-    fn.lpstrTitle = KT_ZM_SELECT_FILES;
-    fn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
-               OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
-    if (!GetOpenFileName(&fn))
-        return 0;   /* user cancelled */
+    if (zm_picked) {
+        /* the picker has answered (zm_pick_done): its files */
+        memcpy(filenames, zm_picked, sizeof(filenames));
+        zm_picked_drop();
+    } else {
+        zm_pick_t *pk;
+        if (zm_picking)
+            return 0;               /* its picker is open already */
+        memset(&fn, 0, sizeof(fn));
+        fn.lStructSize = sizeof(fn);
+        fn.hwndOwner = owner;
+        fn.lpstrTitle = KT_ZM_SELECT_FILES;
+        fn.Flags = OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST |
+                   OFN_HIDEREADONLY | OFN_PATHMUSTEXIST;
+        pk = snew(zm_pick_t);
+        memset(pk, 0, sizeof(*pk));
+        pk->owner = owner;
+        pk->cmd = again;
+        pk->fn = fn;
+        pk->fn.lpstrFile = pk->files;
+        pk->fn.nMaxFile = sizeof(pk->files) - 1;
+        if (kitty_call_async(zm_pick_run, zm_pick_done, pk)) {
+            zm_picking = 1;
+            return 0;               /* the upload follows the picker's answer */
+        }
+        sfree(pk);
+        /* no thread for the picker: on this one, as before */
+        fn.lpstrFile = filenames;
+        fn.nMaxFile = sizeof(filenames) - 1;
+        if (!GetOpenFileName(&fn))
+            return 0;   /* user cancelled */
+    }
 
     cur = params;
     {
@@ -523,8 +606,7 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
      */
     zm = zm_spawn(cmd, params, senddir[0] ? senddir : dir, backend, logctx, term);
     if (!zm) {
-        MessageBox(NULL, KT_ZM_SZ_START_FAILED, KT_CAP_ZMODEM,
-                   MB_OK | MB_ICONERROR);
+        zm_report(KT_ZM_SZ_START_FAILED);
         return 0;
     }
     zm->send = 1;

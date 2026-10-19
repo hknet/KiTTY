@@ -24,21 +24,21 @@ DST = ROOT / "kitty" / "kitty_ini.h"
 # ship with, whereas BUILD_VERSION/BUILD_TIME are set per build in
 # windows/CMakeLists.txt (kitty.c defines fallbacks for both, above the point
 # where it includes this header).
-VERSION_LINE = '"; kitty.ini - written by KiTTY " BUILD_VERSION " @ " BUILD_TIME ".\\n"'
+VERSION_LINE = '"; kitty.ini - written by KiTTY++ " BUILD_VERSION " @ " BUILD_TIME ".\\n"'
 
 # What the user sees at the top of the kitty.ini KiTTY creates for them. It is
 # their file to edit - the "generated, do not edit" warning belongs on the
 # header we compile, not on their copy. The version line above comes first.
 BANNER = [
     ";",
-    "; This is KiTTY's settings file. KiTTY created it because there was none;",
+    "; This is KiTTY++'s settings file. KiTTY++ created it because there was none;",
     "; it is yours to edit.",
     ";",
     "; Every supported option is listed below, commented out, led by a description.",
     "; Nothing here is in force: uncomment a line to use it. The values shown are",
     "; the built-in defaults, so uncommenting a line unchanged does nothing today -",
     "; but it does pin that value, where a commented line keeps following the",
-    "; default if a later KiTTY changes it.",
+    "; default if a later KiTTY++ changes it.",
     ";",
     "; Some settings are also held in the registry, and outside portable mode the",
     "; registry is read first - so if an edit here seems to have no effect, that is",

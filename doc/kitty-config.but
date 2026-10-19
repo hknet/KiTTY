@@ -1,6 +1,6 @@
-\C{kitty-config} KiTTY's own configuration options
+\C{kitty-config} KiTTY++'s own configuration options
 
-This chapter documents the settings KiTTY adds to PuTTY's configuration
+This chapter documents the settings KiTTY++ adds to PuTTY's configuration
 box. Everything upstream PuTTY offers is described in
 \k{config}; what follows is the fork's own, panel by panel, in the
 order the panels appear.
@@ -8,7 +8,7 @@ order the panels appear.
 Settings that belong to a \e{saved session} are stored with that session
 and travel with it through \q{Export all} / \q{Import all}. Settings
 that belong to the \e{installation} are stored once for this copy of
-KiTTY, in \c{kitty.ini} or in the registry, and apply to every session;
+KiTTY++, in \c{kitty.ini} or in the registry, and apply to every session;
 those live on the \q{Application} tab (\k{kitty-cfg-application}) and
 each one states so.
 
@@ -31,7 +31,7 @@ Clicking a name in the saved-session list only puts that name into the
 box; it does not load the session. So \q{Save} after a click would write
 the settings currently in the dialog - host, port, protocol, everything -
 over a session you never looked at. KiTTY++ puts up a question first,
-naming the session, whenever the target exists in its store and is not the
+showing the session, whenever the target exists in its store and is not the
 one you loaded. \q{Default Settings} is exempt, and so is saving a session you
 loaded and changed.
 
@@ -72,7 +72,7 @@ Deleting a folder does not delete the sessions in it. The box puts up
 the question where they go: \q{All sessions (root)} is preselected, any
 other folder can be picked. Subfolders move along and keep their place
 below the destination. A name that already exists there stops the delete
-before anything moves, and the box names the sessions in the way. An
+before anything moves, and the box lists the sessions in the way. An
 empty folder is deleted without a question.
 
 \q{Manage...} (under \q{Del folder}, beside the comment field) and
@@ -124,7 +124,7 @@ Manage Sessions.
 Picks one of the named proxy definitions (\k{kitty-cfg-named-proxies})
 for this session, without copying its settings into the session. The
 session records \e{which} definition it uses, so changing the
-definition changes every session that names it - a jump host that moves
+definition changes every session that refers to it - a jump host that moves
 to a new address is edited once.
 
 \q{None} uses the session's own \q{Connection > Proxy} settings as
@@ -134,13 +134,13 @@ and can be hidden entirely (\k{kitty-cfg-sessionlist}).
 \S{kitty-cfg-old-sessions} \q{Old sessions}
 
 Shown only when this machine has sessions in an older KiTTY's registry
-hive (\c{9bis.com}) or in PuTTY's, and this KiTTY had none of its own
+hive (\c{9bis.com}) or in PuTTY's, and this KiTTY++ had none of its own
 when it first ran. Those sessions are listed alongside your own and can
 be opened, edited and deleted; the button opens
 \k{kitty-cfg-migration}, where they can be imported properly.
 
 The behaviour is controlled by \c{showforeignsessions} in
-\c{kitty.ini}: \c{auto} (the default) shows them only while this KiTTY
+\c{kitty.ini}: \c{auto} (the default) shows them only while this KiTTY++
 has no sessions of its own, so they retire themselves once you have
 your own; \c{yes} and \c{no} settle it either way. The same switch
 decides whether such a session still loads by name (\c{-load},
@@ -173,7 +173,7 @@ serial - is shown as the connection error, in the server's own words.
 
 \H{kitty-cfg-logging} The Logging panel
 
-PuTTY's own logging options are described in \k{config-logging}. KiTTY
+PuTTY's own logging options are described in \k{config-logging}. KiTTY++
 adds a timestamp for each logged line, rotation, and the deletion of
 old logs.
 
@@ -206,7 +206,7 @@ without limit. \c{0} switches it off.
 \b This works only if the \e{file name} changes with time. Put \c{&T}
 in it, as in \c{kitty_&H_&T.log}.
 
-\b If the name has no time-varying code, KiTTY \e{declines} to rotate
+\b If the name has no time-varying code, KiTTY++ \e{declines} to rotate
 and reports so in the Event Log, because reopening the same name would
 overwrite the log rather than rotate it.
 
@@ -241,7 +241,7 @@ running}: without a script, none of these fields does anything.
 
 A script \e{starts} in one of two ways: automatically when the session
 connects, if \q{Run the script on connect} is ticked and \q{Script
-file} names the file; or on demand in a live session from the system
+file} gives the file; or on demand in a live session from the system
 menu, \q{Tools > Send recorded script}, which opens a file picker. Only
 one script runs at a time, and every start, stop and timeout is
 reported in the Event Log.
@@ -283,12 +283,12 @@ input sent faster than a human types.
 
 A line's wait can also be set \e{from inside the file}, per line:
 
-\b \q{Start of condition/comment line} names one character, \c{:} by
+\b \q{Start of condition/comment line} sets one character, \c{:} by
 default. With \q{Use conditions from file} OFF, every line starting
 with it is simply a \e{comment} and is skipped.
 
 \b With \q{Use conditions from file} ON, a line starting with that
-character is a \e{condition}: it names the wait-for text for the
+character is a \e{condition}: it gives the wait-for text for the
 \e{next line only}, overriding the global \q{Wait-for text} for that
 one line. A line starting with the character \e{doubled} (\c{::}) is a
 comment. Lines with no condition of their own still use the global
@@ -318,7 +318,7 @@ scriptmode=no} in \c{kitty.ini}; the \e{login script} on
 
 \S{kitty-cfg-sendcmd} \q{Accept broadcast messages for this session}
 
-One KiTTY can type a line into another's session, as if it had been
+One KiTTY++ can type a line into another's session, as if it had been
 typed at the keyboard - and a trailing Return means the far end
 \e{runs} it. That is what makes a session scriptable from outside:
 \c{kitty.exe -sendcmd}, or the \c{/command} control message, sends one
@@ -363,7 +363,7 @@ off receives nothing and shows nothing. \c{wintitle=no} under
 The first form broadcasts with this installation's own key, the second
 aims the broadcast at sessions carrying the key \c{mygroup}
 (\c{-sendcmdkey} may stand on either side of \c{-sendcmd}). The
-sending KiTTY delivers the line and exits; a trailing meaning of
+sending KiTTY++ delivers the line and exits; a trailing meaning of
 \q{run it} comes from the receiving shell seeing Return. The third
 form sends every line of a file as one command each, in order, with
 \q{Pause between auto-command lines} (\c{commanddelay}) between them;
@@ -385,14 +385,14 @@ broadcast} on the window itself;
 
 \b the key match - the broadcast's key (default: the sender
 installation's own) must equal the key each receiving session listens
-for. A portable stick and an installed KiTTY have \e{different}
+for. A portable stick and an installed KiTTY++ have \e{different}
 generated keys, so they do not hear each other until you give them a
 common key.
 
 \S{kitty-cfg-broadcast-key} \q{Broadcast key}
 
 Decides who a broadcast reaches. Each installation gets its own
-generated key, so a portable KiTTY on a USB stick does not type into
+generated key, so a portable KiTTY++ on a USB stick does not type into
 the sessions of the copy installed on the same machine.
 
 Give several sessions a key of their own and only those answer, even
@@ -458,7 +458,7 @@ treating AltGr as Ctrl+Alt, which is also how a terminal application
 sees a plain \c{Alt+key}. A program inside the terminal therefore
 cannot distinguish \q{I typed a euro sign} from \q{I pressed Alt+E}.
 
-This setting chooses which of the two KiTTY sends:
+This setting chooses which of the two KiTTY++ sends:
 
 \b \e{Off} (the default): AltGr composes characters, as the layout
 intends. \c{AltGr+Q} sends \c{@}.
@@ -469,7 +469,7 @@ sees them.
 
 Turn it on only if you need those shortcuts and do not need the
 layout's extra characters in the same session. The two cannot both
-work, which is why this is a switch and not something KiTTY can decide
+work, which is why this is a switch and not something KiTTY++ can decide
 for you.
 
 It is \e{not} the same as \q{AltGr acts as Compose key} on the same
@@ -481,10 +481,10 @@ single AltGr keypress is unaffected.
 
 Which modifier sends the escape sequence a shell binds to
 \e{backward-word} / \e{forward-word}. PuTTY emits it on \c{Alt+Left} and
-\c{Alt+Right}; KiTTY can send it on \c{Ctrl} instead, or on both.
+\c{Alt+Right}; KiTTY++ can send it on \c{Ctrl} instead, or on both.
 
 This takes effect only when \q{Shift/Ctrl/Alt with the arrow keys}
-(\k{config-sharrow}) is set to \e{xterm-style bitmap}, KiTTY's default.
+(\k{config-sharrow}) is set to \e{xterm-style bitmap}, KiTTY++'s default.
 In \q{Ctrl toggles application mode} the arrow-key modifiers are not
 encoded at all, so there is nothing to remap.
 
@@ -556,7 +556,7 @@ into Top and Left, so a fixed position moves along with the window.
 A position that no longer exists cannot strand a window. Monitors are
 unplugged and resolutions change, and a position saved against a screen
 that is no longer there would otherwise open the window where you
-cannot reach it; KiTTY checks the pinned spot against the monitors you
+cannot reach it; KiTTY++ checks the pinned spot against the monitors you
 have now and moves the window onto the nearest one if it fits on none
 of them.
 
@@ -579,7 +579,7 @@ On Window > Title & Icon. Gives this session its own icon, so a taskbar full of 
 distinguished at a glance - production red, staging blue, and so on.
 
 \q{Icon (from internal resources)} takes the number of one of the icons
-built into KiTTY. \q{External icon file} takes a path to an \c{.ico}
+built into KiTTY++. \q{External icon file} takes a path to an \c{.ico}
 file, which wins over the internal number when both are set. The icon
 applies to the window, the taskbar and the tray.
 
@@ -613,11 +613,11 @@ several windows.
 
 Text is drawn over the image with the terminal's own colours, so a busy
 picture at a high opacity is unreadable; that is a matter of taste, not
-a limit KiTTY imposes.
+a limit KiTTY++ imposes.
 
 \S{kitty-cfg-hyperlinks} \ii{Hyperlinks} in the terminal
 
-KiTTY finds URLs in the terminal output and makes them clickable.
+KiTTY++ finds URLs in the terminal output and makes them clickable.
 
 \b \q{Detect URLs in the output (regex)} finds links by
 their look, with the pattern set below. Output that marks nothing up -
@@ -625,7 +625,7 @@ a URL printed by \c{cat}, a link in a log - is only clickable this way.
 Stored as \c{HyperlinkScan}.
 
 \b \q{Allow \i{OSC 8} hyperlinks} lets a program on the
-far end mark text as a link to a target it names (\c{ls --hyperlink},
+far end mark text as a link to a target it gives (\c{ls --hyperlink},
 many text-mode programs). The text need not be the target, so what such
 a link may open and when it needs a confirmation first follow the
 rules under \q{Confirmation before opening a link} below. Stored as
@@ -663,8 +663,8 @@ else shows the confirmation, with one red line per warning:
 \b the scheme is not a browser's (\c{ssh:}, \c{file:} or any other): Windows
 starts the program registered for it.
 
-\b the text names another host than the target's. That is checked when the
-text is written as an address (\c{https://...} or \c{www....}) and names a
+\b the text shows another host than the target's. That is checked when the
+text is written as an address (\c{https://...} or \c{www....}) and shows a
 host that is neither the target's nor a name above or below it
 (\c{docs.example.org} and \c{example.org} are the same owner). It is also
 checked when the text is a single name such as \c{mybank.com}: then the
@@ -679,11 +679,11 @@ page really sends you.
 another name.
 
 \b the target logs in with a user name (maybe with a password) before the
-host (\c{https://harald:secret@kapper.net/}): the red line names the host
+host (\c{https://harald:secret@kapper.net/}): the red line shows the host
 and the user. The password is shown as \c{****} in the tip and in the
-confirmation. The link opens with it as written. A text that names
+confirmation. The link opens with it as written. A text that shows
 a host only inside that user name (\c{mybank.com} for
-\c{https://mybank.com@evil.test/}) counts as naming another host.
+\c{https://mybank.com@evil.test/}) counts as showing another host.
 
 }
 
@@ -701,7 +701,7 @@ at a time.
 In every mode some targets are never opened. The first one of a window
 is noted in the Event Log: a target with no valid scheme (a drive letter
 such as \c{c:\\...} is none), a target with a double quote in it, a
-\c{file} link naming another computer and a web address with a host
+\c{file} link pointing to another computer and a web address with a host
 written as a number (\c{3232235777}, \c{0x7f.1}, \c{127.1}) or
 percent-encoded. The last one applies to links the regular expression
 finds as well. A link found by the regular expression with a user name
@@ -726,11 +726,18 @@ over a link.
 configured to use; clear it and name another program in \q{Other
 browser} to send links somewhere specific.
 
-\b \q{Use the default regular expression} uses KiTTY's own pattern for
+\b \q{Use the default regular expression} uses KiTTY++'s own pattern for
 what a URL looks like. Clear it to supply your own in \q{Custom regex}
 - useful for making ticket numbers or host names clickable.
 
-The pattern decides what KiTTY treats as a link, and therefore what it
+\b \q{Custom regex} is compiled as you type. While it does not compile,
+a red line under the field shows the error
+(\c{Invalid regex: unmatched ()}); the text stays as typed, and an empty field is allowed (it matches
+nothing). A session started with a pattern that does not compile uses
+the default pattern instead: a notice and a warning in the Windows
+Application event log (source \c{KiTTY++}) report the error.
+
+The pattern decides what KiTTY++ treats as a link, and therefore what it
 will hand to the browser. A pattern that matches more than URLs is a
 way to hand arbitrary text to a program, so keep custom patterns
 narrow.
@@ -742,7 +749,7 @@ A program on the far end can request the terminal to put something on your
 which can also carry images and other content), and can request to read it
 back. That is genuinely useful over SSH - \c{tmux} and \c{neovim} copy
 this way - and it is also a remote program touching a local resource, so
-KiTTY makes both directions a policy rather than a fact. The settings
+KiTTY++ makes both directions a policy rather than a fact. The settings
 below cover both protocols alike.
 
 \S{kitty-cfg-osc52-writes} \q{Writes - host sets your clipboard}
@@ -865,7 +872,7 @@ so the application's read meets the ordinary permission dialog, and
 your answer there governs the reads that follow.
 
 \b \e{One paste} is one hand-over. Each time you press Paste while the
-mode is armed, KiTTY sends the application the list of types on the
+mode is armed, KiTTY++ sends the application the list of types on the
 clipboard together with a fresh token, and does not paste the text.
 That token authorises exactly one read, within the seconds set under
 \q{Paste token valid for} (ten unless changed). After the read, or
@@ -913,7 +920,7 @@ How the application gets the token is part of the protocol: the
 terminal puts it into the paste event as the \c{pw} field, and the
 application sends it back in its read request, under the name
 \q{Paste event}. The single use is what the protocol demands; the ten
-seconds and the disarm clock are KiTTY's own bounds on top of it.
+seconds and the disarm clock are KiTTY++'s own bounds on top of it.
 
 Paste events are only sent while reads are set to \e{Ask}. Under
 \e{Deny} a paste pastes text, whatever the application has set, and
@@ -928,13 +935,13 @@ nobody has to wonder whether a knob is missing.
 \b \e{Remembered program approvals: 8.} A program that identifies
 itself (password and name) and is approved is remembered so it gets no
 question again while its grant lasts. Eight such approvals are kept, the
-oldest making way for a new one. A host cannot make KiTTY allocate by
+oldest making way for a new one. A host cannot make KiTTY++ allocate by
 sending endless names, and nobody has eight editors polling one
 clipboard.
 
 \b \e{Content types and aliases per write: 64 each.} A write carrying
 more answers \c{EFBIG}. Nobody has 64 formats on a clipboard; the
-bound exists so that a hostile host cannot make KiTTY allocate without
+bound exists so that a hostile host cannot make KiTTY++ allocate without
 limit.
 
 \b \e{Largest single packet: 16 KB.} The protocol sends data in chunks
@@ -948,7 +955,7 @@ only break compliance; raising \q{Largest payload} above 64 raises
 this too.
 
 \b \e{Chunk size: 4096 bytes.} Specified by the protocol for the data
-KiTTY sends; a client may chunk its writes however it likes.
+KiTTY++ sends; a client may chunk its writes however it likes.
 
 Two things are absent on purpose rather than missing. There is no
 separate switch for this protocol: it shares the OSC 52 policy, one
@@ -958,7 +965,7 @@ its grant, never from a setting.
 
 \S{kitty-cfg-osc52-notices} The Notifications panel
 
-How KiTTY shows you a permission is live or has just been used. A
+How KiTTY++ shows you a permission is live or has just been used. A
 permission you have forgotten about is the thing that makes a standing
 grant risky, so these are visible by design:
 
@@ -1012,7 +1019,7 @@ The key is \c{KscpDragDrop}.
 once the files of a drop are uploaded, their remote paths are typed at
 the cursor, quoted for the shell and separated by spaces, without an
 Enter; a file whose upload failed is left out. The text goes in as a
-paste, so a program that asked for bracketed paste receives it as one.
+paste, so a program that requested bracketed paste receives it as one.
 The path is the target directory and the name: the OSC 7 directory, the
 fixed remote upload directory (one starting with neither \c{/} nor
 \c{~} is taken under \c{~/}), else \c{~/name} in the home directory. A dropped folder gives
@@ -1099,7 +1106,7 @@ FileZilla alike.
 passed to WinSCP verbatim - the second is WinSCP's own \c{-rawsettings}
 mechanism, for settings it has no command-line switch for.
 
-\b \q{Shell} names the remote shell to use, in SCP mode only.
+\b \q{Shell} sets the remote shell to use, in SCP mode only.
 
 The session's password, and a proxy or tunnel password, are never put on
 WinSCP's command line: each is written to a private temporary file that
@@ -1234,7 +1241,7 @@ Drag-and-drop uploads, and the \q{Start WinSCP} menu item, need to know
 \e{where} on the far end to put a file.
 
 \b \q{Track remote directory (OSC 7 shell integration)} sends them to
-the shell's current directory instead of your home directory. KiTTY
+the shell's current directory instead of your home directory. KiTTY++
 reads that directory from the standard \i{OSC 7} sequence your shell
 emits at every prompt (\c{ESC ] 7 ; file://host/path BEL}), validated
 strictly as data: an absolute path, a whitelisted character set, never
@@ -1265,7 +1272,7 @@ zsh, in \c{~/.zshrc}:
 \c autoload -Uz add-zsh-hook
 \c add-zsh-hook precmd __osc7_cwd
 
-Reconnect, or re-source the file and \c{cd} once, so KiTTY sees the
+Reconnect, or re-source the file and \c{cd} once, so KiTTY++ sees the
 first report.
 
 }
@@ -1316,7 +1323,7 @@ changed there; the \q{Global: ...} line beneath the field shows that
 value. Stored as \c{TransferMaxMB}.
 
 \b \q{Allow full path Upload-Requests} decides what a request for a file
-\e{leaving} may name. Off (the default): only names inside the upload
+\e{leaving} may point to. Off (the default): only names inside the upload
 folder are served; a request written as a full local path
 (\c{/C:/Users/you/file}) is refused for that file, before any dialog,
 and the other files of the request continue. On: a full path is
@@ -1343,7 +1350,7 @@ Either prints \c{/home/you/reports/report.pdf}.
 
 }
 
-\n Select that line with the mouse - KiTTY copies a selection to the
+\n Select that line with the mouse - KiTTY++ copies a selection to the
 clipboard as you release the button.
 
 \n Right-click the title bar (or open the window menu) and choose
@@ -1568,7 +1575,7 @@ where SCP does not.
 
 The session settings are the options handed to \c{rz} (receive) and
 \c{sz} (send). Downloads are written to the session's download folder,
-set on \k{kitty-cfg-transfers-panel} (the panel names it). \c{Ctrl+X}
+set on \k{kitty-cfg-transfers-panel} (the panel shows it). \c{Ctrl+X}
 aborts a transfer that has begun. The \e{paths} to \c{rz} and \c{sz}
 are per PC and live on \k{kitty-cfg-external-tools}.
 
@@ -1603,7 +1610,7 @@ the confirmation like any other helper program.
 \H{kitty-cfg-knocking} \ii{Port knocking}
 
 A sequence of connection attempts that a firewall watches for, and
-opens the real port only after seeing it. KiTTY performs the sequence
+opens the real port only after seeing it. KiTTY++ performs the sequence
 before connecting, so the session opens without a separate tool.
 
 The field is a comma-separated list of \c{port:protocol} knocks.
@@ -1620,7 +1627,7 @@ A free-text note stored with the saved session: what the machine is
 for, who owns it, the change that had you connect to it.
 
 It travels with the session through \q{Export all} / \q{Import all} and
-survives a rename. It is never sent to the host, and KiTTY shows it
+survives a rename. It is never sent to the host, and KiTTY++ shows it
 only on this panel - it is a note for you, not a label the session list
 displays.
 
@@ -1656,11 +1663,11 @@ never locked.
 
 The configuration box has two tabs. \q{Session} holds everything that
 belongs to the session you are editing; \q{Application} holds the
-settings that belong to this \e{installation} of KiTTY and apply to
+settings that belong to this \e{installation} of KiTTY++ and apply to
 every session it opens.
 
 The split exists because those settings had nowhere else to live. A
-named proxy, the path to WinSCP, or whether KiTTY checks for updates
+named proxy, the path to WinSCP, or whether KiTTY++ checks for updates
 were never properties of a connection, and keeping them among the
 session settings meant saving a session to change something that had
 nothing to do with it.
@@ -1675,7 +1682,7 @@ and \k{kitty-cfg-host-cas}.
 A named proxy is a proxy or jump host defined once and used by name in
 any number of sessions (\k{kitty-cfg-proxy-override}). Change the
 definition - a jump host moves, a password rotates - and every session
-that names it follows, because the sessions record the name, not the
+that refers to it follows, because the sessions record the name, not the
 settings.
 
 On the \q{Defaults} leaf beneath, \q{Host field default} is the global
@@ -1729,7 +1736,7 @@ diagnostics} whether the proxy negotiation is shown in the terminal.
 
 Nothing on this panel reaches the store until \q{Save}, and leaving the
 panel with an unsaved edit puts up a question first. \q{Delete} removes the
-definition after confirming; sessions that named it fall back to their
+definition after confirming; sessions that referred to it fall back to their
 own proxy settings.
 
 \S{kitty-cfg-proxy-forwards} The Proxy-Forwards panel
@@ -1766,7 +1773,7 @@ with.
 frame goes, and the two size fields refuse edits until the box is
 cleared again (\c{fixedsizewindow} in \c{kitty.ini}).
 
-\b \q{always start a new KiTTY after the terminal window closes} makes
+\b \q{always start a new KiTTY++ after the terminal window closes} makes
 closing a terminal return to the configuration box rather than end the
 program. It applies to any terminal, even one that never connected -
 including one opened from the saved-session list or the Start button, so
@@ -1808,8 +1815,8 @@ the \q{Delete} button, the list's Delete menu item and the Del key put up
 the question \q{Delete the session ...?} first. Off, they delete at once. A backup of the store is
 taken before the delete either way.
 
-\b \q{Open on the last used session} starts each KiTTY on the session
-you used last. Off, KiTTY starts in \e{quick connect}: every window
+\b \q{Open on the last used session} starts each KiTTY++ on the session
+you used last. Off, KiTTY++ starts in \e{quick connect}: every window
 opens on \q{Default Settings} with the cursor already in \q{Host Name},
 so you type an address and press Enter.
 
@@ -1862,11 +1869,11 @@ without an entry of its own - opens where Windows places it, at its own
 columns x rows. Every session's own entries and the configuration
 window's own position (\k{kitty-cfg-config-window}) are not touched.
 
-\b \q{Icons} names the library the session icons are taken from: an
+\b \q{Icons} sets the library the session icons are taken from: an
 \c{.exe}, \c{.dll} or \c{.icl} holding icon resources. A session's
 Window > Title & Icon panel picks one of them by number for its terminal
 window; the configuration box and the other tools keep their own. It is
-loaded when KiTTY starts, so a change shows in the next start. Blank
+loaded when KiTTY++ starts, so a change shows in the next start. Blank
 means \c{kitty.dll} beside \c{kitty.exe} if there is one, otherwise
 \c{kitty.exe} itself, which carries the built-in set.
 
@@ -1883,14 +1890,14 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours),
 
 What the keyboard and the mouse do in a terminal window.
 
-\b \q{Mouse chords} are the two clicks KiTTY takes for itself:
+\b \q{Mouse chords} are the two clicks KiTTY++ takes for itself:
 Ctrl+Shift+left-click duplicates the session, Ctrl+middle-click sends
 the window to the tray. Off, both reach the host, which a program that
 wants middle-click paste or mouse reporting will thank you for.
 
 \b \q{Function keys of a new session} is what the Keyboard panel of a
 newly created session starts with; a session's own choice always wins
-over it. KiTTY's built-in default is \q{Xterm 216+}, the mode modern
+over it. KiTTY++'s built-in default is \q{Xterm 216+}, the mode modern
 hosts expect, in which Shift+F1 to F12 mean F13 to F24; stock PuTTY's
 \c{ESC[n~} is the first alternative.
 
@@ -1900,7 +1907,7 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{mouseshortcuts} and
 \S{kitty-cfg-kset-shortcuts} The Shortcuts panel
 
 \q{Keyboard shortcuts in the terminal window} is the master switch for
-KiTTY's own key combinations in a terminal - the actions listed below,
+KiTTY++'s own key combinations in a terminal - the actions listed below,
 the predefined Ctrl+Shift+letter commands and the AutoText combinations
 of the \q{AutoText} leaf (\k{kitty-cfg-kset-autotext}). Switch it off
 when a full-screen program in the terminal needs those keys; for one
@@ -1910,7 +1917,7 @@ shortcuts and the per-session global hotkey are not affected. The
 switch decides only whether the keys fire: the list below and the
 AutoText leaf can be edited either way.
 
-\q{Shortcuts for KiTTY++ actions} lists every action KiTTY can bind a
+\q{Shortcuts for KiTTY++ actions} lists every action KiTTY++ can bind a
 key to - assigned or not; an action without a key shows an empty
 \q{Key} cell and does nothing until it gets one. Click a row and its
 key appears in the \q{Key:} field under the list; press the new
@@ -1919,14 +1926,14 @@ and the field shows it as \c{Ctrl+Shift+F4}. Backspace or Delete empties
 the field, which is how an action is disabled. \q{Save} stores what the
 field shows; \q{Default} stores the built-in key of the action (an
 action that has none is stored empty). Both are live at once in every
-open window of this KiTTY. The list can be sorted by either column with
+open window of this KiTTY++. The list can be sorted by either column with
 a click on its header.
 
 A combination is refused, here and on the AutoText leaf, when it is
 already used: by another action, by an AutoText key, by one of the keys
-KiTTY keeps for itself (Ctrl+Shift+F8 and Ctrl+Shift+F12), or when it
+KiTTY++ keeps for itself (Ctrl+Shift+F8 and Ctrl+Shift+F12), or when it
 is Alt+F4, which closes the window before any shortcut sees it - the
-message names the holder, and \q{Default} is refused the same way when
+message shows the holder, and \q{Default} is refused the same way when
 the default is taken by a key set elsewhere, so free that key first.
 Ctrl+Shift+letter is allowed; the line under the field then states
 which predefined user command loses its key (it keeps its menu entry).
@@ -1943,7 +1950,7 @@ The keys in \c{kitty.ini}: \c{shortcuts} under \c{[KiTTY]} is the
 switch; the combinations themselves are the \c{[Shortcuts]} section.
 
 The actions, by the name the list shows them under, and the key each
-has out of the box (none where no key is named):
+has out of the box (none where no key is given):
 
 \b \q{Always on top} - keep the window above every other; Ctrl+F7.
 
@@ -2034,7 +2041,7 @@ Ctrl+F2.
 again; Shift+F12.
 
 \b \q{Send to all windows} - the one-line box whose text goes to every
-KiTTY window; Ctrl+F8.
+KiTTY++ window; Ctrl+F8.
 
 \b \q{Send to all windows (mode)} - the multiline box for the same;
 Shift+F8, and Ctrl+Shift+F8 always.
@@ -2067,7 +2074,7 @@ its key and text appear in the fields; \q{New} empties them for a fresh
 entry. Press the combination in the \q{Key:} field (modifiers and the
 key together); Backspace or Delete empties it. \q{Save} stores the entry
 (a text is required); \q{Delete} removes the selected one. Both are live
-at once in every open window of this KiTTY.
+at once in every open window of this KiTTY++.
 
 \q{Text to type:} takes the same escapes as \c{kitty.ini}: \c{\\n}
 presses Enter, \c{\\t} is Tab, \c{\\h} is Backspace, \c{\\p} waits a
@@ -2081,14 +2088,14 @@ and leaves the cursor on the line.
 The master switch for every shortcut, and the actions with their keys,
 are on the Shortcuts panel (\k{kitty-cfg-kset-shortcuts}). A
 combination already used - by an action, by another AutoText entry, by
-one of the keys KiTTY keeps for itself, or Alt+F4 - is refused with the
-holder named. Ctrl+Shift+letter is allowed; the line under the \q{Key:}
+one of the keys KiTTY++ keeps for itself, or Alt+F4 - is refused with the
+holder shown. Ctrl+Shift+letter is allowed; the line under the \q{Key:}
 field then states which predefined user command loses its key (it
 keeps its menu entry).
 
 \S{kitty-cfg-kset-automation} The Automation panel
 
-How KiTTY paces itself when it types for you.
+How KiTTY++ paces itself when it types for you.
 
 \b \q{Wait before the auto-command starts typing} is the pause after
 the terminal opens, in seconds, before the login script and the
@@ -2125,7 +2132,7 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{initdelay},
 
 \S{kitty-cfg-kset-broadcast} The Broadcast leaf (Broadcast-Settings and -Actions)
 
-One KiTTY can type a line into another's session (\k{kitty-cfg-sendcmd}
+One KiTTY++ can type a line into another's session (\k{kitty-cfg-sendcmd}
 describes what that is and why it is gated). This leaf holds the parts that
 belong to the installation rather than to one session: the master
 switch, the group key, and a console that sends.
@@ -2139,10 +2146,10 @@ Which sessions accept is set per session on Session > Broadcast, or
 with Tools > \q{Accept broadcast} on a running window. It is
 \c{sendcmdmode} under \c{[KiTTY]} in \c{kitty.ini}.
 
-\b \q{Group key of this installation} is what decides which KiTTYs hear
+\b \q{Group key of this installation} is what decides which KiTTY++ windows hear
 each other's broadcasts: only windows with the same key do. Left alone,
 the key is \e{derived} from where this copy is installed and which
-settings store it uses - not stored anywhere - so an installed KiTTY
+settings store it uses - not stored anywhere - so an installed KiTTY++
 and a portable one on a stick get different keys by construction and
 cannot type into each other by accident; the line under the field states
 so. Type a key to \e{join} two installations (give both the same one)
@@ -2270,26 +2277,26 @@ in this order: Cascadia Mono, Cascadia Code, Segoe UI Symbol, Segoe UI
 Emoji, Segoe UI Historic, Microsoft YaHei UI, Microsoft JhengHei UI,
 Yu Gothic UI, Malgun Gothic. The first font that has the character
 draws it; fonts that are not installed are skipped. When none of them
-has it, Windows' own font linking gets a turn - outside KiTTY's
+has it, Windows' own font linking gets a turn - outside KiTTY++'s
 control and outside this page - and only when that also has nothing
 does the terminal font's own box for a missing character show.
 
 \b With \e{Direct2D}, \c{override} then the same list are tried first.
 A character none of those has then goes to Windows' own font fallback
 (DirectWrite, Windows 8.1 and later), which picks a font from
-everything installed. Windows makes that choice, not KiTTY, and it
+everything installed. Windows makes that choice, not KiTTY++, and it
 covers far more, so very few characters end as a box.
 
 \q{Draw missing characters from fallback fonts} is the master switch
-for KiTTY's \e{own} choices - \c{override} below and this list - on
+for KiTTY++'s \e{own} choices - \c{override} below and this list - on
 both renderers; the list field is greyed while it is off and keeps its
 value. It does not reach Windows' own font substitution (GDI's font
-linking, Direct2D's DirectWrite fallback), which is outside KiTTY's
+linking, Direct2D's DirectWrite fallback), which is outside KiTTY++'s
 control and keeps drawing on both renderers whatever this switch is
-set to - so a missing character can still show, from a font KiTTY did
+set to - so a missing character can still show, from a font KiTTY++ did
 not choose, with the switch off.
 
-\q{Fonts to try first} names fonts that are tried before the built-in
+\q{Fonts to try first} lists fonts that are tried before the built-in
 list. Give the names as Windows shows them, separated by commas:
 
 \b \c{Symbols Nerd Font Mono,JetBrains Mono} tries those two first,
@@ -2307,7 +2314,7 @@ Both settings are kept in \c{kitty.ini} whatever the store mode,
 because the feature's other keys live only there and one feature
 belongs in one place: \c{override}, a map that pins a Unicode range to
 one font ahead of the list on both renderers, whatever the probing
-would otherwise find; a font \c{override} names but that is not
+would otherwise find; a font listed in \c{override} that is not
 installed is skipped, as an unfound list font is. \c{override} does
 not reach plain Latin/ANSI text under GDI, which draws such text on a
 fast path that never consults it; under Direct2D it does. Also
@@ -2319,7 +2326,7 @@ The keys in \c{kitty.ini}, under \c{[FontFallback]}: \c{active} and
 
 \S{kitty-cfg-kset-printing} The Printing leaf (under Terminal)
 
-The layout of KiTTY's own printout: \q{Print clipboard} on the Tools
+The layout of KiTTY++'s own printout: \q{Print clipboard} on the Tools
 menu (Shift+F7) and \q{Print all} (F7), which copies the whole buffer
 and prints it. The text goes to the printer chosen in the Windows print
 dialog, one line at a time. The
@@ -2355,7 +2362,10 @@ condition, what follows; see \k{kitty-cfg-reconnect-rules}.
 host-key questions, between a pop-up box and a prompt inside the
 terminal. The in-terminal prompts take a typed \q{yes}; the changed-key
 one requires the word \q{confirmed} as a separate answer before it
-replaces a stored key.
+replaces a stored key. With the pop-up box, a connection that cannot
+be opened shows the box, and the window then stays open with the
+reason in it: a failed Restart Session or reconnect does not close it
+(\c{-putty} mode keeps PuTTY's exit).
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
 \c{ReconnectDelay}, \c{reconnectmaxdelay}, \c{reconnectbackoff}, the \c{reconnect...} keys of
@@ -2447,6 +2457,23 @@ default, \q{Manage Sessions} alone (\c{kitty.exe -manage}), or \q{Quick
 Connect} (\c{kitty.exe -quickconnect}); a running launcher follows a
 change at the next double click.
 
+\b \q{Global hotkey} is a key combination, such as \c{Ctrl+Alt+K},
+that does from any program what the double click does. Empty, the
+default, means none. It takes Ctrl, Alt, Shift or Win, at least one,
+plus a letter, a digit or F1 to F24. While the launcher runs, no other
+program receives the combination; with a single modifier
+(\c{Ctrl+K}) that includes editors in a session and browsers. The
+launcher registers it before the sessions' launcher hotkeys: a session
+with the same combination does not get it, and the launcher's tray
+balloon lists that session. Typing stores nothing: \q{Apply} checks
+the combination and stores it only when it is free or the running
+launcher holds it as this global hotkey already. Otherwise its box
+reports why - another program holds it, or a saved session's launcher
+hotkey uses it - and nothing is stored. A single modifier is reported
+as a note and does not stop the store. Empty, \q{Apply} removes the
+global hotkey. A value typed and not applied is dropped when the panel
+is left. A running launcher registers the stored combination at once.
+
 \b \q{Show hidden windows again after the launcher ends} is for windows
 hidden from the launcher's menu: they have no taskbar button and no
 tray icon, so when the launcher is killed or crashes, each one shows
@@ -2460,7 +2487,7 @@ launcher the mode started by itself; one you started stays. The notice
 duration is how long the workplace mode notice stays on screen.
 
 \b \q{Start Launcher at Login}, at the bottom of the panel, is the same
-setting as \q{Start at login} in the launcher's own menu: a \q{KiTTY
+setting as \q{Start at login} in the launcher's own menu: a \q{KiTTY++
 Launcher} shortcut to this \c{kitty.exe -launcher} in your Startup
 folder, made or removed at once. It is not a \c{kitty.ini} key. If the
 installer already put such a shortcut into the Startup folder for all
@@ -2472,14 +2499,14 @@ greyed while one is running and comes back when it exits.
 
 One \c{[Launcher]} key is not on the panel: \c{classname}, the Windows
 window class the launcher registers and looks for to decide whether one
-is already running. It matters only when two separate KiTTY
+is already running. It matters only when two separate KiTTY++
 installations on one machine should each keep a launcher of their own;
 give one of them a different name in its \c{kitty.ini}. Everything else
 leaves it alone.
 
 The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
-\c{alreadyRunCheck}, \c{unhideafter}, \c{exitwithworkplace},
-\c{noticeseconds} and the
+\c{alreadyRunCheck}, \c{dblclick}, \c{globalhotkey}, \c{unhideafter},
+\c{exitwithworkplace}, \c{noticeseconds} and the
 \c{classname} above. \q{Keep my hand-edited launcher menu} is
 \c{reload=no}; the default is \c{reload=yes}.
 
@@ -2525,7 +2552,7 @@ of its subfolders. More than eight sessions get a confirmation first, and
 the sessions start one after the other, a moment apart.
 
 \q{Open Sessions} lists every open KiTTY++ window; its label counts
-them, \q{Open Sessions (12, 7 hidden)}. Each entry names the saved
+them, \q{Open Sessions (12, 7 hidden)}. Each entry shows the saved
 session - \c{user@host} for a window opened without one - with the
 window's live title after it, \q{prod-db - root@db1: ~}. The hidden
 windows come first, then the visible ones, each group in alphabetical
@@ -2550,7 +2577,7 @@ starts with has that letter as its keyboard key.
 the window title - and so on the taskbar button - and in front of the
 session name in \q{Open Sessions}, so ten windows to one jump host can
 read \q{db - jump - ...}, \q{web - jump - ...}. An empty name removes
-it. The name belongs to the window and is not saved; \c{-winname} names
+it. The name belongs to the window and is not saved; \c{-winname} sets the name of
 one window from the command line (\k{kitty-cfg-window-name}). A right click on a window's entry
 in \q{Open Sessions} offers the same \q{Terminal Name...} - the way
 to name a window that is hidden.
@@ -2579,7 +2606,7 @@ What Windows hands to this KiTTY++, and the buttons that register it.
 \c{ssh://}, \c{kitty://} and \c{putty://} - and the session-file
 extension (\c{.ktx} unless \c{fileextension} in \c{kitty.ini} sets
 another), each with the program that opens it today: \e{this KiTTY++},
-another KiTTY with its path, the program's name, or \e{not registered}.
+another KiTTY or KiTTY++ with its path, the program's name, or \e{not registered}.
 \c{putty://} is optional and is registered only from the command line
 (\c{-sshhandler -puttyurl}).
 
@@ -2591,8 +2618,8 @@ machine-wide installation requires administrator rights), for your
 account otherwise. An entry another program owns is left alone and
 reported. \q{Register and take over from other programs} replaces those
 entries too; each setting replaced is exported to a \c{.reg} file first,
-and the report names the command that puts it back. \q{Unregister}
-removes the entries that point at a KiTTY - any KiTTY, so an entry left
+and the report shows the command that puts it back. \q{Unregister}
+removes the entries that point at a KiTTY or KiTTY++ - any of them, so an entry left
 by a copy that no longer exists goes too - and exports each first; entries
 other programs own are not touched. A portable copy puts up one more question before
 writing, because the entries stay behind when the copy is removed.
@@ -2604,7 +2631,7 @@ The same work is available from the command line as \c{-sshhandler} and
 user PATH} puts the folder that holds \c{kitty.exe} - and with it
 \c{klink}, \c{kscp}, \c{ksftp}, \c{kageant} and \c{kittygen} - on your
 account's PATH, so a shell opened from then on finds them by name. The
-box shows the state of that PATH entry, not a setting of KiTTY's;
+box shows the state of that PATH entry, not a setting of KiTTY++'s;
 unchecking removes exactly that entry. Shells already open keep the PATH
 they started with. A portable copy that is moved leaves the old entry
 behind: uncheck and check again from the new place.
@@ -2615,9 +2642,12 @@ installer makes: \e{KiTTY++}, \e{KiTTY++ Quick-Connect}
 and \e{KiTTY++ Launcher} (\c{-launcher}), each pointing to this
 \c{kitty.exe} where it is. \q{Create in Start menu} puts them in a Start
 menu folder of their own, \e{KiTTY++ (portable)}, never in the
-installer's; \q{Create on Desktop} puts them on the Desktop. A shortcut of
+installer's; \q{Create on Desktop} puts them on the Desktop, the first
+as \e{KiTTY++ (portable)} (the installer's Desktop shortcut is
+\e{KiTTY++}); a \e{KiTTY++} there that points to this \c{kitty.exe},
+written by an older KiTTY++, is removed after a question. A shortcut of
 the same name that points to another \c{kitty.exe} is replaced only after
-a question naming its target; one that points here is rewritten, so
+a question showing its target; one that points here is rewritten, so
 pressing the button again after moving the copy updates the set. A
 shortcut file cannot be shipped in the ZIP itself: it holds the absolute
 path of its target.
@@ -2685,7 +2715,7 @@ The link types are registered with Windows on \k{kitty-cfg-system}.
 
 \S{kitty-cfg-external-tools} The Transfers & Tools panel
 
-KiTTY drives programs it does not contain: \i{WinSCP} or \i{FileZilla}
+KiTTY++ drives programs it does not contain: \i{WinSCP} or \i{FileZilla}
 for a graphical file transfer of the session you are on, \c{kscp} for
 drag-and-drop uploads and the Send and Get file commands, and \c{rz}
 and \c{sz} for ZModem transfers inside the terminal. The WinSCP and
@@ -2693,7 +2723,7 @@ FileZilla leaves below this panel hold the executables' paths
 (\c{WinSCPPath}, \c{FileZillaPath}); the Tools menu offers each program
 only while its file exists.
 
-\b \q{File-copy helper} is normally found by KiTTY itself at every
+\b \q{File-copy helper} is normally found by KiTTY++ itself at every
 start, since \c{kscp.exe} ships beside it, and what it finds is not
 written back: an empty field stays empty and means "find it". Set it
 only to force a particular binary. \q{Port for file transfers} follows the session's port unless
@@ -2721,7 +2751,7 @@ there is no per-session form.
 Where those are installed is a property of this PC, not of a
 connection - the same session opened on your laptop and on a
 colleague's machine should not need two different paths - so the paths
-are application settings, stored once for this KiTTY like everything
+are application settings, stored once for this KiTTY++ like everything
 else on this tab. The settings that \e{are} per session stay on the
 session's own panels:
 \k{kitty-cfg-winscp-session} and \k{kitty-cfg-zmodem-session}.
@@ -2736,7 +2766,7 @@ the session's login - host, user, a password file:
 \b \c{kscp.exe} and \c{klink.exe} beside \c{kitty.exe} start only when
 they are the KiTTY++ programs of this release: our signature (when
 \c{kitty.exe} carries one) and the same version. Anything else is
-refused, and a box names the file.
+refused, and a box shows the file.
 
 \b Any other helper - a \c{PSCPPath} elsewhere, PuTTY's \c{pscp.exe},
 \c{rz} and \c{sz} - starts at once when it carries our signature. Otherwise a confirmation box comes up the first time,
@@ -2783,25 +2813,25 @@ is refused for that file. Stored as \c{transferfullpath}.
 
 \S{kitty-cfg-kitty-settings} The KiTTY++ Settings tree
 
-Settings of this KiTTY as a whole - not of any session - that had no
+Settings of this KiTTY++ as a whole - not of any session - that had no
 panel before and could only be changed by editing \c{kitty.ini} or the
 registry by hand. One leaf per concern.
 
-Each leaf writes to the store this KiTTY reads from: the registry on an
+Each leaf writes to the store this KiTTY++ reads from: the registry on an
 installed copy, \c{kitty.ini} in a folder store (\c{savemode=dir}). The
 precedence rules between the two are set out at the top of
 \c{kitty.ini.example}.
 
 Two keys are deliberately not editable here. \c{restrictacl} is shown
 read-only on \k{kitty-cfg-storage}, because it is honoured from
-\c{kitty.ini} alone. \c{conf=no} forbids every write KiTTY would make to
+\c{kitty.ini} alone. \c{conf=no} forbids every write KiTTY++ would make to
 its configuration, so a settings window must not offer it.
 
 \S{kitty-cfg-storage} The Storage & Backup panel
 
 \b \q{This KiTTY++} reports where the settings live - the registry hive,
 or the folder of a folder store - and which configuration file is in
-use. When KiTTY runs read-only (\c{readonly=yes}) or without a
+use. When KiTTY++ runs read-only (\c{readonly=yes}) or without a
 configuration file (\c{conf=no}) the panel states so and offers no
 fields: the backups are not written in either state, so a count would
 change nothing.
@@ -2816,7 +2846,7 @@ In the registry store the field shows the registry key, read-only, and
 host-key file name, for example \c{.khk}; none by default. \q{Apply}
 puts it in force and renames the host-key files to carry it at once,
 then reports how many; a file whose new name exists already is left as
-it is and named. A file arriving later without it is renamed when its
+it is and listed. A file arriving later without it is renamed when its
 host is first used, and where both names exist the one with the ending
 is read. \c{kitty.ini}: \c{[KiTTY] hostkeyextension}, old KiTTY's key.
 
@@ -2853,7 +2883,7 @@ PuTTY always did;
 
 \b switch on: from Default Settings (the top-level one), which works as
 a template in the background - every setting, a user name and password
-kept there included, which is why ticking the box asks first.
+kept there included, which is why ticking the box requires a confirmation first.
 
 }
 
@@ -2874,6 +2904,21 @@ configuration box is committed with \q{Open}, when \q{Change Settings}
 is applied, and before a session is overwritten or deleted. The path
 the backups are written to is shown; it follows the \c{sav} key in
 \c{kitty.ini}.
+
+\b \q{Passwords protected with} (a folder store only) is
+\c{PortablePasswordProtection}: \q{a master password} (the default,
+set up the first time a password is saved), \q{this Windows account
+(DPAPI)} - this account on this PC only, no master password - or
+\q{nothing (unprotected)}. The master password's setup box offers the
+same choice: \q{Use DPAPI (this PC only)} writes
+\c{PortablePasswordProtection=dpapi} into the \c{kitty.ini} in use
+(an installed copy's own, not the session folder) and saves the
+password with DPAPI. Another PC that shares the session folder (a
+synced configuration folder) makes its own choice and cannot read the
+passwords saved here. Cancel there saves no password. While the master password is
+locked - its setup or unlock cancelled, a wrong one - a password typed
+is not saved: the one stored before stays as it was, and KiTTY++
+reports it.
 
 \b \q{Hardening} shows whether the restricted process ACL is on. That
 switch is read from \c{kitty.ini} only - never the registry, so a stale
@@ -2905,13 +2950,13 @@ copy a setting from the one, paste it into the other.
 
 \q{Edit kitty.ini} opens the file in the editor Windows has for \c{.ini}
 files - always kitty.ini, whichever of the two the view is showing -
-after a warning: kitty.ini is read when KiTTY starts, so a change takes
-effect in the next KiTTY you start, not in the one you are looking at,
-and a line KiTTY cannot read is ignored without a message. KiTTY never
+after a warning: kitty.ini is read when KiTTY++ starts, so a change takes
+effect in the next KiTTY++ you start, not in the one you are looking at,
+and a line KiTTY++ cannot read is ignored without a message. KiTTY++ never
 writes the file from this panel.
 
 The value of any key whose name ends in \c{password}, \c{passphrase},
-\c{secret} or \c{token} is shown as \c{********}. KiTTY itself keeps no
+\c{secret} or \c{token} is shown as \c{********}. KiTTY++ itself keeps no
 secret in kitty.ini; the mask is for what a hand may have put there,
 so that a screenshot of this panel is safe to share.
 
@@ -2922,12 +2967,12 @@ so that a screenshot of this panel is safe to share.
 An SSH agent holds your private keys and signs with them on request,
 and any program can offer to be that agent: it is a named pipe, and
 whoever gets there first answers. A program in that position sees every
-key request KiTTY makes.
+key request KiTTY++ makes.
 
-A signed KiTTY checks who is answering and warns when the agent is not
+A signed KiTTY++ checks who is answering and warns when the agent is not
 a signed build it recognises. That is not a claim that the agent is
 malicious - a self-built \c{kageant}, or another agent you chose, is
-unverified too - it is KiTTY telling you \e{who} it is about to hand a
+unverified too - it is KiTTY++ showing you \e{who} it is about to hand a
 signing request to, at the moment it matters.
 
 Turn the warning off if you deliberately use an agent that cannot be
@@ -2943,16 +2988,16 @@ in those lines is blanked; host, user and paths are not. It is
 
 \S{kitty-cfg-missing-features} \q{Report in the terminal what features this Windows Installation does not support}
 
-KiTTY runs on old versions of Windows deliberately. The features that need a
+KiTTY++ runs on old versions of Windows deliberately. The features that need a
 recent one - dark mode, Windows Hello, per-monitor DPI scaling, keeping
 secrets encrypted in memory - are looked for while it starts rather than
-demanded of the loader, so a Windows without them still runs KiTTY. Those
+demanded of the loader, so a Windows without them still runs KiTTY++. Those
 features simply do not happen.
 
 That creates a bad failure: a feature which quietly never works looks exactly
-like a setting that will not stick. So KiTTY names them.
+like a setting that will not stick. So KiTTY++ lists them.
 
-\b One line in the terminal when a session opens, naming the features that are
+\b One line in the terminal when a session opens, listing the features that are
 unavailable. This checkbox is what turns that line off, and it is worth
 turning off once you have read it - the answer is a property of the machine
 and will not change.
@@ -2995,10 +3040,10 @@ side, is at
 What happens to a login you type.
 
 When a session logs in with a user name and a password you typed at the
-prompt, KiTTY copies both into the running session's settings, exactly
+prompt, KiTTY++ copies both into the running session's settings, exactly
 as if you had entered them on the session's Login panel. Three things
 follow from that. \q{Duplicate session} opens its copy with those
-settings and logs in without a question. The programs KiTTY starts for the
+settings and logs in without a question. The programs KiTTY++ starts for the
 session - WinSCP, FileZilla and \c{kscp} - are given the same login,
 just as they are given one held in the session. And \q{Change Settings}
 in the terminal window, followed by \q{Save}, writes them into the saved
@@ -3025,23 +3070,23 @@ it is \c{userpasssshnosave} under \c{[KiTTY]} (\c{yes} or \c{no}).
 
 \S{kitty-cfg-client-identity} The Client identity panel
 
-\q{Client version string} is the software token of the banner KiTTY
+\q{Client version string} is the software token of the banner KiTTY++
 sends to every SSH server before anything else, and the line beneath
 shows the whole banner as the server receives it. Blank, the banner is
 the one the PuTTY base sends, \c{SSH-2.0-PuTTY_Release_}\e{version}.
 Set, the banner becomes \c{SSH-2.0-}\e{your text} exactly: some servers
 reject a client they do not recognise, and a current OpenSSH string,
-\c{OpenSSH_10.0} for example, makes KiTTY look like a stock client. It changes
-nothing about how KiTTY behaves and does not choose the protocol
+\c{OpenSSH_10.0} for example, makes KiTTY++ look like a stock client. It changes
+nothing about how KiTTY++ behaves and does not choose the protocol
 version; that is a session's SSH panel.
 
 \S{kitty-cfg-clipboard} The Clipboard panel
 
 \q{Warn before pasting more than ... characters} is the large-paste
 guard; the field between the two halves of the sentence is the limit.
-When the clipboard holds more than the limit, KiTTY names the count and
-the limit and puts up a question before anything is sent, and the default answer is
-No, so a stray Enter cancels the paste instead of flooding the shell.
+When the clipboard holds more than the limit, KiTTY++ puts up a question
+with the count and the limit before anything is sent. The default answer
+is No, so a stray Enter cancels the paste instead of flooding the shell.
 Set it to 0 to never warn. It counts characters, not lines, and judges
 only the size. It is one setting for every session; there is no
 per-session form of it.
@@ -3076,8 +3121,8 @@ checkbox is \c{notesonce} beside it. The note is one line there, with
 \c{\\n} for a line break, \c{\\r} and \c{\\t} likewise, and \c{\\\\} for a
 backslash.
 Where the settings are kept in the registry it is the value \c{Notes} under
-KiTTY's own key - the same value older KiTTY versions displayed in a
-message box at every start, so an installed KiTTY keeps the note it already
+KiTTY++'s own key - the same value older KiTTY versions displayed in a
+message box at every start, so an installed KiTTY++ keeps the note it already
 had.
 
 \S{kitty-cfg-applications} The Applications panel
@@ -3098,7 +3143,7 @@ red, when a file was changed, is signed by someone else, lacks a check this
 build has, or is another version; \q{unverified} when nothing here could
 judge it - an unsigned test build, or a Windows that cannot verify the
 signature and a build without the stamp key. Programs in the folder that
-are not KiTTY++'s are counted, named in the detail box when the header row
+are not KiTTY++'s are counted, listed in the detail box when the header row
 is selected, and not judged. A click on a row shows the file's path, size,
 version, signer, hash and the reason for its verdict; \q{Copy} puts the
 table on the clipboard; \q{Verify again} repeats the check. Every red row
@@ -3106,7 +3151,7 @@ is also written to the Application event log, once per start.
 
 \S{kitty-cfg-host-keys} The Host keys panel
 
-Every SSH host key this KiTTY has accepted, one row per host, port and
+Every SSH host key this KiTTY++ has accepted, one row per host, port and
 key type: the type and key size, the start of the SHA256 fingerprint,
 when the key was first seen and last written, and what the last
 \q{Verify} found. A host key belongs to a host and port, not to a
@@ -3158,7 +3203,7 @@ One switch that sends \e{every} connection through a chosen proxy,
 whatever each session stores - for the laptop that is behind a
 corporate proxy at the office and directly on the network at home.
 
-\b \q{Proxy for everything} names the definition to use
+\b \q{Proxy for everything} sets the definition to use
 (\k{kitty-cfg-named-proxies}).
 
 \b \q{Switch off after} disarms it again by itself, so an evening at
@@ -3174,10 +3219,10 @@ and switching the mode off returns every session to its own settings.
 
 \S{kitty-cfg-migration} The Migration panel
 
-Moves this KiTTY's sessions to another computer, opens Manage
+Moves this KiTTY++'s sessions to another computer, opens Manage
 Sessions, and brings in sessions from older stores.
 
-\b \q{Move this KiTTY's sessions between computers}: \q{Export all...}
+\b \q{Move this KiTTY++'s sessions between computers}: \q{Export all...}
 writes every saved session, and the named proxy definitions, as
 protected \c{.ktx} bundle files; \q{Import all...} reads such files
 into this store. Passwords are re-protected by the store they arrive
@@ -3189,7 +3234,7 @@ Sessions window, the same as \q{Manage...} on the Session panel (see
 
 The groups below them appear only on a registry-backed installation
 whose older KiTTY hive (\c{9bis.com}) or PuTTY hive holds sessions.
-They list those sessions and import the ones you select into KiTTY's
+They list those sessions and import the ones you select into KiTTY++'s
 own store.
 
 \b \q{Show / edit / delete old PuTTY or KiTTY sessions} makes those
@@ -3197,7 +3242,7 @@ sessions visible in the saved-session list, where they can be opened,
 edited and deleted. The setting behind the checkbox
 (\c{showforeignsessions} in \c{kitty.ini}) actually has \e{three}
 states, one more than a checkbox can show: until you touch the box it
-stands on \c{auto}, which shows the old sessions only while this KiTTY
+stands on \c{auto}, which shows the old sessions only while this KiTTY++
 has none of its own, so they retire themselves once you do. Ticking or
 clearing the box replaces \c{auto} with a firm \c{yes} or \c{no} - to
 get \c{auto} back, edit the ini line. See also
@@ -3209,9 +3254,9 @@ that exists only in an older KiTTY's hive or in PuTTY's is not found
 by \c{-load}, by \c{@name}, by the launcher, or by the console tools
 \c{klink}, \c{kscp} and \c{ksftp}, which read the same
 \c{showforeignsessions} line. With \c{auto} that means the old stores
-retire themselves for loading too, the day this KiTTY has sessions of
+retire themselves for loading too, the day this KiTTY++ has sessions of
 its own: import the ones you still use, or set \c{yes} to keep loading
-them. Only KiTTY itself writes that one-time \c{auto} answer down; the
+them. Only KiTTY++ itself writes that one-time \c{auto} answer down; the
 console tools evaluate it and change nothing. The importer below is
 not affected by the switch - it always sees both hives.
 
@@ -3228,14 +3273,14 @@ the same session can be imported again.
 taken as well.
 
 \b Settings this version no longer has are not carried over, and the
-import names them when it finishes.
+import lists them when it finishes.
 
 A session is imported by being \e{loaded and saved}, not by copying its
-registry key, so what arrives is a session of KiTTY's own in KiTTY's
+registry key, so what arrives is a session of KiTTY++'s own in KiTTY++'s
 own formats - an old KiTTY's stored password, in particular, is decoded
 on the way in and re-protected on the way out.
 
-Three settings are deliberately left behind, and the import names them
+Three settings are deliberately left behind, and the import lists them
 when it finishes; a fourth key, \c{Present}, is dropped silently:
 
 \b \c{OSC52WarnBeforeClipboardSync} meant \q{warn before a host writes
@@ -3265,8 +3310,8 @@ session cannot put a window out of reach.
 \S{kitty-cfg-migration-folders} The (old) KiTTY Folders leaf
 
 Imports sessions that live in \e{files}, whether an old KiTTY or this
-one wrote them: a portable KiTTY on a stick, a copied \c{Sessions}
-directory, a colleague's KiTTY folder. Both file formats are read, and
+one wrote them: a portable KiTTY++ on a stick, a copied \c{Sessions}
+directory, a colleague's KiTTY or KiTTY++ folder. Both file formats are read, and
 each format's password protection is handled (see \q{State} below).
 Choose the folder and press \q{Scan}; the folder and its subfolders are searched
 (eight levels deep, up to five thousand files - the result line states so
@@ -3307,20 +3352,20 @@ name, and a password protected on another machine cannot be decrypted on
 this one; such a session is imported without its password too - type it
 once and save. An unreadable file is listed and skipped.
 
-\S{kitty-cfg-ini-migration} The KiTTY storage panel
+\S{kitty-cfg-ini-migration} The KiTTY++ Storage panel
 
 Moves a whole store between the registry and a folder. Neither action
 touches the store it reads from.
 
 \dt \e{Make a portable copy}
 
-\dd Pick a folder. KiTTY writes into it a copy of \c{kitty.exe} and the
+\dd Pick a folder. KiTTY++ writes into it a copy of \c{kitty.exe} and the
 companion programs beside it (kageant, kittygen, klink, kscp, ksftp, the
 help file), a \c{kitty.ini} holding every application setting of this
-KiTTY plus \c{savemode=dir}, and the store: \c{Sessions\\}, \c{Proxies\\}
+KiTTY++ plus \c{savemode=dir}, and the store: \c{Sessions\\}, \c{Proxies\\}
 and \c{SshHostKeys\\}. Run \c{kitty.exe} from that folder and it uses
 those files and never the registry - on a USB stick, in a synced folder,
-on another PC. The folder must be writable; KiTTY checks by writing a
+on another PC. The folder must be writable; KiTTY++ checks by writing a
 file there, not by looking at the path, so a per-user installation
 folder is accepted.
 
@@ -3343,10 +3388,10 @@ overwritten and the rest stay.
 \dd Pick the folder of a portable store. Its sessions, named proxies
 and host keys are taken into the registry, and the settings of its
 \c{kitty.ini} are written to the registry as well; they apply after a
-restart. If the store is protected with a master password, KiTTY requires
+restart. If the store is protected with a master password, KiTTY++ requires
 it once. Entries that already exist in the registry are overwritten
 or kept, as you answer. The folder is left as it is. This action is
-offered only while KiTTY itself saves to the registry.
+offered only while KiTTY++ itself saves to the registry.
 
 \lcont{
 
@@ -3398,7 +3443,7 @@ line with \c{kitty.exe -update}, which does that and exits.
 
 \S{kitty-cfg-antiidle} \q{Anti-idle string}
 
-Text KiTTY sends to the host at intervals to stop an idle session being
+Text KiTTY++ sends to the host at intervals to stop an idle session being
 closed by a firewall or an idle timeout on the far end. It is sent as
 if typed, so choose something harmless - a space and a backspace, or a
 newline at a shell prompt.
@@ -3463,7 +3508,7 @@ attention rather than waiting for you to look.
 
 \S{kitty-cfg-reportvt220} \q{Report as a VT220 with this session's features (CSI c)}
 
-How KiTTY answers the device attributes query (\c{CSI c}, and \c{ESC
+How KiTTY++ answers the device attributes query (\c{CSI c}, and \c{ESC
 Z}), which programs send to find out what the terminal can do. On, the
 answer is a VT220 (\c{ESC [ ? 62 ; ... c}) with the attributes this
 session really has at that moment, in ascending order: \c{1} 132
@@ -3477,7 +3522,7 @@ way. On by default; stored with the session (\c{ReportVT220}).
 
 \S{kitty-cfg-nofocusrep} \q{Disable focus reporting}
 
-Off (the default), a program that asks for it (\c{CSI ? 1004 h}) - vim,
+Off (the default), a program that requests it (\c{CSI ? 1004 h}) - vim,
 neovim, tmux with \c{focus-events}, far2l - gets \c{ESC [ I} when the
 window gains the keyboard focus and \c{ESC [ O} when it loses it, to
 redraw, reload or save; far2l uses it to know when the window is in
@@ -3494,7 +3539,7 @@ This value is the longest one hold keeps the screen from being drawn, so a
 program that never ends the mode cannot freeze the window; the hold also
 ends on a resize and on a terminal reset. The default is 200 ms; raise it
 for full-screen programs whose redraws arrive slowly over a slow link.
-\c{0} turns the mode off: KiTTY then ignores it and \c{CSI ? 2026 $ p}
+\c{0} turns the mode off: KiTTY++ then ignores it and \c{CSI ? 2026 $ p}
 (DECRQM) answers \q{not recognised}, so programs do not use it. The largest
 value is 5000. Stored with the session (\c{SyncOutputHoldMs}); a change
 made in Change Settings applies from the next hold.
@@ -3641,7 +3686,7 @@ file managers do. An image sits on the cells where it was placed and
 scrolls with the text into the scrollback. PNG and raw RGB/RGBA images
 are taken, sent in the data stream; an image is at most 8192 pixels on a
 side and 64 MB, a window holds at most 128 MB of them. Files or shared
-memory a server names on this PC are never read. Off, the terminal does
+memory a server points to on this PC are never read. Off, the terminal does
 not answer the protocol and programs fall back to text. On by default;
 stored with the session (\c{KittyGraphics}).
 
@@ -3725,7 +3770,7 @@ program inside the terminal wants \c{Ctrl+Tab} for itself. Requires
 Terminal.
 
 \b \q{System menu} and \q{Allow closing (also disables the X and
-Alt+F4)} remove the window's own controls. They are for a KiTTY embedded
+Alt+F4)} remove the window's own controls. They are for a KiTTY++ embedded
 in something else, or on a kiosk, where the window must not be closed or
 moved by whoever is using it - not a security measure, since the process
 can still be ended. Without the system menu Windows draws no caption

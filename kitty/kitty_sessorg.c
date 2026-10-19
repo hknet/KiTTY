@@ -422,6 +422,7 @@ static int so_copy_sessions(char **sel, int nsel, const char *dest, int clone,
         return 0;
     }
     so_names_load(&s);
+    kitty_mpw_user_action_begin();   /* prompts again after a cancel */
     for (i = 0; i < nsel && ok; i++) {
         Conf *c = conf_new();
         char *to, *err;
@@ -445,6 +446,7 @@ static int so_copy_sessions(char **sel, int nsel, const char *dest, int clone,
         }
         made[nmade++] = to;
     }
+    kitty_mpw_user_action_end();
     for (i = 0; i < nmade; i++)
         sfree(made[i]);
     sfree(made);

@@ -867,27 +867,54 @@ int kitty_storage_is_portable(void) { return store_is_file(); }
 
 /* ksf_munge / ksf_unmunge: kitty_sessionpath.c, beside the path rules. */
 
-struct ksf_item { char *key; char *val; struct ksf_item *next; };
+/* A session file's lines in file order. A setting line keeps the text it was
+ * read from (raw) and ksf_save writes that back while its value is unchanged,
+ * so a tool's "Key\value\" or "Key\0" line, spacing and all, survives a
+ * save; a changed value drops raw and is written as key=value. A line that is
+ * no setting - a comment, a blank line - is an item with no key, kept at its
+ * place and written back as it was; every reader of the list skips it.
+ * Each line keeps its ending too (crlf): a CRLF file stays CRLF, and a line a
+ * save adds takes the ending of the file's first line. */
+struct ksf_item { char *key; char *val; char *raw; int crlf;
+                  struct ksf_item *next; };
+static void ksf_item_free(struct ksf_item *it)
+{
+    sfree(it->key);
+    if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+    if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+    sfree(it);
+}
 char *ksf_list_get(struct ksf_item *h, const char *key)   /* borrowed or NULL */
 {
-    for (; h; h = h->next) if (!strcmp(h->key, key)) return h->val;
+    for (; h; h = h->next) if (h->key && !strcmp(h->key, key)) return h->val;
     return NULL;
 }
+/* The same value again leaves the line as it is; a new value replaces the
+ * line's text; a new key goes at the END, after every line already there. */
 void ksf_list_set(struct ksf_item **h, const char *key, const char *val)
 {
-    struct ksf_item *it;
-    for (it = *h; it; it = it->next)
-        if (!strcmp(it->key, key)) {
-            char *nv = dupstr(val ? val : "");
+    struct ksf_item *it, **pp;
+    if (!val)
+        val = "";
+    for (pp = h; (it = *pp) != NULL; pp = &it->next)
+        if (it->key && !strcmp(it->key, key)) {
+            char *nv;
+            if (it->val && !strcmp(it->val, val))
+                return;
+            nv = dupstr(val);
             if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+            if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
             it->val = nv;
+            it->raw = NULL;
             return;
         }
     it = snew(struct ksf_item);
     it->key = dupstr(key);
-    it->val = dupstr(val ? val : "");
-    it->next = *h;
-    *h = it;
+    it->val = dupstr(val);
+    it->raw = NULL;
+    it->crlf = *h ? (*h)->crlf : 0;     /* the file's ending; a new file LF */
+    it->next = NULL;
+    *pp = it;
 }
 /* KiTTY: drop a key from a loaded session list. Used to retire a renamed
  * setting when the session is next saved - open_settings_w pre-loads the file,
@@ -897,11 +924,9 @@ void ksf_list_del(struct ksf_item **h, const char *key)
     struct ksf_item **pp = h;
     while (*pp) {
         struct ksf_item *it = *pp;
-        if (!strcmp(it->key, key)) {
+        if (it->key && !strcmp(it->key, key)) {
             *pp = it->next;
-            sfree(it->key);
-            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
-            sfree(it);
+            ksf_item_free(it);
             return;
         }
         pp = &it->next;
@@ -912,15 +937,14 @@ void ksf_list_foreach(struct ksf_item *h,
                       void *ctx)
 {
     for (; h; h = h->next)
-        fn(h->key, h->val, ctx);
+        if (h->key)
+            fn(h->key, h->val, ctx);
 }
 void ksf_list_free(struct ksf_item *h)
 {
     while (h) {
         struct ksf_item *n = h->next;
-        sfree(h->key);
-        if (h->val) { memset(h->val, 0, strlen(h->val)); sfree(h->val); }
-        sfree(h);
+        ksf_item_free(h);
         h = n;
     }
 }
@@ -1990,14 +2014,16 @@ static void ksf_convert_legacy_password(struct ksf_item **head)
 }
 
 /* Read one line of any length, newline stripped; NULL at end of file. Caller
- * frees. This used to be a fixed 8 KB buffer, and a setting longer than it was
+ * frees. *eol: 1 the line ended in CR LF, 0 in LF, -1 at the end of the file
+ * without a line break.
+ * This used to be a fixed 8 KB buffer, and a setting longer than it was
  * silently cut: the head parsed as a truncated value and the tail, having no
  * delimiter, was dropped. PortForwardings is a single value holding the WHOLE
  * tunnel list - a /24 of ssh+rdp+vnc is ~19 KB - so a large Tunnels list came
  * back partial from a portable store, which to the user is the list being
  * empty (cf. cyd01/KiTTY#541). Nothing else caps a setting's length; the
  * registry backend stores and returns the same value whole. */
-static char *ksf_read_line(FILE *fp)
+static char *ksf_read_line(FILE *fp, int *eol)
 {
     size_t cap = 512, len = 0;
     char *buf = snewn(cap, char);
@@ -2013,21 +2039,32 @@ static char *ksf_read_line(FILE *fp)
         sfree(buf);
         return NULL;
     }
+    *eol = (c == EOF) ? -1 : (len && buf[len-1] == '\r') ? 1 : 0;
     while (len && (buf[len-1] == '\r' || buf[len-1] == '\n'))
         len--;
     buf[len] = '\0';
     return buf;
 }
 
+/* The list is built in file order. A key on two lines takes the LATER line's
+ * value and text, at the place of the first; the later line itself goes.
+ * NULL when the file cannot be opened or is empty. A file of comments and
+ * blank lines alone is a list of keyless items: a save over it keeps them,
+ * and every reader finds no key in it, as in no list. */
 struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) */
 {
     FILE *fp = fopen(path, "rb");
-    struct ksf_item *head = NULL;
-    char *line;
-    int cyd01 = 0;
+    struct ksf_item *head = NULL, **tail = &head, *it;
+    char *line, *text;
+    int cyd01 = 0, eol = 0, file_eol = -1;
     if (!fp) return NULL;
-    while ((line = ksf_read_line(fp)) != NULL) {
+    while ((line = ksf_read_line(fp, &eol)) != NULL) {
         char *eq, *bs, *val;
+        text = dupstr(line);
+        if (file_eol < 0)
+            file_eol = eol;             /* the first line break found */
+        if (eol < 0)                    /* the last line, no break: the file's */
+            eol = file_eol > 0;
         /* Two on-disk line formats are accepted:
          *   key=munged-value     - our fork-native format (written by ksf_save)
          *   key\munged-value\    - legacy cyd01-KiTTY portable format
@@ -2035,8 +2072,10 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
          * key never contains '=' or '\\', and in our format values escape '\\'
          * (so a real '\\' only appears as the cyd01 delimiter), while values may
          * legitimately contain '='. Both formats use the same %HH value munging,
-         * so reading cyd01 files lets existing portable sessions load; the next
-         * Save rewrites them in our format. */
+         * so reading cyd01 files lets existing portable sessions load. A cyd01
+         * line without the closing '\\' ("Key\\0", as some tools write it)
+         * reads the same. A line whose value a Save changes is written in our
+         * format; the others keep their form (ksf_save). */
         eq = strchr(line, '=');
         bs = strchr(line, '\\');
         if (eq && (!bs || eq < bs)) {
@@ -2050,11 +2089,37 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
             val = ksf_unmunge(raw);
             cyd01 = 1;
         } else {
+            /* no delimiter -> not a setting line: kept as it is */
+            it = snew(struct ksf_item);
+            it->key = NULL;
+            it->val = NULL;
+            it->raw = text;
+            it->crlf = eol;
+            it->next = NULL;
+            *tail = it;
+            tail = &it->next;
             sfree(line);
-            continue;   /* no delimiter -> not a setting line */
+            continue;
         }
-        ksf_list_set(&head, line, val ? val : "");
-        if (val) sfree(val);
+        for (it = head; it; it = it->next)
+            if (it->key && !strcmp(it->key, line))
+                break;
+        if (it) {
+            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+            if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+            it->val = dupstr(val ? val : "");
+            it->raw = text;
+        } else {
+            it = snew(struct ksf_item);
+            it->key = dupstr(line);
+            it->val = dupstr(val ? val : "");
+            it->raw = text;
+            it->crlf = eol;
+            it->next = NULL;
+            *tail = it;
+            tail = &it->next;
+        }
+        if (val) { memset(val, 0, strlen(val)); sfree(val); }
         sfree(line);
     }
     fclose(fp);
@@ -2063,8 +2128,10 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
     return head;
 }
 /* Returns true only when the whole file was written and closed: the caller
- * removes an older copy of the session on that, and on nothing less. */
-bool ksf_save(const char *path, struct ksf_item *h)
+ * removes an older copy of the session on that, and on nothing less.
+ * classic: a changed or new line is written in classic KiTTY's "key\value\"
+ * form (the named-proxy files, kitty_proxy.c), else as key=value. */
+static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
 {
     FILE *fp;
     bool ok;
@@ -2072,8 +2139,17 @@ bool ksf_save(const char *path, struct ksf_item *h)
     fp = fopen(path, "wb");
     if (!fp) return false;
     for (; h; h = h->next) {
-        char *mv = ksf_munge(h->val ? h->val : "");
-        fprintf(fp, "%s=%s\n", h->key, mv ? mv : "");
+        const char *eol = h->crlf ? "\r\n" : "\n";   /* the line's own */
+        char *mv;
+        if (h->raw || !h->key) {           /* a line as it was read */
+            fprintf(fp, "%s%s", h->raw ? h->raw : "", eol);
+            continue;
+        }
+        mv = ksf_munge(h->val ? h->val : "");
+        if (classic)
+            fprintf(fp, "%s\\%s\\%s", h->key, mv ? mv : "", eol);
+        else
+            fprintf(fp, "%s=%s%s", h->key, mv ? mv : "", eol);
         if (mv) sfree(mv);
     }
     ok = !ferror(fp);
@@ -2081,6 +2157,14 @@ bool ksf_save(const char *path, struct ksf_item *h)
         ok = false;
     ksp_verdict_forget(path);   /* judged afresh at the next listing */
     return ok;
+}
+bool ksf_save(const char *path, struct ksf_item *h)
+{
+    return ksf_save_x(path, h, 0);
+}
+bool ksf_save_classic(const char *path, struct ksf_item *h)
+{
+    return ksf_save_x(path, h, 1);
 }
 
 char *portable_root_dir(void)           /* snewn'd or NULL */

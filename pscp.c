@@ -2281,7 +2281,7 @@ static void get_stat(CmdlineArg **args)
  */
 static void usage(void)
 {
-    printf("PuTTY Secure Copy client\n");
+    printf("KiTTY++ Secure Copy client\n");
     printf("%s\n", ver);
     printf("Usage: kscp [options] [user@]host:source target\n");
     printf("       kscp [options] source [source...] [user@]host:target\n");

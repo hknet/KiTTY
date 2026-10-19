@@ -139,6 +139,7 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 			strcat( pf, p ) ;
 			sfree(p) ;
 		} else {
+			sfree(p) ;
 			strcat( pf, "...\n" ) ;
 			break ;
 		}
@@ -201,7 +202,23 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 	
 	if( hLib ) { FreeLibrary( hLib ) ; }
 	*/
-	strcat( pf, KT_MAIN_PORTFWD_LEGEND );
-	MessageBox( NULL, pf, KT_CAP_PORT_FORWARDING, MB_OK ) ;
+	/* KiTTY: a modeless box, the legend as its text and the list in its
+	 * read-only field (an edit control: CRLF line ends). It is opened from a
+	 * live session's menu, and a modal box stopped that session until it was
+	 * closed. */
+	{
+		const char *legend = KT_MAIN_PORTFWD_LEGEND ;
+		char *list = snewn( 2 * strlen( pf ) + 1, char ) ;
+		char *d = list, *s ;
+		for( s = pf ; *s ; s++ ) {
+			if( *s == '\n' ) *d++ = '\r' ;
+			*d++ = *s ;
+		}
+		*d = '\0' ;
+		while( *legend == '\n' ) legend++ ;
+		kitty_info_modeless( hwnd, KT_CAP_PORT_FORWARDING, legend, list[0] ? list : NULL, NULL ) ;
+		sfree( list ) ;
+	}
+	strcat( pf, KT_MAIN_PORTFWD_LEGEND ) ;
 	return SetTextToClipboard( pf ) ;
 }

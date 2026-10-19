@@ -35,7 +35,7 @@ This section describes the basics of how to use klink for
 interactive logins and for automated processes.
 
 Once you've got a console window to type into, you can type
-\c{klink \-\-help} to bring up a usage message.  This tells you the
+\c{klink \-\-help} to bring up a usage message.  This shows you the
 version of klink you're using, and gives you a brief summary of how to
 use klink:
 
@@ -43,7 +43,7 @@ use klink:
 \c klink: command-line connection utility
 \c Release 0.85
 \c Usage: klink [options] [user@]host [command]
-\c        ("host" can also be a KiTTY saved session name)
+\c        ("host" can also be a KiTTY++ saved session name)
 \c Options:
 \c   -V        print version information and exit
 \c   -pgpfp    print PGP key fingerprints and exit
@@ -136,10 +136,10 @@ command line options \c{\-ssh}, \c{\-ssh\-connection}, \c{\-telnet},
 \c C:\>klink -ssh login.example.com
 \c login as:
 
-If you have already set up a KiTTY saved session, then instead of
+If you have already set up a KiTTY++ saved session, then instead of
 supplying a host name, you can give the saved session name. This
 allows you to use public-key authentication, specify a user name,
-and use most of the other features of KiTTY:
+and use most of the other features of KiTTY++:
 
 \c C:\>klink my-ssh-session
 \c Sent username "fred"
@@ -163,7 +163,7 @@ in several ways:
 \b Use the \c{\-ssh} option as described in
 \k{plink-usage-interactive}.
 
-\b Set up a KiTTY saved session that describes the server you are
+\b Set up a KiTTY++ saved session that describes the server you are
 connecting to, and that also specifies the protocol as SSH.
 
 \b Set the Windows environment variable \i\c{PLINK_PROTOCOL} to the
@@ -180,7 +180,7 @@ enter a password.
 
 To avoid being prompted for the server host key when using klink for
 an automated connection, you can first make a \e{manual}
-connection (using either of KiTTY or klink) to the same server,
+connection (using either of KiTTY++ or klink) to the same server,
 verify the host key (see \k{gs-hostkey} for more information), and
 select \q{Accept} to add the host key to the Registry. After that,
 klink commands connecting to that server should not give a host key
@@ -193,7 +193,7 @@ To avoid being prompted for a user name, you can:
 \b Use the \c{\-l} option to specify a user name on the command line.
 For example, \c{klink login.example.com \-l fred}.
 
-\b Set up a KiTTY saved session that describes the server you are
+\b Set up a KiTTY++ saved session that describes the server you are
 connecting to, and that also specifies the username to log in as
 (see \k{config-username}).
 
@@ -202,7 +202,7 @@ set up \i{public-key authentication}. (See \k{pubkey} for a general
 introduction to public-key authentication.) Again, you can do this
 in two ways:
 
-\b Set up a KiTTY saved session that describes the server you are
+\b Set up a KiTTY++ saved session that describes the server you are
 connecting to, and that also specifies a private key file (see
 \k{config-ssh-privkey}). For this to work without prompting, your
 private key will need to have no passphrase.
@@ -233,7 +233,7 @@ talk to it as if it were a process on the server machine.
 \S{plink-options} klink command line options
 
 klink accepts all the general command line options supported by the
-KiTTY tools. See \k{using-general-opts} for a description of these
+KiTTY++ tools. See \k{using-general-opts} for a description of these
 options.
 
 klink also supports some of its own options. The following sections
@@ -245,7 +245,7 @@ interactive prompts
 If you use the \c{\-batch} option, klink will never give an
 interactive prompt while establishing the connection. If the
 server's host key is invalid, for example (see \k{gs-hostkey}), then
-the connection will simply be abandoned instead of asking you what
+the connection will simply be abandoned instead of prompting you for what
 to do next.
 
 This may help klink's behaviour when it is used in automated
@@ -345,10 +345,10 @@ stored; its fingerprints are printed too). A type the server does not
 have reads \c{not offered}; a host that does not answer,
 \c{unreachable}.
 
-\c{\-t} names the types to ask for, a comma list of \c{rsa}, \c{dsa},
+\c{\-t} lists the types to request, a comma list of \c{rsa}, \c{dsa},
 \c{ecdsa}, \c{ed25519}, \c{ed448} or the SSH names such as
-\c{ssh-ed25519}; without it every type KiTTY knows is tried. The exit
-code is 2 when any key says MISMATCH, 1 when no key was obtained at all
+\c{ssh-ed25519}; without it every type KiTTY++ knows is tried. The exit
+code is 2 when any key reports MISMATCH, 1 when no key was obtained at all
 or the arguments were wrong, 0 otherwise. A scan never writes the store:
 accepting a key is what a connection does.
 
@@ -356,7 +356,7 @@ accepting a key is what a connection does.
 a port, that port only; without, every port stored for that host) or the
 whole store with no argument - with both fingerprints and the two
 stamps, when the key was first seen and last written. Exit code 0 with
-rows, 1 with none. klink uses the registry store; a portable KiTTY's
+rows, 1 with none. klink uses the registry store; a portable KiTTY++'s
 folder store is listed on its Host keys panel (\k{kitty-cfg-host-keys}),
 which can also verify the stored keys against the hosts.
 
@@ -430,7 +430,7 @@ command line, you can run in a batch file using klink in this way.
 To use klink for Git operations performed over SSH, you can set the
 environment variable \i\c{GIT_SSH_COMMAND} to point to klink.
 
-For example, if you've run KiTTY's full Windows installer and it has
+For example, if you've run KiTTY++'s full Windows installer and it has
 installed klink in the default location, you might do this:
 
 \c set GIT_SSH_COMMAND="C:\Program Files\KiTTY\klink.exe"

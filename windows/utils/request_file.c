@@ -232,6 +232,59 @@ static bool do_filereq_w(
     return toret;
 }
 
+/*
+ * KiTTY: the file dialog through ShinyPumpCall (shinydialogbox.c). Opened
+ * from inside a pumped box - a "Browse..." button of the mid-session Change
+ * Settings box - it runs on a worker thread while this thread serves the
+ * session; the dialog's own loop serves no network events, and the session
+ * stood still until it closed. Anywhere else it runs here, as before.
+ */
+struct filereq_call {
+    HWND hwnd;
+    const char *title;
+    Filename *initial;
+    filereq_saved_dir *dir;
+    bool save, wide, ok;
+    FilereqFilter filter;
+    size_t *multi_filename_offset;
+    void *filename;
+    size_t filename_size;
+};
+
+static void filereq_call_run(void *vctx)
+{
+    struct filereq_call *c = (struct filereq_call *)vctx;
+    if (c->wide)
+        c->ok = do_filereq_w(c->hwnd, c->title, c->initial, c->dir, c->save,
+                             c->filter, c->multi_filename_offset,
+                             (wchar_t *)c->filename, c->filename_size);
+    else
+        c->ok = do_filereq_a(c->hwnd, c->title, c->initial, c->dir, c->save,
+                             c->filter, c->multi_filename_offset,
+                             (char *)c->filename, c->filename_size);
+}
+
+static bool do_filereq(
+    bool wide, HWND hwnd, const char *title, Filename *initial,
+    filereq_saved_dir *dir, bool save, FilereqFilter filter,
+    size_t *multi_filename_offset, void *filename, size_t filename_size)
+{
+    struct filereq_call c;
+    c.hwnd = hwnd;
+    c.title = title;
+    c.initial = initial;
+    c.dir = dir;
+    c.save = save;
+    c.wide = wide;
+    c.ok = false;
+    c.filter = filter;
+    c.multi_filename_offset = multi_filename_offset;
+    c.filename = filename;
+    c.filename_size = filename_size;
+    ShinyPumpCall(filereq_call_run, &c);
+    return c.ok;
+}
+
 Filename *request_file(
     HWND hwnd, const char *title, Filename *initial, bool save,
     filereq_saved_dir *dir, bool preserve_cwd, FilereqFilter filter)
@@ -245,14 +298,14 @@ Filename *request_file(
     init_winver();
     if (osPlatformId != VER_PLATFORM_WIN32_NT) {
         char namebuf[MAX_PATH];
-        if (do_filereq_a(
-                hwnd, title, initial, dir, save, filter,
+        if (do_filereq(
+                false, hwnd, title, initial, dir, save, filter,
                 NULL, namebuf, lenof(namebuf)))
             filename = filename_from_str(namebuf);
     } else {
         wchar_t namebuf[MAX_PATH];
-        if (do_filereq_w(
-                hwnd, title, initial, dir, save, filter,
+        if (do_filereq(
+                true, hwnd, title, initial, dir, save, filter,
                 NULL, namebuf, lenof(namebuf)))
             filename = filename_from_wstr(namebuf);
     }
@@ -359,15 +412,15 @@ struct request_multi_file_return *request_multi_file(
     init_winver();
     if (osPlatformId != VER_PLATFORM_WIN32_NT) {
         char namebuf[MAX_PATH * MULTI_FACTOR];
-        if (do_filereq_a(
-                hwnd, title, initial, dir, save, filter,
+        if (do_filereq(
+                false, hwnd, title, initial, dir, save, filter,
                 &first_filename_offset, namebuf, lenof(namebuf)))
             rmf = request_multi_file_populate_a(
                 namebuf, first_filename_offset);
     } else {
         wchar_t namebuf[MAX_PATH * MULTI_FACTOR];
-        if (do_filereq_w(
-                hwnd, title, initial, dir, save, filter,
+        if (do_filereq(
+                true, hwnd, title, initial, dir, save, filter,
                 &first_filename_offset, namebuf, lenof(namebuf)))
             rmf = request_multi_file_populate_w(
                 namebuf, first_filename_offset);

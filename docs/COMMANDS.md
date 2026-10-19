@@ -1,8 +1,8 @@
-# KiTTY internal commands
+# KiTTY++ internal commands
 
-KiTTY's *send-text* box (keyboard shortcut `input`, default **Ctrl+F8**) normally
+KiTTY++'s *send-text* box (keyboard shortcut `input`, default **Ctrl+F8**) normally
 sends the line you type to the remote host. A line starting with `/` is instead
-treated as an **internal command** and executed locally by KiTTY itself. Typing
+treated as an **internal command** and executed locally by KiTTY++ itself. Typing
 **`/help`** in the box shows the compact one-line summary of every command; this
 document is the full reference. A `/line` that matches no internal command is
 sent to the host as ordinary text.
@@ -12,7 +12,12 @@ a setting's new state (`The size in the title: on`), a file written with its
 full path (`Saved: C:\Users\...\Pictures\KiTTY++\screenshot-....png`) or why
 not (`Not saved: ... (Access is denied)`), or `Not a command: sent to the host
 as text`. It wraps rather than cutting a long path, and can be selected and
-copied.
+copied. A longer result (`/init`) makes it grow, and the box with it, up to
+ten lines; beyond that it scrolls, and a short result takes it back to two.
+No command opens a box of its own for its result - a modal box would stop the
+session while it is open; only `/passwd` (debug mode) does. `/delreg` puts up
+its question beside the session, and `/savektx` its Save-As box: the result
+line shows the outcome once they are answered.
 
 Each entry below notes whether the effect **persists**:
 
@@ -48,7 +53,7 @@ startup (only `no` has an effect — decorations are the default).
 
 Set the window title to `<text>`. The title set in the session configuration
 (*Window → Behaviour*) is what persists; this override lasts until the server
-or KiTTY next changes the title.
+or KiTTY++ next changes the title.
 
 **Persists:** runtime only.
 
@@ -99,33 +104,29 @@ Refresh (re-render) the background image.
 
 ### /init
 
-Show the configuration environment of this KiTTY instance: configuration
-directory, save mode, initial directory, the kitty.ini and backup-file paths, and
-the window class name. Useful to see *which* configuration a running KiTTY is
-actually using.
+Show the configuration environment of this KiTTY++ instance on the result line,
+one value per line: configuration directory, save mode, initial directory, the
+kitty.ini and backup-file paths, and the window class name. Useful to see
+*which* configuration a running KiTTY++ is actually using.
 
 **Persists:** informational, nothing stored.
 
 ### /session
 
-Show the name of the saved session this window is bound to (the session
-`/save` would write to), or "No session name." for an ad-hoc connection.
+Show on the result line the name of the saved session this window is bound
+to (the session `/save` would write to), or that it has none (an ad-hoc
+connection).
 
 **Persists:** informational, nothing stored.
 
 ### /urlregex
 
-Show the regular expression used for URL detection (see `/hyperlink`), and
-whether it is the built-in default.
+Show on the result line the regular expression used for URL detection (see
+`/hyperlink`) and whether it is the built-in default. A custom expression that
+does not compile is shown with the engine's reason; links then use the
+built-in default.
 
 **Persists:** informational, nothing stored.
-
-### /message `<text>`
-
-Show `<text>` in a message box. Mainly useful from scripts and from
-`/command` broadcasts.
-
-**Persists:** action, nothing stored.
 
 ### /help
 
@@ -156,16 +157,18 @@ Save the live settings as a **new** session called `<name>` and switch this
 window's identity to it (later `/save` calls write there, and the title
 decorations show the new name). **Save as New Session...** in the window menu
 opens Change Settings with the host (`user@host` when a session of the host's
-name exists) in the session name field; its **Save** asks before it replaces
+name exists) in the session name field; its **Save** requires a confirmation before it replaces
 a session of that name.
 
 **Persists:** session.
 
 ### /savektx
 
-Export the live settings to a `.ktx` connection file (a file dialog prompts
-for the location). A `.ktx` file double-clicked or passed on the command line opens that
-connection directly. The result line shows the file written, or why not.
+Export the live settings to a `.ktx` connection file, picked in a Save-As box
+that runs beside the session (the session keeps running while it is open; one
+at a time). A `.ktx` file double-clicked or passed on the command line opens that
+connection directly. The result line shows the file written, or why not, once
+the box is closed.
 
 **Persists:** the exported file.
 
@@ -182,7 +185,7 @@ for this window only and the line gives the reason.
 
 ### /savereg
 
-Export the complete KiTTY registry configuration (sessions, host keys,
+Export the complete KiTTY++ registry configuration (sessions, host keys,
 settings) now, whether or not anything changed since the last backup, and wait
 for it. The file is a timestamped `kittynew-YYYYMMDD-HHMMSS.sav` written
 beside `kitty.ini` in `%APPDATA%\KiTTY`, or at the `[KiTTY] sav=` path if one
@@ -206,9 +209,10 @@ there was none.
 
 ### /delreg
 
-**Deletes the whole KiTTY registry tree** — all saved sessions, host keys and
+**Deletes the whole KiTTY++ registry tree** — all saved sessions, host keys and
 settings stored in the registry, after a Yes/No question that shows the key and
-defaults to No. Configurations
+defaults to No. The question does not hold up the session; closing it, or the
+command box, is a No. Configurations
 saved in file/dir mode are not touched. Use with care; `/savereg` first makes
 a backup. The result line shows the key deleted, or why it is still there.
 
@@ -224,19 +228,20 @@ copy). The result line shows the file with its full path.
 
 ### /copytoputty
 
-Copy KiTTY's saved sessions and SSH host keys into stock PuTTY's registry
+Copy KiTTY++'s saved sessions and SSH host keys into stock PuTTY's registry
 location (`Software\SimonTatham\PuTTY`). **PuTTY's existing sessions are
 replaced** - only by a complete copy: the sessions are copied aside first,
-and when that fails PuTTY's own sessions stay as they were. KiTTY-specific
+and when that fails PuTTY's own sessions stay as they were. KiTTY++-specific
 settings are stripped from the copies. The result line shows how many
-sessions were copied, or why nothing was.
+sessions were copied, or why nothing was - nothing at all when this copy
+already uses PuTTY's hive (`KiClassName=PuTTY`).
 
 **Persists:** registry (PuTTY's).
 
 ### /switchcrypt
 
 Removed. Encrypted configuration files are no longer written; the command only
-shows a notice. Existing encrypted `.ktx` files are still read.
+shows that on the result line. Existing encrypted `.ktx` files are still read.
 
 **Persists:** nothing.
 
@@ -255,14 +260,16 @@ To delete a folder, use Del folder in the session list or Manage Sessions.
 (Re)load the login-script file for this session — with `[file]` given, load
 that file; without, reload the session's configured script (*Connection →
 Login → Login script*). The script content is stored in the session settings.
+When the session also has a rutty script (*Session → Scripting*), the result
+line points that out: while it runs, both watch the output and send.
 
 **Persists:** session (after `/save`).
 
-## All KiTTY windows
+## All KiTTY++ windows
 
 ### /command `<text>`
 
-Send `<text>` to **all** open KiTTY windows at once, as if it had been typed
+Send `<text>` to **all** open KiTTY++ windows at once, as if it had been typed
 in each window's send-text box — so `<text>` can itself be an internal command
 (e.g. `/command /size`) or text for every remote host.
 
@@ -270,7 +277,7 @@ in each window's send-text box — so `<text>` can itself be an internal command
 
 ### /sizeall
 
-Resize all open KiTTY windows to this window's configured size.
+Resize all open KiTTY++ windows to this window's configured size.
 
 **Persists:** runtime only.
 
@@ -334,7 +341,7 @@ Register the session file extension for the current user, so double-clicking
 such a file opens it with this kitty.exe. The extension is the one set in
 kitty.ini (`fileextension`, shown at Application > KiTTY++ Settings > Storage &
 Backup as "Session file extension"), `.ktx` when none is set; `/help` shows the
-one in force. An extension another program owns is left alone and named in
+one in force. An extension another program owns is left alone and listed in
 the report.
 
 **Persists:** registry (per-user file association).

@@ -28,9 +28,37 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   second line of the bar shows them. Opened again in the same
   window, the bar shows the last text and the hit it was closed on
   (hknet/KiTTY#76).
+- **Global hotkey for the launcher.** A key combination that does what a
+  double click on the launcher's tray icon does - a configuration box,
+  Manage Sessions or Quick Connect - from any program. Set on
+  Application > KiTTY++ Settings > Launcher under the double-click choice
+  (`[Launcher] globalhotkey`, empty by default), with an **Apply**
+  button beside it: typing stores nothing, and Apply stores the
+  combination only when it is free or the running launcher holds it as
+  this hotkey already - otherwise its box reports why (another program,
+  or a saved session's launcher hotkey). Empty + Apply removes it. A
+  session hotkey with the same combination loses it to the global one,
+  and the launcher's conflict balloon lists that session.
+- **Old and weakly protected key files are reported.** A session's PPK
+  key file in the old version 1 format, or an encrypted version 2 file
+  (its passphrase protected by SHA-1, not Argon2 as in version 3), is
+  reported in a notice and in the Event Log before the connection, once
+  per file, and the login goes on. kageant shows the notice for an
+  encrypted version 2 key loaded at start or added by hand.
+- **"Use DPAPI (this PC only)" in the master password setup box.** The
+  third button keeps saved passwords for this Windows account on this PC and
+  stores the choice in the kitty.ini this KiTTY++ uses
+  (`PortablePasswordProtection=dpapi`). Another PC that shares the session
+  folder makes its own choice and cannot read those passwords.
 
 ### Changed
 
+- **KiTTY++ wherever a text means this program.** Window titles ("KiTTY++
+  Error", "KiTTY++ Security Alert", "KiTTY++ Update", ...), the About menu
+  item, messages, the command-line help, the comments of a generated
+  kitty.ini and the programs' version descriptions read KiTTY++. "KiTTY"
+  stays where it means the original program (an old or classic KiTTY), and
+  where a text means either ("a KiTTY or KiTTY++").
 - **The installers' shortcuts and the Apps & features entry read KiTTY++.**
   The Start menu entries are KiTTY++, KiTTY++ pterm and KiTTY++ Telnet; an
   upgrade removes the old ones, and a Start menu pin to an old shortcut has
@@ -45,6 +73,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   pointed at nothing (Explorer fell back to "connection manager"), and the
   "Open with" entry was written in a form Windows ignores; registering the
   association again cleans up what an older KiTTY left.
+- **Application > Migration > "KiTTY storage" is now "KiTTY++ Storage"**,
+  in the tree and as the panel title. `-cfgpanel
+  "Application/Migration/KiTTY storage"` still opens it.
 - **`-cfgpanel` takes the panel names the configuration window shows.**
   `Window/Copy & Paste`, `Window/Copy & Paste/Character classes`,
   `Window/Title & Icon`, `Connection/File-Transfer-Settings`,
@@ -59,15 +90,95 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   Application > Config Window > Session Panel > "Require confirmation before
   deleting a session" (`[ConfigBox] confirmdelete`, on by default) turns the
   question off.
+- **The log file's question where there is no desktop.** A session started
+  where nobody can see a box (a service, a scheduled task that runs whether
+  a user is logged on or not) and whose log file already exists logs
+  nothing instead of waiting on a question nobody sees, and the reason goes
+  to the Application event log (source KiTTY++). Session > Logging > "What
+  to do if the log file already exists", `-logoverwrite` or `-logappend`
+  set the choice beforehand.
+- **`/init`, `/session`, `/urlregex`, `/switchcrypt`, `/copytoputty`,
+  `/loadinitscript` and `/initlauncher` report on the command box's result
+  line** instead of a
+  box of their own. The line grows with a longer result (`/init`'s six
+  values) up to ten lines, then scrolls, and goes back to two for a short
+  one. `/urlregex` shows why a custom expression does not compile.
+- **`/message` is removed.** It could only show the text just typed; a
+  typed `/message ...` now goes to the host like any other unknown command.
 
 ### Fixed
 
+- **A portable store switched to DPAPI no longer puts up the master password
+  prompt at every start.** A master password set up before
+  `PortablePasswordProtection=dpapi` kept the prompt at startup, even with
+  every password protected with DPAPI. A password still protected with the
+  master password brings the prompt when it is used.
 - **An upgrade no longer turns the launcher's autostart back on.** The
   installers wrote the Startup shortcut on every upgrade, also where "Start
   at login" was turned off; now an upgrade keeps it only where it is there.
+- **A cancelled master password prompt stops only the prompts KiTTY++
+  opens by itself.** For the rest of the run a connection or a load no
+  longer brings it up again, but a save, `/save`, `/savenew`, Export, Export
+  All, a portable copy, a session copy, a reset of Default Settings and New
+  session with these settings, started by hand, show it again.
+- **The master key is held protected in memory.** The key unlocked by the
+  master password, and a `-masterpwfile` passphrase, are kept encrypted in
+  the program's memory with Windows' memory protection where Windows offers
+  it.
+- **mNotepad follows the dark mode.** Its window, text area, scroll bar and
+  title bar now take the colour theme like every other KiTTY++ window, also
+  when the Appearance setting changes while it is open.
+- **The master password setup box shows its whole text.** The explanation
+  of "Use DPAPI" and of -masterpwfile was cut off.
+- **A cancelled master password setup in -importdir no longer leaves a box
+  behind other windows.** The run reports "No master password was set up"
+  in its result instead, and exits 1.
+- **The "Global hotkey:" field on the Launcher panel lines up with the
+  lists above it.**
+- **With `modalerrors=yes` a connection that cannot be opened no longer
+  closes the window.** After the box the window stays with the reason in
+  it, as without the setting; a failed Restart Session or auto-reconnect
+  closed a window that was open. The workplace proxy question after a
+  failed connection leaves the window open the same way. PuTTY mode
+  (`-putty`) keeps PuTTY's exit.
+- **An old (version 1) PPK key file no longer stops the login with a
+  box.** The notice and the Event Log line above report it instead.
+- **A session file saved by KiTTY++ changes only where a value changed.** In
+  the folder store each save reversed the line order, dropped comments and
+  blank lines, and wrapped an unchanged password afresh, so a Git diff showed
+  the whole file. Line order, comments, blank lines and a tool's own lines
+  and keys now survive; a changed value stays on its line, new keys go to the
+  end, and an unchanged password keeps its stored line. A file of comments
+  only keeps them, and each line keeps its ending (LF or CRLF). A named
+  proxy's file keeps its layout the same way.
+- **Connecting no longer creates the Proxies folder.** Each connection made
+  an empty Proxies folder in the session store, and on a read-only store
+  showed an error box; reading the named proxies now writes nothing. A named
+  proxy that cannot be saved is reported with the reason.
+- **A portable copy writes its session files as the folder store does.**
+  "Make a portable copy..." wrote them in the `.ktx` exchange form
+  (`Key\value\`), so the first save of each session rewrote every line.
+  Export and Export All keep the `.ktx` form.
+- **A portable copy uses its own kscp.** "Make a portable copy..." took
+  the kscp path over as it was, so a copy made from an installed KiTTY++
+  started `C:\Program Files\...\kscp.exe`. A path to the kscp.exe of the
+  folder the copy is made from is now left out: the copy uses the
+  kscp.exe beside its kitty.exe. A kscp kept elsewhere, and the WinSCP,
+  FileZilla and ZModem paths, are taken over unchanged.
+- **The `/commands` console no longer stops the session.** `/delreg`'s
+  question and `/savektx`'s Save-As box run beside the session, and their
+  outcome comes to the result line once answered; the other commands that
+  opened a message box report on the result line. Each box held output,
+  keepalives and a server's close until it was closed.
+- **`/loadreg` no longer ends the session.** A cancelled or wrong password
+  for an old encrypted backup, or a value type it cannot read, closed the
+  whole window with its session. In a running session an old encrypted
+  backup is no longer prompted for at all: the result line reports the file
+  and the reason, as for a value type it cannot read, and the session goes
+  on.
 - **Sessions imported from an "Export all" folder through Application >
   Migration > (old) KiTTY Folders no longer keep `.ktx` in their names.**
-  When the scanned folder names no suffix of its own and every session file
+  When the scanned folder sets no suffix of its own and every session file
   ends in `.ktx`, the scan fills in `.ktx` as the suffix to remove.
 - **The search's marks beside the scrollbar show as soon as the search
   ends** (hknet/KiTTY#72). They appeared only after the view was scrolled.
@@ -86,10 +197,91 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   session** ("Always open Save Dialog", Change folder... and Locate...):
   they run beside it, so keepalives and the rest of the connection carry on
   while you pick.
+- **Quick errors no longer stop the session.** A bell sound file that
+  cannot be played, Send File, Get File or a file drop on a session that is
+  not SSH, kscp not started, and ZModem's rz or
+  sz not found or not started are reported in the notice window near the
+  clock. Tools > Port forwardings and the updater's failures (with their
+  error sound) are modeless boxes, and "Start WinSCP anyway?" / "Start
+  FileZilla anyway?" (a Windows Hello key the agent does not hold) a
+  modeless question. Each was a modal box: output, keepalives and a
+  server's close waited until it was closed.
+- **WinSCP, FileZilla or kscp that cannot be found is reported, and its
+  stored path is kept.** Each is a notice and an Event Log line; Send File
+  checks for kscp before its file picker opens. A stored path whose file is
+  missing was deleted from the settings: it now stays, and a copy found
+  elsewhere is used for that run only, without changing the settings.
+- **A program that cannot be started no longer stops the session.**
+  WinSCP, FileZilla, the editor and the launcher's starts report a failure
+  in a notice and an Event Log line with Windows' reason. Windows' own
+  "Unsupported 16-Bit Application" box no longer appears, and the session no
+  longer waits for the started program to be ready. Windows' error texts
+  read "the file" where they showed "%1".
+- **Tools > Open Logfile and a session log that cannot be opened no longer
+  stop the session.** With no program to show the log, Open Logfile reports
+  it in a notice and an Event Log line; a session log that cannot be opened
+  is a notice, and the session goes on without a log.
+- **Duplicate Session, New Session, a saved session from the menu and
+  `-cfgpanel` report a start that fails.** They did nothing before; a notice
+  and an Event Log line now give the reason.
+- **About > Licence, the host key's "More info" and non-fatal errors no
+  longer stop the session.** The licence opens beside the About box, which
+  stays usable; "More info" (the key's fingerprints) runs beside the
+  host-key question in the KiTTY++ theme; with `modalerrors=yes` a non-fatal
+  error is a modeless box.
 - **Unlocking a key file with Windows Hello no longer stops the session.**
   The Hello prompt during the login runs beside it: a server that gives up
   meanwhile is seen at once, and closing the window does not wait for the
   prompt.
+- **A custom URL regex that does not compile no longer stops the session
+  at start-up.** The session finds links with the default pattern instead
+  of none, and a notice and a warning in the Windows Application event log
+  report the error; before, a modal box held the window until it was
+  answered and links stayed off. In Window > Hyperlinks the "Custom regex:"
+  field shows the compile error in red right under it while you type.
+- **Boxes opened from inside Change Settings no longer stop the session.**
+  A confirmation (such as Reset to KiTTY default in Window > Hyperlinks), a
+  message, a Browse... file or folder picker, Change... for the font and
+  Modify for a colour now wait beside the session as Change Settings itself
+  does: output, keepalives and a server's close go on while they are open.
+  Closing the terminal with one of them open cancels it and closes both.
+- **The master password boxes no longer stop the session.** The unlock and
+  setup prompts of a running session, and inside Change Settings also the
+  old-password warning, run beside it: output, keepalives and a server's
+  close go on, one prompt is open at a time, and closing the session closes
+  it. A wrong password shows in red in the prompt with the try count
+  ("Wrong master password (try 2 of 3).") instead of a box of its own.
+- **A locked master password no longer stores a password with DPAPI
+  instead.** With the master password in use but locked (cancelled, wrong or
+  not set up), saving a session, a named proxy or a login script protected
+  its password for this PC only, without a word. The stored password is now
+  kept as it was, and a notice and an Event Log line report it; `-importdir`
+  lists the passwords not saved and exits with 1.
+- **An export whose password encryption fails leaves the password out.**
+  Export and Export All wrote such a password with DPAPI instead, and under
+  "Protect for this PC only" in plain text. The export's summary now lists each
+  password left out with the reason.
+  A `.ktx` exported by an older version is affected if a `Password` or
+  `ProxyPassword` line in it does not start with `MPW2` or `DPAPI1`; export
+  it again and delete the old file.
+- **The launcher reports a hotkey refused after a settings change.** A
+  hotkey that another program holds when the launcher registers its keys
+  again shows in the balloon once, and a second launcher reports the running
+  KiTTY++ launcher as the holder instead of "another application". A long
+  balloon is cut at whole lines.
+- **Pickers and questions started from the terminal no longer stop the
+  session.** The file pickers of Send File (kscp), Get File (kscp) (its
+  Save-As, its folder picker and its "files already exist" question),
+  ZModem Upload, Send recorded script and Send script file, the Save-As of
+  Export current settings and Print clipboard's print dialog run beside the
+  session; so do the question before a paste longer than `pastesize`, the
+  clipboard balloon's "block this server's clipboard writes?" and OSC 52's
+  "allow for the whole session?". Each was modal: output, keepalives and a
+  server's close waited until it was closed. The "files already exist"
+  question now has Cancel as its default button.
+- **The modeless questions mark their default button.** Return answers the
+  default (No, unless the question has Yes as its default) and the button
+  shows the default frame; only the focus was set before.
 - **Application panels no longer scroll over empty space after the
   configuration window is made shorter.** A panel laid out in a tall window
   kept that window's height, so made shorter again it scrolled, its top cut

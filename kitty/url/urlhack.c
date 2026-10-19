@@ -12,6 +12,9 @@
 #include <stdio.h>
 #include "../kitty_text.h"     /* KT_URL_OPEN_FAILED_* */
 #include "../kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "../kitty_notice.h"   /* kitty_notice_show: a custom regex that does not compile */
+#include "../kitty_params.h"   /* GetNoticeSeconds */
+#include "../kitty_renameguard.h"   /* kitty_eventlog_line */
 
 int urlhack_mouse_old_x = -1, urlhack_mouse_old_y = -1, urlhack_current_region = -1;
 
@@ -169,7 +172,10 @@ void urlhack_launch_url(const char* app, const char *url)
 
     ZeroMemory(&sei, sizeof(sei));
     sei.cbSize = sizeof(sei);
-    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    /* FLAG_NO_UI: a program that is not there is reported in the notice
+     * window below - without it the shell put up its own modal "cannot
+     * find" box, which held the terminal and its session */
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
     sei.nShow = SW_SHOWNORMAL;
 
     if (app) {
@@ -198,7 +204,10 @@ void urlhack_launch_url(const char* app, const char *url)
             snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_APP_FMT, url, app, kitty_win_reason(err));
         else
             snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_FMT, url, kitty_win_reason(err));
-        MessageBoxA(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        /* in the notice window, not a modal box: the click comes from a
+         * terminal with a live session, which a box would stop */
+        kitty_notice_show(KT_CAP_ERROR, msg, RGB(190, 110, 0),
+                          GetNoticeSeconds(), NULL, 0);
     }
 }
 
@@ -276,20 +285,60 @@ void urlhack_reset(void)
     window_text[0] = '\0';
 }
 
-static void rtfm(char *error)
+/*
+ * The engine reports a compile error through a callback (regerror). It is
+ * kept here, never shown from inside the compile: it used to be a modal
+ * message box, which stopped the session's message loop at start-up and left
+ * links off for the whole session. The strings are the engine's own
+ * literals; a failure that reported none gets the generic text.
+ */
+static char urlhack_rx_error[160];
+
+static void urlhack_rx_error_hook(char *error)
 {
-    char std_msg[] = "The following error occured when compiling the regular expression\n" \
-        "for the hyperlink support. Hyperlink detection is disabled during\n" \
-        "this session (restart to try again).\n\n";
+    snprintf(urlhack_rx_error, sizeof(urlhack_rx_error), "%s",
+             error ? error : "");
+}
 
-    char *full_msg = dupprintf("%s%s", std_msg, error);
+/* Compile `pattern`; NULL on failure, with the reason in urlhack_rx_error. */
+static regexp *urlhack_compile(const char *pattern)
+{
+    regexp *rx;
+    urlhack_rx_error[0] = '\0';
+    set_regerror_func(urlhack_rx_error_hook);
+    rx = regcomp((char *)pattern);
+    if (rx == NULL && urlhack_rx_error[0] == '\0')
+        snprintf(urlhack_rx_error, sizeof(urlhack_rx_error), "%s",
+                 KT_MSG_UNKNOWN_ERROR);
+    return rx;
+}
 
-	urlhack_disabled = 1 ;
-	//SetHyperlinkFlag(0);
-	
-    MessageBox(0, full_msg, "Hyperlink patch error", MB_OK);
-    free(full_msg);
-	
+const char *kitty_urlregex_error(const char *pattern)
+{
+    regexp *rx;
+    if (pattern == NULL || pattern[0] == '\0')
+        return NULL;     /* an empty field is allowed: it matches nothing */
+    rx = urlhack_compile(pattern);
+    if (rx == NULL)
+        return urlhack_rx_error;
+    regfree(rx);
+    return NULL;
+}
+
+/* A custom expression that does not compile: the session goes on with the
+ * default pattern, and the reason goes to a notice (somebody at the window)
+ * and to the Event Log (nobody there, or the notice already gone). Neither
+ * waits for anyone. */
+static void urlhack_report_fallback(const char *pattern, const char *error)
+{
+    char *text = dupprintf(KT_URL_REGEX_FALLBACK_FMT, error);
+    char *line = dupprintf(KT_URL_REGEX_FALLBACK_EVENT_FMT, error,
+                           pattern ? pattern : "");
+    kitty_notice_show(KT_CAP_URL_REGEX, text, RGB(190, 110, 0),
+                      GetNoticeSeconds(), NULL, 0);
+    kitty_eventlog_line(EVENTLOG_WARNING_TYPE, line);
+    sfree(line);
+    sfree(text);
 }
 
 void urlhack_set_regular_expression(int mode, const char* expression)
@@ -316,10 +365,13 @@ void urlhack_set_regular_expression(int mode, const char* expression)
 	    urlhack_rx=NULL; 
 	    }
 
-    set_regerror_func(rtfm);
-    urlhack_rx = regcomp((char*)(to_use));
+    urlhack_rx = urlhack_compile(to_use);
+    if (urlhack_rx == NULL && mode == URLHACK_REGEX_CUSTOM) {
+        urlhack_report_fallback(to_use, urlhack_rx_error);
+        urlhack_rx = urlhack_compile(urlhack_default_regex);
+    }
 
-    if (urlhack_rx == 0) {
+    if (urlhack_rx == NULL) {
         urlhack_disabled = 1;
     }
 

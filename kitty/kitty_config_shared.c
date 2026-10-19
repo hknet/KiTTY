@@ -888,6 +888,8 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK,         KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_launcher_dblclick_choices, lenof(kset_launcher_dblclick_choices) },
+    /* empty = no global hotkey; written once the typing stops (KSET_TEXT) */
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_GLOBALHOTKEY,     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_NOTICESECONDS,    KSET_INT, false, NULL, NULL, NULL, 1, 600, 15 },
     /* read by the TERMINAL when a launcher hides it (windows/window.c) */
@@ -952,9 +954,11 @@ int kset_write(const struct kset_key *k, const char *text)
         /* A running launcher rebuilds its menu on the refresh broadcast, and
          * reads [Launcher] reload at that rebuild: unticking "Keep my
          * hand-edited launcher menu" reached it only at the next Save or
-         * Refresh. Ticked, the refresh leaves the hand-edited menu alone. */
+         * Refresh. Ticked, the refresh leaves the hand-edited menu alone.
+         * The same refresh registers the global hotkey again. */
         if (!strcmp(k->section, KI_SECTION_LAUNCHER) &&
-            !strcmp(k->key, KI_LAUNCHER_RELOAD))
+            (!strcmp(k->key, KI_LAUNCHER_RELOAD) ||
+             !strcmp(k->key, KI_LAUNCHER_GLOBALHOTKEY)))
             kitty_notify_launcher_sessions_changed();
         return 1;
     }
@@ -1187,7 +1191,19 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
           }
           case KSET_TEXT: {
             char *s = dlg_editbox_get(ctrl, dlg);
-            int stored = kset_write(k, s);
+            int stored;
+            /* The launcher's global hotkey is not written while typing at
+             * all: its Apply button checks and stores it
+             * (kitty_launcher_hotkey_check, global). Every write makes a
+             * running launcher register it again, and "Ctrl+Alt+K" typed
+             * key by key passes through "Ctrl+A", which it would take from
+             * every program. */
+            if (!strcmp(k->section, KI_SECTION_LAUNCHER) &&
+                !strcmp(k->key, KI_LAUNCHER_GLOBALHOTKEY)) {
+                sfree(s);
+                break;
+            }
+            stored = kset_write(k, s);
             if (stored && k->set_str) k->set_str(s);
             sfree(s);
             if (!stored)

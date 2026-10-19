@@ -4,7 +4,8 @@
  * A panel's path ("Window/Copy & Paste") is the name the Category tree shows,
  * component for component: documentation, -cfgpanel and the QA harnesses all
  * write the path a user sees. Six panels had a code name that differed from
- * their tree name until 0.85.1.18; their old paths stay accepted here, so a
+ * their tree name until 0.85.1.18, and "KiTTY storage" became "KiTTY++
+ * Storage" then; their old paths stay accepted here, so a
  * "-cfgpanel Window/Selection" in a shortcut or script, a remembered panel
  * in kitty.ini, and upstream PuTTY code that still builds "Window/Selection"
  * all land on the panel of today's name.
@@ -24,6 +25,7 @@ static const KittyPanelAlias kitty_panel_aliases[] = {
     { "Connection/Transfers",                   "Connection/File-Transfer-Settings" },
     { "Terminal/Keyboard/Application keypad",   "Terminal/Keyboard/App Keypad & Cursor" },
     { "Application/Migration/old KiTTY Folders", "Application/Migration/(old) KiTTY Folders" },
+    { "Application/Migration/KiTTY storage",     "Application/Migration/KiTTY++ Storage" },
 };
 
 /* Today's path for `path`: `path` itself when no alias applies, else the

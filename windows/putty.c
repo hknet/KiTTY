@@ -175,6 +175,26 @@ static bool kitty_start_at_config_box = false;
 static bool kitty_start_quick_connect = false;
 #endif
 
+#ifdef MOD_PERSO
+/* A do-and-exit run's result (KittyCliReport), with the report lines of
+ * passwords a save kept that no output took as they came - no console,
+ * nothing redirected (kitty_mpw_gui.c, ksec_kept_hold): the result is then
+ * a box, and those lines are in it. */
+static void kitty_cli_result(const char *title, const char *msg, int warn)
+{
+    int more = 0;
+    const char *held = kitty_mpw_kept_held(&more);
+    char *full = dupprintf("%s%s%s", msg, held ? "\n" : "", held ? held : "");
+    if (more > 0) {
+        char *t = dupprintf("%s" KT_BUNDLE_SKIPPED_MORE_FMT, full, more);
+        sfree(full);
+        full = t;
+    }
+    KittyCliReport(title, full, warn || held);
+    sfree(full);
+}
+#endif
+
 void gui_term_process_cmdline(Conf *conf, char *cmdline)
 {
     char *p;
@@ -615,7 +635,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * dozen switches and no -help is a program whose switches
                  * only their author knows. */
                 char *help = dupprintf(
-                    KT_CLI_HELP_FMT, appname, BUILD_VERSION, GetHelpMessage());
+                    KT_CLI_HELP_FMT, kitty_product_name(), BUILD_VERSION, GetHelpMessage());
                 /* At the prompt when there is one. Without a console the
                  * list goes into the scrolling command-list window - a
                  * message box would be taller than a small screen. */
@@ -666,8 +686,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                                "\n"
                                "THIS PROCESS WILL DESTROY YOUR SAVED SESSIONS.\n"
                                "Are you really sure you want to continue?",
-                               appname);
-                s2 = dupprintf("%s Warning", appname);
+                               kitty_product_name());
+                s2 = dupprintf("%s Warning", kitty_product_name());
                 if (message_box(NULL, s1, s2,
                                 MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
                                 false, HELPCTXID(option_cleanup)) == IDYES) {
@@ -761,7 +781,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * touches the store's master password. */
     if (kitty_cli_exportdir) {
         int fail = 0, n, wrapfailed;
-        char msg[700];
+        char msg[2048], *skips;
         /* No silent fallback, exactly as in the GUI: without one of the two
          * switches this used to CREATE a master password for the user's own
          * store as a side effect. Say what to pass instead of doing that. */
@@ -772,18 +792,26 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         if (kitty_cli_bundle_thispc) kitty_set_bundle_dpapi_only(1);
         else                         kitty_set_bundle_passphrase(kitty_cli_bundlepw);
         n = kitty_export_all_to_dir(kitty_cli_exportdir, &fail);
+        /* a password left out (its wrap failed) is a partial result, as a
+         * failed session is: listed, and the run exits 1 */
         wrapfailed = kitty_bundle_wrap_failed();
+        skips = kitty_bundle_wrap_report();
         kitty_clear_bundle_context();
         snprintf(msg, sizeof(msg), KT_CLI_EXPORT_DONE,
                  n, fail, kitty_cli_exportdir,
-                 (kitty_cli_bundle_thispc || wrapfailed)
-                   ? KT_CLI_EXPORT_THISPC_NOTE
-                   : "");
-        KittyCliReport(KT_CAP_SESSION_EXPORT, msg, (fail || wrapfailed));
-        cleanup_exit(fail ? 1 : 0);
+                 kitty_cli_bundle_thispc ? KT_CLI_EXPORT_THISPC_NOTE : "");
+        if (skips) {
+            size_t l = strlen(msg);
+            snprintf(msg + l, sizeof(msg) - l, "%s", skips);
+            sfree(skips);
+        }
+        kitty_cli_result(KT_CAP_SESSION_EXPORT, msg, (fail || wrapfailed));
+        cleanup_exit((fail || wrapfailed) ? 1 : 0);
     }
     if (kitty_cli_importdir) {
         int fail = 0, prox = 0, n;
+        int kept = kitty_mpw_kept_count();   /* passwords kept: master password locked */
+        int nosetup = kitty_mpw_kept_nosetup_count();   /* ... or never set up */
         char msg[700];
         /* A password-protected bundle with no password given would fall through
          * to the master-password prompt - which is interactive, and this path
@@ -802,8 +830,18 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         kitty_notify_launcher_sessions_changed();
         snprintf(msg, sizeof(msg), KT_CLI_IMPORT_DONE,
                  n, prox, fail, kitty_cli_importdir);
-        KittyCliReport(KT_CAP_SESSION_IMPORT, msg, fail);
-        cleanup_exit(fail ? 1 : 0);
+        /* a password not saved (the master password locked) is a partial
+         * result, as a failed session is */
+        kept = kitty_mpw_kept_count() - kept;
+        nosetup = kitty_mpw_kept_nosetup_count() - nosetup;
+        if (kept > 0) {
+            size_t l = strlen(msg);
+            snprintf(msg + l, sizeof(msg) - l,
+                     nosetup == kept ? KT_CLI_IMPORT_NOSETUP_FMT
+                                     : KT_CLI_IMPORT_KEPT_FMT, kept);
+        }
+        kitty_cli_result(KT_CAP_SESSION_IMPORT, msg, fail || kept > 0);
+        cleanup_exit((fail || kept > 0) ? 1 : 0);
     }
     /* Whole-store moves between the registry and a folder (do-and-exit),
      * the command-line form of Application > Migration > KiTTY.ini
@@ -837,7 +875,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         kitty_portable_copy_core(kitty_cli_portablecopy,
                                  kitty_cli_bundle_thispc ? NULL : kitty_cli_bundlepw,
                                  kitty_cli_bundle_thispc, &r, msg, sizeof(msg));
-        KittyCliReport(KT_CAP_PORTABLE_COPY, msg, r.fail);
+        kitty_cli_result(KT_CAP_PORTABLE_COPY, msg, r.fail);
         cleanup_exit(r.fail ? 1 : 0);
     }
     if (kitty_cli_takefolder) {
@@ -851,7 +889,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
                                &r, msg, sizeof(msg));
         kitty_notify_launcher_sessions_changed();
-        KittyCliReport(KT_CAP_TAKE_FOLDER, msg, r.fail);
+        kitty_cli_result(KT_CAP_TAKE_FOLDER, msg, r.fail);
         cleanup_exit(r.fail ? 1 : 0);
     }
 #endif
@@ -1036,7 +1074,7 @@ const struct BackendVtable *backend_vt_from_conf(Conf *conf)
     const struct BackendVtable *vt = backend_vt_from_proto(
         conf_get_int(conf, CONF_protocol));
     if (!vt) {
-        char *str = dupprintf("%s Internal Error", appname);
+        char *str = dupprintf("%s Internal Error", kitty_product_name());
         MessageBox(NULL, "Unsupported protocol number found",
                    str, MB_OK | MB_ICONEXCLAMATION);
         sfree(str);

@@ -786,6 +786,16 @@ void kitty_sav_dir( char * out, size_t n ) {
  * away, so /loadreg showed "Loaded:" and a start-up restore went on as if the
  * sessions were there, whatever reg.exe had done. A file that is not there is
  * a failure too (the caller decides whether that is news). */
+/* Set by LoadRegistryKeyLive: a load from a live session reports and returns
+ * where the start-up load ends the process. */
+static int sav_load_live = 0 ;
+static int sav_load_fail_text( FILE *fp, HKEY hKey, const char *path, const char *why ) {
+	if( hKey != NULL ) RegCloseKey( hKey ) ;
+	if( fp != NULL ) fclose( fp ) ;
+	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), "%s: %s", path, why ) ;
+	return 0 ;
+	}
+
 int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 	FILE *fp ;
 	HKEY hKey = NULL ;
@@ -828,12 +838,18 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 		// Check whether the file is encrypted
 		if( nb == 0 ) {
 			if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
+				/* A live session gets no password prompt: the box is modal
+				 * and would stop the session while it is open. The result
+				 * line reports why nothing was loaded. */
+				if( sav_load_live ) return sav_load_fail_text( fp, hKey, savpath, KT_MAIN_SAV_ENCRYPTED_LIVE ) ;
 				GetAndSendLinePassword( NULL ) ;
-				if( GetInputBoxResult() == NULL ) exit(0) ;
-				if( strlen( GetInputBoxResult() ) == 0 ) exit(0) ;
+				if( GetInputBoxResult() == NULL || strlen( GetInputBoxResult() ) == 0 ) {
+					exit(0) ;
+					}
 				strcpy( PasswordConf, GetInputBoxResult() ) ;
 				decryptstring( GetCryptSaltFlag(), buffer, PasswordConf ) ;
 				if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
+					PasswordConf[0] = '\0' ;
 					MessageBox( NULL, KT_MAIN_WRONG_PASSWORD, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 					exit(1) ;
 					}
@@ -883,6 +899,10 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 				if( rc != ERROR_SUCCESS && ok ) { ok = 0 ; err = (DWORD)rc ; }
 				}
 			else { // error
+				if( sav_load_live ) {
+					PasswordConf[0] = '\0' ;
+					return sav_load_fail_text( fp, hKey, savpath, KT_MAIN_SAV_UNKNOWN_TYPE ) ;
+					}
 				MessageBox( NULL, KT_MAIN_SAV_UNKNOWN_TYPE, KT_CAP_ERROR, MB_OK|MB_ICONERROR );
 				exit( 1 ) ;
 				}
@@ -893,6 +913,14 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 	fclose( fp ) ;
 	if( !ok ) return sav_load_fail_win( savpath, err ) ;
 	return 1 ;
+	}
+
+int LoadRegistryKeyLive( void ) {
+	int r ;
+	sav_load_live = 1 ;
+	r = LoadRegistryKey( NULL ) ;
+	sav_load_live = 0 ;
+	return r ;
 	}
 
 void DelRegistryKey( void ) {

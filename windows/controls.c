@@ -878,6 +878,31 @@ void kitty_controls_set_dir_picker(int (*fn)(HWND, char *, const char *, const c
     kitty_dir_picker = fn;
 }
 
+/* KiTTY: ChooseFont (font) or ChooseColor (colour) through ShinyPumpCall
+ * (shinydialogbox.c): from the mid-session Change Settings box the dialog
+ * runs on a worker thread while this thread serves the session - its own
+ * loop serves no network events, and the session stood still until it
+ * closed. Anywhere else it runs here, as before. */
+struct kitty_choose_call {
+    CHOOSEFONT *font;
+    CHOOSECOLOR *colour;
+    BOOL ok;
+};
+static void kitty_choose_run(void *vctx)
+{
+    struct kitty_choose_call *c = (struct kitty_choose_call *)vctx;
+    c->ok = c->font ? ChooseFont(c->font) : ChooseColor(c->colour);
+}
+static BOOL kitty_choose(CHOOSEFONT *font, CHOOSECOLOR *colour)
+{
+    struct kitty_choose_call c;
+    c.font = font;
+    c.colour = colour;
+    c.ok = FALSE;
+    ShinyPumpCall(kitty_choose_run, &c);
+    return c.ok;
+}
+
 /* KiTTY: staticedit's row with a pushbutton appended - label, edit and
  * button on ONE line. editbutton() is not that: it stacks the label on its
  * own line above, which grows the dialog by a row. percentedit is the
@@ -3226,7 +3251,7 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
             cf.Flags = (dp->fixed_pitch_fonts ? CF_FIXEDPITCHONLY : 0) |
                 CF_FORCEFONTEXIST | CF_INITTOLOGFONTSTRUCT | CF_SCREENFONTS;
 
-            if (ChooseFont(&cf)) {
+            if (kitty_choose(&cf, NULL)) {
                 fs = fontspec_new(lf.lfFaceName, (lf.lfWeight == FW_BOLD),
                                   cf.iPointSize / 10, lf.lfCharSet);
                 dlg_fontsel_set(ctrl, dp, fs);
@@ -3253,7 +3278,7 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
                            dp->coloursel_result.g,
                            dp->coloursel_result.b);
         cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-        if (ChooseColor(&cc)) {
+        if (kitty_choose(NULL, &cc)) {
             dp->coloursel_result.r =
                 (unsigned char) (cc.rgbResult & 0xFF);
             dp->coloursel_result.g =

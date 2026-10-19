@@ -724,6 +724,11 @@ static INT_PTR CALLBACK PassphraseProc(HWND hwnd, UINT msg,
 /*
  * Warn about the obsolescent key file format.
  */
+/* KiTTY: the keys named on kageant's command line are being added - before
+ * the message loop runs, with nobody at a button, so a modal box here kept
+ * the agent from serving its pipe until someone found and answered it. */
+static bool kageant_cmdline_loading = false;
+
 void old_keyfile_warning(void)
 {
     static const char mbtitle[] = "PuTTY Key File Warning";
@@ -734,7 +739,7 @@ void old_keyfile_warning(void)
      * this at every login. Same sorting as the rest of the audit: a box in
      * answer to a click stays a box; one the agent raises on its own becomes
      * a notice. */
-    if (kageant_startup_loading()) {
+    if (kageant_startup_loading() || kageant_cmdline_loading) {
         if (traywindow)
             kitty_notice_show(
                 KT_KA_NOTICE_OLD_FORMAT,
@@ -1368,6 +1373,47 @@ void keylist_update(void)
                  kageant_pending_count() > 0);
 }
 
+/*
+ * KiTTY: a key file added in an old or weakly protected PPK format, for a key
+ * loaded at start and for one added by hand alike; once per file per
+ * process. Both go into the agent's log (ev="keyfile-warning", the path and
+ * warning="old-format" or "weak-protection"). An encrypted version 2 file
+ * protects its passphrase with a weak derivation (SHA-1; version 3,
+ * kittygen's default, uses Argon2): also a notice, not a box - it is advice,
+ * not an error. The old version 1 format has its own notice or box
+ * (old_keyfile_warning above).
+ */
+static void kageant_keyfile_format_report(const Filename *filename)
+{
+    static char *seen[32];
+    static int nseen = 0;
+    const char *path = filename_to_str(filename);
+    unsigned ver = 0;
+    bool enc = false;
+    bool weak;
+    char *text;
+    int i;
+
+    if (!ppk_format_f(filename, &ver, &enc) || !(ver == 1 || (ver == 2 && enc)))
+        return;
+    for (i = 0; i < nseen; i++)
+        if (!strcmp(seen[i], path))
+            return;
+    if (nseen < (int)lenof(seen))
+        seen[nseen++] = dupstr(path);
+    weak = ver == 2;
+    kitty_audit("keyfile-warning", "path", path,
+                "warning", weak ? "weak-protection" : "old-format",
+                (const char *)NULL);
+    if (!weak || !traywindow)
+        return;
+    text = dupprintf(KT_KEYFILE_WEAK_FMT, path);
+    kitty_notice_show(KT_KA_NOTICE_WEAK_KEYFILE, text, KAGEANT_NOTICE_WARN,
+                      kageant_notice_seconds(12), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
+}
+
 void win_add_keyfile(Filename *filename, bool encrypted)
 {
     char *err;
@@ -1427,6 +1473,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
     ret = pageant_add_keyfile(filename, NULL, &err, encrypted);
     if (ret == PAGEANT_ACTION_OK) {
         kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
+        kageant_keyfile_format_report(filename);
         goto done;
     } else if (ret == PAGEANT_ACTION_FAILURE) {
         goto error;
@@ -1461,6 +1508,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
                 burnstr(pass);
                 if (ret == PAGEANT_ACTION_OK) {
                     kageant_track_keypath(hp, encrypted);
+                    kageant_keyfile_format_report(filename);
                     goto done;
                 } else if (ret == PAGEANT_ACTION_FAILURE) {
                     goto error;
@@ -1530,6 +1578,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
 
         if (ret == PAGEANT_ACTION_OK) {
             kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
+            kageant_keyfile_format_report(filename);
             goto done;
         } else if (ret == PAGEANT_ACTION_FAILURE) {
             goto error;
@@ -7029,11 +7078,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /*
      * Add any keys provided on the command line.
      */
+    kageant_cmdline_loading = true;
     for (size_t i = 0; i < nclkeys; i++) {
         CommandLineKey *clkey = &clkeys[i];
         win_add_keyfile(clkey->fn, clkey->add_encrypted);
         filename_free(clkey->fn);
     }
+    kageant_cmdline_loading = false;
     sfree(clkeys);
     /* And forget any passphrases we stashed during that loop. */
     pageant_forget_passphrases();

@@ -165,6 +165,17 @@ HWND ShinyDialogBoxModeless(HINSTANCE hinst, LPCTSTR tmpl, const char *winclass,
                             HWND hwndparent, ShinyDlgProc proc, void *ctx,
                             void (*done)(void *dctx, int result), void *dctx);
 void ShinyEndDialog(HWND hwnd, int ret);
+/* KiTTY: boxes and pickers opened from inside a pumped box on this thread
+ * (Change Settings mid-session) wait through its wait step, so the session
+ * keeps running (shinydialogbox.c). ShinyPumpActive: such a box is open
+ * here; ShinyPumpBox: that box. ShinyPumpUntil: run its wait step until
+ * *done (true), or until the box ends under it or WM_QUIT comes (false);
+ * dlg gets its dialog keys. ShinyPumpCall: fn(ctx) on a worker thread while
+ * this thread pumps; directly, as before, with no pumped box here. */
+bool ShinyPumpActive(void);
+HWND ShinyPumpBox(void);
+bool ShinyPumpUntil(HWND dlg, volatile LONG *done);
+void ShinyPumpCall(void (*fn)(void *ctx), void *ctx);
 /* KiTTY: register a modeless aux dialog (About box, /help command list) so
  * message loops can keep its dialog keyboard handling (Esc/Tab) working via
  * IsDialogMessage(). ShinyAuxDialogMessage() is the loop-side half: it offers
@@ -579,6 +590,9 @@ void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
                int s2id);
 void editbutton(struct ctlpos *cp, const char *stext, int sid,
                 int eid, const char *btext, int bid);
+/* KiTTY: the product name a person reads - "KiTTY++" where appname (also
+ * the window class) is "KiTTY", appname otherwise (windows/dialog.c) */
+const char *kitty_product_name(void);
 void staticeditbutton(struct ctlpos *cp, const char *stext,
                       int sid, int eid, int percentedit,
                       const char *btext, int bid, int percentbtn);

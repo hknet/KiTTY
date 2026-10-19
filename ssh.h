@@ -1627,6 +1627,12 @@ extern ssh2_userkey ssh2_wrong_passphrase;
 
 bool ppk_encrypted_s(BinarySource *src, char **comment);
 bool ppk_encrypted_f(const Filename *filename, char **comment);
+/* KiTTY: the format version and encryption of a PPK file (sshpubk.c), and
+ * the frontend's report of every key file ppk_load_f / ppk_loadpub_f open:
+ * true = a version 1 file was reported, so no old_keyfile_warning() box */
+bool ppk_format_f(const Filename *filename, unsigned *version, bool *encrypted);
+extern bool (*ppk_format_hook)(const Filename *filename, unsigned version,
+                               bool encrypted);
 bool rsa1_encrypted_s(BinarySource *src, char **comment);
 bool rsa1_encrypted_f(const Filename *filename, char **comment);
 

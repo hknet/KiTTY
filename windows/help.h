@@ -20,7 +20,7 @@ typedef const char *HelpCtx;
  * reference chapter for the settings this fork adds - written by hand and
  * ordered like the panels, the same way upstream documents its own.
  *
- * Not FEATURES.md: that generates the "KiTTY additions" chapter, which is a
+ * Not FEATURES.md: that generates the "KiTTY++ additions" chapter, which is a
  * feature overview. A control's Help button has to answer "what does THIS
  * setting do, and what happens if I change it", which is a different document.
  *

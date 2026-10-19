@@ -1,11 +1,11 @@
-# kitty.ini — the KiTTY settings file
+# kitty.ini — the KiTTY++ settings file
 
-`kitty.ini` is KiTTY's optional plain-text configuration file. It holds the
-KiTTY-specific settings — most feature switches live in its `[KiTTY]` section —
+`kitty.ini` is KiTTY++'s optional plain-text configuration file. It holds the
+KiTTY++-specific settings — most feature switches live in its `[KiTTY]` section —
 and configures the companion tools (the `[Agent]` section for kageant, the
 launcher, printing, the configuration box, keyboard shortcuts).
 
-Nothing requires the file: without a `kitty.ini`, KiTTY runs with built-in
+Nothing requires the file: without a `kitty.ini`, KiTTY++ runs with built-in
 defaults and stores sessions in the Windows registry.
 
 Lines are `key = value` under a `[Section]` heading, and whitespace around a
@@ -28,17 +28,17 @@ For the features *behind* the switches — what they do and how to use them —
 see **[`FEATURES.md`](../FEATURES.md)**. The internal `/commands` you can type
 into the send-text box are documented in **[`COMMANDS.md`](COMMANDS.md)**.
 
-## How KiTTY finds the file
+## How KiTTY++ finds the file
 
 The first match wins:
 
-1. the file named by the **`KITTY_INI_FILE`** environment variable, if it exists;
+1. the file given by the **`KITTY_INI_FILE`** environment variable, if it exists;
 2. **`kitty.ini` next to the executable**;
 3. `%APPDATA%\KiTTY\kitty.ini` — registry mode only (auto-created on first run).
 
 A `putty.ini` is not read. One beside kitty.exe that has a `[KiTTY]` section,
 with no `kitty.ini` next to it, is copied to `kitty.ini` at the next start of
-kitty.exe, which says so; the `putty.ini` itself is left as it is. The
+kitty.exe, which reports it; the `putty.ini` itself is left as it is. The
 settings are always read from the `[KiTTY]` section.
 
 A **portable** install (`savemode=dir`) uses only the locations next to the
@@ -130,12 +130,12 @@ exe*.
 
 | Section | What it configures |
 |---|---|
-| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`PortablePasswordProtection`, `readonly`, `restrictacl`), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `FileZillaPath`, `rzcommand` and `szcommand`, `PSCPPath` and `pscpport` (the file-copy helper kscp and the port it transfers on), `downloaddir` and `uploaddir` (where received files land, and the local folder files are sent from), `transfernotification` (a system notification when a transfer finishes), `transfermaxmb` and `transferfullpath` (the global defaults for transfers over the session, kitten transfer: per-file size limit for arriving files, and whether the far end may request a file by full local path), `pscpdir` and `winscpdir` (legacy fallback folders), and `warnmissingfeatures` (name in the terminal whatever this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md), and `traymode` (`auto`, `own` or `launcher`: whether a window sent to the tray gets its own tray icon or hides into the launcher - see Send to tray in FEATURES.md), and `sendtermenv` (each new SSH or Telnet connection also sends `COLORTERM=truecolor` and `TERM_PROGRAM=KiTTY++` unless the session sets them; default `yes` - see Terminal environment in FEATURES.md), and `notes` with `notesonce` (the application notification: one note the first window of every KiTTY process shows near the clock until it is clicked, and whether a click silences it while the launcher runs), and the folder store's paths and file-name endings: `sessions` (session folder), `fileextension` (session file ending, also the registered file type), `sshhostkeys` (host-key folder) and `hostkeyextension` (host-key file ending); a hand edit of either ending is offered as a rename at the next start of the configuration window, and `fileextensionapplied` / `hostkeyextensionapplied` record the ending last applied - old KiTTY's own key names, copied once from classic KiTTY's putty.conf (recorded by `puttyconfmigrated=yes`) and from 0.85.1.13's `sessionsuffix` / `keysuffix`, which are removed after the copy; and the reconnect rules: `reconnectmaxdelay` (the longest wait between attempts), `reconnectbackoff` (the factor per retry, 1 = fixed) and, per failure condition, `reconnectdns`, `reconnecttcp`, `reconnectprelogin`, `reconnectagentlocked`, `reconnectprompt`, `reconnectnokey`, `reconnectloginclosed`, `reconnectrefused`, `reconnectother` (`retry`/`3`/`1`/`stop`/`wait` - see Reconnect by failure condition in FEATURES.md); and the program status (OSC 7501): `psoverlay` (the overlay at the top right while two or more jobs report) and `PsTitleHintShown` (written once the notice has offered to show the status in the title bar - see Program status in FEATURES.md); and `noticeseconds` (how long a notice of kitty.exe stays on screen, 1-600, default 15); and `urlsessions` (`no`/`yes`: an `ssh://` or `telnet://` link opens a saved session it matches - see SSH handler in FEATURES.md); and `offernewsessioncreation` (`yes`/`no`: after the first login to a new host, offer to keep the connection as a session); and `inheritdefaultsettings` (`yes`/`no`: a setting a session leaves out comes from Default Settings instead of the built-in default - see Inherit Default Settings in FEATURES.md); and `ctxtint` (`subtle`/`medium`/`strong`: how far the OSC 3008 background tint goes, 10, 20 or 30 percent - see Contexts (OSC 3008) in FEATURES.md); and `ctxbreadcrumbopacity` (40-100, default 70: how opaque the OSC 3008 breadcrumb is, in percent) with `ctxbreadcrumbplace` (`title`, the default: over the right end of the title bar; `window`: at the top right of the terminal area). |
+| `[KiTTY]` | The main section: feature switches (hyperlinks, transparency, icons, background image, …), `savemode`, security options (`readonly`, `restrictacl`, and `PortablePasswordProtection`: `master`, the default, a master password; `dpapi`, this Windows account on this PC only - also written by the "Use DPAPI (this PC only)" button of the master password setup, into the kitty.ini in use (a choice of this PC, not of a session folder other PCs share); `legacy`, unprotected; while the master password is locked a password typed is not saved and the stored one stays), window/title behaviour, scripting, `theme` (`system`/`light`/`dark` - the colours every KiTTY++ window paints in, kageant and kittygen included; dark needs Windows 10 1809 or newer), and `checkupdate` (look for a new release at startup), and `showforeignsessions` (also list an older KiTTY's or PuTTY's own saved sessions - `auto`/`yes`/`no`, default `auto`), and where the helper programs live on this PC: `WinSCPPath`, `FileZillaPath`, `rzcommand` and `szcommand`, `PSCPPath` and `pscpport` (the file-copy helper kscp and the port it transfers on), `downloaddir` and `uploaddir` (where received files land, and the local folder files are sent from), `transfernotification` (a system notification when a transfer finishes), `transfermaxmb` and `transferfullpath` (the global defaults for transfers over the session, kitten transfer: per-file size limit for arriving files, and whether the far end may request a file by full local path), `pscpdir` and `winscpdir` (legacy fallback folders), and `warnmissingfeatures` (report in the terminal what this version of Windows is too old to provide), and `renderer` (`gdi` or `d2d`: how the terminal window is painted - see Terminal renderer in FEATURES.md), and `framepace` (`auto`, a number of milliseconds, or 0: how often the window may repaint while output streams in - see Frame pacing in FEATURES.md), and `traymode` (`auto`, `own` or `launcher`: whether a window sent to the tray gets its own tray icon or hides into the launcher - see Send to tray in FEATURES.md), and `sendtermenv` (each new SSH or Telnet connection also sends `COLORTERM=truecolor` and `TERM_PROGRAM=KiTTY++` unless the session sets them; default `yes` - see Terminal environment in FEATURES.md), and `notes` with `notesonce` (the application notification: one note the first window of every KiTTY++ process shows near the clock until it is clicked, and whether a click silences it while the launcher runs), and the folder store's paths and file-name endings: `sessions` (session folder), `fileextension` (session file ending, also the registered file type), `sshhostkeys` (host-key folder) and `hostkeyextension` (host-key file ending); a hand edit of either ending is offered as a rename at the next start of the configuration window, and `fileextensionapplied` / `hostkeyextensionapplied` record the ending last applied - old KiTTY's own key names, copied once from classic KiTTY's putty.conf (recorded by `puttyconfmigrated=yes`) and from 0.85.1.13's `sessionsuffix` / `keysuffix`, which are removed after the copy; and the reconnect rules: `reconnectmaxdelay` (the longest wait between attempts), `reconnectbackoff` (the factor per retry, 1 = fixed) and, per failure condition, `reconnectdns`, `reconnecttcp`, `reconnectprelogin`, `reconnectagentlocked`, `reconnectprompt`, `reconnectnokey`, `reconnectloginclosed`, `reconnectrefused`, `reconnectother` (`retry`/`3`/`1`/`stop`/`wait` - see Reconnect by failure condition in FEATURES.md); and the program status (OSC 7501): `psoverlay` (the overlay at the top right while two or more jobs report) and `PsTitleHintShown` (written once the notice has offered to show the status in the title bar - see Program status in FEATURES.md); and `noticeseconds` (how long a notice of kitty.exe stays on screen, 1-600, default 15); and `urlsessions` (`no`/`yes`: an `ssh://` or `telnet://` link opens a saved session it matches - see SSH handler in FEATURES.md); and `offernewsessioncreation` (`yes`/`no`: after the first login to a new host, offer to keep the connection as a session); and `inheritdefaultsettings` (`yes`/`no`: a setting a session leaves out comes from Default Settings instead of the built-in default - see Inherit Default Settings in FEATURES.md); and `ctxtint` (`subtle`/`medium`/`strong`: how far the OSC 3008 background tint goes, 10, 20 or 30 percent - see Contexts (OSC 3008) in FEATURES.md); and `ctxbreadcrumbopacity` (40-100, default 70: how opaque the OSC 3008 breadcrumb is, in percent) with `ctxbreadcrumbplace` (`title`, the default: over the right end of the title bar; `window`: at the top right of the terminal area). |
 | `[Agent]` | kageant (the SSH agent): `askconfirmation` (`yes`/`auto`/`no`/`hello` - the last one demands a Windows Hello gesture for the confirmation), `messageonkeyusage`, `loadonstartup` + the `startupkeyN` list, `retrykeys` (what to do when a startup key's media returns), the `agentlog*` settings, `hellocacheseconds` (how long one Windows Hello unlock keeps covering further protected keys; `0` requires a gesture every time), `autoencryptmode` + `autoencryptseconds` (re-encrypt keys after idle: `off` / `default` for keys without their own value / `enforce` for every key, and the time - seconds, `10m`, `2h`, `1d`, or `use` / `immediately` for right after each signature), `lockwithwindows` (what Windows locking does to the agent: `keep` it working, `lock` it, or `reencrypt` the keys too), `allowipclock` (`yes` lets programs lock and unlock the agent with `ssh-add -x` / `-X`; default `no`). |
 | `[ConfigBox]` | Configuration-box behaviour: `dblclick` (double-click on a saved session = Open or Start), `defaultsettings` visibility, `supdup` and `rlogin` (`no` = that protocol's Connection leaf left out of the tree unless the session uses it), `loadlastsession` (off = quick connect: open on Default Settings with the caret in Host Name), `foldernavigation` (session folders as ROWS of the saved-session list rather than a drop-down), `confirmdelete` (`no` = deleting a session from the list needs no confirmation; default `yes`), box height, `windowheight` and `windowwidth` (the size of the configuration window itself), `fixedsizewindow` (lock that size: no resize frame, size fields read-only), `applicationsettings` (`no` = no Application tab at all; kitty.ini only), `applicationpanel` (the Application tab's leaf, remembered between configuration windows), `switchpaint` (`erase` = paint a panel switch the old way, erase then repaint on screen, instead of the freeze frame; a diagnostic), and `collapsed` (the Category-tree folds the user changed by hand, by path - written by the window itself; they beat the categoryexpand default in both directions). |
-| `[Shortcuts]` | Keyboard shortcuts for KiTTY menu actions, e.g. `duplicate={CONTROL}N`, and the `list` of key combinations that type a text; both are edited on KiTTY++ Settings > Keys & Mouse > Shortcuts (the shortcut editor), which writes the same syntax. The Tools menu's file-transfer entries are `winscp` (Start WinSCP, default Shift+F3), `sendfile` (Send File (kscp), Ctrl+F3), `getfile` (Get File (kscp), Ctrl+F4) and `filezilla` (Start FileZilla, Shift+F4; works while the Tools menu offers it); `search` opens the scrollback search's find bar (Find... in the window menu, default Ctrl+Shift+F); the keys that used to be fixed are actions too: `transparencyup` (Ctrl+Up), `transparencydown` (Ctrl+Down), `fontup` (Ctrl+Num+), `fontdown` (Ctrl+Num-) and `fontreset` (Ctrl+Num 0). The shell's prompt marks (OSC 133) have `promptprev` (Alt+PgUp), `promptnext` (Alt+PgDn), `failedprev` (Alt+Shift+PgUp), `failednext` (Alt+Shift+PgDn) `selectoutput` (Alt+End) and `selectcommand` (Alt+Home). |
+| `[Shortcuts]` | Keyboard shortcuts for KiTTY++ menu actions, e.g. `duplicate={CONTROL}N`, and the `list` of key combinations that type a text; both are edited on KiTTY++ Settings > Keys & Mouse > Shortcuts (the shortcut editor), which writes the same syntax. The Tools menu's file-transfer entries are `winscp` (Start WinSCP, default Shift+F3), `sendfile` (Send File (kscp), Ctrl+F3), `getfile` (Get File (kscp), Ctrl+F4) and `filezilla` (Start FileZilla, Shift+F4; works while the Tools menu offers it); `search` opens the scrollback search's find bar (Find... in the window menu, default Ctrl+Shift+F); the keys that used to be fixed are actions too: `transparencyup` (Ctrl+Up), `transparencydown` (Ctrl+Down), `fontup` (Ctrl+Num+), `fontdown` (Ctrl+Num-) and `fontreset` (Ctrl+Num 0). The shell's prompt marks (OSC 133) have `promptprev` (Alt+PgUp), `promptnext` (Alt+PgDn), `failedprev` (Alt+Shift+PgUp), `failednext` (Alt+Shift+PgDn) `selectoutput` (Alt+End) and `selectcommand` (Alt+Home). |
 | `[Print]` | Text printing: character size, lines per page, characters per line. |
-| `[Launcher]` | The tray launcher, e.g. `reload=no` to keep a hand-edited launcher menu from being rebuilt, and `unhideafter=3`: the seconds after which windows hidden from the launcher's menu show themselves again when the launcher ends (`0` = never - they stay hidden until a launcher is started again), and `dblclick=manage`: a double click on the tray icon opens Manage Sessions instead of a configuration window. |
+| `[Launcher]` | The tray launcher, e.g. `reload=no` to keep a hand-edited launcher menu from being rebuilt, and `unhideafter=3`: the seconds after which windows hidden from the launcher's menu show themselves again when the launcher ends (`0` = never - they stay hidden until a launcher is started again), and `dblclick=manage`: a double click on the tray icon opens Manage Sessions instead of a configuration window, and `globalhotkey=Ctrl+Alt+K`: a key combination from any program that does what the double click does. |
 | `[FontFallback]` | Missing-glyph font fallback: `active` master switch (default yes), `fallback` font list, `override` Unicode-range pinning, `log`/`logfile` troubleshooting. |
 
 KiTTY++ also writes a `[TrustedHelpers]` section that the example file does
@@ -151,13 +151,13 @@ file with a broken signature is not started.
 
 A machine that has run stock PuTTY, or an older 9bis KiTTY, keeps those saved
 sessions in registry hives of their own. `showforeignsessions` decides whether
-KiTTY lists them alongside its own, where they can be opened, edited and
+KiTTY++ lists them alongside its own, where they can be opened, edited and
 deleted. It applies to registry save modes only; a portable store has no
 foreign hive to read.
 
-* `auto` — the default. List them only while this KiTTY has no sessions of
+* `auto` — the default. List them only while this KiTTY++ has no sessions of
   its own, so an upgrade never opens onto an apparently empty list and the old
-  sessions retire themselves once you have your own. This is what KiTTY did
+  sessions retire themselves once you have your own. This is what KiTTY++ did
   before the key existed.
 * `yes` — always list them.
 * `no` — never list them.
@@ -172,7 +172,7 @@ where the old hive is history and its sessions are noise.
 
 ## Update check — `[KiTTY] checkupdate`
 
-`checkupdate=yes` (the default) makes KiTTY look for a newer release when a
+`checkupdate=yes` (the default) makes KiTTY++ look for a newer release when a
 session starts and print a one-line notice at the top of the terminal if there
 is one. The fetch is asynchronous and the terminal is touched once, at the
 clean top of the session, so a full-screen program is never corrupted by it.
@@ -189,7 +189,7 @@ box works either way.
 
 It is an **application** setting, and it did not use to be: the answer lived in
 every saved session as `CheckUpdateStartup`, so which session you opened first
-decided whether KiTTY checked. Saving a session now deletes that key, and the
+decided whether KiTTY++ checked. Saving a session now deletes that key, and the
 old values drain out of the store as sessions are touched. Nothing is migrated,
 because there was nothing sensible to migrate from - each session carried its
 own answer.
@@ -214,7 +214,7 @@ With this, every start opens on **Default Settings** with the cursor already in
 the connection uses the same known configuration every time.
 
 You do not have to set anything to get this occasionally: **load "Default
-Settings" once**. KiTTY remembers it like any other session and comes up in
+Settings" once**. KiTTY++ remembers it like any other session and comes up in
 quick connect from then on, until you load a different session. Typing an
 address into an unsaved session records nothing, so the mode survives
 connecting — it is left by loading a session, not by switching a setting back.
@@ -302,7 +302,7 @@ With WSL, lrzsz installed in the distribution serves both: `rzcommand` and
 These are properties of the machine, not of a connection, so they live here
 and every session shares them. Set them on **Application > KiTTY++ Settings >
 Transfers & Tools**, which has a leaf per tool. The Tools menu of a terminal
-offers WinSCP and FileZilla only while the file each path names exists.
+offers WinSCP and FileZilla only while the file each path points to exists.
 
 `WinSCPPath`, `FileZillaPath`, `PSCPPath`, `rzcommand`, `szcommand`,
 `downloaddir`, `uploaddir` and `sav` expand Windows environment variables -
@@ -310,7 +310,7 @@ offers WinSCP and FileZilla only while the file each path names exists.
 resolved when the file is used; the setting keeps it as typed. An unknown
 `%name%` stays as it is.
 
-`PSCPPath` is normally left empty: KiTTY looks for `kscp.exe` beside itself at
+`PSCPPath` is normally left empty: KiTTY++ looks for `kscp.exe` beside itself at
 every start (then in `pscpdir`, then for PuTTY's `pscp.exe`) and writes nothing
 back. Set it only to force a particular binary. The key names keep their
 historical `pscp` spelling; the program is kscp. Beside it on the same panel:
@@ -323,8 +323,8 @@ historical `pscp` spelling; the program is kscp. Beside it on the same panel:
 | `transfernotification` | `yes` (default) / `no`: a system notification (tray balloon) when a transfer finishes - kscp Send File, Get File and drag-and-drop, ZModem receive and upload, and transfers over the session (kitten transfer) in both directions |
 | `transfermaxmb` | the global default of *Max transfer size (MB)* for files arriving over the session (kitten transfer), per file; `0` = no limit; default `1024`; a session can set its own on *Connection > File-Transfer-Settings* |
 | `transferfullpath` | the global default of *Allow full path Upload-Requests*: may the far end request a file by full local path (`/C:/...`)? `no` (default) = only names inside the upload folder are resolved, a full path is refused per file; a session can set its own on *Connection > File-Transfer-Settings* |
-| `notes` | the application notification: one note this installation shows to whoever starts KiTTY. The first window every KiTTY process opens - terminal, launcher or configuration window - raises it in the notice window near the clock, with no timeout, until it is clicked; only one copy is on the desktop at a time. Another notice from the same process borrows the screen and hands it back, so the note is not lost. ONE line here, with `\n` for a line break (`\r`, `\t` and `\\` likewise, and no other escapes); leading and trailing spaces are kept by wrapping the value in double quotes; empty (the default) displays nothing. Editable at *Application > Security > Application Notification*. Outside portable mode it is the registry value `Notes` under KiTTY's own key, where older versions kept the note they showed in a message box at every start |
-| `notesonce` | `no` (default) / `yes`: what clicking the application notification away means. `no` takes it off this desktop and the next KiTTY started shows it again; `yes` records that the note has been READ - the process that clicked remembers, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there. Editing the note makes it a different note, shown again. The checkbox is *"Show once while the launcher runs"* on the same panel |
+| `notes` | the application notification: one note this installation shows to whoever starts KiTTY++. The first window every KiTTY++ process opens - terminal, launcher or configuration window - raises it in the notice window near the clock, with no timeout, until it is clicked; only one copy is on the desktop at a time. Another notice from the same process borrows the screen and hands it back, so the note is not lost. ONE line here, with `\n` for a line break (`\r`, `\t` and `\\` likewise, and no other escapes); leading and trailing spaces are kept by wrapping the value in double quotes; empty (the default) displays nothing. Editable at *Application > Security > Application Notification*. Outside portable mode it is the registry value `Notes` under KiTTY++'s own key, where older versions kept the note they showed in a message box at every start |
+| `notesonce` | `no` (default) / `yes`: what clicking the application notification away means. `no` takes it off this desktop and the next KiTTY++ started shows it again; `yes` records that the note has been READ - the process that clicked remembers, and so does the session launcher when one is running, so nothing shows that note again for as long as either is there. Editing the note makes it a different note, shown again. The checkbox is *"Show once while the launcher runs"* on the same panel |
 | `pscpdir` | legacy: a folder to search for `kscp.exe` / `pscp.exe`; prefer `PSCPPath` |
 | `winscpdir` | legacy: a folder to search for `WinSCP.exe`; prefer `WinSCPPath` |
 

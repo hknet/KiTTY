@@ -19,6 +19,7 @@
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_anchor.h"  /* KiTTY: the resizable configuration box */
 #include "../kitty/kitty_text.h"    /* KiTTY: the words the dialogs show */
+#include "../kitty/kitty_renameguard.h"   /* KiTTY: kitty_guard_interactive, kitty_eventlog_line */
 
 #include <commctrl.h>
 #include <commdlg.h>
@@ -87,6 +88,8 @@ typedef struct PortableDialogStuff {
 /*
  * Initialise a PortableDialogStuff, before launching the dialog box.
  */
+static const char *about_product_name(void);   /* below */
+
 static PortableDialogStuff *pds_new(size_t nctrltrees)
 {
     PortableDialogStuff *pds = snew(PortableDialogStuff);
@@ -106,7 +109,7 @@ static PortableDialogStuff *pds_new(size_t nctrltrees)
     kitty_conf_ctrlbox_is(pds->ctrlbox);
     }
 
-    pds->dp->errtitle = dupprintf("%s Error", appname);
+    pds->dp->errtitle = dupprintf("%s Error", about_product_name());
 
     pds->initialised = false;
 
@@ -563,7 +566,7 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
-        char *str = dupprintf("%s Event Log", appname);
+        char *str = dupprintf("%s Event Log", about_product_name());
         SetWindowText(hwnd, str);
         sfree(str);
 
@@ -703,12 +706,18 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/* KiTTY: the Licence box is modeless, as the About box that opens it: a
+ * DialogBox here was a second message loop, and the session behind stood
+ * still while the licence was read. One at a time; About owns it, so
+ * closing About closes it too. */
+static HWND kitty_licence_dlg = NULL;
+
 static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
                                     WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
       case WM_INITDIALOG: {
-        char *str = dupprintf("%s Licence", appname);
+        char *str = dupprintf("%s Licence", about_product_name());
         SetWindowText(hwnd, str);
         sfree(str);
         SetDlgItemText(hwnd, IDA_TEXT, LICENCE_TEXT("\r\n\r\n"));
@@ -718,12 +727,16 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
         switch (LOWORD(wParam)) {
           case IDOK:
           case IDCANCEL:
-            EndDialog(hwnd, 1);
+            DestroyWindow(hwnd);
             return 0;
         }
         return 0;
       case WM_CLOSE:
-        EndDialog(hwnd, 1);
+        DestroyWindow(hwnd);
+        return 0;
+      case WM_DESTROY:
+        kitty_licence_dlg = NULL;
+        ShinyRemoveAuxDialog(hwnd);
         return 0;
     }
     return 0;
@@ -738,11 +751,18 @@ static void kitty_show_about_modeless(HWND owner);
 
 /* KiTTY: the product name a person reads. appname is also the window class
  * ("KiTTY"), which the launcher, Ctrl+Tab and other programs match, so it
- * cannot change; the terminal's About box shows KiTTY++ instead. The other
+ * cannot change; the terminal's boxes (About, Event Log, Licence, errors)
+ * show KiTTY++ instead. The other
  * programs that share this file (PuTTY, KiTTYtel, pterm) keep their name. */
 static const char *about_product_name(void)
 {
     return strcmp(appname, "KiTTY") ? appname : "KiTTY++";
+}
+/* the same for the other files of the terminal (windows/window.c,
+ * windows/putty.c: their box titles) */
+const char *kitty_product_name(void)
+{
+    return about_product_name();
 }
 
 static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
@@ -818,11 +838,17 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
             DestroyWindow(hwnd);
             return 0;
           case IDA_LICENCE:
-            EnableWindow(hwnd, 0);
-            DialogBox(hinst, MAKEINTRESOURCE(IDD_LICENCEBOX),
-                      hwnd, LicenceProc);
-            EnableWindow(hwnd, 1);
-            SetActiveWindow(hwnd);
+            if (kitty_licence_dlg && IsWindow(kitty_licence_dlg)) {
+                SetForegroundWindow(kitty_licence_dlg);
+                return 0;
+            }
+            kitty_licence_dlg = CreateDialog(
+                hinst, MAKEINTRESOURCE(IDD_LICENCEBOX), hwnd, LicenceProc);
+            if (kitty_licence_dlg) {
+                ShinyAddAuxDialog(kitty_licence_dlg);
+                ShowWindow(kitty_licence_dlg, SW_SHOW);
+                SetForegroundWindow(kitty_licence_dlg);
+            }
             return 0;
 
           case IDA_WEB:
@@ -4575,9 +4601,21 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
     }
 }
 
+/* KiTTY: the session log could not be opened (logging.c, a filesystem error -
+ * not a Cancel in its question). Set by window.c: it reports in the notice
+ * window and returns true, and the line below does not go into the terminal,
+ * where it landed in the middle of the remote's screen. The Event Log line is
+ * logging.c's own, written before this. NULL: PuTTY's way. Not fenced: this
+ * file is in the shared GUI library. */
+bool (*kitty_logging_error_hook)(Seat *seat, const char *event) = NULL;
+
 static void win_gui_logging_error(LogPolicy *lp, const char *event)
 {
     WinGuiSeat *wgs = container_of(lp, WinGuiSeat, logpolicy);
+
+    if (kitty_logging_error_hook &&
+        kitty_logging_error_hook(&wgs->seat, event))
+        return;
 
     /* Send 'can't open log file' errors to the terminal window.
      * (Marked as stderr, although terminal.c won't care.) */
@@ -4620,6 +4658,7 @@ struct hostkey_dialog_ctx {
     SeatDialogText *text;
     bool has_title;
     const char *helpctx;
+    HWND moreinfo;      /* KiTTY: the open "More info" window, or NULL */
 };
 
 static INT_PTR HostKeyMoreInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -4630,6 +4669,13 @@ static INT_PTR HostKeyMoreInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
     switch (msg) {
       case WM_INITDIALOG: {
         int index = 100, y = 12;
+        {
+            /* KiTTY: the product's name, not the template's "PuTTY:" */
+            char *t = dupprintf("%s: information about the server's host key",
+                                about_product_name());
+            SetWindowText(hwnd, t);
+            sfree(t);
+        }
 
         WPARAM font = SendMessage(hwnd, WM_GETFONT, 0, 0);
 
@@ -4727,6 +4773,7 @@ static INT_PTR HostKeyMoreInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_COMMAND:
         switch (LOWORD(wParam)) {
           case IDOK:
+          case IDCANCEL:                 /* KiTTY: Esc closes it too */
             ShinyEndDialog(hwnd, 0);
             return 0;
         }
@@ -4736,6 +4783,29 @@ static INT_PTR HostKeyMoreInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
         return 0;
     }
     return 0;
+}
+
+/*
+ * KiTTY: "More info" is modeless like the host-key box that opens it. Its
+ * own message loop (ShinyDialogBox) served window messages only: the session
+ * stood still behind it, the server's close went unseen and an answer given
+ * in the host-key box meanwhile never reached SSH (the loop outlived both
+ * windows and runs no queued callbacks). One per
+ * host-key box, owned by it, and ended BEFORE it: the box's end is posted
+ * after this one, so this window goes through its own end (state freed, aux
+ * slot cleared) rather than with its owner.
+ */
+static void kitty_hk_moreinfo_done(void *vctx, int result)
+{
+    struct hostkey_dialog_ctx *ctx = (struct hostkey_dialog_ctx *)vctx;
+    (void)result;
+    ctx->moreinfo = NULL;
+}
+
+static void kitty_hk_moreinfo_end(struct hostkey_dialog_ctx *ctx)
+{
+    if (ctx->moreinfo && IsWindow(ctx->moreinfo))
+        ShinyEndDialog(ctx->moreinfo, 0);
 }
 
 static const char *process_seatdialogtext(
@@ -4914,6 +4984,7 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
              * it: enabled again BEFORE the box goes, or Windows activates
              * some other program's window */
             EnableWindow(GetWindow(hwnd, GW_OWNER), TRUE);
+            kitty_hk_moreinfo_end(ctx);
             ShinyEndDialog(hwnd, LOWORD(wParam));
             return 0;
           case IDHELP: {
@@ -4921,13 +4992,21 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
             return 0;
           }
           case IDC_HK_MOREINFO: {
-            ShinyDialogBox(hinst, MAKEINTRESOURCE(IDD_HK_MOREINFO),
-                           "PuTTYHostKeyMoreInfo", hwnd,
-                           HostKeyMoreInfoProc, ctx);
+            /* KiTTY: modeless, one at a time - see kitty_hk_moreinfo_done */
+            if (ctx->moreinfo && IsWindow(ctx->moreinfo)) {
+                SetActiveWindow(ctx->moreinfo);
+                return 0;
+            }
+            ctx->moreinfo = ShinyDialogBoxModeless(
+                hinst, MAKEINTRESOURCE(IDD_HK_MOREINFO),
+                "PuTTYHostKeyMoreInfo", hwnd, HostKeyMoreInfoProc, ctx,
+                kitty_hk_moreinfo_done, ctx);
+            return 0;
           }
         }
         return 0;
       case WM_CLOSE:
+        kitty_hk_moreinfo_end(ctx);
         ShinyEndDialog(hwnd, IDCANCEL);
         return 0;
     }
@@ -5972,8 +6051,23 @@ static int win_gui_askappend(LogPolicy *lp, Filename *filename,
     char *mbtitle;
     int mbret;
 
+    /*
+     * KiTTY: no desktop (a service, a scheduled task that runs whether a
+     * user is logged on or not): a box there is never seen and the log
+     * would hold the session's output for good. The safe answer, no log,
+     * and the reason in the Application event log; LogFileClash or
+     * -logoverwrite / -logappend settle the choice beforehand, and then
+     * this function is never reached.
+     */
+    if (!kitty_guard_interactive()) {
+        char *line = dupprintf(KT_DLG_LOG_NOBODY_FMT, filename->utf8path);
+        kitty_eventlog_line(EVENTLOG_WARNING_TYPE, line);
+        sfree(line);
+        return 0;
+    }
+
     message = dupprintf(msgtemplate, FILENAME_MAX, filename->utf8path);
-    mbtitle = dupprintf("%s Log to File", appname);
+    mbtitle = dupprintf("%s Log to File", about_product_name());
 
     {
         extern void (*kitty_log_question_dropped_hook)(void *logctx);
@@ -6051,8 +6145,8 @@ void old_keyfile_warning(void)
         "into PuTTYgen and then saving it again.";
 
     char *msg, *title;
-    msg = dupprintf(message, appname);
-    title = dupprintf(mbtitle, appname);
+    msg = dupprintf(message, about_product_name());
+    title = dupprintf(mbtitle, about_product_name());
 
     {
         extern void kitty_info_box(HWND owner, const char *caption,

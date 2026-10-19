@@ -427,8 +427,9 @@ int kitty_update_notice( char *buf, int n ) {
 /* ============================================================================
  * KiTTY: non-modal, self-dismissing "update" popup + a transient title notice.
  * Replaces the modal, sound-playing MessageBox result boxes for the
- * update-available / no-update cases. Error boxes (download/signature failures)
- * stay modal WITH their sound on purpose - a failed install must not slip by.
+ * update-available / no-update cases. The error boxes (download/signature
+ * failures) are modeless too, but keep the error sound - a failed install must
+ * not slip by (kitty_upd_failed).
  * ==========================================================================*/
 #define KUP_ACT_NONE       0
 #define KUP_ACT_OPENPAGE   1
@@ -448,15 +449,24 @@ typedef struct {
 	int   has_update ;    /* update available (Update now/Later) vs info (OK) */
 } kitty_upd_ctx ;
 
+/* A failed update: the error sound and a modeless box. The owner is usually a
+ * terminal window, and a modal box stopped its session - no output, no
+ * keepalive - until it was answered. The sound keeps the failure from slipping
+ * by. Where no modeless box can be made, the modal one as before. */
+static void kitty_upd_failed( HWND owner, const char *caption, const char *text ) {
+	MessageBeep( MB_ICONERROR ) ;
+	if( !kitty_info_modeless( owner, caption, text, NULL, NULL ) )
+		kitty_message_box( owner, text, caption, MB_OK|MB_ICONERROR ) ;
+}
+
 /* Download+verify+install the MSI (unchanged flow, just factored out so the
- * non-modal popup's "Update" button can call it). Keeps its modal MB_ICONERROR
- * boxes (with the system sound) so failures are impossible to miss. */
+ * non-modal popup's "Update" button can call it). Its failures go to
+ * kitty_upd_failed. */
 static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install_t itype ) {
 	char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
 	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
 	    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
-		kitty_message_box( owner, KT_UPD_TMP_FAILED,
-			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
+		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_TMP_FAILED ) ;
 		return ;
 	}
 	DeleteFileA( tmpbase ) ;
@@ -466,8 +476,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	int dok = kitty_download_to_file( asseturl, tmpfile ) ;
 	SetCursor( oldc ) ;
 	if( !dok ) {
-		kitty_message_box( owner, KT_UPD_DOWNLOAD_FAILED,
-			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
+		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_DOWNLOAD_FAILED ) ;
 		ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 		return ;
 	}
@@ -477,23 +486,20 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
 	if( updguard == INVALID_HANDLE_VALUE ) {
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, KT_UPD_SECURE_FAILED,
-			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
+		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_SECURE_FAILED ) ;
 		return ;
 	}
 	/* SECURITY GATE: reject anything not genuinely KAPPER-signed. */
 	if( !kitty_authenticode_verify( tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, KT_UPD_SIG_REJECTED,
-			KT_CAP_UPDATE_SIG_REJECTED, MB_OK|MB_ICONERROR ) ;
+		kitty_upd_failed( owner, KT_CAP_UPDATE_SIG_REJECTED, KT_UPD_SIG_REJECTED ) ;
 		return ;
 	}
 	if( !kitty_run_installer( owner, itype, tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
-		kitty_message_box( owner, KT_UPD_INSTALLER_FAILED,
-			KT_CAP_UPDATE, MB_OK|MB_ICONERROR ) ;
+		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_INSTALLER_FAILED ) ;
 		return ;
 	}
 	/* keep the verified bytes locked while msiexec reads them (released on exit). */
@@ -771,7 +777,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				 * then show the NON-modal, no-sound popup over the caller window
 				 * (it stays up until the user picks Update/Later). The download/
 				 * verify/install runs from its "Update" button
-				 * (kitty_do_msi_update), which keeps modal error boxes. */
+				 * (kitty_do_msi_update), whose error boxes keep their sound. */
 				int stable_taking_beta = ( !cur_is_beta && latest_is_beta ) ;
 				kitty_install_t itype = kitty_detect_install_type() ;
 				/* KiTTY: that release's GitHub page, for "View release notes". */

@@ -27,6 +27,7 @@
 #include "kitty.h"
 #include "kitty_params.h"
 #include "kitty_gui.h"
+#include "kitty_winerr.h"   /* kitty_win_reason: a save that failed */
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -393,7 +394,15 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
         conf_set_int(g_pxp->conf, CONF_proxy_port, want);
 
     was_empty = !kitty_has_proxy_definitions();
-    SaveProxyInfo(g_pxp->conf, g_pxp->name);
+    if (!SaveProxyInfo(g_pxp->conf, g_pxp->name)) {
+        /* a folder store that cannot be written (a read-only stick, the
+         * Proxies folder not creatable): the panel's own error box */
+        char msg[1024];
+        snprintf(msg, sizeof(msg), KT_PROXYDEF_SAVE_FAILED_FMT,
+                 g_pxp->name, kitty_win_reason(GetLastError()));
+        dlg_error_msg(dlg, msg);
+        return;
+    }
     g_pxp->dirty = false;
     InitProxyList();                /* rescan, so the name list shows it */
     dlg_refresh(NULL, dlg);

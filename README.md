@@ -95,7 +95,7 @@ verified — reports welcome.
 - **Terminal:** font resize, protect, print, negative/B&W colours, clear/restart log, far2l extensions.
 - **See it for yourself:** copy [`docs/examples/kittypp-demo.sh`](docs/examples/kittypp-demo.sh) to your SSH server and run `bash kittypp-demo.sh` in a KiTTY++ window. It walks through the display and notification features one step at a time - underline styles, inline pictures and animation, the program status in the title bar, the notice and the overlay - and shows at each step what you should see.
 - **Storage:** registry **or** portable file/dir storage (`kitty_portable.exe`), `kitty.ini` configuration,
-  and a **portable copy** made from the configuration window (Migration > KiTTY storage) - or a folder
+  and a **portable copy** made from the configuration window (Migration > KiTTY++ Storage) - or a folder
   store taken back into the registry.
 - **KiTTY++ Settings:** every setting of the program itself has a panel (Application > KiTTY++ Settings),
   saved as you change it - including a **System** leaf that registers the `ssh://` / `telnet://` /
@@ -104,8 +104,8 @@ verified — reports welcome.
 - `kittygen-cli.exe` — a console-mode CLI key generator (generate, convert, fingerprint) for use in scripts and pipelines. Run `kittygen-cli --help` for options.
 - **Quick-Connect or Last-Session Mode:** set "loadlastsession=yes/no" and either get fast load the last session or your cursor set to the hostname to enter for a quick connection. Can also be set in the Application > Config Window > Session Panel.
 - **Double the Folder-Navigation** whatever drives you: the mouse or the keyboard the "foldernavigation=yes/no" got you covered set it to yes and you can simply click through your folders in the Session-List; set it no and Ctrl+F and Ctrl+G help you to locate the sessions you need for your next adventure.
-- **Modal Box Free Work** if you don't want Message Boxes popping up if things go sideways, this KiTTY can put those notices in the terminalwindow. Switch to "modalerrors=no" and a message for another terminal can't block your work anymore. More modal-settings are in the kitty.ini and highly recommended if you hate Message Boxes.
-- **Workplace Proxy Mode** working on the go you sometimes have to set a proxy for all your needs.  If you have named proxies configured you can simply activate one on the go using the launcher or by starting the workplace-proxy in the KiTTY-config-window (Connection - Proxy) and you are set.
+- **Modal Box Free Work** if you don't want Message Boxes popping up if things go sideways, this KiTTY++ can put those notices in the terminalwindow. Switch to "modalerrors=no" and a message for another terminal can't block your work anymore. More modal-settings are in the kitty.ini and highly recommended if you hate Message Boxes.
+- **Workplace Proxy Mode** working on the go you sometimes have to set a proxy for all your needs.  If you have named proxies configured you can simply activate one on the go using the launcher or by starting the workplace-proxy in the KiTTY++ configuration window (Connection - Proxy) and you are set.
 - **Dark Mode** for the night shift: one setting draws every window in the suite — `[KiTTY] theme=system` (the default, follows Windows), `light` or `dark`, also in kageant under *Settings… → Agent*. Needs Windows 10 1809 or newer; see [`FEATURES.md`](FEATURES.md#dark-mode), limits in [`KNOWN-ISSUES.md`](KNOWN-ISSUES.md). Also set it in Application > KiTTY++ Settings > Appearance.
 
 > 🗂️ **Hundreds of sessions, in folders as deep as you like.** **Manage Sessions** (the
@@ -128,7 +128,7 @@ verified — reports welcome.
 > never runs anything the remote sends. A few lines in your shell startup do it —
 > **[shell integration how-to →](docs/OSC-INTEGRATION.md)**.
 
-Most KiTTY extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with every supported key commented out; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
+Most KiTTY++ extras read from a `kitty.ini` (`[KiTTY]` section). The release includes an inert `kitty.ini.example` with every supported key commented out; copy/rename it to `kitty.ini` only when you want an active config file. For example, URL hyperlinks are enabled with:
 
 ```ini
 [KiTTY]

@@ -51,5 +51,8 @@ int   kitty_mpw_unprotect(const char *stored,
 
 /* ---- exported from kitty/kitty_mpw_gui.c ---- */
 char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt);
+/* the session of the terminal ended (windows/window.c close_session): a
+ * master password prompt or migration question beside it is cancelled */
+void kitty_mpw_session_ended(void);
 
 #endif

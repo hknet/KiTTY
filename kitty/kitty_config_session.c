@@ -22,6 +22,7 @@
 #include <limits.h>
 #include "kitty_theme.h"   /* the app-wide colour theme, for Application > Config Window */
 #include "kitty_storage.h" /* the one-time old-sessions notice bits */
+#include "kitty_secretstore.h" /* a login script kept: master password locked */
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
@@ -56,6 +57,7 @@
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
 #include "kitty_logkeep.h"      /* the Logging panel greys on its time-code test */
+#include "kitty_url_regex.h"    /* kitty_urlregex_error: the custom-regex field's red line */
 
 #define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
 #define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
@@ -143,8 +145,21 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
     } else if (event == EVENT_VALCHANGE) {
         char *txt = dlg_editbox_get(ctrl, dlg);
-        char *stored = kitty_loginscript_from_text(txt ? txt : "");
-        conf_set_str(conf, CONF_scriptfilecontent, stored ? stored : "");
+        int locked = 0;
+        char *stored = kitty_loginscript_from_text(txt ? txt : "", &locked);
+        if (locked) {
+            /* the master password is locked: the stored script stays.
+             * Reported once per session - this runs at every key typed */
+            static char told[256];
+            static int told_set;
+            const char *name = conf_get_str(conf, CONF_sessionname);
+            if (!told_set || strcmp(told, name)) {
+                told_set = 1;
+                snprintf(told, sizeof(told), "%s", name);
+                ksec_report_locked_save(KSEC_KEPT_SCRIPT, name);
+            }
+        } else
+            conf_set_str(conf, CONF_scriptfilecontent, stored ? stored : "");
         if (stored) sfree(stored);
         if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
     }
@@ -418,55 +433,158 @@ static void kitty_title_placeholders_handler(dlgcontrol *ctrl, dlgparam *dlg,
     kitty_show_title_placeholders(GetActiveWindow());
 }
 
-static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
-                                                void *data, int event)
+/* One modifier (Ctrl+K, Alt+X) is allowed; the report adds that the
+ * combination is then taken from every program. */
+static int hotkey_one_modifier(unsigned int mods)
 {
-    Conf *conf = (Conf *)data;
+    mods &= MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN;
+    return mods != 0 && (mods & (mods - 1)) == 0;
+}
+
+/* What the running launcher holds (mods, vk) as: 1 its global hotkey, 2 a
+ * session's hotkey, 0 neither - or no launcher, or one that does not answer
+ * (hung, or a build without the query). Queried by the registered message
+ * kitty_launcher.c answers, so the answer is the launcher's state now, never
+ * a RegisterHotKey probe that races its re-registration. */
+static int hotkey_launcher_holds(HWND launcher, unsigned int mods, unsigned int vk)
+{
+    UINT q = RegisterWindowMessageA("KiTTYLauncherHotkeyHeld");
+    DWORD_PTR r = 0;
+    if (!launcher || !q ||
+        !SendMessageTimeoutA(launcher, q, (WPARAM)mods, (LPARAM)vk,
+                             SMTO_ABORTIFHUNG, 1000, &r))
+        return 0;
+    return r == 1 ? 1 : r == 2 ? 2 : 0;
+}
+
+/* Application > KiTTY++ Settings > Launcher, "Global hotkey:" + Apply: the
+ * value is stored (and a running launcher told to register it again) only
+ * when the combination is free, or the running launcher holds it as this
+ * very global hotkey. Otherwise the box reports why and nothing is stored.
+ * Empty removes the global hotkey. */
+static void kitty_launcher_globalkey_apply(const char *spec)
+{
+    const struct kset_key *k = kset_find(KI_LAUNCHER_GLOBALHOTKEY);
     unsigned int mods, vk;
-    char others[512], msg[900];
-    const char *self;
-    int nc;
-    /* The suite's own info box, not MessageBox - same face as every other
-     * KiTTY window. */
-    (void)ctrl; (void)dlg;
-    if (event != EVENT_ACTION) return;
-    if (!kitty_parse_hotkey_spec(conf_get_str(conf, CONF_launcher_global_hotkey),
-                                 &mods, &vk)) {
-        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
-                       KT_CFG_HOTKEY_ENTER,
-                       NULL);
+    char others[512], msg[1400], buf[256];
+    const char *p, *pl;
+    size_t n;
+    int nc, held, free_now = 0, ok;
+    HWND owner = kitty_cfg_modal_owner();
+    /* the text as typed, without the blanks around it */
+    for (p = spec ? spec : ""; *p == ' ' || *p == '\t'; p++) ;
+    snprintf(buf, sizeof(buf), "%s", p);
+    for (n = strlen(buf); n && (buf[n - 1] == ' ' || buf[n - 1] == '\t'); n--)
+        buf[n - 1] = '\0';
+    if (!k)
+        return;
+    if (!buf[0]) {
+        if (kset_write(k, ""))
+            kitty_info_box(owner, KT_CAP_LAUNCHER_HOTKEY,
+                           KT_CFG_HOTKEY_GLOBAL_REMOVED, NULL);
+        return;                    /* a failed write reported itself */
+    }
+    if (!kitty_parse_hotkey_spec(buf, &mods, &vk)) {
+        kitty_info_box(owner, KT_CAP_LAUNCHER_HOTKEY, KT_CFG_HOTKEY_ENTER, NULL);
+        return;
+    }
+    nc = kitty_hotkey_conflict_scan(mods, vk, NULL, others, sizeof(others));
+    pl = nc == 1 ? "" : "s";
+    held = hotkey_launcher_holds(kitty_launcher_window(), mods, vk);
+    if (held == 0) {
+        free_now = RegisterHotKey(NULL, 0x4B7A, mods | MOD_NOREPEAT, vk) != 0;
+        if (free_now) UnregisterHotKey(NULL, 0x4B7A);
+    }
+    ok = held == 1 || (held == 0 && nc == 0 && free_now);
+    if (ok) {
+        if (!kset_write(k, buf))
+            return;                /* a failed write reported itself */
+        snprintf(msg, sizeof(msg), KT_CFG_HOTKEY_GLOBAL_STORED, buf);
+        if (nc > 0) {
+            char extra[700];
+            snprintf(extra, sizeof(extra), KT_CFG_HOTKEY_GLOBAL_ALSO_SAVED,
+                     pl, others, pl);
+            strncat(msg, extra, sizeof(msg) - strlen(msg) - 1);
+        }
+    } else if (nc > 0) {
+        snprintf(msg, sizeof(msg), KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SAVED,
+                 pl, others);
+    } else if (held == 2) {
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SESSION);
+    } else {
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SYSTEM);
+    }
+    if (hotkey_one_modifier(mods))
+        strncat(msg, KT_CFG_HOTKEY_ONE_MODIFIER, sizeof(msg) - strlen(msg) - 1);
+    kitty_info_box(owner, KT_CAP_LAUNCHER_HOTKEY, msg, NULL);
+}
+
+/* The report of a session's launcher-hotkey Check (Session > Startup); with
+ * global = 1 the launcher's own global hotkey's Apply
+ * (kitty_launcher_globalkey_apply above). A failed probe is not always
+ * another program: the running launcher may hold the combination itself - as
+ * its global hotkey, or as this session's saved one - and the box reports
+ * that instead. Parsed pairs are compared, never strings. The suite's own
+ * info box, not MessageBox - same face as every other KiTTY window. */
+void kitty_launcher_hotkey_check(const char *spec, const char *self, int global)
+{
+    unsigned int mods, vk, gm, gv, sm, sv;
+    char others[512], msg[1400];
+    const char *pl;
+    int nc, free_now, running, is_global, is_self;
+    HWND owner = kitty_cfg_modal_owner();
+    if (global) {
+        kitty_launcher_globalkey_apply(spec);
+        return;
+    }
+    if (!kitty_parse_hotkey_spec(spec, &mods, &vk)) {
+        kitty_info_box(owner, KT_CAP_LAUNCHER_HOTKEY, KT_CFG_HOTKEY_ENTER, NULL);
         return;
     }
     /* The system-wide probe below cannot see WHICH saved session holds a
      * hotkey (a running launcher registers them under its own window), but the
-     * store can: name the sessions here, where the collision is being made. */
-    self = conf_get_str(conf, CONF_sessionname);
-    nc = kitty_hotkey_conflict_scan(mods, vk, (self && *self) ? self : NULL,
-                                    others, sizeof(others));
-    if (RegisterHotKey(NULL, 0x4B7A, mods | MOD_NOREPEAT, vk)) {
-        UnregisterHotKey(NULL, 0x4B7A);
-        if (nc > 0) {
-            snprintf(msg, sizeof(msg),
-                     KT_CFG_HOTKEY_FREE_BUT_SAVED,
-                     nc == 1 ? "" : "s", others);
-            kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
-                           msg, NULL);
-        } else {
-            kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
-                           KT_CFG_HOTKEY_FREE,
-                           NULL);
-        }
+     * store can: list the sessions here, where the collision is being made. */
+    nc = kitty_hotkey_conflict_scan(mods, vk, self, others, sizeof(others));
+    pl = nc == 1 ? "" : "s";
+    is_global = kitty_launcher_global_hotkey(&gm, &gv, NULL, 0) &&
+                gm == mods && gv == vk;
+    is_self = self &&
+              kitty_hotkey_of_session(self, &sm, &sv, NULL, 0) &&
+              sm == mods && sv == vk;
+    running = kitty_launcher_window() != NULL;
+    free_now = RegisterHotKey(NULL, 0x4B7A, mods | MOD_NOREPEAT, vk) != 0;
+    if (free_now) UnregisterHotKey(NULL, 0x4B7A);
+    if (is_global && free_now) {
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_FREE_BUT_GLOBAL);
+    } else if (is_global && running) {
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_HELD_BY_LAUNCHER_GLOBAL);
+    } else if (free_now) {
+        if (nc > 0)
+            snprintf(msg, sizeof(msg), KT_CFG_HOTKEY_FREE_BUT_SAVED, pl, others);
+        else
+            snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_FREE);
     } else if (nc > 0) {
-        snprintf(msg, sizeof(msg),
-                 KT_CFG_HOTKEY_IN_USE_SAVED,
-                 nc == 1 ? "" : "s", others);
-        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
-                       msg, NULL);
+        snprintf(msg, sizeof(msg), KT_CFG_HOTKEY_IN_USE_SAVED, pl, others);
+    } else if (is_self && running) {
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_HELD_BY_LAUNCHER_SELF);
     } else {
-        kitty_info_box(kitty_cfg_modal_owner(), KT_CAP_LAUNCHER_HOTKEY,
-                       KT_CFG_HOTKEY_IN_USE_SYSTEM,
-                       NULL);
+        snprintf(msg, sizeof(msg), "%s", KT_CFG_HOTKEY_IN_USE_SYSTEM);
     }
+    if (hotkey_one_modifier(mods))
+        strncat(msg, KT_CFG_HOTKEY_ONE_MODIFIER, sizeof(msg) - strlen(msg) - 1);
+    kitty_info_box(owner, KT_CAP_LAUNCHER_HOTKEY, msg, NULL);
+}
+
+static void kitty_launcher_hotkey_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                                void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    const char *self;
+    (void)ctrl; (void)dlg;
+    if (event != EVENT_ACTION) return;
+    self = conf_get_str(conf, CONF_sessionname);
+    kitty_launcher_hotkey_check(conf_get_str(conf, CONF_launcher_global_hotkey),
+                                (self && *self) ? self : NULL, 0);
 }
 #endif
 
@@ -3950,9 +4068,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         backup_ok = kitty_backup_before(kitty_cfg_modal_owner(), 1);
                     }
                 }
+                { extern void kitty_mpw_user_action_begin(void); kitty_mpw_user_action_begin(); }
                 char *errmsg = locked ? locked
                              : backup_ok ? save_settings(ssd->savedsession, conf)
                                          : kitty_backup_not_done();
+                { extern void kitty_mpw_user_action_end(void); kitty_mpw_user_action_end(); }
                 if (errmsg) {
                     /* KiTTY: modeless, like every box of this window's flow -
                      * the save clash and the name-on-disk clash of the folder
@@ -6200,6 +6320,42 @@ static void kitty_urlregex_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
     dlg_refresh(NULL, dlg);
 }
 
+/* Window/Hyperlinks: the line under the custom-regex field. Blank while the
+ * field compiles (an empty field included), the engine's error in red while
+ * it does not. Nothing is refused: the field has no Apply, the text stays as
+ * typed, and a session started with it falls back to the default pattern
+ * (kitty/url/urlhack.c). Built with " ", so it holds one line. */
+static dlgcontrol *kitty_urlregex_note = NULL;
+
+static void kitty_urlregex_note_update(dlgparam *dlg, const char *pattern)
+{
+    const char *err;
+    char *line;
+    HWND h = kitty_dlg_ctrl_hwnd(dlg, kitty_urlregex_note);
+    if (!h)
+        return;                         /* not on screen: the next refresh */
+    err = kitty_urlregex_error(pattern);
+    if (!err) {
+        dlg_label_change(kitty_urlregex_note, dlg, " ");
+        return;
+    }
+    line = dupprintf(KT_HYPERLINKS_REGEX_ERROR_FMT, err);
+    dlg_label_change(kitty_urlregex_note, dlg, line);
+    sfree(line);
+    kitty_theme_mark_ink(h, KITTY_INK_BAD);
+}
+
+/* The field itself stores as any string field does (conf_editbox_handler);
+ * each refresh and each change then checks the stored text. */
+static void kitty_urlregex_field_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                         void *data, int event)
+{
+    conf_editbox_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE)
+        kitty_urlregex_note_update(dlg, conf_get_str((Conf *)data,
+                                                     CONF_url_regex));
+}
+
 /* KiTTY: does the Background leaf (transparency + background image) exist? */
 static bool scb_background_leaf_wanted(void)
 {
@@ -6619,8 +6775,12 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                       I(CONF_url_defregex));
         /* Short label + a wide field: a regex deserves the room. */
         ctrl_editbox(s, KT_HYPERLINKS_CUSTOM_REGEX, NO_SHORTCUT, 80,
-                     HELPCTX(kitty_hyperlinks), conf_editbox_handler,
+                     HELPCTX(kitty_hyperlinks), kitty_urlregex_field_handler,
                      I(CONF_url_regex), ED_STR);
+        /* The compile error of the field, red, right under it; blank when
+         * it compiles. Laid out here, before the button row, so it never
+         * sits over a control below it. */
+        kitty_urlregex_note = ctrl_text(s, " ", HELPCTX(kitty_hyperlinks));
         /* Reset the field to KiTTY's shipped pattern - behind a
          * confirmation, because it OVERWRITES whatever is typed there. */
         {

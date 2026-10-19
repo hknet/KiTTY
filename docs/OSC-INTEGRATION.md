@@ -345,7 +345,7 @@ printf '\033]7501;state=clear\033\\'
 
 ## Contexts (OSC 3008)
 
-The host says which program has control and how programs nest: a shell, a
+The host reports which program has control and how programs nest: a shell, a
 command, `run0` taking root, a container, a virtual machine. The
 specification is at
 <https://uapi-group.org/specifications/specs/osc_context/>. systemd 257

@@ -80,12 +80,21 @@ static int InputBox_Flag = 0 ;
  * field (kitty_commands.c kitty_cmd_result). Made here, not in the template:
  * IDD_INPUTBOX is shared with the Terminal Name and text-prompt boxes, which have
  * nothing to report. A read-only multi-line edit of two lines that wraps, so a
- * long path shows WHOLE and can be selected and copied - never cut to "...". */
+ * long path shows WHOLE and can be selected and copied - never cut to "...".
+ * A longer result (/init's six lines) grows it, and the box with it, up to
+ * INPUTBOX_STATUS_MAXLINES lines; beyond that it scrolls. A short result
+ * takes it back to two. */
 #define IDC_INPUTBOX_STATUS 1990
+#define INPUTBOX_STATUS_MAXLINES 10
+
+static int inputbox_status_base_h = 0 ;   /* the field's height for two lines, pixels */
+static int inputbox_status_line_h = 0 ;   /* one line of its font, pixels */
+static int inputbox_status_lines = 2 ;    /* the lines it is sized for now */
 
 static void inputbox_add_status( HWND hwnd ) {
 	RECT r, g, wr ;
 	HWND st ;
+	HDC dc ;
 	/* below the input row (it ends at 34 of the template's 50 dialog units):
 	 * two lines from 38, the box 22 units taller */
 	r.left = 7 ; r.top = 38 ; r.right = 7 + 233 ; r.bottom = 38 + 18 ;
@@ -99,13 +108,82 @@ static void inputbox_add_status( HWND hwnd ) {
 	                      GetModuleHandle(NULL), NULL ) ;
 	if( !st ) return ;
 	SendMessage( st, WM_SETFONT, SendMessage( hwnd, WM_GETFONT, 0, 0 ), FALSE ) ;
+	inputbox_status_base_h = r.bottom - r.top ;
+	inputbox_status_lines = 2 ;
+	inputbox_status_line_h = 0 ;
+	if( (dc = GetDC( st )) != NULL ) {
+		TEXTMETRICA tm ;
+		HGDIOBJ old = SelectObject( dc, (HGDIOBJ)SendMessage( st, WM_GETFONT, 0, 0 ) ) ;
+		if( GetTextMetricsA( dc, &tm ) ) inputbox_status_line_h = tm.tmHeight ;
+		SelectObject( dc, old ) ;
+		ReleaseDC( st, dc ) ;
+	}
 	GetWindowRect( hwnd, &wr ) ;
 	SetWindowPos( hwnd, NULL, 0, 0, wr.right - wr.left, wr.bottom - wr.top + g.bottom,
 	              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
 }
 
+/* The scroll bar only where the text needs it: a two-line result with a
+ * dead bar beside it would lose width for nothing. */
+static void inputbox_status_scrollbar( HWND st, int on ) {
+	LONG_PTR style = GetWindowLongPtr( st, GWL_STYLE ) ;
+	RECT cr ;
+	if( !!(style & WS_VSCROLL) == !!on ) return ;
+	SetWindowLongPtr( st, GWL_STYLE, on ? (style | WS_VSCROLL) : (style & ~(LONG_PTR)WS_VSCROLL) ) ;
+	SetWindowPos( st, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE |
+	              SWP_NOZORDER | SWP_NOACTIVATE ) ;
+	/* the window kept its size, so no WM_SIZE came: the edit wraps its text
+	 * to the client width it learns from one */
+	GetClientRect( st, &cr ) ;
+	SendMessage( st, WM_SIZE, SIZE_RESTORED, MAKELPARAM( cr.right, cr.bottom ) ) ;
+}
+
 static void inputbox_status( HWND hwnd, const char * text ) {
-	SetDlgItemTextA( hwnd, IDC_INPUTBOX_STATUS, text ? text : "" ) ;
+	HWND st = GetDlgItem( hwnd, IDC_INPUTBOX_STATUS ) ;
+	const char * s = text ? text : "" ;
+	char * buf ;
+	size_t i, j, n = 0 ;
+	int count, lines ;
+	if( !st ) return ;
+	/* an edit control breaks a line only at CR LF: a bare LF becomes one */
+	for( i = 0 ; s[i] ; i++ ) if( s[i] == '\n' ) n++ ;
+	if( (buf = (char *)malloc( strlen( s ) + n + 1 )) == NULL ) { SetWindowTextA( st, s ) ; return ; }
+	for( i = j = 0 ; s[i] ; i++ ) {
+		if( s[i] == '\n' && (i == 0 || s[i-1] != '\r') ) buf[j++] = '\r' ;
+		buf[j++] = s[i] ;
+	}
+	buf[j] = '\0' ;
+	/* counted at the full width, then the bar where it is needed */
+	inputbox_status_scrollbar( st, 0 ) ;
+	SetWindowTextA( st, buf ) ;
+	free( buf ) ;
+	count = (int)SendMessage( st, EM_GETLINECOUNT, 0, 0 ) ;
+	lines = count < 2 ? 2 : count > INPUTBOX_STATUS_MAXLINES ? INPUTBOX_STATUS_MAXLINES : count ;
+	inputbox_status_scrollbar( st, count > INPUTBOX_STATUS_MAXLINES ) ;
+	if( lines != inputbox_status_lines && inputbox_status_line_h > 0 && inputbox_status_base_h > 0 ) {
+		RECT sr, wr ;
+		int dh = ( lines - inputbox_status_lines ) * inputbox_status_line_h ;
+		int top, height ;
+		HMONITOR mon ;
+		MONITORINFO mi ;
+		GetWindowRect( st, &sr ) ;
+		SetWindowPos( st, NULL, 0, 0, sr.right - sr.left,
+		              inputbox_status_base_h + ( lines - 2 ) * inputbox_status_line_h,
+		              SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
+		GetWindowRect( hwnd, &wr ) ;
+		top = wr.top ;
+		height = wr.bottom - wr.top + dh ;
+		/* grown, it stays on its screen: moved up when its foot would leave it */
+		mon = MonitorFromWindow( hwnd, MONITOR_DEFAULTTONEAREST ) ;
+		mi.cbSize = sizeof(mi) ;
+		if( mon && GetMonitorInfoA( mon, &mi ) && top + height > mi.rcWork.bottom ) {
+			top = mi.rcWork.bottom - height ;
+			if( top < mi.rcWork.top ) top = mi.rcWork.top ;
+		}
+		SetWindowPos( hwnd, NULL, wr.left, top, wr.right - wr.left, height,
+		              SWP_NOZORDER | SWP_NOACTIVATE ) ;
+		inputbox_status_lines = lines ;
+	}
 }
 
 /* The single-line send-text box is modeless (unlike the multiline and password
@@ -113,6 +191,11 @@ static void inputbox_status( HWND hwnd, const char * text ) {
  * its own modeless window, so both must coexist with working Esc/Tab keyboard
  * handling routed by the main message pump. One instance per process. */
 static HWND InputBoxHwnd = NULL ;
+
+void kitty_inputbox_result( const char * text ) {
+	if( InputBoxHwnd != NULL && IsWindow( InputBoxHwnd ) )
+		inputbox_status( InputBoxHwnd, text ) ;
+}
 
 static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam ) {
 	HWND handle;
@@ -163,12 +246,16 @@ static LRESULT CALLBACK InputCallBack(HWND hwnd, UINT message, WPARAM wParam, LP
 			if (LOWORD(wParam) == IDCANCEL)
 			{
 				if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
+				/* no late result into a box on its way out: an open
+				 * question it owns answers No as it goes */
+				InputBoxHwnd = NULL ;
 				DestroyWindow(hwnd);
 			}
 
 			break;
 
 		case WM_CLOSE:
+			InputBoxHwnd = NULL ;
 			DestroyWindow(hwnd);
 			break;
 

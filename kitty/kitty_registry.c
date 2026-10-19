@@ -800,9 +800,20 @@ void KittyCliReport( const char *title, const char *text, int warn ) {
 			     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
 		return ;
 	}
+	if( KittyCliOutput( text, warn ) ) return ;
+	if( !reach_desktop_visible() ) return ;
+	/* in front: no click of the user's raised it, and a box behind other
+	 * windows holds the run up unseen */
+	MessageBoxA( NULL, text, title, MB_OK | MB_SETFOREGROUND |
+		     (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+}
+
+/* KittyCliReport without the box: redirected output, then the console of the
+ * shell that started us. 1 = written there, 0 = neither is there. */
+int KittyCliOutput( const char *text, int warn ) {
 	if( cli_std_write( warn ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE, text ) ||
 	    cli_std_write( warn ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE, text ) )
-		return ;
+		return 1 ;
 	HANDLE h ;
 	DWORD written ;
 	int attached = kitty_attach_parent_console() ? 1 : 0 ;
@@ -820,12 +831,10 @@ void KittyCliReport( const char *title, const char *text, int warn ) {
 		WriteFile( h, "\r\n", 2, &written, NULL ) ;
 		CloseHandle( h ) ;
 		if( attached ) FreeConsole() ;
-		return ;
+		return 1 ;
 	}
 	if( attached ) FreeConsole() ;
-	if( !reach_desktop_visible() ) return ;
-	MessageBoxA( NULL, text, title,
-		     MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION) ) ;
+	return 0 ;
 }
 
 /* KiTTY: ask a yes/no question the same way KittyCliReport() answers one - at the
@@ -1216,7 +1225,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 	static const struct { const char *proto, *friendly ; int session, optional ; } protos[] = {
 		{ "telnet", "URL:Telnet Protocol",  0, 0 },
 		{ "ssh",    "URL:SSH Protocol",     0, 0 },
-		{ "kitty",  "URL:KiTTY Session",    1, 0 },
+		{ "kitty",  "URL:KiTTY++ Session",    1, 0 },
 		{ "putty",  "URL:PuTTY Session",    1, 1 },
 	} ;
 

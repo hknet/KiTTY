@@ -17,7 +17,7 @@
 
 /* ---- Application > Migration ---- */
 
-#define KT_MIG_STORE_GROUP "Move this KiTTY's sessions between computers"
+#define KT_MIG_STORE_GROUP "Move this KiTTY++'s sessions between computers"
 #define KT_MIG_TITLE       "Sessions from an older KiTTY or from PuTTY"
 
 #define KT_MIG_OLD_GROUP   "Old session stores"
@@ -35,8 +35,8 @@
 #define KT_MIG_IMP_DONE    "Imported. The copies are in the session list."
 #define KT_MIG_IMP_NONE    "Nothing was imported."
 
-/* Application > Migration > KiTTY storage (kitty_storemove.c) */
-#define KT_INIMIG_TITLE      "KiTTY storage"
+/* Application > Migration > KiTTY++ Storage (kitty_storemove.c) */
+#define KT_INIMIG_TITLE      "KiTTY++ Storage"
 #define KT_INIMIG_OUT_GROUP  "Make a portable copy"
 #define KT_INIMIG_OUT_INTRO  "Copies kitty.exe, its companions, all sessions, named proxies, host keys and settings into a folder of your choice. That copy runs from the folder with its own kitty.ini. The registry stays as it is."
 #define KT_INIMIG_OUT_BUTTON "Make a portable copy..."
@@ -65,7 +65,7 @@
 #define KT_MIGF_ST_PASSWORD  "password cannot be deciphered"
 #define KT_MIGF_ST_MPW       "under a master password (asked at import)"
 #define KT_MIGF_MPW_PROMPT   "The sessions being imported are protected by the master password of " \
-                             "the store they come from. Enter THAT store's master password - not this KiTTY's."
+                             "the store they come from. Enter THAT store's master password - not this KiTTY++'s."
 #define KT_MIGF_ST_UNREADABLE "unreadable"
 #define KT_MIGF_NO_FOLDER    "Choose a folder to scan first."
 #define KT_MIGF_NOT_A_DIR    "That folder does not exist."
@@ -79,10 +79,10 @@
 #define KT_MIGF_NONE         "Nothing was imported."
 #define KT_MIGF_BOX_TITLE    "Import from a folder store"
 #define KT_MIGF_BOX_OK       "%d session%s imported: %s\n\n"
-#define KT_MIGF_BOX_NOPW     "%d of them without a password this KiTTY could not decode: type it once and save.\n\n"
+#define KT_MIGF_BOX_NOPW     "%d of them without a password this KiTTY++ could not decode: type it once and save.\n\n"
 #define KT_MIGF_BOX_FAILED   "%d session%s could not be read or saved.\n\n"
 
-#define KT_MIG_BOX_TITLE   "KiTTY session import"
+#define KT_MIG_BOX_TITLE   "KiTTY++ session import"
 #define KT_MIG_BOX_OK      "Imported %d session%s: %s."
 #define KT_MIG_BOX_FAILED  "\r\n%d session%s could not be read."
 #define KT_MIG_BOX_DROPPED "\r\n\r\nNot carried over: %s."
@@ -164,7 +164,7 @@
 #define KT_LOGGING_BROADCAST_KEY                     "Broadcast key:"
 #define KT_LOGGING_COPY                              "Copy"
 #define KT_LOGGING_CLEAR                             "Clear"
-#define KT_LOGGING_DEFAULT_KEY_GENERATED             "Default key, generated for this KiTTY " \
+#define KT_LOGGING_DEFAULT_KEY_GENERATED             "Default key, generated for this KiTTY++ " \
         "installation here."
 
 /* Session/Scripting */
@@ -187,10 +187,10 @@
 #define KT_SCRIPTING_TEXT                            " "
 
 /* Session/Broadcast */
-#define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY windows"
-#define KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY "Accept broadcasts from other KiTTY windows"
+#define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY++ windows"
+#define KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY "Accept broadcasts from other KiTTY++ windows"
 #define KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES       "Accept broadcast messages for this session"
-#define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY can type into this session (/command)."
+#define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY++ can type into this session (/command)."
 /* The installation's master switch lives on Application > KiTTY++ Settings >
  * Automation > Broadcast; the note says so and the button jumps there. */
 #define KT_CFG_BROADCAST_GLOBAL_NOTE                 "Broadcast needs global switch on to work -> App>Auto>Broadcast"
@@ -443,7 +443,10 @@
 #define KT_HYPERLINKS_SELECT_BROWSER_EXECUTABLE      "Select browser executable"
 #define KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION "Use the default regular expression"
 #define KT_HYPERLINKS_CUSTOM_REGEX                   "Custom regex:"
-#define KT_HYPERLINKS_RESET_REGEX                    "Reset to KiTTY default"
+/* The red line under "Custom regex:" while the field does not compile; %s is
+ * the engine's error ("unmatched ()"). One line: the height is fixed at layout. */
+#define KT_HYPERLINKS_REGEX_ERROR_FMT                "Invalid regex: %s"
+#define KT_HYPERLINKS_RESET_REGEX                    "Reset to KiTTY++ default"
 /* Where links come from: the regular expression over the text, and OSC 8 */
 #define KT_HYPERLINKS_SCAN                           "Detect URLs in the output (regex)"
 #define KT_HYPERLINKS_OSC8                           "Allow OSC 8 hyperlinks"
@@ -713,11 +716,11 @@
 #define KT_SSH_PROTOCOL_OPTIONS                      "Protocol options"
 #define KT_SSH_DON_T_START_A_SHELL                   "Don't start a shell or command at all"
 #define KT_SSH_ENABLE_COMPRESSION                    "Enable compression"
-#define KT_SSH_SHARING_AN_SSH_CONNECTION_BETWEEN     "Sharing an SSH connection between KiTTY tools"
+#define KT_SSH_SHARING_AN_SSH_CONNECTION_BETWEEN     "Sharing an SSH connection between KiTTY++ tools"
 #define KT_SSH_SHARE_SSH_CONNECTIONS_IF_POSSIBLE     "Share SSH connections if possible"
 #define KT_SSH_PERMITTED_ROLES_IN_A_SHARED           "Permitted roles in a shared connection:"
 #define KT_SSH_UPSTREAM_CONNECTING_TO_THE_REAL       "Upstream (connecting to the real server)"
-#define KT_SSH_DOWNSTREAM_CONNECTING_TO_THE_UPSTREAM "Downstream (connecting to the upstream KiTTY)"
+#define KT_SSH_DOWNSTREAM_CONNECTING_TO_THE_UPSTREAM "Downstream (connecting to the upstream KiTTY++)"
 #define KT_SSH_SSH_PROTOCOL_VERSION                  "SSH protocol version:"
 #define KT_SSH_2                                     "2"
 #define KT_SSH_1_INSECURE                            "1 (INSECURE)"
@@ -949,7 +952,7 @@
 #define KT_ZMODEM_GLOBAL_OFF_SHORT                   "ZModem is switched off. The switch is a global setting."
 #define KT_ZMODEM_OPEN_GLOBAL_PANEL                  "Open App Settings"
 #define KT_KSET_TT_DOWNLOADDIR_NOTE                  "Where Get file, ZModem and transfers over the session save, unless the session sets its own folder."
-#define KT_XFER_KSCP_NOT_FOUND                       "kscp was not found. Set its path on KiTTY++ Settings > Transfers & Tools."
+#define KT_XFER_KSCP_NOT_FOUND                       "kscp was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools."
 /* Get File: the clipboard check and the box (hknet/KiTTY#71) */
 #define KT_GETFILE_BOX_CAP                           "Get File (kscp)"
 #define KT_GETFILE_BOX_LABEL                         "Remote file, one per line:"
@@ -1022,7 +1025,7 @@
 #define KT_CONFIG_WINDOW_WINDOW_WIDTH_IN_PIXELS_BLANK "Window width, in pixels (blank = default):"
 #define KT_CONFIG_WINDOW_LOCK_WINDOW_SIZE            "Lock window size"
 #define KT_CONFIG_WINDOW_CLOSING_A_TERMINAL_WINDOW   "Terminal Window on Exit"
-#define KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW    "always start a new KiTTY after the terminal window closes"
+#define KT_CONFIG_WINDOW_COME_BACK_TO_THIS_WINDOW    "always start a new KiTTY++ after the terminal window closes"
 
 /* Application/Security */
 #define KT_SECURITY_SECURITY                         "Security"
@@ -1078,7 +1081,8 @@
 #define KT_FZ_SELECT_EXECUTABLE                      "Select FileZilla executable"
 #define KT_FZ_THE_OTHER_SETTINGS_BELONG              "The other FileZilla settings belong to a session and stay on " \
         "Connection > SSH > FileZilla. The Tools menu offers FileZilla only while this file exists."
-#define KT_XFER_FILEZILLA_NOT_FOUND                  "FileZilla was not found. Set its path on KiTTY++ Settings > Transfers & Tools > FileZilla."
+#define KT_XFER_FILEZILLA_NOT_FOUND                  "FileZilla was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools > FileZilla."
+#define KT_XFER_WINSCP_NOT_FOUND                     "WinSCP was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools > WinSCP."
 #define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
 #define KT_FZ_SITE_NAME                              "KiTTY++ session"
 /* Session > Connection > SSH > KSCP: the same pointer for the file-copy helper */
@@ -1096,7 +1100,7 @@
 
 /* Application/KiTTY++ Settings */
 #define KT_KSET_TITLE                                "KiTTY++ Settings"
-#define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY as a whole, not of a session."
+#define KT_KSET_INTRO_WHOLE                          "Settings of this KiTTY++ as a whole, not of a session."
 #define KT_KSET_INTRO_WHERE                          "Each leaf's help also refers to the relevant kitty.ini settings."
 
 /* Application/KiTTY++ Settings/System/Session Integration (kitty_urlsession.c) */
@@ -1155,11 +1159,11 @@
 #define KT_SYSTEM_PATH_FAIL                          "The PATH could not be changed:\n\n%s"
 #define KT_SYSTEM_TAKEOVER_LINE                      "The same, and entries other programs own are replaced too (each is backed up to a .reg file first)."
 #define KT_SYSTEM_TAKEOVER                           "Register and take over from other programs..."
-#define KT_SYSTEM_UNREGISTER_LINE                    "Remove the entries that point at a KiTTY. Other programs' entries are not touched."
+#define KT_SYSTEM_UNREGISTER_LINE                    "Remove the entries that point at a KiTTY or KiTTY++. Other programs' entries are not touched."
 #define KT_SYSTEM_UNREGISTER                         "Unregister..."
 #define KT_SYSTEM_REGISTER_Q                         "Point telnet://, ssh://, kitty:// and the session files at this KiTTY++?\n\nEntries other programs own are left alone and reported."
 #define KT_SYSTEM_TAKEOVER_Q                         "Point telnet://, ssh://, kitty:// and the session files at this KiTTY++, replacing entries other programs own?\n\nEach replaced setting is exported to a .reg file first, and the report names the command that puts it back."
-#define KT_SYSTEM_UNREGISTER_Q                       "Remove the telnet://, ssh://, kitty:// and session-file entries that point at a KiTTY?\n\nEach is exported to a .reg file first. Entries other programs own are not touched."
+#define KT_SYSTEM_UNREGISTER_Q                       "Remove the telnet://, ssh://, kitty:// and session-file entries that point at a KiTTY or KiTTY++?\n\nEach is exported to a .reg file first. Entries other programs own are not touched."
 
 /* Application/KiTTY++ Settings/Storage & Backup */
 #define KT_KSET_STORAGE_TITLE                        "Where settings are kept"
@@ -1169,9 +1173,9 @@
 #define KT_KSET_STORAGE_STORE_FOLDER                 "Settings store: folder (%s)"
 #define KT_KSET_STORAGE_INI                          "Configuration file: %s"
 #define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none (conf=no)"
-#define KT_KSET_STORAGE_READONLY                     "KiTTY is running read-only (readonly=yes) - the configuration " \
+#define KT_KSET_STORAGE_READONLY                     "KiTTY++ is running read-only (readonly=yes) - the configuration " \
         "file and the backups are not written."
-#define KT_KSET_STORAGE_NOCONF                       "KiTTY is running without a configuration file (conf=no)."
+#define KT_KSET_STORAGE_NOCONF                       "KiTTY++ is running without a configuration file (conf=no)."
 
 /* Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini (the view) */
 #define KT_INIVIEW_TITLE                             "kitty.ini"
@@ -1181,14 +1185,14 @@
 #define KT_INIVIEW_PATH_INI                          "kitty.ini: %s"
 #define KT_INIVIEW_NONE                              "(none)"
 #define KT_INIVIEW_NO_EXAMPLE                        "kitty.ini.example is not installed beside kitty.exe."
-#define KT_INIVIEW_NO_FILE                           "KiTTY is running without a configuration file."
+#define KT_INIVIEW_NO_FILE                           "KiTTY++ is running without a configuration file."
 #define KT_INIVIEW_NOT_FOUND                         "(the file does not exist)"
 #define KT_INIVIEW_MASK                              "********"
-#define KT_INIVIEW_TAKES_EFFECT                      "kitty.ini is read when KiTTY starts. A change takes effect in " \
-        "the next KiTTY you start, not in this one."
+#define KT_INIVIEW_TAKES_EFFECT                      "kitty.ini is read when KiTTY++ starts. A change takes effect in " \
+        "the next KiTTY++ you start, not in this one."
 #define KT_INIVIEW_EDIT                              "Edit kitty.ini..."
 #define KT_INIVIEW_EDIT_WARN                         "You are about to edit kitty.ini directly. Changes take effect in " \
-        "the next KiTTY you start. A line KiTTY cannot read is ignored without a message. Continue?"
+        "the next KiTTY++ you start. A line KiTTY++ cannot read is ignored without a message. Continue?"
 #define KT_KSET_BACKUPS                              "Backups"
 #define KT_KSET_BACKUPS_REG                          "Registry backups to keep (0 = none):"
 #define KT_KSET_BACKUPS_DIR                          "Folder-store backups to keep (0 = none):"
@@ -1373,7 +1377,7 @@
 #define KT_KSET_SC_USERCMD_NOTE                      "%s is also user command %d; that command keeps its menu entry only."
 #define KT_KSET_SC_USED_BY_ACTION                    "%s is already used by %s."
 #define KT_KSET_SC_USED_BY_TEXT                      "%s is already used by a key combination that types text."
-#define KT_KSET_SC_RESERVED                          "%s is reserved by KiTTY."
+#define KT_KSET_SC_RESERVED                          "%s is reserved by KiTTY++."
 #define KT_KSET_SC_ALTF4                             "Alt+F4 closes the window and cannot be a shortcut."
 #define KT_KSET_SC_TEXT_EMPTY                        "Enter the text this key should type."
 #define KT_KSET_SC_READONLY                          "kitty.ini is read-only; the shortcut was not saved."
@@ -1435,7 +1439,7 @@
 #define KT_KSET_FK_VT400                             "VT400"
 #define KT_KSET_FK_VT100P                            "VT100+"
 #define KT_KSET_FK_SCO                               "SCO"
-#define KT_KSET_FK_XTERM216                          "Xterm 216+ (KiTTY's default)"
+#define KT_KSET_FK_XTERM216                          "Xterm 216+ (KiTTY++'s default)"
 
 /* Application/KiTTY++ Settings/Automation */
 #define KT_KSET_AU_TITLE                             "Automatic input: pacing, scripts, broadcast"
@@ -1604,7 +1608,7 @@
 #define KT_CLIENT_IDENTITY_TITLE                     "Client identity"
 #define KT_CLIENT_IDENTITY_BANNER                    "SSH banner"
 #define KT_KSET_CN_SSHVERSION                        "Client version string (what the server is told):"
-#define KT_KSET_CN_SSHVERSION_NOTE                   "Blank = KiTTY's own. Not the protocol selector - that is a " \
+#define KT_KSET_CN_SSHVERSION_NOTE                   "Blank = KiTTY++'s own. Not the protocol selector - that is a " \
         "session's SSH panel."
 #define KT_KSET_CN_SSHVERSION_PREVIEW                "The server is told: %s"
 
@@ -1613,7 +1617,7 @@
 #define KT_KSET_TT_KSCP                              "File copy (kscp)"
 #define KT_KSET_TT_PSCPPATH                          "File-copy helper (kscp.exe or pscp.exe):"
 #define KT_KSET_TT_PSCPPATH_SELECT                   "Select the file-copy helper"
-#define KT_KSET_TT_PSCPPATH_NOTE                     "Blank = KiTTY finds it at each start (kscp.exe beside it, then " \
+#define KT_KSET_TT_PSCPPATH_NOTE                     "Blank = KiTTY++ finds it at each start (kscp.exe beside it, then " \
         "PuTTY's pscp.exe) and stores nothing. Set it only to force one binary."
 #define KT_KSET_TT_PSCPPATH_FOUND                    "Found at this start: %s"
 #define KT_KSET_TT_PSCPPATH_NONE                     "nothing - no kscp.exe or pscp.exe in the usual places"
@@ -1642,6 +1646,8 @@
 #define KT_KSET_LA_DBL_CONFIG                        "Configuration"
 #define KT_KSET_LA_DBL_MANAGE                        "Manage Sessions"
 #define KT_KSET_LA_DBL_QUICK                         "Quick Connect"
+#define KT_KSET_LA_GLOBALHOTKEY                      "Global hotkey:"
+#define KT_KSET_LA_GLOBALHOTKEY_APPLY                "Apply"
 #define KT_KSET_LA_WORKPLACE                         "Workplace proxy mode"
 #define KT_KSET_LA_EXITWITH                          "Workplace mode closes the launcher it started"
 #define KT_KSET_LA_NOTICE                            "Workplace notice stays on screen, seconds:"
@@ -1655,7 +1661,7 @@
 #define KT_KSET_LA_START_NOW                         "Start Launcher Now"
 
 /* The three panel side-jobs of the settings tree */
-#define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Switched off for every session, on Application > KiTTY " \
+#define KT_CONNECTION_RECONNECT_GLOBAL_OFF           "Switched off for every session, on Application > KiTTY++ " \
         "Settings > Reconnect & Prompts."
 #define KT_ZMODEM_GLOBAL_ENABLE                      "Enable ZModem transfers in every session"
 #define KT_ZMODEM_GLOBAL_OFF_NOTE                    "ZModem is switched off: Application > KiTTY++ Settings > " \
@@ -1699,7 +1705,7 @@
 #define KT_SESSION_PARAMETER_CONFIRM_DELETE          "Require confirmation before deleting a session"
 #define KT_SESSION_PARAMETER_OPENING                 "Load Last Session / Quick-Connect-Mode"
 #define KT_SESSION_PARAMETER_OPEN_ON_THE_LAST_USED   "Open on the last used session (off = quick connect)"
-#define KT_SESSION_PARAMETER_QUICK_CONNECT_STARTS_EVERY_KITTY "Quick connect starts every KiTTY on Default Settings with the " \
+#define KT_SESSION_PARAMETER_QUICK_CONNECT_STARTS_EVERY_KITTY "Quick connect starts every KiTTY++ on Default Settings with the " \
         "cursor already in Host Name: type an address and press Enter."
 #define KT_SESSION_PARAMETER_DOUBLE_CLICK_A_SESSION  "Double-click a session to:"
 #define KT_SESSION_PARAMETER_PROXY                   "Proxy"
@@ -1708,7 +1714,7 @@
         "Application > Named Proxies."
 
 /* Application/Updates */
-#define KT_UPDATES_KEEPING_KITTY_UP_TO_DATE          "Keeping KiTTY up to date"
+#define KT_UPDATES_KEEPING_KITTY_UP_TO_DATE          "Keeping KiTTY++ up to date"
 #define KT_UPDATES_UPDATE_CHECK                      "Update check"
 #define KT_UPDATES_CHECK_FOR_UPDATES_WHEN_KITTY      "Check for updates of KiTTY++"
 #define KT_UPDATES_CHECK_FOR_UPDATES_NOW             "Check for updates now"
@@ -1740,14 +1746,29 @@
 /* ---- Shared captions and wordings (every binary) ---- */
 
 /* Message-box, notice and window captions */
-#define KT_CAP_KITTY                                 "KiTTY"
+#define KT_CAP_KITTY                                 "KiTTY++"
 #define KT_CAP_ERROR                                 "Error"
 #define KT_CAP_INFO                                  "Info"
 #define KT_NOTEPAD_SAVE_FAILED_FMT                   "Not saved: %s\n%s.\n\n" \
         "The file is left as it was. The text is still in the editor."
 #define KT_START_FAILED_FMT                          "Could not be started:\n%s\n\n%s"
+/* RunCommand (kitty_winutil.c): WinSCP, FileZilla, the editor, the launcher's
+ * starts - a notice and an Event Log line */
+#define KT_CAP_START_FAILED                          "Program not started"
+#define KT_START_FAILED_EVENT_FMT                    "Could not be started: %s: %s"
+/* Tools > Open Logfile: no program opened the log (window.c IDM_OPENLOGFILE) */
+#define KT_CAP_OPEN_LOG_FILE                         "Open Logfile"
+#define KT_OPEN_LOG_FAILED_FMT                       "The log file could not be shown:\n%s\n\n%s"
+#define KT_OPEN_LOG_FAILED_EVENT_FMT                 "Open Logfile failed for %s: %s"
 #define KT_URL_OPEN_FAILED_FMT                       "The link could not be opened:\n%s\n\n%s"
 #define KT_URL_OPEN_FAILED_APP_FMT                   "The link could not be opened:\n%s\n\nwith the browser set for links:\n%s\n\n%s"
+/* A session whose custom URL regex does not compile (kitty/url/urlhack.c):
+ * the notice (title KT_CAP_URL_REGEX) and the Event Log line. %s = the
+ * engine's error; the Event Log line also carries the pattern. */
+#define KT_URL_REGEX_FALLBACK_FMT                    "The custom URL regex is invalid: %s\n" \
+        "Links use the default pattern."
+#define KT_URL_REGEX_FALLBACK_EVENT_FMT              "The custom URL regex is invalid: %s. " \
+        "Links use the default pattern. Custom regex: %s"
 #define KT_CAP_KAGEANT                               "kageant"
 #define KT_CAP_KITTYGEN                              "KiTTYgen"
 #define KT_CAP_KITTYGEN_ERROR                        "KiTTYgen Error"
@@ -1758,10 +1779,10 @@
 #define KT_CAP_LAUNCHER                              "KiTTY++ Launcher"
 #define KT_CAP_LAUNCHER_HOTKEY                       "KiTTY++ Launcher hotkey"
 #define KT_CAP_SESSION_IMPORT                        KT_MIG_BOX_TITLE  /* the Migration panel's box carries the same title */
-#define KT_CAP_SESSION_EXPORT                        "KiTTY session export"
-#define KT_CAP_UPDATE                                "KiTTY Update"
+#define KT_CAP_SESSION_EXPORT                        "KiTTY++ session export"
+#define KT_CAP_UPDATE                                "KiTTY++ Update"
 #define KT_CAP_CLIPBOARD                             "KiTTY++ clipboard"
-#define KT_CAP_FILE_ASSOC                            "KiTTY file association"
+#define KT_CAP_FILE_ASSOC                            "KiTTY++ file association"
 #define KT_CAP_SAVE_SESSION                          "Save session"
 #define KT_CAP_SELECT_FOLDER                         "Select a folder..."
 
@@ -1770,7 +1791,6 @@
 #define KT_MSG_INIT_REGISTRY                         "Initializing registry."
 #define KT_MSG_LAUNCHER_DIR_FAILED                   "Unable to create the menu launcher directory"
 #define KT_MSG_SSH_ONLY                              "This function is only available with SSH connections."
-#define KT_MSG_EXEC_KITTY_FAILED                     "Unable to execute KiTTY!"
 
 /* System-menu and tray-menu items */
 #define KT_MENU_EXIT                                 "E&xit"
@@ -1788,37 +1808,35 @@
 #define KT_CAP_PORT_FORWARDING                       KT_TUNNELS_PORT_FORWARDING  /* "Port forwarding" - the Tunnels panel's group title */
 /* The application notification's notice window (kitty_notes.c) */
 #define KT_CAP_KITTYPP                               "KiTTY++"
-#define KT_CAP_CFGDIR_NOT_FOUND                      "KiTTY: configdir not found"
-#define KT_CAP_RESTORE_REG_SESSIONS                  "KiTTY - restore your registry sessions?"
-#define KT_CAP_REG_SESSIONS_SET_ASIDE                "KiTTY - your registry sessions were set aside"
+#define KT_CAP_CFGDIR_NOT_FOUND                      "KiTTY++: configdir not found"
+#define KT_CAP_RESTORE_REG_SESSIONS                  "KiTTY++ - restore your registry sessions?"
+#define KT_CAP_REG_SESSIONS_SET_ASIDE                "KiTTY++ - your registry sessions were set aside"
 #define KT_CAP_OPEN_FILE                             "Open file..."
 #define KT_CAP_SAVE_FILE                             "Save file..."
 #define KT_CAP_SEND_FILE                             "Send file..."
-#define KT_CAP_CONFIG_INFO                           "Configuration infomations"   /* the historical spelling, kept */
-#define KT_CAP_SESSION_NAME                          "Session name"
 #define KT_CAP_URL_REGEX                             "URL regex"
-#define KT_CAP_DELETE_HIVE                           "KiTTY - delete the registry hive"
-#define KT_CAP_COPY_TO_PUTTY                         "KiTTY - copy to PuTTY"
-#define KT_CAP_SETTING_REMOVED                       "KiTTY - this setting has been removed"
-#define KT_CAP_RUTTY_ALSO                            "KiTTY - a rutty script is also configured"
+#define KT_CAP_DELETE_HIVE                           "KiTTY++ - delete the registry hive"
 #define KT_CAP_PASSWORD                              KT_PROXY_PASSWORD  /* "Password" - the /passwd box carries the panel's word */
 #define KT_CAP_PRINT_REPORT                          "Print report"
-#define KT_CAP_UPDATE_SIG_REJECTED                   "KiTTY Update - signature rejected"
-#define KT_CAP_UPDATE_AVAILABLE                      "KiTTY update available"
-#define KT_CAP_AUTOPW                                "KiTTY auto-login password"
-#define KT_CAP_AGENT_UNVERIFIED                      "KiTTY: SSH agent not verified"
-#define KT_CAP_HOTKEY_CONFLICT                       "KiTTY session hotkey conflict"
+#define KT_CAP_UPDATE_SIG_REJECTED                   "KiTTY++ Update - signature rejected"
+#define KT_CAP_UPDATE_AVAILABLE                      "KiTTY++ update available"
+#define KT_CAP_AUTOPW                                "KiTTY++ auto-login password"
+#define KT_CAP_AGENT_UNVERIFIED                      "KiTTY++: SSH agent not verified"
+#define KT_CAP_HOTKEY_CONFLICT                       "KiTTY++ session hotkey conflict"
 #define KT_CAP_WORKPLACE_ON                          "Workplace proxy mode is ON"
 #define KT_CAP_WORKPLACE_TIMEOUT                     "Workplace proxy mode has timed out"
 #define KT_CAP_WORKPLACE_OFF                         "Workplace proxy mode is OFF"
 #define KT_CAP_WORKPLACE_INACTIVE                    "Workplace proxy mode is not active"
-#define KT_CAP_URL_HANDLERS                          "KiTTY URL handlers"
-#define KT_CAP_ZMODEM                                "KiTTY ZModem"
+#define KT_CAP_URL_HANDLERS                          "KiTTY++ URL handlers"
+#define KT_CAP_ZMODEM                                "KiTTY++ ZModem"
+/* the bell's wave file cannot be played (window.c wintw_bell): a notice */
+#define KT_CAP_BELL_SOUND_ERROR                      "KiTTY++ sound error"
+#define KT_BELL_WAV_FAILED_FMT                       "Unable to play sound file\n%s\nUsing default sound instead"
 #define KT_CAP_XFER                                  "KiTTY++ transfer"
 #define KT_CAP_XFER_CANCELLED                        "KiTTY++ transfer - cancelled"
 #define KT_CAP_TRANSFER_PROBLEM                      "Transfer problem"
-#define KT_CAP_RUN_CLIP_CMD                          "KiTTY - run clipboard command"
-#define KT_CAP_KEY_NOT_IN_AGENT                      "KiTTY - the key is not in the agent"
+#define KT_CAP_RUN_CLIP_CMD                          "KiTTY++ - run clipboard command"
+#define KT_CAP_KEY_NOT_IN_AGENT                      "KiTTY++ - the key is not in the agent"
 #define KT_CAP_OSC52_SESSION                         "KiTTY++ - allow for the whole session?"
 
 /* Tray-menu and system-menu items (kitty.c, kitty_launcher.c, kitty_specialmenu.c) */
@@ -1847,7 +1865,7 @@
 #define KT_MENU_CONFIGURATION                        "&Configuration"
 #define KT_MENU_TTYED                                "&TTY-ed"
 #define KT_MENU_START_AT_LOGIN                       "Start &at login"
-#define KT_MENU_UPDATE_AVAILABLE                     "Update available: KiTTY %s%s - install..."
+#define KT_MENU_UPDATE_AVAILABLE                     "Update available: KiTTY++ %s%s - install..."
 #define KT_MENU_WORKPLACE_ON_LEFT                    "&Workplace proxy ON: \"%.200s\" for another %s - switch off now"
 #define KT_MENU_WORKPLACE_ON                         "&Workplace proxy ON: every connection uses \"%.200s\" - switch off"
 #define KT_MENU_WORKPLACE_LAST_USED                  "%.250s (last used)"
@@ -1878,7 +1896,7 @@
 #define KT_MAIN_CFGDIR_DIAG_PARENT                   "The folder above it does exist, so only the last part " \
         "of the path is missing - a typo or a rename."
 #define KT_MAIN_CFGDIR_DIAG_NEITHER                  "Neither it nor the folder above it exists."
-#define KT_MAIN_CFGDIR_DIAG_LOOKED                   "KiTTY has not created or removed anything here - it only " \
+#define KT_MAIN_CFGDIR_DIAG_LOOKED                   "KiTTY++ has not created or removed anything here - it only " \
         "looked."
 #define KT_MAIN_CFGDIR_MISSING                       "kitty.ini points configdir at a directory that is not there:\n\n" \
         "    %s\n\n" \
@@ -1886,9 +1904,9 @@
         "Start anyway, as if configdir had not been set?\n\n" \
         "Yes  -  start now; whatever is kept in that directory is not listed.\n" \
         "No   -  quit, so you can fix the path in kitty.ini first."
-#define KT_MAIN_CFGDIR_WARN                          "KiTTY has not written to or removed that directory - this " \
+#define KT_MAIN_CFGDIR_WARN                          "KiTTY++ has not written to or removed that directory - this " \
         "check runs before anything is opened."
-#define KT_MAIN_RESTORE_QUESTION                     "KiTTY previously ran in file mode (savemode=file in kitty.ini) and " \
+#define KT_MAIN_RESTORE_QUESTION                     "KiTTY++ previously ran in file mode (savemode=file in kitty.ini) and " \
         "set your registry sessions aside at:\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "It is now starting in normal (registry) mode. Put those sessions " \
@@ -1896,13 +1914,13 @@
         "The sessions currently in the registry are the working copy of " \
         "kitty.sav and are kept in that file, so nothing is lost either way.\n\n" \
         "Answer No and they stay set aside; you will not be asked again."
-#define KT_MAIN_SET_ASIDE_NOTICE                     "KiTTY is starting in file mode (savemode=file in kitty.ini), " \
+#define KT_MAIN_SET_ASIDE_NOTICE                     "KiTTY++ is starting in file mode (savemode=file in kitty.ini), " \
         "which keeps its sessions in kitty.sav and uses the registry " \
         "as its working copy.\n\n" \
         "Your existing registry sessions have been SET ASIDE, not " \
         "deleted. They are at:\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
-        "Start KiTTY without savemode=file and it will offer to put " \
+        "Start KiTTY++ without savemode=file and it will offer to put " \
         "them back."
 #define KT_MAIN_SET_ASIDE_FAILED_FMT                 "KiTTY++ could not set your registry sessions aside before " \
         "loading kitty.sav (savemode=file in kitty.ini):\n\n" \
@@ -1938,46 +1956,36 @@
 #define KT_SAV_EXPORT_FAILED_FMT                     "%s (Windows' registry tool reg.exe could not export the store, exit code %lu)"
 
 /* kitty_commands.c: the /commands console */
-#define KT_CMD_INIT_INFO                             "ConfigDirectory=%s\nIniFileFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s\n"
-#define KT_CMD_SESSION_NAME_IS                       "Your session name is\n-%s-"
-#define KT_CMD_NO_SESSION_NAME                       "No session name."
+#define KT_CMD_RES_INIT                              "ConfigDirectory=%s\nIniFileFlag=%d\nInitialDirectory=%s\nKittyIniFile=%s\nKittySavFile=%s\nKiTTYClassName=%s"
+#define KT_CMD_RES_SESSION                           "Session: %s"
+#define KT_CMD_RES_NO_SESSION_NAME                   "No saved session: this window was opened without one"
+#define KT_CMD_RES_URLREGEX_DEFAULT                  "URL pattern: the built-in default\n%s"
+#define KT_CMD_RES_URLREGEX_CUSTOM                   "URL pattern: custom\n%s"
+#define KT_CMD_RES_URLREGEX_EMPTY                    "URL pattern: custom, and empty - no link is found"
+#define KT_CMD_RES_URLREGEX_BAD                      "URL pattern: custom, does not compile: %s - links use the built-in default\n%s"
+#define KT_CMD_RES_DELREG_PENDING                    "Waiting for the answer: delete HKCU\\%s?"
+#define KT_CMD_RES_SAVEKTX_PENDING                   "Waiting for the file name in the Save-As box"
+#define KT_CMD_RES_SAVEKTX_OPEN                      "The Save-As box is open already"
+#define KT_CMD_RES_COPYTOPUTTY_SAME_HIVE             "Nothing copied: this KiTTY++ uses PuTTY's hive already (KiClassName=PuTTY)"
+#define KT_CMD_RES_SWITCHCRYPT_REMOVED               "Removed: .ktx files are no longer written encrypted (the key was built into every copy). Encrypted .ktx files are still read."
+#define KT_CMD_RES_RUTTY_ALSO                        "Login script loaded. This session also has a rutty script " \
+        "(Session > Scripting): while it runs, both watch the output and send."
 #define KT_CMD_RES_SAVEMODE                          "Savemode is \"%s\", stored in %s"
 #define KT_CMD_RES_SAVEMODE_NOINI                    "Savemode is \"%s\" for this window only: there is no kitty.ini to store it in"
 #define KT_CMD_RES_SAVEMODE_NOT_STORED               "Savemode is \"%s\" for this window only: %s could not be written: %s"
-#define KT_CMD_DELREG_QUESTION                       "Delete KiTTY's registry hive?\n\n" \
+#define KT_CMD_DELREG_QUESTION                       "Delete KiTTY++'s registry hive?\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "This removes every saved session, named proxy, cached host key and " \
-        "setting stored there. It cannot be undone from inside KiTTY - the most " \
+        "setting stored there. It cannot be undone from inside KiTTY++ - the most " \
         "recent backup is your .sav file.\n\n" \
         "Delete it?"
-#define KT_CMD_COPYTOPUTTY_SAME_HIVE                 "This KiTTY is already using PuTTY's registry hive " \
-        "(KiClassName=PuTTY), so there is nothing to copy: the source and the " \
-        "destination are the same key. Nothing was changed."
-#define KT_CMD_SWITCHCRYPT_REMOVED                   "Encrypted configuration files are no longer written.\n\n" \
-        "This setting used to scramble exported .ktx files with a key built " \
-        "into every copy of KiTTY, so anyone with KiTTY could unscramble them. " \
-        "It protected nothing, and it is gone.\n\n" \
-        "Existing encrypted .ktx files are still read normally. Saved passwords " \
-        "are unaffected - those are protected properly, with Windows DPAPI or " \
-        "your master password."
-#define KT_CMD_RUTTY_ALSO_TEXT                       "A login script has just been loaded, and this session also has " \
-        "a rutty script.\n\n" \
-        "They are separate features. At CONNECT they are sequenced - the " \
-        "login script gets you in, then the rutty script sends its file. " \
-        "Loading one by hand mid-session skips that ordering, so if the " \
-        "rutty script is already running the two will now be watching " \
-        "the same output and both sending.\n\n" \
-        "You can see them here:\n" \
-        "    Session > Scripting        - the rutty script file\n" \
-        "    Connection > Login         - the login script\n\n" \
-        "Nothing has been stopped; this is only a warning."
 #define KT_CMD_PASSWORD_IS                           "Your password is\n-%s-"
 #define KT_CMD_NO_PASSWORD                           "No password."
 /* /help: the category headings and the one-liner per command */
 #define KT_CMD_CAT_WINDOW                            "Window & title (runtime toggles - persist via kitty.ini [KiTTY] size= / wintitle=)"
 #define KT_CMD_CAT_INFO                              KT_CAP_INFO  /* "Info" */
 #define KT_CMD_CAT_STORE                             "Settings & storage"
-#define KT_CMD_CAT_ALLWIN                            "All KiTTY windows"
+#define KT_CMD_CAT_ALLWIN                            "All KiTTY++ windows"
 #define KT_CMD_CAT_DIAG                              "Behaviour & diagnostics"
 #define KT_CMD_HELP_SIZE                             "toggle the [cols x rows] title suffix"
 #define KT_CMD_HELP_WINTITLE                         "toggle the status information in the title bar"
@@ -1991,15 +1999,14 @@
 #define KT_CMD_HELP_INIT                             "show configuration paths"
 #define KT_CMD_HELP_SESSION                          "show the session name"
 #define KT_CMD_HELP_URLREGEX                         "show the URL detection regex"
-#define KT_CMD_HELP_MESSAGE                          "show a message box"
 #define KT_CMD_HELP_HELP                             "show this list"
 #define KT_CMD_HELP_SAVE                             "save the live settings to this window's saved session"
 #define KT_CMD_HELP_SAVENEW                          "save as a NEW session and switch this window to it"
 #define KT_CMD_HELP_SAVEKTX                          "export the settings to a .ktx connection file"
 #define KT_CMD_HELP_SAVEMODE                         "cycle the save mode (registry / file / dir)"
-#define KT_CMD_HELP_SAVEREG                          "export the KiTTY registry to kitty.sav"
-#define KT_CMD_HELP_LOADREG                          "import the KiTTY registry from kitty.sav"
-#define KT_CMD_HELP_DELREG                           "DELETE the whole KiTTY registry"
+#define KT_CMD_HELP_SAVEREG                          "export the KiTTY++ registry to kitty.sav"
+#define KT_CMD_HELP_LOADREG                          "import the KiTTY++ registry from kitty.sav"
+#define KT_CMD_HELP_DELREG                           "DELETE the whole KiTTY++ registry"
 #define KT_CMD_HELP_SAVESESSIONS                     "export the saved sessions to kitty.ses"
 #define KT_CMD_HELP_COPYTOPUTTY                      "copy the sessions to stock PuTTY (replaces its sessions)"
 #define KT_CMD_HELP_SWITCHCRYPT                      "(removed) encrypted config files are no longer written"
@@ -2081,6 +2088,15 @@
 #define KT_LAUNCHER_HOTKEY_DUP                       "%s%s: \"%s\" has it, \"%s\" does not."
 #define KT_LAUNCHER_HOTKEY_HELD                      "%s%s (\"%s\"): held by another application."
 #define KT_LAUNCHER_HOTKEY_OVERFLOW                  "%s%d more session hotkey%s beyond the %d-slot limit."
+#define KT_LAUNCHER_HOTKEY_GLOBAL_DUP                "%s%s: the launcher global hotkey has it, \"%s\" does not."
+#define KT_LAUNCHER_HOTKEY_GLOBAL_HELD               "%s%s (launcher global hotkey): held by another application."
+/* the combination is held by another running launcher (alreadyRunCheck off) */
+#define KT_LAUNCHER_HOTKEY_HELD_LAUNCHER             "%s%s (\"%s\"): held by the running KiTTY++ launcher."
+#define KT_LAUNCHER_HOTKEY_GLOBAL_HELD_LAUNCHER      "%s%s (launcher global hotkey): held by the running KiTTY++ launcher."
+/* /initlauncher: the folder store's Launcher folder could not be made (ConfigDirectory, reason) */
+#define KT_CMD_RES_LAUNCHER_DIR_FAILED               "Launcher menu NOT rebuilt: %s\\Launcher: %s"
+/* /loadreg: an old encrypted .sav, read from a live session (after "Not loaded: <file>: ") */
+#define KT_MAIN_SAV_ENCRYPTED_LIVE                   "old encrypted backup: no password prompt in a running session"
 #define KT_LAUNCHER_WP_ON_LEFT                       "Every connection now uses the proxy \"%.200s\" instead of each " \
         "session's own. Switches off in %s, or when this launcher stops."
 #define KT_LAUNCHER_WP_ON                            "Every connection now uses the proxy \"%.200s\" instead of each " \
@@ -2123,7 +2139,7 @@
 #define KT_WIN_PRINT_ERR2                            "ERROR Type 2."
 #define KT_WIN_OK                                    "OK"
 #define KT_WIN_FATAL_ERROR                           "Fatal Error"
-#define KT_WIN_AUTOPW_WARN                           "You are setting a KiTTY auto-login password.\r\n\r\n" \
+#define KT_WIN_AUTOPW_WARN                           "You are setting a KiTTY++ auto-login password.\r\n\r\n" \
         "SECURITY: this password is saved in your session settings in a " \
         "REVERSIBLY-ENCRYPTED form. Anyone with access to this machine or to " \
         "your saved configuration can recover the plain-text password.\r\n\r\n" \
@@ -2173,7 +2189,7 @@
 #define KT_TERMENV_NOTE_TAG                          "NOTE:"
 #define KT_TERMENV_REFUSED_OWN_MID                   "; its sshd_config needs \"AcceptEnv "
 #define KT_TERMENV_REFUSED_OWN_TAIL                  "\".\r\n"
-#define KT_WIN_AGENT_UNVERIFIED                      "This KiTTY terminal window checked which program answers its " \
+#define KT_WIN_AGENT_UNVERIFIED                      "This KiTTY++ terminal window checked which program answers its " \
         "SSH agent requests. The answer came from an unverified " \
         "program:\n\n%s\n\nThat program sees, and can sign with, every " \
         "key this session uses. That is expected if you chose to run " \
@@ -2194,27 +2210,27 @@
 #define KT_UPD_BETA_SUFFIX                           " (beta)"
 #define KT_UPD_BETA_WORD                             " beta"
 #define KT_UPD_BETA_MARK                             "  (BETA)"
-#define KT_UPD_TERM_NOTICE                           "\r\n[KiTTY] An update is available: %s (you have %s)%s.\r\n" \
-        "        System menu \xe2\x86\x92 Check for updates to install it.\r\n\r\n"
+#define KT_UPD_TERM_NOTICE                           "\r\n[KiTTY++] An update is available: %s (you have %s)%s.\r\n" \
+        "          System menu \xe2\x86\x92 Check for updates to install it.\r\n\r\n"
 #define KT_UPD_TMP_FAILED                            "Could not create a temporary installer path; aborting the update."
 #define KT_UPD_DOWNLOAD_FAILED                       "Download failed. Opening the download page instead."
 #define KT_UPD_SECURE_FAILED                         "Could not secure the downloaded installer; aborting the update."
 #define KT_UPD_SIG_REJECTED                          "The downloaded installer FAILED signature verification " \
-        "and was NOT run; it has been deleted.\n\nPlease install KiTTY only " \
+        "and was NOT run; it has been deleted.\n\nPlease install KiTTY++ only " \
         "from the official release page."
 #define KT_UPD_INSTALLER_FAILED                      "Could not start the verified installer. The downloaded file has been deleted."
 #define KT_UPD_AVAILABLE_HEAD                        "An update is available.\r\n\r\nInstalled: %s\r\nLatest:    %s%s\r\n\r\n%s"
-#define KT_UPD_AVAILABLE_MSI_TAIL                    "KiTTY will close and reconnect during the upgrade; the installer's " \
+#define KT_UPD_AVAILABLE_MSI_TAIL                    "KiTTY++ will close and reconnect during the upgrade; the installer's " \
         "signature is verified before it runs."
 #define KT_UPD_PORTABLE_OPEN_PAGE                    "Portable copy - auto-install is disabled. Open the download page?"
 #define KT_UPD_NO_ASSET_OPEN_PAGE                    "The matching installer wasn't found. Open the download page?"
 #define KT_UPD_STABLE_TAKING_BETA                    "You are on a STABLE release and the newest build is a BETA (less tested). "
-#define KT_UPD_UP_TO_DATE_TITLE                      "KiTTY - up to date (%s%s is the latest)"
+#define KT_UPD_UP_TO_DATE_TITLE                      "KiTTY++ - up to date (%s%s is the latest)"
 #define KT_UPD_UP_TO_DATE                            "You are running the latest version.\r\n\r\nInstalled: %s\r\nLatest:    %s"
 
 /* kitty_bridge.c: the About version line, session export / import, the moved master password */
-#define KT_BRIDGE_ABOUT_VERSION_TEST                 "KiTTY - %s\r\nTEST BUILD: %s"
-#define KT_BRIDGE_ABOUT_VERSION                      "KiTTY - %s"
+#define KT_BRIDGE_ABOUT_VERSION_TEST                 "KiTTY++ - %s\r\nTEST BUILD: %s"
+#define KT_BRIDGE_ABOUT_VERSION                      "KiTTY++ - %s"
 #define KT_BRIDGE_EXPORT_PW_SHORT                    "Please enter an export password of at least " \
         "5 characters.\n\n" \
         "If you do not want a password, choose \"Protect for this " \
@@ -2230,11 +2246,11 @@
 #define KT_BRIDGE_EXPORTED_PW                        "This password is required to import these sessions - on ANY " \
         "PC, including this one. It is not your master password, and " \
         "nothing here was changed."
-#define KT_BRIDGE_MPW_MOVED                          "This portable KiTTY kept its master password in the Windows " \
+#define KT_BRIDGE_MPW_MOVED                          "This portable KiTTY++ kept its master password in the Windows " \
         "registry of this PC. It has now been moved into a Security folder " \
         "next to your sessions, so this copy works the same way on any PC.\r\n" \
         "\r\n" \
-        "If you use other portable copies of KiTTY that share this master " \
+        "If you use other portable copies of KiTTY++ that share this master " \
         "password, copy this Security folder into each of them as well - " \
         "without it they cannot open their saved passwords on another PC.\r\n" \
         "\r\n" \
@@ -2278,7 +2294,7 @@
 
 /* kitty_registry.c: -sshhandler / -fileassoc reports (console or box) and the System leaf */
 #define KT_REG_CLI_CONFIRM_PROMPT                    "\r\nWrite these registry entries? [y/N] "   /* 38 bytes: the WriteFile length beside it */
-#define KT_REG_PORTABLE_QUESTION                     "This is a portable KiTTY. Registering %s writes to this " \
+#define KT_REG_PORTABLE_QUESTION                     "This is a portable KiTTY++. Registering %s writes to this " \
         "machine's registry, pointing at:\r\n\r\n    %s\r\n\r\n" \
         "Those entries stay behind when this copy is removed, and then " \
         "point at nothing."
@@ -2301,7 +2317,7 @@
 #define KT_REG_PREVIOUS_PROGRAM                      "the previous program"
 #define KT_REG_NEEDS_ADMIN                           " - needs administrator rights"
 #define KT_REG_URL_REPORT_HEAD                       "%s\r\nRegistering: %s\r\n\r\n"
-#define KT_REG_URL_ALREADY                           "%s://  already registered for this KiTTY\r\n"
+#define KT_REG_URL_ALREADY                           "%s://  already registered for this KiTTY++\r\n"
 #define KT_REG_URL_LEFT_ALONE                        "%s://  LEFT ALONE, currently opened by %s\r\n" \
         "           %s\r\n"
 #define KT_REG_URL_NOT_WRITTEN                       "%s://  COULD NOT BE WRITTEN\r\n"
@@ -2318,12 +2334,12 @@
         "program. Add -force to take %s over as well; the setting " \
         "replaced is exported to a .reg file first, and the report then " \
         "names the command that puts it back."
-#define KT_REG_URL_REMOVING                          "Removing KiTTY's telnet://, ssh://, kitty:// and putty:// " \
+#define KT_REG_URL_REMOVING                          "Removing the KiTTY and KiTTY++ telnet://, ssh://, kitty:// and putty:// " \
         "handlers.\r\n\r\n"
 #define KT_REG_URL_RM_LEFT_ALONE                     "%s:// (%s)  LEFT ALONE, opened by %s\r\n"
 #define KT_REG_URL_REMOVED                           "%s:// (%s)  removed\r\n"
 #define KT_REG_URL_NOT_REMOVED                       "%s:// (%s)  could not be removed%s\r\n"
-#define KT_REG_URL_NOTHING_REGISTERED                "Nothing of KiTTY's was registered%s."
+#define KT_REG_URL_NOTHING_REGISTERED                "Nothing of KiTTY's or KiTTY++'s was registered%s."
 #define KT_REG_URL_OTHERS                            " (the handlers above belong to other programs)"
 #define KT_REG_ASSOC_REPORT_HEAD                     "%s\r\nAssociating %s with: %s\r\n\r\n"
 #define KT_REG_ASSOC_LEFT_ALONE                      "%s  LEFT ALONE, currently opened by \"%s\"\r\n\r\n" \
@@ -2340,14 +2356,14 @@
 #define KT_REG_ASSOC_YOUR_ACCOUNT                    "the association for your account"
 #define KT_REG_ASSOC_ALL_USERS                       "the association for all users of this machine"
 #define KT_REG_ASSOC_DONE                            "%s  associated\r\n"
-#define KT_REG_ASSOC_REMOVING                        "Removing KiTTY's %s file association.\r\n\r\n"
+#define KT_REG_ASSOC_REMOVING                        "Removing the KiTTY or KiTTY++ %s file association.\r\n\r\n"
 #define KT_REG_ASSOC_RM_LEFT_ALONE                   "%s (%s)  LEFT ALONE, opened by \"%s\"\r\n"
 #define KT_REG_ASSOC_REMOVED                         "%s (%s)  removed\r\n"
 #define KT_REG_ASSOC_NOT_REMOVED                     "%s (%s)  could not be removed%s\r\n"
 #define KT_REG_PROGID_REMOVED                        "kitty.connect.1 (%s)  removed\r\n"
-#define KT_REG_ASSOC_NOTHING                         "Nothing of KiTTY's was associated."
+#define KT_REG_ASSOC_NOTHING                         "Nothing of KiTTY's or KiTTY++'s was associated."
 #define KT_REG_STATE_NOT_REGISTERED                  "%s  not registered"
-#define KT_REG_STATE_OTHER_KITTY                     "%s  another KiTTY: %s"
+#define KT_REG_STATE_OTHER_KITTY                     "%s  another KiTTY or KiTTY++: %s"
 
 /* kitty_xfer.c: the kscp transfer window, the clipboard command, WinSCP */
 #define KT_XFER_HELLO_NOTE                           "This session's key is protected by Windows Hello, and the agent " \
@@ -2491,7 +2507,7 @@
 #define KT_ADB_BAD_SHELL                             "Bad response waiting for shell start"
 
 /* kitty_proxy.c */
-#define KT_PROXYDEF_DIR_FAILED                       "Unable to create the proxy definitions directory"
+#define KT_PROXYDEF_SAVE_FAILED_FMT                  "Named proxy '%s' not saved: %s"
 
 /* kitty_hello_container.c: the owners list of a key container */
 #define KT_HELLOC_UNTAGGED                           KT_KGEN_DOORS_UNTAGGED  /* "(untagged)" - kittygen's doors list says the same */
@@ -2499,11 +2515,11 @@
 
 /* kitty_oldwin.c: the "this Windows cannot do" reports */
 #define KT_OLDWIN_UNNAMED                            "(unnamed)"
-#define KT_OLDWIN_TOO_OLD                            "This version of Windows is too old to run KiTTY.\r\n\r\n" \
+#define KT_OLDWIN_TOO_OLD                            "This version of Windows is too old to run KiTTY++.\r\n\r\n" \
         "It is missing:"
 #define KT_OLDWIN_NOT_AVAILABLE                      "Not available on this version of Windows:"
 #define KT_OLDWIN_ITEM                               "\r\n    %s - needs %s from %s"
-#define KT_OLDWIN_NEEDS_XP                           "\r\n\r\nKiTTY needs Windows XP or newer."
+#define KT_OLDWIN_NEEDS_XP                           "\r\n\r\nKiTTY++ needs Windows XP or newer."
 /* The feature names those reports print, one per runtime-resolved API. The
  * brief report de-duplicates by comparing these strings, so a feature that
  * several lookups share must use the SAME macro (kitty.c, kitty_oldwin.c,
@@ -2512,7 +2528,7 @@
 #define KT_WINFEAT_TICK64                            "a 64-bit millisecond clock"
 #define KT_WINFEAT_PROCESS_NAME                      "naming the program behind a process"
 #define KT_WINFEAT_PROCESS_NAME_OLD                  "naming the program behind a process (older Windows)"
-#define KT_WINFEAT_CONSOLE                           "printing to the console that started KiTTY"
+#define KT_WINFEAT_CONSOLE                           "printing to the console that started KiTTY++"
 #define KT_WINFEAT_REG_DELTREE                       "one-call registry subtree deletion"
 #define KT_WINFEAT_REG_GETVALUE                      "typed registry reads"
 #define KT_WINFEAT_CONPTY                            "ConPTY process spawning"
@@ -2616,7 +2632,7 @@
 
 /* kageant: the command line */
 #define KT_KA_CLI_HELP \
-        "kageant - the KiTTY SSH authentication agent\n" \
+        "kageant - the KiTTY++ SSH authentication agent\n" \
         "\n" \
         "Usage:  kageant [options] [keyfile ...]\n" \
         "\n" \
@@ -2642,7 +2658,7 @@
         "-restrict-acl\n" \
         "        restrict the ACL of the kageant process\n" \
         "-restrict-putty-acl\n" \
-        "        pass -restrict-acl on to KiTTY sessions started\n" \
+        "        pass -restrict-acl on to KiTTY++ sessions started\n" \
         "        from the tray menu\n" \
         "-pgpfp\n" \
         "        show the PGP fingerprints of the PuTTY release keys\n" \
@@ -2653,7 +2669,7 @@
 /* kageant: message boxes and notices (windows/pageant.c) */
 #define KT_KA_RANDOM_FAILED                          "The system random number generator failed"
 #define KT_KA_LAUNCH_BLOCKED                         "The kitty.exe next to kageant could not be verified as a " \
-        "genuine, matching KiTTY build - its signature or version " \
+        "genuine, matching KiTTY++ build - its signature or version " \
         "did not check out.\n\n" \
         "It may have been replaced with something else. Because a " \
         "terminal started from here would get access to the agent's " \
@@ -2673,6 +2689,17 @@
         "format, which is not fully tamperproof and may stop being " \
         "supported. Load it into KiTTYgen and save it again to " \
         "convert it."
+/* A PPK key file in an old or weakly protected format: the terminal's notice
+ * and Event Log line (windows/window.c, before each connection, the login
+ * goes on) and kageant's notice (windows/pageant.c). %s = the file. */
+#define KT_KEYFILE_OLD_TITLE                         "Old key file format"
+#define KT_KEYFILE_OLD_FMT                           "%s: an old key file format with no integrity " \
+        "check. Convert it with KiTTYgen (load, then save)."
+#define KT_KEYFILE_WEAK_TITLE                        "Weak key file protection"
+#define KT_KEYFILE_WEAK_FMT                          "%s: an encrypted version 2 key file: its " \
+        "passphrase is protected by a weak derivation. Convert it " \
+        "with KiTTYgen (load, then save) to version 3."
+#define KT_KA_NOTICE_WEAK_KEYFILE                    "kageant: a key file with weak passphrase protection"
 #define KT_KA_HELLO_NOT_ADDED_UNPROTECTED_FMT        "The key was NOT added:\n\n    %s\n\n" \
         "You asked for Windows Hello protection and it did not " \
         "complete, so the file was not loaded unprotected. Add " \
@@ -2705,10 +2732,10 @@
         "Yes = try protecting it again\n" \
         "No = load it UNPROTECTED\n" \
         "Cancel = do not add it at all"
-#define KT_KA_KITTYGEN_MISSING                       "The KiTTY key generator (kittygen) was not found " \
+#define KT_KA_KITTYGEN_MISSING                       "The KiTTY++ key generator (kittygen) was not found " \
         "next to kageant."
 #define KT_KA_KITTYGEN_UNVERIFIED_Q                  "The key generator next to kageant could not be " \
-        "verified as a genuine, matching KiTTY build - its " \
+        "verified as a genuine, matching KiTTY++ build - its " \
         "signature or version did not check out.\n\n" \
         "It may simply be a different version, or it may " \
         "have been replaced with something else.\n\n" \
@@ -3060,7 +3087,7 @@
 #define KT_HELLO_UI_PRINTED_SECRET                   "printed secret"
 #define KT_HELLO_UI_NOTE_CODE_FMT                    "This is the key's RECOVERY CODE. It is shown ONCE - %s does " \
         "not keep it.\r\n\r\n" \
-        "It opens the key only TOGETHER with the .hello file, in KiTTY " \
+        "It opens the key only TOGETHER with the .hello file, in KiTTY++ " \
         "tools. Keep the printout AND back up the .hello file: without " \
         "the file the code is worthless, and the key file's own " \
         "passphrase is written nowhere."
@@ -3103,7 +3130,7 @@
 #define KT_HELLO_ERR_ENROL_FAILED                    "adding this account's Hello door failed"
 
 /* kittygen: captions and the window title (windows/puttygen.c) */
-#define KT_CAP_KGEN_TITLE                            "KiTTY Key Generator"
+#define KT_CAP_KGEN_TITLE                            "KiTTY++ Key Generator"
 #define KT_CAP_KGEN_NOTICE                           "KiTTYgen Notice"
 #define KT_CAP_KGEN_CMDLINE_ERROR                    "KiTTYgen command line error"
 #define KT_CAP_KGEN_SAVE_PARAMS_INVALID              "Save parameters invalid"
@@ -3184,8 +3211,8 @@
 /* ---- terminal window, command line, terminal core, dialogs ---- */
 
 /* windows/window.c: notices, confirmations and Event Log lines */
-#define KT_TWIN_OLDSESS_TITLE                        "KiTTY is also showing your old sessions"
-#define KT_TWIN_OLDSESS_TEXT                         "This KiTTY had no saved sessions of its own, so its session " \
+#define KT_TWIN_OLDSESS_TITLE                        "KiTTY++ is also showing your old sessions"
+#define KT_TWIN_OLDSESS_TEXT                         "This KiTTY++ had no saved sessions of its own, so its session " \
         "list also holds the ones an older KiTTY or PuTTY left in the " \
         "registry - they can be opened, edited and deleted from it. " \
         "That answer is now recorded and will not change on its own. " \
@@ -3202,7 +3229,7 @@
         "mode is on, and it did not come up. If you have left the place " \
         "that proxy belongs to, click here to switch the mode off."
 #define KT_TWIN_CLOSED_BY_HOST_INLINE                "\r\n\x1b[1;33m%s:\x1b[0m Connection closed by remote host\r\n"
-#define KT_CAP_BLOCK_CLIP_WRITES                     "KiTTY - block this server's clipboard writes?"
+#define KT_CAP_BLOCK_CLIP_WRITES                     "KiTTY++ - block this server's clipboard writes?"
 #define KT_TWIN_BLOCK_CLIP_WRITES_Q                  "A server has been changing your clipboard " \
         "repeatedly.\n\n" \
         "Stop it changing your clipboard at all for the " \
@@ -3213,7 +3240,7 @@
         " ([KiTTY] scriptmode=no in kitty.ini)."
 #define KT_TWIN_SCRIPT_FILE_TITLE                    "Send script file..."
 #define KT_TWIN_SCRIPT_FILE_FILTER                   "Script files (*.ksh,*.sh)|*.ksh;*.sh|All files (*.*)|*.*|"
-#define KT_CAP_PASTE                                 "KiTTY paste"
+#define KT_CAP_PASTE                                 "KiTTY++ paste"
 #define KT_TWIN_PASTE_LIMIT_Q                        "The clipboard holds %lu characters, more than" \
         " the configured pastesize limit of %d.\n\n" \
         "Paste it anyway?"
@@ -3240,7 +3267,7 @@
         "its group (pre-0.85 format)"
 #define KT_TWIN_LOG_BC_REFUSED_DISABLED              "broadcast refused: disabled on this " \
         "install ([KiTTY] sendcmdmode=no in kitty.ini)"
-#define KT_TWIN_LOG_BC_REFUSED_OTHER_INSTALL         "broadcast refused: from another KiTTY " \
+#define KT_TWIN_LOG_BC_REFUSED_OTHER_INSTALL         "broadcast refused: from another KiTTY++ " \
         "install (group '%s', ours is '%s')"
 #define KT_TWIN_LOG_BC_REFUSED_SESSION               "broadcast refused: this session does not " \
         "accept broadcasts (Session > Broadcast, or the " \
@@ -3378,7 +3405,7 @@
 #define KT_CLI_BUNDLEPW_OPEN_FAILED                  "unable to open bundle-password file '%s'"
 #define KT_CLI_BUNDLEPW_READ_FAILED                  "unable to read a password from file '%s'"
 #define KT_CLI_EDIT_FILE_NOT_FOUND                   "Unable to find requested file"
-#define KT_CAP_CLI                                   "KiTTY command line"
+#define KT_CAP_CLI                                   "KiTTY++ command line"
 #define KT_CAP_CLI_HELP                              "KiTTY++ command line options"
 #define KT_CLI_HELP_FMT                              "%s %s\r\n" \
         "\r\nUsage: kitty.exe [options] [user@]host[:port]" \
@@ -3395,11 +3422,23 @@
 #define KT_CLI_EXPORT_DONE                           "Exported %d session(s), %d failed, to:\n%s%s"
 #define KT_CLI_EXPORT_THISPC_NOTE                    "\n\nThese sessions can only be imported with this Windows " \
         "account on this PC."
+/* kitty_secretstore.c: a password whose export wrap failed is left out of the
+ * bundle (never DPAPI in its place); the export's summary lists it */
+#define KT_BUNDLE_SKIPPED_HEAD_FMT                   "\n\n%d password(s) left out:"
+#define KT_BUNDLE_SKIPPED_PW_FMT                     "\nPassword of session '%s' not exported: %s"
+#define KT_BUNDLE_SKIPPED_PXPW_FMT                   "\nProxy password of session '%s' not exported: %s"
+#define KT_BUNDLE_SKIPPED_PROXY_FMT                  "\nPassword of named proxy '%s' not exported: %s"
+#define KT_BUNDLE_SKIPPED_MORE_FMT                   "\n... and %d more"
+#define KT_BUNDLE_WRAP_NOCRYPTO                      "this program has no master-password encryption"
+#define KT_BUNDLE_WRAP_FAILED                        "the encryption failed"
+#define KT_BUNDLE_WRAP_DPAPI_FMT                     "DPAPI failed: %s"
 #define KT_CLI_IMPORT_NEEDS_PASSWORD                 "These exported sessions are password-protected. Supply the " \
         "import password with:\n\n" \
         "  -bundlepwfile <file>   (the password on the first line)\n\n" \
         "Nothing was imported."
 #define KT_CLI_IMPORT_DONE                           "Imported %d session(s), %d prox(ies), %d failed, from:\n%s"
+/* appended to KT_CLI_IMPORT_DONE; the run then exits 1 */
+#define KT_CLI_IMPORT_KEPT_FMT                       "\n%d password(s) not saved: the master password is locked."
 #define KT_CAP_BACKUP                                "KiTTY++ backup"
 #define KT_CLI_BACKUP_DONE                           "Backup written beside:\n%s"
 #define KT_CLI_BACKUP_FAILED_FMT                     "No backup was written:\n%s"
@@ -3469,11 +3508,9 @@
         " be read (%s) - refused"
 /* klink, kscp, ksftp: the master-password prompt (kitty_console_mpw.c) */
 #define KT_CLI_MPW_PROMPT                            "Master password for the KiTTY++ settings: "
-#define KT_CLI_MPW_WRONG_RETRY                       "Wrong master password."
 #define KT_CLI_MPW_WRONG_FINAL                       "Wrong master password - giving up.\n"
 #define KT_CLI_MPW_STORE_FAILED_FMT                  "The master password could not be set up: its check value " \
-        "could not be stored: %s. The password is protected for this " \
-        "Windows account on this PC only (DPAPI).\n"
+        "could not be stored: %s. The password was not saved.\n"
 #define KT_CLI_MPW_WRONG_SUPPLIED                    "The master password from -masterpwfile is wrong.\n"
 #define KT_CLI_MPW_NEEDED_BATCH                      "A stored password is protected by the KiTTY++ master" \
         " password, and -batch allows no prompt. Hand it over using -masterpwfile <file>" \
@@ -3484,6 +3521,10 @@
 
 /* logging.c: Event Log lines */
 #define KT_LOG_FOLDER_CREATED                        "Created the missing log folder %s"
+/* the session log could not be opened (dialog.c win_gui_logging_error): a
+ * notice; the Event Log line is logging.c's own */
+#define KT_CAP_LOG_OPEN_FAILED                       "KiTTY++ session log"
+#define KT_LOG_OPEN_FAILED_FMT                       "%s\nThe session goes on without a log."
 #define KT_LOG_ROTATION_SKIPPED                      "Log rotation skipped: the log file name does not " \
         "change with time (use &T, or &Y&M&D, in it) - rotating " \
         "into the same name would overwrite the log"
@@ -3651,6 +3692,11 @@
 #define KT_DLG_PEER_CLOSED_MSG                       "Server closed the connection before the question was " \
         "answered: nothing was stored"
 #define KT_DLG_PEER_CLOSED                           "\r\n" KT_DLG_PEER_CLOSED_MSG ".\r\n"
+/* the log file exists and there is no desktop for its question (dialog.c
+ * win_gui_askappend): the Event Log line, the session goes on without a log */
+#define KT_DLG_LOG_NOBODY_FMT                        "Session log not written: %s already exists and there is no " \
+        "desktop to choose overwrite or append. Session > Logging > \"What to do if the " \
+        "log file already exists\", -logoverwrite or -logappend set it beforehand."
 #define KT_DLG_KEY_REPLACED                          "\r\nStored host key replaced. Continuing.\r\n"
 #define KT_DLG_KEY_KEPT_ONCE                         "\nKeeping the previously stored key; continuing this once " \
         "(you will be asked again next time).\n"
@@ -3673,7 +3719,7 @@
 #define KT_DLG_CHANGED_ACK_PROMPT                    "Type \"yes\" to accept the new key for THIS connection, or anything else " \
         "to abandon: "
 #define KT_DLG_CHANGED_REPLACE_INTRO                 "\nReplace the stored host key with this new one for future connections?\n" \
-        KCH_HL "SECURITY WARNING" KCH_RST ": KiTTY cannot confirm that this new key " \
+        KCH_HL "SECURITY WARNING" KCH_RST ": KiTTY++ cannot confirm that this new key " \
         "genuinely belongs to the server. A plain SSH host key is trusted on first " \
         "use, with no authority to verify it against. Replace the stored key ONLY if " \
         "you are certain, by some independent means (e.g. a fingerprint obtained " \
@@ -3712,8 +3758,8 @@
         "session starts from.\n\n" \
         "It can normally be hidden from this list, but %s, so that " \
         "setting cannot be saved right now."
-#define KT_CFG_DEFAULT_READONLY                      "KiTTY is running read-only"
-#define KT_CFG_DEFAULT_NO_CONF                       "this KiTTY is running without a " \
+#define KT_CFG_DEFAULT_READONLY                      "KiTTY++ is running read-only"
+#define KT_CFG_DEFAULT_NO_CONF                       "this KiTTY++ is running without a " \
         "configuration file"
 #define KT_CFG_DEFAULT_HIDE_Q                        "\"%s\" cannot be deleted - it is the template every new session " \
         "starts from.\n\n" \
@@ -3780,6 +3826,36 @@
         "A hotkey works for only one session; the " \
         "launcher gives it to the first one it finds. " \
         "Edit the others to resolve this."
+/* ... and where the launcher's own global hotkey (Application > KiTTY++
+ * Settings > Launcher) is involved; the last line is added to either Check
+ * for a combination with a single modifier */
+#define KT_CFG_HOTKEY_HELD_BY_LAUNCHER               "This hotkey is held by the KiTTY++ launcher (this setting)."
+#define KT_CFG_HOTKEY_GLOBAL_ALSO_SAVED              "\n\nAlso assigned to the saved session%s: %s. " \
+        "The launcher gives it to the global hotkey, not to the session%s."
+#define KT_CFG_HOTKEY_FREE_BUT_GLOBAL                "This hotkey is currently available system-wide, but it is " \
+        "the launcher global hotkey (Application > KiTTY++ Settings > " \
+        "Launcher).\n\nThe launcher gives it to the global hotkey, " \
+        "not to this session."
+#define KT_CFG_HOTKEY_HELD_BY_LAUNCHER_GLOBAL        "This hotkey is held by the KiTTY++ launcher as its global " \
+        "hotkey (Application > KiTTY++ Settings > Launcher).\n\n" \
+        "This session does not get it."
+#define KT_CFG_HOTKEY_HELD_BY_LAUNCHER_SELF          "This hotkey is held by the KiTTY++ launcher (this session)."
+#define KT_CFG_HOTKEY_ONE_MODIFIER                   "\n\nOne modifier only: while the launcher runs, no other " \
+        "program on this PC receives this combination (for example " \
+        "nano or emacs in a session, or a browser)."
+/* kitty_config_session.c: the launcher global hotkey's Apply (Application >
+ * KiTTY++ Settings > Launcher) - stored, removed, or why not */
+#define KT_CFG_HOTKEY_GLOBAL_STORED                  "Stored: %s.\n\nA running launcher registers it at " \
+        "once, otherwise the launcher does at its next start."
+#define KT_CFG_HOTKEY_GLOBAL_REMOVED                 "Global hotkey removed."
+#define KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SAVED        "Not stored: this hotkey is assigned to the saved " \
+        "session%s: %s.\n\nChange the hotkey there first, or choose " \
+        "another combination."
+#define KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SESSION      "Not stored: the KiTTY++ launcher holds this hotkey " \
+        "for a saved session."
+#define KT_CFG_HOTKEY_GLOBAL_NOT_STORED_SYSTEM       "Not stored: this hotkey is already in use or reserved " \
+        "by Windows/another app.\n\nWindows does not expose which " \
+        "application owns a global hotkey."
 
 /* kitty_config.c: Session/Logging, Scripting, Broadcast */
 #define KT_CFG_LOG_CLEAR_TIMESTAMP                   "Clear the timestamp"
@@ -3801,7 +3877,7 @@
 /* kitty_config.c: Window/Hyperlinks, Window/Copy & Paste */
 #define KT_CAP_RESET_URL_REGEX                       "Reset the URL regular expression?"
 #define KT_CFG_RESET_URL_REGEX_Q                     "The custom regular expression is REPLACED by " \
-        "KiTTY's default pattern.\n\n" \
+        "KiTTY++'s default pattern.\n\n" \
         "Whatever the field holds now is lost."
 #define KT_CFG_AUTOCOPY_SELECTED_TEXT_TO             "Auto-copy selected text to "   /* the clipboard name follows */
 #define KT_CFG_MOUSE_PASTE_ACTION                    "Mouse paste action:"
@@ -3860,7 +3936,7 @@
         "fingerprint"
 #define KT_CFG_HOSTKEY_INVALID                       "Host key is not in a valid format"
 #define KT_CFG_HOSTKEY_LISTED                        "Specified host key is already listed"
-#define KT_CAP_KEY_FINGERPRINT_PIN                   "KiTTY key fingerprint pin"
+#define KT_CAP_KEY_FINGERPRINT_PIN                   "KiTTY++ key fingerprint pin"
 #define KT_CFG_PIN_CHOOSE_KEY_FIRST                  "Choose a private key file first - the pin records THAT " \
         "file's fingerprint."
 #define KT_CFG_PIN_READ_FAILED                       "Unable to read the key file's public half:\n\n%s"
@@ -3894,7 +3970,7 @@
 #define KT_CFG_DBLCLICK_START_NEW                    "Start Terminal in new window"
 
 /* kitty_proxy_gui.c: Application/Named Proxies */
-#define KT_CAP_NAMED_PROXY                           "KiTTY named proxy"
+#define KT_CAP_NAMED_PROXY                           "KiTTY++ named proxy"
 #define KT_PROXYGUI_TYPE_HTTP                        "HTTP"
 #define KT_PROXYGUI_TYPE_TELNET                      "Telnet"
 #define KT_PROXYGUI_TYPE_LOCAL                       "Local (command)"
@@ -3929,28 +4005,46 @@
         "files to another PC.\r\n\r\n" \
         "If you lose the master password, the protected passwords CANNOT " \
         "be recovered.\r\n\r\n" \
-        "If you cancel, saved passwords are protected with Windows DPAPI " \
-        "instead: only this Windows account on this machine can read them " \
-        "(a roaming domain profile may also work on other machines).\r\n\r\n" \
-        "For unattended/automation setups: -masterpwfile <file> supplies " \
-        "the master password without a prompt, and kitty.ini " \
-        "PortablePasswordProtection can settle the choice permanently - " \
-        "'dpapi' to always use DPAPI and never ask again, 'legacy' for " \
-        "unprotected storage (see kitty.ini.example)."
+        "If you cancel, the password is not saved; a password stored " \
+        "before stays as it was.\r\n\r\n" \
+        "Use DPAPI: passwords saved here open only for this Windows " \
+        "account on this PC. Another PC that shares the session folder " \
+        "makes its own choice and cannot read them. Kept in this PC's " \
+        "kitty.ini (PortablePasswordProtection=dpapi).\r\n\r\n" \
+        "For unattended setups: -masterpwfile <file> supplies the master " \
+        "password without a prompt."
+/* the setup's third button (kitty_mpw_gui.c, made at run time) */
+#define KT_MPW_USE_DPAPI                             "Use &DPAPI (this PC only)"
 #define KT_MPW_PROMPT_UNLOCK                         "Enter your master password to unlock the saved session password."
 #define KT_MPW_EMPTY                                 "Please enter a master password."
 #define KT_MPW_MISMATCH                              "The two master passwords do not match."
 #define KT_MPW_STORE_FAILED_FMT                      "The master password could not be set up: its check value " \
         "could not be stored: %s.\n\n" \
-        "The password just saved is protected for this Windows account " \
-        "on this PC only (DPAPI). Setting up the master password is offered " \
-        "again at the next start. Then already saved Session will carry the " \
-        "old encryption (DPAPI) and need to be saved again with the master " \
-        "password active to change the encryption-mode."
+        "The password was not saved; a password stored before stays as it " \
+        "was. Setting up the master password is offered again at the next " \
+        "start."
+/* the red line of the unlock dialog after a wrong master password */
+#define KT_MPW_WRONG_TRY_FMT                         "Wrong master password (try %d of %d)."
+/* a save under the master-password policy while it is locked (its unlock
+ * cancelled or wrong): the stored password is kept, never DPAPI instead */
+#define KT_MPW_LOCKED_SAVE_CAP                       "KiTTY++ master password"
+#define KT_MPW_LOCKED_SAVE_FMT                       "The master password is locked: the password of session '%s' was not saved."
+#define KT_MPW_LOCKED_PROXY_FMT                      "The master password is locked: the password of named proxy '%s' was not saved."
+#define KT_MPW_LOCKED_SCRIPT_FMT                     "The master password is locked: the login script of session '%s' was not saved."
+#define KT_MPW_LOCKED_EXPORT_FMT                     "The master password is locked: no password was written to '%s'."
+/* the same after the first-time setup was cancelled: there is no master
+ * password, nothing is locked (ksec_report_locked_save) */
+#define KT_MPW_NOSETUP_SAVE_FMT                      "No master password was set up: the password of session '%s' was not saved."
+#define KT_MPW_NOSETUP_PROXY_FMT                     "No master password was set up: the password of named proxy '%s' was not saved."
+#define KT_MPW_NOSETUP_SCRIPT_FMT                    "No master password was set up: the login script of session '%s' was not saved."
+#define KT_MPW_NOSETUP_EXPORT_FMT                    "No master password was set up: no password was written to '%s'."
+/* -importdir's result, in place of KT_CLI_IMPORT_KEPT_FMT when every kept
+ * password is one of those (windows/putty.c); the run then exits 1 */
+#define KT_CLI_IMPORT_NOSETUP_FMT                    "\n%d password(s) not saved: no master password was set up."
 
 /* kitty_inputbox.c: the text-input / command console box */
-#define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY commands"
-#define KT_INPUTBOX_TITLE                            "Text input - /help = KiTTY commands"
+#define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY++ commands"
+#define KT_INPUTBOX_TITLE                            "Text input - /help = KiTTY++ commands"
 #define KT_INPUTBOX_TITLE_SUFFIX                     " - Text input"
 /* The same box for "Terminal Name..." (system menu): the name goes in
  * front of the window title and into the launcher's Open Sessions list. */
@@ -3962,7 +4056,7 @@
 #define KT_STOREMOVE_TITLE_IN                        KT_INIMIG_IN_GROUP
 #define KT_STOREMOVE_COPY_DONE                       "Everything is in\n%s\n\n" \
         "Run kitty.exe from there: that copy uses the files in this " \
-        "folder and not the registry. This KiTTY and its settings are " \
+        "folder and not the registry. This KiTTY++ and its settings are " \
         "unchanged.\n\n" \
         "%d session%s, %d prox%s, %d host key%s, %d setting%s and " \
         "%d program file%s copied."
@@ -3982,10 +4076,10 @@
 #define KT_STOREMOVE_TAKEN_REPROTECTED               "\n\nSaved passwords were re-protected for the store " \
         "in use. Settings apply after a restart."
 #define KT_STOREMOVE_NOT_WRITABLE                    "Nothing can be written to\n%s\n\nChoose another folder."
-#define KT_STOREMOVE_ALREADY_STORE_Q                 "%s\n\nalready holds a KiTTY store. Files of the same name " \
+#define KT_STOREMOVE_ALREADY_STORE_Q                 "%s\n\nalready holds a KiTTY or KiTTY++ store. Files of the same name " \
         "are overwritten, others stay.\n\nContinue?"
 /* prefix only: the caller appends the ini file name and the full stop */
-#define KT_STOREMOVE_NO_STORE_PREFIX                 "%s\n\nholds no KiTTY folder store: neither a Sessions " \
+#define KT_STOREMOVE_NO_STORE_PREFIX                 "%s\n\nholds no KiTTY or KiTTY++ folder store: neither a Sessions " \
         "folder nor a "
 #define KT_STOREMOVE_TAKE_Q                          "Sessions, named proxies, host keys and settings of the folder " \
         "are taken into the registry. The folder stays as it is.\n" \
@@ -3996,12 +4090,12 @@
         "Cancel  -  do nothing"
 
 /* kitty_settings_load.c */
-#define KT_CAP_KTX_ENCRYPTED_DEPRECATED              "KiTTY - encrypted configuration files are deprecated"
+#define KT_CAP_KTX_ENCRYPTED_DEPRECATED              "KiTTY++ - encrypted configuration files are deprecated"
 #define KT_SETTINGS_KTX_ENCRYPTED_DEPRECATED         "This file was written by an older KiTTY with \"encrypted configuration " \
         "files\" switched on. It has been read normally.\n\n" \
         "That option is gone. It scrambled the file with a key built into every " \
         "copy of KiTTY, so anyone with KiTTY could unscramble it - it protected " \
-        "nothing. KiTTY still READS these files, but no longer writes them, and " \
+        "nothing. KiTTY++ still READS these files, but no longer writes them, and " \
         "anything you export from now on will be plain.\n\n" \
         "Saved passwords are unaffected: those are protected properly, with " \
         "Windows DPAPI or your master password."
@@ -4016,7 +4110,6 @@
 #define KT_STORE_EXPAND_ENV_FAILED                   "Unable to ExpandEnvironmentStrings for session path"
 #define KT_STORE_EXPAND_ENV_USER_FAILED              "Unable to ExpandEnvironmentStringsForUser for session path"
 #define KT_STORE_CONF_READ_FAILED                    "Unable to read configuration file, falling back to defaults"
-#define KT_STORE_SESSION_READ_FAILED                 "Unable to read session file"
 
 /* Session folders as a path (hknet/KiTTY#55) and the session file suffix
  * (hknet/KiTTY#56): kitty_sessionpath.c, kitty_storage.c, the session list. */
@@ -4197,17 +4290,17 @@
  * Named KT_RC_<dialog>_<what> after the IDD_ (or the numeric id's role). */
 
 /* kitty.rc: IDD_KITTYABOUT */
-#define KT_RC_KITTYABOUT_CAPTION                     "About KiTTY"
-#define KT_RC_KITTYABOUT_BLURB                       "KiTTY is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
+#define KT_RC_KITTYABOUT_CAPTION                     "About KiTTY++"
+#define KT_RC_KITTYABOUT_BLURB                       "KiTTY++ is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
 #define KT_RC_KITTYABOUT_WEBPAGE                     "Visit github.com/hknet/KiTTY"
 
 /* kitty.rc: IDD_MASTERPW (the caption is IDD_MPWMOVED's too) */
-#define KT_RC_MASTERPW_CAPTION                       "KiTTY master password"
+#define KT_RC_MASTERPW_CAPTION                       "KiTTY++ master password"
 #define KT_RC_MASTERPW_LABEL                         "Master password:"
 #define KT_RC_MASTERPW_CONFIRM_LABEL                 "Confirm master password:"
 
 /* kitty.rc: IDD_MIGRATEWARN */
-#define KT_RC_MIGRATEWARN_CAPTION                    "KiTTY password protection"
+#define KT_RC_MIGRATEWARN_CAPTION                    "KiTTY++ password protection"
 #define KT_RC_MIGRATEWARN_TEXT                       "This session file contains a password stored in the old unprotected format. Saving will re-encrypt it in the new protected format, which old KiTTY releases (0.76 and earlier) cannot read. Do not copy the file back to an old release afterwards."
 #define KT_RC_MIGRATEWARN_QUESTION                   "Re-encrypt the stored password now? (No keeps it in the old form.)"
 #define KT_RC_MIGRATEWARN_NOASK                      "Don't show this warning again"
@@ -4222,7 +4315,7 @@
 #define KT_RC_EXPORTPW_EXPORT                        "&Export"
 
 /* kitty.rc: IDD_STOREMOVEPW (caption = KT_INIMIG_OUT_GROUP) */
-#define KT_RC_STOREMOVEPW_INTRO                      "Choose how the passwords saved in the copy are protected. Nothing about this KiTTY changes."
+#define KT_RC_STOREMOVEPW_INTRO                      "Choose how the passwords saved in the copy are protected. Nothing about this KiTTY++ changes."
 #define KT_RC_STOREMOVEPW_MODEPW                     "Protect with a &master password (the copy asks for it once per start, works on any PC)"
 #define KT_RC_STOREMOVEPW_PASS_LABEL                 "Master password (at least 5 characters):"
 #define KT_RC_STOREMOVEPW_DPAPIWARN                  "The copy can then read its passwords only under THIS Windows account on THIS PC. A moved or synced copy cannot."
@@ -4245,7 +4338,7 @@
 #define KT_RC_UPDATEBOX_LATER                        "&Later"
 
 /* kitty.rc: IDD_INPUTBOX, IDD_INPUTBOXMULTI, IDD_INPUTBOXPW (one caption) */
-#define KT_RC_INPUTBOX_CAPTION                       "KiTTY text input"
+#define KT_RC_INPUTBOX_CAPTION                       "KiTTY++ text input"
 #define KT_RC_INPUTBOX_PROMPT                        "Text to send to the terminal:"
 #define KT_RC_INPUTBOXMULTI_PROMPT                   "Text to send (Shift+Return):"
 #define KT_RC_INPUTBOXPW_PROMPT                      "Password to send to the terminal:"
@@ -4345,7 +4438,7 @@
 #define KT_RC_ABOUT_WEBSITE                          "Visit &Web Site"
 
 /* pageant.rc IDD_LICENCE, puttygen.rc 214, putty-common.rc2 IDD_LICENCEBOX */
-#define KT_RC_LICENCE_CAPTION                        "KiTTY Licence"
+#define KT_RC_LICENCE_CAPTION                        "KiTTY++ Licence"
 
 /* pageant.rc: IDD_HELLOPROTECT (KEYFILE is puttygen.rc IDD_KGHELLODOORS' too) */
 #define KT_RC_HELLOPROTECT_CAPTION                   "kageant - protect a key with Windows Hello"

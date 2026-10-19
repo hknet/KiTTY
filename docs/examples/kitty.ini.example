@@ -1,18 +1,18 @@
-; KiTTY sample configuration file
+; KiTTY++ sample configuration file
 ;
 ; This file is intentionally inert: every option is commented out.
 ; To use an option, copy this file to kitty.ini, then uncomment only
 ; the setting(s) you want to change. Do not rename this example in
 ; installed MSI folders unless you intentionally want a live config there.
 ;
-; Values shown here mirror KiTTY built-in defaults where practical.
+; Values shown here mirror KiTTY++ built-in defaults where practical.
 ;
 ; WHERE SETTINGS ACTUALLY COME FROM - read this before debugging a value
 ; that "does not stick":
 ;
-;   * An INSTALLED KiTTY (savemode=registry, the default for kitty.exe)
+;   * An INSTALLED KiTTY++ (savemode=registry, the default for kitty.exe)
 ;     reads most settings REGISTRY FIRST, and this file only fills in keys
-;     the registry does not hold. A value KiTTY has once written to the
+;     the registry does not hold. A value KiTTY++ has once written to the
 ;     registry therefore silently beats the same key edited here.
 ;   * Exception: restrictacl is read from this file ONLY - deliberately,
 ;     so a stale registry value can never cancel a hardening switch (see
@@ -26,7 +26,7 @@
 [ConfigBox]
 
 ; applicationpanel: which leaf of the configuration box's APPLICATION tab to
-;    come back to. Written by KiTTY when you leave that tab or close the box,
+;    come back to. Written by KiTTY++ when you leave that tab or close the box,
 ;    so the next configuration window opens where you were - among the proxies
 ;    if that is what you were setting up. The Session tab is not remembered:
 ;    it opens on the session panel, which is what most people came for.
@@ -191,13 +191,13 @@
 
 ; autoreconnect: reconnect a session by itself when the link drops, retrying
 ;    while the network is away. This is one of the premiere features users
-;    start using KiTTY for - a session disconnect is no longer a manual job to
-;    reconnect but solved by KiTTY for the user. On by default; see
+;    start using KiTTY++ for - a session disconnect is no longer a manual job to
+;    reconnect but solved by KiTTY++ for the user. On by default; see
 ;    ReconnectDelay for how long it waits between attempts.
 ;autoreconnect=yes
 
 ; bgimage: enable/disable the background image feature. (The description
-;    here used to call it backgroundimage, which is not a key KiTTY reads.)
+;    here used to call it backgroundimage, which is not a key KiTTY++ reads.)
 ;bgimage=no
 
 ; bcdelay: delay in MILLISECONDS between each character in every automatic
@@ -211,7 +211,7 @@
 ;    enforced 0.005.
 ;commanddelay=0.05
 
-; conf: `no` stops KiTTY creating and maintaining its own files - kitty.ini is
+; conf: `no` stops KiTTY++ creating and maintaining its own files - kitty.ini is
 ;   not auto-created, and neither the kitty.sav backup nor the portable-folder
 ;   backups are written. Only `no` does anything: `conf=yes` is ignored rather
 ;   than being a way to switch the behaviour back on. It is not remembered
@@ -230,10 +230,10 @@
 ;    not there is asked about at start; going on uses the default, and
 ;    kageant and the console tools then use the default too.
 ;    It does NOT move kitty.ini. This file has to be found before anything in
-;    it can be read, so KiTTY is already holding it by the time it learns where
+;    it can be read, so KiTTY++ is already holding it by the time it learns where
 ;    configdir points - kitty.ini stays where it was.
 ;    Removing the setting later does not move anything back either: your
-;    sessions, host keys and stored keys stay in that directory and KiTTY stops
+;    sessions, host keys and stored keys stay in that directory and KiTTY++ stops
 ;    looking there, so they simply disappear from the list. Before you unset or
 ;    change it, use "Export all..." in the configuration box (Session panel),
 ;    then change the setting, then "Import all..." - that carries everything
@@ -265,7 +265,7 @@
 ;    Folder store only. Default: none.
 ;fileextension=
 
-; fileextensionapplied: written by KiTTY - the ending the session files were
+; fileextensionapplied: written by KiTTY++ - the ending the session files were
 ;    last renamed to, or the rename was declined for.
 ;fileextensionapplied=
 
@@ -301,7 +301,7 @@
 ;    used. Default: none.
 ;hostkeyextension=
 
-; hostkeyextensionapplied: written by KiTTY - the ending the host-key files
+; hostkeyextensionapplied: written by KiTTY++ - the ending the host-key files
 ;    were last renamed to, or the rename was declined for.
 ;hostkeyextensionapplied=
 
@@ -311,7 +311,7 @@
 ;sessionsuffix=
 ;keysuffix=
 
-; puttyconfmigrated: written by KiTTY (yes) once classic KiTTY's putty.conf
+; puttyconfmigrated: written by KiTTY++ (yes) once classic KiTTY's putty.conf
 ;    keys Sessions, sessionsuffix, SshHostKeys and keysuffix have been copied
 ;    into sessions, fileextension, sshhostkeys and hostkeyextension. Only a
 ;    putty.conf beside the exe is read, never one in the working directory.
@@ -322,7 +322,7 @@
 ;    copied the same way and then removed.
 ;puttyconfmigrated=
 
-; Folders: the list of session folders, written by KiTTY whenever you add or
+; Folders: the list of session folders, written by KiTTY++ whenever you add or
 ;    remove one. It is the live list, not a cache of something else, so an
 ;    edit here is overwritten the next time the folder set changes. Edit it
 ;    only to recover a folder that has gone missing from the config box.
@@ -437,15 +437,15 @@
 ; iconfile: point to a file where internal icons are located
 ;iconfile=kitty.exe
 
-; initdelay: how long KiTTY waits after the terminal opens before it starts
+; initdelay: how long KiTTY++ waits after the terminal opens before it starts
 ;    typing for you - the auto-command (including a \p password step in it).
 ;    In seconds, fractions allowed: 0.5 is half a second. Default 2.0; a
 ;    negative value is ignored. It also sets the delay before an
 ;    autosendtotray session drops itself into the tray.
 ;initdelay=2.0
 
-; KiClassName: the Windows window-class name KiTTY registers, which also selects
-;    which registry hive it reads/writes sessions in. Default (unset): KiTTY's own
+; KiClassName: the Windows window-class name KiTTY++ registers, which also selects
+;    which registry hive it reads/writes sessions in. Default (unset): KiTTY++'s own
 ;    class and hive (Software\kapper.net\KiTTY). Set to PuTTY to use stock PuTTY's
 ;    window class AND PuTTY's hive (Software\SimonTatham\PuTTY) - handy to share
 ;    sessions with an installed PuTTY, or for host tools that key off the "PuTTY"
@@ -466,7 +466,7 @@
 ; modalchangedhostkeyconfirmation: how to handle a CHANGED host key (differs from
 ;    the cached one). Default yes = classic modal dialog box (you can Accept to
 ;    update the cache). no = in-terminal "double opt-in": first type "yes" to
-;    accept the new key for this connection, then - because KiTTY cannot verify a
+;    accept the new key for this connection, then - because KiTTY++ cannot verify a
 ;    plain SSH key's authenticity - a second prompt offers to REPLACE
 ;    the stored key for future connections, which requires typing the exact word
 ;    "confirmed" (a plain "yes" is not accepted; the prompt repeats). Decline the replace
@@ -484,7 +484,7 @@
 ; mouseshortcuts: the two mouse chords in the terminal window -
 ;    Ctrl+Shift+left-click duplicates the session, Ctrl+middle-click sends the
 ;    window to the tray. Default yes.
-;    Why turn them off: both chords are swallowed by KiTTY and never reach the
+;    Why turn them off: both chords are swallowed by KiTTY++ and never reach the
 ;    host, so a program in the terminal that wants them - anything using
 ;    xterm-style mouse reporting, and middle-click paste in particular - will
 ;    look broken. Ctrl+Shift+left-click is also easy to hit by accident while
@@ -494,7 +494,7 @@
 ;    Protect mode and PuTTY mode switch them off regardless of this setting.
 ;mouseshortcuts=yes
 
-; internaldelay: how long KiTTY pauses, in milliseconds, while it types for
+; internaldelay: how long KiTTY++ pauses, in milliseconds, while it types for
 ;    you - between the lines of a multi-line send, and around each
 ;    synthesised keystroke that carries Ctrl/Shift/Alt. It paces the login
 ;    and automatic commands, \n breaks in the send-text boxes, user-command
@@ -505,7 +505,7 @@
 ;internaldelay=10
 
 ; pastesize: warn before a large paste into the terminal. When the clipboard
-;    holds more than this many characters, KiTTY names the count and the
+;    holds more than this many characters, KiTTY++ reports the count and the
 ;    limit and requires a confirmation before sending anything - and the default answer is No,
 ;    so a stray Enter cancels the paste instead of flooding the shell.
 ;    The default is 5120 characters - about 5 KB, the same threshold Windows
@@ -540,19 +540,19 @@
 ;    and every modern host expect.
 ;funkeys=xterm216
 
-; verifyagent: a signed KiTTY checks, once per terminal window, whether the
-;    program answering its SSH agent requests is a verified KiTTY/kageant
+; verifyagent: a signed KiTTY++ checks, once per terminal window, whether the
+;    program answering its SSH agent requests is a verified KiTTY++/kageant
 ;    build, and warns when it is not. Set no if you deliberately run stock
 ;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).
 ;verifyagent=yes
 
 ; notes: the application notification - one note this installation shows to
-;    whoever starts KiTTY. The first window every KiTTY process opens (the
+;    whoever starts KiTTY++. The first window every KiTTY++ process opens (the
 ;    terminal, the launcher, the configuration window) raises it in the small
 ;    notice window near the clock: no focus stolen, no timeout, and it stays
 ;    until it is clicked. Only one copy is on the desktop at a time, so
-;    several KiTTY processes started together do not stack it up. Another
+;    several KiTTY++ processes started together do not stack it up. Another
 ;    notice from the same process borrows the screen and hands it back - the
 ;    note returns and still waits to be clicked. Empty (the default) means
 ;    nothing is displayed.
@@ -561,19 +561,19 @@
 ;    kept by wrapping the whole value in double quotes. Also editable at
 ;    Application > Security > Application Notification.
 ;    Outside portable mode this key is the registry value "Notes" under
-;    KiTTY's own key, which is where older versions kept the note they showed
+;    KiTTY++'s own key, which is where older versions kept the note they showed
 ;    in a message box at every start.
 ;notes=Company policy: no production logins from this PC.\nAsk the service desk.
 
 ; notesonce: what clicking the application notification away means. no (the
-;    default) takes it off this desktop and the next KiTTY started shows it
+;    default) takes it off this desktop and the next KiTTY++ started shows it
 ;    again. yes records that the note has been READ: the process that clicked
 ;    remembers, and so does the session launcher when one is running, so
 ;    nothing shows that note again for as long as either is there. Editing
 ;    the note makes it a different note, and it is shown again.
 ;notesonce=no
 
-; warnmissingfeatures: on a Windows too old for something KiTTY offers - dark
+; warnmissingfeatures: on a Windows too old for something KiTTY++ offers - dark
 ;    mode, Windows Hello, per-monitor DPI - one line in the terminal names what
 ;    is unavailable, so a feature that never happens is not mistaken for a
 ;    setting that will not stick. Set no once you have read it: the answer is a
@@ -584,23 +584,23 @@
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'
 ;    remembered LAST selection (which proxy, for how long), shared between
 ;    the config box and the launcher menu so both offer the same thing next
-;    time. KiTTY writes these itself - not knobs to edit by hand, and NOT
+;    time. KiTTY++ writes these itself - not knobs to edit by hand, and NOT
 ;    the mode's state: arming lives only in the running launcher.
 ;WorkplaceProxy=
 ;WorkplaceMinutes=240
 
 ; PSCPPath: the full path to the file-copy helper - kscp.exe, or PuTTY's
 ;    pscp.exe - used by drag-and-drop upload and the Send/Get file commands.
-;    You do not normally set this: KiTTY looks for the tool at every start
+;    You do not normally set this: KiTTY++ looks for the tool at every start
 ;    and stores NOTHING - an empty key stays empty. It searches, in order:
 ;      1. this key, if it still points at a file that exists
 ;      2. the pscpdir directory, kscp.exe first, then pscp.exe
 ;      3. kscp.exe beside kitty.exe - the usual answer, since kscp ships
-;         with KiTTY and lives in the same folder
+;         with KiTTY++ and lives in the same folder
 ;      4. %ProgramFiles%\PuTTY\pscp.exe
 ;      5. pscp.exe beside kitty.exe
 ;    A value naming a file that has gone away is dropped and the search runs
-;    again, so moving KiTTY does not leave it pointing at nothing. Set it by
+;    again, so moving KiTTY++ does not leave it pointing at nothing. Set it by
 ;    hand only to force a particular binary. Windows environment variables
 ;    are expanded when the file is used (%USERPROFILE%\Tools\kscp.exe).
 ;PSCPPath=
@@ -659,18 +659,18 @@
 ;reconnectother=1
 
 ; readonly: refuse to write to the CONFIGURATION FILE side of the settings.
-;    With yes, KiTTY will not write or delete entries in kitty.ini, will not
+;    With yes, KiTTY++ will not write or delete entries in kitty.ini, will not
 ;    create kitty.ini if it is missing, will not create the store's
 ;    directories, and will not remove a legacy plaintext password it finds
 ;    in the file. The configuration box reports it instead of failing quietly.
-;    Not the same as conf=no, which is about KiTTY maintaining its OWN files
+;    Not the same as conf=no, which is about KiTTY++ maintaining its OWN files
 ;    (auto-creating kitty.ini, the kitty.sav and portable backups). readonly
 ;    is the broader "do not write", and it covers deletes and directory
 ;    creation as well.
 ;    ⚠ Two things it does NOT do, despite the name: saved SESSIONS can still
 ;    be written - they go through the session store, not this path - and in
 ;    registry mode global settings are still written to the registry. Today
-;    it protects the ini file, not everything KiTTY stores.
+;    it protects the ini file, not everything KiTTY++ stores.
 ;readonly=no
 
 ; inheritdefaultsettings: a session that leaves a setting out takes it from
@@ -684,11 +684,11 @@
 ;    Default no: the built-in defaults, as before.
 ;inheritdefaultsettings=no
 
-; restrictacl: apply the restricted process ACL to every KiTTY process, so you
+; restrictacl: apply the restricted process ACL to every KiTTY++ process, so you
 ;    do not have to add -restrict-acl to each shortcut target. It denies other
 ;    processes running as you the access rights used to read or write another
 ;    process's memory - the same hardening as the -restrict-acl switch - and it
-;    propagates to the windows KiTTY spawns for you (config-box Start/Open,
+;    propagates to the windows KiTTY++ spawns for you (config-box Start/Open,
 ;    duplicate session, the launcher). kageant reads it too, so the process
 ;    holding your loaded private keys is covered by the same setting.
 ;    kittygen is not: pass it -restrict-acl if you want it hardened.
@@ -699,17 +699,17 @@
 ;    a restricted process, so the installer closes those windows and cannot
 ;    put them back. That is the hardening working as intended, not a fault in
 ;    the installer - the whole point is that other processes running as you
-;    cannot reach into KiTTY, and the Restart Manager is one of them.
+;    cannot reach into KiTTY++, and the Restart Manager is one of them.
 ;    yes is the only value that does anything: a process cannot un-restrict
 ;    itself, so restrictacl=no does not lift a restriction already applied by
-;    -restrict-acl. If the ACL cannot be applied, KiTTY reports the error and
+;    -restrict-acl. If the ACL cannot be applied, KiTTY++ reports the error and
 ;    exits rather than run unprotected.
 ;    Unlike most keys here, this one is read from kitty.ini ONLY, never from
 ;    the registry: the usual order consults the registry first, which would
 ;    let a stale registry value silently cancel a restrictacl=yes written here.
 ;restrictacl=no
 
-; sav: base path for the registry backup (a full export of KiTTY's hive). Each
+; sav: base path for the registry backup (a full export of KiTTY++'s hive). Each
 ;    save writes a FRESH timestamped file next to it, <base>-YYYYMMDD-HHMMSS<ext>,
 ;    so the filename always reflects when that copy was written. Default base is
 ;    %APPDATA%\KiTTY\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)
@@ -728,7 +728,7 @@
 ; savemode: where sessions are stored. Read from kitty.ini only - never from
 ;    the registry, since the registry cannot state "do not use the registry".
 ;    Allowed values are:
-;    - registry : sessions in the Windows registry, under KiTTY's own hive.
+;    - registry : sessions in the Windows registry, under KiTTY++'s own hive.
 ;                 The default for kitty.exe.
 ;    - dir      : sessions as files in a directory tree, one file each. This
 ;                 is portable mode and the default for kitty_portable.exe,
@@ -741,7 +741,7 @@
 ;                 loading the .sav registry dump into that hive at startup.
 ;                 The dump REPLACES what is in the hive, so an existing
 ;                 registry store is set aside first - once - under
-;                 Software\kapper.net\KiTTY_save. KiTTY reports it when it does
+;                 Software\kapper.net\KiTTY_save. KiTTY++ reports it when it does
 ;                 that, and the next start WITHOUT savemode=file offers to put
 ;                 those sessions back.
 ;                 Upstream KiTTY abandoned this mode years ago and
@@ -761,11 +761,17 @@
 ;    - master : protect saved passwords with a master password (default). Only
 ;               the password fields are encrypted, the rest of the session file
 ;               stays readable. Copy the files and know the master password to
-;               use them on another machine. KiTTY prompts you to set the master
+;               use them on another machine. KiTTY++ prompts you to set the master
 ;               password the first time it saves a password; -masterpwfile
-;               supplies it without a prompt.
+;               supplies it without a prompt. While the master password is
+;               locked - that prompt or the unlock cancelled, a wrong one - a
+;               password typed is not saved: the one stored before stays as
+;               it was, and KiTTY++ reports it. Use dpapi to choose DPAPI; the
+;               setup prompt's "Use DPAPI (this PC only)" button writes it
+;               into this kitty.ini - the choice of this PC and account, not
+;               of a session folder other PCs share.
 ;    - dpapi  : protect saved passwords with Windows DPAPI, i.e. this Windows
-;               account on this PC. No master password is created and KiTTY
+;               account on this PC. No master password is created and KiTTY++
 ;               never prompts for one - so unattended runs need no switch at all -
 ;               but the passwords do NOT travel: copied to another PC or account
 ;               they cannot be decrypted. Cannot be combined with -masterpwfile.
@@ -793,7 +799,7 @@
 
 ; sendcmdmode: may OTHER programs type into this terminal?
 ;    /command <text> and `kitty.exe -sendcmd <text>` broadcast text to every open
-;    KiTTY window, which then TYPES it into the session - and a trailing Return
+;    KiTTY++ window, which then TYPES it into the session - and a trailing Return
 ;    means it RUNS on the remote host. That is the point of the feature (send the
 ;    same thing to twenty servers at once) and also its danger: the twenty
 ;    include whatever production session you happen to have open.
@@ -810,7 +816,7 @@
 
 ; sendcmdgroup: which KiTTYs hear each other's broadcasts.
 ;    Generated automatically on first run and stored with your settings, so an
-;    installed KiTTY and a portable one on a USB stick get DIFFERENT keys and
+;    installed KiTTY++ and a portable one on a USB stick get DIFFERENT keys and
 ;    cannot type into each other by accident - even though both are "KiTTY"
 ;    windows on the same desktop. Windows of the same install share the key, so
 ;    a broadcast still reaches them all.
@@ -830,7 +836,7 @@
 ;    with that line, once per host. Running sessions keep what they sent.
 ;sendtermenv=yes
 
-; shortcuts: enable/disable KiTTY's keyboard shortcuts. These are the ones
+; shortcuts: enable/disable KiTTY++'s keyboard shortcuts. These are the ones
 ;    that work in a TERMINAL WINDOW - the [Shortcuts] section below binds
 ;    them, and they are what the Ctrl+Shift+letter predefined commands ride
 ;    on. Set no if they clash with a full-screen program inside the terminal
@@ -860,16 +866,16 @@
 ;    Background > Image placement - the placement whose whole job is fitting the image to
 ;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.
 ;    With Stretch+, and only when the image is larger than the window in both
-;    directions, KiTTY resamples it down instead of letting Windows
+;    directions, KiTTY++ resamples it down instead of letting Windows
 ;    stretch-blit it: visibly cleaner, slightly more work per repaint. On by
 ;    default; set no to get the plain fast stretch back.
 ;shrinkbitmap=no
 
-; sshversion: the software token of the banner KiTTY announces to an SSH
+; sshversion: the software token of the banner KiTTY++ announces to an SSH
 ;    server. Unset, the banner is the one the PuTTY base sends, e.g.
 ;    SSH-2.0-PuTTY_Release_0.85. Set, the banner becomes SSH-2.0-<this value>
 ;    exactly - some servers reject a non-standard client, and a current
-;    OpenSSH string makes KiTTY look like a stock client, e.g.:
+;    OpenSSH string makes KiTTY++ look like a stock client, e.g.:
 ;    Application > Security > Client Identity shows the resulting banner.
 ;sshversion=OpenSSH_10.0
 
@@ -888,7 +894,7 @@
 ;          Pick it when an accidental Ctrl+Down must never dim this session.
 ;          On screen 0 and -1 look the same - neither is translucent.
 ;    If the panel is not in your configuration box, either this key is set to
-;    no or KiTTY is running in PuTTY mode - both hide it.
+;    no or KiTTY++ is running in PuTTY mode - both hide it.
 ;    Set no and transparency is off everywhere, not merely out of reach: the
 ;    panel and the menu entries go, and a session that has a level saved opens
 ;    opaque anyway. The /transparency command cannot turn it back on either.
@@ -897,9 +903,9 @@
 
 ; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the
 ;    9bis hive) or by stock PuTTY, so they can be opened, edited and deleted
-;    from KiTTY's own saved-session list. Registry save modes only - a portable
+;    from KiTTY++'s own saved-session list. Registry save modes only - a portable
 ;    store has no foreign hive. Values: auto (the default), yes, or no.
-;    "auto" shows them only while this KiTTY has no sessions of its own, so an
+;    "auto" shows them only while this KiTTY++ has no sessions of its own, so an
 ;    upgrade never opens onto an apparently empty list and the old sessions
 ;    retire themselves once you have your own. Set yes to keep them listed for
 ;    good, or no to hide them outright. The switch is in the configuration box
@@ -922,7 +928,7 @@
 ;    Application > Updates, beside "Check for updates now".
 ;checkupdate=yes
 
-; theme: which colours KiTTY's windows paint in - system, light or dark.
+; theme: which colours KiTTY++'s windows paint in - system, light or dark.
 ;    This is one setting for the whole suite: kitty, kageant and kittygen all
 ;    read it, so setting it once changes all of them. "system" follows the
 ;    Windows app-colour setting and changes with it while a window is open.
@@ -930,7 +936,7 @@
 ;    behaves as "light".
 ;    It colours the WINDOWS - the configuration box, the dialogs and the
 ;    message boxes. A terminal's own colours are a per-session setting and are
-;    not touched by this: a dark KiTTY still opens whatever colours the session
+;    not touched by this: a dark KiTTY++ still opens whatever colours the session
 ;    sets.
 ;theme=system
 
@@ -1001,7 +1007,7 @@
 ; winscpdir: legacy fallback directory containing WinSCP.exe (prefer WinSCPPath)
 ;winscpdir=
 
-; wintitle: enable KiTTY's window-title decorations: the live size suffix
+; wintitle: enable KiTTY++'s window-title decorations: the live size suffix
 ;    (size=yes), the (PROTECTED) / (ONTOP) / (BROADCAST) / (RESTRICTED)
 ;    status markers and what a program reports (OSC 7501): (45%) /
 ;    (working) / (blocked) / (failed) / (done). no = plain stock
@@ -1063,7 +1069,7 @@
 ; A text ending in a backslash is sent without the Enter; that backslash is not typed.
 ;list={F5} {CONTROL}{F6}
 
-; SECOND: the named actions below. These are KiTTY's own functions - roll the
+; SECOND: the named actions below. These are KiTTY++'s own functions - roll the
 ; window up, send it to the tray, print the buffer - and each line changes the
 ; key that triggers one. They are not text: the name on the left is the action,
 ; and the value on the right is the key you want for it.
@@ -1072,7 +1078,7 @@
 ; {CONTROL}{SHIFT}{F4}, {ALT}{HOME}, {CONTROL}{F5}. Modifiers are {CONTROL}
 ; {SHIFT} {ALT} {ALTGR} {WIN}; a plain letter or digit needs no braces
 ; ({CONTROL}{ALT}T). An empty value takes the key away and leaves the action
-; with none; a combination KiTTY cannot parse falls back to the default.
+; with none; a combination KiTTY++ cannot parse falls back to the default.
 ;
 ; Each entry below states its default key. About a third state "no default key"
 ; instead: those actions are real and work, but nothing is bound to them out of
@@ -1146,7 +1152,7 @@
 ;editorclipboard=
 
 ; Show event log
-;    KiTTY's own record of what the connection did - not the session log.
+;    KiTTY++'s own record of what the connection did - not the session log.
 ;    No default key - it does nothing until you set one here.
 ;    Example:  eventlog={CONTROL}{SHIFT}E
 ;eventlog=
@@ -1304,7 +1310,7 @@
 ;    useful when you deliberately want two launcher windows.
 ;    One case ignores this setting entirely: a launcher started to HOLD
 ;    workplace proxy mode. The launcher window class is shared by every
-;    KiTTY on the machine, while workplace mode is per installation - so a
+;    KiTTY++ on the machine, while workplace mode is per installation - so a
 ;    portable copy or a second install already in the tray owns that class,
 ;    and a launcher started to arm OUR install would exit here without
 ;    arming anything. Holding the arming therefore exempts it from the
@@ -1320,8 +1326,17 @@
 ;    Set in Application > KiTTY++ Settings > Launcher.
 ;dblclick=config
 
+; globalhotkey: a key combination, from any program, that does what the
+;    double click above does (e.g. Ctrl+Alt+K: one or more of Ctrl, Alt,
+;    Shift, Win plus A-Z, 0-9 or F1-F24). Empty (the default) = none. The
+;    launcher registers it before the session hotkeys, so a session with the
+;    same combination does not get it. With a single modifier no other
+;    program on this PC receives that combination while the launcher runs.
+;    Set with Apply in Application > KiTTY++ Settings > Launcher.
+;globalhotkey=Ctrl+Alt+K
+
 ; classname: override the Win32 window class the launcher registers and
-;    looks for. Only worth setting to keep two KiTTY installations from
+;    looks for. Only worth setting to keep two KiTTY++ installations from
 ;    recognising each other as "already running".
 ;classname=KiTTYLauncher
 
@@ -1526,22 +1541,22 @@
 [FontFallback]
 
 ; Font fallback: when the terminal font is missing a character (box drawing,
-; Nerd Font icons, CJK, symbols...), KiTTY probes a list of fallback fonts
+; Nerd Font icons, CJK, symbols...), KiTTY++ probes a list of fallback fonts
 ; and draws that character from the first font that has it. Cell widths are
 ; unchanged; only the glyph's source font differs. On both renderers,
 ; override below is tried first, then this list. If both miss, Windows' own
 ; font substitution takes over regardless of this section - GDI's own font
 ; linking, Direct2D's own DirectWrite system fallback - and picks from every
 ; font installed, so a Direct2D window and, for many common symbols and CJK
-; characters, a GDI window too, show far fewer boxes than KiTTY's own list
+; characters, a GDI window too, show far fewer boxes than KiTTY++'s own list
 ; and override alone would explain. Both renderers draw fallback glyphs
 ; monochrome, no colour emoji. NB: section and key names in this file are
 ; case-sensitive.
 
-; active: master switch for KiTTY's OWN fallback - this section's override
+; active: master switch for KiTTY++'s OWN fallback - this section's override
 ; and fallback lists, on both renderers. It does not reach Windows' own font
-; substitution, which is outside KiTTY's control and keeps drawing under
-; both renderers regardless of this setting; active=no only means KiTTY
+; substitution, which is outside KiTTY++'s control and keeps drawing under
+; both renderers regardless of this setting; active=no only means KiTTY++
 ; stops adding its own choices ahead of Windows'.
 ;active=yes
 

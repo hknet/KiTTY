@@ -1,4 +1,4 @@
-# SSH certificates with KiTTY
+# SSH certificates with KiTTY++
 
 An SSH certificate is a public key plus a statement, signed by a **certification
 authority (CA)**, about what that key is allowed to be. Instead of copying every
@@ -13,8 +13,8 @@ There are two independent halves, and you can use either without the other:
 | **User certificates** | your key is vouched for by a CA, so the server accepts it without knowing it | your key gets a certificate; the server trusts the user CA |
 | **Host certificates** | the server's host key is vouched for by a CA, so you never see "the host key is not cached" again | the server presents a certificate; your client trusts the host CA |
 
-KiTTY supports both, inherited from PuTTY and unchanged in behaviour. This page
-covers how to do it from KiTTY, and the OpenSSH server side that makes it useful.
+KiTTY++ supports both, inherited from PuTTY and unchanged in behaviour. This page
+covers how to do it from KiTTY++, and the OpenSSH server side that makes it useful.
 Everything here was run end to end against a real `sshd` before it was written.
 
 ## Coming from an older KiTTY?
@@ -26,18 +26,18 @@ That is what the long-standing *"DetachedCertificate supported in PuTTY but not
 in KiTTY"* report is about.
 
 This port is built on PuTTY 0.85, so all of it is here — including the detached
-form that report names: *Connection → SSH → Auth → Credentials* → **"Certificate
+form that report refers to: *Connection → SSH → Auth → Credentials* → **"Certificate
 to use with the private key (optional)"**. A saved session stores it under the
 keyword `DetachedCertificate`, the same keyword PuTTY uses, so a session migrated
 from PuTTY brings its certificate setting with it.
 
 ⚠️ One thing does **not** travel automatically: **host CA records** are kept per
-user rather than per session (see the note below), in KiTTY's own registry area.
+user rather than per session (see the note below), in KiTTY++'s own registry area.
 After moving from PuTTY you may have to add trusted host CAs again under
 *Connection → SSH → Host keys → Configure host CAs*. User certificates are
 unaffected — those live in the key file or in the session.
 
-## What KiTTY gives you
+## What KiTTY++ gives you
 
 | Where | What |
 |---|---|
@@ -166,7 +166,7 @@ HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
 
 Then trust that CA once, on the client side:
 
-- **In KiTTY:** *Connection → SSH → Host keys* → **Configure host CAs**. Give the
+- **In KiTTY++:** *Connection → SSH → Host keys* → **Configure host CAs**. Give the
   record a **Name for this CA (shown in log messages)**, paste the CA's public key
   into **Public key of certification authority** (or *Read from file*), and set
   **Valid hosts this key is trusted to certify** — a wildcard expression such as
@@ -215,7 +215,7 @@ EOF
 ```
 
 A non-root `sshd` can only accept logins for the user that started it, which is
-all this needs. Now sign a KiTTY key with `user_ca` for the principal `kittylab`,
+all this needs. Now sign a KiTTY++ key with `user_ca` for the principal `kittylab`,
 attach the certificate, and connect:
 
 ```
@@ -278,7 +278,7 @@ RevokedKeys /etc/ssh/revoked.krl
 
 and reload `sshd`. A key listed there is refused **before** any CA trust is
 considered, so it also covers keys that were never certified. ⚠️ If `RevokedKeys`
-names a file `sshd` cannot read or parse, OpenSSH refuses **every** public-key
+points to a file `sshd` cannot read or parse, OpenSSH refuses **every** public-key
 authentication rather than ignoring the setting — check it with `sshd -t` after
 editing, or you will lock everyone out at once.
 
@@ -287,12 +287,12 @@ editing, or you will lock everyone out at once.
 | Situation | What to do |
 |---|---|
 | The CA key itself is compromised | remove it from `TrustedUserCAKeys` (or `@cert-authority` lines in `known_hosts` for host CAs). Every certificate it ever signed stops being accepted |
-| One person is leaving | remove their principal from `AuthorizedPrincipalsFile`. Their certificate stays valid, but names nobody the server will admit |
+| One person is leaving | remove their principal from `AuthorizedPrincipalsFile`. Their certificate stays valid, but lists nobody the server will admit |
 | One machine's host key leaked | stop trusting that host certificate on the client: *Connection → SSH → Host keys → Configure host CAs* and narrow or remove the record — see the note about **Valid hosts** below |
 
 ### On the client side
 
-There is no revocation list in KiTTY, and there does not need to be: user
+There is no revocation list in KiTTY++, and there does not need to be: user
 certificates are judged by the server, and host certificates are judged by which
 CAs *you* trust. To stop accepting a host CA, remove its record under
 *Configure host CAs* — remembering that those records are per user, not per

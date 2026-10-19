@@ -22,8 +22,8 @@ anybody who does not have that key; but anybody who has your public
 key can verify that a particular signature is genuine.
 
 So you generate a key pair on your own computer, and you copy the
-public key to the server. Then, when the server asks you to prove
-who you are, KiTTY can generate a signature using your private key.
+public key to the server. Then, when the server requires you to prove
+who you are, KiTTY++ can generate a signature using your private key.
 The server can verify that signature (since it has your public key)
 and allow you to log in. Now if the server is hacked or spoofed, the
 attacker does not gain your private key or password; they only gain
@@ -36,7 +36,7 @@ unprotected on your own computer, then anybody who gains access to
 they will be able to log in to your server under your account. For
 this reason, your private key is usually \i\e{encrypted} when it is
 stored on your local machine, using a \i{passphrase} of your choice. In
-order to generate a signature, KiTTY must decrypt the key, so you
+order to generate a signature, KiTTY++ must decrypt the key, so you
 have to type your passphrase.
 
 This can make public-key authentication less convenient than
@@ -44,10 +44,10 @@ password authentication: every time you log in to the server,
 instead of typing a short password, you have to type a longer
 passphrase. One solution to this is to use an \i\e{authentication
 agent}, a separate program which holds decrypted private keys and
-generates signatures on request. KiTTY's authentication agent is
+generates signatures on request. KiTTY++'s authentication agent is
 called \i{kageant}. When you begin a Windows session, you start kageant
 and load your private key into it (typing your passphrase once). For
-the rest of your session, you can start KiTTY any number of times
+the rest of your session, you can start KiTTY++ any number of times
 and kageant will automatically generate signatures without you
 having to do anything. When you close your Windows session, kageant
 shuts down, without ever having stored your decrypted private key on
@@ -57,13 +57,13 @@ and convenience. See \k{pageant} for further details.
 There is more than one \i{public-key algorithm} available. The most
 common are \i{RSA} and \i{ECDSA}, but others exist, notably \i{DSA}
 (otherwise known as \i{DSS}), the USA's federal Digital Signature Standard.
-The key types supported by KiTTY are described in \k{puttygen-keytype}.
+The key types supported by KiTTY++ are described in \k{puttygen-keytype}.
 
-\H{pubkey-puttygen} Using \i{kittygen}, the KiTTY key generator
+\H{pubkey-puttygen} Using \i{kittygen}, the KiTTY++ key generator
 
 kittygen is a key generator. It \I{generating keys}generates pairs of
-public and private keys to be used with KiTTY, kscp, ksftp, and klink,
-as well as the KiTTY authentication agent, kageant (see \k{pageant}).
+public and private keys to be used with KiTTY++, kscp, ksftp, and klink,
+as well as the KiTTY++ authentication agent, kageant (see \k{pageant}).
 kittygen generates RSA, DSA, ECDSA, and EdDSA keys.
 
 When you run kittygen you will see a window where you have two main
@@ -99,7 +99,7 @@ kittygen later (see \k{puttygen-load}) and the public key will be
 available for copying and pasting again.
 
 \K{pubkey-gettingready} describes the typical process of configuring
-KiTTY to attempt public-key authentication, and configuring your SSH
+KiTTY++ to attempt public-key authentication, and configuring your SSH
 server to accept it.
 
 \S{puttygen-keytype} Selecting the type of key
@@ -208,7 +208,7 @@ Once you have chosen the type of key you want, and the strength of
 the key, press the \q{Generate} button and kittygen will begin the
 process of actually generating the key.
 
-First, a progress bar will appear and kittygen will ask you to move
+First, a progress bar will appear and kittygen will prompt you to move
 the mouse around to generate randomness. Wave the mouse in circles
 over the blank area in the kittygen window, and the progress bar
 will gradually fill up as kittygen collects enough randomness. You
@@ -254,7 +254,7 @@ an attacker to create a key with the same fingerprint as yours.
 If you have more than one key and use them for different purposes,
 you don't need to memorise the key fingerprints in order to tell
 them apart. kittygen allows you to enter a \e{comment} for your key,
-which will be displayed whenever KiTTY or kageant asks you for the
+which will be displayed whenever KiTTY++ or kageant prompts you for the
 passphrase.
 
 The default comment format, if you don't specify one, contains the
@@ -341,14 +341,14 @@ there's also a \q{Remove certificate from key} option.
 
 (However, you don't \e{have} to incorporate the certificate into your
 PPK file. You can equally well use it separately, via the
-\q{Certificate to use with the private key} option in KiTTY itself.
+\q{Certificate to use with the private key} option in KiTTY++ itself.
 See \k{config-ssh-cert}. It's up to you which you find more
 convenient.)
 
 When the currently loaded key in kittygen contains a certificate, the
 large \q{Public key for pasting} edit box (see \k{puttygen-pastekey})
-is replaced by a button that brings up an information box telling you
-about the certificate, such as who it certifies your key as belonging
+is replaced by a button that brings up an information box showing
+details of the certificate, such as who it certifies your key as belonging
 to, when it expires (if ever), and the fingerprint of the CA key that
 signed it in turn.
 
@@ -358,11 +358,11 @@ Once you have generated a key, set a comment field and set a
 passphrase, you are ready to save your private key to disk.
 
 Press the \q{Save private key} button. kittygen will put up a dialog
-box asking you where to save the file. Select a directory, type in a
+box for choosing where to save the file. Select a directory, type in a
 file name, and press \q{Save}.
 
-This file is in KiTTY's native format (\c{*.\i{PPK}}); it is the one you
-will need to tell KiTTY to use for authentication (see
+This file is in KiTTY++'s native format (\c{*.\i{PPK}}); it is the one you
+will need to tell KiTTY++ to use for authentication (see
 \k{config-ssh-privkey}) or tell kageant to load (see
 \k{pageant-mainwin-addkey}).
 
@@ -380,7 +380,7 @@ OpenSSH, use a different format; see \k{puttygen-pastekey}.)
 
 To save your public key in the SSH-2 standard format, press the
 \q{Save public key} button in kittygen. kittygen will put up a
-dialog box asking you where to save the file. Select a directory,
+dialog box for choosing where to save the file. Select a directory,
 type in a file name, and press \q{Save}.
 
 You will then probably want to copy the public key file to your SSH
@@ -404,7 +404,7 @@ The \q{Public key for pasting into OpenSSH authorized_keys file} gives the
 public-key data in the correct one-line format. Typically you will
 want to select the entire contents of the box using the mouse, press
 Ctrl+C to copy it to the clipboard, and then paste the data into a
-KiTTY session which is already connected to the server.
+KiTTY++ session which is already connected to the server.
 
 See \k{pubkey-gettingready} for general instructions on configuring
 public-key authentication once you have generated a key.
@@ -423,7 +423,7 @@ default settings.
 This defaults to version 3, which is fine for most uses.
 
 You might need to select PPK version 2 if you need your private key
-file to be loadable in older versions of KiTTY (0.74 and older), or in
+file to be loadable in older versions of PuTTY (0.74 and older), or in
 other tools which do not yet support the version 3 format (which was
 introduced in 2021).
 
@@ -472,28 +472,28 @@ the public key.
 
 To load an existing key, press the \q{Load} button. kittygen will
 put up a dialog box where you can browse around the file system and
-find your key file. Once you select the file, kittygen will ask you
+find your key file. Once you select the file, kittygen will prompt you
 for a passphrase (if necessary) and will then display the key
 details in the same way as if it had just generated the key.
 
 If you use the Load command to load a foreign key format, it will
 work, but you will see a message box warning you that the key you
-have loaded is not a KiTTY native key. See \k{puttygen-conversions}
+have loaded is not a KiTTY++ native key. See \k{puttygen-conversions}
 for information about importing foreign key formats.
 
 \S{puttygen-conversions} Dealing with private keys in other formats
 
 SSH-2 private keys have no standard format. \I{OpenSSH private
 key format}OpenSSH and \I{ssh.com private key format}\cw{ssh.com} have
-different formats, and KiTTY's is different again.
+different formats, and KiTTY++'s is different again.
 So a key generated with one client cannot immediately be used with
 another.
 
 Using the \I{importing keys}\q{Import} command from the \q{Conversions}
 menu, kittygen can load SSH-2 private keys in OpenSSH's format and
 \cw{ssh.com}'s format. Once you have loaded one of these key types, you
-can then save it back out as a KiTTY-format key (\c{*.\i{PPK}}) so that
-you can use it with the KiTTY suite. The passphrase will be unchanged by this
+can then save it back out as a KiTTY++-format key (\c{*.\i{PPK}}) so that
+you can use it with the KiTTY++ suite. The passphrase will be unchanged by this
 process (unless you deliberately change it). You may want to change
 the key comment before you save the key, since some OpenSSH key
 formats contained no space for a comment, and \cw{ssh.com}'s default
@@ -521,9 +521,9 @@ security \dash you can choose \q{Export OpenSSH key (force new file
 format)}.
 
 Most clients for the older SSH-1 protocol use a standard format for
-storing private keys on disk. KiTTY uses this format as well; so if
+storing private keys on disk. KiTTY++ uses this format as well; so if
 you have generated an SSH-1 private key using OpenSSH or
-\cw{ssh.com}'s client, you can use it with KiTTY, and vice versa.
+\cw{ssh.com}'s client, you can use it with KiTTY++, and vice versa.
 Hence, the export options are not available if you have generated an
 SSH-1 key.
 
@@ -606,7 +606,7 @@ select \c{sha256} or \c{md5}. See \k{puttygen-fingerprint}.
 
 \H{pubkey-gettingready} Getting ready for public key authentication
 
-Connect to your SSH server using KiTTY with the SSH protocol. When the
+Connect to your SSH server using KiTTY++ with the SSH protocol. When the
 connection succeeds you will be prompted for your user name and
 password to login. Once logged in, you must configure the server to
 accept your public key for authentication:
@@ -618,7 +618,7 @@ create this file, if this is the first key you have put in it.) Then
 switch to the kittygen window, select all of the text in the \q{Public
 key for pasting into OpenSSH authorized_keys file} box (see
 \k{puttygen-pastekey}), and copy it to the clipboard (\c{Ctrl+C}).
-Then, switch back to the KiTTY window and insert the data into the
+Then, switch back to the KiTTY++ window and insert the data into the
 open file, making sure it ends up all on one line. Save the file.
 
 \lcont{
@@ -648,15 +648,15 @@ command such as
 \c chmod go-w $HOME $HOME/.ssh $HOME/.ssh/authorized_keys
 
 Your server should now be configured to accept authentication using
-your private key. Now you need to configure KiTTY to \e{attempt}
+your private key. Now you need to configure KiTTY++ to \e{attempt}
 authentication using your private key. You can do this in any of
 three ways:
 
-\b Select the private key in KiTTY's configuration. See
+\b Select the private key in KiTTY++'s configuration. See
 \k{config-ssh-privkey} for details.
 
 \b Specify the key file on the command line with the \c{\-i} option.
 See \k{using-cmdline-identity} for details.
 
 \b Load the private key into kageant (see \k{pageant}). In this case
-KiTTY will automatically try to use it for authentication if it can.
+KiTTY++ will automatically try to use it for authentication if it can.

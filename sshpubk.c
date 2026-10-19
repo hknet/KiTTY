@@ -700,6 +700,28 @@ static bool str_to_uint32_t(const char *s, uint32_t *out)
     }
 }
 
+/*
+ * KiTTY: a frontend that reports old and weakly protected key files itself
+ * (windows/window.c) sets ppk_format_hook. ppk_load_f and ppk_loadpub_f -
+ * every key file a login opens, the session's own and a jump host's - hand
+ * it the file's format first; it returns true when it has reported a
+ * version 1 file, and only then does ppk_load_s leave out
+ * old_keyfile_warning(), the modal box in the middle of the login. A load
+ * the hook did not see (ppk_load_s on a blob) keeps the box.
+ */
+bool (*ppk_format_hook)(const Filename *filename, unsigned version,
+                        bool encrypted) = NULL;
+static bool ppk_v1_reported = false;
+
+static void ppk_format_report(const Filename *filename)
+{
+    unsigned v = 0;
+    bool enc = false;
+    ppk_v1_reported = false;
+    if (ppk_format_hook && ppk_format_f(filename, &v, &enc))
+        ppk_v1_reported = ppk_format_hook(filename, v, enc) && v == 1;
+}
+
 ssh2_userkey *ppk_load_s(BinarySource *src, const char *passphrase,
                          const char **errorstr)
 {
@@ -732,7 +754,8 @@ ssh2_userkey *ppk_load_s(BinarySource *src, const char *passphrase,
         fmt_version = 2;
     } else if (0 == strcmp(header, "PuTTY-User-Key-File-1")) {
         /* this is an old key file; warn and then continue */
-        old_keyfile_warning();
+        if (!ppk_v1_reported)           /* KiTTY: the frontend reported it */
+            old_keyfile_warning();
         fmt_version = 1;
     } else if (0 == strncmp(header, "PuTTY-User-Key-File-", 20)) {
         /* this is a key file FROM THE FUTURE; refuse it, but with a
@@ -1020,7 +1043,9 @@ ssh2_userkey *ppk_load_f(const Filename *filename, const char *passphrase,
     LoadedFile *lf = lf_load_keyfile(filename, errorstr);
     ssh2_userkey *toret;
     if (lf) {
+        ppk_format_report(filename);
         toret = ppk_load_s(BinarySource_UPCAST(lf), passphrase, errorstr);
+        ppk_v1_reported = false;
         lf_free(lf);
     } else {
         toret = NULL;
@@ -1332,6 +1357,8 @@ bool ppk_loadpub_f(const Filename *filename, char **algorithm, BinarySink *bs,
     if (!lf)
         return false;
 
+    ppk_format_report(filename);       /* KiTTY: reported at the first look */
+    ppk_v1_reported = false;
     bool toret = ppk_loadpub_s(BinarySource_UPCAST(lf), algorithm, bs,
                                commentptr, errorstr);
     lf_free(lf);
@@ -1399,6 +1426,46 @@ bool ppk_encrypted_f(const Filename *filename, char **commentptr)
     bool toret = ppk_encrypted_s(BinarySource_UPCAST(lf), commentptr);
     lf_free(lf);
     return toret;
+}
+
+/*
+ * KiTTY: a PPK file's format version (1 to 3) and whether it is encrypted,
+ * read from its first lines without a passphrase. For the frontends' reports
+ * on an old file (version 1: no integrity check) and on an encrypted
+ * version 2 file (its passphrase derived with SHA-1, where version 3 uses
+ * Argon2). false: not a PPK file, or not readable.
+ */
+bool ppk_format_f(const Filename *filename, unsigned *version, bool *encrypted)
+{
+    LoadedFile *lf = lf_load_keyfile(filename, NULL);
+    BinarySource *src;
+    char header[40], *b;
+    unsigned v = 0;
+    bool ok = false;
+
+    if (!lf)
+        return false;
+    src = BinarySource_UPCAST(lf);
+    if (read_header(src, header)) {
+        if (!strcmp(header, "PuTTY-User-Key-File-3"))
+            v = 3;
+        else if (!strcmp(header, "PuTTY-User-Key-File-2"))
+            v = 2;
+        else if (!strcmp(header, "PuTTY-User-Key-File-1"))
+            v = 1;
+    }
+    if (v && (b = read_body(src)) != NULL) {
+        sfree(b);                      /* the key type */
+        if (read_header(src, header) && !strcmp(header, "Encryption") &&
+            (b = read_body(src)) != NULL) {
+            *version = v;
+            *encrypted = strcmp(b, "none") != 0;
+            sfree(b);
+            ok = true;
+        }
+    }
+    lf_free(lf);
+    return ok;
 }
 
 int base64_lines(int datalen)

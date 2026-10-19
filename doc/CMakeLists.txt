@@ -2,17 +2,15 @@ cmake_minimum_required(VERSION 3.7...3.28)
 project(putty-documentation LANGUAGES)
 
 # This build script can be run standalone, or included as a
-# subdirectory of the main PuTTY cmake build system. If the latter, a
-# couple of things change: it has to set variables telling the rest of
-# the build system what manpages are available to be installed, and it
-# will change whether the 'make doc' target is included in 'make all'.
+# subdirectory of the main build system. KiTTY: it builds the manual
+# only - PuTTY's Unix man pages (man-*.but) are not part of this
+# Windows-only suite and were removed.
 
 include(FindGit)
 include(FindPerl)
 find_program(HALIBUT halibut)
 
 set(doc_outputs)
-set(manpage_outputs)
 
 if(HALIBUT AND PERL_EXECUTABLE)
   # Build the main manual, which requires not only Halibut, but also
@@ -95,8 +93,8 @@ if(HALIBUT AND PERL_EXECUTABLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/faq.but
     ${CMAKE_CURRENT_SOURCE_DIR}/feedback.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pubkeyfmt.but
+    ${CMAKE_CURRENT_SOURCE_DIR}/folderstore.but
     ${CMAKE_CURRENT_BINARY_DIR}/licence.but
-    ${CMAKE_CURRENT_SOURCE_DIR}/udp.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pgpkeys.but
     ${CMAKE_CURRENT_SOURCE_DIR}/sshnames.but
     ${CMAKE_CURRENT_SOURCE_DIR}/authplugin.but
@@ -140,72 +138,15 @@ if(HALIBUT AND PERL_EXECUTABLE)
   add_custom_target(pdf DEPENDS kitty.pdf)
 endif()
 
-macro(register_manpage title section)
-  list(APPEND manpage_outputs ${title}.${section})
-  if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    # Only set this variable if there _is_ a parent scope.
-    set(HAVE_MANPAGE_${title}_${section} ON PARENT_SCOPE)
-  endif()
-endmacro()
-
-if(NOT HALIBUT)
-  # If we don't have Halibut available to rebuild the man pages from
-  # source, we must check whether the build and source directories
-  # correspond, so as to suppress the build rules that copy them from
-  # the source dir to the build dir. (Otherwise, someone unpacking
-  # putty-src.zip and building on a system without Halibut will find
-  # that there's a circular dependency in the makefile, which at least
-  # Ninja complains about.)
-  get_filename_component(DOCBUILDDIR ${CMAKE_CURRENT_BINARY_DIR} REALPATH)
-  get_filename_component(DOCSRCDIR   ${CMAKE_CURRENT_SOURCE_DIR} REALPATH)
-endif()
-
-macro(manpage title section)
-  if(HALIBUT)
-    add_custom_command(OUTPUT ${title}.${section}
-      COMMAND ${HALIBUT} --man=${title}.${section}
-        ${CMAKE_CURRENT_SOURCE_DIR}/mancfg.but
-        ${CMAKE_CURRENT_SOURCE_DIR}/man-${title}.but
-      DEPENDS
-        mancfg.but man-${title}.but)
-    register_manpage(${title} ${section})
-  elseif(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${title}.${section})
-    # Our tarballs include prebuilt man pages in the source tree, so
-    # they can be installed from there even if Halibut isn't available.
-    if(NOT (DOCBUILDDIR STREQUAL DOCSRCDIR))
-      # Iff the build tree isn't the source tree, they'll need copying
-      # to the build tree first.
-      add_custom_command(OUTPUT ${title}.${section}
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-          ${CMAKE_CURRENT_SOURCE_DIR}/${title}.${section} ${title}.${section}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${title}.${section})
-    endif()
-    register_manpage(${title} ${section})
-  endif()
-endmacro()
-
-manpage(putty 1)
-manpage(puttygen 1)
-manpage(plink 1)
-manpage(pscp 1)
-manpage(psftp 1)
-manpage(puttytel 1)
-manpage(pterm 1)
-manpage(pageant 1)
-manpage(psocks 1)
-manpage(psusan 1)
-
-add_custom_target(manpages ALL DEPENDS ${manpage_outputs})
-add_custom_target(doc DEPENDS ${doc_outputs} manpages)
+add_custom_target(doc DEPENDS ${doc_outputs})
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   # If we're doing a cmake from just the doc subdir, we expect the
   # user to want to make all the documentation, including HTML and so
   # forth. (What else would be the point?)
   #
-  # But if we're included from the main makefile, then by default we
-  # only make the man pages (which are necessary for 'make install'),
-  # and we leave everything else to a separate 'make doc' target which
-  # the user can invoke if they need to.
+  # But if we're included from the main makefile, the manual is left to
+  # a separate 'make doc' target which the user can invoke if they need
+  # to.
   add_custom_target(doc-default ALL DEPENDS doc)
 endif()

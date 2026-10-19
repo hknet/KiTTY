@@ -69,6 +69,7 @@
 #include "kitty_theme.h"   /* kitty_theme_apply_hooked: /help dark from its first frame */
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_sessionpath.h"   /* kitty_session_resolve: does a name exist */
+#include "kitty_url_regex.h"   /* KITTY_URL_REGEX_DEFAULT, for /urlregex */
 
 /* /save + /savenew <name>: write the LIVE settings to a saved session. With a
  * name, the window's session identity switches to it first (save-as), so later
@@ -85,7 +86,9 @@ static int kitty_save_current_session( const char * newname, char * out, size_t 
 		conf_set_str( conf, CONF_sessionname, newname ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
+	kitty_mpw_user_action_begin() ;   /* prompts again after a cancel */
 	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
+	kitty_mpw_user_action_end() ;
 	if( errmsg != NULL ) {
 		snprintf( out, outsize, KT_CMD_RES_NOT_SAVED, errmsg ) ;
 		sfree( errmsg ) ;
@@ -131,8 +134,13 @@ typedef int (*IntCmdHandler)( HWND hwnd, char * arg ) ;
 /* What the last command did, for the command box's result line. A handler
  * that has something to report writes it with cmd_say(); one that writes
  * nothing gets "Done: /name" from InternalCommand. A file is always named
- * with its full path - the person typing it must never have to guess. */
-static char cmd_result[1024] ;
+ * with its full path - the person typing it must never have to guess.
+ * Several lines are fine: the line grows with its text (kitty_inputbox.c).
+ * Only /passwd, in debug mode, still reports in a box of its own; no other
+ * command does - a modal box stops the session
+ * while it is open; a result that comes later (an answered question, a
+ * picked file) goes to the box through kitty_inputbox_result. */
+static char cmd_result[8192] ;
 
 static void cmd_say( const char * fmt, ... ) {
 	va_list ap ;
@@ -257,36 +265,41 @@ static int cmd_refresh( HWND hwnd, char * arg ) {
 
 /* ---- Info ---- */
 
+/* /init, /session, /urlregex: the answer on the result line, which grows to
+ * hold /init's six lines. Each used to come in a message box of its own. */
 static int cmd_init( HWND hwnd, char * arg ) {
-	char buffer[4096] ;
-	(void)arg ;
-	snprintf( buffer, sizeof(buffer),KT_CMD_INIT_INFO
-		,ConfigDirectory,IniFileFlag,InitialDirectory,KittyIniFile,KittySavFile,KiTTYClassName ) ;
-	MessageBox(hwnd,buffer,KT_CAP_CONFIG_INFO,MB_OK);
+	(void)hwnd ; (void)arg ;
+	cmd_say( KT_CMD_RES_INIT, ConfigDirectory ? ConfigDirectory : "", IniFileFlag,
+	         InitialDirectory, KittyIniFile ? KittyIniFile : "",
+	         KittySavFile ? KittySavFile : "", KiTTYClassName ) ;
 	return 1 ;
 }
 
 static int cmd_session( HWND hwnd, char * arg ) {
-	(void)arg ;
-	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
-		char buffer[1024] ;
-		snprintf( buffer, sizeof(buffer), KT_CMD_SESSION_NAME_IS, conf_get_str(conf,CONF_sessionname) ) ;
-		MessageBox( hwnd, buffer, KT_CAP_SESSION_NAME, MB_OK|MB_ICONWARNING ) ;
-	} else
-		MessageBox( hwnd, KT_CMD_NO_SESSION_NAME, KT_CAP_SESSION_NAME, MB_OK|MB_ICONWARNING ) ;
-	return 1 ;
-}
-
-static int cmd_urlregex( HWND hwnd, char * arg ) {
-	char b[1024] ;
 	(void)hwnd ; (void)arg ;
-	snprintf(b,sizeof(b),"%d: %s",conf_get_int(conf,CONF_url_defregex),conf_get_str(conf,CONF_url_regex));
-	MessageBox( NULL, b, KT_CAP_URL_REGEX, MB_OK ) ;
+	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 )
+		cmd_say( KT_CMD_RES_SESSION, conf_get_str(conf,CONF_sessionname) ) ;
+	else
+		cmd_say( "%s", KT_CMD_RES_NO_SESSION_NAME ) ;
 	return 1 ;
 }
 
-static int cmd_message( HWND hwnd, char * arg ) {
-	MessageBox( hwnd, arg, KT_CAP_INFO, MB_OK ) ;
+/* The pattern in force, as kitty_url_config picks it: the built-in default
+ * unless the session turned it off, then the session's own - with the
+ * engine's reason when that one does not compile (the terminal then finds
+ * links with the default, kitty/url/urlhack.c). */
+static int cmd_urlregex( HWND hwnd, char * arg ) {
+	const char * re = conf_get_str( conf, CONF_url_regex ) ;
+	const char * err ;
+	(void)hwnd ; (void)arg ;
+	if( conf_get_int( conf, CONF_url_defregex ) != 0 )
+		cmd_say( KT_CMD_RES_URLREGEX_DEFAULT, KITTY_URL_REGEX_DEFAULT ) ;
+	else if( re == NULL || !re[0] )
+		cmd_say( "%s", KT_CMD_RES_URLREGEX_EMPTY ) ;
+	else if( (err = kitty_urlregex_error( re )) != NULL )
+		cmd_say( KT_CMD_RES_URLREGEX_BAD, err, re ) ;
+	else
+		cmd_say( KT_CMD_RES_URLREGEX_CUSTOM, re ) ;
 	return 1 ;
 }
 
@@ -314,9 +327,41 @@ static int cmd_savenew( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
-static int cmd_savektx( HWND hwnd, char * arg ) {
+/* /savektx: the Save-As box runs beside the session (kitty_pick_async), not
+ * on this thread - its own message loop would stop the session while it is
+ * open. The file is written when it has been picked, with the settings live
+ * at that moment, and the outcome goes to the result line then. One box at
+ * a time: the token is set while it is open. */
+static void * savektx_pick = NULL ;
+
+static void savektx_picked( void * ctx, const char * path ) {
 	char out[4400] ;
+	(void)ctx ;
+	savektx_pick = NULL ;
+	if( path == NULL )
+		cmd_say( "%s", KT_CMD_RES_CANCELLED ) ;
+	else if( SaveCurrentSettingTo( path, out, sizeof(out) ) == 1 )
+		cmd_say( KT_CMD_RES_SAVED, out ) ;
+	else
+		cmd_say( KT_CMD_RES_NOT_SAVED, out ) ;
+	kitty_inputbox_result( cmd_result ) ;
+}
+
+static int cmd_savektx( HWND hwnd, char * arg ) {
+	char out[4400], filter[512] ;
 	(void)arg ;
+	if( savektx_pick != NULL ) {
+		cmd_say( "%s", KT_CMD_RES_SAVEKTX_OPEN ) ;
+		return 1 ;
+	}
+	SaveCurrentSettingFilter( filter, sizeof(filter) ) ;
+	savektx_pick = kitty_pick_async( hwnd, KITTY_PICK_SAVE, NULL, KT_CAP_SAVE_FILE, filter,
+	                                 savektx_picked, NULL ) ;
+	if( savektx_pick != NULL ) {
+		cmd_say( "%s", KT_CMD_RES_SAVEKTX_PENDING ) ;
+		return 1 ;
+	}
+	/* no thread for the picker: on this one, as before */
 	switch( SaveCurrentSetting( hwnd, out, sizeof(out) ) ) {
 	  case 1:  cmd_say( KT_CMD_RES_SAVED, out ) ; break ;
 	  case 0:  cmd_say( "%s", KT_CMD_RES_CANCELLED ) ; break ;
@@ -384,7 +429,7 @@ static int cmd_loadreg( HWND hwnd, char * arg ) {
 	{	char * saved = KittySavFile ;
 		int loaded ;
 		KittySavFile = found ;          /* LoadRegistryKey reads the global */
-		loaded = LoadRegistryKey( NULL ) ;
+		loaded = LoadRegistryKeyLive() ;   /* never ends the session */
 		KittySavFile = saved ;
 		/* "Loaded:" only when the import did: reg.exe's result was thrown away */
 		if( !loaded ) { cmd_say( KT_CMD_RES_NOT_LOADED, kitty_sav_load_reason() ) ; return 1 ; }
@@ -393,8 +438,28 @@ static int cmd_loadreg( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* The answer to /delreg's question, whenever it comes: the box is modeless,
+ * so the session runs on while it waits. */
+static HWND delreg_question = NULL ;
+
+static void delreg_answered( int yes, void * ctx ) {
+	(void)ctx ;
+	delreg_question = NULL ;
+	if( !yes )
+		cmd_say( "%s", KT_CMD_RES_NOTHING_DELETED ) ;
+	/* judged by the key being gone: RegDelTree's own answer is not trusted
+	 * alone, a key still there is the failure that matters */
+	else if( RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) && !RegTestKey( HKEY_CURRENT_USER, kitty_registry_base() ) )
+		cmd_say( KT_CMD_RES_DELETED, kitty_registry_base() ) ;
+	else
+		cmd_say( KT_CMD_RES_NOT_DELETED, kitty_registry_base(), kitty_win_reason( GetLastError() ) ) ;
+	kitty_inputbox_result( cmd_result ) ;
+}
+
 static int cmd_delreg( HWND hwnd, char * arg ) {
-	/* Deletes KiTTY's OWN hive - and asks first.
+	/* Deletes KiTTY's OWN hive - after a Yes to a question that defaults to
+	 * No. The question is modeless (kitty_confirm_modeless): a message box
+	 * held the session still for as long as it stood unanswered.
 	 *
 	 * It used to delete TEXT(PUTTY_REG_PARENT), i.e. Software\kapper.net: the
 	 * VENDOR key, not ours. Anything else stored under that vendor went with it,
@@ -410,20 +475,21 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	 * program ever stored". */
 	char question[1024] ;
 	(void)arg ;
+	if( delreg_question != NULL && IsWindow( delreg_question ) ) {
+		SetForegroundWindow( delreg_question ) ;   /* one question at a time */
+		cmd_say( KT_CMD_RES_DELREG_PENDING, kitty_registry_base() ) ;
+		return 1 ;
+	}
 	snprintf( question, sizeof(question),
 		KT_CMD_DELREG_QUESTION,
 		kitty_registry_base() ) ;
-	if( MessageBox( hwnd, question, KT_CAP_DELETE_HIVE,
-	                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 ) != IDYES ) {
+	delreg_question = kitty_confirm_modeless( hwnd, KT_CAP_DELETE_HIVE, question,
+	                                          NULL, NULL, delreg_answered, NULL ) ;
+	if( delreg_question == NULL ) {   /* not made, no callback: that is a No */
 		cmd_say( "%s", KT_CMD_RES_NOTHING_DELETED ) ;
 		return 1 ;
 	}
-	/* judged by the key being gone: RegDelTree's own answer is not trusted
-	 * alone, a key still there is the failure that matters */
-	if( RegDelTree( HKEY_CURRENT_USER, kitty_registry_base() ) && !RegTestKey( HKEY_CURRENT_USER, kitty_registry_base() ) )
-		cmd_say( KT_CMD_RES_DELETED, kitty_registry_base() ) ;
-	else
-		cmd_say( KT_CMD_RES_NOT_DELETED, kitty_registry_base(), kitty_win_reason( GetLastError() ) ) ;
+	cmd_say( KT_CMD_RES_DELREG_PENDING, kitty_registry_base() ) ;
 	return 1 ;
 }
 
@@ -461,8 +527,7 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 	 * would delete the sessions and then copy the emptied key over itself -
 	 * total loss, from a command that reads like a backup. */
 	if( kitty_root_is_putty() ) {
-		MessageBox( hwnd, KT_CMD_COPYTOPUTTY_SAME_HIVE,
-			KT_CAP_COPY_TO_PUTTY, MB_OK | MB_ICONINFORMATION ) ;
+		cmd_say( "%s", KT_CMD_RES_COPYTOPUTTY_SAME_HIVE ) ;
 		return 1 ;
 	}
 	/* Copied into a staging key FIRST, PuTTY's sessions replaced only by
@@ -509,7 +574,8 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 }
 
 /*
- * /switchcrypt no longer does anything, and says so rather than disappearing.
+ * /switchcrypt no longer does anything, and its result line states that
+ * rather than the command disappearing.
  *
  * It used to toggle a global that made exported .ktx files "encrypted" with a
  * constant compiled into every build - obfuscation, not encryption, undoable by
@@ -521,12 +587,8 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
  * Reading old encrypted .ktx files still works.
  */
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
-	(void)arg ;
-	/* kitty_notice_box, not MessageBox: a real dialog, so the dialog manager
-	 * gives it the shell font at the right DPI and it grows to fit the text -
-	 * the same treatment every other KiTTY dialog gets. */
-	kitty_notice_box( hwnd, KT_CAP_SETTING_REMOVED,
-		KT_CMD_SWITCHCRYPT_REMOVED ) ;
+	(void)hwnd ; (void)arg ;
+	cmd_say( "%s", KT_CMD_RES_SWITCHCRYPT_REMOVED ) ;
 	return 1 ;
 }
 
@@ -537,21 +599,21 @@ static int cmd_delfolder( HWND hwnd, char * arg ) {
 }
 
 static int cmd_loadinitscript( HWND hwnd, char * arg ) {
+	(void)hwnd ;
 	ReadInitScript( arg ) ;
 	/*
 	 * The other order of the same clash the Event Log warns about at connect:
 	 * a login script loaded by hand while a rutty script is already configured.
-	 * Said in a box rather than the log because the user is right here, having
-	 * just typed the command - a log line is for something they will read later.
-	 * Both panels are named, since the difficulty is that the two features live
-	 * in different places and each looks like "the" scripting one.
+	 * On the result line rather than in the log because the user is right
+	 * here, having just typed the command - a log line is for something read
+	 * later. The rutty panel is given, since the two features live in
+	 * different places and each looks like "the" scripting one.
 	 */
 	if( ScriptFileContent != NULL && conf != NULL &&
 	    conf_get_int( conf, CONF_script_mode ) == 1 ) {
 		Filename *sf = conf_get_filename( conf, CONF_scriptfile ) ;
 		if( sf && filename_to_str(sf)[0] )
-			kitty_notice_box( hwnd, KT_CAP_RUTTY_ALSO,
-				KT_CMD_RUTTY_ALSO_TEXT ) ;
+			cmd_say( "%s", KT_CMD_RES_RUTTY_ALSO ) ;
 	}
 	return 1 ;
 }
@@ -645,7 +707,9 @@ static int cmd_initlauncher( HWND hwnd, char * arg ) {
 	DWORD err = 0 ;
 	(void)hwnd ; (void)arg ;
 	n = InitLauncherRegistry( &failed, &err ) ;
-	if( failed )
+	if( n < 0 )		/* the folder store's Launcher folder could not be made */
+		cmd_say( KT_CMD_RES_LAUNCHER_DIR_FAILED, ConfigDirectory ? ConfigDirectory : "", kitty_win_reason( err ) ) ;
+	else if( failed )
 		cmd_say( KT_CMD_RES_LAUNCHER_PARTLY, n, failed, kitty_win_reason( err ) ) ;
 	else
 		cmd_say( KT_CMD_RES_LAUNCHER_REBUILT, n ) ;
@@ -761,7 +825,6 @@ static const struct InternalCmdDef {
 	{ "/init",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_INIT,				cmd_init },
 	{ "/session",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_SESSION,					cmd_session },
 	{ "/urlregex",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_URLREGEX,				cmd_urlregex },
-	{ "/message",		IC_ARG_REQUIRED, "<text>", CAT_INFO,   KT_CMD_HELP_MESSAGE,					cmd_message },
 	{ "/help",		IC_ARG_NONE,	 NULL,	   CAT_INFO,   KT_CMD_HELP_HELP,					cmd_help },
 
 	{ "/save",		IC_ARG_NONE,	 NULL,	   CAT_STORE,  KT_CMD_HELP_SAVE,	cmd_save },

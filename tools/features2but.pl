@@ -84,7 +84,7 @@ open my $OUT, '>', $out or die "$out: $!\n";
 print $OUT
     "\\# Generated from FEATURES.md by tools/features2but.pl - DO NOT EDIT.\n\n",
     "\\cfg{input-charset}{UTF-8}\n\n",
-    "\\C{kitty-features} KiTTY additions\n\n",
+    "\\C{kitty-features} KiTTY++ additions\n\n",
     "This chapter covers what KiTTY adds on top of PuTTY. It is generated\n",
     "from the project's \\c{FEATURES.md}, which also carries the screenshots\n",
     "this manual format cannot include.\n\n";

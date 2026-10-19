@@ -16,7 +16,7 @@ end.
 
 - `kitty_portable.exe` uses the folder store by default; `kitty.exe` only with
   `savemode=dir` in its `kitty.ini` (beside the exe, or `%APPDATA%\KiTTY\`, or
-  the file `%KITTY_INI_FILE%` names - see [KITTY-INI.md](KITTY-INI.md)).
+  the file `%KITTY_INI_FILE%` points to - see [KITTY-INI.md](KITTY-INI.md)).
 - `klink`, `kscp` and `ksftp` from the same folder read the same store.
 - kitty.exe creates a missing session folder; the command-line tools do not.
 - **State lives beside the sessions.** When the folder's last component is
@@ -46,7 +46,7 @@ Sessions\
   `.gitignore`, `.gitkeep`), directory junctions and symbolic links, and
   every file that is not a session file (below).
 - **A session file** is a file with a line that starts with exactly
-  `HostName` or `Protocol`, followed directly by `=`. Case counts; no spaces
+  `HostName` or `Protocol`, followed directly by `=` or `\`. Case counts; no spaces
   before the key, no BOM in front of the first line. A `README.md` or a log
   beside the sessions stays out of the list.
 
@@ -70,7 +70,7 @@ refused.
 | everything else (spaces inside, `=`, `#`, `&`, non-ASCII) | as it is |
 
 - Names are in the ANSI code page of Windows, not UTF-8. A file or folder
-  whose name does not fit it is shown as a red row asking for a rename, and a
+  whose name does not fit it is shown as a red row requesting a rename, and a
   folder with such a name is not looked into.
 - KiTTY++ reads `%xx` in either case and other spellings too (`%20` for a
   space); such a file is listed under its decoded name and saved in place,
@@ -88,8 +88,10 @@ UserName=admin
 
 - One `Key=value` per line, the key at the start of the line, no spaces
   around `=`. Keys are case-sensitive (`HostName`, not `hostname`). The last
-  of two equal keys wins. Line order does not matter.
-- LF or CRLF; KiTTY++ writes LF. No BOM.
+  of two equal keys wins; a save keeps one line, where the first was. Line
+  order does not matter.
+- LF or CRLF; a save keeps each line's ending, and a line it adds takes the
+  ending of the file's first line. No BOM.
 - **Values** use the `%xx` set of file names - `% \ / : * ? " < > |`,
   control characters and DEL - without the dot and device-name rules: `%` is
   `%25`, `\` is `%5C` (`D:%5Ckeys%5Cid.ppk`), a line break `%0A`; `=` and
@@ -98,6 +100,11 @@ UserName=admin
 - Classic KiTTY's `Key\value\` lines are read too - do not generate them.
 - **Keys a tool adds survive a KiTTY++ save**: the file is read before it is
   written. KiTTY++ adds keys of its own (every setting, `Folder=` among them).
+- **A save changes only the lines whose value changed**, so a Git diff after
+  a settings change shows just those. Comments, blank lines and the line
+  order survive; a line keeps its form (`Key\value\` too) until its value
+  changes, and is then written `Key=value` in its place. Keys a save adds go
+  to the end. An unchanged password keeps its stored line.
 
 **The keys that matter:**
 

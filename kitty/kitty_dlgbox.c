@@ -189,6 +189,12 @@ typedef struct {
 	/* kitty_confirm_modeless3: 3-way, but the No button (IDNO) is the default,
 	 * so a reflex Return does not agree. */
 	int defno ;
+	/* kitty_confirm_run_pumped: the box runs in the loop of a pumped box
+	 * (Change Settings mid-session) - the answer is recorded here and that
+	 * loop ends and destroys it, no EndDialog. */
+	int pumped ;
+	volatile LONG pumped_end ;
+	int pumped_result ;
 } kitty_confirm_t ;
 
 #define KITTY_CONFIRM_DETAIL_LINES 6
@@ -337,6 +343,12 @@ static void kitty_confirm_end( HWND h, kitty_confirm_t *cf, int r ) {
 		/* a 3-way modeless box hands on which of the three (1, 2, 0) */
 		if( !cf->answered ) { cf->answered = 1 ; cf->done( cf->three ? r : ( r == 1 ), cf->ctx ) ; }
 		DestroyWindow( h ) ;
+	} else if( cf && cf->pumped ) {
+		/* the first answer counts; kitty_confirm_run_pumped's loop ends */
+		if( !cf->pumped_end ) {
+			cf->pumped_result = r ;
+			InterlockedExchange( &cf->pumped_end, 1 ) ;
+		}
 	} else
 		EndDialog( h, r ) ;
 }
@@ -506,8 +518,15 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
 			SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
 			SetFocus( GetDlgItem( h, IDYES ) ) ;
-		} else
+		} else {
+			/* No (OK in the info dress) is the default: marked as such,
+			 * not only focused - a modeless box gets no default from the
+			 * template's focus, and Return must answer No there too. */
+			SendMessage( h, DM_SETDEFID, IDNO, 0 ) ;
+			SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
+			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
 			SetFocus( GetDlgItem( h, IDNO ) ) ;
+		}
 		kitty_centre_on_owner( h ) ;       /* over the window that asked, not mid-screen */
 		if( cf && cf->front ) {
 			SetWindowPos( h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE ) ;
@@ -552,6 +571,22 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 	return FALSE ;
 }
 
+/* Show a box made with CreateDialogParam (modeless, or run by
+ * kitty_confirm_run_pumped) and put the focus on its default button again.
+ * WM_INITDIALOG set both, but on a box that was not yet visible: when it is
+ * activated the dialog manager restores the focus it remembers, and a push
+ * button that takes the focus that way also takes the default frame - Return
+ * would then answer the button that was never the default. */
+static void kitty_confirm_show( HWND h ) {
+	LRESULT def ;
+	HWND b ;
+	ShowWindow( h, SW_SHOW ) ;
+	SetForegroundWindow( h ) ;
+	def = SendMessage( h, DM_GETDEFID, 0, 0 ) ;
+	if( HIWORD( def ) == DC_HASDEFID && ( b = GetDlgItem( h, LOWORD( def ) ) ) != NULL )
+		SendMessage( h, WM_NEXTDLGCTL, (WPARAM)b, TRUE ) ;
+}
+
 /* The same question on the same template, without holding up the window
  * that puts it up: its output keeps arriving while the box waits. `detail`: NULL,
  * or the text of the read-only field under the question (see kitty_confirm_t
@@ -579,8 +614,7 @@ HWND kitty_confirm_modeless( HWND owner, const char *caption, const char *text,
 		return NULL ;
 	}
 	ShinyAddAuxDialog( h ) ;
-	ShowWindow( h, SW_SHOW ) ;
-	SetForegroundWindow( h ) ;
+	kitty_confirm_show( h ) ;
 	return h ;
 }
 
@@ -599,8 +633,7 @@ static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
 		return NULL ;
 	}
 	ShinyAddAuxDialog( h ) ;
-	ShowWindow( h, SW_SHOW ) ;
-	SetForegroundWindow( h ) ;
+	kitty_confirm_show( h ) ;
 	return h ;
 }
 
@@ -716,18 +749,46 @@ HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,
 		return NULL ;
 	}
 	ShinyAddAuxDialog( h ) ;
-	ShowWindow( h, SW_SHOW ) ;
-	SetForegroundWindow( h ) ;
+	kitty_confirm_show( h ) ;
 	return h ;
+}
+
+/* kitty_confirm_run for a box raised from inside a pumped box (a button of
+ * the mid-session Change Settings box, windows/utils/shinydialogbox.c): the
+ * same box, modal to its owner as DialogBoxParam makes it, but waiting
+ * through the pumped box's wait step - DialogBoxParam's own loop serves
+ * window messages only, and the session behind stood still until the
+ * answer. No owner: the pumped box owns it. Gone without an answer (Change
+ * Settings closed under it, the terminal going): 0, the safe answer. -1 =
+ * the box could not be made. */
+static INT_PTR kitty_confirm_run_pumped( HWND owner, kitty_confirm_t *cf ) {
+	HWND h, top ;
+	BOOL disabled = FALSE ;
+	if( !owner ) owner = ShinyPumpBox() ;
+	top = owner ? GetAncestor( owner, GA_ROOT ) : NULL ;
+	cf->pumped = 1 ; cf->pumped_end = 0 ; cf->pumped_result = 0 ;
+	h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_CONFIRMBOX),
+		owner, kitty_confirm_dlgproc, (LPARAM)cf ) ;
+	if( !h ) return -1 ;
+	if( top && IsWindowEnabled( top ) ) { EnableWindow( top, FALSE ) ; disabled = TRUE ; }
+	kitty_confirm_show( h ) ;
+	if( !ShinyPumpUntil( h, &cf->pumped_end ) ) cf->pumped_result = 0 ;
+	/* the owner first, so the activation goes back to it */
+	if( disabled ) EnableWindow( top, TRUE ) ;
+	if( IsWindow( h ) ) DestroyWindow( h ) ;
+	return cf->pumped_result ;
 }
 
 /* If the dialog cannot be created at all (-1: out of resources, or so early or
  * so broken that no template loads), fall back to a plain MessageBox with the
- * same words - a fatal error must never pass unshown. */
-static INT_PTR kitty_confirm_run( HWND owner, const kitty_confirm_t *cf ) {
-	INT_PTR r = DialogBoxParamA( GetModuleHandle(NULL),
-		MAKEINTRESOURCEA(IDD_CONFIRMBOX), owner, kitty_confirm_dlgproc,
-		(LPARAM)cf ) ;
+ * same words - a fatal error must never pass unshown. Inside a pumped box the
+ * box waits through its loop (kitty_confirm_run_pumped). */
+static INT_PTR kitty_confirm_run( HWND owner, kitty_confirm_t *cf ) {
+	INT_PTR r = ShinyPumpActive()
+		? kitty_confirm_run_pumped( owner, cf )
+		: DialogBoxParamA( GetModuleHandle(NULL),
+			MAKEINTRESOURCEA(IDD_CONFIRMBOX), owner, kitty_confirm_dlgproc,
+			(LPARAM)cf ) ;
 	if( r == -1 ) {
 		char *joined = NULL ;
 		const char *body = cf->text ? cf->text : "" ;
@@ -807,7 +868,15 @@ int kitty_message_box( HWND owner, const char *text, const char *caption,
 	unsigned btns = type & MB_TYPEMASK ;
 	if( !(type & (MB_SYSTEMMODAL|MB_TASKMODAL)) ) {
 		if( btns == MB_OK ) {
-			kitty_info_box( owner, caption, text, NULL ) ;
+			if( type & MB_SETFOREGROUND ) {
+				/* a box no click raised (a command-line run's
+				 * result): on top of every window until answered */
+				kitty_confirm_t cf = {0} ;
+				cf.caption = caption ; cf.text = text ;
+				cf.info = 1 ; cf.front = 1 ;
+				kitty_confirm_run( owner, &cf ) ;
+			} else
+				kitty_info_box( owner, caption, text, NULL ) ;
 			return IDOK ;
 		}
 		if( btns == MB_YESNO ) {
@@ -815,6 +884,16 @@ int kitty_message_box( HWND owner, const char *text, const char *caption,
 				? kitty_confirm_box( owner, caption, text, NULL )
 				: kitty_confirm_box_yes( owner, caption, text, NULL ) ;
 			return yes ? IDYES : IDNO ;
+		}
+		if( btns == MB_OKCANCEL && ShinyPumpActive() ) {
+			/* Inside Change Settings mid-session a real MessageBox would
+			 * stop the session behind it: the themed box with OK and
+			 * Cancel, which waits through the settings box's loop. */
+			kitty_confirm_t cf = {0} ;
+			cf.caption = caption ; cf.text = text ;
+			cf.b_yes = KT_WIN_OK ; cf.b_no = KT_KITTY_CANCEL ;
+			cf.defyes = ( (type & MB_DEFMASK) != MB_DEFBUTTON2 ) ;
+			return kitty_confirm_run( owner, &cf ) == 1 ? IDOK : IDCANCEL ;
 		}
 	}
 	return MessageBoxA( owner, text, caption, type ) ;
@@ -828,6 +907,83 @@ void kitty_info_box( HWND owner, const char *caption, const char *text,
 	cf.caption = caption ; cf.text = text ; cf.warn = warn_red ;
 	cf.info = 1 ; cf.defyes = 0 ;
 	kitty_confirm_run( owner, &cf ) ;
+}
+
+/*
+ * A modal box of the caller's own template and procedure that, raised from
+ * inside a pumped box (a button of the mid-session Change Settings box,
+ * windows/utils/shinydialogbox.c), waits through the pumped box's wait step:
+ * DialogBoxParam's own loop serves window messages only, and the session
+ * behind stood still until the box closed. The kitty_confirm_run_pumped
+ * pattern for any template: the box is made modeless, its owner's window
+ * disabled as DialogBoxParam leaves it, ShinyPumpUntil runs until the box
+ * ends. Its procedure ends it with kitty_dialog_end, not EndDialog. Gone
+ * without an answer (Change Settings closed under it, the terminal going):
+ * IDCANCEL. -1 = the box could not be made. With no pumped box on this
+ * thread (start-up, the desktop): DialogBoxParam, as before.
+ */
+#define KITTY_PUMPED_DLG_PROP "KittyPumpedDlg"
+typedef struct {
+	volatile LONG end ;
+	INT_PTR result ;
+} kitty_pumped_dlg_t ;
+/* the box being made: kitty_dialog_end from its WM_INITDIALOG, before the
+ * window property is set */
+static THREADLOCAL kitty_pumped_dlg_t *kitty_pumped_dlg_making ;
+
+void kitty_dialog_end( HWND h, INT_PTR r ) {
+	kitty_pumped_dlg_t *p = (kitty_pumped_dlg_t *)GetPropA( h, KITTY_PUMPED_DLG_PROP ) ;
+	if( !p && kitty_pumped_dlg_making && !IsWindowVisible( h ) )
+		p = kitty_pumped_dlg_making ;
+	if( !p ) { EndDialog( h, r ) ; return ; }
+	/* the first answer counts; kitty_dialog_box's loop ends */
+	if( !p->end ) {
+		p->result = r ;
+		InterlockedExchange( &p->end, 1 ) ;
+	}
+}
+
+INT_PTR kitty_dialog_box( HWND owner, int tmpl, DLGPROC proc, LPARAM lp ) {
+	kitty_pumped_dlg_t p, *outer ;
+	HWND h, top, focus ;
+	BOOL disabled = FALSE ;
+	if( !ShinyPumpActive() )
+		return DialogBoxParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(tmpl),
+			owner, proc, lp ) ;
+	/* The box comes from inside the pumped box, so the pumped box or a box
+	 * standing on it owns it. Any other owner - none, the terminal behind
+	 * (a caller's GetActiveWindow), a window of another thread or process
+	 * (a GetForegroundWindow fallback) - is replaced by the pumped box: the
+	 * box would stand beside Change Settings instead of over it, and a
+	 * stranger's window would be disabled. */
+	if( !owner || GetAncestor( owner, GA_ROOTOWNER ) != ShinyPumpBox() )
+		owner = ShinyPumpBox() ;
+	top = owner ? GetAncestor( owner, GA_ROOT ) : NULL ;
+	p.end = 0 ; p.result = IDCANCEL ;
+	outer = kitty_pumped_dlg_making ;
+	kitty_pumped_dlg_making = &p ;
+	h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(tmpl),
+		owner, proc, lp ) ;
+	kitty_pumped_dlg_making = outer ;
+	if( !h ) return -1 ;
+	SetPropA( h, KITTY_PUMPED_DLG_PROP, (HANDLE)&p ) ;
+	/* the control WM_INITDIALOG gave the focus to, while the box was hidden */
+	focus = GetFocus() ;
+	if( focus && !IsChild( h, focus ) ) focus = NULL ;
+	if( top && IsWindowEnabled( top ) ) { EnableWindow( top, FALSE ) ; disabled = TRUE ; }
+	if( !p.end ) {
+		ShowWindow( h, SW_SHOW ) ;
+		SetForegroundWindow( h ) ;
+		if( focus && IsWindow( focus ) ) SendMessage( h, WM_NEXTDLGCTL, (WPARAM)focus, TRUE ) ;
+		if( !ShinyPumpUntil( h, &p.end ) && !p.end ) p.result = IDCANCEL ;
+	}
+	/* the owner first, so the activation goes back to it */
+	if( disabled ) EnableWindow( top, TRUE ) ;
+	if( IsWindow( h ) ) {
+		RemovePropA( h, KITTY_PUMPED_DLG_PROP ) ;
+		DestroyWindow( h ) ;
+	}
+	return p.result ;
 }
 
 #ifdef KITTY_TEST_BUILD_LABEL

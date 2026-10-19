@@ -332,10 +332,11 @@ void kitty_proxyedit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /* Where an installer puts a helper, offered as a display HINT when kitty.ini
  * stores no path for it - shown, never written (the refresh guard below).
- * The probes run in this order: %ProgramFiles%, %ProgramFiles(x86)%, then
- * the per-user %LOCALAPPDATA%\Programs; the first file that exists wins.
- * Helpers without a row (rz, sz) get no hint. Mirrors SearchWinSCP() in
- * kitty.c for WinSCP. */
+ * The probes run in this order: %ProgramFiles%, %ProgramW6432% (the 64-bit
+ * folder, seen from a 32-bit build), %ProgramFiles(x86)%, then the per-user
+ * %LOCALAPPDATA%\Programs; the first file that exists wins. Helpers without
+ * a row (rz, sz) get no hint. Mirrors SearchWinSCP() and SearchFileZilla()
+ * in kitty_xfer.c. */
 static const struct { const char *key; const char *under_programs; } kitty_toolpath_hints[] = {
     { KI_WINSCPPATH,    "WinSCP\\WinSCP.exe" },
     { KI_FILEZILLAPATH, "FileZilla FTP Client\\filezilla.exe" },
@@ -343,6 +344,7 @@ static const struct { const char *key; const char *under_programs; } kitty_toolp
 static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
 {
     const char *pf = getenv("ProgramFiles");
+    const char *pw64 = getenv("ProgramW6432");
     const char *pf86 = getenv("ProgramFiles(x86)");
     const char *local = getenv("LOCALAPPDATA");
     size_t i;
@@ -354,6 +356,10 @@ static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
             snprintf(buffer, size, "%s\\%s", pf, rel);
             if (!existfile(buffer)) buffer[0] = '\0';
         }
+        if (!buffer[0] && pw64) {
+            snprintf(buffer, size, "%s\\%s", pw64, rel);
+            if (!existfile(buffer)) buffer[0] = '\0';
+        }
         if (!buffer[0] && pf86) {
             snprintf(buffer, size, "%s\\%s", pf86, rel);
             if (!existfile(buffer)) buffer[0] = '\0';
@@ -361,6 +367,14 @@ static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
         if (!buffer[0] && local) {
             snprintf(buffer, size, "%s\\Programs\\%s", local, rel);
             if (!existfile(buffer)) buffer[0] = '\0';
+        }
+        /* else what this run's search found elsewhere (beside kitty.exe,
+         * WinSCPDir, PATH): it is used, and no longer written to the store */
+        if (!buffer[0]) {
+            const char *run = !strcmp(key, KI_WINSCPPATH) ? WinSCPPath :
+                              !strcmp(key, KI_FILEZILLAPATH) ? FileZillaPath : NULL;
+            if (run && run[0] && existfile(run))
+                snprintf(buffer, size, "%s", run);
         }
         return;
     }
@@ -1488,8 +1502,10 @@ static void kitty_reset_default_answer(int yes, void *ctx)
     load_open_settings(NULL, conf);
     /* no backup and not chosen to go on without one: the stop takes the
      * reset's own failure path */
+    { extern void kitty_mpw_user_action_begin(void); kitty_mpw_user_action_begin(); }
     err = kitty_backup_before(kitty_cfg_modal_owner(), 1)
         ? save_settings(KITTY_DEFAULT_SESSION, conf) : kitty_backup_not_done();
+    { extern void kitty_mpw_user_action_end(void); kitty_mpw_user_action_end(); }
     conf_free(conf);
     if (err) {
         char *msg = dupprintf(KT_SESSION_PARAMETER_RESET_DEFAULT_FAILED, err);
@@ -2269,6 +2285,27 @@ static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
     ksc_step(j);
 }
+
+#ifdef MOD_LAUNCHER
+/* Application > Launcher, "Global hotkey:" and its Apply. Typing stores
+ * nothing; Apply checks the combination (kitty_launcher_hotkey_check,
+ * global) and stores it only when it is free or the running launcher holds
+ * it as this global hotkey - otherwise its box reports why. Empty + Apply
+ * removes it. A value typed and not applied goes when the panel is left
+ * (the refresh on showing it reads the store). */
+static dlgcontrol *kla_hotkey_edit;
+
+static void kitty_launcher_globalkey_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                                   void *data, int event)
+{
+    char *s;
+    (void)ctrl; (void)data;
+    if (event != EVENT_ACTION || !kla_hotkey_edit) return;
+    s = dlg_editbox_get(kla_hotkey_edit, dlg);
+    kitty_launcher_hotkey_check(s, NULL, 1);
+    sfree(s);
+}
+#endif
 
 /*
  * Application > Launcher > Start (hknet/KiTTY#54): "Start Launcher at Login"
@@ -3217,6 +3254,31 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, KI_LAUNCHER_RELOAD, kitty_kset_launcher_menu);
     KSET_DROPLIST(s, KT_KSET_LA_SECOND, KI_LAUNCHER_ALREADYRUNCHECK, kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_DBLCLICK, KI_LAUNCHER_DBLCLICK, kitty_kset_launcher);
+#ifdef MOD_LAUNCHER
+    {
+        /* the global hotkey under the double-click choice it carries out,
+         * its Apply beside it. The field starts on the drop lists' column:
+         * KSET_DROPLIST's 55% leaves the label 45%, and column 1 of 45/35/20
+         * starts at that same 45% by the same arithmetic (windows/controls.c),
+         * at any width - an edit's own share of a narrower column rounds
+         * differently and missed it. The label is a text of its own on the
+         * row; the panel's row pass centres it on the field. */
+        dlgcontrol *c;
+        ctrl_columns(s, 3, 45, 35, 20);
+        c = ctrl_text(s, KT_KSET_LA_GLOBALHOTKEY, HELPCTX(kitty_kset_launcher));
+        c->column = 0;
+        kla_hotkey_edit = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                                       HELPCTX(kitty_kset_launcher), kitty_kset_handler,
+                                       KSET(KI_LAUNCHER_GLOBALHOTKEY), ED_STR);
+        kla_hotkey_edit->column = 1;
+        c = ctrl_pushbutton(s, KT_KSET_LA_GLOBALHOTKEY_APPLY, NO_SHORTCUT,
+                            HELPCTX(kitty_kset_launcher),
+                            kitty_launcher_globalkey_apply_handler, P(NULL));
+        c->column = 2;
+        c->align_next_to = kla_hotkey_edit;
+        ctrl_columns(s, 1, 100);
+    }
+#endif
     {
         /* the field, then its unit beside it ("ends: [ 3 ] s"), centred on
          * the field by the framework (align_next_to) */
@@ -5037,7 +5099,7 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * (context 0 = export, 1 = import). The work lives in kitty_bridge.c; the
  * import refresh reaches the Session panel's list through the same ssd the
  * button distribution uses. */
-/* Application > Migration > KiTTY storage: the two store moves of
+/* Application > Migration > KiTTY++ Storage: the two store moves of
  * kitty_storemove.c. Taking a folder store in changes the session list. */
 static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
@@ -5754,12 +5816,12 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         }
     }
 
-    /* Application > Migration > KiTTY storage: registry <-> folder
+    /* Application > Migration > KiTTY++ Storage: registry <-> folder
      * store, both ways. "Take ... into this registry" makes no sense for a
      * copy that already runs from a folder, so only the registry-mode copy
      * offers it. */
     {
-        const char *p = "Application/Migration/KiTTY storage";
+        const char *p = "Application/Migration/KiTTY++ Storage";
         dlgcontrol *bc;
         ctrl_settitle(b, p, KT_INIMIG_TITLE);
         s = ctrl_getset(b, p, "copy", KT_INIMIG_OUT_GROUP);

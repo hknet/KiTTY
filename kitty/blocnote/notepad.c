@@ -13,6 +13,9 @@
 #include "notepad.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "kitty_text.h"         /* KT_NOTEPAD_SAVE_FAILED_FMT */
+#ifdef NOMAIN
+#include "kitty_theme.h"        /* the window follows the Appearance setting */
+#endif
 
 LRESULT CALLBACK Notepad_WndProc(HWND, UINT, WPARAM, LPARAM);
 int Notepad_open( HWND hwnd, HWND hEdit ) ;
@@ -144,6 +147,12 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 	wc.lpszClassName = Notepad_szprogname ;
 
 	if(!RegisterClass(&wc)) return FALSE;
+#ifdef NOMAIN
+	/* A PLAIN window for the theme hook WinMain installed before the -ed
+	 * dispatch (windows/window.c): background, edit field, scroll bar, menu
+	 * bar and title bar follow the Appearance setting, live as well. */
+	kitty_theme_hook_window_class( Notepad_szprogname ) ;
+#endif
 
 	//menu and submenus
 	hSMApropos = CreateMenu();
@@ -209,6 +218,10 @@ int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR l
 	
 	if (!hwnd) return FALSE;
 
+#ifdef NOMAIN
+	/* in the theme from its first frame, not from its first activation */
+	kitty_theme_apply_hooked( hwnd ) ;
+#endif
 	ShowWindow(hwnd, nCmdShow) ;
 	UpdateWindow(hwnd) ;
 

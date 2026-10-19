@@ -1,6 +1,6 @@
 /*
  * kitty_storemove.h - whole-store moves between the registry and a folder
- * (Application > Migration > KiTTY storage). See kitty_storemove.c.
+ * (Application > Migration > KiTTY++ Storage). See kitty_storemove.c.
  */
 #ifndef KITTY_STOREMOVE_H
 #define KITTY_STOREMOVE_H

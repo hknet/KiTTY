@@ -3,7 +3,7 @@
 A terminal has no keys. What travels to the machine at the other end is a
 sequence of **bytes**, and the whole of *Terminal → Keyboard* is about which
 bytes a key produces. Almost every "this key does nothing" report is a
-disagreement between the sequence KiTTY sends and the one the program at the
+disagreement between the sequence KiTTY++ sends and the one the program at the
 other end is listening for.
 
 This page explains the journey, then each setting on that panel, then the
@@ -15,10 +15,10 @@ questions people actually arrive with.
 
 1. **Windows** turns the physical key into a virtual key code plus modifier
    state — and, on an international layout, may turn it into a *character*
-   first: AltGr+Q is `@` on a German keyboard before KiTTY sees anything.
-2. **KiTTY** decides whether the keystroke is for *it* — a shortcut, a hotkey,
+   first: AltGr+Q is `@` on a German keyboard before KiTTY++ sees anything.
+2. **KiTTY++** decides whether the keystroke is for *it* — a shortcut, a hotkey,
    a menu accelerator — or for the session.
-3. If it is for the session, KiTTY encodes it: a printable character in the
+3. If it is for the session, KiTTY++ encodes it: a printable character in the
    session's character set, or a **control sequence** for a key that has no
    character, such as F5, Home or Shift+Right.
 4. Those bytes go down the connection. The program at the far end matches them
@@ -74,13 +74,13 @@ distinguish Ctrl+Right from Right. `Ctrl toggles app mode` is PuTTY's older beha
 where Ctrl switches the arrows between normal and application mode instead of
 being reported.
 
-⭐ **KiTTY defaults to `xterm-style bitmap`**, unlike PuTTY, because that is what
+⭐ **KiTTY++ defaults to `xterm-style bitmap`**, unlike PuTTY, because that is what
 makes **Ctrl+Left/Right jump by word** in a shell — the single most missed
 behaviour when moving to a terminal that folds the modifier away.
 
 ### Word navigation (Left/Right arrows) — `Alt`, `Ctrl` or `Both`
 
-A KiTTY addition, on top of the setting above: which modifier means "move by
+A KiTTY++ addition, on top of the setting above: which modifier means "move by
 word". `Both` is convenient if you switch between habits from other terminals.
 
 ### Enter key sends CR LF
@@ -123,7 +123,7 @@ already saved keep the mode they were saved with — a keyboard that changes
 under an existing session is exactly the surprise this setting exists to avoid.
 
 **"Ctrl+Left/Right doesn't jump by word."** That needs the arrow keys reported
-with their modifier — see *Shift/Ctrl/Alt with the arrow keys*, which KiTTY
+with their modifier — see *Shift/Ctrl/Alt with the arrow keys*, which KiTTY++
 already defaults to. If it stopped working, that setting was changed, or the
 host's `$TERM` does not describe modified arrows.
 
@@ -140,12 +140,12 @@ question in one step, and turns "it does nothing" into something reportable.
 
 ---
 
-## KiTTY's own keys
+## KiTTY++'s own keys
 
-Separate from everything above, KiTTY reserves some combinations for itself —
+Separate from everything above, KiTTY++ reserves some combinations for itself —
 shortcuts (*Application → KiTTY++ Settings → Keys & Mouse → Shortcuts*), the session launcher's global hotkeys, and the
 special-command keys. Those never reach the session; KiTTY++'s own shortcuts
-are off while far2l key events are on (below). If a host application wants a combination KiTTY has
+are off while far2l key events are on (below). If a host application wants a combination KiTTY++ has
 taken, the shortcut can be changed or switched off; see
 [FEATURES.md](../FEATURES.md).
 

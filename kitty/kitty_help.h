@@ -11,7 +11,7 @@
  * that exist in docs/.
  */
 static char *default_help_file_content = "\r\n\
-KiTTY adds these options to PuTTY's own (see the PuTTY manual for the rest):\r\n\
+KiTTY++ adds these options to PuTTY's own (see the PuTTY manual for the rest):\r\n\
 \r\n\
 Starting a session\r\n\
 \r\n\
@@ -44,13 +44,13 @@ The window\r\n\
     that window's handle as a decimal number (mRemoteNG, Remote4Support)\r\n\
 * -noconfirm: close the window without the \"Are you sure?\" prompt. Security\r\n\
     confirmations - host keys, weak crypto - are not affected\r\n\
-* -noctrltab: do not switch between KiTTY windows with Ctrl+Tab\r\n\
-* -putty: turn off KiTTY's additions and behave like stock PuTTY\r\n\
+* -noctrltab: do not switch between KiTTY++ windows with Ctrl+Tab\r\n\
+* -putty: turn off KiTTY++'s additions and behave like stock PuTTY\r\n\
 \r\n\
 Logging and passwords\r\n\
 \r\n\
 * -log <file>: write a session log\r\n\
-* -sessionlog <file>: the same, with KiTTY's file-name placeholders expanded\r\n\
+* -sessionlog <file>: the same, with KiTTY++'s file-name placeholders expanded\r\n\
 * -masterpwfile <file>: read the master password from a file (scripted starts)\r\n\
 * -mpwkey <key>: hand an already-unlocked master password to this process\r\n\
 * -proxytype <none|socks4|socks5|http|telnet|cmd|ssh> -proxyhost <host>\r\n\
@@ -66,7 +66,7 @@ Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\
 * -importdir <dir>: read sessions back in from such a directory\r\n\
 * -bundlepwfile <file>: the bundle's password, read from a file\r\n\
 * -bundlethispc: bind the exported bundle to this computer\r\n\
-* -portablecopy <dir>: copy this KiTTY and its whole store into a folder\r\n\
+* -portablecopy <dir>: copy this KiTTY++ and its whole store into a folder\r\n\
     as a portable copy (-bundlepwfile = the copy's master password)\r\n\
 * -takefolder <dir>: take a folder store into this registry (a merge)\r\n\
 * -backupnow: write the store backup (kitty*.sav / Backups\\) and quit\r\n\
@@ -75,26 +75,26 @@ Windows integration\r\n\
 \r\n\
 * -help (also --help, -h, -?): print this list and quit\r\n\
 * -update: look for a newer release, offer it, and quit\r\n\
-* -sshhandler: make KiTTY the program that opens telnet://, ssh:// and\r\n\
+* -sshhandler: make KiTTY++ the program that opens telnet://, ssh:// and\r\n\
     kitty:// links. Machine-wide when run as administrator, for your account\r\n\
     otherwise; a protocol another program already opens is reported and left\r\n\
     alone. Options:\r\n\
       -force      take those over too - the old setting is exported to a .reg\r\n\
                   file and the report names the command that restores it\r\n\
       -user       register for your account, without administrator rights\r\n\
-      -yes        skip the question a portable KiTTY asks before writing to\r\n\
+      -yes        skip the question a portable KiTTY++ shows before writing to\r\n\
                   the registry\r\n\
-      -puttyurl   also register putty:// (KiTTY reads putty:// links whether\r\n\
+      -puttyurl   also register putty:// (KiTTY++ reads putty:// links whether\r\n\
                   or not it is registered for them)\r\n\
-      -uninstall  remove the handlers again - only ones pointing at a KiTTY\r\n\
-* -fileassoc: open .ktx session files with KiTTY. Same options as -sshhandler\r\n\
+      -uninstall  remove the handlers again - only ones pointing at a KiTTY or KiTTY++\r\n\
+* -fileassoc: open .ktx session files with KiTTY++. Same options as -sshhandler\r\n\
     (-force, -user, -yes, -uninstall)\r\n\
-* -cleanup: remove KiTTY's settings from this machine\r\n\
+* -cleanup: remove KiTTY++'s settings from this machine\r\n\
 \r\n\
 Quick connect (see docs/KITTY-INI.md)\r\n\
 \r\n\
 The configuration box opens with the session you used last. To type a host\r\n\
-instead, load \"Default Settings\" once: KiTTY remembers that, and from then on\r\n\
+instead, load \"Default Settings\" once: KiTTY++ remembers that, and from then on\r\n\
 opens on the defaults with the cursor in Host Name, until you load another\r\n\
 session. Put loadlastsession=no in the [ConfigBox] section of kitty.ini to work\r\n\
 that way permanently.\r\n\

@@ -23,13 +23,23 @@ int OpenDirName( HWND hFrame, char * dirname ) ;
 /* Same picker, opened on `initial` (when that folder exists) with `title`
  * (NULL = the default caption). */
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
-/* The folder picker (folder = 1) or the open-file picker on a thread of its
- * own, so the session keeps running: done(ctx, path or NULL) on the calling
- * thread. A token, or NULL = not started (ask synchronously instead).
- * kitty_pick_cancel(token): done is not called any more. */
+/* The folder picker (folder = KITTY_PICK_FOLDER), the open-file picker
+ * (KITTY_PICK_OPEN) or the Save-As picker (KITTY_PICK_SAVE: `initial` a
+ * folder, or NULL for the classic box with its .ktx default extension) on a
+ * thread of its own, so the session keeps running: done(ctx, path or NULL)
+ * on the calling thread. A token, or NULL = not started (pick synchronously
+ * instead). kitty_pick_cancel(token): done is not called any more. */
+#define KITTY_PICK_OPEN    0
+#define KITTY_PICK_FOLDER  1
+#define KITTY_PICK_SAVE    2
 void *kitty_pick_async( HWND owner, int folder, const char *initial, const char *title,
                         const char *filter, void (*done)( void *ctx, const char *path ), void *ctx ) ;
 void kitty_pick_cancel( void *token ) ;
+/* fn(ctx) on a thread of its own (COM set up for it) - a blocking call such
+ * as a common dialog, so the session keeps running - then done(ctx) on the
+ * calling thread. 1 = started (done always runs); 0 = not started (make the
+ * call here instead). Call from the terminal's thread. */
+int kitty_call_async( void (*fn)( void *ctx ), void (*done)( void *ctx ), void *ctx ) ;
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 

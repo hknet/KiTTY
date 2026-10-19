@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>   /* KiTTY: strcmp, seat_product_name */
 
 #include "putty.h"
 #include "kitty/kitty_hostkey_scan.h"   /* KiTTY: host-key scan capture point */
@@ -857,6 +858,15 @@ bool ssh2_bpp_check_unimplemented(BinaryPacketProtocol *bpp, PktIn *pktin)
  * prompt (the nature of which varies depending on the Seat itself).
  */
 
+/* KiTTY: the product name in the host-key and weak-crypto texts. appname is
+ * also kitty.exe's window class ("KiTTY"), which cannot change; the other
+ * programs sharing this file keep their name (windows/dialog.c's About box
+ * does the same). */
+static const char *seat_product_name(void)
+{
+    return strcmp(appname, "KiTTY") ? appname : "KiTTY++";
+}
+
 SeatPromptResult verify_ssh_host_key(
     InteractionReadySeat iseat, Conf *conf, const char *host, int port,
     ssh_key *key, const char *keytype, char *keystr, const char *keydisp,
@@ -945,7 +955,7 @@ SeatPromptResult verify_ssh_host_key(
         ssh2_pick_default_fingerprint(fingerprints);
 
     seat_dialog_text_append(
-        text, SDT_TITLE, "%s Security Alert", appname);
+        text, SDT_TITLE, "%s Security Alert", seat_product_name());
 
     HelpCtx helpctx;
 
@@ -961,11 +971,11 @@ SeatPromptResult verify_ssh_host_key(
                 text, SDT_PARA, "which was signed by a different "
                 "certification authority from the %s %s is configured to "
                 "trust for this server.", ca_count > 1 ? "ones" : "one",
-                appname);
+                seat_product_name());
             if (storage_status == 2) {
                 seat_dialog_text_append(
                     text, SDT_PARA, "ALSO, that key does not match the key "
-                    "%s had previously cached for this server.", appname);
+                    "%s had previously cached for this server.", seat_product_name());
                 seat_dialog_text_append(
                     text, SDT_PARA, "This means that either another "
                     "certification authority is operating in this realm AND "
@@ -983,7 +993,7 @@ SeatPromptResult verify_ssh_host_key(
             assert(storage_status == 2);
             seat_dialog_text_append(
                 text, SDT_PARA, "which does not match the certified key %s "
-                "had previously cached for this server.", appname);
+                "had previously cached for this server.", seat_product_name());
             seat_dialog_text_append(
                 text, SDT_PARA, "This means that either the server "
                 "administrator has changed the host key, or you have actually "
@@ -1012,7 +1022,7 @@ SeatPromptResult verify_ssh_host_key(
             text, SDT_SCARY_HEADING, "WARNING - POTENTIAL SECURITY BREACH!");
         seat_dialog_text_append(
             text, SDT_PARA, "The host key does not match the one %s has "
-            "cached for this server:", appname);
+            "cached for this server:", seat_product_name());
         seat_dialog_text_append(
             text, SDT_DISPLAY, "%s (port %d)", host, port);
         seat_dialog_text_append(
@@ -1035,7 +1045,7 @@ SeatPromptResult verify_ssh_host_key(
         seat_dialog_text_append(
             text, SDT_PARA, "If you trust this host, %s to add the key to "
             "%s's cache and carry on connecting.",
-            pds->hk_accept_action, appname);
+            pds->hk_accept_action, seat_product_name());
         if (key && ssh_key_alg(key)->is_certificate) {
             seat_dialog_text_append(
                 text, SDT_PARA, "(Storing this certified key in the cache "
@@ -1055,7 +1065,7 @@ SeatPromptResult verify_ssh_host_key(
         seat_dialog_text_append(
             text, SDT_PARA, "If you were expecting this change and trust the "
             "new key, %s to update %s's cache and carry on connecting.",
-            pds->hk_accept_action, appname);
+            pds->hk_accept_action, seat_product_name());
         if (key && ssh_key_alg(key)->is_certificate) {
             seat_dialog_text_append(
                 text, SDT_PARA, "(Storing this certified key in the cache "
@@ -1103,7 +1113,7 @@ SeatPromptResult confirm_weak_crypto_primitive(
     const SeatDialogPromptDescriptions *pds =
         seat_prompt_descriptions(iseat.seat);
 
-    seat_dialog_text_append(text, SDT_TITLE, "%s Security Alert", appname);
+    seat_dialog_text_append(text, SDT_TITLE, "%s Security Alert", seat_product_name());
 
     switch (wcr) {
       case WCR_BELOW_THRESHOLD:
@@ -1166,7 +1176,7 @@ SeatPromptResult confirm_weak_cached_hostkey(
     const SeatDialogPromptDescriptions *pds =
         seat_prompt_descriptions(iseat.seat);
 
-    seat_dialog_text_append(text, SDT_TITLE, "%s Security Alert", appname);
+    seat_dialog_text_append(text, SDT_TITLE, "%s Security Alert", seat_product_name());
 
     seat_dialog_text_append(
         text, SDT_PARA,

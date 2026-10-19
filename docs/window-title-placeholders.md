@@ -1,6 +1,6 @@
-# KiTTY Window Title Placeholders
+# KiTTY++ Window Title Placeholders
 
-KiTTY can expand dynamic placeholders in the **Window Title** setting so that the
+KiTTY++ can expand dynamic placeholders in the **Window Title** setting so that the
 title reflects the active connection. To use a placeholder, type the sequence
 shown below in the **Window Title** field of a saved session.
 
@@ -42,7 +42,7 @@ host=%%h | sess=%%s | user=%%u | port=%%p | proto=%%P | folder=%%f | local=%%l |
 ## Notes
 
 - Placeholders are evaluated when the window title is set up and on
-  reconfiguration. If the title string contains placeholders, KiTTY re-expands it
+  reconfiguration. If the title string contains placeholders, KiTTY++ re-expands it
   even when only dependent settings such as host, username, port, protocol,
   folder, or port forwardings changed.
 - Remote programs can still change the window title after login by sending

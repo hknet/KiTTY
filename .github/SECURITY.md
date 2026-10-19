@@ -1,6 +1,6 @@
 # Security Policy
 
-KiTTY (this 0.85 line) is a fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/)
+KiTTY++ (this 0.85 line) is a fork of [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/)
 maintained by KAPPER NETWORK-COMMUNICATIONS GmbH, forward-ported onto a modern,
 security-patched PuTTY 0.85 core.
 
@@ -17,7 +17,7 @@ anything exploitable.
 
 - Use GitHub **Security Advisories** → *Report a vulnerability* on this repo, with
   details and, if possible, a proof of concept and the affected version (from
-  *Help → About*, e.g. `0.85.1.x-beta`).
+  *About KiTTY++* in the System menu, e.g. `0.85.1.x-beta`).
 
 We aim to acknowledge reports within a few days. Coordinated disclosure is
 appreciated; we will credit reporters who wish to be named.
@@ -39,6 +39,7 @@ before running, and download only from the official
 ## Known security notes
 
 See [KNOWN-ISSUES.md](../KNOWN-ISSUES.md) for current limitations. In particular,
-stored auto-login passwords are saved in a **reversibly-encrypted** form and are
-not a substitute for SSH public-key authentication — prefer keys (and `kageant`)
-wherever possible.
+stored auto-login passwords are protected with DPAPI (this Windows account on
+this PC) or a master password, unless `PortablePasswordProtection=legacy` is set.
+A stored password is still no substitute for SSH public-key authentication —
+prefer keys (and `kageant`) wherever possible.

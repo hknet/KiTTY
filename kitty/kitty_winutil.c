@@ -9,6 +9,7 @@
 #include "kitty_win.h"
 #include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
 #include "kitty_notice.h"          /* near-the-clock warning window */
+#include "kitty_dlgbox.h"          /* kitty_info_modeless: the print report */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include "kitty_theme.h"           /* the app-wide colour theme */
 #include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
@@ -25,6 +26,8 @@
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_params.h"   /* GetNoticeSeconds: RunCommand's start-failure notice */
+#include <shellapi.h>       /* ShellExecuteExA: RunCommand's fallback */
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
@@ -112,7 +115,69 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	return OpenFileNameFrom( hFrame, filename, Title, Filter, NULL ) ;
 }
 
+/* The pickers' own work; the public names below run them through
+ * kitty_sync_pick (see there). */
+static int open_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
+static int save_file_name( HWND hFrame, char * filename, char * Title, char * Filter ) ;
+static int save_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
+static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
+
+/*
+ * KiTTY: a picker called from inside a pumped box - a "Browse..." button of
+ * the mid-session Change Settings box - runs on a worker thread while this
+ * thread serves the session (ShinyPumpCall, windows/utils/shinydialogbox.c):
+ * the common dialogs' own loop serves no network events, and the session
+ * stood still until the picker closed. Anywhere else the picker runs here,
+ * as before. Either way the caller gets the answer when the picker is
+ * closed.
+ */
+enum { KITTY_SYNC_OPEN, KITTY_SYNC_SAVE, KITTY_SYNC_SAVE_FROM, KITTY_SYNC_DIR } ;
+struct kitty_sync_pick {
+	int kind ;
+	HWND owner ;
+	char *name, *title, *filter ;
+	const char *initial ;
+	int ok ;
+} ;
+
+static void kitty_sync_pick_run( void *v ) {
+	struct kitty_sync_pick *p = (struct kitty_sync_pick *)v ;
+	switch( p->kind ) {
+	  case KITTY_SYNC_OPEN:
+		p->ok = open_file_name_from( p->owner, p->name, p->title, p->filter, p->initial ) ; break ;
+	  case KITTY_SYNC_SAVE:
+		p->ok = save_file_name( p->owner, p->name, p->title, p->filter ) ; break ;
+	  case KITTY_SYNC_SAVE_FROM:
+		p->ok = save_file_name_from( p->owner, p->name, p->title, p->filter, p->initial ) ; break ;
+	  default:
+		p->ok = open_dir_name_from( p->owner, p->name, p->initial, p->title ) ; break ;
+	}
+}
+
+static int kitty_sync_pick( int kind, HWND owner, char *name, char *title, char *filter,
+                            const char *initial ) {
+	struct kitty_sync_pick p ;
+	p.kind = kind ; p.owner = owner ; p.name = name ; p.title = title ;
+	p.filter = filter ; p.initial = initial ; p.ok = 0 ;
+	ShinyPumpCall( kitty_sync_pick_run, &p ) ;
+	return p.ok ;
+}
+
 int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+	return kitty_sync_pick( KITTY_SYNC_OPEN, hFrame, filename, Title, Filter, initialdir ) ;
+}
+int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
+	return kitty_sync_pick( KITTY_SYNC_SAVE, hFrame, filename, Title, Filter, NULL ) ;
+}
+int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+	return kitty_sync_pick( KITTY_SYNC_SAVE_FROM, hFrame, filename, Title, Filter, initialdir ) ;
+}
+int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {
+	/* the title is only read; the shared call struct holds it unconst */
+	return kitty_sync_pick( KITTY_SYNC_DIR, hFrame, dirname, (char *)title, NULL, initial ) ;
+}
+
+static int open_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
 	char * szTitle = Title ;
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	// replace the '|' characters with NUL characters.
@@ -149,7 +214,7 @@ int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter,
 	else { return 1 ; }
 	}
 
-int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
+static int save_file_name( HWND hFrame, char * filename, char * Title, char * Filter ) {
 	char * szTitle = Title ;
 	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
 	// replace the '|' characters with NUL characters.
@@ -226,7 +291,7 @@ static int save_file_name_classic( HWND hFrame, char * filename, char * Title, c
  * folder: GetSaveFileName opened in the folder Windows remembers for the
  * program (or Documents), so Get File's Save-As never showed the download
  * folder it was given. GetSaveFileName stays as the fallback (XP). */
-int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+static int save_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
 	static const GUID clsid_fsd = {0xC0B4E2F3,0xBA21,0x4773,{0x8D,0xBA,0x33,0x5E,0xC9,0x46,0xEB,0x8B}} ;   /* FileSaveDialog */
 	static const GUID iid_fsd   = {0x84bccd23,0x5fde,0x4cdb,{0xae,0xa4,0xaf,0x64,0xb8,0x3d,0x78,0xab}} ;   /* IFileSaveDialog */
 	static const GUID iid_si    = {0x43826d1e,0xe718,0x42ee,{0xbc,0x55,0xa1,0xe2,0x61,0xc3,0x7b,0xfe}} ;   /* IShellItem */
@@ -328,8 +393,10 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 #define WM_KITTY_PICK_DONE ( WM_APP + 0x3A2 )
 struct kitty_pick {
 	HWND owner ;
-	int folder ;                        /* 1 = folder picker, 0 = open a file */
-	char initial[4096], title[512], filter[1024] ;
+	int folder ;                        /* KITTY_PICK_FOLDER / _OPEN / _SAVE */
+	/* the filter as long as the pickers take it: a script filter from
+	 * kitty.ini (scriptfilefilter) may run past 1 KB */
+	char initial[4096], title[512], filter[4096] ;
 	char result[4096] ;
 	int ok ;
 	volatile LONG cancelled ;
@@ -338,6 +405,14 @@ struct kitty_pick {
 } ;
 static HWND kitty_pick_sink = NULL ;
 
+/* kitty_call_async's call: fn on the worker, done back on the calling thread */
+#define WM_KITTY_CALL_DONE ( WM_APP + 0x3A3 )
+struct kitty_call {
+	void (*fn)( void *ctx ) ;
+	void (*done)( void *ctx ) ;
+	void *ctx ;
+} ;
+
 static LRESULT CALLBACK kitty_pick_sink_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
 	if( msg == WM_KITTY_PICK_DONE ) {
 		struct kitty_pick *p = (struct kitty_pick *)lp ;
@@ -345,12 +420,79 @@ static LRESULT CALLBACK kitty_pick_sink_proc( HWND h, UINT msg, WPARAM wp, LPARA
 		free( p ) ;
 		return 0 ;
 	}
+	if( msg == WM_KITTY_CALL_DONE ) {
+		struct kitty_call *c = (struct kitty_call *)lp ;
+		c->done( c->ctx ) ;
+		free( c ) ;
+		return 0 ;
+	}
 	return DefWindowProc( h, msg, wp, lp ) ;
+}
+
+/* The message-only window the answers come back through, made on first use
+ * by the calling thread (the terminal's); NULL = none could be made. */
+static HWND kitty_pick_sink_get( void ) {
+	if( !kitty_pick_sink ) {
+		WNDCLASSA wc ;
+		memset( &wc, 0, sizeof(wc) ) ;
+		wc.lpfnWndProc = kitty_pick_sink_proc ;
+		wc.hInstance = GetModuleHandle( NULL ) ;
+		wc.lpszClassName = "KiTTYPickSink" ;
+		RegisterClassA( &wc ) ;
+		kitty_pick_sink = CreateWindowExA( 0, "KiTTYPickSink", "", 0, 0, 0, 0, 0,
+			HWND_MESSAGE, NULL, GetModuleHandle( NULL ), NULL ) ;
+	}
+	return kitty_pick_sink ;
+}
+
+/*
+ * A blocking call made beside the session: fn(ctx) on a thread of its own,
+ * then done(ctx) on the calling thread, through the same message-only
+ * window as the pickers. For what kitty_pick_async does not cover - the
+ * ZModem upload's multi-select picker, Get File's Save-As with the remote
+ * name filled in, PrintDlg and the printing behind it: each runs a message
+ * loop of its own that serves no network events, so on the terminal's thread
+ * the session stood still until it was closed. COM is set up for the worker
+ * (the file dialogs are shell windows). 1 = started; 0 = no thread or no
+ * window to answer through (the caller makes the call itself, as before).
+ * done always runs; ctx belongs to the caller throughout.
+ */
+static unsigned __stdcall kitty_call_thread( void *v ) {
+	struct kitty_call *c = (struct kitty_call *)v ;
+	HRESULT hr = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
+	c->fn( c->ctx ) ;
+	if( SUCCEEDED( hr ) ) CoUninitialize() ;
+	PostMessage( kitty_pick_sink, WM_KITTY_CALL_DONE, 0, (LPARAM)c ) ;
+	return 0 ;
+}
+
+int kitty_call_async( void (*fn)( void *ctx ), void (*done)( void *ctx ), void *ctx ) {
+	struct kitty_call *c ;
+	uintptr_t th ;
+	if( !kitty_pick_sink_get() ) return 0 ;
+	c = calloc( 1, sizeof(*c) ) ;
+	if( !c ) return 0 ;
+	c->fn = fn ; c->done = done ; c->ctx = ctx ;
+	th = _beginthreadex( NULL, 0, kitty_call_thread, c, 0, NULL ) ;
+	if( !th ) { free( c ) ; return 0 ; }
+	CloseHandle( (HANDLE)th ) ;
+	return 1 ;
 }
 
 static unsigned __stdcall kitty_pick_thread( void *v ) {
 	struct kitty_pick *p = (struct kitty_pick *)v ;
-	if( p->folder )
+	if( p->folder == KITTY_PICK_SAVE ) {
+		/* The classic Save-As keeps its default extension (.ktx) for a name
+		 * typed without one; given a folder, the Common Item Dialog, which
+		 * really opens there (SaveFileNameFrom). COM for this thread: the
+		 * Save-As dialogs are shell windows. */
+		HRESULT hr = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
+		if( p->initial[0] )
+			p->ok = SaveFileNameFrom( p->owner, p->result, p->title, p->filter, p->initial ) ;
+		else
+			p->ok = SaveFileName( p->owner, p->result, p->title, p->filter ) ;
+		if( SUCCEEDED( hr ) ) CoUninitialize() ;
+	} else if( p->folder )
 		p->ok = OpenDirNameFrom( p->owner, p->result, p->initial[0] ? p->initial : NULL,
 			p->title[0] ? p->title : NULL ) ;
 	else
@@ -367,17 +509,7 @@ void *kitty_pick_async( HWND owner, int folder, const char *initial, const char 
                         const char *filter, void (*done)( void *ctx, const char *path ), void *ctx ) {
 	struct kitty_pick *p ;
 	uintptr_t th ;
-	if( !kitty_pick_sink ) {
-		WNDCLASSA wc ;
-		memset( &wc, 0, sizeof(wc) ) ;
-		wc.lpfnWndProc = kitty_pick_sink_proc ;
-		wc.hInstance = GetModuleHandle( NULL ) ;
-		wc.lpszClassName = "KiTTYPickSink" ;
-		RegisterClassA( &wc ) ;
-		kitty_pick_sink = CreateWindowExA( 0, "KiTTYPickSink", "", 0, 0, 0, 0, 0,
-			HWND_MESSAGE, NULL, GetModuleHandle( NULL ), NULL ) ;
-		if( !kitty_pick_sink ) return NULL ;
-	}
+	if( !kitty_pick_sink_get() ) return NULL ;
 	p = calloc( 1, sizeof(*p) ) ;
 	if( !p ) return NULL ;
 	p->owner = owner ;
@@ -399,7 +531,7 @@ void kitty_pick_cancel( void *token ) {
 	if( token ) InterlockedExchange( &((struct kitty_pick *)token)->cancelled, 1 ) ;
 }
 
-int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {
+static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial, const char * title ) {
 	dirname[0] = '\0' ;
 	if( initial && (!initial[0] || !existdirectory( initial )) ) initial = NULL ;
 	/* Modern Common Item Dialog folder picker (Vista+): the full Explorer window
@@ -483,15 +615,18 @@ int PrintCharSize = 100 ;
 int PrintMaxLinePerPage = 60 ;
 int PrintMaxCharPerLine = 85 ;
 
-int PrintText( const char * Text ) {
-	int return_code = 0 ; 
+/* The print dialog and the printing; *report = the line for the user, or
+ * NULL (cancelled, nothing to print). */
+static int print_text( const char * Text, const char ** report ) {
+	int return_code = 0 ;
 	PRINTDLG	pd;
 	DOCINFO		di;
 	int i, TextLen = 0, Index1 = 0, Index2 = 2;
 	//int Exit = 0 ;
 	char*		LinePrint = NULL ;
-	char*		szMessage = NULL ;
+	const char*	szMessage = NULL ;
 
+	*report = NULL ;
 	if( Text == NULL ) return 1 ;
 	if( strlen( Text ) == 0 ) return 1 ;
 
@@ -565,24 +700,77 @@ int PrintText( const char * Text ) {
 		//szMessage = "Impression annulee par l'utilisateur" ;
 		return_code = 4 ;
 		}
-	if (szMessage) { MessageBox (NULL, szMessage, KT_CAP_PRINT_REPORT, MB_OK) ; }
-	
+	*report = szMessage ;
 	return return_code ;
 	}
 
-// Print the text in the notepad
+int PrintText( const char * Text ) {
+	const char * report ;
+	int rc = print_text( Text, &report ) ;
+	if( report ) { MessageBox( NULL, report, KT_CAP_PRINT_REPORT, MB_OK ) ; }
+	return rc ;
+	}
+
+/*
+ * Print the clipboard (Tools > Print clipboard). PrintDlg and the printing
+ * behind it run beside the session (kitty_call_async): PrintDlg's own loop
+ * serves no network events, so the session stood still while it was open.
+ * The text is a copy taken first, so the clipboard is not held open while
+ * the dialog waits; the report comes back to the terminal's thread and goes
+ * to a modeless box. One print at a time: a second request while one is
+ * under way does nothing.
+ */
+struct kitty_print_job {
+	HWND hwnd ;
+	char * text ;
+	const char * report ;
+} ;
+static int kitty_print_busy = 0 ;
+
+static void kitty_print_run( void * ctx ) {
+	struct kitty_print_job * j = (struct kitty_print_job *)ctx ;
+	print_text( j->text, &j->report ) ;
+}
+
+static void kitty_print_done( void * ctx ) {
+	struct kitty_print_job * j = (struct kitty_print_job *)ctx ;
+	kitty_print_busy = 0 ;
+	if( j->report ) {
+		HWND owner = IsWindow( j->hwnd ) ? j->hwnd : NULL ;
+		if( !kitty_info_modeless( owner, KT_CAP_PRINT_REPORT, j->report, NULL, NULL ) )
+			MessageBox( owner, j->report, KT_CAP_PRINT_REPORT, MB_OK ) ;
+	}
+	free( j->text ) ;
+	free( j ) ;
+}
+
 void ManagePrint( HWND hwnd ) {
-	char *pst = NULL ;
+	char *pst = NULL, *text = NULL ;
+	struct kitty_print_job * j ;
+	if( kitty_print_busy ) return ;
 	if( OpenClipboard(NULL) ) {
 		HGLOBAL hglb ;
 		if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
 			if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-				PrintText( pst ) ;
+				text = _strdup( pst ) ;
 				GlobalUnlock( hglb ) ;
 			}
 		}
 		CloseClipboard();
 	}
+	if( text == NULL ) return ;
+	j = calloc( 1, sizeof(*j) ) ;
+	if( j != NULL ) {
+		j->hwnd = hwnd ;
+		j->text = text ;
+		if( kitty_call_async( kitty_print_run, kitty_print_done, j ) ) {
+			kitty_print_busy = 1 ;
+			return ;
+		}
+		free( j ) ;
+	}
+	PrintText( text ) ;           /* no thread for it: here, as before */
+	free( text ) ;
 }
 
 // Put a text into the clipboard
@@ -651,23 +839,52 @@ int RunCommand( HWND hwnd, const char * cmd ) {
 	StartUpInfo.hStdError=0;
 //MessageBox(hwnd,cmd,"Info",MB_OK);
 
-	if( !CreateProcess(NULL,(CHAR*)cmd,NULL,NULL,FALSE,NORMAL_PRIORITY_CLASS,NULL,NULL,&StartUpInfo,&ProcessInformation) ) {
+	/* SEM_FAILCRITICALERRORS for the start: a path to a file that is no
+	 * program makes Windows put up its own modal "Unsupported 16-Bit
+	 * Application" box, which stood in front of the session. SetErrorMode,
+	 * not SetThreadErrorMode: the latter does not exist on XP. */
+	UINT olderr = SetErrorMode( 0 ) ;
+	BOOL started ;
+	SetErrorMode( olderr | SEM_FAILCRITICALERRORS | SEM_NOOPENFILEERRORBOX ) ;
+	started = CreateProcess(NULL,(CHAR*)cmd,NULL,NULL,FALSE,NORMAL_PRIORITY_CLASS,NULL,NULL,&StartUpInfo,&ProcessInformation) ;
+	if( !started ) {
 		DWORD err = GetLastError() ;
-		INT_PTR r = (INT_PTR)ShellExecute(hwnd, "open", cmd ,0 , 0, SW_SHOWDEFAULT);
-		if( r <= 32 ) {   /* ShellExecute's own failure codes; GetLastError has the reason */
+		/* The shell's fallback with NO_UI: plain ShellExecute puts up its
+		 * own modal "cannot find" box over the terminal on a failure. */
+		SHELLEXECUTEINFOA sei ;
+		ZeroMemory( &sei, sizeof(sei) ) ;
+		sei.cbSize = sizeof(sei) ;
+		sei.fMask = SEE_MASK_FLAG_NO_UI ;
+		sei.hwnd = hwnd ;
+		sei.lpVerb = "open" ;
+		sei.lpFile = cmd ;
+		sei.nShow = SW_SHOWDEFAULT ;
+		if( !ShellExecuteExA( &sei ) ) {
 			DWORD e2 = GetLastError() ;
-			char *msg = dupprintf( KT_START_FAILED_FMT, cmd, kitty_win_reason( (int)( e2 ? e2 : err ) ) ) ;
-			MessageBox( hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+			SetErrorMode( olderr ) ;
+			/* Reported in the notice window (it never takes the focus) and
+			 * the Event Log: a modal box here stood in front of the live
+			 * session and stopped it until it was answered. */
+			const char *why = kitty_win_reason( err ? err : e2 ) ;
+			char *msg = dupprintf( KT_START_FAILED_FMT, cmd, why ) ;
+			debug_logevent( KT_START_FAILED_EVENT_FMT, cmd, why ) ;
+			kitty_notice_show( KT_CAP_START_FAILED, msg, RGB( 190, 110, 0 ),
+			                   GetNoticeSeconds(), NULL, 0 ) ;
 			sfree( msg ) ;
 			return 0 ;
 		}
-	} else {
+	}
+	SetErrorMode( olderr ) ;
+	if( started ) {
 		/* Grant the spawned session the right to bring its window to the
 		 * foreground. Without this, the new KiTTY window's SetForegroundWindow()
 		 * (window.c) is blocked by Windows' foreground lock when we launch from
-		 * the tray launcher, so the window opens behind and never gets focus. */
+		 * the tray launcher, so the window opens behind and never gets focus.
+		 * No WaitForInputIdle: with INFINITE it held the terminal's thread -
+		 * no output, no keepalive - until the program had loaded, and nothing
+		 * here uses the program's window. The right granted above does not
+		 * depend on the wait. */
 		AllowSetForegroundWindow( ProcessInformation.dwProcessId ) ;
-		WaitForInputIdle(ProcessInformation.hProcess, INFINITE );
 		CloseHandle( ProcessInformation.hThread );
 		CloseHandle( ProcessInformation.hProcess );
 	}

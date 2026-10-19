@@ -121,10 +121,22 @@
  * notice's offer to switch the mode back on. */
 #define LAUNCHER_EXITAFTERNOTICE_TIMER	102
 #define LAUNCHER_HOTKEY_BASE	0x4B00
+/* The launcher's own global hotkey ([Launcher] globalhotkey), outside the
+ * session range. Registered before the sessions' keys, so a session with
+ * the same combination is reported as losing it to this one. */
+#define LAUNCHER_HOTKEY_GLOBAL_ID	(LAUNCHER_HOTKEY_BASE - 1)
 /* Slot count lives in kitty_defs.h: the config box enforces the same limit
  * when a hotkey is enabled, and the two sides must not drift apart. */
 #define LAUNCHER_HOTKEY_MAX	KITTY_LAUNCHER_HOTKEY_MAX
 #define KITTY_LAUNCHER_REFRESH_MESSAGE "KiTTYLauncherRefreshSessionsAndHotkeys"
+/* Sent by a launcher whose RegisterHotKey failed to every other window of the
+ * launcher class: wParam the modifiers (without MOD_NOREPEAT), lParam the
+ * virtual key. Nonzero = that launcher holds the combination, so the report
+ * shows it instead of "another application" (a second launcher,
+ * alreadyRunCheck off): 1 as its global hotkey, 2 as a session's. The
+ * configuration box's global hotkey Apply sends it too
+ * (kitty_config_session.c). */
+#define KITTY_LAUNCHER_HOTKEY_QUERY_MESSAGE "KiTTYLauncherHotkeyHeld"
 #ifndef MOD_NOREPEAT
 #define MOD_NOREPEAT 0x4000
 #endif
@@ -257,9 +269,19 @@ static UINT LauncherRefreshMessage = 0 ;
  * (every saved-session refresh re-runs it) balloons only when the conflicts
  * CHANGED, not on every refresh of an unchanged store. The winner of the first
  * conflict is kept so a click on the balloon can open the config box on it. */
-static char LauncherHotkeyReport[256] = "" ;
+static char LauncherHotkeyReport[1024] = "" ;
 static char LauncherHotkeyWinner[256] = "" ;
 static int LauncherHotkeyBalloonArmed = 0 ;
+/* The first conflict went to the global hotkey: a click on the balloon
+ * opens the Launcher panel, where that hotkey is set. */
+static int LauncherHotkeyWinnerGlobal = 0 ;
+/* The global hotkey while registered, and its pair for the sessions' check */
+static int LauncherGlobalHotkeyOn = 0 ;
+static UINT LauncherGlobalHotkeyMods = 0, LauncherGlobalHotkeyVk = 0 ;
+/* The "held" lines (keys RegisterHotKey refused) of the previous registration,
+ * one per line: a silent re-registration balloons only a line not in here. */
+static char LauncherHotkeyHeldLast[256] = "" ;
+static UINT LauncherHotkeyQueryMessage = 0 ;
 
 // Hide/UnHide all handling
 /*
@@ -866,7 +888,10 @@ static void ilr_write_file( const char * path, const char * text ) {
 
 // Fill the Launcher registry key with the saved sessions. Returns the
 // entries written; *failed (when wanted) the ones that were not and
-// *err the first one's reason.
+// *err the first one's reason. -1: the Launcher folder (folder store) could
+// not be made, *err its reason - with `failed` NULL (the launcher's own
+// refreshes, no session to stop) that is still a box, with `failed` set
+// (/commands in a live session) only the caller's report.
 int InitLauncherRegistry( int * failed, DWORD * err ) {
 	HKEY hKey ;
 	char buffer[MAX_VALUE_NAME] ;
@@ -944,7 +969,18 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		char ** names ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
 		DelDir( fullpath ) ;
-		if(!MakeDir( fullpath ) ) { MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR); }
+		if(!MakeDir( fullpath ) ) {
+			/* MakeDir's own last error is its final existence check; one
+			 * more plain attempt gives Windows' reason (a FILE of that
+			 * name: "already exists"). Nothing below can be written. */
+			if( !CreateDirectoryA( fullpath, NULL ) ) {
+				ilr_err = GetLastError() ;
+				if( failed == NULL ) MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR);
+				if( failed ) *failed = 0 ;
+				if( err ) *err = ilr_err ;
+				return -1 ;
+				}
+			}
 		names = kitty_session_names( &nn ) ;
 		for( k = 0 ; k < nn ; k++ ) {
 			const char * leaf = ksp_leaf( names[k] ) ;
@@ -1727,6 +1763,7 @@ static void LauncherTrayTrace( const char * what ) {
 	(void)what ;
 #endif
 }
+static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) ;
 static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 	DWORD now = GetTickCount() ;
 	char line[96] ;
@@ -1737,6 +1774,13 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 		return ;
 	}
 	LauncherDblActionTick = now ;
+	LauncherTrayDoubleRun( hwnd, from ) ;
+}
+/* The action itself. The global hotkey comes here directly, past the merge
+ * above: a hotkey press is one request through one path (MOD_NOREPEAT -
+ * holding the keys repeats nothing), so there is nothing to merge. */
+static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) {
+	char line[96] ;
 	{
 		/* [Launcher] dblclick=manage: Manage Sessions, =quickconnect: Quick
 		 * Connect, else a configuration box (read at each double click, so
@@ -2040,11 +2084,73 @@ static void ShowLauncherUpdateBalloon( void ) {
 	}
 }
 
+/* Does this launcher hold (mods, vk)? The answer to
+ * KITTY_LAUNCHER_HOTKEY_QUERY_MESSAGE: 1 as the global hotkey, 2 as a
+ * session's hotkey, 0 not at all. */
+static int LauncherHoldsHotkey( UINT mods, UINT vk ) {
+	int i ;
+	mods &= ~MOD_NOREPEAT ;
+	if( LauncherGlobalHotkeyOn && (LauncherGlobalHotkeyMods & ~MOD_NOREPEAT) == mods
+	    && LauncherGlobalHotkeyVk == vk ) return 1 ;
+	for( i=0 ; i<LauncherHotkeyCount ; i++ )
+		if( (LauncherHotkeys[i].modifiers & ~MOD_NOREPEAT) == mods && LauncherHotkeys[i].vk == vk )
+			return 2 ;
+	return 0 ;
+}
+
+/* Is (mods, vk) held by another running launcher? Every other window of this
+ * window's class is queried; a launcher that does not answer (hung, or a build
+ * without the query) counts as "another application". */
+static int LauncherOtherHolds( HWND self, UINT mods, UINT vk ) {
+	char cls[256] ;
+	HWND w = NULL ;
+	int n = 0 ;
+	if( LauncherHotkeyQueryMessage == 0 || !GetClassNameA( self, cls, sizeof(cls) ) ) return 0 ;
+	while( n++ < 16 && ( w = FindWindowExA( NULL, w, cls, NULL ) ) != NULL ) {
+		DWORD_PTR r = 0 ;
+		if( w == self ) continue ;
+		if( SendMessageTimeoutA( w, LauncherHotkeyQueryMessage, (WPARAM)(mods & ~MOD_NOREPEAT), (LPARAM)vk,
+		                         SMTO_ABORTIFHUNG, 500, &r ) && ( r == 1 || r == 2 ) )
+			return 1 ;
+	}
+	return 0 ;
+}
+
+/* `line` (a report line, its leading "\n" dropped) added to `held`, one per line. */
+static void LauncherHeldNote( char * held, size_t n, const char * line ) {
+	if( line[0] == '\n' ) line++ ;
+	if( strlen( held ) + strlen( line ) + 2 > n ) return ;
+	strcat( held, line ) ;
+	strcat( held, "\n" ) ;
+}
+
+/* Is any line of `held` missing from the previous registration's? */
+static int LauncherHeldIsNew( const char * held ) {
+	const char * p = held ;
+	while( *p ) {
+		const char * e = strchr( p, '\n' ) ;
+		size_t len = e ? (size_t)(e - p) + 1 : strlen( p ) ;
+		const char * q ;
+		char one[256] ;
+		if( len >= sizeof(one) ) len = sizeof(one) - 1 ;
+		memcpy( one, p, len ) ; one[len] = '\0' ;
+		for( q = LauncherHotkeyHeldLast ; ( q = strstr( q, one ) ) != NULL ; q++ )
+			if( q == LauncherHotkeyHeldLast || q[-1] == '\n' ) break ;
+		if( q == NULL ) return 1 ;
+		p += e ? (size_t)(e - p) + 1 : strlen( p ) ;
+	}
+	return 0 ;
+}
+
 static void LauncherUnregisterHotkeys( HWND hwnd ) {
 	int i ;
 	for( i=0 ; i<LauncherHotkeyCount ; i++ )
 		UnregisterHotKey( hwnd, LauncherHotkeys[i].id ) ;
 	LauncherHotkeyCount = 0 ;
+	if( LauncherGlobalHotkeyOn ) {
+		UnregisterHotKey( hwnd, LAUNCHER_HOTKEY_GLOBAL_ID ) ;
+		LauncherGlobalHotkeyOn = 0 ;
+	}
 }
 
 /* Register every enabled session hotkey (parser shared with the config box:
@@ -2060,13 +2166,40 @@ static void LauncherUnregisterHotkeys( HWND hwnd ) {
  * NOT - the box already put the same fact in front of the user in a
  * MessageBox, and a balloon seconds later would say it twice. A silent run
  * leaves the remembered report alone, so the next notifying run still sees
- * the change and balloons it. */
+ * the change and balloons it - except a key RegisterHotKey refused that the
+ * previous registration did not report as refused: the box cannot know that
+ * one (it is up to the other program), so that balloons even when silent. A
+ * key that keeps failing balloons once. */
 static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	int i, j ; UINT mods, vk ;
-	char report[256] = "" ;
+	char report[1024] = "" ;
 	char winner[256] = "" ;
-	int overflow = 0 ;
+	char held[256] = "" ;
+	int overflow = 0, winner_global = 0, held_new ;
 	LauncherUnregisterHotkeys( hwnd ) ;
+	/* The launcher's own global hotkey first, so it keeps its combination
+	 * against any session's. Read again at every registration: a change on
+	 * the Launcher panel broadcasts the refresh that brings it here. */
+	{
+		char gspec[256], tr[300] ;
+		if( kitty_launcher_global_hotkey( &mods, &vk, gspec, sizeof(gspec) ) ) {
+			if( RegisterHotKey( hwnd, LAUNCHER_HOTKEY_GLOBAL_ID, mods | MOD_NOREPEAT, vk ) ) {
+				LauncherGlobalHotkeyOn = 1 ;
+				LauncherGlobalHotkeyMods = mods | MOD_NOREPEAT ;
+				LauncherGlobalHotkeyVk = vk ;
+				snprintf( tr, sizeof(tr), "global hotkey registered: %s", gspec ) ;
+				LauncherTrayTrace( tr ) ;
+			} else {
+				char line[240] ;
+				snprintf( line, sizeof(line),
+				          LauncherOtherHolds( hwnd, mods, vk ) ? KT_LAUNCHER_HOTKEY_GLOBAL_HELD_LAUNCHER
+				                                               : KT_LAUNCHER_HOTKEY_GLOBAL_HELD,
+				          report[0] ? "\n" : "", gspec ) ;
+				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+				LauncherHeldNote( held, sizeof(held), line ) ;
+			}
+		}
+	}
 	for( i=0 ; i<kitty_menuslots_count() ; i++ ) {
 		/* The session's two hotkey settings, read alone. This loop used to
 		 * load every session's WHOLE configuration to look at those two - at
@@ -2080,14 +2213,23 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 			int dup = -1 ;
 			for( j=0 ; j<LauncherHotkeyCount ; j++ )
 				if( LauncherHotkeys[j].modifiers == (mods|MOD_NOREPEAT) && LauncherHotkeys[j].vk == vk ) { dup = j ; break ; }
-			if( dup >= 0 ) {
+			if( LauncherGlobalHotkeyOn && LauncherGlobalHotkeyMods == (mods|MOD_NOREPEAT)
+			    && LauncherGlobalHotkeyVk == vk ) {
+				/* the global hotkey has it: never offered to RegisterHotKey,
+				 * which would fail and report "another application" */
+				char line[240] ;
+				snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_GLOBAL_DUP,
+				          report[0] ? "\n" : "", spec, sess ) ;
+				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+				if( winner[0] == '\0' ) winner_global = 1 ;
+			} else if( dup >= 0 ) {
 				char line[240] ;
 				snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_DUP,
 				          report[0] ? "\n" : "",
 				          spec,
 				          LauncherHotkeys[dup].session, sess ) ;
 				strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
-				if( winner[0] == '\0' ) {
+				if( winner[0] == '\0' && !winner_global ) {
 					strncpy( winner, LauncherHotkeys[dup].session, sizeof(winner)-1 ) ;
 					winner[sizeof(winner)-1] = '\0' ;
 				}
@@ -2106,11 +2248,14 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 					LauncherHotkeyCount++ ;
 				else {
 					char line[240] ;
-					snprintf( line, sizeof(line), KT_LAUNCHER_HOTKEY_HELD,
+					snprintf( line, sizeof(line),
+					          LauncherOtherHolds( hwnd, mods, vk ) ? KT_LAUNCHER_HOTKEY_HELD_LAUNCHER
+					                                               : KT_LAUNCHER_HOTKEY_HELD,
 					          report[0] ? "\n" : "",
 					          spec,
 					          sess ) ;
 					strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
+					LauncherHeldNote( held, sizeof(held), line ) ;
 				}
 			}
 		}
@@ -2121,12 +2266,29 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 		          report[0] ? "\n" : "", overflow, overflow==1 ? "" : "s", LAUNCHER_HOTKEY_MAX ) ;
 		strncat( report, line, sizeof(report)-strlen(report)-1 ) ;
 	}
+	/* Test builds with KITTY_LAUNCHER_TRACE: the report, which otherwise
+	 * reaches only the tray balloon (a test reads it here). */
 	if( report[0] ) {
-		if( notify && strcmp( report, LauncherHotkeyReport ) != 0 ) {
+		char tr[1100] ;
+		snprintf( tr, sizeof(tr), "hotkey report: %s", report ) ;
+		LauncherTrayTrace( tr ) ;
+	}
+	held_new = LauncherHeldIsNew( held ) ;
+	strncpy( LauncherHotkeyHeldLast, held, sizeof(LauncherHotkeyHeldLast)-1 ) ;
+	LauncherHotkeyHeldLast[sizeof(LauncherHotkeyHeldLast)-1] = '\0' ;
+	if( report[0] ) {
+		if( ( notify || held_new ) && strcmp( report, LauncherHotkeyReport ) != 0 ) {
 			strncpy( LauncherHotkeyReport, report, sizeof(LauncherHotkeyReport)-1 ) ;
 			LauncherHotkeyReport[sizeof(LauncherHotkeyReport)-1] = '\0' ;
 			strncpy( LauncherHotkeyWinner, winner, sizeof(LauncherHotkeyWinner)-1 ) ;
 			LauncherHotkeyWinner[sizeof(LauncherHotkeyWinner)-1] = '\0' ;
+			LauncherHotkeyWinnerGlobal = winner_global ;
+			{	/* test builds: the balloon is Explorer's, this line is what
+				 * a test can read */
+				char tr[1100] ;
+				snprintf( tr, sizeof(tr), "hotkey balloon: %s", report ) ;
+				LauncherTrayTrace( tr ) ;
+			}
 			PostMessage( hwnd, KLWM_HOTKEYBALLOON, 0, 0 ) ;
 		}
 	} else {
@@ -2134,6 +2296,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 		 * re-created later balloons again, and disarm the balloon click. */
 		LauncherHotkeyReport[0] = '\0' ;
 		LauncherHotkeyWinner[0] = '\0' ;
+		LauncherHotkeyWinnerGlobal = 0 ;
 		LauncherHotkeyBalloonArmed = 0 ;
 	}
 }
@@ -2350,6 +2513,8 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		LauncherRefreshSessionsAndHotkeys( hwnd ) ;
 		return 0 ;
 	}
+	if( LauncherHotkeyQueryMessage != 0 && uMsg == LauncherHotkeyQueryMessage )
+		return LauncherHoldsHotkey( (UINT)wParam, (UINT)lParam ) ;
 	if( LauncherWindowGoneMessage != 0 && uMsg == LauncherWindowGoneMessage ) {
 		LauncherWindowGone( (HWND)wParam, (int)lParam ) ;
 		return 0 ;
@@ -2507,8 +2672,18 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				TrayIcone.uTimeout = 10000 ;
 				strncpy( TrayIcone.szInfoTitle, KT_CAP_HOTKEY_CONFLICT, sizeof(TrayIcone.szInfoTitle) ) ;
 				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
-				strncpy( TrayIcone.szInfo, LauncherHotkeyReport, sizeof(TrayIcone.szInfo) ) ;
-				TrayIcone.szInfo[sizeof(TrayIcone.szInfo)-1] = '\0' ;
+				/* A balloon holds 255 characters: whole lines only, and "..."
+				 * when the report goes on - a line cut in the middle named
+				 * half a combination. */
+				if( strlen( LauncherHotkeyReport ) < sizeof(TrayIcone.szInfo) ) {
+					strcpy( TrayIcone.szInfo, LauncherHotkeyReport ) ;
+				} else {
+					size_t cut = sizeof(TrayIcone.szInfo) - 5 ;   /* room for "\n..." */
+					while( cut > 0 && LauncherHotkeyReport[cut] != '\n' ) cut-- ;
+					if( cut == 0 ) cut = sizeof(TrayIcone.szInfo) - 5 ;
+					memcpy( TrayIcone.szInfo, LauncherHotkeyReport, cut ) ;
+					strcpy( TrayIcone.szInfo + cut, "\n..." ) ;
+				}
 				Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
 				TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE ;
 				LauncherHotkeyBalloonArmed = 1 ;
@@ -2534,7 +2709,10 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * the box's startup pre-fill already reads. */
 					if( LauncherHotkeyBalloonArmed ) {
 						LauncherHotkeyBalloonArmed = 0 ;
-						if( LauncherHotkeyWinner[0] ) {
+						if( LauncherHotkeyWinnerGlobal ) {
+							/* the global hotkey kept it: open where it is set */
+							RunKiTTYppAtPanel( hwnd, "\"Application/KiTTY++ Settings/Launcher\"", 0 ) ;
+						} else if( LauncherHotkeyWinner[0] ) {
 							Conf * wc = conf_new() ;
 							if( wc != NULL ) {
 								if( do_defaults( LauncherHotkeyWinner, wc ) )
@@ -2731,6 +2909,11 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		case WM_HOTKEY:
 			{
 				int i ;
+				if( (int)wParam == LAUNCHER_HOTKEY_GLOBAL_ID ) {
+					if( LauncherGlobalHotkeyOn )
+						LauncherTrayDoubleRun( hwnd, "the global hotkey" ) ;
+					break ;
+				}
 				for( i=0 ; i<LauncherHotkeyCount ; i++ )
 					if( (int)wParam == LauncherHotkeys[i].id ) {
 						RunSession( hwnd, LauncherHotkeys[i].folder, LauncherHotkeys[i].session ) ;
@@ -3010,6 +3193,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	}
 
 	LauncherRefreshMessage = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE) ;
+	LauncherHotkeyQueryMessage = RegisterWindowMessageA(KITTY_LAUNCHER_HOTKEY_QUERY_MESSAGE) ;
 	LauncherWindowGoneMessage = RegisterWindowMessageA(KITTY_LAUNCHER_WINDOW_GONE_MESSAGE) ;
 	LauncherStateMessage = RegisterWindowMessageA(KITTY_LAUNCHER_STATE_MESSAGE) ;
 

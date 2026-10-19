@@ -627,9 +627,9 @@ void pgp_fingerprints(void)
      * (windows/utils/pgp_fingerprints_msgbox.c) - the upstream trust-path
      * claim is wrong for a fork. */
     fputs("These are the fingerprints of the PuTTY PGP Master Keys, shown\n"
-          "for historic reasons only: this program is KiTTY code, not\n"
-          "a PuTTY release. The fingerprints say nothing about the\n"
-          "authenticity of this executable, and printing them proves\n"
+          "for historic reasons only: this program is KiTTY++ code, not\n"
+          "a PuTTY release. The fingerprints do not show that this\n"
+          "executable is authentic, and printing them proves\n"
           "nothing - any program could print them. They are only useful\n"
           "for checking the PGP signatures on downloads from the PuTTY\n"
           "project itself.\n"
@@ -643,7 +643,7 @@ void pgp_fingerprints(void)
           "  " PGP_PREV_MASTER_KEY_FP "\n"
           "\n"
           "This command-line option (-pgpfp) is deprecated and will be\n"
-          "removed in a future KiTTY release.\n", stdout);
+          "removed in a future KiTTY++ release.\n", stdout);
 }
 
 void console_logging_error(LogPolicy *lp, const char *string)

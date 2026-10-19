@@ -5,7 +5,7 @@
 #include "rcstuff.h"
 
 #define APPNAME "kageant"
-#define APPDESC "kageant (KiTTY SSH authentication agent)"
+#define APPDESC "kageant (KiTTY++ SSH authentication agent)"
 
 #include "pageant-rc.h"
 #include "../kitty/kitty_text.h"

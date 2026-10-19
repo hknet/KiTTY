@@ -9,7 +9,7 @@
 #include "rcstuff.h"
 
 #define APPNAME "KiTTYgen-cli"
-#define APPDESC "KiTTY command-line SSH key generation utility"
+#define APPDESC "KiTTY++ command-line SSH key generation utility"
 
 200 ICON "kitty_pp_keygen.ico"
 

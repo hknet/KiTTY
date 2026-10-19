@@ -6,6 +6,9 @@
  * store), and this file adds the two passwords in their export form and
  * writes the list in classic KiTTY's "key\value\" lines, which every reader
  * of .ktx files takes (kitty_settings_load.c via ksf_load, older KiTTY).
+ * "Make a portable copy" writes the copy's folder store through here too; its
+ * files take the store's own "key=value" lines with LF, as ksf_save writes a
+ * new file (kitty_set_bundle_store_form): the first save keeps them as they are.
  * It used to be a hand-written copy of the saver, one line per key, and had
  * fallen 59 keys behind it: an export lost the background image, the
  * transfer and Tools-menu settings and more.
@@ -48,12 +51,36 @@ static void ktx_write_line(const char *key, const char *val, void *ctx)
     if (mv) { smemclr(mv, strlen(mv)); sfree(mv); }
 }
 
+/* the folder store's line (ksf_save in kitty_storage.c) */
+static void store_write_line(const char *key, const char *val, void *ctx)
+{
+    char *mv = ksf_munge(val ? val : "");
+    fprintf((FILE *)ctx, "%s=%s\n", key, mv ? mv : "");
+    if (mv) { smemclr(mv, strlen(mv)); sfree(mv); }
+}
+
+/* The session a bundle's summary lists: the file's name without its
+ * extension, unescaped as the import does (kitty_ktx_session_name). */
+static char *ktx_session_of(const char *filename)
+{
+    const char *b = strrchr(filename, '\\');
+    char *stem = dupstr(b ? b + 1 : filename), *dot = strrchr(stem, '.');
+    char *name;
+    if (dot && dot != stem) *dot = '\0';
+    name = kitty_session_fname_unmunge(stem);
+    sfree(stem);
+    return name;
+}
+
 int save_open_settings_forced(char *filename, Conf *conf) {
     settings_w *w = kitty_open_settings_w_items();
     struct ksf_item *items;
     FILE *fp;
     int ok;
     DWORD err;
+    int store_form = kitty_bundle_store_form();
+    int pwlocked = 0;               /* a password left out: master password locked */
+    char *where = ktx_session_of(filename);   /* for a bundle's summary */
 
     save_open_settings(w, conf);
     items = kitty_settings_w_take_items(w);
@@ -61,15 +88,20 @@ int save_open_settings_forced(char *filename, Conf *conf) {
     {
         /* A .ktx export is a portable file: the password gets the envelope a
          * portable session file gets - the bundle's own passphrase while an
-         * export bundle is written, else the master password, DPAPI as the
-         * fallback, plain only in explicit legacy mode. The Conf holds it
-         * wrapped for this process (kitty_pwmem.c). */
+         * export bundle is written, else the master password - none written
+         * while it is locked (reported below), never a DPAPI value nobody
+         * chose - plain only in explicit legacy mode. A bundle wrap that
+         * failed leaves the line out (the summary lists it). The Conf holds
+         * it wrapped for this process (kitty_pwmem.c). */
         char pw[KITTY_PW_MAX + 1];
         char *blob;
+        int skipped = 0;
         kitty_pw_get(conf, CONF_password, pw, sizeof(pw));
-        blob = kitty_secret_wrap_portable(pw);
+        blob = kitty_secret_wrap_export(pw, KSEC_EXPORT_SESSION_PW, where,
+                                        &pwlocked, &skipped);
         smemclr(pw, sizeof(pw));
-        ksf_list_set(&items, "Password", blob ? blob : "");
+        if (!skipped)
+            ksf_list_set(&items, "Password", blob ? blob : "");
         if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
     }
     {
@@ -79,17 +111,25 @@ int save_open_settings_forced(char *filename, Conf *conf) {
         char pxpw[KITTY_PW_MAX + 1];
         char *blob = NULL;
         kitty_pw_get(conf, CONF_proxy_password, pxpw, sizeof(pxpw));
-        if (pxpw[0]) blob = kitty_secret_wrap_portable(pxpw);
+        int pxlocked = 0, pxskipped = 0;
+        if (pxpw[0])
+            blob = kitty_secret_wrap_export(pxpw, KSEC_EXPORT_SESSION_PXPW, where,
+                                            &pxlocked, &pxskipped);
         smemclr(pxpw, sizeof(pxpw));
-        ksf_list_set(&items, "ProxyPassword", blob ? blob : "");
+        if (!pxskipped)
+            ksf_list_set(&items, "ProxyPassword", blob ? blob : "");
         if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+        if (pxlocked) pwlocked = 1;
     }
+    sfree(where);
+    if (pwlocked)
+        ksec_report_locked_save(KSEC_KEPT_EXPORT, filename);
 
-    if ((fp = fopen(filename, "w")) == NULL) {
+    if ((fp = fopen(filename, store_form ? "wb" : "w")) == NULL) {
         ksf_list_free(items);
         return 0;
     }
-    ksf_list_foreach(items, ktx_write_line, fp);
+    ksf_list_foreach(items, store_form ? store_write_line : ktx_write_line, fp);
     ksf_list_free(items);
     ok = !ferror(fp);
     err = GetLastError();

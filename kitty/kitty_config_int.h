@@ -175,6 +175,10 @@ bool kitty_dlg_ctrl_shown(dlgcontrol *ctrl, dlgparam *dlg);   /* its panel is on
 /* Application > Launcher > Start (kitty_config_app.c): the box's one-second
  * tick; the launcher's start/exit notice arrives through windows/dialog.c. */
 void kitty_cfgbox_launcher_poll(dlgparam *dlg);
+/* The report of both launcher-hotkey Check buttons (kitty_config_session.c):
+ * a session's (self = its saved name, or NULL) or, global = 1, the
+ * launcher's own [Launcher] globalhotkey. */
+void kitty_launcher_hotkey_check(const char *spec, const char *self, int global);
 extern int cfgwin_refreshing;   /* kitty_config_shared.c */
 int kitty_kset_backupcount(const char *key);   /* kitty_config_shared.c */
 void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */

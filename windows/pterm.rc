@@ -2,7 +2,7 @@
 #include "putty-rc.h"
 
 #define APPNAME "kitty_pterm"
-#define APPDESC "KiTTY terminal for Windows command prompts"
+#define APPDESC "KiTTY++ terminal for Windows command prompts"
 
 IDI_MAINICON ICON "kitty_pp_windows.ico"
 /* IDI_CFGICON is the same file; dialog.c falls back to IDI_MAINICON. */

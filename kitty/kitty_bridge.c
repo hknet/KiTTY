@@ -32,6 +32,8 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_win.h"
 #include "kitty_winutil.h"
+#include "kitty_dlgbox.h"   /* kitty_info_modeless: Export settings' report */
+#include "kitty_notice.h"   /* kitty_notice_show: a start that failed */
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
 #include "kitty_gui.h"
@@ -170,9 +172,14 @@ static void RunSessionWithConfSettings(Conf *conf) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     } else {
-        char *msg = dupprintf(KT_START_FAILED_FMT, b,
-                              kitty_win_reason((int)GetLastError()));
-        MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        /* Reported in the notice window (it never takes the focus) and
+         * the Event Log: a modal box here stood in front of the live
+         * session and stopped it until it was answered. */
+        const char *why = kitty_win_reason((int)GetLastError());
+        char *msg = dupprintf(KT_START_FAILED_FMT, b, why);
+        debug_logevent(KT_START_FAILED_EVENT_FMT, b, why);
+        kitty_notice_show(KT_CAP_START_FAILED, msg, RGB(190, 110, 0),
+                          GetNoticeSeconds(), NULL, 0);
         sfree(msg);
     }
     if (filemap) CloseHandle(filemap);
@@ -240,7 +247,9 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
      * the master password again. Both switches come BEFORE -confmap so they are
      * in effect while the settings are read. */
     { extern int kitty_mpw_startup_unlock(void);
+      kitty_mpw_user_action_begin();   /* user-started: prompts after a cancel */
       kitty_mpw_startup_unlock();
+      kitty_mpw_user_action_end();
       mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
 
     cl = dupprintf("putty%s%s -confmap %p:%u -cfgbox",
@@ -863,9 +872,44 @@ int kitty_apply_background(HWND hwnd, Conf *conf) {
 #endif
 
 /* Export current settings to a .ktx file (IDM_EXPORTSETTINGS).
- * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global). */
+ * Mirrors KiTTY's SaveCurrentSetting() but takes the seat conf (no global).
+ *
+ * The Save-As runs beside the session (kitty_pick_async), as /savektx's
+ * does: the common dialog's own loop serves no network events, and the
+ * session stood still while it was open. The file is written once it has
+ * been chosen, with the settings live at that moment; a failure goes to a
+ * modeless box. One Save-As at a time: the token is set while it is open. */
+typedef struct { HWND hwnd; Conf *conf; } export_pick_t;
+static void *export_pick = NULL;
+
+static void export_settings_to(HWND hwnd, Conf *conf, const char *filename) {
+    int saved;
+    kitty_mpw_user_action_begin();   /* prompts again after a cancel */
+    saved = save_open_settings_forced((char *)filename, conf);
+    kitty_mpw_user_action_end();
+    if (!saved) {
+        char *msg = dupprintf(KT_EXPORT_NOT_SAVED_FMT, filename,
+                              kitty_win_reason(GetLastError()));
+        if (!kitty_info_modeless(hwnd, KT_CAP_ERROR, msg, NULL, NULL))
+            MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
+    }
+}
+
+static void export_picked(void *ctx, const char *path) {
+    export_pick_t *e = (export_pick_t *)ctx;
+    export_pick = NULL;
+    /* the seat's conf lives as long as its window */
+    if (path && IsWindow(e->hwnd))
+        export_settings_to(e->hwnd, e->conf, path);
+    sfree(e);
+}
+
 void kitty_export_settings(HWND hwnd, Conf *conf) {
     char filename[4096], buffer[4096];
+    export_pick_t *e;
+    if (export_pick)
+        return;                  /* its Save-As is open already */
     if (strlen(FileExtension) > 0) {
         strcpy(buffer, "Connection files (*");
         strcat(buffer, FileExtension); strcat(buffer, ")|*");
@@ -875,13 +919,17 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
     }
     strcat(buffer, "All files (*.*)|*.*|");
     if (buffer[strlen(buffer)-1] != '|') strcat(buffer, "|");
-    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer) &&
-        !save_open_settings_forced(filename, conf)) {
-        char *msg = dupprintf(KT_EXPORT_NOT_SAVED_FMT, filename,
-                              kitty_win_reason(GetLastError()));
-        MessageBox(hwnd, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
-        sfree(msg);
-    }
+    e = snew(export_pick_t);
+    e->hwnd = hwnd;
+    e->conf = conf;
+    export_pick = kitty_pick_async(hwnd, KITTY_PICK_SAVE, NULL, KT_CAP_SAVE_FILE,
+                                   buffer, export_picked, e);
+    if (export_pick)
+        return;
+    sfree(e);
+    /* no thread for the Save-As: on this one, as before */
+    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer))
+        export_settings_to(hwnd, conf, filename);
 }
 
 /* ---------------------------------------------------------------------------
@@ -963,6 +1011,25 @@ int kitty_hotkey_of_session(const char *name, unsigned int *mods, unsigned int *
 static int hotkey_of_session(const char *name, unsigned int *mods, unsigned int *vk)
 {
     return kitty_hotkey_of_session(name, mods, vk, NULL, 0);
+}
+
+/* The launcher's own global hotkey, [Launcher] globalhotkey: the tray icon's
+ * double-click action from any program. Nonzero only when set AND it parses;
+ * the launcher registers it, and both Check buttons of the config box compare
+ * against it. `spec_out` (may be NULL) receives the stored text. */
+int kitty_launcher_global_hotkey(unsigned int *mods, unsigned int *vk,
+                                 char *spec_out, int speclen)
+{
+    char buf[256] = "";
+    int ok = 0;
+    *mods = 0; *vk = 0;
+    if (spec_out && speclen > 0) spec_out[0] = '\0';
+    if (ReadParameterN(KI_SECTION_LAUNCHER, KI_LAUNCHER_GLOBALHOTKEY, buf, sizeof(buf))) {
+        buf[sizeof(buf) - 1] = '\0';
+        ok = kitty_parse_hotkey_spec(buf, mods, vk);
+    }
+    if (ok && spec_out && speclen > 0) snprintf(spec_out, speclen, "%s", buf);
+    return ok;
 }
 
 /* List (", "-separated into `names`, which may be NULL) every saved session

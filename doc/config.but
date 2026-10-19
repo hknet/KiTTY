@@ -1,8 +1,8 @@
-\C{config} Configuring KiTTY
+\C{config} Configuring KiTTY++
 
-This chapter describes all the \i{configuration options} in KiTTY.
+This chapter describes all the \i{configuration options} in KiTTY++.
 
-KiTTY is configured using the control panel that comes up before you
+KiTTY++ is configured using the control panel that comes up before you
 start a session. Some options can also be changed in the middle of a
 session, by selecting \q{Change Settings} from the window menu.
 
@@ -16,7 +16,7 @@ save your settings to be reloaded later.
 
 The top box on the Session panel, labelled \q{Specify the destination
 you want to connect to}, contains the details that need to be filled
-in before KiTTY can open a session at all.
+in before KiTTY++ can open a session at all.
 
 \b The \q{Host Name} box is where you type the name, or the \i{IP
 address}, of the server you want to connect to.
@@ -73,11 +73,11 @@ and \q{Speed}; see \k{config-serial} for more details of these.
 \S{config-saving} \ii{Loading and storing saved sessions}
 
 The next part of the Session configuration panel allows you to save
-your preferred KiTTY options so they will appear automatically the
-next time you start KiTTY. It also allows you to create \e{saved
+your preferred KiTTY++ options so they will appear automatically the
+next time you start KiTTY++. It also allows you to create \e{saved
 sessions}, which contain a full set of configuration options plus a
 host name and protocol. A saved session contains all the information
-KiTTY needs to start exactly the session you want.
+KiTTY++ needs to start exactly the session you want.
 
 \b To save your default settings: first set up the settings the way
 you want them saved. Then come back to the Session panel. Select the
@@ -125,8 +125,8 @@ name in the list box.
 \b To delete a saved session: single-click to select the session
 name in the list box, and then press the \q{Delete} button.
 
-KiTTY extends this panel well beyond the classic behaviour described
-above; the full stories are in the KiTTY additions chapter
+KiTTY++ extends this panel well beyond the classic behaviour described
+above; the full stories are in the KiTTY++ additions chapter
 (\k{kitty-features}), but in brief:
 
 \b \e{Two launch buttons.} \q{Open} starts the chosen session in the
@@ -212,7 +212,7 @@ any other session to leave the mode; \c{loadlastsession=no} in
 \c{[ConfigBox]} makes it permanent.
 
 \b \e{Whole-store export and import.} \q{Export all...} and
-\q{Import all...} on \k{kitty-cfg-migration}, in \q{Move this KiTTY's
+\q{Import all...} on \k{kitty-cfg-migration}, in \q{Move this KiTTY++'s
 sessions between computers}, move every saved session (and named proxy
 definitions) as protected \c{.ktx} bundle files - passwords are
 re-protected by the store they arrive in.
@@ -225,25 +225,25 @@ Saved sessions are stored in the \i{Registry}, at the location
 
 \c HKEY_CURRENT_USER\Software\kapper.net\KiTTY\Sessions
 
-(KiTTY also reads sessions left behind by earlier KiTTY versions
-under \c{Software\\9bis.com\\KiTTY} and by KiTTY under
-\c{Software\\SimonTatham\\KiTTY}, so an existing configuration is
+(KiTTY++ also reads sessions left behind by earlier KiTTY versions
+under \c{Software\\9bis.com\\KiTTY} and by PuTTY under
+\c{Software\\SimonTatham\\PuTTY}, so an existing configuration is
 picked up rather than lost.)
 
 If you need to store them in files instead of the Registry, use
-KiTTY's portable mode (\c{kitty_portable.exe}, or \c{savemode=dir}
+KiTTY++'s portable mode (\c{kitty_portable.exe}, or \c{savemode=dir}
 in \c{kitty.ini}), which keeps every session as a file beside the
 program; \k{config-file} describes the classic manual method.
 
 \H{config-logging} The Logging panel
 
 The Logging configuration panel allows you to save \i{log file}s of your
-KiTTY sessions, for debugging, analysis or future reference.
+KiTTY++ sessions, for debugging, analysis or future reference.
 
-The main option is a radio-button set that specifies whether KiTTY
+The main option is a radio-button set that specifies whether KiTTY++
 will log anything at all. The options are:
 
-\b \q{None}. This is the default option; in this mode KiTTY will not
+\b \q{None}. This is the default option; in this mode KiTTY++ will not
 create a log file at all.
 
 \b \q{Printable output}. In this mode, a log file will be
@@ -257,7 +257,7 @@ editor and hope to be able to make sense of it.
 the server into your terminal session is logged. If you view the log
 file in a text editor, therefore, you may well find it full of
 strange control characters. This is a particularly useful mode if
-you are experiencing problems with KiTTY's terminal handling: you
+you are experiencing problems with KiTTY++'s terminal handling: you
 can record everything that went to the terminal, so that someone
 else can replay the session later in slow motion and watch to see
 what went wrong.
@@ -266,7 +266,7 @@ what went wrong.
 by SSH connections), the SSH message packets sent over the encrypted
 connection are written to the log file (as well as \i{Event Log}
 entries). You might need this to debug a network-level problem, or
-more likely to send to the KiTTY authors as part of a bug report.
+more likely to send to the KiTTY++ authors as part of a bug report.
 \e{BE WARNED} that if you log in using a password, the password can
 appear in the log file; see \k{config-logssh} for options that may
 help to remove sensitive material from the log file before you send it
@@ -279,7 +279,7 @@ diagnose corruption in transit. (The same caveats as the previous mode
 apply, of course.)
 
 Note that the non-SSH logging options (\q{Printable output} and
-\q{All session output}) only work with KiTTY proper; in programs
+\q{All session output}) only work with KiTTY++ proper; in programs
 without terminal emulation (such as klink), they will have no effect,
 even if enabled via saved settings.
 
@@ -292,7 +292,7 @@ know exactly where you want it to go, you can just type a pathname
 into the edit box.
 
 There are a few special features in this box. If you use the \c{&}
-character in the file name box, KiTTY will insert details of the
+character in the file name box, KiTTY++ will insert details of the
 current session in the name of the file it actually opens. The
 precise replacements it will do are:
 
@@ -337,24 +337,33 @@ shows the path with the variable's name in it.
 
 \S{config-logfileexists} \q{What to do if the log file already exists}
 
-This control allows you to specify what KiTTY should do if it tries
+This control allows you to specify what KiTTY++ should do if it tries
 to start writing to a log file and it finds the file already exists.
 You might want to automatically destroy the existing log file and
 start a new one with the same name. Alternatively, you might want to
 open the existing log file and add data to the \e{end} of it.
 Finally (the default option), you might not want to have any
-automatic behaviour, but to ask the user every time the problem
+automatic behaviour, but to put up a question every time the problem
 comes up.
+
+The question is a box beside the session, which keeps running while
+it is open. Where there is no desktop to show it (a service, or a
+scheduled task that runs whether a user is logged on or not), KiTTY++
+does not log this session and writes the reason to the Windows
+Application event log (source KiTTY++). Choose \q{Always overwrite it}
+or \q{Always append to the end of it}, or start with \c{\-logoverwrite}
+or \c{\-logappend} (see \k{using-cmdline-logfileexists}), for a log in
+that case.
 
 \S{config-logflush} \I{log file, flushing}\q{Flush log file frequently}
 
 This option allows you to control how frequently logged data is
-flushed to disc. By default, KiTTY will flush data as soon as it is
+flushed to disc. By default, KiTTY++ will flush data as soon as it is
 displayed, so that if you view the log file while a session is still
 open, it will be up to date; and if the client system crashes, there's
 a greater chance that the data will be preserved.
 
-However, this can incur a performance penalty. If KiTTY is running
+However, this can incur a performance penalty. If KiTTY++ is running
 slowly with logging enabled, you could try unchecking this option. Be
 warned that the log file may not always be up to date as a result
 (although it will of course be flushed when it is closed, for instance
@@ -385,9 +394,9 @@ challenge-response authentication methods such as
 \q{keyboard-interactive}.) This does not include X11 authentication
 data if using X11 forwarding.
 
-Note that this will only omit data that KiTTY \e{knows} to be a
+Note that this will only omit data that KiTTY++ \e{knows} to be a
 password. However, if you start another login session within your
-KiTTY session, for instance, any password used will appear in the
+KiTTY++ session, for instance, any password used will appear in the
 clear in the packet log. The next option may be of use to protect
 against this.
 
@@ -405,11 +414,11 @@ This option is disabled by default.
 \H{config-terminal} The Terminal panel
 
 The Terminal configuration panel allows you to control the behaviour
-of KiTTY's \i{terminal emulation}.
+of KiTTY++'s \i{terminal emulation}.
 
 \S{config-autowrap} \q{Auto wrap mode initially on}
 
-\ii{Auto wrap mode} controls what happens when text printed in a KiTTY
+\ii{Auto wrap mode} controls what happens when text printed in a KiTTY++
 window reaches the right-hand edge of the window.
 
 With auto wrap mode on, if a long line of text reaches the
@@ -431,7 +440,7 @@ immediately.
 
 \S{config-decom} \q{DEC Origin Mode initially on}
 
-\i{DEC Origin Mode} is a minor option which controls how KiTTY
+\i{DEC Origin Mode} is a minor option which controls how KiTTY++
 interprets cursor-position \i{control sequence}s sent by the server.
 
 The server can send a control sequence that restricts the \i{scrolling
@@ -500,7 +509,7 @@ colour. Others believe the screen should be cleared to whatever the
 server has selected as a background colour.
 
 There exist applications that expect both kinds of behaviour.
-Therefore, KiTTY can be configured to do either.
+Therefore, KiTTY++ can be configured to do either.
 
 With this option disabled, screen clearing is always done in the
 default background colour. With this option enabled, it is done in
@@ -515,12 +524,12 @@ immediately.
 
 \S{config-blink} \q{Enable \i{blinking text}}
 
-The server can ask KiTTY to display text that blinks on and off.
-This is very distracting, so KiTTY allows you to turn blinking text
+The server can instruct KiTTY++ to display text that blinks on and off.
+This is very distracting, so KiTTY++ allows you to turn blinking text
 off completely.
 
 When blinking text is disabled and the server attempts to make some
-text blink, KiTTY will instead display the text with a \I{background
+text blink, KiTTY++ will instead display the text with a \I{background
 colour, bright}bolded background colour.
 
 Blinking text can be turned on and off by \i{control sequence}s sent by
@@ -532,7 +541,7 @@ immediately.
 
 \S{config-answerback} \q{\ii{Answerback} to ^E}
 
-This option controls what KiTTY will send back to the server if the
+This option controls what KiTTY++ will send back to the server if the
 server sends it the ^E \i{enquiry character}. By default it sends
 nothing, as xterm and Windows Terminal do.
 
@@ -542,7 +551,7 @@ than one ^E character, and your next command line then reads the
 answerback string several times over, as if you had typed it. Set a
 string only for a host or device that expects one.
 
-Note that this is \e{not} the feature of KiTTY which the server will
+Note that this is \e{not} the feature of KiTTY++ which the server will
 typically use to determine your terminal type. That feature is the
 \q{\ii{Terminal-type} string} in the Connection panel; see
 \k{config-termtype} for details.
@@ -552,13 +561,13 @@ You can include control characters in the answerback string using
 
 \S{config-localecho} \q{\ii{Local echo}}
 
-With local echo disabled, characters you type into the KiTTY window
-are not echoed in the window \e{by KiTTY}. They are simply sent to
+With local echo disabled, characters you type into the KiTTY++ window
+are not echoed in the window \e{by KiTTY++}. They are simply sent to
 the server. (The \e{server} might choose to \I{remote echo}echo them
-back to you; this can't be controlled from the KiTTY control panel.)
+back to you; this can't be controlled from the KiTTY++ control panel.)
 
 Some types of session need local echo, and many do not. In its
-default mode, KiTTY will automatically attempt to deduce whether or
+default mode, KiTTY++ will automatically attempt to deduce whether or
 not local echo is appropriate for the session you are working in. If
 you find it has made the wrong decision, you can use this
 configuration option to override its choice: you can force local
@@ -567,10 +576,10 @@ relying on the automatic detection.
 
 \S{config-localedit} \q{\ii{Local line editing}}
 
-Normally, every character you type into the KiTTY window is sent
+Normally, every character you type into the KiTTY++ window is sent
 immediately to the server the moment you type it.
 
-If you enable local line editing, this changes. KiTTY will let you
+If you enable local line editing, this changes. KiTTY++ will let you
 edit a whole line at a time locally, and the line will only be sent
 to the server when you press Return. If you make a mistake, you can
 use the Backspace key to correct it before you press Return, and the
@@ -584,7 +593,7 @@ advanced MUDs do occasionally turn local line editing on and turn
 local echo off, in order to accept a password from the user.)
 
 Some types of session need local line editing, and many do not. In
-its default mode, KiTTY will automatically attempt to deduce whether
+its default mode, KiTTY++ will automatically attempt to deduce whether
 or not local line editing is appropriate for the session you are
 working in. If you find it has made the wrong decision, you can use
 this configuration option to override its choice: you can force
@@ -595,7 +604,7 @@ instead of relying on the automatic detection.
 
 A lot of VT100-compatible terminals support printing under control
 of the remote server (sometimes called \q{passthrough printing}).
-KiTTY supports this feature as well, but it is turned off by default.
+KiTTY++ supports this feature as well, but it is turned off by default.
 
 To enable remote-controlled printing, choose a printer from the
 \q{Printer to send ANSI printer output to} drop-down list box. This
@@ -605,16 +614,16 @@ network name of a networked printer (for example,
 \c{\\\\printserver\\printer1}) even if you haven't already
 installed a driver for it on your own machine.
 
-When the remote server attempts to print some data, KiTTY will send
+When the remote server attempts to print some data, KiTTY++ will send
 that data to the printer \e{raw} - without translating it,
 attempting to format it, or doing anything else to it. It is up to
 you to ensure your remote server knows what type of printer it is
 talking to.
 
-Since KiTTY sends data to the printer raw, it cannot offer options
+Since KiTTY++ sends data to the printer raw, it cannot offer options
 such as portrait versus landscape, print quality, or paper tray
 selection. All these things would be done by your PC printer driver
-(which KiTTY bypasses); if you need them done, you will have to find
+(which KiTTY++ bypasses); if you need them done, you will have to find
 a way to configure your remote server to do them.
 
 To disable remote printing again, choose \q{None (printing
@@ -624,8 +633,8 @@ state.
 \H{config-keyboard} The Keyboard panel
 
 The Keyboard configuration panel allows you to control the behaviour
-of the \i{keyboard} in KiTTY.  The correct state for many of these
-settings depends on what the server to which KiTTY is connecting
+of the \i{keyboard} in KiTTY++.  The correct state for many of these
+settings depends on what the server to which KiTTY++ is connecting
 expects.  With a \i{Unix} server, this is likely to depend on the
 \i\c{termcap} or \i\c{terminfo} entry it uses, which in turn is likely to
 be controlled by the \q{\ii{Terminal-type} string} setting in the Connection
@@ -638,24 +647,24 @@ Some terminals believe that the Backspace key should send the same
 thing to the server as \i{Control-H} (ASCII code 8). Other terminals
 believe that the Backspace key should send ASCII code 127 (usually
 known as \i{Control-?}) so that it can be distinguished from Control-H.
-This option allows you to choose which code KiTTY generates when you
+This option allows you to choose which code KiTTY++ generates when you
 press Backspace.
 
-If you are connecting over SSH, KiTTY by default tells the server
+If you are connecting over SSH, KiTTY++ by default sends the server
 the value of this option (see \k{config-ttymodes}), so you may find
 that the Backspace key does the right thing either way. Similarly,
 if you are connecting to a \i{Unix} system, you will probably find that
 the Unix \i\c{stty} command lets you configure which the server
-expects to see, so again you might not need to change which one KiTTY
+expects to see, so again you might not need to change which one KiTTY++
 generates. On other systems, the server's expectation might be fixed
-and you might have no choice but to configure KiTTY.
+and you might have no choice but to configure KiTTY++.
 
-If you do have the choice, we recommend configuring KiTTY to
+If you do have the choice, we recommend configuring KiTTY++ to
 generate Control-? and configuring the server to expect it, because
 that allows applications such as \c{emacs} to use Control-H for
 help.
 
-(Typing \i{Shift-Backspace} will cause KiTTY to send whichever code
+(Typing \i{Shift-Backspace} will cause KiTTY++ to send whichever code
 isn't configured here as the default.)
 
 \S{config-homeend} Changing the action of the \i{Home and End keys}
@@ -744,7 +753,7 @@ keys send \c{ESC [A} through to \c{ESC [D}. In application mode,
 they send \c{ESC OA} through to \c{ESC OD}.
 
 Application Cursor Keys mode can be turned on and off by the server,
-depending on the application. KiTTY allows you to configure the
+depending on the application. KiTTY++ allows you to configure the
 initial state.
 
 You can also disable application cursor keys mode completely, using
@@ -770,7 +779,7 @@ even when application mode is active and Num Lock is acting like a
 function key. This is unavoidable.
 
 Application keypad mode can be turned on and off by the server,
-depending on the application. KiTTY allows you to configure the
+depending on the application. KiTTY++ allows you to configure the
 initial state.
 
 The third setting, \q{NetHack}, is neither of these: the keypad keys
@@ -786,7 +795,7 @@ You can also disable application keypad mode completely, using the
 
 \S{config-nethack} Using \i{NetHack keypad mode}
 
-KiTTY has a special mode for playing NetHack. You can enable it by
+KiTTY++ has a special mode for playing NetHack. You can enable it by
 selecting \q{NetHack} in the \q{Initial state of numeric keypad}
 control.
 
@@ -797,7 +806,7 @@ command (do nothing).
 In addition, pressing Shift or Ctrl with the keypad keys generate
 the Shift- or Ctrl-keys you would expect (e.g. keypad-7 generates
 \cq{y}, so Shift-keypad-7 generates \cq{Y} and Ctrl-keypad-7
-generates Ctrl-Y); these commands tell NetHack to keep moving you in
+generates Ctrl-Y); these commands instruct NetHack to keep moving you in
 the same direction until you encounter something interesting.
 
 For some reason, this feature only works properly when \i{Num Lock} is
@@ -813,17 +822,17 @@ easy to remember; for example, composing \q{e} and \q{`} produces
 the \q{\u00e8{e-grave}} character.
 
 If your keyboard has a Windows \i{Application key}, it acts as a Compose
-key in KiTTY. Alternatively, if you enable the \q{\i{AltGr} acts as
+key in KiTTY++. Alternatively, if you enable the \q{\i{AltGr} acts as
 Compose key} option, the AltGr key will become a Compose key.
 
 \S{config-ctrlalt} \q{Control-Alt is different from \i{AltGr}}
 
 Some old keyboards do not have an AltGr key, which can make it
-difficult to type some characters. KiTTY can be configured to treat
+difficult to type some characters. KiTTY++ can be configured to treat
 the key combination Ctrl + Left Alt the same way as the AltGr key.
 
 By default, this checkbox is checked, and the key combination Ctrl +
-Left Alt does something completely different. KiTTY's usual handling
+Left Alt does something completely different. KiTTY++'s usual handling
 of the left Alt key is to prefix the Escape (Control-\cw{[})
 character to whatever character sequence the rest of the keypress
 would generate. For example, Alt-A generates Escape followed by
@@ -840,10 +849,10 @@ setting of \q{AltGr acts as Compose key} described in
 \H{config-bell} The Bell panel
 
 The Bell panel controls the \i{terminal bell} feature: the server's
-ability to cause KiTTY to beep at you.
+ability to cause KiTTY++ to beep at you.
 
 In the default configuration, when the server sends the character
-with ASCII code 7 (Control-G), KiTTY will play the \i{Windows Default
+with ASCII code 7 (Control-G), KiTTY++ will play the \i{Windows Default
 Beep} sound. This is not always what you want the terminal bell
 feature to do; the Bell panel allows you to configure alternative
 actions.
@@ -863,14 +872,14 @@ what this sound is, or to test it if nothing seems to be happening,
 use the Sound configurer in the Windows Control Panel.
 
 \b \q{\ii{Visual bell}} is a silent alternative to a beeping computer. In
-this mode, when the server sends a Control-G, the whole KiTTY window
+this mode, when the server sends a Control-G, the whole KiTTY++ window
 will flash white for a fraction of a second.
 
 \b \q{Beep using the \i{PC speaker}} is self-explanatory.
 
 \b \q{Play a custom \i{sound file}} allows you to specify a particular
-sound file to be used by KiTTY alone, or even by a particular
-individual KiTTY session. This allows you to distinguish your KiTTY
+sound file to be used by KiTTY++ alone, or even by a particular
+individual KiTTY++ session. This allows you to distinguish your KiTTY++
 beeps from any other beeps on the system. If you select this option,
 you will also need to enter the name of your sound file in the edit
 control \q{Custom sound file to play as a bell}. The name can use
@@ -879,7 +888,7 @@ Windows environment variables (\k{kitty-cfg-envvars}).
 \S{config-belltaskbar} \q{\ii{Taskbar}/\I{window caption}caption
 indication on bell}
 
-This feature controls what happens to the KiTTY window's entry in
+This feature controls what happens to the KiTTY++ window's entry in
 the Windows Taskbar if a bell occurs while the window does not have
 the input focus.
 
@@ -887,9 +896,9 @@ In the default state (\q{Disabled}) nothing unusual happens.
 
 If you select \q{Steady}, then when a bell occurs and the window is
 not in focus, the window's Taskbar entry and its title bar will
-change colour to let you know that KiTTY session is asking for your
+change colour to let you know that KiTTY++ session requests your
 attention. The change of colour will persist until you select the
-window, so you can leave several KiTTY windows minimised in your
+window, so you can leave several KiTTY++ windows minimised in your
 terminal, go away from your keyboard, and be sure not to have missed
 any important beeps when you get back.
 
@@ -907,7 +916,7 @@ often doesn't stop beeping for ten minutes, and everybody else in
 the office gets annoyed.
 
 To try to avoid this behaviour, or any other cause of excessive
-beeping, KiTTY includes a bell overload management feature. In the
+beeping, KiTTY++ includes a bell overload management feature. In the
 default configuration, receiving more than five bell characters in a
 two-second period will cause the overload feature to activate. Once
 the overload feature is active, further bells will \I{terminal bell,
@@ -932,13 +941,13 @@ that generate beeps (such as filename completion).
 
 \H{config-features} The Features panel
 
-KiTTY's \i{terminal emulation} is very highly featured, and can do a lot
+KiTTY++'s \i{terminal emulation} is very highly featured, and can do a lot
 of things under remote server control. Some of these features can
 cause problems due to buggy or strangely configured server
 applications.
 
 The Features configuration panel allows you to disable some of
-KiTTY's more advanced terminal features, in case they cause trouble.
+KiTTY++'s more advanced terminal features, in case they cause trouble.
 
 \S{config-features-application} Disabling application keypad and cursor keys
 
@@ -952,7 +961,7 @@ tries to do.
 
 \S{config-features-mouse} Disabling \cw{xterm}-style \i{mouse reporting}
 
-KiTTY allows the server to send \i{control codes} that let it take over
+KiTTY++ allows the server to send \i{control codes} that let it take over
 the mouse and use it for purposes other than \i{copy and paste}.
 Applications which use this feature include the text-mode web
 browser \i\c{links}, the Usenet newsreader \i\c{trn} version 4, and the
@@ -964,20 +973,20 @@ ticked, the mouse will \e{always} do copy and paste in the normal
 way.
 
 Note that even if the application takes over the mouse, you can
-still manage KiTTY's copy and paste by holding down the Shift key
+still manage KiTTY++'s copy and paste by holding down the Shift key
 while you select and paste, unless you have deliberately turned this
 feature off (see \k{config-mouseshift}).
 
 \S{config-features-resize} Disabling remote \i{terminal resizing}
 
-KiTTY has the ability to change the terminal's size and position in
-response to commands from the server. If you find KiTTY is doing
-this unexpectedly or inconveniently, you can tell KiTTY not to
+KiTTY++ has the ability to change the terminal's size and position in
+response to commands from the server. If you find KiTTY++ is doing
+this unexpectedly or inconveniently, you can tell KiTTY++ not to
 respond to those server commands.
 
 \S{config-features-altscreen} Disabling switching to the \i{alternate screen}
 
-Many terminals, including KiTTY, support an \q{alternate screen}.
+Many terminals, including KiTTY++, support an \q{alternate screen}.
 This is the same size as the ordinary terminal screen, but separate.
 Typically a screen-based program such as a text editor might switch
 the terminal to the alternate screen before starting up. Then at the
@@ -990,14 +999,14 @@ can disable the alternate screen feature completely.
 
 \S{config-features-retitle} Disabling remote \i{window title} changing
 
-KiTTY has the ability to change the window title in response to
-commands from the server. If you find KiTTY is doing this
-unexpectedly or inconveniently, you can tell KiTTY not to respond to
+KiTTY++ has the ability to change the window title in response to
+commands from the server. If you find KiTTY++ is doing this
+unexpectedly or inconveniently, you can tell KiTTY++ not to respond to
 those server commands.
 
 \S{config-features-qtitle} Response to remote \i{window title} querying
 
-KiTTY can optionally provide the xterm service of allowing server
+KiTTY++ can optionally provide the xterm service of allowing server
 applications to find out the local window title. This feature is
 disabled by default, but you can turn it on if you really want it.
 
@@ -1017,42 +1026,42 @@ There are three settings for this option:
 
 \dt \q{None}
 
-\dd KiTTY makes no response whatsoever to the relevant escape
+\dd KiTTY++ makes no response whatsoever to the relevant escape
 sequence. This may upset server-side software that is expecting some
 sort of response.
 
 \dt \q{Empty string}
 
-\dd KiTTY makes a well-formed response, but leaves it blank. Thus,
+\dd KiTTY++ makes a well-formed response, but leaves it blank. Thus,
 server-side software that expects a response is kept happy, but an
 attacker cannot influence the response string. This is probably the
 setting you want if you have no better ideas.
 
 \dt \q{Window title}
 
-\dd KiTTY responds with the actual window title. This is dangerous for
+\dd KiTTY++ responds with the actual window title. This is dangerous for
 the reasons described above.
 
 \S{config-features-clearscroll} Disabling remote \i{scrollback clearing}
 
-KiTTY has the ability to clear the terminal's scrollback buffer in
-response to a command from the server. If you find KiTTY is doing this
-unexpectedly or inconveniently, you can tell KiTTY not to respond to
+KiTTY++ has the ability to clear the terminal's scrollback buffer in
+response to a command from the server. If you find KiTTY++ is doing this
+unexpectedly or inconveniently, you can tell KiTTY++ not to respond to
 that server command.
 
 \S{config-features-dbackspace} Disabling \i{destructive backspace}
 
-Normally, when KiTTY receives character 127 (^?) from the server, it
+Normally, when KiTTY++ receives character 127 (^?) from the server, it
 will perform a \q{destructive backspace}: move the cursor one space
 left and delete the character under it. This can apparently cause
-problems in some applications, so KiTTY provides the ability to
+problems in some applications, so KiTTY++ provides the ability to
 configure character 127 to perform a normal backspace (without
 deleting a character) instead.
 
 \S{config-features-charset} Disabling remote \i{character set}
 configuration
 
-KiTTY has the ability to change its character set configuration in
+KiTTY++ has the ability to change its character set configuration in
 response to commands from the server. Some programs send these
 commands unexpectedly or inconveniently. In particular, \i{BitchX} (an
 IRC client) seems to have a habit of reconfiguring the character set
@@ -1064,7 +1073,7 @@ disabling the remote character set configuration commands.
 
 \S{config-features-shaping} Disabling \i{Arabic text shaping}
 
-KiTTY supports shaping of Arabic text, which means that if your
+KiTTY++ supports shaping of Arabic text, which means that if your
 server sends text written in the basic \i{Unicode} Arabic alphabet then
 it will convert it to the correct display forms before printing it
 on the screen.
@@ -1074,17 +1083,17 @@ to happen (especially if you are not an Arabic speaker and you
 unexpectedly find yourself dealing with Arabic text files in
 applications which are not Arabic-aware), you might find that the
 \i{display becomes corrupted}. By ticking this box, you can disable
-Arabic text shaping so that KiTTY displays precisely the characters
-it is told to display.
+Arabic text shaping so that KiTTY++ displays precisely the characters
+it receives for display.
 
 You may also find you need to disable bidirectional text display;
 see \k{config-features-bidi}.
 
 \S{config-features-bidi} Disabling \i{bidirectional text} display
 
-KiTTY supports bidirectional text display, which means that if your
+KiTTY++ supports bidirectional text display, which means that if your
 server sends text written in a language which is usually displayed
-from right to left (such as \i{Arabic} or \i{Hebrew}) then KiTTY will
+from right to left (such as \i{Arabic} or \i{Hebrew}) then KiTTY++ will
 automatically flip it round so that it is displayed in the right
 direction on the screen.
 
@@ -1093,7 +1102,7 @@ to happen (especially if you are not an Arabic speaker and you
 unexpectedly find yourself dealing with Arabic text files in
 applications which are not Arabic-aware), you might find that the
 \i{display becomes corrupted}. By ticking this box, you can disable
-bidirectional text display, so that KiTTY displays text from left to
+bidirectional text display, so that KiTTY++ displays text from left to
 right in all situations.
 
 You may also find you need to disable Arabic text shaping;
@@ -1106,7 +1115,7 @@ the server as terminal input, exactly as if you'd typed the same text
 into the terminal window using the keyboard (except that it's all sent
 at once, much faster than you could type it).
 
-However, a terminal application can change that, by asking the
+However, a terminal application can change that, by instructing the
 terminal to enable \q{bracketed paste mode}. In this mode, pasted data
 is marked in the input stream, by sending a special control sequence
 before the paste, and another one at the end.
@@ -1123,25 +1132,25 @@ the pasted data contained a newline character.
 
 In edge cases, it's possible that bracketed paste mode introduces
 bigger problems than the ones it solves. So you can use this checkbox
-to turn it off completely. If you do that, then KiTTY will always send
+to turn it off completely. If you do that, then KiTTY++ will always send
 your paste data exactly as if it had been typed at the keyboard,
-whether or not the server asked for bracketed paste mode.
+whether or not the server requested bracketed paste mode.
 
 \H{config-window} The Window panel
 
 The Window configuration panel allows you to control aspects of the
 \i{KiTTY window}.
 
-\S{config-winsize} Setting the \I{window size}size of the KiTTY window
+\S{config-winsize} Setting the \I{window size}size of the KiTTY++ window
 
-The \q{\ii{Columns}} and \q{\ii{Rows}} boxes let you set the KiTTY
+The \q{\ii{Columns}} and \q{\ii{Rows}} boxes let you set the KiTTY++
 window to a precise size. Of course you can also \I{window resizing}drag
 the window to a new size while a session is running.
 
 \S{config-winsizelock} What to do when the window is resized
 
 These options allow you to control what happens when the user tries
-to \I{window resizing}resize the KiTTY window using its window furniture.
+to \I{window resizing}resize the KiTTY++ window using its window furniture.
 
 There are four options here:
 
@@ -1162,23 +1171,23 @@ resized at all.
 
 \S{config-scrollback} Controlling \i{scrollback}
 
-These options let you configure the way KiTTY keeps text after it
+These options let you configure the way KiTTY++ keeps text after it
 scrolls off the top of the screen (see \k{using-scrollback}).
 
 The \q{Lines of scrollback} box lets you configure how many lines of
-text KiTTY keeps. The \q{Display scrollbar} options allow you to
+text KiTTY++ keeps. The \q{Display scrollbar} options allow you to
 hide the \i{scrollbar} (although you can still view the scrollback using
 the keyboard as described in \k{using-scrollback}). You can separately
 configure whether the scrollbar is shown in \i{full-screen} mode and in
 normal modes.
 
 If you are viewing part of the scrollback when the server sends more
-text to KiTTY, the screen will revert to showing the current
+text to KiTTY++, the screen will revert to showing the current
 terminal contents. You can disable this behaviour by turning off
 \q{Reset scrollback on display activity}. You can also make the
 screen revert when you press a key, by turning on \q{Reset
 scrollback on keypress}. Resizing the window does \e{not} move the
-view: KiTTY keeps showing the lines you had scrolled to, and only a
+view: KiTTY++ keeps showing the lines you had scrolled to, and only a
 view that was at the bottom follows the bottom. Output arriving within
 a second after a resize, the remote side redrawing for the new size,
 does not reset the view either.
@@ -1200,7 +1209,7 @@ This option is enabled by default.
 \H{config-appearance} The Appearance panel
 
 The Appearance configuration panel allows you to control aspects of
-the appearance of \I{KiTTY window}KiTTY's window.
+the appearance of \I{KiTTY window}KiTTY++'s window.
 
 \S{config-cursor} Controlling the appearance of the \i{cursor}
 
@@ -1217,12 +1226,12 @@ if cursor blinking has been disabled system-wide.)
 \S{config-font} Controlling the \i{font} used in the terminal window
 
 This option allows you to choose what font, in what \I{font size}size,
-the KiTTY terminal window uses to display the text in the session.
+the KiTTY++ terminal window uses to display the text in the session.
 
 By default, you will be offered a choice from all the fixed-width
 fonts installed on the system, since VT100-style terminal handling
 expects a fixed-width font. If you tick the box marked \q{Allow
-selection of variable-pitch fonts}, however, KiTTY will offer
+selection of variable-pitch fonts}, however, KiTTY++ will offer
 variable-width fonts as well: if you select one of these, the font
 will be coerced into fixed-size character cells, which will probably
 not look very good (but can work OK with some fonts).
@@ -1239,7 +1248,7 @@ session (\c{LineSpacing}).
 \S{config-mouseptr} \q{Hide \i{mouse pointer} when typing in window}
 
 If you enable this option, the mouse pointer will disappear if the
-KiTTY window is selected and you press a key. This way, it will not
+KiTTY++ window is selected and you press a key. This way, it will not
 obscure any of the text in the window while you work in your
 session. As soon as you move the mouse, the pointer will reappear.
 
@@ -1248,7 +1257,7 @@ visible at all times.
 
 \S{config-winborder} Controlling the \i{window border}
 
-KiTTY allows you to configure the appearance of the window border to
+KiTTY++ allows you to configure the appearance of the window border to
 some extent.
 
 The checkbox marked \q{Sunken-edge border} changes the appearance of
@@ -1265,7 +1274,7 @@ it to zero, or increase it further.
 \H{config-behaviour} The Behaviour panel
 
 The Behaviour configuration panel allows you to control aspects of
-the behaviour of \I{KiTTY window}KiTTY's window. Its first group,
+the behaviour of \I{KiTTY window}KiTTY++'s window. Its first group,
 \q{Closing the window}, holds \q{Close window on exit}
 (\k{config-closeonexit}) and the warning below; \q{Remembering} holds
 \q{Save settings on exit} (\k{kitty-cfg-save-on-exit}). Where the
@@ -1276,7 +1285,7 @@ on Window > Appearance > Position (\k{kitty-cfg-winpos-remember}).
 
 On the Window > Behaviour panel, under \q{Closing the window}, there
 is an option labelled \q{Close window on exit}. This controls whether
-the KiTTY \i{terminal window} disappears as soon as the session inside
+the KiTTY++ \i{terminal window} disappears as soon as the session inside
 it terminates. If you are likely to want to copy and paste text out of
 the session after it has terminated, or restart the session, you
 should arrange for this option to be off.
@@ -1296,8 +1305,8 @@ confusing message from the server will leave the window up.
 
 \S{config-warnonclose} \q{Warn before \i{closing window}}
 
-If you press the \i{Close button} in a KiTTY window that contains a
-running session, KiTTY will put up a warning window asking if you
+If you press the \i{Close button} in a KiTTY++ window that contains a
+running session, KiTTY++ will put up a warning window to confirm that you
 really meant to close the window. A window whose session has already
 terminated can always be closed without a warning.
 
@@ -1321,12 +1330,12 @@ will simply send a key sequence to the server.
 \S{config-altspace} \q{\ii{System menu} appears on \i{ALT-Space}}
 
 If this option is enabled, then pressing ALT-Space will bring up the
-KiTTY window's menu, like clicking on the top left corner. If it is
+KiTTY++ window's menu, like clicking on the top left corner. If it is
 disabled, then pressing ALT-Space will just send \c{ESC SPACE} to
 the server.
 
 Some \i{accessibility} programs for Windows may need this option
-enabling to be able to control KiTTY's window successfully. For
+enabling to be able to control KiTTY++'s window successfully. For
 instance, \i{Dragon NaturallySpeaking} requires it both to open the
 system menu via voice, and to close, minimise, maximise and restore
 the window.
@@ -1334,19 +1343,19 @@ the window.
 \S{config-altonly} \q{\ii{System menu} appears on \i{Alt} alone}
 
 If this option is enabled, then pressing and releasing ALT will
-bring up the KiTTY window's menu, like clicking on the top left
+bring up the KiTTY++ window's menu, like clicking on the top left
 corner. If it is disabled, then pressing and releasing ALT will have
 no effect.
 
 \S{config-alwaysontop} \q{Ensure window is \i{always on top}}
 
-If this option is enabled, the KiTTY window will stay on top of all
+If this option is enabled, the KiTTY++ window will stay on top of all
 other windows.
 
 \S{config-fullscreen} \q{\ii{Full screen} on Alt-Enter}
 
 If this option is enabled, then pressing Alt-Enter will cause the
-KiTTY window to become full-screen. Pressing Alt-Enter again will
+KiTTY++ window to become full-screen. Pressing Alt-Enter again will
 restore the previous window size.
 
 The full-screen feature is also available from the \ii{System menu}, even
@@ -1357,22 +1366,22 @@ when it is configured not to be available on the Alt-Enter key. See
 
 The Translation configuration panel allows you to control the
 translation between the \i{character set} understood by the server and
-the character set understood by KiTTY.
+the character set understood by KiTTY++.
 
 \S{config-charset} Controlling character set translation
 
-During an interactive session, KiTTY receives a stream of 8-bit
+During an interactive session, KiTTY++ receives a stream of 8-bit
 bytes from the server, and in order to display them on the screen it
 needs to know what character set to interpret them in. Similarly,
-KiTTY needs to know how to translate your keystrokes into the encoding
+KiTTY++ needs to know how to translate your keystrokes into the encoding
 the server expects. Unfortunately, there is no satisfactory
-mechanism for KiTTY and the server to communicate this information,
+mechanism for KiTTY++ and the server to communicate this information,
 so it must usually be manually configured.
 
 There are a lot of character sets to choose from. The \q{Remote
 character set} option lets you select one.
 
-By default KiTTY will use the \i{UTF-8} encoding of \i{Unicode}, which
+By default KiTTY++ will use the \i{UTF-8} encoding of \i{Unicode}, which
 can represent pretty much any character; data coming from the server
 is interpreted as UTF-8, and keystrokes are sent UTF-8 encoded. This
 is what most modern distributions of Linux will expect by default.
@@ -1397,7 +1406,7 @@ If you need support for a numeric \i{code page} which is not listed in
 the drop-down list, such as code page 866, then you can try entering
 its name manually (\c{\i{CP866}} for example) in the list box. If the
 underlying version of Windows has the appropriate translation table
-installed, KiTTY will use it.
+installed, KiTTY++ will use it.
 
 \S{config-cjk-ambig-wide} \q{Treat \i{CJK} ambiguous characters as wide}
 
@@ -1407,7 +1416,7 @@ characters should be treated as single-width for the purposes of \I{wrapping,
 terminal}wrapping and so on; however, in some CJK contexts, they are better
 treated as double-width for historical reasons, and some server-side
 applications may expect them to be displayed as such. Setting this option
-will cause KiTTY to take the double-width interpretation.
+will cause KiTTY++ to take the double-width interpretation.
 
 If you use legacy CJK applications, and you find your lines are
 wrapping in the wrong places, or you are having other display
@@ -1429,7 +1438,7 @@ native keyboard layout is not US or UK.
 
 VT100-series terminals allow the server to send \i{control sequence}s that
 shift temporarily into a separate character set for drawing simple
-lines and boxes. However, there are a variety of ways in which KiTTY
+lines and boxes. However, there are a variety of ways in which KiTTY++
 can attempt to find appropriate characters, and the right one to use
 depends on the locally configured \i{font}. In general you should probably
 try lots of options until you find one that your particular font
@@ -1462,8 +1471,8 @@ miss out other characters from the main character set.
 \S{config-linedrawpaste} Controlling \i{copy and paste} of line drawing
 characters
 
-By default, when you copy and paste a piece of the KiTTY screen that
-contains VT100 line and box drawing characters, KiTTY will paste
+By default, when you copy and paste a piece of the KiTTY++ screen that
+contains VT100 line and box drawing characters, KiTTY++ will paste
 them in the form they appear on the screen: either \i{Unicode} line
 drawing code points, or the \q{poor man's} line-drawing characters
 \c{+}, \c{-} and \c{|}. The checkbox \q{Copy and paste VT100 line
@@ -1481,7 +1490,7 @@ Unicode always.
 
 \S{config-utf8linedraw} Combining VT100 line-drawing with UTF-8
 
-If KiTTY is configured to treat data from the server as encoded in
+If KiTTY++ is configured to treat data from the server as encoded in
 UTF-8, then by default it disables the older VT100-style system of
 control sequences that cause the lower-case letters to be temporarily
 replaced by line drawing characters.
@@ -1503,25 +1512,25 @@ However, not all applications will see it that way. Even UTF-8
 terminal users will still sometimes have to run software that tries to
 print line-drawing characters in the old-fashioned way. So the
 configuration option \q{Enable VT100 line drawing even in UTF-8 mode}
-puts KiTTY into a hybrid mode in which it understands the VT100-style
+puts KiTTY++ into a hybrid mode in which it understands the VT100-style
 control sequences that change the meaning of the ASCII lower case
 letters, \e{and} understands UTF-8.
 
 \H{config-selection} The Copy & Paste panel
 
 The Copy & Paste panel allows you to control the way \i{copy and paste}
-work in the KiTTY window.
+work in the KiTTY++ window.
 
 \S{config-mouse} Changing the actions of the mouse buttons
 
-KiTTY's copy and paste mechanism is by default modelled on the Unix
+KiTTY++'s copy and paste mechanism is by default modelled on the Unix
 \i\c{xterm} application. The X Window System uses a three-button mouse,
 and the convention in that system is that the \i{left button}
 \I{selecting text}selects, the \i{right button} extends an existing
 selection, and the \i{middle button} pastes.
 
 Windows often only has two mouse buttons, so when run on Windows,
-KiTTY is configurable. In KiTTY's default configuration
+KiTTY++ is configurable. In KiTTY++'s default configuration
 (\q{Compromise}), the \e{right} button pastes, and the \e{middle}
 button (if you have one) \I{adjusting a selection}extends a
 selection.
@@ -1536,12 +1545,9 @@ which one of the options is \q{Paste}). (This context menu is always
 available by holding down Ctrl and right-clicking, regardless of the
 setting of this option.)
 
-(When KiTTY itself is running on Unix, it follows the X Window System
-convention.)
-
 \S{config-mouseshift} \q{Shift overrides application's use of mouse}
 
-KiTTY allows the server to send \i{control codes} that let it
+KiTTY++ allows the server to send \i{control codes} that let it
 \I{mouse reporting}take over the mouse and use it for purposes other
 than \i{copy and paste}.
 Applications which use this feature include the text-mode web
@@ -1566,7 +1572,7 @@ all, you can do this using the Features control panel; see
 
 \S{config-rectselect} Default selection mode
 
-As described in \k{using-selection}, KiTTY has two modes of
+As described in \k{using-selection}, KiTTY++ has two modes of
 selecting text to be copied to the clipboard. In the default mode
 (\q{Normal}), dragging the mouse from point A to point B selects to
 the end of the line containing A, all the lines in between, and from
@@ -1582,10 +1588,10 @@ you have to hold down Alt to get the \e{normal} behaviour.
 \S{config-clipboards} Assigning copy and paste actions to clipboards
 
 Here you can configure which clipboard(s) are written or read by
-KiTTY's various copy and paste actions.
+KiTTY++'s various copy and paste actions.
 
 Most platforms, including Windows, have a single system clipboard.
-On these platforms, KiTTY provides a second clipboard-like facility by
+On these platforms, KiTTY++ provides a second clipboard-like facility by
 permitting you to paste the text you last selected in \e{this window},
 whether or not it is currently also in the system clipboard. This is
 not enabled by default.
@@ -1593,8 +1599,7 @@ not enabled by default.
 The X Window System (which underlies most Unix graphical interfaces)
 provides multiple clipboards (or \q{\i{selections}}), and many
 applications support more than one of them by a different user
-interface mechanism. When KiTTY itself is running on Unix, it has
-more configurability relating to these selections.
+interface mechanism.
 
 The two most commonly used selections are called \cq{\i{PRIMARY}} and
 \cq{\I{CLIPBOARD selection}CLIPBOARD}; in applications supporting both,
@@ -1607,7 +1612,7 @@ is used by explicit Copy and Paste menu items or keypresses such as
 \S2{config-selection-autocopy} \q{Auto-copy selected text}
 
 The checkbox \q{Auto-copy selected text to system clipboard} controls
-whether or not selecting text in the KiTTY terminal window
+whether or not selecting text in the KiTTY++ terminal window
 automatically has the side effect of copying it to the system
 clipboard, without requiring a separate user interface action.
 
@@ -1620,7 +1625,7 @@ same time.
 
 \S2{config-selection-clipactions} Choosing a clipboard for UI actions
 
-KiTTY has three user-interface actions which can be configured to
+KiTTY++ has three user-interface actions which can be configured to
 paste into the terminal (not counting menu items). You can click
 whichever mouse button (if any) is configured to paste (see
 \k{config-mouse}); you can press \i{Shift-Ins}; or you can press
@@ -1630,7 +1635,7 @@ You can configure which of the available clipboards each of these
 actions pastes from (including turning the paste action off
 completely). On platforms with a single system clipboard (such as
 Windows), the available options are to paste from that clipboard or
-to paste from KiTTY's internal memory of the \i{last selected text}
+to paste from KiTTY++'s internal memory of the \i{last selected text}
 within that window. On X, the standard options are \cw{CLIPBOARD} or
 \cw{PRIMARY}.
 
@@ -1646,11 +1651,11 @@ from, \i{Ctrl-Ins} will copy to the same location; similarly,
 On X, you can also enter a selection name of your choice. For example,
 there is a rarely-used standard selection called \cq{\i{SECONDARY}}, which
 Emacs (for example) can work with if you hold down the Meta key while
-dragging to select or clicking to paste; if you configure a KiTTY
+dragging to select or clicking to paste; if you configure a KiTTY++
 keyboard action to access this clipboard, then you can interoperate
 with other applications' use of it. Another thing you could do would
 be to invent a clipboard name yourself, to create a special clipboard
-shared \e{only} between instances of KiTTY, or between just instances
+shared \e{only} between instances of KiTTY++, or between just instances
 configured in that particular way.
 
 \S{config-paste-ctrl-char} \q{Permit control characters in pasted text}
@@ -1661,7 +1666,7 @@ have surprising effects if pasted into a terminal session, depending
 on what program is running on the server side. Copying text from a
 mischievous web page could put such characters onto the clipboard.
 
-By default, KiTTY filters out the more unusual control characters,
+By default, KiTTY++ filters out the more unusual control characters,
 only letting through the more obvious text-formatting characters
 (newlines, tab, backspace, and DEL).
 
@@ -1673,11 +1678,11 @@ form of scripting, for instance.
 \S{config-rtfcopy} Copying in \i{Rich Text Format}
 
 If you enable \q{Copy to clipboard in RTF as well as plain text},
-KiTTY will write formatting information to the clipboard as well as
+KiTTY++ will write formatting information to the clipboard as well as
 the actual text you copy. The effect of this is
-that if you paste into (say) a word processor, the text will appear
+that if you paste into (for example) a word processor, the text will appear
 in the word processor in the same \i{font}, \i{colour}, and style
-(e.g. bold, underline) KiTTY was using to display it.
+(e.g. bold, underline) KiTTY++ was using to display it.
 
 This option can easily be inconvenient, so by default it is
 disabled.
@@ -1689,12 +1694,12 @@ selecting words in the terminal is steered by them.
 
 \S{config-charclasses} Character classes
 
-KiTTY will \I{word-by-word selection}select a word at a time in the
+KiTTY++ will \I{word-by-word selection}select a word at a time in the
 terminal window if you \i{double-click} to begin the drag. This section
 allows you to control precisely what is considered to be a word.
 
 Each character is given a \e{class}, which is a small number
-(typically 0, 1 or 2). KiTTY considers a single word to be any
+(typically 0, 1 or 2). KiTTY++ considers a single word to be any
 number of adjacent characters in the same class. So by modifying the
 assignment of characters to classes, you can modify the word-by-word
 selection behaviour.
@@ -1729,35 +1734,35 @@ immediately.
 
 \H{config-colours} The Colours panel
 
-The Colours panel allows you to control KiTTY's use of \i{colour}.
+The Colours panel allows you to control KiTTY++'s use of \i{colour}.
 
 \S{config-ansicolour} \q{Allow terminal to specify \i{ANSI colours}}
 
-This option is enabled by default. If it is disabled, KiTTY will
+This option is enabled by default. If it is disabled, KiTTY++ will
 ignore any \i{control sequence}s sent by the server to request coloured
 text.
 
 If you have a particularly garish application, you might want to
-turn this option off and make KiTTY only use the default foreground
+turn this option off and make KiTTY++ only use the default foreground
 and background colours.
 
 \S{config-xtermcolour} \q{Allow terminal to use xterm \i{256-colour mode}}
 
-This option is enabled by default. If it is disabled, KiTTY will
+This option is enabled by default. If it is disabled, KiTTY++ will
 ignore any control sequences sent by the server which use the
 extended 256-colour mode supported by recent versions of \cw{xterm}.
 
 The server only uses 256 colours when it knows the terminal has them,
 and it learns that from the terminal type: with this option on, set
 the terminal-type string (Connection > Login > Terminal details, see
-\k{config-termtype}) to \cq{xterm-256color}. A plain \cq{xterm} tells
-the server 8 colours, and most programs stay with those. While this
+\k{config-termtype}) to \cq{xterm-256color}. A plain \cq{xterm} signals
+8 colours to the server, and most programs stay with those. While this
 option is off, KiTTY++ sends a terminal type ending in
 \cq{-256color} without that ending - \cq{xterm-256color} goes as
 \cq{xterm} - so the server does not use colours this window would not
 show; the stored terminal type stays as it is. A name with a dot, such
 as \cq{screen.xterm-256color}, is sent unchanged: the part after the dot
-names the terminal \c{screen} runs in, and the shortened name
+identifies the terminal \c{screen} runs in, and the shortened name
 (\cq{screen.xterm}) is missing from many terminfo databases.
 
 If you have an application which is supposed to use 256-colour mode
@@ -1776,7 +1781,7 @@ default, but a session saved by an older version keeps the
 
 \S{config-truecolour} \q{Allow terminal to use 24-bit colour}
 
-This option is enabled by default. If it is disabled, KiTTY will
+This option is enabled by default. If it is disabled, KiTTY++ will
 ignore any control sequences sent by the server which use the control
 sequences supported by modern terminals to specify arbitrary 24-bit
 RGB colour value.
@@ -1792,7 +1797,7 @@ is not sent.
 \S{config-boldcolour} \q{Indicate bolded text by changing...}
 
 When the server sends a \i{control sequence} indicating that some text
-should be displayed in \i{bold}, KiTTY can handle this in several
+should be displayed in \i{bold}, KiTTY++ can handle this in several
 ways. It can either change the \i{font} for a bold version, or use the
 same font in a brighter colour, or it can do both (brighten the colour
 \e{and} embolden the font). This control lets you choose which.
@@ -1820,7 +1825,7 @@ worked very well.
 
 \S{config-syscolour} \q{Use \i{system colours}}
 
-Enabling this option will cause KiTTY to ignore the configured colours
+Enabling this option will cause KiTTY++ to ignore the configured colours
 for \I{default background}\I{default foreground}\q{Default
 Background/Foreground} and \I{cursor colour}\q{Cursor Colour/Text} (see
 \k{config-colourcfg}), instead going with the system-wide defaults.
@@ -1832,7 +1837,7 @@ by font changes (see \k{config-boldcolour}).
 \S{config-colourcfg} Adjusting the colours in the \i{terminal window}
 
 The main colour control allows you to specify exactly what colours
-things should be displayed in. To modify one of the KiTTY colours,
+things should be displayed in. To modify one of the KiTTY++ colours,
 use the list box to select which colour you want to modify. The \i{RGB
 values} for that colour will appear on the right-hand side of the
 list box. Now, if you press the \q{Modify} button, you will be
@@ -1841,31 +1846,31 @@ colour to go in place of the old one. (You may also edit the RGB
 values directly in the edit boxes, if you wish; each value is an
 integer from 0 to 255.)
 
-KiTTY allows you to set the \i{cursor colour}, the \i{default foreground}
+KiTTY++ allows you to set the \i{cursor colour}, the \i{default foreground}
 and \I{default background}background, and the precise shades of all the
 \I{ANSI colours}ANSI configurable colours (black, red, green, yellow, blue,
 magenta, cyan, and white). You can also modify the precise shades used for
 the \i{bold} versions of these colours; these are used to display bold text
 if you have chosen to indicate that by colour (see \k{config-boldcolour}),
-and can also be used if the server asks specifically to use them. (Note
+and can also be used if the server specifically requests them. (Note
 that \q{Default Bold Background} is \e{not} the background colour used for
-bold text; it is only used if the server specifically asks for a bold
+bold text; it is only used if the server specifically requests a bold
 background.)
 
 \H{config-title-icon} The Title & Icon panel
 
 The Title & Icon panel is the last in the Window list. It holds the
 window title, described here, and the per-session window icon, which
-is KiTTY's own and described in \k{kitty-cfg-icon}.
+is KiTTY++'s own and described in \k{kitty-cfg-icon}.
 
 \S{config-title} Controlling the \i{window title}
 
 The \q{Window title} edit box allows you to set the title of the
-KiTTY window. By default the window title will contain the \i{host name}
+KiTTY++ window. By default the window title will contain the \i{host name}
 followed by \q{KiTTY}, for example \c{server1.example.com - KiTTY}.
 If you want a different window title, this is where to set it.
 
-KiTTY allows the server to send \c{xterm} \i{control sequence}s which
+KiTTY++ allows the server to send \c{xterm} \i{control sequence}s which
 modify the title of the window in mid-session (unless this is disabled -
 see \k{config-features-retitle}); the title string set here
 is therefore only the \e{initial} window title.
@@ -1878,7 +1883,7 @@ shows on its \e{taskbar button} and in that button's tooltip. The
 escape sequences hosts send still distinguish the two: OSC 2 sets the
 window title, OSC 1 the icon title, and OSC 0 sets both at once.
 
-By default KiTTY treats them as one: it uses the server-supplied
+By default KiTTY++ treats them as one: it uses the server-supplied
 \e{window} title everywhere and ignores the icon title. Tick \q{Host
 may set window and taskbar titles separately} and the two come apart:
 while the window is open you see the window title, and when you
@@ -1906,12 +1911,12 @@ you might want to try using this option.
 Some network \i{routers} and \i{firewalls} need to keep track of all
 connections through them. Usually, these firewalls will assume a
 connection is dead if no data is transferred in either direction
-after a certain time interval. This can cause KiTTY sessions to be
+after a certain time interval. This can cause KiTTY++ sessions to be
 unexpectedly closed by the firewall if no traffic is seen in the
 session for some time.
 
 The keepalive option (\q{Seconds between keepalives}) allows you to
-configure KiTTY to send data through the session at regular
+configure KiTTY++ to send data through the session at regular
 intervals, in a way that does not disrupt the actual terminal
 session. If you find your firewall is cutting \i{idle connections} off,
 you can try entering a non-zero value in this field. The value is
@@ -1932,7 +1937,7 @@ eventually give up and abandon the connection. Then when
 connectivity is restored, the other side will find that the first
 side doesn't believe there is an open connection any more.
 Keepalives can make this sort of problem worse, because they
-increase the probability that KiTTY will attempt to send data during
+increase the probability that KiTTY++ will attempt to send data during
 a break in connectivity. (Other types of periodic network activity
 can cause this behaviour; in particular, SSH-2 re-keys can have
 this effect. See \k{config-ssh-kex-rekey}.)
@@ -1954,7 +1959,7 @@ it unable to deal with SSH-1 ignore messages (see
 
 Nagle's algorithm is a detail of TCP/IP implementations that tries
 to minimise the number of small data packets sent down a network
-connection. With Nagle's algorithm enabled, KiTTY's \i{bandwidth} usage
+connection. With Nagle's algorithm enabled, KiTTY++'s \i{bandwidth} usage
 will be slightly more efficient; with it disabled, you may find you
 get a faster response to your keystrokes when connecting to some
 types of server.
@@ -1976,7 +1981,7 @@ including Raw, Rlogin, and SUPDUP.
 
 \b The interval between TCP keepalives is usually much longer,
 typically two hours; this is set by the operating system, and cannot
-be configured within KiTTY.
+be configured within KiTTY++.
 
 \b If the operating system does not receive a response to a keepalive,
 it may send out more in quick succession and terminate the connection
@@ -1996,39 +2001,39 @@ connections (including connections to \I{proxy}proxies); however,
 tunnels have their own configuration, for which see
 \k{config-ssh-portfwd-address-family}.
 
-The default setting is \q{Auto}, which means KiTTY will do something
+The default setting is \q{Auto}, which means KiTTY++ will do something
 sensible and try to guess which protocol you wanted. (If you specify
 a literal \i{Internet address}, it will use whichever protocol that
 address implies. If you provide a \i{hostname}, it will see what kinds
 of address exist for that hostname; it will use IPv6 if there is an
 IPv6 address available, and fall back to IPv4 if not.)
 
-If you need to force KiTTY to use a particular protocol, you can
+If you need to force KiTTY++ to use a particular protocol, you can
 explicitly set this to \q{IPv4} or \q{IPv6}.
 
 \S{config-loghost} \I{logical host name}\q{Logical name of remote host}
 
-This allows you to tell KiTTY that the host it will really end up
+This allows you to tell KiTTY++ that the host it will really end up
 connecting to is different from where it thinks it is making a
 network connection.
 
 You might use this, for instance, if you had set up an SSH port
-forwarding in one KiTTY session so that connections to some
-arbitrary port (say, \cw{localhost} port 10022) were forwarded to a
-second machine's SSH port (say, \cw{foovax} port 22), and then
-started a second KiTTY connecting to the forwarded port.
+forwarding in one KiTTY++ session so that connections to some
+arbitrary port (for example, \cw{localhost} port 10022) were forwarded to a
+second machine's SSH port (for example, \cw{foovax} port 22), and then
+started a second KiTTY++ connecting to the forwarded port.
 
-In normal usage, the second KiTTY will access the \i{host key cache}
+In normal usage, the second KiTTY++ will access the \i{host key cache}
 under the host name and port it actually connected to (i.e.
 \cw{localhost} port 10022 in this example). Using the logical host
-name option, however, you can configure the second KiTTY to cache
+name option, however, you can configure the second KiTTY++ to cache
 the host key under the name of the host \e{you} know that it's
 \e{really} going to end up talking to (here \c{foovax}).
 
 This can be useful if you expect to connect to the same actual
 server through many different channels (perhaps because your port
 forwarding arrangements keep changing): by consistently setting the
-logical host name, you can arrange that KiTTY will not keep asking
+logical host name, you can arrange that KiTTY++ will not keep prompting
 you to reconfirm its host key. Conversely, if you expect to use the
 same local port number for port forwardings to lots of different
 servers, you probably didn't want any particular server's host key
@@ -2036,7 +2041,7 @@ cached under that local port number. (For this latter case, you
 could instead explicitly configure host keys in the relevant sessions;
 see \k{config-ssh-kex-manual-hostkeys}.)
 
-If you just enter a host name for this option, KiTTY will cache the
+If you just enter a host name for this option, KiTTY++ will cache the
 SSH host key under the default SSH port for that host, irrespective
 of the port you really connected to (since the typical scenario is
 like the above example: you connect to a silly real port number and
@@ -2056,7 +2061,7 @@ protocol other than SSH.)
 
 \S{config-preconn-hook} \I{pre-connection command}\q{Command to run before connection}
 
-If you enter a command line in this box, then KiTTY will run that
+If you enter a command line in this box, then KiTTY++ will run that
 command as a subprocess, just before making its main outgoing network
 connection.
 
@@ -2089,7 +2094,7 @@ or a port-knocking sequence aimed at the session's own host:
 command line is visible to every process on the machine, so
 credentials must never travel in one.)
 
-The results of running the program will be logged in KiTTY's Event
+The results of running the program will be logged in KiTTY++'s Event
 Log. So if it terminates with an error message, the Event Log will
 show the message.
 
@@ -2111,9 +2116,9 @@ it explicitly every time. (Some Telnet servers don't support this.)
 In this box you can type that user name.
 
 \S{config-kitty-autologin} Auto-login password, auto-command and login
-script (KiTTY)
+script (KiTTY++)
 
-KiTTY extends this panel with automatic logins: an
+KiTTY++ extends this panel with automatic logins: an
 \q{Auto-login password} stored with the session (encrypted at rest -
 Windows DPAPI, or the master password in portable mode - and shown
 only when \q{Show password} is ticked), an \q{Auto-command after
@@ -2122,7 +2127,7 @@ wait-for/send-text line pairs for prompt-driven logins (telnet and
 friends; a script can also be loaded from a file). For the strongest
 security prefer public-key authentication (\k{pubkey}) over a stored
 password; the details, cautions and portable-mode password handling
-are in the KiTTY additions chapter (\k{kitty-features}).
+are in the KiTTY++ additions chapter (\k{kitty-features}).
 
 While the session is running the password is \e{also} kept encrypted in
 memory, and is decrypted only for the moment it is used - at login, or
@@ -2130,7 +2135,7 @@ when a helper tool is started - so that a crash dump or the pagefile
 does not carry it.
 
 An automatic password is a convenience with a cost: anything that can
-read your account can make KiTTY use it, and a host you did not
+read your account can make KiTTY++ use it, and a host you did not
 expect will be sent it just the same. Prefer key authentication where
 you can, and keep automatic passwords for machines where a key is not
 possible.
@@ -2150,7 +2155,7 @@ is saved is what you can see.
 \S{config-username-from-env} Use of system username
 
 When the previous box (\k{config-username}) is left blank, by default,
-KiTTY will prompt for a username at the time you make a connection.
+KiTTY++ will prompt for a username at the time you make a connection.
 
 In some environments, such as the networks of large organisations
 implementing \i{single sign-on}, a more sensible default may be to use
@@ -2166,20 +2171,20 @@ is later used by a different user, that user's name will be used.
 
 \S{config-termtype} \q{\ii{Terminal-type} string}
 
-Most servers you might connect to with KiTTY are designed to be
+Most servers you might connect to with KiTTY++ are designed to be
 connected to from lots of different types of terminal. In order to
 send the right \i{control sequence}s to each one, the server will need
 to know what type of terminal it is dealing with. Therefore, each of
 the SSH, Telnet, and Rlogin protocols allow a text string to be sent
 down the connection describing the terminal.  On a \i{Unix} server,
 this selects an entry from the \i\c{termcap} or \i\c{terminfo} database
-that tells applications what \i{control sequences} to send to the
+that shows applications which \i{control sequences} to send to the
 terminal, and what character sequences to expect the \i{keyboard}
 to generate.
 
-KiTTY attempts to emulate the Unix \i\c{xterm} program, and by default
+KiTTY++ attempts to emulate the Unix \i\c{xterm} program, and by default
 it reflects this by sending \c{xterm-256color} as a terminal-type
-string, which also tells programs that 256 colours can be used. A
+string, which also informs programs that 256 colours can be used. A
 session saved by an older version keeps the \c{xterm} it was saved
 with. If you find this is not doing what you want - perhaps an old
 remote system reports \q{Unknown terminal type} - you could try
@@ -2205,7 +2210,7 @@ instance, if a slow speed is indicated, the server may switch to a
 less \i{bandwidth}-hungry display mode.
 
 The value is usually meaningless in a network environment, but
-KiTTY lets you configure it, in case you find the server is reacting
+KiTTY++ lets you configure it, in case you find the server is reacting
 badly to the default value.
 
 The format is a pair of numbers separated by a comma, for instance,
@@ -2220,7 +2225,7 @@ This option has no effect on Raw connections.
 
 The Telnet protocol provides a means for the client to pass
 environment variables to the server. Many Telnet servers have
-stopped supporting this feature due to security flaws, but KiTTY
+stopped supporting this feature due to security flaws, but KiTTY++
 still supports it for the benefit of any servers which have found
 other ways around the security problems than just disabling the
 whole mechanism.
@@ -2240,20 +2245,20 @@ To remove one from the list, select it in the list box and press
 
 \H{config-proxy} The Proxy panel
 
-The \ii{Proxy} panel allows you to configure KiTTY to use various types
+The \ii{Proxy} panel allows you to configure KiTTY++ to use various types
 of proxy in order to make its network connections. The settings in
-this panel affect the primary network connection forming your KiTTY
+this panel affect the primary network connection forming your KiTTY++
 session, and also any extra connections made as a result of SSH \i{port
 forwarding} (see \k{using-port-forwarding}).
 
-Note that unlike some software (such as web browsers), KiTTY does not
+Note that unlike some software (such as web browsers), KiTTY++ does not
 attempt to automatically determine whether to use a proxy and (if so)
 which one to use for a given destination. If you need to use a proxy,
 it must always be explicitly configured.
 
-\S{config-proxy-named} Named proxies (KiTTY)
+\S{config-proxy-named} Named proxies (KiTTY++)
 
-Rather than filling this panel in by hand for every session, KiTTY
+Rather than filling this panel in by hand for every session, KiTTY++
 lets you define reusable \e{named proxies} once and use them
 everywhere. The \q{Edit named proxies...} button at the top of this
 panel opens the editor, where each definition carries the full set of
@@ -2269,18 +2274,18 @@ it; while the \q{Proxy override options} dropdown on the Session
 panel amends the \e{next connection only} and never writes anything
 into the session - its caption turns into a bold red
 \q{PROXY OVERRIDE ACTIVE} whenever the choice would make the
-connection differ from what the stored session says.
+connection differ from what the stored session specifies.
 
 A named proxy can also be an \e{SSH jump host}: the editor's
 \q{SSH jump host} types open a real SSH connection to that host and
 tunnel the session through it, the equivalent of OpenSSH's
-\cw{ProxyJump}. See the KiTTY additions chapter (\k{kitty-features})
+\cw{ProxyJump}. See the KiTTY++ additions chapter (\k{kitty-features})
 for the full story, including the jump-host variants.
 
 \S{config-proxy-type} Setting the proxy type
 
 The \q{Proxy type} drop-down allows you to configure what type of
-proxy you want KiTTY to use for its network connections. The default
+proxy you want KiTTY++ to use for its network connections. The default
 setting is \q{None}; in this mode no proxy is used for any
 connection.
 
@@ -2295,44 +2300,44 @@ connections through a \i{SOCKS server}.
 user can make a Telnet or TCP connection directly to the firewall machine
 and enter a command such as \c{connect myhost.com 22} to connect
 through to an external host. Selecting \I{Telnet proxy}\q{Telnet}
-allows you to tell KiTTY to use this type of proxy, with the precise           
+allows you to tell KiTTY++ to use this type of proxy, with the precise           
 command specified as described in \k{config-proxy-command}.
 
 \b There are several ways to use a SSH server as a proxy. All of
-these cause KiTTY to make a secondary SSH connection to the proxy host
+these cause KiTTY++ to make a secondary SSH connection to the proxy host
 (sometimes called a \q{\i{jump host}} in this context).
 
 \lcont{
 The \q{Proxy hostname} field will be interpreted as the name of a
-KiTTY saved session if one exists, or a hostname if not. This
+KiTTY++ saved session if one exists, or a hostname if not. This
 allows multi-hop jump paths, if the referenced saved session is
 itself configured to use an SSH proxy; and it allows combining SSH
 and non-SSH proxying.
 
-\b \q{SSH to proxy and use port forwarding} causes KiTTY to use the
+\b \q{SSH to proxy and use port forwarding} causes KiTTY++ to use the
 secondary SSH connection to open a port-forwarding channel to the
 final destination host (similar to OpenSSH's \cw{\-J} option).
 
-\b \q{SSH to proxy and execute a command} causes KiTTY to run an
+\b \q{SSH to proxy and execute a command} causes KiTTY++ to run an
 arbitrary remote command on the proxy SSH server and use that
 command's standard input and output streams to run the primary
 connection over. The remote command line is specified as described in
 \k{config-proxy-command}.
 
-\b \q{SSH to proxy and invoke a subsystem} is similar but causes KiTTY
+\b \q{SSH to proxy and invoke a subsystem} is similar but causes KiTTY++
 to start an SSH \q{\i{subsystem}} rather than an ordinary command line.
 This might be useful with a specially set up SSH proxy server.
 }
 
 \b Selecting \I{Local proxy}\q{Local} allows you to specify an arbitrary
 command on the local machine to act as a proxy. When the session is
-started, instead of creating a TCP connection, KiTTY runs the command
+started, instead of creating a TCP connection, KiTTY++ runs the command
 (specified in \k{config-proxy-command}), and uses its standard input and
 output streams.
 
 \lcont{
 This could be used, for instance, to talk to some kind of network proxy
-that KiTTY does not natively support; or you could tunnel a connection
+that KiTTY++ does not natively support; or you could tunnel a connection
 over something other than TCP/IP entirely.
 
 You can also enable this mode on the command line; see
@@ -2345,7 +2350,7 @@ Typically you will only need to use a proxy to connect to non-local
 parts of your network; for example, your proxy might be required for
 connections outside your company's internal network. In the
 \q{Exclude Hosts/IPs} box you can enter ranges of IP addresses, or
-ranges of DNS names, for which KiTTY will avoid using the proxy and
+ranges of DNS names, for which KiTTY++ will avoid using the proxy and
 make a direct connection instead.
 
 The \q{Exclude Hosts/IPs} box may contain more than one exclusion
@@ -2375,23 +2380,23 @@ it by enabling \q{Consider proxying localhost connections}.
 Note that if you are doing \I{proxy DNS}DNS at the proxy (see
 \k{config-proxy-dns}), you should make sure that your proxy
 exclusion settings do not depend on knowing the IP address of a
-host. If the name is passed on to the proxy without KiTTY looking it
+host. If the name is passed on to the proxy without KiTTY++ looking it
 up, it will never know the IP address and cannot check it against
 your list.
 
 \S{config-proxy-dns} \I{proxy DNS}\ii{Name resolution} when using a proxy
 
 If you are using a proxy to access a private network, it can make a
-difference whether \i{DNS} name resolution is performed by KiTTY itself
+difference whether \i{DNS} name resolution is performed by KiTTY++ itself
 (on the client machine) or performed by the proxy.
 
 The \q{Do DNS name lookup at proxy end} configuration option allows
-you to control this. If you set it to \q{No}, KiTTY will always do
+you to control this. If you set it to \q{No}, KiTTY++ will always do
 its own DNS, and will always pass an IP address to the proxy. If you
-set it to \q{Yes}, KiTTY will always pass host names straight to the
+set it to \q{Yes}, KiTTY++ will always pass host names straight to the
 proxy without trying to look them up first.
 
-If you set this option to \q{Auto} (the default), KiTTY will do
+If you set this option to \q{Auto} (the default), KiTTY++ will do
 something it considers appropriate for each type of proxy. Most
 types of proxy (HTTP, SOCK5, SSH, Telnet, and local) will have host
 names passed straight to them; SOCKS4 proxies will not.
@@ -2399,7 +2404,7 @@ names passed straight to them; SOCKS4 proxies will not.
 Note that if you are doing DNS at the proxy, you should make sure
 that your proxy exclusion settings (see \k{config-proxy-exclude}) do
 not depend on knowing the IP address of a host. If the name is
-passed on to the proxy without KiTTY looking it up, it will never
+passed on to the proxy without KiTTY++ looking it up, it will never
 know the IP address and cannot check it against your list.
 
 The original SOCKS 4 protocol does not support proxy-side DNS. There
@@ -2407,7 +2412,7 @@ is a protocol extension (SOCKS 4A) which does support it, but not
 all SOCKS 4 servers provide this extension. If you enable proxy DNS
 and your SOCKS 4 server cannot deal with it, this might be why.
 
-If you want to avoid KiTTY making \e{any} DNS query related to your
+If you want to avoid KiTTY++ making \e{any} DNS query related to your
 destination host name (for example, because your local DNS resolver is
 very slow to return a negative response in that situation), then as
 well as setting this control to \q{Yes}, you may also need to turn off
@@ -2415,7 +2420,7 @@ GSSAPI authentication and GSSAPI key exchange in SSH (see
 \k{config-ssh-auth-gssapi} and \k{config-ssh-gssapi-kex}
 respectively). This is because GSSAPI setup also involves a DNS query
 for the destination host name, and that query is performed by the
-separate GSSAPI library, so KiTTY can't override or reconfigure it.
+separate GSSAPI library, so KiTTY++ can't override or reconfigure it.
 
 \S{config-proxy-auth} \I{proxy username}Username and \I{proxy password}password
 
@@ -2424,11 +2429,11 @@ You can enter a username and a password in the \q{Username} and
 \I{proxy authentication}authentication.
 
 \I{security hazard}Note that if you save your session, the proxy
-password will be saved in plain text, so anyone who can access your KiTTY
+password will be saved in plain text, so anyone who can access your KiTTY++
 configuration data will be able to discover it.
 
-If KiTTY discovers that it needs a proxy username or password and you
-have not specified one here, KiTTY will prompt for it interactively in
+If KiTTY++ discovers that it needs a proxy username or password and you
+have not specified one here, KiTTY++ will prompt for it interactively in
 the terminal window.
 
 Authentication is not fully supported for all forms of proxy:
@@ -2453,17 +2458,17 @@ password}plain text.
 passwords.
 
 \b SSH proxying can use all the same forms of SSH authentication
-supported by KiTTY for its main connection. If the SSH server requests
+supported by KiTTY++ for its main connection. If the SSH server requests
 password authentication, any configured proxy password will be used,
 but other authentication methods such as public keys and GSSAPI will
 be tried first, just as for a primary SSH connection, and if they
-require credentials such as a key passphrase, KiTTY will interactively
+require credentials such as a key passphrase, KiTTY++ will interactively
 prompt for these.
 
 \b You can specify a way to include a username and password in the
 Telnet/Local proxy command (see \k{config-proxy-command}). If you do
 so, and don't also specify the actual username and/or password in the
-configuration, KiTTY will interactively prompt for them.
+configuration, KiTTY++ will interactively prompt for them.
 
 \S{config-proxy-command} Specifying the Telnet, SSH, or Local proxy command
 
@@ -2540,7 +2545,7 @@ command in the \q{\ii{Remote command}} box.
 Note that most servers will close the session after executing the
 command.
 
-If the command names an SSH \i{subsystem} rather than an ordinary
+If the command identifies an SSH \i{subsystem} rather than an ordinary
 command line (for example, a server-side tool started via its
 \c{Subsystem} declaration in \c{sshd_config}), tick \q{The command
 names a subsystem} below the box. This is the GUI equivalent of
@@ -2550,7 +2555,7 @@ the subsystem needs one.
 \S{config-ssh-noshell} \q{Don't start a \I{remote shell}shell or
 \I{remote command}command at all}
 
-If you tick this box, KiTTY will not attempt to run a shell or
+If you tick this box, KiTTY++ will not attempt to run a shell or
 command after connecting to the remote server. You might want to use
 this option if you are only using the SSH connection for \i{port
 forwarding}, and your user account on the server does not have the
@@ -2571,7 +2576,7 @@ program.
 
 This enables data compression in the SSH connection: data sent by
 the server is compressed before sending, and decompressed at the
-client end. Likewise, data sent by KiTTY to the server is compressed
+client end. Likewise, data sent by KiTTY++ to the server is compressed
 first and the server decompresses it at the other end. This can help
 make the most of a low-\i{bandwidth} connection.
 
@@ -2583,22 +2588,22 @@ or the older \I{SSH-1}version 1.
 You should normally leave this at the default of \q{2}. As well as
 having fewer features, the older SSH-1 protocol is no longer
 developed, has many known cryptographic weaknesses, and is generally
-not considered to be secure. KiTTY's protocol 1 implementation is
+not considered to be secure. KiTTY++'s protocol 1 implementation is
 provided mainly for compatibility, and is no longer being enhanced.
 
 If a server offers both versions, prefer \q{2}. If you have some
 server or piece of equipment that only talks SSH-1, select \q{1}
 here, and do not treat the resulting connection as secure.
 
-KiTTY will not automatically fall back to the other version of the
+KiTTY++ will not automatically fall back to the other version of the
 protocol if the server turns out not to match your selection here;
 instead, it will put up an error message and abort the connection.
 This prevents an active attacker downgrading an intended SSH-2
 connection to SSH-1.
 
-\S{config-ssh-sharing} Sharing an SSH connection between KiTTY tools
+\S{config-ssh-sharing} Sharing an SSH connection between KiTTY++ tools
 
-The controls in this box allow you to configure KiTTY to reuse an
+The controls in this box allow you to configure KiTTY++ to reuse an
 existing SSH connection, where possible.
 
 The SSH-2 protocol permits you to run multiple data channels over the
@@ -2606,53 +2611,53 @@ same SSH connection, so that you can log in just once (and do the
 expensive encryption setup just once) and then have more than one
 terminal window open.
 
-Each instance of KiTTY can still run at most one terminal session, but
-using the controls in this box, you can configure KiTTY to check if
+Each instance of KiTTY++ can still run at most one terminal session, but
+using the controls in this box, you can configure KiTTY++ to check if
 another instance of itself has already connected to the target host,
 and if so, share that instance's SSH connection instead of starting a
 separate new one.
 
 To enable this feature, just tick the box \q{Share SSH connections if
-possible}. Then, whenever you start up a KiTTY session connecting to a
+possible}. Then, whenever you start up a KiTTY++ session connecting to a
 particular host, it will try to reuse an existing SSH connection if
 one is available. For example, selecting \q{Duplicate Session} from
 the system menu will launch another session on the same host, and if
 sharing is enabled then it will reuse the existing SSH connection.
 
-When this mode is in use, the first KiTTY that connected to a given
+When this mode is in use, the first KiTTY++ that connected to a given
 server becomes the \q{upstream}, which means that it is the one
-managing the real SSH connection. All subsequent KiTTYs which reuse
+managing the real SSH connection. All subsequent instances of KiTTY++ which reuse
 the connection are referred to as \q{downstreams}: they do not connect
-to the real server at all, but instead connect to the upstream KiTTY
+to the real server at all, but instead connect to the upstream KiTTY++
 via local inter-process communication methods.
 
 For this system to be activated, \e{both} the upstream and downstream
-instances of KiTTY must have the sharing option enabled.
+instances of KiTTY++ must have the sharing option enabled.
 
-The upstream KiTTY can therefore not terminate until all its
+The upstream KiTTY++ can therefore not terminate until all its
 downstreams have closed. This is similar to the effect you get with
-port forwarding or X11 forwarding, in which a KiTTY whose terminal
+port forwarding or X11 forwarding, in which a KiTTY++ whose terminal
 session has already finished will still remain open so as to keep
 serving forwarded connections.
 
 In case you need to configure this system in more detail, there are
 two additional checkboxes which allow you to specify whether a
-particular KiTTY can act as an upstream or a downstream or both.
+particular KiTTY++ can act as an upstream or a downstream or both.
 (These boxes only take effect if the main \q{Share SSH connections if
 possible} box is also ticked.) By default both of these boxes are
-ticked, so that multiple KiTTYs started from the same configuration
+ticked, so that multiple instances of KiTTY++ started from the same configuration
 will designate one of themselves as the upstream and share a single
-connection; but if for some reason you need a particular KiTTY
+connection; but if for some reason you need a particular KiTTY++
 configuration \e{not} to be an upstream (e.g. because you definitely
 need it to close promptly) or not to be a downstream (e.g. because it
 needs to do its own authentication using a special private key) then
 you can untick one or the other of these boxes.
 
-I have referred to \q{KiTTY} throughout the above discussion, but all
-the other KiTTY tools which make SSH connections can use this
+I have referred to \q{KiTTY++} throughout the above discussion, but all
+the other KiTTY++ tools which make SSH connections can use this
 mechanism too. For example, if kscp or ksftp loads a configuration
 with sharing enabled, then it can act as a downstream and use an
-existing SSH connection set up by an instance of GUI KiTTY. The one
+existing SSH connection set up by an instance of GUI KiTTY++. The one
 special case is that kscp and ksftp will \e{never} act as upstreams.
 
 It is possible to test programmatically for the existence of a live
@@ -2684,11 +2689,11 @@ these settings affect SSH-1 at all.
 
 \S{config-ssh-kex-order} \ii{Key exchange algorithm} selection
 
-KiTTY supports a variety of SSH-2 key exchange methods, and allows you
+KiTTY++ supports a variety of SSH-2 key exchange methods, and allows you
 to choose which one you prefer to use; configuration is similar to
 cipher selection (see \k{config-ssh-encryption}).
 
-KiTTY currently supports the following key exchange methods:
+KiTTY++ currently supports the following key exchange methods:
 
 \b \q{NTRU Prime / Curve25519 hybrid}: \q{\i{Streamlined NTRU Prime}}
 is a lattice-based algorithm intended to resist \i{quantum attacks}.
@@ -2733,10 +2738,10 @@ old server software.
 }
 
 \b \q{Diffie-Hellman \i{group exchange}}: with this method, instead
-of using a fixed group, KiTTY requests that the server suggest a group
+of using a fixed group, KiTTY++ requests that the server suggest a group
 to use for a subsequent Diffie-Hellman key exchange; the server can
 avoid groups known to be weak, and possibly invent new ones over time,
-without any changes required to KiTTY's configuration. This key
+without any changes required to KiTTY++'s configuration. This key
 exchange method uses the SHA-256 hash or, if the server doesn't
 support that, SHA-1.
 
@@ -2746,25 +2751,25 @@ the server, than Diffie-Hellman key exchange.
 
 \b \q{GSSAPI key exchange}: see \k{config-ssh-gssapi-kex}.
 
-If the first algorithm KiTTY finds is below the \q{warn below here}
+If the first algorithm KiTTY++ finds is below the \q{warn below here}
 line, you will see a warning box when you make the connection, similar
 to that for cipher selection (see \k{config-ssh-encryption}).
 
 \S2{config-ssh-gssapi-kex} GSSAPI-based key exchange
 
-KiTTY supports a set of key exchange methods that also incorporates
+KiTTY++ supports a set of key exchange methods that also incorporates
 GSSAPI-based authentication. They are enabled with the
 \q{Attempt GSSAPI key exchange} checkbox (which also appears on the
 \q{GSSAPI} panel).
 
-KiTTY can only perform the GSSAPI-authenticated key exchange methods
+KiTTY++ can only perform the GSSAPI-authenticated key exchange methods
 when using Kerberos V5, and not other GSSAPI mechanisms. If the user
-running KiTTY has current Kerberos V5 credentials, then KiTTY will
+running KiTTY++ has current Kerberos V5 credentials, then KiTTY++ will
 select the GSSAPI key exchange methods in preference to any of the
 ordinary SSH key exchange methods configured in the preference list.
 There's a GSSAPI-based equivalent to most of the ordinary methods
 listed in \k{config-ssh-kex-order}; server support determines which
-one will be used. (KiTTY's preference order for GSSAPI-authenticated
+one will be used. (KiTTY++'s preference order for GSSAPI-authenticated
 key exchange methods is fixed, not controlled by the preference list.)
 
 The advantage of doing GSSAPI authentication as part of the SSH key
@@ -2781,11 +2786,11 @@ let you log in using your Kerberos credentials, but will only allow
 you to delegate the credentials that are active at the beginning of
 the session; they can't be refreshed automatically later, in a
 long-running session. See \k{config-ssh-auth-gssapi} for how to
-control GSSAPI user authentication in KiTTY.
+control GSSAPI user authentication in KiTTY++.
 
 Another effect of GSSAPI key exchange is that it replaces the usual
 SSH mechanism of permanent host keys described in \k{gs-hostkey}.
-So if you use this method, then you won't be asked any interactive
+So if you use this method, then you won't get any interactive
 questions about whether to accept the server's host key. Instead, the
 Kerberos exchange will verify the identity of the host you connect to,
 at the same time as verifying your identity to it.
@@ -2804,7 +2809,7 @@ repeat key exchange is noted in the Event Log; see
 \k{using-eventlog}.) Usually the same algorithm is used as at the
 start of the connection, with a similar overhead.
 
-These options control how often KiTTY will initiate a repeat key
+These options control how often KiTTY++ will initiate a repeat key
 exchange (\q{rekey}). You can also force a key exchange at any time
 from the Special Commands menu (see \k{using-specials}).
 
@@ -2813,7 +2818,7 @@ these values? Do we want to enforce any limits?
 
 \b \q{Max minutes before rekey} specifies the amount of time that is
 allowed to elapse before a rekey is initiated. If this is set to zero,
-KiTTY will not rekey due to elapsed time. The SSH-2 protocol
+KiTTY++ will not rekey due to elapsed time. The SSH-2 protocol
 specification recommends a timeout of at most 60 minutes.
 
 You might have a need to disable time-based rekeys completely for the same
@@ -2834,13 +2839,13 @@ Note, however, the the SSH \e{server} can still initiate rekeys.
 exchange, specifies how often the GSSAPI credential cache is checked
 to see whether new tickets are available for delegation, or current
 ones are near expiration. If forwarding of GSSAPI credentials is
-enabled, KiTTY will try to rekey as necessary to keep the delegated
+enabled, KiTTY++ will try to rekey as necessary to keep the delegated
 credentials from expiring. Frequent checks are recommended; rekeying
 only happens when needed.
 
 \b \q{Max data before rekey} specifies the amount of data (in bytes)
 that is permitted to flow in either direction before a rekey is
-initiated. If this is set to zero, KiTTY will not rekey due to
+initiated. If this is set to zero, KiTTY++ will not rekey due to
 transferred data. The SSH-2 protocol specification recommends a limit
 of at most 1 gigabyte.
 
@@ -2880,12 +2885,12 @@ only supports one type of host key.
 
 \S{config-ssh-hostkey-order} \ii{Host key type} selection
 
-KiTTY supports a variety of SSH-2 host key types, and allows you to
+KiTTY++ supports a variety of SSH-2 host key types, and allows you to
 choose which one you prefer to use to identify the server.
 Configuration is similar to cipher selection (see
 \k{config-ssh-encryption}).
 
-KiTTY currently supports the following host key types:
+KiTTY++ currently supports the following host key types:
 
 \b \q{\i{Ed25519}}: \I{EdDSA}Edwards-curve DSA using a twisted Edwards
 curve with modulus \cw{2^255-19}.
@@ -2901,28 +2906,28 @@ has a higher security level than Ed25519).
 
 \b \q{RSA}: the ordinary \i{RSA} algorithm.
 
-If KiTTY already has one or more host keys stored for the server,
+If KiTTY++ already has one or more host keys stored for the server,
 it will by default prefer to use one of those, even if the server has
 a key type that is higher in the preference order. You can add such a
-key to KiTTY's cache from within an existing session using the
+key to KiTTY++'s cache from within an existing session using the
 \q{Special Commands} menu; see \k{using-specials}.
 
-Otherwise, KiTTY will choose a key type based purely on the
+Otherwise, KiTTY++ will choose a key type based purely on the
 preference order you specify in the configuration.
 
-If the first key type KiTTY finds is below the \q{warn below here}
+If the first key type KiTTY++ finds is below the \q{warn below here}
 line, you will see a warning box when you make the connection, similar
 to that for cipher selection (see \k{config-ssh-encryption}).
 
 \S{config-ssh-prefer-known-hostkeys} Preferring known host keys
 
-By default, KiTTY will adjust the preference order for SSH-2 host key
+By default, KiTTY++ will adjust the preference order for SSH-2 host key
 algorithms so that any host keys it already knows are moved to the top
 of the list.
 
 This prevents you from having to check and confirm a new host key for
 a server you already had one for (e.g. because the server has
-generated an alternative key of a type higher in KiTTY's preference
+generated an alternative key of a type higher in KiTTY++'s preference
 order, or because you changed the preference order itself).
 
 However, on the other hand, it can leak information to a listener in
@@ -2930,32 +2935,32 @@ the network about \e{whether} you already know a host key for this
 server.
 
 For this reason, this policy is configurable. By turning this checkbox
-off, you can reset KiTTY to always use the exact order of host key
+off, you can reset KiTTY++ to always use the exact order of host key
 algorithms configured in the preference list described in
 \k{config-ssh-hostkey-order}, so that a listener will find out nothing
 about what keys you had stored.
 
 \S{config-ssh-kex-manual-hostkeys} \ii{Manually configuring host keys}
 
-In some situations, if KiTTY's automated host key management is not
-doing what you need, you might need to manually configure KiTTY to
+In some situations, if KiTTY++'s automated host key management is not
+doing what you need, you might need to manually configure KiTTY++ to
 accept a specific host key, or one of a specific set of host keys.
 
 One reason why you might want to do this is because the host name
-KiTTY is connecting to is using round-robin DNS to return one of
+KiTTY++ is connecting to is using round-robin DNS to return one of
 multiple actual servers, and they all have different host keys. In
-that situation, you might need to configure KiTTY to accept any of a
+that situation, you might need to configure KiTTY++ to accept any of a
 list of host keys for the possible servers, while still rejecting any
 key not in that list.
 
-Another reason is if KiTTY's automated host key management is
-completely unavailable, e.g. because KiTTY (or klink or ksftp, etc) is
+Another reason is if KiTTY++'s automated host key management is
+completely unavailable, e.g. because KiTTY++ (or klink or ksftp, etc) is
 running in a Windows environment without access to the Registry. In
 that situation, you will probably want to use the \cw{\-hostkey}
 command-line option to configure the expected host key(s); see
 \k{using-cmdline-hostkey}.
 
-For situations where KiTTY's automated host key management simply
+For situations where KiTTY++'s automated host key management simply
 picks the wrong host name to store a key under, you may want to
 consider setting a \q{logical host name} instead; see
 \k{config-loghost}.
@@ -2969,7 +2974,7 @@ You can remove keys again with the \q{Remove} button.
 The text describing a host key can be in one of the following formats:
 
 \b An \I{SHA256 fingerprint}SHA-256-based host key fingerprint of the
-form displayed in KiTTY's Event Log and host key dialog boxes,
+form displayed in KiTTY++'s Event Log and host key dialog boxes,
 i.e. \cq{SHA256:} followed by 43 case-sensitive characters.
 
 \b An \I{MD5 fingerprint}MD5-based host key fingerprint, i.e. sixteen
@@ -2981,17 +2986,17 @@ OpenSSH's one-line public key format. How you acquire a public key in
 this format is server-dependent; on an OpenSSH server it can typically
 be found in a location like \c{/etc/ssh/ssh_host_rsa_key.pub}.
 
-If this box contains at least one host key or fingerprint when KiTTY
-makes an SSH connection, then KiTTY's automated host key management is
+If this box contains at least one host key or fingerprint when KiTTY++
+makes an SSH connection, then KiTTY++'s automated host key management is
 completely bypassed: the connection will be permitted if and only if
 the host key presented by the server is one of the keys listed in this
 box, and the \I{host key cache}host key store in the Registry will be
 neither read \e{nor written}, unless you explicitly do so.
 
-If the box is empty (as it usually is), then KiTTY's automated host
+If the box is empty (as it usually is), then KiTTY++'s automated host
 key management will work as normal.
 
-\S{config-ssh-kex-cert} Configuring KiTTY to accept host \i{certificates}
+\S{config-ssh-kex-cert} Configuring KiTTY++ to accept host \i{certificates}
 
 In some environments, the SSH host keys for a lot of servers will all
 be signed in turn by a central \q{certification authority} (\q{CA} for
@@ -3002,14 +3007,14 @@ first time they connect to that server.
 
 In order to do this, press the \q{Configure host CAs} button in the
 \q{Host keys} configuration panel. This will launch a secondary
-configuration dialog box where you can configure what CAs KiTTY will
+configuration dialog box where you can configure what CAs KiTTY++ will
 accept signatures from.
 
 \s{Note that this configuration is common to all saved sessions}.
-Everything in the main KiTTY configuration is specific to one saved
+Everything in the main KiTTY++ configuration is specific to one saved
 session, and you can prepare a separate session with all the
 configuration different. But there's only one copy of the host CA
-configuration, and it applies to all sessions KiTTY runs, whether
+configuration, and it applies to all sessions KiTTY++ runs, whether
 saved or not.
 
 (Otherwise, it would be useless \dash configuring a CA by hand for
@@ -3025,7 +3030,7 @@ public key of their CA so that SSH users can include it in their
 configuration.
 
 Next, in the \q{Valid hosts this key is trusted to certify} box,
-configure at least one hostname wildcard to say what servers KiTTY
+configure at least one hostname wildcard to specify what servers KiTTY++
 should trust this CA to speak for. For example, suppose you work for
 Example Corporation (\cw{example.com}), and the Example Corporation IT
 department has advertised a CA that signs all the Example internal
@@ -3041,11 +3046,11 @@ Example Corporation IT department is authorised to sign a host key for
 you're connecting out of the company network to a machine somewhere
 else, such as your own personal server. So that configuration would
 enable the Example IT department to act as a \q{man-in-the-middle}
-between your KiTTY process and your server, and listen in to your
+between your KiTTY++ process and your server, and listen in to your
 communications \dash exactly the thing SSH is supposed to avoid.
 
 So, if the CA was provided to you by the sysadmins responsible for
-\cw{example.com} (or whatever), make sure KiTTY will \e{only} trust it
+\cw{example.com} (or whatever), make sure KiTTY++ will \e{only} trust it
 for machines in the \cw{example.com} domain.
 
 For the full syntax of the \q{Valid hosts} expression, see
@@ -3059,7 +3064,7 @@ button.
 
 The identifying name can be anything you like. It's there so that if
 you store multiple certificates you can tell which is which later when
-you want to edit or delete them. It also appears in the KiTTY Event
+you want to edit or delete them. It also appears in the KiTTY++ Event
 Log when a server presents a certificate signed by that CA.
 
 To reload an existing CA configuration, select it in the list box and
@@ -3114,7 +3119,7 @@ these Boolean operators.
 
 Unlike other languages such as C, there is no implied priority between
 \cq{&&} and \cq{||}. If you write \cq{A && B || C} (where \cw{A},
-\cw{B} and \cw{C} are some particular requirements), then KiTTY will
+\cw{B} and \cw{C} are some particular requirements), then KiTTY++ will
 report a syntax error, because you haven't said which of the \cq{&&}
 and \cq{||} takes priority tightly. You will have to write either
 \cq{(A && B) || C}, meaning \q{both of \cw{A} and \cw{B}, or
@@ -3133,43 +3138,43 @@ hash function. Typically, any version of OpenSSH new enough to support
 certificates at all will also be new enough to avoid using SHA-1, so
 the default settings of accepting the more modern SHA-256 and SHA-512
 should be suitable for nearly all cases. For completeness, however,
-you can configure which types of RSA signature KiTTY will accept in a
+you can configure which types of RSA signature KiTTY++ will accept in a
 certificate from a CA using an RSA key.
 
-\S{config-ssh-kitty-scan} \q{This host's keys} and \q{Scan/Edit} (KiTTY)
+\S{config-ssh-kitty-scan} \q{This host's keys} and \q{Scan/Edit} (KiTTY++)
 
-The lines under the manual host keys say what the store holds for this
+The lines under the manual host keys show what the store holds for this
 session's host and port - how many keys, and on the next line their
-types - and \q{Scan/Edit} asks the host what it presents today: one connection per key
+types - and \q{Scan/Edit} queries the host for what it presents today: one connection per key
 type, ended before any login, so no credentials are sent. The box lists
 every type with its size and fingerprint and a status: \q{stored} (the
 same key is in the store), \q{new} (nothing is stored for that type),
 \q{MISMATCH} in red (a different key is stored), \q{not offered} or
 \q{unreachable}. \q{Accept} stores the selected new key; on a MISMATCH
-it asks once more, naming both fingerprints, because a changed host key
+it puts up one more question that shows both fingerprints, because a changed host key
 means either a reinstalled server or somebody between you and it.
 \q{Delete stored} removes the selected rows' stored keys from the store,
-after one question naming them - the way to forget a host's keys from the
+after one question that lists them - the way to forget a host's keys from the
 session that uses it, instead of finding them in the full list on
-\k{kitty-cfg-host-keys}; the next connection asks the first-contact
+\k{kitty-cfg-host-keys}; the next connection puts up the first-contact
 question afresh. \q{Pin} puts the presented keys' SHA256 fingerprints into this
 session's manual host keys (\k{config-ssh-kex-manual-hostkeys}) - the
-session then accepts exactly those keys, whatever the store says - and
+session then accepts exactly those keys, whatever the store holds - and
 leaves the store alone. Several rows can be selected for any of the
 three. Nothing is written without a click. The whole store, with the
 same check for every stored key, is on \k{kitty-cfg-host-keys}.
 
 \H{config-ssh-encryption} The Cipher panel
 
-KiTTY supports a variety of different \i{encryption algorithm}s, and
+KiTTY++ supports a variety of different \i{encryption algorithm}s, and
 allows you to choose which one you prefer to use. You can do this by
 dragging the algorithms up and down in the list box (or moving them
 using the Up and Down buttons) to specify a preference order. When
-you make an SSH connection, KiTTY will search down the list from the
+you make an SSH connection, KiTTY++ will search down the list from the
 top until it finds an algorithm supported by the server, and then
 use that.
 
-KiTTY currently supports the following algorithms:
+KiTTY++ currently supports the following algorithms:
 
 \b \i{ChaCha20-Poly1305}, a combined cipher and \i{MAC} (SSH-2 only)
 
@@ -3184,7 +3189,7 @@ KiTTY currently supports the following algorithms:
 
 \b \ii{Single-DES} - 56-bit CBC (see below for SSH-2)
 
-If the algorithm KiTTY finds is below the \q{warn below here} line,
+If the algorithm KiTTY++ finds is below the \q{warn below here} line,
 you will see a warning box when you make the connection:
 
 \c The first cipher supported by the server
@@ -3195,21 +3200,21 @@ you will see a warning box when you make the connection:
 This warns you that the first available encryption is not a very
 secure one. Typically you would put the \q{warn below here} line
 between the encryptions you consider secure and the ones you
-consider substandard. By default, KiTTY supplies a preference order
+consider substandard. By default, KiTTY++ supplies a preference order
 intended to reflect a reasonable preference in terms of security and
 speed.
 
 In SSH-2, the encryption algorithm is negotiated independently for
-each direction of the connection, although KiTTY does not support
+each direction of the connection, although KiTTY++ does not support
 separate configuration of the preference orders. As a result you may
 get two warnings similar to the one above, possibly with different
 encryptions.
 
 Single-DES is not recommended in the SSH-2 protocol
 standards, but one or two server implementations do support it.
-KiTTY can use single-DES to interoperate with
+KiTTY++ can use single-DES to interoperate with
 these servers if you enable the \q{Enable legacy use of single-DES in
-SSH-2} option; by default this is disabled and KiTTY will stick to
+SSH-2} option; by default this is disabled and KiTTY++ will stick to
 recommended ciphers.
 
 \H{config-ssh-auth} The Auth panel
@@ -3224,7 +3229,7 @@ prospective user before the user logs in; this is sometimes known as a
 pre-authentication \q{\i{banner}}. Typically this is used to provide
 information about the server and legal notices.
 
-By default, KiTTY displays this message before prompting for a
+By default, KiTTY++ displays this message before prompting for a
 password or similar credentials (although, unfortunately, not before
 prompting for a login name, due to the nature of the protocol design).
 By unchecking this option, display of the banner can be suppressed
@@ -3238,14 +3243,14 @@ to the server. An SSH server could prefer to handle authentication
 in the data channel, for instance, or simply require no user
 authentication whatsoever.
 
-By default, KiTTY assumes the server requires authentication (we've
+By default, KiTTY++ assumes the server requires authentication (we've
 never heard of one that doesn't), and thus must start this process
 with a username. If you find you are getting username prompts that
 you cannot answer, you could try enabling this option. However,
 most SSH servers will reject this.
 
 This is not the option you want if you have a username and just want
-KiTTY to remember it; for that see \k{config-username}.
+KiTTY++ to remember it; for that see \k{config-username}.
 It's also probably not what if you're trying to set up passwordless
 login to a mainstream SSH server; depending on the server, you
 probably wanted public-key authentication (\k{pubkey})
@@ -3259,9 +3264,9 @@ require an authentication step.
 \S{config-ssh-notrivialauth} \q{Disconnect if authentication succeeds
 trivially}
 
-This option causes KiTTY to abandon an SSH session and disconnect from
+This option causes KiTTY++ to abandon an SSH session and disconnect from
 the server, if the server accepted authentication without ever having
-asked for any kind of password or signature or token.
+requested any kind of password or signature or token.
 
 This might be used as a security measure. There are some forms of
 attack against an SSH client user which work by terminating the SSH
@@ -3270,16 +3275,16 @@ of the SSH session which \e{looks} like part of the authentication,
 but isn't really.
 
 For example, instead of demanding a signature from your public key,
-for which KiTTY would ask for your key's passphrase, a compromised or
+for which KiTTY++ would prompt for your key's passphrase, a compromised or
 malicious server might allow you to log in with no signature or
-password at all, and then print a message that \e{imitates} KiTTY's
+password at all, and then print a message that \e{imitates} KiTTY++'s
 request for your passphrase, in the hope that you would type it in.
 (In fact, the passphrase for your public key should not be sent to any
 server.)
 
-KiTTY's main defence against attacks of this type is the \q{trust
-sigil} system: messages in the KiTTY window that are truly originated
-by KiTTY itself are shown next to a small copy of the KiTTY icon,
+KiTTY++'s main defence against attacks of this type is the \q{trust
+sigil} system: messages in the KiTTY++ window that are truly originated
+by KiTTY++ itself are shown next to a small copy of the KiTTY++ icon,
 which the server cannot fake when it tries to imitate the same message
 using terminal output.
 
@@ -3288,7 +3293,7 @@ anyway (if you don't watch closely for the trust sigils, or if you
 think you're at extra risk of one of your servers being malicious),
 then you could enable this option as an extra defence. Then, if the
 server tries any of these attacks involving letting you through the
-authentication stage, KiTTY will disconnect from the server before it
+authentication stage, KiTTY++ will disconnect from the server before it
 can send a follow-up fake prompt or other type of attack.
 
 On the other hand, some servers \e{legitimately} let you through the
@@ -3301,7 +3306,7 @@ working. It's up to you.
 
 \S{config-ssh-tryagent} \q{Attempt authentication using kageant}
 
-If this option is enabled, then KiTTY will look for kageant (the SSH
+If this option is enabled, then KiTTY++ will look for kageant (the SSH
 private-key storage agent) and attempt to authenticate with any
 suitable public keys kageant currently holds.
 
@@ -3326,7 +3331,7 @@ or if you had a physical \i{security token} that generated responses
 to authentication challenges.  They can even be used to prompt for
 simple passwords.
 
-With this switch enabled, KiTTY will attempt these forms of
+With this switch enabled, KiTTY++ will attempt these forms of
 authentication if the server is willing to try them. You will be
 presented with a challenge string (which may be different every
 time) and must supply the correct response in order to log in. If
@@ -3341,10 +3346,10 @@ The SSH-2 equivalent of TIS authentication is called
 using an arbitrary sequence of requests and responses; so it is not
 only useful for \I{challenge/response authentication}challenge/response
 mechanisms such as \i{S/Key}, but it can also be used for (for example)
-asking the user for a \I{password expiry}new password when the old one
+prompting the user for a \I{password expiry}new password when the old one
 has expired.
 
-KiTTY leaves this option enabled by default, but supplies a switch
+KiTTY++ leaves this option enabled by default, but supplies a switch
 to turn it off in case you should have trouble with it.
 
 \S{config-ssh-agentfwd} \q{Allow \i{agent forwarding}}
@@ -3362,8 +3367,8 @@ there is a security risk involved with enabling this option; see
 
 In the SSH-1 protocol, it is impossible to change username after
 failing to authenticate. So if you mis-type your username at the
-KiTTY \q{login as:} prompt, you will not be able to change it except
-by restarting KiTTY.
+KiTTY++ \q{login as:} prompt, you will not be able to change it except
+by restarting KiTTY++.
 
 The SSH-2 protocol \e{does} allow changes of username, in principle,
 but does not make it mandatory for SSH-2 servers to accept them. In
@@ -3373,10 +3378,10 @@ authenticate as another user. (Depending on the version of OpenSSH,
 it may quietly return failure for all login attempts, or it may send
 an error message.)
 
-For this reason, KiTTY will by default not prompt you for your
+For this reason, KiTTY++ will by default not prompt you for your
 username more than once, in case the server complains. If you know
 your server can cope with it, you can enable the \q{Allow attempted
-changes of username} option to modify KiTTY's behaviour.
+changes of username} option to modify KiTTY++'s behaviour.
 
 \H{config-ssh-auth-creds} The Credentials panel
 
@@ -3390,34 +3395,34 @@ This box is where you enter the name of your private key file if you
 are using \i{public key authentication}. See \k{pubkey} for information
 about public key authentication in SSH.
 
-This key must be in KiTTY's native format (\c{*.\i{PPK}}). If you have a
-private key in another format that you want to use with KiTTY, see
+This key must be in KiTTY++'s native format (\c{*.\i{PPK}}). If you have a
+private key in another format that you want to use with KiTTY++, see
 \k{puttygen-conversions}.
 
 The file name can use Windows environment variables, such as
 \c{%USERPROFILE%\\.ssh\\id.ppk}; see \k{kitty-cfg-envvars}.
 
-You can use the authentication agent (\i{kageant}, KiTTY's build of
+You can use the authentication agent (\i{kageant}, KiTTY++'s build of
 \i{kageant}) so that you do not need to explicitly configure a key
 here; see \k{pageant}.
 
-If a private key file is specified here with the agent running, KiTTY
-will first try asking the agent to authenticate with that key, and
-ignore any other keys the agent may have. If that fails, KiTTY will ask
+If a private key file is specified here with the agent running, KiTTY++
+will first try to have the agent authenticate with that key, and
+ignore any other keys the agent may have. If that fails, KiTTY++ will prompt
 for a passphrase as normal. You can also specify a \e{public} key file
 in this case (in RFC 4716 or OpenSSH format), as that's sufficient to
 identify the key to the agent, but of course if the agent isn't present
-KiTTY can't fall back to using this file itself.
+KiTTY++ can't fall back to using this file itself.
 
-\S{config-ssh-kitty-pin} \q{Pinned key fingerprint} (KiTTY)
+\S{config-ssh-kitty-pin} \q{Pinned key fingerprint} (KiTTY++)
 
 Optionally, a session can record its key file's SHA256 fingerprint:
 press \q{Record fingerprint of the key file} (this reads only the
 key's public half - no passphrase is involved) and save the session.
 From then on every connection checks the file against the record
-\e{before} offering the key or asking for its passphrase, and refuses
+\e{before} offering the key or prompting for its passphrase, and refuses
 a file whose fingerprint no longer matches - pointed at the wrong
-key, replaced, or tampered with - naming both fingerprints in the
+key, replaced, or tampered with - showing both fingerprints in the
 terminal and the Event Log. Clear the field to switch the check off
 (empty, the default, means no check). The pin is always over the key
 itself, never over a detached certificate (\k{config-ssh-cert}), so
@@ -3445,14 +3450,14 @@ automatically accept it without needing individual reconfiguration.
 
 One way to use a certificate is to incorporate it into your private
 key file. \K{puttygen-cert} explains how to do that using kittygen.
-But another approach is to tell KiTTY itself where to find the public
+But another approach is to tell KiTTY++ itself where to find the public
 certificate file, and then it will automatically present that
 certificate when authenticating with the corresponding private key.
 
 To do this, enter the pathname of the certificate file into the
 \q{Certificate to use with the private key} file selector.
 
-When this setting is configured, KiTTY will honour it no matter
+When this setting is configured, KiTTY++ will honour it no matter
 whether the private key is found in a file, or loaded into kageant.
 
 \S{config-ssh-authplugin} \q{\ii{Plugin} to provide authentication responses}
@@ -3463,7 +3468,7 @@ for ordinary passwords, but sometimes the server will use the same
 mechanism for something more complicated, such as a one-time password
 system.
 
-Some of these systems can be automated. For this purpose, KiTTY allows
+Some of these systems can be automated. For this purpose, KiTTY++ allows
 you to provide a separate program to act as a \q{plugin} which will
 take over the authentication and send answers to the questions on your
 behalf.
@@ -3486,7 +3491,7 @@ protocol to implement \i{passwordless login}.
 
 GSSAPI authentication is only available in the SSH-2 protocol.
 
-KiTTY supports two forms of GSSAPI-based authentication. In one of
+KiTTY++ supports two forms of GSSAPI-based authentication. In one of
 them, the SSH key exchange happens in the normal way, and GSSAPI is
 only involved in authenticating the user. The checkbox labelled
 \q{Attempt GSSAPI authentication} controls this form.
@@ -3501,10 +3506,10 @@ key exchange} controls this form. (The same checkbox appears on the
 If one or both of these controls is enabled, then GSSAPI
 authentication will be attempted in one form or the other, and
 (typically) if your client machine has valid Kerberos credentials
-loaded, then KiTTY should be able to authenticate automatically to
+loaded, then KiTTY++ should be able to authenticate automatically to
 servers that support Kerberos logins.
 
-If both of those checkboxes are disabled, KiTTY will not try any form
+If both of those checkboxes are disabled, KiTTY++ will not try any form
 of GSSAPI at all, and the rest of this panel will be unused.
 
 \S{config-ssh-auth-gssapi-delegation} \q{Allow GSSAPI credential
@@ -3512,7 +3517,7 @@ delegation}
 
 \i{GSSAPI credential delegation} is a mechanism for passing on your
 Kerberos (or other) identity to the session on the SSH server. If
-you enable this option, then not only will KiTTY be able to log in
+you enable this option, then not only will KiTTY++ be able to log in
 automatically to a server that accepts your Kerberos credentials,
 but also you will be able to connect out from that server to other
 Kerberos-supporting services and use the same credentials just as
@@ -3543,7 +3548,7 @@ method to be accessed through the same interface. Therefore, more
 than one authentication library may exist on your system which can
 be accessed using GSSAPI.
 
-KiTTY contains native support for a few well-known such libraries
+KiTTY++ contains native support for a few well-known such libraries
 (including Windows' \i{SSPI}), and will look for all of them on your system
 and use whichever it finds. If more than one exists on your system and
 you need to use a specific one, you can adjust the order in which it
@@ -3551,15 +3556,15 @@ will search using this preference list control.
 
 One of the options in the preference list is to use a user-specified
 GSSAPI library. If the library you want to use is not mentioned by
-name in KiTTY's list of options, you can enter its full pathname in
+name in KiTTY++'s list of options, you can enter its full pathname in
 the \q{User-supplied GSSAPI library path} field, and move the
 \q{User-supplied GSSAPI library} option in the preference list to
 make sure it is selected before anything else.
 
 On Windows, such libraries are files with a \I{DLL}\cw{.dll}
-extension, and must have been built in the same way as the KiTTY
+extension, and must have been built in the same way as the KiTTY++
 executable you're running; if you have a 32-bit DLL, you must run a
-32-bit version of KiTTY, and the same with 64-bit. On Unix, shared
+32-bit version of KiTTY++, and the same with 64-bit. On Unix, shared
 libraries generally have a \cw{.so} extension.
 
 \H{config-ssh-tty} The TTY panel
@@ -3576,7 +3581,7 @@ terminal device but allows the SSH server to catch all the data coming
 from that fake device and send it back to the client.
 
 Occasionally you might find you have a need to run a session \e{not}
-in a pseudo-terminal. In KiTTY, this is generally only useful for
+in a pseudo-terminal. In KiTTY++, this is generally only useful for
 very specialist purposes; although in klink (see \k{plink}) it is
 the usual way of working.
 
@@ -3599,13 +3604,13 @@ the list, choosing one of the options and specifying the exact value
 if necessary, and hitting \q{Set}. The effect of the options is as
 follows:
 
-\b If the \q{Auto} option is selected, the KiTTY tools will decide
+\b If the \q{Auto} option is selected, the KiTTY++ tools will decide
 whether to specify that mode to the server, and if so, will send
 a sensible value.
 
 \lcont{
 
-KiTTY proper will send modes that it has an opinion on (currently only
+KiTTY++ proper will send modes that it has an opinion on (currently only
 the code for the Backspace key, \cw{ERASE}, and whether the character
 set is UTF-8, \cw{IUTF8}). klink on Unix will propagate appropriate
 modes from the local terminal, if any.
@@ -3634,7 +3639,7 @@ your server documentation.
 \b \I{ERASE special character}\cw{ERASE} is the character that when typed
 by the user will delete one space to the left. When set to \q{Auto}
 (the default setting), this follows the setting of the local Backspace
-key in KiTTY (see \k{config-backspace}).
+key in KiTTY++ (see \k{config-backspace}).
 
 \lcont{
 This and other \i{special character}s are specified using \c{^C} notation
@@ -3654,7 +3659,7 @@ this is getting in your way, you may want to change it to another
 character or turn it off entirely.
 
 \b Boolean modes such as \cw{ECHO} and \cw{ICANON} can be specified in
-KiTTY in a variety of ways, such as \cw{true}/\cw{false},
+KiTTY++ in a variety of ways, such as \cw{true}/\cw{false},
 \cw{yes}/\cw{no}, and \cw{0}/\cw{1}. (Explicitly specifying a value of
 \cw{no} is different from not sending the mode at all.)
 
@@ -3687,7 +3692,7 @@ a local X display on your PC.
 To enable X11 forwarding, check the \q{Enable X11 forwarding} box.
 If your X display is somewhere unusual, you will need to enter its
 location in the \q{X display location} box; if this is left blank,
-KiTTY will try to find a sensible default in the environment, or use the
+KiTTY++ will try to find a sensible default in the environment, or use the
 primary local display (\c{:0}) if that fails.
 
 See \k{using-x-forwarding} for more information about X11
@@ -3697,7 +3702,7 @@ forwarding.
 
 If you are using X11 forwarding, the virtual X server created on the
 SSH server machine will be protected by authorisation data. This
-data is invented, and checked, by KiTTY.
+data is invented, and checked, by KiTTY++.
 
 The usual authorisation method used for this is called
 \i\cw{MIT-MAGIC-COOKIE-1}. This is a simple password-style protocol:
@@ -3707,7 +3712,7 @@ an unencrypted X11 connection; so if you allow a client on a third
 machine to access the virtual X server, then the cookie will be sent
 in the clear.
 
-KiTTY offers the alternative protocol \i\cw{XDM-AUTHORIZATION-1}. This
+KiTTY++ offers the alternative protocol \i\cw{XDM-AUTHORIZATION-1}. This
 is a cryptographically authenticated protocol: the data sent by the
 X client is different every time, and it depends on the IP address
 and port of the client's end of the connection and is also stamped
@@ -3715,15 +3720,15 @@ with the current time. So an eavesdropper who captures an
 \cw{XDM-AUTHORIZATION-1} string cannot immediately re-use it for
 their own X connection.
 
-KiTTY's support for \cw{XDM-AUTHORIZATION-1} is a somewhat
+KiTTY++'s support for \cw{XDM-AUTHORIZATION-1} is a somewhat
 experimental feature, and may encounter several problems:
 
 \b Some X clients probably do not even support
 \cw{XDM-AUTHORIZATION-1}, so they will not know what to do with the
-data KiTTY has provided.
+data KiTTY++ has provided.
 
 \b This authentication mechanism will only work in SSH-2. In SSH-1,
-the SSH server does not tell the client the source address of
+the SSH server does not send the client the source address of
 a forwarded connection in a machine-readable format, so it's
 impossible to verify the \cw{XDM-AUTHORIZATION-1} data.
 
@@ -3735,7 +3740,7 @@ the same remote display number, you might find that out-of-date
 authentication data is still present on your server and your X
 connections fail.
 
-KiTTY's default is \cw{MIT-MAGIC-COOKIE-1}. If you change it, you
+KiTTY++'s default is \cw{MIT-MAGIC-COOKIE-1}. If you change it, you
 should be sure you know what you're doing.
 
 \S{config-ssh-xauthority} X authority file for local display
@@ -3747,14 +3752,14 @@ authorisation.
 Some Windows X servers do not require this: they do authorisation by
 simpler means, such as accepting any connection from the local
 machine but not from anywhere else. However, if your X server does
-require authorisation, then KiTTY needs to know what authorisation
+require authorisation, then KiTTY++ needs to know what authorisation
 is required.
 
 One way in which this data might be made available is for the X
 server to store it somewhere in a file which has the same format
 as the Unix \c{.Xauthority} file. If this is how your Windows X
-server works, then you can tell KiTTY where to find this file by
-configuring this option. By default, KiTTY will not attempt to find
+server works, then you can tell KiTTY++ where to find this file by
+configuring this option. By default, KiTTY++ will not attempt to find
 any authorisation for your local display.
 
 \H{config-ssh-portfwd} \I{port forwarding}The Tunnels panel
@@ -3767,7 +3772,7 @@ connection} down an SSH session. See \k{using-port-forwarding} for a
 general discussion of port forwarding and how it works.
 
 The port forwarding section in the Tunnels panel shows a list of all
-the port forwardings that KiTTY will try to set up when it connects
+the port forwardings that KiTTY++ will try to set up when it connects
 to the server. By default no port forwardings are set up, so this
 list is empty.
 
@@ -3777,13 +3782,13 @@ To add a port forwarding:
 on whether you want to \I{local port forwarding}forward a local port
 to a remote destination (\q{Local}) or \I{remote port forwarding}forward
 a remote port to a local destination (\q{Remote}). Alternatively,
-select \q{Dynamic} if you want KiTTY to \I{dynamic port forwarding}provide
+select \q{Dynamic} if you want KiTTY++ to \I{dynamic port forwarding}provide
 a local SOCKS 4/4A/5 proxy on a local port (note that this proxy only
 supports TCP connections; the SSH protocol does not support forwarding
 \i{UDP}).
 
 \b Enter a source \i{port number} into the \q{Source port} box. For
-local forwardings, KiTTY will listen on this port of your PC. For
+local forwardings, KiTTY++ will listen on this port of your PC. For
 remote forwardings, your SSH server will listen on this port of the
 remote machine. Note that most servers will not allow you to listen
 on \I{privileged port}port numbers less than 1024.
@@ -3816,18 +3821,18 @@ you could enter \c{popserver.example.com:pop3}.
 You can \I{port forwarding, changing mid-session}modify the currently
 active set of port forwardings in mid-session using \q{Change
 Settings} (see \k{using-changesettings}). If you delete a local or
-dynamic port forwarding in mid-session, KiTTY will stop listening for
+dynamic port forwarding in mid-session, KiTTY++ will stop listening for
 connections on that port, so it can be re-used by another program. If
 you delete a remote port forwarding, note that:
 
-\b The SSH-1 protocol contains no mechanism for asking the server to
+\b The SSH-1 protocol contains no mechanism for instructing the server to
 stop listening on a remote port.
 
 \b The SSH-2 protocol does contain such a mechanism, but not all SSH
 servers support it. (In particular, \i{OpenSSH} does not support it in
 any version earlier than 3.9.)
 
-If you ask to delete a remote port forwarding and KiTTY cannot make
+If you ask to delete a remote port forwarding and KiTTY++ cannot make
 the server actually stop listening on the port, it will instead just
 start refusing incoming connections on that port. Therefore,
 although the port cannot be reused by another program, you can at
@@ -3840,8 +3845,8 @@ such as \q{Local ports accept connections from other hosts} only take
 effect on new forwardings.
 
 If the connection you are forwarding over SSH is itself a second SSH
-connection made by another copy of KiTTY, you might find the
-\q{logical host name} configuration option useful to warn KiTTY of
+connection made by another copy of KiTTY++, you might find the
+\q{logical host name} configuration option useful to warn KiTTY++ of
 which host key it should be expecting. See \k{config-loghost} for
 details of this.
 
@@ -3871,10 +3876,10 @@ This switch allows you to select a specific Internet protocol (\i{IPv4}
 or \i{IPv6}) for the local end of a forwarded port. By default, it is
 set on \q{Auto}, which means that:
 
-\b for a local-to-remote port forwarding, KiTTY will listen for
+\b for a local-to-remote port forwarding, KiTTY++ will listen for
 incoming connections in both IPv4 and (if available) IPv6
 
-\b for a remote-to-local port forwarding, KiTTY will choose a
+\b for a remote-to-local port forwarding, KiTTY++ will choose a
 sensible protocol for the outgoing connection.
 
 This overrides the general Internet protocol version preference
@@ -3883,7 +3888,7 @@ on the Connection panel (see \k{config-address-family}).
 Note that some operating systems may listen for incoming connections
 in IPv4 even if you specifically asked for IPv6, because their IPv4
 and IPv6 protocol stacks are linked together. Apparently \i{Linux} does
-this, and Windows does not. So if you're running KiTTY on Windows
+this, and Windows does not. So if you're running KiTTY++ on Windows
 and you tick \q{IPv6} for a local or dynamic port forwarding, it
 will \e{only} be usable by connecting to it using IPv6; whereas if
 you do the same on Linux, you can also use it with IPv4. However,
@@ -3897,42 +3902,39 @@ bugs in them, which can make it impossible for a client to talk to
 them unless it knows about the bug and works around it.
 
 Since most servers announce their software version number at the
-beginning of the SSH connection, KiTTY will attempt to detect which
+beginning of the SSH connection, KiTTY++ will attempt to detect which
 bugs it can expect to see in the server and automatically enable
 workarounds. However, sometimes it will make mistakes; if the server
 has been deliberately configured to conceal its version number, or
-if the server is a version which KiTTY's bug database does not know
-about, then KiTTY will not know what bugs to expect.
+if the server is a version which KiTTY++'s bug database does not know
+about, then KiTTY++ will not know what bugs to expect.
 
 The Bugs and More Bugs panels (there are two because we have so many
 bug compatibility modes) allow you to manually configure the bugs
-KiTTY expects to see in the server. Each bug can be configured in
+KiTTY++ expects to see in the server. Each bug can be configured in
 three states:
 
-\b \q{Off}: KiTTY will assume the server does not have the bug.
+\b \q{Off}: KiTTY++ will assume the server does not have the bug.
 
-\b \q{On}: KiTTY will assume the server \e{does} have the bug.
+\b \q{On}: KiTTY++ will assume the server \e{does} have the bug.
 
-\b \q{Auto}: KiTTY will use the server's version number announcement
+\b \q{Auto}: KiTTY++ will use the server's version number announcement
 to try to guess whether or not the server has the bug. (This option is
 not available for bugs that \e{cannot} be detected from the server
 version, e.g. because they must be acted on before the server version
 is known.)
-
-(The KiTTY project has a defined policy about when we're prepared to
-add auto-detection for a bug workaround. See \k{feedback-workarounds}.)
 
 \S{config-ssh-bug-ignore2} \q{Chokes on SSH-2 \i{ignore message}s}
 
 An ignore message (SSH_MSG_IGNORE) is a message in the SSH protocol
 which can be sent from the client to the server, or from the server
 to the client, at any time. Either side is required to ignore the
-message whenever it receives it. KiTTY uses ignore messages in SSH-2
+message whenever it receives it. KiTTY++ uses ignore messages in SSH-2
 to confuse the encrypted data stream and make it harder to
 cryptanalyse. It also uses ignore messages for connection
 \i{keepalives} (see \k{config-keepalive}).
 
-If it believes the server to have this bug, KiTTY will stop using
+If it believes the server to have this bug, KiTTY++ will stop using
 ignore messages. If this bug is enabled when talking to a correct
 server, the session will succeed, but keepalives will not work and
 the session might be less cryptographically secure than it could be.
@@ -3941,29 +3943,29 @@ the session might be less cryptographically secure than it could be.
 
 Some SSH servers cannot cope with \i{repeat key exchange} at
 all, and will ignore attempts by the client to start one. Since
-KiTTY pauses the session while performing a repeat key exchange, the
+KiTTY++ pauses the session while performing a repeat key exchange, the
 effect of this would be to cause the session to hang after an hour
 (unless you have your rekey timeout set differently; see
 \k{config-ssh-kex-rekey} for more about rekeys).
 Other, very old, SSH servers handle repeat key exchange even more
 badly, and disconnect upon receiving a repeat key exchange request.
 
-If this bug is detected, KiTTY will never initiate a repeat key
+If this bug is detected, KiTTY++ will never initiate a repeat key
 exchange. If this bug is enabled when talking to a correct server,
 the session should still function, but may be less secure than you
 would expect.
 
 This is an SSH-2-specific bug.
 
-\S{config-ssh-bug-winadj} \q{Chokes on KiTTY's SSH-2 \cq{winadj} requests}
+\S{config-ssh-bug-winadj} \q{Chokes on PuTTY's SSH-2 \cq{winadj} requests}
 
-KiTTY sometimes sends a special request to SSH servers in the middle
+KiTTY++ sometimes sends a special request to SSH servers in the middle
 of channel data, with the name \cw{winadj@kitty.projects.tartarus.org}
 (see \k{sshnames-channel}). The purpose of this request is to measure
-the round-trip time to the server, which KiTTY uses to tune its flow
+the round-trip time to the server, which KiTTY++ uses to tune its flow
 control. The server does not actually have to \e{understand} the
 message; it is expected to send back a \cw{SSH_MSG_CHANNEL_FAILURE}
-message indicating that it didn't understand it. (All KiTTY needs for
+message indicating that it didn't understand it. (All KiTTY++ needs for
 its timing calculations is \e{some} kind of response.)
 
 It has been known for some SSH servers to get confused by this message
@@ -3971,7 +3973,7 @@ in one way or another \dash because it has a long name, or because
 they can't cope with unrecognised request names even to the extent of
 sending back the correct failure response, or because they handle it
 sensibly but fill up the server's log file with pointless spam, or
-whatever. KiTTY therefore supports this bug-compatibility flag: if it
+whatever. KiTTY++ therefore supports this bug-compatibility flag: if it
 believes the server has this bug, it will never send its
 \cq{winadj@kitty.projects.tartarus.org} request, and will make do
 without its timing data.
@@ -3980,8 +3982,8 @@ without its timing data.
 
 The SSH protocol as published in RFC 4254 has an ambiguity which
 arises if one side of a connection tries to close a channel, while the
-other side simultaneously sends a request within the channel and asks
-for a reply. RFC 4254 leaves it unclear whether the closing side
+other side simultaneously sends a request within the channel and requests
+a reply. RFC 4254 leaves it unclear whether the closing side
 should reply to the channel request after having announced its
 intention to close the channel.
 
@@ -3992,7 +3994,7 @@ other policy; for example,
 \W{https://bugzilla.mindrot.org/show_bug.cgi?id=1818}{OpenSSH used to}
 until it was fixed.
 
-Because KiTTY sends channel requests with the \q{want reply} flag
+Because KiTTY++ sends channel requests with the \q{want reply} flag
 throughout channels' lifetime (see \k{config-ssh-bug-winadj}), it's
 possible that when connecting to such a server it might receive a
 reply to a request after it thinks the channel has entirely closed,
@@ -4003,11 +4005,11 @@ and terminate with an error along the lines of \q{Received
 
 When an SSH-2 channel is set up, each end announces the maximum size
 of data packet that it is willing to receive for that channel.  Some
-servers ignore KiTTY's announcement and send packets larger than KiTTY
+servers ignore KiTTY++'s announcement and send packets larger than KiTTY++
 is willing to accept, causing it to report \q{Incoming packet was
 garbled on decryption}.
 
-If this bug is detected, KiTTY never allows the channel's
+If this bug is detected, KiTTY++ never allows the channel's
 \i{flow-control window} to grow large enough to allow the server to
 send an over-sized packet.  If this bug is enabled when talking to a
 correct server, the session will work correctly, but download
@@ -4028,15 +4030,15 @@ Mode Linux kernel can lose outgoing data before the kernel has fully
 booted.
 
 You can work around this problem by manually enabling this bug flag,
-which will cause KiTTY to wait to send its initial SSH greeting until
+which will cause KiTTY++ to wait to send its initial SSH greeting until
 after it sees the greeting from the server.
 
 Note that this bug flag can never be automatically detected, since
 auto-detection relies on the version string in the server's greeting,
-and KiTTY has to decide whether to expect this bug \e{before} it sees
+and KiTTY++ has to decide whether to expect this bug \e{before} it sees
 the server's greeting. So this is a manual workaround only.
 
-\S{config-ssh-bug-filter-kexinit} \q{Chokes on KiTTY's full \cw{KEXINIT}}
+\S{config-ssh-bug-filter-kexinit} \q{Chokes on PuTTY's full \cw{KEXINIT}}
 
 At the start of an SSH connection, the client and server exchange long
 messages of type \cw{SSH_MSG_KEXINIT}, containing lists of all the
@@ -4045,12 +4047,12 @@ negotiate a set of algorithms that both ends can speak.
 
 Occasionally, a badly written server might have a length limit on the
 list it's prepared to receive, and refuse to make a connection simply
-because KiTTY is giving it too many choices.
+because KiTTY++ is giving it too many choices.
 
-A workaround is to enable this flag, which will make KiTTY wait to
+A workaround is to enable this flag, which will make KiTTY++ wait to
 send \cw{KEXINIT} until after it receives the one from the server, and
 then filter its own \cw{KEXINIT} to leave out any algorithm the server
-doesn't also announce support for. This will generally make KiTTY's
+doesn't also announce support for. This will generally make KiTTY++'s
 \cw{KEXINIT} at most the size of the server's, and will otherwise make
 no difference to the algorithm negotiation.
 
@@ -4059,13 +4061,13 @@ are supposed to send \cw{KEXINIT} proactively. It still works provided
 \e{one} side sends its \cw{KEXINIT} without waiting, but if both
 client and server waited for the other one to speak first, the
 connection would deadlock. We don't know of any servers that do this,
-but if there is one, then this flag will make KiTTY unable to speak to
+but if there is one, then this flag will make KiTTY++ unable to speak to
 them at all.
 
 \S{config-ssh-bug-rsa-sha2-cert-userauth} \q{Old RSA/SHA2 cert
 algorithm naming}
 
-If KiTTY is trying to do SSH-2 user authentication using an RSA key,
+If KiTTY++ is trying to do SSH-2 user authentication using an RSA key,
 and the server is using one of the newer SHA-2 based versions of the
 SSH RSA protocol, and the user's key is also a certificate, then
 earlier versions of OpenSSH (up to 7.7) disagree with later versions
@@ -4076,19 +4078,19 @@ key, such as \cq{rsa-sha2-512-cert-v01@openssh.com}. Earlier versions
 would reject that, and insist on seeing
 \cq{ssh-rsa-cert-v01@openssh.com} followed by a SHA-2 based signature.
 
-KiTTY should auto-detect the presence of this bug in earlier OpenSSH
+KiTTY++ should auto-detect the presence of this bug in earlier OpenSSH
 and adjust to send the right string.
 
 \S{config-ssh-bug-sig} \q{Requires padding on SSH-2 \i{RSA} \i{signatures}}
 
 Versions below 3.3 of \i{OpenSSH} require SSH-2 RSA signatures to be
 padded with zero bytes to the same length as the RSA key modulus.
-The SSH-2 specification says that an unpadded signature MUST be
+The SSH-2 specification states that an unpadded signature MUST be
 accepted, so this is a bug. A typical symptom of this problem is
-that KiTTY mysteriously fails RSA authentication once in every few
+that KiTTY++ mysteriously fails RSA authentication once in every few
 hundred attempts, and falls back to passwords.
 
-If this bug is detected, KiTTY will pad its signatures in the way
+If this bug is detected, KiTTY++ will pad its signatures in the way
 OpenSSH expects. If this bug is enabled when talking to a correct
 server, it is likely that no damage will be done, since correct
 servers usually still accept padded signatures because they're used
@@ -4101,11 +4103,11 @@ This is an SSH-2-specific bug.
 The SSH key exchange method that uses Diffie-Hellman group exchange
 was redesigned after its original release, to use a slightly more
 sophisticated setup message. Almost all SSH implementations switched
-over to the new version. (KiTTY was one of the last.) A few old
+over to the new version. (PuTTY was one of the last.) A few old
 servers still only support the old one.
 
 If this bug is detected, and the client and server negotiate
-Diffie-Hellman group exchange, then KiTTY will send the old message
+Diffie-Hellman group exchange, then KiTTY++ will send the old message
 now known as \cw{SSH2_MSG_KEX_DH_GEX_REQUEST_OLD} in place of the new
 \cw{SSH2_MSG_KEX_DH_GEX_REQUEST}.
 
@@ -4115,11 +4117,11 @@ This is an SSH-2-specific bug.
 
 Versions 2.3.0 and below of the SSH server software from
 \cw{ssh.com} compute the keys for their \i{HMAC} \i{message authentication
-code}s incorrectly. A typical symptom of this problem is that KiTTY
-dies unexpectedly at the beginning of the session, saying
+code}s incorrectly. A typical symptom of this problem is that KiTTY++
+dies unexpectedly at the beginning of the session, reporting
 \q{Incorrect MAC received on packet}.
 
-If this bug is detected, KiTTY will compute its HMAC keys in the
+If this bug is detected, KiTTY++ will compute its HMAC keys in the
 same way as the buggy server, so that communication will still be
 possible. If this bug is enabled when talking to a correct server,
 communication will fail.
@@ -4136,7 +4138,7 @@ authentication mysteriously does not work but the Event Log (see
 might be worth enabling the workaround for this bug to see if it
 helps.
 
-If this bug is detected, KiTTY will sign data in the way OpenSSH
+If this bug is detected, KiTTY++ will sign data in the way OpenSSH
 expects. If this bug is enabled when talking to a correct server,
 SSH-2 public-key authentication will fail.
 
@@ -4149,7 +4151,7 @@ compute the keys for the session encryption incorrectly. This
 problem can cause various error messages, such as \q{Incoming packet
 was garbled on decryption}, or possibly even \q{Out of memory}.
 
-If this bug is detected, KiTTY will compute its encryption keys in
+If this bug is detected, KiTTY++ will compute its encryption keys in
 the same way as the buggy server, so that communication will still
 be possible. If this bug is enabled when talking to a correct
 server, communication will fail.
@@ -4161,14 +4163,14 @@ This is an SSH-2-specific bug.
 An ignore message (SSH_MSG_IGNORE) is a message in the SSH protocol
 which can be sent from the client to the server, or from the server
 to the client, at any time. Either side is required to ignore the
-message whenever it receives it. KiTTY uses ignore messages to
+message whenever it receives it. KiTTY++ uses ignore messages to
 \I{password camouflage}hide the password packet in SSH-1, so that
 a listener cannot tell the length of the user's password; it also
 uses ignore messages for connection \i{keepalives} (see
 \k{config-keepalive}).
 
-If this bug is detected, KiTTY will stop using ignore messages. This
-means that keepalives will stop working, and KiTTY will have to fall
+If this bug is detected, KiTTY++ will stop using ignore messages. This
+means that keepalives will stop working, and KiTTY++ will have to fall
 back to a secondary defence against SSH-1 password-length
 eavesdropping. See \k{config-ssh-bug-plainpw1}. If this bug is
 enabled when talking to a correct server, the session will succeed,
@@ -4178,16 +4180,16 @@ vulnerable to eavesdroppers than it could be.
 \S{config-ssh-bug-plainpw1} \q{Refuses all SSH-1 \i{password camouflage}}
 
 When talking to an SSH-1 server which cannot deal with ignore
-messages (see \k{config-ssh-bug-ignore1}), KiTTY will attempt to
+messages (see \k{config-ssh-bug-ignore1}), KiTTY++ will attempt to
 disguise the length of the user's password by sending additional
 padding \e{within} the password packet. This is technically a
-violation of the SSH-1 specification, and so KiTTY will only do it
+violation of the SSH-1 specification, and so KiTTY++ will only do it
 when it cannot use standards-compliant ignore messages as
 camouflage. In this sense, for a server to refuse to accept a padded
 password packet is not really a bug, but it does make life
 inconvenient if the server can also not handle ignore messages.
 
-If this \q{bug} is detected, KiTTY will assume that neither ignore
+If this \q{bug} is detected, KiTTY++ will assume that neither ignore
 messages nor padding are acceptable, and that it thus has no choice
 but to send the user's password with no form of camouflage, so that
 an eavesdropping user will be easily able to find out the exact length
@@ -4201,11 +4203,11 @@ attack.
 \S{config-ssh-bug-rsa1} \q{Chokes on SSH-1 \i{RSA} authentication}
 
 Some SSH-1 servers cannot deal with RSA authentication messages at
-all. If \i{kageant} is running and contains any SSH-1 keys, KiTTY will
+all. If \i{kageant} is running and contains any SSH-1 keys, KiTTY++ will
 normally automatically try RSA authentication before falling back to
 passwords, so these servers will crash when they see the RSA attempt.
 
-If this bug is detected, KiTTY will go straight to password
+If this bug is detected, KiTTY++ will go straight to password
 authentication. If this bug is enabled when talking to a correct
 server, the session will succeed, but of course RSA authentication
 will be impossible.
@@ -4214,8 +4216,8 @@ This is an SSH-1-specific bug.
 
 \H{config-psusan} The \q{Bare \cw{\i{ssh-connection}}} protocol
 
-In addition to SSH itself, KiTTY also supports a second protocol that
-is derived from SSH. It's listed in the KiTTY GUI under the name
+In addition to SSH itself, KiTTY++ also supports a second protocol that
+is derived from SSH. It's listed in the KiTTY++ GUI under the name
 \q{Bare \cw{ssh-connection}}.
 
 This protocol consists of just the innermost of SSH-2's three layers: it
@@ -4238,18 +4240,13 @@ of possible uses involve communicating with a strongly separated
 context such as the inside of a container, or a VM, or a different
 network namespace.
 
-Explicit support for this protocol is new in KiTTY 0.75. As of
+Explicit support for this protocol is new in PuTTY 0.75. As of
 2021-04, the only known server for the bare \cw{ssh-connection}
 protocol is the Unix program \cq{\i{psusan}} that is also part of the
-KiTTY tool suite.
+PuTTY tool suite.
 
 (However, this protocol is also the same one used between instances of
-KiTTY to implement connection sharing: see \k{config-ssh-sharing}. In
-fact, in the Unix version of KiTTY, when a sharing upstream records
-\q{Sharing this connection at [pathname]} in the Event Log, it's
-possible to connect another instance of KiTTY directly to that Unix
-socket, by entering its pathname in the host name box and selecting
-\q{Bare \cw{ssh-connection}} as the protocol!)
+KiTTY++ to implement connection sharing: see \k{config-ssh-sharing}.)
 
 Many of the options under the SSH panel also affect this protocol,
 although options to do with cryptography and authentication do not,
@@ -4261,12 +4258,12 @@ That's not what it's for, and it's not at all safe to do it.
 \H{config-serial} The Serial panel
 
 The \i{Serial} panel allows you to configure options that only apply
-when KiTTY is connecting to a local \I{serial port}\i{serial line}.
+when KiTTY++ is connecting to a local \I{serial port}\i{serial line}.
 
 \S{config-serial-line} Selecting a serial line to connect to
 
 The \q{Serial line to connect to} box allows you to choose which
-serial line you want KiTTY to talk to, if your computer has more
+serial line you want KiTTY++ to talk to, if your computer has more
 than one serial port.
 
 On Windows, the first serial line is called \i\cw{COM1}, and if there
@@ -4353,7 +4350,7 @@ and two vital function codes were specified the wrong way round. BSD
 implementations did not change, and the standard was not corrected.
 Therefore, it's possible you might find either \i{BSD} or \i{RFC}-compliant
 implementations out there. This switch allows you to choose which
-one KiTTY claims to be.
+one KiTTY++ claims to be.
 
 The problem was solved by issuing a second standard, defining a new
 Telnet mechanism called \i\cw{NEW_ENVIRON}, which behaved exactly like
@@ -4368,17 +4365,17 @@ In a Telnet connection, there are two types of data passed between
 the client and the server: actual text, and \e{negotiations} about
 which Telnet extra features to use.
 
-KiTTY can use two different strategies for negotiation:
+KiTTY++ can use two different strategies for negotiation:
 
-\b In \I{active Telnet negotiation}\e{active} mode, KiTTY starts to send
+\b In \I{active Telnet negotiation}\e{active} mode, KiTTY++ starts to send
 negotiations as soon as the connection is opened.
 
-\b In \I{passive Telnet negotiation}\e{passive} mode, KiTTY will wait to
+\b In \I{passive Telnet negotiation}\e{passive} mode, KiTTY++ will wait to
 negotiate until it sees a negotiation from the server.
 
 The obvious disadvantage of passive mode is that if the server is
 also operating in a passive mode, then negotiation will never begin
-at all. For this reason KiTTY defaults to active mode.
+at all. For this reason KiTTY++ defaults to active mode.
 
 However, sometimes passive mode is required in order to successfully
 get through certain types of firewall and \i{Telnet proxy} server. If
@@ -4406,7 +4403,7 @@ unless you know what you're doing.
 
 Unlike most other remote login protocols, the Telnet protocol has a
 special \q{\i{new line}} code that is not the same as the usual line
-endings of Control-M or Control-J. By default, KiTTY sends the
+endings of Control-M or Control-J. By default, KiTTY++ sends the
 Telnet New Line code when you press Return, instead of sending
 Control-M as it does in most other protocols.
 
@@ -4425,11 +4422,11 @@ Rlogin sessions.
 
 Rlogin allows an automated (password-free) form of login by means of
 a file called \i\c{.rhosts} on the server. You put a line in your
-\c{.rhosts} file saying something like \c{jbloggs@pc1.example.com},
+\c{.rhosts} file containing something like \c{jbloggs@pc1.example.com},
 and then when you make an Rlogin connection the client transmits the
 username of the user running the Rlogin client. The server checks
 the username and hostname against \c{.rhosts}, and if they match it
-\I{passwordless login}does not ask for a password.
+\I{passwordless login}does not request a password.
 
 This only works because Unix systems contain a safeguard to stop a
 user from pretending to be another user in an Rlogin connection.
@@ -4448,7 +4445,7 @@ that \e{anyone} using that PC can \i{spoof} your username in
 an Rlogin connection and access your account on the server.
 
 The \q{Local username} control allows you to specify what user name
-KiTTY should claim you have, in case it doesn't match your \i{Windows
+KiTTY++ should claim you have, in case it doesn't match your \i{Windows
 user name} (or in case you didn't bother to set up a Windows user
 name).
 
@@ -4464,7 +4461,7 @@ In SUPDUP, the client sends a piece of text of its choice to the
 server giving the user's location. This is typically displayed in
 lists of logged-in users.
 
-By default, KiTTY just defaults this to "The Internet". If you want
+By default, KiTTY++ just defaults this to "The Internet". If you want
 your location to show up as something more specific, you can configure
 it here.
 
@@ -4496,10 +4493,10 @@ first line.
 \H{config-file} \ii{Storing configuration in a file}
 
 Unlike KiTTY - whose manual used to describe a Registry
-import/export batch-file workaround here - KiTTY supports storing
+import/export batch-file workaround here - KiTTY++ supports storing
 its configuration in files natively: \e{portable mode}.
 
-In portable mode KiTTY keeps its runtime state next to the
+In portable mode KiTTY++ keeps its runtime state next to the
 executable instead of in the \i{Registry}: saved sessions are one
 file each (in a \c{Sessions} directory beside the program), and SSH
 host keys, host CAs, the random seed, recent-session state and the
@@ -4515,7 +4512,7 @@ containing
 
 Saved passwords in a portable store can be protected with a
 \e{master password} so they survive the move to another machine;
-see the Portability section of the KiTTY additions chapter
+see the Portability section of the KiTTY++ additions chapter
 (\k{kitty-features}) for that, and for the details of converting an
 existing store.
 

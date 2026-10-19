@@ -207,9 +207,41 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
                     return;
                 }
             }
+            /* The same password as the one stored, in the form this save
+             * would write: the stored value stays as it is. Wrapping it again
+             * draws a fresh salt, and the line would change on every save. */
+            if (value && value[0]) {
+                char *stored = handle->is_file
+                    ? dupstr(ksf_list_get(handle->items, key))
+                    : get_reg_sz(handle->sesskey, key);
+                int keeps = ksec_stored_keeps(stored, value, handle->is_file);
+                if (keeps)
+                    ksf_or_reg_put(handle, key, stored);
+                if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
+                if (keeps) {
+                    smemclr(plain, sizeof(plain));
+                    return;
+                }
+            }
+            int locked = 0;
             char *blob = handle->is_file
-                ? ksec_protect_portable(value ? value : "")
+                ? ksec_protect_portable_kept(value ? value : "", &locked)
                 : ksec_protect_registry(value ? value : "");
+            if (locked) {
+                /* KiTTY: the master password is locked (cancelled, wrong,
+                 * not set up): what is stored stays - the pre-loaded line,
+                 * or nothing for a key that had none - never DPAPI in its
+                 * place, and the user learns it */
+                const char *rel = handle->fpath ? handle->fpath : "";
+                size_t dl = strlen(g_sess_dir);
+                if (!_strnicmp(rel, g_sess_dir, dl))
+                    rel += dl;
+                while (*rel == '\\')
+                    rel++;
+                ksec_report_locked_save(KSEC_KEPT_SESSION, rel);
+                smemclr(plain, sizeof(plain));
+                return;
+            }
             ksf_or_reg_put(handle, key, blob ? blob : "");
             if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
         }

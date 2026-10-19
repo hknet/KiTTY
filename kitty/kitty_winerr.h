@@ -25,6 +25,24 @@ static const char *kitty_win_reason(DWORD err)
                         NULL, err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
                         msg, sizeof(msg), NULL))
         msg[0] = '\0';
+    {
+        /* Windows' texts keep their inserts with IGNORE_INSERTS: error 216
+         * reads "This version of %1 is not compatible ...". Each %<digit>
+         * becomes "the file" - what they stand for in these texts. */
+        char out[sizeof(msg)];
+        size_t i = 0, o = 0;
+        while (msg[i] && o + 9 < sizeof(out)) {
+            if (msg[i] == '%' && msg[i+1] >= '1' && msg[i+1] <= '9') {
+                memcpy(out + o, "the file", 8);
+                o += 8;
+                i += 2;
+            } else {
+                out[o++] = msg[i++];
+            }
+        }
+        out[o] = '\0';
+        memcpy(msg, out, o + 1);
+    }
     n = strlen(msg);
     while (n && (msg[n-1] == '\r' || msg[n-1] == '\n' || msg[n-1] == ' ' || msg[n-1] == '.'))
         msg[--n] = '\0';

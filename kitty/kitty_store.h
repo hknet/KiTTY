@@ -41,32 +41,6 @@ extern char sshkpath[2 * MAX_PATH] ;
 extern char keysuffix[16] ;
 extern char jumplistpath[2 * MAX_PATH] ;
 
-struct SettingsItem {
-	char * name ;
-	char * value ;
-	struct SettingsItem * pNext ; 
-	struct SettingsItem * pPrevious ; 
-} ;
-typedef struct SettingsItem SettingsItem, *HSettingsItem ;
-
-struct SettingsList {
-	char * filename ;
-	int num ;
-	HSettingsItem first ;
-	HSettingsItem last ;
-} ;
-typedef struct SettingsList SettingsList, *HSettingsList;
-
-HSettingsItem SettingsNewItem( const char * name, const char * value ) ;
-void SettingsFreeItem( HSettingsItem item ) ;
-
-HSettingsList SettingsInit(void) ;
-void SettingsDelItem( HSettingsList list, const char * key ) ;
-void SettingsAddItem( HSettingsList list, const char * name, const char * value ) ;
-void SettingsFree( HSettingsList list ) ;
-
-void SettingsLoad( HSettingsList list, const char * filename ) ;
-
 int loadPath(void) ;
 /* savemode=dir: take putty.conf's path keys over into kitty.ini once, then
  * apply kitty.ini's (hknet/KiTTY#56). After loadPath(), before the store starts. */

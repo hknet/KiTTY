@@ -1,7 +1,7 @@
-# KiTTY Portable (`kitty_portable.exe`)
+# KiTTY++ Portable (`kitty_portable.exe`)
 
-`kitty_portable.exe` is the portable edition of KiTTY. It is functionally identical to
-`kitty.exe` — same SSH/Telnet/Rlogin/Raw client, same KiTTY feature set — but it keeps
+`kitty_portable.exe` is the portable edition of KiTTY++. It is functionally identical to
+`kitty.exe` — same SSH/Telnet/Rlogin/Raw client, same KiTTY++ feature set — but it keeps
 saved sessions and most normal runtime state in files next to the executable/config
 directory instead of the Windows registry.
 
@@ -18,7 +18,7 @@ directory instead of the Windows registry.
 | Needs install / admin rights | no | no |
 | Roams with the Windows user profile | yes | no — the portable state travels with the folder instead |
 
-Under the hood it's the same code with `MOD_PORTABLE` enabled, which makes KiTTY default
+Under the hood it's the same code with `MOD_PORTABLE` enabled, which makes KiTTY++ default
 to **directory save-mode** (`savemode=dir`) and resolve its config (`kitty.ini`) from the
 executable's own folder first. Auto-login passwords inside the session files are protected
 at rest with a master password (the default) or with Windows DPAPI
@@ -63,7 +63,7 @@ both names exist the one with the ending is read. The `Sessions`,
 (one in the working directory is not read) are copied into kitty.ini once (as
 `sessions`, `fileextension`, `sshhostkeys` and `hostkeyextension`) and
 kitty.ini rules from then on: putty.conf is left as it is and not read any
-more. kitty.exe says so when it copies them, at the prompt it was started
+more. kitty.exe reports it when it copies them, at the prompt it was started
 from or in a box. 0.85.1.13's
 `sessionsuffix` / `keysuffix` in kitty.ini are copied over the same way and
 removed.
@@ -112,7 +112,7 @@ Copy the files and know the master password to use them on another machine.
 
 1. Put `kitty_portable.exe` in its own folder (e.g. on a USB stick).
 2. Run it. It stores saved sessions in `Sessions\`, SSH host keys in `SshHostKeys\`
-   (or the folder `sshhostkeys` names),
+   (or the folder `sshhostkeys` points to),
    host CAs in `SshHostCAs\`, and small state/cache files in the portable config folder.
 3. To pre-seed options, drop a `kitty.ini` next to the exe. The portable build already
    defaults to directory storage, so this is optional.

@@ -306,8 +306,8 @@ void kitty_export_all_sessions(HWND hwnd) {
     char dir[4096];
     int n, fail = 0;
     char msg[4400];
-    char *bundlepw = NULL;
-    int dpapi = 0, wrapfailed;
+    char *bundlepw = NULL, *skips;
+    int dpapi = 0;
     if (!OpenDirName(hwnd, dir)) return;
     /* Export writes one file per session (plus a Proxies\ subfolder). Warn when
      * the chosen folder already holds exported files, so old and new sessions
@@ -329,18 +329,13 @@ void kitty_export_all_sessions(HWND hwnd) {
 
     if (dpapi) kitty_set_bundle_dpapi_only(1);
     else       kitty_set_bundle_passphrase(bundlepw);
+    kitty_mpw_user_action_begin();   /* prompts again after a cancel */
     n = kitty_export_all_to_dir(dir, &fail);
-    wrapfailed = kitty_bundle_wrap_failed();
+    kitty_mpw_user_action_end();
+    /* the passwords a failed wrap left out (never DPAPI in their place):
+     * the password shown still opens everything else */
+    skips = kitty_bundle_wrap_report();
     kitty_clear_bundle_context();
-
-    /* A password wrap that fell back to DPAPI produces a bundle that only works
-     * on this PC. Say so instead of showing a password that does not open it. */
-    if (wrapfailed && bundlepw) {
-        SecureZeroMemory(bundlepw, strlen(bundlepw));
-        free(bundlepw);
-        bundlepw = NULL;
-        dpapi = 1;
-    }
 
     snprintf(msg, sizeof(msg),
              KT_BRIDGE_EXPORTED,
@@ -348,6 +343,11 @@ void kitty_export_all_sessions(HWND hwnd) {
              dpapi
                ? KT_BRIDGE_EXPORTED_DPAPI
                : KT_BRIDGE_EXPORTED_PW);
+    if (skips) {
+        size_t l = strlen(msg);
+        snprintf(msg + l, sizeof(msg) - l, "%s", skips);
+        sfree(skips);
+    }
     g_expd_text = msg;
     g_expd_pw = bundlepw;
     DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTDONE),

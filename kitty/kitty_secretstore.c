@@ -55,6 +55,7 @@
  * ===================================================================== */
 #include <wincrypt.h>
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the bundle-wrap test door */
 
 
 int kitty_secret_slot(const char *key)
@@ -137,11 +138,147 @@ void kitty_register_mpw_crypto(
     g_mpw_unprotect = unprotect; g_mpw_randsalt = randsalt;
 }
 
-static unsigned char g_mpw_key[KSEC_MPW_KEYLEN];
+/* ---- the master key and the supplied passphrase at rest -------------------
+ * Both stay for the life of the process, so they are kept wrapped with
+ * CryptProtectMemory (this process only) and unwrapped into a local buffer
+ * only around each use; the local is wiped afterwards. Resolved at run time
+ * from crypt32, as the hand-off below does (kmpw_mem): XP has no
+ * CryptProtectMemory. Where it is missing or fails, the value is kept plain,
+ * as it was before - the unlock is not lost. A wrapped value that does not
+ * unwrap again is dropped (the store is locked again), never used. */
+#ifndef CRYPTPROTECTMEMORY_BLOCK_SIZE
+#define CRYPTPROTECTMEMORY_BLOCK_SIZE 16
+#endif
+#ifndef CRYPTPROTECTMEMORY_SAME_PROCESS
+#define CRYPTPROTECTMEMORY_SAME_PROCESS 0x00
+#endif
+#ifndef CRYPTPROTECTMEMORY_SAME_LOGON
+#define CRYPTPROTECTMEMORY_SAME_LOGON 0x02
+#endif
+static int kmpw_mem_flags(const char *fn, void *p, DWORD n, DWORD flags) {
+    HMODULE c = GetModuleHandleA("crypt32.dll") ; if(!c) c = LoadLibraryA("crypt32.dll") ;
+    if(!c) return 0 ;
+    BOOL (WINAPI *pf)(LPVOID,DWORD,DWORD) = (BOOL(WINAPI*)(LPVOID,DWORD,DWORD))GetProcAddress(c,fn) ;
+    return pf ? (pf(p,n,flags) ? 1 : 0) : 0 ;
+}
+typedef struct {
+    unsigned char k[KSEC_MPW_KEYLEN];   /* KEYLEN is a multiple of the 16-byte block */
+    int wrapped;                        /* 1 = k is CryptProtectMemory'd */
+} ksec_keyslot;
+static void mpw_slot_put(ksec_keyslot *s, const unsigned char *key)
+{
+    memcpy(s->k, key, KSEC_MPW_KEYLEN);
+    s->wrapped = kmpw_mem_flags("CryptProtectMemory", s->k, KSEC_MPW_KEYLEN,
+                                CRYPTPROTECTMEMORY_SAME_PROCESS);
+}
+static void mpw_slot_clear(ksec_keyslot *s)
+{
+    SecureZeroMemory(s->k, sizeof(s->k));
+    s->wrapped = 0;
+}
+/* 1 and the key in out (the caller wipes it after use); 0 = it did not
+ * unwrap, out wiped */
+static int mpw_slot_get(const ksec_keyslot *s, unsigned char *out)
+{
+    memcpy(out, s->k, KSEC_MPW_KEYLEN);
+    if (s->wrapped &&
+        !kmpw_mem_flags("CryptUnprotectMemory", out, KSEC_MPW_KEYLEN,
+                        CRYPTPROTECTMEMORY_SAME_PROCESS)) {
+        SecureZeroMemory(out, KSEC_MPW_KEYLEN);
+        return 0;
+    }
+    return 1;
+}
+static ksec_keyslot g_mpw_key;                    /* the unlocked store's key */
 static int   g_mpw_unlocked = 0;
-static int   g_mpw_declined = 0;                 /* user cancelled -> stop prompting */
-static char *g_mpw_passphrase = NULL;            /* from -masterpwfile / API */
+/* The unlocked store's key into out; 0 when it did not unwrap - the store
+ * counts as locked again. */
+static int mpw_key_get(unsigned char *out)
+{
+    if (mpw_slot_get(&g_mpw_key, out)) return 1;
+    kitty_pwdebug("mpw: the cached key did not unwrap - locked again");
+    mpw_slot_clear(&g_mpw_key);
+    g_mpw_unlocked = 0;
+    return 0;
+}
+/* Cancelled (or three wrong answers): the automatic triggers - a read or a
+ * save the user did not start (OSC 52 / far2l clipboard, reconnect, save on
+ * exit) - prompt no more this run. A user-started action prompts again (the
+ * scope below). Reset only by a new supplied passphrase. */
+static int   g_mpw_declined = 0;
+/* The cancel behind the latch was the first-time SETUP prompt's: there is
+ * no master password, and a save kept for it reports that, not "locked"
+ * (ksec_report_locked_save). Cleared with the latch and by an unlock. */
+static int   g_mpw_setup_declined = 0;
+/* -masterpwfile / API: NUL-padded to whole blocks, wrapped like the key;
+ * non-NULL = a passphrase was supplied */
+static unsigned char *g_mpw_passphrase = NULL;
+static size_t g_mpw_pass_cap = 0;
+static int    g_mpw_pass_wrapped = 0;
 static char *(*g_mpw_prompt)(int creating) = NULL; /* GUI/console prompt */
+/* The supplied passphrase as a malloc'd string (the caller wipes and frees
+ * it), or NULL (none, or it did not unwrap). */
+static char *mpw_supplied_dup(void)
+{
+    char *p;
+    if (!g_mpw_passphrase) return NULL;
+    p = malloc(g_mpw_pass_cap);
+    if (!p) return NULL;
+    memcpy(p, g_mpw_passphrase, g_mpw_pass_cap);
+    if (g_mpw_pass_wrapped &&
+        !kmpw_mem_flags("CryptUnprotectMemory", p, (DWORD)g_mpw_pass_cap,
+                        CRYPTPROTECTMEMORY_SAME_PROCESS)) {
+        SecureZeroMemory(p, g_mpw_pass_cap);
+        free(p);
+        return NULL;
+    }
+    return p;                                     /* NUL-padded: a C string */
+}
+/* A user-started action - Save in the configuration window, /save, Export,
+ * Export All, Make a portable copy - runs inside kitty_mpw_user_action_begin
+ * / _end: there the latch above is not consulted, so it prompts again after
+ * an earlier cancel. A cancel (or three wrong answers) inside it ends the
+ * prompting for the rest of that action only - a store of forty sessions must
+ * not prompt forty times - and sets the latch for the automatic triggers. */
+static int   g_mpw_user_depth = 0;
+static int   g_mpw_user_declined = 0;
+void kitty_mpw_user_action_begin(void)
+{
+    if (g_mpw_user_depth++ == 0)
+        g_mpw_user_declined = 0;
+}
+void kitty_mpw_user_action_end(void)
+{
+    if (g_mpw_user_depth > 0)
+        g_mpw_user_depth--;
+}
+static int mpw_declined(void)
+{
+    return g_mpw_user_depth ? g_mpw_user_declined : g_mpw_declined;
+}
+static void mpw_decline(void)
+{
+    g_mpw_declined = 1;
+    if (g_mpw_user_depth)
+        g_mpw_user_declined = 1;
+}
+/* The interactive prompt's tries, and which one is on screen (1-based,
+ * 0 outside a prompt): the dialog shows a wrong answer from the try before. */
+#define KSEC_MPW_TRIES 3
+static int   g_mpw_try_no = 0;
+void kitty_mpw_prompt_try(int *no, int *max)
+{
+    if (no) *no = g_mpw_try_no;
+    if (max) *max = KSEC_MPW_TRIES;
+}
+static char *mpw_prompt_call(int creating, int no)
+{
+    char *p;
+    g_mpw_try_no = no;
+    p = g_mpw_prompt ? g_mpw_prompt(creating) : NULL;
+    g_mpw_try_no = 0;
+    return p;
+}
 /* Defer the interactive master-password prompt: when set, a locked MPW value
  * reads back empty (blob preserved by never-wipe) instead of popping the unlock
  * dialog. Used around the startup auto-load of the last session so the config
@@ -198,9 +335,16 @@ static unsigned char g_mpw_salt[KSEC_MPW_SALTLEN]; /* store salt, cached at unlo
 static int   g_mpw_salt_valid = 0;
 /* one-slot cache for a FOREIGN salt (imported MPW2 from another store), so a
  * bulk import derives/prompts once, not per session */
-static unsigned char g_mpw_fkey[KSEC_MPW_KEYLEN];
+static ksec_keyslot  g_mpw_fkey;
 static unsigned char g_mpw_fsalt[KSEC_MPW_SALTLEN];
 static int   g_mpw_f_valid = 0;
+static int mpw_fkey_get(unsigned char *out)
+{
+    if (mpw_slot_get(&g_mpw_fkey, out)) return 1;
+    mpw_slot_clear(&g_mpw_fkey);
+    g_mpw_f_valid = 0;
+    return 0;
+}
 
 /* ---- export-bundle passphrase --------------------------------------------
  * An export bundle is a TRANSPORT artifact and carries its own password, which
@@ -222,10 +366,20 @@ static char *g_bundle_pass = NULL;
  * mode a master-password prompt must never appear either, which is precisely
  * what the ordinary portable policy would do. */
 static int   g_bundle_dpapi = 0;
-/* Set if any wrap during this bundle fell back to DPAPI (see
- * kitty_secret_wrap_portable): such a bundle imports only on this PC/account,
- * which the export summary must state rather than claim a password protects it. */
-static int   g_bundle_wrap_failed = 0;
+/* The passwords this bundle left out because their wrap failed
+ * (ksec_wrap_bundle): how many, and the first few as the summary's lines
+ * (kitty_bundle_wrap_report). */
+#define KSEC_BUNDLE_SKIP_LINES 10
+static int     g_bundle_wrap_failed = 0;
+static strbuf *g_bundle_skip_lines = NULL;
+static void ksec_bundle_skips_clear(void)
+{
+    g_bundle_wrap_failed = 0;
+    if (g_bundle_skip_lines) {
+        strbuf_free(g_bundle_skip_lines);
+        g_bundle_skip_lines = NULL;
+    }
+}
 /* The bundle context is direction-aware. On IMPORT the passphrase must open the
  * bundle's values but must NOT be used to re-protect them: what gets saved
  * belongs to the destination store and has to carry the destination's
@@ -234,6 +388,13 @@ static int   g_bundle_wrap_failed = 0;
  * password, which nothing on that machine would know to ask for. */
 static int   g_bundle_import = 0;
 void kitty_set_bundle_import(int on) { g_bundle_import = (on != 0); }
+/* "Make a portable copy" writes its sessions through the export, but its files
+ * ARE the copy's folder store, not .ktx exchange files: they take the store's
+ * own "key=value" lines (save_open_settings_forced). Line form only - the
+ * passwords are wrapped as for any bundle. */
+static int   g_bundle_store_form = 0;
+void kitty_set_bundle_store_form(int on) { g_bundle_store_form = (on != 0); }
+int kitty_bundle_store_form(void) { return g_bundle_store_form; }
 void kitty_set_bundle_passphrase(const char *pass)
 {
     if (g_bundle_pass) {
@@ -241,24 +402,78 @@ void kitty_set_bundle_passphrase(const char *pass)
         free(g_bundle_pass);
     }
     g_bundle_pass = (pass && pass[0]) ? ksec_dup(pass) : NULL;
-    g_bundle_wrap_failed = 0;
+    ksec_bundle_skips_clear();
 }
 void kitty_set_bundle_dpapi_only(int on) { g_bundle_dpapi = (on != 0); }
 void kitty_clear_bundle_context(void)
 {
     kitty_set_bundle_passphrase(NULL);
     g_bundle_dpapi = 0;
-    g_bundle_wrap_failed = 0;
+    ksec_bundle_skips_clear();
     g_bundle_import = 0;
+    g_bundle_store_form = 0;
 }
 int kitty_bundle_wrap_failed(void) { return g_bundle_wrap_failed; }
+/* The summary's lines for the passwords left out, snewn'd, or NULL when none
+ * was: read it before kitty_clear_bundle_context. */
+char *kitty_bundle_wrap_report(void)
+{
+    strbuf *sb;
+    if (!g_bundle_wrap_failed)
+        return NULL;
+    sb = strbuf_new();
+    put_fmt(sb, KT_BUNDLE_SKIPPED_HEAD_FMT, g_bundle_wrap_failed);
+    if (g_bundle_skip_lines)
+        put_datapl(sb, ptrlen_from_strbuf(g_bundle_skip_lines));
+    if (g_bundle_wrap_failed > KSEC_BUNDLE_SKIP_LINES)
+        put_fmt(sb, KT_BUNDLE_SKIPPED_MORE_FMT,
+                g_bundle_wrap_failed - KSEC_BUNDLE_SKIP_LINES);
+    return strbuf_to_str(sb);
+}
+/* A bundle left out the password of `where` (KSEC_EXPORT_*): counted, and
+ * listed while the summary has room. */
+static void ksec_bundle_note_skip(int what, const char *where, const char *why)
+{
+    g_bundle_wrap_failed++;
+    kitty_pwdebug("bundle wrap failed: password %d of '%s' left out (%s)",
+                  what, where ? where : "", why ? why : "");
+    if (g_bundle_wrap_failed > KSEC_BUNDLE_SKIP_LINES)
+        return;
+    if (!g_bundle_skip_lines)
+        g_bundle_skip_lines = strbuf_new();
+    put_fmt(g_bundle_skip_lines,
+            what == KSEC_EXPORT_SESSION_PXPW ? KT_BUNDLE_SKIPPED_PXPW_FMT :
+            what == KSEC_EXPORT_PROXY_PW     ? KT_BUNDLE_SKIPPED_PROXY_FMT :
+                                               KT_BUNDLE_SKIPPED_PW_FMT,
+            where ? where : "", why ? why : "");
+}
 
 void kitty_set_master_passphrase(const char *pass)
 {
-    if (g_mpw_passphrase) { memset(g_mpw_passphrase, 0, strlen(g_mpw_passphrase)); free(g_mpw_passphrase); }
-    g_mpw_passphrase = (pass && pass[0]) ? ksec_dup(pass) : NULL;
+    if (g_mpw_passphrase) {
+        SecureZeroMemory(g_mpw_passphrase, g_mpw_pass_cap);
+        free(g_mpw_passphrase);
+    }
+    g_mpw_passphrase = NULL;
+    g_mpw_pass_cap = 0;
+    g_mpw_pass_wrapped = 0;
+    if (pass && pass[0]) {
+        size_t n = strlen(pass) + 1;              /* the NUL is in the buffer */
+        size_t cap = (n + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
+                     CRYPTPROTECTMEMORY_BLOCK_SIZE * CRYPTPROTECTMEMORY_BLOCK_SIZE;
+        g_mpw_passphrase = calloc(1, cap);
+        if (g_mpw_passphrase) {
+            memcpy(g_mpw_passphrase, pass, n - 1);
+            g_mpw_pass_cap = cap;
+            g_mpw_pass_wrapped = kmpw_mem_flags("CryptProtectMemory",
+                g_mpw_passphrase, (DWORD)cap, CRYPTPROTECTMEMORY_SAME_PROCESS);
+        }
+    }
     g_mpw_unlocked = 0;                           /* re-derive with the new passphrase */
+    mpw_slot_clear(&g_mpw_key);
     g_mpw_declined = 0;                           /* fresh passphrase -> allow another try */
+    g_mpw_user_declined = 0;
+    g_mpw_setup_declined = 0;
 }
 void kitty_set_master_pw_prompt(char *(*fn)(int creating)) { g_mpw_prompt = fn; }
 /* Called when the master password given was WRONG - every try of the prompt, or
@@ -333,7 +548,7 @@ static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
 static int mpw_ensure_unlocked(int creating)
 {
     if (g_mpw_unlocked) return 1;
-    if (g_mpw_declined)  return 0;               /* user cancelled earlier this run */
+    if (mpw_declined())  return 0;               /* cancelled earlier (mpw_declined) */
     /* Deferred (startup auto-load): don't prompt now unless a passphrase was
      * supplied non-interactively. Leaves the value locked; the next explicit
      * load/show/connect runs with defer cleared and prompts then. */
@@ -346,6 +561,7 @@ static int mpw_ensure_unlocked(int creating)
     }
 
     unsigned char salt[KSEC_MPW_SALTLEN];
+    unsigned char key[KSEC_MPW_KEYLEN];
     int have_salt = mpw_load_salt(salt);
     char *ver = mpw_state_get("MasterPwVerifier");    /* malloc'd (ksec_dup) or NULL */
     int first_time = (!have_salt || !ver);
@@ -360,16 +576,18 @@ static int mpw_ensure_unlocked(int creating)
      * same store) prompt only on the first step. Salt-matched + verifier-checked,
      * so a genuinely foreign (imported, different-password) key can't slip in. */
     if (ver && have_salt && g_mpw_f_valid &&
-        !memcmp(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN)) {
-        char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_fkey, &vpt);
+        !memcmp(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN) && mpw_fkey_get(key)) {
+        char *vpt = NULL; int rv = g_mpw_unprotect(ver, key, &vpt);
         int good = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
         if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
         if (good) {
-            memcpy(g_mpw_key, g_mpw_fkey, sizeof(g_mpw_key));
+            mpw_slot_put(&g_mpw_key, key);
+            SecureZeroMemory(key, sizeof(key));
             memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
             g_mpw_salt_valid = 1; g_mpw_unlocked = 1;
             free(ver); return 1;
         }
+        SecureZeroMemory(key, sizeof(key));
     }
 
     if (!have_salt)                              /* first-time setup: mint a salt */
@@ -382,25 +600,28 @@ static int mpw_ensure_unlocked(int creating)
     /* A non-interactive passphrase (-masterpwfile/API) gets a single try; an
      * interactive prompt gets a few, re-prompting on a wrong master password. */
     int from_supplied = (g_mpw_passphrase != NULL);
-    int tries = from_supplied ? 1 : 3;
-    int ok = 0, wrong = 0;
+    int tries = from_supplied ? 1 : KSEC_MPW_TRIES;
+    int ok = 0, wrong = 0, attempt = 0;
 
     while (tries-- > 0 && !ok) {
-        char *pass = from_supplied ? ksec_dup(g_mpw_passphrase)
-                   : (g_mpw_prompt ? g_mpw_prompt(first_time) : NULL);
+        char *pass = from_supplied ? mpw_supplied_dup()
+                   : mpw_prompt_call(first_time, ++attempt);
         if (!pass || !pass[0]) {                 /* cancelled / no prompt available */
             if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
-            if (!from_supplied && g_mpw_prompt) g_mpw_declined = 1;
+            if (!from_supplied && g_mpw_prompt) {
+                mpw_decline();
+                g_mpw_setup_declined = first_time;
+            }
             break;
         }
-        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
+        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
         memset(pass, 0, strlen(pass)); free(pass);
 
         if (ver) {                               /* verify against the stored token */
-            char *vpt = NULL; int rv = g_mpw_unprotect(ver, g_mpw_key, &vpt);
+            char *vpt = NULL; int rv = g_mpw_unprotect(ver, key, &vpt);
             ok = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
             if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
-            if (!ok) { SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key)); wrong++; } /* wrong: re-prompt */
+            if (!ok) { SecureZeroMemory(key, sizeof(key)); wrong++; } /* wrong: re-prompt */
         } else {                                 /* first time: persist salt + verifier */
             /* The master password exists only once BOTH are stored. It used
              * to count as set either way, so a failed write left a store
@@ -416,15 +637,15 @@ static int mpw_ensure_unlocked(int creating)
                 if (stored) have_salt = 1;
             }
             if (stored) {
-                char *vb = g_mpw_protect(KSEC_MPW_VERIFY, g_mpw_key); /* snew'd by kitty_mpw */
+                char *vb = g_mpw_protect(KSEC_MPW_VERIFY, key); /* snew'd by kitty_mpw */
                 stored = vb && mpw_state_set("MasterPwVerifier", vb);
                 if (!stored) err = vb ? GetLastError() : ERROR_NOT_ENOUGH_MEMORY;
                 if (vb) sfree(vb);
             }
             if (!stored) {
                 kitty_pwdebug("mpw setup: salt/verifier not stored (error %lu)", (unsigned long)err);
-                SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
-                g_mpw_declined = 1;              /* no further setup prompts this run */
+                SecureZeroMemory(key, sizeof(key));
+                mpw_decline();                   /* no further setup prompts this run */
                 if (g_mpw_store_failed)
                     g_mpw_store_failed(kitty_win_reason((int)err));
                 break;
@@ -435,20 +656,24 @@ static int mpw_ensure_unlocked(int creating)
 
     if (ver) free(ver);
     if (ok) {
+        mpw_slot_put(&g_mpw_key, key);
+        SecureZeroMemory(key, sizeof(key));
         memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
         g_mpw_salt_valid = 1;
         g_mpw_unlocked = 1;
+        g_mpw_setup_declined = 0;
         return 1;
     }
     kitty_pwdebug("mpw unlock FAILED: first_time=%d supplied=%d prompt=%d declined=%d",
-                  first_time, from_supplied, g_mpw_prompt != NULL, g_mpw_declined);
+                  first_time, from_supplied, g_mpw_prompt != NULL, mpw_declined());
     /* Three wrong answers end the asking for this run, exactly as a cancel
      * does: without this, every further value asked three more times - a
-     * store of forty sessions became a hundred and twenty prompts. A fresh
-     * hand-started action clears it (kitty_mpw_allow_prompt_again). */
+     * store of forty sessions became a hundred and twenty prompts. A
+     * user-started action prompts again (kitty_mpw_user_action_begin). */
     if (!from_supplied && g_mpw_prompt)
-        g_mpw_declined = 1;
-    SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+        mpw_decline();
+    SecureZeroMemory(key, sizeof(key));
+    mpw_slot_clear(&g_mpw_key);
     if (wrong && g_mpw_wrong)
         g_mpw_wrong(from_supplied);
     return 0;
@@ -481,38 +706,49 @@ static int mpw_unprotect_with_salt(const char *m1blob,
     }
     if (g_mpw_unlocked && g_mpw_salt_valid &&
         !memcmp(salt, g_mpw_salt, KSEC_MPW_SALTLEN)) {
-        if (g_mpw_unprotect(m1blob, g_mpw_key, outp) == 1 && *outp) return 1;
+        unsigned char k[KSEC_MPW_KEYLEN];
+        if (mpw_key_get(k)) {
+            int got = (g_mpw_unprotect(m1blob, k, outp) == 1 && *outp);
+            SecureZeroMemory(k, sizeof(k));
+            if (got) return 1;
+        }
         if (*outp) { sfree(*outp); *outp = NULL; }
     }
     if (g_mpw_f_valid && !memcmp(salt, g_mpw_fsalt, KSEC_MPW_SALTLEN)) {
-        if (g_mpw_unprotect(m1blob, g_mpw_fkey, outp) == 1 && *outp) return 1;
+        unsigned char k[KSEC_MPW_KEYLEN];
+        if (mpw_fkey_get(k)) {
+            int got = (g_mpw_unprotect(m1blob, k, outp) == 1 && *outp);
+            SecureZeroMemory(k, sizeof(k));
+            if (got) return 1;
+        }
         if (*outp) { sfree(*outp); *outp = NULL; }
     }
     int from_supplied = (g_mpw_passphrase != NULL);
-    int tries = from_supplied ? 1 : 3;
+    int tries = from_supplied ? 1 : KSEC_MPW_TRIES;
+    int attempt = 0;
     /* Which key opened a value is invisible otherwise, and "why did it prompt
      * when I passed -masterpwfile?" is the question that gets asked - it was a
      * real defect once (the switch was SAVEABLE, so it arrived after -load).
      * Flags only, no secrets. */
     kitty_pwdebug("mpw2 unwrap: supplied=%d unlocked=%d f_valid=%d declined=%d defer=%d",
                   from_supplied, g_mpw_unlocked, g_mpw_f_valid,
-                  g_mpw_declined, g_mpw_defer);
+                  mpw_declined(), g_mpw_defer);
     /* Deferred startup load or no interactive prompt available -> stay locked
      * (the cached-key fast paths above already ran). */
-    if (!from_supplied && (g_mpw_declined || !g_mpw_prompt || g_mpw_defer)) return 0;
+    if (!from_supplied && (mpw_declined() || !g_mpw_prompt || g_mpw_defer)) return 0;
     while (tries-- > 0) {
-        char *pass = from_supplied ? ksec_dup(g_mpw_passphrase)
-                                   : g_mpw_prompt(0);
+        char *pass = from_supplied ? mpw_supplied_dup()
+                                   : mpw_prompt_call(0, ++attempt);
         if (!pass || !pass[0]) {
             if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
-            if (!from_supplied) g_mpw_declined = 1;
+            if (!from_supplied) mpw_decline();
             return 0;
         }
         unsigned char key[KSEC_MPW_KEYLEN];
         g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
         memset(pass, 0, strlen(pass)); free(pass);
         if (g_mpw_unprotect(m1blob, key, outp) == 1 && *outp) {
-            memcpy(g_mpw_fkey, key, KSEC_MPW_KEYLEN);
+            mpw_slot_put(&g_mpw_fkey, key);
             memcpy(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN);
             g_mpw_f_valid = 1;
             SecureZeroMemory(key, sizeof(key));
@@ -523,9 +759,10 @@ static int mpw_unprotect_with_salt(const char *m1blob,
     }
     /* Three wrong answers end the asking for this run, as a cancel does -
      * otherwise every further value of the same store asked three more
-     * times. A hand-started action clears it (kitty_mpw_allow_prompt_again). */
+     * times. A user-started action prompts again
+     * (kitty_mpw_user_action_begin). */
     if (!from_supplied)
-        g_mpw_declined = 1;
+        mpw_decline();
     if (g_mpw_wrong)                    /* every try ran and none opened it */
         g_mpw_wrong(from_supplied);
     return 0;
@@ -663,10 +900,7 @@ struct kmpw_inherit_blob {
 } ;
 
 static int kmpw_mem(const char *fn, void *p, DWORD n) {
-    HMODULE c = GetModuleHandleA("crypt32.dll") ; if(!c) c = LoadLibraryA("crypt32.dll") ;
-    if(!c) return 0 ;
-    BOOL (WINAPI *pf)(LPVOID,DWORD,DWORD) = (BOOL(WINAPI*)(LPVOID,DWORD,DWORD))GetProcAddress(c,fn) ;
-    return pf ? (pf(p,n,CRYPTPROTECTMEMORY_SAME_LOGON) ? 1 : 0) : 0 ;
+    return kmpw_mem_flags(fn, p, n, CRYPTPROTECTMEMORY_SAME_LOGON) ;
 }
 
 /* Core: map the inherited mapping `fm` (sz bytes), validate + unlock, close it.
@@ -694,7 +928,7 @@ static void kmpw_consume(HANDLE fm, unsigned sz) {
             }
             if (ver) free(ver) ;
             if (trust) {
-                memcpy(g_mpw_key, loc.key, KSEC_MPW_KEYLEN) ;
+                mpw_slot_put(&g_mpw_key, loc.key) ;   /* wrapped for this process */
                 memcpy(g_mpw_salt, loc.salt, KSEC_MPW_SALTLEN) ;
                 g_mpw_salt_valid = 1 ; g_mpw_unlocked = 1 ;
             }
@@ -718,7 +952,8 @@ HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t tokle
     struct kmpw_inherit_blob blob ; memset(&blob, 0, sizeof(blob)) ;
     blob.magic = KMPW_INHERIT_MAGIC ; blob.version = 1 ;
     memcpy(blob.salt, g_mpw_salt, KSEC_MPW_SALTLEN) ;
-    memcpy(blob.key, g_mpw_key, KSEC_MPW_KEYLEN) ;
+    /* unwrapped from this process's protection, wrapped for the logon */
+    if (!mpw_key_get(blob.key)) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
     blob.wrapped = kmpw_mem("CryptProtectMemory", blob.key, KSEC_MPW_KEYLEN) ;
     HANDLE fm = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(blob), NULL) ;
     if (!fm || fm==INVALID_HANDLE_VALUE) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
@@ -776,10 +1011,15 @@ void kitty_mpw_consume_cmdline_switch(char *cl) {
 
 /* Root process: prompt once at startup to unlock the portable master password so
  * the whole run - and every child it spawns - is silent afterwards. No-op in
- * registry mode, when already unlocked, or when no master password is set. */
+ * registry mode, when already unlocked, or when no master password is set.
+ * Also a no-op when PortablePasswordProtection is dpapi or legacy: a master
+ * password set up before the switch stays in Security\, and its prompt at
+ * every start came up even in a store whose passwords are all DPAPI1
+ * (hknet/KiTTY#69). A value still MPW2 brings the prompt when it is read. */
 int kitty_mpw_startup_unlock(void) {
     if (g_mpw_unlocked) return 1 ;
     if (!store_is_file()) return 0 ;
+    if (g_portable_pw_mode != KITTY_PORTABLE_PW_MASTER) return 0 ;
     char *ver = mpw_state_get("MasterPwVerifier") ;
     if (!ver) return 0 ;
     free(ver) ;
@@ -804,45 +1044,149 @@ char *ksec_protect_registry(const char *plaintext)
 
 /* Portable-file backend: MPW2 when the master password is set/unlockable (the
  * first non-empty secret save may prompt to create it; a cancel stops further
- * prompts this run). kitty.ini PortablePasswordProtection selects DPAPI ("this
- * PC and account", never a prompt) or the explicit-compat plaintext escape
- * hatch ("legacy") instead. MPW declined/unavailable -> DPAPI1, so the secret
- * never lands plaintext unintentionally: still readable on this machine, and
- * rewritten as MPW2 on a later protected save (read policy). */
-char *ksec_protect_portable(const char *plaintext)
+ * automatic prompts this run). kitty.ini PortablePasswordProtection selects
+ * DPAPI ("this PC and account", never a prompt) or the explicit-compat
+ * plaintext escape hatch ("legacy") instead.
+ *
+ * strict (the session save, write_setting_s): under the master-password
+ * policy a locked master password - cancelled, wrong, latched, its setup not
+ * stored, the crypto not linked - gives NULL and *locked = 1: the caller
+ * keeps what is stored and reports it. A save used to fall back to DPAPI
+ * there and silently change the stored password's protection (a portable
+ * store then held a value only this Windows account could open).
+ * Not strict (the named-proxy, login-script and .ktx wraps): the DPAPI
+ * fallback as before, so the secret is never lost. */
+static char *ksec_protect_portable_x(const char *plaintext, int strict, int *locked)
 {
+    if (locked) *locked = 0;
     if (!plaintext || !plaintext[0]) return ksec_dup("");
     /* Which branch this takes is otherwise invisible, and "why did I get DPAPI
      * when I expected MPW2?" is the question that actually gets asked. No
      * plaintext, just the decision inputs. */
-    kitty_pwdebug("protect portable: mode=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d",
+    kitty_pwdebug("protect portable: mode=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d strict=%d",
                   g_portable_pw_mode, g_mpw_derive != NULL,
-                  g_mpw_passphrase != NULL, g_mpw_unlocked, g_mpw_declined,
-                  g_mpw_defer);
+                  g_mpw_passphrase != NULL, g_mpw_unlocked, mpw_declined(),
+                  g_mpw_defer, strict);
     if (g_portable_pw_mode == KITTY_PORTABLE_PW_LEGACY)
         return ksec_dup(plaintext);
     /* DPAPI policy: fall straight through to the DPAPI wrap below, without
      * touching the master-password machinery -- no unlock, no setup dialog, no
      * Security\ state written. */
-    if (g_portable_pw_mode == KITTY_PORTABLE_PW_MASTER && mpw_ensure_unlocked(1)) {
-        char *mb = g_mpw_protect(plaintext, g_mpw_key);   /* "MPW1:..." (snew'd) */
-        if (mb) {
-            /* Wrap as self-contained MPW2 (salt embedded) so the value stays
-             * unlockable away from this store's Security\/registry salt. */
-            char *res = g_mpw_salt_valid ? mpw2_compose(mb, g_mpw_salt) : NULL;
-            sfree(mb);
-            if (res) return res;
-            /* MPW2 build failed (salt b64 OOM) -> do NOT persist bare MPW1: it
-             * is the least portable form and would make MPW1 a live write format
-             * again. Fall through to DPAPI below instead -- still encrypted at
-             * rest, needs no store salt, and a later protected save re-wraps as
-             * MPW2 (read policy). */
-            kitty_pwdebug("MPW2 wrap failed (salt b64 OOM) -> DPAPI fallback");
+    if (g_portable_pw_mode == KITTY_PORTABLE_PW_MASTER) {
+        unsigned char k[KSEC_MPW_KEYLEN];
+        if (mpw_ensure_unlocked(1) && mpw_key_get(k)) {
+            char *mb = g_mpw_protect(plaintext, k);   /* "MPW1:..." (snew'd) */
+            SecureZeroMemory(k, sizeof(k));
+            if (mb) {
+                /* Wrap as self-contained MPW2 (salt embedded) so the value
+                 * stays unlockable away from this store's Security\/registry
+                 * salt. */
+                char *res = g_mpw_salt_valid ? mpw2_compose(mb, g_mpw_salt) : NULL;
+                sfree(mb);
+                if (res) return res;
+                /* MPW2 build failed (salt b64 OOM) -> do NOT persist bare
+                 * MPW1: it is the least portable form and would make MPW1 a
+                 * live write format again. */
+                kitty_pwdebug("MPW2 wrap failed (salt b64 OOM)");
+            }
+        }
+        /* "Use DPAPI" in the setup prompt switched the store's policy
+         * (kitty_mpw_gui.c): DPAPI is then the user's own choice */
+        if (g_portable_pw_mode == KITTY_PORTABLE_PW_DPAPI)
+            strict = 0;
+        if (strict) {
+            if (locked) *locked = 1;
+            return NULL;
         }
         /* else fall through to DPAPI so the secret is never lost */
     }
     char *res = ksec_dpapi_protect(plaintext);
     return res ? res : ksec_dup(plaintext);
+}
+char *ksec_protect_portable(const char *plaintext)
+{
+    return ksec_protect_portable_x(plaintext, 0, NULL);
+}
+char *ksec_protect_portable_kept(const char *plaintext, int *locked)
+{
+    return ksec_protect_portable_x(plaintext, 1, locked);
+}
+
+/* A save kept a stored secret because the master password is locked
+ * (the _kept wraps): reported by the front end - a notice and an Event Log
+ * line in a terminal, the command line's output in a do-and-exit run, a box
+ * elsewhere. Without one (the console tools): stderr. `what` is
+ * KSEC_KEPT_*, `where` the session (its file, relative to the session
+ * folder), the named proxy or the export file. Password and ProxyPassword of
+ * one save - the same report within two seconds - report once. After a
+ * cancelled first-time setup the report is that no master password was set
+ * up: nothing is locked then. */
+static void (*g_mpw_locked_save)(const char *msg) = NULL;
+static int g_mpw_kept = 0, g_mpw_kept_nosetup = 0;
+void kitty_set_master_pw_locked_save(void (*fn)(const char *msg)) { g_mpw_locked_save = fn; }
+int kitty_mpw_kept_count(void) { return g_mpw_kept; }
+int kitty_mpw_kept_nosetup_count(void) { return g_mpw_kept_nosetup; }
+/* A do-and-exit run where no output took a report as it came (no console,
+ * nothing redirected - kitty_mpw_gui.c): the lines wait for the run's
+ * result, which shows them (windows/putty.c, -importdir). Twenty at most,
+ * the rest counted. */
+#define KSEC_KEPT_HELD_MAX 20
+static char *g_kept_held = NULL;
+static int g_kept_held_n = 0, g_kept_held_more = 0;
+void ksec_kept_hold(const char *line)
+{
+    size_t have = g_kept_held ? strlen(g_kept_held) : 0, add;
+    char *p;
+    if (!line || !line[0]) return;
+    if (g_kept_held_n >= KSEC_KEPT_HELD_MAX) { g_kept_held_more++; return; }
+    add = strlen(line);
+    p = realloc(g_kept_held, have + add + 2);
+    if (!p) { g_kept_held_more++; return; }
+    p[have] = '\n';
+    memcpy(p + have + 1, line, add + 1);
+    g_kept_held = p;
+    g_kept_held_n++;
+}
+const char *kitty_mpw_kept_held(int *more)
+{
+    if (more) *more = g_kept_held_more;
+    return g_kept_held;
+}
+void ksec_report_locked_save(int what, const char *where)
+{
+    static char last[MAX_PATH + 8];
+    static DWORD last_tick;
+    char key[MAX_PATH + 8], msg[MAX_PATH + 256];
+    DWORD now = GetTickCount();
+    int nosetup = g_mpw_setup_declined;
+    if (!where) where = "";
+    snprintf(key, sizeof(key), "%d:%s", what, where);
+    if (last[0] && !strcmp(last, key) && now - last_tick < 2000)
+        return;
+    snprintf(last, sizeof(last), "%s", key);
+    last_tick = now;
+    g_mpw_kept++;
+    if (nosetup)
+        g_mpw_kept_nosetup++;
+    if (nosetup)
+        snprintf(msg, sizeof(msg),
+                 what == KSEC_KEPT_PROXY  ? KT_MPW_NOSETUP_PROXY_FMT :
+                 what == KSEC_KEPT_SCRIPT ? KT_MPW_NOSETUP_SCRIPT_FMT :
+                 what == KSEC_KEPT_EXPORT ? KT_MPW_NOSETUP_EXPORT_FMT :
+                                            KT_MPW_NOSETUP_SAVE_FMT, where);
+    else
+        snprintf(msg, sizeof(msg),
+                 what == KSEC_KEPT_PROXY  ? KT_MPW_LOCKED_PROXY_FMT :
+                 what == KSEC_KEPT_SCRIPT ? KT_MPW_LOCKED_SCRIPT_FMT :
+                 what == KSEC_KEPT_EXPORT ? KT_MPW_LOCKED_EXPORT_FMT :
+                                            KT_MPW_LOCKED_SAVE_FMT, where);
+    kitty_pwdebug("save kept the stored secret: master password %s (%d, %s)",
+                  nosetup ? "not set up" : "locked", what, where);
+    if (g_mpw_locked_save) {
+        g_mpw_locked_save(msg);
+        return;
+    }
+    fprintf(stderr, "%s\n", msg);
 }
 
 /* stored -> plaintext in *out (malloc'd). 1=ok, 0=absent, -1=undecryptable DPAPI blob. */
@@ -899,8 +1243,10 @@ int ksec_unprotect(const char *stored, char **out)
         *out = ksec_dup(""); return -1;   /* locked/wrong/malformed -> never-wipe */
     }
     if (!strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK))) {
-        if (mpw_ensure_unlocked(0)) {
-            char *pt = NULL; int rv = g_mpw_unprotect(stored, g_mpw_key, &pt); /* snew'd */
+        unsigned char k[KSEC_MPW_KEYLEN];
+        if (mpw_ensure_unlocked(0) && mpw_key_get(k)) {
+            char *pt = NULL; int rv = g_mpw_unprotect(stored, k, &pt); /* snew'd */
+            SecureZeroMemory(k, sizeof(k));
             if (rv == 1 && pt) { char *res = ksec_dup(pt); sfree(pt); *out = res; return 1; }
             if (pt) sfree(pt);
         }
@@ -927,6 +1273,72 @@ int ksec_unprotect(const char *stored, char **out)
         *out = ksec_dup(""); return -1;   /* present blob, could not decrypt */
     }
     *out = ksec_dup(stored); return 1;     /* unmarked legacy == plaintext */
+}
+
+/* A save of an unchanged password keeps the stored value: every wrap draws a
+ * fresh salt / nonce, so wrapping again would change the stored line on every
+ * save. 1 when `stored` is in the form a save to this backend writes now
+ * (registry or PortablePasswordProtection=dpapi: DPAPI1; master password:
+ * MPW2 under this store's salt, the master password unlocked) and opens -
+ * never with a prompt - to `plaintext`. Anything else answers 0 and the
+ * caller wraps afresh: an unmarked or PLAIN: value, MPW1, MPW2 under another
+ * salt, a locked master password, and DPAPI1 under the master-password policy,
+ * which a protected save turns into MPW2. */
+int ksec_stored_keeps(const char *stored, const char *plaintext, int portable)
+{
+    char *pt = NULL;
+    int same = 0;
+    if (!stored || !stored[0] || !plaintext || !plaintext[0])
+        return 0;
+    if (portable && g_portable_pw_mode == KITTY_PORTABLE_PW_LEGACY)
+        return 0;
+    if (portable && g_portable_pw_mode == KITTY_PORTABLE_PW_MASTER) {
+        const char *p, *dot;
+        unsigned char *salt = NULL;
+        char *sb, *m1;
+        int sn = 0;
+        /* Unlocked here, by the same step the wrap below would take: the
+         * first save of a process found the store still locked (nothing
+         * had needed the key yet), declined, and the wrap that followed
+         * unlocked and wrote a new ciphertext - every first save changed
+         * the line, and with -masterpwfile every save did. No extra
+         * prompt: the wrap prompts anyway, this only comes first; a
+         * cancel leaves the store locked and the caller keeps the line. */
+        if (strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)) != 0 ||
+            !mpw_ensure_unlocked(0) || !g_mpw_salt_valid || !g_mpw_unprotect)
+            return 0;
+        p = stored + strlen(KSEC_MPW2_MARK);
+        dot = strchr(p, '.');
+        if (!dot || dot == p)
+            return 0;
+        sb = malloc((size_t)(dot - p) + 1);
+        if (!sb) return 0;
+        memcpy(sb, p, dot - p); sb[dot - p] = '\0';
+        salt = ksec_b64_decode(sb, &sn);
+        free(sb);
+        if (salt && sn == KSEC_MPW_SALTLEN &&
+            !memcmp(salt, g_mpw_salt, KSEC_MPW_SALTLEN)) {
+            m1 = malloc(strlen(KSEC_MPW_MARK) + strlen(dot + 1) + 1);
+            unsigned char k[KSEC_MPW_KEYLEN];
+            if (m1 && mpw_key_get(k)) {
+                sprintf(m1, "%s%s", KSEC_MPW_MARK, dot + 1);
+                if (g_mpw_unprotect(m1, k, &pt) == 1 && pt)
+                    same = !strcmp(pt, plaintext);
+                SecureZeroMemory(k, sizeof(k));
+                if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
+            }
+            free(m1);
+        }
+        free(salt);
+        return same;
+    }
+    if (strncmp(stored, KITTY_SECRET_DPAPI_MARK,
+                strlen(KITTY_SECRET_DPAPI_MARK)) != 0)
+        return 0;
+    if (ksec_unprotect(stored, &pt) == 1 && pt)
+        same = !strcmp(pt, plaintext);
+    if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+    return same;
 }
 
 /* ---- the password file handed to kscp/ksftp/klink -------------------------
@@ -1271,8 +1683,9 @@ static int reg_base_read(const char *name, char *buf, DWORD bufsz)
 static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
 {
     unsigned char salt[KSEC_MPW_SALTLEN];
+    unsigned char key[KSEC_MPW_KEYLEN];
     unsigned char *d;
-    int n = 0, tries, ok = 0;
+    int n = 0, tries, ok = 0, attempt = 0;
 
     if (!g_mpw_derive || !g_mpw_unprotect) return 0;
     d = ksec_b64_decode(salt_b64, &n);
@@ -1282,21 +1695,21 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
 
     /* Same retry policy as a normal unlock: one shot for a supplied passphrase,
      * three for an interactive prompt. */
-    tries = g_mpw_passphrase ? 1 : 3;
+    tries = g_mpw_passphrase ? 1 : KSEC_MPW_TRIES;
     while (tries-- > 0 && !ok) {
         char *vpt = NULL;
-        char *pass = g_mpw_passphrase ? ksec_dup(g_mpw_passphrase)
-                   : (g_mpw_prompt ? g_mpw_prompt(0) : NULL);
+        char *pass = g_mpw_passphrase ? mpw_supplied_dup()
+                   : mpw_prompt_call(0, ++attempt);
         if (!pass || !pass[0]) {                   /* cancelled, or no prompt */
             if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
             break;
         }
-        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, g_mpw_key);
+        g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
         memset(pass, 0, strlen(pass)); free(pass);
-        ok = (g_mpw_unprotect(ver, g_mpw_key, &vpt) == 1 && vpt &&
+        ok = (g_mpw_unprotect(ver, key, &vpt) == 1 && vpt &&
               !strcmp(vpt, KSEC_MPW_VERIFY));
         if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
-        if (!ok) SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+        if (!ok) SecureZeroMemory(key, sizeof(key));
     }
     if (!ok) {
         kitty_pwdebug("portable MPW migrate: archived state did not verify, not adopted");
@@ -1304,10 +1717,12 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
     }
     if (!portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt", salt_b64)) {
         kitty_pwdebug("portable MPW migrate: verified, but Security\\ is not writable");
-        SecureZeroMemory(g_mpw_key, sizeof(g_mpw_key));
+        SecureZeroMemory(key, sizeof(key));
         return 0;
     }
     portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier", ver);
+    mpw_slot_put(&g_mpw_key, key);
+    SecureZeroMemory(key, sizeof(key));
     memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
     g_mpw_salt_valid = 1;
     g_mpw_unlocked = 1;                 /* asked once, here - do not ask again */
@@ -1387,39 +1802,94 @@ int kitty_migrate_portable_mpw_state(void)
  * export/import can round-trip arbitrary session names. Wrap/unwrap results
  * are malloc'd (free()); the munge results are snewn'd (sfree()). */
 int ksec_stored_is_legacy(const char *stored);
-char *kitty_secret_wrap_portable(const char *plaintext)
+/* An export bundle's wrap. 0: no bundle, the caller's policy applies. 1: a
+ * bundle - *out is the wrapped value (malloc'd; "" for no password), or NULL
+ * when the wrap failed, with the reason in *why.
+ *
+ * Export bundle in progress: protect with the bundle's OWN passphrase and
+ * leave the master password alone entirely - no setup dialog, no
+ * MasterPwSalt/MasterPwVerifier written, no Security\ folder created in a
+ * portable tree. This is the whole point of the bundle password, and it is
+ * why the hook sits here: both the session export (save_open_settings_forced)
+ * and the named-proxy export (kitty_export_proxies_to_dir) come through this
+ * one function, so a single bundle password covers both.
+ *
+ * A wrap that fails (the MPW crypto not linked into this program, a CSPRNG or
+ * memory failure, DPAPI refusing) writes NO password for that entry: the rest
+ * of the export goes on and the summary lists it (kitty_bundle_wrap_report).
+ * It used to fall back to DPAPI - and a failed DPAPI wrap to the plaintext -
+ * which made a password-protected bundle this-PC-only behind the user's back:
+ * DPAPI is written only when the user chose it ("this PC only"). */
+static int ksec_wrap_bundle(const char *plaintext, char **out, const char **why)
 {
-    if (!plaintext) plaintext = "";
-    /* Export bundle in progress: protect with the bundle's OWN passphrase and
-     * leave the master password alone entirely - no setup dialog, no
-     * MasterPwSalt/MasterPwVerifier written, no Security\ folder created in a
-     * portable tree. This is the whole point of the bundle password, and it
-     * is why the hook sits here: both the session export
-     * (save_open_settings_forced) and the named-proxy export
-     * (kitty_export_proxies_to_dir) come through this one function, so a single
-     * bundle password covers both.
-     *
-     * If the wrap itself fails (MPW crypto absent, or a CSPRNG/OOM failure) we
-     * fall back to DPAPI rather than to ksec_protect_portable: the secret stays
-     * encrypted and is never lost, and crucially we still do not prompt for a
-     * master password. Such a bundle is then this-PC-only, so the caller must
-     * say so - kitty_bundle_wrap_failed() reports it. */
-    if (!g_bundle_import && (g_bundle_pass || g_bundle_dpapi)) {
-        char *res;
-        if (!plaintext[0]) return ksec_dup("");
-        if (g_bundle_pass) {
-            res = ksec_wrap_with_passphrase(plaintext, g_bundle_pass);
-            if (res) return res;
-            g_bundle_wrap_failed = 1;
-            kitty_pwdebug("bundle wrap failed -> DPAPI fallback (bundle is this-PC-only)");
-        }
-        /* Deliberate "this PC only", or the never-lose fallback above. Either
-         * way: DPAPI directly, never the portable policy, so no
-         * master-password prompt can appear on an export. */
-        res = ksec_dpapi_protect(plaintext);
-        return res ? res : ksec_dup(plaintext);
+    static char dpapi_why[600];
+    int test_fail = 0;
+    *out = NULL;
+    *why = NULL;
+    if (g_bundle_import || (!g_bundle_pass && !g_bundle_dpapi))
+        return 0;                       /* not a bundle: the caller's policy */
+    if (!plaintext || !plaintext[0]) {
+        *out = ksec_dup("");
+        return 1;
     }
-    return ksec_protect_portable(plaintext);
+#ifdef KITTY_TEST_BUILD_LABEL
+    /* Test builds only: KITTY_TEST_WRAP_FAIL=1 fails every bundle wrap, as a
+     * CSPRNG or memory failure would. Nothing else reaches this path in a
+     * test. */
+    {
+        char tv[8];
+        DWORD tn = GetEnvironmentVariableA("KITTY_TEST_WRAP_FAIL", tv, sizeof(tv));
+        test_fail = (tn && tn < sizeof(tv) && tv[0] == '1');
+    }
+#endif
+    if (g_bundle_pass) {
+        if (!g_mpw_derive || !g_mpw_protect || !g_mpw_randsalt)
+            *why = KT_BUNDLE_WRAP_NOCRYPTO;
+        else if (!test_fail)
+            *out = ksec_wrap_with_passphrase(plaintext, g_bundle_pass);
+        if (!*out && !*why)
+            *why = KT_BUNDLE_WRAP_FAILED;
+    } else {
+        /* "This PC only", the user's choice: DPAPI directly, never the
+         * portable policy, so no master-password prompt can appear on an
+         * export. */
+        DWORD err = 0;
+        if (!test_fail) {
+            *out = ksec_dpapi_protect(plaintext);
+            err = GetLastError();
+        }
+        if (!*out) {
+            if (test_fail || !err)
+                *why = KT_BUNDLE_WRAP_FAILED;
+            else {
+                snprintf(dpapi_why, sizeof(dpapi_why), KT_BUNDLE_WRAP_DPAPI_FMT,
+                         kitty_win_reason(err));
+                *why = dpapi_why;
+            }
+        }
+    }
+    return 1;
+}
+/* An export's wrap: the .ktx sessions and the named proxies of a bundle, and
+ * a single .ktx. In a bundle: the bundle's protection, and a failed wrap
+ * gives NULL and *skipped = 1 - no password is written for `where`, the
+ * summary lists it. Outside one: the portable policy, and the master password
+ * locked gives NULL and *locked = 1 - no DPAPI value nobody chose. */
+char *kitty_secret_wrap_export(const char *plaintext, int what, const char *where,
+                               int *locked, int *skipped)
+{
+    char *res;
+    const char *why;
+    if (locked) *locked = 0;
+    if (skipped) *skipped = 0;
+    if (ksec_wrap_bundle(plaintext, &res, &why)) {
+        if (!res) {
+            ksec_bundle_note_skip(what, where, why);
+            if (skipped) *skipped = 1;
+        }
+        return res;
+    }
+    return ksec_protect_portable_kept(plaintext ? plaintext : "", locked);
 }
 /*
  * The login script's two shapes, with no crypto in sight.
@@ -1480,6 +1950,15 @@ char *kitty_secret_wrap_current_backend(const char *plaintext)
     return store_is_file() ? ksec_protect_portable(plaintext ? plaintext : "")
                            : ksec_protect_registry(plaintext ? plaintext : "");
 }
+/* The same, kept: NULL and *locked = 1 when the master password is locked
+ * (the caller keeps what is stored and reports it). */
+char *kitty_secret_wrap_current_backend_kept(const char *plaintext, int *locked)
+{
+    if (locked) *locked = 0;
+    return store_is_file()
+        ? ksec_protect_portable_kept(plaintext ? plaintext : "", locked)
+        : ksec_protect_registry(plaintext ? plaintext : "");
+}
 /* True when portable at-rest protection is the explicit legacy/plaintext hatch
  * (kitty.ini PortablePasswordProtection=legacy): callers then keep passwords
  * plaintext deliberately and must NOT nag about it. */
@@ -1525,10 +2004,10 @@ void ksec_after_load(int slot, const char *stored, int rv)
     if (rv < 0 && stored && stored[0]) g_ksec_orig[slot] = ksec_dup(stored);
 }
 
-/* Legacy->protected migration consent (portable files only; user decision
- * 2026-07). Before a portable save rewrites a password stored in the old
- * unprotected (unmarked) form into a protected one, ask once per save via the
- * GUI-registered warner: 1 = re-encrypt, 0 = keep the stored value verbatim.
+/* Legacy->protected migration consent (portable files only). Before a
+ * portable save rewrites a password stored in the old unprotected
+ * (unmarked) form into a protected one, the GUI-registered warner puts up
+ * one question per save: 1 = re-encrypt, 0 = keep the stored value verbatim.
  * CLI tools never register a warner, so batch saves keep the old form. */
 static int (*g_ksec_migrate_warn)(void) = NULL;
 void kitty_set_legacy_migrate_warn(int (*fn)(void)) { g_ksec_migrate_warn = fn; }

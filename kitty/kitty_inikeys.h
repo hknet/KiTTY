@@ -275,6 +275,9 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_LAUNCHER_UNHIDEAFTER             "unhideafter"
 /* what a double click on the tray icon opens: config (default) | manage */
 #define KI_LAUNCHER_DBLCLICK                "dblclick"
+/* the launcher's global hotkey ("Ctrl+Alt+K"): does what dblclick opens;
+ * empty or absent = none */
+#define KI_LAUNCHER_GLOBALHOTKEY            "globalhotkey"
 
 /* [FontFallback] */
 #define KI_FONTFALLBACK_ACTIVE              "active"

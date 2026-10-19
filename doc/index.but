@@ -1,5 +1,3 @@
-\IM{Unix version} Unix version of KiTTY tools
-\IM{Unix version} Linux version of KiTTY tools
 
 \IM{Unix} Unix
 \IM{Unix} Linux
@@ -70,7 +68,7 @@ from other protocols
 \IM{SSH-2}{SSH protocol version 2} SSH-2
 
 \IM{terminal window}{KiTTY window} terminal window
-\IM{terminal window}{KiTTY window} KiTTY terminal window
+\IM{terminal window}{KiTTY window} KiTTY++ terminal window
 \IM{terminal window}{KiTTY window} window, terminal
 
 \IM{copy and paste} copy and paste
@@ -124,7 +122,7 @@ from other protocols
 \IM{context menu} right mouse button menu
 
 \IM{Event Log} Event Log
-\IM{Event Log} KiTTY Event Log
+\IM{Event Log} KiTTY++ Event Log
 \IM{Event Log} Log, Event
 
 \IM{Telnet special commands} Telnet special commands
@@ -284,7 +282,7 @@ saved sessions from
 \IM{\-legacy\-stdio\-prompts} \c{\-legacy\-stdio\-prompts} command-line option
 \IM{\-legacy\-charset\-handling} \c{\-legacy\-charset\-handling} command-line option
 
-\IM{\-host\-ca} \c{\-host\-ca} KiTTY command-line option
+\IM{\-host\-ca} \c{\-host\-ca} KiTTY++ command-line option
 
 \IM{\-sanitise\-stderr} \c{\-sanitise\-stderr} command-line option
 \IM{\-sanitise\-stdout} \c{\-sanitise\-stdout} command-line option
@@ -307,7 +305,7 @@ saved sessions from
 \IM{SSH protocol version} version, of SSH protocol
 
 \IM{PPK} \cw{PPK} file
-\IM{PPK} private key file, KiTTY
+\IM{PPK} private key file, KiTTY++
 
 \IM{Argon2} Argon2 passphrase hashing function
 
@@ -317,7 +315,7 @@ saved sessions from
 \IM{PGP key fingerprint} PGP key fingerprint
 \IM{PGP key fingerprint} fingerprint, of PGP key
 
-\IM{verifying new versions} verifying new versions of KiTTY
+\IM{verifying new versions} verifying new versions of KiTTY++
 \IM{verifying new versions} new version, verifying
 \IM{verifying new versions} upgraded version, verifying
 
@@ -943,14 +941,12 @@ saved sessions from
 \IM{remember my password} storing passwords
 \IM{remember my password} password, storing
 
-\IM{clean up} clean up after KiTTY
+\IM{clean up} clean up after KiTTY++
 \IM{clean up} uninstalling
 
-\IM{version of PuTTY} version, of KiTTY
-
-\IM{GPG signatures} PGP signatures, of KiTTY binaries
-\IM{GPG signatures} GPG signatures, of KiTTY binaries
-\IM{GPG signatures} signatures, of KiTTY binaries
+\IM{GPG signatures} PGP signatures, not used for KiTTY++ binaries
+\IM{GPG signatures} GPG signatures, not used for KiTTY++ binaries
+\IM{GPG signatures} signatures, of KiTTY++ binaries
 
 \IM{logical host name} logical host name
 \IM{logical host name} host name, logical
@@ -976,9 +972,9 @@ saved sessions from
 \IM{proxy logging} diagnostic, proxy
 \IM{proxy logging} standard error, proxy
 
-\IM{KiTTY icon} KiTTY icon
-\IM{KiTTY icon} icon, KiTTY's
-\IM{KiTTY icon} logo, KiTTY's
+\IM{KiTTY icon} KiTTY++ icon
+\IM{KiTTY icon} icon, KiTTY++'s
+\IM{KiTTY icon} logo, KiTTY++'s
 
 \IM{system tray} system tray, Windows
 \IM{system tray} notification area, Windows (aka system tray)
@@ -991,9 +987,6 @@ saved sessions from
 \IM{certificate}{certificates} SSH certificates
 \IM{certificate}{certificates} OpenSSH certificates
 \IM{certificate}{certificates} CA (certification authority)
-
-\IM{Microsoft Store} Microsoft Store
-\IM{Microsoft Store} Windows Store
 
 \IM{pre-connection command} pre-connection command
 \IM{pre-connection command} command, pre-connection

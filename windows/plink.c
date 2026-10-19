@@ -136,7 +136,7 @@ static void usage(void)
     printf("Klink: command-line connection utility\n");
     printf("%s\n", ver);
     printf("Usage: klink [options] [user@]host [command]\n");
-    printf("       (\"host\" can also be a PuTTY saved session name)\n");
+    printf("       (\"host\" can also be a KiTTY++ saved session name)\n");
     printf("Options:\n");
     printf("  -V        print version information and exit\n");
     printf("  -pgpfp    print PGP key fingerprints and exit\n");
@@ -191,7 +191,7 @@ static void usage(void)
            "output/error\n");
     printf("  -no-antispoof   omit anti-spoofing prompt after "
            "authentication\n");
-    printf("Host keys (KiTTY; no login, the store is never written):\n");
+    printf("Host keys (KiTTY++; no login, the store is never written):\n");
     printf("  -scan [-t type,..] host[:port]\n");
     printf("            fetch the host's keys (rsa,dsa,ecdsa,ed25519,ed448;\n");
     printf("            all without -t) and compare with the store:\n");

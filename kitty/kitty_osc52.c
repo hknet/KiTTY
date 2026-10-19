@@ -405,11 +405,11 @@ void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len)
  * The permission dialog
  * ------------------------------------------------------------------------ */
 
-/* What the dialog is being asked about, and what it answers. One instance per
- * open box, on the heap: the box is modeless and outlives the call that asked
+/* What the dialog is about, and what it answers. One instance per
+ * open box, on the heap: the box is modeless and outlives the call that opened it
  * (kitty_osc52_read_confirm), so it owns copies of what it shows. term = NULL:
  * the terminal went first (kitty_osc52_read_confirm_end). */
-struct osc52_ask {
+struct osc52_query {
     Terminal *term;
     wchar_t *clip;             /* copy, wiped when the box is done */
     int clip_len;
@@ -422,8 +422,9 @@ struct osc52_ask {
 
     int seconds_left;          /* countdown; 0 means no timeout */
     bool revealed;             /* has View been pressed? */
+    HWND confirm;              /* the "whole session?" question while it stands */
 };
-static struct osc52_ask *osc52_rconfirm = NULL;   /* the open read box */
+static struct osc52_query *osc52_rconfirm = NULL;   /* the open read box */
 /* windows/utils/shinydialogbox.c: Tab and Esc in a modeless box */
 void ShinyAddAuxDialog(HWND hwnd);
 void ShinyRemoveAuxDialog(HWND hwnd);
@@ -439,7 +440,29 @@ enum {
     OSC52_GRANT_SESSION,
 };
 
-#define OSC52_ASK_TIMER 1
+#define OSC52_QUERY_TIMER 1
+/* Posted to the read box when its "whole session?" question got its Yes */
+#define OSC52_SESSION_YES (WM_APP + 52)
+
+/*
+ * The answer to "allow for the whole session?". The question is modeless: a
+ * modal box stopped the session the read came from for as long as it stood. The
+ * read box waits disabled under it, as it did under the modal box; it is
+ * enabled again here, before the question goes, so the focus comes back to
+ * it. Yes finishes the read box from a posted message, outside the
+ * question's own; No leaves it open, nothing decided. Gone unanswered (the
+ * countdown closed the read box, and the question with it): nothing.
+ */
+static void osc52_session_answer(int yes, void *ctx)
+{
+    struct osc52_query *query = (struct osc52_query *)ctx;
+    query->confirm = NULL;
+    if (!query->box)
+        return;
+    EnableWindow(query->box, TRUE);
+    if (yes)
+        PostMessage(query->box, OSC52_SESSION_YES, 0, 0);
+}
 
 /*
  * The masked summary: how much there is, and just enough of the start to
@@ -487,7 +510,7 @@ static char *osc52_mask_summary(const wchar_t *clip, int clip_len)
 }
 
 /* Where the request came from, so somebody with a dozen windows open knows
- * which one is asking. */
+ * which one sent it. */
 static char *osc52_where(Terminal *term)
 {
     const char *sess = conf_get_str(term->conf, CONF_sessionname);
@@ -497,10 +520,10 @@ static char *osc52_where(Terminal *term)
     return dupprintf(KT_OSC52_WHERE_UNSAVED, host && *host ? host : "?");
 }
 
-static void osc52_set_countdown(HWND hwnd, struct osc52_ask *ask)
+static void osc52_set_countdown(HWND hwnd, struct osc52_query *query)
 {
     char *s;
-    if (ask->seconds_left <= 0) {
+    if (query->seconds_left <= 0) {
         SetDlgItemText(hwnd, IDC_O52_COUNTDOWN, "");
         return;
     }
@@ -508,28 +531,28 @@ static void osc52_set_countdown(HWND hwnd, struct osc52_ask *ask)
      * the honest description, because a timeout is not the user saying no - it is
      * the user saying nothing, and nothing gets remembered. */
     s = dupprintf(KT_OSC52_COUNTDOWN,
-                  ask->seconds_left);
+                  query->seconds_left);
     SetDlgItemText(hwnd, IDC_O52_COUNTDOWN, s);
     sfree(s);
 }
 
-static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
+static INT_PTR CALLBACK osc52_query_proc(HWND hwnd, UINT msg, WPARAM wParam,
                                        LPARAM lParam)
 {
-    struct osc52_ask *ask = (struct osc52_ask *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+    struct osc52_query *query = (struct osc52_query *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
     switch (msg) {
       case WM_INITDIALOG: {
         char *s;
         int mins, reqs;
 
-        ask = (struct osc52_ask *)lParam;
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)ask);
+        query = (struct osc52_query *)lParam;
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)query);
 
         SetDlgItemText(hwnd, IDC_O52_WHAT,
                        KT_OSC52_WHAT);
 
-        s = osc52_where(ask->term);
+        s = osc52_where(query->term);
         SetDlgItemText(hwnd, IDC_O52_WHERE, s);
         sfree(s);
 
@@ -539,11 +562,11 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
          * "nvim". Control characters are stripped and the length capped, because
          * it must not be able to forge parts of this dialog.
          */
-        if (ask->claim && *ask->claim) {
+        if (query->claim && *query->claim) {
             char buf[80];
             size_t i, j = 0;
-            for (i = 0; ask->claim[i] && j < sizeof(buf) - 1; i++) {
-                unsigned char c = (unsigned char)ask->claim[i];
+            for (i = 0; query->claim[i] && j < sizeof(buf) - 1; i++) {
+                unsigned char c = (unsigned char)query->claim[i];
                 if (c >= ' ' && c != 0x7f)
                     buf[j++] = (char)c;
             }
@@ -558,20 +581,20 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
                            KT_OSC52_NO_CLAIM);
         }
 
-        s = osc52_mask_summary(ask->clip, ask->clip_len);
+        s = osc52_mask_summary(query->clip, query->clip_len);
         SetDlgItemText(hwnd, IDC_O52_SUMMARY, s);
         smemclr(s, strlen(s));
         sfree(s);
 
         /* The two configurable durations are labelled from the settings, so the
          * dialog cannot claim ten minutes while the setting says five. */
-        mins = conf_get_int(ask->term->conf, CONF_osc52_read_minutes);
+        mins = conf_get_int(query->term->conf, CONF_osc52_read_minutes);
         if (mins <= 0) mins = 10;
         s = dupprintf(KT_OSC52_MINUTES, mins, mins == 1 ? "" : "s");
         SetDlgItemText(hwnd, IDC_O52_MINUTES, s);
         sfree(s);
 
-        reqs = conf_get_int(ask->term->conf, CONF_osc52_read_requests);
+        reqs = conf_get_int(query->term->conf, CONF_osc52_read_requests);
         if (reqs <= 0) reqs = 25;
         s = dupprintf(KT_OSC52_REQUESTS, reqs);
         SetDlgItemText(hwnd, IDC_O52_REQUESTS, s);
@@ -588,10 +611,10 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
          */
         CheckRadioButton(hwnd, IDC_O52_ONCE, IDC_O52_SESSION, IDC_O52_ONCE);
 
-        ask->seconds_left = conf_get_int(ask->term->conf, CONF_osc52_read_timeout);
-        osc52_set_countdown(hwnd, ask);
-        if (ask->seconds_left > 0)
-            SetTimer(hwnd, OSC52_ASK_TIMER, 1000, NULL);
+        query->seconds_left = conf_get_int(query->term->conf, CONF_osc52_read_timeout);
+        osc52_set_countdown(hwnd, query);
+        if (query->seconds_left > 0)
+            SetTimer(hwnd, OSC52_QUERY_TIMER, 1000, NULL);
 
         /* Focus lands on Deny, not on Allow. */
         SetFocus(GetDlgItem(hwnd, IDCANCEL));
@@ -600,52 +623,52 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
       }
 
       case WM_TIMER:
-        if (wParam == OSC52_ASK_TIMER && ask) {
-            if (--ask->seconds_left <= 0) {
-                KillTimer(hwnd, OSC52_ASK_TIMER);
+        if (wParam == OSC52_QUERY_TIMER && query) {
+            if (--query->seconds_left <= 0) {
+                KillTimer(hwnd, OSC52_QUERY_TIMER);
                 /* Nobody decided. Refuse this request and remember nothing. */
-                ask->allowed = false;
-                ask->grant = OSC52_GRANT_ONCE;
-                ask->always_deny = false;
+                query->allowed = false;
+                query->grant = OSC52_GRANT_ONCE;
+                query->always_deny = false;
                 DestroyWindow(hwnd);       /* the answer goes on from WM_DESTROY */
                 return TRUE;
             }
-            osc52_set_countdown(hwnd, ask);
+            osc52_set_countdown(hwnd, query);
         }
         return TRUE;
 
       case WM_COMMAND:
-        if (!ask)
+        if (!query)
             break;
         switch (LOWORD(wParam)) {
           case IDC_O52_VIEW:
-            if (!ask->revealed) {
+            if (!query->revealed) {
                 /* Reveal in place, in a read-only box. There is no Windows
                  * clipboard viewer to hand this off to - clipbrd.exe went away
                  * after XP, and Win+V is the history panel, not a viewer for one
                  * payload. */
                 HWND ed = GetDlgItem(hwnd, IDC_O52_PREVIEW);
-                SetWindowTextW(ed, ask->clip);
+                SetWindowTextW(ed, query->clip);
                 ShowWindow(ed, SW_SHOW);
                 EnableWindow(GetDlgItem(hwnd, IDC_O52_VIEW), FALSE);
-                ask->revealed = true;
+                query->revealed = true;
             }
             return TRUE;
 
           case IDC_O52_ALLOW:
           case IDCANCEL: {
-            ask->allowed = (LOWORD(wParam) == IDC_O52_ALLOW);
-            ask->always_deny =
+            query->allowed = (LOWORD(wParam) == IDC_O52_ALLOW);
+            query->always_deny =
                 (IsDlgButtonChecked(hwnd, IDC_O52_ALWAYSDENY) == BST_CHECKED);
 
             if (IsDlgButtonChecked(hwnd, IDC_O52_SESSION) == BST_CHECKED)
-                ask->grant = OSC52_GRANT_SESSION;
+                query->grant = OSC52_GRANT_SESSION;
             else if (IsDlgButtonChecked(hwnd, IDC_O52_REQUESTS) == BST_CHECKED)
-                ask->grant = OSC52_GRANT_REQUESTS;
+                query->grant = OSC52_GRANT_REQUESTS;
             else if (IsDlgButtonChecked(hwnd, IDC_O52_MINUTES) == BST_CHECKED)
-                ask->grant = OSC52_GRANT_MINUTES;
+                query->grant = OSC52_GRANT_MINUTES;
             else
-                ask->grant = OSC52_GRANT_ONCE;
+                query->grant = OSC52_GRANT_ONCE;
 
             /*
              * "For the rest of the session" is the widest thing on offer and the
@@ -654,7 +677,22 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
              * refusing only ever takes permission away, and making it harder to
              * refuse would be the wrong way round.
              */
-            if (ask->allowed && ask->grant == OSC52_GRANT_SESSION) {
+            if (query->allowed && query->grant == OSC52_GRANT_SESSION) {
+                if (query->confirm && IsWindow(query->confirm)) {
+                    SetForegroundWindow(query->confirm);
+                    return TRUE;       /* the question stands already */
+                }
+                /* modeless; the rest follows its Yes (osc52_session_answer,
+                 * OSC52_SESSION_YES below). No is the default. */
+                query->confirm = kitty_confirm_modeless(hwnd, KT_CAP_OSC52_SESSION,
+                                                      KT_OSC52_SESSION_CONFIRM,
+                                                      NULL, NULL,
+                                                      osc52_session_answer, query);
+                if (query->confirm) {
+                    EnableWindow(hwnd, FALSE);
+                    return TRUE;
+                }
+                /* no modeless box here: the box as before */
                 if (MessageBox(hwnd,
                                KT_OSC52_SESSION_CONFIRM,
                                KT_CAP_OSC52_SESSION,
@@ -666,85 +704,96 @@ static INT_PTR CALLBACK osc52_ask_proc(HWND hwnd, UINT msg, WPARAM wParam,
              * contradiction. Take the tick as the real intent: it is the
              * safer of the two readings, and it is the one the user typed
              * deliberately rather than the button they may have aimed at. */
-            if (ask->always_deny)
-                ask->allowed = false;
+            if (query->always_deny)
+                query->allowed = false;
 
-            KillTimer(hwnd, OSC52_ASK_TIMER);
+            KillTimer(hwnd, OSC52_QUERY_TIMER);
             DestroyWindow(hwnd);
             return TRUE;
           }
         }
         break;
 
+      case OSC52_SESSION_YES:
+        /* "allow for the whole session?" got its Yes: the choice made with
+         * Allow stands, the "always deny" tick still overriding it */
+        if (query && query->allowed && query->grant == OSC52_GRANT_SESSION) {
+            if (query->always_deny)
+                query->allowed = false;
+            KillTimer(hwnd, OSC52_QUERY_TIMER);
+            DestroyWindow(hwnd);
+        }
+        return TRUE;
+
       case WM_CLOSE:
         /* Closing the dialog means no, and remembers nothing. */
-        if (ask) {
-            ask->allowed = false;
-            ask->grant = OSC52_GRANT_ONCE;
-            ask->always_deny = false;
-            KillTimer(hwnd, OSC52_ASK_TIMER);
+        if (query) {
+            query->allowed = false;
+            query->grant = OSC52_GRANT_ONCE;
+            query->always_deny = false;
+            KillTimer(hwnd, OSC52_QUERY_TIMER);
         }
         DestroyWindow(hwnd);
         return TRUE;
 
       case WM_DESTROY:
-        if (ask && ask->revealed) {
+        if (query && query->revealed) {
             /* Do not leave the clipboard sitting in a control's text buffer for
              * the rest of the process's life. */
             HWND ed = GetDlgItem(hwnd, IDC_O52_PREVIEW);
             if (ed)
                 SetWindowTextW(ed, L"");
         }
-        if (ask) {
+        if (query) {
             /* Every way out ends here - a button, the timeout, Esc, or the
              * terminal window closing under the box (unanswered: the defaults,
              * a deny that remembers nothing). The answer goes back from a
              * toplevel callback, once the box is gone and the focus is the
              * terminal's again, as it was after the modal box. */
-            KillTimer(hwnd, OSC52_ASK_TIMER);
+            KillTimer(hwnd, OSC52_QUERY_TIMER);
             ShinyRemoveAuxDialog(hwnd);
             SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
-            ask->box = NULL;
-            queue_toplevel_callback(osc52_rconfirm_apply, ask);
+            query->box = NULL;
+            queue_toplevel_callback(osc52_rconfirm_apply, query);
         }
         break;
     }
     return FALSE;
 }
 
-static void osc52_ask_free(struct osc52_ask *ask)
+static void osc52_query_free(struct osc52_query *query)
 {
-    if (ask->clip) {
-        smemclr(ask->clip, ask->clip_len * sizeof(wchar_t));
-        sfree(ask->clip);
+    if (query->clip) {
+        smemclr(query->clip, query->clip_len * sizeof(wchar_t));
+        sfree(query->clip);
     }
-    sfree(ask->claim);
-    sfree(ask);
+    sfree(query->claim);
+    sfree(query);
 }
 
-/* The box is gone: hand the answer to the terminal that asked, if it is still
+/* The box is gone: hand the answer to the terminal that sent the request, if it is still
  * there, and free the holder. */
 static void osc52_rconfirm_apply(void *ctx)
 {
-    struct osc52_ask *ask = (struct osc52_ask *)ctx;
-    Terminal *term = ask->term;
-    if (osc52_rconfirm == ask)
+    struct osc52_query *query = (struct osc52_query *)ctx;
+    Terminal *term = query->term;
+    if (osc52_rconfirm == query)
         osc52_rconfirm = NULL;
     if (term)
-        term_osc52_read_answer(term, ask->allowed, ask->grant, ask->always_deny);
-    osc52_ask_free(ask);
+        term_osc52_read_answer(term, query->allowed, query->grant, query->always_deny);
+    osc52_query_free(query);
 }
 
-/* Opened from a toplevel callback, never from inside the parser that asked:
+/* Opened from a toplevel callback, never from inside the parser that sent the request:
  * creating a window there sends focus messages into the terminal mid-parse. */
 static void osc52_rconfirm_open(void *ctx)
 {
-    struct osc52_ask *ask = (struct osc52_ask *)ctx;
+    struct osc52_query *query = (struct osc52_query *)ctx;
 
-    if (!ask->term) {                  /* the terminal went before the box came */
-        if (osc52_rconfirm == ask)
+    if (!query->term) {                  /* the terminal went before the box came */
+        if (osc52_rconfirm == query)
             osc52_rconfirm = NULL;
-        osc52_ask_free(ask);
+        osc52_query_free(query);
         return;
     }
 
@@ -759,17 +808,17 @@ static void osc52_rconfirm_open(void *ctx)
         SetForegroundWindow(MainHwnd);
     }
 
-    ask->box = CreateDialogParam(hinst, MAKEINTRESOURCE(IDD_OSC52READ), MainHwnd,
-                                 osc52_ask_proc, (LPARAM)ask);
-    if (!ask->box) {                   /* not made: a deny that remembers nothing */
-        ask->allowed = false;
-        ask->grant = OSC52_GRANT_ONCE;
-        ask->always_deny = false;
-        osc52_rconfirm_apply(ask);
+    query->box = CreateDialogParam(hinst, MAKEINTRESOURCE(IDD_OSC52READ), MainHwnd,
+                                 osc52_query_proc, (LPARAM)query);
+    if (!query->box) {                   /* not made: a deny that remembers nothing */
+        query->allowed = false;
+        query->grant = OSC52_GRANT_ONCE;
+        query->always_deny = false;
+        osc52_rconfirm_apply(query);
         return;
     }
-    ShinyAddAuxDialog(ask->box);
-    ShowWindow(ask->box, SW_SHOW);
+    ShinyAddAuxDialog(query->box);
+    ShowWindow(query->box, SW_SHOW);
 }
 
 /*
@@ -782,35 +831,35 @@ static void osc52_rconfirm_open(void *ctx)
 void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
                               const char *claim)
 {
-    struct osc52_ask *ask;
+    struct osc52_query *query;
 
     if (osc52_rconfirm)
         return;                        /* one box (kitty_clipboard.c refuses meanwhile) */
-    ask = snew(struct osc52_ask);
-    memset(ask, 0, sizeof(*ask));
-    ask->term = term;
-    ask->clip_len = clip_len > 0 ? clip_len : 0;
-    ask->clip = snewn(ask->clip_len + 1, wchar_t);
-    if (ask->clip_len)
-        memcpy(ask->clip, clip, ask->clip_len * sizeof(wchar_t));
-    ask->clip[ask->clip_len] = L'\0';
-    ask->claim = claim ? dupstr(claim) : NULL;
-    ask->grant = OSC52_GRANT_ONCE;
-    ask->allowed = false;
-    osc52_rconfirm = ask;
-    queue_toplevel_callback(osc52_rconfirm_open, ask);
+    query = snew(struct osc52_query);
+    memset(query, 0, sizeof(*query));
+    query->term = term;
+    query->clip_len = clip_len > 0 ? clip_len : 0;
+    query->clip = snewn(query->clip_len + 1, wchar_t);
+    if (query->clip_len)
+        memcpy(query->clip, clip, query->clip_len * sizeof(wchar_t));
+    query->clip[query->clip_len] = L'\0';
+    query->claim = claim ? dupstr(claim) : NULL;
+    query->grant = OSC52_GRANT_ONCE;
+    query->allowed = false;
+    osc52_rconfirm = query;
+    queue_toplevel_callback(osc52_rconfirm_open, query);
 }
 
 void kitty_osc52_read_confirm_end(Terminal *term)
 {
-    struct osc52_ask *ask = osc52_rconfirm;
+    struct osc52_query *query = osc52_rconfirm;
 
-    if (!ask || ask->term != term)
+    if (!query || query->term != term)
         return;
-    ask->term = NULL;                  /* whatever runs next finds no terminal */
+    query->term = NULL;                  /* whatever runs next finds no terminal */
     osc52_rconfirm = NULL;
-    if (ask->box)
-        DestroyWindow(ask->box);       /* WM_DESTROY -> apply, which frees it */
+    if (query->box)
+        DestroyWindow(query->box);       /* WM_DESTROY -> apply, which frees it */
 }
 
 /* ------------------------------------------------------------------------
@@ -912,7 +961,7 @@ void kitty_osc52_write_confirm_end(Terminal *term)
  * ------------------------------------------------------------------------ */
 
 /*
- * Write the refusal into the saved session, so this host never asks again.
+ * Write the refusal into the saved session, so no request of this host gets a question again.
  *
  * Returns false when there is nothing to write into - an unnamed "type a host and
  * go" window, or Default Settings, which must not be rewritten from one window's
@@ -1153,7 +1202,7 @@ static void osc52_set_frame_colour(HWND hwnd, COLORREF colour)
  * tint down has to come through here, or a single clipboard read would silently
  * switch off the visible half of workplace proxy mode for the rest of the day.
  *
- * WARNING: It asks whether THIS CONNECTION was proxied, not whether the mode is on
+ * WARNING: It checks whether THIS CONNECTION was proxied, not whether the mode is on
  * now. Those differ in both directions and the difference matters: a window
  * opened before the mode was switched on is not going through that proxy and
  * must not be painted as if it were, and one that IS going through it keeps the

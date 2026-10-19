@@ -2530,7 +2530,7 @@ size_t sftp_sendbuffer(void)
  */
 static void usage(void)
 {
-    printf("PuTTY Secure File Transfer (SFTP) client\n");
+    printf("KiTTY++ Secure File Transfer (SFTP) client\n");
     printf("%s\n", ver);
     printf("Usage: ksftp [options] [user@]host\n");
     printf("Options:\n");

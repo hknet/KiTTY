@@ -1,5 +1,5 @@
 /*
- * kitty_storemove.c - Application > Migration > KiTTY storage
+ * kitty_storemove.c - Application > Migration > KiTTY++ Storage
  *
  * Two actions that move a whole store between the registry and a folder:
  *
@@ -455,12 +455,52 @@ static int ksm_globals_from_ini(const char *src, int *fail)
 
 /* ---- program files --------------------------------------------------- */
 
+static const char *const ksm_companions[] = {
+    "kageant.exe", "kittygen.exe", "kittygen-cli.exe", "klink.exe",
+    "kscp.exe", "ksftp.exe", "kitty.chm", NULL
+};
+
+/* The kscp path of the copy: a path to the companion the copy brings
+ * along (kscp.exe of the program folder this kitty.exe runs from) is
+ * removed - none means "beside kitty.exe", the copy's own kscp. Kept, it
+ * started the source's kscp, from a folder the copy may never see again
+ * (C:\Program Files\... of an installed KiTTY++). A kscp kept anywhere
+ * else stays as it is, and so do the WinSCP, FileZilla and ZModem paths:
+ * WinSCP and FileZilla are searched for a run when their file is missing,
+ * and nothing could guess where rz/sz live. */
+static void ksm_own_kscp_path(const char *ini)
+{
+    char exe[MAX_PATH], val[MAX_PATH * 2], *bs, *v, *e;
+    int i;
+    if (!GetModuleFileNameA(NULL, exe, sizeof(exe))) return;
+    bs = strrchr(exe, '\\');
+    if (!bs) return;
+    *bs = '\0';
+    if (!GetPrivateProfileStringA(INIT_SECTION, KI_PSCPPATH, "", val,
+                                  sizeof(val), ini))
+        return;
+    v = val;
+    if (*v == '"') {                     /* a quoted path */
+        v++;
+        e = strchr(v, '"');
+        if (e) *e = '\0';
+    }
+    for (e = v; *e; e++)
+        if (*e == '/') *e = '\\';
+    bs = strrchr(v, '\\');
+    if (!bs) return;
+    *bs = '\0';
+    if (_stricmp(v, exe)) return;
+    for (i = 0; ksm_companions[i]; i++)
+        if (!_stricmp(bs + 1, ksm_companions[i])) {
+            WritePrivateProfileStringA(INIT_SECTION, KI_PSCPPATH, NULL, ini);
+            return;
+        }
+}
+
 static int ksm_copy_programs(const char *dst, int *fail)
 {
-    static const char *const companions[] = {
-        "kageant.exe", "kittygen.exe", "kittygen-cli.exe", "klink.exe",
-        "kscp.exe", "ksftp.exe", "kitty.chm", NULL
-    };
+    const char *const *companions = ksm_companions;
     char exe[MAX_PATH], *bs;
     int n = 0, i;
     if (!GetModuleFileNameA(NULL, exe, sizeof(exe))) { (*fail)++; return 0; }
@@ -719,6 +759,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 {
     char *sessdir = dupprintf("%s\\Sessions", dir);
     char *ini = dupprintf("%s\\" KSM_INI, dir);
+    char *skips = NULL;
     char t[256];
     memset(r, 0, sizeof(*r));
     msg[0] = '\0';
@@ -747,8 +788,12 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     CreateDirectoryA(sessdir, NULL);
     if (dpapi) kitty_set_bundle_dpapi_only(1);
     else kitty_set_bundle_passphrase(pw);
+    kitty_set_bundle_store_form(1);   /* the copy's own store lines */
     r->sessions = kitty_export_all_to_dir(sessdir, &r->fail);
-    if (kitty_bundle_wrap_failed()) r->fail++;
+    /* a password left out (its wrap failed) counts as an item not written,
+     * and the summary lists it */
+    r->fail += kitty_bundle_wrap_failed();
+    skips = kitty_bundle_wrap_report();
     kitty_clear_bundle_context();
     ksm_bundle_to_store_layout(dir, &r->fail);
     {
@@ -791,6 +836,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
     /* kitty.ini: every global, then the layout of the copy */
     r->settings = ksm_globals_to_ini(ini, &r->fail);
+    ksm_own_kscp_path(ini);
     /* without savemode=dir the copy is not a folder store: counted, so
      * the box does not report a copy that will not work as done */
     if (!WritePrivateProfileStringA(INIT_SECTION, KI_SAVEMODE, "dir", ini))
@@ -816,6 +862,10 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
         snprintf(t, sizeof(t), KT_STOREMOVE_COPY_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
         ksm_cat(msg, msglen, t);
+    }
+    if (skips) {
+        ksm_cat(msg, msglen, skips);
+        sfree(skips);
     }
     sfree(sessdir);
     sfree(ini);
@@ -925,7 +975,9 @@ void kitty_make_portable_copy(HWND hwnd)
     sfree(ini);
     if (!kitty_ask_store_password(hwnd, &pw, &dpapi)) return;
 
+    kitty_mpw_user_action_begin();   /* prompts again after a cancel */
     kitty_portable_copy_core(dir, pw, dpapi, &r, msg, sizeof(msg));
+    kitty_mpw_user_action_end();
     ksm_wipe(&pw);
     MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
                 MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
