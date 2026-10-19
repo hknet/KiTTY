@@ -22,7 +22,7 @@
  * AllowDarkModeForApp, afterwards an enum-taking SetPreferredAppMode
  * (0 Default, 1 AllowDark, 2 ForceDark, 3 ForceLight). kt_init sets 1, which
  * both read as "dark is allowed"; kitty_theme_app_mode() then sets the value
- * the preference asks for, branching on the build, because that value is what
+ * the preference requires, branching on the build, because that value is what
  * Windows paints the POPUP MENUS with - the one part of the UI no window of
  * ours draws (the menu bar strip is ours, see WM_UAHDRAWMENU below).
  *
@@ -124,7 +124,7 @@ static LRESULT CALLBACK kt_edit_subclass(HWND edit, UINT msg, WPARAM wParam,
  * here, keyed by HWND.
  *
  * `dark` alone would not be enough: "not in the table" and "in the table as
- * light" have to be told apart, or a window that is already correct gets
+ * light" must be distinguished, or a window that is already correct gets
  * re-themed on every activation. A fixed table - kageant never has more than
  * a handful of windows up, and it avoids allocating in a paint path.
  */
@@ -157,7 +157,7 @@ static bool kt_is_dark_window(HWND w)
      * A control's parent is not necessarily a window that was ever themed:
      * the configuration box builds its panels into a child DIALOG (the panel
      * host), so a group box's parent is that host, and the host is not in
-     * this table. Asking about the immediate parent therefore answered "not
+     * this table. Querying the immediate parent therefore answered "not
      * dark" for every panel control that consults its parent - which is how
      * group-box captions were left drawing the system's near-black text on
      * the dark background, on every panel.
@@ -236,7 +236,7 @@ static void kt_init(void)
         return;
 
     /* By ordinal: these have no names in the export table. MAKEINTRESOURCEA
-     * is how GetProcAddress is told the argument is an ordinal. */
+     * marks the argument to GetProcAddress as an ordinal. */
     p_AllowDarkModeForWindow = (fn_AllowDarkModeForWindow)(void *)
         GetProcAddress(ux, MAKEINTRESOURCEA(133));
     p_SetPreferredAppMode = (fn_SetPreferredAppMode)(void *)
@@ -270,9 +270,9 @@ static void kt_init(void)
         return;
 
     /* 1 = AllowDark on 1903+, and "allow" (TRUE) on 1809's BOOL form. Either
-     * way the process may now ask for dark controls; individual windows still
+     * way the process may now request dark controls; individual windows still
      * opt in one at a time through AllowDarkModeForWindow. The value the
-     * preference asks for comes from kitty_theme_app_mode(). */
+     * preference requires comes from kitty_theme_app_mode(). */
     p_SetPreferredAppMode(1);
     kt_app_mode_set = 1;
     if (p_RefreshImmersiveColorPolicyState)
@@ -372,7 +372,7 @@ void kitty_theme_app_mode(int pref)
 
 /*
  * The Appearance announcement (see kitty_theme.h). A registered message, so
- * every process that asks for the same name gets the same number and no other
+ * every process that registers the same name gets the same number and no other
  * program on the desktop has a meaning for it. Registered by
  * kitty_theme_hook_pref(), before the program's first window exists, or by
  * the first comparison against it in a window procedure.
@@ -425,7 +425,7 @@ void kitty_theme_announce_change(void)
  * lParam arrives in the RECEIVING WINDOW's character set, whatever the program
  * was compiled as: a Unicode window gets a wide string, and a narrow compare
  * on that reads "I", stops at the zero byte and never matches. So the window
- * is asked, not the build.
+ * is checked, not the build.
  */
 bool kitty_theme_is_system_switch(HWND w, LPARAM lParam)
 {
@@ -566,8 +566,8 @@ void kitty_theme_mark_ink(HWND ctl, kitty_ink which)
 }
 
 /*
- * BCM_GETIDEALSIZE is comctl32 version 6, which the manifest already asks
- * for; the MinGW headers do not always declare it. Answered by the button
+ * BCM_GETIDEALSIZE is comctl32 version 6, which the manifest already
+ * requests; the MinGW headers do not always declare it. Answered by the button
  * itself, so it accounts for the theme's own padding as well as the text.
  */
 #ifndef BCM_GETIDEALSIZE
@@ -592,7 +592,7 @@ int kitty_theme_button_width(HWND btn, int min_w)
      * GetWindowRect rectangles the layout works in, at 100% and at 200%
      * alike. It is a measurement at ONE moment, though: a caller that wants
      * to survive a window being dragged to a monitor of a different scale has
-     * to ask again when the DPI changes.
+     * to measure again when the DPI changes.
      */
     air = r.bottom - r.top;
 
@@ -726,8 +726,8 @@ static BOOL CALLBACK kt_theme_child(HWND child, LPARAM lp)
         /* The header's custom draw is delivered HERE and nowhere else. */
         SetWindowSubclass(child, kt_lv_subclass, 3, 0);
         /* The theme class reaches the header and the scroll bars but NOT the
-         * item area, which keeps painting on white until it is told
-         * otherwise. These three are the control's base colours; a row that
+         * item area, which keeps painting on white until its colours are
+         * set. These three are the control's base colours; a row that
          * sets its own in custom draw still overrides them, which is what
          * keeps the key list's grey and tinted rows working. */
         SendMessage(child, LVM_SETBKCOLOR, 0,
@@ -912,7 +912,7 @@ void kitty_theme_apply(HWND dlg, bool dark)
      * band: the title bar stops being a strip in the system's colour sitting
      * on top of the window and becomes the top of the window. The border is
      * given a quiet line so the window still has an edge against a same
-     * coloured one behind it, and the corners are asked for explicitly
+     * coloured one behind it, and the corners are requested explicitly
      * rather than left to whatever the window class inherited.
      *
      * All four fail on Windows 10 and earlier, which is exactly the intended
@@ -991,7 +991,7 @@ HBRUSH kitty_theme_ctlcolor(HWND dlg, UINT msg, WPARAM wParam, LPARAM lParam)
  * strip is drawn from scratch.
  *
  * It is drawn from scratch in BOTH themes, not only in dark. The control's own
- * light drawing says "selected" with a raised sheet joined to the pane below
+ * light drawing marks the selection with a raised sheet joined to the pane below
  * it - and there is no pane here, so all that survives is a hairline outline
  * and a slightly darker label, which is not enough to see at a glance. One
  * drawing routine for both themes gives the two the same, legible marker and
@@ -1043,8 +1043,8 @@ LRESULT kitty_theme_tree_customdraw(LPNMTVCUSTOMDRAW cd)
              * Windows draws on the focused row - so the selected row looked
              * the same whether or not the tree had the keyboard. Drawn back
              * by hand after the row, while the tree has the focus and
-             * Windows is showing focus cues: colour says "selected", the
-             * frame says "the keys act here". */
+             * Windows is showing focus cues: colour means "selected", the
+             * frame means "the keys act here". */
             return CDRF_NEWFONT |
                 (kt_show_focus(cd->nmcd.hdr.hwndFrom) ? CDRF_NOTIFYPOSTPAINT : 0);
         }
@@ -1081,7 +1081,7 @@ static COLORREF kt_mix(COLORREF c, COLORREF towards, int percent)
 /*
  * The user's accent colour, made readable against the given background.
  *
- * DwmGetColorizationColor is the documented way to ask (Vista onwards) and
+ * DwmGetColorizationColor is the documented way to query (Vista onwards) and
  * returns 0xAARRGGBB with the alpha meaning blend, not transparency - it is
  * discarded. A dark navy accent on a dark dialog and a pale mint one on a
  * light dialog are both invisible, so the result is pushed away from the
@@ -1132,7 +1132,7 @@ static COLORREF kt_accent_for(bool dark)
  * and Windows is currently showing focus cues at all (it hides them until
  * the keyboard is used - WM_QUERYUISTATE carries that state down from the
  * dialog). The hand-drawn strip and the always-highlighted tree both
- * replace the control's own painting, and neither said where the focus
+ * replace the control's own painting, and neither showed where the focus
  * was; with the arrow keys and Tab there was nothing to see.
  */
 static bool kt_show_focus(HWND ctl)
@@ -1234,7 +1234,7 @@ static LRESULT CALLBACK kt_tab_subclass(HWND hwnd, UINT msg, WPARAM wParam,
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(hwnd, &ps);
         if (dc) {
-            /* The dialog is the thing that is dark or light, so ask about the
+            /* The dialog is the thing that is dark or light, so query the
              * parent - the strip has no theme of its own. */
             kt_paint_tabs(hwnd, dc, kt_is_dark_window(GetParent(hwnd)));
         }
@@ -1541,8 +1541,8 @@ static void kt_paint_toggle(HWND btn, NMCUSTOMDRAW *cd, bool check)
     HFONT font, oldfont;
     /* The unchecked ring is deliberately much lighter than the frame lines
      * elsewhere: at KT_DARK_LINE on this background it is there but almost
-     * invisible, and a radio nobody can see is a radio nobody can tell the
-     * state of. This is roughly what Windows 11 draws its own with. */
+     * invisible, and a radio nobody can see is a radio whose state nobody can
+     * read. This is roughly what Windows 11 draws its own with. */
     COLORREF ring = !enabled ? KT_DARK_LINE
                     : checked ? kt_accent_for(true)
                               : RGB(0x9a, 0x9a, 0x9a);
@@ -1786,7 +1786,7 @@ static void kt_paint_menuitem(KT_UAHDRAWMENUITEM *pudmi)
     if (temp)
         DeleteObject(back);
 
-    /* ODS_NOACCEL is Windows saying the mnemonic underlines are hidden just
+    /* ODS_NOACCEL means Windows has the mnemonic underlines hidden just
      * now - they appear the first time Alt is pressed. Honouring it is what
      * makes a hand-painted bar behave like every other one. */
     if (dis->itemState & ODS_NOACCEL)
@@ -1963,7 +1963,7 @@ static LRESULT CALLBACK kt_lv_subclass(HWND lv, UINT msg, WPARAM wParam,
 }
 
 /* The dialog hook's resolver (kitty_theme_hook_dialogs, further down): the
- * subclass asks it again when the system switches theme. */
+ * subclass calls it again when the system switches theme. */
 static bool (*kt_want_dark)(void);
 
 /* The theme a window should have NOW: its own unsaved preview if it shows
@@ -2025,7 +2025,7 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
      * switch, except that it is the STORE that moved: the cached copy is
      * dropped, the preference read again from this program's own store, and
      * the popup menus' app mode set from it. A window already in the theme
-     * that store asks for - the one that made the change, every window of a
+     * that store records - the one that made the change, every window of a
      * copy whose store did not change, a dialog showing an unsaved preview -
      * is left alone. The first copy that arrives brings EVERY window of the
      * process along (kitty_theme_follow_store) - an owned window's own copy
@@ -2201,7 +2201,7 @@ static LRESULT CALLBACK kt_dlg_subclass(HWND hwnd, UINT msg, WPARAM wParam,
       }
       case WM_ERASEBKGND:
         /* A PLAIN window's background is its class brush - the light system
-         * face - and it never asks WM_CTLCOLORDLG. So the dark background is
+         * face - and it never sends WM_CTLCOLORDLG. So the dark background is
          * put there instead, only for the classes registered as plain: a
          * dialog keeps the dialog manager's painting. */
         if (kt_is_dark_window(hwnd) && kt_back_brush &&

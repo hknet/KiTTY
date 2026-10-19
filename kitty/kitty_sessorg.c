@@ -99,7 +99,7 @@ static const char *so_folder_label(const char *f)
     return ksp_folder_is_root(f) ? KT_SP_ORG_ROOT : f;
 }
 
-/* Tell the user the jump-host references that followed a move. */
+/* Show the user the jump-host references that followed a move. */
 static void so_report_rewritten(HWND owner, const char *rewritten)
 {
     char *list, *msg;
@@ -113,7 +113,7 @@ static void so_report_rewritten(HWND owner, const char *rewritten)
 }
 
 /* Every session identity and, for one stored by its bare name, its Folder
- * value (NULL for a path session: its path says where it is). Its tags are
+ * value (NULL for a path session: its path shows where it is). Its tags are
  * read only when the tag pane first needs them (so_tags_ensure): that is a
  * read of every session, which a window without a tag chosen never pays. */
 struct so_names {
@@ -405,7 +405,7 @@ static char *so_copy_target(const struct so_names *s, char **made, int nmade,
     }
 }
 
-/* Returns 1 done; 0 with *msg (snewn'd) naming the session that failed -
+/* Returns 1 done; 0 with *msg (snewn'd) identifying the session that failed -
  * the ones before it are copied. */
 static int so_copy_sessions(char **sel, int nsel, const char *dest, int clone,
                             char **msg)
@@ -647,7 +647,7 @@ static char **so_tree_expanded(HWND tree, const struct so_folders *fs, int *n)
 
 /* Fill a tree view: the root row (lParam -1), then each folder under its
  * parent (lParam = index into fs). Selects `select` ("" = root) and expands
- * the folders named in `open` (n of them) that still exist. */
+ * the folders listed in `open` (n of them) that still exist. */
 static void so_fill_tree_open(HWND tree, const struct so_folders *fs,
                               const char *select, char **open, int nopen);
 static void so_fill_tree(HWND tree, const struct so_folders *fs,
@@ -1728,8 +1728,8 @@ static INT_PTR CALLBACK so_del_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (d) {
             if (so_window && so_window->sub == h)
                 so_window->sub = NULL;
-            /* Answered only: a box that goes with its owner (the
-             * configuration box closing) has no one left to tell. */
+            /* Answered only: a box closed together with its owner
+             * (the configuration box closing) has no one left to report to. */
             if (d->done && d->answered)
                 d->done(d->deleted, d->ctx);
             so_folders_free(&d->dests);
@@ -1843,7 +1843,7 @@ static void so_arrange_run(HWND owner)
     ksp_plan_arrange(s.names, s.folders, s.n, &p);
     n = p.n;
     /* The plan holds the free moves only; a session whose path is taken
-     * stays where it is and is named in the result. Nothing free: nothing
+     * stays where it is and is listed in the result. Nothing free: nothing
      * moves. */
     if (!p.n && p.nclash) {
         char *list = so_join(p.clash, p.nclash), *capped = so_cap_list(list);

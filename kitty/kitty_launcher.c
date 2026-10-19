@@ -91,7 +91,7 @@
 /* Posted by the "mode is OFF" notice window when it is clicked. */
 #define KLWM_WORKPLACEREARM	(WM_USER+14)
 /* Posted by LauncherRegisterHotkeys when session hotkeys collided: the balloon
- * naming winners and losers. Posted rather than shown in place, for the reason
+ * listing winners and losers. Posted rather than shown in place, for the reason
  * the update balloon is - registration also runs from WM_CREATE, and a balloon
  * raised inside window creation shows but its click never comes back. */
 #define KLWM_HOTKEYBALLOON	(WM_USER+15)
@@ -116,7 +116,7 @@
 /* Workplace proxy mode: notices the arming's time running out, so the mode ends
  * visibly rather than only when the next connection is made. */
 #define LAUNCHER_WORKPLACE_TIMER	101
-/* A launcher the mode started is closing, but not before the notice saying the
+/* A launcher the mode started is closing, but not before the notice that the
  * mode is off has been readable - and not at all if the user takes that
  * notice's offer to switch the mode back on. */
 #define LAUNCHER_EXITAFTERNOTICE_TIMER	102
@@ -239,7 +239,7 @@ static int LauncherUpdateBeta = 0 ;
  * once a day for as long as the launcher sits in the tray. This is the version
  * the balloon last announced; another one raises it again. */
 static char LauncherUpdateAnnounced[64] = "" ;
-/* A launcher runs for days: ask again once a day. A TEST BUILD takes the
+/* A launcher runs for days: check again once a day. A TEST BUILD takes the
  * interval in ms from KITTY_LAUNCHER_UPDATE_RECHECK_MS, so a harness need not
  * wait a day. */
 #define LAUNCHER_UPDATECHECK_TIMER	106
@@ -388,7 +388,7 @@ static void LauncherWinLabel( const struct THWin * w, wchar_t * out, size_t n ) 
 		}
 	} else
 		LauncherWAppend( out, n, shown ) ;
-	/* A dead session says so. Text, not grey: a greyed menu item cannot be
+	/* A dead session is marked. Text, not grey: a greyed menu item cannot be
 	 * chosen, and this is exactly the window one wants to open - to restart
 	 * it or to read why it dropped. */
 	if( w->closed )
@@ -669,7 +669,7 @@ static HMENU InitLauncherMenu( char * Key ) {
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		ReadSpecialMenu( menu, Key, &nbitem, 0 ) ;
 	}
-	/* Sessions past the ceiling, in every folder counted: said, not dropped
+	/* Sessions past the ceiling, in every folder counted: shown, not dropped
 	 * silently. Greyed, no command. */
 	if( kitty_menuslots_cut() > 0 ) {
 		char more[128] ;
@@ -725,10 +725,10 @@ static HMENU InitLauncherMenu( char * Key ) {
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, KT_MENU_REFRESH "\t   " ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, KT_MENU_CONFIGURATION ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, KT_MENU_TTYED ) ;
-	/* KiTTY: workplace proxy mode. While it is on, ONE item that says which
+	/* KiTTY: workplace proxy mode. While it is on, ONE item that shows which
 	 * proxy everything is going through and switches it off; while it is off, a
 	 * submenu of the named proxies to switch it on with, the remembered one
-	 * ticked. The wording says "every connection" both ways round because that
+	 * ticked. The wording reads "every connection" both ways round because that
 	 * is the whole point of the mode, and because a proxy override left on by
 	 * accident is the risk this feature has to keep visible. */
 	{
@@ -768,7 +768,7 @@ static HMENU InitLauncherMenu( char * Key ) {
 				AppendMenu( menu, MF_POPUP, (UINT_PTR)wpmenu,
 					KT_MENU_WORKPLACE_OFF ) ;
 			} else {
-				/* No named proxies: say why rather than offer an empty submenu. */
+				/* No named proxies: explain rather than offer an empty submenu. */
 				DestroyMenu( wpmenu ) ;
 				AppendMenu( menu, MF_GRAYED, 0,
 					KT_MENU_WORKPLACE_NEEDS_PROXY ) ;
@@ -934,7 +934,7 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 					if( !strcmp( folder, KITTY_DEFAULT_SESSION ) ) continue ;
 					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
 					/* KiTTY (hknet/KiTTY#55): a session stored under a folder
-					 * path is in that folder, whatever its Folder value says. */
+					 * path is in that folder, regardless of its Folder value. */
 					{
 						char * pf = ksp_folder_of( folder ) ;
 						if( pf != NULL ) {
@@ -964,10 +964,11 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		 * files left out). One file per entry, "label\session\": the label is
 		 * the session's own name - the menu reader splits at the FIRST '\',
 		 * so it must hold none - and the session is the full path. */
-		char fullpath[MAX_VALUE_NAME], folder[MAX_VALUE_NAME] ;
+		char fullpath[MAX_VALUE_NAME], folder[MAX_VALUE_NAME], ldir[MAX_VALUE_NAME] ;
 		int nn = 0, k ;
 		char ** names ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\Launcher", ConfigDirectory ) ;
+		portable_config_path( ldir, sizeof(ldir), "Launcher" ) ;
+		snprintf( fullpath, sizeof(fullpath), "%s", ldir ) ;
 		DelDir( fullpath ) ;
 		if(!MakeDir( fullpath ) ) {
 			/* MakeDir's own last error is its final existence check; one
@@ -986,7 +987,7 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 			const char * leaf = ksp_leaf( names[k] ) ;
 			char * fld ;
 			char mleaf[MAX_VALUE_NAME] ;
-			if( !strcmp( names[k], KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it names */
+			if( !strcmp( names[k], KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it gives */
 			if( strlen( names[k] ) * 3 + 1 >= MAX_VALUE_NAME ) continue ;
 			fld = kitty_read_session_folder( names[k] ) ;
 			snprintf( folder, sizeof(folder), "%s", fld ? fld : "" ) ;
@@ -1008,12 +1009,12 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 					strcat( mfold, mcomp ) ;
 					q += n ; if( *q == '\\' ) q++ ;
 					}
-				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s", ConfigDirectory, mfold ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s", ldir, mfold ) ;
 				MakeDir( fullpath ) ;
-				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s\\%s", ConfigDirectory, mfold, mleaf ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", ldir, mfold, mleaf ) ;
 				}
 			else
-				snprintf( fullpath, sizeof(fullpath), "%s\\Launcher\\%s", ConfigDirectory, mleaf ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s", ldir, mleaf ) ;
 			{
 				char * text = dupprintf( "%s\\%s\\", leaf, names[k] ) ;
 				ilr_write_file( fullpath, text ) ;
@@ -1037,8 +1038,8 @@ done:
 static HHOOK g_launcher_menu_hook = NULL ;
 
 /* The id of the menu item under a screen point, 0 when there is none (or a
- * submenu item, a separator): the popup window under the point names its
- * menu, the menu names the item. */
+ * submenu item, a separator): the popup window under the point gives its
+ * menu, the menu gives the item. */
 static UINT LauncherMenuIdAt( POINT pt ) {
 	HWND under = WindowFromPoint( pt ) ;
 	char cls[16] = "" ;
@@ -1186,7 +1187,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 		 * never reaches the menu loop: the button (down, up and the double
 		 * click, all three, or the loop would be left believing a button is
 		 * held) and Enter on the highlighted item are taken here, the menu
-		 * stays where it is, and the launcher is told to refresh behind it.
+		 * stays where it is, and the launcher is made to refresh behind it.
 		 * While that runs every click is taken too: the session ids of the
 		 * menu still on the screen belong to the list being replaced.
 		 */
@@ -1229,7 +1230,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 		 * a submenu (measured: the message arrives for a session entry and
 		 * never for a folder) - and a folder is the one place the folder
 		 * context menu is for. So the raw button release is looked at here:
-		 * the popup window under the cursor names its menu, the menu names the
+		 * the popup window under the cursor gives its menu, the menu gives the
 		 * item under the point, and when that item has a submenu the launcher
 		 * is handed the same message the menu loop would have sent. Posted,
 		 * not sent: the context menu is then raised from the launcher's own
@@ -1266,7 +1267,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 #define KLWM_OPENFOLDER			(WM_USER+17)
 #define LAUNCHER_OPENFOLDER_TIMER	103
 #define LAUNCHER_OPENFOLDER_GAP_MS	300	/* between two session starts */
-#define LAUNCHER_OPENFOLDER_ASK_ABOVE	8	/* more sessions than this: ask first */
+#define LAUNCHER_OPENFOLDER_ASK_ABOVE	8	/* more sessions than this: confirm */
 
 struct LauncherFolderItem { char payload[1024] ; char label[1024] ; } ;
 static struct LauncherFolderItem * LauncherFolderItems = NULL ;
@@ -1301,7 +1302,7 @@ static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, i
  * KiTTY: a right click on a WINDOW's entry in Open Sessions offers "Name this
  * window..." (hknet/KiTTY#54). The terminal's own system menu has the same
  * command, but a window hidden in the launcher has no system menu anyone can
- * reach - so the launcher asks the window to open its own name box
+ * reach - so the launcher has the window open its own name box
  * (window.c IDM_WINNAME -> kitty_winname_box). The box brings itself to the
  * front; the launcher, holding the user's click, lets that process do so.
  */
@@ -1686,7 +1687,7 @@ static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 
 	/* The colour theme is read when the process starts, and the launcher runs
 	 * for days: a change made in the configuration box reached it only after
-	 * a restart. Asked again before every menu - the preference is cached for
+	 * a restart. Read again before every menu - the preference is cached for
 	 * two seconds and the call does nothing while the mode is unchanged. */
 	kitty_theme_app_mode( kitty_theme_app_pref() ) ;
 
@@ -1941,9 +1942,10 @@ void ManageSwitch( const int n ) {
 
 /* A session entry with "Show one window at a time" on: every other terminal
  * is hidden and this one is shown and put in front.
- * The target is named by its handle, taken from the list the menu was built
- * from, BEFORE the list is enumerated again here: EnumWindows returns Z order,
- * which changes, so the same index could name another window afterwards.
+ * The target is identified by its handle, taken from the list the menu was
+ * built from, BEFORE the list is enumerated again here: EnumWindows returns Z
+ * order, which changes, so the same index could refer to another window
+ * afterwards.
  * The target is not hidden and shown again - a posted hide would arrive after
  * the sent unhide (sent messages are handled before posted ones) and hide it
  * for good. Its unhide is sent, so the terminal's visible flag is right and
@@ -2039,8 +2041,8 @@ static void LauncherWindowGone( HWND gone, int visible ) {
 
 static void ShowLauncherUpdateBalloon( void ) {
 	char ulatest[64]="" ; int ubeta=0 ;
-	/* "Check for updates" off: nothing is asked and nothing is announced, not
-	 * even an answer another program stored earlier. */
+	/* "Check for updates" off: nothing is queried and nothing is announced,
+	 * not even an answer another program stored earlier. */
 	if( !kitty_check_update_enabled() ) return ;
 	if( kitty_update_available( ulatest, sizeof(ulatest), NULL, 0, &ubeta ) ) {
 		char umsg[256] ;
@@ -2161,10 +2163,10 @@ static void LauncherUnregisterHotkeys( HWND hwnd ) {
  * tray icon. The report is compared against the previous run's, so a refresh
  * of an unchanged store stays quiet.
  *
- * `notify` says whether a NEW report may balloon: launcher startup and the
+ * `notify` states whether a NEW report may balloon: launcher startup and the
  * tray menu's manual Refresh do, the config box's save/import broadcast does
  * NOT - the box already put the same fact in front of the user in a
- * MessageBox, and a balloon seconds later would say it twice. A silent run
+ * MessageBox, and a balloon seconds later would repeat it. A silent run
  * leaves the remembered report alone, so the next notifying run still sees
  * the change and balloons it - except a key RegisterHotKey refused that the
  * previous registration did not report as refused: the box cannot know that
@@ -2318,7 +2320,7 @@ static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 }
 	
 /* KiTTY: the tray tooltip, built in one place because it now has a part that
- * changes at runtime - workplace proxy mode names the proxy every connection is
+ * changes at runtime - workplace proxy mode shows the proxy every connection is
  * going through while this launcher holds the arming. Safe to call before
  * the icon exists; NIM_MODIFY on an unregistered icon simply fails. */
 static void LauncherSetTrayTip( void ) {
@@ -2327,8 +2329,8 @@ static void LauncherSetTrayTip( void ) {
 #else
 	strcpy( TrayIcone.szTip, KT_LAUNCHER_TIP ) ;
 #endif
-	/* KiTTY: say so when this launcher - and so every session it starts, via
-	 * the "&R" prefix - runs with the restricted ACL. */
+	/* KiTTY: show it when this launcher - and so every session it starts,
+	 * via the "&R" prefix - runs with the restricted ACL. */
 	if( restricted_acl() ) strcat( TrayIcone.szTip, KT_LAUNCHER_TIP_RESTRICTED ) ;
 	if( kitty_workplace_holding() && LauncherWorkplaceProxy[0] ) {
 		char line[220], left[64] ;
@@ -2409,7 +2411,7 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 			KT_LAUNCHER_WP_OFF ) ;
 	/* Our own window, not a tray balloon: it carries the mode's colour and a
 	 * duration we choose, and it is not silently swallowed by focus assist the
-	 * way balloons are. The tray tooltip and menu still say the same thing, so
+	 * way balloons are. The tray tooltip and menu still show the same thing, so
 	 * a notice that is missed is never the only record. */
 	LauncherSetTrayTip() ;
 	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
@@ -2423,13 +2425,13 @@ static void LauncherWorkplaceBalloon( int on, int by_timeout ) {
 	                   msg, WORKPLACE_GREEN, LauncherNoticeSeconds(),
 	                   (!on && by_timeout) ? MainHwnd : NULL,
 	                   (!on && by_timeout) ? KLWM_WORKPLACEREARM : 0 ) ;
-	/* The user has now been told, whichever way it ended, so no later start owes
-	 * them the "it is not active" notice. */
+	/* The user has now been notified, whichever way it ended, so no later
+	 * start owes them the "it is not active" notice. */
 	if( !on ) kitty_workplace_notice_settled() ;
 }
 
 /* Take the arming for workplace proxy mode. From here on every connection this
- * install starts asks us, and gets this proxy until we let go or die. */
+ * install starts queries us, and gets this proxy until we let go or die. */
 static int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
 	if( !kitty_workplace_arm( proxyname, minutes ) ) return 0 ;
 	/* Check often enough that "switch off after 4 hours" is not visibly late,
@@ -2440,15 +2442,16 @@ static int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
 	strncpy( LauncherWorkplaceProxy, proxyname, sizeof(LauncherWorkplaceProxy)-1 ) ;
 	LauncherWorkplaceProxy[sizeof(LauncherWorkplaceProxy)-1] = '\0' ;
 	LauncherRememberWorkplaceProxy( LauncherWorkplaceProxy, minutes ) ;
-	/* The breadcrumb: if this arming ends without anybody being told - the
-	 * launcher killed, logged off, rebooted - the next start owes one notice. */
+	/* The breadcrumb: if this arming ends without anybody being notified -
+	 * the launcher killed, logged off, rebooted - the next start owes one
+	 * notice. */
 	kitty_workplace_mark_armed() ;
 	LauncherSetTrayTip() ;
 	Shell_NotifyIcon( NIM_MODIFY, &TrayIcone ) ;
 	return 1 ;
 }
 
-/* What a launcher start says about workplace proxy mode - which, most of the
+/* What a launcher start shows about workplace proxy mode - which, most of the
  * time, is NOTHING.
  *
  * It used to offer to switch the mode back on at every single start, because a
@@ -2457,15 +2460,15 @@ static int LauncherArmWorkplace( const char *proxyname, unsigned int minutes ) {
  * - and a notice that is ignored is worse than none, because the one that
  * matters is ignored with it.
  *
- * So: say something only when there is news. The mode having ended without
- * anybody being told IS news, and is said once. Everything else is silence.
- * Switching the mode on lives in the tray menu, where somebody who wants it can
- * find it. */
+ * So: show a notice only when there is news. The mode having ended without
+ * anybody being notified IS news, and is shown once. Everything else is
+ * silence. Switching the mode on lives in the tray menu, where somebody who
+ * wants it can find it. */
 static void LauncherOfferWorkplaceRearm( void ) {
 	/* Already armed - this launcher was started BY the mode being switched on,
 	 * and took the arming from its command line before it had a tray icon to
-	 * raise a notice from. Say it now, or switching the mode on from the config
-	 * box is the one route that announces nothing. */
+	 * raise a notice from. Show it now, or switching the mode on from the
+	 * config box is the one route that reports nothing. */
 	if( kitty_workplace_holding() ) { LauncherWorkplaceBalloon( 1, 0 ) ; return ; }
 	kitty_workplace_show_pending_notice() ;
 }
@@ -2494,7 +2497,7 @@ static void LauncherExitIfStartedForWorkplace( HWND hwnd ) {
 	if( !LauncherStartedForWorkplace ) return ;
 	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, buffer, sizeof(buffer) )
 	    && !stricmp( buffer, "no" ) ) return ;   /* absent = yes */
-	/* WARNING: NOT straight away. The notice saying the mode is off is a window of
+	/* WARNING: NOT straight away. The notice that the mode is off is a window of
 	 * OURS, so quitting here would take it off the screen the instant it
 	 * appeared - and on the timeout path it is the notice that offers the mode
 	 * back with a click, so quitting would remove the offer as well as the news.
@@ -2523,7 +2526,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 	/* KiTTY: somebody clicked the application notification away and [KiTTY]
 	 * notesonce is on. Take a share of the "seen" mark, so it lasts as long
 	 * as this launcher does rather than only as long as the window that was
-	 * clicked. wParam names the note that was on screen (0 = whatever the
+	 * clicked. wParam gives the note that was on screen (0 = whatever the
 	 * store holds now), so a note edited while its notice was still up is not
 	 * marked read. Install-keyed, so another install's launcher never answers
 	 * it. */
@@ -2532,7 +2535,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		return 0 ;
 	}
 
-	/* KiTTY: the config box asking for workplace proxy mode on (wParam 1) or off
+	/* KiTTY: the config box requesting workplace proxy mode on (wParam 1) or off
 	 * (wParam 0). The proxy is not in the message - the requester has just
 	 * written the remembered selection, and reading it here keeps one source of
 	 * truth for which proxy the mode uses. Install-keyed message, so another
@@ -2573,8 +2576,8 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		TrayIcone.uID = IDI_PUTTY_LAUNCH ;	// give it an ID
 		TrayIcone.hIcon = LoadIcon((HINSTANCE) GetModuleHandle (NULL), MAKEINTRESOURCE(IDI_PUTTY_LAUNCH));
 	}
-	TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;	// say which fields are valid
-	// tell it to "listen" to its surroundings (mouse clicks and so on)
+	TrayIcone.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;	// set which fields are valid
+	// have it "listen" to its surroundings (mouse clicks and so on)
 	TrayIcone.uCallbackMessage = KLWM_NOTIFYICON;
 	//TrayIcone.szTip[1024] = "KiTTY That\'s all folks!\0" ;			// the default tooltip, i.e. nothing
 	LauncherSetTrayTip() ;
@@ -2653,7 +2656,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			 * relying on the check in the timer: this launcher is wanted. */
 			KillTimer( hwnd, LAUNCHER_EXITAFTERNOTICE_TIMER ) ;
 			/* The "mode is OFF" notice was clicked: switch it on with the
-			 * proxy the notice named. */
+			 * proxy the notice showed. */
 			if( LauncherRearmProxy[0]
 			    && LauncherArmWorkplace( LauncherRearmProxy,
 			                             LauncherRememberedWorkplaceMinutes() ) ) {
@@ -2673,7 +2676,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				strncpy( TrayIcone.szInfoTitle, KT_CAP_HOTKEY_CONFLICT, sizeof(TrayIcone.szInfoTitle) ) ;
 				TrayIcone.szInfoTitle[sizeof(TrayIcone.szInfoTitle)-1] = '\0' ;
 				/* A balloon holds 255 characters: whole lines only, and "..."
-				 * when the report goes on - a line cut in the middle named
+				 * when the report goes on - a line cut in the middle showed
 				 * half a combination. */
 				if( strlen( LauncherHotkeyReport ) < sizeof(TrayIcone.szInfo) ) {
 					strcpy( TrayIcone.szInfo, LauncherHotkeyReport ) ;
@@ -2695,7 +2698,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				/* KiTTY: the "update available" balloon is clickable - clicking
 				 * it opens the updater (the same dialog as the terminal's
 				 * "Check for updates"), instead of merely dismissing a notice
-				 * that told you to go and find that menu item yourself. Guarded
+				 * that left you to find that menu item yourself. Guarded
 				 * on LauncherUpdateKnown so a click on any OTHER balloon this
 				 * icon may show does not start an update check. The icon is
 				 * registered without NIM_SETVERSION, so the notification code
@@ -2827,7 +2830,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			}
 			if( wParam == LAUNCHER_WORKPLACE_TIMER ) {
 				/* The arming's time is up: end the mode where the user can see
-				 * it, rather than leaving the tray saying it is on until the
+				 * it, rather than leaving the tray showing it is on until the
 				 * next connection quietly disagrees. */
 				if( kitty_workplace_holding() && !kitty_workplace_minutes_left() ) {
 					/* Remember what it was using, so the timeout notice can
@@ -2857,7 +2860,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				/* Once a day: the same background check the start makes. Its
 				 * answer comes back as KLWM_UPDATECHECKDONE and is announced as
 				 * at the start, once per release; a check that fails is not
-				 * heard from and the next tick asks again. */
+				 * heard from and the next tick checks again. */
 				if( kitty_check_update_enabled() )
 					kitty_start_update_check_notify( hwnd, KLWM_UPDATECHECKDONE ) ;
 			}
@@ -3128,13 +3131,13 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
 
 	/* KiTTY: -workplace <named proxy> switches workplace proxy mode ON and
-	 * hands this launcher the arming. The
-	 * arming lives and dies with this process: every connection asks whether one
-	 * is held right now, so killing the launcher, logging off or rebooting
-	 * switches the mode off with nothing to clean up.
+	 * hands this launcher the arming. The arming lives and dies with this
+	 * process: every connection checks whether one is held right now, so
+	 * killing the launcher, logging off or rebooting switches the mode off
+	 * with nothing to clean up.
 	 *
 	 * Taken BEFORE the window exists, so the tray tooltip built in WM_CREATE
-	 * already names the proxy - and BEFORE the already-running check below,
+	 * already shows the proxy - and BEFORE the already-running check below,
 	 * which is the subtle part: see the comment on that check. */
 	{
 		char *w = strstr( cmdline, "-workplace" ) ;
@@ -3164,7 +3167,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 			}
 			if( proxy[0] && LauncherArmWorkplace( proxy, minutes ) )
 				/* Started BY the mode: only such a launcher may be closed again
-				 * when the mode goes off, and only if asked to be. */
+				 * when the mode goes off, and only if configured to be. */
 				LauncherStartedForWorkplace = 1 ;
 		}
 	}
@@ -3230,9 +3233,9 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	
 	//ShowWindow(hwnd, show) ; UpdateWindow(hwnd) ;
 
-	/* Tell open configuration boxes a launcher is running now: their "Start
-	 * Launcher Now" button greys. Posted, never sent - no window may hold up
-	 * the launcher's start. */
+	/* Notify open configuration boxes that a launcher is running now: their
+	 * "Start Launcher Now" button greys. Posted, never sent - no window may
+	 * hold up the launcher's start. */
 	if( MainHwnd && LauncherStateMessage )
 		PostMessage( HWND_BROADCAST, LauncherStateMessage, 1, 0 ) ;
 
@@ -3369,7 +3372,7 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
 				RunCommand( hwnd, buffer ) ;
 			} else if( strlen(param) > 0 ) {
 				/* -quickconnect, -manage: they open saved sessions, so the
-				 * master password goes with them - Quick Connect used to
+				 * master password is passed on - Quick Connect used to
 				 * prompt for it again in every launcher run. -manage reads
 				 * the key itself (window.c), Quick Connect in the argument
 				 * parser; -restrict-acl as for a new configuration box. */
@@ -3389,7 +3392,7 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
 				 * does. Without this, double-clicking the tray icon of a
 				 * RESTRICTED launcher opened an UNrestricted configuration box -
 				 * and every session started from it was unrestricted too, with
-				 * nothing to say so.
+				 * nothing to show it.
 				 * NOT the "&R" prefix RunSession() uses: that form is only
 				 * recognised when it is followed by end-of-line, "@" or "&"
 				 * (handle_restrict_acl_cmdline_prefix), and this command line
@@ -3422,9 +3425,10 @@ static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) 
 			{ extern int kitty_mpw_startup_unlock(void);
 			  kitty_mpw_startup_unlock();
 			  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
-			/* mark_loaded: the balloon named a session and pre-set it as the
-			 * last one, so the box treats the restore as a deliberate load
-			 * and Save does not raise the overwrite warning about it. */
+			/* mark_loaded: the balloon identified a session and pre-set it
+			 * as the last one, so the box treats the restore as a
+			 * deliberate load and Save does not raise the overwrite
+			 * warning about it. */
 			snprintf( buffer, sizeof(buffer), "%s%s%s -cfgpanel %s%s", shortname, aclprefix, mpwtok, panel,
 			          mark_loaded ? " -cfgloaded" : "" ) ;
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;

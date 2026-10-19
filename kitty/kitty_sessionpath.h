@@ -4,7 +4,7 @@
  *
  * A session's identity is its folder path plus its name, joined with '\':
  * "Linux\web\srv01". A root session is its bare name, as before. The same
- * identity names the session in both stores:
+ * identity identifies the session in both stores:
  *
  *   registry      one flat key per session, PuTTY's escape of the whole path
  *                 (Sessions\Linux%5Cweb%5Csrv01) - no subkeys;
@@ -102,7 +102,7 @@ int ksp_file_is_session(const char *path);
 
 /* The same verdict through the per-process cache, for a directory walk:
  * `size` and `mtime` (FILETIME as one number) are what the walk's find data
- * says of the file. It is read only when new, changed in size or time, or
+ * reports for the file. It is read only when new, changed in size or time, or
  * written in the last few seconds. A full walk of the store brackets its
  * lookups with walk_begin/walk_end, which drops the entries of files it no
  * longer met; ksp_verdict_forget drops one (a file this process wrote).
@@ -281,7 +281,7 @@ char *ksp_import_name(const char *relpath, const char *suffix);
  * ksp_reg_move_tree is copy, prove, then delete the source; a change of case
  * only goes through a temporary key and is proven at each step. On failure
  * nothing is lost: the source is left (or rebuilt) as it was, except when it
- * cannot be written back - *leftover (snewn'd) then names the key (the
+ * cannot be written back - *leftover (snewn'd) then identifies the key (the
  * temporary key, or dst) that holds the only complete copy. */
 #ifdef _WIN32
 #include <windows.h>

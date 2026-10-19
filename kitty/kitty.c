@@ -194,7 +194,7 @@ char * get_param_str( const char * val ) {
 static char RemoteCwd[2048] = "" ;     /* validated path portion; "" = none  */
 static char RemoteCwdHost[256] = "" ;  /* host portion of the latest one */
 /* The host of the FIRST OSC 7 with a host: the session's machine, as it
- * names itself. A later host that differs means the shell moved on
+ * identifies itself. A later host that differs means the shell moved on
  * (kitty_remote_cwd_moved_host, Get File's check). */
 static char RemoteCwdHostFirst[256] = "" ;
 
@@ -225,7 +225,7 @@ void kitty_set_remote_cwd( const char * osc7 ) {
 	strcpy( RemoteCwd, path ) ;
 }
 
-/* The host the shell reports when it is not the one the first OSC 7 named
+/* The host the shell reports when it is not the one the first OSC 7 gave
  * (gf_osc7_moved: case and short/long name forms do not count), else NULL.
  * NULL too with tracking off or no OSC 7 seen. */
 const char * kitty_remote_cwd_moved_host( void ) {
@@ -342,7 +342,7 @@ void InitFolderList( void ) {
 		}
 	
 	/* KiTTY (hknet/KiTTY#55): a session stored under a folder PATH is in that
-	 * folder whatever its Folder value says, so the folder is known from the
+	 * folder whatever its Folder value holds, so the folder is known from the
 	 * name alone - in both stores, and without reading any session. */
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE)||(IniFileFlag==SAVEMODE_DIR) ) {
 		int nn = 0, k ;
@@ -857,7 +857,7 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 	} else {
 		/* KiTTY: the embedded icon, indexed by the session's own CONF_icone.
 		 * The cycling/randomising branch that used to sit here was dead - no
-		 * caller ever passed anything but SI_INIT - and went with the rest of
+		 * caller ever passed anything but SI_INIT - and was removed with the rest of
 		 * the multiple-icon feature. `mode` is kept for the callers. */
 		int num = ( icone != 0 ) ? icone - 1 : 0 ;
 		(void)mode ;
@@ -1162,6 +1162,10 @@ void SetConfigDirectory( const char * Directory ) {
 		ConfigDirectory = (char*)malloc( strlen(InitialDirectory)+1 ) ; 
 		strcpy( ConfigDirectory, InitialDirectory ) ; 
 	}
+	/* The folder store builds every path below the configuration directory
+	 * (Proxies, Launcher, Backups, Commands) with portable_config_subdir():
+	 * it gets the directory here, where it is set, so the two cannot part. */
+	kitty_set_config_dir( ConfigDirectory ) ;
 }
 	
 void GetInitialDirectory( char * InitialDirectory ) {
@@ -1388,7 +1392,7 @@ void ReadInitScript( const char * filename ) {
 					 * as pre-change content scrambled with the compiled-in constant
 					 * and "decrypts" it into garbage: the login script silently died
 					 * on the connect after the one that inlined it. PLAIN: is the
-					 * marker that says stored-as-is (KITTY_SECRET_PLAIN_MARK).
+					 * marker that means stored-as-is (KITTY_SECRET_PLAIN_MARK).
 					 */
 					if( wrapped && wrapped[0] && !kitty_secret_is_marked( wrapped ) ) {
 						char *marked = (char*) malloc( strlen(wrapped) + 7 ) ;
@@ -1406,7 +1410,7 @@ void ReadInitScript( const char * filename ) {
 			if( buffer!=NULL ) { free(buffer); buffer=NULL; }
 		} else {
 			/*
-			 * Not a path, so it is stored content. Which form it is in says how to
+			 * Not a path, so it is stored content. Which form it is in shows how to
 			 * open it, and the marker answers that without guessing: a protected
 			 * value carries DPAPI1:/MPW2:/PLAIN:, and anything else is a session
 			 * written before this change and still scrambled with the constant.
@@ -1417,7 +1421,7 @@ void ReadInitScript( const char * filename ) {
 			 */
 			char *plain = NULL ;
 			/*
-			 * Ask whether it CARRIES A MARKER, not whether unprotect succeeded.
+			 * Check whether it CARRIES A MARKER, not whether unprotect succeeded.
 			 * ksec_unprotect returns 1 for an unmarked value too, handing it back
 			 * verbatim ("unmarked legacy == plaintext"), so branching on its
 			 * return sends every pre-existing scrambled script down the base64

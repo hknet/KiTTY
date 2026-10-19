@@ -12,16 +12,16 @@
  * not carry is judged only when the sibling has it, and then a failure is a
  * WARNING too; a file version that differs from the running binary's is a
  * WARNING (not from this release); "authenticated" when every required leg
- * says ours and no other leg fails; "unverified" only when no leg could be
+ * reports ours and no other leg fails; "unverified" only when no leg could be
  * judged at all. So a release file with its signature stripped and a valid
  * stamp is red (the running release carries a signature), an unsigned and
  * unstamped test build checking its own set is unverified throughout, and a
  * 64-bit release on a Windows that cannot judge SHA-2 is unverified.
  *
  * Only the files we KNOW are verified (the ship list below); any other .exe
- * in the folder is counted and named, never judged - a stranger is never
+ * in the folder is counted and listed, never judged - a stranger is never
  * silent, and we make no claim about it. DLLs are left out: kitty.dll is the
- * optional icon library, and a verdict on an unknown DLL says nothing.
+ * optional icon library, and a verdict on an unknown DLL means nothing.
  *
  * The check runs one file per tick of a zero-delay timer on the panel's first
  * refresh, so the rows appear as they are judged and the box never freezes

@@ -186,7 +186,7 @@ static inline int kt_pe_parse(const unsigned char *hdr, size_t hdrlen,
  * before end of file on an unsigned image - are tried as a v2 block.
  *
  * The candidate is accepted only when the magic matches, the version is 2 AND
- * the block's own `length` names the byte just past the block. That last test
+ * the block's own `length` gives the byte just past the block. That last test
  * is what makes this safe on a file carrying an unrelated overlay: an
  * installer's appended data cannot satisfy it by accident, and a wrong guess
  * fails here instead of hashing the wrong bytes. The signature still has to

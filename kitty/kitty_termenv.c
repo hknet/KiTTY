@@ -47,7 +47,7 @@ size_t kitty_termenv_merge(const char *const *names, const char *const *values,
     size_t i, count = 0;
 
     for (i = 0; i < n; i++) {
-        /* An empty COLORTERM / TERM_PROGRAM is the session saying "do not
+        /* An empty COLORTERM / TERM_PROGRAM in the session means "do not
          * send it"; outside KiTTY++ it goes out as stored. */
         if (mode != KITTY_TERMENV_AS_IS && !*values[i] &&
             is_default_name(names[i]))
@@ -99,7 +99,7 @@ size_t kitty_termenv_host_id(const char *host, int port, char *buf,
     portstr[0] = '\0';
     if (port != 22)
         snprintf(portstr, sizeof(portstr), ":%d", port);
-    /* "::1:2222" would not say where the address ends */
+    /* "::1:2222" would not show where the address ends */
     bracket = *portstr && strchr(host, ':') != NULL;
     need = hlen + strlen(portstr) + (bracket ? 2 : 0);
     if (need + 1 > size)

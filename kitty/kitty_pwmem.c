@@ -177,7 +177,7 @@ static int kpw_mem(void *p, size_t n, int unprotect, DWORD flags)
 /*
  * Is the protection actually WORKING here? A real round trip, not just a
  * successful lookup: the DLL loading proves nothing about the calls
- * succeeding, and the whole point of asking is to tell the user when their
+ * succeeding, and the whole point of the check is to warn the user when their
  * passwords are not protected. Probed once and remembered; the failure is
  * recorded as a missing feature, so the session prints one line about it.
  */
@@ -225,7 +225,7 @@ static char *kpw_wrap(const char *plain, DWORD flags, const char *mark)
         return dupstr(plain);
 
     /* 4 bytes of length, the password, then zero padding to the block size.
-     * The length lives INSIDE the protected block so the stored form says
+     * The length lives INSIDE the protected block so the stored form reveals
      * nothing about how long the password is. */
     blocklen = ((4 + len + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
                 CRYPTPROTECTMEMORY_BLOCK_SIZE) * CRYPTPROTECTMEMORY_BLOCK_SIZE;

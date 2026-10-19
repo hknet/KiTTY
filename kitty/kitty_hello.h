@@ -2,7 +2,7 @@
  * KiTTY: Windows Hello presence check, for gating the agent's approval
  * moments (confirm-on-use, Accept-this-key; later the agent unlock).
  *
- * A Hello verification asks the SYSTEM to prove a human is present -
+ * A Hello verification has the SYSTEM prove a human is present -
  * biometrics or the device PIN, in Windows' own protected UI. A MessageBox
  * click can be synthesized by any same-user process; this cannot. It is a
  * raised bar, not a full boundary: an approval covers one request, and an
@@ -15,7 +15,7 @@
 #include <windows.h>
 
 /* kitty_hello_verify outcomes. Callers FAIL CLOSED on everything except
- * VERIFIED; UNAVAILABLE vs DENIED matter only for what the user is told. */
+ * VERIFIED; UNAVAILABLE vs DENIED matter only for what the user is shown. */
 enum {
     KITTY_HELLO_VERIFIED = 0,    /* the human is present and approved */
     KITTY_HELLO_DENIED,          /* declined, cancelled, retries exhausted */
@@ -24,7 +24,7 @@ enum {
     KITTY_HELLO_ERROR            /* plumbing failed; treated as a denial */
 };
 
-/* Is Hello usable right now? 1 = available, 0 = not, -1 = could not tell.
+/* Is Hello usable right now? 1 = available, 0 = not, -1 = unknown.
  * Runs the system availability check (no UI). Used to grey the setting. */
 int kitty_hello_available(void);
 
@@ -63,7 +63,7 @@ int kitty_hello_verify(HWND owner, const char *message_utf8);
 #define KITTY_HELLO_RP_ID L"kapper.net kitty++"
 
 /* Is a Hello key credential usable (KeyCredentialManager.IsSupported)?
- * 1 = yes, 0 = no, -1 = could not tell. No UI. */
+ * 1 = yes, 0 = no, -1 = unknown. No UI. */
 int kitty_hello_key_available(void);
 
 /* Derive the Hello KEK: open (or, if create_if_missing, create) the
@@ -109,7 +109,7 @@ int kitty_hello_container_has_recovery(const char *container);
 /* Is a PRF-capable platform authenticator present? 1/0/-1. No UI. */
 int kitty_hello_prf_available(void);
 
-/* Get (find, or create when asked - find-first avoids the replace-and-
+/* Get (find, or create on request - find-first avoids the replace-and-
  * orphan trap) the KiTTY PRF credential's id. KITTY_HELLO_* code; on
  * VERIFIED credid_out is filled (caller sfree). Creation shows Windows'
  * passkey save flow. */
@@ -135,7 +135,7 @@ char *kitty_hello_container_create_ex(const unsigned char hello_kek[32],
 
 /* W-field access. A container carries ONE W PER ENROLLED ACCOUNT+MACHINE
  * (credentials are per Windows account by construction; the id inside
- * each W says whose it is, an optional owner tag says so in words).
+ * each W shows whose it is, an optional owner tag states it in words).
  * prf_credid = the FIRST W's id (1/0/-1; caller sfree); open_prf tries
  * every W with the given KEK (1 = secret out, 0 = none, -1 = refused). */
 int kitty_hello_container_prf_credid(const char *container,
@@ -194,7 +194,7 @@ char *kitty_hello_container_append_prf(const char *container,
                                            secret[KITTY_HELLO_SECRET_LEN]);
 
 /* This account's PRF credential id from the platform store, no UI
- * (1 = found, caller sfree; 0 = none; -1 = cannot tell), and the index
+ * (1 = found, caller sfree; 0 = none; -1 = unknown), and the index
  * of the W in a container that belongs to it (-1 = none of ours). */
 int kitty_hello_prf_my_credid(unsigned char **credid_out,
                               size_t *credidlen_out);
@@ -205,7 +205,7 @@ int kitty_hello_container_my_w(const char *container);
 char *kitty_hello_owner_tag(void);
 
 /* One-shot context for the NEXT Hello operation: WHICH window/session
- * is asking (shown on the anchor card, which is then always displayed
+ * starts it (shown on the anchor card, which is then always displayed
  * and opens over near_window). For apps with several instances - the
  * terminal. Consumed by the operation; NULL clears. */
 void kitty_hello_set_context(const char *line, HWND near_window);
@@ -222,7 +222,7 @@ int kitty_hello_new_secret(unsigned char secret[KITTY_HELLO_SECRET_LEN]);
  * ones. The app brackets batches (startup load, multi-key drops) with
  * begin/end, sets the TTL from its settings, and should call wipe from
  * a timer at expiry for hygiene (expiry is also checked lazily).
- * last_was_cached says whether the latest PRF KEK came from the cache
+ * last_was_cached shows whether the latest PRF KEK came from the cache
  * (for honest audit lines). */
 void kitty_hello_batch_begin(void);
 void kitty_hello_batch_end(void);
@@ -281,7 +281,7 @@ int kitty_hello_enrol_auto(HWND owner, const char *container,
 /* Sign the fixed challenge twice and compare: proves this machine's
  * credential signs deterministically (two Hello prompts). Returns a
  * KITTY_HELLO_* code; VERIFIED means byte-identical signatures, DENIED
- * covers both refusal and a non-deterministic signer (msg says which;
+ * covers both refusal and a non-deterministic signer (msg states which;
  * caller sfree). */
 int kitty_hello_kek_selftest(char **msg);
 

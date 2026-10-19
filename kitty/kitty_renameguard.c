@@ -151,7 +151,7 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
 {
     /*
      * 1024 rather than MAX_PATH: a path can exceed 260 characters, and a
-     * truncated read is answered with "cannot tell" below rather than with a
+     * truncated read is answered with "cannot judge" below rather than with a
      * wrong verdict.
      */
     char path[1024];
@@ -169,7 +169,7 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
     /* Pre-Vista does not NUL-terminate when the buffer was too small. */
     path[sizeof(path) - 1] = '\0';
     if (len == 0 || len >= sizeof(path))
-        return 0;                      /* cannot tell - let it run */
+        return 0;                      /* cannot judge - let it run */
 
     base = path;
     for (p = path; *p; p++)
@@ -407,7 +407,7 @@ int kitty_file_has_cert_table(const char *path)
  * TRUST_E_ACTION_UNKNOWN, NTE_BAD_ALGID and the CRYPT_E_* family for a hash or
  * signature algorithm this Windows does not implement, CRYPT_E_SECURITY_SETTINGS
  * where policy switched the check off, and wintrust.dll not being loadable at
- * all. So is every code not named above: an unclassified error is a "cannot
+ * all. So is every code not listed above: an unclassified error is a "cannot
  * judge", never a refusal.
  *
  * The version of Windows is never consulted. Compatibility mode fakes it, and
@@ -429,7 +429,7 @@ static int kg_signature_verdict(char *reason, size_t reasonsz)
     char signer[256];
     DWORD len = GetModuleFileNameA(NULL, path, sizeof(path));
     if (len == 0 || len >= sizeof(path))
-        return 0;                      /* cannot tell - let it run */
+        return 0;                      /* cannot judge - let it run */
     path[len] = '\0';
     switch (kitty_signature_reading(path, signer, sizeof(signer))) {
       case KG_SIG_MODIFIED:
@@ -439,7 +439,7 @@ static int kg_signature_verdict(char *reason, size_t reasonsz)
         strncpy(reason, "not signed", reasonsz - 1); reason[reasonsz - 1] = '\0';
         return 1;
       case KG_SIG_OTHER:
-        /* Names the CN found, because that is the one fact worth knowing: a
+        /* Reports the CN found, because that is the one fact worth knowing: a
          * re-signed copy is identified by whose it is. */
         _snprintf(reason, reasonsz, "signer: %s", signer); reason[reasonsz - 1] = '\0';
         return 1;

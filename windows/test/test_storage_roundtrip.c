@@ -437,6 +437,10 @@ static void test_proxies_dir(void)
     check(d && !strcmp(d, "C:\\qa-store\\cfg\\Proxies"),
           "proxies dir: in the configuration directory when sessions= points elsewhere");
     sfree(d);
+    d = portable_config_subdir("Launcher");
+    check(d && !strcmp(d, "C:\\qa-store\\cfg\\Launcher"),
+          "launcher dir: in the configuration directory, where the launcher writes it");
+    sfree(d);
     kitty_set_config_dir("");
     d = portable_proxies_dir();
     check(d && !strcmp(d, "C:\\qa-store\\elsewhere\\mysess\\Proxies"),

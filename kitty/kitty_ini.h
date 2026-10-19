@@ -79,7 +79,7 @@ char default_init_file_content[] =
 ;    plain name field and the list always shows everything, like stock PuTTY.\n\
 ;    Typing directly into the list is Windows' own first-letter jump and is not\n\
 ;    affected either way.\n\
-;    Two keys go with it, from anywhere in the configuration box:\n\
+;    It adds two keys, for use anywhere in the configuration box:\n\
 ;      Ctrl+F  jump to the Session panel and put the cursor in that name box,\n\
 ;              with what is already there selected so you can type over it.\n\
 ;              It searches within the folder currently selected.\n\
@@ -227,8 +227,10 @@ char default_init_file_content[] =
 ;   portable mode the registry is read first, so it is honoured from there.\n\
 ;conf=yes\n\
 \n\
-; configdir: where the settings directories live - Sessions, SshHostKeys and\n\
-;    the rest. Portable mode uses it; by default it is the directory kitty.exe\n\
+; configdir: the directory of Proxies, Launcher and Backups, and - unless\n\
+;    sessions= is set - of the session folder Sessions with the store's\n\
+;    other files (SshHostKeys, Security, KiTTYState and the rest). Portable\n\
+;    mode uses it; by default it is the directory kitty.exe\n\
 ;    sits in. A relative path is below that directory. A directory that is\n\
 ;    not there is asked about at start; going on uses the default, and\n\
 ;    kageant and the console tools then use the default too.\n\
@@ -251,8 +253,11 @@ char default_init_file_content[] =
 \n\
 ; sessions: the folder store's session folder (savemode=dir). Default: the\n\
 ;    Sessions folder beside kitty.exe, or under configdir. A relative path is\n\
-;    taken from the kitty.exe folder. Copied once from classic KiTTY's\n\
-;    putty.conf (Sessions=), see puttyconfmigrated.\n\
+;    taken from the kitty.exe folder. The store's other files (SshHostKeys,\n\
+;    Security, KiTTYState and the rest) move with it: beside the folder when\n\
+;    it is called Sessions, else inside it. Proxies, Launcher and Backups\n\
+;    stay in configdir. Copied once from classic KiTTY's putty.conf\n\
+;    (Sessions=), see puttyconfmigrated.\n\
 ;sessions=\n\
 \n\
 ; fileextension: an ending added to every session file name in the folder\n\
@@ -289,8 +294,9 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > System > Session Integration.\n\
 ;offernewsessioncreation=yes\n\
 \n\
-; sshhostkeys: the folder store's host-key folder. Default (empty): the\n\
-;    SshHostKeys folder beside Sessions. Set in Application > KiTTY++ Settings\n\
+; sshhostkeys: the folder store's host-key folder. Default (empty):\n\
+;    SshHostKeys beside the session folder when that is called Sessions,\n\
+;    else inside it. Set in Application > KiTTY++ Settings\n\
 ;    > Storage & Backup. Folder store only.\n\
 ;sshhostkeys=\n\
 \n\

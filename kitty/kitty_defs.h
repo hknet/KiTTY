@@ -31,7 +31,7 @@
  * shared by the live setter, the panel builder and the panel's own label
  * text. The floor is what still holds the button column beside the list
  * (Load, Delete, Del folder - Export/Import live on Application/Migration);
- * the ceiling only keeps a typo from asking for a window taller than any
+ * the ceiling only keeps a typo from requesting a window taller than any
  * screen.
  */
 #define KITTY_CFG_SESSION_ROWS_MIN 6

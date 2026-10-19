@@ -1,7 +1,7 @@
 /*
  * kitty_atomicfile.c - a file written whole or not at all.
  *
- * The new content goes to a temporary file that Windows names (and creates)
+ * The new content goes to a temporary file that GetTempFileName creates
  * in the target's own folder - MoveFileEx cannot replace across drives - and
  * is moved over the old file only once it is complete, written through to
  * the disk. A write that fails leaves the old file as it was. Used by the
@@ -50,7 +50,7 @@ static int copy_file_dacl(const char *from, const char *to)
 }
 
 /* Does the volume holding 'path' keep access lists? FAT and exFAT do not:
- * nothing to copy there. A volume that cannot be asked counts as keeping
+ * nothing to copy there. A volume that cannot be queried counts as keeping
  * them (NTFS, the usual case), so the copy is tried and its outcome stands. */
 static int volume_keeps_acls(const char *path)
 {
@@ -98,7 +98,7 @@ int kitty_write_file_whole(const char *path, const void *data, size_t len)
             if (volume_keeps_acls(path) && !copy_file_dacl(path, tmp)) { ok = 0; err = GetLastError(); }
             else {
                 /* not READONLY: the move replaces a read-only file no more
-                 * than a write would, and says so */
+                 * than a write would, and reports it */
                 DWORD keep = attr & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM |
                                      FILE_ATTRIBUTE_ARCHIVE | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED);
                 if (!SetFileAttributesA(tmp, keep ? keep : FILE_ATTRIBUTE_NORMAL)) { ok = 0; err = GetLastError(); }

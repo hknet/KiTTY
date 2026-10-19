@@ -8,7 +8,7 @@
  *            name - the leaf, the folder ignored - does;
  *   protocol ssh:// an SSH session, telnet:// a Telnet one;
  *   port     the link's port (22 / 23 when it has none) equals the session's;
- *   user     a link naming a user matches sessions with that user or with
+ *   user     a link with a user matches sessions with that user or with
  *            none stored; a session with another user never matches.
  * One match opens; several put up the chooser, whose Cancel ends the run;
  * none leaves today's path (Default Settings and the link's fields).
@@ -65,7 +65,7 @@ int GetOfferSessionFlag(void)
     return stricmp(buffer, "no") != 0;
 }
 
-/* The protocol a session's stored "Protocol" names, or -1. */
+/* The protocol a session's stored "Protocol" holds, or -1. */
 static int us_proto(const char *s)
 {
     if (!s || !*s)

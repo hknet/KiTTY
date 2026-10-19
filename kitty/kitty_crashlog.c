@@ -1,5 +1,5 @@
 /*
- * kitty_crashlog.c - when the process crashes, say WHERE, in a form that
+ * kitty_crashlog.c - when the process crashes, record WHERE, in a form that
  * survives the trip back from an air-gapped XP VM.
  *
  * Motivation: the first XP runtime crash arrived as "msvcrt.dll offset
@@ -92,7 +92,7 @@ static LONG WINAPI kcl_filter(EXCEPTION_POINTERS *ep)
 #endif
         /* One self-contained header per crash: which program, which build,
          * which Windows - the log is meant to be attached to an issue
-         * report, so it has to say what crashed without a follow-up. */
+         * report, so it has to state what crashed without a follow-up. */
         {
             OSVERSIONINFOA osv;
             memset(&osv, 0, sizeof(osv));

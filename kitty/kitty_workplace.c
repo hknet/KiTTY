@@ -11,12 +11,12 @@
  *     handling, nothing to clean up, nothing that can be left behind;
  *   - the indicator (the tray icon) and the authority (this section) are the
  *     same process, so they cannot disagree;
- *   - a connection asking costs one OpenFileMapping. It never waits on the
+ *   - a connection's check costs one OpenFileMapping. It never waits on the
  *     launcher, so a hung launcher slows no startup down and every failure
  *     answers "not armed".
  *
  * Launcher running is NOT armed. People run the launcher all day for the
- * session list and hotkeys; the question asked here is "are you holding an
+ * session list and hotkeys; the question checked here is "are you holding an
  * arming right now", which is why the arming is a separate object from the
  * launcher's window and is created only by switching the mode on.
  *
@@ -286,7 +286,7 @@ int kitty_workplace_request(int arm, unsigned int minutes)
     UINT msg = kitty_workplace_message();
     if (!msg)
         return 0;
-    /* wParam says on/off, lParam carries the minutes - the launcher needs both
+    /* wParam holds on/off, lParam carries the minutes - the launcher needs both
      * and a registered message has nowhere else to put them. */
     PostMessageA(HWND_BROADCAST, msg, arm ? 1 : 0, (LPARAM)minutes);
     return kwp_wait_for(arm, 750);
@@ -310,7 +310,7 @@ void kitty_workplace_left_text(char *out, int len)
 
 int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes)
 {
-    /* kitty_secretstore.c, kitty_winutil.c: the master key goes with the
+    /* kitty_secretstore.c, kitty_winutil.c: the master key is handed to the
      * launcher when this process holds it, as kitty_launcher_spawn does */
     extern HANDLE kitty_mpw_export_inherit_blob(const char *, char *, size_t);
     extern BOOL kitty_create_process_with_handles(const char *, char *, DWORD,
@@ -345,7 +345,7 @@ int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes)
     return kwp_wait_for(1, 4000);
 }
 
-/* ---- "the mode is not on any more", said once and only when it is news ---- */
+/* ---- "the mode is not on any more": once, and only when it is news ---- */
 
 /* kitty.c: the suite's global-parameter store (registry, or kitty.ini in
  * portable mode). Declared rather than included so this file keeps its short

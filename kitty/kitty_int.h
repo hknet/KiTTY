@@ -26,7 +26,7 @@ int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) ;
 void RetireConfigPasswordLeftovers( void ) ;
 void RetireCountUpLeftovers( void ) ;
 
-/* The icon library and the icon file kitty.ini names (kitty.c), resolved
+/* The icon library and the icon file kitty.ini sets (kitty.c), resolved
  * by the startup sequence. */
 extern HINSTANCE hInstIcons ;
 extern char * IconFile ;

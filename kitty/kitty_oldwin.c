@@ -5,7 +5,7 @@
  * Each entry follows the same shape: resolve once, remember the answer
  * (including "not there"), and fall back to something the older system has.
  * Nothing here fails a call by itself - a caller gets either the modern
- * answer, the old one, or an explicit "cannot tell".
+ * answer, the old one, or an explicit "unknown".
  */
 #include "putty.h"
 #include <windows.h>
@@ -74,7 +74,7 @@ FARPROC kitty_api(const char *dll, const char *symbol, int need,
     /*
      * GetModuleHandle first: for a DLL already in the process (kernel32,
      * user32) this must never become a reason to LOAD one, which is how a
-     * search-path hijack gets in. Only if it is not loaded do we ask for it by
+     * search-path hijack gets in. Only if it is not loaded do we request it by
      * plain name - by which time dll_hijacking_protection() has restricted the
      * search path.
      */
@@ -143,7 +143,7 @@ char *kitty_oldwin_degraded_brief(void)
                 !strcmp(kapi_feature_of(j), kapi_feature_of(i)))
                 break;
         if (j < i)
-            continue;                  /* this feature is already named */
+            continue;                  /* this feature is already listed */
         if (!sb)
             sb = strbuf_new();
         else
@@ -179,7 +179,7 @@ static void tick_resolve(void)
     if (tick_resolved)
         return;
     /* OPTIONAL: the wrap-carrying fallback below is exact for the deltas both
-     * callers measure, so nothing is lost and the user is told nothing. */
+     * callers measure, so nothing is lost and the user sees nothing. */
     p_GetTickCount64 = (gettickcount64_t)
         kitty_api("kernel32.dll", "GetTickCount64", KITTY_API_OPTIONAL,
                   KT_WINFEAT_TICK64);
@@ -252,7 +252,7 @@ BOOL kitty_process_image_path(HANDLE proc, char *buf, DWORD bufsize)
     if (p_GetModuleFileNameExA) {
         /* The NT 4 way. It wants PROCESS_QUERY_INFORMATION|PROCESS_VM_READ,
          * which is a stronger right than the modern call needs, so this can
-         * fail where the other would have worked - reported as "cannot tell",
+         * fail where the other would have worked - reported as "unknown",
          * which is the safe answer for every caller here. */
         DWORD n = p_GetModuleFileNameExA(proc, NULL, buf, bufsize);
         if (n > 0 && n < bufsize) {
@@ -288,7 +288,7 @@ BOOL kitty_attach_parent_console(void)
  * OPTIONAL and silent, like GetTickCount64: the fallbacks are exact for
  * every shape this codebase uses (subkey non-NULL; flags exactly one of
  * RRF_RT_REG_SZ / _DWORD / _BINARY), so nothing is lost and the user is
- * told nothing. The NULL-subkey and multi-type-mask variants are
+ * shown nothing. The NULL-subkey and multi-type-mask variants are
  * deliberately not emulated - no caller has them, and an unemulated case
  * failing loudly beats one working differently.
  */
@@ -457,7 +457,7 @@ BOOL kitty_oldwin_UpdateProcThreadAttribute(
 
 /* Vista+: who is serving a named pipe. The agent client's unknown-agent
  * check is the one caller, and it is observational - so the fallback just
- * says "cannot tell" and the check is skipped. NOT silent-exact like the
+ * returns "unknown" and the check is skipped. NOT silent-exact like the
  * registry wrappers: losing the observation is a real (small) degradation,
  * so it goes through the OPTIONAL notes and shows up in the degraded
  * report. */

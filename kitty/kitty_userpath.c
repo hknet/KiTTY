@@ -1,7 +1,7 @@
 /*
  * kitty_userpath.c: the System panel's "Add this KiTTY++ folder to the user
  * PATH" checkbox. The user's PATH lives in HKCU\Environment\Path; the exe's
- * folder is appended or removed there and running shells are told
+ * folder is appended or removed there and running shells are notified
  * (WM_SETTINGCHANGE "Environment"), which is what a newly opened shell
  * reads. Nothing is stored anywhere else: the checkbox shows the state of
  * that value, so a folder that moved shows as unchecked from its new place.
@@ -130,7 +130,7 @@ bool kitty_userpath_set_exe_dir(bool on, char **err)
         *err = dupprintf("HKEY_CURRENT_USER\\Environment\\Path could not be written (error %ld)", rc);
         return false;
     }
-    /* Tell the shells and Explorer; a hung window must not hold us. */
+    /* Notify the shells and Explorer; a hung window must not hold us. */
     SendMessageTimeoutA(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)"Environment",
                         SMTO_ABORTIFHUNG, 2000, NULL);
     return true;

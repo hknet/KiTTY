@@ -51,7 +51,7 @@ static void kx_report( const char *caption, const char *text ) {
 	kitty_notice_show( caption, text, KX_ERR_ACCENT, GetNoticeSeconds(), NULL, 0 ) ;
 }
 
-/* The port inside a target override ([user@]hostname[:port]), 0 if it names
+/* The port inside a target override ([user@]hostname[:port]), 0 if it gives
  * none. Defined beside kitty_xfer_default_port(), used by the builders above
  * it as well. */
 static int kx_override_port( const char * ov ) ;
@@ -125,8 +125,8 @@ extern Conf *conf ;          /* the live session configuration (windows/window.c
  *
  * A "no" here is not an error - it is the one thing the user has to fix
  * before a transfer helper can use a Hello-protected key, so it is worth
- * saying out loud rather than letting kscp or WinSCP fail with a bare
- * "server refused our key" that names no cause.
+ * showing rather than letting kscp or WinSCP fail with a bare
+ * "server refused our key" that gives no cause.
  */
 static bool kx_agent_holds(const char *keypath)
 {
@@ -155,7 +155,7 @@ static bool kx_agent_holds(const char *keypath)
     { strbuf *req = strbuf_new_for_agent_query() ;
       put_byte( req, SSH2_AGENTC_REQUEST_IDENTITIES ) ;
       if( agent_query( req, &resp, &resplen, NULL, 0 ) != NULL ) {
-          resp = NULL ; resplen = 0 ;   /* async: not what we asked for */
+          resp = NULL ; resplen = 0 ;   /* async: not what we requested */
       }
       strbuf_free( req ) ; }
 
@@ -182,7 +182,7 @@ static bool kx_agent_holds(const char *keypath)
 /*
  * The line to put in front of a transfer when the session's key is
  * Hello-protected and the agent does not hold it - NULL when there is
- * nothing to say. Caller sfrees.
+ * nothing to report. Caller sfrees.
  */
 static const char *kx_keyfile_path(Conf *c) ;
 static char *kx_hello_agent_note(Conf *c)
@@ -251,7 +251,7 @@ static const char *kx_helper_keyfile(Conf *c)
  *     it was signed) is refused.
  *
  * Allowing happens one step earlier, where a user action finds its helper
- * (kitty_helper_ready): before any password file exists, a modeless box names
+ * (kitty_helper_ready): before any password file exists, a modeless box shows
  * the file and its signer; Yes remembers it (TrustedHelpers: a registry key,
  * or [TrustedHelpers] in kitty.ini in portable mode) and runs the action
  * again. The file is held open, writes and deletion refused, from the check
@@ -614,7 +614,7 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
  * rule 2 above - no box here: allowing is kitty_helper_ready's) and started
  * as lpApplicationName, so exactly the checked file runs. The other
  * arguments are CreateProcessA's. FALSE with ERROR_ACCESS_DENIED when the
- * check said no (one event-log line).
+ * check failed (one event-log line).
  */
 static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
                       const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi,
@@ -732,8 +732,8 @@ static void kx_drop_settle( kx_drop_t *d, int idx, int ok ) {
 	{	const char **typed = snewn( d->n, const char * ) ;
 		char *text ;
 		for( i = 0 ; i < d->n ; i++ ) typed[i] = d->ok[i] ? d->remote[i] : NULL ;
-		/* Plain text: term_do_paste brackets it when the program asked
-		 * for bracketed paste (mode 2004). No newline: Enter is the user's. */
+		/* Plain text: term_do_paste brackets it when the program enabled
+		 * bracketed paste (mode 2004). No newline: Enter is the user's. */
 		text = kitty_droppath_text( typed, d->n, 0 ) ;
 		if( text ) { kitty_paste_text( d->hwnd, text ) ; free( text ) ; }
 		sfree( typed ) ;
@@ -1064,7 +1064,7 @@ static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
  *
  * Single named file: a Save-As dialog (Windows' own replace prompt) - see
  * GetFile. Several named files: the caller tests each name and, on "Keep both",
- * asks here for a free "name (1)" path. Wildcard/folder: kscp writes into a
+ * calls here for a free "name (1)" path. Wildcard/folder: kscp writes into a
  * VISIBLE staging folder with a held-open .lock; on success each file is moved
  * out, a clash renamed, and the folder removed. Stale staging folders (a crash
  * left one) are swept when their .lock can be taken. */
@@ -1174,7 +1174,7 @@ void kitty_xfer_sweep_downloads( void ) {
 	/* At startup `conf` is still NULL; kitty_xfer_download_dir() then skips
 	 * the session folder and answers the GLOBAL download folder (Transfers &
 	 * Tools), else Downloads - which is exactly the startup sweep the design
-	 * asks for. The folder a download is aimed at is swept again when a
+	 * requires. The folder a download is aimed at is swept again when a
 	 * wildcard download starts into it. */
 	kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
 	kitty_xfer_sweep_dir( dir ) ;
@@ -1293,7 +1293,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				kitty_xfer_notify_ex( what, 1, 1, w->open_file, w->renamed ) ;
 			else
 				kitty_xfer_notify_ex( what, w->arriving, 0, w->open_dir, w->renamed ) ;
-			if( w->renamed > 0 ) {          /* say it in the window, which then stays open */
+			if( w->renamed > 0 ) {          /* report it in the window, which then stays open */
 				char *t = dupprintf( "\r\n" KT_XFER_RENAMED_NOTE "\r\n", w->renamed ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
 			}
@@ -1618,7 +1618,7 @@ static void kx_pwfiles_sweep( void ) {
 
 /* How the password reached the helper, for the line the transfer window shows.
  * Set from the SAME variables the builder decided on - never worked out a
- * second time - so what the window says is what the code did. */
+ * second time - so what the window shows is what the code did. */
 #define KX_PW_NONE        0   /* key or agent login: nothing to hand over */
 #define KX_PW_FILE_ENC    1
 #define KX_PW_FILE_PLAIN  2
@@ -1647,9 +1647,9 @@ static const char *kx_pw_handover_line( int mode ) {
  * the protected form makes the marker and the base64 the password, and the login
  * fails with "Access denied". That is not hypothetical; it is what happened.
  *
- * A NAME test cannot answer this, and that was the bug: "kscp.exe" says nothing
+ * A NAME test cannot answer this, and that was the bug: "kscp.exe" shows nothing
  * about which kscp it is, and `PSCPPath` commonly resolves to an INSTALLED KiTTY
- * rather than the build the running window came from. So the helper is asked
+ * rather than the build the running window came from. So the helper is queried
  * about ITSELF, through its own version resource:
  *
  *   - "KiTTYPasswordFile" >= 1 in its StringFileInfo (windows/version.rc2) - the
@@ -1786,7 +1786,7 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 
 	*px_at = *px_len = 0 ;
 	if( px_type == PROXY_NONE ) return ;
-	/* an explicit -sftpconnect names its own way to the host */
+	/* an explicit -sftpconnect sets its own route to the host */
 	if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) return ;
 	if( !kx_helper_has_flag( PSCPPath, "KiTTYProxyOptions" ) ) return ;
 
@@ -1817,7 +1817,7 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 	 * protected form when the helper reads it - exactly as the session's
 	 * password goes (see the -pwfile block in kx_kscp_line). No file at all:
 	 * the option is left out rather than put a password on the command line;
-	 * the jump host then asks, which a transfer window can show. */
+	 * the jump host then prompts for it, which a transfer window can show. */
 	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
 	                     px_pass, sizeof(px_pass) ) ;
 	if( px_pass[0] ) {
@@ -1945,12 +1945,13 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		 * debug_logevent_redacted().
 		 * What goes IN the file, and what goes after -pw when no file could
 		 * be made, is decided by the HELPER and not by us:
-		 * kx_helper_reads_protected() asks the binary itself whether it reads
+		 * kx_helper_reads_protected() tests whether the binary itself reads
 		 * the protected form. A capable helper gets that form in either place,
 		 * so even the command-line fallback carries no readable password;
 		 * every released helper, and stock pscp/psftp, gets the plain value.
-		 * The window says which of the four it was - kx_pw_handover_line(). */
-		/* A helper of ours that says so in its version resource
+		 * The window shows which of the four it was -
+		 * kx_pw_handover_line(). */
+		/* A helper of ours that declares it in its version resource
 		 * ("KiTTYPasswordHandle") gets it in MEMORY instead: a mapping only
 		 * it inherits (kitty_pwhandle_make), "-pwhandle <handle>:<size>" on
 		 * its command line - no file on disk at all. The file stays for the
@@ -2118,7 +2119,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	  char *note = kx_hello_agent_note( conf ) ;
 	  char *intro = dupprintf( KT_XFER_UPLOADING,
 	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
-	  /* One line saying how the password travelled, from what the builder
+	  /* One line on how the password travelled, from what the builder
 	   * above actually did. Nothing when the login uses a key or the agent. */
 	  { const char *hand = kx_pw_handover_line( k.pw_mode ) ;
 	    if( hand != NULL ) {
@@ -2197,9 +2198,10 @@ static void kx_send_picked( void * ctx, const char * path ) {
 
 void SendFile( HWND hwnd ) {
 	/* KiTTY: zeroed whole. The picker is single-select and ends the path with
-	 * ONE NUL; SendFileList reads the byte after it to tell "dir\0file\0\0"
-	 * from one full path, and a stray stack byte there was taken as a file
-	 * name - kscp got "<path>\<garbage>" and the upload failed. */
+	 * ONE NUL; SendFileList reads the byte after it to
+	 * separate "dir\0file\0\0" from one full path, and a stray stack byte
+	 * there was taken as a file name - kscp got "<path>\<garbage>" and the
+	 * upload failed. */
 	char filename[32768] = "" ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
@@ -2302,7 +2304,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
       char *note = kx_hello_agent_note( conf ) ;
       /* The balloon's click: the file it will have produced (dir + the remote
        * name's last component) when that exists once kscp is done, else the
-       * folder. A wildcard or a trailing slash names a folder's contents. */
+       * folder. A wildcard or a trailing slash means a folder's contents. */
       char *one = NULL ;
       if( localfile && localfile[0] ) {
           one = dupstr( localfile ) ;   /* Save-As: the exact file it will produce */
@@ -2311,7 +2313,7 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
           one = dupprintf( "%s\\%s", dir, base ? base + 1 : filename ) ;
       }
       /* No target line, but the note if the key needs loading - and the one
-       * line saying how the password travelled, from what the builder above
+       * line on how the password travelled, from what the builder above
        * actually did. Nothing of it when the login uses a key or the agent. */
       const char *hand = kx_pw_handover_line( k.pw_mode ) ;
       char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
@@ -2378,7 +2380,7 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
  * session's upload folder (Connection > File-Transfer-Settings), else the global Default
  * Upload Folder (Transfers & Tools, [KiTTY] uploaddir), else the user's
  * Documents folder, else the folder KiTTY started in. Where the Send File
- * picker opens, and where a plain name the far end asks to read (kitten
+ * picker opens, and where a plain name the far end requests to read (kitten
  * transfer) is looked up. Never the remote target of an upload. */
 char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) {
     const char * s ;
@@ -2415,8 +2417,8 @@ char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) {
  * "%s" of KT_XFER_COMPLETE. A click on the balloon opens `path`: for files
  * arriving the one file (shown selected in Explorer) or the folder they
  * landed in; for files leaving the local upload folder. For files arriving
- * the text gets a second line naming the folder (nfiles: 1 = one file, more
- * = the count, 0 = not counted); a path that is a file names its folder. */
+ * the text gets a second line showing the folder (nfiles: 1 = one file, more
+ * = the count, 0 = not counted); a path that is a file yields its folder. */
 int kitty_xfer_notify_enabled( void ) {
     char v[64] = "" ;
     if( ReadParameterN( INIT_SECTION, KI_TRANSFERNOTIFICATION, v, sizeof(v) ) && v[0] )
@@ -2424,8 +2426,8 @@ int kitty_xfer_notify_enabled( void ) {
     return 1 ;
 }
 /* `renamed` > 0: a Get File saved that many files under a new name because the
- * name was taken; the balloon says so, as the approved wording asks, beside the
- * line the transfer window already carries. */
+ * name was taken; the balloon reports it, as the approved wording requires,
+ * beside the line the transfer window already carries. */
 void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const char * path, int renamed ) {
     char * m, * done ;
     if( !kitty_xfer_notify_enabled() ) return ;
@@ -2539,7 +2541,7 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
     }
 
     /* WinSCP and FileZilla: a port written into the target override wins over
-     * everything, the tool's own Port field included - the override names the
+     * everything, the tool's own Port field included - the override gives the
      * machine those two are to reach, port and all. Without a port it supplies
      * user and host only, and the rules below decide the port. */
     if( (p = kx_override_port( conf_get_str( cf, CONF_sftpconnect ) )) > 0 )
@@ -2570,7 +2572,7 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
  * taken as it is; a bare name is joined to the OSC 7 tracked directory when
  * tracking is on, else kscp resolves it against the login directory. Several
  * lines mean several files, fetched one after the other, into a folder the
- * picker asks for (it opens on kitty_xfer_download_dir); one named file goes
+ * picker returns (it opens on kitty_xfer_download_dir); one named file goes
  * through a Save-As instead. The transfer runs through GetOneFileTo() and its
  * relatives - so the port, protocol, key-file and password handling are the
  * ones every kscp download uses, and "Keep the transfer window open after
@@ -2698,9 +2700,9 @@ static void kx_getgo_folder( void * v, const char * path ) {
         if( strpbrk( l, "*?" ) || l[strlen(l)-1]=='/' ) { any_glob = 1 ; break ; } }
       sfree( scan ) ; }
 
-    /* CASE 2: several NAMED files. If any already exist in dir, ask once -
-     * Overwrite / Keep both / Cancel (the shared themed 3-way box, modeless;
-     * the transfers follow its answer, kx_getgo_exist_done). */
+    /* CASE 2: several NAMED files. If any already exist in dir, prompt
+     * once - Overwrite / Keep both / Cancel (the shared themed 3-way box,
+     * modeless; the transfers follow its answer, kx_getgo_exist_done). */
     if( !any_glob ) {
         char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
         char *scan = dupstr( line ) ; char *l = scan, *nx ;
@@ -2773,9 +2775,9 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
  *
  * Tools > Get File (kscp)..., and the [Shortcuts] getfile key (Ctrl+F4).
  *
- * ONE remote path on the clipboard is asked about first: kscp -stat in the
+ * ONE remote path on the clipboard is checked first: kscp -stat in the
  * background (no window; -batch, so it never waits for an answer; 3 s at
- * most). A regular file on the connection's host: a notice says so and the
+ * most). A regular file on the connection's host: a notice reports it and the
  * Save-As opens as Get File always did. Anything else opens the Get File box
  * with the reason on top and the paths to edit - nothing or several paths on
  * the clipboard, a local path, a folder, not found, the shell on another host,
@@ -2787,7 +2789,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
  * running while either waits. A modal loop would stall it (no output, no
  * keepalives).
  *
- * The check runs only when kscp can log in without asking: a shared
+ * The check runs only when kscp can log in without a prompt: a shared
  * connection, a password the session holds (stored, or typed and accepted),
  * a key file or an agent. Otherwise there is no attempt: a -batch login that
  * fails still lands in the server's auth log, and fail2ban counts those. */
@@ -2796,7 +2798,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
 #define KX_GF_ACCENT     RGB( 25, 110, 45 )
 
 typedef struct {
-	HWND owner ;                  /* the terminal window that asked */
+	HWND owner ;                  /* the terminal window that requested it */
 	char *text ;                  /* the clipboard path, trimmed */
 	char *remote ;                /* the same, joined to the OSC 7 directory */
 	char host[256] ;              /* the connection's host, for the texts */
@@ -2808,7 +2810,7 @@ typedef struct {
 } kx_gf_check_t ;
 
 static HWND kx_gf_msgwin = NULL ;     /* takes the worker's result */
-/* The "Checking ..." notice: shown while kscp asks - the sign that something
+/* The "Checking ..." notice: shown while kscp runs - the sign that something
  * is happening (the terminal resets a busy cursor on every mouse move). The
  * "Found" notice replaces it; before the box it is closed. Its context is
  * this token, so only that notice is closed, never another one. */
@@ -2909,7 +2911,7 @@ static int kx_gf_own_login( void ) {
 	return 0 ;
 }
 
-/* Can kscp log in without asking anybody? See the head comment. */
+/* Can kscp log in without prompting anybody? See the head comment. */
 static int kx_gf_silent_login( void ) {
 	if( conf_get_bool( conf, CONF_ssh_connection_sharing ) ) return 1 ;
 	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
@@ -2919,7 +2921,7 @@ static int kx_gf_silent_login( void ) {
 }
 
 /* Start kscp -stat for c->remote; 1 = running (the worker owns c), 0 = not
- * started (c->err says why when there is something to say). */
+ * started (c->err gives the reason when there is one). */
 static int kx_gf_start_check( kx_gf_check_t *c ) {
 	char buffer[8192], tgt[4096], path[4096] ;
 	kx_kscp_line_t k ;
@@ -3060,7 +3062,7 @@ static INT_PTR CALLBACK kx_gf_box_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp )
 				return TRUE ;
 			}
 			if( cls == GF_WINPATH ) {
-				/* a local path typed or left in: say so, the box stays */
+				/* a local path typed or left in: report it, the box stays */
 				kx_gf_set_why( h, KT_GETFILE_WHY_WINPATH ) ;
 				sfree( trim ) ;
 				return TRUE ;
@@ -3234,7 +3236,7 @@ void GetFile( HWND hwnd ) {
 	  case GF_FOLDER:
 		why = dupprintf( KT_GETFILE_WHY_FOLDER, text ) ;
 		break ;
-	  default: {   /* GF_ONE: ask the server */
+	  default: {   /* GF_ONE: query the server */
 		const char * host = conf_get_str( conf, CONF_host ) ;
 		if( kitty_shell_moved( hwnd, &where ) ) {
 			why = where ? dupprintf( KT_GETFILE_WHY_MOVED, where, host )
@@ -3399,7 +3401,7 @@ dt() { printf "\033]0;__dt:"$(hostname)":"${USER}":"`pwd`"\007" ; }
  * hardened host:user:path splitter for __dt/__wt) went in the ini hygiene
  * sweep: nothing set or consumed them anymore. */
 
-/* If `candidate` names an existing file, adopt it as the tool path *out
+/* If `candidate` refers to an existing file, adopt it as the tool path *out
  * (freeing any previous value), optionally export it to environment `envname`,
  * optionally persist it under kitty.ini/registry key `param`, and return 1;
  * otherwise leave *out untouched and return 0. Pass param=NULL when the value
@@ -3610,7 +3612,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 
 	/* A port written into the target override wins; then the WinSCP panel's own
 	 * Port field; then the protocol's standard port. An override without a port
-	 * supplies user and host only. kitty_xfer_default_port() says the same, so
+	 * supplies user and host only. kitty_xfer_default_port() gives the same, so
 	 * the panel's hint and this agree. */
 	{ int wport = kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) ;
 	  if( wport <= 0 ) wport = kitty_xfer_port_field( conf_get_str(conf, CONF_winscp_port) ) ;
@@ -3623,7 +3625,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
-			/* The override gives user and host; when it names no port, the
+			/* The override gives user and host; when it gives no port, the
 			 * Port field (or the standard port) supplies one. */
 			if( kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) <= 0 ) {
 				bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
@@ -3718,7 +3720,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	 * The fields come from the CONNECTION, not from the session: a named proxy
 	 * or workplace proxy mode amends a throwaway Conf copy and deliberately
 	 * leaves the stored session alone, so reading the session here handed WinSCP
-	 * whatever the session says - usually no proxy at all, and then WinSCP tries
+	 * whatever the session holds - usually no proxy at all, and then WinSCP tries
 	 * to reach a host only the proxy can see. kitty_proxy_connection() is that
 	 * copy's answer, kept by start_backend(); NULL means we never connected, and
 	 * then the session's own fields are the best guess available.
@@ -3817,7 +3819,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, sizeof(cmd), " Shell=" ) ; rawcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ;
 	}
 
-	/* Every password above went into a file: tell WinSCP so. Without a
+	/* Every password above went into a file: add the WinSCP switch. Without a
 	 * password there is no switch and the command line is what it always was
 	 * (key files and the agent are untouched by this). */
 	if( pwfiles ) bcat( cmd, sizeof(cmd), " /passwordsfromfiles" ) ;
@@ -3837,7 +3839,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
  *
  * The same hand-off as WinSCP's, for FileZilla (the request behind it is
  * cyd01/KiTTY#501). FileZilla takes a URL on its command line -
- * [proto://][user[:password]@]host[:port] - plus --logontype=ask (it asks for
+ * [proto://][user[:password]@]host[:port] - plus --logontype=ask (it prompts for
  * the password itself) and --site=<path> (a Site Manager entry). It has no
  * /passwordsfromfiles, so the password question is the user's explicit choice
  * (CONF_filezilla_pwmode), each option with its consequence stated on the panel:
@@ -3860,7 +3862,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
  *                  read - "Site does not exist".)
  *   2  cmd line  - user:password@host:port, percent-encoded. Readable by every
  *                  process of the same user while FileZilla runs; offered
- *                  because it is the simplest, and said so on the panel.
+ *                  because it is the simplest, and the panel states it.
  *
  * A proxy is not handed over: FileZilla has no per-connection proxy setting,
  * only its global one. Protocol: the FileZilla panel's own Protocol setting
@@ -4117,7 +4119,7 @@ void StartFileZilla( HWND hwnd ) {
 	snprintf( cmd, sizeof(cmd), "\"%s\"", FileZillaPath ) ;
 	if( havepw && mode == 1 ) {
 		fzdir = kx_fzdir_make( host, port, fzproto, user, pw ) ;
-		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to asking, never to the command line */
+		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to mode 0, never to the command line */
 	}
 	if( fzdir != NULL ) {
 		bcat( cmd, sizeof(cmd), " --site=\"1/" ) ; bcat( cmd, sizeof(cmd), KT_FZ_SITE_NAME ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
@@ -4134,9 +4136,9 @@ void StartFileZilla( HWND hwnd ) {
 		if( poss( ":", host ) > 0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), host ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
 		else bcat( cmd, sizeof(cmd), host ) ;
 		snprintf( num, sizeof(num), ":%d", port ) ; bcat( cmd, sizeof(cmd), num ) ;
-		/* With a password: FileZilla asks for it before connecting (ask).
+		/* With a password: FileZilla prompts for it before connecting (ask).
 		 * Without one: interactive - FileZilla connects at once, its SFTP
-		 * engine tries the agent's keys, and a password is asked for only if
+		 * engine tries the agent's keys, and a password is requested only if
 		 * the server still wants one. A bare user@host URL would instead
 		 * stop at an "Enter password" box BEFORE connecting, agent or not. */
 		if( havepw && mode == 0 ) bcat( cmd, sizeof(cmd), " --logontype=ask" ) ;
@@ -4274,7 +4276,7 @@ void OnDropFiles(HWND hwnd, HDROP hDropInfo, int shift) {
 	 * so it no longer captured anything. Its safe, opt-in replacement is OSC 7
 	 * cwd tracking, which SendOneFile already consults via kitty_current_dir(). */
 	/* KiTTY: the remote paths are typed after the upload when the session
-	 * says so, or for this drop when Shift was held at it. */
+	 * enables it, or for this drop when Shift was held at it. */
 	recupNomFichierDragDrop(hwnd, &hDropInfo,
 	                        conf_get_bool(conf,CONF_kscp_drop_typepath) || shift) ;
 }

@@ -632,7 +632,7 @@ static char *kitty_url_without_userinfo(const char *uri)
     return s;
 }
 
-/* The host a link's TEXT names, when the text is written as an address:
+/* The host a link's TEXT shows, when the text is written as an address:
  * "https://..." or "www...." at its start. A bare name ("mybank.com") is
  * kitty_url_text_bare's. */
 static int kitty_url_text_host(const char *text, char *out, size_t outlen)
@@ -661,7 +661,7 @@ static int kitty_url_text_host(const char *text, char *out, size_t outlen)
 }
 
 /* The text as a single bare name.name word ("mybank.com", "report.pdf"),
- * lower case: a host or a file name, which its shape cannot tell apart.
+ * lower case: a host or a file name, which its shape cannot separate.
  * kitty_url_open_osc8 settles it against the target instead. */
 static int kitty_url_text_bare(const char *text, char *out, size_t outlen)
 {
@@ -989,7 +989,7 @@ int kitty_url_hover(Terminal *term, Conf *conf, HWND hwnd, int cx, int cy,
 /*
  * What an OSC 8 hyperlink may open and when it needs a confirmation.
  *
- * The host names the target, and its text need not be that target, so the
+ * The host sets the target, and its text need not be that target, so the
  * scheme is the boundary the regular expression used to be by accident: the
  * expression only ever matched http, https, ftp and www. What opens at once,
  * what needs the confirmation and what is refused: kitty_url_open_osc8.
@@ -1152,7 +1152,7 @@ static void kitty_url_warn_add(char **warn, char *line)
  * the text IS the target, or the preview showed this target whole (at most
  * KITTY_URL_TIP_LINE characters, one line of the tip) before the click.
  * Everything else: the confirmation, with the host on its own line and a
- * red line per flag - not a browser's scheme, a text naming another host
+ * red line per flag - not a browser's scheme, a text showing another host
  * than the target's, a punycode host.
  */
 static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
@@ -1386,7 +1386,7 @@ int kitty_url_cell_in_link(int col, int row)
     if (!kitty_url_inited)
         return 0;
     /* The per-cell mask of the last scan (after the swap in kitty_url_rescan
-     * the current scan sits in prevmask). Asked for every cell of every text
+     * the current scan sits in prevmask). Called for every cell of every text
      * run on every paint, so this is a lookup, not a walk over the regions. */
     if (kitty_url_prevmask && row >= 0 && row < kitty_url_mask_rows &&
         col >= 0 && col < kitty_url_mask_cols)

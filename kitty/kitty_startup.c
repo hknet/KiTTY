@@ -95,7 +95,7 @@ static void StartupNotice( const char * msg, int warn ) {
 
 /* The putty.ini beside the exe was kitty.exe's settings file when no kitty.ini
  * was there - read from its [KiTTY] section only, and wholly (every section is
- * kitty.exe's own). Copied to kitty.ini once, as it is, and said so: at the
+ * kitty.exe's own). Copied to kitty.ini once, as it is, and reported: at the
  * prompt that started kitty.exe, else in a box - never a box in a scripted
  * do-and-exit run. A putty.ini with no [KiTTY] keys (classic KiTTY's own,
  * [PuTTY]) did nothing here and is left alone: copying it would create a
@@ -130,7 +130,7 @@ static void MigratePuttyIni( const char * kittyini ) {
  * written twice keeps one line at the first place with the last value, and
  * names are compared without case, as Windows does. Only when something
  * changes: a copy of the file as it was beside it (kitty.ini.<date>.bak),
- * the new file swapped in, and the notice. Never where kitty.ini says
+ * the new file swapped in, and the notice. Never where kitty.ini sets
  * readonly=yes or conf=no, and a file that cannot be written stays as it is.
  */
 struct ci_line { char *text; char *key; };           /* key: NULL = no setting */
@@ -267,7 +267,7 @@ static void ConsolidateKittyIniLocked( const char *path ) {
 			made_bak = CopyFileA( path, bak, TRUE ) ;
 			if( !made_bak && GetLastError() != ERROR_FILE_EXISTS ) break ;
 		}
-		/* the new content goes to a file Windows names (and creates) in
+		/* the new content goes to a file GetTempFileName creates in
 		 * kitty.ini's own folder - ReplaceFile needs the same drive */
 		{
 			char dir[MAX_PATH], tbuf[MAX_PATH] ;
@@ -312,7 +312,7 @@ static void ConsolidateKittyIniLocked( const char *path ) {
 }
 
 /* One merge per kitty.ini at a time: several kitty.exe starting together
- * all read the file at start. The lock is named from the file's full path,
+ * all read the file at start. The lock's name comes from the file's full path,
  * so two kitty.ini files never wait for each other; the read happens inside
  * it, so a start that waited finds the file already merged. A lock that
  * cannot be had within 10 s: no merge this time, the next start does it. */
@@ -346,14 +346,14 @@ static void InitNameConfigFile( void ) {
 	KittyIniFile=NULL ;
 
 	/* The putty.ini copy is for the kitty.ini beside the exe - not when
-	 * %KITTY_INI_FILE% names a file that is there. */
+	 * %KITTY_INI_FILE% points to a file that is there. */
 	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		MigratePuttyIni( buffer ) ;
 	}
 	/* The search is the resolver's, the one list of places every program
 	 * walks (kitty_inifile.c); the portable build leaves %APPDATA% out. What
-	 * only kitty.exe does stays here: naming the file when none is there -
+	 * only kitty.exe does stays here: choosing the file when none is there -
 	 * beside the exe for the portable build, %APPDATA%\KiTTY\kitty.ini
 	 * (folder created) otherwise. */
 	if( !kitty_inifile_find( IniFileFlag == SAVEMODE_DIR, buffer, sizeof(buffer) ) ) {
@@ -367,7 +367,7 @@ static void InitNameConfigFile( void ) {
 	}
 	KittyIniFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittyIniFile, buffer) ;
 	/* one section of each name and one line per setting, before anything
-	 * reads it (not a file %KITTY_INI_FILE% names: that one is the caller's) */
+	 * reads it (not the %KITTY_INI_FILE% file: that one is the caller's) */
 	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) )
 		ConsolidateKittyIni( KittyIniFile ) ;
 	/* every reader in this process (theme, update check) takes this file */
@@ -476,13 +476,13 @@ void kitty_netdbg_ts( const char *msg ) {
 /* Is this run one of the do-and-exit command-line paths (-importdir,
  * -exportall, -fileassoc, ...)?
  *
- * InitWinMain() runs BEFORE the command line is parsed, so anything it wants to
- * ask the user has to work this out from the raw command line itself. It only
- * needs to be right about one thing: those paths run unattended, from scripts
- * and test harnesses, so a modal box during startup does not inform anybody -
- * it hangs the caller until something kills it.
+ * InitWinMain() runs BEFORE the command line is parsed, so before it puts a
+ * question to the user it has to work this out from the raw command line
+ * itself. It only needs to be right about one thing: those paths run
+ * unattended, from scripts and test harnesses, so a modal box during startup
+ * does not inform anybody - it hangs the caller until something kills it.
  * Deliberately conservative: an unrecognised switch counts as interactive, so
- * the worst case is asking a question rather than swallowing one. */
+ * the worst case is a question too many rather than a question swallowed. */
 /* `word` on the raw command line, as a whole word */
 static int kitty_cli_has_word( const char * word ) {
 	const char * cl = GetCommandLineA() ;
@@ -639,7 +639,7 @@ void InitWinMain( void ) {
 	 *
 	 * RepairSharrowDefaults() and MigrateScpAutoPwd() finish by writing a
 	 * one-time marker with RegTestOrCreateDWORD(), which CREATES the key when it
-	 * is missing. The first-run block further down then asks "does the hive
+	 * is missing. The first-run block further down then checks "does the hive
 	 * exist?" - and by then it always does, so neither of its branches could
 	 * ever run: no adopting a PuTTY installation's sessions, and, worse, no
 	 * restoring our own newest kittynew-*.sav after the hive is lost. A user who
@@ -704,13 +704,13 @@ void InitWinMain( void ) {
 		 *
 		 * What PUTTY_REG_POS holds right now is the file-mode working copy, and
 		 * that copy still lives in kitty.sav, so replacing it loses nothing.
-		 * Asked at most once: Yes consumes the parked key, No leaves a marker
+		 * Offered at most once: Yes consumes the parked key, No leaves a marker
 		 * IN the parked key so the offer does not nag while the data stays put.
 		 *
 		 * Only offered when the parked key actually holds sessions. A modal at
 		 * startup is expensive when nobody is in front of it (test runs, an
 		 * "@session" shortcut), so it must not appear for an empty leftover -
-		 * with nothing to restore the question has no answer worth asking. */
+		 * with nothing to restore the question is not worth putting up. */
 		if( RegTestKey( HKEY_CURRENT_USER, kitty_reg_park )
 		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_park_sess ) > 0
 		 && !kitty_cli_do_and_exit()
@@ -876,7 +876,7 @@ void InitWinMain( void ) {
 		 * values are the ones in force (session folder, session file
 		 * ending, host-key folder and ending). Before the store starts,
 		 * because it may move the session folder. */
-		if( kitty_store_ini_takeover() ) {   /* moved just now: say so, once */
+		if( kitty_store_ini_takeover() ) {   /* moved just now: report it, once */
 			char msg[4096 + 256] ;
 			snprintf( msg, sizeof(msg), KT_MAIN_PUTTYCONF_MOVED_FMT, KittyIniFile ) ;
 			StartupNotice( msg, 0 ) ;
@@ -889,7 +889,6 @@ void InitWinMain( void ) {
 			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
-			kitty_set_config_dir( ConfigDirectory ) ;
 			/* A hand-edited hostkeyextension / fileextension renames nothing
 			 * here: the configuration box puts up a question first
 			 * (kitty_sp_endings_offer). */
@@ -914,7 +913,7 @@ void InitWinMain( void ) {
 	 * account's %APPDATA% (windows/utils/defaults.c) */
 	kitty_set_log_default_beside_program( IniFileFlag == SAVEMODE_DIR || IniFileFlag == SAVEMODE_FILE ) ;
 
-	/* This asks the storage layer which backend is active, so it must
+	/* This queries the storage layer for the active backend, so it must
 	 * run AFTER kitty_set_storage_mode() above - not next to the other one-time
 	 * startup repairs further up, where a portable run still looks like a
 	 * registry one and the registry branch fires by mistake.

@@ -87,7 +87,7 @@ static void kp_dump(void)
     /* WALL time and CPU time are different questions, and the timers above
      * answer only the first. If a stage shows seconds of wall clock but the
      * process burned no CPU, it was WAITING, not computing - and waiting is a
-     * different bug with a different fix. Ask the OS. */
+     * different bug with a different fix. Query the OS. */
     {
         FILETIME ftc, fte, ftk, ftu;
         if (GetProcessTimes(GetCurrentProcess(), &ftc, &fte, &ftk, &ftu)) {
@@ -99,7 +99,7 @@ static void kp_dump(void)
             fprintf(fp, "%-28s %10.3f\n", "CPU time: kernel",
                     (double)k.QuadPart / 1e7);
             /* Kernel time in a program that only chews text means syscalls or
-             * page faults. The fault count tells them apart: millions of faults
+             * page faults. The fault count separates them: millions of faults
              * is memory churn (commit/decommit), few faults with high kernel
              * time is real syscalls. */
             {

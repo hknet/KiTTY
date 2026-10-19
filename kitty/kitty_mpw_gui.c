@@ -276,7 +276,7 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
         SetForegroundWindow(hdlg);
         SetFocus(GetDlgItem(hdlg, IDC_MPW_EDIT));
         {
-            kitty_centre_on_owner(hdlg);              /* over the asking window */
+            kitty_centre_on_owner(hdlg);              /* over the owner window */
         }
         return FALSE;                             /* we set focus ourselves */
 
@@ -539,7 +539,7 @@ static char *gui_master_pw_prompt(int creating)
 }
 
 /*
- * The same dialog, asked by the folder IMPORT for the master password of the
+ * The same dialog, opened by the folder IMPORT for the master password of the
  * store being imported. Only the widget is shared: the answer goes back to the
  * import, which keeps and uses it itself - nothing here touches this store's
  * unlock state. malloc'd UTF-8, or NULL if cancelled.
@@ -565,7 +565,7 @@ char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt)
  * The storage layer calls back here before it rewrites a password that is
  * stored in the old unprotected form into a protected one (one way: an old
  * KiTTY 0.76 cannot read it afterwards, so the question comes first). Returns 1 =
- * re-encrypt, 0 = keep the stored value as-is. Default is to ask; kitty.ini
+ * re-encrypt, 0 = keep the stored value as-is. Default is to prompt; kitty.ini
  * [KiTTY] WarnLegacyPasswordUpgrade=no (also settable via the dialog's
  * checkbox, persisted only with Yes) skips the dialog and migrates silently.
  * CLI tools never register this callback, so batch saves keep the old form.

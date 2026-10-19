@@ -1,6 +1,6 @@
 /*
  * kitty_hello_host.c - the anchor host window of the Hello-protected keys:
- * the small always-on-top card that identifies WHO is asking for a Windows
+ * the small always-on-top card that identifies WHO requests a Windows
  * Hello verification while the credential platform runs on the calling
  * thread. It lives on its own pumping thread (khw_anchor_*), is created and
  * destroyed by the credential code in kitty_hello.c through
@@ -135,11 +135,11 @@ static void khw_ui_load(void)
  */
 
 /*
- * The context line: WHICH window/session is asking. Set (one-shot,
+ * The context line: WHICH window/session requests it. Set (one-shot,
  * consumed by the next Hello operation) by an app that can have several
  * instances - the terminal - so the card identifies the asker. While a
- * context is set the card is ALWAYS shown, and it opens over the asking
- * window instead of the screen centre.
+ * context is set the card is ALWAYS shown, and it opens over the
+ * requesting window instead of the screen centre.
  */
 static char khw_context[220];
 static HWND khw_context_near;
@@ -350,7 +350,7 @@ HWND khw_host_create(void)
         if (GetWindowRect(khw_context_near, &nr) &&
             nr.right > nr.left && nr.bottom > nr.top) {
             /* Open over the ASKING window - with several instances the
-             * card must say and show where the question comes from. */
+             * card must show where the question comes from. */
             rc = nr;
         }
     }
@@ -411,7 +411,7 @@ void khw_host_destroy(HWND w)
  * interactive flows: a dialog or main window is right there). The
  * anchor host is only for the windowless moments - agent startup,
  * tray-only unlocks - where it is also the visible sign of WHO is
- * asking for the verification. */
+ * requesting the verification. */
 bool khw_owner_usable(HWND w)
 {
     DWORD pid = 0;

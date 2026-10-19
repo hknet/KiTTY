@@ -120,7 +120,7 @@ bool kitty_red_caption(const char *text)
                  strlen("Workplace proxy mode is ON")))
         return true;
     /* The line-spacing label while the typed number is outside 100-300. The
-     * value is clamped when the fonts are built either way, so the red is saying
+     * value is clamped when the fonts are built either way, so the red means
      * that the number in the box is not the number in use. */
     return g_linespc_out_of_range && !strcmp(text, KITTY_LINESPC_LABEL);
 }
@@ -139,7 +139,7 @@ bool kitty_red_caption(const char *text)
  * an ordinary static, and does honour it. */
 /* One sentence, used wherever a control sits on a session's panel without
  * belonging to the session - the workplace-proxy box, and the WinSCP executable
- * path further down. Saying it the same way every time is the point. */
+ * path further down. Using the same wording every time is the point. */
 #define KITTY_NOT_SESSION_LEAD    "This is NOT a setting of this session."
 
 bool kitty_bold_caption(const char *text)
@@ -156,10 +156,10 @@ bool kitty_bold_caption(const char *text)
  * is the SELECTION (which proxy the mode uses), because the mode being ON is
  * only ever a launcher holding the arming.
  *
- * So this button does not set a value, it asks the launcher: switch on, and if
- * no launcher of this install is running, one is started already armed. That
- * indirection is the design - the launcher going away is what switches the mode
- * off, so it has to be the thing holding it.
+ * So this button does not set a value, it sends the launcher a request: switch
+ * on, and if no launcher of this install is running, one is started already
+ * armed. That indirection is the design - the launcher going away is what
+ * switches the mode off, so it has to be the thing holding it.
  */
 /* Declared again here (and again below, for the WinSCP path): this file keeps
  * its kitty.c accessors next to the code that uses them rather than in a
@@ -175,7 +175,7 @@ bool kitty_bold_caption(const char *text)
 /*
  * KiTTY: let a droplist's DROPPED-DOWN list be wider than the closed control,
  * so entries are readable in full when it is open even though the closed box is
- * only as wide as the panel allows. CB_SETDROPPEDWIDTH is the only way to say
+ * only as wide as the panel allows. CB_SETDROPPEDWIDTH is the only way to do
  * this; the portable dlg_* API has no notion of it.
  *
  * Measured from the entries themselves rather than guessed, and clamped to the
@@ -225,7 +225,7 @@ void kitty_dlg_droplist_fit(dlgcontrol *ctrl, dlgparam *dlg)
 
 /* Is this control laid out right now - i.e. is its panel the one on screen?
  * dlg_label_change asserts on a control that is not, so anything refreshing
- * from OUTSIDE a user action (the poll below) has to ask first. Same
+ * from OUTSIDE a user action (the poll below) has to check first. Same
  * winctrl_findbyctrl walk as kitty_dlg_enable_button, and here for the same
  * reason: windows/controls.c is built without MOD_PERSO. */
 static bool kitty_dlg_ctrl_present(dlgcontrol *ctrl, dlgparam *dlg)
@@ -242,7 +242,7 @@ static bool kitty_dlg_ctrl_present(dlgcontrol *ctrl, dlgparam *dlg)
 /*
  * Called on a timer by the config box (windows/dialog.c) so that switching the
  * mode from the TRAY reaches a config box that is already open. Without it the
- * box kept saying "ON" until the user left the panel and came back - the state
+ * box kept showing "ON" until the user left the panel and came back - the state
  * is held by another process, so nothing in this one hears about the change
  *.
  *
@@ -271,17 +271,17 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
      * from a terminal that already showed the note shows nothing. */
     kitty_notes_show_pending(NULL);
     /* Application > Launcher's "Start Launcher Now": greyed while a launcher
-     * runs. A killed launcher never says it has gone, so while that panel is
+     * runs. A killed launcher cannot report its exit, so while that panel is
      * ON SCREEN (and only then) this tick looks once (kitty_config_app.c). */
     kitty_cfgbox_launcher_poll(dlg);
     now = kitty_workplace_query(armed, sizeof(armed)) ? 1 : 0;
     /* Opening the config box is one of the ways KiTTY gets started, so it is
      * also one of the places that owes the "the mode is not active any more"
-     * notice when the launcher went away without saying so. Self-clearing:
-     * it fires at most once, whichever path reaches it first. Asked only
+     * notice when the launcher went away without reporting it. Self-clearing:
+     * it fires at most once, whichever path reaches it first. Checked only
      * when the mode is NOT held and that is news (the first tick, or the
      * holder just went away): while it is held nothing can be owed, and
-     * asking every second meant a registry read per second for the life
+     * checking every second meant a registry read per second for the life
      * of the box. */
     if (now == 0 && last != 0)
         kitty_workplace_show_pending_notice();
@@ -411,9 +411,9 @@ int cfgwin_refreshing = 0;
  */
 /* ---- remembered category folds --------------------------------------------
  *
- * categoryexpand says how the tree opens by DEFAULT; what the user changed
+ * categoryexpand sets how the tree opens by DEFAULT; what the user changed
  * BY HAND wins over it in BOTH directions - a collapsed node stays collapsed
- * and an explicitly expanded one stays expanded, whatever the default says.
+ * and an explicitly expanded one stays expanded, whatever the default is.
  * Only the DEVIATIONS are stored, so changing categoryexpand still moves
  * every node the user never touched.
  *
@@ -539,7 +539,7 @@ int kitty_kset_backupcount(const char *key)
     return 5;
 }
 
-/* ctrl->context.p names the key. */
+/* ctrl->context.p holds the key. */
 void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                            void *data, int event)
 {
@@ -572,9 +572,9 @@ void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * ---- The plain global keys of the settings tree -------------------------
  *
  * One table row per key: where it is stored, what kind of control shows it,
- * and how the RUNNING program is told. An Application panel has no Save, so
- * the store and the running value must change together or the panel snaps
- * back to the old value on its next refresh. A row with no running-value
+ * and how the RUNNING program is updated. An Application panel has no Save,
+ * so the store and the running value must change together or the panel
+ * snaps back to the old value on its next refresh. A row with no running-value
  * hook is a key the program reads from the store at the moment of use, so
  * the store IS the running value.
  *
@@ -645,7 +645,7 @@ extern char *PSCPPath;                         extern void SetPSCPPath(const cha
 static const char *kset_get_iconfile(void) { return GetIconFile(); }
 
 /* pscpport: unset has always meant the session's port (kitty_xfer.c), and the
- * label says "* = the session's port" - so the field shows "*" rather than an
+ * label reads "* = the session's port" - so the field shows "*" rather than an
  * empty box when nothing is set. Writing "*" back is
  * the same thing spelled out. */
 static const char *kset_get_pscpport(void)
@@ -692,8 +692,8 @@ static const struct kset_choice kset_traymode_choices[] = {
     { KT_KSET_WD_TRAY_AUTO, "auto", 0 }, { KT_KSET_WD_TRAY_OWN, "own", 1 },
     { KT_KSET_WD_TRAY_LAUNCHER, "launcher", 2 } };
 
-/* Direct2D needs Windows 8.1 (6.3); read from ntdll, which tells the truth
- * to a process whose manifest claims less. */
+/* Direct2D needs Windows 8.1 (6.3); read from ntdll, which reports the true
+ * version to a process whose manifest claims less. */
 static bool kset_d2d_supported(void)
 {
     typedef LONG (WINAPI *fn_RtlGetVersion)(PRTL_OSVERSIONINFOW);
@@ -936,8 +936,9 @@ static int kset_read(const struct kset_key *k, char *buf, size_t size)
  * next start the old one. It is reported now, once per setting until that
  * setting stores again - an edit box writes on every keystroke. A box per
  * character would be worse than none. */
-/* 1 stored. 0 not: said once per setting in a row, and the caller leaves the
- * running value alone and shows the stored one again (kitty_kset_handler). */
+/* 1 stored. 0 not: reported once per setting in a row, and the caller
+ * leaves the running value alone and shows the stored one again
+ * (kitty_kset_handler). */
 int kset_write(const struct kset_key *k, const char *text)
 {
     static const struct kset_key *failed_last = NULL;
@@ -1042,7 +1043,7 @@ int kset_get_int(const struct kset_key *k)
     return k->dflt;
 }
 
-/* A switch whose checkbox says the OPPOSITE of what its key stores.
+/* A switch whose checkbox shows the OPPOSITE of what its key stores.
  * [Launcher] reload=yes lets the launcher rebuild its menu from the saved
  * sessions, and is the default; the box is the exception a person chooses,
  * "keep my hand-edited menu", so a tick stores reload=no. */
@@ -1128,7 +1129,7 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
             dlg_listbox_clear(ctrl, dlg);
             for (i = 0; i < k->nchoices; i++) {
                 const char *name = k->choices[i].name;
-                /* Direct2D on a Windows below 8.1: offered, named as such,
+                /* Direct2D on a Windows below 8.1: offered, labelled as such,
                  * and refused when picked (a plain combo box cannot grey
                  * one entry) */
                 if (!strcmp(k->key, KI_RENDERER) && k->choices[i].value == 1 &&

@@ -105,7 +105,7 @@ extern NOTIFYICONDATA TrayIcone ;   /* defined in kitty.c */
 #define MYWM_NOTIFYICON		(WM_USER+3)
 #endif
 
-// The library to look the icons up in (the file named in kitty.ini, else
+// The library to look the icons up in (the file set in kitty.ini, else
 // kitty.dll if it exists, else kitty.exe)
 // extern HINSTANCE hInstIcons ;
 
@@ -139,7 +139,7 @@ HWND kitty_ask_text( HWND owner, const char *caption, const char *prompt,
                      const wchar_t *init, int (*done)( const wchar_t *text, void *ctx ),
                      void *ctx ) ;
 void kitty_window_name_set( const wchar_t * name ) ;
-/* -winslot <n>: the number an unnamed window asks for in %KITTY_WINDOW%. */
+/* -winslot <n>: the number an unnamed window requests in %KITTY_WINDOW%. */
 void kitty_window_slot_want( int n ) ;
 /* The window's identity for the far end (cyd01/KiTTY#473, window.c): the
  * auto-command with its %KITTY_...% tokens expanded (NULL = none in it), and
@@ -315,7 +315,7 @@ void GetFile( HWND hwnd ) ;
 char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) ;
 /* The session's upload folder, resolved (Connection > File-Transfer-Settings, else the
  * global Default Upload Folder, else Documents): where Send File opens and
- * where a plain name the far end asks to read is looked up. kitty_xfer.c */
+ * where a plain name the far end requests is looked up. kitty_xfer.c */
 char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
 /* The tray balloon after a finished transfer, gated by [KiTTY]
  * transfernotification; `what` fills KT_XFER_COMPLETE. A click on the
@@ -325,7 +325,7 @@ char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
  * (nfiles: 1, the count, or 0 = not counted). kitty_xfer.c */
 void kitty_xfer_notify( const char * what, int arriving, int nfiles, const char * path ) ;
 /* ... with the count of files a Get File saved under a new name (0 = none);
- * the balloon then says so. kitty_xfer.c */
+ * the balloon then reports it. kitty_xfer.c */
 void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const char * path, int renamed ) ;
 int kitty_xfer_notify_enabled( void ) ;
 /* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
@@ -342,8 +342,8 @@ int kitty_xfer_tool_shown( Conf * cf, int which ) ;
  *     else the target override's ":port", else the session's port.
  *   - WinSCP and FileZilla: a port written into the target override
  *     (CONF_sftpconnect, "[user@]hostname[:port]") wins over everything, the
- *     tool's own Port field included - the override names the machine those two
- *     are to reach, port and all. An override that names no port supplies user
+ *     tool's own Port field included - the override sets the machine those two
+ *     are to reach, port and all. An override that sets no port supplies user
  *     and host only, and then the rules below decide.
  *   - scp and sftp: the session's port for an SSH session, 22 otherwise - a
  *     telnet or raw port is not an SFTP port.
@@ -657,7 +657,7 @@ char *kitty_loginscript_to_text( const char *stored );
 void kitty_netdbg_ts( const char *msg );
 void kitty_set_remote_cwd( const char * osc7 );
 /* The host an OSC 7 reports when it is not the session's (the first OSC 7's)
- * one; NULL when it is, or nothing tells. */
+ * one; NULL when it is, or nothing reports one. */
 const char * kitty_remote_cwd_moved_host( void );
 /* The shell in that terminal window is on another machine than the
  * connection's (OSC 3008, then OSC 7): 1, *where = its name or NULL

@@ -482,7 +482,7 @@ bool kitty_ctxcrumb_rect(RECT *r)
 
 /* In the terminal area it shares the top right with the program status
  * panel, which keeps clear of it (kitty_psoverlay.c reads kitty_ctxcrumb_rect):
- * told whenever the breadcrumb comes, goes or moves there. */
+ * notified whenever the breadcrumb comes, goes or moves there. */
 static void kc_update_panel(void)
 {
     kitty_psoverlay_follow();

@@ -51,7 +51,7 @@ int kageant_audit_set(int on)
 
 /* The knobs, for the settings dialog. Same defaults and clamps as the
  * setup below - one source of truth for the ranges would be nicer, but
- * these two sites are three lines apart and say the same numbers. */
+ * these two sites are three lines apart and use the same numbers. */
 int kageant_audit_maxkb_get(void)
 {
     return kageant_int_setting(KI_AGENT_AGENTLOGMAXKB, "AgentLogMaxKB",
@@ -101,8 +101,8 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
 /*
  * Where the log goes when [Agent] agentlogpath is not set. Split out of
  * kageant_audit_setup() so the settings dialog can SHOW this path: the File
- * box is empty in the default case, and an empty box that says "blank =
- * default" tells nobody where the file actually is.
+ * box is empty in the default case, and an empty box that reads "blank =
+ * default" shows nobody where the file actually is.
  *
  * `create` is what separates the two callers. The setup path wants the
  * directory to exist because it is about to write there; the dialog only

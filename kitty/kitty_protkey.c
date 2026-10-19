@@ -38,8 +38,8 @@ int kitty_protkey_available(void)
     static int cached = -1;
     if (cached < 0) {
         /* A real round trip, not just got_crypt(): the DLL loading proves
-         * nothing about the calls working, and the whole point of asking is
-         * to TELL THE USER when their protection is off. */
+         * nothing about the calls working, and the whole point of the check is
+         * to WARN THE USER when their protection is off. */
         unsigned char buf[CRYPTPROTECTMEMORY_BLOCK_SIZE];
         unsigned char ref[sizeof(buf)];
         memset(buf, 0xA5, sizeof(buf));

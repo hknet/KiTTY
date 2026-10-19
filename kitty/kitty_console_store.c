@@ -49,7 +49,7 @@ void kitty_console_store_init(void)
     }
 
     /* hknet/KiTTY#61: a setting a session leaves out comes from Default
-     * Settings when kitty.exe's switch says so - read where kitty.exe keeps
+     * Settings when kitty.exe's switch is set - read where kitty.exe keeps
      * it: the registry first in registry mode (WriteParameter), kitty.ini
      * otherwise and as the registry's fallback (ReadParameterN). */
     {

@@ -13,8 +13,8 @@
 #define INIT_SECTION KI_SECTION_KITTY
 #endif
 
-/* The panel paths more than one of these files names. Everything under
- * "Application/" is the second tab; KSET_PATH names a KiTTY++ Settings leaf. */
+/* The panel paths more than one of these files uses. Everything under
+ * "Application/" is the second tab; KSET_PATH is a KiTTY++ Settings leaf. */
 #define KCFG_PATH_HOSTKEYS      "Application/Security/Host keys"
 #define KCFG_PATH_APPLICATIONS  "Application/Security/Applications"
 #define KCFG_PATH_INIVIEW       "Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini"
@@ -163,8 +163,8 @@ struct wpmode_data {
      *. */
     bool picked;
     dlgcontrol *list; dlgcontrol *hours; dlgcontrol *button; dlgcontrol *state;
-    /* One line under the state: blank while proxies exist, otherwise it says
-     * named proxies have to be configured first (the controls grey with it). */
+    /* One line under the state: blank while proxies exist, otherwise it reports
+     * that named proxies must be configured first (the controls grey with it). */
     dlgcontrol *noproxy;
 };
 #define KITTY_WORKPLACE_STATE_OFF "Workplace proxy mode is off."
@@ -205,7 +205,7 @@ struct sessionsaver_data {
     char *searchfilter;     /* live type-to-search filter from saved-session edit */
     int suppress_edit_valchange; /* set while programmatically updating editbox */
     int suppress_list_selchange; /* set while programmatically selecting list rows */
-    /* The folder named by the currently selected FOLDER ROW, or NULL when the
+    /* The folder shown by the currently selected FOLDER ROW, or NULL when the
      * selection is a session, "..", or nothing. Not a mode the user turns on:
      * it is set by the selection event and cleared when the list is rebuilt, so
      * it cannot be left armed by a path nobody thought of. It is what makes the
@@ -224,7 +224,7 @@ struct sessionsaver_data {
     char *folder_at_load;        /* folder the loaded session came from, or NULL:
                                   * Save only re-files when this changed */
     int folder_action;           /* what ssd->createbutton currently does */
-    /* KiTTY folder navigation: Ctrl+G asked for a search that SPANS folders.
+    /* KiTTY folder navigation: Ctrl+G requested a search that SPANS folders.
      * Ordinary typing narrows the current level only, so without this the root
      * level - which holds just the unfiled sessions in this mode - would be the
      * whole of what Ctrl+G could find, and "search everywhere" would be the one

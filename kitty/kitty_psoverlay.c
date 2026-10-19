@@ -12,7 +12,7 @@
  * How it is built, and why:
  *  - A layered popup OWNED by the terminal window, not a child: a child would
  *    be painted over by the terminal's own renderer (Direct2D presents the
- *    whole client area). Owned, it stays above the terminal, goes with it
+ *    whole client area). Owned, it stays above the terminal, hides with it
  *    when it is minimised, and never takes the focus (WS_EX_NOACTIVATE,
  *    MA_NOACTIVATE): typing goes on into the terminal.
  *  - Drawn into a 32-bit DIB and handed to UpdateLayeredWindow with per-pixel

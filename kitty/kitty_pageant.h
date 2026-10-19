@@ -36,7 +36,7 @@ int kageant_confirm_set(int on);
 /* [Agent] askconfirmation modes (classic three-state) */
 #define KAGEANT_CONFIRM_NO    0        /* never, even per-key comment opt-ins */
 #define KAGEANT_CONFIRM_YES   1        /* prompt for every key use */
-#define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment asks for it */
+#define KAGEANT_CONFIRM_AUTO  2        /* only keys whose comment requests it */
 int kageant_confirm_mode(void);
 int kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
@@ -103,7 +103,7 @@ int  kageant_audit_keep_get(void);
 int  kageant_audit_expire_get(void);
 int  kageant_audit_pathsetting_get(char *buf, size_t len);
 /* Where the log goes when no path is configured - so the settings dialog can
- * say so instead of leaving an empty box. `create` makes the directory; the
+ * show it instead of leaving an empty box. `create` makes the directory; the
  * dialog passes 0, because opening a dialog must not create directories. */
 int  kageant_audit_default_path(char *buf, size_t len, int create);
 /* write the whole set to the store in charge and re-arm the sink;
@@ -188,7 +188,7 @@ void kageant_drop_pending(const char *path);   /* memory + stored list */
 int kageant_startup_mode_get(const char *path);
 void kageant_startup_mode_set(const char *path, int encrypted);
 /* On device arrival. arrived_mask is DEV_BROADCAST_VOLUME's dbcv_unitmask
- * (bit 0 = A:), naming the letter(s) that just appeared; 0 when the arrival
+ * (bit 0 = A:), giving the letter(s) that just appeared; 0 when the arrival
  * did not name a volume, in which case only the stored paths are probed. */
 void kageant_retry_pending_keys(unsigned long arrived_mask);
 void kageant_retry_pending_keys_now(void);          /* key list, "Retry unavailable keys" */
@@ -204,9 +204,9 @@ void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds);
 int  kageant_expire_due_keys(void);
 /* The heartbeat runs only while there is something for it to do (a pending
  * lifetime, a key on the idle list, or the idle policy on). The frontend
- * asks kageant_tick_wanted() after every tick and disarms the timer when it
- * says no; it installs kageant_tick_arm_hook so the agent side can ask for
- * the timer back when one of those becomes true again. */
+ * calls kageant_tick_wanted() after every tick and disarms the timer when
+ * it returns 0; it installs kageant_tick_arm_hook so the agent side can
+ * request the timer back when one of those becomes true again. */
 int  kageant_tick_wanted(void);
 extern void (*kageant_tick_arm_hook)(void);
 int  kageant_key_lifetime_get(ptrlen pubblob, unsigned *set_seconds,
@@ -265,7 +265,7 @@ extern void (*kageant_notify_hook)(const char *comment,
 extern void (*kageant_keyuse_hook)(const char *fingerprint,
                                    const char *comment, int allowed,
                                    unsigned long req_pid);
-/* KiTTY: an external client asked for the identity list. Used to speak up about
+/* KiTTY: an external client requested the identity list. Used to speak up about
  * keys being held back, at the moment their absence costs something. */
 extern void (*kageant_identities_asked_hook)(unsigned long pid);
 void kageant_do_identities_asked(unsigned long pid);
@@ -287,7 +287,7 @@ void kageant_refresh_tray_tip(void);
 #endif
 
 /* KiTTY: key-use tint. kageant_note_keyuse() is the kageant_keyuse_hook;
- * the key list asks kageant_flash_get() while painting a row and
+ * the key list calls kageant_flash_get() while painting a row and
  * kageant_flash_any() to decide whether it still needs its repaint timer.
  * kageant_keylist_flash_changed() lives in windows/pageant.c. */
 int kageant_flash_get(const char *fingerprint, int *allowed);

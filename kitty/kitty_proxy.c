@@ -131,20 +131,20 @@ void InitProxyList(void) {
 			}
 		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		char fullpath[MAX_VALUE_NAME];
+		char fullpath[MAX_VALUE_NAME], pdir[MAX_VALUE_NAME];
 		DIR * dir ;
 		struct dirent * de ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies", ConfigDirectory ) ;
+		portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
 		/* Reading only: this runs at every connect. No Proxies folder = no
 		 * named proxies; the folder is made by the first save (SaveProxyInfo).
 		 * It used to be made here, with a box when that failed - at every
 		 * connect from a write-protected store. */
-		if( (dir=opendir(fullpath)) != NULL ) {
+		if( pdir[0] && (dir=opendir(pdir)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
 			else if( de->d_name[0] != '.' )	{	/* ., .., .gitkeep */
 				DWORD a ;
-				snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, de->d_name ) ;
+				snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, de->d_name ) ;
 				/* Files only. The test was !(attributes & NORMAL): it skipped a
 				 * file whose only attribute is NORMAL and listed folders. */
 				a = GetFileAttributes( fullpath ) ;
@@ -218,7 +218,7 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		}
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
 		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLogToTerm", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; }
-		/* Absent means the proxy says nothing, so this is not read with a 0
+		/* Absent means the proxy sets nothing, so this is not read with a 0
 		 * default: 0 is an answer here. */
 		conf_set_int( conf, CONF_proxy_host_kind,
 			GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyHostIs", lpData, sizeof(lpData) )
@@ -230,7 +230,8 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		struct ksf_item *items ;
 		const char *v ;
 		mungestr( name, filename ) ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, filename ) ;
+		{ char pdir[MAX_VALUE_NAME] ; portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
+		  snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, filename ) ; }
 		free( filename ) ;
 		/* Read with the session-file reader (ksf_load): it takes both line
 		 * forms, Key=value and old KiTTY's Key\value\, and hex escapes in
@@ -334,7 +335,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
 		RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyLogToTerm", conf_get_int(conf, CONF_proxy_log_to_term) ) ;
 		if( conf_get_int(conf, CONF_proxy_host_kind) < 0 )
-			RegDelValue( HKEY_CURRENT_USER, sub, "ProxyHostIs" ) ;   /* says nothing */
+			RegDelValue( HKEY_CURRENT_USER, sub, "ProxyHostIs" ) ;   /* sets nothing */
 		else
 			RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
@@ -350,7 +351,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		char dir[2048], fullpath[2048], num[16] ;
 		struct ksf_item *items ;
 		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
-		snprintf( dir, sizeof(dir), "%s\\Proxies", ConfigDirectory ) ;
+		portable_config_path( dir, sizeof(dir), "Proxies" ) ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\%s", dir, fn ) ;
 		free( fn ) ;
 		if( !MakeDir( dir ) ) {
@@ -405,7 +406,8 @@ int DeleteProxyInfo( const char *name ) {
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char fullpath[2048] ;
 		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, fn ) ;
+		{ char pdir[2048] ; portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
+		  snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, fn ) ; }
 		free( fn ) ;
 		remove( fullpath ) ;
 	}

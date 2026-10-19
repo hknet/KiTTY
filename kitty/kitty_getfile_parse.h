@@ -1,7 +1,7 @@
 /*
  * kitty_getfile_parse.h - the platform-free half of Get File's clipboard
  * check (hknet/KiTTY#71): what the clipboard text is, the path kscp -stat
- * is asked about, its one-line reply, a size as people read it, and the
+ * checks, its one-line reply, a size as people read it, and the
  * OSC 7 baseline. Dependency-free and static, shared verbatim with
  * test/test_getfile.c, so every rule here is unit-tested without a window
  * or a server.
@@ -183,7 +183,7 @@ static inline void gf_size_text( unsigned long long b, char *out, size_t n ) {
 }
 
 /* The OSC 7 baseline: the host of the first OSC 7 after connecting is the
- * session's machine, whatever it calls itself; a later one naming another
+ * session's machine, whatever it calls itself; a later one reporting another
  * host means the shell moved on. Host names compare without case, and a
  * short name matches an FQDN that starts with it (one shell sends
  * "server01", root's may send "server01.lab.hq.domain.at" on the same

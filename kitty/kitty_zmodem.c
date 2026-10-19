@@ -79,7 +79,7 @@ typedef struct kitty_zmodem_state {
      * to be read and thrown away, which made a failed transfer mute while the
      * helper knew exactly what was wrong ("Retry 0: Got TIMEOUT" is what
      * eventually explained #33). The helper is the only thing here that can see
-     * the protocol; not repeating what it says is throwing away the diagnosis.
+     * the protocol; not repeating what it prints is throwing away the diagnosis.
      */
     LogContext *logctx;
     Terminal *term;       /* helper progress/errors go on screen, see below */
@@ -140,7 +140,7 @@ const char *kitty_zmodem_command(int send)
 }
 
 /* handle_free() first, then close the pipe: handle-io.c does not close the
- * underlying HANDLE, and its reader subthread must be told to stop before the
+ * underlying HANDLE, and its reader subthread must be made to stop before the
  * handle goes away underneath it (same order as conpty_terminate()). */
 static void zm_close_handles(kitty_zmodem_state *zm)
 {
@@ -374,7 +374,7 @@ static kitty_zmodem_state *zm_spawn(const char *command, const char *params,
     zm->errlen = 0;
 
     /* Put both pipes and the process on the main loop's wait list, so the
-     * helper having something to say is itself what wakes us (see the note on
+     * helper having output is itself what wakes us (see the note on
      * the state struct - this is what an upload was missing). */
     zm->h_stdout = handle_input_new(read_stdout, zm_stdout_gotdata, zm, 0);
     zm->h_stderr = handle_input_new(read_stderr, zm_stderr_gotdata, zm, 0);

@@ -451,7 +451,7 @@ static SINI * mini_Ini = NULL ;
  */
 
 /* A value GetPrivateProfileString returns when the key is not there - the
- * call cannot tell "absent" from "empty" otherwise. */
+ * call cannot distinguish "absent" from "empty" otherwise. */
 static const char mini_absent[] = "\x01kitty.ini:absent\x01" ;
 
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) {

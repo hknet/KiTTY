@@ -6,7 +6,7 @@
  * decides whether a session name still loads from the old 9bis-KiTTY and
  * stock-PuTTY hives. The GUI reads its kitty.ini through kitty.c
  * (ReadParameterN); the console tools carry no kitty.c, so their copy of
- * that reader is a stub that says "not set" and they saw only the pinned
+ * that reader is a stub that returns "not set" and they saw only the pinned
  * registry choice and the auto rule - a `showforeignsessions=yes` in
  * kitty.ini kept `kitty -load oldname` working but not `klink -load
  * oldname`.

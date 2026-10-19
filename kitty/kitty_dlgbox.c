@@ -74,14 +74,14 @@ void CenterDlgInParent(HWND hDlg) {
  * explanation instead of clipping it, and because it should look like the rest of
  * KiTTY.
  *
- * NOT for DPI reasons, whatever this comment used to say. A MessageBox is drawn
+ * NOT for DPI reasons, whatever this comment used to state. A MessageBox is drawn
  * by WINDOWS in the system dialog font, and the system scales it for the process's
  * DPI awareness - it is correct on a scaled display and always was. The DPI
  * problems this project actually had came from windows we laid out OURSELVES with
  * hard-coded pixel sizes. The record is corrected here because that wrong reason
  * was about to be used to justify rewriting a working popup.
  *
- * MODAL, unlike the update popup: this is used to tell somebody that a thing they
+ * MODAL, unlike the update popup: this is used to inform somebody that a thing they
  * just did no longer works, and a notice that answers a deliberate action has to
  * be acknowledged rather than time out unread.
  */
@@ -147,7 +147,7 @@ void kitty_notice_box( HWND owner, const char *caption, const char *text ) {
  * line is reserved for "this will persist even if you never press Save", which
  * the ordinary wording of a confirmation understates.
  *
- * "No" is the default: this is asked precisely when something is about to be
+ * "No" is the default: this question comes precisely when something is about to be
  * overwritten, so pressing Return without reading must not agree to it.
  */
 typedef struct {
@@ -280,7 +280,7 @@ int kitty_fit_text( HWND dlg, int ctlid, const char *text, int extra_dy ) {
  * SetNewIcon) - and a question raised by that session should be recognisable
  * as belonging to it.
  *
- * Big and small are asked for separately: they are different bitmaps at
+ * Big and small are requested separately: they are different bitmaps at
  * different sizes, the caption uses the small one and the taskbar the big
  * one, and a window that has only one of them must not be made to stretch it.
  * What the owner does not have falls back to its window class's icon and then
@@ -527,7 +527,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			SendDlgItemMessage( h, IDNO, BM_SETSTYLE, BS_DEFPUSHBUTTON, TRUE ) ;
 			SetFocus( GetDlgItem( h, IDNO ) ) ;
 		}
-		kitty_centre_on_owner( h ) ;       /* over the window that asked, not mid-screen */
+		kitty_centre_on_owner( h ) ;       /* over the owner window, not mid-screen */
 		if( cf && cf->front ) {
 			SetWindowPos( h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE ) ;
 			SetForegroundWindow( h ) ;
@@ -640,7 +640,7 @@ static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
 /* kitty_confirm_box_yes (front: kitty_confirm_box_yes_front), modeless: Yes
  * stays the default, front puts the box on top of every window. done(yes,
  * ctx) once; NULL = not made, no callback. For the exit confirmation, which
- * must not stop the session it asks about. */
+ * must not stop the session the question is about. */
 HWND kitty_confirm_modeless_yes( HWND owner, const char *caption, const char *text,
                                  int front, void (*done)( int yes, void *ctx ), void *ctx ) {
 	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
@@ -653,9 +653,9 @@ HWND kitty_confirm_modeless_yes( HWND owner, const char *caption, const char *te
 	return kitty_confirm_modeless_open( owner, cf ) ;
 }
 
-/* kitty_confirm_modeless with the two buttons named (b_yes, b_no; NULL keeps
- * the template's word). The second stays the default, so a reflex Return
- * does not agree. Same answer rules; NULL = not made, no callback. */
+/* kitty_confirm_modeless with the two buttons labelled (b_yes, b_no; NULL
+ * keeps the template's word). The second stays the default, so a reflex
+ * Return does not agree. Same answer rules; NULL = not made, no callback. */
 HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *text,
                                    const char *detail, const char *b_yes, const char *b_no,
                                    void (*done)( int yes, void *ctx ), void *ctx ) {
@@ -703,7 +703,7 @@ static void kitty_confirm_check_done( int yes, void *ctx ) {
 	if( cf->done_check ) cf->done_check( yes, yes ? cf->checked : 0, cf->ctx_check ) ;
 }
 
-/* kitty_confirm_modeless with the two buttons named (`b_yes`, `b_no`; the
+/* kitty_confirm_modeless with the two buttons labelled (`b_yes`, `b_no`; the
  * second stays the default) and, when `check` is not NULL, a checkbox of that
  * label between the question and the buttons. done(yes, checked, ctx) once;
  * `checked` is 0 unless the first button was pressed with the box ticked.
@@ -992,7 +992,7 @@ INT_PTR kitty_dialog_box( HWND owner, int tmpl, DLGPROC proc, LPARAM lp ) {
  * resource, real font, no dlgproc filling anything in - so template spacing
  * can be reviewed by eye without arranging each window's live trigger
  * (a changed host key, a passphrase save, an update offer...). Esc, Enter or
- * closing advances to the next; the caption names the template. Review
+ * closing advances to the next; the caption shows the template. Review
  * tooling, reached only via the explicit command-line flag.
  */
 static INT_PTR CALLBACK kitty_demo_tpl_proc( HWND h, UINT msg, WPARAM wp,
@@ -1040,7 +1040,7 @@ void kitty_demo_templates( void ) {
 		{ "IDD_SEARCHBAR",                  IDD_SEARCHBAR },
 	} ;
 	size_t i ;
-	/* IDD_HOSTKEY names a window CLASS that ShinyDialogBox normally
+	/* IDD_HOSTKEY refers to a window CLASS that ShinyDialogBox normally
 	 * registers; a bare DefDlgProc registration is all the gallery needs. */
 	{
 		WNDCLASSA wc ;

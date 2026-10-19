@@ -44,7 +44,7 @@
 #define ON_DEFAULT_SECONDS 15
 #define ON_SHORT_SECONDS 5
 
-/* One OSC 99 metadata block. has_* says the key was present, so chunks can
+/* One OSC 99 metadata block. has_*: the key was present, so chunks can
  * be merged key by key. */
 typedef struct {
     char id[ON_ID_MAX + 1];      /* sanitised; OSC 99 without one: "0" (the
@@ -72,7 +72,7 @@ typedef struct {
                                   * PS_* state; 0 for every other notice */
 } OnNotice;
 
-/* What a whole OSC 99 sequence asks for (on_osc99). */
+/* What a whole OSC 99 sequence requests (on_osc99). */
 #define ON99_NOTHING 0           /* malformed, a chunk, or ignored */
 #define ON99_SHOW    1           /* *out holds a finished notice */
 #define ON99_CLOSE   2           /* close the notice with meta.id */

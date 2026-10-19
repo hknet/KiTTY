@@ -36,7 +36,7 @@ char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueN
 
   //Buffer receiving the value read from the registry key
 	/* On the stack: this is the read behind every ReadParameter, and a
-	 * malloc/free pair per call added up on the paths that ask often. */
+	 * malloc/free pair per call added up on the paths that read often. */
 	unsigned char lpData[ cstMaxRegLength + 1 ] ; // +1 for forced NUL
 	if( rValue == NULL || rsize == 0 ) { return NULL ; }
 
@@ -121,7 +121,7 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	// KiTTY: returns 1 on success, 0 if the key could not be opened or created
 	// or the value not written. Writing under HKEY_CLASSES_ROOT lands in
 	// HKEY_LOCAL_MACHINE and needs elevation, so failure here is ordinary and
-	// callers that register file/URL associations must be able to say so.
+	// callers that register file/URL associations must be able to report it.
 	// (Both functions also used to carry on with an UNINITIALISED handle when
 	// the create failed, which is what made the failure silent.)
 int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
@@ -383,7 +383,7 @@ static int kitty_repairs_own_hive( void ) {
  * AND have no explicit ShiftedArrowKeys there. Deleting the kapper.net value then
  * lets the session fall back to the new BITMAP default. Any deliberate choice
  * (an explicit value already in 9bis, or a session absent from 9bis so we cannot
- * tell) is left untouched. Idempotent via a marker value -- runs at most once.
+ * know) is left untouched. Idempotent via a marker value -- runs at most once.
  *
  * Registry paths are string literals, not PUTTY_REG_POS -- same rationale as
  * MigrateOldKittyHive above: fixed 9bis<->kapper.net migration endpoints (not the
@@ -739,7 +739,7 @@ BOOL RegCleanPuTTY( void ) {
 	return 1;
 	}
 
-/* KiTTY: say something back from a command-line switch. kitty.exe is a
+/* KiTTY: report back from a command-line switch. kitty.exe is a
  * GUI-subsystem program and so starts with no console of its own; attaching to
  * the console of the shell that launched it puts the text where the user is
  * actually looking. A message box is the fallback for when there is no console
@@ -837,10 +837,11 @@ int KittyCliOutput( const char *text, int warn ) {
 	return 0 ;
 }
 
-/* KiTTY: ask a yes/no question the same way KittyCliReport() answers one - at the
- * prompt when there is one, in a box when there is not. Returns 1 only for an
- * explicit yes; anything else, including a closed console or an unreadable
- * input, is a no, because the caller is about to write to the registry. */
+/* KiTTY: put up a yes/no question the same way KittyCliReport() answers one -
+ * at the prompt when there is one, in a box when there is not. Returns 1 only
+ * for an explicit yes; anything else, including a closed console or an
+ * unreadable input, is a no, because the caller is about to write to the
+ * registry. */
 static int CliConfirm( const char *title, const char *text ) {
 	if( g_report_gui )
 		return MessageBoxA( NULL, text, title,
@@ -867,7 +868,7 @@ static int CliConfirm( const char *title, const char *text ) {
 	} else if( !reach_desktop_visible() ||
 		   GetFileType( GetStdHandle( STD_ERROR_HANDLE ) ) == FILE_TYPE_DISK ||
 		   GetFileType( GetStdHandle( STD_ERROR_HANDLE ) ) == FILE_TYPE_PIPE ) {
-		/* nobody to ask, or a script that captured our output: the safe
+		/* nobody to prompt, or a script that captured our output: the safe
 		 * answer, and how to give the other one */
 		char *msg = dupprintf( "%s\r\n%s", text, KT_REACH_GIVE_YES ) ;
 		cli_std_write( STD_ERROR_HANDLE, msg ) ;
@@ -899,7 +900,7 @@ static BOOL CALLBACK reach_find_terminal( HWND h, LPARAM lp ) {
 
 /* Can anybody see a window from this process? Not in a service, nor in a
  * scheduled task that runs whether a user is logged on or not: their window
- * station is invisible. When it cannot be told, someone is assumed there. */
+ * station is invisible. When that is unknown, someone is assumed there. */
 static int reach_desktop_visible( void ) {
 	USEROBJECTFLAGS uof ;
 	DWORD need = 0 ;
@@ -978,7 +979,7 @@ int kitty_reach_confirm( HWND owner, const char *title, const char *question,
 /* KiTTY: is this exe the machine-wide installation? The system MSI installs
  * into %ProgramFiles%\KiTTY (kitty-system.wxs uses ProgramFiles64Folder); the
  * per-user MSI and every portable copy live elsewhere. Used to decide whether
- * registering URL handlers should ask for administrator rights: a program
+ * registering URL handlers should request administrator rights: a program
  * installed for everyone should register for everyone. */
 static int RunningFromProgramFiles( const char *path ) {
 	static const char *vars[] = { "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)" } ;
@@ -1006,7 +1007,7 @@ static int UrlHandlerCurrentCommand( const char *proto, char *out, DWORD outlen 
 }
 
 /* KiTTY: the program behind a registered command line, for a report a person
- * can act on - "rundll32.exe" says more at a glance than the full command with
+ * can act on - "rundll32.exe" shows more at a glance than the full command with
  * its DLL entry point. Writes the bare file name into `out`. */
 static void UrlHandlerProgram( const char *command, char *out, size_t outlen ) {
 	const char *p = command, *end, *slash ;
@@ -1040,7 +1041,7 @@ static int ClassKeyExists( HKEY root, const char *subkey ) {
  * "put it back the way it was" is a command the user can run rather than a
  * registry key to reconstruct by hand. Returns 1 and fills `file` on success.
  * Uses Windows' own reg.exe, which exports the whole subtree - values we never
- * touched included. The hive has to be named explicitly: an HKCR export is an
+ * touched included. The hive has to be given explicitly: an HKCR export is an
  * HKLM export, and importing one of those needs elevation the user may not
  * have (and would not restore anything, if what shadowed it was in HKCU). */
 static int ClassKeyBackup( HKEY root, const char *subkey, const char *tag,
@@ -1089,13 +1090,13 @@ static int ClassKeyBackup( HKEY root, const char *subkey, const char *tag,
  * that the two behave the same.
  *
  * HKLM when this process can write there. Otherwise, if this is the
- * machine-wide installation, ask Windows for the rights and let the elevated
+ * machine-wide installation, request elevation and let the elevated
  * copy do the whole job (`relaunch` + `relaunch_extra` is the command line it
- * gets); -user (peruser) says "my account is what I meant". A portable copy is
- * asked for permission first, since what it writes outlives it.
+ * gets); -user (peruser) means "my account is what I meant". A portable copy
+ * requests a confirmation first, since what it writes outlives it.
  *
  * Returns 1 with *root set when the caller should proceed, 0 when it should
- * return quietly - the user has been told why. */
+ * return quietly - the user has been shown why. */
 static int ClassRegTarget( const char *path, const char *relaunch,
 			   const char *relaunch_extra,
 			   int peruser, int assume_yes,
@@ -1105,9 +1106,10 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 #ifdef MOD_PORTABLE
 	/* A portable KiTTY is expected to leave the machine as it found it, and
 	 * registering is the opposite of that: the entry outlives the USB stick
-	 * and then points at a path that has gone. Still the user's call - so ask,
-	 * plainly, with the path in front of them. savemode=registry already means
-	 * "this copy uses the registry"; -yes answers for scripts. */
+	 * and then points at a path that has gone. Still the user's call - so a
+	 * plain question comes first, with the path in front of them.
+	 * savemode=registry already means "this copy uses the registry"; -yes
+	 * answers for scripts. */
 	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
 		char question[2048] ;
 		snprintf( question, sizeof(question),
@@ -1205,9 +1207,10 @@ static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
  *    case; needing the whole machine is the exception.
  *  - non-destructive by default. A protocol already pointing somewhere else is
  *    left alone and reported; `force` is what replaces it, and then the report
- *    says what was replaced, so it can be put back.
- *  - a portable KiTTY asks before writing anything, naming the path that would
- *    be left behind in the registry once the stick is gone.
+ *    lists what was replaced, so it can be put back.
+ *  - a portable KiTTY requests a confirmation before writing anything, and
+ *    shows the path that would be left behind in the registry once the stick
+ *    is gone.
  *  - our own session-URL scheme is kitty://. putty:// is another project's
  *    name and is registered only when asked for (`withputty`); both forms are
  *    understood on the command line either way.
@@ -1220,7 +1223,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 	int n = 0, written = 0, kept = 0, replaced = 0 ;
 	size_t len ;
 	int i, mine ;
-	/* session = the URL names a saved session, so the command is -load;
+	/* session = the URL refers to a saved session, so the command is -load;
 	 * optional = registered only when explicitly asked for. */
 	static const struct { const char *proto, *friendly ; int session, optional ; } protos[] = {
 		{ "telnet", "URL:Telnet Protocol",  0, 0 },
@@ -1412,11 +1415,11 @@ void RemoveSSHHandler( void ) {
 /* KiTTY, rewritten alongside CreateSSHHandler(), which had the same
  * three faults: it wrote to HKEY_CLASSES_ROOT (= HKLM) and so did nothing at
  * all from an unelevated prompt while reporting nothing either; it claimed the
- * extension even when another program owned it; and it never said what it had
- * done. Same treatment - HKLM if we may, elevation for the machine-wide
+ * extension even when another program owned it; and it never reported what it
+ * had done. Same treatment - HKLM if we may, elevation for the machine-wide
  * install, HKCU otherwise, the existing owner left alone unless `force` (and
- * then exported first), a portable copy asked, and the outcome reported to the
- * console that asked for it. */
+ * then exported first), a confirmation first for a portable copy, and the
+ * outcome reported to the console it was run from. */
 void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	char path[1024], buffer[1024], report[2048], cur[512], backup[MAX_PATH] ;
 	char ext[15], key[256] ;
@@ -1541,7 +1544,7 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 }
 
 /* KiTTY (-fileassoc -uninstall): give the extension back. Only removed when it
- * is still ours; the ProgID goes with it. Exported first, like everything else
+ * is still ours, and the ProgID with it. Exported first, like everything else
  * here, so the removal can be undone. */
 void RemoveFileAssoc( void ) {
 	static const struct { HKEY root ; const char *label ; } hives[] = {
@@ -1698,7 +1701,7 @@ int kitty_shell_integration_state( char lines[5][256] ) {
 	} else {
 		snprintf( lines[4], 256, KT_REG_STATE_NOT_REGISTERED, ext ) ;
 	}
-	/* putty:// is optional; the count says how many of the four that matter
+	/* putty:// is optional; the count shows how many of the four that matter
 	 * point at this exe. */
 	{
 		int required = 0 ;
@@ -1711,7 +1714,7 @@ int kitty_shell_integration_state( char lines[5][256] ) {
 /* The System leaf's buttons: the same work as -sshhandler / -fileassoc, with
  * boxes instead of console output. force = take protocols and the extension
  * over from other programs (their settings are exported first, the report
- * names the undo). */
+ * gives the undo command). */
 void kitty_shell_integration_register( int force ) {
 	g_report_gui = 1 ;
 	CreateSSHHandler( force, 0, 0, 0 ) ;

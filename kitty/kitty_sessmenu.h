@@ -9,7 +9,7 @@
  *
  * The layout is the launcher's: in every menu the folder submenus come first,
  * then the sessions. A session stored as a path ("Linux\web\srv01") is in
- * that path's folder, whatever its Folder value says; one stored by its bare
+ * that path's folder, whatever its Folder value states; one stored by its bare
  * name is in its Folder value's folder ("Default" or empty = the top). Every
  * folder above a session is a submenu of its own, nested as the tree is.
  * Folders and sessions sort by the name they show, case-insensitively and

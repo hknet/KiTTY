@@ -2041,7 +2041,7 @@ bool gfx_command_cut(GfxStore *st, const GfxEnv *env, const unsigned char *s,
 
 /* ---- iTerm2 inline images (OSC 1337) ------------------------------------ */
 
-/* The longest side a size may ask for, by unit: as kitty's c/r for cells. */
+/* The longest side a size may request, by unit: as kitty's c/r for cells. */
 #define ITERM_MAX_CELLS    10000u
 #define ITERM_MAX_PX       100000u
 #define ITERM_MAX_PERCENT  1000u
@@ -2158,7 +2158,7 @@ bool gfx_iterm_args(const unsigned char *s, size_t len, GfxItermArgs *a)
     return true;
 }
 
-/* A side asked for, in pixels; 0: auto. */
+/* A requested side, in pixels; 0: auto. */
 static double iterm_dim_px(char unit, uint32_t v, int cell, long screen)
 {
     double px;
@@ -2771,7 +2771,7 @@ void gfx_set_carry(GfxStore *st, bool on, int screen, long abs_line, int col)
     st->carry_col = col;
 }
 
-/* the picture gfx_set_carry named, while its line feeds run */
+/* the picture gfx_set_carry identified, while its line feeds run */
 static bool pl_carried(const GfxStore *st, const GfxPlacement *pl)
 {
     return st->carry_on && pl->screen == st->carry_screen &&

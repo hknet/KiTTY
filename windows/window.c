@@ -3563,7 +3563,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 static void wgs_cleanup(WinGuiSeat *wgs)
 {
 #ifdef MOD_PERSO
-    /* KiTTY: the window is going away, so its passwords go with it. The Conf
+    /* KiTTY: the window is closing, so its passwords are cleared. The Conf
      * itself outlives this (upstream never frees wgs->conf - the process is
      * about to end), which is exactly why the strings are cleared here rather
      * than left for conf_free, which does not clear what it frees. */
@@ -5760,7 +5760,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         if ((UINT_PTR)wParam == TIMER_CLIPACTIVITY) {
             /* The clipboard activity marker has run its few seconds. Take it
              * down: refreshing the title re-reads term_clipboard_activity(),
-             * which has now lapsed, so both the icon and the tint go with it. */
+             * which has now lapsed, so both the icon and the tint are removed. */
             KillTimer(hwnd, TIMER_CLIPACTIVITY);
             kitty_refresh_title();
             if (wgs && wgs->term)
@@ -7600,7 +7600,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
       case WM_MOUSELEAVE:
         /* KiTTY: the pointer left the window - the OSC 8 target preview
-         * and an On-hover underline go with it (kitty_url.c requests this
+         * and an On-hover underline are hidden too (kitty_url.c requests this
          * message while either is up) */
         kitty_url_preview_hide();
         kitty_url_hover_leave();
@@ -7964,7 +7964,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         resize_action = conf_get_int(wgs->conf, CONF_resize_action);
 #ifdef MOD_PERSO
         kitty_note_normal_rect(wgs, hwnd);
-        /* The overlay keeps its corner; minimised, it goes with the window. */
+        /* The overlay keeps its corner; minimised, it hides with the window. */
         kitty_psoverlay_follow();
         kitty_searchbar_follow(hwnd);  /* the scrollback search's bar too */
         kitty_ctxcrumb_follow();       /* and the breadcrumb */

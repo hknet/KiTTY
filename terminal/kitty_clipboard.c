@@ -456,7 +456,7 @@ static void osc5522_pw_remember(Terminal *term, const char *pw, const char *name
  * OSC 5522 can pass them on, which is most of why it is worth having.
  *
  * claim is the name a program gave for itself (OSC 5522 only, NULL on OSC 52) and
- * pw is the one-time password that goes with it. Together they are what makes
+ * pw is the one-time password that belongs to it. Together they are what makes
  * "do not ask me about this program again" possible at all.
  */
 /* What a read asks for, and what it gets. OSC 52 asks for text only; OSC 5522

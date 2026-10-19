@@ -48,13 +48,13 @@ struct notice_state {
     char *text;               /* malloc'd: a note can be much longer than a line */
     COLORREF accent;
     /* What this notice was holding, released when it goes for good. `clicked`
-     * says whether the user dismissed it or it simply ran out. */
+     * records whether the user dismissed it or it simply ran out. */
     void (*on_close)(void *, int clicked);
     void *close_ctx;
     HFONT title_font;
     HFONT body_font;
     UINT dpi;
-    HWND click_hwnd;          /* who to tell when the notice is clicked */
+    HWND click_hwnd;          /* notified when the notice is clicked */
     UINT click_msg;           /* 0 = clicking only dismisses */
     /* Hover holds the notice open: its time can run out while somebody is
      * reading it, or while a screen reader is speaking it, and a notice that
@@ -97,7 +97,7 @@ static int notice_scale(int v, UINT dpi);
 /* The buttons laid out left to right in the width `avail`, a button that does
  * not fit starting a new row: the row each one is on and its width. Returns
  * the number of rows. WM_PAINT and the height measured before the window
- * exists both ask this, so the two cannot disagree. */
+ * exists both call this, so the two cannot disagree. */
 static int notice_button_rows(HDC dc, const struct notice_state *st, int avail,
                               int rowof[3], int width[3])
 {
@@ -229,11 +229,11 @@ static HFONT notice_font(UINT dpi, int bold)
 
 /* Is the pointer on the notice RIGHT NOW?
  *
- * WARNING: Asked directly rather than inferred from WM_MOUSEMOVE, because a pointer
+ * WARNING: Read directly rather than inferred from WM_MOUSEMOVE, because a pointer
  * that is already resting on the notice and does not move sends no messages at
  * all - so the first version closed the notice under a pointer that had been
- * parked on it for the whole fifteen seconds. Movement tells
- * us a hover STARTED; only the cursor position tells us one is happening.
+ * parked on it for the whole fifteen seconds. Movement shows
+ * a hover STARTED; only the cursor position shows one is happening.
  */
 static int notice_pointer_is_over(HWND hwnd)
 {
@@ -778,7 +778,7 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
     /* The title goes in the window NAME as well as being painted. A WS_POPUP
      * with no caption never shows it, so nothing changes on screen - but it
      * makes a notice identifiable from outside the process, which is the only
-     * way a test harness can tell WHICH notice appeared (the visible title is
+     * way a test harness can see WHICH notice appeared (the visible title is
      * drawn in WM_PAINT, and pixels are not readable). */
     hwnd = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                            NOTICE_CLASS, title, WS_POPUP,
@@ -810,7 +810,7 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
 }
 
 /* A caller that tracks its own notice by its on_close context (notifications
- * from the host) asks whether it is the one on screen, and closes it. Only
+ * from the host) checks whether it is the one on screen, and closes it. Only
  * the notice ON SCREEN counts: a parked one is always sticky, and nothing
  * that tracks its notice this way raises sticky ones. */
 static struct notice_state *notice_current_state(void)

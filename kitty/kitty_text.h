@@ -1,10 +1,10 @@
 /*
  * kitty_text.h: the words KiTTY shows, in one place.
  *
- * Wording is edited here, not hunted for across the source. Two rules go with
- * that:
+ * Wording is edited here, not hunted for across the source. Two rules follow
+ * from that:
  *
- *  - keep it SHORT. A control names the thing; it does not explain it.
+ *  - keep it SHORT. A control labels the thing; it does not explain it.
  *  - the explanation belongs in the manual (FEATURES.md, which generates the
  *    KiTTY chapter of the help), not in a string here and not on a panel.
  *
@@ -192,7 +192,7 @@
 #define KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES       "Accept broadcast messages for this session"
 #define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY++ can type into this session (/command)."
 /* The installation's master switch lives on Application > KiTTY++ Settings >
- * Automation > Broadcast; the note says so and the button jumps there. */
+ * Automation > Broadcast; the note states it and the button jumps there. */
 #define KT_CFG_BROADCAST_GLOBAL_NOTE                 "Broadcast needs global switch on to work -> App>Auto>Broadcast"
 #define KT_CFG_BROADCAST_GLOBAL_JUMP                 "open global Settings"
 /* Mid-session (Change Settings) there is no Application tab: no button, this
@@ -465,7 +465,7 @@
 #define KT_OSC8_CONFIRM_WARN_SCHEME                  "\"%s:\" links do not open in a browser: Windows starts the program registered for them."
 #define KT_OSC8_CONFIRM_WARN_SSH                     "ssh: links start a connection the host chose."
 #define KT_OSC8_CONFIRM_WARN_FILE                    "file: links open a file on this computer."
-/* red: the link's text names one host, its target goes to another.
+/* red: the link's text shows one host, its target goes to another.
  * %s = the host in the text, %s = the target's host */
 #define KT_OSC8_CONFIRM_WARN_TEXTHOST                "The text shows %s, the link goes to %s."
 #define KT_OSC8_CONFIRM_WARN_PUNYCODE                "The host is written in punycode: it may imitate another name."
@@ -1383,7 +1383,7 @@
 #define KT_KSET_SC_READONLY                          "kitty.ini is read-only; the shortcut was not saved."
 #define KT_KSET_SC_NO_INI                            "There is no kitty.ini; shortcuts need one."
 
-/* The [Shortcuts] actions as the editor lists them and the help names them
+/* The [Shortcuts] actions as the editor lists them and the help refers to them
  * (kitty_shortcuts.c): the menu entries keep the menu wording. */
 #define KT_SC_ACT_AUTOCOMMAND                        "Send the automatic command"
 #define KT_SC_ACT_CHANGESETTINGS                     "Change Settings"
@@ -2510,7 +2510,7 @@
 #define KT_PROXYDEF_SAVE_FAILED_FMT                  "Named proxy '%s' not saved: %s"
 
 /* kitty_hello_container.c: the owners list of a key container */
-#define KT_HELLOC_UNTAGGED                           KT_KGEN_DOORS_UNTAGGED  /* "(untagged)" - kittygen's doors list says the same */
+#define KT_HELLOC_UNTAGGED                           KT_KGEN_DOORS_UNTAGGED  /* "(untagged)" - kittygen's doors list has the same */
 #define KT_HELLOC_HELLO_CRED                         "(Windows Hello key credential)"
 
 /* kitty_oldwin.c: the "this Windows cannot do" reports */
@@ -2740,7 +2740,7 @@
         "It may simply be a different version, or it may " \
         "have been replaced with something else.\n\n" \
         "Start it anyway?"
-/* kageant: a newer KiTTY++ release. kageant asks no network - it reads what
+/* kageant: a newer KiTTY++ release. kageant queries no network - it reads what
  * kitty.exe or the launcher stored - and "install" starts kitty.exe -update. */
 #define KT_KA_MENU_UPDATE_FMT                        "&Update available: KiTTY++ %s%s - install..."
 #define KT_KA_TIP_UPDATE_FMT                         "%.*s\r\nupdate %s available%s"
@@ -3563,7 +3563,7 @@
         "KiTTY++ shortcuts are off until far2l ends."
 #define KT_FAR2L_KEYS_NOTICE_OFF                     "Keyboard: far2l ended. KiTTY++ shortcuts are back."
 /* Shared by OSC 52 and OSC 5522 writes: the modeless Yes/No box (No is the
- * default); its field names the session (KT_OSC52_WHERE_*). */
+ * default); its field identifies the session (KT_OSC52_WHERE_*). */
 #define KT_CLIP_WRITE_ALLOW_Q                        "The remote host wants to set the clipboard.\n" \
         "Allow it?\n\n" \
         "Yes allows it for the rest of the session.\n" \
@@ -4287,7 +4287,7 @@
  * over the .rc, so a macro stands in for the literal - but ONLY a macro whose
  * value is ONE string token: the resource compiler does not concatenate
  * adjacent literals, so nothing in this section may be split across lines.
- * Named KT_RC_<dialog>_<what> after the IDD_ (or the numeric id's role). */
+ * Names: KT_RC_<dialog>_<what> after the IDD_ (or the numeric id's role). */
 
 /* kitty.rc: IDD_KITTYABOUT */
 #define KT_RC_KITTYABOUT_CAPTION                     "About KiTTY++"

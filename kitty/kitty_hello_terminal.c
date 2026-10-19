@@ -1,7 +1,7 @@
 /*
  * kitty_hello_terminal.c - the terminal's side of Hello-protected key
  * files: implementations for the three hooks in ssh/userauth2-client.c.
- * With several terminals open, the anchor card carries the asking
+ * With several terminals open, the anchor card carries the requesting
  * window's title and opens over it, so the user knows WHICH session
  * wants the authorization.
  */
@@ -204,7 +204,7 @@ static int kht_unlock_async(const char *path,
     return 1;
 }
 
-/* The login that asked is gone: its done() must not run. */
+/* The requesting login is gone: its done() must not run. */
 static void kht_unlock_cancel(void *token)
 {
     if (token)

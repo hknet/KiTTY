@@ -1,14 +1,14 @@
 /*
  * kitty_workplace.h - the interface to workplace proxy mode
  * (kitty_workplace.c): one launcher holds an arming, and every connection
- * this install starts asks whether one is held and which proxy it names.
+ * this install starts checks whether one is held and for which proxy.
  */
 #ifndef KITTY_WORKPLACE_H
 #define KITTY_WORKPLACE_H
 
 /*
  * Workplace proxy mode: the arming channel. The launcher holds the arming;
- * every connection asks whether one is held right now. Nothing about "armed"
+ * every connection checks whether one is held right now. Nothing about "armed"
  * is ever written to disk.
  */
 
@@ -29,14 +29,14 @@ int kitty_workplace_query(char *name, int len);
  * meaningful while armed. */
 unsigned int kitty_workplace_minutes_left(void);
 
-/* The window message that asks a launcher of THIS install to switch the mode on
+/* The window message that has a launcher of THIS install switch the mode on
  * (wParam 1) or off (wParam 0). Install-keyed like the arming itself, so a
  * broadcast cannot reach another install's launcher. The proxy to arm with is
  * not in the message: the launcher reads the remembered selection, which is
  * what the config box has just written. */
 unsigned int kitty_workplace_message(void);
 
-/* Ask a running launcher to switch the mode on/off and wait briefly for the
+/* Have a running launcher switch the mode on/off and wait briefly for the
  * answer (the arming itself is the answer - nothing is trusted to reply).
  * minutes 0 = no timeout, it lasts until switched off or the launcher exits.
  * Returns 1 if the mode is in the requested state afterwards. */
@@ -47,20 +47,20 @@ int kitty_workplace_request(int arm, unsigned int minutes);
 int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes);
 
 /*
- * Telling the user the mode is not on any more - ONCE, and only when they might
+ * Notifying the user the mode is not on any more - ONCE, and only when they might
  * not know.
  *
- * Switching it off deliberately, or a timeout running out, says so at that
+ * Switching it off deliberately, or a timeout running out, reports it at that
  * moment and settles the account. What is left is the mode ending because the
  * launcher went away - closed, killed, logged off, rebooted - where nobody was
- * told anything. Arming leaves a breadcrumb; being told clears it; a later start
+ * notified. Arming leaves a breadcrumb; the notice clears it; a later start
  * that finds the breadcrumb with no arming held knows it owes exactly one
  * notice, and shows it on whichever path starts first (launcher, -load, or the
  * config box).
  */
 void kitty_workplace_mark_armed(void);        /* arming: a notice may be owed */
-void kitty_workplace_notice_settled(void);    /* the user has just been told */
-int  kitty_workplace_notice_owed(void);       /* ended with nobody told? */
+void kitty_workplace_notice_settled(void);    /* the user has just seen it */
+int  kitty_workplace_notice_owed(void);       /* ended with nobody notified? */
 void kitty_workplace_show_pending_notice(void);  /* show it, once, and settle */
 
 /* "3 h 20 min", or "" when the arming has no timeout. Hours and minutes, never

@@ -265,7 +265,7 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) {
 /* ===================== broadcast gate (/command, -sendcmd) =================
  *
  * The broadcast TYPES text into every KiTTY window of this class, and a trailing
- * Return means it RUNS on the far end. Useful (say one thing to twenty servers)
+ * Return means it RUNS on the far end. Useful (one line to twenty servers)
  * and dangerous for the same reason: the twenty include whatever production
  * session happens to be open. So a window accepts it only when armed -
  * [KiTTY] sendcmdmode (default no) sets the starting state, Tools > "Accept
@@ -318,7 +318,7 @@ const char *kitty_broadcast_send_key_override( void )
 }
 
 /* Did the install key come from kitty.ini, or was it derived? The config box
- * says which, and "generated" versus "you set this in the ini" are different
+ * shows which, and "generated" versus "you set this in the ini" are different
  * facts to the person reading it. */
 static int group_from_ini = 0 ;
 int kitty_broadcast_group_from_ini( void ) { (void)kitty_broadcast_group() ; return group_from_ini ; }
@@ -388,7 +388,7 @@ static BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 		if( hwnd != MainHwnd || job->include_self ) {
 			COPYDATASTRUCT data;
 			/* dwData 2 carries "<group>\0<text>". The old dwData 1 was bare
-			 * text with no group, so a receiver cannot tell which install it
+			 * text with no group, so a receiver cannot see which install it
 			 * came from; it is refused (and logged) rather than obeyed. */
 			const char *grp = kitty_broadcast_send_key() ;
 			size_t glen = strlen( grp ) , tlen = strlen( job->cmd ) ;
@@ -460,7 +460,7 @@ int ResizeWinList( HWND hwnd, int width, int height ) {
 /* Is the program behind `pid` a KiTTY++? The window classes are not ours
  * alone - old KiTTY's terminal is "KiTTY" as well, and every PuTTY's
  * configuration box is "PuTTYConfigBox" - so the program's own version
- * resource decides: its ProductVersion names KiTTY++ ("0.85.1.15-beta
+ * resource decides: its ProductVersion contains KiTTY++ ("0.85.1.15-beta
  * (KiTTY++, PuTTY 0.85 base)"). This process always is; one that cannot be
  * opened or read is not, which for both callers (the "first window" tests in
  * kitty_startup.c) means acting as the first. Answers are kept per process

@@ -174,7 +174,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		}
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ) {
-		snprintf( fullpath, sizeof(fullpath), "%s\\%s", ConfigDirectory, KeyName ) ;
+		portable_config_path( fullpath, sizeof(fullpath), KeyName ) ;
 		DIR * dir ;
 		struct dirent * de ;
 		FILE *fp ;

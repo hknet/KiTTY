@@ -114,6 +114,17 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (`%2f`) decoded to a wrong character. With `sessions=` pointing away from
   the configuration directory, the master password check also missed
   passwords in named proxies.
+- **kageant reports a newer release in every folder store layout.** It
+  reads the update check's answer stored by kitty.exe, but looked for it
+  beside kitty.ini: with `sessions=` pointing elsewhere it found nothing, and
+  with `savemode=file` it read a file that is never written.
+- **`readonly=yes` also stops the folder store backup.** `-backupnow` wrote
+  `Backups\kitty-portable-*` into a store set read-only.
+- **A renamed session keeps its own commands and Launcher entries.** With
+  `sessions=` pointing away from the configuration directory, a rename
+  looked for `Sessions_Commands` and the Launcher tree beside the session
+  folder instead of in the configuration directory: the Commands menu lost
+  the session's commands, and its Launcher entries kept the old name.
 - **A portable store switched to DPAPI no longer puts up the master password
   prompt at every start.** A master password set up before
   `PortablePasswordProtection=dpapi` kept the prompt at startup, even with

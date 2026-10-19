@@ -34,7 +34,7 @@
  * Present and ResizeBuffers are checked for it. The device and everything
  * made from it (swap chain, device context, canvas, brush, bitmaps) are
  * released at once and re-created at the start of the next frame, and the
- * whole window is invalidated, since the canvas went with the device. The
+ * whole window is invalidated, since the canvas was lost with the device. The
  * DirectWrite factory, the font faces and the Direct2D factory do not belong
  * to a device and are kept. Three failures in a row - a loss, or a
  * re-creation that fails, each within D2D_LOSS_RUN_MS of the one before -
@@ -1963,7 +1963,7 @@ static void device_lost(D2DPainter *d, HRESULT hr, const char *where)
     d->retry_at = GetTickCount();      /* the first attempt at once */
     if (count_failure(d))
         return;
-    /* the canvas went with the device: the whole window is drawn again */
+    /* the canvas was lost with the device: the whole window is drawn again */
     InvalidateRect(d->hwnd, NULL, FALSE);
 }
 

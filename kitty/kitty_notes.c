@@ -23,7 +23,7 @@
  * SHOW ONCE ([KiTTY] notesonce). Off, the above is the whole story. On, the
  * CLICK also marks the note as seen for this desktop - a manual-reset event
  * Local\KiTTYNotes.<hash>.Seen, held open by the clicking process, and by the
- * running launcher, which is told to open one of its own. A process that
+ * running launcher, which is made to open one of its own. A process that
  * finds that event shows nothing and takes no slot. The mark dies with the
  * last holder, so "seen" lasts as long as the launcher runs, or as long as
  * the clicking process does when there is no launcher. A changed note is a
@@ -338,10 +338,10 @@ static void notes_seen_take(unsigned int hash)
     notes_seen_hash = notes_seen ? hash : 0;
 }
 
-/* The running launcher was told the note was seen: take a share of the mark
- * so it outlives the process that clicked. Called from kitty_launcher.c.
- * `hash` names the note that was actually on screen; 0 falls back to the note
- * the store holds now. */
+/* The running launcher was notified that the note was seen: take a share of
+ * the mark so it outlives the process that clicked. Called from
+ * kitty_launcher.c. `hash` identifies the note that was actually on screen; 0
+ * falls back to the note the store holds now. */
 void kitty_notes_seen_hold(unsigned int hash)
 {
     if (!hash) {

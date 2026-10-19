@@ -416,10 +416,13 @@ static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 	time_t now ;
 	struct tm *tmnow ;
 	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return -2 ;
+	/* readonly=yes writes nothing, a backup included - as the registry
+	 * paths below and the manual have it. The check was missing here. */
+	if( GetReadOnlyFlag() ) return -2 ;
 	if( ReadParameterN( INIT_SECTION, KI_PORTABLEBACKUPCOUNT, buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
-	snprintf( root, sizeof(root), "%s\\Backups", ConfigDirectory ) ;
+	portable_config_path( root, sizeof(root), "Backups" ) ;
 	if( !CreateDirectoryA( root, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
 		if( out ) snprintf( out, outlen, "%s", root ) ;
 		return 0 ;
@@ -476,7 +479,7 @@ static void sav_timestamped_path( const char *savfile, char *out, size_t outlen 
 
 /* Which hive a backup holds, from its first key line
  * "[HKEY_CURRENT_USER\<base>]" or "...\<base>\...": 1 = the hive this run
- * uses, 0 = another one, -1 = cannot tell (an encrypted backup of the retired
+ * uses, 0 = another one, -1 = unknown (an encrypted backup of the retired
  * format, an unreadable file). A KiClassName=PuTTY copy and a normal one keep
  * their backups in the same folder; reg import writes a backup back to the
  * hive it came from, so restoring the other one's file filled the hive NOT in

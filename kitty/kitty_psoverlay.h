@@ -28,7 +28,7 @@ bool kitty_psoverlay_rect(RECT *r);
 /* The terminal window is being shown or hidden (WM_SHOWWINDOW: the tray). */
 void kitty_psoverlay_owner_shown(bool shown);
 
-/* The window is going: the overlay goes with it. */
+/* The window is going: the overlay is closed with it. */
 void kitty_psoverlay_close(void);
 
 #endif

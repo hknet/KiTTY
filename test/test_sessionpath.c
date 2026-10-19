@@ -1005,6 +1005,43 @@ static void part_store_blockers(void)
     del_settings("dest\\b");
 }
 
+/* A rename carries the session's own commands along: the folder
+ * Sessions_Commands\<session> in the configuration directory, where the
+ * Commands menu reads it - not in the store root, which is a different
+ * folder here (the session folder is not called Sessions). */
+static void part_commands_rename(const char *tmp)
+{
+    char cfg[1200], cmd[1300], *src, *dst;
+    head("a rename carries Sessions_Commands in the configuration directory");
+    snprintf(cfg, sizeof(cfg), "%s\\kitty_test_sp_cfg", tmp);
+    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", cfg);
+    system(cmd);
+    src = dupprintf("%s\\Sessions_Commands\\cmdsrc\\1", cfg);
+    ksf_make_parent_dirs(src);
+    {
+        FILE *fp = fopen(src, "wb");
+        if (fp) { fputs("echo hello\\\n", fp); fclose(fp); }
+    }
+    kitty_set_config_dir(cfg);
+    make_session("cmdsrc", "cmd.example", NULL);
+    {
+        char *from[] = { "cmdsrc" };
+        char *to[] = { "cmddst" };
+        char *err = NULL;
+        int r = kitty_session_rekey_many(from, to, 1, NULL, NULL, &err);
+        dst = dupprintf("%s\\Sessions_Commands\\cmddst\\1", cfg);
+        ok(r == KITTY_REKEY_OK && GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES &&
+           GetFileAttributesA(src) == INVALID_FILE_ATTRIBUTES,
+           "the commands moved to Sessions_Commands\\cmddst with the session");
+        sfree(err);
+        sfree(dst);
+    }
+    sfree(src);
+    del_settings("cmddst");
+    kitty_set_config_dir("");
+    system(cmd);
+}
+
 /* Set a file's last-write time to `seconds_ago` before now: the verdict
  * cache judges again any file written in the last few seconds, so a fixture
  * that is to be cached is aged first. */
@@ -1767,6 +1804,7 @@ int main(int argc, char **argv)
         part_store_twins(tmp);
         part_store_alts(tmp);
         part_store_blockers();
+        part_commands_rename(tmp);
         part_verdict_cache(tmp);
         part_perf(tmp);
         part_miss_perf(tmp);

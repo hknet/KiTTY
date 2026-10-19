@@ -10,7 +10,7 @@
  * KiTTY++ fix-ups the load hook gives a stored session. It used to be a
  * hand-written copy of the loader, one line per key, and had fallen 33 keys
  * behind it: those were never read, so a double-clicked .ktx took them from
- * Default Settings whatever the file said.
+ * Default Settings whatever the file set.
  *
  * kitty_xfer_migrate_protocol lives here too: both load paths call it.
  */
@@ -70,8 +70,8 @@ static int g_ktx_encrypted_seen = 0 ;
 static void ktx_note_encrypted( void ) { g_ktx_encrypted_seen = 1 ; }
 static int ktx_encrypted_was_seen( void ) { int n = g_ktx_encrypted_seen ; g_ktx_encrypted_seen = 0 ; return n ; }
 
-/* Told once per KiTTY run, however many encrypted files are loaded: importing a
- * folder of them must not produce one box per file. */
+/* Reported once per KiTTY run, however many encrypted files are loaded:
+ * importing a folder of them must not produce one box per file. */
 static int g_ktx_encrypted_told = 0 ;
 
 static void ktx_warn_encrypted_once( void ) {

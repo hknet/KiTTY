@@ -193,8 +193,8 @@ static void RunSessionWithConfSettings(Conf *conf) {
  * serialised into a file mapping whose handle the child inherits - but sent as
  * an ordinary "-confmap" switch rather than the leading "&" form, for two
  * reasons: the "&" form is defined to consume the WHOLE command line, so
- * nothing else could be passed with it; and the child has to be told to stop at
- * the box, which is what "-cfgbox" says. The "&" form implies "this is a
+ * nothing else could be passed with it; and the child must be set to stop at
+ * the box, which is what "-cfgbox" means. The "&" form implies "this is a
  * complete session, launch it".
  *
  * Why not a temporary saved session, which is how this used to work: settings
@@ -243,9 +243,9 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
 
     /* Pass on the restricted ACL and the master-password unlock, exactly as
      * RunSession() does - a config box opened from a restricted window must be
-     * restricted too, and one opened from an unlocked window should not ask for
-     * the master password again. Both switches come BEFORE -confmap so they are
-     * in effect while the settings are read. */
+     * restricted too, and one opened from an unlocked window should not prompt
+     * for the master password again. Both switches come BEFORE -confmap so they
+     * are in effect while the settings are read. */
     { extern int kitty_mpw_startup_unlock(void);
       kitty_mpw_user_action_begin();   /* user-started: prompts after a cancel */
       kitty_mpw_startup_unlock();
@@ -374,7 +374,7 @@ HWND kitty_launcher_window(void) {
  * its own folder, restricted if this process is - and returns at once. The
  * configuration box's "Start Launcher Now" uses it as it is: the launcher
  * announces itself (KITTY_LAUNCHER_STATE_MESSAGE), so nothing has to wait.
- * The master key goes with it when this process holds one (window.c reads
+ * The master key is passed to it when this process holds one (window.c reads
  * it before Launcher_WinMain): a launcher started from an unlocked
  * configuration box prompted for the master password again. No prompt here
  * when nothing is unlocked - sending a window to the tray must not prompt. */
@@ -441,7 +441,7 @@ static HWND kitty_launcher_start(void) {
  * shows the next window while this one still holds the foreground. */
 /* A test build started with KITTY_CTRLTAB_TRACE set: one line per Ctrl+Tab
  * event to ctrltab.log beside the exe (window.c, the Ctrl+Tab switching), to
- * tell "the key never arrived as Ctrl+Tab" from "the switch was refused".
+ * separate "the key never arrived as Ctrl+Tab" from "the switch was refused".
  * Without the variable - and in every release build - nothing is written. */
 void kitty_ctrltab_trace(const char *fmt, ...) {
 #ifdef KITTY_TEST_BUILD_LABEL
@@ -753,7 +753,7 @@ void kitty_get_file(HWND hwnd) { GetFile(hwnd); }
 void kitty_start_filezilla(HWND hwnd) { StartFileZilla(hwnd); }
 
 /* Per-session icon: the external icon file (CONF_iconefile) if the session
- * names one, otherwise the embedded icon indexed by CONF_icone. */
+ * sets one, otherwise the embedded icon indexed by CONF_icone. */
 void kitty_apply_icon(HWND hwnd, Conf *conf) {
     /* %VAR% expanded: the stored path keeps the typed form, Windows gets
      * the real one (hknet/KiTTY#70 sweep) */
@@ -940,7 +940,7 @@ void kitty_export_settings(HWND hwnd, Conf *conf) {
  * window, so two sessions carrying the same spec means one of them silently
  * never fires. These helpers give every producer of that state (config-box
  * save, session import, the launcher's registration loop) one shared parser
- * and one shared way to ask "who else holds this combination?".
+ * and one shared way to check "who else holds this combination?".
  * ------------------------------------------------------------------------- */
 
 static char *hotkey_trim(char *s) {
@@ -1209,7 +1209,7 @@ int kitty_autocommand_tick(HWND hwnd)
  * interval ([KiTTY] antiidledelay, seconds, default 180) - so every firing
  * sends the keepalive: CONF_antiidle if the session sets one, else the
  * kitty.ini global AntiIdleStr. It used to be a fixed 30s timer with a tick
- * counter, which is why the ini value meant three times what it said. */
+ * counter, which is why the ini value meant three times what it stated. */
 void kitty_antiidle_tick(HWND hwnd)
 {
     const char *s;
@@ -1315,7 +1315,7 @@ const struct kitty_proxy_snapshot *kitty_proxy_connection(void)
 /*
  * Resolve, for the connection about to be made, whether the proxy Host is a
  * hostname or may be the title of a saved session. The named proxy's own
- * setting decides; when it says nothing, kitty.ini [KiTTY] namedproxy does, and
+ * setting decides; when it sets nothing, kitty.ini [KiTTY] namedproxy does, and
  * that defaults to PuTTY's long-standing saved-session-first behaviour.
  *
  * proxy/sshproxy.c reads the answer out of the Conf, because it compiles into
@@ -1335,9 +1335,9 @@ void kitty_proxy_select(Conf *conf)
 
     kitty_workplace_applied = 0;
     /* A session's OWN proxy host keeps upstream behaviour; only a named proxy
-     * can say otherwise, below. */
+     * can override it, below. */
     conf_set_int(conf, CONF_proxy_named_hostname, 0);
-    /* Workplace proxy mode wins over everything the session says
+    /* Workplace proxy mode wins over everything the session sets
      * It is a mode about where the
      * user is sitting today, so it applies to every connection this install
      * starts, and it applies whether or not the Session-panel selector is
@@ -1347,7 +1347,7 @@ void kitty_proxy_select(Conf *conf)
      * stored session is not. start_backend() calls us on a throwaway copy.
      *
      * A proxy that has since been deleted leaves the connection unproxied, so
-     * say so in the Event Log rather than connecting direct in silence. */
+     * record it in the Event Log rather than connecting direct in silence. */
     {
         char wp[256];
         if (kitty_workplace_query(wp, sizeof(wp))) {

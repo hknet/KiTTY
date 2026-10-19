@@ -108,22 +108,22 @@ static int ProxyChainMax = 5 ;
 int GetProxyChainMax(void) { return ProxyChainMax ; }
 void SetProxyChainMax( const int n ) { if( n > 0 ) ProxyChainMax = n ; }
 
-/* How a named proxy's Host is read when the proxy itself does not say
+/* How a named proxy's Host is read when the proxy itself does not set it
  * (kitty.ini [KiTTY] namedproxy):
  *   sessionorhostname  the title of a saved session first, then a hostname -
  *                      what PuTTY has always done, and the DEFAULT, because
  *                      existing configurations may rely on it;
  *   hostname           a hostname, full stop.
- * A proxy that DOES say overrides this, per definition. The silent
+ * A proxy that DOES set it overrides this, per definition. The silent
  * substitution - a jump host that happens to share a name with a saved session
  * quietly dragging that session's whole config in - is the reason a proxy can
- * now say. */
+ * now set it. */
 static int NamedProxyHostnameOnly = 0 ;
 int kitty_named_proxy_default_hostname( void ) { return NamedProxyHostnameOnly ; }
 void SetNamedProxyHostnameOnly( const int flag ) { NamedProxyHostnameOnly = flag ? 1 : 0 ; }
 
 /* [KiTTY] funkeys: the function-key mode a session that has none of its own
- * starts with. -1 means "say nothing", which is the default and leaves PuTTY's
+ * starts with. -1 means "not set", which is the default and leaves PuTTY's
  * own default (ESC[n~) in place. The values are the modes the Keyboard panel
  * lists, spelled as the panel spells them (cyd01/KiTTY#556 - see the comment on
  * the load hook in windows/putty.c for why anyone wants this).
@@ -150,7 +150,7 @@ void SetHyperlinkFlag( const int flag ) { HyperlinkFlag = flag ; }
 // kitty.ini [KiTTY] transparency=no remains the master switch that removes the
 // whole feature (config panel + system-menu adjust items).
 /* TransparencyFlag is the LIVE state, which the /transparency command flips.
- * TransparencyAllowed remembers what kitty.ini said and is never flipped, so
+ * TransparencyAllowed remembers what kitty.ini set and is never flipped, so
  * transparency=no cannot be worked around from the console. */
 int TransparencyFlag = 1 ;
 static int TransparencyAllowed = 1 ;
@@ -184,7 +184,7 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 
 /* KiTTY: the multiple-icon feature is gone - the [KiTTY] icon and
  * numberoficons keys, IconeFlag, IconeNum and NumberOfIcons with it. Nothing
- * ever asked SetNewIcon to cycle or randomise (every caller passes SI_INIT),
+ * ever made SetNewIcon cycle or randomise (every caller passes SI_INIT),
  * and the ini key could only switch the flag on, so the feature did nothing.
  * The 50 embedded icons remain and are still selectable per session, by
  * number or as an external file (CONF_icone / CONF_iconefile). */
@@ -193,7 +193,7 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 #define IDC_RESULT 1008
 #endif
 
-// The library to look the icons up in (the file named in kitty.ini, else
+// The library to look the icons up in (the file set in kitty.ini, else
 // kitty.dll if it exists, else kitty.exe)
 HINSTANCE hInstIcons =  NULL ;
 
@@ -250,7 +250,7 @@ void SetWinrolFlag( const int num ) { WinrolFlag  = num ; }
 
 char PasswordConf[cstMaxRegLength+2] = "" ; /* filled from the registry "password" value via GetValueData, which writes up to cstMaxRegLength data bytes + NUL */
 
-// Send the window to the tray automatically (for tunnels); goes with the
+// Send the window to the tray automatically (for tunnels); set by the
 // -send-to-tray option
 static int AutoSendToTray = 0 ;
 int GetAutoSendToTray( void ) { return AutoSendToTray ; }
@@ -406,7 +406,7 @@ int ImageSlideDelay = - 1 ;
 
 // Counter for sending the anti-idle string
 /* KiTTY: seconds between keepalives. Was a count of 30-second ticks, which
- * made the ini value mean three times what it said. */
+ * made the ini value mean three times what it stated. */
 int AntiIdleSeconds = 180 ;
 char AntiIdleStr[128] = "" ;  // e.g. " \x08": type a space and erase it at once
 
@@ -484,8 +484,8 @@ static void ini_write_failed_once( DWORD err ) {
 }
 
 // Write a parameter either to the registry or to the configuration file.
-// report: say a failed kitty.ini write (once per run); 0 = the caller says
-// it, naming the setting, with Windows' reason still in GetLastError().
+// report: show a failed kitty.ini write (once per run); 0 = the caller
+// reports it with the setting's name, Windows' reason still in GetLastError().
 static int write_parameter( const char * key, const char * name, char * value, int report ) {
 	int ret = 1 ;
 	char buffer[4096] ;
@@ -519,7 +519,7 @@ static int write_parameter( const char * key, const char * name, char * value, i
 int WriteParameter( const char * key, const char * name, char * value ) {
 	return write_parameter( key, name, value, 1 ) ;
 }
-/* The Application tab (kset_write) reports a failed write itself, naming the
+/* The Application tab (kset_write) reports a failed write itself, giving the
  * setting: one box, not this file's generic one first. */
 int WriteParameterNoReport( const char * key, const char * name, char * value ) {
 	return write_parameter( key, name, value, 0 ) ;
@@ -782,7 +782,7 @@ void LoadParameters( void ) {
 	if( ReadParameterN( KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, buffer, sizeof(buffer) )
 	    && !stricmp( buffer, "root" ) )
 		DefaultSettingsFlag = 2 ;
-	/* The backends ask this terminal for the sendtermenv switch, and SSH
+	/* The backends query this terminal for the sendtermenv switch, and SSH
 	 * whether a refused default is still news for that host. */
 	kitty_termenv_switch_hook = GetSendTermEnvFlag ;
 	kitty_termenv_hint_hook = kitty_termenv_hint_first ;
@@ -804,7 +804,7 @@ void LoadParameters( void ) {
 	}
 	/* browsedirectory: classic KiTTY's switch to believe folders as
 	 * subdirectories of the session folder. Retired: the folder store reads a
-	 * session's folder from its path whatever it says. Still read, so a
+	 * session's folder from its path whatever it holds. Still read, so a
 	 * kitty.ini that sets it holds a known key; nothing is done with it. */
 	(void)ReadParameterN( INIT_SECTION, KI_BROWSEDIRECTORY, buffer, sizeof(buffer) ) ;
 	if( ReadParameterN( INIT_SECTION, KI_COMMANDDELAY, buffer, sizeof(buffer) ) ) {
@@ -839,8 +839,8 @@ void LoadParameters( void ) {
 				 * stopping, fixing the path and starting again, and only the
 				 * person at the keyboard knows which.
 				 *
-				 * WARNING: It says "as if configdir had not been set" rather than
-				 * naming the fallback store, because at this point in startup we
+				 * WARNING: It reads "as if configdir had not been set" rather than
+				 * stating the fallback store, because at this point in startup we
 				 * do not know it: GetSaveMode() has not run yet, so whether
 				 * settings come from the registry or from a directory is still
 				 * undecided. Calling it "the usual configuration" was worse than
@@ -853,7 +853,7 @@ void LoadParameters( void ) {
 				 */
 				char msg[4096+512] ;
 				/*
-				 * Say what we actually KNOW, and no more. All this code has
+				 * Report what we actually KNOW, and no more. All this code has
 				 * established is that the path does not exist right now; it
 				 * cannot know whether the directory was deleted, renamed, never
 				 * created, or is simply on a drive that is not plugged in - and

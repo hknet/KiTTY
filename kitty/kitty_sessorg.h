@@ -3,8 +3,9 @@
  * deletes a folder holding sessions (hknet/KiTTY#55). kitty_sessorg.c.
  *
  * Every window here is modeless and owned by the configuration window: it
- * never holds that window up, and an action asked about continues from the
- * box's answer. The moves themselves are kitty_sessionrekey.h's re-key.
+ * never holds that window up, and an action that puts up a question
+ * continues from the box's answer. The moves themselves are
+ * kitty_sessionrekey.h's re-key.
  */
 #ifndef KITTY_SESSORG_H
 #define KITTY_SESSORG_H
@@ -49,10 +50,10 @@ void kitty_sessorg_rename(HWND owner, int folder, const char *target);
 /* Move the folder `from`, with everything below it, to `to` (a rename, or
  * the delete of `from` into an existing folder): path sessions re-keyed,
  * bare sessions filed there get their Folder value moved, the stored folder
- * list follows. All or nothing. Returns 1 done; 0 with *msg (snewn'd) saying
+ * list follows. All or nothing. Returns 1 done; 0 with *msg (snewn'd) stating
  * why: `clash_fmt` (a format taking the destination and the list, the
  * caller's wording) for names already taken, or the failure. *rewritten
- * (snewn'd or NULL) names the sessions whose jump host was rewritten. */
+ * (snewn'd or NULL) lists the sessions whose jump host was rewritten. */
 int kitty_sessorg_folder_move(const char *from, const char *to,
                               const char *clash_fmt, char **msg,
                               char **rewritten);

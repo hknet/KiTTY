@@ -16,7 +16,7 @@
  *
  *   'K' / 'k'  key down / up, full form (stack, first byte first):
  *              repeat u16, vk u16, scan u16, control state u32, char u32, code
- *   'C' / 'c'  key down / up, compact form, only once the client asked for
+ *   'C' / 'c'  key down / up, compact form, only once the client requested
  *              compact input (request 'x', feature bit 1) and only if nothing
  *              is lost: vk u8, control state u16, char u16, code
  *   'M'        mouse, full form:
@@ -133,7 +133,7 @@ uint32_t far2l_buttons_unsqueeze(uint16_t v);
 uint32_t far2l_wheel_buttons(uint32_t held, int delta);
 
 /* Build the stack of one event (bottom byte first). compact_ok = the client
- * asked for compact input; the compact form is still used only when the
+ * requested compact input; the compact form is still used only when the
  * event fits it. Returns the stack length (at most 17). */
 size_t far2l_key_stack(const Far2lKeyEvent *ev, bool compact_ok,
                        unsigned char *stk);
@@ -152,14 +152,14 @@ size_t far2l_encode_mouse(const Far2lMouseEvent *ev, bool compact_ok,
                           char *out, size_t outsz);
 
 /*
- * When the key events turn on or off, a notice says so - one per change that
+ * When the key events turn on or off, a notice follows - one per change that
  * holds, not one per flip: the state must stay put for F2L_KEYS_SETTLE_MS
- * before it is told, so a far2l that switches on and off again within that
+ * before it is shown, so a far2l that switches on and off again within that
  * time (or off and on) shows nothing. The title follows the live state at
  * once; only the notice waits.
  *
  * live    the state now; told: the state the last notice gave (off before
- *         the first, so a first change to off is never told);
+ *         the first, so a first change to off is never reported);
  * changed the tick of the last change of live (GETTICKCOUNT; wrap-safe).
  */
 #define F2L_KEYS_SETTLE_MS      1000
@@ -173,14 +173,14 @@ typedef struct {
  * redraws the title and starts a settle timer of F2L_KEYS_SETTLE_MS. */
 bool far2l_keys_note_set(Far2lKeysNote *n, bool on, unsigned long now);
 
-/* A settle timer ran out: +1 = tell "on", -1 = tell "off" (the state counts
- * as told from here), 0 = nothing (not settled yet - a later change has a
+/* A settle timer ran out: +1 = show "on", -1 = show "off" (the state counts
+ * as shown from here), 0 = nothing (not settled yet - a later change has a
  * timer of its own - or settled where the last notice already was). */
 int far2l_keys_note_due(Far2lKeysNote *n, unsigned long now);
 
-/* The session ended: the state is off and counts as told, so no "far2l
- * ended" notice follows - with the connection gone there is nothing to say
- * about far2l. */
+/* The session ended: the state is off and counts as shown, so no "far2l
+ * ended" notice follows - with the connection gone there is nothing to
+ * report about far2l. */
 void far2l_keys_note_quiet_off(Far2lKeysNote *n);
 
 #ifdef KITTY_FAR2L_INPUT_IMPL

@@ -17,7 +17,7 @@
 #define KITTY_HOSTKEY_VERIFY_H
 
 struct kitty_hkv_job {
-    /* what to ask */
+    /* what the question is about */
     char *host;
     int port;
     char *keytype;            /* the store's id: rsa2, ssh-ed25519, ... */

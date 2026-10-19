@@ -19,7 +19,7 @@
  *
  * Both dialogs are MODELESS: the terminal keeps running while the question
  * stands, and the answer continues the session from a completion
- * (kt_send_decide / kt_recv_decide) rather than from where it was asked.
+ * (kt_send_decide / kt_recv_decide) rather than from where it was raised.
  *
  * Every reply goes out through kitty_term_send_reply(), straight to the
  * backend and never through the line editor (see that function for why).
@@ -123,7 +123,7 @@ struct kt_send {
 /* One entry of the listing sent to the far end in a receive session. Data
  * requests are honoured only for names in this list. Built by the walk
  * BEFORE the dialog (the dialog lists the files), replied after it; a file
- * left unchecked in the dialog stays listed and is refused when asked for. */
+ * left unchecked in the dialog stays listed and is refused when requested. */
 struct kt_entry {
     char rid[24];                       /* our id for it: the st= of the listing */
     char spec_fid[KT5113_ID_MAX + 1];   /* the request it answers */
@@ -554,9 +554,9 @@ static int kt_ask(const char *text, const char *warn)
  * ShinyDialogBox's while the configuration box is open).
  *
  * The decision therefore continues in a COMPLETION rather than at the point
- * of asking: kt_send_decide() / kt_recv_decide(), called once the window has
- * gone, whether it went by Allow, by Deny, by the close box or because the
- * terminal died under it.
+ * of the question: kt_send_decide() / kt_recv_decide(), called once the
+ * window has gone, whether it went by Allow, by Deny, by the close box or
+ * because the terminal died under it.
  *
  * Bringing the window to the front is deliberate, and the theme needs it as
  * well: the engine dresses a dialog when it is ACTIVATED (the CBT hook in
@@ -813,7 +813,7 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 
 /* Put the dialog up. True when it stands and the answer will arrive in
  * kt_send_decide(); false when the template did not load at all, which
- * leaves the caller to ask the same question in the confirm box. */
+ * leaves the caller to put the same question in the confirm box. */
 static int kt_dl_dialog_open(struct kt_state *st, const char *folder)
 {
     struct kt_dl_dlg *d = snew(struct kt_dl_dlg);
@@ -1181,7 +1181,7 @@ static void kt_send_file(struct kt_state *st, const kt5113_cmd *c)
     f->readonly = c->has_perms && !(c->perms & 0200);
     if (c->zip == KT5113_ZIP_ZLIB)
         f->dec = ssh_decompressor_new(&ssh_zlib);
-    /* STARTED without tt=: a client that asked for rsync falls back to
+    /* STARTED without tt=: a client that requested rsync falls back to
      * plain data on its own. */
     kt_ack(term, s, c->fid, "STARTED", f->posix, -1);
     {
@@ -1205,7 +1205,7 @@ static void kt_send_data(struct kt_state *st, const kt5113_cmd *c, int last)
         return;
     }
     if (!f || f->refused || f->done || f->failed)
-        return;                         /* not STARTED: discarded, as the spec says */
+        return;                         /* not STARTED: discarded, as the spec states */
     if (c->data_bad) {
         kt_file_fail(st, f, "EINVAL", KT_XFER5113_ST_BAD_DATA);
         return;
@@ -1275,8 +1275,8 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
 
 /*
  * The decision, once the request dialog has gone - or straight away when the
- * permission setting answered without asking. `folder` is where the files
- * land; `picked` says it came from "Change folder...", which is what makes
+ * permission setting answered without a prompt. `folder` is where the files
+ * land; `picked` means it came from "Change folder...", which is what makes
  * the "Always open Save Dialog" picker stand down.
  */
 static void kt_send_picked(void *vctx, const char *path);
@@ -1434,7 +1434,7 @@ static void kt_send_cmd(struct kt_state *st, const kt5113_cmd *c)
             kitty_xfer_notify(KT_XFER_WHAT_KITTEN_RECV, 1, s->ndone, path);
             sfree(path);
         }
-        kt_send_free(st);               /* incomplete .part files go with it */
+        kt_send_free(st);               /* incomplete .part files are removed too */
         break;
       case KT5113_AC_FILE:
         kt_send_file(st, c);
@@ -1483,11 +1483,11 @@ static void kt_recv_free(struct kt_state *st)
     sfree(r);
 }
 
-/* A path the far end asks for, as a local path, or NULL when it is not one we
+/* A path the far end requests, as a local path, or NULL when it is not one we
  * would ever open: everything is taken relative to the UPLOAD folder except
- * the spec's own /C:/... form, which names a drive path outright and is
+ * the spec's own /C:/... form, which gives a drive path outright and is
  * honoured only with "Allow full path Upload-Requests" on - refused here,
- * before any dialog, and *full_refused says so. The dialog shows exactly
+ * before any dialog, and *full_refused is set. The dialog shows exactly
  * what was resolved. */
 static wchar_t *kt_resolve_spec(Terminal *term, const char *name, int *full_refused)
 {
@@ -1565,10 +1565,10 @@ static struct kt_entry *kt_entry_add(struct kt_recv *r, const wchar_t *local,
 /*
  * A requested name with nothing behind it on this PC. It becomes a row of the
  * dialog - unchecked and marked - rather than nothing at all, so a request
- * that names a file we do not have is VISIBLE and can be answered by putting
+ * that requests a file we do not have is VISIBLE and can be answered by putting
  * a local file in its place ("Locate..."). It is not counted as a file and is
  * never sent to the far end while it stays like this: the spec keeps its
- * ENOENT and that is what the host is told.
+ * ENOENT and that is what the host receives.
  */
 static struct kt_entry *kt_entry_add_missing(struct kt_recv *r,
                                              const struct kt_spec *sp)
@@ -1706,7 +1706,7 @@ static void kt_recv_send_spec_errors(struct kt_state *st)
 }
 
 /* After permission: the refusals, the metadata of everything walked
- * (denied files included - they are refused when asked for, so the host
+ * (denied files included - they are refused when requested, so the host
  * sees a per-file answer), then OK with the home folder, as the spec's
  * receive flow prescribes. */
 static void kt_recv_list(struct kt_state *st)
@@ -1817,7 +1817,7 @@ static void kt_req_relayout(HWND h, struct kt_req_dlg *d)
 }
 
 /*
- * One row of the list, in pixels. Asked of the control, because a row is the
+ * One row of the list, in pixels. Read from the control, because a row is the
  * font's line plus whatever padding the list view itself adds - which is a
  * property of the control and the DPI, not something to guess. An empty list
  * has no row to measure, so the font's own line stands in.
@@ -1854,7 +1854,7 @@ static int kt_req_row_height(HWND list)
  * rows are a size, not a floor, and pinning the minimum to the whole template
  * meant the window could never be made shorter than a ten-row list), and at
  * the opening size the rows actually there, never more than the template
- * asked for and never fewer than the minimum.
+ * requested and never fewer than the minimum.
  */
 static void kt_req_height(HWND h, struct kt_req_dlg *d)
 {
@@ -1885,7 +1885,7 @@ static void kt_req_height(HWND h, struct kt_req_dlg *d)
                      SWP_NOMOVE | SWP_NOZORDER);
 }
 
-/* What a row reads: the local path, or the name that was asked for with the
+/* What a row reads: the local path, or the name that was requested with the
  * mark that nothing here answers to it. Wide, like every row of this list. */
 static wchar_t *kt_req_row_text(const struct kt_entry *e)
 {
@@ -1931,7 +1931,7 @@ static struct kt_entry *kt_req_selected(HWND list, int *index)
 /* "Locate...": a local file in place of a requested name nothing here
  * answers to. The row becomes that file, checked, and its spec stops being
  * refused - but `posix` is left alone, so what leaves this PC still carries
- * the name the far end asked for. */
+ * the name the far end requested. */
 static void kt_req_located(void *vctx, const char *path);
 static void kt_req_finish(HWND h, int verdict);
 
@@ -2198,7 +2198,7 @@ static INT_PTR CALLBACK kt_req_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             kt_req_locate(h, d);        /* answered in kt_req_located */
             return TRUE;
           case IDYES: {
-            /* Unchecked files stay listed and are refused when asked for.
+            /* Unchecked files stay listed and are refused when requested.
              * Nothing checked is a Deny: no file may leave on that click. A
              * row nothing was put behind counts for nothing either way. */
             HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
@@ -2303,8 +2303,8 @@ static int kt_req_fallback(struct kt_state *st)
     return yes;
 }
 
-/* All specs are in: walk, then ask - always, whatever the permission
- * setting says. A setting that let the far end read local files without a
+/* All specs are in: walk, then prompt - always, whatever the permission
+ * setting is. A setting that let the far end read local files without a
  * word would be a hole, so "never ask" applies to files ARRIVING only. */
 static void kt_recv_ask(struct kt_state *st)
 {
@@ -2372,7 +2372,7 @@ static void kt_pump(void *ctx, unsigned long now);
 
 /* One stored deflate block per chunk: header (first time), then
  * BFINAL/BTYPE=00, LEN, NLEN, the bytes; at the end an empty final block and
- * the Adler-32. Valid RFC 1950, no compression - the client asked for zlib
+ * the Adler-32. Valid RFC 1950, no compression - the client requested zlib
  * and inflates whatever arrives, so the framing must be right. */
 static size_t kt_zlib_wrap(struct kt_req *q, const unsigned char *in, size_t n,
                            int last, unsigned char *out)
@@ -2496,7 +2496,7 @@ static void kt_recv_request(struct kt_state *st, const kt5113_cmd *c)
         return;
     if (c->name_bad)
         goto not_listed;
-    /* A row nothing was put behind was never listed, so a request naming it
+    /* A row nothing was put behind was never listed, so a request for it
      * is answered as unlisted - which is the ENOENT its spec already got. */
     for (e = r->entries; e; e = e->next)
         if (!e->is_dir && !e->missing && !strcmp(e->posix, c->name))
@@ -2677,8 +2677,8 @@ void kitty_transfer_osc(Terminal *term)
         kt_send_begin(st, c);
     else if (c->action == KT5113_AC_RECEIVE)
         kt_recv_begin(st, c);
-    /* anything else names a session we do not have: ignored, like the
-     * reference implementation does */
+    /* anything else refers to a session we do not have: ignored, like
+     * the reference implementation does */
     sfree(c);
 }
 

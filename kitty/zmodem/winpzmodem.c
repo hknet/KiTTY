@@ -287,7 +287,7 @@ static int xyz_SpawnProcess(Terminal *term, const char *incommand, const char *i
 	
 	GetStartupInfo(&si);      //set startupinfo for the spawned process
 				  /*
-				  The dwFlags member tells CreateProcess how to make the process.
+				  The dwFlags member controls how CreateProcess makes the process.
 				  STARTF_USESTDHANDLES validates the hStd* members. STARTF_USESHOWWINDOW
 				  validates the wShowWindow member.
 	*/

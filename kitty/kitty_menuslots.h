@@ -2,7 +2,7 @@
  * KiTTY: the payloads behind the menu entries numbered IDM_USERCMD + n - the
  * launcher's session menu and the terminal's User Command menu. The table
  * grows as entries are added, up to a ceiling; an entry past the ceiling is
- * not stored but counted, so the menu can say how many it left out.
+ * not stored but counted, so the menu can show how many it left out.
  *
  * No Win32 and no PuTTY headers: test/test_menuslots.c links this file alone.
  */

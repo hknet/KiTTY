@@ -385,9 +385,9 @@ int OpenDirName( HWND hFrame, char * dirname ) {
  * still - keepalives unanswered, a server's close unseen. Here the picker
  * runs on a thread of its own (COM is set up per thread by the pickers
  * themselves); the owner is disabled by the dialog as usual, and the
- * terminal's thread goes on. The answer comes back to the thread that asked,
+ * terminal's thread goes on. The answer comes back to the calling thread,
  * through a message-only window it owns: done(ctx, path or NULL) runs there.
- * kitty_pick_cancel: done is not called (the asker went); the thread ends
+ * kitty_pick_cancel: done is not called (the caller went); the thread ends
  * with its dialog.
  */
 #define WM_KITTY_PICK_DONE ( WM_APP + 0x3A2 )
@@ -503,7 +503,7 @@ static unsigned __stdcall kitty_pick_thread( void *v ) {
 }
 
 /* Start the picker; the token for kitty_pick_cancel, or NULL when no thread
- * could be started (the caller then asks with OpenDirNameFrom /
+ * could be started (the caller then uses OpenDirNameFrom /
  * OpenFileNameFrom as before). Call from the terminal's thread. */
 void *kitty_pick_async( HWND owner, int folder, const char *initial, const char *title,
                         const char *filter, void (*done)( void *ctx, const char *path ), void *ctx ) {

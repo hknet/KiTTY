@@ -1,6 +1,6 @@
 /*
  * kitty_update_state.h - the STORED answer of the update check, for a program
- * that must not ask the network itself. kitty.exe and the launcher ask GitHub
+ * that must not use the network itself. kitty.exe and the launcher query GitHub
  * and store what they learn (kitty_updater.c); kageant, which holds the private
  * keys, only reads that and compares it with its own version.
  *

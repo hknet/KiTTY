@@ -203,7 +203,7 @@ static char *ksm_source_value(const char *dir, const char *inikey,
         if (fp) fclose(fp);
         sfree(pc);
     }
-    return v;                           /* NULL: the store does not say */
+    return v;                           /* NULL: the store does not state it */
 }
 
 static char *ksm_source_path(const char *dir, const char *inikey,
@@ -289,7 +289,7 @@ static int ksm_copy_dir_files(const char *from, const char *to, int *fail)
 /* <src>\SshHostKeys\* -> values under the hive in use. */
 static int ksm_hostkeys_from_dir(const char *src, int *fail)
 {
-    /* KiTTY (hknet/KiTTY#56): the folder the store says it keeps them in,
+    /* KiTTY (hknet/KiTTY#56): the folder the store records for them,
      * and the ending its host-key file names carry. */
     char *dir = ksm_source_path(src, KI_SSHHOSTKEYS, "SshHostKeys", "SshHostKeys");
     /* hostkeyextension (old KiTTY's key, a dot put in front if missing),
@@ -610,7 +610,7 @@ static void ksm_bundle_to_store_layout(const char *dir, int *fail)
  * checkout's), junctions, and files that are not sessions are left out, as
  * the folder store's own listing leaves them out. Two files that give the
  * same session (`srv01` and `srv01.ktx` with the suffix .ktx) stage the
- * first one found; each further one is left out and named in `dups` (one
+ * first one found; each further one is left out and listed in `dups` (one
  * relative path per line), counted in *ndup. */
 #define KSM_STAGE_MAXDEPTH 24
 struct ksm_stage_ctx {
@@ -687,7 +687,7 @@ static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup,
     /* empty, so that a file already there is never taken for a second one
      * of the same session */
     ksm_each_file(stage, ksm_delete_file_cb, NULL);
-    /* KiTTY (hknet/KiTTY#56): where that store says its sessions are. */
+    /* KiTTY (hknet/KiTTY#56): where that store records its sessions. */
     sess = ksm_source_path(dir, KI_SESSIONS, "Sessions", "Sessions");
     prox = dupprintf("%s\\Proxies", dir);
     if (ksm_dir_exists(sess)) {
@@ -725,7 +725,7 @@ static void ksm_unstage(char *stage)
 }
 
 /* Salt + verifier for the copy, so that it unlocks with the password its
- * sessions were wrapped with - and asks for it only from then on. */
+ * sessions were wrapped with - and prompts for it only from then on. */
 static int ksm_mint_master_state(const char *dir, const char *pass)
 {
     unsigned char salt[KITTY_MPW_SALT_LEN], key[KITTY_MPW_DERIVED_LEN];
@@ -909,7 +909,7 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     kitty_clear_bundle_context();
     ksm_unstage(stage);
     /* a session file left out because another file gives the same session
-     * is not taken: it counts as such and is named below */
+     * is not taken: it counts as such and is reported below */
     r->fail += ndup + nstagefail;
 
     r->hostkeys = ksm_hostkeys_from_dir(dir, &r->fail);
@@ -1013,8 +1013,8 @@ void kitty_take_folder_store(HWND hwnd)
         overwrite = (a == IDYES);
     }
 
-    /* The folder's master password, asked once - the bundle unlock scans the
-     * staged copy, which is the shape it knows. */
+    /* The folder's master password, prompted for once - the bundle unlock
+     * scans the staged copy, which is the shape it knows. */
     stage = ksm_stage_folder_store(dir, NULL, NULL, NULL);
     if (!stage || !kitty_unlock_import_bundle(hwnd, stage, &pw)) {
         ksm_unstage(stage);

@@ -715,7 +715,7 @@ int ksp_is_today_spelling(const char *id, const char *rel, const char *suffix)
 /* ---- walking a folder store ----
  * Every session file below `dir`, as path identities. Dot-files and
  * dot-directories are never looked at (a session folder kept in Git holds .git
- * and .gitignore); a file counts only when its content says it is a session
+ * and .gitignore); a file counts only when its content shows it is a session
  * (the verdict cache, ksp_file_verdict). Junctions and symlinks are not
  * followed, and the depth is capped, so a loop cannot hang the list. The
  * terminal's store (ksf_enum_sessions) and kageant's tray menu both walk
@@ -723,7 +723,7 @@ int ksp_is_today_spelling(const char *id, const char *rel, const char *suffix)
  *
  * Files that decode to one identity are listed once, by the file the name
  * reaches (ksp_reach_cmp); the others are "shadowed" and handed back
- * separately when asked for, as are the folders walked with their last-write
+ * separately on request, as are the folders walked with their last-write
  * times (ksp_walk_store_ex). */
 struct ksp_walk_ctx {
     size_t rootlen;                      /* the session directory and its '\' */
@@ -808,7 +808,7 @@ static void ksp_walk_dir(struct ksp_walk_ctx *w, const char *dir,
     HANDLE hf;
     if (w->want_extra) {
         /* The folder's own time, read before its entries: an entry added,
-         * removed or renamed in it from now on changes it. Asked of the
+         * removed or renamed in it from now on changes it. Queried from the
          * folder itself - the copy in its parent's listing can lag. */
         WIN32_FILE_ATTRIBUTE_DATA ad;
         if (GetFileAttributesExA(dir, GetFileExInfoStandard, &ad)) {
@@ -855,9 +855,9 @@ static void ksp_walk_dir(struct ksp_walk_ctx *w, const char *dir,
             ksp_strip_suffix(fname, w->suffix);
             comp = ksp_component_unmunge(fname);
             sfree(fname);
-            /* A '\' inside one component cannot be told from a folder; only
-             * the flat legacy files at the top level carry one (that is what
-             * they mean: a whole path in one file name). */
+            /* A '\' inside one component cannot be distinguished from a
+             * folder; only the flat legacy files at the top level carry one
+             * (that is what they mean: a whole path in one file name). */
             if (comp[0] && (!prefix[0] || !strchr(comp, '\\')) &&
                 (!w->leaf || !stricmp(ksp_leaf(comp), w->leaf)) &&
                 (w->names_only || ksp_file_verdict(full,

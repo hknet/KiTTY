@@ -84,7 +84,7 @@ void CleanFolderName( char * folder ) ;
 // Delete a directory tree
 void DelDir( const char * directory ) ;
 
-// Flag saying whether we are connected
+// Flag recording whether we are connected
 extern int is_backend_connected ;
 #ifdef MOD_RECONNECT
 extern int is_backend_first_connected ;

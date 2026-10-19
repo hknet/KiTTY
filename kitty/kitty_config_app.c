@@ -75,7 +75,7 @@ static const struct { const char *label; unsigned int minutes; } wpmode_spans[] 
 
 /* ==== Workplace proxy mode: the switch, its labels, the arming ========== */
 
-/* Keep the state line telling the truth. Called from the button's refresh, so
+/* Keep the state line accurate. Called from the button's refresh, so
  * it follows every action taken in this box; a change made elsewhere is picked
  * up by the poll below. */
 void kitty_wpmode_state_label(struct wpmode_data *wd, dlgparam *dlg)
@@ -117,7 +117,7 @@ static void kitty_wpmode_enable_ctrl(dlgcontrol *ctrl, dlgparam *dlg, bool on)
 }
 
 /* The leaf is always in the tree; without a named proxy defined its controls
- * grey out and the info line says what to do about it. Live in both
+ * grey out and the info line states what to do about it. Live in both
  * directions - saving the first proxy on Named Proxies ungreys it, deleting
  * the last one greys it again (the poll watches the count). */
 void kitty_wpmode_grey(struct wpmode_data *wd, dlgparam *dlg)
@@ -135,7 +135,7 @@ void kitty_wpmode_button_label(dlgcontrol *ctrl, dlgparam *dlg)
 {
     char armed[256], left[64];
     if (kitty_workplace_query(armed, sizeof(armed))) {
-        /* The proxy is named in the droplist directly above, so the button says
+        /* The proxy is shown in the droplist directly above, so the button shows
          * only what pressing it does and how long the mode has left. */
         char *s;
         kitty_workplace_left_text(left, sizeof(left));
@@ -160,9 +160,9 @@ void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
             char cur[256] = "", armed[256] = "", remembered[256] = "";
             int i, row = 0, sel = 0;
             /* Which to preselect: what the mode is using, else what it last
-             * used. The entries say which is which, the same way the tray menu
-             * does - a droplist of bare names cannot tell you why one of them
-             * is showing. */
+             * used. The entries show which is which, the same way the tray menu
+             * does - a droplist of bare names cannot explain why one of
+             * them is showing. */
             if (!kitty_workplace_query(armed, sizeof(armed)))
                 armed[0] = '\0';
             if (!ReadParameterN(INIT_SECTION, KI_WORKPLACEPROXY,
@@ -264,7 +264,7 @@ void kitty_wpmode_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
     char armed[256];
     if (kitty_workplace_query(armed, sizeof(armed))) {
-        /* On: ask the launcher to let go. */
+        /* On: request the launcher to switch the mode off. */
         if (!kitty_workplace_request(0, 0))
             dlg_error_msg(dlg, KT_CFG_WPMODE_OFF_FAILED);
     } else {
@@ -386,7 +386,7 @@ static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
  * cannot use conf_filesel_handler. On REFRESH the stored path is shown, or,
  * for a helper with a hint row above, the installer's location when nothing
  * is stored yet (display only, never written on refresh). On VALCHANGE
- * whatever the user selected or typed is persisted. ctrl->context.p names
+ * whatever the user selected or typed is persisted. ctrl->context.p holds
  * the kitty.ini key. The rz and sz paths used to be per-session
  * (CONF_rzcommand / CONF_szcommand), so the path went into every saved
  * session and had to be set again for each host.
@@ -694,7 +694,7 @@ static int hk_column_at_cursor(struct hk_data *hk)
     return hk->listbox->listbox.ncols - 1;
 }
 
-/* The MISMATCH row in red (controls.c asks per row). */
+/* The MISMATCH row in red (controls.c queries per row). */
 static bool hk_row_ink(dlgcontrol *ctrl, int id, bool dark, COLORREF *ink)
 {
     struct hk_data *hk = (struct hk_data *)ctrl->context.p;
@@ -1051,7 +1051,7 @@ static bool hk_split_rects(RECT *a, RECT *b)
 
 /* Put the boundary at anchor + dy (clamped, whole rows). `a`/`b` are the
  * rects the drag started from, in parent coordinates. Whole rows, because
- * a list box rounds its height to them anyway: asking for a row-multiple
+ * a list box rounds its height to them anyway: requesting a row-multiple
  * means the list ends exactly where the box and the bar are put, and a
  * move that rounds to the row already shown does nothing at all - the
  * three windows move in ONE deferred pass, so a drag does not flicker
@@ -1214,9 +1214,9 @@ static void checkupdate_button_handler(dlgcontrol *ctrl, dlgparam *dp,
  * The line under the saved-session list, and the button beside it.
  *
  * It exists for one reason: the list is showing sessions the user did not
- * create in this KiTTY, and nothing else on the panel says so. The button is
- * the same jump the proxy panel uses - the setting lives on one panel only,
- * and this is a pointer to it, not a second copy of it.
+ * create in this KiTTY, and nothing else on the panel shows it. The button
+ * is the same jump the proxy panel uses - the setting lives on one panel
+ * only, and this is a pointer to it, not a second copy of it.
  */
 void kitty_foreignnotice_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
@@ -1269,12 +1269,12 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
-/* KiTTY: [KiTTY] warnmissingfeatures - the one line a session prints naming
+/* KiTTY: [KiTTY] warnmissingfeatures - the one line a session prints listing
  * what this version of Windows cannot provide (kitty_win.c,
  * kitty_report_missing_features). Global, like the switch above, and read
  * when a window opens: a change reaches the windows opened after it. The
- * Event Log entry is written whatever this says - the checkbox governs the
- * interruption, not the record. */
+ * Event Log entry is written whatever this is set to - the checkbox governs
+ * the interruption, not the record. */
 static void kitty_warnfeatures_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                        void *data, int event)
 {
@@ -1339,7 +1339,7 @@ const char *scb_title_appname(void)
  * at - it is decided when the box is built, so a change here writes the file
  * and the next configuration window comes up with it. The theme is the
  * exception: it is applied at once, here and in every other open KiTTY++
- * window (kitty_cfgwin_theme_handler). The panel says which is which rather
+ * window (kitty_cfgwin_theme_handler). The panel shows which is which rather
  * than leaving someone to wonder why nothing moved.
  */
 static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
@@ -1404,10 +1404,10 @@ static void kitty_cfgwin_theme_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * These settings were all kitty.ini-only until now, and they share a shape:
  * each decides what the configuration window PUTS IN the Session panel, and
  * each is read when the panel's controls are declared - so a change lands in
- * the next configuration window, not this one. Said once at the foot of the
+ * the next configuration window, not this one. Stated once at the foot of the
  * group rather than on every control.
  *
- * ctrl->context.p names the key, exactly as the number fields above do.
+ * ctrl->context.p holds the key, exactly as the number fields above do.
  */
 /* kitty.c owns these; declared here because this file has no header for them
  * and an implicit declaration disagrees with the const-qualified real one. */
@@ -1451,7 +1451,7 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
 }
 
 /* Show "Default Settings": never / always / only in root - [ConfigBox]
- * defaultsettings=no|yes|root (kitty_params.c; the list asks
+ * defaultsettings=no|yes|root (kitty_params.c; the list queries
  * kitty_default_row_shown in kitty_config_session.c). */
 static void kitty_cfgwin_defaultrow_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                             void *data, int event)
@@ -1781,8 +1781,8 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
 
     s = ctrl_getset(b, "Application/Config Window", "size", KT_CONFIG_WINDOW_SIZE);
     /* PIXELS. dialog.c multiplies these by the DPI scale and gives the window
-     * that size; they are not dialog units, whatever the old label said.
-     * Both labels say the same short thing: the width's was long enough to
+     * that size; they are not dialog units, whatever the old label stated.
+     * Both labels carry the same short text: the width's was long enough to
      * run under its own edit box at this font. */
     ctrl_editbox(s, KT_CONFIG_WINDOW_WINDOW_HEIGHT_IN_PIXELS_BLANK,
                  NO_SHORTCUT, 30, HELPCTX(kitty_theme),
@@ -1859,7 +1859,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
         ctrl_settitle(b, "Application/Security/Certificate Authorities",
                       KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES);
         /*
-         * Say what the panel is FOR before showing its controls.
+         * State what the panel is FOR before showing its controls.
          *
          * Upstream's version is a pop-up reached from a session's Host keys
          * panel, where the surrounding context supplies the meaning. Standing
@@ -1891,9 +1891,9 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_text(s, KT_PASSWORDS_TYPED_DEFAULT, HELPCTX(kitty_passwords));
     ctrl_text(s, KT_PASSWORDS_TYPED_CONSEQUENCE, HELPCTX(kitty_passwords));
 
-    /* Security > Client Identity: what KiTTY tells an SSH server it is. The
-     * whole banner follows the field as it is typed - the field edits one
-     * token, and only the full string says what that token does. */
+    /* Security > Client Identity: what KiTTY reports to an SSH server as its
+     * identity. The whole banner follows the field as it is typed - the field
+     * edits one token, and only the full string shows its effect. */
     ctrl_settitle(b, "Application/Security/Client Identity", KT_CLIENT_IDENTITY_TITLE);
     s = ctrl_getset(b, "Application/Security/Client Identity", "banner", KT_CLIENT_IDENTITY_BANNER);
     ctrl_editbox(s, KT_KSET_CN_SSHVERSION, NO_SHORTCUT, 100, HELPCTX(kitty_client_identity),
@@ -2053,7 +2053,8 @@ static void kitty_system_handler(dlgcontrol *ctrl, dlgparam *dlg,
     (void)data;
     if (event != EVENT_ACTION)
         return;
-    /* Every button asks first: the first cut registered on a bare click. */
+    /* Every button requests a confirmation first: the first cut registered
+     * on a bare click. */
     q = ctrl->context.i == 2 ? KT_SYSTEM_UNREGISTER_Q :
         ctrl->context.i == 1 ? KT_SYSTEM_TAKEOVER_Q : KT_SYSTEM_REGISTER_Q;
     if (MessageBoxA(GetActiveWindow(), q, KT_SYSTEM_TITLE,
@@ -2317,8 +2318,8 @@ static void kitty_launcher_globalkey_apply_handler(dlgcontrol *ctrl, dlgparam *d
  * change three ways: the panel coming into view (EVENT_REFRESH), the notice
  * every launcher posts when it starts and when it exits normally
  * (KITTY_LAUNCHER_STATE_MESSAGE, through windows/dialog.c), and - for a
- * launcher that was killed and could say nothing - the box's one-second tick,
- * which looks only while this panel is on screen.
+ * launcher that was killed and could report nothing - the box's one-second
+ * tick, which looks only while this panel is on screen.
  */
 static dlgcontrol *kla_start_btn;       /* found again by the tick and the notice */
 static int kla_last_running = -1;
@@ -2564,8 +2565,8 @@ static int kbc_scan_saved(struct kbc_entry **out)
     return n;
 }
 
-/* The live view asks every terminal window "would you type a broadcast right
- * now?" (WM_COPYDATA dwData 3, windows/window.c). A window that would
+/* The live view queries every terminal window "would you type a broadcast
+ * right now?" (WM_COPYDATA dwData 3, windows/window.c). A window that would
  * answers with a WM_COPYDATA of its own, dwData 4, "<key>\0<session name>",
  * sent to the message-only window below while the asker is still inside its
  * SendMessage; a window that would not stays silent, exactly as it would for
@@ -2713,7 +2714,7 @@ static void kbc_fill(dlgparam *dlg)
         dlg_label_change(kbc.status, dlg, line);
         sfree(line);
     }
-    /* Only the live view can send: the saved view says so, and the button
+    /* Only the live view can send: the saved view shows a note, and the button
      * follows it (and stays off while a send runs). */
     dlg_label_change(kbc.note, dlg, kbc.live ? " " : KT_KSET_BC_SWITCH_NOTE);
     kitty_dlg_enable_button(kbc.send, dlg, kbc.live && !kbc.timer);
@@ -3013,7 +3014,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_droplist(s, KT_CONFIG_WINDOW_COLOURS, NO_SHORTCUT, 40, HELPCTX(kitty_appearance),
                   kitty_cfgwin_theme_handler, P(NULL));
     ctrl_text(s, KT_CONFIG_WINDOW_ONE_SETTING_FOR_THE_WHOLE, HELPCTX(kitty_appearance));
-    /* Said beside the control: a change reaches every open KiTTY++ window at
+    /* Stated beside the control: a change reaches every open KiTTY++ window at
      * once, not only this one and the windows opened afterwards
      * (kitty_cfgwin_theme_handler announces it). */
     ctrl_text(s, KT_CONFIG_WINDOW_CHANGES_APPLY_TO_WINDOWS_OPENED, HELPCTX(kitty_appearance));
@@ -3171,7 +3172,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Transfers & Tools"), "kscp", KT_KSET_TT_KSCP);
     KSET_FILESEL(s, KT_KSET_TT_PSCPPATH, KT_KSET_TT_PSCPPATH_SELECT, KI_PSCPPATH, kitty_helper_paths);
     ctrl_text(s, KT_KSET_TT_PSCPPATH_NOTE, HELPCTX(kitty_helper_paths));
-    /* What the search found at this start, so a blank field still tells
+    /* What the search found at this start, so a blank field still shows
      * the reader which binary is in use. */
     buf[0] = '\0';
     ReadParameterN(INIT_SECTION, KI_PSCPPATH, buf, sizeof(buf));
@@ -3190,8 +3191,8 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
                      kitty_kset_handler, KSET(KI_DOWNLOADDIR));
         ctrl_text(s, KT_KSET_TT_DOWNLOADDIR_NOTE, HELPCTX(kitty_helper_paths));
         /* The upload folder is local as well: where Send File opens and
-         * where a name the far end asks to read (kitten transfer) is looked
-         * up. Never the remote target of an upload. */
+         * where a name the far end requests to read (kitten transfer) is
+         * looked up. Never the remote target of an upload. */
         ctrl_filesel(s, KT_KSET_TT_UPLOADDIR, NO_SHORTCUT, FILTER_FOLDERS,
                      false, NULL, HELPCTX(kitty_helper_paths),
                      kitty_kset_handler, KSET(KI_UPLOADDIR));
@@ -3310,7 +3311,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     /* [Launcher] classname is deliberately NOT shown: it exists only to keep
      * two installations' launchers from taking each other for "already
      * running", is set by hand in kitty.ini for that one purpose, and a
-     * line reporting it told nobody anything. The help explains it. */
+     * line reporting it carried no information. The help explains it. */
 
     /* ---- System: the Windows shell integration ---- */
     {
@@ -3324,9 +3325,9 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
             ksys_lines[i] = ctrl_text(s, lines[i], HELPCTX(kitty_system));
         s = ctrl_getset(b, KSET_PATH("System"), "register", KT_SYSTEM_REGISTER_GROUP);
         ctrl_text(s, KT_SYSTEM_NOTE, HELPCTX(kitty_system));
-        /* One full-width button per action, each under the line that says
-         * what it does: two side by side were too narrow for their words,
-         * and told nobody how they differed. */
+        /* One full-width button per action, each under the line that
+         * describes it: two side by side were too narrow for their words,
+         * and did not show how they differed. */
         ctrl_text(s, KT_SYSTEM_REGISTER_LINE, HELPCTX(kitty_system));
         bc = ctrl_pushbutton(s, KT_SYSTEM_REGISTER, NO_SHORTCUT,
                              HELPCTX(kitty_system), kitty_system_handler, I(0));
@@ -3580,8 +3581,8 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
                              P(iv));
     /* One path line, the configuration file's: a full path wraps to two or
      * three rows at this font, and the panel has to fit the window's minimum
-     * with the view still showing something. The example's place is said by
-     * its dropdown entry (it ships beside kitty.exe); its absence is said
+     * with the view still showing something. The example's place is shown by
+     * its dropdown entry (it ships beside kitty.exe); its absence is stated
      * here, because then the dropdown has only one entry and no reason. */
     snprintf(line, sizeof(line), KT_INIVIEW_PATH_INI,
              iv->ini_path[0] ? iv->ini_path : KT_INIVIEW_NONE);
@@ -4305,7 +4306,7 @@ static dlgcontrol *ksp_suffix_edit = NULL;
 
 /* The suffix-rename question's answer (modeless: the configuration window
  * carries on while it stands). Yes renames the files from the old suffix to
- * the new and says what happened; No leaves them as they are. */
+ * the new and reports what happened; No leaves them as they are. */
 struct ksp_suffix_ask {
     char *oldsuf, *newsuf;
 };
@@ -4359,7 +4360,7 @@ static void kitty_sp_suffix_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * without it stays listed and gets it on its next save.
  */
 /* hknet/KiTTY#61: Inherit Default Settings - kitty.ini [KiTTY]
- * inheritdefaultsettings. Ticking it asks first, in the themed box, No the
+ * inheritdefaultsettings. Ticking it prompts first, in the themed box, No the
  * default: a user name and password kept in Default Settings then go into
  * every session that leaves them out. In effect at once for this process
  * (windows/storage.c); a write that fails leaves the tick as it was and is
@@ -4426,7 +4427,7 @@ static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
         return;
     }
     /* The suffix applies at once; the rename of the files is the question,
-     * asked in a modeless box whose answer does the rename
+     * put up in a modeless box whose answer does the rename
      * (kitty_sp_suffix_answer). */
     n = kitty_session_suffix_rename(old, nw, 1, NULL);
     /* old KiTTY's key: also the registered file type and the dialogs' filter */
@@ -4941,7 +4942,7 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
     s = ctrl_getset(b, "Application/Config Window/Session Panel", "proxy", KT_SESSION_PARAMETER_PROXY);
     ctrl_droplist(s, KT_SESSION_PARAMETER_SHOW_THE_PROXY_CHOOSER, NO_SHORTCUT, 55,
                   HELPCTX(kitty_folders), kitty_cfgwin_proxysel_handler, P(NULL));
-    /* Said here because "Never" does more than hide one droplist. */
+    /* Stated here because "Never" does more than hide one droplist. */
     ctrl_text(s, KT_SESSION_PARAMETER_NEVER_ALSO_HIDES_THE_EDIT, HELPCTX(kitty_folders));
 }
 
@@ -4951,8 +4952,8 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
  * These are settings about the program, not about the session in front of
  * you, and they are reached through the Session | Application tabs above the
  * category tree rather than by a root in the session tree. Their paths carry
- * an "Application/" prefix, which is how the tree build tells the two tabs
- * apart; the prefix is stripped when the items are inserted, so the tree shows
+ * an "Application/" prefix, which is how the tree build distinguishes the two
+ * tabs; the prefix is stripped when the items are inserted, so the tree shows
  * "Updates" rather than "Application/Updates" under a tab already called
  * Application.
  *
@@ -5025,7 +5026,7 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
         int which;
         if (!dlg_listbox_issel(im->listbox, dlg, i))
             continue;
-        /* The row carries the index it was filled from. Asking the row rather
+        /* The row carries the index it was filled from. Reading the row rather
          * than trusting the loop counter is what keeps this honest if the two
          * ever stop being filled in one pass - and an out-of-range answer
          * (LB_ERR) is then a row to skip rather than a wild read. */
@@ -5295,7 +5296,7 @@ static char *migf_target_folder(struct migf_data *m, dlgparam *dlg)
 
 /* Session | Path | Target | State, one row per file found. The target name
  * is worked out here, row by row, exactly as the import will hand it out -
- * names this list already claimed count as taken - so the column says what
+ * names this list already claimed count as taken - so the column shows what
  * WILL happen. */
 static void migf_fill_list(struct migf_data *m, dlgparam *dlg)
 {
@@ -5374,7 +5375,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 snprintf(m->root, sizeof(m->root), "%s", dir);
                 if (m->folderbox)
                     dlg_refresh(m->folderbox, dlg);
-                /* The suffix that store was kept with, when it says. */
+                /* The suffix that store was kept with, when it records one. */
                 suf = kitty_store_suffix_of(m->root);
                 snprintf(m->suffix, sizeof(m->suffix), "%s", suf);
                 sfree(suf);
@@ -5400,7 +5401,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 char *suf = kitty_store_suffix_of(m->root);
                 snprintf(m->suffix, sizeof(m->suffix), "%s", suf);
                 sfree(suf);
-                /* No store setting names one, and every file ends in .ktx:
+                /* No store setting gives one, and every file ends in .ktx:
                  * an Export all folder, whose names must not keep the ending. */
                 if (!m->suffix[0] && kitty_folder_scan_all_end_in(m->found, ".ktx"))
                     snprintf(m->suffix, sizeof(m->suffix), "%s", ".ktx");
@@ -5513,11 +5514,11 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
             memset(&dropped, 0, sizeof(dropped));
             memset(&taken, 0, sizeof(taken));
             /*
-             * The source store's master password, asked ONCE per import and
-             * only when a selected row needs it. The import's own asking and
-             * the import's own key: our store's unlock is not touched. Three
-             * tries against the first such file; cancel or three misses and
-             * those sessions import without their passwords.
+             * The source store's master password, prompted for ONCE per
+             * import and only when a selected row needs it. The import's own
+             * prompt and the import's own key: our store's unlock is not
+             * touched. Three tries against the first such file; cancel or
+             * three misses and those sessions import without their passwords.
              */
             {
                 const char *probe = NULL;
@@ -5582,9 +5583,9 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (done) {
                 /* The Session panel is out of date now: the list has new rows,
                  * the folder combo (or the folder rows) a new folder, and the
-                 * name box may name a session that no longer sits where it
+                 * name box may hold a session that no longer sits where it
                  * did. The same three refreshes a folder change makes; the
-                 * launcher is told as well. */
+                 * launcher is notified as well. */
                 struct sessionsaver_data *ssd = kitty_session_ssd;
                 InitFolderList();
                 if (ssd && ssd->listbox) {
@@ -5776,7 +5777,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
             ctrl_checkbox(s, KT_MIG_SHOW_BOX, NO_SHORTCUT, HELPCTX(kitty_import_sessions),
                           kitty_showforeign_handler, P(NULL));
             /* The switch also gates loading by name (open_settings_r), so a
-             * hidden old session is not found by -load either - said here,
+             * hidden old session is not found by -load either - stated here,
              * where the switch is. */
             ctrl_text(s, KT_MIG_SHOW_NOTE, HELPCTX(kitty_import_sessions));
 
@@ -5863,7 +5864,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
      * Last, so the line ends each panel: an application setting takes effect
      * where it is changed, which a session panel's OK/Apply does not lead
      * anyone to expect. Named Proxies and the CA editor are deliberately not
-     * in this list - they hold an edit until Save and each says so itself.
+     * in this list - they hold an edit until Save and each states this itself.
      */
     /*
      * Which panels get it is not a list but a RULE: any Application panel
@@ -5872,8 +5873,8 @@ void scb_panel_application(struct controlbox *b, bool midsession)
      * not a layout pseudo-control. A panel of text alone
      * (an intro page, or Storage & Backup when nothing can be written), or
      * of buttons alone (Migration in a folder store), would carry a claim
-     * about nothing. The two panels that hold an edit until Save are named
-     * out, since for them the line would be false rather than empty.
+     * about nothing. The two panels that hold an edit until Save are excluded
+     * by name, since for them the line would be false rather than empty.
      */
     {
         static const char *const holds_until_save[] = {
@@ -5882,7 +5883,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         };
         /* One slot per control set is more than one per panel, and the box
          * that decides the count is the one being built - no constant to
-         * outgrow. The previous box's table goes with the previous box. */
+         * outgrow. The previous box's table is freed with that box. */
         sfree(app_footers);
         app_footers_cap = (int)b->nctrlsets;
         app_footers = snewn(app_footers_cap > 0 ? app_footers_cap : 1,
@@ -5907,7 +5908,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
             /* The folder import: its fields drive an action, they store nothing. */
             if (!strcmp(path, KCFG_PATH_OLD_FOLDERS))
                 excluded = true;
-            /* The host-key list shows the store; Delete acts at once and says so. */
+            /* The host-key list shows the store; Delete acts at once and shows it. */
             if (!strcmp(path, KCFG_PATH_HOSTKEYS))
                 excluded = true;
             if (excluded)

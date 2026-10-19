@@ -455,7 +455,7 @@ int on_seconds(int urgency, long expire_ms, int normal_s, int *critical)
 
 /* ---- replies ----------------------------------------------------------- */
 
-/* The id a reply names: "0" when there is none, as the specification
+/* The id a reply carries: "0" when there is none, as the specification
  * requires of a terminal that got no identifier. */
 static const char *on_reply_id(const char *id)
 {

@@ -3365,7 +3365,7 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
             line = delpos234(term->screen, term->rows - 1);
             freetermline(line);
 #ifdef MOD_PERSO
-            /* KiTTY: kitty graphics on the deleted row go with it */
+            /* KiTTY: kitty graphics on the deleted row are deleted with it */
             kitty_gfx_row_deleted(term, term->gfx_sb_base + sblen +
                                   term->rows - 1);
 #endif
@@ -6105,7 +6105,7 @@ static void do_osc(Terminal *term)
                 term->far2l_events_armed = false;
                 term->far2l_input_gen++;
                 kitty_far2l_events_changed(term);
-                kitty_far2l_images_reset(term);   /* KiTTY: its images go with it */
+                kitty_far2l_images_reset(term);   /* KiTTY: its images are dropped */
                 term->clip_allowed = conf_get_int(term->conf, CONF_shared_clipboard);
                 far2l_reset_state(term);   /* far2l left: drop what it held */
             } else if (arg[0] == ':') {
@@ -9779,7 +9779,7 @@ static void do_paint(Terminal *term)
             } else {
                 tc.fg = tc.bg = optionalrgb_none;
                 /* KiTTY: the underline's style stays; an rgb underline
-                 * colour goes with the other true colours */
+                 * colour is dropped like the other true colours */
                 tc.ul = d->truecolour.ul;
                 if ((tc.ul.mode & UL_COLOUR_MASK) == UL_COLOUR_RGB)
                     tc.ul.mode &= ~UL_COLOUR_MASK;

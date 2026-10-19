@@ -2837,7 +2837,8 @@ fields: the backups are not written in either state, so a count would
 change nothing.
 
 \b \q{Host Keys Folder} (folder store only): where accepted host keys are
-kept. Empty means the SshHostKeys folder beside Sessions.
+kept. Empty means SshHostKeys beside the session folder when that is
+called Sessions, else inside it (\k{folderstore-where}).
 \c{kitty.ini}: \c{[KiTTY] sshhostkeys}. \q{Browse...} picks the folder.
 In the registry store the field shows the registry key, read-only, and
 \q{Browse...} is greyed.
@@ -3823,7 +3824,7 @@ takes a new one.
 \b \c{-winslot <n>} requests number \c{n}: taken when no other open
 window of the base holds it, else the lowest free one.
 
-These tokens carry the identity and what goes with it:
+These tokens carry the identity and the values that belong to it:
 
 \b \c{%KITTY_WINDOW%} - the window's name, else the base with its
 number as above.

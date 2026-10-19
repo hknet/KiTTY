@@ -888,7 +888,7 @@ static void test_delete(void)
     send(&st, &e, "a=d,d=i,i=1", NULL, 0);
     CHECK(st.n_pls == 0, "d=i reaches both screens");
 
-    /* anonymous images go with their last placement */
+    /* anonymous images are deleted with their last placement */
     send(&st, &e, "a=T,f=24,s=1,v=1", red, 3);
     CHECK(st.n_imgs == 2 && st.n_pls == 1, "anonymous placed");
     send(&st, &e, "a=d,d=c", NULL, 0);
@@ -1853,7 +1853,7 @@ static void test_relative(void)
     r = send(&st, &e, ctl, NULL, 0);
     CHECK(!strncmp(r, "i=2,p=200;ETOODEEP:", 19), "one link too many: '%s'", r);
 
-    /* the parent scrolls off the scrollback: the chain goes with it */
+    /* the parent scrolls off the scrollback: the chain is deleted with it */
     gfx_set_base(&st, 0, 100);
     CHECK(st.n_pls == 0, "all gone with the parent (%d left)", st.n_pls);
 

@@ -38,7 +38,7 @@ int GetIniFileFlag(void) { return IniFileFlag ; }
  * It used to default on in the portable build, and savemode=dir switched it on
  * everywhere else - which sent the folder lookup hunting for subdirectories
  * that nothing creates. The session writer stores one flat file per session
- * with Folder= inside it whatever this says, so with the flag on, no folder was
+ * with Folder= inside it either way, so with the flag on, no folder was
  * ever found: the folder list was empty and the tray menu could not group.
  *
  * WARNING: it is not merely unused. The portable enumerator skips directories and
@@ -189,7 +189,7 @@ void DelDir( const char * directory ) {
 // Read a parameter either from the configuration file or from the registry
 char  * IniFile = NULL ;
 
-// Flag saying whether we are connected
+// Flag recording whether we are connected
 int is_backend_connected = 0 ;
 
 #ifdef MOD_RECONNECT

@@ -4776,7 +4776,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                  *
                  * Remove used to act instantly. It now does more than unload:
                  * the key stops being loaded at startup, and its place in the
-                 * offer order goes with it - so a mis-click costs a
+                 * offer order is lost too - so a mis-click costs a
                  * configuration change, not just a reload.
                  */
                 {

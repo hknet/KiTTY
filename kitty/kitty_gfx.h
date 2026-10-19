@@ -161,8 +161,8 @@ typedef struct GfxPlacement {
     bool no_cursor;            /* C=1 */
     int32_t z;
     unsigned long serial;      /* creation order, the z tie-break */
-    /* an iTerm2 or Sixel picture: its cells' parts go with what is written
-     * into them or erased (gfx_mark_cells). mask: a bit per covered cell,
+    /* an iTerm2 or Sixel picture: a cell's part is cut out when the cell is
+     * written into or erased (gfx_mark_cells). mask: a bit per covered cell,
      * row by row (cols a row), set = cut out; NULL until the first one */
     bool cell_bound;
     unsigned char *mask;
@@ -263,8 +263,9 @@ typedef struct GfxEnv {
     /* PNG to premultiplied BGRA (malloc'd, w * 4 a row). NULL: PNG refused. */
     bool (*decode_png)(void *ctx, const unsigned char *data, size_t len,
                        unsigned char **px, int *w, int *h);
-    /* Another picture file (fmt GFX_FILE_*, told by its signature), the
-     * same way; only iTerm2 images use it. NULL: those refused. */
+    /* Another picture file (fmt GFX_FILE_*, detected by its
+     * signature), the same way; only iTerm2 images use it. NULL: those
+     * refused. */
     bool (*decode_file)(void *ctx, int fmt, const unsigned char *data,
                         size_t len, unsigned char **px, int *w, int *h);
     /* An animated GIF (iTerm2 images): n >= 2 whole frames of w x h, each

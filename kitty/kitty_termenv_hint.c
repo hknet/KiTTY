@@ -1,12 +1,12 @@
 /*
  * kitty_termenv_hint.c - "this host refuses COLORTERM / TERM_PROGRAM" is
- * said once per host: the mark that it was, in the store in use. The rule
+ * shown once per host: the mark that it was, in the store in use. The rule
  * is kitty_termenv_hint_due (kitty_termenv.c); see kitty_termenv.h.
  *
  * The same shape as kitty_winpos.c's shared entries: the folder store keeps
  * one file per host in its TermEnvHint folder (beside Sessions and
  * SshHostKeys, the name munged like a host-key file's), the registry one
- * REG_SZ "1" per host under <base>\TermEnvHint. Both go with the rest of the
+ * REG_SZ "1" per host under <base>\TermEnvHint. Both follow the rest of the
  * store: the folder with the portable copy, the key with cleanup_all and
  * /delreg (the whole base hive).
  *

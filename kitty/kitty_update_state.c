@@ -1,11 +1,13 @@
 /*
  * kitty_update_state.c - the stored answer of the update check, read by a
- * program that must not ask the network itself. See kitty_update_state.h.
+ * program that must not query the network itself. See kitty_update_state.h.
  *
- * Where kitty_updater.c stores it: the portable state file KiTTYState beside
- * kitty.ini when the settings live in files, else the values UpdateLatest
- * (REG_SZ) and UpdateLatestBeta (REG_DWORD) in the KiTTY hive. The same rule
- * decides here which one to read: kitty_inifile_registry_authoritative().
+ * Where kitty_updater.c stores it: the folder store's state file KiTTYState
+ * in the store root, else (registry and savemode=file) the values
+ * UpdateLatest (REG_SZ) and UpdateLatestBeta (REG_DWORD) in the KiTTY hive.
+ * kitty_inifile_state_file() finds the file by kitty.exe's rules. It used
+ * to be looked for beside kitty.ini, which missed it when sessions= points
+ * elsewhere and read a file savemode=file never writes.
  */
 #include <windows.h>
 #include <stdio.h>
@@ -23,21 +25,13 @@ int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls); 
 
 /* One value of the portable state file: lines of key=value, the value
  * %XX-escaped - a version number and a 0/1 flag contain nothing to escape. */
-static int kus_state_file_value(const char *key, char *out, int n)
+static int kus_state_file_value(const char *path, const char *key, char *out, int n)
 {
-    const char *ini = kitty_inifile_file();
-    char path[MAX_PATH + 32], line[512], *slash;
+    char line[512];
     size_t klen = strlen(key);
     FILE *fp;
     int found = 0;
 
-    if (!ini || strlen(ini) > MAX_PATH)
-        return 0;
-    strcpy(path, ini);
-    slash = strrchr(path, '\\');
-    if (!slash)
-        return 0;
-    strcpy(slash + 1, "KiTTYState");
     fp = fopen(path, "rb");
     if (!fp)
         return 0;
@@ -57,12 +51,13 @@ static int kus_state_file_value(const char *key, char *out, int n)
 
 static int kus_stored(char *latest, int n, int *beta)
 {
+    char sf[KITTY_INIFILE_PATHLEN + 16];
     *beta = 0;
-    if (!kitty_inifile_registry_authoritative()) {
+    if (kitty_inifile_state_file(sf, sizeof(sf))) {
         char b[16];
-        if (!kus_state_file_value("UpdateLatest", latest, n))
+        if (!kus_state_file_value(sf, "UpdateLatest", latest, n))
             return 0;
-        if (kus_state_file_value("UpdateLatestBeta", b, sizeof(b)))
+        if (kus_state_file_value(sf, "UpdateLatestBeta", b, sizeof(b)))
             *beta = atoi(b) != 0;
         return 1;
     } else {
@@ -130,7 +125,7 @@ int kitty_update_state_newer(char *latest_out, int latest_n, int *beta_out)
     if (i == 4 || lat[i] < cur[i])
         return 0;                       /* not newer */
     /* KiTTY stable = x.y.M.0, beta = x.y.M.P with P > 0: a stable build is
-     * not told about betas. */
+     * not notified of betas. */
     if (cur[3] == 0 && beta)
         return 0;
 

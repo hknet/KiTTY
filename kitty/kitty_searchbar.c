@@ -12,7 +12,7 @@
  * turns red while nothing is found. A modeless dialog on the shared themed
  * template machinery (IDD_SEARCHBAR, dressed by the theme hook, Tab/Esc
  * through ShinyAddAuxDialog); owned by the terminal window, so it stays above
- * it and goes with it. While it has the focus nothing typed reaches the host.
+ * it and hides with it. While it has the focus nothing typed reaches the host.
  *
  * Keys in the field: Enter, F3 and Up = Up (older output); Shift+Enter,
  * Shift+F3 and Down = Down; Ctrl+Enter and Ctrl+F3 = the first hit (the
@@ -56,7 +56,7 @@ typedef struct ksb {
     struct ksb *next;
     HWND owner, h, edit;
     WNDPROC edit_proc;
-    bool closing;                 /* closed by the user: tell the terminal */
+    bool closing;                 /* closed by the user: notify the terminal */
     bool bad;                     /* the field is red: nothing found */
     char session[256];            /* where the place is kept, "" = nowhere */
     int dx, dy;                   /* from the area's top right, 96-dpi px */

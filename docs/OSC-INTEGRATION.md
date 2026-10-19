@@ -174,7 +174,7 @@ if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )
       *) PS0='${__kpp_ran[__kpp_ran=1]}${__kpp_C}'"$PS0" ;;
     esac
 else
-    __kpp_always=1      # no PS0: the exit code goes with every prompt
+    __kpp_always=1      # no PS0: every prompt reports the exit code
 fi
 ```
 
@@ -279,8 +279,8 @@ Reconnect, or source the file, to start.
   go to the home directory. Nothing reported is ever run.
 - **Older snippets.** The OSC 7 snippet KiTTY++ published before
   (`__osc7_cwd`) keeps working; it can stay or be replaced by the one above.
-- **bash older than 4.4** has no `PS0`: no output mark, and the exit code
-  goes with every prompt, an empty Enter included.
+- **bash older than 4.4** has no `PS0`: no output mark, and every prompt
+  reports the exit code, an empty Enter included.
 - **Prompt themes** (oh-my-zsh, powerlevel10k, Starship) do not get in the
   way: the snippets use the prompt hook, not `PS1`. The optional `B` line is
   the exception: it is part of `PS1`, see above.

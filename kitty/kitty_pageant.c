@@ -66,7 +66,7 @@ static int    g_startup_missing = 0;       /* startup keys not found at last loa
 /*
  * Startup keys whose FILE was not there when we tried to load them, kept so
  * they can be tried again when it appears - a key on a USB stick or a network
- * share is absent at login and present later, and asking the user to re-add it
+ * share is absent at login and present later, and making the user re-add it
  * by hand every time is the whole problem.
  *
  * Only absent files go here. A file that exists and fails to PARSE is a
@@ -84,9 +84,9 @@ typedef struct {
     /*
      * The file at this path is NOT the key we recorded. Set when a device
      * arrives carrying a different key: the key is refused and the user is
-     * told, rather than a dialog being raised at the moment something was
-     * plugged in. The stored fingerprint above is deliberately left ALONE -
-     * adopting the new one here would ratify the swap silently.
+     * notified, rather than a dialog being raised at the moment something
+     * was plugged in. The stored fingerprint above is deliberately left
+     * ALONE - adopting the new one here would ratify the swap silently.
      */
     int  mismatch;
     /*
@@ -122,7 +122,7 @@ static int      g_nblobs = 0;
  *
  * It deliberately does NOT reach kageant_startup_get(), which answers for the
  * STORED setting. It used to, and the cost was a settings dialog and a tray
- * checkmark that reported the option as off while the stored value said on:
+ * checkmark that reported the option as off while the stored value was on:
  * a dialog lying about the thing it is editing, one careless OK away from
  * writing the lie back. The save sites that gate on the getter are still safe
  * because the refusal above is the one that matters. */
@@ -143,8 +143,8 @@ int kageant_noload(void) { return g_noload; }
  *                             which must not appear during a clean-slate run.
  *
  * Answering both from the getter made the dialog report the option as off
- * while the store said on. Answering both from this one puts an interactive
- * prompt in front of a run that asked for no interaction.
+ * while the store had it on. Answering both from this one puts an interactive
+ * prompt in front of a run that requested no interaction.
  */
 int kageant_startup_active(void)
 {
@@ -183,7 +183,7 @@ static int kageant_startup_read_ini(void)
 /*
  * The STORED setting, and only that. -noload is a property of THIS RUN, not
  * of the configuration: reporting 0 for it here made the settings dialog and
- * the tray checkmark say the option was off while the stored value said on,
+ * the tray checkmark show the option as off while the stored value was on,
  * which is a dialog lying about what it is editing. The suppression belongs
  * at the single place that decides whether to load at startup, and that is
  * where it now lives (windows/pageant.c, the kageant_load_startup_keys call).
@@ -306,7 +306,7 @@ int kageant_save_startup_keys(void)
          *   rebuilt from the keys currently loaded, so anything that did not
          *   load was dropped permanently: start with the USB drive unplugged,
          *   add any other key later, and the entry was gone for good with
-         *   nothing said.
+         *   nothing reported.
          *
          * - and it must stay where it WAS. The list is the order in which keys
          *   are offered to a server, and every key offered that the server does
@@ -582,7 +582,7 @@ static void kageant_apply_autoenc_by_path(const char *abspath, int value);
 /*
  * ---- key identity: the fingerprint stored beside each startup entry --------
  *
- * A startup entry is a PATH, and a path says nothing about what is at the end
+ * A startup entry is a PATH, and a path shows nothing about what is at the end
  * of it. Storing the key's fingerprint alongside buys three things:
  *
  *  - a key file that has been REPLACED is noticed. Swapped on a stick,
@@ -689,7 +689,7 @@ void kageant_media_gone(void)
                 ptrlen_from_strbuf(g_loaded_blobs[i]))) {
             /* Back onto the pending list, at the position it held, so its place
              * in the offer order survives the round trip - the order decides
-             * which keys a server is asked to try first, and a wrong key costs
+             * which keys a server tries first, and a wrong key costs
              * one of the attempts before a lockout. */
             kageant_note_pending(g_loaded_keypaths[i], g_loaded_encrypted[i], i);
             if (g_npending > 0) {
@@ -851,7 +851,7 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
  * Loading before checking is safe here because agent requests are answered on
  * this same thread - the WM_COPYDATA subthread only signals an event, and both
  * it and the named pipe are dispatched from the main event loop - so nothing
- * can ask the agent to sign anything while this function is running.
+ * can make the agent sign anything while this function is running.
  *
  * Returns 1 if the key matches, or if there is nothing recorded to compare
  * against; 0 if it does not, in which case the key has been taken back out of
@@ -919,10 +919,10 @@ static int kageant_verify_loaded(const char *path, const char *stored)
  * Can this key be added in deferred (still-encrypted) form?
  *
  * SSH-1 keys cannot: the agent's add-encrypted extension is SSH-2 only, and
- * asking for it fails the whole add with "Can't add SSH-1 keys in encrypted
+ * requesting it fails the whole add with "Can't add SSH-1 keys in encrypted
  * form" (pageant.c). Anything that loads deferred-by-default therefore has to
- * ask first, or an SSH-1 key never loads at all and the user gets an error box
- * naming a file that is perfectly fine.
+ * check first, or an SSH-1 key never loads at all and the user gets an
+ * error box showing a file that is perfectly fine.
  */
 static int kageant_can_defer(const char *path)
 {
@@ -935,7 +935,7 @@ static int kageant_can_defer(const char *path)
 /*
  * Load one startup entry and keep it only if it is the key we recorded.
  *
- * Deferred FIRST, always, whatever the entry says: a deferred add asks for
+ * Deferred FIRST, always, whatever the entry holds: a deferred add prompts for
  * nothing, so the fingerprint is checked before anyone is invited to type a
  * passphrase at a file that may have been swapped. Only once it is the right
  * key does an entry stored as "decrypt at load" get decrypted - which re-reads
@@ -972,7 +972,7 @@ static int kageant_load_startup_entry(const char *path, int encrypted,
     int defer = kageant_can_defer(path);
 
     fn = filename_from_str(path);
-    win_add_keyfile(fn, defer ? true : false);  /* deferred asks nothing */
+    win_add_keyfile(fn, defer ? true : false);  /* deferred: no prompt */
     filename_free(fn);
     if (g_nloaded == before) {
         kageant_audit_load("loadkey", path, "failed");
@@ -1044,7 +1044,7 @@ char *kageant_paths_of_blob(ptrlen blob)
     /*
      * And the entries whose file is not reachable, matched on the fingerprint
      * they remember - the stick is out, the key is still in the agent, and
-     * naming the file it belongs to is the whole point of the question.
+     * showing the file it belongs to is the whole point of the question.
      */
     {
         strbuf *b = strbuf_new();
@@ -1154,12 +1154,12 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
  * Try the pending keys again. Called when a device arrives, and from the key
  * list's "Retry unavailable keys" button.
  *
- * Loaded DEFERRED whatever the entry said: a deferred load never asks for a
+ * Loaded DEFERRED whatever the entry held: a deferred load never prompts for a
  * passphrase - it is wanted at first use - and a device event is no moment to
  * put a modal prompt in front of someone. The key coming back is silent; using
- * it asks, as it would for any deferred key.
+ * it prompts, as it would for any deferred key.
  *
- * manual says the user pressed the button, which changes three things:
+ * manual means the user pressed the button, which changes three things:
  *
  *  - the [Agent] retrykeys setting no longer applies. That setting governs
  *    retrying by itself, and this is not by itself.
@@ -1177,7 +1177,7 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
  * its drive letter replaced by a letter that JUST ARRIVED, if a file actually
  * exists there. One GetFileAttributes per pending key per arrived letter and
  * no enumeration - drives are never scanned, only the letter(s) the device
- * broadcast named are tried. A UNC or relative path has no drive letter, so
+ * broadcast listed are tried. A UNC or relative path has no drive letter, so
  * the mode does not apply to it; the stored letter itself is skipped because
  * the stored-path probe already covers it.
  *
@@ -1276,7 +1276,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
         }
         /*
          * Nothing recorded to check against: it loads, and the fingerprint of
-         * whatever loaded becomes the baseline. Counted so the user is told it
+         * whatever loaded becomes the baseline. Counted so a notice reports it
          * went unverified this once.
          */
         if (!g_pending[i].fp[0])
@@ -1288,7 +1288,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
             g_startup_loading = 1;             /* a failure now is a startup one */
             kitty_hello_batch_begin();  /* one gesture covers the batch */
             /* Deferred where that is possible - see kageant_can_defer. An
-             * SSH-1 key asked for deferred is refused outright, so this path
+             * SSH-1 key added deferred is refused outright, so this path
              * used to fail every SSH-1 key on every device arrival. */
             win_add_keyfile(fn, kageant_can_defer(loadpath) ?
                                 true : false);
@@ -1307,7 +1307,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
              * A mismatch does NOT prompt. A device arriving is no moment for a
              * dialog, and a fingerprint change is not something to wave away
              * with one click either. The key is put back out of the agent, the
-             * entry is marked, and the user is told - see
+             * entry is marked, and the user is notified - see
              * kageant_note_verify_problem().
              */
             if (g_nloaded != before &&
@@ -1325,7 +1325,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
 
             if (g_nloaded == before) {
                 /* Did not load. Keep the entry, but stop trying it: the file is
-                 * present and broken, the user has already been told, and
+                 * present and broken, the user has already been notified, and
                  * repeating the box at every device event would be its own
                  * annoyance. Restarting kageant tries again from scratch, and
                  * so does the key list's "Retry unavailable keys".
@@ -1358,7 +1358,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
              * Loading deferred is a decision about THIS moment - a device
              * arriving is no time to raise a passphrase prompt - not about how
              * the user wants this key added in future. Put the recorded
-             * preference back to what the stored entry said.
+             * preference back to what the stored entry holds.
              *
              * Without this the deferred flag became permanent by accident: the
              * startup list is saved from the in-memory state, so the next time
@@ -1403,8 +1403,8 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
     if (rewrote_any)
         kageant_save_startup_keys();
 
-    /* One summary line per pass with anything to say - quiet passes on an
-     * unrelated device arrival stay out of the log. */
+    /* One summary line per pass with anything to report - quiet passes
+     * on an unrelated device arrival stay out of the log. */
     if (loaded_n || refused_n || broken_n || nofp_new || (manual && absent_n)) {
         char nums[4][12];
         snprintf(nums[0], sizeof(nums[0]), "%d", loaded_n);
@@ -1514,7 +1514,7 @@ int kageant_accept_pending_key(const char *path)
  * which is the same consent Add Key rests on.
  *
  * If the same key is recorded at several locations and ALL are unreachable,
- * they collapse into the one just chosen: there is no way to tell a
+ * they collapse into the one just chosen: there is no way to distinguish a
  * deliberate second location from the same key added off three different
  * sticks. Consequence accepted: a temporarily-down network share among them
  * is forgotten and would need a fresh Add Key.
@@ -1557,7 +1557,7 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
 
     /*
      * Off the pending list - and every other UNREACHABLE entry recording the
-     * same key goes with it: the chosen location replaces them all. Spliced
+     * same key is removed too: the chosen location replaces them all. Spliced
      * by hand rather than through kageant_drop_pending() for the same reason
      * as the accept path - this is a re-pointing, not a removal, and the
      * stored entry must never blink out between two writes.
@@ -1583,15 +1583,15 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
 }
 
 /*
- * KiTTY: somebody just asked for our keys while we are holding one back.
+ * KiTTY: a client just requested our keys while we are holding one back.
  *
  * This is the moment a refused key actually costs something - the login that
  * is about to fail - rather than back when the stick was plugged in and the
  * balloon may have been missed. It is also the ONLY trigger available: a
- * refused key is not in the identity list, so nothing ever asks to sign with
- * it.
+ * refused key is not in the identity list, so no sign request ever
+ * uses it.
  *
- * Rate-limited hard, because every SSH connection asks this, as do scp, git and
+ * Rate-limited hard, because every SSH connection does this, as do scp, git and
  * any scripted plink - firing per request would be a balloon storm, and a
  * warning that appears constantly is one people learn to dismiss:
  *
@@ -1612,7 +1612,7 @@ void kageant_do_identities_asked(unsigned long pid)
         return;
     }
     if (held == announced_for)
-        return;                         /* same set, already said once */
+        return;                         /* same set, already reported once */
     if (!traywindow || kageant_keylist_open())
         return;
 
@@ -1645,7 +1645,7 @@ void kageant_do_identities_asked(unsigned long pid)
     announced_for = held;
 }
 
-/* On a device arriving. The mask names the letter(s) that arrived (bit 0 =
+/* On a device arriving. The mask gives the letter(s) that arrived (bit 0 =
  * A:), or 0 when the broadcast did not name a volume - retry mode (c) then
  * probes nothing beyond the stored paths. */
 void kageant_retry_pending_keys(unsigned long arrived_mask)
@@ -1660,7 +1660,7 @@ void kageant_retry_pending_keys(unsigned long arrived_mask)
 void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
 
 /*
- * KiTTY: say what verification did, without becoming noise.
+ * KiTTY: report what verification did, without becoming noise.
  *
  * Called after a load pass (device arrival today). Two different things to
  * report, and only when they are NEWS:
@@ -1673,7 +1673,7 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
  *
  *  - unchecked: keys loaded with no recorded fingerprint to compare against.
  *    That is one unverified load each, after which the fingerprint of whatever
- *    loaded becomes the baseline - worth saying once.
+ *    loaded becomes the baseline - worth reporting once.
  *
  *  - nofp_newdrive: a file matching a startup key's path (minus its drive)
  *    appeared on a drive that just arrived, but the entry has no recorded
@@ -1684,7 +1684,7 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
  *
  * A notice, never a prompt: this fires when hardware appeared, which is not a
  * moment to demand an answer. Clicking it opens the key list, where the State
- * column says which key - and that list IS the persistent record, because the
+ * column shows which key - and that list IS the persistent record, because the
  * agent has no event log of its own (debug_logevent lives in kitty_winutil.c and
  * is not linked here). A balloon is easily missed, so the refused entry must
  * stay visible there until it is dealt with.
@@ -1789,7 +1789,7 @@ void kageant_note_retry_result(int loaded, int refused, int absent,
                           traywindow, KAGEANT_WM_NOTICE_CLICK);
 }
 
-/* Is a startup-list load in progress? Lets the failure path tell "this key
+/* Is a startup-list load in progress? Lets the failure path separate "this key
  * could not be loaded" from "this key you just picked could not be loaded",
  * which are different problems needing different words. */
 int kageant_startup_loading(void) { return g_startup_loading; }
@@ -1859,7 +1859,7 @@ void kageant_key_set_lifetime(ptrlen pubblob, unsigned seconds)
  * ssh-add -t keys, re-encrypting idle keys, and the countdown column of the
  * key list. None of them has any work while no lifetime is pending, no key
  * is on the idle list and the idle policy is off - which is the common
- * state - so the frontend arms the timer only while this says so, and the
+ * state - so the frontend arms the timer only while this is true, and the
  * places that can make it true again (a lifetime arrives, the idle policy
  * is switched on, a key gets its own idle value) call the arm hook.
  */
@@ -2487,7 +2487,7 @@ void kageant_load_startup_keys(void)
 {
     const char *f;
     /* Keys loaded with no fingerprint on record - reported once at the end, so
-     * the first start after an upgrade says what it did rather than doing it
+     * the first start after an upgrade reports what it did rather than doing it
      * silently. */
     int startup_unchecked = 0, startup_mismatch = 0;
     g_startup_missing = 0;
@@ -2583,7 +2583,7 @@ void kageant_load_startup_keys(void)
             g_fp_adopted = 0;
             kageant_save_startup_keys();   /* now the list is complete */
         }
-        /* Say so once, after the list is complete - not per key. */
+        /* Report it once, after the list is complete - not per key. */
         kageant_note_verify_problem(startup_mismatch, startup_unchecked, 0);
         kageant_refresh_tray_tip();
         return;
@@ -2699,7 +2699,7 @@ void kageant_notify_startup_missing(void)
      * about it would hide a real problem. */
     if (kageant_quiet_missing())
         return;
-    /* Say what happens NEXT, not just what did not happen: with retrying on,
+    /* Show what happens NEXT, not just what did not happen: with retrying on,
      * these keys are waiting rather than lost, and they load by themselves when
      * the drive comes back. Read as a plain failure, the old wording sent
      * people looking for something to fix. */
@@ -2830,10 +2830,10 @@ void kageant_apply_saved_order(void)
 }
 
 /* KiTTY (Patrick Cernko) private-key usage confirmation. Installed into the
- * agent core via kageant_confirm_hook below. Ask the user before allowing the
- * key to sign when the global "Confirm every key use" toggle is on, or when
- * the key's comment requests confirmation for just that key. Returns 0 to
- * refuse, nonzero to allow. */
+ * agent core via kageant_confirm_hook below. Prompt the user before
+ * allowing the key to sign when the global "Confirm every key use" toggle
+ * is on, or when the key's comment requests confirmation for just that
+ * key. Returns 0 to refuse, nonzero to allow. */
 extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
 
 int kageant_ipc_blocked(int op)
@@ -2916,15 +2916,15 @@ void kageant_do_mutation_notice(int op, const char *comment)
  * are described in pageant.h).
  * ------------------------------------------------------------------------- */
 
-/* May a program lock/unlock over the pipe? The core asks for every external
- * SSH_AGENTC_LOCK / UNLOCK. */
+/* May a program lock/unlock over the pipe? The core checks this on every
+ * external SSH_AGENTC_LOCK / UNLOCK. */
 int kageant_ipc_lock_allowed(void)
 {
     return kageant_allowipclock_get();
 }
 
 /* A program's lock request was handled (pageant.h kageant_lock_event_hook).
- * Always in the agent log; a notice naming the program when it actually
+ * Always in the agent log; a notice showing the program when it actually
  * locked or unlocked, or when its tenth wrong passphrase shut unlocking over
  * IPC - a refused request (the setting is off, a wrong passphrase, the wait
  * after one, unlocking shut) is a log line only, so a program cannot raise
@@ -2960,7 +2960,7 @@ void kageant_do_lock_event(int op, int result)
 
 /* "When Windows locks: Re-encrypt the keys" - the keys that were unlocked
  * (decrypted) when Windows locked, by public blob: at Windows unlock their
- * passphrases are asked for again. */
+ * passphrases are prompted for again. */
 static strbuf **g_winlock_blobs = NULL;
 static int g_nwinlock_blobs = 0;
 
@@ -2982,7 +2982,7 @@ void kageant_winlock_session(int locked)
         if (mode == 0)
             return;                      /* keep the agent working (default) */
         if (mode == 2) {
-            /* Which keys are unlocked now - asked for again at Windows unlock
+            /* Which keys are unlocked now - requested again at Windows unlock
              * - then all of them back to their encrypted state. A key with no
              * passphrase cannot be re-encrypted: the lock below keeps it from
              * being used meanwhile. */
@@ -3008,7 +3008,8 @@ void kageant_winlock_session(int locked)
         /* The keys it re-encrypted: the ones with a key file are decrypted
          * again from it right away (the key list's Decrypt - one passphrase
          * prompt each, or Windows Hello). The others - added over the pipe,
-         * or their stick is gone - ask on first use, and a notice says so. */
+         * or their stick is gone - prompt on first use, and a notice
+         * reports it. */
         int i, left = 0;
         int n = g_nwinlock_blobs;
         strbuf **blobs = g_winlock_blobs;
@@ -3041,9 +3042,10 @@ void kageant_winlock_session(int locked)
 /* The comment convention. Checked once at ADD time (via
  * kageant_comment_confirm_hook) on EVERY add path, turning the convention
  * into the real, sticky per-key flag. There is deliberately no sign-time
- * re-check of the comment: it could not tell a flag the user cleared in Key
- * details from one that was never set, so it would silently override that
- * "No". The per-key flag is the single source of truth at sign time. */
+ * re-check of the comment: it could not distinguish a flag the user cleared
+ * in Key details from one that was never set, so it would silently
+ * override that "No". The per-key flag is the single source of truth at
+ * sign time. */
 int kageant_comment_wants_confirm(const char *comment)
 {
     return comment &&
@@ -3099,7 +3101,7 @@ int kageant_do_confirm(const char *comment, int key_confirm)
     }
 
     /*
-     * Windows Hello instead of a button - when this key's own mode says so,
+     * Windows Hello instead of a button - when this key's own mode sets it,
      * or the global [Agent] helloconfirm toggle upgrades every confirmation.
      * A click can be synthesized by same-user code; the Hello prompt cannot.
      *
@@ -3307,7 +3309,7 @@ int kageant_nloaded(void)
 /*
  * Swap one tracked path for another (the protected copy replacing the
  * plaintext original it was made from): the entry keeps its slot, its
- * blob (same key) and, unless told otherwise, its load mode. Returns 1
+ * blob (same key) and, unless set otherwise, its load mode. Returns 1
  * replaced, 0 oldpath was not a tracked loaded path.
  */
 int kageant_startup_replace_path(const char *oldpath, const char *newpath,
@@ -3335,7 +3337,7 @@ int kageant_startup_replace_path(const char *oldpath, const char *newpath,
 
 /*
  * Forget ONE path of a loaded key - the key stays in the agent, only the
- * startup list stops naming that file (a deleted plaintext original, a
+ * startup list stops listing that file (a deleted plaintext original, a
  * retired stick). A pending entry of that path is dropped the same way.
  * Returns 1 if something was forgotten.
  */

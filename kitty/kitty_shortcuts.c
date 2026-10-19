@@ -288,7 +288,7 @@ void InitShortcuts( void ) {
 }
 
 /* Menu text for a shortcut code: the inverse of DefineShortcuts, for the keys
- * it names. Modifiers first, joined with "+", in the order Ctrl, Alt, Shift,
+ * it defines. Modifiers first, joined with "+", in the order Ctrl, Alt, Shift,
  * Win, AltGr: "Ctrl+F3", "Shift+F4", "Ctrl+Alt+T". Returns the length
  * written; 0 with an empty buffer for an unset key (0) and for a key no name
  * is known for. The modifier values are far enough apart that peeling them
@@ -751,7 +751,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	 * the whole A-Z range unconditionally, which had two consequences: any
 	 * {CONTROL}{SHIFT}<letter> binding in [Shortcuts] was unreachable, and a
 	 * letter with no command behind it was still swallowed - dispatched to a
-	 * SpecialMenu[] slot that is NULL, so nothing happened and nothing said
+	 * SpecialMenu[] slot that is NULL, so nothing happened and nothing showed
 	 * why. With no commands defined at all, which is the common case, that
 	 * cost all 26 combinations for a menu KiTTY does not even display (it is
 	 * only added when at least one command exists).

@@ -106,7 +106,7 @@ static int kitty_save_current_session( const char * newname, char * out, size_t 
 /* Window menu "Save as New Session...": Change Settings, opened on the
  * Session panel with the name field holding a new name - the host, or
  * user@host when a session of the host's name exists. Its Save writes the
- * session, and asks first when the name exists already. */
+ * session, and puts up a question first when the name exists already. */
 void kitty_savenew_box( HWND hwnd ) {
 	const char * host = conf_get_str( conf, CONF_host ) ;
 	const char * user = conf_get_str_ambi( conf, CONF_username, NULL ) ;   /* STR_AMBI: conf_get_str asserts */
@@ -133,7 +133,7 @@ typedef int (*IntCmdHandler)( HWND hwnd, char * arg ) ;
 
 /* What the last command did, for the command box's result line. A handler
  * that has something to report writes it with cmd_say(); one that writes
- * nothing gets "Done: /name" from InternalCommand. A file is always named
+ * nothing gets "Done: /name" from InternalCommand. A file is always shown
  * with its full path - the person typing it must never have to guess.
  * Several lines are fine: the line grows with its text (kitty_inputbox.c).
  * Only /passwd, in debug mode, still reports in a box of its own; no other
@@ -462,7 +462,7 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	 * held the session still for as long as it stood unanswered.
 	 *
 	 * It used to delete TEXT(PUTTY_REG_PARENT), i.e. Software\kapper.net: the
-	 * VENDOR key, not ours. Anything else stored under that vendor went with it,
+	 * VENDOR key, not ours. Anything else stored under that vendor was deleted,
 	 * on one typed word, with no confirmation and nothing to undo it. It also
 	 * used the compile-time macro, so with KiClassName=PuTTY it deleted a hive
 	 * the running KiTTY was not even using while leaving the one it WAS using
@@ -503,7 +503,7 @@ static int cmd_savesessions( HWND hwnd, char * arg ) {
 	CreateDirectoryA( dir, NULL ) ;
 	snprintf( file, sizeof(file), "%s\\kitty.ses", dir ) ;
 	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
-	{	/* no Sessions key: reg.exe has nothing to export - say why, rather
+	{	/* no Sessions key: reg.exe has nothing to export - report why, rather
 		 * than a bare "not saved" */
 		HKEY k ;
 		if( RegOpenKeyExA( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &k ) != ERROR_SUCCESS ) {
@@ -583,7 +583,7 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
  *
  * The command is KEPT, answering with an explanation, because deleting it outright
  * would answer anyone who has it in their fingers with "unknown command" - which
- * tells them nothing about why, and looks like a bug rather than a decision.
+ * gives them no reason, and looks like a bug rather than a decision.
  * Reading old encrypted .ktx files still works.
  */
 static int cmd_switchcrypt( HWND hwnd, char * arg ) {
@@ -696,7 +696,7 @@ static int cmd_fileassoc( HWND hwnd, char * arg ) {
 	/* KiTTY: from the /commands console there is no command line to add
 	 * options to, so this is the plain form - never take the extension away
 	 * from another program (say so with -fileassoc -force instead), and treat
-	 * typing /fileassoc as the confirmation a portable copy would ask for. */
+	 * typing /fileassoc as the confirmation a portable copy would request. */
 	CreateFileAssoc( 0, 0, 1 ) ;
 	return 1 ;
 }

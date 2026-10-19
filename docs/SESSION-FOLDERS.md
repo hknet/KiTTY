@@ -19,10 +19,13 @@ end.
   the file `%KITTY_INI_FILE%` points to - see [KITTY-INI.md](KITTY-INI.md)).
 - `klink`, `kscp` and `ksftp` from the same folder read the same store.
 - kitty.exe creates a missing session folder; the command-line tools do not.
-- **State lives beside the sessions.** When the folder's last component is
-  not `Sessions` (e.g. `sessions=D:\ops\mysess`), KiTTY++ keeps `KiTTYState`
-  and `SshHostKeys\` inside it. They are never listed as sessions - a tool that
-  regenerates the folder must not delete them.
+- **The store's other files move with the session folder.** When its last
+  component is not `Sessions` (e.g. `sessions=D:\ops\mysess`), KiTTY++ keeps
+  `KiTTYState`, `Jumplist`, `PUTTY.RND`, `SshHostKeys\`, `SshHostCAs\`,
+  `Security\`, `TermEnvHint\` and `WindowPos\` inside it. They are never
+  listed as sessions - a tool that regenerates the folder must not delete them.
+  `Proxies\`, `Launcher\` and `Backups\` stay in the configuration directory.
+  The help's appendix "The folder store" has the details.
 
 ## Layout
 

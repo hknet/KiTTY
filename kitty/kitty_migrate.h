@@ -72,7 +72,7 @@ enum {
     KFS_READY = 0,        /* imports as it is */
     KFS_PASSWORD,         /* imports, but the stored password cannot be decoded here */
     KFS_PASSWORD_MPW,     /* imports; the password is under a master password
-                             (that store's, not asked for - see the design note) */
+                             (that store's, no prompt - see the design note) */
     KFS_UNREADABLE        /* the file did not parse as a session */
 };
 struct kitty_folder_scan_item {
@@ -124,7 +124,7 @@ bool kitty_import_file_session(const char *path, const char *target,
                                struct kitty_namelist *dropped,
                                bool *password_lost);
 /* Does `pass` open the master-password value in this session file? The
- * import's own check, before it asks again; false when the file has no MPW2
+ * import's own check, before it prompts again; false when the file has no MPW2
  * value at all. */
 bool kitty_import_store_pass_fits(const char *path, const char *pass);
 

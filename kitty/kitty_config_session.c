@@ -123,8 +123,8 @@ static void kitty_winpos_save_from_conf(const char *session, Conf *conf)
 static dlgcontrol *g_loginscript_ctrl = NULL;
 
 #ifdef MOD_FAR2L
-/* "Forget always-allowed far2l clients": empties Far2lClientIds, so every far2l
- * is asked again (with the far2l clipboard set to Ask). */
+/* "Forget always-allowed far2l clients": empties Far2lClientIds, so for every
+ * far2l client the question comes back (with the far2l clipboard set to Ask). */
 static void kitty_far2l_forget_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                        void *data, int event)
 {
@@ -458,7 +458,7 @@ static int hotkey_launcher_holds(HWND launcher, unsigned int mods, unsigned int 
 }
 
 /* Application > KiTTY++ Settings > Launcher, "Global hotkey:" + Apply: the
- * value is stored (and a running launcher told to register it again) only
+ * value is stored (and a running launcher made to register it again) only
  * when the combination is free, or the running launcher holds it as this
  * very global hotkey. Otherwise the box reports why and nothing is stored.
  * Empty removes the global hotkey. */
@@ -617,7 +617,7 @@ static const char *kitty_proxy_neutral(Conf *conf)
                                          : KITTY_PROXY_NONE;
 }
 
-/* Line spacing: an ordinary integer editbox, plus a label that says so when the
+/* Line spacing: an ordinary integer editbox, plus a label that warns when the
  * number typed into it is outside the range the terminal will actually honour.
  * The clamp lives in init_fonts (windows/window.c) and happens regardless; this
  * is only so the box does not sit there showing 900 as though 900 were in use.
@@ -768,7 +768,7 @@ struct pxload_data {
 };
 
 /* The live box's pre-set loader, for the pin below; set whenever the Proxy
- * panel is built, so it never outlives the controls it names. */
+ * panel is built, so it never outlives the controls it refers to. */
 static struct pxload_data *kitty_pxload_active = NULL;
 
 /*
@@ -818,9 +818,9 @@ static void kitty_pxload_apply(dlgparam *dlg, Conf *conf, const char *picked)
             return;                     /* nothing touched at all */
 
         LoadProxyInfo(conf, picked);
-        /* The fields ARE the preset now, so a remembered override naming it (or
-         * naming something else) would only be able to disagree. Clear it back to
-         * "use what the session says". */
+        /* The fields ARE the preset now, so a remembered override pointing at it
+         * (or at something else) would only be able to disagree. Clear it back to
+         * "use the session's own proxy". */
         conf_set_str(conf, CONF_proxyselection, KITTY_PROXY_SESSION);
         dlg_refresh(NULL, dlg);         /* repaint the proxy fields we just wrote */
     }
@@ -1074,8 +1074,8 @@ static bool kitty_folder_rows_active(struct sessionsaver_data *ssd);
  * means changing the folder combo by hand first.
  *
  * Only the filter moves: no session is loaded, re-filed or saved. Returns
- * true if the folder actually changed, so the caller can tell "went global"
- * from "was already global".
+ * true if the folder actually changed, so the caller can distinguish
+ * "went global" from "was already global".
  */
 bool kitty_config_select_root_folder(dlgparam *dp)
 {
@@ -1174,7 +1174,7 @@ static void kitty_config_ctrl_focus_gained(dlgcontrol *ctrl, dlgparam *dlg)
 }
 
 /*
- * Ctrl+F / Ctrl+G: asking to search ends a pending folder rename.
+ * Ctrl+F / Ctrl+G: a search request ends a pending folder rename.
  *
  * Selecting a folder row makes the name box that folder's new name, and the box
  * stops filtering while it does - otherwise the live search rebuilds the list,
@@ -1184,7 +1184,7 @@ static void kitty_config_ctrl_focus_gained(dlgcontrol *ctrl, dlgparam *dlg)
  * a key whose whole purpose is searching, doing nothing visible.
  *
  * So the rule reads in both directions - a folder row selected means "renaming
- * this", and changing the selection OR asking to search means "not any more".
+ * this", and changing the selection OR a search request means "not any more".
  */
 static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
                                             dlgparam *dlg);
@@ -1234,7 +1234,7 @@ static void kcs_tell(const char *msg)
 }
 
 /* Folder store without a suffix: is a session FILE where this folder would
- * go? Says so (modeless) and answers true; a folder is then not made. */
+ * go? Reports it (modeless) and answers true; a folder is then not made. */
 static bool kcs_folder_blocked(const char *folder)
 {
     char *blk, *msg;
@@ -1368,8 +1368,8 @@ static void sessionsaver_data_free(void *ssdv)
         kitty_ctrl_focus_hook = NULL;
     }
     /* The override control belonged to this config box; it is ctrl_alloc'd and
-     * about to go with the ctrlbox, so drop the pointer rather than leave it
-     * dangling for the next box that opens. */
+     * about to be freed with the ctrlbox, so drop the pointer rather than
+     * leave it dangling for the next box that opens. */
     pxchoice_state = NULL;
     get_sesslist(&ssd->sesslist, false);
     sfree(ssd->savedsession);
@@ -1395,7 +1395,7 @@ static void sessionsaver_data_free(void *ssdv)
  * attribute of a session - so this is a VIEW, and turning the setting off puts
  * everything back exactly as it was.
  *
- * Two kinds of row now share one listbox. They are told apart by ID: a session
+ * Two kinds of row now share one listbox. The ID separates them: a session
  * row carries its session index (>= 0, as before), a navigation row carries a
  * NEGATIVE id. Everything that consumes a selection already rejects a negative
  * id - load_selected_session beeps on selid < 0, update_comment_display and the
@@ -1420,7 +1420,7 @@ static bool kitty_folder_rows_on(void)
  * so every one of those became a silent no-op in the new mode. The one that
  * mattered: Save stopped re-filing a session, so loading one from a folder,
  * stepping out to the root with ".." and saving left it in the old folder with
- * no warning at all. Ask this, not for the control.
+ * no warning at all. Query this, not the control.
  */
 static bool kitty_folder_rows_on(void);
 static bool kitty_folders_available(struct sessionsaver_data *ssd)
@@ -1438,7 +1438,7 @@ static bool kitty_folders_available(struct sessionsaver_data *ssd)
  * handler that steps into them sits behind the same !midsession guard the load
  * path needs. A row that does nothing when clicked is worse than no row.
  *
- * Ask this rather than kitty_folder_rows_on() for anything that decides what
+ * Call this rather than kitty_folder_rows_on() for anything that decides what
  * the list LOOKS LIKE or what activating a row DOES. The plain setting still
  * answers "is this mode configured at all", which mid-session needs to know:
  * it is the reason no folder combo is built there either, and therefore the
@@ -1503,7 +1503,7 @@ static bool kitty_searching_all_folders(struct sessionsaver_data *ssd)
 
 /* Does the list show "Default Settings" right now? [ConfigBox]
  * defaultsettings: 0 never, 1 always, 2 only at the top level. BOTH loops -
- * the population and sessionsaver_folder_visible_position - ask this, so the
+ * the population and sessionsaver_folder_visible_position - call this, so the
  * index->row mapping cannot drift between them. */
 static bool kitty_default_row_shown(void)
 {
@@ -1872,11 +1872,11 @@ static bool kitty_folder_row_visible(const char *name, const char *filter)
  *    that have something in them".
  *
  *  - FolderList, the stored list ([KiTTY] Folders). Needed because a folder with
- *    nothing in it still exists and must still be shown; no session names it, so
- *    scanning sessions alone would silently drop it.
+ *    nothing in it still exists and must still be shown; no session is filed
+ *    in it, so scanning sessions alone would silently drop it.
  *
  * The union matters because FolderList is a stored list: deriving the rows
- * from the attribute too shows a folder as soon as a session names it,
+ * from the attribute too shows a folder as soon as a session is filed in it,
  * whether or not the stored list has caught up.
  */
 static int kitty_folder_row_cmp(const void *av, const void *bv)
@@ -2021,8 +2021,8 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
      * folder on every row.
      *
      * The exception is the Ctrl+G search, which deliberately spans folders -
-     * there the results come from everywhere, so each one has to say where it
-     * lives or the list is a set of names with no way to tell them apart. */
+     * there the results come from everywhere, so each one has to show where it
+     * lives or the list is a set of names with no way to distinguish them. */
     bool annotate_folders = !kitty_folder_rows_active(ssd) ||
         kitty_searching_all_folders(ssd);
     char *fld = (annotate_folders && (searching || root_view)) ?
@@ -2108,7 +2108,7 @@ static bool kitty_folder_name_reserved(const char *name)
 
 /* How many saved sessions sit in a folder. Entry 0, the "Default Settings"
  * pseudo-session, is not one of them: the filter shows it under every folder,
- * so it belongs to none, and counting it would tell the user a folder holds
+ * so it belongs to none, and counting it would show the user a folder holds
  * one more session than it does. It is still CLEARED by the move below, since
  * a stored folder on it feeds the folder-list rebuild.
  *
@@ -2175,7 +2175,7 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
      * by re-keying them - key or file, Folder value, jump list, launcher and
      * every jump-host reference to them - and that is all or nothing: a name
      * already taken at the destination stops the whole move before anything
-     * changes, and the message names the clashes. The bare-name sessions
+     * changes, and the message lists the clashes. The bare-name sessions
      * (filed by their Folder value only) follow below as before.
      */
     {
@@ -2284,7 +2284,7 @@ static bool sessionsaver_folder_exists(const char *name)
         if (FolderList[i][0] && kitty_folder_within(FolderList[i], name))
             return true;
     /* KiTTY (hknet/KiTTY#55): a folder that holds path sessions exists
-     * whether or not the stored list names it. */
+     * whether or not the stored list contains it. */
     if (session_filter_ssd) {
         struct sessionsaver_data *ssd = session_filter_ssd;
         for (i = 0; i < ssd->sesslist.nsessions; i++) {
@@ -2441,7 +2441,8 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
 }
 
 /* Deleting a folder that still holds sessions: the modeless box of
- * kitty_sessorg.c asks where they go and moves them (hknet/KiTTY#55). */
+ * kitty_sessorg.c prompts for the destination and moves them
+ * (hknet/KiTTY#55). */
 
 /*
  * KiTTY: Delete pressed on "Default Settings".
@@ -2520,9 +2521,9 @@ static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
 {
     if (!ssd->savebutton)
         return;
-    /* KiTTY: the button says what it will do. With a folder row selected the
+    /* KiTTY: the button shows what it will do. With a folder row selected the
      * box holds that folder's name, and pressing this renames it - so the
-     * caption is the only thing telling the user that Save has become
+     * caption is the only thing showing the user that Save has become
      * something else. Compared by POINTER against the last literal used, as the
      * folder button does, so a redraw is issued only when it actually changes. */
     {
@@ -2566,8 +2567,8 @@ static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
 /* Which FolderList entry does this text name, or -1? Matching is loose (case
  * insensitive) because it exists to let people SELECT a folder by typing.
  *
- * root_alias says whether the root list's built-in spellings ("root", "All
- * sessions", "All sessions (root)") count as naming it. They must NOT when the
+ * root_alias sets whether the root list's built-in spellings ("root", "All
+ * sessions", "All sessions (root)") count as a match. They must NOT when the
  * root list is already selected: there, typing one of them is how you rename
  * its label back to the default, and treating it as "you selected the root
  * again" made the default the one name you could never type. */
@@ -2612,7 +2613,7 @@ static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
 }
 
 /*
- * KiTTY folder navigation: create the folder named in the session-name box.
+ * KiTTY folder navigation: create the folder typed in the session-name box.
  *
  * Same rules and the same engine as the combo's create path - CleanFolderName,
  * the reserved-name refusal, StringList_Add + SaveFolderList - so the two ways
@@ -2638,7 +2639,7 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
     CleanFolderName(folder);
     if (!folder[0]) {
         /* Nothing typed: put the caret where the name goes rather than just
-         * beeping, so the button says what it wants instead of only refusing. */
+         * beeping, so the press shows what is missing, not only a refusal. */
         dlg_set_focus(ssd->editbox, dlg);
         return;
     }
@@ -2672,7 +2673,7 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
 
 /*
  * KiTTY folder navigation: activate the highlighted row if it is a NAVIGATION
- * row, and tell the caller whether it was one.
+ * row, and return whether it was one.
  *
  * true  - it was a folder or "..": the level changed, nothing was loaded, and
  *         the caller must stop.
@@ -3261,7 +3262,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /* No longer midsession-only: the STARTUP box can hold a loaded
              * session too - the hotkey-conflict balloon opens it that way,
              * and loadlastsession does at every start. The session label
-             * reads CONF_sessionname and said "loaded" while this box sat
+             * reads CONF_sessionname and showed "loaded" while this box sat
              * empty and Save escalated to an overwrite warning about the
              * very session in force - two truths at once. One source:
              * the box shows the loaded name, the
@@ -3270,7 +3271,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * loaded_from now equals the box. */
             /* Save as New Session... (kitty_savenew_box): the field holds
              * the new name instead, and nothing counts as loaded, so a Save
-             * onto a name that exists asks first. Taken once. */
+             * onto a name that exists prompts first. Taken once. */
             if (!ssd->savedsession[0] && kitty_cfgbox_prefill_name) {
                 sfree(ssd->savedsession);
                 ssd->savedsession = kitty_cfgbox_prefill_name;
@@ -3311,7 +3312,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_set_focus_later((GetQuickConnectMode() &&
                                      quickconnect_host_ctrl) ?
                                     quickconnect_host_ctrl : ctrl, dlg);
-                /* ...and say so in the title bar, for the box that comes UP in
+                /* ...and show it in the title bar, for the box that comes UP in
                  * quick connect. The Load path marks it when the mode changes
                  * later; this is the one case that happens before any Load. */
                 if (!GetPuttyFlag())
@@ -3328,7 +3329,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * folder, not on the ambient browse state.
              *
              * CurrentFolder is otherwise seeded from the persisted LastFolder,
-             * which names whatever was last browsed - possibly in an earlier
+             * which holds whatever was last browsed - possibly in an earlier
              * run - so Change Settings showed a folder that had nothing to do
              * with the session being changed. The folder comes from STORAGE for
              * the same reason the save does: the running Conf was filled at
@@ -3388,7 +3389,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * being displayed, always keeping entry 0 ("Default Settings").
                  * What "this level" means differs between the classic combo and
                  * folder navigation - kitty_session_on_level knows, and
-                 * sessionsaver_folder_visible_position asks the same function so
+                 * sessionsaver_folder_visible_position calls the same function so
                  * the two can never disagree. */
                 if (!kitty_session_on_level(ssd, i))
                     continue;
@@ -3511,7 +3512,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * NAME, so typing must not also run the live search: the search
              * rebuilds the list, and a rebuild drops the selection - which
              * disarmed the rename halfway through typing it. The button then
-             * said "Save" again and the click created a SESSION named after the
+             * showed "Save" again and the click created a SESSION named after the
              * folder. Filtering is meaningless here anyway; picking any other
              * row ends the rename and restores it.
              */
@@ -3657,8 +3658,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             int row = dlg_listbox_index(ssd->listbox, dlg);
             if (row >= 0) {
                 int id = dlg_listbox_getid(ssd->listbox, dlg, row);
-                /* ".." is a folder row too, but it names the level above rather
-                 * than a folder anyone can rename. */
+                /* ".." is a folder row too, but it refers to the level
+                 * above rather than a folder anyone can rename. */
                 if (id < 0 && id != KITTY_ROW_PARENT)
                     fld = kitty_folder_for_row_id(ssd, id);
             }
@@ -3712,7 +3713,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * it - it does not load anything, so the name box, the loaded session
          * and the Save target are all left alone. Handled before the load path
          * below rather than inside it, because "activate this row" means two
-         * different things now and only the id says which. */
+         * different things now and only the id shows which. */
         if (!ssd->midsession && ctrl == ssd->listbox &&
             sessionsaver_enter_selected_folder(ssd, dlg))
             return;
@@ -3768,7 +3769,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * box restored by itself. Reported live: a fresh box with settings
              * typed into it, Save, and those settings landed in the last-used
              * session with no prompt at all. Force the confirmation for this
-             * path whatever else says it is safe. */
+             * path whatever else reports it as safe. */
             bool target_from_highlight = !ssd->savedsession[0];
             if (!ssd->savedsession[0]) {
                 /* The VISIBLE row index is not the index into sesslist: a folder
@@ -3776,7 +3777,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * to each row is what maps back. Without the mapping, saving
                  * with an empty name box while a folder was selected picked
                  * whatever sat at that position in the UNFILTERED list - so the
-                 * overwrite warning named a session the user could not see, and
+                 * overwrite warning showed a session the user could not see, and
                  * agreeing to it would have written over that one. The delete
                  * path has always mapped; this one did not. */
                 int i = sessionsaver_selected_session_index(ssd, dlg);
@@ -3809,7 +3810,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  *
                  * CurrentFolder is the ambient BROWSE state, seeded from the
                  * persisted LastFolder whenever a config box is built, so
-                 * mid-session it names whatever folder was last browsed - quite
+                 * mid-session it holds whatever folder was last browsed - quite
                  * possibly in an earlier run - and never the session's own.
                  * Treating that as a choice moved sessions silently: start one
                  * from a shortcut, change a setting, Save, and it was re-filed
@@ -3926,12 +3927,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * and press Save. Clicking a name only copies the NAME into the
                  * edit box - it does not load that session - so Save writes A's
                  * entire configuration over B. Host, port, protocol, everything,
-                 * with no prompt and nothing on screen to say it happened. Stock
+                 * with no prompt and nothing on screen to show it happened. Stock
                  * PuTTY has always behaved this way; it is still somebody's whole
                  * session gone, and the person it happened to could not tell what
                  * they had done wrong.
                  *
-                 * Asked only when BOTH hold: the target already exists, and it is
+                 * Shown only when BOTH hold: the target already exists, and it is
                  * not what was loaded into this box. So "load it, change it, save
                  * it" never sees this, nor does saving under a new name, nor two
                  * saves in a row. Default Settings is exempt - a freshly opened
@@ -4016,12 +4017,12 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 }
 #ifdef MOD_LAUNCHER
                 /* A launcher hotkey is a machine-wide claim, so saving one is
-                 * where a conflict is CREATED - and where it must be said.
+                 * where a conflict is CREATED - and where it must be reported.
                  * Two cases, decided against the store before the write:
                  * over the slot limit, the hotkey is disabled and the rest of
                  * the save goes through (silently keeping a hotkey that can
                  * never register would be worse); merely duplicated, the save
-                 * is untouched and a warning after it names the other holders
+                 * is untouched and a warning after it lists the other holders
                  * (the box may hold settings mid-edit - do not rewrite them). */
                 unsigned int hk_mods = 0, hk_vk = 0;
                 int hk_warn = 0;
@@ -4082,13 +4083,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 } else {
                     /* KiTTY: a Save under a NEW name is a copy, and the
                      * loaded session's remembered positions - every monitor
-                     * layout's entry - go with it, so the copy opens where
+                     * layout's entry - are copied too, so the copy opens where
                      * its original does. */
                     if (ssd->savedsession[0] && ssd->loaded_from &&
                         strcmp(ssd->loaded_from, ssd->savedsession) != 0)
                         kitty_winpos_session_copy(ssd->loaded_from, ssd->savedsession);
                     /* What is in the box now IS this session, so a second Save
-                     * in a row must not ask to overwrite it again. */
+                     * in a row must not prompt to overwrite it again. */
                     if (ssd->savedsession[0]) {
                         sfree(ssd->loaded_from);
                         ssd->loaded_from = dupstr(ssd->savedsession);
@@ -4106,7 +4107,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                      * panel shows wins for this layout (a named session only;
                      * Default Settings has no entry of its own). */
                     kitty_winpos_save_from_conf(ssd->savedsession, conf);
-                    /* Tell a running KiTTY Launcher to refresh its saved-session
+                    /* Make a running KiTTY Launcher refresh its saved-session
                      * list and re-register per-session global hotkeys. This is a
                      * best-effort broadcast; if no launcher is running, nothing
                      * happens and the next launcher start reads the new settings. */
@@ -4162,7 +4163,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             kcs_delete_session(ssd, dlg, i);
         } else if (!ssd->midsession &&
                    ssd->createbutton && ctrl == ssd->createbutton) {
-            /* Dual-purpose button - its label always says which one applies
+            /* Dual-purpose button - its label always shows which one applies
              * (sessionsaver_update_folder_button). The name comes from the
              * folder combo's edit half, never from the Saved Sessions field
              * (which holds the session name). */
@@ -4170,7 +4171,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * KiTTY folder navigation: there IS no combo, so the name comes
              * from the session-name box - the third meaning that field gets
              * back once the combo is gone. Typing a name and pressing this
-             * button says what the user wants plainly enough; an earlier
+             * button makes what the user wants plain enough; an earlier
              * version made the first click "arm" the field and the second
              * create, which guarded against creating a folder out of a live
              * search filter and cost a hidden mode on every single use to do it.
@@ -4232,7 +4233,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
                 } else if (kcs_folder_blocked(folder)) {
                     /* KiTTY (hknet/KiTTY#55): a session file of that name
-                     * is in the way on disk (no suffix); said, not done. */
+                     * is in the way on disk (no suffix); reported, not done. */
                 } else {
                     InitFolderList();
                     StringList_Add(FolderList, folder);
@@ -4267,8 +4268,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             } else if (!kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
                 /* the stop has been reported */
             } else if (sessionsaver_folder_member_count(ssd) > 0) {
-                /* KiTTY (hknet/KiTTY#55): ask, in a modeless box that also
-                 * offers where the sessions go (the root preselected); the
+                /* KiTTY (hknet/KiTTY#55): a question in a modeless box that
+                 * also offers where the sessions go (the root preselected); the
                  * box moves them, drops the folder and calls back. */
                 kitty_sessorg_delete_folder(kitty_cfg_modal_owner(), CurrentFolder,
                                             kcs_delete_folder_done, NULL);
@@ -4299,7 +4300,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_refresh(ssd->folderlist, dlg);
                 dlg_refresh(ssd->listbox, dlg);
                 /* Its sessions moved to the root list: a running launcher
-                 * still shows them in the folder's submenu until it is told. */
+                 * still shows them in the folder's submenu until notified. */
                 kitty_notify_launcher_sessions_changed();
             }
         } else if (ctrl == ssd->okbutton) {
@@ -4438,13 +4439,13 @@ static void kitty_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
 /* ---- Connection > SSH > Host keys: "Scan this host" ------------------------ */
 
 /*
- * A secondary box (windows/dialog.c, kitty_cfg_show_aux_box) that asks the
+ * A secondary box (windows/dialog.c, kitty_cfg_show_aux_box) that queries the
  * session's host for every key type it has - one hidden klink per type in the
  * background, as Verify does - and lets the user take the answers into the
  * store: Accept stores a new key, or replaces a differing one after a second
- * question that names both fingerprints; Decline leaves the store as it is
+ * question that shows both fingerprints; Decline leaves the store as it is
  * and, on a MISMATCH, offers to delete the stored key so the next connection
- * asks afresh. Nothing is written without a click.
+ * prompts afresh. Nothing is written without a click.
  */
 struct hks_row {
     const char *keytype;            /* the store's id */
@@ -4772,7 +4773,7 @@ static void kitty_hks_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int e
             break;
         }
         {
-            /* one question for the lot, naming the types */
+            /* one question for the lot, listing the types */
             char *q = dupprintf(KT_HKS_CONFIRM_DELETE_N, nstored == 1 ? "" : "s", types->s,
                                 d->host, d->port);
             int answer = MessageBoxA(kitty_cfg_modal_owner(), q, KT_CAP_KITTY,
@@ -5030,7 +5031,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     /* The "Updates" button that used to sit in this row is now "Check for
      * updates now" on the Application/Updates panel, where the update setting
      * is. It was abbreviated to one word only because a button in a five-column
-     * row has no space for a sentence; on a panel it can say what it does. */
+     * row has no space for a sentence; on a panel it can state what it does. */
     /* Before a session this button ends the program (the Application
      * settings are already saved as they change, so there is nothing to
      * cancel): "Exit". Mid-session it drops the unapplied changes and goes
@@ -5147,8 +5148,8 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * are measured rather than judged by eye - the QA harness fails the build if
      * either caption comes within ten pixels of its border.
      * Icon buttons would have made them narrow and equal; they were dropped
-     * rather than deferred, because a labelled button names itself to a screen
-     * reader and an icon does not. */
+     * rather than deferred, because a labelled button identifies itself to a
+     * screen reader and an icon does not. */
     if (kitty_folder_rows_active(ssd))
         ctrl_columns(s, 3, 50, 22, 28);
     else
@@ -5183,10 +5184,10 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     /* KiTTY: editable folder selector. Selecting a folder filters the list.
      * Creating one is an explicit choice - pick the synthetic "<new folder...>"
      * row, type the name, press New folder. With the root list selected instead,
-     * a typed name renames its LABEL (display only) and the button says so. */
+     * a typed name renames its LABEL (display only) and the button shows that. */
     /* KiTTY folder navigation: the LIST is the navigation in that mode, so the
      * combo goes - two navigation models in one window is the thing to avoid.
-     * "New folder" goes with it rather than on its own account: the folder name
+     * "New folder" is dropped with it, not on its own account: the folder name
      * it acts on comes from the combo's edit half, so without the combo it has
      * no input. It returns beside the name box in a later step; until then this
      * mode creates no folders, which is why the setting is opt-in and off by
@@ -5383,7 +5384,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
 /*
  * One button doing both halves of the same decision: with the field empty it
  * offers a working pattern, with the field set it clears it. The label always
- * says which, so the button is never a surprise.
+ * shows which, so the button is never a surprise.
  */
 static void logtimestamp_button_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
@@ -5597,11 +5598,11 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
         lognone_rows[lognone_nrows++] = c;
         /* One button, two jobs: fill in a working pattern when the field is
          * empty, clear it when it is not - so the feature can be tried, and
-         * undone, without knowing strftime. Its label says which it will do. */
+         * undone, without knowing strftime. Its label shows which it will do. */
         c = ctrl_pushbutton(s, KT_LOGGING_USE_A_DEFAULT_TIMESTAMP, NO_SHORTCUT,
                             HELPCTX(kitty_logging_stamps), logtimestamp_button_handler, P(NULL));
         lognone_rows[lognone_nrows++] = c;
-        /* The file-name field above says what its &-codes mean; this one said
+        /* The file-name field above explains its &-codes; this one explained
          * nothing at all, so the only way to learn the format was to guess. */
         ctrl_text(s, KT_LOGGING_WRITTEN_AT_THE_START,
                   HELPCTX(kitty_logging_stamps));
@@ -5796,7 +5797,7 @@ static void kitty_bkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
     if (event != EVENT_ACTION) return;
     conf_set_str(conf, CONF_kitty_broadcast_key, "");
     kitty_bkey_set_box(st, dp, kitty_broadcast_group());   /* inherited again */
-    kitty_bkey_update_prov(st, dp, conf);   /* ...and the line stops saying custom */
+    kitty_bkey_update_prov(st, dp, conf);   /* ...and the line stops showing custom */
 }
 
 
@@ -5873,12 +5874,12 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
         ctrl_text(s, KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO,
                   HELPCTX(kitty_sendcmd));
         /* The installation's master switch is an application setting; the
-         * note says where. From the start-up window the button jumps there
+         * note shows where. From the start-up window the button jumps there
          * (the same mechanism as the Certificate Authorities jump on Host
          * keys). A running terminal's Change Settings window has no
          * Application tab (scb_panel_kitty_settings builds nothing
          * mid-session), so there the button is not created at all and a
-         * second note says where the leaf is instead. */
+         * second note shows where the leaf is instead. */
         ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_NOTE, HELPCTX(kitty_sendcmd));
         if (midsession) {
             ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_MIDSESSION, HELPCTX(kitty_sendcmd));
@@ -6506,7 +6507,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                   HELPCTX(window_erased),
                   conf_checkbox_handler,
                   I(CONF_erase_to_scrollback));
-    /* What the setting is FOR, which the wording does not say: with it on, a
+    /* What the setting is FOR, which the wording does not state: with it on, a
      * screen that was cleared can still be scrolled back to. */
     if (!GetPuttyFlag())
         ctrl_text(s, KT_WINDOW_TURN_OFF_WHERE_A_CLEARED,
@@ -6600,7 +6601,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     }
 
     /* The Window/Title & Icon panel: the title group,
-     * then the icon group - both are about how the window is told apart. */
+     * then the icon group - both are about how the window is distinguished. */
     s = ctrl_getset(b, "Window/Title & Icon", "title",
                     KT_TITLE_ADJUST_THE_BEHAVIOUR);
     ctrl_editbox(s, KT_TITLE_WINDOW_TITLE, 't', 100,
@@ -6996,7 +6997,7 @@ void scb_panel_selection(struct controlbox *b)
      * the mouse buttons and the clipboard assignments, and the result ran off
      * the bottom of the dialog with half the labels truncated. Split three ways
      * by the question each answers - may the host do it, how much of it, and do
-     * I get told - which also keeps every label short enough to read.
+     * I get notified - which also keeps every label short enough to read.
      */
     s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard", "policy",
                     KT_REMOTE_CLIPBOARD_PERMISSIONS);
@@ -7029,7 +7030,7 @@ void scb_panel_selection(struct controlbox *b)
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(OSC52_CLIPBOARD_DENY),
                       KT_REMOTE_CLIPBOARD_ALLOW, NO_SHORTCUT, I(OSC52_CLIPBOARD_ALLOW),
                       KT_REMOTE_CLIPBOARD_ASK, NO_SHORTCUT, I(OSC52_CLIPBOARD_ASK));
-    /* KiTTY (OSC 52 read): the other direction - a host asking for the CONTENTS
+    /* KiTTY (OSC 52 read): the other direction - a host requesting the CONTENTS
      * of the clipboard, which we then send to it. Directly under the write
      * control, so both clipboard permissions are found in one place.
      *
@@ -7037,17 +7038,17 @@ void scb_panel_selection(struct controlbox *b)
      * "Allow", deliberately. A standing, unattended permission to read the
      * clipboard is the exact thing this control exists to prevent: a clipboard
      * holds a password for half a minute at a time, and the host chooses when it
-     * asks. A read can still be allowed, or a bounded run of them, but only from
-     * the dialog, with the request on screen, and it always expires. There is no
-     * hidden kitty.ini key for it either. Documented so it does not read as
-     * something that was forgotten. */
+     * reads. A read can still be allowed, or a bounded run of them, but only
+     * from the dialog, with the request on screen, and it always expires. There
+     * is no hidden kitty.ini key for it either. Documented so it does not read
+     * as something that was forgotten. */
     ctrl_radiobuttons(s, KT_REMOTE_CLIPBOARD_READS_HOST_ASKS_FOR_YOUR,
                       NO_SHORTCUT, 2,
                       HELPCTX(kitty_osc52_reads), conf_radiobutton_handler,
                       I(CONF_osc52_clipboard_read),
                       KT_REMOTE_CLIPBOARD_DENY, NO_SHORTCUT, I(OSC52_READ_DENY),
                       KT_REMOTE_CLIPBOARD_ASK, NO_SHORTCUT, I(OSC52_READ_ASK));
-    /* Covers OSC 52, OSC 5522 AND far2l, which is why the label names none of
+    /* Covers OSC 52, OSC 5522 AND far2l, which is why the label lists none of
      * them: a rule with an exception in it is not the rule people remember. */
     ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_ONLY_WHILE_THIS_WINDOW_HAS,
                   NO_SHORTCUT, HELPCTX(kitty_osc52_reads),
@@ -7103,7 +7104,7 @@ void scb_panel_selection(struct controlbox *b)
                  I(CONF_osc52_read_dialogs), ED_INT);
     /* OSC 5522 paste events: a privilege an application arms with one mode
      * switch and a keypress then exercises without a dialog, so it gets a
-     * clock; the mode itself outlives the clock, the reads then ask. */
+     * clock; the mode itself outlives the clock, the reads then prompt. */
     ctrl_text(s, KT_LIMITS_PASTE_EVENTS_TEXT, HELPCTX(kitty_osc52_paste));
     ctrl_editbox(s, KT_LIMITS_PASTE_EVENTS_DISARM_MINUTES, NO_SHORTCUT, 18,
                  HELPCTX(kitty_osc52_paste), conf_editbox_handler,
@@ -7117,8 +7118,8 @@ void scb_panel_selection(struct controlbox *b)
      */
     s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Notifications", "title",
                     KT_NOTICES_TITLE_BAR);
-    /* The two markers answer different questions: permission says what COULD
-     * happen, activity says what DID. Icons rather than words - the title bar is
+    /* The two markers answer different questions: permission shows what COULD
+     * happen, activity shows what DID. Icons rather than words - the title bar is
      * shared with the connection name - with the standing one bracketed at the end
      * and the transient one bare at the front. */
     ctrl_checkbox(s, KT_NOTICES_MARK_WHILE_A_PERMISSION,
@@ -7143,8 +7144,8 @@ void scb_panel_selection(struct controlbox *b)
                     KT_NOTICES_NOTIFICATION_AREA);
     /* One switch for every remote-clipboard balloon - permission granted or
      * expired, request refused, payload too large - across all three protocols.
-     * The balloons are rate-limited and say so, and clicking one opens the Event
-     * Log, which is where the events actually all are. */
+     * The balloons are rate-limited and report it, and clicking one opens the
+     * Event Log, which is where the events actually all are. */
     ctrl_checkbox(s, KT_NOTICES_SHOW_TRAY_NOTIFICATIONS_FOR_CLIPBOARD,
                   NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
                   conf_checkbox_handler, I(CONF_clipboard_notify));
@@ -7254,7 +7255,7 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
 
     /*
      * The Connection panel. This doesn't show up if we're in a
-     * non-network utility such as pterm. We tell this by being
+     * non-network utility such as pterm. We detect this by being
      * passed a protocol < 0.
      */
     if (protocol >= 0) {
@@ -7318,7 +7319,7 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
                                   I(CONF_reconnect_login));
                 } else {
                     /* The master switch is off (it is on by default): one
-                     * short line saying so and where it is, rather than
+                     * short line stating it and where it is, rather than
                      * leaving the group out and the feature unfindable.
                      * With the switch on, nothing - the boxes speak for
                      * themselves. */
@@ -7556,7 +7557,7 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
          *  - the three extra lines pushed the workplace box's own button off the
          *    bottom of the config box, behind Open/Cancel.
          * The live state now sits in the workplace box below, on a text control
-         * that is relabelled as the state moves. Nothing is said twice. */
+         * that is relabelled as the state moves. Nothing is shown twice. */
         c = ctrl_droplist(s, KT_PROXY_PROXY_TYPE, 't', 70,
                           HELPCTX(proxy_type), proxy_type_handler, I(0));
         ctrl_columns(s, 2, 80, 20);
@@ -7639,9 +7640,9 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
          * putting it between the preset loader and the session's own fields (where
          * it first sat) read as though it were part of them. */
         /* The leaf is ALWAYS in the tree now. Without a named proxy the
-         * controls grey out and the info line under the state says so -
-         * a leaf that comes and goes with the proxy count read as a bug,
-         * and gave no hint where the feature had gone. */
+         * controls grey out and the info line under the state reports it -
+         * a leaf that appeared and disappeared with the proxy count read as
+         * a bug, and gave no hint where the feature had gone. */
         /* An Application leaf, so [ConfigBox] applicationsettings=no
          * takes it away with the rest of that tab. */
         if (!GetPuttyFlag() && GetConfigBoxApplicationSettingsFlag()) {
@@ -7658,18 +7659,18 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
                             KITTY_WORKPLACE_BOX_TITLE);
             /* The "not a setting of this session" lead is gone: on the
              * Application tab that is what EVERY panel is, so the sentence
-             * said nothing here any more. */
+             * added nothing here any more. */
             /* The live state, drawn BOLD RED while the mode is on so it is seen
-             * rather than read: this is the one line on the panel that says
+             * rather than read: this is the one line on the panel that shows
              * something is overriding every session right now.
              *
              * WARNING: Relabelled in place (see dlg_label_change), so the two wordings
              * must occupy the same number of lines - the control's height was
              * fixed when the panel was built. Both are one line at this width.
              *
-             * WARNING: It says the connection WILL USE the workplace proxy; it does
-             * not say "these settings are ignored". That would not be true in
-             * every case - a proxy Host naming a saved session still drags that
+             * WARNING: It states the connection WILL USE the workplace proxy; it does
+             * not state "these settings are ignored". That would not be true in
+             * every case - a proxy Host matching a saved session still drags that
              * session's configuration in - and the first person to hit a chained
              * case would find the notice lying to them. */
             wd->state = ctrl_text(s, KITTY_WORKPLACE_STATE_OFF, HELPCTX(kitty_workplace));
@@ -7928,10 +7929,10 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
         }
 
         if (!midsession) {
-            /* KiTTY: these two strings name the OTHER PROCESS in a shared
+            /* KiTTY: these two strings mean the OTHER PROCESS in a shared
              * connection, not the PuTTY project - upstream calls it "the
              * upstream PuTTY", which reads here as if it meant our upstream.
-             * Keep them saying KiTTY on a rebase. */
+             * Keep them reading KiTTY on a rebase. */
             s = ctrl_getset(b, "Connection/SSH", "sharing", KT_SSH_SHARING_AN_SSH_CONNECTION_BETWEEN);
 
             ctrl_checkbox(s, KT_SSH_SHARE_SSH_CONNECTIONS_IF_POSSIBLE, 's',
@@ -8015,7 +8016,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
              * session option ([KiTTY] verifyagent; see the handler). */
             /* The unverified-agent warning is on Application > Security now:
              * it is one switch for the whole application, and it used to need
-             * a bold "not a session setting" line to say so here. */
+             * a bold "not a session setting" line to state it here. */
 
             ctrl_settitle(b, "Connection/SSH/Auth/Credentials",
                           KT_CREDENTIALS_CREDENTIALS_TO_AUTHENTICATE);
@@ -8241,7 +8242,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
         {
             /* KiTTY: the CA editor lives on the Application tab; the button
              * jumps there. Without that tab (applicationsettings=no) there is
-             * nowhere to jump, and the line says where the setting is. */
+             * nowhere to jump, and the line shows where the setting is. */
             if (GetPuttyFlag())
                 c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
                                     HELPCTX(ssh_kex_cert),
@@ -8254,7 +8255,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                 ctrl_text(s, KT_HOST_KEYS_CAS_JUMP, HELPCTX(ssh_kex_cert));
         }
 
-        /* KiTTY: ask the host for its keys now and take new ones in - the
+        /* KiTTY: query the host for its keys now and take new ones in - the
          * store's side of this panel (kitty_hostkey_scan_box). */
         if (!GetPuttyFlag()) {
             s = ctrl_getset(b, "Connection/SSH/Host keys", "scan", KT_HKSCAN_GROUP);
@@ -8526,9 +8527,9 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
              * have their own pair on their own panels. */
             xfer_protocol_port_controls(s, XFER_TOOL_KSCP, HELPCTX(kitty_winscp));
             /* Drops on the terminal window. Off unregisters the window for
-             * drops, so the cursor says no before a file is let go; the
-             * Tools menu entries have their own switches on Window >
-             * Behaviour. */
+             * drops, so the cursor shows the no-drop sign before a file is
+             * released; the Tools menu entries have their own switches on
+             * Window > Behaviour. */
             ctrl_checkbox(s, KT_KSCP_DRAGDROP_UPLOAD, NO_SHORTCUT,
                           HELPCTX(kitty_winscp),
                           conf_checkbox_handler, I(CONF_kscp_dragdrop));
@@ -8549,7 +8550,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                           NO_SHORTCUT, HELPCTX(kitty_winscp),
                           conf_checkbox_handler, I(CONF_pscp_keep_window));
             /* The helper's path and port are application settings (KiTTY++
-             * Settings > Transfers & Tools); say so, and offer the way there
+             * Settings > Transfers & Tools); state that, and offer the way there
              * when the Application tab exists. */
             {
                 dlgcontrol *note, *btn;
@@ -8724,7 +8725,7 @@ void scb_panel_other_protocols(struct controlbox *b, bool midsession, int protoc
         ctrl_settitle(b, "Connection/SUPDUP",
                       KT_SUPDUP_OPTIONS_CONTROLLING_SUPDUP_CONNECTIONS);
 
-        /* KiTTY: say what this protocol IS, in one line with the help behind
+        /* KiTTY: show what this protocol IS, in one line with the help behind
          * it. The panel is inherited from upstream and sits in the tree beside
          * Telnet and Rlogin, where it reads as something a person might
          * plausibly need - and then every option on it ("Location string",
@@ -8974,7 +8975,7 @@ void scb_panel_transfers(struct controlbox *b)
 
     ctrl_settitle(b, "Connection/File-Transfer-Settings", KT_TRANSFERS_TITLE);
 
-    /* First, because it says WHICH HOST the tool-specific matter below is
+    /* First, because it sets WHICH HOST the tool-specific matter below is
      * about. Moved off the WinSCP panel: it serves FileZilla too, and a
      * setting for two tools cannot sit on one of their leaves. Stored as
      * SFTPConnect. A port inside the string wins over the tool's Port field
@@ -9002,7 +9003,7 @@ void scb_panel_transfers(struct controlbox *b)
     g_xfer_global_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
     g_xfer_global_ctrl->text.lines = 2;
     /* The upload folder: where Send File opens and where a name the far end
-     * asks to read is looked up. Same shape, same refresh. */
+     * requests to read is looked up. Same shape, same refresh. */
     ctrl_filesel(s, KT_TRANSFERS_UPLOAD_FOLDER, NO_SHORTCUT,
                  FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
                  xfer_uploaddir_handler, P(NULL));
@@ -9064,7 +9065,7 @@ void scb_panel_zmodem(struct controlbox *b)
     /* The panel is ALWAYS there. The installation-wide switch ([KiTTY]
      * zmodem) is an application setting and sits on the application's ZModem
      * leaf; with it off the session settings below are not built - they are
-     * declared into the controlbox once - and the panel says where the
+     * declared into the controlbox once - and the panel shows where the
      * switch is, so it is never a dead end. */
     if (!GetPuttyFlag()) {
         ctrl_settitle(b, "Connection/ZModem",

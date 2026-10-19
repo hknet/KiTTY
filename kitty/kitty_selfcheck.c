@@ -52,7 +52,7 @@ static const unsigned char kt_pubkey[KT_ED25519_PUB_LEN] =
  * tool fills - is defined in kitty_selfcheck_stamp.c, a translation unit of
  * its own without any crypto dependency, so that every shipped program can
  * carry the stamp, including the two that link no crypto library and cannot
- * run this check (pterm, puttytel). The own-image read below still names it,
+ * run this check (pterm, puttytel). The own-image read below still uses it,
  * which is also what keeps every linker from treating it as unreferenced. */
 extern const unsigned char kt_stamp_block[KT_STAMP_SIZE];
 
@@ -113,7 +113,7 @@ static int kt_visible(int gui)
 
 /*
  * The verdict on the file at `path`. Returns 0 = intact, 1 = refuse (reason
- * filled), 2 = cannot check (the caller decides by visibility). `own` says
+ * filled), 2 = cannot check (the caller decides by visibility). `own` means
  * the file is this process's own image, which adds the fault switch and the
  * check that the image's own stamp block is ours; `sha_out`, when given,
  * receives the recomputed hash (for a display).

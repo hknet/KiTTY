@@ -27,7 +27,7 @@
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
-#include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report names */
+#include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report lists */
 #include "kitty_pwmem.h"    /* the -pwfile helpers declared there, defined here */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty.h"
@@ -74,7 +74,7 @@ static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = mallo
 /* Portable-context write policy (kitty.ini [KiTTY] PortablePasswordProtection):
  * "master" (default) -> portable secrets are written MPW2; "dpapi" -> Windows
  * DPAPI, i.e. this Windows account on this PC, and NO master password is ever
- * created or asked for; "legacy" -> unmarked plaintext, the explicit
+ * created or prompted for; "legacy" -> unmarked plaintext, the explicit
  * compatibility escape hatch for automation/audit setups. Set from kitty.c when
  * the portable (savemode=dir) backend is activated; registry-backed stores never
  * consult it. This replaces the retired registry-global "PasswordScheme" DWORD,
@@ -292,7 +292,7 @@ void kitty_set_defer_mpw_prompt(int on) { g_mpw_defer = on; }
  * with a passphrase given explicitly. Pure - derives against the value's own
  * embedded salt and checks the envelope's HMAC; touches none of this store's
  * state (no unlock, no prompt, no cache, no decline latch). The import owns
- * its own passphrase and its own asking; this store's crypto path stays
+ * its own passphrase and its own prompt; this store's crypto path stays
  * exactly as it was. malloc'd plaintext, or NULL (wrong passphrase, not an
  * MPW2 value, or the MPW crypto not linked in this tool).
  */
@@ -385,7 +385,7 @@ static void ksec_bundle_skips_clear(void)
  * belongs to the destination store and has to carry the destination's
  * protection (registry -> DPAPI, portable -> master password). Without this
  * flag an import would rewrite every imported password under the transport
- * password, which nothing on that machine would know to ask for. */
+ * password, which nothing on that machine would know to prompt for. */
 static int   g_bundle_import = 0;
 void kitty_set_bundle_import(int on) { g_bundle_import = (on != 0); }
 /* "Make a portable copy" writes its sessions through the export, but its files
@@ -569,7 +569,7 @@ static int mpw_ensure_unlocked(int creating)
     /* A load (creating==0) needs an existing store; nothing to unlock otherwise. */
     if (!creating && first_time) { if (ver) free(ver); return 0; }
 
-    /* Ask at most ONCE per process: if a preceding decrypt already derived the
+    /* ONE prompt per process: if a preceding decrypt already derived the
      * key for THIS store's salt (foreign-salt cache), and it validates against
      * the stored verifier, promote it to the unlocked key instead of prompting
      * again. This is what makes open-proxy -> save -> connect (all MPW2 in the
@@ -666,8 +666,8 @@ static int mpw_ensure_unlocked(int creating)
     }
     kitty_pwdebug("mpw unlock FAILED: first_time=%d supplied=%d prompt=%d declined=%d",
                   first_time, from_supplied, g_mpw_prompt != NULL, mpw_declined());
-    /* Three wrong answers end the asking for this run, exactly as a cancel
-     * does: without this, every further value asked three more times - a
+    /* Three wrong answers end the prompting for this run, exactly as a cancel
+     * does: without this, every further value prompted three more times - a
      * store of forty sessions became a hundred and twenty prompts. A
      * user-started action prompts again (kitty_mpw_user_action_begin). */
     if (!from_supplied && g_mpw_prompt)
@@ -757,8 +757,8 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         if (*outp) { sfree(*outp); *outp = NULL; }
         SecureZeroMemory(key, sizeof(key));
     }
-    /* Three wrong answers end the asking for this run, as a cancel does -
-     * otherwise every further value of the same store asked three more
+    /* Three wrong answers end the prompting for this run, as a cancel does -
+     * otherwise every further value of the same store prompted three more
      * times. A user-started action prompts again
      * (kitty_mpw_user_action_begin). */
     if (!from_supplied)
@@ -1359,7 +1359,7 @@ int ksec_stored_keeps(const char *stored, const char *plaintext, int portable)
  * base64 for the password, and the server refused it.
  *
  * A failing protect leaves the password itself in the file, which is the plain
- * format -pwfile has always taken, and the session names the missing feature
+ * format -pwfile has always taken, and the session lists the missing feature
  * once. The file is private to the user and deleted after the start
  * (kitty_xfer.c). Declared in kitty_pwmem.h, which is where the rest of the
  * password handling lives; implemented here because the at-rest crypto is
@@ -1375,7 +1375,7 @@ char *kitty_pwfile_line(const char *plain)
     if (line && strncmp(line, KITTY_SECRET_DPAPI_MARK,
                         strlen(KITTY_SECRET_DPAPI_MARK)) != 0 && !reported) {
         /* Protection failed, so ksec_protect_registry handed back the value
-         * itself. Said once per process. */
+         * itself. Reported once per process. */
         reported = 1;
         kitty_api_record("crypt32.dll", "CryptProtectData",
                          KITTY_API_OPTIONAL, KT_WINFEAT_PASSWORD_FILE, 0);
@@ -1384,8 +1384,8 @@ char *kitty_pwfile_line(const char *plain)
 }
 
 /* Did kitty_pwfile_line() actually protect the value, or hand it back as it
- * was? The caller needs to know which, to say so and to decide what may go on
- * a command line. */
+ * was? The caller needs to know which, to report it and to decide what may
+ * go on a command line. */
 int kitty_pwfile_line_is_protected(const char *line)
 {
     return line && !strncmp(line, KITTY_SECRET_DPAPI_MARK,
@@ -1518,11 +1518,11 @@ char *kitty_pwhandle_take(const char *value)
 
 /* ---- does the active store hold anything wrapped with the master password? --
  * Answered by a scan of the sessions and proxies, in whichever backend is in
- * use. kitty_migrate_portable_mpw_state() asks before it copies any
+ * use. kitty_migrate_portable_mpw_state() checks before it copies any
  * master-password state into a portable store: with nothing wrapped, the
  * store mints its own. (A startup repair that removed an orphan salt and
  * verifier pair - the leftover of the 0.84.1.48-0.84.1.65 export behaviour,
- * which minted a master password as a side effect - also asked here; it was
+ * which minted a master password as a side effect - also checked here; it was
  * retired once every install that could have carried the leftover had been
  * started under a build that cleaned it.)
  */
@@ -1676,9 +1676,9 @@ static int reg_base_read(const char *name, char *buf, DWORD bufsz)
 }
 
 /* Prove that an archived salt+verifier really is this store's master-password
- * state, by asking for the password and checking it, before writing anything.
- * On success the derived key is kept as the unlocked key, so the user is asked
- * once here and not again by the first unlock that follows.
+ * state, by prompting for the password and checking it, before writing
+ * anything. On success the derived key is kept as the unlocked key, so the
+ * user gets one prompt here and none from the first unlock that follows.
  * salt_b64/ver are the archived values; returns 1 if they were adopted. */
 static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
 {
@@ -1725,7 +1725,7 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
     SecureZeroMemory(key, sizeof(key));
     memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
     g_mpw_salt_valid = 1;
-    g_mpw_unlocked = 1;                 /* asked once, here - do not ask again */
+    g_mpw_unlocked = 1;                 /* prompted once, here - not again */
     kitty_pwdebug("portable MPW migrate: adopted archived master-password state");
     return 1;
 }
@@ -1739,7 +1739,7 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
  * Copy only when this store actually has something wrapped with it. A store with
  * no MPW values needs no salt at all, and must be left free to mint its own.
  *
- * Returns 1 when state was copied - the caller tells the user, because the copy
+ * Returns 1 when state was copied - the caller warns the user, because the copy
  * only fixes THIS store: another portable KiTTY on the same machine, wrapped
  * with the same hive salt, needs the Security\ folder copied across too, and
  * only the user knows where those live.
@@ -1785,7 +1785,7 @@ int kitty_migrate_portable_mpw_state(void)
     if (!reg_base_read(KSEC_MPW_RETIRED_SALT, salt, ssz) ||
         !reg_base_read(KSEC_MPW_RETIRED_VER, ver, vsz)) {
         /* Wrapped values but no salt anywhere we can see. Do not guess and do
-         * not delete anything - say so in the log and leave it alone. */
+         * not delete anything - record it in the log and leave it alone. */
         kitty_pwdebug("portable MPW migrate: wrapped values but no salt in the hive");
         return 0;
     }
@@ -2049,9 +2049,9 @@ static void ksec_maskpass(char *s)   /* exact replica of kitty_crypt.c MASKPASS 
     memset(buf, 0, strlen(s));
     free(buf);
 }
-/* True only if every byte is printable ASCII (0x20..0x7e). Used to tell a clean
- * plaintext password from MASKPASS XOR output, which leaves high-bit/control
- * bytes. */
+/* True only if every byte is printable ASCII (0x20..0x7e). Used to
+ * distinguish a clean plaintext password from MASKPASS XOR output, which
+ * leaves high-bit/control bytes. */
 static int ksec_all_printable(const char *s)
 {
     if (!s || !*s) return 0;

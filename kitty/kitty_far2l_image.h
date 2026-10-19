@@ -2,7 +2,7 @@
  * kitty_far2l_image.h - far2l terminal extensions: images (request 'i').
  *
  * far2l places pictures over the text grid: it uploads the pixels (raw RGB,
- * RGBA, or a PNG/JPEG file), says which cells they cover, and later moves,
+ * RGBA, or a PNG/JPEG file), gives the cells they cover, and later moves,
  * rotates, mirrors or deletes them by an identity string of its choosing.
  * The images are an overlay: they stay where they were put until deleted and
  * do not scroll with the text under them.
@@ -133,7 +133,7 @@ int far2l_img_request(Far2lImageStore *st, const Far2lImageEnv *env,
                       const unsigned char *stk, size_t len,
                       unsigned char out[F2L_IMG_REPLY_MAX]);
 
-/* Remove every image (env may be NULL: nothing is told). */
+/* Remove every image (env may be NULL: nothing is reported). */
 void far2l_img_store_clear(Far2lImageStore *st, const Far2lImageEnv *env);
 
 /* The capabilities 'c' reports for this environment. */

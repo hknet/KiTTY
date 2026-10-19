@@ -39,7 +39,7 @@ typedef enum KittyTermEnvMode {
 typedef struct KittyTermEnvVar {
     const char *name;
     const char *value;
-    bool added;   /* a default, not the session's: a refusal names the sshd_config fix */
+    bool added;   /* a default, not the session's: a refusal shows the sshd_config fix */
 } KittyTermEnvVar;
 
 /*
@@ -96,7 +96,7 @@ char *kitty_termtype_new(struct conf_tag *conf);
 /*
  * A server that refuses a default (an `added` entry) gets, besides its
  * Event Log line, ONE terminal NOTE per host - the first connection that
- * meets the refusal says it, no later one does (fixed or not: a fixed server
+ * meets the refusal shows it, no later one does (fixed or not: a fixed server
  * simply refuses nothing). Nothing default sent (sendtermenv=no, the session
  * sets both, Telnet) means nothing refused and no NOTE.
  *
@@ -139,7 +139,7 @@ bool kitty_termenv_console_note(const char *plain_note);
 size_t kitty_termenv_host_id(const char *host, int port, char *buf,
                              size_t size);
 
-/* Where "the NOTE was said for this host" is kept: said() reads the mark,
+/* Where "the NOTE was shown for this host" is kept: said() reads the mark,
  * mark() sets it (false = could not). */
 typedef struct KittyTermEnvHintStore {
     bool (*said)(void *ctx, const char *host_id);
@@ -148,12 +148,12 @@ typedef struct KittyTermEnvHintStore {
 } KittyTermEnvHintStore;
 
 /* The rule, pure: true when the NOTE is due for host_id, which is then
- * marked as said. A mark that cannot be written still lets this one NOTE
+ * marked as shown. A mark that cannot be written still lets this one NOTE
  * through. */
 bool kitty_termenv_hint_due(const KittyTermEnvHintStore *store,
                             const char *host_id);
 
-/* Set by a KiTTY++ terminal at startup to kitty_termenv_hint_first: asked
+/* Set by a KiTTY++ terminal at startup to kitty_termenv_hint_first: called
  * once per connection that had a default refused. NULL (every other
  * program) means no NOTE. */
 extern bool (*kitty_termenv_hint_hook)(const char *host_id);

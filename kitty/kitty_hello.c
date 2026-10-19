@@ -292,7 +292,7 @@ static HWND hello_host_create(void)
     if (w) {
         ShowWindow(w, SW_SHOWNOACTIVATE);
         /*
-         * Take the foreground for real. A background process asking
+         * Take the foreground for real. A background process calling
          * SetForegroundWindow is normally REFUSED, and the broker then
          * never presents its window - in practice the prompt
          * appeared only while the mouse hovered the tray icon, because
@@ -1284,10 +1284,10 @@ int kitty_hello_prf_available(void)
 }
 
 /* Find our credential's id in the platform store (no UI), or report it
- * absent. 1 = found (caller sfree), 0 = absent, -1 = cannot tell. */
+ * absent. 1 = found (caller sfree), 0 = absent, -1 = unknown. */
 /* What the last PRF operation did, for the apps' audit lines: stage and
  * HRESULT, no secrets. Product-level (not diag) because "denied" alone
- * cannot tell a refused face from a missing credential. */
+ * cannot distinguish a refused face from a missing credential. */
 static char khw_detail[128] = "";
 static void khw_set_detail(const char *fmt, ...)
 {
@@ -1461,7 +1461,7 @@ static void khw_assert_job_run(void *arg)
 
 /*
  * Get the id of the KiTTY PRF credential, creating it (one Hello prompt
- * plus Windows' save flow) only when absent AND asked to. The
+ * plus Windows' save flow) only when absent AND requested. The
  * find-first order is load-bearing: MakeCredential with the same RP and
  * user id REPLACES an existing credential, which would orphan every
  * secret already wrapped under it - the same data-loss trap as
@@ -2131,8 +2131,9 @@ int kitty_hello_wrap_auto(HWND owner,
             return ret;    /* a DENIED prompt is final, not a fallthrough */
         }
         if (ret != KITTY_HELLO_UNAVAILABLE)
-            return ret;    /* the PRF layer FAILED: say so, do not start a
-                            * second, unrelated prompt sequence on top */
+            return ret;    /* the PRF layer FAILED: report it, do not
+                            * start a second, unrelated prompt sequence
+                            * on top */
         /* PRF layer unavailable after all: fall through to KCM. */
     }
 
@@ -2179,7 +2180,7 @@ int kitty_hello_unwrap_auto(HWND owner, const char *container,
         if (found == 1)
             sfree(mine);
         /* No W of ours here: fall through to a KCM wrap if any, else
-         * UNAVAILABLE - the caller names the owners and offers the
+         * UNAVAILABLE - the caller lists the owners and offers the
          * passphrase doors. */
     }
 

@@ -40,7 +40,7 @@ bool kitty_hostkey_delete(const char *host, int port, const char *keytype);
  * NULL when the type is unknown or the text does not parse. */
 strbuf *kitty_hostkey_blob_from_text(const char *keytype, const char *text);
 
-/* The key types a scan asks for, in the order tried: cache ids. */
+/* The key types a scan requests, in the order tried: cache ids. */
 const char *const *kitty_hostkey_scan_types(int *n);
 
 /* Describe a key from its store text alone (klink -scan: the key just

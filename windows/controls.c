@@ -29,7 +29,7 @@
 /* KiTTY: a configuration-box control lives either on the dialog (the button
  * row) or in the panel host (everything in a panel) - windows/dialog.c. */
 /*
- * KiTTY: the panel host, and the lookup that goes with it.
+ * KiTTY: the panel host, and the lookup that belongs to it.
  *
  * Defined HERE rather than in dialog.c because kittygen links controls.c and
  * not dialog.c: a configuration-box control lives either in the host (any

@@ -9,7 +9,7 @@
  * box already missed (RESTRICTED) when each window rolled its own.
  *
  * The caller supplies the state flags: what "portable" means differs per
- * binary (kitty.exe asks its storage layer, kageant its inifile resolver).
+ * binary (kitty.exe queries its storage layer, kageant its inifile resolver).
  */
 
 #include "putty.h"

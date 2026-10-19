@@ -42,7 +42,7 @@ int kitty_cfg_confirm_delete(void);
  * provisioning script, e.g. Password\PLAIN:hunter2\ in a rolled-out .ktx. It is
  * an input format only: KiTTY recognises it on import and never writes it, and
  * the value is re-protected by the destination backend on the next save. It
- * exists because an unmarked value cannot be told apart from an old-KiTTY
+ * exists because an unmarked value is not distinguishable from an old-KiTTY
  * encrypted one with certainty (see kitty_secret_decode_imported). */
 #define KITTY_SECRET_PLAIN_MARK "PLAIN:"
 
@@ -107,7 +107,7 @@ int kitty_session_set_lockdown(const char *sessionname, int on);
 char *kitty_session_locked_msg(const char *sessionname);   /* NULL = not locked */
 settings_w *kitty_open_settings_w_items(void);
 struct ksf_item *kitty_settings_w_take_items(settings_w *handle);
-/* Walk a parsed file's keys, in file order (the import asks which keys the
+/* Walk a parsed file's keys, in file order (the import checks which keys the
  * loader never read). */
 void ksf_list_foreach(struct ksf_item *h,
                       void (*fn)(const char *key, const char *val, void *ctx),
@@ -115,10 +115,10 @@ void ksf_list_foreach(struct ksf_item *h,
 
 /*
  * Settings that were renamed or replaced. `was` is dropped from a session the
- * next time it is saved; `now` names what took its place. When `migrates` is
+ * next time it is saved; `now` gives what took its place. When `migrates` is
  * true the value still means the same thing, so reading `now` falls back to
  * `was` and an old session keeps its setting. When it is false the value is
- * deliberately not carried over, and the session importer says so.
+ * deliberately not carried over, and the session importer reports it.
  */
 struct kitty_retired_key {
     const char *was;
@@ -149,6 +149,8 @@ void ksf_list_del(struct ksf_item **h, const char *key);  /* retire a renamed ke
 void ksf_list_free(struct ksf_item *h);
 void kitty_set_config_dir(const char *dir);
 char *portable_proxies_dir(void);   /* <configdir>\Proxies, snewn'd or NULL */
+char *portable_config_subdir(const char *subdir);  /* <configdir>\subdir: Proxies, Launcher */
+int portable_config_path(char *out, size_t n, const char *subdir);  /* the same into a buffer */
 char *ksf_session_path(const char *sessionname);  /* snewn'd or NULL */
 /* Session names as folder paths and the session file suffix (hknet/KiTTY#55,
  * #56); see kitty_storage.c. The suffix is set once at startup from kitty.ini

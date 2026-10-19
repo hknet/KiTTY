@@ -9,20 +9,20 @@
  *
  *   - the session itself: the registry key (copied with all its values and
  *     subkeys, so the saved password, the window positions and the
- *     per-session commands go with it untouched) or the session file (moved);
+ *     per-session commands are copied too) or the session file (moved);
  *   - its Folder value, rewritten to the new path's folder ("Default" at the
  *     root), so older copies and the bundle files agree with the path;
  *   - the folder store's per-session commands (Sessions_Commands\<name>);
  *   - the jump list entry, if it had one;
  *   - the launcher's copy of the session list (registry Launcher key or the
- *     folder store's Launcher folder): entries naming it are rewritten;
+ *     folder store's Launcher folder): entries referring to it are rewritten;
  *   - the remembered last session;
- *   - every OTHER session that names it as its SSH jump host (ProxyHost with
+ *   - every OTHER session that has it as its SSH jump host (ProxyHost with
  *     an SSH proxy type): rewritten to the new identity and reported.
  *
- * No user interface: nothing is asked and no box is shown. Callers (the
+ * No user interface: no question comes and no box is shown. Callers (the
  * session list's folder rename/delete, the Organize window, Arrange, the
- * folder-delete box) decide what to tell the user from the results.
+ * folder-delete box) decide what to report to the user from the results.
  * Callers also own the follow-up: kitty_session_folder_cache_clear(), the
  * session list refresh and kitty_notify_launcher_sessions_changed(), once
  * per batch.
@@ -34,7 +34,7 @@
 
 #define KITTY_REKEY_OK      0
 #define KITTY_REKEY_CLASH   1   /* a target exists: NOTHING was moved */
-#define KITTY_REKEY_FAILED  2   /* a move failed part-way; *errmsg says which */
+#define KITTY_REKEY_FAILED  2   /* a move failed part-way; see *errmsg */
 
 /*
  * Re-key n sessions at once: from[i] -> to[i], in the store in use.

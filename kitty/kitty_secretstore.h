@@ -50,13 +50,14 @@ int ksec_stored_keeps(const char *stored, const char *plaintext, int portable);
 int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
 int kitty_portable_password_legacy(void);
 /* kitty.ini PortablePasswordProtection=dpapi: portable secrets are protected
- * with DPAPI and no master password is created or asked for. Mutually exclusive
- * with -masterpwfile, which cmdline.c refuses in this mode. */
+ * with DPAPI and no master password is created or prompted for. Mutually
+ * exclusive with -masterpwfile, which cmdline.c refuses in this mode. */
 int kitty_portable_password_dpapi(void);
 /* One-shot at startup, portable stores only: copy the master-password state out
  * of the registry into the store's own Security\ folder, but only when this
- * store really has values wrapped with it. Returns 1 if it copied, so the caller
- * can tell the user to carry Security\ to any OTHER portable KiTTY of theirs. */
+ * store really has values wrapped with it. Returns 1 if it copied, so the
+ * caller can advise the user to carry Security\ to any OTHER portable KiTTY
+ * of theirs. */
 int kitty_migrate_portable_mpw_state(void);
 const char *kitty_secret_strip_plain(const char *stored);  /* borrowed */
 

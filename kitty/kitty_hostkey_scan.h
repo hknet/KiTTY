@@ -27,7 +27,7 @@ extern const char *kitty_hostkey_scan_only;
 
 /* The capture point, called by verify_ssh_host_key() BEFORE it consults the
  * store or the seat. Returns true when a scan is armed - the caller then
- * abandons the connection (SPR_USER_ABORT) without storing or asking. */
+ * abandons the connection (SPR_USER_ABORT) without storing or prompting. */
 typedef void (*kitty_hostkey_capture_fn)(void *ctx, const char *host, int port,
                                          const char *keytype, const char *keystr,
                                          char **fingerprints);

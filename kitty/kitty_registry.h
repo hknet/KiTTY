@@ -109,8 +109,8 @@ void RemoveSSHHandler( void ) ;
 
 // Create the *.ktx file association
 // KiTTY: same options as CreateSSHHandler - force = take the extension over
-// from whatever opens it now (exported first), peruser = HKCU without asking
-// for administrator rights, assume_yes = skip the portable copy's question
+// from whatever opens it now (exported first), peruser = HKCU without an
+// elevation request, assume_yes = skip the portable copy's question
 void CreateFileAssoc( int force, int peruser, int assume_yes ) ;
 
 // KiTTY++ Settings > System: five state lines (telnet://, ssh://, kitty://,

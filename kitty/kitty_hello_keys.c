@@ -235,7 +235,7 @@ int kageant_hello_protect(HWND owner, const char *srcpath,
  * sidebound != 0: the printout handed back is a recovery CODE, not the
  * file's passphrase - it opens the key only TOGETHER with the .hello
  * sidecar (an extra R door keyed on the code), so the printout alone is
- * not a credential. The costs, said at the UI: recovery then needs a
+ * not a credential. The costs, stated in the UI: recovery then needs a
  * KiTTY tool and the sidecar, and losing the sidecar makes the printout
  * worthless. The PPK's own passphrase (the secret's printed form) is
  * then written nowhere at all.

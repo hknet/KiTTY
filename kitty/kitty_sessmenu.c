@@ -160,7 +160,7 @@ struct ksm_entry *ksm_build(char *const *ids, char *const *folders, int n,
         }
         sfree(fld);
         if (!*ksp_leaf(id))
-            continue;                  /* "Linux\" names no session */
+            continue;                  /* "Linux\" refers to no session */
         sgrowarray(nd->sess, nd->scap, nd->nsess);
         nd->sess[nd->nsess].leaf = ksp_leaf(id);
         nd->sess[nd->nsess].id = id;

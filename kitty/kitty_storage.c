@@ -31,7 +31,7 @@
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
-#include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report names */
+#include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report lists */
 #include "kitty_winerr.h"   /* kitty_win_reason: a session file that would not move */
 #include "kitty_pwmem.h"    /* the -pwfile helpers, defined in kitty_secretstore.c */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
@@ -83,11 +83,11 @@ int kitty_portable_store_state_dword(const char *key, DWORD value);
 int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
 /*
- * The read watch: while it is armed, every setting name the loader asks a
- * session for is reported to the watcher.
+ * The read watch: while it is armed, every setting name the loader requests
+ * from a session is reported to the watcher.
  *
- * It exists for the session importer, which has to say which values it could
- * NOT carry over. Asking the loader what it read is the only answer that
+ * It exists for the session importer, which has to report which values it could
+ * NOT carry over. The loader's own reads are the only answer that
  * cannot go stale: the alternative is a hand-kept list of settings this base
  * no longer has, which is wrong the first time one is added or renamed.
  *
@@ -197,7 +197,7 @@ static void kitty_persist_show_foreign(int on)
 /*
  * The one-time notice. Held as BITS rather than a flag because the two places
  * that show it are shown at different moments and often on different runs: a
- * user who never opens the configuration box should still be told, and one who
+ * user who never opens the configuration box should still see it, and one who
  * dismissed the startup box should still find the line where the sessions are.
  */
 #define KITTY_FOREIGN_NOTICE_VALUE "ForeignSessionsNotice"
@@ -246,7 +246,7 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size)
 /* The console tools' way to the ONE ini key this file needs: the strong
  * definition lives in kitty_showforeign_ini.c, linked into klink, kscp and
  * ksftp only, and answers through the kitty.ini resolver. Everywhere
- * else this stub says "not set" and ReadParameterN above has already
+ * else this stub returns "not set" and ReadParameterN above has already
  * answered - the GUI's reading does not change. */
 __attribute__((weak))
 int kitty_showforeign_ini_read(char *value, size_t size)
@@ -310,7 +310,7 @@ int kitty_get_show_foreign_sessions(void)
             } else {
                 /*
                  * auto: the historical adaptive rule - but ANSWERED ONCE
-                 * rather than asked again on every start. Re-deciding meant
+                 * rather than decided again on every start. Re-deciding meant
                  * the session list could change on its own: save your first
                  * session here and the old hive's sessions were gone at the
                  * next launch, with nothing to connect the two events.
@@ -453,7 +453,7 @@ int kitty_get_last_folder(char *buf, int buflen)
  *   So the split is not "ours vs PuTTY's" but COMPILE-TIME vs RUNTIME. With
  *   kitty.ini's KiClassName=PuTTY, kitty_set_registry_root() points this base
  *   at PuTTY's hive and the sessions live there - while PUTTY_REG_POS still
- *   says kapper.net\KiTTY. Code holding the macro then touches a hive this
+ *   holds kapper.net\KiTTY. Code holding the macro then touches a hive this
  *   process is not using: named proxies stored passwords in one hive while
  *   their sessions went to another, sav_backup() exported the wrong hive,
  *   savemode=file parked the wrong one, and /delreg deleted it.
@@ -671,7 +671,7 @@ void kitty_merge_legacy_note(Conf *conf, const char *note)
         sfree(merged);
     }
     /* Owed whether or not the text changed: the old field always spoke up when
-     * the session opened, so a session that carries one asks to be notified. */
+     * the session opened, so a session that carries one gets the notice. */
     conf_set_bool(conf, CONF_comment_notify, true);
 }
 
@@ -701,9 +701,9 @@ char *kitty_read_session_comment(const char *sessionname)
 }
 
 /*
- * The folder of a session, cached. The session list asks for it several
+ * The folder of a session, cached. The session list reads it several
  * times per refresh for EVERY saved session (the level filter, the folder
- * rows and the selection's position each ask), and a refresh happens on
+ * rows and the selection's position each read it), and a refresh happens on
  * every keystroke in the filter box - with a few hundred sessions that was
  * hundreds of registry opens per keystroke. The cache answers the repeats.
  * It is cleared wherever the list is re-read from the store or a folder
@@ -726,7 +726,7 @@ void kitty_session_folder_cache_clear(void)
     kitty_folder_cache.n = 0;
 }
 
-/* The direct read: what the mid-session save asks, because a session may
+/* The direct read: what the mid-session save uses, because a session may
  * have been moved from another window since this one launched, and the
  * store is the truth. */
 char *kitty_read_session_folder(const char *sessionname)
@@ -734,7 +734,7 @@ char *kitty_read_session_folder(const char *sessionname)
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return NULL;
     /* A session stored under a path is in that path's folder, whatever its
-     * Folder value says (hknet/KiTTY#55): the path wins, and the next save
+     * Folder value holds (hknet/KiTTY#55): the path wins, and the next save
      * writes the matching Folder value back. */
     if (sessionname && strchr(sessionname, '\\'))
         return ksp_folder_of(sessionname);
@@ -860,11 +860,25 @@ void kitty_set_config_dir(const char *dir)
 {
     snprintf(g_config_dir, sizeof(g_config_dir), "%s", dir ? dir : "");
 }
-char *portable_proxies_dir(void)                   /* snewn'd or NULL */
+char *portable_config_subdir(const char *subdir)   /* snewn'd or NULL */
 {
     if (g_config_dir[0] && store_is_file())
-        return dupprintf("%s\\Proxies", g_config_dir);
-    return portable_subdir_path("Proxies");
+        return dupprintf("%s\\%s", g_config_dir, subdir);
+    return portable_subdir_path(subdir);
+}
+/* The same into a buffer: 1 written, 0 none (not the folder store, or too
+ * long) - out then empty. */
+int portable_config_path(char *out, size_t n, const char *subdir)
+{
+    char *p = portable_config_subdir(subdir);
+    int ok = p && strlen(p) < n;
+    snprintf(out, n, "%s", ok ? p : "");
+    sfree(p);
+    return ok;
+}
+char *portable_proxies_dir(void)                   /* snewn'd or NULL */
+{
+    return portable_config_subdir("Proxies");
 }
 void kitty_set_session_dir(const char *dir)
 {
@@ -971,7 +985,7 @@ void ksf_list_free(struct ksf_item *h)
  * older layouts are still READ, and a save moves such a session to the
  * current one:
  *   - the same path without the suffix (a store from before the suffix was
- *     set, or a classic store whose putty.conf named one);
+ *     set, or a classic store whose putty.conf set one);
  *   - the flat file Sessions\<ksf_munge(whole name)> this backend wrote before
  *     names became paths. For a plain name that IS the current file; it only
  *     differs for a name with a reserved word, a leading or trailing dot or
@@ -1124,14 +1138,14 @@ char *ksf_session_legacy_path(const char *sessionname)
  *
  * Before each lookup (ksf_alts_check) the folders the name could sit in -
  * the session directory and every folder whose list path is a folder of the
- * name - are asked for their time. A file or folder added, removed or renamed
+ * name - are queried for their time. A file or folder added, removed or renamed
  * in one changes it, and that folder alone is listed again (ksf_alts_relist),
  * with any folder new in it; a folder gone, or another session directory or
  * suffix, builds the table anew. A time less than KSF_ALTS_SETTLE old when it
  * was read is not trusted (a second change within the clock tick would not
  * move it): such a folder is listed again at each lookup until it settles. KiTTY++'s own saves, deletes,
  * renames and moves change their folders' times like any other writer's, so
- * the store's write count (kitty_store_generation) is not asked: it also
+ * the store's write count (kitty_store_generation) is not consulted: it also
  * counts host keys, proxies and tags, which change no session file name.
  * Not seen until a list: a file whose CONTENT turns it into a session (no
  * name changes), and changes on a file system that keeps no folder times.
@@ -1158,7 +1172,7 @@ static CRITICAL_SECTION ksf_alts_cs;
 static volatile LONG ksf_alts_cs_state;  /* 0 none, 1 being set up, 2 up */
 #define KSF_ALTS_SETTLE (3ULL * 10000000ULL)   /* 100 ns units */
 
-/* Lists run on whatever thread asks, so the table is under a lock, set up
+/* Lists run on whatever thread calls, so the table is under a lock, set up
  * lazily as the verdict cache's is (no Vista+ import: the 32-bit build loads
  * on XP). The list's walk reads files outside it; a relist by names holds
  * it (it reads no file). */
@@ -1735,7 +1749,7 @@ char **ksf_session_others(const char *sessionname, char **reached, int *count)
 char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
 {
     /* Existing file if any, else where a save would put it - what the callers
-     * outside the backend (window positions, the import's exists check) ask. */
+     * outside the backend (window positions, the import's exists check) use. */
     char *p = ksf_session_find(sessionname);
     return p ? p : ksf_session_target_path(sessionname);
 }
@@ -1891,7 +1905,7 @@ int kitty_session_resolve(const char *wanted, char **resolved, char **errtext,
         return KSP_NONE;
 
     /* Folder store: only the files that carry this name are looked at (a
-     * proxy connection or a host on the command line asks this for every
+     * proxy connection or a host on the command line calls this for every
      * name that is not a session, so a whole-store read here would be paid
      * on every connection). The registry lists key names only, which is
      * cheap as it is. */
@@ -1919,7 +1933,7 @@ int kitty_session_resolve(const char *wanted, char **resolved, char **errtext,
 /*
  * Change the session file suffix on disk, once: every session file ending in
  * `oldsuf` (or with no suffix, the legacy form) is renamed to end in `newsuf`.
- * A file whose new name already exists is left alone and named in `clashes`
+ * A file whose new name already exists is left alone and listed in `clashes`
  * (one relative path per line). With dry_run nothing moves and the return is
  * the number of files that would be renamed. Returns the number renamed.
  */

@@ -25,7 +25,7 @@
  */
 bool kitty_theme_available(void);
 
-/* Does the system itself currently ask for dark? (AppsUseLightTheme == 0.) */
+/* Does the system itself currently request dark? (AppsUseLightTheme == 0.) */
 bool kitty_theme_system_is_dark(void);
 
 /* Resolve a preference to the colours actually to be painted. */
@@ -58,7 +58,7 @@ bool kitty_theme_is_system_switch(HWND w, LPARAM lParam);
  * every top-level window on the desktop; only KiTTY++ windows know it. It
  * carries nothing: each receiver re-reads ITS OWN store, so a portable copy
  * and an installed one, which keep the preference in different places, each
- * end up with what their own store says - unchanged when it did not change.
+ * end up with what their own store holds - unchanged when it did not change.
  *
  * Themed dialogs answer it in the dialog hook's subclass, with nothing to do
  * in the program beyond kitty_theme_hook_pref(). A window the hook does not
@@ -77,14 +77,14 @@ void kitty_theme_announce_change(void);
 void kitty_theme_hook_pref(int (*get_pref)(void), void (*forget)(void));
 /* The darkness kitty_theme_frame() last gave this window. False when the
  * frame was never painted through it (or another window was since): the
- * caller cannot tell, and should paint. */
+ * caller cannot know, and should paint. */
 bool kitty_theme_frame_dark(HWND w, bool *dark);
 
 /*
  * The preference's wire form, shared by every store so a value written by one
  * binary reads back the same in the next. from_string returns -1 for anything
- * it does not recognise, which is how a caller tells "not set" or "set to
- * nonsense" from a real choice.
+ * it does not recognise, which is how a caller distinguishes "not set" or
+ * "set to nonsense" from a real choice.
  */
 int kitty_theme_pref_from_string(const char *s);
 const char *kitty_theme_pref_to_string(int pref);
@@ -144,7 +144,7 @@ HBRUSH kitty_theme_backbrush(HWND dlg);
 COLORREF kitty_theme_text_colour(bool dark);
 
 /* Is this window currently painted dark? For code that draws its own rows and
- * has to pick colours - a list view's custom draw cannot ask the brush. */
+ * has to pick colours - a list view's custom draw cannot query the brush. */
 bool kitty_theme_window_dark(HWND w);
 
 /* Config-box category tree: paint the selected row in full highlight colour
@@ -254,8 +254,8 @@ void kitty_theme_hook_dialogs(bool (*want_dark)(void));
  * and comes up light inside an otherwise dark application.
  *
  * Deliberately an explicit list rather than "any window this process owns":
- * the terminal is also our window and must keep the colours its session asks
- * for. Call before the class's first window exists; a name registered twice
+ * the terminal is also our window and must keep the colours its session sets.
+ * Call before the class's first window exists; a name registered twice
  * is ignored.
  */
 void kitty_theme_hook_class(const char *classname);

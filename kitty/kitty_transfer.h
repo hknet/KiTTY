@@ -452,13 +452,13 @@ static inline int kt5113_rel_ok(const char *rel, size_t n)
     return count;
 }
 
-/* A path the far end asks to READ, classified.
+/* A path the far end requests to READ, classified.
  *   KT5113_SPEC_BAD       refuse (invalid or climbing)
  *   KT5113_SPEC_RELATIVE  *rel is a POSIX path relative to the download folder
  *                         (may be empty: the folder itself)
  *   KT5113_SPEC_DRIVE     "/C:/dir/file" - *rel is "dir/file", *drive the letter
  * "~/x", "/x" and "x" are all taken relative to the download folder; only the
- * spec's own Windows form names a drive. */
+ * spec's own Windows form gives a drive. */
 enum { KT5113_SPEC_BAD, KT5113_SPEC_RELATIVE, KT5113_SPEC_DRIVE };
 static inline int kt5113_spec_classify(const char *p, size_t n, const char **rel,
                                 size_t *rn, char *drive)

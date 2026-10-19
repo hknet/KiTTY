@@ -181,7 +181,7 @@ void kitty_menu_adjust_transparency(HWND term_hwnd, Conf *conf, int up)
 }
 
 /* Position of a DIRECT child of this menu, or -1. Deliberately not
- * GetMenuState/MF_BYCOMMAND: those search submenus, so asked about the system
+ * GetMenuState/MF_BYCOMMAND: those search submenus, so for the system
  * menu they answer about the Window submenu inside it - which meant the edits
  * landed one menu deeper than the position checks around them. */
 static int kitty_menu_pos_of(HMENU menu, UINT id)
@@ -415,15 +415,15 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
 /* ------------------------------------------------------------------ *
  * KiTTY: client-side serving-agent verification (security pass #3).
  *
- * When kitty.exe asks the SSH agent to list or sign, SOMETHING answers on
+ * When kitty.exe has the SSH agent list or sign, SOMETHING answers on
  * our agent pipe / Pageant window. This confirms that something is a
  * genuine, our-publisher-signed KiTTY/kageant, and warns once if not - a
  * hostile program that grabbed the pipe/window would otherwise see every
  * key operation this session performs.
  *
  * Fail-quiet and best-effort: only a SIGNED (release) kitty.exe can
- * honestly demand a signed agent, so an unsigned dev build says nothing;
- * an unreadable server process says nothing. Never blocks the query - the
+ * honestly demand a signed agent, so an unsigned dev build reports nothing;
+ * an unreadable server process reports nothing. Never blocks the query - the
  * answer is already in hand when this runs. Configurable off via
  * [KiTTY] verifyagent=no.
  * ------------------------------------------------------------------ */
@@ -437,11 +437,11 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
  * to learn that dark mode, or Windows Hello, is missing because of the
  * operating system rather than because of a setting.
  *
- * So it is said twice: in full in the Event Log, where someone diagnosing
+ * So it is reported twice: in full in the Event Log, where someone diagnosing
  * looks, and as ONE line in the terminal, where someone who is not
  * diagnosing will actually see it. The line is switched off with
  * [KiTTY] warnmissingfeatures=no - a fact about the machine does not change,
- * so whoever has read it once can stop being told.
+ * so whoever has read it once can switch it off.
  *
  * Once per process, which is once per terminal window, and never again on a
  * reconnect - unlike start_backend, which runs for every reconnect too.
@@ -459,7 +459,7 @@ void kitty_report_missing_features(Terminal *term)
     if (!full)
         return;                        /* this Windows has everything */
 
-    /* The Event Log gets it whole, and gets it whatever the setting says:
+    /* The Event Log gets it whole, and gets it whatever the setting is:
      * switching the notice off is about not being interrupted, not about
      * hiding the answer from whoever goes looking for it. */
     debug_logevent("%s", full);
@@ -534,9 +534,9 @@ static DWORD WINAPI kitty_agent_check_thread(LPVOID arg)
  * file name from the worker (freed here). */
 void kitty_agent_unverified_notice(char *name)
 {
-    /* Say WHO is speaking (this terminal, not the agent) before saying
-     * what was found - an anonymous amber box reads as "something says
-     * my key is compromised" and confuses more than it warns. And say
+    /* Show WHO reports it (this terminal, not the agent) before showing
+     * what was found - an anonymous amber box reads as "my key is
+     * compromised" and confuses more than it warns. And state
      * what is actually at stake: the program SERVES the keys, so it can
      * see and sign with them - that is not the same as "your key
      * material leaked", which the first wording implied. Clicking the
@@ -593,12 +593,12 @@ void kitty_install_agent_check(void)
  * apply to it exactly as they do to every other global setting; the satellite
  * binaries reach the same value through kitty/kitty_theme_pref.c.
  *
- * Handed to the theme module at startup, so it is asked once per dialog rather
+ * Handed to the theme module at startup, so it is read once per dialog rather
  * than frozen at whatever it meant when KiTTY started - which is what lets
  * "follow the system" change with the system while a window is open.
  */
 
-/* Remembered for two seconds: the theme hook asks on every activation of
+/* Remembered for two seconds: the theme hook reads it on every activation of
  * every dialog-class window, which is a store read (and a stat of kitty.ini)
  * per click-to-focus. The Application panel's setter forgets it at once
  * (kitty_theme_app_pref_forget), so a change applies to the next dialog. */

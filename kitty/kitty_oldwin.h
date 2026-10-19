@@ -4,7 +4,7 @@
  *
  * A statically imported symbol the running Windows does not export makes the
  * whole binary refuse to start - the loader fails it before main(), with a
- * message naming an entry point rather than anything a user can act on. So
+ * message giving an entry point rather than anything a user can act on. So
  * these are looked up with GetProcAddress and each has a fallback that works
  * on the older system.
  *
@@ -22,7 +22,7 @@
  * ---- resolving an API that may not be there ----
  *
  * Every runtime lookup in KiTTY should go through kitty_api(), so that a
- * Windows too old to provide something is answered with a sentence naming
+ * Windows too old to provide something is answered with a sentence stating
  * WHAT is missing and WHAT it was for, rather than with a silently dead
  * feature or a crash.
  *
@@ -30,7 +30,7 @@
  *                       stays off. Recorded, reported in the Event Log, and
  *                       never shown to the user as an error.
  *   KITTY_API_REQUIRED  KiTTY cannot run without it. Recorded; no lookup
- *                       asks for this level today.
+ *                       requests this level today.
  *
  * `feature` is the words the user reads: "Windows Hello", "dark mode", "the
  * agent-verification check". Keep it a NOUN PHRASE - it is printed as
@@ -70,7 +70,7 @@ void kitty_api_record(const char *dll, const char *symbol, int need,
  * _degraded() is the list of features that switched themselves off. It
  * belongs in the Event Log, not in a box.
  *
- * It only knows about lookups that have actually happened, so ask AFTER the
+ * It only knows about lookups that have actually happened, so call it AFTER the
  * startup path has resolved what it needs.
  */
 char *kitty_oldwin_degraded(void);
@@ -101,7 +101,7 @@ ULONGLONG kitty_tick_count64(void);
  * GetModuleFileNameExA out of psapi.dll, which goes back to NT 4. Returns
  * FALSE with *buf untouched when neither is available, so a caller that is
  * identifying a program - the agent check, the workplace-proxy owner test -
- * treats it as "cannot tell" instead of as a match.
+ * treats it as "unknown" instead of as a match.
  *
  * bufsize is in bytes, as with the API it replaces.
  */

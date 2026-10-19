@@ -144,7 +144,7 @@ int kageant_setting_write(const char *inikey, const char *ini_text,
  * The on/off toggles. Booleans ONLY - anything with a third state belongs on
  * the pair above. The tri-state confirm mode was stored through here, so
  * "Never" (2) was written as 1 and read back as "confirm every use": the
- * setting did the exact opposite of what it said.
+ * setting did the exact opposite of what it stated.
  */
 int kageant_reg_read(const char *name, int *val_out)
 {
@@ -279,10 +279,10 @@ static int kageant_mode_to_reg(int m)
 }
 
 /*
- * The confirm mode is asked for on EVERY signature request, and reading it
+ * The confirm mode is queried on EVERY signature request, and reading it
  * is an ini parse (GetPrivateProfileString, twice with the store-mode probe)
  * plus a registry query. The answer is remembered for two seconds: a
- * forwarding storm or an ssh-add loop asks hundreds of times a second and
+ * forwarding storm or an ssh-add loop queries hundreds of times a second and
  * gets one read; a change through the settings dialog invalidates at once
  * (kageant_confirm_set_mode), and an edit of the file by hand is seen within
  * two seconds.
@@ -424,7 +424,7 @@ const char *kageant_confirm_token(int mode)
 /*
  * How long typed passphrases may sit in the cache, in seconds.
  *
- * They are kept so that adding several keys at once asks once, and are scrubbed
+ * They are kept so that adding several keys at once prompts once, and are scrubbed
  * when the add finishes - but an add that is abandoned never finishes, and they
  * would then stay until kageant exits. [Agent] passphrasecacheseconds bounds
  * that; 0 turns the backstop off, which is the old behaviour and not advised.
@@ -583,7 +583,8 @@ int kageant_passphrase_ttl(void)
 /* Seconds the Windows Hello KEK cache stays valid after a gesture, so a
  * batch of protected keys and quick successive unlocks need ONE face.
  * Same range and default as the passphrase cache (Chromium's device
- * reauth uses the same 60 s validity window). 0 = every unlock asks. */
+ * reauth uses the same 60 s validity window). 0 = every unlock
+ * prompts. */
 int kageant_hello_ttl(void)
 {
     char buf[16];
@@ -721,7 +722,7 @@ static int kageant_autoenc_mode_parse(const char *t)
     if (!stricmp(t, "default") || !stricmp(t, "yes")) return 1;
     return 0;
 }
-/* Remembered for two seconds like the confirm mode: the heartbeat asks it
+/* Remembered for two seconds like the confirm mode: the heartbeat uses it
  * to decide whether it is still needed, and the setter forgets it. */
 static int kageant_autoenc_mode_cached = -1;
 static DWORD kageant_autoenc_mode_stamp = 0;
@@ -811,7 +812,7 @@ static int kageant_policy_read(const char *inikey, const char *regname)
 }
 
 /* Remembered for two seconds per policy, like the confirm mode: these are
- * asked on every external add/remove (and lock) request. One slot per
+ * queried on every external add/remove (and lock) request. One slot per
  * policy - a fifth policy needs a fifth slot, or it is re-read every time.
  * A write through kageant_policy_set forgets them all at once. */
 #define KAGEANT_POLICY_SLOTS 4

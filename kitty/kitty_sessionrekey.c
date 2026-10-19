@@ -56,10 +56,12 @@ static char *rk_move_one(const char *from, const char *to)
         sfree(src);
         sfree(dst);
 
-        /* The per-session commands of the folder store live beside it, under
-         * the name munged the way kitty_specialmenu.c looks them up. */
+        /* The per-session commands of the folder store, in the configuration
+         * directory where kitty_specialmenu.c reads them, under the name
+         * munged the same way. (The store root was looked in: with sessions=
+         * elsewhere a renamed session lost its commands.) */
         if (!err) {
-            char *base = portable_subdir_path("Sessions_Commands");
+            char *base = portable_config_subdir("Sessions_Commands");
             char *mf = snewn(strlen(from) * 3 + 1, char);
             char *mt = snewn(strlen(to) * 3 + 1, char);
             mungestr(from, mf);
@@ -149,7 +151,7 @@ static const char *rk_launcher_label(const char *name)
 }
 
 /* The launcher's copy of the session list in the registry: values whose
- * data names the session. */
+ * data identifies the session. */
 static void rk_launcher_reg_walk(const char *keypath, const char *from,
                                  const char *to)
 {
@@ -253,7 +255,7 @@ static void rk_launcher_dir_walk(const char *dir, const char *from,
 static void rk_launcher(const char *from, const char *to)
 {
     if (store_is_file()) {
-        char *dir = portable_subdir_path("Launcher");
+        char *dir = portable_config_subdir("Launcher");   /* where the launcher writes it */
         if (dir)
             rk_launcher_dir_walk(dir, from, to);
         sfree(dir);
@@ -278,7 +280,7 @@ static bool rk_proxy_is_ssh(int storageval)
 }
 
 /*
- * Every session that names a moved one as its SSH jump host. The reference
+ * Every session that has a moved one as its SSH jump host. The reference
  * may be the exact identity, or a bare name that resolved to it BEFORE the
  * move (pre_names: the store's names before anything moved) - both now
  * point at nothing, or at something else, and are rewritten to the new path.

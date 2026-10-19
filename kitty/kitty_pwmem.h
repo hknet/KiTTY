@@ -23,7 +23,7 @@
  * The protected block is 4 bytes of length (little endian) followed by the
  * password bytes, zero padded to a multiple of the 16-byte block the API
  * requires. Keeping the length inside the block rather than in the prefix
- * means the stored form says nothing about how long the password is.
+ * means the stored form reveals nothing about how long the password is.
  *
  * An EMPTY password is stored as the empty string and never wrapped, so
  * kitty_pw_empty() answers without decrypting anything - the many
@@ -40,7 +40,7 @@
  *
  * Where the crypt API is missing (Windows before Vista) or a protect/unprotect
  * round trip fails, the password is kept in the clear exactly as before and the
- * session prints one line naming the feature this Windows does not support -
+ * session prints one line stating the feature this Windows does not support -
  * the same rule the agent's key protection follows. A password is never
  * refused or dropped because the protection is unavailable.
  *
@@ -73,9 +73,10 @@ size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen);
 size_t kitty_pw_get(Conf *conf, int key, char *out, size_t outlen);
 
 /* Does this stored string carry one of our in-memory markers? For the few
- * callers that must tell "wrapped" from "legacy plaintext" rather than simply
- * read the value - the settings store, which has to know whether an unwrap
- * failing means a lost password or a value that was never wrapped. */
+ * callers that must distinguish "wrapped" from "legacy plaintext" rather
+ * than simply read the value - the settings store, which has to know
+ * whether an unwrap failing means a lost password or a value that was never
+ * wrapped. */
 int kitty_pw_is_wrapped(const char *stored);
 
 /* Is this password key empty? True also when the value cannot be unwrapped. */
@@ -137,7 +138,7 @@ void kitty_pw_wipe(Conf *conf);
  * secret form, "DPAPI1:" + base64. Returns a fresh string the caller frees;
  * NULL only for an empty password. Where the protection fails it answers the
  * password itself - the plain format -pwfile has always taken - and the
- * missing-features line names what was unavailable.
+ * missing-features line lists what was unavailable.
  *
  * Implemented in kitty/kitty_secretstore.c (the `settings` library, which every
  * helper links), because it is the at-rest protection and nothing new.

@@ -17,7 +17,7 @@
 
 /* Show the once-shown printout: the protected key's literal passphrase
  * (sidebound == 0) or its sidecar-bound recovery code (sidebound != 0).
- * Copy-to-clipboard button; X/Esc ask "stored it?" before giving up the
+ * Copy-to-clipboard button; X/Esc show "stored it?" before giving up the
  * only display there will ever be. appname appears in the text
  * ("kageant"/"KiTTYgen"). Blocks until dismissed. */
 void kitty_hello_ui_show_printout(HWND owner, const char *appname,

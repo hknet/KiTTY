@@ -109,7 +109,7 @@ static void audit_maybe_rotate(void)
     if (!MoveFileExA(g_path, to, MOVEFILE_REPLACE_EXISTING) &&
         !g_rotate_warned) {
         /* Keep writing to the (oversized) active file rather than lose
-         * anything; say so once, in the log itself. */
+         * anything; record it once, in the log itself. */
         g_rotate_warned = 1;
         kitty_audit("logrotate", "result", "failed", (const char *)NULL);
     }

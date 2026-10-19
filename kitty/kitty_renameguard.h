@@ -38,7 +38,7 @@
  * determined at all, so a failure to read it never keeps a legitimate copy
  * from starting.
  *
- * On a mismatch it reports once and returns nonzero. `gui` says the caller has
+ * On a mismatch it reports once and returns nonzero. `gui` means the caller has
  * no console to print to, not that a box will certainly appear: a windowed
  * program gets the message box only on an interactive desktop, and a
  * scheduled task or service - where a modal would simply hang - gets one

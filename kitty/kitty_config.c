@@ -94,14 +94,14 @@ const char *kitty_cfgbox_wanted_panel(void)
 /*
  * Whether the session this box restores at startup counts as DELIBERATELY
  * loaded ("-cfgloaded", set beside -cfgpanel by the launcher's
- * hotkey-conflict balloon, which names a session and opens it for fixing).
+ * hotkey-conflict balloon, which shows a session and opens it for fixing).
  *
  * The distinction matters to the overwrite guard: an ordinary fresh box
  * restores the last session merely for convenience, so saving over it still
  * warns - typing a new session's settings into a fresh box must not
  * silently destroy the restored one. A balloon click IS a load in the
- * user's mind: warning about the very session it named makes the fix it
- * asked for look destructive.
+ * user's mind: warning about the very session the balloon showed makes the
+ * requested fix look destructive.
  */
 int kitty_cfgbox_loaded_deliberate = 0;
 

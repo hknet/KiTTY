@@ -28,7 +28,7 @@ enum {
     KAGEANT_HELLO_NOSIDECAR,   /* not a Hello-protected key */
     KAGEANT_HELLO_DENIED,      /* the Hello prompt was refused: final */
     KAGEANT_HELLO_NODOOR,      /* no door of this account in the sidecar:
-                                * owners_out names who wrapped it */
+                                * owners_out lists who wrapped it */
     KAGEANT_HELLO_ERROR        /* unreadable sidecar, plumbing failure */
 };
 
@@ -87,7 +87,7 @@ int kageant_hello_offerable(void);
 
 /* Terminal only (kitty_hello_terminal.c): install the userauth hooks
  * for Hello-protected key files; the window anchors and identifies the
- * asking instance. */
+ * requesting instance. */
 void kitty_hello_terminal_init(HWND terminal_window);
 
 #endif /* KITTY_HELLO_KEYS_H */

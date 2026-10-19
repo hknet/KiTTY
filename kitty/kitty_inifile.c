@@ -17,12 +17,12 @@
  *
  * kitty.exe takes the same walk (kitty_inifile_find, without step 3 in the
  * portable build) and then pins what it decided for its own process
- * (kitty_inifile_pin, kitty_inifile_pin_authority): the file it names even
+ * (kitty_inifile_pin, kitty_inifile_pin_authority): the file it chose even
  * before it exists, and its savemode - the key, else its build default,
  * never the layout guess below.
  *
  * The resolved file is the authoritative settings store when its main
- * section says savemode=file or savemode=dir, or - with no savemode key at
+ * section sets savemode=file or savemode=dir, or - with no savemode key at
  * all - when a portable layout sits beside it (a Sessions\ store or a
  * KiTTYState file). The portable build writes savemode=dir on its first
  * start; the layout covers a copy whose kitty.ini has no key yet (kageant
@@ -99,7 +99,7 @@ static void inifile_resolve(void)
     inifile_state = kitty_inifile_find(0, inifile_path, sizeof(inifile_path)) ? 1 : -1;
 }
 
-/* kitty.exe: the file it reads and writes, named before it may exist (a
+/* kitty.exe: the file it reads and writes, chosen before it may exist (a
  * kitty.ini it creates later - the template, the portable savemode key - is
  * then found by every reader in the process). A path longer than MAX_PATH is
  * not pinned: the resolver's own answer stays. */
@@ -158,7 +158,7 @@ static int inifile_portable_layout(void)
 }
 
 /* 1 when the registry must stay the authoritative settings store: no ini
- * was found, or the resolved ini neither says savemode=file/dir nor sits
+ * was found, or the resolved ini neither sets savemode=file/dir nor sits
  * in a recognisable portable layout. An absent savemode key means registry
  * mode, exactly as in kitty.exe - registry-mode installs routinely carry an
  * auto-created kitty.ini whose savemode key was deleted when the mode was
@@ -210,8 +210,8 @@ int kitty_inifile_write(const char *section, const char *key,
 }
 
 /* The folder store, as kitty.exe finds it (kitty_store.c loadPath and
- * kitty_store_ini_takeover). It is in use when the ini says savemode=dir, or
- * says no savemode at all beside a portable layout (a portable copy before
+ * kitty_store_ini_takeover). It is in use when the ini sets savemode=dir, or
+ * sets no savemode at all beside a portable layout (a portable copy before
  * kitty.exe wrote the key); savemode=file keeps its sessions in the
  * registry. The session directory is sessions= (environment strings
  * expanded; a leading '\' or '/' is below the program folder, "X:..." is
@@ -230,6 +230,12 @@ static void inifile_rtrim(char *s, const char *set)
         s[--n] = '\0';
 }
 
+/* NOTE: this is a SECOND copy of kitty.exe's rules (kitty_store.c loadPath,
+ * kitty_store_ini_takeover, kitty.c SetConfigDirectory, kitty_storage.c
+ * portable_root_dir) for the programs that do not link the store - kageant
+ * and the command-line tools. A change to where kitty.exe puts the session
+ * folder, the configuration directory, the host keys or KiTTYState has to
+ * be made here too. */
 static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
 {
     char mode[32], v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
@@ -364,6 +370,26 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
     kitty_ext_dot(v, sizeof(v));
     if ((int)strlen(v) < suflen)
         strcpy(suffix, v);     /* kitty_set_hostkey_suffix refuses a bad one */
+    return 1;
+}
+
+/* The folder store's state file KiTTYState, where kitty.exe keeps it
+ * (kitty_storage.c portable_root_dir): beside the session folder when that
+ * is called Sessions, else in the session folder itself. 0 when the
+ * sessions are not in the folder store - savemode=file included, whose
+ * state values are in the registry. */
+int kitty_inifile_state_file(char *out, int outlen)
+{
+    char dir[KITTY_INIFILE_PATHLEN], suffix[80];
+    char *bs;
+    if (!inifile_folder_store(dir, sizeof(dir), suffix, sizeof(suffix)))
+        return 0;
+    bs = strrchr(dir, '\\');
+    if (bs && !stricmp(bs + 1, "Sessions"))
+        *bs = '\0';
+    if ((int)strlen(dir) + 12 > outlen)
+        return 0;
+    snprintf(out, outlen, "%s\\KiTTYState", dir);
     return 1;
 }
 

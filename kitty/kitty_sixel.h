@@ -82,7 +82,7 @@ void sixel_feed(SixelDecoder *d, const unsigned char *s, size_t len);
 
 /* The end of the sequence: the picture as premultiplied BGRA, malloc'd,
  * w * 4 a row. False when there is nothing to place (no sixel character,
- * an empty picture, over a cap, out of memory); *why then says which:
+ * an empty picture, over a cap, out of memory); *why then shows which:
  * "EFBIG" for a cap, "ENOMEM", or "" for nothing drawn. The decoder is
  * freed either way. */
 bool sixel_finish(SixelDecoder *d, unsigned char **px, int *w, int *h,

@@ -1,6 +1,6 @@
 /*
  * kitty_ctx3008.h - OSC 3008 hierarchical context signalling (UAPI.15): the
- * platform-free half. The far end says which program has control and how
+ * platform-free half. The far end reports which program has control and how
  * programs nest - a shell, a command, run0 taking root, a container, a VM.
  * Parsing, the limits and the context stack; no Win32 and no PuTTY types, so
  * test/test_ctx3008.c covers all of it without a window.
@@ -8,11 +8,11 @@
  * OSC 3008 ; start=<id> [;field=value]... ST opens a context: it becomes the
  *     active one, the context active before it its parent. A start for an id
  *     already open updates that context instead: its fields are reset to what
- *     this start says, and every context opened inside it ends.
+ *     this start sends, and every context opened inside it ends.
  * OSC 3008 ; end=<id> [;exit=..;status=..;signal=..] ST ends that context
  *     and every context opened inside it. An id not open is ignored.
  *
- * Lenient, as the specification asks: an unknown or malformed field is
+ * Lenient, as the specification requires: an unknown or malformed field is
  * ignored and the others kept. A start beyond CTX_DEPTH_MAX is dropped, the
  * contexts already open kept. Values are UTF-8 with ';' sent as \x3b and '\'
  * as \x5c; a field holding a control character, or invalid UTF-8, is
@@ -77,7 +77,7 @@ typedef struct {
     int what;                    /* CTX_* above */
     int children;                /* contexts ended along with it */
     /* CTX_ENDED: the context that ended, now the caller's (ctx_event_free),
-     * and what its end said */
+     * and what its end reported */
     CtxContext ended;
     int exit;                    /* CTX_EXIT_* */
     int status;                  /* 0..255; -1 = not sent */
@@ -93,10 +93,10 @@ void ctx_event_free(CtxEvent *ev);
 
 /* The active context, NULL when none is open. */
 const CtxContext *ctx_active(const CtxStack *s);
-/* The user the active context runs as, as far as the chain says: walking
+/* The user the active context runs as, as far as the chain shows: walking
  * from the outermost context in, a context's targetuser= (where its type
  * has one) or else its user= is the user from there on; an elevate context
- * without targetuser= is root (run0's default). NULL when nothing says. */
+ * without targetuser= is root (run0's default). NULL when unknown. */
 const char *ctx_effective_user(const CtxStack *s);
 /* ctx_effective_user is root. */
 bool ctx_elevated(const CtxStack *s);
@@ -104,15 +104,15 @@ bool ctx_elevated(const CtxStack *s);
  * CTX_AS_ROOT when ctx_effective_user is root; CTX_AS_SWITCHED when it is
  * another user that a switch put there - an elevate context's user
  * (run0 -u) or targetuser=, and the contexts further in that keep that
- * user; CTX_AS_PLAIN otherwise (nothing said, or a login as that user, or a
+ * user; CTX_AS_PLAIN otherwise (nothing sent, or a login as that user, or a
  * context further in with a user= of its own). */
 typedef enum { CTX_AS_PLAIN, CTX_AS_ROOT, CTX_AS_SWITCHED } CtxAs;
 CtxAs ctx_runs_as(const CtxStack *s);
 /* Is the shell on another machine than the connection's? True when an open
  * context is of type remote (an ssh onward: its targethost= is where), or
- * when the innermost context with a machineid= names another machine than
+ * when the innermost context with a machineid= gives another machine than
  * the outermost one with it (its hostname= is where). *where gets that
- * host name, NULL when the context sends none. Get File asks this before
+ * host name, NULL when the context sends none. Get File checks this before
  * it checks a path on the connection's host. */
 bool ctx_moved_machine(const CtxStack *s, const char **where);
 

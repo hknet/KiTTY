@@ -43,7 +43,7 @@ char oldpath[2 * MAX_PATH] = "\0";
 char sessionsuffix[16] = "\0";
 char keysuffix[16] = "\0";
 
-/* KiTTY (hknet/KiTTY#56): what putty.conf actually said, kept raw for the
+/* KiTTY (hknet/KiTTY#56): what putty.conf actually held, kept raw for the
  * one-time move into kitty.ini (kitty_store_ini_takeover below), plus the
  * paths loadPath() falls back to and resolves relative names against. */
 #define KSTORE_PC_SESSIONS      1
@@ -463,7 +463,7 @@ char * SetSessPath( const char * dec ) {
  * use here).
  *
  * After the move kitty.ini is the one source: a key it does not have means
- * the default, whatever putty.conf says. Where kitty.ini cannot be written
+ * the default, whatever putty.conf holds. Where kitty.ini cannot be written
  * (conf=no, readonly=yes) nothing moves and putty.conf keeps working, with a
  * key kitty.ini does carry still winning.
  */
@@ -503,7 +503,7 @@ int kitty_store_ini_takeover(void) {
 			    !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
 				all = 0 ;
 		if( all && writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
-			migrated = moved_now = 1 ;   /* the caller says so (kitty_startup.c) */
+			migrated = moved_now = 1 ;   /* the caller reports it (kitty_startup.c) */
 	}
 	/* 0.85.1.13's names for the endings: into old KiTTY's keys, then gone */
 	if( can_write ) {

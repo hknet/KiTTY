@@ -359,7 +359,7 @@ bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n)
                 GlobalFree(h);
             }
         } else {
-            /* the format is named by the MIME type itself; names are UTF-8 by
+            /* the format is given by the MIME type itself; names are UTF-8 by
              * the protocol, and the W variant takes them without a code page */
             int cnt = MultiByteToWideChar(CP_UTF8, 0, mime, -1, NULL, 0);
             wchar_t *wname = cnt > 0 ? snewn(cnt, wchar_t) : NULL;
@@ -527,7 +527,7 @@ static void osc52_set_countdown(HWND hwnd, struct osc52_query *query)
         SetDlgItemText(hwnd, IDC_O52_COUNTDOWN, "");
         return;
     }
-    /* Say what the timeout DOES, not just that there is one: "no decision" is
+    /* Show what the timeout DOES, not just that there is one: "no decision" is
      * the honest description, because a timeout is not the user saying no - it is
      * the user saying nothing, and nothing gets remembered. */
     s = dupprintf(KT_OSC52_COUNTDOWN,
@@ -575,7 +575,7 @@ static INT_PTR CALLBACK osc52_query_proc(HWND hwnd, UINT msg, WPARAM wParam,
             SetDlgItemText(hwnd, IDC_O52_CLAIM, s);
             sfree(s);
         } else {
-            /* An OSC 52 read carries no identity at all, and saying so is worth
+            /* An OSC 52 read carries no identity at all, and noting it is worth
              * a line: it is why "remember this program" is not on offer. */
             SetDlgItemText(hwnd, IDC_O52_CLAIM,
                            KT_OSC52_NO_CLAIM);
@@ -587,7 +587,7 @@ static INT_PTR CALLBACK osc52_query_proc(HWND hwnd, UINT msg, WPARAM wParam,
         sfree(s);
 
         /* The two configurable durations are labelled from the settings, so the
-         * dialog cannot claim ten minutes while the setting says five. */
+         * dialog cannot claim ten minutes while the setting holds five. */
         mins = conf_get_int(query->term->conf, CONF_osc52_read_minutes);
         if (mins <= 0) mins = 10;
         s = dupprintf(KT_OSC52_MINUTES, mins, mins == 1 ? "" : "s");
@@ -604,7 +604,7 @@ static INT_PTR CALLBACK osc52_query_proc(HWND hwnd, UINT msg, WPARAM wParam,
          * "Just this request" starts selected. Leaving all four blank looks more
          * neutral and is actually worse: the code below falls back to ONCE when
          * nothing is picked, so the narrowest answer was in force with nothing on
-         * screen saying so - an invisible default, which is the one thing a
+         * screen showing it - an invisible default, which is the one thing a
          * security dialog must not have. Showing it nudges towards nothing,
          * because it IS the narrowest option, and it makes the consequence of
          * pressing either button visible before it is pressed.
@@ -965,7 +965,7 @@ void kitty_osc52_write_confirm_end(Terminal *term)
  *
  * Returns false when there is nothing to write into - an unnamed "type a host and
  * go" window, or Default Settings, which must not be rewritten from one window's
- * state or every later session inherits the change. The caller then tells the
+ * state or every later session inherits the change. The caller then notifies the
  * user and keeps the refusal for the rest of the window: we do not quietly build
  * a hidden host list, because an invisible permission record is exactly what this
  * whole design exists to avoid.
@@ -1029,7 +1029,7 @@ static DWORD WINAPI osc52_balloon_thread(LPVOID p)
     nid.uID = (UINT)InterlockedIncrement(&uid);
     /* NIF_MESSAGE so that clicking the balloon reaches the terminal window, which
      * opens the Event Log (window.c). Worth the extra field: this balloon is
-     * rate-limited, so it can only ever say THAT something was dropped - the
+     * rate-limited, so it can only ever show THAT something was dropped - the
      * Event Log is where how-often and which-one actually live. */
     nid.uFlags = NIF_ICON | NIF_INFO | NIF_MESSAGE;
     nid.uCallbackMessage = WM_KITTY_CLIPBALLOON;
@@ -1067,7 +1067,7 @@ int kitty_clipboard_balloon_action(void)
  *
  * In full screen - and with window decorations switched off - PuTTY drops
  * WS_CAPTION, so both the clipboard icon and the DWM caption tint have nowhere to
- * appear. Everything the window-based signals say is simply invisible in that
+ * appear. Everything the window-based signals show is simply invisible in that
  * state, which is exactly when the terminal is filling the screen and the user is
  * least likely to notice anything else either.
  */
@@ -1218,7 +1218,7 @@ static COLORREF kitty_frame_resting_colour(void)
 {
     if (kitty_active_seat_workplace_proxied())
         return RGB(0, 100, 0);                 /* dark green */
-    /* The host says the session runs as root (OSC 3008, ContextRootFrame).
+    /* OSC 3008 from the host marks the session as root (ContextRootFrame).
      * Below green: green is KiTTY++'s own fact about the connection, this
      * is only what the host claims. Above the standing permission colours,
      * which the title spells out as well. */

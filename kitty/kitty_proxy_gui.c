@@ -57,8 +57,8 @@ static const char *pxe_log_names[] = { KT_PROXYGUI_LOG_NEVER, KT_PROXYGUI_LOG_AL
  * only then as a hostname. That is convenient and it is also how a jump host
  * that happens to share a name with a saved session silently drags that whole
  * session's configuration - including its own proxy - into the connection.
- * Saying which one it is here removes the guess, per proxy; leaving it at the
- * first entry keeps whatever kitty.ini [KiTTY] namedproxy says, which defaults
+ * Stating which one it is here removes the guess, per proxy; leaving it at the
+ * first entry keeps whatever kitty.ini [KiTTY] namedproxy sets, which defaults
  * to the historical behaviour.
  */
 static const int   pxe_hostis_vals[]  = { -1, 1, 0 };
@@ -119,7 +119,7 @@ static Conf *pxe_new_conf(void)
  *
  * UNSAVED EDITS. Nothing is written until Save. Switching panels, loading a
  * session or closing the box therefore discards what was typed, exactly as
- * closing the old window with Close did. The banner says so rather than
+ * closing the old window with Close did. The banner reports it rather than
  * leaving it to be discovered.
  *
  * ONE PANEL AT A TIME. The panel's data hangs off a file-static, the way the
@@ -136,7 +136,7 @@ struct pxpanel_data {
      * True while the panel is filling its own controls. Refreshing the name
      * box clears its list, which clears the edit with it, and the control
      * duly reports that its text changed - which is indistinguishable from
-     * the user emptying the box unless the panel says "that was me". Without
+     * the user emptying the box unless the panel flags it as its own. Without
      * this the name blanked itself the moment a definition was picked.
      */
     bool refreshing;
@@ -386,9 +386,9 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
         return;
     }
     /* An empty port on a type that has a usual one is filled in rather than
-     * queried. The window asked; a panel that puts up a question box while the
+     * queried. The window put up a question; a panel that does so while the
      * user is looking at a page is worse than one that does the obvious thing
-     * and says so. */
+     * and reports it. */
     want = pxe_default_port(conf_get_int(g_pxp->conf, CONF_proxy_type));
     if (want > 0 && conf_get_int(g_pxp->conf, CONF_proxy_port) == 0)
         conf_set_int(g_pxp->conf, CONF_proxy_port, want);
@@ -478,24 +478,24 @@ void kitty_proxy_panel_preselect(const char *name)
 }
 
 /*
- * "You have unsaved changes" - asked when the user tries to leave the panel
+ * "You have unsaved changes" - shown when the user tries to leave the panel
  * with an edit in hand. Nothing on this panel reaches the store until Save, so
  * the alternative is losing it silently, which is not a choice an application
  * setting should make for someone.
  *
  * A message box rather than a banner: this is a question whose answer changes
- * what happens next, and it is asked only when there is actually something to
+ * what happens next, and it comes only when there is actually something to
  * lose.
  */
 /*
  * Is there an unsaved edit on this panel?
  *
- * Asked by the config box's width reflow, which lays a panel out again by
+ * Called by the config box's width reflow, which lays a panel out again by
  * DESTROYING its controls - so it must not touch this one while it holds
- * something the store has not got. Unlike pxp_may_leave() this asks nothing
- * and changes nothing: a window being dragged is not the moment to interrupt
- * with a question, and the reflow can leave this one panel clipped until it
- * is saved or left.
+ * something the store has not got. Unlike pxp_may_leave() this shows no
+ * question and changes nothing: a window being dragged is not the moment to
+ * interrupt with a question, and the reflow can leave this one panel clipped
+ * until it is saved or left.
  */
 bool kitty_proxy_panel_dirty(void)
 {
@@ -507,7 +507,7 @@ static bool pxp_may_leave(void)
     if (!g_pxp || !g_pxp->dirty)
         return true;
     /* The suite's own confirm box (No is its default too), not MessageBox -
-     * the one window that asked in the system's old face. */
+     * the one window that queried the user in the system's old face. */
     if (!kitty_confirm_box(kitty_cfg_modal_owner(),
         KT_CAP_NAMED_PROXY,
         KT_PROXYGUI_UNSAVED_Q, NULL))
@@ -515,7 +515,7 @@ static bool pxp_may_leave(void)
     /*
      * Discard means DISCARD: drop the edited copy and take the stored
      * definition back. Leaving the flag set would also mean every later panel
-     * switch asked the same question, because the guard is registered for the
+     * switch raised the same question, because the guard is registered for the
      * box rather than for whichever panel is showing.
      */
     if (g_pxp->conf)
@@ -564,7 +564,7 @@ void kitty_proxy_build_panel(struct controlbox *b)
      * NOT gated on proxyselection.
      *
      * This is an APPLICATION panel: it is where the definitions live, and an
-     * application panel does not come and go with a setting. It used to
+     * application panel is not shown or hidden by a setting. It used to
      * disappear on proxyselection=no, which is the setting for whether
      * SESSIONS are offered a chooser - so turning that off took away the only
      * place the definitions can be edited, and turning it back on again meant
@@ -589,7 +589,7 @@ void kitty_proxy_build_panel(struct controlbox *b)
                   KT_NAMED_PROXIES_PROXY_DEFINITIONS_SHARED_BY_EVERY);
 
     /* ONE box, "Definition": every control on this panel describes the proxy
-     * being edited, so the which/where/options split said nothing - three
+     * being edited, so the which/where/options split added nothing - three
      * frames' worth of height for no information. */
     s = ctrl_getset(b, "Application/Named Proxies", "which", KT_NAMED_PROXIES_DEFINITION);
     pd->namebox = ctrl_combobox(s, KT_NAMED_PROXIES_NAME_PICK_ONE_TO_EDIT,
@@ -652,7 +652,7 @@ void kitty_proxy_build_panel(struct controlbox *b)
     c->column = 1;
     ctrl_columns(s, 1, 100);
     /* BELOW the Definition box, frameless (an empty boxname draws no box):
-     * blank until it has something to SAY - it is where pxp_say() answers
+     * blank until it has something to SHOW - it is where pxp_say() answers
      * Save and Delete. The row it needs is the one the password/show merge
      * freed above, so the panel still fits the window's minimum height. */
     s = ctrl_getset(b, "Application/Named Proxies", "", NULL);
@@ -660,7 +660,7 @@ void kitty_proxy_build_panel(struct controlbox *b)
 
     /* The one global of this feature, on a leaf of its own under the
      * definitions: how a definition's Host field is read when the definition
-     * itself says "as globally configured" ([KiTTY] namedproxy). Written the
+     * itself reads "as globally configured" ([KiTTY] namedproxy). Written the
      * moment it is chosen, like every application setting; the leave guard
      * above is about a definition, not this leaf. */
     ctrl_settitle(b, "Application/Named Proxies/Defaults", KT_NAMED_PROXIES_DEFAULTS_TITLE);

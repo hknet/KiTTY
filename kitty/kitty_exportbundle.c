@@ -41,9 +41,9 @@
  * Import: each chosen .ktx loads through the forced reader (which unlocks
  * MPW1 / decodes legacy forms) and is saved as a normal session, so the
  * storage chokepoint rewraps the password for the DESTINATION backend
- * (registry -> DPAPI1, portable -> MPW1). "Default Settings" is included in
- * the export: this is a whole-store move, and importing it restores the
- * defaults too. */
+ * (registry -> DPAPI1, folder store -> its PortablePasswordProtection, MPW2
+ * by default). "Default Settings" is not exported (see below): it is the
+ * template of new sessions, not a saved session. */
 #include <commdlg.h>
 
 static const char *ktx_ext(void) {
@@ -207,7 +207,7 @@ static INT_PTR CALLBACK exportpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
     return FALSE;
 }
 
-/* Ask how to protect the bundle. Returns 1 to go ahead (*pwOut = malloc'd
+/* Prompt for the bundle's protection. Returns 1 to go ahead (*pwOut = malloc'd
  * password, or NULL when "this PC only" was chosen), 0 if cancelled. */
 static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
 {
@@ -232,7 +232,7 @@ static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
 
 /* The same question for a portable copy of the store (kitty_storemove.c):
  * same controls, its own words - there the password IS the copy's master
- * password, the opposite of what the export dialog says. */
+ * password, the opposite of what the export dialog states. */
 int kitty_ask_store_password(HWND hwnd, char **pwOut, int *dpapiOut)
 {
     int r;
@@ -324,7 +324,7 @@ void kitty_export_all_sessions(HWND hwnd) {
                 return;
         }
     }
-    /* Ask BEFORE exporting: cancel here must leave nothing behind. */
+    /* Prompt BEFORE exporting: cancel here must leave nothing behind. */
     if (!kitty_ask_export_password(hwnd, &bundlepw, &dpapi)) return;
 
     if (dpapi) kitty_set_bundle_dpapi_only(1);
@@ -489,10 +489,11 @@ void kitty_show_mpw_moved(HWND hwnd)
 }
 
 /* ---- import: is the bundle protected, and with what? ---------------------
- * Whether to ask for a password is decided from the FILES, never guessed: scan
- * the bundle for a value carrying a protection marker. MPW2: means an export
- * password is needed and works on any PC; DPAPI1: means the bundle is tied to
- * one Windows account on one PC and must never raise a password dialog.
+ * Whether to prompt for a password is decided from the FILES, never guessed:
+ * scan the bundle for a value carrying a protection marker. MPW2: means an
+ * export password is needed and works on any PC; DPAPI1: means the bundle is
+ * tied to one Windows account on one PC and must never raise a password
+ * dialog.
  *
  * The sampled value is also the test. The candidate password is checked against
  * it BEFORE a single session is written, so a wrong password abandons the
@@ -587,7 +588,7 @@ static void bundle_scan_dir(const char *dir, const char *pattern,
 }
 
 /* Does this bundle need a password to import? 1 = yes (an MPW2 value is in
- * there), 0 = no. For the CLI, which has no one to ask. */
+ * there), 0 = no. For the CLI, which cannot prompt anyone. */
 int kitty_bundle_needs_password(const char *dir)
 {
     char *mpw2 = NULL, *dpapi = NULL, *pat, *sub;
@@ -650,9 +651,9 @@ static void imp_wipe(char **p)
     if (*p) { SecureZeroMemory(*p, strlen(*p)); free(*p); *p = NULL; }
 }
 
-/* Ask for the bundle password and verify it against `sample` before returning.
- * 1 with *pwOut set (malloc'd) on success; 0 on cancel or after 3 wrong tries -
- * in which case nothing must be imported. */
+/* Prompt for the bundle password and verify it against `sample` before
+ * returning. 1 with *pwOut set (malloc'd) on success; 0 on cancel or after 3
+ * wrong tries - in which case nothing must be imported. */
 static int kitty_ask_import_password(HWND hwnd, const char *sample, char **pwOut)
 {
     int tries;
@@ -712,7 +713,7 @@ int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
         ok = kitty_ask_import_password(hwnd, mpw2, pwOut);
     } else if (dpapi) {
         /* No prompt: a DPAPI bundle either opens silently on this account and
-         * PC, or cannot be opened at all. Say which, rather than importing
+         * PC, or cannot be opened at all. Report which, rather than importing
          * sessions with silently blank passwords. */
         char *plain = NULL;
         int rv = ksec_unprotect(dpapi, &plain);
@@ -740,7 +741,7 @@ void kitty_import_sessions(HWND hwnd) {
     if (!OpenDirName(hwnd, dir)) return;
     /* Settle the bundle's protection first: a wrong password, or a "this PC
      * only" bundle from elsewhere, must abandon the import before anything is
-     * written or any other question is asked. */
+     * written or any other question is shown. */
     if (!kitty_unlock_import_bundle(hwnd, dir, &bundlepw)) return;
     /* Import overwrites a saved session/proxy of the same name. Count the
      * collisions across BOTH and let the user choose once: overwrite all, import
@@ -790,7 +791,7 @@ void kitty_import_sessions(HWND hwnd) {
     MessageBoxA(hwnd, msg, KT_CAP_SESSION_IMPORT,
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
     /* Imported sessions bring their hotkeys along, and nothing above checked
-     * those against the store: say NOW if the store ended up with a hotkey
+     * those against the store: report NOW if the store ended up with a hotkey
      * held twice, or with more enabled hotkeys than the launcher has slots -
      * the alternative is a session whose hotkey silently never fires. */
     if (n > 0) {

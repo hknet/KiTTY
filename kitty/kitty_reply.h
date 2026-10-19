@@ -6,7 +6,7 @@
 
 #include "putty.h"
 
-/* A complete, already-built reply to something the host asked or announced
+/* A complete, already-built reply to something the host requested or announced
  * (DECRQM, XTGETTCAP, colour queries, Capabilities, focus events, kitty
  * graphics, file transfer, notifications ...), straight to the connection.
  * Clipboard contents do NOT go through here directly: they take

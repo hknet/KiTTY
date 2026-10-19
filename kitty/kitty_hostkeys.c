@@ -312,7 +312,7 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
                     e->first_seen = stamp ? stamp : dupstr("");
                     stamp = portable_read_text_file("SshHostKeys", n2);
                     if (!stamp) {
-                        /* No stamp yet: the file's own write time says it. */
+                        /* No stamp yet: the file's own write time gives it. */
                         FILETIME lt; SYSTEMTIME st;
                         FileTimeToLocalFileTime(&fd.ftLastWriteTime, &lt);
                         FileTimeToSystemTime(&lt, &st);

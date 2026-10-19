@@ -76,7 +76,7 @@ char *kitty_namelist_join(const struct kitty_namelist *l, const char *sep)
 }
 
 /* ------------------------------------------------------------------ */
-/* the read watch: which setting names the loader actually asked for   */
+/* the read watch: which setting names the loader actually requested   */
 
 static struct kitty_namelist *watch_target = NULL;
 static bool retired_and_migrates(const char *key);   /* defined with the file import */
@@ -231,9 +231,9 @@ char *kitty_import_foreign_session(const char *name, int hive,
         return NULL;
 
     /*
-     * Read it with the watch on, so that afterwards we can say which of the
+     * Read it with the watch on, so that afterwards we can list which of the
      * session's values this KiTTY has no home for: they are the ones the
-     * loader never asked about.
+     * loader never requested.
      */
     struct kitty_namelist seen;
     memset(&seen, 0, sizeof(seen));
@@ -357,10 +357,10 @@ static int classify_password(struct ksf_item *items)
     char *pt;
     if (!pw || !*pw)
         return KFS_READY;
-    /* A master-password value is not tried during the SCAN - asking file
+    /* A master-password value is not tried during the SCAN - prompting file
      * after file is what a scan of a copied store turned into. An MPW2 value
      * carries its salt, so THAT store's master password unlocks it: the
-     * import asks once and the answer is cached for the rest of the run. An
+     * import prompts once and the answer is cached for the rest of the run. An
      * MPW1 value needs its store's salt, which a foreign folder does not
      * give us: it imports without the password. */
     switch (kitty_secret_is_mpw(pw)) {
@@ -397,7 +397,7 @@ static void scan_add(struct kitty_folder_scan *s, const char *name,
 }
 
 /* One directory level. A file counts as a session when it sits in a directory
- * named Sessions, or when it parses to a list naming a host or a protocol -
+ * named Sessions, or when it parses to a list giving a host or a protocol -
  * so a copied Sessions folder and a bare heap of session files both work.
  * Hidden and system directories, and reparse points, are not entered. */
 /* `sess_rel` is the directory path below the nearest Sessions directory
@@ -612,12 +612,12 @@ void kitty_folder_scan_free(struct kitty_folder_scan *s)
     sfree(s);
 }
 
-/* Which retired keys are NOT worth naming as "not carried over": one whose
+/* Which retired keys are NOT worth listing as "not carried over": one whose
  * value MIGRATES (read under its new name - a file written after the rename
- * carries both - or under the old one as the fallback), and one that names
+ * carries both - or under the old one as the fallback), and one that lists
  * no replacement at all (a marker the old program wrote, never a setting the
- * user set - telling them it was left behind tells them nothing). What
- * remains is a real setting with no counterpart, and the manual says why. */
+ * user set - a report that it was left behind means nothing to them). What
+ * remains is a real setting with no counterpart, and the manual states why. */
 static bool retired_and_migrates(const char *key)
 {
     size_t n, i;
@@ -638,7 +638,7 @@ static void note_unread(const char *key, const char *val, void *vctx)
 }
 
 /* The import's OWN decryption: a master-password value of the source store is
- * opened with the passphrase the import asked for, and handed to the loader
+ * opened with the passphrase the import prompted for, and handed to the loader
  * as "PLAIN:<text>" - the marker the loader already strips. Our store's
  * unlock is never involved: not consulted, not prompted, not changed. */
 static void import_open_mpw_values(struct ksf_item **items, const char *store_pass)
@@ -699,7 +699,7 @@ bool kitty_import_file_session(const char *path, const char *target,
      * runs with our store's prompt held off: whatever is still wrapped after
      * this step (another machine's DPAPI blob, an MPW1 value without its
      * salt, a wrong or absent store passphrase) loads as empty and the
-     * session is imported without it - the summary says how many. */
+     * session is imported without it - the summary reports how many. */
     import_open_mpw_values(&items, store_pass);
     src = kitty_open_settings_r_items(items);   /* owns items now */
 

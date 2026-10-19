@@ -427,7 +427,7 @@ the first step becomes \c{%25}. The host-key file extension is appended last.
 \c{SshHostKeys} in the registry, followed by a line ending. A stored
 key matches only when this text is exactly the key the server presents.
 
-\b Two more files go with each key, the same name with an ending. The
+\b Two more files belong to each key, the same name with an ending. The
 one ending in \c{%3Afirst} is written when the key is first stored. The
 one ending in \c{%3Awhen} is written each time the key is stored. Each holds a local time,
 \c{YYYY-MM-DDThh:mm:ss}. They are information for the Host keys panel
@@ -525,7 +525,7 @@ in the configuration directory except, at its top level, the
 configuration directory (\c{sessions}, \c{sshhostkeys}) is not in the
 copy. A copy that fails part-way is deleted. The older copies are then
 left as they are. Without a configuration file (\c{conf=no}) no
-backup is written.
+backup is written, nor with \c{readonly=yes}.
 
 A backup is written:
 

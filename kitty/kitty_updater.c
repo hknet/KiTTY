@@ -125,7 +125,7 @@ int kitty_exe_from_msi( void ) {
 }
 
 /* How was this copy installed? Decides which asset to fetch and how to run it.
- * Primary, robust signal: ask Windows Installer whether OUR product (by its
+ * Primary, robust signal: query Windows Installer whether OUR product (by its
  * stable UpgradeCode) installed THIS exe, and which kind. An MSI that is
  * installed but is not this copy makes it portable: download-only, never the
  * MSI run. The path sniff remains only for a machine with no MSI of ours at
@@ -355,7 +355,7 @@ void kitty_start_update_check( void ) {
 /* Launcher variant: notify a window after the async cache refresh, so the tray
  * balloon can appear on the first launcher run after a new release instead of
  * only after a previous process has already populated the cache.
- * Callable again: a launcher sits in the tray for days and asks once a day.
+ * Callable again: a launcher sits in the tray for days and checks once a day.
  * One check at a time - a call made while one is running does nothing, and a
  * check that fails is simply not heard from. */
 void kitty_start_update_check_notify( HWND hwnd, UINT msg ) {
@@ -806,7 +806,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype, notesurl ) ;
 					return ;
 				}
-				/* MSI install path. If a stable build is offered a beta, say so in
+				/* MSI install path. If a stable build is offered a beta, state it in
 				 * the text (the "Update now" button is the explicit opt-in). */
 				snprintf( msg, sizeof(msg),
 					KT_UPD_AVAILABLE_HEAD

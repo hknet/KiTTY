@@ -12,7 +12,7 @@
  * "~/<name>"; an absolute dir or one starting with "~" gives "<dir>/<name>";
  * any other dir is relative to the home directory, giving "~/<dir>/<name>".
  * name is the last component of localname (after '\' or '/'; trailing
- * separators ignored, so a folder names itself). NULL when localname has no
+ * separators ignored, so a folder keeps its name). NULL when localname has no
  * name (a drive root) or on no memory. The caller frees it with free(). */
 char *kitty_droppath_remote(const char *remotedir, const char *localname);
 
