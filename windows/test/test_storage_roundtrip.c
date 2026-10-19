@@ -423,6 +423,29 @@ static char *build_big_portfwd(int hosts, int *entries_out)
     return strbuf_to_str(sb);
 }
 
+/* The Proxies folder of the folder store is in the configuration directory
+ * (kitty.ini configdir), not in the store root, when the two part - the
+ * place kitty_proxy.c reads and writes. The master-password scan went to
+ * the store root and missed MPW values there. */
+static void test_proxies_dir(void)
+{
+    char *d;
+    kitty_set_session_dir("C:\\qa-store\\elsewhere\\mysess");
+    kitty_set_storage_mode(1);
+    kitty_set_config_dir("C:\\qa-store\\cfg");
+    d = portable_proxies_dir();
+    check(d && !strcmp(d, "C:\\qa-store\\cfg\\Proxies"),
+          "proxies dir: in the configuration directory when sessions= points elsewhere");
+    sfree(d);
+    kitty_set_config_dir("");
+    d = portable_proxies_dir();
+    check(d && !strcmp(d, "C:\\qa-store\\elsewhere\\mysess\\Proxies"),
+          "proxies dir: the store root when no configuration directory is set (tools)");
+    sfree(d);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+}
+
 static void test_long_values(void)
 {
     int entries = 0;
@@ -893,6 +916,7 @@ int main(int argc, char **argv)
     test_portable();
     printf("== long settings values (cyd01/KiTTY#541) ==\n");
     test_long_values();
+    test_proxies_dir();
     printf("== renamed setting migrates on save ==\n");
     test_renamed_key();
     printf("== old 9bis KiTTY hive is still read (design doc 8.10) ==\n");

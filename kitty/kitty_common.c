@@ -227,15 +227,21 @@ void mungestr( const char *in, char *out ) {
 	*out = '\0' ;
 	return ;
 }
+static int unmunge_hex( char c ) {
+	if( c >= '0' && c <= '9' ) return c - '0' ;
+	if( c >= 'A' && c <= 'F' ) return c - 'A' + 10 ;
+	if( c >= 'a' && c <= 'f' ) return c - 'a' + 10 ;
+	return -1 ;
+}
+/* %XX in either case. A % not followed by two hex digits stays as it is,
+   as in ksf_unmunge. The old arithmetic took any two characters and turned
+   lower-case hex into a wrong byte. */
 void unmungestr( const char *in, char *out, int outlen ) {
 	while (*in) {
-		if( *in == '%' && in[1] && in[2] ) {
-			int i, j ;
-			i = in[1] - '0' ;
-			i -= (i > 9 ? 7 : 0) ;
-			j = in[2] - '0' ;
-			j -= (j > 9 ? 7 : 0) ;
-			*out++ = (i << 4) + j ;
+		int i, j ;
+		if( *in == '%' && in[1] && in[2] &&
+		    (i = unmunge_hex( in[1] )) >= 0 && (j = unmunge_hex( in[2] )) >= 0 ) {
+			*out++ = (char)((i << 4) + j) ;
 			if( !--outlen )
 				return ;
 			in += 3	;

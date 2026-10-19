@@ -1648,7 +1648,7 @@ static int store_has_mpw_wrapped_secret(void)
         char *prox;
         int found = ksf_dir_has_mpw(kitty_session_dir());
         if (found) return 1;
-        prox = portable_subdir_path("Proxies");
+        prox = portable_proxies_dir();     /* in configdir, as kitty_proxy.c */
         found = ksf_dir_has_mpw(prox);
         sfree(prox);
         return found;

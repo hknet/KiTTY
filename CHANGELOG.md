@@ -108,6 +108,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **Named proxies in the folder store are read in both line forms.** A proxy
+  file written as `Key=value` loaded empty. A file with only the "normal" file
+  attribute was missing from the proxy list. An escape in lower-case hex
+  (`%2f`) decoded to a wrong character. With `sessions=` pointing away from
+  the configuration directory, the master password check also missed
+  passwords in named proxies.
 - **A portable store switched to DPAPI no longer puts up the master password
   prompt at every start.** A master password set up before
   `PortablePasswordProtection=dpapi` kept the prompt at startup, even with

@@ -852,6 +852,20 @@ void kitty_pwdebug(const char *fmt, ...)
     fclose(f);
 }
 void kitty_set_storage_mode(int mode) { g_store_mode = mode; }
+/* The configuration directory (kitty.ini configdir): Proxies, Launcher and
+ * Backups live there, not in the store root, when the two part. Set by
+ * kitty.exe at startup, empty in the stand-alone tools. */
+static char g_config_dir[1024] = "";
+void kitty_set_config_dir(const char *dir)
+{
+    snprintf(g_config_dir, sizeof(g_config_dir), "%s", dir ? dir : "");
+}
+char *portable_proxies_dir(void)                   /* snewn'd or NULL */
+{
+    if (g_config_dir[0] && store_is_file())
+        return dupprintf("%s\\Proxies", g_config_dir);
+    return portable_subdir_path("Proxies");
+}
 void kitty_set_session_dir(const char *dir)
 {
     if (dir && dir[0]) {

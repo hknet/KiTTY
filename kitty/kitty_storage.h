@@ -147,6 +147,8 @@ char *ksf_list_get(struct ksf_item *h, const char *key);  /* borrowed/NULL */
 void ksf_list_set(struct ksf_item **h, const char *key, const char *val);
 void ksf_list_del(struct ksf_item **h, const char *key);  /* retire a renamed key */
 void ksf_list_free(struct ksf_item *h);
+void kitty_set_config_dir(const char *dir);
+char *portable_proxies_dir(void);   /* <configdir>\Proxies, snewn'd or NULL */
 char *ksf_session_path(const char *sessionname);  /* snewn'd or NULL */
 /* Session names as folder paths and the session file suffix (hknet/KiTTY#55,
  * #56); see kitty_storage.c. The suffix is set once at startup from kitty.ini

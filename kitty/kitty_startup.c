@@ -889,6 +889,7 @@ void InitWinMain( void ) {
 			char ppmode[32] = "" ;
 			kitty_set_storage_mode( SAVEMODE_DIR ) ;
 			kitty_set_session_dir( sesspath ) ;
+			kitty_set_config_dir( ConfigDirectory ) ;
 			/* A hand-edited hostkeyextension / fileextension renames nothing
 			 * here: the configuration box puts up a question first
 			 * (kitty_sp_endings_offer). */

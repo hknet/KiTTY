@@ -142,9 +142,13 @@ void InitProxyList(void) {
 		if( (dir=opendir(fullpath)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
-			else if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") )	{
+			else if( de->d_name[0] != '.' )	{	/* ., .., .gitkeep */
+				DWORD a ;
 				snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, de->d_name ) ;
-				if( !(GetFileAttributes( fullpath ) & FILE_ATTRIBUTE_NORMAL) ) {
+				/* Files only. The test was !(attributes & NORMAL): it skipped a
+				 * file whose only attribute is NORMAL and listed folders. */
+				a = GetFileAttributes( fullpath ) ;
+				if( a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY) ) {
 					if( strcmp(de->d_name,"None") && strcmp(de->d_name,"Default") ) {
 						proxies[j].name=(char*)malloc(strlen(de->d_name)+1);
 						unmungestr( de->d_name, proxies[j].name, MAX_VALUE_NAME ) ;
@@ -223,57 +227,48 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char fullpath[MAX_VALUE_NAME] ;
 		char *filename = (char*) malloc( 4*strlen(name)+1 ) ;
+		struct ksf_item *items ;
+		const char *v ;
 		mungestr( name, filename ) ;
 		snprintf( fullpath, sizeof(fullpath), "%s\\Proxies\\%s", ConfigDirectory, filename ) ;
-		if( existfile(fullpath) ) {
-			FILE *fp;
-			if( (fp=fopen(fullpath,"r")) != NULL ) {
-				char buf2[MAX_VALUE_NAME]="";
-				while( fgets(buffer,MAX_VALUE_NAME,fp)!=NULL ) {
-					if( ReadPortableValue(buffer, "ProxyExcludeList", buf2, MAX_VALUE_NAME) ) {
-						conf_set_str( conf, CONF_proxy_exclude_list, buf2 ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyDNS", buf2, MAX_VALUE_NAME) ) {
-						int i=atoi(buf2);
-						conf_set_int(conf, CONF_proxy_dns, (i+1)%3);
-					} else if( ReadPortableValue(buffer, "ProxyLocalhost", buf2, MAX_VALUE_NAME) ) {
-						if( atoi(buf2) == 0 ) { conf_set_bool( conf, CONF_even_proxy_localhost, false ) ; 
-						} else { conf_set_bool( conf, CONF_even_proxy_localhost, true ) ;
-						}	
-					} else if( ReadPortableValue(buffer, "ProxyMethod", buf2, MAX_VALUE_NAME) ) {
-						int i = atoi(buf2) ;
-						if (i == 0) conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
-						else if (i == 1) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS4) ;
-						else if (i == 2) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS5) ;
-						else if (i == 3) conf_set_int(conf, CONF_proxy_type, PROXY_HTTP) ;
-						else if (i == 4) conf_set_int(conf, CONF_proxy_type, PROXY_TELNET) ;
-						else if (i == 5) conf_set_int(conf, CONF_proxy_type, PROXY_CMD) ;
-						else if (i == 6) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP) ;
-						else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
-						else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
-						else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
-					} else if( ReadPortableValue(buffer, "ProxyHost", buf2, MAX_VALUE_NAME) ) { 
-						conf_set_str( conf, CONF_proxy_host, buf2 ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyPort", buf2, MAX_VALUE_NAME) ) { 
-						conf_set_int( conf, CONF_proxy_port, atoi(buf2) ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyUsername", buf2, MAX_VALUE_NAME) ) { 
-						conf_set_str( conf, CONF_proxy_username, buf2 ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyPassword", buf2, MAX_VALUE_NAME) ) {
-						char *pt = NULL ; kitty_secret_unwrap( buf2, &pt ) ;   /* DPAPI/MPW/plain */
-						/* Wrapped again for memory (kitty_pwmem.c). */
-						kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
-						if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
-					} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, MAX_VALUE_NAME) ) {
-						conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, MAX_VALUE_NAME) ) { 
-						conf_set_int( conf, CONF_proxy_log_to_term, atoi(buf2) ) ; 
-					} else if( ReadPortableValue(buffer, "ProxyHostIs", buf2, MAX_VALUE_NAME) ) {
-						conf_set_int( conf, CONF_proxy_host_kind, atoi(buf2) ? 1 : 0 ) ;
-					}
-				}
-				fclose(fp);
-			}
-		}
 		free( filename ) ;
+		/* Read with the session-file reader (ksf_load): it takes both line
+		 * forms, Key=value and old KiTTY's Key\value\, and hex escapes in
+		 * either case. The line reader used before knew only Key\value\, so
+		 * a definition written as Key=value loaded empty (no host, port 0). */
+		if( (items = ksf_load( fullpath )) == NULL ) return 1 ;
+		if( (v = ksf_list_get( items, "ProxyExcludeList" )) != NULL ) conf_set_str( conf, CONF_proxy_exclude_list, v ) ;
+		if( (v = ksf_list_get( items, "ProxyDNS" )) != NULL ) conf_set_int( conf, CONF_proxy_dns, (atoi(v)+1)%3 ) ;
+		if( (v = ksf_list_get( items, "ProxyLocalhost" )) != NULL ) conf_set_bool( conf, CONF_even_proxy_localhost, atoi(v) != 0 ) ;
+		if( (v = ksf_list_get( items, "ProxyMethod" )) != NULL ) {
+			int i = atoi(v) ;
+			if (i == 0) conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
+			else if (i == 1) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS4) ;
+			else if (i == 2) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS5) ;
+			else if (i == 3) conf_set_int(conf, CONF_proxy_type, PROXY_HTTP) ;
+			else if (i == 4) conf_set_int(conf, CONF_proxy_type, PROXY_TELNET) ;
+			else if (i == 5) conf_set_int(conf, CONF_proxy_type, PROXY_CMD) ;
+			else if (i == 6) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP) ;
+			else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
+			else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
+			else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
+		}
+		if( (v = ksf_list_get( items, "ProxyHost" )) != NULL ) conf_set_str( conf, CONF_proxy_host, v ) ;
+		if( (v = ksf_list_get( items, "ProxyPort" )) != NULL ) conf_set_int( conf, CONF_proxy_port, atoi(v) ) ;
+		if( (v = ksf_list_get( items, "ProxyUsername" )) != NULL ) conf_set_str( conf, CONF_proxy_username, v ) ;
+		if( (v = ksf_list_get( items, "ProxyPassword" )) != NULL ) {
+			char *pt = NULL ; kitty_secret_unwrap( v, &pt ) ;   /* DPAPI/MPW/plain */
+			/* Wrapped again for memory (kitty_pwmem.c). */
+			kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
+			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
+		}
+		if( (v = ksf_list_get( items, "ProxyTelnetCommand" )) != NULL ) conf_set_str( conf, CONF_proxy_telnet_command, v ) ;
+		if( (v = ksf_list_get( items, "ProxyLogToTerm" )) != NULL ) conf_set_int( conf, CONF_proxy_log_to_term, atoi(v) ) ;
+		/* Absent means the definition follows the global default, as in the
+		 * registry branch above: -1, not the value the Conf happened to hold. */
+		v = ksf_list_get( items, "ProxyHostIs" ) ;
+		conf_set_int( conf, CONF_proxy_host_kind, v ? (atoi(v) ? 1 : 0) : -1 ) ;
+		ksf_list_free( items ) ;
 	}
 	return 1;
 }
