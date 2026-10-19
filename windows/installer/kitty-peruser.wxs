@@ -13,14 +13,14 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="KiTTY 0.85.1.17-beta (per-user install)"
+  <Package Name="KiTTY++ 0.85.1.17-beta (per-user install)"
            Manufacturer="KAPPER NETWORK-COMMUNICATIONS GmbH"
            Version="0.85.117"
            UpgradeCode="578952A6-AA7F-4146-918B-47803234700B"
            Scope="perUser"
            Compressed="yes">
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY is already installed." />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of KiTTY++ is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Icon Id="kitty.ico" SourceFile="kitty.exe" />
     <Icon Id="klaunch.ico" SourceFile="kitty_pp_windows.ico" />
@@ -31,6 +31,38 @@
     <!-- as in kitty-system.wxs: the installed folder in InstallLocation, so
          kitty.exe can tell its own install from a ZIP copy beside it -->
     <SetProperty Id="ARPINSTALLLOCATION" Value="[INSTALLFOLDER]" After="CostFinalize" />
+
+    <!-- The Desktop shortcut is opt-in (0.85.1.18 on): msiexec ... DESKTOPSHORTCUT=1.
+         An upgrade keeps it where the Desktop still has the one an earlier
+         package wrote, "KiTTY.lnk" (up to 0.85.1.17) or "KiTTY++.lnk"; one the
+         user deleted stays deleted. AppSearch runs before the old product is
+         removed, so the search sees the old file. Secure: a per-machine install
+         passes them from the UI sequence to the server. -->
+    <Property Id="DESKTOPSHORTCUT" Secure="yes" />
+    <Property Id="KITTY_DESKTOP_OLD" Secure="yes">
+      <DirectorySearch Id="ds_desktop_old" Path="[DesktopFolder]" Depth="0">
+        <FileSearch Id="fs_desktop_old" Name="KiTTY.lnk" />
+      </DirectorySearch>
+    </Property>
+    <Property Id="KITTY_DESKTOP_NEW" Secure="yes">
+      <DirectorySearch Id="ds_desktop_new" Path="[DesktopFolder]" Depth="0">
+        <FileSearch Id="fs_desktop_new" Name="KiTTY++.lnk" />
+      </DirectorySearch>
+    </Property>
+    <!-- The same for the launcher's autostart: a fresh install writes it, an
+         upgrade only where the Startup folder still has one ("KiTTY++
+         Launcher.lnk", or "KiTTY Launcher.lnk" up to 0.85.1.14). Turned off
+         (the link deleted, by "Start at login" or by hand) stays off. -->
+    <Property Id="KITTY_STARTUP_NEW" Secure="yes">
+      <DirectorySearch Id="ds_startup_new" Path="[StartupFolder]" Depth="0">
+        <FileSearch Id="fs_startup_new" Name="KiTTY++ Launcher.lnk" />
+      </DirectorySearch>
+    </Property>
+    <Property Id="KITTY_STARTUP_OLD" Secure="yes">
+      <DirectorySearch Id="ds_startup_old" Path="[StartupFolder]" Depth="0">
+        <FileSearch Id="fs_startup_old" Name="KiTTY Launcher.lnk" />
+      </DirectorySearch>
+    </Property>
 
     <!-- KiTTY: close any running KiTTY before the file phase so an in-place
          upgrade never blocks on an in-use kitty.exe (the reliable escape path for
@@ -74,7 +106,7 @@
     <!-- Start-Menu shortcuts (non-advertised; icon = target exe; stable AUMID) -->
     <DirectoryRef Id="ShortcutDir">
       <Component Id="c_shortcuts" Guid="A1B2C3D4-0085-4005-9001-000000000001">
-        <Shortcut Id="sc_kitty" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_kitty" Name="KiTTY++" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
         <Shortcut Id="sc_kittygen" Name="KiTTYgen (key generator)" Target="[INSTALLFOLDER]kittygen.exe" WorkingDirectory="INSTALLFOLDER">
@@ -86,10 +118,10 @@
         <Shortcut Id="sc_ksftp" Name="KSFTP (sftp)" Target="[INSTALLFOLDER]ksftp.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KSFTP" />
         </Shortcut>
-        <Shortcut Id="sc_pterm" Name="KiTTY pterm" Target="[INSTALLFOLDER]kitty_pterm.exe" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_pterm" Name="KiTTY++ pterm" Target="[INSTALLFOLDER]kitty_pterm.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYpterm" />
         </Shortcut>
-        <Shortcut Id="sc_tel" Name="KiTTY Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
+        <Shortcut Id="sc_tel" Name="KiTTY++ Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
         </Shortcut>
         <Shortcut Id="sc_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
@@ -122,7 +154,7 @@
 
     <!-- Startup-folder shortcut: auto-run the tray session-launcher at login -->
     <StandardDirectory Id="StartupFolder">
-      <Component Id="c_startup_launcher" Guid="A1B2C3D4-0085-4005-9001-000000000003">
+      <Component Id="c_startup_launcher" Guid="A1B2C3D4-0085-4005-9001-000000000003" Condition="NOT WIX_UPGRADE_DETECTED OR KITTY_STARTUP_NEW OR KITTY_STARTUP_OLD">
         <Shortcut Id="sc_startup_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />
         </Shortcut>
@@ -130,17 +162,17 @@
       </Component>
     </StandardDirectory>
 
-    <!-- Desktop shortcut for the main app -->
+    <!-- Desktop shortcut for the main app: opt-in, see DESKTOPSHORTCUT above -->
     <StandardDirectory Id="DesktopFolder">
-      <Component Id="c_desktop" Guid="A1B2C3D4-0085-4005-9001-000000000002">
-        <Shortcut Id="sc_desktop" Name="KiTTY" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
+      <Component Id="c_desktop" Guid="A1B2C3D4-0085-4005-9001-000000000002" Condition="DESKTOPSHORTCUT=1 OR KITTY_DESKTOP_OLD OR KITTY_DESKTOP_NEW">
+        <Shortcut Id="sc_desktop" Name="KiTTY++" Target="[INSTALLFOLDER]kitty.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTY" />
         </Shortcut>
         <RegistryValue Root="HKCU" Key="Software\kapper.net\KiTTY-installer" Name="desktop" Type="string" Value="" KeyPath="yes" />
       </Component>
     </StandardDirectory>
 
-    <Feature Id="Main" Title="KiTTY" Level="1">
+    <Feature Id="Main" Title="KiTTY++" Level="1">
       <ComponentGroupRef Id="Binaries" />
       <ComponentRef Id="c_shortcuts" />
       <ComponentRef Id="c_startup_launcher" />

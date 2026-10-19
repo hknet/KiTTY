@@ -10,9 +10,17 @@ portable build is the no-install story).
 | `kitty-system.wxs` → `KiTTY-…-x64-system.msi`  | per-machine (all users) | `C:\Program Files\KiTTY` | **Yes** (elevation required) |
 | `kitty-peruser.wxs` → `KiTTY-…-x64-peruser.msi` | per-user (current user)  | `%LOCALAPPDATA%\Programs\KiTTY` | **No** (no UAC) |
 
-Both add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and
+Both add Start-Menu shortcuts and an Add/Remove-Programs entry, and
 remove everything cleanly on uninstall. They use **distinct UpgradeCodes**, so
 they are independent products and can even coexist.
+
+The Desktop shortcut is opt-in: `msiexec /i <msi> DESKTOPSHORTCUT=1`. An
+upgrade keeps it if the Desktop still has the one an earlier package wrote
+(`KiTTY.lnk` up to 0.85.1.17, `KiTTY++.lnk` since).
+
+The launcher's autostart (the Startup shortcut "KiTTY++ Launcher") is written
+by a fresh install; an upgrade writes it only if the Startup folder still has
+it, so an autostart that was turned off stays off.
 
 ## Building
 

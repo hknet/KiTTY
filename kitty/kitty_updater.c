@@ -88,11 +88,14 @@ static void kitty_cut_to_dir( char *p ) {
  * about the MACHINE: answered on its own it made a ZIP copy offer the MSI
  * update. The installed folder comes from the product's InstallLocation (the
  * packages set ARPINSTALLLOCATION); a package from before that records none,
- * and then the target of the installer's own Start menu "KiTTY.lnk" says where
- * it put kitty.exe (common = the all-users Start menu, the system package). */
+ * and then the target of the installer's own Start menu entry shows where it
+ * put kitty.exe (common = the all-users Start menu, the system package): its
+ * "KiTTY++.lnk", or "KiTTY.lnk" as written up to 0.85.1.17. */
 static int kitty_msi_owns_this_exe( const char *upgradecode, int common ) {
 	char prod[40] = "", loc[MAX_PATH] = "", dir[MAX_PATH] = "" ;
-	char lnk[MAX_PATH], tgt[MAX_PATH] ;
+	static const char *const names[] = { "\\KiTTY\\KiTTY++.lnk", "\\KiTTY\\KiTTY.lnk" } ;
+	char menu[MAX_PATH], lnk[MAX_PATH], tgt[MAX_PATH] ;
+	size_t i ;
 	DWORD n = sizeof(loc) ;
 	if( MsiEnumRelatedProductsA( upgradecode, 0, 0, prod ) != ERROR_SUCCESS ) return -1 ;
 	if( !GetModuleFileNameA( NULL, dir, sizeof(dir)-1 ) ) return 0 ;
@@ -100,12 +103,16 @@ static int kitty_msi_owns_this_exe( const char *upgradecode, int common ) {
 	if( MsiGetProductInfoA( prod, INSTALLPROPERTY_INSTALLLOCATION, loc, &n ) == ERROR_SUCCESS && loc[0] )
 		return kitty_same_dir( loc, dir ) ;
 	if( SHGetFolderPathA( NULL, common ? CSIDL_COMMON_PROGRAMS : CSIDL_PROGRAMS, NULL,
-	                      SHGFP_TYPE_CURRENT, lnk ) != S_OK ) return 0 ;
-	if( strlen( lnk ) + sizeof("\\KiTTY\\KiTTY.lnk") > sizeof(lnk) ) return 0 ;
-	strcat( lnk, "\\KiTTY\\KiTTY.lnk" ) ;
-	if( !kitty_startup_shortcut_target( lnk, tgt, sizeof(tgt) ) ) return 0 ;
-	kitty_cut_to_dir( tgt ) ;
-	return kitty_same_dir( tgt, dir ) ;
+	                      SHGFP_TYPE_CURRENT, menu ) != S_OK ) return 0 ;
+	for( i = 0 ; i < sizeof(names) / sizeof(names[0]) ; i++ ) {
+		if( strlen( menu ) + strlen( names[i] ) >= sizeof(lnk) ) continue ;
+		strcpy( lnk, menu ) ;
+		strcat( lnk, names[i] ) ;
+		if( !kitty_startup_shortcut_target( lnk, tgt, sizeof(tgt) ) ) continue ;
+		kitty_cut_to_dir( tgt ) ;
+		return kitty_same_dir( tgt, dir ) ;
+	}
+	return 0 ;
 }
 
 int kitty_exe_from_msi( void ) {

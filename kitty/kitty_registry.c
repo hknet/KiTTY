@@ -1457,8 +1457,18 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	// Associate .ktx files with the KiTTY application
 	// Create the application entry
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
-	RegTestOrCreate( root, key, "", "KiTTY connection manager") ;
-	RegTestOrCreate( root, key, "FriendlyTypeName", "@KiTTY, -120") ;
+	/* The type Explorer shows for a .ktx file ("Type" column, Properties).
+	 * Classic KiTTY also wrote FriendlyTypeName "@KiTTY, -120" - an indirect
+	 * string pointing at no module and no string resource, so Windows always fell
+	 * back to this default value; a registration left by it is cleaned up. */
+	RegTestOrCreate( root, key, "", "KiTTY++ session file") ;
+	{
+		HKEY hk ;
+		if( RegOpenKeyExA( root, key, 0, KEY_SET_VALUE, &hk ) == ERROR_SUCCESS ) {
+			RegDeleteValueA( hk, "FriendlyTypeName" ) ;
+			RegCloseKey( hk ) ;
+		}
+	}
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\CurVer" ) ;
 	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
 	snprintf( buffer, sizeof(buffer), "%s", path ) ;
@@ -1483,7 +1493,20 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	}
 	RegTestOrCreate( root, key, "PerceivedType", "Connection") ;
 	RegTestOrCreate( root, key, "Content Type", "connection/ssh") ;
-	RegTestOrCreate( root, key, "OpenWithProgids", "kitty.connect.1") ;
+	/* "Open with": Windows reads a SUBKEY OpenWithProgids whose value NAMES
+	 * the ProgID (empty data). Classic KiTTY wrote a VALUE of that name
+	 * instead, which Windows ignores; a registration left by it, or by an
+	 * earlier KiTTY++, loses that value here. */
+	{
+		HKEY hk ;
+		char owp[256] ;
+		if( RegOpenKeyExA( root, key, 0, KEY_SET_VALUE, &hk ) == ERROR_SUCCESS ) {
+			RegDeleteValueA( hk, "OpenWithProgids" ) ;
+			RegCloseKey( hk ) ;
+		}
+		snprintf( owp, sizeof(owp), "%s\\OpenWithProgids", key ) ;
+		RegTestOrCreate( root, owp, "kitty.connect.1", "" ) ;
+	}
 
 	if( had && strcmp( cur, "kitty.connect.1" ) != 0 ) {
 		len += snprintf( report+len, sizeof(report)-len,

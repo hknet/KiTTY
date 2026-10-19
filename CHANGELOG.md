@@ -31,6 +31,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **The installers' shortcuts and the Apps & features entry read KiTTY++.**
+  The Start menu entries are KiTTY++, KiTTY++ pterm and KiTTY++ Telnet; an
+  upgrade removes the old ones, and a Start menu pin to an old shortcut has
+  to be pinned again. Autostarts are unaffected. A copy from the ZIP
+  creates its Desktop shortcut as "KiTTY++ (portable)" and offers to remove
+  the "KiTTY++" one an older KiTTY++ made.
+- **The installers put a shortcut on the Desktop only on request.**
+  `msiexec /i <msi> DESKTOPSHORTCUT=1` adds it. An upgrade keeps the one an
+  earlier version installed, as KiTTY++, unless it was deleted.
+- **A .ktx file shows as "KiTTY++ session file" in Explorer, and KiTTY++
+  is offered under "Open with".** The file type carried a reference that
+  pointed at nothing (Explorer fell back to "connection manager"), and the
+  "Open with" entry was written in a form Windows ignores; registering the
+  association again cleans up what an older KiTTY left.
 - **`-cfgpanel` takes the panel names the configuration window shows.**
   `Window/Copy & Paste`, `Window/Copy & Paste/Character classes`,
   `Window/Title & Icon`, `Connection/File-Transfer-Settings`,
@@ -48,6 +62,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **An upgrade no longer turns the launcher's autostart back on.** The
+  installers wrote the Startup shortcut on every upgrade, also where "Start
+  at login" was turned off; now an upgrade keeps it only where it is there.
 - **Sessions imported from an "Export all" folder through Application >
   Migration > (old) KiTTY Folders no longer keep `.ktx` in their names.**
   When the scanned folder names no suffix of its own and every session file

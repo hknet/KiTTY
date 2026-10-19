@@ -2071,11 +2071,13 @@ static void kitty_syspath_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
  * from the ZIP, written for wherever this exe really is (a .lnk stores its
  * target's absolute path, so none can be shipped inside the ZIP). The Start
  * menu set goes into a folder of its own, "KiTTY++ (portable)", never the
- * installer's; the Desktop set beside whatever is there. A shortcut of the
- * same name that points to ANOTHER kitty.exe is replaced only after a
- * question (modeless, one at a time); one pointing here is simply rewritten,
- * so pressing the button again updates the set. Icons come from the exe by
- * resource id (negative index): no .ico file is needed beside it.
+ * installer's; the Desktop set beside whatever is there, its main entry as
+ * "KiTTY++ (portable)" (the installers' Desktop shortcut is "KiTTY++"). A
+ * shortcut of the same name that points to ANOTHER kitty.exe is replaced
+ * only after a question (modeless, one at a time); one pointing here is
+ * simply rewritten, so pressing the button again updates the set. Icons
+ * come from the exe by resource id (negative index): no .ico file is needed
+ * beside it.
  */
 static const struct ksc_item {
     const char *name, *args;
@@ -2092,9 +2094,16 @@ struct ksc_job {
     const char *where;                  /* KT_SYSTEM_SC_WHERE_* */
     size_t i;
     int made, skipped, failed;
+    int desktop, old_asked, old_removed;
 };
 
 static void ksc_step(struct ksc_job *j);
+
+/* Item i's file name in this job's folder */
+static const char *ksc_name(const struct ksc_job *j, size_t i)
+{
+    return (j->desktop && i == 0) ? KT_SYSTEM_SC_NAME_DESKTOP : ksc_items[i].name;
+}
 
 static int ksc_same_exe(const char *a, const char *b)
 {
@@ -2107,7 +2116,7 @@ static int ksc_same_exe(const char *a, const char *b)
 static void ksc_write(struct ksc_job *j)
 {
     const struct ksc_item *it = &ksc_items[j->i];
-    char *lnk = dupprintf("%s\\%s.lnk", j->dir, it->name);
+    char *lnk = dupprintf("%s\\%s.lnk", j->dir, ksc_name(j, j->i));
     if (kitty_shortcut_write(lnk, j->exe, it->args, j->workdir, j->exe, it->icon))
         j->made++;
     else
@@ -2126,19 +2135,49 @@ static void ksc_answer(int yes, void *ctx)
     ksc_step(j);
 }
 
-/* The next shortcut; asks (and returns, the answer goes on) at a clash; the
- * result line once all four are done. */
+/* Up to 0.85.1.17 this panel wrote the Desktop entry as "KiTTY++.lnk", the
+ * name the installers' Desktop shortcut has now. One that points HERE is
+ * this panel's (an installer's points at the installed exe, whose panel
+ * has no buttons): once the new one points here too, it is offered for
+ * removal, so the Desktop does not keep both. Any other is left alone. */
+static int ksc_old_desktop_ours(const struct ksc_job *j)
+{
+    char *oldl = dupprintf("%s\\%s.lnk", j->dir, KT_SYSTEM_SC_NAME_MAIN);
+    char *newl = dupprintf("%s\\%s.lnk", j->dir, KT_SYSTEM_SC_NAME_DESKTOP);
+    char t[MAX_PATH];
+    int ours = kitty_startup_shortcut_target(oldl, t, sizeof(t)) &&
+        ksc_same_exe(t, j->exe) &&
+        kitty_startup_shortcut_target(newl, t, sizeof(t)) &&
+        ksc_same_exe(t, j->exe);
+    sfree(oldl);
+    sfree(newl);
+    return ours;
+}
+
+static void ksc_old_answer(int yes, void *ctx)
+{
+    struct ksc_job *j = (struct ksc_job *)ctx;
+    if (yes) {
+        char *oldl = dupprintf("%s\\%s.lnk", j->dir, KT_SYSTEM_SC_NAME_MAIN);
+        j->old_removed = DeleteFileA(oldl) != 0;
+        sfree(oldl);
+    }
+    ksc_step(j);                        /* all four done: the result line */
+}
+
+/* The next shortcut; puts up the question (and returns, the answer goes on) at a clash; then
+ * the older Desktop entry; the result line once all is done. */
 static void ksc_step(struct ksc_job *j)
 {
     for (; j->i < lenof(ksc_items); j->i++) {
-        char *lnk = dupprintf("%s\\%s.lnk", j->dir, ksc_items[j->i].name);
+        char *lnk = dupprintf("%s\\%s.lnk", j->dir, ksc_name(j, j->i));
         char other[MAX_PATH];
         int clash = GetFileAttributesA(lnk) != INVALID_FILE_ATTRIBUTES &&
             kitty_startup_shortcut_target(lnk, other, sizeof(other)) &&
             !ksc_same_exe(other, j->exe);
         sfree(lnk);
         if (clash) {
-            char *q = dupprintf(KT_SYSTEM_SC_CLASH_Q, ksc_items[j->i].name,
+            char *q = dupprintf(KT_SYSTEM_SC_CLASH_Q, ksc_name(j, j->i),
                                 j->where, other);
             HWND box = kitty_confirm_modeless_words(
                 kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, q, NULL,
@@ -2151,6 +2190,19 @@ static void ksc_step(struct ksc_job *j)
         }
         ksc_write(j);
     }
+    if (j->desktop && !j->old_asked) {
+        j->old_asked = 1;
+        if (ksc_old_desktop_ours(j)) {
+            char *q = dupprintf(KT_SYSTEM_SC_OLD_Q, KT_SYSTEM_SC_NAME_MAIN,
+                                KT_SYSTEM_SC_NAME_DESKTOP);
+            HWND box = kitty_confirm_modeless_words(
+                kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, q, NULL,
+                KT_SYSTEM_SC_REPLACE, KT_SYSTEM_SC_SKIP, ksc_old_answer, j);
+            sfree(q);
+            if (box)
+                return;                 /* ksc_old_answer carries on */
+        }
+    }
     {
         char *msg = dupprintf(KT_SYSTEM_SC_DONE, j->made, j->where), *t;
         if (j->skipped) {
@@ -2160,6 +2212,12 @@ static void ksc_step(struct ksc_job *j)
         }
         if (j->failed) {
             t = dupprintf("%s" KT_SYSTEM_SC_FAILED, msg, j->failed);
+            sfree(msg);
+            msg = t;
+        }
+        if (j->old_removed) {
+            t = dupprintf("%s" KT_SYSTEM_SC_OLD_REMOVED, msg,
+                          KT_SYSTEM_SC_NAME_MAIN);
             sfree(msg);
             msg = t;
         }
@@ -2182,6 +2240,7 @@ static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
         return;
     j = snew(struct ksc_job);
     memset(j, 0, sizeof(*j));
+    j->desktop = desktop;
     if (!GetModuleFileNameA(NULL, j->exe, sizeof(j->exe)) ||
         SHGetFolderPathA(NULL, desktop ? CSIDL_DESKTOPDIRECTORY : CSIDL_PROGRAMS,
                          NULL, SHGFP_TYPE_CURRENT, base) != S_OK) {

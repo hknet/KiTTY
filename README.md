@@ -47,8 +47,10 @@ Current release — **[KiTTY 0.85.1.17-beta](https://github.com/hknet/KiTTY/rele
 | **[Portable ZIP — 32-bit](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.17-beta/kitty-0.85.1.17-beta-32bit.zip)** | The same suite built for 32-bit Windows — for systems a 64-bit binary cannot reach. |
 | **[ISO image](https://github.com/hknet/KiTTY/releases/download/kitty-0.85.1.17-beta/kitty-0.85.1.17-beta.iso)** | Both builds (64-bit and 32-bit) as plain files on one ISO — mount it into a virtual machine, no network or install needed. |
 
-Both installers add Start-Menu + Desktop shortcuts and an Add/Remove-Programs entry, and uninstall
-cleanly. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
+Both installers add Start-Menu shortcuts and an Add/Remove-Programs entry, and uninstall
+cleanly. The Desktop shortcut is added only on request:
+`msiexec /i KiTTY-<version>-x64-system.msi DESKTOPSHORTCUT=1` (the same for the per-user MSI).
+An upgrade keeps the one an earlier version installed. Every download is checksummed (`SHA256SUMS` in the ZIP), and all executables are
 Authenticode-signed.
 
 ### Windows versions
