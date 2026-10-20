@@ -8,7 +8,9 @@
  *     plaintext, unmarked legacy values pass through verbatim;
  *   - portable file backend: Password is stored MPW2-wrapped under the master
  *     password, wrong-passphrase reads come back empty and the never-wipe
- *     guard re-persists the original blob on the next save.
+ *     guard re-persists the original blob on the next save;
+ *   - a refused wrap (DPAPI failing, injected; the master password locked)
+ *     keeps what is stored and reports it, never the plaintext or DPAPI.
  *
  * Touches only a zz-* scratch session in the live hive (deleted afterwards)
  * and a private %TEMP% portable tree (deleted afterwards). The portable test
@@ -1397,7 +1399,7 @@ static void fail_store_failed(const char *reason)
 {
     fail_store_reports++;
 }
-static void fail_locked_save(const char *msg)
+static void fail_locked_save(const char *cap, const char *msg)
 {
     fail_kept_reports++;
     snprintf(fail_kept_text, sizeof(fail_kept_text), "%s", msg ? msg : "");
@@ -1477,6 +1479,353 @@ static void test_mpw_setup_store_failed(void)
     ro_rmtree(root);
 }
 
+/* ---------- the login script in memory ----------
+ *
+ * For the length of a connection the script (kitty.c ScriptFileContent) is
+ * held wrapped with CryptProtectMemory for this process; the matcher opens
+ * it into a copy for one compare, and a pair that ran leaves the rest of the
+ * script, wrapped again (kitty_loginscript_mem_*). */
+static int bytes_contain(const unsigned char *hay, size_t n, const char *needle)
+{
+    size_t k = strlen(needle);
+    for (size_t i = 0; k && i + k <= n; i++)
+        if (!memcmp(hay + i, needle, k))
+            return 1;
+    return 0;
+}
+
+static void test_script_in_memory(void)
+{
+    static const unsigned char blob[] =
+        "login:\0user-mk7Q\0password:\0s3cret-mk7Q\0";   /* + NUL: the end entry */
+    static const unsigned char plainheld[] = "a:\0b\0";
+    char *held, *held2, *held3;
+    unsigned char *open1 = NULL, *open2 = NULL, *dec = NULL;
+    size_t n1 = 0, n2 = 0;
+    int dn = 0, leak = 1;
+
+    held = kitty_loginscript_mem_wrap(blob, sizeof(blob));
+    check(held && kitty_pw_is_wrapped(held),
+          "script in memory: held wrapped ({kpw1})");
+    if (held && kitty_pw_is_wrapped(held)) {
+        dec = ksec_b64_decode(held + strlen("{kpw1}"), &dn);
+        leak = bytes_contain((const unsigned char *)held, strlen(held), "s3cret-mk7Q") ||
+               bytes_contain((const unsigned char *)held, strlen(held), "user-mk7Q") ||
+               !dec ||
+               bytes_contain(dec, (size_t)dn, "s3cret-mk7Q") ||
+               bytes_contain(dec, (size_t)dn, "user-mk7Q") ||
+               bytes_contain(dec, (size_t)dn, "password:");
+        if (dec) { smemclr(dec, dn); sfree(dec); }
+    }
+    check(!leak, "script in memory: the held form carries none of the plaintext bytes");
+
+    open1 = kitty_loginscript_mem_open(held, &n1);
+    check(open1 && n1 == sizeof(blob) && !memcmp(open1, blob, sizeof(blob)) &&
+          open1[n1] == 0 && open1[n1 + 1] == 0,
+          "script in memory: opens to the blob, NULs and all, two zero bytes after");
+
+    held2 = open1 ? kitty_loginscript_mem_next(open1, n1) : NULL;
+    open2 = held2 ? kitty_loginscript_mem_open(held2, &n2) : NULL;
+    check(held2 && kitty_pw_is_wrapped(held2) && open2 &&
+          !strcmp((char *)open2, "password:") &&
+          !strcmp((char *)open2 + strlen("password:") + 1, "s3cret-mk7Q") &&
+          n2 == sizeof(blob) - strlen("login:") - strlen("user-mk7Q") - 2,
+          "script in memory: a pair that ran leaves the next pair, wrapped again");
+    held3 = open2 ? kitty_loginscript_mem_next(open2, n2) : (char *)1;
+    check(held3 == NULL, "script in memory: after the last pair nothing is held");
+
+    {
+        static const unsigned char empty[] = "";
+        char *h = kitty_loginscript_mem_wrap(empty, sizeof(empty));
+        check(h == NULL, "script in memory: an empty script holds nothing");
+    }
+    /* where the protection is unavailable the plain blob is held, as before:
+     * the reader takes it */
+    {
+        char *h = snewn(sizeof(plainheld) + 1, char);
+        unsigned char *o;
+        size_t on = 0;
+        memcpy(h, plainheld, sizeof(plainheld));
+        h[sizeof(plainheld)] = '\0';
+        o = kitty_loginscript_mem_open(h, &on);
+        check(o && on == sizeof(plainheld) && !memcmp(o, plainheld, on),
+              "script in memory: a plain held blob (no protection) opens as is");
+        if (o) { smemclr(o, on + 2); sfree(o); }
+        kitty_loginscript_mem_free(h);
+    }
+
+    if (open1) { smemclr(open1, n1 + 2); sfree(open1); }
+    if (open2) { smemclr(open2, n2 + 2); sfree(open2); }
+    kitty_loginscript_mem_free(held);
+    kitty_loginscript_mem_free(held2);
+}
+
+/* ---------- a refused wrap: DPAPI failing, the master password locked ----------
+ *
+ * A save whose DPAPI wrap fails stores nothing for that secret: what is
+ * stored stays as it was, never the plaintext, and the save is reported
+ * (caption and text of kitty_text.h KT_DPAPI_KEPT_*) and counted as kept.
+ * The failure is injected through kitty_selftest_dpapi_fail, compiled into
+ * this test's own copy of kitty_secretstore.c only (KITTY_SELFTEST_HOOKS).
+ * Under the master-password policy a locked master password refuses the
+ * named-proxy, login-script and .ktx wraps exactly like the session save -
+ * no DPAPI value in their place. SaveProxyInfo, ReadInitScript and the .ktx
+ * writer are not linked here: their wraps are driven directly, and their
+ * reports through ksec_report_locked_save as those callers make them. */
+#define DSESS1 "zz-kitty-selftest-dpapifail-1"
+#define DSESS2 "zz-kitty-selftest-dpapifail-2"
+#define DSESS3 "zz-kitty-selftest-dpapifail-p"
+#define DP_ERR ERROR_ACCESS_DENIED          /* "... (error 5)" */
+#define DP_HEAD_PW     "Windows could not encrypt the password (DPAPI: "
+#define DP_HEAD_SCRIPT "Windows could not encrypt the login script (DPAPI: "
+
+static int dp_reports = 0;
+static char dp_cap[128], dp_text[1024];
+static void dp_kept(const char *cap, const char *msg)
+{
+    dp_reports++;
+    snprintf(dp_cap, sizeof(dp_cap), "%s", cap ? cap : "");
+    snprintf(dp_text, sizeof(dp_text), "%s", msg ? msg : "");
+}
+/* the last report: head, Windows' reason (its text is in the system's
+ * language; only the number is fixed) and tail */
+static int dp_text_is(const char *head, const char *tail)
+{
+    size_t n = strlen(dp_text), hl = strlen(head), tl = strlen(tail);
+    return n > hl + tl && !strncmp(dp_text, head, hl) &&
+        !strcmp(dp_text + n - tl, tail);
+}
+static char *reg_raw(const char *sess, const char *name)   /* malloc'd or NULL */
+{
+    char path[600], raw[4096];
+    DWORD sz = sizeof(raw);
+    snprintf(path, sizeof(path), "%s\\Sessions\\%s", kitty_registry_base(), sess);
+    if (RegGetValueA(HKEY_CURRENT_USER, path, name, RRF_RT_REG_SZ, NULL,
+                     raw, &sz) != ERROR_SUCCESS)
+        return NULL;
+    return _strdup(raw);
+}
+static void dp_save(const char *sess, const char *pw, const char *pxpw)
+{
+    char *err = NULL;
+    settings_w *w = open_settings_w(sess, &err);
+    if (!w)
+        return;
+    write_setting_s(w, "HostName", "dpapifail.example");
+    write_setting_s(w, "Password", pw);
+    if (pxpw)
+        write_setting_s(w, "ProxyPassword", pxpw);
+    close_settings_w(w);
+}
+
+static void test_dpapi_fail_registry(void)
+{
+    char *pw0, *px0, *pw1, *px1, *line;
+    int kept0 = kitty_mpw_kept_count(), dp0 = kitty_mpw_kept_dpapi_count();
+
+    kitty_set_master_pw_locked_save(dp_kept);
+    dp_reports = 0;
+    dp_save(DSESS1, "dp-first", "dp-px-first");
+    pw0 = reg_raw(DSESS1, "Password");
+    px0 = reg_raw(DSESS1, "ProxyPassword");
+    check(pw0 && !strncmp(pw0, "DPAPI1:", 7) && px0 && !strncmp(px0, "DPAPI1:", 7),
+          "dpapi fail, registry: the first save is DPAPI1");
+
+    kitty_selftest_dpapi_fail(DP_ERR);
+    dp_save(DSESS1, "dp-second", "dp-px-second");
+    pw1 = reg_raw(DSESS1, "Password");
+    px1 = reg_raw(DSESS1, "ProxyPassword");
+    check(pw0 && pw1 && !strcmp(pw0, pw1) && px0 && px1 && !strcmp(px0, px1),
+          "dpapi fail, registry: a changed password keeps the stored value");
+    check(pw1 && !strstr(pw1, "dp-second") && px1 && !strstr(px1, "dp-px-second"),
+          "dpapi fail, registry: ...never the plaintext");
+    check(dp_reports == 1,
+          "dpapi fail, registry: Password + ProxyPassword of one save report once");
+    check(!strcmp(dp_cap, "KiTTY++ password encryption") &&
+          dp_text_is(DP_HEAD_PW, "(error 5)): the password of session '"
+                     DSESS1 "' was not saved."),
+          "dpapi fail, registry: the report names Windows' reason and the session");
+    check(kitty_mpw_kept_count() - kept0 == 1 &&
+          kitty_mpw_kept_dpapi_count() - dp0 == 1,
+          "dpapi fail, registry: counted as kept (and as a DPAPI refusal)");
+
+    /* a session that had no password: none is stored */
+    del_settings(DSESS2);
+    dp_save(DSESS2, "dp-new", NULL);
+    line = reg_raw(DSESS2, "Password");
+    check(line == NULL, "dpapi fail, registry: a new password stores no value at all");
+    check(dp_reports == 2, "dpapi fail, registry: ...and is reported");
+    free(line);
+
+    line = kitty_secret_wrap_current_backend("dp-wrap");
+    check(line == NULL, "dpapi fail, registry: the backend wrap refuses (no plaintext)");
+    free(line);
+    /* the -pwfile line for a helper is no stored secret: it keeps its plain
+     * fallback, the format -pwfile has always taken */
+    line = kitty_pwfile_line("dp-pwfile");
+    check(line && !strcmp(line, "dp-pwfile") && !kitty_pwfile_line_is_protected(line),
+          "dpapi fail: the helper's password file keeps its plain fallback");
+    free(line);
+
+    kitty_selftest_dpapi_fail(0);
+    dp_save(DSESS1, "dp-third", NULL);
+    pw1 = (free(pw1), reg_raw(DSESS1, "Password"));
+    check(pw1 && !strncmp(pw1, "DPAPI1:", 7) && pw0 && strcmp(pw0, pw1),
+          "dpapi fail, registry: DPAPI back, the next save stores again");
+    free(pw0); free(px0); free(pw1); free(px1);
+    del_settings(DSESS1);
+    del_settings(DSESS2);
+    kitty_set_master_pw_locked_save(NULL);
+}
+
+static void test_dpapi_fail_portable(void)
+{
+    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], fpath[MAX_PATH];
+    char *fb, *before, *after, *w;
+    int lk, sk;
+    int kept0 = kitty_mpw_kept_count();
+
+    GetTempPathA(sizeof(tmp), tmp);
+    snprintf(root, sizeof(root), "%skitty-selftest-dpapifail-%lu",
+             tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+    kitty_set_portable_password_protection("dpapi");
+    kitty_set_master_pw_locked_save(dp_kept);
+    dp_reports = 0;
+
+    dp_save(DSESS3, "dpp-first", NULL);
+    snprintf(fpath, sizeof(fpath), "%s\\%s", sess, DSESS3);
+    fb = read_whole_file(fpath);
+    before = fb ? password_line(fb) : NULL;
+    /* the folder store escapes the marker's ':' as %3A (folderstore.but) */
+    check(before && (!strncmp(before, "Password=DPAPI1:", 16) ||
+                     !strncmp(before, "Password=DPAPI1%3A", 18)),
+          "dpapi fail, portable dpapi: the first save is DPAPI1");
+    free(fb);
+
+    kitty_selftest_dpapi_fail(DP_ERR);
+    dp_save(DSESS3, "dpp-second", NULL);
+    fb = read_whole_file(fpath);
+    after = fb ? password_line(fb) : NULL;
+    check(before && after && !strcmp(before, after),
+          "dpapi fail, portable dpapi: a changed password keeps the stored line");
+    check(fb && !strstr(fb, "dpp-second"),
+          "dpapi fail, portable dpapi: ...never the plaintext");
+    check(dp_reports == 1 && !strcmp(dp_cap, "KiTTY++ password encryption") &&
+          dp_text_is(DP_HEAD_PW, "(error 5)): the password of session '"
+                     DSESS3 "' was not saved."),
+          "dpapi fail, portable dpapi: reported with the session's file");
+    free(fb); free(before); free(after);
+
+    /* the named proxy, the login script and a .ktx under the same policy */
+    w = kitty_secret_wrap_current_backend_kept("dpp-proxy", &lk);
+    check(w == NULL && lk == 1, "dpapi fail, portable dpapi: a named proxy's wrap refuses");
+    ksec_report_locked_save(KSEC_KEPT_PROXY, "dp-proxy");
+    check(dp_text_is(DP_HEAD_PW, "(error 5)): the password of named proxy 'dp-proxy' was not saved."),
+          "dpapi fail, portable dpapi: ...reported for the named proxy");
+    w = kitty_secret_wrap_current_backend_kept("bG9naW46AHVzZXIA", &lk);
+    check(w == NULL && lk == 1, "dpapi fail, portable dpapi: a login script's wrap refuses");
+    ksec_report_locked_save(KSEC_KEPT_SCRIPT, "dp-script");
+    check(dp_text_is(DP_HEAD_SCRIPT, "(error 5)): the login script of session 'dp-script' was not saved."),
+          "dpapi fail, portable dpapi: ...reported for the login script");
+    w = kitty_secret_wrap_export("dpp-export", KSEC_EXPORT_SESSION_PW, "dp-export",
+                                 &lk, &sk);
+    check(w == NULL && lk == 1 && sk == 0, "dpapi fail, portable dpapi: a .ktx export's wrap refuses");
+    ksec_report_locked_save(KSEC_KEPT_EXPORT, "C:\\dp\\out.ktx");
+    check(dp_text_is(DP_HEAD_PW, "(error 5)): no password was written to 'C:\\dp\\out.ktx'."),
+          "dpapi fail, portable dpapi: ...reported for the export file");
+    check(dp_reports == 4 && kitty_mpw_kept_count() - kept0 == 4,
+          "dpapi fail, portable dpapi: every refusal reported and counted");
+    w = kitty_secret_wrap_current_backend("dpp-plainwrap");
+    check(w == NULL, "dpapi fail, portable dpapi: the backend wrap refuses (no plaintext)");
+    free(w);
+
+    /* legacy stays the user's explicit plain choice */
+    kitty_set_portable_password_protection("legacy");
+    w = kitty_secret_wrap_current_backend_kept("dpp-legacy", &lk);
+    check(w && !strcmp(w, "dpp-legacy") && lk == 0,
+          "dpapi fail, portable legacy: plain as chosen, no refusal");
+    free(w);
+
+    kitty_selftest_dpapi_fail(0);
+    kitty_set_portable_password_protection("master");
+    kitty_set_master_pw_locked_save(NULL);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    ro_rmtree(root);
+}
+
+static void test_mpw_locked_refuses(void)
+{
+    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], sec[MAX_PATH];
+    unsigned char salt[KITTY_MPW_SALT_LEN], key[KITTY_MPW_DERIVED_LEN];
+    char *ver, *saltb64, *w;
+    int lk, sk;
+
+    GetTempPathA(sizeof(tmp), tmp);
+    snprintf(root, sizeof(root), "%skitty-selftest-mpwlocked-%lu",
+             tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    snprintf(sec, sizeof(sec), "%s\\Security", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    CreateDirectoryA(sec, NULL);
+    /* a salt of its own: test_portable's key is cached for its salt and
+     * would unlock this store without a passphrase */
+    for (int i = 0; i < KITTY_MPW_SALT_LEN; i++)
+        salt[i] = (unsigned char)(0x60 + i);
+    kitty_mpw_derive(PPASS, salt, sizeof(salt), key);
+    ver = kitty_mpw_protect("KiTTY-MPW-verify", key);
+    saltb64 = ksec_b64_encode(salt, sizeof(salt));
+    SecureZeroMemory(key, sizeof(key));
+    check(ver && saltb64 && write_text(sec, "MasterPwSalt", saltb64) &&
+          write_text(sec, "MasterPwVerifier", ver),
+          "mpw locked: store seeded");
+    free(saltb64);
+    sfree(ver);
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+    kitty_set_portable_password_protection("master");
+    kitty_set_master_passphrase("wrong-master-pw");   /* locked */
+    kitty_set_master_pw_locked_save(dp_kept);
+    dp_reports = 0;
+
+    w = kitty_secret_wrap_current_backend_kept("mpl-proxy", &lk);
+    check(w == NULL && lk == 1, "mpw locked: a named proxy's wrap refuses, no DPAPI");
+    free(w);
+    ksec_report_locked_save(KSEC_KEPT_PROXY, "mpl-proxy");
+    check(!strcmp(dp_cap, "KiTTY++ master password") &&
+          !strcmp(dp_text, "The master password is locked: the password of named proxy 'mpl-proxy' was not saved."),
+          "mpw locked: ...reported as locked (not as DPAPI)");
+    w = kitty_secret_wrap_current_backend_kept("bG9naW46AHVzZXIA", &lk);
+    check(w == NULL && lk == 1, "mpw locked: a login script's wrap refuses, no DPAPI");
+    free(w);
+    ksec_report_locked_save(KSEC_KEPT_SCRIPT, "mpl-script");
+    check(!strcmp(dp_text, "The master password is locked: the login script of session 'mpl-script' was not saved."),
+          "mpw locked: ...reported for the login script");
+    w = kitty_secret_wrap_export("mpl-export", KSEC_EXPORT_SESSION_PW, "mpl-export",
+                                 &lk, &sk);
+    check(w == NULL && lk == 1 && sk == 0, "mpw locked: a .ktx export's wrap refuses, no DPAPI");
+    free(w);
+    ksec_report_locked_save(KSEC_KEPT_EXPORT, "C:\\mpl\\out.ktx");
+    check(!strcmp(dp_text, "The master password is locked: no password was written to 'C:\\mpl\\out.ktx'."),
+          "mpw locked: ...reported for the export file");
+    w = kitty_secret_wrap_current_backend("mpl-plainwrap");
+    check(w == NULL, "mpw locked: the non-kept backend wrap refuses too (its DPAPI fallback is gone)");
+    free(w);
+    check(dp_reports == 3, "mpw locked: one report per refused save");
+
+    kitty_set_master_pw_locked_save(NULL);
+    kitty_set_master_passphrase(NULL);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    ro_rmtree(root);
+}
+
 int main(int argc, char **argv)
 {
     char rotmp[MAX_PATH], rodir[MAX_PATH], roini[MAX_PATH], noini[MAX_PATH];
@@ -1524,12 +1873,18 @@ int main(int argc, char **argv)
     test_script_protection();
     printf("== login script readable form ==\n");
     test_script_lines();
+    printf("== login script in memory ==\n");
+    test_script_in_memory();
     printf("== save only non-default settings ==\n");
     test_nondefault_file();
     test_nondefault_registry();
     printf("== readonly=yes: the store is not written ==\n");
     test_readonly_folder(roini, noini);
     test_readonly_registry(roini, noini);
+    printf("== a refused wrap: DPAPI failing, the master password locked ==\n");
+    test_dpapi_fail_registry();
+    test_dpapi_fail_portable();
+    test_mpw_locked_refuses();
     printf("== master password setup whose salt cannot be stored ==\n");
     test_mpw_setup_store_failed();
     DeleteFileA(roini);

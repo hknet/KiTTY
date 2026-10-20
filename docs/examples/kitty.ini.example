@@ -809,7 +809,8 @@
 ;               never prompts for one - so unattended runs need no switch at
 ;               all - but the passwords do NOT travel: copied to another PC or
 ;               account they cannot be decrypted. Cannot be combined with
-;               -masterpwfile.
+;               -masterpwfile. If Windows cannot encrypt a password, it is
+;               not saved and KiTTY++ reports it.
 ;    - legacy : store saved passwords unprotected (plain text) for explicit
 ;               compatibility/automation/audit setups. INSECURE - anyone who can
 ;               read the files gets the passwords.

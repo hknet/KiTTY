@@ -23,12 +23,19 @@ int kitty_secret_is_mpw(const char *stored);     /* 2 = MPW2, 1 = MPW1, 0 = no *
 
 /* ---- at-rest credential crypto (DPAPI1 / MPW2 + master-password state) ---- */
 int kitty_secret_slot(const char *key);  /* Password=0, ProxyPassword=1, else -1 */
-char *ksec_protect_registry(const char *plaintext);   /* malloc'd */
-char *ksec_protect_portable(const char *plaintext);   /* malloc'd */
-/* The session save: NULL and *locked = 1 when the master-password policy
- * holds and the master password is locked - the caller keeps what is stored
- * (never DPAPI in its place) and reports it with ksec_report_locked_save. */
+/* malloc'd; NULL when the wrap was refused (see the _kept forms) */
+char *ksec_protect_registry(const char *plaintext);
+char *ksec_protect_portable(const char *plaintext);
+/* A save's wrap: NULL and *locked = 1 when it is refused - the master-password
+ * policy holds and the master password is locked, or Windows' DPAPI failed.
+ * The caller keeps what is stored (never DPAPI or the plaintext in its place)
+ * and reports it with ksec_report_locked_save, which words the reason. */
+char *ksec_protect_registry_kept(const char *plaintext, int *locked);
 char *ksec_protect_portable_kept(const char *plaintext, int *locked);
+#ifdef KITTY_SELFTEST_HOOKS
+/* test_storage_roundtrip only: every DPAPI wrap fails with err (0 = off) */
+void kitty_selftest_dpapi_fail(DWORD err);
+#endif
 /* what a save kept (ksec_report_locked_save) */
 #define KSEC_KEPT_SESSION 0   /* a session's password; where = its file */
 #define KSEC_KEPT_PROXY   1   /* a named proxy's password; where = its name */
@@ -37,6 +44,7 @@ char *ksec_protect_portable_kept(const char *plaintext, int *locked);
 void ksec_report_locked_save(int what, const char *where);
 int  kitty_mpw_kept_count(void);   /* reports so far: -importdir's exit code */
 int  kitty_mpw_kept_nosetup_count(void);   /* of those: no master password set up */
+int  kitty_mpw_kept_dpapi_count(void);     /* of those: DPAPI failed */
 /* a do-and-exit run's report lines that no output took (kitty_mpw_gui.c),
  * kept for its result; *more = the lines past the limit */
 void ksec_kept_hold(const char *line);
@@ -88,7 +96,8 @@ char *kitty_bundle_wrap_report(void);
 #define KSEC_EXPORT_PROXY_PW     2   /* a named proxy's password; where = its name */
 /* An export's wrap (kitty_secretstore.c): in a bundle, NULL and *skipped = 1
  * when the wrap failed (nothing to write, the summary lists it); outside one,
- * NULL and *locked = 1 when the master password is locked. malloc'd. */
+ * NULL and *locked = 1 when it is refused (the master password locked, DPAPI
+ * failing). malloc'd. */
 char *kitty_secret_wrap_export(const char *plaintext, int what, const char *where,
                                int *locked, int *skipped);
 /* Wrap/unwrap under an explicit passphrase as a self-contained MPW2 value
@@ -108,6 +117,17 @@ char *ksec_to_utf8(char *s);
 /* ---- exported from kitty/kitty_secretstore.c ---- */
 char *kitty_loginscript_blob_to_lines(const unsigned char *blob, int len);
 unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen);
+/* The login script in memory (kitty.c ScriptFileContent): held wrapped for
+ * this process, opened only for one compare. _wrap: the blob's first `len`
+ * bytes held (NULL for no script or one used up); _open: a plain copy, *len
+ * bytes plus two zero bytes, which the caller smemclr()s (*len + 2) and
+ * sfree()s, NULL when it cannot be opened; _next: the script after its first
+ * expect/send pair, held (NULL when none is left), from an open copy; _free:
+ * wiped and freed. */
+char *kitty_loginscript_mem_wrap(const unsigned char *blob, size_t len);
+unsigned char *kitty_loginscript_mem_open(const char *held, size_t *len);
+char *kitty_loginscript_mem_next(const unsigned char *blob, size_t len);
+void kitty_loginscript_mem_free(char *held);
 void kitty_mpw_consume_handle_str(const char *s);
 void kitty_mpw_consume_cmdline_switch(char *cl);   /* -launcher / -manage: "-mpwkey x" consumed + blanked */
 HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t toklen);
@@ -126,7 +146,7 @@ void kitty_set_master_passphrase(const char *pass);
 void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 void kitty_set_master_pw_wrong(void (*fn)(int supplied));
 void kitty_set_master_pw_store_failed(void (*fn)(const char *reason));   /* salt/verifier not stored */
-void kitty_set_master_pw_locked_save(void (*fn)(const char *msg));    /* a save kept a stored secret */
+void kitty_set_master_pw_locked_save(void (*fn)(const char *cap, const char *msg));    /* a save kept a stored secret */
 /* A user-started action (Save, /save, Export, Export All, Make a portable
  * copy): the master password is prompted for even after an earlier cancel. */
 void kitty_mpw_user_action_begin(void);

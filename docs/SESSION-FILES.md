@@ -285,7 +285,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `ScriptEnable` | number | `0` | Session/Scripting | `1` sends each script line only after the output ends with `ScriptWait`. |
 | `ScriptExcept` | number | `0` | Session/Scripting | `1` sends the first script line without waiting for `ScriptWait`. |
 | `Scriptfile` | path | - | Session/Scripting | Script file whose lines are typed into the session. |
-| `ScriptfileContent` | text | *(empty)* | Connection/Login | A list of expect/send pairs - wait for this text, then send that - carried out when the session opens. |
+| `ScriptfileContent` | text | *(empty)* | Connection/Login | A list of expect/send pairs - wait for this text, then send that - carried out when the session opens: one entry per line, alternating the text to wait for and the text to send. |
 | `ScriptHalt` | text | *(empty)* | Session/Scripting | Text that stops the script when the host output contains it; empty = never. |
 | `ScriptLineDelay` | number | `5` | Session/Scripting | Delay between script lines, in milliseconds. |
 | `ScriptMode` | number | `0` | Session/Scripting | `1` runs `Scriptfile` when the session connects. |

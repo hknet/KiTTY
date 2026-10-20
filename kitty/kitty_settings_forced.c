@@ -79,7 +79,7 @@ int save_open_settings_forced(char *filename, Conf *conf) {
     int ok;
     DWORD err;
     int store_form = kitty_bundle_store_form();
-    int pwlocked = 0;               /* a password left out: master password locked */
+    int pwlocked = 0;               /* a password left out: its wrap refused */
     char *where = ktx_session_of(filename);   /* for a bundle's summary */
 
     save_open_settings(w, conf);
@@ -90,7 +90,9 @@ int save_open_settings_forced(char *filename, Conf *conf) {
          * portable session file gets - the bundle's own passphrase while an
          * export bundle is written, else the master password - none written
          * while it is locked (reported below), never a DPAPI value nobody
-         * chose - plain only in explicit legacy mode. A bundle wrap that
+         * chose - plain only in explicit legacy mode. Under the dpapi policy
+         * a failing DPAPI wrap writes none either (reported below), never
+         * the plaintext. A bundle wrap that
          * failed leaves the line out (the summary lists it). The Conf holds
          * it wrapped for this process (kitty_pwmem.c). */
         char pw[KITTY_PW_MAX + 1];

@@ -2931,7 +2931,8 @@ synced configuration folder) makes its own choice and cannot read the
 passwords saved here. Cancel there saves no password. While the master password is
 locked - its setup or unlock cancelled, a wrong one - a password typed
 is not saved: the one stored before stays as it was, and KiTTY++
-reports it.
+reports it. The same when Windows cannot encrypt a password (DPAPI): it
+is not saved, and KiTTY++ reports it.
 
 \b \q{Hardening} shows whether the restricted process ACL is on. That
 switch is read from \c{kitty.ini} only - never the registry, so a stale

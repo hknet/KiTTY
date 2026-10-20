@@ -62,6 +62,7 @@ struct settings_w {
     int nd;
     struct ksf_item *defs;
     HKEY defkey;
+    char *sessname;   /* KiTTY: registry - the session, for a refused save's report */
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -87,6 +88,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
         handle->nd = 0;
         handle->defs = NULL;
         handle->defkey = NULL;
+        handle->sessname = NULL;
         /* KiTTY (hknet/KiTTY#55, #56): the session is written to its path
          * with the suffix; an older file of it (no suffix, or the flat
          * pre-path name) is carried over and removed once the save is done.
@@ -168,6 +170,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     handle->nd = 0;
     handle->defs = NULL;
     handle->defkey = NULL;
+    handle->sessname = dupstr(sessionname);
     return handle;
 }
 
@@ -305,13 +308,15 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
             int locked = 0;
             char *blob = handle->is_file
                 ? ksec_protect_portable_kept(value ? value : "", &locked)
-                : ksec_protect_registry(value ? value : "");
+                : ksec_protect_registry_kept(value ? value : "", &locked);
             if (locked) {
-                /* KiTTY: the master password is locked (cancelled, wrong,
-                 * not set up): what is stored stays - the pre-loaded line,
-                 * or nothing for a key that had none - never DPAPI in its
-                 * place, and the user learns it */
-                const char *rel = handle->fpath ? handle->fpath : "";
+                /* KiTTY: the wrap was refused - the master password is
+                 * locked (cancelled, wrong, not set up) or DPAPI failed:
+                 * what is stored stays - the pre-loaded line or registry
+                 * value, or nothing for a key that had none - never DPAPI
+                 * or the plaintext in its place, and the user learns it */
+                const char *rel = handle->fpath ? handle->fpath
+                                : handle->sessname ? handle->sessname : "";
                 size_t dl = strlen(g_sess_dir);
                 if (!_strnicmp(rel, g_sess_dir, dl))
                     rel += dl;
@@ -465,6 +470,7 @@ void close_settings_w(settings_w *handle)
     } else {
         close_regkey(handle->sesskey);
     }
+    sfree(handle->sessname);
     ksf_list_free(handle->defs);
     if (handle->defkey)
         close_regkey(handle->defkey);
@@ -894,6 +900,7 @@ settings_w *kitty_open_settings_w_items(void)
     handle->nd = 0;
     handle->defs = NULL;
     handle->defkey = NULL;
+    handle->sessname = NULL;
     return handle;
 }
 
@@ -905,6 +912,7 @@ struct ksf_item *kitty_settings_w_take_items(settings_w *handle)
     items = handle->items;
     sfree(handle->fpath);
     sfree(handle->legacy);
+    sfree(handle->sessname);
     sfree(handle);
     return items;
 }

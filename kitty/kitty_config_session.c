@@ -148,8 +148,9 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
         int locked = 0;
         char *stored = kitty_loginscript_from_text(txt ? txt : "", &locked);
         if (locked) {
-            /* the master password is locked: the stored script stays.
-             * Reported once per session - this runs at every key typed */
+            /* the wrap was refused (the master password locked, DPAPI
+             * failing): the stored script stays. Reported once per
+             * session - this runs at every key typed */
             static char told[256];
             static int told_set;
             const char *name = conf_get_str(conf, CONF_sessionname);
@@ -160,7 +161,7 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
         } else
             conf_set_str(conf, CONF_scriptfilecontent, stored ? stored : "");
-        if (stored) sfree(stored);
+        if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
         if (txt) { smemclr(txt, strlen(txt)); sfree(txt); }
     }
 }
@@ -218,6 +219,7 @@ static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     put_dataz(sb, "\r\n");
                 put_dataz(sb, line);
             }
+            smemclr(line, sizeof(line));
             fclose(fp);
             {
                 char *txt = strbuf_to_str(sb);

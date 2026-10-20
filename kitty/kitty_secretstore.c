@@ -110,7 +110,8 @@ int kitty_portable_password_dpapi(void)
  * The crypto lives in kitty/kitty_mpw.c (Argon2id + AES-CBC/HMAC), which needs
  * the crypto lib + CSPRNG and is linked only into tools that have them; it
  * self-registers these ops via a constructor. Tools without it (puttytel/pterm)
- * leave the pointers NULL, so MPW is unavailable and we fall back to DPAPI.
+ * leave the pointers NULL, so MPW is unavailable: under the master-password
+ * policy their saves are refused (kept and reported), never DPAPI instead.
  * The unlock state, per-store salt and verifier (registry) live here. */
 #define KSEC_MPW_KEYLEN  64    /* must match KITTY_MPW_DERIVED_LEN */
 #define KSEC_MPW_SALTLEN 16    /* must match KITTY_MPW_SALT_LEN */
@@ -217,8 +218,7 @@ static int   g_mpw_setup_declined = 0;
  * already states that the password was not saved: the report of the save
  * that ran the setup is left out - counted, not shown. Set by the failure,
  * consumed by that report, and cleared by the next unlock attempt, so a save
- * that reported nothing (a wrap with the DPAPI fallback) does not swallow a
- * later save's report. */
+ * that reported nothing does not swallow a later save's report. */
 static int   g_mpw_setup_failed_reported = 0;
 /* -masterpwfile / API: NUL-padded to whole blocks, wrapped like the key;
  * non-NULL = a passphrase was supplied */
@@ -876,10 +876,30 @@ int ksec_unwrap_with_passphrase(const char *stored, const char *passphrase,
     return ok;
 }
 
-/* DPAPI1 wrap: malloc'd "DPAPI1:<b64>" or NULL on failure. */
+/* The last DPAPI wrap's failure: Windows' error, ERROR_NOT_ENOUGH_MEMORY when
+ * the wrapped value could not be built, E_FAIL when Windows gave no code. */
+static DWORD g_ksec_dpapi_err = 0;
+#ifdef KITTY_SELFTEST_HOOKS
+/* test_storage_roundtrip only (its target defines KITTY_SELFTEST_HOOKS, no
+ * shipped program does): a non-zero error makes every DPAPI wrap fail with
+ * it, as a failing CryptProtectData would. */
+static DWORD g_ksec_test_dpapi_fail = 0;
+void kitty_selftest_dpapi_fail(DWORD err) { g_ksec_test_dpapi_fail = err; }
+#endif
+
+/* DPAPI1 wrap: malloc'd "DPAPI1:<b64>", or NULL on failure with the reason in
+ * g_ksec_dpapi_err and GetLastError(). */
 static char *ksec_dpapi_protect(const char *plaintext)
 {
     DATA_BLOB in, out;
+    DWORD err;
+#ifdef KITTY_SELFTEST_HOOKS
+    if (g_ksec_test_dpapi_fail) {
+        g_ksec_dpapi_err = g_ksec_test_dpapi_fail;
+        SetLastError(g_ksec_dpapi_err);
+        return NULL;
+    }
+#endif
     in.pbData = (BYTE *)plaintext; in.cbData = (DWORD)strlen(plaintext);
     out.pbData = NULL; out.cbData = 0;
     if (CryptProtectData(&in, L"KiTTY stored credential", NULL, NULL, NULL,
@@ -893,8 +913,27 @@ static char *ksec_dpapi_protect(const char *plaintext)
             free(b64);
             if (res) return res;
         }
+        err = ERROR_NOT_ENOUGH_MEMORY;
+    } else {
+        err = GetLastError();
+        if (!err)
+            err = (DWORD)E_FAIL;
     }
+    g_ksec_dpapi_err = err;
+    SetLastError(err);
     return NULL;
+}
+
+/* Why the last refused wrap (the _kept wraps: NULL and *locked = 1) refused,
+ * for the report of that save (ksec_report_locked_save): 1 = DPAPI failed,
+ * with its error; 0 = the master password (locked, not set up). Set by every
+ * refusal, consumed by the report. */
+static int   g_ksec_refused_dpapi = 0;
+static DWORD g_ksec_refused_err = 0;
+static void ksec_refuse_dpapi(void)
+{
+    g_ksec_refused_dpapi = 1;
+    g_ksec_refused_err = g_ksec_dpapi_err;
 }
 
 /* ---- Cross-process master-password sharing (launcher-mpw-sharing) ----------
@@ -1053,13 +1092,27 @@ int kitty_mpw_startup_unlock(void) {
  * Registry backend: always DPAPI1. A leftover PasswordScheme=1/2 DWORD must
  * not make the hive plaintext or master-password, and a master-password
  * prompt must never appear for a registry save (this helper never calls
- * mpw_ensure_unlocked). DPAPI failure -> plaintext verbatim, kept only as the
- * exceptional never-lose fallback. */
+ * mpw_ensure_unlocked). DPAPI failure -> NULL and *locked = 1: nothing is
+ * stored for that secret, the caller keeps what is stored and reports it
+ * (ksec_report_locked_save words it from the DPAPI error). It used to store
+ * the plaintext instead. */
+char *ksec_protect_registry_kept(const char *plaintext, int *locked)
+{
+    char *res;
+    if (locked) *locked = 0;
+    if (!plaintext || !plaintext[0]) return ksec_dup("");
+    res = ksec_dpapi_protect(plaintext);
+    if (!res) {
+        kitty_pwdebug("protect registry: DPAPI failed (error %lu), not stored",
+                      (unsigned long)g_ksec_dpapi_err);
+        ksec_refuse_dpapi();
+        if (locked) *locked = 1;
+    }
+    return res;
+}
 char *ksec_protect_registry(const char *plaintext)
 {
-    if (!plaintext || !plaintext[0]) return ksec_dup("");
-    char *res = ksec_dpapi_protect(plaintext);
-    return res ? res : ksec_dup(plaintext);
+    return ksec_protect_registry_kept(plaintext, NULL);
 }
 
 /* Portable-file backend: MPW2 when the master password is set/unlockable (the
@@ -1068,25 +1121,26 @@ char *ksec_protect_registry(const char *plaintext)
  * DPAPI ("this PC and account", never a prompt) or the explicit-compat
  * plaintext escape hatch ("legacy") instead.
  *
- * strict (the session save, write_setting_s): under the master-password
- * policy a locked master password - cancelled, wrong, latched, its setup not
- * stored, the crypto not linked - gives NULL and *locked = 1: the caller
- * keeps what is stored and reports it. A save used to fall back to DPAPI
- * there and silently change the stored password's protection (a portable
- * store then held a value only this Windows account could open).
- * Not strict (the named-proxy, login-script and .ktx wraps): the DPAPI
- * fallback as before, so the secret is never lost. */
-static char *ksec_protect_portable_x(const char *plaintext, int strict, int *locked)
+ * Every save (the session, a named proxy, a login script, a .ktx export):
+ * under the master-password policy a locked master password - cancelled,
+ * wrong, latched, its setup not stored, the crypto not linked - gives NULL
+ * and *locked = 1: the caller keeps what is stored and reports it. A save
+ * used to fall back to DPAPI there and silently change the stored password's
+ * protection (a portable store then held a value only this Windows account
+ * could open). A DPAPI wrap that fails (the dpapi policy) gives NULL and
+ * *locked = 1 the same way, never the plaintext. */
+static char *ksec_protect_portable_x(const char *plaintext, int *locked)
 {
+    char *res;
     if (locked) *locked = 0;
     if (!plaintext || !plaintext[0]) return ksec_dup("");
     /* Which branch this takes is otherwise invisible, and "why did I get DPAPI
      * when I expected MPW2?" is the question that actually gets asked. No
      * plaintext, just the decision inputs. */
-    kitty_pwdebug("protect portable: mode=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d strict=%d",
+    kitty_pwdebug("protect portable: mode=%d crypto=%d supplied=%d unlocked=%d declined=%d defer=%d",
                   g_portable_pw_mode, g_mpw_derive != NULL,
                   g_mpw_passphrase != NULL, g_mpw_unlocked, mpw_declined(),
-                  g_mpw_defer, strict);
+                  g_mpw_defer);
     if (g_portable_pw_mode == KITTY_PORTABLE_PW_LEGACY)
         return ksec_dup(plaintext);
     /* DPAPI policy: fall straight through to the DPAPI wrap below, without
@@ -1111,41 +1165,49 @@ static char *ksec_protect_portable_x(const char *plaintext, int strict, int *loc
             }
         }
         /* "Use DPAPI" in the setup prompt switched the store's policy
-         * (kitty_mpw_gui.c): DPAPI is then the user's own choice */
-        if (g_portable_pw_mode == KITTY_PORTABLE_PW_DPAPI)
-            strict = 0;
-        if (strict) {
+         * (kitty_mpw_gui.c): DPAPI is then the user's own choice, and the
+         * wrap below takes it. Otherwise: refused, never DPAPI instead. */
+        if (g_portable_pw_mode != KITTY_PORTABLE_PW_DPAPI) {
+            g_ksec_refused_dpapi = 0;
             if (locked) *locked = 1;
             return NULL;
         }
-        /* else fall through to DPAPI so the secret is never lost */
     }
-    char *res = ksec_dpapi_protect(plaintext);
-    return res ? res : ksec_dup(plaintext);
+    res = ksec_dpapi_protect(plaintext);
+    if (!res) {
+        kitty_pwdebug("protect portable: DPAPI failed (error %lu), not stored",
+                      (unsigned long)g_ksec_dpapi_err);
+        ksec_refuse_dpapi();
+        if (locked) *locked = 1;
+    }
+    return res;
 }
 char *ksec_protect_portable(const char *plaintext)
 {
-    return ksec_protect_portable_x(plaintext, 0, NULL);
+    return ksec_protect_portable_x(plaintext, NULL);
 }
 char *ksec_protect_portable_kept(const char *plaintext, int *locked)
 {
-    return ksec_protect_portable_x(plaintext, 1, locked);
+    return ksec_protect_portable_x(plaintext, locked);
 }
 
-/* A save kept a stored secret because the master password is locked
- * (the _kept wraps): reported by the front end - a notice and an Event Log
- * line in a terminal, the command line's output in a do-and-exit run, a box
- * elsewhere. Without one (the console tools): stderr. `what` is
- * KSEC_KEPT_*, `where` the session (its file, relative to the session
- * folder), the named proxy or the export file. Password and ProxyPassword of
- * one save - the same report within two seconds - report once. After a
+/* A save kept a stored secret because its wrap was refused (the _kept wraps):
+ * the master password is locked, or Windows' DPAPI could not encrypt it.
+ * Reported by the front end - a notice and an Event Log line in a terminal,
+ * the command line's output in a do-and-exit run, a box elsewhere. Without
+ * one (the console tools): stderr. `what` is KSEC_KEPT_*, `where` the
+ * session (its file, relative to the session folder, or its name in the
+ * registry), the named proxy or the export file. Password and ProxyPassword
+ * of one save - the same report within two seconds - report once. After a
  * cancelled first-time setup the report is that no master password was set
- * up: nothing is locked then. */
-static void (*g_mpw_locked_save)(const char *msg) = NULL;
-static int g_mpw_kept = 0, g_mpw_kept_nosetup = 0;
-void kitty_set_master_pw_locked_save(void (*fn)(const char *msg)) { g_mpw_locked_save = fn; }
+ * up: nothing is locked then. A DPAPI refusal counts as kept like the
+ * others (-importdir's exit code). */
+static void (*g_mpw_locked_save)(const char *cap, const char *msg) = NULL;
+static int g_mpw_kept = 0, g_mpw_kept_nosetup = 0, g_mpw_kept_dpapi = 0;
+void kitty_set_master_pw_locked_save(void (*fn)(const char *cap, const char *msg)) { g_mpw_locked_save = fn; }
 int kitty_mpw_kept_count(void) { return g_mpw_kept; }
 int kitty_mpw_kept_nosetup_count(void) { return g_mpw_kept_nosetup; }
+int kitty_mpw_kept_dpapi_count(void) { return g_mpw_kept_dpapi; }
 /* A do-and-exit run where no output took a report as it came (no console,
  * nothing redirected - kitty_mpw_gui.c): the lines wait for the run's
  * result, which shows them (windows/putty.c, -importdir). Twenty at most,
@@ -1172,13 +1234,25 @@ const char *kitty_mpw_kept_held(int *more)
     if (more) *more = g_kept_held_more;
     return g_kept_held;
 }
+/* The report's way out: the front end's, else stderr */
+static void ksec_kept_deliver(const char *cap, const char *msg)
+{
+    if (g_mpw_locked_save) {
+        g_mpw_locked_save(cap, msg);
+        return;
+    }
+    fprintf(stderr, "%s\n", msg);
+}
 void ksec_report_locked_save(int what, const char *where)
 {
     static char last[MAX_PATH + 8];
     static DWORD last_tick;
-    char key[MAX_PATH + 8], msg[MAX_PATH + 256];
+    char key[MAX_PATH + 8], msg[MAX_PATH + 1024];
     DWORD now = GetTickCount();
-    int nosetup = g_mpw_setup_declined;
+    int dpapi = g_ksec_refused_dpapi;
+    DWORD dpapi_err = g_ksec_refused_err;
+    int nosetup = !dpapi && g_mpw_setup_declined;
+    g_ksec_refused_dpapi = 0;                    /* consumed */
     if (!where) where = "";
     snprintf(key, sizeof(key), "%d:%s", what, where);
     if (last[0] && !strcmp(last, key) && now - last_tick < 2000)
@@ -1186,6 +1260,20 @@ void ksec_report_locked_save(int what, const char *where)
     snprintf(last, sizeof(last), "%s", key);
     last_tick = now;
     g_mpw_kept++;
+    if (dpapi) {
+        /* Windows' reason: its text and number (kitty_win_reason) */
+        g_mpw_kept_dpapi++;
+        snprintf(msg, sizeof(msg),
+                 what == KSEC_KEPT_PROXY  ? KT_DPAPI_KEPT_PROXY_FMT :
+                 what == KSEC_KEPT_SCRIPT ? KT_DPAPI_KEPT_SCRIPT_FMT :
+                 what == KSEC_KEPT_EXPORT ? KT_DPAPI_KEPT_EXPORT_FMT :
+                                            KT_DPAPI_KEPT_SAVE_FMT,
+                 kitty_win_reason(dpapi_err), where);
+        kitty_pwdebug("save kept the stored secret: DPAPI failed (error %lu; %d, %s)",
+                      (unsigned long)dpapi_err, what, where);
+        ksec_kept_deliver(KT_DPAPI_KEPT_CAP, msg);
+        return;
+    }
     if (nosetup)
         g_mpw_kept_nosetup++;
     if (nosetup)
@@ -1207,11 +1295,7 @@ void ksec_report_locked_save(int what, const char *where)
         g_mpw_setup_failed_reported = 0;
         return;
     }
-    if (g_mpw_locked_save) {
-        g_mpw_locked_save(msg);
-        return;
-    }
-    fprintf(stderr, "%s\n", msg);
+    ksec_kept_deliver(KT_MPW_LOCKED_SAVE_CAP, msg);
 }
 
 /* stored -> plaintext in *out (malloc'd). 1=ok, 0=absent, -1=undecryptable DPAPI blob. */
@@ -1396,11 +1480,15 @@ char *kitty_pwfile_line(const char *plain)
 
     if (!plain || !*plain)
         return NULL;
-    line = ksec_protect_registry(plain);
+    /* Not a stored secret: a wrap that fails puts the password itself in
+     * the file (above), unlike a save, which then keeps what is stored. */
+    line = ksec_dpapi_protect(plain);
+    if (!line)
+        line = ksec_dup(plain);
     if (line && strncmp(line, KITTY_SECRET_DPAPI_MARK,
                         strlen(KITTY_SECRET_DPAPI_MARK)) != 0 && !reported) {
-        /* Protection failed, so ksec_protect_registry handed back the value
-         * itself. Reported once per process. */
+        /* Protection failed, so the value itself goes in the file.
+         * Reported once per process. */
         reported = 1;
         kitty_api_record("crypt32.dll", "CryptProtectData",
                          KITTY_API_OPTIONAL, KT_WINFEAT_PASSWORD_FILE, 0);
@@ -1899,8 +1987,9 @@ static int ksec_wrap_bundle(const char *plaintext, char **out, const char **why)
 /* An export's wrap: the .ktx sessions and the named proxies of a bundle, and
  * a single .ktx. In a bundle: the bundle's protection, and a failed wrap
  * gives NULL and *skipped = 1 - no password is written for `where`, the
- * summary lists it. Outside one: the portable policy, and the master password
- * locked gives NULL and *locked = 1 - no DPAPI value nobody chose. */
+ * summary lists it. Outside one: the portable policy, and a refused wrap - the
+ * master password locked (no DPAPI value nobody chose), DPAPI failing (never
+ * the plaintext) - gives NULL and *locked = 1. */
 char *kitty_secret_wrap_export(const char *plaintext, int what, const char *where,
                                int *locked, int *skipped)
 {
@@ -1968,22 +2057,103 @@ unsigned char *kitty_loginscript_lines_to_blob(const char *text, int *outlen)
     return out;
 }
 
+/*
+ * The login script in memory, for the length of a connection
+ * (ScriptFileContent, kitty.c). It holds what is typed at the login prompts,
+ * so it is kept like a password in a Conf: wrapped with CryptProtectMemory
+ * for this process (kitty_pw_wrap_bytes, "{kpw1}") and opened only by the
+ * matcher, into a copy wiped straight after the compare. Where that
+ * protection is unavailable it is held as the plain blob, as before - the
+ * rule the password helpers follow. Here rather than in kitty.c so the tests
+ * reach it.
+ */
+/* The blob's length up to and including its terminating empty entry, or max
+ * when it has none within max bytes. */
+static size_t ksl_blob_len(const unsigned char *b, size_t max)
+{
+    size_t i = 0;
+    while (i < max && b[i]) {
+        while (i < max && b[i])
+            i++;
+        i++;                            /* the entry's NUL */
+    }
+    return i < max ? i + 1 : max;
+}
+char *kitty_loginscript_mem_wrap(const unsigned char *blob, size_t len)
+{
+    size_t n;
+    char *held;
+    if (!blob || len == 0 || !blob[0])
+        return NULL;                    /* no script, or one used up */
+    n = ksl_blob_len(blob, len);
+    held = kitty_pw_wrap_bytes(blob, n);
+    if (held)
+        return held;
+    held = snewn(n + 2, char);          /* plain, ending in an empty entry */
+    memcpy(held, blob, n);
+    held[n] = held[n + 1] = '\0';
+    return held;
+}
+unsigned char *kitty_loginscript_mem_open(const char *held, size_t *len)
+{
+    unsigned char *out;
+    size_t n = 0;
+    if (len) *len = 0;
+    if (!held || !held[0])
+        return NULL;
+    if (kitty_pw_is_wrapped(held)) {
+        out = kitty_pw_unwrap_bytes(held, &n, 1);   /* n + 2 zero bytes */
+        if (!out)
+            return NULL;
+    } else {
+        n = ksl_blob_len((const unsigned char *)held, (size_t)-1);
+        out = snewn(n + 2, unsigned char);
+        memcpy(out, held, n);
+        out[n] = out[n + 1] = 0;
+    }
+    if (len) *len = n;
+    return out;
+}
+char *kitty_loginscript_mem_next(const unsigned char *blob, size_t len)
+{
+    size_t l;
+    if (!blob || len == 0 || !blob[0])
+        return NULL;
+    /* the open copy ends in two zero bytes: both strlens stay inside it */
+    l = strlen((const char *)blob) + 1;
+    if (l < len)
+        l += strlen((const char *)blob + l) + 1;
+    if (l >= len)
+        return NULL;
+    return kitty_loginscript_mem_wrap(blob + l, len - l);
+}
+void kitty_loginscript_mem_free(char *held)
+{
+    if (!held)
+        return;
+    smemclr(held, kitty_pw_is_wrapped(held) ? strlen(held)
+            : ksl_blob_len((const unsigned char *)held, (size_t)-1));
+    sfree(held);
+}
+
 /* Wrap for whatever backend is active now (registry -> DPAPI1, portable ->
- * MPW/legacy), for stores that live outside the write_setting_s chokepoint
- * (e.g. named proxies). Malloc'd; free() the result. */
+ * MPW/DPAPI/legacy), for stores that live outside the write_setting_s
+ * chokepoint (e.g. named proxies). Malloc'd; free() the result. NULL when the
+ * wrap was refused (the master password locked, DPAPI failing): nothing to
+ * store, never DPAPI or the plaintext in its place. */
 char *kitty_secret_wrap_current_backend(const char *plaintext)
 {
     return store_is_file() ? ksec_protect_portable(plaintext ? plaintext : "")
                            : ksec_protect_registry(plaintext ? plaintext : "");
 }
-/* The same, kept: NULL and *locked = 1 when the master password is locked
- * (the caller keeps what is stored and reports it). */
+/* The same, kept: NULL and *locked = 1 when the wrap was refused (the caller
+ * keeps what is stored and reports it with ksec_report_locked_save). */
 char *kitty_secret_wrap_current_backend_kept(const char *plaintext, int *locked)
 {
     if (locked) *locked = 0;
     return store_is_file()
         ? ksec_protect_portable_kept(plaintext ? plaintext : "", locked)
-        : ksec_protect_registry(plaintext ? plaintext : "");
+        : ksec_protect_registry_kept(plaintext ? plaintext : "", locked);
 }
 /* True when portable at-rest protection is the explicit legacy/plaintext hatch
  * (kitty.ini PortablePasswordProtection=legacy): callers then keep passwords

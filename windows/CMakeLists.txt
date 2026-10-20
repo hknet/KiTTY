@@ -543,8 +543,10 @@ target_include_directories(test_storage_roundtrip PRIVATE
 # compiled-in constant on its legacy decode path. Matching the shipping targets
 # here matters: a test built with different defines would exercise a different
 # decoder from the one users run.
+# KITTY_SELFTEST_HOOKS: the test's own copy of kitty_secretstore.c gets the
+# DPAPI-failure door (kitty_selftest_dpapi_fail); no shipped program has it.
 target_compile_definitions(test_storage_roundtrip PRIVATE
-  MOD_PERSO MASTER_PASSWORD="kitty")
+  MOD_PERSO MASTER_PASSWORD="kitty" KITTY_SELFTEST_HOOKS)
 # `utils` is named a SECOND time after `settings`: the static link is
 # single-pass, and settings.c now calls kitty_pw_seal_all(), which lives in
 # utils. Without the repeat that reference has nowhere left to resolve.

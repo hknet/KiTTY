@@ -4056,9 +4056,19 @@
 #define KT_MPW_NOSETUP_PROXY_FMT                     "No master password was set up: the password of named proxy '%s' was not saved."
 #define KT_MPW_NOSETUP_SCRIPT_FMT                    "No master password was set up: the login script of session '%s' was not saved."
 #define KT_MPW_NOSETUP_EXPORT_FMT                    "No master password was set up: no password was written to '%s'."
+/* a save whose DPAPI wrap failed (CryptProtectData): the stored value is
+ * kept, never the plaintext instead (ksec_report_locked_save). The first %s
+ * is Windows' reason, its text and error number (kitty_win_reason) */
+#define KT_DPAPI_KEPT_CAP                            "KiTTY++ password encryption"
+#define KT_DPAPI_KEPT_SAVE_FMT                       "Windows could not encrypt the password (DPAPI: %s): the password of session '%s' was not saved."
+#define KT_DPAPI_KEPT_PROXY_FMT                      "Windows could not encrypt the password (DPAPI: %s): the password of named proxy '%s' was not saved."
+#define KT_DPAPI_KEPT_SCRIPT_FMT                     "Windows could not encrypt the login script (DPAPI: %s): the login script of session '%s' was not saved."
+#define KT_DPAPI_KEPT_EXPORT_FMT                     "Windows could not encrypt the password (DPAPI: %s): no password was written to '%s'."
 /* -importdir's result, in place of KT_CLI_IMPORT_KEPT_FMT when every kept
  * password is one of those (windows/putty.c); the run then exits 1 */
 #define KT_CLI_IMPORT_NOSETUP_FMT                    "\n%d password(s) not saved: no master password was set up."
+/* the same when every kept password is a DPAPI failure (KT_DPAPI_KEPT_*) */
+#define KT_CLI_IMPORT_DPAPI_FMT                      "\n%d password(s) not saved: Windows could not encrypt them."
 
 /* kitty_inputbox.c: the text-input / command console box */
 #define KT_INPUTBOX_TITLE_PORTABLE                   "Text input (portable mode) - /help = KiTTY++ commands"

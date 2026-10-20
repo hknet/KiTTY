@@ -674,12 +674,13 @@ static void gui_master_pw_store_failed(const char *reason)
 }
 
 /* A save kept a stored secret: the master password is locked or was never
- * set up (ksec_report_locked_save, which words it). In a terminal a notice
+ * set up, or DPAPI failed (ksec_report_locked_save, which words it and gives
+ * the caption). In a terminal a notice
  * and an Event Log line; a do-and-exit run (-importdir) on its redirected
  * output or at its prompt, never a box - with neither, the line waits for
  * the run's result (ksec_kept_hold); elsewhere (the configuration window at
  * start) a modeless box. */
-static void gui_master_pw_locked_save(const char *text)
+static void gui_master_pw_locked_save(const char *cap, const char *text)
 {
     char *msg = dupstr(text ? text : "");
     /* a do-and-exit run first: KittyCliReport's last resort is a box, which
@@ -692,17 +693,16 @@ static void gui_master_pw_locked_save(const char *text)
     }
     switch (kitty_reach()) {
       case KITTY_REACH_SESSION:
-        kitty_notice_show(KT_MPW_LOCKED_SAVE_CAP, msg, RGB(190, 110, 0),
+        kitty_notice_show(cap, msg, RGB(190, 110, 0),
                           GetNoticeSeconds(), NULL, 0);
         debug_logevent("%s", msg);
         break;
       case KITTY_REACH_DESKTOP:
-        if (!kitty_info_modeless(GetActiveWindow(), KT_MPW_LOCKED_SAVE_CAP,
-                                 msg, NULL, NULL))
-            kitty_info_box(GetActiveWindow(), KT_MPW_LOCKED_SAVE_CAP, msg, NULL);
+        if (!kitty_info_modeless(GetActiveWindow(), cap, msg, NULL, NULL))
+            kitty_info_box(GetActiveWindow(), cap, msg, NULL);
         break;
       default:
-        KittyCliReport(KT_MPW_LOCKED_SAVE_CAP, msg, 1);
+        KittyCliReport(cap, msg, 1);
         break;
     }
     sfree(msg);

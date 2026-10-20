@@ -315,8 +315,9 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 	 * create/unlock the master password in portable mode; empty -> "", no prompt). */
 	char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
 	kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
-	/* the master password locked: the stored password stays, never DPAPI
-	 * or an empty value in its place, and the user learns it */
+	/* the wrap refused (the master password locked, DPAPI failing): the
+	 * stored password stays, never DPAPI, the plaintext or an empty value
+	 * in its place, and the user learns it */
 	int pwlocked = 0 ;
 	int saved = 1 ;          /* 0: the folder store's file not written */
 	DWORD saverr = 0 ;
@@ -372,8 +373,8 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		SPS( "ProxyHost", conf_get_str(conf, CONF_proxy_host) ) ;
 		SPD( "ProxyPort", conf_get_int(conf, CONF_proxy_port) ) ;
 		SPS( "ProxyUsername", conf_get_str(conf, CONF_proxy_username) ) ;
-		/* the master password locked, or the same password as stored: its
-		 * line stays as it is (a fresh wrap differs on every save) */
+		/* the wrap refused, or the same password as stored: its line stays
+		 * as it is (a fresh wrap differs on every save) */
 		if( !pwlocked && !ksec_stored_keeps( ksf_list_get( items, "ProxyPassword" ), pxpw, store_is_file() ) )
 			SPS( "ProxyPassword", pwblob ? pwblob : "" ) ;
 		SPS( "ProxyTelnetCommand", conf_get_str(conf, CONF_proxy_telnet_command) ) ;
@@ -442,17 +443,20 @@ static int kitty_proxies_migrated( void ) {
 	return got ;
 }
 
-static void kitty_proxy_encrypt_in_place( const char *dstpath ) {
+static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name ) {
 	char raw[4096] = "" ;
 	if( GetValueData( HKEY_CURRENT_USER, (char*)dstpath, "ProxyPassword", raw )
 	    && raw[0] && !kitty_secret_is_marked( raw ) ) {
 		/* strip_plain: a PLAIN:-marked value is cleartext with a marker, so
-		 * protect the password and not the marker along with it. */
-		char *enc = kitty_secret_wrap_current_backend( kitty_secret_strip_plain( raw ) ) ;   /* registry -> DPAPI1 */
+		 * protect the password and not the marker along with it. A refused
+		 * wrap (DPAPI failing) leaves the value as it is, and is reported. */
+		int kept = 0 ;
+		char *enc = kitty_secret_wrap_current_backend_kept( kitty_secret_strip_plain( raw ), &kept ) ;   /* registry -> DPAPI1 */
 		if( enc ) {
 			RegTestOrCreate( HKEY_CURRENT_USER, dstpath, "ProxyPassword", enc ) ;
 			memset( enc, 0, strlen(enc) ) ; free( enc ) ;
-		}
+		} else if( kept )
+			ksec_report_locked_save( KSEC_KEPT_PROXY, name ) ;
 	}
 	memset( raw, 0, sizeof(raw) ) ;
 }
@@ -473,7 +477,7 @@ void kitty_migrate_old_proxies( void ) {
 			snprintf( dstpath, sizeof(dstpath), "%s\\Proxies\\%s", kitty_registry_base(), sub ) ;
 			if( !RegTestKey( HKEY_CURRENT_USER, dstpath ) )
 				kitty_RegCopyTree( HKEY_CURRENT_USER, srcpath, dstpath ) ;  /* all fields (pw plaintext) */
-			kitty_proxy_encrypt_in_place( dstpath ) ;                       /* protect if still plaintext */
+			kitty_proxy_encrypt_in_place( dstpath, sub ) ;                  /* protect if still plaintext */
 		}
 		RegCloseKey( hSrc ) ;
 	}
@@ -501,7 +505,9 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 		char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
 		kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
 		/* MPW2 (or DPAPI1 for "this PC only"); a failed wrap writes no
-		 * password line, the summary lists it - never DPAPI in its place */
+		 * password line, the summary lists it - never DPAPI in its place;
+		 * outside a bundle a refused wrap (master password locked, DPAPI
+		 * failing) writes none either, and is reported */
 		int pwlocked = 0, pwskipped = 0 ;
 		char *pwblob = kitty_secret_wrap_export( pxpw, KSEC_EXPORT_PROXY_PW, proxies[i].name, &pwlocked, &pwskipped ) ;
 		smemclr( pxpw, sizeof(pxpw) ) ;

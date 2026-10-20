@@ -104,6 +104,20 @@ char *kitty_pw_wrap_str(const char *plain);
 char *kitty_pw_wrap_logon_str(const char *plain);
 
 /*
+ * The same protection (SAME_PROCESS, "{kpw1}") for `len` bytes that may hold
+ * NULs - the login script's expect/send blob (kitty_loginscript_mem_*).
+ * _wrap_bytes answers a fresh marked string the caller frees, or NULL when
+ * the protection is unavailable or failed: the caller then keeps the value
+ * as it is, as the password helpers do. _unwrap_bytes answers the bytes in a
+ * fresh buffer (*len of them, then `pad` + 1 zero bytes) the caller
+ * smemclr()s and frees, or NULL for an unmarked value or one that cannot be
+ * opened.
+ */
+char *kitty_pw_wrap_bytes(const void *data, size_t len);
+unsigned char *kitty_pw_unwrap_bytes(const char *stored, size_t *len,
+                                     size_t pad);
+
+/*
  * Bring every password key of `conf` into the {kpw1} form: legacy plaintext is
  * wrapped, a {kpwl1} value handed over by the window that started this one is
  * unwrapped and re-wrapped for this process, an already-wrapped value is left
@@ -211,6 +225,11 @@ static inline char *kitty_pw_wrap_str(const char *plain)
 { return (plain && *plain) ? dupstr(plain) : NULL; }
 static inline char *kitty_pw_wrap_logon_str(const char *plain)
 { return (plain && *plain) ? dupstr(plain) : NULL; }
+static inline char *kitty_pw_wrap_bytes(const void *data, size_t len)
+{ (void)data; (void)len; return NULL; }
+static inline unsigned char *kitty_pw_unwrap_bytes(const char *stored,
+                                                   size_t *len, size_t pad)
+{ (void)stored; (void)pad; if (len) *len = 0; return NULL; }
 static inline void kitty_pw_seal_all(Conf *conf) { (void)conf; }
 static inline void kitty_pw_seal_for_handoff(Conf *conf) { (void)conf; }
 static inline void kitty_pw_wipe(Conf *conf)

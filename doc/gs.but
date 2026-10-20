@@ -3,6 +3,28 @@
 This chapter gives a quick guide to the simplest types of
 interactive login session using KiTTY++.
 
+\H{gs-install} \i{Installing} KiTTY++
+
+Two MSI packages: \c{KiTTY-}\e{ver}\c{-x64-peruser.msi} installs for
+the current user in \c{%LOCALAPPDATA%\\Programs\\KiTTY}, no
+administrator rights; \c{KiTTY-}\e{ver}\c{-x64-system.msi} installs for
+all users in \c{C:\\Program Files\\KiTTY} and needs an elevated
+prompt. The portable build needs no install.
+
+\i{Silent install}: \c{msiexec /i} \e{package}\c{ /qn}. The system
+package must run elevated: \c{/qn} cannot show the UAC prompt and fails
+(exit code 1625 or 1603). \c{/passive} shows progress, asks nothing.
+
+\b \c{DESKTOPSHORTCUT=1}: a Desktop shortcut (off by default).
+
+\b \c{MSIDISABLERMRESTART=1}: for SYSTEM deployments (SCCM, Intune, a
+SYSTEM scheduled task). Without it, KiTTY++ windows open during an
+upgrade are closed and reopened into no desktop.
+
+\b \c{/l*v} \e{file}: a full install log.
+
+Uninstall: \c{msiexec /x} \e{package}\c{ /qn}.
+
 \H{gs-insecure} \ii{Starting a session}
 
 When you start KiTTY++, you will see a \i{dialog box}. This dialog box

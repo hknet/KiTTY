@@ -2151,10 +2151,18 @@ sequence - use a script file (\k{kitty-cfg-scriptfile}) for that.
 \S{kitty-cfg-loginscript} \q{Login script}
 
 A list of expect/send pairs - wait for this text, then send that -
-carried out when the session opens. It is stored in the session, so it
-travels with it; \c{-loginscript} loads one from a file on the command
-line, and the button beneath the box fills the box from a file so what
-is saved is what you can see.
+carried out when the session opens: one entry per line, alternating
+the text to wait for and the text to send.
+
+The script saved in the session is encrypted like the session
+password: DPAPI, or the master password in a portable store. A script
+that sends a password or other protected text belongs in the session:
+fill the box with the button beneath it, check it, save the session,
+then delete the file.
+
+\c{-loginscript} \e{file} runs a script from a file for that connection
+only. The file is read as it is, unencrypted; saving the session
+afterwards stores the script in it, encrypted.
 
 \S{config-username-from-env} Use of system username
 

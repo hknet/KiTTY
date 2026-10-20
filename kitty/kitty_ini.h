@@ -812,7 +812,8 @@ char default_init_file_content[] =
 ;               never prompts for one - so unattended runs need no switch at\n\
 ;               all - but the passwords do NOT travel: copied to another PC or\n\
 ;               account they cannot be decrypted. Cannot be combined with\n\
-;               -masterpwfile.\n\
+;               -masterpwfile. If Windows cannot encrypt a password, it is\n\
+;               not saved and KiTTY++ reports it.\n\
 ;    - legacy : store saved passwords unprotected (plain text) for explicit\n\
 ;               compatibility/automation/audit setups. INSECURE - anyone who can\n\
 ;               read the files gets the passwords.\n\

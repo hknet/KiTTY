@@ -209,24 +209,22 @@ static int kpw_available(void)
     return cached;
 }
 
-/* Wrap `plain` under `mark`. Returns a fresh string the caller frees: the
- * marked form, or - when the protection is unavailable or the value is too
- * long to carry - a plain copy, which every reader below still accepts. */
-static char *kpw_wrap(const char *plain, DWORD flags, const char *mark)
+/* `len` bytes of `data` (NULs allowed) wrapped under `mark`: a fresh marked
+ * string the caller frees, or NULL when the protection is unavailable or the
+ * protect call failed. */
+static char *kpw_wrap_block(const void *data, size_t len, DWORD flags,
+                            const char *mark)
 {
-    size_t len, blocklen;
+    size_t blocklen;
     unsigned char *blk;
     char *b64, *out;
 
-    if (!plain || !*plain)
+    if (!data || len == 0 || len > 0x7FFFFFF0u || !kpw_available())
         return NULL;
-    len = strlen(plain);
-    if (len > KITTY_PW_MAX || !kpw_available())
-        return dupstr(plain);
 
-    /* 4 bytes of length, the password, then zero padding to the block size.
+    /* 4 bytes of length, the value, then zero padding to the block size.
      * The length lives INSIDE the protected block so the stored form reveals
-     * nothing about how long the password is. */
+     * nothing about how long the value is. */
     blocklen = ((4 + len + CRYPTPROTECTMEMORY_BLOCK_SIZE - 1) /
                 CRYPTPROTECTMEMORY_BLOCK_SIZE) * CRYPTPROTECTMEMORY_BLOCK_SIZE;
     blk = snewn(blocklen, unsigned char);
@@ -235,12 +233,12 @@ static char *kpw_wrap(const char *plain, DWORD flags, const char *mark)
     blk[1] = (unsigned char)((len >> 8) & 0xFF);
     blk[2] = (unsigned char)((len >> 16) & 0xFF);
     blk[3] = (unsigned char)((len >> 24) & 0xFF);
-    memcpy(blk + 4, plain, len);
+    memcpy(blk + 4, data, len);
 
     if (!kpw_mem(blk, blocklen, 0, flags)) {
         smemclr(blk, blocklen);
         sfree(blk);
-        return dupstr(plain);
+        return NULL;
     }
     b64 = kpw_b64_encode(blk, blocklen);
     smemclr(blk, blocklen);
@@ -251,10 +249,69 @@ static char *kpw_wrap(const char *plain, DWORD flags, const char *mark)
     return out;
 }
 
-size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen)
+/* Wrap `plain` under `mark`. Returns a fresh string the caller frees: the
+ * marked form, or - when the protection is unavailable or the value is too
+ * long to carry - a plain copy, which every reader below still accepts. */
+static char *kpw_wrap(const char *plain, DWORD flags, const char *mark)
+{
+    size_t len;
+    char *out;
+
+    if (!plain || !*plain)
+        return NULL;
+    len = strlen(plain);
+    if (len > KITTY_PW_MAX)
+        return dupstr(plain);
+    out = kpw_wrap_block(plain, len, flags, mark);
+    return out ? out : dupstr(plain);
+}
+
+/* A marked value's protected block, unprotected: the value's bytes at
+ * (*blk)+4, *len of them, inside *blocklen bytes the caller wipes and frees.
+ * 0 when it is not marked or cannot be opened (nothing to free then). */
+static int kpw_unwrap_block(const char *stored, unsigned char **blk,
+                            size_t *blocklen, size_t *len)
 {
     const char *body;
     DWORD flags;
+
+    *blk = NULL;
+    *blocklen = *len = 0;
+    if (!stored)
+        return 0;
+    if (!strncmp(stored, KPW_MARK_PROC, strlen(KPW_MARK_PROC))) {
+        body = stored + strlen(KPW_MARK_PROC);
+        flags = CRYPTPROTECTMEMORY_SAME_PROCESS;
+    } else if (!strncmp(stored, KPW_MARK_LOGON, strlen(KPW_MARK_LOGON))) {
+        body = stored + strlen(KPW_MARK_LOGON);
+        flags = CRYPTPROTECTMEMORY_SAME_LOGON;
+    } else {
+        return 0;
+    }
+    *blk = kpw_b64_decode(body, blocklen);
+    if (!*blk)
+        return 0;
+    if (*blocklen < CRYPTPROTECTMEMORY_BLOCK_SIZE ||
+        (*blocklen % CRYPTPROTECTMEMORY_BLOCK_SIZE) != 0 ||
+        !kpw_mem(*blk, *blocklen, 1, flags)) {
+        smemclr(*blk, *blocklen);
+        sfree(*blk);
+        *blk = NULL;
+        return 0;
+    }
+    *len = (size_t)(*blk)[0] | ((size_t)(*blk)[1] << 8) |
+           ((size_t)(*blk)[2] << 16) | ((size_t)(*blk)[3] << 24);
+    if (*len == 0 || *len > *blocklen - 4) {
+        smemclr(*blk, *blocklen);
+        sfree(*blk);
+        *blk = NULL;
+        return 0;
+    }
+    return 1;
+}
+
+size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen)
+{
     unsigned char *blk;
     size_t blocklen = 0, len;
 
@@ -264,13 +321,7 @@ size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen)
     if (!stored || !*stored)
         return 0;
 
-    if (!strncmp(stored, KPW_MARK_PROC, strlen(KPW_MARK_PROC))) {
-        body = stored + strlen(KPW_MARK_PROC);
-        flags = CRYPTPROTECTMEMORY_SAME_PROCESS;
-    } else if (!strncmp(stored, KPW_MARK_LOGON, strlen(KPW_MARK_LOGON))) {
-        body = stored + strlen(KPW_MARK_LOGON);
-        flags = CRYPTPROTECTMEMORY_SAME_LOGON;
-    } else {
+    if (!kitty_pw_is_wrapped(stored)) {
         /* Legacy plaintext: a value written before this existed, or one kept
          * in the clear because the protection is unavailable. */
         len = strlen(stored);
@@ -280,21 +331,11 @@ size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen)
         return len;
     }
 
-    blk = kpw_b64_decode(body, &blocklen);
-    if (!blk)
+    if (!kpw_unwrap_block(stored, &blk, &blocklen, &len))
         return 0;
-    if (blocklen < CRYPTPROTECTMEMORY_BLOCK_SIZE ||
-        (blocklen % CRYPTPROTECTMEMORY_BLOCK_SIZE) != 0 ||
-        !kpw_mem(blk, blocklen, 1, flags)) {
-        smemclr(blk, blocklen);
-        sfree(blk);
-        return 0;
-    }
-    len = (size_t)blk[0] | ((size_t)blk[1] << 8) |
-          ((size_t)blk[2] << 16) | ((size_t)blk[3] << 24);
     /* A password that does not fit is NOT truncated: a short password is a
      * failed login that looks like a wrong one. */
-    if (len == 0 || len > blocklen - 4 || len >= outlen) {
+    if (len >= outlen) {
         smemclr(blk, blocklen);
         sfree(blk);
         return 0;
@@ -304,6 +345,32 @@ size_t kitty_pw_unwrap_str(const char *stored, char *out, size_t outlen)
     smemclr(blk, blocklen);
     sfree(blk);
     return len;
+}
+
+char *kitty_pw_wrap_bytes(const void *data, size_t len)
+{
+    return kpw_wrap_block(data, len, CRYPTPROTECTMEMORY_SAME_PROCESS,
+                          KPW_MARK_PROC);
+}
+
+unsigned char *kitty_pw_unwrap_bytes(const char *stored, size_t *len,
+                                     size_t pad)
+{
+    unsigned char *blk, *out;
+    size_t blocklen = 0, n = 0;
+
+    if (len)
+        *len = 0;
+    if (!kpw_unwrap_block(stored, &blk, &blocklen, &n))
+        return NULL;
+    out = snewn(n + pad + 1, unsigned char);
+    memcpy(out, blk + 4, n);
+    memset(out + n, 0, pad + 1);
+    smemclr(blk, blocklen);
+    sfree(blk);
+    if (len)
+        *len = n;
+    return out;
 }
 
 int kitty_pw_is_wrapped(const char *stored)

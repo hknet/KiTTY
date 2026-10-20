@@ -123,6 +123,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   typed `/message ...` now goes to the host like any other unknown command.
 - **PuTTY mode (`-putty`) is removed**: it could no longer be started. It
   also never worked.
+- **A password Windows cannot encrypt (DPAPI) is no longer saved in plain
+  text.** The stored one stays and the save is reported; the same for the
+  login script, a named proxy and a .ktx export.
+- **The login script stays encrypted in memory** while it waits to run,
+  and every plain copy is wiped after use.
 
 ### Fixed
 

@@ -1231,33 +1231,39 @@ int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
 
 // Startup script handling
 void ManageInitScript( const char * input_str, const int len ) {
-	int i, l ;
+	int i ;
+	size_t blen = 0 ;
 	char * st = NULL ;
-
+	unsigned char * blob ;
+	const char * expect, * send ;
 
 	if( ScriptFileContent==NULL ) return ;
-	if( strlen( ScriptFileContent ) == 0 ) { free( ScriptFileContent ) ; ScriptFileContent = NULL ; return ; }
+	/* The script is held wrapped (kitty_loginscript_mem_*): opened into a
+	 * copy for this one compare and send, wiped straight after. A pair that
+	 * ran leaves the rest of the script, wrapped again. */
+	blob = kitty_loginscript_mem_open( ScriptFileContent, &blen ) ;
+	if( !blob || !blob[0] ) {               /* used up, or it cannot be opened */
+		if( blob ) { smemclr( blob, blen + 2 ) ; sfree( blob ) ; }
+		kitty_loginscript_mem_free( ScriptFileContent ) ;
+		ScriptFileContent = NULL ;
+		return ;
+	}
+	expect = (const char *)blob ;
+	send = expect + strlen( expect ) + 1 ;  /* the copy ends in two zero bytes */
 
 	st = (char*) malloc( len+2 ) ;
 	memcpy( st, input_str, len+1 ) ;
 	for( i=0 ; i<len ; i++ ) if( st[i]=='\0' ) st[i]=' ' ;
-	
-	//if( debug_flag ) { debug_log( ">%d|", len ) ; debug_log( "%s|\n", st ) ; }
 
-	if( strstr( st, ScriptFileContent ) != NULL ) {
-		SendKeyboardPlus( MainHwnd, ScriptFileContent+strlen(ScriptFileContent)+1 ) ;
-		l = strlen( ScriptFileContent ) + strlen( ScriptFileContent+strlen(ScriptFileContent)+1 ) + 2 ;
-		
-		//if( debug_flag ) { debug_log( "<%d|", l ) ; debug_log( "%s|\n", ScriptFileContent+strlen(ScriptFileContent)+1 ) ; }
-		
-		ScriptFileContent[0]=ScriptFileContent[l] ;
-		i = 0 ;
-		do {
-			i++ ;
-			ScriptFileContent[i]=ScriptFileContent[i+l] ;
-		} while( (ScriptFileContent[i]!='\0')||(ScriptFileContent[i-1]!='\0') ) ;
+	if( strstr( st, expect ) != NULL ) {
+		char * next ;
+		SendKeyboardPlus( MainHwnd, send ) ;
+		next = kitty_loginscript_mem_next( blob, blen ) ;
+		kitty_loginscript_mem_free( ScriptFileContent ) ;
+		ScriptFileContent = next ;
 	}
-		
+	smemclr( blob, blen + 2 ) ;
+	sfree( blob ) ;
 	free( st ) ;
 }
 
@@ -1308,7 +1314,8 @@ char *kitty_loginscript_to_text( const char *stored )
 }
 
 /* text (one entry per line) -> the protected stored form. Caller frees.
- * NULL and *locked = 1: the master password is locked, nothing to store. */
+ * NULL and *locked = 1: the wrap was refused (the master password locked,
+ * DPAPI failing), nothing to store. */
 char *kitty_loginscript_from_text( const char *text, int *locked )
 {
 	unsigned char *raw ;
@@ -1328,9 +1335,9 @@ char *kitty_loginscript_from_text( const char *text, int *locked )
 }
 
 void ReadInitScript( const char * filename ) {
-	char * pst, *buffer=NULL, *name=NULL ;
+	char * pst, *buffer=NULL, *name=NULL, *fileraw=NULL ;
 	FILE *fp ;
-	long l ; 
+	long l, bufcap = 0, rawcap = 0 ; 
 
 	if( filename != NULL )
 		if( strlen( filename ) > 0 ) {
@@ -1346,15 +1353,19 @@ void ReadInitScript( const char * filename ) {
 	if( name != NULL ) {
 		if( existfile( name ) ) {
 			l=filesize(name) ;
-			buffer=(char*)malloc(5*l+1);
+			bufcap = 5*l+1 ;
+			buffer=(char*)malloc(bufcap);
 			buffer[0]='\0' ;
 			if( ( fp = fopen( name,"rb") ) != NULL ) {
-				if( ScriptFileContent!= NULL ) free( ScriptFileContent ) ;
+				kitty_loginscript_mem_free( ScriptFileContent ) ;
+				ScriptFileContent = NULL ;
 				l = 0 ;
 
-				ScriptFileContent = (char*) malloc( filesize(name)+10 ) ;
-				ScriptFileContent[0] = '\0' ;
-				pst=ScriptFileContent ;
+				/* read into a plain buffer, held wrapped below */
+				rawcap = filesize(name)+10 ;
+				fileraw = (char*) malloc( rawcap ) ;
+				fileraw[0] = '\0' ;
+				pst=fileraw ;
 				while( fgets( buffer, 1024, fp ) != NULL ) {
 					str_rtrim( buffer, "\n\r" ) ;
 					if( strlen( buffer ) > 0 ) {
@@ -1385,10 +1396,11 @@ void ReadInitScript( const char * filename ) {
 				 * expect string and nothing else.
 				 */
 				{
-					char *b64 = ksec_b64_encode( (const unsigned char*)ScriptFileContent, (int)l ) ;
+					char *b64 = ksec_b64_encode( (const unsigned char*)fileraw, (int)l ) ;
 					int locked = 0 ;
 					char *wrapped = b64 ? kitty_secret_wrap_current_backend_kept( b64, &locked ) : NULL ;
-					/* the master password locked: the stored script stays */
+					/* the wrap refused (the master password locked, DPAPI
+					 * failing): the stored script stays */
 					if( locked )
 						ksec_report_locked_save( KSEC_KEPT_SCRIPT, conf_get_str( conf, CONF_sessionname ) ) ;
 					/*
@@ -1404,17 +1416,23 @@ void ReadInitScript( const char * filename ) {
 					if( wrapped && wrapped[0] && !kitty_secret_is_marked( wrapped ) ) {
 						char *marked = (char*) malloc( strlen(wrapped) + 7 ) ;
 						sprintf( marked, "PLAIN:%s", wrapped ) ;
+						smemclr( wrapped, strlen(wrapped) ) ;
 						free( wrapped ) ;
 						wrapped = marked ;
 					}
 					if( wrapped ) {
 						conf_set_str( conf, CONF_scriptfilecontent, wrapped ) ;
+						smemclr( wrapped, strlen(wrapped) ) ;
 						free( wrapped ) ;
 					}
 					if( b64 ) { smemclr( b64, strlen(b64) ) ; free( b64 ) ; }
 				}
+				/* in memory for the connection: wrapped (ManageInitScript) */
+				ScriptFileContent = kitty_loginscript_mem_wrap( (const unsigned char*)fileraw, (size_t)l ) ;
+				smemclr( fileraw, rawcap ) ;
+				free( fileraw ) ; fileraw = NULL ;
 			}
-			if( buffer!=NULL ) { free(buffer); buffer=NULL; }
+			if( buffer!=NULL ) { smemclr( buffer, bufcap ) ; free(buffer); buffer=NULL; }
 		} else {
 			/*
 			 * Not a path, so it is stored content. Which form it is in shows how to
@@ -1443,23 +1461,26 @@ void ReadInitScript( const char * filename ) {
 				int blen = 0 ;
 				unsigned char *raw = ksec_b64_decode( plain, &blen ) ;
 				if( raw && blen > 0 ) {
-					if( ScriptFileContent != NULL ) free( ScriptFileContent ) ;
-					ScriptFileContent = (char*) malloc( blen + 1 ) ;
-					memcpy( ScriptFileContent, raw, blen ) ;
-					ScriptFileContent[blen] = '\0' ;
+					kitty_loginscript_mem_free( ScriptFileContent ) ;
+					ScriptFileContent = kitty_loginscript_mem_wrap( raw, (size_t)blen ) ;
 				}
 				if( raw ) { smemclr( raw, blen ) ; free( raw ) ; }
 			} else if( (buffer=(char*)malloc(strlen(name)+1))!=NULL ) {
 				/* legacy: scrambled with the compiled-in constant */
 				strcpy( buffer, name ) ;
 				l = decryptstring( GetCryptSaltFlag(), buffer, MASTER_PASSWORD ) ;
-				if( ScriptFileContent!= NULL ) free( ScriptFileContent ) ;
-				ScriptFileContent = (char*) malloc( l + 1 ) ;
-				memcpy( ScriptFileContent, buffer, l ) ;
+				kitty_loginscript_mem_free( ScriptFileContent ) ;
+				ScriptFileContent = l > 0
+					? kitty_loginscript_mem_wrap( (const unsigned char*)buffer, (size_t)l )
+					: NULL ;
+				smemclr( buffer, strlen(name)+1 ) ;
 				free(buffer);buffer=NULL;
 			}
 			if( plain ) { smemclr( plain, strlen(plain) ) ; free( plain ) ; }
 		}
+		/* the stored value (or the path) it was read from */
+		smemclr( name, strlen(name) ) ;
+		free( name ) ;
 	}
 }
 

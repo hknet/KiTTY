@@ -656,8 +656,9 @@ void debug_log( const char *fmt, ... );
 int get_param( const char * val );
 char * kitty_current_dir(void);
 void kitty_fontfallback_apply_list( const char * list );
-/* locked: set when the master password is locked - NULL then, the stored
- * script stays (kitty_secret_wrap_current_backend_kept) */
+/* locked: set when the wrap is refused (the master password locked, DPAPI
+ * failing) - NULL then, the stored script stays
+ * (kitty_secret_wrap_current_backend_kept) */
 char *kitty_loginscript_from_text( const char *text, int *locked );
 char *kitty_loginscript_to_text( const char *stored );
 void kitty_netdbg_ts( const char *msg );

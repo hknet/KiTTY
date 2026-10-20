@@ -830,6 +830,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         int fail = 0, prox = 0, n;
         int kept = kitty_mpw_kept_count();   /* passwords kept: master password locked */
         int nosetup = kitty_mpw_kept_nosetup_count();   /* ... or never set up */
+        int dpapi = kitty_mpw_kept_dpapi_count();       /* ... or DPAPI failed */
         char msg[700];
         kitty_cli_store_refused(KT_CAP_SESSION_IMPORT);   /* readonly=yes */
         /* A password-protected bundle with no password given would fall through
@@ -853,10 +854,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
          * result, as a failed session is */
         kept = kitty_mpw_kept_count() - kept;
         nosetup = kitty_mpw_kept_nosetup_count() - nosetup;
+        dpapi = kitty_mpw_kept_dpapi_count() - dpapi;
         if (kept > 0) {
             size_t l = strlen(msg);
             snprintf(msg + l, sizeof(msg) - l,
-                     nosetup == kept ? KT_CLI_IMPORT_NOSETUP_FMT
+                     nosetup == kept ? KT_CLI_IMPORT_NOSETUP_FMT :
+                     dpapi == kept   ? KT_CLI_IMPORT_DPAPI_FMT
                                      : KT_CLI_IMPORT_KEPT_FMT, kept);
         }
         kitty_cli_result(KT_CAP_SESSION_IMPORT, msg, fail || kept > 0);
