@@ -120,6 +120,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **klink exits with 1 when a question before login is cancelled.**
+- **readonly=yes stops every kitty.ini write**, including kageant's
+  settings and colour theme, "Use DPAPI" and /savemode.
 - **klink, kscp and ksftp no longer hang at a question when stdin is at
   end of input.**
 - **Refused starts in the event log show the program's path.**

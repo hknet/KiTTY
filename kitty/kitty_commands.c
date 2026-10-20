@@ -56,6 +56,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
+#include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
@@ -385,6 +386,10 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	mode = IniFileFlag == SAVEMODE_FILE ? "file" : IniFileFlag == SAVEMODE_DIR ? "dir" : "registry" ;
 	if( NoKittyFileFlag || KittyIniFile == NULL || !KittyIniFile[0] ) {
 		cmd_say( KT_CMD_RES_SAVEMODE_NOINI, mode ) ;
+		return 1 ;
+	}
+	if( kitty_inifile_write_blocked( KittyIniFile ) ) {
+		cmd_say( KT_CMD_RES_SAVEMODE_READONLY, mode, KittyIniFile ) ;
 		return 1 ;
 	}
 	if( IniFileFlag == SAVEMODE_FILE ) {

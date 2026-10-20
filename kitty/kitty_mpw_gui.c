@@ -29,6 +29,7 @@
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_inifile.h"  /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
 #include "kitty_win.h"
@@ -528,9 +529,10 @@ static char *gui_master_pw_prompt(int creating)
     if (d.use_dpapi && !d.result) {
         /* "Use DPAPI": the store's policy from now on, in its kitty.ini and
          * in this process at once; the save that needed it then wraps DPAPI1
-         * (ksec_protect_portable_x), and no master password is created */
+         * (ksec_protect_portable_x), and no master password is created;
+         * readonly=yes: this process only */
         char *ini = GetKittyIniFile();
-        if (ini && ini[0])
+        if (ini && ini[0] && !kitty_inifile_write_blocked(ini))
             writeINI(ini, KI_SECTION_KITTY, KI_PORTABLEPASSWORDPROTECTION, "dpapi");
         kitty_set_portable_password_protection("dpapi");
     }
@@ -641,7 +643,7 @@ static int gui_legacy_migrate_warn(void)
     }
     g_mig_open = 0;
     if (r == IDOK) {
-        if (m.noask && ini)
+        if (m.noask && ini && !kitty_inifile_write_blocked(ini))
             writeINI(ini, KI_SECTION_KITTY, KI_WARNLEGACYPASSWORDUPGRADE, "no");
         return 1;
     }

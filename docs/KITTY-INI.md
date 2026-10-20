@@ -262,9 +262,9 @@ panels is built, `-cfgpanel Application/...` and the buttons that jump there
 instead. There is deliberately no checkbox for it - a switch that keeps users
 out of the application settings cannot live among them - so it is set here,
 and an administrator who also denies write access to kitty.ini has closed the
-door. `[KiTTY] readonly=yes` is not a substitute: it stops the file being
-written, but the tab still shows and edits there are accepted on screen and
-dropped. Default `yes`.
+door. `[KiTTY] readonly=yes` is not a substitute: it stops every write to
+the file, kageant's included, but the tab still shows, and a change made
+there applies to the running program and is not stored. Default `yes`.
 
 ## SUPDUP and Rlogin in the tree — `[ConfigBox] supdup`, `rlogin`
 

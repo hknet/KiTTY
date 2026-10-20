@@ -6,10 +6,11 @@
  * its own ReadParameter(). It is not per-tool, so setting it in one place
  * changes all of them.
  *
- * kitty.exe does NOT use this file: it has the full settings machinery, which
- * knows about session hives, portable modes and the read-only flag. The two
- * paths agree because they read the same value name in the same hive and the
- * same key in the same section, in the same string form.
+ * kitty.exe reads the theme through here only before its settings are loaded
+ * (the dialog hook goes in first); it writes it through its own
+ * WriteParameter. The two paths agree because they read the same value name
+ * in the same hive and the same key in the same section, in the same string
+ * form, and both leave kitty.ini alone under readonly=yes.
  */
 #ifndef KITTY_THEME_PREF_H
 #define KITTY_THEME_PREF_H
@@ -19,7 +20,9 @@
 /* One of the KITTY_THEME_* values; KITTY_THEME_SYSTEM when nothing is set. */
 int kitty_theme_pref_get(void);
 
-/* Store it in both places, the way every other satellite setting is stored. */
+/* Store it in the store in charge only - kitty.ini when that is
+ * authoritative, else the registry - as every other satellite setting.
+ * readonly=yes: not stored, 1 (kitty_inifile_write). */
 int kitty_theme_pref_set(int pref);
 
 /* The resolver to hand to kitty_theme_hook_dialogs(). */

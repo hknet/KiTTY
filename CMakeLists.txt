@@ -438,6 +438,7 @@ kitty_add_test(test_sixel)        # KiTTY: Sixel decoder
 if(KITTY_CTEST_MACHINE_STATE)
   kitty_add_test(test_storage_roundtrip machine-state)
   kitty_add_test(test_termenv_hint machine-state)   # a %TEMP% folder store only
+  kitty_add_test(test_inifile machine-state)        # a %TEMP% kitty.ini only
 endif()
 
 # Nasty bodge: we'd like to run this command inside unix/CMakeLists,

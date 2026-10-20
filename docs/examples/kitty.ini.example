@@ -669,10 +669,12 @@
 ;reconnectother=1
 
 ; readonly: refuse to write to the CONFIGURATION FILE side of the settings.
-;    With yes, KiTTY++ will not write or delete entries in kitty.ini, will not
-;    create kitty.ini if it is missing, will not create the store's
-;    directories, and will not remove a legacy plaintext password it finds
-;    in the file. The configuration box reports it instead of failing quietly.
+;    With yes, no KiTTY++ program writes or deletes entries in kitty.ini -
+;    kageant included - nor creates kitty.ini if it is missing, creates the
+;    store's directories, or removes a legacy plaintext password it finds in
+;    the file. A change made in a dialog applies to the running program and
+;    is not stored. The configuration box reports it instead of failing
+;    quietly.
 ;    Not the same as conf=no, which is about KiTTY++ maintaining its OWN files
 ;    (auto-creating kitty.ini, the kitty.sav and portable backups). readonly
 ;    is the broader "do not write", and it covers deletes and directory

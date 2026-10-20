@@ -17,7 +17,11 @@ int kitty_inifile_state_file(char *out, int outlen);  /* <store root>\KiTTYState
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);
 int kitty_inifile_write(const char *section, const char *key,
-                         const char *value);
+                         const char *value);   /* readonly=yes: skipped, 1 */
+int kitty_inifile_readonly(void);   /* [KiTTY] readonly=yes in the resolved ini */
+/* 1 when path is the resolved kitty.ini and that sets readonly=yes: a
+ * writer naming its own file (writeINI, delINI) skips the write. */
+int kitty_inifile_write_blocked(const char *path);
 
 /* The start-up keys of the resolved kitty.ini, read in one go: which store
  * is in charge and, for the folder store, where its sessions and host keys

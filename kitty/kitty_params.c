@@ -53,6 +53,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_termenv.h"   /* the sendtermenv switch, read by the backends */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
@@ -1016,7 +1017,9 @@ void LoadParameters( void ) {
 	}
 	if( readINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL, buffer, sizeof(buffer) ) ) {
 		StringList_Del( FolderList, buffer ) ;
-		delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
+		/* readonly=yes: the key stays, and is applied again next start */
+		if( !kitty_inifile_write_blocked( KittyIniFile ) )
+			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
 	}
 	/* [FontFallback] string settings (kitty/winfont_fallback.c). The
 	 * "active" master switch is handled by the ini_params table above;

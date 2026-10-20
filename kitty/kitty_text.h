@@ -1975,6 +1975,7 @@
 #define KT_CMD_RES_SAVEMODE                          "Savemode is \"%s\", stored in %s"
 #define KT_CMD_RES_SAVEMODE_NOINI                    "Savemode is \"%s\" for this window only: there is no kitty.ini to store it in"
 #define KT_CMD_RES_SAVEMODE_NOT_STORED               "Savemode is \"%s\" for this window only: %s could not be written: %s"
+#define KT_CMD_RES_SAVEMODE_READONLY                 "Savemode is \"%s\" for this window only: %s is read-only (readonly=yes)"
 #define KT_CMD_DELREG_QUESTION                       "Delete KiTTY++'s registry hive?\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "This removes every saved session, named proxy, cached host key and " \

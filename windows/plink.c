@@ -72,6 +72,21 @@ static bool plink_eof(Seat *seat)
     return false;   /* do not respond to incoming EOF with outgoing */
 }
 
+/* KiTTY: a question cancelled before login (host key, weak crypto, the
+ * username/password or keyboard-interactive prompt - EOF at it)
+ * closes the connection as a clean exit (ssh_user_close, exit code 0). For
+ * klink that is a failure: exit 1, as kscp/ksftp and a -batch refusal
+ * (connection_fatal) do. The shared close path stays as it is: kitty.exe
+ * uses it, and -scan ends through it before any question. */
+static bool plink_question_abandoned = false;
+
+static SeatPromptResult plink_note_abort(SeatPromptResult spr)
+{
+    if (spr.kind == SPRK_USER_ABORT)
+        plink_question_abandoned = true;
+    return spr;
+}
+
 static SeatPromptResult plink_get_userpass_input(Seat *seat, prompts_t *p)
 {
     /* Plink doesn't support Restart Session, so we can just have a
@@ -83,7 +98,33 @@ static SeatPromptResult plink_get_userpass_input(Seat *seat, prompts_t *p)
     spr = cmdline_get_passwd_input(p, &cmdline_state, false);
     if (spr.kind == SPRK_INCOMPLETE)
         spr = console_get_userpass_input(p);
-    return spr;
+    return plink_note_abort(spr);   /* KiTTY: a cancelled prompt exits 1 */
+}
+
+/* KiTTY: the three console questions, each noting a cancel */
+static SeatPromptResult plink_confirm_ssh_host_key(
+    Seat *seat, const char *host, int port, const char *keytype,
+    char *keystr, SeatDialogText *text, HelpCtx helpctx,
+    void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
+{
+    return plink_note_abort(console_confirm_ssh_host_key(
+        seat, host, port, keytype, keystr, text, helpctx, callback, ctx));
+}
+
+static SeatPromptResult plink_confirm_weak_crypto_primitive(
+    Seat *seat, SeatDialogText *text,
+    void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
+{
+    return plink_note_abort(console_confirm_weak_crypto_primitive(
+        seat, text, callback, ctx));
+}
+
+static SeatPromptResult plink_confirm_weak_cached_hostkey(
+    Seat *seat, SeatDialogText *text,
+    void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
+{
+    return plink_note_abort(console_confirm_weak_cached_hostkey(
+        seat, text, callback, ctx));
 }
 
 static bool plink_seat_interactive(Seat *seat)
@@ -107,9 +148,9 @@ static const SeatVtable plink_seat_vt = {
     .update_specials_menu = nullseat_update_specials_menu,
     .get_ttymode = nullseat_get_ttymode,
     .set_busy_status = nullseat_set_busy_status,
-    .confirm_ssh_host_key = console_confirm_ssh_host_key,
-    .confirm_weak_crypto_primitive = console_confirm_weak_crypto_primitive,
-    .confirm_weak_cached_hostkey = console_confirm_weak_cached_hostkey,
+    .confirm_ssh_host_key = plink_confirm_ssh_host_key,
+    .confirm_weak_crypto_primitive = plink_confirm_weak_crypto_primitive,
+    .confirm_weak_cached_hostkey = plink_confirm_weak_cached_hostkey,
     .prompt_descriptions = console_prompt_descriptions,
     .is_utf8 = nullseat_is_never_utf8,
     .echoedit_update = plink_echoedit_update,
@@ -692,6 +733,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Remote process exit code unavailable\n");
         exitcode = 1;                  /* this is an error condition */
     }
+    if (exitcode == 0 && plink_question_abandoned)
+        exitcode = 1;                  /* KiTTY: a question was cancelled */
     cleanup_exit(exitcode);
     return 0;                          /* placate compiler warning */
 }

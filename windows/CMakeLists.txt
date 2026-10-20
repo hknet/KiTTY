@@ -563,6 +563,14 @@ target_link_libraries(test_termenv_hint
   crypto utils settings utils ${platform_libraries}
   crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)
 
+# KiTTY: the readonly=yes gate of the kitty.ini resolver
+# (kitty/kitty_inifile.c): the store's kitty.ini left byte-identical, another
+# ini still written. A %TEMP% tree (deleted); never the registry.
+add_executable(test_inifile
+  test/test_inifile.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c)
+target_include_directories(test_inifile PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
+
 add_executable(test_lineedit
   ${CMAKE_SOURCE_DIR}/test/test_lineedit.c
   ${CMAKE_SOURCE_DIR}/stubs/no-gss.c

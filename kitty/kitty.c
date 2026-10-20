@@ -58,6 +58,7 @@
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
@@ -362,7 +363,9 @@ void InitFolderList( void ) {
 			for( i=0; i<strlen(buffer); i++ ) if( buffer[i]==',' ) buffer[i]='\0' ;
 			StringList_Add( FolderList, buffer ) ;
 			}
-		delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
+		/* readonly=yes: the key stays, and is applied again next start */
+		if( !kitty_inifile_write_blocked( KittyIniFile ) )
+			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
 		}
 	
 	}

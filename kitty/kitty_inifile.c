@@ -30,6 +30,14 @@
  * Otherwise (savemode=registry, or absent with no such layout, matching
  * kitty.exe's default) the registry stays authoritative and ini keys serve
  * as first-run defaults only (see kitty_inifile_registry_authoritative()).
+ *
+ * [KiTTY] readonly=yes in the resolved file stops every write to it from
+ * here (kitty_inifile_write): kageant's settings, its start-up keys and the
+ * theme preference keep a change for the running program only. kitty.exe's
+ * own writers name the file themselves and check
+ * kitty_inifile_write_blocked() first. Other
+ * ini files - a store-move destination, kitty_windowpos.ini - are not this
+ * file and are never held back.
  */
 
 #include <windows.h>
@@ -198,14 +206,54 @@ int kitty_inifile_read(const char *section, const char *key,
     return value[0] != '\0';
 }
 
-/* Write [section] key=value. Returns 1 on success, 0 when no ini was
- * resolved or the file is not writable (caller falls back to the registry). */
+/* [KiTTY] readonly=yes in the resolved kitty.ini, matched as kitty.exe
+ * matches it (kitty_params.c load_ini_params: the value "yes", case aside).
+ * Read fresh at every call: kitty.exe's GetReadOnlyFlag() is not linked
+ * into the other programs, and a running kageant sees an edited file. */
+int kitty_inifile_readonly(void)
+{
+    char buf[16];
+    return kitty_inifile_read(KI_SECTION_KITTY, KI_READONLY, buf, sizeof(buf)) &&
+        !stricmp(buf, "YES");
+}
+
+/* Two names of one file: the full paths compared, case aside. */
+static int inifile_same_file(const char *a, const char *b)
+{
+    char fa[MAX_PATH + 1], fb[MAX_PATH + 1];
+    DWORD na = GetFullPathNameA(a, sizeof(fa), fa, NULL);
+    DWORD nb = GetFullPathNameA(b, sizeof(fb), fb, NULL);
+    if (na == 0 || na >= sizeof(fa) || nb == 0 || nb >= sizeof(fb))
+        return !stricmp(a, b);
+    return !stricmp(fa, fb);
+}
+
+/* 1 when a write to path must be skipped: path is the resolved kitty.ini
+ * and that sets readonly=yes. For the writers that name the file
+ * themselves (kitty.exe's writeINI / delINI); any other file is never
+ * held back by this. */
+int kitty_inifile_write_blocked(const char *path)
+{
+    const char *f;
+    if (!path || !path[0])
+        return 0;
+    f = kitty_inifile_file();
+    return f && inifile_same_file(path, f) && kitty_inifile_readonly();
+}
+
+/* Write [section] key=value; a NULL value removes the key. Returns 1 on
+ * success, 0 when no ini was resolved or the file is not writable (the
+ * reason in GetLastError()). With readonly=yes the file is left as it is
+ * and 1 is returned, as kitty.exe's write_parameter skips it: the change
+ * holds for the running program only, and no "not stored" report follows. */
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value)
 {
     const char *f = kitty_inifile_file();
     if (!f)
         return 0;
+    if (kitty_inifile_readonly())
+        return 1;
     return WritePrivateProfileStringA(section, key, value, f) ? 1 : 0;
 }
 

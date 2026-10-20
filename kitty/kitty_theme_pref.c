@@ -1,7 +1,7 @@
 /*
  * kitty_theme_pref.c - the colour theme's store, for the satellite binaries.
  *
- * See kitty_theme_pref.h for why kitty.exe does not come through here.
+ * See kitty_theme_pref.h for what kitty.exe takes from here.
  *
  * The value is a STRING in both stores - "system", "light" or "dark" - and not
  * a DWORD, because kitty.exe's ReadParameter() reads the registry side as a
@@ -85,8 +85,10 @@ int kitty_theme_pref_get(void)
 }
 
 /* To the store in charge only, the same rule: it used to be written to both,
- * so a portable install wrote the registry. 1 when stored, 0 with the reason
- * in GetLastError(). */
+ * so a portable install wrote the registry. With readonly=yes
+ * kitty_inifile_write leaves kitty.ini as it is: the choice holds for this
+ * run only. 1 when stored or skipped so, 0 with the reason in
+ * GetLastError(). */
 int kitty_theme_pref_set(int pref)
 {
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
