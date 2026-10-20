@@ -18,6 +18,8 @@
 #define KI_ANTIIDLE                         "antiidle"
 #define KI_ANTIIDLEDELAY                    "antiidledelay"
 #define KI_AUTORECONNECT                    "autoreconnect"
+/* accept-new for every session (kitty_hostkey_acceptnew.h) */
+#define KI_AUTOSTORESSHKEY                  "autostoresshkey"
 #define KI_BCDELAY                          "bcdelay"
 #define KI_BGIMAGE                          "bgimage"
 #define KI_BROWSEDIRECTORY                  "browsedirectory"
@@ -67,6 +69,7 @@
 #define KI_PSCPPORT                         "pscpport"
 #define KI_READONLY                         "readonly"
 #define KI_INHERITDEFAULTSETTINGS           "inheritdefaultsettings"   /* hknet/KiTTY#61 */
+#define KI_SAVEONLYNONDEFAULTSETTINGS       "saveonlynondefaultsettings"
 #define KI_RECONNECTDELAY                   "ReconnectDelay"
 /* reconnect by failure condition (kitty_reconnect.c): retry | 3 | 1 | stop | wait */
 #define KI_RECONNECTMAXDELAY                "reconnectmaxdelay"

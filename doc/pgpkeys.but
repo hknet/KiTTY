@@ -1,152 +1,85 @@
 \A{pgpkeys} Verifying KiTTY++ downloads
 
 \I{verifying new versions}KiTTY++ releases carry no \i{GPG signatures}.
-Three other checks protect them. Every program file and every installer
-carries an \i{Authenticode} signature. Every portable package ships a
-\c{SHA256SUMS} file. The programs check themselves when they start.
-
-Download KiTTY++ only from the release page:
-\W{https://github.com/hknet/KiTTY/releases}{\c{https://github.com/hknet/KiTTY/releases}}
-
-(None of this has anything to do with SSH keys. These checks only
-concern the origin of the files.)
+They carry \i{Authenticode} signatures, \c{SHA256SUMS} files and
+programs that check themselves. Download KiTTY++ only from
+\W{https://github.com/hknet/KiTTY/releases}{\c{https://github.com/hknet/KiTTY/releases}}.
 
 \H{pgpkeys-signed} What is signed
 
-Every \c{.exe} file of a release is Authenticode-signed: in the
-installers, in the 64-bit and 32-bit portable ZIPs and on the ISO image.
-Both \c{.msi} installers are signed as well. The signer to expect is:
+Every \c{.exe} (in the installers, the ZIPs and on the ISO image) and
+both \c{.msi} installers are signed, with a trusted timestamp, by:
 
 \c KAPPER NETWORK-COMMUNICATIONS GmbH
 
-The signatures carry a trusted timestamp.
-
-The ZIP files and the ISO image are containers without a signature of
-their own. Check the files inside them after unpacking. The other files
-in a package (the help file, \c{kitty.ini.example}, \c{README-BETA.md})
-are not signed. The \c{SHA256SUMS} file covers them.
+ZIP and ISO files have no signature of their own: check the files
+inside. The unsigned files of a package (help file,
+\c{kitty.ini.example}, \c{README-BETA.md}) are covered by
+\c{SHA256SUMS}.
 
 \H{pgpkeys-authenticode} Checking the signature
 
-In Windows Explorer, right-click the file, choose \q{Properties} and
-open the \q{Digital Signatures} tab. The list must show KAPPER
-NETWORK-COMMUNICATIONS GmbH. Select that entry and click \q{Details}.
-The dialog must report \q{This digital signature is OK.} A file without
-a \q{Digital Signatures} tab carries no signature.
-
-In PowerShell:
+Explorer: \q{Properties}, \q{Digital Signatures}, select the entry,
+\q{Details}: \q{This digital signature is OK.} No such tab means no
+signature. PowerShell, for an \c{.exe} or \c{.msi}:
 
 \c Get-AuthenticodeSignature kitty.exe |
 \c   Format-List Status, SignerCertificate
 
-\c{Status} must be \c{Valid}. The certificate subject must begin with
-\c{CN=KAPPER NETWORK-COMMUNICATIONS GmbH}. The same command checks an
-installer: give it the \c{.msi} file instead.
-
-The built-in update check runs a downloaded installer only after the
-same test: a valid signature chain from the expected publisher. A file
-that fails is deleted without being run.
+\c{Status} must be \c{Valid}, the subject must begin with
+\c{CN=KAPPER NETWORK-COMMUNICATIONS GmbH}. The built-in update check
+deletes a downloaded installer unrun if it fails this test.
 
 \H{pgpkeys-sha256sums} Checking the SHA256SUMS file
 
-Each portable ZIP and each folder of the ISO image contains a
-\c{SHA256SUMS} file. It lists the SHA-256 hash of every file in the
-package, one line per file. The 32-bit package also contains
-\c{SHA1SUMS} for tools that know SHA-1 only.
-
-To check one file, open a command prompt in the unpacked folder:
+Each ZIP and each ISO folder contains \c{SHA256SUMS}, one SHA-256
+hash per file (the 32-bit package also \c{SHA1SUMS}). Installers are
+not listed; their signature is their check.
 
 \c certutil -hashfile kitty.exe SHA256
-
-or, in PowerShell:
-
 \c Get-FileHash kitty.exe -Algorithm SHA256
 
-Compare the result with the line for that file in \c{SHA256SUMS}.
-Upper or lower case does not matter. \c{README-BETA.md} in each package
-contains a one-line command that checks every listed file at once. It
-prints \c{OK} or \c{FAIL} per file. Every line must read \c{OK}.
-
-Windows XP has no built-in SHA-256 tool. Check the 32-bit package on a
-newer Windows first, then copy the checked folder to the XP system.
-
-The installers are not listed in a \c{SHA256SUMS} file. Their
-Authenticode signature is the check for them.
+Compare with the file's line; case does not matter. \c{README-BETA.md} has a
+one-line command that checks all files and prints \c{OK} or \c{FAIL}
+for each. Windows XP has no SHA-256 tool: check the 32-bit package on
+a newer Windows first.
 
 \H{pgpkeys-selfcheck} The programs check themselves
 
-A release build checks its own file at every start.
+A release build checks at every start:
 
-\b The file name must begin with the program's own name or the matching
-PuTTY name, for example \c{kitty} or \c{putty} for \c{kitty.exe}. Case
-does not matter. \c{kitty (1).exe} and \c{kitty-0.85.exe} start
-normally. Under any other name the program stops with a message like
-\q{\cw{Renamed executable: this program runs only as kitty*.exe.
-Found: 6bovxvce.exe}}.
+\b Its file name must begin with its own or the matching PuTTY name,
+ignoring case (\c{kitty (1).exe} runs), or it stops with
+\q{\cw{Renamed executable}}.
 
-\b The program checks its own Authenticode signature. It refuses to run
-only when the file was modified after signing, when the signature was
-removed or when somebody else signed it again. The message reads like
-\q{\cw{Signature check failed: this program is not signed by its
-publisher. Found: bad digest}}.
+\b Its Authenticode signature: it refuses when the file was changed,
+its signature removed or re-signed by somebody else (\q{\cw{Signature check
+failed}}), never because Windows cannot judge the signature (Windows
+XP, offline Windows 7). Nothing is fetched from the network.
 
-\lcont{
+\b Its release stamp, an Ed25519 signature over the file's SHA-256
+by a key made for that release only, needing no Windows cryptography:
+\q{\cw{Integrity check failed}} with \c{modified}, \c{truncated},
+\c{bad stamp} or \c{no stamp}, also in the Application event log
+(source \c{KiTTY++}). A hidden program that cannot read its own file
+refuses with \c{cannot check}; a visible one starts.
 
-It never refuses because a machine cannot judge the signature. An old
-or unpatched Windows may not know the signing algorithm, may lack the
-root certificate or may have no revocation data. Windows XP and an
-offline Windows 7 are examples. KiTTY++ starts normally there.
-Nothing is fetched from the network for this check.
-
-}
-
-\b Every shipped program carries a release stamp: the SHA-256 hash of the
-file as released, signed with an Ed25519 key made for that release
-only. This check needs no Windows cryptography. It also works where
-Authenticode cannot judge. A file that no longer matches refuses to
-start with a message like \q{\cw{Integrity check failed: this program
-file was changed after its release. Found: modified}}.
-
-\lcont{
-
-Other findings are \c{bad stamp} (the stamp signature is not from the
-release key), \c{no stamp} and \c{truncated}. The message also goes to
-the Windows Application event log under the source \c{KiTTY++}. When
-the program cannot read its own file, a visible program starts anyway.
-A program nobody can see refuses with \c{cannot check}, in the event
-log only.
-
-}
-
-\c{kitty_pterm.exe} and \c{kitty_tel.exe} carry the stamp but do not
-check themselves. Builds compiled from source carry no signature, no
-stamp and no check.
-
-\q{Application > Security > Applications} in the configuration box
-lists the KiTTY++ program files beside the running program. It shows
-for each one whether its stamp and its signature check out. A red row
-is a file that was changed, signed by somebody else, lacks a check or
-belongs to another version.
-
-These checks make tampering harder. They are not a security boundary:
-somebody who removes the check code gets a working file.
+\c{kitty_pterm.exe} and \c{kitty_tel.exe} are stamped but do not check
+themselves; builds from source have none of this. \q{Application >
+Security > Applications} in the configuration box shows the state of
+each KiTTY++ program file beside the running one (red = changed,
+foreign-signed, unchecked or other version). The checks make tampering
+harder; they are not a security boundary.
 
 \H{pgpkeys-fail} When a check fails
 
-Do not run the file. Delete the download and fetch it again from
-\W{https://github.com/hknet/KiTTY/releases}{\c{https://github.com/hknet/KiTTY/releases}}.
-
-If a file from that page fails a check, report it privately as a
-security issue. Use GitHub private vulnerability reporting at
-\W{https://github.com/hknet/KiTTY/security}{\c{https://github.com/hknet/KiTTY/security}}
-(\q{Report a vulnerability}). Do not open a public issue for it.
-Include the file name, the release version and the exact message or
-check result.
+Do not run the file; download it again. If a file from the release
+page fails, report it privately (\q{Report a vulnerability} at
+\W{https://github.com/hknet/KiTTY/security}{\c{https://github.com/hknet/KiTTY/security}})
+with file name, version and the exact message, not as a public issue.
 
 \H{pgpkeys-pgpfp} The \c{-pgpfp} option
 
-The \i\c{\-pgpfp} command-line option is inherited from PuTTY. It
-prints the \i{PGP key fingerprint}s of the PuTTY master keys for
-historic reasons only. They prove nothing about a KiTTY++ file. They
-are only useful for checking downloads from the PuTTY project itself.
-The option is deprecated and will be removed in a future release.
+The \i\c{\-pgpfp} option, inherited from PuTTY, prints the
+\i{PGP key fingerprint}s of the PuTTY master keys. They prove nothing
+about KiTTY++ files. The option is deprecated.

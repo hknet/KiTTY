@@ -23,6 +23,7 @@ one is available.
   - [URL hyperlinks](#url-hyperlinks)
 - **SSH and network**
   - [In-terminal (inline) security confirmations](#in-terminal-inline-security-confirmations)
+  - [Accept new host keys](#accept-new-host-keys)
   - [Automatic password](#automatic-password)
   - [Passwords in memory](#passwords-in-memory)
   - [Key-file fingerprint pin](#key-file-fingerprint-pin)
@@ -528,6 +529,12 @@ KiTTY++'s SSH security confirmations — an unknown (first-seen) host key, a cha
 During an already-authenticated session (a rekey) the running program owns the terminal, so these cannot be prompted inline — KiTTY++ prints the details and abandons the connection instead (reconnect to review). Connection error messages can likewise be shown in the terminal rather than a box (see `modalerrors`).
 
 **How to enable:** in `kitty.ini [KiTTY]`, set `modalnewhostkeyconfirmation`, `modalchangedhostkeyconfirmation` and/or `modalweakkeyconfirmation` to `no` (default `yes` = classic modal dialog). Each is independent, so you can keep some prompts modal and make others inline.
+
+### Accept new host keys
+
+An unknown host key can be stored without the question, as OpenSSH's `StrictHostKeyChecking=accept-new`: trust on first use, recorded in the Event Log (klink, kscp and ksftp: on standard error, `Host key stored (accept-new): ...`). A changed key is never accepted this way: the usual changed-key question follows, and under `-batch` the connection ends with exit code 1.
+
+**How to enable:** per session, Configuration > **Connection > SSH > Host keys** > **Accept new host keys** (`AcceptNewHostKeys`, off by default); for one run, `-accept-new` (kitty.exe, klink, kscp, ksftp); for every session, `kitty.ini [KiTTY] autostoresshkey=yes`.
 
 ### Automatic password
 
@@ -1565,7 +1572,9 @@ A session can be a stub: write a session file - or a registry key - with only wh
 - **switch off** (the default): from the **built-in defaults**, as KiTTY and PuTTY always did;
 - **switch on** - Application > KiTTY++ Settings > Storage & Backup > **Inherit Default Settings** (`[KiTTY] inheritdefaultsettings=yes`): from **Default Settings** (the top-level one), which works as a template in the background. Every setting is inherited, a user name and password kept there included - which is what makes stubs useful, and why ticking the box requires a confirmation first.
 
-It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it.
+It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it - unless **Save only non-default settings** is on.
+
+**Save only non-default settings** (only with Inherit Default Settings; `[KiTTY] saveonlynondefaultsettings=yes`): a session save writes only what differs from Default Settings; a value set back to the default is commented out (`# TermWidth=80`). Default Settings and exports stay whole. **Comment out defaults** applies this once to every session (registry store: deletes the default values). A line starting with `#` or `;` is never a setting. Old KiTTY, PuTTY or a copy with Inherit off read missing keys with their own defaults.
 
 **Session Lockdown keeps a stub a stub.** Session > Comment & Lock > **Session Lockdown** (session key `SessionLockdown=1`, off by default) blocks every write to that session's settings - Save, saving from a running window, `/save`, the remembered answers that save a session. Rename and move still work, and window positions and tags are still stored. A stub you write yourself can carry `SessionLockdown=1` from the start.
 
@@ -1682,7 +1691,7 @@ The failure mode that creates is a bad one: a feature that quietly never works l
 
 The line is worth reading once and not thereafter, since the answer is a property of the machine. `warnmissingfeatures=no` under `[KiTTY]` in `kitty.ini` — or the checkbox on **Application > Security** — stops it. The Event Log entry is written either way.
 
-**How to enable:** on by default. **Application > Security**, *"Report in the terminal what features this Windows Installation does not support"*.
+**How to enable:** on by default. **Application > Security**, *"Report missing Windows features in terminal"*.
 
 (no screenshot)
 
@@ -1923,9 +1932,10 @@ the port):**
 - `[KiTTY] localcmd`, `localunsecurecmd` — the `__xy` remote metacommand
   dispatcher they gated was removed for security (remote command-injection
   surface, cf. CVE-2024-23749); the switches were a booby trap without it.
-- `[KiTTY] autostoresshkey` — deliberately not supported: silently accepting
-  SSH host keys defeats the host-key check, so the port keeps the confirmation
-  prompt unconditionally.
+- `[KiTTY] autostoresshkey` — revived with a narrower meaning: classic KiTTY
+  answered Yes to the changed-key question too, so a changed host key was
+  replaced without a word; in KiTTY++ it stores only an unknown key and never
+  accepts a changed one (see *Accept new host keys*).
 - `[ConfigBox] default`, `left`, `top` — dead getters; `left`/`top` are
   superseded by the automatic config-box position memory.
 - `[Agent] scrumble` — the classic key shuffle was never functional in any

@@ -199,6 +199,10 @@ char default_init_file_content[] =
 ;    ReconnectDelay for how long it waits between attempts.\n\
 ;autoreconnect=yes\n\
 \n\
+; autostoresshkey: store an unknown SSH host key without a question, for every\n\
+;    session (OpenSSH's accept-new); a changed key is never accepted. Default no.\n\
+;autostoresshkey=no\n\
+\n\
 ; bgimage: enable/disable the background image feature. (The description\n\
 ;    here used to call it backgroundimage, which is not a key KiTTY++ reads.)\n\
 ;bgimage=no\n\
@@ -688,10 +692,16 @@ char default_init_file_content[] =
 ;    session files that name only a host are enough. Applies to stored\n\
 ;    sessions, to session files opened directly (-kload, a double-click) and\n\
 ;    to klink, kscp and ksftp. A session saved in KiTTY++ writes every\n\
-;    setting, so it no longer inherits after its first save. Set in\n\
-;    Application > KiTTY++ Settings > Storage & Backup, which asks first.\n\
+;    setting, so it no longer inherits after its first save - unless\n\
+;    saveonlynondefaultsettings=yes. Set in\n\
+;    Application > KiTTY++ Settings > Storage & Backup, which requires a\n\
+;    confirmation.\n\
 ;    Default no: the built-in defaults, as before.\n\
 ;inheritdefaultsettings=no\n\
+\n\
+; saveonlynondefaultsettings: with inheritdefaultsettings=yes, a session save\n\
+;    writes only what differs from Default Settings. Default no.\n\
+;saveonlynondefaultsettings=no\n\
 \n\
 ; restrictacl: apply the restricted process ACL to every KiTTY++ process, so you\n\
 ;    do not have to add -restrict-acl to each shortcut target. It denies other\n\

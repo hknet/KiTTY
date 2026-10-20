@@ -2317,6 +2317,7 @@ static void usage(void)
     printf("            disconnect if SSH authentication succeeds trivially\n");
     printf("  -hostkey keyid\n");
     printf("            manually specify a host key (may be repeated)\n");
+    printf(KT_CLI_USAGE_ACCEPTNEW);
     printf("  -batch    disable all interactive prompts\n");
     printf("  -no-sanitise-stderr  don't strip control chars from"
            " standard error\n");

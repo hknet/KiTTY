@@ -94,9 +94,18 @@ void kitty_eventlog_line(unsigned type, const char *msg)
     DeregisterEventSource(h);
 }
 
+/* The refused file's path goes into the line: an installed program and a
+ * test copy refused on purpose otherwise read alike in the log. */
 static void kg_eventlog(const char *msg)
 {
-    kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
+    char path[MAX_PATH], line[MAX_PATH + 1024];
+    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path));
+
+    if (n && n < sizeof(path)) {
+        snprintf(line, sizeof(line), KT_GUARD_EVENT_FMT, msg, path);
+        kitty_eventlog_line(EVENTLOG_ERROR_TYPE, line);
+    } else
+        kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
 }
 
 /*

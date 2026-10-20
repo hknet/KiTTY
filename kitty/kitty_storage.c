@@ -976,6 +976,119 @@ void ksf_list_free(struct ksf_item *h)
         h = n;
     }
 }
+
+/* Save only non-default settings (kitty.ini saveonlynondefaultsettings).
+ * Is raw a line of `key` commented out with '#' ("# TermWidth=80")? A ';'
+ * line is a comment too, but a hand-written one: never revived. */
+static int ksf_comment_holds(const char *raw, const char *key)
+{
+    size_t kl = strlen(key);
+    if (!raw)
+        return 0;
+    while (*raw == ' ' || *raw == '\t')
+        raw++;
+    if (*raw != '#')
+        return 0;
+    raw++;
+    while (*raw == ' ' || *raw == '\t')
+        raw++;
+    return !strncmp(raw, key, kl) && (raw[kl] == '=' || raw[kl] == '\\');
+}
+/* key and val as a line in the form of raw: "Key\val\" or "Key\val" for a
+ * classic line, else "Key=val". snewn'd. */
+static char *ksf_line_in_form(const char *raw, const char *key, const char *val)
+{
+    size_t kl = strlen(key), rl = raw ? strlen(raw) : 0;
+    char *mv = ksf_munge(val ? val : ""), *s;
+    if (raw && rl > kl && !strncmp(raw, key, kl) && raw[kl] == '\\')
+        s = dupprintf("%s\\%s%s", key, mv ? mv : "",
+                      (rl > kl + 1 && raw[rl - 1] == '\\') ? "\\" : "");
+    else
+        s = dupprintf("%s=%s", key, mv ? mv : "");
+    if (mv) sfree(mv);
+    return s;
+}
+/* The item becomes the comment line text (owned from here). */
+static void ksf_item_to_comment(struct ksf_item *it, char *text)
+{
+    sfree(it->key);
+    if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
+    if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+    it->key = NULL;
+    it->val = NULL;
+    it->raw = text;
+}
+/* A save of key = val where def is Default Settings' value for it (NULL:
+ * none - ksf_list_set). A save never removes a line:
+ *   - a line whose value does not change stays as it is;
+ *   - a line whose value changes TO the default is commented out in its own
+ *     form ("# TermWidth=80", "# RememberWindowPos\0");
+ *   - a key without a line writes nothing for the default; another value
+ *     goes onto the key's commented-out line, uncommented in place, or at
+ *     the end. */
+void ksf_list_set_nondefault(struct ksf_item **h, const char *key,
+                             const char *val, const char *def)
+{
+    struct ksf_item *it, *com = NULL;
+    if (!val)
+        val = "";
+    if (!def) {
+        ksf_list_set(h, key, val);
+        return;
+    }
+    for (it = *h; it; it = it->next) {
+        if (it->key && !strcmp(it->key, key))
+            break;
+        if (!com && !it->key && ksf_comment_holds(it->raw, key))
+            com = it;
+    }
+    if (it) {
+        char *line;
+        if (it->val && !strcmp(it->val, val))
+            return;
+        if (strcmp(val, def)) {
+            ksf_list_set(h, key, val);
+            return;
+        }
+        line = ksf_line_in_form(it->raw, key, val);
+        ksf_item_to_comment(it, dupprintf("# %s", line));
+        memset(line, 0, strlen(line));
+        sfree(line);
+        return;
+    }
+    if (!strcmp(val, def))
+        return;
+    if (com) {
+        if (com->raw) { memset(com->raw, 0, strlen(com->raw)); sfree(com->raw); }
+        com->raw = NULL;
+        com->key = dupstr(key);
+        com->val = dupstr(val);
+        return;
+    }
+    ksf_list_set(h, key, val);
+}
+/* "Comment out defaults": each setting line whose value equals defs' for its
+ * key becomes "# <line>"; a key defs lacks, or one skip() returns true for,
+ * stays. Comment lines are no settings, so a second run changes nothing.
+ * Returns the lines commented out. */
+int ksf_list_comment_defaults(struct ksf_item *h, struct ksf_item *defs,
+                              int (*skip)(const char *key))
+{
+    int n = 0;
+    for (; h; h = h->next) {
+        const char *d;
+        char *line;
+        if (!h->key || (skip && skip(h->key)) ||
+            !(d = ksf_list_get(defs, h->key)) || strcmp(h->val ? h->val : "", d))
+            continue;
+        line = h->raw ? dupstr(h->raw) : ksf_line_in_form(NULL, h->key, h->val);
+        ksf_item_to_comment(h, dupprintf("# %s", line));
+        memset(line, 0, strlen(line));
+        sfree(line);
+        n++;
+    }
+    return n;
+}
 /* ===================================================================== *
  * KiTTY: session names as folder paths (hknet/KiTTY#55) and the session
  * file suffix (hknet/KiTTY#56).
@@ -2104,8 +2217,16 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
          * line without the closing '\\' ("Key\\0", as some tools write it)
          * reads the same. A line whose value a Save changes is written in our
          * format; the others keep their form (ksf_save). */
-        eq = strchr(line, '=');
-        bs = strchr(line, '\\');
+        /* A line starting with '#' or ';' is a comment whatever follows -
+         * "# TermWidth=80" too, the form a save under "save only non-default
+         * settings" comments a line out in. */
+        {
+            const char *f = line;
+            while (*f == ' ' || *f == '\t')
+                f++;
+            eq = (*f == '#' || *f == ';') ? NULL : strchr(line, '=');
+            bs = (*f == '#' || *f == ';') ? NULL : strchr(line, '\\');
+        }
         if (eq && (!bs || eq < bs)) {
             *eq = '\0';
             val = ksf_unmunge(eq + 1);
@@ -2117,7 +2238,7 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
             val = ksf_unmunge(raw);
             cyd01 = 1;
         } else {
-            /* no delimiter -> not a setting line: kept as it is */
+            /* a comment, or no delimiter: not a setting line, kept as it is */
             it = snew(struct ksf_item);
             it->key = NULL;
             it->val = NULL;

@@ -2144,7 +2144,8 @@ typedef enum WeakCryptoReason {
 } WeakCryptoReason;
 
 SeatPromptResult verify_ssh_host_key(
-    InteractionReadySeat iseat, Conf *conf, const char *host, int port,
+    InteractionReadySeat iseat, Conf *conf, LogContext *logctx,
+    const char *host, int port,
     ssh_key *key, const char *keytype, char *keystr, const char *keydisp,
     char **fingerprints, int ca_count,
     void (*callback)(void *ctx, SeatPromptResult result), void *ctx);

@@ -893,6 +893,19 @@ endforeach()
 if(KITTY_CORE_BAD)
   message(FATAL_ERROR "MOD_PORTABLE is tested by files that are compiled once for both terminals: ${KITTY_CORE_BAD}. Move them out of KITTY_CORE_SOURCES in windows/CMakeLists.txt.")
 endif()
+# KiTTY: kitty.exe's event log message table (kitty_events.mc, message 0 =
+# "%1"). The system MSI registers kitty.exe as the "KiTTY++" source's
+# EventMessageFile, so the Event Viewer shows kitty_eventlog_line's text
+# as written. windmc sits beside the toolchain's windres.
+string(REPLACE "windres" "windmc" KITTY_WINDMC "${CMAKE_RC_COMPILER}")
+add_custom_command(
+  OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc ${CMAKE_CURRENT_BINARY_DIR}/MSG00409.bin
+  COMMAND ${KITTY_WINDMC} -r ${CMAKE_CURRENT_BINARY_DIR} -h ${CMAKE_CURRENT_BINARY_DIR}
+          ${CMAKE_CURRENT_SOURCE_DIR}/kitty_events.mc
+  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/kitty_events.mc
+  VERBATIM)
+set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc PROPERTIES
+  GENERATED TRUE COMPILE_OPTIONS "-I${CMAKE_CURRENT_BINARY_DIR}")
 add_library(kittycore OBJECT ${KITTY_CORE_SOURCES})
 add_dependencies(kittycore generated_licence_h)
 kitty_terminal_common(kittycore)
@@ -952,6 +965,7 @@ target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
+target_sources(kitty PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc)   # KiTTY: the event log message table
 kitty_selfcheck_target(kitty)
 kitty_terminal_common(kitty)
 if(KITTY_O2_HOT_O3)

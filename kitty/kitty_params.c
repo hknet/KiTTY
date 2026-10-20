@@ -63,6 +63,7 @@
 #include "kitty_exportbundle.h"
 #include "mini/mini.h"
 #include "kitty_params.h"
+#include "kitty_hostkey_acceptnew.h"   /* autostoresshkey */
 
 
 
@@ -658,10 +659,17 @@ static const IniParam ini_params[] = {
 	INIP_KW( INIT_SECTION, 0, KI_READONLY,		1, IGN, IGN,	NULL, SetReadOnlyFlag ),
 	/* hknet/KiTTY#61: a setting a session leaves out comes from Default Settings */
 	INIP_KW( INIT_SECTION, 0, KI_INHERITDEFAULTSETTINGS,	1, 0, IGN,	NULL, kitty_set_inherit_default_settings ),
+	/* with it: a session save writes only what differs from Default Settings */
+	INIP_KW( INIT_SECTION, 0, KI_SAVEONLYNONDEFAULTSETTINGS,	1, 0, IGN,	NULL, kitty_set_save_only_nondefault ),
 	/* restrictacl=yes: -restrict-acl for every process; no way back off.
 	 * use_readini=1 (kitty.ini ONLY) is deliberate and unlike its [KiTTY]
 	 * neighbours - see the comment on SetRestrictAclFlag. */
 	INIP_KW( INIT_SECTION, 1, KI_RESTRICTACL,	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
+	/* autostoresshkey=yes: accept-new for every session - a NEW host key is
+	 * stored without a question, a changed one never. kitty.ini ONLY, as
+	 * restrictacl: nothing writes it to the registry, and a value found there
+	 * would switch the question off unseen. */
+	INIP_KW( INIT_SECTION, 1, KI_AUTOSTORESSHKEY,	1, 0, IGN,	NULL, kitty_hostkey_accept_new_set_all ),
 	INIP_KW( INIT_SECTION, 0, KI_SHORTCUTS,		1, 0, IGN,	&ShortcutsFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, KI_SIZE,		1, 0, IGN,	&SizeFlag, NULL ),      /* symmetrical: a checkbox */
 	INIP_NUM( INIT_SECTION, 0, KI_SLIDEDELAY,	IGN,		&ImageSlideDelay, NULL ),

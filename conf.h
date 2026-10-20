@@ -431,6 +431,13 @@ CONF_OPTION(ssh_manual_hostkeys,
     VALUE_TYPE(STR),
     LOAD_CUSTOM, SAVE_CUSTOM, /* necessary for mappings */
 )
+/* KiTTY: store an unknown host key without a question; a changed one is
+ * never accepted this way (ssh/common.c, kitty_hostkey_acceptnew.h) */
+CONF_OPTION(ssh_accept_new_hostkeys,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(false),
+    SAVE_KEYWORD("AcceptNewHostKeys"),
+)
 CONF_OPTION(ssh2_des_cbc, /* "des-cbc" unrecommended SSH-2 cipher */
     VALUE_TYPE(BOOL),
     DEFAULT_BOOL(false),

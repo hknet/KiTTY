@@ -8230,6 +8230,13 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
              * things at different heights. */
             mh->addbutton->align_next_to = mh->keybox;
             ctrl_columns(s, 1, 100);
+
+            /* KiTTY: an unknown key stored without a question, a changed one
+             * never (ssh/common.c verify_ssh_host_key) */
+            s = ctrl_getset(b, "Connection/SSH/Host keys", "acceptnew", NULL);
+            ctrl_checkbox(s, KT_HOST_KEYS_ACCEPT_NEW, 'n',
+                          HELPCTX(kitty_ssh_acceptnew), conf_checkbox_handler,
+                          I(CONF_ssh_accept_new_hostkeys));
         }
 
         /*

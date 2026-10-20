@@ -3164,6 +3164,15 @@ leaves the store alone. Several rows can be selected for any of the
 three. Nothing is written without a click. The whole store, with the
 same check for every stored key, is on \k{kitty-cfg-host-keys}.
 
+\S{config-ssh-kitty-accept-new} \q{Accept new host keys} (KiTTY++)
+
+A host key not in the store yet is stored without the question and
+recorded in the Event Log: trust on first use, as OpenSSH's
+\c{accept-new}. A changed key is never accepted this way: the usual
+warning follows, and under \c{-batch} the connection ends. For one run:
+\c{-accept-new} (\k{using-cmdline-accept-new}); for every session:
+\c{autostoresshkey=yes} in \c{[KiTTY]} of \c{kitty.ini}.
+
 \H{config-ssh-encryption} The Cipher panel
 
 KiTTY++ supports a variety of different \i{encryption algorithm}s, and

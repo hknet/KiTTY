@@ -141,4 +141,9 @@ void kitty_masterpwfile_apply(const char *shown, Filename *fn);
 void kitty_masterpwfile_prescan(void);
 void kitty_set_portable_password_protection(const char *mode);
 
+/* "Comment out defaults" in one registry session (windows/storage.c): each
+ * value equal to defkey's is deleted; the count, or -1 when one could not
+ * be. Windows-only (HKEY), so here rather than in kitty_storage.h. */
+int kitty_reg_delete_defaults(HKEY k, HKEY defkey);
+
 #endif /* KITTY_SECRETSTORE_H */

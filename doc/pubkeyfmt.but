@@ -324,340 +324,70 @@ the HMAC-SHA-256 key.
 
 \H{ppk-hello} Windows Hello protection: the \c{.hello} file
 
-This section documents an addition made by KiTTY++. It is not part of
-the PPK format. A key protected with Windows Hello is an ordinary
-encrypted PPK file as described above. The material that opens it is
-kept in a second file beside it, the \e{sidecar}.
+This is a KiTTY++ addition, not part of the PPK format. A protected
+key is an ordinary encrypted PPK file whose passphrase is a random
+32-byte secret in its printed form. The \e{sidecar} beside it holds
+that secret encrypted once for each way of opening the key (a
+\e{door}). kageant writes a protected copy (default \c{id-hello.ppk}
+for \c{id.ppk}) and never rewrites the source; kittygen writes one
+when Windows Hello protection is selected, and deletes the sidecar
+when it saves an unprotected key over a protected file. kageant,
+kittygen and kitty.exe read the sidecar. klink, kscp and ksftp do
+not, so there only the printed secret opens the key; kitty.exe passes
+a protected key to kscp, ksftp and WinSCP only through kageant.
 
-\S{ppk-hello-overview} Overview
-
-To protect a key, KiTTY++ generates a random 32-byte secret with the
-system random number generator. The PPK file is saved with the
-\e{printed secret} (the text form of that secret, see
-\k{ppk-hello-printed}) as its passphrase. The sidecar holds the same
-secret, encrypted separately for each way of opening the key. This
-section calls each such encrypted copy a \e{door}. There are three
-kinds:
-
-\b A \e{W door} opens through Windows Hello with a passkey (a WebAuthn
-platform credential) of one Windows account on one computer. A sidecar
-can hold several W doors, one for each account and computer that was
-added.
-
-\b An \e{H door} opens through Windows Hello with a Windows Hello key
-credential (\cw{KeyCredentialManager}). KiTTY++ writes an H door only
-where the passkey route is unavailable.
-
-\b An \e{R door} opens with a typed recovery passphrase or with a
-recovery code. A sidecar can hold several R doors.
-
-The printed secret is not stored in the sidecar. It is the passphrase
-of the PPK file itself, so it opens the key in any program that reads
-PPK files, with or without the sidecar.
-
-The PPK file is written with the PPK parameters of the program that
-writes it (kageant uses the defaults: format version 3 with Argon2id).
-Its encryption type is always \cq{aes256-cbc}, because the printed
-secret is never empty.
-
-The KiTTY++ programs handle protected keys as follows:
-
-\b kageant writes a protected \e{copy} of a key. It never rewrites the
-source file. The default file name of the copy is the source file name
-with \c{-hello} inserted before the extension, for example
-\c{id-hello.ppk} for \c{id.ppk}.
-
-\b kittygen writes a protected key when it saves a key with Windows
-Hello protection selected. Its \q{Windows Hello doors} dialog adds or
-removes W doors.
-
-\b kittygen-cli writes a protected key with only an R door (see
-\k{ppk-hello-cli}).
-
-\b kageant, kittygen and kitty.exe read the sidecar. They try Windows
-Hello first. Their passphrase prompts accept the other doors (see
-\k{ppk-hello-open}).
-
-\b klink, kscp and ksftp do not read the sidecar. To them a protected
-key is an ordinary encrypted PPK file, which the printed secret opens
-at their passphrase prompt. kitty.exe does not pass a protected key
-file to kscp, ksftp or WinSCP. Such transfers use the key through
-kageant.
-
-\S{ppk-hello-file} File name and outer layer
-
-The file name of the sidecar is the full file name of the key file
-with \c{.hello} appended, in the same directory. For \c{id-hello.ppk}
-it is \c{id-hello.ppk.hello}. The programs find the sidecar by this
-file name alone. Neither file records the name or location of the
-other.
-
-The sidecar is a text file holding a single line, the \e{container}
-(\k{ppk-hello-container}). It is ASCII text terminated by CR+LF (unlike
-the PPK file, which uses LF). Readers remove trailing CR, LF, space and
-tab characters. A sidecar that is empty, 1 MiB or larger, or whose
-text is not a valid container is treated as unreadable.
-
-\S{ppk-hello-container} The container
-
-The container is the marker \cq{HELLOK1:} followed by one or more
-fields, separated by \cq{.} characters:
+The sidecar is the key file name plus \c{.hello}, in the same folder
+(\c{id-hello.ppk.hello}): one line of ASCII text, ending in CR+LF,
+smaller than 1 MiB.
 
 \c HELLOK1:field.field.field
 \e         bbbbb bbbbb bbbbb
 
-The first character of each field gives its kind: \cq{W}, \cq{H} or
-\cq{R}. Readers skip fields of any other kind, which leaves room for
-later additions. W and R fields can occur more than once. A container
-is valid when it holds at least one W, H or R field. Readers locate
-fields by kind, not by position.
+Each field starts with its kind, \cq{W}, \cq{H} or \cq{R}; W and R
+may repeat, unknown kinds are skipped. Binary values are base64 (RFC
+4648). Every \e{blob} is 60 bytes: a 12-byte random nonce, the secret
+encrypted with AES-256-GCM (additional authenticated data: the 8
+bytes \cq{HELLOK1:}) and the 16-byte tag. The AES key is the door's
+key-encryption key (KEK):
 
-Binary values in the fields are base64-encoded as in the PPK file
-(\W{https://www.rfc-editor.org/rfc/rfc4648}{RFC 4648}), without line
-breaks. The base64 alphabet contains neither \cq{.} nor \cq{,}, so
-those characters work as separators.
-
-\S{ppk-hello-blob} The wrapped secret
-
-Every door holds the secret as a 60-byte \e{blob}:
-
-\b 12 bytes: a random nonce.
-
-\b 32 bytes: the secret, encrypted with AES-256 in GCM mode.
-
-\b 16 bytes: the GCM authentication tag.
-
-The encryption is standard AES-256-GCM with the nonce as its 96-bit
-IV. The additional authenticated data is the 8 ASCII bytes
-\cq{HELLOK1:}, colon included. The 32-byte AES key is the door's
-\e{key-encryption key} (KEK). Each door type derives its KEK
-differently, as described below. Every blob gets a fresh nonce from
-the system random number generator. A reader verifies the tag before
-it decrypts. A wrong KEK or a modified blob fails that check.
-
-\S{ppk-hello-w} W field: passkey door
-
-\c Wcredential-id,blob
-\e  bbbbbbbbbbbbb bbbb
-\c Wcredential-id,blob,owner
-\e  bbbbbbbbbbbbb bbbb bbbbb
-
-\s{credential-id} is the base64 encoding of the WebAuthn credential ID
-of the passkey. \s{blob} is the base64 encoding of the wrapped secret.
-\s{owner} is optional. It is the base64 encoding of a text label for
-the Windows account and computer that wrote the door, built from the
-\cw{USERDOMAIN} environment variable, the user name and the computer
-name. Readers only display that label. They select a W door by its
-credential ID.
-
-The passkey is a credential of the Windows platform authenticator,
-used through \cw{webauthn.dll} (WebAuthn API version 6 or later). Its
-relying party ID is \cq{kapper.net kitty++} and its user ID is the
-ASCII bytes \cq{kitty.hello.keys}. It is created with the CTAP
-\cq{hmac-secret} extension, platform attachment and user verification
-required. Before it creates a passkey, KiTTY++ searches the platform
-credential list for that relying party ID and uses the first
-credential found. It creates a new passkey only when that search finds
-none.
-
-The KEK of a W door is the SHA-256 hash of the 32-byte
-\cq{hmac-secret} output of a WebAuthn assertion with the passkey. The
-assertion requires user verification, which is the Windows Hello
-prompt. Its salt is fixed: the 21 ASCII bytes
-\cq{KiTTY PRF KEK salt v1} followed by 11 zero bytes, passed to the
-authenticator as a raw salt.
-
-To open a container, a reader looks up the passkey of the current
-Windows account in the platform credential list. It tries only a W
-field with the same credential ID. W fields of other accounts or
-computers are never tried.
-
-\S{ppk-hello-h} H field: key credential door
-
+\c Wcredential-id,blob[,owner]
 \c Hblob
-\e  bbbb
+\c Rmemory,passes,parallelism,salt,blob[,c]
 
-\s{blob} is the base64 encoding of the wrapped secret. Its KEK comes
-from a Windows Hello key credential with the name
-\cq{kapper.net.KiTTY}, used through the WinRT class
-\cw{Windows.Security.Credentials.KeyCredentialManager}. KiTTY++ signs
-the fixed ASCII string
+\b W: KEK = SHA-256 of the \cq{hmac-secret} output of a WebAuthn
+assertion, with user verification, by a platform passkey of relying
+party \cq{kapper.net kitty++}; salt = the ASCII bytes \cq{KiTTY PRF
+KEK salt v1} plus 11 zero bytes. One per Windows account and computer;
+\e{owner} is a display label for them.
 
-\c KiTTY Windows Hello KEK challenge, container format HELLOK1
+\b H (only where passkeys are unavailable): KEK = SHA-256 of the
+signature by the Windows Hello key credential \cq{kapper.net.KiTTY}
+(\cw{KeyCredentialManager}) over the ASCII string \cq{KiTTY Windows
+Hello KEK challenge, container format HELLOK1}.
 
-with \cw{RequestSignAsync}, which shows the Windows Hello prompt. The
-KEK is the SHA-256 hash of the signature. This derivation depends on
-the credential producing the same signature for the same input every
-time. The KiTTY++ source documents this as a property of the RSA
-PKCS#1 v1.5 signatures these credentials make.
+\b R: KEK = 32-byte Argon2id output over the recovery passphrase or,
+with \cq{,c}, the recovery code, using the recorded parameters (memory
+in Kbyte), the 16-byte salt and empty secret key and associated data.
 
-When it writes an H door, KiTTY++ opens the existing credential of
-that name. It creates the credential (with the \cw{FailIfExists}
-option) only when none exists. It never replaces an existing
-credential. When it reads an H door, it opens the existing credential
-and never creates one. Readers use the first H field of a container.
+The \e{printed secret} is the secret as 8 groups of 8 upper-case hex
+digits plus a 4-digit check group (first 2 bytes of its SHA-256). The
+optional \e{recovery code} is \cq{KRC1}, 8 groups of 4 hex digits (16
+random bytes) and a 2-digit check group (first byte of their SHA-256).
+Groups are joined by \cq{-}; readers ignore case, dashes and spaces.
 
-\S{ppk-hello-r} R field: recovery door
+\S{ppk-hello-recover} Recovery
 
-\c Rmemory,passes,parallelism,salt,blob
-\e  bbbbbb bbbbbb bbbbbbbbbbb bbbb bbbb
-\c Rmemory,passes,parallelism,salt,blob,c
-\e  bbbbbb bbbbbb bbbbbbbbbbb bbbb bbbb
-
-\s{memory}, \s{passes} and \s{parallelism} are decimal Argon2
-parameters, with memory in Kbyte as in \k{ppk-outer}. \s{salt} is the
-base64 encoding of a 16-byte random salt. \s{blob} is the base64
-encoding of the wrapped secret. A trailing \cq{,c} marks a door keyed
-on a recovery code (\k{ppk-hello-printed}) rather than on a typed
-recovery passphrase. Readers ignore any other trailing tag. The two
-forms are identical in their cryptography.
-
-The KEK of an R door is the 32-byte output of Argon2id over the
-recovery passphrase or recovery code text, with the salt and
-parameters recorded in the field. The Argon2 secret key and associated
-data are empty strings. KiTTY++ currently writes 65536 Kbyte of
-memory, 3 passes and a parallelism of 4. A reader uses the recorded
-values, so a later change of these values does not lock out older
-sidecars. It checks the recorded values for legality before it runs
-Argon2 and refuses the door if they fail that check.
-
-A reader tries the typed text on every R field in turn. Only the door
-keyed on that text passes the tag check.
-
-The R door is optional. In kageant, the recovery passphrase is either
-the existing passphrase of the source key or a separately typed one.
-kittygen uses the passphrase typed in its passphrase fields. Both
-write a sidecar without an R door only after a warning, when the user
-chooses to give no recovery passphrase.
-
-\S{ppk-hello-printed} Printed secret and recovery code
-
-The \e{printed secret} is the 32-byte secret as 64 upper-case
-hexadecimal digits in 8 groups of 8 digits, followed by a check group
-of 4 digits. The check group holds the first 2 bytes of the SHA-256
-hash of the secret. The groups are separated by \cq{-}. This text is
-the literal passphrase of the PPK file. Readers accept either case
-and ignore dashes, spaces and tabs. They verify the check group. They
-convert accepted text back into the exact form above before they use
-it as a passphrase.
-
-The \e{recovery code} is an optional printout that opens the key only
-together with its sidecar. kageant and kittygen offer it as an
-alternative to the printed secret. With that choice, the printed
-secret is not displayed. The passphrase of the PPK file is then shown
-nowhere and written to no file. The code is 16 random bytes,
-written as \cq{KRC1}, then 8 groups of 4 upper-case hexadecimal
-digits, then a check group of 2 digits holding the first byte of the
-SHA-256 hash of the 16 bytes. The groups are separated by \cq{-}.
-Readers require the \cq{KRC1} prefix. They accept either case and
-ignore dashes, spaces and tabs. They verify the check group. The code
-text in the exact form above is the passphrase of an R door marked
-\cq{,c}.
-
-\S{ppk-hello-open} Opening a protected key
-
-kageant, kittygen and kitty.exe treat a key file as protected when a
-sidecar for it exists. They open it in these steps:
-
-\n Windows Hello. If the container holds a W field whose credential ID
-matches the passkey of the current account, the reader derives that
-door's KEK (a Windows Hello prompt) and opens it. Otherwise, if the
-container holds an H field, the reader derives the KEK of the H door
-from the existing key credential. The secret it recovers is converted
-into the printed secret, which then decrypts the PPK file.
-
-\n The passphrase prompt. If the Windows Hello step fails, is
-cancelled or finds no door for the current account, the reader shows
-its passphrase prompt. When the container holds no door for the
-current account, kageant first displays a message that lists the
-owners of the doors in the container. The prompt accepts these forms
-of text:
-
-\lcont{
-
-\b A recovery code (text with the \cq{KRC1} prefix). It opens the R
-door keyed on it.
-
-\b Text in the printed-secret format. The reader first tries it as the
-passphrase of an R door, because recovery codes written by earlier
-KiTTY++ builds had that format. If no R door opens, it uses the text
-as the PPK passphrase.
-
-\b Any other text. The reader tries it as the recovery passphrase of
-each R door. If no R door opens, it uses the text unchanged as the PPK
-passphrase.
-
-}
-
-\n Decryption. The PPK file is decrypted with the resulting
-passphrase as described in \k{ppk-keys}. If a secret from the sidecar
-does not decrypt the PPK file (for example a sidecar that belongs to a
-different key), the reader falls back to the passphrase prompt.
-
-\S{ppk-hello-doors} Adding and removing doors
-
-A W door for a further Windows account or computer is added from that
-account, after the key was opened through another door. kageant
-offers this after an R door opened the key. kittygen does it from its
-\q{Windows Hello doors} dialog, which accepts the recovery passphrase,
-a recovery code or the printed secret. Adding a door needs the printed
-secret and a Windows Hello prompt, plus the passkey creation flow of
-Windows when the current account has no passkey yet. Only W doors are
-added this way. The new W field is appended to the container. The
-existing text is kept byte for byte. A container that already holds a
-W door for the passkey of the current account stays unchanged.
-
-Removing a W door needs no secret: the kittygen dialog deletes the W
-field from the container text. It refuses to remove the last door of
-a container. The R door, the H door and the printed secret cannot be
-removed in that dialog.
-
-\S{ppk-hello-moving} Copies, other computers and a lost sidecar
-
-\b A copied or moved protected key needs its sidecar beside it, with
-the file name of the new key file plus \c{.hello}. The container is
-not bound to a path or to the content of the PPK file. When kageant
-copies a protected key file, it copies the sidecar with it. If the
-sidecar does not copy, kageant deletes the key copy it just made.
-
-\b On another computer or for another Windows account, the W and H
-doors of a sidecar do not open. The passkey of a W door belongs to the
-account and computer that created it. The KiTTY++ source documents the
-key credential of an H door as reproducible only on the computer and
-account that hold it. The R door and the printed secret open the key
-there. A W door for that account can then be added
-(\k{ppk-hello-doors}).
-
-\b The KiTTY++ source documents the R door as the door that survives
-the loss of the computer, a new Windows Hello enrolment or a reset of
-the TPM. The printed secret survives these as well.
-
-\b Without its sidecar, or with an unreadable one, the key file is an
-ordinary encrypted PPK file. Only the printed secret opens it. A
-recovery passphrase or recovery code has no use without the sidecar.
-
-\b When kittygen saves a key without Windows Hello protection over a
-protected key file, it deletes the sidecar of that file.
-
-\S{ppk-hello-cli} kittygen-cli
-
-The kittygen-cli option \c{\-\-hello-recovery} \e{file} saves the
-output key protected. The recovery passphrase is read from \e{file} and must
-not be empty. kittygen-cli writes a sidecar with a single R door and
-shows no Windows Hello prompt. It writes the printed secret to
-standard output once. It refuses \c{\-\-new-passphrase} together with
-this option. W doors can be added later on a computer with Windows
-Hello (\k{ppk-hello-doors}).
-
-\S{ppk-hello-versions} Versions
-
-\cq{HELLOK1} is the only container version. The fixed H challenge
-string and the fixed W salt belong to this version: the KiTTY++
-source requires a new marker for a change to either. Readers ignore
-unknown field kinds and unknown trailing tags on R fields, so later
-additions can stay within this version. Recovery codes written by
-earlier KiTTY++ builds used the printed-secret format instead of the
-\cq{KRC1} form. Readers still accept them (\k{ppk-hello-open}).
+A reader tries Windows Hello first (the W door of the current account,
+else the H door). If that fails or is cancelled, its passphrase prompt
+accepts the recovery passphrase, the recovery code or the printed
+secret. W and H doors open only for the account and computer that
+wrote them, and not after a new Hello enrolment or a TPM reset. After
+the key was opened there, a W door for the current account can be
+added (kageant offers it; kittygen: \q{Windows Hello doors}, which
+also removes W doors but never the last door). A copied key needs its sidecar under the new name plus
+\c{.hello}; without it only the printed secret opens the key.
+kittygen-cli \c{\-\-hello-recovery} \e{file} writes a sidecar with a
+single R door and prints the printed secret.
 
 \H{ppk-old} Older versions of the PPK format
 

@@ -29,6 +29,17 @@
 #include "kitty_inikeys.h"
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
+#include "kitty_hostkey_acceptnew.h"
+
+/* accept-new's record on standard error. Under -v the Event Log line is
+ * printed there already (console_eventlog). */
+static void console_accept_new_report(const char *line)
+{
+    if (cmdline_verbose())
+        return;
+    fprintf(stderr, "%s\n", line);
+    fflush(stderr);
+}
 
 void kitty_console_store_init(void)
 {
@@ -78,6 +89,15 @@ void kitty_console_store_init(void)
     /* the settings travel with the program (folder store, or savemode=file):
      * the log default stays beside it, as in kitty.exe */
     kitty_set_log_default_beside_program(!ini.registry_authoritative);
+
+    /* [KiTTY] autostoresshkey=yes: accept-new for every session. kitty.ini
+     * only, as kitty.exe reads it (kitty_params.c). */
+    {
+        char v[16] = "";
+        kitty_inifile_read(KI_SECTION_KITTY, KI_AUTOSTORESSHKEY, v, sizeof(v));
+        kitty_hostkey_accept_new_set_all(!stricmp(v, "yes"));
+    }
+    kitty_hostkey_accept_new_set_report(console_accept_new_report);
 
     /* -masterpwfile before ANY argument is processed (cmdline.c). After the
      * store setup above: the PortablePasswordProtection conflict needs it. */

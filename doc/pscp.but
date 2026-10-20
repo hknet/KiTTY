@@ -66,6 +66,8 @@ use kscp:
 \c             disconnect if SSH authentication succeeds trivially
 \c   -hostkey keyid
 \c             manually specify a host key (may be repeated)
+\c   -accept-new
+\c             store an unknown host key without a prompt
 \c   -batch    disable all interactive prompts
 \c   -no-sanitise-stderr
 \c             don't strip control chars from standard error

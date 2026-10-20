@@ -2891,8 +2891,19 @@ kept there included, which is why ticking the box requires a confirmation first.
 It applies to stored sessions in both stores, to session files opened
 directly (\c{-kload}, a double-click) and to klink, kscp and ksftp. Saving
 such a session writes every field, so it becomes a full session and no
-longer inherits: a later change to Default Settings does not reach it.
+longer inherits: a later change to Default Settings does not reach it -
+unless \q{Save only non-default settings} is on.
 \c{kitty.ini}: \c{[KiTTY] inheritdefaultsettings}.
+
+\b \q{Save only non-default settings} (only with \q{Inherit Default
+Settings}): a session save writes only what differs from Default
+Settings; a value set back to the default is commented out
+(\c{# TermWidth=80}). Default Settings and exports stay whole.
+\q{Comment out defaults} applies this once to every session (registry
+store: deletes the default values). Old KiTTY, PuTTY or a copy with
+Inherit off read missing keys with their own defaults. A line starting
+with \c{#} or \c{;} is never a setting. \c{kitty.ini}: \c{[KiTTY]
+saveonlynondefaultsettings}.
 
 \b \q{Registry backups to keep} is how many timestamped \c{.sav}
 exports of the hive an installed copy keeps; in a folder store the
@@ -2987,7 +2998,7 @@ which is why it is here and not on the Automation panel. The password
 in those lines is blanked; host, user and paths are not. It is
 \c{debug} under \c{[KiTTY]} in \c{kitty.ini}.
 
-\S{kitty-cfg-missing-features} \q{Report in the terminal what features this Windows Installation does not support}
+\S{kitty-cfg-missing-features} \q{Report missing Windows features in terminal}
 
 KiTTY++ runs on old versions of Windows deliberately. The features that need a
 recent one - dark mode, Windows Hello, per-monitor DPI scaling, keeping
@@ -3013,6 +3024,12 @@ sign-on, and one whose Winsock has no \c{getaddrinfo} resolves names over IPv4
 only - which otherwise shows up as a host that is simply unreachable.
 
 Stored per installation, as \c{warnmissingfeatures} in \c{kitty.ini}.
+
+\S{kitty-cfg-event-viewer} \q{KiTTY++ Event Viewer}
+
+Opens the Windows Application log filtered to KiTTY++ entries (Windows
+XP: unfiltered). With the system MSI installed, entries show their text
+only.
 
 \S{kitty-cfg-host-cas} The Certificate Authorities panel
 

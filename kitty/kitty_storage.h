@@ -101,6 +101,15 @@ void kitty_settings_r_raw_secrets(settings_r *handle);
 void kitty_set_inherit_default_settings(int on);
 int kitty_inherit_default_settings(void);
 void kitty_settings_r_inherit(settings_r *handle, const char *sessionname);
+/* kitty.ini saveonlynondefaultsettings: with inheritdefaultsettings on, a
+ * session save writes only what differs from Default Settings (defsession:
+ * the session read as the defaults - Default Settings), and "Comment out
+ * defaults" (windows/storage.c). Returns the sessions changed. */
+void kitty_set_save_only_nondefault(int on);
+int kitty_save_only_nondefault(void);
+void kitty_settings_w_nondefault(settings_w *handle, const char *defsession);
+void kitty_settings_w_save_rules(settings_w *handle, const char *section);
+int kitty_store_comment_out_defaults(const char *defsession, int *nfailed);
 /* Session Lockdown: the session's own switch, and writing it alone. */
 int kitty_session_locked(const char *sessionname);
 int kitty_session_set_lockdown(const char *sessionname, int on);
@@ -146,6 +155,12 @@ char *ksf_unmunge(const char *in);                /* snewn'd */
 char *ksf_list_get(struct ksf_item *h, const char *key);  /* borrowed/NULL */
 void ksf_list_set(struct ksf_item **h, const char *key, const char *val);
 void ksf_list_del(struct ksf_item **h, const char *key);  /* retire a renamed key */
+/* Save only non-default settings: a save against Default Settings' value
+ * (def), and "Comment out defaults" over one list (kitty_storage.c). */
+void ksf_list_set_nondefault(struct ksf_item **h, const char *key,
+                             const char *val, const char *def);
+int ksf_list_comment_defaults(struct ksf_item *h, struct ksf_item *defs,
+                              int (*skip)(const char *key));
 void ksf_list_free(struct ksf_item *h);
 void kitty_set_config_dir(const char *dir);
 char *portable_proxies_dir(void);   /* <configdir>\Proxies, snewn'd or NULL */

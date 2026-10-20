@@ -1176,6 +1176,14 @@ fingerprint, or an SSH-2 public key blob. See
 You can specify this option more than once if you want to configure
 more than one key to be accepted.
 
+\S2{using-cmdline-accept-new} \i\c{\-accept-new}: store a new host
+key without a prompt
+
+An unknown SSH host key is stored without the question and recorded:
+in the Event Log, and on standard error in klink, kscp and ksftp. A
+changed key is never accepted this way. See
+\k{config-ssh-kitty-accept-new}.
+
 \S2{using-cmdline-pgpfp} \i\c{\-pgpfp}: display \i{PGP key fingerprint}s
 
 This option causes the KiTTY++ tools not to run as normal, but instead

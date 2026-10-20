@@ -47,6 +47,7 @@
 #include <shlobj.h>                   /* SHGetFolderPathA: the Desktop and the Start menu */
 #include "kitty_storemove.h"
 #include "kitty_store.h"   /* kitty_store_hostkey_rename */
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: the Event Viewer view file */
 #include "kitty_mpw.h"
 #include "kitty_config.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
@@ -1275,6 +1276,41 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * when a window opens: a change reaches the windows opened after it. The
  * Event Log entry is written whatever this is set to - the checkbox governs
  * the interruption, not the record. */
+/* Application > Security > KiTTY++ Event Viewer: the Application log, with a
+ * custom view of the source kitty_eventlog_line writes under. The view is a
+ * file in the temp folder handed to eventvwr /v: (Vista on); Windows XP's
+ * Event Viewer takes no view, so there - or when the view cannot be written
+ * or started - the whole log opens. */
+static void kitty_eventviewer_open(HWND owner)
+{
+    static const char view[] =
+        "<ViewerConfig><QueryConfig><QueryParams><UserQuery/></QueryParams>"
+        "<QueryNode><Name>" KT_CAP_KITTYPP "</Name><QueryList>"
+        "<Query Id=\"0\" Path=\"Application\"><Select Path=\"Application\">"
+        "*[System[Provider[@Name='" KT_RENAME_GUARD_TITLE "']]]"
+        "</Select></Query></QueryList></QueryNode></QueryConfig></ViewerConfig>";
+    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
+    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+
+    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp)) {
+        snprintf(path, sizeof(path), "%sKiTTYpp-events.xml", tmp);
+        snprintf(args, sizeof(args), "/v:\"%s\"", path);
+        if (kitty_write_file_whole(path, view, sizeof(view) - 1) &&
+            (INT_PTR)ShellExecuteA(owner, "open", "eventvwr.exe", args, NULL,
+                                   SW_SHOWNORMAL) > 32)
+            return;
+    }
+    ShellExecuteA(owner, "open", "eventvwr.msc", NULL, NULL, SW_SHOWNORMAL);
+}
+
+static void kitty_eventviewer_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                      void *data, int event)
+{
+    (void)ctrl; (void)data;
+    if (event == EVENT_ACTION)
+        kitty_eventviewer_open(dlg->hwnd);
+}
+
 static void kitty_warnfeatures_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                        void *data, int event)
 {
@@ -1854,6 +1890,8 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     s = ctrl_getset(b, "Application/Security", "diag", KT_SECURITY_DIAGNOSTICS);
     ctrl_checkbox(s, KT_KSET_TW_DEBUG, NO_SHORTCUT, HELPCTX(kitty_verifyagent),
                   kitty_kset_handler, P((void *)kset_find(KI_DEBUG)));
+    ctrl_pushbutton(s, KT_SECURITY_EVENT_VIEWER, NO_SHORTCUT,
+                    HELPCTX(kitty_event_viewer), kitty_eventviewer_handler, P(NULL));
 
     if (has_ca_config_box) {
         ctrl_settitle(b, "Application/Security/Certificate Authorities",
@@ -4365,6 +4403,7 @@ static void kitty_sp_suffix_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * every session that leaves them out. In effect at once for this process
  * (windows/storage.c); a write that fails leaves the tick as it was and is
  * reported by WriteParameter. */
+static dlgcontrol *ksp_nondefault_cb = NULL, *ksp_comment_btn = NULL;
 static void kitty_sp_inherit_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                      void *data, int event)
 {
@@ -4387,7 +4426,61 @@ static void kitty_sp_inherit_handler(dlgcontrol *ctrl, dlgparam *dlg,
             kitty_set_inherit_default_settings(on);
         else
             dlg_checkbox_set(ctrl, dlg, kitty_inherit_default_settings() != 0);
+        /* the two beneath it follow (greyed without it) */
+        if (ksp_nondefault_cb)
+            dlg_refresh(ksp_nondefault_cb, dlg);
+        if (ksp_comment_btn)
+            dlg_refresh(ksp_comment_btn, dlg);
     }
+}
+
+/* Save only non-default settings - kitty.ini [KiTTY]
+ * saveonlynondefaultsettings (windows/storage.c) - and "Comment out
+ * defaults", both only while Inherit Default Settings is on: without it a
+ * key left out reads as the built-in default. Ticking the box rewrites no
+ * session; the button does, once for every session, after the backup. */
+static void kitty_sp_nondefault_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        dlg_checkbox_set(ctrl, dlg, kitty_save_only_nondefault() != 0);
+        kitty_dlg_enable(ctrl, dlg, kitty_inherit_default_settings() != 0);
+    } else if (event == EVENT_VALCHANGE) {
+        bool on = dlg_checkbox_get(ctrl, dlg);
+        if (WriteParameter(INIT_SECTION, KI_SAVEONLYNONDEFAULTSETTINGS, on ? "yes" : "no"))
+            kitty_set_save_only_nondefault(on);
+        else
+            dlg_checkbox_set(ctrl, dlg, kitty_save_only_nondefault() != 0);
+    }
+}
+
+static void kitty_sp_comment_defaults_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                              void *data, int event)
+{
+    extern int kitty_backup_before(HWND owner, int own_report);
+    extern char *kitty_backup_not_done(void);
+    HWND owner;
+    char *msg;
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        kitty_dlg_enable(ctrl, dlg, kitty_inherit_default_settings() != 0);
+        return;
+    }
+    if (event != EVENT_ACTION || !kitty_inherit_default_settings())
+        return;
+    owner = kitty_cfg_modal_owner();
+    if (!kitty_backup_before(owner, 1)) {
+        msg = kitty_backup_not_done();
+    } else {
+        int failed = 0;
+        int n = kitty_store_comment_out_defaults(KITTY_DEFAULT_SESSION, &failed);
+        msg = failed ? dupprintf(KT_SP_COMMENT_DEFAULTS_FAILED, n, failed)
+                     : dupprintf(KT_SP_COMMENT_DEFAULTS_DONE, n);
+        kitty_config_session_store_changed();
+    }
+    kitty_info_modeless(owner, KT_CAP_KITTYPP, msg, NULL, NULL);
+    sfree(msg);
 }
 
 static void kitty_sp_suffix_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
@@ -4812,6 +4905,17 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SP_INHERIT_LABEL, NO_SHORTCUT, HELPCTX(kitty_storage),
                   kitty_sp_inherit_handler, P(NULL));
     ctrl_text(s, KT_SP_INHERIT_HELP, HELPCTX(kitty_storage));
+    ctrl_columns(s, 2, 60, 40);
+    ksp_nondefault_cb = ctrl_checkbox(s, KT_SP_NONDEFAULT_LABEL, NO_SHORTCUT,
+                                      HELPCTX(kitty_storage),
+                                      kitty_sp_nondefault_handler, P(NULL));
+    ksp_nondefault_cb->column = 0;
+    ksp_comment_btn = ctrl_pushbutton(s, KT_SP_COMMENT_DEFAULTS, NO_SHORTCUT,
+                                      HELPCTX(kitty_storage),
+                                      kitty_sp_comment_defaults_handler, P(NULL));
+    ksp_comment_btn->column = 1;
+    ksp_comment_btn->align_next_to = ksp_nondefault_cb;
+    ctrl_columns(s, 1, 100);
     if (GetReadOnlyFlag())
         ctrl_text(s, KT_KSET_STORAGE_READONLY, HELPCTX(kitty_storage));
     if (GetNoKittyFileFlag())

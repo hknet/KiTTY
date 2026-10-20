@@ -114,7 +114,13 @@
     </StandardDirectory>
 
     <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
-      <Component><File Source="kitty.exe" /></Component>
+      <Component>
+        <File Id="kitty.exe" Source="kitty.exe" />
+        <!-- kitty.exe carries the message table of the "KiTTY++" event source
+             (windows/kitty_events.mc): the Event Viewer shows each entry's text
+             as written, also those of kageant, the tools and portable copies. -->
+        <util:EventSource Name="KiTTY++" Log="Application" EventMessageFile="[#kitty.exe]" />
+      </Component>
       <Component><File Source="klink.exe" /></Component>
       <Component><File Source="kscp.exe" /></Component>
       <Component><File Source="ksftp.exe" /></Component>

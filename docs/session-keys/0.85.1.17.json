@@ -1,0 +1,2109 @@
+{
+ "ANSIColour": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "AcceptBroadcast": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AddressFamily": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "AgentFwd": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AltF4": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "AltOnly": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AltSpace": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AlwaysOnTop": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "Answerback": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "AntiIdle": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "ApplicationCursorKeys": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ApplicationKeypad": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AuthGSSAPI": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "AuthGSSAPIKEX": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "AuthKI": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "AuthPlugin": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "AuthTIS": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "AutoWrapMode": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Autocommand": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "AutocommandOut": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "BCE": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "BackspaceIsDelete": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Beep": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "BeepInd": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BellOverload": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "BellOverloadN": {
+  "default": "5",
+  "kind": "int",
+  "values": null
+ },
+ "BellOverloadS": {
+  "default": "5000",
+  "kind": "int",
+  "values": null
+ },
+ "BellOverloadT": {
+  "default": "2000",
+  "kind": "int",
+  "values": null
+ },
+ "BellWaveFile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "BgImageAbsoluteX": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "BgImageAbsoluteY": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "BgImageFile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "BgImagePlacement": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1
+  ]
+ },
+ "BgImageStyle": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "BgOpacity": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "BgSlideshow": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "BgType": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BlinkCur": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "BlinkText": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "BoldAsColour": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1
+  ]
+ },
+ "BoldAsColourTest": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "BoldFont": {
+  "default": null,
+  "kind": "text",
+  "values": null
+ },
+ "BoldFontCharSet": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "BoldFontHeight": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "BoldFontIsBold": {
+  "default": null,
+  "kind": "bool",
+  "values": null
+ },
+ "BroadcastKey": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "BugChanReq": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugDeriveKey2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugDropStart": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   1,
+   2
+  ]
+ },
+ "BugFilterKexinit": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   1,
+   2
+  ]
+ },
+ "BugHMAC2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugIgnore1": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugIgnore2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugMaxPkt2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugOldGex2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugPKSessID2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugPlainPW1": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugRSA1": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugRSAPad2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugRSASHA2CertUserauth": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugRekey2": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "BugWinadj": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "CJKAmbigWide": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "CRImpliesLF": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "CapsLockCyr": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ChangeUsername": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "CheckUpdateStartup": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Cipher": {
+  "default": null,
+  "kind": "list",
+  "values": null
+ },
+ "ClipboardActivityMark": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ClipboardActivitySeconds": {
+  "default": "5",
+  "kind": "int",
+  "values": null
+ },
+ "ClipboardMarkAlways": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ClipboardMaxMB": {
+  "default": "16",
+  "kind": "int",
+  "values": null
+ },
+ "ClipboardNotify": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ClipboardRequireFocus": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ClipboardWritesPerSecond": {
+  "default": "10",
+  "kind": "int",
+  "values": null
+ },
+ "CloseOnExit": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "Colour0 ... Colour24": {
+  "default": null,
+  "kind": "rgb",
+  "values": null
+ },
+ "Comment": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "CommentNotify": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ComposeKey": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "Compression": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ConnectionSharing": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ConnectionSharingDownstream": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ConnectionSharingUpstream": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ContextFailNotice": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ContextRootFrame": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ContextRootTint": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "CtrlAltKeys": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "CtrlShiftCV": {
+  "default": "none",
+  "kind": "word",
+  "values": null
+ },
+ "CtrlShiftIns": {
+  "default": "explicit",
+  "kind": "word",
+  "values": null
+ },
+ "CtrlTabSwitch": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "CurType": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "DECOriginMode": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "DetachedCertificate": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "DisableAltGr": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "DisableArabicShaping": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "DisableBidi": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "DisableBracketedPaste": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "EnterSendsCrLf": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "Environment": {
+  "default": null,
+  "kind": "map",
+  "values": null
+ },
+ "EraseToScrollback": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "FailedCommandMarks": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "FailureReconnect": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "Far2lClientIds": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "Far2lImages": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "FileZillaOptions": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "FileZillaPasswordMode": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "FileZillaPort": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "FileZillaProtocol": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "Folder": {
+  "default": "Default",
+  "kind": "text",
+  "values": null
+ },
+ "Font": {
+  "default": null,
+  "kind": "text",
+  "values": null
+ },
+ "FontCharSet": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "FontHeight": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "FontIsBold": {
+  "default": null,
+  "kind": "bool",
+  "values": null
+ },
+ "FontQuality": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "FontVTMode": {
+  "default": "4",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "ForegroundOnBell": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "FullScreenOnAltEnter": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Fullscreen": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "GSSCustom": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "GSSLibs": {
+  "default": null,
+  "kind": "list",
+  "values": null
+ },
+ "GssapiFwd": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "GssapiRekey": {
+  "default": "2",
+  "kind": "int",
+  "values": null
+ },
+ "HideMousePtr": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "HostAlt": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "HostKey": {
+  "default": "ed25519,ecdsa,rsa,dsa,WARN",
+  "kind": "list",
+  "values": null
+ },
+ "HostName": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "HostNotify": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkBrowser": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "HyperlinkBrowserUseDefault": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkConfirm": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "HyperlinkHoverCursor": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkOSC8": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkPreview": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkRegularExpression": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "HyperlinkRegularExpressionUseDefault": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkScan": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "HyperlinkUnderline": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "HyperlinkUseCtrlClick": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "Icone": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "IconeFile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "ItermImages": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "KEX": {
+  "default": null,
+  "kind": "list",
+  "values": null
+ },
+ "KittyGraphics": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "KscpDragDrop": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "KscpDropTypePath": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "KscpPort": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "KscpProtocol": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "LFImpliesCR": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "LauncherGlobalHotkey": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "LauncherGlobalHotkeyEnabled": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "LauncherHide": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "LineCodePage": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "LineSpacing": {
+  "default": "100",
+  "kind": "int",
+  "values": null
+ },
+ "LinesAtAScroll": {
+  "default": "-1",
+  "kind": "int",
+  "values": null
+ },
+ "LinuxFunctionKeys": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "LocalEcho": {
+  "default": "2",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "LocalEdit": {
+  "default": "2",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "LocalPortAcceptAll": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "LocalUserName": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "LockSize": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "LogFileClash": {
+  "default": "-1",
+  "kind": "enum",
+  "values": [
+   -1,
+   0,
+   1
+  ]
+ },
+ "LogFileName": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "LogFlush": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "LogHeader": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "LogHost": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "LogKeepDays": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "LogKeepMB": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "LogTimeRotation": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "LogTimestamp": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "LogType": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "LoginShell": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Maximize": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "MouseAutocopy": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "MouseIsXterm": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "MouseOverride": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "MousePaste": {
+  "default": "explicit",
+  "kind": "word",
+  "values": null
+ },
+ "NetHackKeypad": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoAltScreen": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoApplicationCursors": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoApplicationKeys": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoDBackspace": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoFocusReporting": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoMouseReporting": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoPTY": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoRemoteCharset": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoRemoteClearScroll": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoRemoteResize": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "NoRemoteWinTitle": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "OSC52Clipboard": {
+  "default": "2",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "OSC52ClipboardRead": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1
+  ]
+ },
+ "OSC52ColourFrame": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "OSC52ReadDialogs": {
+  "default": "3",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52ReadInterval": {
+  "default": "2",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52ReadMax": {
+  "default": "200",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52ReadMinutes": {
+  "default": "10",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52ReadRequests": {
+  "default": "25",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52ReadTimeout": {
+  "default": "60",
+  "kind": "int",
+  "values": null
+ },
+ "OSC52TitleMark": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "OSC5522PasteMinutes": {
+  "default": "30",
+  "kind": "int",
+  "values": null
+ },
+ "OSC5522PasteTokenSeconds": {
+  "default": "10",
+  "kind": "int",
+  "values": null
+ },
+ "OSC7CwdTracking": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "OSXCommandMeta": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "OSXOptionMeta": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "PSCPKeepWindow": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "PSCPOptions": {
+  "default": "-r",
+  "kind": "text",
+  "values": null
+ },
+ "PSCPRemoteDir": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PSCPShell": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PassiveTelnet": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "Password": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PasteControls": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "PasteRTF": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "PingInterval": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "PingIntervalSecs": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "PortForwardings": {
+  "default": null,
+  "kind": "map",
+  "values": null
+ },
+ "PortKnocking": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PortNumber": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "PreConnectCommand": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PreferKnownHostKeys": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Present": {
+  "default": "1",
+  "kind": "int",
+  "values": [
+   1
+  ]
+ },
+ "PrintToClipboard": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "Printer": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "Protocol": {
+  "default": "ssh",
+  "kind": "word",
+  "values": null
+ },
+ "ProxyDNS": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "ProxyExcludeList": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "ProxyHost": {
+  "default": "proxy",
+  "kind": "text",
+  "values": null
+ },
+ "ProxyLocalhost": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ProxyLogToTerm": {
+  "default": "2",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "ProxyMethod": {
+  "default": null,
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ]
+ },
+ "ProxyPassword": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "ProxyPort": {
+  "default": "80",
+  "kind": "int",
+  "values": null
+ },
+ "ProxySelection": {
+  "default": "KITTY_PROXY_SESSION",
+  "kind": "text",
+  "values": null
+ },
+ "ProxyTelnetCommand": {
+  "default": "connect %host %port\\\\n",
+  "kind": "text",
+  "values": null
+ },
+ "ProxyUsername": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "PublicKeyFile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "PublicKeyFingerprint": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "RFCEnviron": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "RXVTHomeEnd": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "RawCNP": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ReconnectLogin": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "RectSelect": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "RekeyBytes": {
+  "default": "1G",
+  "kind": "text",
+  "values": null
+ },
+ "RekeyTime": {
+  "default": "60",
+  "kind": "int",
+  "values": null
+ },
+ "RememberWindowPos": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "RemoteCommand": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "RemoteCommandIsSubsystem": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "RemotePortAcceptAll": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "RemoteQTitleAction": {
+  "default": null,
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "ReportVT220": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "RewrapOnResize": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "RunCmdConfirm": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "RunCmdNotify": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "SCPAutoPwd": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SFTPConnect": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "SSH2DES": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SSHLogOmitData": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SSHLogOmitPasswords": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "SSHManualHostKeys": {
+  "default": null,
+  "kind": "map",
+  "values": null
+ },
+ "SSHTunnelInTitle": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SUPDUPCharset": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "SUPDUPLocation": {
+  "default": "The Internet",
+  "kind": "text",
+  "values": null
+ },
+ "SUPDUPMoreProcessing": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SUPDUPScrolling": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SaveOnExit": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ScriptCRLF": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "ScriptCharDelay": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptCondLine": {
+  "default": ":",
+  "kind": "text",
+  "values": null
+ },
+ "ScriptCondUse": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptEnable": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptExcept": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptHalt": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "ScriptLineDelay": {
+  "default": "5",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptMode": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptTimeout": {
+  "default": "15",
+  "kind": "int",
+  "values": null
+ },
+ "ScriptWait": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "Scriptfile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "ScriptfileContent": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "ScrollBar": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ScrollBarFullScreen": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ScrollOnDisp": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ScrollOnKey": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ScrollbackLines": {
+  "default": "2000",
+  "kind": "int",
+  "values": null
+ },
+ "ScrollbarOnLeft": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SelectedAsColour": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "SendToTray": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "SerialDataBits": {
+  "default": "8",
+  "kind": "int",
+  "values": null
+ },
+ "SerialFlowControl": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "SerialLine": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "SerialParity": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "SerialSpeed": {
+  "default": "9600",
+  "kind": "int",
+  "values": null
+ },
+ "SerialStopHalfbits": {
+  "default": "2",
+  "kind": "int",
+  "values": null
+ },
+ "SessionLockdown": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SetWindowPos": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ShadowBold": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "ShadowBoldOffset": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "SharedClipboard": {
+  "default": "2",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "ShiftedArrowKeys": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1
+  ]
+ },
+ "SixelImages": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "SshBanner": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "SshNoAuth": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SshNoShell": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SshNoTrivialAuth": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SshProt": {
+  "default": "3",
+  "kind": "enum",
+  "values": [
+   0,
+   3
+  ]
+ },
+ "SshWarnPreQuantum": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "StampUtmp": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "SunkenEdge": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "SyncOutputHoldMs": {
+  "default": "200",
+  "kind": "int",
+  "values": null
+ },
+ "TCPKeepalives": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TCPNoDelay": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "Tags": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "TaskbarProgress": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TelnetKey": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "TelnetRet": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TermHeight": {
+  "default": "24",
+  "kind": "int",
+  "values": null
+ },
+ "TermWidth": {
+  "default": "80",
+  "kind": "int",
+  "values": null
+ },
+ "TermXPos": {
+  "default": "-1",
+  "kind": "int",
+  "values": null
+ },
+ "TermYPos": {
+  "default": "-1",
+  "kind": "int",
+  "values": null
+ },
+ "TerminalModes": {
+  "default": null,
+  "kind": "map",
+  "values": null
+ },
+ "TerminalSpeed": {
+  "default": "38400,38400",
+  "kind": "text",
+  "values": null
+ },
+ "TerminalType": {
+  "default": "xterm-256color",
+  "kind": "text",
+  "values": null
+ },
+ "ToolsMenuFileZilla": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ToolsMenuGetFile": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ToolsMenuSendFile": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ToolsMenuWinSCP": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TransferAskDestination": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "TransferFullPath": {
+  "default": "-1",
+  "kind": "int",
+  "values": null
+ },
+ "TransferMaxMB": {
+  "default": "-1",
+  "kind": "int",
+  "values": null
+ },
+ "TransferPermission": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "TransparencyValue": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "TrueColour": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TryAgent": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "TryPalette": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "UTF8Override": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "UTF8linedraw": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "UnderlinedAsColour": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "UseSystemColours": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "UserName": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "UserNameFromEnvironment": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "WakeupReconnect": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "WarnOnClose": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WideBoldFont": {
+  "default": null,
+  "kind": "text",
+  "values": null
+ },
+ "WideBoldFontCharSet": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "WideBoldFontHeight": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "WideBoldFontIsBold": {
+  "default": null,
+  "kind": "bool",
+  "values": null
+ },
+ "WideFont": {
+  "default": null,
+  "kind": "text",
+  "values": null
+ },
+ "WideFontCharSet": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "WideFontHeight": {
+  "default": null,
+  "kind": "int",
+  "values": null
+ },
+ "WideFontIsBold": {
+  "default": null,
+  "kind": "bool",
+  "values": null
+ },
+ "WinNameAlways": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WinSCPOptions": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WinSCPPort": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WinSCPProtocol": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "WinSCPRawSettings": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WinTitle": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WindowBorder": {
+  "default": "1",
+  "kind": "int",
+  "values": null
+ },
+ "WindowClass": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WindowClosable": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WindowHasSysMenu": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WindowMaximizable": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WindowMinimizable": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "WindowName": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "WindowState": {
+  "default": "0",
+  "kind": "int",
+  "values": null
+ },
+ "WordNavModifier": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "Wordness0, Wordness32 ... Wordness224": {
+  "default": null,
+  "kind": "list",
+  "values": null
+ },
+ "X11AuthFile": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "X11AuthType": {
+  "default": "1",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
+ },
+ "X11Display": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "X11Forward": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
+ "Xterm256Colour": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "rzCommand": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "rzOptions": {
+  "default": "-e -v",
+  "kind": "text",
+  "values": null
+ },
+ "szCommand": {
+  "default": null,
+  "kind": "path",
+  "values": null
+ },
+ "szOptions": {
+  "default": "-e -v",
+  "kind": "text",
+  "values": null
+ },
+ "zDownloadDir": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
+ "zUploadDir": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ }
+}

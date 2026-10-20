@@ -56,6 +56,11 @@ struct settings_w {
     int mig_answer;   /* legacy->protected consent for THIS save: -1 unasked */
     char *legacy;     /* KiTTY: older file of this session, removed once saved */
     int raw_secrets;  /* KiTTY: .ktx export - passwords are the caller's (no protection here) */
+    /* KiTTY: save only non-default settings - Default Settings' stored
+     * values (defs: folder store, defkey: registry) */
+    int nd;
+    struct ksf_item *defs;
+    HKEY defkey;
 };
 
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
@@ -72,6 +77,9 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
         handle->is_file = 1;
         handle->items = NULL;
         handle->mig_answer = -1;
+        handle->nd = 0;
+        handle->defs = NULL;
+        handle->defkey = NULL;
         /* KiTTY (hknet/KiTTY#55, #56): the session is written to its path
          * with the suffix; an older file of it (no suffix, or the flat
          * pre-path name) is carried over and removed once the save is done.
@@ -150,6 +158,9 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     handle->items = NULL;
     handle->mig_answer = -1;
     handle->legacy = NULL;
+    handle->nd = 0;
+    handle->defs = NULL;
+    handle->defkey = NULL;
     return handle;
 }
 
@@ -163,6 +174,60 @@ static void ksf_or_reg_put(settings_w *handle, const char *key, const char *valu
         ksf_list_set(&handle->items, key, value ? value : "");
     else
         put_reg_sz(handle->sesskey, key, value);
+}
+
+/* KiTTY: save only non-default settings. Folder and SessionLockdown belong
+ * to the session, not to its settings; HostName and Protocol mark a file
+ * as a session (ksp_file_is_session): written as always. */
+static int kitty_nd_exempt(const char *key)
+{
+    return !strcmp(key, "Folder") || !strcmp(key, "SessionLockdown") ||
+        !strcmp(key, "HostName") || !strcmp(key, "Protocol");
+}
+
+/* The write of key under handle->nd: 1 done here, 0 written as always. The
+ * default is Default Settings' stored value; a key it lacks has none. The
+ * folder store keeps every line (ksf_list_set_nondefault); the registry has
+ * no comments: a value set back to the default is deleted, a default never
+ * written. only_default: a value other than the default is left to the
+ * caller. */
+static int kitty_nd_put(settings_w *handle, const char *key, const char *value,
+                        int is_int, int ival, int only_default)
+{
+    if (!handle->nd || kitty_nd_exempt(key))
+        return 0;
+    if (handle->is_file) {
+        const char *def = ksf_list_get(handle->defs, key);
+        if (!def || (only_default && strcmp(value, def)))
+            return 0;
+        ksf_list_set_nondefault(&handle->items, key, value, def);
+        return 1;
+    }
+    if (is_int) {
+        DWORD d, cur;
+        if (!get_reg_dword(handle->defkey, key, &d))
+            return 0;
+        if (get_reg_dword(handle->sesskey, key, &cur) && (int)cur == ival)
+            return 1;                   /* unchanged */
+        if ((int)d != ival)
+            return 0;
+    } else {
+        char *d = get_reg_sz(handle->defkey, key), *cur;
+        int same, isdef;
+        if (!d)
+            return 0;
+        cur = get_reg_sz(handle->sesskey, key);
+        same = cur && !strcmp(cur, value);
+        isdef = !strcmp(value, d);
+        sfree(d);
+        sfree(cur);
+        if (same)
+            return 1;
+        if (!isdef)
+            return 0;
+    }
+    RegDeleteValueA(handle->sesskey, key);
+    return 1;
 }
 
 void write_setting_s(settings_w *handle, const char *key, const char *value)
@@ -194,6 +259,13 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
         if (keep) {
             ksf_or_reg_put(handle, key, keep);
         } else {
+            /* Save only non-default settings: an empty password is the
+             * default where Default Settings stores an empty one. */
+            if (handle->nd && !(value && value[0]) &&
+                kitty_nd_put(handle, key, "", 0, 0, 1)) {
+                smemclr(plain, sizeof(plain));
+                return;
+            }
             /* Portable saves need consent before converting an old-format
              * (unmarked) stored password to a protected one; declining keeps
              * the pre-loaded stored value in handle->items untouched. */
@@ -248,20 +320,22 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
         smemclr(plain, sizeof(plain));
         return;
     }
-    ksf_or_reg_put(handle, key, value);
+    if (!kitty_nd_put(handle, key, value ? value : "", 0, 0, 0))
+        ksf_or_reg_put(handle, key, value);
 }
 
 void write_setting_i(settings_w *handle, const char *key, int value)
 {
+    char buf[32];
     if (!handle)
         return;
-    if (handle->is_file) {
-        char buf[32];
-        sprintf(buf, "%d", value);
+    sprintf(buf, "%d", value);
+    if (kitty_nd_put(handle, key, buf, 1, value, 0))
+        return;
+    if (handle->is_file)
         ksf_list_set(&handle->items, key, buf);
-    } else {
+    else
         put_reg_dword(handle->sesskey, key, value);
-    }
 }
 
 /* KiTTY: settings that have been RENAMED or replaced. The new name is written
@@ -384,6 +458,9 @@ void close_settings_w(settings_w *handle)
     } else {
         close_regkey(handle->sesskey);
     }
+    ksf_list_free(handle->defs);
+    if (handle->defkey)
+        close_regkey(handle->defkey);
     sfree(handle);
 }
 
@@ -476,6 +553,178 @@ void kitty_settings_r_inherit(settings_r *handle, const char *sessionname)
     if (sessionname && !strcmp(sessionname, KITTY_DEFAULT_SESSION))
         return;
     handle->defaults = open_settings_r_own(KITTY_DEFAULT_SESSION);
+}
+
+/*
+ * KiTTY: kitty.ini [KiTTY] saveonlynondefaultsettings=yes - with Inherit
+ * Default Settings on, a session save writes only what differs from Default
+ * Settings (kitty_nd_put); Default Settings itself, and the .ktx writer, are
+ * always written whole. Without Inherit a key left out reads as the built-in
+ * default, so the switch is in force only with it.
+ */
+static int g_save_nondefault = 0;
+void kitty_set_save_only_nondefault(int on) { g_save_nondefault = on ? 1 : 0; }
+int kitty_save_only_nondefault(void) { return g_save_nondefault; }
+
+/* The rule on a write handle, defsession's stored values as the defaults.
+ * No such session: nothing to compare with, written whole. */
+void kitty_settings_w_nondefault(settings_w *handle, const char *defsession)
+{
+    if (!handle || handle->nd || handle->raw_secrets || !defsession)
+        return;
+    if (handle->is_file) {
+        char *p = ksf_session_find(defsession);
+        handle->defs = p ? ksf_load(p) : NULL;
+        sfree(p);
+        handle->nd = handle->defs != NULL;
+    } else if (handle->sesskey) {
+        strbuf *sb = strbuf_new();
+        escape_registry_key(defsession, sb);
+        handle->defkey = open_regkey_ro(HKEY_CURRENT_USER, puttystr, sb->s);
+        strbuf_free(sb);
+        handle->nd = handle->defkey != NULL;
+    }
+}
+
+/* save_settings: the rule when both switches are on, never for Default
+ * Settings. */
+void kitty_settings_w_save_rules(settings_w *handle, const char *section)
+{
+    if (!g_save_nondefault || !g_inherit_defaults || !section || !*section ||
+        !strcmp(section, KITTY_DEFAULT_SESSION))
+        return;
+    kitty_settings_w_nondefault(handle, KITTY_DEFAULT_SESSION);
+}
+
+/* "Comment out defaults" leaves the passwords too: stored protected, they
+ * cannot be compared. */
+static int kitty_cod_skip(const char *key)
+{
+    return kitty_nd_exempt(key) || kitty_secret_slot(key) >= 0;
+}
+
+static BYTE *kitty_reg_value_get(HKEY k, const char *name, DWORD *type,
+                                 DWORD *size)
+{
+    BYTE *d;
+    if (RegQueryValueExA(k, name, NULL, type, NULL, size) != ERROR_SUCCESS)
+        return NULL;
+    d = snewn(*size + 1, BYTE);
+    if (RegQueryValueExA(k, name, NULL, type, d, size) != ERROR_SUCCESS) {
+        sfree(d);
+        return NULL;
+    }
+    return d;
+}
+
+/* One registry session: each value equal to defkey's (type and data) is
+ * deleted. The values deleted, or -1 when one could not be. */
+int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
+{
+    char name[16384];
+    char **names = NULL;
+    size_t n = 0, alloc = 0, i;
+    int done = 0, bad = 0;
+    DWORD idx;
+    for (idx = 0; ; idx++) {
+        DWORD nl = sizeof(name), t1, t2, s1, s2;
+        BYTE *a, *b;
+        if (RegEnumValueA(k, idx, name, &nl, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
+            break;
+        if (!name[0] || kitty_cod_skip(name))
+            continue;
+        a = kitty_reg_value_get(k, name, &t1, &s1);
+        b = a ? kitty_reg_value_get(defkey, name, &t2, &s2) : NULL;
+        if (b && t1 == t2 && s1 == s2 && !memcmp(a, b, s1)) {
+            sgrowarray(names, alloc, n);
+            names[n++] = dupstr(name);
+        }
+        sfree(a);
+        sfree(b);
+    }
+    for (i = 0; i < n; i++) {
+        if (RegDeleteValueA(k, names[i]) == ERROR_SUCCESS)
+            done++;
+        else
+            bad = 1;
+        sfree(names[i]);
+    }
+    sfree(names);
+    return bad ? -1 : done;
+}
+
+/* Every session of the store but defsession, once: a folder-store line
+ * equal to Default Settings becomes "# <line>", a registry value equal to it
+ * is deleted. A locked session is left (Session Lockdown). Returns the
+ * sessions changed; *nfailed those that could not be written. */
+int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
+{
+    int changed = 0, failed = 0;
+    if (!defsession || !*defsession)
+        defsession = KITTY_DEFAULT_SESSION;
+    if (store_is_file()) {
+        char *dp = ksf_session_find(defsession);
+        struct ksf_item *defs = dp ? ksf_load(dp) : NULL;
+        sfree(dp);
+        if (defs) {
+            settings_e *e = enum_settings_start();
+            strbuf *sb = strbuf_new();
+            while (enum_settings_next(e, sb)) {
+                char *path = NULL;
+                struct ksf_item *items = NULL;
+                if (strcmp(sb->s, defsession) && !kitty_session_locked(sb->s) &&
+                    (path = ksf_session_find(sb->s)) != NULL &&
+                    (items = ksf_load(path)) != NULL &&
+                    ksf_list_comment_defaults(items, defs, kitty_cod_skip) > 0) {
+                    if (ksf_save(path, items))
+                        changed++;
+                    else
+                        failed++;
+                }
+                ksf_list_free(items);
+                sfree(path);
+                strbuf_clear(sb);
+            }
+            strbuf_free(sb);
+            enum_settings_finish(e);
+            ksf_list_free(defs);
+        }
+    } else {
+        HKEY root = open_regkey_ro(HKEY_CURRENT_USER, puttystr);
+        strbuf *esc = strbuf_new();
+        HKEY defkey;
+        escape_registry_key(defsession, esc);
+        defkey = root ? open_regkey_ro(root, esc->s) : NULL;
+        if (defkey) {
+            char *name;
+            int idx;
+            for (idx = 0; (name = enum_regkey(root, idx)) != NULL; idx++) {
+                strbuf *un = strbuf_new();
+                HKEY k;
+                unescape_registry_key(name, un);
+                if (strcmp(un->s, defsession) && !kitty_session_locked(un->s) &&
+                    (k = open_regkey_rw(root, name)) != NULL) {
+                    int r = kitty_reg_delete_defaults(k, defkey);
+                    if (r > 0)
+                        changed++;
+                    else if (r < 0)
+                        failed++;
+                    close_regkey(k);
+                }
+                strbuf_free(un);
+                sfree(name);
+            }
+            close_regkey(defkey);
+        }
+        strbuf_free(esc);
+        if (root)
+            close_regkey(root);
+    }
+    if (changed)
+        kitty_store_mark_dirty();
+    if (nfailed)
+        *nfailed = failed;
+    return changed;
 }
 
 static settings_r *open_settings_r_own(const char *sessionname)
@@ -628,6 +877,9 @@ settings_w *kitty_open_settings_w_items(void)
     handle->mig_answer = 1;
     handle->legacy = NULL;
     handle->raw_secrets = 1;
+    handle->nd = 0;
+    handle->defs = NULL;
+    handle->defkey = NULL;
     return handle;
 }
 

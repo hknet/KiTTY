@@ -744,6 +744,7 @@
 #define KT_HOST_KEYS_MANUALLY_CONFIGURE_HOST_KEYS    "Manually configure host keys for this connection"
 #define KT_HOST_KEYS_HOST_KEYS_OR_FINGERPRINTS       "Host keys or fingerprints to accept:"
 #define KT_HOST_KEYS_KEY                             "Key"
+#define KT_HOST_KEYS_ACCEPT_NEW                      "Accept new host keys"
 #define KT_HOST_KEYS_ADD_KEY                         "Add key"
 #define KT_HOST_KEYS_CONFIGURE_TRUSTED_CERTIFICATION_AUTHORITIES "Configure trusted certification authorities"
 #define KT_HOST_KEYS_CONFIGURE_HOST_CAS              "Configure host CAs"
@@ -1032,7 +1033,7 @@
 #define KT_SECURITY_SSH_AGENT                        "SSH key authentication"
 #define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn if an unknown agent serves our SSH keys"
 #define KT_SECURITY_WINDOWS_SUPPORTED_FEATURES       "Windows: supported features"
-#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Report in the terminal what features this Windows Installation does not support"
+#define KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS          "Report missing Windows features in terminal"
 #define KT_SECURITY_MISSING_CAN_LIMIT                "Missing libraries can limit:"
 #define KT_SECURITY_LIMIT_HELLO                      "  -  Windows Hello key protection and confirmations"
 #define KT_SECURITY_LIMIT_DARK                       "  -  dark mode and themed dialogs"
@@ -1041,6 +1042,7 @@
 #define KT_SECURITY_LIMIT_SSO                        "  -  GSSAPI/Kerberos single sign-on"
 #define KT_SECURITY_LIMIT_IPV6                       "  -  IPv6 name resolution"
 #define KT_SECURITY_EVENTLOG_ALWAYS                  "Event Log always reports missing Windows library features."
+#define KT_SECURITY_EVENT_VIEWER                     KT_CAP_KITTYPP " Event Viewer"
 /* The tracing switch ([KiTTY] debug) traces many things, not only the
  * automation, so its group is on the Security panel. */
 #define KT_SECURITY_DIAGNOSTICS                      "Diagnostics"
@@ -3484,6 +3486,10 @@
 /* windows/plink.c, pscp.c, psftp.c: the -agent / -noagent help lines */
 #define KT_CLI_USAGE_NOAGENT                         "  -noagent  disable use of kageant\n"
 #define KT_CLI_USAGE_AGENT                           "  -agent    enable use of kageant\n"
+/* the -accept-new help line (after -hostkey), and its record: ssh/common.c
+ * writes it to the Event Log, klink/kscp/ksftp to standard error too */
+#define KT_CLI_USAGE_ACCEPTNEW                       "  -accept-new\n            store an unknown host key without a prompt\n"
+#define KT_HOSTKEY_ACCEPTNEW_STORED                  "Host key stored (accept-new): %s, %s port %d"
 
 /* cmdline.c: -masterpwfile */
 #define KT_CLI_MPWFILE_CONFLICT                      "-masterpwfile conflicts with PortablePasswordProtection=dpapi" \
@@ -4141,6 +4147,10 @@
 #define KT_SP_INHERIT_LABEL                          "Inherit Default Settings"
 #define KT_SP_INHERIT_HELP                           "A session that leaves a setting out takes it from Default Settings instead of the built-in default."
 #define KT_SP_INHERIT_Q_FMT                          "Every session that leaves a setting out will take it from Default Settings, also a session opened from a %s file.\n\nA user name and password stored in Default Settings are then sent to whatever host such a session names.\n\nTurn it on?"
+#define KT_SP_NONDEFAULT_LABEL                       "Save only non-default settings"
+#define KT_SP_COMMENT_DEFAULTS                       "Comment out defaults"
+#define KT_SP_COMMENT_DEFAULTS_DONE                  "%d sessions changed."
+#define KT_SP_COMMENT_DEFAULTS_FAILED                "%d sessions changed, %d could not be written."
 #define KT_SP_INHERIT_Q_NOEXT                        "Every session that leaves a setting out will take it from Default Settings, also a session file opened directly.\n\nA user name and password stored in Default Settings are then sent to whatever host such a session names.\n\nTurn it on?"
 #define KT_SP_HOSTKEYS_FOLDER                        "Host Keys Folder"
 #define KT_SP_HOSTKEYS_BROWSE                        "Browse..."
@@ -4493,6 +4503,7 @@
 /* A release file no longer matches what was released (kitty/kitty_selfcheck.c).
  * %s is the short technical reason - "modified", "bad stamp", "no stamp",
  * "truncated", "cannot check". */
+#define KT_GUARD_EVENT_FMT                           "%s\r\nProgram: %s"   /* the refusal, then the refused file */
 #define KT_SELFCHECK_GUARD_MSG                       "Integrity check failed: this program file was changed after its release. Found: %s"
 
 #endif /* KITTY_TEXT_H */

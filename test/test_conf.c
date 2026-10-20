@@ -114,6 +114,8 @@ settings_r *open_settings_r(const char *sessionname)
 void close_settings_r(settings_r *sr) { }
 char *kitty_session_locked_msg(const char *sessionname)
 { return NULL; }
+void kitty_settings_w_save_rules(settings_w *handle, const char *section)
+{ }
 
 /* Work around lack of true snprintf before VS2015 */
 #if defined _WINDOWS && \

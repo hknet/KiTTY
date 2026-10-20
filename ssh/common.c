@@ -9,6 +9,8 @@
 
 #include "putty.h"
 #include "kitty/kitty_hostkey_scan.h"   /* KiTTY: host-key scan capture point */
+#include "kitty/kitty_hostkey_acceptnew.h"   /* KiTTY: accept-new */
+#include "kitty/kitty_text.h"   /* KiTTY: accept-new's record */
 #include "mpint.h"
 #include "ssh.h"
 #include "storage.h"
@@ -868,7 +870,8 @@ static const char *seat_product_name(void)
 }
 
 SeatPromptResult verify_ssh_host_key(
-    InteractionReadySeat iseat, Conf *conf, const char *host, int port,
+    InteractionReadySeat iseat, Conf *conf, LogContext *logctx,
+    const char *host, int port,
     ssh_key *key, const char *keytype, char *keystr, const char *keydisp,
     char **fingerprints, int ca_count,
     void (*callback)(void *ctx, SeatPromptResult result), void *ctx)
@@ -942,6 +945,26 @@ SeatPromptResult verify_ssh_host_key(
     int storage_status = check_stored_host_key(host, port, keytype, keystr);
     if (storage_status == 0) /* matching key was found in the cache */
         return SPR_OK;
+
+    /*
+     * KiTTY: accept-new (kitty_hostkey_acceptnew.h). An unknown plain key is
+     * stored without a question and recorded; a changed key, and a
+     * certificate no trusted CA signed, go on to the question as always.
+     */
+    if (kitty_hostkey_accept_new_applies(
+            kitty_hostkey_accept_new_all() ||
+            conf_get_bool(conf, CONF_ssh_accept_new_hostkeys),
+            storage_status, key && ssh_key_alg(key)->is_certificate)) {
+        store_host_key(iseat.seat, host, port, keytype, keystr);
+        char *line = dupprintf(
+            KT_HOSTKEY_ACCEPTNEW_STORED,
+            fingerprints[ssh2_pick_default_fingerprint(fingerprints)],
+            host, port);
+        logevent(logctx, line);
+        kitty_hostkey_accept_new_report(line);
+        sfree(line);
+        return SPR_OK;
+    }
 
     /*
      * The key is either missing from the cache, or does not match.

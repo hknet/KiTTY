@@ -185,6 +185,7 @@ static void usage(void)
     printf("  -share    enable use of connection sharing\n");
     printf("  -hostkey keyid\n");
     printf("            manually specify a host key (may be repeated)\n");
+    printf(KT_CLI_USAGE_ACCEPTNEW);
     printf("  -sanitise-stderr, -sanitise-stdout, "
            "-no-sanitise-stderr, -no-sanitise-stdout\n");
     printf("            do/don't strip control chars from standard "

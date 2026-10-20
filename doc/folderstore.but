@@ -1,605 +1,358 @@
 \A{folderstore} The folder store
 
-This appendix documents the folders and files of the KiTTY++ folder
-store: where it is, the line format of a session file, the passwords in
-it and the other files the store keeps. It is written for
-administrators who generate session files, keep them in Git or inspect
-them.
+The folders and files of the KiTTY++ folder store, for administrators
+who generate session files, keep them in Git or inspect them.
 
 The folder store is in use when \c{kitty.ini} holds
-\c{[KiTTY] savemode=dir}. It is the default of \c{kitty_portable.exe},
-which writes that key into its \c{kitty.ini} on its first start. Without
-it KiTTY++ keeps its settings in the registry, under
-\c{HKEY_CURRENT_USER\\Software\\kapper.net\\KiTTY}. klink, kscp and
-ksftp from the same folder read the same store. The settings that shape
-the store are on the Storage & Backup panel, \k{kitty-cfg-storage}.
+\c{[KiTTY] savemode=dir}, the default of \c{kitty_portable.exe}, which
+writes that key on its first start. Otherwise the settings are in the
+registry under \c{HKEY_CURRENT_USER\\Software\\kapper.net\\KiTTY}.
+klink, kscp and ksftp from the same folder read the same store. The
+settings below are on the Storage & Backup panel, \k{kitty-cfg-storage}.
 
 \H{folderstore-where} Where the store is
 
-KiTTY++ takes the first of these files that exists as its \c{kitty.ini}:
-
-\n the file \c{%KITTY_INI_FILE%} points to
-
-\n \c{kitty.ini} in the folder of the program
-
-\n \c{%APPDATA%\\KiTTY\\kitty.ini} (not looked at by the portable build)
-
-Every key below is in the \c{[KiTTY]} section. The KiTTY.ini leaf shows
-the file in use, \k{kitty-cfg-ini-view}.
-
+\c{kitty.ini} is the first of these that exists: the file
+\c{%KITTY_INI_FILE%} points to, \c{kitty.ini} in the folder of the
+program, \c{%APPDATA%\\KiTTY\\kitty.ini} (not looked at by the portable
+build). The KiTTY.ini leaf shows the file in use,
+\k{kitty-cfg-ini-view}. Every key below is in its \c{[KiTTY]} section.
 klink, kscp, ksftp and kageant also take the folder store when
-\c{kitty.ini} holds no \c{savemode} key at all but a \c{Sessions} folder
-or a \c{KiTTYState} file sits beside it.
+\c{kitty.ini} has no \c{savemode} key but a \c{Sessions} folder or a
+\c{KiTTYState} file is beside it.
 
-Four places follow from \c{kitty.ini}:
-
-\b The \e{configuration directory} is \c{configdir}: an absolute path,
-or a path below the folder of the program. A \c{configdir} that does not
-exist counts as not set. Without one, the configuration directory is the
+\b \e{Configuration directory}: \c{configdir}, an absolute path or a
+path below the folder of the program. Not set, or not existing: the
 folder of the program.
 
-\b The \e{session folder} is \c{sessions} when it is set. Windows
-variables such as \c{%USERPROFILE%} are expanded in it. A value of the
-form \c{X:\\...} is an absolute path. Every other value, one starting
-with \c{\\} included, is taken below the folder of the program, so a UNC
-path does not work here. Without \c{sessions}, the session folder is
-\c{Sessions} in the configuration directory. kitty.exe creates a missing
-session folder.
+\b \e{Session folder}: \c{sessions}, Windows variables such as
+\c{%USERPROFILE%} expanded. \c{X:\\...} is absolute; every other value,
+one starting with \c{\\} included, is below the folder of the program,
+so a UNC path does not work. Not set: \c{Sessions} in the configuration
+directory. kitty.exe creates a missing session folder.
 
-\b The \e{store root} is the parent of the session folder when the last
-component of the session folder is \c{Sessions} (in any case). Otherwise
-the store root is the session folder itself.
+\b \e{Store root}: the parent of the session folder when its last
+component is \c{Sessions} (any case), else the session folder itself.
 
-\b The \e{host-key folder} is \c{sshhostkeys}, resolved like
-\c{sessions}. Without it, the host-key folder is \c{SshHostKeys} in the
-store root.
+\b \e{Host-key folder}: \c{sshhostkeys}, resolved like \c{sessions}.
+Not set: \c{SshHostKeys} in the store root.
 
 \H{folderstore-layout} The layout
 
-In the default layout the session folder is \c{Sessions} in the
-configuration directory, so the store root and the configuration
-directory are one folder:
+By default store root and configuration directory are one folder:
 
 \c <configuration directory>\
 \c     kitty.ini        global options, when it lives here
-\c     KiTTYState       remembered state, key=value lines
-\c     Jumplist         recent sessions, one per line
+\c     KiTTYState       remembered state
+\c     Jumplist         recent sessions
 \c     PUTTY.RND        random seed
 \c     Sessions\        session files, folders as directories
-\c     SshHostKeys\     accepted host keys, one file per key
+\c     SshHostKeys\     accepted host keys
 \c     SshHostCAs\      trusted host certificate authorities
-\c     Security\        the master password's check material
+\c     Security\        master password check material
 \c     Proxies\         named proxy definitions
-\c     Launcher\        the launcher's menu entries
-\c     Backups\         dated copies of the configuration directory
+\c     Launcher\        the launcher's menu
+\c     Commands\        User Command menu entries
+\c     Folders\         the same, per folder
+\c     Sessions_Commands\  the same, per session
+\c     Backups\         dated copies of the directory
 \c     TermEnvHint\     one mark per host
 \c     WindowPos\       terminal window positions
 
-The two roots part when \c{sessions} points somewhere else:
+When \c{sessions} points elsewhere, \c{Proxies}, \c{Launcher},
+\c{Commands}, \c{Folders}, \c{Sessions_Commands} and \c{Backups} stay in
+the configuration directory; \c{KiTTYState}, \c{Jumplist},
+\c{PUTTY.RND}, \c{SshHostKeys} (unless \c{sshhostkeys} is set),
+\c{SshHostCAs}, \c{Security}, \c{TermEnvHint} and \c{WindowPos} are in
+the store root. Files of the store
+root are never listed as sessions; a tool that regenerates the session
+folder must leave them in place.
 
-\b In the \e{store root}: \c{KiTTYState}, \c{Jumplist}, \c{PUTTY.RND},
-\c{SshHostKeys} (unless \c{sshhostkeys} is set), \c{SshHostCAs},
-\c{Security}, \c{TermEnvHint} and \c{WindowPos}.
-
-\b In the \e{configuration directory}: \c{Proxies}, \c{Launcher} and
-\c{Backups}.
-
-With \c{sessions=D:\\ops\\mysess}, for example, \c{KiTTYState} and the
-\c{Security} folder are kept inside \c{D:\\ops\\mysess}, while
-\c{Proxies} stays in the configuration directory. They are never listed
-as sessions. A tool that regenerates the session folder must leave them
-in place.
-
-Host-key files, the files in \c{Security}, \c{TermEnvHint} and
-\c{WindowPos} are written whole: a temporary file first, moved over the
-old one once it is complete. Session files, \c{KiTTYState}, \c{Jumplist} and the files in
+Host-key files and the files in \c{Security}, \c{TermEnvHint} and
+\c{WindowPos} are written to a temporary file and moved over the old
+one. Session files, \c{KiTTYState}, \c{Jumplist} and the files in
 \c{Proxies} and \c{SshHostCAs} are written over in place.
 
-\H{folderstore-sessions} Session folders and file names
+With \c{readonly=yes} no backup is written and a missing session folder
+is not created.
 
-\b Each saved session is one file. The session \c{Linux\\web\\srv01} is
-the file \c{Linux\\web\\srv01} below the session folder, with the
-session file extension appended. Each directory is one folder level, up
-to 24 levels deep.
+\H{folderstore-sessions} Session files and folders
 
-\b A folder exists through its sessions. A directory without a session
-file in it is not listed. When KiTTY++ deletes or moves a session, it
-removes the directories this leaves empty, up to the session folder. A
-directory that still holds any file, a \c{.gitkeep} for example, stays.
+\b One file per session: \c{Linux\\web\\srv01} is the file
+\c{Linux\\web\\srv01} below the session folder, plus the session file
+extension. Each directory is one folder level, up to 24 deep.
 
-\b Names that start with a dot are never looked at: \c{.git},
-\c{.gitignore}, \c{.gitkeep}. A junction or a symbolic link to a
-directory is not followed. A file with a reparse point, such as a
-placeholder of a synced folder, is read like any other file.
+\b A directory without a session file is not listed. Deleting or moving
+a session removes the directories this leaves empty, up to the session
+folder; one that still holds any file (a \c{.gitkeep}) stays.
 
-\b A file is a session file when one of its lines starts with
-\c{HostName} or \c{Protocol}, followed directly by \c{=} or \c{\\}. The
-key is case-sensitive and must open the line: no space in front of it,
-no byte-order mark in front of the first line. Other files beside the
-sessions, a \c{README.md} or a log, are not listed.
+\b Names starting with a dot (\c{.git}, \c{.gitkeep}) are skipped.
+Junctions and symbolic links to directories are not followed. A file
+with a reparse point (a placeholder of a synced folder) is read.
 
-\b File and folder names are in the ANSI code page of Windows. A file or
-folder whose name does not fit it is marked in the session list, which
-offers a rename. A folder of that kind is not looked into.
+\b A session file has a line starting with \c{HostName} or
+\c{Protocol} directly followed by \c{=} or \c{\\}: case-sensitive, no
+space before it, no byte-order mark before the first line. Other files
+(\c{README.md}, a log) are not listed.
 
-\b \c{fileextension} is the \e{session file extension} (\q{Session File
-Extension} on \k{kitty-cfg-storage}): none by default, a dot put in
-front when it is missing. It ends every session file name. The list
-shows the names without it. An extension holding a control character or
-one of \c{\\ / : * ? " < > |} is not used.
+\b Names are in the ANSI code page. A file or folder whose name does not
+fit it is marked in the session list, with a rename offered; such a
+folder is not looked into.
 
-\S{folderstore-escape} How a session name becomes a file name
+\b \c{fileextension} (\q{Session File Extension}): none by default, a
+dot put in front when missing; ends every session file name and is not
+shown in the list. A value holding a control character or one of
+\c{\\ / : * ? " < > |} is not used.
 
-Each component of the session's path is escaped on its own:
-
-\b \c{%}, \c{\\}, \c{/}, \c{:}, \c{*}, \c{?}, \c{"}, \c{<}, \c{>},
-\c{|}, control characters and DEL become \c{%} followed by two uppercase
-hex digits. The session \c{core/sw01} is the file \c{core%2Fsw01}.
-
-\b A leading dot becomes \c{%2E}. A trailing dot becomes \c{%2E}, a
-trailing space \c{%20}.
-
-\b A Windows device name (\c{CON}, \c{PRN}, \c{AUX}, \c{NUL},
-\c{COM1} to \c{COM9}, \c{LPT1} to \c{LPT9}), also followed by an
-extension, has its first character escaped: \c{%43ON}, \c{%63on.txt}.
-
-\b Everything else stays as it is: spaces inside a name, \c{=}, \c{#},
-bytes above 127. \c{Default Settings} is the file \c{Default Settings}
-with a real space.
-
-When reading, KiTTY++ decodes \c{%} followed by two hex digits in either
-case. A \c{%} not followed by two hex digits stays as it is. A file
-spelt another way, with \c{%20} for a space or lower-case hex digits for
-example, is listed under its decoded name and saved in place under its
-own file name. When two files decode to the same session, one of them is
-the session and the session list marks the others.
-
-Older layouts are read too:
-
-\b A session file without the session file extension. Its next save
-writes the file with the extension and removes the old one. When both
-files exist, a save of that session is refused.
-
-\b A file at the top of the session folder whose name holds an escaped
-\c{\\}, such as \c{Linux%5Cweb01}: the session \c{Linux\\web01} of the
-layout before session names became paths. It is read while it exists.
-Its next save moves it to \c{Linux\\web01}. Below the top level a
-file name holding an escaped \c{\\} is not listed.
-
-Without an extension a session and a folder can need the same name on
-disk: the session \c{Linux} is the file \c{Linux}, the folder \c{Linux}
-the directory \c{Linux}. A save, a move or a new folder that meets the
-other one is refused.
-
-The directory decides the folder of a session. A \c{Folder} value in a
-file inside a directory is ignored. The next save writes the matching
-value. Session folders as the configuration window shows them:
+\b The directory decides the folder; a \c{Folder} value in a file inside
+a directory is ignored and corrected by the next save. See
 \k{kitty-cfg-folders}.
+
+\S{folderstore-escape} Name escaping
+
+Each path component is escaped on its own:
+
+\b \c{% \\ / : * ? " < > |}, control characters and DEL become \c{%}
+and two uppercase hex digits: \c{core/sw01} is \c{core%2Fsw01}.
+
+\b A leading or trailing dot becomes \c{%2E}, a trailing space \c{%20}.
+
+\b A device name (\c{CON}, \c{PRN}, \c{AUX}, \c{NUL}, \c{COM1}-\c{COM9},
+\c{LPT1}-\c{LPT9}), also with an extension, has its first character
+escaped: \c{%43ON}, \c{%63on.txt}.
+
+\b Everything else stays: inner spaces, \c{=}, \c{#}, bytes above 127.
+\c{Default Settings} is the file \c{Default Settings}.
+
+Reading decodes \c{%} and two hex digits in either case; any other
+\c{%} stays. A file spelt another way (\c{%20} for a space) is listed
+under its decoded name and saved under its own file name. When two
+files decode to one session, the others are marked in the list.
+
+Also read: a file without the session file extension (its next save
+adds it and removes the old file; with both files present, a save is
+refused), and at the top level a file holding an escaped \c{\\}
+(\c{Linux%5Cweb01}, the session \c{Linux\\web01}), moved to
+\c{Linux\\web01} by its next save; below the top level such a name is
+not listed. Without an extension, a save, move
+or new folder that needs the name of an existing session or folder is
+refused.
 
 \H{folderstore-format} The session file format
 
-A session file is text, one setting per line. Two line forms are read:
+Text, one setting per line, in either form:
 
 \c HostName=web01.example.com
 \c HostName\web01.example.com\
 
-The first is KiTTY++'s own form. The second is the form old KiTTY wrote
-in its portable store and in \c{.ktx} files.
+The first is KiTTY++'s, the second old KiTTY's (portable store and
+\c{.ktx}).
 
-\b The form is decided line by line: the first \c{=} or \c{\\} in the
-line ends the key. A key never holds either character. In the first
-form the value may hold \c{=}: \c{Key=a=b} is the value \c{a=b}. In the
-second form one trailing \c{\\} is removed. A line without it, such as
-\c{Key\\0}, reads the same.
+\b The first \c{=} or \c{\\} ends the key, so a value may hold \c{=}.
+In the second form one trailing \c{\\} is dropped; \c{Key\\0} also reads.
 
-\b A line with neither \c{=} nor \c{\\} is not a setting. It is kept as
-it stands, at its place, through every save. A blank line is kept the
-same way. This is how a comment goes into a session file:
-\c{# generated from the inventory} is one, as long as it holds neither
-\c{=} nor \c{\\}.
+\b A line with neither \c{=} nor \c{\\} (a comment, a blank line) is
+kept in place through every save.
 
-\b The key is the text before the delimiter, as it stands. Keys are
-case-sensitive and no space is removed: \c{HostName = x} is the key
-\c{HostName} followed by a space, with a value starting with a space.
+\b Keys are case-sensitive, nothing is trimmed: \c{HostName = x} is the
+key \c{HostName} followed by a space, with a value starting with a space.
 
-\b Values are escaped when written: control characters, DEL, \c{%},
-\c{\\}, \c{/}, \c{:}, \c{*}, \c{?}, \c{"}, \c{<}, \c{>} and \c{|}
-become \c{%} followed by two uppercase hex digits. A key file is
-\c{PublicKeyFile=D:%5Ckeys%5Cid.ppk}. A line break inside a value is
-\c{%0A}. \c{=} and spaces are not escaped. When reading, \c{%} followed
-by two hex digits is decoded in either case. Any other \c{%} stays as
-it is.
+\b Values escape control characters, DEL and \c{% \\ / : * ? " < > |}
+as \c{%} and two uppercase hex digits: \c{PublicKeyFile=D:%5Cid.ppk},
+a line break \c{%0A}. Reading decodes either case.
 
-\b Numbers and switches are decimal text: \c{PortNumber=2222},
+\b Numbers and switches are decimal: \c{PortNumber=2222},
 \c{AgentFwd=1}.
 
-\b A key on two lines takes the value of the later line. A save keeps
-one line for it, at the place of the first.
+\b A repeated key takes the later value; a save keeps one line, at the
+place of the first.
 
-\b Lines may end in LF or CRLF. A save keeps the ending of each line. A
-line it adds takes the ending of the first line of the file. A new file
-is written with LF. A last line without a line ending gets one.
+\b LF or CRLF, kept per line; an added line takes the ending of the
+first line, a new file LF. Lines have no length limit. A byte-order
+mark becomes part of the first key.
 
-\b A line may be of any length.
+A save reads the file and writes it whole. Unchanged lines are written
+back as read; a changed value is replaced in place as \c{Key=value}; new
+keys go to the end (every setting KiTTY++ has). Retired keys are
+removed: \c{SaveWindowPos}, \c{OSC52WarnBeforeClipboardSync},
+\c{CheckUpdateStartup}, \c{ScriptFileName}, \c{Present},
+\c{DisableBottomButtons}, \c{Notes}.
 
-\b A byte-order mark is not removed. It becomes part of the first key.
+\H{folderstore-passwords} Passwords
 
-A save works on the file as it is on disk:
+\c{Password} and \c{ProxyPassword} start with a marker, in a file
+escaped as \c{MPW2%3A}, \c{DPAPI1%3A}; both spellings are read.
 
-\b It reads the file first and writes it whole. Lines it does not set -
-keys of other tools, comments, blank lines - keep their place.
+\b \c{MPW2:<salt>.<payload>}: master password, self-contained (base64
+Argon2id salt, a dot, AES-256-CBC with HMAC). Opens on any PC with the
+master password alone.
 
-\b A line whose value did not change is written back exactly as it was
-read, in its own form, spacing included. A Git diff after a settings
-change shows the changed lines only.
+\b \c{MPW1:<payload>}: master password, salt in the store's
+\c{Security\\MasterPwSalt}. Read, no longer written.
 
-\b A line whose value changed is replaced at its place, in the form
-\c{Key=value}.
+\b \c{DPAPI1:<base64>}: Windows DPAPI, this account on this PC only.
 
-\b A key the file did not have goes to the end. KiTTY++ writes every
-setting it has, so a file of three lines holds every setting after its
-first save from KiTTY++.
+\b \c{PLAIN:<password>}: clear text for provisioning scripts; never
+written by KiTTY++.
 
-\b Keys of retired settings are removed: \c{SaveWindowPos},
-\c{OSC52WarnBeforeClipboardSync}, \c{CheckUpdateStartup},
-\c{ScriptFileName}, \c{Present}, \c{DisableBottomButtons} and
-\c{Notes}. Where the setting has a successor that means the same, the
-old key is read while the new one is missing.
+\b No marker: clear text. In a file with a \c{Key\\value\\} line, a
+\c{Password} in old KiTTY's encrypted form is decoded.
 
-\b KiTTY++ reads the file when a save starts and writes it over when
-the save ends. An edit made to the same file in between is lost.
+\c{PortablePasswordProtection} (\q{Passwords protected with}) sets what
+a save writes: \c{master} (default) \c{MPW2}, the first save setting up
+the master password (\c{-masterpwfile} for scripts,
+\k{using-cmdline-masterpwfile}); \c{dpapi} \c{DPAPI1}; \c{legacy} clear
+text. Reading goes by marker. A save keeps the stored line when the
+password is unchanged and already in the target form, when the value
+cannot be opened here, or when the master password is locked (reported).
+Replacing an unmarked or \c{PLAIN:} value prompts first;
+\c{WarnLegacyPasswordUpgrade=no} skips the prompt. klink, kscp and
+ksftp keep the line.
 
-\H{folderstore-passwords} Passwords in a session file
+\H{folderstore-security} Security
 
-Two keys hold secrets: \c{Password} (the auto-login password) and
-\c{ProxyPassword}. A marker at the start of the value decides how it is
-read, whatever store holds it. In a file the \c{:} of a marker is
-escaped like any other, so a stored value starts with \c{MPW2%3A},
-\c{DPAPI1%3A} and so on. A \c{/} of the base64 text appears as
-\c{%2F}. Both spellings are read.
+Written once, when a master password is first set up:
+\c{Security\\MasterPwSalt} (base64 Argon2id salt) and
+\c{Security\\MasterPwVerifier} (a fixed text in \c{MPW1:} form). Neither
+holds a password or the key.
 
-\b \c{MPW2:<salt>.<payload>}: the master password, self-contained. The
-base64 text of the 16-byte Argon2id salt, a dot, then the encrypted
-value (AES-256-CBC with an HMAC). The master password alone opens it, on
-any PC and in any store. This is what KiTTY++ writes under the
-master-password policy.
+\b With \c{MasterPwVerifier} present and the policy \c{master}, the
+configuration window and the launcher prompt for the master password at
+start. Otherwise the prompt comes when an \c{MPW2} value is read.
 
-\b \c{MPW1:<payload>}: the master password, with the salt kept in the
-store's \c{Security\\MasterPwSalt}. KiTTY++ reads this form but no
-longer writes it. It opens only together with the \c{Security} folder of
-the store that wrote it.
+\b Without \c{Security}, \c{MPW2} values open (each carries its salt);
+\c{MPW1} values do not. The next protected save sets up a new master
+password; older \c{MPW2} values still need the one they were written
+with.
 
-\b \c{DPAPI1:<base64>}: Windows DPAPI. Only this Windows account on this
-PC opens it.
+\b A \c{Security} folder copied from another store makes that master
+password the one checked at start and used for new values. To share one
+master password between portable copies, copy one \c{Security} folder
+into each before saving passwords.
 
-\b \c{PLAIN:<password>}: a password in clear text, for files a
-provisioning script writes. The rest of the value is taken literally.
-KiTTY++ never writes this marker.
+\b A store with master-password values, no \c{MasterPwSalt} and a salt
+still in the registry gets salt and verifier copied from the registry
+at start, once.
 
-\b A value without a marker is taken as the password itself, in clear
-text. In a file with at least one line in the \c{Key\\value\\} form, a
-\c{Password} value that has the shape of old KiTTY's encrypted form is
-decoded as one when it decodes. In a file of \c{Key=value} lines alone
-it stays clear text.
-
-What a save writes is set by \c{PortablePasswordProtection} (\q{Passwords
-protected with} on \k{kitty-cfg-storage}):
-
-\b \c{master} (the default): \c{MPW2}. The first password saved sets up
-the master password. From a script, \c{-masterpwfile} supplies it,
-\k{using-cmdline-masterpwfile}.
-
-\b \c{dpapi}: \c{DPAPI1}. No master password is set up.
-
-\b \c{legacy}: the password in clear text, without a marker.
-
-Reading does not depend on the setting: each value is read by its own
-marker. A save keeps a stored line in these cases:
-
-\b The password did not change and the stored value is already in the
-form this save would write. A new wrap would change the line on every
-save.
-
-\b The stored value could not be opened here, a \c{DPAPI1} value from
-another PC for example. It is written back as it was.
-
-\b The master password is locked: its setup or unlock was cancelled, or
-the password typed was wrong. KiTTY++ reports the kept line.
-
-\b The stored value is unmarked or \c{PLAIN:} while the save would
-replace it with a protected one. KiTTY++ puts up a question first. No
-keeps the stored line.
-\c{WarnLegacyPasswordUpgrade=no} skips the question and protects the
-password. klink, kscp and ksftp keep the stored line without a question.
-
-\H{folderstore-security} Security: the master password's check material
-
-The \c{Security} folder in the store root holds two files of one line
-each. They are written together, the first time a master password is
-set up:
-
-\b \c{MasterPwSalt}: the base64 text of the 16 random bytes from which,
-with the master password, Argon2id derives the key.
-
-\b \c{MasterPwVerifier}: a fixed text encrypted under that key, in the
-\c{MPW1:} form. It proves that a typed master password is the right
-one.
-
-Neither file holds a password or the key. They are check material. The
-salt is a public random input. The verifier only confirms a password
-typed.
-
-\b When kitty.exe opens its configuration window at start, KiTTY++ puts
-up the master-password prompt once if \c{MasterPwVerifier} exists and
-\c{PortablePasswordProtection} is \c{master}. The launcher does the same
-when it starts. Under \c{dpapi} or \c{legacy} no prompt comes at start:
-a value still \c{MPW2} brings the prompt when it is read.
-
-\b Without the \c{Security} folder, \c{MPW2} values still open. Each
-carries its own salt. The master password typed at the prompt is checked
-against the value itself. No prompt comes at start. Under the
-master-password policy, the next password a save protects sets up a
-master password anew, with a new salt and verifier. Values written before keep their own salt and need the
-password they were written with.
-
-\b \c{MPW1} values cannot be opened without the \c{Security} folder of
-the store that wrote them.
-
-\b \c{Security} copied from another store makes that store's master
-password the one this store checks at start and uses for new values.
-Values written before keep their own salt and still need their own
-password. To share one master password between several portable copies,
-copy one \c{Security} folder into each before passwords are saved
-there.
-
-\b A store whose passwords were wrapped by an earlier version may have
-no \c{Security} folder, its salt having been kept in the registry. At
-start KiTTY++ copies the salt and verifier from the registry into the
-store, once: when the store holds a master-password value, has no
-\c{MasterPwSalt} of its own and the registry still holds one.
-
-\H{folderstore-proxies} Proxies: named proxy definitions
+\H{folderstore-proxies} Proxies
 
 \c{Proxies} in the configuration directory holds one file per named
-proxy definition (\k{kitty-cfg-named-proxies}). The folder is made by
-the first definition saved.
-
-\b The file name is the definition's name, escaped the way old KiTTY
-escaped it: space, \c{\\}, \c{*}, \c{?}, \c{:}, \c{/}, \c{"}, \c{<},
-\c{>}, \c{|}, \c{%}, control characters, bytes above 126 and a leading
-dot become \c{%} followed by two uppercase hex digits. Files called
-\c{None} or \c{Default} are not taken as definitions.
-
-\b The readers take only lines in the form \c{Key\\value\\}. A line
-\c{Key=value} is not read. The value is escaped as in a session file. Use uppercase hex digits here: lower-case ones are
-not decoded correctly.
-
-\b A save reads the file first, keeps lines it does not set (comments,
-keys of other tools) at their place, keeps unchanged lines as they were
-written and writes changed and new lines in the \c{Key\\value\\} form.
-
-The keys:
+proxy (\k{kitty-cfg-named-proxies}), made by the first save. File name:
+the definition's name with space, \c{\\ * ? : / " < > | %}, control
+characters, bytes above 126 and a leading dot as \c{%} and two
+uppercase hex digits. \c{None} and \c{Default} are ignored. Both line
+forms are read; a save works as for a session file but writes changed
+and new lines as \c{Key\\value\\}. The import of an export reads only
+\c{Key\\value\\} lines.
 
 \b \c{ProxyMethod}: \c{0} none, \c{1} SOCKS 4, \c{2} SOCKS 5, \c{3}
 HTTP, \c{4} Telnet, \c{5} local command, \c{6} SSH port forwarding,
-\c{7} SSH command, \c{8} SSH subsystem. Any other number is none.
+\c{7} SSH command, \c{8} SSH subsystem; other numbers none.
 
-\b \c{ProxyHost}, \c{ProxyPort}, \c{ProxyUsername}.
+\b \c{ProxyHost}, \c{ProxyPort}, \c{ProxyUsername},
+\c{ProxyExcludeList}, \c{ProxyTelnetCommand}.
 
-\b \c{ProxyPassword}: protected as a session's password, with the same
-markers (\k{folderstore-passwords}). An unchanged password keeps its
-line.
-
-\b \c{ProxyExcludeList}: destinations that bypass the proxy.
+\b \c{ProxyPassword}: as a session password, \k{folderstore-passwords}.
 
 \b \c{ProxyDNS}: \c{0} no, \c{1} auto, \c{2} yes.
+\c{ProxyLocalhost}: \c{1} proxies \c{localhost} too.
+\c{ProxyLogToTerm}: \c{0} on, \c{1} off, \c{2} auto.
+\c{ProxyHostIs}: \c{0} or \c{1}; absent means the global default.
 
-\b \c{ProxyLocalhost}: \c{1} sends connections to \c{localhost} through
-the proxy too.
-
-\b \c{ProxyTelnetCommand}: the command to send.
-
-\b \c{ProxyLogToTerm}: diagnostics in the terminal, \c{0} on, \c{1}
-off, \c{2} auto.
-
-\b \c{ProxyHostIs}: \c{0} or \c{1}, how the host field is read. A save
-leaves the line out when the definition follows the global default.
-
-A session refers to a definition by its name, in its own file:
-\c{ProxySelection=<name>}, escaped as any value.
-\c{- Session defined proxy -} (the default) uses the session's own proxy
-settings. \c{- No proxy -} uses none (\k{kitty-cfg-proxy-override}). A name without a
-definition falls back to the session's own proxy settings when the
-session has some, else to no proxy.
+A session selects one with \c{ProxySelection=<name>}.
+\c{- Session defined proxy -} (default) uses the session's own proxy
+settings, \c{- No proxy -} none (\k{kitty-cfg-proxy-override}). An
+unknown name falls back to the session's own settings, else none.
 
 \H{folderstore-hostkeys} SshHostKeys and SshHostCAs
 
-The host-key folder holds one file per accepted host key.
-
-\b The file name is \c{<key type>@<port>:<host>}. The host is escaped
-as PuTTY escapes it in the registry: space, \c{\\}, \c{*}, \c{?},
-\c{%}, control characters, bytes above 126 and a leading dot become
-\c{%} followed by two uppercase hex digits. The whole name is then
-escaped as a session value, so \c{:} becomes \c{%3A} and a \c{%} from
-the first step becomes \c{%25}. The host-key file extension is appended last.
-
-\b The file holds the key in the text form PuTTY keeps under
-\c{SshHostKeys} in the registry, followed by a line ending. A stored
-key matches only when this text is exactly the key the server presents.
-
-\b Two more files belong to each key, the same name with an ending. The
-one ending in \c{%3Afirst} is written when the key is first stored. The
-one ending in \c{%3Awhen} is written each time the key is stored. Each holds a local time,
-\c{YYYY-MM-DDThh:mm:ss}. They are information for the Host keys panel
-(\k{kitty-cfg-host-keys}). Nothing decides on them. Deleting a key there
-deletes all three files.
-
-An example, for an Ed25519 key of \c{web01.example.com} on port 22:
+One file per host key, named \c{<key type>@<port>:<host>}: the host
+escaped as in PuTTY's registry (space, \c{\\ * ? %}, control
+characters, bytes above 126, a leading dot), then the whole name escaped
+as a session value (\c{:} is \c{%3A}), then \c{hostkeyextension}
+appended. The file holds PuTTY's text form of the key; it matches only
+when identical to the key presented. Two more files, \c{%3Afirst}
+(written once) and \c{%3Awhen} (each store), hold a local time
+\c{YYYY-MM-DDThh:mm:ss} for the Host keys panel
+(\k{kitty-cfg-host-keys}); deleting a key there deletes all three.
 
 \c ssh-ed25519@22%3Aweb01.example.com
 \c ssh-ed25519@22%3Aweb01.example.com%3Afirst
 \c ssh-ed25519@22%3Aweb01.example.com%3Awhen
 
-\c{hostkeyextension} (\q{Host Key File Extension} on
-\k{kitty-cfg-storage}) is an ending on every host-key file name: none by
-default, a dot put in front when it is missing. A file without the
-ending is renamed to carry it when its host is first looked up. Where
-both names exist, the one with the ending is read.
-\c{hostkeyextensionapplied} in \c{kitty.ini} records the ending last
-applied to the files.
+\c{hostkeyextension} (\q{Host Key File Extension}): none by default, a
+dot put in front when missing. A file without it is renamed at its
+first lookup; when both exist, the one with it is read.
+\c{hostkeyextensionapplied} records the ending last applied.
 
-\c{SshHostCAs} in the store root holds one file per trusted host
-certificate authority (\k{kitty-cfg-host-cas}). The file name is the
-CA's name, escaped as a session value. The file holds \c{Key=value}
-lines: \c{PublicKey} (the CA key, base64), \c{Validity} (the expression
-of hosts the CA is trusted for, percent-encoded) and
-\c{PermitRSASHA1}, \c{PermitRSASHA256}, \c{PermitRSASHA512} (\c{0} or
-\c{1}). Each save writes the file anew.
+\c{SshHostCAs} holds one file per CA (\k{kitty-cfg-host-cas}), named as
+a session value, written anew on each save, with \c{Key=value} lines
+\c{PublicKey} (base64), \c{Validity} (percent-encoded host expression),
+\c{PermitRSASHA1}, \c{PermitRSASHA256}, \c{PermitRSASHA512} (\c{0}/\c{1}).
 
-\H{folderstore-state} KiTTYState and the other state files
+\H{folderstore-state} State files
 
-\c{KiTTYState} in the store root holds what KiTTY++ remembers between
-runs, in the line format of a session file. Numbers are decimal text.
+\c{KiTTYState}, in session file format, read at each use:
+\c{LastSession}, \c{LastFolder} (\c{Default} is the root),
+\c{ManageFolder}, \c{ManageSession}, \c{ManageTag},
+\c{ShowForeignSessions} (\c{1} lists the old KiTTY and PuTTY registry
+sessions), \c{ForeignSessionsNotice} (bits: \c{1} at start, \c{2} under
+the list), \c{SessionArrangeOffered}, \c{UpdateLatest},
+\c{UpdateLatestBeta}. A missing file means defaults.
 
-\b \c{LastSession}, \c{LastFolder}: the session and the folder the
-configuration window last loaded. \c{LastFolder=Default} is the root.
+\b \c{Jumplist}: one escaped session name per line, newest first;
+names of deleted sessions are dropped on change.
 
-\b \c{ManageFolder}, \c{ManageSession}, \c{ManageTag}: where Manage
-Sessions was left.
+\b \c{PUTTY.RND}: binary random seed.
 
-\b \c{ShowForeignSessions}: \c{1} lists the sessions of the old KiTTY
-and PuTTY registry hives as well.
+\b \c{TermEnvHint}: one file per host holding \c{1}, marking that the
+\c{COLORTERM}/\c{TERM_PROGRAM} notice was shown.
 
-\b \c{ForeignSessionsNotice}: the notice about those sessions still to
-show, as bits: \c{1} at start, \c{2} under the session list.
+\b \c{WindowPos}: one file per monitor layout.
 
-\b \c{SessionArrangeOffered}: \c{1} once Arrange has been offered.
-
-\b \c{UpdateLatest}: the newest version the update check found.
-\c{UpdateLatestBeta}: \c{1} when that version is a beta.
-
-KiTTY++ reads the file each time it needs a value. To set one, it reads
-the file, changes that line and writes the file over. A missing
-\c{KiTTYState} is no error: each value then has its default, so the
-Arrange offer comes again where it applies.
-
-The other state files:
-
-\b \c{Jumplist} (store root): the recent sessions of the jump list, one
-session name per line, escaped as a session value, the newest first.
-Each change drops the names whose session no longer exists.
-
-\b \c{PUTTY.RND} (store root): the random seed. Binary, rewritten by
-KiTTY++.
-
-\b \c{TermEnvHint} (store root): one file per host, holding \c{1}, the
-file name escaped as a session value. It marks that the notice
-about a host refusing \c{COLORTERM} or \c{TERM_PROGRAM} was shown.
-
-\b \c{WindowPos} (store root): where terminal windows were left, one
-file per monitor layout.
-
-\b \c{Launcher} (configuration directory): the launcher's menu, one file
-per entry, folders as directories. KiTTY++ deletes the folder and writes
-it anew from the session list.
+\b \c{Launcher}: one file per entry, folders as directories, rewritten
+from the session list.
 
 \H{folderstore-backups} Backups
 
-KiTTY++ backs up the configuration directory into its \c{Backups}
-folder:
+\c{Backups\\kitty-portable-YYYYMMDD-HHMMSS} (local time) and
+\c{Backups\\kitty-portable-latest} (replaced each time) in the
+configuration directory. \c{portablebackupcount}: dated copies kept,
+default 5, at most 50, \c{0} off. A copy holds \c{kitty.ini} and the
+configuration directory, without \c{Backups} and top-level \c{.exe},
+\c{.dll}, \c{.log}, \c{.dmp} files; a session or host-key folder outside
+it is not included. A failed copy is deleted. No backup with
+\c{conf=no} or \c{readonly=yes}.
 
-\b \c{Backups\\kitty-portable-YYYYMMDD-HHMMSS}: a dated copy, local
-time.
+Written when the configuration window is committed (\q{Open},
+\q{Change Settings}) after a store change, before it overwrites or
+deletes a session, and on \c{/savereg}. To restore, close every KiTTY++
+program and copy a backup back into the configuration directory.
 
-\b \c{Backups\\kitty-portable-latest}: the same copy again, replaced
-each time.
+\H{folderstore-edits} Editing while KiTTY++ runs
 
-\b \c{portablebackupcount} is the number of dated copies kept: 5 by
-default, 50 at most. 0 turns the backup off. After each backup the
-oldest dated copies beyond that number are deleted.
-
-A copy holds \c{kitty.ini} (taken from wherever it lives) and everything
-in the configuration directory except, at its top level, the
-\c{Backups} folder and files ending in \c{.exe}, \c{.dll}, \c{.log} or
-\c{.dmp}. A session folder or host-key folder set outside the
-configuration directory (\c{sessions}, \c{sshhostkeys}) is not in the
-copy. A copy that fails part-way is deleted. The older copies are then
-left as they are. Without a configuration file (\c{conf=no}) no
-backup is written, nor with \c{readonly=yes}.
-
-A backup is written:
-
-\b When the configuration window is committed with \q{Open} or
-\q{Change Settings} is applied, if the store has changed since the last
-backup: a session saved or deleted, a host key stored or deleted, a
-named proxy saved, the session files renamed to a new extension.
-
-\b Before the configuration window overwrites or deletes a session,
-whether or not anything changed.
-
-\b On \c{/savereg}, at once.
-
-To restore, close every KiTTY++ program and copy the contents of a
-backup back into the configuration directory.
-
-\H{folderstore-edits} Editing the store while KiTTY++ runs
-
-Nothing watches the store. A change made by hand counts when KiTTY++
-next reads the file in question:
-
-\b A session file is read each time the session is loaded. A session
-started by name (\c{kitty.exe -load Linux\\web01}) always takes the file
-as it is. The configuration window reads the session list when it
-opens. kageant reads it each time its tray menu opens.
-
-\b \c{KiTTYState} is read each time a value is needed.
-
-\b A host-key file is read at each connection to its host, so a key
-added or deleted by hand counts at the next connection.
-
-\b A named proxy's file is read when a session that uses it connects.
-
-\b The \c{Security} files are read the first time a process needs the
-master password. A process that has unlocked it keeps the key: a changed
-\c{Security} folder counts in a KiTTY++ started afterwards.
-
-\b \c{kitty.ini} is read when KiTTY++ starts.
-
-KiTTY++ writes a session file, \c{KiTTYState} or a proxy file over in
-place, from what it read a moment before. An edit saved to the same file
-in that moment is lost.
+Nothing watches the store. A session file is read when the session
+loads (\c{-load} always reads the file); the configuration window reads
+the list when it opens, kageant when its tray menu opens. Host-key files
+are read at each connection, a named proxy when a session using it
+connects, \c{Security} when a process first needs the master password,
+\c{kitty.ini} at start.
+KiTTY++ writes session files, \c{KiTTYState} and proxy files over in
+place from what it read a moment before: an edit made in between is
+lost.
 
 \H{folderstore-ktx} .ktx export files
 
-A \c{.ktx} file is one session outside the store: what Application >
-Migration exports (\k{kitty-cfg-migration}), \c{-exportall} writes and
-\c{-importdir} reads.
-
-\b An export writes one flat file per session into the folder chosen.
-Its name is the whole session name, folder path included, escaped as one
-component, so \c{Linux\\web01} is \c{Linux%5Cweb01.ktx}. The ending is
-the session file extension, \c{.ktx} when none is set. Default Settings
-is not exported.
-
-\b The lines are in the \c{Key\\value\\} form, with the same value
-escape as a session file. Reading takes both forms.
-
-\b The passwords are wrapped for transport, not for the store: with the
-export's own password (at least five characters) as \c{MPW2}, opened on
-any PC with that password, or with DPAPI when \q{this PC only} is
-chosen. An export never sets up a master password in the store.
-
-\b The named proxy definitions go into a \c{Proxies} folder beside the
-exported files, in the format of \k{folderstore-proxies}.
-
-\b An import saves each file as an ordinary session. The passwords are
-then protected for the destination store, a \c{PLAIN:} value included.
-
-\b Each line of a \c{.ktx} file must be empty, have its first \c{=}
-before any \c{\\}, or end in \c{\\}. Any other line, a comment or
-\c{Key\\0} without the closing \c{\\} included, marks the encrypted line
-form of older KiTTY versions. The reader decodes it as one.
-
-\q{Make a portable copy} on the Migration panel writes the copy's
-session files through the export as well, but in the \c{Key=value} form
-with LF, as a session file of the store.
+Application > Migration exports (\k{kitty-cfg-migration}),
+\c{-exportall} writes and \c{-importdir} reads one flat file per
+session: the whole name escaped as one component (\c{Linux%5Cweb01.ktx}),
+ending in the session file extension or \c{.ktx}. Default Settings is
+not exported. Lines are \c{Key\\value\\}; reading takes both forms.
+Passwords are \c{MPW2} under the export password (five characters at
+least), or DPAPI with \q{this PC only}; no master password is set up.
+Named proxies go into a \c{Proxies} folder beside the files. An import
+saves each as an ordinary session, protecting passwords for the
+destination store, \c{PLAIN:} included. A line that is not empty, does
+not end in \c{\\} and has no \c{=} before any \c{\\} marks the older
+encrypted form, which is then decoded. \q{Make a portable copy}
+uses the export but writes \c{Key=value} lines with LF.

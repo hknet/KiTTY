@@ -11,6 +11,8 @@
 #include "kitty/kitty_url_regex.h"   /* KiTTY: old URL defaults replaced */
 /* KiTTY (hknet/KiTTY#61): Session Lockdown, windows/storage.c */
 char *kitty_session_locked_msg(const char *sessionname);
+/* KiTTY: save only non-default settings, windows/storage.c */
+void kitty_settings_w_save_rules(settings_w *handle, const char *section);
 #ifndef NO_GSSAPI
 #include "ssh/gssc.h"
 #include "ssh/gss.h"
@@ -545,6 +547,8 @@ char *save_settings(const char *section, Conf *conf)
     sesskey = open_settings_w(section, &errmsg);
     if (!sesskey)
         return errmsg;
+    /* KiTTY: "Save only non-default settings" (windows/storage.c) */
+    kitty_settings_w_save_rules(sesskey, section);
     save_open_settings(sesskey, conf);
     close_settings_w(sesskey);
     return NULL;

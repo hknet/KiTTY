@@ -901,6 +901,274 @@ static void test_script_lines(void)
     }
 }
 
+/* ---------- save only non-default settings ----------
+ *
+ * kitty.ini saveonlynondefaultsettings: with Inherit Default Settings on, a
+ * session save writes only what differs from Default Settings, and "Comment
+ * out defaults" does that once for every session. The folder store runs in a
+ * %TEMP% tree with its own Default Settings; the registry leg uses zz-*
+ * scratch keys, a scratch session standing in for Default Settings (the real
+ * one is never written), and the button's per-session step on that key only
+ * (the whole-store walk would reach the real sessions). */
+#define NDDEF  "zz-kitty-selftest-nd-defaults"
+#define NDSESS "zz-kitty-selftest-nd"
+
+static int nd_write(const char *dir, const char *name, const char *text)
+{
+    char path[MAX_PATH];
+    FILE *fp;
+    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+    fp = fopen(path, "wb");
+    if (!fp) return 0;
+    fputs(text, fp);
+    return fclose(fp) == 0;
+}
+
+static int nd_file_is(const char *dir, const char *name, const char *want)
+{
+    char path[MAX_PATH];
+    char *got;
+    int ok;
+    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+    got = read_whole_file(path);
+    ok = got && !strcmp(got, want);
+    if (!ok)
+        printf("      got:\n%s      want:\n%s", got ? got : "(none)\n", want);
+    free(got);
+    return ok;
+}
+
+static void test_nondefault_file(void)
+{
+    static const char *const names[] = {
+        "Default Settings", "nd-gate", "nd-new", "nd-old", "nd-locked" };
+    static const char deftext[] =
+        "HostName=\nProtocol=ssh\nTermWidth=80\nTermHeight=24\n"
+        "RememberWindowPos\\0\\\nFolder=Default\n";
+    static const char lockedtext[] =
+        "HostName=lock.example\nTermWidth=80\nSessionLockdown=1\n";
+    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], p[MAX_PATH];
+    char *err = NULL, *v;
+    settings_w *w;
+    settings_r *r;
+    int n, failed = -1;
+    size_t i;
+
+    GetTempPathA(sizeof(tmp), tmp);
+    snprintf(root, sizeof(root), "%skitty-selftest-nd-%lu",
+             tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+
+    check(nd_write(sess, "Default Settings", deftext) &&
+          nd_write(sess, "nd-locked", lockedtext) &&
+          nd_write(sess, "nd-old",
+                   "HostName=old.example\nTermWidth=80\nRememberWindowPos\\1\n"
+                   "; TermType=vt100\n# TermHeight=40\n#TermWidth=99\n"),
+          "nondefault: folder store seeded");
+
+    /* the reader: a line starting with # or ; is a comment, whatever it holds */
+    snprintf(p, sizeof(p), "%s\\nd-old", sess);
+    r = kitty_open_settings_r_file(p);
+    check(r && read_setting_i(r, "TermHeight", -7) == -7 &&
+          read_setting_i(r, "TermWidth", -7) == 80,
+          "nondefault: '# Key=value' is a comment, not a setting");
+    v = r ? read_setting_s(r, "TermType") : NULL;
+    check(r && !v, "nondefault: '; Key=value' is a comment, not a setting");
+    sfree(v);
+    v = r ? read_setting_s(r, "# TermHeight") : NULL;
+    check(r && !v, "nondefault: no key '# TermHeight' is read");
+    sfree(v);
+    if (r) close_settings_r(r);
+
+    /* without Inherit the switch does nothing: written whole */
+    kitty_set_save_only_nondefault(1);
+    kitty_set_inherit_default_settings(0);
+    w = open_settings_w("nd-gate", &err);
+    check(w != NULL, "nondefault: open nd-gate");
+    if (w) {
+        kitty_settings_w_save_rules(w, "nd-gate");
+        write_setting_s(w, "HostName", "gate.example");
+        write_setting_i(w, "TermWidth", 80);
+        close_settings_w(w);
+    }
+    check(nd_file_is(sess, "nd-gate", "HostName=gate.example\nTermWidth=80\n"),
+          "nondefault: Inherit off - the session is written whole");
+    kitty_set_inherit_default_settings(1);
+
+    /* a new file stays short */
+    w = open_settings_w("nd-new", &err);
+    check(w != NULL, "nondefault: open nd-new");
+    if (w) {
+        kitty_settings_w_save_rules(w, "nd-new");
+        write_setting_s(w, "HostName", "");       /* marks a session file */
+        write_setting_s(w, "Protocol", "ssh");    /* idem */
+        write_setting_i(w, "TermWidth", 80);      /* the default */
+        write_setting_i(w, "TermHeight", 30);
+        write_setting_i(w, "RememberWindowPos", 0);   /* the default */
+        write_setting_s(w, "Folder", "Default");  /* not a setting */
+        write_setting_s(w, "TermType", "vt100");  /* Default Settings lacks it */
+        close_settings_w(w);
+    }
+    check(nd_file_is(sess, "nd-new",
+                     "HostName=\nProtocol=ssh\nTermHeight=30\nFolder=Default\n"
+                     "TermType=vt100\n"),
+          "nondefault: a new file holds only what differs from Default Settings");
+
+    /* an existing file: unchanged lines stay, a value set back to the
+     * default is commented out in its own form, a new value goes onto its
+     * commented-out line */
+    w = open_settings_w("nd-old", &err);
+    check(w != NULL, "nondefault: open nd-old");
+    if (w) {
+        kitty_settings_w_save_rules(w, "nd-old");
+        write_setting_s(w, "HostName", "old.example");
+        write_setting_i(w, "TermWidth", 80);          /* unchanged, = default */
+        write_setting_i(w, "RememberWindowPos", 0);   /* back to the default */
+        write_setting_i(w, "TermHeight", 50);         /* was commented out */
+        close_settings_w(w);
+    }
+    check(nd_file_is(sess, "nd-old",
+                     "HostName=old.example\nTermWidth=80\n# RememberWindowPos\\0\n"
+                     "; TermType=vt100\nTermHeight=50\n#TermWidth=99\n"),
+          "nondefault: unchanged lines stay, default commented out, new value uncommented in place");
+    w = open_settings_w("nd-old", &err);
+    if (w) {
+        kitty_settings_w_save_rules(w, "nd-old");
+        write_setting_i(w, "TermHeight", 24);         /* back to the default */
+        close_settings_w(w);
+    }
+    check(nd_file_is(sess, "nd-old",
+                     "HostName=old.example\nTermWidth=80\n# RememberWindowPos\\0\n"
+                     "; TermType=vt100\n# TermHeight=24\n#TermWidth=99\n"),
+          "nondefault: a key=value line set back to the default is '# Key=value'");
+
+    /* Default Settings is never shortened: no rule on it */
+    w = open_settings_w("Default Settings", &err);
+    if (w) {
+        kitty_settings_w_save_rules(w, "Default Settings");
+        write_setting_i(w, "TermWidth", 80);
+        close_settings_w(w);
+    }
+    check(nd_file_is(sess, "Default Settings", deftext),
+          "nondefault: Default Settings stays whole");
+
+    /* Comment out defaults: every session once, Default Settings and a
+     * locked session left, idempotent */
+    n = kitty_store_comment_out_defaults("Default Settings", &failed);
+    check(n == 2 && failed == 0,
+          "nondefault: Comment out defaults changed nd-gate and nd-old");
+    check(nd_file_is(sess, "nd-old",
+                     "HostName=old.example\n# TermWidth=80\n# RememberWindowPos\\0\n"
+                     "; TermType=vt100\n# TermHeight=24\n#TermWidth=99\n") &&
+          nd_file_is(sess, "nd-gate", "HostName=gate.example\n# TermWidth=80\n") &&
+          nd_file_is(sess, "nd-new",
+                     "HostName=\nProtocol=ssh\nTermHeight=30\nFolder=Default\n"
+                     "TermType=vt100\n"),
+          "nondefault: each line equal to Default Settings is '# <line>', HostName/Protocol/Folder kept");
+    check(nd_file_is(sess, "Default Settings", deftext) &&
+          nd_file_is(sess, "nd-locked", lockedtext),
+          "nondefault: Default Settings and a locked session untouched");
+    n = kitty_store_comment_out_defaults("Default Settings", &failed);
+    check(n == 0 && failed == 0, "nondefault: Comment out defaults is idempotent");
+
+    kitty_set_save_only_nondefault(0);
+    kitty_set_inherit_default_settings(0);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
+        snprintf(p, sizeof(p), "%s\\%s", sess, names[i]);
+        DeleteFileA(p);
+    }
+    RemoveDirectoryA(sess);
+    RemoveDirectoryA(root);
+}
+
+static void test_nondefault_registry(void)
+{
+    char path[600], dpath[600], sbuf[64];
+    char *err = NULL;
+    settings_w *w;
+    HKEY k, dk;
+    DWORD v, sz, type;
+
+    snprintf(path, sizeof(path), "%s\\Sessions\\%s", kitty_registry_base(), NDSESS);
+    snprintf(dpath, sizeof(dpath), "%s\\Sessions\\%s", kitty_registry_base(), NDDEF);
+
+    w = open_settings_w(NDDEF, &err);
+    check(w != NULL, "nondefault registry: open the scratch defaults");
+    if (!w) return;
+    write_setting_i(w, "TermWidth", 80);
+    write_setting_i(w, "TermHeight", 24);
+    write_setting_i(w, "Beep", 1);
+    write_setting_s(w, "TermType", "xterm");
+    close_settings_w(w);
+
+    /* the session as a full save left it */
+    w = open_settings_w(NDSESS, &err);
+    check(w != NULL, "nondefault registry: open the scratch session");
+    if (w) {
+        write_setting_s(w, "HostName", "nd.example");
+        write_setting_i(w, "TermWidth", 100);
+        write_setting_i(w, "TermHeight", 24);
+        write_setting_s(w, "TermType", "vt100");
+        close_settings_w(w);
+    }
+    /* saved again under the rule */
+    w = open_settings_w(NDSESS, &err);
+    if (w) {
+        kitty_settings_w_nondefault(w, NDDEF);
+        write_setting_s(w, "HostName", "nd.example");
+        write_setting_i(w, "TermWidth", 80);       /* back to the default */
+        write_setting_i(w, "TermHeight", 24);      /* unchanged, = default */
+        write_setting_s(w, "TermType", "vt100");   /* unchanged */
+        write_setting_i(w, "Beep", 1);             /* the default, no value */
+        close_settings_w(w);
+    }
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "TermWidth", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) != ERROR_SUCCESS,
+          "nondefault registry: a value set back to the default is deleted");
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "Beep", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) != ERROR_SUCCESS,
+          "nondefault registry: a default never stored is not written");
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "TermHeight", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) == ERROR_SUCCESS && v == 24,
+          "nondefault registry: an unchanged value equal to the default stays");
+    sz = sizeof(sbuf);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "TermType", RRF_RT_REG_SZ,
+                       &type, sbuf, &sz) == ERROR_SUCCESS && !strcmp(sbuf, "vt100"),
+          "nondefault registry: a non-default value stays");
+
+    /* the button's step on this session: the default values are deleted */
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_READ | KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, dpath, 0, KEY_READ, &dk) == ERROR_SUCCESS) {
+            check(kitty_reg_delete_defaults(k, dk) == 1,
+                  "nondefault registry: Comment out defaults deletes the one default value");
+            check(kitty_reg_delete_defaults(k, dk) == 0,
+                  "nondefault registry: and is idempotent");
+            RegCloseKey(dk);
+        }
+        RegCloseKey(k);
+    }
+    sz = sizeof(v);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "TermHeight", RRF_RT_REG_DWORD,
+                       &type, &v, &sz) != ERROR_SUCCESS,
+          "nondefault registry: TermHeight (= default) gone");
+    sz = sizeof(sbuf);
+    check(RegGetValueA(HKEY_CURRENT_USER, path, "HostName", RRF_RT_REG_SZ,
+                       &type, sbuf, &sz) == ERROR_SUCCESS,
+          "nondefault registry: HostName kept");
+
+    del_settings(NDSESS);
+    del_settings(NDDEF);
+}
+
 int main(int argc, char **argv)
 {
     /* --wrap PASSPHRASE PLAINTEXT: print the self-contained MPW2 value, and
@@ -931,6 +1199,9 @@ int main(int argc, char **argv)
     test_script_protection();
     printf("== login script readable form ==\n");
     test_script_lines();
+    printf("== save only non-default settings ==\n");
+    test_nondefault_file();
+    test_nondefault_registry();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

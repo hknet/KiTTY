@@ -794,6 +794,14 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         conf_set_str_str(conf, CONF_ssh_manual_hostkeys, dup, "");
         sfree(dup);
     }
+    if (!strcmp(p, "-accept-new")) {
+        /* KiTTY: an unknown host key stored without a question, a changed
+         * one never (ssh/common.c) */
+        RETURN(1);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        conf_set_bool(conf, CONF_ssh_accept_new_hostkeys, true);
+    }
     if ((!strcmp(p, "-L") || !strcmp(p, "-R") || !strcmp(p, "-D"))) {
         char type, *q, *qq, *key, *val;
         RETURN(2);

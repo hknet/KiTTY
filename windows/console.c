@@ -239,6 +239,8 @@ static bool console_read_line_to_strbuf(ConsoleIO *conio, bool echo,
                 DWORD nread;
                 if (!ReadConsoleW(conio->hin, wbuf, lenof(wbuf), &nread, NULL))
                     goto out;
+                if (!nread)
+                    goto out;   /* KiTTY: end of input - see below */
                 wlen = nread;
             } else {
                 /*
@@ -250,6 +252,12 @@ static bool console_read_line_to_strbuf(ConsoleIO *conio, bool echo,
                 char buf[4096];
                 DWORD nread;
                 if (!ReadFile(conio->hin, buf, lenof(buf), &nread, NULL))
+                    goto out;
+                /* KiTTY: ReadFile at end of file succeeds with nothing
+                 * read; without this check a question with stdin at EOF
+                 * (an empty file, a closed pipe) spun forever instead of
+                 * ending as cancelled. */
+                if (!nread)
                     goto out;
 
                 buffer_sink bs[1];
@@ -271,6 +279,8 @@ static bool console_read_line_to_strbuf(ConsoleIO *conio, bool echo,
             DWORD nread;
             if (!ReadFile(conio->hin, buf, lenof(buf), &nread, NULL))
                 goto out;
+            if (!nread)
+                goto out;   /* KiTTY: end of input, as above */
 
             put_data(sb, buf, nread);
             smemclr(buf, sizeof(buf));

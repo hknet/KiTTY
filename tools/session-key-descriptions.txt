@@ -1,0 +1,237 @@
+# What a session key does, for docs/SESSION-FILES.md (tools/gen-session-files-doc.py).
+#
+# One line per key: the key, a TAB, one sentence. A line here replaces the first
+# sentence of the key's help topic, for the keys whose topic sentence does not
+# describe the key itself (a panel introduction, a sentence shared by a group of
+# keys, no topic at all). Sorted by key, case-insensitively; '#' starts a comment.
+# A key that no session holds fails the generator and the build: rename or
+# remove its line together with the key.
+#
+# Terse technical English for administrators writing session files: what the
+# key does, the unit and the meaning of the values where they matter.
+
+ANSIColour	`0` ignores the control sequences the host sends for coloured text.
+ApplicationCursorKeys	Initial mode of the cursor keys: `0` normal (`ESC [ A`), `1` application (`ESC O A`).
+ApplicationKeypad	Initial mode of the numeric keypad: `0` normal, `1` application.
+AuthGSSAPI	Tries GSSAPI (Kerberos) user authentication, SSH-2 only.
+AuthGSSAPIKEX	Tries GSSAPI key exchange, SSH-2 only.
+Autocommand	Command typed into the session once after login; `\n` starts a new line.
+AutocommandOut	Unused legacy key from classic KiTTY; nothing reads it.
+Beep	Action on a terminal bell.
+BellOverload	Silences the bell while it rings more often than `BellOverloadN` times in `BellOverloadT`.
+BellOverloadN	Number of bells within `BellOverloadT` that counts as over-use.
+BellOverloadS	Silence, in milliseconds, after which an over-used bell rings again.
+BellOverloadT	Time window, in milliseconds, in which `BellOverloadN` bells count as over-use.
+BellWaveFile	Sound file played on a bell when `Beep` is `3`.
+BgImageAbsoluteX	Left edge of the background image, in pixels, when `BgImageStyle` is `3`.
+BgImageAbsoluteY	Top edge of the background image, in pixels, when `BgImageStyle` is `3`.
+BgImageFile	Background image (BMP, JPEG or PNG), or `#RRGGBB` as the colour of a gradient; `%VAR%` is expanded.
+BgImagePlacement	Whether `BgImageAbsoluteX` and `BgImageAbsoluteY` count from the desktop or from the terminal window.
+BgImageStyle	How the background image is placed in the window.
+BgOpacity	Opacity of the terminal background over the image or desktop, 0-100; a negative value with an image draws a gradient.
+BgSlideshow	Seconds between background images, taken in turn from the image's folder; `0` = the global `slidedelay`.
+BgType	Terminal background: solid colour, the desktop picture, or an image.
+BlinkCur	`1` makes the cursor blink.
+BoldAsColourTest	Unused; bold text follows `BoldAsColour`.
+BoldFont	Unix version only: font for bold text; not used on Windows.
+BoldFontCharSet	Unix version only: character set of `BoldFont`; not used on Windows.
+BoldFontHeight	Unix version only: size of `BoldFont`; not used on Windows.
+BoldFontIsBold	Unix version only: bold weight of `BoldFont`; not used on Windows.
+BugIgnore1	Treats the server as unable to handle SSH-1 ignore messages and sends none; `0` detects it from the server version.
+BugIgnore2	Treats the server as unable to handle SSH-2 ignore messages and sends none; `0` detects it from the server version.
+CheckUpdateStartup	Retired: the update check is `[KiTTY] checkupdate` in kitty.ini; the key is removed when the session is next saved.
+Cipher	SSH encryption algorithms in order of preference; those after `WARN` raise a warning before use.
+ClipboardActivityMark	`1` shows a marker at the front of the window title when the host reads or writes the clipboard.
+ClipboardActivitySeconds	Seconds the clipboard activity marker stays in the title.
+ClipboardMarkAlways	`1` shows the live-permission title marker also for a permission set in the session, not only for one granted in a dialog.
+ClipboardMaxMB	Largest single clipboard write from the host, in MB.
+ClipboardNotify	`1` raises tray notifications for remote clipboard events.
+ClipboardRequireFocus	`1` refuses remote clipboard reads and writes while the window does not have the focus.
+ClipboardWritesPerSecond	Most clipboard writes per second from the host; `0` = no limit.
+Comment	Free-text note stored with the session; never sent to the host.
+CommentNotify	`1` prints the `Comment` into the terminal once, before the connection starts.
+ConnectionSharing	`1` shares one SSH connection between sessions to the same host.
+ConnectionSharingDownstream	`1` lets this session use a connection another session shares.
+ConnectionSharingUpstream	`1` lets this session share its connection with other sessions.
+ContextRootFrame	`1` colours the window frame dark red while the host reports a root context (OSC 3008); Windows 11 only.
+ContextRootTint	`1` tints the default background red while the host reports a root context (OSC 3008), yellow for a switched user.
+CRImpliesLF	`1` treats every CR from the host as CR plus LF.
+CtrlShiftCV	Clipboard of Ctrl+Shift+C and Ctrl+Shift+V: `explicit` the Windows clipboard, `implicit` the terminal's own selection, `none` and `custom:` no action on Windows.
+CtrlShiftIns	Clipboard of Ctrl+Insert and Shift+Insert: `explicit` the Windows clipboard, `implicit` the terminal's own selection, `none` and `custom:` no action on Windows.
+CtrlTabSwitch	`1` includes this window in Ctrl+Tab switching between terminal windows; needs the global Ctrl+Tab window switching.
+CurType	Cursor shape: block, underline or vertical line.
+FailedCommandMarks	`1` marks commands that ended with a non-zero exit code (OSC 133;D) with a red line on the prompt line and in the mark strip.
+FailureReconnect	`1` reconnects after the connection drops; needs the global automatic reconnect.
+Far2lClientIds	far2l client IDs always allowed clipboard access in this session, comma-separated.
+FileZillaOptions	Extra command-line options appended for FileZilla.
+FileZillaPasswordMode	How the session password reaches FileZilla.
+FileZillaPort	Port FileZilla connects to; empty = the protocol's standard port.
+FileZillaProtocol	Protocol FileZilla is started with: `1` SFTP, `2` FTP, `3` FTPS (implicit TLS), `4` FTPS (explicit TLS).
+Folder	Folder the session is filed under in the session list; `Default` = the top level.
+Font	Name of the terminal font.
+FontCharSet	Windows character set of the terminal font.
+FontHeight	Size of the terminal font, in points.
+FontIsBold	`1` uses the bold weight of the terminal font.
+FontQuality	Font smoothing of the terminal text.
+Fullscreen	`1` opens the window full screen.
+GssapiRekey	Minutes between checks for renewed GSSAPI credentials, which start a new key exchange; `0` = never.
+GSSCustom	GSSAPI library DLL used where `GSSLibs` lists `custom`.
+GSSLibs	GSSAPI libraries to try, in order of preference.
+HostAlt	Unused legacy key from classic KiTTY; nothing reads it.
+HostName	Host name or IP address of the server.
+HyperlinkBrowser	Program that opens links when `HyperlinkBrowserUseDefault` is `0`.
+HyperlinkBrowserUseDefault	`1` opens links with the Windows default browser.
+HyperlinkConfirm	When a click on a link shows a confirmation before the link opens.
+HyperlinkHoverCursor	`1` shows a hand pointer over links.
+HyperlinkOSC8	`1` accepts links the host marks with OSC 8.
+HyperlinkPreview	`1` shows the target of an OSC 8 link in a tooltip while the pointer rests on it.
+HyperlinkRegularExpression	Regular expression that finds URLs when `HyperlinkRegularExpressionUseDefault` is `0`.
+HyperlinkRegularExpressionUseDefault	`1` finds URLs with the built-in regular expression.
+HyperlinkScan	`1` makes URLs that the regular expression finds in the output clickable.
+HyperlinkUnderline	When links are underlined.
+HyperlinkUseCtrlClick	`1` opens links only on Ctrl+click; a plain click selects text.
+Icone	Number of the built-in icon for the window, taskbar and tray; `IconeFile` wins when set.
+IconeFile	Icon file (`.ico`) for the window, taskbar and tray; wins over `Icone`; `%VAR%` is expanded.
+KEX	SSH key exchange methods in order of preference; those after `WARN` raise a warning before use.
+KscpDragDrop	`1` uploads files dropped on the terminal window with kscp; `0` refuses drops.
+KscpDropTypePath	`1` types the remote paths of uploaded dropped files at the cursor, without Enter.
+KscpPort	Port kscp connects to; empty = the global kscp port, else the port of the target override, else the session's own port.
+KscpProtocol	`1` runs kscp in SFTP mode, `0` in SCP mode.
+LauncherGlobalHotkey	Key combination that opens this session from anywhere, e.g. `Ctrl+Alt+K`; registered by the Launcher.
+LauncherGlobalHotkeyEnabled	`1` registers `LauncherGlobalHotkey` while the Launcher runs.
+LFImpliesCR	`1` treats every LF from the host as CR plus LF.
+LocalPortAcceptAll	`1` lets local forwarded ports accept connections from other hosts, not only from this PC.
+LockSize	What resizing the window changes: rows and columns, the font size, the font size only when maximised, or nothing.
+LoginShell	Unix pterm only: starts the shell as a login shell; not used on Windows.
+LogKeepDays	Deletes this session's log files older than this many days; `0` = off.
+LogKeepMB	Deletes this session's oldest log files while their total is over this many MB; `0` = off.
+LogTimeRotation	Starts a new log file every this many seconds (the log file name needs `&T`); `0` = off.
+LogType	What the session log records: nothing, printable output, all output, SSH packets, or raw SSH data.
+Maximize	`1` opens the window maximised.
+MouseOverride	`1` lets Shift with the mouse select text while the host has mouse reporting on.
+MousePaste	Clipboard of a mouse paste: `explicit` the Windows clipboard, `implicit` the terminal's own selection, `none` and `custom:` no paste on Windows.
+NetHackKeypad	`1` makes the numeric keypad send NetHack movement keys.
+NoApplicationCursors	`1` ignores the host's switch to application cursor keys mode.
+NoApplicationKeys	`1` ignores the host's switch to application keypad mode.
+NoMouseReporting	`1` ignores the host's xterm mouse reporting requests; the mouse always selects text.
+OSC52ClipboardRead	Host reads of the local clipboard (OSC 52): `0` refused, `1` decided in a dialog.
+OSC52ColourFrame	`1` tints the title bar and window border while a clipboard permission is live; Windows 11 only.
+OSC52ReadDialogs	Most clipboard permission dialogs in ten seconds; further requests are refused without one.
+OSC52ReadInterval	Shortest gap between two clipboard reads, in seconds.
+OSC52ReadMax	Most clipboard reads served per window; `0` = no limit.
+OSC52ReadMinutes	Minutes the time-limited grant of the clipboard dialog lasts.
+OSC52ReadRequests	Requests the count-limited grant of the clipboard dialog covers.
+OSC52ReadTimeout	Seconds before an unanswered clipboard dialog refuses the request; `0` = no timeout.
+OSC52TitleMark	`1` appends a marker to the window title while a clipboard permission is live.
+OSC5522PasteMinutes	Minutes after a program sets paste-events mode (mode 5522) during which a paste is read without a dialog; `0` = always.
+OSC5522PasteTokenSeconds	Seconds the one-time token of a paste event stays valid; values below `1` read as `1`.
+OSC7CwdTracking	`1` uploads into the remote directory the shell reports with OSC 7.
+OSXCommandMeta	macOS version only: the Command key acts as Meta; not used on Windows.
+OSXOptionMeta	macOS version only: the Option key acts as Meta; not used on Windows.
+Password	Auto-login password, stored encrypted (Windows DPAPI, or the master password).
+PingInterval	Minutes part of the keepalive interval, added to `PingIntervalSecs`; both `0` = no keepalives.
+PingIntervalSecs	Seconds part of the keepalive interval, added to `PingInterval`.
+PortForwardings	SSH port forwardings set up when the session connects: local, remote and dynamic (SOCKS).
+PortNumber	TCP port of the server; missing = the standard port of `Protocol`.
+Present	Not a setting: a marker classic KiTTY wrote into every session; nothing reads it, and a save drops it.
+Protocol	Connection protocol of the session.
+ProxyExcludeList	Hosts and addresses connected to directly, not through the proxy.
+ProxyHost	Host name or IP address of the proxy server.
+ProxyLocalhost	`1` sends connections to the local host through the proxy as well.
+ProxyPassword	Password for the proxy server, stored encrypted.
+ProxyPort	TCP port of the proxy server.
+ProxyUsername	User name for the proxy server.
+PSCPKeepWindow	`1` keeps the kscp transfer window open after a successful transfer.
+PSCPOptions	Command-line options handed to kscp; `-r` uploads dropped folders recursively.
+PSCPRemoteDir	Remote directory uploads go to when no OSC 7 directory is known; empty = the home directory.
+PSCPShell	Remote shell WinSCP uses in SCP mode.
+PublicKeyFile	Private key file for SSH public-key authentication, despite the key name.
+ReconnectLogin	Retries after a failed login: `0` the global rule, `1` never.
+RectSelect	`1` makes a plain drag select a rectangle, `0` whole lines; Alt+drag gives the other mode.
+RekeyBytes	Data volume after which SSH renews the session key, e.g. `1G` or `100M`; `0` = no limit.
+RekeyTime	Minutes after which SSH renews the session key; `0` = no limit.
+RemoteCommand	Command run on the server instead of a shell.
+RemoteCommandIsSubsystem	`1` runs `RemoteCommand` as an SSH subsystem, e.g. `sftp`.
+RemotePortAcceptAll	`1` lets remote forwarded ports accept connections from other hosts, not only from the server (SSH-2).
+RunCmdConfirm	`1` shows the clipboard text and waits for confirmation before it runs as a command.
+RunCmdNotify	`1` raises a tray notification after the clipboard ran as a command.
+rzCommand	Retired: the path of `rz` is `[KiTTY] rzcommand` in kitty.ini; nothing reads this key.
+rzOptions	Options handed to `rz` for ZModem receives.
+SCPAutoPwd	Retired: a session with `1` is migrated to `OSC7CwdTracking` = `1`; nothing else reads it.
+ScriptCharDelay	Delay between the characters typed from the script file, in milliseconds.
+ScriptCondLine	Character that starts a condition or comment line in the script file.
+ScriptCondUse	`1` reads a line starting with `ScriptCondLine` as the wait-for text of the next line; `0` as a comment.
+ScriptCRLF	Line ending each script line is sent with.
+ScriptEnable	`1` sends each script line only after the output ends with `ScriptWait`.
+ScriptExcept	`1` sends the first script line without waiting for `ScriptWait`.
+Scriptfile	Script file whose lines are typed into the session.
+ScriptHalt	Text that stops the script when the host output contains it; empty = never.
+ScriptLineDelay	Delay between script lines, in milliseconds.
+ScriptMode	`1` runs `Scriptfile` when the session connects.
+ScriptTimeout	Seconds the script waits for `ScriptWait` before it stops.
+ScriptWait	Prompt text the output must end with before the next script line goes out.
+ScrollbackLines	Number of lines kept in the scrollback.
+ScrollBar	`1` shows the scrollbar.
+ScrollBarFullScreen	`1` shows the scrollbar in full-screen mode as well.
+ScrollbarOnLeft	Unix version only: scrollbar on the left; not used on Windows.
+ScrollOnDisp	`1` returns to the bottom of the scrollback when the host sends output.
+ScrollOnKey	`1` returns to the bottom of the scrollback on a keypress.
+SelectedAsColour	`1` draws the selection in its own palette colours.
+SendToTray	`1` sends the window to the tray when it opens.
+SessionLockdown	`1` blocks every write of this session's settings; rename, move, tags and window positions still write.
+SetWindowPos	`1` opens the window at `TermXPos` and `TermYPos`.
+ShadowBold	Unix version only: draws bold text by overprinting; not used on Windows.
+ShadowBoldOffset	Unix version only: overprint offset of `ShadowBold`, in pixels; not used on Windows.
+SharedClipboard	far2l clipboard sharing: `0` refused, `1` allowed, `2` decided in a dialog.
+SSH2DES	`1` allows single-DES (`des-cbc`) in SSH-2.
+SshWarnPreQuantum	`1` warns when the negotiated key exchange is not post-quantum secure.
+StampUtmp	Unix pterm only: records the session in utmp; not used on Windows.
+SunkenEdge	`1` draws a sunken, slightly thicker window border.
+szCommand	Retired: the path of `sz` is `[KiTTY] szcommand` in kitty.ini; nothing reads this key.
+szOptions	Options handed to `sz` for ZModem sends.
+Tags	Tags of the session, comma-separated, as Manage Sessions shows them.
+TCPKeepalives	`1` turns on TCP keepalives (SO_KEEPALIVE) on the connection; separate from `PingInterval`.
+TelnetRet	`1` makes Return send the Telnet New Line code; `0` sends `^M`.
+TermHeight	Terminal height in rows.
+TermWidth	Terminal width in columns.
+TermXPos	Left edge of the window in screen pixels, applied when `SetWindowPos` is `1`; `-1` = not set.
+TermYPos	Top edge of the window in screen pixels, applied when `SetWindowPos` is `1`; `-1` = not set.
+ToolsMenuFileZilla	`1` shows "Start FileZilla" in the Tools menu and enables its shortcut key.
+ToolsMenuGetFile	`1` shows "Get File (kscp)" in the Tools menu and enables its shortcut key.
+ToolsMenuSendFile	`1` shows "Send File (kscp)" in the Tools menu and enables its shortcut key.
+ToolsMenuWinSCP	`1` shows "Start WinSCP" in the Tools menu and enables its shortcut key.
+TransferAskDestination	`1` opens the folder picker for every file the host sends (OSC 5113).
+TransferFullPath	Whether the host may request a file by full local path (OSC 5113): `-1` the global default, `0` only names in the upload folder, `1` allowed.
+TransferMaxMB	Size limit, in MB, of one file arriving over the session (OSC 5113): `-1` the global default, `0` no limit.
+TransferPermission	Confirmation for file transfers the host starts (OSC 5113).
+TrueColour	`1` lets the host use 24-bit RGB colours.
+UnderlinedAsColour	`1` draws underlined text in its own palette colour.
+UserNameFromEnvironment	`1` with an empty `UserName` logs in with the Windows user name instead of prompting for one.
+UseSystemColours	`1` takes the default foreground, background and cursor colours from Windows instead of the configured ones.
+UTF8Override	Unix version only; not used on Windows.
+WakeupReconnect	`1` reconnects after the PC resumes from sleep; needs the global automatic reconnect.
+WideBoldFont	Unix version only: font for bold double-width characters; not used on Windows.
+WideBoldFontCharSet	Unix version only: character set of `WideBoldFont`; not used on Windows.
+WideBoldFontHeight	Unix version only: size of `WideBoldFont`; not used on Windows.
+WideBoldFontIsBold	Unix version only: bold weight of `WideBoldFont`; not used on Windows.
+WideFont	Unix version only: font for double-width characters; not used on Windows.
+WideFontCharSet	Unix version only: character set of `WideFont`; not used on Windows.
+WideFontHeight	Unix version only: size of `WideFont`; not used on Windows.
+WideFontIsBold	Unix version only: bold weight of `WideFont`; not used on Windows.
+WindowBorder	Gap between the text and the window edge, in pixels.
+WindowClass	Unix version only: X11 window class; not used on Windows.
+WindowClosable	`0` disables closing the window: the close button and Alt+F4.
+WindowHasSysMenu	`0` removes the system menu and with it every caption button.
+WindowMaximizable	`0` removes the maximise button.
+WindowMinimizable	`0` removes the minimise button.
+WindowState	`1` when the window was closed maximised; written and read only while `SaveOnExit` is `1`.
+WinNameAlways	`1` keeps the window title on a minimised window; `0` shows the icon title there instead.
+WinSCPOptions	Extra command-line options handed to WinSCP.
+WinSCPPort	Port WinSCP connects to; empty = the protocol's standard port.
+WinSCPProtocol	Protocol WinSCP is started with: `0` SCP, `1` SFTP, `2` FTP, `3` FTPS (implicit TLS), `4` FTPS (explicit TLS), `5` HTTP, `6` HTTPS.
+WinSCPRawSettings	Settings handed to WinSCP with its `-rawsettings` switch.
+X11Display	X display that forwarded X11 connections go to on this PC; empty = `%DISPLAY%`, or `:0` when that is not set.
+X11Forward	`1` forwards X11 connections from the server to the local X display.
+Xterm256Colour	`1` lets the host use the xterm 256-colour palette.
+zDownloadDir	Local folder for received files (kscp Get File, ZModem, OSC 5113); empty = the global download folder; `%VAR%` is expanded.
+zUploadDir	Local folder for files sent to the host; empty = the global upload folder, else Documents; `%VAR%` is expanded.

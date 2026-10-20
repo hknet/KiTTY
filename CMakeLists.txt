@@ -241,6 +241,13 @@ add_executable(test_droppath
   test/test_droppath.c
   kitty/kitty_droppath.c)
 
+# KiTTY: unit test for accept-new (kitty/kitty_hostkey_acceptnew.c, in
+# sshcommon for ssh/common.c): which host keys are stored without a question,
+# the kitty.ini switch, the record and its text.
+add_executable(test_acceptnew
+  test/test_acceptnew.c
+  kitty/kitty_hostkey_acceptnew.c)
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -421,7 +428,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_search)
+    test_termenv test_droppath test_getfile test_search test_acceptnew)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
@@ -538,6 +545,45 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking dialog accelerators for duplicates within a dialog")
   add_custom_target(check_dialog_accelerators ALL
                     DEPENDS ${KITTY_ACCEL_CHECK_STAMP})
+
+  # docs/SESSION-FILES.md, every session key, is generated from conf.h,
+  # conf-enums.h, the panels and the help; it must match them. The selftest
+  # proves the comparison fails on a stale file. Regenerate with
+  # tools/gen-session-files-doc.py.
+  file(GLOB KITTY_SESSION_DOC_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/kitty/*.h ${CMAKE_CURRENT_SOURCE_DIR}/windows/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_config*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/doc/*.but
+    ${CMAKE_CURRENT_SOURCE_DIR}/docs/session-keys/*.json)
+  set(KITTY_SESSION_DOC_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_session_doc.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_SESSION_DOC_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-session-files-doc.py --selftest
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-session-files-doc.py --check
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_SESSION_DOC_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-session-files-doc.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/session-key-descriptions.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/SESSION-FILES.md
+            ${CMAKE_CURRENT_SOURCE_DIR}/conf.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/conf-enums.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/settings.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/be_list.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/config.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/config.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/gss.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/putty.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ssh.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/terminal/terminal.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/misc.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/defs.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/ssh/gss.h
+            ${KITTY_SESSION_DOC_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking docs/SESSION-FILES.md against the session keys in the source")
+  add_custom_target(check_session_files_doc ALL
+                    DEPENDS ${KITTY_SESSION_DOC_STAMP})
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

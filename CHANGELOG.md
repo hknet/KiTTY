@@ -8,6 +8,18 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### New
 
+- **KiTTY++ Event Viewer** button on Application > Security. With the
+  system MSI installed, entries show their text instead of a Windows
+  placeholder.
+- **Accept new host keys** (-accept-new, [KiTTY] autostoresshkey, per
+  session): unknown new host keys are accepted and stored, changed keys are
+  blocked.
+- **Save only non-default settings** (with Inherit Default Settings):
+  session files only carry non-default settings in their active config,
+  other settings are inherited from "Default Settings".
+- **docs/SESSION-FILES.md**: every session key with type, values and
+  default, generated at build time, with the changes since the previous
+  release.
 - **[docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md)** for tools that
   generate a session folder themselves: where it is, the layout, the name
   escaping, which files count as sessions, the file format with the keys that
@@ -108,6 +120,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **klink, kscp and ksftp no longer hang at a question when stdin is at
+  end of input.**
+- **Refused starts in the event log show the program's path.**
 - **Named proxies in the folder store are read in both line forms.** A proxy
   file written as `Key=value` loaded empty. A file with only the "normal" file
   attribute was missing from the proxy list. An escape in lower-case hex
