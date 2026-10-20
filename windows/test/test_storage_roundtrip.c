@@ -1378,6 +1378,105 @@ static void test_readonly_registry(const char *roini, const char *noini)
     kitty_set_registry_root(0);
 }
 
+/* ---------- a master password setup whose salt cannot be stored ----------
+ *
+ * The first password saved under the master-password policy sets the master
+ * password up (here supplied, as -masterpwfile does, so no prompt). The
+ * Security\ of this tree is a FILE, so the salt cannot be written: the store
+ * failure is reported once and the save keeps nothing. That save reports
+ * nothing more - the failure report states that the password was not saved;
+ * it used to be followed by "The master password is locked: ..." - and a
+ * later save of the same run reports that no master password was set up,
+ * never that it is locked: there is none. */
+#define FSESS1 "zz-kitty-selftest-mpwfail-1"
+#define FSESS2 "zz-kitty-selftest-mpwfail-2"
+
+static int fail_store_reports = 0, fail_kept_reports = 0;
+static char fail_kept_text[512];
+static void fail_store_failed(const char *reason)
+{
+    fail_store_reports++;
+}
+static void fail_locked_save(const char *msg)
+{
+    fail_kept_reports++;
+    snprintf(fail_kept_text, sizeof(fail_kept_text), "%s", msg ? msg : "");
+}
+
+/* One session saved with a password; 1 when the save opened. */
+static int fail_save(const char *name, const char *pw)
+{
+    char *err = NULL;
+    settings_w *w = open_settings_w(name, &err);
+    if (!w)
+        return 0;
+    write_setting_s(w, "HostName", "mpwfail.example");
+    write_setting_s(w, "Password", pw);
+    close_settings_w(w);
+    return 1;
+}
+
+static void test_mpw_setup_store_failed(void)
+{
+    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], blocker[MAX_PATH];
+    char fpath[MAX_PATH], *fbuf, *line;
+    int kept0 = kitty_mpw_kept_count(), nosetup0 = kitty_mpw_kept_nosetup_count();
+    DWORD attr;
+
+    GetTempPathA(sizeof(tmp), tmp);
+    snprintf(root, sizeof(root), "%skitty-selftest-mpwfail-%lu",
+             tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    snprintf(blocker, sizeof(blocker), "%s\\Security", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    check(write_text(root, "Security", "not a folder"),
+          "mpw setup failed: Security\\ is a file");
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+    kitty_set_master_pw_store_failed(fail_store_failed);
+    kitty_set_master_pw_locked_save(fail_locked_save);
+    kitty_set_master_passphrase("selftest-setup-pw");
+
+    check(fail_save(FSESS1, "not-stored-1"),
+          "mpw setup failed: open_settings_w");
+    check(fail_store_reports == 1,
+          "mpw setup failed: the store failure is reported once");
+    check(fail_kept_reports == 0,
+          "mpw setup failed: no further report for that save (no \"is locked\")");
+    check(kitty_mpw_kept_count() - kept0 == 1 &&
+          kitty_mpw_kept_nosetup_count() - nosetup0 == 1,
+          "mpw setup failed: the kept password counts as not set up");
+    snprintf(fpath, sizeof(fpath), "%s\\%s", sess, FSESS1);
+    fbuf = read_whole_file(fpath);
+    line = fbuf ? password_line(fbuf) : NULL;
+    check(fbuf && (!line || !strcmp(line, "Password=")) &&
+          !strstr(fbuf, "not-stored-1") && !strstr(fbuf, "DPAPI1:"),
+          "mpw setup failed: the session stores no password");
+    free(line);
+    free(fbuf);
+    attr = GetFileAttributesA(blocker);
+    check(attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY),
+          "mpw setup failed: Security\\ is still the file");
+
+    check(fail_save(FSESS2, "not-stored-2"),
+          "mpw setup failed: a second session saved");
+    check(fail_store_reports == 1,
+          "mpw setup failed: no second setup in the same run");
+    check(fail_kept_reports == 1 &&
+          !strncmp(fail_kept_text, "No master password was set up:", 30) &&
+          !strstr(fail_kept_text, "is locked"),
+          "mpw setup failed: a later save reports no master password set up, "
+          "not locked");
+
+    kitty_set_master_pw_store_failed(NULL);
+    kitty_set_master_pw_locked_save(NULL);
+    kitty_set_master_passphrase(NULL);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    ro_rmtree(root);
+}
+
 int main(int argc, char **argv)
 {
     char rotmp[MAX_PATH], rodir[MAX_PATH], roini[MAX_PATH], noini[MAX_PATH];
@@ -1431,6 +1530,8 @@ int main(int argc, char **argv)
     printf("== readonly=yes: the store is not written ==\n");
     test_readonly_folder(roini, noini);
     test_readonly_registry(roini, noini);
+    printf("== master password setup whose salt cannot be stored ==\n");
+    test_mpw_setup_store_failed();
     DeleteFileA(roini);
     RemoveDirectoryA(rodir);
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",

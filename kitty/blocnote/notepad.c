@@ -324,7 +324,8 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 			switch( LOWORD(wParam) ) {
 				//QUIT command
 				case NOTEPAD_IDM_QUIT: 
-					if( Notepad_IsModify( hEdit ) ) {
+					// read-only mode never writes the file: nothing to lose, no question
+					if( !readonly && Notepad_IsModify( hEdit ) ) {
 						if( MessageBox( hwnd, "Current file is not saved.\nAre you sure you want to quit ?"
 							,"Confirmation", MB_OKCANCEL|MB_ICONWARNING|MB_DEFBUTTON2 ) == IDOK )
 							PostMessage(hwnd, WM_DESTROY,0,0) ;
@@ -333,7 +334,8 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 					break ;
 				
 				//SAVEAS command
-				case NOTEPAD_IDM_SAVEAS: Notepad_saveas( hwnd, hEdit ) ;
+				case NOTEPAD_IDM_SAVEAS: if( readonly ) break ; // read-only mode: no write, no box (Ctrl+Shift+S stays mapped)
+					Notepad_saveas( hwnd, hEdit ) ;
 					Notepad_SetNoModify( hEdit ) ;
 					Notepad_settitle( hwnd ) ;
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_ENABLED|MF_BYCOMMAND ) ;
@@ -376,6 +378,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				
 				// SAVE command
 				case NOTEPAD_IDM_SAVE:
+					if( readonly ) break ; // read-only mode: no write, no box (Ctrl+S stays mapped)
 					if( Notepad_save( Notepad_filename, hEdit ) )
 						Notepad_SetNoModify( hEdit ) ;
 					break ;

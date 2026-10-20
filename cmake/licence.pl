@@ -98,6 +98,19 @@ if ($mode eq "header") {
 
     $out .= sprintf "\\define{shortcopyrightdetails} %s\n\n",
         &halibutescape($shortdetails);
+
+    # KiTTY: the page footer of the HTML/CHM manual - after the contents on
+    # the start page, unlike \copyright. Here and not in blurb.but because
+    # \cfg does not expand \shortcopyrightdetails. "appendix E" is the
+    # licence appendix (\A{licence}); keep it in step if appendices move.
+    $out .= "\\cfg{xhtml-body-end}{<p>If you want to provide feedback on " .
+        "this manual or on the KiTTY++ tools themselves, use the " .
+        "<a href=\"https://github.com/hknet/KiTTY/issues\">KiTTY++ issue " .
+        "tracker</a>.</p>\n" .
+        "<p>This manual is copyright $shortdetails. All rights reserved. " .
+        "You may distribute this documentation under the MIT licence. " .
+        "See appendix E for the licence text in full.</p>\n" .
+        "<p>Copyright 2026 KiTTY++ manual additions by kapper.net</p>}\n\n";
 }
 
 my $outfile;

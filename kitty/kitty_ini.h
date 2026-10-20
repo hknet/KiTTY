@@ -45,7 +45,8 @@ char default_init_file_content[] =
 \n\
 ; dblclick: what a double-click on a saved session does\n\
 ;    - open: load it and open it in this window (like the Open button)\n\
-;    - start: launch it in a new window and keep the configuration box open (like the Start button)\n\
+;    - start: launch it in a new window and keep the configuration box open\n\
+;      (like the Start button)\n\
 ;dblclick=open\n\
 \n\
 ; defaultsettings: where the saved-session list in the config box shows\n\
@@ -61,9 +62,9 @@ char default_init_file_content[] =
 ;defaultsettings=yes\n\
 \n\
 ; categoryexpand: how many levels of the config-box Category tree are expanded\n\
-;    on open. Default (unset, or all/full) = fully expanded; a number expands only\n\
-;    that deep - 1 = top categories only (stock PuTTY), 2 = one level of subtrees,\n\
-;    and so on.\n\
+;    on open. Default (unset, or all/full) = fully expanded; a number expands\n\
+;    only that deep - 1 = top categories only (stock PuTTY), 2 = one level of\n\
+;    subtrees, and so on.\n\
 ;categoryexpand=all\n\
 \n\
 ; supdup, rlogin: when no, the Connection/SUPDUP or Connection/Rlogin leaf is\n\
@@ -122,14 +123,15 @@ char default_init_file_content[] =
 ;    turn it off again and nothing has moved.\n\
 ;foldernavigation=no\n\
 \n\
-; height: the number of visible lines in the saved-sessions list (default 16 = stock fit)\n\
+; height: the number of visible lines in the saved-sessions list\n\
+;    (default 16 = stock fit)\n\
 ;height=16\n\
 \n\
-; loadlastsession: when yes (default), the configuration box opens pre-filled with\n\
-;    the session used last. When no, it opens on 'Default Settings' with the caret\n\
-;    already in 'Host Name (or IP address)' - quick connect: type a host, press\n\
-;    Enter, and every connection starts from the same known configuration instead\n\
-;    of inheriting whatever was used before.\n\
+; loadlastsession: when yes (default), the configuration box opens pre-filled\n\
+;    with the session used last. When no, it opens on 'Default Settings' with\n\
+;    the caret already in 'Host Name (or IP address)' - quick connect: type a\n\
+;    host, press Enter, and every connection starts from the same known\n\
+;    configuration instead of inheriting whatever was used before.\n\
 ;loadlastsession=yes\n\
 \n\
 ; noexit: if yes, closing a TERMINAL window starts a fresh instance showing the\n\
@@ -141,7 +143,8 @@ char default_init_file_content[] =
 ;noexit=no\n\
 \n\
 ; proxyselection: show the named-proxy chooser in the Session panel.\n\
-;   auto (default) = show once any named proxy is defined; yes = always; no = never\n\
+;   auto (default) = show once any named proxy is defined; yes = always;\n\
+;   no = never\n\
 ;   Where you DEFINE one in the first place depends on this setting: with yes\n\
 ;   the chooser is always in the Session panel and carries an Edit button next\n\
 ;   to it. With auto the chooser stays hidden until a definition exists, so the\n\
@@ -180,16 +183,17 @@ char default_init_file_content[] =
 [KiTTY]\n\
 \n\
 ; antiidle: string sent to the server periodically to keep the connection alive.\n\
-;    Default (unset/empty) = disabled. \\k08 sends a backspace; pick a sequence the\n\
-;    remote ignores. How often it is sent is set by antiidledelay below.\n\
+;    Default (unset/empty) = disabled. \\k08 sends a backspace; pick a sequence\n\
+;    the remote ignores. How often it is sent is set by antiidledelay below.\n\
 ;antiidle=\\k08\\\n\
 \n\
 ; antiidledelay: how often that string is sent, in seconds. Default 180.\n\
 ;    Values below 5 are treated as 5 and above 86400 (a day) as 86400, so\n\
-;    neither a typo nor an absurd number can turn a keepalive into a flood. (Before this it was not seconds: the number was divided by 10 to\n\
-;    count ticks of a 30-second timer, so it meant about three times the\n\
-;    value set - 60 gave 180 seconds. Divide a carried-over value by three to keep\n\
-;    the interval you had.)\n\
+;    neither a typo nor an absurd number can turn a keepalive into a flood.\n\
+;    (Before this it was not seconds: the number was divided by 10 to count\n\
+;    ticks of a 30-second timer, so it meant about three times the value set -\n\
+;    60 gave 180 seconds. Divide a carried-over value by three to keep the\n\
+;    interval you had.)\n\
 ;antiidledelay=60\n\
 \n\
 ; autoreconnect: reconnect a session by itself when the link drops, retrying\n\
@@ -200,7 +204,8 @@ char default_init_file_content[] =
 ;autoreconnect=yes\n\
 \n\
 ; autostoresshkey: store an unknown SSH host key without a question, for every\n\
-;    session (OpenSSH's accept-new); a changed key is never accepted. Default no.\n\
+;    session (OpenSSH's accept-new); a changed key is never accepted.\n\
+;    Default no.\n\
 ;autostoresshkey=no\n\
 \n\
 ; bgimage: enable/disable the background image feature. (The description\n\
@@ -239,14 +244,14 @@ char default_init_file_content[] =
 ;    not there is asked about at start; going on uses the default, and\n\
 ;    kageant and the console tools then use the default too.\n\
 ;    It does NOT move kitty.ini. This file has to be found before anything in\n\
-;    it can be read, so KiTTY++ is already holding it by the time it learns where\n\
-;    configdir points - kitty.ini stays where it was.\n\
+;    it can be read, so KiTTY++ is already holding it by the time it learns\n\
+;    where configdir points - kitty.ini stays where it was.\n\
 ;    Removing the setting later does not move anything back either: your\n\
-;    sessions, host keys and stored keys stay in that directory and KiTTY++ stops\n\
-;    looking there, so they simply disappear from the list. Before you unset or\n\
-;    change it, use \"Export all...\" in the configuration box (Session panel),\n\
-;    then change the setting, then \"Import all...\" - that carries everything\n\
-;    across instead of stranding it.\n\
+;    sessions, host keys and stored keys stay in that directory and KiTTY++\n\
+;    stops looking there, so they simply disappear from the list. Before you\n\
+;    unset or change it, use \"Export all...\" in the configuration box (Session\n\
+;    panel), then change the setting, then \"Import all...\" - that carries\n\
+;    everything across instead of stranding it.\n\
 ;configdir=\n\
 \n\
 ; browsedirectory: retired - read and ignored. Classic KiTTY's switch for\n\
@@ -272,8 +277,8 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > Storage & Backup offers to rename the\n\
 ;    existing files. Changed here by hand, the configuration window puts up a\n\
 ;    question at the next start: rename the session files to it? (Yes\n\
-;    renames, No keeps the names and the question does not come back.) Also the file type\n\
-;    registered for double-clicked session files (.ktx when empty).\n\
+;    renames, No keeps the names and the question does not come back.) Also the\n\
+;    file type registered for double-clicked session files (.ktx when empty).\n\
 ;    Folder store only. Default: none.\n\
 ;fileextension=\n\
 \n\
@@ -291,9 +296,9 @@ char default_init_file_content[] =
 ;    Integration.\n\
 ;urlsessions=no\n\
 \n\
-; offernewsessioncreation: after the first login to a host whose key was new, in a window\n\
-;    with no saved session (a link, Quick Connect, a typed host), a notice\n\
-;    offers to keep the connection as a session: Save Session, Not Now,\n\
+; offernewsessioncreation: after the first login to a host whose key was new, in\n\
+;    a window with no saved session (a link, Quick Connect, a typed host), a\n\
+;    notice offers to keep the connection as a session: Save Session, Not Now,\n\
 ;    Don't ask again (which writes no here). yes (default) or no.\n\
 ;    Application > KiTTY++ Settings > System > Session Integration.\n\
 ;offernewsessioncreation=yes\n\
@@ -393,8 +398,8 @@ char default_init_file_content[] =
 ; uploaddir: the local folder files are sent from - the Send File (kscp)\n\
 ;    picker opens in it, and a file the far end requests over the\n\
 ;    session (kitten transfer) is looked up in it - unless the session sets\n\
-;    its own on Connection > File-Transfer-Settings; unset = your Documents folder.\n\
-;    Windows environment variables are expanded, as for downloaddir.\n\
+;    its own on Connection > File-Transfer-Settings; unset = your Documents\n\
+;    folder. Windows environment variables are expanded, as for downloaddir.\n\
 ;uploaddir=\n\
 \n\
 ; transfernotification: a system notification (tray balloon) when a\n\
@@ -409,7 +414,8 @@ char default_init_file_content[] =
 \n\
 ; transferfullpath: may the far end request a file by full local path\n\
 ;    (/C:/...) over the session (kitten transfer)? no = only names inside\n\
-;    the upload folder; a session can set its own on Connection > File-Transfer-Settings\n\
+;    the upload folder; a session can set its own on\n\
+;    Connection > File-Transfer-Settings\n\
 ;transferfullpath=no\n\
 \n\
 ; hyperlink: enable/disable the hyperlink feature\n\
@@ -439,12 +445,12 @@ char default_init_file_content[] =
 \n\
 ; traymode: where a window goes when it is sent to the tray (the system menu\n\
 ;    entry, its shortcut, Ctrl+middle-click, a right click or a Ctrl+click on\n\
-;    the minimize button, Send to tray on startup). auto (the default): into the launcher while one runs, else\n\
-;    its own tray icon. own: always its own tray icon. launcher: always into\n\
-;    the launcher - hidden with no taskbar button and no icon of its own,\n\
-;    listed in the launcher's Open Sessions, which brings it back; with no\n\
-;    launcher running one is started first. Also on the configuration\n\
-;    window, Application > KiTTY++ Settings > Terminal.\n\
+;    the minimize button, Send to tray on startup). auto (the default): into the\n\
+;    launcher while one runs, else its own tray icon. own: always its own tray\n\
+;    icon. launcher: always into the launcher - hidden with no taskbar button\n\
+;    and no icon of its own, listed in the launcher's Open Sessions, which\n\
+;    brings it back; with no launcher running one is started first. Also on the\n\
+;    configuration window, Application > KiTTY++ Settings > Terminal.\n\
 ;traymode=auto\n\
 \n\
 ; iconfile: point to a file where internal icons are located\n\
@@ -457,12 +463,13 @@ char default_init_file_content[] =
 ;    autosendtotray session drops itself into the tray.\n\
 ;initdelay=2.0\n\
 \n\
-; KiClassName: the Windows window-class name KiTTY++ registers, which also selects\n\
-;    which registry hive it reads/writes sessions in. Default (unset): KiTTY++'s own\n\
-;    class and hive (Software\\kapper.net\\KiTTY). Set to PuTTY to use stock PuTTY's\n\
-;    window class AND PuTTY's hive (Software\\SimonTatham\\PuTTY) - handy to share\n\
-;    sessions with an installed PuTTY, or for host tools that key off the \"PuTTY\"\n\
-;    window class. This is NOT the default; leave it unset for normal use.\n\
+; KiClassName: the Windows window-class name KiTTY++ registers, which also\n\
+;    selects which registry hive it reads/writes sessions in. Default (unset):\n\
+;    KiTTY++'s own class and hive (Software\\kapper.net\\KiTTY). Set to PuTTY to\n\
+;    use stock PuTTY's window class AND PuTTY's hive\n\
+;    (Software\\SimonTatham\\PuTTY) - handy to share sessions with an installed\n\
+;    PuTTY, or for host tools that key off the \"PuTTY\" window class. This is NOT\n\
+;    the default; leave it unset for normal use.\n\
 ;KiClassName=PuTTY\n\
 \n\
 ; modalerrors: show connection errors as modal pop-up boxes instead of inline\n\
@@ -476,14 +483,15 @@ char default_init_file_content[] =
 ;    caching it, anything else cancels.\n\
 ;modalnewhostkeyconfirmation=yes\n\
 \n\
-; modalchangedhostkeyconfirmation: how to handle a CHANGED host key (differs from\n\
-;    the cached one). Default yes = classic modal dialog box (you can Accept to\n\
-;    update the cache). no = in-terminal \"double opt-in\": first type \"yes\" to\n\
-;    accept the new key for this connection, then - because KiTTY++ cannot verify a\n\
-;    plain SSH key's authenticity - a second prompt offers to REPLACE\n\
-;    the stored key for future connections, which requires typing the exact word\n\
-;    \"confirmed\" (a plain \"yes\" is not accepted; the prompt repeats). Decline the replace\n\
-;    and you connect this once with the old key kept (prompted again next time).\n\
+; modalchangedhostkeyconfirmation: how to handle a CHANGED host key (differs\n\
+;    from the cached one). Default yes = classic modal dialog box (you can\n\
+;    Accept to update the cache). no = in-terminal \"double opt-in\": first type\n\
+;    \"yes\" to accept the new key for this connection, then - because KiTTY++\n\
+;    cannot verify a plain SSH key's authenticity - a second prompt offers to\n\
+;    REPLACE the stored key for future connections, which requires typing the\n\
+;    exact word \"confirmed\" (a plain \"yes\" is not accepted; the prompt repeats).\n\
+;    Decline the replace and you connect this once with the old key kept\n\
+;    (prompted again next time).\n\
 ;modalchangedhostkeyconfirmation=yes\n\
 \n\
 ; modalweakkeyconfirmation: how to confirm a weak crypto algorithm / weak cached\n\
@@ -519,10 +527,10 @@ char default_init_file_content[] =
 \n\
 ; pastesize: warn before a large paste into the terminal. When the clipboard\n\
 ;    holds more than this many characters, KiTTY++ reports the count and the\n\
-;    limit and requires a confirmation before sending anything - and the default answer is No,\n\
-;    so a stray Enter cancels the paste instead of flooding the shell.\n\
-;    The default is 5120 characters - about 5 KB, the same threshold Windows\n\
-;    Terminal warns at. 0 switches the warning off entirely. It counts\n\
+;    limit and requires a confirmation before sending anything - and the default\n\
+;    answer is No, so a stray Enter cancels the paste instead of flooding the\n\
+;    shell. The default is 5120 characters - about 5 KB, the same threshold\n\
+;    Windows Terminal warns at. 0 switches the warning off entirely. It counts\n\
 ;    characters rather than lines, and judges only the size: what the\n\
 ;    clipboard actually contains is not examined.\n\
 ;    Note this key is read from the registry first (outside portable mode), so\n\
@@ -618,7 +626,8 @@ char default_init_file_content[] =
 ;    are expanded when the file is used (%USERPROFILE%\\Tools\\kscp.exe).\n\
 ;PSCPPath=\n\
 \n\
-; pscpdir: legacy fallback directory containing pscp.exe/kscp.exe (prefer PSCPPath)\n\
+; pscpdir: legacy fallback directory containing pscp.exe/kscp.exe\n\
+;    (prefer PSCPPath)\n\
 ;pscpdir=\n\
 \n\
 ; [TrustedHelpers]: helper programs (another kscp, PuTTY's pscp, rz, sz)\n\
@@ -637,12 +646,14 @@ char default_init_file_content[] =
 ;    (The old \"22\" shown here was wrong: unset has never meant 22.)\n\
 ;pscpport=*\n\
 \n\
-; ReconnectDelay: the delay before trying to reconnect automatically (in seconds)\n\
+; ReconnectDelay: the delay before trying to reconnect automatically\n\
+;    (in seconds)\n\
 ;    - the first one; each further retry multiplies it by reconnectbackoff,\n\
 ;    up to reconnectmaxdelay.\n\
 ;ReconnectDelay=5\n\
 \n\
-; reconnectmaxdelay: the max retry timer, the longest wait between reconnect attempts (seconds).\n\
+; reconnectmaxdelay: the max retry timer, the longest wait between reconnect\n\
+;    attempts (seconds).\n\
 ;reconnectmaxdelay=300\n\
 \n\
 ; reconnectbackoff: the factor each wait is multiplied by for the next retry\n\
@@ -734,9 +745,10 @@ char default_init_file_content[] =
 ;restrictacl=no\n\
 \n\
 ; sav: base path for the registry backup (a full export of KiTTY++'s hive). Each\n\
-;    save writes a FRESH timestamped file next to it, <base>-YYYYMMDD-HHMMSS<ext>,\n\
-;    so the filename always reflects when that copy was written. Default base is\n\
-;    %APPDATA%\\KiTTY\\kittynew.sav (i.e. the files are kittynew-YYYYMMDD-HHMMSS.sav)\n\
+;    save writes a FRESH timestamped file next to it,\n\
+;    <base>-YYYYMMDD-HHMMSS<ext>, so the filename always reflects when that copy\n\
+;    was written. Default base is %APPDATA%\\KiTTY\\kittynew.sav (i.e. the files\n\
+;    are kittynew-YYYYMMDD-HHMMSS.sav)\n\
 ;    - NOT kitty.sav, so an old 0.76 KiTTY's backup is never touched. A legacy\n\
 ;    value ending in kitty.sav or kitty084.sav is ignored so this default takes\n\
 ;    over; uncomment with a real path to force one.\n\
@@ -746,7 +758,8 @@ char default_init_file_content[] =
 ;sav=\n\
 \n\
 ; savbackupcount: in registry mode, how many timestamped backups to keep - the\n\
-;    newest N are kept, older ones deleted. Default 5, max 50; 0 disables backups.\n\
+;    newest N are kept, older ones deleted. Default 5, max 50;\n\
+;    0 disables backups.\n\
 ;savbackupcount=5\n\
 \n\
 ; savemode: where sessions are stored. Read from kitty.ini only - never from\n\
@@ -765,9 +778,9 @@ char default_init_file_content[] =
 ;                 loading the .sav registry dump into that hive at startup.\n\
 ;                 The dump REPLACES what is in the hive, so an existing\n\
 ;                 registry store is set aside first - once - under\n\
-;                 Software\\kapper.net\\KiTTY_save. KiTTY++ reports it when it does\n\
-;                 that, and the next start WITHOUT savemode=file offers to put\n\
-;                 those sessions back.\n\
+;                 Software\\kapper.net\\KiTTY_save. KiTTY++ reports it when it\n\
+;                 does that, and the next start WITHOUT savemode=file offers to\n\
+;                 put those sessions back.\n\
 ;                 Upstream KiTTY abandoned this mode years ago and\n\
 ;                 marked it unmaintained; we kept it working as it is and are\n\
 ;                 not developing it further. It is not a half-finished feature\n\
@@ -785,20 +798,21 @@ char default_init_file_content[] =
 ;    - master : protect saved passwords with a master password (default). Only\n\
 ;               the password fields are encrypted, the rest of the session file\n\
 ;               stays readable. Copy the files and know the master password to\n\
-;               use them on another machine. KiTTY++ prompts you to set the master\n\
-;               password the first time it saves a password; -masterpwfile\n\
-;               supplies it without a prompt. While the master password is\n\
-;               locked - that prompt or the unlock cancelled, a wrong one - a\n\
-;               password typed is not saved: the one stored before stays as\n\
-;               it was, and KiTTY++ reports it. Use dpapi to choose DPAPI; the\n\
-;               setup prompt's \"Use DPAPI (this PC only)\" button writes it\n\
-;               into this kitty.ini - the choice of this PC and account, not\n\
-;               of a session folder other PCs share.\n\
+;               use them on another machine. KiTTY++ prompts you to set the\n\
+;               master password the first time it saves a password;\n\
+;               -masterpwfile supplies it without a prompt. While the master\n\
+;               password is locked - that prompt or the unlock cancelled, a\n\
+;               wrong one - a password typed is not saved: the one stored before\n\
+;               stays as it was, and KiTTY++ reports it. Use dpapi to choose\n\
+;               DPAPI; the setup prompt's \"Use DPAPI (this PC only)\" button\n\
+;               writes it into this kitty.ini - the choice of this PC and\n\
+;               account, not of a session folder other PCs share.\n\
 ;    - dpapi  : protect saved passwords with Windows DPAPI, i.e. this Windows\n\
 ;               account on this PC. No master password is created and KiTTY++\n\
-;               never prompts for one - so unattended runs need no switch at all -\n\
-;               but the passwords do NOT travel: copied to another PC or account\n\
-;               they cannot be decrypted. Cannot be combined with -masterpwfile.\n\
+;               never prompts for one - so unattended runs need no switch at\n\
+;               all - but the passwords do NOT travel: copied to another PC or\n\
+;               account they cannot be decrypted. Cannot be combined with\n\
+;               -masterpwfile.\n\
 ;    - legacy : store saved passwords unprotected (plain text) for explicit\n\
 ;               compatibility/automation/audit setups. INSECURE - anyone who can\n\
 ;               read the files gets the passwords.\n\
@@ -811,7 +825,8 @@ char default_init_file_content[] =
 ;WarnLegacyPasswordUpgrade=yes\n\
 \n\
 ; scriptfilefilter: file-dialog filter for local script files.\n\
-;    Default: (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|\n\
+;    Default:\n\
+;    (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|\n\
 ;    The example line below narrows it to all files only:\n\
 ;scriptfilefilter=All files (*.*)|*.*|\n\
 \n\
@@ -822,20 +837,21 @@ char default_init_file_content[] =
 ;scriptmode=yes\n\
 \n\
 ; sendcmdmode: may OTHER programs type into this terminal?\n\
-;    /command <text> and `kitty.exe -sendcmd <text>` broadcast text to every open\n\
-;    KiTTY++ window, which then TYPES it into the session - and a trailing Return\n\
-;    means it RUNS on the remote host. That is the point of the feature (send the\n\
-;    same thing to twenty servers at once) and also its danger: the twenty\n\
-;    include whatever production session you happen to have open.\n\
+;    /command <text> and `kitty.exe -sendcmd <text>` broadcast text to every\n\
+;    open KiTTY++ window, which then TYPES it into the session - and a trailing\n\
+;    Return means it RUNS on the remote host. That is the point of the feature\n\
+;    (send the same thing to twenty servers at once) and also its danger: the\n\
+;    twenty include whatever production session you happen to have open.\n\
 ;    So it is OFF by default and each window decides for itself:\n\
 ;      no   - refuse and note it in the Event Log (default)\n\
 ;      yes  - windows start armed\n\
-;    Tools > \"Accept &broadcast\" toggles the current window either way, and shows\n\
-;    which windows are armed. Refusals and acceptances are both logged, because a\n\
-;    feature that fails silently is one nobody notices is broken.\n\
-;    NOT a security boundary: any program running as you can send these messages,\n\
-;    and it could equally type into your session by other means. This is about\n\
-;    deciding when your terminals accept it, not about keeping attackers out.\n\
+;    Tools > \"Accept &broadcast\" toggles the current window either way, and\n\
+;    shows which windows are armed. Refusals and acceptances are both logged,\n\
+;    because a feature that fails silently is one nobody notices is broken.\n\
+;    NOT a security boundary: any program running as you can send these\n\
+;    messages, and it could equally type into your session by other means. This\n\
+;    is about deciding when your terminals accept it, not about keeping\n\
+;    attackers out.\n\
 ;sendcmdmode=no\n\
 \n\
 ; sendcmdgroup: which KiTTYs hear each other's broadcasts.\n\
@@ -879,18 +895,18 @@ char default_init_file_content[] =
 ; slidedelay: the GLOBAL FALLBACK for how long each background image is shown,\n\
 ;    in seconds, when the background is a folder of images. It applies to every\n\
 ;    session that does not set its own interval; a session that does (the\n\
-;    \"Slideshow:\" box under Window > Appearance > Background) always wins, and this value is\n\
-;    then not consulted at all. 0 or unset means no timer - the image only\n\
-;    changes when you ask for the next one. Nothing happens unless bgimage is\n\
-;    on and the session actually has a background image.\n\
+;    \"Slideshow:\" box under Window > Appearance > Background) always wins, and\n\
+;    this value is then not consulted at all. 0 or unset means no timer - the\n\
+;    image only changes when you ask for the next one. Nothing happens unless\n\
+;    bgimage is on and the session actually has a background image.\n\
 ;slidedelay=0\n\
 \n\
 ; shrinkbitmap: better quality when a background image has to be made smaller.\n\
 ;    It applies to ONE image placement: \"Stretch+\" under Window > Appearance >\n\
-;    Background > Image placement - the placement whose whole job is fitting the image to\n\
-;    the window. Tile, Center, Stretch, Absolute and Blank ignore this key.\n\
-;    With Stretch+, and only when the image is larger than the window in both\n\
-;    directions, KiTTY++ resamples it down instead of letting Windows\n\
+;    Background > Image placement - the placement whose whole job is fitting the\n\
+;    image to the window. Tile, Center, Stretch, Absolute and Blank ignore this\n\
+;    key. With Stretch+, and only when the image is larger than the window in\n\
+;    both directions, KiTTY++ resamples it down instead of letting Windows\n\
 ;    stretch-blit it: visibly cleaner, slightly more work per repaint. On by\n\
 ;    default; set no to get the plain fast stretch back.\n\
 ;shrinkbitmap=no\n\
@@ -927,8 +943,8 @@ char default_init_file_content[] =
 \n\
 ; showforeignsessions: also list the sessions kept by an OLDER KiTTY (the\n\
 ;    9bis hive) or by stock PuTTY, so they can be opened, edited and deleted\n\
-;    from KiTTY++'s own saved-session list. Registry save modes only - a portable\n\
-;    store has no foreign hive. Values: auto (the default), yes, or no.\n\
+;    from KiTTY++'s own saved-session list. Registry save modes only - a\n\
+;    portable store has no foreign hive. Values: auto (the default), yes, or no.\n\
 ;    \"auto\" shows them only while this KiTTY++ has no sessions of its own, so an\n\
 ;    upgrade never opens onto an apparently empty list and the old sessions\n\
 ;    retire themselves once you have your own. Set yes to keep them listed for\n\
@@ -960,8 +976,8 @@ char default_init_file_content[] =
 ;    behaves as \"light\".\n\
 ;    It colours the WINDOWS - the configuration box, the dialogs and the\n\
 ;    message boxes. A terminal's own colours are a per-session setting and are\n\
-;    not touched by this: a dark KiTTY++ still opens whatever colours the session\n\
-;    sets.\n\
+;    not touched by this: a dark KiTTY++ still opens whatever colours the\n\
+;    session sets.\n\
 ;theme=system\n\
 \n\
 ; ctxtint: how strong the background tint is in a session with \"Tinted\n\
@@ -1022,9 +1038,10 @@ char default_init_file_content[] =
 ; rzcommand, szcommand: the full paths to the ZModem helper programs (rz.exe\n\
 ;    and sz.exe from lrzsz). Where they are installed is a property of this PC,\n\
 ;    so they live here rather than in each saved session; set them on\n\
-;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS stay\n\
-;    per session on Connection > ZModem; the download folder is on Connection > File-Transfer-Settings.\n\
-;    Windows environment variables are expanded when the file is used.\n\
+;    Application > KiTTY++ Settings > Transfers & Tools > ZModem. Their OPTIONS\n\
+;    stay per session on Connection > ZModem; the download folder is on\n\
+;    Connection > File-Transfer-Settings. Windows environment variables are\n\
+;    expanded when the file is used.\n\
 ;rzcommand=\n\
 ;szcommand=\n\
 \n\
@@ -1090,7 +1107,8 @@ char default_init_file_content[] =
 ; In the text, \\n presses Enter, \\t is Tab, \\h is Backspace, \\p waits a second,\n\
 ; \\s05 waits five, and \\\\ is a literal backslash.\n\
 ; The text is sent followed by Enter unless it already ends in \\n.\n\
-; A text ending in a backslash is sent without the Enter; that backslash is not typed.\n\
+; A text ending in a backslash is sent without the Enter;\n\
+; that backslash is not typed.\n\
 ;list={F5} {CONTROL}{F6}\n\
 \n\
 ; SECOND: the named actions below. These are KiTTY++'s own functions - roll the\n\
@@ -1172,7 +1190,8 @@ char default_init_file_content[] =
 ; open text editor connected to the main window (default is SHIFT+F2)\n\
 ;editor=\n\
 \n\
-; open text editor with clipboard content, connected to the main window (default is CONTROL+SHIFT+F2)\n\
+; open text editor with clipboard content, connected to the main window\n\
+; (default is CONTROL+SHIFT+F2)\n\
 ;editorclipboard=\n\
 \n\
 ; Show event log\n\
@@ -1214,9 +1233,10 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;fullscreen=\n\
 \n\
-; receive a remote file with kscp - the same as Tools > Get File (kscp): the remote path\n\
-; (or the file's name, with OSC 7 tracking on) must be on the clipboard, then a\n\
-; folder window opens on the download folder (default is CONTROL+F4)\n\
+; receive a remote file with kscp - the same as Tools > Get File (kscp): the\n\
+; remote path (or the file's name, with OSC 7 tracking on) must be on the\n\
+; clipboard, then a folder window opens on the download folder\n\
+; (default is CONTROL+F4)\n\
 ;getfile=\n\
 \n\
 ; change the background image (default is CONTROL+F11)\n\
@@ -1477,9 +1497,9 @@ char default_init_file_content[] =
 ;helloconfirm=no\n\
 \n\
 ; loadkeysonstartup: re-add the remembered keys when kageant starts, added\n\
-;    encrypted so the passphrase is required on first use, not at login. Only the\n\
-;    key FILE PATHS are remembered - never a passphrase or key material - and\n\
-;    the list below is maintained for you as you add and remove keys.\n\
+;    encrypted so the passphrase is required on first use, not at login. Only\n\
+;    the key FILE PATHS are remembered - never a passphrase or key material -\n\
+;    and the list below is maintained for you as you add and remove keys.\n\
 ;    Off by default. Was called loadonstartup; the old name is read once and\n\
 ;    rewritten under this one.\n\
 ;    This is its own tray item and its own Settings checkbox, \"Load remembered\n\

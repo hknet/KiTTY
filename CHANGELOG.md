@@ -124,6 +124,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **mNotepad opened read-only no longer writes the file** on Ctrl+S or Save
+  as.
+- **A master password setup that cannot store its salt reports it once**:
+  later saves in the same run report "No master password was set up"
+  instead of "locked".
 - **klink exits with 1 when a question before login is cancelled.**
 - **klink, kscp and ksftp no longer hang at a question when stdin is at
   end of input.**

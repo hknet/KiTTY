@@ -209,8 +209,17 @@ static int mpw_key_get(unsigned char *out)
 static int   g_mpw_declined = 0;
 /* The cancel behind the latch was the first-time SETUP prompt's: there is
  * no master password, and a save kept for it reports that, not "locked"
- * (ksec_report_locked_save). Cleared with the latch and by an unlock. */
+ * (ksec_report_locked_save). Cleared with the latch and by an unlock. A
+ * setup whose salt or verifier could not be stored sets it too: there is no
+ * master password then either. */
 static int   g_mpw_setup_declined = 0;
+/* That failed setup was reported (g_mpw_store_failed), and the report
+ * already states that the password was not saved: the report of the save
+ * that ran the setup is left out - counted, not shown. Set by the failure,
+ * consumed by that report, and cleared by the next unlock attempt, so a save
+ * that reported nothing (a wrap with the DPAPI fallback) does not swallow a
+ * later save's report. */
+static int   g_mpw_setup_failed_reported = 0;
 /* -masterpwfile / API: NUL-padded to whole blocks, wrapped like the key;
  * non-NULL = a passphrase was supplied */
 static unsigned char *g_mpw_passphrase = NULL;
@@ -551,6 +560,7 @@ static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])
  * verifier; creating=0 (a load) requires an existing store. Returns 1 if unlocked. */
 static int mpw_ensure_unlocked(int creating)
 {
+    g_mpw_setup_failed_reported = 0;             /* a new save reports for itself */
     if (g_mpw_unlocked) return 1;
     if (mpw_declined())  return 0;               /* cancelled earlier (mpw_declined) */
     /* Deferred (startup auto-load): don't prompt now unless a passphrase was
@@ -653,8 +663,11 @@ static int mpw_ensure_unlocked(int creating)
                 kitty_pwdebug("mpw setup: salt/verifier not stored (error %lu)", (unsigned long)err);
                 SecureZeroMemory(key, sizeof(key));
                 mpw_decline();                   /* no further setup prompts this run */
-                if (g_mpw_store_failed)
+                g_mpw_setup_declined = 1;        /* no master password exists */
+                if (g_mpw_store_failed) {
                     g_mpw_store_failed(kitty_win_reason((int)err));
+                    g_mpw_setup_failed_reported = 1;   /* covers this save's report */
+                }
                 break;
             }
             ok = 1;
@@ -1189,6 +1202,11 @@ void ksec_report_locked_save(int what, const char *where)
                                             KT_MPW_LOCKED_SAVE_FMT, where);
     kitty_pwdebug("save kept the stored secret: master password %s (%d, %s)",
                   nosetup ? "not set up" : "locked", what, where);
+    if (g_mpw_setup_failed_reported) {
+        /* the save whose setup failed: that failure's report covers it */
+        g_mpw_setup_failed_reported = 0;
+        return;
+    }
     if (g_mpw_locked_save) {
         g_mpw_locked_save(msg);
         return;

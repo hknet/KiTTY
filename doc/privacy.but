@@ -3,7 +3,9 @@
 This appendix lists the implications of using KiTTY++ for your privacy
 and personal data.
 
-The short summary: KiTTY++ never \q{phones home} to us, the developers.
+The short summary: KiTTY++ never \q{phones home} to us, the developers;
+the only connection apart from your sessions is the optional update
+check to GitHub (\k{privacy-updatecheck}).
 It does store data on your own computer, and it does transmit data
 over the network, but in both cases, only as necessary to do its job.
 In particular, data is only transmitted over the network to the server
@@ -144,9 +146,9 @@ configuration instructs it to.
 
 No KiTTY++ tool will \q{phone home} to any site under the control of us
 (the development team), or to any other site apart from the
-destination host or proxy host in its configuration, and any DNS
-server that is needed to look up the IP addresses corresponding to
-those host names.
+destination host or proxy host in its configuration, and GitHub for
+the update check (\k{privacy-updatecheck}), and any DNS server that is
+needed to look up the IP addresses corresponding to those host names.
 
 No information about your network sessions, and no information from
 the computer you run KiTTY++ on, is collected or recorded by the KiTTY++
@@ -156,6 +158,21 @@ Information you provide to KiTTY++ (via keyboard input, the command
 line, or files loaded by the file transfer tools) is sent to the
 server that KiTTY++'s configuration instructs it to connect to. It is not
 sent anywhere else.
+
+\S{privacy-updatecheck} Update check
+
+With \q{Check for updates of KiTTY++} on (Application > Updates;
+\c{[KiTTY] checkupdate} in \c{kitty.ini}; default on), kitty.exe and the
+launcher query GitHub for the newest KiTTY++ release: kitty.exe when a
+session starts, the launcher at its start and every 24 hours. The
+request is an HTTPS GET of
+\c{https://api.github.com/repos/hknet/KiTTY/releases?per_page=1} with the
+user agent \c{KiTTY-UpdateCheck}, through the system proxy settings.
+GitHub sees your IP address and the time; nothing about your sessions or
+your computer is sent. If a newer release exists, KiTTY++ offers it, and
+the installer is downloaded from GitHub only after you press
+\q{Update}. kageant and the command-line tools never connect. To stop
+it, turn the option off or set \c{checkupdate=no}.
 
 \S{privacy-whatdata} What data is sent to the destination host
 

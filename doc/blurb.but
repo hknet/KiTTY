@@ -5,10 +5,11 @@
 \cfg{xhtml-leaf-level}{1}
 \cfg{xhtml-leaf-smallest-contents}{2}
 \cfg{xhtml-leaf-contains-contents}{true}
-\cfg{xhtml-body-end}{<p>If you want to provide feedback on this manual
-or on the KiTTY++ tools themselves, use the
-<a href="https://github.com/hknet/KiTTY/issues">KiTTY++ issue
-tracker</a>.</p>}
+
+\# The page footer (xhtml-body-end, the feedback line and the copyright
+\# lines) is written into copy.but by cmake/licence.pl, which knows the
+\# copyright years: cfg values do not expand macros. Not the copyright
+\# paragraph: Halibut puts that before the contents on the start page.
 
 \cfg{html-template-fragment}{%k}{%b}
 
@@ -29,6 +30,3 @@ KiTTY++ is a free (MIT-licensed) Windows Telnet and SSH client. This
 manual documents KiTTY++, and its companion utilities kscp, ksftp,
 klink, kageant and kittygen.
 
-\copyright This manual is copyright \shortcopyrightdetails. All
-rights reserved. You may distribute this documentation under the MIT
-licence. See \k{licence} for the licence text in full.
