@@ -125,6 +125,10 @@ name in the list box.
 \b To delete a saved session: single-click to select the session
 name in the list box, and then press the \q{Delete} button.
 
+With \c{readonly=yes} in \c{kitty.ini} the settings store is read-only:
+\q{Save} and \q{Delete} are greyed out and nothing is stored
+(\k{kitty-cfg-storage}).
+
 KiTTY++ extends this panel well beyond the classic behaviour described
 above; the full stories are in the KiTTY++ additions chapter
 (\k{kitty-features}), but in brief:
@@ -3171,7 +3175,9 @@ recorded in the Event Log: trust on first use, as OpenSSH's
 \c{accept-new}. A changed key is never accepted this way: the usual
 warning follows, and under \c{-batch} the connection ends. For one run:
 \c{-accept-new} (\k{using-cmdline-accept-new}); for every session:
-\c{autostoresshkey=yes} in \c{[KiTTY]} of \c{kitty.ini}.
+\c{autostoresshkey=yes} in \c{[KiTTY]} of \c{kitty.ini}. With
+\c{readonly=yes} the key is used for this connection only and not
+stored; the Event Log line records that.
 
 \H{config-ssh-encryption} The Cipher panel
 

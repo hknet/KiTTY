@@ -196,6 +196,11 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c)
 # KiTTY: is a secret file readable by anyone but its user (-masterpwfile, cmdline.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_fileperm.c)
+# KiTTY: the kitty.ini resolver - storage.c and kitty_storage.c check through it whether
+# the store is read-only (readonly=yes). The executables that list it too take
+# their own copy; a static library member is only pulled in for a symbol
+# nothing else defines.
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c)
 # KiTTY: storage.c encrypts stored passwords at rest via DPAPI (CryptProtectData/
 # CryptUnprotectData in crypt32) and decrypts legacy old-KiTTY passwords via the
 # bcrypt archive. PUBLIC so every consumer (CLI tools incl.) links them; the
@@ -454,6 +459,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c   # kitty.ini resolver: readonly=yes for the store
   no-jump-list.c
   nohelp.c
   keygen-noise.c

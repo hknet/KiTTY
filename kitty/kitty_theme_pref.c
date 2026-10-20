@@ -22,11 +22,19 @@
 #define KITTY_THEME_REG_BASE  "Software\\kapper.net\\KiTTY"
 #define KITTY_THEME_REG_VALUE "theme"
 
+/* readonly=yes: the choice theme_reg_write did not store, held for this
+ * process (-1: none) */
+static int theme_ro_pref = -1;
+
 static int theme_reg_read(int *pref_out)
 {
     char buf[32];
     DWORD sz = sizeof(buf);
     int v;
+    if (theme_ro_pref >= 0) {
+        *pref_out = theme_ro_pref;
+        return 1;
+    }
     if (RegGetValueA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE,
                      KITTY_THEME_REG_VALUE, RRF_RT_REG_SZ, NULL,
                      buf, &sz) != ERROR_SUCCESS)
@@ -42,8 +50,14 @@ static int theme_reg_read(int *pref_out)
 static int theme_reg_write(int pref)
 {
     HKEY hk;
-    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE, 0, NULL,
-                              0, KEY_SET_VALUE, NULL, &hk, NULL);
+    LONG rc;
+    /* readonly=yes: not stored, KITTY_RO_REFUSED - this process only */
+    if (kitty_store_ro_regpath(1, KITTY_THEME_REG_BASE)) {
+        theme_ro_pref = pref;
+        return KITTY_RO_REFUSED;
+    }
+    rc = RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE, 0, NULL,
+                         0, KEY_SET_VALUE, NULL, &hk, NULL);
     if (rc == ERROR_SUCCESS) {
         const char *s = kitty_theme_pref_to_string(pref);
         rc = RegSetValueExA(hk, KITTY_THEME_REG_VALUE, 0, REG_SZ,

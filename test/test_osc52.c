@@ -255,6 +255,7 @@ static size_t test_term_data(Terminal *term, const void *data, size_t len)
 #define term_data test_term_data
 
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
+bool kitty_osc52_store_readonly(void) { return false; }
 /* true: the tests model a normal window with a title bar, so the full-screen
  * balloon fallback stays out of the way of the counters. */
 bool kitty_osc52_title_visible(void) { return true; }

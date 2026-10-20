@@ -671,21 +671,24 @@ char default_init_file_content[] =
 ;reconnectrefused=stop\n\
 ;reconnectother=1\n\
 \n\
-; readonly: refuse to write to the CONFIGURATION FILE side of the settings.\n\
-;    With yes, no KiTTY++ program writes or deletes entries in kitty.ini -\n\
-;    kageant included - nor creates kitty.ini if it is missing, creates the\n\
-;    store's directories, or removes a legacy plaintext password it finds in\n\
-;    the file. A change made in a dialog applies to the running program and\n\
-;    is not stored. The configuration box reports it instead of failing\n\
-;    quietly.\n\
+; readonly: make the whole settings store read-only. With yes, no KiTTY++\n\
+;    program (kitty, kitty_portable, kageant, klink, kscp, ksftp, kittygen)\n\
+;    writes, deletes or creates anything in the registry hive, the folder\n\
+;    store (sessions, host keys, Launcher, state, Security) or kitty.ini.\n\
+;    Automatic writes (window positions, counters, jump list, update state,\n\
+;    last session) are skipped silently; one-time migrations do not run.\n\
+;    Storing actions are greyed out, or refused with one notice where nothing\n\
+;    can be greyed (window menu Save, /commands, -importdir). Refused: master\n\
+;    password setup, import into the store, store move, -cleanup. No backup is\n\
+;    written; with savemode=file kitty.sav is loaded but not written back.\n\
+;    A new or changed SSH host key is accepted for this connection only\n\
+;    (Connect Once); accept-new and autostoresshkey use the key and do not\n\
+;    store it.\n\
+;    Not covered, outside the store: the kageant autostart Run key, file\n\
+;    associations, PATH, shortcuts, logs, exports to an outside folder,\n\
+;    .ssh/kageant.conf, PUTTY.RND in registry mode.\n\
 ;    Not the same as conf=no, which is about KiTTY++ maintaining its OWN files\n\
-;    (auto-creating kitty.ini, the kitty.sav and portable backups). readonly\n\
-;    is the broader \"do not write\", and it covers deletes and directory\n\
-;    creation as well.\n\
-;    ⚠ Two things it does NOT do, despite the name: saved SESSIONS can still\n\
-;    be written - they go through the session store, not this path - and in\n\
-;    registry mode global settings are still written to the registry. Today\n\
-;    it protects the ini file, not everything KiTTY++ stores.\n\
+;    (auto-creating kitty.ini, the kitty.sav and portable backups).\n\
 ;readonly=no\n\
 \n\
 ; inheritdefaultsettings: a session that leaves a setting out takes it from\n\

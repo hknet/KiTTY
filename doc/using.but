@@ -676,7 +676,7 @@ Windows 7 and up.
 
 Note that on \i{multi-user systems}, \c{\-cleanup} only removes
 registry entries and files associated with the currently logged-in
-user.
+user. With \c{readonly=yes} in \c{kitty.ini} it is refused.
 
 \S{using-general-opts} Standard command-line options
 
@@ -1181,7 +1181,8 @@ key without a prompt
 
 An unknown SSH host key is stored without the question and recorded:
 in the Event Log, and on standard error in klink, kscp and ksftp. A
-changed key is never accepted this way. See
+changed key is never accepted this way. With \c{readonly=yes} the key
+is used for this connection only and not stored. See
 \k{config-ssh-kitty-accept-new}.
 
 \S2{using-cmdline-pgpfp} \i\c{\-pgpfp}: display \i{PGP key fingerprint}s

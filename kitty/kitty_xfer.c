@@ -335,6 +335,7 @@ static int kh_store_get( const char *full, char *hex, size_t n ) {
 }
 static void kh_store_put( const char *full, const char *hex ) {
 	char name[MAX_PATH*4] ;
+	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: confirmed again next time */
 	kh_store_name( full, name, sizeof(name) ) ;
 	if( strchr( name, '=' ) ) return ;   /* not a kitty.ini key: confirmed again next time */
 	if( IniFileFlag == SAVEMODE_DIR ) {

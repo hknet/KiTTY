@@ -26,6 +26,7 @@
 #include "storage.h"
 #include "kitty/kitty_storage.h"
 #include "kitty/kitty_sessionpath.h"
+#include "kitty/kitty_inifile.h"   /* the kitty.ini in charge: none */
 
 /* kitty/kitty_storage.c - public, but declared where their callers need them
  * rather than in a shared header. */
@@ -143,6 +144,13 @@ int main(int argc, char **argv)
     if (!tmp || !*tmp) tmp = getenv("TMP");
     if (!tmp || !*tmp) tmp = ".";
     snprintf(dir, sizeof(dir), "%s\\kitty_test_sessionlist", tmp);
+    /* no kitty.ini in charge (a name nothing creates): the machine's own,
+     * readonly=yes in it included, stays out of the test */
+    {
+        char noini[1100];
+        snprintf(noini, sizeof(noini), "%s\\none\\kitty.ini", dir);
+        kitty_inifile_pin(noini);
+    }
 
     /* A fresh directory every run: a leftover session from a previous run would
      * quietly change the expected order. */

@@ -257,6 +257,7 @@ int kitty_session_origin(const char *sessionname);
 void kitty_set_last_folder(const char *folder);
 void kitty_set_last_session(const char *sessionname);
 void kitty_set_registry_root(int use_putty);
+void kitty_set_registry_base(const char *base);   /* any hive; tests */
 void kitty_set_session_dir(const char *dir);
 void kitty_set_storage_mode(int mode);
 int kitty_storage_is_portable(void);

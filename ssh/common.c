@@ -11,6 +11,7 @@
 #include "kitty/kitty_hostkey_scan.h"   /* KiTTY: host-key scan capture point */
 #include "kitty/kitty_hostkey_acceptnew.h"   /* KiTTY: accept-new */
 #include "kitty/kitty_text.h"   /* KiTTY: accept-new's record */
+#include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "mpint.h"
 #include "ssh.h"
 #include "storage.h"
@@ -956,8 +957,11 @@ SeatPromptResult verify_ssh_host_key(
             conf_get_bool(conf, CONF_ssh_accept_new_hostkeys),
             storage_status, key && ssh_key_alg(key)->is_certificate)) {
         store_host_key(iseat.seat, host, port, keytype, keystr);
+        /* readonly=yes: store_host_key stored nothing - the key holds for
+         * this connection, and the record does not claim storage */
         char *line = dupprintf(
-            KT_HOSTKEY_ACCEPTNEW_STORED,
+            kitty_store_readonly() ? KT_HOSTKEY_ACCEPTNEW_RO
+                                   : KT_HOSTKEY_ACCEPTNEW_STORED,
             fingerprints[ssh2_pick_default_fingerprint(fingerprints)],
             host, port);
         logevent(logctx, line);
@@ -1064,40 +1068,50 @@ SeatPromptResult verify_ssh_host_key(
     seat_dialog_text_append(
         text, SDT_BATCH_ABORT, "Connection abandoned.");
 
+    /* KiTTY: readonly=yes - the key cannot be stored, so the sentences on
+     * storing it and on the store-or-once choice are left out; the
+     * question's own readonly line and its connect-once answer stand in
+     * for them (windows/dialog.c, windows/console.c) */
+    bool ro = kitty_store_readonly();
+
     if (storage_status == 1) {
-        seat_dialog_text_append(
-            text, SDT_PARA, "If you trust this host, %s to add the key to "
-            "%s's cache and carry on connecting.",
-            pds->hk_accept_action, seat_product_name());
-        if (key && ssh_key_alg(key)->is_certificate) {
+        if (!ro) {
             seat_dialog_text_append(
-                text, SDT_PARA, "(Storing this certified key in the cache "
-                "will NOT cause its certification authority to be trusted "
-                "for any other key or host.)");
+                text, SDT_PARA, "If you trust this host, %s to add the key to "
+                "%s's cache and carry on connecting.",
+                pds->hk_accept_action, seat_product_name());
+            if (key && ssh_key_alg(key)->is_certificate) {
+                seat_dialog_text_append(
+                    text, SDT_PARA, "(Storing this certified key in the cache "
+                    "will NOT cause its certification authority to be trusted "
+                    "for any other key or host.)");
+            }
+            seat_dialog_text_append(
+                text, SDT_PARA, "If you want to carry on connecting just once, "
+                "without adding the key to the cache, %s.",
+                pds->hk_connect_once_action);
         }
-        seat_dialog_text_append(
-            text, SDT_PARA, "If you want to carry on connecting just once, "
-            "without adding the key to the cache, %s.",
-            pds->hk_connect_once_action);
         seat_dialog_text_append(
             text, SDT_PARA, "If you do not trust this host, %s to abandon the "
             "connection.", pds->hk_cancel_action);
         seat_dialog_text_append(
             text, SDT_PROMPT, "Store key in cache?");
     } else {
-        seat_dialog_text_append(
-            text, SDT_PARA, "If you were expecting this change and trust the "
-            "new key, %s to update %s's cache and carry on connecting.",
-            pds->hk_accept_action, seat_product_name());
-        if (key && ssh_key_alg(key)->is_certificate) {
+        if (!ro) {
             seat_dialog_text_append(
-                text, SDT_PARA, "(Storing this certified key in the cache "
-                "will NOT cause its certification authority to be trusted "
-                "for any other key or host.)");
+                text, SDT_PARA, "If you were expecting this change and trust the "
+                "new key, %s to update %s's cache and carry on connecting.",
+                pds->hk_accept_action, seat_product_name());
+            if (key && ssh_key_alg(key)->is_certificate) {
+                seat_dialog_text_append(
+                    text, SDT_PARA, "(Storing this certified key in the cache "
+                    "will NOT cause its certification authority to be trusted "
+                    "for any other key or host.)");
+            }
+            seat_dialog_text_append(
+                text, SDT_PARA, "If you want to carry on connecting but without "
+                "updating the cache, %s.", pds->hk_connect_once_action);
         }
-        seat_dialog_text_append(
-            text, SDT_PARA, "If you want to carry on connecting but without "
-            "updating the cache, %s.", pds->hk_connect_once_action);
         seat_dialog_text_append(
             text, SDT_PARA, "If you want to abandon the connection "
             "completely, %s to cancel. %s is the ONLY guaranteed safe choice.",

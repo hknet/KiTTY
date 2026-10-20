@@ -10,6 +10,8 @@
 #include "storage.h"
 #include "ssh.h"
 #include "console.h"
+#include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
+#include "../kitty/kitty_text.h"      /* KiTTY: the readonly host-key texts */
 
 void cleanup_exit(int code)
 {
@@ -411,9 +413,18 @@ SeatPromptResult console_confirm_ssh_host_key(
 
     ResponseType response;
 
+    /* KiTTY: readonly=yes - the key cannot be stored, so the question
+     * offers this connection only: y connects once, n or Return cancels */
+    bool ro = kitty_store_readonly();
+    if (ro)
+        put_fmt(conio, "%s\n", KT_HOSTKEY_RO_NOT_STORED);
+
     while (true) {
-        put_fmt(conio, "%s (y/n, Return cancels connection, i for more info) ",
-                prompt);
+        if (ro)
+            put_fmt(conio, "%s ", KT_HOSTKEY_RO_CONNECT_ONCE_Q);
+        else
+            put_fmt(conio, "%s (y/n, Return cancels connection, "
+                    "i for more info) ", prompt);
 
         response = parse_and_free_response(console_read_line(conio, true));
 
@@ -439,8 +450,9 @@ SeatPromptResult console_confirm_ssh_host_key(
         }
     }
 
-    if (response == RESPONSE_YES || response == RESPONSE_NO) {
-        if (response == RESPONSE_YES)
+    if (ro ? response == RESPONSE_YES :
+        (response == RESPONSE_YES || response == RESPONSE_NO)) {
+        if (response == RESPONSE_YES && !ro)
             store_host_key(seat, host, port, keytype, keystr);
         result = SPR_OK;
     } else {

@@ -3840,6 +3840,46 @@ static void keysettings_align_rows(HWND hwnd)
     kitty_theme_align_rows(hwnd, rows, lenof(rows));
 }
 
+/*
+ * readonly=yes: one line above the tab strip (KT_KASET_READONLY). The
+ * template has no row for it, so every control moves down by the line's
+ * height and the dialog grows by the same; the line is made after the move,
+ * with the dialog's font, and the theme reaches it with the rest.
+ */
+static void keysettings_readonly_line(HWND hwnd)
+{
+    RECT step = { 0, 0, 0, 14 };       /* the line's row, dialog units */
+    RECT line = { 6, 5, 294, 15 };
+    RECT r;
+    HWND c, st;
+    int dy;
+
+    if (!kitty_store_readonly())
+        return;
+    MapDialogRect(hwnd, &step);
+    MapDialogRect(hwnd, &line);
+    dy = step.bottom;
+    for (c = GetWindow(hwnd, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
+        if (!GetWindowRect(c, &r))
+            continue;
+        MapWindowPoints(NULL, hwnd, (POINT *)&r, 2);
+        SetWindowPos(c, NULL, r.left, r.top + dy, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    if (GetWindowRect(hwnd, &r))
+        SetWindowPos(hwnd, NULL, 0, 0, r.right - r.left,
+                     r.bottom - r.top + dy,
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    st = CreateWindowExA(0, "STATIC", KT_KASET_READONLY,
+                         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                         line.left, line.top, line.right - line.left,
+                         line.bottom - line.top, hwnd, (HMENU)(INT_PTR)-1,
+                         hinst, NULL);
+    if (st)
+        SendMessage(st, WM_SETFONT, SendMessage(hwnd, WM_GETFONT, 0, 0),
+                    MAKELPARAM(TRUE, 0));
+}
+
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -4035,6 +4075,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                KT_KASET_THEME_UNAVAILABLE);
             }
         }
+        keysettings_readonly_line(hwnd);
         keysettings_apply_theme(hwnd);
         kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_SETTINGS,
                            GetWindow(hwnd, GW_OWNER), 0);

@@ -20,6 +20,8 @@ void kitty_osc52_random(unsigned char *buf, size_t len);
 void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len, const char *claim);
 void kitty_osc52_read_confirm_end(Terminal *term);
 bool kitty_osc52_save_deny_for_host(Terminal *term);
+/* readonly=yes: a refused save above has written its own Event Log line */
+bool kitty_osc52_store_readonly(void);
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len);
 bool kitty_osc52_set_clipboard_formats(const KittyClipFormat *fmts, int n);
 void kitty_osc52_state_changed(Terminal *term);

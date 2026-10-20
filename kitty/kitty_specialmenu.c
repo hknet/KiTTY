@@ -74,13 +74,12 @@ static void sm_items_free( struct sm_item **v, int *n ) {
 	*n = 0 ;
 }
 
-/* KiTTY: one folder's submenu, read and appended to `menu`. A folder whose
- * entries were ALL cut by the ceiling is left out rather than shown empty;
- * its entries are in the count of the ones not shown. A folder that is empty
- * in the store is still listed, as before. */
-static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, const char * label ) {
-	int cut = kitty_menuslots_cut() ;
-	ReadSpecialMenu( sub, key, nbitem, 0 ) ;
+/* KiTTY: one folder's submenu `sub`, filled, appended to `menu`. A folder
+ * whose entries were ALL cut by the ceiling is left out rather than shown
+ * empty; its entries are in the count of the ones not shown. A folder that
+ * is empty in the store is still listed, as before. cut: the count before
+ * the submenu was filled. */
+static void sm_add_folder( HMENU menu, HMENU sub, int cut, const char * label ) {
 	if( GetMenuItemCount( sub ) == 0 && kitty_menuslots_cut() > cut ) {
 		DestroyMenu( sub ) ;
 		return ;
@@ -88,11 +87,37 @@ static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, con
 	AppendMenu( menu, MF_POPUP, (UINT_PTR)sub, label ) ;
 	}
 
+/* KiTTY: one folder's submenu, read and appended to `menu`. */
+static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, const char * label ) {
+	int cut = kitty_menuslots_cut() ;
+	ReadSpecialMenu( sub, key, nbitem, 0 ) ;
+	sm_add_folder( menu, sub, cut, label ) ;
+	}
+
+/* KiTTY: the entries of one menu level, appended as numbered commands
+ * (kitty_menuslots); past the ceiling an entry is only counted
+ * (kitty_menuslots_cut). accel: with the Ctrl+Shift+<letter> column of the
+ * first 26. Returns how many were appended. */
+static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int accel ) {
+	char buffer[4096] ;
+	int k, nb, n = 0 ;
+	for( k = 0 ; k < nitems ; k++ ) {
+		if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
+		if( accel && nb < 26 )
+			snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", items[k].label, ('A'+nb) ) ;
+		else
+			snprintf( buffer, sizeof(buffer), "%s", items[k].label ) ;
+		AppendMenu( menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
+		n++ ;
+		}
+	return n ;
+	}
+
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 	HKEY hKey ;
 	HMENU SubMenu ;
 	char buffer[4096], fullpath[1024], *p ;
-	int i, nb ;
+	int i ;
 	int local_nb = 0 ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
@@ -107,7 +132,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		is_launcher = !strncmp( KeyName, launcherkey, strlen(launcherkey) ) ;
 
 		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
-		nb = (*nbitem) ;
 
 		if( cSubKeys>0 ) { // collect the submenus
 		for (i=0; i<cSubKeys; i++) {
@@ -129,7 +153,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			}
 		sm_items_free( &items, &nitems ) ;
 
-		nb = (*nbitem) ;
 
 		if (cValues) { // collect the menu items
 		if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
@@ -152,20 +175,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			}
     		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
-		for( k = 0 ; k < nitems ; k++ ) {
-			/* Past the ceiling the entry is only counted (kitty_menuslots_cut). */
-			if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
-			if( ShortcutsFlag ) {
-				if( nb < 26 )
-					snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", items[k].label, ('A'+nb) ) ;
-				else
-					snprintf( buffer, sizeof(buffer), "%s", items[k].label ) ;
-				}
-			else
-				snprintf( buffer, sizeof(buffer), "%s", items[k].label ) ;
-			AppendMenu(menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
-			local_nb++ ;
-			}
+		local_nb += sm_append_entries( menu, items, nitems, ShortcutsFlag ) ;
 		sm_items_free( &items, &nitems ) ;
 
 		(*nbitem)=kitty_menuslots_count() ;
@@ -182,7 +192,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			struct sm_item *items = NULL ;
 			int nitems = 0, k, is_launcher = !strncmp(KeyName,"Launcher",8) ;
 			if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-			nb = (*nbitem) ;
 			while( ( de = readdir(dir) ) != NULL ) { // look for subkeys (directories)
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
@@ -207,7 +216,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			sm_items_free( &items, &nitems ) ;
 			rewinddir( dir ) ;
 
-			nb = (*nbitem) ;
 			while( ( de = readdir(dir) ) != NULL ) { // look for keys
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 				/* Default Settings must not show up in the launcher - at any
@@ -244,17 +252,61 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
-			for( k = 0 ; k < nitems ; k++ ) {
-				/* Past the ceiling the entry is only counted (kitty_menuslots_cut). */
-				if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
-				AppendMenu(menu, MF_ENABLED, IDM_USERCMD+nb, items[k].label ) ;
-				local_nb++ ;
-				}
+			local_nb += sm_append_entries( menu, items, nitems, 0 ) ;
 			sm_items_free( &items, &nitems ) ;
 			(*nbitem)=kitty_menuslots_count() ;
 			closedir( dir ) ;
 			}
 		}
+	return local_nb ;
+	}
+
+/* readonly=yes (the launcher, InitLauncherMenu): the session menu built from
+ * the entries InitLauncherRegistry kept in memory, as its Launcher copy
+ * cannot be rebuilt - the same levels, order, ceiling and accelerators as
+ * ReadSpecialMenu gives that copy: the folders one level below `prefix`
+ * first, each a submenu, then the sessions of `prefix` itself, both by the
+ * name shown. Returns the entries appended at this level. */
+int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int n,
+                         const char * prefix, int * nbitem ) {
+	struct sm_item *items = NULL ;
+	int nitems = 0, i, k, local_nb ;
+	size_t pl = strlen( prefix ) ;
+	for( i = 0 ; i < n ; i++ ) {	/* the folders one level below prefix */
+		const char * rest = e[i].folder, * end ;
+		char comp[MAX_VALUE_NAME] ;
+		size_t cl ;
+		if( pl ) {
+			if( strnicmp( rest, prefix, pl ) || rest[pl] != '\\' ) continue ;
+			rest += pl + 1 ;
+			}
+		if( !*rest ) continue ;
+		end = strchr( rest, '\\' ) ;
+		cl = end ? (size_t)( end - rest ) : strlen( rest ) ;
+		if( !cl || cl >= sizeof(comp) ) continue ;
+		memcpy( comp, rest, cl ) ;
+		comp[cl] = '\0' ;
+		for( k = 0 ; k < nitems && stricmp( items[k].label, comp ) ; k++ ) ;
+		if( k == nitems ) sm_items_add( &items, &nitems, comp, comp ) ;
+		}
+	sm_items_sort( items, nitems ) ;
+	for( k = 0 ; k < nitems ; k++ ) {
+		HMENU sub = CreateMenu() ;
+		int cut = kitty_menuslots_cut() ;
+		char * sp = pl ? dupprintf( "%s\\%s", prefix, items[k].data ) : dupstr( items[k].data ) ;
+		ReadLauncherEntries( sub, e, n, sp, nbitem ) ;
+		sfree( sp ) ;
+		sm_add_folder( menu, sub, cut, items[k].label ) ;
+		}
+	sm_items_free( &items, &nitems ) ;
+	for( i = 0 ; i < n ; i++ )	/* the sessions at this level */
+		if( !stricmp( e[i].folder, prefix ) )
+			sm_items_add( &items, &nitems, ksp_leaf( e[i].session ), e[i].session ) ;
+	sm_items_sort( items, nitems ) ;
+	local_nb = sm_append_entries( menu, items, nitems,
+	                              IniFileFlag != SAVEMODE_DIR && ShortcutsFlag ) ;
+	sm_items_free( &items, &nitems ) ;
+	(*nbitem) = kitty_menuslots_count() ;
 	return local_nb ;
 	}
 

@@ -1175,8 +1175,11 @@
 #define KT_KSET_STORAGE_STORE_FOLDER                 "Settings store: folder (%s)"
 #define KT_KSET_STORAGE_INI                          "Configuration file: %s"
 #define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none (conf=no)"
-#define KT_KSET_STORAGE_READONLY                     "KiTTY++ is running read-only (readonly=yes) - the configuration " \
-        "file and the backups are not written."
+#define KT_KSET_STORAGE_READONLY                     "Read-only (readonly=yes): sessions, settings, host keys " \
+        "and backups are not written."
+/* readonly=yes: an explicit storing action that has no control to grey (the
+ * window menu's Save, /commands, command-line switches); %s = the kitty.ini */
+#define KT_STORE_RO_NOT_SAVED                        "Not saved: the settings store is read-only (readonly=yes in %s)."
 #define KT_KSET_STORAGE_NOCONF                       "KiTTY++ is running without a configuration file (conf=no)."
 
 /* Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini (the view) */
@@ -2984,6 +2987,8 @@
 #define KT_KASET_THEME_DARK                          "Always dark"
 #define KT_KASET_THEME_UNAVAILABLE                   "This Windows has no dark mode for desktop " \
         "windows; the light theme is the only one."
+/* the dialog's top line under readonly=yes */
+#define KT_KASET_READONLY                            "Read-only (readonly=yes): changes apply until kageant exits."
 
 /* kageant: notices and prompts raised by the agent core (kitty/kitty_pageant.c) */
 #define KT_KA_WHO_PROGRAM_FMT                        " a program (pid %lu)"
@@ -3491,6 +3496,12 @@
  * writes it to the Event Log, klink/kscp/ksftp to standard error too */
 #define KT_CLI_USAGE_ACCEPTNEW                       "  -accept-new\n            store an unknown host key without a prompt\n"
 #define KT_HOSTKEY_ACCEPTNEW_STORED                  "Host key stored (accept-new): %s, %s port %d"
+/* readonly=yes: accept-new uses the key for this connection only */
+#define KT_HOSTKEY_ACCEPTNEW_RO                      "Host key not stored (readonly=yes): %s, %s port %d"
+/* readonly=yes: the host-key question (the box, the terminal's and the
+ * console's) offers this connection only */
+#define KT_HOSTKEY_RO_NOT_STORED                     "The host key store is read-only (readonly=yes): the key is not stored."
+#define KT_HOSTKEY_RO_CONNECT_ONCE_Q                 "Connect once? (y/n, Return cancels)"
 
 /* cmdline.c: -masterpwfile */
 #define KT_CLI_MPWFILE_CONFLICT                      "-masterpwfile conflicts with PortablePasswordProtection=dpapi" \

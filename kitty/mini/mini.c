@@ -10,6 +10,7 @@
 #include "mini.h"
 #include <time.h>   /* time(): the cache compares the file's timestamp */
 #include <windows.h>   /* storeINI: ReplaceFile and Windows' reason on failure */
+#include "../kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 
 #ifdef DEBUG_MODE
 #include "leaktracker.h"
@@ -408,6 +409,7 @@ int storeINI( SINI * Ini, const char * filename ) {
 	int ok, tries ;
 	if( filename==NULL ) return 0 ;
 	if( strlen(filename)<=0 ) return 0 ;
+	if( kitty_inifile_write_blocked( filename ) ) return KITTY_RO_REFUSED ;
 	if( snprintf( tmp, sizeof(tmp), "%s.%lu.tmp", filename, (unsigned long)GetCurrentProcessId() ) >= (int)sizeof(tmp) ) {
 		SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
 	if( ( fp = fopen( tmp, "w" ) ) == NULL ) return 0 ;
@@ -470,9 +472,12 @@ int readINI( const char * filename, const char * section, const char * key, char
 	}
 
 /* 1 written; 0 not, Windows' reason in GetLastError(). A NULL key makes sure
- * the section exists (an empty one is written only where there is none). */
+ * the section exists (an empty one is written only where there is none).
+ * The kitty.ini in charge under readonly=yes: nothing is written,
+ * KITTY_RO_REFUSED (delINI too); any other file is written as ever. */
 int writeINI( const char * filename, const char * section, const char * key, const char * value ) {
 	if( filename == NULL || !filename[0] || section == NULL || !section[0] ) return 0 ;
+	if( kitty_inifile_write_blocked( filename ) ) return KITTY_RO_REFUSED ;
 	if( key == NULL || !key[0] ) {
 		char probe[4] ;
 		if( GetPrivateProfileSectionA( section, probe, sizeof(probe), filename ) > 0 ) return 1 ;
@@ -484,6 +489,7 @@ int writeINI( const char * filename, const char * section, const char * key, con
 /* One key, or with a NULL key the whole section. */
 int delINI( const char * filename, const char * section, const char * key ) {
 	if( filename == NULL || !filename[0] || section == NULL || !section[0] ) return 0 ;
+	if( kitty_inifile_write_blocked( filename ) ) return KITTY_RO_REFUSED ;
 	return WritePrivateProfileStringA( section, ( key && key[0] ) ? key : NULL, NULL, filename ) ? 1 : 0 ;
 	}
 

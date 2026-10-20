@@ -20,6 +20,7 @@
 
 #include "putty.h"
 #include "kitty_storage.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_termenv.h"
 
 #define KTH_SUBDIR "TermEnvHint"   /* registry subkey and portable folder */
@@ -56,6 +57,10 @@ static bool kth_said(void *ctx, const char *host_id)
 static bool kth_mark(void *ctx, const char *host_id)
 {
     (void)ctx;
+    /* readonly=yes: not stored - true, as nothing failed (the hint comes
+     * again at the next start) */
+    if (kitty_store_readonly())
+        return true;
     if (store_is_file()) {
         return portable_write_text_file(KTH_SUBDIR, host_id, "1") != 0;
     } else {

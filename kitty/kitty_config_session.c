@@ -2533,8 +2533,10 @@ static void sessionsaver_update_save_button(struct sessionsaver_data *ssd,
             ssd->save_button_label = label;
         }
     }
+    /* readonly=yes: nothing can be saved or renamed */
     kitty_dlg_enable_button(ssd->savebutton, dlg,
-                            ssd->savedsession && ssd->savedsession[0]);
+                            ssd->savedsession && ssd->savedsession[0] &&
+                            !GetReadOnlyFlag());
 }
 
 static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
@@ -3054,6 +3056,10 @@ static void kcs_row_action(struct sessionsaver_data *ssd, int row, int id,
         return;
     if (row >= 0)
         dlg_listbox_select(ssd->listbox, dlg, row);
+    if ((cmd == KCS_M_RENAME || cmd == KCS_M_DELETE) && GetReadOnlyFlag()) {
+        dlg_beep(dlg);                  /* readonly=yes: F2 and Del too */
+        return;
+    }
     switch (cmd) {
       case KCS_M_LOAD:
         if (id >= 0 && ssd->loadbutton)
@@ -3102,6 +3108,8 @@ static void kcs_row_menu(dlgcontrol *ctrl, int row, int id, int x, int y)
     struct sessionsaver_data *ssd = (struct sessionsaver_data *)ctrl->context.p;
     HMENU m;
     int cmd;
+    /* readonly=yes: Rename and Delete write the store - greyed */
+    UINT ro = GetReadOnlyFlag() ? MF_GRAYED : 0;
     if (!ssd || ssd->midsession || !kcs_dlg)
         return;
     m = CreatePopupMenu();
@@ -3109,18 +3117,18 @@ static void kcs_row_menu(dlgcontrol *ctrl, int row, int id, int x, int y)
         return;
     if (kcs_bad_index(id) >= 0) {
         AppendMenuA(m, MF_STRING, KCS_M_EXPLORER, KT_SP_MENU_EXPLORER);
-        AppendMenuA(m, MF_STRING, KCS_M_RENAME, KT_SP_MENU_RENAME);
+        AppendMenuA(m, MF_STRING | ro, KCS_M_RENAME, KT_SP_MENU_RENAME);
     } else if (id == KITTY_ROW_PARENT) {
         AppendMenuA(m, MF_STRING, KCS_M_OPEN, KT_SP_MENU_OPEN);
     } else if (id < 0) {
         AppendMenuA(m, MF_STRING, KCS_M_OPEN, KT_SP_MENU_OPEN);
-        AppendMenuA(m, MF_STRING, KCS_M_RENAME, KT_SP_MENU_RENAME);
-        AppendMenuA(m, MF_STRING, KCS_M_DELETE, KT_SP_MENU_DELETE);
+        AppendMenuA(m, MF_STRING | ro, KCS_M_RENAME, KT_SP_MENU_RENAME);
+        AppendMenuA(m, MF_STRING | ro, KCS_M_DELETE, KT_SP_MENU_DELETE);
     } else {
         AppendMenuA(m, MF_STRING, KCS_M_LOAD, KT_SP_MENU_LOAD);
-        AppendMenuA(m, MF_STRING | (id == 0 ? MF_GRAYED : 0), KCS_M_RENAME,
+        AppendMenuA(m, MF_STRING | (id == 0 ? MF_GRAYED : ro), KCS_M_RENAME,
                     KT_SP_MENU_RENAME);
-        AppendMenuA(m, MF_STRING, KCS_M_DELETE, KT_SP_MENU_DELETE);
+        AppendMenuA(m, MF_STRING | ro, KCS_M_DELETE, KT_SP_MENU_DELETE);
     }
     cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_NONOTIFY,
                          x, y, 0, kitty_cfg_modal_owner(), NULL);
@@ -3226,6 +3234,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 
     if (event == EVENT_REFRESH) {
+        /* readonly=yes: Delete, New folder (Rename, root label) and Del
+         * folder write the store - greyed, re-applied on every refresh */
+        if (ctrl == ssd->delbutton || ctrl == ssd->createbutton ||
+            ctrl == ssd->delfolderbutton)
+            kitty_cfg_ro_control(ctrl, dlg, event);
         /* KiTTY (hknet/KiTTY#55): the one-time Arrange offer, once the box
          * is up (a timer: this refresh runs while the window is still being
          * built). Checked once per process until it has been made, then
@@ -3740,6 +3753,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             }
         } else if (ctrl == ssd->savebutton) {
             bool isdef;
+            if (kitty_cfg_ro_control(ctrl, dlg, event))
+                return;                 /* readonly=yes: greyed */
             /* KiTTY: with a folder row selected this button is "Rename" and
              * acts on the folder, not on a session. Checked before anything
              * reads savedsession as a save target - it holds the FOLDER name
@@ -4155,6 +4170,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
         } else if (!ssd->midsession &&
                    ssd->delbutton && ctrl == ssd->delbutton) {
             int i = dlg_listbox_index(ssd->listbox, dlg);
+            if (kitty_cfg_ro_control(ctrl, dlg, event))
+                return;                 /* readonly=yes: greyed */
             if (i >= 0) i = dlg_listbox_getid(ssd->listbox, dlg, i);
             /* KiTTY: the one delete path (kcs_delete_session). "Default
              * Settings" is the template every new session starts from, so it
@@ -4177,6 +4194,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * search filter and cost a hidden mode on every single use to do it.
              * The text that is there is the name.
              */
+            if (kitty_cfg_ro_control(ctrl, dlg, event))
+                return;                 /* readonly=yes: greyed */
             if (kitty_folder_rows_on()) {
                 sessionsaver_create_named_folder(ssd, dlg);
                 return;
@@ -4263,7 +4282,9 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * runs when the delete is declined, which is a cheap price. Only
              * the root check comes first: it changes nothing. No backup, and
              * not chosen to go on without one: nothing is touched. */
-            if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
+            if (kitty_cfg_ro_control(ctrl, dlg, event)) {
+                /* readonly=yes: greyed */
+            } else if (!CurrentFolder[0] || !strcmp(CurrentFolder, "Default")) {
                 kitty_root_folder_cannot_delete(dlg);
             } else if (!kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
                 /* the stop has been reported */
@@ -4716,6 +4737,8 @@ static void kitty_hks_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int e
         break;
       case 2: {                        /* Accept: every selected row */
         int stored = 0, nokey = 0, left = 0;
+        if (kitty_cfg_ro_control(ctrl, dlg, event))
+            break;                       /* readonly=yes: greyed */
         if (event != EVENT_ACTION) break;
         nsel = hks_selected_all(d, dlg, sel, lenof(sel));
         if (!nsel) { dlg_label_change(d->banner, dlg, KT_HKS_SELECT_ROW); break; }
@@ -4757,6 +4780,8 @@ static void kitty_hks_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int e
       case 3: {                        /* Delete stored: the selected rows' stored keys */
         int nstored = 0, deleted = 0;
         strbuf *types;
+        if (kitty_cfg_ro_control(ctrl, dlg, event))
+            break;                       /* readonly=yes: greyed */
         if (event != EVENT_ACTION) break;
         nsel = hks_selected_all(d, dlg, sel, lenof(sel));
         if (!nsel) { dlg_label_change(d->banner, dlg, KT_HKS_SELECT_ROW); break; }
@@ -9173,7 +9198,9 @@ static void kcs_lockdown_handler(dlgcontrol *ctrl, dlgparam *dlg,
     Conf *conf = (Conf *)data;
     if (event == EVENT_REFRESH) {
         dlg_checkbox_set(ctrl, dlg, conf_get_bool(conf, CONF_session_lockdown));
-        kitty_dlg_enable(ctrl, dlg, kcs_lockdown_target(conf) != NULL);
+        /* readonly=yes: the lock is written at once - greyed */
+        kitty_dlg_enable(ctrl, dlg, kcs_lockdown_target(conf) != NULL &&
+                         !GetReadOnlyFlag());
     } else if (event == EVENT_VALCHANGE) {
         bool on = dlg_checkbox_get(ctrl, dlg);
         const char *name = kcs_lockdown_target(conf);

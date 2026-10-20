@@ -25,6 +25,7 @@
 #include "kitty_gui.h"
 #include "kitty.h"
 #include "kitty_storage.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_auxpos.h"
 #include "kitty_dlgbox.h"   /* the themed boxes, CenterDlgInParent */
 
@@ -323,8 +324,10 @@ static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 	char ver[64]="" ; int is_beta=0 ;
 	if( kitty_fetch_latest_version( ver, sizeof(ver), &is_beta ) ) {
 		DWORD b = is_beta ? 1 : 0 ;
-		if( !kitty_portable_store_state_string( "UpdateLatest", ver ) ||
-		    !kitty_portable_store_state_dword( "UpdateLatestBeta", b ) ) {
+		/* readonly=yes: the answer is not stored (KiTTYState nor hive) */
+		if( !kitty_store_readonly() &&
+		    ( !kitty_portable_store_state_string( "UpdateLatest", ver ) ||
+		      !kitty_portable_store_state_dword( "UpdateLatestBeta", b ) ) ) {
 			HKEY hk ; char base[512] ;
 			snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
 			if( RegCreateKeyExA( HKEY_CURRENT_USER, base, 0, NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {

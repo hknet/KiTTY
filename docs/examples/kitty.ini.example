@@ -668,21 +668,24 @@
 ;reconnectrefused=stop
 ;reconnectother=1
 
-; readonly: refuse to write to the CONFIGURATION FILE side of the settings.
-;    With yes, no KiTTY++ program writes or deletes entries in kitty.ini -
-;    kageant included - nor creates kitty.ini if it is missing, creates the
-;    store's directories, or removes a legacy plaintext password it finds in
-;    the file. A change made in a dialog applies to the running program and
-;    is not stored. The configuration box reports it instead of failing
-;    quietly.
+; readonly: make the whole settings store read-only. With yes, no KiTTY++
+;    program (kitty, kitty_portable, kageant, klink, kscp, ksftp, kittygen)
+;    writes, deletes or creates anything in the registry hive, the folder
+;    store (sessions, host keys, Launcher, state, Security) or kitty.ini.
+;    Automatic writes (window positions, counters, jump list, update state,
+;    last session) are skipped silently; one-time migrations do not run.
+;    Storing actions are greyed out, or refused with one notice where nothing
+;    can be greyed (window menu Save, /commands, -importdir). Refused: master
+;    password setup, import into the store, store move, -cleanup. No backup is
+;    written; with savemode=file kitty.sav is loaded but not written back.
+;    A new or changed SSH host key is accepted for this connection only
+;    (Connect Once); accept-new and autostoresshkey use the key and do not
+;    store it.
+;    Not covered, outside the store: the kageant autostart Run key, file
+;    associations, PATH, shortcuts, logs, exports to an outside folder,
+;    .ssh/kageant.conf, PUTTY.RND in registry mode.
 ;    Not the same as conf=no, which is about KiTTY++ maintaining its OWN files
-;    (auto-creating kitty.ini, the kitty.sav and portable backups). readonly
-;    is the broader "do not write", and it covers deletes and directory
-;    creation as well.
-;    ⚠ Two things it does NOT do, despite the name: saved SESSIONS can still
-;    be written - they go through the session store, not this path - and in
-;    registry mode global settings are still written to the registry. Today
-;    it protects the ini file, not everything KiTTY++ stores.
+;    (auto-creating kitty.ini, the kitty.sav and portable backups).
 ;readonly=no
 
 ; inheritdefaultsettings: a session that leaves a setting out takes it from

@@ -15,6 +15,14 @@
  * seeds its own Security\ salt+verifier so it never falls through to the real
  * hive's MPW state (mpw_state_get reads the registry when the portable file
  * is absent).
+ *
+ * readonly=yes (kitty.ini in charge, kitty_inifile.c): every store write -
+ * a session save and delete, a host key, the jump list, the state values
+ * (kitty_dword_store and the rest), PUTTY.RND - leaves a %TEMP% folder store
+ * byte-identical, and in registry mode creates nothing below a throwaway
+ * base key (Software\KiTTYpp-selftest-ro-<pid>, never the live hive). The
+ * kitty.ini in charge is pinned for the whole run: a file of the test's own,
+ * or none - never the machine's.
  */
 
 #include <stdio.h>
@@ -29,6 +37,7 @@
 #include "../kitty/kitty_storage.h"
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty.h"
+#include "../kitty/kitty_inifile.h"   /* readonly=yes: the pin and the gate */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 
@@ -1169,8 +1178,210 @@ static void test_nondefault_registry(void)
     del_settings(NDDEF);
 }
 
+/* ---------- readonly=yes: the store is not written ---------- */
+
+/* Every file and folder below dir, with each file's bytes, into out (the
+ * walk's order is the file system's, the same for both snapshots). */
+static void ro_snap(const char *dir, const char *rel, strbuf *out)
+{
+    char pat[MAX_PATH * 2], full[MAX_PATH * 2], sub[MAX_PATH * 2];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    snprintf(pat, sizeof(pat), "%s\\*", dir);
+    h = FindFirstFileA(pat, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return;
+    do {
+        if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, ".."))
+            continue;
+        snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+        snprintf(sub, sizeof(sub), "%s%s", rel, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            put_fmt(out, "D %s\n", sub);
+            strncat(sub, "\\", sizeof(sub) - strlen(sub) - 1);
+            ro_snap(full, sub, out);
+        } else {
+            FILE *fp = fopen(full, "rb");
+            char buf[4096];
+            size_t n;
+            put_fmt(out, "F %s\n", sub);
+            if (fp) {
+                while ((n = fread(buf, 1, sizeof(buf), fp)) > 0)
+                    put_data(out, buf, n);
+                fclose(fp);
+            }
+            put_byte(out, '\n');
+        }
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+}
+
+/* The test's own folders only: everything below dir, then dir. */
+static void ro_rmtree(const char *dir)
+{
+    char pat[MAX_PATH * 2], full[MAX_PATH * 2];
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+    snprintf(pat, sizeof(pat), "%s\\*", dir);
+    h = FindFirstFileA(pat, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, ".."))
+                continue;
+            snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                ro_rmtree(full);
+            else
+                DeleteFileA(full);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    RemoveDirectoryA(dir);
+}
+
+/* The calls of the automatic and the explicit writers, under readonly=yes. */
+static void ro_try_writes(const char *what, int folder)
+{
+    char *err = (char *)"unset";
+    char seed[32];
+    char msg[160];
+    int nfailed = -1;
+    settings_w *w;
+
+    w = open_settings_w("zz-ro-session", &err);
+    snprintf(msg, sizeof(msg), "%s: saving a session is refused, no message", what);
+    check(w == NULL && err == NULL, msg);
+    if (w) {                               /* the gate failed: still close it */
+        write_setting_s(w, "HostName", "changed.example");
+        close_settings_w(w);
+    }
+    err = (char *)"unset";
+    w = open_settings_w("zz-ro-new", &err);
+    snprintf(msg, sizeof(msg), "%s: a new session is refused, no message", what);
+    check(w == NULL && err == NULL, msg);
+    if (w) {
+        write_setting_s(w, "HostName", "new.example");
+        close_settings_w(w);
+    }
+    del_settings("zz-ro-session");
+    store_host_key(NULL, "ro.example", 22, "ssh-ed25519", "0xchanged");
+    store_host_key(NULL, "ro-new.example", 2222, "ssh-ed25519", "0xnew");
+    add_to_jumplist_registry("zz-ro-new");
+    remove_from_jumplist_registry("zz-ro-session");
+    kitty_set_show_foreign_sessions(1);          /* kitty_dword_store */
+    kitty_arrange_offer_made();                  /* kitty_dword_store */
+    kitty_set_last_session("zz-ro-other");
+    kitty_set_last_folder("zz-ro-folder");
+    kitty_state_set_string("ManageSession", "zz-ro-other");
+    /* PUTTY.RND only where it is the store's: in registry mode it lives in
+     * %LOCALAPPDATA%, outside the store, and is written as ever */
+    if (folder) {
+        memset(seed, 0x5a, sizeof(seed));
+        write_random_seed(seed, sizeof(seed));
+    }
+    host_ca_delete("zz-ro-ca");
+    snprintf(msg, sizeof(msg), "%s: Comment out defaults changes nothing", what);
+    check(kitty_store_comment_out_defaults("Default Settings", &nfailed) == 0 &&
+          nfailed == 0, msg);
+}
+
+static void test_readonly_folder(const char *roini, const char *noini)
+{
+    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH];
+    char *err = NULL;
+    settings_w *w;
+    strbuf *before, *after;
+    char seed[32];
+
+    GetTempPathA(sizeof(tmp), tmp);
+    snprintf(root, sizeof(root), "%skitty-selftest-ro-%lu",
+             tmp, (unsigned long)GetCurrentProcessId());
+    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+
+    /* the store as a writable run leaves it */
+    kitty_inifile_pin(noini);
+    check(!kitty_store_readonly(), "readonly folder: writable without a readonly kitty.ini");
+    w = open_settings_w("zz-ro-session", &err);
+    check(w != NULL, "readonly folder: seed session written");
+    if (w) {
+        write_setting_s(w, "HostName", "ro.example");
+        close_settings_w(w);
+    }
+    store_host_key(NULL, "ro.example", 22, "ssh-ed25519", "0xseed");
+    add_to_jumplist_registry("zz-ro-session");
+    kitty_set_last_session("zz-ro-session");
+    memset(seed, 0x33, sizeof(seed));
+    write_random_seed(seed, sizeof(seed));
+
+    /* readonly=yes from here */
+    kitty_inifile_pin(roini);
+    check(kitty_store_readonly() && kitty_inifile_readonly(),
+          "readonly folder: kitty.ini readonly=yes is in force");
+    before = strbuf_new();
+    ro_snap(root, "", before);
+    check(strstr(before->s, "zz-ro-session") && strstr(before->s, "KiTTYState") &&
+          strstr(before->s, "PUTTY.RND") && strstr(before->s, "SshHostKeys"),
+          "readonly folder: the seeded store holds a session, state, seed and a host key");
+
+    ro_try_writes("readonly folder", 1);
+    check(portable_write_text_file("SshHostKeys", "zz-ro", "x") == KITTY_RO_REFUSED,
+          "readonly folder: portable_write_text_file answers KITTY_RO_REFUSED");
+    check(kitty_portable_store_state_string("zz-ro", "x") == KITTY_RO_REFUSED,
+          "readonly folder: the state writer answers KITTY_RO_REFUSED");
+
+    after = strbuf_new();
+    ro_snap(root, "", after);
+    check(before->len == after->len && !memcmp(before->s, after->s, before->len),
+          "readonly folder: the folder store is byte-identical");
+    strbuf_free(before);
+    strbuf_free(after);
+
+    kitty_inifile_pin(noini);
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    ro_rmtree(root);
+}
+
+static void test_readonly_registry(const char *roini, const char *noini)
+{
+    char base[128];
+    HKEY k;
+    int made;
+
+    /* a throwaway base: under readonly nothing may appear there */
+    snprintf(base, sizeof(base), "Software\\KiTTYpp-selftest-ro-%lu",
+             (unsigned long)GetCurrentProcessId());
+    kitty_set_registry_base(base);
+    kitty_set_storage_mode(0);
+    kitty_inifile_pin(roini);
+    check(kitty_store_ro_regpath(1, base) &&
+          kitty_store_ro_regpath(1, kitty_reg_sessions()),
+          "readonly registry: the base in use is the store");
+    check(!kitty_store_ro_regpath(1, "Software\\Microsoft\\Windows\\CurrentVersion\\Run"),
+          "readonly registry: the Run key is not");
+
+    ro_try_writes("readonly registry", 0);
+
+
+    made = RegOpenKeyExA(HKEY_CURRENT_USER, base, 0, KEY_READ, &k) == ERROR_SUCCESS;
+    check(!made, "readonly registry: nothing created below the base");
+    if (made) {                         /* the gate failed: the test's own key goes */
+        RegCloseKey(k);
+        RegDeleteTreeA(HKEY_CURRENT_USER, base);
+    }
+
+    kitty_inifile_pin(noini);
+    kitty_set_registry_root(0);
+}
+
 int main(int argc, char **argv)
 {
+    char rotmp[MAX_PATH], rodir[MAX_PATH], roini[MAX_PATH], noini[MAX_PATH];
+    FILE *rofp;
     /* --wrap PASSPHRASE PLAINTEXT: print the self-contained MPW2 value, and
      * nothing else (no hive, no files) - a fixed test value for the console
      * tools' master-password tests is made this way */
@@ -1182,6 +1393,21 @@ int main(int argc, char **argv)
         free(w);
         return 0;
     }
+    /* The kitty.ini in charge: none (a name nothing creates) for every test,
+     * the readonly one below for the readonly tests. The machine's own
+     * kitty.ini (beside the exe, %APPDATA%) is never consulted. */
+    GetTempPathA(sizeof(rotmp), rotmp);
+    snprintf(rodir, sizeof(rodir), "%skitty-selftest-roini-%lu",
+             rotmp, (unsigned long)GetCurrentProcessId());
+    snprintf(roini, sizeof(roini), "%s\\kitty.ini", rodir);
+    snprintf(noini, sizeof(noini), "%s\\none\\kitty.ini", rodir);
+    CreateDirectoryA(rodir, NULL);
+    if ((rofp = fopen(roini, "wb")) != NULL) {
+        fputs("[KiTTY]\r\nreadonly=yes\r\n", rofp);
+        fclose(rofp);
+    }
+    kitty_inifile_pin(noini);
+
     printf("== registry backend (DPAPI) ==\n");
     test_registry();
     printf("== portable backend (master password) ==\n");
@@ -1202,6 +1428,11 @@ int main(int argc, char **argv)
     printf("== save only non-default settings ==\n");
     test_nondefault_file();
     test_nondefault_registry();
+    printf("== readonly=yes: the store is not written ==\n");
+    test_readonly_folder(roini, noini);
+    test_readonly_registry(roini, noini);
+    DeleteFileA(roini);
+    RemoveDirectoryA(rodir);
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

@@ -65,6 +65,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- **readonly=yes makes the whole settings store read-only**: no program
+  writes sessions, settings, host keys, backups or window positions.
+  Storing actions are greyed out, and a new host key is accepted for one
+  connection only.
 - **KiTTY++ wherever a text means this program.** Window titles ("KiTTY++
   Error", "KiTTY++ Security Alert", "KiTTY++ Update", ...), the About menu
   item, messages, the command-line help, the comments of a generated
@@ -121,8 +125,6 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 ### Fixed
 
 - **klink exits with 1 when a question before login is cancelled.**
-- **readonly=yes stops every kitty.ini write**, including kageant's
-  settings and colour theme, "Use DPAPI" and /savemode.
 - **klink, kscp and ksftp no longer hang at a question when stdin is at
   end of input.**
 - **Refused starts in the event log show the program's path.**

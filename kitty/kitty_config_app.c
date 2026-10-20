@@ -909,6 +909,8 @@ static void kitty_hk_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int ev
         }
         break;
       case 2:                              /* Delete */
+        if (kitty_cfg_ro_control(ctrl, dlg, event))
+            break;                           /* readonly=yes: greyed */
         if (event == EVENT_ACTION) {
             char *q;
             int done = 0;
@@ -1234,6 +1236,8 @@ static void kitty_showforeign_handler(dlgcontrol *ctrl, dlgparam *dlg,
         (struct sessionsaver_data *)ctrl->context.p;
     if (!ssd)
         ssd = session_filter_ssd;      /* Application > Migration */
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: kept as stored */
     if (event == EVENT_REFRESH) {
         dlg_checkbox_set(ctrl, dlg, kitty_get_show_foreign_sessions());
     } else if (event == EVENT_VALCHANGE) {
@@ -1532,7 +1536,7 @@ static void kitty_reset_default_answer(int yes, void *ctx)
     Conf *conf;
     char *err;
     (void)ctx;
-    if (!yes)
+    if (!yes || GetReadOnlyFlag())     /* readonly=yes: the button is greyed */
         return;
     conf = conf_new();
     load_open_settings(NULL, conf);
@@ -1558,7 +1562,9 @@ static void kitty_reset_default_answer(int yes, void *ctx)
 static void kitty_reset_default_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                         void *data, int event)
 {
-    (void)ctrl; (void)dlg; (void)data;
+    (void)data;
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: greyed */
     if (event != EVENT_ACTION)
         return;
     if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(),
@@ -2062,7 +2068,9 @@ static void ksharedpos_refresh(dlgparam *dlg)
 static void kitty_sharedpos_reset_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
-    (void)ctrl; (void)data;
+    (void)data;
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: greyed */
     if (event != EVENT_ACTION)
         return;
     if (!kitty_confirm_box(GetActiveWindow(), KT_CAP_SHAREDPOS_RESET,
@@ -4464,10 +4472,13 @@ static void kitty_sp_comment_defaults_handler(dlgcontrol *ctrl, dlgparam *dlg,
     char *msg;
     (void)data;
     if (event == EVENT_REFRESH) {
-        kitty_dlg_enable(ctrl, dlg, kitty_inherit_default_settings() != 0);
+        /* readonly=yes: it rewrites every session - greyed */
+        kitty_dlg_enable(ctrl, dlg, kitty_inherit_default_settings() != 0 &&
+                         !GetReadOnlyFlag());
         return;
     }
-    if (event != EVENT_ACTION || !kitty_inherit_default_settings())
+    if (event != EVENT_ACTION || !kitty_inherit_default_settings() ||
+        GetReadOnlyFlag())
         return;
     owner = kitty_cfg_modal_owner();
     if (!kitty_backup_before(owner, 1)) {
@@ -5120,6 +5131,8 @@ static void kitty_import_action_handler(dlgcontrol *ctrl, dlgparam *dlg,
     strbuf *names;
     int i, done = 0, failed = 0;
 
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: greyed */
     if (event != EVENT_ACTION || !im || !im->found || !im->listbox)
         return;
 
@@ -5210,6 +5223,8 @@ static void kitty_inimig_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                  void *data, int event)
 {
     (void)data;
+    if (ctrl->context.i == 1 && kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: Take... greyed */
     if (event != EVENT_ACTION)
         return;
     if (ctrl->context.i == 0) {
@@ -5231,6 +5246,8 @@ static void kitty_storexfer_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                     void *data, int event)
 {
     (void)data;
+    if (ctrl->context.i == 1 && kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: Import all greyed */
     if (event != EVENT_ACTION)
         return;
     if (ctrl->context.i == 0) {
@@ -5608,6 +5625,8 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
         break;
 
       case 6:                          /* Import selected */
+        if (kitty_cfg_ro_control(ctrl, dlg, event))
+            break;                     /* readonly=yes: greyed */
         if (event == EVENT_ACTION) {
             struct kitty_namelist dropped, taken;
             strbuf *names;

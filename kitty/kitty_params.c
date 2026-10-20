@@ -488,17 +488,18 @@ static void ini_write_failed_once( DWORD err ) {
 // Write a parameter either to the registry or to the configuration file.
 // report: show a failed kitty.ini write (once per run); 0 = the caller
 // reports it with the setting's name, Windows' reason still in GetLastError().
+// readonly=yes: neither is written, KITTY_RO_REFUSED (non-zero, so a caller
+// testing for a failed write stays silent).
 static int write_parameter( const char * key, const char * name, char * value, int report ) {
 	int ret = 1 ;
 	char buffer[4096] ;
+	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		if( !GetReadOnlyFlag() ) {
-			ret = writeINI( KittyIniFile, key, name, value ) ;
-			if( !ret && report ) {
-				DWORD err = GetLastError() ;
-				ini_write_failed_once( err ) ;
-				SetLastError( err ) ;
-			}
+		ret = writeINI( KittyIniFile, key, name, value ) ;
+		if( !ret && report ) {
+			DWORD err = GetLastError() ;
+			ini_write_failed_once( err ) ;
+			SetLastError( err ) ;
 		}
 	} else {
 		/* The hive in use, matching ReadParameterN.
@@ -550,10 +551,11 @@ int ReadParameterN( const char * key, const char * name, char * value, size_t si
 	return strcmp( buffer, "" ) ;
 	}
 	
-// Delete a parameter
+// Delete a parameter (readonly=yes: nothing, KITTY_RO_REFUSED)
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
-	if( !GetReadOnlyFlag() ) { delINI( KittyIniFile, key, name ) ; }
+	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
+	delINI( KittyIniFile, key, name ) ;
 	/* The same key WriteParameter uses: a delete aimed at a different hive
 	 * removes nothing and still reports success. */
 	strcpy( buffer, kitty_registry_base() ) ;

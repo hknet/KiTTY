@@ -21,6 +21,7 @@
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
 #include "kitty_text.h"
+#include "kitty_inifile.h"   /* kitty_store_ro_regpath: readonly=yes */
 
 /* Windows' reserved device names. A name is reserved when the part before its
  * first dot - trailing spaces ignored - is one of these, whatever follows:
@@ -1259,6 +1260,9 @@ bool ksp_reg_delete_tree(HKEY root, const char *path)
 {
     HKEY k;
     char sub[512];
+    /* readonly=yes: a key of the store is not deleted (false: still there) */
+    if (kitty_store_ro_regpath(root == HKEY_CURRENT_USER, path))
+        return false;
     if (RegOpenKeyExA(root, path, 0, KEY_ALL_ACCESS, &k) != ERROR_SUCCESS)
         return !ksp_reg_exists(root, path);
     for (;;) {
@@ -1284,6 +1288,10 @@ int ksp_reg_copy_verified(HKEY root, const char *src, const char *dst)
     HKEY s, d;
     DWORD disp = 0;
     bool ok;
+    /* readonly=yes: nothing copied into the store - 0, so no caller goes
+     * on to delete the source of a copy that was not made */
+    if (kitty_store_ro_regpath(root == HKEY_CURRENT_USER, dst))
+        return 0;
     if (ksp_reg_exists(root, dst))
         return 0;                       /* never onto something already there */
     if (RegOpenKeyExA(root, src, 0, KEY_READ, &s) != ERROR_SUCCESS)
@@ -1336,6 +1344,10 @@ int ksp_reg_move_tree(HKEY root, const char *src, const char *dst,
         *leftover = NULL;
     if (!strcmp(src, dst))
         return 1;
+    /* readonly=yes: neither end in the store moves (0, nothing left over) */
+    if (kitty_store_ro_regpath(root == HKEY_CURRENT_USER, src) ||
+        kitty_store_ro_regpath(root == HKEY_CURRENT_USER, dst))
+        return 0;
     if (stricmp(src, dst)) {
         if (!ksp_reg_copy_verified(root, src, dst))
             return 0;

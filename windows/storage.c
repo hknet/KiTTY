@@ -16,6 +16,7 @@
 #include "../kitty/kitty_text.h"     /* KT_SESSION_LOCKED_FMT */
 #include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
 #include "../kitty/kitty_text.h"     /* KT_SP_SAVE_CLASH: the folder store's save clash */
+#include "../kitty/kitty_inifile.h"  /* kitty_store_readonly: readonly=yes */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -66,6 +67,12 @@ struct settings_w {
 settings_w *open_settings_w(const char *sessionname, char **errmsg)
 {
     *errmsg = NULL;
+
+    /* KiTTY: readonly=yes - no session is written. NULL with no message:
+     * an automatic save stays silent, a caller that shows a refusal checks
+     * kitty_store_readonly() (kitty_inifile.h). */
+    if (kitty_store_readonly())
+        return NULL;
 
     if (!sessionname || !*sessionname)
         sessionname = KITTY_DEFAULT_SESSION;
@@ -626,6 +633,8 @@ int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
     size_t n = 0, alloc = 0, i;
     int done = 0, bad = 0;
     DWORD idx;
+    if (kitty_store_readonly())
+        return 0;                       /* readonly=yes: nothing deleted */
     for (idx = 0; ; idx++) {
         DWORD nl = sizeof(name), t1, t2, s1, s2;
         BYTE *a, *b;
@@ -660,6 +669,11 @@ int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
 int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
 {
     int changed = 0, failed = 0;
+    if (kitty_store_readonly()) {       /* readonly=yes: no session changed */
+        if (nfailed)
+            *nfailed = 0;
+        return 0;
+    }
     if (!defsession || !*defsession)
         defsession = KITTY_DEFAULT_SESSION;
     if (store_is_file()) {
@@ -1104,6 +1118,8 @@ int kitty_settings_r_is_own(settings_r *handle)
 
 void del_settings(const char *sessionname)
 {
+    if (kitty_store_readonly())
+        return;                         /* KiTTY: readonly=yes, nothing deleted */
     kitty_store_mark_dirty();
     if (store_is_file()) {
         char *path = ksf_session_find(sessionname);
@@ -1304,7 +1320,8 @@ int check_stored_host_key(const char *hostname, int port,
              * wrong, and hyper-cautiously do nothing.
              */
             if (!strcmp(new->s, key)) {
-                put_reg_sz(rkey, regname->s, new->s);
+                if (!kitty_store_readonly())   /* KiTTY: readonly=yes */
+                    put_reg_sz(rkey, regname->s, new->s);
                 otherstr = strbuf_to_str(new);
             } else {
                 strbuf_free(new);
@@ -1343,6 +1360,10 @@ bool have_ssh_host_key(const char *hostname, int port,
 void store_host_key(Seat *seat, const char *hostname, int port,
                     const char *keytype, const char *key)
 {
+    /* KiTTY: readonly=yes - the key is not stored; it holds for this
+     * connection only (the caller's verification already accepted it). */
+    if (kitty_store_readonly())
+        return;
     /* The trust store changed - worth a backup. */
     kitty_store_mark_dirty();
     strbuf *regname = strbuf_new();
@@ -1544,6 +1565,8 @@ char *host_ca_save(host_ca *hca)
 {
     if (!*hca->name)
         return dupstr("CA record must have a name");
+    if (kitty_store_readonly())
+        return NULL;                    /* KiTTY: readonly=yes, not stored */
 
     if (store_is_file()) {
         char *dir = portable_subdir_path("SshHostCAs");
@@ -1598,6 +1621,8 @@ char *host_ca_save(host_ca *hca)
 
 char *host_ca_delete(const char *name)
 {
+    if (kitty_store_readonly())
+        return NULL;                    /* KiTTY: readonly=yes, not deleted */
     if (store_is_file()) {
         char *path = portable_item_path("SshHostCAs", name);
         if (path) { DeleteFileA(path); sfree(path); }
@@ -1658,7 +1683,10 @@ static HANDLE access_random_seed(int action)
         char *root = portable_root_dir();
         if (root) {
             char *path = dupprintf("%s\\PUTTY.RND", root);
-            CreateDirectoryA(root, NULL);
+            /* KiTTY: the seed file is the folder store's - under readonly=yes
+             * read only (write_random_seed, cleanup_all stop first) */
+            if (!kitty_store_readonly())
+                CreateDirectoryA(root, NULL);
             sfree(root);
             if (try_random_seed_and_free(path, action, &rethandle))
                 return rethandle;
@@ -1788,6 +1816,11 @@ void read_random_seed(noise_consumer_t consumer)
 
 void write_random_seed(void *data, int len)
 {
+    /* KiTTY: the folder store's PUTTY.RND is not rewritten under
+     * readonly=yes; in registry mode the seed lives outside the store
+     * (%LOCALAPPDATA%) and is written as ever */
+    if (store_is_file() && kitty_store_readonly())
+        return;
     HANDLE seedf = access_random_seed(OPEN_W);
 
     if (seedf != INVALID_HANDLE_VALUE) {
@@ -1810,6 +1843,12 @@ void write_random_seed(void *data, int len)
 static int transform_jumplist_registry(
     const char *add, const char *rem, char **out)
 {
+    /* KiTTY: readonly=yes - the stored list is read, never changed (and
+     * the registry key never created); the caller rebuilds the Windows
+     * jump list from it as after a write */
+    int ro = kitty_store_readonly();
+    if (ro)
+        add = rem = NULL;
     if (store_is_file()) {
         char *root = portable_root_dir();
         char *path = root ? dupprintf("%s\\Jumplist", root) : NULL;
@@ -1874,7 +1913,8 @@ static int transform_jumplist_registry(
         return write_failure ? JUMPLISTREG_ERROR_VALUEWRITE_FAILURE : JUMPLISTREG_OK;
     }
 
-    HKEY rkey = create_regkey(HKEY_CURRENT_USER, reg_jumplist_key);
+    HKEY rkey = ro ? open_regkey_ro(HKEY_CURRENT_USER, reg_jumplist_key)
+                   : create_regkey(HKEY_CURRENT_USER, reg_jumplist_key);
     if (!rkey)
         return JUMPLISTREG_ERROR_KEYOPENCREATE_FAILURE;
 
@@ -1983,6 +2023,10 @@ static void registry_recursive_remove(HKEY key)
 
 void cleanup_all(void)
 {
+    /* KiTTY: readonly=yes - the store is not wiped (-cleanup refused) */
+    if (kitty_store_readonly())
+        return;
+
     /* ------------------------------------------------------------
      * Wipe out the random seed file, in all of its possible
      * locations.

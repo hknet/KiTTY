@@ -552,6 +552,10 @@ void SaveFolderList( void ) {
  * source after a copy it never checked. */
 int RegRenameTree( HWND hdlg, HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) { // hdlg = information box
 	DWORD err ;
+	/* readonly=yes: neither end in the settings store is touched - a source
+	 * outside it would otherwise be deleted after a refused copy */
+	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpSubKey )
+	 || kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpDestKey ) ) return KITTY_RO_REFUSED ;
 	if( RegTestKey( hMainKey, lpDestKey ) ) {
 		if( hdlg != NULL ) InfoBoxSetText( hdlg, KT_MAIN_INFO_CLEANING_BACKUP ) ;
 		RegDelTree( hMainKey, lpDestKey ) ;
@@ -627,6 +631,7 @@ char * GetHelpMessage(void) {
 #include "kitty_ini.h"
 void CreateIniFile( const char * filename ) {
 	FILE *fp;
+	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: the store is not written */
 	if( (fp=fopen(filename,"w")) != NULL ) {
 		if( IniFileFlag == SAVEMODE_DIR ) {
 			int p = poss( ";savemode=registry", default_init_file_content );

@@ -39,6 +39,7 @@
 #include "kitty_params.h"     /* ReadParameterN: the weak stub below is its fallback */
 #include "kitty_storage_int.h"
 #include "kitty_sessionpath.h" /* session names as folder paths */
+#include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -59,14 +60,21 @@ static const char *const puttystr = reg_sessions_buf;
 
 void kitty_set_registry_root(int use_putty)
 {
-    const char *base = use_putty ? "Software\\SimonTatham\\PuTTY"
-                                 : "Software\\kapper.net\\KiTTY";
+    kitty_set_registry_base(use_putty ? "Software\\SimonTatham\\PuTTY"
+                                      : "Software\\kapper.net\\KiTTY");
+}
+/* Any base, the keys below it derived as for the two above (the unit tests
+ * point it at a throwaway key). */
+void kitty_set_registry_base(const char *base)
+{
     strncpy(reg_base_buf, base, sizeof(reg_base_buf)-1);
     reg_base_buf[sizeof(reg_base_buf)-1] = '\0';
     sprintf(reg_sessions_buf, "%s\\Sessions",    reg_base_buf);
     sprintf(reg_jumplist_buf, "%s\\Jumplist",    reg_base_buf);
     sprintf(reg_hostca_buf,   "%s\\SshHostCAs",  reg_base_buf);
     sprintf(reg_hostkeys_buf, "%s\\SshHostKeys", reg_base_buf);
+    /* the hive in use is the store readonly=yes keeps unwritten */
+    kitty_store_ro_set_regbase(reg_base_buf);
 }
 int kitty_root_is_putty(void)
 { return strstr(reg_base_buf, "SimonTatham") != NULL; }
@@ -160,10 +168,13 @@ int kitty_has_foreign_sessions(void)
 }
 
 /* Write the answer where the checkbox writes it, so the two are one setting
- * and not two that happen to agree. */
+ * and not two that happen to agree. Under readonly=yes nothing is written
+ * (here and in every state writer below): the answer holds for this run. */
 static void kitty_dword_store(const char *name, DWORD v)
 {
     HKEY hk;
+    if (kitty_store_readonly())
+        return;
     if (store_is_file()) {
         kitty_portable_store_state_dword(name, v);
         return;
@@ -349,6 +360,8 @@ void kitty_set_show_foreign_sessions(int on)
  * value "LastSession" under the base hive. */
 void kitty_set_last_session(const char *sessionname)
 {
+    if (kitty_store_readonly())
+        return;
     if (store_is_file()) {
         kitty_portable_store_state_string(KR_LASTSESSION, sessionname ? sessionname : "");
         return;
@@ -382,6 +395,8 @@ int kitty_get_last_session(char *buf, int buflen)
 void kitty_state_set_string(const char *key, const char *value)
 {
     HKEY hk;
+    if (kitty_store_readonly())
+        return;
     if (store_is_file()) {
         kitty_portable_store_state_string(key, value ? value : "");
         return;
@@ -413,6 +428,8 @@ int kitty_state_get_string(const char *key, char *buf, int buflen)
 void kitty_set_last_folder(const char *folder)
 {
     if (!folder || !*folder) folder = "Default";
+    if (kitty_store_readonly())
+        return;
     if (store_is_file()) {
         kitty_portable_store_state_string(KR_LASTFOLDER, folder);
         return;
@@ -1871,7 +1888,10 @@ char *ksf_session_path(const char *sessionname)   /* snewn'd or NULL */
 void ksf_make_parent_dirs(const char *path)
 {
     size_t base = strlen(g_sess_dir);
-    char *p = dupstr(path), *q;
+    char *p, *q;
+    if (kitty_store_readonly())
+        return;                         /* readonly=yes: no folder made */
+    p = dupstr(path);
     CreateDirectoryA(g_sess_dir, NULL);
     if (strnicmp(p, g_sess_dir, base) || p[base] != '\\') {
         sfree(p);
@@ -1891,7 +1911,10 @@ void ksf_make_parent_dirs(const char *path)
 void ksf_prune_empty_dirs(const char *path)
 {
     size_t base = strlen(g_sess_dir);
-    char *p = dupstr(path), *bs;
+    char *p, *bs;
+    if (kitty_store_readonly())
+        return;                         /* readonly=yes: no folder removed */
+    p = dupstr(path);
     if (strnicmp(p, g_sess_dir, base) || p[base] != '\\') {
         sfree(p);
         return;
@@ -2127,6 +2150,8 @@ int kitty_session_suffix_rename(const char *oldsuf, const char *newsuf,
     int n;
     if (!store_is_file())
         return 0;
+    if (!dry_run && kitty_store_readonly())
+        return 0;                       /* readonly=yes: nothing renamed */
     n = ksf_suffix_walk(g_sess_dir, "", 0, oldsuf ? oldsuf : "",
                         newsuf ? newsuf : "", dry_run, clashes);
     if (n && !dry_run)
@@ -2284,6 +2309,11 @@ static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
 {
     FILE *fp;
     bool ok;
+    /* every caller writes into the store (sessions, CAs, KiTTYState, named
+     * proxies): readonly=yes writes nothing - the callers' own checks come
+     * first, this is the floor under them */
+    if (kitty_store_readonly())
+        return false;
     CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
     fp = fopen(path, "wb");
     if (!fp) return false;
@@ -2395,6 +2425,12 @@ int portable_write_text_file(const char *subdir, const char *name,
     char *text = NULL;
     int ok = 0;
     DWORD err = ERROR_PATH_NOT_FOUND;
+    /* readonly=yes: nothing written, KITTY_RO_REFUSED (non-zero) */
+    if (kitty_store_readonly()) {
+        sfree(dir);
+        sfree(path);
+        return KITTY_RO_REFUSED;
+    }
     if (!dir || !path) goto out;
     if (!CreateDirectoryA(dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
         err = GetLastError(); goto out;
@@ -2427,8 +2463,10 @@ char *portable_read_text_file(const char *subdir, const char *name)
         if (pl > sl) {
             char *plain = dupstr(path);
             plain[pl - sl] = '\0';
+            /* readonly=yes: read where it is, not renamed */
             if (GetFileAttributesA(plain) != INVALID_FILE_ATTRIBUTES)
-                fp = fopen(MoveFileA(plain, path) ? path : plain, "rb");
+                fp = fopen(!kitty_store_readonly() && MoveFileA(plain, path)
+                           ? path : plain, "rb");
             sfree(plain);
         }
     }
@@ -2460,6 +2498,7 @@ int kitty_portable_store_state_string(const char *key, const char *value)
     char *path;
     struct ksf_item *items;
     if (!store_is_file()) return 0;
+    if (kitty_store_readonly()) return KITTY_RO_REFUSED;
     path = portable_state_path();
     if (!path) return 0;
     items = ksf_load(path);

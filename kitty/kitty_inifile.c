@@ -38,6 +38,13 @@
  * kitty_inifile_write_blocked() first. Other
  * ini files - a store-move destination, kitty_windowpos.ini - are not this
  * file and are never held back.
+ *
+ * readonly=yes covers the whole settings store, not only this file: the
+ * registry hive, the folder store and kitty.sav. kitty_store_readonly() is
+ * the one check every write primitive of every program makes (the
+ * registry helpers, windows/storage.c, kitty_storage.c, the window memory,
+ * kageant's settings); under it a primitive does nothing and answers
+ * KITTY_RO_REFUSED, or the success its silent callers expect.
  */
 
 #include <windows.h>
@@ -52,6 +59,67 @@ static char inifile_path[MAX_PATH + 1];
 static int inifile_state = 0;          /* 0 = unresolved, 1 = found, -1 = none,
                                         * 2 = pinned by kitty.exe */
 static int inifile_pinned_registry = -1;   /* -1 = not pinned */
+
+/* The readonly answer, kept with the file it was read from and that file's
+ * size and last write: checked before every store write, it costs one
+ * GetFileAttributesEx while the file is unchanged, and an edited file (a
+ * running kageant, kitty.exe) is read again. */
+static int ro_cached = -1;             /* -1 = not read */
+static char ro_path[MAX_PATH + 1];
+static FILETIME ro_time;
+static DWORD ro_size_lo, ro_size_hi;
+static int ro_forced = 0;              /* kitty_inifile_readonly_force */
+static LONG ro_allow = 0;              /* kitty_store_ro_allow nesting */
+static char ro_regbase[300];           /* kitty_store_ro_set_regbase */
+
+/* readonly=yes: what kitty_inifile_write would have written, held for the
+ * running program - kitty_inifile_read answers from it first, so a change
+ * made in a settings dialog (kageant's, the theme) applies until the
+ * program exits. value NULL: the key was removed. */
+struct inifile_ro_value {
+    char *section, *key, *value;
+    struct inifile_ro_value *next;
+};
+static struct inifile_ro_value *inifile_ro_values = NULL;
+
+static struct inifile_ro_value *inifile_ro_find(const char *section,
+                                                const char *key)
+{
+    struct inifile_ro_value *v;
+    for (v = inifile_ro_values; v; v = v->next)
+        if (!stricmp(v->section, section) && !stricmp(v->key, key))
+            return v;
+    return NULL;
+}
+
+static void inifile_ro_keep(const char *section, const char *key,
+                            const char *value)
+{
+    struct inifile_ro_value *v = inifile_ro_find(section, key);
+    char *copy = value ? _strdup(value) : NULL;
+    if (value && !copy)
+        return;
+    if (!v) {
+        v = calloc(1, sizeof(*v));
+        if (v) {
+            v->section = _strdup(section);
+            v->key = _strdup(key);
+        }
+        if (!v || !v->section || !v->key) {
+            if (v) {
+                free(v->section);
+                free(v->key);
+                free(v);
+            }
+            free(copy);
+            return;
+        }
+        v->next = inifile_ro_values;
+        inifile_ro_values = v;
+    }
+    free(v->value);
+    v->value = copy;
+}
 
 static int inifile_isfile(const char *p)
 {
@@ -117,6 +185,15 @@ void kitty_inifile_pin(const char *path)
         return;
     strcpy(inifile_path, path);
     inifile_state = 2;
+    ro_cached = -1;                    /* another file: read it again */
+    while (inifile_ro_values) {        /* ...and the changes kept from it go */
+        struct inifile_ro_value *v = inifile_ro_values;
+        inifile_ro_values = v->next;
+        free(v->section);
+        free(v->key);
+        free(v->value);
+        free(v);
+    }
 }
 
 /* kitty.exe: whether its own store is the registry (savemode=registry, or
@@ -199,22 +276,138 @@ int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len)
 {
     const char *f = kitty_inifile_file();
-    if (!f)
+    const struct inifile_ro_value *ro;
+    if (!f || len <= 0)
         return 0;
     value[0] = '\0';
+    /* a change readonly=yes kept from the file (kitty_inifile_write), while
+     * the file still sets it */
+    if (inifile_ro_values && (ro = inifile_ro_find(section, key)) != NULL &&
+        kitty_inifile_readonly()) {
+        snprintf(value, len, "%s", ro->value ? ro->value : "");
+        return value[0] != '\0';
+    }
     GetPrivateProfileStringA(section, key, "", value, len, f);
     return value[0] != '\0';
 }
 
 /* [KiTTY] readonly=yes in the resolved kitty.ini, matched as kitty.exe
  * matches it (kitty_params.c load_ini_params: the value "yes", case aside).
- * Read fresh at every call: kitty.exe's GetReadOnlyFlag() is not linked
- * into the other programs, and a running kageant sees an edited file. */
-int kitty_inifile_readonly(void)
+ * Read again whenever the file changed (its size or last write), so a
+ * running kageant sees an edited file; kitty.exe's GetReadOnlyFlag() is
+ * this answer (kitty_common.c). */
+static int inifile_readonly_read(void)
 {
     char buf[16];
-    return kitty_inifile_read(KI_SECTION_KITTY, KI_READONLY, buf, sizeof(buf)) &&
-        !stricmp(buf, "YES");
+    const char *f = kitty_inifile_file();
+    /* from the file itself, past the changes readonly=yes keeps
+     * (kitty_inifile_read reaches this function for those) */
+    buf[0] = '\0';
+    if (f)
+        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_READONLY, "", buf,
+                                 sizeof(buf), f);
+    return !stricmp(buf, "YES");
+}
+
+int kitty_inifile_readonly(void)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fa;
+    if (ro_forced)
+        return 1;
+    /* kitty_inifile_file()'s answer, with the one stat the cache needs */
+    inifile_resolve();
+    if (inifile_state != 1 && inifile_state != 2)
+        return 0;
+    if (!GetFileAttributesExA(inifile_path, GetFileExInfoStandard, &fa) ||
+        (fa.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        return 0;                       /* no file: nothing reads readonly=yes */
+    if (ro_cached >= 0 && !stricmp(ro_path, inifile_path) &&
+        CompareFileTime(&fa.ftLastWriteTime, &ro_time) == 0 &&
+        fa.nFileSizeLow == ro_size_lo && fa.nFileSizeHigh == ro_size_hi)
+        return ro_cached;
+    ro_cached = inifile_readonly_read();
+    snprintf(ro_path, sizeof(ro_path), "%s", inifile_path);
+    ro_time = fa.ftLastWriteTime;
+    ro_size_lo = fa.nFileSizeLow;
+    ro_size_hi = fa.nFileSizeHigh;
+    return ro_cached;
+}
+
+/* The cached answer is dropped: the next question reads the file. */
+void kitty_inifile_readonly_reread(void)
+{
+    ro_cached = -1;
+}
+
+/* kitty.exe: readonly set by another source than the file (a readonly
+ * value its ReadParameter finds in the hive). Only ever switched on. */
+void kitty_inifile_readonly_force(int on)
+{
+    if (on)
+        ro_forced = 1;
+}
+
+/* Is a store write refused now? readonly=yes, outside a
+ * kitty_store_ro_allow() scope. */
+int kitty_store_readonly(void)
+{
+    return ro_allow <= 0 && kitty_inifile_readonly();
+}
+
+/* savemode=file only: kitty.sav is loaded into the registry working copy
+ * (the hive parked first) under readonly too - that copy is what the
+ * program reads. Nested calls; 1 opens a scope, 0 closes it. */
+void kitty_store_ro_allow(int on)
+{
+    if (on)
+        InterlockedIncrement(&ro_allow);
+    else
+        InterlockedDecrement(&ro_allow);
+}
+
+/* The hive in use when it is not KiTTY++'s own (KiClassName=PuTTY):
+ * kitty_set_registry_root hands it over. */
+void kitty_store_ro_set_regbase(const char *base)
+{
+    snprintf(ro_regbase, sizeof(ro_regbase), "%s", base ? base : "");
+}
+
+/* subkey inside base, or a key above it (a tree delete there takes the
+ * store with it) */
+static int regpath_touches(const char *subkey, const char *base)
+{
+    size_t nb = strlen(base), ns = strlen(subkey);
+    if (!nb || !ns)
+        return 0;
+    if (!strnicmp(subkey, base, nb))
+        return 1;
+    return ns < nb && !strnicmp(subkey, base, ns) && base[ns] == '\\';
+}
+
+/* 1 when a registry write to HKEY_CURRENT_USER\subkey must be refused:
+ * subkey is in the settings store - KiTTY++'s own hive (sessions, kageant,
+ * window memory, theme; the parked "<base>_save" included) or the hive in
+ * use, or a key above one of them - and the store is read-only. Any other
+ * key (the Run key, file associations, PuTTY's hive when it is not in use)
+ * is never held back. */
+int kitty_store_ro_regpath(int hkcu, const char *subkey)
+{
+    if (!hkcu || !subkey)
+        return 0;
+    while (*subkey == '\\')
+        subkey++;
+    if (!regpath_touches(subkey, "Software\\kapper.net\\KiTTY") &&
+        !regpath_touches(subkey, ro_regbase))
+        return 0;
+    return kitty_store_readonly();
+}
+
+/* The kitty.ini a refusal under readonly=yes names: the resolved file, else
+ * the plain name (readonly forced from the hive, no file found). */
+const char *kitty_store_ro_inifile(void)
+{
+    const char *f = kitty_inifile_file();
+    return f ? f : "kitty.ini";
 }
 
 /* Two names of one file: the full paths compared, case aside. */
@@ -245,15 +438,18 @@ int kitty_inifile_write_blocked(const char *path)
  * success, 0 when no ini was resolved or the file is not writable (the
  * reason in GetLastError()). With readonly=yes the file is left as it is
  * and 1 is returned, as kitty.exe's write_parameter skips it: the change
- * holds for the running program only, and no "not stored" report follows. */
+ * holds for the running program only (kitty_inifile_read answers it), and
+ * no "not stored" report follows. */
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value)
 {
     const char *f = kitty_inifile_file();
     if (!f)
         return 0;
-    if (kitty_inifile_readonly())
+    if (kitty_inifile_readonly()) {
+        inifile_ro_keep(section, key, value);
         return 1;
+    }
     return WritePrivateProfileStringA(section, key, value, f) ? 1 : 0;
 }
 

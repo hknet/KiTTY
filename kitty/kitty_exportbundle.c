@@ -397,6 +397,8 @@ static int kitty_import_one_ktx(const char *path, int overwrite) {
     if (name && name[0]) {
         if (!overwrite && kitty_session_exists(name)) {
             ret = 2;                       /* keep the existing session */
+        } else if (GetReadOnlyFlag()) {
+            ret = 0;                       /* readonly=yes: not imported */
         } else {
             err = save_settings(name, conf);
             ret = (err == NULL) ? 1 : 0;

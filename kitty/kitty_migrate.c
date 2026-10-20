@@ -28,6 +28,7 @@
 #include "kitty_sessionpath.h"   /* file and folder names of another store (hknet/KiTTY#55) */
 #include "kitty_tools.h"         /* str_rtrim */
 #include "kitty_inikeys.h"       /* KI_SESSIONSUFFIX */
+#include "kitty_inifile.h"       /* kitty_store_readonly: readonly=yes */
 
 /* ------------------------------------------------------------------ */
 /* name sets                                                          */
@@ -223,7 +224,9 @@ static char *import_target_name(const char *name, int hive)
 char *kitty_import_foreign_session(const char *name, int hive,
                                    struct kitty_namelist *dropped)
 {
-    if (!name || !*name || store_is_file())
+    /* readonly=yes: nothing is imported (save_settings would answer NULL
+     * having stored nothing); the importing control is greyed */
+    if (!name || !*name || store_is_file() || kitty_store_readonly())
         return NULL;
 
     settings_r *src = kitty_open_settings_r_hive(name, hive);
@@ -687,8 +690,8 @@ bool kitty_import_file_session(const char *path, const char *target,
     const char *srcpw;
 
     if (password_lost) *password_lost = false;
-    if (!path || !target || !*target)
-        return false;
+    if (!path || !target || !*target || kitty_store_readonly())
+        return false;                  /* readonly=yes: not imported */
     items = ksf_load(path);
     if (!items)
         return false;

@@ -81,6 +81,7 @@ void kitty_osc52_read_confirm(Terminal *term, const wchar_t *clip, int clip_len,
                               const char *claim) { }
 void kitty_osc52_read_confirm_end(Terminal *term) { }
 bool kitty_osc52_save_deny_for_host(Terminal *term) { return true; }
+bool kitty_osc52_store_readonly(void) { return false; }
 bool kitty_osc52_title_visible(void) { return true; }
 void kitty_osc52_notify(Terminal *term, const char *t, const char *m, int a) { }
 void kitty_osc52_state_changed(Terminal *term) { }

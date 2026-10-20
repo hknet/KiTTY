@@ -28,6 +28,7 @@
 #include "kitty/kitty_storage.h"
 #include "kitty/kitty_sessionpath.h"
 #include "kitty/kitty_sessionrekey.h"
+#include "kitty/kitty_inifile.h"   /* the kitty.ini in charge: none */
 
 void modalfatalbox(const char *p, ...)
 {
@@ -1787,6 +1788,10 @@ int main(int argc, char **argv)
     if (!tmp || !*tmp) tmp = getenv("TMP");
     if (!tmp || !*tmp) tmp = ".";
     snprintf(g_dir, sizeof(g_dir), "%s\\kitty_test_sessionpath", tmp);
+    /* no kitty.ini in charge (a name nothing creates): the machine's own,
+     * readonly=yes in it included, stays out of the test */
+    snprintf(cmd, sizeof(cmd), "%s\\none\\kitty.ini", g_dir);
+    kitty_inifile_pin(cmd);
 
     part_pure();
     part_plan();

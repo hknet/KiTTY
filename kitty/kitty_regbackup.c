@@ -45,6 +45,7 @@
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_inifile.h"   /* kitty_store_ro_regpath: readonly=yes */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
@@ -681,6 +682,10 @@ static int sav_backup( int async ) {
 	 * capturing the prior state is the whole point whether or not anything was
 	 * edited first. */
 	if( async && !kitty_store_take_dirty() ) return 1 ;
+	/* readonly=yes: no backup is written in any mode - savemode=file's
+	 * write-back to its .sav included. KITTY_RO_REFUSED counts as "go on":
+	 * the change it would precede is refused by the store itself. */
+	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
 		char where[MAX_PATH * 2] ;
 		int r = SavePortableDirBackupEx( where, sizeof(where) ) ;
@@ -769,6 +774,7 @@ int kitty_sav_backup_report( char * path, size_t n ) {
 		return r ;
 		}
 	if( NoKittyFileFlag || (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
+	if( GetReadOnlyFlag() ) return -2 ;   /* readonly=yes, as the folder store's above */
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
@@ -811,6 +817,10 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 	kitty_sav_load_why[0] = '\0' ;
 	if( KittySavFile==NULL || strlen(KittySavFile)==0 )
 		return sav_load_fail_win( "(no backup file set)", ERROR_FILE_NOT_FOUND ) ;
+	/* readonly=yes: a backup is not loaded into the hive (/loadreg, the
+	 * first-run restore) - except savemode=file's start, which loads its
+	 * kitty.sav inside kitty_store_ro_allow() */
+	if( kitty_store_ro_regpath( 1, kitty_registry_base() ) ) return KITTY_RO_REFUSED ;
 	snprintf( savpath, sizeof(savpath), "%s", KittySavFile ) ;
 
 	if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
@@ -927,5 +937,6 @@ int LoadRegistryKeyLive( void ) {
 	}
 
 void DelRegistryKey( void ) {
+	/* readonly=yes: RegDelTree refuses the vendor key above the store */
 	RegDelTree( HKEY_CURRENT_USER, TEXT(PUTTY_REG_PARENT) ) ;
 	}

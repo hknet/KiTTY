@@ -35,6 +35,8 @@
 #define KITTY_REKEY_OK      0
 #define KITTY_REKEY_CLASH   1   /* a target exists: NOTHING was moved */
 #define KITTY_REKEY_FAILED  2   /* a move failed part-way; see *errmsg */
+#define KITTY_REKEY_READONLY (-2) /* readonly=yes: NOTHING was moved, no
+                                   * *errmsg (KITTY_RO_REFUSED) */
 
 /*
  * Re-key n sessions at once: from[i] -> to[i], in the store in use.

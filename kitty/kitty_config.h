@@ -39,6 +39,11 @@ void kitty_config_session_distribute(void);
 struct dlgcontrol *kitty_config_session_filter_ctrl(void);
 bool kitty_red_caption(const char *text);
 
+/* ---- exported from kitty/kitty_config_shared.c ---- */
+/* readonly=yes: a control whose action writes the settings store is greyed
+ * (on every EVENT_REFRESH) and its action refused. True: the event stops. */
+bool kitty_cfg_ro_control(struct dlgcontrol *ctrl, struct dlgparam *dlg, int event);
+
 /* ---- exported from windows/kitty_config_stubs.c ---- */
 int GetConfigBoxHeight(void);
 int GetConfigBoxWindowHeight(void);

@@ -26,6 +26,7 @@
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
 #include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report lists */
 #include "kitty_pwmem.h"    /* the -pwfile helpers declared there, defined here */
@@ -512,9 +513,12 @@ static char *mpw_state_get(const char *name)    /* malloc'd (ksec_dup) or NULL *
         != ERROR_SUCCESS) return NULL;
     return ksec_dup(b);
 }
-/* 1 stored; 0 not, with Windows' reason in GetLastError(). */
+/* 1 stored; 0 not, with Windows' reason in GetLastError(). readonly=yes:
+ * KITTY_RO_REFUSED (mpw_ensure_unlocked sets nothing up then). */
 static int mpw_state_set(const char *name, const char *val)
 {
+    if (kitty_store_readonly())
+        return KITTY_RO_REFUSED;
     if (store_is_file())
         return portable_write_text_file(KSEC_MPW_SUBDIR, name, val);
     HKEY hk;
@@ -568,6 +572,9 @@ static int mpw_ensure_unlocked(int creating)
 
     /* A load (creating==0) needs an existing store; nothing to unlock otherwise. */
     if (!creating && first_time) { if (ver) free(ver); return 0; }
+    /* readonly=yes: no master password is set up (its salt and verifier
+     * would have to be stored) - locked, without a prompt */
+    if (first_time && kitty_store_readonly()) { if (ver) free(ver); return 0; }
 
     /* ONE prompt per process: if a preceding decrypt already derived the
      * key for THIS store's salt (foreign-salt cache), and it validates against
@@ -1751,6 +1758,7 @@ int kitty_migrate_portable_mpw_state(void)
     char *own;
 
     if (!store_is_file()) return 0;
+    if (kitty_store_readonly()) return 0;   /* readonly=yes: a later start copies it */
 
     /* Already self-contained? */
     own = portable_read_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt");

@@ -8,8 +8,22 @@
 #include "storage.h"
 #include "tree234.h"
 #include "ssh.h"
+#include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
+#include "kitty/kitty_text.h"      /* KiTTY: KT_STORE_RO_NOT_SAVED */
 
 const bool has_ca_config_box = true;
+
+/* KiTTY: readonly=yes - a CA is neither saved nor deleted; the refusal is
+ * the box's own error report. True when refused. */
+static bool ca_store_refused(dlgparam *dp)
+{
+    if (!kitty_store_readonly())
+        return false;
+    char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+    dlg_error_msg(dp, msg);
+    sfree(msg);
+    return true;
+}
 
 #define NRSATYPES 3
 
@@ -250,6 +264,8 @@ static void ca_save_handler(dlgcontrol *ctrl, dlgparam *dp,
 {
     struct ca_state *st = (struct ca_state *)ctrl->context.p;
     if (event == EVENT_ACTION) {
+        if (ca_store_refused(dp))
+            return;
         if (!*st->validity) {
             dlg_error_msg(dp, "No validity expression configured "
                           "for this key");
@@ -301,6 +317,8 @@ static void ca_delete_handler(dlgcontrol *ctrl, dlgparam *dp,
 {
     struct ca_state *st = (struct ca_state *)ctrl->context.p;
     if (event == EVENT_ACTION) {
+        if (ca_store_refused(dp))
+            return;
         int i = dlg_listbox_index(st->ca_reclist, dp);
         if (i < 0) {
             dlg_beep(dp);

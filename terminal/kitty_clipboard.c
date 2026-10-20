@@ -813,8 +813,10 @@ static bool osc52_read_gate(Terminal *term, const char *claim, const char *pw,
                  * the config box and connected. Say so (the dialog does) and let
                  * the refusal stand for the rest of this window - we do not
                  * invent an invisible host list, because an unseen permission
-                 * record is the thing this design exists to avoid. */
-                logevent(term->logctx, KT_CLIP_LOG_DENY_UNSAVED);
+                 * record is the thing this design exists to avoid. Under
+                 * readonly=yes the refusal has its own line already. */
+                if (!kitty_osc52_store_readonly())
+                    logevent(term->logctx, KT_CLIP_LOG_DENY_UNSAVED);
                 allowed = false;
                 grant = OSC52_GRANT_SESSION;
             }

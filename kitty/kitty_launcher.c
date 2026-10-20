@@ -55,6 +55,7 @@
 #include "kitty_winutil.h"
 #include "kitty_dlgbox.h"
 #include "kitty_launcher.h"
+#include "kitty_inifile.h"   /* KITTY_RO_REFUSED: readonly=yes */
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
@@ -653,6 +654,35 @@ static int LauncherMenuCap( void ) {
 	return NB_MENU_MAX ;
 }
 
+/* readonly=yes: the Launcher key / folder is the launcher's copy of the
+ * session list, deleted and rebuilt at every refresh - which a read-only
+ * store refuses. InitLauncherRegistry keeps the entries here instead, by the
+ * same rules, and InitLauncherMenu builds the menu from them
+ * (ReadLauncherEntries). ilr_ro_built: a rebuild ran under readonly; with
+ * the reload switched off ("Keep my hand-edited launcher menu") none runs,
+ * and the hand-edited copy is read as before. */
+static struct kitty_launcher_entry * ilr_ro = NULL ;
+static size_t ilr_ro_cap = 0 ;
+static int ilr_ro_n = 0, ilr_ro_built = 0 ;
+
+static void ilr_ro_clear( void ) {
+	int i ;
+	for( i = 0 ; i < ilr_ro_n ; i++ ) {
+		sfree( ilr_ro[i].folder ) ;
+		sfree( ilr_ro[i].session ) ;
+		}
+	ilr_ro_n = 0 ;
+	}
+
+/* folder "Default" (or none) is the top level, as in the copy */
+static void ilr_ro_add( const char * folder, const char * session ) {
+	if( session == NULL || !session[0] ) return ;
+	sgrowarray( ilr_ro, ilr_ro_cap, (size_t)ilr_ro_n ) ;
+	ilr_ro[ilr_ro_n].folder = dupstr( ( folder == NULL || !strcmp( folder, "Default" ) ) ? "" : folder ) ;
+	ilr_ro[ilr_ro_n].session = dupstr( session ) ;
+	ilr_ro_n++ ;
+	}
+
 static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
@@ -662,8 +692,11 @@ static HMENU InitLauncherMenu( char * Key ) {
 	/* The ids of the menu still on the screen are renumbered from here on:
 	 * every caller replaces it (or grafts the new ids into it) right after. */
 	kitty_menuslots_reset( LauncherMenuCap() ) ;
-	
-	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
+
+	if( ilr_ro_built && GetReadOnlyFlag() ) {
+		/* readonly=yes: from the entries the last rebuild kept */
+		ReadLauncherEntries( menu, ilr_ro, ilr_ro_n, "", &nbitem ) ;
+	} else if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
@@ -896,7 +929,15 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 	HKEY hKey ;
 	char buffer[MAX_VALUE_NAME] ;
 	int i;
+	/* readonly=yes: the Launcher key / folder is neither deleted nor
+	 * rebuilt; the entries the copy would hold are kept in memory (ilr_ro)
+	 * and the menu is built from them. KITTY_RO_REFUSED, nothing failed. */
+	int ro = GetReadOnlyFlag() ;
 	ilr_ok = ilr_fail = 0 ; ilr_err = 0 ;
+	if( ro ) {
+		ilr_ro_clear() ;
+		ilr_ro_built = 1 ;
+		}
 
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		TCHAR folder[MAX_VALUE_NAME], achClass[MAX_PATH] = TEXT("");
@@ -905,8 +946,10 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		FILETIME ftLastWriteTime;
 
 		snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
-		RegDelTree (HKEY_CURRENT_USER, buffer ) ;
-		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
+		if( !ro ) {
+			RegDelTree (HKEY_CURRENT_USER, buffer ) ;
+			RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
+			}
 		snprintf( buffer, sizeof(buffer), "%s\\Sessions", kitty_registry_base() ) ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) goto done ;
 
@@ -945,6 +988,12 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 							{ strcpy( folder, "Default" ) ; }
 					}
 					CleanFolderName( folder ) ;
+					if( ro ) {	/* in memory, nothing written */
+						char sess[MAX_VALUE_NAME] = "" ;
+						unmungestr( lpData, sess, MAX_VALUE_NAME ) ;
+						ilr_ro_add( folder, sess ) ;
+						continue ;
+						}
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
 						snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
 					else
@@ -969,8 +1018,8 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		char ** names ;
 		portable_config_path( ldir, sizeof(ldir), "Launcher" ) ;
 		snprintf( fullpath, sizeof(fullpath), "%s", ldir ) ;
-		DelDir( fullpath ) ;
-		if(!MakeDir( fullpath ) ) {
+		if( !ro ) DelDir( fullpath ) ;
+		if( !ro && !MakeDir( fullpath ) ) {
 			/* MakeDir's own last error is its final existence check; one
 			 * more plain attempt gives Windows' reason (a FILE of that
 			 * name: "already exists"). Nothing below can be written. */
@@ -993,6 +1042,10 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 			snprintf( folder, sizeof(folder), "%s", fld ? fld : "" ) ;
 			sfree( fld ) ;
 			CleanFolderName( folder ) ;
+			if( ro ) {	/* in memory, nothing written */
+				ilr_ro_add( folder, names[k] ) ;
+				continue ;
+				}
 			mungestr( leaf, mleaf ) ;
 			if( strlen(folder) > 0 && strcmp(folder,"Default") ) {
 				/* each folder component on its own, as the reader unmunges it */
@@ -1024,6 +1077,11 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		kitty_session_names_free( names, nn ) ;
 	}
 done:
+	if( ro ) {
+		if( failed ) *failed = 0 ;
+		if( err ) *err = 0 ;
+		return KITTY_RO_REFUSED ;
+		}
 	if( failed ) *failed = ilr_fail ;
 	if( err ) *err = ilr_err ;
 	return ilr_ok ;

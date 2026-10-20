@@ -19,6 +19,24 @@ int kitty_inifile_read(const char *section, const char *key,
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value);   /* readonly=yes: skipped, 1 */
 int kitty_inifile_readonly(void);   /* [KiTTY] readonly=yes in the resolved ini */
+void kitty_inifile_readonly_reread(void);  /* drop the cached answer */
+void kitty_inifile_readonly_force(int on); /* kitty.exe: readonly from the hive */
+
+/* readonly=yes makes the whole settings store read-only (kitty_inifile.c).
+ * A write primitive checks kitty_store_readonly() (or, for a registry key,
+ * kitty_store_ro_regpath) and does nothing when it answers 1; where it
+ * returns a status, KITTY_RO_REFUSED - non-zero, so a caller testing for
+ * failure stays silent, and distinguishable from every Windows outcome. */
+#define KITTY_RO_REFUSED (-2)
+int kitty_store_readonly(void);
+void kitty_store_ro_allow(int on);         /* savemode=file: kitty.sav into the hive */
+void kitty_store_ro_set_regbase(const char *base);
+/* hkcu: the root is HKEY_CURRENT_USER (no windows.h here: putty.h wants
+ * winsock2.h first, and this header is included before it) */
+int kitty_store_ro_regpath(int hkcu, const char *subkey);
+/* The kitty.ini a refusal names (KT_STORE_RO_NOT_SAVED): the resolved
+ * file, else "kitty.ini". */
+const char *kitty_store_ro_inifile(void);
 /* 1 when path is the resolved kitty.ini and that sets readonly=yes: a
  * writer naming its own file (writeINI, delINI) skips the write. */
 int kitty_inifile_write_blocked(const char *path);

@@ -323,8 +323,8 @@ int loadPath(void) {
 		else
 			hFile = CreateFile("putty.conf",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,NULL);
 	}
-	/* Test Sessions directory */
-	if(get_param("INIFILE")==SAVEMODE_DIR)
+	/* Test Sessions directory (readonly=yes: not created) */
+	if(get_param("INIFILE")==SAVEMODE_DIR && !GetReadOnlyFlag())
 	if( !existdirectory(sesspath) ) {
 		if( !MakeDir(sesspath) ) {
 			MessageBox( NULL, KT_STORE_SESSDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;

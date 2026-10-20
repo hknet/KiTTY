@@ -21,6 +21,7 @@
 #include "kitty_store.h"
 #include "kitty_tools.h"
 #include "kitty.h"
+#include "kitty_inifile.h"  /* kitty_store_ro_regpath: readonly=yes */
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
 /* kitty.c, same reason: CreateSSHHandler() needs to know whether a portable
@@ -124,11 +125,16 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	// callers that register file/URL associations must be able to report it.
 	// (Both functions also used to carry on with an UNINITIALISED handle when
 	// the create failed, which is what made the failure silent.)
+	// A key of the settings store under readonly=yes: nothing is written,
+	// KITTY_RO_REFUSED (non-zero: a caller testing for failure stays silent).
+	// The same holds for every writer below (RegTestOrCreateDWORD,
+	// RegDelValue, RegDelTree, kitty_RegCopyTree's destination).
 int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
 	HKEY hKey = NULL ;
 	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
+	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
 		/* the reason stays in GetLastError() for the caller's report */
 		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
@@ -147,6 +153,7 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
+	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
 		/* the reason stays in GetLastError() for the caller's report */
 		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
@@ -275,6 +282,7 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
 	HKEY hKey;
 	LONG lResult;
+	if( kitty_store_ro_regpath( hKeyRoot == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
 	if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
 		lResult = RegDeleteValue( hKey, lpValue ) ;
 		RegCloseKey(hKey) ;
@@ -292,6 +300,8 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
     TCHAR szName[MAX_PATH];
     HKEY hKey;
     FILETIME ftWrite;
+
+    if( kitty_store_ro_regpath( hKeyRoot == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
 
     // First, see if we can delete the key without having
     // to recurse.
@@ -500,6 +510,8 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	unsigned char * data = NULL ;
 	int ok = 1 ;
 
+	/* a copy INTO the read-only store; out of it is a read */
+	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpDestKey ) ) return KITTY_RO_REFUSED ;
 	if( ( rc = RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey ) ) != ERROR_SUCCESS ) {
 		SetLastError( (DWORD)rc ) ; return 0 ; }
 	if( ( rc = RegCreateKeyEx( hMainKey, TEXT(lpDestKey), 0, NULL, 0, KEY_WRITE, NULL, &hDestKey, NULL ) ) != ERROR_SUCCESS ) {
@@ -565,6 +577,8 @@ BOOL RegCleanPuTTY( void ) {
 	DWORD    cbSecurityDescriptor; // size of security descriptor 
 	FILETIME ftLastWriteTime;      // last write time 
 	char *buffer = NULL ;
+	/* PuTTY's hive is the store with KiClassName=PuTTY */
+	if( kitty_store_ro_regpath( 1, "Software\\SimonTatham\\PuTTY" ) ) return KITTY_RO_REFUSED ;
 	if( (retCode = RegOpenKeyEx ( HKEY_CURRENT_USER, "Software\\SimonTatham\\PuTTY", 0, KEY_WRITE, &hSubKey)) == ERROR_SUCCESS ) {
 		RegDeleteValue( hSubKey, KI_BUILD ) ;
 		RegDeleteValue( hSubKey, KI_FOLDERS ) ;

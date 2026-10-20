@@ -31,6 +31,7 @@ void kitty_demo_templates(void);
 #include "../kitty/kitty_storage.h"
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty_commands.h"   /* kitty_cli_help_box */
+#include "../kitty/kitty_inifile.h"    /* kitty_store_readonly: readonly=yes */
 #include "kitty_gui.h"
 #endif
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
@@ -192,6 +193,19 @@ static void kitty_cli_result(const char *title, const char *msg, int warn)
     }
     KittyCliReport(title, full, warn || held);
     sfree(full);
+}
+
+/* readonly=yes: a do-and-exit run that writes the settings store is refused
+ * before it starts - the refusal on the run's own report path, exit 1 */
+static void kitty_cli_store_refused(const char *title)
+{
+    char *msg;
+    if (!kitty_store_readonly())
+        return;
+    msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+    KittyCliReport(title, msg, 1);
+    sfree(msg);
+    cleanup_exit(1);
 }
 #endif
 
@@ -679,6 +693,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * and delete the random seed file.
                  */
                 char *s1, *s2;
+#ifdef MOD_PERSO
+                /* readonly=yes: nothing is wiped - refused before the question */
+                kitty_cli_store_refused(KT_CAP_KITTY);
+#endif
                 s1 = dupprintf("This procedure will remove ALL Registry entries\n"
                                "associated with %s, and will also remove\n"
                                "the random seed file. (This only affects the\n"
@@ -813,6 +831,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         int kept = kitty_mpw_kept_count();   /* passwords kept: master password locked */
         int nosetup = kitty_mpw_kept_nosetup_count();   /* ... or never set up */
         char msg[700];
+        kitty_cli_store_refused(KT_CAP_SESSION_IMPORT);   /* readonly=yes */
         /* A password-protected bundle with no password given would fall through
          * to the master-password prompt - which is interactive, and this path
          * exists for scripts. Refuse with the switch name instead. */
@@ -853,6 +872,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     }
     if (kitty_cli_backupnow) {
         char msg[1200];
+        kitty_cli_store_refused(KT_CAP_BACKUP);   /* readonly=yes: no backup */
         /* it reported "written" whether or not anything was */
         if (!SaveRegistryKeyNow()) {
             snprintf(msg, sizeof(msg), KT_CLI_BACKUP_FAILED_FMT,
@@ -881,6 +901,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     if (kitty_cli_takefolder) {
         struct ksm_result r;
         char msg[2048];
+        kitty_cli_store_refused(KT_CAP_TAKE_FOLDER);   /* readonly=yes */
         if (kitty_take_folder_needs_password(kitty_cli_takefolder) &&
             !kitty_cli_bundlepw) {
             KittyCliReport(KT_CAP_TAKE_FOLDER, KT_CLI_TAKEFOLDER_NEEDS_PASSWORD, 1);

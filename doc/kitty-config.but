@@ -1939,7 +1939,7 @@ Ctrl+Shift+letter is allowed; the line under the field then states
 which predefined user command loses its key (it keeps its menu entry).
 
 Shortcuts live in \c{kitty.ini} only, never in the registry and never
-per session: with a read-only \c{kitty.ini} (\c{readonly=yes}) or no
+per session: with a read-only settings store (\c{readonly=yes}) or no
 \c{kitty.ini} at all the buttons report that and store nothing. The file
 stays hand-editable: the panel writes the \c{[Shortcuts]} section in
 the same syntax the example file describes - \c{winscp=\{CONTROL\}\{F4\}},
@@ -2818,7 +2818,8 @@ panel before and could only be changed by editing \c{kitty.ini} or the
 registry by hand. One leaf per concern.
 
 Each leaf writes to the store this KiTTY++ reads from: the registry on an
-installed copy, \c{kitty.ini} in a folder store (\c{savemode=dir}). The
+installed copy, \c{kitty.ini} in a folder store (\c{savemode=dir}).
+With \c{readonly=yes} nothing is written (\k{kitty-cfg-storage}). The
 precedence rules between the two are set out at the top of
 \c{kitty.ini.example}.
 
@@ -2831,10 +2832,11 @@ its configuration, so a settings window must not offer it.
 
 \b \q{This KiTTY++} reports where the settings live - the registry hive,
 or the folder of a folder store - and which configuration file is in
-use. When KiTTY++ runs read-only (\c{readonly=yes}) or without a
-configuration file (\c{conf=no}) the panel states so and offers no
-fields: the backups are not written in either state, so a count would
-change nothing.
+use. With \c{readonly=yes} it shows \q{Read-only (readonly=yes):
+sessions, settings, host keys and backups are not written.}; without a
+configuration file (\c{conf=no}) it states so. In both states the panel
+offers no fields: the backups are not written, so a count would change
+nothing.
 
 \b \q{Host Keys Folder} (folder store only): where accepted host keys are
 kept. Empty means SshHostKeys beside the session folder when that is

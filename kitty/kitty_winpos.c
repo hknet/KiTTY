@@ -41,6 +41,7 @@
 #include "kitty_defs.h"
 #include "kitty_storage.h"
 #include "kitty_winpos.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 
 #define KWP_SHARED_SUBDIR   "WindowPos"     /* registry subkey and portable folder */
 #define KWP_SHARED_PREFIX   "WinPos"
@@ -388,6 +389,8 @@ int kitty_winpos_shared_get(unsigned long layout, struct kitty_termpos *out)
 int kitty_winpos_shared_set(unsigned long layout, const struct kitty_termpos *pos)
 {
     char key[64], val[64];
+    if (kitty_store_readonly())
+        return KITTY_RO_REFUSED;        /* readonly=yes: not stored */
     kitty_winpos_layout_key(key, sizeof(key), KWP_SHARED_PREFIX, layout);
     kitty_winpos_format(pos, val, sizeof(val));
 
@@ -415,6 +418,8 @@ static int kwp_shared_walk(int remove)
 {
     int count = 0;
     const size_t plen = strlen(KWP_SHARED_PREFIX "_");
+    if (remove && kitty_store_readonly())
+        return 0;                       /* readonly=yes: nothing removed */
 
     if (store_is_file()) {
         char *dir = portable_subdir_path(KWP_SHARED_SUBDIR);

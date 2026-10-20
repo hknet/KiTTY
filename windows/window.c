@@ -13217,7 +13217,8 @@ static void kitty_userauth_done(Seat *seat, const char *username)
         return;
     wgs->kitty_offer_made = true;
     sn = conf_get_str(wgs->conf, CONF_sessionname);
-    if ((sn && *sn) || !GetOfferSessionFlag())
+    /* readonly=yes: no session can be saved, so none is offered */
+    if ((sn && *sn) || !GetOfferSessionFlag() || GetReadOnlyFlag())
         return;
     host = conf_get_str(wgs->conf, CONF_host);
     port = conf_get_int(wgs->conf, CONF_port);

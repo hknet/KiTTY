@@ -13,6 +13,7 @@
 #include "mpint.h"
 #include "storage.h"
 #include "kitty_storage.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_hostkeys.h"
 #include "kitty_tools.h"
 
@@ -385,8 +386,11 @@ void kitty_hostkeys_free(struct kitty_hostkey_list *l)
 
 bool kitty_hostkey_delete(const char *host, int port, const char *keytype)
 {
-    strbuf *name = strbuf_new();
+    strbuf *name;
     bool done = false;
+    if (kitty_store_readonly())
+        return false;                   /* readonly=yes: the key stays */
+    name = strbuf_new();
     put_fmt(name, "%s@%d:", keytype, port);
     escape_registry_key(host, name);
     kitty_store_mark_dirty();

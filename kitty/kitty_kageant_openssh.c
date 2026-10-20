@@ -61,11 +61,9 @@
 
 int kageant_openssh_get(void)
 {
-    DWORD val = 0, sz = sizeof(val);
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, KAGEANT_REG_VALUE,
-                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
-        return 0;
-    return val ? 1 : 0;
+    int on;
+    /* kageant_reg_read: under readonly=yes the value this run set */
+    return kageant_reg_read(KAGEANT_REG_VALUE, &on) ? on : 0;
 }
 
 /* Registry only, in either store mode: the flag describes THIS machine's

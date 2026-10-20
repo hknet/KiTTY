@@ -376,6 +376,29 @@ void kitty_dlg_enable(dlgcontrol *ctrl, dlgparam *dlg, bool enabled)
     }
 }
 
+/* readonly=yes: the controls whose action writes the settings store - a
+ * Save, a Delete, an import into the store - are greyed. Disabled on every
+ * EVENT_REFRESH, as a panel switch rebuilds the controls, and the caller's
+ * own refresh then runs on (it must not enable the control again). An
+ * action that still arrives (a keyboard path) is refused with a beep: the
+ * greyed control is the report. The settings panels themselves stay
+ * editable - a change there applies to the running program and is not
+ * stored. True when the event goes no further. */
+bool kitty_cfg_ro_control(dlgcontrol *ctrl, dlgparam *dlg, int event)
+{
+    if (!GetReadOnlyFlag())
+        return false;
+    if (event == EVENT_REFRESH) {
+        kitty_dlg_enable(ctrl, dlg, false);
+        return false;
+    }
+    if (event == EVENT_ACTION || event == EVENT_VALCHANGE) {
+        dlg_beep(dlg);
+        return true;
+    }
+    return false;
+}
+
 /* [ConfigBox] fixedsizewindow: the box keeps its size. dialog.c reads the
  * flag through kitty_cfgbox_size_locked() (it compiles into the stock
  * variants too, where a stub answers 0) and re-fits the frame when the box

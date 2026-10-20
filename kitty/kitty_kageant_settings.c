@@ -55,9 +55,56 @@
  * to 0/1 at BOTH ends, so a multi-valued setting routed through it silently
  * loses every state above 1.
  */
+/* readonly=yes: a value kageant_reg_set did not store, held for the running
+ * agent - the reads below answer from it first, so a change made in the
+ * Settings dialog applies until kageant exits (KT_KASET_READONLY). */
+struct kageant_ro_value {
+    char *name;
+    DWORD type, len;
+    unsigned char *data;
+    struct kageant_ro_value *next;
+};
+static struct kageant_ro_value *kageant_ro_values = NULL;
+
+static struct kageant_ro_value *kageant_ro_find(const char *name)
+{
+    struct kageant_ro_value *v;
+    for (v = kageant_ro_values; v; v = v->next)
+        if (!stricmp(v->name, name))
+            return v;
+    return NULL;
+}
+
+static void kageant_ro_keep(const char *name, DWORD type, const void *data,
+                            DWORD len)
+{
+    struct kageant_ro_value *v = kageant_ro_find(name);
+    if (!v) {
+        v = snew(struct kageant_ro_value);
+        v->name = dupstr(name);
+        v->data = NULL;
+        v->next = kageant_ro_values;
+        kageant_ro_values = v;
+    }
+    sfree(v->data);
+    v->type = type;
+    v->len = len;
+    v->data = snewn(len ? len : 1, unsigned char);
+    if (len)
+        memcpy(v->data, data, len);
+}
+
 static int kageant_reg_read_dword(const char *name, int *val_out)
 {
     DWORD val, sz = sizeof(val);
+    const struct kageant_ro_value *ro = kageant_ro_find(name);
+    if (ro) {
+        if (ro->type != REG_DWORD || ro->len != sizeof(DWORD))
+            return 0;
+        memcpy(&val, ro->data, sizeof(val));
+        *val_out = (int)val;
+        return 1;
+    }
     if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
                      RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
         return 0;
@@ -66,13 +113,20 @@ static int kageant_reg_read_dword(const char *name, int *val_out)
 }
 
 /* One value under the agent's registry key: 1 when stored, 0 with the reason
- * in GetLastError(). */
+ * in GetLastError(). readonly=yes: not stored, KITTY_RO_REFUSED (non-zero,
+ * no failure noted) - the change holds for the running agent
+ * (kageant_ro_keep). */
 static int kageant_reg_set(const char *name, DWORD type, const void *data,
                            DWORD len)
 {
     HKEY hk;
-    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                              KEY_SET_VALUE, NULL, &hk, NULL);
+    LONG rc;
+    if (kitty_store_ro_regpath(1, KAGEANT_REG_BASE)) {
+        kageant_ro_keep(name, type, data, len);
+        return KITTY_RO_REFUSED;
+    }
+    rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
+                         KEY_SET_VALUE, NULL, &hk, NULL);
     if (rc == ERROR_SUCCESS) {
         rc = RegSetValueExA(hk, name, 0, type, (const BYTE *)data, len);
         RegCloseKey(hk);
@@ -173,6 +227,13 @@ int kageant_reg_write(const char *name, int on)
 static int kageant_reg_read_str(const char *name, char *buf, size_t len)
 {
     DWORD sz = (DWORD)len;
+    const struct kageant_ro_value *ro = kageant_ro_find(name);
+    if (ro) {                          /* readonly=yes: this run's value */
+        if (ro->type != REG_SZ || !len)
+            return 0;
+        snprintf(buf, len, "%.*s", (int)ro->len, (const char *)ro->data);
+        return buf[0] != '\0';
+    }
     if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
                      RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
         return 0;

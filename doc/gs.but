@@ -74,6 +74,10 @@ will probably see a message looking something like this:
 \c If you do not trust this host, press "Cancel" to abandon the
 \c connection.
 
+With \c{readonly=yes} in \c{kitty.ini} the host key store is read-only:
+there is no \q{Accept}, only \q{Connect Once}, and the key is not
+stored. In klink, kscp and ksftp the question offers connect-once only.
+
 This is a feature of the SSH protocol. It is designed to protect you
 against a network attack known as \i\e{spoofing}: secretly
 redirecting your connection to a different computer, so that you

@@ -36,6 +36,7 @@
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_storage.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_secretstore.h"
 #include "kitty_storemove.h"
 #include "kitty_mpw.h"
@@ -883,13 +884,20 @@ int kitty_take_folder_needs_password(const char *dir)
 int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
                            struct ksm_result *r, char *msg, size_t msglen)
 {
-    char *ini = dupprintf("%s\\" KSM_INI, dir);
+    char *ini;
     char *stage;
     char t[256];
-    strbuf *dups = strbuf_new();
+    strbuf *dups;
     int ndup = 0, nstagefail = 0;
     memset(r, 0, sizeof(*r));
     msg[0] = '\0';
+    /* readonly=yes: nothing is taken into the store - KITTY_RO_REFUSED,
+     * msg left empty; -takefolder refuses before it comes here, and the
+     * panel's Take button is greyed */
+    if (kitty_store_readonly())
+        return KITTY_RO_REFUSED;
+    ini = dupprintf("%s\\" KSM_INI, dir);
+    dups = strbuf_new();
 
     stage = ksm_stage_folder_store(dir, dups, &ndup, &nstagefail);
     if (!stage) {
@@ -991,6 +999,13 @@ void kitty_take_folder_store(HWND hwnd)
     struct ksm_result r;
     char msg[2048];
 
+    if (kitty_store_readonly()) {
+        /* readonly=yes: the panel's button is greyed; refused as -takefolder is */
+        char *m = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        MessageBoxA(hwnd, m, KT_STOREMOVE_TITLE_IN, MB_OK | MB_ICONWARNING);
+        sfree(m);
+        return;
+    }
     strcpy(dir, "");
     if (!OpenDirName(hwnd, dir) || !dir[0]) return;
     ksm_trim_slashes(dir);

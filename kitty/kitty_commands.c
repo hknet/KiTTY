@@ -71,6 +71,7 @@
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_sessionpath.h"   /* kitty_session_resolve: does a name exist */
 #include "kitty_url_regex.h"   /* KITTY_URL_REGEX_DEFAULT, for /urlregex */
+#include "kitty_notice.h"   /* kitty_notice_show: Save as New Session refused */
 
 /* /save + /savenew <name>: write the LIVE settings to a saved session. With a
  * name, the window's session identity switches to it first (save-as), so later
@@ -84,8 +85,13 @@ static int kitty_save_current_session( const char * newname, char * out, size_t 
 	if( newname != NULL ) {
 		while( newname[0]==' ' ) newname++ ;
 		if( newname[0]=='\0' ) { out[0] = '\0' ; return 0 ; }
-		conf_set_str( conf, CONF_sessionname, newname ) ;
 	}
+	/* readonly=yes: nothing is saved, and the window keeps its session name */
+	if( GetReadOnlyFlag() ) {
+		snprintf( out, outsize, KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+		return 0 ;
+	}
+	if( newname != NULL ) conf_set_str( conf, CONF_sessionname, newname ) ;
 	if( strlen( conf_get_str(conf,CONF_folder) ) == 0 ) conf_set_str( conf, CONF_folder, "Default" ) ;
 	kitty_mpw_user_action_begin() ;   /* prompts again after a cancel */
 	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
@@ -112,6 +118,15 @@ void kitty_savenew_box( HWND hwnd ) {
 	const char * host = conf_get_str( conf, CONF_host ) ;
 	const char * user = conf_get_str_ambi( conf, CONF_username, NULL ) ;   /* STR_AMBI: conf_get_str asserts */
 	char * suggest ;
+	if( GetReadOnlyFlag() ) {
+		/* readonly=yes: refused in the notice window, which leaves the
+		 * session running (a box would stop it) */
+		char * msg = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+		kitty_notice_show( KT_CAP_SAVE_SESSION, msg, RGB(190, 110, 0),
+		                   GetNoticeSeconds(), NULL, 0 ) ;
+		sfree( msg ) ;
+		return ;
+	}
 	if( host && *host && user && *user && kitty_session_resolve( host, NULL, NULL, 0 ) == KSP_EXACT )
 		suggest = dupprintf( "%s@%s", user, host ) ;
 	else
@@ -308,6 +323,14 @@ static int cmd_help( HWND hwnd, char * arg ) ;
 
 /* ---- Settings & storage ---- */
 
+/* readonly=yes: a command that writes the settings store refuses on the
+ * result line, naming the kitty.ini that sets it. 1 = refused. */
+static int cmd_store_refused( void ) {
+	if( !GetReadOnlyFlag() ) return 0 ;
+	cmd_say( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+	return 1 ;
+}
+
 static int cmd_save( HWND hwnd, char * arg ) {
 	char out[1200] ;
 	(void)hwnd ; (void)arg ;
@@ -408,6 +431,7 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 static int cmd_savereg( HWND hwnd, char * arg ) {
 	char path[4096] ;
 	(void)hwnd ; (void)arg ;
+	if( cmd_store_refused() ) return 1 ;   /* no backup under readonly=yes */
 	switch( kitty_sav_backup_report( path, sizeof(path) ) ) {
 	  case 1:  cmd_say( KT_CMD_RES_SAVED, path ) ; break ;
 	  case -1: cmd_say( "%s", IniFileFlag == SAVEMODE_DIR ? KT_CMD_RES_BACKUP_OFF_DIR
@@ -425,6 +449,7 @@ static int cmd_savereg( HWND hwnd, char * arg ) {
 static int cmd_loadreg( HWND hwnd, char * arg ) {
 	char found[4096], dir[4096] ;
 	(void)hwnd ; (void)arg ;
+	if( cmd_store_refused() ) return 1 ;   /* nothing loaded into the store */
 	if( (KittySavFile == NULL) || !KittySavFile[0] ||
 	    !sav_find_for_restore( KittySavFile, found, sizeof(found) ) ) {
 		kitty_sav_dir( dir, sizeof(dir) ) ;
@@ -480,6 +505,8 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
 	 * program ever stored". */
 	char question[1024] ;
 	(void)arg ;
+	/* readonly=yes: refused before the question - nothing would be deleted */
+	if( cmd_store_refused() ) return 1 ;
 	if( delreg_question != NULL && IsWindow( delreg_question ) ) {
 		SetForegroundWindow( delreg_question ) ;   /* one question at a time */
 		cmd_say( KT_CMD_RES_DELREG_PENDING, kitty_registry_base() ) ;
@@ -599,6 +626,9 @@ static int cmd_switchcrypt( HWND hwnd, char * arg ) {
 
 static int cmd_delfolder( HWND hwnd, char * arg ) {
 	(void)hwnd ;
+	/* readonly=yes: the folder list is stored through WriteParameter, which
+	 * refuses - the list stays as it is */
+	if( cmd_store_refused() ) return 1 ;
 	StringList_Del( FolderList, arg ) ;
 	return 1 ;
 }
@@ -711,6 +741,7 @@ static int cmd_initlauncher( HWND hwnd, char * arg ) {
 	int failed = 0, n ;
 	DWORD err = 0 ;
 	(void)hwnd ; (void)arg ;
+	if( cmd_store_refused() ) return 1 ;   /* the Launcher copy is not rebuilt */
 	n = InitLauncherRegistry( &failed, &err ) ;
 	if( n < 0 )		/* the folder store's Launcher folder could not be made */
 		cmd_say( KT_CMD_RES_LAUNCHER_DIR_FAILED, ConfigDirectory ? ConfigDirectory : "", kitty_win_reason( err ) ) ;

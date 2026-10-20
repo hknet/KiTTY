@@ -13,6 +13,7 @@
 #include "putty.h"   /* pulls in windows.h (winsock2-first) via platform.h */
 #include "../kitty/kitty_storage.h"
 #include "../kitty/kitty_termenv.h"
+#include "../kitty/kitty_inifile.h"   /* the kitty.ini in charge: none */
 
 /* the sinks the linked store code expects (console-app style) */
 void modalfatalbox(const char *fmt, ...)
@@ -63,6 +64,10 @@ int main(void)
     GetTempPathA(sizeof(tmp), tmp);
     snprintf(root, sizeof(root), "%skitty-termenv-hint-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
+    /* no kitty.ini in charge (a name nothing creates): the machine's own,
+     * readonly=yes in it included, stays out of the test */
+    snprintf(hint, sizeof(hint), "%s\\none\\kitty.ini", root);
+    kitty_inifile_pin(hint);
     snprintf(sess, sizeof(sess), "%s\\Sessions", root);
     snprintf(hint, sizeof(hint), "%s\\TermEnvHint", root);
     CreateDirectoryA(root, NULL);

@@ -345,9 +345,17 @@ static void InitNameConfigFile( void ) {
 	if( KittyIniFile != NULL ) { free( KittyIniFile ) ; }
 	KittyIniFile=NULL ;
 
+	/* readonly=yes is known before anything below writes: the file the
+	 * search finds now is pinned at once (and pinned again once chosen), so
+	 * GetReadOnlyFlag() answers for it from here on - the putty.ini copy,
+	 * the APPDATA folder and kitty.dft are then left alone. */
+	if( kitty_inifile_find( IniFileFlag == SAVEMODE_DIR, buffer, sizeof(buffer) ) )
+		kitty_inifile_pin( buffer ) ;
+	buffer[0] = '\0' ;
+
 	/* The putty.ini copy is for the kitty.ini beside the exe - not when
 	 * %KITTY_INI_FILE% points to a file that is there. */
-	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) {
+	if( !GetReadOnlyFlag() && ( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) ) {
 		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		MigratePuttyIni( buffer ) ;
 	}
@@ -381,7 +389,7 @@ static void InitNameConfigFile( void ) {
 			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
 			if( !existfile( buffer ) ) {
 				snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
-				CreateDirectory( buffer, NULL ) ;
+				if( !GetReadOnlyFlag() ) CreateDirectory( buffer, NULL ) ;
 				snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
 			}
 		}
@@ -389,6 +397,7 @@ static void InitNameConfigFile( void ) {
 	KittySavFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittySavFile, buffer) ;
 	
 	snprintf( buffer, sizeof(buffer), "%s\\kitty.dft", InitialDirectory ) ;
+	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: kitty.dft stays as it is */
 	if( existfile( KittyIniFile ) && existfile( buffer ) )  unlink( buffer ) ;
 	if( !existfile( KittyIniFile ) )
 		if( existfile( buffer ) ) rename( buffer, KittyIniFile ) ;
@@ -664,7 +673,9 @@ void InitWinMain( void ) {
 	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
 	 * PuTTY-import check below, so once our hive exists that import path stays out of the
 	 * way. Idempotent + non-destructive (see kitty_registry.c). */
-	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
+	/* readonly=yes: the one-time migrations and clean-ups below do not run
+	 * (they write the store); a later writable start does them. */
+	if( !GetReadOnlyFlag() && ( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) ) {
 		NETDBG_TS("before MigrateOldKittyHive");
 		MigrateOldKittyHive() ;
 		NETDBG_TS("after MigrateOldKittyHive");
@@ -684,11 +695,11 @@ void InitWinMain( void ) {
 	}
 	/* Not gated on the save mode: the obsolete kitty.ini copy exists in
 	 * portable installs too. */
-	RetireConfigPasswordLeftovers() ;
+	if( !GetReadOnlyFlag() ) RetireConfigPasswordLeftovers() ;
 	/* Same reasoning, same place: the retired CountUp bookkeeping can be in a
 	 * kitty.ini as well as in the hive, and two of those values held the user's
 	 * username and machine name. */
-	RetireCountUpLeftovers() ;
+	if( !GetReadOnlyFlag() ) RetireCountUpLeftovers() ;
 
 	// Load the registry store if needed
 	if( IniFileFlag == SAVEMODE_REG ) { // registry save mode
@@ -711,7 +722,8 @@ void InitWinMain( void ) {
 		 * startup is expensive when nobody is in front of it (test runs, an
 		 * "@session" shortcut), so it must not appear for an empty leftover -
 		 * with nothing to restore the question is not worth putting up. */
-		if( RegTestKey( HKEY_CURRENT_USER, kitty_reg_park )
+		if( !GetReadOnlyFlag()   /* readonly=yes: the store is not swapped */
+		 && RegTestKey( HKEY_CURRENT_USER, kitty_reg_park )
 		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_park_sess ) > 0
 		 && !kitty_cli_do_and_exit()
 		 && WindowsCount( MainHwnd ) == 1 ) {
@@ -763,7 +775,9 @@ void InitWinMain( void ) {
 		 * that empty key along, and a machine in that state still has its
 		 * backup or its PuTTY sessions to take. */
 		int kitty_old_hive_came = RegTestKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) ;
-		if( !kitty_hive_existed
+		/* readonly=yes: no backup restored into the hive, no PuTTY sessions
+		 * adopted - the store stays as it is */
+		if( !kitty_hive_existed && !GetReadOnlyFlag()
 		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_live_sess ) == 0 ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			// ... load the most recent backup (kittynew-<timestamp>.sav),
@@ -809,6 +823,11 @@ void InitWinMain( void ) {
 			}
 		}
 	} else if( IniFileFlag == SAVEMODE_FILE ){ // file save mode
+		/* readonly=yes keeps this: kitty.sav is loaded into the registry
+		 * working copy (the hive parked first, once) - that copy is what
+		 * this run reads. The write-back to kitty.sav and the .sav backups
+		 * are refused (kitty_regbackup.c sav_backup). */
+		kitty_store_ro_allow( 1 ) ;
 		if( !RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ) { // the registry key does not exist
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
@@ -867,6 +886,7 @@ void InitWinMain( void ) {
 				}
 			}
 #endif
+		kitty_store_ro_allow( 0 ) ;
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ){ // directory save mode
 		if( strlen(sesspath) == 0 ) { loadPath() ; }

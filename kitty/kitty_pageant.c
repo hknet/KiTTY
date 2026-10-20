@@ -292,6 +292,10 @@ int kageant_save_startup_keys(void)
 
     if (g_noload)   /* clean-slate run: never touch the stored list */
         return 1;
+    /* readonly=yes: the stored list stays as it is (registry and kitty.ini);
+     * the keys loaded now hold for this run */
+    if (kitty_store_readonly())
+        return KITTY_RO_REFUSED;
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
@@ -2059,6 +2063,8 @@ void kageant_forget_startup_key(const char *path)
 
     if (!path || !*path)
         return;
+    if (kitty_store_readonly())
+        return;                         /* readonly=yes: the list stays */
     if (!_fullpath(want, path, sizeof(want)))
         snprintf(want, sizeof(want), "%s", path);
 
@@ -2146,8 +2152,9 @@ void kageant_track_keypath(const char *path, int encrypted)
         if (!stricmp(g_loaded_keypaths[i], abspath))
             return;
 
+    /* readonly=yes: no copy into the store's keys folder (no question) */
     if (!g_startup_loading && kageant_startup_active() &&
-        !kitty_inifile_registry_authoritative()) {
+        !kitty_inifile_registry_authoritative() && !kitty_store_readonly()) {
         char dir[MAX_PATH + 1];
         if (kageant_inidir(dir, sizeof(dir)) &&
             !kageant_path_under(dir, abspath)) {
@@ -2726,7 +2733,10 @@ void kageant_notify_startup_missing(void)
 void kageant_save_key_order(void)
 {
     int n = 0;
-    char **fps = pageant_get_order_fps(&n);
+    char **fps;
+    if (kitty_store_readonly())
+        return;                         /* readonly=yes: the order is not stored */
+    fps = pageant_get_order_fps(&n);
     size_t total = 1;                       /* trailing double-NUL */
     for (int i = 0; i < n; i++)
         total += strlen(fps[i]) + 1;

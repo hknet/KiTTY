@@ -145,6 +145,7 @@ target_link_libraries(testcrypt
 
 add_executable(test_bpp
   test/test_bpp.c
+  kitty/kitty_inifile.c    # ssh/common.c checks readonly=yes (kitty_store_readonly)
   test/test_random.c
   callback.c
   stubs/no-logging.c
@@ -332,6 +333,7 @@ target_link_libraries(psftp
 installed_program(psftp)
 
 add_executable(psocks
+  kitty/kitty_inifile.c    # windows/console.c checks readonly=yes (kitty_store_readonly)
   ${platform}/psocks.c
   psocks.c
   stubs/no-rand.c
@@ -397,7 +399,8 @@ target_link_libraries(test_sessionpath
 add_executable(test_sessmenu
   test/test_sessmenu.c
   kitty/kitty_sessmenu.c
-  kitty/kitty_sessionpath.c)
+  kitty/kitty_sessionpath.c
+  kitty/kitty_inifile.c)   # kitty_sessionpath.c's registry writers check readonly=yes
 target_link_libraries(test_sessmenu utils ${platform_libraries})
 
 # KiTTY: the payload table behind the launcher's session menu and the User

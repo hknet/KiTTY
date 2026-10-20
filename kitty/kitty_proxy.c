@@ -25,6 +25,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
 #include "kitty_storage.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_secretstore.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
@@ -301,6 +302,9 @@ static int proxy_method_from_conf( Conf *conf ) {
  * protected at rest via the shared backend policy (DPAPI registry / MPW
  * portable / explicit legacy), the same chokepoint as session passwords. */
 int SaveProxyInfo( Conf *conf, const char *name ) {
+	/* readonly=yes: not stored (and no master password prompt to wrap
+	 * the password), KITTY_RO_REFUSED - DeleteProxyInfo the same */
+	if( kitty_store_readonly() ) return KITTY_RO_REFUSED ;
 	kitty_store_mark_dirty() ;   /* named proxies live in the store too */
 	if( name == NULL || name[0] == '\0' ) return 0 ;
 	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
@@ -396,6 +400,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 /* Delete a named proxy definition (registry key or portable file). */
 int DeleteProxyInfo( const char *name ) {
 	if( name == NULL || name[0] == '\0' ) return 0 ;
+	if( kitty_store_readonly() ) return KITTY_RO_REFUSED ;
 	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char sub[2048] ;
@@ -454,6 +459,7 @@ static void kitty_proxy_encrypt_in_place( const char *dstpath ) {
 
 void kitty_migrate_old_proxies( void ) {
 	if( (IniFileFlag != SAVEMODE_REG) && (IniFileFlag != SAVEMODE_FILE) ) return ;
+	if( kitty_store_readonly() ) return ;   /* readonly=yes: a later start migrates */
 	if( kitty_proxies_migrated() ) return ;
 	HKEY hSrc ;
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY\\Proxies", 0, KEY_READ, &hSrc ) == ERROR_SUCCESS ) {

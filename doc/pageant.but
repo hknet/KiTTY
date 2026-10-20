@@ -155,6 +155,9 @@ or to keys you added remotely using agent forwarding (see
 The \q{Settings} button opens kageant's own settings, on four pages.
 Everything here is saved as soon as you press OK; it belongs to this
 installation of kageant, not to any key.
+With \c{readonly=yes} in kitty.ini the dialog shows \q{Read-only
+(readonly=yes): changes apply until kageant exits.} - nothing is
+stored, key list changes included.
 
 \b \q{Agent}: whether kageant registers itself as the Windows OpenSSH
 agent, starts at login, reloads the remembered keys at startup, and

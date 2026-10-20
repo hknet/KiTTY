@@ -73,8 +73,9 @@ Host-key files and the files in \c{Security}, \c{TermEnvHint} and
 one. Session files, \c{KiTTYState}, \c{Jumplist} and the files in
 \c{Proxies} and \c{SshHostCAs} are written over in place.
 
-With \c{readonly=yes} no backup is written and a missing session folder
-is not created.
+With \c{readonly=yes} the store is not written at all: no session,
+host-key, state or backup file, no \c{kitty.ini} change, and a missing
+session folder is not created (\k{kitty-cfg-storage}).
 
 \H{folderstore-sessions} Session files and folders
 
@@ -352,7 +353,7 @@ Passwords are \c{MPW2} under the export password (five characters at
 least), or DPAPI with \q{this PC only}; no master password is set up.
 Named proxies go into a \c{Proxies} folder beside the files. An import
 saves each as an ordinary session, protecting passwords for the
-destination store, \c{PLAIN:} included. A line that is not empty, does
+destination store, \c{PLAIN:} included; refused with \c{readonly=yes}. A line that is not empty, does
 not end in \c{\\} and has no \c{=} before any \c{\\} marks the older
 encrypted form, which is then decoded. \q{Make a portable copy}
 uses the export but writes \c{Key=value} lines with LF.

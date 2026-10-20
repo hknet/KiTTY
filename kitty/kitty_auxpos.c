@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "kitty_auxpos.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 
 #define KITTY_AUXPOS_REGKEY  "Software\\kapper.net\\KiTTY\\AuxWinPos"
 #define KITTY_AUXPOS_SECTION "AuxWinPos"   /* the file store's section */
@@ -134,6 +135,9 @@ static void kitty_auxpos_write(const char *key, int x, int y, int w, int h)
 {
     char vn[160], val[96];
     if (!kitty_auxpos_persist) return;
+    /* readonly=yes: placed as remembered, nothing stored (the hive and the
+     * kitty_windowpos.ini of a portable copy alike) */
+    if (kitty_store_readonly()) return;
     kitty_auxpos_valname(vn, sizeof(vn), key);
     if (w > 0 && h > 0) snprintf(val, sizeof(val), "%d,%d,%d,%d", x, y, w, h);
     else snprintf(val, sizeof(val), "%d,%d", x, y);

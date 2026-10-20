@@ -33,6 +33,7 @@
 #include "kitty_dlgbox.h"  /* kitty_confirm_modeless: the write confirmation */
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
 #include "kitty_win.h"     /* kitty_theme_app_dark */
+#include "kitty_inifile.h" /* kitty_store_readonly: readonly=yes */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -976,6 +977,11 @@ void kitty_osc52_write_confirm_end(Terminal *term)
  * they ARE this session's settings, and the alternative is a bespoke
  * single-value writer that would have to know about both backends.
  */
+bool kitty_osc52_store_readonly(void)
+{
+    return kitty_store_readonly() != 0;
+}
+
 bool kitty_osc52_save_deny_for_host(Terminal *term)
 {
     const char *name;
@@ -987,6 +993,14 @@ bool kitty_osc52_save_deny_for_host(Terminal *term)
     if (!name || !*name || strcmp(name, "Default Settings") == 0)
         return false;
 
+    if (kitty_store_readonly()) {
+        /* readonly=yes: not saved - the Event Log has the refusal, and the
+         * deny holds for this window (the caller's unsaved path) */
+        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        logevent(term->logctx, msg);
+        sfree(msg);
+        return false;
+    }
     conf_set_int(term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
     err = save_settings(name, term->conf);
     if (err) {

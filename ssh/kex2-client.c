@@ -12,6 +12,8 @@
 #include "storage.h"
 #include "transport2.h"
 #include "mpint.h"
+#include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
+#include "kitty/kitty_text.h"      /* KiTTY: KT_STORE_RO_NOT_SAVED */
 
 /*
  * Another copy of the symbol defined in mpunsafe.c. See the comment
@@ -1016,14 +1018,20 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
             assert(s->hkey);
             assert(ssh_key_alg(s->hkey) == s->cross_certifying);
 
-            char *fingerprint = ssh2_double_fingerprint(
-                s->hkey, SSH_FPTYPE_DEFAULT);
-            ppl_logevent("Storing additional host key for this host:");
-            ppl_logevent("%s", fingerprint);
-            sfree(fingerprint);
+            if (kitty_store_readonly()) {
+                /* KiTTY: readonly=yes - the additional key is used for
+                 * this connection and not stored */
+                ppl_logevent(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+            } else {
+                char *fingerprint = ssh2_double_fingerprint(
+                    s->hkey, SSH_FPTYPE_DEFAULT);
+                ppl_logevent("Storing additional host key for this host:");
+                ppl_logevent("%s", fingerprint);
+                sfree(fingerprint);
 
-            store_host_key(s->ppl.seat, s->savedhost, s->savedport,
-                           ssh_key_cache_id(s->hkey), s->keystr);
+                store_host_key(s->ppl.seat, s->savedhost, s->savedport,
+                               ssh_key_cache_id(s->hkey), s->keystr);
+            }
             /*
              * Don't forget to store the new key as the one we'll be
              * re-checking in future normal rekeys.

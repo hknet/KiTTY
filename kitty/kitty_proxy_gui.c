@@ -28,6 +28,7 @@
 #include "kitty_params.h"
 #include "kitty_gui.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: a save that failed */
+#include "kitty_config.h"   /* kitty_cfg_ro_control: readonly=yes */
 
 /* Type combo order -> CONF_proxy_type. The SSH types make a named proxy a
  * reusable jump host (the command field is the remote command/subsystem for
@@ -379,6 +380,8 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
 {
     int was_empty, want;
 
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: greyed */
     if (event != EVENT_ACTION || !g_pxp || !g_pxp->conf)
         return;
     if (!g_pxp->name || !g_pxp->name[0]) {
@@ -416,6 +419,8 @@ static void pxp_save_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void pxp_delete_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                void *data, int event)
 {
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;                        /* readonly=yes: greyed */
     if (event != EVENT_ACTION || !g_pxp)
         return;
     if (!g_pxp->name || !g_pxp->name[0])

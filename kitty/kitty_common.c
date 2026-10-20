@@ -7,6 +7,7 @@
 #include "kitty_tools.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_pwmem.h"    /* passwords wrapped in memory */
+#include "kitty_inifile.h"  /* kitty_inifile_readonly: the readonly flag */
 
 // Flag enabling extra code paths that put more information into kitty.dmp
 int debug_flag = 0 ;
@@ -78,11 +79,14 @@ static int UserPassSSHNoSave = 0 ;
 int GetUserPassSSHNoSave(void) { return UserPassSSHNoSave ; }
 void SetUserPassSSHNoSave( const int flag ) { UserPassSSHNoSave = flag ; }
 
-// Flag preventing files from being written (default settings, jump list ...)
-// [KiTTY] readonly=no
-static int ReadOnlyFlag = 0 ;
-int GetReadOnlyFlag(void) { return ReadOnlyFlag ; }
-void SetReadOnlyFlag( const int flag ) { ReadOnlyFlag = flag ; }
+// [KiTTY] readonly=yes: the settings store is not written (registry hive,
+// folder store, kitty.ini, kitty.sav). The answer is the resolver's
+// (kitty_inifile.c), known from the moment kitty.ini is chosen - before
+// LoadParameters - and the same one the other programs of the suite read.
+// SetReadOnlyFlag is the kitty.ini table's setter: a readonly value found in
+// the hive (ReadParameter reads it first) still switches it on.
+int GetReadOnlyFlag(void) { return kitty_inifile_readonly() ; }
+void SetReadOnlyFlag( const int flag ) { kitty_inifile_readonly_force( flag ) ; }
 
 #ifdef MOD_ZMODEM
 // Flag to disable the ZMODEM functions

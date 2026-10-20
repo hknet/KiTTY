@@ -24,6 +24,7 @@
 #include "far2l/far2l_proto.h"
 #include "kitty_text.h"     /* the box's words */
 #include "kitty_dlgbox.h"   /* kitty_confirm_modeless_check: the shared box */
+#include "kitty_inifile.h"  /* kitty_store_readonly: readonly=yes */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -359,6 +360,14 @@ bool kitty_far2l_save_client_ids(Terminal *term)
     name = conf_get_str(term->conf, CONF_sessionname);
     if (!name || !*name || strcmp(name, "Default Settings") == 0)
         return false;
+    if (kitty_store_readonly()) {
+        /* readonly=yes: not saved - the Event Log has the refusal, and the
+         * ID holds for this window */
+        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        logevent(term->logctx, msg);
+        sfree(msg);
+        return false;
+    }
     err = save_settings(name, term->conf);
     if (err) {
         sfree(err);

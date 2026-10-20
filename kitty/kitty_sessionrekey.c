@@ -15,6 +15,7 @@
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
 #include "kitty_sessionrekey.h"
+#include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_registry.h"
 #include "kitty_migrate.h"
 #include "kitty_common.h"
@@ -356,6 +357,9 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
         *errmsg = NULL;
     if (n <= 0)
         return KITTY_REKEY_OK;
+    /* readonly=yes: nothing is moved or rewritten, no message */
+    if (kitty_store_readonly())
+        return KITTY_REKEY_READONLY;
 
     /* Everything is checked before anything moves. */
     for (i = 0; i < n; i++) {

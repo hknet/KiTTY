@@ -4,8 +4,11 @@
  * that file byte-identical (a new key, a changed key, a removed key) and
  * kitty_inifile_write_blocked holds back that file under any spelling of its
  * name, and no other; a second kitty.ini without the key, and one with
- * readonly=no, are written as before. Everything in a private %TEMP% folder,
- * removed afterwards; never the registry.
+ * readonly=no, are written as before. The store gate on top of it
+ * (kitty_store_readonly, kitty_store_ro_regpath): which registry keys are
+ * the store, the savemode=file load scope, the answer cached and read again
+ * when the file changes. Everything in a private %TEMP% folder, removed
+ * afterwards; never the registry (the key test only compares names).
  *
  * Returns non-zero on any failure.
  */
@@ -113,6 +116,17 @@ int main(void)
           "readonly: kitty.ini is byte-identical afterwards");
     free(before);
     free(after);
+    /* ...and the changes hold for the running program */
+    {
+        char v[64];
+        check(kitty_inifile_read(KI_SECTION_KITTY, KI_THEME, v, sizeof(v)) &&
+              !strcmp(v, "light"), "readonly: a changed key reads back changed");
+        check(kitty_inifile_read(KI_SECTION_AGENT, "startupkey2", v, sizeof(v)) &&
+              !strcmp(v, "b.ppk"), "readonly: a new key reads back");
+        check(!kitty_inifile_read(KI_SECTION_AGENT, "startupkey1", v, sizeof(v)),
+              "readonly: a removed key reads back absent");
+        check(kitty_inifile_readonly(), "readonly: still read from the file");
+    }
 
     /* the predicate for the writers that name the file themselves */
     check(kitty_inifile_write_blocked(ro), "blocked: the store's kitty.ini");
@@ -150,6 +164,58 @@ int main(void)
     check(kitty_inifile_write(KI_SECTION_AGENT, "startupkey1", "d.ppk") == 1 &&
           ini_holds(rw, KI_SECTION_AGENT, "startupkey1", "c.ppk"),
           "readonly=yes read fresh: the write is skipped");
+
+    /* the store gate: kitty_store_readonly follows the file */
+    check(kitty_store_readonly(), "store: readonly=yes makes the store read-only");
+    kitty_store_ro_allow(1);
+    check(!kitty_store_readonly() && kitty_inifile_readonly(),
+          "store: the savemode=file load scope lets the hive be written");
+    kitty_store_ro_allow(1);
+    kitty_store_ro_allow(0);
+    check(!kitty_store_readonly(), "store: the scope nests");
+    kitty_store_ro_allow(0);
+    check(kitty_store_readonly(), "store: closed again, read-only again");
+
+    /* which registry keys are the store (names only, nothing opened) */
+    check(kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY"),
+          "regpath: KiTTY++'s hive");
+    check(kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY\\Sessions\\x") &&
+          kitty_store_ro_regpath(1, "software\\KAPPER.NET\\kitty\\AuxWinPos"),
+          "regpath: a key below it, any case");
+    check(kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY_save"),
+          "regpath: the parked copy of savemode=file");
+    check(kitty_store_ro_regpath(1, "Software\\kapper.net") &&
+          kitty_store_ro_regpath(1, "Software"),
+          "regpath: a key above it (a tree delete there takes the store)");
+    check(!kitty_store_ro_regpath(0, "Software\\kapper.net\\KiTTY"),
+          "regpath: not under HKEY_CURRENT_USER");
+    check(!kitty_store_ro_regpath(1, "Software\\Microsoft\\Windows\\CurrentVersion\\Run") &&
+          !kitty_store_ro_regpath(1, "Software\\Classes\\ssh") &&
+          !kitty_store_ro_regpath(1, "Environment"),
+          "regpath: the Run key, file associations, PATH are not the store");
+    check(!kitty_store_ro_regpath(1, "Software\\SimonTatham\\PuTTY\\Sessions"),
+          "regpath: PuTTY's hive while it is not in use");
+    kitty_store_ro_set_regbase("Software\\SimonTatham\\PuTTY");
+    check(kitty_store_ro_regpath(1, "Software\\SimonTatham\\PuTTY\\Sessions"),
+          "regpath: PuTTY's hive once it is the hive in use (KiClassName=PuTTY)");
+    kitty_store_ro_set_regbase("");
+    kitty_store_ro_allow(1);
+    check(!kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY\\Sessions"),
+          "regpath: inside the load scope, the hive is written");
+    kitty_store_ro_allow(0);
+
+    /* readonly=no again: nothing refused */
+    check(WritePrivateProfileStringA(KI_SECTION_KITTY, KI_READONLY, "no", rw),
+          "readonly=no set again");
+    check(!kitty_store_readonly() &&
+          !kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY"),
+          "store: readonly=no - the hive is written");
+
+    /* the hive's own readonly value (kitty.exe, SetReadOnlyFlag): switched
+     * on for the rest of the process, whatever the file holds - last */
+    kitty_inifile_readonly_force(1);
+    check(kitty_store_readonly() && kitty_inifile_readonly(),
+          "force: readonly from the hive holds against readonly=no");
 
     DeleteFileA(ro);
     DeleteFileA(other);

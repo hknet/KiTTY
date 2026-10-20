@@ -26,6 +26,7 @@
 #include <shellapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly, readonly=yes */
 #include "kitty_gui.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
@@ -2555,7 +2556,8 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
             == ERROR_SUCCESS) {
             if (type == REG_BINARY && sz == sizeof(xy))
                 kitty_auxpos_seed(KR_DLGPOS_CONFIGBOX, (int)xy[0], (int)xy[1], 0, 0);
-            RegDeleteValueA(hk, KR_DLGPOS_CONFIGBOX);
+            if (!kitty_store_readonly())    /* readonly=yes: the old value stays */
+                RegDeleteValueA(hk, KR_DLGPOS_CONFIGBOX);
             kitty_cfgpos_dbg("RESTORE carried the old WindowPos\\ConfigBox over");
         }
         RegCloseKey(hk);
@@ -4659,6 +4661,7 @@ struct hostkey_dialog_ctx {
     bool has_title;
     const char *helpctx;
     HWND moreinfo;      /* KiTTY: the open "More info" window, or NULL */
+    bool ro;            /* KiTTY: readonly=yes - no Accept (store) button */
 };
 
 static INT_PTR HostKeyMoreInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -4859,6 +4862,8 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
         const char *scary_heading = NULL;
         const char *dlg_title = process_seatdialogtext(
             dlg_text, &scary_heading, ctx->text);
+        if (ctx->ro)      /* KiTTY: readonly=yes, this connection only */
+            put_fmt(dlg_text, "\r\n\r\n%s", KT_HOSTKEY_RO_NOT_STORED);
 
         LPCTSTR iconid = IDI_QUESTION;
         if (scary_heading) {
@@ -4916,6 +4921,13 @@ static INT_PTR HostKeyDialogProc(HWND hwnd, UINT msg,
             MapDialogRect(hwnd, &r);
             SetWindowPos(ctl, NULL, r.left, r.top, 0, 0,
                          SWP_NOSIZE | SWP_NOREDRAW | SWP_NOZORDER);
+        }
+        if (ctx->ro) {
+            /* KiTTY: readonly=yes - the key cannot be stored: no Accept,
+             * Connect Once stays */
+            HWND item = GetDlgItem(hwnd, IDC_HK_ACCEPT);
+            if (item)
+                DestroyWindow(item);
         }
 
         r.left = r.top = r.right = 0;
@@ -5214,6 +5226,7 @@ struct kitty_inline_confirm_ctx {
     bool peer_closed;                  /* the server closed while it was open */
     bool ssh_gone;                     /* ...and SSH shut down at once: no callback */
     bool quiet;                        /* the session was ended here: no line */
+    bool ro;                           /* readonly=yes: this connection only */
     struct kitty_inline_confirm_ctx *next;   /* kitty_inline_open */
 };
 
@@ -5291,7 +5304,18 @@ static void kitty_inline_confirm_done(void *vctx)
     const char *resp = (p->spr.kind == SPRK_OK) ?
         prompt_get_result_ref(p->prompts[0]) : NULL;
 
-    if (resp && kitty_response_is_yes(resp)) {
+    if (c->store_on_yes && c->ro) {
+        /* readonly=yes (KT_HOSTKEY_RO_CONNECT_ONCE_Q): y connects this once,
+         * n or Return cancels */
+        if (resp && (kitty_response_is_word(resp, "y") ||
+                     kitty_response_is_yes(resp))) {
+            kitty_term_puts(c->term, KT_DLG_CONNECT_ONCE);
+            spr = SPR_OK;
+        } else {
+            kitty_term_puts(c->term, KT_DLG_ABANDONED);
+            spr = SPR_USER_ABORT;
+        }
+    } else if (resp && kitty_response_is_yes(resp)) {
         if (c->store_on_yes) {
             store_host_key(c->seat, c->host, c->port, c->keytype, c->keystr);
             if (kitty_hostkey_stored_hook)
@@ -5382,6 +5406,15 @@ static SeatPromptResult kitty_inline_confirm(
     c->term = wgs->term;
     c->facts = strbuf_new();
     kitty_facts_to_strbuf(c->facts, text);   /* string build only - no term I/O */
+    c->ro = store_on_yes && kitty_store_readonly();
+    if (c->ro) {
+        /* readonly=yes: the key cannot be stored - the question offers
+         * this connection only */
+        char *w = kitty_wrap_dup(KT_HOSTKEY_RO_NOT_STORED);
+        put_fmt(c->facts, "%s\r\n", w);
+        sfree(w);
+        promptline = KT_HOSTKEY_RO_CONNECT_ONCE_Q " ";
+    }
     c->promptline = promptline ? dupstr(promptline) : NULL;
     c->abortmsg = abortmsg ? dupstr(abortmsg) : NULL;
     c->prompts = NULL;
@@ -5544,6 +5577,14 @@ static void kitty_inline_changed_done(void *vctx)
             kitty_inline_finish(c, SPR_USER_ABORT);
             return;
         }
+        if (c->ro) {
+            /* readonly=yes: nothing to replace - this connection only */
+            char *line = dupprintf("\n%s\n", KT_HOSTKEY_RO_NOT_STORED);
+            kitty_term_wrapped(c->term, line);
+            sfree(line);
+            kitty_changed_connect_once(c);
+            return;
+        }
         c->changed_step = 2;
         free_prompts(c->prompts);
         c->prompts = NULL;
@@ -5595,6 +5636,7 @@ static SeatPromptResult kitty_inline_confirm_changed(
     c->abortmsg = NULL;
     c->prompts = NULL;
     c->store_on_yes = false;
+    c->ro = kitty_store_readonly();    /* no "replace the stored key" step */
     c->host = host ? dupstr(host) : NULL;
     c->keytype = keytype ? dupstr(keytype) : NULL;
     c->keystr = keystr ? dupstr(keystr) : NULL;
@@ -5660,7 +5702,7 @@ static void kitty_hk_box_deliver(void *vctx)
         spr = SPR_SW_ABORT(KT_DLG_PEER_CLOSED_MSG);
         if (a->gone && !a->quiet)
             kitty_term_wrapped(a->wgs->term, KT_DLG_PEER_CLOSED);
-    } else if (a->result == IDC_HK_ACCEPT) {
+    } else if (a->result == IDC_HK_ACCEPT && !a->dctx.ro) {
         /* 1 = no key stored for this host yet; 2 = a different one */
         bool was_new = check_stored_host_key(a->host, a->port, a->keytype,
                                              a->keystr) == 1;
@@ -5901,6 +5943,7 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
     memset(a, 0, sizeof(*a));
     a->dctx.text = kitty_sdt_copy(text);
     a->dctx.helpctx = helpctx;
+    a->dctx.ro = kitty_store_readonly();
     /* the title row is there for a scary heading (a changed key); upstream
      * left the field unset, so the row depended on what was on the stack */
     for (size_t i = 0; i < text->nitems; i++)
