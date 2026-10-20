@@ -1735,7 +1735,7 @@ static void start_backend(WinGuiSeat *wgs)
          * could equally be the far end. Answering No leaves the mode alone.
          * After the question the window stays, as below (Restart Session
          * connects again, without the proxy if Yes switched the mode off);
-         * PuTTY-compat mode and a missing terminal keep the exit.
+         * a missing terminal keeps the exit.
          */
         bool wp_asked = false;
         {
@@ -1746,7 +1746,7 @@ static void start_backend(WinGuiSeat *wgs)
                 if (kitty_confirm_box(NULL, KT_CAP_CONNECTION_FAILED, q, NULL))
                     kitty_workplace_request(0, 0);
                 sfree(q);
-                if (GetPuttyFlag() || !wgs->term) {
+                if (!wgs->term) {
                     sfree(str);
                     sfree(msg);
                     exit(0);
@@ -1772,11 +1772,11 @@ static void start_backend(WinGuiSeat *wgs)
          * Where boxes are configured (modalerrors) the box comes first and
          * the window then stays the same way: a failed Restart Session or
          * auto-reconnect no longer closes a window that was open. The box
-         * and exit(0) remain in PuTTY-compat mode and when there is no
+         * and exit(0) remain when there is no
          * terminal to print into - printing where nothing can be seen is
          * worse than a box.
          */
-        if (!GetPuttyFlag() && wgs->term) {
+        if (wgs->term) {
             if (GetModalErrorsFlag() && !wp_asked)
                 kitty_info_box(NULL, str, msg, NULL);
             /* Name the window after what we FAILED to reach, before closing the
@@ -2230,7 +2230,7 @@ static void close_and_restart(void *vctx)
     if (!wgs->backend) {         /* always true after close_session */
         lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_SESSION_RESTARTED);
         term_pwron(wgs->term, false);
-        start_backend(wgs);      /* a connect failure leaves the window up (exit(0) only in PuTTY mode) */
+        start_backend(wgs);      /* a connect failure leaves the window up */
     }
 }
 #endif
@@ -2390,7 +2390,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
 #ifdef MOD_PERSO
     /* KiTTY: the rename guard, before any window, ini or registry access - and
-     * therefore before the -launcher / -cfgbox / -ed / -putty dispatches
+     * therefore before the -launcher / -cfgbox / -ed dispatches
      * further down, all of which pass through here. The stock PuTTY targets
      * that also build this file are deliberately not guarded. */
     {
@@ -2940,7 +2940,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /* KiTTY background-image slideshow: arm a repeating timer rotating the image
      * through the folder. Period = CONF_bg_slideshow, else ImageSlideDelay (ini
      * "slidedelay"). Inert unless a bg image is active with a positive delay. */
-    if (GetBackgroundImageFlag() && !GetPuttyFlag()
+    if (GetBackgroundImageFlag()
         && conf_get_int(wgs->conf, CONF_bg_type) != 0) {
         int slide = conf_get_int(wgs->conf, CONF_bg_slideshow);
         int period = slide > 0 ? slide : (ImageSlideDelay > 0 ? ImageSlideDelay : 0);
@@ -4179,7 +4179,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * disconnect -- the remote already sent a clean exit status. Treat it as a
      * normal session end: no auto-reconnect, no fatal box, honour close-on-exit
      * (the exit was clean, so AUTO closes the window). */
-    if (!GetPuttyFlag() && kitty_is_benign_channel_close_msg(msg)) {
+    if (kitty_is_benign_channel_close_msg(msg)) {
         int coe = conf_get_int(wgs->conf, CONF_close_on_exit);
         show_mouseptr(wgs, true);
         wgs->session_closed = true;
@@ -4287,8 +4287,8 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * steps without an OK-click (cf. upstream #548). Auto-reconnect has already
      * been ruled out above for this disconnect. The modal box is kept only when
      * "close window on exit" is forced ON (the window is about to vanish, so
-     * inline text wouldn't be seen) or in PuTTY-compat mode. */
-    if (!GetPuttyFlag() && !GetModalErrorsFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
+     * inline text wouldn't be seen). */
+    if (!GetModalErrorsFlag() && conf_get_int(wgs->conf, CONF_close_on_exit) != FORCE_ON) {
         kitty_term_print_inline_error(wgs->term, msg, true);
         show_mouseptr(wgs, true);
         wgs->error_close = true;   /* #548: warning titlebar marker via close_session */
@@ -4334,9 +4334,8 @@ static void win_seat_nonfatal(Seat *seat, const char *msg)
 #ifdef MOD_PERSO
     /* KiTTY (upstream cyd01/KiTTY #548): surface non-fatal errors INLINE in the terminal (yellow
      * label) instead of a modal box that traps the window. The connection stays
-     * up, so we only print -- no session close. PuTTY-compat mode (GetPuttyFlag)
-     * keeps the classic modal box. */
-    if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
+     * up, so we only print -- no session close. */
+    if (!GetModalErrorsFlag() && wgs->term) {
         kitty_term_print_inline_error(wgs->term, msg, false);
         show_mouseptr(wgs, true);
         return;
@@ -5451,8 +5450,8 @@ static void exit_callback(void *vctx)
 #ifdef MOD_PERSO
                 /* KiTTY (upstream cyd01/KiTTY #548): print the informational close INLINE instead of a
                  * modal box that traps the window (which stays open in this
-                 * branch). PuTTY-compat mode keeps the classic box. */
-                if (!GetPuttyFlag() && !GetModalErrorsFlag() && wgs->term) {
+                 * branch). */
+                if (!GetModalErrorsFlag() && wgs->term) {
                     char *line = dupprintf(
                         KT_TWIN_CLOSED_BY_HOST_INLINE,
                         kitty_product_name());
@@ -5820,8 +5819,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 DestroyWindow(hwnd);
                 return 0;
             }
-            title = dupprintf("%s Exit Confirmation",
-                              GetPuttyFlag() ? appname : KT_CAP_KITTYPP);
+            title = dupprintf("%s Exit Confirmation", KT_CAP_KITTYPP);
             if (count > 1)
                 msg = dupprintf(KT_CLOSE_GROUP_CONFIRM, count);
             else {
@@ -6085,9 +6083,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             conf_get_bool(wgs->conf, CONF_warn_on_close) &&
             kitty_closegroup_request(hwnd))
             return 0;
-        /* KiTTY: the product name in the title; the class name in PuTTY mode. */
-        title = dupprintf("%s Exit Confirmation",
-                          GetPuttyFlag() ? appname : KT_CAP_KITTYPP);
+        /* KiTTY: the product name in the title. */
+        title = dupprintf("%s Exit Confirmation", KT_CAP_KITTYPP);
 #else
         title = dupprintf("%s Exit Confirmation", appname);
 #endif
@@ -7365,7 +7362,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         /* KiTTY mouse shortcuts: Shift+Ctrl+LClick = duplicate session,
          * Ctrl+MClick = send to tray. Protect mode disables them. */
         if (GetProtectFlag()) break;
-        if (!GetPuttyFlag() && GetMouseShortcutsFlag()) {
+        if (GetMouseShortcutsFlag()) {
             if (message == WM_LBUTTONUP &&
                 (wParam & MK_SHIFT) && (wParam & MK_CONTROL)) {
                 if (wgs->backend)
@@ -10002,7 +9999,7 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
          * The setting existed in this port - saved, loaded, with a checkbox -
          * but this line, its entire implementation, was never carried over, so
          * the box did nothing at all. */
-        if (!GetPuttyFlag() && conf_get_int(wgs->conf, CONF_disablealtgr)) {
+        if (conf_get_int(wgs->conf, CONF_disablealtgr)) {
             keystate[VK_RMENU] = 0;
         }
 #endif
@@ -10316,11 +10313,11 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
          * mapping the keystroke is swallowed; send the xterm modifyOtherKeys
          * encoding like classic KiTTY (hknet/KiTTY#15). Only reached when
          * CtrlTabSwitch is off - window switching consumes the key first. */
-        if (!GetPuttyFlag() && wParam == VK_TAB && shift_state == 2) {
+        if (wParam == VK_TAB && shift_state == 2) {
             p += sprintf((char *)p, "\x1b[27;5;9~");   /* Ctrl-Tab */
             return p - output;
         }
-        if (!GetPuttyFlag() && wParam == VK_TAB && shift_state == 3) {
+        if (wParam == VK_TAB && shift_state == 3) {
             p += sprintf((char *)p, "\x1b[27;6;9~");   /* Ctrl-Shift-Tab */
             return p - output;
         }
@@ -12966,7 +12963,7 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
          * restores the order classic KiTTY showed when it drove this from inside
          * term_data.
          */
-        if (!GetPuttyFlag() && ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
+        if (ScriptFileContent != NULL && type == SEAT_OUTPUT_STDOUT)
             ManageInitScript(data, len);
         /*
          * A rutty script deferred behind that login script starts HERE, the
@@ -13020,7 +13017,7 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
      * do NOT call GetPasswordInConfig(), which applies an extra MASKPASS that
      * would garble the value (that helper assumes the MASKPASS-encoded form
      * produced by the now-stubbed RenewPassword). */
-    if (spr.kind == SPRK_INCOMPLETE && !GetPuttyFlag() && !wgs->autopw_tried &&
+    if (spr.kind == SPRK_INCOMPLETE && !wgs->autopw_tried &&
         p->n_prompts == 1 && !p->prompts[0]->echo && p->to_server &&
         !p->from_proxy_hop &&   /* a jump host's prompt is not this session's */
         !kitty_pw_empty(wgs->conf, CONF_password)) {

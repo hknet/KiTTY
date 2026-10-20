@@ -19,10 +19,6 @@
 // Flag enabling extra code paths that put more information into kitty.dmp
 extern int debug_flag ;
 
-// Flag to fall back to plain PuTTY mode
-int GetPuttyFlag(void) ;
-void SetPuttyFlag( const int flag ) ;
-
 // Flag: show connection errors as modal boxes instead of inline in the terminal (cyd01/KiTTY #548)
 int GetModalErrorsFlag(void) ;
 void SetModalErrorsFlag( const int flag ) ;

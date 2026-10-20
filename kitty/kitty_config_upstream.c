@@ -731,8 +731,7 @@ void printerbox_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_listbox_add(ctrl, dlg, PRINTER_DISABLED_STRING);
 #ifdef MOD_PRINTCLIP
             /* KiTTY fake printer that copies remote output to the clipboard. */
-            if (!GetPuttyFlag())
-                dlg_listbox_add(ctrl, dlg, "Windows clipboard");
+            dlg_listbox_add(ctrl, dlg, "Windows clipboard");
 #endif
             pe = printer_start_enum(&nprinters);
             for (i = 0; i < nprinters; i++)
@@ -1656,11 +1655,4 @@ void proxy_type_handler(dlgcontrol *ctrl, dlgparam *dlg,
             i = dlg_listbox_getid(ctrl, dlg, i);
         conf_set_int(conf, CONF_proxy_type, i);
     }
-}
-
-void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp,
-                                   void *data, int event)
-{
-    if (event == EVENT_ACTION)
-        show_ca_config_box(dp);
 }

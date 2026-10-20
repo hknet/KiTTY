@@ -902,7 +902,7 @@ void RedrawBackground( HWND hwnd ) {
 	kitty_bg_generation++ ;
 	if(
 		1 && // This function was disabled because of the memory leak caused by the background image !!!  , but then there was a refresh problem?
-		(get_param("BACKGROUNDIMAGE"))&&(!get_param("PUTTY"))&&(conf_get_int(conf,CONF_bg_type) != 0) ) 
+		(get_param("BACKGROUNDIMAGE"))&&(conf_get_int(conf,CONF_bg_type) != 0) ) 
 			{
 			clean_bg() ;
 			load_bg_bmp();   // Apparently this is what was leaking memory !!!

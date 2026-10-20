@@ -48,20 +48,6 @@ int GetIniFileFlag(void) { return IniFileFlag ; }
  * only changes where a folder NAME is looked for.
  */
 
-/* Flag to fall back to plain PuTTY mode. It is set in one place only:
- * Launcher_WinMain (kitty_launcher.c), when the launcher's command line
- * carries -putty ("kitty.exe -launcher -putty"). That launcher process runs
- * none of the other GetPuttyFlag() tests: the configuration box, the session
- * organiser and every session it opens are new processes, and it starts the
- * sessions as "kitty.exe -putty -load ...". No terminal process sets it:
- * neither windows/putty.c nor cmdline.c knows -putty, so such a child stops
- * at "unknown option", and InitWinMain (kitty_startup.c) tests the flag
- * before the launcher is dispatched. So every GetPuttyFlag() test in kitty.exe
- * outside kitty_launcher.c reads 0. */
-int PuttyFlag = 0 ;
-int GetPuttyFlag(void) { return PuttyFlag ; }
-void SetPuttyFlag( const int flag ) { PuttyFlag = flag ; }
-
 int ModalErrorsFlag = 0 ;
 int GetModalErrorsFlag(void) { return ModalErrorsFlag ; }
 void SetModalErrorsFlag( const int flag ) { ModalErrorsFlag = flag ; }

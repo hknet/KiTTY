@@ -923,7 +923,7 @@ void kitty_config_session_distribute(void)
     if (ssd->delbutton)       mid[nmid++] = ssd->delbutton;
     if (ssd->delfolderbutton) mid[nmid++] = ssd->delfolderbutton;
     if (!ntop && !nmid && !nbot)
-        return;                        /* mid-session, or PuTTY mode */
+        return;                        /* mid-session */
 
     /*
      * A button's height, and the gap the LAYOUT puts between two stacked
@@ -1084,7 +1084,7 @@ bool kitty_config_select_root_folder(dlgparam *dp)
      * list instead, and Ctrl+G has to keep working there - it is the one route
      * back to the root that does not depend on any particular control being on
      * screen. Only the LIST is genuinely needed. */
-    if (!ssd || GetPuttyFlag() || !ssd->listbox)
+    if (!ssd || !ssd->listbox)
         return false;
     /* Mid-session with folder rows configured there is NO folder control at
      * all - no combo (rows replaced it) and no rows (they navigate nothing
@@ -1408,7 +1408,7 @@ static void sessionsaver_data_free(void *ssdv)
 
 static bool kitty_folder_rows_on(void)
 {
-    return !GetPuttyFlag() && GetFolderNavigationFlag();
+    return GetFolderNavigationFlag();
 }
 
 /*
@@ -1425,7 +1425,7 @@ static bool kitty_folder_rows_on(void)
 static bool kitty_folder_rows_on(void);
 static bool kitty_folders_available(struct sessionsaver_data *ssd)
 {
-    return !GetPuttyFlag() && (ssd->folderlist || kitty_folder_rows_on());
+    return (ssd->folderlist || kitty_folder_rows_on());
 }
 
 /*
@@ -1516,7 +1516,7 @@ static bool kitty_session_on_level(struct sessionsaver_data *ssd, int i)
 {
     char *fld;
     bool ok;
-    if (GetPuttyFlag() || i == 0)
+    if (i == 0)
         return true;
     if (kitty_searching_all_folders(ssd))
         return true;                 /* Ctrl+G: every folder is in scope */
@@ -1556,8 +1556,7 @@ static int *kitty_session_row_order(struct sessionsaver_data *ssd)
     struct ksp_shown_row *rows = snewn(n > 0 ? n : 1, struct ksp_shown_row);
     char **flds = snewn(n > 0 ? n : 1, char *);
     for (i = 0; i < n; i++) {
-        flds[i] = GetPuttyFlag() ? NULL :
-            kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
+        flds[i] = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         rows[i].id = ssd->sesslist.sessions[i];
         rows[i].folder = flds[i];
         rows[i].idx = i;
@@ -1679,8 +1678,8 @@ static bool load_selected_session(
      * loading the defaults, instead of stock PuTTY's clearing it. The literal
      * name is already a normal value for savedsession (single-clicking the
      * list entry puts it there too) and the Save path maps it to the defaults
-     * key. PuTTY-compat mode keeps the stock behaviour. */
-    ssd->savedsession = dupstr(isdef ? (GetPuttyFlag() ? "" : KITTY_DEFAULT_SESSION)
+     * key. */
+    ssd->savedsession = dupstr(isdef ? KITTY_DEFAULT_SESSION
                                      : ssd->sesslist.sessions[i]);
     sfree(ssd->searchfilter);
     ssd->searchfilter = dupstr("");
@@ -1726,12 +1725,10 @@ static bool load_selected_session(
      * With it armed, put the caret in Host Name and select what is there - the
      * same thing the box does when it opens in quick connect. The startup path
      * cannot do this one: it fires once, on the first refresh. */
-    if (!GetPuttyFlag()) {
-        SetQuickConnectMode(isdef ? 1 : 0);
-        kitty_dlg_mark_quickconnect(dlg, isdef);
-        if (isdef && quickconnect_host_ctrl)
-            dlg_set_focus_later(quickconnect_host_ctrl, dlg);
-    }
+    SetQuickConnectMode(isdef ? 1 : 0);
+    kitty_dlg_mark_quickconnect(dlg, isdef);
+    if (isdef && quickconnect_host_ctrl)
+        dlg_set_focus_later(quickconnect_host_ctrl, dlg);
     return true;
 }
 
@@ -3194,7 +3191,7 @@ static char *sessionsaver_save_target(struct sessionsaver_data *ssd,
     const char *name = ssd->savedsession;
     const char *cur = kitty_at_root_level() ? NULL : CurrentFolder;
     *move_from = NULL;
-    if (isdef || !name || !name[0] || ssd->midsession || GetPuttyFlag() ||
+    if (isdef || !name || !name[0] || ssd->midsession ||
         !kitty_folders_available(ssd))
         return dupstr(name ? name : "");
     if (strchr(name, '\\')) {
@@ -3243,7 +3240,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
          * is up (a timer: this refresh runs while the window is still being
          * built). Checked once per process until it has been made, then
          * never again for this store; never mid-session. */
-        if (ctrl == ssd->listbox && !ssd->midsession && !GetPuttyFlag()) {
+        if (ctrl == ssd->listbox && !ssd->midsession) {
             static int arrange_checked = 0;
             if (!arrange_checked) {
                 arrange_checked = 1;
@@ -3328,8 +3325,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 /* ...and show it in the title bar, for the box that comes UP in
                  * quick connect. The Load path marks it when the mode changes
                  * later; this is the one case that happens before any Load. */
-                if (!GetPuttyFlag())
-                    kitty_dlg_mark_quickconnect(dlg, GetQuickConnectMode());
+                kitty_dlg_mark_quickconnect(dlg, GetQuickConnectMode());
             }
             /* Re-applied on every refresh, not just when the text changes: a
              * panel switch rebuilds the controls, and an EnableWindow() made
@@ -3355,8 +3351,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
              * that. LastFolder is deliberately NOT written - a settings dialog
              * should not decide where the next config box opens.
              */
-            if (ssd->midsession && !ssd->midsession_level_set &&
-                !GetPuttyFlag()) {
+            if (ssd->midsession && !ssd->midsession_level_set) {
                 const char *sn = conf_get_str(conf, CONF_sessionname);
                 const char *cf = conf_get_str(conf, CONF_folder);
                 char *fld = (sn && *sn) ? kitty_read_session_folder(sn) : NULL;
@@ -3373,7 +3368,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             dlg_listbox_clear(ctrl, dlg);
             char lastsess[512];
             const char *filter = ssd->searchfilter ? ssd->searchfilter : "";
-            bool searching = (!GetPuttyFlag() && filter[0]);
+            bool searching = (filter[0] != '\0');
             int havelast = kitty_get_last_session(lastsess, sizeof(lastsess));
             int selpos = -1, lbpos = 0;
             /* Folder navigation: the rows of the current level go in first, and
@@ -3843,7 +3838,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * Moving a session stays the startup config box's job, where the
                  * folder is on screen and choosing it is an act of its own.
                  */
-                if (ssd->midsession && !GetPuttyFlag()) {
+                if (ssd->midsession) {
                     if (isdef) {
                         conf_set_str(conf, CONF_folder, "Default");
                     } else if (ssd->savedsession[0]) {
@@ -3921,8 +3916,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         ssd->loaded_from = dupstr(target);
                         kitty_notify_launcher_sessions_changed();
                     }
-                    if (!isdef && target[0] && !ssd->midsession &&
-                        !GetPuttyFlag()) {
+                    if (!isdef && target[0] && !ssd->midsession) {
                         char *fld = ksp_folder_of(target);
                         if (fld)
                             conf_set_str(conf, CONF_folder, fld);
@@ -5021,12 +5015,10 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     memset(ssd, 0, sizeof(*ssd));
     ssd->savedsession = dupstr("");
     ssd->newfolder = dupstr("");
-    if (!GetPuttyFlag()) {
-        char lastfolder[1024];
-        if (kitty_get_last_folder(lastfolder, sizeof(lastfolder))) {
-            strncpy(CurrentFolder, lastfolder, 1023);
-            CurrentFolder[1023] = '\0';
-        }
+    char lastfolder[1024];
+    if (kitty_get_last_folder(lastfolder, sizeof(lastfolder))) {
+        strncpy(CurrentFolder, lastfolder, 1023);
+        CurrentFolder[1023] = '\0';
     }
     ssd->midsession = midsession;
 
@@ -5045,7 +5037,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     ssd->okbutton->column = 3;
     /* KiTTY "Start": launch the session in a new window without closing the
      * config box (only when launchable). col 2 is free in this 5-col row. */
-    if (!midsession && !GetPuttyFlag()) {
+    if (!midsession) {
         ssd->startbutton = ctrl_pushbutton(s, KT_KITTY_START, NO_SHORTCUT,
                                            HELPCTX(no_help),
                                            sessionsaver_handler, P(ssd));
@@ -5218,7 +5210,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * mode creates no folders, which is why the setting is opt-in and off by
      * default. "Del folder" is a separate button beside the session list and is
      * NOT affected - it works on the folder you are currently inside. */
-    if (!GetPuttyFlag() && !kitty_folder_rows_on()) {
+    if (!kitty_folder_rows_on()) {
         ssd->folderlist = ctrl_combobox(s, NULL, NO_SHORTCUT, 100,
                                         HELPCTX(kitty_session_folders),
                                         sessionsaver_handler, P(ssd), P(NULL));
@@ -5238,7 +5230,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * when the user has proxy definitions (hknet/KiTTY#11). The droplist shares a
      * 75/25 row with an Edit button (create/edit/delete definitions), like the
      * folder combo + New folder. */
-    if (!GetPuttyFlag() && kitty_proxy_choice_shown()) {
+    if (kitty_proxy_choice_shown()) {
         ctrl_columns(s, 1, 100);
         ctrl_columns(s, 2, 75, 25);
         /* Caption is set at runtime by the handler - it states whether an override
@@ -5312,7 +5304,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     }
     /* KiTTY: destructive folder button lives with the other destructive action
      * beside the session list. */
-    if (!midsession && !GetPuttyFlag()) {
+    if (!midsession) {
         ssd->delfolderbutton = ctrl_pushbutton(s, KT_SESSION_DEL_FOLDER, NO_SHORTCUT,
                                                HELPCTX(kitty_session_folders),
                                                sessionsaver_handler, P(ssd));
@@ -5334,7 +5326,7 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      * moves back up. Registry modes only, and only while there is an old hive
      * to explain, which is the same gate the Migration panel is under.
      */
-    if (!midsession && !GetPuttyFlag() &&
+    if (!midsession &&
         kitty_foreign_notice_pending(KITTY_FOREIGN_NOTICE_LIST)) {
         if (GetIniFileFlag() == 0 /* SAVEMODE_REG */ &&
             kitty_has_foreign_sessions() &&
@@ -5358,28 +5350,23 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     }
     /* KiTTY: read-only display of the selected session's comment, below the list.
      * Empty comments show a clear placeholder directly inside the field. */
-    if (!GetPuttyFlag()) {
-        /* KiTTY (hknet/KiTTY#55): "Organize..." takes the right quarter of
-         * the comment's row, under the list's column of buttons; when the
-         * list is tall enough, kitty_config_session_distribute() lifts it
-         * to the list's foot. */
-        if (!midsession)
-            ctrl_columns(s, 2, 75, 25);
-        ssd->commentbox = ctrl_editbox_multiline(
-            s, NULL, NO_SHORTCUT, 2, true,
-            HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
-        if (!midsession) {
-            ssd->commentbox->column = 0;
-            ssd->organizebutton = ctrl_pushbutton(s, KT_SP_ORG_BUTTON, NO_SHORTCUT,
-                                                  HELPCTX(kitty_session_folders),
-                                                  sessionsaver_handler, P(ssd));
-            ssd->organizebutton->column = 1;
-            ctrl_columns(s, 1, 100);
-        } else {
-            ssd->organizebutton = NULL;
-        }
+    /* KiTTY (hknet/KiTTY#55): "Organize..." takes the right quarter of
+     * the comment's row, under the list's column of buttons; when the
+     * list is tall enough, kitty_config_session_distribute() lifts it
+     * to the list's foot. */
+    if (!midsession)
+        ctrl_columns(s, 2, 75, 25);
+    ssd->commentbox = ctrl_editbox_multiline(
+        s, NULL, NO_SHORTCUT, 2, true,
+        HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
+    if (!midsession) {
+        ssd->commentbox->column = 0;
+        ssd->organizebutton = ctrl_pushbutton(s, KT_SP_ORG_BUTTON, NO_SHORTCUT,
+                                              HELPCTX(kitty_session_folders),
+                                              sessionsaver_handler, P(ssd));
+        ssd->organizebutton->column = 1;
+        ctrl_columns(s, 1, 100);
     } else {
-        ssd->commentbox = NULL;
         ssd->organizebutton = NULL;
     }
 
@@ -5545,93 +5532,91 @@ void scb_panel_logging(struct controlbox *b, bool midsession, int protocol)
                       HELPCTX(logging_header),
                       conf_checkbox_handler, I(CONF_logheader));
     lognone_rows[lognone_nrows++] = c;
-    if (!GetPuttyFlag()) {
-        /* Two columns so the unit sits AFTER the field, reading "every [ 0 ]
-         * sec." The old one-line label "Log rotation delay (sec, 0=off)" was
-         * clipped to "Log rotation delay (sec," - the edit box took half the
-         * row and the rest of the label had nowhere to go. */
-        /* "Automatic logrotation every [ 0 ] sec." on ONE baseline.
-         *
-         * All three parts are the same KIND of control on purpose. An editbox
-         * with a label draws that label as a STATIC positioned differently
-         * from the box's own text, so a trailing word ends up ~9px above the
-         * words it belongs to - it reads as hanging in the air. An UNWRAPPED
-         * ctrl_text is laid out as a borderless read-only edit box, and a
-         * label-less ctrl_editbox is a bare edit box, so all three are
-         * EDITHEIGHT boxes on the same row and their text lines up. */
-        ctrl_columns(s, 3, 52, 24, 24);
-        c = ctrl_text(s, KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY, HELPCTX(kitty_log_rotation));
-        c->column = 0;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_log_rotation),
-                         conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
-        c->column = 1;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_text(s, KT_LOGGING_SEC, HELPCTX(kitty_log_rotation));
-        c->column = 2;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        ctrl_columns(s, 1, 100);
-        ctrl_text(s, KT_LOGGING_0_OFF_THE_LOG_FILE,
-                  HELPCTX(kitty_log_rotation));
-        /* Log retention (cyd01/KiTTY#439): "Delete logs after [ 0 ] days" and
-         * "Keep logsize below [ 0 ] MB", built exactly like the rotation row
-         * above and for the same reason - three same-kind boxes on one
-         * baseline. Each row closes its own columns: the layout refuses a
-         * three-column set that follows another without a one-column reset.
-         * Greyed with the rotation row while the name has no time code or
-         * nothing is logged (logging_grey above); kitty_logkeep.c refuses the
-         * rule at run time as well. */
-        ctrl_columns(s, 3, 52, 24, 24);
-        c = ctrl_text(s, KT_LOGGING_DELETE_LOGS_AFTER, HELPCTX(kitty_log_rotation));
-        c->column = 0;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_log_rotation),
-                         conf_editbox_handler, I(CONF_logkeepdays), ED_INT);
-        c->column = 1;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_text(s, KT_LOGGING_DAYS, HELPCTX(kitty_log_rotation));
-        c->column = 2;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        ctrl_columns(s, 1, 100);
-        ctrl_columns(s, 3, 52, 24, 24);
-        c = ctrl_text(s, KT_LOGGING_KEEP_LOGSIZE_BELOW, HELPCTX(kitty_log_rotation));
-        c->column = 0;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_log_rotation),
-                         conf_editbox_handler, I(CONF_logkeepmb), ED_INT);
-        c->column = 1;
-        logtime_rows[logtime_nrows++] = c;
-        c = ctrl_text(s, KT_LOGGING_MB, HELPCTX(kitty_log_rotation));
-        c->column = 2;
-        c->text.wrap = false;
-        logtime_rows[logtime_nrows++] = c;
-        ctrl_columns(s, 1, 100);
-        ctrl_text(s, KT_LOGGING_KEEP_NOTE_1, HELPCTX(kitty_log_rotation));
-        ctrl_text(s, KT_LOGGING_KEEP_NOTE_2, HELPCTX(kitty_log_rotation));
-        ctrl_text(s, KT_LOGGING_KEEP_NOTE_3, HELPCTX(kitty_log_rotation));
-        c = ctrl_editbox(s, KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_logging_stamps),
-                         conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
-        lognone_rows[lognone_nrows++] = c;
-        /* One button, two jobs: fill in a working pattern when the field is
-         * empty, clear it when it is not - so the feature can be tried, and
-         * undone, without knowing strftime. Its label shows which it will do. */
-        c = ctrl_pushbutton(s, KT_LOGGING_USE_A_DEFAULT_TIMESTAMP, NO_SHORTCUT,
-                            HELPCTX(kitty_logging_stamps), logtimestamp_button_handler, P(NULL));
-        lognone_rows[lognone_nrows++] = c;
-        /* The file-name field above explains its &-codes; this one explained
-         * nothing at all, so the only way to learn the format was to guess. */
-        ctrl_text(s, KT_LOGGING_WRITTEN_AT_THE_START,
-                  HELPCTX(kitty_logging_stamps));
-    }
+    /* Two columns so the unit sits AFTER the field, reading "every [ 0 ]
+     * sec." The old one-line label "Log rotation delay (sec, 0=off)" was
+     * clipped to "Log rotation delay (sec," - the edit box took half the
+     * row and the rest of the label had nowhere to go. */
+    /* "Automatic logrotation every [ 0 ] sec." on ONE baseline.
+     *
+     * All three parts are the same KIND of control on purpose. An editbox
+     * with a label draws that label as a STATIC positioned differently
+     * from the box's own text, so a trailing word ends up ~9px above the
+     * words it belongs to - it reads as hanging in the air. An UNWRAPPED
+     * ctrl_text is laid out as a borderless read-only edit box, and a
+     * label-less ctrl_editbox is a bare edit box, so all three are
+     * EDITHEIGHT boxes on the same row and their text lines up. */
+    ctrl_columns(s, 3, 52, 24, 24);
+    c = ctrl_text(s, KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY, HELPCTX(kitty_log_rotation));
+    c->column = 0;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_log_rotation),
+                     conf_editbox_handler, I(CONF_logtimerotation), ED_INT);
+    c->column = 1;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_text(s, KT_LOGGING_SEC, HELPCTX(kitty_log_rotation));
+    c->column = 2;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    ctrl_columns(s, 1, 100);
+    ctrl_text(s, KT_LOGGING_0_OFF_THE_LOG_FILE,
+              HELPCTX(kitty_log_rotation));
+    /* Log retention (cyd01/KiTTY#439): "Delete logs after [ 0 ] days" and
+     * "Keep logsize below [ 0 ] MB", built exactly like the rotation row
+     * above and for the same reason - three same-kind boxes on one
+     * baseline. Each row closes its own columns: the layout refuses a
+     * three-column set that follows another without a one-column reset.
+     * Greyed with the rotation row while the name has no time code or
+     * nothing is logged (logging_grey above); kitty_logkeep.c refuses the
+     * rule at run time as well. */
+    ctrl_columns(s, 3, 52, 24, 24);
+    c = ctrl_text(s, KT_LOGGING_DELETE_LOGS_AFTER, HELPCTX(kitty_log_rotation));
+    c->column = 0;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_log_rotation),
+                     conf_editbox_handler, I(CONF_logkeepdays), ED_INT);
+    c->column = 1;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_text(s, KT_LOGGING_DAYS, HELPCTX(kitty_log_rotation));
+    c->column = 2;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    ctrl_columns(s, 1, 100);
+    ctrl_columns(s, 3, 52, 24, 24);
+    c = ctrl_text(s, KT_LOGGING_KEEP_LOGSIZE_BELOW, HELPCTX(kitty_log_rotation));
+    c->column = 0;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_log_rotation),
+                     conf_editbox_handler, I(CONF_logkeepmb), ED_INT);
+    c->column = 1;
+    logtime_rows[logtime_nrows++] = c;
+    c = ctrl_text(s, KT_LOGGING_MB, HELPCTX(kitty_log_rotation));
+    c->column = 2;
+    c->text.wrap = false;
+    logtime_rows[logtime_nrows++] = c;
+    ctrl_columns(s, 1, 100);
+    ctrl_text(s, KT_LOGGING_KEEP_NOTE_1, HELPCTX(kitty_log_rotation));
+    ctrl_text(s, KT_LOGGING_KEEP_NOTE_2, HELPCTX(kitty_log_rotation));
+    ctrl_text(s, KT_LOGGING_KEEP_NOTE_3, HELPCTX(kitty_log_rotation));
+    c = ctrl_editbox(s, KT_LOGGING_TIMESTAMP_STRFTIME_FORMAT, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_logging_stamps),
+                     conf_editbox_handler, I(CONF_logtimestamp), ED_STR);
+    lognone_rows[lognone_nrows++] = c;
+    /* One button, two jobs: fill in a working pattern when the field is
+     * empty, clear it when it is not - so the feature can be tried, and
+     * undone, without knowing strftime. Its label shows which it will do. */
+    c = ctrl_pushbutton(s, KT_LOGGING_USE_A_DEFAULT_TIMESTAMP, NO_SHORTCUT,
+                        HELPCTX(kitty_logging_stamps), logtimestamp_button_handler, P(NULL));
+    lognone_rows[lognone_nrows++] = c;
+    /* The file-name field above explains its &-codes; this one explained
+     * nothing at all, so the only way to learn the format was to guess. */
+    ctrl_text(s, KT_LOGGING_WRITTEN_AT_THE_START,
+              HELPCTX(kitty_logging_stamps));
 
     if ((midsession && protocol == PROT_SSH) ||
         (!midsession && backend_vt_from_proto(PROT_SSH))) {
@@ -5836,127 +5821,121 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
      * to match upstream KiTTY's layout, immediately after Session/Logging so the
      * config treeview builds in a valid order (no implicit parent path).
      */
-    if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Session/Scripting",
-                      KT_SCRIPTING_OPTIONS_CONTROLLING_AUTOMATED_SCRIPTING);
-        s = ctrl_getset(b, "Session/Scripting", "main",
-                        KT_SCRIPTING_SEND_A_SCRIPT_FILE);
-        ctrl_checkbox(s, KT_SCRIPTING_RUN_THE_SCRIPT_ON_CONNECT, NO_SHORTCUT,
-                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
-                      I(CONF_script_mode));
-        ctrl_filesel(s, KT_SCRIPTING_SCRIPT_FILE, NO_SHORTCUT,
-                     FILTER_ALL_FILES, false, KT_SCRIPTING_SELECT_SCRIPT_FILE,
-                     HELPCTX(kitty_scriptfile),
-                     conf_filesel_handler, I(CONF_scriptfile));
-        ctrl_checkbox(s, KT_SCRIPTING_WAIT_FOR_A_PROMPT_BEFORE, NO_SHORTCUT,
-                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
-                      I(CONF_script_enable));
-        /* Belongs to the WAIT feature above, not to CR/LF where it used to
-         * sit: it skips the wait for the FIRST line only. */
-        ctrl_checkbox(s, KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND, NO_SHORTCUT,
-                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
-                      I(CONF_script_except));
-        ctrl_editbox(s, KT_SCRIPTING_WAIT_FOR_TEXT, NO_SHORTCUT, 60,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_waitfor), ED_STR);
-        ctrl_editbox(s, KT_SCRIPTING_HALT_ON_TEXT, NO_SHORTCUT, 60,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_halton), ED_STR);
-        ctrl_editbox(s, KT_SCRIPTING_LINE_DELAY_MS, NO_SHORTCUT, 30,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_line_delay), ED_INT);
-        ctrl_editbox(s, KT_SCRIPTING_TIMEOUT_S, NO_SHORTCUT, 30,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_timeout), ED_INT);
-        ctrl_editbox(s, KT_SCRIPTING_CHARACTER_DELAY_MS, NO_SHORTCUT, 30,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_char_delay), ED_INT);
-        ctrl_editbox(s, KT_SCRIPTING_START_OF_CONDITION_COMMENT_LINE, NO_SHORTCUT, 30,
-                     HELPCTX(kitty_scriptfile), conf_editbox_handler,
-                     I(CONF_script_cond_line), ED_STR);
-        ctrl_radiobuttons(s, KT_SCRIPTING_CR_LF_TRANSLATION, NO_SHORTCUT, 4,
-                          HELPCTX(kitty_scriptfile), conf_radiobutton_handler,
-                          I(CONF_script_crlf),
-                          KT_SCRIPTING_OFF,   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
-                          KT_CFG_SCRIPT_NOLF, NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
-                          KT_CFG_SCRIPT_CR,    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
-                          KT_CFG_SCRIPT_REC,   NO_SHORTCUT, I(3));
+    ctrl_settitle(b, "Session/Scripting",
+                  KT_SCRIPTING_OPTIONS_CONTROLLING_AUTOMATED_SCRIPTING);
+    s = ctrl_getset(b, "Session/Scripting", "main",
+                    KT_SCRIPTING_SEND_A_SCRIPT_FILE);
+    ctrl_checkbox(s, KT_SCRIPTING_RUN_THE_SCRIPT_ON_CONNECT, NO_SHORTCUT,
+                  HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
+                  I(CONF_script_mode));
+    ctrl_filesel(s, KT_SCRIPTING_SCRIPT_FILE, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false, KT_SCRIPTING_SELECT_SCRIPT_FILE,
+                 HELPCTX(kitty_scriptfile),
+                 conf_filesel_handler, I(CONF_scriptfile));
+    ctrl_checkbox(s, KT_SCRIPTING_WAIT_FOR_A_PROMPT_BEFORE, NO_SHORTCUT,
+                  HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
+                  I(CONF_script_enable));
+    /* Belongs to the WAIT feature above, not to CR/LF where it used to
+     * sit: it skips the wait for the FIRST line only. */
+    ctrl_checkbox(s, KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND, NO_SHORTCUT,
+                  HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
+                  I(CONF_script_except));
+    ctrl_editbox(s, KT_SCRIPTING_WAIT_FOR_TEXT, NO_SHORTCUT, 60,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_waitfor), ED_STR);
+    ctrl_editbox(s, KT_SCRIPTING_HALT_ON_TEXT, NO_SHORTCUT, 60,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_halton), ED_STR);
+    ctrl_editbox(s, KT_SCRIPTING_LINE_DELAY_MS, NO_SHORTCUT, 30,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_line_delay), ED_INT);
+    ctrl_editbox(s, KT_SCRIPTING_TIMEOUT_S, NO_SHORTCUT, 30,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_timeout), ED_INT);
+    ctrl_editbox(s, KT_SCRIPTING_CHARACTER_DELAY_MS, NO_SHORTCUT, 30,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_char_delay), ED_INT);
+    ctrl_editbox(s, KT_SCRIPTING_START_OF_CONDITION_COMMENT_LINE, NO_SHORTCUT, 30,
+                 HELPCTX(kitty_scriptfile), conf_editbox_handler,
+                 I(CONF_script_cond_line), ED_STR);
+    ctrl_radiobuttons(s, KT_SCRIPTING_CR_LF_TRANSLATION, NO_SHORTCUT, 4,
+                      HELPCTX(kitty_scriptfile), conf_radiobutton_handler,
+                      I(CONF_script_crlf),
+                      KT_SCRIPTING_OFF,   NO_SHORTCUT, I(0),   /* SCRIPT_OFF  */
+                      KT_CFG_SCRIPT_NOLF, NO_SHORTCUT, I(1),   /* SCRIPT_NOLF */
+                      KT_CFG_SCRIPT_CR,    NO_SHORTCUT, I(2),   /* SCRIPT_CR   */
+                      KT_CFG_SCRIPT_REC,   NO_SHORTCUT, I(3));
  /* SCRIPT_REC  */
-        ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
-                      HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
-                      I(CONF_script_cond_use));
-        /* ---- receiving broadcasts: its own leaf under Session -----------
-         * Scripting drives THIS session from a file; a broadcast is another
-         * window typing into it. Separate concerns, separate panels - and
-         * Scripting was carrying both boxes on one tall page. */
-        ctrl_settitle(b, "Session/Broadcast",
-                      KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS);
-        s = ctrl_getset(b, "Session/Broadcast", "broadcast",
-                        KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY);
-        ctrl_checkbox(s, KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES, NO_SHORTCUT,
-                      HELPCTX(kitty_sendcmd), conf_checkbox_handler,
-                      I(CONF_kitty_accept_broadcast));
-        ctrl_text(s, KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO,
-                  HELPCTX(kitty_sendcmd));
-        /* The installation's master switch is an application setting; the
-         * note shows where. From the start-up window the button jumps there
-         * (the same mechanism as the Certificate Authorities jump on Host
-         * keys). A running terminal's Change Settings window has no
-         * Application tab (scb_panel_kitty_settings builds nothing
-         * mid-session), so there the button is not created at all and a
-         * second note shows where the leaf is instead. */
-        ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_NOTE, HELPCTX(kitty_sendcmd));
-        if (midsession) {
-            ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_MIDSESSION, HELPCTX(kitty_sendcmd));
-        } else {
-            ctrl_columns(s, 2, 50, 50);
-            c = ctrl_pushbutton(s, KT_CFG_BROADCAST_GLOBAL_JUMP, NO_SHORTCUT,
-                                HELPCTX(kitty_sendcmd),
-                                kitty_global_jump_handler, P(KSET_PATH("Automation/Broadcast")));
-            c->column = 0;
-            ctrl_columns(s, 1, 100);
-        }
-        ctrl_text(s, KT_SCRIPTING_ONLY_MESSAGES_CARRYING_THE_KEY,
-                  HELPCTX(kitty_sendcmd));
-        kitty_broadcast_key_controls(b, s);
+    ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
+                  HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
+                  I(CONF_script_cond_use));
+    /* ---- receiving broadcasts: its own leaf under Session -----------
+     * Scripting drives THIS session from a file; a broadcast is another
+     * window typing into it. Separate concerns, separate panels - and
+     * Scripting was carrying both boxes on one tall page. */
+    ctrl_settitle(b, "Session/Broadcast",
+                  KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS);
+    s = ctrl_getset(b, "Session/Broadcast", "broadcast",
+                    KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY);
+    ctrl_checkbox(s, KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES, NO_SHORTCUT,
+                  HELPCTX(kitty_sendcmd), conf_checkbox_handler,
+                  I(CONF_kitty_accept_broadcast));
+    ctrl_text(s, KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO,
+              HELPCTX(kitty_sendcmd));
+    /* The installation's master switch is an application setting; the
+     * note shows where. From the start-up window the button jumps there
+     * (the same mechanism as the Certificate Authorities jump on Host
+     * keys). A running terminal's Change Settings window has no
+     * Application tab (scb_panel_kitty_settings builds nothing
+     * mid-session), so there the button is not created at all and a
+     * second note shows where the leaf is instead. */
+    ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_NOTE, HELPCTX(kitty_sendcmd));
+    if (midsession) {
+        ctrl_text(s, KT_CFG_BROADCAST_GLOBAL_MIDSESSION, HELPCTX(kitty_sendcmd));
+    } else {
+        ctrl_columns(s, 2, 50, 50);
+        c = ctrl_pushbutton(s, KT_CFG_BROADCAST_GLOBAL_JUMP, NO_SHORTCUT,
+                            HELPCTX(kitty_sendcmd),
+                            kitty_global_jump_handler, P(KSET_PATH("Automation/Broadcast")));
+        c->column = 0;
+        ctrl_columns(s, 1, 100);
     }
+    ctrl_text(s, KT_SCRIPTING_ONLY_MESSAGES_CARRYING_THE_KEY,
+              HELPCTX(kitty_sendcmd));
+    kitty_broadcast_key_controls(b, s);
 
     /* KiTTY: the Session/Startup panel - how a session can be STARTED from
      * outside its own window. Its tags (hknet/KiTTY#60) start it from
      * Manage Sessions with the others of a tag. */
-    if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Session/Startup",
-                      KT_STARTUP_OPTIONS_CONTROLLING_HOW_THIS_SESSION);
-        s = ctrl_getset(b, "Session/Startup", "tags", KT_STARTUP_TAGS_GROUP);
-        kitty_tags_controls(s);
-    }
+    ctrl_settitle(b, "Session/Startup",
+                  KT_STARTUP_OPTIONS_CONTROLLING_HOW_THIS_SESSION);
+    s = ctrl_getset(b, "Session/Startup", "tags", KT_STARTUP_TAGS_GROUP);
+    kitty_tags_controls(s);
 #ifdef MOD_LAUNCHER
     /* The launcher global hotkey, moved here from Window/Behaviour: a
      * machine-wide launch key is a session-startup concern, and Behaviour
      * had grown past the dialog's command buttons. */
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Session/Startup", "launcher_hotkey",
-                        KT_STARTUP_KITTY_LAUNCHER_GLOBAL_HOTKEY);
-        ctrl_checkbox(s, KT_STARTUP_ENABLE_GLOBAL_HOTKEY, NO_SHORTCUT,
-                      HELPCTX(kitty_launcher), conf_checkbox_handler,
-                      I(CONF_launcher_global_hotkey_enabled));
-        ctrl_editbox(s, KT_STARTUP_HOTKEY, NO_SHORTCUT, 40,
-                     HELPCTX(kitty_launcher), conf_editbox_handler,
-                     I(CONF_launcher_global_hotkey), ED_STR);
-        ctrl_pushbutton(s, KT_STARTUP_CHECK_HOTKEY_AVAILABILITY, NO_SHORTCUT,
-                        HELPCTX(kitty_launcher), kitty_launcher_hotkey_check_handler,
-                        I(0));
-        ctrl_text(s, KT_STARTUP_EXAMPLE_CTRL_ALT_K,
-                  HELPCTX(kitty_launcher));
-        s = ctrl_getset(b, "Session/Startup", "launcher_config",
-                        KT_STARTUP_LAUNCHER_CONFIGURATION);
-        /* KiTTY: exclude this session from the kitty -launcher tray menu.
-         * Moved here from the Session panel - it configures the launcher's
-         * view of the session, not the session itself. */
-        ctrl_checkbox(s, KT_SESSION_HIDE_THIS_SESSION, NO_SHORTCUT,
-                      HELPCTX(kitty_hide_launcher), conf_checkbox_handler,
-                      I(CONF_launcherhide));
-    }
+    s = ctrl_getset(b, "Session/Startup", "launcher_hotkey",
+                    KT_STARTUP_KITTY_LAUNCHER_GLOBAL_HOTKEY);
+    ctrl_checkbox(s, KT_STARTUP_ENABLE_GLOBAL_HOTKEY, NO_SHORTCUT,
+                  HELPCTX(kitty_launcher), conf_checkbox_handler,
+                  I(CONF_launcher_global_hotkey_enabled));
+    ctrl_editbox(s, KT_STARTUP_HOTKEY, NO_SHORTCUT, 40,
+                 HELPCTX(kitty_launcher), conf_editbox_handler,
+                 I(CONF_launcher_global_hotkey), ED_STR);
+    ctrl_pushbutton(s, KT_STARTUP_CHECK_HOTKEY_AVAILABILITY, NO_SHORTCUT,
+                    HELPCTX(kitty_launcher), kitty_launcher_hotkey_check_handler,
+                    I(0));
+    ctrl_text(s, KT_STARTUP_EXAMPLE_CTRL_ALT_K,
+              HELPCTX(kitty_launcher));
+    s = ctrl_getset(b, "Session/Startup", "launcher_config",
+                    KT_STARTUP_LAUNCHER_CONFIGURATION);
+    /* KiTTY: exclude this session from the kitty -launcher tray menu.
+     * Moved here from the Session panel - it configures the launcher's
+     * view of the session, not the session itself. */
+    ctrl_checkbox(s, KT_SESSION_HIDE_THIS_SESSION, NO_SHORTCUT,
+                  HELPCTX(kitty_hide_launcher), conf_checkbox_handler,
+                  I(CONF_launcherhide));
 #endif
 }
 
@@ -6059,11 +6038,9 @@ void scb_panel_terminal(struct controlbox *b)
                   HELPCTX(terminal_printing),
                   printerbox_handler, P(NULL), P(NULL));
 #ifdef MOD_PRINTCLIP
-    if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, KT_TERMINAL_PRINT_TO_CLIPBOARD_INSTEAD, NO_SHORTCUT,
-                      HELPCTX(kitty_printclip), kitty_printclip_handler,
-                      I(CONF_printclip));
-    }
+    ctrl_checkbox(s, KT_TERMINAL_PRINT_TO_CLIPBOARD_INSTEAD, NO_SHORTCUT,
+                  HELPCTX(kitty_printclip), kitty_printclip_handler,
+                  I(CONF_printclip));
 #endif
 
     /*
@@ -6108,10 +6085,9 @@ void scb_panel_terminal(struct controlbox *b)
                       KT_KEYBOARD_ALT, I(WORDNAV_ALT),
                       KT_KEYBOARD_CTRL, I(WORDNAV_CTRL),
                       KT_KEYBOARD_BOTH, I(WORDNAV_BOTH));
-    if (!GetPuttyFlag())
-        ctrl_checkbox(s, KT_KEYBOARD_ENTER_KEY_SENDS_CR_LF, NO_SHORTCUT,
-                      HELPCTX(kitty_crlf), kitty_checkbox_int_handler,
-                      I(CONF_enter_sends_crlf));
+    ctrl_checkbox(s, KT_KEYBOARD_ENTER_KEY_SENDS_CR_LF, NO_SHORTCUT,
+                  HELPCTX(kitty_crlf), kitty_checkbox_int_handler,
+                  I(CONF_enter_sends_crlf));
 #ifdef MOD_DISABLEALTGR
     /* KiTTY: this TURNS AltGr OFF - measured, after the label first shipped
      * claiming the opposite. PuTTY already composes AltGr correctly: the key
@@ -6123,16 +6099,14 @@ void scb_panel_terminal(struct controlbox *b)
      *
      * Worth having for anyone who wants Alt shortcuts from EITHER Alt key and
      * never composes; it is not a fix for AltGr, it is the off switch. */
-    if (!GetPuttyFlag()) {
-        /* Short on purpose: the long form clipped at the panel's right edge
-         * (caught by the documentation screenshots); the text below carries
-         * the detail. */
-        ctrl_checkbox(s, KT_KEYBOARD_DISABLE_ALTGR_ACTS_AS_PLAIN,
-                      NO_SHORTCUT, HELPCTX(kitty_altgr), kitty_checkbox_int_handler,
-                      I(CONF_disablealtgr));
-        ctrl_text(s, KT_KEYBOARD_OFF_DEFAULT_ALTGR_COMPOSES_CHARACTERS,
-                  HELPCTX(kitty_altgr));
-    }
+    /* Short on purpose: the long form clipped at the panel's right edge
+     * (caught by the documentation screenshots); the text below carries
+     * the detail. */
+    ctrl_checkbox(s, KT_KEYBOARD_DISABLE_ALTGR_ACTS_AS_PLAIN,
+                  NO_SHORTCUT, HELPCTX(kitty_altgr), kitty_checkbox_int_handler,
+                  I(CONF_disablealtgr));
+    ctrl_text(s, KT_KEYBOARD_OFF_DEFAULT_ALTGR_COMPOSES_CHARACTERS,
+              HELPCTX(kitty_altgr));
 #endif
 
     /* KiTTY: the application-keypad pair is its own leaf, which gives the
@@ -6164,11 +6138,9 @@ void scb_panel_terminal(struct controlbox *b)
                       KT_BELL_NONE_BELL_DISABLED, I(BELL_DISABLED),
                       KT_BELL_MAKE_DEFAULT_SYSTEM_ALERT_SOUND, I(BELL_DEFAULT),
                       KT_BELL_VISUAL_BELL_FLASH_WINDOW, I(BELL_VISUAL));
-    if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, KT_BELL_PUT_WINDOW_IN_FOREGROUND, NO_SHORTCUT,
-                      HELPCTX(kitty_fgbell), conf_checkbox_handler,
-                      I(CONF_foreground_on_bell));
-    }
+    ctrl_checkbox(s, KT_BELL_PUT_WINDOW_IN_FOREGROUND, NO_SHORTCUT,
+                  HELPCTX(kitty_fgbell), conf_checkbox_handler,
+                  I(CONF_foreground_on_bell));
 
     s = ctrl_getset(b, "Terminal/Bell", "overload",
                     KT_BELL_CONTROL_THE_BELL_OVERLOAD_BEHAVIOUR);
@@ -6250,79 +6222,75 @@ void scb_panel_terminal(struct controlbox *b)
     ctrl_checkbox(s, KT_FEATURES_DISABLE_BRACKETED_PASTE_MODE,
                   'p', HELPCTX(features_bracketed_paste), conf_checkbox_handler,
                   I(CONF_no_bracketed_paste));
-    if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, KT_FEATURES_DISABLE_FOCUS_REPORTING, NO_SHORTCUT,
-                      HELPCTX(kitty_nofocusrep), conf_checkbox_handler,
-                      I(CONF_no_focus_rep));
-        /* 0 switches the mode off; the upper bound is applied where the
-         * value is used (terminal.c), like the other plain number boxes. */
-        ctrl_editbox(s, KT_FEATURES_SYNC_OUTPUT_MAX_HOLD, NO_SHORTCUT, 20,
-                     HELPCTX(kitty_syncoutput), conf_editbox_handler,
-                     I(CONF_sync_output_hold_ms), ED_INT);
-    }
+    ctrl_checkbox(s, KT_FEATURES_DISABLE_FOCUS_REPORTING, NO_SHORTCUT,
+                  HELPCTX(kitty_nofocusrep), conf_checkbox_handler,
+                  I(CONF_no_focus_rep));
+    /* 0 switches the mode off; the upper bound is applied where the
+     * value is used (terminal.c), like the other plain number boxes. */
+    ctrl_editbox(s, KT_FEATURES_SYNC_OUTPUT_MAX_HOLD, NO_SHORTCUT, 20,
+                 HELPCTX(kitty_syncoutput), conf_editbox_handler,
+                 I(CONF_sync_output_hold_ms), ED_INT);
 
-    if (!GetPuttyFlag()) {
-        /* What the shell on the host reports about itself: prompt marks
-         * (OSC 133) and contexts (OSC 3008), a panel of their own below
-         * Terminal, out of Features. OSC 7 stays on Connection >
-         * File-Transfer-Settings, paired with the fixed upload directory it
-         * excludes; a line here points there. */
-        ctrl_settitle(b, "Terminal/Shell Integration",
-                      KT_FEATURES_SHELLINT_GROUP);
-        s = ctrl_getset(b, "Terminal/Shell Integration", "shellint", NULL);
-        ctrl_checkbox(s, KT_FEATURES_FAILED_MARKS, NO_SHORTCUT,
-                      HELPCTX(kitty_failedmarks), conf_checkbox_handler,
-                      I(CONF_failed_marks));
-        ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_FRAME, NO_SHORTCUT,
-                      HELPCTX(kitty_ctxrootframe), conf_checkbox_handler,
-                      I(CONF_ctx3008_root_frame));
-        ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_TINT, NO_SHORTCUT,
-                      HELPCTX(kitty_ctxroottint), conf_checkbox_handler,
-                      I(CONF_ctx3008_root_tint));
-        ctrl_text(s, KT_FEATURES_SHELLINT_OSC7, HELPCTX(kitty_transfers_remote));
+    /* What the shell on the host reports about itself: prompt marks
+     * (OSC 133) and contexts (OSC 3008), a panel of their own below
+     * Terminal, out of Features. OSC 7 stays on Connection >
+     * File-Transfer-Settings, paired with the fixed upload directory it
+     * excludes; a line here points there. */
+    ctrl_settitle(b, "Terminal/Shell Integration",
+                  KT_FEATURES_SHELLINT_GROUP);
+    s = ctrl_getset(b, "Terminal/Shell Integration", "shellint", NULL);
+    ctrl_checkbox(s, KT_FEATURES_FAILED_MARKS, NO_SHORTCUT,
+                  HELPCTX(kitty_failedmarks), conf_checkbox_handler,
+                  I(CONF_failed_marks));
+    ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_FRAME, NO_SHORTCUT,
+                  HELPCTX(kitty_ctxrootframe), conf_checkbox_handler,
+                  I(CONF_ctx3008_root_frame));
+    ctrl_checkbox(s, KT_FEATURES_CTX_ROOT_TINT, NO_SHORTCUT,
+                  HELPCTX(kitty_ctxroottint), conf_checkbox_handler,
+                  I(CONF_ctx3008_root_tint));
+    ctrl_text(s, KT_FEATURES_SHELLINT_OSC7, HELPCTX(kitty_transfers_remote));
 
-        /* Notifications from the host (OSC 9, 777 and 99, a program's status
-         * OSC 7501 too, a failed command OSC 3008) and taskbar progress
-         * (OSC 9;4): a panel of their own below Terminal, out of Features
-         * (kitty/kitty_hostnotify.c). The droplist takes the full width, so
-         * its label sits above it and is never cut. */
-        ctrl_settitle(b, "Terminal/Notifications",
-                      KT_FEATURES_HOSTNOTIFY_GROUP);
-        s = ctrl_getset(b, "Terminal/Notifications", "hostnotify", NULL);
-        ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
-                      HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
-                      I(CONF_host_notify));
-        ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
-                      HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
-                      I(CONF_ctx3008_fail_notice));
-        ctrl_checkbox(s, KT_FEATURES_CTX_BREADCRUMB, NO_SHORTCUT,
-                      HELPCTX(kitty_ctxbreadcrumb), conf_checkbox_handler,
-                      I(CONF_ctx3008_breadcrumb));
-        ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
-                      HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
-                      I(CONF_taskbar_progress));
+    /* Notifications from the host (OSC 9, 777 and 99, a program's status
+     * OSC 7501 too, a failed command OSC 3008) and taskbar progress
+     * (OSC 9;4): a panel of their own below Terminal, out of Features
+     * (kitty/kitty_hostnotify.c). The droplist takes the full width, so
+     * its label sits above it and is never cut. */
+    ctrl_settitle(b, "Terminal/Notifications",
+                  KT_FEATURES_HOSTNOTIFY_GROUP);
+    s = ctrl_getset(b, "Terminal/Notifications", "hostnotify", NULL);
+    ctrl_droplist(s, KT_FEATURES_HOSTNOTIFY, NO_SHORTCUT, 100,
+                  HELPCTX(kitty_hostnotify), kitty_hostnotify_handler,
+                  I(CONF_host_notify));
+    ctrl_checkbox(s, KT_FEATURES_CTX_FAIL_NOTICE, NO_SHORTCUT,
+                  HELPCTX(kitty_ctxfailnotice), conf_checkbox_handler,
+                  I(CONF_ctx3008_fail_notice));
+    ctrl_checkbox(s, KT_FEATURES_CTX_BREADCRUMB, NO_SHORTCUT,
+                  HELPCTX(kitty_ctxbreadcrumb), conf_checkbox_handler,
+                  I(CONF_ctx3008_breadcrumb));
+    ctrl_checkbox(s, KT_FEATURES_TASKBAR_PROGRESS, NO_SHORTCUT,
+                  HELPCTX(kitty_taskbarprogress), conf_checkbox_handler,
+                  I(CONF_taskbar_progress));
 
-        /* Inline images, one switch per protocol: a panel of their own below
-         * Terminal, out of Features. */
-        ctrl_settitle(b, "Terminal/Image Protocols", KT_FEATURES_IMAGES_GROUP);
-        s = ctrl_getset(b, "Terminal/Image Protocols", "images", NULL);
-        ctrl_checkbox(s, KT_FEATURES_KITTY_GRAPHICS, NO_SHORTCUT,
-                      HELPCTX(kitty_kittygraphics), conf_checkbox_handler,
-                      I(CONF_kitty_graphics));
-        ctrl_checkbox(s, KT_FEATURES_ITERM_IMAGES, NO_SHORTCUT,
-                      HELPCTX(kitty_itermimages), conf_checkbox_handler,
-                      I(CONF_iterm_images));
-        ctrl_checkbox(s, KT_FEATURES_SIXEL_IMAGES, NO_SHORTCUT,
-                      HELPCTX(kitty_sixelimages), conf_checkbox_handler,
-                      I(CONF_sixel_images));
+    /* Inline images, one switch per protocol: a panel of their own below
+     * Terminal, out of Features. */
+    ctrl_settitle(b, "Terminal/Image Protocols", KT_FEATURES_IMAGES_GROUP);
+    s = ctrl_getset(b, "Terminal/Image Protocols", "images", NULL);
+    ctrl_checkbox(s, KT_FEATURES_KITTY_GRAPHICS, NO_SHORTCUT,
+                  HELPCTX(kitty_kittygraphics), conf_checkbox_handler,
+                  I(CONF_kitty_graphics));
+    ctrl_checkbox(s, KT_FEATURES_ITERM_IMAGES, NO_SHORTCUT,
+                  HELPCTX(kitty_itermimages), conf_checkbox_handler,
+                  I(CONF_iterm_images));
+    ctrl_checkbox(s, KT_FEATURES_SIXEL_IMAGES, NO_SHORTCUT,
+                  HELPCTX(kitty_sixelimages), conf_checkbox_handler,
+                  I(CONF_sixel_images));
 #ifdef MOD_FAR2L
-        /* far2l's pictures, moved here from the Remote clipboard panel:
-         * both image switches in one place. */
-        ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES, NO_SHORTCUT,
-                      HELPCTX(kitty_far2l_images),
-                      conf_checkbox_handler, I(CONF_far2l_images));
+    /* far2l's pictures, moved here from the Remote clipboard panel:
+     * both image switches in one place. */
+    ctrl_checkbox(s, KT_REMOTE_CLIPBOARD_SHOW_FAR2L_IMAGES, NO_SHORTCUT,
+                  HELPCTX(kitty_far2l_images),
+                  conf_checkbox_handler, I(CONF_far2l_images));
 #endif
-    }
 }
 
 /* The Window panel and its Appearance/Behaviour sub-panels, plus the
@@ -6411,15 +6379,14 @@ static void scb_window_tree(struct controlbox *b)
     str = dupprintf(KT_CFG_APPEARANCE_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Appearance", str);
     sfree(str);
-    if (!GetPuttyFlag())
-        ctrl_settitle(b, "Window/Appearance/Position",
-                      KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW);
+    ctrl_settitle(b, "Window/Appearance/Position",
+                  KT_APPEARANCE_OPTIONS_CONTROLLING_WHERE_THE_WINDOW);
     ctrl_settitle(b, "Window/Appearance/Colours",
                   KT_COLOURS_OPTIONS_CONTROLLING_USE_OF_COLOURS);
     str = dupprintf(KT_CFG_PRECISE_COLOURS_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Appearance/Colours/Precise colours", str);
     sfree(str);
-    if (!GetPuttyFlag() && scb_background_leaf_wanted())
+    if (scb_background_leaf_wanted())
         ctrl_settitle(b, "Window/Appearance/Background", KT_BACKGROUND_TITLE);
     str = dupprintf(KT_CFG_BEHAVIOUR_TITLE_FMT, SCB_TITLE_APPNAME);
     ctrl_settitle(b, "Window/Behaviour", str);
@@ -6434,9 +6401,8 @@ static void scb_window_tree(struct controlbox *b)
                   KT_LIMITS_BOUNDS_ON_WHAT_A_PERMITTED);
     ctrl_settitle(b, "Window/Copy & Paste/Remote clipboard/Notifications",
                   KT_NOTICES_ABOUT_REMOTE_CLIPBOARD);
-    if (!GetPuttyFlag())
-        ctrl_settitle(b, "Window/Hyperlinks",
-                      KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
+    ctrl_settitle(b, "Window/Hyperlinks",
+                  KT_HYPERLINKS_OPTIONS_CONTROLLING_CLICKABLE_URL_HYPERLINKS);
     ctrl_settitle(b, "Window/Charset translation",
                   KT_CHARSET_TRANSLATION_OPTIONS_CONTROLLING_CHARACTER_SET_TRANSLATION);
     ctrl_settitle(b, "Window/Title & Icon", KT_TITLE_WINDOW_TITLE_AND_ICON_OPTIONS);
@@ -6506,22 +6472,20 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     ctrl_checkbox(s, KT_WINDOW_DISPLAY_SCROLLBAR, 'd',
                   HELPCTX(window_scrollback),
                   conf_checkbox_handler, I(CONF_scrollbar));
-    if (!GetPuttyFlag()) {
-        ctrl_editbox(s, KT_WINDOW_LINES_SCROLLED_PER_WHEEL_TURN, NO_SHORTCUT, 50,
-                     HELPCTX(kitty_wheel),
-                     conf_editbox_handler, I(CONF_scrolllines), ED_INT);
-        /* Lines of their own rather than a longer label: an editbox label is a
-         * static, laid out once at the width of its first text, so anything
-         * longer is simply cut off.
-         *
-         * TWO controls rather than one that wraps, so the break falls where it
-         * reads best - the two special values together, the ordinary case on
-         * its own line - instead of wherever the panel width happens to put
-         * it. */
-        ctrl_text(s, KT_WINDOW_1_HALF_A_SCREEN,
-                  HELPCTX(kitty_wheel));
-        ctrl_text(s, KT_WINDOW_OR_A_POSITIVE_NUMBER, HELPCTX(kitty_wheel));
-    }
+    ctrl_editbox(s, KT_WINDOW_LINES_SCROLLED_PER_WHEEL_TURN, NO_SHORTCUT, 50,
+                 HELPCTX(kitty_wheel),
+                 conf_editbox_handler, I(CONF_scrolllines), ED_INT);
+    /* Lines of their own rather than a longer label: an editbox label is a
+     * static, laid out once at the width of its first text, so anything
+     * longer is simply cut off.
+     *
+     * TWO controls rather than one that wraps, so the break falls where it
+     * reads best - the two special values together, the ordinary case on
+     * its own line - instead of wherever the panel width happens to put
+     * it. */
+    ctrl_text(s, KT_WINDOW_1_HALF_A_SCREEN,
+              HELPCTX(kitty_wheel));
+    ctrl_text(s, KT_WINDOW_OR_A_POSITIVE_NUMBER, HELPCTX(kitty_wheel));
     ctrl_checkbox(s, KT_WINDOW_RESET_SCROLLBACK_ON_KEYPRESS, 'k',
                   HELPCTX(window_scrollback),
                   conf_checkbox_handler, I(CONF_scroll_on_key));
@@ -6534,9 +6498,8 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                   I(CONF_erase_to_scrollback));
     /* What the setting is FOR, which the wording does not state: with it on, a
      * screen that was cleared can still be scrolled back to. */
-    if (!GetPuttyFlag())
-        ctrl_text(s, KT_WINDOW_TURN_OFF_WHERE_A_CLEARED,
-                  HELPCTX(window_erased));
+    ctrl_text(s, KT_WINDOW_TURN_OFF_WHERE_A_CLEARED,
+              HELPCTX(window_erased));
     ctrl_checkbox(s, KT_WINDOW_REWRAP, NO_SHORTCUT,
                   HELPCTX(kitty_rewrap), conf_checkbox_handler,
                   I(CONF_rewrap_on_resize));
@@ -6565,15 +6528,13 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     /* KiTTY: line spacing as a percentage of the font's own line height
      * (cyd01/KiTTY#524). 100 leaves the metrics untouched; a percentage rather
      * than pixels so it survives a font change or a different-DPI monitor. */
-    if (!GetPuttyFlag()) {
-        /* One row: the Appearance panel is already at its full height, and a
-         * paragraph here pushed the icon controls off the bottom of the window.
-         * The caveat (line-drawing characters stop joining up above 100) lives
-         * in FEATURES.md instead. */
-        ctrl_editbox(s, KITTY_LINESPC_LABEL, NO_SHORTCUT,
-                     25, HELPCTX(kitty_line_spacing),
-                     kitty_linespacing_handler, I(CONF_line_spacing), ED_INT);
-    }
+    /* One row: the Appearance panel is already at its full height, and a
+     * paragraph here pushed the icon controls off the bottom of the window.
+     * The caveat (line-drawing characters stop joining up above 100) lives
+     * in FEATURES.md instead. */
+    ctrl_editbox(s, KITTY_LINESPC_LABEL, NO_SHORTCUT,
+                 25, HELPCTX(kitty_line_spacing),
+                 kitty_linespacing_handler, I(CONF_line_spacing), ED_INT);
 
     s = ctrl_getset(b, "Window/Appearance", "mouse",
                     KT_APPEARANCE_ADJUST_THE_USE_2);
@@ -6609,21 +6570,19 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     ctrl_checkbox(s, KT_BEHAVIOUR_WARN_BEFORE_CLOSING_WINDOW, 'w',
                   HELPCTX(behaviour_closewarn),
                   conf_checkbox_handler, I(CONF_warn_on_close));
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Window/Behaviour", "remember",
-                        KT_BEHAVIOUR_REMEMBERING);
-        /* KiTTY: "Remember window position" used to sit here too; it is on
-         * Window > Appearance > Position now, beside the fixed position it
-         * combines with (the Window/Appearance/Position leaf below). */
-        /* KiTTY: writes this session back when its window closes - the settings
-         * as they stand at that moment, so a font or colour changed mid-session
-         * survives, plus the window's size, position and maximised state. An
-         * unnamed session and "Default Settings" are deliberately never
-         * written. */
-        ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
-                      HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
-                      I(CONF_saveonexit));
-    }
+    s = ctrl_getset(b, "Window/Behaviour", "remember",
+                    KT_BEHAVIOUR_REMEMBERING);
+    /* KiTTY: "Remember window position" used to sit here too; it is on
+     * Window > Appearance > Position now, beside the fixed position it
+     * combines with (the Window/Appearance/Position leaf below). */
+    /* KiTTY: writes this session back when its window closes - the settings
+     * as they stand at that moment, so a font or colour changed mid-session
+     * survives, plus the window's size, position and maximised state. An
+     * unnamed session and "Default Settings" are deliberately never
+     * written. */
+    ctrl_checkbox(s, KT_SESSION_SAVE_SETTINGS_ON_EXIT, NO_SHORTCUT,
+                  HELPCTX(kitty_save_on_exit), conf_checkbox_handler,
+                  I(CONF_saveonexit));
 
     /* The Window/Title & Icon panel: the title group,
      * then the icon group - both are about how the window is distinguished. */
@@ -6636,18 +6595,16 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * printed all eight as static lines here, which is a lot of panel for a
      * reference you need once; this opens a modeless list you can copy from and
      * leave open while typing the title. */
-    if (!GetPuttyFlag())
-        ctrl_pushbutton(s, KT_TITLE_PLACEHOLDERS_H_S, NO_SHORTCUT,
-                        HELPCTX(appearance_title),
-                        kitty_title_placeholders_handler, I(0));
+    ctrl_pushbutton(s, KT_TITLE_PLACEHOLDERS_H_S, NO_SHORTCUT,
+                    HELPCTX(appearance_title),
+                    kitty_title_placeholders_handler, I(0));
     ctrl_checkbox(s, KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES, 'i',
                   HELPCTX(appearance_title),
                   conf_checkbox_handler,
                   I(CHECKBOX_INVERT | CONF_win_name_always));
     /* KiTTY: where the session's %KITTY_WINDOW% setting went - it lived here
      * before it moved beside the variables that send it. */
-    if (!GetPuttyFlag())
-        ctrl_text(s, KT_TITLE_WINDOW_NAME_MOVED, HELPCTX(kitty_window_name));
+    ctrl_text(s, KT_TITLE_WINDOW_NAME_MOVED, HELPCTX(kitty_window_name));
 
     s = ctrl_getset(b, "Window/Behaviour", "main", NULL);
     /* KiTTY startup window state. All three are honoured in window.c (maximize
@@ -6656,28 +6613,26 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * were lost in the 0.84 port, leaving the settings unreachable and existing
      * sessions looking as if they had forgotten them. NO_SHORTCUT: this panel
      * has run out of free accelerator letters. */
-    if (!GetPuttyFlag()) {
-        /* All three are INT keys, so they need kitty_checkbox_int_handler:
-         * conf_checkbox_handler asserts in conf_get_bool on a non-BOOL key. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_SEND_TO_TRAY_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      kitty_checkbox_int_handler, I(CONF_sendtotray));
-        ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      kitty_checkbox_int_handler, I(CONF_maximize));
-        ctrl_checkbox(s, KT_BEHAVIOUR_FULL_SCREEN_ON_STARTUP, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      kitty_checkbox_int_handler, I(CONF_fullscreen));
-        /* KiTTY: Ctrl+Tab between windows. Two gates, as in classic KiTTY:
-         * [KiTTY] ctrltab (or -noctrltab) decides whether the feature exists at
-         * all, and this per-session box turns it on for a session. Shown
-         * always - also while the global switch is off, so sessions can be set
-         * up in advance, and mid-session (window.c republishes the window's
-         * Ctrl+Tab flag after the change). Classic hid it in both cases. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
-    }
+    /* All three are INT keys, so they need kitty_checkbox_int_handler:
+     * conf_checkbox_handler asserts in conf_get_bool on a non-BOOL key. */
+    ctrl_checkbox(s, KT_BEHAVIOUR_SEND_TO_TRAY_ON_STARTUP, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  kitty_checkbox_int_handler, I(CONF_sendtotray));
+    ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  kitty_checkbox_int_handler, I(CONF_maximize));
+    ctrl_checkbox(s, KT_BEHAVIOUR_FULL_SCREEN_ON_STARTUP, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  kitty_checkbox_int_handler, I(CONF_fullscreen));
+    /* KiTTY: Ctrl+Tab between windows. Two gates, as in classic KiTTY:
+     * [KiTTY] ctrltab (or -noctrltab) decides whether the feature exists at
+     * all, and this per-session box turns it on for a session. Shown
+     * always - also while the global switch is off, so sessions can be set
+     * up in advance, and mid-session (window.c republishes the window's
+     * Ctrl+Tab flag after the change). Classic hid it in both cases. */
+    ctrl_checkbox(s, KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  kitty_checkbox_int_handler, I(CONF_ctrl_tab_switch));
 
     /*
      * KiTTY (classic parity): which of the window's own buttons exist. A kiosk /
@@ -6690,26 +6645,24 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * only: each keeps its tick, and counts again once the system menu is back.
      * The behaviour is Windows' own either way; the grey just shows it.
      */
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Window/Behaviour", "windowbuttons",
-                        KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK);
-        /* The label still states the dependency, and the grey on the three
-         * boxes below shows it as well. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL,
+    s = ctrl_getset(b, "Window/Behaviour", "windowbuttons",
+                    KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK);
+    /* The label still states the dependency, and the grey on the three
+     * boxes below shows it as well. */
+    ctrl_checkbox(s, KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL,
+                  NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                  sysmenu_handler, I(CONF_window_has_sysmenu));
+    sysmenu_ndeps = 0;
+    c = ctrl_checkbox(s, KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES,
                       NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                      sysmenu_handler, I(CONF_window_has_sysmenu));
-        sysmenu_ndeps = 0;
-        c = ctrl_checkbox(s, KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES,
-                          NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                          conf_checkbox_handler, I(CONF_window_closable));
-        sysmenu_deps[sysmenu_ndeps++] = c;
-        c = ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                          conf_checkbox_handler, I(CONF_window_minimizable));
-        sysmenu_deps[sysmenu_ndeps++] = c;
-        c = ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
-                          conf_checkbox_handler, I(CONF_window_maximizable));
-        sysmenu_deps[sysmenu_ndeps++] = c;
-    }
+                      conf_checkbox_handler, I(CONF_window_closable));
+    sysmenu_deps[sysmenu_ndeps++] = c;
+    c = ctrl_checkbox(s, KT_BEHAVIOUR_MINIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                      conf_checkbox_handler, I(CONF_window_minimizable));
+    sysmenu_deps[sysmenu_ndeps++] = c;
+    c = ctrl_checkbox(s, KT_BEHAVIOUR_MAXIMIZE_BUTTON, NO_SHORTCUT, HELPCTX(kitty_behaviour),
+                      conf_checkbox_handler, I(CONF_window_maximizable));
+    sysmenu_deps[sysmenu_ndeps++] = c;
 
     /*
      * KiTTY: which entries the window menu's Tools submenu holds. It decides
@@ -6718,27 +6671,25 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * (window.c, WM_INITMENUPOPUP) and its [Shortcuts] key does nothing
      * (kitty_shortcuts.c), so the key reaches the terminal instead.
      */
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Window/Behaviour", "tools", KT_BEHAVIOUR_TOOLS_MENU);
-        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_SENDFILE, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_tools_sendfile));
-        /* F1 on Get File lands on its walk-through, not on this panel. */
-        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_GETFILE, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_tools_getfile));
-        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_WINSCP, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_tools_winscp));
-        ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_FILEZILLA, NO_SHORTCUT,
-                      HELPCTX(kitty_behaviour),
-                      conf_checkbox_handler, I(CONF_tools_filezilla));
-    }
+    s = ctrl_getset(b, "Window/Behaviour", "tools", KT_BEHAVIOUR_TOOLS_MENU);
+    ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_SENDFILE, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  conf_checkbox_handler, I(CONF_tools_sendfile));
+    /* F1 on Get File lands on its walk-through, not on this panel. */
+    ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_GETFILE, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  conf_checkbox_handler, I(CONF_tools_getfile));
+    ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_WINSCP, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  conf_checkbox_handler, I(CONF_tools_winscp));
+    ctrl_checkbox(s, KT_BEHAVIOUR_TOOLS_FILEZILLA, NO_SHORTCUT,
+                  HELPCTX(kitty_behaviour),
+                  conf_checkbox_handler, I(CONF_tools_filezilla));
 
     /*
      * The Window/Appearance/Background leaf, first group: transparency (KiTTY).
      */
-    if (!GetPuttyFlag() && GetTransparencyFlag()) {
+    if (GetTransparencyFlag()) {
         s = ctrl_getset(b, "Window/Appearance/Background", "bg_transparency",
                         KT_TRANSPARENCY_TRANSPARENCY_SETTING);
         ctrl_editbox(s, KT_TRANSPARENCY_TRANSPARENCY, NO_SHORTCUT, 20,
@@ -6753,126 +6704,122 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     /*
      * The Window/Hyperlinks panel (KiTTY).
      */
-    if (!GetPuttyFlag()) {
-        s = ctrl_getset(b, "Window/Hyperlinks", "main",
-                        KT_HYPERLINKS_HYPERLINK_BEHAVIOUR);
-        /* Where links come from: the regular expression over the output
-         * (the behaviour before OSC 8) and the links the host declares. */
-        ctrl_checkbox(s, KT_HYPERLINKS_SCAN, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_scan));
-        ctrl_checkbox(s, KT_HYPERLINKS_OSC8, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_osc8));
-        ctrl_checkbox(s, KT_HYPERLINKS_PREVIEW, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_preview));
-        /* NO_SHORTCUT: each button carries its own shortcut (triples) */
-        ctrl_radiobuttons(s, KT_HYPERLINKS_CONFIRM, NO_SHORTCUT, 1,
-                          HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
-                          I(CONF_url_confirm),
-                          KT_HYPERLINKS_CONFIRM_ALWAYS, NO_SHORTCUT, I(0),
-                          KT_HYPERLINKS_CONFIRM_RISKY,  NO_SHORTCUT, I(1),
-                          KT_HYPERLINKS_CONFIRM_NONWEB, NO_SHORTCUT, I(2));
-        ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_ctrl_click));
-        /* The values keep their old meaning (the checkbox stored 1 / 0):
-         * On hover is the new 2 - the link under the pointer, every piece
-         * of it (OSC 8 pieces sharing id= and target are one link). */
-        ctrl_radiobuttons(s, KT_HYPERLINKS_UNDERLINE_HYPERLINKS, NO_SHORTCUT, 3,
-                          HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
-                          I(CONF_url_underline),
-                          KT_HYPERLINKS_UNDERLINE_ALWAYS, NO_SHORTCUT, I(1),
-                          KT_HYPERLINKS_UNDERLINE_HOVER,  NO_SHORTCUT, I(2),
-                          KT_HYPERLINKS_UNDERLINE_NEVER,  NO_SHORTCUT, I(0));
-        ctrl_checkbox(s, KT_HYPERLINKS_SHOW_HAND_CURSOR_WHEN_HOVERING, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_hover_cursor));
-        ctrl_checkbox(s, KT_HYPERLINKS_USE_THE_DEFAULT_BROWSER, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_defbrowser));
-        ctrl_filesel(s, KT_HYPERLINKS_OTHER_BROWSER, NO_SHORTCUT,
-                     FILTER_ALL_FILES, false, KT_HYPERLINKS_SELECT_BROWSER_EXECUTABLE,
-                     HELPCTX(kitty_hyperlinks),
-                     conf_filesel_handler, I(CONF_url_browser));
-        ctrl_checkbox(s, KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION, NO_SHORTCUT,
-                      HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
-                      I(CONF_url_defregex));
-        /* Short label + a wide field: a regex deserves the room. */
-        ctrl_editbox(s, KT_HYPERLINKS_CUSTOM_REGEX, NO_SHORTCUT, 80,
-                     HELPCTX(kitty_hyperlinks), kitty_urlregex_field_handler,
-                     I(CONF_url_regex), ED_STR);
-        /* The compile error of the field, red, right under it; blank when
-         * it compiles. Laid out here, before the button row, so it never
-         * sits over a control below it. */
-        kitty_urlregex_note = ctrl_text(s, " ", HELPCTX(kitty_hyperlinks));
-        /* Reset the field to KiTTY's shipped pattern - behind a
-         * confirmation, because it OVERWRITES whatever is typed there. */
-        {
-            dlgcontrol *rc;
-            ctrl_columns(s, 2, 60, 40);
-            rc = ctrl_pushbutton(s, KT_HYPERLINKS_RESET_REGEX, NO_SHORTCUT,
-                                 HELPCTX(kitty_hyperlinks),
-                                 kitty_urlregex_reset_handler, I(0));
-            rc->column = 1;
-            ctrl_columns(s, 1, 100);
-        }
+    s = ctrl_getset(b, "Window/Hyperlinks", "main",
+                    KT_HYPERLINKS_HYPERLINK_BEHAVIOUR);
+    /* Where links come from: the regular expression over the output
+     * (the behaviour before OSC 8) and the links the host declares. */
+    ctrl_checkbox(s, KT_HYPERLINKS_SCAN, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_scan));
+    ctrl_checkbox(s, KT_HYPERLINKS_OSC8, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_osc8));
+    ctrl_checkbox(s, KT_HYPERLINKS_PREVIEW, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_preview));
+    /* NO_SHORTCUT: each button carries its own shortcut (triples) */
+    ctrl_radiobuttons(s, KT_HYPERLINKS_CONFIRM, NO_SHORTCUT, 1,
+                      HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
+                      I(CONF_url_confirm),
+                      KT_HYPERLINKS_CONFIRM_ALWAYS, NO_SHORTCUT, I(0),
+                      KT_HYPERLINKS_CONFIRM_RISKY,  NO_SHORTCUT, I(1),
+                      KT_HYPERLINKS_CONFIRM_NONWEB, NO_SHORTCUT, I(2));
+    ctrl_checkbox(s, KT_HYPERLINKS_REQUIRE_CTRL_KEY_TO_CLICK, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_ctrl_click));
+    /* The values keep their old meaning (the checkbox stored 1 / 0):
+     * On hover is the new 2 - the link under the pointer, every piece
+     * of it (OSC 8 pieces sharing id= and target are one link). */
+    ctrl_radiobuttons(s, KT_HYPERLINKS_UNDERLINE_HYPERLINKS, NO_SHORTCUT, 3,
+                      HELPCTX(kitty_hyperlinks), conf_radiobutton_handler,
+                      I(CONF_url_underline),
+                      KT_HYPERLINKS_UNDERLINE_ALWAYS, NO_SHORTCUT, I(1),
+                      KT_HYPERLINKS_UNDERLINE_HOVER,  NO_SHORTCUT, I(2),
+                      KT_HYPERLINKS_UNDERLINE_NEVER,  NO_SHORTCUT, I(0));
+    ctrl_checkbox(s, KT_HYPERLINKS_SHOW_HAND_CURSOR_WHEN_HOVERING, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_hover_cursor));
+    ctrl_checkbox(s, KT_HYPERLINKS_USE_THE_DEFAULT_BROWSER, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_defbrowser));
+    ctrl_filesel(s, KT_HYPERLINKS_OTHER_BROWSER, NO_SHORTCUT,
+                 FILTER_ALL_FILES, false, KT_HYPERLINKS_SELECT_BROWSER_EXECUTABLE,
+                 HELPCTX(kitty_hyperlinks),
+                 conf_filesel_handler, I(CONF_url_browser));
+    ctrl_checkbox(s, KT_HYPERLINKS_USE_THE_DEFAULT_REGULAR_EXPRESSION, NO_SHORTCUT,
+                  HELPCTX(kitty_hyperlinks), kitty_checkbox_int_handler,
+                  I(CONF_url_defregex));
+    /* Short label + a wide field: a regex deserves the room. */
+    ctrl_editbox(s, KT_HYPERLINKS_CUSTOM_REGEX, NO_SHORTCUT, 80,
+                 HELPCTX(kitty_hyperlinks), kitty_urlregex_field_handler,
+                 I(CONF_url_regex), ED_STR);
+    /* The compile error of the field, red, right under it; blank when
+     * it compiles. Laid out here, before the button row, so it never
+     * sits over a control below it. */
+    kitty_urlregex_note = ctrl_text(s, " ", HELPCTX(kitty_hyperlinks));
+    /* Reset the field to KiTTY's shipped pattern - behind a
+     * confirmation, because it OVERWRITES whatever is typed there. */
+    {
+        dlgcontrol *rc;
+        ctrl_columns(s, 2, 60, 40);
+        rc = ctrl_pushbutton(s, KT_HYPERLINKS_RESET_REGEX, NO_SHORTCUT,
+                             HELPCTX(kitty_hyperlinks),
+                             kitty_urlregex_reset_handler, I(0));
+        rc->column = 1;
+        ctrl_columns(s, 1, 100);
     }
 
     /*
      * The Window/Appearance panel: window icon + remember position (KiTTY).
      */
-    if (!GetPuttyFlag()) {
-        /* KiTTY: this PINS the window to typed coordinates - it remembers
-         * nothing. It was labelled "Remember window position", the same words
-         * as the genuinely-remembering option in Window > Behaviour, in a
-         * different panel, doing the opposite thing. The checkbox now also
-         * gates the pin: it was ignored entirely, so coordinates >= 0 pinned
-         * the window whether or not the box was ticked (window.c). */
-        /* Its own leaf: fixed coordinates are a placement concern, not a
-         * looks one, and Appearance was full. */
-        s = ctrl_getset(b, "Window/Appearance/Position", "position",
-                        KT_APPEARANCE_WHERE_THE_WINDOW_OPENS);
-        /* KiTTY: the genuinely-remembering option, moved here from Window >
-         * Behaviour so the two ways of placing a window sit together. It
-         * remembers PER SESSION and per monitor LAYOUT - position and columns
-         * x rows - so docking or unplugging a screen restores the window
-         * where it belonged on that layout instead of stranding it
-         * off-screen; it deliberately does not restore a maximised or
-         * minimised state (windows/window.c, kitty/kitty_winpos.c). Top and
-         * Left below show this session's entry for the layout the box is on
-         * now (the Load path copies it into the conf). */
-        ctrl_checkbox(s, KT_APPEARANCE_REMEMBER_WINDOW_POSITION, NO_SHORTCUT,
-                      HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
-                      I(CONF_remember_winpos));
-        ctrl_text(s, KT_APPEARANCE_REMEMBER_NOTE, HELPCTX(kitty_winpos_remember));
-        ctrl_checkbox(s, KT_APPEARANCE_OPEN_THE_WINDOW, NO_SHORTCUT,
-                      HELPCTX(kitty_winpos), conf_checkbox_handler,
-                      I(CONF_set_windowpos));
-        ctrl_editbox(s, KT_APPEARANCE_TOP, NO_SHORTCUT, 20, HELPCTX(kitty_winpos),
-                     conf_editbox_handler, I(CONF_ypos), ED_INT);
-        ctrl_editbox(s, KT_APPEARANCE_LEFT, NO_SHORTCUT, 20, HELPCTX(kitty_winpos),
-                     conf_editbox_handler, I(CONF_xpos), ED_INT);
-        ctrl_text(s, KT_APPEARANCE_A_FIXED_POSITION_WINS_OVER, HELPCTX(kitty_winpos));
+    /* KiTTY: this PINS the window to typed coordinates - it remembers
+     * nothing. It was labelled "Remember window position", the same words
+     * as the genuinely-remembering option in Window > Behaviour, in a
+     * different panel, doing the opposite thing. The checkbox now also
+     * gates the pin: it was ignored entirely, so coordinates >= 0 pinned
+     * the window whether or not the box was ticked (window.c). */
+    /* Its own leaf: fixed coordinates are a placement concern, not a
+     * looks one, and Appearance was full. */
+    s = ctrl_getset(b, "Window/Appearance/Position", "position",
+                    KT_APPEARANCE_WHERE_THE_WINDOW_OPENS);
+    /* KiTTY: the genuinely-remembering option, moved here from Window >
+     * Behaviour so the two ways of placing a window sit together. It
+     * remembers PER SESSION and per monitor LAYOUT - position and columns
+     * x rows - so docking or unplugging a screen restores the window
+     * where it belonged on that layout instead of stranding it
+     * off-screen; it deliberately does not restore a maximised or
+     * minimised state (windows/window.c, kitty/kitty_winpos.c). Top and
+     * Left below show this session's entry for the layout the box is on
+     * now (the Load path copies it into the conf). */
+    ctrl_checkbox(s, KT_APPEARANCE_REMEMBER_WINDOW_POSITION, NO_SHORTCUT,
+                  HELPCTX(kitty_winpos_remember), conf_checkbox_handler,
+                  I(CONF_remember_winpos));
+    ctrl_text(s, KT_APPEARANCE_REMEMBER_NOTE, HELPCTX(kitty_winpos_remember));
+    ctrl_checkbox(s, KT_APPEARANCE_OPEN_THE_WINDOW, NO_SHORTCUT,
+                  HELPCTX(kitty_winpos), conf_checkbox_handler,
+                  I(CONF_set_windowpos));
+    ctrl_editbox(s, KT_APPEARANCE_TOP, NO_SHORTCUT, 20, HELPCTX(kitty_winpos),
+                 conf_editbox_handler, I(CONF_ypos), ED_INT);
+    ctrl_editbox(s, KT_APPEARANCE_LEFT, NO_SHORTCUT, 20, HELPCTX(kitty_winpos),
+                 conf_editbox_handler, I(CONF_xpos), ED_INT);
+    ctrl_text(s, KT_APPEARANCE_A_FIXED_POSITION_WINS_OVER, HELPCTX(kitty_winpos));
 
-        /* KiTTY: the icon group shares the "Title & Icon" leaf with the
-         * window title (appended to Appearance it once pushed that panel
-         * past the dialog's command buttons). */
-        s = ctrl_getset(b, "Window/Title & Icon", "icon",
-                        KT_ICON_DEFINE_THE_WINDOW_ICON);
-        ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 40,
-                     HELPCTX(kitty_icon), conf_editbox_handler,
-                     I(CONF_icone), ED_INT);
-        ctrl_filesel(s, KT_ICON_EXTERNAL_ICON_FILE, NO_SHORTCUT,
-                     FILTER_ICON_FILES, false, KT_ICON_SELECT_ICON_FILE,
-                     HELPCTX(kitty_icon),
-                     conf_filesel_handler, I(CONF_iconefile));
-    }
+    /* KiTTY: the icon group shares the "Title & Icon" leaf with the
+     * window title (appended to Appearance it once pushed that panel
+     * past the dialog's command buttons). */
+    s = ctrl_getset(b, "Window/Title & Icon", "icon",
+                    KT_ICON_DEFINE_THE_WINDOW_ICON);
+    ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 40,
+                 HELPCTX(kitty_icon), conf_editbox_handler,
+                 I(CONF_icone), ED_INT);
+    ctrl_filesel(s, KT_ICON_EXTERNAL_ICON_FILE, NO_SHORTCUT,
+                 FILTER_ICON_FILES, false, KT_ICON_SELECT_ICON_FILE,
+                 HELPCTX(kitty_icon),
+                 conf_filesel_handler, I(CONF_iconefile));
 
 #ifdef MOD_BACKGROUNDIMAGE
     /* The Background leaf's image groups (KiTTY). Engine: kitty_image.c. */
-    if (!GetPuttyFlag() && GetBackgroundImageFlag()) {
+    if (GetBackgroundImageFlag()) {
         s = ctrl_getset(b, "Window/Appearance/Background", "bg_style",
                         KT_BACK_IMAGE_BACKGROUND_SETTINGS);
         ctrl_radiobuttons(s, KT_BACK_IMAGE_BACKGROUND_STYLE, NO_SHORTCUT, 3,
@@ -7230,14 +7177,12 @@ void scb_panel_selection(struct controlbox *b)
      * "Selected Text" and "Selected Background" slots (editable in the list
      * below). under_colour colours underlined text; sel_colour rendering is
      * deferred (slots exist + are editable). */
-    if (!GetPuttyFlag()) {
-        ctrl_checkbox(s, KT_COLOURS_COLOUR_UNDERLINED_TEXT, NO_SHORTCUT,
-                      HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
-                      I(CONF_under_colour));
-        ctrl_checkbox(s, KT_COLOURS_COLOUR_SELECTED_TEXT, NO_SHORTCUT,
-                      HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
-                      I(CONF_sel_colour));
-    }
+    ctrl_checkbox(s, KT_COLOURS_COLOUR_UNDERLINED_TEXT, NO_SHORTCUT,
+                  HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
+                  I(CONF_under_colour));
+    ctrl_checkbox(s, KT_COLOURS_COLOUR_SELECTED_TEXT, NO_SHORTCUT,
+                  HELPCTX(kitty_colour_extra), kitty_checkbox_int_handler,
+                  I(CONF_sel_colour));
 #endif
 
     /* KiTTY: the adjust block is its own leaf under Colours - the general
@@ -7291,11 +7236,9 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
         ctrl_editbox(s, KT_CONNECTION_SECONDS_BETWEEN_KEEPALIVES_0, 'k', 20,
                      HELPCTX(connection_keepalive),
                      conf_editbox_handler, I(CONF_ping_interval), ED_INT);
-        if (!GetPuttyFlag()) {
-            ctrl_editbox(s, KT_CONNECTION_ANTI_IDLE_STRING, NO_SHORTCUT, 50,
-                         HELPCTX(kitty_antiidle), conf_editbox_handler,
-                         I(CONF_antiidle), ED_STR);
-        }
+        ctrl_editbox(s, KT_CONNECTION_ANTI_IDLE_STRING, NO_SHORTCUT, 50,
+                     HELPCTX(kitty_antiidle), conf_editbox_handler,
+                     I(CONF_antiidle), ED_STR);
 
         if (!midsession) {
             s = ctrl_getset(b, "Connection", "tcp",
@@ -7323,34 +7266,32 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
 #ifdef MOD_RECONNECT
             /* KiTTY auto-reconnect (INT keys -> kitty_checkbox_int_handler;
              * engine wired separately). Gated by GetAutoreconnectFlag(). */
-            if (!GetPuttyFlag()) {
-                s = ctrl_getset(b, "Connection", "reconnect",
-                                KT_CONNECTION_RECONNECT_OPTIONS);
-                if (GetAutoreconnectFlag()) {
-                    ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM,
-                                  NO_SHORTCUT, HELPCTX(kitty_reconnect),
-                                  kitty_checkbox_int_handler,
-                                  I(CONF_wakeup_reconnect));
-                    ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION,
-                                  NO_SHORTCUT, HELPCTX(kitty_reconnect),
-                                  kitty_checkbox_int_handler,
-                                  I(CONF_failure_reconnect));
-                    /* hknet/KiTTY#66: this server's tolerance for failed
-                     * logins (a fail2ban bastion vs a lab VM) - the global
-                     * table, or no retry where the server saw a login */
-                    ctrl_droplist(s, KT_RC_SESS_LOGIN, NO_SHORTCUT, 50,
-                                  HELPCTX(kitty_reconnect),
-                                  kitty_reconnect_login_handler,
-                                  I(CONF_reconnect_login));
-                } else {
-                    /* The master switch is off (it is on by default): one
-                     * short line stating it and where it is, rather than
-                     * leaving the group out and the feature unfindable.
-                     * With the switch on, nothing - the boxes speak for
-                     * themselves. */
-                    ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_OFF,
-                              HELPCTX(kitty_reconnect));
-                }
+            s = ctrl_getset(b, "Connection", "reconnect",
+                            KT_CONNECTION_RECONNECT_OPTIONS);
+            if (GetAutoreconnectFlag()) {
+                ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_SYSTEM,
+                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
+                              kitty_checkbox_int_handler,
+                              I(CONF_wakeup_reconnect));
+                ctrl_checkbox(s, KT_CONNECTION_ATTEMPT_TO_RECONNECT_ON_CONNECTION,
+                              NO_SHORTCUT, HELPCTX(kitty_reconnect),
+                              kitty_checkbox_int_handler,
+                              I(CONF_failure_reconnect));
+                /* hknet/KiTTY#66: this server's tolerance for failed
+                 * logins (a fail2ban bastion vs a lab VM) - the global
+                 * table, or no retry where the server saw a login */
+                ctrl_droplist(s, KT_RC_SESS_LOGIN, NO_SHORTCUT, 50,
+                              HELPCTX(kitty_reconnect),
+                              kitty_reconnect_login_handler,
+                              I(CONF_reconnect_login));
+            } else {
+                /* The master switch is off (it is on by default): one
+                 * short line stating it and where it is, rather than
+                 * leaving the group out and the feature unfindable.
+                 * With the switch on, nothing - the boxes speak for
+                 * themselves. */
+                ctrl_text(s, KT_CONNECTION_RECONNECT_GLOBAL_OFF,
+                          HELPCTX(kitty_reconnect));
             }
 #endif
 
@@ -7375,14 +7316,12 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
 #ifdef MOD_PORTKNOCKING
             /* KiTTY: port-knocking sequence. Backend = kitty_port_knock() /
              * ManagePortKnocking(), fired from start_backend() before connect. */
-            if (!GetPuttyFlag()) {
-                ctrl_editbox(s, KT_CONNECTION_PORT_KNOCKING_SEQUENCE, NO_SHORTCUT, 100,
-                             HELPCTX(kitty_knocking), conf_editbox_handler,
-                             I(CONF_portknockingoptions), ED_STR);
-                ctrl_text(s, KT_CONNECTION_A_COMMA_SEPARATED_LIST, HELPCTX(kitty_knocking));
-                ctrl_text(s, KT_CONNECTION_EXAMPLE_2001_TCP_1_S,
-                          HELPCTX(kitty_knocking));
-            }
+            ctrl_editbox(s, KT_CONNECTION_PORT_KNOCKING_SEQUENCE, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_knocking), conf_editbox_handler,
+                         I(CONF_portknockingoptions), ED_STR);
+            ctrl_text(s, KT_CONNECTION_A_COMMA_SEPARATED_LIST, HELPCTX(kitty_knocking));
+            ctrl_text(s, KT_CONNECTION_EXAMPLE_2001_TCP_1_S,
+                      HELPCTX(kitty_knocking));
 #endif
         }
 
@@ -7429,50 +7368,48 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
             }
 
             /* KiTTY auto-command: sent automatically after login. */
-            if (!GetPuttyFlag()) {
-                dlgcontrol *cpw;
-                cpw = ctrl_editbox(s, KT_DATA_AUTO_LOGIN_PASSWORD, NO_SHORTCUT, 50,
-                                   HELPCTX(kitty_autologin), kitty_autopw_handler,
-                                   I(CONF_password), ED_STR);
-                cpw->editbox.password = true;
-                g_autopw_ctrl = cpw;
-                ctrl_checkbox(s, KT_DATA_SHOW_PASSWORD, NO_SHORTCUT,
-                              HELPCTX(kitty_autologin), kitty_showpw_handler,
-                              P(&g_autopw_ctrl));
-                ctrl_editbox(s, KT_DATA_AUTO_COMMAND_AFTER_LOGIN, NO_SHORTCUT,
-                             50, HELPCTX(kitty_autologin),
-                             conf_editbox_handler,
-                             I(CONF_autocommand), ED_STR);
-                /*
-                 * The login script, readable and editable.
-                 *
-                 * It used to be a single-line box bound straight to the STORED
-                 * value, which meant it showed protected gibberish and - worse -
-                 * writing in it produced a value no decoder could open, so the
-                 * script silently stopped working. It now shows the script the
-                 * way it is written in a script file: one entry per line,
-                 * alternating what to wait for and what to send.
-                 *
-                 * The "Login script file:" picker that used to sit above this is
-                 * GONE. It was bound to CONF_scriptfile, which belongs to the
-                 * rutty scripting on Session > Scripting - so choosing a file
-                 * here silently changed THAT setting and did nothing whatever for
-                 * the login script, which nothing ever read it for. Load a file
-                 * with -loginscript; edit it here afterwards.
-                 */
-                g_loginscript_ctrl =
-                    ctrl_editbox_multiline(s, KT_DATA_LOGIN_SCRIPT_WAIT,
-                                           NO_SHORTCUT, 8, false,
-                                           HELPCTX(kitty_loginscript),
-                                           kitty_loginscript_handler,
-                                           I(CONF_scriptfilecontent), ED_STR);
-                /* Replaces classic's picker, which read a file into the session
-                 * and cleared itself. This only fills the box - what gets saved
-                 * is what you can see and edit above. */
-                ctrl_pushbutton(s, KT_DATA_LOAD_SCRIPT_FROM_FILE, NO_SHORTCUT,
-                                HELPCTX(kitty_loginscript),
-                                kitty_loginscript_load_handler, I(0));
-            }
+            dlgcontrol *cpw;
+            cpw = ctrl_editbox(s, KT_DATA_AUTO_LOGIN_PASSWORD, NO_SHORTCUT, 50,
+                               HELPCTX(kitty_autologin), kitty_autopw_handler,
+                               I(CONF_password), ED_STR);
+            cpw->editbox.password = true;
+            g_autopw_ctrl = cpw;
+            ctrl_checkbox(s, KT_DATA_SHOW_PASSWORD, NO_SHORTCUT,
+                          HELPCTX(kitty_autologin), kitty_showpw_handler,
+                          P(&g_autopw_ctrl));
+            ctrl_editbox(s, KT_DATA_AUTO_COMMAND_AFTER_LOGIN, NO_SHORTCUT,
+                         50, HELPCTX(kitty_autologin),
+                         conf_editbox_handler,
+                         I(CONF_autocommand), ED_STR);
+            /*
+             * The login script, readable and editable.
+             *
+             * It used to be a single-line box bound straight to the STORED
+             * value, which meant it showed protected gibberish and - worse -
+             * writing in it produced a value no decoder could open, so the
+             * script silently stopped working. It now shows the script the
+             * way it is written in a script file: one entry per line,
+             * alternating what to wait for and what to send.
+             *
+             * The "Login script file:" picker that used to sit above this is
+             * GONE. It was bound to CONF_scriptfile, which belongs to the
+             * rutty scripting on Session > Scripting - so choosing a file
+             * here silently changed THAT setting and did nothing whatever for
+             * the login script, which nothing ever read it for. Load a file
+             * with -loginscript; edit it here afterwards.
+             */
+            g_loginscript_ctrl =
+                ctrl_editbox_multiline(s, KT_DATA_LOGIN_SCRIPT_WAIT,
+                                       NO_SHORTCUT, 8, false,
+                                       HELPCTX(kitty_loginscript),
+                                       kitty_loginscript_handler,
+                                       I(CONF_scriptfilecontent), ED_STR);
+            /* Replaces classic's picker, which read a file into the session
+             * and cleared itself. This only fills the box - what gets saved
+             * is what you can see and edit above. */
+            ctrl_pushbutton(s, KT_DATA_LOAD_SCRIPT_FROM_FILE, NO_SHORTCUT,
+                            HELPCTX(kitty_loginscript),
+                            kitty_loginscript_load_handler, I(0));
 
             /* KiTTY: terminal identification and the environment block each
              * get a leaf under Data - the login settings alone fill the
@@ -7494,15 +7431,13 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
              * above the variables that send it. Each window of the session
              * adds its own number: <base>-1, <base>-2. Not displayed;
              * -winname and "Terminal Name..." name one window instead. */
-            if (!GetPuttyFlag()) {
-                s = ctrl_getset(b, "Connection/Login/Environment", "ident",
-                                NULL);
-                /* 100 = label on its own line: it is too long to share one */
-                ctrl_editbox(s, KT_TITLE_WINDOW_NAME, NO_SHORTCUT, 100,
-                             HELPCTX(kitty_window_name),
-                             conf_editbox_handler, I(CONF_window_name),
-                             ED_STR);
-            }
+            s = ctrl_getset(b, "Connection/Login/Environment", "ident",
+                            NULL);
+            /* 100 = label on its own line: it is too long to share one */
+            ctrl_editbox(s, KT_TITLE_WINDOW_NAME, NO_SHORTCUT, 100,
+                         HELPCTX(kitty_window_name),
+                         conf_editbox_handler, I(CONF_window_name),
+                         ED_STR);
             s = ctrl_getset(b, "Connection/Login/Environment", "env",
                             KT_DATA_ENVIRONMENT_VARIABLES);
             ctrl_columns(s, 2, 80, 20);
@@ -7566,7 +7501,7 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
          * definitions come from, and the two things below it both consume one.
          * (It used to sit at the foot of the panel, under the session's own
          * fields.) */
-        if (!GetPuttyFlag() && kitty_proxy_editor_available()) {
+        if (kitty_proxy_editor_available()) {
             s = ctrl_getset(b, "Connection/Proxy", "editnamed",
                             KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES);
             ctrl_pushbutton(s, KT_PROXY_EDIT_NAMED_PROXIES, NO_SHORTCUT,
@@ -7641,7 +7576,7 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
         /* KiTTY: the pre-set loader, after the session's own fields. It
          * adopts a template into this session, so it is not one of those
          * fields - it is something the user reaches for on purpose. */
-        if (!GetPuttyFlag() && kitty_has_proxy_definitions()) {
+        if (kitty_has_proxy_definitions()) {
             struct pxload_data *pd = (struct pxload_data *)
                 ctrl_alloc(b, sizeof(struct pxload_data));
             memset(pd, 0, sizeof(*pd));
@@ -7670,7 +7605,7 @@ void scb_panel_proxy(struct controlbox *b, bool midsession)
          * a bug, and gave no hint where the feature had gone. */
         /* An Application leaf, so [ConfigBox] applicationsettings=no
          * takes it away with the rest of that tab. */
-        if (!GetPuttyFlag() && GetConfigBoxApplicationSettingsFlag()) {
+        if (GetConfigBoxApplicationSettingsFlag()) {
             struct wpmode_data *wd = (struct wpmode_data *)
                 ctrl_alloc(b, sizeof(struct wpmode_data));
             memset(wd, 0, sizeof(*wd));
@@ -8275,11 +8210,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
             /* KiTTY: the CA editor lives on the Application tab; the button
              * jumps there. Without that tab (applicationsettings=no) there is
              * nowhere to jump, and the line shows where the setting is. */
-            if (GetPuttyFlag())
-                c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
-                                    HELPCTX(ssh_kex_cert),
-                                    host_ca_button_handler, I(0));
-            else if (GetConfigBoxApplicationSettingsFlag())
+            if (GetConfigBoxApplicationSettingsFlag())
                 c = ctrl_pushbutton(s, KT_HOST_KEYS_CONFIGURE_HOST_CAS, NO_SHORTCUT,
                                     HELPCTX(ssh_kex_cert),
                                     host_ca_jump_handler, I(0));
@@ -8289,20 +8220,18 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
 
         /* KiTTY: query the host for its keys now and take new ones in - the
          * store's side of this panel (kitty_hostkey_scan_box). */
-        if (!GetPuttyFlag()) {
-            s = ctrl_getset(b, "Connection/SSH/Host keys", "scan", KT_HKSCAN_GROUP);
-            hkscan_line = ctrl_text(s, " ", HELPCTX(kitty_ssh_hostscan));
-            /* The types line is laid out for the LONGEST list there can be
-             * (every type KiTTY knows), so it never gets clipped when the
-             * real list wraps onto a second line; the refresh puts the
-             * real text in. */
-            hkscan_types = ctrl_text(s, KT_HKSCAN_TYPES_WORST, HELPCTX(kitty_ssh_hostscan));
-            ctrl_columns(s, 3, 34, 33, 33);
-            c = ctrl_pushbutton(s, KT_HKSCAN_BUTTON, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
-                                kitty_hkscan_handler, P(NULL));
-            c->column = 2;
-            ctrl_columns(s, 1, 100);
-        }
+        s = ctrl_getset(b, "Connection/SSH/Host keys", "scan", KT_HKSCAN_GROUP);
+        hkscan_line = ctrl_text(s, " ", HELPCTX(kitty_ssh_hostscan));
+        /* The types line is laid out for the LONGEST list there can be
+         * (every type KiTTY knows), so it never gets clipped when the
+         * real list wraps onto a second line; the refresh puts the
+         * real text in. */
+        hkscan_types = ctrl_text(s, KT_HKSCAN_TYPES_WORST, HELPCTX(kitty_ssh_hostscan));
+        ctrl_columns(s, 3, 34, 33, 33);
+        c = ctrl_pushbutton(s, KT_HKSCAN_BUTTON, NO_SHORTCUT, HELPCTX(kitty_ssh_hostscan),
+                            kitty_hkscan_handler, P(NULL));
+        c->column = 2;
+        ctrl_columns(s, 1, 100);
 
         if (!midsession || !(protcfginfo == 1 || protcfginfo == -1)) {
             /*
@@ -8414,10 +8343,9 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                       HELPCTX(ssh_tunnels_portfwd_localhost),
                       conf_checkbox_handler,
                       I(CONF_rport_acceptall));
-        if (!GetPuttyFlag())
-            ctrl_checkbox(s, KT_TUNNELS_PRINT_DYNAMIC_PORTS_IN_WINDOW, NO_SHORTCUT,
-                          HELPCTX(kitty_dynports), conf_checkbox_handler,
-                          I(CONF_ssh_tunnel_print_in_title));
+        ctrl_checkbox(s, KT_TUNNELS_PRINT_DYNAMIC_PORTS_IN_WINDOW, NO_SHORTCUT,
+                      HELPCTX(kitty_dynports), conf_checkbox_handler,
+                      I(CONF_ssh_tunnel_print_in_title));
 
         ctrl_columns(s, 3, 55, 20, 25);
         c = ctrl_text(s, KT_TUNNELS_FORWARDED_PORTS, HELPCTX(ssh_tunnels_portfwd));
@@ -8545,146 +8473,144 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
          * panel area into the dialog's command buttons (caught by the
          * documentation screenshots), and the content is genuinely two
          * topics - kscp transfers and the WinSCP hand-off. */
-        if (!GetPuttyFlag()) {
-            ctrl_settitle(b, "Connection/SSH/KSCP",
-                          KT_KSCP_KSCP_FILE_TRANSFER_INTEGRATION);
+        ctrl_settitle(b, "Connection/SSH/KSCP",
+                      KT_KSCP_KSCP_FILE_TRANSFER_INTEGRATION);
 
-            s = ctrl_getset(b, "Connection/SSH/KSCP",
-                            "pscp", KT_KSCP_KSCP_INTEGRATION);
-            /* What the two kscp Tools menu entries do, with their keys. */
-            ctrl_text(s, KT_KSCP_SEND_FILE_LINE, HELPCTX(kitty_winscp));
-            ctrl_text(s, KT_KSCP_GET_FILE_LINE, HELPCTX(kitty_winscp));
-            /* kscp's own protocol and port (KscpProtocol / KscpPort): SCP
-             * runs kscp with -scp, SFTP with -sftp. WinSCP and FileZilla
-             * have their own pair on their own panels. */
-            xfer_protocol_port_controls(s, XFER_TOOL_KSCP, HELPCTX(kitty_winscp));
-            /* Drops on the terminal window. Off unregisters the window for
-             * drops, so the cursor shows the no-drop sign before a file is
-             * released; the Tools menu entries have their own switches on
-             * Window > Behaviour. */
-            ctrl_checkbox(s, KT_KSCP_DRAGDROP_UPLOAD, NO_SHORTCUT,
-                          HELPCTX(kitty_winscp),
-                          conf_checkbox_handler, I(CONF_kscp_dragdrop));
-            /* After a drop upload succeeds, its remote paths are typed into
-             * the terminal; Shift held at the drop does it for that drop. */
-            ctrl_checkbox(s, KT_KSCP_DROP_TYPE_PATH, NO_SHORTCUT,
-                          HELPCTX(kitty_winscp),
-                          conf_checkbox_handler, I(CONF_kscp_drop_typepath));
-            /* The remote directory (OSC 7 / fixed) and the download folder
-             * live on Connection > File-Transfer-Settings: they serve ZModem and transfers
-             * over the session too, which are not SSH-only. */
-            ctrl_text(s, KT_KSCP_DIRS_ON_TRANSFERS, HELPCTX(kitty_winscp));
-            ctrl_editbox(s, KT_KSCP_KSCP_OPTIONS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp),
-                         conf_editbox_handler, I(CONF_pscpoptions), ED_STR);
-            ctrl_text(s, KT_KSCP_FLAGS_PASSED_TO_KSCP_DEFAULT, HELPCTX(kitty_winscp));
-            ctrl_checkbox(s, KT_KSCP_KEEP_THE_TRANSFER_WINDOW_OPEN,
-                          NO_SHORTCUT, HELPCTX(kitty_winscp),
-                          conf_checkbox_handler, I(CONF_pscp_keep_window));
-            /* The helper's path and port are application settings (KiTTY++
-             * Settings > Transfers & Tools); state that, and offer the way there
-             * when the Application tab exists. */
-            {
-                dlgcontrol *note, *btn;
-                s = ctrl_getset(b, "Connection/SSH/KSCP", "global", NULL);
-                if (GetConfigBoxApplicationSettingsFlag()) {
-                    ctrl_columns(s, 2, 55, 45);
-                    note = ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
-                    note->column = 0;
-                    btn = ctrl_pushbutton(s, KT_KSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
-                                          HELPCTX(kitty_winscp),
-                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools")));
-                    btn->column = 1;
-                    ctrl_columns(s, 1, 100);
-                } else {
-                    ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
-                }
+        s = ctrl_getset(b, "Connection/SSH/KSCP",
+                        "pscp", KT_KSCP_KSCP_INTEGRATION);
+        /* What the two kscp Tools menu entries do, with their keys. */
+        ctrl_text(s, KT_KSCP_SEND_FILE_LINE, HELPCTX(kitty_winscp));
+        ctrl_text(s, KT_KSCP_GET_FILE_LINE, HELPCTX(kitty_winscp));
+        /* kscp's own protocol and port (KscpProtocol / KscpPort): SCP
+         * runs kscp with -scp, SFTP with -sftp. WinSCP and FileZilla
+         * have their own pair on their own panels. */
+        xfer_protocol_port_controls(s, XFER_TOOL_KSCP, HELPCTX(kitty_winscp));
+        /* Drops on the terminal window. Off unregisters the window for
+         * drops, so the cursor shows the no-drop sign before a file is
+         * released; the Tools menu entries have their own switches on
+         * Window > Behaviour. */
+        ctrl_checkbox(s, KT_KSCP_DRAGDROP_UPLOAD, NO_SHORTCUT,
+                      HELPCTX(kitty_winscp),
+                      conf_checkbox_handler, I(CONF_kscp_dragdrop));
+        /* After a drop upload succeeds, its remote paths are typed into
+         * the terminal; Shift held at the drop does it for that drop. */
+        ctrl_checkbox(s, KT_KSCP_DROP_TYPE_PATH, NO_SHORTCUT,
+                      HELPCTX(kitty_winscp),
+                      conf_checkbox_handler, I(CONF_kscp_drop_typepath));
+        /* The remote directory (OSC 7 / fixed) and the download folder
+         * live on Connection > File-Transfer-Settings: they serve ZModem and transfers
+         * over the session too, which are not SSH-only. */
+        ctrl_text(s, KT_KSCP_DIRS_ON_TRANSFERS, HELPCTX(kitty_winscp));
+        ctrl_editbox(s, KT_KSCP_KSCP_OPTIONS, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_winscp),
+                     conf_editbox_handler, I(CONF_pscpoptions), ED_STR);
+        ctrl_text(s, KT_KSCP_FLAGS_PASSED_TO_KSCP_DEFAULT, HELPCTX(kitty_winscp));
+        ctrl_checkbox(s, KT_KSCP_KEEP_THE_TRANSFER_WINDOW_OPEN,
+                      NO_SHORTCUT, HELPCTX(kitty_winscp),
+                      conf_checkbox_handler, I(CONF_pscp_keep_window));
+        /* The helper's path and port are application settings (KiTTY++
+         * Settings > Transfers & Tools); state that, and offer the way there
+         * when the Application tab exists. */
+        {
+            dlgcontrol *note, *btn;
+            s = ctrl_getset(b, "Connection/SSH/KSCP", "global", NULL);
+            if (GetConfigBoxApplicationSettingsFlag()) {
+                ctrl_columns(s, 2, 55, 45);
+                note = ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
+                note->column = 0;
+                btn = ctrl_pushbutton(s, KT_KSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                      HELPCTX(kitty_winscp),
+                                      kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools")));
+                btn->column = 1;
+                ctrl_columns(s, 1, 100);
+            } else {
+                ctrl_text(s, KT_KSCP_HELPER_IS_GLOBAL, HELPCTX(kitty_winscp));
             }
+        }
 
-            ctrl_settitle(b, "Connection/SSH/WinSCP",
-                          KT_WINSCP_WINSCP_INTEGRATION);
+        ctrl_settitle(b, "Connection/SSH/WinSCP",
+                      KT_WINSCP_WINSCP_INTEGRATION);
 
-            s = ctrl_getset(b, "Connection/SSH/WinSCP",
-                            "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
-            /* WinSCP's own protocol and port (WinSCPProtocol / WinSCPPort):
-             * the whole list WinSCP takes. kscp and FileZilla have their
-             * own pair on their own panels. */
-            xfer_protocol_port_controls(s, XFER_TOOL_WINSCP,
-                                        HELPCTX(kitty_winscp_session));
-            /* The executable PATH is on KiTTY++ Settings > Transfers & Tools > WinSCP
-             * now. It never belonged here - it is a property of this PC, which
-             * is why it needed a bold "not a session setting" note to itself.
-             * The target override left too: it serves FileZilla as well, so it
-             * cannot live on one of the two leaves (Connection > File-Transfer-Settings,
-             * "Remote target"). Everything in this group IS per session and
-             * WinSCP's alone. */
-            ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp_session),
-                         conf_editbox_handler, I(CONF_winscpoptions), ED_STR);
-            ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_RAWSETTINGS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp_session),
-                         conf_editbox_handler, I(CONF_winscprawsettings), ED_STR);
-            ctrl_editbox(s, KT_WINSCP_SHELL_SCP_MODE_ONLY, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_winscp_session),
-                         conf_editbox_handler, I(CONF_pscpshell), ED_STR);
-            /* Where the executable path went, and a way there. Without the
-             * Application tab (applicationsettings=no) there is nowhere to
-             * jump, so only the note stays. */
-            {
-                dlgcontrol *note, *btn;
-                s = ctrl_getset(b, "Connection/SSH/WinSCP", "global", NULL);
-                if (GetConfigBoxApplicationSettingsFlag()) {
-                    ctrl_columns(s, 2, 62, 38);
-                    note = ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL,
-                                     HELPCTX(kitty_winscp_session));
-                    note->column = 0;
-                    btn = ctrl_pushbutton(s, KT_WINSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
-                                          HELPCTX(kitty_winscp_session),
-                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/WinSCP")));
-                    btn->column = 1;
-                    ctrl_columns(s, 1, 100);
-                } else {
-                    ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL, HELPCTX(kitty_winscp_session));
-                }
+        s = ctrl_getset(b, "Connection/SSH/WinSCP",
+                        "WinSCP", KT_WINSCP_WINSCP_INTEGRATION);
+        /* WinSCP's own protocol and port (WinSCPProtocol / WinSCPPort):
+         * the whole list WinSCP takes. kscp and FileZilla have their
+         * own pair on their own panels. */
+        xfer_protocol_port_controls(s, XFER_TOOL_WINSCP,
+                                    HELPCTX(kitty_winscp_session));
+        /* The executable PATH is on KiTTY++ Settings > Transfers & Tools > WinSCP
+         * now. It never belonged here - it is a property of this PC, which
+         * is why it needed a bold "not a session setting" note to itself.
+         * The target override left too: it serves FileZilla as well, so it
+         * cannot live on one of the two leaves (Connection > File-Transfer-Settings,
+         * "Remote target"). Everything in this group IS per session and
+         * WinSCP's alone. */
+        ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_winscp_session),
+                     conf_editbox_handler, I(CONF_winscpoptions), ED_STR);
+        ctrl_editbox(s, KT_WINSCP_WINSCP_ADDITIONAL_RAWSETTINGS, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_winscp_session),
+                     conf_editbox_handler, I(CONF_winscprawsettings), ED_STR);
+        ctrl_editbox(s, KT_WINSCP_SHELL_SCP_MODE_ONLY, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_winscp_session),
+                     conf_editbox_handler, I(CONF_pscpshell), ED_STR);
+        /* Where the executable path went, and a way there. Without the
+         * Application tab (applicationsettings=no) there is nowhere to
+         * jump, so only the note stays. */
+        {
+            dlgcontrol *note, *btn;
+            s = ctrl_getset(b, "Connection/SSH/WinSCP", "global", NULL);
+            if (GetConfigBoxApplicationSettingsFlag()) {
+                ctrl_columns(s, 2, 62, 38);
+                note = ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL,
+                                 HELPCTX(kitty_winscp_session));
+                note->column = 0;
+                btn = ctrl_pushbutton(s, KT_WINSCP_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                      HELPCTX(kitty_winscp_session),
+                                      kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/WinSCP")));
+                btn->column = 1;
+                ctrl_columns(s, 1, 100);
+            } else {
+                ctrl_text(s, KT_WINSCP_PATH_IS_GLOBAL, HELPCTX(kitty_winscp_session));
             }
+        }
 
-            /* FileZilla beside WinSCP: its own protocol and port
-             * (FileZillaProtocol / FileZillaPort), the four FileZilla takes.
-             * The target is still the shared setting. What is FileZilla's own
-             * besides that is how the password reaches it, a user-facing
-             * security choice with each consequence stated (kitty_xfer.c
-             * StartFileZilla). */
-            ctrl_settitle(b, "Connection/SSH/FileZilla", KT_FZ_INTEGRATION);
-            s = ctrl_getset(b, "Connection/SSH/FileZilla", "FileZilla", KT_FZ_INTEGRATION);
-            xfer_protocol_port_controls(s, XFER_TOOL_FILEZILLA,
-                                        HELPCTX(kitty_filezilla_session));
-            ctrl_text(s, KT_FZ_TARGET_NOTE, HELPCTX(kitty_filezilla_session));
-            ctrl_editbox(s, KT_FZ_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
-                         HELPCTX(kitty_filezilla_session),
-                         conf_editbox_handler, I(CONF_filezilla_options), ED_STR);
-            s = ctrl_getset(b, "Connection/SSH/FileZilla", "password", KT_FZ_PASSWORD_GROUP);
-            ctrl_radiobuttons(s, KT_FZ_PASSWORD_HOW, NO_SHORTCUT, 1,
-                              HELPCTX(kitty_filezilla_session),
-                              conf_radiobutton_handler, I(CONF_filezilla_pwmode),
-                              KT_FZ_PW_ASK,     NO_SHORTCUT, I(0),
-                              KT_FZ_PW_TEMPCFG, NO_SHORTCUT, I(1),
-                              KT_FZ_PW_CMDLINE, NO_SHORTCUT, I(2));
-            ctrl_text(s, KT_FZ_KEY_PREFERRED, HELPCTX(kitty_filezilla_session));
-            {
-                dlgcontrol *note, *btn;
-                s = ctrl_getset(b, "Connection/SSH/FileZilla", "global", NULL);
-                if (GetConfigBoxApplicationSettingsFlag()) {
-                    ctrl_columns(s, 2, 62, 38);
-                    note = ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
-                    note->column = 0;
-                    btn = ctrl_pushbutton(s, KT_FZ_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
-                                          HELPCTX(kitty_filezilla_session),
-                                          kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/FileZilla")));
-                    btn->column = 1;
-                    ctrl_columns(s, 1, 100);
-                } else {
-                    ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
-                }
+        /* FileZilla beside WinSCP: its own protocol and port
+         * (FileZillaProtocol / FileZillaPort), the four FileZilla takes.
+         * The target is still the shared setting. What is FileZilla's own
+         * besides that is how the password reaches it, a user-facing
+         * security choice with each consequence stated (kitty_xfer.c
+         * StartFileZilla). */
+        ctrl_settitle(b, "Connection/SSH/FileZilla", KT_FZ_INTEGRATION);
+        s = ctrl_getset(b, "Connection/SSH/FileZilla", "FileZilla", KT_FZ_INTEGRATION);
+        xfer_protocol_port_controls(s, XFER_TOOL_FILEZILLA,
+                                    HELPCTX(kitty_filezilla_session));
+        ctrl_text(s, KT_FZ_TARGET_NOTE, HELPCTX(kitty_filezilla_session));
+        ctrl_editbox(s, KT_FZ_ADDITIONAL_OPTIONS, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_filezilla_session),
+                     conf_editbox_handler, I(CONF_filezilla_options), ED_STR);
+        s = ctrl_getset(b, "Connection/SSH/FileZilla", "password", KT_FZ_PASSWORD_GROUP);
+        ctrl_radiobuttons(s, KT_FZ_PASSWORD_HOW, NO_SHORTCUT, 1,
+                          HELPCTX(kitty_filezilla_session),
+                          conf_radiobutton_handler, I(CONF_filezilla_pwmode),
+                          KT_FZ_PW_ASK,     NO_SHORTCUT, I(0),
+                          KT_FZ_PW_TEMPCFG, NO_SHORTCUT, I(1),
+                          KT_FZ_PW_CMDLINE, NO_SHORTCUT, I(2));
+        ctrl_text(s, KT_FZ_KEY_PREFERRED, HELPCTX(kitty_filezilla_session));
+        {
+            dlgcontrol *note, *btn;
+            s = ctrl_getset(b, "Connection/SSH/FileZilla", "global", NULL);
+            if (GetConfigBoxApplicationSettingsFlag()) {
+                ctrl_columns(s, 2, 62, 38);
+                note = ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
+                note->column = 0;
+                btn = ctrl_pushbutton(s, KT_FZ_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                      HELPCTX(kitty_filezilla_session),
+                                      kitty_global_jump_handler, P(KSET_PATH("Transfers & Tools/FileZilla")));
+                btn->column = 1;
+                ctrl_columns(s, 1, 100);
+            } else {
+                ctrl_text(s, KT_FZ_PATH_IS_GLOBAL, HELPCTX(kitty_filezilla_session));
             }
         }
     }
@@ -9003,8 +8929,6 @@ void scb_panel_transfers(struct controlbox *b)
     struct controlset *s;
     char line[4200];
 
-    if (GetPuttyFlag()) return;
-
     ctrl_settitle(b, "Connection/File-Transfer-Settings", KT_TRANSFERS_TITLE);
 
     /* First, because it sets WHICH HOST the tool-specific matter below is
@@ -9099,35 +9023,33 @@ void scb_panel_zmodem(struct controlbox *b)
      * leaf; with it off the session settings below are not built - they are
      * declared into the controlbox once - and the panel shows where the
      * switch is, so it is never a dead end. */
-    if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Connection/ZModem",
-                      KT_ZMODEM_OPTIONS_CONTROLLING_Z_MODEM_TRANSFERS);
-        if (!GetZModemFlag()) {
-            s = ctrl_getset(b, "Connection/ZModem", "global", NULL);
-            if (GetConfigBoxApplicationSettingsFlag()) {
-                /* The note and the way there, as on the KSCP, WinSCP and
-                 * FileZilla panels. */
-                dlgcontrol *note, *btn;
-                ctrl_columns(s, 2, 55, 45);
-                note = ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_SHORT, HELPCTX(kitty_zmodem));
-                note->column = 0;
-                note->text.lines = 2;
-                btn = ctrl_pushbutton(s, KT_ZMODEM_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
-                                      HELPCTX(kitty_zmodem),
-                                      kitty_global_jump_handler,
-                                      P(KSET_PATH("Transfers & Tools/ZModem")));
-                btn->column = 1;
-                ctrl_columns(s, 1, 100);
-            } else {
-                /* No Application tab to jump to: the path in words. */
-                ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_NOTE,
-                          HELPCTX(kitty_zmodem))->text.lines = 2;
-            }
+    ctrl_settitle(b, "Connection/ZModem",
+                  KT_ZMODEM_OPTIONS_CONTROLLING_Z_MODEM_TRANSFERS);
+    if (!GetZModemFlag()) {
+        s = ctrl_getset(b, "Connection/ZModem", "global", NULL);
+        if (GetConfigBoxApplicationSettingsFlag()) {
+            /* The note and the way there, as on the KSCP, WinSCP and
+             * FileZilla panels. */
+            dlgcontrol *note, *btn;
+            ctrl_columns(s, 2, 55, 45);
+            note = ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_SHORT, HELPCTX(kitty_zmodem));
+            note->column = 0;
+            note->text.lines = 2;
+            btn = ctrl_pushbutton(s, KT_ZMODEM_OPEN_GLOBAL_PANEL, NO_SHORTCUT,
+                                  HELPCTX(kitty_zmodem),
+                                  kitty_global_jump_handler,
+                                  P(KSET_PATH("Transfers & Tools/ZModem")));
+            btn->column = 1;
+            ctrl_columns(s, 1, 100);
+        } else {
+            /* No Application tab to jump to: the path in words. */
+            ctrl_text(s, KT_ZMODEM_GLOBAL_OFF_NOTE,
+                      HELPCTX(kitty_zmodem))->text.lines = 2;
         }
     }
 
     /* The Connection/ZModem panels (KiTTY). Backend = kitty_zmodem_*. */
-    if ((!GetPuttyFlag()) && GetZModemFlag()) {
+    if (GetZModemFlag()) {
         /* The download folder moved to Connection > File-Transfer-Settings, where every
          * receiving feature reads it (same key, zDownloadDir). */
         s = ctrl_getset(b, "Connection/ZModem", "download",
@@ -9223,22 +9145,20 @@ void scb_panel_comment(struct controlbox *b)
      * The FIRST leaf under Session - the note about a session leads its
      * subtree. (Classic KiTTY had it as a top-level category.)
      */
-    if (!GetPuttyFlag()) {
-        ctrl_settitle(b, "Session/Comment & Lock", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
-        s = ctrl_getset(b, "Session/Comment & Lock", "main", NULL);
-        /* Multiline (~5 lines). Newlines round-trip to storage: REG_SZ holds
-         * CRLF directly, and file/dir mode mungestr()-encodes control chars. */
-        ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
-                               HELPCTX(kitty_comment), conf_editbox_handler,
-                               I(CONF_comment), ED_STR);
-        /* Printed into the terminal, framed, once, before the connection
-         * starts - see kitty_print_session_comment. */
-        ctrl_checkbox(s, KT_COMMENT_NOTIFY, NO_SHORTCUT, HELPCTX(kitty_comment),
-                      conf_checkbox_handler, I(CONF_comment_notify));
-        /* hknet/KiTTY#61 */
-        s = ctrl_getset(b, "Session/Comment & Lock", "lock", KT_SESSION_LOCK_GROUP);
-        ctrl_checkbox(s, KT_SESSION_LOCKDOWN, NO_SHORTCUT, HELPCTX(kitty_comment),
-                      kcs_lockdown_handler, P(NULL));
-        ctrl_text(s, KT_SESSION_LOCKDOWN_NOTE, HELPCTX(kitty_comment));
-    }
+    ctrl_settitle(b, "Session/Comment & Lock", KT_COMMENT_COMMENT_FOR_THIS_SESSION);
+    s = ctrl_getset(b, "Session/Comment & Lock", "main", NULL);
+    /* Multiline (~5 lines). Newlines round-trip to storage: REG_SZ holds
+     * CRLF directly, and file/dir mode mungestr()-encodes control chars. */
+    ctrl_editbox_multiline(s, KT_COMMENT_SESSION_COMMENT, NO_SHORTCUT, 5, false,
+                           HELPCTX(kitty_comment), conf_editbox_handler,
+                           I(CONF_comment), ED_STR);
+    /* Printed into the terminal, framed, once, before the connection
+     * starts - see kitty_print_session_comment. */
+    ctrl_checkbox(s, KT_COMMENT_NOTIFY, NO_SHORTCUT, HELPCTX(kitty_comment),
+                  conf_checkbox_handler, I(CONF_comment_notify));
+    /* hknet/KiTTY#61 */
+    s = ctrl_getset(b, "Session/Comment & Lock", "lock", KT_SESSION_LOCK_GROUP);
+    ctrl_checkbox(s, KT_SESSION_LOCKDOWN, NO_SHORTCUT, HELPCTX(kitty_comment),
+                  kcs_lockdown_handler, P(NULL));
+    ctrl_text(s, KT_SESSION_LOCKDOWN_NOTE, HELPCTX(kitty_comment));
 }

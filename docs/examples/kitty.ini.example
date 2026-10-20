@@ -509,7 +509,7 @@
 ;    selecting text, and it opens a whole new window when you do. Set no and
 ;    the mouse behaves as it does in stock PuTTY; the same two actions stay
 ;    available from the window menu and from their keyboard shortcuts.
-;    Protect mode and PuTTY mode switch them off regardless of this setting.
+;    Protect mode switches them off regardless of this setting.
 ;mouseshortcuts=yes
 
 ; internaldelay: how long KiTTY++ pauses, in milliseconds, while it types for
@@ -930,8 +930,7 @@
 ;          Transparency entries, and the /transparency command declines.
 ;          Pick it when an accidental Ctrl+Down must never dim this session.
 ;          On screen 0 and -1 look the same - neither is translucent.
-;    If the panel is not in your configuration box, either this key is set to
-;    no or KiTTY++ is running in PuTTY mode - both hide it.
+;    If the panel is not in your configuration box, this key is set to no.
 ;    Set no and transparency is off everywhere, not merely out of reach: the
 ;    panel and the menu entries go, and a session that has a level saved opens
 ;    opaque anyway. The /transparency command cannot turn it back on either.

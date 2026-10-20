@@ -512,7 +512,7 @@ char default_init_file_content[] =
 ;    selecting text, and it opens a whole new window when you do. Set no and\n\
 ;    the mouse behaves as it does in stock PuTTY; the same two actions stay\n\
 ;    available from the window menu and from their keyboard shortcuts.\n\
-;    Protect mode and PuTTY mode switch them off regardless of this setting.\n\
+;    Protect mode switches them off regardless of this setting.\n\
 ;mouseshortcuts=yes\n\
 \n\
 ; internaldelay: how long KiTTY++ pauses, in milliseconds, while it types for\n\
@@ -933,8 +933,7 @@ char default_init_file_content[] =
 ;          Transparency entries, and the /transparency command declines.\n\
 ;          Pick it when an accidental Ctrl+Down must never dim this session.\n\
 ;          On screen 0 and -1 look the same - neither is translucent.\n\
-;    If the panel is not in your configuration box, either this key is set to\n\
-;    no or KiTTY++ is running in PuTTY mode - both hide it.\n\
+;    If the panel is not in your configuration box, this key is set to no.\n\
 ;    Set no and transparency is off everywhere, not merely out of reach: the\n\
 ;    panel and the menu entries go, and a session that has a level saved opens\n\
 ;    opaque anyway. The /transparency command cannot turn it back on either.\n\

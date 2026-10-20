@@ -45,7 +45,6 @@ The window\r\n\
 * -noconfirm: close the window without the \"Are you sure?\" prompt. Security\r\n\
     confirmations - host keys, weak crypto - are not affected\r\n\
 * -noctrltab: do not switch between KiTTY++ windows with Ctrl+Tab\r\n\
-* -putty: turn off KiTTY++'s additions and behave like stock PuTTY\r\n\
 \r\n\
 Logging and passwords\r\n\
 \r\n\

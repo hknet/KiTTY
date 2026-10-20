@@ -150,8 +150,7 @@ char *dupvprintf(const char *fmt, va_list ap) ;
 	
 // Procedure returning the value of a flag
 int get_param( const char * val ) {
-	if( !stricmp( val, "PUTTY" ) ) return GetPuttyFlag() ;
-	else if( !stricmp( val, "INIFILE" ) ) return IniFileFlag ;
+	if( !stricmp( val, "INIFILE" ) ) return IniFileFlag ;
 	else if( !stricmp( val, "HYPERLINK" ) ) return HyperlinkFlag ;
 	else if( !stricmp( val, "TRANSPARENCY" ) )return TransparencyFlag ;
 #ifdef MOD_ZMODEM

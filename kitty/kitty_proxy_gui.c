@@ -577,9 +577,6 @@ void kitty_proxy_build_panel(struct controlbox *b)
      * remove the chooser and the Edit button from the session panels, which
      * is what it is for.
      */
-    if (GetPuttyFlag())
-        return;
-
     pd = (struct pxpanel_data *)ctrl_alloc(b, sizeof(struct pxpanel_data));
     memset(pd, 0, sizeof(*pd));
     pd->name = dupstr("");

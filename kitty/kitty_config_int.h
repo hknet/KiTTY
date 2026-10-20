@@ -147,7 +147,6 @@ void clipboard_control(struct controlset *s, const char *label, char shortcut, i
 void serial_parity_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */
 void serial_flow_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */
 void proxy_type_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */
-void host_ca_button_handler(dlgcontrol *ctrl, dlgparam *dp, void *data, int event);   /* kitty_config_upstream.c */
 void kitty_notify_launcher_sessions_changed(void);   /* kitty_config_shared.c */
 void kitty_checkbox_int_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */
 #define KITTY_PROXY_LABEL_ACTIVE "PROXY OVERRIDE ACTIVE:"

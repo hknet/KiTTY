@@ -2364,8 +2364,7 @@ terminal. The in-terminal prompts take a typed \q{yes}; the changed-key
 one requires the word \q{confirmed} as a separate answer before it
 replaces a stored key. With the pop-up box, a connection that cannot
 be opened shows the box, and the window then stays open with the
-reason in it: a failed Restart Session or reconnect does not close it
-(\c{-putty} mode keeps PuTTY's exit).
+reason in it: a failed Restart Session or reconnect does not close it.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
 \c{ReconnectDelay}, \c{reconnectmaxdelay}, \c{reconnectbackoff}, the \c{reconnect...} keys of

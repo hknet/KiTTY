@@ -1310,7 +1310,7 @@ KiTTY++ can keep a registry-mode backup of its settings, sessions, and host keys
 
 When a connection drops, is closed by the remote host, or the server reports a non-fatal error, KiTTY++ prints the message **inline in the terminal** rather than popping a modal dialog that blocks the window until you click **OK**. The window stays usable and closable, and the text remains in the scrollback so you can read or copy it. A **fatal** disconnect also badges the window title with a **⚠ (disconnected)** marker, so a minimised or background window shows at a glance that its session died; the marker clears automatically the next time the session connects. Host-key and weak-crypto confirmations still use a normal prompt.
 
-**How to enable:** on by default. To restore the classic modal error boxes, set `[KiTTY] modalerrors=yes` in `kitty.ini`. With the boxes, a connection that cannot be opened shows its box and the window then stays open with the reason in it, so a failed Restart Session or reconnect does not close the window (PuTTY mode, `-putty`, keeps PuTTY's exit).
+**How to enable:** on by default. To restore the classic modal error boxes, set `[KiTTY] modalerrors=yes` in `kitty.ini`. With the boxes, a connection that cannot be opened shows its box and the window then stays open with the reason in it, so a failed Restart Session or reconnect does not close the window.
 
 (no screenshot)
 
@@ -1723,7 +1723,7 @@ Under any other name the windowed programs show one message box and exit, and th
 
 Where there is nobody to click that box — a scheduled task, a service, a session with no desktop — the same line goes to the Windows **Application** event log under the source `KiTTY++` instead, and the command-line tools write it there as well as to stderr, so an unattended job that stops for this reason still reports why.
 
-A signed tool that circulates under throwaway file names is what abuse of a legitimate binary looks like, and detection heuristics score it as such. Keeping the name recognisable costs you nothing and takes that use away. It is a nuisance bar rather than a security boundary: whoever keeps the name is unaffected, and the check can be removed at the cost of the signature. Nothing in KiTTY++ keys a mode on the file name — PuTTY mode is the `-putty` switch — so no feature depends on renaming anything.
+A signed tool that circulates under throwaway file names is what abuse of a legitimate binary looks like, and detection heuristics score it as such. Keeping the name recognisable costs you nothing and takes that use away. It is a nuisance bar rather than a security boundary: whoever keeps the name is unaffected, and the check can be removed at the cost of the signature. Nothing in KiTTY++ keys a mode on the file name, so no feature depends on renaming anything.
 
 A downloaded release build also checks its own signature at startup, right after the name. It refuses to run on three findings and no others: the file was modified after it was signed, the signature was removed outright, or it was re-signed by somebody else. The message states which:
 

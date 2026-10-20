@@ -121,6 +121,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   one. `/urlregex` shows why a custom expression does not compile.
 - **`/message` is removed.** It could only show the text just typed; a
   typed `/message ...` now goes to the host like any other unknown command.
+- **PuTTY mode (`-putty`) is removed**: it could no longer be started. It
+  also never worked.
 
 ### Fixed
 
@@ -181,8 +183,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   closes the window.** After the box the window stays with the reason in
   it, as without the setting; a failed Restart Session or auto-reconnect
   closed a window that was open. The workplace proxy question after a
-  failed connection leaves the window open the same way. PuTTY mode
-  (`-putty`) keeps PuTTY's exit.
+  failed connection leaves the window open the same way.
 - **An old (version 1) PPK key file no longer stops the login with a
   box.** The notice and the Event Log line above report it instead.
 - **A session file saved by KiTTY++ changes only where a value changed.** In

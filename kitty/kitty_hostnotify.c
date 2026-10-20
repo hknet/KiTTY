@@ -30,7 +30,6 @@
 #include <shobjidl.h>       /* ITaskbarList3, TBPF_* */
 
 #include "kitty_buildlabel.h"   /* the test hooks below: test builds only */
-#include "kitty_common.h"   /* GetPuttyFlag */
 #include "kitty_notice.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_reply.h"    /* kitty_term_send_reply: the reply seam */
@@ -849,7 +848,7 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
     OnNotice n;
     char buf[ON_REPLY_MAX];
 
-    if (!term || !term->conf || GetPuttyFlag())
+    if (!term || !term->conf)
         return;
 
     if (osc == 7501) {
@@ -931,7 +930,7 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
 void kitty_host_notice(Terminal *term, const char *title, const char *body)
 {
     OnNotice n;
-    if (!term || !term->conf || GetPuttyFlag() || hn_setting(term) == ON_SET_OFF)
+    if (!term || !term->conf || hn_setting(term) == ON_SET_OFF)
         return;
     on_notice_set(&n, title, title ? strlen(title) : 0,
                   body, body ? strlen(body) : 0);

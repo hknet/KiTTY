@@ -845,7 +845,6 @@ void kitty_about(HWND hwnd) {
 extern HWND MainHwnd;
 int kitty_apply_background(HWND hwnd, Conf *conf) {
     if (!GetBackgroundImageFlag()) return 0;
-    if (GetPuttyFlag()) return 0;
     if (conf_get_int(conf, CONF_bg_type) == 0) return 0;  /* solid = nothing */
     MainHwnd = hwnd;
     load_bg_bmp();

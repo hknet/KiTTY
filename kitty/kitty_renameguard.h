@@ -19,8 +19,8 @@
  *
  * It is a nuisance bar, not a security boundary: an attacker who keeps the
  * name is unaffected, and the check can be patched out at the cost of the
- * signature. Nothing in the suite keys a MODE on the file name (PuTTY mode is
- * the -putty switch), so no feature depends on a rename.
+ * signature. Nothing in the suite keys a MODE on the file name, so no
+ * feature depends on a rename.
  *
  * Windows-only. Uses nothing newer than Windows XP, and it is compiled into
  * the `utils` library, which every binary links.

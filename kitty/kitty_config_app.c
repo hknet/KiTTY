@@ -1356,13 +1356,11 @@ static void kitty_warnfeatures_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /*
  * The program name the six panel titles print ("Basic options for your %s
- * session", "Options controlling %s's window", ...). KiTTY's own panels name
- * KiTTY++; the stock PuTTY build and -putty mode keep `appname`, which is
- * what those builds are called.
+ * session", "Options controlling %s's window", ...): KiTTY++.
  */
 const char *scb_title_appname(void)
 {
-    return GetPuttyFlag() ? appname : KT_CAP_KITTYPP;
+    return KT_CAP_KITTYPP;
 }
 
 
@@ -1797,7 +1795,7 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
 
-    if (midsession || GetPuttyFlag())
+    if (midsession)
         return;
 
     ctrl_settitle(b, "Application/Config Window",
@@ -1861,7 +1859,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
 
-    if (midsession || GetPuttyFlag())
+    if (midsession)
         return;
 
     ctrl_settitle(b, "Application/Security", KT_SECURITY_SECURITY);
@@ -4848,7 +4846,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     int mode = GetIniFileFlag();
     bool locked = GetReadOnlyFlag() || GetNoKittyFileFlag();
 
-    if (midsession || GetPuttyFlag())
+    if (midsession)
         return;
 
     ctrl_settitle(b, "Application/KiTTY++ Settings", KT_KSET_TITLE);
@@ -5021,7 +5019,7 @@ static void scb_panel_session_parameter(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
 
-    if (midsession || GetPuttyFlag())
+    if (midsession)
         return;
 
     ctrl_settitle(b, "Application/Config Window/Session Panel", KT_SESSION_PARAMETER_THE_SESSION_LIST);
@@ -5825,7 +5823,7 @@ void scb_panel_application(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
 
-    if (midsession || GetPuttyFlag())
+    if (midsession)
         return;                        /* no application tab mid-session */
     {
         /* [ConfigBox] applicationsettings=no: no Application tab at all. The

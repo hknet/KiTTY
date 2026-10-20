@@ -969,16 +969,14 @@ void InitWinMain( void ) {
 	}
 
 	// Set up icon loading from the kitty.dll library if it exists
-	if( !GetPuttyFlag() ) {
-		if( IconFile != NULL )
-		if( existfile( IconFile ) ) 
-			{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT(IconFile) ) ) != NULL ) hInstIcons = hDll ; }
-		if( hInstIcons==NULL )
-		if( existfile( "kitty.dll" ) )
-			{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT("kitty.dll") ) ) != NULL ) hInstIcons = hDll ; }
-		// No external icon DLL: fall back to icons embedded in the executable itself
-		if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
-		}
+	if( IconFile != NULL )
+	if( existfile( IconFile ) ) 
+		{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT(IconFile) ) ) != NULL ) hInstIcons = hDll ; }
+	if( hInstIcons==NULL )
+	if( existfile( "kitty.dll" ) )
+		{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT("kitty.dll") ) ) != NULL ) hInstIcons = hDll ; }
+	// No external icon DLL: fall back to icons embedded in the executable itself
+	if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
 
 	NETDBG_TS("after icon-dll init");
 	/* The application notification is owed. Only marked here: this runs

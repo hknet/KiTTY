@@ -3186,8 +3186,6 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 		if( strlen(buffer)>0 ) { strcpy(className,buffer) ; }
 	}
 	
-	if( strstr( cmdline, "-putty" ) != NULL ) SetPuttyFlag(1) ;
-
 	/* KiTTY: -workplace <named proxy> switches workplace proxy mode ON and
 	 * hands this launcher the arming. The arming lives and dies with this
 	 * process: every connection checks whether one is held right now, so
@@ -3559,11 +3557,9 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 				session[strlen(session)-1]='\0' ;
 				str_rtrim( session, " \t" ) ;
-				if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
-				else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
+				sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 			} else {
-				if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\"", shortname, session ) ;
-				else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
+				sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			}
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 			return_code = 1 ;
@@ -3575,11 +3571,9 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
 			session[strlen(session)-1]='\0' ;
 			str_rtrim( session, " \t" ) ;
-			if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\" -send-to-tray", shortname, session ) ;
-			else sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
+			sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
 		} else {
-			if( GetPuttyFlag() )	snprintf( buffer, sizeof(buffer), "%s -putty -load \"%s\"", shortname, session ) ;
-			else sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
+			sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
 			//else sprintf( buffer, "%s @%s", shortname, session ) ;
 		}
 //MessageBox( hwnd, buffer, "Info", MB_OK ) ;
