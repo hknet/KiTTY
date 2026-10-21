@@ -99,12 +99,16 @@ int kitty_cli_answer_yes( void ) ;
 // Create the SSH handler
 // KiTTY: force = also take over protocols another program already handles;
 // peruser = register under HKCU even when this is the machine-wide install;
-// assume_yes = skip the portable build's "write to the registry?" question;
-// withputty = also register putty://, which is another project's name
+// assume_yes = skip the portable build's "write to the registry?" question,
+// and report only - Settings > Default apps is not opened;
+// withputty = also register putty://, which is another project's name.
+// Also lists KiTTY++ in Windows' Default apps and names other applications
+// that claim the same schemes there.
 void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) ;
 
 // KiTTY: -sshhandler -uninstall. Removes only handlers pointing at a KiTTY,
-// exporting each key first so the removal can be undone
+// exporting each key first so the removal can be undone, and KiTTY++'s
+// Default apps entries (RegisteredApplications, Capabilities, KiTTYpp.* ProgIds)
 void RemoveSSHHandler( void ) ;
 
 // Create the *.ktx file association

@@ -22,6 +22,9 @@
 #include "kitty_tools.h"
 #include "kitty.h"
 #include "kitty_inifile.h"  /* kitty_store_ro_regpath: readonly=yes */
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: KITTY_NO_SETTINGS_LAUNCH */
+#include <objbase.h>        /* CoInitializeEx: the ms-settings: launch */
+#include <stdarg.h>
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
 /* kitty.c, same reason: CreateSSHHandler() needs to know whether a portable
@@ -1207,6 +1210,252 @@ static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
 	return RegTestOrCreate( root, key, "", command ) ;
 }
 
+/* ---- Windows' Default apps ---------------------------------------------
+ *
+ * Windows' shell does not hand a link only to the HKCR\<scheme> handler: an
+ * application listed in Software\RegisteredApplications whose Capabilities\
+ * URLAssociations names the scheme is offered in Settings > Default apps,
+ * and with no UserChoice set for the scheme the shell may send the link to it
+ * although HKCR\<scheme> names this program. Registering therefore also lists
+ * KiTTY++ there, with ProgIds of its own carrying the same open command as
+ * the protocol keys, and then names every other application that claims one
+ * of the same schemes. The choice itself (UserChoice) is hash-protected and
+ * only the user can make it in Settings; it is never written here.
+ *
+ * The RegisteredApplications value and the Capabilities key are written in
+ * the 64-bit registry view (KEY_WOW64_64KEY; ignored on 32-bit Windows), so
+ * the 32-bit build writes the same keys as the 64-bit one. The Capabilities
+ * key lives in a key of its own, Software\kapper.net\KiTTY++, outside the
+ * settings store (Software\kapper.net\KiTTY, or wherever kitty_registry_base()
+ * points): operations that delete, park or move the store must not take it
+ * along and leave the RegisteredApplications value pointing at nothing. That
+ * key holds nothing else, so removal deletes it whole. ProgIds go to
+ * Software\Classes, which is shared between the views. */
+#define DEFAPPS_NAME        "KiTTY++"   /* RegisteredApplications value name; the ms-settings: parameter */
+#define DEFAPPS_KEYNAME     "KiTTY++"   /* below Software\kapper.net */
+#define DEFAPPS_PARENT      "Software\\kapper.net\\" DEFAPPS_KEYNAME
+#define DEFAPPS_CAPS        DEFAPPS_PARENT "\\Capabilities"
+#define DEFAPPS_REGAPPS     "Software\\RegisteredApplications"
+#define DEFAPPS_PROGID_FMT  "KiTTYpp.%s"   /* a ProgId takes no '+' */
+#define DEFAPPS_NSCHEMES    4
+/* the order of CreateSSHHandler's protos[] */
+static const char *const defapps_schemes[DEFAPPS_NSCHEMES] = { "telnet", "ssh", "kitty", "putty" } ;
+
+/* Append to a report buffer; a full buffer stays full (len >= size). */
+static size_t rep_add( char *report, size_t len, size_t size, const char *fmt, ... ) {
+	va_list ap ;
+	int n ;
+	if( len >= size ) return len ;
+	va_start( ap, fmt ) ;
+	n = vsnprintf( report+len, size-len, fmt, ap ) ;
+	va_end( ap ) ;
+	return n < 0 ? len : len + (size_t)n ;
+}
+
+/* One REG_SZ value in the 64-bit view, key created as needed. */
+static int defapps_set( HKEY root, const char *subkey, const char *name, const char *data ) {
+	HKEY hk ;
+	LONG rc ;
+	if( RegCreateKeyExA( root, subkey, 0, NULL, 0, KEY_SET_VALUE|KEY_WOW64_64KEY,
+			     NULL, &hk, NULL ) != ERROR_SUCCESS ) return 0 ;
+	rc = RegSetValueExA( hk, name, 0, REG_SZ, (const BYTE *)data, (DWORD)strlen(data)+1 ) ;
+	RegCloseKey( hk ) ;
+	return rc == ERROR_SUCCESS ;
+}
+
+/* RegisteredApplications + Capabilities in `root`, for the schemes whose
+ * ProgId was written (progid_ok[i]). offered[i] = 1 for each scheme listed;
+ * adds the "Default apps:" line when anything was. */
+static size_t defapps_register( HKEY root, const char *path, const int *progid_ok,
+				int *offered, char *report, size_t len, size_t size ) {
+	char key[300], progid[64], icon[1100], list[128] ;
+	int i ;
+	list[0] = '\0' ;
+	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) offered[i] = 0 ;
+	snprintf( icon, sizeof(icon), "%s,0", path ) ;
+	if( !defapps_set( root, DEFAPPS_CAPS, "ApplicationName", DEFAPPS_NAME ) ||
+	    !defapps_set( root, DEFAPPS_CAPS, "ApplicationDescription", KT_REG_DEFAPPS_DESCRIPTION ) ||
+	    !defapps_set( root, DEFAPPS_CAPS, "ApplicationIcon", icon ) )
+		return len ;
+	snprintf( key, sizeof(key), "%s\\URLAssociations", DEFAPPS_CAPS ) ;
+	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
+		if( !progid_ok[i] ) continue ;
+		snprintf( progid, sizeof(progid), DEFAPPS_PROGID_FMT, defapps_schemes[i] ) ;
+		if( !defapps_set( root, key, defapps_schemes[i], progid ) ) continue ;
+		offered[i] = 1 ;
+		snprintf( list+strlen(list), sizeof(list)-strlen(list), "%s%s://",
+			  list[0] ? ", " : "", defapps_schemes[i] ) ;
+	}
+	if( !list[0] || !defapps_set( root, DEFAPPS_REGAPPS, DEFAPPS_NAME, DEFAPPS_CAPS ) ) {
+		for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) offered[i] = 0 ;
+		return len ;
+	}
+	return rep_add( report, len, size, KT_REG_DEFAPPS_OFFERED, list ) ;
+}
+
+/* Every other application in Default apps that claims one of the schemes
+ * offered: RegisteredApplications of HKLM and HKCU, each in both registry
+ * views - a 32-bit installer's Capabilities path lands under WOW6432Node,
+ * and Windows reads it there. One report line per scheme and application;
+ * *claimed counts them. */
+static size_t defapps_competitors( const int *offered, char *report, size_t len,
+				   size_t size, int *claimed ) {
+	static const HKEY hives[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER } ;
+	static const REGSAM views[2] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY } ;
+	char seen[32][300] ;
+	int nseen = 0, h, v, i, k ;
+	DWORD idx ;
+
+	*claimed = 0 ;
+	for( h = 0 ; h < 2 ; h++ ) for( v = 0 ; v < 2 ; v++ ) {
+		HKEY hr ;
+		if( RegOpenKeyExA( hives[h], DEFAPPS_REGAPPS, 0, KEY_QUERY_VALUE|views[v], &hr ) != ERROR_SUCCESS )
+			continue ;
+		for( idx = 0 ; ; idx++ ) {
+			char name[256], caps[512], app[256] ;
+			DWORD nlen = sizeof(name), dlen = sizeof(caps)-1, alen, type ;
+			HKEY hc, hu ;
+			LONG rc = RegEnumValueA( hr, idx, name, &nlen, NULL, &type, (BYTE *)caps, &dlen ) ;
+			if( rc == ERROR_NO_MORE_ITEMS ) break ;
+			if( rc != ERROR_SUCCESS || ( type != REG_SZ && type != REG_EXPAND_SZ ) ) continue ;
+			caps[dlen] = '\0' ;
+			if( !stricmp( name, DEFAPPS_NAME ) || !caps[0] ) continue ;
+			/* the path in the view it was listed in first, then the other */
+			if( RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[v], &hc ) != ERROR_SUCCESS &&
+			    RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[1-v], &hc ) != ERROR_SUCCESS )
+				continue ;
+			/* the name Settings shows; an indirect "@dll,-id" one is not
+			 * resolved here - the value name stands in for it */
+			alen = sizeof(app)-1 ;
+			if( RegQueryValueExA( hc, "ApplicationName", NULL, &type, (BYTE *)app, &alen ) == ERROR_SUCCESS &&
+			    ( type == REG_SZ || type == REG_EXPAND_SZ ) ) app[alen] = '\0' ;
+			else app[0] = '\0' ;
+			if( !app[0] || app[0] == '@' ) snprintf( app, sizeof(app), "%s", name ) ;
+			if( RegOpenKeyExA( hc, "URLAssociations", 0, KEY_QUERY_VALUE, &hu ) == ERROR_SUCCESS ) {
+				for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
+					char pv[256], tag[300] ;
+					DWORD plen = sizeof(pv)-1 ;
+					int dup = 0 ;
+					if( !offered[i] ) continue ;
+					if( RegQueryValueExA( hu, defapps_schemes[i], NULL, &type, (BYTE *)pv, &plen ) != ERROR_SUCCESS )
+						continue ;
+					pv[plen] = '\0' ;
+					if( !pv[0] ) continue ;
+					/* listed in both views (a shared key, or 32-bit Windows),
+					 * or in both hives: one line */
+					snprintf( tag, sizeof(tag), "%s|%s", defapps_schemes[i], app ) ;
+					for( k = 0 ; k < nseen ; k++ ) if( !stricmp( seen[k], tag ) ) { dup = 1 ; break ; }
+					if( dup ) continue ;
+					if( nseen < (int)(sizeof(seen)/sizeof(seen[0])) ) {
+						snprintf( seen[nseen], sizeof(seen[0]), "%s", tag ) ;
+						nseen++ ;
+					}
+					len = rep_add( report, len, size, KT_REG_DEFAPPS_CLAIMED,
+						       defapps_schemes[i], app, app ) ;
+					(*claimed)++ ;
+				}
+				RegCloseKey( hu ) ;
+			}
+			RegCloseKey( hc ) ;
+		}
+		RegCloseKey( hr ) ;
+	}
+	return len ;
+}
+
+/* Settings > Default apps exists from Windows 10 on. The version comes from
+ * ntdll: GetVersionEx answers 6.2 to a process whose manifest does not claim
+ * the newer system. */
+static int defapps_windows10( void ) {
+	typedef LONG (WINAPI *fn_RtlGetVersion)( PRTL_OSVERSIONINFOW ) ;
+	HMODULE nt = GetModuleHandleA( "ntdll.dll" ) ;
+	fn_RtlGetVersion p = nt ? (fn_RtlGetVersion)(void *)GetProcAddress( nt, "RtlGetVersion" ) : NULL ;
+	RTL_OSVERSIONINFOW vi ;
+	if( !p ) return 0 ;
+	memset( &vi, 0, sizeof(vi) ) ;
+	vi.dwOSVersionInfoSize = sizeof(vi) ;
+	if( p( &vi ) != 0 ) return 0 ;
+	return vi.dwMajorVersion >= 10 ;
+}
+
+/* Whether Settings may be opened after a registration another application
+ * contests. Not for a scripted run (-yes: report only). Test builds only:
+ * the environment variable KITTY_NO_SETTINGS_LAUNCH=1 suppresses it as
+ * well, so a harness can drive the configuration box's Register button
+ * without a Settings window appearing. */
+static int defapps_may_open_settings( int assume_yes ) {
+	if( assume_yes || !defapps_windows10() ) return 0 ;
+#ifdef KITTY_TEST_BUILD_LABEL
+	{
+		char v[8] ;
+		DWORD n = GetEnvironmentVariableA( "KITTY_NO_SETTINGS_LAUNCH", v, sizeof(v) ) ;
+		if( n > 0 && n < sizeof(v) && !strcmp( v, "1" ) ) return 0 ;
+	}
+#endif
+	return 1 ;
+}
+
+/* Settings > Default apps, on KiTTY++'s own page where Windows 11 supports
+ * the parameter (registeredAppMachine for an HKLM registration,
+ * registeredAppUser for HKCU); Windows 10 ignores it and shows Default apps. */
+static void defapps_open_settings( HKEY root ) {
+	SHELLEXECUTEINFOA sei ;
+	HRESULT co = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED|COINIT_DISABLE_OLE1DDE ) ;
+	memset( &sei, 0, sizeof(sei) ) ;
+	sei.cbSize = sizeof(sei) ;
+	sei.fMask = SEE_MASK_FLAG_NO_UI ;
+	sei.lpVerb = "open" ;
+	sei.lpFile = root == HKEY_LOCAL_MACHINE ?
+		"ms-settings:defaultapps?registeredAppMachine=KiTTY%2B%2B" :
+		"ms-settings:defaultapps?registeredAppUser=KiTTY%2B%2B" ;
+	sei.nShow = SW_SHOWNORMAL ;
+	ShellExecuteExA( &sei ) ;
+	if( SUCCEEDED( co ) ) CoUninitialize() ;
+}
+
+/* Remove what defapps_register() wrote in `root`: the RegisteredApplications
+ * value, Software\kapper.net\KiTTY++ with its Capabilities, the KiTTYpp.*
+ * ProgIds. In HKLM, Software\kapper.net goes too when nothing else is left
+ * in it. The settings store (kapper.net\KiTTY) and the installer's key are
+ * never touched. Returns 1 when anything was removed. */
+static int defapps_remove( HKEY root ) {
+	HKEY hk ;
+	char key[128] ;
+	int any = 0, i ;
+	if( RegOpenKeyExA( root, DEFAPPS_REGAPPS, 0, KEY_QUERY_VALUE|KEY_SET_VALUE|KEY_WOW64_64KEY,
+			   &hk ) == ERROR_SUCCESS ) {
+		if( RegQueryValueExA( hk, DEFAPPS_NAME, NULL, NULL, NULL, NULL ) == ERROR_SUCCESS &&
+		    RegDeleteValueA( hk, DEFAPPS_NAME ) == ERROR_SUCCESS ) any = 1 ;
+		RegCloseKey( hk ) ;
+	}
+	/* relative to a handle opened in the 64-bit view: the subkey is not
+	 * redirected again */
+	if( RegOpenKeyExA( root, "Software\\kapper.net", 0, KEY_READ|KEY_WRITE|DELETE|KEY_WOW64_64KEY,
+			   &hk ) == ERROR_SUCCESS ) {
+		HKEY hc ;
+		DWORD nsub = 1, nval = 1 ;
+		if( RegOpenKeyExA( hk, DEFAPPS_KEYNAME, 0, KEY_READ, &hc ) == ERROR_SUCCESS ) {
+			RegCloseKey( hc ) ;
+			if( RegDeleteTreeA( hk, DEFAPPS_KEYNAME ) == ERROR_SUCCESS ) any = 1 ;
+		}
+		if( root != HKEY_LOCAL_MACHINE ||
+		    RegQueryInfoKeyA( hk, NULL, NULL, NULL, &nsub, NULL, NULL, &nval,
+				      NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) nsub = nval = 1 ;
+		RegCloseKey( hk ) ;
+		if( nsub == 0 && nval == 0 &&
+		    RegOpenKeyExA( root, "Software", 0, KEY_READ|KEY_WRITE|DELETE|KEY_WOW64_64KEY,
+				   &hk ) == ERROR_SUCCESS ) {
+			RegDeleteKeyA( hk, "kapper.net" ) ;
+			RegCloseKey( hk ) ;
+		}
+	}
+	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
+		snprintf( key, sizeof(key), "Software\\Classes\\" DEFAPPS_PROGID_FMT, defapps_schemes[i] ) ;
+		if( ClassKeyExists( root, key ) && RegDeleteTreeA( root, key ) == ERROR_SUCCESS ) any = 1 ;
+	}
+	return any ;
+}
+
 // Create the SSH handler
 /* KiTTY, rewritten. What it used to do: write telnet/ssh/putty
  * straight into HKEY_CLASSES_ROOT - i.e. HKEY_LOCAL_MACHINE - overwriting
@@ -1237,6 +1486,8 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 	int n = 0, written = 0, kept = 0, replaced = 0 ;
 	size_t len ;
 	int i, mine ;
+	char progid[64] ;
+	int progid_ok[DEFAPPS_NSCHEMES] = { 0 }, offered[DEFAPPS_NSCHEMES], claimed = 0, open_settings ;
 	/* session = the URL refers to a saved session, so the command is -load;
 	 * optional = registered only when explicitly asked for. */
 	static const struct { const char *proto, *friendly ; int session, optional ; } protos[] = {
@@ -1248,7 +1499,9 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 
 	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
 
-	if( !ClassRegTarget( path, "-sshhandler", force ? " -force" : "",
+	if( !ClassRegTarget( path, "-sshhandler",
+			     force ? ( assume_yes ? " -force -yes" : " -force" ) :
+				     ( assume_yes ? " -yes" : "" ),
 			     peruser, assume_yes,
 			     KT_REG_URL_WHAT,
 			     KT_CAP_URL_HANDLERS, &root ) )
@@ -1271,6 +1524,12 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			/* "%1" quoted: unquoted, a URL containing a space arrives split
 			 * across arguments and only its first word reaches KiTTY. */
 			snprintf( cmd, sizeof(cmd), "\"%s\" \"%%1\"", path ) ;
+
+		/* Default apps: this scheme's own ProgId, with the same command.
+		 * Written also when the protocol key below stays another
+		 * program's - Default apps is where that is settled. */
+		snprintf( progid, sizeof(progid), DEFAPPS_PROGID_FMT, protos[i].proto ) ;
+		progid_ok[i] = UrlHandlerWrite( root, prefix, progid, protos[i].friendly, path, cmd ) ;
 
 		if( had && !strcmp( prev, cmd ) ) {
 			len += snprintf( report+len, sizeof(report)-len,
@@ -1335,6 +1594,15 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 		if( len >= sizeof(report) ) break ;   /* report full; stop appending */
 	}
 
+	/* Default apps: offered, then who else claims those schemes there. The
+	 * report shows first (a modal box from the configuration box), Settings
+	 * opens after it. */
+	len = defapps_register( root, path, progid_ok, offered, report, len, sizeof(report) ) ;
+	len = defapps_competitors( offered, report, len, sizeof(report), &claimed ) ;
+	open_settings = claimed && defapps_may_open_settings( assume_yes ) ;
+	if( open_settings )
+		len = rep_add( report, len, sizeof(report), "%s", KT_REG_DEFAPPS_OPEN_SETTINGS ) ;
+
 	if( kept && len < sizeof(report) )
 		snprintf( report+len, sizeof(report)-len,
 			  KT_REG_URL_KEPT_NOTE,
@@ -1342,6 +1610,7 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 			  kept == 1 ? "it" : "them" ) ;
 
 	KittyCliReport( KT_CAP_URL_HANDLERS, report, written == n ? 0 : 1 ) ;
+	if( open_settings ) defapps_open_settings( root ) ;
 	(void)replaced ;
 }
 
@@ -1360,7 +1629,7 @@ void RemoveSSHHandler( void ) {
 	} ;
 	char report[4096], key[512], cur[1024], backup[MAX_PATH], prog[MAX_PATH] ;
 	size_t len ;
-	int i, h, removed = 0, kept = 0 ;
+	int i, h, removed = 0, kept = 0, defapps = 0 ;
 
 	len = snprintf( report, sizeof(report),
 			KT_REG_URL_REMOVING ) ;
@@ -1415,6 +1684,16 @@ void RemoveSSHHandler( void ) {
 			}
 			if( len >= sizeof(report) ) break ;
 		}
+	}
+
+	/* Default apps: our RegisteredApplications value, Capabilities and
+	 * ProgIds, in each hive that holds them (HKLM only when this process
+	 * may write there - otherwise the opens fail and it stays). */
+	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ )
+		if( defapps_remove( hives[h].root ) ) defapps = 1 ;
+	if( defapps ) {
+		removed++ ;
+		len = rep_add( report, len, sizeof(report), "%s", KT_REG_DEFAPPS_REMOVED ) ;
 	}
 
 	if( !removed && len < sizeof(report) )

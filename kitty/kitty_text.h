@@ -2364,6 +2364,12 @@
 #define KT_REG_URL_NOT_REMOVED                       "%s:// (%s)  could not be removed%s\r\n"
 #define KT_REG_URL_NOTHING_REGISTERED                "Nothing of KiTTY's or KiTTY++'s was registered%s."
 #define KT_REG_URL_OTHERS                            " (the handlers above belong to other programs)"
+/* Windows' Default apps (RegisteredApplications + Capabilities) */
+#define KT_REG_DEFAPPS_DESCRIPTION                   "SSH and Telnet terminal"
+#define KT_REG_DEFAPPS_OFFERED                       "Default apps:  KiTTY++ is offered for %s\r\n"
+#define KT_REG_DEFAPPS_CLAIMED                       "%s://  claimed by %s in Default apps - choose KiTTY++ there, or %s keeps opening these links\r\n"
+#define KT_REG_DEFAPPS_OPEN_SETTINGS                 "\r\nSettings > Default apps opens now: Windows lets only you make that choice.\r\n"
+#define KT_REG_DEFAPPS_REMOVED                       "Default apps:  KiTTY++ removed\r\n"
 #define KT_REG_ASSOC_REPORT_HEAD                     "%s\r\nAssociating %s with: %s\r\n\r\n"
 #define KT_REG_ASSOC_LEFT_ALONE                      "%s  LEFT ALONE, currently opened by \"%s\"\r\n\r\n" \
         "Add -force to take it over; the current setting is exported to " \

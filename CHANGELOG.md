@@ -139,6 +139,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- **ssh:// links opened another program listed in Windows' Default apps**
+  although KiTTY++ was registered for them. Registering now adds KiTTY++ to
+  Default apps, names the programs that claim ssh://, telnet:// or kitty://
+  there, and opens Settings > Default apps to choose.
 - **mNotepad opened read-only no longer writes the file** on Ctrl+S or Save
   as.
 - **A master password setup that cannot store its salt reports it once**:

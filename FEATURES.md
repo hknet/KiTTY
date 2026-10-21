@@ -825,6 +825,8 @@ A `kitty://` link identifies a session the way `-load` does. It can carry the fo
 
 **How to enable:** run **`kitty.exe -sshhandler`**. As administrator it registers for everyone on the machine; run normally it registers for your account, and the machine-wide installation requests the rights itself. A protocol another program already opens is **reported and left alone** — add `-force` to take it over, and the report then shows the `reg` command that puts the old setting back, having exported it first.
 
+Registering also adds KiTTY++ to Windows' Default apps. If another program claims `ssh://` there, choose KiTTY++ under Settings > Default apps: Windows lets only you make that choice. With `-yes`, an unattended run from a script or installer, the programs that claim the links are listed without opening Settings.
+
 | Option | Effect |
 |---|---|
 | `-force` | also take over protocols another program opens (the previous setting is exported first) |

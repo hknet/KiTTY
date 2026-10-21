@@ -2636,6 +2636,12 @@ writing, because the entries stay behind when the copy is removed.
 The same work is available from the command line as \c{-sshhandler} and
 \c{-fileassoc}, with \c{-uninstall} to remove the entries again.
 
+Registering also adds KiTTY++ to Windows' Default apps. If another
+program claims \c{ssh://} there, choose KiTTY++ under Settings > Default
+apps: Windows lets only you make that choice. With \c{-yes}, an
+unattended run from a script or installer, the programs that claim the
+links are listed without opening Settings.
+
 \q{Command-line tools}: the checkbox \q{Add this KiTTY++ folder to the
 user PATH} puts the folder that holds \c{kitty.exe} - and with it
 \c{klink}, \c{kscp}, \c{ksftp}, \c{kageant} and \c{kittygen} - on your
