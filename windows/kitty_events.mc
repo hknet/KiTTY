@@ -3,9 +3,15 @@
 ; as written once the system MSI registers kitty.exe as the EventMessageFile
 ; of the "KiTTY++" source.
 ;
-; Event ID blocks (extend this list when a block is taken):
+; Event ID blocks (kitty/kitty_eventids.h is the table of every ID; extend
+; both when a block is taken):
 ;   0        plain text: the one insertion string is the whole message
 ;   100-199  kageant's agent log (source "KiTTY++_agent")
+;   200-299  kitty.exe's sessions (source "KiTTY++_kitty")
+;   300-399  klink, kscp, ksftp (source "KiTTY++_cli")
+;   400-499  kittygen, kittygen-cli (source "KiTTY++_kittygen")
+;   900-999  the suite (source "KiTTY++"): refused program files, log
+;            retention, missing Windows features - always written
 ;   other    reserved, not used yet
 MessageIdTypedef=DWORD
 LanguageNames=(English=0x409:MSG00409)
@@ -124,4 +130,164 @@ MessageId=170
 SymbolicName=KITTY_AGENT_LOGROTATE
 Language=English
 %1%nresult: %2%0
+.
+
+; kitty.exe's sessions, source "KiTTY++_kitty" (kitty/kitty_winevent.c, the
+; table in kitty/kitty_eventids.h), written with [KiTTY] sessioneventlog=yes.
+; %1 is the kind, %2 onwards the fields in the table's order, an absent
+; field as an empty string; keep the two in step (tools/check-kitty-events.py).
+
+MessageId=200
+SymbolicName=KITTY_SESSION_SESSION_OPEN
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nproto: %5%naddr: %6%nfrom: %7%npid: %8%0
+.
+
+MessageId=201
+SymbolicName=KITTY_SESSION_SESSION_CLOSE
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nresult: %5%nreason: %6%nexitcode: %7%npid: %8%0
+.
+
+MessageId=210
+SymbolicName=KITTY_SESSION_HOSTKEY_KNOWN
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%0
+.
+
+MessageId=211
+SymbolicName=KITTY_SESSION_HOSTKEY_NEW
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+.
+
+MessageId=212
+SymbolicName=KITTY_SESSION_HOSTKEY_MISMATCH
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+.
+
+MessageId=220
+SymbolicName=KITTY_SESSION_AUTH_OK
+Language=English
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%0
+.
+
+MessageId=221
+SymbolicName=KITTY_SESSION_AUTH_FAILED
+Language=English
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%0
+.
+
+MessageId=230
+SymbolicName=KITTY_SESSION_FAREND_REFUSED
+Language=English
+%1%nsession: %2%nhost: %3%nrequest: %4%nreason: %5%ndetail: %6%npid: %7%0
+.
+
+; klink, kscp and ksftp, source "KiTTY++_cli", with [KiTTY] clieventlog=yes:
+; 300-321 are 200-221 (the SSH code reporting them is shared), 330/331 one
+; per transfer job.
+
+MessageId=300
+SymbolicName=KITTY_CLI_SESSION_OPEN
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nproto: %5%naddr: %6%nfrom: %7%npid: %8%0
+.
+
+MessageId=301
+SymbolicName=KITTY_CLI_SESSION_CLOSE
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nresult: %5%nreason: %6%nexitcode: %7%npid: %8%0
+.
+
+MessageId=310
+SymbolicName=KITTY_CLI_HOSTKEY_KNOWN
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%0
+.
+
+MessageId=311
+SymbolicName=KITTY_CLI_HOSTKEY_NEW
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+.
+
+MessageId=312
+SymbolicName=KITTY_CLI_HOSTKEY_MISMATCH
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+.
+
+MessageId=320
+SymbolicName=KITTY_CLI_AUTH_OK
+Language=English
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%0
+.
+
+MessageId=321
+SymbolicName=KITTY_CLI_AUTH_FAILED
+Language=English
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%0
+.
+
+MessageId=330
+SymbolicName=KITTY_CLI_TRANSFER_DONE
+Language=English
+%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nfiles: %8%nbytes: %9%npid: %10%0
+.
+
+MessageId=331
+SymbolicName=KITTY_CLI_TRANSFER_FAILED
+Language=English
+%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nfiles: %8%nbytes: %9%npid: %10%nerrors: %11%nreason: %12%0
+.
+
+; kittygen and kittygen-cli, source "KiTTY++_kittygen", with [KiTTY]
+; kittygeneventlog=yes.
+
+MessageId=400
+SymbolicName=KITTY_KGEN_KEY_GENERATED
+Language=English
+%1%ntool: %2%nkeytype: %3%nbits: %4%nfp: %5%ncomment: %6%npid: %7%0
+.
+
+MessageId=401
+SymbolicName=KITTY_KGEN_PRIVATE_SAVED
+Language=English
+%1%ntool: %2%nfp: %3%ncomment: %4%npath: %5%nformat: %6%nprotection: %7%nresult: %8%nreason: %9%npid: %10%0
+.
+
+MessageId=402
+SymbolicName=KITTY_KGEN_PUBLIC_SAVED
+Language=English
+%1%ntool: %2%nfp: %3%npath: %4%nformat: %5%nresult: %6%nreason: %7%npid: %8%0
+.
+
+MessageId=403
+SymbolicName=KITTY_KGEN_PASSPHRASE_CHANGED
+Language=English
+%1%ntool: %2%nfp: %3%npath: %4%nprotection: %5%npid: %6%0
+.
+
+; The suite, source "KiTTY++", always written, in the Application log: a
+; program file refused at start (rename, signature, integrity), log
+; retention, missing Windows features.
+
+MessageId=900
+SymbolicName=KITTY_SUITE_PROGRAM_REFUSED
+Language=English
+%1%ncheck: %2%nfound: %3%nprogram: %4%0
+.
+
+MessageId=901
+SymbolicName=KITTY_SUITE_LOG_RETENTION
+Language=English
+%1%nfiles: %2%nkb: %3%ndays: %4%nmb: %5%npattern: %6%0
+.
+
+MessageId=902
+SymbolicName=KITTY_SUITE_MISSING_FEATURES
+Language=English
+%1%nfeatures: %2%nmissing: %3%0
 .

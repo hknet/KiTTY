@@ -47,6 +47,7 @@ static void fm_clear(Terminal *term);
 #include "cdecode.h"
 #include "cencode.h"
 #include "../kitty/kitty_text.h"   /* KiTTY: the far2l clipboard prompt's words */
+#include "../kitty/kitty_winevent.h"   /* KiTTY: event 230, a refused far2l request */
 /* KiTTY: the platform seams of the far2l extensions (clipboard, permission
  * box, window size); the test targets stub them. */
 #include "../kitty/kitty_far2l.h"
@@ -4812,6 +4813,21 @@ static void far2l_log_refused(Terminal *term)
         return;
     term->far2l_refused_logged = now;
     logevent(term->logctx, KT_CLIP_FAR2L_LOG_REFUSED);
+    kitty_wev_farend_refused("far2l-clipboard", KT_CLIP_FAR2L_LOG_REFUSED, "");
+}
+
+/* KiTTY: event 230 for a refused far2l clipboard open (the setting, the
+ * focus, the box's Deny), at most one per FAR2L_REFUSED_LOG_GAP: the host
+ * decides how often it asks. One terminal per process. */
+static void far2l_wev_open_refused(const char *why)
+{
+    static unsigned long last;
+    unsigned long now = (unsigned long)time(NULL);
+    if (!kitty_wev_enabled() ||
+        (last != 0 && now - last < FAR2L_REFUSED_LOG_GAP))
+        return;
+    last = now;
+    kitty_wev_farend_refused("far2l-clipboard", why, "open");
 }
 
 /* A served data-ID query: no data leaves, but it tells the host whether the
@@ -4962,6 +4978,9 @@ static void far2l_clipboard(Terminal *term, F2lStack *st, unsigned char id)
         } else {
             term->far2l_clip_open = false;
             far2l_clip_open_reply(term, id, -1);
+            far2l_wev_open_refused(term->clip_allowed == 0 ?
+                                   KT_CLIP_WHY_DENY_SETTING :
+                                   KT_CLIP_WHY_NO_FOCUS);
         }
         return;
       }
@@ -5323,6 +5342,7 @@ void term_far2l_open_answer(Terminal *term, bool allow, bool always)
         term->far2l_denied = true;     /* no new box until a real paste */
         term->far2l_clip_open = false;
         far2l_clip_open_reply(term, id, -1);
+        far2l_wev_open_refused(KT_CLIP_WHY_USER_NO);
     }
     term->far2l_wait_gesture = false;
     sfree(term->far2l_wait_cid);

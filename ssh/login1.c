@@ -12,6 +12,7 @@
 #include "ppl.h"
 #include "sshcr.h"
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
+#include "kitty/kitty_winevent.h"   /* KiTTY: host keys in the Windows Event Log */
 
 /* KiTTY: a login the user TYPES at the SSH prompts - the same hook the
  * SSH-2 layer uses, defined in ssh/userauth2-client.c. See the comment on
@@ -268,6 +269,8 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
     s->spr = SPR_OK;
 #endif
     crMaybeWaitUntilV(s->spr.kind != SPRK_INCOMPLETE);
+    /* KiTTY: a host key question's answer, event 211-212/311-312 */
+    kitty_wev_hostkey_answer(!spr_is_abort(s->spr));
 
     if (spr_is_abort(s->spr)) {
         ssh_spr_close(s->ppl.ssh, s->spr, "host key verification");

@@ -94,6 +94,7 @@ if(HALIBUT AND PERL_EXECUTABLE)
     ${CMAKE_CURRENT_SOURCE_DIR}/feedback.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pubkeyfmt.but
     ${CMAKE_CURRENT_SOURCE_DIR}/folderstore.but
+    ${CMAKE_CURRENT_SOURCE_DIR}/eventids.but
     ${CMAKE_CURRENT_BINARY_DIR}/licence.but
     ${CMAKE_CURRENT_SOURCE_DIR}/pgpkeys.but
     ${CMAKE_CURRENT_SOURCE_DIR}/sshnames.but

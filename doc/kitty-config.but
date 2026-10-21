@@ -3032,8 +3032,9 @@ unavailable. This checkbox is what turns that line off, and it is worth
 turning off once you have read it - the answer is a property of the machine
 and will not change.
 
-\b The full list in the \i{Event Log}: each missing entry point and the DLL it
-was expected in, beside the feature it powers. This is written whether the
+\b The full list in the session's \i{Event Log} and in the Windows Event
+Log (event 902): each missing entry point and the DLL it was expected in,
+beside the feature it powers. This is written whether the
 checkbox is set or not. The checkbox governs the interruption, not the record.
 
 It reports what was \e{looked up and not found}, so it also covers the things
@@ -3045,9 +3046,54 @@ Stored per installation, as \c{warnmissingfeatures} in \c{kitty.ini}.
 
 \S{kitty-cfg-event-viewer} \q{KiTTY++ Event Viewer}
 
-Opens the Windows Application log filtered to KiTTY++ entries (Windows
-XP: unfiltered). With the system MSI installed, entries show their text
-only.
+Opens the Windows Application log filtered to KiTTY++ entries, with the
+log \c{KiTTY++_Session} when it exists (Windows XP: unfiltered). With the
+system MSI installed, ID 0 entries show their text only, the others their
+fields one per line (\k{kitty-cfg-windows-eventlog}).
+
+\S{kitty-cfg-windows-eventlog} \q{Windows Event Log}
+
+Three switches, off by default, send records to the Windows Event Log:
+\q{kitty.exe sessions} (\c{sessioneventlog}), \q{klink, kscp, ksftp}
+(\c{clieventlog}) and \q{kittygen} (\c{kittygeneventlog}), under
+\c{[KiTTY]} in \c{kitty.ini}. The system-wide installation puts them in
+the log \c{KiTTY++_Session}; otherwise they go to the Application log.
+Each kind of record has its own event ID and each field is its own value
+in the event data, for Event Viewer filters, Windows Event Forwarding and
+a SIEM. The records carry host names, user names, file paths and key
+fingerprints. Every event ID with its fields in order is listed in
+\k{kitty-eventids}.
+
+\b 0 - text only (source \c{KiTTY++}).
+
+\b 100-199 - kageant's agent log (source \c{KiTTY++_agent}, log
+\c{KiTTY++_Agent}; see \k{pageant-mainwin-settings}).
+
+\b 200-299 - kitty.exe (source \c{KiTTY++_kitty}): 200 session opened,
+201 closed, 210 host key known, 211 new host key, 212 host key
+mismatch, 220 login succeeded, 221 login failed, 230 far-end request
+refused.
+
+\b 300-399 - klink, kscp, ksftp (source \c{KiTTY++_cli}): 300-321 as
+200-221, 330 transfer done, 331 transfer failed.
+
+\b 400-499 - kittygen and kittygen-cli (source \c{KiTTY++_kittygen}):
+400 key generated, 401 private key saved, 402 public key saved, 403
+passphrase changed.
+
+\b 900-999 - the suite (source \c{KiTTY++}, Application log, always
+written): 900 program file refused, 901 log retention, 902 missing
+Windows features.
+
+Refusals, failures and mismatches are warnings, 900 is an error, the
+rest information.
+
+The system-wide installation creates \c{KiTTY++_Session} with a maximum
+size of 20 MB; when it is full, the oldest records are overwritten. To
+change that, for example to 50 MB:
+\c{wevtutil sl KiTTY++_Session /ms:52428800}. A major upgrade sets it
+back to 20 MB. In the Application log, size and retention are Windows'
+own settings.
 
 \S{kitty-cfg-host-cas} The Certificate Authorities panel
 

@@ -66,6 +66,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_verifyagent        "kitty-cfg-security"
 #define WINHELP_CTX_kitty_missing_features   "kitty-cfg-missing-features"
 #define WINHELP_CTX_kitty_event_viewer       "kitty-cfg-event-viewer"
+#define WINHELP_CTX_kitty_windows_eventlog   "kitty-cfg-windows-eventlog"
 #define WINHELP_CTX_kitty_helper_paths       "kitty-cfg-external-tools"
 #define WINHELP_CTX_kitty_settings_tree      "kitty-cfg-kitty-settings"
 #define WINHELP_CTX_kitty_system             "kitty-cfg-system"

@@ -10,6 +10,7 @@
 #include "putty.h"
 #include "../kitty/kitty_hostkey_scan.h"   /* KiTTY: -scan / -knownhosts */
 #include "../kitty/kitty_renameguard.h"    /* KiTTY: refuse a foreign file name */
+#include "../kitty/kitty_winevent.h"       /* KiTTY: the Windows Event Log records */
 #include "../kitty/kitty_selfcheck.h"      /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_termenv.h"        /* KiTTY: the refused-variables NOTE */
 #include "../kitty/kitty_console_store.h"  /* KiTTY: the folder store, KITTYPP_DIR */
@@ -708,6 +709,10 @@ int main(int argc, char **argv)
         bool nodelay = conf_get_bool(conf, CONF_tcp_nodelay) &&
             (GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_CHAR);
 
+        /* KiTTY: the records' target (kitty_winevent.h, 300-321) */
+        kitty_wev_main_seat(plink_seat);
+        kitty_wev_target(conf_get_str(conf, CONF_host),
+                         conf_get_int(conf, CONF_port), vt->id);
         error = backend_init(vt, plink_seat, &backend, logctx, conf,
                              conf_get_str(conf, CONF_host),
                              conf_get_int(conf, CONF_port),

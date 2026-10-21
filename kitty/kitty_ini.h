@@ -602,6 +602,18 @@ char default_init_file_content[] =
 ;    Event Log either way. Also a checkbox: Application -> Security.\n\
 ;warnmissingfeatures=yes\n\
 \n\
+; sessioneventlog: kitty.exe reports each session to the Windows Event Log -\n\
+; opened, closed, host key, login, far-end requests refused (IDs 200-230,\n\
+; source KiTTY++_kitty, log KiTTY++_Session; Application log without the\n\
+; system MSI). Host names, user names and fingerprints go into the events.\n\
+;sessioneventlog=no\n\
+; clieventlog: the same for klink, kscp and ksftp, plus file transfers\n\
+; (IDs 300-331, source KiTTY++_cli).\n\
+;clieventlog=no\n\
+; kittygeneventlog: kittygen and kittygen-cli report keys generated and\n\
+; saved and passphrases changed (IDs 400-403, source KiTTY++_kittygen).\n\
+;kittygeneventlog=no\n\
+\n\
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'\n\
 ;    remembered LAST selection (which proxy, for how long), shared between\n\
 ;    the config box and the launcher menu so both offer the same thing next\n\

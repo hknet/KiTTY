@@ -1058,11 +1058,17 @@
 #define KT_SECURITY_LIMIT_MEMENC                     "  -  secrets encrypted in memory"
 #define KT_SECURITY_LIMIT_SSO                        "  -  GSSAPI/Kerberos single sign-on"
 #define KT_SECURITY_LIMIT_IPV6                       "  -  IPv6 name resolution"
-#define KT_SECURITY_EVENTLOG_ALWAYS                  "Event Log always reports missing Windows library features."
+#define KT_SECURITY_EVENTLOG_ALWAYS                  "Session and Windows Event Logs always report missing Windows library features."
 #define KT_SECURITY_EVENT_VIEWER                     KT_CAP_KITTYPP " Event Viewer"
 /* The tracing switch ([KiTTY] debug) traces many things, not only the
  * automation, so its group is on the Security panel. */
 #define KT_SECURITY_DIAGNOSTICS                      "Diagnostics"
+/* Application > Security > Windows Event Log: one switch per program
+ * ([KiTTY] sessioneventlog, clieventlog, kittygeneventlog) */
+#define KT_SECURITY_WINDOWS_EVENT_LOG                "Windows Event Log"
+#define KT_SECURITY_EVLOG_SESSIONS                   "kitty.exe sessions"
+#define KT_SECURITY_EVLOG_CLI                        "klink, kscp, ksftp"
+#define KT_SECURITY_EVLOG_KITTYGEN                   "kittygen"
 
 /* Application/Security/Certificate Authorities */
 #define KT_CERTIFICATE_AUTHORITIES_TRUSTED_HOST_CERTIFICATE_AUTHORITIES "Trusted host Certificate Authorities"

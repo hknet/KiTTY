@@ -72,6 +72,11 @@
 #define KI_READONLY                         "readonly"
 #define KI_INHERITDEFAULTSETTINGS           "inheritdefaultsettings"   /* hknet/KiTTY#61 */
 #define KI_SAVEONLYNONDEFAULTSETTINGS       "saveonlynondefaultsettings"
+/* The Windows Event Log records (kitty_winevent.h): kitty.exe's sessions,
+ * klink/kscp/ksftp, kittygen + kittygen-cli. yes / no, default no. */
+#define KI_SESSIONEVENTLOG                  "sessioneventlog"
+#define KI_CLIEVENTLOG                      "clieventlog"
+#define KI_KITTYGENEVENTLOG                 "kittygeneventlog"
 #define KI_RECONNECTDELAY                   "ReconnectDelay"
 /* reconnect by failure condition (kitty_reconnect.c): retry | 3 | 1 | stop | wait */
 #define KI_RECONNECTMAXDELAY                "reconnectmaxdelay"

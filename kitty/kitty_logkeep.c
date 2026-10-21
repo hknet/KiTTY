@@ -43,7 +43,7 @@
 
 #include "putty.h"
 #include "kitty_text.h"
-#include "kitty_renameguard.h"   /* kitty_eventlog_line */
+#include "kitty_winevent.h"      /* 901 log-retention */
 #include "kitty_logkeep.h"
 
 /* One position of the name pattern. */
@@ -343,7 +343,22 @@ char *kitty_logkeep_run(const Filename *configured, const Filename *active,
         ret = dupprintf(KT_LOGKEEP_DELETED, ndays + nmb,
                         kb > ULONG_MAX ? ULONG_MAX : (unsigned long)kb,
                         rules, disp);
-        kitty_eventlog_line(EVENTLOG_INFORMATION_TYPE, ret);
+        /* Event 901 (kitty_eventids.h), always: files, KB, the two rules as
+         * set (0 = off) and the pattern - each its own field; without the
+         * message file the line itself, as event ID 0. */
+        {
+            char nfiles_s[16], kb_s[16], days_s[16], mb_s[16];
+            const char *v[5];
+            snprintf(nfiles_s, sizeof(nfiles_s), "%d", ndays + nmb);
+            snprintf(kb_s, sizeof(kb_s), "%lu",
+                     kb > ULONG_MAX ? ULONG_MAX : (unsigned long)kb);
+            snprintf(days_s, sizeof(days_s), "%d", keep_days > 0 ? keep_days : 0);
+            snprintf(mb_s, sizeof(mb_s), "%d", keep_mb > 0 ? keep_mb : 0);
+            v[0] = nfiles_s; v[1] = kb_s; v[2] = days_s; v[3] = mb_s;
+            v[4] = disp;
+            kitty_wev_suite(KITTY_EV_LOG_RETENTION, EVENTLOG_INFORMATION_TYPE,
+                            v, 5, ret);   /* ret: the line without a message file */
+        }
         sfree(rd);
         sfree(rm);
         sfree(rules);

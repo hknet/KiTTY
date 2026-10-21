@@ -103,12 +103,23 @@ int kitty_file_has_cert_table(const char *path);
  * kitty_guard_interactive(): nonzero when the process's window station is
  * visible - somebody could see a box. Unknown counts as interactive.
  *
- * kitty_guard_report(): the one report, as the guards above make it. With
- * `allow_box` zero a windowed program gets the event-log line only - for a
+ * kitty_guard_report(): the one report, as the guards above make it: the
+ * box or stderr line, and event 900 (program-refused) with `check` (one of
+ * the KG_CHECK_* names) and `found`, the reason the message shows. With
+ * `allow_box` zero a windowed program gets the event record only - for a
  * refusal that is made precisely because nobody is there to click.
  */
+#define KG_CHECK_RENAME    "rename"
+#define KG_CHECK_SIGNATURE "signature"
+#define KG_CHECK_INTEGRITY "integrity"
 int kitty_guard_interactive(void);
-void kitty_guard_report(const char *msg, int gui, int allow_box);
+void kitty_guard_report(const char *check, const char *found, int gui,
+                        int allow_box);
+/*
+ * A line of text as event ID 0 with this program's path under it (the
+ * Applications leaf's warnings). Not a refusal: no 900 record.
+ */
+void kitty_guard_eventlog_text(const char *msg);
 
 /*
  * One line into the Application event log under the KiTTY++ source, the line

@@ -12,9 +12,12 @@
 #include "console.h"
 #include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "../kitty/kitty_text.h"      /* KiTTY: the readonly host-key texts */
+#include "../kitty/kitty_winevent.h"  /* KiTTY: event 301 at the end */
 
 void cleanup_exit(int code)
 {
+    /* KiTTY: event 301 for a session still open: it ended with this code */
+    kitty_wev_session_close("closed", "", code);
     /*
      * Clean up.
      */

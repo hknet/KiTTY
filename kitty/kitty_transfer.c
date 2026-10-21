@@ -60,6 +60,27 @@
 #include "kitty_transfer.h"
 #include "kitty_osc52.h"
 #include "kitty_reply.h"        /* kitty_term_send_reply */
+#include "kitty_winevent.h"     /* event 230: a transfer refused */
+
+/* Event 230 (kitty_winevent.h) for a refused transfer or file: request
+ * file-write (far end -> this PC) or file-read, the status text the far end
+ * got, the session id or the file's name. A per-file refusal can repeat
+ * for every name of a folder: at most one record per second for those. */
+static void kt_wev_refused(const char *request, const char *why,
+                           const char *detail, bool per_file)
+{
+    static unsigned long last;
+    unsigned long now;
+    if (!kitty_wev_enabled())
+        return;
+    now = (unsigned long)time(NULL);
+    if (per_file) {
+        if (last == now)
+            return;
+        last = now;
+    }
+    kitty_wev_farend_refused(request, why, detail ? detail : "");
+}
 
 extern HWND MainHwnd;            /* kitty.c: the terminal window */
 /* The reply channel (kitty_osc52.c): a complete sequence to the backend. */
@@ -1108,6 +1129,8 @@ static void kt_send_file(struct kt_state *st, const kt5113_cmd *c)
     }
     if (c->ftype == KT5113_FT_SYMLINK || c->ftype == KT5113_FT_LINK) {
         kt_err(term, s, c->fid, "ENOTSUP", KT_XFER5113_ST_LINKS);
+        kt_wev_refused("file-write", KT_XFER5113_ST_LINKS,
+                       c->name_bad ? "?" : c->name, true);
         kt_log(term, dupprintf(KT_XFER5113_LOG_FILE_REFUSED, s->id,
                                c->name_bad ? "?" : c->name, KT_XFER5113_ST_LINKS));
         return;
@@ -1124,6 +1147,7 @@ static void kt_send_file(struct kt_state *st, const kt5113_cmd *c)
         (path = kt_place(s, c->name, c->name_len, &why)) == NULL) {
         const char *m = why ? KT_XFER5113_ST_MKDIR_FAILED : KT_XFER5113_ST_BAD_NAME;
         kt_err(term, s, c->fid, why ? "EIO" : "EINVAL", m);
+        kt_wev_refused("file-write", m, c->name_bad ? "?" : c->name, true);
         kt_log(term, dupprintf(KT_XFER5113_LOG_FILE_REFUSED, s->id,
                                c->name_bad ? "?" : c->name, m));
         return;
@@ -1315,6 +1339,7 @@ static void kt_send_decide(struct kt_state *st, int allowed,
     }
     if (!allowed) {
         kt_err(term, s, NULL, "EPERM", KT_XFER5113_ST_REFUSED);
+        kt_wev_refused("file-write", KT_XFER5113_ST_REFUSED, s->id, false);
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_DENIED, s->id));
         kt_send_free(st);
         return;
@@ -1362,6 +1387,7 @@ static void kt_send_picked(void *vctx, const char *path)
     }
     if (!path) {
         kt_err(term, s, NULL, "EPERM", KT_XFER5113_ST_REFUSED);
+        kt_wev_refused("file-write", KT_XFER5113_ST_REFUSED, s->id, false);
         kt_log(term, dupprintf(KT_XFER5113_LOG_NO_DEST, s->id));
         kt_send_free(st);
         return;
@@ -2353,6 +2379,7 @@ static void kt_recv_decide(struct kt_state *st, int allowed)
     }
     if (!allowed) {
         kt_err(term, r, NULL, "EPERM", KT_XFER5113_ST_REFUSED);
+        kt_wev_refused("file-read", KT_XFER5113_ST_REFUSED, r->id, false);
         kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_DENIED, r->id));
         kt_recv_free(st);
         return;

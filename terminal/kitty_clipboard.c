@@ -17,6 +17,7 @@
 #include "putty.h"
 #include "terminal.h"
 #include "kitty_perf.h"
+#include "../kitty/kitty_winevent.h"   /* KiTTY: event 230, a refused read */
 #ifdef MOD_PERSO
 #include "../kitty/kitty_text.h"
 #include "../kitty/kitty_termenv.h"
@@ -275,6 +276,10 @@ static void osc52_read_forget_decision(Terminal *term)
  */
 #define OSC52_REFUSE_LOG_GAP 5         /* seconds between refusal log lines */
 
+/* KiTTY: which protocol the read being judged came over, for event 230
+ * (kitty_winevent.h): set by each front door before the gate. */
+static const char *osc52_read_request = "osc52-read";
+
 static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
 {
     unsigned long now = (unsigned long)time(NULL);
@@ -294,6 +299,15 @@ static void osc52_read_refuse(Terminal *term, const char *why, bool tell_user)
             char *msg = dupprintf(KT_CLIP_LOG_READ_REFUSED, why);
             logevent(term->logctx, msg);
             sfree(msg);
+        }
+        /* KiTTY: event 230, as rate-limited as the line above; detail =
+         * the refusals the gap swallowed before it */
+        {
+            char quiet[16] = "";
+            if (term->osc52_read_refused_quiet > 0)
+                snprintf(quiet, sizeof(quiet), "%d",
+                         term->osc52_read_refused_quiet);
+            kitty_wev_farend_refused(osc52_read_request, why, quiet);
         }
         term->osc52_read_refused_quiet = 0;
         term->osc52_read_refused_logged = now;
@@ -915,6 +929,7 @@ static void osc52_read_clipboard(Terminal *term)
     ClipReadData data;
     const char *err = NULL;
 
+    osc52_read_request = "osc52-read";   /* KiTTY: event 230's request */
     if (!osc52_read_gate(term, NULL, NULL, &want, &data, &err)) {
         /* KiTTY: the read box is open - this request waits for its answer */
         if (err == OSC52_READ_WAIT)
@@ -1397,6 +1412,7 @@ static void osc5522_read(Terminal *term, const char *meta,
         goto out;
     }
 
+    osc52_read_request = "osc5522-read";   /* KiTTY: event 230's request */
     if (!osc52_read_gate(term, name, pw, &rw, &data, &err)) {
         if (err == OSC52_READ_WAIT) {
             /* KiTTY: the read box is open - this request waits for its

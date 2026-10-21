@@ -63,6 +63,7 @@ void ssh_userauth_set_done_hook(void (*fn)(Seat *seat, const char *username))
 #include "sshcr.h"
 #include "kitty/kitty_connstage.h"   /* KiTTY: how far a connection got */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
+#include "kitty/kitty_winevent.h"   /* KiTTY: logins in the Windows Event Log */
 
 #ifndef NO_GSSAPI
 #include "gssc.h"
@@ -137,6 +138,9 @@ struct ssh2_userauth_state {
     int len;
     PktOut *pktout;
     bool is_trivial_auth;
+    /* KiTTY: the public key a signed publickey request sent (an agent key's
+     * blob or publickey_blob, not owned), for event 220/320's fingerprint */
+    strbuf *kitty_wev_blob;
 
     agent_pending_query *auth_agent_query;
     bufchain banner;
@@ -244,6 +248,28 @@ static const PacketProtocolLayerVtable ssh2_userauth_vtable = {
     .name = "ssh-userauth",
 };
 
+/* KiTTY: an authentication request's method as the Event Log records name
+ * it (kitty_winevent.h): the SSH method names. */
+static const char *kitty_wev_method(int type)
+{
+    switch (type) {
+      case AUTH_TYPE_NONE:
+        return "none";
+      case AUTH_TYPE_PUBLICKEY:
+      case AUTH_TYPE_PUBLICKEY_OFFER_LOUD:
+      case AUTH_TYPE_PUBLICKEY_OFFER_QUIET:
+        return "publickey";
+      case AUTH_TYPE_PASSWORD:
+        return "password";
+      case AUTH_TYPE_GSSAPI:
+        return "gssapi-with-mic";
+      case AUTH_TYPE_KEYBOARD_INTERACTIVE:
+      case AUTH_TYPE_KEYBOARD_INTERACTIVE_QUIET:
+        return "keyboard-interactive";
+    }
+    return "";
+}
+
 PacketProtocolLayer *ssh2_userauth_new(
     PacketProtocolLayer *successor_layer,
     const char *hostname, int port, const char *fullhostname,
@@ -262,6 +288,7 @@ PacketProtocolLayer *ssh2_userauth_new(
     s->successor_layer = successor_layer;
     s->hostname = dupstr(hostname);
     s->port = port;
+    s->kitty_wev_blob = NULL;
     s->fullhostname = dupstr(fullhostname);
     s->keyfile = filename_copy(keyfile);
     s->detached_cert_file = filename_copy(detached_cert_file);
@@ -991,6 +1018,18 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
 
             if (pktin && pktin->type == SSH2_MSG_USERAUTH_SUCCESS) {
                 ppl_logevent("Access granted");
+                /* KiTTY: event 220/320, with the key a publickey login
+                 * signed with */
+                if (kitty_wev_own_seat(s->ppl.seat)) {
+                    char *kfp = (s->type == AUTH_TYPE_PUBLICKEY &&
+                                 s->kitty_wev_blob) ?
+                        ssh2_fingerprint_blob(
+                            ptrlen_from_strbuf(s->kitty_wev_blob),
+                            SSH_FPTYPE_SHA256) : NULL;
+                    kitty_wev_auth_ok(s->hostname, s->port, s->username,
+                                      kitty_wev_method(s->type), kfp);
+                    sfree(kfp);
+                }
                 goto userauth_success;
             }
 
@@ -1267,6 +1306,8 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                                 sigblob);
                             pq_push(s->ppl.out_pq, s->pktout);
                             s->type = AUTH_TYPE_PUBLICKEY;
+                            s->kitty_wev_blob =
+                                s->agent_keys[s->agent_key_index].blob;
                             s->is_trivial_auth = false;
                         } else {
                             ppl_logevent(KT_AGENT_LOG_REFUSED);
@@ -1540,6 +1581,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     pq_push(s->ppl.out_pq, s->pktout);
                     ppl_logevent("Sent public key signature");
                     s->type = AUTH_TYPE_PUBLICKEY;
+                    s->kitty_wev_blob = s->publickey_blob;
                     ssh_key_free(key->key);
                     sfree(key->comment);
                     sfree(key);
@@ -2263,6 +2305,14 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 sfree(s->password);
 
             } else {
+                /* KiTTY: event 221/321 - once, when nothing is left to
+                 * try; the method is the last one tried */
+                if (kitty_wev_own_seat(s->ppl.seat))
+                    kitty_wev_auth_failed(
+                        s->hostname, s->port, s->username,
+                        kitty_wev_method(s->type),
+                        "no supported authentication methods available",
+                        s->last_methods_string->s);
                 ssh_bpp_queue_disconnect(
                     s->ppl.bpp,
                     "No supported authentication methods available",

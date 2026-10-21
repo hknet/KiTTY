@@ -57,6 +57,7 @@
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
 #include "kitty_sessorg.h"      /* Organize sessions (hknet/KiTTY#55) */
+#include "kitty_eventids.h"     /* the Event Viewer view: sources and log */
 
 #define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
 
@@ -1280,26 +1281,50 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * when a window opens: a change reaches the windows opened after it. The
  * Event Log entry is written whatever this is set to - the checkbox governs
  * the interruption, not the record. */
-/* Application > Security > KiTTY++ Event Viewer: the Application log, with a
- * custom view of the source kitty_eventlog_line writes under. The view is a
- * file in the temp folder handed to eventvwr /v: (Vista on); Windows XP's
- * Event Viewer takes no view, so there - or when the view cannot be written
- * or started - the whole log opens. */
+/* Application > Security > KiTTY++ Event Viewer: a custom view of the
+ * suite's records - the source kitty_eventlog_line and the 9xx records
+ * write under (KiTTY++), and the sources of the session, console-tool and
+ * kittygen records (kitty_eventids.h), in the Application log, where those
+ * land without the system-wide installation, and in the log KiTTY++_Session
+ * when that installation made it (a query naming a missing log fails the
+ * whole view). The view is a file in the temp folder handed to eventvwr /v:
+ * (Vista on); Windows XP's Event Viewer takes no view, so there - or when
+ * the view cannot be written or started - the whole log opens. */
+#define KITTY_SESSION_EVENTLOG_KEY \
+    "SYSTEM\\CurrentControlSet\\Services\\EventLog\\" KITTY_EVLOG_SESSION
+
+static int kitty_session_eventlog_exists(void)
+{
+    HKEY k;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, KITTY_SESSION_EVENTLOG_KEY, 0,
+                      KEY_QUERY_VALUE, &k) != ERROR_SUCCESS)
+        return 0;
+    RegCloseKey(k);
+    return 1;
+}
+
 static void kitty_eventviewer_open(HWND owner)
 {
-    static const char view[] =
+    char view[1536];
+    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
+    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+    int len = snprintf(view, sizeof(view),
         "<ViewerConfig><QueryConfig><QueryParams><UserQuery/></QueryParams>"
         "<QueryNode><Name>" KT_CAP_KITTYPP "</Name><QueryList>"
         "<Query Id=\"0\" Path=\"Application\"><Select Path=\"Application\">"
         "*[System[Provider[@Name='" KT_RENAME_GUARD_TITLE "']]]"
-        "</Select></Query></QueryList></QueryNode></QueryConfig></ViewerConfig>";
-    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
-    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+        "</Select><Select Path=\"Application\">"
+        "*[System[Provider[@Name='" KITTY_EVSRC_KITTY "' or @Name='"
+        KITTY_EVSRC_CLI "' or @Name='" KITTY_EVSRC_KITTYGEN "']]]"
+        "</Select>%s</Query></QueryList></QueryNode></QueryConfig></ViewerConfig>",
+        kitty_session_eventlog_exists() ?
+        "<Select Path=\"" KITTY_EVLOG_SESSION "\">*</Select>" : "");
 
-    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp)) {
+    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp) &&
+        len > 0 && len < (int)sizeof(view)) {
         snprintf(path, sizeof(path), "%sKiTTYpp-events.xml", tmp);
         snprintf(args, sizeof(args), "/v:\"%s\"", path);
-        if (kitty_write_file_whole(path, view, sizeof(view) - 1) &&
+        if (kitty_write_file_whole(path, view, (size_t)len) &&
             (INT_PTR)ShellExecuteA(owner, "open", "eventvwr.exe", args, NULL,
                                    SW_SHOWNORMAL) > 32)
             return;
@@ -1886,6 +1911,24 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     ctrl_text(s, KT_SECURITY_LIMIT_IPV6,   HELPCTX(kitty_missing_features));
     ctrl_text(s, KT_SECURITY_EVENTLOG_ALWAYS, HELPCTX(kitty_missing_features));
 
+    /* The suite's records in the Windows Event Log (kitty_winevent.h): one
+     * switch per program, each read when that program starts, and the
+     * button that opens the Event Viewer on them. kageant's agent log has
+     * its own switch in kageant (agentlogsink). */
+    s = ctrl_getset(b, "Application/Security", "winevent",
+                    KT_SECURITY_WINDOWS_EVENT_LOG);
+    ctrl_checkbox(s, KT_SECURITY_EVLOG_SESSIONS, NO_SHORTCUT,
+                  HELPCTX(kitty_windows_eventlog), kitty_kset_handler,
+                  P((void *)kset_find(KI_SESSIONEVENTLOG)));
+    ctrl_checkbox(s, KT_SECURITY_EVLOG_CLI, NO_SHORTCUT,
+                  HELPCTX(kitty_windows_eventlog), kitty_kset_handler,
+                  P((void *)kset_find(KI_CLIEVENTLOG)));
+    ctrl_checkbox(s, KT_SECURITY_EVLOG_KITTYGEN, NO_SHORTCUT,
+                  HELPCTX(kitty_windows_eventlog), kitty_kset_handler,
+                  P((void *)kset_find(KI_KITTYGENEVENTLOG)));
+    ctrl_pushbutton(s, KT_SECURITY_EVENT_VIEWER, NO_SHORTCUT,
+                    HELPCTX(kitty_event_viewer), kitty_eventviewer_handler, P(NULL));
+
     /* The tracing switch ([KiTTY] debug) was on Automation, but what it
      * traces - session lookups, the automatic command, key remaps, helper
      * command lines - is not the automation's alone, so its group is here,
@@ -1894,8 +1937,6 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     s = ctrl_getset(b, "Application/Security", "diag", KT_SECURITY_DIAGNOSTICS);
     ctrl_checkbox(s, KT_KSET_TW_DEBUG, NO_SHORTCUT, HELPCTX(kitty_verifyagent),
                   kitty_kset_handler, P((void *)kset_find(KI_DEBUG)));
-    ctrl_pushbutton(s, KT_SECURITY_EVENT_VIEWER, NO_SHORTCUT,
-                    HELPCTX(kitty_event_viewer), kitty_eventviewer_handler, P(NULL));
 
     if (has_ca_config_box) {
         ctrl_settitle(b, "Application/Security/Certificate Authorities",

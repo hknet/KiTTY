@@ -796,6 +796,11 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_funkeys_choices, lenof(kset_funkeys_choices) },
     { INIT_SECTION, KI_PASTESIZE,      KSET_INT, false, GetPasteSize, SetPasteSize, NULL, 0, 100000000, 5120 },
     { INIT_SECTION, KI_DEBUG,          KSET_BOOL, false, kset_get_debug, kset_set_debug, NULL, 0, 0, 0 },
+    /* Security > Windows Event Log: each program reads its switch once, when
+     * it starts (kitty_winevent.h), so the store is the value */
+    { INIT_SECTION, KI_SESSIONEVENTLOG,  KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_CLIEVENTLOG,      KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_KITTYGENEVENTLOG, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     /* Automation */
     { INIT_SECTION, KI_INITDELAY,      KSET_SECS, false, NULL, NULL, &init_delay, 0, 0, 2000 },
     { INIT_SECTION, KI_BCDELAY,        KSET_INT, false, NULL, NULL, &between_char_delay, 0, 10000, 0 },

@@ -196,7 +196,8 @@ Windows' own settings.
 113 retry, 114 remove, 115 remove all, 120 lock, 121 unlock, 130 Hello
 enrol, 131 Hello protect, 132 Hello unlock, 140 key file warning, 150
 re-encrypt all, 160 agent start/stop, 170 log rotation. Refusals,
-failures and key file warnings are warnings, the rest information.
+failures and key file warnings are warnings, the rest information. The
+fields of each ID, in order, are listed in \k{kitty-eventids}.
 }
 
 Press F1 on any page for this section; on the idle row it opens the

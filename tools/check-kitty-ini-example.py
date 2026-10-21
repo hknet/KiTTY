@@ -106,6 +106,11 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "agentlogsink"),
     #   kitty_store_ending_applied(KI_FILEEXTENSIONAPPLIED, ...)  kitty/kitty_store.c
     ("KiTTY", "fileextensionapplied"),
+    #   kitty_wev_switch_on(KI_CLIEVENTLOG / KI_KITTYGENEVENTLOG)
+    #   kitty/kitty_console_store.c, windows/puttygen.c, cmdgen.c
+    #   (kitty/kitty_winevent_cfg.c reads them for the satellite programs)
+    ("KiTTY", "clieventlog"),
+    ("KiTTY", "kittygeneventlog"),
 }
 
 

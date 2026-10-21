@@ -33,6 +33,7 @@
 #include "../kitty/kitty_selfcheck.h"    /* KiTTY: refuse a file changed after release */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "../kitty/kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "../kitty/kitty_winevent.h" /* KiTTY: keys in the Windows Event Log */
 
 #ifdef MSVC4
 #define ICON_BIG        1
@@ -2041,6 +2042,27 @@ static INT_PTR CertInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
 /*
  * Dialog-box function for the main PuTTYgen dialog box.
  */
+/*
+ * KiTTY: the Windows Event Log records of kittygen (kitty_winevent.h,
+ * 400-402, [KiTTY] kittygeneventlog): the key's SHA256 fingerprint, from
+ * the public half (the private key stays protected).
+ */
+static char *kg_wev_fp(struct MainDlgState *state)
+{
+    char *fp = NULL, *h;
+    if (state->ssh2) {
+        if (state->ssh2key.key)
+            fp = ssh2_fingerprint(state->ssh2key.key, SSH_FPTYPE_SHA256);
+    } else {
+        char **fps = rsa_ssh1_fake_all_fingerprints(&state->key);
+        fp = dupstr(fps[SSH_FPTYPE_SHA256] ? fps[SSH_FPTYPE_SHA256] : "");
+        ssh2_free_all_fingerprints(fps);
+    }
+    h = dupstr(fp ? kitty_wev_fp_hash(fp) : "");
+    sfree(fp);
+    return h;
+}
+
 static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                     WPARAM wParam, LPARAM lParam)
 {
@@ -2735,6 +2757,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     /* the key could not be decrypted: nothing was written,
                      * so no sidecar may be written or removed either */
                     bool not_written = false;
+                    /* KiTTY: why the save failed, for event 401 */
+                    const char *kwev_why = NULL;
                     char *hello_printed = NULL, *hello_container = NULL;
                     char *hello_handout = NULL;
                     FILE *fp = f_open(fn, "r", false);
@@ -2862,6 +2886,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     if (not_written) {
                         /* reported above; the file on disk and its sidecar
                          * are left as they were */
+                        kwev_why = "key not decrypted";
                     } else if (ret <= 0) {
                         /* upstream's reason when there is one, else
                          * Windows'; always the file (it showed "Unable to save
@@ -2870,6 +2895,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         char *m = dupprintf(KT_KGEN_NOT_SAVED_FMT,
                                             filename_to_str(fn),
                                             err ? err : kitty_win_reason(werr));
+                        kwev_why = err ? err : kitty_win_reason(werr);
                         MessageBox(hwnd, m, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                         sfree(m);
                     } else if (hello) {
@@ -2891,6 +2917,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                               kitty_win_reason(GetLastError()));
                             MessageBox(hwnd, m, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                             sfree(m); sfree(why);
+                            kwev_why = "sidecar not written";
                         } else {
                             sfree(state->hello_saved_path);
                             state->hello_saved_path =
@@ -2914,6 +2941,27 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             sfree(m);
                         }
                         sfree(sc);
+                    }
+                    /* KiTTY: event 401, the private key saved or not */
+                    if (kitty_wev_enabled()) {
+                        char *kfp = kg_wev_fp(state);
+                        const char *v[8];
+                        v[0] = "kittygen";
+                        v[1] = kfp;
+                        v[2] = state->ssh2 ? state->ssh2key.comment :
+                                             state->key.comment;
+                        v[3] = filename_to_str(fn);
+                        v[4] = !state->ssh2 ? "ssh1" :
+                            type == SSH_KEYTYPE_SSHCOM ? "ssh.com" :
+                            type != realtype ? "openssh" :
+                            save_params.fmt_version == 2 ? "ppk2" : "ppk3";
+                        v[5] = hello ? "hello" :
+                            *passphrase ? "passphrase" : "none";
+                        v[6] = kwev_why ? "failed" : "saved";
+                        v[7] = kwev_why;
+                        kitty_wev_report(KITTY_EVO_PRIVATE_SAVED,
+                                         kwev_why != NULL, v, 8);
+                        sfree(kfp);
                     }
                     /* A disarmed save does NOT disarm the OTHER copies of
                      * this key: the file it was loaded from, and a
@@ -2966,6 +3014,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     FILTER_ALL_FILES);
                 if (fn) {
                     int ret;
+                    /* KiTTY: why the save failed, for event 402 */
+                    const char *kwev_why = NULL;
                     FILE *fp = f_open(fn, "r", false);
                     if (fp) {
                         char *buffer;
@@ -2982,6 +3032,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     }
                     fp = f_open(fn, "w", false);
                     if (!fp) {
+                        kwev_why = kitty_win_reason(GetLastError());
                         MessageBox(hwnd, "Unable to open key file",
                                    KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                     } else {
@@ -2997,9 +3048,24 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             ssh1_write_pubkey(fp, &state->key);
                         }
                         if (fclose(fp) < 0) {
+                            kwev_why = "write failed";
                             MessageBox(hwnd, "Unable to save key file",
                                        KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
                         }
+                    }
+                    /* KiTTY: event 402, the public key saved or not */
+                    if (kitty_wev_enabled()) {
+                        char *kfp = kg_wev_fp(state);
+                        const char *v[6];
+                        v[0] = "kittygen";
+                        v[1] = kfp;
+                        v[2] = filename_to_str(fn);
+                        v[3] = state->ssh2 ? "rfc4716" : "ssh1";
+                        v[4] = kwev_why ? "failed" : "saved";
+                        v[5] = kwev_why;
+                        kitty_wev_report(KITTY_EVO_PUBLIC_SAVED,
+                                         kwev_why != NULL, v, 6);
+                        sfree(kfp);
                     }
                     filename_free(fn);
                 }
@@ -3193,6 +3259,22 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
         /*
          * Finally, hide the progress bar and show the key data.
          */
+        /* KiTTY: event 400, the key generated */
+        if (kitty_wev_enabled()) {
+            char nbits[16], *fp = kg_wev_fp(state);
+            const char *v[5];
+            snprintf(nbits, sizeof(nbits), "%d",
+                     (state->keytype == ECDSA || state->keytype == EDDSA) ?
+                     state->curve_bits : state->key_bits);
+            v[0] = "kittygen";
+            v[1] = state->ssh2 ? ssh_key_alg(state->ssh2key.key)->ssh_id :
+                                 "rsa1";
+            v[2] = nbits;
+            v[3] = fp;
+            v[4] = *state->commentptr;
+            kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0, v, 5);
+            sfree(fp);
+        }
         ui_set_state(hwnd, state, 2);
         /* KiTTY: put the keyboard somewhere. The Generate button was
          * disabled while it still had the focus, so after generation NO
@@ -3352,6 +3434,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         ExitProcess(1);
     /* KiTTY: KITTYPP_DIR, this program's folder (windows/utils/defaults.c) */
     kitty_publish_kittypp_dir();
+    /* KiTTY: [KiTTY] kittygeneventlog=yes - keys generated and saved in the
+     * Windows Event Log (kitty_winevent.h, 400-402), read once */
+    kitty_wev_configure(KITTY_EVB_KITTYGEN,
+                        kitty_wev_switch_on(KI_KITTYGENEVENTLOG));
 
     /* KiTTY: a portable copy remembers its windows in kitty_windowpos.ini
      * beside the exe, never in the registry. */

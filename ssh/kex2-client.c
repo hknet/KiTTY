@@ -14,6 +14,7 @@
 #include "mpint.h"
 #include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "kitty/kitty_text.h"      /* KiTTY: KT_STORE_RO_NOT_SAVED */
+#include "kitty/kitty_winevent.h"  /* KiTTY: host keys in the Windows Event Log */
 
 /*
  * Another copy of the symbol defined in mpunsafe.c. See the comment
@@ -958,6 +959,12 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
                 }
                 if (cert_ok) {
                     strbuf_free(error);
+                    /* KiTTY: event 210/310, known by its CA */
+                    if (kitty_wev_own_seat(s->ppl.seat))
+                        kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN,
+                                          s->savedhost, s->savedport,
+                                          ssh_key_cache_id(s->hkey),
+                                          fingerprints[fptype_default], "ca");
                     ssh2_free_all_fingerprints(fingerprints);
                     ppl_logevent("Accepted certificate");
                     goto host_key_ok;
@@ -987,6 +994,8 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
                 s->spr = SPR_OK;
 #endif
                 crMaybeWaitUntilV(s->spr.kind != SPRK_INCOMPLETE);
+                /* KiTTY: a host key question's answer, event 211-212/311-312 */
+                kitty_wev_hostkey_answer(!spr_is_abort(s->spr));
                 if (spr_is_abort(s->spr)) {
                     *aborted = true;
                     ssh_spr_close(s->ppl.ssh, s->spr, "host key verification");

@@ -21,6 +21,7 @@
  * console tools take it too, and the settings library they link carries the
  * secret store and the permission check it calls. */
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
+#include "kitty/kitty_winevent.h"   /* KiTTY: the session's name for the Event Log records */
 #ifdef MOD_PERSO
 #include "kitty/kitty_storage.h"
 #endif
@@ -630,6 +631,8 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
                     /* KiTTY: a session path, or a bare name in one folder. */
                     char *sessname = kitty_cmdline_session_name(hostname_after_user);
                     bool found = do_defaults(sessname, conf2);
+                    if (found && conf_launchable(conf2))
+                        kitty_wev_session_name(sessname);   /* the Event Log records */
                     sfree(sessname);
                     if (found &&
                         conf_launchable(conf2)) {
@@ -730,6 +733,7 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
             /* KiTTY (hknet/KiTTY#55): a path, or a bare name in one folder. */
             char *sessname = kitty_cmdline_session_name(value);
             do_defaults(sessname, conf);
+            kitty_wev_session_name(sessname);   /* the Event Log records */
             sfree(sessname);
         }
         loaded_session = true;

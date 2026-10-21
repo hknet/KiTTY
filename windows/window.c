@@ -22,6 +22,7 @@
 #include "security-api.h"
 #include "win-gui-seat.h"
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: in utils, every binary links it */
+#include "../kitty/kitty_winevent.h" /* KiTTY: the session in the Windows Event Log (utils) */
 #include "../kitty/kitty_win.h"     /* KiTTY: the terminal window glue */
 #include "../kitty/kitty_winutil.h"
 #include "../kitty/kitty_updater.h"
@@ -1522,6 +1523,33 @@ static void kitty_report_keyfile_format(WinGuiSeat *wgs)
         kitty_ppk_format_hook(kf, ver, enc);
 }
 #endif
+#ifdef MOD_PERSO
+/*
+ * KiTTY: [KiTTY] sessioneventlog=yes - the session's records in the Windows
+ * Event Log (kitty_winevent.h, IDs 200-230). The switch is read once per
+ * process; with it off every record call returns at once. Each connection
+ * (a reconnect too) names its target here.
+ */
+static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
+{
+    static bool read = false;
+    if (!read) {
+        char v[16] = "";
+        int ReadParameterN(const char *, const char *, char *, size_t);
+        read = true;
+        kitty_wev_configure(KITTY_EVB_KITTY,
+                            ReadParameterN(KI_SECTION_KITTY, KI_SESSIONEVENTLOG,
+                                           v, sizeof(v)) && !stricmp(v, "yes"));
+    }
+    if (!kitty_wev_enabled())
+        return;
+    kitty_wev_main_seat(&wgs->seat);
+    kitty_wev_session_name(conf_get_str(wgs->conf, CONF_sessionname));
+    kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
+                     conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
+}
+#endif
+
 static void start_backend(WinGuiSeat *wgs)
 {
     const struct BackendVtable *vt;
@@ -1539,6 +1567,9 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
 
     vt = backend_vt_from_conf(wgs->conf);
+#ifdef MOD_PERSO
+    kitty_wev_start(wgs, vt);   /* KiTTY: event 200 names this target */
+#endif
 
 #ifdef MOD_PORTKNOCKING
     /* KiTTY feature: knock the configured port sequence before connecting. */
@@ -2147,6 +2178,9 @@ static void close_session(void *vctx)
     char *base = kitty_session_title_utf8(wgs->term);
 #endif
 
+    /* KiTTY: event 201 - a close nothing else has reported (Disconnect,
+     * Restart, suspend): the user's */
+    kitty_wev_session_close("user", "", -1);
     wgs->session_closed = true;
 #ifdef MOD_PERSO
     kitty_winprop_closed(wgs->term_hwnd, true);   /* the launcher's "(disconnected)" */
@@ -3743,6 +3777,9 @@ static void setup_clipboards(Terminal *term, Conf *conf)
  */
 void cleanup_exit(int code)
 {
+    /* KiTTY: event 201 for a session still open as the program ends: the
+     * window closed by the user */
+    kitty_wev_session_close("user", "", -1);
     /*
      * Clean up.
      */
@@ -4176,6 +4213,10 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
 {
     WinGuiSeat *wgs = container_of(seat, WinGuiSeat, seat);
 #ifdef MOD_PERSO
+    /* KiTTY: event 201 (kitty_winevent.h); a benign post-logout channel
+     * message ends a session that closed normally */
+    kitty_wev_session_close(kitty_is_benign_channel_close_msg(msg) ? "closed" :
+                            kitty_wev_close_result(msg), msg, -1);
     /* KiTTY: a benign post-logout channel artifact (see helper) is not a real
      * disconnect -- the remote already sent a clean exit status. Treat it as a
      * normal session end: no auto-reconnect, no fatal box, honour close-on-exit
@@ -5417,6 +5458,10 @@ static void exit_callback(void *vctx)
 
     if (!wgs->session_closed &&
         (exitcode = backend_exitcode(wgs->backend)) >= 0) {
+        /* KiTTY: event 201; INT_MAX is a fatal error, reported by
+         * win_seat_connection_fatal with its message */
+        if (exitcode != INT_MAX)
+            kitty_wev_session_close("closed", "", exitcode);
         close_on_exit = conf_get_int(wgs->conf, CONF_close_on_exit);
         /* Abnormal exits will already have set session_closed and taken
          * appropriate action. */

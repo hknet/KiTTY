@@ -12,6 +12,7 @@
 #include "kitty/kitty_hostkey_acceptnew.h"   /* KiTTY: accept-new */
 #include "kitty/kitty_text.h"   /* KiTTY: accept-new's record */
 #include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
+#include "kitty/kitty_winevent.h"  /* KiTTY: host keys in the Windows Event Log */
 #include "mpint.h"
 #include "ssh.h"
 #include "storage.h"
@@ -886,6 +887,16 @@ SeatPromptResult verify_ssh_host_key(
         return SPR_USER_ABORT;
 
     /*
+     * KiTTY: the outcome as a Windows Event Log record (kitty_winevent.h,
+     * 210-212 / 310-312) - this program's own connection only; a jump
+     * host's runs on a Seat of its own. A question's answer is reported by
+     * the transport layer once it has it (kitty_wev_hostkey_answer).
+     */
+    bool kwev = kitty_wev_own_seat(iseat.seat);
+    const char *kwev_fp = (kwev && fingerprints) ?
+        fingerprints[ssh2_pick_default_fingerprint(fingerprints)] : NULL;
+
+    /*
      * First, check if the Conf includes a manual specification of the
      * expected host key. If so, that completely supersedes everything
      * else, including the normal host key cache _and_ including
@@ -907,8 +918,12 @@ SeatPromptResult verify_ssh_host_key(
                 const char *p = strrchr(fingerprint, ' ');
                 fingerprint = p ? p+1 : fingerprint;
                 if (conf_get_str_str_opt(conf, CONF_ssh_manual_hostkeys,
-                                         fingerprint))
+                                         fingerprint)) {
+                    if (kwev)
+                        kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port,
+                                          keytype, kwev_fp, "manual");
                     return SPR_OK;
+                }
             }
         }
 
@@ -932,11 +947,17 @@ SeatPromptResult verify_ssh_host_key(
             if (conf_get_str_str_opt(conf, CONF_ssh_manual_hostkeys,
                                      base64blob)) {
                 sfree(base64blob);
+                if (kwev)
+                    kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port,
+                                      keytype, kwev_fp, "manual");
                 return SPR_OK;
             }
             sfree(base64blob);
         }
 
+        if (kwev)
+            kitty_wev_hostkey(KITTY_EVO_HOSTKEY_MISMATCH, host, port,
+                              keytype, kwev_fp, "refused");
         return SPR_SW_ABORT("Host key not in manually configured list");
     }
 
@@ -944,8 +965,12 @@ SeatPromptResult verify_ssh_host_key(
      * Next, check the host key cache.
      */
     int storage_status = check_stored_host_key(host, port, keytype, keystr);
-    if (storage_status == 0) /* matching key was found in the cache */
+    if (storage_status == 0) { /* matching key was found in the cache */
+        if (kwev)
+            kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port, keytype,
+                              kwev_fp, "cache");
         return SPR_OK;
+    }
 
     /*
      * KiTTY: accept-new (kitty_hostkey_acceptnew.h). An unknown plain key is
@@ -967,6 +992,9 @@ SeatPromptResult verify_ssh_host_key(
         logevent(logctx, line);
         kitty_hostkey_accept_new_report(line);
         sfree(line);
+        if (kwev)
+            kitty_wev_hostkey(KITTY_EVO_HOSTKEY_NEW, host, port, keytype,
+                              kwev_fp, "accept-new");
         return SPR_OK;
     }
 
@@ -1135,6 +1163,11 @@ SeatPromptResult verify_ssh_host_key(
                                 fingerprints[SSH_FPTYPE_MD5]);
     }
 
+    if (kwev)
+        kitty_wev_hostkey_pending(storage_status == 2 ?
+                                  KITTY_EVO_HOSTKEY_MISMATCH :
+                                  KITTY_EVO_HOSTKEY_NEW,
+                                  host, port, keytype, kwev_fp);
     SeatPromptResult toret = seat_confirm_ssh_host_key(
         iseat, host, port, keytype, keystr, text, helpctx, callback, ctx);
     seat_dialog_text_free(text);

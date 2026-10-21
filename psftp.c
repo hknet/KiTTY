@@ -13,6 +13,7 @@
 #include "storage.h"
 #include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
+#include "kitty/kitty_winevent.h"   /* KiTTY: transfers in the Windows Event Log */
 #include "ssh.h"
 #include "ssh/sftp.h"
 
@@ -231,6 +232,22 @@ static int bare_name_compare(const void *av, const void *bv)
 static void not_connected(void)
 {
     printf("ksftp: not connected to a host; use \"open host.name\"\n");
+}
+
+/*
+ * KiTTY: the tally of one get or put command for its Windows Event Log
+ * record (kitty_winevent.h, 330/331, [KiTTY] clieventlog): the files that
+ * went across, their bytes, the files that failed.
+ */
+static unsigned long kwev_files, kwev_errors;
+static unsigned long long kwev_bytes;
+
+static void kwev_tally(bool ok)
+{
+    if (ok)
+        kwev_files++;
+    else
+        kwev_errors++;
 }
 
 /* ----------------------------------------------------------------------
@@ -506,6 +523,7 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
                     break;
                 }
                 wpos += wlen;
+                kwev_bytes += wlen;    /* KiTTY: the command's tally */
             }
             if (wpos < len) {          /* we had an error */
                 toret = false;
@@ -524,6 +542,7 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
     pktin = sftp_wait_for_reply(req);
     fxp_close_recv(pktin, req);
 
+    kwev_tally(toret);                 /* KiTTY: the command's tally */
     return toret;
 }
 
@@ -731,6 +750,7 @@ bool sftp_put_file(char *fname, char *outfname, bool recurse, bool restart)
                 eof = true;
             } else {
                 xfer_upload_data(xfer, buffer, len);
+                kwev_bytes += len;     /* KiTTY: the command's tally */
             }
         }
 
@@ -772,6 +792,7 @@ bool sftp_put_file(char *fname, char *outfname, bool recurse, bool restart)
 
     close_rfile(file);
 
+    kwev_tally(!err);                  /* KiTTY: the command's tally */
     return !err;
 }
 
@@ -1216,6 +1237,10 @@ int sftp_cmd_pwd(struct sftp_command *cmd)
  * transfer (never as a different local name for a remote file) and
  * can handle wildcards.
  */
+/* KiTTY: get/put with their Event Log record (below sftp_general_put) */
+static int kwev_job(struct sftp_command *cmd, bool put, bool restart,
+                    bool multiple);
+
 int sftp_general_get(struct sftp_command *cmd, bool restart, bool multiple)
 {
     char *fname, *unwcfname, *origfname, *origwfname, *outfname;
@@ -1304,15 +1329,15 @@ int sftp_general_get(struct sftp_command *cmd, bool restart, bool multiple)
 }
 int sftp_cmd_get(struct sftp_command *cmd)
 {
-    return sftp_general_get(cmd, false, false);
+    return kwev_job(cmd, false, false, false);
 }
 int sftp_cmd_mget(struct sftp_command *cmd)
 {
-    return sftp_general_get(cmd, false, true);
+    return kwev_job(cmd, false, false, true);
 }
 int sftp_cmd_reget(struct sftp_command *cmd)
 {
-    return sftp_general_get(cmd, true, false);
+    return kwev_job(cmd, false, true, false);
 }
 
 /*
@@ -1403,17 +1428,54 @@ int sftp_general_put(struct sftp_command *cmd, bool restart, bool multiple)
 
     return toret;
 }
+/*
+ * KiTTY: one get/put command with its Windows Event Log record, 330 when
+ * every file went across, 331 when one did not or the command failed. The
+ * record names the command's first source and its target (the local or
+ * remote name given, else the source's own name), and the last SFTP error
+ * as the reason.
+ */
+static int kwev_job(struct sftp_command *cmd, bool put, bool restart,
+                    bool multiple)
+{
+    const char *src = "", *dst = "";
+    int ret, i = 1;
+    bool ok;
+
+    if (!kitty_wev_enabled() || !backend)
+        return put ? sftp_general_put(cmd, restart, multiple) :
+                     sftp_general_get(cmd, restart, multiple);
+    kwev_files = kwev_errors = 0;
+    kwev_bytes = 0;
+    ret = put ? sftp_general_put(cmd, restart, multiple) :
+                sftp_general_get(cmd, restart, multiple);
+    while (i < cmd->nwords && cmd->words[i][0] == '-') {
+        if (!strcmp(cmd->words[i++], "--"))
+            break;
+    }
+    if (i < cmd->nwords)
+        src = cmd->words[i];
+    if (!multiple && i + 1 < cmd->nwords)
+        dst = cmd->words[i + 1];
+    ok = ret != 0 && kwev_errors == 0;
+    kitty_wev_transfer(ok, conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                       put ? "put" : "get", put ? src : dst, put ? dst : src,
+                       kwev_files, kwev_bytes, kwev_errors,
+                       ok ? "" : (fxp_error() ? fxp_error() : ""));
+    return ret;
+}
+
 int sftp_cmd_put(struct sftp_command *cmd)
 {
-    return sftp_general_put(cmd, false, false);
+    return kwev_job(cmd, true, false, false);
 }
 int sftp_cmd_mput(struct sftp_command *cmd)
 {
-    return sftp_general_put(cmd, false, true);
+    return kwev_job(cmd, true, false, true);
 }
 int sftp_cmd_reput(struct sftp_command *cmd)
 {
-    return sftp_general_put(cmd, true, false);
+    return kwev_job(cmd, true, true, false);
 }
 
 int sftp_cmd_mkdir(struct sftp_command *cmd)
@@ -2769,6 +2831,11 @@ static int psftp_connect(char *userhost, char *user, int portnumber)
 
     platform_psftp_pre_conn_setup(console_cli_logpolicy);
 
+    /* KiTTY: the records' target (kitty_winevent.h, 300-321) */
+    kitty_wev_main_seat(psftp_seat);
+    kitty_wev_target(conf_get_str(conf, CONF_host),
+                     conf_get_int(conf, CONF_port),
+                     backend_vt_from_proto(conf_get_int(conf, CONF_protocol))->id);
     err = backend_init(backend_vt_from_proto(
                            conf_get_int(conf, CONF_protocol)),
                        psftp_seat, &backend, psftp_logctx, conf,

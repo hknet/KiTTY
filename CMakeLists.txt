@@ -249,6 +249,12 @@ add_executable(test_auditparse
   test/test_auditparse.c
   kitty/kitty_auditparse.c)
 
+# KiTTY: unit test for the event ID table (kitty/kitty_eventids.h): every ID
+# in its block under its block's source, kitty.exe's and the console tools'
+# shared offsets alike. tools/check-kitty-events.py checks the .mc against it.
+add_executable(test_eventids
+  test/test_eventids.c)
+
 # KiTTY: unit test for accept-new (kitty/kitty_hostkey_acceptnew.c, in
 # sshcommon for ssh/common.c): which host keys are stored without a question,
 # the kitty.ini switch, the record and its text.
@@ -439,7 +445,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_search test_acceptnew
-    test_auditparse)
+    test_auditparse test_eventids)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
@@ -538,6 +544,25 @@ if(KITTY_INI_CHECK_PYTHON)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking menu command ids for duplicates and 0x10 spacing")
   add_custom_target(check_menu_ids ALL DEPENDS ${KITTY_MENUID_CHECK_STAMP})
+
+  # The event message table and the manual's appendix (doc/eventids.but)
+  # against the event ID table: an ID reported with no message, or a message
+  # or an appendix row whose fields are in another order than the event
+  # data, builds and shows a wrong or missing description in the Event
+  # Viewer, or sends a SIEM rule to the wrong position.
+  set(KITTY_EVENTS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_events_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_EVENTS_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_EVENTS_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_eventids.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_events.mc
+            ${CMAKE_CURRENT_SOURCE_DIR}/doc/eventids.but
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking the event messages and the manual's appendix against the event ID table")
+  add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
 
   # Dialog accelerators. Same class of mistake as the menu ids: it builds, it
   # looks right, and the only symptom is a key that presses the wrong control.

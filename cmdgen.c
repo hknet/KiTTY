@@ -22,10 +22,61 @@
 #include "kitty/kitty_selfcheck.h"   /* KiTTY: refuse a file changed after release */
 #endif
 #include "kitty/kitty_protkey.h"   /* KiTTY (#4): shared protected-key core */
+#ifdef _WINDOWS
+#include "kitty/kitty_winevent.h"  /* KiTTY: keys in the Windows Event Log */
+#include "kitty/kitty_inikeys.h"   /* KiTTY: KI_KITTYGENEVENTLOG */
+#endif
 
 
 /* Use progname in all user-visible messages (set from argv[0] in main) */
 #define fprintf_prog(f, fmt, ...) fprintf(f, "%s: " fmt, progname, ##__VA_ARGS__)
+
+#ifdef _WINDOWS
+/*
+ * KiTTY: the Windows Event Log records of kittygen-cli (kitty_winevent.h,
+ * 400-403, [KiTTY] kittygeneventlog). The last error this program printed
+ * is a failed save's reason: every fprintf_prog notes it.
+ */
+static char kwev_last_error[256];
+
+static PRINTF_LIKE(1, 2) void kwev_note(const char *fmt, ...)
+{
+    va_list ap;
+    size_t n;
+    if (!kitty_wev_enabled())
+        return;
+    va_start(ap, fmt);
+    vsnprintf(kwev_last_error, sizeof(kwev_last_error), fmt, ap);
+    va_end(ap);
+    n = strlen(kwev_last_error);
+    while (n && (kwev_last_error[n - 1] == '\n' ||
+                 kwev_last_error[n - 1] == '\r'))
+        kwev_last_error[--n] = '\0';
+}
+#undef fprintf_prog
+#define fprintf_prog(f, fmt, ...) \
+    (kwev_note(fmt, ##__VA_ARGS__), \
+     fprintf(f, "%s: " fmt, progname, ##__VA_ARGS__))
+
+/* The key's SHA256 fingerprint (sfree it): from the key, or - a public key
+ * written from a key file that was not decrypted - from its public blob. */
+static char *kwev_fp(ssh2_userkey *k2, RSAKey *k1, strbuf *blob)
+{
+    char *fp = NULL, *h;
+    if (k2 && k2 != SSH2_WRONG_PASSPHRASE && k2->key) {
+        fp = ssh2_fingerprint(k2->key, SSH_FPTYPE_SHA256);
+    } else if (blob && blob->len) {
+        fp = ssh2_fingerprint_blob(ptrlen_from_strbuf(blob), SSH_FPTYPE_SHA256);
+    } else if (k1) {
+        char **fps = rsa_ssh1_fake_all_fingerprints(k1);
+        fp = dupstr(fps[SSH_FPTYPE_SHA256] ? fps[SSH_FPTYPE_SHA256] : "");
+        ssh2_free_all_fingerprints(fps);
+    }
+    h = dupstr(fp ? kitty_wev_fp_hash(fp) : "");
+    sfree(fp);
+    return h;
+}
+#endif
 
 static const char *progname = "puttygen";
 static FILE *progress_fp = NULL;
@@ -283,6 +334,7 @@ int main(int argc, char **argv)
     const char *comment = NULL;
     char *origcomment = NULL;
     bool change_passphrase = false, reencrypt = false;
+    bool kwev_writing = false;   /* KiTTY: the output was attempted (401-403) */
     bool errs = false, nogo = false;
     int intype = SSH_KEYTYPE_UNOPENABLE;
     int sshver = 0;
@@ -326,6 +378,10 @@ int main(int argc, char **argv)
         return 1;
     /* KiTTY: KITTYPP_DIR, this program's folder (windows/utils/defaults.c) */
     kitty_publish_kittypp_dir();
+    /* KiTTY: [KiTTY] kittygeneventlog=yes - keys generated and saved,
+     * passphrases changed, in the Windows Event Log; read once */
+    kitty_wev_configure(KITTY_EVB_KITTYGEN,
+                        kitty_wev_switch_on(KI_KITTYGENEVENTLOG));
 #endif
 
     /* derive program name from argv[0] */
@@ -1346,6 +1402,22 @@ int main(int argc, char **argv)
         }
     }
 
+#ifdef _WINDOWS
+    /* KiTTY: event 400 - a key generated here, with its final comment */
+    if (keytype != NOKEYGEN && kitty_wev_enabled()) {
+        char nbits[16], *fp = kwev_fp(ssh2key, ssh1key, ssh2blob);
+        const char *v[5];
+        snprintf(nbits, sizeof(nbits), "%d", bits);
+        v[0] = "kittygen-cli";
+        v[1] = ssh2key ? ssh_key_alg(ssh2key->key)->ssh_id : "rsa1";
+        v[2] = nbits;
+        v[3] = fp;
+        v[4] = ssh2key ? ssh2key->comment : ssh1key ? ssh1key->comment : "";
+        kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0, v, 5);
+        sfree(fp);
+    }
+#endif
+
     /*
      * Unless we're changing the passphrase, the old one (if any) is a
      * reasonable default.
@@ -1438,6 +1510,7 @@ int main(int argc, char **argv)
     else
         outfilename = filename_from_str(outfile ? outfile : "");
 
+    kwev_writing = true;   /* KiTTY: from here the records below report */
     switch (outtype) {
         bool ret;
         int real_outtype;
@@ -1815,6 +1888,58 @@ int main(int argc, char **argv)
   out:
 
     #undef RETURN
+
+#ifdef _WINDOWS
+    /*
+     * KiTTY: events 401 (a private key written), 402 (a public key written
+     * to a file) and 403 (its passphrase changed), saved or failed - the
+     * reason the last error printed. Never a passphrase.
+     */
+    if (kwev_writing && outfile && kitty_wev_enabled()) {
+        bool ok = exit_status == 0;
+        char *fp = kwev_fp(ssh2key, ssh1key, ssh2blob);
+        const char *prot = hello_recovery ? "hello" :
+            new_passphrase ? "passphrase" : "none";
+        if (outtype == PRIVATE || outtype == OPENSSH_AUTO ||
+            outtype == OPENSSH_NEW || outtype == SSHCOM) {
+            const char *v[8];
+            v[0] = "kittygen-cli";
+            v[1] = fp;
+            v[2] = (ssh2key && ssh2key != SSH2_WRONG_PASSPHRASE) ?
+                ssh2key->comment : ssh1key ? ssh1key->comment : "";
+            v[3] = outfile;
+            v[4] = outtype == SSHCOM ? "ssh.com" :
+                outtype != PRIVATE ? "openssh" :
+                sshver == 1 ? "ssh1" :
+                params.fmt_version == 2 ? "ppk2" : "ppk3";
+            v[5] = prot;
+            v[6] = ok ? "saved" : "failed";
+            v[7] = ok ? "" : kwev_last_error;
+            kitty_wev_report(KITTY_EVO_PRIVATE_SAVED, !ok, v, 8);
+            if (ok && change_passphrase) {
+                const char *w[4];
+                w[0] = "kittygen-cli";
+                w[1] = fp;
+                w[2] = outfile;
+                w[3] = prot;
+                kitty_wev_report(KITTY_EVO_PASSPHRASE_CHANGED, 0, w, 4);
+            }
+        } else if (outtype == PUBLIC || outtype == PUBLICO) {
+            const char *v[6];
+            v[0] = "kittygen-cli";
+            v[1] = fp;
+            v[2] = outfile;
+            v[3] = sshver == 1 ? "ssh1" :
+                outtype == PUBLIC ? "rfc4716" : "openssh";
+            v[4] = ok ? "saved" : "failed";
+            v[5] = ok ? "" : kwev_last_error;
+            kitty_wev_report(KITTY_EVO_PUBLIC_SAVED, !ok, v, 6);
+        }
+        sfree(fp);
+    }
+#else
+    (void)kwev_writing;
+#endif
 
     if (old_passphrase) {
         smemclr(old_passphrase, strlen(old_passphrase));

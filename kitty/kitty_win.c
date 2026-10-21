@@ -29,6 +29,7 @@
 #include "kitty_storage.h"
 #include "kitty_auxpos.h"
 #include "kitty_winutil.h"   /* debug_logevent */
+#include "kitty_winevent.h"  /* 902 missing-features */
 #include "kitty_dlgbox.h"    /* the themed boxes, kitty_dialog_icon */
 
 /* KiTTY auto-login password consent. Shown the first time the user sets an
@@ -461,15 +462,27 @@ void kitty_report_missing_features(Terminal *term)
 
     /* The Event Log gets it whole, and gets it whatever the setting is:
      * switching the notice off is about not being interrupted, not about
-     * hiding the answer from whoever goes looking for it. */
+     * hiding the answer from whoever goes looking for it. The session's
+     * Event Log, and Windows' as event 902: the features by name, and the
+     * entry points behind them (the whole text as event ID 0 where the
+     * message file is not registered). */
     debug_logevent("%s", full);
+    brief = kitty_oldwin_degraded_brief();
+    {
+        const char *v[2];
+        v[0] = brief ? brief : "";
+        v[1] = full;
+        kitty_wev_suite(KITTY_EV_MISSING_FEATURES, EVENTLOG_INFORMATION_TYPE,
+                        v, 2, full);   /* full: the text without a message file */
+    }
     sfree(full);
 
     if (ReadParameterN(KI_SECTION_KITTY, KI_WARNMISSINGFEATURES, cfg, sizeof(cfg)) &&
-        !stricmp(cfg, "no"))
+        !stricmp(cfg, "no")) {
+        sfree(brief);
         return;
+    }
 
-    brief = kitty_oldwin_degraded_brief();
     if (brief && term) {
         /* Yellow "NOTE:" with the body in the terminal's own colours - the
          * shape of the post-quantum advisory, one step below its red, because

@@ -30,6 +30,7 @@
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
 #include "kitty_hostkey_acceptnew.h"
+#include "kitty_winevent.h"
 
 /* accept-new's record on standard error. Under -v the Event Log line is
  * printed there already (console_eventlog). */
@@ -85,6 +86,11 @@ void kitty_console_store_init(void)
             kitty_inifile_read(KI_SECTION_KITTY, KI_INHERITDEFAULTSETTINGS, v, sizeof(v));
         kitty_set_inherit_default_settings(!stricmp(v, "yes"));
     }
+
+    /* [KiTTY] clieventlog=yes: the records of klink, kscp and ksftp in the
+     * Windows Event Log (kitty_winevent.h, IDs 300-331), read where
+     * kitty.exe's checkbox keeps it - once, here, before any connection */
+    kitty_wev_configure(KITTY_EVB_CLI, kitty_wev_switch_on(KI_CLIEVENTLOG));
 
     /* the settings travel with the program (folder store, or savemode=file):
      * the log default stays beside it, as in kitty.exe */

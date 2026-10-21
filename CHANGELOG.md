@@ -71,6 +71,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   KiTTY++_Agent when installed for all users, one event ID per kind of
   record, every field filterable and forwardable. Settings > Log >
   Destination (agentlogsink).
+- **Sessions, console tools and kittygen can report to the Windows Event
+  Log**: session opened and closed, host key, login, transfers, keys
+  generated and saved — one event ID per kind of record, every field
+  filterable and forwardable, in the log KiTTY++_Session when installed for
+  all users. Off by default: Application > Security > Windows Event Log
+  (`sessioneventlog`, `clieventlog`, `kittygeneventlog`).
 
 ### Changed
 

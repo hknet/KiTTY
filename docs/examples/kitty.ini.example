@@ -599,6 +599,18 @@
 ;    Event Log either way. Also a checkbox: Application -> Security.
 ;warnmissingfeatures=yes
 
+; sessioneventlog: kitty.exe reports each session to the Windows Event Log -
+; opened, closed, host key, login, far-end requests refused (IDs 200-230,
+; source KiTTY++_kitty, log KiTTY++_Session; Application log without the
+; system MSI). Host names, user names and fingerprints go into the events.
+;sessioneventlog=no
+; clieventlog: the same for klink, kscp and ksftp, plus file transfers
+; (IDs 300-331, source KiTTY++_cli).
+;clieventlog=no
+; kittygeneventlog: kittygen and kittygen-cli report keys generated and
+; saved and passphrases changed (IDs 400-403, source KiTTY++_kittygen).
+;kittygeneventlog=no
+
 ; WorkplaceProxy / WorkplaceMinutes: the workplace-proxy-mode droplists'
 ;    remembered LAST selection (which proxy, for how long), shared between
 ;    the config box and the launcher menu so both offer the same thing next

@@ -26,6 +26,7 @@
 #include "storage.h"
 #include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
+#include "kitty/kitty_winevent.h"   /* KiTTY: the transfer in the Windows Event Log */
 
 static bool list = false;
 static bool statmode = false;   /* KiTTY: -stat, the check of Get File */
@@ -47,6 +48,43 @@ static bool uploading = false;
 static Backend *backend;
 static Conf *conf;
 static bool sent_eof = false;
+
+/*
+ * KiTTY: the job's record in the Windows Event Log (kitty_winevent.h, 330
+ * transfer-done / 331 transfer-failed, [KiTTY] clieventlog): one per kscp
+ * run that copies files, with the files and bytes that went across, the
+ * error count and the first error (or the fatal one).
+ */
+static bool kwev_job = false, kwev_reported = false;
+static unsigned long kwev_files;
+static unsigned long long kwev_bytes;
+static char kwev_local[512], kwev_remote[512], kwev_reason[256];
+/* the last line told on stderr: the reason when no error was noted (a
+ * refusal the server sent, an SFTP status - pscp prints those itself) */
+static char kwev_last[256];
+
+static void kwev_note(const char *msg, bool fatal)
+{
+    size_t n;
+    if (!kitty_wev_enabled() || (kwev_reason[0] && !fatal))
+        return;
+    snprintf(kwev_reason, sizeof(kwev_reason), "%s", msg);
+    n = strlen(kwev_reason);
+    while (n && (kwev_reason[n - 1] == '\n' || kwev_reason[n - 1] == '\r'))
+        kwev_reason[--n] = '\0';
+}
+
+static void kwev_transfer_report(void)
+{
+    if (!kwev_job || kwev_reported || !kitty_wev_enabled())
+        return;
+    kwev_reported = true;
+    kitty_wev_transfer(errs == 0,
+                       conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                       uploading ? "put" : "get", kwev_local, kwev_remote,
+                       kwev_files, kwev_bytes, (unsigned long)errs,
+                       !errs ? "" : kwev_reason[0] ? kwev_reason : kwev_last);
+}
 
 static void source(const char *src);
 static void rsource(const char *src);
@@ -132,6 +170,8 @@ static PRINTF_LIKE(2, 3) void tell_user(FILE *stream, const char *fmt, ...)
     va_start(ap, fmt);
     str = dupvprintf(fmt, ap);
     va_end(ap);
+    if (stream == stderr && kitty_wev_enabled())   /* KiTTY: the record's fallback reason */
+        snprintf(kwev_last, sizeof(kwev_last), "%s", str);
     str2 = dupcat(str, "\n");
     sfree(str);
     abandon_stats();
@@ -238,6 +278,7 @@ static NORETURN PRINTF_LIKE(1, 2) void bump(const char *fmt, ...)
     va_start(ap, fmt);
     str = dupvprintf(fmt, ap);
     va_end(ap);
+    kwev_note(str, true);              /* KiTTY: the record's reason */
     str2 = dupcat(str, "\n");
     sfree(str);
     abandon_stats();
@@ -252,6 +293,9 @@ static NORETURN PRINTF_LIKE(1, 2) void bump(const char *fmt, ...)
         ssh_scp_recv(&ch, 1);
     }
 
+    /* KiTTY: the job's record, and the session's end with the reason */
+    kwev_transfer_report();
+    kitty_wev_session_close("fatal", kwev_reason, 1);
     cleanup_exit(1);
 }
 
@@ -487,6 +531,11 @@ static void do_cmd(char *host, char *user, char *cmd)
 
     platform_psftp_pre_conn_setup(console_cli_logpolicy);
 
+    /* KiTTY: the records' target (kitty_winevent.h, 300-321) */
+    kitty_wev_main_seat(pscp_seat);
+    kitty_wev_target(conf_get_str(conf, CONF_host),
+                     conf_get_int(conf, CONF_port),
+                     backend_vt_from_proto(conf_get_int(conf, CONF_protocol))->id);
     err = backend_init(backend_vt_from_proto(
                            conf_get_int(conf, CONF_protocol)),
                        pscp_seat, &backend, logctx, conf,
@@ -1603,6 +1652,7 @@ static PRINTF_LIKE(1, 2) void run_err(const char *fmt, ...)
     va_start(ap, fmt);
     errs++;
     str = dupvprintf(fmt, ap);
+    kwev_note(str, false);             /* KiTTY: the first error, for the record */
     str2 = dupcat("kscp: ", str, "\n");
     sfree(str);
     scp_send_errmsg(str2);
@@ -1717,6 +1767,8 @@ static void source(const char *src)
     close_rfile(f);
 
     (void) scp_send_finish();
+    kwev_files++;                      /* KiTTY: the job's tally */
+    kwev_bytes += size;
 }
 
 /*
@@ -1982,6 +2034,8 @@ static void sink(const char *targ, const char *src)
             continue;
         }
         (void) scp_finish_filerecv();
+        kwev_files++;                  /* KiTTY: the job's tally */
+        kwev_bytes += act.size;
         sfree(stat_name);
         sfree(destfname);
     }
@@ -2014,6 +2068,10 @@ static void toremote(CmdlineArg **args, size_t nargs)
         targ = ".";
     else
         targ = wtarg;
+    /* KiTTY: the job's record names the first source and the target */
+    kwev_job = true;
+    snprintf(kwev_local, sizeof(kwev_local), "%s", cmdline_arg_to_str(args[0]));
+    snprintf(kwev_remote, sizeof(kwev_remote), "%s", targ);
 
     /* Separate host and username */
     user = host;
@@ -2113,6 +2171,10 @@ static void tolocal(CmdlineArg **args, size_t nargs)
         src = ".";
     else
         src = wsrc;
+    /* KiTTY: the job's record names the source and the target */
+    kwev_job = true;
+    snprintf(kwev_remote, sizeof(kwev_remote), "%s", src);
+    snprintf(kwev_local, sizeof(kwev_local), "%s", targ);
 
     /* Separate username and hostname */
     user = host;
@@ -2490,6 +2552,7 @@ int psftp_main(CmdlineArgList *arglist)
         backend = NULL;
     }
     sk_cleanup();
+    kwev_transfer_report();            /* KiTTY: event 330/331 */
     return (errs == 0 ? 0 : 1);
 }
 

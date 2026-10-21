@@ -25,6 +25,7 @@
 #include "kitty_authenticode.h"   /* KITTY_PUBLISHER_CN - the single copy */
 #include "kitty_oldwin.h"         /* kitty_api_from: resolve, and RECORD */
 #include "kitty_renameguard.h"
+#include "kitty_winevent.h"       /* 900 program-refused */
 
 /*
  * ASCII case folding, done here rather than with the C library's: this runs
@@ -66,14 +67,18 @@ static int kg_interactive(void)
 }
 
 /*
- * One line into the Application event log, under our own source name.
+ * One line into the Application event log, under our own source name, as
+ * event ID 0: the line is the one insertion string.
  *
- * No message DLL is registered for "KiTTY++", so the Event Viewer wraps the
- * text in its "The description for Event ID ... cannot be found" sentence and
- * then prints our string as the inserted parameter. That is accepted on
- * purpose: registering a message file means writing to HKLM at install time
- * for one line that reads perfectly well as it is, and this has to work from a
- * portable copy that was never installed at all.
+ * The system MSI registers kitty.exe's message table for "KiTTY++"
+ * (windows/kitty_events.mc), where message 0 shows the line as written.
+ * Without it - a portable copy that was never installed - the Event Viewer
+ * wraps the text in its "The description for Event ID ... cannot be found"
+ * sentence and prints our string as the inserted parameter, which still
+ * reads as it is. The suite's records with IDs of their own (900-902, the
+ * guard's refusal among them) go through kitty_winevent.c, and only where
+ * that message table is registered; without it they are written as such a
+ * line too.
  *
  * Best effort throughout - a refusal must not become a second failure because
  * the log was unavailable.
@@ -94,9 +99,8 @@ void kitty_eventlog_line(unsigned type, const char *msg)
     DeregisterEventSource(h);
 }
 
-/* The refused file's path goes into the line: an installed program and a
- * test copy refused on purpose otherwise read alike in the log. */
-static void kg_eventlog(const char *msg)
+/* A line of text with this program's path under it, as event ID 0. */
+void kitty_guard_eventlog_text(const char *msg)
 {
     char path[MAX_PATH], line[MAX_PATH + 1024];
     DWORD n = GetModuleFileNameA(NULL, path, sizeof(path));
@@ -108,8 +112,32 @@ static void kg_eventlog(const char *msg)
         kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
 }
 
+/* The refusal as event 900 (kitty_eventids.h): which check, what it found,
+ * and the refused file's path - an installed program and a test copy
+ * refused on purpose otherwise read alike in the log. Without the message
+ * file (a portable copy) the message with "Program: <path>" under it, as
+ * event ID 0 (kitty_wev_suite). */
+static void kg_eventlog(const char *msg, const char *check, const char *found)
+{
+    char path[MAX_PATH], line[MAX_PATH + 1024];
+    const char *v[3];
+    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path));
+
+    if (!n || n >= sizeof(path)) {
+        path[0] = '\0';
+        snprintf(line, sizeof(line), "%s", msg);
+    } else {
+        snprintf(line, sizeof(line), KT_GUARD_EVENT_FMT, msg, path);
+    }
+    v[0] = check;
+    v[1] = found;
+    v[2] = path;
+    kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE, v, 3, line);
+}
+
 /*
- * One report, one way out. `msg` is already composed.
+ * One report, one way out. `msg` is already composed for the box and
+ * stderr; `check` and `found` are its two facts for the event record.
  *
  * The refusal has to REACH somebody, and who that is depends on how the
  * program was started rather than on which program it is:
@@ -121,7 +149,8 @@ static void kg_eventlog(const char *msg)
  *    scheduled klink under the wrong name has nobody reading its output: the
  *    job just fails, and the log is the only place the reason survives.
  */
-static void kg_report(const char *msg, int gui)
+static void kg_report(const char *msg, const char *check, const char *found,
+                      int gui)
 {
     if (gui && kg_interactive()) {
         /* Owner NULL: there is no window yet, and there will not be one. */
@@ -130,10 +159,10 @@ static void kg_report(const char *msg, int gui)
         fprintf(stderr, "%s\n", msg);
         fflush(stderr);
     }
-    /* In EVERY case one Application event-log line - the admin's trace,
+    /* In EVERY case one Application event-log record - the admin's trace,
      * whether or not the user also saw the box or the stderr line.
      * Applies to all three guards that share this. */
-    kg_eventlog(msg);
+    kg_eventlog(msg, check, found);
 }
 
 /*
@@ -146,14 +175,20 @@ int kitty_guard_interactive(void)
     return kg_interactive();
 }
 
-void kitty_guard_report(const char *msg, int gui, int allow_box)
+void kitty_guard_report(const char *check, const char *found, int gui,
+                        int allow_box)
 {
+    char msg[600];
+
+    snprintf(msg, sizeof(msg),
+             !strcmp(check, KG_CHECK_SIGNATURE) ? KT_SIGNATURE_GUARD_MSG :
+             KT_SELFCHECK_GUARD_MSG, found);
     if (!allow_box && gui) {
         /* A windowed program that must not put up a box: the log only. */
-        kg_eventlog(msg);
+        kg_eventlog(msg, check, found);
         return;
     }
-    kg_report(msg, gui);
+    kg_report(msg, check, found, gui);
 }
 
 int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
@@ -196,7 +231,7 @@ int kitty_rename_guard(const char *const *prefixes, int nprefixes, int gui)
     }
 
     sprintf(msg, KT_RENAME_GUARD_MSG, prefixes[0], base);
-    kg_report(msg, gui);
+    kg_report(msg, KG_CHECK_RENAME, base, gui);
     return 1;
 }
 
@@ -475,7 +510,7 @@ int kitty_signature_guard(int gui)
         return 0;
 
     sprintf(msg, KT_SIGNATURE_GUARD_MSG, reason);
-    kg_report(msg, gui);
+    kg_report(msg, KG_CHECK_SIGNATURE, reason, gui);
     verdict = 1;
     return 1;
 }

@@ -153,6 +153,29 @@
         <RemoveRegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
                            Action="removeOnUninstall" />
       </Component>
+      <!-- The session records of kitty.exe, klink/kscp/ksftp and kittygen
+           (kitty/kitty_eventids.h, IDs 200-499) in a log of their own,
+           "KiTTY++_Session", one source per program, descriptions from
+           kitty.exe's message table. Each program writes only with its
+           [KiTTY] switch on (sessioneventlog, clieventlog,
+           kittygeneventlog); without this package the sources are unknown
+           and their records land in the Application log. 20 MB, oldest
+           overwritten (Retention 0), as c_agent_eventlog; a major upgrade
+           writes the key again. -->
+      <Component Id="c_session_eventlog" Guid="B1B2C3D4-0085-4005-9002-000000000005">
+        <util:EventSource Name="KiTTY++_kitty" Log="KiTTY++_Session" EventMessageFile="[#kitty.exe]"
+                          SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
+        <util:EventSource Name="KiTTY++_cli" Log="KiTTY++_Session" EventMessageFile="[#kitty.exe]"
+                          SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
+        <util:EventSource Name="KiTTY++_kittygen" Log="KiTTY++_Session" EventMessageFile="[#kitty.exe]"
+                          SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
+                       Name="MaxSize" Type="integer" Value="20971520" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
+                       Name="Retention" Type="integer" Value="0" />
+        <RemoveRegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
+                           Action="removeOnUninstall" />
+      </Component>
     </ComponentGroup>
 
     <DirectoryRef Id="ShortcutDir">

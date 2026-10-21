@@ -21,6 +21,11 @@ add_sources_from_current_dir(utils
   # it with its own list of accepted names. The stock PuTTY targets link it too
   # and never call it, so the linker leaves the object out of them.
   ../kitty/kitty_renameguard.c
+  # KiTTY: the Windows Event Log records of kitty.exe, klink/kscp/ksftp,
+  # kittygen and the suite (kitty_eventids.h has the IDs). In `utils` for the
+  # same reason: the SSH layers that report host keys and logins are shared
+  # libraries every one of those programs links.
+  ../kitty/kitty_winevent.c
   # KiTTY: the password fields of a running configuration, kept wrapped in
   # memory. In `utils` for the same reason as the two files above: the reading
   # and writing sites are in SHARED files (settings.c, cmdline.c, proxy/*.c,
@@ -314,6 +319,7 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
@@ -327,6 +333,7 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
@@ -340,6 +347,7 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
+  ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
@@ -413,6 +421,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c # KiTTY: kitty.ini resolver (kitty_theme_pref.c reads it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c # KiTTY: [KiTTY] kittygeneventlog
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
   noise.c
   no-jump-list.c
@@ -461,6 +470,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c   # kitty.ini resolver: readonly=yes for the store
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c   # KiTTY: [KiTTY] kittygeneventlog
   no-jump-list.c
   nohelp.c
   keygen-noise.c

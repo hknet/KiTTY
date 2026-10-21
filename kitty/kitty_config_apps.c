@@ -36,7 +36,7 @@
 #include <windows.h>
 #include "kitty_config_int.h"
 #include "kitty_text.h"          /* KT_APPS_* */
-#include "kitty_renameguard.h"   /* kitty_signature_reading, kitty_file_has_cert_table, kitty_guard_report */
+#include "kitty_renameguard.h"   /* kitty_signature_reading, kitty_file_has_cert_table, kitty_guard_eventlog_text */
 #include "kitty_selfcheck.h"     /* kitty_selfcheck_file */
 #include "kitty_authenticode.h"  /* kitty_file_version */
 #include "kitty_winutil.h"       /* SetTextToClipboard */
@@ -259,7 +259,7 @@ static void apps_log_warning(const struct apps_row *r)
     for (i = 0; i < nseen; i++) if (!strcmp(seen[i], r->path)) return;
     if (nseen < (int)lenof(seen)) seen[nseen++] = dupstr(r->path);
     snprintf(msg, sizeof(msg), KT_APPS_EVENTLOG, r->name, r->basis);
-    kitty_guard_report(msg, 1, 0);
+    kitty_guard_eventlog_text(msg);   /* ID 0, text only: not a refusal */
 }
 
 /* ---- the list ---------------------------------------------------------------- */

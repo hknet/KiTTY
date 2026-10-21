@@ -239,7 +239,6 @@ int kitty_selfcheck_guard(int gui)
     static int decided = 0;
     static int verdict = 0;
     const char *reason;
-    char msg[400];
     int v;
 
     if (decided)
@@ -253,15 +252,13 @@ int kitty_selfcheck_guard(int gui)
         if (kt_visible(gui))
             return 0;                /* cannot judge, somebody is there: run */
         reason = "cannot check";
-        sprintf(msg, KT_SELFCHECK_GUARD_MSG, reason);
         /* Invisible by definition: the event log, and stderr for a console
          * program; never a box, which nobody could click. */
-        kitty_guard_report(msg, gui, 0);
+        kitty_guard_report(KG_CHECK_INTEGRITY, reason, gui, 0);
         verdict = 1;
         return 1;
     }
-    sprintf(msg, KT_SELFCHECK_GUARD_MSG, reason);
-    kitty_guard_report(msg, gui, 1);
+    kitty_guard_report(KG_CHECK_INTEGRITY, reason, gui, 1);
     verdict = 1;
     return 1;
 }

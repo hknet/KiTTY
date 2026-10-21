@@ -8,6 +8,7 @@
 #include "putty.h"
 #include "misc.h"
 #include "console.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: event 301 before the end */
 
 const char console_abandoned_msg[] = "Connection abandoned.\n";
 
@@ -72,6 +73,7 @@ void nonfatal(const char *fmt, ...)
 void console_connection_fatal(Seat *seat, const char *msg)
 {
     console_print_error_msg("FATAL ERROR", msg);
+    kitty_wev_session_close(kitty_wev_close_result(msg), msg, 1);
     cleanup_exit(1);
 }
 
