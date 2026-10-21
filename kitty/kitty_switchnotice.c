@@ -17,8 +17,9 @@
  * Direct2D's presents never paint over it, above the terminal, hidden with
  * it. Unlike them it is click-through (WS_EX_TRANSPARENT) and never takes
  * the focus (WS_EX_NOACTIVATE): a line that is gone in two seconds must not
- * catch a click meant for the terminal. Per-pixel alpha about 85 % opaque,
- * rounded ends, the terminal font's line height; high contrast: the system
+ * catch a click meant for the terminal. Per-pixel alpha about 95 % opaque,
+ * rounded ends, a font 1.25 x the line's and 4 px above and below, so it
+ * stands out from the red frame and tint; high contrast: the system
  * colours, opaque. It fades in (~150 ms), holds and fades out (~500 ms),
  * all within [KiTTY] osc3008ctxnotice / osc7501notice seconds; a timer runs
  * only during the fades. Its window text is the line, for a screen reader
@@ -41,7 +42,8 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 #define SN_CLASS     "KiTTYSwitchNotice"
 #define SN_TIMER     1
 #define SN_FRAME_MS  16
-#define SN_ALPHA     217       /* about 85 % */
+#define SN_ALPHA     242       /* about 95 % */
+#define SN_PAD_Y     4         /* px at 96 dpi, above and below the text */
 #define SN_FADE_IN   150       /* ms */
 #define SN_FADE_OUT  500
 #define SN_MARGIN    6         /* from the terminal area's top, 96 dpi */
@@ -115,9 +117,10 @@ static HFONT sn_get_font(int px)
     return sn_font;
 }
 
-/* The colours of a look: the root frame's dark red or a switched user's
- * dark yellow with light text, or the status panel's own; the system
- * colours in high contrast, opaque. */
+/* The colours of a look: bright red with white text and edge for root,
+ * bright yellow with black for a switched user (both must stand out from
+ * the red frame and tint), or the status panel's own; the system colours
+ * in high contrast, opaque. */
 static void sn_look(int look, COLORREF *bg, COLORREF *fg, COLORREF *edge,
                     int *alpha)
 {
@@ -132,8 +135,13 @@ static void sn_look(int look, COLORREF *bg, COLORREF *fg, COLORREF *edge,
         *fg = *edge = GetSysColor(COLOR_HIGHLIGHTTEXT);
         return;
     }
-    *bg = *edge = look == KSN_LOOK_ROOT ? RGB(96, 16, 16) : RGB(112, 92, 0);
-    *fg = RGB(245, 245, 245);
+    if (look == KSN_LOOK_ROOT) {
+        *bg = RGB(220, 38, 38);
+        *fg = *edge = RGB(255, 255, 255);
+    } else {
+        *bg = RGB(250, 204, 21);
+        *fg = *edge = RGB(0, 0, 0);
+    }
 }
 
 /* The line drawn into its canvas at the terminal's DPI and line height. */
@@ -142,7 +150,7 @@ static bool sn_render(int i)
     SnLine *n = &sn[i];
     double s = kov_dpi(MainHwnd) / 96.0;
     COLORREF bg, fg, edge;
-    int alpha, h, w, maxw, pad, icon = 0, left, tw = 0;
+    int alpha, line, h, w, maxw, pad, icon = 0, left, tw = 0;
     HDC sdc;
     HFONT f, oldf;
     SIZE ts;
@@ -150,9 +158,10 @@ static bool sn_render(int i)
     KovCanvas cv;
 
     sn_look(n->look, &bg, &fg, &edge, &alpha);
-    h = sn_line_px > (int)(18 * s + .5) ? sn_line_px : (int)(18 * s + .5);
+    line = sn_line_px > (int)(18 * s + .5) ? sn_line_px : (int)(18 * s + .5);
+    h = line + 2 * (int)(SN_PAD_Y * s + .5);
     pad = h / 2;                       /* the rounded ends */
-    f = sn_get_font(h * 62 / 100);
+    f = sn_get_font(line * 62 / 100 * 125 / 100);
     if (n->look == KSN_LOOK_STATUS || n->look == KSN_LOOK_PROGRESS) {
         icon = (int)(h * 0.7 + .5);
         left = (h - icon) / 2 + icon + (int)(6 * s + .5);
