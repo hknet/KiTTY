@@ -981,6 +981,7 @@ extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
 #include "../kitty/kitty_ctx3008.h"     /* OSC 3008: the red frame asks ctx_elevated */
 #include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
 #include "../kitty/kitty_ctxcrumb.h"    /* and the OSC 3008 breadcrumb */
+#include "../kitty/kitty_switchnotice.h" /* and the one-line switch notices */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
@@ -4752,6 +4753,11 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
         term_notify_cell_size_pixels(wgs->term, wgs->font_width,
                                      wgs->font_height);
         term_notify_dpi(wgs->term, wgs->dpi_info.cur_dpi.y);
+        /* the OSC 3008 breadcrumb and the switch notices are one
+         * terminal line high: every font change reaches them here - a
+         * new DPI, Font Up/Down, the font set in Change Settings */
+        kitty_ctxcrumb_refresh(wgs);
+        kitty_switchnotice_line(wgs->font_height);
     }
 #endif
 }
@@ -7932,6 +7938,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * minimised owner, not with a hidden one. */
         kitty_psoverlay_owner_shown(wParam != 0);
         kitty_ctxcrumb_owner_shown(wParam != 0);
+        kitty_switchnotice_owner_shown(wParam != 0);
         break;
 #endif
       case WM_MOVE:
@@ -7951,6 +7958,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         kitty_psoverlay_follow();      /* the program status overlay */
         kitty_searchbar_follow(hwnd);  /* the scrollback search's bar */
         kitty_ctxcrumb_follow();       /* the OSC 3008 breadcrumb */
+        kitty_switchnotice_follow();   /* the one-line switch notices */
 #endif
         break;
       case WM_SIZE:
@@ -7965,6 +7973,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         kitty_psoverlay_follow();
         kitty_searchbar_follow(hwnd);  /* the scrollback search's bar too */
         kitty_ctxcrumb_follow();       /* and the breadcrumb */
+        kitty_switchnotice_follow();   /* and the switch notices */
 #endif
 #ifdef MOD_PERSO
         /* #554: once a host (mRemoteNG) has reparented us, our font DPI may be
@@ -8634,6 +8643,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 kitty_ctx_tint_repaint(wgs);
             /* the breadcrumb's colours and its opacity, an Appearance setting too */
             kitty_ctxcrumb_restyle();
+            kitty_switchnotice_restyle();  /* the notices' colours too */
             return 0;
         }
 #endif
@@ -13332,6 +13342,23 @@ static void kitty_ctx_tint_repaint(WinGuiSeat *wgs)
     InvalidateRect(wgs->term_hwnd, NULL, true);
 }
 
+/* The window has just turned red or yellow, or back: on a switch TO root
+ * or to another user a line at the top of the terminal area says why, for
+ * [KiTTY] osc3008ctxnotice seconds (kitty/kitty_switchnotice.c); nothing
+ * when the context ends. ctx_switch_notice decides, platform-free. */
+static void kitty_ctx_switch_notice(WinGuiSeat *wgs)
+{
+    char line[2 * CTX_FIELD_MAX + 64];
+    int secs = kitty_switchnotice_seconds(KI_OSC3008CTXNOTICE);
+    CtxAs as = ctx_switch_notice(term_ctx3008(wgs->term),
+                                 conf_get_bool(wgs->conf, CONF_ctx3008_root_frame),
+                                 conf_get_bool(wgs->conf, CONF_ctx3008_root_tint),
+                                 secs, line, sizeof(line));
+    if (as != CTX_AS_PLAIN)
+        kitty_switchnotice_show(KSN_CTX3008, as == CTX_AS_ROOT ? KSN_LOOK_ROOT :
+                                KSN_LOOK_USER, 0, line, secs, wgs->font_height);
+}
+
 void kitty_ctx3008_user_changed(Terminal *term)
 {
     struct WinGuiSeatListNode *node;
@@ -13344,8 +13371,23 @@ void kitty_ctx3008_user_changed(Terminal *term)
             kitty_osc52_state_changed(term);
         if (kitty_ctx_tint_apply(wgs))
             kitty_ctx_tint_repaint(wgs);
+        kitty_ctx_switch_notice(wgs);
         return;
     }
+}
+
+/* The line height of the window showing term (the switch notices take
+ * it, kitty/kitty_hostnotify.c asks for the OSC 7501 one). */
+int kitty_term_line_px(Terminal *term)
+{
+    struct WinGuiSeatListNode *node;
+
+    for (node = wgslisthead.next; node != &wgslisthead; node = node->next) {
+        WinGuiSeat *wgs = container_of(node, WinGuiSeat, wgslistnode);
+        if (wgs->term == term)
+            return wgs->font_height;
+    }
+    return 0;
 }
 
 /* OSC 3008: the breadcrumb follows the chain, the screen and the setting

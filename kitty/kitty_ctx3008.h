@@ -108,6 +108,16 @@ bool ctx_elevated(const CtxStack *s);
  * context further in with a user= of its own). */
 typedef enum { CTX_AS_PLAIN, CTX_AS_ROOT, CTX_AS_SWITCHED } CtxAs;
 CtxAs ctx_runs_as(const CtxStack *s);
+/* The notice on a switch of user (kitty/kitty_switchnotice.c shows it),
+ * asked when the frame and the tint have just changed because the active
+ * context runs as someone else now. Due when the session shows the user
+ * at all (frame or tint: ContextRootFrame, ContextRootTint), [KiTTY]
+ * osc3008ctxnotice (secs) is not 0, and the switch is TO root or to
+ * another user: CTX_AS_ROOT or CTX_AS_SWITCHED, the line in buf.
+ * CTX_AS_PLAIN = no notice, buf empty (the context ended, the colour goes
+ * back). */
+CtxAs ctx_switch_notice(const CtxStack *s, bool frame, bool tint, int secs,
+                        char *buf, size_t size);
 /* Is the shell on another machine than the connection's? True when an open
  * context is of type remote (an ssh onward: its targethost= is where), or
  * when the innermost context with a machineid= gives another machine than

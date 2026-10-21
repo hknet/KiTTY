@@ -1007,6 +1007,16 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > Appearance > Context breadcrumb > Place.\n\
 ;ctxbreadcrumbplace=title\n\
 \n\
+; osc3008ctxnotice: how many seconds the OSC 3008 notice shows when a\n\
+; session switches to root (red) or to another user (yellow);\n\
+; 0 = never. 0-10, default 2.\n\
+;osc3008ctxnotice=2\n\
+\n\
+; osc7501notice: how many seconds the OSC 7501 notice shows when a\n\
+; program's status switches to blocked, failed or finished, or OSC 9;4\n\
+; progress to error or paused; 0 = never. 0-10, default 2.\n\
+;osc7501notice=2\n\
+\n\
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the\n\
 ;    user name and password typed at a login prompt are copied into the\n\
 ;    running session's settings, as if entered on its Login panel - so a\n\

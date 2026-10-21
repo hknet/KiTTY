@@ -69,45 +69,14 @@ static int kc_line_px = 16;
 static wchar_t kc_chain[2048];         /* the whole chain: tooltip + window text */
 
 /* the picture */
-static HDC kc_dc;
-static HBITMAP kc_bmp, kc_oldbmp;
-static DWORD *kc_px;
-static int kc_cw, kc_ch;
+static KovDib kc_dib;
 static double kc_s = 1;
 
 /* ---- sizes, colours, fonts ---------------------------------------------- */
 
 static UINT kc_dpi(void)
 {
-    typedef UINT (WINAPI *fn_t)(HWND);
-    static fn_t fn;
-    static int tried;
-    UINT d = 0;
-    if (!tried) {
-        fn = (fn_t)kitty_api_from(GetModuleHandleA("user32.dll"), "user32.dll",
-                                  "GetDpiForWindow", KITTY_API_OPTIONAL,
-                                  KT_WINFEAT_DPI);
-        tried = 1;
-    }
-    if (fn && MainHwnd)
-        d = fn(MainHwnd);
-    if (!d) {
-        HDC dc = GetDC(NULL);
-        if (dc) {
-            d = GetDeviceCaps(dc, LOGPIXELSX);
-            ReleaseDC(NULL, dc);
-        }
-    }
-    return d ? d : 96;
-}
-
-static bool kc_high_contrast(void)
-{
-    HIGHCONTRASTA hc;
-    memset(&hc, 0, sizeof(hc));
-    hc.cbSize = sizeof(hc);
-    return SystemParametersInfoA(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0) &&
-           (hc.dwFlags & HCF_HIGHCONTRASTON);
+    return kov_dpi(MainHwnd);
 }
 
 typedef struct {
@@ -130,7 +99,7 @@ static int kc_opacity(void)
 
 static void kc_theme(KcTheme *t)
 {
-    if (kc_high_contrast()) {
+    if (kov_high_contrast()) {
         t->bg = GetSysColor(COLOR_WINDOW);
         t->fg = t->dim = t->line = GetSysColor(COLOR_WINDOWTEXT);
         t->root_bg = t->sw_bg = GetSysColor(COLOR_HIGHLIGHT);
@@ -156,19 +125,11 @@ static int kc_font_px;
 
 static HFONT kc_get_font(int px)
 {
-    LOGFONTW lf;
     if (kc_font && kc_font_px == px)
         return kc_font;
     if (kc_font)
         DeleteObject(kc_font);
-    memset(&lf, 0, sizeof(lf));
-    lf.lfHeight = -px;
-    lf.lfWeight = FW_SEMIBOLD;
-    lf.lfCharSet = DEFAULT_CHARSET;
-    /* grey antialiasing: the text gets alpha, ClearType's fringes would show */
-    lf.lfQuality = ANTIALIASED_QUALITY;
-    wcscpy(lf.lfFaceName, L"Segoe UI");
-    kc_font = CreateFontIndirectW(&lf);
+    kc_font = kov_font(px, true);
     kc_font_px = px;
     return kc_font;
 }
@@ -181,53 +142,6 @@ static void kc_wide(wchar_t *dst, size_t n, const char *src)
 }
 
 /* ---- the picture ---------------------------------------------------------- */
-
-static void kc_canvas_free(void)
-{
-    if (kc_dc) {
-        SelectObject(kc_dc, kc_oldbmp);
-        DeleteDC(kc_dc);
-    }
-    if (kc_bmp)
-        DeleteObject(kc_bmp);
-    kc_dc = NULL;
-    kc_bmp = NULL;
-    kc_px = NULL;
-    kc_cw = kc_ch = 0;
-}
-
-static bool kc_canvas(int w, int h)
-{
-    BITMAPINFO bi;
-    void *bits = NULL;
-    HDC sdc;
-    if (kc_dc && w == kc_cw && h == kc_ch)
-        return true;
-    kc_canvas_free();
-    sdc = GetDC(NULL);
-    memset(&bi, 0, sizeof(bi));
-    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
-    bi.bmiHeader.biWidth = w;
-    bi.bmiHeader.biHeight = -h;        /* top-down */
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
-    kc_bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
-    kc_dc = CreateCompatibleDC(sdc);
-    ReleaseDC(NULL, sdc);
-    if (!kc_bmp || !bits || !kc_dc) {
-        if (kc_dc) DeleteDC(kc_dc);
-        if (kc_bmp) DeleteObject(kc_bmp);
-        kc_dc = NULL;
-        kc_bmp = NULL;
-        return false;
-    }
-    kc_oldbmp = (HBITMAP)SelectObject(kc_dc, kc_bmp);
-    kc_px = (DWORD *)bits;
-    kc_cw = w;
-    kc_ch = h;
-    return true;
-}
 
 /* What is drawn: the segments to show, as indices into kc_seg, -1 = "...". */
 typedef struct {
@@ -385,15 +299,13 @@ static void kc_render(void)
     if (w > maxw && maxw > 4 * pad)
         w = maxw;                      /* the text is cut at the edge then */
 
-    if (!kc_hwnd || !kc_canvas(w, h))
+    if (!kc_hwnd || !kov_dib(&kc_dib, w, h))
         return;
-    dc = kc_dc;
-    cv.px = kc_px;
+    dc = kc_dib.dc;
+    cv.px = kc_dib.px;
     cv.w = w;
     cv.h = h;
-    for (i = 0; i < w * h; i++)
-        kc_px[i] = ((DWORD)GetRValue(t.bg) << 16) | ((DWORD)GetGValue(t.bg) << 8) |
-                   GetBValue(t.bg);
+    kov_fill(&cv, t.bg);
 
     /* the chips of the root and switched-user segments first, the text on top */
     SelectObject(dc, f);
@@ -452,14 +364,7 @@ static void kc_render(void)
     GdiFlush();
 
     /* the panel's shape at the opacity, premultiplied */
-    for (i = 0; i < w * h; i++) {
-        int px = i % w, py = i / w;
-        int a = (int)(kov_cov(kov_sd_rrect(px + .5, py + .5, 0, 0, w, h, 6 * s)) * t.alpha + .5);
-        DWORD c = kc_px[i];
-        int cr_ = (c >> 16) & 0xFF, cg = (c >> 8) & 0xFF, cb = c & 0xFF;
-        kc_px[i] = ((DWORD)a << 24) | ((DWORD)(cr_ * a / 255) << 16) |
-                   ((DWORD)(cg * a / 255) << 8) | (DWORD)(cb * a / 255);
-    }
+    kov_premultiply_rrect(&cv, 6 * s, t.alpha);
 
     kc_place(w, h, &pt);
     size.cx = w;
@@ -468,7 +373,7 @@ static void kc_render(void)
     bf.BlendFlags = 0;
     bf.SourceConstantAlpha = 255;
     bf.AlphaFormat = AC_SRC_ALPHA;
-    UpdateLayeredWindow(kc_hwnd, NULL, &pt, &size, kc_dc, &src, 0, &bf, ULW_ALPHA);
+    UpdateLayeredWindow(kc_hwnd, NULL, &pt, &size, kc_dib.dc, &src, 0, &bf, ULW_ALPHA);
 }
 
 /* ---- the window ----------------------------------------------------------- */
@@ -714,10 +619,10 @@ void kitty_ctxcrumb_follow(void)
         kc_hide();
         return;
     }
-    if (IsWindowVisible(kc_hwnd) && kc_dc && kc_dpi() / 96.0 == kc_s &&
+    if (IsWindowVisible(kc_hwnd) && kc_dib.dc && kc_dpi() / 96.0 == kc_s &&
         was_title == kc_title && !kc_title) {
         POINT pt;
-        kc_place(kc_cw, kc_ch, &pt);
+        kc_place(kc_dib.w, kc_dib.h, &pt);
         SetWindowPos(kc_hwnd, NULL, pt.x, pt.y, 0, 0,
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
         kc_update_panel();

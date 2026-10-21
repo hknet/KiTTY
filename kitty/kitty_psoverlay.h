@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <windows.h>
 #include "kitty_progstatus.h"
+#include "kitty_overlay_draw.h"   /* KovCanvas */
 
 /* The records changed (kitty_hostnotify.c, after every report, a prompt, a
  * focus change and the end of the session). session: the stored session's
@@ -30,5 +31,13 @@ void kitty_psoverlay_owner_shown(bool shown);
 
 /* The window is going: the overlay is closed with it. */
 void kitty_psoverlay_close(void);
+
+/* For the one-line notice of a job's switch (kitty_switchnotice.c): the
+ * panel's neutral colours in the current theme (the system colours in
+ * high contrast), and a row's state icon (PS_*), sz pixels, top-left at
+ * (x,y). */
+void kitty_psoverlay_look(COLORREF *bg, COLORREF *fg, COLORREF *line);
+void kitty_psoverlay_icon(KovCanvas *c, int state, double x, double y,
+                          double sz);
 
 #endif

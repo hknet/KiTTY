@@ -124,6 +124,32 @@ int ps_rows(const PsStore *st, PsRow *rows);
  * blocked, or a done or failed one not yet seen. */
 int ps_overlay_due(const PsStore *st);
 
+/* The words for a state - "Finished", "Failed", "Waiting for input" ... -
+ * the taskbar overlay's text and the second half of a notice; "" for idle. */
+const char *ps_state_phrase(int state, int kind);
+/* A notice's line for a record: "<name>: <state>", the name its title,
+ * else its app; the state alone when it has neither. */
+void ps_notice_line(const PsStore *st, const PsRecord *r, char *buf,
+                    size_t size);
+/* The one-line notice in the window (kitty/kitty_switchnotice.c) for a
+ * report that moved its record (prev: the state before, -1 = new) to
+ * blocked, failed or finished - never for working or a new percentage -
+ * while the status panel does not show (panel: it is up after this
+ * report) and [KiTTY] osc7501notice (secs) is not 0. Returns the record's
+ * state with ps_notice_line in buf; PS_IDLE (buf empty) when none is due. */
+int ps_switch_notice(const PsStore *st, const PsRecord *r, int prev,
+                     int panel, int secs, char *buf, size_t size);
+/* The same line for OSC 9;4 progress: due when the state switches (prev:
+ * the taskbar bar's state before) TO 2 (error) or 4 (paused) - not on a
+ * repeat, never for 0, 1 or 3 - while no OSC 7501 notice of this window
+ * shows (ps7501_up: both drive the same bar, one event is reported once)
+ * and [KiTTY] osc7501notice (secs) is not 0. value: the percentage sent,
+ * -1 = none (then the line carries none). Returns the icon's state,
+ * PS_ERROR or PS_BLOCKED, with the line in buf; PS_IDLE (buf empty) when
+ * none is due. */
+int ps_progress_notice(int prev, int state, int value, int ps7501_up,
+                       int secs, char *buf, size_t size);
+
 /* OSC 133 (everything after "133;"). */
 #define PS133_OTHER  0
 #define PS133_PROMPT 1           /* A: a prompt starts */

@@ -1,11 +1,16 @@
 /*
  * kitty_overlay_draw.c - shapes on a pixel buffer for the layered overlays
- * (kitty_psoverlay.c, kitty_ctxcrumb.c); see kitty_overlay_draw.h.
+ * (kitty_psoverlay.c, kitty_ctxcrumb.c, kitty_switchnotice.c); see
+ * kitty_overlay_draw.h.
  */
 #include <windows.h>
 #include <math.h>
+#include <string.h>
+#include <wchar.h>
 
 #include "kitty_overlay_draw.h"
+#include "kitty_oldwin.h"     /* kitty_api_from: GetDpiForWindow */
+#include "kitty_text.h"       /* KT_WINFEAT_DPI */
 
 void kov_put(KovCanvas *c, int x, int y, COLORREF col, double a)
 {
@@ -58,4 +63,117 @@ void kov_rrect_edge(KovCanvas *c, double x0, double y0, double x1,
             double d = kov_sd_rrect(x + .5, y + .5, x0, y0, x1, y1, r);
             kov_put(c, x, y, col, kov_cov(fabs(d + w / 2) - w / 2));
         }
+}
+
+void kov_fill(KovCanvas *c, COLORREF col)
+{
+    DWORD v = ((DWORD)GetRValue(col) << 16) | ((DWORD)GetGValue(col) << 8) |
+              GetBValue(col);
+    int i;
+    for (i = 0; i < c->w * c->h; i++)
+        c->px[i] = v;
+}
+
+void kov_premultiply_rrect(KovCanvas *c, double r, int alpha)
+{
+    int i;
+    for (i = 0; i < c->w * c->h; i++) {
+        int px = i % c->w, py = i / c->w;
+        int a = (int)(kov_cov(kov_sd_rrect(px + .5, py + .5, 0, 0, c->w, c->h, r)) *
+                      alpha + .5);
+        DWORD v = c->px[i];
+        int cr = (v >> 16) & 0xFF, cg = (v >> 8) & 0xFF, cb = v & 0xFF;
+        c->px[i] = ((DWORD)a << 24) | ((DWORD)(cr * a / 255) << 16) |
+                   ((DWORD)(cg * a / 255) << 8) | (DWORD)(cb * a / 255);
+    }
+}
+
+void kov_dib_free(KovDib *d)
+{
+    if (d->dc) {
+        SelectObject(d->dc, d->old);
+        DeleteDC(d->dc);
+    }
+    if (d->bmp)
+        DeleteObject(d->bmp);
+    memset(d, 0, sizeof(*d));
+}
+
+bool kov_dib(KovDib *d, int w, int h)
+{
+    BITMAPINFO bi;
+    void *bits = NULL;
+    HDC sdc;
+    if (d->dc && w == d->w && h == d->h)
+        return true;
+    kov_dib_free(d);
+    if (w <= 0 || h <= 0)
+        return false;
+    sdc = GetDC(NULL);
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;        /* top-down */
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    d->bmp = CreateDIBSection(sdc, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+    d->dc = CreateCompatibleDC(sdc);
+    ReleaseDC(NULL, sdc);
+    if (!d->bmp || !bits || !d->dc) {
+        if (d->dc) DeleteDC(d->dc);
+        if (d->bmp) DeleteObject(d->bmp);
+        memset(d, 0, sizeof(*d));
+        return false;
+    }
+    d->old = (HBITMAP)SelectObject(d->dc, d->bmp);
+    d->px = (DWORD *)bits;
+    d->w = w;
+    d->h = h;
+    return true;
+}
+
+UINT kov_dpi(HWND owner)
+{
+    typedef UINT (WINAPI *fn_t)(HWND);
+    static fn_t fn;
+    static int tried;
+    UINT d = 0;
+    if (!tried) {
+        fn = (fn_t)kitty_api_from(GetModuleHandleA("user32.dll"), "user32.dll",
+                                  "GetDpiForWindow", KITTY_API_OPTIONAL,
+                                  KT_WINFEAT_DPI);
+        tried = 1;
+    }
+    if (fn && owner)
+        d = fn(owner);
+    if (!d) {
+        HDC dc = GetDC(NULL);
+        if (dc) {
+            d = GetDeviceCaps(dc, LOGPIXELSX);
+            ReleaseDC(NULL, dc);
+        }
+    }
+    return d ? d : 96;
+}
+
+bool kov_high_contrast(void)
+{
+    HIGHCONTRASTA hc;
+    memset(&hc, 0, sizeof(hc));
+    hc.cbSize = sizeof(hc);
+    return SystemParametersInfoA(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0) &&
+           (hc.dwFlags & HCF_HIGHCONTRASTON);
+}
+
+HFONT kov_font(int px, bool bold)
+{
+    LOGFONTW lf;
+    memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = -px;
+    lf.lfWeight = bold ? FW_SEMIBOLD : FW_NORMAL;
+    lf.lfCharSet = DEFAULT_CHARSET;
+    lf.lfQuality = ANTIALIASED_QUALITY;
+    wcscpy(lf.lfFaceName, L"Segoe UI");
+    return CreateFontIndirectW(&lf);
 }

@@ -486,6 +486,66 @@ int ps_overlay_due(const PsStore *st)
     return rows >= 2 && live;
 }
 
+const char *ps_state_phrase(int state, int kind)
+{
+    switch (state) {
+      case PS_WORKING: return KT_PST_WORKING;
+      case PS_DONE:    return KT_PST_DONE;
+      case PS_ERROR:   return KT_PST_ERROR;
+      case PS_BLOCKED:
+        return kind == PS_KIND_PERMISSION ? KT_PST_BLOCKED_PERMISSION :
+               kind == PS_KIND_QUESTION   ? KT_PST_BLOCKED_QUESTION :
+               kind == PS_KIND_AUTH       ? KT_PST_BLOCKED_AUTH :
+                                            KT_PST_BLOCKED;
+      default:         return "";
+    }
+}
+
+void ps_notice_line(const PsStore *st, const PsRecord *r, char *buf,
+                    size_t size)
+{
+    const char *name = r->title[0] ? r->title : ps_app_of(st, r);
+    const char *phrase = ps_state_phrase(r->state, r->kind);
+    if (name[0])
+        snprintf(buf, size, KT_PST_NOTICE_FMT, name, phrase);
+    else
+        snprintf(buf, size, "%s", phrase);
+}
+
+int ps_switch_notice(const PsStore *st, const PsRecord *r, int prev,
+                     int panel, int secs, char *buf, size_t size)
+{
+    if (size)
+        buf[0] = '\0';
+    if (!r || secs <= 0 || panel || r->state == prev ||
+        (r->state != PS_BLOCKED && r->state != PS_ERROR &&
+         r->state != PS_DONE))
+        return PS_IDLE;
+    ps_notice_line(st, r, buf, size);
+    return r->state;
+}
+
+int ps_progress_notice(int prev, int state, int value, int ps7501_up,
+                       int secs, char *buf, size_t size)
+{
+    if (size)
+        buf[0] = '\0';
+    if (secs <= 0 || ps7501_up || state == prev || (state != 2 && state != 4))
+        return PS_IDLE;
+    if (state == 2) {
+        if (value >= 0)
+            snprintf(buf, size, KT_PROG94_ERROR_AT, value);
+        else
+            snprintf(buf, size, "%s", KT_PROG94_ERROR);
+        return PS_ERROR;
+    }
+    if (value >= 0)
+        snprintf(buf, size, KT_PROG94_PAUSED_AT, value);
+    else
+        snprintf(buf, size, "%s", KT_PROG94_PAUSED);
+    return PS_BLOCKED;
+}
+
 void ps_title_marker(const PsView *v, char *buf)
 {
     const char *t;

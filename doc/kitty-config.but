@@ -1849,6 +1849,15 @@ per-session setting and are not touched.
 user. Subtle goes a tenth of the way (the default), Medium a fifth,
 Strong three tenths. Open terminals follow a change at once.
 
+\b \q{OSC 3008 user-context switch notice} and \q{OSC 7501 / 9;4
+program status notice}: seconds a one-line notice shows at the top of the
+terminal area, 0-10, default 2, 0 = never. OSC 3008: on a switch to
+root (dark red) or to another user (dark yellow) while the frame or
+the tint is on (\k{kitty-cfg-ctxroottint}). OSC 7501: when one
+program's status switches to blocked, failed or finished while the
+status panel is not shown, and OSC 9;4 progress to error or paused.
+Clicks pass through it.
+
 \b \q{Context breadcrumb}: how opaque the breadcrumb is that a session
 with \q{Context breadcrumb in the title bar (OSC 3008)}
 (\k{kitty-cfg-ctxbreadcrumb}) shows, in percent from 40 to 100 (70 by
@@ -1882,7 +1891,8 @@ that draw a character the terminal font lacks on
 \k{kitty-cfg-kset-fontfb}.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours),
-\c{ctxtint} (the background tint), \c{ctxbreadcrumbopacity} and
+\c{ctxtint} (the background tint), \c{osc3008ctxnotice} and
+\c{osc7501notice} (the switch notices), \c{ctxbreadcrumbopacity} and
 \c{ctxbreadcrumbplace} (the breadcrumb's opacity and place) and
 \c{iconfile}.
 

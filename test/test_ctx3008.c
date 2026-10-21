@@ -10,7 +10,8 @@
  * UTF-8 validation, machineid/bootid/pid formats, type-specific fields,
  * field order, malformed segments, duplicates, end fields (exit, status,
  * signal), the effective user and elevation, the whole-string limit, an
- * embedded NUL, the name functions and the breadcrumb's segments.
+ * embedded NUL, the name functions, the breadcrumb's segments and the
+ * notice on a switch of user (its text, colour and when it is due).
  *
  * Returns non-zero on any failure.
  */
@@ -1100,9 +1101,59 @@ static void test_breadcrumb(void)
     ctx_clear(&s);
 }
 
+/* The notice on a switch of user: red for root, yellow for another user,
+ * nothing when the switch ends, with the setting at 0, or with the frame
+ * and the tint both off. */
+static void test_switch_notice(void)
+{
+    CtxStack s;
+    char buf[128], small[8];
+    ctx_init(&s);
+
+    strcpy(buf, "x");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: nothing open, none");
+    st(&s, "start=l;type=shell;user=harald;hostname=web01");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: a login, none");
+    st(&s, "start=r;type=elevate");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_ROOT &&
+          !strcmp(buf, "OSC 3008 user-context: root - active"), "notice: run0, red");
+    CHECK(ctx_switch_notice(&s, true, false, 2, buf, sizeof buf) == CTX_AS_ROOT,
+          "notice: the frame alone is enough");
+    CHECK(ctx_switch_notice(&s, false, true, 10, buf, sizeof buf) == CTX_AS_ROOT,
+          "notice: the tint alone is enough");
+    CHECK(ctx_switch_notice(&s, false, false, 2, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: frame and tint off, none");
+    CHECK(ctx_switch_notice(&s, true, true, 0, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: 0 seconds = never");
+    CHECK(ctx_switch_notice(&s, true, true, 2, small, sizeof small) == CTX_AS_ROOT &&
+          strlen(small) == sizeof small - 1, "notice: cut at the buffer");
+    CHECK(ctx_switch_notice(&s, true, true, 2, NULL, 0) == CTX_AS_ROOT,
+          "notice: no buffer, still decided");
+    ap(&s, "end=r", NULL);
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: run0 ended, none");
+    st(&s, "start=u;type=elevate;targetuser=bob");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_SWITCHED &&
+          !strcmp(buf, "OSC 3008 user-context switch: bob"), "notice: run0 -u bob, yellow");
+    st(&s, "start=c;type=command;cmdline=id");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_SWITCHED &&
+          !strcmp(buf, "OSC 3008 user-context switch: bob"), "notice: bob's command keeps it");
+    st(&s, "start=r2;type=elevate");
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_ROOT,
+          "notice: bob to root, red");
+    ctx_clear(&s);
+    CHECK(ctx_switch_notice(&s, true, true, 2, buf, sizeof buf) == CTX_AS_PLAIN &&
+          !buf[0], "notice: the stack reset, none");
+    CHECK(ctx_switch_notice(NULL, true, true, 2, buf, sizeof buf) == CTX_AS_PLAIN,
+          "notice: no stack, none");
+}
+
 int main(void)
 {
     test_breadcrumb();
+    test_switch_notice();
     test_start_basic();
     test_nesting_and_end();
     test_end_parent();

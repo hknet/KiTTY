@@ -84,36 +84,7 @@ static bool po_animating;
 
 static UINT po_dpi(void)
 {
-    typedef UINT (WINAPI *fn_t)(HWND);
-    static fn_t fn;
-    static int tried;
-    UINT d = 0;
-    if (!tried) {
-        fn = (fn_t)kitty_api_from(GetModuleHandleA("user32.dll"), "user32.dll",
-                                  "GetDpiForWindow", KITTY_API_OPTIONAL,
-                                  KT_WINFEAT_DPI);
-        tried = 1;
-    }
-    if (fn && MainHwnd)
-        d = fn(MainHwnd);
-    if (!d) {
-        HDC dc = GetDC(NULL);
-        if (dc) {
-            d = GetDeviceCaps(dc, LOGPIXELSX);
-            ReleaseDC(NULL, dc);
-        }
-    }
-    return d ? d : 96;
-}
-
-static int po_high_contrast(void)
-{
-    HIGHCONTRASTA hc;
-    memset(&hc, 0, sizeof(hc));
-    hc.cbSize = sizeof(hc);
-    if (!SystemParametersInfoA(SPI_GETHIGHCONTRAST, sizeof(hc), &hc, 0))
-        return 0;
-    return (hc.dwFlags & HCF_HIGHCONTRASTON) ? 1 : 0;
+    return kov_dpi(MainHwnd);
 }
 
 typedef struct {
@@ -129,7 +100,7 @@ typedef struct {
 
 static void po_theme(PoTheme *t)
 {
-    if (po_high_contrast()) {
+    if (kov_high_contrast()) {
         COLORREF bg = GetSysColor(COLOR_WINDOW), fg = GetSysColor(COLOR_WINDOWTEXT);
         COLORREF hl = GetSysColor(COLOR_HIGHLIGHT);
         t->bg = bg; t->fg = fg; t->dim = fg; t->line = fg; t->track = GetSysColor(COLOR_GRAYTEXT);
@@ -175,16 +146,7 @@ static UINT po_f_dpi;
 
 static HFONT po_font(int px, bool bold, UINT dpi)
 {
-    LOGFONTW lf;
-    memset(&lf, 0, sizeof(lf));
-    lf.lfHeight = -MulDiv(px, (int)dpi, 96);
-    lf.lfWeight = bold ? FW_SEMIBOLD : FW_NORMAL;
-    lf.lfCharSet = DEFAULT_CHARSET;
-    /* Grey antialiasing, not ClearType: the text ends up with alpha, and
-     * ClearType's coloured fringes would show through it. */
-    lf.lfQuality = ANTIALIASED_QUALITY;
-    wcscpy(lf.lfFaceName, L"Segoe UI");
-    return CreateFontIndirectW(&lf);
+    return kov_font(MulDiv(px, (int)dpi, 96), bold);
 }
 
 static void po_fonts_free(void)
@@ -1010,6 +972,23 @@ void kitty_psoverlay_follow(void)
         po_move();
     else
         po_show();
+}
+
+void kitty_psoverlay_look(COLORREF *bg, COLORREF *fg, COLORREF *line)
+{
+    PoTheme t;
+    po_theme(&t);
+    *bg = t.bg;
+    *fg = t.fg;
+    *line = t.line;
+}
+
+void kitty_psoverlay_icon(KovCanvas *c, int state, double x, double y,
+                          double sz)
+{
+    PoTheme t;
+    po_theme(&t);
+    po_icon(c, &t, state, x, y, sz, false, GetTickCount());
 }
 
 bool kitty_psoverlay_rect(RECT *r)

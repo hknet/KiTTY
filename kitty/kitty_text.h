@@ -326,6 +326,11 @@
 #define KT_CTX3008_FAILED                            "Command failed"
 #define KT_CTX3008_CRASHED                           "Command crashed"
 #define KT_CTX3008_STATUS                            "exit status %d"
+/* kitty/kitty_switchnotice.c: the one-line notice in the window when the
+ * host switches the user (OSC 3008: the frame and the tint turn red or
+ * yellow) */
+#define KT_CTX3008_NOTICE_ROOT                       "OSC 3008 user-context: root - active"
+#define KT_CTX3008_NOTICE_USER                       "OSC 3008 user-context switch: %s"
 #define KT_FEATURES_IMAGES_GROUP                     "Images shown in the terminal"   /* the Image Protocols panel title */
 #define KT_FEATURES_KITTY_GRAPHICS                   "Show inline images (kitty graphics protocol)"
 #define KT_FEATURES_ITERM_IMAGES                     "Show inline images (iTerm2 OSC 1337)"
@@ -340,6 +345,13 @@
 #define KT_PST_BLOCKED_QUESTION                      "Waiting for an answer"
 #define KT_PST_BLOCKED_AUTH                          "Waiting for login"
 #define KT_PST_NOTICE_FMT                            "%s: %s"
+/* OSC 9;4 progress turned to error or paused: the in-window notice
+ * (kitty/kitty_switchnotice.c), the percentage only when the sequence
+ * carried one */
+#define KT_PROG94_ERROR_AT                           "OSC 9;4 progress: error at %d%%"
+#define KT_PROG94_ERROR                              "OSC 9;4 progress: error"
+#define KT_PROG94_PAUSED_AT                          "OSC 9;4 progress: paused at %d%%"
+#define KT_PROG94_PAUSED                             "OSC 9;4 progress: paused"
 /* The program-status notice: its button, and the one-time line about the
  * title bar (shown while [KiTTY] wintitle is off); the Event Log record. */
 #define KT_PST_GOTO                                  "Go to the window"
@@ -1006,6 +1018,11 @@
 #define KT_APPEARANCE_CTXTINT_STRONG                 "Strong (30%)"
 #define KT_APPEARANCE_CTXTINT_NOTE                   "A session switches the tint on: Terminal > " \
         "Shell Integration (OSC 3008)."
+/* ... and the one-line notices on a switch, in the same group ([KiTTY]
+ * osc3008ctxnotice, osc7501notice; kitty/kitty_switchnotice.c) */
+#define KT_APPEARANCE_CTXNOTICE                      "OSC 3008 user-context switch notice:"
+#define KT_APPEARANCE_PSNOTICE                       "OSC 7501 / 9;4 program status notice:"
+#define KT_APPEARANCE_NOTICE_NOTE                    "Seconds the notice shows; 0 = never."
 /* Appearance: the opacity of the OSC 3008 breadcrumb ([KiTTY] ctxbreadcrumbopacity) */
 #define KT_APPEARANCE_CRUMB_GROUP                    "Context breadcrumb"
 #define KT_APPEARANCE_CRUMB_OPACITY                  "Opacity in percent (40-100):"

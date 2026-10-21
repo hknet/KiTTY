@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "kitty_ctx3008.h"
+#include "kitty_text.h"          /* KT_CTX3008_NOTICE_*: the switch notice */
 
 static const char *const type_names[CTX_TYPE_COUNT] = {
     "", "boot", "container", "vm", "elevate", "chpriv", "subcontext",
@@ -491,6 +492,26 @@ CtxAs ctx_runs_as(const CtxStack *s)
     if (!strcmp(u, "root"))
         return CTX_AS_ROOT;
     return switched ? CTX_AS_SWITCHED : CTX_AS_PLAIN;
+}
+
+CtxAs ctx_switch_notice(const CtxStack *s, bool frame, bool tint, int secs,
+                        char *buf, size_t size)
+{
+    CtxAs as;
+    const char *u;
+
+    if (size)
+        buf[0] = '\0';
+    if (!s || secs <= 0 || (!frame && !tint))
+        return CTX_AS_PLAIN;
+    as = ctx_runs_as(s);
+    if (as == CTX_AS_ROOT) {
+        snprintf(buf, size, "%s", KT_CTX3008_NOTICE_ROOT);
+    } else if (as == CTX_AS_SWITCHED) {
+        u = ctx_effective_user(s);
+        snprintf(buf, size, KT_CTX3008_NOTICE_USER, u ? u : "");
+    }
+    return as;
 }
 
 /* "a@b", "a" or "b" into a segment's text, cut at the segment's size. */

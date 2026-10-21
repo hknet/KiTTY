@@ -62,6 +62,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   stores the choice in the kitty.ini this KiTTY++ uses
   (`PortablePasswordProtection=dpapi`). Another PC that shares the session
   folder makes its own choice and cannot read those passwords.
+- **A one-line notice shows why the window turned red or yellow (OSC
+  3008)**, and reports a program's switch to blocked, failed or finished
+  (OSC 7501) or an OSC 9;4 progress error or pause. Seconds on
+  Application > KiTTY++ Settings > Appearance (`osc3008ctxnotice`,
+  `osc7501notice`; 0 = never).
 
 ### Changed
 

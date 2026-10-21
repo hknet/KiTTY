@@ -38,6 +38,7 @@
 #include "kitty_progstatus.h"
 #include "kitty_hostnotify.h"
 #include "kitty_psoverlay.h"   /* the overlay follows the records */
+#include "kitty_switchnotice.h" /* one job's switch: a line in the window */
 #include "kitty_win.h"        /* kitty_refresh_title: the program-status marker */
 #include "kitty_inikeys.h"    /* KI_*: wintitle, the one-time title pointer */
 #include "kitty.h"            /* INIT_SECTION */
@@ -484,6 +485,23 @@ static void hn_progress(int state, int value)
     hn_trace_progress(state, value, false);
 }
 
+/* OSC 9;4 switched the bar to error or paused: the in-window line for a
+ * moment, as an OSC 7501 switch has it ([KiTTY] osc7501notice) - unless a
+ * 7501 line of this window shows, which already reports the bar's state.
+ * prev: the bar's state before; value as sent (-1 = none). */
+static void hn_prog94_notice(Terminal *term, int prev, int state, int value)
+{
+    char line[64];
+    int secs = kitty_switchnotice_seconds(KI_OSC7501NOTICE);
+    int icon = ps_progress_notice(prev, state, value,
+                                  kitty_switchnotice_showing(KSN_PS7501,
+                                                             KSN_LOOK_STATUS),
+                                  secs, line, sizeof(line));
+    if (icon != PS_IDLE)
+        kitty_switchnotice_show(KSN_PS7501, KSN_LOOK_PROGRESS, icon, line, secs,
+                                kitty_term_line_px(term));
+}
+
 static void hn_ps_session_ended(void);
 
 void kitty_hostnotify_session_ended(void)
@@ -503,6 +521,7 @@ static void hn_ps_overlay_again(void);
 void kitty_hostnotify_shutdown(void)
 {
     kitty_psoverlay_close();
+    kitty_switchnotice_close();
     hn_taskbar_release();
     hn_ps_icons_free();
 }
@@ -534,21 +553,6 @@ static HICON hn_ps_icons[PS_BLOCKED + 1];
 
 /* The words for a state, on the overlay (read by screen readers) and in the
  * notice. */
-static const char *hn_ps_phrase(int state, int kind)
-{
-    switch (state) {
-      case PS_WORKING: return KT_PST_WORKING;
-      case PS_DONE:    return KT_PST_DONE;
-      case PS_ERROR:   return KT_PST_ERROR;
-      case PS_BLOCKED:
-        return kind == PS_KIND_PERMISSION ? KT_PST_BLOCKED_PERMISSION :
-               kind == PS_KIND_QUESTION   ? KT_PST_BLOCKED_QUESTION :
-               kind == PS_KIND_AUTH       ? KT_PST_BLOCKED_AUTH :
-                                            KT_PST_BLOCKED;
-      default:         return "";
-    }
-}
-
 /* The overlay: a dot in the state's colour with a white rim, drawn once at
  * the small-icon size. Straight alpha, so the rim is smooth on any taskbar. */
 static HICON hn_ps_icon(int state)
@@ -639,7 +643,7 @@ static void hn_ps_overlay_apply(int state, int kind)
         tb->lpVtbl->SetOverlayIcon(tb, MainHwnd, NULL, NULL);
         return;
     }
-    desc = dup_mb_to_wc(CP_ACP, hn_ps_phrase(state, kind));
+    desc = dup_mb_to_wc(CP_ACP, ps_state_phrase(state, kind));
     tb->lpVtbl->SetOverlayIcon(tb, MainHwnd, hn_ps_icon(state), desc);
     sfree(desc);
 }
@@ -726,15 +730,12 @@ static void hn_ps_refresh(struct kitty_hostnotify *st)
 static void hn_ps_notice(struct kitty_hostnotify *st, const PsRecord *r)
 {
     OnNotice n;
-    const char *name = r->title[0] ? r->title : ps_app_of(&st->ps, r);
-    const char *phrase = hn_ps_phrase(r->state, r->kind);
-    char *first = name[0] ? dupprintf(KT_PST_NOTICE_FMT, name, phrase) :
-                            dupstr(phrase);
+    char first[PS_TITLE_MAX + 64];
+    ps_notice_line(&st->ps, r, first, sizeof(first));
     if (st->term->logctx)
         logeventf(st->term->logctx, KT_PST_LOG_FMT, first);
     on_notice_set(&n, first, strlen(first), r->msg, strlen(r->msg));
     n.ps_state = r->state;
-    sfree(first);
     hn_offer(st, &n);
 }
 
@@ -773,6 +774,21 @@ static void hn_ps_osc7501(Terminal *term, const char *s, size_t len,
          e->r.state == PS_ERROR))
         hn_ps_notice(st, &e->r);
     hn_ps_refresh(st);
+    /* One job's switch to blocked, failed or finished, while the panel
+     * (two jobs or more) does not list it: a line at the top of the
+     * window for a moment ([KiTTY] osc7501notice). Asked after the
+     * refresh, which has shown or hidden the panel. */
+    if (e) {
+        char line[PS_TITLE_MAX + 64];
+        RECT pr;
+        int secs = kitty_switchnotice_seconds(KI_OSC7501NOTICE);
+        int state = ps_switch_notice(&st->ps, &e->r, prev,
+                                     kitty_psoverlay_rect(&pr), secs,
+                                     line, sizeof(line));
+        if (state != PS_IDLE)
+            kitty_switchnotice_show(KSN_PS7501, KSN_LOOK_STATUS, state, line,
+                                    secs, kitty_term_line_px(term));
+    }
 }
 
 static void hn_ps_osc133(Terminal *term, const char *s, size_t len)
@@ -865,8 +881,11 @@ void kitty_hostnotify_osc(Terminal *term, unsigned osc, const char *s,
         int state, value;
         int kind = on_osc9(s, len, &state, &value);
         if (kind == ON9_PROGRESS) {
-            if (conf_get_bool(term->conf, CONF_taskbar_progress))
+            if (conf_get_bool(term->conf, CONF_taskbar_progress)) {
+                int prev = hn_prog_state;
                 hn_progress(state, value);
+                hn_prog94_notice(term, prev, state, value);
+            }
             return;
         }
         if (kind != ON9_NOTICE || hn_setting(term) == ON_SET_OFF)

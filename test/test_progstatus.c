@@ -9,7 +9,9 @@
  * are validated; text is base64 UTF-8 without control characters; a report
  * replaces its record; clear removes the record and its subtree; app is
  * inherited; the store cap drops the oldest; the window's summary; a prompt
- * drops working and blocked; OSC 133 A, B, C and D.
+ * drops working and blocked; OSC 133 A, B, C and D; the one-line notice
+ * on a switch (blocked, failed, finished; not working, not a percentage,
+ * not while the panel shows, never at 0 seconds) and its text.
  *
  * Returns non-zero on any failure.
  */
@@ -280,9 +282,94 @@ static void test_rows(void)
     ps_free(&st);
 }
 
+/* One report and what the in-window notice makes of it. panel: the status
+ * panel shows after it (as kitty_hostnotify.c asks the window). */
+static int notice(PsStore *st, const char *s, int panel, int secs,
+                  char *buf, size_t size)
+{
+    PsRecord r;
+    PsEntry *e;
+    int prev = -1;
+    if (ps_parse(s, strlen(s), &r) != PS_REPORT) {
+        printf("FAIL [report did not parse: %s]\n", s);
+        failures++;
+        return -1;
+    }
+    e = ps_apply(st, &r, &prev);
+    if (!e)
+        return PS_IDLE;
+    return ps_switch_notice(st, &e->r, prev, panel, secs, buf, size);
+}
+
+static void test_notice(void)
+{
+    PsStore st;
+    char buf[256];
+
+    memset(&st, 0, sizeof(st));
+    CHECK(notice(&st, "state=working:id=build:app=make", 0, 2, buf, sizeof buf) ==
+          PS_IDLE && !buf[0], "notice: working, none");
+    CHECK(notice(&st, "state=working:id=build:app=make:progress=40", 0, 2, buf,
+                 sizeof buf) == PS_IDLE, "notice: a percentage, none");
+    CHECK(notice(&st, "state=blocked:id=build:app=make", 0, 2, buf, sizeof buf) ==
+          PS_BLOCKED && !strcmp(buf, "make: Waiting for input"), "notice: blocked");
+    CHECK(notice(&st, "state=blocked:id=build:app=make:kind=permission", 0, 2, buf,
+                 sizeof buf) == PS_IDLE, "notice: still blocked, none");
+    CHECK(notice(&st, "state=error:id=build:app=make", 0, 2, buf, sizeof buf) == PS_ERROR &&
+          !strcmp(buf, "make: Failed"), "notice: failed");
+    CHECK(notice(&st, "state=done:id=build:app=make", 0, 2, buf, sizeof buf) == PS_DONE &&
+          !strcmp(buf, "make: Finished"), "notice: finished");
+    CHECK(notice(&st, "state=blocked:id=build:kind=auth", 0, 0, buf, sizeof buf) ==
+          PS_IDLE && !buf[0], "notice: 0 seconds = never");
+    CHECK(notice(&st, "state=done:id=build", 1, 2, buf, sizeof buf) == PS_IDLE &&
+          !buf[0], "notice: the panel shows, none");
+    CHECK(notice(&st, "state=blocked:id=build:kind=question:title=RGVwbG95", 0, 2,
+                 buf, sizeof buf) == PS_BLOCKED &&
+          !strcmp(buf, "Deploy: Waiting for an answer"), "notice: the title is the name");
+    CHECK(notice(&st, "state=done:id=bare", 0, 2, buf, sizeof buf) == PS_DONE &&
+          !strcmp(buf, "Finished"), "notice: no title, no app: the state alone");
+    CHECK(notice(&st, "state=idle:id=bare", 0, 2, buf, sizeof buf) == PS_IDLE,
+          "notice: idle, none");
+    CHECK(!strcmp(ps_state_phrase(PS_BLOCKED, PS_KIND_PERMISSION), "Waiting for permission") &&
+          !strcmp(ps_state_phrase(PS_BLOCKED, PS_KIND_AUTH), "Waiting for login") &&
+          !strcmp(ps_state_phrase(PS_IDLE, 0), ""), "notice: the phrases");
+    ps_free(&st);
+}
+
+/* OSC 9;4: error and paused show, with the percentage only when sent;
+ * 0, 1, 3 and a repeat do not; nor while a 7501 line shows, nor at 0 s. */
+static void test_progress_notice(void)
+{
+    char buf[64];
+    CHECK(ps_progress_notice(1, 2, 40, 0, 2, buf, sizeof buf) == PS_ERROR &&
+          !strcmp(buf, "OSC 9;4 progress: error at 40%"), "9;4: error at a percentage");
+    CHECK(ps_progress_notice(0, 2, -1, 0, 2, buf, sizeof buf) == PS_ERROR &&
+          !strcmp(buf, "OSC 9;4 progress: error"), "9;4: error, none sent");
+    CHECK(ps_progress_notice(1, 4, 55, 0, 2, buf, sizeof buf) == PS_BLOCKED &&
+          !strcmp(buf, "OSC 9;4 progress: paused at 55%"), "9;4: paused at a percentage");
+    CHECK(ps_progress_notice(2, 4, -1, 0, 2, buf, sizeof buf) == PS_BLOCKED &&
+          !strcmp(buf, "OSC 9;4 progress: paused"), "9;4: paused, none sent");
+    CHECK(ps_progress_notice(1, 2, 0, 0, 2, buf, sizeof buf) == PS_ERROR &&
+          !strcmp(buf, "OSC 9;4 progress: error at 0%"), "9;4: 0% is a percentage");
+    CHECK(ps_progress_notice(2, 0, -1, 0, 2, buf, sizeof buf) == PS_IDLE && !buf[0],
+          "9;4: 0, none");
+    CHECK(ps_progress_notice(0, 1, 30, 0, 2, buf, sizeof buf) == PS_IDLE, "9;4: 1, none");
+    CHECK(ps_progress_notice(0, 3, -1, 0, 2, buf, sizeof buf) == PS_IDLE, "9;4: 3, none");
+    CHECK(ps_progress_notice(2, 2, 40, 0, 2, buf, sizeof buf) == PS_IDLE && !buf[0],
+          "9;4: error repeated, none");
+    CHECK(ps_progress_notice(4, 4, -1, 0, 2, buf, sizeof buf) == PS_IDLE,
+          "9;4: paused repeated, none");
+    CHECK(ps_progress_notice(1, 2, 40, 1, 2, buf, sizeof buf) == PS_IDLE && !buf[0],
+          "9;4: a 7501 line shows, none");
+    CHECK(ps_progress_notice(1, 2, 40, 0, 0, buf, sizeof buf) == PS_IDLE && !buf[0],
+          "9;4: osc7501notice=0, none");
+}
+
 int main(void)
 {
     test_parse();
+    test_notice();
+    test_progress_notice();
     test_store();
     test_osc133();
     test_title_marker();

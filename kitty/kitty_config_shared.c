@@ -839,6 +839,11 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_CTXBREADCRUMBOPACITY, KSET_INT, false, NULL, kset_set_ctxcrumb, NULL, 40, 100, 70 },
     { INIT_SECTION, KI_CTXBREADCRUMBPLACE, KSET_CHOICE, false, NULL, kset_set_ctxcrumb, NULL, 0, 0, 0,
       NULL, NULL, kset_ctxcrumbplace_choices, lenof(kset_ctxcrumbplace_choices) },
+    /* the one-line notices on a switch (OSC 3008, OSC 7501), seconds, 0 =
+     * never: read at every notice (kitty_switchnotice_seconds), so a
+     * change applies to the next one */
+    { INIT_SECTION, KI_OSC3008CTXNOTICE, KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
+    { INIT_SECTION, KI_OSC7501NOTICE,    KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },
