@@ -404,8 +404,20 @@ BEGIN
     LTEXT KT_RC_KEYSETTINGS_LOGDAYS_LABEL, IDC_SET_L_LOGDAYS,
         16, 86, 152, 11, SS_CENTERIMAGE
     EDITTEXT IDC_SET_AGENTLOGDAYS, 172, 86, 32, 11, ES_NUMBER
+    /* Destination: the file, the Windows Event Log, or both, and the
+     * button that opens Event Viewer on the agent's events. The label has
+     * no accelerator: every letter of the word is taken on this dialog
+     * (Alt+D is "Notice display" on the first page). */
+    LTEXT KT_RC_KEYSETTINGS_LOGSINK_LABEL, IDC_SET_L_LOGSINK,
+        16, 102, 44, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_AGENTLOGSINK, 64, 102, 96, 60,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    PUSHBUTTON KT_RC_KEYSETTINGS_EVENTVIEWER, IDC_SET_EVENTVIEWER,
+        222, 102, 62, 14
+    LTEXT KT_RC_KEYSETTINGS_LOGSINK_HINT,
+        IDC_SET_L_LOGSINKHINT, 16, 120, 268, 27
     LTEXT KT_RC_KEYSETTINGS_LOGNOTE,
-        IDC_SET_L_LOGNOTE, 16, 102, 268, 10
+        IDC_SET_L_LOGNOTE, 16, 150, 268, 10
 
     DEFPUSHBUTTON KT_WIN_OK, IDOK, 182, 202, 54, 15
     PUSHBUTTON KT_KITTY_CANCEL, IDCANCEL, 240, 202, 54, 15
@@ -427,7 +439,7 @@ END
  * heights are snapped at runtime to whatever the font makes a closed combo
  * box, not taken from these numbers.
  */
-IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 460, 260
+IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 490, 260
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_AGENT_LOG
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -448,18 +460,20 @@ BEGIN
     COMBOBOX IDC_AUDIT_REQFILTER, 170, 6, 90, 90,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     AUTOCHECKBOX KT_RC_AUDITVIEW_ENABLE, IDC_AUDIT_ENABLE, 268, 6, 44, 14
-    PUSHBUTTON KT_MENU_REFRESH, IDC_AUDIT_REFRESH, 352, 6, 46, 14
-    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 404, 6, 48, 14
+    /* 30 units wider than before for this button, the rest unchanged */
+    PUSHBUTTON KT_RC_AUDITVIEW_EVENTVIEWER, IDC_AUDIT_EVENTVIEWER, 316, 6, 62, 14
+    PUSHBUTTON KT_MENU_REFRESH, IDC_AUDIT_REFRESH, 382, 6, 46, 14
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 434, 6, 48, 14
     CONTROL "", IDC_AUDIT_LIST, "SysListView32",
         LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER |
-        WS_TABSTOP, 8, 24, 444, 178
+        WS_TABSTOP, 8, 24, 474, 178
     /* KiTTY: the drill-down. The list's first level stays human (comment,
      * exe name); selecting a row shows its FULL raw record here -
      * fingerprints, requester path, every field - copyable. Double-click
      * opens the same record formatted one field per line (IDD_AUDITDETAIL). */
-    EDITTEXT IDC_AUDIT_DETAIL, 8, 206, 444, 38,
+    EDITTEXT IDC_AUDIT_DETAIL, 8, 206, 474, 38,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
-    LTEXT "", IDC_AUDIT_PATH, 8, 248, 444, 10, SS_PATHELLIPSIS
+    LTEXT "", IDC_AUDIT_PATH, 8, 248, 474, 10, SS_PATHELLIPSIS
 END
 
 /* KiTTY: one audit record, unfolded - every field on its own line, all of

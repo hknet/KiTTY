@@ -37,6 +37,7 @@
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
+#include "kitty_atomicfile.h"  /* kitty_write_file_whole: the Event Viewer view file */
 int kageant_audit_get(void)
 {
     return kageant_bool_get(KI_AGENT_AGENTLOG, "AgentLog", 1);
@@ -71,6 +72,105 @@ int kageant_audit_pathsetting_get(char *buf, size_t len)
 {
     return kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                                    buf, len);
+}
+
+/*
+ * [Agent] agentlogsink = file | eventlog | both. An explicit value always
+ * wins. Without one the sink follows the installation: the system-wide
+ * installer registers the KiTTY++_Agent event log, and where it exists
+ * the records go to the file AND that log; elsewhere (per-user install,
+ * portable copy) to the file only. The probe runs once per process, so the
+ * default is decided when kageant starts.
+ */
+#define KAGEANT_EVENTLOG_KEY \
+    "SYSTEM\\CurrentControlSet\\Services\\EventLog\\" KITTY_AUDIT_EVENT_LOG
+
+int kageant_audit_eventlog_exists(void)
+{
+    static int exists = -1;
+    if (exists < 0) {
+        HKEY k;
+        exists = RegOpenKeyExA(HKEY_LOCAL_MACHINE, KAGEANT_EVENTLOG_KEY, 0,
+                               KEY_QUERY_VALUE, &k) == ERROR_SUCCESS;
+        if (exists)
+            RegCloseKey(k);
+    }
+    return exists;
+}
+
+int kageant_audit_sink_explicit(void)
+{
+    char buf[16];
+    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGSINK, "AgentLogSink",
+                                 buf, sizeof(buf)))
+        return -1;
+    if (!stricmp(buf, "file"))
+        return KITTY_AUDIT_SINK_FILE;
+    if (!stricmp(buf, "eventlog"))
+        return KITTY_AUDIT_SINK_EVENTLOG;
+    if (!stricmp(buf, "both"))
+        return KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG;
+    return -1;                               /* unknown text: the default */
+}
+
+int kageant_audit_sink_get(void)
+{
+    int s = kageant_audit_sink_explicit();
+    if (s > 0)
+        return s;
+    return kageant_audit_eventlog_exists() ?
+        KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG :
+        KITTY_AUDIT_SINK_FILE;
+}
+
+int kageant_audit_sink_set(int sinks)
+{
+    const char *s =
+        sinks == KITTY_AUDIT_SINK_EVENTLOG ? "eventlog" :
+        sinks == (KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG) ?
+                                             "both" : "file";
+    int ok = kageant_setting_str_set(KI_AGENT_AGENTLOGSINK, "AgentLogSink", s);
+    kageant_audit_setup();
+    return ok;
+}
+
+/*
+ * Event Viewer on a custom view of the agent's events: the source
+ * KiTTY++_agent in the KiTTY++_Agent log (only when that log exists - a
+ * query naming a missing log fails the whole view) and in the Application
+ * log, where the source lands unregistered. The view is a file in the temp
+ * folder handed to eventvwr /v: (Vista on); Windows XP's Event Viewer takes
+ * no view, so there - or when the view cannot be written or started - the
+ * Event Viewer opens plainly.
+ */
+void kageant_eventviewer_open(HWND owner)
+{
+    char view[1024];
+    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
+    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+    int len;
+
+    len = snprintf(view, sizeof(view),
+        "<ViewerConfig><QueryConfig><QueryParams><UserQuery/></QueryParams>"
+        "<QueryNode><Name>" KITTY_AUDIT_EVENT_SOURCE "</Name><QueryList>"
+        "<Query Id=\"0\" Path=\"Application\">%s"
+        "<Select Path=\"Application\">"
+        "*[System[Provider[@Name='" KITTY_AUDIT_EVENT_SOURCE "']]]</Select>"
+        "</Query></QueryList></QueryNode></QueryConfig></ViewerConfig>",
+        kageant_audit_eventlog_exists() ?
+        "<Select Path=\"" KITTY_AUDIT_EVENT_LOG "\">"
+        "*[System[Provider[@Name='" KITTY_AUDIT_EVENT_SOURCE "']]]</Select>" :
+        "");
+    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp) &&
+        len > 0 && len < (int)sizeof(view)) {
+        snprintf(path, sizeof(path), "%sKiTTYpp-agent-events.xml", tmp);
+        snprintf(args, sizeof(args), "/v:\"%s\"", path);
+        if (kitty_write_file_whole(path, view, (size_t)len) &&
+            (INT_PTR)ShellExecuteA(owner, "open", "eventvwr.exe", args, NULL,
+                                   SW_SHOWNORMAL) > 32)
+            return;
+    }
+    ShellExecuteA(owner, "open", "eventvwr.msc", NULL, NULL, SW_SHOWNORMAL);
 }
 
 void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
@@ -149,8 +249,11 @@ void kageant_audit_setup(void)
     if (!kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                                  path, sizeof(path)) || !path[0])
         kageant_audit_default_path(path, sizeof(path), 1);
+    /* The on/off switch governs both sinks; a missing path only silences
+     * the file (kitty_audit_enabled). */
+    kitty_audit_set_sinks(kageant_audit_sink_get());
     kitty_audit_configure(
-        path[0] ? path : NULL, path[0] ? kageant_audit_get() : 0,
+        path[0] ? path : NULL, kageant_audit_get(),
         kageant_audit_maxkb_get(), kageant_audit_keep_get(),
         kageant_audit_expire_get());
 }

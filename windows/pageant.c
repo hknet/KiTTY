@@ -36,6 +36,7 @@
 #include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
 #include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
+#include "../kitty/kitty_auditparse.h"  /* KiTTY: reading its lines, old and current form */
 #include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
@@ -3049,6 +3050,10 @@ static ULONGLONG auditview_stamp(const char *line)
            / 10000000ULL;
 }
 
+/* Old lines (backslash-escaped, before 0.85.1.18) are re-quoted the
+ * current way as they are read, so the list, the filter and the raw record
+ * box know one form only and old paths show single backslashes
+ * (kitty_auditparse.c has the per-line rule). */
 static void auditview_read_file(const char *path)
 {
     FILE *fp = fopen(path, "rb");
@@ -3069,7 +3074,11 @@ static void auditview_read_file(const char *path)
             audit_nlines--;
         }
         audit_lines = sresize(audit_lines, audit_nlines + 1, char *);
-        audit_lines[audit_nlines++] = dupstr(buf);
+        {
+            char *conv = kitty_auditparse_is_old(buf) ?
+                kitty_auditparse_from_old(buf) : NULL;
+            audit_lines[audit_nlines++] = conv ? conv : dupstr(buf);
+        }
     }
     fclose(fp);
 }
@@ -3140,31 +3149,12 @@ static void auditview_localtime(const char *line, char *out, size_t sz)
                  loc.wHour, loc.wMinute, loc.wSecond);
 }
 
-/* Pull one quoted value out of a log line, honouring the writer's escaping
- * (\" \\ \n) so a comment containing a quote cannot truncate or shift the
- * parse. Returns 0 if the field is absent. */
+/* One field's value by key (kitty_auditparse.c: a walk over the fields,
+ * so a value's content is never taken for a field). 0 if absent. */
 static int auditview_field(const char *line, const char *key,
                            char *out, size_t outsz)
 {
-    char pat[32];
-    const char *p;
-    size_t n = 0;
-    snprintf(pat, sizeof(pat), "%s=\"", key);
-    p = strstr(line, pat);
-    if (!p)
-        return 0;
-    p += strlen(pat);
-    while (*p && *p != '"' && n < outsz - 1) {
-        if (*p == '\\' && p[1]) {
-            p++;
-            out[n++] = (*p == 'n') ? ' ' : *p;
-        } else {
-            out[n++] = *p;
-        }
-        p++;
-    }
-    out[n] = '\0';
-    return 1;
+    return kitty_auditparse_field(line, key, out, outsz);
 }
 
 /* One raw line into the list: local-time stamp, event, result, the key's
@@ -3236,8 +3226,7 @@ static void auditview_populate(HWND hwnd)
     reqsel = (int)SendDlgItemMessage(hwnd, IDC_AUDIT_REQFILTER,
                                      CB_GETCURSEL, 0, 0);
     if (reqsel > 0 && reqsel - 1 < audit_nreqs)
-        snprintf(reqwant, sizeof(reqwant), "req=\"%s\"",
-                 audit_reqs[reqsel - 1]);
+        snprintf(reqwant, sizeof(reqwant), "%s", audit_reqs[reqsel - 1]);
     audit_repopulating = 1;
     SetDlgItemText(hwnd, IDC_AUDIT_DETAIL, "");
     SendMessage(hlist, WM_SETREDRAW, FALSE, 0);
@@ -3251,7 +3240,12 @@ static void auditview_populate(HWND hwnd)
             auditview_localtime(audit_lines[i], lt, sizeof(lt));
             hit = lt[0] && auditview_match(lt, filter);
         }
-        if (hit && (!reqwant[0] || strstr(audit_lines[i], reqwant)))
+        if (hit && reqwant[0]) {
+            char req[64];
+            hit = auditview_field(audit_lines[i], "req", req, sizeof(req)) &&
+                  !stricmp(req, reqwant);
+        }
+        if (hit)
             auditview_add_row(hlist, row++, i);
     }
     SendMessage(hlist, WM_SETREDRAW, TRUE, 0);
@@ -3263,6 +3257,7 @@ static const struct kl_anchor auditview_anchors[] = {
     {IDC_AUDIT_FILTER,  KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_AUDIT_REQFILTER, KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_AUDIT_ENABLE,  KL_ANCH_LEFT | KL_ANCH_TOP},
+    {IDC_AUDIT_EVENTVIEWER, KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_AUDIT_REFRESH, KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDOK,              KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_AUDIT_LIST,
@@ -3351,49 +3346,20 @@ static char *auditview_format_record(const char *line)
 {
     strbuf *sb = strbuf_new();
     const char *p = line;
-    while (*p) {
-        while (*p == ' ')
-            p++;
-        if (!*p)
-            break;
-        /* key */
-        while (*p && *p != '=' && *p != ' ') {
-            put_byte(sb, *p);
-            p++;
-        }
+    size_t vsz = strlen(line) + 1;
+    char *val = snewn(vsz, char);
+    char key[64];
+    while (kitty_auditparse_next(&p, key, sizeof(key), val, vsz)) {
+        put_dataz(sb, key);
         put_dataz(sb, ":  ");
-        if (*p == '=')
-            p++;
-        if (*p == '"') {
-            const char *vstart;
-            p++;
-            vstart = p;
-            while (*p && *p != '"') {
-                if (*p == '\\' && p[1]) {
-                    p++;
-                    if (*p == 'n')
-                        put_dataz(sb, "\r\n    ");
-                    else
-                        put_byte(sb, *p);
-                } else {
-                    put_byte(sb, *p);
-                }
-                p++;
-            }
-            /* The machine tokens stay machine tokens in the FILE; the
-             * unfolded view is where they get their sentence. */
-            if (!strncmp(vstart, "fp-refused", 10))
-                put_dataz(sb, KT_KALOG_FP_REFUSED_NOTE);
-            if (*p == '"')
-                p++;
-        } else {
-            while (*p && *p != ' ') {
-                put_byte(sb, *p);
-                p++;
-            }
-        }
+        put_dataz(sb, val);
+        /* The machine tokens stay machine tokens in the FILE; the
+         * unfolded view is where they get their sentence. */
+        if (!strncmp(val, "fp-refused", 10))
+            put_dataz(sb, KT_KALOG_FP_REFUSED_NOTE);
         put_dataz(sb, "\r\n");
     }
+    sfree(val);
     return strbuf_to_str(sb);
 }
 
@@ -3512,7 +3478,8 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
         {
             static const int row_ids[] = {
                 IDC_AUDIT_FILTER_LBL, IDC_AUDIT_FILTER, IDC_AUDIT_APP_LBL,
-                IDC_AUDIT_ENABLE, IDC_AUDIT_REFRESH, IDOK, 0
+                IDC_AUDIT_ENABLE, IDC_AUDIT_EVENTVIEWER, IDC_AUDIT_REFRESH,
+                IDOK, 0
             };
             kitty_theme_align_row(hwnd, IDC_AUDIT_REQFILTER, row_ids);
         }
@@ -3623,11 +3590,14 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                         SetWindowLongPtr(hwnd, DWLP_MSGRESULT, CDRF_NEWFONT);
                         return 1;
                     }
-                    if (strstr(l, "result=\"denied\"") ||
-                        strstr(l, "result=\"blocked\"") ||
-                        strstr(l, "result=\"failed\"") ||
-                        strstr(l, "result=\"fp-refused\"") ||
-                        strstr(l, "result=\"not-verified\""))
+                    char result[48], kind[48];
+                    if (!auditview_field(l, "result", result, sizeof(result)))
+                        result[0] = '\0';
+                    if (!auditview_field(l, "ev", kind, sizeof(kind)))
+                        kind[0] = '\0';
+                    /* the same rule that makes an Event Log record a
+                     * warning: refusals, failures, key file warnings */
+                    if (kitty_audit_is_warning(kind, result))
                         cd->clrText = kitty_theme_ink(dk, KITTY_INK_BAD);
                     else if (strstr(l, "unavailable") ||
                              strstr(l, "error") ||
@@ -3670,6 +3640,9 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
           case IDC_AUDIT_REQFILTER:
             if (HIWORD(wParam) == CBN_SELCHANGE)
                 auditview_populate(hwnd);
+            return 0;
+          case IDC_AUDIT_EVENTVIEWER:
+            kageant_eventviewer_open(hwnd);
             return 0;
           case IDC_AUDIT_REFRESH: {
             /* Reload re-derives the App list; keep the current slice if
@@ -3761,7 +3734,10 @@ static const int keysettings_page_log[] = {
     IDC_SET_L_LOGKB, IDC_SET_AGENTLOGKB,
     IDC_SET_L_LOGKEEP, IDC_SET_AGENTLOGKEEP,
     IDC_SET_L_LOGDAYS, IDC_SET_AGENTLOGDAYS,
-    IDC_SET_L_LOGDEFAULT, IDC_SET_L_LOGNOTE,
+    IDC_SET_L_LOGDEFAULT,
+    IDC_SET_L_LOGSINK, IDC_SET_AGENTLOGSINK, IDC_SET_EVENTVIEWER,
+    IDC_SET_L_LOGSINKHINT,
+    IDC_SET_L_LOGNOTE,
 };
 
 static const struct keysettings_page {
@@ -3867,6 +3843,7 @@ static void keysettings_align_rows(HWND hwnd)
         { IDC_SET_AGENTLOGKB,   { IDC_SET_L_LOGKB, 0 } },
         { IDC_SET_AGENTLOGKEEP, { IDC_SET_L_LOGKEEP, 0 } },
         { IDC_SET_AGENTLOGDAYS, { IDC_SET_L_LOGDAYS, 0 } },
+        { IDC_SET_AGENTLOGSINK, { IDC_SET_L_LOGSINK, IDC_SET_EVENTVIEWER, 0 } },
     };
     kitty_theme_align_rows(hwnd, rows, lenof(rows));
 }
@@ -3910,6 +3887,10 @@ static void keysettings_readonly_line(HWND hwnd)
         SendMessage(st, WM_SETFONT, SendMessage(hwnd, WM_GETFONT, 0, 0),
                     MAKELPARAM(TRUE, 0));
 }
+
+/* The Destination item the dialog opened with (index), so OK can tell a
+ * choice from an untouched default. One settings dialog at a time. */
+static int keysettings_sink_shown = -1;
 
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
@@ -4062,6 +4043,25 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                       kageant_audit_keep_get(), FALSE);
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
                       kageant_audit_expire_get(), FALSE);
+        /* Destination: the item index + 1 is the KITTY_AUDIT_SINK_* value
+         * (file 1, Event Log 2, both 3). It shows the sink in force, the
+         * default included; OK stores it only when it was changed here, so
+         * an untouched dialog leaves the default following the
+         * installation. */
+        {
+            static const char *const sinks[] = {
+                KT_RC_KEYSETTINGS_LOGSINK_FILE,
+                KT_RC_KEYSETTINGS_LOGSINK_EVENTLOG,
+                KT_RC_KEYSETTINGS_LOGSINK_BOTH,
+            };
+            size_t i;
+            for (i = 0; i < lenof(sinks); i++)
+                SendDlgItemMessage(hwnd, IDC_SET_AGENTLOGSINK, CB_ADDSTRING,
+                                   0, (LPARAM)sinks[i]);
+            keysettings_sink_shown = kageant_audit_sink_get() - 1;
+            SendDlgItemMessage(hwnd, IDC_SET_AGENTLOGSINK, CB_SETCURSEL,
+                               keysettings_sink_shown, 0);
+        }
         keysettings_align_rows(hwnd);
         /* The tab strip, then the page it selects. Built here rather than in
          * the template because a tab control carries no items of its own. */
@@ -4148,6 +4148,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 EnableWindow(GetDlgItem(hwnd, IDC_SET_AUTOENC),
                              SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE,
                                                 CB_GETCURSEL, 0, 0) != 0);
+            return 0;
+          case IDC_SET_EVENTVIEWER:
+            kageant_eventviewer_open(hwnd);
             return 0;
           case IDC_SET_THEME:
             /* Repaint as soon as the droplist changes, so the choice is
@@ -4257,6 +4260,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 kageant_audit_set(
                     IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
                         == BST_CHECKED);
+            }
+            {
+                int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_AGENTLOGSINK,
+                                                  CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel <= 2 && sel != keysettings_sink_shown)
+                    kageant_audit_sink_set(sel + 1);
             }
             kageant_setting_failure_box(hwnd);
             /* Side-effectful toggles: fire the tray handler only on a real

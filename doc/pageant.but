@@ -176,7 +176,28 @@ absent at login and appears later, whether a key is unloaded when its
 media is removed, and whether missing startup keys are reported.
 
 \b \q{Log}: the agent log - whether it is written, where, and how it
-is rotated and expunged.
+is rotated and expunged. It can also go to the Windows Event Log
+(Destination): its own log \c{KiTTY++_Agent} when KiTTY++ is installed
+for all users, otherwise the Application log under the source
+\c{KiTTY++_agent}. Each kind of record has its own event ID and each
+field is its own value in the event data, so Event Viewer filters,
+Windows Event Forwarding and a SIEM can select on them. Size and
+retention are set in Event Viewer or with \c{wevtutil}.
+
+\lcont{
+The system-wide installation creates the \c{KiTTY++_Agent} log with a
+maximum size of 20 MB; when it is full, the oldest records are
+overwritten. To change that, for example to 50 MB:
+\c{wevtutil sl KiTTY++_Agent /ms:52428800}. Without that installation
+the records go to the Application log, whose size and retention are
+Windows' own settings.
+
+100 sign, 101 confirm, 110 add, 111 load at startup, 112 forget a path,
+113 retry, 114 remove, 115 remove all, 120 lock, 121 unlock, 130 Hello
+enrol, 131 Hello protect, 132 Hello unlock, 140 key file warning, 150
+re-encrypt all, 160 agent start/stop, 170 log rotation. Refusals,
+failures and key file warnings are warnings, the rest information.
+}
 
 Press F1 on any page for this section; on the idle row it opens the
 idle section.

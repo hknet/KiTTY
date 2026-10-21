@@ -67,6 +67,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   (OSC 7501) or an OSC 9;4 progress error or pause. Seconds on
   Application > KiTTY++ Settings > Appearance (`osc3008ctxnotice`,
   `osc7501notice`; 0 = never).
+- **kageant's agent log can go to the Windows Event Log**: its own log
+  KiTTY++_Agent when installed for all users, one event ID per kind of
+  record, every field filterable and forwardable. Settings > Log >
+  Destination (agentlogsink).
 
 ### Changed
 
@@ -346,6 +350,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   configuration window is made shorter.** A panel laid out in a tall window
   kept that window's height, so made shorter again it scrolled, its top cut
   off, although everything fit.
+- The agent log no longer doubles the backslashes in file paths.
 
 ## 0.85.1.17-beta — 2026-10-17
 

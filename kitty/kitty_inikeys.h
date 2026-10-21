@@ -244,6 +244,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_AGENT_AGENTLOGKEEP               "agentlogkeep"
 #define KI_AGENT_AGENTLOGMAXKB              "agentlogmaxkb"
 #define KI_AGENT_AGENTLOGPATH               "agentlogpath"
+#define KI_AGENT_AGENTLOGSINK               "agentlogsink"
 #define KI_AGENT_ALLOWIPCLOCK               "allowipclock"
 #define KI_AGENT_ASKCONFIRMATION            "askconfirmation"
 #define KI_AGENT_AUTOENCRYPTMODE            "autoencryptmode"

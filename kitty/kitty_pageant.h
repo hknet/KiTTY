@@ -110,6 +110,17 @@ int  kageant_audit_default_path(char *buf, size_t len, int create);
  * path NULL/"" clears the override back to the default location */
 void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
                            int expiredays);
+/* [Agent] agentlogsink: where the records go, KITTY_AUDIT_SINK_* or-ed.
+ * _get is the sink in force (an explicit value, else both when the
+ * KiTTY++_Agent event log exists, else the file); _explicit is the stored
+ * value or -1 when there is none; _set stores one and re-arms the sink. */
+int  kageant_audit_sink_get(void);
+int  kageant_audit_sink_explicit(void);
+int  kageant_audit_sink_set(int sinks);
+/* 1 when the KiTTY++_Agent event log is registered on this machine */
+int  kageant_audit_eventlog_exists(void);
+/* Event Viewer on a custom view of the agent's events */
+void kageant_eventviewer_open(HWND owner);
 int  kageant_retry_keys_set(int mode);              /* 0/1/KAGEANT_RETRY_ANYDRIVE */
 int  kageant_unload_on_remove_set(int on);
 int  kageant_passphrase_ttl_set(int seconds);

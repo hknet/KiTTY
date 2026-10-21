@@ -4490,11 +4490,18 @@
 #define KT_RC_KEYSETTINGS_LOGKEEP_LABEL              "&Generations:"
 #define KT_RC_KEYSETTINGS_LOGDAYS_LABEL              "E&xpunge rotated logs after (days, 0 = keep):"
 #define KT_RC_KEYSETTINGS_LOGNOTE                    "The log is evidence, not proof - see the manual."
+#define KT_RC_KEYSETTINGS_LOGSINK_LABEL              "Destination:"
+#define KT_RC_KEYSETTINGS_LOGSINK_FILE               "file"
+#define KT_RC_KEYSETTINGS_LOGSINK_EVENTLOG           "Event Log"
+#define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "file and Event Log"
+#define KT_RC_KEYSETTINGS_LOGSINK_HINT               "Event Log: Applications and Services Logs > KiTTY++_Agent when installed for all users, else the Application log, source KiTTY++_agent."
+#define KT_RC_KEYSETTINGS_EVENTVIEWER                "Event &Viewer"
 
 /* pageant.rc: IDD_AUDITVIEW (caption = KT_CAP_KA_AGENT_LOG), IDD_AUDITDETAIL */
 #define KT_RC_AUDITVIEW_FILTER_LABEL                 "&Filter:"
 #define KT_RC_AUDITVIEW_APP_LABEL                    "&App:"
 #define KT_RC_AUDITVIEW_ENABLE                       "&Logging"
+#define KT_RC_AUDITVIEW_EVENTVIEWER                  KT_RC_KEYSETTINGS_EVENTVIEWER
 #define KT_RC_AUDITDETAIL_CAPTION                    "kageant - agent log record"
 
 /* pageant.rc: IDD_ABOUT (the two buttons are puttygen.rc's About box's too) */

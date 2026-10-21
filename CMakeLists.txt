@@ -242,6 +242,13 @@ add_executable(test_droppath
   test/test_droppath.c
   kitty/kitty_droppath.c)
 
+# KiTTY: unit test for reading the agent log's lines (kitty/kitty_auditparse.c,
+# in kageant's viewer): which lines are the old backslash-escaped form, their
+# conversion, and the field reader on current lines.
+add_executable(test_auditparse
+  test/test_auditparse.c
+  kitty/kitty_auditparse.c)
+
 # KiTTY: unit test for accept-new (kitty/kitty_hostkey_acceptnew.c, in
 # sshcommon for ssh/common.c): which host keys are stored without a question,
 # the kitty.ini switch, the record and its text.
@@ -431,7 +438,8 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_search test_acceptnew)
+    test_termenv test_droppath test_getfile test_search test_acceptnew
+    test_auditparse)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

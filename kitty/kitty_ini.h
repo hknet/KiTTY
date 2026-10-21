@@ -1495,6 +1495,10 @@ char default_init_file_content[] =
 ; at rotation time. 0 = keep them forever. Shorter retention means less\n\
 ; forensic history - this is a tradeoff, not housekeeping.\n\
 ;agentlogexpiredays=90\n\
+; agentlogsink: where the agent log goes: file, eventlog or both. Default:\n\
+; both when the KiTTY++_Agent event log exists (installed for all users),\n\
+; else file.\n\
+;agentlogsink=file\n\
 \n\
 ; helloconfirm: every key-use confirmation demands a Windows Hello presence\n\
 ; check (biometrics or the device PIN, in Windows' own protected UI)\n\

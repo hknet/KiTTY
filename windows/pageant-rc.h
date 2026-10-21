@@ -26,6 +26,7 @@
 #define IDC_AUDIT_REQFILTER 406  /* slice to one client app */
 #define IDC_AUDIT_FILTER_LBL 407
 #define IDC_AUDIT_APP_LBL 408
+#define IDC_AUDIT_EVENTVIEWER 409  /* Event Viewer on the agent's events */
 #define IDC_AUDITDETAIL_TEXT 410
 
 /* KiTTY: the settings dialog */
@@ -78,6 +79,10 @@
 #define IDC_SET_L_LOGDAYS 342
 #define IDC_SET_L_LOGNOTE 343
 #define IDC_SET_L_LOGDEFAULT 344  /* the resolved path a blank File box means */
+#define IDC_SET_AGENTLOGSINK 352  /* Destination: file / Event Log / both */
+#define IDC_SET_L_LOGSINK 353
+#define IDC_SET_L_LOGSINKHINT 354
+#define IDC_SET_EVENTVIEWER 355   /* Event Viewer on the agent's events */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100

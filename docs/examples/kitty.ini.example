@@ -1492,6 +1492,10 @@
 ; at rotation time. 0 = keep them forever. Shorter retention means less
 ; forensic history - this is a tradeoff, not housekeeping.
 ;agentlogexpiredays=90
+; agentlogsink: where the agent log goes: file, eventlog or both. Default:
+; both when the KiTTY++_Agent event log exists (installed for all users),
+; else file.
+;agentlogsink=file
 
 ; helloconfirm: every key-use confirmation demands a Windows Hello presence
 ; check (biometrics or the device PIN, in Windows' own protected UI)
