@@ -2590,7 +2590,7 @@
 #define KT_CAP_KA_NOT_PROTECTED                      "kageant - not protected"
 #define KT_CAP_KA_PROTECT_KEY_Q                      "kageant - protect this key?"
 #define KT_CAP_KA_CANNOT_READ_FILE                   "kageant - cannot read that file"
-#define KT_CAP_KA_ACCEPT_CHANGED_Q                   "kageant - accept this changed key?"
+#define KT_CAP_KA_ACCEPT_CHANGED_Q                   "kageant - accept this key?"
 #define KT_CAP_KA_NOT_ACCEPTED                       "kageant - not accepted"
 #define KT_CAP_KA_KEY_PROTECTED                      "kageant - key protected"
 #define KT_CAP_KA_FORGET_PATH                        "kageant - forget a path"
@@ -2606,8 +2606,7 @@
 #define KT_KA_NOTICE_STARTUP_KEY_FAILED              "kageant: a remembered key did not load"
 #define KT_KA_NOTICE_HELD_BACK                       "kageant: a key is being held back"
 #define KT_KA_NOTICE_KEY_FILE_CHANGED                "kageant: key file changed"
-#define KT_KA_NOTICE_LOADED_UNVERIFIED               "kageant: keys loaded unverified"
-#define KT_KA_NOTICE_NEW_DRIVE_NOT_LOADED            "kageant: key on a new drive not loaded"
+#define KT_KA_NOTICE_NOT_VERIFIED                    "kageant: key not verified"
 #define KT_KA_NOTICE_NOTHING_TO_RETRY                "kageant: nothing to retry"
 #define KT_KA_NOTICE_KEYS_NOT_LOADED                 "kageant: keys not loaded"
 #define KT_KA_NOTICE_RETRY_FINISHED                  "kageant: retry finished"
@@ -2652,6 +2651,8 @@
 #define KT_KA_TIP_LOCKED_FMT                         "%.*s\r\nagent LOCKED%s"
 #define KT_KA_TIP_MISMATCH_ONE                       "1 key NOT loaded - fingerprint mismatch"
 #define KT_KA_TIP_MISMATCH_MANY_FMT                  "%d keys NOT loaded - fingerprint mismatch"
+#define KT_KA_TIP_UNVERIFIED_ONE                     "1 key NOT loaded - no fingerprint on record"
+#define KT_KA_TIP_UNVERIFIED_MANY_FMT                "%d keys NOT loaded - no fingerprint on record"
 
 /* kageant: the command line */
 #define KT_KA_CLI_HELP \
@@ -2884,6 +2885,7 @@
 #define KT_KAKEYS_STATE_REENCRYPTABLE                "re-encryptable"
 #define KT_KAKEYS_STATE_LOADED                       "loaded"
 #define KT_KAKEYS_STATE_MISMATCH                     "mismatch"
+#define KT_KAKEYS_STATE_UNVERIFIED                   "unverified"
 #define KT_KAKEYS_STATE_FAILED                       "failed"
 #define KT_KAKEYS_STATE_MISSING                      "missing"
 #define KT_KAKEYS_ALG_NOT_LOADED                     "(not loaded)"
@@ -2918,6 +2920,11 @@
         "something else did. If you replaced it, use " \
         "\"Accept this key\" below; until then it stays " \
         "refused at every start and every re-plug."
+#define KT_KAKEYS_DETAIL_UNVERIFIED                  "NOT loaded - no fingerprint is on record for this " \
+        "path, so the file cannot be checked. If this is " \
+        "your key, use \"Accept this key\" below; until " \
+        "then it stays refused at every start and every " \
+        "re-plug."
 #define KT_KAKEYS_DETAIL_LOADED                      "loaded and ready to use"
 #define KT_KAKEYS_FP_SHA256                          "SHA-256:  "
 #define KT_KAKEYS_FP_MD5                             "MD5:  "
@@ -2944,8 +2951,14 @@
         "In the file now:  %s\n\n" \
         "Only do this if YOU replaced the key. Accepting means this " \
         "file is loaded now and trusted at every future start."
-#define KT_KAKEYS_ACCEPT_HELLO_Q                     "Accept the changed key file and " \
-        "trust it from now on?"
+#define KT_KAKEYS_ACCEPT_UNVERIFIED_Q_FMT            "Accept the key that is in this file and remember it?\n\n" \
+        "    %s\n\n" \
+        "In the file:  %s\n\n" \
+        "No fingerprint was on record for this path. Only do this if " \
+        "this is your key. Accepting means this file is loaded now " \
+        "and trusted at every future start."
+#define KT_KAKEYS_ACCEPT_HELLO_Q                     "Accept this key file and trust it " \
+        "from now on?"
 #define KT_KAKEYS_ACCEPT_HELLO_FAILED                "The Windows Hello check did not verify, so the " \
         "key was NOT accepted and nothing was changed."
 #define KT_KAKEYS_ACCEPT_LOAD_FAILED                 "The key could not be loaded, so nothing was " \
@@ -3015,35 +3028,32 @@
 #define KT_KA_HELD_BACK_MANY_FMT                     "Something%s just asked for your keys, and %d of them are NOT " \
         "loaded: the files are not the keys recorded for them. If a login " \
         "fails, this is why. Click to see them."
+#define KT_KA_HELD_BACK_UNVERIFIED_ONE_FMT           "Something%s just asked for your keys, and one of them is NOT " \
+        "loaded: it has no fingerprint on record. If that login fails, " \
+        "this is why. Click to see it."
+#define KT_KA_HELD_BACK_UNVERIFIED_MANY_FMT          "Something%s just asked for your keys, and %d of them are NOT " \
+        "loaded: they have no fingerprint on record. If a login fails, " \
+        "this is why. Click to see them."
 #define KT_KA_VERIFY_MISMATCH_ONE                    "A key file was NOT loaded: it is not the key recorded for " \
         "that path. Click to see which - its State in the key list " \
         "reads \"mismatch\"."
 #define KT_KA_VERIFY_MISMATCH_MANY_FMT               "%d key files were NOT loaded: they are not the keys recorded " \
         "for those paths. Click to see which - their State in the key " \
         "list reads \"mismatch\"."
-#define KT_KA_VERIFY_UNCHECKED_ONE                   "A key was loaded with no fingerprint on record, so nothing " \
-        "could be checked. Its fingerprint is recorded now and it " \
-        "will be checked from here on."
-#define KT_KA_VERIFY_UNCHECKED_MANY_FMT              "%d keys were loaded with no fingerprint on record, so " \
-        "nothing could be checked. Their fingerprints are recorded " \
-        "now and they will be checked from here on."
-#define KT_KA_VERIFY_NOFP_ONE                        "A file matching a startup key's path appeared on the new " \
-        "drive, but that key has no fingerprint on record to check " \
-        "it against, so it was NOT loaded. Load the key once from " \
-        "its recorded path (or Add Key) to record one."
-#define KT_KA_VERIFY_NOFP_MANY_FMT                   "%d files matching startup keys' paths appeared on the new " \
-        "drive, but those keys have no fingerprints on record to " \
-        "check them against, so they were NOT loaded. Load each key " \
-        "once from its recorded path (or Add Key) to record one."
+#define KT_KA_VERIFY_UNVERIFIED_ONE                  "A startup key was NOT loaded: it has no fingerprint on " \
+        "record, so its file could not be checked. Click to see " \
+        "which - its State in the key list reads \"unverified\"."
+#define KT_KA_VERIFY_UNVERIFIED_MANY_FMT             "%d startup keys were NOT loaded: they have no fingerprints " \
+        "on record, so their files could not be checked. Click to " \
+        "see which - their State in the key list reads " \
+        "\"unverified\"."
 #define KT_KA_RETRY_NOTHING                          "No key is waiting to be loaded. Every " \
         "remembered key is either loaded already or " \
         "not in the startup list."
-#define KT_KA_RETRY_LOADED_FMT                       "%d key%s loaded.%s "
-#define KT_KA_RETRY_UNCHECKED_CLAUSE                 " There was no fingerprint on record for some of them," \
-        " so nothing could be checked this once - what loaded" \
-        " is the baseline from here on."
+#define KT_KA_RETRY_LOADED_FMT                       "%d key%s loaded. "
 #define KT_KA_RETRY_REFUSED_FMT                      "%d refused: the file is not the key recorded for that " \
         "path. "
+#define KT_KA_RETRY_UNVERIFIED_FMT                   "%d NOT loaded - no fingerprint on record. "
 #define KT_KA_RETRY_ABSENT_FMT                       "%d still not there. "
 #define KT_KA_RETRY_BROKEN_FMT                       "%d could not be read as a key. "
 #define KT_KA_RETRY_CLICK                            "Click to see which."

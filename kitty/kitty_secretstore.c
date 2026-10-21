@@ -543,7 +543,8 @@ static int mpw_state_set(const char *name, const char *val)
 
 /* The master password's salt or verifier could not be stored: reported to
  * the user by the front end (a message box in the GUI, stderr in the console
- * tools); the save that set it up falls back to Windows' own protection. */
+ * tools); the save that set it up stores nothing and keeps a password
+ * stored before (KT_MPW_STORE_FAILED_FMT). */
 static void (*g_mpw_store_failed)(const char *reason) = NULL;
 void kitty_set_master_pw_store_failed(void (*fn)(const char *reason)) { g_mpw_store_failed = fn; }
 static int mpw_load_salt(unsigned char salt[KSEC_MPW_SALTLEN])

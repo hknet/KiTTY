@@ -779,7 +779,10 @@ enum { KEYSTATE_LOADED, KEYSTATE_ENCRYPTED, KEYSTATE_REENCRYPTABLE,
        /* KiTTY: the file is present and readable but is NOT the key recorded
         * for that path, so it was refused. Not an error like FAILED - it is a
         * question for the user. */
-       KEYSTATE_MISMATCH };
+       KEYSTATE_MISMATCH,
+       /* KiTTY: the file is present, but no fingerprint is on record for the
+        * entry, so it was never loaded. The same question as MISMATCH. */
+       KEYSTATE_UNVERIFIED };
 
 /* KiTTY: render a lifetime countdown compactly: "47 s", "12:05", "1:02:33". */
 static void kageant_fmt_seconds(unsigned s, char *buf, size_t len)
@@ -1268,8 +1271,9 @@ void keylist_update(void)
 
     /*
      * KiTTY: append the startup entries that are NOT in the agent - file
-     * absent (missing) or present but unloadable (failed) - so "N keys could
-     * not be loaded" is answerable, and a dead entry can be Removed, without
+     * absent (missing), present but unloadable (failed), not the key recorded
+     * (mismatch) or with no fingerprint on record (unverified) - so "N keys
+     * could not be loaded" is answerable, and a dead entry can be Removed, without
      * digging in the registry or the ini. Toggleable, on by default.
      */
     if (keylist_show_unavail) {
@@ -1293,15 +1297,20 @@ void keylist_update(void)
              * IS readable, it is simply not the key we recorded, and that is
              * the one the user has to act on. */
             int mism = kageant_pending_mismatch(i);
+            /* "unverified" the same way: present, but nothing on record to
+             * check it by - only Accept resolves it, so it outranks the rest. */
+            int unv = kageant_pending_unverified(i);
             /* "mismatch", not "changed!": the notices send the user here to
              * look for that word. Not "fingerprint mismatch" - the State
              * column is 66du and would show "fingerpri...", which says
              * nothing. The details dialog carries the full sentence. */
             put_dataz(disp->info, mism ? KT_KAKEYS_STATE_MISMATCH :
+                      unv ? KT_KAKEYS_STATE_UNVERIFIED :
                       failed ? KT_KAKEYS_STATE_FAILED : KT_KAKEYS_STATE_MISSING);
             disp->expires = strbuf_new();  /* not in the agent: no lifetime */
             disp->blob = strbuf_new();
             disp->state = mism ? KEYSTATE_MISMATCH :
+                          unv ? KEYSTATE_UNVERIFIED :
                           failed ? KEYSTATE_FAILED : KEYSTATE_MISSING;
             for (size_t t = 0; t < SSH_N_FPTYPES; t++)
                 disp->fp_full[t] = NULL;
@@ -1917,6 +1926,9 @@ static bool keydetail_had_lifetime = false;
  * question - which shows what was recorded next to what the file holds now, so
  * the user is comparing the two things rather than trusting a sentence. */
 static char keydetail_stored_fp[160] = "";
+/* KiTTY: the row is "unverified" - nothing was recorded, so the Accept
+ * question shows only what the file holds. */
+static bool keydetail_unverified = false;
 #define TID_KEYDETAIL_LIFETIME 1
 
 static void keydetail_show_lifetime(HWND hwnd)
@@ -2384,6 +2396,8 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                            KT_KAKEYS_DETAIL_FAILED :
                        disp->state == KEYSTATE_MISMATCH ?
                            KT_KAKEYS_DETAIL_MISMATCH :
+                       disp->state == KEYSTATE_UNVERIFIED ?
+                           KT_KAKEYS_DETAIL_UNVERIFIED :
                            KT_KAKEYS_DETAIL_LOADED);
 
         {
@@ -2504,14 +2518,18 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
          * setting is enforced (then the field is greyed and ignored). */
         keydetail_autoenc_refresh(hwnd, disp->pending);
 
-        /* KiTTY: accepting a changed key file. Only ever offered for a row
-         * that IS a mismatch - this is the one place a new fingerprint can be
+        /* KiTTY: accepting a changed key file, or one with no fingerprint on
+         * record. Only ever offered for a row that IS a mismatch or
+         * unverified - this is the one place a new fingerprint can be
          * adopted, and it should not be reachable by accident anywhere else. */
         {
             HWND acc = GetDlgItem(hwnd, IDC_KEYDETAIL_ACCEPT);
             int is_mismatch = (disp->state == KEYSTATE_MISMATCH);
-            ShowWindow(acc, is_mismatch ? SW_SHOW : SW_HIDE);
-            EnableWindow(acc, is_mismatch);
+            int can_accept = is_mismatch ||
+                             disp->state == KEYSTATE_UNVERIFIED;
+            ShowWindow(acc, can_accept ? SW_SHOW : SW_HIDE);
+            EnableWindow(acc, can_accept);
+            keydetail_unverified = (disp->state == KEYSTATE_UNVERIFIED);
             keydetail_stored_fp[0] = '\0';
             if (is_mismatch && disp->hash && disp->hash->len)
                 snprintf(keydetail_stored_fp, sizeof(keydetail_stored_fp),
@@ -2519,9 +2537,9 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         }
 
         /* KiTTY: re-pointing a not-loaded entry at a file the user browses
-         * to. Absent or unparseable rows ONLY - never a mismatch, where the
-         * file's presence is exactly the problem and Accept above is the one
-         * sanctioned answer. */
+         * to. Absent or unparseable rows ONLY - never a mismatch or an
+         * unverified row, where the file's presence is exactly the problem
+         * and Accept above is the one sanctioned answer. */
         {
             HWND loc = GetDlgItem(hwnd, IDC_KEYDETAIL_LOCATE);
             int can_locate = disp->pending &&
@@ -2652,37 +2670,49 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
             return 0;
           case IDC_KEYDETAIL_ACCEPT: {
             /*
-             * KiTTY: adopt a changed key file, deliberately.
+             * KiTTY: adopt a changed key file, deliberately - or a key with no
+             * fingerprint on record ("unverified").
              *
              * This is the consent that used to be a yes/no box during startup.
              * It asks here because the user came looking - they opened the key
              * list, opened this key, and pressed a button that only exists on a
-             * mismatch row - and because the answer is permanent. Both
-             * fingerprints are in the question: the one we recorded and the one
-             * the file holds now.
+             * mismatch or unverified row - and because the answer is permanent.
+             * For a mismatch both fingerprints are in the question: the one we
+             * recorded and the one the file holds now. For an unverified row
+             * there is none recorded, so it names the file it will load - on a
+             * new drive that is not the stored path - and what it holds.
              */
             char *keypath = (char *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-            char *actual, *msg;
+            char *actual, *msg, *file;
+            const char *af;
             int r;
 
             if (!keypath)
                 return 0;
-            actual = kageant_fp_of_file(keypath);
+            af = kageant_pending_accept_file(keypath);
+            file = dupstr(af ? af : keypath);
+            actual = kageant_fp_of_file(file);
             if (!actual) {
+                sfree(file);
                 MessageBox(hwnd,
                            KT_KAKEYS_CANNOT_READ_FILE,
                            KT_CAP_KA_CANNOT_READ_FILE,
                            MB_ICONWARNING | MB_OK);
                 return 0;
             }
-            msg = dupprintf(
-                KT_KAKEYS_ACCEPT_Q_FMT,
-                keypath, keydetail_stored_fp[0] ? keydetail_stored_fp :
-                                                  KT_KAKEYS_FP_NONE, actual);
+            if (keydetail_unverified)
+                msg = dupprintf(KT_KAKEYS_ACCEPT_UNVERIFIED_Q_FMT,
+                                file, actual);
+            else
+                msg = dupprintf(
+                    KT_KAKEYS_ACCEPT_Q_FMT,
+                    file, keydetail_stored_fp[0] ? keydetail_stored_fp :
+                                                   KT_KAKEYS_FP_NONE, actual);
             r = MessageBox(hwnd, msg, KT_CAP_KA_ACCEPT_CHANGED_Q,
                            MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
             sfree(msg);
             sfree(actual);
+            sfree(file);
             if (r != IDYES)
                 return 0;
 
@@ -3596,7 +3626,8 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                     if (strstr(l, "result=\"denied\"") ||
                         strstr(l, "result=\"blocked\"") ||
                         strstr(l, "result=\"failed\"") ||
-                        strstr(l, "result=\"fp-refused\""))
+                        strstr(l, "result=\"fp-refused\"") ||
+                        strstr(l, "result=\"not-verified\""))
                         cd->clrText = kitty_theme_ink(dk, KITTY_INK_BAD);
                     else if (strstr(l, "unavailable") ||
                              strstr(l, "error") ||
@@ -4384,8 +4415,9 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 {KT_KAKEYS_COL_ALGORITHM, 62, LVCFMT_LEFT},
                 {KT_KAKEYS_COL_BITS, 24, LVCFMT_RIGHT},
                 {KT_KAKEYS_COL_FINGERPRINT, 154, LVCFMT_LEFT},
-                /* KiTTY: wide enough for "mismatch" - the fingerprint beside
-                 * it is elided anyway, this word is the one to read. */
+                /* KiTTY: wide enough for "mismatch" and "unverified" - the
+                 * fingerprint beside it is elided anyway, this word is the
+                 * one to read. */
                 {KT_KAKEYS_COL_STATE, 66, LVCFMT_LEFT},
                 {KT_KAKEYS_COL_LIFETIME, 40, LVCFMT_RIGHT},
                 {KT_KAKEYS_COL_CONFIRM, 44, LVCFMT_LEFT},
@@ -5888,6 +5920,24 @@ void kageant_refresh_tray_tip(void)
                  rest ? rest : "");
         sfree(tip);
         tip = dupstr(merged);
+    }
+    /* KiTTY: keys refused as "unverified" - merged before the mismatch line
+     * so the mismatch one, when both are there, lands above it. */
+    {
+        int unv = kageant_unverified_count();
+        if (unv > 0) {
+            char line[64], merged[256];
+            const char *rest = strstr(tip, "\r\n");
+            snprintf(line, sizeof(line),
+                     unv == 1 ? KT_KA_TIP_UNVERIFIED_ONE
+                              : KT_KA_TIP_UNVERIFIED_MANY_FMT,
+                     unv);
+            snprintf(merged, sizeof(merged), "%.*s\r\n%s%s",
+                     rest ? (int)(rest - tip) : (int)strlen(tip), tip,
+                     line, rest ? rest : "");
+            sfree(tip);
+            tip = dupstr(merged);
+        }
     }
     held = kageant_mismatch_count();
     if (held > 0) {

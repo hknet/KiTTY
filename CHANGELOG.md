@@ -133,6 +133,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   login script, a named proxy and a .ktx export.
 - **The login script stays encrypted in memory** while it waits to run,
   and every plain copy is wiped after use.
+- **kageant no longer loads a startup key with no fingerprint on record.**
+  The key list shows it as "unverified"; "Accept this key" loads it and
+  records its fingerprint. A key loaded once since 0.84.1.74 already has one.
 
 ### Fixed
 

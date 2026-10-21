@@ -165,23 +165,29 @@ int kageant_pending_get(int i, const char **path, int *encrypted,
 /* refused because the file at that path is not the key we recorded */
 int kageant_pending_mismatch(int i);
 int kageant_mismatch_count(void);
+/* refused as "unverified": the file is there, no fingerprint is on record */
+int kageant_pending_unverified(int i);
+int kageant_unverified_count(void);
+/* the file "Accept this key" loads for that entry (copy it), NULL if none */
+const char *kageant_pending_accept_file(const char *path);
 /* fingerprint of the file at that path right now, or NULL; free it */
 char *kageant_fp_of_file(const char *path);
-/* the user accepted a changed key in the key list: load it and adopt the new
- * fingerprint. The ONLY path that ever adopts one - see the comment there. */
+/* the user accepted a changed or unverified key in the key list: load it and
+ * adopt its fingerprint. The ONLY path that ever adopts one - see the comment
+ * there. */
 int kageant_accept_pending_key(const char *path);
-/* the user browsed a not-loaded (absent/unparseable, never mismatch) entry to
+/* the user browsed a not-loaded (absent/unparseable, never mismatch or
+ * unverified) entry to
  * a file: load it, keep slot + confirm marker, rewrite the path in place.
  * 1 = done, 0 = the file holds a different key (refused), -1 = would not load */
 int kageant_locate_pending_key(const char *oldpath, const char *newpath);
-/* report a load pass: keys newly refused, keys loaded with nothing to check
- * against, and keys whose path appeared on a new drive but with no recorded
- * fingerprint to admit them by. A notice, never a prompt. */
-void kageant_note_verify_problem(int mismatch_new, int unchecked,
-                                 int nofp_newdrive);
+/* report a load pass: keys newly refused as a mismatch, and keys newly
+ * refused as "unverified" (no fingerprint on record to check the file by).
+ * A notice, never a prompt. */
+void kageant_note_verify_problem(int mismatch_new, int nofp_new);
 /* answer a "Retry unavailable keys": one notice whatever happened, "nothing" included */
 void kageant_note_retry_result(int loaded, int refused, int absent,
-                               int broken, int unchecked);
+                               int broken, int unverified);
 void kageant_drop_pending(const char *path);   /* memory + stored list */
 /* per-key load mode: 1 = deferred (,encrypted), 0 = decrypt at load
  * (,plain), -1 = key not tracked */

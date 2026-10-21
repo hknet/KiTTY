@@ -124,6 +124,8 @@ bool pageant_delete_nth_ssh2_key(int i);
  * position because the list may have changed under them. NOT the same as
  * pageant_delete_key() below, which is the CLIENT-side call - see pageant.c. */
 bool pageant_delete_ssh2_key_by_blob(ptrlen blob);
+/* the same for an SSH-1 key (exponent-first SSH-1 public blob) */
+bool pageant_delete_ssh1_key_by_blob(ptrlen blob);
 /* KiTTY: per-key confirm-on-use MODE - 0 = none, 1 = ask (a click),
  * 2 = ask with a Windows Hello presence check. More than two states, so
  * nothing on the way to or from storage may pass it through a bool. */

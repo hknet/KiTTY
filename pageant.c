@@ -2555,6 +2555,32 @@ bool pageant_delete_ssh2_key_by_blob(ptrlen blob)
     return true;
 }
 
+/* KiTTY: the SSH-1 twin of pageant_delete_ssh2_key_by_blob, for kageant's
+ * startup-key check: blob is the exponent-first SSH-1 public blob that
+ * makeblob1 / rsa1_loadpub_f produce. Same tree handling as the
+ * SSH1_AGENTC_REMOVE_RSA_IDENTITY handler. */
+bool pageant_delete_ssh1_key_by_blob(ptrlen blob)
+{
+    RSAKey rkey;
+    BinarySource src[1];
+    PageantPublicKey *pub;
+
+    memset(&rkey, 0, sizeof(rkey));
+    BinarySource_BARE_INIT_PL(src, blob);
+    get_rsa_ssh1_pub(src, &rkey, RSA_SSH1_EXPONENT_FIRST);
+    if (get_err(src)) {
+        freersakey(&rkey);
+        return false;
+    }
+    pub = findpubkey1(&rkey);
+    freersakey(&rkey);
+    if (!pub)
+        return false;
+    del_pubkey(pub);
+    pk_pub_free(pub);
+    return true;
+}
+
 /* KiTTY: the per-key confirm-on-use flag (ssh-add -c / details checkbox /
  * comment convention). */
 int pageant_get_key_confirm(ptrlen blob)
