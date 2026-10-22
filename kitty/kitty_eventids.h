@@ -289,7 +289,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "fp",
       "the key fingerprint; 100-170: as the agent shows it "
       "(ssh-ed25519 255 SHA256:...); 210-221, 310-321, 400-403: the"
-      " hash alone (SHA256:...)" },
+      " hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...)" },
     { "from",
       "200, 300: the local end of the connection, address and port" },
     { "host",
@@ -298,8 +298,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "901: the kilobytes freed" },
     { "keytype",
       "210-212, 310-312: the host key's type as its fingerprint "
-      "names it (ssh-ed25519, ssh-rsa, ...); 400: the key's SSH "
-      "type" },
+      "names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key; "
+      "400: the key's SSH type" },
     { "loaded",
       "113: startup keys loaded" },
     { "local",
@@ -316,7 +316,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "comma-separated" },
     { "missing",
       "902: each missing entry point with its DLL and the feature "
-      "it powers" },
+      "it powers, separated by semicolons" },
     { "path",
       "100-170: the key file; 401-403: the file written" },
     { "pattern",

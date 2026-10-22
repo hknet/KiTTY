@@ -3091,9 +3091,9 @@ rest information.
 The system-wide installation creates \c{KiTTY++_Session} with a maximum
 size of 20 MB; when it is full, the oldest records are overwritten. To
 change that, for example to 50 MB:
-\c{wevtutil sl KiTTY++_Session /ms:52428800}. A major upgrade sets it
-back to 20 MB. In the Application log, size and retention are Windows'
-own settings.
+\c{wevtutil sl KiTTY++_Session /ms:52428800}. A major upgrade keeps the
+size set. In the Application log, size and retention are Windows' own
+settings.
 
 \S{kitty-cfg-host-cas} The Certificate Authorities panel
 

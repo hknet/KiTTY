@@ -2045,7 +2045,9 @@ static INT_PTR CertInfoProc(HWND hwnd, UINT msg, WPARAM wParam,
 /*
  * KiTTY: the Windows Event Log records of kittygen (kitty_winevent.h,
  * 400-402, [KiTTY] kittygeneventlog): the key's SHA256 fingerprint, from
- * the public half (the private key stays protected).
+ * the public half (the private key stays protected). An SSH-1 key has no
+ * SHA256 fingerprint: its MD5 hash (aa:bb:...), as the SSH-1 host-key
+ * records carry it.
  */
 static char *kg_wev_fp(struct MainDlgState *state)
 {
@@ -2054,9 +2056,13 @@ static char *kg_wev_fp(struct MainDlgState *state)
         if (state->ssh2key.key)
             fp = ssh2_fingerprint(state->ssh2key.key, SSH_FPTYPE_SHA256);
     } else {
-        char **fps = rsa_ssh1_fake_all_fingerprints(&state->key);
-        fp = dupstr(fps[SSH_FPTYPE_SHA256] ? fps[SSH_FPTYPE_SHA256] : "");
-        ssh2_free_all_fingerprints(fps);
+        /* "<bits> <hash>", the comment held back as the fingerprint box
+         * does: rsa_ssh1_fingerprint appends it, and the hash would then
+         * not be the last word */
+        char *savecomment = state->key.comment;
+        state->key.comment = NULL;
+        fp = rsa_ssh1_fingerprint(&state->key);
+        state->key.comment = savecomment;
     }
     h = dupstr(fp ? kitty_wev_fp_hash(fp) : "");
     sfree(fp);

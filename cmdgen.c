@@ -59,7 +59,9 @@ static PRINTF_LIKE(1, 2) void kwev_note(const char *fmt, ...)
      fprintf(f, "%s: " fmt, progname, ##__VA_ARGS__))
 
 /* The key's SHA256 fingerprint (sfree it): from the key, or - a public key
- * written from a key file that was not decrypted - from its public blob. */
+ * written from a key file that was not decrypted - from its public blob.
+ * An SSH-1 key has no SHA256 fingerprint: its MD5 hash (aa:bb:...), as the
+ * SSH-1 host-key records carry it. */
 static char *kwev_fp(ssh2_userkey *k2, RSAKey *k1, strbuf *blob)
 {
     char *fp = NULL, *h;
@@ -68,9 +70,12 @@ static char *kwev_fp(ssh2_userkey *k2, RSAKey *k1, strbuf *blob)
     } else if (blob && blob->len) {
         fp = ssh2_fingerprint_blob(ptrlen_from_strbuf(blob), SSH_FPTYPE_SHA256);
     } else if (k1) {
-        char **fps = rsa_ssh1_fake_all_fingerprints(k1);
-        fp = dupstr(fps[SSH_FPTYPE_SHA256] ? fps[SSH_FPTYPE_SHA256] : "");
-        ssh2_free_all_fingerprints(fps);
+        /* "<bits> <hash>", the comment held back: rsa_ssh1_fingerprint
+         * appends it, and the hash would then not be the last word */
+        char *savecomment = k1->comment;
+        k1->comment = NULL;
+        fp = rsa_ssh1_fingerprint(k1);
+        k1->comment = savecomment;
     }
     h = dupstr(fp ? kitty_wev_fp_hash(fp) : "");
     sfree(fp);

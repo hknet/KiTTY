@@ -242,8 +242,8 @@ void kitty_wev_hostkey(unsigned offset, const char *host, int port,
                        const char *keytype, const char *fp,
                        const char *basis_or_result)
 {
-    char p[16], kt[64];
-    const char *v[5], *sp;
+    char p[16], kt[64], h1[80];
+    const char *v[5], *sp, *hash;
     int warn;
     if (!wev_session_block())
         return;
@@ -255,15 +255,28 @@ void kitty_wev_hostkey(unsigned offset, const char *host, int port,
     wev_port(p, sizeof(p), port);
     /* The key type as the fingerprint names it ("ssh-rsa 2048 SHA256:...":
      * ssh-rsa), not the host-key cache's id ("rsa2"); the caller's when the
-     * fingerprint has no type in front. */
+     * fingerprint has no type in front. An SSH-1 key's fingerprint is
+     * "<bits> <MD5 hash>" (rsa_ssh1_fingerprint) with no type at all: its
+     * type is rsa1, as kittygen's records name an SSH-1 key, and its hash
+     * the second word. */
     sp = fp ? strchr(fp, ' ') : NULL;
-    if (sp && (size_t)(sp - fp) < sizeof(kt)) {
+    hash = kitty_wev_fp_hash(fp);
+    if (sp && fp[0] >= '0' && fp[0] <= '9') {
+        const char *he = strchr(sp + 1, ' ');
+        size_t hl = he ? (size_t)(he - (sp + 1)) : strlen(sp + 1);
+        wev_copy(kt, sizeof(kt), "rsa1");
+        if (hl >= sizeof(h1))
+            hl = sizeof(h1) - 1;
+        memcpy(h1, sp + 1, hl);
+        h1[hl] = '\0';
+        hash = h1;
+    } else if (sp && (size_t)(sp - fp) < sizeof(kt)) {
         memcpy(kt, fp, (size_t)(sp - fp));
         kt[sp - fp] = '\0';
     } else {
         wev_copy(kt, sizeof(kt), keytype);
     }
-    v[0] = host; v[1] = p; v[2] = kt; v[3] = kitty_wev_fp_hash(fp);
+    v[0] = host; v[1] = p; v[2] = kt; v[3] = hash;
     v[4] = basis_or_result;
     wev_write(g_block + offset,
               warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE, v, 5);

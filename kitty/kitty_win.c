@@ -447,6 +447,34 @@ void kitty_menu_toggle_hyperlink(HWND hwnd)
  * Once per process, which is once per terminal window, and never again on a
  * reconnect - unlike start_backend, which runs for every reconnect too.
  * ------------------------------------------------------------------ */
+/* KiTTY: the missing-features text's entry lines as ONE line, "; " between
+ * them, for event 902's missing field: a record field is one line (the
+ * writer turns control bytes into ?), and the heading is the event's own. */
+static char *kitty_missing_one_line(const char *full)
+{
+    char *out = snewn(strlen(full) + 1, char), *o = out;
+    const char *p = strstr(full, "\r\n");
+    while (p) {
+        const char *s = p + 2, *e;
+        size_t n;
+        while (*s == ' ')
+            s++;
+        e = strstr(s, "\r\n");
+        n = e ? (size_t)(e - s) : strlen(s);
+        if (n) {
+            if (o != out) {
+                *o++ = ';';
+                *o++ = ' ';
+            }
+            memcpy(o, s, n);
+            o += n;
+        }
+        p = e;
+    }
+    *o = '\0';
+    return out;
+}
+
 void kitty_report_missing_features(Terminal *term)
 {
     static int done = 0;
@@ -470,10 +498,12 @@ void kitty_report_missing_features(Terminal *term)
     brief = kitty_oldwin_degraded_brief();
     {
         const char *v[2];
+        char *line = kitty_missing_one_line(full);
         v[0] = brief ? brief : "";
-        v[1] = full;
+        v[1] = line;
         kitty_wev_suite(KITTY_EV_MISSING_FEATURES, EVENTLOG_INFORMATION_TYPE,
                         v, 2, full);   /* full: the text without a message file */
+        sfree(line);
     }
     sfree(full);
 

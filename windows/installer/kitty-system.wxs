@@ -63,6 +63,36 @@
         <FileSearch Id="fs_startup_old" Name="KiTTY Launcher.lnk" />
       </DirectorySearch>
     </Property>
+    <!-- The size and retention of the two Event Log logs (c_agent_eventlog,
+         c_session_eventlog) as they are now, set by wevtutil sl or Event
+         Viewer. AppSearch runs before RemoveExistingProducts, so an upgrade
+         reads them before the old product deletes the key, and the
+         components write them back. A raw search returns a REG_DWORD as
+         "#<number>"; the RegistryValue elements below are Type="string" so
+         that the "#" reaches the Registry table unchanged and Windows
+         Installer stores a REG_DWORD again. Nothing found (a first install):
+         20 MB, oldest records overwritten. HKLM\SYSTEM is not redirected;
+         always64 matches the x64 package. -->
+    <Property Id="KITTY_AGENTLOG_MAXSIZE" Secure="yes">
+      <RegistrySearch Id="rs_agentlog_maxsize" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
+                      Name="MaxSize" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="KITTY_AGENTLOG_RETENTION" Secure="yes">
+      <RegistrySearch Id="rs_agentlog_retention" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
+                      Name="Retention" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="KITTY_SESSIONLOG_MAXSIZE" Secure="yes">
+      <RegistrySearch Id="rs_sessionlog_maxsize" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
+                      Name="MaxSize" Type="raw" Bitness="always64" />
+    </Property>
+    <Property Id="KITTY_SESSIONLOG_RETENTION" Secure="yes">
+      <RegistrySearch Id="rs_sessionlog_retention" Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
+                      Name="Retention" Type="raw" Bitness="always64" />
+    </Property>
+    <SetProperty Id="KITTY_AGENTLOG_MAXSIZE" Value="#20971520" After="AppSearch" Sequence="both" Condition="NOT KITTY_AGENTLOG_MAXSIZE" />
+    <SetProperty Id="KITTY_AGENTLOG_RETENTION" Value="#0" After="AppSearch" Sequence="both" Condition="NOT KITTY_AGENTLOG_RETENTION" />
+    <SetProperty Id="KITTY_SESSIONLOG_MAXSIZE" Value="#20971520" After="AppSearch" Sequence="both" Condition="NOT KITTY_SESSIONLOG_MAXSIZE" />
+    <SetProperty Id="KITTY_SESSIONLOG_RETENTION" Value="#0" After="AppSearch" Sequence="both" Condition="NOT KITTY_SESSIONLOG_RETENTION" />
 
     <!-- KiTTY: close any running KiTTY BEFORE the file phase so an in-place
          upgrade never blocks on an in-use kitty.exe. This is the reliable escape
@@ -141,15 +171,15 @@
            kageant without it falls back to the Application log. Uninstalling
            removes the log's key with the source under it; the .evtx file
            under winevt\Logs stays Windows' own. A major upgrade removes and
-           writes the key again, so a size changed with wevtutil goes back to
-           20 MB then. -->
+           writes the key again with the size and retention found before
+           (KITTY_AGENTLOG_MAXSIZE / _RETENTION above). -->
       <Component Id="c_agent_eventlog" Guid="B1B2C3D4-0085-4005-9002-000000000004">
         <util:EventSource Name="KiTTY++_agent" Log="KiTTY++_Agent" EventMessageFile="[#kitty.exe]"
                           SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
         <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
-                       Name="MaxSize" Type="integer" Value="20971520" KeyPath="yes" />
+                       Name="MaxSize" Type="string" Value="[KITTY_AGENTLOG_MAXSIZE]" KeyPath="yes" />
         <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
-                       Name="Retention" Type="integer" Value="0" />
+                       Name="Retention" Type="string" Value="[KITTY_AGENTLOG_RETENTION]" />
         <RemoveRegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Agent"
                            Action="removeOnUninstall" />
       </Component>
@@ -161,7 +191,7 @@
            kittygeneventlog); without this package the sources are unknown
            and their records land in the Application log. 20 MB, oldest
            overwritten (Retention 0), as c_agent_eventlog; a major upgrade
-           writes the key again. -->
+           writes the key again with the size and retention found before. -->
       <Component Id="c_session_eventlog" Guid="B1B2C3D4-0085-4005-9002-000000000005">
         <util:EventSource Name="KiTTY++_kitty" Log="KiTTY++_Session" EventMessageFile="[#kitty.exe]"
                           SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
@@ -170,9 +200,9 @@
         <util:EventSource Name="KiTTY++_kittygen" Log="KiTTY++_Session" EventMessageFile="[#kitty.exe]"
                           SupportsErrors="yes" SupportsWarnings="yes" SupportsInformationals="yes" />
         <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
-                       Name="MaxSize" Type="integer" Value="20971520" KeyPath="yes" />
+                       Name="MaxSize" Type="string" Value="[KITTY_SESSIONLOG_MAXSIZE]" KeyPath="yes" />
         <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
-                       Name="Retention" Type="integer" Value="0" />
+                       Name="Retention" Type="string" Value="[KITTY_SESSIONLOG_RETENTION]" />
         <RemoveRegistryKey Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\EventLog\KiTTY++_Session"
                            Action="removeOnUninstall" />
       </Component>

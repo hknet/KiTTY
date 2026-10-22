@@ -51,7 +51,7 @@ The fields, by name:
 
 \b \c{found} - 900: what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check.
 
-\b \c{fp} - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...).
+\b \c{fp} - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...).
 
 \b \c{from} - 200, 300: the local end of the connection, address and port.
 
@@ -59,7 +59,7 @@ The fields, by name:
 
 \b \c{kb} - 901: the kilobytes freed.
 
-\b \c{keytype} - 210-212, 310-312: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...); 400: the key's SSH type.
+\b \c{keytype} - 210-212, 310-312: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key; 400: the key's SSH type.
 
 \b \c{loaded} - 113: startup keys loaded.
 
@@ -71,7 +71,7 @@ The fields, by name:
 
 \b \c{methods} - 221, 321: the methods the server still offered, comma-separated.
 
-\b \c{missing} - 902: each missing entry point with its DLL and the feature it powers.
+\b \c{missing} - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
 
 \b \c{path} - 100-170: the key file; 401-403: the file written.
 
