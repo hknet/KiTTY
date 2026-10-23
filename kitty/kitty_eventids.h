@@ -6,6 +6,8 @@
  * "%1%nfield: %2%n...%0" from this table, and the manual's appendix
  * doc/eventids.but one row per ID; tools/check-kitty-events.py compares
  * both with this table, test/test_eventids.c checks the blocks.
+ * docs/EVENT-IDS.md is generated from this table and kept in sync by the
+ * same check (--write-appendix rewrites it).
  *
  * The blocks:
  *   0        text only (source KiTTY++): the one string is the message

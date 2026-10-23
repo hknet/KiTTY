@@ -545,11 +545,12 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking menu command ids for duplicates and 0x10 spacing")
   add_custom_target(check_menu_ids ALL DEPENDS ${KITTY_MENUID_CHECK_STAMP})
 
-  # The event message table and the manual's appendix (doc/eventids.but)
-  # against the event ID table: an ID reported with no message, or a message
-  # or an appendix row whose fields are in another order than the event
-  # data, builds and shows a wrong or missing description in the Event
-  # Viewer, or sends a SIEM rule to the wrong position.
+  # The event message table, the manual's appendix (doc/eventids.but) and
+  # its Markdown copy (docs/EVENT-IDS.md) against the event ID table: an ID
+  # reported with no message, or a message or an appendix row whose fields
+  # are in another order than the event data, builds and shows a wrong or
+  # missing description in the Event Viewer, or sends a SIEM rule to the
+  # wrong position.
   set(KITTY_EVENTS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_events_check.stamp)
   add_custom_command(
     OUTPUT ${KITTY_EVENTS_CHECK_STAMP}
@@ -560,8 +561,9 @@ if(KITTY_INI_CHECK_PYTHON)
             ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_eventids.h
             ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_events.mc
             ${CMAKE_CURRENT_SOURCE_DIR}/doc/eventids.but
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/EVENT-IDS.md
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking the event messages and the manual's appendix against the event ID table")
+    COMMENT "Checking the event messages, the manual's appendix and docs/EVENT-IDS.md against the event ID table")
   add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
 
   # Conf accessors against their keys' types (conf.h): a conf_get_str on an
