@@ -9,6 +9,11 @@
   "kind": "bool",
   "values": null
  },
+ "AcceptNewHostKeys": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
  "AddressFamily": {
   "default": "0",
   "kind": "enum",
@@ -512,6 +517,11 @@
   "values": null
  },
  "ConnectionSharingUpstream": {
+  "default": "1",
+  "kind": "bool",
+  "values": null
+ },
+ "ContextBreadcrumb": {
   "default": "1",
   "kind": "bool",
   "values": null
