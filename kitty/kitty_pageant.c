@@ -558,6 +558,9 @@ int kageant_idle_tick(void)
         /* Refused (a sign request is pending on the key): keep the entry
          * and try again next tick. */
         if (pageant_reencrypt_ssh2_key_by_blob(ptrlen_from_strbuf(g_idle[i].blob))) {
+            kageant_audit_keyset("reencrypt",
+                                 ptrlen_from_strbuf(g_idle[i].blob),
+                                 "done", "idle");
             g_idle[i].last_use = 0;
             n++;
         }
@@ -766,8 +769,19 @@ void kageant_media_gone(void)
         if (still_backed)
             continue;
 
-        if (pageant_delete_ssh2_key_by_blob(
-                ptrlen_from_strbuf(g_loaded_blobs[i]))) {
+        /* the record's fp and comment first: the comment is read from the
+         * agent */
+        char *gfp = kageant_record_fp_of_blob(
+            ptrlen_from_strbuf(g_loaded_blobs[i]));
+        char *gcm = pageant_key_comment_by_blob(
+            ptrlen_from_strbuf(g_loaded_blobs[i]));
+        bool gone = pageant_delete_ssh2_key_by_blob(
+            ptrlen_from_strbuf(g_loaded_blobs[i]));
+        if (gone)
+            kageant_audit_use("remove", gfp, gcm, "done", "device-removal", 0);
+        sfree(gfp);
+        sfree(gcm);
+        if (gone) {
             /* Back onto the pending list, at the position it held, so its place
              * in the offer order survives the round trip - the order decides
              * which keys a server tries first, and a wrong key costs
@@ -1589,6 +1603,64 @@ char *kageant_fp_of_file(const char *path)
     return fp;
 }
 
+char *kageant_record_fp_of_blob(ptrlen blob)
+{
+    strbuf *sb;
+    char *fp = NULL;
+    if (!blob.len)
+        return NULL;
+    sb = strbuf_dup(blob);
+    if (kageant_blob_is_ssh2(sb)) {
+        fp = ssh2_fingerprint_blob(blob, SSH_FPTYPE_SHA256);
+    } else {
+        RSAKey rkey;
+        BinarySource src[1];
+        memset(&rkey, 0, sizeof(rkey));
+        BinarySource_BARE_INIT_PL(src, blob);
+        get_rsa_ssh1_pub(src, &rkey, RSA_SSH1_EXPONENT_FIRST);
+        rkey.comment = NULL;   /* bits and MD5 hash, no comment */
+        if (!get_err(src) && rkey.modulus && rkey.exponent)
+            fp = rsa_ssh1_fingerprint(&rkey);
+        freersakey(&rkey);
+    }
+    strbuf_free(sb);
+    return fp;
+}
+
+char *kageant_record_fp_of_file(const char *path)
+{
+    strbuf *blob = kageant_pubblob(path);
+    char *fp;
+    if (!blob)
+        return NULL;
+    fp = kageant_record_fp_of_blob(ptrlen_from_strbuf(blob));
+    strbuf_free(blob);
+    return fp;
+}
+
+void kageant_audit_keyset(const char *ev, ptrlen blob, const char *result,
+                          const char *reason)
+{
+    char *fp = kageant_record_fp_of_blob(blob);
+    char *comment = blob.len ? pageant_key_comment_by_blob(blob) : NULL;
+    kageant_audit_use(ev, fp, comment, result, reason, 0);
+    sfree(fp);
+    sfree(comment);
+}
+
+void kageant_do_decrypt_audit(const char *fp, const char *comment,
+                              const char *result, unsigned long pid)
+{
+    kageant_audit_decrypt(fp, comment, result, "first-use", pid);
+}
+
+void kageant_do_reencrypt_audit(int all, const char *fp, const char *comment,
+                                bool ok)
+{
+    kageant_audit_use(all ? "reencrypt-all" : "reencrypt", fp, comment,
+                      ok ? "done" : "failed", "ipc", pageant_external_pid);
+}
+
 /* index of the pending entry for this stored path, -1 if none */
 static int kageant_pending_index(const char *path)
 {
@@ -2071,7 +2143,12 @@ int kageant_expire_due_keys(void)
         /* Just unload it from the agent - a lifetime is about in-memory
          * exposure, not the startup configuration, so leave any startup
          * entry alone (it can load again next time). */
-        pageant_delete_ssh2_key_by_blob(ptrlen_from_strbuf(due[i]));
+        char *lfp = kageant_record_fp_of_blob(ptrlen_from_strbuf(due[i]));
+        char *lcm = pageant_key_comment_by_blob(ptrlen_from_strbuf(due[i]));
+        if (pageant_delete_ssh2_key_by_blob(ptrlen_from_strbuf(due[i])))
+            kageant_audit_use("remove", lfp, lcm, "done", "lifetime", 0);
+        sfree(lfp);
+        sfree(lcm);
         strbuf_free(due[i]);
     }
     sfree(due);
@@ -2171,6 +2248,8 @@ void kageant_drop_pending(const char *path)
         }
     }
     kageant_forget_startup_key(path);
+    kitty_audit("forget-path", "path", path, "result", "forgotten",
+                (const char *)NULL);
     kageant_setting_failure_box(NULL);
     /* the entry just dropped may have been one of the held-back ones */
     kageant_refresh_tray_tip();
@@ -3046,9 +3125,10 @@ void kageant_apply_saved_order(void)
  * allowing the key to sign when the global "Confirm every key use" toggle
  * is on, or when the key's comment requests confirmation for just that
  * key. Returns 0 to refuse, nonzero to allow. */
-extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
+extern int (*kageant_confirm_hook)(const char *comment, int key_confirm,
+                                  const char *fp);
 
-int kageant_ipc_blocked(int op)
+int kageant_ipc_blocked(int op, const char *fp)
 {
     int blocked;
     if (kageant_lockdown_get())
@@ -3060,7 +3140,7 @@ int kageant_ipc_blocked(int op)
     if (blocked)
         kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
                           op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
-                          NULL, NULL, "blocked", "ipc-policy",
+                          fp, NULL, "blocked", "ipc-policy",
                           pageant_external_pid);
     return blocked;
 }
@@ -3087,7 +3167,7 @@ static void kageant_requester_text(char *proc, size_t n)
     }
 }
 
-void kageant_do_mutation_notice(int op, const char *comment)
+void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
 {
     char proc[MAX_PATH + 32];
     const char *title;
@@ -3097,7 +3177,7 @@ void kageant_do_mutation_notice(int op, const char *comment)
      * the audit trail off with it. */
     kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
                       op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
-                      NULL, comment, "done", "ipc", pageant_external_pid);
+                      fp, comment, "done", "ipc", pageant_external_pid);
 
     if (!kageant_notify_get() || !traywindow)
         return;
@@ -3284,7 +3364,7 @@ int kageant_confirm_suppressed(void)
     return g_confirm_suppress;
 }
 
-int kageant_do_confirm(const char *comment, int key_confirm)
+int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
 {
     int mode = kageant_confirm_mode();
     /* Every use -> always; By comment -> only if this key's own flag is set
@@ -3298,7 +3378,7 @@ int kageant_do_confirm(const char *comment, int key_confirm)
 
     /* The user hit "deny & stop asking" during a storm: keep denying, no box. */
     if (g_confirm_suppress) {
-        kageant_audit_use("confirm", NULL, comment, "denied",
+        kageant_audit_use("confirm", fp, comment, "denied",
                           "suppress-latch", 0);
         return 0;
     }
@@ -3308,7 +3388,7 @@ int kageant_do_confirm(const char *comment, int key_confirm)
      * and stack another box on top. Deny the pile-up rather than let a bad
      * client fill the screen while the user is trying to say no. */
     if (g_confirm_active) {
-        kageant_audit_use("confirm", NULL, comment, "denied", "pileup", 0);
+        kageant_audit_use("confirm", fp, comment, "denied", "pileup", 0);
         return 0;
     }
 
@@ -3334,7 +3414,7 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         g_confirm_active = 0;
 
         allowed = (hr == KITTY_HELLO_VERIFIED);
-        kageant_audit_use("confirm", NULL, comment,
+        kageant_audit_use("confirm", fp, comment,
                           allowed ? "allowed" : "denied",
                           hr == KITTY_HELLO_VERIFIED    ? "hello-verified" :
                           hr == KITTY_HELLO_DENIED      ? "hello-denied" :
@@ -3362,7 +3442,7 @@ int kageant_do_confirm(const char *comment, int key_confirm)
         sfree(msg);
         g_confirm_active = 0;
 
-        kageant_audit_use("confirm", NULL, comment,
+        kageant_audit_use("confirm", fp, comment,
                           r == IDYES ? "allowed" : "denied",
                           r == IDYES    ? "click-allow" :
                           r == IDCANCEL ? "click-cancel-latch" : "click-deny",

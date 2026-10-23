@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "kitty_auditlog.h"
+#include "kitty_winevent.h"     /* kitty_wev_user_sid: the record's user */
 
 static char g_path[MAX_PATH + 1];
 static int  g_enabled = 0;
@@ -60,7 +61,7 @@ const char *kitty_audit_path(void) { return g_path; }
 int kitty_audit_result_is_warning(const char *result)
 {
     static const char *const bad[] = {
-        "denied", "refused", "blocked", "failed", "fp-refused",
+        "denied", "refused", "blocked", "failed", "fp-refused", "cancelled",
         "not-verified", "waiting", "shut", "unlock-shut", "no-door-here",
     };
     size_t i;
@@ -231,6 +232,9 @@ static const char *const af_protect[] = {
     "path", "dest", "result", "detail", "err", NULL
 };
 static const char *const af_keywarn[] = { "path", "warning", NULL };
+static const char *const af_decrypt[] = {
+    "fp", "comment", "result", "trigger", "req", "reqpath", "pid", NULL
+};
 static const char *const af_result[] = { "result", NULL };
 
 static const struct audit_kind {
@@ -253,6 +257,8 @@ static const struct audit_kind {
     { "hello-unlock",    132, af_hello },
     { "keyfile-warning", 140, af_keywarn },
     { "reencrypt-all",   150, af_use },
+    { "reencrypt",       151, af_use },
+    { "decrypt",         152, af_decrypt },
     { "agent",           160, af_result },
     { "logrotate",       170, af_result },
 };
@@ -319,7 +325,7 @@ static void audit_write_event(const char *ev, const char *const *keys,
     ReportEventA(h, (WORD)(kitty_audit_is_warning(ev, result) ?
                            EVENTLOG_WARNING_TYPE :
                            EVENTLOG_INFORMATION_TYPE),
-                 0, id, NULL, ns, 0, strings, NULL);
+                 0, id, kitty_wev_user_sid(), ns, 0, strings, NULL);
     DeregisterEventSource(h);
 }
 

@@ -570,6 +570,9 @@ char *cert_expr_expression(CertExprBuilder *eb);
  */
 #define TELNET_CMD_MISSING_USERNAME 0x0001
 #define TELNET_CMD_MISSING_PASSWORD 0x0002
+/* KiTTY: %user / %pass expanded to a non-empty value (event 225/325) */
+#define TELNET_CMD_HAS_USERNAME 0x0004
+#define TELNET_CMD_HAS_PASSWORD 0x0008
 char *format_connection_setup_command(
     const char *fmt, SockAddr *addr, int port, Conf *conf,
     unsigned *flags_out);

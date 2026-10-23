@@ -75,8 +75,72 @@ struct ssh1_login_state {
     StripCtrlChars *tis_scc;
     bool tis_scc_initialised;
 
+    /* KiTTY: the login's Event Log records (220/221, 320/321): the method
+     * of the attempt the server answers next, and the key it signs with */
+    const char *kitty_wev_method;
+    char *kitty_wev_fp;
+
     PacketProtocolLayer ppl;
 };
+
+/* KiTTY: an SSH-1 key as the records name it - its bits and MD5 hash, no
+ * comment (rsa_ssh1_fingerprint appends one when the key has it). */
+static char *kitty_wev_rsa1_fp(RSAKey *key)
+{
+    char *comment = key->comment, *fp;
+    key->comment = NULL;
+    fp = rsa_ssh1_fingerprint(key);
+    key->comment = comment;
+    return fp;
+}
+
+/* KiTTY: what the server offers, from its SSH-1 auth mask, in the SSH-2
+ * method names where there is one */
+static void kitty_wev_ssh1_methods(struct ssh1_login_state *s, char *buf,
+                                   size_t sz)
+{
+    static const struct { int bit; const char *name; } m[] = {
+        { SSH1_AUTH_RSA, "publickey" }, { SSH1_AUTH_PASSWORD, "password" },
+        { SSH1_AUTH_TIS, "tis" }, { SSH1_AUTH_CCARD, "cryptocard" },
+    };
+    size_t i, n = 0;
+    buf[0] = '\0';
+    for (i = 0; i < lenof(m); i++)
+        if (s->supported_auths_mask & (1 << m[i].bit))
+            n += snprintf(buf + n, n < sz ? sz - n : 0, "%s%s",
+                          n ? "," : "", m[i].name);
+}
+
+/* KiTTY: an attempt is on its way (kitty_wev_auth_sent); fp = the key it
+ * signs with, taken over, or NULL */
+static void kitty_wev_ssh1_sent(struct ssh1_login_state *s,
+                                const char *method, char *fp)
+{
+    char ms[80];
+    s->kitty_wev_method = method;
+    sfree(s->kitty_wev_fp);
+    s->kitty_wev_fp = fp;
+    if (kitty_wev_seat_proxy(s->ppl.seat)) {
+        kitty_wev_ssh1_methods(s, ms, sizeof(ms));
+        kitty_wev_auth_sent(s->savedhost, s->savedport, s->username,
+                            method, ms, kitty_wev_seat_proxy(s->ppl.seat));
+    }
+}
+
+/* KiTTY: the server refused that attempt (221/321) */
+static void kitty_wev_ssh1_refused(struct ssh1_login_state *s,
+                                   const char *reason)
+{
+    char ms[80];
+    kitty_wev_auth_settled();
+    if (kitty_wev_seat_proxy(s->ppl.seat)) {
+        kitty_wev_ssh1_methods(s, ms, sizeof(ms));
+        kitty_wev_auth_failed(s->savedhost, s->savedport, s->username,
+                              s->kitty_wev_method ? s->kitty_wev_method :
+                              "none", reason, ms,
+                              kitty_wev_seat_proxy(s->ppl.seat));
+    }
+}
 
 static void ssh1_login_free(PacketProtocolLayer *);
 static void ssh1_login_process_queue(PacketProtocolLayer *);
@@ -129,6 +193,7 @@ static void ssh1_login_free(PacketProtocolLayer *ppl)
     sfree(s->rsabuf);
     sfree(s->username);
     burnstr(s->kitty_pw_candidate);   /* KiTTY */
+    sfree(s->kitty_wev_fp);           /* KiTTY */
     if (s->publickey_blob)
         strbuf_free(s->publickey_blob);
     sfree(s->publickey_comment);
@@ -637,9 +702,16 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                             put_data(pkt, ret + 5, 16);
                             pq_push(s->ppl.out_pq, pkt);
                             s->is_trivial_auth = false;
+                            kitty_wev_ssh1_sent(   /* KiTTY */
+                                s, "publickey", kitty_wev_rsa1_fp(
+                                    &s->agent_keys[s->agent_key_index].key));
                             crMaybeWaitUntilV(
                                 (pktin = ssh1_login_pop(s))
                                 != NULL);
+                            kitty_wev_auth_settled();   /* KiTTY */
+                            if (pktin->type != SSH1_SMSG_SUCCESS)
+                                kitty_wev_ssh1_refused(   /* KiTTY */
+                                    s, "public-key signature refused");
                             if (pktin->type == SSH1_SMSG_SUCCESS) {
                                 ppl_logevent(KT_AGENT_LOG_ACCEPTED);
                                 if (seat_verbose(s->ppl.seat)) {
@@ -778,6 +850,10 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     }
                     response = rsa_ssh1_decrypt(challenge, &s->key);
                     freersapriv(&s->key);   /* burn the evidence */
+                    /* KiTTY: the key the record names (public parts) */
+                    s->kitty_wev_method = "publickey";
+                    sfree(s->kitty_wev_fp);
+                    s->kitty_wev_fp = kitty_wev_rsa1_fp(&s->key);
 
                     for (i = 0; i < 32; i++) {
                         buffer[i] = mp_get_byte(response, 31 - i);
@@ -799,10 +875,16 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     mp_free(challenge);
                     mp_free(response);
                 }
+                kitty_wev_ssh1_sent(s, "publickey",   /* KiTTY */
+                                    s->kitty_wev_fp ?
+                                    dupstr(s->kitty_wev_fp) : NULL);
 
                 crMaybeWaitUntilV((pktin = ssh1_login_pop(s))
                                   != NULL);
+                kitty_wev_auth_settled();   /* KiTTY */
                 if (pktin->type == SSH1_SMSG_FAILURE) {
+                    kitty_wev_ssh1_refused(   /* KiTTY */
+                        s, "public-key signature refused");
                     if (seat_verbose(s->ppl.seat))
                         ppl_printf("Failed to authenticate with"
                                    " our public key.\r\n");
@@ -937,6 +1019,10 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         }
         if (s->pwpkt_type == SSH1_CMSG_AUTH_PASSWORD) {
             if ((s->supported_auths_mask & (1 << SSH1_AUTH_PASSWORD)) == 0) {
+                /* KiTTY: 221/321, as SSH-2's give-up writes it; the method
+                 * is the last one tried */
+                kitty_wev_ssh1_refused(
+                    s, "no supported authentication methods available");
                 ssh_sw_abort(s->ppl.ssh, "No supported authentication methods "
                              "available");
                 return;
@@ -1090,7 +1176,12 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                 prompt_get_result(s->cur_prompt->prompts[0]);
         free_prompts(s->cur_prompt);
         s->cur_prompt = NULL;
+        kitty_wev_ssh1_sent(   /* KiTTY */
+            s, s->pwpkt_type == SSH1_CMSG_AUTH_TIS_RESPONSE ? "tis" :
+            s->pwpkt_type == SSH1_CMSG_AUTH_CCARD_RESPONSE ? "cryptocard" :
+            "password", NULL);
         crMaybeWaitUntilV((pktin = ssh1_login_pop(s)) != NULL);
+        kitty_wev_auth_settled();   /* KiTTY */
         if (pktin->type == SSH1_SMSG_SUCCESS && s->kitty_pw_candidate) {
             /* KiTTY: accepted - hand it to the frontend, which copies it
              * into the running session's settings. */
@@ -1099,6 +1190,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
         burnstr(s->kitty_pw_candidate);
         s->kitty_pw_candidate = NULL;
         if (pktin->type == SSH1_SMSG_FAILURE) {
+            kitty_wev_ssh1_refused(s, "access denied");   /* KiTTY */
             if (seat_verbose(s->ppl.seat))
                 ppl_printf("Access denied\r\n");
             ppl_logevent("Authentication refused");
@@ -1118,6 +1210,11 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
     }
 
     ppl_logevent("Authentication successful");
+    /* KiTTY: event 220/320, with the key a publickey login signed with */
+    if (kitty_wev_seat_proxy(s->ppl.seat))
+        kitty_wev_auth_ok(s->savedhost, s->savedport, s->username,
+                          s->kitty_wev_method ? s->kitty_wev_method : "none",
+                          s->kitty_wev_fp, kitty_wev_seat_proxy(s->ppl.seat));
 
     if (conf_get_bool(s->conf, CONF_compression)) {
         ppl_logevent("Requesting compression");

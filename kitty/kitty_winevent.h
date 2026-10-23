@@ -50,31 +50,91 @@ void kitty_wev_session_close(const char *result, const char *reason,
  * fp is the fingerprint as PuTTY prints it; only its hash goes in. */
 void kitty_wev_hostkey(unsigned offset, const char *host, int port,
                        const char *keytype, const char *fp,
-                       const char *basis_or_result);
+                       const char *basis_or_result, const char *proxy);
 /* A host key question is open: its answer is reported by
- * kitty_wev_hostkey_answer once the SSH layer has it. */
+ * kitty_wev_hostkey_answer once the SSH layer has it. proxy: as for the
+ * login records (kitty_wev_seat_proxy). */
 void kitty_wev_hostkey_pending(unsigned offset, const char *host, int port,
-                               const char *keytype, const char *fp);
+                               const char *keytype, const char *fp,
+                               const char *proxy);
 void kitty_wev_hostkey_answer(int accepted);
 
-/* 220/320 and 221/321 (once per connection: no method was left). fp = the
- * key used, or NULL. methods = what the server still offered. */
+/* 220/320, and 221/321 for each attempt the server refused and once when
+ * no method was left. fp = the key used, or NULL. methods = what the
+ * server still offered. */
 void kitty_wev_auth_ok(const char *host, int port, const char *user,
-                       const char *method, const char *fp);
+                       const char *method, const char *fp,
+                       const char *proxy);
 void kitty_wev_auth_failed(const char *host, int port, const char *user,
                            const char *method, const char *reason,
-                           const char *methods);
+                           const char *methods, const char *proxy);
+/* The same with the `for` field given: what a proxy's connection is for
+ * (session, forward, x11). The two above fill it from proxy: empty for the
+ * connection's own login, session for a jump host's. */
+void kitty_wev_auth_ok_for(const char *host, int port, const char *user,
+                           const char *method, const char *fp,
+                           const char *proxy, const char *purpose);
+void kitty_wev_auth_failed_for(const char *host, int port, const char *user,
+                               const char *method, const char *reason,
+                               const char *methods, const char *proxy,
+                               const char *purpose);
+/* Event 225/325: the connection went through a proxy. proxy: http,
+ * socks4, socks5, telnet, local-command; host/port the proxy's (for
+ * local-command the program's file name, port -1 = empty); user the
+ * user name sent, empty when none; credentials: a user name or password
+ * went to the proxy; purpose: session, forward or x11. */
+void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
+                          const char *user, int credentials,
+                          const char *purpose);
+/* A port forwarding (forward) or X11 forwarding (x11) is about to open a
+ * connection that may go through a proxy: the proxy code takes the value
+ * once (kitty_wev_take_conn_for) for its records' `for` field. */
+void kitty_wev_next_conn_for(const char *purpose);
+const char *kitty_wev_take_conn_for(void);
+/* A password, keyboard-interactive answers or a signature went to the
+ * server and its answer is outstanding. A server may end the connection
+ * instead of answering (OpenSSH after the last attempt MaxAuthTries
+ * allows): kitty_wev_session_close then writes the 221/321 for it, with
+ * the close message as its reason. Any answer clears it
+ * (kitty_wev_auth_settled), as do the two calls above. */
+void kitty_wev_auth_sent(const char *host, int port, const char *user,
+                         const char *method, const char *methods,
+                         const char *proxy);
+
+/* The Seats of this process's SSH proxy hops (proxy/sshproxy.c, a jump
+ * host's own SSH connection): their logins are recorded too, with proxy
+ * "ssh". Registered while the hop exists. */
+void kitty_wev_hop_add(const void *seat);
+void kitty_wev_hop_remove(const void *seat);
+int kitty_wev_is_hop(const void *seat);
+void kitty_wev_auth_settled(void);
+
+/* The account this process runs as (a SID) for each record's user, so the
+ * Event Viewer shows it and forwarding carries it: read from the process
+ * token once and kept; NULL when it cannot be read, and the records go out
+ * without one. Shared by every writer (kitty_auditlog.c,
+ * kitty_renameguard.c). */
+void *kitty_wev_user_sid(void);
 
 /* 230, kitty.exe: the far end asked for something it refused. request =
  * osc52-read / osc5522-read / far2l-clipboard / file-read / file-write. */
 void kitty_wev_farend_refused(const char *request, const char *reason,
                               const char *detail);
 
-/* 330 / 331, the command-line tools: one per job. */
+/* 240 / 241, kitty.exe: one per FILE of an in-terminal transfer (ZModem,
+ * kitten OSC 5113). method = zmodem / kitten-osc5113, direction put / get;
+ * local is recorded as a full path; bytes < 0 = not known (an empty
+ * field); reason for 241 only. */
+void kitty_wev_term_transfer(int ok, const char *user, const char *method,
+                             const char *direction, const char *local,
+                             const char *remote, long long bytes,
+                             const char *reason);
+
+/* 330 / 331, the command-line tools: one per FILE; local is recorded as a
+ * full path; bytes < 0 = not known. */
 void kitty_wev_transfer(int ok, const char *user, const char *direction,
                         const char *local, const char *remote,
-                        unsigned long files, unsigned long long bytes,
-                        unsigned long errors, const char *reason);
+                        long long bytes, const char *reason);
 
 /* 4xx and anything else in the program's block: vals holds every field of
  * the table but "pid", in the table's order (NULL = empty); pid is filled
@@ -105,6 +165,10 @@ const char *kitty_wev_close_result(const char *msg);
  * utils/backend_socket_log.c, where PuTTY's Seat is known. */
 struct Seat;
 int kitty_wev_own_seat(struct Seat *seat);
+/* The login records' proxy field for this Seat: "" for the program's own
+ * connection, "ssh" for one of its jump hosts, NULL when neither (no
+ * record) or the records are off. */
+const char *kitty_wev_seat_proxy(struct Seat *seat);
 
 /* [KiTTY] clieventlog / kittygeneventlog = yes, read the way kitty.exe
  * stores it (kitty_winevent_cfg.c: registry first in registry mode, else

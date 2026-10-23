@@ -235,19 +235,23 @@ static void not_connected(void)
 }
 
 /*
- * KiTTY: the tally of one get or put command for its Windows Event Log
- * record (kitty_winevent.h, 330/331, [KiTTY] clieventlog): the files that
- * went across, their bytes, the files that failed.
+ * KiTTY: the Windows Event Log records of the get and put commands
+ * (kitty_winevent.h, 330/331, [KiTTY] clieventlog): one per FILE - its
+ * local and remote path and its bytes, or the reason it failed. A command
+ * that failed before any file gets one 331 naming what was asked for.
  */
-static unsigned long kwev_files, kwev_errors;
-static unsigned long long kwev_bytes;
+static unsigned long kwev_nrec;
+static unsigned long long kwev_bytes;   /* the current file's */
 
-static void kwev_tally(bool ok)
+static void kwev_file(bool ok, bool put, const char *local,
+                      const char *remote, long long bytes, const char *why)
 {
-    if (ok)
-        kwev_files++;
-    else
-        kwev_errors++;
+    if (!kitty_wev_enabled() || !backend)
+        return;
+    kitty_wev_transfer(ok, conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                       put ? "put" : "get", local, remote, bytes,
+                       ok ? "" : (why ? why : ""));
+    kwev_nrec++;
 }
 
 /* ----------------------------------------------------------------------
@@ -443,8 +447,10 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
     if (!fh) {
         with_stripctrl(san, fname)
             printf("%s: open for read: %s\n", san, fxp_error());
+        kwev_file(false, false, outfname, fname, -1, fxp_error());   /* KiTTY */
         return false;
     }
+    kwev_bytes = 0;                    /* KiTTY: this file's bytes */
 
     if (restart) {
         file = open_existing_wfile(outfname, NULL);
@@ -455,6 +461,8 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
     if (!file) {
         with_stripctrl(san, outfname)
             printf("local: unable to open %s\n", san);
+        kwev_file(false, false, outfname, fname, -1,   /* KiTTY */
+                  "local: unable to open the file");
 
         req = fxp_close_send(fh);
         pktin = sftp_wait_for_reply(req);
@@ -468,6 +476,8 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
             close_wfile(file);
             with_stripctrl(san, outfname)
                 printf("reget: cannot restart %s - file too large\n", san);
+            kwev_file(false, false, outfname, fname, -1,   /* KiTTY */
+                      "reget: cannot restart - file too large");
             req = fxp_close_send(fh);
             pktin = sftp_wait_for_reply(req);
             fxp_close_recv(pktin, req);
@@ -542,7 +552,9 @@ bool sftp_get_file(char *fname, char *outfname, bool recurse, bool restart)
     pktin = sftp_wait_for_reply(req);
     fxp_close_recv(pktin, req);
 
-    kwev_tally(toret);                 /* KiTTY: the command's tally */
+    /* KiTTY: this file's record */
+    kwev_file(toret, false, outfname, fname, (long long)kwev_bytes,
+              shown_err ? "error while reading" : "error while writing local file");
     return toret;
 }
 
@@ -682,8 +694,11 @@ bool sftp_put_file(char *fname, char *outfname, bool recurse, bool restart)
     file = open_existing_file(fname, NULL, NULL, NULL, &permissions);
     if (!file) {
         printf("local: unable to open %s\n", fname);
+        kwev_file(false, true, fname, outfname, -1,   /* KiTTY */
+                  "local: unable to open the file");
         return false;
     }
+    kwev_bytes = 0;                    /* KiTTY: this file's bytes */
     attrs.flags = 0;
     PUT_PERMISSIONS(attrs, permissions);
     if (restart) {
@@ -699,6 +714,7 @@ bool sftp_put_file(char *fname, char *outfname, bool recurse, bool restart)
     if (!fh) {
         close_rfile(file);
         printf("%s: open for write: %s\n", outfname, fxp_error());
+        kwev_file(false, true, fname, outfname, -1, fxp_error());   /* KiTTY */
         return false;
     }
 
@@ -792,7 +808,9 @@ bool sftp_put_file(char *fname, char *outfname, bool recurse, bool restart)
 
     close_rfile(file);
 
-    kwev_tally(!err);                  /* KiTTY: the command's tally */
+    /* KiTTY: this file's record */
+    kwev_file(!err, true, fname, outfname, (long long)kwev_bytes,
+              "error while reading the local file or writing the remote one");
     return !err;
 }
 
@@ -1445,8 +1463,7 @@ static int kwev_job(struct sftp_command *cmd, bool put, bool restart,
     if (!kitty_wev_enabled() || !backend)
         return put ? sftp_general_put(cmd, restart, multiple) :
                      sftp_general_get(cmd, restart, multiple);
-    kwev_files = kwev_errors = 0;
-    kwev_bytes = 0;
+    kwev_nrec = 0;
     ret = put ? sftp_general_put(cmd, restart, multiple) :
                 sftp_general_get(cmd, restart, multiple);
     while (i < cmd->nwords && cmd->words[i][0] == '-') {
@@ -1457,11 +1474,12 @@ static int kwev_job(struct sftp_command *cmd, bool put, bool restart,
         src = cmd->words[i];
     if (!multiple && i + 1 < cmd->nwords)
         dst = cmd->words[i + 1];
-    ok = ret != 0 && kwev_errors == 0;
-    kitty_wev_transfer(ok, conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
-                       put ? "put" : "get", put ? src : dst, put ? dst : src,
-                       kwev_files, kwev_bytes, kwev_errors,
-                       ok ? "" : (fxp_error() ? fxp_error() : ""));
+    ok = ret != 0;
+    if (!ok && !kwev_nrec)             /* failed before any file */
+        kitty_wev_transfer(false,
+                           conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                           put ? "put" : "get", put ? src : dst, put ? dst : src,
+                           -1, fxp_error() ? fxp_error() : "");
     return ret;
 }
 

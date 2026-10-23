@@ -47,6 +47,10 @@ struct ProxySocket {
     Interactor *clientitr;
     LogPolicy *clientlp;
     Seat *clientseat;
+    /* KiTTY: whether this connection's proxy records (220, 221, 225) are
+     * written - decided at creation (proxy_wev_decide) */
+    bool kwev_ok;
+    const char *kwev_for;   /* KiTTY: session, forward or x11 */
 
     Socket sock;
     Plug plugimpl;
@@ -78,6 +82,11 @@ struct ProxyNegotiator {
      * to the proxy server, e.g. because an HTTP proxy slammed the
      * connection shut after sending 407 Proxy Auth Required. */
     bool reconnect;
+
+    /* KiTTY: event 225/325 - whether a user name or password went to
+     * the proxy, and the user name sent (proxy_wev_note_credentials) */
+    bool kwev_credentials;
+    char kwev_user[256];
 };
 
 struct ProxyNegotiatorVT {
@@ -105,6 +114,34 @@ extern const ProxyNegotiatorVT telnet_proxy_negotiator_vt;
  * prompts_t, and to deal with SeatPromptResults coming back.
  */
 prompts_t *proxy_new_prompts(ProxySocket *ps);
+
+/* KiTTY: event 221/321 for a proxy that refused our credentials (or wants
+ * some we do not have): host and port are the proxy's, user the name
+ * sent (NULL: the configured proxy user name), method the one tried
+ * (password, chap, none, ident), proxy its type (http, socks5, socks4).
+ * Written for the program's own connection, a jump host's
+ * (kitty_wev_seat_proxy) and the connections its port forwardings open
+ * (proxy_wev_decide), as for the other login records. */
+void proxy_wev_auth_failed(ProxySocket *ps, const char *proxytype,
+                           const char *method, const char *user,
+                           const char *reason);
+/* KiTTY: event 220/320 for a proxy that accepted our credentials; the
+ * arguments as for proxy_wev_auth_failed. */
+void proxy_wev_auth_ok(ProxySocket *ps, const char *proxytype,
+                       const char *method, const char *user);
+/* KiTTY: whether a proxied connection writes its proxy records. With a
+ * client Interactor: its seat is the program's own or a jump host's. With
+ * none: a connection a port forwarding or X11 forwarding opens - always the
+ * program's own session's, since a jump host's session forwards nothing
+ * (sshproxy.c clears its forwardings); nobody can be asked, so only what
+ * needs no question is recorded. */
+bool proxy_wev_decide(Seat *clientseat, bool have_interactor);
+/* KiTTY: the `for` field of the proxy records: session for a connection
+ * with an Interactor, else what the forwarding announced
+ * (kitty_wev_next_conn_for: forward, x11). */
+const char *proxy_wev_for(bool have_interactor);
+/* KiTTY: a user name or password went to the proxy (event 225/325). */
+void proxy_wev_note_credentials(ProxyNegotiator *pn, const char *user);
 void proxy_spr_abort(ProxyNegotiator *pn, SeatPromptResult spr);
 
 /*

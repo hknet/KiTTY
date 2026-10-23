@@ -28,6 +28,7 @@
 #include "network.h"
 #include "sshcr.h"
 #include "proxy/proxy.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: event 225/325 */
 #include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 
 typedef struct LocalProxyOpener {
@@ -43,6 +44,8 @@ typedef struct LocalProxyOpener {
     Interactor *clientitr;
     LogPolicy *clientlp;
     Seat *clientseat;
+    bool kwev_ok;   /* KiTTY: event 225/325 (proxy_wev_decide) */
+    const char *kwev_for;   /* KiTTY: proxy_wev_for */
     prompts_t *prompts;
     int username_prompt_index, password_prompt_index;
 
@@ -102,6 +105,41 @@ static void local_proxy_opener_cleanup_interactor(LocalProxyOpener *lp)
         lp->clientitr = NULL;
         lp->clientseat = NULL;
     }
+}
+
+/* KiTTY: event 225/325 for a local proxy command */
+static void local_proxy_wev_used(Conf *conf, unsigned flags,
+                                 const char *purpose)
+{
+    const char *cmd = conf_get_str(conf, CONF_proxy_telnet_command);
+    const char *p, *end, *base;
+    char prog[260];
+    size_t n;
+
+    while (*cmd == ' ' || *cmd == '\t')
+        cmd++;
+    if (*cmd == '"') {
+        cmd++;
+        end = strchr(cmd, '"');
+    } else {
+        end = cmd + strcspn(cmd, " \t");
+    }
+    if (!end)
+        end = cmd + strlen(cmd);
+    for (base = p = cmd; p < end; p++)
+        if (*p == '\\' || *p == '/')
+            base = p + 1;
+    n = (size_t)(end - base);
+    if (n >= sizeof(prog))
+        n = sizeof(prog) - 1;
+    memcpy(prog, base, n);
+    prog[n] = '\0';
+    kitty_wev_proxy_used(
+        "local-command", prog, -1,
+        (flags & TELNET_CMD_HAS_USERNAME) ?
+        conf_get_str(conf, CONF_proxy_username) : "",
+        (flags & (TELNET_CMD_HAS_USERNAME | TELNET_CMD_HAS_PASSWORD)) != 0,
+        purpose);
 }
 
 static void local_proxy_opener_coroutine(void *vctx)
@@ -194,7 +232,13 @@ static void local_proxy_opener_coroutine(void *vctx)
          * those prompts written into lp->conf.
          */
         lp->formatted_cmd = format_telnet_command(
-            lp->addr, lp->port, lp->conf, NULL);
+            lp->addr, lp->port, lp->conf, &flags);
+
+        /* KiTTY: event 225/325 - the local proxy command is about to
+         * start. host is the program's file name, taken from the
+         * configured command (never the formatted line: %pass) */
+        if (lp->kwev_ok)
+            local_proxy_wev_used(lp->conf, flags, lp->kwev_for);
     }
 
     /*
@@ -261,6 +305,8 @@ DeferredSocketOpener *local_proxy_opener(
         lp->clientlp = interactor_logpolicy(lp->clientitr);
         lp->clientseat = interactor_borrow_seat(lp->clientitr);
     }
+    lp->kwev_ok = proxy_wev_decide(lp->clientseat, itr != NULL);   /* KiTTY */
+    lp->kwev_for = proxy_wev_for(itr != NULL);
 
     return &lp->opener;
 }

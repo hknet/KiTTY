@@ -13,7 +13,7 @@ The fields, by name:
 
 \b \c{absent} - 113: startup keys whose file was not there.
 
-\b \c{addr} - 200, 300: the address connected to (a proxy's when one is used).
+\b \c{addr} - 200, 300: the address connected to (a proxy's when one is used); a serial line's name.
 
 \b \c{basis} - 210, 310: how the host key was known; values: cache, manual, ca.
 
@@ -21,11 +21,13 @@ The fields, by name:
 
 \b \c{broken} - 113: startup keys whose file could not be read.
 
-\b \c{bytes} - 330, 331: the bytes the job moved.
+\b \c{bytes} - 240, 241, 330, 331: the file's bytes moved; empty when not known.
 
 \b \c{check} - 900: the check that refused the program file; values: rename, signature, integrity.
 
 \b \c{comment} - 100-170: the comment of the key concerned; 400, 401: of the key generated or saved.
+
+\b \c{credentials} - 225, 325: yes when a user name or password went to the proxy, else no.
 
 \b \c{days} - 901: LogKeepDays as set, 0 = off.
 
@@ -33,29 +35,29 @@ The fields, by name:
 
 \b \c{detail} - 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name.
 
-\b \c{direction} - 330, 331: put (to the server) or get (from it).
+\b \c{direction} - 240, 241, 330, 331: put (upload, to the server) or get (download, from it).
 
 \b \c{enc} - 111: whether the key file has a passphrase; values: password, blank.
 
 \b \c{err} - 131: the error text when the protection failed.
 
-\b \c{errors} - 331: kscp: the errors of the run; ksftp: the files of the command that failed.
-
 \b \c{exitcode} - 201: the remote command's exit code; 301: the tool's own exit code; empty when there is none.
 
 \b \c{features} - 902: the features this Windows lacks, comma-separated.
 
-\b \c{files} - 330, 331: the files the job moved; 901: the log files deleted.
+\b \c{files} - 901: the log files deleted.
+
+\b \c{for} - 220, 221, 225, 320, 321, 325: what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's.
 
 \b \c{format} - 401: ppk3, ppk2, openssh, ssh.com or ssh1; 402: rfc4716, openssh or ssh1.
 
 \b \c{found} - 900: what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check.
 
-\b \c{fp} - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...).
+\b \c{fp} - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login.
 
 \b \c{from} - 200, 300: the local end of the connection, address and port.
 
-\b \c{host} - the host name as given for the connection.
+\b \c{host} - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 
 \b \c{kb} - 901: the kilobytes freed.
 
@@ -63,13 +65,13 @@ The fields, by name:
 
 \b \c{loaded} - 113: startup keys loaded.
 
-\b \c{local} - 330, 331: the local path - the first source of a put, the target of a get.
+\b \c{local} - 240, 241, 330, 331: the file's full local path; a 331 for a run that failed before any file: the local path as given.
 
 \b \c{mb} - 901: LogKeepMB as set, 0 = off.
 
-\b \c{method} - 220, 221, 320, 321: the authentication method, for 221 and 321 the last one tried; values: none, publickey, password, keyboard-interactive, gssapi-with-mic.
+\b \c{method} - 220, 221, 320, 321: the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident; 240, 241: zmodem or kitten-osc5113.
 
-\b \c{methods} - 221, 321: the methods the server still offered, comma-separated.
+\b \c{methods} - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 
 \b \c{missing} - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
 
@@ -79,19 +81,21 @@ The fields, by name:
 
 \b \c{pid} - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 
-\b \c{port} - the port connected to.
+\b \c{port} - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
 
 \b \c{program} - 900: the refused program file's path.
 
 \b \c{protection} - 401, 403: none, passphrase or hello.
 
-\b \c{proto} - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup.
+\b \c{proto} - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
 
-\b \c{reason} - 100-170: a token - gui, ipc, ipc-policy, tray, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 230, 321, 331, 401, 402: the reason as text.
+\b \c{proxy} - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
+
+\b \c{reason} - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402: the reason as text.
 
 \b \c{refused} - 113: startup keys refused.
 
-\b \c{remote} - 330, 331: the remote path - the first source of a get, the target of a put.
+\b \c{remote} - 240, 241, 330, 331: the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name).
 
 \b \c{req} - 100-170: the file name of the program that asked the agent.
 
@@ -99,15 +103,15 @@ The fields, by name:
 
 \b \c{request} - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
 
-\b \c{result} - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150: done; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 401, 402: saved, failed.
+\b \c{result} - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 401, 402: saved, failed.
 
 \b \c{session} - the saved session's name, empty when none was loaded.
 
 \b \c{tool} - 400-403: kittygen or kittygen-cli.
 
-\b \c{trigger} - 113: what started the retry; values: button, device-arrival.
+\b \c{trigger} - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 
-\b \c{user} - 220, 221, 320, 321, 330, 331: the user name of the login.
+\b \c{user} - 220, 221, 320, 321, 240, 241, 330, 331: the user name of the login (a proxy's: the name sent to it); 225, 325: the user name sent to the proxy, empty when none.
 
 \b \c{warning} - 140: weak-protection or old-format.
 
@@ -149,6 +153,10 @@ The event IDs:
 
 \b \c{150} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{reencrypt-all}, then \c{fp}, \c{comment}, \c{result}, \c{reason}, \c{req}, \c{reqpath}, \c{pid}.
 
+\b \c{151} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{reencrypt}, then \c{fp}, \c{comment}, \c{result}, \c{reason}, \c{req}, \c{reqpath}, \c{pid}.
+
+\b \c{152} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{decrypt}, then \c{fp}, \c{comment}, \c{result}, \c{trigger}, \c{req}, \c{reqpath}, \c{pid}.
+
 \b \c{160} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{agent}, then \c{result}.
 
 \b \c{170} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{logrotate}, then \c{result}.
@@ -157,35 +165,43 @@ The event IDs:
 
 \b \c{201} \c{KiTTY++_kitty} (Information; Warning when fatal): \c{session-close}, then \c{session}, \c{host}, \c{port}, \c{result}, \c{reason}, \c{exitcode}, \c{pid}.
 
-\b \c{210} \c{KiTTY++_kitty} (Information): \c{hostkey-known}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{basis}, \c{pid}.
+\b \c{210} \c{KiTTY++_kitty} (Information): \c{hostkey-known}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{basis}, \c{pid}, \c{proxy}.
 
-\b \c{211} \c{KiTTY++_kitty} (Information; Warning when refused): \c{hostkey-new}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}.
+\b \c{211} \c{KiTTY++_kitty} (Information; Warning when refused): \c{hostkey-new}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{212} \c{KiTTY++_kitty} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}.
+\b \c{212} \c{KiTTY++_kitty} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{220} \c{KiTTY++_kitty} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}.
+\b \c{220} \c{KiTTY++_kitty} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 
-\b \c{221} \c{KiTTY++_kitty} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}.
+\b \c{221} \c{KiTTY++_kitty} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}, \c{proxy}, \c{for}.
+
+\b \c{225} \c{KiTTY++_kitty} (Information): \c{proxy-used}, then \c{proxy}, \c{host}, \c{port}, \c{user}, \c{credentials}, \c{pid}, \c{for}.
 
 \b \c{230} \c{KiTTY++_kitty} (Warning): \c{farend-refused}, then \c{session}, \c{host}, \c{request}, \c{reason}, \c{detail}, \c{pid}.
+
+\b \c{240} \c{KiTTY++_kitty} (Information): \c{transfer-done}, then \c{session}, \c{host}, \c{port}, \c{user}, \c{method}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}.
+
+\b \c{241} \c{KiTTY++_kitty} (Warning): \c{transfer-failed}, then \c{session}, \c{host}, \c{port}, \c{user}, \c{method}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}, \c{reason}.
 
 \b \c{300} \c{KiTTY++_cli} (Information): \c{session-open}, then \c{session}, \c{host}, \c{port}, \c{proto}, \c{addr}, \c{from}, \c{pid}.
 
 \b \c{301} \c{KiTTY++_cli} (Information; Warning when fatal): \c{session-close}, then \c{session}, \c{host}, \c{port}, \c{result}, \c{reason}, \c{exitcode}, \c{pid}.
 
-\b \c{310} \c{KiTTY++_cli} (Information): \c{hostkey-known}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{basis}, \c{pid}.
+\b \c{310} \c{KiTTY++_cli} (Information): \c{hostkey-known}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{basis}, \c{pid}, \c{proxy}.
 
-\b \c{311} \c{KiTTY++_cli} (Information; Warning when refused): \c{hostkey-new}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}.
+\b \c{311} \c{KiTTY++_cli} (Information; Warning when refused): \c{hostkey-new}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{312} \c{KiTTY++_cli} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}.
+\b \c{312} \c{KiTTY++_cli} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{320} \c{KiTTY++_cli} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}.
+\b \c{320} \c{KiTTY++_cli} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 
-\b \c{321} \c{KiTTY++_cli} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}.
+\b \c{321} \c{KiTTY++_cli} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}, \c{proxy}, \c{for}.
 
-\b \c{330} \c{KiTTY++_cli} (Information): \c{transfer-done}, then \c{session}, \c{host}, \c{user}, \c{direction}, \c{local}, \c{remote}, \c{files}, \c{bytes}, \c{pid}.
+\b \c{325} \c{KiTTY++_cli} (Information): \c{proxy-used}, then \c{proxy}, \c{host}, \c{port}, \c{user}, \c{credentials}, \c{pid}, \c{for}.
 
-\b \c{331} \c{KiTTY++_cli} (Warning): \c{transfer-failed}, then \c{session}, \c{host}, \c{user}, \c{direction}, \c{local}, \c{remote}, \c{files}, \c{bytes}, \c{pid}, \c{errors}, \c{reason}.
+\b \c{330} \c{KiTTY++_cli} (Information): \c{transfer-done}, then \c{session}, \c{host}, \c{user}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}.
+
+\b \c{331} \c{KiTTY++_cli} (Warning): \c{transfer-failed}, then \c{session}, \c{host}, \c{user}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}, \c{reason}.
 
 \b \c{400} \c{KiTTY++_kittygen} (Information): \c{key-generated}, then \c{tool}, \c{keytype}, \c{bits}, \c{fp}, \c{comment}, \c{pid}.
 

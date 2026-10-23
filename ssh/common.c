@@ -892,7 +892,10 @@ SeatPromptResult verify_ssh_host_key(
      * host's runs on a Seat of its own. A question's answer is reported by
      * the transport layer once it has it (kitty_wev_hostkey_answer).
      */
-    bool kwev = kitty_wev_own_seat(iseat.seat);
+    /* "" for the program's own connection, "ssh" for one of its jump
+     * hosts (kitty_wev_seat_proxy), NULL: no record */
+    const char *kwev_px = kitty_wev_seat_proxy(iseat.seat);
+    bool kwev = kwev_px != NULL;
     const char *kwev_fp = (kwev && fingerprints) ?
         fingerprints[ssh2_pick_default_fingerprint(fingerprints)] : NULL;
 
@@ -921,7 +924,7 @@ SeatPromptResult verify_ssh_host_key(
                                          fingerprint)) {
                     if (kwev)
                         kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port,
-                                          keytype, kwev_fp, "manual");
+                                          keytype, kwev_fp, "manual", kwev_px);
                     return SPR_OK;
                 }
             }
@@ -949,7 +952,7 @@ SeatPromptResult verify_ssh_host_key(
                 sfree(base64blob);
                 if (kwev)
                     kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port,
-                                      keytype, kwev_fp, "manual");
+                                      keytype, kwev_fp, "manual", kwev_px);
                 return SPR_OK;
             }
             sfree(base64blob);
@@ -957,7 +960,7 @@ SeatPromptResult verify_ssh_host_key(
 
         if (kwev)
             kitty_wev_hostkey(KITTY_EVO_HOSTKEY_MISMATCH, host, port,
-                              keytype, kwev_fp, "refused");
+                              keytype, kwev_fp, "refused", kwev_px);
         return SPR_SW_ABORT("Host key not in manually configured list");
     }
 
@@ -968,7 +971,7 @@ SeatPromptResult verify_ssh_host_key(
     if (storage_status == 0) { /* matching key was found in the cache */
         if (kwev)
             kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port, keytype,
-                              kwev_fp, "cache");
+                              kwev_fp, "cache", kwev_px);
         return SPR_OK;
     }
 
@@ -994,7 +997,7 @@ SeatPromptResult verify_ssh_host_key(
         sfree(line);
         if (kwev)
             kitty_wev_hostkey(KITTY_EVO_HOSTKEY_NEW, host, port, keytype,
-                              kwev_fp, "accept-new");
+                              kwev_fp, "accept-new", kwev_px);
         return SPR_OK;
     }
 
@@ -1167,7 +1170,7 @@ SeatPromptResult verify_ssh_host_key(
         kitty_wev_hostkey_pending(storage_status == 2 ?
                                   KITTY_EVO_HOSTKEY_MISMATCH :
                                   KITTY_EVO_HOSTKEY_NEW,
-                                  host, port, keytype, kwev_fp);
+                                  host, port, keytype, kwev_fp, kwev_px);
     SeatPromptResult toret = seat_confirm_ssh_host_key(
         iseat, host, port, keytype, keystr, text, helpctx, callback, ctx);
     seat_dialog_text_free(text);

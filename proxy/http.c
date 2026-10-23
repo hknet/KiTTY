@@ -34,6 +34,15 @@ static bool read_line(bufchain *input, strbuf *output, bool is_header)
         }
     }
 
+    /* KiTTY: the empty line that ends the header section can have no
+     * continuation, so it is complete now. Waiting for one more byte hung
+     * the negotiation after a 407 with an empty body: the proxy then waits
+     * for our next request and sends nothing. */
+    if (is_header &&
+        ((output->len == 1 && output->s[0] == '\n') ||
+         (output->len == 2 && output->s[0] == '\r' && output->s[1] == '\n')))
+        goto done;
+
     return false;
 
   done:
@@ -458,6 +467,10 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
         /*
          * Add an auth header, if we're planning to this time round.
          */
+        pn->kwev_credentials = false;   /* KiTTY: this request's own */
+        if (s->next_auth->auth_type == AUTH_BASIC ||
+            s->next_auth->auth_type == AUTH_DIGEST)
+            proxy_wev_note_credentials(pn, s->username->s);
         if (s->next_auth->auth_type == AUTH_BASIC) {
             put_datalit(pn->output, "Proxy-Authorization: Basic ");
 
@@ -743,6 +756,18 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
             if (s->next_auth->digest_nonce_was_stale)
                 continue;
 
+            /* KiTTY: event 221/321 - the credentials we presented were
+             * refused, or the proxy wants some, we have none and cannot
+             * ask (a first 407 that leads to the prompt is no refusal) */
+            if (s->username->len || s->password->len)
+                proxy_wev_auth_failed(
+                    pn->ps, "http", "password", s->username->s,
+                    "HTTP proxy refused the credentials (407)");
+            else if (!pn->itr)
+                proxy_wev_auth_failed(
+                    pn->ps, "http", "none", s->username->s,
+                    "HTTP proxy requested authentication which we do not have");
+
             /* Either we never had a password in the first place, or
              * the one we already presented was rejected. We can only
              * proceed from here if we have a way to ask the user
@@ -809,6 +834,11 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
     }
 
   authenticated:
+    /* KiTTY: event 220/320 - the proxy accepted the Basic or Digest
+     * credentials of the last request (none sent: no login to record) */
+    if (pn->kwev_credentials)
+        proxy_wev_auth_ok(pn->ps, "http", "password", s->username->s);
+
     /*
      * Success! Hand over to the main connection.
      */

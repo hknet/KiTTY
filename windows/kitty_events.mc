@@ -120,6 +120,18 @@ Language=English
 %1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
 .
 
+MessageId=151
+SymbolicName=KITTY_AGENT_REENCRYPT
+Language=English
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+.
+
+MessageId=152
+SymbolicName=KITTY_AGENT_DECRYPT
+Language=English
+%1%nfp: %2%ncomment: %3%nresult: %4%ntrigger: %5%nreq: %6%nreqpath: %7%npid: %8%0
+.
+
 MessageId=160
 SymbolicName=KITTY_AGENT_START_STOP
 Language=English
@@ -152,37 +164,55 @@ Language=English
 MessageId=210
 SymbolicName=KITTY_SESSION_HOSTKEY_KNOWN
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=211
 SymbolicName=KITTY_SESSION_HOSTKEY_NEW
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=212
 SymbolicName=KITTY_SESSION_HOSTKEY_MISMATCH
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=220
 SymbolicName=KITTY_SESSION_AUTH_OK
 Language=English
-%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%nproxy: %8%nfor: %9%0
 .
 
 MessageId=221
 SymbolicName=KITTY_SESSION_AUTH_FAILED
 Language=English
-%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%0
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%nproxy: %9%nfor: %10%0
+.
+
+MessageId=225
+SymbolicName=KITTY_SESSION_PROXY_USED
+Language=English
+%1%nproxy: %2%nhost: %3%nport: %4%nuser: %5%ncredentials: %6%npid: %7%nfor: %8%0
 .
 
 MessageId=230
 SymbolicName=KITTY_SESSION_FAREND_REFUSED
 Language=English
 %1%nsession: %2%nhost: %3%nrequest: %4%nreason: %5%ndetail: %6%npid: %7%0
+.
+
+MessageId=240
+SymbolicName=KITTY_KITTY_TRANSFER_DONE
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nuser: %5%nmethod: %6%ndirection: %7%nlocal: %8%nremote: %9%nbytes: %10%npid: %11%0
+.
+
+MessageId=241
+SymbolicName=KITTY_KITTY_TRANSFER_FAILED
+Language=English
+%1%nsession: %2%nhost: %3%nport: %4%nuser: %5%nmethod: %6%ndirection: %7%nlocal: %8%nremote: %9%nbytes: %10%npid: %11%nreason: %12%0
 .
 
 ; klink, kscp and ksftp, source "KiTTY++_cli", with [KiTTY] clieventlog=yes:
@@ -204,43 +234,49 @@ Language=English
 MessageId=310
 SymbolicName=KITTY_CLI_HOSTKEY_KNOWN
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nbasis: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=311
 SymbolicName=KITTY_CLI_HOSTKEY_NEW
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=312
 SymbolicName=KITTY_CLI_HOSTKEY_MISMATCH
 Language=English
-%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
 .
 
 MessageId=320
 SymbolicName=KITTY_CLI_AUTH_OK
 Language=English
-%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%0
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nfp: %6%npid: %7%nproxy: %8%nfor: %9%0
 .
 
 MessageId=321
 SymbolicName=KITTY_CLI_AUTH_FAILED
 Language=English
-%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%0
+%1%nhost: %2%nport: %3%nuser: %4%nmethod: %5%nreason: %6%nmethods: %7%npid: %8%nproxy: %9%nfor: %10%0
+.
+
+MessageId=325
+SymbolicName=KITTY_CLI_PROXY_USED
+Language=English
+%1%nproxy: %2%nhost: %3%nport: %4%nuser: %5%ncredentials: %6%npid: %7%nfor: %8%0
 .
 
 MessageId=330
 SymbolicName=KITTY_CLI_TRANSFER_DONE
 Language=English
-%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nfiles: %8%nbytes: %9%npid: %10%0
+%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nbytes: %8%npid: %9%0
 .
 
 MessageId=331
 SymbolicName=KITTY_CLI_TRANSFER_FAILED
 Language=English
-%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nfiles: %8%nbytes: %9%npid: %10%nerrors: %11%nreason: %12%0
+%1%nsession: %2%nhost: %3%nuser: %4%ndirection: %5%nlocal: %6%nremote: %7%nbytes: %8%npid: %9%nreason: %10%0
 .
 
 ; kittygen and kittygen-cli, source "KiTTY++_kittygen", with [KiTTY]

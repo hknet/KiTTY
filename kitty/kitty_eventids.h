@@ -52,9 +52,12 @@
 #define KITTY_EVO_HOSTKEY_MISMATCH  12
 #define KITTY_EVO_AUTH_OK           20
 #define KITTY_EVO_AUTH_FAILED       21
+#define KITTY_EVO_PROXY_USED        25
 #define KITTY_EVO_FAREND_REFUSED    30   /* kitty.exe only */
 #define KITTY_EVO_TRANSFER_DONE     30   /* command-line tools only */
 #define KITTY_EVO_TRANSFER_FAILED   31   /* command-line tools only */
+#define KITTY_EVO_TERM_TRANSFER_DONE   40   /* kitty.exe only: in-terminal */
+#define KITTY_EVO_TERM_TRANSFER_FAILED 41   /* kitty.exe only: in-terminal */
 /* The offsets below this one are shared by 2xx and 3xx. */
 #define KITTY_EVO_SHARED_END        30
 
@@ -128,6 +131,12 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 150, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "reencrypt-all",
       "fp comment result reason req reqpath pid",
       "Information; Warning for a refusal or failure" },
+    { 151, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "reencrypt",
+      "fp comment result reason req reqpath pid",
+      "Information; Warning for a refusal or failure" },
+    { 152, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "decrypt",
+      "fp comment result trigger req reqpath pid",
+      "Information; Warning for a refusal or failure" },
     { 160, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "agent", "result",
       "Information; Warning for a refusal or failure" },
     { 170, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logrotate", "result",
@@ -141,22 +150,32 @@ static const struct kitty_eventid kitty_eventids[] = {
       "session host port result reason exitcode pid",
       "Information; Warning when fatal" },
     { 210, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-known",
-      "host port keytype fp basis pid",
+      "host port keytype fp basis pid proxy",
       "Information" },
     { 211, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-new",
-      "host port keytype fp result pid",
+      "host port keytype fp result pid proxy",
       "Information; Warning when refused" },
     { 212, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-mismatch",
-      "host port keytype fp result pid",
+      "host port keytype fp result pid proxy",
       "Warning" },
     { 220, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "auth-ok",
-      "host port user method fp pid",
+      "host port user method fp pid proxy for",
       "Information" },
     { 221, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "auth-failed",
-      "host port user method reason methods pid",
+      "host port user method reason methods pid proxy for",
       "Warning" },
+    { 225, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "proxy-used",
+      "proxy host port user credentials pid for",
+      "Information" },
     { 230, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "farend-refused",
       "session host request reason detail pid",
+      "Warning" },
+    { 240, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "transfer-done",
+      "session host port user method direction local remote bytes pid",
+      "Information" },
+    { 241, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "transfer-failed",
+      "session host port user method direction local remote bytes pid "
+      "reason",
       "Warning" },
 
     /* klink, kscp, ksftp */
@@ -167,25 +186,28 @@ static const struct kitty_eventid kitty_eventids[] = {
       "session host port result reason exitcode pid",
       "Information; Warning when fatal" },
     { 310, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-known",
-      "host port keytype fp basis pid",
+      "host port keytype fp basis pid proxy",
       "Information" },
     { 311, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-new",
-      "host port keytype fp result pid",
+      "host port keytype fp result pid proxy",
       "Information; Warning when refused" },
     { 312, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-mismatch",
-      "host port keytype fp result pid",
+      "host port keytype fp result pid proxy",
       "Warning" },
     { 320, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "auth-ok",
-      "host port user method fp pid",
+      "host port user method fp pid proxy for",
       "Information" },
     { 321, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "auth-failed",
-      "host port user method reason methods pid",
+      "host port user method reason methods pid proxy for",
       "Warning" },
+    { 325, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "proxy-used",
+      "proxy host port user credentials pid for",
+      "Information" },
     { 330, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "transfer-done",
-      "session host user direction local remote files bytes pid",
+      "session host user direction local remote bytes pid",
       "Information" },
     { 331, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "transfer-failed",
-      "session host user direction local remote files bytes pid errors reason",
+      "session host user direction local remote bytes pid reason",
       "Warning" },
 
     /* kittygen, kittygen-cli */
@@ -233,8 +255,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "absent",
       "113: startup keys whose file was not there" },
     { "addr",
-      "200, 300: the address connected to (a proxy's when one is "
-      "used)" },
+      "200, 300: the address connected to (a proxy's when one is used); a "
+      "serial line's name" },
     { "basis",
       "210, 310: how the host key was known; values: cache, manual,"
       " ca" },
@@ -244,13 +266,16 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "broken",
       "113: startup keys whose file could not be read" },
     { "bytes",
-      "330, 331: the bytes the job moved" },
+      "240, 241, 330, 331: the file's bytes moved; empty when not known" },
     { "check",
       "900: the check that refused the program file; values: "
       "rename, signature, integrity" },
     { "comment",
       "100-170: the comment of the key concerned; 400, 401: of the "
       "key generated or saved" },
+    { "credentials",
+      "225, 325: yes when a user name or password went to the proxy, "
+      "else no" },
     { "days",
       "901: LogKeepDays as set, 0 = off" },
     { "dest",
@@ -261,23 +286,25 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "open (a far2l clipboard open), the transfer id or the file "
       "name" },
     { "direction",
-      "330, 331: put (to the server) or get (from it)" },
+      "240, 241, 330, 331: put (upload, to the server) or get (download, "
+      "from it)" },
     { "enc",
       "111: whether the key file has a passphrase; values: "
       "password, blank" },
     { "err",
       "131: the error text when the protection failed" },
-    { "errors",
-      "331: kscp: the errors of the run; ksftp: the files of the "
-      "command that failed" },
     { "exitcode",
       "201: the remote command's exit code; 301: the tool's own "
       "exit code; empty when there is none" },
     { "features",
       "902: the features this Windows lacks, comma-separated" },
     { "files",
-      "330, 331: the files the job moved; 901: the log files "
-      "deleted" },
+      "901: the log files deleted" },
+    { "for",
+      "220, 221, 225, 320, 321, 325: what the connection served; empty "
+      "for the connection's own login; session for a jump host's login "
+      "and for a proxy the session went through; forward for a port "
+      "forwarding's connection, x11 for an X11 forwarding's" },
     { "format",
       "401: ppk3, ppk2, openssh, ssh.com or ssh1; 402: rfc4716, "
       "openssh or ssh1" },
@@ -287,13 +314,16 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "the signer name; integrity: no stamp, truncated, bad stamp, "
       "modified or cannot check" },
     { "fp",
-      "the key fingerprint; 100-170: as the agent shows it "
-      "(ssh-ed25519 255 SHA256:...); 210-221, 310-321, 400-403: the"
-      " hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...)" },
+      "the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 "
+      "255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); "
+      "210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 "
+      "key's MD5 hash, aa:bb:...), empty for a proxy's login" },
     { "from",
       "200, 300: the local end of the connection, address and port" },
     { "host",
-      "the host name as given for the connection" },
+      "the host name as given for the connection; a serial line's name "
+      "(COM3); with proxy set and in 225, 325: the proxy's; 225, 325 "
+      "local-command: the program's file name" },
     { "kb",
       "901: the kilobytes freed" },
     { "keytype",
@@ -303,17 +333,21 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "loaded",
       "113: startup keys loaded" },
     { "local",
-      "330, 331: the local path - the first source of a put, the "
-      "target of a get" },
+      "240, 241, 330, 331: the file's full local path; a 331 for a run "
+      "that failed before any file: the local path as given" },
     { "mb",
       "901: LogKeepMB as set, 0 = off" },
     { "method",
-      "220, 221, 320, 321: the authentication method, for 221 and "
-      "321 the last one tried; values: none, publickey, password, "
-      "keyboard-interactive, gssapi-with-mic" },
+      "220, 221, 320, 321: the authentication method; for 221 and 321 the "
+      "one refused, or the last one tried when no method was left; "
+      "values: none, publickey, password, keyboard-interactive, "
+      "gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's "
+      "login: password, chap, none, ident; 240, 241: zmodem or "
+      "kitten-osc5113" },
     { "methods",
-      "221, 321: the methods the server still offered, "
-      "comma-separated" },
+      "221, 321: the methods the server still offered, comma-separated "
+      "(over SSH-1 from its authentication mask: publickey, password, "
+      "tis, cryptocard); empty for a proxy's login" },
     { "missing",
       "902: each missing entry point with its DLL and the feature "
       "it powers, separated by semicolons" },
@@ -325,26 +359,37 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "100-170: the process that asked the agent, empty when none "
       "did; 200-403: the process writing the record" },
     { "port",
-      "the port connected to" },
+      "the port connected to; a serial line's speed; with proxy set and "
+      "in 225, 325: the proxy's; 225, 325 local-command: empty" },
     { "program",
       "900: the refused program file's path" },
     { "protection",
       "401, 403: none, passphrase or hello" },
     { "proto",
-      "200, 300: the protocol; values: ssh, telnet, raw, rlogin, "
-      "supdup" },
+      "200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, "
+      "serial" },
+    { "proxy",
+      "210-221, 310-321: empty for the connection's own host key and "
+      "login; for a proxy's its type: ssh (a jump host), http, socks5, "
+      "socks4; 225, 325: the proxy's type: http, socks4, socks5, "
+      "telnet, local-command" },
     { "reason",
-      "100-170: a token - gui, ipc, ipc-policy, tray, windows-lock,"
-      " windows-unlock, click-allow, click-deny, "
-      "click-cancel-latch, pileup, suppress-latch, hello-verified, "
-      "hello-denied, hello-unavailable, hello-error; 201, 301: the "
-      "fatal error's text; 221, 230, 321, 331, 401, 402: the reason"
-      " as text" },
+      "100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, "
+      "device-removal, idle, windows-lock, windows-unlock, click-allow, "
+      "click-deny, click-cancel-latch, pileup, suppress-latch, "
+      "hello-verified, hello-denied, hello-unavailable, hello-error; 201, "
+      "301: the fatal error's text; 221, 321: access denied, public-key "
+      "signature refused, no supported authentication methods available, "
+      "the server's message when it ended the connection instead of "
+      "answering, or a proxy's refusal as text; 230, 241, 331, 401, 402: "
+      "the reason as text" },
     { "refused",
       "113: startup keys refused" },
     { "remote",
-      "330, 331: the remote path - the first source of a get, the "
-      "target of a put" },
+      "240, 241, 330, 331: the file's remote path - in full where the "
+      "protocol names it (sftp), else as the server sent it (scp "
+      "protocol: the name; ZModem download: the name rz announced, or "
+      "empty; kitten: the far end's name)" },
     { "req",
       "100-170: the file name of the program that asked the agent" },
     { "reqpath",
@@ -353,24 +398,28 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "230: what the far end asked for; values: osc52-read, "
       "osc5522-read, far2l-clipboard, file-read, file-write" },
     { "result",
-      "the outcome; 100, 101: allowed, denied; 110, 114, 115: done,"
-      " blocked; 111: loaded, failed, fp-refused, not-verified; "
-      "112: forgotten; 120, 121: done, refused, waiting, "
-      "unlock-shut, shut, blocked; 130: added, denied, failed; 131:"
-      " protected, denied, failed, startup-entry-replaced; 132: "
-      "hello, hello-cached, recovery-passphrase, printed-secret, "
-      "denied, no-door-here, failed; 150: done; 160: start, stop; "
-      "170: failed; 201, 301: closed, remote-closed, fatal, user; "
-      "211, 212, 311, 312: accept-new, accepted, refused; 401, 402:"
-      " saved, failed" },
+      "the outcome; 100, 101: allowed, denied; 110, 114, 115: done, "
+      "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "
+      "forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, "
+      "blocked; 130: added, denied, failed; 131: protected, denied, "
+      "failed, startup-entry-replaced; 132: hello, hello-cached, "
+      "recovery-passphrase, printed-secret, denied, no-door-here, failed; "
+      "150, 151: done, failed; 152: done, failed (a wrong passphrase), "
+      "cancelled; 160: start, stop; 170: failed; 201, 301: closed, "
+      "remote-closed, fatal, user; 211, 212, 311, 312: accept-new, "
+      "accepted, refused; 401, 402: saved, failed" },
     { "session",
       "the saved session's name, empty when none was loaded" },
     { "tool",
       "400-403: kittygen or kittygen-cli" },
     { "trigger",
-      "113: what started the retry; values: button, device-arrival" },
+      "113: what started the retry; values: button, device-arrival; 152: "
+      "what asked for the passphrase; values: first-use (a signature), "
+      "gui (the key list's Decrypt)" },
     { "user",
-      "220, 221, 320, 321, 330, 331: the user name of the login" },
+      "220, 221, 320, 321, 240, 241, 330, 331: the user name of the login "
+      "(a proxy's: the name sent to it); 225, 325: the user name sent to "
+      "the proxy, empty when none" },
     { "warning",
       "140: weak-protection or old-format" },
 };

@@ -102,6 +102,13 @@ static void proxy_socks4_process_queue(ProxyNegotiator *pn)
 
         switch (data[1]) {
           case SOCKS4_RESP_SUCCESS:
+            /* KiTTY: event 220/320 - a user id the proxy accepted */
+            if (*conf_get_str(pn->ps->conf, CONF_proxy_username)) {
+                const char *kwev_u =
+                    conf_get_str(pn->ps->conf, CONF_proxy_username);
+                proxy_wev_note_credentials(pn, kwev_u);
+                proxy_wev_auth_ok(pn->ps, "socks4", "ident", kwev_u);
+            }
             pn->done = true;
             break;
 
@@ -111,10 +118,14 @@ static void proxy_socks4_process_queue(ProxyNegotiator *pn)
 
           case SOCKS4_RESP_WANT_IDENTD:
             pn->error = dupstr("SOCKS server wanted IDENTD on client");
+            proxy_wev_auth_failed(pn->ps, "socks4", "ident",   /* KiTTY */
+                                  NULL, pn->error);
             break;
 
           case SOCKS4_RESP_IDENTD_MISMATCH:
             pn->error = dupstr("Username and IDENTD on client don't agree");
+            proxy_wev_auth_failed(pn->ps, "socks4", "ident",   /* KiTTY */
+                                  NULL, pn->error);
             break;
 
           default:

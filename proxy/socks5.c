@@ -145,6 +145,8 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
         if (data[1] == SOCKS5_AUTH_REJECTED) {
             pn->error = dupstr("SOCKS server rejected every authentication "
                                "method we offered");
+            proxy_wev_auth_failed(pn->ps, "socks5", "none",   /* KiTTY */
+                                  NULL, pn->error);
             crStopV;
         }
 
@@ -271,6 +273,8 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
 
         if (data[1] != 0) {
             pn->error = dupstr("SOCKS 5 server rejected our password");
+            proxy_wev_auth_failed(pn->ps, "socks5", "password",   /* KiTTY */
+                                  s->username->s, pn->error);
             crStopV;
         }
     } else if (s->auth_method == SOCKS5_AUTH_CHAP) {
@@ -358,6 +362,9 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
                     } else {
                         pn->error = dupstr(
                             "SOCKS 5 CHAP authentication failed");
+                        proxy_wev_auth_failed(pn->ps, "socks5",   /* KiTTY */
+                                              "chap", s->username->s,
+                                              pn->error);
                         crStopV;
                     }
                 } else if (s->chap_attr == SOCKS5_AUTH_CHAP_ATTR_CHALLENGE) {
@@ -383,6 +390,15 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
     }
 
   authenticated:
+    /* KiTTY: event 220/320 - the proxy accepted our user name and
+     * password or CHAP response (the none method is no login) */
+    if (s->auth_method == SOCKS5_AUTH_PASSWORD ||
+        s->auth_method == SOCKS5_AUTH_CHAP) {
+        const char *kwev_m = s->auth_method == SOCKS5_AUTH_PASSWORD ?
+            "password" : "chap";
+        proxy_wev_note_credentials(pn, s->username->s);
+        proxy_wev_auth_ok(pn->ps, "socks5", kwev_m, s->username->s);
+    }
 
     /*
      * SOCKS 5 connection command:

@@ -50,14 +50,19 @@ static Conf *conf;
 static bool sent_eof = false;
 
 /*
- * KiTTY: the job's record in the Windows Event Log (kitty_winevent.h, 330
- * transfer-done / 331 transfer-failed, [KiTTY] clieventlog): one per kscp
- * run that copies files, with the files and bytes that went across, the
- * error count and the first error (or the fatal one).
+ * KiTTY: the transfer's records in the Windows Event Log (kitty_winevent.h,
+ * 330 transfer-done / 331 transfer-failed, [KiTTY] clieventlog): one per
+ * FILE - its local and remote path and its bytes, or the reason it failed.
+ * A run that failed before any file (a source that does not exist, a
+ * refused login) gets one 331 naming what was asked for.
  */
 static bool kwev_job = false, kwev_reported = false;
-static unsigned long kwev_files;
-static unsigned long long kwev_bytes;
+static unsigned long kwev_nrec;                 /* per-file records written */
+static bool kwev_cur;                           /* a file is in flight */
+static char kwev_cur_local[1024], kwev_cur_remote[1024];
+/* the remote path of an upload: sftp's full name, or for the scp protocol
+ * the target folder followed into the subfolders a -r upload creates */
+static char kwev_sent_remote[1024], kwev_scp_rdir[1024];
 static char kwev_local[512], kwev_remote[512], kwev_reason[256];
 /* the last line told on stderr: the reason when no error was noted (a
  * refusal the server sent, an SFTP status - pscp prints those itself) */
@@ -74,16 +79,50 @@ static void kwev_note(const char *msg, bool fatal)
         kwev_reason[--n] = '\0';
 }
 
+/* A file starts: its local path, and its remote one where known yet. */
+static void kwev_file_begin(const char *local, const char *remote)
+{
+    if (!kwev_job || !kitty_wev_enabled())
+        return;
+    kwev_cur = true;
+    snprintf(kwev_cur_local, sizeof(kwev_cur_local), "%s", local ? local : "");
+    snprintf(kwev_cur_remote, sizeof(kwev_cur_remote), "%s",
+             remote ? remote : "");
+}
+
+/* That file's record: 330, or 331 with the reason (its trailing newline
+ * dropped). bytes < 0 = not known. */
+static void kwev_file_end(bool ok, long long bytes, const char *reason)
+{
+    char why[256];
+    size_t n;
+    if (!kwev_cur)
+        return;
+    kwev_cur = false;
+    snprintf(why, sizeof(why), "%s", reason ? reason : "");
+    n = strlen(why);
+    while (n && (why[n - 1] == '\n' || why[n - 1] == '\r'))
+        why[--n] = '\0';
+    kitty_wev_transfer(ok, conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                       uploading ? "put" : "get", kwev_cur_local,
+                       kwev_cur_remote, bytes, ok ? "" : why);
+    kwev_nrec++;
+}
+
+/* The run ends (or dies): a file still in flight failed; a run that failed
+ * before any file names what was asked for. */
 static void kwev_transfer_report(void)
 {
     if (!kwev_job || kwev_reported || !kitty_wev_enabled())
         return;
     kwev_reported = true;
-    kitty_wev_transfer(errs == 0,
-                       conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
-                       uploading ? "put" : "get", kwev_local, kwev_remote,
-                       kwev_files, kwev_bytes, (unsigned long)errs,
-                       !errs ? "" : kwev_reason[0] ? kwev_reason : kwev_last);
+    if (kwev_cur)
+        kwev_file_end(false, -1, kwev_reason[0] ? kwev_reason : kwev_last);
+    if (!kwev_nrec && errs)
+        kitty_wev_transfer(false,
+                           conf ? conf_get_str_ambi(conf, CONF_username, NULL) : "",
+                           uploading ? "put" : "get", kwev_local, kwev_remote,
+                           -1, kwev_reason[0] ? kwev_reason : kwev_last);
 }
 
 static void source(const char *src);
@@ -860,6 +899,8 @@ int scp_send_filename(const char *name, uint64_t size, int permissions)
         } else {
             fullname = dupstr(scp_sftp_remotepath);
         }
+        /* KiTTY: event 330/331's remote path */
+        snprintf(kwev_sent_remote, sizeof(kwev_sent_remote), "%s", fullname);
 
         attrs.flags = 0;
         PUT_PERMISSIONS(attrs, permissions);
@@ -887,6 +928,10 @@ int scp_send_filename(const char *name, uint64_t size, int permissions)
         if (permissions < 0)
             permissions = 0644;
         buf = dupprintf("C%04o %"PRIu64" ", (int)(permissions & 07777), size);
+        /* KiTTY: event 330/331's remote path - the scp protocol names the
+         * target folder only, so the folder as given, then the name */
+        snprintf(kwev_sent_remote, sizeof(kwev_sent_remote), "%s%s%s",
+                 kwev_scp_rdir, kwev_scp_rdir[0] ? "/" : "", name);
         backend_send(backend, buf, strlen(buf));
         sfree(buf);
         backend_send(backend, name, strlen(name));
@@ -1056,10 +1101,18 @@ int scp_send_dirname(const char *name, int modes)
         }
 
         scp_sftp_remotepath = fullname;
+        /* KiTTY: the folder just made (or found) is where what follows
+         * goes. Upstream PuTTY leaves this false when the target did not
+         * exist before, so "-r dir host:newname" over SFTP made newname and
+         * then tried to open newname itself for every file in it. */
+        scp_sftp_targetisdir = true;
 
         return 0;
     } else {
         char buf[40];
+        size_t rl = strlen(kwev_scp_rdir);   /* KiTTY: the record's folder */
+        snprintf(kwev_scp_rdir + rl, sizeof(kwev_scp_rdir) - rl, "%s%s",
+                 rl ? "/" : "", name);
         sprintf(buf, "D%04o 0 ", modes);
         backend_send(backend, buf, strlen(buf));
         backend_send(backend, name, strlen(name));
@@ -1074,6 +1127,11 @@ int scp_send_enddir(void)
         sfree(scp_sftp_remotepath);
         return 0;
     } else {
+        char *sl = strrchr(kwev_scp_rdir, '/');   /* KiTTY: back up a level */
+        if (sl)
+            *sl = '\0';
+        else
+            kwev_scp_rdir[0] = '\0';
         backend_send(backend, "E\n", 2);
         return response();
     }
@@ -1653,6 +1711,7 @@ static PRINTF_LIKE(1, 2) void run_err(const char *fmt, ...)
     errs++;
     str = dupvprintf(fmt, ap);
     kwev_note(str, false);             /* KiTTY: the first error, for the record */
+    kwev_file_end(false, -1, str);     /* KiTTY: the file in flight failed */
     str2 = dupcat("kscp: ", str, "\n");
     sfree(str);
     scp_send_errmsg(str2);
@@ -1717,6 +1776,7 @@ static void source(const char *src)
     if (last == src && strchr(src, ':') != NULL)
         last = strchr(src, ':') + 1;
 
+    kwev_file_begin(src, "");          /* KiTTY: event 330/331 */
     f = open_existing_file(src, &size, &mtime, &atime, &permissions);
     if (f == NULL) {
         run_err("%s: Cannot open file", src);
@@ -1732,10 +1792,15 @@ static void source(const char *src)
     if (verbose) {
         tell_user(stderr, "Sending file %s, size=%"PRIu64, last, size);
     }
+    kwev_sent_remote[0] = '\0';
     if (scp_send_filename(last, size, permissions)) {
+        snprintf(kwev_cur_remote, sizeof(kwev_cur_remote), "%s",
+                 kwev_sent_remote);
+        kwev_file_end(false, -1, kwev_last);   /* KiTTY: its 331 */
         close_rfile(f);
         return;
     }
+    snprintf(kwev_cur_remote, sizeof(kwev_cur_remote), "%s", kwev_sent_remote);
 
     stat_bytes = 0;
     stat_starttime = time(NULL);
@@ -1767,8 +1832,7 @@ static void source(const char *src)
     close_rfile(f);
 
     (void) scp_send_finish();
-    kwev_files++;                      /* KiTTY: the job's tally */
-    kwev_bytes += size;
+    kwev_file_end(true, (long long)size, "");   /* KiTTY: event 330 */
 }
 
 /*
@@ -1966,6 +2030,10 @@ static void sink(const char *targ, const char *src)
             continue;
         }
 
+        /* KiTTY: event 330/331 - sftp knows the remote file's full name,
+         * the scp protocol only the name the server sent */
+        kwev_file_begin(destfname, using_sftp && scp_sftp_currentname ?
+                        scp_sftp_currentname : act.name);
         f = open_new_file(destfname, act.permissions);
         if (f == NULL) {
             with_stripctrl(san, destfname)
@@ -2034,8 +2102,7 @@ static void sink(const char *targ, const char *src)
             continue;
         }
         (void) scp_finish_filerecv();
-        kwev_files++;                  /* KiTTY: the job's tally */
-        kwev_bytes += act.size;
+        kwev_file_end(true, (long long)act.size, "");   /* KiTTY: event 330 */
         sfree(stat_name);
         sfree(destfname);
     }
@@ -2072,6 +2139,7 @@ static void toremote(CmdlineArg **args, size_t nargs)
     kwev_job = true;
     snprintf(kwev_local, sizeof(kwev_local), "%s", cmdline_arg_to_str(args[0]));
     snprintf(kwev_remote, sizeof(kwev_remote), "%s", targ);
+    snprintf(kwev_scp_rdir, sizeof(kwev_scp_rdir), "%s", targ);
 
     /* Separate host and username */
     user = host;

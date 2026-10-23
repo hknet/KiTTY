@@ -95,7 +95,8 @@ void kitty_eventlog_line(unsigned type, const char *msg)
     if (!h)
         return;
     strings[0] = msg;
-    ReportEventA(h, (WORD)type, 0, 0, NULL, 1, 0, strings, NULL);
+    ReportEventA(h, (WORD)type, 0, 0, kitty_wev_user_sid(), 1, 0, strings,
+                 NULL);
     DeregisterEventSource(h);
 }
 

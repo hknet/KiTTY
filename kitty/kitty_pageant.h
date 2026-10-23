@@ -183,6 +183,28 @@ int kageant_unverified_count(void);
 const char *kageant_pending_accept_file(const char *path);
 /* fingerprint of the file at that path right now, or NULL; free it */
 char *kageant_fp_of_file(const char *path);
+/* The same file's key as the agent's records name it (type, bits and the
+ * SHA256 hash; an SSH-1 key's bits and MD5 hash), or NULL. Free it. */
+char *kageant_record_fp_of_file(const char *path);
+/* The same for a public blob the agent holds (SSH-2, or the SSH-1
+ * exponent-first blob). Free it. */
+char *kageant_record_fp_of_blob(ptrlen blob);
+/* One record of a change kageant itself made to the agent's keys: ev =
+ * "add", "remove", "remove-all", "reencrypt" or "reencrypt-all"; blob names
+ * the key (its fp and comment are looked up; empty for the -all kinds);
+ * reason = gui, cmdline, lifetime, device-removal, idle. */
+void kageant_audit_keyset(const char *ev, ptrlen blob, const char *result,
+                          const char *reason);
+/* IPC re-encrypt, installed as kageant_reencrypt_audit_hook. */
+void kageant_do_reencrypt_audit(int all, const char *fp, const char *comment,
+                                bool ok);
+/* Event 152 (kitty_kageant_audit.c); installed as kageant_decrypt_audit_hook
+ * with trigger first-use. */
+void kageant_audit_decrypt(const char *fp, const char *comment,
+                           const char *result, const char *trigger,
+                           unsigned long pid);
+void kageant_do_decrypt_audit(const char *fp, const char *comment,
+                              const char *result, unsigned long pid);
 /* the user accepted a changed or unverified key in the key list: load it and
  * adopt its fingerprint. The ONLY path that ever adopts one - see the comment
  * there. */
@@ -243,9 +265,9 @@ void kageant_apply_saved_order(void);
 int kageant_nloaded(void);             /* key paths tracked this session */
 
 /* ---- key-use confirm/notify (installed as agent-core hook pointers) ---- */
-int kageant_do_confirm(const char *comment, int key_confirm);
-void kageant_do_mutation_notice(int op, const char *comment);
-int  kageant_ipc_blocked(int op);   /* IPC access-control policy */
+int kageant_do_confirm(const char *comment, int key_confirm, const char *fp);
+void kageant_do_mutation_notice(int op, const char *comment, const char *fp);
+int  kageant_ipc_blocked(int op, const char *fp);   /* IPC access-control policy */
 void kageant_confirm_resume(void);  /* lift the confirm-suppress latch */
 int  kageant_confirm_suppressed(void);  /* is the latch engaged? */
 int  kageant_lockdown_get(void);
@@ -270,7 +292,8 @@ int  kageant_notice_timeout_set(int seconds);
 int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment, const char *fingerprint);
 /* the hook pointers themselves live in the agent core (../pageant.c) */
-extern int (*kageant_confirm_hook)(const char *comment, int key_confirm);
+extern int (*kageant_confirm_hook)(const char *comment, int key_confirm,
+                                  const char *fp);
 extern void (*kageant_random_hook)(void *buf, size_t size);
 /* the public blob behind a deferred-decryption prompt (agent core) */
 struct PageantClientDialogId;

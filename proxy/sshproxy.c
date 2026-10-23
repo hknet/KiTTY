@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #include "putty.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: the hop's login records */
 #include "ssh.h"
 #include "network.h"
 #include "storage.h"
@@ -64,6 +65,7 @@ static void sshproxy_close(Socket *s)
 {
     SshProxy *sp = container_of(s, SshProxy, sock);
 
+    kitty_wev_hop_remove(&sp->seat);   /* KiTTY */
     sk_addr_free(sp->addr);
     sfree(sp->errmsg);
     conf_free(sp->conf);
@@ -906,6 +908,8 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
                   "connection (no saved session involved)", proxy_hostname);
 
     char *error, *realhost;
+    /* KiTTY: this hop's login goes on the record too (proxy "ssh") */
+    kitty_wev_hop_add(&sp->seat);
     error = backend_init(backvt, &sp->seat, &sp->backend, sp->logctx, sp->conf,
                          conf_get_str(sp->conf, CONF_host),
                          conf_get_int(sp->conf, CONF_port),

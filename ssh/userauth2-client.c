@@ -270,6 +270,31 @@ static const char *kitty_wev_method(int type)
     return "";
 }
 
+/* KiTTY: event 221/321 for an attempt the server refused; methods = what
+ * its USERAUTH_FAILURE still offers. */
+static void kitty_wev_refused(struct ssh2_userauth_state *s,
+                              const char *reason, ptrlen methods)
+{
+    const char *px = kitty_wev_seat_proxy(s->ppl.seat);
+    if (px) {
+        char *m = mkstr(methods);
+        kitty_wev_auth_failed(s->hostname, s->port, s->username,
+                              kitty_wev_method(s->type), reason, m, px);
+        sfree(m);
+    }
+}
+
+/* KiTTY: a credential is on its way to the server - see
+ * kitty_wev_auth_sent. */
+static void kitty_wev_sent(struct ssh2_userauth_state *s)
+{
+    const char *px = kitty_wev_seat_proxy(s->ppl.seat);
+    if (px)
+        kitty_wev_auth_sent(s->hostname, s->port, s->username,
+                            kitty_wev_method(s->type),
+                            s->last_methods_string->s, px);
+}
+
 PacketProtocolLayer *ssh2_userauth_new(
     PacketProtocolLayer *successor_layer,
     const char *hostname, int port, const char *fullhostname,
@@ -1016,18 +1041,22 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
              */
             ssh2_userauth_print_banner(s);
 
+            if (pktin)
+                kitty_wev_auth_settled();   /* KiTTY: the server answered */
+
             if (pktin && pktin->type == SSH2_MSG_USERAUTH_SUCCESS) {
                 ppl_logevent("Access granted");
                 /* KiTTY: event 220/320, with the key a publickey login
                  * signed with */
-                if (kitty_wev_own_seat(s->ppl.seat)) {
+                if (kitty_wev_seat_proxy(s->ppl.seat)) {
                     char *kfp = (s->type == AUTH_TYPE_PUBLICKEY &&
                                  s->kitty_wev_blob) ?
                         ssh2_fingerprint_blob(
                             ptrlen_from_strbuf(s->kitty_wev_blob),
                             SSH_FPTYPE_SHA256) : NULL;
                     kitty_wev_auth_ok(s->hostname, s->port, s->username,
-                                      kitty_wev_method(s->type), kfp);
+                                      kitty_wev_method(s->type), kfp,
+                                      kitty_wev_seat_proxy(s->ppl.seat));
                     sfree(kfp);
                 }
                 goto userauth_success;
@@ -1103,6 +1132,8 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                                    " despite accepting key!\r\n");
                         ppl_logevent("Server refused public-key signature"
                                      " despite accepting key!");
+                        kitty_wev_refused(s, "public-key signature refused",
+                                          methods);
                     } else if (s->type==AUTH_TYPE_KEYBOARD_INTERACTIVE_QUIET) {
                         /* quiet, so no ppl_printf */
                         ppl_logevent("Server refused keyboard-interactive "
@@ -1115,10 +1146,12 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                         ppl_logevent("Keyboard-interactive authentication "
                                      "failed");
                         ppl_printf("Access denied\r\n");
+                        kitty_wev_refused(s, "access denied", methods);
                     } else {
                         assert(s->type == AUTH_TYPE_PASSWORD);
                         ppl_logevent("Password authentication failed");
                         ppl_printf("Access denied\r\n");
+                        kitty_wev_refused(s, "access denied", methods);
 
                         if (s->change_username) {
                             /* XXX perhaps we should allow
@@ -1308,6 +1341,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                             s->type = AUTH_TYPE_PUBLICKEY;
                             s->kitty_wev_blob =
                                 s->agent_keys[s->agent_key_index].blob;
+                            kitty_wev_sent(s);
                             s->is_trivial_auth = false;
                         } else {
                             ppl_logevent(KT_AGENT_LOG_REFUSED);
@@ -1582,6 +1616,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     ppl_logevent("Sent public key signature");
                     s->type = AUTH_TYPE_PUBLICKEY;
                     s->kitty_wev_blob = s->publickey_blob;
+                    kitty_wev_sent(s);
                     ssh_key_free(key->key);
                     sfree(key->comment);
                     sfree(key);
@@ -1931,6 +1966,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                             s, BinarySink_UPCAST(s->pktout));
                         s->pktout->minlen = 256;
                         pq_push(s->ppl.out_pq, s->pktout);
+                        kitty_wev_sent(s);   /* KiTTY */
 
                         /*
                          * Get the next packet in case it's another
@@ -1938,6 +1974,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                          */
                         crMaybeWaitUntilV(
                             (pktin = ssh2_userauth_pop(s)) != NULL);
+                        kitty_wev_auth_settled();   /* KiTTY: answered */
                     }
                 } else {
                     /*
@@ -2003,6 +2040,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                         put_datapl(s->pktout, get_data(src, get_avail(src)));
                         s->pktout->minlen = 256;
                         pq_push(s->ppl.out_pq, s->pktout);
+                        kitty_wev_sent(s);   /* KiTTY */
 
                         /*
                          * Get the next packet in case it's another
@@ -2010,6 +2048,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                          */
                         crMaybeWaitUntilV(
                             (pktin = ssh2_userauth_pop(s)) != NULL);
+                        kitty_wev_auth_settled();   /* KiTTY: answered */
                     }
                 }
 
@@ -2134,12 +2173,14 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 pq_push(s->ppl.out_pq, s->pktout);
                 ppl_logevent("Sent password");
                 s->type = AUTH_TYPE_PASSWORD;
+                kitty_wev_sent(s);   /* KiTTY */
 
                 /*
                  * Wait for next packet, in case it's a password change
                  * request.
                  */
                 crMaybeWaitUntilV((pktin = ssh2_userauth_pop(s)) != NULL);
+                kitty_wev_auth_settled();   /* KiTTY: answered */
                 changereq_first_time = true;
 
                 while (pktin->type == SSH2_MSG_USERAUTH_PASSWD_CHANGEREQ) {
@@ -2271,6 +2312,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     s->pktout->minlen = 256;
                     pq_push(s->ppl.out_pq, s->pktout);
                     ppl_logevent("Sent new password");
+                    kitty_wev_sent(s);   /* KiTTY */
 
                     /*
                      * Now see what the server has to say about it.
@@ -2278,6 +2320,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                      * new password.)
                      */
                     crMaybeWaitUntilV((pktin = ssh2_userauth_pop(s)) != NULL);
+                    kitty_wev_auth_settled();   /* KiTTY: answered */
                     changereq_first_time = false;
 
                 }
@@ -2307,12 +2350,13 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
             } else {
                 /* KiTTY: event 221/321 - once, when nothing is left to
                  * try; the method is the last one tried */
-                if (kitty_wev_own_seat(s->ppl.seat))
+                if (kitty_wev_seat_proxy(s->ppl.seat))
                     kitty_wev_auth_failed(
                         s->hostname, s->port, s->username,
                         kitty_wev_method(s->type),
                         "no supported authentication methods available",
-                        s->last_methods_string->s);
+                        s->last_methods_string->s,
+                        kitty_wev_seat_proxy(s->ppl.seat));
                 ssh_bpp_queue_disconnect(
                     s->ppl.bpp,
                     "No supported authentication methods available",

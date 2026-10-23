@@ -143,6 +143,8 @@ char *format_connection_setup_command(
                 eo += 4;
                 if (!*username)
                     flags |= TELNET_CMD_MISSING_USERNAME;
+                else
+                    flags |= TELNET_CMD_HAS_USERNAME;   /* KiTTY */
             }
             else if (strnicmp(fmt + eo, "pass", 4) == 0) {
                 /* Held wrapped in memory (kitty/kitty_pwmem.c): unwrapped
@@ -155,6 +157,8 @@ char *format_connection_setup_command(
                 eo += 4;
                 if (pwlen == 0)
                     flags |= TELNET_CMD_MISSING_PASSWORD;
+                else
+                    flags |= TELNET_CMD_HAS_PASSWORD;   /* KiTTY */
             }
             else if (strnicmp(fmt + eo, "proxyhost", 9) == 0) {
                 const char *host = conf_get_str(conf, CONF_proxy_host);

@@ -18,6 +18,17 @@ int kitty_wev_own_seat(Seat *seat)
     return kitty_wev_is_main(seat);
 }
 
+const char *kitty_wev_seat_proxy(Seat *seat)
+{
+    if (!kitty_wev_enabled())
+        return NULL;
+    if (seat && is_tempseat(seat))
+        seat = tempseat_get_real(seat);
+    if (kitty_wev_is_hop(seat))
+        return "ssh";
+    return kitty_wev_is_main(seat) ? "" : NULL;
+}
+
 void backend_socket_log(Seat *seat, LogContext *logctx, Socket *sock,
                         PlugLogType type, SockAddr *addr, int port,
                         const char *error_msg, int error_code, Conf *conf,

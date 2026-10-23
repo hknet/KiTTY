@@ -3061,7 +3061,10 @@ the log \c{KiTTY++_Session}; otherwise they go to the Application log.
 Each kind of record has its own event ID and each field is its own value
 in the event data, for Event Viewer filters, Windows Event Forwarding and
 a SIEM. The records carry host names, user names, file paths and key
-fingerprints. Every event ID with its fields in order is listed in
+fingerprints, and the Windows account of the program that wrote them
+(the Event Viewer's User column). 221 and 321 are written for each
+attempt the server refuses. Every event ID with its fields in order is
+listed in
 \k{kitty-eventids}.
 
 \b 0 - text only (source \c{KiTTY++}).
@@ -3069,13 +3072,17 @@ fingerprints. Every event ID with its fields in order is listed in
 \b 100-199 - kageant's agent log (source \c{KiTTY++_agent}, log
 \c{KiTTY++_Agent}; see \k{pageant-mainwin-settings}).
 
-\b 200-299 - kitty.exe (source \c{KiTTY++_kitty}): 200 session opened,
-201 closed, 210 host key known, 211 new host key, 212 host key
-mismatch, 220 login succeeded, 221 login failed, 230 far-end request
-refused.
+\b 200-299 - kitty.exe and kitty_tel.exe (source \c{KiTTY++_kitty}):
+200 session opened, 201 closed, 210 host key known, 211 new host key,
+212 host key mismatch (also a jump host's, marked in \c{proxy}), 220
+login succeeded, 221 login failed (also a jump host's or a proxy's,
+marked in \c{proxy}), 225 proxy used, 230 far-end request refused,
+240 file transferred, 241 file transfer failed (ZModem, kitten
+transfer; one record per file).
 
-\b 300-399 - klink, kscp, ksftp (source \c{KiTTY++_cli}): 300-321 as
-200-221, 330 transfer done, 331 transfer failed.
+\b 300-399 - klink, kscp, ksftp (source \c{KiTTY++_cli}): 300-325 as
+200-225, 330 file transferred, 331 file transfer failed (one record
+per file).
 
 \b 400-499 - kittygen and kittygen-cli (source \c{KiTTY++_kittygen}):
 400 key generated, 401 private key saved, 402 public key saved, 403

@@ -158,7 +158,12 @@ static void proxy_telnet_process_queue(ProxyNegotiator *pn)
          * those prompts written into s->conf.
          */
         s->formatted_cmd = format_telnet_command(
-            pn->ps->remote_addr, pn->ps->remote_port, s->conf, NULL);
+            pn->ps->remote_addr, pn->ps->remote_port, s->conf, &flags);
+        /* KiTTY: event 225/325 - the command carried %user or %pass */
+        if (flags & (TELNET_CMD_HAS_USERNAME | TELNET_CMD_HAS_PASSWORD))
+            proxy_wev_note_credentials(
+                pn, (flags & TELNET_CMD_HAS_USERNAME) ?
+                conf_get_str(s->conf, CONF_proxy_username) : "");
     }
 
     /*

@@ -1675,10 +1675,16 @@ static void prompt_add_keyfile(bool encrypted)
             win_add_keyfile(rmf->filenames[i], encrypted);
             hello_add_offer_armed = false;
             /* KiTTY: GUI adds never pass the IPC mutation hook, so they
-             * get their own audit line. */
-            kitty_audit("add", "path", filename_to_str(rmf->filenames[i]),
-                        "result", "done", "reason", "gui",
-                        (const char *)NULL);
+             * get their own audit line, with the key the file holds. */
+            {
+                char *afp = kageant_record_fp_of_file(
+                    filename_to_str(rmf->filenames[i]));
+                kitty_audit("add", "fp", afp,
+                            "path", filename_to_str(rmf->filenames[i]),
+                            "result", "done", "reason", "gui",
+                            (const char *)NULL);
+                sfree(afp);
+            }
         }
         kitty_hello_batch_end();
         request_multi_file_free(rmf);
@@ -4742,6 +4748,14 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 win_add_keyfile(fn, true);   /* deferred, like Add Key
                                               * (encrypted) */
                 hello_add_offer_armed = false;
+                /* KiTTY: its audit line, as Add Key writes it */
+                {
+                    char *afp = kageant_record_fp_of_file(path);
+                    kitty_audit("add", "fp", afp, "path", path,
+                                "result", "done", "reason", "gui",
+                                (const char *)NULL);
+                    sfree(afp);
+                }
                 filename_free(fn);
             }
             if (i == nfiles - 1)
@@ -4903,15 +4917,24 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         continue;
                     }
                     ptrlen blob = ptrlen_from_strbuf(disp->blob);
+                    /* KiTTY: the record names the key; read before the
+                     * delete (disp stays valid: Remove rebuilds nothing) */
+                    char *rfp = kageant_record_fp_of_blob(blob);
+                    bool removed = false;
                     if (disp->blob->len &&
                         pageant_delete_ssh2_key_by_blob(blob)) {
                         /* and stop loading it at every start - the startup
                          * list is otherwise only written when a key is ADDED,
                          * so a removed key came back. */
                         kageant_forget_loaded_by_blob(blob);
+                        removed = true;
                     } else if (row < pageant_count_ssh1_keys()) {
-                        pageant_delete_nth_ssh1_key(row);
+                        removed = pageant_delete_nth_ssh1_key(row);
                     }
+                    if (removed)
+                        kageant_audit_use("remove", rfp, disp->comment->s,
+                                          "done", "gui", 0);
+                    sfree(rfp);
                 }
                 keylist_update();
             }
@@ -4972,6 +4995,18 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                             Filename *fn = filename_from_str(jobs[j].path);
                             win_add_keyfile(fn, false);   /* decrypt now */
                             filename_free(fn);
+                            /* KiTTY: event 152 - decrypted, or the prompt
+                             * was left without the passphrase */
+                            {
+                                char *dfp = kageant_record_fp_of_blob(blob);
+                                char *dcm = pageant_key_comment_by_blob(blob);
+                                kageant_audit_decrypt(
+                                    dfp, dcm,
+                                    pageant_key_decrypted_by_blob(blob) ?
+                                    "done" : "cancelled", "gui", 0);
+                                sfree(dfp);
+                                sfree(dcm);
+                            }
                         }
                     } else {   /* KLBTN_REENCRYPT */
                         /* A plainly-loaded key has no encrypted fallback;
@@ -4984,7 +5019,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                             win_add_keyfile(fn, true);
                             filename_free(fn);
                         }
-                        pageant_reencrypt_ssh2_key_by_blob(blob);
+                        kageant_audit_keyset(
+                            "reencrypt", blob,
+                            pageant_reencrypt_ssh2_key_by_blob(blob) ?
+                            "done" : "failed", "gui");
                     }
                     strbuf_free(jobs[j].blob);
                     sfree(jobs[j].path);
@@ -6351,10 +6389,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             break;
           case IDM_REMOVE_ALL:
             pageant_delete_all();
+            kageant_audit_use("remove-all", NULL, NULL, "done", "gui", 0);
             keylist_update();
             break;
           case IDM_REENCRYPT_ALL:
             pageant_reencrypt_all();
+            kageant_audit_use("reencrypt-all", NULL, NULL, "done", "gui", 0);
             keylist_update();
             break;
           case IDM_AGENTLOCK:
@@ -7044,6 +7084,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
+        kageant_reencrypt_audit_hook = kageant_do_reencrypt_audit;
+        kageant_decrypt_audit_hook = kageant_do_decrypt_audit;
         kageant_notify_hook = kageant_do_notify;
         kageant_keyuse_hook = kageant_note_keyuse;
         /* KiTTY: speak up about held-back keys when a client asks for the
@@ -7182,6 +7224,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     for (size_t i = 0; i < nclkeys; i++) {
         CommandLineKey *clkey = &clkeys[i];
         win_add_keyfile(clkey->fn, clkey->add_encrypted);
+        /* KiTTY: its audit line (this agent's own add, not over IPC) */
+        {
+            char *afp = kageant_record_fp_of_file(filename_to_str(clkey->fn));
+            kitty_audit("add", "fp", afp, "path", filename_to_str(clkey->fn),
+                        "result", "done", "reason", "cmdline",
+                        (const char *)NULL);
+            sfree(afp);
+        }
         filename_free(clkey->fn);
     }
     kageant_cmdline_loading = false;

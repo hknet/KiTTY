@@ -2561,6 +2561,7 @@
  * kitty_theme.c, kitty_updater.c, kitty_osc52.c, kitty_notice.c, kitty_image.c). */
 #define KT_WINFEAT_TCP_PORT_OWNER                    "naming the program that owns a TCP port"
 #define KT_WINFEAT_TICK64                            "a 64-bit millisecond clock"
+#define KT_WINFEAT_FILE_CHANGE_TIME                  "finding a file a ZModem download overwrote"
 #define KT_WINFEAT_PROCESS_NAME                      "naming the program behind a process"
 #define KT_WINFEAT_PROCESS_NAME_OLD                  "naming the program behind a process (older Windows)"
 #define KT_WINFEAT_CONSOLE                           "printing to the console that started KiTTY++"

@@ -391,6 +391,10 @@ add_executable(puttytel
   ${CMAKE_SOURCE_DIR}/stubs/no-dit.c
   ${CMAKE_SOURCE_DIR}/proxy/nocproxy.c
   ${CMAKE_SOURCE_DIR}/proxy/nosshproxy.c
+  # KiTTY: [KiTTY] sessioneventlog for kitty_tel's session records, read
+  # as the console tools read their switches (kitty_winevent.h)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c
   puttytel.rc)
 be_list(puttytel KiTTYtel SERIAL OTHERBACKENDS)
 add_dependencies(puttytel generated_licence_h)
@@ -398,6 +402,8 @@ target_link_libraries(puttytel
   guiterminal guimisc eventloop otherbackends settings network utils
   ${platform_libraries})
 set_target_properties(puttytel PROPERTIES WIN32_EXECUTABLE ON)
+# KiTTY: the session records of kitty_tel (window.c, kitty_wev_start)
+target_compile_definitions(puttytel PRIVATE KITTY_TEL_EVENTS)
 installed_program(puttytel)
 kitty_selfcheck_target(puttytel)
 

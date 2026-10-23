@@ -8,6 +8,7 @@
 
 #include "putty.h"
 #include "ssh.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: kitty_wev_next_conn_for */
 #include "channel.h"
 #include "proxy/socks.h"
 
@@ -1152,9 +1153,11 @@ char *portfwdmgr_connect(PortFwdManager *mgr, Channel **chan_ret,
     pf->cl = mgr->cl;
     pf->socks_state = SOCKS_NONE;
 
+    kitty_wev_next_conn_for("forward");   /* KiTTY: proxy records */
     pf->s = new_connection(addr, dummy_realhost, port,
                            false, true, false, false, &pf->plug, mgr->conf,
                            NULL);
+    kitty_wev_next_conn_for(NULL);   /* KiTTY: never outlives it */
     sfree(dummy_realhost);
     if ((err = sk_socket_error(pf->s)) != NULL) {
         char *err_ret = dupstr(err);

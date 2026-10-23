@@ -115,6 +115,7 @@ struct kt_file {
     unsigned char tail[4];              /* the last four bytes seen: the Adler-32 */
     int tail_len;
     uint32_t adler;                     /* of the inflated data */
+    char *remote;                       /* the far end's name for it (event 240) */
     struct kt_file *next;
 };
 
@@ -139,6 +140,7 @@ struct kt_send {
     int nfiles, ndone;
     struct kt_file *files;
     struct kt_dir *dirs;
+    char *failwhy;                      /* the first file that failed (241) */
 };
 
 /* One entry of the listing sent to the far end in a receive session. Data
@@ -198,6 +200,10 @@ struct kt_recv {
     int timer_armed;
     time_t last;
     int nsent;
+    /* event 240/241: what went out */
+    uint64_t bytes;
+    char *first_local, *first_remote;
+    char *failwhy;
 };
 
 /* Per-terminal state. Kept outside the Terminal struct (terminal.h is the
@@ -868,7 +874,63 @@ static void kt_file_free(struct kt_file *f)
     sfree(f->final_path);
     sfree(f->part_path);
     sfree(f->posix);
+    sfree(f->remote);
     sfree(f);
+}
+
+/* Events 240/241 (kitty_winevent.h): one record per transfer session that
+ * moved files or failed, cancelled ones included (reason "cancelled"). */
+static void kt_wev_transfer(Terminal *term, int ok, const char *direction,
+                            const char *local, const char *remote,
+                            long long bytes, const char *reason)
+{
+    if (!kitty_wev_enabled())
+        return;
+    kitty_wev_term_transfer(ok,
+                            term && term->conf ?
+                            conf_get_str_ambi(term->conf, CONF_username, NULL) : "",
+                            "kitten-osc5113", direction, local ? local : "",
+                            remote ? remote : "", bytes,
+                            reason ? reason : "");
+}
+
+/* One file arriving (send session): its 240, or 241 with the reason. */
+static void kt_wev_file(Terminal *term, struct kt_file *f, int ok,
+                        const char *reason)
+{
+    char *local;
+    if (!kitty_wev_enabled())
+        return;
+    local = f->final_path ? kt_ansi(f->final_path) : NULL;
+    kt_wev_transfer(term, ok, "get", local, f->remote,
+                    (long long)f->written, reason);
+    sfree(local);
+}
+
+/* A session cancelled: each file still under way gets its 241. */
+static void kt_wev_send_end(Terminal *term, struct kt_send *s,
+                            const char *cancelled)
+{
+    struct kt_file *f;
+    if (!s->accepted || !cancelled)
+        return;
+    for (f = s->files; f; f = f->next)
+        if (!f->done && !f->failed && !f->refused)
+            kt_wev_file(term, f, 0, cancelled);
+}
+
+static void kt_wev_recv_end(Terminal *term, struct kt_recv *r,
+                            const char *cancelled)
+{
+    struct kt_req *q;
+    if (!r->accepted || !cancelled)
+        return;
+    for (q = r->queue; q; q = q->next) {
+        char *a = q->e && q->e->local ? kt_ansi(q->e->local) : NULL;
+        kt_wev_transfer(term, 0, "put", a, q->e ? q->e->posix : "",
+                        (long long)q->sent, cancelled);
+        sfree(a);
+    }
 }
 
 static void kt_send_free(struct kt_state *st)
@@ -883,6 +945,7 @@ static void kt_send_free(struct kt_state *st)
     for (f = s->files; f; f = fn) { fn = f->next; kt_file_free(f); }
     for (d = s->dirs; d; d = dn) { dn = d->next; sfree(d->name); sfree(d->local); sfree(d); }
     sfree(s->dest);
+    sfree(s->failwhy);
     sfree(s);
 }
 
@@ -972,6 +1035,9 @@ static void kt_file_fail(struct kt_state *st, struct kt_file *f,
     if (f->part_path)
         DeleteFileW(f->part_path);
     f->failed = 1;
+    if (!s->failwhy)
+        s->failwhy = dupstr(msg);
+    kt_wev_file(term, f, 0, msg);       /* event 241, this file */
     kt_err(term, s, f->fid, code, msg);
     a = f->final_path ? kt_ansi(f->final_path) : dupstr(f->fid);
     kt_log(term, dupprintf(KT_XFER5113_LOG_FILE_FAILED, s->id, a, msg));
@@ -1088,6 +1154,7 @@ static void kt_file_finish(struct kt_state *st, struct kt_file *f)
                            kt_attrs(f->final_path) | FILE_ATTRIBUTE_READONLY);
     f->done = 1;
     s->ndone++;
+    kt_wev_file(term, f, 1, NULL);      /* event 240, this file */
     kt_ack(term, s, f->fid, "OK", f->posix, (int64_t)f->written);
     a = kt_ansi(f->final_path);
     kt_log(term, dupprintf(KT_XFER5113_LOG_FILE_DONE, s->id, a,
@@ -1113,6 +1180,7 @@ static void kt_send_file(struct kt_state *st, const kt5113_cmd *c)
     f = snew(struct kt_file);
     memset(f, 0, sizeof(*f));
     strcpy(f->fid, c->fid);
+    f->remote = dupstr(c->name_bad ? "?" : c->name);   /* event 240 */
     f->ftype = c->ftype;
     f->refused = 1;
     f->h = INVALID_HANDLE_VALUE;
@@ -1440,6 +1508,7 @@ static void kt_send_cmd(struct kt_state *st, const kt5113_cmd *c)
       case KT5113_AC_CANCEL:
         kt_ack(term, s, NULL, "CANCELED", NULL, -1);
         kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, s->id));
+        kt_wev_send_end(term, s, "cancelled");   /* event 241 */
         kt_send_free(st);
         break;
       case KT5113_AC_FINISH:
@@ -1506,6 +1575,9 @@ static void kt_recv_free(struct kt_state *st)
     for (i = 0; i < r->got; i++)
         sfree(r->specs[i].name);
     sfree(r->specs);
+    sfree(r->first_local);
+    sfree(r->first_remote);
+    sfree(r->failwhy);
     sfree(r);
 }
 
@@ -2465,6 +2537,14 @@ static void kt_pump_one(struct kt_state *st)
         kt_err(term, r, q->fid, "EIO", KT_XFER5113_ST_READ_FAILED);
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_FAILED, r->id, a));
         sfree(a);
+        if (!r->failwhy)
+            r->failwhy = dupstr(KT_XFER5113_ST_READ_FAILED);
+        {                               /* event 241, this file */
+            char *fa = kt_ansi(q->e->local);
+            kt_wev_transfer(term, 0, "put", fa, q->e->posix,
+                            (long long)q->sent, KT_XFER5113_ST_READ_FAILED);
+            sfree(fa);
+        }
         kt_req_pop(r);
         return;
     }
@@ -2479,6 +2559,13 @@ static void kt_pump_one(struct kt_state *st)
     if (last) {
         char *a = kt_ansi(q->e->local);
         r->nsent++;
+        r->bytes += q->sent;
+        kt_wev_transfer(term, 1, "put", a, q->e->posix ? q->e->posix : "",
+                        (long long)q->sent, NULL);   /* event 240, this file */
+        if (!r->first_local) {
+            r->first_local = dupstr(a);
+            r->first_remote = dupstr(q->e->posix ? q->e->posix : "");
+        }
         kt_log(term, dupprintf(KT_XFER5113_LOG_SENT, r->id, a, (unsigned long long)q->sent));
         sfree(a);
         kt_req_pop(r);
@@ -2618,6 +2705,7 @@ static void kt_recv_cmd(struct kt_state *st, const kt5113_cmd *c)
       case KT5113_AC_CANCEL:
         kt_ack(term, r, NULL, "CANCELED", NULL, -1);
         kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, r->id));
+        kt_wev_recv_end(term, r, "cancelled");   /* event 241 */
         kt_recv_free(st);
         break;
       case KT5113_AC_FINISH:

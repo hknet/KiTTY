@@ -9,6 +9,7 @@
 
 #include "putty.h"
 #include "ssh.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: kitty_wev_next_conn_for */
 #include "channel.h"
 #include "tree234.h"
 
@@ -579,10 +580,12 @@ static size_t x11_send(
         xconn->chan.initial_fixed_window_size = 0;
         sshfwd_window_override_removed(xconn->c);
         xconn->disp = auth_matched->disp;
+        kitty_wev_next_conn_for("x11");   /* KiTTY: proxy records */
         xconn->s = new_connection(sk_addr_dup(xconn->disp->addr),
                                   xconn->disp->realhost, xconn->disp->port,
                                   false, true, false, false, &xconn->plug,
                                   sshfwd_get_conf(xconn->c), NULL);
+        kitty_wev_next_conn_for(NULL);   /* KiTTY: never outlives it */
         if ((err = sk_socket_error(xconn->s)) != NULL) {
             char *err_message = dupprintf("unable to connect to"
                                           " forwarded X server: %s", err);

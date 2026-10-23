@@ -281,6 +281,21 @@ static void kageant_req_name(unsigned long pid, char *base_out, size_t bsz,
     }
 }
 
+/* Event 152: a key decrypted (result done, failed - a wrong passphrase -
+ * or cancelled); trigger first-use (the prompt a signature opened, pid =
+ * its requester) or gui (the key list's Decrypt). Never the passphrase. */
+void kageant_audit_decrypt(const char *fp, const char *comment,
+                           const char *result, const char *trigger,
+                           unsigned long pid)
+{
+    char req[80], reqpath[MAX_PATH + 1], pidbuf[16];
+    kageant_req_name(pid, req, sizeof(req), reqpath, sizeof(reqpath));
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit("decrypt", "fp", fp, "comment", comment, "result", result,
+                "trigger", trigger, "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, (const char *)NULL);
+}
+
 /* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
 void kageant_audit_use(const char *ev, const char *fp,
                               const char *comment, const char *result,

@@ -143,8 +143,28 @@ enum { KAGEANT_MUT_ADD, KAGEANT_MUT_REMOVE, KAGEANT_MUT_REMOVE_ALL };
 /* KiTTY: IPC access control - is this mutation blocked for an external
  * request? op is one of the KAGEANT_MUT_* values. NULL outside the GUI
  * agent (so a non-GUI build blocks nothing). */
-extern int (*kageant_ipc_blocked_hook)(int op);
-extern void (*kageant_mutation_notice_hook)(int op, const char *comment);
+extern int (*kageant_ipc_blocked_hook)(int op, const char *fp);
+/* fp: the key's fingerprint as the agent shows it (SHA256 form, type and
+ * bits in front; an SSH-1 key's MD5 form), NULL when the request names no
+ * single key or the key is not decoded yet. */
+extern void (*kageant_mutation_notice_hook)(int op, const char *comment,
+                                            const char *fp);
+/* KiTTY: an external request re-encrypted one key (all = 0: fp and comment
+ * name it) or every key (all = 1); ok = false when nothing could be.
+ * NULL outside the GUI agent. */
+extern void (*kageant_reencrypt_audit_hook)(int all, const char *fp,
+                                            const char *comment, bool ok);
+/* KiTTY: a key's comment by its public blob (SSH-2, or the SSH-1
+ * exponent-first blob), or NULL. Free it. */
+char *pageant_key_comment_by_blob(ptrlen blob);
+/* KiTTY: the passphrase prompt a key's first use opened has its answer:
+ * result done, failed (a wrong passphrase) or cancelled; pid = the process
+ * whose request opened it. NULL outside the GUI agent. */
+extern void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
+                                          const char *result,
+                                          unsigned long pid);
+/* KiTTY: is this SSH-2 key held decrypted right now? */
+bool pageant_key_decrypted_by_blob(ptrlen blob);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
 

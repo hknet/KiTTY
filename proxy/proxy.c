@@ -12,6 +12,7 @@
 #include "putty.h"
 #include "network.h"
 #include "proxy.h"
+#include "kitty/kitty_winevent.h"   /* KiTTY: proxy event records */
 
 #define do_proxy_dns(conf) \
     (conf_get_int(conf, CONF_proxy_dns) == FORCE_ON || \
@@ -207,6 +208,8 @@ static void plug_proxy_closing(Plug *p, PlugCloseType type,
     plug_closing(ps->plug, type, error_msg);
 }
 
+static void proxy_wev_used(ProxySocket *ps);   /* KiTTY */
+
 static void proxy_negotiate(ProxySocket *ps)
 {
     assert(ps->pn);
@@ -247,8 +250,10 @@ static void proxy_negotiate(ProxySocket *ps)
         sk_write(ps->sub_socket, data.ptr, data.len);
         bufchain_consume(&ps->output_from_negotiator, data.len);
     }
-    if (ps->pn->done)
+    if (ps->pn->done) {
+        proxy_wev_used(ps);   /* KiTTY: before the seat is returned */
         proxy_activate(ps);
+    }
 }
 
 static void plug_proxy_receive(
@@ -552,6 +557,15 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
 
         ps->sub_socket = NULL;
 
+        /* KiTTY: no Interactor (a port forwarding's or X11 forwarding's
+         * connection) must mean no client seat. Upstream PuTTY leaves these
+         * three unset then (snew does not zero), so the negotiator could be
+         * handed an Interactor and the clean-up return a seat through a
+         * stray pointer. */
+        ps->clientitr = NULL;
+        ps->clientlp = NULL;
+        ps->clientseat = NULL;
+
         /*
          * If we've been given an Interactor by the caller, set ourselves
          * up to work with it.
@@ -562,6 +576,9 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
             ps->clientlp = interactor_logpolicy(ps->clientitr);
             ps->clientseat = interactor_borrow_seat(ps->clientitr);
         }
+
+        ps->kwev_ok = proxy_wev_decide(ps->clientseat, itr != NULL);   /* KiTTY */
+        ps->kwev_for = proxy_wev_for(itr != NULL);
 
         const ProxyNegotiatorVT *vt;
         switch (type) {
@@ -586,6 +603,8 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         ps->pn->done = false;
         ps->pn->error = NULL;
         ps->pn->aborted = false;
+        ps->pn->kwev_credentials = false;   /* KiTTY: event 225/325 */
+        ps->pn->kwev_user[0] = '\0';
         ps->pn->input = &ps->pending_input_data;
         /* Provide an Interactor to the negotiator if and only if we
          * are usefully able to ask interactive questions of the user */
@@ -666,4 +685,70 @@ Socket *new_listener(const char *srcaddr, int port, Plug *plug,
      */
 
     return sk_newlistener(srcaddr, port, plug, local_host_only, addressfamily);
+}
+
+void proxy_wev_auth_failed(ProxySocket *ps, const char *proxytype,
+                           const char *method, const char *user,
+                           const char *reason)
+{
+    if (!ps || !ps->kwev_ok)
+        return;
+    kitty_wev_auth_failed_for(conf_get_str(ps->conf, CONF_proxy_host),
+                              conf_get_int(ps->conf, CONF_proxy_port),
+                              user ? user : conf_get_str(ps->conf,
+                                                         CONF_proxy_username),
+                              method, reason, "", proxytype, ps->kwev_for);
+}
+
+void proxy_wev_auth_ok(ProxySocket *ps, const char *proxytype,
+                       const char *method, const char *user)
+{
+    if (!ps || !ps->kwev_ok)
+        return;
+    kitty_wev_auth_ok_for(conf_get_str(ps->conf, CONF_proxy_host),
+                          conf_get_int(ps->conf, CONF_proxy_port),
+                          user ? user : conf_get_str(ps->conf,
+                                                     CONF_proxy_username),
+                          method, NULL, proxytype, ps->kwev_for);
+}
+
+void proxy_wev_note_credentials(ProxyNegotiator *pn, const char *user)
+{
+    pn->kwev_credentials = true;
+    snprintf(pn->kwev_user, sizeof(pn->kwev_user), "%s", user ? user : "");
+}
+
+const char *proxy_wev_for(bool have_interactor)
+{
+    /* taken in any case, so a value never outlives its connection */
+    const char *f = kitty_wev_take_conn_for();
+    if (have_interactor || !f)
+        return "session";
+    return f;
+}
+
+bool proxy_wev_decide(Seat *clientseat, bool have_interactor)
+{
+    if (have_interactor)
+        return kitty_wev_seat_proxy(clientseat) != NULL;
+    return kitty_wev_enabled() != 0;
+}
+
+/* Event 225/325: the proxy handed over the connection. */
+static void proxy_wev_used(ProxySocket *ps)
+{
+    const char *type;
+    if (!ps->kwev_ok)
+        return;
+    switch (conf_get_int(ps->conf, CONF_proxy_type)) {
+      case PROXY_HTTP:   type = "http"; break;
+      case PROXY_SOCKS4: type = "socks4"; break;
+      case PROXY_SOCKS5: type = "socks5"; break;
+      case PROXY_TELNET: type = "telnet"; break;
+      default: return;
+    }
+    kitty_wev_proxy_used(type, conf_get_str(ps->conf, CONF_proxy_host),
+                         conf_get_int(ps->conf, CONF_proxy_port),
+                         ps->pn->kwev_user, ps->pn->kwev_credentials,
+                         ps->kwev_for);
 }

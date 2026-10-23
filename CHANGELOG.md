@@ -69,12 +69,19 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   `osc7501notice`; 0 = never).
 - **kageant's agent log can go to the Windows Event Log**: its own log
   KiTTY++_Agent when installed for all users, one event ID per kind of
-  record, every field filterable and forwardable. Settings > Log >
-  Destination (agentlogsink).
+  record, every field filterable and forwardable, each record with the
+  Windows account kageant runs as. Every change to the agent's keys is
+  recorded - over the pipe, from kageant's own windows and command line,
+  by key lifetimes, idle re-encryption and removed drives - and every
+  decryption of a key. Settings > Log > Destination (agentlogsink).
 - **Sessions, console tools and kittygen can report to the Windows Event
-  Log**: session opened and closed, host key, login, transfers, keys
-  generated and saved — one event ID per kind of record, every field
-  filterable and forwardable, in the log KiTTY++_Session when installed for
+  Log**: session opened and closed (serial lines and kitty_tel too), host
+  key, login and each refused login attempt (jump hosts and proxies
+  included), the proxy a connection went through, every file of a
+  ZModem, kitten or console-tool transfer, keys generated, saved and
+  their passphrase changed — one event ID per kind of record, every
+  field filterable and forwardable, each record with the Windows
+  account that wrote it, in the log KiTTY++_Session when installed for
   all users. Off by default: Application > Security > Windows Event Log
   (`sessioneventlog`, `clieventlog`, `kittygeneventlog`).
 

@@ -960,11 +960,12 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
                 if (cert_ok) {
                     strbuf_free(error);
                     /* KiTTY: event 210/310, known by its CA */
-                    if (kitty_wev_own_seat(s->ppl.seat))
+                    if (kitty_wev_seat_proxy(s->ppl.seat))
                         kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN,
                                           s->savedhost, s->savedport,
                                           ssh_key_cache_id(s->hkey),
-                                          fingerprints[fptype_default], "ca");
+                                          fingerprints[fptype_default], "ca",
+                                          kitty_wev_seat_proxy(s->ppl.seat));
                     ssh2_free_all_fingerprints(fingerprints);
                     ppl_logevent("Accepted certificate");
                     goto host_key_ok;

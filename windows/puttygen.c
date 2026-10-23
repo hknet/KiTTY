@@ -673,6 +673,10 @@ struct InitialParams {
 struct MainDlgState {
     bool generation_thread_exists;
     bool key_exists;
+    /* KiTTY: event 403 - the key on screen has a file (loaded, or saved
+     * once), and its protection was edited since (the passphrase fields or
+     * the Windows Hello box). Nothing derived from a passphrase is kept. */
+    bool kitty_pp_from_file, kitty_pp_edited;
     int entropy_got, entropy_required;
     strbuf *entropy;
     ULONG entropy_prev_msgtime;
@@ -1710,6 +1714,10 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
                            BST_CHECKED : BST_UNCHECKED);
             kg_hello_sync(hwnd);
         }
+        /* KiTTY: event 403 - a key from a file, its protection as loaded
+         * (filling the fields above counted as an edit) */
+        state->kitty_pp_from_file = true;
+        state->kitty_pp_edited = false;
 
         /*
          * If the user has imported a foreign key
@@ -2967,7 +2975,25 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         v[7] = kwev_why;
                         kitty_wev_report(KITTY_EVO_PRIVATE_SAVED,
                                          kwev_why != NULL, v, 8);
+                        /* KiTTY: event 403, as kittygen-cli -P writes it -
+                         * a loaded key saved with another protection */
+                        if (!kwev_why && state->kitty_pp_from_file &&
+                            state->kitty_pp_edited) {
+                            const char *w[4];
+                            w[0] = "kittygen";
+                            w[1] = kfp;
+                            w[2] = filename_to_str(fn);
+                            w[3] = v[5];
+                            kitty_wev_report(KITTY_EVO_PASSPHRASE_CHANGED, 0,
+                                             w, 4);
+                        }
                         sfree(kfp);
+                    }
+                    /* KiTTY: event 403 - the key now has a file with this
+                     * protection; a later save reports only a new edit */
+                    if (!kwev_why) {
+                        state->kitty_pp_from_file = true;
+                        state->kitty_pp_edited = false;
                     }
                     /* A disarmed save does NOT disarm the OTHER copies of
                      * this key: the file it was loaded from, and a
@@ -3101,8 +3127,24 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             ui_set_state(hwnd, state, 0);
             break;
           case IDC_HELLOPROTECT:
-            if (HIWORD(wParam) == BN_CLICKED)
+            if (HIWORD(wParam) == BN_CLICKED) {
                 kg_hello_sync(hwnd);
+                /* KiTTY: event 403 - the protection edited */
+                state = (struct MainDlgState *)
+                    GetWindowLongPtr(hwnd, GWLP_USERDATA);
+                if (state)
+                    state->kitty_pp_edited = true;
+            }
+            break;
+          case IDC_PASSPHRASE1EDIT:
+          case IDC_PASSPHRASE2EDIT:
+            /* KiTTY: event 403 - the passphrase edited */
+            if (HIWORD(wParam) == EN_CHANGE) {
+                state = (struct MainDlgState *)
+                    GetWindowLongPtr(hwnd, GWLP_USERDATA);
+                if (state)
+                    state->kitty_pp_edited = true;
+            }
             break;
           case IDC_HELLODOORS: {
             state =
@@ -3186,6 +3228,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
         state = (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
         state->generation_thread_exists = false;
         state->key_exists = true;
+        state->kitty_pp_from_file = false;   /* KiTTY: a new key has no file yet */
         SendDlgItemMessage(hwnd, IDC_PROGRESS, PBM_SETRANGE, 0,
                            MAKELPARAM(0, PROGRESSRANGE));
         SendDlgItemMessage(hwnd, IDC_PROGRESS, PBM_SETPOS, PROGRESSRANGE, 0);

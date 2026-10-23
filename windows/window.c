@@ -1545,8 +1545,47 @@ static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
         return;
     kitty_wev_main_seat(&wgs->seat);
     kitty_wev_session_name(conf_get_str(wgs->conf, CONF_sessionname));
-    kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
-                     conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
+    if (vt && vt->protocol == PROT_SERIAL)   /* the line and its speed */
+        kitty_wev_target(conf_get_str(wgs->conf, CONF_serline),
+                         conf_get_int(wgs->conf, CONF_serspeed), vt->id);
+    else
+        kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
+                         conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
+}
+#elif defined(KITTY_TEL_EVENTS)
+#include "../kitty/kitty_inikeys.h"  /* KI_SESSIONEVENTLOG */
+/*
+ * KiTTY: kitty_tel.exe - this file without MOD_PERSO - writes the same
+ * session records as kitty.exe (2xx, [KiTTY] sessioneventlog). The switch is
+ * read as the console tools read theirs (kitty_winevent_cfg.c: the registry
+ * when it is the store in charge, else kitty.ini); nothing else of kitty.exe
+ * comes with it.
+ */
+static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
+{
+    static bool read = false;
+    if (!read) {
+        read = true;
+        kitty_wev_configure(KITTY_EVB_KITTY,
+                            kitty_wev_switch_on(KI_SESSIONEVENTLOG));
+    }
+    if (!kitty_wev_enabled())
+        return;
+    kitty_wev_main_seat(&wgs->seat);
+    kitty_wev_session_name(conf_get_str(wgs->conf, CONF_sessionname));
+    if (vt && vt->protocol == PROT_SERIAL)   /* the line and its speed */
+        kitty_wev_target(conf_get_str(wgs->conf, CONF_serline),
+                         conf_get_int(wgs->conf, CONF_serspeed), vt->id);
+    else
+        kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
+                         conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
+}
+#else
+/* pterm (no network session) and the stock PuTTY build: no records */
+static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
+{
+    (void)wgs;
+    (void)vt;
 }
 #endif
 
@@ -1567,9 +1606,7 @@ static void start_backend(WinGuiSeat *wgs)
 #endif
 
     vt = backend_vt_from_conf(wgs->conf);
-#ifdef MOD_PERSO
     kitty_wev_start(wgs, vt);   /* KiTTY: event 200 names this target */
-#endif
 
 #ifdef MOD_PORTKNOCKING
     /* KiTTY feature: knock the configured port sequence before connecting. */
@@ -1709,6 +1746,11 @@ static void start_backend(WinGuiSeat *wgs)
                          &realhost,
                          conf_get_bool(wgs->conf, CONF_tcp_nodelay),
                          conf_get_bool(wgs->conf, CONF_tcp_keepalives));
+    /* KiTTY: event 200 for a serial line - opened here, no socket reports
+     * it (a network connection's comes from backend_socket_log) */
+    if (!error && vt && vt->protocol == PROT_SERIAL)
+        kitty_wev_session_open(&wgs->seat,
+                               conf_get_str(wgs->conf, CONF_serline), "");
 #ifdef MOD_PERSO
     /* The backend has taken its own copy by now. */
     if (identconf) { conf_free(identconf); identconf = NULL; connconf = wgs->conf; }
@@ -4248,6 +4290,11 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         }
         return;
     }
+#elif defined(KITTY_TEL_EVENTS)
+    /* KiTTY: event 201 for kitty_tel.exe too - a connection that ends in
+     * an error (the far end resetting it) comes here, not to
+     * exit_callback, whose exit code is then INT_MAX */
+    kitty_wev_session_close(kitty_wev_close_result(msg), msg, -1);
 #endif
 #ifdef MOD_RECONNECT
     /* KiTTY auto-reconnect: on an abnormal drop of a session that had FULLY

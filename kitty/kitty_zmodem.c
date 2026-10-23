@@ -39,6 +39,8 @@
 #include "kitty_tools.h"    /* existfile: the helper paths must name a file */
 #include "kitty_winutil.h"  /* kitty_expand_env_dup: %VAR% in the rz/sz paths */
 #include "kitty_notice.h"   /* zm_report: the notice window */
+#include "kitty_winevent.h" /* events 240/241: the transfer's records */
+#include "kitty_oldwin.h"   /* kitty_api: the change time (Vista on) */
 
 #define ZM_PIPE_SIZE (64 * 1024)
 
@@ -85,6 +87,22 @@ typedef struct kitty_zmodem_state {
     Terminal *term;       /* helper progress/errors go on screen, see below */
     char errline[256];
     size_t errlen;
+    /* events 240/241, one per file: an upload's files (full path, the name
+     * sz sends, size); a download's start (its files are found in the
+     * download folder afterwards) and the names rz announced; the helper's
+     * last message line, the reason of a failure */
+    char **wev_paths, **wev_names;
+    long long *wev_sizes;
+    int wev_n;
+    ULONGLONG wev_start;
+    char **wev_ann;
+    int wev_nann;
+    char *wev_user;
+    /* the transfer's end is recorded (240/241) and its notification
+     * decided - once, by whichever path ends it; end_ok: the helper
+     * finished its transfer (exit code 0), the one case notified */
+    int ended, end_ok;
+    char lasterr[256];
 } kitty_zmodem_state;
 
 /* The single active transfer (NULL when idle). */
@@ -152,10 +170,31 @@ static void zm_close_handles(kitty_zmodem_state *zm)
     if (zm->read_stderr) { CloseHandle(zm->read_stderr); zm->read_stderr = NULL; }
 }
 
+static void zm_end(kitty_zmodem_state *zm, DWORD exitcode);
+
 static void kitty_zmodem_done(void)
 {
     kitty_zmodem_state *zm = zm_active;
+    int notify, send;
+    char dir[4096];
     if (!zm) return;
+    /* The transfer's end (events 240/241, the notification) when the
+     * helper's exit callback has not recorded it: the message loop ends a
+     * transfer here once the helper closed its stdout
+     * (kitty_zmodem_process), which is usually BEFORE the exit callback
+     * runs - and that callback then finds no active transfer. The helper
+     * gets a moment to exit, for its exit code. */
+    if (zm->transfering && !zm->ended && zm->pi.hProcess) {
+        DWORD exitcode = 1;
+        WaitForSingleObject(zm->pi.hProcess, 2000);
+        if (!GetExitCodeProcess(zm->pi.hProcess, &exitcode))
+            exitcode = 1;
+        zm_end(zm, exitcode);
+    }
+    /* copied out: the tear-down frees the state */
+    notify = zm->ended && zm->end_ok;
+    send = zm->send;
+    snprintf(dir, sizeof(dir), "%s", zm->dir ? zm->dir : "");
     if (zm->transfering) {
         DWORD exitcode = 0;
         zm_close_handles(zm);   /* readers off first, then the pipes */
@@ -170,7 +209,127 @@ static void kitty_zmodem_done(void)
     zm->transfering = 0;
     zm_active = NULL;
     sfree(zm->dir);
+    {
+        int i;
+        for (i = 0; i < zm->wev_n; i++) {
+            sfree(zm->wev_paths[i]);
+            sfree(zm->wev_names[i]);
+        }
+        for (i = 0; i < zm->wev_nann; i++)
+            sfree(zm->wev_ann[i]);
+        sfree(zm->wev_paths);
+        sfree(zm->wev_names);
+        sfree(zm->wev_sizes);
+        sfree(zm->wev_ann);
+    }
+    sfree(zm->wev_user);
     sfree(zm);
+    /* [KiTTY] transfernotification: only for a helper that finished its
+     * transfer; rz does not count its files */
+    if (notify)
+        kitty_xfer_notify(send ? KT_XFER_WHAT_ZMODEM_SEND : KT_XFER_WHAT_ZMODEM_RECV,
+                          !send, 0, dir);
+}
+
+static ULONGLONG zm_ft(FILETIME ft)
+{
+    return ((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
+}
+
+/* The latest of a file's creation, last-write and (Vista on) change times:
+ * rz may stamp a file with the sender's modification time, and a file it
+ * overwrote keeps its creation time - the change time moves either way. */
+typedef BOOL (WINAPI *zm_gfibhe_t)(HANDLE, int, LPVOID, DWORD);
+static ULONGLONG zm_touched(const char *path, long long *size)
+{
+    static zm_gfibhe_t p_gfibhe;
+    static int resolved;
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    ULONGLONG t = 0;
+    *size = -1;
+    if (!GetFileAttributesExA(path, GetFileExInfoStandard, &fad))
+        return 0;
+    *size = ((long long)fad.nFileSizeHigh << 32) | fad.nFileSizeLow;
+    t = zm_ft(fad.ftCreationTime);
+    if (zm_ft(fad.ftLastWriteTime) > t)
+        t = zm_ft(fad.ftLastWriteTime);
+    if (!resolved) {
+        p_gfibhe = (zm_gfibhe_t)kitty_api("kernel32.dll",
+                                          "GetFileInformationByHandleEx",
+                                          KITTY_API_OPTIONAL,
+                                          KT_WINFEAT_FILE_CHANGE_TIME);
+        resolved = 1;
+    }
+    if (p_gfibhe) {
+        /* FILE_BASIC_INFO: four LARGE_INTEGER times (ChangeTime the
+         * fourth) and the attributes; FileBasicInfo = 0 */
+        struct { LARGE_INTEGER cr, la, lw, ch; DWORD attrs; } bi;
+        HANDLE h = CreateFileA(path, FILE_READ_ATTRIBUTES,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE |
+                               FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                               FILE_FLAG_BACKUP_SEMANTICS, NULL);
+        if (h != INVALID_HANDLE_VALUE) {
+            if (p_gfibhe(h, 0, &bi, sizeof(bi)) &&
+                (ULONGLONG)bi.ch.QuadPart > t)
+                t = (ULONGLONG)bi.ch.QuadPart;
+            CloseHandle(h);
+        }
+    }
+    return t;
+}
+
+/* Events 240/241 for the transfer that ends now, one per file. An upload:
+ * each file picked, with its size when it went through. A download: each
+ * file in the download folder touched since the receive started - full
+ * path and size - with the name rz announced for it when it announced one.
+ * A failed download that left nothing gets one 241 naming the folder. */
+static void zm_wev(kitty_zmodem_state *zm, int ok, const char *reason)
+{
+    const char *user;
+    int i;
+    if (!zm || !kitty_wev_enabled())
+        return;
+    user = zm->wev_user ? zm->wev_user : "";
+    if (zm->send) {
+        for (i = 0; i < zm->wev_n; i++)
+            kitty_wev_term_transfer(ok, user, "zmodem", "put",
+                                    zm->wev_paths[i], zm->wev_names[i],
+                                    ok ? zm->wev_sizes[i] : -1, reason);
+        return;
+    } else {
+        WIN32_FIND_DATAA fd;
+        HANDLE fh;
+        int found = 0;
+        char *pat;
+        if (!zm->dir || !*zm->dir)
+            return;
+        pat = dupprintf("%s\\*", zm->dir);
+        fh = FindFirstFileA(pat, &fd);
+        sfree(pat);
+        if (fh != INVALID_HANDLE_VALUE) {
+            do {
+                char *full;
+                long long size;
+                const char *remote = "";
+                if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                    continue;
+                full = dupprintf("%s\\%s", zm->dir, fd.cFileName);
+                if (zm_touched(full, &size) >= zm->wev_start) {
+                    for (i = 0; i < zm->wev_nann; i++)
+                        if (!stricmp(zm->wev_ann[i], fd.cFileName))
+                            remote = zm->wev_ann[i];
+                    kitty_wev_term_transfer(ok, user, "zmodem", "get", full,
+                                            remote, size, reason);
+                    found++;
+                }
+                sfree(full);
+            } while (FindNextFileA(fh, &fd));
+            FindClose(fh);
+        }
+        if (!found && !ok)
+            kitty_wev_term_transfer(0, user, "zmodem", "get", zm->dir, "", -1,
+                                    reason);
+    }
 }
 
 /*
@@ -208,6 +367,14 @@ static void zm_log_errline(kitty_zmodem_state *zm)
     zm->errline[zm->errlen] = '\0';
     if (zm->logctx && !strstr(zm->errline, "BPS:")) {
         char *msg = dupprintf(KT_ZM_HELPER_LOG, zm->errline);
+        /* event 241's reason: the last line the helper printed */
+        snprintf(zm->lasterr, sizeof(zm->lasterr), "%s", zm->errline);
+        /* event 240's remote: the name rz announces (lrzsz with -v) */
+        if (!zm->send && !strncmp(zm->errline, "Receiving: ", 11) &&
+            zm->wev_nann < 4096) {
+            zm->wev_ann = sresize(zm->wev_ann, zm->wev_nann + 1, char *);
+            zm->wev_ann[zm->wev_nann++] = dupstr(zm->errline + 11);
+        }
         logevent(zm->logctx, msg);
         sfree(msg);
     }
@@ -270,28 +437,41 @@ static size_t zm_stderr_gotdata(struct handle *h, const void *data,
     return 0;
 }
 
+/* The transfer ends with the helper's exit code (STILL_ACTIVE: it had not
+ * exited; it is then stopped): events 240/241, and whether the
+ * notification is due. Once per transfer, whichever path comes first. */
+static void zm_end(kitty_zmodem_state *zm, DWORD exitcode)
+{
+    char why[400];
+    if (zm->ended)
+        return;
+    zm->ended = 1;
+    zm->end_ok = exitcode == 0;
+    if (exitcode == STILL_ACTIVE)
+        snprintf(why, sizeof(why), "helper did not exit%s%s",
+                 zm->lasterr[0] ? ": " : "", zm->lasterr);
+    else if (exitcode != 0)
+        snprintf(why, sizeof(why), "helper exit code %lu%s%s",
+                 (unsigned long)exitcode, zm->lasterr[0] ? ": " : "",
+                 zm->lasterr);
+    zm_wev(zm, exitcode == 0, exitcode == 0 ? "" : why);
+}
+
 /* The helper exited: finish the transfer. Safe to tear down here - this is a
  * different callback from the one delivering data. */
 static void zm_process_exited(void *vctx)
 {
     kitty_zmodem_state *zm = (kitty_zmodem_state *)vctx;
     DWORD exitcode = 1;
-    int send;
-    char dir[4096];
     if (zm != zm_active)
         return;
     /* The exit code is read before the tear-down closes the process handle;
-     * 0 = the helper finished its transfer, which is the one case the
-     * notification ([KiTTY] transfernotification) is for. The folder is
-     * copied out first: the tear-down frees the state. */
+     * 0 = the helper finished its transfer. The end is recorded here; the
+     * tear-down sends the notification. */
     if (zm->pi.hProcess && !GetExitCodeProcess(zm->pi.hProcess, &exitcode))
         exitcode = 1;
-    send = zm->send;
-    snprintf(dir, sizeof(dir), "%s", zm->dir ? zm->dir : "");
+    zm_end(zm, exitcode);
     kitty_zmodem_done();
-    if (exitcode == 0)
-        kitty_xfer_notify(send ? KT_XFER_WHAT_ZMODEM_SEND : KT_XFER_WHAT_ZMODEM_RECV,
-                          !send, 0, dir);   /* rz does not count its files */
 }
 
 /* Spawn the helper (command + params), wiring its std handles to pipes.
@@ -412,6 +592,7 @@ static zm_again_t *zm_again_new(HWND owner, UINT cmd)
  * it the incoming stream. Returns 1 on success. */
 int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
+    ULONGLONG rz_start;
     const char *cmd = kitty_zmodem_command(0);
     const char *opts = conf_get_str(conf, CONF_rzoptions);
     char dir[4096];
@@ -432,13 +613,20 @@ int kitty_zmodem_receive(HWND owner, UINT again, Conf *conf, Backend *backend, L
     /* rz checked first: a Yes in its confirmation box starts the receive again */
     if (!kitty_helper_ready(owner, cmd, 0, 1, zm_again, zm_again_new(owner, again), zm_again_free))
         return 0;
+    {   /* event 240: what rz saves is what changes from now on */
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        rz_start = zm_ft(now);
+    }
     zm = zm_spawn(cmd, opts, dir, backend, logctx, term);
     if (!zm) {
         zm_report(KT_ZM_RZ_START_FAILED);
         return 0;
     }
     zm->send = 0;
+    zm->wev_start = rz_start;
     zm->dir = dupstr(dir);              /* the balloon's click opens it */
+    zm->wev_user = dupstr(conf_get_str_ambi(conf, CONF_username, NULL));   /* event 240 */
     zm_active = zm;
     return 1;
 }
@@ -488,6 +676,25 @@ static void zm_pick_done(void *v)
     sfree(p);
 }
 
+/* Event 240: one file of an upload - its full path, the bare name sz
+ * sends, its size. */
+typedef struct { char **paths, **names; long long *sizes; int n; } zm_list;
+static void zm_note_file(const char *dir, const char *name, zm_list *l)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    l->paths = sresize(l->paths, l->n + 1, char *);
+    l->names = sresize(l->names, l->n + 1, char *);
+    l->sizes = sresize(l->sizes, l->n + 1, long long);
+    l->paths[l->n] = (dir && *dir) ? dupprintf("%s\\%s", dir, name) :
+                                     dupstr(name);
+    l->names[l->n] = dupstr(name);
+    l->sizes[l->n] = -1;
+    if (GetFileAttributesExA(l->paths[l->n], GetFileExInfoStandard, &fad))
+        l->sizes[l->n] = ((long long)fad.nFileSizeHigh << 32) |
+                         fad.nFileSizeLow;
+    l->n++;
+}
+
 /* Start a ZModem SEND (sz <files>): prompt for files, spawn sz. Returns 1. */
 int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogContext *logctx, Terminal *term)
 {
@@ -500,6 +707,7 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
     char params[32767];
     char *p, *cur;
     char *senddir = "";   /* directory the chosen files live in (see below) */
+    zm_list wev_list = { NULL, NULL, NULL, 0 };     /* event 240 */
 
     kitty_xfer_download_dir(conf, dir, sizeof(dir));   /* where the picker opens */
     if (kitty_zmodem_active()) { zm_picked_drop(); return 0; }
@@ -572,6 +780,7 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
             }
             room = sizeof(params) - off;
             snprintf(cur, room, " \"%s\"", p);
+            zm_note_file(senddir, p, &wev_list);
         } else {
             /* multi: first field is the dir, then each file name */
             senddir = filenames;
@@ -583,6 +792,7 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
                 if (room <= 1) break;   /* no space left */
                 n = snprintf(cur, room, " \"%s\"", p);
                 if (n <= 0) break;
+                zm_note_file(senddir, p, &wev_list);
                 if ((size_t)n >= room) { off = sizeof(params) - 1; cur = params + off; break; }
                 off += n; cur += n;
             }
@@ -606,10 +816,23 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
      */
     zm = zm_spawn(cmd, params, senddir[0] ? senddir : dir, backend, logctx, term);
     if (!zm) {
+        int i;
+        for (i = 0; i < wev_list.n; i++) {
+            sfree(wev_list.paths[i]);
+            sfree(wev_list.names[i]);
+        }
+        sfree(wev_list.paths);
+        sfree(wev_list.names);
+        sfree(wev_list.sizes);
         zm_report(KT_ZM_SZ_START_FAILED);
         return 0;
     }
     zm->send = 1;
+    zm->wev_paths = wev_list.paths;     /* event 240, one per file */
+    zm->wev_names = wev_list.names;
+    zm->wev_sizes = wev_list.sizes;
+    zm->wev_n = wev_list.n;
+    zm->wev_user = dupstr(conf_get_str_ambi(conf, CONF_username, NULL));
     {   /* files leaving: the balloon's click opens the local upload folder */
         char updir[4096];
         kitty_xfer_upload_dir(conf, updir, sizeof(updir));
@@ -621,6 +844,10 @@ int kitty_zmodem_send(HWND owner, UINT again, Conf *conf, Backend *backend, LogC
 
 void kitty_zmodem_cancel(void)
 {
+    if (zm_active && zm_active->transfering && !zm_active->ended) {
+        zm_active->ended = 1;   /* no notification for a cancel */
+        zm_wev(zm_active, 0, "cancelled");   /* event 241 */
+    }
     kitty_zmodem_done();
 }
 

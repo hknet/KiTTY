@@ -966,7 +966,8 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * means "no confirmation", so other binaries that link this agent core are
  * unaffected; the Windows Pageant GUI installs it at startup. The hook is
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
-int (*kageant_confirm_hook)(const char *comment, int key_confirm) = NULL;
+int (*kageant_confirm_hook)(const char *comment, int key_confirm,
+                           const char *fp) = NULL;
 
 /* KiTTY: which key is a deferred-decryption prompt about? The frontend gets
  * only the dialog id and a comment; Hello-protected keys need the public
@@ -1025,18 +1026,51 @@ static void kageant_arm_comment_confirm(ptrlen full_pub)
 }
 
 /* KiTTY: external-transport mutation notices - see pageant.h. */
-void (*kageant_mutation_notice_hook)(int op, const char *comment) = NULL;
-int (*kageant_ipc_blocked_hook)(int op) = NULL;
+void (*kageant_mutation_notice_hook)(int op, const char *comment,
+                                     const char *fp) = NULL;
+int (*kageant_ipc_blocked_hook)(int op, const char *fp) = NULL;
+void (*kageant_reencrypt_audit_hook)(int all, const char *fp,
+                                     const char *comment, bool ok) = NULL;
+void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
+                                   const char *result,
+                                   unsigned long pid) = NULL;
+
+/* KiTTY: event 152 for the prompt of this key's first use */
+static void kitty_decrypt_record(PageantPrivateKey *priv, const char *result)
+{
+    char *fp, *comment;
+    if (!kageant_decrypt_audit_hook || !priv->base_pub)
+        return;
+    fp = ssh2_fingerprint_blob(ptrlen_from_strbuf(priv->base_pub),
+                               SSH_FPTYPE_SHA256);
+    comment = pageant_key_comment_by_blob(ptrlen_from_strbuf(priv->base_pub));
+    kageant_decrypt_audit_hook(fp, comment, result, priv->prompt_pid);
+    sfree(fp);
+    sfree(comment);
+}
+
+/* KiTTY: an SSH-1 key's fingerprint as the agent's records carry it - its
+ * bits and MD5 hash, without the comment rsa_ssh1_fingerprint appends (the
+ * comment is a field of its own). */
+static char *kitty_rsa1_record_fp(RSAKey *key)
+{
+    char *comment = key->comment, *fp;
+    key->comment = NULL;
+    fp = rsa_ssh1_fingerprint(key);
+    key->comment = comment;
+    return fp;
+}
 bool pageant_external_request = false;
 unsigned long pageant_external_pid = 0;
 
 /* KiTTY: is this external mutation refused by the access-control settings?
  * Only external requests are gated - the agent's own UI does not set
- * pageant_external_request. */
-static bool kageant_mutation_blocked(int op)
+ * pageant_external_request. fp names the key for the record, NULL when
+ * the request names none or it is not decoded yet. */
+static bool kageant_mutation_blocked(int op, const char *fp)
 {
     return pageant_external_request && kageant_ipc_blocked_hook &&
-        kageant_ipc_blocked_hook(op);
+        kageant_ipc_blocked_hook(op, fp);
 }
 
 /*
@@ -1322,7 +1356,8 @@ static void signop_coroutine(PageantAsyncOp *pao)
         idsort.ssh_version = so->priv->sort.ssh_version;
         idsort.base_pub = ptrlen_from_strbuf(idblob);
 
-        bool allowed = kageant_confirm_hook(so->comment, so->confirm);
+        bool allowed = kageant_confirm_hook(so->comment, so->confirm,
+                                            so->keyfp);
 
         /* Pointer comparison ONLY: so->priv may be dangling by now and must
          * not be dereferenced. */
@@ -1456,9 +1491,11 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
         strbuf_free(ppsb);
 
         if (!skey) {
+            kitty_decrypt_record(priv, "failed");   /* KiTTY: event 152 */
             fail_requests_for_key(priv, "unable to decrypt key");
             return;
         } else if (skey == SSH2_WRONG_PASSPHRASE) {
+            kitty_decrypt_record(priv, "failed");   /* KiTTY: event 152 */
             /*
              * Find a PageantClient to use for another attempt at
              * request_passphrase.
@@ -1487,6 +1524,7 @@ void pageant_passphrase_request_success(PageantClientDialogId *dlgid,
             protect_priv_skey_if_possible(priv);
             sfree(skey->comment);
             sfree(skey);
+            kitty_decrypt_record(priv, "done");     /* KiTTY: event 152 */
             /* KiTTY (hknet/KiTTY#66): the request that opened the prompt
              * has gone (its connection died) and the key re-encrypts after
              * each use - it would be locked again before the asker could
@@ -1514,6 +1552,7 @@ void pageant_passphrase_request_refused(PageantClientDialogId *dlgid)
     gui_request_in_progress = false;
     priv->decryption_prompt_active = false;
 
+    kitty_decrypt_record(priv, "cancelled");         /* KiTTY: event 152 */
     fail_requests_for_key(priv, "user refused to supply passphrase");
 
     unblock_pending_gui_requests();
@@ -1752,10 +1791,15 @@ static PageantAsyncOp *pageant_make_op(
         /* KiTTY: SSH-1 key use honours the same usage-confirmation as SSH-2
          * signing (see signop_coroutine). Reachable via the global "confirm
          * every use" mode; the per-key flag never attaches to an SSH-1 key. */
-        if (kageant_confirm_hook &&
-            !kageant_confirm_hook(pub->comment, pub->confirm)) {
-            fail("key usage not confirmed by user");
-            goto challenge1_cleanup;
+        if (kageant_confirm_hook) {
+            char *cfp = kitty_rsa1_record_fp(priv->rkey);
+            bool confirmed = kageant_confirm_hook(pub->comment, pub->confirm,
+                                                  cfp);
+            sfree(cfp);
+            if (!confirmed) {
+                fail("key usage not confirmed by user");
+                goto challenge1_cleanup;
+            }
         }
 
         /* The confirm box is modal and pumps the message loop, so another
@@ -1785,7 +1829,7 @@ static PageantAsyncOp *pageant_make_op(
         /* KiTTY: nudge + tint on a successful SSH-1 key use, mirroring the
          * SSH-2 signop path. Tint match is best-effort (SSH-1 fp format). */
         if (kageant_notify_hook || kageant_keyuse_hook) {
-            char *fp = rsa_ssh1_fingerprint(priv->rkey);
+            char *fp = kitty_rsa1_record_fp(priv->rkey);
             if (kageant_notify_hook)
                 kageant_notify_hook(pub->comment, fp);
             if (kageant_keyuse_hook && fp)
@@ -1888,7 +1932,7 @@ static PageantAsyncOp *pageant_make_op(
 
         pageant_client_log(pc, reqid, "request: SSH1_AGENTC_ADD_RSA_IDENTITY");
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+        if (kageant_mutation_blocked(KAGEANT_MUT_ADD, NULL)) {
             fail("adding keys over IPC is blocked by kageant policy");
             goto responded;
         }
@@ -1914,6 +1958,14 @@ static PageantAsyncOp *pageant_make_op(
         }
 
         if (pageant_add_ssh1_key(key)) {
+            /* KiTTY: the key set changed over an external transport -
+             * reported as an SSH-2 add is */
+            if (pageant_external_request && kageant_mutation_notice_hook) {
+                char *afp = kitty_rsa1_record_fp(key);
+                kageant_mutation_notice_hook(KAGEANT_MUT_ADD, key->comment,
+                                             afp);
+                sfree(afp);
+            }
             keylist_update();
             put_byte(sb, SSH_AGENT_SUCCESS);
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
@@ -1945,7 +1997,7 @@ static PageantAsyncOp *pageant_make_op(
 
         pageant_client_log(pc, reqid, "request: SSH2_AGENTC_ADD_IDENTITY");
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+        if (kageant_mutation_blocked(KAGEANT_MUT_ADD, NULL)) {
             fail("adding keys over IPC is blocked by kageant policy");
             goto add2_cleanup;   /* key is NULL here */
         }
@@ -2046,10 +2098,17 @@ static PageantAsyncOp *pageant_make_op(
                     cpub->confirm = 1;   /* raise to click, never lower Hello */
                 /* KiTTY: the key set just changed over an external
                  * transport - tell the user (a notice, never a prompt). */
-                if (pageant_external_request && kageant_mutation_notice_hook)
+                if (pageant_external_request &&
+                    kageant_mutation_notice_hook) {
+                    /* the STORED key's blob, as the sign record's fp */
+                    char *afp = ssh2_fingerprint_blob(
+                        cpub ? cpub->sort.full_pub : ptrlen_from_strbuf(pb),
+                        SSH_FPTYPE_SHA256);
                     kageant_mutation_notice_hook(
                         KAGEANT_MUT_ADD,
-                        cpub && cpub->comment ? cpub->comment : NULL);
+                        cpub && cpub->comment ? cpub->comment : NULL, afp);
+                    sfree(afp);
+                }
             }
             strbuf_free(pb);
             keylist_update();
@@ -2102,17 +2161,30 @@ static PageantAsyncOp *pageant_make_op(
             sfree(fingerprint);
         }
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE)) {
-            freersakey(&reqkey);
-            fail("removing keys over IPC is blocked by kageant policy");
-            goto responded;
+        if (pageant_external_request && kageant_ipc_blocked_hook) {
+            char *bfp;
+            bool blocked;
+            reqkey.comment = NULL;
+            bfp = rsa_ssh1_fingerprint(&reqkey);
+            blocked = kageant_mutation_blocked(KAGEANT_MUT_REMOVE, bfp);
+            sfree(bfp);
+            if (blocked) {
+                freersakey(&reqkey);
+                fail("removing keys over IPC is blocked by kageant policy");
+                goto responded;
+            }
         }
         pub = findpubkey1(&reqkey);
+        char *rfp1 = kitty_rsa1_record_fp(&reqkey);   /* KiTTY */
         freersakey(&reqkey);
         if (pub) {
             pageant_client_log(pc, reqid, "found with comment: %s",
                                pub->comment);
 
+            /* KiTTY: reported as an SSH-2 remove is */
+            if (pageant_external_request && kageant_mutation_notice_hook)
+                kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE, pub->comment,
+                                             rfp1);
             del_pubkey(pub);
             pk_pub_free(pub); /* KiTTY: purge puborder BEFORE the list
                                * refresh walks it (assert pageant.c:415) */
@@ -2123,6 +2195,7 @@ static PageantAsyncOp *pageant_make_op(
         } else {
             fail("key not found");
         }
+        sfree(rfp1);
         break;
       }
       case SSH2_AGENTC_REMOVE_IDENTITY: {
@@ -2143,9 +2216,14 @@ static PageantAsyncOp *pageant_make_op(
             goto responded;
         }
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE)) {
-            fail("removing keys over IPC is blocked by kageant policy");
-            goto responded;
+        if (pageant_external_request && kageant_ipc_blocked_hook) {
+            char *bfp = ssh2_fingerprint_blob(blob, SSH_FPTYPE_SHA256);
+            bool blocked = kageant_mutation_blocked(KAGEANT_MUT_REMOVE, bfp);
+            sfree(bfp);
+            if (blocked) {
+                fail("removing keys over IPC is blocked by kageant policy");
+                goto responded;
+            }
         }
 
         if (!pc->suppress_logging) {
@@ -2163,8 +2241,13 @@ static PageantAsyncOp *pageant_make_op(
 
         pageant_client_log(pc, reqid, "found with comment: %s", pub->comment);
 
-        if (pageant_external_request && kageant_mutation_notice_hook)
-            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE, pub->comment);
+        if (pageant_external_request && kageant_mutation_notice_hook) {
+            char *rfp = ssh2_fingerprint_blob(pub->sort.full_pub,
+                                              SSH_FPTYPE_SHA256);
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE, pub->comment,
+                                         rfp);
+            sfree(rfp);
+        }
         del_pubkey(pub);
         pk_pub_free(pub); /* KiTTY: purge puborder BEFORE the list
                            * refresh walks it (assert pageant.c:415) */
@@ -2183,14 +2266,14 @@ static PageantAsyncOp *pageant_make_op(
         pageant_client_log(pc, reqid,
                            "request: SSH1_AGENTC_REMOVE_ALL_RSA_IDENTITIES");
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL)) {
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL, NULL)) {
             fail("removing keys over IPC is blocked by kageant policy");
             goto responded;
         }
 
         remove_all_keys(1);
         if (pageant_external_request && kageant_mutation_notice_hook)
-            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL);
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL, NULL);
         keylist_update();
 
         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -2205,7 +2288,7 @@ static PageantAsyncOp *pageant_make_op(
         pageant_client_log(pc, reqid,
                            "request: SSH2_AGENTC_REMOVE_ALL_IDENTITIES");
 
-        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL)) {
+        if (kageant_mutation_blocked(KAGEANT_MUT_REMOVE_ALL, NULL)) {
             fail("removing keys over IPC is blocked by kageant policy");
             goto responded;
         }
@@ -2214,7 +2297,7 @@ static PageantAsyncOp *pageant_make_op(
         if (kageant_key_lifetime_hook)   /* KiTTY: drop every pending -t */
             kageant_key_lifetime_hook(make_ptrlen(NULL, 0), 0);
         if (pageant_external_request && kageant_mutation_notice_hook)
-            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL);
+            kageant_mutation_notice_hook(KAGEANT_MUT_REMOVE_ALL, NULL, NULL);
         keylist_update();
 
         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -2274,7 +2357,7 @@ static PageantAsyncOp *pageant_make_op(
                 goto responded;
             }
 
-            if (kageant_mutation_blocked(KAGEANT_MUT_ADD)) {
+            if (kageant_mutation_blocked(KAGEANT_MUT_ADD, NULL)) {
                 fail("adding keys over IPC is blocked by kageant policy");
                 goto responded;
             }
@@ -2318,6 +2401,15 @@ static PageantAsyncOp *pageant_make_op(
                          * keyed exactly like the ADD_IDENTITY path. */
                         strbuf *cb = makeblob2full(skey->key);
                         kageant_arm_comment_confirm(ptrlen_from_strbuf(cb));
+                        /* KiTTY: reported as ADD_IDENTITY's add is */
+                        if (pageant_external_request &&
+                            kageant_mutation_notice_hook) {
+                            char *afp = ssh2_fingerprint_blob(
+                                ptrlen_from_strbuf(cb), SSH_FPTYPE_SHA256);
+                            kageant_mutation_notice_hook(
+                                KAGEANT_MUT_ADD, skey->comment, afp);
+                            sfree(afp);
+                        }
                         strbuf_free(cb);
                         keylist_update();
                         put_byte(sb, SSH_AGENT_SUCCESS);
@@ -2344,6 +2436,13 @@ static PageantAsyncOp *pageant_make_op(
             pageant_add_ssh2_key_encrypted(sort, comment, keyfile);
             /* KiTTY: and on the deferred/encrypted add path. */
             kageant_arm_comment_confirm(ptrlen_from_strbuf(full_pub));
+            /* KiTTY: reported as ADD_IDENTITY's add is */
+            if (pageant_external_request && kageant_mutation_notice_hook) {
+                char *afp = ssh2_fingerprint_blob(
+                    ptrlen_from_strbuf(full_pub), SSH_FPTYPE_SHA256);
+                kageant_mutation_notice_hook(KAGEANT_MUT_ADD, comment, afp);
+                sfree(afp);
+            }
             keylist_update();
             put_byte(sb, SSH_AGENT_SUCCESS);
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
@@ -2389,7 +2488,15 @@ static PageantAsyncOp *pageant_make_op(
             pageant_client_log(pc, reqid,
                                "found with comment: %s", pub->comment);
 
-            if (!reencrypt_key(pub)) {
+            bool reenc_ok = reencrypt_key(pub);
+            /* KiTTY: the agent's record of it */
+            if (pageant_external_request && kageant_reencrypt_audit_hook) {
+                char *efp = ssh2_fingerprint_blob(pub->sort.full_pub,
+                                                  SSH_FPTYPE_SHA256);
+                kageant_reencrypt_audit_hook(0, efp, pub->comment, reenc_ok);
+                sfree(efp);
+            }
+            if (!reenc_ok) {
                 fail("this key couldn't be re-encrypted");
                 goto responded;
             }
@@ -2424,6 +2531,10 @@ static PageantAsyncOp *pageant_make_op(
                 else
                     nfailures++;
             }
+            /* KiTTY: the agent's record of it */
+            if (pageant_external_request && kageant_reencrypt_audit_hook)
+                kageant_reencrypt_audit_hook(
+                    1, NULL, NULL, !(nsuccesses == 0 && nfailures > 0));
 
             if (nsuccesses == 0 && nfailures > 0) {
                 fail("no key could be re-encrypted");
@@ -2581,8 +2692,34 @@ bool pageant_delete_ssh1_key_by_blob(ptrlen blob)
     return true;
 }
 
+char *pageant_key_comment_by_blob(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    if (!pub) {
+        RSAKey rkey;
+        BinarySource src[1];
+        memset(&rkey, 0, sizeof(rkey));
+        BinarySource_BARE_INIT_PL(src, blob);
+        get_rsa_ssh1_pub(src, &rkey, RSA_SSH1_EXPONENT_FIRST);
+        if (!get_err(src))
+            pub = findpubkey1(&rkey);
+        freersakey(&rkey);
+    }
+    return (pub && pub->comment) ? dupstr(pub->comment) : NULL;
+}
+
 /* KiTTY: the per-key confirm-on-use flag (ssh-add -c / details checkbox /
  * comment convention). */
+bool pageant_key_decrypted_by_blob(ptrlen blob)
+{
+    PageantPublicKey *pub = findpubkey2(blob);
+    PageantPrivateKey *priv;
+    if (!pub)
+        return false;
+    priv = pub_to_priv(pub);
+    return priv->skey || priv->protected_skey;
+}
+
 int pageant_get_key_confirm(ptrlen blob)
 {
     PageantPublicKey *pub = findpubkey2(blob);
