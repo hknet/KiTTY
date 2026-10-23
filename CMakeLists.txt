@@ -564,6 +564,36 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking the event messages and the manual's appendix against the event ID table")
   add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
 
+  # Conf accessors against their keys' types (conf.h): a conf_get_str on an
+  # STR_AMBI key such as CONF_username, or any accessor of another type,
+  # compiles without a warning and ends the program with utils/conf.c's
+  # assertion when the call runs. The check reads every .c and .h of the
+  # source tree, so it depends on all of them: the top level and each source
+  # folder, globbed again at every build (CONFIGURE_DEPENDS) so a new file
+  # is covered without a manual re-run of cmake. Build folders are not
+  # globbed.
+  file(GLOB KITTY_CONF_CHECK_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.h)
+  foreach(kitty_conf_dir charset contrib crypto keygen kitty otherbackends
+          proxy ssh stubs terminal test unicode unix utils windows)
+    file(GLOB_RECURSE kitty_conf_dir_sources CONFIGURE_DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/${kitty_conf_dir}/*.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/${kitty_conf_dir}/*.h)
+    list(APPEND KITTY_CONF_CHECK_SOURCES ${kitty_conf_dir_sources})
+  endforeach()
+  set(KITTY_CONF_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_conf_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_CONF_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-conf-types.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_CONF_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-conf-types.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/conf.h
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking Conf accessor calls against the key types in conf.h")
+  add_custom_target(check_conf_types ALL DEPENDS ${KITTY_CONF_CHECK_STAMP})
+
   # Dialog accelerators. Same class of mistake as the menu ids: it builds, it
   # looks right, and the only symptom is a key that presses the wrong control.
   # "&Add Key" and "Stop &agent" shared Alt+A in kageant's key list until a user
