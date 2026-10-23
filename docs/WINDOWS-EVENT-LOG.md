@@ -159,7 +159,7 @@ are in the Application log, whose size and retention are Windows' own settings.
 
 In every record `%1` is the kind (`session-open`, `auth-failed`, ...) and `%2`
 onwards are the fields in a fixed order. Refusals, failures and mismatches are
-Warning, 900 is Error, the rest are calssified as Information.
+Warning, 900 is Error, the rest are classified as Information.
 
 - **Transfers:** one record per file (240/241, 330/331), with `direction`
   (`put`, `get`), `local`, `remote` and `bytes`.

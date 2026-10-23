@@ -51,6 +51,7 @@ one is available.
   - [Force CR/LF on the Enter key](#force-crlf-on-the-enter-key)
   - [Run a locally saved script on a remote session](#run-a-locally-saved-script-on-a-remote-session)
   - [Session logging with timestamps](#session-logging-with-timestamps)
+  - [Windows Event Log](#windows-event-log)
   - [Standard output to the clipboard](#standard-output-to-the-clipboard)
   - [Restricted process ACL (-restrict-acl)](#restricted-process-acl--restrict-acl)
   - [Send text to every window (broadcast)](#send-text-to-every-window-broadcast)
@@ -442,7 +443,7 @@ mechanism off, set `shortcuts=no` in the `[KiTTY]` section of `kitty.ini`.
 
 The session launcher gives you a quick way to open your saved sessions without digging through menus. It lives in the system tray and lists your sessions organized into menus and sub-menus that mirror your session folders, using the backslash (\) as the separator. By default it rebuilds its menu from your saved sessions each time it starts, but you can also arrange the menu yourself and keep it fixed. It also includes an **Open Sessions** menu that lets you hide and unhide running sessions, removing them from the desktop and taskbar when you have too many open at once. When the launcher detects that a newer KiTTY++ release is available, the tray tooltip mentions the available version and the launcher menu shows a disabled **Update available: KiTTY++ ...** line, so the notice is not lost if a Windows tray balloon is suppressed.
 
-The launcher lists up to 4096 sessions; past that the menu ends with **(N more sessions not shown)**. A left click on its tray icon opens the menu at once, a double click opens a new configuration box, Manage Sessions or Quick Connect (**Tray icon double-click opens:** on Application > KiTTY++ Settings > Launcher; a running launcher follows a change at once), and a click on the icon while its menu is open closes the menu. **Global hotkey:** on the same panel (e.g. `Ctrl+Alt+K`, `[Launcher] globalhotkey`) does what the double click does, from any program; **Apply** beside it stores it only when the combination is free (or the running launcher already holds it as this hotkey) and otherwise reports why; typing alone stores nothing. Both tray menus open beside the icon, away from the taskbar edge; without a visible icon they open at the pointer.
+The launcher lists up to 4096 sessions; past that the menu ends with **(N more sessions not shown)**. A left click on its tray icon opens the menu at once, a double click opens a new configuration box, Manage Sessions or Quick Connect (**Tray icon double-click opens:** on Application > KiTTY++ Settings > Launcher; a running launcher follows a change at once), and a click on the icon while its menu is open closes the menu. **Global hotkey:** on the same panel (e.g. `Ctrl+Alt+K`, `[Launcher] globalhotkey`) does what the double click does, from any program; **Apply** beside it stores it only when the combination is free (or the running launcher already holds it as this hotkey) and otherwise reports why; typing alone stores nothing. Empty + Apply removes it. A session hotkey with the same combination loses it to the global one, and the launcher's conflict balloon lists that session. Both tray menus open beside the icon, away from the taskbar edge; without a visible icon they open at the pointer.
 
 A right click on a session folder inside the open menu offers **Open all ... sessions in** that folder: the sessions directly in it, not those of its subfolders. More than eight sessions require a confirmation first, and they start one after the other.
 
@@ -520,7 +521,7 @@ Programs that send OSC 8 hyperlinks (e.g. `ls --hyperlink` or Textual and Rich a
 
 ### In-terminal (inline) security confirmations
 
-KiTTY++'s SSH security confirmations — an unknown (first-seen) host key, a changed host key, or a weak/legacy algorithm (including key exchange) — are shown as modal dialog boxes by default. Each can optionally be shown **inline in the terminal instead**, OpenSSH-style: the details are printed in the session window and you answer by typing, so the prompt never steals window focus. Every choice the dialog offers is available inline too, so nothing is lost by going inline.
+KiTTY++'s SSH security confirmations — an unknown (first-seen) host key, a changed host key, or a weak/legacy algorithm (including key exchange) — are shown as dialog boxes by default; the session goes on behind them - output, keepalives and a server's close. Each can optionally be shown **inline in the terminal instead**, OpenSSH-style: the details are printed in the session window and you answer by typing, so the prompt never steals window focus. Every choice the dialog offers is available inline too, so nothing is lost by going inline.
 
 - **Unknown host key** — type `yes` to accept and cache the key, or `once` to connect this time without caching it (anything else cancels).
 - **Changed host key** — a deliberate two-step confirmation. Type `yes` to accept the new key for *this* connection; then, because KiTTY++ cannot verify the authenticity of a plain SSH host key (it is trusted on first use), type the exact word `confirmed` to *replace* the stored key for future connections. A reflexive `yes` gets the question again rather than being accepted; `no` or Enter keeps the old key and connects once; `Ctrl-C`/`Ctrl-D` abandons. The heading and security warning are highlighted.
@@ -546,7 +547,7 @@ KiTTY++ can log you in automatically to telnet, SSH-1 and SSH-2 servers by stori
 
 ### Passwords in memory
 
-Every password of the running session — the auto-login password, the proxy password, a named proxy's password — is kept **encrypted in memory** with Windows `CryptProtectMemory`, scoped to this process, and decrypted only into a short-lived buffer at the moment it is used: at SSH login, when a proxy authenticates, when a password field is shown in the configuration box. The buffer is wiped as soon as the value has been handed over. That covers the resting state — crash dumps, the pagefile, a memory image taken while the window sits open — which a wipe on close cannot, because a crash never runs one.
+Every password of the running session — the auto-login password, the proxy password, a named proxy's password — is kept **encrypted in memory** with Windows `CryptProtectMemory`, scoped to this process, and decrypted only into a short-lived buffer at the moment it is used: at SSH login, when a proxy authenticates, when a password field is shown in the configuration box. The buffer is wiped as soon as the value has been handed over. That covers the resting state — crash dumps, the pagefile, a memory image taken while the window sits open — which a wipe on close cannot, because a crash never runs one. The login script stays encrypted in memory while it waits to run, and the key unlocked by the master password and a -masterpwfile passphrase are held protected with Windows' memory protection where Windows offers it.
 
 Two places the password used to leave the process are covered too. **Duplicate Session** and the tray launcher hand the new window its settings through a shared memory section; the passwords in it are now encrypted for your logon, and the new window re-encrypts them for itself. And **Send/Get file** no longer puts `-pw <password>` on the `kscp`/`ksftp` command line, where every process lister and audit log on the machine can read it. A `kscp` of this release gets it **in memory**: a block only that one started process inherits, the password in it encrypted for your logon, `-pwhandle` with a handle number on its command line - no file on disk at all; the tool takes it once and wipes it. Any other helper gets the password in a private temporary file, deleted once the tool has started - and so does ours when no such block can be made. What that file holds depends on the helper, and KiTTY++ queries the helper itself rather than guessing from its file name: one that declares it can read a protected password is given the value in the same DPAPI-protected form a stored password has, while any older one — an installed `kscp` from an earlier release, or PuTTY's own `pscp`/`psftp`, which KiTTY++ falls back to when no `kscp` is present — is given the plain password its `-pwfile` has always expected. Either way the password is off the command line. In the rare case where no private file can be created at all it does go on the command line, as before — but a helper that reads the protected form is handed that form there too, so only an older helper ever sees a readable password.
 
@@ -917,7 +918,19 @@ openlogfile={CONTROL}{SHIFT}L ; open this session's log file
 eventlog={CONTROL}{SHIFT}E    ; show KiTTY's event log
 ```
 
+**A log file that already exists, with nobody at the desktop** (a service, a scheduled task that runs whether a user is logged on or not): the session logs nothing instead of waiting on a question nobody sees, and the reason goes to the Application event log (source KiTTY++). Session > Logging > "What to do if the log file already exists", `-logoverwrite` or `-logappend` set the choice beforehand.
+
 **How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *Log rotation delay* and include `&T` in the file name.
+
+(no screenshot)
+
+### Windows Event Log
+
+Sessions (kitty.exe, kitty_tel), the console tools (klink, kscp, ksftp), kittygen and kittygen-cli, and the agent kageant can write what they do to the Windows Event Log: session opened and closed, host key, login and each refused login attempt (jump hosts and proxies included), the proxy a connection went through, every transferred file, keys generated and saved, and every change to the agent's keys. One event ID per kind of record, every field its own insertion string - filterable in Event Viewer and forwardable with Windows Event Forwarding - and each record with the Windows account that wrote it. With the system MSI the records go to the logs `KiTTY++_Session` and `KiTTY++_Agent`; without it, to the Application log. KiTTY++ sends no syslog itself.
+
+Setup, the logs, read access and forwarding: [docs/WINDOWS-EVENT-LOG.md](docs/WINDOWS-EVENT-LOG.md). Every event ID with its fields: [docs/EVENT-IDS.md](docs/EVENT-IDS.md).
+
+**How to enable:** **Application > Security**, group **Windows Event Log**: *kitty.exe sessions*, *klink, kscp, ksftp*, *kittygen* (`[KiTTY] sessioneventlog`, `clieventlog`, `kittygeneventlog`, off by default); **KiTTY++ Event Viewer** there opens Event Viewer on the suite's records. kageant: **Settings > Log > Destination** (`[Agent] agentlogsink=file|eventlog|both`; with the system MSI installed the default is both).
 
 (no screenshot)
 
@@ -1439,6 +1452,8 @@ The host reports which program has control and how programs nest - a shell, a co
 
 **Context breadcrumb in the title bar:** one line at the right end of the title bar, left of the minimise, maximise and close buttons, shows where the shell is - `alice@web01 › root › nginx-test`. A segment stands for every place where the user or the machine changes - the login, `run0` to root or to another user, a container or VM by its name, an `ssh` onward - never for a single command. It shows only while something has switched (a plain login shows nothing), the root segment on dark red and a switched user on dark yellow. Clicks pass through it, so the title bar still drags the window there. A long chain shows the first segment, `…` and the last two. Without a title bar (full screen, title bar off) it goes to the top right of the terminal area. How opaque it is and where it goes, for all sessions: **Application → KiTTY++ Settings → Appearance → Context breadcrumb**, opacity 40-100% (70 by default, `ctxbreadcrumbopacity` in kitty.ini) and Place. **Terminal area, top right** (`ctxbreadcrumbplace=window`) puts it at the top right of the terminal area instead: dragged with the mouse (a stored session keeps that place, `ContextBreadcrumbPos`), the whole chain in its tooltip, hidden while a full-screen program uses the alternate screen (vim, less, htop). The program status panel (OSC 7501) then opens below it.
 
+**A one-line notice** shows why the window turned red or yellow, and reports a program's switch to blocked, failed or finished (OSC 7501) or an OSC 9;4 progress error or pause. Seconds on **Application > KiTTY++ Settings > Appearance** (`osc3008ctxnotice`, `osc7501notice`; default 2, 0 = never).
+
 **How to enable:** **Terminal → Notifications → Notice for failed commands (OSC 3008)** (off by default) and **Context breadcrumb in the title bar (OSC 3008)** (on by default), **Terminal → Shell Integration → Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)** (both on by default), `ContextFailNotice`, `ContextBreadcrumb`, `ContextRootFrame`, `ContextRootTint`. On the host: systemd 257 or later, see [docs/OSC-INTEGRATION.md](docs/OSC-INTEGRATION.md).
 
 (no screenshot)
@@ -1561,7 +1576,7 @@ KiTTY++ can host a Cygwin shell inside its terminal window through PuTTY's local
 
 ### File association
 
-KiTTY++ can export the settings of your running session to a plain-text file with the **.ktx** extension, using the **Export current settings** item in the main menu. Once the **.ktx** file type is associated with KiTTY++, you can launch any saved session simply by double-clicking its file. This makes it easy to share ready-to-run sessions or keep handy shortcuts to the connections you use most.
+KiTTY++ can export the settings of your running session to a plain-text file with the **.ktx** extension, using the **Export current settings** item in the main menu. Once the **.ktx** file type is associated with KiTTY++, you can launch any saved session simply by double-clicking its file. This makes it easy to share ready-to-run sessions or keep handy shortcuts to the connections you use most. A .ktx file shows as "KiTTY++ session file" in Explorer, and KiTTY++ is offered under "Open with".
 
 **How to enable:** run **`kitty.exe -fileassoc`**. As administrator it associates `.ktx` for everyone on the machine; run normally it does so for your account, and the machine-wide installation requests the rights itself. If another program already opens `.ktx`, that is reported and left alone — the same `-force`, `-user`, `-yes` and `-uninstall` options as [`-sshhandler`](#ssh-handler-urlos-integration) apply, including the exported `.reg` backup and the command that undoes the change.
 
@@ -1577,6 +1592,8 @@ A session can be a stub: write a session file - or a registry key - with only wh
 It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it - unless **Save only non-default settings** is on.
 
 **Save only non-default settings** (only with Inherit Default Settings; `[KiTTY] saveonlynondefaultsettings=yes`): a session save writes only what differs from Default Settings; a value set back to the default is commented out (`# TermWidth=80`). Default Settings and exports stay whole. **Comment out defaults** applies this once to every session (registry store: deletes the default values). A line starting with `#` or `;` is never a setting. Old KiTTY, PuTTY or a copy with Inherit off read missing keys with their own defaults.
+
+Every session key with its type, values and default, and the changes since the previous release: [docs/SESSION-FILES.md](docs/SESSION-FILES.md).
 
 **Session Lockdown keeps a stub a stub.** Session > Comment & Lock > **Session Lockdown** (session key `SessionLockdown=1`, off by default) blocks every write to that session's settings - Save, saving from a running window, `/save`, the remembered answers that save a session. Rename and move still work, and window positions and tags are still stored. A stub you write yourself can carry `SessionLockdown=1` from the start.
 
@@ -1785,7 +1802,7 @@ It is stored with the session like any other setting, so it travels through **Ex
 
 ### The configuration window remembers how you use it
 
-Seven behaviours of the configuration window itself:
+Eight behaviours of the configuration window itself:
 
 - **The title shows the program.** The configuration window is titled
   "KiTTY++ Configuration" (Change Settings: "KiTTY++ Reconfiguration"); a
@@ -1814,6 +1831,10 @@ Seven behaviours of the configuration window itself:
   (`[ConfigBox] supdup=no` / `rlogin=no`) and that Connection panel is no
   longer listed - except while the session in the box uses the protocol, so
   such a session stays editable.
+- **Delete requires a confirmation.** The Delete button, the list's Delete
+  menu item and the Del key share one question; Application > Config
+  Window > Session Panel > "Require confirmation before deleting a session"
+  (`[ConfigBox] confirmdelete`, on by default) turns it off.
 
 (no screenshot)
 
@@ -1920,6 +1941,10 @@ the port):**
   note:** in classic KiTTY this same title machinery also *parsed* titles for
   `__xy` remote commands — that channel stays removed; decoration here is
   strictly one-way output.
+- `[KiTTY] autostoresshkey` — revived with a narrower meaning: classic KiTTY
+  answered Yes to the changed-key question too, so a changed host key was
+  replaced without a word; in KiTTY++ it stores only an unknown key and never
+  accepts a changed one (see *Accept new host keys*).
 
 **Removed — ignored if present in an old kitty.ini:**
 
@@ -1934,10 +1959,6 @@ the port):**
 - `[KiTTY] localcmd`, `localunsecurecmd` — the `__xy` remote metacommand
   dispatcher they gated was removed for security (remote command-injection
   surface, cf. CVE-2024-23749); the switches were a booby trap without it.
-- `[KiTTY] autostoresshkey` — revived with a narrower meaning: classic KiTTY
-  answered Yes to the changed-key question too, so a changed host key was
-  replaced without a word; in KiTTY++ it stores only an unknown key and never
-  accepts a changed one (see *Accept new host keys*).
 - `[ConfigBox] default`, `left`, `top` — dead getters; `left`/`top` are
   superseded by the automatic config-box position memory.
 - `[Agent] scrumble` — the classic key shuffle was never functional in any
