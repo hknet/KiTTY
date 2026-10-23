@@ -1,4 +1,4 @@
-# KiTTY++ 0.85.1.17 — Known issues & limitations
+# KiTTY++ 0.85.1.18 — Known issues & limitations
 
 Known limitations of this release:
 
@@ -71,9 +71,35 @@ Known limitations of this release:
 - **Inline SSH security prompts are not available during a rekey**: the
   connection is closed instead.
 - **Search keeps the first 1,000,000 hits.** The counter counts on, but
-  hits after those are not marked and Up and Down do not reach them.
+  hits after those are not marked, Up and Down do not reach them, and the
+  last-hit key (Ctrl+Shift+Enter, Ctrl+Shift+F3) goes to the last hit kept.
 - **Re-wrap on resize is untested with fish.** That the prompt is not drawn
   twice after a resize is measured with bash 5.3 and zsh only.
+- **Short session files need Inherit Default Settings to read back.** A
+  file saved with "Save only non-default settings" opened by an old KiTTY,
+  PuTTY or a KiTTY++ with Inherit off gets built-in defaults for the
+  missing keys, not Default Settings.
+- **Under `readonly=yes` no host key is stored**: a new host key is
+  accepted for one connection, and the question comes back on the next.
+
+## Windows Event Log
+
+- **The record texts are English only.** A Windows Event Forwarding
+  collector with another display language needs
+  `<Locale Language="en-US"/>` in its subscription; without it the records
+  arrive with their fields but no text.
+- **Without the system MSI the records go to the Application log, without
+  their text**: no source is registered. Fields and the writer's account
+  arrive.
+- **After uninstalling the system MSI, restart Windows.** Until then the
+  Event Log service sends KiTTY++ records to the removed logs, not to the
+  Application log. Restarting only the Event Log service is no substitute.
+- **Forwarding in a workgroup is collector-initiated Pull only**, and needs
+  WinRM's compatibility listener on port 80 on the source. Push needs a
+  domain. Source-initiated forwarding in a domain is untested. Source and
+  collector must be two machines.
+- **KiTTY++ sends no syslog.** Forward the records with Windows Event
+  Forwarding or a log shipper that reads the Event Log.
 
 ## Connectivity tips
 
@@ -94,7 +120,10 @@ Known limitations of this release:
 - **Stored passwords are DPAPI-encrypted**: safe against offline and
   cross-user theft, not against malware running as you, and they do not move
   to another PC. A portable master-password store moves with its `Security`
-  folder. **A forgotten master password cannot be recovered.**
+  folder; one set to "Use DPAPI (this PC only)"
+  (`PortablePasswordProtection=dpapi`) does not: another PC that shares the
+  session folder cannot read those passwords. **A forgotten master password
+  cannot be recovered.**
 - **SSH-1 keys are held in plain memory**, in kageant and in kittygen. SSH-2
   keys are `CryptProtectMemory`-encrypted except while in use.
 - **Helper programs without the KiTTY++ signature need a confirmation the
@@ -103,6 +132,8 @@ Known limitations of this release:
 - **kageant lock:** `ssh-add -x` does not survive a restart of kageant.
 - **kageant's key-file check stops a swapped file, not a program running as
   you**: the stored fingerprint is plain text.
+- **PPK version 1 key files still log in**, with a notice; a coming release
+  refuses them. Convert with kittygen.
 
 ## Packaging / cosmetic
 
@@ -111,7 +142,7 @@ Known limitations of this release:
 - **Antivirus & UPX:** the standard ZIP holds plain signed executables. The
   `-upx.zip` and the installers carry UPX-compressed ones, which some
   antivirus tools object to - take the standard ZIP then.
-- **Version string:** binaries report `0.85.1.17-beta @ 2026-10-17`.
+- **Version string:** binaries report `0.85.1.18-beta @ 2026-10-23`.
 - **The configuration box's Exit button has no Alt key.** Esc works.
 - **Script with `kittygen-cli.exe`, not `kittygen.exe`**: the window version
   reports an unknown switch in a dialog and waits for OK.

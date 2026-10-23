@@ -1,29 +1,35 @@
 # KiTTY changelog
 
-KiTTY++ is the old KiTTY plus serious speed enhancements and lots of features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is the old KiTTY plus serious (speed) enhancements and more features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.18-beta
+## 0.85.1.18-beta — 2026-10-23
 
 ### New
 
 - **KiTTY++ Event Viewer** button on Application > Security. With the
   system MSI installed, entries show their text instead of a Windows
-  placeholder.
+  placeholder. (hknet/KiTTY#81)
 - **Accept new host keys** (-accept-new, [KiTTY] autostoresshkey, per
   session): unknown new host keys are accepted and stored, changed keys are
-  blocked.
+  blocked. (yes we got this setting back from the dead for some scripts)
 - **Save only non-default settings** (with Inherit Default Settings):
   session files only carry non-default settings in their active config,
   other settings are inherited from "Default Settings".
-- **docs/SESSION-FILES.md**: every session key with type, values and
+  This should be cool for people doing git-diff or similar, please do
+  not enable this if you don't exactly know what you are doing.
+- **[docs/SESSION-FILES.md](docs/SESSION-FILES.md)**: every session key with type, values and
   default, generated at build time, with the changes since the previous
   release.
 - **[docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md)** for tools that
   generate a session folder themselves: where it is, the layout, the name
   escaping, which files count as sessions, the file format with the keys that
   matter, and the same session in the registry store.
+- **[docs/WINDOWS-EVENT-LOG.md](docs/WINDOWS-EVENT-LOG.md)**: the Windows
+  Event Log records, the logs, read access and forwarding (Windows Event
+  Forwarding, tested in a workgroup); every event ID with its fields in
+  [docs/EVENT-IDS.md](docs/EVENT-IDS.md).
 - **Context breadcrumb (OSC 3008).** One line at the right end of the
   title bar shows where the shell is - `alice@web01 › root › nginx-test` -
   while something has switched: root or another user through `run0`, a
@@ -37,7 +43,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - **Scrollback search: first and last hit, and the last search kept.** In
   the find bar, Ctrl+Enter or Ctrl+F3 goes to the first hit and
   Ctrl+Shift+Enter or Ctrl+Shift+F3 to the last; while there are hits a
-  second line of the bar shows them. Opened again in the same
+  second line extends the bar and shows them. Opened again in the same
   window, the bar shows the last text and the hit it was closed on
   (hknet/KiTTY#76).
 - **Global hotkey for the launcher.** A key combination that does what a
@@ -51,11 +57,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   or a saved session's launcher hotkey). Empty + Apply removes it. A
   session hotkey with the same combination loses it to the global one,
   and the launcher's conflict balloon lists that session.
+  Combine this with Quick-Connect-Mode and you got a One-Hotkey-Launch
+  into the address-field of KiTTY++.
 - **Old and weakly protected key files are reported.** A session's PPK
   key file in the old version 1 format, or an encrypted version 2 file
   (its passphrase protected by SHA-1, not Argon2 as in version 3), is
   reported in a notice and in the Event Log before the connection, once
-  per file, and the login goes on. kageant shows the notice for an
+  per file, and the login is not blocked. kageant shows the notice for an
   encrypted version 2 key loaded at start or added by hand.
 - **"Use DPAPI (this PC only)" in the master password setup box.** The
   third button keeps saved passwords for this Windows account on this PC and
@@ -160,8 +168,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   although KiTTY++ was registered for them. Registering now adds KiTTY++ to
   Default apps, names the programs that claim ssh://, telnet:// or kitty://
   there, and opens Settings > Default apps to choose.
-- **mNotepad opened read-only no longer writes the file** on Ctrl+S or Save
-  as.
+- **mNotepad opened read-only no longer writes the file** on Ctrl+S or Save as.
 - **A master password setup that cannot store its salt reports it once**:
   later saves in the same run report "No master password was set up"
   instead of "locked".
@@ -190,7 +197,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   prompt at every start.** A master password set up before
   `PortablePasswordProtection=dpapi` kept the prompt at startup, even with
   every password protected with DPAPI. A password still protected with the
-  master password brings the prompt when it is used.
+  master password brings up the prompt when it is used.
 - **An upgrade no longer turns the launcher's autostart back on.** The
   installers wrote the Startup shortcut on every upgrade, also where "Start
   at login" was turned off; now an upgrade keeps it only where it is there.
@@ -198,7 +205,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   opens by itself.** For the rest of the run a connection or a load no
   longer brings it up again, but a save, `/save`, `/savenew`, Export, Export
   All, a portable copy, a session copy, a reset of Default Settings and New
-  session with these settings, started by hand, show it again.
+  session with these settings, started by hand, show the prompt again.
 - **The master key is held protected in memory.** The key unlocked by the
   master password, and a `-masterpwfile` passphrase, are kept encrypted in
   the program's memory with Windows' memory protection where Windows offers
@@ -220,6 +227,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   failed connection leaves the window open the same way.
 - **An old (version 1) PPK key file no longer stops the login with a
   box.** The notice and the Event Log line above report it instead.
+  But we will in the near future refuse v1 PPK key files as too insecure!
 - **A session file saved by KiTTY++ changes only where a value changed.** In
   the folder store each save reversed the line order, dropped comments and
   blank lines, and wrapped an unchanged password afresh, so a Git diff showed
@@ -241,10 +249,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   started `C:\Program Files\...\kscp.exe`. A path to the kscp.exe of the
   folder the copy is made from is now left out: the copy uses the
   kscp.exe beside its kitty.exe. A kscp kept elsewhere, and the WinSCP,
-  FileZilla and ZModem paths, are taken over unchanged.
+  FileZilla and ZModem paths, are copied over with no change.
 - **The `/commands` console no longer stops the session.** `/delreg`'s
   question and `/savektx`'s Save-As box run beside the session, and their
-  outcome comes to the result line once answered; the other commands that
+  outcome gets to the result line once answered; the other commands that
   opened a message box report on the result line. Each box held output,
   keepalives and a server's close until it was closed.
 - **`/loadreg` no longer ends the session.** A cancelled or wrong password
@@ -300,7 +308,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   is a notice, and the session goes on without a log.
 - **Duplicate Session, New Session, a saved session from the menu and
   `-cfgpanel` report a start that fails.** They did nothing before; a notice
-  and an Event Log line now give the reason.
+  and an Event Log line now report the reason.
 - **About > Licence, the host key's "More info" and non-fatal errors no
   longer stop the session.** The licence opens beside the About box, which
   stays usable; "More info" (the key's fingerprints) runs beside the
