@@ -8038,7 +8038,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
             s = ctrl_getset(b, "Connection/SSH/Auth/Credentials", "publickey",
                             KT_CREDENTIALS_PUBLIC_KEY_AUTHENTICATION);
             ctrl_filesel(s, KT_CREDENTIALS_PRIVATE_KEY_FILE_FOR_AUTHENTICATION, 'k',
-                         FILTER_KEY_FILES, false, KT_CREDENTIALS_SELECT_PRIVATE_KEY_FILE,
+                         FILTER_KEY_OR_PUB_FILES, false, KT_CREDENTIALS_SELECT_PRIVATE_KEY_FILE,
                          HELPCTX(ssh_auth_privkey),
                          conf_filesel_handler, I(CONF_keyfile));
             ctrl_filesel(s, KT_CREDENTIALS_CERTIFICATE_TO_USE, 'e',

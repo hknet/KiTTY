@@ -102,6 +102,12 @@ static bool do_filereq_a(
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = ".ppk";
         break;
+      case FILTER_KEY_OR_PUB_FILES:  /* KiTTY: a public key selects the agent's key */
+        of.lpstrFilter = "PuTTY Private Key Files (*.ppk)\0*.ppk\0"
+            "Public Key Files (*.pub)\0*.pub\0"
+            "All Files (*.*)\0*\0\0\0";
+        of.lpstrDefExt = ".ppk";
+        break;
       case FILTER_DYNLIB_FILES:
         of.lpstrFilter = "Dynamic Library Files (*.dll)\0*.dll\0"
             "All Files (*.*)\0*\0\0\0";
@@ -176,6 +182,12 @@ static bool do_filereq_w(
         break;
       case FILTER_KEY_FILES:
         of.lpstrFilter = L"PuTTY Private Key Files (*.ppk)\0*.ppk\0"
+            "All Files (*.*)\0*\0\0\0";
+        of.lpstrDefExt = L".ppk";
+        break;
+      case FILTER_KEY_OR_PUB_FILES:
+        of.lpstrFilter = L"PuTTY Private Key Files (*.ppk)\0*.ppk\0"
+            "Public Key Files (*.pub)\0*.pub\0"
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = L".ppk";
         break;

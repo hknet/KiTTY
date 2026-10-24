@@ -3435,9 +3435,8 @@ private key in another format that you want to use with KiTTY++, see
 The file name can use Windows environment variables, such as
 \c{%USERPROFILE%\\.ssh\\id.ppk}; see \k{kitty-cfg-envvars}.
 
-You can use the authentication agent (\i{kageant}, KiTTY++'s build of
-\i{kageant}) so that you do not need to explicitly configure a key
-here; see \k{pageant}.
+You can use KiTTY++'s authentication agent, \i{kageant}, so that you
+do not need to explicitly configure a key here; see \k{pageant}.
 
 If a private key file is specified here with the agent running, KiTTY++
 will first try to have the agent authenticate with that key, and

@@ -27,6 +27,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - The launcher labels a window minimised to it by its Icon-Title, with the
   session name when it is missing. Windows of one session that look the same
   get their Host-Title added, or a number when that is the same too.
+- Session > Connection > SSH > Auth > Credentials: the key file label now
+  points out that a public key file selects the agent's key. Its Browse
+  dialog lists *.pub files.
 
 ### Fixed
 

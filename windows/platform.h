@@ -588,7 +588,7 @@ void bigeditctrlbutton(struct ctlpos *cp, const char *stext,
                        const char *btext, int bid, int percentbtn);
 void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
                int s2id);
-void editbutton(struct ctlpos *cp, const char *stext, int sid,
+void editbutton(struct ctlpos *cp, const char *stext, int slines, int sid,
                 int eid, const char *btext, int bid);
 /* KiTTY: the product name a person reads - "KiTTY++" where appname (also
  * the window class) is "KiTTY", appname otherwise (windows/dialog.c) */

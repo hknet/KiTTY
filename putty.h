@@ -15,6 +15,7 @@
 typedef enum {
     FILTER_ALL_FILES, /* no particular focus */
     FILTER_KEY_FILES, /* .ppk */
+    FILTER_KEY_OR_PUB_FILES, /* KiTTY: .ppk, or a .pub that selects the agent's key */
     FILTER_DYNLIB_FILES, /* whatever the host platform uses as shared libs */
     FILTER_SOUND_FILES, /* whatever kind of sound file we can use as bell */
     FILTER_ICON_FILES, /* KiTTY: .ico, for a session's own window icon */

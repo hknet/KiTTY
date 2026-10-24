@@ -683,6 +683,37 @@ char *staticwrap(struct ctlpos *cp, HWND hwnd, const char *text, int *lines)
 }
 
 /*
+ * KiTTY: staticwrap for a text that carries its own line breaks. Each
+ * '\n'-separated piece is wrapped on its own and the lines are counted
+ * over all of them: staticwrap measures a '\n' as one more character,
+ * so a two-line label that fits the width came back as ONE line.
+ */
+static char *staticwrap_lines(struct ctlpos *cp, HWND hwnd,
+                              const char *text, int *lines)
+{
+    strbuf *sb = strbuf_new();
+    const char *p = text;
+    int total = 0;
+
+    for (;;) {
+        const char *nl = strchr(p, '\n');
+        char *piece = nl ? dupprintf("%.*s", (int)(nl - p), p) : dupstr(p);
+        int n = 1;
+        char *wrapped = staticwrap(cp, hwnd, piece, &n);
+        put_datapl(sb, ptrlen_from_asciz(wrapped));
+        total += n;
+        sfree(wrapped);
+        sfree(piece);
+        if (!nl)
+            break;
+        put_byte(sb, '\n');
+        p = nl + 1;
+    }
+    if (lines) *lines = total;
+    return strbuf_to_str(sb);
+}
+
+/*
  * A single standalone static text control.
  */
 void statictext(struct ctlpos *cp, const char *text, int lines, int id)
@@ -1964,8 +1995,11 @@ void ersatztab(struct ctlpos *cp, const char *stext, int sid, int lid,
 /*
  * A static line, followed by an edit control on the left hand side
  * and a button on the right.
+ *
+ * KiTTY: the static is slines lines tall (at least one), so a label
+ * of several lines pushes the edit row down instead of being cut.
  */
-void editbutton(struct ctlpos *cp, const char *stext, int sid,
+void editbutton(struct ctlpos *cp, const char *stext, int slines, int sid,
                 int eid, const char *btext, int bid)
 {
     const int height = (EDITHEIGHT > PUSHBTNHEIGHT ?
@@ -1976,7 +2010,7 @@ void editbutton(struct ctlpos *cp, const char *stext, int sid,
     r.left = GAPBETWEEN;
     r.top = cp->ypos;
     r.right = cp->width;
-    r.bottom = STATICHEIGHT;
+    r.bottom = STATICHEIGHT * (slines > 1 ? slines : 1);
     cp->ypos += r.bottom + GAPWITHIN;
     doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
 
@@ -2806,17 +2840,27 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             sfree(escaped);
             break;
           case CTRL_FILESELECT:
-            escaped = shortcut_escape(ctrl->label, ctrl->fileselect.shortcut);
             shortcuts[nshortcuts++] = ctrl->fileselect.shortcut;
             num_ids = 3;
             if (!ctrl->fileselect.just_button) {
+                /* KiTTY: the label wrapped to the panel width, its own
+                 * line breaks kept, and as many lines tall as that
+                 * takes: a second line used to be cut off. */
+                int lines;
+                char *wrapped = staticwrap_lines(&pos, cp->hwnd,
+                                                 ctrl->label, &lines);
+                escaped = shortcut_escape(wrapped,
+                                          ctrl->fileselect.shortcut);
+                sfree(wrapped);
                 /* KiTTY: FILTER_FOLDERS is a folder row - same aligned
                  * label / box / button line, but the button opens the
                  * folder picker and is labelled as such. */
-                editbutton(&pos, escaped, base_id, base_id+1,
+                editbutton(&pos, escaped, lines, base_id, base_id+1,
                            ctrl->fileselect.filter == FILTER_FOLDERS ?
                                KT_KSET_TT_LOCATE : "Browse...", base_id+2);
             } else {
+                escaped = shortcut_escape(ctrl->label,
+                                          ctrl->fileselect.shortcut);
                 button(&pos, escaped, base_id+2, false);
             }
             sfree(escaped);

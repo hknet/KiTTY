@@ -791,8 +791,9 @@
 /* Connection/SSH/Auth/Credentials */
 #define KT_CREDENTIALS_CREDENTIALS_TO_AUTHENTICATE   "Credentials to authenticate with"
 #define KT_CREDENTIALS_PUBLIC_KEY_AUTHENTICATION     "Public-key authentication"
-#define KT_CREDENTIALS_PRIVATE_KEY_FILE_FOR_AUTHENTICATION "Private key file for authentication:"
-#define KT_CREDENTIALS_SELECT_PRIVATE_KEY_FILE       "Select private key file"
+#define KT_CREDENTIALS_PRIVATE_KEY_FILE_FOR_AUTHENTICATION "Private key file for authentication\n" \
+        "or a public key file as ssh-agent key selector (see Help):"
+#define KT_CREDENTIALS_SELECT_PRIVATE_KEY_FILE       "Select private or public key file"
 #define KT_CREDENTIALS_CERTIFICATE_TO_USE            "Certificate to use with the private key " \
         "(optional):"
 #define KT_CREDENTIALS_SELECT_CERTIFICATE_FILE       "Select certificate file"
