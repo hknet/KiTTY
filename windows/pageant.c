@@ -2335,7 +2335,7 @@ static int kageant_hello_add_offer(const char *src, char **newpath_out)
 
 /* The re-encrypt time fields (Settings > Security, a key's details): an
  * editable combo box listing the usual values; anything else may be typed
- * (seconds, 10m / 2h / 1d, 30 s to 7 d). "immediately" is stored as "use". */
+ * (seconds, 10m / 2h / 1d, 30 s to 7 d). */
 static void autoenc_combo_fill(HWND combo)
 {
     static const char *const values[] = { "immediately", "10m", "2h", "1d" };
@@ -4037,10 +4037,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
          * (beside kitty.ini) and a registry one (under %LOCALAPPDATA%). */
         {
             char dp[MAX_PATH + 1];
-            char line[MAX_PATH + 32];
             if (kageant_audit_default_path(dp, sizeof(dp), 0)) {
-                snprintf(line, sizeof(line), KT_KASET_LOG_DEFAULT_FMT, dp);
+                char *line = dupprintf(KT_KASET_LOG_DEFAULT_FMT, dp);
                 SetDlgItemText(hwnd, IDC_SET_L_LOGDEFAULT, line);
+                sfree(line);
             }
         }
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,

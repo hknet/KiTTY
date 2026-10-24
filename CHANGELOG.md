@@ -17,6 +17,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Direct2D is now the default renderer. To keep GDI, choose it on
   Application > KiTTY++ Settings > Terminal (`renderer=gdi`). Windows older
   than 8.1 use GDI as before.
+- kageant stores "re-encrypt right after each signature" as `immediately`
+  instead of `use`. Both words still work. kageant 0.85.1.14 and older read
+  `immediately` as not set.
 - Response to remote title query: "Window title" is now "Host-Title". New
   choice "Full Display-Title".
 - `-title` and `/title` set the Window-Title of this window only and are not

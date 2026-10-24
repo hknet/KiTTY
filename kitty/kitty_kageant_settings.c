@@ -739,10 +739,8 @@ int kageant_autoenc_parse(const char *text)
     int unit = 1;
     while (text && (*text == ' ' || *text == '\t')) text++;
     if (!text || !*text) return -1;
-    /* "immediately" is the word the settings show since 0.85.1.15; "use" is
-     * what every version stores and reads, and what is still written, so a
-     * kitty.ini shared with an older kageant keeps its meaning. A later
-     * release switches the writing to "immediately". */
+    /* "immediately" is written; "use" (written up to 0.85.1.18) is still
+     * read. kageant 0.85.1.14 and older read "immediately" as not set. */
     if (!stricmp(text, "use") || !stricmp(text, "immediately"))
         return KAGEANT_AUTOENC_USE;
     if (!stricmp(text, "off") || !stricmp(text, "no") || !stricmp(text, "0")) return 0;
@@ -763,7 +761,7 @@ int kageant_autoenc_parse(const char *text)
 
 void kageant_autoenc_format(int seconds, char *buf, size_t len)
 {
-    /* display only - the stored word is still "use" (see the parser) */
+    /* display text; "immediately" is also the stored word (see the parser) */
     if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, len, "immediately");
     else if (seconds <= 0) snprintf(buf, len, "off");
     else if (seconds % 86400 == 0) snprintf(buf, len, "%d d", seconds / 86400);
@@ -774,7 +772,7 @@ void kageant_autoenc_format(int seconds, char *buf, size_t len)
 
 /* Stored as a MODE WORD + a value, never a boolean pair (the confirm-mode
  * tri-state trap): [Agent] autoencryptmode = off | default | enforce,
- * autoencryptseconds = number | use; registry AutoEncryptMode /
+ * autoencryptseconds = number | immediately; registry AutoEncryptMode /
  * AutoEncryptSeconds DWORDs. Read: registry first where it is authoritative,
  * else the ini, as every other agent setting does. */
 static int kageant_autoenc_mode_parse(const char *t)
@@ -841,7 +839,7 @@ int kageant_autoenc_seconds_set(int seconds)
 {
     char buf[32];
     seconds = kageant_autoenc_clamp(seconds);
-    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, sizeof(buf), "use");
+    if (seconds == KAGEANT_AUTOENC_USE) snprintf(buf, sizeof(buf), "immediately");
     else snprintf(buf, sizeof(buf), "%d", seconds);
     return kageant_setting_write(KI_AGENT_AUTOENCRYPTSECONDS, buf,
                                  "AutoEncryptSeconds", seconds);

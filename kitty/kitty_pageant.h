@@ -141,7 +141,7 @@ int  kageant_autoenc_seconds(void);
 int  kageant_autoenc_seconds_set(int seconds);
 /* "10m", "2 h", "1d", "immediately" or "use", "off", bare seconds -> value (-1 = no parse). */
 int  kageant_autoenc_parse(const char *text);
-/* value -> "immediately" / "off" / "10 m" / "2 h" / "45 s" (buf >= 24) - for display; "use" is what is stored. */
+/* value -> "immediately" / "off" / "10 m" / "2 h" / "45 s" (buf >= 24) - for display. */
 void kageant_autoenc_format(int seconds, char *buf, size_t len);
 void kageant_idle_note_use(ptrlen pubblob);            /* a signature happened */
 int  kageant_idle_get_key(ptrlen pubblob);             /* own value or -1 */

@@ -263,6 +263,27 @@ static void kageant_apply_confirm_by_path(const char *abspath, int mode)
  * GetLastError()). The ini entries are written over the old ones FIRST and
  * only the surplus ones removed afterwards: it used to clear the whole list
  * before writing, so a write failing partway left the remembered keys gone. */
+/* An [Agent] value of any length, or NULL when absent or empty (sfree it).
+ * A startup-key entry is a path plus its tokens (,encrypted, ,confirm,
+ * ,autoencrypt=, the fingerprint), so no fixed buffer holds every one: the
+ * read is repeated with a doubled buffer while the value fills it
+ * (GetPrivateProfileString returns len - 1 on a cut value). */
+static char *kageant_ini_read_dup(const char *key)
+{
+    int len = 512;
+    for (;;) {
+        char *buf = snewn(len, char);
+        if (!kitty_inifile_read(KI_SECTION_AGENT, key, buf, len)) {
+            sfree(buf);
+            return NULL;
+        }
+        if (strlen(buf) < (size_t)len - 2 || len >= (1 << 24))
+            return buf;
+        sfree(buf);
+        len *= 2;
+    }
+}
+
 /* A numbered [Agent] list (<prefix>1, <prefix>2, ...) rewritten in place: the
  * n items over the old entries first, then the entries past the new end
  * removed. 1 all written; 0 a write failed (GetLastError) and what could not
@@ -270,7 +291,7 @@ static void kageant_apply_confirm_by_path(const char *abspath, int mode)
 static int kageant_ini_numbered_write(const char *prefix,
                                       const char *const *items, int n)
 {
-    char key[48], probe[MAX_PATH + 32];
+    char key[48], *probe;
     int i, gap, ok = 1;
     DWORD err = 0;
     for (i = 0; i < n; i++) {
@@ -281,8 +302,9 @@ static int kageant_ini_numbered_write(const char *prefix,
     }
     for (i = n + 1, gap = 0; gap < 8; i++) {
         snprintf(key, sizeof(key), "%s%d", prefix, i);
-        kitty_inifile_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
-        if (!probe[0]) { gap++; continue; }
+        probe = kageant_ini_read_dup(key);
+        if (!probe) { gap++; continue; }
+        sfree(probe);
         gap = 0;
         if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
             ok = 0; err = GetLastError();
@@ -307,7 +329,7 @@ int kageant_save_startup_keys(void)
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
-        char key[32], val[MAX_PATH + 32], store[MAX_PATH + 1], probe[MAX_PATH + 32];
+        char key[32], store[MAX_PATH + 1], *probe;
         int gap, written = 0;
         /*
          * Loaded keys AND the ones waiting for their drive, IN ORDER.
@@ -333,7 +355,7 @@ int kageant_save_startup_keys(void)
             int n = 0, p = 0, li = 0;
             while (li < g_nloaded || p < g_npending) {
                 const char *path, *fp = NULL;
-                char *fp_owned = NULL;
+                char *fp_owned = NULL, *val;
                 char aebuf[40];
                 int enc, conf, ae;
                 if (p < g_npending && g_pending[p].slot <= n) {
@@ -364,14 +386,15 @@ int kageant_save_startup_keys(void)
                 }
                 kageant_store_form(path, store, sizeof(store));
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
-                snprintf(val, sizeof(val), "%s%s%s%s%s%s", store,
-                         enc ? ",encrypted" : "",
-                         kageant_confirm_token(conf),
-                         kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
-                         fp ? "," : "", fp ? fp : "");
+                val = dupprintf("%s%s%s%s%s%s", store,
+                                enc ? ",encrypted" : "",
+                                kageant_confirm_token(conf),
+                                kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
+                                fp ? "," : "", fp ? fp : "");
                 if (!kitty_inifile_write(KI_SECTION_AGENT, key, val) && ok) {
                     ok = 0; err = GetLastError();
                 }
+                sfree(val);
                 sfree(fp_owned);
             }
             written = n;
@@ -379,8 +402,9 @@ int kageant_save_startup_keys(void)
         /* now the entries past the new end */
         for (i = written + 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inifile_read(KI_SECTION_AGENT, key, probe, sizeof(probe));
-            if (probe[0]) {
+            probe = kageant_ini_read_dup(key);
+            if (probe) {
+                sfree(probe);
                 if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
                     ok = 0; err = GetLastError();
                 }
@@ -582,12 +606,13 @@ void kageant_idle_install(void)
     kageant_unlock_reserve_hook = kageant_idle_reserve;
 }
 
-/* The stored-entry token for a per-key value: ",autoencrypt=<seconds|use|off>",
- * "" for "agent default". The ONLY writer, like kageant_confirm_token. */
+/* The stored-entry token for a per-key value:
+ * ",autoencrypt=<seconds|immediately|off>" ("use" is still read), "" for
+ * "agent default". The ONLY writer, like kageant_confirm_token. */
 static const char *kageant_autoenc_token(int value, char *buf, size_t len)
 {
     if (value < 0) return "";
-    if (value == KAGEANT_AUTOENC_USE) snprintf(buf, len, ",autoencrypt=use");
+    if (value == KAGEANT_AUTOENC_USE) snprintf(buf, len, ",autoencrypt=immediately");
     else snprintf(buf, len, ",autoencrypt=%d", value);
     return buf;
 }
@@ -2341,24 +2366,30 @@ void kageant_forget_startup_key(const char *path)
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
-        typedef char kageant_entry[MAX_PATH + 32];   /* snewn casts to (T *) */
-        kageant_entry *keep;
-        char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
+        char **keep;
+        char key[32], abspath[MAX_PATH + 1];
         int i, gap, n = 0, cap = 64;
 
-        keep = snewn(cap, kageant_entry);
-        for (i = 1, gap = 0; gap < 8 && n < cap; i++) {
-            char raw[MAX_PATH + 32];
+        keep = snewn(cap, char *);
+        for (i = 1, gap = 0; gap < 8; i++) {
+            char *val;
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
-            if (!val[0]) { gap++; continue; }
+            val = kageant_ini_read_dup(key);
+            if (!val) { gap++; continue; }
             gap = 0;
-            snprintf(raw, sizeof(raw), "%s", val);      /* keep the ,markers */
+            if (n == cap) {
+                cap *= 2;
+                keep = sresize(keep, cap, char *);
+            }
+            keep[n] = dupstr(val);                      /* keep the ,markers */
             kageant_entry_strip(val);
             kageant_resolve_form(val, abspath, sizeof(abspath));
-            if (!stricmp(abspath, want))
+            sfree(val);
+            if (!stricmp(abspath, want)) {
+                sfree(keep[n]);
                 continue;                               /* the one being dropped */
-            snprintf(keep[n++], MAX_PATH + 32, "%s", raw);
+            }
+            n++;
         }
         /* the survivors written back in place, a shorter list leaving no
          * stale tail - never cleared first (kageant_ini_numbered_write) */
@@ -2370,6 +2401,7 @@ void kageant_forget_startup_key(const char *path)
                 "startupkey");
             sfree(items);
         }
+        for (i = 0; i < n; i++) sfree(keep[i]);
         sfree(keep);
         return;
     }
@@ -2388,10 +2420,12 @@ void kageant_forget_startup_key(const char *path)
                 char *out = snewn(sz + 2, char), *o = out, *p;
                 buf[sz] = '\0'; buf[sz + 1] = '\0';
                 for (p = buf; *p; p += strlen(p) + 1) {
-                    char entry[MAX_PATH + 32];
-                    snprintf(entry, sizeof(entry), "%s", p);
+                    char *entry = dupstr(p);
+                    int drop;
                     kageant_entry_strip(entry);
-                    if (!stricmp(entry, want))
+                    drop = !stricmp(entry, want);
+                    sfree(entry);
+                    if (drop)
                         continue;
                     memcpy(o, p, strlen(p) + 1); o += strlen(p) + 1;
                 }
@@ -2771,7 +2805,7 @@ void kageant_load_startup_keys(void)
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
-        char key[32], val[MAX_PATH + 32], abspath[MAX_PATH + 1];
+        char key[32], *val = NULL, abspath[MAX_PATH + 1];
         int i, gap;
         g_startup_loading = 1;
         kitty_hello_batch_begin();  /* one gesture covers the startup load */
@@ -2784,8 +2818,9 @@ void kageant_load_startup_keys(void)
             char fp[160];
             fp[0] = '\0';
             snprintf(key, sizeof(key), "startupkey%d", i);
-            kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
-            if (!val[0]) { gap++; continue; }
+            sfree(val);                 /* the previous entry */
+            val = kageant_ini_read_dup(key);
+            if (!val) { gap++; continue; }
             gap = 0;
             /* Trailing tokens, in any order and any of them absent:
              * ",encrypted"/",plain" and ",SHA256:..." (the fingerprint). */
@@ -2856,6 +2891,7 @@ void kageant_load_startup_keys(void)
                     kageant_apply_autoenc_by_path(abspath, ae);
             }
         }
+        sfree(val);
         g_startup_loading = 0;
         kitty_hello_batch_end();
         /* Phantoms scrubbed above: write the list out, AFTER the loop, never
@@ -2885,6 +2921,7 @@ void kageant_load_startup_keys(void)
                 buf[sz] = '\0';
                 g_startup_loading = 1;
                 kitty_hello_batch_begin();
+                char *entry = NULL;
                 for (char *p = buf; *p; p += strlen(p) + 1) {
                     int enc = 1;   /* legacy entries had no marker: deferred */
                     int conf = 0, ae = -1;
@@ -2898,8 +2935,8 @@ void kageant_load_startup_keys(void)
                      * which is exactly what inflated the "keys not loaded"
                      * count (each marked+fingerprinted entry spawned one or
                      * two phantom missing keys). */
-                    char entry[MAX_PATH + 32];
-                    snprintf(entry, sizeof(entry), "%s", p);
+                    sfree(entry);       /* the previous record */
+                    entry = dupstr(p);
                     fp[0] = '\0';
                     /* Same trailing tokens as the ini form: ",encrypted" /
                      * ",plain" and ",SHA256:..." - see the ini branch above. */
@@ -2959,6 +2996,7 @@ void kageant_load_startup_keys(void)
                             kageant_apply_autoenc_by_path(entry, ae);
                     }
                 }
+                sfree(entry);
                 g_startup_loading = 0;
                 kitty_hello_batch_end();
                 if (g_fp_adopted) {
