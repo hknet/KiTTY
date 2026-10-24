@@ -4453,6 +4453,29 @@ static void kitty_global_jump_handler(dlgcontrol *ctrl, dlgparam *dp,
         kitty_cfg_goto_panel((const char *)ctrl->context.p);
 }
 
+/* ---- Window > Title & Icon: the combine hint ------------------------------- */
+
+/* "No Host-Title: ..." while a combination is chosen and remote title
+ * changing is off (Terminal > Features); blank otherwise. Built with " ",
+ * so it holds one line. Refreshed when the panel shows and when the radios
+ * change. */
+static void kitty_title_combine_hint_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                             void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    int mode;
+    if (event != EVENT_REFRESH || !kitty_dlg_ctrl_hwnd(dlg, ctrl))
+        return;
+    mode = conf_get_int(conf, CONF_win_title_combine);
+    dlg_label_change(ctrl, dlg,
+                     ((mode == 1 || mode == 2) &&
+                      conf_get_bool(conf, CONF_no_remote_wintitle)) ?
+                     KT_TITLE_COMBINE_NO_HOST : " ");
+}
+
+static void kitty_xfer_protocol_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                        void *data, int event);
+
 /* ---- Connection > SSH > Host keys: "Scan this host" ------------------------ */
 
 /*
@@ -6198,13 +6221,17 @@ void scb_panel_terminal(struct controlbox *b)
                   HELPCTX(features_retitle),
                   conf_checkbox_handler,
                   I(CONF_no_remote_wintitle));
-    ctrl_radiobuttons(s, KT_FEATURES_RESPONSE_TO_REMOTE_TITLE_QUERY, 'q', 3,
+    /* KiTTY: "Host-Title" answers the title the host set, "Full
+     * Display-Title" the title as shown (terminal.c, CSI 20/21 t). Two
+     * columns: four abreast do not fit. */
+    ctrl_radiobuttons(s, KT_FEATURES_RESPONSE_TO_REMOTE_TITLE_QUERY, 'q', 2,
                       HELPCTX(features_qtitle),
                       conf_radiobutton_handler,
                       I(CONF_remote_qtitle_action),
                       KT_LOGGING_NONE, I(TITLE_NONE),
                       KT_FEATURES_EMPTY_STRING, I(TITLE_EMPTY),
-                      KT_FEATURES_WINDOW_TITLE, I(TITLE_REAL));
+                      KT_FEATURES_WINDOW_TITLE, I(TITLE_REAL),
+                      KT_FEATURES_FULL_DISPLAY_TITLE, I(TITLE_FULL));
     ctrl_checkbox(s, KT_FEATURES_DISABLE_REMOTE_CONTROLLED_CLEARING, 'e',
                   HELPCTX(features_clearscroll),
                   conf_checkbox_handler,
@@ -6600,6 +6627,31 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
     ctrl_pushbutton(s, KT_TITLE_PLACEHOLDERS_H_S, NO_SHORTCUT,
                     HELPCTX(appearance_title),
                     kitty_title_placeholders_handler, I(0));
+    /* KiTTY: the host's title and this one in one caption (terminal.c
+     * term_title_compose). The radios refresh the hint below them (context2,
+     * kitty_xfer_protocol_handler); the hint shows only while a combination
+     * is chosen and remote title changing is off, so no host title can come.
+     * The button jumps to the panel where that is switched. */
+    {
+        dlgcontrol *radio, *hint;
+        kitty_conf_register_radio_handler(kitty_xfer_protocol_handler);
+        radio = ctrl_radiobuttons(s, KT_TITLE_COMBINE, NO_SHORTCUT, 3,
+                                  HELPCTX(kitty_title_combine),
+                                  kitty_xfer_protocol_handler,
+                                  I(CONF_win_title_combine),
+                                  KT_TITLE_COMBINE_OFF,        NO_SHORTCUT, I(0),
+                                  KT_TITLE_COMBINE_CFG_FIRST,  NO_SHORTCUT, I(1),
+                                  KT_TITLE_COMBINE_HOST_FIRST, NO_SHORTCUT, I(2));
+        hint = ctrl_text(s, " ", HELPCTX(kitty_title_combine));
+        hint->handler = kitty_title_combine_hint_handler;
+        radio->context2.p = hint;
+        ctrl_pushbutton(s, KT_TITLE_TERMINAL_FEATURES, NO_SHORTCUT,
+                        HELPCTX(kitty_title_combine),
+                        kitty_global_jump_handler, P("Terminal/Features"));
+        ctrl_editbox(s, KT_TITLE_ICON_TITLE, NO_SHORTCUT, 100,
+                     HELPCTX(kitty_title_combine),
+                     conf_editbox_handler, I(CONF_win_icon_title), ED_STR);
+    }
     ctrl_checkbox(s, KT_TITLE_SEPARATE_WINDOW_AND_ICON_TITLES, 'i',
                   HELPCTX(appearance_title),
                   conf_checkbox_handler,

@@ -904,6 +904,28 @@ struct terminal_tag {
 
     char *window_title, *icon_title;
     int wintitle_codepage, icontitle_codepage;
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: window_title / icon_title above are the SHOWN titles, computed
+     * by term_titles_compute() from these and set nowhere else:
+     *   cfg_title       the expanded configured title (CONF_wintitle), or the
+     *                   expanded window-only title when one is set
+     *   cfg_icon_title  the expanded configured icon title
+     *                   (CONF_win_icon_title), else cfg_title
+     *   host_title      the title the host set last (OSC 0, 2, 21) and
+     *   host_icon_title its icon title (OSC 0, 1); NULL before the first
+     *   wonly_title     the window-only title as given (-title, /title), not
+     *                   expanded; NULL = none. Never in the conf, never saved.
+     *   title_hostname  the host name the titles are expanded with
+     * The configured titles are in DEFAULT_CODEPAGE, the host titles in the
+     * line codepage they arrived in.
+     */
+    char *cfg_title, *cfg_icon_title;
+    char *host_title, *host_icon_title;
+    int host_title_codepage, host_icon_title_codepage;
+    char *wonly_title;
+    char *title_hostname;
+#endif
     bool minimised;
 
     BidiContext *bidi_ctx;

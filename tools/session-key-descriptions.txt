@@ -225,11 +225,13 @@ WindowHasSysMenu	`0` removes the system menu and with it every caption button.
 WindowMaximizable	`0` removes the maximise button.
 WindowMinimizable	`0` removes the minimise button.
 WindowState	`1` when the window was closed maximised; written and read only while `SaveOnExit` is `1`.
+WinIconTitle	Icon-Title of a minimised window, empty = the Window-Title. On Window > Title & Icon.
 WinNameAlways	`1` keeps the window title on a minimised window; `0` shows the icon title there instead.
 WinSCPOptions	Extra command-line options handed to WinSCP.
 WinSCPPort	Port WinSCP connects to; empty = the protocol's standard port.
 WinSCPProtocol	Protocol WinSCP is started with: `0` SCP, `1` SFTP, `2` FTP, `3` FTPS (implicit TLS), `4` FTPS (explicit TLS), `5` HTTP, `6` HTTPS.
 WinSCPRawSettings	Settings handed to WinSCP with its `-rawsettings` switch.
+WinTitleCombine	Combine Host-Title and Window-Title: 0 = Off, 1 = Configured first, 2 = Host first. On Window > Title & Icon.
 X11Display	X display that forwarded X11 connections go to on this PC; empty = `%DISPLAY%`, or `:0` when that is not set.
 X11Forward	`1` forwards X11 connections from the server to the local X display.
 Xterm256Colour	`1` lets the host use the xterm 256-colour palette.

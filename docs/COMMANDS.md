@@ -49,11 +49,10 @@ status) on or off for this KiTTY++ instance.
 **Persists:** runtime only; kitty.ini `wintitle=no` disables decorations at
 startup (only `no` has an effect — decorations are the default).
 
-### /title `<text>`
+### /title `[text]`
 
-Set the window title to `<text>`. The title set in the session configuration
-(*Window → Behaviour*) is what persists; this override lasts until the server
-or KiTTY++ next changes the title.
+Sets the Window-Title of this window only. It is not saved. `/title` with no
+text returns to the session's saved Window-Title.
 
 **Persists:** runtime only.
 

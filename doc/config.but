@@ -1023,10 +1023,10 @@ service to have the new window title sent back to the server as if
 typed at the keyboard. This allows an attacker to fake keypresses
 and potentially cause your server-side applications to do things you
 didn't want. Therefore this feature is disabled by default, and we
-recommend you do not set it to \q{Window title} unless you \e{really}
-know what you are doing.
+recommend you do not set it to \q{Host-Title} or \q{Full Display-Title}
+unless you \e{really} know what you are doing.
 
-There are three settings for this option:
+There are four settings for this option:
 
 \dt \q{None}
 
@@ -1041,10 +1041,16 @@ server-side software that expects a response is kept happy, but an
 attacker cannot influence the response string. This is probably the
 setting you want if you have no better ideas.
 
-\dt \q{Window title}
+\dt \q{Host-Title}
 
-\dd KiTTY++ responds with the actual window title. This is dangerous for
+\dd Host-Title reports the title the host set last. This is dangerous for
 the reasons described above.
+
+\dt \q{Full Display-Title}
+
+\dd Full Display-Title reports the title as shown, Window-Title included.
+This is dangerous for the reasons described above. It also sends the
+Window-Title to the host.
 
 \S{config-features-clearscroll} Disabling remote \i{scrollback clearing}
 
@@ -1867,7 +1873,7 @@ The Title & Icon panel is the last in the Window list. It holds the
 window title, described here, and the per-session window icon, which
 is KiTTY++'s own and described in \k{kitty-cfg-icon}.
 
-\S{config-title} Controlling the \i{window title}
+\S{config-title} \I{window title}Window Title
 
 The \q{Window title} edit box allows you to set the title of the
 KiTTY++ window. By default the window title will contain the \i{host name}
@@ -1878,6 +1884,10 @@ KiTTY++ allows the server to send \c{xterm} \i{control sequence}s which
 modify the title of the window in mid-session (unless this is disabled -
 see \k{config-features-retitle}); the title string set here
 is therefore only the \e{initial} window title.
+
+\c{-title} and \c{/title}: Sets the Window-Title of this window only.
+It is not saved. \c{/title} with no text returns to the session's saved
+Window-Title.
 
 A window actually carries \e{two} captions, and a host can set them
 independently. The second one is what X11 calls the \I{icon

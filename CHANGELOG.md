@@ -4,6 +4,31 @@ KiTTY++ is the old KiTTY plus serious (speed) enhancements and more features ont
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.19-beta — 2026-10-24
+
+### New
+
+- Window > Title & Icon > Combine Host-Title and Window-Title: both in one
+  title, Configured first or Host first. A separate Icon-Title for minimised
+  windows. (hknet/KiTTY#80)
+
+### Changed
+
+- Response to remote title query: "Window title" is now "Host-Title". New
+  choice "Full Display-Title".
+- `-title` and `/title` set the Window-Title of this window only and are not
+  saved. `/title` with no text returns to the saved Window-Title.
+- The launcher labels a window minimised to it by its Icon-Title, with the
+  session name when it is missing. Windows of one session that look the same
+  get their Host-Title added, or a number when that is the same too.
+
+### Fixed
+
+- Save settings on exit, Save in Change Settings, /save and the clipboard
+  "always" answers no longer store the Host-Title or the expanded
+  placeholders as the session's Window-Title.
+- `/title` and the image viewer keys no longer end KiTTY++.
+
 ## 0.85.1.18-beta — 2026-10-23
 
 ### New

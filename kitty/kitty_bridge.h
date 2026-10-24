@@ -55,6 +55,7 @@ void kitty_start_filezilla(HWND hwnd);
 void kitty_start_winscp(HWND hwnd);
 extern int CryptFileFlag;
 extern char *kitty_cli_loginscript;
+extern char *kitty_cli_title;
 extern int kitty_workplace_applied;
 
 /* ---- exported from windows/window.c ---- */

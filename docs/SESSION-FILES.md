@@ -11,7 +11,11 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 
 ## Changed since 0.85.1.18
 
-No key added, removed or changed.
+| Change | Key | Was | Now |
+|---|---|---|---|
+| added | `WinIconTitle` | - | text |
+| added | `WinTitleCombine` | - | enum 0/1/2 |
+| type changed | `RemoteQTitleAction` | enum 0/1/2 | enum 0/1/2/3 |
 
 ## Keys
 
@@ -264,7 +268,7 @@ No key added, removed or changed.
 | `RemoteCommand` | text | *(empty)* | Connection/SSH | Command run on the server instead of a shell. |
 | `RemoteCommandIsSubsystem` | `0` / `1` | `0` | Connection/SSH | `1` runs `RemoteCommand` as an SSH subsystem, e.g. `sftp`. |
 | `RemotePortAcceptAll` | `0` / `1` | `0` | Connection/SSH/Tunnels | `1` lets remote forwarded ports accept connections from other hosts, not only from the server (SSH-2). |
-| `RemoteQTitleAction` | `0` None; `1` Empty string; `2` Window title | - | Terminal/Features | KiTTY++ can optionally provide the xterm service of allowing server applications to find out the local window title. |
+| `RemoteQTitleAction` | `0` None; `1` Empty string; `2` Host-Title; `3` Full Display-Title | - | Terminal/Features | KiTTY++ can optionally provide the xterm service of allowing server applications to find out the local window title. |
 | `ReportVT220` | `0` / `1` | `1` | Terminal/Features | How KiTTY++ answers the device attributes query (`CSI c`, and `ESC Z`), which programs send to find out what the terminal can do. |
 | `RewrapOnResize` | `0` / `1` | `1` | Window | When the window gets narrower or wider, lines that wrapped are joined and cut again at the new width, in the scrollback and on the screen, as in Windows Terminal. |
 | `RFCEnviron` | `0` / `1` | `0` | Connection/Telnet | The original Telnet mechanism for passing environment variables was badly specified. |
@@ -379,12 +383,14 @@ No key added, removed or changed.
 | `WindowMinimizable` | `0` / `1` | `1` | Window/Behaviour | `0` removes the minimise button. |
 | `WindowName` | text | *(empty)* | Connection/Login/Environment | `%KITTY_WINDOW%` shows the far end which window is connecting, so a `tmux` or `screen` session there can be re-attached after a dropped connection, a restart of KiTTY++ or a reboot of this machine. |
 | `WindowState` | number | `0` | - | `1` when the window was closed maximised; written and read only while `SaveOnExit` is `1`. |
+| `WinIconTitle` | text | *(empty)* | Window/Title & Icon | Icon-Title of a minimised window, empty = the Window-Title. On Window > Title & Icon. |
 | `WinNameAlways` | `0` / `1` | `1` | - | `1` keeps the window title on a minimised window; `0` shows the icon title there instead. |
 | `WinSCPOptions` | text | *(empty)* | Connection/SSH/WinSCP | Extra command-line options handed to WinSCP. |
 | `WinSCPPort` | text | *(empty)* | - | Port WinSCP connects to; empty = the protocol's standard port. |
 | `WinSCPProtocol` | number | `1` | - | Protocol WinSCP is started with: `0` SCP, `1` SFTP, `2` FTP, `3` FTPS (implicit TLS), `4` FTPS (explicit TLS), `5` HTTP, `6` HTTPS. |
 | `WinSCPRawSettings` | text | *(empty)* | Connection/SSH/WinSCP | Settings handed to WinSCP with its `-rawsettings` switch. |
 | `WinTitle` | text | *(empty)* | Window/Title & Icon | The "Window title" edit box allows you to set the title of the KiTTY++ window. |
+| `WinTitleCombine` | `0` Off; `1` Configured first; `2` Host first | `0` | Window/Title & Icon | Combine Host-Title and Window-Title: 0 = Off, 1 = Configured first, 2 = Host first. On Window > Title & Icon. |
 | `WordNavModifier` | `0` Alt; `1` Ctrl; `2` Both | `0` | Terminal/Keyboard | Which modifier sends the escape sequence a shell binds to backward-word / forward-word. |
 | `Wordness0, Wordness32 ... Wordness224` | 32 comma-separated character classes each, for characters 0-31, 32-63 ... | - | Window/Copy & Paste/Character classes | KiTTY++ will select a word at a time in the terminal window if you double-click to begin the drag. |
 | `X11AuthFile` | path | - | Connection/SSH/X11 | If you are using X11 forwarding, the local X server to which your forwarded connections are eventually directed may itself require authorisation. |

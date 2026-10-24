@@ -139,6 +139,8 @@ HWND kitty_ask_text( HWND owner, const char *caption, const char *prompt,
                      const wchar_t *init, int (*done)( const wchar_t *text, void *ctx ),
                      void *ctx ) ;
 void kitty_window_name_set( const wchar_t * name ) ;
+/* /title: the window-only title; NULL or "" = the configured one (window.c). */
+void kitty_window_only_title_set( const char * title ) ;
 /* -winslot <n>: the number an unnamed window requests in %KITTY_WINDOW%. */
 void kitty_window_slot_want( int n ) ;
 /* The window's identity for the far end (cyd01/KiTTY#473, window.c): the
@@ -274,10 +276,10 @@ int NextBgImage( HWND hwnd ) ;
 int PreviousBgImage( HWND hwnd ) ;
 void ManageSpecialCommand( HWND hwnd, int menunum ) ;
 // Backup of the registry key
-void ManageProtect( HWND hwnd, TermWin *tw, char * title ) ;
+void ManageProtect( HWND hwnd, TermWin *tw ) ;
 void ManagePrint( HWND hwnd ) ;
 // Handles the always visible option
-void ManageVisible( HWND hwnd, TermWin *tw, char * title ) ;
+void ManageVisible( HWND hwnd, TermWin *tw ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
@@ -670,7 +672,6 @@ const char * kitty_remote_cwd_moved_host( void );
  * connection's (OSC 3008, then OSC 7): 1, *where = its name or NULL
  * (window.c). */
 int kitty_shell_moved( HWND hwnd, const char ** where );
-void set_title( TermWin *tw, const char *title );
 extern char BuildVersionTime[256];
 extern char **FolderList;
 

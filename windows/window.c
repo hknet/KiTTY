@@ -2972,6 +2972,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      */
     wgs->term = term_init(wgs->conf, &wgs->ucsdata, &wgs->termwin);
 #ifdef MOD_PERSO
+    /* -title: the window-only title (term_set_window_only_title) */
+    if (kitty_cli_title) {
+        term_set_window_only_title(wgs->term, kitty_cli_title);
+        sfree(kitty_cli_title);
+        kitty_cli_title = NULL;
+    }
     /* the fonts were measured before the terminal existed (CSI 16 t) */
     term_notify_cell_size_pixels(wgs->term, wgs->font_width, wgs->font_height);
     term_notify_dpi(wgs->term, wgs->dpi_info.cur_dpi.y);   /* ReportCellSize */
@@ -10937,6 +10943,9 @@ void kitty_refresh_title(void)
  *   "KiTTY.session"  the saved session's name, else user@host (else the host)
  *   "KiTTY.folder"   that session's Folder; absent for "Default" or none
  *   "KiTTY.winname"  the name; absent when there is none
+ *   "KiTTY.icontitle" the shown icon title (what a minimised window shows,
+ *                    before any decoration)
+ *   "KiTTY.hosttitle" the title the host set last; absent when none
  * Refreshed on every title change (a changed value only), removed with the
  * window. Each atom's text is "<window handle in hex>|<value>": the atom table
  * compares case-insensitively and shares equal strings, so without the handle
@@ -10978,10 +10987,11 @@ struct kitty_winprop {
  * %KITTY_WINDOW% (the session's "Terminal Name base", else the session value
  * of the first), which the windows compare to share out their numbers
  * (kitty_win_ordinal_claim). */
-static struct kitty_winprop kitty_winprops[4] = {
+static struct kitty_winprop kitty_winprops[6] = {
     { L"KiTTY.session" }, { L"KiTTY.folder" }, { L"KiTTY.winname" },
-    { L"KiTTY.identbase" },
+    { L"KiTTY.identbase" }, { L"KiTTY.icontitle" }, { L"KiTTY.hosttitle" },
 };
+static int kitty_win_ordinal_claim(WinGuiSeat *wgs);
 
 static void kitty_winprop_set(HWND hwnd, struct kitty_winprop *p,
                               const wchar_t *value)
@@ -11069,6 +11079,22 @@ static void kitty_winprops_publish(WinGuiSeat *wgs)
         wident[lenof(wident) - 1] = L'\0';
         kitty_winprop_set(hwnd, &kitty_winprops[3], wident);
     }
+    /* The launcher labels a window by its icon title, and tells windows of
+     * one session apart by the host's title (kitty_launcher.c). */
+    kitty_winprop_set(hwnd, &kitty_winprops[4],
+                      wgs->icon_name ? wgs->icon_name : L"");
+    {
+        int hcp = DEFAULT_CODEPAGE;
+        const char *ht = wgs->term ? term_host_title(wgs->term, &hcp) : NULL;
+        wchar_t *wht = ht ? dup_mb_to_wc(hcp, ht) : NULL;
+        kitty_winprop_set(hwnd, &kitty_winprops[5], wht ? wht : L"");
+        sfree(wht);
+    }
+    /* The window's number (KiTTY.ordinal) from the start, not only when
+     * %KITTY_WINDOW% first needs it: the launcher numbers windows that look
+     * the same by it. A named window holds none. */
+    if (!kitty_winname || !*kitty_winname)
+        kitty_win_ordinal_claim(wgs);
     /* Ctrl+Tab takes part in the switching only between windows that have it
      * on: the flag is what CtrlTabWindowProc looks for in the others. */
     if (conf_get_int(wgs->conf, CONF_ctrl_tab_switch) && GetCtrlTabFlag())
@@ -11216,6 +11242,17 @@ void kitty_restart_register_session(const char *sessname)
  * all see the same name. A named window gives up its number, so the next new
  * window of its base can take it. */
 #define KITTY_WINNAME_MAX 245
+/* /title <text>: the window-only title (placeholders expanded by the
+ * terminal); NULL or "" = the configured title again. Not saved. */
+void kitty_window_only_title_set(const char *title)
+{
+    WinGuiSeat *wgs;
+    if (MainHwnd &&
+        (wgs = (WinGuiSeat *)GetWindowLongPtr(MainHwnd, GWLP_USERDATA)) != NULL &&
+        wgs->term)
+        term_set_window_only_title(wgs->term, title);
+}
+
 void kitty_window_name_set(const wchar_t *name)
 {
     WinGuiSeat *wgs;
@@ -11631,6 +11668,9 @@ static void wintw_set_icon_title(TermWin *tw, const char *title, int codepage)
     if (!conf_get_bool(wgs->conf, CONF_win_name_always) &&
         IsIconic(wgs->term_hwnd))
         sw_SetWindowText(wgs->term_hwnd, wgs->icon_name);
+#ifdef MOD_PERSO
+    kitty_winprops_publish(wgs);       /* KiTTY.icontitle, the launcher's */
+#endif
 }
 
 static void wintw_set_scrollbar(TermWin *tw, int total, int start, int page)

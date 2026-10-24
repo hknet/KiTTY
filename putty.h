@@ -453,7 +453,8 @@ enum {
 
 enum {
     /* Actions on remote window title query */
-    TITLE_NONE, TITLE_EMPTY, TITLE_REAL
+    TITLE_NONE, TITLE_EMPTY, TITLE_REAL,
+    TITLE_FULL  /* KiTTY: the title as shown; TITLE_REAL: the host's own */
 };
 
 enum {
@@ -2202,6 +2203,13 @@ void term_keyinput(Terminal *, int codepage, const void *buf, int len);
 void term_keyinputw(Terminal *, const wchar_t *widebuf, int len);
 void term_get_cursor_position(Terminal *term, int *x, int *y);
 void term_setup_window_titles(Terminal *term, const char *title_hostname);
+#ifdef MOD_PERSO
+/* KiTTY: the window-only title (-title, /title), used in place of the
+ * configured title and never saved; NULL or "" = the configured one again. */
+void term_set_window_only_title(Terminal *term, const char *title);
+/* KiTTY: the title the host set last, NULL when none (the launcher label). */
+const char *term_host_title(Terminal *term, int *codepage);
+#endif
 void term_notify_minimised(Terminal *term, bool minimised);
 void term_notify_palette_changed(Terminal *term);
 void term_notify_window_pos(Terminal *term, int x, int y);

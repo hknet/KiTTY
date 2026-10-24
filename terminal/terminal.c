@@ -2629,15 +2629,185 @@ static void term_copy_stuff_from_conf(Terminal *term)
     }
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the window title. The configured title, the host's title and the
+ * shown title are kept apart (terminal.h); only term_titles_compute() sets
+ * the shown ones, so nothing that saves the session can find the host's
+ * title or an expanded placeholder where the configured title belongs.
+ */
+#define KITTY_HOST_TITLE_CUT 120     /* characters of a combined host title */
+
+/* A DEFAULT_CODEPAGE title as UTF-8. */
+static char *term_title_cfg_utf8(const char *s)
+{
+    wchar_t *w = dup_mb_to_wc(DEFAULT_CODEPAGE, s);
+    char *u = dup_wc_to_mb(CP_UTF8, w, "?");
+    sfree(w);
+    return u;
+}
+
+/* The host's part of a combined title, as UTF-8: cut after
+ * KITTY_HOST_TITLE_CUT characters, with "..." (never half a surrogate pair). */
+static char *term_title_host_part(const char *s, int cp)
+{
+    wchar_t *w = dup_mb_to_wc(cp, s);
+    size_t n = wcslen(w);
+    char *u;
+    if (n > KITTY_HOST_TITLE_CUT) {
+        size_t keep = KITTY_HOST_TITLE_CUT;
+        wchar_t *c;
+        if (w[keep - 1] >= 0xD800 && w[keep - 1] <= 0xDBFF)
+            keep--;
+        c = snewn(keep + 4, wchar_t);
+        memcpy(c, w, keep * sizeof(wchar_t));
+        c[keep] = c[keep + 1] = c[keep + 2] = L'.';
+        c[keep + 3] = L'\0';
+        sfree(w);
+        w = c;
+    }
+    u = dup_wc_to_mb(CP_UTF8, w, "?");
+    sfree(w);
+    return u;
+}
+
+/*
+ * One shown title from its configured part `cfg` (DEFAULT_CODEPAGE) and the
+ * host's part `host` (codepage `host_cp`; NULL = none set yet), by
+ * CONF_win_title_combine:
+ *   0  the host's title replaces the configured one (upstream's way)
+ *   1  "configured | host"
+ *   2  "host | configured"
+ * Remote title changing off, or no host title yet: the configured title. In
+ * modes 1 and 2 an empty host title leaves the configured title alone, an
+ * empty configured title the host's, and the host's is cut at
+ * KITTY_HOST_TITLE_CUT. A combined title is UTF-8 (two codepages in one
+ * string otherwise). Returns a new string, its codepage in *cp.
+ */
+static char *term_title_compose(Terminal *term, const char *cfg,
+                                const char *host, int host_cp, int *cp)
+{
+    int mode = conf_get_int(term->conf, CONF_win_title_combine);
+    char *a, *b, *out;
+
+    if (term->no_remote_wintitle || !host) {
+        *cp = DEFAULT_CODEPAGE;
+        return dupstr(cfg);
+    }
+    if (mode != 1 && mode != 2) {      /* 0, and an unknown value */
+        *cp = host_cp;
+        return dupstr(host);
+    }
+    if (!*host) {
+        *cp = DEFAULT_CODEPAGE;
+        return dupstr(cfg);
+    }
+    *cp = CP_UTF8;
+    b = term_title_host_part(host, host_cp);
+    if (!*cfg)
+        return b;
+    a = term_title_cfg_utf8(cfg);
+    out = (mode == 1) ? dupcat(a, " | ", b) : dupcat(b, " | ", a);
+    sfree(a);
+    sfree(b);
+    return out;
+}
+
+/* Compute the shown title and icon title; a changed one (or every one, with
+ * `force`) goes to the window. */
+static void term_titles_compute(Terminal *term, bool force)
+{
+    char *t;
+    int cp;
+
+    t = term_title_compose(term, term->cfg_title, term->host_title,
+                           term->host_title_codepage, &cp);
+    if (force || strcmp(t, term->window_title) ||
+        cp != term->wintitle_codepage) {
+        sfree(term->window_title);
+        term->window_title = t;
+        term->wintitle_codepage = cp;
+        term->win_title_pending = true;
+        term_schedule_update(term);
+    } else
+        sfree(t);
+
+    t = term_title_compose(term, term->cfg_icon_title, term->host_icon_title,
+                           term->host_icon_title_codepage, &cp);
+    if (force || strcmp(t, term->icon_title) ||
+        cp != term->icontitle_codepage) {
+        sfree(term->icon_title);
+        term->icon_title = t;
+        term->icontitle_codepage = cp;
+        term->win_icon_title_pending = true;
+        term_schedule_update(term);
+    } else
+        sfree(t);
+}
+
+/* A configured title expanded; empty is "<host> - <appname>". */
+static char *term_title_expand_one(Terminal *term, const char *tmpl)
+{
+    const char *h = term->title_hostname;
+    if (*tmpl)
+        return kitty_expand_wintitle(tmpl, h, term->conf);
+    if (h && *h)
+        return dupcat(h, " - ", appname);
+    return dupstr(appname);
+}
+
+/* The configured title (the window-only one in its place when set) and the
+ * configured icon title (the configured title when empty), expanded. */
+static void term_titles_expand(Terminal *term)
+{
+    const char *tmpl = (term->wonly_title && *term->wonly_title) ?
+        term->wonly_title : conf_get_str(term->conf, CONF_wintitle);
+    const char *itmpl = conf_get_str(term->conf, CONF_win_icon_title);
+
+    sfree(term->cfg_title);
+    term->cfg_title = term_title_expand_one(term, tmpl);
+    sfree(term->cfg_icon_title);
+    term->cfg_icon_title = (itmpl && *itmpl) ?
+        kitty_expand_wintitle(itmpl, term->title_hostname, term->conf) :
+        dupstr(term->cfg_title);
+}
+
+void term_set_window_only_title(Terminal *term, const char *title)
+{
+    sfree(term->wonly_title);
+    term->wonly_title = (title && *title) ? dupstr(title) : NULL;
+    term_titles_expand(term);
+    term_titles_compute(term, false);
+}
+
+const char *term_host_title(Terminal *term, int *codepage)
+{
+    if (codepage)
+        *codepage = term->host_title_codepage;
+    return term->host_title;
+}
+#endif
+
 void term_pre_reconfig(Terminal *term, Conf *conf)
 {
-
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: nothing. Upstream copies the shown title into the
+     * configuration here, so that an untouched title field keeps it; every
+     * save path (Save settings on exit, /save, Save in Change Settings) then
+     * wrote the host's title, or the expanded placeholders, as the
+     * session's title. The conf keeps the configured title, and
+     * term_reconfig() keeps the host's title across the change.
+     */
+    (void)term; (void)conf;
+#else
     /*
      * Copy the current window title into the stored previous
      * configuration, so that doing nothing to the window title field
      * in the config box doesn't reset the title to its startup state.
      */
     conf_set_str(conf, CONF_wintitle, term->window_title);
+#endif
 }
 
 /*
@@ -2694,31 +2864,31 @@ void term_reconfig(Terminal *term, Conf *conf)
         }
     }
 
+#ifdef MOD_PERSO
+    /* KiTTY: a configured title edited in Change Settings replaces the
+     * window-only one (-title, /title). The titles are expanded again once
+     * the new conf is in (term_titles_expand, below): the placeholders'
+     * values (host, user, port, folder, forwards) may have changed while
+     * the template did not. */
+    if (strcmp(conf_get_str(term->conf, CONF_wintitle),
+               conf_get_str(conf, CONF_wintitle))) {
+        sfree(term->wonly_title);
+        term->wonly_title = NULL;
+    }
+#else
     {
         const char *old_title = conf_get_str(term->conf, CONF_wintitle);
         const char *new_title = conf_get_str(conf, CONF_wintitle);
-#ifdef MOD_PERSO
-        /* If the title contains KiTTY placeholders, re-expand on any
-         * reconfiguration, because the raw title string can be unchanged while
-         * dependent values (host, user, port, protocol, folder, forwards) have
-         * changed. */
-        bool title_needs_update = strcmp(old_title, new_title) ||
-            strstr(new_title, "%%") != NULL;
-#else
         bool title_needs_update = strcmp(old_title, new_title);
-#endif
         if (title_needs_update) {
             sfree(term->window_title);
-#ifdef MOD_PERSO
-            term->window_title = kitty_expand_wintitle(new_title, NULL, conf);
-#else
             term->window_title = dupstr(new_title);
-#endif
             term->wintitle_codepage = DEFAULT_CODEPAGE;
             term->win_title_pending = true;
             term_schedule_update(term);
         }
     }
+#endif
 
     /*
      * Just setting conf is sufficient to cause colour setting changes
@@ -2781,6 +2951,12 @@ void term_reconfig(Terminal *term, Conf *conf)
         term_notify_palette_changed(term);
     term->cblink_delay = CBLINK_DELAY;
     term_copy_stuff_from_conf(term);
+#ifdef MOD_PERSO
+    /* the host's titles kept; the configured ones and the combination
+     * follow the new settings */
+    term_titles_expand(term);
+    term_titles_compute(term, false);
+#endif
     term_schedule_tblink(term);
     term_schedule_cblink(term);
     term_update_raw_mouse_mode(term);
@@ -2864,6 +3040,18 @@ const ulattr ulattr_none = {0, 0, 0, 0};   /* KiTTY: plain underline, text colou
 
 void term_setup_window_titles(Terminal *term, const char *title_hostname)
 {
+#ifdef MOD_PERSO
+    /* A connection (re)starts: the host's titles of the last one are gone,
+     * the window-only title stays. */
+    sfree(term->title_hostname);
+    term->title_hostname = title_hostname ? dupstr(title_hostname) : NULL;
+    sfree(term->host_title);
+    term->host_title = NULL;
+    sfree(term->host_icon_title);
+    term->host_icon_title = NULL;
+    term_titles_expand(term);
+    term_titles_compute(term, true);
+#else
     const char *conf_title = conf_get_str(term->conf, CONF_wintitle);
     sfree(term->window_title);
     sfree(term->icon_title);
@@ -2885,6 +3073,7 @@ void term_setup_window_titles(Terminal *term, const char *title_hostname)
     term->wintitle_codepage = term->icontitle_codepage = DEFAULT_CODEPAGE;
     term->win_title_pending = true;
     term->win_icon_title_pending = true;
+#endif
 }
 
 #ifdef MOD_PERSO
@@ -3106,6 +3295,15 @@ Terminal *term_init(Conf *myconf, struct unicode_data *ucsdata, TermWin *win)
     term->window_title = dupstr("");
     term->icon_title = dupstr("");
     term->wintitle_codepage = term->icontitle_codepage = DEFAULT_CODEPAGE;
+#ifdef MOD_PERSO
+    term->cfg_title = dupstr("");
+    term->cfg_icon_title = dupstr("");
+    term->host_title = term->host_icon_title = NULL;
+    term->host_title_codepage = term->host_icon_title_codepage =
+        DEFAULT_CODEPAGE;
+    term->wonly_title = NULL;
+    term->title_hostname = NULL;
+#endif
 
     term->win_resize_pending = WIN_RESIZE_NO;
 #ifdef MOD_PERSO
@@ -3226,6 +3424,14 @@ void term_free(Terminal *term)
 
     sfree(term->window_title);
     sfree(term->icon_title);
+#ifdef MOD_PERSO
+    sfree(term->cfg_title);
+    sfree(term->cfg_icon_title);
+    sfree(term->host_title);
+    sfree(term->host_icon_title);
+    sfree(term->wonly_title);
+    sfree(term->title_hostname);
+#endif
 
     bidi_free_context(term->bidi_ctx);
 
@@ -6153,11 +6359,19 @@ static void do_osc(Terminal *term)
           case 0:
           case 1:
             if (!term->no_remote_wintitle) {
+#ifdef MOD_PERSO
+                /* KiTTY: the host's icon title; the shown one is computed */
+                sfree(term->host_icon_title);
+                term->host_icon_title = dupstr(term->osc_string);
+                term->host_icon_title_codepage = term->ucsdata->line_codepage;
+                term_titles_compute(term, false);
+#else
                 sfree(term->icon_title);
                 term->icon_title = dupstr(term->osc_string);
                 term->icontitle_codepage = term->ucsdata->line_codepage;
                 term->win_icon_title_pending = true;
                 term_schedule_update(term);
+#endif
             }
             if (term->esc_args[0] == 1)
                 break;
@@ -6165,11 +6379,19 @@ static void do_osc(Terminal *term)
           case 2:
           case 21:
             if (!term->no_remote_wintitle) {
+#ifdef MOD_PERSO
+                /* KiTTY: the host's title; the shown one is computed */
+                sfree(term->host_title);
+                term->host_title = dupstr(term->osc_string);
+                term->host_title_codepage = term->ucsdata->line_codepage;
+                term_titles_compute(term, false);
+#else
                 sfree(term->window_title);
                 term->window_title = dupstr(term->osc_string);
                 term->wintitle_codepage = term->ucsdata->line_codepage;
                 term->win_title_pending = true;
                 term_schedule_update(term);
+#endif
             }
             break;
           case 4:
@@ -8387,8 +8609,21 @@ static void term_out(Terminal *term, bool called_from_term_data)
                               case 20:
                                 if (term->ldisc &&
                                     term->remote_qtitle_action != TITLE_NONE) {
+#ifdef MOD_PERSO
+                                    /* KiTTY: "Host-Title" answers what the
+                                     * host set (the configured title until
+                                     * it sets one), "Full Display-Title"
+                                     * the title as shown */
+                                    if (term->remote_qtitle_action == TITLE_REAL)
+                                        p = term->host_icon_title ?
+                                            term->host_icon_title :
+                                            term->cfg_icon_title;
+                                    else if (term->remote_qtitle_action == TITLE_FULL)
+                                        p = term->icon_title;
+#else
                                     if(term->remote_qtitle_action == TITLE_REAL)
                                         p = term->icon_title;
+#endif
                                     else
                                         p = EMPTY_WINDOW_TITLE;
                                     len = strlen(p);
@@ -8402,8 +8637,17 @@ static void term_out(Terminal *term, bool called_from_term_data)
                               case 21:
                                 if (term->ldisc &&
                                     term->remote_qtitle_action != TITLE_NONE) {
+#ifdef MOD_PERSO
+                                    if (term->remote_qtitle_action == TITLE_REAL)
+                                        p = term->host_title ?
+                                            term->host_title :
+                                            term->cfg_title;
+                                    else if (term->remote_qtitle_action == TITLE_FULL)
+                                        p = term->window_title;
+#else
                                     if(term->remote_qtitle_action == TITLE_REAL)
                                         p = term->window_title;
+#endif
                                     else
                                         p = EMPTY_WINDOW_TITLE;
                                     len = strlen(p);

@@ -305,6 +305,9 @@ static struct THWin {
 	wchar_t session[256] ;
 	wchar_t folder[256] ;
 	wchar_t winname[256] ;
+	wchar_t icontitle[256] ;  /* "KiTTY.icontitle": the shown icon title */
+	wchar_t hosttitle[256] ;  /* "KiTTY.hosttitle": the host's title */
+	int ordinal ;         /* "KiTTY.ordinal": its number among its base's windows */
 	int closed ;          /* "KiTTY.closed": the session is over, the window open */
 } TabWin[100] ;
 static int oldIconFlag = 0 ;
@@ -363,39 +366,100 @@ static wchar_t LauncherWUpper( wchar_t c ) {
 	return (wchar_t)(ULONG_PTR)CharUpperW( (LPWSTR)(ULONG_PTR)(WORD)c ) ;
 }
 
+/* Does `hay` hold `needle`, regardless of case? */
+static int LauncherWContainsI( const wchar_t * hay, const wchar_t * needle ) {
+	size_t hl = wcslen( hay ), nl = wcslen( needle ), i, j ;
+	if( !nl ) return 1 ;
+	for( i = 0 ; i + nl <= hl ; i++ ) {
+		for( j = 0 ; j < nl && LauncherWUpper( hay[i + j] ) == LauncherWUpper( needle[j] ) ; j++ ) ;
+		if( j == nl ) return 1 ;
+	}
+	return 0 ;
+}
+
+/* `s` cut at LAUNCHER_WINLIST_TITLE_SHOWN characters with "...". */
+static void LauncherWinShown( const wchar_t * s, wchar_t * shown ) {
+	if( wcslen( s ) > LAUNCHER_WINLIST_TITLE_SHOWN ) {
+		wcsncpy( shown, s, LAUNCHER_WINLIST_TITLE_SHOWN ) ;
+		wcscpy( shown + LAUNCHER_WINLIST_TITLE_SHOWN, L"..." ) ;
+	} else
+		wcscpy( shown, s ) ;
+}
+
+/* A window's label, before LauncherWinLabelsTell: its Terminal Name, then
+ * its icon title - the title as the taskbar shows the window minimised -
+ * with the session name in front only when the icon title does not hold it.
+ * A window that publishes no icon title is labelled from its caption. */
 static void LauncherWinLabel( const struct THWin * w, wchar_t * out, size_t n ) {
-	const wchar_t * title = w->title ;
+	const wchar_t * title = w->icontitle[0] ? w->icontitle : w->title ;
 	size_t nl = wcslen( w->winname ), sl = wcslen( KT_WINLABEL_SEP ) ;
 	wchar_t shown[LAUNCHER_WINLIST_TITLE_SHOWN + 4] ;
-	wchar_t * p ;
 
 	out[0] = L'\0' ;
 	if( nl && !wcsncmp( title, w->winname, nl ) && !wcsncmp( title + nl, KT_WINLABEL_SEP, sl ) )
 		title += nl + sl ;
-	if( wcslen( title ) > LAUNCHER_WINLIST_TITLE_SHOWN ) {
-		wcsncpy( shown, title, LAUNCHER_WINLIST_TITLE_SHOWN ) ;
-		wcscpy( shown + LAUNCHER_WINLIST_TITLE_SHOWN, L"..." ) ;
-	} else
-		wcscpy( shown, title ) ;
+	LauncherWinShown( title, shown ) ;
 	if( nl ) {
 		LauncherWAppend( out, n, w->winname ) ;
 		LauncherWAppend( out, n, KT_WINLABEL_SEP ) ;
 	}
-	if( w->session[0] ) {
+	if( w->session[0] && !LauncherWContainsI( shown, w->session ) ) {
 		LauncherWAppend( out, n, w->session ) ;
-		if( shown[0] && lstrcmpiW( shown, w->session ) ) {
+		if( shown[0] ) {
 			LauncherWAppend( out, n, KT_WINLABEL_SEP ) ;
 			LauncherWAppend( out, n, shown ) ;
 		}
 	} else
 		LauncherWAppend( out, n, shown ) ;
-	/* A dead session is marked. Text, not grey: a greyed menu item cannot be
-	 * chosen, and this is exactly the window one wants to open - to restart
-	 * it or to read why it dropped. */
-	if( w->closed )
-		LauncherWAppend( out, n, KT_WINLABEL_DISCONNECTED ) ;
-	/* a tab would start the menu's right-hand column */
-	for( p = out ; *p ; p++ ) if( *p == L'\t' ) *p = L' ' ;
+}
+
+/* Is the label of e[i] the same as another one's (of the `count`)? */
+static int LauncherWinLabelTwin( const struct LauncherWinEntry * e, int count, int i ) {
+	int j ;
+	for( j = 0 ; j < count ; j++ )
+		if( j != i && !lstrcmpiW( e[i].label, e[j].label ) ) return 1 ;
+	return 0 ;
+}
+
+/* The labels made by LauncherWinLabel, finished: windows that still look
+ * the same get the host's title added where it tells them apart (and is not
+ * in the label already), then " #<n>" - their KiTTY.ordinal - where they
+ * are still the same; last the "(disconnected)" mark. */
+static void LauncherWinLabelsTell( struct LauncherWinEntry * e, int count ) {
+	int addhost[100], twin[100], i, j ;
+	wchar_t shown[LAUNCHER_WINLIST_TITLE_SHOWN + 4], num[16], * p ;
+
+	if( count > 100 ) count = 100 ;
+	for( i = 0 ; i < count ; i++ ) {
+		const wchar_t * h = TabWin[e[i].idx].hosttitle ;
+		addhost[i] = 0 ;
+		if( !h[0] || LauncherWContainsI( e[i].label, h ) ) continue ;
+		for( j = 0 ; j < count ; j++ )
+			if( j != i && !lstrcmpiW( e[i].label, e[j].label ) &&
+			    lstrcmpiW( h, TabWin[e[j].idx].hosttitle ) ) { addhost[i] = 1 ; break ; }
+	}
+	for( i = 0 ; i < count ; i++ )
+		if( addhost[i] ) {
+			LauncherWinShown( TabWin[e[i].idx].hosttitle, shown ) ;
+			LauncherWAppend( e[i].label, LAUNCHER_WINLABEL_MAX, KT_WINLABEL_SEP ) ;
+			LauncherWAppend( e[i].label, LAUNCHER_WINLABEL_MAX, shown ) ;
+		}
+	for( i = 0 ; i < count ; i++ ) twin[i] = LauncherWinLabelTwin( e, count, i ) ;
+	for( i = 0 ; i < count ; i++ ) {
+		const struct THWin * w = &TabWin[e[i].idx] ;
+		if( twin[i] && w->ordinal > 0 ) {
+			_snwprintf( num, sizeof(num)/sizeof(num[0]), KT_WINLABEL_ORDINAL, w->ordinal ) ;
+			num[sizeof(num)/sizeof(num[0]) - 1] = L'\0' ;
+			LauncherWAppend( e[i].label, LAUNCHER_WINLABEL_MAX, num ) ;
+		}
+		/* A dead session is marked. Text, not grey: a greyed menu item
+		 * cannot be chosen, and this is exactly the window one wants to
+		 * open - to restart it or to read why it dropped. */
+		if( w->closed )
+			LauncherWAppend( e[i].label, LAUNCHER_WINLABEL_MAX, KT_WINLABEL_DISCONNECTED ) ;
+		/* a tab would start the menu's right-hand column */
+		for( p = e[i].label ; *p ; p++ ) if( *p == L'\t' ) *p = L' ' ;
+	}
 }
 
 /* Hidden first, then alphabetical (case-insensitive, the user's locale). */
@@ -527,6 +591,7 @@ static void LauncherBuildWinList( HMENU menu, char * label, size_t lablen ) {
 		LauncherWinLabel( &TabWin[i], LauncherWinEntries[i].label, LAUNCHER_WINLABEL_MAX ) ;
 		if( !TabWin[i].visible ) hidden++ ;
 	}
+	LauncherWinLabelsTell( LauncherWinEntries, n ) ;
 	qsort( LauncherWinEntries, n, sizeof(LauncherWinEntries[0]), LauncherWinEntryCmp ) ;
 	for( i = 0 ; i < n ; i++ ) sel[i] = &LauncherWinEntries[i] ;
 	LauncherWinCounts( n, hidden, counts, sizeof(counts) ) ;
@@ -1935,6 +2000,10 @@ static BOOL CALLBACK RefreshWinListProc( HWND hwnd, LPARAM lParam ) {
 		LauncherWinProp( hwnd, L"KiTTY.session", w->session, sizeof(w->session)/sizeof(w->session[0]) ) ;
 		LauncherWinProp( hwnd, L"KiTTY.folder", w->folder, sizeof(w->folder)/sizeof(w->folder[0]) ) ;
 		LauncherWinProp( hwnd, L"KiTTY.winname", w->winname, sizeof(w->winname)/sizeof(w->winname[0]) ) ;
+		LauncherWinProp( hwnd, L"KiTTY.icontitle", w->icontitle, sizeof(w->icontitle)/sizeof(w->icontitle[0]) ) ;
+		LauncherWinProp( hwnd, L"KiTTY.hosttitle", w->hosttitle, sizeof(w->hosttitle)/sizeof(w->hosttitle[0]) ) ;
+		/* a plain number, not an atom (window.c kitty_win_ordinal_claim) */
+		w->ordinal = (int)(INT_PTR)GetPropW( hwnd, L"KiTTY.ordinal" ) ;
 		/* a flag, not an atom (window.c kitty_winprop_closed) */
 		w->closed = GetPropW( hwnd, L"KiTTY.closed" ) != NULL ;
 		NbWin++ ;
@@ -2085,6 +2154,7 @@ static void LauncherWindowGone( HWND gone, int visible ) {
 			LauncherWinLabel( &TabWin[i], LauncherWinEntries[m].label, LAUNCHER_WINLABEL_MAX ) ;
 			m++ ;
 		}
+		LauncherWinLabelsTell( LauncherWinEntries, m ) ;
 		if( m > 0 ) {
 			qsort( LauncherWinEntries, m, sizeof(LauncherWinEntries[0]), LauncherWinEntryCmp ) ;
 			pick = LauncherWinEntries[0].idx ;

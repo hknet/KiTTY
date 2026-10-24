@@ -837,6 +837,8 @@ void test_simple(void)
     test_bool_simple(CONF_compose_key, "ComposeKey", false);
     test_bool_simple(CONF_ctrlaltkeys, "CtrlAltKeys", true);
     test_str_simple(CONF_wintitle, "WinTitle", "");
+    test_int_simple(CONF_win_title_combine, "WinTitleCombine", 0);
+    test_str_simple(CONF_win_icon_title, "WinIconTitle", "");
     test_int_simple(CONF_savelines, "ScrollbackLines", 2000);
     test_bool_simple(CONF_dec_om, "DECOriginMode", false);
     test_bool_simple(CONF_wrap_mode, "AutoWrapMode", true);
@@ -979,7 +981,8 @@ void test_simple(void)
         CONF_proxy_type, "ProxyType", load_prepare_socks4, PROXY_NONE,
         PROXY_HTTP, 1, PROXY_SOCKS4, 2, PROXY_TELNET, 3, PROXY_CMD, 4, -1);
     test_int_translated(CONF_remote_qtitle_action, "RemoteQTitleAction", TITLE_EMPTY,
-                        TITLE_NONE, 0, TITLE_EMPTY, 1, TITLE_REAL, 2, -1);
+                        TITLE_NONE, 0, TITLE_EMPTY, 1, TITLE_REAL, 2,
+                        TITLE_FULL, 3, -1);
     test_int_translated_load_legacy(
         CONF_remote_qtitle_action, "NoRemoteQTitle", NULL, TITLE_EMPTY,
         TITLE_REAL, 0, TITLE_EMPTY, 1, -1);

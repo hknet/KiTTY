@@ -96,6 +96,7 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_comment            "kitty-cfg-comment"
 #define WINHELP_CTX_kitty_named_proxies      "kitty-cfg-named-proxies"
 #define WINHELP_CTX_kitty_save_on_exit       "kitty-cfg-save-on-exit"
+#define WINHELP_CTX_kitty_title_combine      "kitty-cfg-title-combine"
 #define WINHELP_CTX_kitty_hide_launcher      "kitty-cfg-hide-launcher"
 #define WINHELP_CTX_kitty_session_tags       "kitty-cfg-session-tags"
 #define WINHELP_CTX_kitty_scriptfile         "kitty-cfg-scriptfile"

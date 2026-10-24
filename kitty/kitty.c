@@ -749,8 +749,7 @@ char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
 }
 #endif
 
-void set_title( TermWin *tw, const char *title ) { return win_set_title(tw,title,CP_ACP) ; } // Gone since version 0.71
-void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
+void ManageProtect( HWND hwnd, TermWin *tw ) {
 	HMENU m ;
 	if( ( m = GetSystemMenu (hwnd, FALSE) ) != NULL ) {
 		DWORD fdwMenu = GetMenuState( m, (UINT) IDM_PROTECT, MF_BYCOMMAND);
@@ -761,8 +760,9 @@ void ManageProtect( HWND hwnd, TermWin *tw, char * title ) {
 			CheckMenuItem( m, (UINT)IDM_PROTECT, MF_BYCOMMAND|MF_UNCHECKED ) ;
 			ProtectFlag = 0 ;
 		}
-		/* re-decorate the CURRENT title (keeps a remote OSC-set title intact;
-		 * the old set_title(tw,title) reset it to the config template) */
+		/* re-decorate the CURRENT title: only the terminal sets the title
+		 * itself (terminal.c term_titles_compute) */
+		(void)tw ;
 		kitty_refresh_title() ;
 	}
 }
@@ -811,20 +811,21 @@ int RestoreFromTray( HWND hwnd ) {
 	}
 
 // Handles the always visible option
-void ManageVisible( HWND hwnd, TermWin *tw, char * title ) {
+void ManageVisible( HWND hwnd, TermWin *tw ) {
 	HMENU m ;
+	(void)tw ;
 	if( ( m = GetSystemMenu (hwnd, FALSE) ) != NULL ) {
 		DWORD fdwMenu = GetMenuState( m, (UINT) IDM_VISIBLE, MF_BYCOMMAND); 
 		if (!(fdwMenu & MF_CHECKED)) {
 			CheckMenuItem( m, (UINT)IDM_VISIBLE, MF_BYCOMMAND|MF_CHECKED ) ;
 			SetWindowPos(hwnd,(HWND)-1,0,0,0,0,  SWP_NOMOVE |SWP_NOSIZE ) ;
 			conf_set_bool( conf, CONF_alwaysontop, true ) ;
-			set_title(tw, title) ;
+			kitty_refresh_title() ;   /* the (ONTOP) marker */
 		} else {
 			CheckMenuItem( m, (UINT)IDM_VISIBLE, MF_BYCOMMAND|MF_UNCHECKED ) ;
 			SetWindowPos(hwnd,(HWND)-2,0,0,0,0,  SWP_NOMOVE |SWP_NOSIZE ) ;
 			conf_set_bool( conf, CONF_alwaysontop, false ) ;
-			set_title(tw, title) ;
+			kitty_refresh_title() ;
 		}
 	}
 }

@@ -443,12 +443,10 @@ All Keys}.
 (Note that this does \e{not} discard cleartext keys that were not
 previously added encrypted!)
 
-\s{CAUTION}: When kageant displays a prompt to decrypt an
-already-loaded key, it cannot give keyboard focus to the prompt dialog
-box. As far as I know this is a deliberate defensive measure by
-Windows, against malicious software. So make sure you click in the
-prompt window before typing your passphrase, or else the passphrase
-might be sent to somewhere you didn't want to trust with it!
+\s{Note}: kageant brings the prompt to the front with the keyboard
+focus. Check that the prompt window is active before typing the
+passphrase: if Windows refused the switch, the typing goes to the window
+in front.
 
 \H{pageant-autoencrypt} Re-encrypting keys after idle
 

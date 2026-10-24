@@ -198,10 +198,12 @@ static int cmd_wintitle( HWND hwnd, char * arg ) {
 	return 1 ;
 }
 
+/* /title <text>: the window-only title (placeholders expanded, never
+ * saved); /title alone: the session's configured title again. */
 static int cmd_title( HWND hwnd, char * arg ) {
 	(void)hwnd ;
-	set_title( NULL, arg ) ;
-	cmd_say( "%s", KT_CMD_RES_TITLE ) ;
+	kitty_window_only_title_set( ( arg && *arg ) ? arg : NULL ) ;
+	cmd_say( "%s", ( arg && *arg ) ? KT_CMD_RES_TITLE : KT_CMD_RES_TITLE_RESET ) ;
 	return 1 ;
 }
 
@@ -850,7 +852,7 @@ static const struct InternalCmdDef {
 } internal_commands[] = {
 	{ "/size",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_SIZE,			cmd_size },
 	{ "/wintitle",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_WINTITLE,				cmd_wintitle },
-	{ "/title",		IC_ARG_REQUIRED, "<text>", CAT_WINDOW, KT_CMD_HELP_TITLE,					cmd_title },
+	{ "/title",		IC_ARG_OPTIONAL, "[text]", CAT_WINDOW, KT_CMD_HELP_TITLE,					cmd_title },
 	{ "/transparency",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_TRANSPARENCY,				cmd_transparency },
 	{ "/backgroundimage",	IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_BACKGROUNDIMAGE,			cmd_backgroundimage },
 	{ "/hyperlink",		IC_ARG_NONE,	 NULL,	   CAT_WINDOW, KT_CMD_HELP_HYPERLINK,					cmd_hyperlink },

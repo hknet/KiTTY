@@ -658,7 +658,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 		}
 #ifdef MOD_BACKGROUNDIMAGE
 	if( GetBackgroundImageFlag() && (key == shortcuts_tab.viewer) ) 	// Toggle the image viewer mode
-		{ SetImageViewerFlag( abs(ImageViewerFlag-1) ) ; set_title(NULL, conf_get_str(conf,CONF_wintitle) ) ; return 1 ; }
+		{ SetImageViewerFlag( abs(ImageViewerFlag-1) ) ; return 1 ; }
 #endif
 	if( key == shortcuts_tab.script ) 			// Load a script file
 		{ OpenAndSendScriptFile( hwnd ) ; return 1 ; }

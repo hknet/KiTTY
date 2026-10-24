@@ -873,6 +873,22 @@ CONF_OPTION(wintitle, /* initial window title */
     DEFAULT_STR(""),
     SAVE_KEYWORD("WinTitle"),
 )
+/* KiTTY: the host's title together with the configured one (terminal.c
+ * term_title_compose): 0 the host's replaces it (upstream), 1 "configured |
+ * host", 2 "host | configured". Any other value reads as 0. */
+CONF_OPTION(win_title_combine,
+    VALUE_TYPE(INT),
+    DEFAULT_INT(0),
+    SAVE_KEYWORD("WinTitleCombine"),
+)
+/* KiTTY: the configured icon title (a minimised window's taskbar text, with
+ * "Host may set window and taskbar titles separately"); the placeholders of
+ * WinTitle. Empty: the configured title. */
+CONF_OPTION(win_icon_title,
+    VALUE_TYPE(STR),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("WinIconTitle"),
+)
 /* Terminal options */
 CONF_OPTION(savelines,
     VALUE_TYPE(INT),

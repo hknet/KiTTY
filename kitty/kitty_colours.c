@@ -104,12 +104,10 @@ void ChangeSettings(HWND hwnd) {
 int ManageViewer( HWND hwnd, WORD wParam ) { // image mode handling
 	if( wParam==VK_BACK )
 		{ if( PreviousBgImage( hwnd ) ) InvalidateRect(hwnd, NULL, TRUE) ;
-		set_title(NULL, conf_get_str(conf,CONF_wintitle) ) ;
 		return 1 ;
 		}
 	else if( wParam==VK_SPACE )
 		{ if( NextBgImage( hwnd ) ) InvalidateRect(hwnd, NULL, TRUE) ;
-		set_title(NULL, conf_get_str(conf,CONF_wintitle)) ;
 		return 1 ;
 		}
 	else if( wParam == VK_DOWN ) 	// Increase the background image opacity

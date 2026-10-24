@@ -55,6 +55,8 @@ int SwitchCryptFlag(void) { CryptFileFlag = abs(CryptFileFlag - 1); return Crypt
 /* -loginscript path: set by putty.c during cmdline parse, consumed once by
  * window.c after kitty_set_active_seat (ReadInitScript needs the global conf). */
 char *kitty_cli_loginscript = NULL;
+/* -title <text>: the window-only title, until the terminal takes it */
+char *kitty_cli_title = NULL;
 
 /* KiTTY password debug log (originally settings.c) */
 int DebugAddPassword(const char *fct, const char *pwd) {
@@ -735,11 +737,8 @@ void kitty_font_resize(Terminal *term, Conf *conf, int dec) {
 }
 
 void kitty_protect(HWND hwnd, TermWin *tw, Conf *conf) {
-    /* ManageProtect only reads title (passes to set_title); cast is safe */
-    char *title = kitty_expand_wintitle(conf_get_str(conf, CONF_wintitle),
-                                        conf_get_str(conf, CONF_host), conf);
-    ManageProtect(hwnd, tw, title);
-    sfree(title);
+    (void)conf;
+    ManageProtect(hwnd, tw);
 }
 void kitty_print(HWND hwnd) { ManagePrint(hwnd); }
 

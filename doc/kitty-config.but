@@ -583,6 +583,17 @@ built into KiTTY++. \q{External icon file} takes a path to an \c{.ico}
 file, which wins over the internal number when both are set. The icon
 applies to the window, the taskbar and the tray.
 
+\S{kitty-cfg-title-combine} \q{Combine Host-Title and Window-Title}
+
+On Window > Title & Icon. Shows the Host-Title (the title the remote host
+sets) together with this session's Window-Title, joined by \c{ | }.
+Until the host sets a title, the Window-Title stands alone. The
+Host-Title is cut at 120 characters. Host first puts the Window-Title at
+the end, where the taskbar cuts long titles off. Icon-Title sets the
+taskbar text of a minimised window. Empty, it uses the Window-Title.
+Terminal Features... opens the panel where remote title changing can be
+disabled.
+
 \S{kitty-cfg-bgimage} \ii{Background image}
 
 Draws a picture, or a colour gradient, behind the terminal text.
@@ -4011,6 +4022,9 @@ by a closing window. Where the window opens is a matter for
 \q{Remember window position} (\k{kitty-cfg-winpos-remember}) on Window
 > Appearance > Position: the one keeps the window's place, this one
 keeps everything else.
+
+Saved is the configured Window-Title, with its placeholders. Never a
+Host-Title, nor a title set with \c{-title} or \c{/title}.
 
 \S{kitty-cfg-clipcmd} Running the clipboard as a command
 

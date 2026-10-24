@@ -126,6 +126,7 @@ CONF_ENUM(remote_qtitle_action,
     VALUE(TITLE_NONE, 0),
     VALUE(TITLE_EMPTY, 1),
     VALUE(TITLE_REAL, 2),
+    VALUE(TITLE_FULL, 3),
 )
 
 CONF_ENUM(cursor_type,

@@ -2222,13 +2222,18 @@ void setup_config_box(struct controlbox *b, bool midsession,
                   HELPCTX(features_retitle),
                   conf_checkbox_handler,
                   I(CONF_no_remote_wintitle));
-    ctrl_radiobuttons(s, "Response to remote title query (SECURITY):", 'q', 3,
+    /* KiTTY: the four answers of kitty.exe's box (kitty_config_session.c).
+     * kitty_tel and kitty_pterm share the session store: a session saved
+     * with the fourth must find its button here, or conf_radiobutton_handler
+     * asserts. (No MOD_PERSO guard: this file is built without it.) */
+    ctrl_radiobuttons(s, "Response to remote title query (SECURITY):", 'q', 2,
                       HELPCTX(features_qtitle),
                       conf_radiobutton_handler,
                       I(CONF_remote_qtitle_action),
                       "None", I(TITLE_NONE),
                       "Empty string", I(TITLE_EMPTY),
-                      "Window title", I(TITLE_REAL));
+                      "Host-Title", I(TITLE_REAL),
+                      "Full Display-Title", I(TITLE_FULL));
     ctrl_checkbox(s, "Disable remote-controlled clearing of scrollback", 'e',
                   HELPCTX(features_clearscroll),
                   conf_checkbox_handler,

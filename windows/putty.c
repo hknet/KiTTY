@@ -376,10 +376,14 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                         (HWND)(intptr_t)_strtoi64(hv, NULL, 10);
                 }
             } else if (!strcmp(p, "-title")) {
+                /* KiTTY: the window-only title - held outside the conf, so a
+                 * -load on either side of it cannot drop it and no save can
+                 * write it (window.c hands it to the terminal). */
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
-                conf_set_str(conf, CONF_wintitle,
-                             cmdline_arg_to_str(arglist->args[arglistpos++]));
+                sfree(kitty_cli_title);
+                kitty_cli_title =
+                    dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
             } else if (!strcmp(p, "-winname")) {
                 /* KiTTY: the window's name from the start (cyd01/KiTTY#473) -
                  * the name "Terminal Name..." sets, and %KITTY_WINDOW%.
