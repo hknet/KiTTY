@@ -418,15 +418,16 @@
 ; hyperlink: enable/disable the hyperlink feature
 ;hyperlink=yes
 
-; renderer: how the terminal window is painted. gdi (the default) is what
-; every Windows has; d2d paints with Direct2D and DirectWrite on the GPU
-; (Windows 8.1 or newer; anything else falls back to gdi). Text rendering
-; differs slightly between the two. A translucent window works with both:
+; renderer: how the terminal window is painted. d2d (the default) paints
+; with Direct2D and DirectWrite on the GPU (Windows 8.1 or newer, an older
+; Windows falls back to gdi). gdi is what every Windows has. Any other value
+; means d2d. Text rendering differs slightly between the two. A translucent
+; window works with both:
 ;    a Direct2D window that may be transparent is layered from its
 ;    creation; one opened opaque stays opaque, and a transparency change
 ;    applies to the next window. Also on the configuration window,
 ;    Application > KiTTY++ Settings > Terminal.
-;renderer=gdi
+;renderer=d2d
 
 ; framepace: how often the window may repaint while output streams in.
 ;    auto (the default): one frame per display refresh, whatever the display

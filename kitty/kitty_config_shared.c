@@ -734,6 +734,17 @@ static bool kset_d2d_supported(void)
     }
     return known == 1;
 }
+/* Direct2D unless the stored value is "gdi" (in any case): nothing stored,
+ * empty and any other word all mean Direct2D, the default. A stored choice
+ * keeps winning over the default. Below Windows 8.1 the answer is GDI
+ * whatever is stored, so such a window is neither layered for Direct2D nor
+ * offered it. */
+bool kitty_renderer_is_d2d(void)
+{
+    char v[16] = "";
+    ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, v, sizeof(v));
+    return stricmp(v, "gdi") != 0 && kset_d2d_supported();
+}
 static void kset_set_framepace(int v)
 {
     char buf[16];
@@ -834,8 +845,9 @@ static const struct kset_key kset_keys[] = {
     /* No setter: the renderer is read when a window is created, and choosing
      * Direct2D leaves window transparency alone - a Direct2D window where
      * transparency is allowed is layered from its creation (windows/window.c),
-     * so the two go together. */
-    { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+     * so the two go together. Default Direct2D (kitty_renderer_is_d2d); with
+     * nothing stored a Windows below 8.1 shows GDI (the refresh below). */
+    { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
     { INIT_SECTION, KI_FRAMEPACE,      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
@@ -1153,10 +1165,16 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                 cur = kset_get_int(k);
             } else {
                 /* no running value: match the stored text, else the default */
+                bool matched = false;
                 cur = k->dflt;
                 if (kset_read(k, buf, sizeof(buf)))
                     for (i = 0; i < k->nchoices; i++)
-                        if (!stricmp(buf, k->choices[i].stored)) { cur = k->choices[i].value; break; }
+                        if (!stricmp(buf, k->choices[i].stored)) { cur = k->choices[i].value; matched = true; break; }
+                /* The renderer's default is Direct2D, which a Windows below
+                 * 8.1 cannot use: with no stored choice show GDI, what the
+                 * window really paints with there. */
+                if (!matched && !strcmp(k->key, KI_RENDERER) && !kset_d2d_supported())
+                    cur = 0;
             }
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);

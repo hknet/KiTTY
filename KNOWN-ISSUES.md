@@ -34,10 +34,9 @@ Known limitations of this release:
 - **Encrypted `.ktx` files are read, not written.**
 - **Background image:** the thin margin outside the cell grid stays solid. A
   second monitor is verified in code only.
-- **The Direct2D renderer is opt-in** (`renderer=d2d`, Windows 8.1 or newer).
-  A transparency change applies to the next window. DirectWrite text looks
-  slightly different from GDI's, and right-to-left text is not reordered.
-  Untested: a DPI change of an open window, WARP-only machines.
+- **The Direct2D renderer** (the default, Windows 8.1 or newer): a
+  transparency change applies to the next window. DirectWrite text looks
+  slightly different from GDI's. Right-to-left text is not reordered.
 - **A maximised GDI window under steady output** reaches 38-54 frames/s, not
   the display's rate.
 - **Font fallback draws colour glyphs in monochrome**, on both renderers.

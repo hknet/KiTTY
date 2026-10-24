@@ -2236,12 +2236,13 @@ title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 
 \b \q{Terminal Features} starts with how the terminal window is painted.
-\q{Renderer} is GDI, which every Windows has, or Direct2D, which draws on
-the graphics card and needs Windows 8.1 or newer; on an older Windows the
-entry reads \q{Direct2D (Win8.1+ only)} and cannot be chosen. Direct2D works with \q{Window
-transparency} too: a window that may be dimmed presents through the
-desktop's copy of the window (the blit model), which the dimming applies
-to, and an opaque window uses the faster flip model. \q{Frame pacing} is
+\q{Renderer} is Direct2D (the default), which draws on the graphics card
+and needs Windows 8.1 or newer, or GDI, which every Windows has. On an
+older Windows the entry reads \q{Direct2D (Win8.1+ only)}, cannot be
+chosen and GDI is used. Direct2D works with \q{Window transparency} too:
+a window that may be dimmed is layered from its creation. A window opened
+while transparency is off stays opaque.
+\q{Frame pacing} is
 how often the window repaints
 while output streams in: \q{Follow the display} means one frame per
 refresh of whatever display the window is on, \q{30fps} and \q{20fps}
@@ -2292,7 +2293,7 @@ from another font that has it, in the same cell, so the columns stay
 where they are. How far it reaches depends on the renderer chosen on
 \k{kitty-cfg-kset-window}.
 
-\b With \e{GDI}, the default renderer, a missing character is looked
+\b With \e{GDI}, a missing character is looked
 up in \c{override} below, then a fixed built-in list of fonts, tried
 in this order: Cascadia Mono, Cascadia Code, Segoe UI Symbol, Segoe UI
 Emoji, Segoe UI Historic, Microsoft YaHei UI, Microsoft JhengHei UI,
@@ -2302,7 +2303,7 @@ has it, Windows' own font linking gets a turn - outside KiTTY++'s
 control and outside this page - and only when that also has nothing
 does the terminal font's own box for a missing character show.
 
-\b With \e{Direct2D}, \c{override} then the same list are tried first.
+\b With \e{Direct2D}, the default renderer, \c{override} then the same list are tried first.
 A character none of those has then goes to Windows' own font fallback
 (DirectWrite, Windows 8.1 and later), which picks a font from
 everything installed. Windows makes that choice, not KiTTY++, and it

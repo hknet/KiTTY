@@ -14,6 +14,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Changed
 
+- Direct2D is now the default renderer. To keep GDI, choose it on
+  Application > KiTTY++ Settings > Terminal (`renderer=gdi`). Windows older
+  than 8.1 use GDI as before.
 - Response to remote title query: "Window title" is now "Host-Title". New
   choice "Full Display-Title".
 - `-title` and `/title` set the Window-Title of this window only and are not

@@ -1545,8 +1545,8 @@
         "Sessions keep their own entries."
 #define KT_KSET_WD_FEATURES                          "Terminal Features"
 #define KT_KSET_WD_RENDERER                          "Renderer:"
-#define KT_KSET_WD_RENDERER_GDI                      "GDI (default)"
-#define KT_KSET_WD_RENDERER_D2D                      "Direct2D"
+#define KT_KSET_WD_RENDERER_GDI                      "GDI"
+#define KT_KSET_WD_RENDERER_D2D                      "Direct2D (default)"
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \

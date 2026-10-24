@@ -2778,14 +2778,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * from its creation (at full opacity, set right after), and stays
          * so. Its flip-model swap chain is then dimmed by the layered alpha
          * like GDI's output, title bar included; making an open flip-model
-         * window layered later freezes it (paint-d2d.c). */
-        char kitty_renderer[16] = "";
-        {
-            int ReadParameterN(const char *, const char *, char *, size_t);
-            ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, kitty_renderer,
-                           sizeof(kitty_renderer));
-        }
-        if (!stricmp(kitty_renderer, "d2d") && GetTransparencyFlag())
+         * window layered later freezes it (paint-d2d.c). The renderer is
+         * asked once, here, for this style and for the painter below, so
+         * the two cannot disagree (kitty_renderer_is_d2d). */
+        bool kitty_want_d2d = kitty_renderer_is_d2d();
+        if (kitty_want_d2d && GetTransparencyFlag())
             exwinmode |= WS_EX_LAYERED;
 #endif
 
@@ -2833,12 +2830,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         if (exwinmode & WS_EX_LAYERED)
             SetLayeredWindowAttributes(wgs->term_hwnd, 0, 255, LWA_ALPHA);
 #endif
-        /* The window's painter (paint.h): GDI, the one every build has;
-         * KiTTY offers Direct2D on request ([KiTTY] renderer=d2d) and
-         * falls back to GDI when the machine cannot provide it. */
+        /* The window's painter (paint.h): KiTTY paints with Direct2D unless
+         * [KiTTY] renderer=gdi asks for GDI, the one every build has. Where
+         * Direct2D cannot be used (Windows older than 8.1, or its creation
+         * fails) the window silently uses GDI. */
         wgs->painter = NULL;
 #ifdef MOD_PERSO
-        if (!stricmp(kitty_renderer, "d2d"))
+        if (kitty_want_d2d)
             wgs->painter = kitty_painter_d2d_new(
                 wgs->term_hwnd, conf_get_int(wgs->conf, CONF_font_quality));
 #endif
