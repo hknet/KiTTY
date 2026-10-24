@@ -940,6 +940,10 @@ add_custom_command(
   VERBATIM)
 set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc PROPERTIES
   GENERATED TRUE COMPILE_OPTIONS "-I${CMAKE_CURRENT_BINARY_DIR}")
+# The same table again as language neutral: windmc cannot write language 0.
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/kitty_events_neutral.rc PROPERTIES
+  COMPILE_OPTIONS "-I${CMAKE_CURRENT_BINARY_DIR}"
+  OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/MSG00409.bin)
 add_library(kittycore OBJECT ${KITTY_CORE_SOURCES})
 add_dependencies(kittycore generated_licence_h)
 kitty_terminal_common(kittycore)
@@ -1000,6 +1004,7 @@ set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_D
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
 target_sources(kitty PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc)   # KiTTY: the event log message table
+target_sources(kitty PRIVATE kitty_events_neutral.rc)   # KiTTY: and its language-neutral copy
 kitty_selfcheck_target(kitty)
 kitty_terminal_common(kitty)
 if(KITTY_O2_HOT_O3)

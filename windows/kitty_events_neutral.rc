@@ -1,0 +1,9 @@
+/*
+ * KiTTY: kitty.exe's event log message table a second time, as language
+ * neutral. windmc writes it as English (0x409) only, and the Event Viewer
+ * of a Windows in another language then finds no entry and shows no text.
+ * windmc cannot write language 0, so windres takes the same .bin again.
+ */
+
+LANGUAGE 0, 0
+1 MESSAGETABLE "MSG00409.bin"

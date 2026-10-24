@@ -28,6 +28,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   "always" answers no longer store the Host-Title or the expanded
   placeholders as the session's Window-Title.
 - `/title` and the image viewer keys no longer end KiTTY++.
+- Event Viewer: entries of the system MSI showed "description not found"
+  instead of their text. They now show it, also on Windows in other
+  languages than English.
 
 ## 0.85.1.18-beta — 2026-10-23
 
