@@ -4559,9 +4559,10 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
         static FILE *ndf = NULL;
         SYSTEMTIME s; GetLocalTime(&s);
         if (!ndf) {
-            char p[MAX_PATH]; const char *h = getenv("USERPROFILE");
-            snprintf(p, sizeof(p), "%s\\kitty_netdebug.log", h ? h : "C:");
+            const char *h = getenv("USERPROFILE");
+            char *p = dupprintf("%s\\kitty_netdebug.log", h ? h : "C:");
             ndf = fopen(p, "a");
+            sfree(p);
             if (ndf)
                 fprintf(ndf, "\n===== kitty_NETDEBUG start %04d-%02d-%02d %02d:%02d:%02d =====\n",
                         s.wYear, s.wMonth, s.wDay, s.wHour, s.wMinute, s.wSecond);

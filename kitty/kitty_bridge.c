@@ -25,6 +25,7 @@
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */
+#include "kitty_oldwin.h"       /* kitty_module_path_dup: this exe, whole */
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"   /* LoadProxyInfo, GetProxySelectionFlag */
 #include "kitty_workplace.h"   /* workplace proxy mode: is an arming held? */
@@ -111,7 +112,7 @@ void kitty_ssh_banner_preview(char *buf, size_t size) {
  * 0.84 Duplicate-Session mechanism (windows/window.c IDM_DUPSESS), which the
  * child parses via handle_special_filemapping_cmdline(). */
 static void RunSessionWithConfSettings(Conf *conf) {
-    char b[2048];
+    char *b;
     char *cl = NULL;
     const char *argprefix;
     STARTUPINFO si;
@@ -161,7 +162,7 @@ static void RunSessionWithConfSettings(Conf *conf) {
      * its jump host's or a later saved session's password without a prompt. */
     mpwmap = kitty_mpw_export_inherit_blob("&K", mpwtok, sizeof(mpwtok));
     cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok, filemap, (unsigned)size);
-    GetModuleFileName(NULL, b, sizeof(b) - 1);
+    b = kitty_module_path_dup(NULL);     /* NULL: reported below */
     si.cb = sizeof(si);
     si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
     si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
@@ -169,8 +170,8 @@ static void RunSessionWithConfSettings(Conf *conf) {
      * failed one closed whatever the stack held (upstream checks this; the
      * port of this function did not) - and the user learns why */
     HANDLE give[2] = { filemap, mpwmap };
-    if (kitty_create_process_with_handles(b, cl, NORMAL_PRIORITY_CLASS, NULL,
-                                          &si, &pi, give, 2)) {
+    if (b && kitty_create_process_with_handles(b, cl, NORMAL_PRIORITY_CLASS,
+                                               NULL, &si, &pi, give, 2)) {
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
     } else {
@@ -178,8 +179,8 @@ static void RunSessionWithConfSettings(Conf *conf) {
          * the Event Log: a modal box here stood in front of the live
          * session and stopped it until it was answered. */
         const char *why = kitty_win_reason((int)GetLastError());
-        char *msg = dupprintf(KT_START_FAILED_FMT, b, why);
-        debug_logevent(KT_START_FAILED_EVENT_FMT, b, why);
+        char *msg = dupprintf(KT_START_FAILED_FMT, b ? b : "", why);
+        debug_logevent(KT_START_FAILED_EVENT_FMT, b ? b : "", why);
         kitty_notice_show(KT_CAP_START_FAILED, msg, RGB(190, 110, 0),
                           GetNoticeSeconds(), NULL, 0);
         sfree(msg);
@@ -187,6 +188,7 @@ static void RunSessionWithConfSettings(Conf *conf) {
     if (filemap) CloseHandle(filemap);
     if (mpwmap) CloseHandle(mpwmap);
     sfree(cl);
+    sfree(b);
 }
 
 /* Open a new window's CONFIGURATION BOX on these settings, without connecting.
@@ -207,7 +209,7 @@ static void RunSessionWithConfSettings(Conf *conf) {
  * A file mapping is private to the two processes, needs no name,
  * and stays alive precisely as long as one of them holds a handle. */
 void RunConfigBoxWithConfSettings(Conf *conf) {
-    char exe[2048];
+    char *exe;
     char *cl = NULL;
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
@@ -257,13 +259,13 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
     cl = dupprintf("putty%s%s -confmap %p:%u -cfgbox",
                    restricted_acl() ? " -restrict-acl" : "", mpwtok,
                    filemap, (unsigned)size);
-    GetModuleFileName(NULL, exe, sizeof(exe) - 1);
+    exe = kitty_module_path_dup(NULL);   /* NULL: nothing is started */
     si.cb = sizeof(si);
     si.lpReserved = NULL; si.lpDesktop = NULL; si.lpTitle = NULL;
     si.dwFlags = 0; si.cbReserved2 = 0; si.lpReserved2 = NULL;
     HANDLE give[2] = { filemap, mpwmap };
-    if (kitty_create_process_with_handles(exe, cl, NORMAL_PRIORITY_CLASS, NULL,
-                                          &si, &pi, give, 2)) {
+    if (exe && kitty_create_process_with_handles(exe, cl, NORMAL_PRIORITY_CLASS,
+                                                 NULL, &si, &pi, give, 2)) {
         AllowSetForegroundWindow(pi.dwProcessId);
         CloseHandle(pi.hProcess);
         CloseHandle(pi.hThread);
@@ -271,6 +273,7 @@ void RunConfigBoxWithConfSettings(Conf *conf) {
     if (mpwmap) CloseHandle(mpwmap);
     CloseHandle(filemap);
     sfree(cl);
+    sfree(exe);
 }
 
 void RunSessionWithCurrentSettings(HWND hwnd, Conf *oldconf, const char *host,
@@ -447,23 +450,29 @@ static HWND kitty_launcher_start(void) {
  * Without the variable - and in every release build - nothing is written. */
 void kitty_ctrltab_trace(const char *fmt, ...) {
 #ifdef KITTY_TEST_BUILD_LABEL
-    char path[MAX_PATH], *slash, line[400];
+    char *exe, *path, *slash, *line;
     va_list ap;
     FILE *f;
     if (getenv("KITTY_CTRLTAB_TRACE") == NULL)
         return;
-    if (!GetModuleFileNameA(NULL, path, sizeof(path)) ||
-        (slash = strrchr(path, '\\')) == NULL)
+    if ((exe = kitty_module_path_dup(NULL)) == NULL)
         return;
-    strcpy(slash + 1, "ctrltab.log");
+    if ((slash = strrchr(exe, '\\')) == NULL) {
+        sfree(exe);
+        return;
+    }
+    path = dupprintf("%.*s\\ctrltab.log", (int)(slash - exe), exe);
+    sfree(exe);
     va_start(ap, fmt);
-    vsnprintf(line, sizeof(line), fmt, ap);
+    line = dupvprintf(fmt, ap);
     va_end(ap);
     if ((f = fopen(path, "a")) != NULL) {
         fprintf(f, "%lu pid %lu %s\n", (unsigned long)GetTickCount(),
                 (unsigned long)GetCurrentProcessId(), line);
         fclose(f);
     }
+    sfree(path);
+    sfree(line);
 #else
     (void)fmt;
 #endif
@@ -757,14 +766,10 @@ void kitty_apply_icon(HWND hwnd, Conf *conf) {
     /* %VAR% expanded: the stored path keeps the typed form, Windows gets
      * the real one (hknet/KiTTY#70 sweep) */
     char *iconfile = filename_expand_str(conf_get_filename(conf, CONF_iconefile));
-    char buf[1024];
-    buf[0] = '\0';
-    if (iconfile && iconfile[0]) {
-        strncpy(buf, iconfile, sizeof(buf)-1);
-        buf[sizeof(buf)-1] = '\0';
-    }
+    if (!iconfile)
+        iconfile = dupstr("");               /* the file whole, or none */
+    SetNewIcon(hwnd, iconfile, conf_get_int(conf, CONF_icone), SI_INIT);
     sfree(iconfile);
-    SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 
 /* KiTTY: restore the session's normal window icon after a (re)connect, undoing
@@ -774,14 +779,10 @@ void kitty_restore_icon(HWND hwnd, Conf *conf) {
     /* %VAR% expanded: the stored path keeps the typed form, Windows gets
      * the real one (hknet/KiTTY#70 sweep) */
     char *iconfile = filename_expand_str(conf_get_filename(conf, CONF_iconefile));
-    char buf[1024];
-    buf[0] = '\0';
-    if (iconfile && iconfile[0]) {
-        strncpy(buf, iconfile, sizeof(buf)-1);
-        buf[sizeof(buf)-1] = '\0';
-    }
+    if (!iconfile)
+        iconfile = dupstr("");               /* the file whole, or none */
+    SetNewIcon(hwnd, iconfile, conf_get_int(conf, CONF_icone), SI_INIT);
     sfree(iconfile);
-    SetNewIcon(hwnd, buf, conf_get_int(conf, CONF_icone), SI_INIT);
 }
 
 /* KiTTY About box (IDM_ABOUT). A compact KiTTY-specific dialog showing the

@@ -1246,25 +1246,28 @@ static void ksec_kept_deliver(const char *cap, const char *msg)
 }
 void ksec_report_locked_save(int what, const char *where)
 {
-    static char last[MAX_PATH + 8];
+    static char *last = NULL;   /* the last report's key, whole */
     static DWORD last_tick;
-    char key[MAX_PATH + 8], msg[MAX_PATH + 1024];
+    char *key, *msg;
     DWORD now = GetTickCount();
     int dpapi = g_ksec_refused_dpapi;
     DWORD dpapi_err = g_ksec_refused_err;
     int nosetup = !dpapi && g_mpw_setup_declined;
     g_ksec_refused_dpapi = 0;                    /* consumed */
     if (!where) where = "";
-    snprintf(key, sizeof(key), "%d:%s", what, where);
-    if (last[0] && !strcmp(last, key) && now - last_tick < 2000)
+    key = dupprintf("%d:%s", what, where);
+    if (last && !strcmp(last, key) && now - last_tick < 2000) {
+        sfree(key);
         return;
-    snprintf(last, sizeof(last), "%s", key);
+    }
+    sfree(last);
+    last = key;
     last_tick = now;
     g_mpw_kept++;
     if (dpapi) {
         /* Windows' reason: its text and number (kitty_win_reason) */
         g_mpw_kept_dpapi++;
-        snprintf(msg, sizeof(msg),
+        msg = dupprintf(
                  what == KSEC_KEPT_PROXY  ? KT_DPAPI_KEPT_PROXY_FMT :
                  what == KSEC_KEPT_SCRIPT ? KT_DPAPI_KEPT_SCRIPT_FMT :
                  what == KSEC_KEPT_EXPORT ? KT_DPAPI_KEPT_EXPORT_FMT :
@@ -1273,18 +1276,19 @@ void ksec_report_locked_save(int what, const char *where)
         kitty_pwdebug("save kept the stored secret: DPAPI failed (error %lu; %d, %s)",
                       (unsigned long)dpapi_err, what, where);
         ksec_kept_deliver(KT_DPAPI_KEPT_CAP, msg);
+        sfree(msg);
         return;
     }
     if (nosetup)
         g_mpw_kept_nosetup++;
     if (nosetup)
-        snprintf(msg, sizeof(msg),
+        msg = dupprintf(
                  what == KSEC_KEPT_PROXY  ? KT_MPW_NOSETUP_PROXY_FMT :
                  what == KSEC_KEPT_SCRIPT ? KT_MPW_NOSETUP_SCRIPT_FMT :
                  what == KSEC_KEPT_EXPORT ? KT_MPW_NOSETUP_EXPORT_FMT :
                                             KT_MPW_NOSETUP_SAVE_FMT, where);
     else
-        snprintf(msg, sizeof(msg),
+        msg = dupprintf(
                  what == KSEC_KEPT_PROXY  ? KT_MPW_LOCKED_PROXY_FMT :
                  what == KSEC_KEPT_SCRIPT ? KT_MPW_LOCKED_SCRIPT_FMT :
                  what == KSEC_KEPT_EXPORT ? KT_MPW_LOCKED_EXPORT_FMT :
@@ -1294,9 +1298,11 @@ void ksec_report_locked_save(int what, const char *where)
     if (g_mpw_setup_failed_reported) {
         /* the save whose setup failed: that failure's report covers it */
         g_mpw_setup_failed_reported = 0;
+        sfree(msg);
         return;
     }
     ksec_kept_deliver(KT_MPW_LOCKED_SAVE_CAP, msg);
+    sfree(msg);
 }
 
 /* stored -> plaintext in *out (malloc'd). 1=ok, 0=absent, -1=undecryptable DPAPI blob. */

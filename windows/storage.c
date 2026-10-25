@@ -1436,14 +1436,15 @@ host_ca_enum *enum_host_ca_start(void)
 
     if (store_is_file()) {
         char *dir = portable_subdir_path("SshHostCAs");
-        char pattern[MAX_PATH];
+        char *pattern;
         WIN32_FIND_DATAA fd;
         HANDLE h;
         e = snew(host_ca_enum);
         e->key = NULL; e->i = 0; e->is_file = 1; e->names = NULL; e->count = 0;
         if (!dir) return e;
-        snprintf(pattern, sizeof(pattern), "%s\\*", dir);
+        pattern = dupprintf("%s\\*", dir);   /* whole: too long fails here */
         h = FindFirstFileA(pattern, &fd);
+        sfree(pattern);
         if (h != INVALID_HANDLE_VALUE) {
             do {
                 if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {

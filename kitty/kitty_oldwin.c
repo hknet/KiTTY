@@ -263,6 +263,126 @@ BOOL kitty_process_image_path(HANDLE proc, char *buf, DWORD bufsize)
     return FALSE;
 }
 
+/* ---------------------------------------------------------- whole paths -- */
+
+/*
+ * Paths read whole, into memory of their own (sfree the result). Each read
+ * that cuts is repeated with a bigger buffer up to the longest path Windows
+ * has; a read that fails returns NULL with Windows' reason in GetLastError(),
+ * so a caller never goes on with a cut or unfilled buffer.
+ */
+#define KITTY_WHOLE_PATH_MAX 32768
+
+char *kitty_process_image_path_dup(HANDLE proc)
+{
+    DWORD size = MAX_PATH + 1;
+    path_resolve();
+    if (!p_QueryFullProcessImageNameA && !p_GetModuleFileNameExA) {
+        SetLastError(ERROR_PROC_NOT_FOUND);
+        return NULL;
+    }
+    for (;;) {
+        char *buf = snewn(size, char);
+        if (p_QueryFullProcessImageNameA) {
+            DWORD n = size;
+            if (p_QueryFullProcessImageNameA(proc, 0, buf, &n) &&
+                n > 0 && n < size) {
+                buf[n] = '\0';
+                return buf;
+            }
+            if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+                sfree(buf);
+                return NULL;
+            }
+        } else {
+            DWORD n = p_GetModuleFileNameExA(proc, NULL, buf, size);
+            if (n == 0) {
+                sfree(buf);
+                return NULL;
+            }
+            if (n < size - 1) {        /* a cut result fills the buffer */
+                buf[n] = '\0';
+                return buf;
+            }
+        }
+        sfree(buf);
+        if (size > KITTY_WHOLE_PATH_MAX) {
+            SetLastError(ERROR_FILENAME_EXCED_RANGE);
+            return NULL;
+        }
+        size *= 2;
+    }
+}
+
+char *kitty_module_path_dup(HMODULE mod)
+{
+    DWORD size = MAX_PATH + 1;
+    for (;;) {
+        char *buf = snewn(size, char);
+        DWORD n = GetModuleFileNameA(mod, buf, size);
+        if (n == 0) {
+            sfree(buf);
+            return NULL;
+        }
+        /* a cut result fills the buffer (on XP without a NUL) */
+        if (n < size - 1) {
+            buf[n] = '\0';
+            return buf;
+        }
+        sfree(buf);
+        if (size > KITTY_WHOLE_PATH_MAX) {
+            SetLastError(ERROR_FILENAME_EXCED_RANGE);
+            return NULL;
+        }
+        size *= 2;
+    }
+}
+
+char *kitty_full_path_dup(const char *path)
+{
+    DWORD need, n;
+    int tries;
+    if (!path || !*path) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+    need = GetFullPathNameA(path, 0, NULL, NULL);
+    /* the answer can grow between the two calls (the current directory
+     * changed): ask again a few times */
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = snewn(need, char);
+        n = GetFullPathNameA(path, need, buf, NULL);
+        if (n == 0) {
+            sfree(buf);
+            return NULL;
+        }
+        if (n < need)
+            return buf;
+        sfree(buf);
+        need = n;
+    }
+    return NULL;
+}
+
+char *kitty_temp_path_dup(void)
+{
+    DWORD need = GetTempPathA(0, NULL), n;
+    int tries;
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = snewn(need, char);
+        n = GetTempPathA(need, buf);
+        if (n == 0) {
+            sfree(buf);
+            return NULL;
+        }
+        if (n < need)
+            return buf;
+        sfree(buf);
+        need = n;
+    }
+    return NULL;
+}
+
 /* -------------------------------------------------------------- console -- */
 
 typedef BOOL (WINAPI *attachconsole_t)(DWORD);

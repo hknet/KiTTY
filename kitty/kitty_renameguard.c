@@ -15,6 +15,7 @@
  * that lacks the entry point it would fail the LOADER, before main(), which is
  * the one failure mode a startup guard must never cause.
  */
+#include "putty.h"            /* dupprintf, sfree */
 #include <windows.h>
 #include <wintrust.h>
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -103,12 +104,13 @@ void kitty_eventlog_line(unsigned type, const char *msg)
 /* A line of text with this program's path under it, as event ID 0. */
 void kitty_guard_eventlog_text(const char *msg)
 {
-    char path[MAX_PATH], line[MAX_PATH + 1024];
-    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path));
+    char *path = kitty_module_path_dup(NULL);
 
-    if (n && n < sizeof(path)) {
-        snprintf(line, sizeof(line), KT_GUARD_EVENT_FMT, msg, path);
+    if (path) {
+        char *line = dupprintf(KT_GUARD_EVENT_FMT, msg, path);
         kitty_eventlog_line(EVENTLOG_ERROR_TYPE, line);
+        sfree(line);
+        sfree(path);
     } else
         kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
 }
@@ -120,20 +122,19 @@ void kitty_guard_eventlog_text(const char *msg)
  * event ID 0 (kitty_wev_suite). */
 static void kg_eventlog(const char *msg, const char *check, const char *found)
 {
-    char path[MAX_PATH], line[MAX_PATH + 1024];
+    char *path = kitty_module_path_dup(NULL), *line;
     const char *v[3];
-    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path));
 
-    if (!n || n >= sizeof(path)) {
-        path[0] = '\0';
-        snprintf(line, sizeof(line), "%s", msg);
-    } else {
-        snprintf(line, sizeof(line), KT_GUARD_EVENT_FMT, msg, path);
-    }
+    if (!path)
+        line = dupstr(msg);
+    else
+        line = dupprintf(KT_GUARD_EVENT_FMT, msg, path);
     v[0] = check;
     v[1] = found;
-    v[2] = path;
+    v[2] = path ? path : "";
     kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE, v, 3, line);
+    sfree(line);
+    sfree(path);
 }
 
 /*

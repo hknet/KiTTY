@@ -41,9 +41,9 @@ int kageant_confirm_mode(void);
 int kageant_confirm_set_mode(int mode);   /* key-list radios: yes/auto/no */
 const char *kageant_ini_status(void);  /* ini path when authoritative, else NULL */
 /* string settings following the same store precedence as the toggles
- * (key-list window geometry + column widths live here) */
-int kageant_setting_str_get(const char *inikey, const char *regname,
-                            char *buf, size_t len);
+ * (key-list window geometry + column widths live here): the value whole,
+ * NULL when absent or empty (sfree it) */
+char *kageant_setting_str_dup(const char *inikey, const char *regname);
 int kageant_setting_str_set(const char *inikey, const char *regname,
                             const char *value);
 /* one box with the first [Agent] setting not stored since the last one */
@@ -101,11 +101,12 @@ void kageant_audit_setup(void);
 int  kageant_audit_maxkb_get(void);
 int  kageant_audit_keep_get(void);
 int  kageant_audit_expire_get(void);
-int  kageant_audit_pathsetting_get(char *buf, size_t len);
+char *kageant_audit_pathsetting_dup(void);   /* NULL: not set (sfree it) */
 /* Where the log goes when no path is configured - so the settings dialog can
  * show it instead of leaving an empty box. `create` makes the directory; the
- * dialog passes 0, because opening a dialog must not create directories. */
-int  kageant_audit_default_path(char *buf, size_t len, int create);
+ * dialog passes 0, because opening a dialog must not create directories.
+ * NULL when there is no such place (sfree it). */
+char *kageant_audit_default_path_dup(int create);
 /* write the whole set to the store in charge and re-arm the sink;
  * path NULL/"" clears the override back to the default location */
 void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
@@ -259,7 +260,7 @@ void kageant_load_startup_keys(void);
 int kageant_set_run_entry(int on);     /* HKCU ...\Run autostart entry; 1 done, 0 not (GetLastError) */
 int kageant_set_autostart(int on);     /* Startup shortcut (portable) or Run key; 1 done, 0 not */
 int kageant_autostart_active(void);    /* is our autostart artifact actually present? */
-int kageant_autostart_conflict(char *desc, size_t len);  /* another agent registered? */
+char *kageant_autostart_conflict(void);  /* another agent registered? (sfree) */
 void kageant_save_key_order(void);
 void kageant_apply_saved_order(void);
 int kageant_nloaded(void);             /* key paths tracked this session */

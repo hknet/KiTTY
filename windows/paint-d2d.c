@@ -69,6 +69,7 @@
 #include <dwrite.h>
 #include <dwrite_2.h>
 #include "paint.h"
+#include "../kitty/kitty_oldwin.h"   /* kitty_module_path_dup: the trace file */
 #include "paint-widthcache.h"
 #include "../kitty/kitty_text.h"    /* KiTTY: the renderer badge's word */
 #include "../kitty/kitty_renameguard.h"   /* kitty_eventlog_line */
@@ -339,18 +340,23 @@ static void fill(D2DPainter *d, int l, int t, int r, int b, COLORREF c)
 #ifdef KITTY_TEST_BUILD_LABEL
 static void d2d_trace(const char *fmt, ...)
 {
-    char path[MAX_PATH], *slash;
+    char *exe, *path, *slash;
     const char *on = getenv("KITTY_D2D_TRACE");
     FILE *f;
     va_list ap;
     if (!on || !*on)
         return;
-    if (!GetModuleFileNameA(NULL, path, sizeof(path)))
+    if ((exe = kitty_module_path_dup(NULL)) == NULL)
         return;
-    if ((slash = strrchr(path, '\\')) == NULL)
+    if ((slash = strrchr(exe, '\\')) == NULL) {
+        sfree(exe);
         return;
-    strcpy(slash + 1, "d2d_trace.log");
-    if ((f = fopen(path, "a")) == NULL)
+    }
+    path = dupprintf("%.*s\\d2d_trace.log", (int)(slash - exe), exe);
+    sfree(exe);
+    f = fopen(path, "a");
+    sfree(path);
+    if (f == NULL)
         return;
     fprintf(f, "%lu ", (unsigned long)GetTickCount());
     va_start(ap, fmt);

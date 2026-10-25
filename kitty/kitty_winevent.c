@@ -12,6 +12,7 @@
  * Windows XP era on purpose (RegisterEventSourceA, ReportEventA), like
  * kitty_renameguard.c beside it in `utils`.
  */
+#include "putty.h"            /* dupstr, sfree */
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
@@ -147,16 +148,13 @@ void *kitty_wev_user_sid(void)
     return sid;
 }
 
-/* A copy of v with control bytes made ?, taken from the pool; "" once the
- * pool is spent. */
-static const char *wev_scrub(char **pool, char *end, const char *v)
+/* A copy of v with control bytes made ?, whole (sfree it); "" for none. */
+static char *wev_scrub(const char *v)
 {
-    char *s = *pool;
-    if (!v || *pool >= end - 1)
-        return "";
-    for (; *v && *pool < end - 1; v++)
-        *(*pool)++ = ((unsigned char)*v < 0x20) ? '?' : *v;
-    *(*pool)++ = '\0';
+    char *s = dupstr(v ? v : ""), *p;
+    for (p = s; *p; p++)
+        if ((unsigned char)*p < 0x20)
+            *p = '?';
     return s;
 }
 
@@ -183,10 +181,10 @@ static void wev_write(unsigned id, WORD type, const char *const *vals, int n)
 {
     const struct kitty_eventid *e = wev_find(id);
     const char *strings[1 + WEV_MAX_FIELDS];
-    char pool[8192], *pp = pool, *pend = pool + sizeof(pool);
+    char *owned[1 + WEV_MAX_FIELDS];    /* the copies to free */
     char pid[16];
     const char *f;
-    int i = 0;
+    int i = 0, nowned = 0;
     WORD ns = 0;
     HANDLE h;
 
@@ -201,16 +199,21 @@ static void wev_write(unsigned id, WORD type, const char *const *vals, int n)
         if (f - name == 3 && !strncmp(name, "pid", 3)) {
             strings[ns++] = pid;
         } else {
-            strings[ns++] = wev_scrub(&pp, pend, i < n ? vals[i] : NULL);
+            owned[nowned] = wev_scrub(i < n ? vals[i] : NULL);
+            strings[ns++] = owned[nowned++];
             i++;
         }
         while (*f == ' ')
             f++;
     }
+    /* every field whole; a record longer than the Event Log takes is
+     * refused by ReportEvent itself, as best effort as the rest */
     h = wev_source(e->source);
-    if (!h)
-        return;
-    ReportEventA(h, type, 0, id, kitty_wev_user_sid(), ns, 0, strings, NULL);
+    if (h)
+        ReportEventA(h, type, 0, id, kitty_wev_user_sid(), ns, 0, strings,
+                     NULL);
+    while (nowned > 0)
+        sfree(owned[--nowned]);
 }
 
 void kitty_wev_configure(unsigned block, int enabled)

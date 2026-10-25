@@ -15,6 +15,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include "kitty_inifile.h"
@@ -57,6 +58,43 @@ static int same_bytes(const char *a, long na, const char *b, long nb)
     return a && b && na == nb && !memcmp(a, b, na);
 }
 
+/* A path built whole (malloc'd); a failed build ends the run. */
+static char *tf_path(const char *fmt, ...)
+{
+    va_list ap;
+    int n;
+    char *s;
+    va_start(ap, fmt);
+    n = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (n < 0 || !(s = malloc((size_t)n + 1))) {
+        printf("FAIL  a test path could not be built\n");
+        exit(1);
+    }
+    va_start(ap, fmt);
+    vsnprintf(s, (size_t)n + 1, fmt, ap);
+    va_end(ap);
+    return s;
+}
+
+/* %TEMP% whole, with its backslash; a failed read ends the run - a test
+ * never builds its folder from an unfilled buffer. */
+static char *tf_temp(void)
+{
+    DWORD need = GetTempPathA(0, NULL), n;
+    char *s;
+    if (!need || !(s = malloc(need))) {
+        printf("FAIL  GetTempPath failed (%lu)\n", (unsigned long)GetLastError());
+        exit(1);
+    }
+    n = GetTempPathA(need, s);
+    if (!n || n >= need) {
+        printf("FAIL  GetTempPath failed (%lu)\n", (unsigned long)GetLastError());
+        exit(1);
+    }
+    return s;
+}
+
 static int ini_holds(const char *path, const char *sec, const char *key,
                      const char *want)
 {
@@ -67,21 +105,19 @@ static int ini_holds(const char *path, const char *sec, const char *key,
 
 int main(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sub[MAX_PATH];
-    char ro[MAX_PATH], ro_alt[MAX_PATH], other[MAX_PATH], rw[MAX_PATH];
-    char env[MAX_PATH + 32];
+    char *tmp, *root, *sub, *ro, *ro_alt, *other, *rw, *env;
     char *before, *after;
     long nb = 0, na = 0;
     const char *f;
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-inifile-%lu",
-             tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sub, sizeof(sub), "%s\\rw", root);
-    snprintf(ro, sizeof(ro), "%s\\kitty.ini", root);
-    snprintf(ro_alt, sizeof(ro_alt), "%s\\rw\\..\\KITTY.INI", root);
-    snprintf(other, sizeof(other), "%s\\kitty_windowpos.ini", root);
-    snprintf(rw, sizeof(rw), "%s\\kitty.ini", sub);
+    tmp = tf_temp();
+    root = tf_path("%skitty-inifile-%lu",
+                   tmp, (unsigned long)GetCurrentProcessId());
+    sub = tf_path("%s\\rw", root);
+    ro = tf_path("%s\\kitty.ini", root);
+    ro_alt = tf_path("%s\\rw\\..\\KITTY.INI", root);
+    other = tf_path("%s\\kitty_windowpos.ini", root);
+    rw = tf_path("%s\\kitty.ini", sub);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sub, NULL);
 
@@ -95,8 +131,8 @@ int main(void)
     put_file(rw, "[KiTTY]\r\ntheme=dark\r\n");
 
     /* the resolver reads the CRT environment (getenv), before its first use */
-    snprintf(env, sizeof(env), "KITTY_INI_FILE=%s", ro);
-    _putenv(env);
+    env = tf_path("KITTY_INI_FILE=%s", ro);
+    _putenv(env);                    /* the CRT copies it */
 
     f = kitty_inifile_file();
     check(f && !stricmp(f, ro), "the resolver takes the readonly kitty.ini");
@@ -222,6 +258,8 @@ int main(void)
     DeleteFileA(rw);
     RemoveDirectoryA(sub);
     RemoveDirectoryA(root);
+    free(tmp); free(root); free(sub); free(ro); free(ro_alt);
+    free(other); free(rw); free(env);
 
     printf("%s\n", failures ? "test_inifile: FAILED" : "test_inifile: all ok");
     return failures ? 1 : 0;

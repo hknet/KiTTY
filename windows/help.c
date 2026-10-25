@@ -9,6 +9,7 @@
 
 #include "putty.h"
 #include "putty-rc.h"
+#include "../kitty/kitty_oldwin.h"   /* KiTTY: kitty_module_path_dup */
 
 #ifdef NO_HTMLHELP
 
@@ -149,16 +150,18 @@ static bool load_chm_resource(void)
 static bool find_chm_beside_exe(void)
 {
     static const char *const names[] = { "kitty.chm", "putty.chm" };
-    char exepath[MAX_PATH];
+    /* the exe's path whole: a cut one would name an ancestor folder */
+    char *exepath = kitty_module_path_dup(NULL);
     char *slash;
     size_t i;
 
-    if (!GetModuleFileNameA(NULL, exepath, sizeof(exepath) - 1))
+    if (!exepath)
         return false;
-    exepath[sizeof(exepath) - 1] = '\0';
     slash = strrchr(exepath, '\\');
-    if (!slash)
+    if (!slash) {
+        sfree(exepath);
         return false;
+    }
     slash[1] = '\0';
 
     for (i = 0; i < lenof(names); i++) {
@@ -168,10 +171,12 @@ static bool find_chm_beside_exe(void)
             !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
             chm_path = candidate;
             chm_created_by_us = false;
+            sfree(exepath);
             return true;
         }
         sfree(candidate);
     }
+    sfree(exepath);
     return false;
 }
 

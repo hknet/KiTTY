@@ -803,7 +803,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * touches the store's master password. */
     if (kitty_cli_exportdir) {
         int fail = 0, n, wrapfailed;
-        char msg[2048], *skips;
+        char *msg, *skips;
         /* No silent fallback, exactly as in the GUI: without one of the two
          * switches this used to CREATE a master password for the user's own
          * store as a side effect. Say what to pass instead of doing that. */
@@ -819,15 +819,17 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         wrapfailed = kitty_bundle_wrap_failed();
         skips = kitty_bundle_wrap_report();
         kitty_clear_bundle_context();
-        snprintf(msg, sizeof(msg), KT_CLI_EXPORT_DONE,
-                 n, fail, kitty_cli_exportdir,
-                 kitty_cli_bundle_thispc ? KT_CLI_EXPORT_THISPC_NOTE : "");
-        if (skips) {
-            size_t l = strlen(msg);
-            snprintf(msg + l, sizeof(msg) - l, "%s", skips);
+        msg = dupprintf(KT_CLI_EXPORT_DONE,
+                        n, fail, kitty_cli_exportdir,
+                        kitty_cli_bundle_thispc ? KT_CLI_EXPORT_THISPC_NOTE : "");
+        if (skips) {                  /* the folder and the list whole */
+            char *all = dupcat(msg, skips);
+            sfree(msg);
+            msg = all;
             sfree(skips);
         }
         kitty_cli_result(KT_CAP_SESSION_EXPORT, msg, (fail || wrapfailed));
+        sfree(msg);
         cleanup_exit((fail || wrapfailed) ? 1 : 0);
     }
     if (kitty_cli_importdir) {
@@ -835,7 +837,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         int kept = kitty_mpw_kept_count();   /* passwords kept: master password locked */
         int nosetup = kitty_mpw_kept_nosetup_count();   /* ... or never set up */
         int dpapi = kitty_mpw_kept_dpapi_count();       /* ... or DPAPI failed */
-        char msg[700];
+        char *msg;
         kitty_cli_store_refused(KT_CAP_SESSION_IMPORT);   /* readonly=yes */
         /* A password-protected bundle with no password given would fall through
          * to the master-password prompt - which is interactive, and this path
@@ -852,21 +854,25 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         kitty_clear_bundle_context();
         /* before the box: a running launcher need not wait for its answer */
         kitty_notify_launcher_sessions_changed();
-        snprintf(msg, sizeof(msg), KT_CLI_IMPORT_DONE,
-                 n, prox, fail, kitty_cli_importdir);
+        msg = dupprintf(KT_CLI_IMPORT_DONE,
+                        n, prox, fail, kitty_cli_importdir);
         /* a password not saved (the master password locked) is a partial
          * result, as a failed session is */
         kept = kitty_mpw_kept_count() - kept;
         nosetup = kitty_mpw_kept_nosetup_count() - nosetup;
         dpapi = kitty_mpw_kept_dpapi_count() - dpapi;
         if (kept > 0) {
-            size_t l = strlen(msg);
-            snprintf(msg + l, sizeof(msg) - l,
-                     nosetup == kept ? KT_CLI_IMPORT_NOSETUP_FMT :
-                     dpapi == kept   ? KT_CLI_IMPORT_DPAPI_FMT
-                                     : KT_CLI_IMPORT_KEPT_FMT, kept);
+            char *add = dupprintf(nosetup == kept ? KT_CLI_IMPORT_NOSETUP_FMT :
+                                  dpapi == kept   ? KT_CLI_IMPORT_DPAPI_FMT
+                                                  : KT_CLI_IMPORT_KEPT_FMT,
+                                  kept);
+            char *all = dupcat(msg, add);
+            sfree(add);
+            sfree(msg);
+            msg = all;
         }
         kitty_cli_result(KT_CAP_SESSION_IMPORT, msg, fail || kept > 0);
+        sfree(msg);
         cleanup_exit((fail || kept > 0) ? 1 : 0);
     }
     /* Whole-store moves between the registry and a folder (do-and-exit),
@@ -878,18 +884,19 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         cleanup_exit(0);
     }
     if (kitty_cli_backupnow) {
-        char msg[1200];
+        char *msg;
         kitty_cli_store_refused(KT_CAP_BACKUP);   /* readonly=yes: no backup */
         /* it reported "written" whether or not anything was */
         if (!SaveRegistryKeyNow()) {
-            snprintf(msg, sizeof(msg), KT_CLI_BACKUP_FAILED_FMT,
-                     kitty_sav_save_reason());
+            msg = dupprintf(KT_CLI_BACKUP_FAILED_FMT, kitty_sav_save_reason());
             KittyCliReport(KT_CAP_BACKUP, msg, 1);
+            sfree(msg);
             cleanup_exit(1);
         }
-        snprintf(msg, sizeof(msg), KT_CLI_BACKUP_DONE,
-                 GetKittySavFile() ? GetKittySavFile() : KT_CLI_BACKUP_NO_TARGET);
+        msg = dupprintf(KT_CLI_BACKUP_DONE,
+                        GetKittySavFile() ? GetKittySavFile() : KT_CLI_BACKUP_NO_TARGET);
         KittyCliReport(KT_CAP_BACKUP, msg, 0);
+        sfree(msg);
         cleanup_exit(0);
     }
     if (kitty_cli_portablecopy) {

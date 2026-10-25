@@ -68,10 +68,9 @@ int kageant_audit_expire_get(void)
     return kageant_int_setting(KI_AGENT_AGENTLOGEXPIREDAYS, "AgentLogExpireDays",
                                KAGEANT_AGENTLOG_DAYS_DEFAULT, 0, 3650);
 }
-int kageant_audit_pathsetting_get(char *buf, size_t len)
+char *kageant_audit_pathsetting_dup(void)
 {
-    return kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                                   buf, len);
+    return kageant_setting_str_dup(KI_AGENT_AGENTLOGPATH, "AgentLogPath");
 }
 
 /*
@@ -100,17 +99,18 @@ int kageant_audit_eventlog_exists(void)
 
 int kageant_audit_sink_explicit(void)
 {
-    char buf[16];
-    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGSINK, "AgentLogSink",
-                                 buf, sizeof(buf)))
+    char *buf = kageant_setting_str_dup(KI_AGENT_AGENTLOGSINK, "AgentLogSink");
+    int sinks = -1;                          /* unknown text: the default */
+    if (!buf)
         return -1;
     if (!stricmp(buf, "file"))
-        return KITTY_AUDIT_SINK_FILE;
-    if (!stricmp(buf, "eventlog"))
-        return KITTY_AUDIT_SINK_EVENTLOG;
-    if (!stricmp(buf, "both"))
-        return KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG;
-    return -1;                               /* unknown text: the default */
+        sinks = KITTY_AUDIT_SINK_FILE;
+    else if (!stricmp(buf, "eventlog"))
+        sinks = KITTY_AUDIT_SINK_EVENTLOG;
+    else if (!stricmp(buf, "both"))
+        sinks = KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG;
+    sfree(buf);
+    return sinks;
 }
 
 int kageant_audit_sink_get(void)
@@ -146,8 +146,7 @@ int kageant_audit_sink_set(int sinks)
 void kageant_eventviewer_open(HWND owner)
 {
     char view[1024];
-    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
-    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+    char *tmp = kitty_temp_path_dup();
     int len;
 
     len = snprintf(view, sizeof(view),
@@ -161,15 +160,21 @@ void kageant_eventviewer_open(HWND owner)
         "<Select Path=\"" KITTY_AUDIT_EVENT_LOG "\">"
         "*[System[Provider[@Name='" KITTY_AUDIT_EVENT_SOURCE "']]]</Select>" :
         "");
-    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp) &&
+    if (LOBYTE(LOWORD(GetVersion())) >= 6 && tmp &&
         len > 0 && len < (int)sizeof(view)) {
-        snprintf(path, sizeof(path), "%sKiTTYpp-agent-events.xml", tmp);
-        snprintf(args, sizeof(args), "/v:\"%s\"", path);
-        if (kitty_write_file_whole(path, view, (size_t)len) &&
+        char *path = dupprintf("%sKiTTYpp-agent-events.xml", tmp);
+        char *args = dupprintf("/v:\"%s\"", path);
+        int shown = kitty_write_file_whole(path, view, (size_t)len) &&
             (INT_PTR)ShellExecuteA(owner, "open", "eventvwr.exe", args, NULL,
-                                   SW_SHOWNORMAL) > 32)
+                                   SW_SHOWNORMAL) > 32;
+        sfree(path);
+        sfree(args);
+        if (shown) {
+            sfree(tmp);
             return;
+        }
     }
+    sfree(tmp);
     ShellExecuteA(owner, "open", "eventvwr.msc", NULL, NULL, SW_SHOWNORMAL);
 }
 
@@ -209,13 +214,26 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
  * wants the string, and must not create directories as a side effect of
  * being opened.
  */
-int kageant_audit_default_path(char *buf, size_t len, int create)
+/* An environment variable whole, NULL when not set or empty (sfree it). */
+static char *kageant_env_dup(const char *name)
+{
+    DWORD need = GetEnvironmentVariableA(name, NULL, 0), n;
+    int tries;
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = snewn(need, char);
+        n = GetEnvironmentVariableA(name, buf, need);
+        if (n > 0 && n < need)
+            return buf;
+        sfree(buf);
+        need = n;                            /* 0: gone; else it grew */
+    }
+    return NULL;
+}
+
+char *kageant_audit_default_path_dup(int create)
 {
     const char *ini;
-
-    if (!buf || len == 0)
-        return 0;
-    buf[0] = '\0';
+    char *base;
 
     /* A portable install logs beside its kitty.ini, so the whole install
      * stays on the stick. */
@@ -223,59 +241,59 @@ int kageant_audit_default_path(char *buf, size_t len, int create)
         (ini = kitty_inifile_file()) != NULL) {
         const char *sl = strrchr(ini, '\\');
         if (sl)
-            snprintf(buf, len, "%.*s\\kageant.log", (int)(sl - ini), ini);
+            return dupprintf("%.*s\\kageant.log", (int)(sl - ini), ini);
     }
-    if (!buf[0]) {
-        char base[MAX_PATH + 1];
-        DWORD n = GetEnvironmentVariableA("LOCALAPPDATA", base, sizeof(base));
-        if (n > 0 && n < sizeof(base)) {
-            char dir[MAX_PATH + 1];
-            snprintf(dir, sizeof(dir), "%s\\kapper.net", base);
-            if (create)
-                CreateDirectoryA(dir, NULL);
-            snprintf(dir, sizeof(dir), "%s\\kapper.net\\KiTTY", base);
-            if (create)
-                CreateDirectoryA(dir, NULL);
-            snprintf(buf, len, "%s\\kageant.log", dir);
-        }
+    if ((base = kageant_env_dup("LOCALAPPDATA")) != NULL) {
+        char *dir = dupprintf("%s\\kapper.net", base), *out;
+        if (create)
+            CreateDirectoryA(dir, NULL);
+        sfree(dir);
+        dir = dupprintf("%s\\kapper.net\\KiTTY", base);
+        if (create)
+            CreateDirectoryA(dir, NULL);
+        out = dupprintf("%s\\kageant.log", dir);
+        sfree(dir);
+        sfree(base);
+        return out;
     }
-    return buf[0] != '\0';
+    return NULL;
 }
 
 void kageant_audit_setup(void)
 {
-    char path[MAX_PATH + 1];
-    path[0] = '\0';
-    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                                 path, sizeof(path)) || !path[0])
-        kageant_audit_default_path(path, sizeof(path), 1);
+    char *path = kageant_audit_pathsetting_dup();
+    if (!path)
+        path = kageant_audit_default_path_dup(1);
     /* The on/off switch governs both sinks; a missing path only silences
      * the file (kitty_audit_enabled). */
     kitty_audit_set_sinks(kageant_audit_sink_get());
     kitty_audit_configure(
-        path[0] ? path : NULL, kageant_audit_get(),
+        path, kageant_audit_get(),
         kageant_audit_maxkb_get(), kageant_audit_keep_get(),
         kageant_audit_expire_get());
+    sfree(path);
 }
 
 /* Best-effort requester identity for the log: the exe base name AND its
  * full path behind a pid - the base name is what the first-level view
  * shows, the full path is the audit-trail fact ("which ssh.exe?"). */
-static void kageant_req_name(unsigned long pid, char *base_out, size_t bsz,
-                             char *path_out, size_t psz)
+/* Both NULL when unknown; sfree them. */
+static void kageant_req_name(unsigned long pid, char **base_out,
+                             char **path_out)
 {
     HANDLE h;
-    base_out[0] = path_out[0] = '\0';
+    *base_out = *path_out = NULL;
     if (!pid)
         return;
     h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
     if (h) {
-        char path[MAX_PATH + 1];
-        DWORD n = sizeof(path);
-        if (kitty_process_image_path(h, path, n) && path[0]) {
+        char *path = kitty_process_image_path_dup(h);
+        if (path && path[0]) {
             const char *base = strrchr(path, '\\');
-            snprintf(base_out, bsz, "%s", base ? base + 1 : path);
-            snprintf(path_out, psz, "%s", path);
+            *base_out = dupstr(base ? base + 1 : path);
+            *path_out = path;
+        } else {
+            sfree(path);
         }
         CloseHandle(h);
     }
@@ -288,12 +306,14 @@ void kageant_audit_decrypt(const char *fp, const char *comment,
                            const char *result, const char *trigger,
                            unsigned long pid)
 {
-    char req[80], reqpath[MAX_PATH + 1], pidbuf[16];
-    kageant_req_name(pid, req, sizeof(req), reqpath, sizeof(reqpath));
+    char *req, *reqpath, pidbuf[16];
+    kageant_req_name(pid, &req, &reqpath);
     snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
     kitty_audit("decrypt", "fp", fp, "comment", comment, "result", result,
                 "trigger", trigger, "req", req, "reqpath", reqpath,
                 "pid", pid ? pidbuf : NULL, (const char *)NULL);
+    sfree(req);
+    sfree(reqpath);
 }
 
 /* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
@@ -301,10 +321,12 @@ void kageant_audit_use(const char *ev, const char *fp,
                               const char *comment, const char *result,
                               const char *reason, unsigned long pid)
 {
-    char req[80], reqpath[MAX_PATH + 1], pidbuf[16];
-    kageant_req_name(pid, req, sizeof(req), reqpath, sizeof(reqpath));
+    char *req, *reqpath, pidbuf[16];
+    kageant_req_name(pid, &req, &reqpath);
     snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
     kitty_audit(ev, "fp", fp, "comment", comment, "result", result,
                 "reason", reason, "req", req, "reqpath", reqpath,
                 "pid", pid ? pidbuf : NULL, (const char *)NULL);
+    sfree(req);
+    sfree(reqpath);
 }

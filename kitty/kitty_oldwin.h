@@ -108,6 +108,21 @@ ULONGLONG kitty_tick_count64(void);
 BOOL kitty_process_image_path(HANDLE proc, char *buf, DWORD bufsize);
 
 /*
+ * Paths read whole, in memory of their own (sfree the result): no length
+ * limit but Windows' own. NULL when the read failed, with Windows' reason
+ * in GetLastError() - never a cut path.
+ *
+ *   kitty_process_image_path_dup  the executable behind a process handle
+ *   kitty_module_path_dup         GetModuleFileName (NULL = this exe)
+ *   kitty_full_path_dup           GetFullPathName (relative -> absolute)
+ *   kitty_temp_path_dup           GetTempPath, with its trailing backslash
+ */
+char *kitty_process_image_path_dup(HANDLE proc);
+char *kitty_module_path_dup(HMODULE mod);
+char *kitty_full_path_dup(const char *path);
+char *kitty_temp_path_dup(void);
+
+/*
  * Attach to the console of the process that started us, so a GUI binary can
  * print to the shell that ran it. XP and later; FALSE on anything older, and
  * on a process that has no parent console. Nothing depends on it - the caller

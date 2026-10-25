@@ -40,6 +40,7 @@
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_inifile.h"   /* readonly=yes: the pin and the gate */
+#include "../kitty/kitty_oldwin.h"    /* kitty_temp_path_dup: %TEMP% whole */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 
@@ -180,10 +181,54 @@ static void test_registry(void)
 #define PSECRET "s3cretPortable123"
 #define PPASS   "selftest-master-pw"
 
+/* Every path of this run is built whole (dupprintf) and kept here until
+ * the run ends: a test that returns early leaks nothing, none is ever cut,
+ * and a %TEMP% that cannot be read ends the run instead of naming a folder
+ * from an unfilled buffer. */
+static char **st_kept = NULL;
+static size_t st_nkept = 0, st_kept_size = 0;
+
+static char *st_keep(char *s)
+{
+    sgrowarray(st_kept, st_kept_size, st_nkept);
+    st_kept[st_nkept++] = s;
+    return s;
+}
+
+static char *st_path(const char *fmt, ...)
+{
+    va_list ap;
+    char *s;
+    va_start(ap, fmt);
+    s = dupvprintf(fmt, ap);
+    va_end(ap);
+    return st_keep(s);
+}
+
+static char *st_temp(void)
+{
+    char *t = kitty_temp_path_dup();
+    if (!t) {
+        printf("FAIL  GetTempPath failed (%lu)\n",
+               (unsigned long)GetLastError());
+        exit(1);
+    }
+    return st_keep(t);
+}
+
+static void st_paths_free(void)
+{
+    while (st_nkept)
+        sfree(st_kept[--st_nkept]);
+    sfree(st_kept);
+    st_kept = NULL;
+    st_kept_size = 0;
+}
+
 static int write_text(const char *dir, const char *name, const char *val)
 {
-    char path[MAX_PATH];
-    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+    char *path;
+    path = st_path("%s\\%s", dir, name);
     FILE *fp = fopen(path, "wb");
     if (!fp) return 0;
     fputs(val, fp);
@@ -228,12 +273,12 @@ static char *read_whole_file(const char *path)   /* malloc'd or NULL */
 
 static void test_portable(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], sec[MAX_PATH];
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-%lu",
+    char *tmp, *root, *sess, *sec;
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
-    snprintf(sec, sizeof(sec), "%s\\Security", root);
+    sess = st_path("%s\\Sessions", root);
+    sec = st_path("%s\\Security", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     CreateDirectoryA(sec, NULL);
@@ -267,8 +312,8 @@ static void test_portable(void)
     write_setting_s(w, "Password", PSECRET);
     close_settings_w(w);
 
-    char fpath[MAX_PATH];
-    snprintf(fpath, sizeof(fpath), "%s\\%s", sess, PSESS);
+    char *fpath;
+    fpath = st_path("%s\\%s", sess, PSESS);
     char *fbuf = read_whole_file(fpath);
     check(fbuf != NULL, "portable: session file written");
     check(fbuf && strstr(fbuf, "MPW2") != NULL,
@@ -401,9 +446,9 @@ static void test_portable(void)
 
     /* cleanup the temp tree (known file names only) */
     DeleteFileA(fpath);
-    char p[MAX_PATH];
-    snprintf(p, sizeof(p), "%s\\MasterPwSalt", sec);     DeleteFileA(p);
-    snprintf(p, sizeof(p), "%s\\MasterPwVerifier", sec); DeleteFileA(p);
+    char *p;
+    p = st_path("%s\\MasterPwSalt", sec);     DeleteFileA(p);
+    p = st_path("%s\\MasterPwVerifier", sec); DeleteFileA(p);
     RemoveDirectoryA(sess);
     RemoveDirectoryA(sec);
     RemoveDirectoryA(root);
@@ -493,11 +538,11 @@ static void test_long_values(void)
 
     /* portable file backend, in its own temp tree */
     {
-        char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], fpath[MAX_PATH];
-        GetTempPathA(sizeof(tmp), tmp);
-        snprintf(root, sizeof(root), "%skitty-selftest-long-%lu",
+        char *tmp, *root, *sess, *fpath;
+        tmp = st_temp();
+        root = st_path("%skitty-selftest-long-%lu",
                  tmp, (unsigned long)GetCurrentProcessId());
-        snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+        sess = st_path("%s\\Sessions", root);
         CreateDirectoryA(root, NULL);
         CreateDirectoryA(sess, NULL);
         kitty_set_session_dir(sess);
@@ -519,7 +564,7 @@ static void test_long_values(void)
             if (pr) close_settings_r(pr);
         }
         kitty_set_storage_mode(0);
-        snprintf(fpath, sizeof(fpath), "%s\\%s", sess, LSESS);
+        fpath = st_path("%s\\%s", sess, LSESS);
         DeleteFileA(fpath);
         RemoveDirectoryA(sess);
         RemoveDirectoryA(root);
@@ -695,15 +740,16 @@ static void test_old_kitty_hive(void)
 
 static void test_old_ktx(void)
 {
-    char dir[MAX_PATH], path[MAX_PATH];
+    char *dir, *path;
     FILE *fp;
     Conf *conf;
 
-    if (!GetTempPathA(sizeof(dir), dir)) {
+    if (!(dir = kitty_temp_path_dup())) {
         check(0, "ktx: no temp dir (skipped)");
         return;
     }
-    snprintf(path, sizeof(path), "%szz-kitty-selftest.ktx", dir);
+    st_keep(dir);
+    path = st_path("%szz-kitty-selftest.ktx", dir);
     fp = fopen(path, "wb");
     if (!fp) {
         check(0, "ktx: could not write a scratch .ktx (skipped)");
@@ -926,9 +972,9 @@ static void test_script_lines(void)
 
 static int nd_write(const char *dir, const char *name, const char *text)
 {
-    char path[MAX_PATH];
+    char *path;
     FILE *fp;
-    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+    path = st_path("%s\\%s", dir, name);
     fp = fopen(path, "wb");
     if (!fp) return 0;
     fputs(text, fp);
@@ -937,10 +983,10 @@ static int nd_write(const char *dir, const char *name, const char *text)
 
 static int nd_file_is(const char *dir, const char *name, const char *want)
 {
-    char path[MAX_PATH];
+    char *path;
     char *got;
     int ok;
-    snprintf(path, sizeof(path), "%s\\%s", dir, name);
+    path = st_path("%s\\%s", dir, name);
     got = read_whole_file(path);
     ok = got && !strcmp(got, want);
     if (!ok)
@@ -958,17 +1004,17 @@ static void test_nondefault_file(void)
         "RememberWindowPos\\0\\\nFolder=Default\n";
     static const char lockedtext[] =
         "HostName=lock.example\nTermWidth=80\nSessionLockdown=1\n";
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], p[MAX_PATH];
+    char *tmp, *root, *sess, *p;
     char *err = NULL, *v;
     settings_w *w;
     settings_r *r;
     int n, failed = -1;
     size_t i;
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-nd-%lu",
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-nd-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    sess = st_path("%s\\Sessions", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     kitty_set_session_dir(sess);
@@ -982,7 +1028,7 @@ static void test_nondefault_file(void)
           "nondefault: folder store seeded");
 
     /* the reader: a line starting with # or ; is a comment, whatever it holds */
-    snprintf(p, sizeof(p), "%s\\nd-old", sess);
+    p = st_path("%s\\nd-old", sess);
     r = kitty_open_settings_r_file(p);
     check(r && read_setting_i(r, "TermHeight", -7) == -7 &&
           read_setting_i(r, "TermWidth", -7) == 80,
@@ -1091,7 +1137,7 @@ static void test_nondefault_file(void)
     kitty_set_storage_mode(0);
     kitty_set_session_dir("");
     for (i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
-        snprintf(p, sizeof(p), "%s\\%s", sess, names[i]);
+        p = st_path("%s\\%s", sess, names[i]);
         DeleteFileA(p);
     }
     RemoveDirectoryA(sess);
@@ -1186,27 +1232,27 @@ static void test_nondefault_registry(void)
  * walk's order is the file system's, the same for both snapshots). */
 static void ro_snap(const char *dir, const char *rel, strbuf *out)
 {
-    char pat[MAX_PATH * 2], full[MAX_PATH * 2], sub[MAX_PATH * 2];
+    char *pat = dupprintf("%s\\*", dir), *full, *sub;
     WIN32_FIND_DATAA fd;
     HANDLE h;
-    snprintf(pat, sizeof(pat), "%s\\*", dir);
     h = FindFirstFileA(pat, &fd);
+    sfree(pat);
     if (h == INVALID_HANDLE_VALUE)
         return;
     do {
         if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, ".."))
             continue;
-        snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
-        snprintf(sub, sizeof(sub), "%s%s", rel, fd.cFileName);
+        full = dupprintf("%s\\%s", dir, fd.cFileName);
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            put_fmt(out, "D %s\n", sub);
-            strncat(sub, "\\", sizeof(sub) - strlen(sub) - 1);
+            put_fmt(out, "D %s%s\n", rel, fd.cFileName);
+            sub = dupprintf("%s%s\\", rel, fd.cFileName);
             ro_snap(full, sub, out);
+            sfree(sub);
         } else {
             FILE *fp = fopen(full, "rb");
             char buf[4096];
             size_t n;
-            put_fmt(out, "F %s\n", sub);
+            put_fmt(out, "F %s%s\n", rel, fd.cFileName);
             if (fp) {
                 while ((n = fread(buf, 1, sizeof(buf), fp)) > 0)
                     put_data(out, buf, n);
@@ -1214,6 +1260,7 @@ static void ro_snap(const char *dir, const char *rel, strbuf *out)
             }
             put_byte(out, '\n');
         }
+        sfree(full);
     } while (FindNextFileA(h, &fd));
     FindClose(h);
 }
@@ -1221,20 +1268,21 @@ static void ro_snap(const char *dir, const char *rel, strbuf *out)
 /* The test's own folders only: everything below dir, then dir. */
 static void ro_rmtree(const char *dir)
 {
-    char pat[MAX_PATH * 2], full[MAX_PATH * 2];
+    char *pat = dupprintf("%s\\*", dir), *full;
     WIN32_FIND_DATAA fd;
     HANDLE h;
-    snprintf(pat, sizeof(pat), "%s\\*", dir);
     h = FindFirstFileA(pat, &fd);
+    sfree(pat);
     if (h != INVALID_HANDLE_VALUE) {
         do {
             if (!strcmp(fd.cFileName, ".") || !strcmp(fd.cFileName, ".."))
                 continue;
-            snprintf(full, sizeof(full), "%s\\%s", dir, fd.cFileName);
+            full = dupprintf("%s\\%s", dir, fd.cFileName);
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                 ro_rmtree(full);
             else
                 DeleteFileA(full);
+            sfree(full);
         } while (FindNextFileA(h, &fd));
         FindClose(h);
     }
@@ -1289,16 +1337,16 @@ static void ro_try_writes(const char *what, int folder)
 
 static void test_readonly_folder(const char *roini, const char *noini)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH];
+    char *tmp, *root, *sess;
     char *err = NULL;
     settings_w *w;
     strbuf *before, *after;
     char seed[32];
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-ro-%lu",
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-ro-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    sess = st_path("%s\\Sessions", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     kitty_set_session_dir(sess);
@@ -1420,16 +1468,16 @@ static int fail_save(const char *name, const char *pw)
 
 static void test_mpw_setup_store_failed(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], blocker[MAX_PATH];
-    char fpath[MAX_PATH], *fbuf, *line;
+    char *tmp, *root, *sess, *blocker;
+    char *fpath, *fbuf, *line;
     int kept0 = kitty_mpw_kept_count(), nosetup0 = kitty_mpw_kept_nosetup_count();
     DWORD attr;
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-mpwfail-%lu",
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-mpwfail-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
-    snprintf(blocker, sizeof(blocker), "%s\\Security", root);
+    sess = st_path("%s\\Sessions", root);
+    blocker = st_path("%s\\Security", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     check(write_text(root, "Security", "not a folder"),
@@ -1449,7 +1497,7 @@ static void test_mpw_setup_store_failed(void)
     check(kitty_mpw_kept_count() - kept0 == 1 &&
           kitty_mpw_kept_nosetup_count() - nosetup0 == 1,
           "mpw setup failed: the kept password counts as not set up");
-    snprintf(fpath, sizeof(fpath), "%s\\%s", sess, FSESS1);
+    fpath = st_path("%s\\%s", sess, FSESS1);
     fbuf = read_whole_file(fpath);
     line = fbuf ? password_line(fbuf) : NULL;
     check(fbuf && (!line || !strcmp(line, "Password=")) &&
@@ -1680,15 +1728,15 @@ static void test_dpapi_fail_registry(void)
 
 static void test_dpapi_fail_portable(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], fpath[MAX_PATH];
+    char *tmp, *root, *sess, *fpath;
     char *fb, *before, *after, *w;
     int lk, sk;
     int kept0 = kitty_mpw_kept_count();
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-dpapifail-%lu",
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-dpapifail-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
+    sess = st_path("%s\\Sessions", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     kitty_set_session_dir(sess);
@@ -1698,7 +1746,7 @@ static void test_dpapi_fail_portable(void)
     dp_reports = 0;
 
     dp_save(DSESS3, "dpp-first", NULL);
-    snprintf(fpath, sizeof(fpath), "%s\\%s", sess, DSESS3);
+    fpath = st_path("%s\\%s", sess, DSESS3);
     fb = read_whole_file(fpath);
     before = fb ? password_line(fb) : NULL;
     /* the folder store escapes the marker's ':' as %3A (folderstore.but) */
@@ -1761,16 +1809,16 @@ static void test_dpapi_fail_portable(void)
 
 static void test_mpw_locked_refuses(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], sec[MAX_PATH];
+    char *tmp, *root, *sess, *sec;
     unsigned char salt[KITTY_MPW_SALT_LEN], key[KITTY_MPW_DERIVED_LEN];
     char *ver, *saltb64, *w;
     int lk, sk;
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-selftest-mpwlocked-%lu",
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-mpwlocked-%lu",
              tmp, (unsigned long)GetCurrentProcessId());
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
-    snprintf(sec, sizeof(sec), "%s\\Security", root);
+    sess = st_path("%s\\Sessions", root);
+    sec = st_path("%s\\Security", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
     CreateDirectoryA(sec, NULL);
@@ -1828,7 +1876,7 @@ static void test_mpw_locked_refuses(void)
 
 int main(int argc, char **argv)
 {
-    char rotmp[MAX_PATH], rodir[MAX_PATH], roini[MAX_PATH], noini[MAX_PATH];
+    char *rotmp, *rodir, *roini, *noini;
     FILE *rofp;
     /* --wrap PASSPHRASE PLAINTEXT: print the self-contained MPW2 value, and
      * nothing else (no hive, no files) - a fixed test value for the console
@@ -1844,11 +1892,11 @@ int main(int argc, char **argv)
     /* The kitty.ini in charge: none (a name nothing creates) for every test,
      * the readonly one below for the readonly tests. The machine's own
      * kitty.ini (beside the exe, %APPDATA%) is never consulted. */
-    GetTempPathA(sizeof(rotmp), rotmp);
-    snprintf(rodir, sizeof(rodir), "%skitty-selftest-roini-%lu",
+    rotmp = st_temp();
+    rodir = st_path("%skitty-selftest-roini-%lu",
              rotmp, (unsigned long)GetCurrentProcessId());
-    snprintf(roini, sizeof(roini), "%s\\kitty.ini", rodir);
-    snprintf(noini, sizeof(noini), "%s\\none\\kitty.ini", rodir);
+    roini = st_path("%s\\kitty.ini", rodir);
+    noini = st_path("%s\\none\\kitty.ini", rodir);
     CreateDirectoryA(rodir, NULL);
     if ((rofp = fopen(roini, "wb")) != NULL) {
         fputs("[KiTTY]\r\nreadonly=yes\r\n", rofp);
@@ -1889,6 +1937,7 @@ int main(int argc, char **argv)
     test_mpw_setup_store_failed();
     DeleteFileA(roini);
     RemoveDirectoryA(rodir);
+    st_paths_free();
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;

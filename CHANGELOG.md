@@ -40,6 +40,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Event Viewer: entries of the system MSI showed "description not found"
   instead of their text. They now show it, also on Windows in other
   languages than English.
+- kageant and the Event Log: long paths and long setting values (such as
+  the agent log path) are no longer cut or overflow memory.
 
 ## 0.85.1.18-beta — 2026-10-23
 

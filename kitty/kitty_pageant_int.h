@@ -24,11 +24,14 @@ void kageant_audit_use(const char *ev, const char *fp, const char *comment,
 
 int kageant_autoenc_clamp(int v);
 const char *kageant_confirm_token(int mode);
-int kageant_inidir(char *out, size_t outlen);
+/* the three below return memory of their own (sfree it) */
+char *kageant_inidir_dup(void);           /* NULL: no authoritative ini */
 int kageant_path_under(const char *dir, const char *path);
 int kageant_policy_get(const char *inikey, const char *regname);
-void kageant_resolve_form(const char *stored, char *out, size_t outlen);
-void kageant_store_form(const char *abspath, char *out, size_t outlen);
+char *kageant_resolve_form(const char *stored);
+char *kageant_store_form(const char *abspath);
+/* an [Agent] kitty.ini value whole; NULL when absent or empty (sfree it) */
+char *kageant_ini_read_dup(const char *key);
 
 /* KAGEANT registry value names, shared by the engine and the settings facade. */
 #define KAGEANT_REG_STARTUP "LoadKeysOnStartup"

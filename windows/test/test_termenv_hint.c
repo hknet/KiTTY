@@ -14,6 +14,7 @@
 #include "../kitty/kitty_storage.h"
 #include "../kitty/kitty_termenv.h"
 #include "../kitty/kitty_inifile.h"   /* the kitty.ini in charge: none */
+#include "../kitty/kitty_oldwin.h"    /* kitty_temp_path_dup */
 
 /* the sinks the linked store code expects (console-app style) */
 void modalfatalbox(const char *fmt, ...)
@@ -57,19 +58,25 @@ static int file_holds(const char *path, const char *want)
 
 int main(void)
 {
-    char tmp[MAX_PATH], root[MAX_PATH], sess[MAX_PATH], hint[MAX_PATH];
-    char f1[MAX_PATH], f2[MAX_PATH];
+    /* every path whole; a %TEMP% that cannot be read ends the run, never
+     * a folder built from an unfilled buffer */
+    char *tmp = kitty_temp_path_dup(), *root, *sess, *hint, *noini;
+    char *f1, *f2;
     char id[KITTY_TERMENV_HOST_ID_MAX];
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(root, sizeof(root), "%skitty-termenv-hint-%lu",
-             tmp, (unsigned long)GetCurrentProcessId());
+    if (!tmp) {
+        printf("FAIL  GetTempPath failed (%lu)\n",
+               (unsigned long)GetLastError());
+        return 1;
+    }
+    root = dupprintf("%skitty-termenv-hint-%lu",
+                     tmp, (unsigned long)GetCurrentProcessId());
     /* no kitty.ini in charge (a name nothing creates): the machine's own,
      * readonly=yes in it included, stays out of the test */
-    snprintf(hint, sizeof(hint), "%s\\none\\kitty.ini", root);
-    kitty_inifile_pin(hint);
-    snprintf(sess, sizeof(sess), "%s\\Sessions", root);
-    snprintf(hint, sizeof(hint), "%s\\TermEnvHint", root);
+    noini = dupprintf("%s\\none\\kitty.ini", root);
+    kitty_inifile_pin(noini);
+    sess = dupprintf("%s\\Sessions", root);
+    hint = dupprintf("%s\\TermEnvHint", root);
     CreateDirectoryA(root, NULL);
     CreateDirectoryA(sess, NULL);
 
@@ -80,7 +87,7 @@ int main(void)
     kitty_termenv_host_id("QA.Example", 2222, id, sizeof(id));
     check(!strcmp(id, "qa.example:2222"), "host id qa.example:2222");
     check(kitty_termenv_hint_first(id), "first refusal: the NOTE is due");
-    snprintf(f1, sizeof(f1), "%s\\qa.example%%3A2222", hint);
+    f1 = dupprintf("%s\\qa.example%%3A2222", hint);
     check(file_holds(f1, "1\n"),
           "the mark is TermEnvHint\\qa.example%3A2222 holding 1");
     check(!kitty_termenv_hint_first(id), "second refusal: no NOTE");
@@ -88,7 +95,7 @@ int main(void)
 
     kitty_termenv_host_id("qa.example", 22, id, sizeof(id));
     check(kitty_termenv_hint_first(id), "the same name on port 22 is another host");
-    snprintf(f2, sizeof(f2), "%s\\qa.example", hint);
+    f2 = dupprintf("%s\\qa.example", hint);
     check(file_holds(f2, "1\n"), "its mark is TermEnvHint\\qa.example");
     check(!kitty_termenv_hint_first(id), "and is then known");
 
@@ -103,6 +110,8 @@ int main(void)
     RemoveDirectoryA(root);
     check(GetFileAttributesA(root) == INVALID_FILE_ATTRIBUTES,
           "the temp tree is gone");
+    sfree(f1); sfree(f2); sfree(hint); sfree(sess); sfree(noini);
+    sfree(root); sfree(tmp);
 
     printf("%s (%d failure%s)\n", failures ? "FAILED" : "PASSED",
            failures, failures == 1 ? "" : "s");

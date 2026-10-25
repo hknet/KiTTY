@@ -4,6 +4,7 @@
  * kitty_verify_signature so the updater and the kageant launcher share one
  * implementation.
  */
+#include "putty.h"            /* sfree */
 #include <windows.h>
 #include <wintrust.h>
 #include <softpub.h>   /* WINTRUST_ACTION_GENERIC_VERIFY_V2 */
@@ -11,6 +12,7 @@
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 #include "kitty_authenticode.h"   /* KITTY_PUBLISHER_CN is declared there */
+#include "kitty_oldwin.h"         /* kitty_module_path_dup: this exe, whole */
 
 static int authenticode_verify_ex(const char *path, int online_revocation)
 {
@@ -117,24 +119,26 @@ int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls)
 
 int kitty_verify_sibling(const char *path)
 {
-    char self[MAX_PATH];
-    if (GetModuleFileNameA(NULL, self, sizeof(self)) == 0)
+    /* our own path whole: a cut one names another file (refused if unread) */
+    char *self = kitty_module_path_dup(NULL);
+    unsigned long am, al, bm, bl;
+    int ok;
+    if (!self)
         return 0;
 
     /* A signed (release) binary demands a signed sibling; an unsigned dev
      * build cannot, so it checks version only. Fail-closed on the signature
      * leg: if we are signed and the sibling is not (or is signed by someone
      * else), reject. */
-    if (kitty_authenticode_verify(self)) {
-        if (!kitty_authenticode_verify(path))
-            return 0;
+    if (kitty_authenticode_verify(self) && !kitty_authenticode_verify(path)) {
+        sfree(self);
+        return 0;
     }
 
     /* Exact version match either way. */
-    unsigned long am, al, bm, bl;
-    if (!kitty_file_version(self, &am, &al))
-        return 0;
-    if (!kitty_file_version(path, &bm, &bl))
-        return 0;
-    return (am == bm) && (al == bl);
+    ok = kitty_file_version(self, &am, &al) &&
+         kitty_file_version(path, &bm, &bl) &&
+         am == bm && al == bl;
+    sfree(self);
+    return ok;
 }

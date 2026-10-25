@@ -13,6 +13,7 @@
 #include "kitty_hostkey_verify.h"
 #include "kitty.h"      /* kitty_helper_start: the helper signature check */
 #include "kitty_text.h" /* KT_HELPER_REFUSE_SIBLING */
+#include "kitty_oldwin.h"   /* kitty_module_path_dup: this exe, whole */
 
 struct kitty_hkv_run {
     struct kitty_hkv_job *jobs;
@@ -23,14 +24,16 @@ struct kitty_hkv_run {
 
 char *kitty_hkv_klink_path(void)
 {
-    char exe[MAX_PATH];
-    char *slash;
-    /* klink beside kitty.exe or none: never one from the search path */
-    if (!GetModuleFileNameA(NULL, exe, sizeof(exe)))
+    char *exe = kitty_module_path_dup(NULL), *slash, *klink;
+    /* klink beside kitty.exe or none: never one from the search path, nor
+     * from the folder of a cut path */
+    if (!exe)
         return dupstr("");
     slash = strrchr(exe, '\\');
     if (slash) slash[1] = '\0';
-    return dupcat(exe, "klink.exe");
+    klink = dupcat(exe, "klink.exe");
+    sfree(exe);
+    return klink;
 }
 
 /* ---- the child ----------------------------------------------------------- */

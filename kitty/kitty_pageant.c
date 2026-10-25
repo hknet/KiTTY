@@ -75,13 +75,14 @@ static int    g_startup_missing = 0;       /* startup keys not found at last loa
  * failure. That case gets the named-path box instead.
  */
 typedef struct {
-    char path[MAX_PATH + 1];
+    char *path;       /* path, fp and altpath: whole, never NULL in a live
+                       * entry - see kageant_pkey_set / kageant_pending_free */
     int  encrypted;
     int  confirm;     /* stored ,confirm marker (per-key confirm-on-use) */
     int  autoenc;     /* stored ,autoencrypt= value; -1 = agent default */
     int  failed;      /* the file was there and would not load: stop retrying */
     int  slot;        /* where it sat in the startup list - see below */
-    char fp[160];     /* stored fingerprint, "" if the entry had none */
+    char *fp;         /* stored fingerprint, "" if the entry had none */
     /*
      * The file at this path is NOT the key we recorded. Set when a device
      * arrives carrying a different key: the key is refused and the user is
@@ -104,10 +105,31 @@ typedef struct {
      * file: a plausible-but-wrong path must not end up in the configuration.
      */
     int  unverified;
-    char altpath[MAX_PATH + 1];
+    char *altpath;
 } KageantPendingKey;
 static KageantPendingKey g_pending[64];
 static int g_npending = 0;
+
+/* A live entry owns its three strings: changed through kageant_pkey_set (the
+ * old value freed), freed by kageant_pending_free when the entry leaves the
+ * list - before the list closes up over it. A slot past g_npending can still
+ * hold copies of a live entry's pointers after such a shift, so nothing is
+ * ever freed through one; kageant_note_pending fills a new entry without
+ * freeing what its slot held. */
+static void kageant_pkey_set(char **field, const char *value)
+{
+    char *v = dupstr(value ? value : "");
+    sfree(*field);
+    *field = v;
+}
+
+static void kageant_pending_free(KageantPendingKey *k)
+{
+    sfree(k->path);
+    sfree(k->fp);
+    sfree(k->altpath);
+    k->path = k->fp = k->altpath = NULL;
+}
 static int g_fp_adopted = 0;   /* a changed key was accepted: re-save after load */
 static char *kageant_fp_of_blob(strbuf *blob);   /* defined with the identity code */
 
@@ -263,26 +285,9 @@ static void kageant_apply_confirm_by_path(const char *abspath, int mode)
  * GetLastError()). The ini entries are written over the old ones FIRST and
  * only the surplus ones removed afterwards: it used to clear the whole list
  * before writing, so a write failing partway left the remembered keys gone. */
-/* An [Agent] value of any length, or NULL when absent or empty (sfree it).
- * A startup-key entry is a path plus its tokens (,encrypted, ,confirm,
- * ,autoencrypt=, the fingerprint), so no fixed buffer holds every one: the
- * read is repeated with a doubled buffer while the value fills it
- * (GetPrivateProfileString returns len - 1 on a cut value). */
-static char *kageant_ini_read_dup(const char *key)
-{
-    int len = 512;
-    for (;;) {
-        char *buf = snewn(len, char);
-        if (!kitty_inifile_read(KI_SECTION_AGENT, key, buf, len)) {
-            sfree(buf);
-            return NULL;
-        }
-        if (strlen(buf) < (size_t)len - 2 || len >= (1 << 24))
-            return buf;
-        sfree(buf);
-        len *= 2;
-    }
-}
+/* A startup-key entry is a path plus its tokens (,encrypted, ,confirm,
+ * ,autoencrypt=, the fingerprint), so no fixed buffer holds every one: it is
+ * read whole (kageant_ini_read_dup, kitty_kageant_settings.c). */
 
 /* A numbered [Agent] list (<prefix>1, <prefix>2, ...) rewritten in place: the
  * n items over the old entries first, then the entries past the new end
@@ -329,7 +334,7 @@ int kageant_save_startup_keys(void)
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
-        char key[32], store[MAX_PATH + 1], *probe;
+        char key[32], *store, *probe;
         int gap, written = 0;
         /*
          * Loaded keys AND the ones waiting for their drive, IN ORDER.
@@ -384,13 +389,14 @@ int kageant_save_startup_keys(void)
                     fp   = g_pending[p].fp[0] ? g_pending[p].fp : NULL;
                     p++;
                 }
-                kageant_store_form(path, store, sizeof(store));
+                store = kageant_store_form(path);
                 snprintf(key, sizeof(key), "startupkey%d", ++n);
                 val = dupprintf("%s%s%s%s%s%s", store,
                                 enc ? ",encrypted" : "",
                                 kageant_confirm_token(conf),
                                 kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                                 fp ? "," : "", fp ? fp : "");
+                sfree(store);
                 if (!kitty_inifile_write(KI_SECTION_AGENT, key, val) && ok) {
                     ok = 0; err = GetLastError();
                 }
@@ -830,8 +836,7 @@ void kageant_media_gone(void)
                  */
                 char *fp = kageant_fp_of_blob(g_loaded_blobs[i]);
                 if (fp) {
-                    snprintf(g_pending[g_npending - 1].fp,
-                             sizeof(g_pending[0].fp), "%s", fp);
+                    kageant_pkey_set(&g_pending[g_npending - 1].fp, fp);
                     sfree(fp);
                 }
             }
@@ -913,6 +918,7 @@ void kageant_forget_loaded_by_blob(ptrlen blob)
             }
             if (strcmp(g_pending[i].fp, fp))
                 continue;
+            kageant_pending_free(&g_pending[i]);
             for (j = i; j < g_npending - 1; j++)
                 g_pending[j] = g_pending[j + 1];
             g_npending--;
@@ -1250,15 +1256,16 @@ void kageant_note_pending(const char *path, int encrypted, int slot)
     for (i = 0; i < g_npending; i++)
         if (!stricmp(g_pending[i].path, path))
             return;
-    snprintf(g_pending[g_npending].path, sizeof(g_pending[0].path), "%s", path);
+    /* fresh strings: the slot's old pointers are not this entry's */
+    g_pending[g_npending].path = dupstr(path);
     g_pending[g_npending].encrypted = encrypted;
     g_pending[g_npending].confirm = 0;   /* callers set it when known */
     g_pending[g_npending].failed = 0;
     g_pending[g_npending].slot = slot;
-    g_pending[g_npending].fp[0] = '\0';  /* the array slot may be reused */
+    g_pending[g_npending].fp = dupstr("");  /* the array slot may be reused */
     g_pending[g_npending].mismatch = 0;  /* ditto - do not inherit a refusal */
     g_pending[g_npending].unverified = 0;     /* ditto */
-    g_pending[g_npending].altpath[0] = '\0';  /* ditto */
+    g_pending[g_npending].altpath = dupstr("");  /* ditto */
     g_npending++;
 }
 
@@ -1302,7 +1309,7 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
     g_pending[n].confirm = confirm;
     g_pending[n].autoenc = -1;
     if (fp && *fp)
-        snprintf(g_pending[n].fp, sizeof(g_pending[0].fp), "%s", fp);
+        kageant_pkey_set(&g_pending[n].fp, fp);
     g_pending[n].mismatch = (reason == KAGEANT_PARK_MISMATCH);
     g_pending[n].unverified = (reason == KAGEANT_PARK_UNVERIFIED);
     g_pending[n].failed = (reason == KAGEANT_PARK_FAILED);
@@ -1339,23 +1346,24 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
  * the mode does not apply to it; the stored letter itself is skipped because
  * the stored-path probe already covers it.
  *
- * Returns buf (the candidate path) or NULL when nothing was found.
+ * Returns the candidate path (sfree it) or NULL when nothing was found.
  */
 static char *kageant_anydrive_probe(const KageantPendingKey *k,
-                                    unsigned long arrived_mask,
-                                    char *buf, size_t bufsz)
+                                    unsigned long arrived_mask)
 {
     int bit;
     if (!(isalpha((unsigned char)k->path[0]) && k->path[1] == ':'))
         return NULL;
     for (bit = 0; bit < 26; bit++) {
+        char *cand;
         if (!(arrived_mask & (1UL << bit)))
             continue;
         if (toupper((unsigned char)k->path[0]) == 'A' + bit)
             continue;
-        snprintf(buf, bufsz, "%c%s", 'A' + bit, k->path + 1);
-        if (GetFileAttributesA(buf) != INVALID_FILE_ATTRIBUTES)
-            return buf;
+        cand = dupprintf("%c%s", 'A' + bit, k->path + 1);
+        if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
+            return cand;
+        sfree(cand);
     }
     return NULL;
 }
@@ -1367,6 +1375,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
     int loaded_n = 0, refused_n = 0, absent_n = 0, broken_n = 0;
     int unverified_n = 0;
     int mode = kageant_retry_keys();
+    char *altbuf = NULL;           /* this pass's new-drive candidate */
 
     if (!mode && !manual)
         return;
@@ -1383,7 +1392,9 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
         int before;
         const char *loadpath = g_pending[i].path;
         int on_new_drive = 0;
-        char altbuf[MAX_PATH + 1];
+
+        sfree(altbuf);
+        altbuf = NULL;
 
         if (g_pending[i].failed ||
             GetFileAttributesA(g_pending[i].path) == INVALID_FILE_ATTRIBUTES) {
@@ -1398,8 +1409,8 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
              */
             if (absent && !g_pending[i].failed &&
                 mode == KAGEANT_RETRY_ANYDRIVE && arrived_mask &&
-                kageant_anydrive_probe(&g_pending[i], arrived_mask,
-                                       altbuf, sizeof(altbuf))) {
+                (altbuf = kageant_anydrive_probe(&g_pending[i],
+                                                 arrived_mask)) != NULL) {
                 if (!g_pending[i].fp[0]) {
                     /*
                      * No recorded fingerprint, so nothing to admit this file
@@ -1409,8 +1420,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
                      * so "Accept this key" can load it from there - the
                      * stored path itself stays as it is until then.
                      */
-                    snprintf(g_pending[i].altpath,
-                             sizeof(g_pending[i].altpath), "%s", altbuf);
+                    kageant_pkey_set(&g_pending[i].altpath, altbuf);
                     if (!g_pending[i].unverified) {
                         g_pending[i].unverified = 1;
                         nofp_new++;        /* announced once, not per message */
@@ -1438,7 +1448,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
                 } else if (absent) {
                     /* nothing left to accept: plain "missing" again */
                     g_pending[i].unverified = 0;
-                    g_pending[i].altpath[0] = '\0';
+                    kageant_pkey_set(&g_pending[i].altpath, "");
                     absent_n++;
                 } else
                     broken_n++;
@@ -1454,7 +1464,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
          * user accepts it in the key list; announced once per transition.
          */
         if (!g_pending[i].fp[0] && kageant_file_has_key(loadpath)) {
-            g_pending[i].altpath[0] = '\0';   /* it is at its own path */
+            kageant_pkey_set(&g_pending[i].altpath, "");   /* at its own path */
             if (!g_pending[i].unverified) {
                 g_pending[i].unverified = 1;
                 nofp_new++;
@@ -1533,8 +1543,7 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
              * retry at all.
              */
             if (on_new_drive) {
-                snprintf(g_pending[i].path, sizeof(g_pending[i].path),
-                         "%s", loadpath);
+                kageant_pkey_set(&g_pending[i].path, loadpath);
                 rewrote_any = 1;
             }
 
@@ -1566,7 +1575,9 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
         /* Dropped from the list whether or not it loaded: if the file is there
          * and will not parse, retrying on every future device event only
          * repeats the failure. */
+        kageant_pending_free(&g_pending[i]);
     }
+    sfree(altbuf);
     g_npending = w;
 
     /*
@@ -1734,23 +1745,27 @@ int kageant_accept_pending_key(const char *path)
 {
     int i, v;
     char *actual;
-    char file[MAX_PATH + 1];
+    char *file;
     const char *af = kageant_pending_accept_file(path);
 
     if (!af)
         return 0;
     i = kageant_pending_index(path);
-    snprintf(file, sizeof(file), "%s", af);
+    file = dupstr(af);                /* the entry may change under the load */
 
     actual = kageant_fp_of_file(file);
-    if (!actual)
+    if (!actual) {
+        sfree(file);
         return 0;                     /* cannot read it now: nothing to accept */
+    }
 
     /* Load it and check we are holding what the user was shown. */
     v = kageant_load_startup_entry(file, g_pending[i].encrypted, actual);
     sfree(actual);
-    if (v != 1)
+    if (v != 1) {
+        sfree(file);
         return 0;
+    }
 
     if (g_pending[i].confirm)
         kageant_apply_confirm_by_path(file, g_pending[i].confirm);
@@ -1767,10 +1782,12 @@ int kageant_accept_pending_key(const char *path)
      */
     {
         int j;
+        kageant_pending_free(&g_pending[i]);
         for (j = i; j < g_npending - 1; j++)
             g_pending[j] = g_pending[j + 1];
         g_npending--;
     }
+    sfree(file);
     kageant_save_startup_keys();
     kageant_apply_saved_order();
     kageant_refresh_tray_tip();     /* one fewer key held back */
@@ -1802,7 +1819,7 @@ int kageant_accept_pending_key(const char *path)
 int kageant_locate_pending_key(const char *oldpath, const char *newpath)
 {
     int i, j, v;
-    char fp[160];
+    char *fp;      /* a copy: the entry it came from leaves the list below */
 
     for (i = 0; i < g_npending; i++)
         if (!stricmp(g_pending[i].path, oldpath))
@@ -1811,21 +1828,21 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
         return -1;
 
     if (g_pending[i].fp[0]) {
-        snprintf(fp, sizeof(fp), "%s", g_pending[i].fp);
+        fp = dupstr(g_pending[i].fp);
     } else {
         /* Adopt what the chosen file holds; passing it through the loader's
          * verify step still catches the file changing between this read and
          * the load. */
-        char *actual = kageant_fp_of_file(newpath);
-        if (!actual)
+        fp = kageant_fp_of_file(newpath);
+        if (!fp)
             return -1;
-        snprintf(fp, sizeof(fp), "%s", actual);
-        sfree(actual);
     }
 
     v = kageant_load_startup_entry(newpath, g_pending[i].encrypted, fp);
-    if (v != 1)
+    if (v != 1) {
+        sfree(fp);
         return v;          /* 0 = a different key; -1 = would not load */
+    }
 
     if (g_pending[i].confirm)
         kageant_apply_confirm_by_path(newpath, g_pending[i].confirm);
@@ -1849,10 +1866,13 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath)
             if (!drop) {
                 if (w != j) g_pending[w] = g_pending[j];
                 w++;
+            } else {
+                kageant_pending_free(&g_pending[j]);
             }
         }
         g_npending = w;
     }
+    sfree(fp);
     kageant_save_startup_keys();
     kageant_apply_saved_order();
     kageant_refresh_tray_tip();
@@ -1891,8 +1911,7 @@ void kageant_do_identities_asked(unsigned long pid)
     int mism = kageant_mismatch_count();
     int unv = kageant_unverified_count();
     int ident = mism * 256 + unv;
-    char text[512];
-    char who[80];
+    char *text, *who = NULL;
 
     if (mism <= 0 && unv <= 0) {
         announced_for = -1;             /* nothing held back: re-arm */
@@ -1903,38 +1922,39 @@ void kageant_do_identities_asked(unsigned long pid)
     if (!traywindow || kageant_keylist_open())
         return;
 
-    who[0] = '\0';
     if (pid) {
-        char path[MAX_PATH + 1];
         HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
                                (DWORD)pid);
         if (h) {
-            DWORD n = sizeof(path);
-            if (kitty_process_image_path(h, path, n) && path[0]) {
+            char *path = kitty_process_image_path_dup(h);
+            if (path && path[0]) {
                 const char *base = strrchr(path, '\\');
-                snprintf(who, sizeof(who), " %s", base ? base + 1 : path);
+                who = dupprintf(" %s", base ? base + 1 : path);
             }
+            sfree(path);
             CloseHandle(h);
         }
-        if (!who[0])
-            snprintf(who, sizeof(who), KT_KA_WHO_PROGRAM_FMT, pid);
+        if (!who)
+            who = dupprintf(KT_KA_WHO_PROGRAM_FMT, pid);
     }
+    if (!who)
+        who = dupstr("");
 
     if (mism > 0)
-        snprintf(text, sizeof(text),
-                 mism == 1 ?
-                 KT_KA_HELD_BACK_ONE_FMT :
-                 KT_KA_HELD_BACK_MANY_FMT,
-                 who, mism);
+        text = dupprintf(mism == 1 ?
+                         KT_KA_HELD_BACK_ONE_FMT :
+                         KT_KA_HELD_BACK_MANY_FMT,
+                         who, mism);
     else if (unv == 1)
-        snprintf(text, sizeof(text), KT_KA_HELD_BACK_UNVERIFIED_ONE_FMT, who);
+        text = dupprintf(KT_KA_HELD_BACK_UNVERIFIED_ONE_FMT, who);
     else
-        snprintf(text, sizeof(text), KT_KA_HELD_BACK_UNVERIFIED_MANY_FMT,
-                 who, unv);
+        text = dupprintf(KT_KA_HELD_BACK_UNVERIFIED_MANY_FMT, who, unv);
 
     kitty_notice_show(KT_KA_NOTICE_HELD_BACK, text,
                       KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                       traywindow, KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
+    sfree(who);
     announced_for = ident;
 }
 
@@ -2266,6 +2286,7 @@ void kageant_drop_pending(const char *path)
         return;
     for (i = 0; i < g_npending; i++) {
         if (!stricmp(g_pending[i].path, path)) {
+            kageant_pending_free(&g_pending[i]);
             for (j = i; j < g_npending - 1; j++)
                 g_pending[j] = g_pending[j + 1];
             g_npending--;
@@ -2352,23 +2373,32 @@ static void kageant_entry_strip(char *entry)
     }
 }
 
+static void kageant_forget_startup_entry(const char *want);
+
 void kageant_forget_startup_key(const char *path)
 {
-    const char *f;
-    char want[MAX_PATH + 1];
+    char *want;
 
     if (!path || !*path)
         return;
     if (kitty_store_readonly())
         return;                         /* readonly=yes: the list stays */
-    if (!_fullpath(want, path, sizeof(want)))
-        snprintf(want, sizeof(want), "%s", path);
+    /* the path whole; one that cannot be resolved is compared as given */
+    if ((want = kitty_full_path_dup(path)) == NULL)
+        want = dupstr(path);
+    kageant_forget_startup_entry(want);
+    sfree(want);
+}
+
+static void kageant_forget_startup_entry(const char *want)
+{
+    const char *f;
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
         char **keep;
-        char key[32], abspath[MAX_PATH + 1];
-        int i, gap, n = 0, cap = 64;
+        char key[32], *abspath;
+        int i, gap, n = 0, cap = 64, drop;
 
         keep = snewn(cap, char *);
         for (i = 1, gap = 0; gap < 8; i++) {
@@ -2383,9 +2413,11 @@ void kageant_forget_startup_key(const char *path)
             }
             keep[n] = dupstr(val);                      /* keep the ,markers */
             kageant_entry_strip(val);
-            kageant_resolve_form(val, abspath, sizeof(abspath));
+            abspath = kageant_resolve_form(val);
             sfree(val);
-            if (!stricmp(abspath, want)) {
+            drop = !stricmp(abspath, want);
+            sfree(abspath);
+            if (drop) {
                 sfree(keep[n]);
                 continue;                               /* the one being dropped */
             }
@@ -2447,22 +2479,24 @@ void kageant_forget_startup_key(const char *path)
 
 void kageant_track_keypath(const char *path, int encrypted)
 {
-    char abspath[MAX_PATH + 1];
+    char *abspath;
     int i;
     if (!path || !*path)
         return;
-    if (!_fullpath(abspath, path, sizeof(abspath)))
-        snprintf(abspath, sizeof(abspath), "%s", path);
+    /* the path whole; one that cannot be resolved is kept as given */
+    if ((abspath = kitty_full_path_dup(path)) == NULL)
+        abspath = dupstr(path);
     for (i = 0; i < g_nloaded; i++)
-        if (!stricmp(g_loaded_keypaths[i], abspath))
+        if (!stricmp(g_loaded_keypaths[i], abspath)) {
+            sfree(abspath);
             return;
+        }
 
     /* readonly=yes: no copy into the store's keys folder (no question) */
     if (!g_startup_loading && kageant_startup_active() &&
         !kitty_inifile_registry_authoritative() && !kitty_store_readonly()) {
-        char dir[MAX_PATH + 1];
-        if (kageant_inidir(dir, sizeof(dir)) &&
-            !kageant_path_under(dir, abspath)) {
+        char *dir = kageant_inidir_dup();
+        if (dir && !kageant_path_under(dir, abspath)) {
             int needs_pass = kageant_key_needs_pass(abspath);
             char *prompt = dupprintf(
                 KT_KA_PORTABLE_KEY_Q_FMT,
@@ -2479,22 +2513,26 @@ void kageant_track_keypath(const char *path, int encrypted)
                 KT_CAP_KA_ADD_KEY_TO_STARTUP,
                 MB_ICONQUESTION | MB_YESNOCANCEL | MB_DEFBUTTON2);
             sfree(prompt);
-            if (choice == IDCANCEL)
+            if (choice == IDCANCEL) {
+                sfree(dir);
+                sfree(abspath);
                 return;               /* loaded this session, not persisted */
+            }
             if (choice == IDYES) {
-                char keysdir[MAX_PATH + 8], dest[MAX_PATH + 72];
+                char *keysdir, *dest;
                 const char *base = abspath, *q;
                 for (q = abspath; *q; q++)
                     if (*q == '\\' || *q == '/') base = q + 1;
-                snprintf(keysdir, sizeof(keysdir), "%s\\keys", dir);
+                keysdir = dupprintf("%s\\keys", dir);
                 CreateDirectoryA(keysdir, NULL);
-                snprintf(dest, sizeof(dest), "%s\\%s", keysdir, base);
+                dest = dupprintf("%s\\%s", keysdir, base);
+                sfree(keysdir);
                 {
                     int created = 0, ok;
-                    DWORD err = ERROR_FILENAME_EXCED_RANGE;
-                    if (strlen(dest) > MAX_PATH)
-                        ok = 0;
-                    else if (CopyFileA(abspath, dest, TRUE))
+                    DWORD err = 0;
+                    /* a name too long for Windows fails here, with its
+                     * reason in the report below */
+                    if (CopyFileA(abspath, dest, TRUE))
                         ok = created = 1;
                     else
                         ok = (err = GetLastError()) == ERROR_FILE_EXISTS;
@@ -2516,10 +2554,15 @@ void kageant_track_keypath(const char *path, int encrypted)
                         sfree(s2);
                     }
                     if (ok) {
-                        snprintf(abspath, sizeof(abspath), "%s", dest);
+                        sfree(abspath);
+                        abspath = dest;
+                        dest = NULL;
                         for (i = 0; i < g_nloaded; i++)   /* re-dedup on the copy */
-                            if (!stricmp(g_loaded_keypaths[i], abspath))
+                            if (!stricmp(g_loaded_keypaths[i], abspath)) {
+                                sfree(dir);
+                                sfree(abspath);
                                 return;
+                            }
                     } else {
                         char *msg = dupprintf(KT_KA_PORTABLE_COPY_FAILED_FMT,
                                               dest, kitty_win_reason(err));
@@ -2527,14 +2570,16 @@ void kageant_track_keypath(const char *path, int encrypted)
                         sfree(msg);
                     }
                 }
+                sfree(dest);
             }
         }
+        sfree(dir);
     }
 
     g_loaded_keypaths = sresize(g_loaded_keypaths, g_nloaded + 1, char *);
     g_loaded_encrypted = sresize(g_loaded_encrypted, g_nloaded + 1, int);
     g_loaded_blobs = sresize(g_loaded_blobs, g_nloaded + 1, strbuf *);
-    g_loaded_keypaths[g_nloaded] = dupstr(abspath);
+    g_loaded_keypaths[g_nloaded] = abspath;     /* the list owns it now */
     g_loaded_encrypted[g_nloaded] = encrypted ? 1 : 0;
     /* The key's public blob, captured NOW while the file is readable. It is
      * what identifies this key to the agent later, when the media it came from
@@ -2600,8 +2645,9 @@ static int kageant_is_agent_exe(const char *path)
     return !stricmp(b, "kageant.exe") || !stricmp(b, "pageant.exe");
 }
 
-/* Extract the exe from a Run command line (strip a leading quote/args). */
-static void kageant_cmd_to_exe(const char *cmd, char *out, size_t len)
+/* Extract the exe from a Run command line (strip a leading quote/args),
+ * whole (sfree it). */
+static char *kageant_cmd_to_exe(const char *cmd)
 {
     const char *s = cmd, *e;
     size_t n;
@@ -2609,81 +2655,134 @@ static void kageant_cmd_to_exe(const char *cmd, char *out, size_t len)
     if (*s == '"') { s++; e = strchr(s, '"'); }
     else e = strchr(s, ' ');
     n = e ? (size_t)(e - s) : strlen(s);
-    if (n >= len) n = len - 1;
-    memcpy(out, s, n);
-    out[n] = '\0';
+    return dupprintf("%.*s", (int)n, s);
 }
 
-static int kageant_scan_run(HKEY root, const char *myexe, char *desc, size_t len)
+/* A REG_SZ / REG_EXPAND_SZ value whole and NUL-terminated even when it was
+ * stored without one; NULL when absent, of another type or unreadable
+ * (sfree it). */
+static char *kageant_reg_sz_dup(HKEY hk, const char *name)
+{
+    int tries;
+    for (tries = 0; tries < 4; tries++) {
+        DWORD type = 0, sz = 0;
+        char *buf;
+        LONG rc = RegQueryValueExA(hk, name, NULL, &type, NULL, &sz);
+        if (rc != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ))
+            return NULL;
+        buf = snewn(sz + 1, char);
+        rc = RegQueryValueExA(hk, name, NULL, &type, (BYTE *)buf, &sz);
+        if (rc == ERROR_SUCCESS &&
+            (type == REG_SZ || type == REG_EXPAND_SZ)) {
+            buf[sz] = '\0';
+            return buf;
+        }
+        sfree(buf);
+        if (rc != ERROR_MORE_DATA)     /* it grew in between: ask again */
+            return NULL;
+    }
+    return NULL;
+}
+
+static int kageant_scan_run(HKEY root, const char *myexe, char **desc)
 {
     HKEY hk;
-    char name[256], data[MAX_PATH + 8], exe[MAX_PATH];
-    DWORD idx = 0, nlen, dlen, type;
-    int found = 0;
+    char *name = NULL, *data = NULL;
+    DWORD idx = 0, maxname = 0, maxdata = 0, nlen, dlen, type;
+    int found = 0, regrow = 0;
     if (RegOpenKeyExA(root, KAGEANT_RUN_KEY, 0, KEY_READ, &hk) != ERROR_SUCCESS)
         return 0;
     for (;;) {
         LONG r;
-        nlen = sizeof(name); dlen = sizeof(data);
-        r = RegEnumValueA(hk, idx++, name, &nlen, NULL, &type,
+        char *exe;
+        if (!data) {
+            /* buffers for the longest name and value the key holds */
+            if (RegQueryInfoKeyA(hk, NULL, NULL, NULL, NULL, NULL, NULL,
+                                 NULL, &maxname, &maxdata, NULL,
+                                 NULL) != ERROR_SUCCESS)
+                break;
+            name = snewn(maxname + 1, char);
+            data = snewn(maxdata + 1, char);
+        }
+        nlen = maxname + 1; dlen = maxdata;
+        r = RegEnumValueA(hk, idx, name, &nlen, NULL, &type,
                           (BYTE *)data, &dlen);
         if (r == ERROR_NO_MORE_ITEMS) break;
+        if (r == ERROR_MORE_DATA && regrow++ < 4) {
+            /* a value grew since the sizes were read: read them again */
+            sfree(name); sfree(data);
+            name = data = NULL;
+            continue;
+        }
+        idx++;
         if (r != ERROR_SUCCESS) continue;
         if (type != REG_SZ && type != REG_EXPAND_SZ) continue;
+        data[dlen] = '\0';             /* a value stored without its NUL */
         /* Exclude our own entry by EXE PATH, not by value name: the
          * KAGEANT_RUN_NAME name is shared by every kageant/pageant install,
          * so a same-named entry pointing at a different exe is a real
          * conflict (e.g. a system-installed kageant vs this portable one). */
-        kageant_cmd_to_exe(data, exe, sizeof(exe));
+        exe = kageant_cmd_to_exe(data);
         if (kageant_is_agent_exe(exe) && stricmp(exe, myexe) != 0) {
-            snprintf(desc, len, KT_KA_AUTOSTART_RUN_DESC_FMT,
-                     name, exe, root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
+            *desc = dupprintf(KT_KA_AUTOSTART_RUN_DESC_FMT, name, exe,
+                              root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
             found = 1;
-            break;
         }
+        sfree(exe);
+        if (found)
+            break;
     }
+    sfree(name);
+    sfree(data);
     RegCloseKey(hk);
     return found;
 }
 
-static int kageant_scan_startup(int common, const char *myexe,
-                                char *desc, size_t len)
+static int kageant_scan_startup(int common, const char *myexe, char **desc)
 {
-    char dir[MAX_PATH], glob[MAX_PATH + 8], lnk[MAX_PATH], target[MAX_PATH];
+    /* dir: SHGetFolderPath's own limit; target: the size
+     * kitty_startup_shortcut_target reads into */
+    char dir[MAX_PATH], target[MAX_PATH], *glob;
     WIN32_FIND_DATAA fd;
     HANDLE h;
     int found = 0;
     if (!kitty_startup_dir(dir, sizeof(dir), common))
         return 0;
-    snprintf(glob, sizeof(glob), "%s\\*.lnk", dir);
+    glob = dupprintf("%s\\*.lnk", dir);
     h = FindFirstFileA(glob, &fd);
+    sfree(glob);
     if (h == INVALID_HANDLE_VALUE)
         return 0;
     do {
-        snprintf(lnk, sizeof(lnk), "%s\\%s", dir, fd.cFileName);
+        char *lnk = dupprintf("%s\\%s", dir, fd.cFileName);
         if (kitty_startup_shortcut_target(lnk, target, sizeof(target)) &&
             kageant_is_agent_exe(target) && stricmp(target, myexe) != 0) {
-            snprintf(desc, len, KT_KA_AUTOSTART_SHORTCUT_DESC_FMT,
-                     fd.cFileName, target, common ? KT_KA_AUTOSTART_ALL_USERS : KT_KA_AUTOSTART_YOUR);
+            *desc = dupprintf(KT_KA_AUTOSTART_SHORTCUT_DESC_FMT,
+                              fd.cFileName, target,
+                              common ? KT_KA_AUTOSTART_ALL_USERS :
+                                       KT_KA_AUTOSTART_YOUR);
             found = 1;
-            break;
         }
-    } while (FindNextFileA(h, &fd));
+        sfree(lnk);
+    } while (!found && FindNextFileA(h, &fd));
     FindClose(h);
     return found;
 }
 
-/* 1 + a description when another kageant/pageant is set to autostart from a
- * different exe (so the single-instance agent would block one of them). */
-int kageant_autostart_conflict(char *desc, size_t len)
+/* A description (sfree it) when another kageant/pageant is set to autostart
+ * from a different exe (so the single-instance agent would block one of
+ * them); NULL when none is, or this exe's own path cannot be read. */
+char *kageant_autostart_conflict(void)
 {
-    char myexe[MAX_PATH];
-    if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
-        return 0;
-    return kageant_scan_run(HKEY_CURRENT_USER, myexe, desc, len)
-        || kageant_scan_run(HKEY_LOCAL_MACHINE, myexe, desc, len)
-        || kageant_scan_startup(0, myexe, desc, len)
-        || kageant_scan_startup(1, myexe, desc, len);
+    char *myexe = kitty_module_path_dup(NULL), *desc = NULL;
+    if (!myexe)
+        return NULL;
+    if (!kageant_scan_run(HKEY_CURRENT_USER, myexe, &desc) &&
+        !kageant_scan_run(HKEY_LOCAL_MACHINE, myexe, &desc) &&
+        !kageant_scan_startup(0, myexe, &desc))
+        kageant_scan_startup(1, myexe, &desc);
+    sfree(myexe);
+    return desc;
 }
 
 /* Remove our HKCU Run entry ONLY when it points at this very exe. The value
@@ -2691,22 +2790,24 @@ int kageant_autostart_conflict(char *desc, size_t len)
  * would clobber another (e.g. system-installed) kageant's autostart. */
 static void kageant_clear_own_run_entry(void)
 {
-    char myexe[MAX_PATH], data[MAX_PATH + 8], exe[MAX_PATH];
+    char *myexe = kitty_module_path_dup(NULL), *data, *exe;
     HKEY hk;
-    DWORD type = 0, sz = sizeof(data);
-    if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+    if (!myexe)
         return;
     if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                      KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS)
+                      KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS) {
+        sfree(myexe);
         return;
-    if (RegQueryValueExA(hk, KAGEANT_RUN_NAME, NULL, &type,
-                         (BYTE *)data, &sz) == ERROR_SUCCESS &&
-        (type == REG_SZ || type == REG_EXPAND_SZ)) {
-        kageant_cmd_to_exe(data, exe, sizeof(exe));
+    }
+    if ((data = kageant_reg_sz_dup(hk, KAGEANT_RUN_NAME)) != NULL) {
+        exe = kageant_cmd_to_exe(data);
         if (!stricmp(exe, myexe))
             RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+        sfree(exe);
+        sfree(data);
     }
     RegCloseKey(hk);
+    sfree(myexe);
 }
 
 /* 1 when kageant's own autostart is actually in place (so the tray checkmark
@@ -2719,28 +2820,34 @@ int kageant_autostart_active(void)
          * point at another kageant entirely, in which case "starts at login"
          * would be a claim about somebody else's agent. Check the target, as
          * the registry branch below already does. */
-        char myexe[MAX_PATH];
-        if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+        char *myexe = kitty_module_path_dup(NULL);
+        int active;
+        if (!myexe)
             return 0;
-        return kitty_startup_shortcut_points_to(KAGEANT_SHORTCUT_NAME, 0, myexe);
+        active = kitty_startup_shortcut_points_to(KAGEANT_SHORTCUT_NAME, 0,
+                                                  myexe);
+        sfree(myexe);
+        return active;
     }
     {
-        char myexe[MAX_PATH], data[MAX_PATH + 8], exe[MAX_PATH];
+        char *myexe = kitty_module_path_dup(NULL), *data, *exe;
         HKEY hk;
-        DWORD type = 0, sz = sizeof(data);
         int active = 0;
-        if (!GetModuleFileNameA(NULL, myexe, sizeof(myexe)))
+        if (!myexe)
             return 0;
         if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS) {
+            sfree(myexe);
             return 0;
-        if (RegQueryValueExA(hk, KAGEANT_RUN_NAME, NULL, &type,
-                             (BYTE *)data, &sz) == ERROR_SUCCESS &&
-            (type == REG_SZ || type == REG_EXPAND_SZ)) {
-            kageant_cmd_to_exe(data, exe, sizeof(exe));
+        }
+        if ((data = kageant_reg_sz_dup(hk, KAGEANT_RUN_NAME)) != NULL) {
+            exe = kageant_cmd_to_exe(data);
             active = !stricmp(exe, myexe);
+            sfree(exe);
+            sfree(data);
         }
         RegCloseKey(hk);
+        sfree(myexe);
         return active;
     }
 }
@@ -2805,7 +2912,7 @@ void kageant_load_startup_keys(void)
 
     if (!kitty_inifile_registry_authoritative() &&
         (f = kitty_inifile_file()) != NULL) {
-        char key[32], *val = NULL, abspath[MAX_PATH + 1];
+        char key[32], *val = NULL, *abspath = NULL;
         int i, gap;
         g_startup_loading = 1;
         kitty_hello_batch_begin();  /* one gesture covers the startup load */
@@ -2815,8 +2922,7 @@ void kageant_load_startup_keys(void)
         for (i = 1, gap = 0; gap < 8; i++) {
             int enc = 0, conf = 0, ae = -1;
             char *c;
-            char fp[160];
-            fp[0] = '\0';
+            const char *fp = "";        /* points into val */
             snprintf(key, sizeof(key), "startupkey%d", i);
             sfree(val);                 /* the previous entry */
             val = kageant_ini_read_dup(key);
@@ -2836,11 +2942,12 @@ void kageant_load_startup_keys(void)
                     /* Bare "SHA256:..." as written now, and the longer
                      * "alg bits SHA256:..." that a build in between wrote -
                      * take the hash out of either. */
-                    snprintf(fp, sizeof(fp), "%s", strstr(c + 1, "SHA256:"));
+                    fp = strstr(c + 1, "SHA256:");
                     *c = '\0';
                 } else break;           /* part of the path: leave it alone */
             }
-            kageant_resolve_form(val, abspath, sizeof(abspath));
+            sfree(abspath);             /* the previous entry's */
+            abspath = kageant_resolve_form(val);
             if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
                 if (kageant_entry_is_phantom(val)) {
                     /* a .71 parser phantom: drop it, and rewrite the stored
@@ -2855,8 +2962,7 @@ void kageant_load_startup_keys(void)
                     g_pending[g_npending - 1].confirm = conf;
                     g_pending[g_npending - 1].autoenc = ae;
                     if (fp[0])
-                        snprintf(g_pending[g_npending - 1].fp,
-                                 sizeof(g_pending[0].fp), "%s", fp);
+                        kageant_pkey_set(&g_pending[g_npending - 1].fp, fp);
                 }
                 continue;
             }
@@ -2892,6 +2998,7 @@ void kageant_load_startup_keys(void)
             }
         }
         sfree(val);
+        sfree(abspath);
         g_startup_loading = 0;
         kitty_hello_batch_end();
         /* Phantoms scrubbed above: write the list out, AFTER the loop, never
@@ -2926,7 +3033,7 @@ void kageant_load_startup_keys(void)
                     int enc = 1;   /* legacy entries had no marker: deferred */
                     int conf = 0, ae = -1;
 
-                    char fp[160];
+                    const char *fp = "";    /* points into entry */
                     char *c;
                     /* Parse a COPY: stripping the trailing tokens in place
                      * would shorten *p, and the walk's `p += strlen(p) + 1`
@@ -2937,7 +3044,6 @@ void kageant_load_startup_keys(void)
                      * two phantom missing keys). */
                     sfree(entry);       /* the previous record */
                     entry = dupstr(p);
-                    fp[0] = '\0';
                     /* Same trailing tokens as the ini form: ",encrypted" /
                      * ",plain" and ",SHA256:..." - see the ini branch above. */
                     for (;;) {
@@ -2949,8 +3055,7 @@ void kageant_load_startup_keys(void)
                         else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
                         else if (!strnicmp(c + 1, "autoencrypt=", 12)) { ae = kageant_autoenc_parse(c + 13); *c = '\0'; }
                         else if (strstr(c + 1, "SHA256:")) {
-                            snprintf(fp, sizeof(fp), "%s",
-                                     strstr(c + 1, "SHA256:"));
+                            fp = strstr(c + 1, "SHA256:");
                             *c = '\0';
                         } else break;
                     }
@@ -2967,8 +3072,8 @@ void kageant_load_startup_keys(void)
                             g_pending[g_npending - 1].confirm = conf;
                             g_pending[g_npending - 1].autoenc = ae;
                             if (fp[0])
-                                snprintf(g_pending[g_npending - 1].fp,
-                                         sizeof(g_pending[0].fp), "%s", fp);
+                                kageant_pkey_set(&g_pending[g_npending - 1].fp,
+                                                 fp);
                         }
                         continue;
                     }
@@ -3184,30 +3289,32 @@ int kageant_ipc_blocked(int op, const char *fp)
 }
 
 /* " by ssh-add.exe (PID 1234)" for the requesting process of an external
- * request, "" when it is not known. */
-static void kageant_requester_text(char *proc, size_t n)
+ * request, "" when it is not known (sfree it). */
+static char *kageant_requester_text(void)
 {
-    proc[0] = '\0';
+    char *proc;
     if (pageant_external_pid) {
         HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
                                (DWORD)pageant_external_pid);
-        char path[MAX_PATH];
-        DWORD sz = sizeof(path);
-        if (h && kitty_process_image_path(h, path, sz)) {
+        char *path = h ? kitty_process_image_path_dup(h) : NULL;
+        if (path) {
             const char *base = strrchr(path, '\\');
-            snprintf(proc, n, KT_KA_BY_PROGRAM_PID_FMT,
-                     base ? base + 1 : path, pageant_external_pid);
+            proc = dupprintf(KT_KA_BY_PROGRAM_PID_FMT,
+                             base ? base + 1 : path, pageant_external_pid);
+            sfree(path);
         } else {
-            snprintf(proc, n, KT_KA_BY_PID_FMT, pageant_external_pid);
+            proc = dupprintf(KT_KA_BY_PID_FMT, pageant_external_pid);
         }
         if (h)
             CloseHandle(h);
+        return proc;
     }
+    return dupstr("");
 }
 
 void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
 {
-    char proc[MAX_PATH + 32];
+    char *proc;
     const char *title;
     char *text;
 
@@ -3220,7 +3327,7 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
     if (!kageant_notify_get() || !traywindow)
         return;
 
-    kageant_requester_text(proc, sizeof(proc));
+    proc = kageant_requester_text();
 
     title = op == KAGEANT_MUT_ADD    ? KT_KA_NOTICE_KEY_ADDED :
             op == KAGEANT_MUT_REMOVE ? KT_KA_NOTICE_KEY_REMOVED :
@@ -3239,6 +3346,7 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
                       kageant_notice_seconds(8), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);
     sfree(text);
+    sfree(proc);
 }
 
 /* ---------------------------------------------------------------------------
@@ -3261,7 +3369,7 @@ int kageant_ipc_lock_allowed(void)
  * notices at will. */
 void kageant_do_lock_event(int op, int result)
 {
-    char proc[MAX_PATH + 32];
+    char *proc;
     char *text;
 
     kageant_audit_use(op ? "unlock" : "lock", NULL, NULL,
@@ -3271,16 +3379,18 @@ void kageant_do_lock_event(int op, int result)
                       result == 2 ? "ipc-policy" : "ipc", pageant_external_pid);
     if ((result != 0 && result != 4) || !traywindow)
         return;
-    kageant_requester_text(proc, sizeof(proc));
+    proc = kageant_requester_text();
     if (result == 4) {
         text = dupprintf(KT_KA_UNLOCK_GUESSED_FMT, proc);
         kitty_notice_show(KT_KA_NOTICE_UNLOCK_SHUT, text,
                           KAGEANT_NOTICE_WARN, kageant_notice_seconds(10),
                           traywindow, KAGEANT_WM_NOTICE_CLICK);
         sfree(text);
+        sfree(proc);
         return;
     }
     text = dupprintf(op ? KT_KA_UNLOCKED_BY_FMT : KT_KA_LOCKED_BY_FMT, proc);
+    sfree(proc);
     kitty_notice_show(op ? KT_KA_NOTICE_UNLOCKED : KT_KA_NOTICE_LOCKED, text,
                       op ? KAGEANT_NOTICE_INFO : KAGEANT_NOTICE_WARN,
                       kageant_notice_seconds(10), traywindow,
@@ -3645,24 +3755,27 @@ int kageant_nloaded(void)
 int kageant_startup_replace_path(const char *oldpath, const char *newpath,
                                  int encrypted)
 {
-    char want[MAX_PATH + 1], abspath[MAX_PATH + 1];
-    int i;
-    if (!_fullpath(want, oldpath, sizeof(want)))
-        snprintf(want, sizeof(want), "%s", oldpath);
-    if (!_fullpath(abspath, newpath, sizeof(abspath)))
-        snprintf(abspath, sizeof(abspath), "%s", newpath);
+    char *want = kitty_full_path_dup(oldpath);
+    char *abspath = kitty_full_path_dup(newpath);
+    int i, done = 0;
+    if (!want) want = dupstr(oldpath);       /* unresolvable: as given */
+    if (!abspath) abspath = dupstr(newpath);
     for (i = 0; i < g_nloaded; i++) {
         if (stricmp(g_loaded_keypaths[i], want))
             continue;
         sfree(g_loaded_keypaths[i]);
-        g_loaded_keypaths[i] = dupstr(abspath);
+        g_loaded_keypaths[i] = abspath;      /* the list owns it now */
+        abspath = NULL;
         if (encrypted >= 0)
             g_loaded_encrypted[i] = encrypted ? 1 : 0;
         if (kageant_startup_active())
             kageant_save_startup_keys();
-        return 1;
+        done = 1;
+        break;
     }
-    return 0;
+    sfree(want);
+    sfree(abspath);
+    return done;
 }
 
 /*
@@ -3673,10 +3786,9 @@ int kageant_startup_replace_path(const char *oldpath, const char *newpath,
  */
 int kageant_startup_forget_path(const char *path)
 {
-    char want[MAX_PATH + 1];
+    char *want = kitty_full_path_dup(path);
     int i, j, done = 0;
-    if (!_fullpath(want, path, sizeof(want)))
-        snprintf(want, sizeof(want), "%s", path);
+    if (!want) want = dupstr(path);           /* unresolvable: as given */
     for (i = 0; i < g_nloaded; i++) {
         if (stricmp(g_loaded_keypaths[i], want))
             continue;
@@ -3696,12 +3808,14 @@ int kageant_startup_forget_path(const char *path)
     for (i = 0; i < g_npending; i++) {
         if (stricmp(g_pending[i].path, want))
             continue;
+        kageant_pending_free(&g_pending[i]);
         for (j = i; j < g_npending - 1; j++)
             g_pending[j] = g_pending[j + 1];
         g_npending--;
         done = 1;
         break;
     }
+    sfree(want);
     if (done) {
         if (kageant_startup_active())
             kageant_save_startup_keys();
@@ -3714,14 +3828,16 @@ int kageant_startup_forget_path(const char *path)
  * -1 not tracked. */
 int kageant_keypath_encrypted(const char *path)
 {
-    char want[MAX_PATH + 1];
-    int i;
-    if (!_fullpath(want, path, sizeof(want)))
-        snprintf(want, sizeof(want), "%s", path);
+    char *want = kitty_full_path_dup(path);
+    int i, enc = -1;
+    if (!want) want = dupstr(path);           /* unresolvable: as given */
     for (i = 0; i < g_nloaded; i++)
-        if (!stricmp(g_loaded_keypaths[i], want))
-            return g_loaded_encrypted[i] ? 1 : 0;
-    return -1;
+        if (!stricmp(g_loaded_keypaths[i], want)) {
+            enc = g_loaded_encrypted[i] ? 1 : 0;
+            break;
+        }
+    sfree(want);
+    return enc;
 }
 
 /* Of the files a key was loaded from, the first with a .hello sidecar -

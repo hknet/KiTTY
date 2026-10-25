@@ -8,6 +8,7 @@
  * its fields fill the insertion strings in a fixed order per ID.
  */
 
+#include "putty.h"            /* dupstr, dupprintf, strbuf */
 #include <windows.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -16,7 +17,7 @@
 #include "kitty_auditlog.h"
 #include "kitty_winevent.h"     /* kitty_wev_user_sid: the record's user */
 
-static char g_path[MAX_PATH + 1];
+static char *g_path = NULL;        /* the whole path; NULL until configured */
 static int  g_enabled = 0;
 static int  g_sinks = KITTY_AUDIT_SINK_FILE;
 static int  g_maxkb = 5120;
@@ -29,8 +30,10 @@ static int  g_rotate_warned = 0;   /* one failure event per process */
 void kitty_audit_configure(const char *path, int enabled,
                            int maxkb, int keep, int expiredays)
 {
-    if (path)
-        snprintf(g_path, sizeof(g_path), "%s", path);
+    if (path) {
+        sfree(g_path);
+        g_path = dupstr(path);
+    }
     g_enabled = enabled ? 1 : 0;
     g_maxkb = maxkb > 0 ? maxkb : 5120;
     g_keep = keep >= 1 ? keep : 1;
@@ -48,11 +51,11 @@ int kitty_audit_sinks(void) { return g_sinks; }
 int kitty_audit_enabled(void)
 {
     return g_enabled &&
-        (((g_sinks & KITTY_AUDIT_SINK_FILE) && g_path[0]) ||
+        (((g_sinks & KITTY_AUDIT_SINK_FILE) && g_path && g_path[0]) ||
          (g_sinks & KITTY_AUDIT_SINK_EVENTLOG));
 }
 
-const char *kitty_audit_path(void) { return g_path; }
+const char *kitty_audit_path(void) { return g_path ? g_path : ""; }
 
 /* The result values the agent writes for a refusal or a failure (grep the
  * kitty_audit / kageant_audit_use / kageant_audit_load calls for the full
@@ -84,44 +87,42 @@ int kitty_audit_is_warning(const char *ev, const char *result)
  * to close the quote, start a new field, or write a raw newline that
  * forges a whole line. A quote is doubled; a control byte becomes ?; a
  * backslash is an ordinary character. */
-static void audit_put_quoted(char **p, char *end, const char *v)
+static void audit_put_quoted(strbuf *sb, const char *v)
 {
-    if (*p < end) *(*p)++ = '"';
-    for (; *v && *p < end - 3; v++) {
+    put_byte(sb, '"');
+    for (; *v; v++) {
         unsigned char c = (unsigned char)*v;
         if (c == '"') {
-            *(*p)++ = '"'; *(*p)++ = '"';
+            put_byte(sb, '"'); put_byte(sb, '"');
         } else if (c < 0x20) {
-            *(*p)++ = '?';          /* CR, LF and every other control byte */
+            put_byte(sb, '?');      /* CR, LF and every other control byte */
         } else {
-            *(*p)++ = (char)c;
+            put_byte(sb, c);
         }
     }
-    if (*p < end) *(*p)++ = '"';
+    put_byte(sb, '"');
 }
 
-/* ev="..." key="value" ... - the record without its timestamp. */
-static void audit_put_record(char **p, char *end, const char *ev,
+/* ev="..." key="value" ... - the record without its timestamp, whole: a
+ * long value never pushes the fields after it out of the line. */
+static void audit_put_record(strbuf *sb, const char *ev,
                              const char *const *keys,
                              const char *const *vals, int n)
 {
     int i;
-    const char *k;
-    for (k = "ev="; *k && *p < end; k++)
-        *(*p)++ = *k;
-    audit_put_quoted(p, end, ev);
+    put_datapl(sb, PTRLEN_LITERAL("ev="));
+    audit_put_quoted(sb, ev);
     for (i = 0; i < n; i++) {
-        if (*p < end) *(*p)++ = ' ';
-        for (k = keys[i]; *k && *p < end; k++)
-            *(*p)++ = *k;
-        if (*p < end) *(*p)++ = '=';
-        audit_put_quoted(p, end, vals[i]);
+        put_byte(sb, ' ');
+        put_dataz(sb, keys[i]);
+        put_byte(sb, '=');
+        audit_put_quoted(sb, vals[i]);
     }
 }
 
-static void audit_gen_name(char *buf, size_t sz, int gen)
+static char *audit_gen_name(int gen)
 {
-    snprintf(buf, sz, "%s.%d", g_path, gen);
+    return dupprintf("%s.%d", g_path, gen);
 }
 
 /* Rotate if the active file has crossed the cap. Shift .1->.2 etc from the
@@ -130,7 +131,7 @@ static void audit_gen_name(char *buf, size_t sz, int gen)
 static void audit_maybe_rotate(void)
 {
     WIN32_FILE_ATTRIBUTE_DATA fad;
-    char from[MAX_PATH + 8], to[MAX_PATH + 8];
+    char *from, *to;
     int i;
 
     if (!GetFileAttributesExA(g_path, GetFileExInfoStandard, &fad))
@@ -149,7 +150,7 @@ static void audit_maybe_rotate(void)
         cutoff = (ULONGLONG)g_expiredays * 24ULL * 3600ULL * 10000000ULL;
         for (i = 1; i <= g_keep; i++) {
             WIN32_FILE_ATTRIBUTE_DATA gfad;
-            audit_gen_name(from, sizeof(from), i);
+            from = audit_gen_name(i);
             if (GetFileAttributesExA(from, GetFileExInfoStandard, &gfad)) {
                 ULONGLONG mt =
                     ((ULONGLONG)gfad.ftLastWriteTime.dwHighDateTime << 32) |
@@ -157,19 +158,24 @@ static void audit_maybe_rotate(void)
                 if (mt < now && now - mt > cutoff)
                     DeleteFileA(from);
             }
+            sfree(from);
         }
     }
 
-    audit_gen_name(from, sizeof(from), g_keep);
+    from = audit_gen_name(g_keep);
     DeleteFileA(from);                       /* the oldest falls off */
+    sfree(from);
     for (i = g_keep - 1; i >= 1; i--) {
-        audit_gen_name(from, sizeof(from), i);
-        audit_gen_name(to, sizeof(to), i + 1);
+        from = audit_gen_name(i);
+        to = audit_gen_name(i + 1);
         MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING);
+        sfree(from);
+        sfree(to);
     }
-    audit_gen_name(to, sizeof(to), 1);
-    if (!MoveFileExA(g_path, to, MOVEFILE_REPLACE_EXISTING) &&
-        !g_rotate_warned) {
+    to = audit_gen_name(1);
+    i = MoveFileExA(g_path, to, MOVEFILE_REPLACE_EXISTING);
+    sfree(to);
+    if (!i && !g_rotate_warned) {
         /* Keep writing to the (oversized) active file rather than lose
          * anything; record it once, in the log itself. */
         g_rotate_warned = 1;
@@ -180,8 +186,7 @@ static void audit_maybe_rotate(void)
 static void audit_write_file(const char *ev, const char *const *keys,
                              const char *const *vals, int n)
 {
-    char line[2048];
-    char *p = line, *end = line + sizeof(line) - 4;
+    strbuf *line = strbuf_new();
     SYSTEMTIME st;
     HANDLE h;
     DWORD written;
@@ -189,20 +194,20 @@ static void audit_write_file(const char *ev, const char *const *keys,
     audit_maybe_rotate();
 
     GetSystemTime(&st);                      /* UTC on disk, by contract */
-    p += snprintf(p, end - p,
-                  "ts=%04u-%02u-%02uT%02u:%02u:%02uZ ",
-                  st.wYear, st.wMonth, st.wDay,
-                  st.wHour, st.wMinute, st.wSecond);
-    audit_put_record(&p, end, ev, keys, vals, n);
-    *p++ = '\r'; *p++ = '\n';
+    put_fmt(line, "ts=%04u-%02u-%02uT%02u:%02u:%02uZ ",
+            st.wYear, st.wMonth, st.wDay,
+            st.wHour, st.wMinute, st.wSecond);
+    audit_put_record(line, ev, keys, vals, n);
+    put_datapl(line, PTRLEN_LITERAL("\r\n"));
 
     h = CreateFileA(g_path, FILE_APPEND_DATA,
                     FILE_SHARE_READ, NULL, OPEN_ALWAYS,
                     FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-        return;                              /* never block the agent on IO */
-    WriteFile(h, line, (DWORD)(p - line), &written, NULL);
-    CloseHandle(h);
+    if (h != INVALID_HANDLE_VALUE) {         /* never block the agent on IO */
+        WriteFile(h, line->s, (DWORD)line->len, &written, NULL);
+        CloseHandle(h);
+    }
+    strbuf_free(line);
 }
 
 /*
@@ -263,24 +268,24 @@ static const struct audit_kind {
     { "logrotate",       170, af_result },
 };
 
-/* A copy of v with control bytes made ?, as in the file, taken from the
- * pool; "" once the pool is spent. */
-static const char *audit_event_string(char **pool, char *end, const char *v)
+/* A copy of v with control bytes made ?, as in the file, whole (sfree
+ * it). */
+static char *audit_event_string(const char *v)
 {
-    char *s = *pool;
-    if (*pool >= end - 1)
-        return "";
-    for (; *v && *pool < end - 1; v++)
-        *(*pool)++ = ((unsigned char)*v < 0x20) ? '?' : *v;
-    *(*pool)++ = '\0';
+    char *s = dupstr(v), *p;
+    for (p = s; *p; p++)
+        if ((unsigned char)*p < 0x20)
+            *p = '?';
     return s;
 }
 
+/* Every insertion string is whole. A record longer than the Event Log
+ * takes is refused by ReportEvent itself; that refusal is not reported,
+ * as no other failure of this best-effort sink is. */
 static void audit_write_event(const char *ev, const char *const *keys,
                               const char *const *vals, int n)
 {
-    const char *strings[1 + AUDIT_MAX_FIELDS];
-    char pool[8192], *pp = pool, *pend = pool + sizeof(pool);
+    char *strings[1 + AUDIT_MAX_FIELDS];
     const char *result = "";
     const struct audit_kind *kind = NULL;
     WORD ns = 0, id = 0;
@@ -299,7 +304,7 @@ static void audit_write_event(const char *ev, const char *const *keys,
 
     if (kind) {
         id = kind->id;
-        strings[ns++] = audit_event_string(&pp, pend, ev);
+        strings[ns++] = audit_event_string(ev);
         for (j = 0; kind->fields[j] &&
                     ns < (WORD)(sizeof(strings) / sizeof(strings[0])); j++) {
             const char *v = "";
@@ -308,25 +313,27 @@ static void audit_write_event(const char *ev, const char *const *keys,
                     v = vals[i];
                     break;
                 }
-            strings[ns++] = audit_event_string(&pp, pend, v);
+            strings[ns++] = audit_event_string(v);
         }
     } else {
         /* A kind the table does not list: the whole record, as the file
          * has it, in the one string of message 0 - never dropped. */
-        char *p = pool, *end = pool + sizeof(pool) - 1;
-        audit_put_record(&p, end, ev, keys, vals, n);
-        *p = '\0';
-        strings[ns++] = pool;
+        strbuf *sb = strbuf_new();
+        audit_put_record(sb, ev, keys, vals, n);
+        strings[ns++] = strbuf_to_str(sb);
     }
 
     h = RegisterEventSourceA(NULL, KITTY_AUDIT_EVENT_SOURCE);
-    if (!h)
-        return;                              /* best effort, like the file */
-    ReportEventA(h, (WORD)(kitty_audit_is_warning(ev, result) ?
-                           EVENTLOG_WARNING_TYPE :
-                           EVENTLOG_INFORMATION_TYPE),
-                 0, id, kitty_wev_user_sid(), ns, 0, strings, NULL);
-    DeregisterEventSource(h);
+    if (h) {                                 /* best effort, like the file */
+        ReportEventA(h, (WORD)(kitty_audit_is_warning(ev, result) ?
+                               EVENTLOG_WARNING_TYPE :
+                               EVENTLOG_INFORMATION_TYPE),
+                     0, id, kitty_wev_user_sid(), ns, 0,
+                     (const char **)strings, NULL);
+        DeregisterEventSource(h);
+    }
+    while (ns > 0)
+        sfree(strings[--ns]);
 }
 
 void kitty_audit(const char *ev, ...)
@@ -356,7 +363,7 @@ void kitty_audit(const char *ev, ...)
     va_end(ap);
 
     /* Independent sinks: each gets every record it is switched on for. */
-    if ((g_sinks & KITTY_AUDIT_SINK_FILE) && g_path[0])
+    if ((g_sinks & KITTY_AUDIT_SINK_FILE) && g_path && g_path[0])
         audit_write_file(ev, keys, vals, n);
     if (g_sinks & KITTY_AUDIT_SINK_EVENTLOG)
         audit_write_event(ev, keys, vals, n);

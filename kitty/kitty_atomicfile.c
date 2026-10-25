@@ -20,6 +20,7 @@
 #include <windows.h>
 #include <aclapi.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "kitty_atomicfile.h"
 
@@ -65,7 +66,10 @@ static int volume_keeps_acls(const char *path)
 
 int kitty_write_file_whole(const char *path, const void *data, size_t len)
 {
-    char dir[MAX_PATH], tmp[MAX_PATH];
+    /* dir: the target's folder whole - a cut one is an ancestor folder.
+     * tmp: GetTempFileName writes at most MAX_PATH and fails on a folder
+     * too long for that, with its reason */
+    char *dir, tmp[MAX_PATH];
     char *slash;
     HANDLE h;
     DWORD put = 0, err = 0;
@@ -75,12 +79,25 @@ int kitty_write_file_whole(const char *path, const void *data, size_t len)
         SetLastError(ERROR_INVALID_PARAMETER);
         return 0;
     }
-    snprintf(dir, sizeof(dir), "%s", path);
+    /* malloc, not the suite's allocator: test_atomicfile links this file
+     * on its own */
+    if ((dir = malloc(strlen(path) + 2)) == NULL) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+    memcpy(dir, path, strlen(path) + 1);
     slash = strrchr(dir, '\\');
     if (!slash) slash = strrchr(dir, '/');
-    if (slash) *slash = '\0'; else snprintf(dir, sizeof(dir), ".");
-    if (!GetTempFileNameA(dir, "kft", 0, tmp))
+    if (slash) *slash = '\0'; else memcpy(dir, ".", 2);
+    ok = GetTempFileNameA(dir, "kft", 0, tmp) != 0;
+    err = GetLastError();
+    free(dir);
+    if (!ok) {
+        SetLastError(err);
         return 0;   /* Windows' reason is in GetLastError() */
+    }
+    ok = 0;
+    err = 0;
 
     h = CreateFileA(tmp, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
                     FILE_ATTRIBUTE_NORMAL, NULL);

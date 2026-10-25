@@ -51,19 +51,33 @@ static void kcl_module_of(void *addr, char *name, size_t namesz,
     }
 }
 
+/*
+ * The filter runs in a process that has just crashed: no heap (it may be
+ * what broke), and no big stack frame (a stack overflow is one of the
+ * crashes it records). Its buffers are static and as long as the longest
+ * path Windows has, so no path is cut - not "dynamic" like the rest of the
+ * code on purpose.
+ */
+#define KCL_PATH_MAX 32768
+static char kcl_path[KCL_PATH_MAX + 32], kcl_mod[KCL_PATH_MAX];
+static char kcl_exe[KCL_PATH_MAX], kcl_tmp[KCL_PATH_MAX + 32];
+
 static LONG WINAPI kcl_filter(EXCEPTION_POINTERS *ep)
 {
-    char path[MAX_PATH + 32], mod[MAX_PATH], exe[64];
+    char *path = kcl_path, *mod = kcl_mod, *exe = kcl_exe;
     ULONG_PTR off;
     FILE *fp;
-    DWORD n = GetModuleFileNameA(NULL, path, MAX_PATH);
+    DWORD n = GetModuleFileNameA(NULL, path, KCL_PATH_MAX);
+    if (n >= KCL_PATH_MAX)
+        n = 0;                  /* cut: no name rather than a wrong one */
+    path[n] = '\0';             /* XP writes no NUL on a cut */
     /* remember which program this is, base name only, before the path is
      * repurposed - one temp-directory log can collect several programs */
     {
         DWORD b = n;
         while (b > 0 && path[b - 1] != '\\' && path[b - 1] != '/')
             b--;
-        lstrcpynA(exe, path + b, sizeof(exe));
+        lstrcpynA(exe, path + b, KCL_PATH_MAX);
     }
     /* beside the exe: replace the file name with kitty_crash.log */
     while (n > 0 && path[n - 1] != '\\' && path[n - 1] != '/')
@@ -74,9 +88,9 @@ static LONG WINAPI kcl_filter(EXCEPTION_POINTERS *ep)
     if (!fp) {
         /* Beside the exe is read-only when running from a mounted ISO -
          * exactly the air-gapped delivery this exists for. */
-        char tmp[MAX_PATH + 32];
-        DWORD t = GetTempPathA(MAX_PATH, tmp);
-        if (t && t < MAX_PATH) {
+        char *tmp = kcl_tmp;
+        DWORD t = GetTempPathA(KCL_PATH_MAX, tmp);
+        if (t && t < KCL_PATH_MAX) {
             lstrcpyA(tmp + t, "kitty_crash.log");
             fp = fopen(tmp, "a");
         }
@@ -106,7 +120,7 @@ static LONG WINAPI kcl_filter(EXCEPTION_POINTERS *ep)
         }
         fprintf(fp, "=== crash: exception 0x%08lx\n",
                 (unsigned long)ep->ExceptionRecord->ExceptionCode);
-        kcl_module_of(ip, mod, sizeof(mod), &off);
+        kcl_module_of(ip, mod, KCL_PATH_MAX, &off);
         fprintf(fp, "at %s+0x%lx\n", mod[0] ? mod : "?",
                 (unsigned long)off);
         /* Stack scan: every aligned value on the top of the stack that
@@ -124,7 +138,7 @@ static LONG WINAPI kcl_filter(EXCEPTION_POINTERS *ep)
                 v = p[i];
                 if (v < 0x10000)
                     continue;
-                kcl_module_of((void *)v, mod, sizeof(mod), &off);
+                kcl_module_of((void *)v, mod, KCL_PATH_MAX, &off);
                 if (mod[0] && off) {
                     /* only image-backed regions, or it is data, not code */
                     fprintf(fp, "  stack[%d] %s+0x%lx\n", i, mod,

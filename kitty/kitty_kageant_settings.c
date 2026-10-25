@@ -224,42 +224,78 @@ int kageant_reg_write(const char *name, int on)
  * a portable exe); the geometry values kept here before 0.85.1.14 are read
  * once to carry them over (windows/pageant.c kageant_geometry_carry_over).
  */
-static int kageant_reg_read_str(const char *name, char *buf, size_t len)
+/* A REG_SZ value whole, or NULL when absent or empty (sfree it). */
+static char *kageant_reg_read_str_dup(const char *name)
 {
-    DWORD sz = (DWORD)len;
     const struct kageant_ro_value *ro = kageant_ro_find(name);
+    char *buf;
+    int tries;
     if (ro) {                          /* readonly=yes: this run's value */
-        if (ro->type != REG_SZ || !len)
-            return 0;
-        snprintf(buf, len, "%.*s", (int)ro->len, (const char *)ro->data);
-        return buf[0] != '\0';
+        if (ro->type != REG_SZ || !ro->len)
+            return NULL;
+        buf = snewn(ro->len + 1, char);
+        memcpy(buf, ro->data, ro->len);
+        buf[ro->len] = '\0';
+        if (!buf[0]) {
+            sfree(buf);
+            return NULL;
+        }
+        return buf;
     }
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
-                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
-        return 0;
-    return buf[0] != '\0';
+    /* the size first; asked again if the value grew in between */
+    for (tries = 0; tries < 4; tries++) {
+        DWORD sz = 0;
+        LONG rc = RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
+                               RRF_RT_REG_SZ, NULL, NULL, &sz);
+        if (rc != ERROR_SUCCESS || !sz)
+            return NULL;
+        /* one byte more: room for the NUL of a value stored without one
+         * (Windows XP's stand-in for RegGetValue adds it in place) */
+        buf = snewn(sz + 1, char);
+        sz++;
+        rc = RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
+                          RRF_RT_REG_SZ, NULL, buf, &sz);
+        if (rc == ERROR_SUCCESS && buf[0])
+            return buf;
+        sfree(buf);
+        if (rc != ERROR_MORE_DATA)
+            return NULL;
+    }
+    return NULL;
 }
 
-int kageant_setting_str_get(const char *inikey, const char *regname,
-                            char *buf, size_t len)
+/* An [Agent] value of any length, or NULL when absent or empty (sfree it).
+ * The read is repeated with a doubled buffer while the value fills it
+ * (GetPrivateProfileString returns len - 1 on a cut value). */
+char *kageant_ini_read_dup(const char *key)
 {
-    char ini[256];
-    int have_ini = kitty_inifile_read(KI_SECTION_AGENT, inikey, ini, sizeof(ini)) &&
-        ini[0];
+    int len = 512;
+    for (;;) {
+        char *buf = snewn(len, char);
+        if (!kitty_inifile_read(KI_SECTION_AGENT, key, buf, len)) {
+            sfree(buf);
+            return NULL;
+        }
+        if (strlen(buf) < (size_t)len - 2 || len >= (1 << 24))
+            return buf;
+        sfree(buf);
+        len *= 2;
+    }
+}
+
+char *kageant_setting_str_dup(const char *inikey, const char *regname)
+{
+    char *ini = kageant_ini_read_dup(inikey), *reg;
     if (kitty_inifile_registry_authoritative()) {
-        if (kageant_reg_read_str(regname, buf, len))
-            return 1;
-    } else if (have_ini) {
-        snprintf(buf, len, "%s", ini);
-        return 1;
-    } else {
-        return kageant_reg_read_str(regname, buf, len);
+        if ((reg = kageant_reg_read_str_dup(regname)) != NULL) {
+            sfree(ini);
+            return reg;
+        }
+        return ini;
     }
-    if (have_ini) {
-        snprintf(buf, len, "%s", ini);
-        return 1;
-    }
-    return 0;
+    if (ini)
+        return ini;
+    return kageant_reg_read_str_dup(regname);
 }
 
 /* A failed kitty.ini write no longer falls back to the registry: that wrote
@@ -418,22 +454,24 @@ const char *kageant_ini_status(void)
                                                    : kitty_inifile_file();
 }
 
-/* Directory holding the resolved authoritative ini (no trailing separator);
- * 0 when there is none. */
-int kageant_inidir(char *out, size_t outlen)
+/* Directory holding the resolved authoritative ini (no trailing separator,
+ * sfree it); NULL when there is none. */
+char *kageant_inidir_dup(void)
 {
     const char *f = kitty_inifile_file();
-    char *slash, *s2;
-    if (!f || strlen(f) >= outlen)
-        return 0;
-    strcpy(out, f);
+    char *out, *slash, *s2;
+    if (!f)
+        return NULL;
+    out = dupstr(f);
     slash = strrchr(out, '\\');
     s2 = strrchr(out, '/');
     if (s2 > slash) slash = s2;
-    if (!slash)
-        return 0;
+    if (!slash) {
+        sfree(out);
+        return NULL;
+    }
     *slash = '\0';
-    return 1;
+    return out;
 }
 
 int kageant_path_under(const char *dir, const char *path)
@@ -445,29 +483,34 @@ int kageant_path_under(const char *dir, const char *path)
 }
 
 /* On-disk form: relative to the ini folder when the key sits under it,
- * else the absolute path unchanged. */
-void kageant_store_form(const char *abspath, char *out, size_t outlen)
+ * else the absolute path unchanged (sfree it). */
+char *kageant_store_form(const char *abspath)
 {
-    char dir[MAX_PATH + 1];
-    if (kageant_inidir(dir, sizeof(dir)) && kageant_path_under(dir, abspath)) {
+    char *dir = kageant_inidir_dup(), *out;
+    if (dir && kageant_path_under(dir, abspath)) {
         const char *rel = abspath + strlen(dir);
         while (*rel == '\\' || *rel == '/') rel++;
-        snprintf(out, outlen, "%s", rel);
+        out = dupstr(rel);
     } else {
-        snprintf(out, outlen, "%s", abspath);
+        out = dupstr(abspath);
     }
+    sfree(dir);
+    return out;
 }
 
-/* Resolve a stored path (relative -> against the ini folder) to absolute. */
-void kageant_resolve_form(const char *stored, char *out, size_t outlen)
+/* Resolve a stored path (relative -> against the ini folder) to absolute
+ * (sfree it). */
+char *kageant_resolve_form(const char *stored)
 {
-    char dir[MAX_PATH + 1];
+    char *dir = NULL, *out;
     int isabs = stored[0] &&
                 (stored[1] == ':' || stored[0] == '\\' || stored[0] == '/');
-    if (!isabs && kageant_inidir(dir, sizeof(dir)))
-        snprintf(out, outlen, "%s\\%s", dir, stored);
+    if (!isabs && (dir = kageant_inidir_dup()) != NULL)
+        out = dupprintf("%s\\%s", dir, stored);
     else
-        snprintf(out, outlen, "%s", stored);
+        out = dupstr(stored);
+    sfree(dir);
+    return out;
 }
 
 /* The stored-entry marker for a confirm mode - the ONLY writer of these

@@ -1990,12 +1990,13 @@ static void keylist_save_geometry(HWND hwnd)
 static void kageant_geometry_carry_over(const char *inikey, const char *regname,
                                         const char *poskey)
 {
-    char buf[64];
+    char *buf = kageant_setting_str_dup(inikey, regname);
     int x, y, w, h;
-    if (!kageant_setting_str_get(inikey, regname, buf, sizeof(buf)) || !buf[0])
+    if (!buf)
         return;
     if (sscanf(buf, "%d,%d,%d,%d", &x, &y, &w, &h) == 4)
         kitty_auxpos_seed(poskey, x, y, w, h);
+    sfree(buf);
     kageant_setting_str_set(inikey, regname, "");
 }
 
@@ -3063,10 +3064,10 @@ static ULONGLONG auditview_stamp(const char *line)
 static void auditview_read_file(const char *path)
 {
     FILE *fp = fopen(path, "rb");
-    char buf[2400];
+    char *buf;
     if (!fp)
         return;
-    while (fgets(buf, sizeof(buf), fp)) {
+    for (; (buf = fgetline(fp)) != NULL; sfree(buf)) {   /* whole lines */
         size_t n = strlen(buf);
         while (n && (buf[n-1] == '\n' || buf[n-1] == '\r'))
             buf[--n] = '\0';
@@ -3091,15 +3092,15 @@ static void auditview_read_file(const char *path)
 
 static void auditview_load(void)
 {
-    char gen[MAX_PATH + 8];
     int i;
     auditview_free_lines();
     if (!*kitty_audit_path())
         return;
     for (i = 99; i >= 1; i--) {          /* oldest generations first */
-        snprintf(gen, sizeof(gen), "%s.%d", kitty_audit_path(), i);
+        char *gen = dupprintf("%s.%d", kitty_audit_path(), i);
         if (GetFileAttributesA(gen) != INVALID_FILE_ATTRIBUTES)
             auditview_read_file(gen);
+        sfree(gen);
     }
     auditview_read_file(kitty_audit_path());
 
@@ -3313,13 +3314,14 @@ static bool auditview_restore_geometry(HWND hwnd)
 
 static bool auditview_restore_columns(HWND hlist)
 {
-    char buf[96];
-    int w[AV_NCOLS], i;
-    if (!kageant_setting_str_get(KI_AGENT_AGENTLOGCOLUMNS2, AV_COLS_REGVAL,
-                                 buf, sizeof(buf)))
+    char *buf = kageant_setting_str_dup(KI_AGENT_AGENTLOGCOLUMNS2,
+                                        AV_COLS_REGVAL);
+    int w[AV_NCOLS], i, nw;
+    if (!buf)
         return false;
-    if (sscanf(buf, "%d,%d,%d,%d,%d",
-               &w[0], &w[1], &w[2], &w[3], &w[4]) != AV_NCOLS)
+    nw = sscanf(buf, "%d,%d,%d,%d,%d", &w[0], &w[1], &w[2], &w[3], &w[4]);
+    sfree(buf);
+    if (nw != AV_NCOLS)
         return false;
     for (i = 0; i < AV_NCOLS; i++)
         if (w[i] >= 20 && w[i] <= 2000)
@@ -4027,20 +4029,20 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         CheckDlgButton(hwnd, IDC_SET_AGENTLOG,
                        kageant_audit_get() ? BST_CHECKED : BST_UNCHECKED);
         {
-            char lp[MAX_PATH + 1];
-            lp[0] = '\0';
-            kageant_audit_pathsetting_get(lp, sizeof(lp));
-            SetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp);
+            char *lp = kageant_audit_pathsetting_dup();
+            SetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp ? lp : "");
+            sfree(lp);
         }
         /* Name the file a blank File box means. Resolved live, not written
          * into the template, because it differs between a portable install
          * (beside kitty.ini) and a registry one (under %LOCALAPPDATA%). */
         {
-            char dp[MAX_PATH + 1];
-            if (kageant_audit_default_path(dp, sizeof(dp), 0)) {
+            char *dp = kageant_audit_default_path_dup(0);
+            if (dp) {
                 char *line = dupprintf(KT_KASET_LOG_DEFAULT_FMT, dp);
                 SetDlgItemText(hwnd, IDC_SET_L_LOGDEFAULT, line);
                 sfree(line);
+                sfree(dp);
             }
         }
         SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
@@ -4250,8 +4252,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             /* KiTTY: the agent log's knobs - written as a set (the setter
              * clamps and re-arms the sink), then the on/off switch. */
             {
-                char lp[MAX_PATH + 1];
-                GetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp, sizeof(lp));
+                /* the box whole: it has no length limit */
+                int lplen = GetWindowTextLength(
+                    GetDlgItem(hwnd, IDC_SET_AGENTLOGPATH));
+                char *lp = snewn(lplen + 1, char);
+                lp[0] = '\0';
+                GetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp, lplen + 1);
                 kageant_audit_cfg_set(
                     lp,
                     keysettings_number(hwnd, IDC_SET_AGENTLOGKB,
@@ -4263,6 +4269,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                     keysettings_number(hwnd, IDC_SET_AGENTLOGDAYS,
                                        KAGEANT_AGENTLOG_DAYS_DEFAULT,
                                        kageant_audit_expire_get()));
+                sfree(lp);
                 kageant_audit_set(
                     IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
                         == BST_CHECKED);
@@ -4462,9 +4469,9 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             SetWindowSubclass(hlist, keylist_lv_subclass, 1, 0);
 
             /* Remembered column widths, if any, override the defaults. */
-            char colstr[80];
-            if (kageant_setting_str_get(KI_AGENT_KEYLISTCOLUMNS2, KL_COLS_REGVAL,
-                                        colstr, sizeof(colstr))) {
+            char *colstr = kageant_setting_str_dup(KI_AGENT_KEYLISTCOLUMNS2,
+                                                   KL_COLS_REGVAL);
+            if (colstr) {
                 int cw[KL_NCOLS];
                 if (sscanf(colstr, "%d,%d,%d,%d,%d,%d,%d",
                            &cw[0], &cw[1], &cw[2], &cw[3], &cw[4], &cw[5],
@@ -4473,6 +4480,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         if (cw[i] >= 8)
                             ListView_SetColumnWidth(hlist, i, cw[i]);
                 }
+                sfree(colstr);
             }
             /* Last, after both the defaults and any remembered widths: the
              * trailing column is not a remembered width, it is whatever is
@@ -4482,12 +4490,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
 
         /* KiTTY: the show-unavailable toggle, persisted like the rest. */
         {
-            char b[16];
-            keylist_show_unavail = true;
-            if (kageant_setting_str_get(KI_AGENT_SHOWUNAVAILABLEKEYS,
-                                        "ShowUnavailableKeys",
-                                        b, sizeof(b)) && !stricmp(b, "no"))
-                keylist_show_unavail = false;
+            char *b = kageant_setting_str_dup(KI_AGENT_SHOWUNAVAILABLEKEYS,
+                                              "ShowUnavailableKeys");
+            keylist_show_unavail = !(b && !stricmp(b, "no"));
+            sfree(b);
             CheckDlgButton(hwnd, IDC_KEYLIST_SHOWUNAVAIL,
                            keylist_show_unavail ? BST_CHECKED : BST_UNCHECKED);
         }
@@ -6502,12 +6508,13 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * start at login, ASK before adding ours - do not silently create
              * a second autostart and the race that comes with it. Default No. */
             if (on) {
-                char cdesc[512];
-                if (kageant_autostart_conflict(cdesc, sizeof(cdesc))) {
+                char *cdesc = kageant_autostart_conflict();
+                if (cdesc) {
                     char *w = dupprintf(KT_KA_AUTOSTART_CONFLICT_FMT, cdesc);
                     int r = MessageBox(NULL, w, KT_CAP_KA_AUTOSTART_CONFLICT,
                                        MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2);
                     sfree(w);
+                    sfree(cdesc);
                     if (r != IDYES)
                         break;              /* aborted: nothing changed */
                 }
