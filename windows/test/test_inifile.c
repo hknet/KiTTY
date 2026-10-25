@@ -7,8 +7,10 @@
  * readonly=no, are written as before. The store gate on top of it
  * (kitty_store_readonly, kitty_store_ro_regpath): which registry keys are
  * the store, the savemode=file load scope, the answer cached and read again
- * when the file changes. Everything in a private %TEMP% folder, removed
- * afterwards; never the registry (the key test only compares names).
+ * when the file changes. The folder store's sessions= and sshhostkeys=
+ * through a long %VAR%: expanded and whole, or refused, never cut.
+ * Everything in a private %TEMP% folder, removed afterwards; never the
+ * registry (the key test only compares names).
  *
  * Returns non-zero on any failure.
  */
@@ -101,6 +103,65 @@ static int ini_holds(const char *path, const char *sec, const char *key,
     char v[64];
     GetPrivateProfileStringA(sec, key, "\x01", v, sizeof(v), path);
     return !strcmp(v, want);
+}
+
+/* "C:\" and n letters: a value an environment variable can hold whose
+ * expansion runs past the old 519-byte buffers (malloc'd) */
+static char *tf_long_value(size_t n)
+{
+    char *s = malloc(n + 4);
+    if (!s) { printf("FAIL  out of memory\n"); exit(1); }
+    memcpy(s, "C:\\", 3);
+    memset(s + 3, 'v', n);
+    s[n + 3] = '\0';
+    return s;
+}
+
+/* The folder store's paths through a %VAR% whose expansion is long:
+ * sessions= and sshhostkeys= must come back expanded and whole (they fell
+ * back to the unexpanded "%VAR%\..." below the program folder past 519
+ * bytes), and one too long for the caller's buffer must be refused, never
+ * cut. */
+static void test_long_expansion(const char *root)
+{
+    struct kitty_ini_startup s;
+    char *fs = tf_path("%s\\fs.ini", root);
+    char *val = tf_long_value(600), *huge = tf_long_value(1200);
+    char *want_sess = tf_path("%s\\sess", val);
+    char *want_keys = tf_path("%s\\keys", val);
+    char *want_state = tf_path("%s\\sess\\KiTTYState", val);
+    char *state;
+
+    put_file(fs,
+             "[KiTTY]\r\n"
+             "savemode=dir\r\n"
+             "sessions=%KQA_LONGVAR%\\sess\r\n"
+             "sshhostkeys=%KQA_LONGVAR%\\keys\r\n");
+    check(SetEnvironmentVariableA("KQA_LONGVAR", val), "long: the variable is set (603 characters)");
+    kitty_inifile_pin(fs);
+    kitty_inifile_startup(&s);
+    check(s.folder_store, "long: the folder store is in use");
+    check(!strcmp(s.session_dir, want_sess),
+          "long: sessions= expanded whole (603 + 5 characters)");
+    check(!strcmp(s.hostkey_dir, want_keys),
+          "long: sshhostkeys= expanded whole - not the %VAR% folder below the exe");
+    state = kitty_inifile_state_file_dup();
+    check(state && !strcmp(state, want_state), "long: KiTTYState's path whole");
+    free(state);
+
+    /* an expansion longer than the start-up record holds: refused whole */
+    check(SetEnvironmentVariableA("KQA_LONGVAR", huge), "long: the variable is set (1203 characters)");
+    kitty_inifile_startup(&s);
+    check(!s.folder_store && !s.session_dir[0],
+          "long: a session folder too long for the record is refused, not cut");
+    state = kitty_inifile_state_file_dup();
+    check(state && strlen(state) == strlen(huge) + strlen("\\sess\\KiTTYState"),
+          "long: KiTTYState's path whole past the record's size");
+    free(state);
+
+    SetEnvironmentVariableA("KQA_LONGVAR", NULL);
+    DeleteFileA(fs);
+    free(fs); free(val); free(huge); free(want_sess); free(want_keys); free(want_state);
 }
 
 int main(void)
@@ -246,6 +307,10 @@ int main(void)
     check(!kitty_store_readonly() &&
           !kitty_store_ro_regpath(1, "Software\\kapper.net\\KiTTY"),
           "store: readonly=no - the hive is written");
+
+    /* the folder store's paths held whole (then rw in charge again) */
+    test_long_expansion(root);
+    kitty_inifile_pin(rw);
 
     /* the hive's own readonly value (kitty.exe, SetReadOnlyFlag): switched
      * on for the rest of the process, whatever the file holds - last */

@@ -343,43 +343,41 @@ static const struct { const char *key; const char *under_programs; } kitty_toolp
     { KI_WINSCPPATH,    "WinSCP\\WinSCP.exe" },
     { KI_FILEZILLAPATH, "FileZilla FTP Client\\filezilla.exe" },
 };
-static void kitty_toolpath_hint(const char *key, char *buffer, size_t size)
+/* The hint whole (sfree it); "" when there is none. */
+static char *kitty_toolpath_hint(const char *key)
 {
-    const char *pf = getenv("ProgramFiles");
-    const char *pw64 = getenv("ProgramW6432");
-    const char *pf86 = getenv("ProgramFiles(x86)");
-    const char *local = getenv("LOCALAPPDATA");
-    size_t i;
-    buffer[0] = '\0';
+    static const char *const vars[] = { "ProgramFiles", "ProgramW6432", "ProgramFiles(x86)" };
+    size_t i, v;
     for (i = 0; i < lenof(kitty_toolpath_hints); i++) {
         const char *rel = kitty_toolpath_hints[i].under_programs;
+        char *local, *cand;
         if (strcmp(kitty_toolpath_hints[i].key, key)) continue;
-        if (pf) {
-            snprintf(buffer, size, "%s\\%s", pf, rel);
-            if (!existfile(buffer)) buffer[0] = '\0';
+        for (v = 0; v < lenof(vars); v++) {
+            char *base = kitty_getenv_dup(vars[v]);
+            cand = base ? dupprintf("%s\\%s", base, rel) : NULL;
+            sfree(base);
+            if (cand && existfile(cand))
+                return cand;
+            sfree(cand);
         }
-        if (!buffer[0] && pw64) {
-            snprintf(buffer, size, "%s\\%s", pw64, rel);
-            if (!existfile(buffer)) buffer[0] = '\0';
-        }
-        if (!buffer[0] && pf86) {
-            snprintf(buffer, size, "%s\\%s", pf86, rel);
-            if (!existfile(buffer)) buffer[0] = '\0';
-        }
-        if (!buffer[0] && local) {
-            snprintf(buffer, size, "%s\\Programs\\%s", local, rel);
-            if (!existfile(buffer)) buffer[0] = '\0';
+        if ((local = kitty_getenv_dup("LOCALAPPDATA")) != NULL) {
+            cand = dupprintf("%s\\Programs\\%s", local, rel);
+            sfree(local);
+            if (existfile(cand))
+                return cand;
+            sfree(cand);
         }
         /* else what this run's search found elsewhere (beside kitty.exe,
          * WinSCPDir, PATH): it is used, and no longer written to the store */
-        if (!buffer[0]) {
+        {
             const char *run = !strcmp(key, KI_WINSCPPATH) ? WinSCPPath :
                               !strcmp(key, KI_FILEZILLAPATH) ? FileZillaPath : NULL;
             if (run && run[0] && existfile(run))
-                snprintf(buffer, size, "%s", run);
+                return dupstr(run);
         }
-        return;
+        break;
     }
+    return dupstr("");
 }
 
 /*
@@ -404,25 +402,28 @@ static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
     static int refreshing = 0;
 
     if (event == EVENT_REFRESH) {
-        char buffer[4096];
+        /* the stored path, else the hint, whole */
+        char *stored = ReadParameterDup(INIT_SECTION, (char *)key);
         Filename *fn;
-        buffer[0] = '\0';
         refreshing = 1;
-        if (!ReadParameterN(INIT_SECTION, (char *)key, buffer, sizeof(buffer)) ||
-            !buffer[0])
-            kitty_toolpath_hint(key, buffer, sizeof(buffer));
-        fn = filename_from_str(buffer);
+        if (!stored[0]) {
+            sfree(stored);
+            stored = kitty_toolpath_hint(key);
+        }
+        fn = filename_from_str(stored);
+        sfree(stored);
         dlg_filesel_set(ctrl, dlg, fn);
         filename_free(fn);
         refreshing = 0;
     } else if (event == EVENT_VALCHANGE) {
         Filename *fn;
-        char val[4096];
+        char *val;
         if (refreshing)
             return;
         fn = dlg_filesel_get(ctrl, dlg);
-        snprintf(val, sizeof(val), "%s", filename_to_str(fn));
+        val = dupstr(filename_to_str(fn));   /* whole: it was cut at 4 KB */
         WriteParameter(INIT_SECTION, (char *)key, val);
+        sfree(val);
         filename_free(fn);
     }
 }
@@ -1306,8 +1307,8 @@ static int kitty_session_eventlog_exists(void)
 static void kitty_eventviewer_open(HWND owner)
 {
     char view[1536];
-    char tmp[MAX_PATH], path[MAX_PATH + 32], args[MAX_PATH + 48];
-    DWORD n = GetTempPathA(sizeof(tmp), tmp);
+    /* %TEMP% and the view file whole */
+    char *tmp = kitty_temp_path_dup(), *path, *args;
     int len = snprintf(view, sizeof(view),
         "<ViewerConfig><QueryConfig><QueryParams><UserQuery/></QueryParams>"
         "<QueryNode><Name>" KT_CAP_KITTYPP "</Name><QueryList>"
@@ -1320,15 +1321,22 @@ static void kitty_eventviewer_open(HWND owner)
         kitty_session_eventlog_exists() ?
         "<Select Path=\"" KITTY_EVLOG_SESSION "\">*</Select>" : "");
 
-    if (LOBYTE(LOWORD(GetVersion())) >= 6 && n && n < sizeof(tmp) &&
+    if (LOBYTE(LOWORD(GetVersion())) >= 6 && tmp &&
         len > 0 && len < (int)sizeof(view)) {
-        snprintf(path, sizeof(path), "%sKiTTYpp-events.xml", tmp);
-        snprintf(args, sizeof(args), "/v:\"%s\"", path);
-        if (kitty_write_file_whole(path, view, (size_t)len) &&
+        int shown;
+        path = dupprintf("%sKiTTYpp-events.xml", tmp);
+        args = dupprintf("/v:\"%s\"", path);
+        shown = kitty_write_file_whole(path, view, (size_t)len) &&
             (INT_PTR)ShellExecuteA(owner, "open", "eventvwr.exe", args, NULL,
-                                   SW_SHOWNORMAL) > 32)
+                                   SW_SHOWNORMAL) > 32;
+        sfree(path);
+        sfree(args);
+        if (shown) {
+            sfree(tmp);
             return;
+        }
     }
+    sfree(tmp);
     ShellExecuteA(owner, "open", "eventvwr.msc", NULL, NULL, SW_SHOWNORMAL);
 }
 
@@ -2192,7 +2200,9 @@ static const struct ksc_item {
 };
 
 struct ksc_job {
-    char dir[MAX_PATH], exe[MAX_PATH], workdir[MAX_PATH];
+    /* each held whole (sfree them with the job): a cut exe path was the
+     * program the shortcuts started, a cut folder the one they went to */
+    char *dir, *exe, *workdir;
     const char *where;                  /* KT_SYSTEM_SC_WHERE_* */
     size_t i;
     int made, skipped, failed;
@@ -2207,12 +2217,23 @@ static const char *ksc_name(const struct ksc_job *j, size_t i)
     return (j->desktop && i == 0) ? KT_SYSTEM_SC_NAME_DESKTOP : ksc_items[i].name;
 }
 
+static void ksc_job_free(struct ksc_job *j)
+{
+    sfree(j->dir);
+    sfree(j->exe);
+    sfree(j->workdir);
+    sfree(j);
+}
+
 static int ksc_same_exe(const char *a, const char *b)
 {
-    char la[MAX_PATH], lb[MAX_PATH];
-    if (!GetLongPathNameA(a, la, sizeof(la))) snprintf(la, sizeof(la), "%s", a);
-    if (!GetLongPathNameA(b, lb, sizeof(lb))) snprintf(lb, sizeof(lb), "%s", b);
-    return !stricmp(la, lb);
+    /* the long forms whole; a path without one is compared as it is (a
+     * long form too big for the old buffer left it unfilled) */
+    char *la = kitty_long_path_dup(a), *lb = kitty_long_path_dup(b);
+    int same = !stricmp(la ? la : a, lb ? lb : b);
+    sfree(la);
+    sfree(lb);
+    return same;
 }
 
 static void ksc_write(struct ksc_job *j)
@@ -2246,11 +2267,12 @@ static int ksc_old_desktop_ours(const struct ksc_job *j)
 {
     char *oldl = dupprintf("%s\\%s.lnk", j->dir, KT_SYSTEM_SC_NAME_MAIN);
     char *newl = dupprintf("%s\\%s.lnk", j->dir, KT_SYSTEM_SC_NAME_DESKTOP);
-    char t[MAX_PATH];
-    int ours = kitty_startup_shortcut_target(oldl, t, sizeof(t)) &&
-        ksc_same_exe(t, j->exe) &&
-        kitty_startup_shortcut_target(newl, t, sizeof(t)) &&
-        ksc_same_exe(t, j->exe);
+    char *to = kitty_startup_shortcut_target_dup(oldl);
+    char *tn = kitty_startup_shortcut_target_dup(newl);
+    int ours = to && ksc_same_exe(to, j->exe) &&
+        tn && ksc_same_exe(tn, j->exe);
+    sfree(to);
+    sfree(tn);
     sfree(oldl);
     sfree(newl);
     return ours;
@@ -2273,10 +2295,9 @@ static void ksc_step(struct ksc_job *j)
 {
     for (; j->i < lenof(ksc_items); j->i++) {
         char *lnk = dupprintf("%s\\%s.lnk", j->dir, ksc_name(j, j->i));
-        char other[MAX_PATH];
-        int clash = GetFileAttributesA(lnk) != INVALID_FILE_ATTRIBUTES &&
-            kitty_startup_shortcut_target(lnk, other, sizeof(other)) &&
-            !ksc_same_exe(other, j->exe);
+        char *other = GetFileAttributesA(lnk) != INVALID_FILE_ATTRIBUTES ?
+            kitty_startup_shortcut_target_dup(lnk) : NULL;
+        int clash = other && !ksc_same_exe(other, j->exe);
         sfree(lnk);
         if (clash) {
             char *q = dupprintf(KT_SYSTEM_SC_CLASH_Q, ksc_name(j, j->i),
@@ -2285,11 +2306,13 @@ static void ksc_step(struct ksc_job *j)
                 kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, q, NULL,
                 KT_SYSTEM_SC_REPLACE, KT_SYSTEM_SC_SKIP, ksc_answer, j);
             sfree(q);
+            sfree(other);
             if (box)
                 return;                 /* ksc_answer carries on */
             j->skipped++;               /* no box: nothing is replaced */
             continue;
         }
+        sfree(other);
         ksc_write(j);
     }
     if (j->desktop && !j->old_asked) {
@@ -2327,7 +2350,7 @@ static void ksc_step(struct ksc_job *j)
                             NULL, NULL);
         sfree(msg);
     }
-    sfree(j);
+    ksc_job_free(j);
 }
 
 /* context.i: 0 Start menu, 1 Desktop */
@@ -2335,7 +2358,8 @@ static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                        void *data, int event)
 {
     struct ksc_job *j;
-    char base[MAX_PATH], *slash;
+    char *base = NULL, *slash;
+    WCHAR wbase[MAX_PATH + 1];
     int desktop = ctrl->context.i;
     (void)dlg; (void)data;
     if (event != EVENT_ACTION)
@@ -2343,21 +2367,23 @@ static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
     j = snew(struct ksc_job);
     memset(j, 0, sizeof(*j));
     j->desktop = desktop;
-    if (!GetModuleFileNameA(NULL, j->exe, sizeof(j->exe)) ||
-        SHGetFolderPathA(NULL, desktop ? CSIDL_DESKTOPDIRECTORY : CSIDL_PROGRAMS,
-                         NULL, SHGFP_TYPE_CURRENT, base) != S_OK) {
-        sfree(j);
+    /* the folder wide, converted whole (see kitty_startup_dir_dup) */
+    if ((j->exe = kitty_module_path_dup(NULL)) == NULL ||
+        SHGetFolderPathW(NULL, desktop ? CSIDL_DESKTOPDIRECTORY : CSIDL_PROGRAMS,
+                         NULL, SHGFP_TYPE_CURRENT, wbase) != S_OK ||
+        (wbase[MAX_PATH] = L'\0', (base = kitty_wide_to_acp_dup(wbase)) == NULL)) {
+        ksc_job_free(j);
         MessageBeep(MB_ICONWARNING);
         return;
     }
-    snprintf(j->workdir, sizeof(j->workdir), "%s", j->exe);
+    j->workdir = dupstr(j->exe);
     if ((slash = strrchr(j->workdir, '\\')) != NULL)
         *slash = '\0';
     if (desktop) {
-        snprintf(j->dir, sizeof(j->dir), "%s", base);
+        j->dir = dupstr(base);
         j->where = KT_SYSTEM_SC_WHERE_DESKTOP;
     } else {
-        snprintf(j->dir, sizeof(j->dir), "%s\\%s", base, KT_SYSTEM_SC_FOLDER);
+        j->dir = dupprintf("%s\\%s", base, KT_SYSTEM_SC_FOLDER);
         j->where = KT_SYSTEM_SC_WHERE_START;
         if (!CreateDirectoryA(j->dir, NULL) &&
             GetLastError() != ERROR_ALREADY_EXISTS) {
@@ -2365,10 +2391,12 @@ static void kitty_sysshortcuts_handler(dlgcontrol *ctrl, dlgparam *dlg,
             kitty_info_modeless(kitty_cfg_modal_owner(), KT_SYSTEM_TITLE, msg,
                                 NULL, NULL);
             sfree(msg);
-            sfree(j);
+            sfree(base);
+            ksc_job_free(j);
             return;
         }
     }
+    sfree(base);
     ksc_step(j);
 }
 
@@ -2837,17 +2865,19 @@ static void kbc_noop_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int ev
  * trailing newline ends the last line rather than adding an empty one. */
 static void kbc_load_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 {
-    char path[4096];
+    char *path;
     FILE *fp;
     strbuf *sb;
     char chunk[4096];
     size_t n;
     if (event != EVENT_ACTION) return;
-    path[0] = '\0';
-    if (!OpenFileName(GetActiveWindow(), path, KT_KSET_BC_LOAD,
-                      "Text files (*.txt)|*.txt|All files (*.*)|*.*|"))
+    /* the file picked whole */
+    if ((path = kitty_pick_open_dup(GetActiveWindow(), KT_KSET_BC_LOAD,
+                                    "Text files (*.txt)|*.txt|All files (*.*)|*.*|",
+                                    NULL)) == NULL)
         return;                                  /* cancelled */
     fp = fopen(path, "rb");
+    sfree(path);
     if (!fp) {
         dlg_error_msg(dlg, KT_CFG_LOGINSCRIPT_OPEN_FAILED);
         return;
@@ -3086,8 +3116,6 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
 {
     struct controlset *s;
     dlgcontrol *m;                     /* a switch whose field it greys */
-    char line[1400];
-    char buf[4096];
 
     /* a box built without the Launcher panel must not keep an older box's button */
     kla_start_btn = NULL;
@@ -3265,12 +3293,16 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_text(s, KT_KSET_TT_PSCPPATH_NOTE, HELPCTX(kitty_helper_paths));
     /* What the search found at this start, so a blank field still shows
      * the reader which binary is in use. */
-    buf[0] = '\0';
-    ReadParameterN(INIT_SECTION, KI_PSCPPATH, buf, sizeof(buf));
-    if (!buf[0]) {
-        snprintf(line, sizeof(line), KT_KSET_TT_PSCPPATH_FOUND,
-                 PSCPPath && PSCPPath[0] ? PSCPPath : KT_KSET_TT_PSCPPATH_NONE);
-        ctrl_text(s, line, HELPCTX(kitty_helper_paths));
+    {
+        char *stored = ReadParameterDup(INIT_SECTION, KI_PSCPPATH);
+        if (!stored[0]) {
+            /* the found path whole: the line was cut at 1400 bytes */
+            char *found = dupprintf(KT_KSET_TT_PSCPPATH_FOUND,
+                     PSCPPath && PSCPPath[0] ? PSCPPath : KT_KSET_TT_PSCPPATH_NONE);
+            ctrl_text(s, found, HELPCTX(kitty_helper_paths));
+            sfree(found);
+        }
+        sfree(stored);
     }
     KSET_TEXTBOX(s, KT_KSET_TT_PSCPPORT, KI_PSCPPORT, kitty_helper_paths);
     {
@@ -3636,6 +3668,14 @@ static void kitty_iniview_handler(dlgcontrol *ctrl, dlgparam *dlg,
     }
 }
 
+/* A copy of s in the box's memory: it lives and goes with the box. */
+static char *iniview_box_str(struct controlbox *b, const char *s)
+{
+    char *p = (char *)ctrl_alloc(b, strlen(s) + 1);
+    strcpy(p, s);
+    return p;
+}
+
 /* The leaf itself. `ini` is GetKittyIniFile() as the caller has it. */
 static void scb_panel_iniview(struct controlbox *b, const char *ini)
 {
@@ -3644,24 +3684,23 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
     struct iniview_data *iv;
     struct controlset *s;
     dlgcontrol *c;
-    char line[MAX_PATH * 2 + 64];
+    char *line;
 
     iv = (struct iniview_data *)ctrl_alloc(b, sizeof(*iv));
     memset(iv, 0, sizeof(*iv));
     kitty_iniview_active = iv;
-    if (ini && ini[0] && !GetNoKittyFileFlag())
-        snprintf(iv->ini_path, sizeof(iv->ini_path), "%s", ini);
+    /* both paths whole, in the box's own memory (freed with it) */
+    iv->ini_path = iniview_box_str(b, (ini && ini[0] && !GetNoKittyFileFlag()) ? ini : "");
+    iv->example_path = iniview_box_str(b, "");
     /* The example ships beside the executable (MSI and ZIP alike). */
     {
-        char exe[MAX_PATH];
-        char *bs;
-        if (GetModuleFileNameA(NULL, exe, sizeof(exe)) &&
-            (bs = strrchr(exe, '\\')) != NULL) {
-            *bs = '\0';
-            snprintf(iv->example_path, sizeof(iv->example_path),
-                     "%s\\kitty.ini.example", exe);
-            if (!existfile(iv->example_path))
-                iv->example_path[0] = '\0';
+        char *exe = kitty_module_dir_dup(NULL);
+        if (exe) {
+            char *ex = dupprintf("%s\\kitty.ini.example", exe);
+            if (existfile(ex))
+                iv->example_path = iniview_box_str(b, ex);
+            sfree(ex);
+            sfree(exe);
         }
     }
 
@@ -3675,9 +3714,10 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
      * with the view still showing something. The example's place is shown by
      * its dropdown entry (it ships beside kitty.exe); its absence is stated
      * here, because then the dropdown has only one entry and no reason. */
-    snprintf(line, sizeof(line), KT_INIVIEW_PATH_INI,
+    line = dupprintf(KT_INIVIEW_PATH_INI,
              iv->ini_path[0] ? iv->ini_path : KT_INIVIEW_NONE);
     ctrl_text(s, line, HELPCTX(kitty_ini_view));
+    sfree(line);
     if (!iv->example_path[0])
         ctrl_text(s, KT_INIVIEW_NO_EXAMPLE, HELPCTX(kitty_ini_view));
 
@@ -4645,7 +4685,7 @@ static void kitty_sp_hostkeys_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_sp_hostkeys_browse_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                              void *data, int event)
 {
-    char dir[MAX_PATH * 2], *cur;
+    char *dir, *cur;
     (void)data;
     if (event == EVENT_REFRESH) {
         kitty_dlg_enable(ctrl, dlg, kitty_sp_folder_store_writable());
@@ -4655,8 +4695,13 @@ static void kitty_sp_hostkeys_browse_handler(dlgcontrol *ctrl, dlgparam *dlg,
         !kitty_sp_folder_store_writable())
         return;
     cur = dlg_editbox_get(ksp_hostkeys_edit, dlg);
-    if (OpenDirNameFrom(dlg->hwnd, dir, cur, KT_SP_HOSTKEYS_FOLDER) && dir[0])
-        dlg_editbox_set(ksp_hostkeys_edit, dlg, dir);   /* VALCHANGE writes it */
+    /* the folder picked whole: the picker wrote up to 4096 bytes into a
+     * buffer of 520 */
+    if ((dir = kitty_pick_dir_dup(dlg->hwnd, cur, KT_SP_HOSTKEYS_FOLDER)) != NULL) {
+        if (dir[0])
+            dlg_editbox_set(ksp_hostkeys_edit, dlg, dir);   /* VALCHANGE writes it */
+        sfree(dir);
+    }
     sfree(cur);
 }
 
@@ -4685,7 +4730,8 @@ static void kitty_sp_keyext_edit_handler(dlgcontrol *ctrl, dlgparam *dlg,
 static void kitty_sp_keyext_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                           void *data, int event)
 {
-    char *nw, buf[64], clashes[4096];
+    char *nw, buf[64];
+    strbuf *clashes;
     const char *p;
     int done;
     (void)data;
@@ -4717,22 +4763,24 @@ static void kitty_sp_keyext_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
     else
         delINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION);
     kitty_set_hostkey_suffix(buf);
-    done = kitty_store_hostkey_rename(0, clashes, sizeof(clashes));
+    clashes = strbuf_new();             /* every name: the list was cut at 4 KB */
+    done = kitty_store_hostkey_rename(0, clashes);
     {
         strbuf *msg = strbuf_new();
         put_fmt(msg, KT_SP_KEYEXT_RENAMED, done);
-        if (clashes[0]) {
+        if (clashes->len) {
             int nclash = 1;
-            for (p = clashes; *p; p++)
+            for (p = clashes->s; *p; p++)
                 if (*p == '\n')
                     nclash++;
             put_datapl(msg, PTRLEN_LITERAL("\n\n"));
             put_fmt(msg, KT_SP_SUFFIX_LEFT, nclash);
         }
         kitty_info_modeless(kitty_cfg_modal_owner(), KT_CAP_KITTYPP, msg->s,
-                            clashes[0] ? clashes : NULL, NULL);
+                            clashes->len ? clashes->s : NULL, NULL);
         strbuf_free(msg);
     }
+    strbuf_free(clashes);
     kitty_store_mark_dirty();
 }
 
@@ -4775,17 +4823,18 @@ static void ksp_endings_answer(int answer, void *ctx)
             kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, e->snow);
         }
         if (e->nk) {
-            char kc[4096];
+            strbuf *kc = strbuf_new();
             /* renames from the recorded ending and records the new one */
-            int done = kitty_store_hostkey_rename(0, kc, sizeof(kc));
+            int done = kitty_store_hostkey_rename(0, kc);
             if (msg->len)
                 put_byte(msg, '\n');
             put_fmt(msg, KT_SP_KEYEXT_RENAMED, done);
-            if (kc[0]) {
+            if (kc->len) {
                 if (left->len)
                     put_byte(left, '\n');
-                put_dataz(left, kc);
+                put_dataz(left, kc->s);
             }
+            strbuf_free(kc);
         }
         if (left->len) {
             const char *p;
@@ -4847,7 +4896,7 @@ void kitty_sp_endings_offer(HWND owner)
             kitty_store_ending_mark(KI_FILEEXTENSIONAPPLIED, e->snow);
     }
     if (stricmp(e->kwas, e->know)) {
-        e->nk = kitty_store_hostkey_rename(1, NULL, 0);
+        e->nk = kitty_store_hostkey_rename(1, NULL);
         if (!e->nk)
             kitty_store_ending_mark(KI_HOSTKEYEXTENSIONAPPLIED, e->know);
     }
@@ -5450,14 +5499,41 @@ static int migf_refreshing = 0;        /* dlg_editbox_set fires VALCHANGE */
  * panel cleans a new folder name; KiTTYimport when the field is empty. */
 static char *migf_target_folder(struct migf_data *m, dlgparam *dlg)
 {
+    /* the name whole: it was cut at 256 bytes, and the sessions went into
+     * a folder of the cut name */
     char *t = m->target ? dlg_editbox_get(m->target, dlg) : NULL;
-    char folder[256];
-    snprintf(folder, sizeof(folder), "%s", (t && *t) ? t : KT_MIGF_DEFAULT_FOLDER);
+    char *folder = dupstr((t && *t) ? t : KT_MIGF_DEFAULT_FOLDER);
     sfree(t);
     CleanFolderName(folder);
-    if (!folder[0])
-        snprintf(folder, sizeof(folder), "%s", KT_MIGF_DEFAULT_FOLDER);
-    return dupstr(folder);
+    if (!folder[0]) {
+        sfree(folder);
+        folder = dupstr(KT_MIGF_DEFAULT_FOLDER);
+    }
+    return folder;
+}
+
+/* m->root / m->folder take over v (the old value freed) */
+static void migf_set(char **slot, char *v)
+{
+    sfree(*slot);
+    *slot = v;
+}
+
+/* The box is closing: the panel's own memory goes with it, and whoever
+ * else hooked the close still gets its call. */
+static void (*migf_prev_closing_hook)(void) = NULL;
+static void migf_box_closing(void)
+{
+    struct migf_data *m = kitty_migf_active;
+    if (m) {
+        migf_set(&m->root, NULL);
+        migf_set(&m->folder, NULL);
+        kitty_folder_scan_free(m->found);
+        m->found = NULL;
+    }
+    kitty_migf_active = NULL;
+    if (migf_prev_closing_hook)
+        migf_prev_closing_hook();
 }
 
 /* Session | Path | Target | State, one row per file found. The target name
@@ -5489,7 +5565,7 @@ static void migf_fill_list(struct migf_data *m, dlgparam *dlg)
          * the three short columns, and the one of any length runs off the
          * end where it pushes nothing. */
         const char *rel = it->path;
-        size_t rootlen = strlen(m->root);
+        size_t rootlen = m->root ? strlen(m->root) : 0;
         if (rootlen && !_strnicmp(rel, m->root, rootlen) && rel[rootlen] == '\\')
             rel += rootlen + 1;
         char *row = dupprintf("%s\t%s\t%s\t%s\t%s", it->name, state,
@@ -5524,21 +5600,22 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
       case 0:                          /* the folder to scan */
         if (event == EVENT_REFRESH) {
             migf_refreshing = 1;
-            dlg_editbox_set(ctrl, dlg, m->root);
+            dlg_editbox_set(ctrl, dlg, m->root ? m->root : "");
             migf_refreshing = 0;
         } else if (event == EVENT_VALCHANGE && !migf_refreshing) {
-            char *s = dlg_editbox_get(ctrl, dlg);
-            snprintf(m->root, sizeof(m->root), "%s", s);
-            sfree(s);
+            migf_set(&m->root, dlg_editbox_get(ctrl, dlg));   /* whole */
         }
         break;
 
       case 1:                          /* Browse... */
         if (event == EVENT_ACTION) {
-            char dir[MAX_PATH * 2];
-            if (OpenDirName(dlg->hwnd, dir) && dir[0]) {
+            /* the folder picked whole: the picker wrote up to 4096 bytes
+             * into a buffer of 520 */
+            char *dir = kitty_pick_dir_dup(dlg->hwnd, NULL, NULL);
+            if (dir && !dir[0]) { sfree(dir); dir = NULL; }
+            if (dir) {
                 char *suf;
-                snprintf(m->root, sizeof(m->root), "%s", dir);
+                migf_set(&m->root, dir);
                 if (m->folderbox)
                     dlg_refresh(m->folderbox, dlg);
                 /* The suffix that store was kept with, when it records one. */
@@ -5555,7 +5632,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (event == EVENT_ACTION) {
             char *folder;
             strbuf *line;
-            if (!m->root[0]) { migf_say(m, dlg, KT_MIGF_NO_FOLDER); break; }
+            if (!m->root || !m->root[0]) { migf_say(m, dlg, KT_MIGF_NO_FOLDER); break; }
             if (!existdirectory(m->root)) { migf_say(m, dlg, KT_MIGF_NOT_A_DIR); break; }
             folder = migf_target_folder(m, dlg);
             kitty_folder_scan_free(m->found);
@@ -5619,17 +5696,15 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     dlg_listbox_add(ctrl, dlg, FolderList[i]);
             /* What the user typed or picked survives a refresh; only a box
              * that never had a value shows the default. */
-            if (!m->folder[0])
-                snprintf(m->folder, sizeof(m->folder), "%s", KT_MIGF_DEFAULT_FOLDER);
+            if (!m->folder || !m->folder[0])
+                migf_set(&m->folder, dupstr(KT_MIGF_DEFAULT_FOLDER));
             migf_refreshing = 1;
             dlg_editbox_set(ctrl, dlg, m->folder);
             migf_refreshing = 0;
             dlg_update_done(ctrl, dlg);
         } else if ((event == EVENT_VALCHANGE || event == EVENT_SELCHANGE) &&
                    !migf_refreshing) {
-            char *s = dlg_editbox_get(ctrl, dlg);
-            snprintf(m->folder, sizeof(m->folder), "%s", s);
-            sfree(s);
+            migf_set(&m->folder, dlg_editbox_get(ctrl, dlg));   /* whole */
         }
         break;
 
@@ -5807,6 +5882,10 @@ static void scb_panel_folder_import(struct controlbox *b)
     m = (struct migf_data *)ctrl_alloc(b, sizeof(*m));
     memset(m, 0, sizeof(*m));
     kitty_migf_active = m;
+    if (kitty_cfg_box_closing_hook != migf_box_closing) {
+        migf_prev_closing_hook = kitty_cfg_box_closing_hook;
+        kitty_cfg_box_closing_hook = migf_box_closing;
+    }
 
     ctrl_settitle(b, path, KT_MIGF_TITLE);
 

@@ -19,6 +19,7 @@
 #include "kitty.h"
 #include "kitty_registry.h"
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "kitty_params.h"    /* kitty_read_ini_dup */
 
 
 #ifndef snewn
@@ -34,14 +35,42 @@
 char * ltoa (long int __val, char *__s, int __radix) ;
 char * itoa (int __val, char *__s, int __radix)  ;
 const char *win_strerror(int error) ;
-char seedpath[2 * MAX_PATH + 10] = "\0";
-char sesspath[2 * MAX_PATH] = "\0";
-char initialsesspath[2 * MAX_PATH] = "\0";
-char sshkpath[2 * MAX_PATH] = "\0";
-char jumplistpath[2 * MAX_PATH] = "\0";
-char oldpath[2 * MAX_PATH] = "\0";
+/* The folder store's paths, each held whole (NULL until loadPath): a value
+ * of putty.conf or kitty.ini, %VAR% expanded, used to be joined into 520
+ * bytes with strcpy/strcat. */
+char *seedpath = NULL;
+char *sesspath = NULL;
+char *initialsesspath = NULL;
+char *sshkpath = NULL;
+char *jumplistpath = NULL;
+char *oldpath = NULL;
 char sessionsuffix[16] = "\0";
 char keysuffix[16] = "\0";
+
+/* *slot takes over v (the old value freed) */
+static void kstore_set(char **slot, char *v)
+{
+	sfree(*slot);
+	*slot = v;
+}
+
+/* The current directory whole (sfree it); "" when it cannot be read. */
+static char *kstore_cwd_dup(void)
+{
+	DWORD need = GetCurrentDirectoryA(0, NULL), n;
+	int tries;
+	for (tries = 0; need && tries < 4; tries++) {
+		char *buf = snewn(need, char);
+		n = GetCurrentDirectoryA(need, buf);
+		if (n == 0)
+			break;
+		if (n < need)
+			return buf;
+		sfree(buf);
+		need = n;
+	}
+	return dupstr("");
+}
 
 /* KiTTY (hknet/KiTTY#56): what putty.conf actually held, kept raw for the
  * one-time move into kitty.ini (kitty_store_ini_takeover below), plus the
@@ -51,16 +80,22 @@ char keysuffix[16] = "\0";
 #define KSTORE_PC_SSHHOSTKEYS   4
 #define KSTORE_PC_KEYSUFFIX     8
 static int kstore_pc_found = 0;
-static char kstore_pc_sessions[2 * MAX_PATH] = "";
-static char kstore_pc_sshhostkeys[2 * MAX_PATH] = "";
+static char *kstore_pc_sessions = NULL;          /* each whole, NULL = none */
+static char *kstore_pc_sshhostkeys = NULL;
 static char kstore_pc_sessionsuffix[64] = "";
 static char kstore_pc_keysuffix[64] = "";
-static char kstore_basepath[2 * MAX_PATH] = "";
-static char kstore_default_sesspath[2 * MAX_PATH] = "";
+static char *kstore_basepath = NULL;
+static char *kstore_default_sesspath = NULL;
 static void kstore_pc_keep(char *dst, size_t len, const char *raw, int bit)
 {
 	snprintf(dst, len, "%s", raw);
 	str_rtrim(dst, " \n\r\t");
+	kstore_pc_found |= bit;
+}
+static void kstore_pc_keep_dup(char **dst, const char *raw, int bit)
+{
+	kstore_set(dst, dupstr(raw));
+	str_rtrim(*dst, " \n\r\t");
 	kstore_pc_found |= bit;
 }
 
@@ -114,9 +149,14 @@ DWORD errorShow(const char* pcErrText, const char* pcErrParam) {
 	strcat(pcHlaska, pcErrText);
 	strcat(pcHlaska, "\n");
 	strcat(pcHlaska, KT_STORE_ERR_DIRECTORY);
-	char currpath[2*MAX_PATH];
-	GetCurrentDirectory( (MAX_PATH*2), currpath);
-	strcat(pcHlaska, currpath);
+	{
+		/* the folder whole; the message grows to hold it */
+		char *currpath = kstore_cwd_dup();
+		pcHlaska = sresize(pcHlaska, strlen(pcHlaska) + strlen(currpath) +
+		                   (pcErrParam?strlen(pcErrParam):0) + 256, char);
+		strcat(pcHlaska, currpath);
+		sfree(currpath);
+	}
 	strcat(pcHlaska, "\n");
 
 	if (pcErrParam) {
@@ -192,19 +232,21 @@ int createPath(char* dir) {
 }
 
 /*
- * JK: join path pcMain.pcSuf solving extra cases to pcDest
- * expecting - pcMain as path from WinAPI ::GetCurrentDirectory()/GetModuleFileName()
- *           - pcSuf as user input path from config (at least MAX_PATH long)
+ * JK: join path pcMain.pcSuf solving extra cases, the result whole (sfree
+ * it); pcMain as path from WinAPI ::GetCurrentDirectory()/GetModuleFileName(),
+ * pcSuf as user input path from config. The expansion is whole too: one
+ * longer than MAX_PATH was taken as done with the buffer never filled.
 */
-static char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
+static char* joinPath(const char* pcMain, const char* pcSuf) {
 
-	char* pcBuf = snewn(MAX_PATH+1, char);
+	char* pcBuf = kitty_expand_env_strict_dup(pcSuf);
+	char* pcDest;
 
 	/* at first ExpandEnvironmentStrings */
-	if (0 == ExpandEnvironmentStrings(pcSuf, pcBuf, MAX_PATH)) {
+	if (pcBuf == NULL) {
 		/* JK: failure -> revert back - but it ussualy won't work, so report error to user! */
 		errorShow(KT_STORE_EXPAND_ENV_FAILED, pcSuf);
-		strncpy(pcBuf, pcSuf, strlen(pcSuf));
+		pcBuf = dupstr(pcSuf);
 	}
 	/* now ExpandEnvironmentStringsForUser - only on win2000Pro and above */
 	/* It's much more tricky than I've expected, so it's ToDo */
@@ -235,19 +277,16 @@ static char* joinPath(char* pcDest, char* pcMain, char* pcSuf) {
 
 	if ((*pcBuf == '/') || (*pcBuf == '\\')) {
 		/* everything ok */
-		strcpy(pcDest, pcMain);
-		strcat(pcDest, pcBuf);
+		pcDest = dupcat(pcMain, pcBuf);
 	}
 	else {
-		if (*(pcBuf+1) == ':') {
+		if (*pcBuf && *(pcBuf+1) == ':') {
 			/* absolute path */
-			strcpy(pcDest, pcBuf);
+			pcDest = dupstr(pcBuf);
 		}
 		else {
 			/* some weird relative path - add '\' */
-			strcpy(pcDest, pcMain);
-			strcat(pcDest, "\\");
-			strcat(pcDest, pcBuf);
+			pcDest = dupcat(pcMain, "\\", pcBuf);
 		}
 	}
 	sfree(pcBuf);
@@ -261,7 +300,7 @@ extern char *GetKittyIniFile(void);
  * as of 1.5 GetModuleFileName solves our currentDirectory problem
 */
 int loadPath(void) {
-	if( *sesspath != '\0') { return 0 ; }
+	if( sesspath && *sesspath != '\0') { return 0 ; }
 
 	char *fileCont = NULL;
 	DWORD fileSize;
@@ -269,47 +308,35 @@ int loadPath(void) {
 	char *p = NULL;
 	char *p2 = NULL;
 	HANDLE hFile ;
+	const char *base;
 
-	char* puttypath = snewn( (MAX_PATH*2), char);
-	
+	/* every path whole: the program's folder could be cut to another one in
+	 * a code page whose bytes outnumber its characters */
+	char* puttypath = kitty_module_dir_dup(NULL);
+
 	/* JK:  save path/curdir */
-	GetCurrentDirectory( (MAX_PATH*2), oldpath);
+	kstore_set(&oldpath, kstore_cwd_dup());
 
 	/* KiTTY: putty.conf is read beside the exe only. Classic KiTTY looked in
 	 * the working directory first, so a shortcut with another "Start in", or
 	 * a script run from another folder, fed it whatever putty.conf sat there:
 	 * its paths were copied into kitty.ini once on a copy not yet migrated,
 	 * and acted on at every start where kitty.ini cannot be written. */
-	if (GetModuleFileName(NULL, puttypath, (MAX_PATH*2)) != 0)
-	{
-		p = strrchr(puttypath, '\\');
-		if (p)
-		{
-			*p = '\0';
-		}
+	if (puttypath != NULL)
 		SetCurrentDirectory(puttypath);
-	}
-	else GetCurrentDirectory( (MAX_PATH*2), puttypath);
+	else puttypath = kstore_cwd_dup();
 
 	/* JK: set default values - if there is a config file, it will be overwitten */
-	if( GetConfigDirectory() != NULL ) { // another config directory is set
-		snprintf(sesspath, sizeof(sesspath), "%s\\Sessions", GetConfigDirectory());
-		snprintf(initialsesspath, sizeof(initialsesspath), "%s", sesspath);
-		snprintf(sshkpath, sizeof(sshkpath), "%s\\SshHostKeys", GetConfigDirectory());
-		snprintf(jumplistpath, sizeof(jumplistpath), "%s\\Jumplist", GetConfigDirectory());
-		snprintf(seedpath, sizeof(seedpath), "%s\\putty.rnd", GetConfigDirectory());
-		}
-	else {
-		snprintf(sesspath, sizeof(sesspath), "%s\\Sessions", puttypath);
-		snprintf(initialsesspath, sizeof(initialsesspath), "%s", sesspath);
-		snprintf(sshkpath, sizeof(sshkpath), "%s\\SshHostKeys", puttypath);
-		snprintf(jumplistpath, sizeof(jumplistpath), "%s\\Jumplist", puttypath);
-		snprintf(seedpath, sizeof(seedpath), "%s\\putty.rnd", puttypath);
-		}
+	base = GetConfigDirectory() != NULL ? GetConfigDirectory() : puttypath ;   // another config directory is set
+	kstore_set(&sesspath, dupprintf("%s\\Sessions", base));
+	kstore_set(&initialsesspath, dupstr(sesspath));
+	kstore_set(&sshkpath, dupprintf("%s\\SshHostKeys", base));
+	kstore_set(&jumplistpath, dupprintf("%s\\Jumplist", base));
+	kstore_set(&seedpath, dupprintf("%s\\putty.rnd", base));
 	/* KiTTY: kept for kitty_store_ini_takeover(), which resolves kitty.ini's
 	 * paths the way putty.conf's are resolved below. */
-	snprintf(kstore_basepath, sizeof(kstore_basepath), "%s", puttypath);
-	snprintf(kstore_default_sesspath, sizeof(kstore_default_sesspath), "%s", sesspath);
+	kstore_set(&kstore_basepath, dupstr(puttypath));
+	kstore_set(&kstore_default_sesspath, dupstr(sesspath));
 	kstore_pc_found = 0;
 
 	/* Once kitty_store_ini_takeover() has moved putty.conf's keys into
@@ -364,36 +391,28 @@ EMERGENCY_BREAK
 				if (!strcmp(p, "Sessions")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					kstore_pc_keep(kstore_pc_sessions, sizeof(kstore_pc_sessions), p2, KSTORE_PC_SESSIONS);
-					joinPath(sesspath, puttypath, p2);
-					p2 = sesspath+strlen(sesspath)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					kstore_pc_keep_dup(&kstore_pc_sessions, p2, KSTORE_PC_SESSIONS);
+					kstore_set(&sesspath, joinPath(puttypath, p2));
+					str_rtrim(sesspath, " \n\r\t");
 				}
 				else if (!strcmp(p, "SshHostKeys")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					kstore_pc_keep(kstore_pc_sshhostkeys, sizeof(kstore_pc_sshhostkeys), p2, KSTORE_PC_SSHHOSTKEYS);
-					joinPath(sshkpath, puttypath, p2);
-					p2 = sshkpath+strlen(sshkpath)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					kstore_pc_keep_dup(&kstore_pc_sshhostkeys, p2, KSTORE_PC_SSHHOSTKEYS);
+					kstore_set(&sshkpath, joinPath(puttypath, p2));
+					str_rtrim(sshkpath, " \n\r\t");
 				}
 				else if (!strcmp(p, "Jumplist")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					joinPath(jumplistpath, puttypath, p2);
-					p2 = jumplistpath+strlen(jumplistpath)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					kstore_set(&jumplistpath, joinPath(puttypath, p2));
+					str_rtrim(jumplistpath, " \n\r\t");
 				}
 				else if (!strcmp(p, "seedfile")) {
 					p = strchr(p2, '\n');
 					*p = '\0';
-					joinPath(seedpath, puttypath, p2);			
-					p2 = seedpath+strlen(seedpath)-1;
-					while ((*p2 == ' ')||(*p2 == '\n')||(*p2 == '\r')||(*p2 == '\t')) --p2;
-					*(p2+1) = '\0';
+					kstore_set(&seedpath, joinPath(puttypath, p2));
+					str_rtrim(seedpath, " \n\r\t");
 				}
 				else if (!strcmp(p, "sessionsuffix")) {
 					p = strchr(p2, '\n');
@@ -427,6 +446,7 @@ EMERGENCY_BREAK
 char * SetSessPath( const char * dec ) {
 	int i ;
 	char *pst ;
+	if( !sesspath || !initialsesspath ) return "" ;
 	if( !strcmp(dec,"..") ) {
 		if( strcmp(sesspath, initialsesspath) ) {
 			i=strlen(sesspath)-1 ;
@@ -434,8 +454,7 @@ char * SetSessPath( const char * dec ) {
 			sesspath[i]='\0';
 		}
 	} else {
-		strcat( sesspath, "\\" ) ;
-		strcat( sesspath, dec ) ;
+		kstore_set( &sesspath, dupcat( sesspath, "\\", dec ) ) ;
 	}
 	CleanFolderName( sesspath ) ;
 	pst = sesspath+strlen(initialsesspath ) ;
@@ -474,21 +493,29 @@ void kitty_set_session_suffix(const char *suffix);
 void kitty_set_hostkey_dir(const char *dir);
 void kitty_set_hostkey_suffix(const char *suffix);
 
+/* A kitty.ini [KiTTY] value whole (sfree it); NULL when the key is absent
+ * or empty. */
+static char *kstore_ini_dup( const char *ini, const char *key ) {
+	char *v = ( ini && ini[0] ) ? kitty_read_ini_dup( ini, INIT_SECTION, key ) : NULL ;
+	if( v && !v[0] ) { sfree( v ) ; v = NULL ; }
+	return v ;
+}
+
 int kitty_store_ini_takeover(void) {
 	const char *ini = GetKittyIniFile() ;
-	char v[2 * MAX_PATH], path[2 * MAX_PATH] ;
+	char v[64], *pv ;
 	int can_write = ini && ini[0] && !GetNoKittyFileFlag() && !GetReadOnlyFlag() ;
 	int migrated = 0, moved_now = 0, ini_only ;
 	const char *suffix = "", *hkdir = "", *keysuf = "" ;
-	static char suffix_buf[64], hkdir_buf[2 * MAX_PATH], keysuf_buf[64] ;
+	static char suffix_buf[64], keysuf_buf[64], *hkdir_buf = NULL ;
 
 	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, v, sizeof(v) ) && !stricmp( v, "yes" ) )
 		migrated = 1 ;
 	if( !migrated && can_write && kstore_pc_found ) {
-		static const struct { int bit; const char *key; const char *val; } keys[] = {
-			{ KSTORE_PC_SESSIONS, KI_SESSIONS, kstore_pc_sessions },
+		const struct { int bit; const char *key; const char *val; } keys[] = {
+			{ KSTORE_PC_SESSIONS, KI_SESSIONS, kstore_pc_sessions ? kstore_pc_sessions : "" },
 			{ KSTORE_PC_SESSIONSUFFIX, KI_FILEEXTENSION, kstore_pc_sessionsuffix },
-			{ KSTORE_PC_SSHHOSTKEYS, KI_SSHHOSTKEYS, kstore_pc_sshhostkeys },
+			{ KSTORE_PC_SSHHOSTKEYS, KI_SSHHOSTKEYS, kstore_pc_sshhostkeys ? kstore_pc_sshhostkeys : "" },
 			{ KSTORE_PC_KEYSUFFIX, KI_HOSTKEYEXTENSION, kstore_pc_keysuffix },
 		} ;
 		int i, all = 1 ;
@@ -498,10 +525,12 @@ int kitty_store_ini_takeover(void) {
 		 * done regardless and a key that failed to write was then neither
 		 * in kitty.ini nor read from putty.conf any more. */
 		for( i = 0 ; i < (int)(sizeof(keys)/sizeof(keys[0])) ; i++ )
-			if( (kstore_pc_found & keys[i].bit) &&
-			    ( !readINI( ini, INIT_SECTION, keys[i].key, v, sizeof(v) ) || !v[0] ) &&
-			    !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
-				all = 0 ;
+			if( (kstore_pc_found & keys[i].bit) ) {
+				char *have = kstore_ini_dup( ini, keys[i].key ) ;
+				if( !have && !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
+					all = 0 ;
+				sfree( have ) ;
+			}
 		if( all && writeINI( ini, INIT_SECTION, KI_PUTTYCONFMIGRATED, "yes" ) )
 			migrated = moved_now = 1 ;   /* the caller reports it (kitty_startup.c) */
 	}
@@ -513,13 +542,16 @@ int kitty_store_ini_takeover(void) {
 		} ;
 		int i ;
 		for( i = 0 ; i < 2 ; i++ )
-			if( readINI( ini, INIT_SECTION, renames[i][0], v, sizeof(v) ) ) {
+			if( ( pv = kitty_read_ini_dup( ini, INIT_SECTION, renames[i][0] ) ) != NULL ) {
 				char cur[64] ;
-				str_rtrim( v, " \n\r\t" ) ;
+				str_rtrim( pv, " \n\r\t" ) ;
 				/* the old name goes only once its value is under the new one */
-				if( v[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) &&
-				    !writeINI( ini, INIT_SECTION, renames[i][1], v ) )
+				if( pv[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) &&
+				    !writeINI( ini, INIT_SECTION, renames[i][1], pv ) ) {
+					sfree( pv ) ;
 					continue ;
+				}
+				sfree( pv ) ;
 				delINI( ini, INIT_SECTION, renames[i][0] ) ;
 			}
 	}
@@ -528,19 +560,22 @@ int kitty_store_ini_takeover(void) {
 	 * silent. */
 	ini_only = migrated || !kstore_pc_found ;
 
-	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SESSIONS, v, sizeof(v) ) && v[0] ) {
-		joinPath( path, kstore_basepath, v ) ;
+	if( ( pv = kstore_ini_dup( ini, KI_SESSIONS ) ) != NULL ) {
+		/* the folder whole: it was cut to 520 bytes, and a long expansion
+		 * left joinPath's buffer unfilled */
+		char *path = joinPath( kstore_basepath ? kstore_basepath : "", pv ) ;
+		sfree( pv ) ;
 		str_rtrim( path, " \n\r\t\\" ) ;
 		/* "C:\" trimmed is "C:", which means the current folder of drive C:
 		 * - the root keeps its backslash. */
-		if( strlen( path ) == 2 && path[1] == ':' ) strcat( path, "\\" ) ;
-		snprintf( sesspath, sizeof(sesspath), "%s", path ) ;
-		snprintf( initialsesspath, sizeof(initialsesspath), "%s", sesspath ) ;
-	} else if( ini_only && (kstore_pc_found & KSTORE_PC_SESSIONS) && kstore_default_sesspath[0] ) {
-		snprintf( sesspath, sizeof(sesspath), "%s", kstore_default_sesspath ) ;
-		snprintf( initialsesspath, sizeof(initialsesspath), "%s", sesspath ) ;
+		if( strlen( path ) == 2 && path[1] == ':' ) { char *r = dupcat( path, "\\" ) ; sfree( path ) ; path = r ; }
+		kstore_set( &sesspath, path ) ;
+		kstore_set( &initialsesspath, dupstr( sesspath ) ) ;
+	} else if( ini_only && (kstore_pc_found & KSTORE_PC_SESSIONS) && kstore_default_sesspath && kstore_default_sesspath[0] ) {
+		kstore_set( &sesspath, dupstr( kstore_default_sesspath ) ) ;
+		kstore_set( &initialsesspath, dupstr( sesspath ) ) ;
 	}
-	if( !GetReadOnlyFlag() && sesspath[0] && !existdirectory( sesspath ) )
+	if( !GetReadOnlyFlag() && sesspath && sesspath[0] && !existdirectory( sesspath ) )
 		MakeDir( sesspath ) ;
 
 	/* the endings read as old KiTTY read them: a dot in front if missing.
@@ -552,11 +587,13 @@ int kitty_store_ini_takeover(void) {
 	} else if( !ini_only )
 		suffix = kstore_pc_sessionsuffix ;
 
-	if( ini && ini[0] && readINI( ini, INIT_SECTION, KI_SSHHOSTKEYS, v, sizeof(v) ) && v[0] ) {
-		joinPath( hkdir_buf, kstore_basepath, v ) ;
+	if( ( pv = kstore_ini_dup( ini, KI_SSHHOSTKEYS ) ) != NULL ) {
+		/* the host-key folder - the trust store - whole */
+		kstore_set( &hkdir_buf, joinPath( kstore_basepath ? kstore_basepath : "", pv ) ) ;
+		sfree( pv ) ;
 		str_rtrim( hkdir_buf, " \n\r\t" ) ;
 		hkdir = hkdir_buf ;
-	} else if( !ini_only && (kstore_pc_found & KSTORE_PC_SSHHOSTKEYS) ) {
+	} else if( !ini_only && (kstore_pc_found & KSTORE_PC_SSHHOSTKEYS) && sshkpath ) {
 		hkdir = sshkpath ;   /* putty.conf's, resolved by loadPath() */
 	}
 
@@ -617,43 +654,48 @@ void kitty_store_ending_mark( const char *key, const char *now ) {
 	else delINI( ini, INIT_SECTION, key ) ;
 }
 
-int kitty_store_hostkey_rename( int dry_run, char *clashes, size_t clsize ) {
+int kitty_store_hostkey_rename( int dry_run, strbuf *clashes ) {
 	const char *ini = GetKittyIniFile() ;
 	const char *now = kitty_hostkey_suffix() ;
-	char was[64] = "", pat[2 * MAX_PATH + 4], base[MAX_PATH] ;
-	char from[3 * MAX_PATH + 8], to[3 * MAX_PATH + 72] ;
+	char was[64] = "", *pat ;
 	char *dir ;
 	int done = 0 ;
 	WIN32_FIND_DATAA fd ;
 	HANDLE h ;
 
-	if( clashes && clsize ) clashes[0] = '\0' ;
 	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return 0 ;
 	readINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, was, sizeof(was) ) ;
 	str_rtrim( was, " \n\r\t" ) ;
 	if( !stricmp( was, now ) ) return 0 ;
 	if( !( dir = portable_subdir_path( "SshHostKeys" ) ) ) return 0 ;
-	snprintf( pat, sizeof(pat), "%s\\*", dir ) ;
+	/* every name whole, and every clash listed: the list was cut where it
+	 * filled its buffer */
+	pat = dupprintf( "%s\\*", dir ) ;
 	h = FindFirstFileA( pat, &fd ) ;
+	sfree( pat ) ;
 	if( h != INVALID_HANDLE_VALUE ) {
 		do {
+			char *base, *from, *to ;
 			if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
 			if( now[0] && kstore_ends_with( fd.cFileName, now ) ) continue ;   /* already right */
-			snprintf( base, sizeof(base), "%s", fd.cFileName ) ;
+			base = dupstr( fd.cFileName ) ;
 			if( was[0] && kstore_ends_with( base, was ) )
 				base[strlen( base ) - strlen( was )] = '\0' ;
-			snprintf( from, sizeof(from), "%s\\%s", dir, fd.cFileName ) ;
-			snprintf( to, sizeof(to), "%s\\%s%s", dir, base, now ) ;
+			from = dupprintf( "%s\\%s", dir, fd.cFileName ) ;
+			to = dupprintf( "%s\\%s%s", dir, base, now ) ;
+			sfree( base ) ;
 			/* the new name taken already: that file wins, this one stays */
-			if( !stricmp( from, to ) ) continue ;
-			if( GetFileAttributesA( to ) == INVALID_FILE_ATTRIBUTES &&
-			    ( dry_run || MoveFileA( from, to ) ) )
-				done++ ;
-			else if( clashes && clsize ) {
-				size_t used = strlen( clashes ) ;
-				if( used + strlen( fd.cFileName ) + 2 < clsize )
-					snprintf( clashes + used, clsize - used, "%s%s", used ? "\n" : "", fd.cFileName ) ;
+			if( stricmp( from, to ) ) {
+				if( GetFileAttributesA( to ) == INVALID_FILE_ATTRIBUTES &&
+				    ( dry_run || MoveFileA( from, to ) ) )
+					done++ ;
+				else if( clashes ) {
+					if( clashes->len ) put_byte( clashes, '\n' ) ;
+					put_dataz( clashes, fd.cFileName ) ;
+				}
 			}
+			sfree( from ) ;
+			sfree( to ) ;
 		} while( FindNextFileA( h, &fd ) ) ;
 		FindClose( h ) ;
 	}

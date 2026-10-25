@@ -14,7 +14,8 @@ struct ksm_result {
 
 /* No-UI cores, shared by the config-box buttons and the -portablecopy /
  * -takefolder command-line switches. Both fill *r and put a summary for the
- * user into msg; the return value is the failure count.
+ * user into *msg, held whole (sfree it; NULL only for a refusal under
+ * readonly=yes); the return value is the failure count.
  *
  *   kitty_portable_copy_core   pw = the copy's master password (dpapi == 0),
  *                              or NULL with dpapi == 1 for "this PC only".
@@ -22,9 +23,9 @@ struct ksm_result {
  *                              it has one, else NULL; overwrite = 1 replaces
  *                              entries of the same name, 0 keeps them. */
 int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
-                             struct ksm_result *r, char *msg, size_t msglen);
+                             struct ksm_result *r, char **msg);
 int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
-                           struct ksm_result *r, char *msg, size_t msglen);
+                           struct ksm_result *r, char **msg);
 
 /* Does the folder store need a master password to be taken in? */
 int kitty_take_folder_needs_password(const char *dir);

@@ -121,18 +121,32 @@ void DelDoubleBackSlash( char * st ) {
 	}
 }
 
-// Add a string to a list of strings
-int StringList_Add( char **list, const char * name ) {
-	int i = 0 ;
+// Add a string to a list of strings. The list (NULL-terminated, malloc'd;
+// *plist NULL is an empty one) grows by the entry: a fixed array of 1024
+// pointers was written past with more folders than that.
+int StringList_Add( char ***plist, const char * name ) {
+	char **list = *plist, **grown ;
+	size_t i = 0 ;
 	if( name == NULL ) return 1 ;
-	while( list[i] != NULL ) {
+	while( list != NULL && list[i] != NULL ) {
 		if( !stricmp( name, list[i] ) ) return 1 ;
 		i++ ;
 	}
+	if( ( grown = (char**) realloc( list, ( i + 2 ) * sizeof(char*) ) ) == NULL ) return 0 ;
+	*plist = list = grown ;
+	list[i] = NULL ;
 	if( ( list[i] = (char*) malloc( strlen( name ) + 1 ) ) == NULL ) return 0 ;
 	strcpy( list[i], name ) ;
 	list[i+1] = NULL ;
 	return 1 ;
+}
+
+// Free a list StringList_Add built (NULL: nothing)
+void StringList_Free( char **list ) {
+	size_t i ;
+	if( list == NULL ) return ;
+	for( i = 0 ; list[i] != NULL ; i++ ) free( list[i] ) ;
+	free( list ) ;
 }
 
 // Remove a string from a list of strings

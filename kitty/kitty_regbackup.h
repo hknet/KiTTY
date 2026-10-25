@@ -37,12 +37,15 @@ void DelRegistryKey( void ) ;
  * -1 backups switched off (savbackupcount / portablebackupcount = 0),
  * -2 no backup file in this mode (no kitty.ini allowed). */
 int kitty_sav_backup_report( char * path, size_t n ) ;
+int kitty_sav_backup_report_dup( char ** path ) ;   /* the same, *path whole (sfree it) */
 
 /* The folder the .sav backups go to (/savesessions writes beside them). */
 void kitty_sav_dir( char * out, size_t n ) ;
+char *kitty_sav_dir_dup( void ) ;   /* the same, whole (sfree it) */
 
 /* The backup a restore takes: the newest dated one, else the fixed-name or
  * legacy file. 1 found (out = its path), 0 none. */
 int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) ;
+char *sav_find_for_restore_dup( const char *savfile ) ;   /* the same, whole; NULL = none */
 
 #endif /* KITTY_REGBACKUP_H */

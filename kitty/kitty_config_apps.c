@@ -36,6 +36,7 @@
 #include <windows.h>
 #include "kitty_config_int.h"
 #include "kitty_text.h"          /* KT_APPS_* */
+#include "kitty_oldwin.h"        /* kitty_module_path_dup */
 #include "kitty_renameguard.h"   /* kitty_signature_reading, kitty_file_has_cert_table, kitty_guard_eventlog_text */
 #include "kitty_selfcheck.h"     /* kitty_selfcheck_file */
 #include "kitty_authenticode.h"  /* kitty_file_version */
@@ -57,7 +58,7 @@ enum { APPS_V_PENDING = 0, APPS_V_AUTH, APPS_V_WARN, APPS_V_UNVERIFIED };
 
 struct apps_row {
     char name[64];
-    char path[MAX_PATH];
+    char *path;                  /* whole: a cut one could name a planted file */
     int has_version;
     unsigned long vms, vls;
     int sig;                     /* KG_SIG_* or APPS_PENDING */
@@ -72,8 +73,8 @@ struct apps_row {
 struct apps_data {
     dlgparam *dlg;
     dlgcontrol *listbox, *detail, *banner, *verify, *copy, *note;
-    char dir[MAX_PATH];
-    char own[MAX_PATH];
+    char *dir;                   /* both whole; NULL until a scan */
+    char *own;
     int own_sig_carried;         /* the running file has a certificate table */
     int own_stamp_carried;       /* the running file's stamp verifies with this build's key */
     int stamp_key;               /* this build carries a key at all */
@@ -108,7 +109,10 @@ static int apps_is_known(const char *name)
 static void apps_free_rows(struct apps_data *a)
 {
     int i;
+    for (i = 0; i < a->nrows; i++) sfree(a->rows[i].path);
     sfree(a->rows); a->rows = NULL; a->nrows = 0;
+    sfree(a->dir); a->dir = NULL;
+    sfree(a->own); a->own = NULL;
     for (i = 0; i < a->nstrangers; i++) sfree(a->strangers[i]);
     sfree(a->strangers); a->strangers = NULL; a->nstrangers = 0;
 }
@@ -119,16 +123,17 @@ static void apps_free_rows(struct apps_data *a)
 static void apps_scan(struct apps_data *a)
 {
     size_t i;
-    DWORD n;
-    char pattern[MAX_PATH + 8];
+    char *pattern;
     WIN32_FIND_DATAA fd;
     HANDLE hf;
     char reason[32];
 
     apps_free_rows(a);
-    n = GetModuleFileNameA(NULL, a->own, sizeof(a->own));
-    if (n == 0 || n >= sizeof(a->own)) { a->own[0] = '\0'; a->dir[0] = '\0'; return; }
-    strcpy(a->dir, a->own);
+    /* the program's own path and folder whole */
+    if ((a->own = kitty_module_path_dup(NULL)) == NULL) {
+        a->own = dupstr(""); a->dir = dupstr(""); return;
+    }
+    a->dir = dupstr(a->own);
     { char *p = strrchr(a->dir, '\\'); if (p) *p = '\0'; }
 
     /* what THIS file carries */
@@ -144,15 +149,19 @@ static void apps_scan(struct apps_data *a)
     for (i = 0; i < lenof(apps_known); i++) {
         struct apps_row *r = &a->rows[a->nrows];
         memset(r, 0, sizeof(*r));
-        snprintf(r->path, sizeof(r->path), "%s\\%s", a->dir, apps_known[i]);
-        if (GetFileAttributesA(r->path) == INVALID_FILE_ATTRIBUTES) continue;
+        r->path = dupprintf("%s\\%s", a->dir, apps_known[i]);
+        if (GetFileAttributesA(r->path) == INVALID_FILE_ATTRIBUTES) {
+            sfree(r->path); r->path = NULL;
+            continue;
+        }
         snprintf(r->name, sizeof(r->name), "%s", apps_known[i]);
         r->sig = APPS_PENDING; r->stamp = APPS_PENDING; r->verdict = APPS_V_PENDING;
         a->nrows++;
     }
 
-    snprintf(pattern, sizeof(pattern), "%s\\*.exe", a->dir);
+    pattern = dupprintf("%s\\*.exe", a->dir);
     hf = FindFirstFileA(pattern, &fd);
+    sfree(pattern);
     if (hf != INVALID_HANDLE_VALUE) {
         do {
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;

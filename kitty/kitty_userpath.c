@@ -12,20 +12,18 @@
 #include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
 #include "putty.h"
+#include "kitty_oldwin.h"   /* the program's folder read whole */
 #include "kitty_userpath.h"
 
 bool kitty_userpath_contains_exe_dir(void);
 bool kitty_userpath_set_exe_dir(bool on, char **err);
 
-static void exe_dir(char *buf, size_t size)
+/* The program's folder whole (sfree it); "" when it cannot be read - a cut
+ * one was another folder, and that went into the user's PATH. */
+static char *exe_dir(void)
 {
-    char *slash;
-    buf[0] = '\0';
-    if (!GetModuleFileNameA(NULL, buf, (DWORD)size))
-        return;
-    slash = strrchr(buf, '\\');
-    if (slash && slash != buf)
-        *slash = '\0';
+    char *d = kitty_module_dir_dup(NULL);
+    return d ? d : dupstr("");
 }
 
 /* Trailing backslashes off, for the comparison. */
@@ -70,13 +68,12 @@ static bool entry_is_dir(const char *entry, size_t len, const char *dir)
 
 bool kitty_userpath_contains_exe_dir(void)
 {
-    char dir[MAX_PATH];
+    char *dir = exe_dir();
     DWORD type;
     char *path, *p;
     bool found = false;
-    exe_dir(dir, sizeof(dir));
     trim_dir(dir);
-    if (!dir[0]) return false;
+    if (!dir[0]) { sfree(dir); return false; }
     path = read_user_path(&type);
     for (p = path; *p; ) {
         char *semi = strchr(p, ';');
@@ -85,12 +82,13 @@ bool kitty_userpath_contains_exe_dir(void)
         p += len + (semi ? 1 : 0);
     }
     sfree(path);
+    sfree(dir);
     return found;
 }
 
 bool kitty_userpath_set_exe_dir(bool on, char **err)
 {
-    char dir[MAX_PATH];
+    char *dir;
     DWORD type;
     char *path, *p;
     strbuf *out;
@@ -98,9 +96,9 @@ bool kitty_userpath_set_exe_dir(bool on, char **err)
     LONG rc;
 
     *err = NULL;
-    exe_dir(dir, sizeof(dir));
+    dir = exe_dir();
     trim_dir(dir);
-    if (!dir[0]) { *err = dupstr("the program's own folder could not be determined"); return false; }
+    if (!dir[0]) { sfree(dir); *err = dupstr("the program's own folder could not be determined"); return false; }
     path = read_user_path(&type);
     out = strbuf_new();
     for (p = path; *p; ) {
@@ -117,6 +115,7 @@ bool kitty_userpath_set_exe_dir(bool on, char **err)
         put_dataz(out, dir);
     }
     sfree(path);
+    sfree(dir);
     if (type != REG_SZ && type != REG_EXPAND_SZ)
         type = REG_EXPAND_SZ;
     rc = RegCreateKeyExA(HKEY_CURRENT_USER, "Environment", 0, NULL, 0,

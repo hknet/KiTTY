@@ -31,6 +31,7 @@
 #include <commctrl.h>
 
 #include "kitty.h"               /* FolderList, InitFolderList, SaveFolderList */
+#include "kitty_oldwin.h"        /* kitty_module_path_dup */
 #include "kitty_common.h"        /* GetReadOnlyFlag */
 #include "kitty_tools.h"         /* StringList_Add / _Del */
 #include "kitty_storage.h"
@@ -198,14 +199,14 @@ static void so_folderlist_move(const char *from, const char *to)
         if (to) {
             char *np = ksp_folder_moved_path(moved[i], from, to);
             if (!ksp_folder_is_root(np))
-                StringList_Add(FolderList, np);
+                StringList_Add(&FolderList, np);
             sfree(np);
         }
         sfree(moved[i]);
     }
     sfree(moved);
     if (to && !ksp_folder_is_root(to))
-        StringList_Add(FolderList, to);
+        StringList_Add(&FolderList, to);
     SaveFolderList();
 }
 
@@ -1506,7 +1507,7 @@ static char *so_name_apply(HWND h, struct so_name *nm, const char *v)
                 sfree(blk);
             } else {
                 InitFolderList();
-                StringList_Add(FolderList, to);
+                StringList_Add(&FolderList, to);
                 SaveFolderList();
                 if (nm->st) {
                     sfree(nm->st->cur);
@@ -1549,18 +1550,21 @@ static INT_PTR CALLBACK so_name_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (!nm)
             return FALSE;
         if (LOWORD(wp) == IDOK) {
-            char v[1024], *err;
-            GetDlgItemTextA(h, IDC_SON_EDIT, v, sizeof(v));
+            /* the typed name whole: a cut one was a different name */
+            char *v = GetDlgItemText_alloc(h, IDC_SON_EDIT), *err;
             str_rtrim(v, " \t");
             if (!so_name_ok(v)) {
                 so_set_warn(h, IDC_SON_WARN, KT_SP_ORG_NAME_BAD, below);
+                sfree(v);
                 return TRUE;
             }
             if (nm->target && !strcmp(ksp_leaf(nm->target), v)) {
+                sfree(v);
                 DestroyWindow(h);       /* nothing changed */
                 return TRUE;
             }
             err = so_name_apply(h, nm, v);
+            sfree(v);
             if (nm->st)
                 so_changed(nm->st);
             else
@@ -2018,10 +2022,9 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
  * closes what it inherits. */
 static void so_start_named(char **names, int n_names)
 {
-    char exe[MAX_PATH];
+    char *exe = n_names ? kitty_module_path_dup(NULL) : NULL;   /* whole */
     int i;
-    DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
-    if (!n_names || !n || n >= sizeof(exe)) {
+    if (!exe) {
         MessageBeep(MB_ICONWARNING);
         return;
     }
@@ -2058,6 +2061,7 @@ static void so_start_named(char **names, int n_names)
         }
         sfree(cmd);
     }
+    sfree(exe);
 }
 
 /* Start Sessions and Enter: every selected session. */

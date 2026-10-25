@@ -101,21 +101,27 @@ static void StartupNotice( const char * msg, int warn ) {
  * [PuTTY]) did nothing here and is left alone: copying it would create a
  * kitty.ini that hides %APPDATA%\KiTTY\kitty.ini. putty.ini stays as it is. */
 static void MigratePuttyIni( const char * kittyini ) {
-	char puttyini[4096], keys[64], err[256], msg[4096 + 512] ;
+	char *puttyini, keys[64], err[256], *msg ;
 	int ok ;
-	snprintf( puttyini, sizeof(puttyini), "%s\\putty.ini", InitialDirectory ) ;
-	if( !existfile( puttyini ) || existfile( kittyini ) ) return ;
-	if( GetPrivateProfileSectionA( KI_SECTION_KITTY, keys, sizeof(keys), puttyini ) == 0 ) return ;
+	/* both files named whole */
+	puttyini = dupprintf( "%s\\putty.ini", InitialDirectory ) ;
+	if( !existfile( puttyini ) || existfile( kittyini ) ||
+	    GetPrivateProfileSectionA( KI_SECTION_KITTY, keys, sizeof(keys), puttyini ) == 0 ) {
+		sfree( puttyini ) ;
+		return ;
+	}
 	ok = CopyFileA( puttyini, kittyini, TRUE ) ;
-	if( ok ) snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPIED_FMT, kittyini ) ;
+	if( ok ) msg = dupprintf( KT_MAIN_PUTTYINI_COPIED_FMT, kittyini ) ;
 	else {
 		DWORD e = GetLastError() ;
 		err[0] = '\0' ;
 		FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, e, 0, err, sizeof(err), NULL ) ;
 		str_rtrim( err, "\r\n .\t" ) ;
-		snprintf( msg, sizeof(msg), KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
+		msg = dupprintf( KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
 	}
 	StartupNotice( msg, !ok ) ;
+	sfree( msg ) ;
+	sfree( puttyini ) ;
 }
 
 
@@ -270,13 +276,15 @@ static void ConsolidateKittyIniLocked( const char *path ) {
 		/* the new content goes to a file GetTempFileName creates in
 		 * kitty.ini's own folder - ReplaceFile needs the same drive */
 		{
-			char dir[MAX_PATH], tbuf[MAX_PATH] ;
+			/* the folder whole; GetTempFileName fills its MAX_PATH bytes
+			 * or fails */
+			char *dir = dupstr( path ), tbuf[MAX_PATH] ;
 			char *slash ;
-			snprintf( dir, sizeof(dir), "%s", path ) ;
 			slash = strrchr( dir, '\\' ) ;
 			if( slash == NULL ) slash = strrchr( dir, '/' ) ;
-			if( slash ) *slash = '\0' ; else snprintf( dir, sizeof(dir), "." ) ;
+			if( slash ) *slash = '\0' ; else { sfree( dir ) ; dir = dupstr( "." ) ; }
 			if( GetTempFileNameA( dir, "kti", 0, tbuf ) ) tmp = dupstr( tbuf ) ;
+			sfree( dir ) ;
 		}
 		ok = made_bak && tmp != NULL && ( out = fopen( tmp, "wb" ) ) != NULL ;
 		if( !ok && tmp ) DeleteFileA( tmp ) ;   /* GetTempFileName made it */
@@ -294,9 +302,9 @@ static void ConsolidateKittyIniLocked( const char *path ) {
 			if( !ok ) DeleteFileA( tmp ) ;
 		}
 		if( ok ) {
-			char msg[4096 + 512] ;
-			snprintf( msg, sizeof(msg), KT_MAIN_INI_CONSOLIDATED_FMT, bak ) ;
+			char *msg = dupprintf( KT_MAIN_INI_CONSOLIDATED_FMT, bak ) ;
 			StartupNotice( msg, 0 ) ;
+			sfree( msg ) ;
 		} else if( made_bak )
 			DeleteFileA( bak ) ;
 	}
@@ -317,16 +325,18 @@ static void ConsolidateKittyIniLocked( const char *path ) {
  * it, so a start that waited finds the file already merged. A lock that
  * cannot be had within 10 s: no merge this time, the next start does it. */
 static void ConsolidateKittyIni( const char *path ) {
-	char full[MAX_PATH], name[64] ;
+	char *full, name[64] ;
 	unsigned long h = 2166136261UL ;   /* FNV-1a over the lower-cased path */
 	const char *c ;
 	HANDLE mx ;
 	DWORD w ;
 	if( !path || !path[0] ) return ;
-	if( !GetFullPathNameA( path, sizeof(full), full, NULL ) )
-		snprintf( full, sizeof(full), "%s", path ) ;
+	/* the full path whole: one too long for the old buffer left it
+	 * unfilled, and the lock was not the one other starts take */
+	if( ( full = kitty_full_path_dup( path ) ) == NULL ) full = dupstr( path ) ;
 	for( c = full ; *c ; c++ )
 		h = ( ( h ^ (unsigned char)tolower( (unsigned char)*c ) ) * 16777619UL ) & 0xffffffffUL ;
+	sfree( full ) ;
 	snprintf( name, sizeof(name), "Local\\KiTTYpp-ini-%08lx", h ) ;
 	if( ( mx = CreateMutexA( NULL, FALSE, name ) ) == NULL ) return ;
 	w = WaitForSingleObject( mx, 10000 ) ;
@@ -338,10 +348,11 @@ static void ConsolidateKittyIni( const char *path ) {
 }
 
 static void InitNameConfigFile( void ) {
-	char buffer[4096] = "" ;   /* the KITTY_INI_FILE test below reads this even
-	                            * when the variable is unset - it used to be
-	                            * uninitialised stack, so the first existfile()
-	                            * ran on whatever happened to be there */
+	/* every name whole: KITTY_INI_FILE, %APPDATA% and the program's folder
+	 * were joined into 4096 bytes */
+	char *buffer, *found ;
+	const char *appdata = getenv("APPDATA") ;
+	if( appdata == NULL ) appdata = "" ;
 	if( KittyIniFile != NULL ) { free( KittyIniFile ) ; }
 	KittyIniFile=NULL ;
 
@@ -349,31 +360,36 @@ static void InitNameConfigFile( void ) {
 	 * search finds now is pinned at once (and pinned again once chosen), so
 	 * GetReadOnlyFlag() answers for it from here on - the putty.ini copy,
 	 * the APPDATA folder and kitty.dft are then left alone. */
-	if( kitty_inifile_find( IniFileFlag == SAVEMODE_DIR, buffer, sizeof(buffer) ) )
-		kitty_inifile_pin( buffer ) ;
-	buffer[0] = '\0' ;
+	if( ( found = kitty_inifile_find_dup( IniFileFlag == SAVEMODE_DIR ) ) != NULL ) {
+		kitty_inifile_pin( found ) ;
+		free( found ) ;
+	}
 
 	/* The putty.ini copy is for the kitty.ini beside the exe - not when
 	 * %KITTY_INI_FILE% points to a file that is there. */
 	if( !GetReadOnlyFlag() && ( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) ) {
-		snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
+		buffer = dupprintf( "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
 		MigratePuttyIni( buffer ) ;
+		sfree( buffer ) ;
 	}
 	/* The search is the resolver's, the one list of places every program
 	 * walks (kitty_inifile.c); the portable build leaves %APPDATA% out. What
 	 * only kitty.exe does stays here: choosing the file when none is there -
 	 * beside the exe for the portable build, %APPDATA%\KiTTY\kitty.ini
 	 * (folder created) otherwise. */
-	if( !kitty_inifile_find( IniFileFlag == SAVEMODE_DIR, buffer, sizeof(buffer) ) ) {
-		if( IniFileFlag == SAVEMODE_DIR ) {
-			snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
-		} else {
-			snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
-			CreateDirectory( buffer, NULL ) ;
-			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_INIT_FILE ) ;
-		}
+	if( ( found = kitty_inifile_find_dup( IniFileFlag == SAVEMODE_DIR ) ) != NULL ) {
+		buffer = dupstr( found ) ;
+		free( found ) ;
+	} else if( IniFileFlag == SAVEMODE_DIR ) {
+		buffer = dupprintf( "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
+	} else {
+		buffer = dupprintf( "%s\\%s", appdata, INIT_SECTION ) ;
+		CreateDirectory( buffer, NULL ) ;
+		sfree( buffer ) ;
+		buffer = dupprintf( "%s\\%s\\%s", appdata, INIT_SECTION, DEFAULT_INIT_FILE ) ;
 	}
 	KittyIniFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittyIniFile, buffer) ;
+	sfree( buffer ) ;
 	/* one section of each name and one line per setting, before anything
 	 * reads it (not the %KITTY_INI_FILE% file: that one is the caller's) */
 	if( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) )
@@ -381,26 +397,29 @@ static void InitNameConfigFile( void ) {
 	/* every reader in this process (theme, update check) takes this file */
 	kitty_inifile_pin( KittyIniFile ) ;
 
-	if( KittySavFile != NULL ) { free( KittySavFile ) ; } 
+	if( KittySavFile != NULL ) { free( KittySavFile ) ; }
 	KittySavFile=NULL ;
-	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, DEFAULT_SAV_FILE ) ;
+	buffer = dupprintf( "%s\\%s", InitialDirectory, DEFAULT_SAV_FILE ) ;
 	if( !existfile( buffer ) ) {
 		if( IniFileFlag != SAVEMODE_DIR ) {
-			snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
+			sfree( buffer ) ;
+			buffer = dupprintf( "%s\\%s\\%s", appdata, INIT_SECTION, DEFAULT_SAV_FILE ) ;
 			if( !existfile( buffer ) ) {
-				snprintf( buffer, sizeof(buffer), "%s\\%s", getenv("APPDATA"), INIT_SECTION ) ;
-				if( !GetReadOnlyFlag() ) CreateDirectory( buffer, NULL ) ;
-				snprintf( buffer, sizeof(buffer), "%s\\%s\\%s", getenv("APPDATA"), INIT_SECTION, DEFAULT_SAV_FILE ) ;
+				char *dir = dupprintf( "%s\\%s", appdata, INIT_SECTION ) ;
+				if( !GetReadOnlyFlag() ) CreateDirectory( dir, NULL ) ;
+				sfree( dir ) ;
 			}
 		}
 	}
 	KittySavFile=(char*)malloc( strlen( buffer)+2 ) ; strcpy( KittySavFile, buffer) ;
-	
-	snprintf( buffer, sizeof(buffer), "%s\\kitty.dft", InitialDirectory ) ;
-	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: kitty.dft stays as it is */
+	sfree( buffer ) ;
+
+	buffer = dupprintf( "%s\\kitty.dft", InitialDirectory ) ;
+	if( GetReadOnlyFlag() ) { sfree( buffer ) ; return ; }   /* readonly=yes: kitty.dft stays as it is */
 	if( existfile( KittyIniFile ) && existfile( buffer ) )  unlink( buffer ) ;
 	if( !existfile( KittyIniFile ) )
 		if( existfile( buffer ) ) rename( buffer, KittyIniFile ) ;
+	sfree( buffer ) ;
 }
 	
 #ifdef MOD_PORTABLE
@@ -471,8 +490,10 @@ void appendPath(const char *append) ;
 void kitty_netdbg_ts( const char *msg ) {
 	static FILE *f = NULL ;
 	SYSTEMTIME s ; GetLocalTime( &s ) ;
-	if( !f ) { char p[MAX_PATH] ; const char *h=getenv("USERPROFILE") ;
-		snprintf( p, sizeof(p), "%s\\kitty_netdebug.log", h?h:"C:" ) ; f=fopen( p, "a" ) ; }
+	/* the log's path whole: cut, it named another file */
+	if( !f ) { char *h = kitty_getenv_dup( "USERPROFILE" ), *p ;
+		p = dupprintf( "%s\\kitty_netdebug.log", h ? h : "C:" ) ; f = fopen( p, "a" ) ;
+		sfree( p ) ; sfree( h ) ; }
 	if( f ) { fprintf( f, "%02d:%02d:%02d.%03d  [STARTUP] %s\n",
 		s.wHour, s.wMinute, s.wSecond, s.wMilliseconds, msg ) ; fflush( f ) ; }
 }
@@ -542,13 +563,14 @@ int kitty_cli_do_and_exit( void ) {
  * did not load. Not news when the file is simply not there yet (a first
  * file-mode start); a scripted run gets it on stderr, never a box. */
 static void kitty_startup_load_failed( const char *file ) {
-	char msg[2048] ;
+	char *msg ;
 	if( file == NULL || GetFileAttributesA( file ) == INVALID_FILE_ATTRIBUTES ) return ;
-	snprintf( msg, sizeof(msg), KT_MAIN_LOAD_FAILED_FMT, kitty_sav_load_reason() ) ;
+	msg = dupprintf( KT_MAIN_LOAD_FAILED_FMT, kitty_sav_load_reason() ) ;
 #ifdef MOD_PERSO
-	if( kitty_cli_do_and_exit() ) { fprintf( stderr, "%s\n", msg ) ; return ; }
+	if( kitty_cli_do_and_exit() ) { fprintf( stderr, "%s\n", msg ) ; sfree( msg ) ; return ; }
 #endif
 	MessageBox( NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+	sfree( msg ) ;
 	}
 
 void InitWinMain( void ) {
@@ -662,12 +684,12 @@ void InitWinMain( void ) {
 	 * macro version set aside a store nothing was reading and left the one in
 	 * use in place - the same compile-time/runtime split that sent named proxies
 	 * to the wrong hive. */
-	char kitty_reg_live[512], kitty_reg_park[512], kitty_reg_park_sess[600], kitty_reg_live_sess[600] ;
+	char *kitty_reg_live, *kitty_reg_park, *kitty_reg_park_sess, *kitty_reg_live_sess ;   /* sfree'd at the end */
 	{ extern const char *kitty_registry_base( void ) ;
-	  snprintf( kitty_reg_live, sizeof(kitty_reg_live), "%s", kitty_registry_base() ) ;
-	  snprintf( kitty_reg_park, sizeof(kitty_reg_park), "%s_save", kitty_registry_base() ) ;
-	  snprintf( kitty_reg_park_sess, sizeof(kitty_reg_park_sess), "%s\\Sessions", kitty_reg_park ) ; }
-	snprintf( kitty_reg_live_sess, sizeof(kitty_reg_live_sess), "%s\\Sessions", kitty_reg_live ) ;
+	  kitty_reg_live = dupstr( kitty_registry_base() ) ;
+	  kitty_reg_park = dupprintf( "%s_save", kitty_registry_base() ) ;
+	  kitty_reg_park_sess = dupprintf( "%s\\Sessions", kitty_reg_park ) ; }
+	kitty_reg_live_sess = dupprintf( "%s\\Sessions", kitty_reg_live ) ;
 	kitty_hive_existed = RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ;
 
 	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
@@ -782,9 +804,9 @@ void InitWinMain( void ) {
 			HWND hdlg = InfoBox( hinst, NULL ) ;
 			// ... load the most recent backup (kittynew-<timestamp>.sav),
 			// or the old fixed-name file if it is still there.
-			char newestsav[4096] = "" ;
-			int havesav = sav_find_for_restore( KittySavFile, newestsav, sizeof(newestsav) ) ;
-			if( havesav ) {
+			/* the backup's path whole */
+			char *newestsav = sav_find_for_restore_dup( KittySavFile ) ;
+			if( newestsav ) {
 				char *savedptr = KittySavFile ;
 				KittySavFile = newestsav ;   /* LoadRegistryKey reads the global */
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
@@ -792,6 +814,7 @@ void InitWinMain( void ) {
 				if( !LoadRegistryKey( hdlg ) ) { InfoBoxClose( hdlg ) ; hdlg = NULL ; kitty_startup_load_failed( newestsav ) ; }
 				if( hdlg ) InfoBoxClose( hdlg ) ;
 				KittySavFile = savedptr ;
+				sfree( newestsav ) ;
 			} else { // Otherwise look for PuTTY's key and take it over
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				InfoBoxSetText( hdlg, KT_MAIN_INFO_FIRST_RUN_PUTTY ) ;
@@ -889,7 +912,7 @@ void InitWinMain( void ) {
 		kitty_store_ro_allow( 0 ) ;
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ){ // directory save mode
-		if( strlen(sesspath) == 0 ) { loadPath() ; }
+		if( sesspath == NULL || strlen(sesspath) == 0 ) { loadPath() ; }
 		/* KiTTY (hknet/KiTTY#56): putty.conf's Sessions, sessionsuffix,
 		 * SshHostKeys and keysuffix move into kitty.ini once (the endings
 		 * as fileextension and hostkeyextension); from then on kitty.ini's
@@ -897,9 +920,9 @@ void InitWinMain( void ) {
 		 * ending, host-key folder and ending). Before the store starts,
 		 * because it may move the session folder. */
 		if( kitty_store_ini_takeover() ) {   /* moved just now: report it, once */
-			char msg[4096 + 256] ;
-			snprintf( msg, sizeof(msg), KT_MAIN_PUTTYCONF_MOVED_FMT, KittyIniFile ) ;
+			char *msg = dupprintf( KT_MAIN_PUTTYCONF_MOVED_FMT, KittyIniFile ) ;
 			StartupNotice( msg, 0 ) ;
+			sfree( msg ) ;
 		}
 		/* KiTTY 0.84: activate the portable file storage backend (windows/storage.c)
 		 * now that sesspath is known. Sessions are then read/written as one file per
@@ -985,9 +1008,14 @@ void InitWinMain( void ) {
 	 * modal box raised from right here, which stopped every start dead. */
 	kitty_notes_mark_pending() ;
 
-	// Generate an initialisation file (4096 KB max) for all the sessions
-	snprintf( buffer, sizeof(buffer), "%s\\%s.ses.updt", InitialDirectory, appname ) ;
-	if( existfile( buffer ) ) { InitAllSessions( HKEY_CURRENT_USER, kitty_registry_base(), "Sessions", buffer ) ; }
+	// Generate an initialisation file for all the sessions (the file read whole)
+	{
+		char *updt = dupprintf( "%s\\%s.ses.updt", InitialDirectory, appname ) ;
+		if( existfile( updt ) ) { InitAllSessions( HKEY_CURRENT_USER, kitty_registry_base(), "Sessions", updt ) ; }
+		sfree( updt ) ;
+	}
+	sfree( kitty_reg_live ) ; sfree( kitty_reg_park ) ;
+	sfree( kitty_reg_park_sess ) ; sfree( kitty_reg_live_sess ) ;
 	/* Format: registry like => UTF-8 encoded !!!
 	"ProxyUsername"="mylogin"
 	"ProxyPassword"="mypassword"

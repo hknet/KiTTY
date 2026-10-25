@@ -292,6 +292,9 @@ static void pds_free(PortableDialogStuff *pds)
     kitty_conf_ctrlbox_is(NULL);
     if (kitty_cfg_box_closing_hook)
         kitty_cfg_box_closing_hook();
+    /* The hooks were the closed box's: the next box's panels chain their
+     * own from an empty start, or two of them would call each other. */
+    kitty_cfg_box_closing_hook = NULL;
     ctrl_free_box(pds->ctrlbox);
 
     dp_cleanup(pds->dp);

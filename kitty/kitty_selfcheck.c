@@ -24,6 +24,7 @@
 
 #include "putty.h"
 #include "kitty_selfcheck.h"
+#include "kitty_oldwin.h"        /* kitty_module_path_dup */
 #include "kitty_renameguard.h"   /* kitty_guard_interactive, kitty_guard_report */
 #include "kitty_text.h"
 
@@ -206,12 +207,14 @@ static int kt_verdict_path(const char *path, int own, const char **reason,
 
 static int kt_verdict(const char **reason)
 {
-    char path[MAX_PATH + 1];
-    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path) - 1);
-    if (n == 0 || n >= sizeof(path) - 1)
+    /* the program's path whole; one that cannot be read cannot be checked */
+    char *path = kitty_module_path_dup(NULL);
+    int rc;
+    if (!path)
         return 2;
-    path[n] = '\0';
-    return kt_verdict_path(path, 1, reason, NULL);
+    rc = kt_verdict_path(path, 1, reason, NULL);
+    sfree(path);
+    return rc;
 }
 
 int kitty_selfcheck_file(const char *path, char *reason, size_t reasonsz,

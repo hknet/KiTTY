@@ -32,61 +32,59 @@
 #ifndef SAVEMODE_REG
 #define SAVEMODE_REG 0
 #endif
-// Bounded variant: never writes more than `rsize` bytes (final NUL included)
-// into rValue; a value that is too long is truncated instead of overflowing.
+/* A value whole, as text (sfree it): a string as it is stored (REG_EXPAND_SZ
+ * not expanded, the first string of a REG_MULTI_SZ), a DWORD in decimal, a
+ * binary value of four bytes or more as a.b.c.d (its first four), "" for any
+ * other value. NULL when the key or the value is not there. A value used to
+ * be read into 1024 bytes, and a longer one counted as not there at all: a
+ * Folders list or a path past that length was replaced by the kitty.ini
+ * value, or by nothing. */
+char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpValueName ) {
+	HKEY hkKey ;
+	DWORD type = 0, len = 0 ;
+	unsigned char * data ;
+	char * out ;
+	if( RegOpenKeyEx( hkTopKey, lpSubKey, 0, KEY_READ, &hkKey ) != ERROR_SUCCESS ) return NULL ;
+	data = kitty_reg_query_dup( hkKey, lpValueName, &type, &len ) ;
+	RegCloseKey( hkKey ) ;
+	if( data == NULL ) return NULL ;
+	switch( (int)type ) {
+	  case REG_BINARY:
+		out = len >= 4 ? dupprintf( "%u.%u.%u.%u", (unsigned)data[0], (unsigned)data[1],
+		                            (unsigned)data[2], (unsigned)data[3] ) : dupstr( "" ) ;
+		break ;
+	  case REG_DWORD: {
+		int v = 0 ;
+		memcpy( &v, data, len < sizeof(v) ? len : sizeof(v) ) ;
+		out = dupprintf( "%d", v ) ;
+		break ;
+	  }
+	  case REG_EXPAND_SZ:
+	  case REG_MULTI_SZ:
+	  case REG_SZ:
+		out = dupstr( (char *)data ) ;
+		break ;
+	  default:
+		out = dupstr( "" ) ;
+		break ;
+	}
+	sfree( data ) ;
+	return out ;
+}
+
+// Into a caller's buffer of `rsize` bytes (final NUL included): the value
+// read whole by GetValueDataDup, then cut to that size. For short values
+// (flags, numbers, markers); anything that can be long is read with
+// GetValueDataDup.
 char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
-    HKEY hkKey;
-    DWORD lpType, dwDataSize = cstMaxRegLength;
-
-  //Buffer receiving the value read from the registry key
-	/* On the stack: this is the read behind every ReadParameter, and a
-	 * malloc/free pair per call added up on the paths that read often. */
-	unsigned char lpData[ cstMaxRegLength + 1 ] ; // +1 for forced NUL
+	char * v ;
 	if( rValue == NULL || rsize == 0 ) { return NULL ; }
-
-    rValue[0] = '\0';
-  //Read the registry key; if that works, carry on...
-    if (RegOpenKeyEx(hkTopKey,lpSubKey,0,KEY_READ,&hkKey) == ERROR_SUCCESS){
-
-      if (RegQueryValueEx(hkKey,lpValueName,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS){
-      // RegQueryValueEx does NOT guarantee NUL-termination for the *_SZ types and a
-      // value can fill the whole buffer; force a terminator so the copies below
-      // cannot over-read past the data.
-        if( dwDataSize > cstMaxRegLength ) dwDataSize = cstMaxRegLength ;
-        lpData[dwDataSize] = '\0' ;
-      //decode the different registry value types
-        switch ((int)lpType){
-
-          case REG_BINARY:
-               if( dwDataSize >= 4 ) {   // a.b.c.d needs 4 bytes; don't over-read short values
-               snprintf( rValue, rsize, "%u.%u.%u.%u",
-                         (unsigned)lpData[0], (unsigned)lpData[1],
-                         (unsigned)lpData[2], (unsigned)lpData[3] ) ;
-               }
-               break;
-
-          case REG_DWORD:
-               snprintf( rValue, rsize, "%d", *(int*)(lpData) ) ;
-               break;
-
-          case REG_EXPAND_SZ:
-          case REG_MULTI_SZ:
-          case REG_SZ: {
-               size_t n = strlen( (char*)lpData ) ;
-               if( n >= rsize ) n = rsize - 1 ;
-               memcpy( rValue, lpData, n ) ;
-               rValue[n] = '\0' ;
-               break;
-          }
-        }//end switch
-      }//end if
-      else { RegCloseKey(hkKey); return NULL ; }
-       RegCloseKey(hkKey);
-
-    }//end if
-    else { return NULL ; }
-    return rValue;
-  }//end function
+	rValue[0] = '\0' ;
+	if( ( v = GetValueDataDup( hkTopKey, lpSubKey, lpValueName ) ) == NULL ) return NULL ;
+	snprintf( rValue, rsize, "%s", v ) ;
+	sfree( v ) ;
+	return rValue ;
+}
 
 /* Compat: the old unbounded signature -- the destination buffer MUST be at
  * least cstMaxRegLength+2 bytes. Prefer GetValueDataN( ..., sizeof(buf) ). */
@@ -186,14 +184,15 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 		for (i=0; i<cSubKeys; i++) {
 			retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
 			if (retCode == ERROR_SUCCESS) {
-				char buffer[MAX_KEY_LENGTH] ;
-				char previousvalue[cstMaxRegLength+2] ;
-				snprintf( buffer, sizeof(buffer), "%s\\%s", lpSubKey, achKey ) ;
-				GetValueDataN( hMainKey, buffer, name, previousvalue, sizeof(previousvalue) ) ;
-				if( (oldvalue==NULL) || ( !strcmp(previousvalue,oldvalue)) )
+				char * buffer = dupprintf( "%s\\%s", lpSubKey, achKey ) ;
+				char * previousvalue = GetValueDataDup( hMainKey, buffer, name ) ;
+				if( (oldvalue==NULL) || ( previousvalue && !strcmp(previousvalue,oldvalue)) )
 					MessageBox(NULL,achKey,KT_CAP_INFO,MB_OK);
 					//RegTestOrCreate( hMainKey, buffer, name, value ) ;
+				sfree( previousvalue ) ;
+				sfree( buffer ) ;
 			}
+			cbName = MAX_KEY_LENGTH ;
 		}
 	}
 }
@@ -255,26 +254,31 @@ void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  )
 
 void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) {
 	FILE * fp;
-	char buf[1024] = "" ;
 	if( (fp=fopen( filename, "wb" )) != NULL ) {
+		char * buf = dupprintf( "%s\\%s", lpSubKey, SubKeyName ) ;
 		fprintf( fp, "Windows Registry Editor Version 5.00\r\n" ) ;
-		snprintf( buf, sizeof(buf), "%s\\%s", lpSubKey, SubKeyName );
 		QuerySubKey( hMainKey, (LPCTSTR)buf, fp, text ) ;
+		sfree( buf ) ;
 		fclose( fp ) ;
 		}
 	}
-	
+
+/* The file is read whole: a 4096-byte read used to put its NUL one byte past
+ * the buffer when the file filled it. */
 void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename ) {
-	char text[4096], f[1024] ;
 	FILE * fp ;
-	int len ;
 	if( (fp=fopen(filename, "rb")) != NULL ) {
-		len = fread( text, 1, 4096, fp ) ;
+		strbuf * sb = strbuf_new() ;
+		char chunk[4096], * f ;
+		size_t got ;
+		while( ( got = fread( chunk, 1, sizeof(chunk), fp ) ) > 0 )
+			put_data( sb, chunk, got ) ;
 		fclose( fp ) ;
-		text[4095]='\0'; text[len] = '\0' ;
-		str_rtrim( text, "\n\r" ) ;
-		snprintf( f, sizeof(f), "%s.reg", filename ) ;
-		InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, text ) ;
+		str_rtrim( sb->s, "\n\r" ) ;
+		f = dupprintf( "%s.reg", filename ) ;
+		InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, sb->s ) ;
+		sfree( f ) ;
+		strbuf_free( sb ) ;
 		unlink(filename);
 		}
 	}
@@ -297,7 +301,6 @@ BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
 
 // Delete a registry key and its subkeys
 BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
-    TCHAR lpEnd[MAX_PATH];
     LONG lResult;
     DWORD dwSize;
     TCHAR szName[MAX_PATH];
@@ -331,11 +334,12 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
     if (lResult == ERROR_SUCCESS) 
     {
         do {
-            //StringCchCopy (lpEnd, MAX_PATH*2, szName);
-            snprintf(lpEnd, sizeof(lpEnd), "%s\\%s", lpSubKey, szName);
-
-            //if( !RegDelTree( hKeyRoot, lpSubKey ) ) { break ; }
-            if( !RegDelTree( hKeyRoot, lpEnd ) ) { break ; }
+            /* the subkey's whole path: one cut to MAX_PATH named a sibling
+             * or nothing, and the same name came back for ever */
+            char *lpEnd = dupprintf("%s\\%s", lpSubKey, szName);
+            int gone = RegDelTree( hKeyRoot, lpEnd );
+            sfree(lpEnd);
+            if( !gone ) { break ; }
             dwSize = MAX_PATH;
             lResult = RegEnumKeyEx(hKey, 0, szName, &dwSize, NULL, NULL, NULL, &ftWrite) ;
         } while ( lResult == ERROR_SUCCESS ) ;
@@ -1000,46 +1004,63 @@ int kitty_reach_confirm( HWND owner, const char *title, const char *question,
  * installed for everyone should register for everyone. */
 static int RunningFromProgramFiles( const char *path ) {
 	static const char *vars[] = { "ProgramW6432", "ProgramFiles", "ProgramFiles(x86)" } ;
-	char pf[MAX_PATH] ;
 	int i ;
 	for( i = 0 ; i < (int)(sizeof(vars)/sizeof(vars[0])) ; i++ ) {
-		DWORD n = GetEnvironmentVariableA( vars[i], pf, sizeof(pf) ) ;
-		if( n == 0 || n >= sizeof(pf) ) continue ;
-		if( !strnicmp( path, pf, strlen(pf) ) ) return 1 ;
+		char *pf = kitty_getenv_dup( vars[i] ) ;
+		int match = pf && pf[0] && !strnicmp( path, pf, strlen(pf) ) ;
+		sfree( pf ) ;
+		if( match ) return 1 ;
 	}
 	return 0 ;
 }
 
+/* A string value of root\subkey whole, as RegGetValue's RRF_RT_REG_SZ gives
+ * it: REG_SZ as stored, REG_EXPAND_SZ expanded. NULL when absent, empty or
+ * of another type (sfree it). A value longer than the caller's buffer used
+ * to count as not there: another program's handler was then taken over
+ * without -force. */
+static char *RegSzDup( HKEY root, const char *subkey, const char *name ) {
+	HKEY hk ;
+	DWORD type = 0 ;
+	unsigned char *v ;
+	if( RegOpenKeyExA( root, subkey, 0, KEY_READ, &hk ) != ERROR_SUCCESS ) return NULL ;
+	v = kitty_reg_query_dup( hk, name, &type, NULL ) ;
+	RegCloseKey( hk ) ;
+	if( v == NULL ) return NULL ;
+	if( type == REG_EXPAND_SZ ) {
+		char *x = kitty_expand_env_strict_dup( (char *)v ) ;
+		sfree( v ) ;
+		v = (unsigned char *)x ;
+	} else if( type != REG_SZ ) {
+		sfree( v ) ;
+		v = NULL ;
+	}
+	if( v && !v[0] ) { sfree( v ) ; v = NULL ; }
+	return (char *)v ;
+}
+
 /* KiTTY: the command the shell currently runs for <proto>://, read from the
  * merged HKEY_CLASSES_ROOT view - that is what actually handles a link today,
- * wherever it was registered. Returns 1 if there is one. */
-static int UrlHandlerCurrentCommand( const char *proto, char *out, DWORD outlen ) {
-	char key[256] ;
-	DWORD len = outlen ;
-	snprintf( key, sizeof(key), "%s\\shell\\open\\command", proto ) ;
-	out[0] = '\0' ;
-	if( RegGetValueA( HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL,
-			  out, &len ) != ERROR_SUCCESS ) return 0 ;
-	return out[0] != '\0' ;
+ * wherever it was registered. NULL when there is none (sfree it). */
+static char *UrlHandlerCurrentCommand( const char *proto ) {
+	char *key = dupprintf( "%s\\shell\\open\\command", proto ) ;
+	char *cmd = RegSzDup( HKEY_CLASSES_ROOT, key, NULL ) ;
+	sfree( key ) ;
+	return cmd ;
 }
 
 /* KiTTY: the program behind a registered command line, for a report a person
  * can act on - "rundll32.exe" shows more at a glance than the full command with
- * its DLL entry point. Writes the bare file name into `out`. */
-static void UrlHandlerProgram( const char *command, char *out, size_t outlen ) {
-	const char *p = command, *end, *slash ;
-	size_t n ;
-	out[0] = '\0' ;
+ * its DLL entry point. The bare file name, "" when there is none (sfree it). */
+static char *UrlHandlerProgram( const char *command ) {
+	const char *p = command ? command : "", *end, *slash ;
 	while( *p == ' ' ) p++ ;
 	if( *p == '"' ) { p++ ; end = strchr( p, '"' ) ; }
 	else            { end = strchr( p, ' ' ) ; }
 	if( !end ) end = p + strlen(p) ;
 	for( slash = end ; slash > p ; slash-- )
 		if( slash[-1] == '\\' || slash[-1] == '/' ) break ;
-	n = (size_t)(end - slash) ;
-	if( n == 0 || n >= outlen ) return ;
-	memcpy( out, slash, n ) ;
-	out[n] = '\0' ;
+	return dupprintf( "%.*s", (int)(end - slash), slash ) ;
 }
 
 /* KiTTY: does this exact key exist in this exact hive? Not the same question
@@ -1060,46 +1081,57 @@ static int ClassKeyExists( HKEY root, const char *subkey ) {
  * Uses Windows' own reg.exe, which exports the whole subtree - values we never
  * touched included. The hive has to be given explicitly: an HKCR export is an
  * HKLM export, and importing one of those needs elevation the user may not
- * have (and would not restore anything, if what shadowed it was in HKCU). */
-static int ClassKeyBackup( HKEY root, const char *subkey, const char *tag,
-			   char *file, size_t filelen ) {
-	char dir[MAX_PATH], sysdir[MAX_PATH], cmd[2048] ;
+ * have (and would not restore anything, if what shadowed it was in HKCU).
+ * The .reg file's path, or NULL when there is no backup (sfree it): the
+ * callers' no-backup wording keys off NULL. Every path is held whole - a
+ * long %LOCALAPPDATA% used to cut the file name, and reg.exe then wrote, and
+ * a failure deleted, a file of that cut name. */
+static char *ClassKeyBackup( HKEY root, const char *subkey, const char *tag ) {
+	char *lad, *dir, *sysdir = NULL, *file, *cmd ;
 	const char *hive = ( root == HKEY_LOCAL_MACHINE ) ? "HKLM" : "HKCU" ;
 	SYSTEMTIME st ;
 	STARTUPINFOA si ;
 	PROCESS_INFORMATION pi ;
-	DWORD rc = 1, n ;
+	DWORD rc = 1, need ;
+	BOOL started ;
 
-	/* `file` is empty on every failure: it was filled in before reg.exe ran,
-	 * so a failed backup still offered "undo: import <file>" for a file that
-	 * was never written (the callers' no-backup wording keys off it). */
-	if( filelen ) file[0] = '\0' ;
-	n = GetEnvironmentVariableA( "LOCALAPPDATA", dir, sizeof(dir) ) ;
-	if( n == 0 || n >= sizeof(dir) ) return 0 ;
-	strncat( dir, "\\KiTTY", sizeof(dir)-strlen(dir)-1 ) ;
-	if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) return 0 ;
+	if( ( lad = kitty_getenv_dup( "LOCALAPPDATA" ) ) == NULL ) return NULL ;
+	dir = dupprintf( "%s\\KiTTY", lad ) ;
+	sfree( lad ) ;
+	if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) { sfree( dir ) ; return NULL ; }
 
 	GetLocalTime( &st ) ;
-	snprintf( file, filelen, "%s\\%s-%s-%04d%02d%02d-%02d%02d%02d.reg",
+	file = dupprintf( "%s\\%s-%s-%04d%02d%02d-%02d%02d%02d.reg",
 		  dir, hive, tag, st.wYear, st.wMonth, st.wDay,
 		  st.wHour, st.wMinute, st.wSecond ) ;
+	sfree( dir ) ;
 
-	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) { file[0] = '\0' ; return 0 ; }
-	snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" export \"%s\\%s\" \"%s\" /y",
+	need = GetSystemDirectoryA( NULL, 0 ) ;
+	if( need ) {
+		DWORD got ;
+		sysdir = snewn( need + 1, char ) ;
+		got = GetSystemDirectoryA( sysdir, need + 1 ) ;
+		if( got == 0 || got > need ) { sfree( sysdir ) ; sysdir = NULL ; }
+	}
+	if( !sysdir ) { sfree( file ) ; return NULL ; }
+	cmd = dupprintf( "\"%s\\reg.exe\" export \"%s\\%s\" \"%s\" /y",
 		  sysdir, hive, subkey, file ) ;
+	sfree( sysdir ) ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
-	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
-			     NULL, NULL, &si, &pi ) ) { file[0] = '\0' ; return 0 ; }
+	started = CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+			     NULL, NULL, &si, &pi ) ;
+	sfree( cmd ) ;
+	if( !started ) { sfree( file ) ; return NULL ; }
 	WaitForSingleObject( pi.hProcess, 30000 ) ;
 	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
 	if( rc != 0 || GetFileAttributesA( file ) == INVALID_FILE_ATTRIBUTES ) {
 		DeleteFileA( file ) ;   /* a part-written export is no backup */
-		file[0] = '\0' ;
-		return 0 ;
+		sfree( file ) ;
+		return NULL ;
 	}
-	return 1 ;
+	return file ;
 }
 
 /* KiTTY: where should a class registration (URL handler, file association) be
@@ -1128,10 +1160,10 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 	 * savemode=registry already means "this copy uses the registry"; -yes
 	 * answers for scripts. */
 	if( !assume_yes && GetIniFileFlag() != SAVEMODE_REG ) {
-		char question[2048] ;
-		snprintf( question, sizeof(question),
-			KT_REG_PORTABLE_QUESTION, what, path ) ;
-		if( !CliConfirm( title, question ) ) {
+		char *question = dupprintf( KT_REG_PORTABLE_QUESTION, what, path ) ;
+		int yes = CliConfirm( title, question ) ;
+		sfree( question ) ;
+		if( !yes ) {
 			KittyCliReport( title, KT_REG_NOTHING_REGISTERED, 0 ) ;
 			return 0 ;
 		}
@@ -1191,23 +1223,30 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
 			    const char *friendly, const char *path,
 			    const char *command ) {
-	char key[512], buffer[1024] ;
+	char *key, *buffer ;
+	int ok ;
 
-	snprintf( key, sizeof(key), "%s%s", prefix, proto ) ;
-	if( !RegTestOrCreate( root, key, "", friendly ) ) return 0 ;
+	key = dupprintf( "%s%s", prefix, proto ) ;
+	if( !RegTestOrCreate( root, key, "", friendly ) ) { sfree( key ) ; return 0 ; }
 	RegTestOrCreateDWORD( root, key, "EditFlags", 2 ) ;
 	RegTestOrCreate( root, key, "FriendlyTypeName", "@ieframe.dll,-907" ) ;
 	RegTestOrCreate( root, key, "URL Protocol", "" ) ;
 	RegTestOrCreateDWORD( root, key, "BrowserFlags", 8 ) ;
+	sfree( key ) ;
 
-	snprintf( buffer, sizeof(buffer), "%s,0", path ) ;
-	snprintf( key, sizeof(key), "%s%s\\DefaultIcon", prefix, proto ) ;
+	buffer = dupprintf( "%s,0", path ) ;
+	key = dupprintf( "%s%s\\DefaultIcon", prefix, proto ) ;
 	RegTestOrCreate( root, key, "", buffer ) ;
-	snprintf( key, sizeof(key), "%s%s\\shell", prefix, proto ) ;
+	sfree( key ) ;
+	sfree( buffer ) ;
+	key = dupprintf( "%s%s\\shell", prefix, proto ) ;
 	RegTestOrCreate( root, key, "", "" ) ;
+	sfree( key ) ;
 
-	snprintf( key, sizeof(key), "%s%s\\shell\\open\\command", prefix, proto ) ;
-	return RegTestOrCreate( root, key, "", command ) ;
+	key = dupprintf( "%s%s\\shell\\open\\command", prefix, proto ) ;
+	ok = RegTestOrCreate( root, key, "", command ) ;
+	sfree( key ) ;
+	return ok ;
 }
 
 /* ---- Windows' Default apps ---------------------------------------------
@@ -1241,17 +1280,6 @@ static int UrlHandlerWrite( HKEY root, const char *prefix, const char *proto,
 /* the order of CreateSSHHandler's protos[] */
 static const char *const defapps_schemes[DEFAPPS_NSCHEMES] = { "telnet", "ssh", "kitty", "putty" } ;
 
-/* Append to a report buffer; a full buffer stays full (len >= size). */
-static size_t rep_add( char *report, size_t len, size_t size, const char *fmt, ... ) {
-	va_list ap ;
-	int n ;
-	if( len >= size ) return len ;
-	va_start( ap, fmt ) ;
-	n = vsnprintf( report+len, size-len, fmt, ap ) ;
-	va_end( ap ) ;
-	return n < 0 ? len : len + (size_t)n ;
-}
-
 /* One REG_SZ value in the 64-bit view, key created as needed. */
 static int defapps_set( HKEY root, const char *subkey, const char *name, const char *data ) {
 	HKEY hk ;
@@ -1265,18 +1293,20 @@ static int defapps_set( HKEY root, const char *subkey, const char *name, const c
 
 /* RegisteredApplications + Capabilities in `root`, for the schemes whose
  * ProgId was written (progid_ok[i]). offered[i] = 1 for each scheme listed;
- * adds the "Default apps:" line when anything was. */
-static size_t defapps_register( HKEY root, const char *path, const int *progid_ok,
-				int *offered, char *report, size_t len, size_t size ) {
-	char key[300], progid[64], icon[1100], list[128] ;
-	int i ;
+ * adds the "Default apps:" line to the report when anything was. */
+static void defapps_register( HKEY root, const char *path, const int *progid_ok,
+			      int *offered, strbuf *report ) {
+	char key[300], progid[64], *icon, list[128] ;
+	int i, ok ;
 	list[0] = '\0' ;
 	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) offered[i] = 0 ;
-	snprintf( icon, sizeof(icon), "%s,0", path ) ;
-	if( !defapps_set( root, DEFAPPS_CAPS, "ApplicationName", DEFAPPS_NAME ) ||
-	    !defapps_set( root, DEFAPPS_CAPS, "ApplicationDescription", KT_REG_DEFAPPS_DESCRIPTION ) ||
-	    !defapps_set( root, DEFAPPS_CAPS, "ApplicationIcon", icon ) )
-		return len ;
+	icon = dupprintf( "%s,0", path ) ;
+	ok = defapps_set( root, DEFAPPS_CAPS, "ApplicationName", DEFAPPS_NAME ) &&
+	     defapps_set( root, DEFAPPS_CAPS, "ApplicationDescription", KT_REG_DEFAPPS_DESCRIPTION ) &&
+	     defapps_set( root, DEFAPPS_CAPS, "ApplicationIcon", icon ) ;
+	sfree( icon ) ;
+	if( !ok )
+		return ;
 	snprintf( key, sizeof(key), "%s\\URLAssociations", DEFAPPS_CAPS ) ;
 	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
 		if( !progid_ok[i] ) continue ;
@@ -1288,79 +1318,91 @@ static size_t defapps_register( HKEY root, const char *path, const int *progid_o
 	}
 	if( !list[0] || !defapps_set( root, DEFAPPS_REGAPPS, DEFAPPS_NAME, DEFAPPS_CAPS ) ) {
 		for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) offered[i] = 0 ;
-		return len ;
+		return ;
 	}
-	return rep_add( report, len, size, KT_REG_DEFAPPS_OFFERED, list ) ;
+	put_fmt( report, KT_REG_DEFAPPS_OFFERED, list ) ;
 }
 
 /* Every other application in Default apps that claims one of the schemes
  * offered: RegisteredApplications of HKLM and HKCU, each in both registry
  * views - a 32-bit installer's Capabilities path lands under WOW6432Node,
  * and Windows reads it there. One report line per scheme and application;
- * *claimed counts them. */
-static size_t defapps_competitors( const int *offered, char *report, size_t len,
-				   size_t size, int *claimed ) {
+ * *claimed counts them. Names, paths and values are read whole: one longer
+ * than a fixed buffer used to drop the application from the list. */
+static void defapps_competitors( const int *offered, strbuf *report, int *claimed ) {
 	static const HKEY hives[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER } ;
 	static const REGSAM views[2] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY } ;
-	char seen[32][300] ;
-	int nseen = 0, h, v, i, k ;
+	char **seen = NULL ;
+	size_t seensize = 0, nseen = 0, k ;
+	int h, v, i ;
 	DWORD idx ;
 
 	*claimed = 0 ;
 	for( h = 0 ; h < 2 ; h++ ) for( v = 0 ; v < 2 ; v++ ) {
 		HKEY hr ;
+		DWORD maxname = 0 ;
+		char *name ;
 		if( RegOpenKeyExA( hives[h], DEFAPPS_REGAPPS, 0, KEY_QUERY_VALUE|views[v], &hr ) != ERROR_SUCCESS )
 			continue ;
+		if( RegQueryInfoKeyA( hr, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+				      &maxname, NULL, NULL, NULL ) != ERROR_SUCCESS )
+			maxname = MAX_VALUE_NAME ;
+		name = snewn( maxname + 2, char ) ;
 		for( idx = 0 ; ; idx++ ) {
-			char name[256], caps[512], app[256] ;
-			DWORD nlen = sizeof(name), dlen = sizeof(caps)-1, alen, type ;
+			char *caps, *app ;
+			DWORD nlen = maxname + 2, type ;
 			HKEY hc, hu ;
-			LONG rc = RegEnumValueA( hr, idx, name, &nlen, NULL, &type, (BYTE *)caps, &dlen ) ;
+			LONG rc = RegEnumValueA( hr, idx, name, &nlen, NULL, NULL, NULL, NULL ) ;
 			if( rc == ERROR_NO_MORE_ITEMS ) break ;
-			if( rc != ERROR_SUCCESS || ( type != REG_SZ && type != REG_EXPAND_SZ ) ) continue ;
-			caps[dlen] = '\0' ;
-			if( !stricmp( name, DEFAPPS_NAME ) || !caps[0] ) continue ;
+			if( rc != ERROR_SUCCESS ) continue ;
+			caps = (char *)kitty_reg_query_dup( hr, name, &type, NULL ) ;
+			if( !caps ) continue ;
+			if( ( type != REG_SZ && type != REG_EXPAND_SZ ) ||
+			    !stricmp( name, DEFAPPS_NAME ) || !caps[0] ) { sfree( caps ) ; continue ; }
 			/* the path in the view it was listed in first, then the other */
 			if( RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[v], &hc ) != ERROR_SUCCESS &&
-			    RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[1-v], &hc ) != ERROR_SUCCESS )
+			    RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[1-v], &hc ) != ERROR_SUCCESS ) {
+				sfree( caps ) ;
 				continue ;
+			}
+			sfree( caps ) ;
 			/* the name Settings shows; an indirect "@dll,-id" one is not
 			 * resolved here - the value name stands in for it */
-			alen = sizeof(app)-1 ;
-			if( RegQueryValueExA( hc, "ApplicationName", NULL, &type, (BYTE *)app, &alen ) == ERROR_SUCCESS &&
-			    ( type == REG_SZ || type == REG_EXPAND_SZ ) ) app[alen] = '\0' ;
-			else app[0] = '\0' ;
-			if( !app[0] || app[0] == '@' ) snprintf( app, sizeof(app), "%s", name ) ;
+			app = (char *)kitty_reg_query_dup( hc, "ApplicationName", &type, NULL ) ;
+			if( app && ( ( type != REG_SZ && type != REG_EXPAND_SZ ) || !app[0] || app[0] == '@' ) ) {
+				sfree( app ) ; app = NULL ;
+			}
+			if( !app ) app = dupstr( name ) ;
 			if( RegOpenKeyExA( hc, "URLAssociations", 0, KEY_QUERY_VALUE, &hu ) == ERROR_SUCCESS ) {
 				for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
-					char pv[256], tag[300] ;
-					DWORD plen = sizeof(pv)-1 ;
+					char *pv, *tag ;
 					int dup = 0 ;
 					if( !offered[i] ) continue ;
-					if( RegQueryValueExA( hu, defapps_schemes[i], NULL, &type, (BYTE *)pv, &plen ) != ERROR_SUCCESS )
-						continue ;
-					pv[plen] = '\0' ;
-					if( !pv[0] ) continue ;
+					pv = (char *)kitty_reg_query_dup( hu, defapps_schemes[i], NULL, NULL ) ;
+					if( !pv ) continue ;
+					if( !pv[0] ) { sfree( pv ) ; continue ; }
+					sfree( pv ) ;
 					/* listed in both views (a shared key, or 32-bit Windows),
 					 * or in both hives: one line */
-					snprintf( tag, sizeof(tag), "%s|%s", defapps_schemes[i], app ) ;
+					tag = dupprintf( "%s|%s", defapps_schemes[i], app ) ;
 					for( k = 0 ; k < nseen ; k++ ) if( !stricmp( seen[k], tag ) ) { dup = 1 ; break ; }
-					if( dup ) continue ;
-					if( nseen < (int)(sizeof(seen)/sizeof(seen[0])) ) {
-						snprintf( seen[nseen], sizeof(seen[0]), "%s", tag ) ;
-						nseen++ ;
-					}
-					len = rep_add( report, len, size, KT_REG_DEFAPPS_CLAIMED,
-						       defapps_schemes[i], app, app ) ;
+					if( dup ) { sfree( tag ) ; continue ; }
+					sgrowarray( seen, seensize, nseen ) ;
+					seen[nseen++] = tag ;
+					put_fmt( report, KT_REG_DEFAPPS_CLAIMED,
+						 defapps_schemes[i], app, app ) ;
 					(*claimed)++ ;
 				}
 				RegCloseKey( hu ) ;
 			}
+			sfree( app ) ;
 			RegCloseKey( hc ) ;
 		}
+		sfree( name ) ;
 		RegCloseKey( hr ) ;
 	}
-	return len ;
+	for( k = 0 ; k < nseen ; k++ ) sfree( seen[k] ) ;
+	sfree( seen ) ;
 }
 
 /* Settings > Default apps exists from Windows 10 on. The version comes from
@@ -1479,12 +1521,11 @@ static int defapps_remove( HKEY root ) {
  *    understood on the command line either way.
  */
 void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
-	char path[1024], report[4096], cmd[1200], prev[1024], backup[MAX_PATH] ;
-	char key[512] ;
+	char *path, *key ;
+	strbuf *report ;
 	const char *prefix ;
 	HKEY root ;
 	int n = 0, written = 0, kept = 0, replaced = 0 ;
-	size_t len ;
 	int i, mine ;
 	char progid[64] ;
 	int progid_ok[DEFAPPS_NSCHEMES] = { 0 }, offered[DEFAPPS_NSCHEMES], claimed = 0, open_settings ;
@@ -1497,33 +1538,39 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 		{ "putty",  "URL:PuTTY Session",    1, 1 },
 	} ;
 
-	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
+	/* the program's own path, whole; none: nothing to register */
+	if( ( path = kitty_module_path_dup( NULL ) ) == NULL ) return ;
 
 	if( !ClassRegTarget( path, "-sshhandler",
 			     force ? ( assume_yes ? " -force -yes" : " -force" ) :
 				     ( assume_yes ? " -yes" : "" ),
 			     peruser, assume_yes,
 			     KT_REG_URL_WHAT,
-			     KT_CAP_URL_HANDLERS, &root ) )
+			     KT_CAP_URL_HANDLERS, &root ) ) {
+		sfree( path ) ;
 		return ;
+	}
 	prefix = "Software\\Classes\\" ;
 
-	len = snprintf( report, sizeof(report), KT_REG_URL_REPORT_HEAD,
+	/* the report grows as it needs: a fixed 4096 bytes overflowed with long
+	 * command lines of other programs */
+	report = strbuf_new() ;
+	put_fmt( report, KT_REG_URL_REPORT_HEAD,
 			root == HKEY_LOCAL_MACHINE ?
 			KT_REG_FOR_ALL_USERS :
 			KT_REG_FOR_YOUR_ACCOUNT , path ) ;
 
 	for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
-		int had ;
+		char *prev, *cmd, *backup ;
 		if( protos[i].optional && !withputty ) continue ;
-		had = UrlHandlerCurrentCommand( protos[i].proto, prev, sizeof(prev) ) ;
+		prev = UrlHandlerCurrentCommand( protos[i].proto ) ;
 		n++ ;
 		if( protos[i].session )
-			snprintf( cmd, sizeof(cmd), "\"%s\" -load \"%%1\"", path ) ;
+			cmd = dupprintf( "\"%s\" -load \"%%1\"", path ) ;
 		else
 			/* "%1" quoted: unquoted, a URL containing a space arrives split
 			 * across arguments and only its first word reaches KiTTY. */
-			snprintf( cmd, sizeof(cmd), "\"%s\" \"%%1\"", path ) ;
+			cmd = dupprintf( "\"%s\" \"%%1\"", path ) ;
 
 		/* Default apps: this scheme's own ProgId, with the same command.
 		 * Written also when the protocol key below stays another
@@ -1531,20 +1578,19 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 		snprintf( progid, sizeof(progid), DEFAPPS_PROGID_FMT, protos[i].proto ) ;
 		progid_ok[i] = UrlHandlerWrite( root, prefix, progid, protos[i].friendly, path, cmd ) ;
 
-		if( had && !strcmp( prev, cmd ) ) {
-			len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_ALREADY,
-					 protos[i].proto ) ;
+		if( prev && !strcmp( prev, cmd ) ) {
+			put_fmt( report, KT_REG_URL_ALREADY, protos[i].proto ) ;
 			written++ ;
+			sfree( cmd ) ; sfree( prev ) ;
 			continue ;
 		}
-		if( had && !force ) {
-			char prog[MAX_PATH] ;
-			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
-			len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_LEFT_ALONE,
+		if( prev && !force ) {
+			char *prog = UrlHandlerProgram( prev ) ;
+			put_fmt( report, KT_REG_URL_LEFT_ALONE,
 					 protos[i].proto, prog[0] ? prog : KT_REG_ANOTHER_PROGRAM, prev ) ;
+			sfree( prog ) ;
 			kept++ ;
+			sfree( cmd ) ; sfree( prev ) ;
 			continue ;
 		}
 		/* About to take a protocol over. What "undo" means depends on where
@@ -1553,63 +1599,58 @@ void CreateSSHHandler( int force, int peruser, int assume_yes, int withputty ) {
 		 * import the copy taken here; if it does not, we are shadowing a
 		 * registration in the other hive, and the way back is to delete what
 		 * we are about to create - Windows then falls through to it again. */
-		snprintf( key, sizeof(key), "%s%s", prefix, protos[i].proto ) ;
+		key = dupprintf( "%s%s", prefix, protos[i].proto ) ;
 		mine = ClassKeyExists( root, key ) ;
-		backup[0] = '\0' ;
-		if( mine )
-			ClassKeyBackup( root, key, protos[i].proto, backup, sizeof(backup) ) ;
+		backup = mine ? ClassKeyBackup( root, key, protos[i].proto ) : NULL ;
+		sfree( key ) ;
 		if( !UrlHandlerWrite( root, prefix, protos[i].proto,
 				      protos[i].friendly, path, cmd ) ) {
-			len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_NOT_WRITTEN, protos[i].proto ) ;
+			put_fmt( report, KT_REG_URL_NOT_WRITTEN, protos[i].proto ) ;
+			sfree( backup ) ; sfree( cmd ) ; sfree( prev ) ;
 			continue ;
 		}
 		written++ ;
-		if( had ) {
-			char prog[MAX_PATH] ;
-			UrlHandlerProgram( prev, prog, sizeof(prog) ) ;
+		if( prev ) {
+			char *prog = UrlHandlerProgram( prev ) ;
 			replaced++ ;
-			len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_TAKEN_OVER,
+			put_fmt( report, KT_REG_URL_TAKEN_OVER,
 					 protos[i].proto, prog[0] ? prog : KT_REG_ANOTHER_PROGRAM, prev ) ;
-			if( mine && backup[0] )
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_UNDO_IMPORT, backup ) ;
+			if( mine && backup )
+				put_fmt( report, KT_REG_URL_UNDO_IMPORT, backup ) ;
 			else if( mine )
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_NO_BACKUP ) ;
+				put_fmt( report, KT_REG_URL_NO_BACKUP ) ;
 			else
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_UNDO_DELETE,
+				put_fmt( report, KT_REG_URL_UNDO_DELETE,
 					 root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU",
 					 prefix, protos[i].proto,
 					 root == HKEY_LOCAL_MACHINE ?
 						KT_REG_URL_REG_YOUR_ACCOUNT :
 						KT_REG_URL_REG_ALL_USERS,
 					 prog[0] ? prog : KT_REG_PREVIOUS_PROGRAM, protos[i].proto ) ;
+			sfree( prog ) ;
 		} else {
-			len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_REGISTERED, protos[i].proto ) ;
+			put_fmt( report, KT_REG_URL_REGISTERED, protos[i].proto ) ;
 		}
-		if( len >= sizeof(report) ) break ;   /* report full; stop appending */
+		sfree( backup ) ; sfree( cmd ) ; sfree( prev ) ;
 	}
 
 	/* Default apps: offered, then who else claims those schemes there. The
 	 * report shows first (a modal box from the configuration box), Settings
 	 * opens after it. */
-	len = defapps_register( root, path, progid_ok, offered, report, len, sizeof(report) ) ;
-	len = defapps_competitors( offered, report, len, sizeof(report), &claimed ) ;
+	defapps_register( root, path, progid_ok, offered, report ) ;
+	defapps_competitors( offered, report, &claimed ) ;
 	open_settings = claimed && defapps_may_open_settings( assume_yes ) ;
 	if( open_settings )
-		len = rep_add( report, len, sizeof(report), "%s", KT_REG_DEFAPPS_OPEN_SETTINGS ) ;
+		put_fmt( report, "%s", KT_REG_DEFAPPS_OPEN_SETTINGS ) ;
 
-	if( kept && len < sizeof(report) )
-		snprintf( report+len, sizeof(report)-len,
-			  KT_REG_URL_KEPT_NOTE,
+	if( kept )
+		put_fmt( report, KT_REG_URL_KEPT_NOTE,
 			  kept, kept == 1 ? "it is" : "they are",
 			  kept == 1 ? "it" : "them" ) ;
 
-	KittyCliReport( KT_CAP_URL_HANDLERS, report, written == n ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_URL_HANDLERS, report->s, written == n ? 0 : 1 ) ;
+	strbuf_free( report ) ;
+	sfree( path ) ;
 	if( open_settings ) defapps_open_settings( root ) ;
 	(void)replaced ;
 }
@@ -1627,17 +1668,16 @@ void RemoveSSHHandler( void ) {
 		{ HKEY_CURRENT_USER,  KT_REG_YOUR_ACCOUNT },
 		{ HKEY_LOCAL_MACHINE, KT_REG_ALL_USERS },
 	} ;
-	char report[4096], key[512], cur[1024], backup[MAX_PATH], prog[MAX_PATH] ;
-	size_t len ;
+	strbuf *report = strbuf_new() ;
+	char key[512] ;
 	int i, h, removed = 0, kept = 0, defapps = 0 ;
 
-	len = snprintf( report, sizeof(report),
-			KT_REG_URL_REMOVING ) ;
+	put_fmt( report, KT_REG_URL_REMOVING ) ;
 
 	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
 		for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
 			HKEY hk ;
-			DWORD sz = sizeof(cur) ;
+			char *cur, *prog, *backup ;
 			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
 			if( RegOpenKeyExA( hives[h].root, key, 0, KEY_READ, &hk ) != ERROR_SUCCESS )
 				continue ;
@@ -1645,44 +1685,38 @@ void RemoveSSHHandler( void ) {
 
 			snprintf( key, sizeof(key),
 				  "Software\\Classes\\%s\\shell\\open\\command", protos[i] ) ;
-			cur[0] = '\0' ;
-			if( RegGetValueA( hives[h].root, key, NULL, RRF_RT_REG_SZ, NULL,
-					  cur, &sz ) != ERROR_SUCCESS ) cur[0] = '\0' ;
+			cur = RegSzDup( hives[h].root, key, NULL ) ;
 
 			/* Ours? Anything else stays. */
-			UrlHandlerProgram( cur, prog, sizeof(prog) ) ;
+			prog = UrlHandlerProgram( cur ) ;
 			if( strnicmp( prog, "kitty", 5 ) != 0 ) {
-				if( cur[0] ) {
-					len += snprintf( report+len, sizeof(report)-len,
-						 KT_REG_URL_RM_LEFT_ALONE,
+				if( cur ) {
+					put_fmt( report, KT_REG_URL_RM_LEFT_ALONE,
 						 protos[i], hives[h].label,
 						 prog[0] ? prog : KT_REG_ANOTHER_PROGRAM ) ;
 					kept++ ;
 				}
+				sfree( prog ) ; sfree( cur ) ;
 				continue ;
 			}
+			sfree( prog ) ; sfree( cur ) ;
 
-			backup[0] = '\0' ;
 			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
-			ClassKeyBackup( hives[h].root, key, protos[i], backup, sizeof(backup) ) ;
+			backup = ClassKeyBackup( hives[h].root, key, protos[i] ) ;
 			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
 				removed++ ;
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_REMOVED, protos[i], hives[h].label ) ;
-				if( backup[0] )
-					len += snprintf( report+len, sizeof(report)-len,
-						 KT_REG_URL_UNDO_IMPORT, backup ) ;
+				put_fmt( report, KT_REG_URL_REMOVED, protos[i], hives[h].label ) ;
+				if( backup )
+					put_fmt( report, KT_REG_URL_UNDO_IMPORT, backup ) ;
 				else
-					len += snprintf( report+len, sizeof(report)-len,
-						 KT_REG_URL_NO_BACKUP ) ;
+					put_fmt( report, KT_REG_URL_NO_BACKUP ) ;
 			} else {
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_URL_NOT_REMOVED,
+				put_fmt( report, KT_REG_URL_NOT_REMOVED,
 					 protos[i], hives[h].label,
 					 hives[h].root == HKEY_LOCAL_MACHINE ?
 					 KT_REG_NEEDS_ADMIN : "" ) ;
 			}
-			if( len >= sizeof(report) ) break ;
+			sfree( backup ) ;
 		}
 	}
 
@@ -1693,15 +1727,15 @@ void RemoveSSHHandler( void ) {
 		if( defapps_remove( hives[h].root ) ) defapps = 1 ;
 	if( defapps ) {
 		removed++ ;
-		len = rep_add( report, len, sizeof(report), "%s", KT_REG_DEFAPPS_REMOVED ) ;
+		put_fmt( report, "%s", KT_REG_DEFAPPS_REMOVED ) ;
 	}
 
-	if( !removed && len < sizeof(report) )
-		snprintf( report+len, sizeof(report)-len,
-			  KT_REG_URL_NOTHING_REGISTERED,
+	if( !removed )
+		put_fmt( report, KT_REG_URL_NOTHING_REGISTERED,
 			  kept ? KT_REG_URL_OTHERS : "" ) ;
 
-	KittyCliReport( KT_CAP_URL_HANDLERS, report, removed ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_URL_HANDLERS, report->s, removed ? 0 : 1 ) ;
+	strbuf_free( report ) ;
 }
 
 // Create the *.ktx file association
@@ -1714,39 +1748,40 @@ void RemoveSSHHandler( void ) {
  * then exported first), a confirmation first for a portable copy, and the
  * outcome reported to the console it was run from. */
 void CreateFileAssoc( int force, int peruser, int assume_yes ) {
-	char path[1024], buffer[1024], report[2048], cur[512], backup[MAX_PATH] ;
+	char *path, *buffer, *cur, *backup ;
 	char ext[15], key[256] ;
+	strbuf *report ;
 	HKEY root ;
-	DWORD sz ;
-	size_t len ;
-	int had = 0, mine = 0 ;
+	int had = 0, mine = 0, ok ;
 
 	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
-	GetModuleFileName( NULL, (LPTSTR)path, 1024 ) ;
+	/* the program's own path, whole; none: nothing to register */
+	if( ( path = kitty_module_path_dup( NULL ) ) == NULL ) return ;
 
-	snprintf( buffer, sizeof(buffer), KT_REG_ASSOC_WHAT, ext ) ;
-	if( !ClassRegTarget( path, "-fileassoc", force ? " -force" : "",
+	buffer = dupprintf( KT_REG_ASSOC_WHAT, ext ) ;
+	ok = ClassRegTarget( path, "-fileassoc", force ? " -force" : "",
 			     peruser, assume_yes, buffer,
-			     KT_CAP_FILE_ASSOC, &root ) )
-		return ;
+			     KT_CAP_FILE_ASSOC, &root ) ;
+	sfree( buffer ) ;
+	if( !ok ) { sfree( path ) ; return ; }
 
 	/* Who owns the extension today? Its default value is the ProgID that
 	 * opens it - ours is kitty.connect.1. */
-	sz = sizeof(cur) ; cur[0] = '\0' ;
-	if( RegGetValueA( HKEY_CLASSES_ROOT, ext, NULL, RRF_RT_REG_SZ, NULL,
-			  cur, &sz ) == ERROR_SUCCESS && cur[0] )
-		had = 1 ;
+	cur = RegSzDup( HKEY_CLASSES_ROOT, ext, NULL ) ;
+	if( cur ) had = 1 ;
+	else cur = dupstr( "" ) ;
 
-	len = snprintf( report, sizeof(report), KT_REG_ASSOC_REPORT_HEAD,
+	report = strbuf_new() ;
+	put_fmt( report, KT_REG_ASSOC_REPORT_HEAD,
 			root == HKEY_LOCAL_MACHINE ?
 			KT_REG_FOR_ALL_USERS :
 			KT_REG_FOR_YOUR_ACCOUNT, ext, path ) ;
 
 	if( had && strcmp( cur, "kitty.connect.1" ) != 0 && !force ) {
-		snprintf( report+len, sizeof(report)-len,
-			  KT_REG_ASSOC_LEFT_ALONE, ext, cur ) ;
-		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
+		put_fmt( report, KT_REG_ASSOC_LEFT_ALONE, ext, cur ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report->s, 1 ) ;
+		strbuf_free( report ) ; sfree( cur ) ; sfree( path ) ;
 		return ;
 	}
 
@@ -1754,10 +1789,7 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	 * key, or shadowing one in the other hive? The undo differs. */
 	snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
 	mine = ClassKeyExists( root, key ) ;
-	backup[0] = '\0' ;
-	if( mine )
-		ClassKeyBackup( root, key, ext[0] == '.' ? ext+1 : ext,
-				backup, sizeof(backup) ) ;
+	backup = mine ? ClassKeyBackup( root, key, ext[0] == '.' ? ext+1 : ext ) : NULL ;
 
 	// Associate .ktx files with the KiTTY application
 	// Create the application entry
@@ -1776,15 +1808,16 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	}
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\CurVer" ) ;
 	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
-	snprintf( buffer, sizeof(buffer), "%s", path ) ;
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\DefaultIcon" ) ;
-	RegTestOrCreate( root, key, "", buffer);
-	snprintf( buffer, sizeof(buffer), "\"%s\" -kload \"%%1\"", path ) ;
+	RegTestOrCreate( root, key, "", path );
+	buffer = dupprintf( "\"%s\" -kload \"%%1\"", path ) ;
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\shell\\open\\command" ) ;
-	if( !RegTestOrCreate( root, key, "", buffer) ) {
-		snprintf( report+len, sizeof(report)-len,
-			  KT_REG_ASSOC_NOT_WRITTEN ) ;
-		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
+	ok = RegTestOrCreate( root, key, "", buffer) ;
+	sfree( buffer ) ;
+	if( !ok ) {
+		put_fmt( report, KT_REG_ASSOC_NOT_WRITTEN ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report->s, 1 ) ;
+		strbuf_free( report ) ; sfree( backup ) ; sfree( cur ) ; sfree( path ) ;
 		return ;
 	}
 	// Create the file association
@@ -1792,8 +1825,9 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	/* the one value that IS the association: it went unchecked and a failed
 	 * write still ended in "done" */
 	if( !RegTestOrCreate( root, key, "", "kitty.connect.1") ) {
-		snprintf( report+len, sizeof(report)-len, KT_REG_ASSOC_NOT_WRITTEN ) ;
-		KittyCliReport( KT_CAP_FILE_ASSOC, report, 1 ) ;
+		put_fmt( report, KT_REG_ASSOC_NOT_WRITTEN ) ;
+		KittyCliReport( KT_CAP_FILE_ASSOC, report->s, 1 ) ;
+		strbuf_free( report ) ; sfree( backup ) ; sfree( cur ) ; sfree( path ) ;
 		return ;
 	}
 	RegTestOrCreate( root, key, "PerceivedType", "Connection") ;
@@ -1814,26 +1848,23 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	}
 
 	if( had && strcmp( cur, "kitty.connect.1" ) != 0 ) {
-		len += snprintf( report+len, sizeof(report)-len,
-				 KT_REG_ASSOC_TAKEN_OVER, ext, cur ) ;
-		if( mine && backup[0] )
-			snprintf( report+len, sizeof(report)-len,
-				  KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
+		put_fmt( report, KT_REG_ASSOC_TAKEN_OVER, ext, cur ) ;
+		if( mine && backup )
+			put_fmt( report, KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
 		else if( mine )
-			snprintf( report+len, sizeof(report)-len,
-				  KT_REG_ASSOC_NO_BACKUP ) ;
+			put_fmt( report, KT_REG_ASSOC_NO_BACKUP ) ;
 		else
-			snprintf( report+len, sizeof(report)-len,
-				  KT_REG_ASSOC_UNDO_DELETE,
+			put_fmt( report, KT_REG_ASSOC_UNDO_DELETE,
 				  root == HKEY_LOCAL_MACHINE ? "HKLM" : "HKCU", ext,
 				  root == HKEY_LOCAL_MACHINE ?
 					KT_REG_ASSOC_YOUR_ACCOUNT :
 					KT_REG_ASSOC_ALL_USERS,
 				  cur, ext ) ;
 	} else {
-		snprintf( report+len, sizeof(report)-len, KT_REG_ASSOC_DONE, ext ) ;
+		put_fmt( report, KT_REG_ASSOC_DONE, ext ) ;
 	}
-	KittyCliReport( KT_CAP_FILE_ASSOC, report, 0 ) ;
+	KittyCliReport( KT_CAP_FILE_ASSOC, report->s, 0 ) ;
+	strbuf_free( report ) ; sfree( backup ) ; sfree( cur ) ; sfree( path ) ;
 }
 
 /* KiTTY (-fileassoc -uninstall): give the extension back. Only removed when it
@@ -1844,58 +1875,51 @@ void RemoveFileAssoc( void ) {
 		{ HKEY_CURRENT_USER,  KT_REG_YOUR_ACCOUNT },
 		{ HKEY_LOCAL_MACHINE, KT_REG_ALL_USERS },
 	} ;
-	char ext[15], key[256], cur[512], backup[MAX_PATH], report[2048] ;
-	size_t len ;
+	char ext[15], key[256] ;
+	strbuf *report = strbuf_new() ;
 	int h, removed = 0 ;
-	DWORD sz ;
 
 	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
-	len = snprintf( report, sizeof(report),
-			KT_REG_ASSOC_REMOVING, ext ) ;
+	put_fmt( report, KT_REG_ASSOC_REMOVING, ext ) ;
 
 	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
+		char *cur ;
 		snprintf( key, sizeof(key), "Software\\Classes\\%s", ext ) ;
-		sz = sizeof(cur) ; cur[0] = '\0' ;
-		if( RegGetValueA( hives[h].root, key, NULL, RRF_RT_REG_SZ, NULL,
-				  cur, &sz ) == ERROR_SUCCESS && cur[0] ) {
+		if( ( cur = RegSzDup( hives[h].root, key, NULL ) ) != NULL ) {
 			if( strcmp( cur, "kitty.connect.1" ) != 0 ) {
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_ASSOC_RM_LEFT_ALONE,
+				put_fmt( report, KT_REG_ASSOC_RM_LEFT_ALONE,
 					 ext, hives[h].label, cur ) ;
+				sfree( cur ) ;
 				continue ;
-			}
-			backup[0] = '\0' ;
-			ClassKeyBackup( hives[h].root, key, ext[0] == '.' ? ext+1 : ext,
-					backup, sizeof(backup) ) ;
-			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
-				removed++ ;
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_ASSOC_REMOVED, ext, hives[h].label ) ;
-				if( backup[0] )
-					len += snprintf( report+len, sizeof(report)-len,
-						 KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
-				else
-					len += snprintf( report+len, sizeof(report)-len,
-						 KT_REG_ASSOC_NO_BACKUP ) ;
 			} else {
-				len += snprintf( report+len, sizeof(report)-len,
-					 KT_REG_ASSOC_NOT_REMOVED, ext, hives[h].label,
-					 hives[h].root == HKEY_LOCAL_MACHINE ?
-					 KT_REG_NEEDS_ADMIN : "" ) ;
+				char *backup = ClassKeyBackup( hives[h].root, key, ext[0] == '.' ? ext+1 : ext ) ;
+				if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
+					removed++ ;
+					put_fmt( report, KT_REG_ASSOC_REMOVED, ext, hives[h].label ) ;
+					if( backup )
+						put_fmt( report, KT_REG_ASSOC_UNDO_IMPORT, backup ) ;
+					else
+						put_fmt( report, KT_REG_ASSOC_NO_BACKUP ) ;
+				} else {
+					put_fmt( report, KT_REG_ASSOC_NOT_REMOVED, ext, hives[h].label,
+						 hives[h].root == HKEY_LOCAL_MACHINE ?
+						 KT_REG_NEEDS_ADMIN : "" ) ;
+				}
+				sfree( backup ) ;
 			}
+			sfree( cur ) ;
 		}
 		snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
-		if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS && len < sizeof(report) )
-			len += snprintf( report+len, sizeof(report)-len,
-				 KT_REG_PROGID_REMOVED, hives[h].label ) ;
+		if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS )
+			put_fmt( report, KT_REG_PROGID_REMOVED, hives[h].label ) ;
 	}
 
-	if( !removed && len < sizeof(report) )
-		snprintf( report+len, sizeof(report)-len,
-			  KT_REG_ASSOC_NOTHING ) ;
+	if( !removed )
+		put_fmt( report, KT_REG_ASSOC_NOTHING ) ;
 
-	KittyCliReport( KT_CAP_FILE_ASSOC, report, removed ? 0 : 1 ) ;
+	KittyCliReport( KT_CAP_FILE_ASSOC, report->s, removed ? 0 : 1 ) ;
+	strbuf_free( report ) ;
 }
 	
 // Check for KiTTY registry key. If not, copy from PuTTY one
@@ -1933,29 +1957,26 @@ Windows Registry Editor Version 5.00
 
 /* ---- KiTTY++ Settings > System: the shell integration's state ----------- */
 
-/* The program a "shell\open\command" line runs: its full path, unquoted. */
-static void CommandProgramPath( const char *command, char *out, size_t outlen ) {
-	const char *p = command, *end ;
-	size_t n ;
-	out[0] = '\0' ;
+/* The program a "shell\open\command" line runs: its full path, unquoted;
+ * "" when there is none (sfree it). */
+static char *CommandProgramPath( const char *command ) {
+	const char *p = command ? command : "", *end ;
 	while( *p == ' ' ) p++ ;
 	if( *p == '"' ) { p++ ; end = strchr( p, '"' ) ; }
 	else            { end = strchr( p, ' ' ) ; }
 	if( !end ) end = p + strlen(p) ;
-	n = (size_t)(end - p) ;
-	if( n == 0 || n >= outlen ) return ;
-	memcpy( out, p, n ) ;
-	out[n] = '\0' ;
+	return dupprintf( "%.*s", (int)(end - p), p ) ;
 }
 
-/* One state line for a handler command: what the System leaf shows. */
-static void IntegrationLine( const char *what, int had, const char *command,
+/* One state line for a handler command (NULL: none registered): what the
+ * System leaf shows. */
+static void IntegrationLine( const char *what, const char *command,
 			     const char *self, char *out, size_t outlen, int *ours ) {
-	char prog[MAX_PATH], base[MAX_PATH] ;
-	if( !had ) { snprintf( out, outlen, KT_REG_STATE_NOT_REGISTERED, what ) ; return ; }
-	CommandProgramPath( command, prog, sizeof(prog) ) ;
-	UrlHandlerProgram( command, base, sizeof(base) ) ;
-	if( prog[0] && !stricmp( prog, self ) ) {
+	char *prog, *base ;
+	if( !command ) { snprintf( out, outlen, KT_REG_STATE_NOT_REGISTERED, what ) ; return ; }
+	prog = CommandProgramPath( command ) ;
+	base = UrlHandlerProgram( command ) ;
+	if( prog[0] && self && !stricmp( prog, self ) ) {
 		snprintf( out, outlen, "%s  this KiTTY++", what ) ;
 		(*ours)++ ;
 	} else if( base[0] && !stricmp( base, "kitty.exe" ) ) {
@@ -1963,37 +1984,37 @@ static void IntegrationLine( const char *what, int had, const char *command,
 	} else {
 		snprintf( out, outlen, "%s  %s", what, base[0] ? base : command ) ;
 	}
+	sfree( base ) ;
+	sfree( prog ) ;
 }
 
 int kitty_shell_integration_state( char lines[5][256] ) {
 	static const char *const protos[] = { "telnet", "ssh", "kitty", "putty" } ;
-	char self[1024], cmd[1024], progid[256], ext[15] ;
-	DWORD sz ;
-	int i, had, ours = 0 ;
-	GetModuleFileName( NULL, (LPTSTR)self, sizeof(self) ) ;
+	char *self, *cmd, *progid, ext[15] ;
+	int i, ours = 0 ;
+	/* NULL (not readable whole): nothing counts as this exe */
+	self = kitty_module_path_dup( NULL ) ;
 	for( i = 0 ; i < 4 ; i++ ) {
 		char what[24] ;
 		snprintf( what, sizeof(what), "%s://", protos[i] ) ;
-		had = UrlHandlerCurrentCommand( protos[i], cmd, sizeof(cmd) ) ;
-		IntegrationLine( what, had, cmd, self, lines[i], 256, &ours ) ;
+		cmd = UrlHandlerCurrentCommand( protos[i] ) ;
+		IntegrationLine( what, cmd, self, lines[i], 256, &ours ) ;
+		sfree( cmd ) ;
 	}
 	if( strlen( FileExtension ) > 0 ) snprintf( ext, sizeof(ext), "%s", FileExtension ) ;
 	else snprintf( ext, sizeof(ext), ".ktx" ) ;
-	sz = sizeof(progid) ; progid[0] = '\0' ;
-	had = ( RegGetValueA( HKEY_CLASSES_ROOT, ext, NULL, RRF_RT_REG_SZ, NULL,
-			      progid, &sz ) == ERROR_SUCCESS && progid[0] ) ;
-	if( had && !stricmp( progid, "kitty.connect.1" ) ) {
-		char key[300] ;
-		snprintf( key, sizeof(key), "kitty.connect.1\\shell\\open\\command" ) ;
-		sz = sizeof(cmd) ; cmd[0] = '\0' ;
-		had = ( RegGetValueA( HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL,
-				      cmd, &sz ) == ERROR_SUCCESS && cmd[0] ) ;
-		IntegrationLine( ext, had, cmd, self, lines[4], 256, &ours ) ;
-	} else if( had ) {
+	progid = RegSzDup( HKEY_CLASSES_ROOT, ext, NULL ) ;
+	if( progid && !stricmp( progid, "kitty.connect.1" ) ) {
+		cmd = RegSzDup( HKEY_CLASSES_ROOT, "kitty.connect.1\\shell\\open\\command", NULL ) ;
+		IntegrationLine( ext, cmd, self, lines[4], 256, &ours ) ;
+		sfree( cmd ) ;
+	} else if( progid ) {
 		snprintf( lines[4], 256, "%s  %s", ext, progid ) ;
 	} else {
 		snprintf( lines[4], 256, KT_REG_STATE_NOT_REGISTERED, ext ) ;
 	}
+	sfree( progid ) ;
+	sfree( self ) ;
 	/* putty:// is optional; the count shows how many of the four that matter
 	 * point at this exe. */
 	{

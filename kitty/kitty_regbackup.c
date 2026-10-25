@@ -66,19 +66,34 @@
 /* Why the last kitty_reg_tool call failed, for the caller's report: reg.exe's
  * exit code, or Windows' error when it could not even be started. */
 static DWORD kitty_reg_tool_exit = 0, kitty_reg_tool_winerr = 0 ;
+/* The system folder whole (sfree it), NULL with Windows' reason. */
+static char *kitty_sysdir_dup( void ) {
+	DWORD need = GetSystemDirectoryA( NULL, 0 ), got ;
+	char *d ;
+	if( need == 0 ) return NULL ;
+	d = snewn( need + 1, char ) ;
+	got = GetSystemDirectoryA( d, need + 1 ) ;
+	if( got == 0 || got > need ) { sfree( d ) ; if( got ) SetLastError( ERROR_INSUFFICIENT_BUFFER ) ; return NULL ; }
+	return d ;
+	}
 static int kitty_reg_tool( const char *verb, const char *hive, const char *path ) {
-	char sysdir[MAX_PATH], cmd[8192] ;
+	char *sysdir, *cmd ;
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ; DWORD rc = 1 ;
+	BOOL started ;
 	kitty_reg_tool_exit = 0 ; kitty_reg_tool_winerr = 0 ;
-	if( GetSystemDirectoryA( sysdir, sizeof(sysdir) ) == 0 ) { kitty_reg_tool_winerr = GetLastError() ; return 0 ; }
+	if( ( sysdir = kitty_sysdir_dup() ) == NULL ) { kitty_reg_tool_winerr = GetLastError() ; return 0 ; }
+	/* the command whole: a path cut at 8 KB named another file */
 	if( hive != NULL )
-		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\" \"%s\" /y", sysdir, verb, hive, path ) ;
+		cmd = dupprintf( "\"%s\\reg.exe\" %s \"%s\" \"%s\" /y", sysdir, verb, hive, path ) ;
 	else
-		snprintf( cmd, sizeof(cmd), "\"%s\\reg.exe\" %s \"%s\"", sysdir, verb, path ) ;
+		cmd = dupprintf( "\"%s\\reg.exe\" %s \"%s\"", sysdir, verb, path ) ;
+	sfree( sysdir ) ;
 	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
 	si.dwFlags = STARTF_USESHOWWINDOW ; si.wShowWindow = SW_HIDE ;
-	if( !CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ) {
-		kitty_reg_tool_winerr = GetLastError() ; return 0 ; }
+	started = CreateProcessA( NULL, cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi ) ;
+	if( !started ) kitty_reg_tool_winerr = GetLastError() ;
+	sfree( cmd ) ;
+	if( !started ) return 0 ;
 	WaitForSingleObject( pi.hProcess, 60000 ) ;
 	if( !GetExitCodeProcess( pi.hProcess, &rc ) ) rc = 1 ;   /* STILL_ACTIVE after 60 s: a failure too */
 	CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
@@ -93,15 +108,24 @@ static int kitty_reg_import( const char *filename ) {
 
 /* Why the last LoadRegistryKey failed: the file and the reason, for the
  * caller's report (/loadreg's result line, the start-up messages). */
-static char kitty_sav_load_why[1024] = "" ;
-const char *kitty_sav_load_reason( void ) { return kitty_sav_load_why ; }
+/* The reasons are held whole (the file's path is in them): set by
+ * sav_why_set, which takes over the text. */
+static char *kitty_sav_load_why = NULL ;
+/* why NULL: nobody wants the reason (the backup worker thread, which must
+ * not touch the shared one the main thread reads) - the text goes. */
+static void sav_why_set( char **why, char *text ) {
+	if( why == NULL ) { sfree( text ) ; return ; }
+	sfree( *why ) ;
+	*why = text ;
+	}
+const char *kitty_sav_load_reason( void ) { return kitty_sav_load_why ? kitty_sav_load_why : "" ; }
 static int sav_load_fail_win( const char *path, DWORD err ) {
-	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), "%s: %s", path, kitty_win_reason( (int)( err ? err : ERROR_READ_FAULT ) ) ) ;
+	sav_why_set( &kitty_sav_load_why, dupprintf( "%s: %s", path, kitty_win_reason( (int)( err ? err : ERROR_READ_FAULT ) ) ) ) ;
 	return 0 ;
 	}
 static int sav_load_fail_regexe( const char *path ) {
 	if( kitty_reg_tool_winerr ) return sav_load_fail_win( path, kitty_reg_tool_winerr ) ;
-	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), KT_SAV_IMPORT_FAILED_FMT, path, (unsigned long)kitty_reg_tool_exit ) ;
+	sav_why_set( &kitty_sav_load_why, dupprintf( KT_SAV_IMPORT_FAILED_FMT, path, (unsigned long)kitty_reg_tool_exit ) ) ;
 	return 0 ;
 	}
 
@@ -237,71 +261,97 @@ static int kitty_reg_fix_multiline( const char *filename ) {
 /* Export the key to filename with reg.exe, multi-line values repaired. 1 the
  * file is a whole export; 0 not (no file, or not repaired), with the reason
  * for the caller in kitty_sav_save_reason(). */
-static char kitty_sav_save_why[1024] = "" ;
-const char *kitty_sav_save_reason( void ) { return kitty_sav_save_why ; }
-int SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
-	char hive[4096] ;
+static char *kitty_sav_save_why = NULL ;
+const char *kitty_sav_save_reason( void ) { return kitty_sav_save_why ? kitty_sav_save_why : "" ; }
+/* why: where the reason goes (NULL: nowhere, see sav_why_set) */
+static int sav_export( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename, char **why ) {
+	char *hive ;
 	const char * root ;
-	kitty_sav_save_why[0] = '\0' ;
+	int ok ;
+	sav_why_set( why, NULL ) ;
 	if( hMainKey == HKEY_CURRENT_USER ) root = "HKCU" ;
 	else if( hMainKey == HKEY_LOCAL_MACHINE ) root = "HKLM" ;
 	else return 0 ;
-	snprintf( hive, sizeof(hive), "%s\\%s", root, TEXT(lpSubKey) ) ;
+	hive = dupprintf( "%s\\%s", root, TEXT(lpSubKey) ) ;
 	/* reg.exe /y overwrites, but a stale file must not survive a failed export. */
 	unlink( filename ) ;
-	if( !kitty_reg_tool( "export", hive, filename ) ) {
+	ok = kitty_reg_tool( "export", hive, filename ) ;
+	sfree( hive ) ;
+	if( !ok ) {
 		if( kitty_reg_tool_winerr )
-			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", filename, kitty_win_reason( (int)kitty_reg_tool_winerr ) ) ;
+			sav_why_set( why, dupprintf( "%s: %s", filename, kitty_win_reason( (int)kitty_reg_tool_winerr ) ) ) ;
 		else
-			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), KT_SAV_EXPORT_FAILED_FMT, filename, (unsigned long)kitty_reg_tool_exit ) ;
+			sav_why_set( why, dupprintf( KT_SAV_EXPORT_FAILED_FMT, filename, (unsigned long)kitty_reg_tool_exit ) ) ;
 		return 0 ;
 		}
 	if( !kitty_reg_fix_multiline( filename ) ) {
-		snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", filename, kitty_win_reason( (int)GetLastError() ) ) ;
+		sav_why_set( why, dupprintf( "%s: %s", filename, kitty_win_reason( (int)GetLastError() ) ) ) ;
 		return 0 ;
 		}
 	return 1 ;
 	}
+int SaveRegistryKeyEx( HKEY hMainKey, LPCTSTR lpSubKey, const char * filename ) {
+	return sav_export( hMainKey, lpSubKey, filename, &kitty_sav_save_why ) ;
+	}
 
-/* a\b into out (n wide characters); 0 when it does not fit */
-static int pb_wjoin( wchar_t *out, size_t n, const wchar_t *a, const wchar_t *b ) {
+/* a\b whole (sfree it) */
+static wchar_t *pb_wjoin( const wchar_t *a, const wchar_t *b ) {
 	size_t la = wcslen( a ), lb = wcslen( b ) ;
-	if( la + 1 + lb + 1 > n ) return 0 ;
+	wchar_t *out = snewn( la + 1 + lb + 1, wchar_t ) ;
 	wcscpy( out, a ) ;
 	out[la] = L'\\' ;
 	wcscpy( out + la + 1, b ) ;
-	return 1 ;
+	return out ;
 }
 
 /* The copy works in wide characters: the ANSI functions hand back '?' for
  * every character outside the code page, a name with '?' cannot be copied,
  * and so one session named in Cyrillic failed the whole backup - and with it
- * every delete, move and overwrite that waits for one. */
+ * every delete, move and overwrite that waits for one. Every path whole: one
+ * too long for Windows fails there, with Windows' reason. */
 static int portable_backup_copy_tree( const wchar_t *src, const wchar_t *dst ) {
-	wchar_t pattern[4096], s[4096], d[4096] ;
+	wchar_t *pattern ;
 	WIN32_FIND_DATAW fd ;
 	HANDLE h ;
+	int ok = 1 ;
 	DWORD attr = GetFileAttributesW( src ) ;
 	if( attr == INVALID_FILE_ATTRIBUTES ) return 1 ;
 	if( !(attr & FILE_ATTRIBUTE_DIRECTORY) ) return CopyFileW( src, dst, FALSE ) ? 1 : 0 ;
 	CreateDirectoryW( dst, NULL ) ;
-	if( !pb_wjoin( pattern, 4096, src, L"*" ) ) { SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
+	pattern = pb_wjoin( src, L"*" ) ;
 	h = FindFirstFileW( pattern, &fd ) ;
+	sfree( pattern ) ;
 	if( h == INVALID_HANDLE_VALUE ) return 1 ;
 	do {
+		wchar_t *s, *d ;
 		if( !wcscmp(fd.cFileName,L".") || !wcscmp(fd.cFileName,L"..") ) continue ;
-		if( !pb_wjoin( s, 4096, src, fd.cFileName ) || !pb_wjoin( d, 4096, dst, fd.cFileName ) ) {
-			FindClose(h) ; SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ;
-		}
-		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
-			if( !portable_backup_copy_tree( s, d ) ) { FindClose(h) ; return 0 ; }
-		} else if( !CopyFileW( s, d, FALSE ) ) { FindClose(h) ; return 0 ; }
-	} while( FindNextFileW( h, &fd ) ) ;
-	FindClose( h ) ;
-	return 1 ;
+		s = pb_wjoin( src, fd.cFileName ) ;
+		d = pb_wjoin( dst, fd.cFileName ) ;
+		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY )
+			ok = portable_backup_copy_tree( s, d ) ;
+		else
+			ok = CopyFileW( s, d, FALSE ) ? 1 : 0 ;
+		sfree( s ) ;
+		sfree( d ) ;
+	} while( ok && FindNextFileW( h, &fd ) ) ;
+	{ DWORD err = GetLastError() ; FindClose( h ) ; SetLastError( err ) ; }
+	return ok ;
 }
 
-struct portable_backup_name { char name[MAX_PATH] ; } ;
+/* A list of file or folder names, each whole, sorted newest name first. */
+struct portable_backup_name { char *name ; } ;
+struct pb_names { struct portable_backup_name *v ; size_t n, size ; } ;
+
+static void pb_names_add( struct pb_names *l, const char *name ) {
+	sgrowarray( l->v, l->size, l->n ) ;
+	l->v[l->n++].name = dupstr( name ) ;
+}
+static void pb_names_free( struct pb_names *l ) {
+	size_t i ;
+	for( i = 0 ; i < l->n ; i++ ) sfree( l->v[i].name ) ;
+	sfree( l->v ) ;
+	l->v = NULL ; l->n = l->size = 0 ;
+}
 
 static int portable_backup_name_cmp_desc( const void *a, const void *b ) {
 	const struct portable_backup_name *aa = (const struct portable_backup_name *)a ;
@@ -310,34 +360,34 @@ static int portable_backup_name_cmp_desc( const void *a, const void *b ) {
 }
 
 static void portable_backup_prune( const char *root, int keep ) {
-	char pattern[4096], path[4096] ;
+	char *pattern ;
 	WIN32_FIND_DATAA fd ;
 	HANDLE h ;
-	struct portable_backup_name backups[128] ;
-	int n = 0, i ;
+	struct pb_names backups = { NULL, 0, 0 } ;
+	size_t i ;
 	if( keep < 1 ) keep = 1 ;
 	/* FindFirstFile understands * and ? only - it has no character classes, so
 	 * the "[0-9]" this used to carry was matched LITERALLY, nothing was ever
 	 * found, and pruning silently never happened (portablebackupcount was
 	 * therefore ignored and the backup folders grew without bound). The
 	 * "-latest" directory is filtered out by name just below. */
-	snprintf( pattern, sizeof(pattern), "%s\\kitty-portable-*", root ) ;
+	pattern = dupprintf( "%s\\kitty-portable-*", root ) ;
 	h = FindFirstFileA( pattern, &fd ) ;
+	sfree( pattern ) ;
 	if( h == INVALID_HANDLE_VALUE ) return ;
 	do {
 		if( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) continue ;
 		if( !strcmp(fd.cFileName,"kitty-portable-latest") ) continue ;
-		if( n < (int)(sizeof(backups)/sizeof(backups[0])) ) {
-			snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ;
-			n++ ;
-		}
+		pb_names_add( &backups, fd.cFileName ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
-	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;
-	for( i = keep ; i < n ; i++ ) {
-		snprintf( path, sizeof(path), "%s\\%s", root, backups[i].name ) ;
+	if( backups.n ) qsort( backups.v, backups.n, sizeof(backups.v[0]), portable_backup_name_cmp_desc ) ;
+	for( i = (size_t)keep ; i < backups.n ; i++ ) {
+		char *path = dupprintf( "%s\\%s", root, backups.v[i].name ) ;
 		DelDir( path ) ;
+		sfree( path ) ;
 	}
+	pb_names_free( &backups ) ;
 }
 
 /* What must NOT go into a backup. Everything else in the portable directory is
@@ -372,8 +422,7 @@ static int portable_backup_skip( const WIN32_FIND_DATAW *fd ) {
  * the CopyFile results were not looked at, so /savereg called a backup
  * "Saved" whenever the dated folder merely existed. */
 static int portable_backup_write_one( const char *dst ) {
-	char d[4096] ;
-	wchar_t wroot[4096], wdst[4096], pattern[4096], s[4096], wd[4096] ;
+	wchar_t *wroot, *wdst, *pattern ;
 	WIN32_FIND_DATAW fd ;
 	HANDLE h ;
 	int ok = 1 ;
@@ -384,38 +433,52 @@ static int portable_backup_write_one( const char *dst ) {
 	 * copied by its resolved path and under its canonical name. When it does
 	 * live here, the sweep below simply copies it again over the same file. */
 	if( KittyIniFile != NULL && strlen(KittyIniFile)>0 && existfile(KittyIniFile) ) {
-		snprintf( d, sizeof(d), "%s\\kitty.ini", dst ) ;
+		char *d = dupprintf( "%s\\kitty.ini", dst ) ;
 		if( !CopyFileA( KittyIniFile, d, FALSE ) ) { ok = 0 ; err = GetLastError() ; }
+		sfree( d ) ;
 	}
 	if( ConfigDirectory == NULL || strlen(ConfigDirectory) == 0 ) { if( !ok ) SetLastError( err ) ; return ok ; }
-	if( !MultiByteToWideChar( CP_ACP, 0, ConfigDirectory, -1, wroot, 4096 ) ||
-	    !MultiByteToWideChar( CP_ACP, 0, dst, -1, wdst, 4096 ) ||
-	    !pb_wjoin( pattern, 4096, wroot, L"*" ) ) { SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
+	/* both folders whole, in wide characters */
+	wroot = kitty_acp_to_wide_dup( ConfigDirectory ) ;
+	wdst = kitty_acp_to_wide_dup( dst ) ;
+	if( !wroot || !wdst ) {
+		err = GetLastError() ;
+		sfree( wroot ) ; sfree( wdst ) ;
+		SetLastError( err ? err : ERROR_NO_UNICODE_TRANSLATION ) ;
+		return 0 ;
+	}
+	pattern = pb_wjoin( wroot, L"*" ) ;
 	h = FindFirstFileW( pattern, &fd ) ;
-	if( h == INVALID_HANDLE_VALUE ) { if( !ok ) SetLastError( err ) ; return ok ; }
+	sfree( pattern ) ;
+	if( h == INVALID_HANDLE_VALUE ) { sfree( wroot ) ; sfree( wdst ) ; if( !ok ) SetLastError( err ) ; return ok ; }
 	do {
+		wchar_t *s, *wd ;
+		int one ;
 		if( portable_backup_skip( &fd ) ) continue ;
-		if( !pb_wjoin( s, 4096, wroot, fd.cFileName ) || !pb_wjoin( wd, 4096, wdst, fd.cFileName ) ) {
-			if( ok ) { ok = 0 ; err = ERROR_FILENAME_EXCED_RANGE ; }
-			continue ;
-		}
-		if( !( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? portable_backup_copy_tree( s, wd )
-		                                                      : CopyFileW( s, wd, FALSE ) ) && ok ) {
-			ok = 0 ; err = GetLastError() ;
-		}
+		s = pb_wjoin( wroot, fd.cFileName ) ;
+		wd = pb_wjoin( wdst, fd.cFileName ) ;
+		one = fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ? portable_backup_copy_tree( s, wd )
+		                                                     : CopyFileW( s, wd, FALSE ) ;
+		if( !one && ok ) { ok = 0 ; err = GetLastError() ; }
+		sfree( s ) ;
+		sfree( wd ) ;
 	} while( FindNextFileW( h, &fd ) ) ;
 	FindClose( h ) ;
+	sfree( wroot ) ;
+	sfree( wdst ) ;
 	if( !ok ) SetLastError( err ? err : ERROR_WRITE_FAULT ) ;
 	return ok ;
 }
 
-/* out (may be NULL) gets the dated folder written. Returns as
- * kitty_sav_backup_report. */
-static int SavePortableDirBackupEx( char *out, size_t outlen ) {
-	char root[4096], latest[4096], stampdir[4096], buffer[64] ;
+/* *out (may be NULL; sfree it) gets the dated folder written, or the folder
+ * that could not be made. Returns as kitty_sav_backup_report. Every path is
+ * held whole. */
+static int SavePortableDirBackupEx( char **out ) {
+	char *root, *latest, *stampdir, buffer[64] ;
 	int keep = 5 ;
 	time_t now ;
 	struct tm *tmnow ;
+	if( out ) *out = NULL ;
 	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return -2 ;
 	/* readonly=yes writes nothing, a backup included - as the registry
 	 * paths below and the manual have it. The check was missing here. */
@@ -423,9 +486,16 @@ static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 	if( ReadParameterN( INIT_SECTION, KI_PORTABLEBACKUPCOUNT, buffer, sizeof(buffer) ) ) keep = atoi( buffer ) ;
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
-	portable_config_path( root, sizeof(root), "Backups" ) ;
+	root = portable_config_subdir( "Backups" ) ;
+	if( root == NULL ) {
+		if( out ) *out = dupstr( "" ) ;
+		SetLastError( ERROR_PATH_NOT_FOUND ) ;
+		return 0 ;
+		}
 	if( !CreateDirectoryA( root, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
-		if( out ) snprintf( out, outlen, "%s", root ) ;
+		DWORD err = GetLastError() ;
+		if( out ) *out = root ; else sfree( root ) ;
+		SetLastError( err ) ;
 		return 0 ;
 		}
 	now = time(NULL) ;
@@ -435,47 +505,58 @@ static int SavePortableDirBackupEx( char *out, size_t outlen ) {
 			1900+tmnow->tm_year, 1+tmnow->tm_mon, tmnow->tm_mday,
 			tmnow->tm_hour, tmnow->tm_min, tmnow->tm_sec ) ;
 	else snprintf( buffer, sizeof(buffer), "%ld", (long)now ) ;
-	snprintf( stampdir, sizeof(stampdir), "%s\\kitty-portable-%s", root, buffer ) ;
-	snprintf( latest, sizeof(latest), "%s\\kitty-portable-latest", root ) ;
-	if( out ) snprintf( out, outlen, "%s", stampdir ) ;
+	stampdir = dupprintf( "%s\\kitty-portable-%s", root, buffer ) ;
+	latest = dupprintf( "%s\\kitty-portable-latest", root ) ;
+	if( out ) *out = dupstr( stampdir ) ;
 	if( !portable_backup_write_one( stampdir ) ) {
 		/* a partial dated copy must not pose as a backup, nor push a whole one
 		 * out of the retention window */
 		DWORD err = GetLastError() ;
 		DelDir( stampdir ) ;
+		sfree( stampdir ) ; sfree( latest ) ; sfree( root ) ;
 		SetLastError( err ) ;
 		return 0 ;
 		}
 	portable_backup_write_one( latest ) ;   /* the convenience copy; the dated one is the backup */
 	portable_backup_prune( root, keep ) ;
+	sfree( stampdir ) ; sfree( latest ) ; sfree( root ) ;
 	return 1 ;
 }
 
-static void SavePortableDirBackup( void ) { SavePortableDirBackupEx( NULL, 0 ) ; }
+static void SavePortableDirBackup( void ) { SavePortableDirBackupEx( NULL ) ; }
 
 /* Split a sav path into dir / base / ext (e.g. "C:\x\kittynew.sav" ->
- * "C:\x", "kittynew", ".sav"). */
-static void sav_split( const char *savfile, char *dir, size_t dl, char *base, size_t bl, char *ext, size_t el ) {
+ * "C:\x", "kittynew", ".sav"), each whole (sfree them; any may be NULL =
+ * not wanted). The extension was cut at 64 bytes, and the backups were then
+ * written - and pruned - under that cut ending. */
+static void sav_split( const char *savfile, char **dir, char **base, char **ext ) {
 	const char *slash = strrchr( savfile, '\\' ) ;
 	const char *fname = slash ? slash + 1 : savfile ;
 	const char *dot = strrchr( fname, '.' ) ;
-	snprintf( dir, dl, "%.*s", slash ? (int)(slash - savfile) : 1, slash ? savfile : "." ) ;
-	if( dot ) { snprintf( base, bl, "%.*s", (int)(dot - fname), fname ) ; snprintf( ext, el, "%s", dot ) ; }
-	else { snprintf( base, bl, "%s", fname ) ; if( el ) ext[0] = '\0' ; }
+	if( dir ) *dir = slash ? dupprintf( "%.*s", (int)(slash - savfile), savfile ) : dupstr( "." ) ;
+	if( dot ) {
+		if( base ) *base = dupprintf( "%.*s", (int)(dot - fname), fname ) ;
+		if( ext ) *ext = dupstr( dot ) ;
+	} else {
+		if( base ) *base = dupstr( fname ) ;
+		if( ext ) *ext = dupstr( "" ) ;
+	}
 }
 
-/* Build a fresh timestamped backup path (<dir>\<base>-YYYYMMDD-HHMMSS<ext>), so
- * each backup's FILENAME reflects when it was actually written. */
-static void sav_timestamped_path( const char *savfile, char *out, size_t outlen ) {
-	char dir[4096], base[256], ext[64], stamp[64] ;
+/* A fresh timestamped backup path (<dir>\<base>-YYYYMMDD-HHMMSS<ext>), so
+ * each backup's FILENAME reflects when it was actually written (sfree it). */
+static char *sav_timestamped_path( const char *savfile ) {
+	char *dir, *base, *ext, *out, stamp[64] ;
 	time_t now ; struct tm *tmnow ;
-	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
+	sav_split( savfile, &dir, &base, &ext ) ;
 	now = time(NULL) ; tmnow = localtime( &now ) ;
 	if( tmnow != NULL )
 		snprintf( stamp, sizeof(stamp), "%04d%02d%02d-%02d%02d%02d",
 			1900+tmnow->tm_year, 1+tmnow->tm_mon, tmnow->tm_mday, tmnow->tm_hour, tmnow->tm_min, tmnow->tm_sec ) ;
 	else snprintf( stamp, sizeof(stamp), "%ld", (long)now ) ;
-	snprintf( out, outlen, "%s\\%s-%s%s", dir, base, stamp, ext ) ;
+	out = dupprintf( "%s\\%s-%s%s", dir, base, stamp, ext ) ;
+	sfree( dir ) ; sfree( base ) ; sfree( ext ) ;
+	return out ;
 }
 
 /* Which hive a backup holds, from its first key line
@@ -515,47 +596,59 @@ static int sav_is_ours( const char *path ) {
 }
 
 /* The <base>-*<ext> timestamped backups of the hive in use next to savfile,
- * newest name first, into backups[]; returns how many. */
-static int sav_list_ours( const char *savfile, char *dir, size_t dl,
-                          struct portable_backup_name *backups, int max ) {
-	char base[256], ext[64], pattern[4096], path[4096] ;
-	WIN32_FIND_DATAA fd ; HANDLE h ; int n = 0 ;
-	sav_split( savfile, dir, dl, base, sizeof(base), ext, sizeof(ext) ) ;
-	snprintf( pattern, sizeof(pattern), "%s\\%s-*%s", dir, base, ext ) ;
+ * newest name first, into *backups; *dirp the folder (both whole: sfree
+ * *dirp, pb_names_free the list). Returns how many. */
+static size_t sav_list_ours( const char *savfile, char **dirp, struct pb_names *backups ) {
+	char *dir, *base, *ext, *pattern ;
+	WIN32_FIND_DATAA fd ; HANDLE h ;
+	sav_split( savfile, &dir, &base, &ext ) ;
+	*dirp = dir ;
+	pattern = dupprintf( "%s\\%s-*%s", dir, base, ext ) ;
+	sfree( base ) ; sfree( ext ) ;
 	h = FindFirstFileA( pattern, &fd ) ;
+	sfree( pattern ) ;
 	if( h == INVALID_HANDLE_VALUE ) return 0 ;
 	do {
+		char *path ;
+		int ours ;
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
-		if( n >= max ) break ;
-		snprintf( path, sizeof(path), "%s\\%s", dir, fd.cFileName ) ;
-		if( !sav_is_ours( path ) ) continue ;
-		snprintf( backups[n].name, sizeof(backups[n].name), "%s", fd.cFileName ) ;
-		n++ ;
+		path = dupprintf( "%s\\%s", dir, fd.cFileName ) ;
+		ours = sav_is_ours( path ) ;
+		sfree( path ) ;
+		if( ours ) pb_names_add( backups, fd.cFileName ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
-	qsort( backups, n, sizeof(backups[0]), portable_backup_name_cmp_desc ) ;
-	return n ;
+	if( backups->n ) qsort( backups->v, backups->n, sizeof(backups->v[0]), portable_backup_name_cmp_desc ) ;
+	return backups->n ;
 }
 
 /* Keep only the `keep` newest timestamped backups of the hive in use next to
  * savfile; the other hive's backups are not counted and not removed. */
 static void sav_prune( const char *savfile, int keep ) {
-	char dir[4096], path[4096] ;
-	struct portable_backup_name backups[256] ;
-	int n, i ;
+	char *dir ;
+	struct pb_names backups = { NULL, 0, 0 } ;
+	size_t n, i ;
 	if( keep < 0 ) keep = 0 ;
-	n = sav_list_ours( savfile, dir, sizeof(dir), backups, (int)(sizeof(backups)/sizeof(backups[0])) ) ;
-	for( i = keep ; i < n ; i++ ) { snprintf( path, sizeof(path), "%s\\%s", dir, backups[i].name ) ; unlink( path ) ; }
+	n = sav_list_ours( savfile, &dir, &backups ) ;
+	for( i = (size_t)keep ; i < n ; i++ ) {
+		char *path = dupprintf( "%s\\%s", dir, backups.v[i].name ) ;
+		unlink( path ) ;
+		sfree( path ) ;
+	}
+	pb_names_free( &backups ) ;
+	sfree( dir ) ;
 }
 
 /* Newest timestamped backup of the hive in use next to savfile (for the
- * first-run restore and /loadreg). Returns 1 + path in out, else 0. */
-static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
-	char dir[4096] ;
-	struct portable_backup_name backups[256] ;
-	if( sav_list_ours( savfile, dir, sizeof(dir), backups, (int)(sizeof(backups)/sizeof(backups[0])) ) == 0 ) return 0 ;
-	snprintf( out, outlen, "%s\\%s", dir, backups[0].name ) ;
-	return 1 ;
+ * first-run restore and /loadreg), whole (sfree it); NULL when none. */
+static char *sav_find_newest( const char *savfile ) {
+	char *dir, *out = NULL ;
+	struct pb_names backups = { NULL, 0, 0 } ;
+	if( sav_list_ours( savfile, &dir, &backups ) > 0 )
+		out = dupprintf( "%s\\%s", dir, backups.v[0].name ) ;
+	pb_names_free( &backups ) ;
+	sfree( dir ) ;
+	return out ;
 }
 
 /* Backups written before the DEFAULT_SAV_FILE shadowing was fixed
@@ -566,25 +659,40 @@ static int sav_find_newest( const char *savfile, char *out, size_t outlen ) {
  * under it, and only when the sav path is still the default (a user-configured
  * sav= is taken literally). Returns 1 + path in out. */
 #define LEGACY_SAV_FILE "kitty.sav"
-static int sav_find_newest_legacy( const char *savfile, char *out, size_t outlen ) {
-	char dir[4096], base[256], ext[64], legacy[4096] ;
-	char ddir[16], dbase[256], dext[64] ;
-	sav_split( savfile, dir, sizeof(dir), base, sizeof(base), ext, sizeof(ext) ) ;
-	sav_split( DEFAULT_SAV_FILE, ddir, sizeof(ddir), dbase, sizeof(dbase), dext, sizeof(dext) ) ;
-	if( strcmp( base, dbase ) ) return 0 ;              /* custom sav=: no fallback */
-	snprintf( legacy, sizeof(legacy), "%s\\%s", dir, LEGACY_SAV_FILE ) ;
-	if( sav_find_newest( legacy, out, outlen ) ) return 1 ;
-	if( existfile( legacy ) && sav_is_ours( legacy ) ) { snprintf( out, outlen, "%s", legacy ) ; return 1 ; }
-	return 0 ;
+static char *sav_find_newest_legacy( const char *savfile ) {
+	char *dir, *base, *dbase, *legacy, *out ;
+	int custom ;
+	sav_split( savfile, &dir, &base, NULL ) ;
+	sav_split( DEFAULT_SAV_FILE, NULL, &dbase, NULL ) ;
+	custom = strcmp( base, dbase ) != 0 ;
+	sfree( base ) ; sfree( dbase ) ;
+	if( custom ) { sfree( dir ) ; return NULL ; }      /* custom sav=: no fallback */
+	legacy = dupprintf( "%s\\%s", dir, LEGACY_SAV_FILE ) ;
+	sfree( dir ) ;
+	if( ( out = sav_find_newest( legacy ) ) != NULL ) { sfree( legacy ) ; return out ; }
+	if( existfile( legacy ) && sav_is_ours( legacy ) ) return legacy ;
+	sfree( legacy ) ;
+	return NULL ;
 }
 
 /* The one place that decides WHICH backup to restore from: newest timestamped,
  * else the fixed-name file, else the legacy name above - each only a backup of
- * the hive in use. */
+ * the hive in use. Whole (sfree it); NULL when there is none. */
+char *sav_find_for_restore_dup( const char *savfile ) {
+	char *out ;
+	if( ( out = sav_find_newest( savfile ) ) != NULL ) return out ;
+	if( existfile( savfile ) && sav_is_ours( savfile ) ) return dupstr( savfile ) ;
+	return sav_find_newest_legacy( savfile ) ;
+}
+
+/* Into a caller's buffer: 1 only when the path fits whole. */
 int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
-	if( sav_find_newest( savfile, out, outlen ) ) return 1 ;
-	if( existfile( savfile ) && sav_is_ours( savfile ) ) { snprintf( out, outlen, "%s", savfile ) ; return 1 ; }
-	return sav_find_newest_legacy( savfile, out, outlen ) ;
+	char *p = sav_find_for_restore_dup( savfile ) ;
+	int ok = p && strlen( p ) < outlen ;
+	if( outlen ) out[0] = '\0' ;
+	if( ok ) strcpy( out, p ) ;
+	sfree( p ) ;
+	return ok ;
 }
 
 /* The configuration password (/configpassword) is retired: it encrypted the
@@ -646,7 +754,7 @@ void RetireCountUpLeftovers( void ) {
  * only write a near-identical snapshot a moment later. */
 static LONG sav_worker_busy = 0 ;
 
-struct sav_job { char dated[4096] ; char base[4096] ; int keep ; } ;
+struct sav_job { char *dated ; char *base ; int keep ; } ;   /* both whole */
 
 static DWORD WINAPI sav_worker( LPVOID param ) {
 	struct sav_job * j = (struct sav_job *)param ;
@@ -656,8 +764,10 @@ static DWORD WINAPI sav_worker( LPVOID param ) {
 	 * useless - it looks like a backup right up to the day someone needs it. */
 	{ extern const char *kitty_registry_base( void ) ;
 	  /* never prune for a backup that failed - as sav_backup's own path */
-	  if( SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), j->dated ) )
+	  if( sav_export( HKEY_CURRENT_USER, kitty_registry_base(), j->dated, NULL ) )
 		sav_prune( j->base, j->keep ) ; }
+	sfree( j->dated ) ;
+	sfree( j->base ) ;
 	free( j ) ;
 	InterlockedExchange( &sav_worker_busy, 0 ) ;
 	return 0 ;
@@ -687,12 +797,14 @@ static int sav_backup( int async ) {
 	 * the change it would precede is refused by the store itself. */
 	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		char where[MAX_PATH * 2] ;
-		int r = SavePortableDirBackupEx( where, sizeof(where) ) ;
+		char *where ;
+		int r = SavePortableDirBackupEx( &where ) ;
 		if( r == 0 ) {
-			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", where, kitty_win_reason( (int)GetLastError() ) ) ;
+			sav_why_set( &kitty_sav_save_why, dupprintf( "%s: %s", where ? where : "", kitty_win_reason( (int)GetLastError() ) ) ) ;
+			sfree( where ) ;
 			return 0 ;
 			}
+		sfree( where ) ;
 		return 1 ;
 		}
 	if( NoKittyFileFlag || (KittySavFile==NULL) ) return 1 ;
@@ -705,22 +817,22 @@ static int sav_backup( int async ) {
 	 * name matches its content's save time, then keep only the newest `keep`.
 	 * (The old scheme wrote a fixed kittynew.sav and renamed the PREVIOUS one to
 	 * a now-stamped name - the timestamp then lied about the content's age.) */
-	{ char dated[4096] ;
-	  sav_timestamped_path( KittySavFile, dated, sizeof(dated) ) ;
+	{ char *dated = sav_timestamped_path( KittySavFile ) ;
 	  if( !async ) {
 		int ok = SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), dated ) ;
 		if( ok ) sav_prune( KittySavFile, keep ) ;   /* never prune for a backup that failed */
+		sfree( dated ) ;
 		return ok ;
 		}
-	  if( InterlockedCompareExchange( &sav_worker_busy, 1, 0 ) != 0 ) return 1 ;
+	  if( InterlockedCompareExchange( &sav_worker_busy, 1, 0 ) != 0 ) { sfree( dated ) ; return 1 ; }
 	  { struct sav_job * j = (struct sav_job *)malloc( sizeof(*j) ) ;
 	    HANDLE th ;
-	    if( j == NULL ) { InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
-	    snprintf( j->dated, sizeof(j->dated), "%s", dated ) ;
-	    snprintf( j->base, sizeof(j->base), "%s", KittySavFile ) ;
+	    if( j == NULL ) { sfree( dated ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
+	    j->dated = dated ;
+	    j->base = dupstr( KittySavFile ) ;
 	    j->keep = keep ;
 	    th = CreateThread( NULL, 0, sav_worker, j, 0, NULL ) ;
-	    if( th == NULL ) { free( j ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
+	    if( th == NULL ) { sfree( j->dated ) ; sfree( j->base ) ; free( j ) ; InterlockedExchange( &sav_worker_busy, 0 ) ; return 1 ; }
 	    CloseHandle( th ) ;
 	  }
 	}
@@ -763,14 +875,16 @@ char *kitty_backup_not_done( void ) {
  * changed since the last one, and on a worker - right for the background,
  * wrong for a command typed to get a backup: it often wrote nothing, and reported
  * nothing. This one always writes, waits, and reports the file. */
-int kitty_sav_backup_report( char * path, size_t n ) {
+/* *path (sfree it; NULL when nothing was written or tried) the backup
+ * written, held whole. */
+int kitty_sav_backup_report_dup( char ** path ) {
 	int keep = 5 ; char kb[64] ;
-	path[0] = '\0' ;
-	kitty_sav_save_why[0] = '\0' ;
+	*path = NULL ;
+	sav_why_set( &kitty_sav_save_why, NULL ) ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		int r = SavePortableDirBackupEx( path, n ) ;
+		int r = SavePortableDirBackupEx( path ) ;
 		if( r == 0 )
-			snprintf( kitty_sav_save_why, sizeof(kitty_sav_save_why), "%s: %s", path, kitty_win_reason( (int)GetLastError() ) ) ;
+			sav_why_set( &kitty_sav_save_why, dupprintf( "%s: %s", *path ? *path : "", kitty_win_reason( (int)GetLastError() ) ) ) ;
 		return r ;
 		}
 	if( NoKittyFileFlag || (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
@@ -778,16 +892,37 @@ int kitty_sav_backup_report( char * path, size_t n ) {
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return -1 ;
 	if( keep > 50 ) keep = 50 ;
-	sav_timestamped_path( KittySavFile, path, n ) ;
-	if( !SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), path ) ) return 0 ;
+	*path = sav_timestamped_path( KittySavFile ) ;
+	if( !SaveRegistryKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), *path ) ) return 0 ;
 	sav_prune( KittySavFile, keep ) ;
 	return 1 ;
 	}
 
+/* The same into a caller's buffer of n bytes: the path only when it fits
+ * whole ("" otherwise; the backup itself is written either way). */
+int kitty_sav_backup_report( char * path, size_t n ) {
+	char *p ;
+	int r = kitty_sav_backup_report_dup( &p ) ;
+	if( n ) path[0] = '\0' ;
+	if( p && strlen( p ) < n ) strcpy( path, p ) ;
+	sfree( p ) ;
+	return r ;
+	}
+
+/* The backup folder whole (sfree it). */
+char *kitty_sav_dir_dup( void ) {
+	char *dir ;
+	if( (KittySavFile==NULL) || !KittySavFile[0] ) return dupstr( InitialDirectory ) ;
+	sav_split( KittySavFile, &dir, NULL, NULL ) ;
+	return dir ;
+	}
+
+/* Into a caller's buffer: the folder only when it fits whole, "" otherwise. */
 void kitty_sav_dir( char * out, size_t n ) {
-	char base[256], ext[64] ;
-	if( (KittySavFile==NULL) || !KittySavFile[0] ) { snprintf( out, n, "%s", InitialDirectory ) ; return ; }
-	sav_split( KittySavFile, out, n, base, sizeof(base), ext, sizeof(ext) ) ;
+	char *dir = kitty_sav_dir_dup() ;
+	if( n ) out[0] = '\0' ;
+	if( strlen( dir ) < n ) strcpy( out, dir ) ;
+	sfree( dir ) ;
 	}
 
 /* Load the registry key. 1 loaded; 0 not, the file and the reason in
@@ -801,36 +936,27 @@ static int sav_load_live = 0 ;
 static int sav_load_fail_text( FILE *fp, HKEY hKey, const char *path, const char *why ) {
 	if( hKey != NULL ) RegCloseKey( hKey ) ;
 	if( fp != NULL ) fclose( fp ) ;
-	snprintf( kitty_sav_load_why, sizeof(kitty_sav_load_why), "%s: %s", path, why ) ;
+	sav_why_set( &kitty_sav_load_why, dupprintf( "%s: %s", path, why ) ) ;
 	return 0 ;
 	}
 
-int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
-	FILE *fp ;
+/* One line of the file whole, without its line end (sfree it); NULL at the
+ * end. A line past 4 KB was split, and its tail read as a line of its own. */
+static char *sav_read_line( FILE *fp ) {
+	strbuf *sb = strbuf_new() ;
+	int c ;
+	while( ( c = fgetc( fp ) ) != EOF && c != '\n' ) put_byte( sb, (char)c ) ;
+	if( c == EOF && sb->len == 0 ) { strbuf_free( sb ) ; return NULL ; }
+	return strbuf_to_str( sb ) ;
+	}
+
+/* LoadRegistryKey's work on the open backup savpath (fp is closed here). */
+static int sav_load_file( HWND hdlg, const char *savpath, FILE *fp ) {
 	HKEY hKey = NULL ;
-	char buffer[4096], KeyName[1024] = "", ValueName[1024], *Value ;
-	char savpath[4096] ;
+	char *buffer, *KeyName = NULL, *ValueName, *Value ;
 	int nb=0, ok = 1 ;
 	LONG rc ;
 	DWORD err = 0 ;
-
-	kitty_sav_load_why[0] = '\0' ;
-	if( KittySavFile==NULL || strlen(KittySavFile)==0 )
-		return sav_load_fail_win( "(no backup file set)", ERROR_FILE_NOT_FOUND ) ;
-	/* readonly=yes: a backup is not loaded into the hive (/loadreg, the
-	 * first-run restore) - except savemode=file's start, which loads its
-	 * kitty.sav inside kitty_store_ro_allow() */
-	if( kitty_store_ro_regpath( 1, kitty_registry_base() ) ) return KITTY_RO_REFUSED ;
-	snprintf( savpath, sizeof(savpath), "%s", KittySavFile ) ;
-
-	if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
-		err = GetLastError() ;
-		/* Nothing under the current name: a store written by a pre-fix build is
-		 * still called kitty*.sav. Read it rather than come up empty - this path
-		 * matters most in savemode=file, where the .sav IS the session store. */
-		if( !sav_find_newest_legacy( KittySavFile, savpath, sizeof(savpath) ) ) return sav_load_fail_win( KittySavFile, err ) ;
-		if( ( fp = fopen( savpath, "rb" ) ) == NULL ) return sav_load_fail_win( savpath, GetLastError() ) ;
-		}
 
 	/* Current backups are what reg.exe writes: UTF-16LE with a BOM. Let Windows
 	 * import those, so every value type is restored exactly as exported. Older
@@ -845,23 +971,29 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			}
 		rewind( fp ) ;
 		}
-	while( fgets( buffer, 4096, fp ) != NULL ) {
+	while( ( buffer = sav_read_line( fp ) ) != NULL ) {
 		str_rtrim( buffer, "\n\r \t" ) ;
-		
+
 		// Check whether the file is encrypted
 		if( nb == 0 ) {
 			if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
 				/* A live session gets no password prompt: the box is modal
 				 * and would stop the session while it is open. The result
 				 * line reports why nothing was loaded. */
-				if( sav_load_live ) return sav_load_fail_text( fp, hKey, savpath, KT_MAIN_SAV_ENCRYPTED_LIVE ) ;
+				if( sav_load_live ) { sfree( buffer ) ; sfree( KeyName ) ; return sav_load_fail_text( fp, hKey, savpath, KT_MAIN_SAV_ENCRYPTED_LIVE ) ; }
 				GetAndSendLinePassword( NULL ) ;
 				if( GetInputBoxResult() == NULL || strlen( GetInputBoxResult() ) == 0 ) {
 					exit(0) ;
 					}
-				strcpy( PasswordConf, GetInputBoxResult() ) ;
-				decryptstring( GetCryptSaltFlag(), buffer, PasswordConf ) ;
-				if( strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
+				/* PasswordConf is a fixed buffer: a typed password longer than
+				 * it ran past its end. One that long is no password this file
+				 * can have been written with - the wrong-password answer below. */
+				if( strlen( GetInputBoxResult() ) < cstMaxRegLength + 2 )   /* its size (kitty_params.c) */
+					strcpy( PasswordConf, GetInputBoxResult() ) ;
+				else
+					PasswordConf[0] = '\0' ;
+				if( PasswordConf[0] ) decryptstring( GetCryptSaltFlag(), buffer, PasswordConf ) ;
+				if( !PasswordConf[0] || strcmp( buffer, "Windows Registry Editor Version 5.00" ) ) {
 					PasswordConf[0] = '\0' ;
 					MessageBox( NULL, KT_MAIN_WRONG_PASSWORD, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 					exit(1) ;
@@ -877,14 +1009,17 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			
 		if( strlen( buffer ) == 0 ) ;
 		if( (buffer[0]=='[') && (buffer[strlen(buffer)-1]==']') ) {
-			snprintf( KeyName, sizeof(KeyName), "%s", buffer+19 ) ; // +19 to strip [HKEY_CURRENT_USER
+			/* the key name whole; +19 strips [HKEY_CURRENT_USER\ */
+			sfree( KeyName ) ;
+			KeyName = dupstr( strlen( buffer ) > 19 ? buffer+19 : "" ) ;
 			{ size_t _kl=strlen(KeyName); if(_kl>0) KeyName[_kl-1] = '\0' ; }
 			if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
 			if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS )
 				{
 					if( hdlg != NULL ) {
-						snprintf( buffer, sizeof(buffer), KT_MAIN_INFO_LOADING_KEY, KeyName ) ;
-						InfoBoxSetText( hdlg, buffer ) ;
+						char *t = dupprintf( KT_MAIN_INFO_LOADING_KEY, KeyName ) ;
+						InfoBoxSetText( hdlg, t ) ;
+						sfree( t ) ;
 						}
 					if( ( rc = RegCreateKey( HKEY_CURRENT_USER, TEXT(KeyName), &hKey ) ) != ERROR_SUCCESS ) {
 						hKey = NULL ;
@@ -894,8 +1029,10 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			}
 		else {
 			if( ( Value = strstr( buffer, "=" ) ) != NULL ) {
-				snprintf( ValueName, sizeof(ValueName), "%s", buffer+1 ) ;
-				{ int _vni = (int)(Value-buffer-2); if( _vni >= 0 && _vni < (int)sizeof(ValueName) ) ValueName[ _vni ] = '\0' ; }
+				/* the name whole: between the opening quote and the one
+				 * before '=' */
+				{ int _vni = (int)(Value-buffer-2) ;
+				  ValueName = dupprintf( "%.*s", _vni > 0 ? _vni : 0, buffer+1 ) ; }
 				Value++;
 			if( Value[0] == '\"' ) { // REG_SZ
 			  	Value++;
@@ -914,18 +1051,54 @@ int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
 			else { // error
 				if( sav_load_live ) {
 					PasswordConf[0] = '\0' ;
+					sfree( ValueName ) ; sfree( buffer ) ; sfree( KeyName ) ;
 					return sav_load_fail_text( fp, hKey, savpath, KT_MAIN_SAV_UNKNOWN_TYPE ) ;
 					}
 				MessageBox( NULL, KT_MAIN_SAV_UNKNOWN_TYPE, KT_CAP_ERROR, MB_OK|MB_ICONERROR );
 				exit( 1 ) ;
 				}
+			sfree( ValueName ) ;
 			}
 			}
+		sfree( buffer ) ;
 		}
 	if( hKey != NULL ) { RegCloseKey( hKey ) ; hKey = NULL ; }
 	fclose( fp ) ;
+	sfree( KeyName ) ;
 	if( !ok ) return sav_load_fail_win( savpath, err ) ;
 	return 1 ;
+	}
+
+int LoadRegistryKey( HWND hdlg ) { // hdlg = progress dialog (NULL = none)
+	FILE *fp ;
+	char *savpath ;
+	int r ;
+
+	sav_why_set( &kitty_sav_load_why, NULL ) ;
+	if( KittySavFile==NULL || strlen(KittySavFile)==0 )
+		return sav_load_fail_win( "(no backup file set)", ERROR_FILE_NOT_FOUND ) ;
+	/* readonly=yes: a backup is not loaded into the hive (/loadreg, the
+	 * first-run restore) - except savemode=file's start, which loads its
+	 * kitty.sav inside kitty_store_ro_allow() */
+	if( kitty_store_ro_regpath( 1, kitty_registry_base() ) ) return KITTY_RO_REFUSED ;
+	savpath = dupstr( KittySavFile ) ;
+
+	if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
+		DWORD err = GetLastError() ;
+		sfree( savpath ) ;
+		/* Nothing under the current name: a store written by a pre-fix build is
+		 * still called kitty*.sav. Read it rather than come up empty - this path
+		 * matters most in savemode=file, where the .sav IS the session store. */
+		if( ( savpath = sav_find_newest_legacy( KittySavFile ) ) == NULL ) return sav_load_fail_win( KittySavFile, err ) ;
+		if( ( fp = fopen( savpath, "rb" ) ) == NULL ) {
+			r = sav_load_fail_win( savpath, GetLastError() ) ;
+			sfree( savpath ) ;
+			return r ;
+			}
+		}
+	r = sav_load_file( hdlg, savpath, fp ) ;
+	sfree( savpath ) ;
+	return r ;
 	}
 
 int LoadRegistryKeyLive( void ) {

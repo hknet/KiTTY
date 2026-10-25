@@ -528,27 +528,44 @@ int WriteParameterNoReport( const char * key, const char * name, char * value ) 
 	return write_parameter( key, name, value, 0 ) ;
 }
 
-// Read a parameter either from the configuration file or from the registry.
-// Bounded variant: never writes more than `size` bytes (final NUL included)
-// into `value`; a value that is too long is truncated instead of overflowing.
-int ReadParameterN( const char * key, const char * name, char * value, size_t size ) {
-	char buffer[4096] ;
-	strcpy( buffer, "" ) ;
+/* A kitty.ini value whole (sfree it); NULL = the key is not there. */
+char * kitty_read_ini_dup( const char * file, const char * section, const char * key ) {
+	static const char absent[] = "\x01kitty.ini:absent\x01" ;
+	char * v ;
+	if( file == NULL || !file[0] || section == NULL || !section[0] || key == NULL ) return NULL ;
+	v = kitty_profile_string_dup( section, key, absent, file ) ;
+	if( v && !strcmp( v, absent ) ) { sfree( v ) ; v = NULL ; }
+	return v ;
+}
+
+// Read a parameter either from the configuration file or from the registry,
+// whole (sfree it; "" when it is not set). A registry value was read into
+// 1024 bytes and a longer one counted as absent, so the kitty.ini value - or
+// nothing - took its place: a long Folders list saved to the registry never
+// came back.
+char * ReadParameterDup( const char * key, const char * name ) {
+	char * v = NULL ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
 		/* Portable directory mode must be registry-independent: global KiTTY
 		 * parameters such as Folders are read from kitty.ini, not from a stale
 		 * HKCU value left by an installed/registry-mode copy. */
-		if( !readINI( KittyIniFile, key, name, buffer, sizeof(buffer) ) ) strcpy( buffer, "" ) ;
-	} else if( GetValueData( HKEY_CURRENT_USER, kitty_registry_base(), name, buffer ) == NULL ) {
-		if( !readINI( KittyIniFile, key, name, buffer, sizeof(buffer) ) ) {
-			strcpy( buffer, "" ) ;
-			}
+		v = kitty_read_ini_dup( KittyIniFile, key, name ) ;
+	} else if( ( v = GetValueDataDup( HKEY_CURRENT_USER, kitty_registry_base(), name ) ) == NULL ) {
+		v = kitty_read_ini_dup( KittyIniFile, key, name ) ;
 		}
-	buffer[4095] = '\0' ;
-	if( size == 0 ) return 0 ;
-	if( strlen(buffer) >= size ) buffer[size-1] = '\0' ;
-	strcpy( value, buffer ) ;
-	return strcmp( buffer, "" ) ;
+	return v ? v : dupstr( "" ) ;
+	}
+
+// Into a caller's buffer of `size` bytes (final NUL included): the value
+// read whole by ReadParameterDup, cut to that size - for short values
+// (flags, numbers, keywords); a path or a list is read with ReadParameterDup.
+int ReadParameterN( const char * key, const char * name, char * value, size_t size ) {
+	char * v = ReadParameterDup( key, name ) ;
+	int set = v[0] != '\0' ;
+	if( size == 0 ) { sfree( v ) ; return 0 ; }
+	snprintf( value, size, "%s", v ) ;
+	sfree( v ) ;
+	return set ;
 	}
 	
 // Delete a parameter (readonly=yes: nothing, KITTY_RO_REFUSED)
@@ -822,18 +839,21 @@ void LoadParameters( void ) {
 		autocommand_delay = (int)(1000*atof( buffer )) ;
 		if(autocommand_delay<5) autocommand_delay = 5 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, KI_CONFIGDIR, buffer, sizeof(buffer) ) ) {
-		if( strlen( buffer ) > 0 ) {
+	{
+		/* the folder whole (a relative one joined to the exe's): a value
+		 * past 4 KB was cut to another folder */
+		char * cfgdir = ReadParameterDup( INIT_SECTION, KI_CONFIGDIR ) ;
+		if( cfgdir[0] ) {
 			/* A relative configdir is below the exe's folder, as sessions= is
 			 * and as kageant and the console tools take it (kitty_inifile.c).
 			 * It was tested against the working directory, so a shortcut with
 			 * another "Start in" found another folder, or none. */
-			if( buffer[0] != '\\' && buffer[0] != '/' && buffer[1] != ':' ) {
-				char rel[4096] ;
-				snprintf( rel, sizeof(rel), "%s", buffer ) ;
-				snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, rel ) ;
+			if( cfgdir[0] != '\\' && cfgdir[0] != '/' && cfgdir[1] != ':' ) {
+				char * abs = dupprintf( "%s\\%s", InitialDirectory, cfgdir ) ;
+				sfree( cfgdir ) ;
+				cfgdir = abs ;
 			}
-			if( existdirectory(buffer) ) { SetConfigDirectory( buffer ) ; }
+			if( existdirectory(cfgdir) ) { SetConfigDirectory( cfgdir ) ; }
 			else {
 				/*
 				 * KiTTY: ASK, do not just announce (cyd01/KiTTY#549).
@@ -862,7 +882,7 @@ void LoadParameters( void ) {
 				 * this release) a value that arrived with a stray leading space
 				 * or quotes around it.
 				 */
-				char msg[4096+512] ;
+				char * msg ;
 				/*
 				 * Report what we actually KNOW, and no more. All this code has
 				 * established is that the path does not exist right now; it
@@ -877,19 +897,18 @@ void LoadParameters( void ) {
 				 * drive is a disconnected disk; a present parent with a missing
 				 * leaf is a typo or a rename.
 				 */
-				char diag[512], parent[4096] ;
-				strcpy( parent, buffer ) ;
+				char diag[512], * parent = dupstr( cfgdir ) ;
 				{
 					char *slash = strrchr( parent, '\\' ) ;
 					char *fwd   = strrchr( parent, '/' ) ;
 					if( fwd > slash ) slash = fwd ;
 					if( slash && slash != parent ) *slash = '\0' ; else parent[0] = '\0' ;
 				}
-				if( buffer[0] && buffer[1] == ':' ) {
-					char root[8] ; snprintf( root, sizeof(root), "%c:\\", buffer[0] ) ;
+				if( cfgdir[0] && cfgdir[1] == ':' ) {
+					char root[8] ; snprintf( root, sizeof(root), "%c:\\", cfgdir[0] ) ;
 					if( GetDriveType( root ) <= DRIVE_NO_ROOT_DIR )
 						snprintf( diag, sizeof(diag),
-							KT_MAIN_CFGDIR_DIAG_DRIVE, buffer[0] ) ;
+							KT_MAIN_CFGDIR_DIAG_DRIVE, cfgdir[0] ) ;
 					else if( parent[0] && existdirectory( parent ) )
 						snprintf( diag, sizeof(diag),
 							KT_MAIN_CFGDIR_DIAG_PARENT ) ;
@@ -900,22 +919,25 @@ void LoadParameters( void ) {
 					snprintf( diag, sizeof(diag),
 						KT_MAIN_CFGDIR_DIAG_LOOKED ) ;
 				}
-				snprintf( msg, sizeof(msg),
-					KT_MAIN_CFGDIR_MISSING,
-					buffer, diag ) ;
+				sfree( parent ) ;
+				msg = dupprintf( KT_MAIN_CFGDIR_MISSING, cfgdir, diag ) ;
 				if( !kitty_confirm_box( NULL, KT_CAP_CFGDIR_NOT_FOUND, msg,
 					KT_MAIN_CFGDIR_WARN ) ) {
 					exit( 0 ) ;
 				}
+				sfree( msg ) ;
 			}
 		}
+		sfree( cfgdir ) ;
 	}
-	if( ReadParameterN( INIT_SECTION, KI_ICONFILE, buffer, sizeof(buffer) ) ) {
-		if( existfile( buffer ) ) {
+	{
+		char * icon = ReadParameterDup( INIT_SECTION, KI_ICONFILE ) ;
+		if( icon[0] && existfile( icon ) ) {
 			if( IconFile != NULL ) free( IconFile ) ;
-			IconFile = (char*) malloc( strlen(buffer)+1 ) ;
-			strcpy( IconFile, buffer ) ;
+			IconFile = (char*) malloc( strlen(icon)+1 ) ;
+			strcpy( IconFile, icon ) ;
 		}
+		sfree( icon ) ;
 	}
 	if( ReadParameterN( INIT_SECTION, KI_INITDELAY, buffer, sizeof(buffer) ) ) { 
 		init_delay = (int)(1000*atof( buffer )) ;
@@ -960,19 +982,25 @@ void LoadParameters( void ) {
 		if( !stricmp( buffer, "hostname" ) ) SetNamedProxyHostnameOnly( 1 ) ;
 		else if( !stricmp( buffer, "sessionorhostname" ) ) SetNamedProxyHostnameOnly( 0 ) ;
 	}
-	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) ) {
-		/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - expand the stored text
-		 * before checking/adopting it; kitty.ini keeps the literal form. */
-		char *expanded = kitty_expand_env_dup( buffer ) ;
-		if( existfile( expanded ) ) {
-			if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }
-			PSCPPath = expanded ;
-		} else {
-			free( expanded ) ;
+	{
+		/* the three paths below are read whole */
+		char * pscp = ReadParameterDup( INIT_SECTION, KI_PSCPPATH ) ;
+		if( pscp[0] ) {
+			/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - expand the stored text
+			 * before checking/adopting it; kitty.ini keeps the literal form. */
+			char *expanded = kitty_expand_env_dup( pscp ) ;
+			if( existfile( expanded ) ) {
+				if( PSCPPath!=NULL) { free(PSCPPath) ; PSCPPath = NULL ; }
+				PSCPPath = expanded ;
+			} else {
+				free( expanded ) ;
+			}
 		}
+		sfree( pscp ) ;
 	}
-	if( ReadParameterN( INIT_SECTION, KI_SAV, buffer, sizeof(buffer) ) ) {
-		if( strlen( buffer ) > 0 ) {
+	{
+		char * sav = ReadParameterDup( INIT_SECTION, KI_SAV ) ;
+		if( sav[0] ) {
 			/* Ignore an inherited legacy default (kitty.sav / kitty084.sav) written
 			 * by an older KiTTY, so the current default (kittynew.sav) takes over
 			 * without the user having to edit kitty.ini. A genuinely custom path is
@@ -980,25 +1008,30 @@ void LoadParameters( void ) {
 			 * before %VAR% expansion (cyd01/KiTTY#472): a legacy filename never
 			 * contains a variable, and checking the raw text keeps this test
 			 * exactly as it always was. */
-			const char *bn = strrchr( buffer, '\\' ) ; bn = bn ? bn+1 : buffer ;
+			const char *bn = strrchr( sav, '\\' ) ; bn = bn ? bn+1 : sav ;
 			if( stricmp( bn, "kitty.sav" ) && stricmp( bn, "kitty084.sav" ) ) {
-				char *expanded = kitty_expand_env_dup( buffer ) ;
+				char *expanded = kitty_expand_env_dup( sav ) ;
 				if( KittySavFile!=NULL ) free( KittySavFile ) ;
 				KittySavFile = expanded ;
 			}
 		}
+		sfree( sav ) ;
 	}
 	if( ReadParameterN( INIT_SECTION, KI_SSHVERSION, buffer, sizeof(buffer) ) ) { set_sshver( buffer ) ; }
-	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) ) {
-		/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see the KI_PSCPPATH
-		 * load above. */
-		char *expanded = kitty_expand_env_dup( buffer ) ;
-		if( existfile( expanded ) ) {
-			if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
-			WinSCPPath = expanded ;
-		} else {
-			free( expanded ) ;
+	{
+		char * winscp = ReadParameterDup( INIT_SECTION, KI_WINSCPPATH ) ;
+		if( winscp[0] ) {
+			/* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see the KI_PSCPPATH
+			 * load above. */
+			char *expanded = kitty_expand_env_dup( winscp ) ;
+			if( existfile( expanded ) ) {
+				if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
+				WinSCPPath = expanded ;
+			} else {
+				free( expanded ) ;
+			}
 		}
+		sfree( winscp ) ;
 	}
 	/* ReadParameter, not readINI: the Session-panel group on Application >
 	 * Config Window edits this, and a panel writes through WriteParameter -
@@ -1017,22 +1050,29 @@ void LoadParameters( void ) {
 			kitty_category_expand_depth = 99 ;
 		else { int d = atoi(buffer) ; kitty_category_expand_depth = (d >= 1) ? d : 99 ; }
 	}
-	if( readINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL, buffer, sizeof(buffer) ) ) {
-		StringList_Del( FolderList, buffer ) ;
-		/* readonly=yes: the key stays, and is applied again next start */
-		if( !kitty_inifile_write_blocked( KittyIniFile ) )
-			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
+	{
+		/* the folder whole: a cut name removed another folder */
+		char * del = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
+		if( del ) {
+			StringList_Del( FolderList, del ) ;
+			/* readonly=yes: the key stays, and is applied again next start */
+			if( !kitty_inifile_write_blocked( KittyIniFile ) )
+				delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
+			sfree( del ) ;
+		}
 	}
 	/* [FontFallback] string settings (kitty/winfont_fallback.c). The
 	 * "active" master switch is handled by the ini_params table above;
 	 * the free-form keys are read here and handed over in one shot.
 	 * NB the mini ini parser matches section/key names case-SENSITIVELY. */
 	{
-	char fbList[1024]="", fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
+	char fbList[1024]="", fbOvr[2048]="", fbLog[64]="", *fbLogFile ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK, fbList, sizeof(fbList) ) ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE, fbLogFile, sizeof(fbLogFile) ) ;
-	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ) ;
+	/* the log file whole: cut to MAX_PATH, it named another file */
+	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
+	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ? fbLogFile : "" ) ;
+	sfree( fbLogFile ) ;
 	}
 }

@@ -15,6 +15,18 @@
 void SetTransparency( HWND hwnd, int value ) ;
 void GetOSInfo( char * version ) ;
 BOOL IsWow64(void) ; // Test whether we are on 64-bit Windows
+/* The pickers' answer held whole, in memory of its own (sfree it); NULL =
+ * cancelled, or the answer could not be read whole. kitty_pick_save_dup:
+ * initialdir given = the Save-As opened there with `prefill`'s file name in
+ * its field; none = the classic Save-As with the .ktx default extension. */
+char *kitty_pick_open_dup( HWND hFrame, const char *title, const char *filter, const char *initialdir ) ;
+char *kitty_pick_save_dup( HWND hFrame, const char *title, const char *filter,
+                           const char *prefill, const char *initialdir ) ;
+char *kitty_pick_dir_dup( HWND hFrame, const char *initial, const char *title ) ;
+/* The names below write the answer into the caller's buffer of
+ * KITTY_PICK_BUF bytes; an answer that does not fit is refused (0,
+ * ERROR_FILENAME_EXCED_RANGE), never cut. */
+#define KITTY_PICK_BUF 4096
 int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
 /* The same picker opened in a given folder (NULL or empty = wherever
  * Windows would open it). */

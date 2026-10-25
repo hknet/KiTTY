@@ -901,20 +901,21 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
     }
     if (kitty_cli_portablecopy) {
         struct ksm_result r;
-        char msg[2048];
+        char *msg;   /* the summary whole: 2048 bytes cut it */
         if (!kitty_cli_bundlepw && !kitty_cli_bundle_thispc) {
             KittyCliReport(KT_CAP_PORTABLE_COPY, KT_CLI_PORTABLECOPY_NEEDS_PROTECTION, 1);
             cleanup_exit(1);
         }
         kitty_portable_copy_core(kitty_cli_portablecopy,
                                  kitty_cli_bundle_thispc ? NULL : kitty_cli_bundlepw,
-                                 kitty_cli_bundle_thispc, &r, msg, sizeof(msg));
-        kitty_cli_result(KT_CAP_PORTABLE_COPY, msg, r.fail);
+                                 kitty_cli_bundle_thispc, &r, &msg);
+        kitty_cli_result(KT_CAP_PORTABLE_COPY, msg ? msg : "", r.fail);
+        sfree(msg);
         cleanup_exit(r.fail ? 1 : 0);
     }
     if (kitty_cli_takefolder) {
         struct ksm_result r;
-        char msg[2048];
+        char *msg;   /* the summary whole: 2048 bytes cut it */
         kitty_cli_store_refused(KT_CAP_TAKE_FOLDER);   /* readonly=yes */
         if (kitty_take_folder_needs_password(kitty_cli_takefolder) &&
             !kitty_cli_bundlepw) {
@@ -922,9 +923,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             cleanup_exit(1);
         }
         kitty_take_folder_core(kitty_cli_takefolder, kitty_cli_bundlepw, 1,
-                               &r, msg, sizeof(msg));
+                               &r, &msg);
         kitty_notify_launcher_sessions_changed();
-        kitty_cli_result(KT_CAP_TAKE_FOLDER, msg, r.fail);
+        kitty_cli_result(KT_CAP_TAKE_FOLDER, msg ? msg : "", r.fail);
+        sfree(msg);
         cleanup_exit(r.fail ? 1 : 0);
     }
 #endif

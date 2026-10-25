@@ -35,8 +35,9 @@ struct iniview_data {
     dlgcontrol *show;                  /* "Show:" droplist */
     dlgcontrol *view;                  /* the read-only box - the panel's FILL control */
     dlgcontrol *editbtn;
-    char ini_path[MAX_PATH * 2];       /* "" when KiTTY runs without a file */
-    char example_path[MAX_PATH * 2];   /* "" when not installed beside the exe */
+    /* both whole, in the box's memory (ctrl_alloc) */
+    char *ini_path;                    /* "" when KiTTY runs without a file */
+    char *example_path;                /* "" when not installed beside the exe */
     int showing;                       /* 0 = kitty.ini, 1 = the example */
     FILETIME shown_write;              /* last-write time of the text on screen */
     bool shown_valid;
@@ -53,8 +54,8 @@ struct migf_data {
     dlgcontrol *listbox;               /* Session | Path | Target | State - the FILL control */
     dlgcontrol *banner;                /* the result line */
     struct kitty_folder_scan *found;   /* the last scan, or NULL */
-    char root[MAX_PATH * 2];
-    char folder[256];                  /* the target folder as typed/chosen */
+    char *root;                        /* the folder to scan, whole; NULL = none */
+    char *folder;                      /* the target folder as typed/chosen, whole */
     /* KiTTY (hknet/KiTTY#56): the old store's session file suffix, taken
      * off the file names; filled in from its putty.conf / kitty.ini. */
     dlgcontrol *suffixbox;

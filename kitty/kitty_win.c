@@ -256,11 +256,14 @@ void kitty_menu_toggle_alwaysontop(HWND term_hwnd, Conf *conf)
  * back in the session picker. Called from WinMain's exit path. */
 void kitty_respawn_config_box(void)
 {
-    char module[MAX_PATH + 1] = "", cmd[MAX_PATH + 3] = "";
+    /* the program's own path whole: a cut one started whatever program
+     * that shorter path named */
+    char *module = kitty_module_path_dup(NULL), *cmd;
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
-    if (!GetModuleFileName(NULL, module, MAX_PATH)) return;
-    snprintf(cmd, sizeof(cmd), "\"%s\"", module);
+    if (!module) return;
+    cmd = dupprintf("\"%s\"", module);
+    sfree(module);
     ZeroMemory(&si, sizeof(si));
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
@@ -271,6 +274,7 @@ void kitty_respawn_config_box(void)
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
     }
+    sfree(cmd);
 }
 
 /* IDM_REPOS: move the window to x,y (clamped to >=1), remembering it in conf. */
@@ -543,26 +547,32 @@ static DWORD WINAPI kitty_agent_check_thread(LPVOID arg)
 {
     struct agent_check_job *job = (struct agent_check_job *)arg;
     unsigned long pid = job->server_pid;
-    char self[MAX_PATH], srv[MAX_PATH];
+    char *self, *srv;
     HANDLE h;
-    int gotpath;
+    int own_signed;
     HWND GetMainHwnd(void);
 
     sfree(job);
-    if (GetModuleFileNameA(NULL, self, sizeof(self)) == 0)
+    /* Both paths whole: an image path that did not fit 260 bytes used to
+     * end the check with no notice for an agent nobody verified. */
+    if ((self = kitty_module_path_dup(NULL)) == NULL)
         return 0;
     /* An unsigned build cannot honestly insist the agent be signed. */
-    if (!kitty_authenticode_verify_offline(self))
+    own_signed = kitty_authenticode_verify_offline(self);
+    sfree(self);
+    if (!own_signed)
         return 0;
     h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
     if (!h)
         return 0;                      /* cannot inspect: stay quiet */
-    gotpath = kitty_process_image_path(h, srv, sizeof(srv));
+    srv = kitty_process_image_path_dup(h);
     CloseHandle(h);
-    if (!gotpath)
+    if (!srv)
         return 0;
-    if (kitty_authenticode_verify_offline(srv))
+    if (kitty_authenticode_verify_offline(srv)) {
+        sfree(srv);
         return 0;                      /* genuine KiTTY/kageant - all good */
+    }
     {
         const char *base = strrchr(srv, '\\');
         char *name = dupstr(base ? base + 1 : srv);
@@ -570,6 +580,7 @@ static DWORD WINAPI kitty_agent_check_thread(LPVOID arg)
         if (!main || !PostMessage(main, WM_KITTY_AGENT_CHECKED, 0, (LPARAM)name))
             sfree(name);
     }
+    sfree(srv);
     return 0;
 }
 

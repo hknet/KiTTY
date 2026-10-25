@@ -116,11 +116,16 @@ int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
 }
 
 /* The pickers' own work; the public names below run them through
- * kitty_sync_pick (see there). */
-static int open_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
-static int save_file_name( HWND hFrame, char * filename, char * Title, char * Filter ) ;
-static int save_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
-static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
+ * kitty_sync_pick (see there). Each answer is held whole (sfree it); NULL =
+ * cancelled, or the answer could not be read whole. */
+static char * open_file_name_from( HWND hFrame, const char * Title, const char * Filter, const char * initialdir ) ;
+static char * save_file_name( HWND hFrame, const char * Title, const char * Filter ) ;
+static char * save_file_name_from( HWND hFrame, const char * prefill, const char * Title, const char * Filter, const char * initialdir ) ;
+static char * open_dir_name_from( HWND hFrame, const char * initial, const char * title ) ;
+
+/* The classic dialogs' answer buffer: the longest path Windows has, in
+ * bytes of the ANSI code page. */
+#define KITTY_PICK_FILE_MAX 32768
 
 /*
  * KiTTY: a picker called from inside a pumped box - a "Browse..." button of
@@ -135,145 +140,146 @@ enum { KITTY_SYNC_OPEN, KITTY_SYNC_SAVE, KITTY_SYNC_SAVE_FROM, KITTY_SYNC_DIR } 
 struct kitty_sync_pick {
 	int kind ;
 	HWND owner ;
-	char *name, *title, *filter ;
-	const char *initial ;
-	int ok ;
+	const char *prefill, *title, *filter, *initial ;
+	char *result ;
 } ;
 
 static void kitty_sync_pick_run( void *v ) {
 	struct kitty_sync_pick *p = (struct kitty_sync_pick *)v ;
 	switch( p->kind ) {
 	  case KITTY_SYNC_OPEN:
-		p->ok = open_file_name_from( p->owner, p->name, p->title, p->filter, p->initial ) ; break ;
+		p->result = open_file_name_from( p->owner, p->title, p->filter, p->initial ) ; break ;
 	  case KITTY_SYNC_SAVE:
-		p->ok = save_file_name( p->owner, p->name, p->title, p->filter ) ; break ;
+		p->result = save_file_name( p->owner, p->title, p->filter ) ; break ;
 	  case KITTY_SYNC_SAVE_FROM:
-		p->ok = save_file_name_from( p->owner, p->name, p->title, p->filter, p->initial ) ; break ;
+		p->result = save_file_name_from( p->owner, p->prefill, p->title, p->filter, p->initial ) ; break ;
 	  default:
-		p->ok = open_dir_name_from( p->owner, p->name, p->initial, p->title ) ; break ;
+		p->result = open_dir_name_from( p->owner, p->initial, p->title ) ; break ;
 	}
 }
 
-static int kitty_sync_pick( int kind, HWND owner, char *name, char *title, char *filter,
-                            const char *initial ) {
+static char *kitty_sync_pick( int kind, HWND owner, const char *prefill, const char *title,
+                              const char *filter, const char *initial ) {
 	struct kitty_sync_pick p ;
-	p.kind = kind ; p.owner = owner ; p.name = name ; p.title = title ;
-	p.filter = filter ; p.initial = initial ; p.ok = 0 ;
+	p.kind = kind ; p.owner = owner ; p.prefill = prefill ; p.title = title ;
+	p.filter = filter ; p.initial = initial ; p.result = NULL ;
 	ShinyPumpCall( kitty_sync_pick_run, &p ) ;
-	return p.ok ;
+	return p.result ;
+}
+
+char *kitty_pick_open_dup( HWND hFrame, const char *title, const char *filter, const char *initialdir ) {
+	return kitty_sync_pick( KITTY_SYNC_OPEN, hFrame, NULL, title, filter, initialdir ) ;
+}
+char *kitty_pick_save_dup( HWND hFrame, const char *title, const char *filter,
+                           const char *prefill, const char *initialdir ) {
+	if( initialdir && initialdir[0] )
+		return kitty_sync_pick( KITTY_SYNC_SAVE_FROM, hFrame, prefill, title, filter, initialdir ) ;
+	return kitty_sync_pick( KITTY_SYNC_SAVE, hFrame, NULL, title, filter, NULL ) ;
+}
+char *kitty_pick_dir_dup( HWND hFrame, const char *initial, const char *title ) {
+	return kitty_sync_pick( KITTY_SYNC_DIR, hFrame, NULL, title, NULL, initial ) ;
+}
+
+/* The answer into a caller's buffer of KITTY_PICK_BUF bytes (the old
+ * contract of the names below). An answer that does not fit is refused - 0,
+ * ERROR_FILENAME_EXCED_RANGE - never cut. */
+static int kitty_pick_into( char *buf, char *res ) {
+	if( !res ) return 0 ;
+	if( strlen( res ) >= KITTY_PICK_BUF ) {
+		sfree( res ) ;
+		SetLastError( ERROR_FILENAME_EXCED_RANGE ) ;
+		return 0 ;
+	}
+	strcpy( buf, res ) ;
+	sfree( res ) ;
+	return 1 ;
 }
 
 int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	return kitty_sync_pick( KITTY_SYNC_OPEN, hFrame, filename, Title, Filter, initialdir ) ;
+	filename[0] = '\0' ;
+	return kitty_pick_into( filename, kitty_sync_pick( KITTY_SYNC_OPEN, hFrame, NULL, Title, Filter, initialdir ) ) ;
 }
 int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
-	return kitty_sync_pick( KITTY_SYNC_SAVE, hFrame, filename, Title, Filter, NULL ) ;
+	filename[0] = '\0' ;
+	return kitty_pick_into( filename, kitty_sync_pick( KITTY_SYNC_SAVE, hFrame, NULL, Title, Filter, NULL ) ) ;
 }
 int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	return kitty_sync_pick( KITTY_SYNC_SAVE_FROM, hFrame, filename, Title, Filter, initialdir ) ;
+	/* the prefilled name stays in `filename` on a cancel, as before */
+	char *prefill = dupstr( filename ) ;
+	char *res = kitty_sync_pick( KITTY_SYNC_SAVE_FROM, hFrame, prefill, Title, Filter, initialdir ) ;
+	sfree( prefill ) ;
+	return kitty_pick_into( filename, res ) ;
 }
 int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {
-	/* the title is only read; the shared call struct holds it unconst */
-	return kitty_sync_pick( KITTY_SYNC_DIR, hFrame, dirname, (char *)title, NULL, initial ) ;
+	dirname[0] = '\0' ;
+	return kitty_pick_into( dirname, kitty_sync_pick( KITTY_SYNC_DIR, hFrame, NULL, title, NULL, initial ) ) ;
 }
 
-static int open_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	char * szTitle = Title ;
-	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
-	// replace the '|' characters with NUL characters.
-	int i = 0;
-	while(i < sizeof(szFilter) && szFilter[i] != '\0')
-	{
-		if(szFilter[i] == '|')
-			szFilter[i] = '\0';
+/* "Name|pattern|Name|pattern|" as the classic dialogs take it: every '|' a
+ * NUL, the list ended by two NULs (sfree it). */
+static char *pick_filter_dup( const char *Filter ) {
+	size_t n = Filter ? strlen( Filter ) : 0, i ;
+	char *f = snewn( n + 2, char ) ;
+	if( n ) memcpy( f, Filter, n ) ;
+	f[n] = f[n+1] = '\0' ;
+	for( i = 0 ; i < n ; i++ ) if( f[i] == '|' ) f[i] = '\0' ;
+	return f ;
+}
 
-		i++;
+/* GetOpenFileName / GetSaveFileName into a buffer of the longest path, the
+ * answer handed back whole; a buffer that was still too small is a failure
+ * (FNERR_BUFFERTOOSMALL), never a cut name. `prefill` NULL = empty field. */
+static char *pick_classic( int save, HWND hFrame, const char *Title, const char *Filter,
+                           const char *initialdir, const char *prefill, const char *defext, DWORD flags ) {
+	char *filter = pick_filter_dup( Filter ) ;
+	char *buf = snewn( KITTY_PICK_FILE_MAX, char ), *res = NULL ;
+	OPENFILENAME ofn = {0} ;
+	BOOL ok ;
+	buf[0] = '\0' ;
+	if( prefill && strlen( prefill ) < KITTY_PICK_FILE_MAX ) strcpy( buf, prefill ) ;
+	ofn.lStructSize     = sizeof(OPENFILENAME) ;
+	ofn.hwndOwner       = hFrame ;
+	ofn.lpstrFilter     = filter ;
+	ofn.nFilterIndex    = 1 ;
+	ofn.lpstrFile       = buf ;
+	ofn.nMaxFile        = KITTY_PICK_FILE_MAX ;
+	ofn.lpstrTitle      = Title ;
+	ofn.lpstrInitialDir = ( initialdir && initialdir[0] ) ? initialdir : NULL ;
+	ofn.lpstrDefExt     = defext ;
+	ofn.Flags           = flags ;
+	ok = save ? GetSaveFileName( &ofn ) : GetOpenFileName( &ofn ) ;
+	if( ok && buf[0] ) {
+		buf[KITTY_PICK_FILE_MAX - 1] = '\0' ;
+		res = dupstr( buf ) ;
 	}
+	sfree( buf ) ;
+	sfree( filter ) ;
+	return res ;
+}
 
-	// the file open dialog box
-	//char szFileName[_MAX_PATH + 1] = "";
-	char * szFileName = filename ;
-	szFileName[0] = '\0' ;
-	OPENFILENAME ofn	= {0};
-	ofn.lStructSize		= sizeof(OPENFILENAME);
-	ofn.hwndOwner		= hFrame;
-	ofn.lpstrFilter		= szFilter;
-	ofn.nFilterIndex	= 1;
-	ofn.lpstrFile		= szFileName;
-	//ofn.nMaxFile		= sizeof(szFileName);
-	ofn.nMaxFile		= 4096 ;
-	ofn.lpstrTitle		= szTitle;
-	ofn.lpstrInitialDir	= ( initialdir && initialdir[0] ) ? initialdir : NULL ;
-	ofn.Flags		= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST
-				| OFN_HIDEREADONLY | OFN_LONGNAMES
-				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
-				;
+static char * open_file_name_from( HWND hFrame, const char * Title, const char * Filter, const char * initialdir ) {
+	return pick_classic( 0, hFrame, Title, Filter, initialdir, NULL, NULL,
+		OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_LONGNAMES
+		| OFN_EXPLORER | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT ) ;
+}
 
-	// if no file name was selected, give up
-	if(!GetOpenFileName(&ofn)) { return 0 ; }
-	else { return 1 ; }
-	}
-
-static int save_file_name( HWND hFrame, char * filename, char * Title, char * Filter ) {
-	char * szTitle = Title ;
-	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
-	// replace the '|' characters with NUL characters.
-	int i = 0;
-	while(i < sizeof(szFilter) && szFilter[i] != '\0')
-	{
-		if(szFilter[i] == '|')
-			szFilter[i] = '\0';
-
-		i++;
-	}
-
-	// the file open dialog box
-	//char szFileName[_MAX_PATH + 1] = "";
-	char * szFileName = filename ;
-	szFileName[0] = '\0' ;
-	OPENFILENAME ofn	= {0};
-	ofn.lStructSize		= sizeof(OPENFILENAME);
-	ofn.hwndOwner		= hFrame;
-	ofn.lpstrFilter		= szFilter;
-	ofn.nFilterIndex	= 1;
-	ofn.lpstrFile		= szFileName;
-	//ofn.nMaxFile		= sizeof(szFileName);
-	ofn.nMaxFile		= 4096 ;
-	ofn.lpstrTitle		= szTitle;
-	ofn.lpstrDefExt 	= ".ktx" ;
-	ofn.Flags		= OFN_PATHMUSTEXIST 
-				| OFN_HIDEREADONLY | OFN_LONGNAMES | OFN_OVERWRITEPROMPT
-				| OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT
-				;
-
-	// if no file name was selected, give up
-	if(!GetSaveFileName(&ofn)) { return 0 ; }
-	else { return 1 ; }
-	}
+static char * save_file_name( HWND hFrame, const char * Title, const char * Filter ) {
+	return pick_classic( 1, hFrame, Title, Filter, NULL, NULL, ".ktx",
+		OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_LONGNAMES | OFN_OVERWRITEPROMPT
+		| OFN_EXPLORER | OFN_EXTENSIONDIFFERENT | OFN_DONTADDTORECENT ) ;
+}
 
 /* The classic Save-As (GetSaveFileName): SaveFileNameFrom's fallback where the
  * Common Item Dialog cannot be created (XP). On Windows 11 the same call was
  * seen opening in the folder Windows remembers for the program, or in
  * Documents, ignoring both the initial folder and the path in the prefilled
  * name - which is why it is only the fallback now. */
-static int save_file_name_classic( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	char szFilter[4096] ; snprintf( szFilter, sizeof(szFilter), "%s", Filter ) ;
-	int i = 0 ;
-	while( i < (int)sizeof(szFilter) && szFilter[i] != '\0' ) { if( szFilter[i]=='|' ) szFilter[i]='\0' ; i++ ; }
-	OPENFILENAME ofn = {0} ;
-	ofn.lStructSize   = sizeof(OPENFILENAME) ;
-	ofn.hwndOwner     = hFrame ;
-	ofn.lpstrFilter   = szFilter ;
-	ofn.nFilterIndex  = 1 ;
-	ofn.lpstrFile     = filename ;      /* kept as prefilled: the remote base name */
-	ofn.nMaxFile      = 4096 ;
-	ofn.lpstrTitle    = Title ;
-	ofn.lpstrInitialDir = ( initialdir && initialdir[0] ) ? initialdir : NULL ;
-	ofn.Flags         = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_LONGNAMES
-	                  | OFN_OVERWRITEPROMPT | OFN_EXPLORER | OFN_NOCHANGEDIR
-	                  | OFN_DONTADDTORECENT ;
-	if( !GetSaveFileName( &ofn ) ) return 0 ;
-	return 1 ;
+static char * save_file_name_classic( HWND hFrame, const char * prefill, const char * Title, const char * Filter, const char * initialdir ) {
+	/* kept as prefilled: the remote base name */
+	return pick_classic( 1, hFrame, Title, Filter, initialdir, prefill, NULL,
+		OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_LONGNAMES
+		| OFN_OVERWRITEPROMPT | OFN_EXPLORER | OFN_NOCHANGEDIR
+		| OFN_DONTADDTORECENT ) ;
 }
 
 #include <shlobj.h>
@@ -282,26 +288,27 @@ static int save_file_name_classic( HWND hFrame, char * filename, char * Title, c
 #include "kitty_tools.h"        /* existdirectory */
 
 /* Save-As opening in a given folder with a name PREFILLED by the caller (the
- * remote base name, the last component of `filename`). Used by Get File for a
+ * remote base name, the last component of `prefill`). Used by Get File for a
  * single named file; FOS_OVERWRITEPROMPT is Windows' own replace question, so
- * a file is never overwritten silently. Returns 1 with the chosen full path in
- * filename (4096 bytes), 0 on cancel.
+ * a file is never overwritten silently. The chosen full path, or NULL on a
+ * cancel.
  *
  * KiTTY: the Common Item Dialog (Vista+) with SetFolder, which FORCES the
  * folder: GetSaveFileName opened in the folder Windows remembers for the
  * program (or Documents), so Get File's Save-As never showed the download
  * folder it was given. GetSaveFileName stays as the fallback (XP). */
-static int save_file_name_from( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
+static char * save_file_name_from( HWND hFrame, const char * prefill, const char * Title, const char * Filter, const char * initialdir ) {
 	static const GUID clsid_fsd = {0xC0B4E2F3,0xBA21,0x4773,{0x8D,0xBA,0x33,0x5E,0xC9,0x46,0xEB,0x8B}} ;   /* FileSaveDialog */
 	static const GUID iid_fsd   = {0x84bccd23,0x5fde,0x4cdb,{0xae,0xa4,0xaf,0x64,0xb8,0x3d,0x78,0xab}} ;   /* IFileSaveDialog */
 	static const GUID iid_si    = {0x43826d1e,0xe718,0x42ee,{0xbc,0x55,0xa1,0xe2,0x61,0xc3,0x7b,0xfe}} ;   /* IShellItem */
 	IFileSaveDialog *pfd = NULL ;
-	int ret = 0 ;
+	char *ret = NULL ;
 	HRESULT hrInit = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
 
+	if( !prefill ) prefill = "" ;
 	if( FAILED( CoCreateInstance( &clsid_fsd, NULL, CLSCTX_INPROC_SERVER, &iid_fsd, (void**)&pfd ) ) || !pfd ) {
 		if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
-		return save_file_name_classic( hFrame, filename, Title, Filter, initialdir ) ;
+		return save_file_name_classic( hFrame, prefill, Title, Filter, initialdir ) ;
 	}
 	{
 		DWORD opts = 0 ;
@@ -310,23 +317,25 @@ static int save_file_name_from( HWND hFrame, char * filename, char * Title, char
 		                               | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT ) ;
 	}
 	if( Title ) {
-		wchar_t wt[256] ;
-		MultiByteToWideChar( CP_ACP, 0, Title, -1, wt, 256 ) ; wt[255] = 0 ;
-		pfd->lpVtbl->SetTitle( pfd, wt ) ;
+		wchar_t *wt = kitty_acp_to_wide_dup( Title ) ;
+		if( wt ) { pfd->lpVtbl->SetTitle( pfd, wt ) ; sfree( wt ) ; }
 	}
 	/* The filter: "Name|pattern|Name|pattern|" as the classic dialog takes it. */
 	if( Filter && Filter[0] ) {
-		COMDLG_FILTERSPEC spec[8] ; wchar_t wf[8][2][256] ; UINT n = 0 ;
-		char f[1024] ; char *p, *name, *pat ;
-		snprintf( f, sizeof(f), "%s", Filter ) ;
-		for( p = f ; n < 8 && *p ; n++ ) {
+		COMDLG_FILTERSPEC spec[8] ; wchar_t *wf[8][2] ; UINT n = 0, k ;
+		char *f = dupstr( Filter ) ; char *p, *name, *pat ;
+		for( p = f ; n < 8 && *p ; ) {
 			name = p ; if( !(p = strchr( p, '|' )) ) break ; *p++ = '\0' ;
 			pat = p ; if( (p = strchr( p, '|' )) ) *p++ = '\0' ; else p = pat + strlen( pat ) ;
-			MultiByteToWideChar( CP_ACP, 0, name, -1, wf[n][0], 256 ) ; wf[n][0][255] = 0 ;
-			MultiByteToWideChar( CP_ACP, 0, pat, -1, wf[n][1], 256 ) ; wf[n][1][255] = 0 ;
+			wf[n][0] = kitty_acp_to_wide_dup( name ) ;
+			wf[n][1] = kitty_acp_to_wide_dup( pat ) ;
+			if( !wf[n][0] || !wf[n][1] ) { sfree( wf[n][0] ) ; sfree( wf[n][1] ) ; continue ; }
 			spec[n].pszName = wf[n][0] ; spec[n].pszSpec = wf[n][1] ;
+			n++ ;
 		}
 		if( n ) pfd->lpVtbl->SetFileTypes( pfd, n, spec ) ;
+		for( k = 0 ; k < n ; k++ ) { sfree( wf[k][0] ) ; sfree( wf[k][1] ) ; }
+		sfree( f ) ;
 	}
 	if( initialdir && initialdir[0] && existdirectory( initialdir ) ) {
 		/* SHCreateItemFromParsingName is Vista+: resolved at run time, as in
@@ -334,28 +343,29 @@ static int save_file_name_from( HWND hFrame, char * filename, char * Title, char
 		typedef HRESULT (WINAPI *pfn_scifpn)( PCWSTR, IBindCtx *, REFIID, void ** ) ;
 		HMODULE sh = GetModuleHandleA( "shell32.dll" ) ;
 		pfn_scifpn scifpn = sh ? (pfn_scifpn)GetProcAddress( sh, "SHCreateItemFromParsingName" ) : NULL ;
-		if( scifpn ) {
-			wchar_t wi[4096] ; IShellItem *psi0 = NULL ;
-			MultiByteToWideChar( CP_ACP, 0, initialdir, -1, wi, 4096 ) ; wi[4095] = 0 ;
+		wchar_t *wi = scifpn ? kitty_acp_to_wide_dup( initialdir ) : NULL ;
+		if( wi ) {
+			IShellItem *psi0 = NULL ;
 			if( SUCCEEDED( scifpn( wi, NULL, &iid_si, (void**)&psi0 ) ) && psi0 ) {
 				pfd->lpVtbl->SetFolder( pfd, psi0 ) ;
 				psi0->lpVtbl->Release( psi0 ) ;
 			}
+			sfree( wi ) ;
 		}
 	}
 	{
 		/* the prefilled name without its folder: the folder is set above */
-		const char *base = strrchr( filename, '\\' ) ;
-		wchar_t wn[1024] ;
-		MultiByteToWideChar( CP_ACP, 0, base ? base + 1 : filename, -1, wn, 1024 ) ; wn[1023] = 0 ;
-		if( wn[0] ) pfd->lpVtbl->SetFileName( pfd, wn ) ;
+		const char *base = strrchr( prefill, '\\' ) ;
+		wchar_t *wn = kitty_acp_to_wide_dup( base ? base + 1 : prefill ) ;
+		if( wn && wn[0] ) pfd->lpVtbl->SetFileName( pfd, wn ) ;
+		sfree( wn ) ;
 	}
 	if( SUCCEEDED( pfd->lpVtbl->Show( pfd, hFrame ) ) ) {
 		IShellItem *psi = NULL ;
 		if( SUCCEEDED( pfd->lpVtbl->GetResult( pfd, &psi ) ) && psi ) {
 			PWSTR wpath = NULL ;
 			if( SUCCEEDED( psi->lpVtbl->GetDisplayName( psi, SIGDN_FILESYSPATH, &wpath ) ) && wpath ) {
-				if( WideCharToMultiByte( CP_ACP, 0, wpath, -1, filename, 4096, NULL, NULL ) > 0 ) ret = 1 ;
+				ret = kitty_wide_to_acp_dup( wpath ) ;
 				CoTaskMemFree( wpath ) ;
 			}
 			psi->lpVtbl->Release( psi ) ;
@@ -394,15 +404,19 @@ int OpenDirName( HWND hFrame, char * dirname ) {
 struct kitty_pick {
 	HWND owner ;
 	int folder ;                        /* KITTY_PICK_FOLDER / _OPEN / _SAVE */
-	/* the filter as long as the pickers take it: a script filter from
-	 * kitty.ini (scriptfilefilter) may run past 1 KB */
-	char initial[4096], title[512], filter[4096] ;
-	char result[4096] ;
-	int ok ;
+	/* each held whole (NULL = none): a script filter from kitty.ini
+	 * (scriptfilefilter) may run past 1 KB, a folder past MAX_PATH */
+	char *initial, *title, *filter ;
+	char *result ;                      /* NULL = cancelled */
 	volatile LONG cancelled ;
 	void (*done)( void *ctx, const char *path ) ;
 	void *ctx ;
 } ;
+
+static void kitty_pick_free( struct kitty_pick *p ) {
+	sfree( p->initial ) ; sfree( p->title ) ; sfree( p->filter ) ; sfree( p->result ) ;
+	free( p ) ;
+}
 static HWND kitty_pick_sink = NULL ;
 
 /* kitty_call_async's call: fn on the worker, done back on the calling thread */
@@ -416,8 +430,8 @@ struct kitty_call {
 static LRESULT CALLBACK kitty_pick_sink_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
 	if( msg == WM_KITTY_PICK_DONE ) {
 		struct kitty_pick *p = (struct kitty_pick *)lp ;
-		if( !p->cancelled ) p->done( p->ctx, p->ok && p->result[0] ? p->result : NULL ) ;
-		free( p ) ;
+		if( !p->cancelled ) p->done( p->ctx, p->result && p->result[0] ? p->result : NULL ) ;
+		kitty_pick_free( p ) ;
 		return 0 ;
 	}
 	if( msg == WM_KITTY_CALL_DONE ) {
@@ -487,17 +501,12 @@ static unsigned __stdcall kitty_pick_thread( void *v ) {
 		 * really opens there (SaveFileNameFrom). COM for this thread: the
 		 * Save-As dialogs are shell windows. */
 		HRESULT hr = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE ) ;
-		if( p->initial[0] )
-			p->ok = SaveFileNameFrom( p->owner, p->result, p->title, p->filter, p->initial ) ;
-		else
-			p->ok = SaveFileName( p->owner, p->result, p->title, p->filter ) ;
+		p->result = kitty_pick_save_dup( p->owner, p->title, p->filter, "", p->initial ) ;
 		if( SUCCEEDED( hr ) ) CoUninitialize() ;
 	} else if( p->folder )
-		p->ok = OpenDirNameFrom( p->owner, p->result, p->initial[0] ? p->initial : NULL,
-			p->title[0] ? p->title : NULL ) ;
+		p->result = kitty_pick_dir_dup( p->owner, p->initial, p->title ) ;
 	else
-		p->ok = OpenFileNameFrom( p->owner, p->result, p->title, p->filter,
-			p->initial[0] ? p->initial : NULL ) ;
+		p->result = kitty_pick_open_dup( p->owner, p->title, p->filter, p->initial ) ;
 	PostMessage( kitty_pick_sink, WM_KITTY_PICK_DONE, 0, (LPARAM)p ) ;
 	return 0 ;
 }
@@ -514,13 +523,13 @@ void *kitty_pick_async( HWND owner, int folder, const char *initial, const char 
 	if( !p ) return NULL ;
 	p->owner = owner ;
 	p->folder = folder ;
-	if( initial ) snprintf( p->initial, sizeof(p->initial), "%s", initial ) ;
-	if( title ) snprintf( p->title, sizeof(p->title), "%s", title ) ;
-	if( filter ) snprintf( p->filter, sizeof(p->filter), "%s", filter ) ;
+	if( initial && initial[0] ) p->initial = dupstr( initial ) ;
+	if( title && title[0] ) p->title = dupstr( title ) ;
+	if( filter ) p->filter = dupstr( filter ) ;
 	p->done = done ;
 	p->ctx = ctx ;
 	th = _beginthreadex( NULL, 0, kitty_pick_thread, p, 0, NULL ) ;
-	if( !th ) { free( p ) ; return NULL ; }
+	if( !th ) { kitty_pick_free( p ) ; return NULL ; }
 	CloseHandle( (HANDLE)th ) ;
 	return p ;
 }
@@ -531,8 +540,8 @@ void kitty_pick_cancel( void *token ) {
 	if( token ) InterlockedExchange( &((struct kitty_pick *)token)->cancelled, 1 ) ;
 }
 
-static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial, const char * title ) {
-	dirname[0] = '\0' ;
+static char * open_dir_name_from( HWND hFrame, const char * initial, const char * title ) {
+	char * dirname = NULL ;
 	if( initial && (!initial[0] || !existdirectory( initial )) ) initial = NULL ;
 	/* Modern Common Item Dialog folder picker (Vista+): the full Explorer window
 	 * with an address bar you can paste a path into, type-ahead and favourites -
@@ -549,9 +558,8 @@ static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial
 		pfd->lpVtbl->GetOptions( pfd, &opts ) ;
 		pfd->lpVtbl->SetOptions( pfd, opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST ) ;
 		if( title ) {
-			wchar_t wt[256] ;
-			MultiByteToWideChar( CP_ACP, 0, title, -1, wt, 256 ) ; wt[255] = 0 ;
-			pfd->lpVtbl->SetTitle( pfd, wt ) ;
+			wchar_t *wt = kitty_acp_to_wide_dup( title ) ;
+			if( wt ) { pfd->lpVtbl->SetTitle( pfd, wt ) ; sfree( wt ) ; }
 		} else {
 			pfd->lpVtbl->SetTitle( pfd, L"Select a folder..." ) ;
 		}
@@ -562,13 +570,14 @@ static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial
 			typedef HRESULT (WINAPI *pfn_scifpn)( PCWSTR, IBindCtx *, REFIID, void ** ) ;
 			HMODULE sh = GetModuleHandleA( "shell32.dll" ) ;
 			pfn_scifpn scifpn = sh ? (pfn_scifpn)GetProcAddress( sh, "SHCreateItemFromParsingName" ) : NULL ;
-			if( scifpn ) {
-				wchar_t wi[4096] ; IShellItem *psi0 = NULL ;
-				MultiByteToWideChar( CP_ACP, 0, initial, -1, wi, 4096 ) ; wi[4095] = 0 ;
+			wchar_t *wi = scifpn ? kitty_acp_to_wide_dup( initial ) : NULL ;
+			if( wi ) {
+				IShellItem *psi0 = NULL ;
 				if( SUCCEEDED( scifpn( wi, NULL, &iid_si, (void**)&psi0 ) ) && psi0 ) {
 					pfd->lpVtbl->SetFolder( pfd, psi0 ) ;
 					psi0->lpVtbl->Release( psi0 ) ;
 				}
+				sfree( wi ) ;
 			}
 		}
 		if( SUCCEEDED( pfd->lpVtbl->Show( pfd, hFrame ) ) ) {
@@ -576,7 +585,9 @@ static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial
 			if( SUCCEEDED( pfd->lpVtbl->GetResult( pfd, &psi ) ) && psi ) {
 				PWSTR wpath = NULL ;
 				if( SUCCEEDED( psi->lpVtbl->GetDisplayName( psi, SIGDN_FILESYSPATH, &wpath ) ) && wpath ) {
-					WideCharToMultiByte( CP_ACP, 0, wpath, -1, dirname, 4096, NULL, NULL ) ;
+					/* whole, whatever its length in the code page: it was
+					 * written unchecked into the caller's buffer */
+					dirname = kitty_wide_to_acp_dup( wpath ) ;
 					CoTaskMemFree( wpath ) ;
 				}
 				psi->lpVtbl->Release( psi ) ;
@@ -584,13 +595,16 @@ static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial
 		}
 		pfd->lpVtbl->Release( pfd ) ;
 		if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
-		return dirname[0] ? 1 : 0 ;
+		if( dirname && !dirname[0] ) { sfree( dirname ) ; dirname = NULL ; }
+		return dirname ;
 	}
 	if( SUCCEEDED( hrInit ) ) CoUninitialize() ;
 
-	/* Fallback: classic tree picker (with the New Folder button). */
+	/* Fallback: classic tree picker (with the New Folder button). The path
+	 * comes back wide, in the MAX_PATH characters the call is made for, and
+	 * is converted whole. */
 	{
-		BROWSEINFO bi ; LPITEMIDLIST il ; char Buffer[4096], Result[4096] = "" ;
+		BROWSEINFO bi ; LPITEMIDLIST il ; char Buffer[4096] ; wchar_t Result[MAX_PATH + 1] ;
 		memset( &bi, 0, sizeof(bi) ) ;
 		bi.hwndOwner = hFrame ;
 		bi.pszDisplayName = Buffer ;
@@ -598,12 +612,14 @@ static int open_dir_name_from( HWND hFrame, char * dirname, const char * initial
 		bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE ;
 		if( initial ) { bi.lpfn = browse_start_folder ; bi.lParam = (LPARAM)initial ; }
 		if( (il = SHBrowseForFolder( &bi )) != NULL ) {
-			SHGetPathFromIDList( il, Result ) ;
+			Result[0] = L'\0' ;
+			if( !SHGetPathFromIDListW( il, Result ) ) Result[0] = L'\0' ;
+			Result[MAX_PATH] = L'\0' ;
 			GlobalFree( il ) ;
-			if( Result[0] ) { strcpy( dirname, Result ) ; return 1 ; }
+			if( Result[0] ) dirname = kitty_wide_to_acp_dup( Result ) ;
 		}
 	}
-	return 0 ;
+	return dirname ;
 	}
 
 
@@ -962,18 +978,20 @@ BOOL kitty_create_process_with_handles( const char * app, char * cmdline, DWORD 
 }
 
 void RunPuttyEd( HWND hwnd, char * filename ) {
-	char module[MAX_PATH+1]="", cmd[4096]="" ;
 	/* Do not rely on GetShortPathName(): 8.3 short names can be disabled on
 	 * modern Windows volumes, which made Shift+F2/Ctrl+Shift+F2 silently do
-	 * nothing. Quote the real module path instead. */
-	if( GetModuleFileName( NULL, (LPTSTR)module, MAX_PATH ) ) {
-		snprintf( cmd, sizeof(cmd), "\"%s\" -ed", module );
-		if( filename!=NULL ) if( strlen(filename)>0 ) {
-			strncat( cmd, "b ", sizeof(cmd)-strlen(cmd)-1 ) ;
-			strncat( cmd, filename, sizeof(cmd)-strlen(cmd)-1 ) ;
-		}
-		debug_logevent( cmd ) ;
+	 * nothing. Quote the real module path instead - whole: a cut one started
+	 * whatever program that shorter path named. */
+	char *module = kitty_module_path_dup( NULL ), *cmd ;
+	if( module ) {
+		if( filename != NULL && filename[0] )
+			cmd = dupprintf( "\"%s\" -edb %s", module, filename ) ;
+		else
+			cmd = dupprintf( "\"%s\" -ed", module ) ;
+		debug_logevent( "%s", cmd ) ;
 		RunCommand( hwnd, cmd ) ;
+		sfree( cmd ) ;
+		sfree( module ) ;
 	}
 }
 

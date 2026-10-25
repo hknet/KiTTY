@@ -203,6 +203,10 @@ extern char InitialDirectory[4096] ;
 extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
+/* The parameter whole (sfree it); "" when it is not set. */
+char * ReadParameterDup( const char * key, const char * name ) ;
+/* One value of an ini file whole (sfree it); NULL = the key is not there. */
+char * kitty_read_ini_dup( const char * file, const char * section, const char * key ) ;
 int WriteParameter( const char * key, const char * name, char * value ) ;
 int WriteParameterNoReport( const char * key, const char * name, char * value ) ;   /* the caller reports a failure */
 int DelParameter( const char * key, const char * name ) ;

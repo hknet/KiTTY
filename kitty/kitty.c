@@ -128,13 +128,13 @@ char BuildVersionTime[256] = "0.0.0.0 @ 0" ;
 
 // Debug procedure
 void debug_log( const char *fmt, ... ) {
-	char filename[4096]="" ;
+	char *filename ;
 	va_list ap;
 	FILE *fp ;
 
 	if( strlen(InitialDirectory)>0 )   /* an array: never NULL */
-		snprintf( filename, sizeof(filename),"%s\\kitty.log",InitialDirectory);
-	else strcpy(filename,"kitty.log");
+		filename = dupprintf( "%s\\kitty.log", InitialDirectory ) ;
+	else filename = dupstr( "kitty.log" ) ;
 
 	va_start( ap, fmt ) ;
 	//vfprintf( stdout, fmt, ap ) ; // write to the screen
@@ -142,8 +142,9 @@ void debug_log( const char *fmt, ... ) {
 		vfprintf( fp, fmt, ap ) ; // write to a file
 		fclose( fp ) ;
 	}
- 
+
 	va_end( ap ) ;
+	sfree( filename ) ;
 }
 
 char *dupvprintf(const char *fmt, va_list ap) ;
@@ -248,28 +249,30 @@ char **FolderList=NULL ;
 
 // Initialise the folder list from the existing sessions and from kitty.ini
 void InitFolderList( void ) {
-	char * pst, fList[4096], buffer[4096] ;
+	char * pst, * fList ;
 	int i ;
-	FolderList=(char**)malloc( 1024*sizeof(char*) );
-	FolderList[0] = NULL ;
-	StringList_Add( FolderList, "Default" ) ;
-	//if( GetValueData(HKEY_CURRENT_USER, TEXT(PUTTY_REG_POS), "Folders", fList) == NULL ) return ;
-	ReadParameterN( INIT_SECTION, KI_FOLDERS, fList, sizeof(fList) ) ;
+	/* the list grows by the folder (StringList_Add): 1024 slots were
+	 * written past with more folders; the previous list goes first */
+	StringList_Free( FolderList ) ;
+	FolderList = NULL ;
+	StringList_Add( &FolderList, "Default" ) ;
+	/* the list whole: from the registry it was read into 1024 bytes and a
+	 * longer one counted as not there, so the saved folders were lost */
+	fList = ReadParameterDup( INIT_SECTION, KI_FOLDERS ) ;
 	if( strlen( fList ) != 0 ) {
 		pst = fList ;
 		while( strlen( pst ) > 0 ) {
+			char * one ;
 			i = 0 ;
-			while( ( pst[i] != ',' ) && ( pst[i] != '\0' ) ) {
-				buffer[i] = pst[i] ;
-				i++ ;
-				}
-			buffer[i] = '\0' ;
-			StringList_Add( FolderList, buffer ) ;
+			while( ( pst[i] != ',' ) && ( pst[i] != '\0' ) ) i++ ;
+			one = dupprintf( "%.*s", i, pst ) ;
+			StringList_Add( &FolderList, one ) ;
+			sfree( one ) ;
 			if( pst[i] == '\0' ) pst = pst + i ;
 			else pst = pst + i + 1 ;
 			}
-		//free( fList ) ; fList = NULL ;
 		}
+	sfree( fList ) ;
 	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		HKEY hKey ;
@@ -284,10 +287,10 @@ void InitFolderList( void ) {
 		DWORD    cchMaxValue;          // longest value name 
 		DWORD    cbMaxValueData;       // longest value data 
 		DWORD    cbSecurityDescriptor; // size of security descriptor 
-		FILETIME ftLastWriteTime;      // last write time 
-		DWORD retCode; 
+		FILETIME ftLastWriteTime;      // last write time
+		DWORD retCode;
+		const char * buffer = kitty_reg_sessions() ;
 
-		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() );
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
 	
 		retCode = RegQueryInfoKey(
@@ -309,14 +312,12 @@ void InitFolderList( void ) {
 				cbName = MAX_KEY_LENGTH;
 				retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
 				if (retCode == ERROR_SUCCESS) {
-					char nValue[1024] ;
-					snprintf( nValue, sizeof(nValue), "%s\\%s", buffer, achKey ) ;
-					if( GetValueData(HKEY_CURRENT_USER, nValue, KR_FOLDER, fList ) != NULL ) {
-						if( strlen( fList ) > 0 ) 
-							StringList_Add( FolderList, fList ) ;
-						//free( fList ) ; fList = NULL ;
-						}
-			
+					char * nValue = dupprintf( "%s\\%s", buffer, achKey ) ;
+					char * fld = GetValueDataDup( HKEY_CURRENT_USER, nValue, KR_FOLDER ) ;
+					if( fld != NULL && strlen( fld ) > 0 )
+						StringList_Add( &FolderList, fld ) ;
+					sfree( fld ) ;
+					sfree( nValue ) ;
 		}
 				}
 			} 
@@ -335,7 +336,7 @@ void InitFolderList( void ) {
 			if( strchr( names[k], '\\' ) ) continue ;
 			fld = kitty_read_session_folder( names[k] ) ;
 			if( fld != NULL && fld[0] && strlen( fld ) < 1000 && strcmp( fld, "Default" ) )
-				StringList_Add( FolderList, fld ) ;
+				StringList_Add( &FolderList, fld ) ;
 			sfree( fld ) ;
 			}
 		kitty_session_names_free( names, nn ) ;
@@ -350,22 +351,26 @@ void InitFolderList( void ) {
 		for( k = 0 ; k < nn ; k++ ) {
 			char * fld = ksp_folder_of( names[k] ) ;
 			if( fld != NULL ) {
-				if( strlen( fld ) < 1000 ) StringList_Add( FolderList, fld ) ;
+				if( strlen( fld ) < 1000 ) StringList_Add( &FolderList, fld ) ;
 				sfree( fld ) ;
 				}
 			}
 		kitty_session_names_free( names, nn ) ;
 		}
 
-	if( readINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW, buffer, sizeof(buffer) ) ) {
-		if( strlen( buffer ) > 0 ) {
-			for( i=0; i<strlen(buffer); i++ ) if( buffer[i]==',' ) buffer[i]='\0' ;
-			StringList_Add( FolderList, buffer ) ;
+	{
+		/* the new folder whole: a cut name added another folder */
+		char * fnew = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
+		if( fnew != NULL ) {
+			char * comma = strchr( fnew, ',' ) ;
+			if( comma ) *comma = '\0' ;
+			if( fnew[0] ) StringList_Add( &FolderList, fnew ) ;
+			/* readonly=yes: the key stays, and is applied again next start */
+			if( !kitty_inifile_write_blocked( KittyIniFile ) )
+				delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
+			sfree( fnew ) ;
 			}
-		/* readonly=yes: the key stays, and is applied again next start */
-		if( !kitty_inifile_write_blocked( KittyIniFile ) )
-			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
-		}
+	}
 	
 	}
 
@@ -373,10 +378,11 @@ void InitFolderList( void ) {
  * putty.conf's Sessions=) may put it anywhere; ConfigDirectory\Sessions is
  * only the default. */
 static const char * kitty_sessions_root( void ) {
-	static char root[2048] ;
+	static char * root = NULL ;   /* whole; valid until the next call */
 	const char * d = kitty_session_dir() ;
-	if( d != NULL && d[0] ) snprintf( root, sizeof(root), "%s", d ) ;
-	else snprintf( root, sizeof(root), "%s\\Sessions", ConfigDirectory ) ;
+	sfree( root ) ;
+	if( d != NULL && d[0] ) root = dupstr( d ) ;
+	else root = dupprintf( "%s\\Sessions", ConfigDirectory ) ;
 	return root ;
 	}
 
@@ -423,29 +429,34 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 // Get one entry of a session (returns 1 if it exists)
 int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) {
 	HKEY hKey ;
-	char buffer[1024], session[1024], folder[1024], *p ;
+	char *buffer, *session, *name, *p ;
 	int res = 0 ;
 	FILE * fp ;
 
 	if( session_in == NULL ) return 0 ;
 	if( strlen(session_in)==0 ) return 0 ;
-	
+
 	strcpy( result, "" ) ;
-	/* Bounded: mungestr can triple a name, and session[] must hold that. */
-	snprintf( buffer, sizeof(buffer) / 3, "%s", session_in ) ;
-	if( (p = strrchr(buffer, '[')) != NULL && p > buffer ) *(p-1) = '\0' ;
-	mungestr(buffer, session) ;
-	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_reg_sessions(), session ) ;
-	snprintf( folder, sizeof(folder), "%s", folder_in ? folder_in : "" ) ;
-	CleanFolderName( folder );
+	(void)folder_in ;
+	/* the name and the key whole: the name was cut to a third of 1024
+	 * bytes, and the field read from another session's key; mungestr can
+	 * triple it */
+	name = dupstr( session_in ) ;
+	if( (p = strrchr(name, '[')) != NULL && p > name ) *(p-1) = '\0' ;
+	session = snewn( 3 * strlen( name ) + 1, char ) ;
+	mungestr(name, session) ;
+	buffer = dupprintf( "%s\\%s", kitty_reg_sessions(), session ) ;
+	sfree( session ) ;
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-			DWORD lpType ;
-			unsigned char lpData[1024] ;
-			DWORD dwDataSize = 1024 ;
-			if( RegQueryValueEx( hKey, field, 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
-				strcpy( result, (char*)lpData ) ;
+			/* the value whole and terminated (RegQueryValueEx does not add
+			 * the NUL a stored value may lack), then into the caller's 1024
+			 * bytes */
+			unsigned char * v = kitty_reg_query_dup( hKey, field, NULL, NULL ) ;
+			if( v != NULL ) {
+				snprintf( result, 1024, "%s", (char *)v ) ;
+				sfree( v ) ;
 				res = 1 ;
 				}
 			RegCloseKey( hKey ) ;
@@ -455,9 +466,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 		/* KiTTY (hknet/KiTTY#55): through the store itself - it knows the
 		 * nested folders, the suffix and both line formats. */
 		settings_r * r ;
-		snprintf( buffer, sizeof(buffer), "%s", session_in ) ;
-		if( (p = strrchr(buffer, '[')) != NULL && p > buffer ) *(p-1) = '\0' ;
-		r = open_settings_r( buffer ) ;
+		r = open_settings_r( name ) ;
 		if( r != NULL ) {
 			char * v = read_setting_s( r, field ) ;
 			if( v != NULL ) {
@@ -468,6 +477,8 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 			close_settings_r( r ) ;
 			}
 		}
+	sfree( buffer ) ;
+	sfree( name ) ;
 	return res ;
 	}
 	
@@ -528,19 +539,22 @@ void kitty_userauth_credentials( Seat * seat, const char * username, const char 
 // Save the folder list
 void SaveFolderList( void ) {
 	int i = 0 ;
+	/* joined in memory that grows: strcat into 4096 bytes overflowed the
+	 * stack with a long list */
+	strbuf * sb = strbuf_new() ;
 	kitty_store_mark_dirty() ;
-	char buffer[4096] = "" ;
 	while( FolderList[i] != NULL ) {
 		if( strlen( FolderList[i] ) > 0 )
-			strcat( buffer, FolderList[i] ) ;
-		if( FolderList[i+1] != NULL ) 
+			put_dataz( sb, FolderList[i] ) ;
+		if( FolderList[i+1] != NULL )
 			if( strlen( FolderList[i+1] ) > 0 )
-				strcat( buffer, "," ) ;
+				put_byte( sb, ',' ) ;
 		i++;
 		}
 
-	if( strlen( buffer ) > 0 ) 
-		WriteParameter( INIT_SECTION, KI_FOLDERS, buffer ) ;
+	if( sb->len > 0 )
+		WriteParameter( INIT_SECTION, KI_FOLDERS, sb->s ) ;
+	strbuf_free( sb ) ;
 	}
 
 // Save a registry key into a file
@@ -945,21 +959,28 @@ static void script_file_picked( void * ctx, const char * path ) {
 }
 
 void OpenAndSendScriptFile( HWND hwnd ) {
-    char filename[4096], buffer[4096] ;
+    char *filter, *filename ;
     if( script_file_pick != NULL ) return ;   /* its picker is open already */
-    if( ReadParameterN( INIT_SECTION, KI_SCRIPTFILEFILTER, buffer, sizeof(buffer) ) ) {
-        buffer[4090]='\0';
-    } else {
-        strcpy( buffer, "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
+    /* the filter and the file whole */
+    filter = ReadParameterDup( INIT_SECTION, KI_SCRIPTFILEFILTER ) ;
+    if( !filter[0] ) {
+        sfree( filter ) ;
+        filter = dupstr( "Script files (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|" ) ;
     }
-    if( strlen(buffer)==0 || buffer[strlen(buffer)-1]!='|' ) strcat( buffer, "|" ) ;
-    script_file_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, NULL, KT_CAP_OPEN_FILE, buffer,
+    if( filter[strlen(filter)-1]!='|' ) {
+        char *f = dupcat( filter, "|" ) ;
+        sfree( filter ) ;
+        filter = f ;
+    }
+    script_file_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, NULL, KT_CAP_OPEN_FILE, filter,
                                          script_file_picked, (void *)hwnd ) ;
-    if( script_file_pick != NULL ) return ;
+    if( script_file_pick != NULL ) { sfree( filter ) ; return ; }
     /* no thread for the picker: on this one, as before */
-    if( OpenFileName( hwnd, filename, KT_CAP_OPEN_FILE, buffer ) ) {
+    if( ( filename = kitty_pick_open_dup( hwnd, KT_CAP_OPEN_FILE, filter, NULL ) ) != NULL ) {
         RunScriptFile( hwnd, filename ) ;
+        sfree( filename ) ;
     }
+    sfree( filter ) ;
 }
 
 // Winroll (window rollup) handling
@@ -1037,74 +1058,79 @@ static void bg_trace_switch( const char * path ) {
 #endif
 }
 
+/* The image's folder: the path without its last component, or "." (sfree
+ * it). Every path here is held whole; a cut one named another folder. */
+static char * bg_image_folder( const char * current ) {
+	const char * s = strrchr( current, '\\' ), * f = strrchr( current, '/' ) ;
+	if( f > s ) s = f ;
+	if( s == NULL ) return dupstr( "." ) ;
+	return dupprintf( "%.*s", (int)( s - current ), current ) ;
+	}
+
 int PreviousBgImage( HWND hwnd ) {
-	char buffer[1024], basename[1024], ext[10], previous[1024]="", current[1024] ;
-	int i ;
+	char * buffer, * basename, ext[10], * previous = NULL, * current ;
 	DIR * dir ;
 	struct dirent * de ;
 
 	/* the image's folder as it is on disk: %VAR% expanded (hknet/KiTTY#70
 	 * sweep) - opendir() and the comparison below see real paths */
-	{ char *cur = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
-	  snprintf( current, sizeof(current), "%s", cur ) ; sfree( cur ) ; }
-	strcpy( basename, current ) ;
+	current = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
+	basename = bg_image_folder( current ) ;
 
-	for( i=(strlen(basename)-1) ; i>=0 ; i-- ) 
-		if( (basename[i]=='\\')||(basename[i]=='/') ) { basename[i]='\0' ; break ; }
-	if( i<0 ) strcpy( basename, ".") ;
+	if( ( dir = opendir( basename ) ) == NULL ) { sfree( basename ) ; sfree( current ) ; return 0 ; }
 
-	if( ( dir = opendir( basename ) ) == NULL ) { return 0 ; }
-	
 	while( ( de = readdir(dir) ) != NULL ) {
 		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
+			buffer = dupprintf( "%s\\%s", basename, de->d_name ) ;
 			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
 				if( !strcmp(buffer, current ) )
-					if( strcmp( previous, "" ) ) break ;
-		
+					if( previous != NULL ) { sfree( buffer ) ; break ; }
+
 				GetExt( de->d_name, ext, sizeof(ext) ) ;
 				if( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))||(!stricmp(ext,"PNG")))
-					{ snprintf( previous, sizeof(previous), "%s\\%s", basename, de->d_name ) ; }
+					{ sfree( previous ) ; previous = dupprintf( "%s\\%s", basename, de->d_name ) ; }
 				}
+			sfree( buffer ) ;
 			}
 		}
-	if( strcmp( previous, "" ) ){
+	closedir( dir ) ;
+	if( previous != NULL ){
 		Filename * fn = filename_from_str( previous ) ;
 		bg_trace_switch( previous ) ;
-		conf_set_filename(conf,CONF_bg_image_filename,fn); 
+		conf_set_filename(conf,CONF_bg_image_filename,fn);
 		filename_free(fn);
 		RefreshBackground( hwnd ) ;
 		}
+	sfree( previous ) ;
+	sfree( basename ) ;
+	sfree( current ) ;
 	return 1 ;
 	}
 
 int NextBgImage( HWND hwnd ) {
-	char buffer[1024], basename[1024], ext[10], current[1024] ;
-	int i ;
+	char * buffer, * basename, ext[10], * current ;
 	DIR * dir ;
 	struct dirent * de ;
 
 	/* the image's folder as it is on disk: %VAR% expanded (hknet/KiTTY#70
 	 * sweep) - opendir() and the comparison below see real paths */
-	{ char *cur = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
-	  snprintf( current, sizeof(current), "%s", cur ) ; sfree( cur ) ; }
-	strcpy( basename, current ) ;
+	current = filename_expand_str(conf_get_filename(conf,CONF_bg_image_filename)) ;
+	basename = bg_image_folder( current ) ;
 
-	for( i=(strlen(basename)-1) ; i>=0 ; i-- ) 
-		if( (basename[i]=='\\')||(basename[i]=='/') ) { basename[i]='\0' ; break ; }
-	if( i<0 ) strcpy( basename, ".") ;
+	if( ( dir = opendir( basename ) ) == NULL ) { sfree( basename ) ; sfree( current ) ; return 0 ; }
 
-	if( ( dir = opendir( basename ) ) == NULL ) { return 0 ; }
-	
 	while( ( de = readdir(dir) ) != NULL ) {
 		GetExt( de->d_name, ext, sizeof(ext) ) ;
 
-		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") 
+		if( strcmp(de->d_name,".") && strcmp(de->d_name,"..")
 			&& ( (!stricmp(ext,"BMP"))||(!stricmp(ext,"JPG"))||(!stricmp(ext,"JPEG"))||(!stricmp(ext,"PNG")))
 			) {
-			snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
-			if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
-				if( !stricmp( buffer, current ) ) {
+			int here ;
+			buffer = dupprintf( "%s\\%s", basename, de->d_name ) ;
+			here = !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) && !stricmp( buffer, current ) ;
+			sfree( buffer ) ;
+			if( here ) {
+				{
 					if( ( de = readdir(dir) ) != NULL ) 
 						GetExt( de->d_name, ext, sizeof(ext) ) ; 
 					else 
@@ -1128,16 +1154,19 @@ int NextBgImage( HWND hwnd ) {
 		if( ( de = readdir(dir) ) != NULL ) GetExt( de->d_name, ext, sizeof(ext) ) ; else { strcpy( ext, "" ) ; break ; }
 		}
 	if( de != NULL  ) {
-		snprintf( buffer, sizeof(buffer), "%s\\%s", basename, de->d_name ) ;
+		buffer = dupprintf( "%s\\%s", basename, de->d_name ) ;
 		Filename * fn = filename_from_str( buffer ) ;
 		bg_trace_switch( buffer ) ;
 		conf_set_filename( conf,CONF_bg_image_filename,fn);
 		filename_free(fn);
 		RefreshBackground( hwnd );
+		sfree( buffer ) ;
 		}
-	else { closedir(dir) ; return 0 ; }
+	else { closedir(dir) ; sfree( basename ) ; sfree( current ) ; return 0 ; }
 
 	closedir( dir ) ;
+	sfree( basename ) ;
+	sfree( current ) ;
 	return 1 ;
 	}
 #endif
@@ -1176,20 +1205,15 @@ void SetConfigDirectory( const char * Directory ) {
 	kitty_set_config_dir( ConfigDirectory ) ;
 }
 	
+/* The exe's folder into the 4096 bytes of InitialDirectory: read whole and
+ * taken only when it fits - a cut one named another folder ("" then, as
+ * when it cannot be read at all). */
 void GetInitialDirectory( char * InitialDirectory ) {
-	int i ;
-	if( GetModuleFileName( NULL, (LPTSTR)InitialDirectory, 4096 ) ) {
-		if( strlen( InitialDirectory ) > 0 ) {
-			i = strlen( InitialDirectory ) -1 ;
-			do {
-				if( InitialDirectory[i] == '\\' ) { InitialDirectory[i]='\0' ; i = 0 ; }
-				i-- ;
-			} while( i >= 0 ) ;
-		}
-	} else { 
-		strcpy( InitialDirectory, "" ) ; 
-	}
-	
+	char * dir = kitty_module_dir_dup( NULL ) ;
+	if( dir != NULL && strlen( dir ) < 4096 ) strcpy( InitialDirectory, dir ) ;
+	else strcpy( InitialDirectory, "" ) ;
+	sfree( dir ) ;
+
 	SetConfigDirectory( InitialDirectory ) ;
 }
 
@@ -1219,11 +1243,15 @@ int SaveCurrentSettingTo( const char * filename, char * out, size_t outlen ) {
  * opens it beside the session (kitty_pick_async) and comes here only when
  * no thread could be started for it. */
 int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
-	char filename[4096], buffer[4096] ;
+	char * filename, buffer[4096] ;
+	int ret ;
 	if( outlen ) out[0] = '\0' ;
 	SaveCurrentSettingFilter( buffer, sizeof(buffer) ) ;
-	if( !SaveFileName( hwnd, filename, KT_CAP_SAVE_FILE, buffer ) ) return 0 ;
-	return SaveCurrentSettingTo( filename, out, outlen ) ;
+	/* the chosen file whole */
+	if( ( filename = kitty_pick_save_dup( hwnd, KT_CAP_SAVE_FILE, buffer, NULL, NULL ) ) == NULL ) return 0 ;
+	ret = SaveCurrentSettingTo( filename, out, outlen ) ;
+	sfree( filename ) ;
+	return ret ;
 	}
 
 
@@ -1504,9 +1532,11 @@ char *dirname(char *path);
  * together with the three keys it does not edit, read again from the file
  * (they are file-only, and winfb_config_set takes all four at once). */
 void kitty_fontfallback_apply_list( const char * list ) {
-	char fbOvr[2048]="", fbLog[64]="", fbLogFile[MAX_PATH]="" ;
+	char fbOvr[2048]="", fbLog[64]="", *fbLogFile ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE, fbLogFile, sizeof(fbLogFile) ) ;
-	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ) ;
+	/* the log file whole: cut to MAX_PATH, it named another file */
+	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
+	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ? fbLogFile : "" ) ;
+	sfree( fbLogFile ) ;
 }

@@ -48,8 +48,11 @@ long filesize( const char * filename ) ;
 // Remove doubled backslashes
 void DelDoubleBackSlash( char * st ) ;
 	
-// Add a string to a list of strings
-int StringList_Add( char **list, const char *str ) ;
+// Add a string to a list of strings (*plist grows; NULL is an empty list)
+int StringList_Add( char ***plist, const char *str ) ;
+
+// Free a list StringList_Add built
+void StringList_Free( char **list ) ;
 
 // Remove a string from a list of strings
 void StringList_Del( char **list, const char * name ) ;

@@ -49,6 +49,7 @@
 #include "kitty_sessionpath.h"   /* session paths and file names (hknet/KiTTY#55) */
 #include "kitty_migrate.h"       /* kitty_store_suffix_of */
 #include "kitty_tools.h"         /* str_rtrim */
+#include "kitty_oldwin.h"        /* paths and values read whole */
 
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */
@@ -185,23 +186,26 @@ static char *ksm_source_value(const char *dir, const char *inikey,
                               const char *confkey)
 {
     char *ini = dupprintf("%s\\" KSM_INI, dir), *v = NULL;
-    char buf[MAX_PATH * 2];
-    if (ksm_file_exists(ini) &&
-        GetPrivateProfileStringA(INIT_SECTION, inikey, "", buf, sizeof(buf), ini) &&
-        buf[0])
-        v = dupstr(buf);
+    /* both read whole: a value cut at 519 bytes, or the tail of a long
+     * putty.conf line read as a line of its own, named another folder */
+    if (ksm_file_exists(ini))
+        v = kitty_profile_string_dup(INIT_SECTION, inikey, NULL, ini);
     sfree(ini);
     if (!v) {
-        char *pc = dupprintf("%s\\putty.conf", dir), line[MAX_PATH * 2];
-        FILE *fp = fopen(pc, "rb");
+        char *pc = dupprintf("%s\\putty.conf", dir);
+        char *text = ksm_read_text(pc), *line, *next;
         size_t kl = strlen(confkey);
-        while (fp && !v && fgets(line, sizeof(line), fp))
+        for (line = text; line && *line && !v; line = next) {
+            next = strchr(line, '\n');
+            if (next) *next++ = '\0';
+            else next = line + strlen(line);
             if (!_strnicmp(line, confkey, kl) && line[kl] == '=') {
                 v = dupstr(line + kl + 1);
                 str_rtrim(v, " \n\r\t");
                 if (!v[0]) { sfree(v); v = NULL; }
             }
-        if (fp) fclose(fp);
+        }
+        sfree(text);
         sfree(pc);
     }
     return v;                           /* NULL: the store does not state it */
@@ -351,9 +355,18 @@ typedef void (*ksm_pair_fn)(const char *key, const char *val, void *ctx);
 static void ksm_walk_section(const char *ini, const char *section,
                              ksm_pair_fn fn, void *ctx)
 {
-    DWORD cap = 65536;
-    char *buf = snewn(cap, char), *p;
-    DWORD got = GetPrivateProfileSectionA(section, buf, cap, ini);
+    /* the whole section: one read into 64 KB cut a large one silently */
+    DWORD cap = 65536, got;
+    char *buf, *p;
+    for (;;) {
+        buf = snewn(cap, char);
+        got = GetPrivateProfileSectionA(section, buf, cap, ini);
+        if (got + 2 < cap || cap >= (1u << 24))
+            break;
+        sfree(buf);
+        cap *= 2;
+    }
+    buf[got < cap ? got : cap - 1] = '\0';
     for (p = buf; got && *p; p += strlen(p) + 1) {
         char *eq = strchr(p, '=');
         if (!eq || p[0] == ';' || p[0] == '#') continue;
@@ -394,20 +407,52 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
         HKEY k;
         if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
                           KEY_READ, &k) == ERROR_SUCCESS) {
-            DWORD i2 = 0;
+            /* every name and value whole: buffers as big as the longest
+             * the key holds, grown when one grew since. A value past 8 KB
+             * used to be left out of the copy without a count. */
+            DWORD i2 = 0, maxname = 0, maxdata = 0;
+            char *name;
+            BYTE *val;
+            if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                                 &maxname, &maxdata, NULL, NULL) != ERROR_SUCCESS) {
+                maxname = 16383;
+                maxdata = 65536;
+            }
+            name = snewn(maxname + 2, char);
+            val = snewn(maxdata + 2, BYTE);
             for (;;) {
-                char name[1024], val[8192];
-                DWORD nlen = sizeof(name), vlen = sizeof(val), type;
+                DWORD nlen = maxname + 2, vlen = maxdata, type;
                 LONG r = RegEnumValueA(k, i2, name, &nlen, NULL, &type,
-                                       (BYTE *)val, &vlen);
+                                       val, &vlen);
                 if (r == ERROR_NO_MORE_ITEMS) break;
+                if (r == ERROR_MORE_DATA) {
+                    DWORD mn = 0, md = 0;
+                    if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, NULL, NULL,
+                                         NULL, &mn, &md, NULL, NULL) == ERROR_SUCCESS &&
+                        (mn > maxname || md > maxdata)) {
+                        if (mn > maxname) maxname = mn;
+                        if (md > maxdata) maxdata = md;
+                        sfree(name);
+                        sfree(val);
+                        name = snewn(maxname + 2, char);
+                        val = snewn(maxdata + 2, BYTE);
+                        continue;               /* the same value again */
+                    }
+                    (*fail)++;
+                    i2++;
+                    continue;
+                }
                 i2++;
-                if (r != ERROR_SUCCESS || type != REG_SZ) continue;
-                val[vlen < sizeof(val) ? vlen : sizeof(val) - 1] = '\0';
+                if (r != ERROR_SUCCESS) { (*fail)++; continue; }
+                if (type != REG_SZ) continue;
+                val[vlen] = '\0';
+                val[vlen + 1] = '\0';
                 if (ksm_layout_key(name)) continue;
-                if (WritePrivateProfileStringA(INIT_SECTION, name, val, dst)) n++;
+                if (WritePrivateProfileStringA(INIT_SECTION, name, (char *)val, dst)) n++;
                 else (*fail)++;
             }
+            sfree(val);
+            sfree(name);
             RegCloseKey(k);
         }
         c.only_missing = 1;
@@ -428,12 +473,12 @@ struct ksm_param_copy { int *n; int *fail; };
 static void ksm_param_pair(const char *key, const char *val, void *vctx)
 {
     struct ksm_param_copy *c = (struct ksm_param_copy *)vctx;
-    char v[8192];
+    char *v;
     if (ksm_layout_key(key)) return;
-    strncpy(v, val, sizeof(v) - 1);
-    v[sizeof(v) - 1] = '\0';
+    v = dupstr(val);                    /* whole: it was cut at 8 KB */
     if (WriteParameter(INIT_SECTION, key, v)) (*c->n)++;
     else (*c->fail)++;
+    sfree(v);
 }
 
 /* <src ini> -> the store in use: [KiTTY] via WriteParameter (the hive in
@@ -461,6 +506,8 @@ static const char *const ksm_companions[] = {
     "kscp.exe", "ksftp.exe", "kitty.chm", NULL
 };
 
+static void ksm_own_kscp_check(const char *ini, const char *exe, char *val);
+
 /* The kscp path of the copy: a path to the companion the copy brings
  * along (kscp.exe of the program folder this kitty.exe runs from) is
  * removed - none means "beside kitty.exe", the copy's own kscp. Kept, it
@@ -471,15 +518,24 @@ static const char *const ksm_companions[] = {
  * and nothing could guess where rz/sz live. */
 static void ksm_own_kscp_path(const char *ini)
 {
-    char exe[MAX_PATH], val[MAX_PATH * 2], *bs, *v, *e;
-    int i;
-    if (!GetModuleFileNameA(NULL, exe, sizeof(exe))) return;
-    bs = strrchr(exe, '\\');
-    if (!bs) return;
-    *bs = '\0';
-    if (!GetPrivateProfileStringA(INIT_SECTION, KI_PSCPPATH, "", val,
-                                  sizeof(val), ini))
+    char *exe, *val;
+    /* both whole: compared, never cut */
+    if ((exe = kitty_module_dir_dup(NULL)) == NULL) return;
+    if ((val = kitty_profile_string_dup(INIT_SECTION, KI_PSCPPATH, NULL, ini)) == NULL) {
+        sfree(exe);
         return;
+    }
+    ksm_own_kscp_check(ini, exe, val);
+    sfree(val);
+    sfree(exe);
+}
+
+/* ksm_own_kscp_path's test on the program folder and the stored value
+ * (both whole; val is changed in place). */
+static void ksm_own_kscp_check(const char *ini, const char *exe, char *val)
+{
+    char *bs, *v, *e;
+    int i;
     v = val;
     if (*v == '"') {                     /* a quoted path */
         v++;
@@ -502,11 +558,12 @@ static void ksm_own_kscp_path(const char *ini)
 static int ksm_copy_programs(const char *dst, int *fail)
 {
     const char *const *companions = ksm_companions;
-    char exe[MAX_PATH], *bs;
+    char *exe, *bs;
     int n = 0, i;
-    if (!GetModuleFileNameA(NULL, exe, sizeof(exe))) { (*fail)++; return 0; }
+    /* whole: a cut path copied another program, from another folder */
+    if ((exe = kitty_module_path_dup(NULL)) == NULL) { (*fail)++; return 0; }
     bs = strrchr(exe, '\\');
-    if (!bs) { (*fail)++; return 0; }
+    if (!bs) { sfree(exe); (*fail)++; return 0; }
     {
         char *to = dupprintf("%s\\%s", dst, bs + 1);
         if (CopyFileA(exe, to, FALSE)) n++; else (*fail)++;
@@ -522,6 +579,7 @@ static int ksm_copy_programs(const char *dst, int *fail)
         sfree(from);
         sfree(to);
     }
+    sfree(exe);
     return n;
 }
 
@@ -672,14 +730,17 @@ static void ksm_stage_walk(const char *dir, const char *rel, int depth,
 static char *ksm_stage_folder_store(const char *dir, strbuf *dups, int *ndup,
                                     int *nfail)
 {
-    char tmp[MAX_PATH];
+    char *tmp;
     char *stage, *sess, *prox, *sprox;
     int nf = 0;
     if (ndup) *ndup = 0;
-    if (!GetTempPathA(sizeof(tmp), tmp)) return NULL;
+    /* %TEMP% whole: a TEMP too long for the old buffer left it unfilled,
+     * and whatever it held became the folder emptied below */
+    if ((tmp = kitty_temp_path_dup()) == NULL) return NULL;
     ksm_trim_slashes(tmp);
     stage = dupprintf("%s\\kitty-take-%lu", tmp,
                       (unsigned long)GetCurrentProcessId());
+    sfree(tmp);
     sprox = dupprintf("%s\\Proxies", stage);
     if (!CreateDirectoryA(stage, NULL) &&
         GetLastError() != ERROR_ALREADY_EXISTS) {
@@ -750,20 +811,17 @@ static int ksm_mint_master_state(const char *dir, const char *pass)
 
 /* ---- the cores ------------------------------------------------------- */
 
-static void ksm_cat(char *msg, size_t len, const char *s)
-{
-    strncat(msg, s, len - strlen(msg) - 1);
-}
-
 int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
-                             struct ksm_result *r, char *msg, size_t msglen)
+                             struct ksm_result *r, char **msgp)
 {
     char *sessdir = dupprintf("%s\\Sessions", dir);
     char *ini = dupprintf("%s\\" KSM_INI, dir);
     char *skips = NULL;
-    char t[256];
+    /* the summary grows as it needs: it holds the folder and the lists of
+     * what was left out, and a fixed 2048 bytes cut it */
+    strbuf *msg = strbuf_new();
     memset(r, 0, sizeof(*r));
-    msg[0] = '\0';
+    *msgp = NULL;
 
     /* KiTTY (hknet/KiTTY#55): a session file where another session needs a
      * folder (`foo` and `foo\bar`, no suffix) cannot be laid out; refuse
@@ -776,11 +834,12 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
         get_sesslist(&sl, false);
         if (blk) {
             char *why = dupprintf(KT_SP_PATH_BLOCKED, blk);
-            snprintf(msg, msglen, KT_STOREMOVE_COPY_BLOCKED, dir, why);
+            put_fmt(msg, KT_STOREMOVE_COPY_BLOCKED, dir, why);
             sfree(why);
             sfree(blk);
             sfree(sessdir);
             sfree(ini);
+            *msgp = strbuf_to_str(msg);
             return ++r->fail;
         }
     }
@@ -848,7 +907,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
 
     r->programs = ksm_copy_programs(dir, &r->fail);
 
-    snprintf(msg, msglen,
+    put_fmt(msg,
              KT_STOREMOVE_COPY_DONE,
              dir, r->sessions, r->sessions == 1 ? "" : "s",
              r->proxies, r->proxies == 1 ? "y" : "ies",
@@ -856,20 +915,19 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
              r->settings, r->settings == 1 ? "" : "s",
              r->programs, r->programs == 1 ? "" : "s");
     if (!dpapi)
-        ksm_cat(msg, msglen, KT_STOREMOVE_COPY_MPW);
+        put_dataz(msg, KT_STOREMOVE_COPY_MPW);
     else
-        ksm_cat(msg, msglen, KT_STOREMOVE_COPY_DPAPI);
-    if (r->fail > 0) {
-        snprintf(t, sizeof(t), KT_STOREMOVE_COPY_FAILED,
+        put_dataz(msg, KT_STOREMOVE_COPY_DPAPI);
+    if (r->fail > 0)
+        put_fmt(msg, KT_STOREMOVE_COPY_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
-        ksm_cat(msg, msglen, t);
-    }
     if (skips) {
-        ksm_cat(msg, msglen, skips);
+        put_dataz(msg, skips);
         sfree(skips);
     }
     sfree(sessdir);
     sfree(ini);
+    *msgp = strbuf_to_str(msg);
     return r->fail;
 }
 
@@ -882,17 +940,16 @@ int kitty_take_folder_needs_password(const char *dir)
 }
 
 int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
-                           struct ksm_result *r, char *msg, size_t msglen)
+                           struct ksm_result *r, char **msgp)
 {
     char *ini;
     char *stage;
-    char t[256];
-    strbuf *dups;
+    strbuf *dups, *msg;
     int ndup = 0, nstagefail = 0;
     memset(r, 0, sizeof(*r));
-    msg[0] = '\0';
+    *msgp = NULL;
     /* readonly=yes: nothing is taken into the store - KITTY_RO_REFUSED,
-     * msg left empty; -takefolder refuses before it comes here, and the
+     * msg left NULL; -takefolder refuses before it comes here, and the
      * panel's Take button is greyed */
     if (kitty_store_readonly())
         return KITTY_RO_REFUSED;
@@ -901,7 +958,7 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
 
     stage = ksm_stage_folder_store(dir, dups, &ndup, &nstagefail);
     if (!stage) {
-        snprintf(msg, msglen, KT_STOREMOVE_NO_TEMP);
+        *msgp = dupstr(KT_STOREMOVE_NO_TEMP);
         strbuf_free(dups);
         sfree(ini);
         return ++r->fail;
@@ -923,29 +980,24 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     r->hostkeys = ksm_hostkeys_from_dir(dir, &r->fail);
     if (ksm_file_exists(ini)) r->settings = ksm_globals_from_ini(ini, &r->fail);
 
-    snprintf(msg, msglen,
+    msg = strbuf_new();
+    put_fmt(msg,
              KT_STOREMOVE_TAKEN,
              dir, r->sessions, r->sessions == 1 ? "" : "s",
              r->proxies, r->proxies == 1 ? "y" : "ies",
              r->hostkeys, r->hostkeys == 1 ? "" : "s",
              r->settings, r->settings == 1 ? "" : "s");
-    if (r->skipped > 0) {
-        snprintf(t, sizeof(t), KT_STOREMOVE_TAKEN_KEPT, r->skipped);
-        ksm_cat(msg, msglen, t);
-    }
-    if (r->fail > 0) {
-        snprintf(t, sizeof(t), KT_STOREMOVE_TAKEN_FAILED,
+    if (r->skipped > 0)
+        put_fmt(msg, KT_STOREMOVE_TAKEN_KEPT, r->skipped);
+    if (r->fail > 0)
+        put_fmt(msg, KT_STOREMOVE_TAKEN_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
-        ksm_cat(msg, msglen, t);
-    }
-    if (ndup > 0) {
-        char *d = dupprintf(KT_STOREMOVE_TAKEN_DUPS, dups->s);
-        ksm_cat(msg, msglen, d);
-        sfree(d);
-    }
+    if (ndup > 0)
+        put_fmt(msg, KT_STOREMOVE_TAKEN_DUPS, dups->s);
     strbuf_free(dups);
-    ksm_cat(msg, msglen, KT_STOREMOVE_TAKEN_REPROTECTED);
+    put_dataz(msg, KT_STOREMOVE_TAKEN_REPROTECTED);
     sfree(ini);
+    *msgp = strbuf_to_str(msg);
     return r->fail;
 }
 
@@ -953,51 +1005,55 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
 
 void kitty_make_portable_copy(HWND hwnd)
 {
-    char dir[MAX_PATH];
-    char *sessdir, *ini, *pw = NULL;
+    char *dir;
+    char *sessdir, *ini, *pw = NULL, *msg;
     int dpapi = 0;
     struct ksm_result r;
-    char msg[2048];
 
-    strcpy(dir, "");
-    if (!OpenDirName(hwnd, dir) || !dir[0]) return;
+    /* the picked folder whole: the picker wrote up to 4096 bytes into a
+     * buffer of MAX_PATH */
+    if ((dir = kitty_pick_dir_dup(hwnd, NULL, NULL)) == NULL) return;
     ksm_trim_slashes(dir);
 
     if (!ksm_probe_writable(dir)) {
-        snprintf(msg, sizeof(msg),
-                 KT_STOREMOVE_NOT_WRITABLE, dir);
+        msg = dupprintf(KT_STOREMOVE_NOT_WRITABLE, dir);
         MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT, MB_OK | MB_ICONWARNING);
+        sfree(msg);
+        sfree(dir);
         return;
     }
     sessdir = dupprintf("%s\\Sessions", dir);
     ini = dupprintf("%s\\" KSM_INI, dir);
     if (ksm_dir_exists(sessdir) || ksm_file_exists(ini)) {
-        snprintf(msg, sizeof(msg),
-                 KT_STOREMOVE_ALREADY_STORE_Q, dir);
-        if (MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
-                        MB_YESNO | MB_ICONQUESTION) != IDYES) {
-            sfree(sessdir); sfree(ini); return;
+        int a;
+        msg = dupprintf(KT_STOREMOVE_ALREADY_STORE_Q, dir);
+        a = MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
+                        MB_YESNO | MB_ICONQUESTION);
+        sfree(msg);
+        if (a != IDYES) {
+            sfree(sessdir); sfree(ini); sfree(dir); return;
         }
     }
     sfree(sessdir);
     sfree(ini);
-    if (!kitty_ask_store_password(hwnd, &pw, &dpapi)) return;
+    if (!kitty_ask_store_password(hwnd, &pw, &dpapi)) { sfree(dir); return; }
 
     kitty_mpw_user_action_begin();   /* prompts again after a cancel */
-    kitty_portable_copy_core(dir, pw, dpapi, &r, msg, sizeof(msg));
+    kitty_portable_copy_core(dir, pw, dpapi, &r, &msg);
     kitty_mpw_user_action_end();
     ksm_wipe(&pw);
-    MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_OUT,
+    MessageBoxA(hwnd, msg ? msg : "", KT_STOREMOVE_TITLE_OUT,
                 MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+    sfree(msg);
+    sfree(dir);
 }
 
 void kitty_take_folder_store(HWND hwnd)
 {
-    char dir[MAX_PATH];
-    char *sessdir, *ini, *stage, *pw = NULL;
+    char *dir;
+    char *sessdir, *ini, *stage, *pw = NULL, *msg;
     int overwrite;
     struct ksm_result r;
-    char msg[2048];
 
     if (kitty_store_readonly()) {
         /* readonly=yes: the panel's button is greyed; refused as -takefolder is */
@@ -1006,17 +1062,17 @@ void kitty_take_folder_store(HWND hwnd)
         sfree(m);
         return;
     }
-    strcpy(dir, "");
-    if (!OpenDirName(hwnd, dir) || !dir[0]) return;
+    /* the picked folder whole (see kitty_make_portable_copy) */
+    if ((dir = kitty_pick_dir_dup(hwnd, NULL, NULL)) == NULL) return;
     ksm_trim_slashes(dir);
 
     sessdir = ksm_source_path(dir, KI_SESSIONS, "Sessions", "Sessions");
     ini = dupprintf("%s\\" KSM_INI, dir);
     if (!ksm_dir_exists(sessdir) && !ksm_file_exists(ini)) {
-        snprintf(msg, sizeof(msg),
-                 KT_STOREMOVE_NO_STORE_PREFIX KSM_INI ".", dir);
+        msg = dupprintf(KT_STOREMOVE_NO_STORE_PREFIX KSM_INI ".", dir);
         MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_IN, MB_OK | MB_ICONWARNING);
-        sfree(sessdir); sfree(ini); return;
+        sfree(msg);
+        sfree(sessdir); sfree(ini); sfree(dir); return;
     }
     sfree(sessdir);
     sfree(ini);
@@ -1024,7 +1080,7 @@ void kitty_take_folder_store(HWND hwnd)
         int a = MessageBoxA(hwnd,
             KT_STOREMOVE_TAKE_Q,
             KT_STOREMOVE_TITLE_IN, MB_YESNOCANCEL | MB_ICONQUESTION);
-        if (a == IDCANCEL) return;
+        if (a == IDCANCEL) { sfree(dir); return; }
         overwrite = (a == IDYES);
     }
 
@@ -1033,12 +1089,15 @@ void kitty_take_folder_store(HWND hwnd)
     stage = ksm_stage_folder_store(dir, NULL, NULL, NULL);
     if (!stage || !kitty_unlock_import_bundle(hwnd, stage, &pw)) {
         ksm_unstage(stage);
+        sfree(dir);
         return;
     }
     ksm_unstage(stage);
 
-    kitty_take_folder_core(dir, pw, overwrite, &r, msg, sizeof(msg));
+    kitty_take_folder_core(dir, pw, overwrite, &r, &msg);
     ksm_wipe(&pw);
-    MessageBoxA(hwnd, msg, KT_STOREMOVE_TITLE_IN,
+    MessageBoxA(hwnd, msg ? msg : "", KT_STOREMOVE_TITLE_IN,
                 MB_OK | (r.fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+    sfree(msg);
+    sfree(dir);
 }

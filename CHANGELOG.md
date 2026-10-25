@@ -42,6 +42,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   languages than English.
 - kageant and the Event Log: long paths and long setting values (such as
   the agent log path) are no longer cut or overflow memory.
+- Settings storage: long folder names, kitty.ini and registry values no
+  longer overflow memory or get cut, also when a store is moved or backed up.
 
 ## 0.85.1.18-beta — 2026-10-23
 

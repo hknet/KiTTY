@@ -32,6 +32,7 @@
 #include "kitty_registry.h"
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
+#include "kitty_oldwin.h"   /* %TEMP% read whole */
 
 /* CryptFileFlag lives in kitty_bridge.c (same as the write side). */
 /* unmungestr is declared in kitty_common.h (const char *in). */
@@ -121,7 +122,7 @@ static int ktx_line_encrypted( const char *l ) {
  * first, which ksf_load then parses like any other; the copy is removed. */
 static struct ksf_item *ktx_load_items( const char *filename ) {
 	FILE *in = fopen( filename, "rb" ) ;
-	char *line, tmpdir[MAX_PATH], tmp[MAX_PATH] ;
+	char *line, *tmpdir, tmp[MAX_PATH] ;
 	int encrypted = 0 ;
 	FILE *out ;
 	struct ksf_item *items ;
@@ -134,9 +135,15 @@ static struct ksf_item *ktx_load_items( const char *filename ) {
 	if( !encrypted ) { fclose( in ) ; return ksf_load( filename ) ; }
 
 	ktx_note_encrypted() ;
-	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) || !GetTempFileNameA( tmpdir, "ktx", 0, tmp ) ) {
+	/* %TEMP% whole: one too long for the old buffer left it unfilled, and
+	 * the decrypted file was written into whatever it held. GetTempFileName
+	 * fills its MAX_PATH bytes or fails. */
+	tmpdir = kitty_temp_path_dup() ;
+	if( !tmpdir || !GetTempFileNameA( tmpdir, "ktx", 0, tmp ) ) {
+		sfree( tmpdir ) ;
 		fclose( in ) ; return NULL ;
 	}
+	sfree( tmpdir ) ;
 	if( ( out = fopen( tmp, "wb" ) ) == NULL ) { fclose( in ) ; DeleteFileA( tmp ) ; return NULL ; }
 	rewind( in ) ;
 	while( ( line = ktx_read_line( in ) ) != NULL ) {
@@ -179,9 +186,9 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	struct ksf_item *items = ktx_load_items( filename ) ;
 	settings_r *src ;
 	if( items == NULL ) {
-		char buffer[1024] ;
-		snprintf( buffer, sizeof(buffer), KT_SETTINGS_FILE_NOT_FOUND, filename ) ;
+		char *buffer = dupprintf( KT_SETTINGS_FILE_NOT_FOUND, filename ) ;   /* the file named whole */
 		MessageBox( NULL, buffer, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+		sfree( buffer ) ;
 		return ;
 	}
 	src = kitty_open_settings_r_items( items ) ;   /* owns items now */

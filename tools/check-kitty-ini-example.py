@@ -183,8 +183,9 @@ def source_options() -> set[tuple[str, str]]:
     macros = inikey_macros()
     for path in files:
         text = expand_inikeys(read_text(path), macros)
-        # ReadParameterN is the size-checked variant of the same call.
-        for key in re.findall(r'ReadParameterN?\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
+        # ReadParameterN is the size-checked variant of the same call,
+        # ReadParameterDup the one that returns the whole value.
+        for key in re.findall(r'ReadParameter(?:N|Dup)?\s*\(\s*INIT_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", key))
         # The KiTTY++ Settings table (kitty_config.c): a row per key the
         # settings tree reads from and writes to the store.
@@ -197,10 +198,21 @@ def source_options() -> set[tuple[str, str]]:
                 opts.add((section, key))
         # ReadParameterN("Launcher", "key", ...) - a named section rather than
         # the INIT_SECTION macro. [Launcher] is read this way throughout.
-        for m in re.finditer(r'ReadParameterN?\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
+        for m in re.finditer(r'ReadParameter(?:N|Dup)?\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"', text):
             section, key = m.groups()
             if section in SECTIONS:
                 opts.add((section, key))
+        # kitty_read_ini_dup(file, section, key) is readINI returning the
+        # whole value. kitty_store.c wraps it as kstore_ini_dup(ini, key)
+        # for [KiTTY].
+        for m in re.finditer(r'kitty_read_ini_dup\s*\([^;\n]*?"([^"]+)"\s*,\s*"([^"]+)"', text):
+            section, key = m.groups()
+            if section in SECTIONS:
+                opts.add((section, key))
+        for m in re.finditer(r'kitty_read_ini_dup\s*\([^;\n]*?\bINIT_SECTION\s*,\s*"([^"]+)"', text):
+            opts.add(("KiTTY", m.group(1)))
+        for m in re.finditer(r'kstore_ini_dup\s*\(\s*\w+\s*,\s*"([^"]+)"', text):
+            opts.add(("KiTTY", m.group(1)))
         # kitty_config.c mirrors INIT_SECTION without including kitty.h.
         for m in re.finditer(r'readINI\s*\([^;\n]*?KITTY_INI_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))

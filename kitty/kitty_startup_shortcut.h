@@ -10,8 +10,8 @@
 #include <stddef.h>
 
 /* Absolute path of the current user's Startup folder (common != 0 = the
- * all-users Startup folder). Returns 1 on success. */
-int kitty_startup_dir(char *out, size_t len, int common);
+ * all-users Startup folder), held whole (sfree it); NULL on failure. */
+char *kitty_startup_dir_dup(int common);
 
 /* Create (on != 0) or delete (on == 0) "<per-user Startup>\<name>.lnk"
  * pointing at target/args (workdir/icon may be NULL - icon defaults to the
@@ -33,9 +33,10 @@ int kitty_shortcut_write(const char *lnkpath, const char *target,
 /* 1 when "<per-user Startup>\<name>.lnk" exists (for a menu checkmark). */
 int kitty_startup_shortcut_exists(const char *name);
 
-/* Read the target exe path of the .lnk at lnkpath into out (used by the
- * kageant autostart-conflict scan). Returns 1 when a target was read. */
-int kitty_startup_shortcut_target(const char *lnkpath, char *out, size_t len);
+/* The target exe path of the .lnk at lnkpath, held whole (sfree it); NULL
+ * when none was read. Used by the kageant autostart-conflict scan, System >
+ * Shortcuts and the updater's install-type test. */
+char *kitty_startup_shortcut_target_dup(const char *lnkpath);
 
 /* 1 when "<Startup>\<name>.lnk" (common != 0 = all-users) exists AND its
  * target resolves to target_exe. Lets a caller distinguish "I am set to

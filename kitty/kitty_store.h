@@ -33,13 +33,13 @@ char *itoa(int value, char *string, int radix);
 int createPath(char* dir) ;
 char *dupstr(const char *s);
 
-extern char sesspath[2 * MAX_PATH] ;
-extern char oldpath[2 * MAX_PATH] ;
-extern char initialsesspath[2 * MAX_PATH] ;
+extern char *sesspath ;          /* each whole; NULL until loadPath() */
+extern char *oldpath ;
+extern char *initialsesspath ;
 extern char sessionsuffix[16] ;
-extern char sshkpath[2 * MAX_PATH] ;
+extern char *sshkpath ;
 extern char keysuffix[16] ;
-extern char jumplistpath[2 * MAX_PATH] ;
+extern char *jumplistpath ;
 
 int loadPath(void) ;
 /* savemode=dir: take putty.conf's path keys over into kitty.ini once, then
@@ -49,7 +49,7 @@ int kitty_store_ini_takeover(void) ;   /* 1 = putty.conf moved on this start */
  * store is switched on. Returns the count renamed (dry_run: would be, and
  * nothing changes); `clashes` (may be NULL) gets the names left as they are,
  * one per line. */
-int kitty_store_hostkey_rename(int dry_run, char *clashes, size_t clsize) ;
+int kitty_store_hostkey_rename(int dry_run, struct strbuf *clashes) ;   /* clashes: NULL = not wanted */
 /* hostkeyextensionapplied / fileextensionapplied: read ("" = none), record */
 void kitty_store_ending_applied(const char *key, char *buf, size_t n) ;
 void kitty_store_ending_mark(const char *key, const char *now) ;

@@ -1888,7 +1888,8 @@ static int kitty_folder_row_cmp(const void *av, const void *bv)
 static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
                                       const char *filter)
 {
-    int i, n = 0, cap;
+    int i, n = 0;
+    size_t cap = 0;
     for (i = 0; i < ssd->nfolderrows; i++)
         sfree(ssd->folderrows[i]);
     sfree(ssd->folderrows);
@@ -1899,17 +1900,16 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
 
     /* KiTTY (hknet/KiTTY#55): folders nest, so every level has rows - the
      * CHILDREN of the level shown, each standing for its whole subtree
-     * ("network" at the root, "network\test" inside "network"). */
-    cap = ssd->sesslist.nsessions + 64;
-    ssd->folderrows = snewn(cap, char *);
-
-    for (i = 0; FolderList && FolderList[i] != NULL && n < cap; i++) {
+     * ("network" at the root, "network\test" inside "network"). The rows
+     * grow as needed: sessions + 64 left out the stored folders past that. */
+    for (i = 0; FolderList && FolderList[i] != NULL; i++) {
         char *row = kitty_folder_child_row(CurrentFolder, FolderList[i]);
         if (row && kitty_folder_row_visible(row, filter)) {
             int j, seen = 0;
             for (j = 0; j < n; j++)
                 if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
             if (!seen) {
+                sgrowarray(ssd->folderrows, cap, n);
                 ssd->folderrows[n++] = row;
                 row = NULL;
             }
@@ -1917,7 +1917,7 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
         sfree(row);
     }
 
-    for (i = 0; i < ssd->sesslist.nsessions && n < cap; i++) {
+    for (i = 0; i < ssd->sesslist.nsessions; i++) {
         char *fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         char *row = kitty_folder_child_row(CurrentFolder, fld);
         if (row && kitty_folder_row_visible(row, filter)) {
@@ -1925,6 +1925,7 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
             for (j = 0; j < n; j++)
                 if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
             if (!seen) {
+                sgrowarray(ssd->folderrows, cap, n);
                 ssd->folderrows[n++] = row;
                 row = NULL;
             }
@@ -2315,14 +2316,14 @@ static void kitty_folderlist_move_subtree(const char *from, const char *to)
         if (to) {
             char *np = kitty_folder_moved_path(moved[i], from, to);
             if (!kitty_folder_is_root(np))
-                StringList_Add(FolderList, np);
+                StringList_Add(&FolderList, np);
             sfree(np);
         }
         sfree(moved[i]);
     }
     sfree(moved);
     if (to && !kitty_folder_is_root(to))
-        StringList_Add(FolderList, to);
+        StringList_Add(&FolderList, to);
     SaveFolderList();
 }
 
@@ -2657,7 +2658,7 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
     if (kcs_folder_blocked(folder))
         return;
     InitFolderList();
-    StringList_Add(FolderList, folder);
+    StringList_Add(&FolderList, folder);
     SaveFolderList();
     sfree(ssd->savedsession);
     ssd->savedsession = dupstr("");
@@ -4251,7 +4252,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                      * is in the way on disk (no suffix); reported, not done. */
                 } else {
                     InitFolderList();
-                    StringList_Add(FolderList, folder);
+                    StringList_Add(&FolderList, folder);
                     SaveFolderList();
                     strncpy(CurrentFolder, folder, 1023);
                     CurrentFolder[1023] = '\0';

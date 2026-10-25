@@ -55,7 +55,10 @@
 #include "kitty_inifile.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 
-static char inifile_path[MAX_PATH + 1];
+/* Every path and value here is held whole, in malloc'd memory (this file
+ * links nothing but Windows): a path too long for Windows makes Windows'
+ * own call fail, it is never cut to another one. "" when there is none. */
+static char *inifile_path = NULL;
 static int inifile_state = 0;          /* 0 = unresolved, 1 = found, -1 = none,
                                         * 2 = pinned by kitty.exe */
 static int inifile_pinned_registry = -1;   /* -1 = not pinned */
@@ -65,12 +68,125 @@ static int inifile_pinned_registry = -1;   /* -1 = not pinned */
  * GetFileAttributesEx while the file is unchanged, and an edited file (a
  * running kageant, kitty.exe) is read again. */
 static int ro_cached = -1;             /* -1 = not read */
-static char ro_path[MAX_PATH + 1];
+static char *ro_path = NULL;
 static FILETIME ro_time;
 static DWORD ro_size_lo, ro_size_hi;
 static int ro_forced = 0;              /* kitty_inifile_readonly_force */
 static LONG ro_allow = 0;              /* kitty_store_ro_allow nesting */
-static char ro_regbase[300];           /* kitty_store_ro_set_regbase */
+static char *ro_regbase = NULL;        /* kitty_store_ro_set_regbase */
+
+/* a + b + c in memory of its own (any may be NULL); NULL only when out of
+ * memory */
+static char *inifile_cat(const char *a, const char *b, const char *c)
+{
+    size_t la = a ? strlen(a) : 0, lb = b ? strlen(b) : 0, lc = c ? strlen(c) : 0;
+    char *r = malloc(la + lb + lc + 1);
+    if (!r)
+        return NULL;
+    memcpy(r, a ? a : "", la);
+    memcpy(r + la, b ? b : "", lb);
+    memcpy(r + la + lb, c ? c : "", lc);
+    r[la + lb + lc] = '\0';
+    return r;
+}
+
+/* [section] key of file whole; "" when absent (free it), NULL only when out
+ * of memory. A cut value comes back as len - 1: read again, bigger. */
+static char *inifile_get_dup(const char *section, const char *key,
+                             const char *file)
+{
+    DWORD len = 512;
+    for (;;) {
+        char *buf = malloc(len);
+        DWORD n;
+        if (!buf)
+            return NULL;
+        n = GetPrivateProfileStringA(section, key, "", buf, len, file);
+        if (n + 2 < len || len >= (1u << 24)) {
+            buf[n < len ? n : len - 1] = '\0';
+            return buf;
+        }
+        free(buf);
+        len *= 2;
+    }
+}
+
+/* %VAR% expanded whole (free it); NULL when the expansion fails - never the
+ * text unexpanded: that named a folder "%VAR%\..." below the exe. */
+static char *inifile_expand_dup(const char *v)
+{
+    DWORD need = ExpandEnvironmentStringsA(v, NULL, 0), n;
+    int tries;
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = malloc(need + 1);
+        if (!buf)
+            return NULL;
+        n = ExpandEnvironmentStringsA(v, buf, need + 1);
+        if (n == 0) {
+            free(buf);
+            return NULL;
+        }
+        if (n <= need + 1) {
+            buf[need] = '\0';
+            return buf;
+        }
+        free(buf);
+        need = n;
+    }
+    return NULL;
+}
+
+/* The program's folder whole (free it), NULL when it cannot be read. */
+static char *inifile_exedir_dup(void)
+{
+    DWORD size = MAX_PATH + 1;
+    for (;;) {
+        char *buf = malloc(size), *slash;
+        DWORD n;
+        if (!buf)
+            return NULL;
+        n = GetModuleFileNameA(NULL, buf, size);
+        if (n == 0) {
+            free(buf);
+            return NULL;
+        }
+        if (n < size - 1) {
+            buf[n] = '\0';
+            if ((slash = strrchr(buf, '\\')) == NULL) {
+                free(buf);
+                return NULL;
+            }
+            *slash = '\0';
+            return buf;
+        }
+        free(buf);
+        if (size > 32768)
+            return NULL;
+        size *= 2;
+    }
+}
+
+/* GetFullPathName whole (free it), NULL on failure. */
+static char *inifile_fullpath_dup(const char *p)
+{
+    DWORD need = GetFullPathNameA(p, 0, NULL, NULL), n;
+    int tries;
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = malloc(need);
+        if (!buf)
+            return NULL;
+        n = GetFullPathNameA(p, need, buf, NULL);
+        if (n == 0) {
+            free(buf);
+            return NULL;
+        }
+        if (n < need)
+            return buf;
+        free(buf);
+        need = n;
+    }
+    return NULL;
+}
 
 /* readonly=yes: what kitty_inifile_write would have written, held for the
  * running program - kitty_inifile_read answers from it first, so a change
@@ -127,63 +243,58 @@ static int inifile_isfile(const char *p)
     return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-/* The search, the one list of places: the first existing file into out.
- * skip_appdata leaves %APPDATA%\KiTTY\kitty.ini out (the portable kitty.exe
- * never reads an installed copy's file). 1 = found, 0 = none. */
-int kitty_inifile_find(int skip_appdata, char *out, int outlen)
+/* The search, the one list of places: the first existing file, whole (free
+ * it), or NULL when none is there. skip_appdata leaves
+ * %APPDATA%\KiTTY\kitty.ini out (the portable kitty.exe never reads an
+ * installed copy's file). */
+char *kitty_inifile_find_dup(int skip_appdata)
 {
-    char exedir[MAX_PATH + 1], cand[MAX_PATH + 32];
     const char *env;
-    char *slash;
-    DWORD n;
+    char *exedir, *cand;
 
-    if (outlen > 0)
-        out[0] = '\0';
     env = getenv("KITTY_INI_FILE");
-    if (env && *env && strlen(env) <= MAX_PATH && inifile_isfile(env)) {
-        snprintf(out, outlen, "%s", env);
-        return 1;
-    }
+    if (env && *env && inifile_isfile(env))
+        return _strdup(env);
 
-    n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
-    if (n > 0 && n < MAX_PATH && (slash = strrchr(exedir, '\\')) != NULL) {
-        *slash = '\0';
-        snprintf(cand, sizeof(cand), "%s\\kitty.ini", exedir);
-        if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            snprintf(out, outlen, "%s", cand);
-            return 1;
-        }
+    if ((exedir = inifile_exedir_dup()) != NULL) {
+        cand = inifile_cat(exedir, "\\kitty.ini", NULL);
+        free(exedir);
+        if (cand && inifile_isfile(cand))
+            return cand;
+        free(cand);
     }
 
     env = getenv("APPDATA");
     if (!skip_appdata && env && *env) {
-        snprintf(cand, sizeof(cand), "%s\\KiTTY\\kitty.ini", env);
-        if (inifile_isfile(cand) && strlen(cand) <= MAX_PATH) {
-            snprintf(out, outlen, "%s", cand);
-            return 1;
-        }
+        cand = inifile_cat(env, "\\KiTTY\\kitty.ini", NULL);
+        if (cand && inifile_isfile(cand))
+            return cand;
+        free(cand);
         /* No %APPDATA%\PuTTY\putty.ini: kitty.exe never read one there, and
          * a helper that did found a file its kitty.exe ignores. */
     }
-    return 0;
+    return NULL;
 }
 
 static void inifile_resolve(void)
 {
     if (inifile_state)
         return;
-    inifile_state = kitty_inifile_find(0, inifile_path, sizeof(inifile_path)) ? 1 : -1;
+    free(inifile_path);
+    inifile_path = kitty_inifile_find_dup(0);
+    inifile_state = inifile_path ? 1 : -1;
 }
 
 /* kitty.exe: the file it reads and writes, chosen before it may exist (a
  * kitty.ini it creates later - the template, the portable savemode key - is
- * then found by every reader in the process). A path longer than MAX_PATH is
- * not pinned: the resolver's own answer stays. */
+ * then found by every reader in the process). Held whole. */
 void kitty_inifile_pin(const char *path)
 {
-    if (!path || !path[0] || strlen(path) > MAX_PATH)
+    char *copy;
+    if (!path || !path[0] || (copy = _strdup(path)) == NULL)
         return;
-    strcpy(inifile_path, path);
+    free(inifile_path);
+    inifile_path = copy;
     inifile_state = 2;
     ro_cached = -1;                    /* another file: read it again */
     while (inifile_ro_values) {        /* ...and the changes kept from it go */
@@ -220,26 +331,33 @@ const char *kitty_inifile_file(void)
  * exe as a backup while staying in registry mode. */
 static int inifile_portable_layout(void)
 {
-    char dir[MAX_PATH + 1], cand[MAX_PATH + 32];
+    char *dir, *cand;
     char *slash, *s2;
     DWORD a;
-    strcpy(dir, inifile_path);
+    int found = 0;
+    if (!inifile_path || (dir = _strdup(inifile_path)) == NULL)
+        return 0;
     slash = strrchr(dir, '\\');
     s2 = strrchr(dir, '/');
     if (s2 > slash)
         slash = s2;
-    if (!slash)
+    if (!slash) {
+        free(dir);
         return 0;
+    }
     *slash = '\0';
-    snprintf(cand, sizeof(cand), "%s\\Sessions", dir);
-    a = GetFileAttributesA(cand);
-    if (a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY))
-        return 1;
-    snprintf(cand, sizeof(cand), "%s\\KiTTYState", dir);
-    a = GetFileAttributesA(cand);
-    if (a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY))
-        return 1;
-    return 0;
+    if ((cand = inifile_cat(dir, "\\Sessions", NULL)) != NULL) {
+        a = GetFileAttributesA(cand);
+        found = a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY);
+        free(cand);
+    }
+    if (!found && (cand = inifile_cat(dir, "\\KiTTYState", NULL)) != NULL) {
+        a = GetFileAttributesA(cand);
+        found = a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+        free(cand);
+    }
+    free(dir);
+    return found;
 }
 
 /* 1 when the registry must stay the authoritative settings store: no ini
@@ -321,12 +439,13 @@ int kitty_inifile_readonly(void)
     if (!GetFileAttributesExA(inifile_path, GetFileExInfoStandard, &fa) ||
         (fa.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
         return 0;                       /* no file: nothing reads readonly=yes */
-    if (ro_cached >= 0 && !stricmp(ro_path, inifile_path) &&
+    if (ro_cached >= 0 && ro_path && !stricmp(ro_path, inifile_path) &&
         CompareFileTime(&fa.ftLastWriteTime, &ro_time) == 0 &&
         fa.nFileSizeLow == ro_size_lo && fa.nFileSizeHigh == ro_size_hi)
         return ro_cached;
     ro_cached = inifile_readonly_read();
-    snprintf(ro_path, sizeof(ro_path), "%s", inifile_path);
+    free(ro_path);
+    ro_path = _strdup(inifile_path);
     ro_time = fa.ftLastWriteTime;
     ro_size_lo = fa.nFileSizeLow;
     ro_size_hi = fa.nFileSizeHigh;
@@ -369,7 +488,8 @@ void kitty_store_ro_allow(int on)
  * kitty_set_registry_root hands it over. */
 void kitty_store_ro_set_regbase(const char *base)
 {
-    snprintf(ro_regbase, sizeof(ro_regbase), "%s", base ? base : "");
+    free(ro_regbase);
+    ro_regbase = _strdup(base ? base : "");
 }
 
 /* subkey inside base, or a key above it (a tree delete there takes the
@@ -397,7 +517,7 @@ int kitty_store_ro_regpath(int hkcu, const char *subkey)
     while (*subkey == '\\')
         subkey++;
     if (!regpath_touches(subkey, "Software\\kapper.net\\KiTTY") &&
-        !regpath_touches(subkey, ro_regbase))
+        !regpath_touches(subkey, ro_regbase ? ro_regbase : ""))
         return 0;
     return kitty_store_readonly();
 }
@@ -413,12 +533,11 @@ const char *kitty_store_ro_inifile(void)
 /* Two names of one file: the full paths compared, case aside. */
 static int inifile_same_file(const char *a, const char *b)
 {
-    char fa[MAX_PATH + 1], fb[MAX_PATH + 1];
-    DWORD na = GetFullPathNameA(a, sizeof(fa), fa, NULL);
-    DWORD nb = GetFullPathNameA(b, sizeof(fb), fb, NULL);
-    if (na == 0 || na >= sizeof(fa) || nb == 0 || nb >= sizeof(fb))
-        return !stricmp(a, b);
-    return !stricmp(fa, fb);
+    char *fa = inifile_fullpath_dup(a), *fb = inifile_fullpath_dup(b);
+    int same = (fa && fb) ? !stricmp(fa, fb) : !stricmp(a, b);
+    free(fa);
+    free(fb);
+    return same;
 }
 
 /* 1 when a write to path must be skipped: path is the resolved kitty.ini
@@ -480,16 +599,35 @@ static void inifile_rtrim(char *s, const char *set)
  * and the command-line tools. A change to where kitty.exe puts the session
  * folder, the configuration directory, the host keys or KiTTYState has to
  * be made here too. */
-static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
+/* A path setting resolved as kitty.exe resolves it: %VAR% expanded, a
+ * leading '\' or '/' below the program folder, "X:..." absolute, anything
+ * else relative to the program folder; trailing blanks and backslashes off.
+ * Whole (free it); NULL when the expansion fails or memory runs out. */
+static char *inifile_resolve_path(const char *exedir, const char *v)
 {
-    char mode[32], v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
-    char path[4 * MAX_PATH + 8];
-    char *slash;
-    DWORD n;
+    char *x = inifile_expand_dup(v), *path;
+    /* a failed expansion: the text as written, as kitty.exe's joinPath
+     * (kitty_store.c) - Windows then refuses the "%VAR%" folder itself */
+    if (!x && (x = _strdup(v)) == NULL)
+        return NULL;
+    if (x[0] == '\\' || x[0] == '/')
+        path = inifile_cat(exedir, x, NULL);
+    else if (x[0] && x[1] == ':')
+        path = _strdup(x);
+    else
+        path = inifile_cat(exedir, "\\", x);
+    free(x);
+    return path;
+}
+
+/* The folder store's session folder whole (*dirp, free it) and its suffix;
+ * see inifile_folder_store. */
+static int inifile_folder_store_dup(char **dirp, char *suffix, int suflen)
+{
+    char mode[32], v[80], *sv, *exedir, *path = NULL;
     const char *p;
 
-    if (dirlen > 0)
-        dir[0] = '\0';
+    *dirp = NULL;
     if (suflen > 0)
         suffix[0] = '\0';
     if (!kitty_inifile_file())
@@ -500,50 +638,50 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
     if (stricmp(mode, "dir") && (mode[0] || !inifile_portable_layout()))
         return 0;
 
-    n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH || !(slash = strrchr(exedir, '\\')))
+    if ((exedir = inifile_exedir_dup()) == NULL)
         return 0;
-    *slash = '\0';
 
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SESSIONS, "",
-                             v, sizeof(v), inifile_path);
-    if (v[0]) {
-        DWORD xn = ExpandEnvironmentStringsA(v, x, sizeof(x));
-        if (xn == 0 || xn > sizeof(x))
-            snprintf(x, sizeof(x), "%s", v);
-        if (x[0] == '\\' || x[0] == '/')
-            snprintf(path, sizeof(path), "%s%s", exedir, x);
-        else if (x[0] && x[1] == ':')
-            snprintf(path, sizeof(path), "%s", x);
-        else
-            snprintf(path, sizeof(path), "%s\\%s", exedir, x);
-        inifile_rtrim(path, " \n\r\t\\");
-        if (strlen(path) == 2 && path[1] == ':')
-            strcat(path, "\\");          /* "C:" alone is drive C's cwd */
-    } else {
-        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_CONFIGDIR, "",
-                                 v, sizeof(v), inifile_path);
-        inifile_rtrim(v, " \n\r\t\\");
-        if (v[0] && v[0] != '\\' && v[0] != '/' && v[1] != ':') {
-            snprintf(x, sizeof(x), "%s\\%s", exedir, v);   /* below the exe's folder */
-            snprintf(v, sizeof(v), "%s", x);
+    /* the value and its expansion whole: an expansion past 519 bytes used
+     * to fall back to the unexpanded "%VAR%\..." folder below the exe */
+    sv = inifile_get_dup(KI_SECTION_KITTY, KI_SESSIONS, inifile_path);
+    if (sv && sv[0]) {
+        path = inifile_resolve_path(exedir, sv);
+        if (path) {
+            size_t n;
+            inifile_rtrim(path, " \n\r\t\\");
+            n = strlen(path);
+            if (n == 2 && path[1] == ':') {    /* "C:" alone is drive C's cwd */
+                char *r = inifile_cat(path, "\\", NULL);
+                free(path);
+                path = r;
+            }
+        }
+    } else if (sv) {
+        char *cfg = inifile_get_dup(KI_SECTION_KITTY, KI_CONFIGDIR, inifile_path);
+        if (cfg) {
+            inifile_rtrim(cfg, " \n\r\t\\");
+            if (cfg[0] && cfg[0] != '\\' && cfg[0] != '/' && cfg[1] != ':') {
+                char *abs = inifile_cat(exedir, "\\", cfg);   /* below the exe's folder */
+                free(cfg);
+                cfg = abs;
+            }
         }
         /* A configdir that is not there counts as not set, as in kitty.exe
          * once its question is answered (kitty_params.c): the sessions
          * beside the exe, not a folder of nothing. */
-        if (v[0]) {
-            DWORD a = GetFileAttributesA(v);
+        if (cfg && cfg[0]) {
+            DWORD a = GetFileAttributesA(cfg);
             if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_DIRECTORY))
-                v[0] = '\0';
+                cfg[0] = '\0';
         }
-        if (!v[0])
-            snprintf(path, sizeof(path), "%s\\Sessions", exedir);
-        else
-            snprintf(path, sizeof(path), "%s\\Sessions", v);
+        path = inifile_cat(cfg && cfg[0] ? cfg : exedir, "\\Sessions", NULL);
+        free(cfg);
     }
-    if ((int)strlen(path) >= dirlen)
+    free(sv);
+    free(exedir);
+    if (!path)
         return 0;
-    strcpy(dir, path);
+    *dirp = path;
 
     /* kitty.exe keeps at most 63 characters and refuses a suffix with a
      * character its escape would rewrite (kitty_set_session_suffix). */
@@ -564,6 +702,25 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
     return 1;
 }
 
+/* Into a caller's buffer: the folder only when it fits whole - a path that
+ * does not is no folder store this program can take (0), never a cut one. */
+static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
+{
+    char *d;
+    int ok;
+    if (dirlen > 0)
+        dir[0] = '\0';
+    ok = inifile_folder_store_dup(&d, suffix, suflen);
+    if (ok && (int)strlen(d) >= dirlen)
+        ok = 0;
+    if (ok)
+        strcpy(dir, d);
+    else if (suflen > 0)
+        suffix[0] = '\0';
+    free(d);
+    return ok;
+}
+
 /* The folder store's host keys, as kitty.exe sets them up
  * (kitty_store_ini_takeover): sshhostkeys= resolved like sessions= above
  * (empty = the store's own SshHostKeys folder, which the storage layer
@@ -572,10 +729,7 @@ static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
  * returned 1; returns 0 when no ini was resolved. */
 static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
 {
-    char v[2 * MAX_PATH], x[2 * MAX_PATH], exedir[MAX_PATH + 1];
-    char path[4 * MAX_PATH + 8];
-    char *slash;
-    DWORD n;
+    char v[80], *hv, *exedir;
 
     if (dirlen > 0)
         dir[0] = '\0';
@@ -584,26 +738,24 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
     if (!kitty_inifile_file())
         return 0;
 
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SSHHOSTKEYS, "",
-                             v, sizeof(v), inifile_path);
-    inifile_rtrim(v, " \n\r\t");
-    n = GetModuleFileNameA(NULL, exedir, MAX_PATH);
-    if (v[0] && n > 0 && n < MAX_PATH && (slash = strrchr(exedir, '\\'))) {
-        DWORD xn;
-        *slash = '\0';
-        xn = ExpandEnvironmentStringsA(v, x, sizeof(x));
-        if (xn == 0 || xn > sizeof(x))
-            snprintf(x, sizeof(x), "%s", v);
-        if (x[0] == '\\' || x[0] == '/')
-            snprintf(path, sizeof(path), "%s%s", exedir, x);
-        else if (x[0] && x[1] == ':')
-            snprintf(path, sizeof(path), "%s", x);
-        else
-            snprintf(path, sizeof(path), "%s\\%s", exedir, x);
-        inifile_rtrim(path, " \n\r\t\\");
-        if ((int)strlen(path) < dirlen)
-            strcpy(dir, path);
+    /* the value and its expansion whole: an expansion past 519 bytes used
+     * to fall back to the unexpanded "%VAR%\..." folder - the host keys,
+     * the trust store, read and written there. Now only a failed expansion
+     * does, as in kitty.exe. Into the caller's buffer only whole, as before. */
+    hv = inifile_get_dup(KI_SECTION_KITTY, KI_SSHHOSTKEYS, inifile_path);
+    if (hv)
+        inifile_rtrim(hv, " \n\r\t");
+    if (hv && hv[0] && (exedir = inifile_exedir_dup()) != NULL) {
+        char *path = inifile_resolve_path(exedir, hv);
+        free(exedir);
+        if (path) {
+            inifile_rtrim(path, " \n\r\t\\");
+            if ((int)strlen(path) < dirlen)
+                strcpy(dir, path);
+            free(path);
+        }
     }
+    free(hv);
 
     GetPrivateProfileStringA(KI_SECTION_KITTY, KI_HOSTKEYEXTENSION, "",
                              v, sizeof(v), inifile_path);
@@ -622,19 +774,17 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
  * is called Sessions, else in the session folder itself. 0 when the
  * sessions are not in the folder store - savemode=file included, whose
  * state values are in the registry. */
-int kitty_inifile_state_file(char *out, int outlen)
+char *kitty_inifile_state_file_dup(void)
 {
-    char dir[KITTY_INIFILE_PATHLEN], suffix[80];
-    char *bs;
-    if (!inifile_folder_store(dir, sizeof(dir), suffix, sizeof(suffix)))
-        return 0;
+    char *dir, suffix[80], *bs, *out;
+    if (!inifile_folder_store_dup(&dir, suffix, sizeof(suffix)))
+        return NULL;
     bs = strrchr(dir, '\\');
     if (bs && !stricmp(bs + 1, "Sessions"))
         *bs = '\0';
-    if ((int)strlen(dir) + 12 > outlen)
-        return 0;
-    snprintf(out, outlen, "%s\\KiTTYState", dir);
-    return 1;
+    out = inifile_cat(dir, "\\KiTTYState", NULL);
+    free(dir);
+    return out;
 }
 
 void kitty_inifile_startup(struct kitty_ini_startup *s)

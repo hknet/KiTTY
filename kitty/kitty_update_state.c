@@ -51,15 +51,15 @@ static int kus_state_file_value(const char *path, const char *key, char *out, in
 
 static int kus_stored(char *latest, int n, int *beta)
 {
-    char sf[KITTY_INIFILE_PATHLEN + 16];
+    char *sf;   /* the state file's path whole */
     *beta = 0;
-    if (kitty_inifile_state_file(sf, sizeof(sf))) {
+    if ((sf = kitty_inifile_state_file_dup()) != NULL) {
         char b[16];
-        if (!kus_state_file_value(sf, "UpdateLatest", latest, n))
-            return 0;
-        if (kus_state_file_value(sf, "UpdateLatestBeta", b, sizeof(b)))
+        int got = kus_state_file_value(sf, "UpdateLatest", latest, n);
+        if (got && kus_state_file_value(sf, "UpdateLatestBeta", b, sizeof(b)))
             *beta = atoi(b) != 0;
-        return 1;
+        free(sf);
+        return got;
     } else {
         DWORD sz = (DWORD)n, bv = 0, bsz = sizeof(bv);
         if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, "UpdateLatest",
@@ -105,14 +105,42 @@ int kitty_update_state_enabled(void)
              !stricmp(buf, "false") || !stricmp(buf, "off"));
 }
 
+/* The program's own path whole (free it), NULL when it cannot be read. */
+static char *kus_self_dup(void)
+{
+    DWORD size = MAX_PATH + 1;
+    for (;;) {
+        char *buf = malloc(size);
+        DWORD n;
+        if (!buf)
+            return NULL;
+        n = GetModuleFileNameA(NULL, buf, size);
+        if (n == 0) {
+            free(buf);
+            return NULL;
+        }
+        if (n < size - 1) {
+            buf[n] = '\0';
+            return buf;
+        }
+        free(buf);
+        if (size > 32768)
+            return NULL;
+        size *= 2;
+    }
+}
+
 int kitty_update_state_newer(char *latest_out, int latest_n, int *beta_out)
 {
-    char self[MAX_PATH], latest[64];
+    char *self, latest[64];
     unsigned long ms, ls, cur[4], lat[4];
-    int beta, i;
+    int beta, i, have;
 
-    if (!GetModuleFileNameA(NULL, self, sizeof(self)) ||
-        !kitty_file_version(self, &ms, &ls))
+    if ((self = kus_self_dup()) == NULL)
+        return 0;
+    have = kitty_file_version(self, &ms, &ls);
+    free(self);
+    if (!have)
         return 0;
     cur[0] = HIWORD(ms); cur[1] = LOWORD(ms);
     cur[2] = HIWORD(ls); cur[3] = LOWORD(ls);

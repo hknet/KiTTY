@@ -2740,32 +2740,36 @@ static int kageant_scan_run(HKEY root, const char *myexe, char **desc)
 
 static int kageant_scan_startup(int common, const char *myexe, char **desc)
 {
-    /* dir: SHGetFolderPath's own limit; target: the size
-     * kitty_startup_shortcut_target reads into */
-    char dir[MAX_PATH], target[MAX_PATH], *glob;
+    /* the folder and each target whole: a target cut to MAX_PATH could
+     * read as this exe */
+    char *dir, *glob;
     WIN32_FIND_DATAA fd;
     HANDLE h;
     int found = 0;
-    if (!kitty_startup_dir(dir, sizeof(dir), common))
+    if ((dir = kitty_startup_dir_dup(common)) == NULL)
         return 0;
     glob = dupprintf("%s\\*.lnk", dir);
     h = FindFirstFileA(glob, &fd);
     sfree(glob);
-    if (h == INVALID_HANDLE_VALUE)
+    if (h == INVALID_HANDLE_VALUE) {
+        sfree(dir);
         return 0;
+    }
     do {
         char *lnk = dupprintf("%s\\%s", dir, fd.cFileName);
-        if (kitty_startup_shortcut_target(lnk, target, sizeof(target)) &&
-            kageant_is_agent_exe(target) && stricmp(target, myexe) != 0) {
+        char *target = kitty_startup_shortcut_target_dup(lnk);
+        if (target && kageant_is_agent_exe(target) && stricmp(target, myexe) != 0) {
             *desc = dupprintf(KT_KA_AUTOSTART_SHORTCUT_DESC_FMT,
                               fd.cFileName, target,
                               common ? KT_KA_AUTOSTART_ALL_USERS :
                                        KT_KA_AUTOSTART_YOUR);
             found = 1;
         }
+        sfree(target);
         sfree(lnk);
     } while (!found && FindNextFileA(h, &fd));
     FindClose(h);
+    sfree(dir);
     return found;
 }
 

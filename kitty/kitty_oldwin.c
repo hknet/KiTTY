@@ -383,6 +383,223 @@ char *kitty_temp_path_dup(void)
     return NULL;
 }
 
+char *kitty_module_dir_dup(HMODULE mod)
+{
+    char *p = kitty_module_path_dup(mod), *bs;
+    if (!p)
+        return NULL;
+    bs = strrchr(p, '\\');
+    if (!bs) {
+        sfree(p);
+        SetLastError(ERROR_BAD_PATHNAME);
+        return NULL;
+    }
+    *bs = '\0';
+    return p;
+}
+
+char *kitty_long_path_dup(const char *path)
+{
+    DWORD need, n;
+    int tries;
+    if (!path || !*path) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+    need = GetLongPathNameA(path, NULL, 0);
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = snewn(need, char);
+        n = GetLongPathNameA(path, buf, need);
+        if (n == 0) {
+            sfree(buf);
+            return NULL;
+        }
+        if (n < need)
+            return buf;
+        sfree(buf);
+        need = n;
+    }
+    return NULL;
+}
+
+char *kitty_getenv_dup(const char *name)
+{
+    DWORD need, n;
+    int tries;
+    SetLastError(ERROR_SUCCESS);
+    need = GetEnvironmentVariableA(name, NULL, 0);
+    for (tries = 0; need && tries < 4; tries++) {
+        char *buf = snewn(need, char);
+        SetLastError(ERROR_SUCCESS);
+        n = GetEnvironmentVariableA(name, buf, need);
+        if (n == 0 && GetLastError() != ERROR_SUCCESS) {
+            sfree(buf);
+            return NULL;
+        }
+        if (n < need) {
+            buf[n] = '\0';
+            return buf;
+        }
+        sfree(buf);
+        need = n;
+    }
+    return NULL;
+}
+
+char *kitty_expand_env_strict_dup(const char *in)
+{
+    DWORD need, n;
+    int tries;
+    if (!in) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+    need = ExpandEnvironmentStringsA(in, NULL, 0);
+    for (tries = 0; need && tries < 4; tries++) {
+        /* one byte more: the ANSI form has been seen to count one short */
+        char *buf = snewn(need + 1, char);
+        n = ExpandEnvironmentStringsA(in, buf, need + 1);
+        if (n == 0) {
+            sfree(buf);
+            return NULL;
+        }
+        if (n <= need + 1) {
+            buf[need] = '\0';
+            return buf;
+        }
+        sfree(buf);
+        need = n;
+    }
+    return NULL;
+}
+
+char *kitty_wide_to_acp_dup(const wchar_t *w)
+{
+    int need, n;
+    char *buf;
+    if (!w) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+    need = WideCharToMultiByte(CP_ACP, 0, w, -1, NULL, 0, NULL, NULL);
+    if (need <= 0)
+        return NULL;
+    buf = snewn(need, char);
+    n = WideCharToMultiByte(CP_ACP, 0, w, -1, buf, need, NULL, NULL);
+    if (n <= 0) {
+        sfree(buf);
+        return NULL;
+    }
+    buf[need - 1] = '\0';
+    return buf;
+}
+
+wchar_t *kitty_acp_to_wide_dup(const char *s)
+{
+    int need, n;
+    wchar_t *buf;
+    if (!s) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return NULL;
+    }
+    need = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+    if (need <= 0)
+        return NULL;
+    buf = snewn(need, wchar_t);
+    n = MultiByteToWideChar(CP_ACP, 0, s, -1, buf, need);
+    if (n <= 0) {
+        sfree(buf);
+        return NULL;
+    }
+    buf[need - 1] = L'\0';
+    return buf;
+}
+
+char *kitty_profile_string_dup(const char *section, const char *key,
+                               const char *def, const char *file)
+{
+    DWORD len = 512;
+    for (;;) {
+        char *buf = snewn(len, char);
+        DWORD n = GetPrivateProfileStringA(section, key, def ? def : "",
+                                           buf, len, file);
+        /* a cut value comes back as len - 1 (len - 2 with a NULL key or
+         * section: the list ends in two NULs) */
+        if (n + 2 < len) {
+            buf[n] = '\0';
+            if (!def && !buf[0]) {
+                sfree(buf);
+                return NULL;
+            }
+            return buf;
+        }
+        sfree(buf);
+        if (len >= (1u << 24)) {
+            SetLastError(ERROR_INSUFFICIENT_BUFFER);
+            return NULL;
+        }
+        len *= 2;
+    }
+}
+
+unsigned char *kitty_reg_query_dup(HKEY key, const char *name,
+                                   DWORD *type, DWORD *len)
+{
+    int tries;
+    for (tries = 0; tries < 4; tries++) {
+        DWORD sz = 0, t = 0, got;
+        unsigned char *buf;
+        LONG rc = RegQueryValueExA(key, name, NULL, &t, NULL, &sz);
+        if (rc != ERROR_SUCCESS) {
+            SetLastError((DWORD)rc);
+            return NULL;
+        }
+        /* two NUL bytes after the data: a string stored without its NUL,
+         * and a wide or multi-string one, still end */
+        buf = snewn(sz + 2, unsigned char);
+        got = sz;
+        rc = RegQueryValueExA(key, name, NULL, &t, buf, &got);
+        if (rc == ERROR_SUCCESS && got <= sz) {
+            buf[got] = '\0';
+            buf[got + 1] = '\0';
+            if (type)
+                *type = t;
+            if (len)
+                *len = got;
+            return buf;
+        }
+        sfree(buf);
+        if (rc != ERROR_MORE_DATA) {   /* MORE_DATA: it grew in between */
+            SetLastError((DWORD)rc);
+            return NULL;
+        }
+    }
+    SetLastError(ERROR_MORE_DATA);
+    return NULL;
+}
+
+char *kitty_reg_str_dup(HKEY root, const char *subkey, const char *name)
+{
+    HKEY k;
+    DWORD type = 0;
+    unsigned char *v;
+    LONG rc = RegOpenKeyExA(root, subkey, 0, KEY_READ, &k);
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return NULL;
+    }
+    v = kitty_reg_query_dup(k, name, &type, NULL);
+    RegCloseKey(k);
+    if (!v)
+        return NULL;
+    if ((type != REG_SZ && type != REG_EXPAND_SZ) || !v[0]) {
+        sfree(v);
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return NULL;
+    }
+    return (char *)v;
+}
+
 /* -------------------------------------------------------------- console -- */
 
 typedef BOOL (WINAPI *attachconsole_t)(DWORD);

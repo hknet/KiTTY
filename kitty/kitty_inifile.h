@@ -8,12 +8,12 @@
 #define KITTY_INIFILE_H
 
 const char *kitty_inifile_file(void);
-int kitty_inifile_find(int skip_appdata, char *out, int outlen);
+char *kitty_inifile_find_dup(int skip_appdata);   /* NULL = none; free() it */
 void kitty_inifile_pin(const char *path);          /* kitty.exe only */
 void kitty_inifile_pin_authority(int registry);    /* kitty.exe only */
 int kitty_inifile_portable(void);   /* portable storage layout beside the exe? */
 int kitty_inifile_registry_authoritative(void);
-int kitty_inifile_state_file(char *out, int outlen);  /* <store root>\KiTTYState */
+char *kitty_inifile_state_file_dup(void);  /* <store root>\KiTTYState; NULL = none; free() it */
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);
 int kitty_inifile_write(const char *section, const char *key,

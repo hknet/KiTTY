@@ -68,13 +68,20 @@ typedef enum { KITTY_INST_PERUSER, KITTY_INST_SYSTEM, KITTY_INST_PORTABLE } kitt
 
 /* Two folders the same, after the long form and without a trailing '\'. */
 static int kitty_same_dir( const char *a, const char *b ) {
-	char la[MAX_PATH], lb[MAX_PATH] ;
+	/* the long forms whole (a path without one as it is): a long form too
+	 * big for the old buffer left it unfilled, and the comparison decided
+	 * whether the MSI owns this exe */
+	char *la = kitty_long_path_dup( a ), *lb = kitty_long_path_dup( b ) ;
 	size_t n ;
-	if( !GetLongPathNameA( a, la, sizeof(la) ) ) snprintf( la, sizeof(la), "%s", a ) ;
-	if( !GetLongPathNameA( b, lb, sizeof(lb) ) ) snprintf( lb, sizeof(lb), "%s", b ) ;
+	int same ;
+	if( !la ) la = dupstr( a ) ;
+	if( !lb ) lb = dupstr( b ) ;
 	if( (n = strlen(la)) > 3 && la[n-1] == '\\' ) la[n-1] = '\0' ;
 	if( (n = strlen(lb)) > 3 && lb[n-1] == '\\' ) lb[n-1] = '\0' ;
-	return !stricmp( la, lb ) ;
+	same = !stricmp( la, lb ) ;
+	sfree( la ) ;
+	sfree( lb ) ;
+	return same ;
 }
 
 /* The folder of a path ("C:\x\kitty.exe" -> "C:\x"), in place. */
@@ -92,28 +99,56 @@ static void kitty_cut_to_dir( char *p ) {
  * and then the target of the installer's own Start menu entry shows where it
  * put kitty.exe (common = the all-users Start menu, the system package): its
  * "KiTTY++.lnk", or "KiTTY.lnk" as written up to 0.85.1.17. */
-static int kitty_msi_owns_this_exe( const char *upgradecode, int common ) {
-	char prod[40] = "", loc[MAX_PATH] = "", dir[MAX_PATH] = "" ;
-	static const char *const names[] = { "\\KiTTY\\KiTTY++.lnk", "\\KiTTY\\KiTTY.lnk" } ;
-	char menu[MAX_PATH], lnk[MAX_PATH], tgt[MAX_PATH] ;
-	size_t i ;
-	DWORD n = sizeof(loc) ;
-	if( MsiEnumRelatedProductsA( upgradecode, 0, 0, prod ) != ERROR_SUCCESS ) return -1 ;
-	if( !GetModuleFileNameA( NULL, dir, sizeof(dir)-1 ) ) return 0 ;
-	kitty_cut_to_dir( dir ) ;
-	if( MsiGetProductInfoA( prod, INSTALLPROPERTY_INSTALLLOCATION, loc, &n ) == ERROR_SUCCESS && loc[0] )
-		return kitty_same_dir( loc, dir ) ;
-	if( SHGetFolderPathA( NULL, common ? CSIDL_COMMON_PROGRAMS : CSIDL_PROGRAMS, NULL,
-	                      SHGFP_TYPE_CURRENT, menu ) != S_OK ) return 0 ;
-	for( i = 0 ; i < sizeof(names) / sizeof(names[0]) ; i++ ) {
-		if( strlen( menu ) + strlen( names[i] ) >= sizeof(lnk) ) continue ;
-		strcpy( lnk, menu ) ;
-		strcat( lnk, names[i] ) ;
-		if( !kitty_startup_shortcut_target( lnk, tgt, sizeof(tgt) ) ) continue ;
-		kitty_cut_to_dir( tgt ) ;
-		return kitty_same_dir( tgt, dir ) ;
+/* The product's InstallLocation whole (sfree it); NULL = none recorded. */
+static char *kitty_msi_install_location( const char *prod ) {
+	DWORD n = 0 ;
+	char *loc ;
+	UINT rc ;
+	char probe[1] = "" ;
+	rc = MsiGetProductInfoA( prod, INSTALLPROPERTY_INSTALLLOCATION, probe, &n ) ;
+	if( rc != ERROR_MORE_DATA && rc != ERROR_SUCCESS ) return NULL ;
+	loc = snewn( n + 2, char ) ;
+	n += 2 ;
+	if( MsiGetProductInfoA( prod, INSTALLPROPERTY_INSTALLLOCATION, loc, &n ) != ERROR_SUCCESS || !loc[0] ) {
+		sfree( loc ) ;
+		return NULL ;
 	}
-	return 0 ;
+	return loc ;
+}
+
+static int kitty_msi_owns_this_exe( const char *upgradecode, int common ) {
+	char prod[40] = "", *loc, *dir, *menu ;
+	static const char *const names[] = { "\\KiTTY\\KiTTY++.lnk", "\\KiTTY\\KiTTY.lnk" } ;
+	WCHAR wmenu[MAX_PATH + 1] ;
+	size_t i ;
+	int r = 0 ;
+	if( MsiEnumRelatedProductsA( upgradecode, 0, 0, prod ) != ERROR_SUCCESS ) return -1 ;
+	/* every path whole: the comparisons below decide between the elevated
+	 * MSI run and a download */
+	if( ( dir = kitty_module_dir_dup( NULL ) ) == NULL ) return 0 ;
+	if( ( loc = kitty_msi_install_location( prod ) ) != NULL ) {
+		r = kitty_same_dir( loc, dir ) ;
+		sfree( loc ) ;
+		sfree( dir ) ;
+		return r ;
+	}
+	if( SHGetFolderPathW( NULL, common ? CSIDL_COMMON_PROGRAMS : CSIDL_PROGRAMS, NULL,
+	                      SHGFP_TYPE_CURRENT, wmenu ) != S_OK ) { sfree( dir ) ; return 0 ; }
+	wmenu[MAX_PATH] = L'\0' ;
+	if( ( menu = kitty_wide_to_acp_dup( wmenu ) ) == NULL ) { sfree( dir ) ; return 0 ; }
+	for( i = 0 ; i < sizeof(names) / sizeof(names[0]) ; i++ ) {
+		char *lnk = dupcat( menu, names[i] ) ;
+		char *tgt = kitty_startup_shortcut_target_dup( lnk ) ;
+		sfree( lnk ) ;
+		if( !tgt ) continue ;
+		kitty_cut_to_dir( tgt ) ;
+		r = kitty_same_dir( tgt, dir ) ;
+		sfree( tgt ) ;
+		break ;
+	}
+	sfree( menu ) ;
+	sfree( dir ) ;
+	return r ;
 }
 
 int kitty_exe_from_msi( void ) {
@@ -141,17 +176,22 @@ static kitty_install_t kitty_detect_install_type( void ) {
 	if( usr == 1 ) return KITTY_INST_PERUSER ;
 	if( sys == 0 || usr == 0 ) return KITTY_INST_PORTABLE ;   /* an MSI, but not this copy */
 
-	/* Fallback: path sniff (older installs / unusual setups). */
-	char exe[MAX_PATH]="", env[MAX_PATH]="" ;
-	if( GetModuleFileNameA( NULL, exe, sizeof(exe)-1 ) ) {
-		if( GetEnvironmentVariableA("ProgramFiles", env, sizeof(env)-1) && env[0]
-		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
-		if( GetEnvironmentVariableA("ProgramW6432", env, sizeof(env)-1) && env[0]
-		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
-		if( GetEnvironmentVariableA("ProgramFiles(x86)", env, sizeof(env)-1) && env[0]
-		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_SYSTEM ;
-		if( GetEnvironmentVariableA("LOCALAPPDATA", env, sizeof(env)-1) && env[0]
-		    && _strnicmp(exe, env, strlen(env))==0 ) return KITTY_INST_PERUSER ;
+	/* Fallback: path sniff (older installs / unusual setups). The exe and
+	 * the folders whole. */
+	{
+		static const struct { const char *var ; kitty_install_t t ; } sniff[] = {
+			{ "ProgramFiles", KITTY_INST_SYSTEM }, { "ProgramW6432", KITTY_INST_SYSTEM },
+			{ "ProgramFiles(x86)", KITTY_INST_SYSTEM }, { "LOCALAPPDATA", KITTY_INST_PERUSER },
+		} ;
+		char *exe = kitty_module_path_dup( NULL ) ;
+		size_t s ;
+		for( s = 0 ; exe && s < sizeof(sniff) / sizeof(sniff[0]) ; s++ ) {
+			char *env = kitty_getenv_dup( sniff[s].var ) ;
+			int match = env && env[0] && _strnicmp( exe, env, strlen(env) ) == 0 ;
+			sfree( env ) ;
+			if( match ) { sfree( exe ) ; return sniff[s].t ; }
+		}
+		sfree( exe ) ;
 	}
 	/* Unknown location (loose exe): treat as portable -> download-only, no auto-run. */
 	return KITTY_INST_PORTABLE ;
@@ -160,26 +200,27 @@ static kitty_install_t kitty_detect_install_type( void ) {
 
 /* Scan the release JSON for a "browser_download_url" whose value ends with the
  * given suffix (e.g. "-x64-system.msi"). Robust to the exact version string.
- * Copies the URL into out and returns 1; returns 0 if no asset matches. */
-static int kitty_find_asset_url( const char *body, const char *suffix, char *out, size_t outsz ) {
+ * The URL whole (sfree it), or NULL if no asset matches - a URL cut to 1024
+ * bytes could still end in the suffix and name another file. */
+static char *kitty_find_asset_url( const char *body, const char *suffix ) {
 	const char *p = body ;
 	size_t slen = strlen(suffix) ;
 	while( (p = strstr(p, "\"browser_download_url\"")) != NULL ) {
+		const char *q, *start ;
+		size_t j ;
 		p += strlen("\"browser_download_url\"") ;
-		const char *q = strchr(p, ':') ;
+		q = strchr(p, ':') ;
 		if( q==NULL ) break ;
 		q++ ;
 		while( *q==' ' || *q=='\"' ) q++ ;
-		char url[1024] ; int j=0 ;
-		while( *q && *q!='\"' && j<(int)sizeof(url)-1 ) url[j++]=*q++ ;
-		url[j]='\0' ;
+		start = q ;
+		while( *q && *q!='\"' ) q++ ;
+		j = (size_t)( q - start ) ;
 		p = q ;
-		if( (size_t)j>=slen && _stricmp(url + j - slen, suffix)==0 ) {
-			strncpy(out, url, outsz-1) ; out[outsz-1]='\0' ;
-			return 1 ;
-		}
+		if( j>=slen && _strnicmp(start + j - slen, suffix, slen)==0 )
+			return dupprintf( "%.*s", (int)j, start ) ;
 	}
-	return 0 ;
+	return NULL ;
 }
 
 /* Download a URL to a local file. Uses generous timeouts (multi-MB installer,
@@ -226,10 +267,10 @@ static int kitty_download_to_file( const char *url, const char *path ) {
  * per-user installs run unelevated. Restart Manager inside msiexec will close
  * the running kitty.exe to perform the in-place upgrade. */
 static int kitty_run_installer( HWND hwnd, kitty_install_t type, const char *path ) {
-	char args[MAX_PATH+32] ;
-	snprintf( args, sizeof(args), "/i \"%s\"", path ) ;
+	char *args = dupprintf( "/i \"%s\"", path ) ;   /* whole */
 	HINSTANCE r = ShellExecuteA( hwnd, (type==KITTY_INST_SYSTEM) ? "runas" : "open",
 		"msiexec.exe", args, NULL, SW_SHOWNORMAL ) ;
+	sfree( args ) ;
 	return ((INT_PTR)r > 32) ;
 }
 
@@ -251,10 +292,13 @@ static int kitty_fetch_latest_version( char *ver, int verlen, int *is_beta ) {
 	 * the re-check of a long-running launcher without a release to find and
 	 * without a network. A release build has no such door. */
 	{
-		char path[MAX_PATH+40], *slash ; FILE *fp ;
-		if( GetModuleFileNameA( NULL, path, MAX_PATH ) && ( slash = strrchr( path, '\\' ) ) != NULL ) {
-			strcpy( slash+1, "update_test_latest.txt" ) ;
-			if( ( fp = fopen( path, "r" ) ) != NULL ) {
+		char *dir = kitty_module_dir_dup( NULL ), *path = NULL ; FILE *fp ;
+		if( dir != NULL ) path = dupprintf( "%s\\update_test_latest.txt", dir ) ;
+		sfree( dir ) ;
+		if( path != NULL ) {
+			fp = fopen( path, "r" ) ;
+			sfree( path ) ;
+			if( fp != NULL ) {
 				char line[64] = "" ; int k = 0 ; const char *d ;
 				if( fgets( line, sizeof(line), fp ) == NULL ) line[0] = '\0' ;
 				fclose( fp ) ;
@@ -446,9 +490,10 @@ typedef struct {
 	HWND  owner ;
 	int   action ;
 	kitty_install_t itype ;
-	char  asseturl[1024] ;
-	char  notesurl[512] ; /* KiTTY: that release's GitHub page; "" => no button */
-	char  text[2048] ;    /* message; the dialog is grown to fit it */
+	/* each held whole (never NULL; freed with the box) */
+	char  *asseturl ;
+	char  *notesurl ;     /* KiTTY: that release's GitHub page; "" => no button */
+	char  *text ;         /* message; the dialog is grown to fit it */
 	int   has_update ;    /* update available (Update now/Later) vs info (OK) */
 } kitty_upd_ctx ;
 
@@ -456,6 +501,13 @@ typedef struct {
  * terminal window, and a modal box stopped its session - no output, no
  * keepalive - until it was answered. The sound keeps the failure from slipping
  * by. Where no modeless box can be made, the modal one as before. */
+static void kitty_upd_ctx_free( kitty_upd_ctx *c ) {
+	sfree( c->asseturl ) ;
+	sfree( c->notesurl ) ;
+	sfree( c->text ) ;
+	free( c ) ;
+}
+
 static void kitty_upd_failed( HWND owner, const char *caption, const char *text ) {
 	MessageBeep( MB_ICONERROR ) ;
 	if( !kitty_info_modeless( owner, caption, text, NULL, NULL ) )
@@ -466,19 +518,25 @@ static void kitty_upd_failed( HWND owner, const char *caption, const char *text 
  * non-modal popup's "Update" button can call it). Its failures go to
  * kitty_upd_failed. */
 static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install_t itype ) {
-	char tmpdir[MAX_PATH]="", tmpbase[MAX_PATH]="", tmpfile[MAX_PATH]="" ;
-	if( !GetTempPathA( sizeof(tmpdir), tmpdir ) ||
-	    !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
+	/* %TEMP% whole; GetTempFileName fills MAX_PATH bytes or fails (a folder
+	 * too long for it is its failure, reported below), and the .msi name is
+	 * built whole - a TEMP too long for the old buffer left it unfilled, and
+	 * the name was cut to another file */
+	char *tmpdir = kitty_temp_path_dup(), tmpbase[MAX_PATH] = "", *tmpfile ;
+	if( tmpdir == NULL || !GetTempFileNameA( tmpdir, "kty", 0, tmpbase ) ) {
+		sfree( tmpdir ) ;
 		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_TMP_FAILED ) ;
 		return ;
 	}
+	sfree( tmpdir ) ;
 	DeleteFileA( tmpbase ) ;
-	snprintf( tmpfile, sizeof(tmpfile), "%s.msi", tmpbase ) ;
+	tmpfile = dupprintf( "%s.msi", tmpbase ) ;
 
 	HCURSOR oldc = SetCursor( LoadCursor(NULL, IDC_WAIT) ) ;
 	int dok = kitty_download_to_file( asseturl, tmpfile ) ;
 	SetCursor( oldc ) ;
 	if( !dok ) {
+		sfree( tmpfile ) ;
 		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_DOWNLOAD_FAILED ) ;
 		ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 		return ;
@@ -489,6 +547,7 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 		NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
 	if( updguard == INVALID_HANDLE_VALUE ) {
 		DeleteFileA( tmpfile ) ;
+		sfree( tmpfile ) ;
 		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_SECURE_FAILED ) ;
 		return ;
 	}
@@ -496,16 +555,19 @@ static void kitty_do_msi_update( HWND owner, const char *asseturl, kitty_install
 	if( !kitty_authenticode_verify( tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
+		sfree( tmpfile ) ;
 		kitty_upd_failed( owner, KT_CAP_UPDATE_SIG_REJECTED, KT_UPD_SIG_REJECTED ) ;
 		return ;
 	}
 	if( !kitty_run_installer( owner, itype, tmpfile ) ) {
 		CloseHandle( updguard ) ;
 		DeleteFileA( tmpfile ) ;
+		sfree( tmpfile ) ;
 		kitty_upd_failed( owner, KT_CAP_UPDATE, KT_UPD_INSTALLER_FAILED ) ;
 		return ;
 	}
 	/* keep the verified bytes locked while msiexec reads them (released on exit). */
+	sfree( tmpfile ) ;
 }
 
 /* Grow the message control + the whole dialog to fit `text` at the dialog's
@@ -570,11 +632,11 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 			HWND owner = c ? c->owner : NULL ;
 			int  action = c ? c->action : KUP_ACT_NONE ;
 			kitty_install_t itype = c ? c->itype : KITTY_INST_PORTABLE ;
-			char url[1024] ; url[0]='\0' ;
-			if( c ) { strncpy(url, c->asseturl, sizeof(url)-1) ; url[sizeof(url)-1]='\0' ; }
+			char *url = dupstr( c ? c->asseturl : "" ) ;   /* the box frees c */
 			DestroyWindow( h ) ;   /* close the popup, then act */
 			if( action==KUP_ACT_OPENPAGE ) ShellExecute( owner, "open", KITTY_RELEASES_URL, 0, 0, SW_SHOWDEFAULT ) ;
 			else if( action==KUP_ACT_MSI ) kitty_do_msi_update( owner, url, itype ) ;
+			sfree( url ) ;
 			return TRUE ;
 		}
 		if( LOWORD(wp)==IDC_UPD_NOTES ) {
@@ -588,7 +650,7 @@ static INT_PTR CALLBACK kitty_upd_dlgproc( HWND h, UINT msg, WPARAM wp, LPARAM l
 		return FALSE ;
 	  case WM_CLOSE: DestroyWindow( h ) ; return TRUE ;
 	  case WM_NCDESTROY:
-		if( c ) { free(c) ; SetWindowLongPtr( h, DWLP_USER, 0 ) ; }
+		if( c ) { kitty_upd_ctx_free( c ) ; SetWindowLongPtr( h, DWLP_USER, 0 ) ; }
 		return FALSE ;
 	}
 	return FALSE ;
@@ -607,14 +669,14 @@ static void kitty_show_update_popup( HWND owner, const char *text, int action,
 	if( !c ) return ;
 	c->owner = owner ; c->action = action ; c->itype = itype ;
 	c->has_update = ( action != KUP_ACT_NONE ) ;
-	if( text ) { strncpy( c->text, text, sizeof(c->text)-1 ) ; }
-	if( asseturl ) { strncpy( c->asseturl, asseturl, sizeof(c->asseturl)-1 ) ; }
-	if( notesurl ) { strncpy( c->notesurl, notesurl, sizeof(c->notesurl)-1 ) ; }
+	c->text = dupstr( text ? text : "" ) ;
+	c->asseturl = dupstr( asseturl ? asseturl : "" ) ;
+	c->notesurl = dupstr( notesurl ? notesurl : "" ) ;
 	/* Modeless: don't block the session that's starting up. The dialog frees c
 	 * on WM_NCDESTROY. */
 	HWND h = CreateDialogParamA( GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_UPDATEBOX),
 		owner, kitty_upd_dlgproc, (LPARAM)c ) ;
-	if( !h ) free( c ) ;
+	if( !h ) kitty_upd_ctx_free( c ) ;
 }
 
 /*
@@ -772,7 +834,7 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 			latestnum[k]='\0' ;
 			}
 		if( latestnum[0] ) {
-			int cv[4], lv[4] ; char msg[512] ;
+			int cv[4], lv[4] ; char *msg ;
 			kitty_parse_version( curnum, cv ) ;
 			kitty_parse_version( latestnum, lv ) ;
 			if( kitty_version_cmp( cv, lv ) < 0 ) {
@@ -783,35 +845,36 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 				 * (kitty_do_msi_update), whose error boxes keep their sound. */
 				int stable_taking_beta = ( !cur_is_beta && latest_is_beta ) ;
 				kitty_install_t itype = kitty_detect_install_type() ;
-				/* KiTTY: that release's GitHub page, for "View release notes". */
-				char notesurl[512]="" ;
-				if( tag[0] )
-					snprintf( notesurl, sizeof(notesurl), "%s/tag/%s",
-						KITTY_RELEASES_URL, tag ) ;
-				char asseturl[1024]="" ; int haveasset = 0 ;
+				/* KiTTY: that release's GitHub page, for "View release notes".
+				 * It and the asset URL are held whole. */
+				char *notesurl = tag[0] ? dupprintf( "%s/tag/%s", KITTY_RELEASES_URL, tag )
+				                        : dupstr( "" ) ;
+				char *asseturl = NULL ;
 				if( itype != KITTY_INST_PORTABLE ) {
 					const char *suffix = (itype==KITTY_INST_SYSTEM)
 						? "-x64-system.msi" : "-x64-peruser.msi" ;
-					haveasset = kitty_find_asset_url( body, suffix, asseturl, sizeof(asseturl) ) ;
+					asseturl = kitty_find_asset_url( body, suffix ) ;
 				}
 				free( body ) ; body = NULL ;
 				/* Refuse a non-HTTPS asset URL (never auto-download+run over plain http). */
-				if( haveasset && strncmp( asseturl, "https://", 8 )!=0 ) haveasset = 0 ;
+				if( asseturl && strncmp( asseturl, "https://", 8 )!=0 ) { sfree( asseturl ) ; asseturl = NULL ; }
 
-				if( itype==KITTY_INST_PORTABLE || !haveasset ) {
+				if( itype==KITTY_INST_PORTABLE || !asseturl ) {
 					/* Portable copy or no matching asset: offer the download page. */
-					snprintf( msg, sizeof(msg),
+					msg = dupprintf(
 						KT_UPD_AVAILABLE_HEAD,
 						curnum, latestnum, stable_taking_beta ? KT_UPD_BETA_MARK : "",
 						(itype==KITTY_INST_PORTABLE)
 						  ? KT_UPD_PORTABLE_OPEN_PAGE
 						  : KT_UPD_NO_ASSET_OPEN_PAGE ) ;
 					kitty_show_update_popup( hwnd, msg, KUP_ACT_OPENPAGE, KITTY_RELEASES_URL, itype, notesurl ) ;
+					sfree( msg ) ;
+					sfree( notesurl ) ;
 					return ;
 				}
 				/* MSI install path. If a stable build is offered a beta, state it in
 				 * the text (the "Update now" button is the explicit opt-in). */
-				snprintf( msg, sizeof(msg),
+				msg = dupprintf(
 					KT_UPD_AVAILABLE_HEAD
 					KT_UPD_AVAILABLE_MSI_TAIL,
 					curnum, latestnum, stable_taking_beta ? KT_UPD_BETA_MARK : "",
@@ -819,6 +882,9 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 					  ? KT_UPD_STABLE_TAKING_BETA
 					  : "" ) ;
 				kitty_show_update_popup( hwnd, msg, KUP_ACT_MSI, asseturl, itype, notesurl ) ;
+				sfree( msg ) ;
+				sfree( asseturl ) ;
+				sfree( notesurl ) ;
 				return ;
 			} else {
 				/* No update. In a live terminal, state it in the title for 3s (no
@@ -829,10 +895,9 @@ void CheckVersionFromWebSite( HWND hwnd, int is_terminal ) {
 						curnum, cur_is_beta ? "-beta" : "" ) ;
 					kitty_title_notice( hwnd, note, 5000 ) ;
 				} else {
-					snprintf( msg, sizeof(msg),
-						KT_UPD_UP_TO_DATE,
-						curnum, latestnum ) ;
+					msg = dupprintf( KT_UPD_UP_TO_DATE, curnum, latestnum ) ;
 					kitty_show_update_popup( hwnd, msg, KUP_ACT_NONE, NULL, 0, NULL ) ;
+					sfree( msg ) ;
 				}
 				free( body ) ;
 				return ;

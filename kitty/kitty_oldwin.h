@@ -123,6 +123,39 @@ char *kitty_full_path_dup(const char *path);
 char *kitty_temp_path_dup(void);
 
 /*
+ * More reads held whole, same rules (sfree the result; NULL = failed, with
+ * Windows' reason in GetLastError(), never a cut value):
+ *
+ *   kitty_module_dir_dup        the folder of a module (NULL = this exe),
+ *                               without its trailing backslash
+ *   kitty_long_path_dup         GetLongPathName
+ *   kitty_getenv_dup            GetEnvironmentVariable (NULL = not set)
+ *   kitty_expand_env_strict_dup ExpandEnvironmentStrings; NULL when it fails,
+ *                               never the unexpanded text
+ *   kitty_wide_to_acp_dup       wide text in the ANSI code page
+ *   kitty_acp_to_wide_dup       ANSI text as wide text
+ *   kitty_profile_string_dup    GetPrivateProfileString; NULL = absent or
+ *                               empty (def NULL) - the file read whole
+ *   kitty_reg_query_dup         one value of an open key: its data, its type
+ *                               and its length in bytes, two NUL bytes after
+ *                               the data so a string is always terminated
+ *   kitty_reg_str_dup           a REG_SZ / REG_EXPAND_SZ value (not expanded)
+ *                               of HKEY root\subkey; NULL = absent, empty or
+ *                               another type
+ */
+char *kitty_module_dir_dup(HMODULE mod);
+char *kitty_long_path_dup(const char *path);
+char *kitty_getenv_dup(const char *name);
+char *kitty_expand_env_strict_dup(const char *in);
+char *kitty_wide_to_acp_dup(const wchar_t *w);
+wchar_t *kitty_acp_to_wide_dup(const char *s);
+char *kitty_profile_string_dup(const char *section, const char *key,
+                               const char *def, const char *file);
+unsigned char *kitty_reg_query_dup(HKEY key, const char *name,
+                                   DWORD *type, DWORD *len);
+char *kitty_reg_str_dup(HKEY root, const char *subkey, const char *name);
+
+/*
  * Attach to the console of the process that started us, so a GUI binary can
  * print to the shell that ran it. XP and later; FALSE on anything older, and
  * on a process that has no parent console. Nothing depends on it - the caller
