@@ -2359,10 +2359,12 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
 /* Returns true only when the whole file was written and closed: the caller
  * removes an older copy of the session on that, and on nothing less.
  * classic: a changed or new line is written in classic KiTTY's "key\value\"
- * form (the named-proxy files, kitty_proxy.c), else as key=value. */
+ * form (the named-proxy files, kitty_proxy.c), else as key=value.
+ * The file is replaced whole or not at all (kitty_write_file_whole): a crash
+ * or a full disk mid-write leaves the old file, never a cut one. */
 static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
 {
-    FILE *fp;
+    strbuf *sb;
     bool ok;
     /* every caller writes into the store (sessions, CAs, KiTTYState, named
      * proxies): readonly=yes writes nothing - the callers' own checks come
@@ -2370,38 +2372,30 @@ static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
     if (kitty_store_readonly())
         return false;
     CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
-    _doserrno = 0;
-    fp = fopen(path, "wb");
-    if (!fp) {
-        /* Windows' reason for the caller (GetLastError): a file another
-         * program holds refuses with a sharing violation, which a session
-         * save tries again (windows/storage.c close_settings_w) */
-        DWORD err = (DWORD)_doserrno;
-        SetLastError(err ? err : ERROR_WRITE_FAULT);
-        return false;
-    }
-    _doserrno = 0;
+    sb = strbuf_new_nm();                 /* it holds the stored passwords */
     for (; h; h = h->next) {
         const char *eol = h->crlf ? "\r\n" : "\n";   /* the line's own */
         char *mv;
         if (h->raw || !h->key) {           /* a line as it was read */
-            fprintf(fp, "%s%s", h->raw ? h->raw : "", eol);
+            put_fmt(sb, "%s%s", h->raw ? h->raw : "", eol);
             continue;
         }
         mv = ksf_munge(h->val ? h->val : "");
         if (classic)
-            fprintf(fp, "%s\\%s\\%s", h->key, mv ? mv : "", eol);
+            put_fmt(sb, "%s\\%s\\%s", h->key, mv ? mv : "", eol);
         else
-            fprintf(fp, "%s=%s%s", h->key, mv ? mv : "", eol);
+            put_fmt(sb, "%s=%s%s", h->key, mv ? mv : "", eol);
         if (mv) sfree(mv);
     }
-    ok = !ferror(fp);
-    if (fclose(fp) != 0)
-        ok = false;
-    ksp_verdict_forget(path);   /* judged afresh at the next listing */
-    if (!ok) {
-        DWORD err = (DWORD)_doserrno;
-        SetLastError(err ? err : ERROR_WRITE_FAULT);
+    /* Windows' reason stays in GetLastError() for the caller: a file
+     * another program holds refuses with a sharing violation, which a
+     * session save tries again (windows/storage.c close_settings_w) */
+    ok = kitty_write_file_whole(path, sb->s, sb->len) != 0;
+    {
+        DWORD err = GetLastError();
+        strbuf_free(sb);                   /* _nm: cleared before it is freed */
+        ksp_verdict_forget(path);          /* judged afresh at the next listing */
+        SetLastError(err);
     }
     return ok;
 }

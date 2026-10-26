@@ -68,6 +68,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - A session save to the folder store that fails is retried for a second,
   then reported in a box and in the Event Log. Before, it was lost without
   a word.
+- Folder store: a session, KiTTYState or Jumplist file is replaced whole on
+  save. A crash or a full disk while saving no longer leaves a cut file.
 
 ## 0.85.1.18-beta — 2026-10-23
 

@@ -20,6 +20,7 @@
 #include "../kitty/kitty_winerr.h"   /* kitty_win_reason: a failed session save */
 #include "../kitty/kitty_winevent.h" /* kitty_wev_suite: its Event Log record */
 #include "../kitty/kitty_b64.h"      /* ksec_b64_encode: the login script's protected form */
+#include "../kitty/kitty_atomicfile.h"  /* kitty_write_file_whole: the Jumplist */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -630,10 +631,14 @@ void kitty_set_session_save_failed_report(void (*fn)(const char *msg))
 #define KSF_SAVE_RETRY_MS   1000
 #define KSF_SAVE_RETRY_STEP 100
 
+/* A file another program holds: a sharing or lock violation, or - when the
+ * whole-file replace (kitty_write_file_whole) moves onto a file held open
+ * without delete sharing - access denied. A denial that lasts (a
+ * write-protected folder) costs the one second of tries before the report. */
 static bool ksf_save_transient(DWORD err)
 {
     return err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION ||
-        err == ERROR_USER_MAPPED_FILE;
+        err == ERROR_USER_MAPPED_FILE || err == ERROR_ACCESS_DENIED;
 }
 
 static void kitty_session_save_failed(const char *sess, const char *path,
@@ -2214,20 +2219,20 @@ static int transform_jumplist_registry(
                 }
             }
             if (path && root) {
+                /* KiTTY: replaced whole or not at all (kitty_write_file_whole) */
+                strbuf *out = strbuf_new();
+                BinarySource outsrc[1];
                 CreateDirectoryA(root, NULL);
-                fp = fopen(path, "wb");
-                if (fp) {
-                    BinarySource outsrc[1];
-                    BinarySource_BARE_INIT_PL(outsrc, ptrlen_from_strbuf(newlist));
-                    while (true) {
-                        const char *item = get_asciz(outsrc);
-                        if (get_err(outsrc)) break;
-                        char *m = ksf_munge(item);
-                        fprintf(fp, "%s\n", m);
-                        sfree(m);
-                    }
-                    write_failure = (fclose(fp) != 0);
-                } else write_failure = true;
+                BinarySource_BARE_INIT_PL(outsrc, ptrlen_from_strbuf(newlist));
+                while (true) {
+                    const char *item = get_asciz(outsrc);
+                    if (get_err(outsrc)) break;
+                    char *m = ksf_munge(item);
+                    put_fmt(out, "%s\n", m);
+                    sfree(m);
+                }
+                write_failure = !kitty_write_file_whole(path, out->s, out->len);
+                strbuf_free(out);
             } else write_failure = true;
             strbuf_free(oldlist);
             oldlist = newlist;
