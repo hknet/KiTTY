@@ -1066,13 +1066,14 @@ void LoadParameters( void ) {
 	 * the free-form keys are read here and handed over in one shot.
 	 * NB the mini ini parser matches section/key names case-SENSITIVELY. */
 	{
-	char fbList[1024]="", fbOvr[2048]="", fbLog[64]="", *fbLogFile ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK, fbList, sizeof(fbList) ) ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
+	char fbLog[64]="", *fbList, *fbOvr, *fbLogFile ;
+	/* the lists and the log file in full: cut, a list lost its last
+	 * entries and the log file named another file */
+	fbList = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK ) ;
+	fbOvr = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	/* the log file whole: cut to MAX_PATH, it named another file */
 	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
-	winfb_config_set( fbList, fbOvr, fbLog, fbLogFile ? fbLogFile : "" ) ;
-	sfree( fbLogFile ) ;
+	winfb_config_set( fbList ? fbList : "", fbOvr ? fbOvr : "", fbLog, fbLogFile ? fbLogFile : "" ) ;
+	sfree( fbList ) ; sfree( fbOvr ) ; sfree( fbLogFile ) ;
 	}
 }

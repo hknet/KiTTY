@@ -900,11 +900,12 @@ void staticedit(struct ctlpos *cp, const char *stext,
 }
 
 /* KiTTY: the folder picker behind FILTER_FOLDERS rows. Registered by the
- * program that builds such a row (kitty_config.c hands over OpenDirNameFrom);
- * the stock PuTTY variants share this file, build no folder row and register
- * nothing - so no link-time dependency on kitty_winutil.c. */
-static int (*kitty_dir_picker)(HWND, char *, const char *, const char *) = NULL;
-void kitty_controls_set_dir_picker(int (*fn)(HWND, char *, const char *, const char *))
+ * program that builds such a row (kitty_config.c hands over
+ * kitty_pick_dir_dup: owner, initial folder, title; the answer in full, sfree
+ * it, NULL = none); the stock PuTTY variants share this file, build no folder
+ * row and register nothing - so no link-time dependency on kitty_winutil.c. */
+static char *(*kitty_dir_picker)(HWND, const char *, const char *) = NULL;
+void kitty_controls_set_dir_picker(char *(*fn)(HWND, const char *, const char *))
 {
     kitty_dir_picker = fn;
 }
@@ -3230,12 +3231,11 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
             if (ctrl->fileselect.filter == FILTER_FOLDERS) {
                 /* KiTTY: a folder row - the shell's folder picker, opened on
                  * the folder the box names, instead of a file dialog. */
-                char dir[4096];
                 char *prev = fn_prev ? dupstr(filename_to_str(fn_prev)) : NULL;
-                dir[0] = '\0';
-                fn = (kitty_dir_picker &&
-                      kitty_dir_picker(dp->hwnd, dir, prev, ctrl->fileselect.title)
-                      && dir[0]) ? filename_from_str(dir) : NULL;
+                char *dir = kitty_dir_picker ?
+                    kitty_dir_picker(dp->hwnd, prev, ctrl->fileselect.title) : NULL;
+                fn = (dir && dir[0]) ? filename_from_str(dir) : NULL;
+                sfree(dir);
                 sfree(prev);
             } else
                 fn = request_file(

@@ -99,57 +99,90 @@ static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, con
  * (kitty_menuslots_cut). accel: with the Ctrl+Shift+<letter> column of the
  * first 26. Returns how many were appended. */
 static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int accel ) {
-	char buffer[4096] ;
+	char * buffer ;
 	int k, nb, n = 0 ;
 	for( k = 0 ; k < nitems ; k++ ) {
 		if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
 		if( accel && nb < 26 )
-			snprintf( buffer, sizeof(buffer), "%s\tCtrl+Shift+%c", items[k].label, ('A'+nb) ) ;
+			buffer = dupprintf( "%s\tCtrl+Shift+%c", items[k].label, ('A'+nb) ) ;
 		else
-			snprintf( buffer, sizeof(buffer), "%s", items[k].label ) ;
+			buffer = dupstr( items[k].label ) ;
 		AppendMenu( menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
+		sfree( buffer ) ;
 		n++ ;
 		}
 	return n ;
 	}
 
+/* One value of an open key, its name and its data in full (sfree both; the
+ * data gets two NULs after it, so a string is always terminated). The answer
+ * is RegEnumValue's: anything but ERROR_SUCCESS leaves both NULL. */
+static LONG sm_enum_value( HKEY hKey, DWORD i, char ** name, char ** data ) {
+	DWORD dcap = 4096 ;
+	*name = NULL ; *data = NULL ;
+	for( ;; ) {
+		/* a value name is at most 16383 characters */
+		DWORD nlen = MAX_VALUE_NAME + 1, dlen = dcap, type ;
+		LONG r ;
+		*name = snewn( MAX_VALUE_NAME + 1, char ) ;
+		*data = snewn( dcap + 2, char ) ;
+		r = RegEnumValue( hKey, i, *name, &nlen, NULL, &type, (LPBYTE)*data, &dlen ) ;
+		if( r == ERROR_SUCCESS && dlen <= dcap ) {
+			(*data)[dlen] = (*data)[dlen+1] = '\0' ;
+			return r ;
+			}
+		sfree( *name ) ; sfree( *data ) ;
+		*name = NULL ; *data = NULL ;
+		if( r != ERROR_MORE_DATA && r != ERROR_SUCCESS ) return r ;
+		/* the data grew: dlen holds the size it needs now */
+		if( dlen <= dcap ) dlen = dcap * 2 ;
+		if( dlen > 64 * 1024 * 1024 ) return ERROR_MORE_DATA ;
+		dcap = dlen ;
+		}
+	}
+
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 	HKEY hKey ;
 	HMENU SubMenu ;
-	char buffer[4096], fullpath[1024], *p ;
+	char * buffer, * p ;
 	int i ;
 	int local_nb = 0 ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-		TCHAR achValue[MAX_VALUE_NAME], achClass[MAX_PATH] = TEXT("");
-		DWORD  cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass,cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
+		TCHAR achClass[MAX_PATH] = TEXT("");
+		DWORD  cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass,cValues=0,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
 
-		char launcherkey[1024] ;
+		char * launcherkey ;
 		struct sm_item *items = NULL ;
 		int nitems = 0, k, is_launcher ;
-		snprintf( launcherkey, sizeof(launcherkey), "%s\\Launcher", kitty_registry_base() ) ;
+		launcherkey = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
 		is_launcher = !strncmp( KeyName, launcherkey, strlen(launcherkey) ) ;
+		sfree( launcherkey ) ;
 
-		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
+		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS ) {
+			cSubKeys = 0 ; cValues = 0 ;
+			}
 
 		if( cSubKeys>0 ) { // collect the submenus
 		for (i=0; i<cSubKeys; i++) {
-			DWORD cchValue = MAX_VALUE_NAME;
-			char lpData[4096] ;
-			achValue[0] = '\0';
+			/* a key name is at most 255 characters */
+			char lpData[MAX_KEY_LENGTH + 1] ;
+			DWORD cchValue = sizeof(lpData) ;
 
 			if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
-				unmungestr( lpData, buffer, MAX_PATH ) ;
-				sm_items_add( &items, &nitems, buffer, lpData ) ;
+				char * plain = unmungestr_dup( lpData ) ;
+				sm_items_add( &items, &nitems, plain, lpData ) ;
+				sfree( plain ) ;
 				}
 			}
 		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
 		for( k = 0 ; k < nitems ; k++ ) {
 			SubMenu = CreateMenu() ;
-			snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, items[k].data ) ;
+			buffer = dupprintf( "%s\\%s", KeyName, items[k].data ) ;
 			sm_read_folder( menu, SubMenu, buffer, nbitem, items[k].label ) ;
+			sfree( buffer ) ;
 			}
 		sm_items_free( &items, &nitems ) ;
 
@@ -158,19 +191,15 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 
 	        for (i=0; i<cValues; i++) {
-			DWORD cchValue = MAX_VALUE_NAME;
-			DWORD lpType,dwDataSize=4096 ;
-			unsigned char lpData[4096] ;
-			dwDataSize = 4096 ;
-			achValue[0] = '\0';
-
-			if( RegEnumValue(hKey,i,achValue,&cchValue,NULL,&lpType,lpData,&dwDataSize) == ERROR_SUCCESS ) {
+			char * achValue, * lpData ;
+			if( sm_enum_value( hKey, i, &achValue, &lpData ) == ERROR_SUCCESS ) {
 			/* Default Settings never appears in the launcher, at ANY level of
 			 * its copy: the writer skips it now (InitLauncherRegistry), this
 			 * keeps a copy an older build left behind out of the menu too. */
-			lpData[dwDataSize < sizeof(lpData) ? dwDataSize : sizeof(lpData) - 1] = '\0' ;
 			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || !is_launcher )
-				sm_items_add( &items, &nitems, achValue, (char*)lpData ) ;
+				sm_items_add( &items, &nitems, achValue, lpData ) ;
+			sfree( achValue ) ;
+			sfree( lpData ) ;
 				}
 			}
     		}
@@ -179,39 +208,38 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		sm_items_free( &items, &nitems ) ;
 
 		(*nbitem)=kitty_menuslots_count() ;
-		
+
 		RegCloseKey( hKey ) ;
 		}
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ) {
-		portable_config_path( fullpath, sizeof(fullpath), KeyName ) ;
+		char * fullpath = portable_config_subdir( KeyName ) ;
 		DIR * dir ;
 		struct dirent * de ;
 		FILE *fp ;
-		if( ( dir = opendir( fullpath ) ) != NULL ) {
+		if( fullpath != NULL && ( dir = opendir( fullpath ) ) != NULL ) {
 			struct sm_item *items = NULL ;
 			int nitems = 0, k, is_launcher = !strncmp(KeyName,"Launcher",8) ;
 			if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 			while( ( de = readdir(dir) ) != NULL ) { // look for subkeys (directories)
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
-					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
-					if( GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY ) {
-						unmungestr( de->d_name, buffer, MAX_PATH ) ;
-						sm_items_add( &items, &nitems, buffer, de->d_name ) ;
+					DWORD attr ;
+					buffer = dupprintf( "%s\\%s", fullpath, de->d_name ) ;
+					attr = GetFileAttributes( buffer ) ;
+					sfree( buffer ) ;
+					if( attr != INVALID_FILE_ATTRIBUTES && ( attr & FILE_ATTRIBUTE_DIRECTORY ) ) {
+						char * plain = unmungestr_dup( de->d_name ) ;
+						sm_items_add( &items, &nitems, plain, de->d_name ) ;
+						sfree( plain ) ;
 						}
-					/*if( stat( buffer, &statBuf ) != -1 ) {
-						if( ( statBuf.st_mode & S_IFMT) == S_IFDIR ) {
-							snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, de->d_name ) ;
-							ReadSpecialMenu( menu, buffer, nbitem, separator ) ;
-							}
-						}*/
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
 			for( k = 0 ; k < nitems ; k++ ) {
 				SubMenu = CreateMenu() ;
-				snprintf( buffer, sizeof(buffer), "%s\\%s", KeyName, items[k].data ) ;
+				buffer = dupprintf( "%s\\%s", KeyName, items[k].data ) ;
 				sm_read_folder( menu, SubMenu, buffer, nbitem, items[k].label ) ;
+				sfree( buffer ) ;
 				}
 			sm_items_free( &items, &nitems ) ;
 			rewinddir( dir ) ;
@@ -221,34 +249,33 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 				/* Default Settings must not show up in the launcher - at any
 				 * level of its copy, and by the unmunged name (the writer skips
 				 * it now; this covers a copy an older build left behind). */
-				char plain[MAX_PATH] ;
-				unmungestr( de->d_name, plain, MAX_PATH ) ;
+				char * plain = unmungestr_dup( de->d_name ) ;
 				if( strcmp(plain,KITTY_DEFAULT_SESSION) || strncmp(KeyName,"Launcher",8) ) {
-					
-					snprintf( buffer, sizeof(buffer), "%s\\%s", fullpath, de->d_name ) ;
-					if( !(GetFileAttributes( buffer ) & FILE_ATTRIBUTE_DIRECTORY) ) {
+					DWORD attr ;
+					buffer = dupprintf( "%s\\%s", fullpath, de->d_name ) ;
+					attr = GetFileAttributes( buffer ) ;
+					if( attr != INVALID_FILE_ATTRIBUTES && !( attr & FILE_ATTRIBUTE_DIRECTORY ) ) {
 						if( ( fp=fopen(buffer,"rb")) != NULL ) {
-							while( fgets( buffer, 4096, fp )!=NULL ){
-								str_rtrim( buffer, "\n\r" ) ;
-								if( strlen(buffer)>0 && buffer[strlen(buffer)-1]=='\\' ) {
-									buffer[strlen(buffer)-1]='\0' ;
-									
-									if( (p=strstr(buffer,"\\"))!=NULL ){
+							char * line ;
+							/* each line in full: a long one used to arrive in pieces */
+							while( ( line = kitty_fgetline( fp ) ) != NULL ) {
+								str_rtrim( line, "\n\r" ) ;
+								if( strlen(line)>0 && line[strlen(line)-1]=='\\' ) {
+									line[strlen(line)-1]='\0' ;
+
+									if( (p=strstr(line,"\\"))!=NULL ){
 										p[0]='\0';
-										sm_items_add( &items, &nitems, buffer, p+1 ) ;
+										sm_items_add( &items, &nitems, line, p+1 ) ;
 										}
 									}
+								free( line ) ;
 								}
 							fclose(fp) ;
 							}
 						}
-						/*
-					if( stat( buffer, &statBuf ) != -1 ) {
-						if( ( statBuf.st_mode & S_IFMT ) == S_IFREG ) {
-							
-							}
-						}*/
+					sfree( buffer ) ;
 					}
+				sfree( plain ) ;
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
@@ -257,6 +284,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			(*nbitem)=kitty_menuslots_count() ;
 			closedir( dir ) ;
 			}
+		sfree( fullpath ) ;
 		}
 	return local_nb ;
 	}
@@ -274,7 +302,7 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 	size_t pl = strlen( prefix ) ;
 	for( i = 0 ; i < n ; i++ ) {	/* the folders one level below prefix */
 		const char * rest = e[i].folder, * end ;
-		char comp[MAX_VALUE_NAME] ;
+		char * comp ;
 		size_t cl ;
 		if( pl ) {
 			if( strnicmp( rest, prefix, pl ) || rest[pl] != '\\' ) continue ;
@@ -283,11 +311,13 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 		if( !*rest ) continue ;
 		end = strchr( rest, '\\' ) ;
 		cl = end ? (size_t)( end - rest ) : strlen( rest ) ;
-		if( !cl || cl >= sizeof(comp) ) continue ;
+		if( !cl ) continue ;
+		comp = snewn( cl + 1, char ) ;
 		memcpy( comp, rest, cl ) ;
 		comp[cl] = '\0' ;
 		for( k = 0 ; k < nitems && stricmp( items[k].label, comp ) ; k++ ) ;
 		if( k == nitems ) sm_items_add( &items, &nitems, comp, comp ) ;
+		sfree( comp ) ;
 		}
 	sm_items_sort( items, nitems ) ;
 	for( k = 0 ; k < nitems ; k++ ) {
@@ -311,7 +341,7 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 	}
 
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
-	char KeyName[1024], buffer[1024] ;
+	char * KeyName, * mfolder, * msession ;
 	int nbitem = 0 ;
 
 	HMENU menu ;
@@ -319,32 +349,39 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 	/* Each build of the menu starts the numbering anew (the system menu and
 	 * the context menu get the same numbers for the same commands). */
 	kitty_menuslots_reset( 0 ) ;
-	
+	/* the escaped names in full: up to three bytes per character */
+	mfolder = mungestr_dup( folder ? folder : "" ) ;
+	msession = mungestr_dup( sessionname ? sessionname : "" ) ;
+
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		strcpy( KeyName, "Commands" ) ;
+		KeyName = dupstr( "Commands" ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
-		
-		mungestr( folder, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "Folders\\%s\\Commands", buffer ) ;
+		sfree( KeyName ) ;
+
+		KeyName = dupprintf( "Folders\\%s\\Commands", mfolder ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
-		
-		mungestr( sessionname, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "Sessions_Commands\\%s", buffer ) ;
+		sfree( KeyName ) ;
+
+		KeyName = dupprintf( "Sessions_Commands\\%s", msession ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
+		sfree( KeyName ) ;
 
 		}
 	else {
-		snprintf( KeyName, sizeof(KeyName), "%s\\Commands", kitty_registry_base() ) ;
+		KeyName = dupprintf( "%s\\Commands", kitty_registry_base() ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
-		
-		mungestr( folder, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "%s\\Folders\\%s\\Commands", kitty_registry_base(), buffer ) ;
-		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
+		sfree( KeyName ) ;
 
-		mungestr( sessionname, buffer ) ;
-		snprintf( KeyName, sizeof(KeyName), "%s\\Sessions\\%s\\Commands", kitty_registry_base(), buffer ) ;
+		KeyName = dupprintf( "%s\\Folders\\%s\\Commands", kitty_registry_base(), mfolder ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
+		sfree( KeyName ) ;
+
+		KeyName = dupprintf( "%s\\Sessions\\%s\\Commands", kitty_registry_base(), msession ) ;
+		ReadSpecialMenu( menu, KeyName, &nbitem, 1 ) ;
+		sfree( KeyName ) ;
 		}
+	sfree( mfolder ) ;
+	sfree( msession ) ;
 
 	if( GetMenuItemCount( menu ) > 0 )
 		AppendMenu( m, MF_POPUP, (UINT_PTR)menu, KT_MENU_USER_COMMAND ) ;
@@ -352,7 +389,7 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 	}
 
 void ManageSpecialCommand( HWND hwnd, int menunum ) {
-	char buffer[4096] ;
+	char * line ;
 	FILE *fp ;
 	/* A copy: replaying the keys can run messages, and a menu rebuild frees
 	 * the table's payloads. */
@@ -360,8 +397,10 @@ void ManageSpecialCommand( HWND hwnd, int menunum ) {
 	if( cmd != NULL ) {
 		if( strlen( cmd ) > 0 ) {
 			if( ( fp=fopen( cmd, "r") ) != NULL ) {
-				while( fgets( buffer, 4095, fp ) != NULL ) {
-					SendKeyboardPlus( hwnd, buffer ) ;
+				/* each line in full: a long one used to arrive in pieces */
+				while( ( line = kitty_fgetline( fp ) ) != NULL ) {
+					SendKeyboardPlus( hwnd, line ) ;
+					free( line ) ;
 					}
 				fclose( fp ) ;
 				}

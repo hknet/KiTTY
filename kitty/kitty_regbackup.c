@@ -700,18 +700,30 @@ int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
  * copy was only obfuscated with a constant compiled into every build. Nothing
  * reads either value any more, so remove them rather than leave a plaintext
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
+/* Is the value there, in the registry hive in use? The value is read in full
+ * and cleared again: it may be a secret. */
+static int retire_reg_value_present( const char * name ) {
+	char * v = GetValueDataDup( HKEY_CURRENT_USER, kitty_registry_base(), name ) ;
+	if( v == NULL ) return 0 ;
+	smemclr( v, strlen( v ) ) ; sfree( v ) ;
+	return 1 ;
+	}
+/* ... in kitty.ini (any value, empty included, as readINI answered) */
+static int retire_ini_value_present( const char * name ) {
+	char * v = kitty_read_ini_dup( KittyIniFile, INIT_SECTION, name ) ;
+	if( v == NULL ) return 0 ;
+	smemclr( v, strlen( v ) ) ; sfree( v ) ;
+	return 1 ;
+	}
+
 void RetireConfigPasswordLeftovers( void ) {
-	char buf[4096] ;
 	/* the registry only for a copy that keeps its settings there: a portable
 	 * copy (folder store) leaves HKCU alone - an installed copy cleans its
 	 * own hive at its next start */
-	if( IniFileFlag != SAVEMODE_DIR
-	    && GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD, buf, sizeof(buf) ) != NULL )
+	if( IniFileFlag != SAVEMODE_DIR && retire_reg_value_present( KI_PASSWORD ) )
 		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
-	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
-	    && readINI( KittyIniFile, INIT_SECTION, KI_PASSWORD, buf, sizeof(buf) ) )
+	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( KI_PASSWORD ) )
 		delINI( KittyIniFile, INIT_SECTION, KI_PASSWORD ) ;
-	memset( buf, 0, sizeof(buf) ) ;
 	}
 
 /*
@@ -735,17 +747,14 @@ void RetireCountUpLeftovers( void ) {
 	/* char* rather than const char*: RegDelValue takes LPTSTR. */
 	static char *const dead[] = {
 		KR_KILASTUP, KR_KILASTUH, KR_KISESS, KR_KISESS_COMMENTED, KR_KIVERS, KR_KIPATH } ;
-	char buf[4096] ;
 	size_t i ;
 	for( i = 0 ; i < lenof(dead) ; i++ ) {
 		if( IniFileFlag != SAVEMODE_DIR   /* a portable copy leaves HKCU alone (above) */
-		    && GetValueDataN( HKEY_CURRENT_USER, kitty_registry_base(), dead[i], buf, sizeof(buf) ) != NULL )
+		    && retire_reg_value_present( dead[i] ) )
 			RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), dead[i] ) ;
-		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag()
-		    && readINI( KittyIniFile, INIT_SECTION, dead[i], buf, sizeof(buf) ) )
+		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( dead[i] ) )
 			delINI( KittyIniFile, INIT_SECTION, dead[i] ) ;
 	}
-	memset( buf, 0, sizeof(buf) ) ;
 	}
 
 /* The export spawns reg.exe, so it runs on a worker thread rather than making

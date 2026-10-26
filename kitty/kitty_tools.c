@@ -196,23 +196,46 @@ int set_env( char * name, char * value ) {
 	return res ;
 }
 
-// Create a directory path recursively (dir1 / dir2 / ...)
+/* The next line of a file in full (free() it); NULL at the end of the file. */
+char *kitty_fgetline( FILE *fp ) {
+	size_t cap = 256, len = 0 ;
+	char *line, *grown ;
+	if( fp == NULL || ( line = (char*)malloc( cap ) ) == NULL ) return NULL ;
+	while( fgets( line + len, (int)( cap - len > 65536 ? 65536 : cap - len ), fp ) != NULL ) {
+		len += strlen( line + len ) ;
+		if( len > 0 && line[len-1] == '\n' ) return line ;
+		if( cap - len < 2 ) {
+			if( ( grown = (char*)realloc( line, cap * 2 ) ) == NULL ) { free( line ) ; return NULL ; }
+			line = grown ;
+			cap *= 2 ;
+		}
+	}
+	if( len == 0 ) { free( line ) ; return NULL ; }
+	return line ;
+}
+
+// Create a directory path recursively (dir1 / dir2 / ...). The path is
+// worked on in memory of its own, as long as the input: a path too long for
+// Windows makes _mkdir fail, and the answer is 0.
 int _mkdir (const char*);
 int MakeDir( const char * directory ) {
-	char buffer[MAX_VALUE_NAME], fullpath[MAX_VALUE_NAME], *p, *pst ;
-	int i,j ;
+	char *buffer, *fullpath, *p, *pst ;
+	int i,j, res ;
+	size_t n ;
 	
 	if( directory==NULL ) { return 1 ; } 
 	if( strlen(directory)==0 ) { return 1 ; }
+	n = strlen( directory ) ;
+	if( ( buffer = (char*)malloc( n + 2 ) ) == NULL ) return 0 ;
+	if( ( fullpath = (char*)malloc( n + 2 ) ) == NULL ) { free( buffer ) ; return 0 ; }
 
-	for( i=0, j=0 ; i<=strlen(directory) ; i++,j++ ) { // remove the spaces after a '\'
+	for( i=0, j=0 ; i<=(int)n ; i++,j++ ) { // remove the spaces after a '\' (the NUL is copied too)
 		if( (directory[i]=='\\')||(directory[i]=='/') ) {
 			fullpath[j]='\\' ;
 			while( (directory[i+1]==' ')||(directory[i+1]=='	') ) i++ ;
 		} else 
 			fullpath[j]=directory[i] ;
 	}
-	fullpath[j+1]='\0' ;
 		
 	// remove the spaces, the / and the \\ at the end
 	str_rtrim( fullpath, " \t/\\" ) ;
@@ -242,5 +265,8 @@ int MakeDir( const char * directory ) {
 		_mkdir( fullpath ) ;
 	}
 		
-	return existdirectory(fullpath) ;
+	res = existdirectory(fullpath) ;
+	free( fullpath ) ;
+	free( buffer ) ;
+	return res ;
 }

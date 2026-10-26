@@ -3308,7 +3308,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     {
         /* The download folder is local: a folder picker beside it. The
          * button's context is the box it fills. */
-        kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the row's Locate... */
+        kitty_controls_set_dir_picker(kitty_pick_dir_dup);   /* the row's Locate... */
         ctrl_filesel(s, KT_KSET_TT_DOWNLOADDIR, NO_SHORTCUT, FILTER_FOLDERS,
                      false, NULL, HELPCTX(kitty_helper_paths),
                      kitty_kset_handler, KSET(KI_DOWNLOADDIR));

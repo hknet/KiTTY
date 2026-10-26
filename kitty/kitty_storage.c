@@ -48,15 +48,34 @@
  * kitty_set_registry_root() to flip it to PuTTY's hive when KiClassName=PuTTY.
  * For convenience we additionally READ (never write) sessions from the old KiTTY hive
  * (9bis.com\KiTTY) and PuTTY's hive, in that precedence order -- see open_settings_r()
- * and enum_settings_start().  The pointers below stay
- * fixed at their buffers; only the buffer contents change.
+ * and enum_settings_start().  Each name is held in full: the defaults
+ * below until kitty_set_registry_base() builds the five in memory of their
+ * own.
  */
-char reg_base_buf[256]     = "Software\\kapper.net\\KiTTY";
-static char reg_sessions_buf[300] = "Software\\kapper.net\\KiTTY\\Sessions";
-static char reg_jumplist_buf[300] = "Software\\kapper.net\\KiTTY\\Jumplist";
-static char reg_hostca_buf[300]   = "Software\\kapper.net\\KiTTY\\SshHostCAs";
-static char reg_hostkeys_buf[300] = "Software\\kapper.net\\KiTTY\\SshHostKeys";
-static const char *const puttystr = reg_sessions_buf;
+static char reg_base_default[]     = "Software\\kapper.net\\KiTTY";
+static char reg_sessions_default[] = "Software\\kapper.net\\KiTTY\\Sessions";
+static char reg_jumplist_default[] = "Software\\kapper.net\\KiTTY\\Jumplist";
+static char reg_hostca_default[]   = "Software\\kapper.net\\KiTTY\\SshHostCAs";
+static char reg_hostkeys_default[] = "Software\\kapper.net\\KiTTY\\SshHostKeys";
+char *reg_base_buf            = reg_base_default;
+static char *reg_sessions_buf = reg_sessions_default;
+static char *reg_jumplist_buf = reg_jumplist_default;
+static char *reg_hostca_buf   = reg_hostca_default;
+static char *reg_hostkeys_buf = reg_hostkeys_default;
+static int reg_bufs_owned = 0;   /* the five above are snewn'd */
+#define puttystr (reg_sessions_buf)
+
+/* A string setting held in full: "" (kstr_none) or memory of its own. The
+ * new value is copied before the old one is freed, so it may be the old
+ * one itself. */
+static char kstr_none[1] = "";
+static void kstr_set(char **slot, const char *v)
+{
+    char *n = (v && *v) ? dupstr(v) : kstr_none;
+    if (*slot && *slot != kstr_none)
+        sfree(*slot);
+    *slot = n;
+}
 
 void kitty_set_registry_root(int use_putty)
 {
@@ -67,12 +86,25 @@ void kitty_set_registry_root(int use_putty)
  * point it at a throwaway key). */
 void kitty_set_registry_base(const char *base)
 {
-    strncpy(reg_base_buf, base, sizeof(reg_base_buf)-1);
-    reg_base_buf[sizeof(reg_base_buf)-1] = '\0';
-    sprintf(reg_sessions_buf, "%s\\Sessions",    reg_base_buf);
-    sprintf(reg_jumplist_buf, "%s\\Jumplist",    reg_base_buf);
-    sprintf(reg_hostca_buf,   "%s\\SshHostCAs",  reg_base_buf);
-    sprintf(reg_hostkeys_buf, "%s\\SshHostKeys", reg_base_buf);
+    /* built before the old ones are freed: `base` may be reg_base_buf */
+    char *nb = dupstr(base ? base : "");
+    char *ns = dupprintf("%s\\Sessions",    nb);
+    char *nj = dupprintf("%s\\Jumplist",    nb);
+    char *nc = dupprintf("%s\\SshHostCAs",  nb);
+    char *nk = dupprintf("%s\\SshHostKeys", nb);
+    if (reg_bufs_owned) {
+        sfree(reg_base_buf);
+        sfree(reg_sessions_buf);
+        sfree(reg_jumplist_buf);
+        sfree(reg_hostca_buf);
+        sfree(reg_hostkeys_buf);
+    }
+    reg_base_buf = nb;
+    reg_sessions_buf = ns;
+    reg_jumplist_buf = nj;
+    reg_hostca_buf = nc;
+    reg_hostkeys_buf = nk;
+    reg_bufs_owned = 1;
     /* the hive in use is the store readonly=yes keeps unwritten */
     kitty_store_ro_set_regbase(reg_base_buf);
 }
@@ -87,6 +119,7 @@ int kitty_root_is_putty(void)
 static int kitty_show_foreign = -1;   /* -1 = not yet read */
 int kitty_portable_store_state_string(const char *key, const char *value);
 int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
+char *kitty_portable_load_state_dup(const char *key);
 int kitty_portable_store_state_dword(const char *key, DWORD value);
 int kitty_portable_load_state_dword(const char *key, DWORD *value);
 
@@ -375,18 +408,27 @@ void kitty_set_last_session(const char *sessionname)
         RegCloseKey(hk);
     }
 }
-int kitty_get_last_session(char *buf, int buflen)
+/* A remembered string in full (sfree it); NULL = not set or empty: the
+ * portable state file, or a value of the hive in use. */
+char *kitty_state_get_dup(const char *key)
 {
-    DWORD sz = (DWORD)buflen;
-    if (!buf || buflen <= 0) return 0;
-    buf[0] = '\0';
     if (store_is_file())
-        return kitty_portable_load_state_string(KR_LASTSESSION, buf, buflen);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_LASTSESSION,
-                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
-        return 0;
-    buf[buflen-1] = '\0';
-    return buf[0] ? 1 : 0;
+        return kitty_portable_load_state_dup(key);
+    return kitty_reg_str_dup(HKEY_CURRENT_USER, reg_base_buf, key);
+}
+/* Into a caller's buffer: the value only when it fits in full - one that
+ * does not counts as not set, never a cut one. */
+static int kitty_state_into(char *v, char *buf, int buflen)
+{
+    int ok = v && strlen(v) < (size_t)buflen;
+    if (ok)
+        strcpy(buf, v);
+    sfree(v);
+    return ok;
+}
+char *kitty_get_last_session_dup(void)
+{
+    return kitty_state_get_dup(KR_LASTSESSION);
 }
 
 /* Any other remembered string of the same kind (Manage Sessions' folder and
@@ -411,19 +453,6 @@ void kitty_state_set_string(const char *key, const char *value)
         RegCloseKey(hk);
     }
 }
-int kitty_state_get_string(const char *key, char *buf, int buflen)
-{
-    DWORD sz = (DWORD)buflen;
-    if (!buf || buflen <= 0) return 0;
-    buf[0] = '\0';
-    if (store_is_file())
-        return kitty_portable_load_state_string(key, buf, buflen);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, key,
-                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
-        return 0;
-    buf[buflen-1] = '\0';
-    return buf[0] ? 1 : 0;
-}
 
 void kitty_set_last_folder(const char *folder)
 {
@@ -442,18 +471,9 @@ void kitty_set_last_folder(const char *folder)
         RegCloseKey(hk);
     }
 }
-int kitty_get_last_folder(char *buf, int buflen)
+char *kitty_get_last_folder_dup(void)
 {
-    DWORD sz = (DWORD)buflen;
-    if (!buf || buflen <= 0) return 0;
-    buf[0] = '\0';
-    if (store_is_file())
-        return kitty_portable_load_state_string(KR_LASTFOLDER, buf, buflen);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_LASTFOLDER,
-                     RRF_RT_REG_SZ, NULL, buf, &sz) != ERROR_SUCCESS)
-        return 0;
-    buf[buflen-1] = '\0';
-    return buf[0] ? 1 : 0;
+    return kitty_state_get_dup(KR_LASTFOLDER);
 }
 
 /*
@@ -839,7 +859,7 @@ int kitty_session_origin(const char *sessionname)
  * encrypted at rest exactly like registry ones.
  * ===================================================================== */
 static int  g_store_mode = 0;        /* 0 = registry; nonzero = portable file mode */
-static char g_sess_dir[1024] = "";   /* directory holding per-session files */
+static char *g_sess_dir = kstr_none;   /* directory holding per-session files */
 
 /* Lightweight diagnostic log (no plaintext: lengths + a weak checksum only).
  * Writes to %TEMP%\kitty_pwdebug.log when env KITTY_PWDEBUG is set. Shared with
@@ -856,11 +876,15 @@ void kitty_pwdebug(const char *fmt, ...)
      * flow to kitty_pwdebug.log next to the running exe. Logs only lengths +
      * a weak checksum + storage mode, never plaintext. */
     if (!GetEnvironmentVariableA("KITTY_PWDEBUG", NULL, 0)) return;
-    char path[1024], *bs;
-    DWORD n = GetModuleFileNameA(NULL, path, sizeof(path) - 24);
-    if (n == 0 || n >= sizeof(path) - 24) { strcpy(path, "kitty_pwdebug.log"); }
-    else { bs = strrchr(path, '\\'); strcpy(bs ? bs + 1 : path, "kitty_pwdebug.log"); }
+    char *exe = kitty_module_path_dup(NULL), *path, *bs;
+    if (exe && (bs = strrchr(exe, '\\')) != NULL) {
+        *bs = '\0';
+        path = dupprintf("%s\\kitty_pwdebug.log", exe);
+    } else
+        path = dupstr("kitty_pwdebug.log");
+    sfree(exe);
     FILE *f = fopen(path, "a");
+    sfree(path);
     if (!f) return;
     va_list ap; va_start(ap, fmt);
     vfprintf(f, fmt, ap);
@@ -872,10 +896,10 @@ void kitty_set_storage_mode(int mode) { g_store_mode = mode; }
 /* The configuration directory (kitty.ini configdir): Proxies, Launcher and
  * Backups live there, not in the store root, when the two part. Set by
  * kitty.exe at startup, empty in the stand-alone tools. */
-static char g_config_dir[1024] = "";
+static char *g_config_dir = kstr_none;
 void kitty_set_config_dir(const char *dir)
 {
-    snprintf(g_config_dir, sizeof(g_config_dir), "%s", dir ? dir : "");
+    kstr_set(&g_config_dir, dir);
 }
 char *portable_config_subdir(const char *subdir)   /* snewn'd or NULL */
 {
@@ -883,28 +907,13 @@ char *portable_config_subdir(const char *subdir)   /* snewn'd or NULL */
         return dupprintf("%s\\%s", g_config_dir, subdir);
     return portable_subdir_path(subdir);
 }
-/* The same into a buffer: 1 written, 0 none (not the folder store, or too
- * long) - out then empty. */
-int portable_config_path(char *out, size_t n, const char *subdir)
-{
-    char *p = portable_config_subdir(subdir);
-    int ok = p && strlen(p) < n;
-    snprintf(out, n, "%s", ok ? p : "");
-    sfree(p);
-    return ok;
-}
 char *portable_proxies_dir(void)                   /* snewn'd or NULL */
 {
     return portable_config_subdir("Proxies");
 }
 void kitty_set_session_dir(const char *dir)
 {
-    if (dir && dir[0]) {
-        strncpy(g_sess_dir, dir, sizeof(g_sess_dir) - 1);
-        g_sess_dir[sizeof(g_sess_dir) - 1] = '\0';
-    } else {
-        g_sess_dir[0] = '\0';
-    }
+    kstr_set(&g_sess_dir, dir);
 }
 int store_is_file(void) { return g_store_mode != 0 && g_sess_dir[0] != '\0'; }
 /* Public query for UI surfaces (e.g. the config-box "(portable)" title tag). */
@@ -1124,21 +1133,20 @@ int ksf_list_comment_defaults(struct ksf_item *h, struct ksf_item *defs,
  * it either migrates it or - when the current file is ALSO there, as another
  * session - is refused with the save-clash text (KT_SP_SAVE_CLASH).
  * ===================================================================== */
-static char g_sess_suffix[64] = "";
+static char *g_sess_suffix = kstr_none;
 
 void kitty_set_session_suffix(const char *suffix)
 {
     /* A suffix is a file-name ending, so the characters the escape would
      * rewrite have no place in it; refuse rather than half-apply. */
     const char *p;
-    g_sess_suffix[0] = '\0';
-    if (!suffix)
-        return;
-    for (p = suffix; *p; p++)
-        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
-            return;
-    strncpy(g_sess_suffix, suffix, sizeof(g_sess_suffix) - 1);
-    g_sess_suffix[sizeof(g_sess_suffix) - 1] = '\0';
+    if (suffix)
+        for (p = suffix; *p; p++)
+            if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p)) {
+                suffix = NULL;
+                break;
+            }
+    kstr_set(&g_sess_suffix, suffix);
 }
 const char *kitty_session_suffix(void) { return g_sess_suffix; }
 
@@ -2360,31 +2368,28 @@ char *portable_root_dir(void)           /* snewn'd or NULL */
 /* KiTTY: the host-key folder of the folder store, and an ending on host-key
  * file names - kitty.ini [KiTTY] sshhostkeys / keysuffix, set at startup. An
  * empty folder means the SshHostKeys folder beside Sessions, as before. */
-static char g_hostkey_dir[1024] = "";
-static char g_hostkey_suffix[64] = "";
+static char *g_hostkey_dir = kstr_none;
+static char *g_hostkey_suffix = kstr_none;
 void kitty_set_hostkey_dir(const char *dir)
 {
-    g_hostkey_dir[0] = '\0';
-    if (dir && *dir) {
-        strncpy(g_hostkey_dir, dir, sizeof(g_hostkey_dir) - 1);
-        g_hostkey_dir[sizeof(g_hostkey_dir) - 1] = '\0';
-        while (g_hostkey_dir[0] &&
-               g_hostkey_dir[strlen(g_hostkey_dir) - 1] == '\\')
-            g_hostkey_dir[strlen(g_hostkey_dir) - 1] = '\0';
-    }
+    char *d = dupstr(dir ? dir : "");
+    size_t n = strlen(d);
+    while (n > 0 && d[n - 1] == '\\')
+        d[--n] = '\0';
+    kstr_set(&g_hostkey_dir, d);
+    sfree(d);
 }
 const char *kitty_hostkey_dir(void) { return g_hostkey_dir; }
 void kitty_set_hostkey_suffix(const char *suffix)
 {
     const char *p;
-    g_hostkey_suffix[0] = '\0';
-    if (!suffix)
-        return;
-    for (p = suffix; *p; p++)
-        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
-            return;
-    strncpy(g_hostkey_suffix, suffix, sizeof(g_hostkey_suffix) - 1);
-    g_hostkey_suffix[sizeof(g_hostkey_suffix) - 1] = '\0';
+    if (suffix)
+        for (p = suffix; *p; p++)
+            if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p)) {
+                suffix = NULL;
+                break;
+            }
+    kstr_set(&g_hostkey_suffix, suffix);
 }
 const char *kitty_hostkey_suffix(void) { return g_hostkey_suffix; }
 
@@ -2509,25 +2514,31 @@ int kitty_portable_store_state_string(const char *key, const char *value)
     return 1;
 }
 
-int kitty_portable_load_state_string(const char *key, char *buf, int buflen)
+/* One value of the state file in full (sfree it); NULL = absent or empty. */
+char *kitty_portable_load_state_dup(const char *key)
 {
-    char *path, *v;
+    char *path, *v, *out = NULL;
     struct ksf_item *items;
-    int ok = 0;
-    if (!store_is_file() || !buf || buflen <= 0) return 0;
-    buf[0] = '\0';
+    if (!store_is_file()) return NULL;
     path = portable_state_path();
-    if (!path) return 0;
+    if (!path) return NULL;
     items = ksf_load(path);
     v = ksf_list_get(items, key);
-    if (v) {
-        strncpy(buf, v, buflen - 1);
-        buf[buflen - 1] = '\0';
-        ok = buf[0] ? 1 : 0;
-    }
+    if (v && v[0])
+        out = dupstr(v);
     ksf_list_free(items);
     sfree(path);
-    return ok;
+    return out;
+}
+
+/* Into a caller's buffer: only when it fits in full, never cut. */
+int kitty_portable_load_state_string(const char *key, char *buf, int buflen)
+{
+    char *v;
+    if (!buf || buflen <= 0) return 0;
+    buf[0] = '\0';
+    if ((v = kitty_portable_load_state_dup(key)) == NULL) return 0;
+    return kitty_state_into(v, buf, buflen);
 }
 
 int kitty_portable_store_state_dword(const char *key, DWORD value)
@@ -2539,12 +2550,14 @@ int kitty_portable_store_state_dword(const char *key, DWORD value)
 
 int kitty_portable_load_state_dword(const char *key, DWORD *value)
 {
-    char tmp[32];
-    char *end;
+    char *tmp, *end;
     unsigned long v;
-    if (!value || !kitty_portable_load_state_string(key, tmp, sizeof(tmp))) return 0;
+    int ok;
+    if (!value || (tmp = kitty_portable_load_state_dup(key)) == NULL) return 0;
     v = strtoul(tmp, &end, 10);
-    if (end == tmp) return 0;
+    ok = end != tmp;
+    sfree(tmp);
+    if (!ok) return 0;
     *value = (DWORD)v;
     return 1;
 }

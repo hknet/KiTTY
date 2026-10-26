@@ -29,6 +29,7 @@
 #include "kitty_tools.h"         /* str_rtrim */
 #include "kitty_inikeys.h"       /* KI_SESSIONSUFFIX */
 #include "kitty_inifile.h"       /* kitty_store_readonly: readonly=yes */
+#include "kitty_oldwin.h"        /* kitty_profile_string_dup: a value in full */
 
 /* ------------------------------------------------------------------ */
 /* name sets                                                          */
@@ -540,20 +541,40 @@ int kitty_folder_scan_all_end_in(const struct kitty_folder_scan *s, const char *
     return 1;
 }
 
-/* One "key=value" of a putty.conf, or NULL. snewn'd. */
+/* One line of fp in full (sfree it), NULL at the end of the file: a long
+ * line is never read as pieces. */
+static char *migrate_read_line(FILE *fp)
+{
+    strbuf *sb = strbuf_new();
+    int c, any = 0;
+    while ((c = fgetc(fp)) != EOF) {
+        any = 1;
+        if (c == '\n')
+            break;
+        put_byte(sb, (unsigned char)c);
+    }
+    if (!any) {
+        strbuf_free(sb);
+        return NULL;
+    }
+    return strbuf_to_str(sb);
+}
+
+/* One "key=value" of a putty.conf in full, or NULL. snewn'd. */
 static char *putty_conf_value(const char *path, const char *key)
 {
     FILE *fp = fopen(path, "rb");
-    char line[1024];
+    char *line;
     size_t kl = strlen(key);
     char *val = NULL;
     if (!fp)
         return NULL;
-    while (!val && fgets(line, sizeof(line), fp)) {
+    while (!val && (line = migrate_read_line(fp)) != NULL) {
         if (!strnicmp(line, key, kl) && line[kl] == '=') {
             val = dupstr(line + kl + 1);
             str_rtrim(val, " \n\r\t");
         }
+        sfree(line);
     }
     fclose(fp);
     return val;
@@ -572,22 +593,27 @@ char *kitty_store_suffix_of(const char *root)
     if (leaf && !_stricmp(leaf + 1, "Sessions"))
         dirs[1] = dupprintf("%.*s", (int)(leaf - dirs[0]), dirs[0]);
     for (i = 0; i < 2 && !found; i++) {
-        char *ini, *pc, buf[256];
+        char *ini, *pc, *v;
         if (!dirs[i])
             continue;
         /* old KiTTY's fileextension first (a dot put in front if missing),
-         * then 0.85.1.13's sessionsuffix, then putty.conf's */
+         * then 0.85.1.13's sessionsuffix, then putty.conf's - each in full */
         ini = dupprintf("%s\\kitty.ini", dirs[i]);
         if (GetFileAttributesA(ini) != INVALID_FILE_ATTRIBUTES) {
-            if (GetPrivateProfileStringA("KiTTY", KI_FILEEXTENSION, "", buf,
-                                         sizeof(buf), ini) && buf[0]) {
-                kitty_ext_dot(buf, sizeof(buf));
-                found = dupstr(buf);
-            } else if (GetPrivateProfileStringA("KiTTY", KI_SESSIONSUFFIX, "\x01",
-                                                buf, sizeof(buf), ini) &&
-                       strcmp(buf, "\x01")) {
-                found = dupstr(buf);
-                str_rtrim(found, " \t");
+            if ((v = kitty_profile_string_dup("KiTTY", KI_FILEEXTENSION,
+                                              NULL, ini)) != NULL) {
+                size_t n = strlen(v) + 2;     /* room for the dot */
+                found = snewn(n, char);
+                strcpy(found, v);
+                kitty_ext_dot(found, (unsigned)n);
+                sfree(v);
+            } else if ((v = kitty_profile_string_dup("KiTTY", KI_SESSIONSUFFIX,
+                                                     "\x01", ini)) != NULL) {
+                if (strcmp(v, "\x01")) {
+                    found = v;
+                    str_rtrim(found, " \t");
+                } else
+                    sfree(v);
             }
         }
         sfree(ini);

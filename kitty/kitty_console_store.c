@@ -44,11 +44,12 @@ static void console_accept_new_report(const char *line)
 
 void kitty_console_store_init(void)
 {
-    static struct kitty_ini_startup ini;   /* static: two paths' worth */
+    static struct kitty_ini_startup ini;   /* its strings freed on the next call */
 
     kitty_publish_kittypp_dir();
     kitty_console_mpw_init();
 
+    kitty_inifile_startup_free(&ini);
     kitty_inifile_startup(&ini);
     if (ini.folder_store) {
         kitty_set_storage_mode(2);      /* SAVEMODE_DIR, as kitty_startup.c */

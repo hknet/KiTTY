@@ -1118,9 +1118,13 @@ void kitty_osc52_notify(Terminal *term, const char *title, const char *msg,
         static FILE *bf = NULL;
         SYSTEMTIME s; GetLocalTime(&s);
         if (!bf) {
-            char p[MAX_PATH]; const char *h = getenv("USERPROFILE");
-            snprintf(p, sizeof(p), "%s\\kitty_netdebug.log", h ? h : "C:");
+            /* the name in full: a profile path too long for Windows makes
+             * fopen fail, never a log under a shorter name */
+            char *h = kitty_getenv_dup("USERPROFILE");
+            char *p = dupprintf("%s\\kitty_netdebug.log", h ? h : "C:");
             bf = fopen(p, "a");
+            sfree(p);
+            sfree(h);
         }
         if (bf) {
             fprintf(bf, "%04d-%02d-%02d %02d:%02d:%02d.%03d  [BALLOON] %s | %s\n",

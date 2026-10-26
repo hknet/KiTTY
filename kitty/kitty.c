@@ -96,8 +96,6 @@ char KiTTYClassName[128] = "" ;
 
 // Printing parameters
 
-extern char puttystr[1024] ;
-
 #ifdef MOD_PROXY
 #include "kitty_proxy.h"
 #endif
@@ -335,7 +333,7 @@ void InitFolderList( void ) {
 			char * fld ;
 			if( strchr( names[k], '\\' ) ) continue ;
 			fld = kitty_read_session_folder( names[k] ) ;
-			if( fld != NULL && fld[0] && strlen( fld ) < 1000 && strcmp( fld, "Default" ) )
+			if( fld != NULL && fld[0] && strcmp( fld, "Default" ) )
 				StringList_Add( &FolderList, fld ) ;
 			sfree( fld ) ;
 			}
@@ -351,7 +349,7 @@ void InitFolderList( void ) {
 		for( k = 0 ; k < nn ; k++ ) {
 			char * fld = ksp_folder_of( names[k] ) ;
 			if( fld != NULL ) {
-				if( strlen( fld ) < 1000 ) StringList_Add( &FolderList, fld ) ;
+				StringList_Add( &FolderList, fld ) ;
 				sfree( fld ) ;
 				}
 			}
@@ -426,17 +424,15 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 	}
 }
 
-// Get one entry of a session (returns 1 if it exists)
-int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) {
+// One entry of a session, in full (sfree it); NULL = it is not there
+char * GetSessionFieldDup( const char * session_in, const char * folder_in, const char * field ) {
 	HKEY hKey ;
 	char *buffer, *session, *name, *p ;
-	int res = 0 ;
-	FILE * fp ;
+	char *res = NULL ;
 
-	if( session_in == NULL ) return 0 ;
-	if( strlen(session_in)==0 ) return 0 ;
+	if( session_in == NULL ) return NULL ;
+	if( strlen(session_in)==0 ) return NULL ;
 
-	strcpy( result, "" ) ;
 	(void)folder_in ;
 	/* the name and the key whole: the name was cut to a third of 1024
 	 * bytes, and the field read from another session's key; mungestr can
@@ -450,15 +446,10 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-			/* the value whole and terminated (RegQueryValueEx does not add
-			 * the NUL a stored value may lack), then into the caller's 1024
-			 * bytes */
+			/* the value in full and terminated (RegQueryValueEx does not add
+			 * the NUL a stored value may lack) */
 			unsigned char * v = kitty_reg_query_dup( hKey, field, NULL, NULL ) ;
-			if( v != NULL ) {
-				snprintf( result, 1024, "%s", (char *)v ) ;
-				sfree( v ) ;
-				res = 1 ;
-				}
+			if( v != NULL ) res = (char *)v ;
 			RegCloseKey( hKey ) ;
 			}
 		}
@@ -468,12 +459,7 @@ int GetSessionField( const char * session_in, const char * folder_in, const char
 		settings_r * r ;
 		r = open_settings_r( name ) ;
 		if( r != NULL ) {
-			char * v = read_setting_s( r, field ) ;
-			if( v != NULL ) {
-				snprintf( result, 1024, "%s", v ) ;
-				sfree( v ) ;
-				res = 1 ;
-				}
+			res = read_setting_s( r, field ) ;
 			close_settings_r( r ) ;
 			}
 		}
@@ -486,13 +472,15 @@ void RenewPassword( Conf *conf ) {
 	return ;
 	if( !GetUserPassSSHNoSave() )
 	if( kitty_pw_empty(conf, CONF_password) ) {
-		char buffer[1024] = "", host[1024], termtype[1024] ;
-		if( GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), KR_PASSWORD, buffer ) ) {
-			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "HostName", host );
-			GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "TerminalType", termtype );
-			decryptpassword( GetCryptSaltFlag(), buffer, host, termtype ) ;
+		char *buffer, *host, *termtype ;
+		if( ( buffer = GetSessionFieldDup( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), KR_PASSWORD ) ) != NULL ) {
+			host = GetSessionFieldDup( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "HostName" ) ;
+			termtype = GetSessionFieldDup( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "TerminalType" ) ;
+			decryptpassword( GetCryptSaltFlag(), buffer, host ? host : "", termtype ? termtype : "" ) ;
 			MASKPASS(GetCryptSaltFlag(),buffer);
 			kitty_pw_set_burn(conf,CONF_password,buffer) ;
+			smemclr( buffer, strlen( buffer ) ) ;
+			sfree( buffer ) ; sfree( host ) ; sfree( termtype ) ;
 			}
 		}
 	}
@@ -1221,35 +1209,37 @@ void GetInitialDirectory( char * InitialDirectory ) {
  * ManageSpecialCommand) lives in kitty_specialmenu.c. */
 	
 /* The Save-As filter for a connection file: the session file extension in
- * force (.ktx when none is set), then all files. */
-void SaveCurrentSettingFilter( char * buffer, size_t size ) {
-	snprintf( buffer, size, "Connection files (*%s)|*%s|All files (*.*)|*.*|",
-	          FileExtension[0] ? FileExtension : ".ktx", FileExtension[0] ? FileExtension : ".ktx" ) ;
+ * force (.ktx when none is set), then all files (sfree it). */
+char * SaveCurrentSettingFilterDup( void ) {
+	return dupprintf( "Connection files (*%s)|*%s|All files (*.*)|*.*|",
+	                  FileExtension[0] ? FileExtension : ".ktx", FileExtension[0] ? FileExtension : ".ktx" ) ;
 	}
 
-/* The live settings into `filename`: 1 saved (the file in out), -1 not
- * (out: "<file>: <Windows' reason>"). */
-int SaveCurrentSettingTo( const char * filename, char * out, size_t outlen ) {
+/* The live settings into `filename`: 1 saved (*out: the file), -1 not
+ * (*out: "<file>: <Windows' reason>"). *out in full (sfree it). */
+int SaveCurrentSettingTo( const char * filename, char ** out ) {
 	if( !save_open_settings_forced( (char *)filename, conf ) ) {
-		snprintf( out, outlen, "%s: %s", filename, kitty_win_reason( GetLastError() ) ) ;
+		*out = dupprintf( "%s: %s", filename, kitty_win_reason( GetLastError() ) ) ;
 		return -1 ;
 		}
-	snprintf( out, outlen, "%s", filename ) ;
+	*out = dupstr( filename ) ;
 	return 1 ;
 	}
 
-/* 1 saved (the file in out), 0 the file dialog was cancelled, -1 not saved
- * (out: "<file>: <Windows' reason>"). The picker on this thread: /savektx
- * opens it beside the session (kitty_pick_async) and comes here only when
- * no thread could be started for it. */
-int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) {
-	char * filename, buffer[4096] ;
+/* 1 saved (*out: the file), 0 the file dialog was cancelled (*out NULL), -1
+ * not saved (*out: "<file>: <Windows' reason>"). The picker on this thread:
+ * /savektx opens it beside the session (kitty_pick_async) and comes here
+ * only when no thread could be started for it. */
+int SaveCurrentSetting( HWND hwnd, char ** out ) {
+	char * filename, * filter ;
 	int ret ;
-	if( outlen ) out[0] = '\0' ;
-	SaveCurrentSettingFilter( buffer, sizeof(buffer) ) ;
-	/* the chosen file whole */
-	if( ( filename = kitty_pick_save_dup( hwnd, KT_CAP_SAVE_FILE, buffer, NULL, NULL ) ) == NULL ) return 0 ;
-	ret = SaveCurrentSettingTo( filename, out, outlen ) ;
+	*out = NULL ;
+	filter = SaveCurrentSettingFilterDup() ;
+	/* the chosen file in full */
+	filename = kitty_pick_save_dup( hwnd, KT_CAP_SAVE_FILE, filter, NULL, NULL ) ;
+	sfree( filter ) ;
+	if( filename == NULL ) return 0 ;
+	ret = SaveCurrentSettingTo( filename, out ) ;
 	sfree( filename ) ;
 	return ret ;
 	}
@@ -1532,11 +1522,12 @@ char *dirname(char *path);
  * together with the three keys it does not edit, read again from the file
  * (they are file-only, and winfb_config_set takes all four at once). */
 void kitty_fontfallback_apply_list( const char * list ) {
-	char fbOvr[2048]="", fbLog[64]="", *fbLogFile ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE, fbOvr, sizeof(fbOvr) ) ;
+	char fbLog[64]="", *fbOvr, *fbLogFile ;
+	/* the override list and the log file in full: cut, the list lost its
+	 * last ranges and the log file named another file */
+	fbOvr = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
 	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	/* the log file whole: cut to MAX_PATH, it named another file */
 	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
-	winfb_config_set( list ? list : "", fbOvr, fbLog, fbLogFile ? fbLogFile : "" ) ;
-	sfree( fbLogFile ) ;
+	winfb_config_set( list ? list : "", fbOvr ? fbOvr : "", fbLog, fbLogFile ? fbLogFile : "" ) ;
+	sfree( fbOvr ) ; sfree( fbLogFile ) ;
 }

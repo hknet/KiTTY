@@ -47,9 +47,9 @@
 #include <windows.h>
 #include <commctrl.h>            /* the upload-request dialog's list view */
 
-#include "kitty.h"               /* kitty_xfer_download_dir, kitty_xfer_upload_dir */
+#include "kitty.h"               /* kitty_xfer_download_dir_dup, kitty_xfer_upload_dir_dup */
 #include "kitty_params.h"
-#include "kitty_winutil.h"       /* OpenDirNameFrom, OpenFileNameFrom */
+#include "kitty_winutil.h"       /* kitty_pick_dir_dup, kitty_pick_open_dup */
 #include "kitty_dlgbox.h"        /* the suite's themed Yes/No box */
 #include "kitty_theme.h"         /* the shared painter: ink marks, button widths */
 #include "kitty_anchor.h"        /* the shared resize: edge anchoring */
@@ -616,8 +616,8 @@ static HWND kt_dialog_open(int template_id, DLGPROC proc, void *ctx)
 
 struct kt_dl_dlg {
     struct kt_state *st;                /* the session the answer belongs to */
-    char folder[4096];                  /* the folder shown */
-    char picked[4096];                  /* set by Change folder... */
+    char *folder;                       /* the folder shown, in full */
+    char *picked;                       /* set by Change folder..., in full */
     int picked_set;
     HWND h;                             /* this dialog */
     void *pick;                         /* Change folder...'s picker while it stands */
@@ -715,16 +715,18 @@ static void kt_dl_finish(HWND h, int verdict)
 {
     struct kt_dl_dlg *d = (struct kt_dl_dlg *)GetWindowLongPtr(h, GWLP_USERDATA);
     struct kt_state *st;
-    char folder[4096];
+    char *folder;
     int picked;
 
     if (!d)
         return;
     st = d->st;
     picked = verdict && d->picked_set;
-    strcpy(folder, picked ? d->picked : d->folder);
+    /* a copy: WM_DESTROY frees d and both its folders */
+    folder = dupstr(picked && d->picked ? d->picked : d->folder);
     DestroyWindow(h);                   /* WM_DESTROY unregisters and frees d */
     kt_send_decide(st, verdict, folder, picked);
+    sfree(folder);
 }
 
 /* Change folder...'s picker has gone (path NULL: nothing picked). A pick is
@@ -736,8 +738,8 @@ static void kt_dl_picked(void *vctx, const char *path)
     struct kt_dl_dlg *d = (struct kt_dl_dlg *)vctx;
     d->pick = NULL;
     if (path) {
-        strncpy(d->picked, path, sizeof(d->picked) - 1);
-        d->picked[sizeof(d->picked) - 1] = '\0';
+        sfree(d->picked);
+        d->picked = dupstr(path);
         d->picked_set = 1;
         kt_dl_finish(d->h, 1);
     } else if (d->st && d->st->send &&
@@ -803,9 +805,10 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             d->pick = kitty_pick_async(h, 1, d->folder, KT_XFER5113_PICK_TITLE,
                                        NULL, kt_dl_picked, d);
             if (!d->pick) {
-                char chosen[4096];
-                kt_dl_picked(d, OpenDirNameFrom(h, chosen, d->folder,
-                                                KT_XFER5113_PICK_TITLE) ? chosen : NULL);
+                char *chosen = kitty_pick_dir_dup(h, d->folder,
+                                                  KT_XFER5113_PICK_TITLE);
+                kt_dl_picked(d, chosen && chosen[0] ? chosen : NULL);
+                sfree(chosen);
             }
             return TRUE;
           case IDNO:
@@ -830,6 +833,8 @@ static INT_PTR CALLBACK kt_dl_dlgproc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             kitty_pick_cancel(d->pick);   /* its answer must not reach d */
             if (d->st && d->st->send && d->st->send->dlg == h)
                 d->st->send->dlg = NULL;
+            sfree(d->folder);
+            sfree(d->picked);
             sfree(d);
         }
         SetWindowLongPtr(h, GWLP_USERDATA, 0);
@@ -848,9 +853,10 @@ static int kt_dl_dialog_open(struct kt_state *st, const char *folder)
 
     memset(d, 0, sizeof(*d));
     d->st = st;
-    strncpy(d->folder, folder, sizeof(d->folder) - 1);
+    d->folder = dupstr(folder);
     h = kt_dialog_open(IDD_XFERDL, kt_dl_dlgproc, d);
     if (!h) {
+        sfree(d->folder);
         sfree(d);
         return 0;
     }
@@ -1320,7 +1326,7 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
 {
     Terminal *term = st->term;
     struct kt_send *s;
-    char folder[4096];
+    char *folder;
     int policy;
 
     if (st->send) {
@@ -1343,17 +1349,20 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
     st->send = s;                       /* registered before the dialog: commands
                                          * arriving meanwhile must find it */
 
-    kitty_xfer_download_dir(term->conf, folder, sizeof(folder));
+    folder = kitty_xfer_download_dir_dup(term->conf);
     policy = conf_get_int(term->conf, CONF_xfer_permission);
     if (policy == 2 || (policy == 1 && st->latched)) {
         kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_AUTO, s->id));
         kt_send_decide(st, 1, folder, 0);
+        sfree(folder);
         return;
     }
     kt_log(term, dupprintf(KT_XFER5113_LOG_SEND_ASK, s->id, folder));
     s->in_dialog = 1;                   /* a command arriving now is held over */
-    if (kt_dl_dialog_open(st, folder))
+    if (kt_dl_dialog_open(st, folder)) {
+        sfree(folder);
         return;                         /* answered in kt_send_decide */
+    }
     /* The template did not load at all: the same question in the suite's
      * shared confirm box (Allow / Deny, no folder change), which is modal by
      * design. Never a silent allow. */
@@ -1363,6 +1372,7 @@ static void kt_send_begin(struct kt_state *st, const kt5113_cmd *c)
         sfree(text);
         kt_send_decide(st, yes, folder, 0);
     }
+    sfree(folder);
 }
 
 /*
@@ -1379,7 +1389,7 @@ static void kt_send_decide(struct kt_state *st, int allowed,
 {
     Terminal *term = st->term;
     struct kt_send *s = st->send;
-    char folder[4096];
+    char *folder;
 
     if (!s)
         return;                         /* the session went while the dialog stood */
@@ -1392,8 +1402,6 @@ static void kt_send_decide(struct kt_state *st, int allowed,
     }
     if (allowed && conf_get_int(term->conf, CONF_xfer_permission) == 1)
         st->latched = 1;
-    strncpy(folder, folder_in, sizeof(folder) - 1);
-    folder[sizeof(folder) - 1] = '\0';
     if (s->cancel_pending) {
         kt_ack(term, s, NULL, "CANCELED", NULL, -1);
         kt_log(term, dupprintf(KT_XFER5113_LOG_CANCELLED, s->id));
@@ -1416,18 +1424,26 @@ static void kt_send_decide(struct kt_state *st, int allowed,
      * the dialog's Change folder... already produced the folder. It runs
      * beside the session (kitty_pick_async), and a command arriving
      * meanwhile is held over as during the request dialog. */
+    /* the folder in full, a copy of our own: the caller's may go with the
+     * dialog that produced it */
+    folder = dupstr(folder_in);
     if (conf_get_bool(term->conf, CONF_xfer_ask_destination) && !picked) {
-        char chosen[4096];
+        char *chosen;
         s->in_dialog = 1;
         s->pick = kitty_pick_async(MainHwnd, 1, folder, KT_XFER5113_PICK_TITLE,
                                    NULL, kt_send_picked, st);
-        if (s->pick)
+        if (s->pick) {
+            sfree(folder);
             return;                     /* answered in kt_send_picked */
-        kt_send_picked(st, OpenDirNameFrom(MainHwnd, chosen, folder,
-                                           KT_XFER5113_PICK_TITLE) ? chosen : NULL);
+        }
+        chosen = kitty_pick_dir_dup(MainHwnd, folder, KT_XFER5113_PICK_TITLE);
+        kt_send_picked(st, chosen && chosen[0] ? chosen : NULL);
+        sfree(chosen);
+        sfree(folder);
         return;
     }
     kt_send_accept(st, folder);
+    sfree(folder);
 }
 
 /* The folder picker's answer (NULL: none picked). */
@@ -1608,9 +1624,9 @@ static wchar_t *kt_resolve_spec(Terminal *term, const char *name, int *full_refu
         }
         base = kt_wdup(root);
     } else {
-        char folder[4096];
-        kitty_xfer_upload_dir(term->conf, folder, sizeof(folder));
+        char *folder = kitty_xfer_upload_dir_dup(term->conf);
         base = kt_mb_to_wide(CP_ACP, folder, -1);
+        sfree(folder);
         if (!base)
             return NULL;
     }
@@ -2038,7 +2054,7 @@ static void kt_req_locate(HWND h, struct kt_req_dlg *d)
     HWND list = GetDlgItem(h, IDC_XFERREQ_LIST);
     struct kt_recv *r = d->st->recv;
     struct kt_entry *e;
-    char path[4096];
+    char *path;
     int i = -1;
 
     if (!r || d->pick)
@@ -2054,10 +2070,10 @@ static void kt_req_locate(HWND h, struct kt_req_dlg *d)
                                KT_XFER5113_REQ_LOCATE_FILTER, kt_req_located, d);
     if (d->pick)
         return;
-    path[0] = '\0';
-    kt_req_located(d, OpenFileNameFrom(h, path, KT_XFER5113_REQ_LOCATE_TITLE,
-                                       KT_XFER5113_REQ_LOCATE_FILTER, NULL) &&
-                      path[0] ? path : NULL);
+    path = kitty_pick_open_dup(h, KT_XFER5113_REQ_LOCATE_TITLE,
+                               KT_XFER5113_REQ_LOCATE_FILTER, NULL);
+    kt_req_located(d, path && path[0] ? path : NULL);
+    sfree(path);
 }
 
 /* Locate...'s picker has gone (path NULL: nothing picked). */
@@ -2711,9 +2727,10 @@ static void kt_recv_cmd(struct kt_state *st, const kt5113_cmd *c)
       case KT5113_AC_FINISH:
         kt_log(term, dupprintf(KT_XFER5113_LOG_RECV_DONE, r->id, r->nsent));
         if (r->nsent > 0) {             /* [KiTTY] transfernotification */
-            char folder[4096];          /* the click opens the upload folder */
-            kitty_xfer_upload_dir(term->conf, folder, sizeof(folder));
+            /* the click opens the upload folder */
+            char *folder = kitty_xfer_upload_dir_dup(term->conf);
             kitty_xfer_notify(KT_XFER_WHAT_KITTEN_SEND, 0, 0, folder);
+            sfree(folder);
         }
         kt_recv_free(st);
         break;

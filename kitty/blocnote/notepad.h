@@ -76,7 +76,7 @@
 #define NOTEPAD_STR_LICENCE 9882
 
 /* ---- exported from kitty/blocnote/notepad.c ---- */
-void Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo, char * filename );
+char * Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo );   /* the dropped file in full (free it), NULL = none */
 int WINAPI Notepad_WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow);
 int Notepad_load( char * szFile, HWND hEdit );
 int Notepad_open( HWND hwnd, HWND hEdit );

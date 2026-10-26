@@ -15,6 +15,7 @@
 #include "ssh.h"
 #include "kitty/kitty_hello.h"
 #include "kitty/kitty_hello_keys.h"
+#include "kitty/kitty_oldwin.h"   /* kitty_temp_path_dup */
 
 const char *appname = "test_hello_container";
 
@@ -657,13 +658,12 @@ int main(int argc, char **argv)
          * a stand-in key and its sidecar, and the gate runs this binary
          * from a directory it may not write to - which failed the whole
          * group while the code under test was fine. */
-        char tmpdir[MAX_PATH], keypath[MAX_PATH], destpath[MAX_PATH];
+        char *tmpdir = kitty_temp_path_dup();
+        if (!tmpdir)
+            tmpdir = dupstr(".\\");
+        char *keypath = dupprintf("%shello_worker_test.ppk", tmpdir);
+        char *destpath = dupprintf("%shello_worker_test-hello.ppk", tmpdir);
         const char *keyfile = keypath;
-        if (!GetTempPathA(sizeof(tmpdir), tmpdir))
-            strcpy(tmpdir, ".\\");
-        snprintf(keypath, sizeof(keypath), "%shello_worker_test.ppk", tmpdir);
-        snprintf(destpath, sizeof(destpath),
-                 "%shello_worker_test-hello.ppk", tmpdir);
         char *sc = kageant_hello_sidecar_path(keyfile);
         char *d1 = kageant_hello_default_destpath("C:\\keys\\id_ed25519.ppk");
         char *d2 = kageant_hello_default_destpath("C:\\keys\\noext");
@@ -674,9 +674,9 @@ int main(int argc, char **argv)
         memset(credid_dummy, 7, sizeof(credid_dummy));
 
         {
-            char scwant[MAX_PATH + 8];
-            snprintf(scwant, sizeof(scwant), "%s.hello", keypath);
+            char *scwant = dupprintf("%s.hello", keypath);
             check(sc && !strcmp(sc, scwant), "sidecar is <keyfile>.hello");
+            sfree(scwant);
         }
         check(d1 && !strcmp(d1, "C:\\keys\\id_ed25519-hello.ppk"),
               "protected copy defaults to <name>-hello.<ext>");
@@ -753,6 +753,9 @@ int main(int argc, char **argv)
         DeleteFileA(keyfile);
         sfree(sc);
         sfree(c);
+        sfree(keypath);
+        sfree(destpath);
+        sfree(tmpdir);
     }
     if (fails) {
         printf("\n%d check(s) failed\n", fails);

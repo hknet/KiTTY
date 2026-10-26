@@ -9,7 +9,7 @@
 
 /* The registry base in use (kitty_storage.c; kitty_registry_base() is the
  * public accessor). The crypto half keeps its master-password state under it. */
-extern char reg_base_buf[256];
+extern char *reg_base_buf;     /* held in full; never NULL */
 
 /* Old-KiTTY password decrypt keyed on host + terminal type
  * (kitty_secretstore.c); the portable-file loader applies it while converting

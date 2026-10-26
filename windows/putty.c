@@ -986,10 +986,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
              * other session and arms the mode until another session is loaded.
              * The second needs no setting and no switching back and forth. */
             {
-                char lastsess[512];
-                bool havelast = kitty_get_last_session(lastsess,
-                                                       sizeof(lastsess)) &&
-                                *lastsess;
+                char *lastsess = kitty_get_last_session_dup(); /* in full */
+                bool havelast = lastsess != NULL && *lastsess;
 
                 if (kitty_start_quick_connect || !GetLoadLastSessionFlag() ||
                     (havelast && !strcmp(lastsess, "Default Settings"))) {
@@ -1015,6 +1013,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                         kitty_set_defer_mpw_prompt(0);
                     }
                 }
+                sfree(lastsess);
             }
 #endif
 #ifdef MOD_PERSO

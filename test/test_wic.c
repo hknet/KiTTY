@@ -6,6 +6,7 @@
  * Exit 0 = all passed; 2 = this Windows has no imaging component (XP as
  * shipped), nothing judged.
  */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,47 @@
 #include "kitty_wic.h"
 
 static int fails = 0;
+
+/* printf into memory of its own (free it): the paths are held in full */
+static char *strf(const char *fmt, ...)
+{
+    size_t size = 256;
+    char *s = NULL;
+    int n;
+    va_list ap;
+    for (;;) {
+        char *t = realloc(s, size);
+        if (!t) {
+            free(s);
+            printf("FAIL  out of memory\n");
+            exit(1);
+        }
+        s = t;
+        va_start(ap, fmt);
+        n = vsnprintf(s, size, fmt, ap);
+        va_end(ap);
+        if (n >= 0 && (size_t)n < size)
+            return s;
+        size = n >= 0 ? (size_t)n + 1 : size * 2;
+    }
+}
+
+/* %TEMP% with its trailing backslash, in full (free it); NULL = not read */
+static char *temp_dir(void)
+{
+    DWORD n = GetTempPathA(0, NULL), got;
+    while (n) {
+        char *s = malloc(n);
+        if (!s)
+            return NULL;
+        got = GetTempPathA(n, s);
+        if (got && got < n)
+            return s;
+        free(s);
+        n = got ? got + 1 : 0;
+    }
+    return NULL;
+}
 
 static void check(bool ok, const char *what)
 {
@@ -32,7 +74,7 @@ static unsigned char pixel(int x, int y, int c)
 
 int main(void)
 {
-    char dir[MAX_PATH], png[MAX_PATH], cut[MAX_PATH];
+    char *dir, *png, *cut;
     BITMAPINFOHEADER bih;
     BYTE *bits = NULL, *back = NULL;
     HBITMAP hbm, loaded;
@@ -49,9 +91,13 @@ int main(void)
         printf("SKIP  no Windows Imaging Component here\n");
         return 2;
     }
-    GetTempPathA(sizeof(dir), dir);
-    snprintf(png, sizeof(png), "%stest_wic_%lu.png", dir, GetCurrentProcessId());
-    snprintf(cut, sizeof(cut), "%stest_wic_%lu_cut.png", dir, GetCurrentProcessId());
+    if ((dir = temp_dir()) == NULL) {
+        printf("FAIL  %%TEMP%% not read (%lu)\n", GetLastError());
+        return 1;
+    }
+    png = strf("%stest_wic_%lu.png", dir, GetCurrentProcessId());
+    cut = strf("%stest_wic_%lu_cut.png", dir, GetCurrentProcessId());
+    free(dir);
 
     /* a 24 bpp bottom-up DIB with a pattern in every channel */
     memset(&bih, 0, sizeof(bih));
@@ -150,6 +196,8 @@ int main(void)
 
     DeleteFileA(png);
     DeleteFileA(cut);
+    free(png);
+    free(cut);
     DeleteObject(hbm);
     CoUninitialize();
     printf("%s - %d check(s) failed\n", fails ? "FAIL" : "PASS", fails);

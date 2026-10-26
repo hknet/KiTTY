@@ -69,8 +69,7 @@ char * GetConfigDirectory( void ) ;
 #ifndef stricmp	/* platform.h may #define stricmp _stricmp (CRT); don't redeclare */
 int stricmp(const char *s1, const char *s2) ;
 #endif
-char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
-char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
+char * GetValueDataDup(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName) ;   /* in full (sfree it); NULL = not there */
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
 char * SetSessPath( const char * dec ) ;
 
@@ -93,6 +92,9 @@ void SetSSHConnected( int flag ) ;
 // Functions escaping strings with %XY sequences
 void mungestr( const char *in, char *out ) ;
 void unmungestr( const char *in, char *out, int outlen ) ;
+/* The same, in full, in memory of their own (sfree it). */
+char * mungestr_dup( const char *in ) ;
+char * unmungestr_dup( const char *in ) ;
 
 /* The session password. GetPasswordInConfig fills the caller's buffer, which
  * must hold KITTY_PW_MAX+1 bytes; IsPasswordInConf answers its length. Both
@@ -107,7 +109,8 @@ int _rmdir(const char *) ;
 extern char FileExtension[15] ;
 
 // Current folder for portable mode
-extern char CurrentFolder[1024] ;
+extern char * CurrentFolder ;   /* held in full; set it with kitty_set_current_folder */
+void kitty_set_current_folder( const char * folder ) ;
 
 //int DebugAddPassword( const char*fct, const char*pwd ) ;
 #endif

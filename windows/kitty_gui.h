@@ -13,7 +13,7 @@ struct dlgcontrol; struct dlgparam; struct controlbox; struct WinGuiSeat;
 
 /* ---- exported from windows/controls.c ---- */
 HWND kitty_cfg_item(HWND dlg, int id);
-void kitty_controls_set_dir_picker(int (*fn)(HWND, char *, const char *, const char *));
+void kitty_controls_set_dir_picker(char *(*fn)(HWND, const char *, const char *));
 void kitty_dlg_combobox_select_all(struct dlgcontrol *ctrl, struct dlgparam *dp);
 extern int kitty_cfg_btn_basew_du;
 extern int kitty_cfg_btn_fullw_du;

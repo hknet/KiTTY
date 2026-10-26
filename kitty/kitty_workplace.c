@@ -67,49 +67,48 @@ static struct kwp_record *kwp_view = NULL;
  * the same folder, two strings, and both the section name (a hash of this
  * string) and the holder check compare strings. A terminal started by the
  * short path therefore read a launcher's arming as "off". */
-static void kwp_longpath(char *path, int len)
+static char *kwp_longpath_dup(const char *path)
 {
-    char longp[MAX_PATH + 1];
-    DWORD n = GetLongPathNameA(path, longp, MAX_PATH);
-    if (n > 0 && n < MAX_PATH && (int)n < len)
-        strcpy(path, longp);
+    /* the long form in full (sfree it); the spelling given when Windows has
+     * no long form for it */
+    char *l = kitty_long_path_dup(path);
+    return l ? l : dupstr(path);
 }
 
-static int kwp_exedir(char *out, int len)
+/* The install directory in full, long form, lowercased, without a trailing
+ * slash (sfree it); NULL = not read. */
+static char *kwp_exedir_dup(void)
 {
-    char path[MAX_PATH + 1];
-    DWORD n = GetModuleFileNameA(NULL, path, MAX_PATH);
-    char *slash;
-    if (n == 0 || n >= MAX_PATH)
-        return 0;
-    path[n] = '\0';
-    kwp_longpath(path, sizeof(path));
+    char *exe = kitty_module_path_dup(NULL), *path, *slash;
+    if (!exe)
+        return NULL;
+    path = kwp_longpath_dup(exe);
+    sfree(exe);
     slash = strrchr(path, '\\');
-    if (!slash)
-        return 0;
+    if (!slash) {
+        sfree(path);
+        return NULL;
+    }
     *slash = '\0';
-    if ((int)strlen(path) >= len)
-        return 0;
-    strcpy(out, path);
-    CharLowerA(out);
-    return 1;
+    CharLowerA(path);
+    return path;
 }
 
 /* FNV-1a over the install directory: an identifier, not a secret. */
 static const char *kwp_section_name(void)
 {
     static char name[64];
-    char dir[MAX_PATH + 1];
+    char *dir;
     unsigned int h = 2166136261u;
     const char *p;
     if (name[0])
         return name;
-    if (!kwp_exedir(dir, sizeof(dir)))
-        dir[0] = '\0';
-    for (p = dir; *p; p++) {
+    dir = kwp_exedir_dup();
+    for (p = dir ? dir : ""; *p; p++) {
         h ^= (unsigned char)*p;
         h *= 16777619u;
     }
+    sfree(dir);
     /* Local\ = this logon session only. */
     snprintf(name, sizeof(name), "Local\\KiTTYWorkplaceArming.%08x", h);
     return name;
@@ -131,28 +130,31 @@ static ULONGLONG kwp_now(void)
  * answers no. */
 static int kwp_holder_is_ours(DWORD pid)
 {
-    char ours[MAX_PATH + 1], theirs[MAX_PATH + 1];
-    DWORD sz = MAX_PATH;
+    char *ours, *theirs, *full;
     HANDLE h;
     char *slash;
     int ok = 0;
     if (pid == GetCurrentProcessId())
         return 1;
-    if (!kwp_exedir(ours, sizeof(ours)))
+    if ((ours = kwp_exedir_dup()) == NULL)
         return 0;
     h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!h)
+    if (!h) {
+        sfree(ours);
         return 0;
-    if (kitty_process_image_path(h, theirs, sz) && sz > 0) {
-        theirs[sz] = '\0';
-        kwp_longpath(theirs, sizeof(theirs));
-        if ((slash = strrchr(theirs, '\\')) != NULL) {
+    }
+    if ((theirs = kitty_process_image_path_dup(h)) != NULL) {
+        full = kwp_longpath_dup(theirs);
+        if ((slash = strrchr(full, '\\')) != NULL) {
             *slash = '\0';
-            CharLowerA(theirs);
-            ok = !strcmp(ours, theirs);
+            CharLowerA(full);
+            ok = !strcmp(ours, full);
         }
+        sfree(full);
+        sfree(theirs);
     }
     CloseHandle(h);
+    sfree(ours);
     return ok;
 }
 
@@ -315,25 +317,27 @@ int kitty_workplace_start_launcher(const char *proxyname, unsigned int minutes)
     extern HANDLE kitty_mpw_export_inherit_blob(const char *, char *, size_t);
     extern BOOL kitty_create_process_with_handles(const char *, char *, DWORD,
         const char *, STARTUPINFOA *, PROCESS_INFORMATION *, const HANDLE *, int);
-    char exe[MAX_PATH + 1], cmd[MAX_PATH + 400], mpwtok[80] = "";
+    char *exe, *cmd, mpwtok[80] = "";
     HANDLE mpwmap;
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
-    DWORD n;
     BOOL ok;
     if (!proxyname || !proxyname[0] || strchr(proxyname, '"'))
         return 0;
-    n = GetModuleFileNameA(NULL, exe, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH)
+    /* the exe and the command line in full: a path too long for Windows
+     * makes CreateProcess fail, never a shorter one started */
+    if ((exe = kitty_module_path_dup(NULL)) == NULL)
         return 0;
-    exe[n] = '\0';
     mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok));
-    snprintf(cmd, sizeof(cmd), "\"%s\"%s -launcher -workplace \"%s\" -workplaceminutes %u",
-             exe, mpwtok, proxyname, minutes);
+    cmd = dupprintf("\"%s\"%s -launcher -workplace \"%s\" -workplaceminutes %u",
+                    exe, mpwtok, proxyname, minutes);
+    sfree(exe);
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
     memset(&pi, 0, sizeof(pi));
     ok = kitty_create_process_with_handles(NULL, cmd, 0, NULL, &si, &pi, &mpwmap, 1);
+    smemclr(cmd, strlen(cmd));   /* it carries the master-key token */
+    sfree(cmd);
     if (mpwmap)
         CloseHandle(mpwmap);
     if (!ok)

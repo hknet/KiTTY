@@ -67,4 +67,9 @@ int set_env( char * name, char * value ) ;
 // Create a directory path recursively (dir1 / dir2 / ...)
 int MakeDir( const char * directory ) ;
 
+/* The next line of a file in full, its '\n' kept when it has one, in memory
+   of its own (free() it); NULL at the end of the file. fgets with a fixed
+   buffer handed a long line over in pieces, each read as a line of its own. */
+char *kitty_fgetline( FILE *fp ) ;
+
 #endif

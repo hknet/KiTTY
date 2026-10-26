@@ -70,8 +70,11 @@ void routine_server( void * st ) {
 	HMODULE lphDLL ;               // Handle to DLL
 	LPFNDLLFUNC1 lpfnDllFunc1 ;    // Function pointer
 	
-	char buffer[MAX_PATH] ; snprintf( buffer, sizeof(buffer), "%s\\kchat.dll", InitialDirectory ) ;
+	/* the name in full: a cut one loaded another DLL (kcha.dll, or <dir>.dll
+	 * in the parent folder); one too long for Windows fails to load */
+	char * buffer = dupprintf( "%s\\kchat.dll", InitialDirectory ) ;
 	lphDLL = LoadLibrary( TEXT( buffer ) ) ;
+	sfree( buffer ) ;
 	//lphDLL = LoadLibrary( TEXT("kchat.dll") ) ;
 	if( lphDLL == NULL ) {
 		MessageBox( MainHwnd, KT_MAIN_KCHAT_LIB_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
@@ -329,45 +332,47 @@ int kitty_broadcast_group_from_ini( void ) { (void)kitty_broadcast_group() ; ret
  * the cache away, so the next kitty_broadcast_group() derives again. Windows
  * of OTHER processes read the store when they start: the change reaches them
  * with their next start, not before. */
-static char broadcast_group_cache[80] = "" ;
+/* In full (sfree'd memory): a key set in kitty.ini was cut at 79 bytes, so
+ * two installs with different long keys could meet as one group. The copy
+ * is made before the old one goes: `k` may be that one itself. */
+static char *broadcast_group_cache = NULL ;
 void kitty_broadcast_set_group( const char *k )
 {
-	if( k == NULL || k[0] == '\0' ) {
-		broadcast_group_cache[0] = '\0' ;
-		group_from_ini = 0 ;
-		return ;
-	}
-	snprintf( broadcast_group_cache, sizeof(broadcast_group_cache), "%s", k ) ;
-	group_from_ini = 1 ;
+	char *n = ( k == NULL || k[0] == '\0' ) ? NULL : dupstr( k ) ;
+	sfree( broadcast_group_cache ) ;
+	broadcast_group_cache = n ;
+	group_from_ini = n != NULL ;
 }
 
 const char *kitty_broadcast_group( void )
 {
-	char *group = broadcast_group_cache ;
-	const size_t group_size = sizeof(broadcast_group_cache) ;
-	char buf[4096] ;
-	char exe[MAX_PATH+1] = "" ;
+	char *buf, *exe ;
 	unsigned long long h = 1469598103934665603ULL ;     /* FNV-1a, 64-bit */
 	const char *p ;
 
-	if( group[0] ) return group ;
+	if( broadcast_group_cache ) return broadcast_group_cache ;
 
-	if( ReadParameterN( INIT_SECTION, KI_SENDCMDGROUP, buf, sizeof(buf) ) && buf[0] ) {
-		snprintf( group, group_size, "%s", buf ) ;      /* explicit override */
+	buf = ReadParameterDup( INIT_SECTION, KI_SENDCMDGROUP ) ;
+	if( buf[0] ) {
+		broadcast_group_cache = buf ;                   /* explicit override */
 		group_from_ini = 1 ;
-		return group ;
+		return broadcast_group_cache ;
 	}
-	if( GetModuleFileNameA( NULL, exe, MAX_PATH ) == 0 ) exe[0] = '\0' ;
-	for( p = exe ; *p ; p++ ) {                            /* case-insensitive: */
+	sfree( buf ) ;
+	/* the exe path in full: a cut one gave two installs in long folders
+	 * one group */
+	exe = kitty_module_path_dup( NULL ) ;
+	for( p = exe ? exe : "" ; *p ; p++ ) {                 /* case-insensitive: */
 		h ^= (unsigned char)( (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p ) ;
 		h *= 1099511628211ULL ;
 	}
+	sfree( exe ) ;
 	for( p = kitty_registry_base() ; p && *p ; p++ ) {
 		h ^= (unsigned char)( (*p >= 'A' && *p <= 'Z') ? *p + 32 : *p ) ;
 		h *= 1099511628211ULL ;
 	}
-	snprintf( group, group_size, "auto-%016llx", h ) ;
-	return group ;
+	broadcast_group_cache = dupprintf( "auto-%016llx", h ) ;
+	return broadcast_group_cache ;
 }
 
 /* What one broadcast carries through EnumWindows: the text, and whether the
@@ -470,7 +475,7 @@ static struct { DWORD pid ; int ours ; } wincount_cache[WINCOUNT_CACHE] ;
 static int wincount_n = 0 ;
 
 static int kitty_process_is_kittypp( DWORD pid ) {
-	char path[MAX_PATH] ;
+	char *path = NULL ;
 	HANDLE proc ;
 	DWORD dummy, sz ;
 	void *buf ;
@@ -484,7 +489,7 @@ static int kitty_process_is_kittypp( DWORD pid ) {
 	proc = OpenProcess( 0x1000, FALSE, pid ) ;
 	if( !proc ) proc = OpenProcess( PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid ) ;
 	if( proc ) {
-		if( kitty_process_image_path( proc, path, sizeof(path) )
+		if( ( path = kitty_process_image_path_dup( proc ) ) != NULL
 		    && ( sz = GetFileVersionInfoSizeA( path, &dummy ) ) > 0
 		    && ( buf = malloc( sz ) ) != NULL ) {
 			if( GetFileVersionInfoA( path, 0, sz, buf ) ) {
@@ -502,6 +507,7 @@ static int kitty_process_is_kittypp( DWORD pid ) {
 			}
 			free( buf ) ;
 		}
+		sfree( path ) ;
 		CloseHandle( proc ) ;
 	}
 	if( wincount_n < WINCOUNT_CACHE ) {

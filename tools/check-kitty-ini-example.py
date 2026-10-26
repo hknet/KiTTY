@@ -213,6 +213,10 @@ def source_options() -> set[tuple[str, str]]:
             opts.add(("KiTTY", m.group(1)))
         for m in re.finditer(r'kstore_ini_dup\s*\(\s*\w+\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))
+        # kitty_xfer.c's tool search reads a stored [KiTTY] path or folder
+        # through kx_try_stored(key, name, try) - ReadParameterDup inside.
+        for m in re.finditer(r'kx_try_stored\s*\(\s*"([^"]+)"', text):
+            opts.add(("KiTTY", m.group(1)))
         # kitty_config.c mirrors INIT_SECTION without including kitty.h.
         for m in re.finditer(r'readINI\s*\([^;\n]*?KITTY_INI_SECTION\s*,\s*"([^"]+)"', text):
             opts.add(("KiTTY", m.group(1)))

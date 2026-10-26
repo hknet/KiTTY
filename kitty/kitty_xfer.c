@@ -27,8 +27,8 @@
 #include "kitty_common.h"    /* MASKPASS */
 
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
-#include "kitty_win.h"       /* OpenFileName */
-#include "kitty_winutil.h"
+#include "kitty_winutil.h"   /* the pickers, RunCommand */
+#include "kitty_oldwin.h"    /* paths read in full: kitty_*_path_dup */
 #include "kitty_dlgbox.h"
 #include "kitty_hello_keys.h" /* kageant_hello_has_sidecar */
 #include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
@@ -196,14 +196,14 @@ static char *kx_hello_agent_note(Conf *c)
 }
 
 /* The session's key file as it is on disk: %VAR% expanded, so the Hello
- * sidecar is found next to it (hknet/KiTTY#70 sweep). A static buffer,
- * used before the next call. */
+ * sidecar is found next to it (hknet/KiTTY#70 sweep). In full; held until
+ * the next call, so it is used before that. */
 static const char *kx_keyfile_path(Conf *c)
 {
-    static char path[4096] ;
+    static char *path = NULL ;
     char *e = filename_expand_str( conf_get_filename( c, CONF_keyfile ) ) ;
-    snprintf( path, sizeof(path), "%s", e ? e : "" ) ;
-    sfree( e ) ;
+    sfree( path ) ;
+    path = e ? e : dupstr( "" ) ;
     return path ;
 }
 
@@ -223,8 +223,8 @@ static const char *kx_helper_keyfile(Conf *c)
 /* KiTTY security: the helpers are started WITHOUT a shell (CreateProcess, no
  * cmd.exe), so session fields spliced into a command line cannot inject shell
  * commands - & | > ` and friends are taken literally. The quoting layers
- * below are what keeps each value one argument: bcat bounds every append (no
- * overflow of buffer[4096]), qcat applies Win32 argv quoting to each single
+ * below are what keeps each value one argument: bcat appends to a strbuf
+ * that grows (nothing cut, no overflow), qcat applies Win32 argv quoting to each single
  * value (no injected extra arguments), rawcat applies WinSCP's rawsettings
  * rule and urlcat percent-encodes URL userinfo. What is still appended RAW is
  * deliberate and documented at each site: pscpoptions, winscpoptions and
@@ -267,29 +267,33 @@ static const char *kx_helper_keyfile(Conf *c)
 enum { KHJ_RUN, KHJ_CONFIRM_SIGNED, KHJ_CONFIRM_UNSIGNED, KHJ_CONFIRM_CANNOT,
        KHJ_REFUSE_SIBLING, KHJ_REFUSE_BROKEN, KHJ_MISSING };
 
-/* The full long path, so one file has one name in the store. */
-static int kh_full_path( const char *in, char *out, size_t n ) {
-	char tmp[MAX_PATH*4] ;
-	DWORD r = GetFullPathNameA( in, sizeof(tmp), tmp, NULL ) ;
-	if( r == 0 || r >= sizeof(tmp) ) return 0 ;
-	r = GetLongPathNameA( tmp, out, (DWORD)n ) ;
-	if( r == 0 || r >= n ) { if( strlen(tmp) >= n ) return 0 ; strcpy( out, tmp ) ; }
-	return 1 ;
+/* The full long path, so one file has one name in the store; in full
+ * (sfree it), NULL when Windows cannot give it. No long form (the file is
+ * not there): the full path. */
+static char *kh_full_path_dup( const char *in ) {
+	char *full = kitty_full_path_dup( in ), *lp ;
+	if( full == NULL ) return NULL ;
+	if( ( lp = kitty_long_path_dup( full ) ) != NULL ) { sfree( full ) ; return lp ; }
+	return full ;
 }
 
 /* Our own tool, beside the running kitty.exe? Rule 1 applies to these only. */
 static int kh_is_our_sibling( const char *full ) {
-	char self[MAX_PATH*4], selffull[MAX_PATH*4], *s, *b ;
+	char *self = kitty_module_path_dup( NULL ), *selffull, *s ;
 	const char *base ;
-	if( !GetModuleFileNameA( NULL, self, sizeof(self) ) || !kh_full_path( self, selffull, sizeof(selffull) ) )
-		return 0 ;
+	int ours = 0 ;
+	selffull = self ? kh_full_path_dup( self ) : NULL ;
+	sfree( self ) ;
+	if( selffull == NULL ) return 0 ;
 	s = strrchr( selffull, '\\' ) ; base = strrchr( full, '\\' ) ;
-	if( !s || !base ) return 0 ;
-	base++ ;
-	if( stricmp( base, "kscp.exe" ) && stricmp( base, "klink.exe" ) ) return 0 ;
-	if( (size_t)( base - full ) != (size_t)( s + 1 - selffull ) ) return 0 ;
-	b = selffull ;
-	return strnicmp( full, b, (size_t)( s + 1 - selffull ) ) == 0 ;
+	if( s && base ) {
+		base++ ;
+		if( ( !stricmp( base, "kscp.exe" ) || !stricmp( base, "klink.exe" ) )
+		    && (size_t)( base - full ) == (size_t)( s + 1 - selffull ) )
+			ours = strnicmp( full, selffull, (size_t)( s + 1 - selffull ) ) == 0 ;
+	}
+	sfree( selffull ) ;
+	return ours ;
 }
 
 /* SHA-256 of the open file, as 64 hex digits. */
@@ -310,44 +314,49 @@ static int kh_sha256( HANDLE h, char hex[65] ) {
 }
 
 /* The store: value name = the lower-case full path, data = the SHA-256. */
-static void kh_store_name( const char *full, char *name, size_t n ) {
+static char *kh_store_name_dup( const char *full ) {
+	char *name = dupstr( full ) ;
 	size_t i ;
-	for( i = 0 ; full[i] && i + 1 < n ; i++ ) name[i] = (char)tolower( (unsigned char)full[i] ) ;
-	name[i] = '\0' ;
+	for( i = 0 ; name[i] ; i++ ) name[i] = (char)tolower( (unsigned char)name[i] ) ;
+	return name ;
 }
-static int kh_store_get( const char *full, char *hex, size_t n ) {
-	char name[MAX_PATH*4] ;
-	kh_store_name( full, name, sizeof(name) ) ;
-	hex[0] = '\0' ;
+/* The stored SHA-256 for this file (sfree it), NULL = none. */
+static char *kh_store_get_dup( const char *full ) {
+	char *name = kh_store_name_dup( full ), *hex = NULL ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		if( !readINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex, n ) ) hex[0] = '\0' ;
+		hex = kitty_read_ini_dup( GetKittyIniFile(), KH_STORE_SECTION, name ) ;
 	} else {
-		char key[1024] ; HKEY hk ; DWORD type, len = (DWORD)n ;
-		snprintf( key, sizeof(key), "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		HKEY hk ; DWORD type = 0, len = 0 ;
 		if( RegOpenKeyExA( HKEY_CURRENT_USER, key, 0, KEY_READ, &hk ) == ERROR_SUCCESS ) {
-			if( RegQueryValueExA( hk, name, NULL, &type, (BYTE *)hex, &len ) != ERROR_SUCCESS || type != REG_SZ )
-				hex[0] = '\0' ;
-			else hex[n-1] = '\0' ;
+			unsigned char *d = kitty_reg_query_dup( hk, name, &type, &len ) ;
+			if( d != NULL && type == REG_SZ ) hex = (char *)d ;
+			else sfree( d ) ;
 			RegCloseKey( hk ) ;
 		}
+		sfree( key ) ;
 	}
-	return hex[0] != '\0' ;
+	sfree( name ) ;
+	if( hex != NULL && !hex[0] ) { sfree( hex ) ; hex = NULL ; }
+	return hex ;
 }
 static void kh_store_put( const char *full, const char *hex ) {
-	char name[MAX_PATH*4] ;
+	char *name ;
 	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: confirmed again next time */
-	kh_store_name( full, name, sizeof(name) ) ;
-	if( strchr( name, '=' ) ) return ;   /* not a kitty.ini key: confirmed again next time */
+	name = kh_store_name_dup( full ) ;
+	if( strchr( name, '=' ) ) { sfree( name ) ; return ; }   /* not a kitty.ini key: confirmed again next time */
 	if( IniFileFlag == SAVEMODE_DIR ) {
 		if( !GetReadOnlyFlag() ) writeINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex ) ;
 	} else {
-		char key[1024] ; HKEY hk ;
-		snprintf( key, sizeof(key), "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
+		HKEY hk ;
 		if( RegCreateKeyExA( HKEY_CURRENT_USER, key, 0, NULL, 0, KEY_WRITE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
 			RegSetValueExA( hk, name, 0, REG_SZ, (const BYTE *)hex, (DWORD)strlen( hex ) + 1 ) ;
 			RegCloseKey( hk ) ;
 		}
+		sfree( key ) ;
 	}
+	sfree( name ) ;
 }
 
 /* Open the file for the check and the start: reading shared, writing and
@@ -363,7 +372,7 @@ static HANDLE kh_hold( const char *full ) {
  * (ready, then start). An allowed file the store cannot keep (a read-only
  * kitty.ini) is still allowed for the action that wanted it. */
 #define KH_OURS_CACHE 8
-static struct { char full[MAX_PATH*4] ; char hex[65] ; } kh_ours[KH_OURS_CACHE] ;
+static struct { char *full ; char hex[65] ; } kh_ours[KH_OURS_CACHE] ;
 static int kh_ours_next = 0 ;
 static volatile LONG kh_ours_lock = 0 ;   /* klink starts from a worker thread too */
 static void kh_ours_enter( void ) { while( InterlockedExchange( &kh_ours_lock, 1 ) ) Sleep( 0 ) ; }
@@ -372,17 +381,20 @@ static int kh_ours_known( const char *full, const char *hex ) {
 	int found = 0 ;
 	kh_ours_enter() ;
 	for( int i = 0 ; i < KH_OURS_CACHE && !found ; i++ )
-		if( kh_ours[i].hex[0] && !strcmp( kh_ours[i].hex, hex ) && !stricmp( kh_ours[i].full, full ) )
+		if( kh_ours[i].full && kh_ours[i].hex[0] && !strcmp( kh_ours[i].hex, hex ) && !stricmp( kh_ours[i].full, full ) )
 			found = 1 ;
 	kh_ours_leave() ;
 	return found ;
 }
 static void kh_ours_add( const char *full, const char *hex ) {
+	char *copy = dupstr( full ), *old ;
 	kh_ours_enter() ;
-	snprintf( kh_ours[kh_ours_next].full, sizeof(kh_ours[0].full), "%s", full ) ;
+	old = kh_ours[kh_ours_next].full ;
+	kh_ours[kh_ours_next].full = copy ;
 	snprintf( kh_ours[kh_ours_next].hex, sizeof(kh_ours[0].hex), "%s", hex ) ;
 	kh_ours_next = ( kh_ours_next + 1 ) % KH_OURS_CACHE ;
 	kh_ours_leave() ;
+	sfree( old ) ;
 }
 
 /*
@@ -404,13 +416,13 @@ static int kh_catalog_signer( const char *full, HANDLE held, char *signer, size_
 	HMODULE wt = GetModuleHandleA( "wintrust.dll" ) ;
 	kh_acquire2_fn acquire2 = wt ? (kh_acquire2_fn)GetProcAddress( wt, "CryptCATAdminAcquireContext2" ) : NULL ;
 	kh_hash2_fn hash2 = wt ? (kh_hash2_fn)GetProcAddress( wt, "CryptCATAdminCalcHashFromFileHandle2" ) : NULL ;
-	WCHAR wfull[MAX_PATH*4] ;
+	WCHAR *wfull ;
 	GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2 ;
 	int ok = 0, pass ;
 	LARGE_INTEGER zero ; zero.QuadPart = 0 ;
 
 	signer[0] = '\0' ;
-	if( !MultiByteToWideChar( CP_ACP, 0, full, -1, wfull, MAX_PATH*4 ) ) return 0 ;
+	if( ( wfull = kitty_acp_to_wide_dup( full ) ) == NULL ) return 0 ;
 	/* pass 0: SHA-256, pass 1: SHA-1. A catalog lists a file under one of
 	 * them - many Windows catalogs still under SHA-1 - so a hash no catalog
 	 * knows is tried the other way before the file counts as unsigned. */
@@ -468,13 +480,14 @@ static int kh_catalog_signer( const char *full, HANDLE held, char *signer, size_
 		if( info ) CryptCATAdminReleaseCatalogContext( cat, info, 0 ) ;
 		CryptCATAdminReleaseContext( cat, 0 ) ;
 	}
+	sfree( wfull ) ;
 	return ok ;
 }
 
 /* What may happen with the held file: run, confirm first (signer filled in), refuse.
  * hex: the file's SHA-256, for the store. */
 static int kh_judge( const char *full, HANDLE held, char *signer, size_t signersz, char hex[65] ) {
-	char known[80] ;
+	char *known ;
 	int sig ;
 	signer[0] = '\0' ; hex[0] = '\0' ;
 	if( held == INVALID_HANDLE_VALUE || !kh_sha256( held, hex ) ) return KHJ_MISSING ;
@@ -487,7 +500,11 @@ static int kh_judge( const char *full, HANDLE held, char *signer, size_t signers
 	if( kitty_authenticode_verify( full ) ) { kh_ours_add( full, hex ) ; return KHJ_RUN ; }
 	sig = kitty_signature_reading( full, signer, signersz ) ;
 	if( sig == KG_SIG_MODIFIED ) return KHJ_REFUSE_BROKEN ;
-	if( kh_store_get( full, known, sizeof(known) ) && !stricmp( known, hex ) ) return KHJ_RUN ;
+	if( ( known = kh_store_get_dup( full ) ) != NULL ) {
+		int same = !stricmp( known, hex ) ;
+		sfree( known ) ;
+		if( same ) return KHJ_RUN ;
+	}
 	if( sig == KG_SIG_OURS || sig == KG_SIG_OTHER ) return KHJ_CONFIRM_SIGNED ;
 	/* No signature in the file, but listed in a Windows catalog this machine
 	 * trusts: a component of Windows (wsl.exe for rz/sz through WSL), which
@@ -518,7 +535,7 @@ static void kh_log( unsigned type, const char *fmt, const char *full, const char
 /* One open box per file; every action that wanted the file while it was open
  * runs on its Yes, in the order they came. */
 typedef struct kh_retry { void (*fn)( void * ) ; void *ctx ; void (*ctxfree)( void * ) ; struct kh_retry *next ; } kh_retry ;
-typedef struct kh_pending { char full[MAX_PATH*4] ; char hex[65] ; char why[300] ; HWND box ;
+typedef struct kh_pending { char *full ; char hex[65] ; char *why ; HWND box ;
                             kh_retry *retries ; struct kh_pending *next ; } kh_pending ;
 static kh_pending *kh_pendings = NULL ;
 
@@ -536,6 +553,7 @@ static void kh_answer( int yes, void *vp ) {
 		if( r->ctxfree ) r->ctxfree( r->ctx ) ;
 		sfree( r ) ;
 	}
+	sfree( p->full ) ; sfree( p->why ) ;
 	sfree( p ) ;
 }
 
@@ -549,15 +567,16 @@ static void kh_answer( int yes, void *vp ) {
  */
 int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
                         void (*fn)( void * ), void *ctx, void (*ctxfree)( void * ) ) {
-	char full[MAX_PATH*4], signer[256], hex[65], *detail, *text ;
-	const char *warn = NULL, *sigline ;
-	char sigbuf[320] ;
+	/* signer: a certificate's common name, at most 64 characters (X.520) */
+	char *full, signer[256], hex[65], *detail, *text ;
+	const char *warn = NULL ;
+	char *sigline ;
 	HANDLE held ;
 	int j ;
 	kh_pending *p ;
 	kh_retry *r ;
 
-	if( !path || !kh_full_path( path, full, sizeof(full) ) ) {
+	if( !path || ( full = kh_full_path_dup( path ) ) == NULL ) {
 		if( ctxfree ) ctxfree( ctx ) ;
 		return 1 ;   /* nothing there: the action reports its own "not found" */
 	}
@@ -565,6 +584,7 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 	j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
 	if( held != INVALID_HANDLE_VALUE ) CloseHandle( held ) ;
 	if( j == KHJ_RUN || j == KHJ_MISSING ) {
+		sfree( full ) ;
 		if( ctxfree ) ctxfree( ctx ) ;
 		return 1 ;   /* missing: the start fails and reports it as before */
 	}
@@ -575,6 +595,7 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
 		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING : KT_HELPER_WHY_BROKEN ) ;
 		sfree( text ) ;
+		sfree( full ) ;
 		if( ctxfree ) ctxfree( ctx ) ;
 		return 0 ;
 	}
@@ -586,19 +607,20 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 			while( *t ) t = &(*t)->next ;
 			*t = r ;
 			if( p->box ) SetForegroundWindow( p->box ) ;
+			sfree( full ) ;
 			return 0 ;
 		}
 	if( j == KHJ_CONFIRM_SIGNED ) {
-		snprintf( sigbuf, sizeof(sigbuf), KT_HELPER_SIGNED_BY, signer[0] ? signer : "?" ) ;
-		sigline = sigbuf ;
+		sigline = dupprintf( KT_HELPER_SIGNED_BY, signer[0] ? signer : "?" ) ;
 	} else if( j == KHJ_CONFIRM_CANNOT ) {
-		sigline = KT_HELPER_NOT_CHECKABLE ; warn = KT_HELPER_WARN_CANNOT ;
+		sigline = dupstr( KT_HELPER_NOT_CHECKABLE ) ; warn = KT_HELPER_WARN_CANNOT ;
 	} else {
-		sigline = KT_HELPER_NOT_SIGNED ; warn = password ? KT_HELPER_WARN_UNSIGNED_PW : KT_HELPER_WARN_UNSIGNED ;
+		sigline = dupstr( KT_HELPER_NOT_SIGNED ) ; warn = password ? KT_HELPER_WARN_UNSIGNED_PW : KT_HELPER_WARN_UNSIGNED ;
 	}
 	p = snew( kh_pending ) ; memset( p, 0, sizeof(*p) ) ;
-	strcpy( p->full, full ) ; strcpy( p->hex, hex ) ;
-	snprintf( p->why, sizeof(p->why), "%s", sigline ) ;
+	p->full = full ;                   /* the pending entry's from here on */
+	strcpy( p->hex, hex ) ;
+	p->why = sigline ;
 	p->retries = r ;
 	p->next = kh_pendings ; kh_pendings = p ;
 	detail = dupprintf( "%s\r\n%s", full, sigline ) ;
@@ -637,19 +659,20 @@ static BOOL kitty_helper_start_handles( const char *path, char *cmdline, DWORD f
 static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
                       const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi,
                       const HANDLE *h, int nh ) {
-	char full[MAX_PATH*4], signer[256], hex[65] ;
+	char *full, signer[256], hex[65] ;
 	HANDLE held ;
 	int j ;
 	BOOL ok ;
-	if( !path || !kh_full_path( path, full, sizeof(full) ) ) { SetLastError( ERROR_FILE_NOT_FOUND ) ; return FALSE ; }
+	if( !path || ( full = kh_full_path_dup( path ) ) == NULL ) { SetLastError( ERROR_FILE_NOT_FOUND ) ; return FALSE ; }
 	held = kh_hold( full ) ;
-	if( held == INVALID_HANDLE_VALUE ) return FALSE ;
+	if( held == INVALID_HANDLE_VALUE ) { DWORD e = GetLastError() ; sfree( full ) ; SetLastError( e ) ; return FALSE ; }
 	j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
 	if( j != KHJ_RUN ) {
 		CloseHandle( held ) ;
 		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
 		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING :
 		        j == KHJ_REFUSE_BROKEN ? KT_HELPER_WHY_BROKEN : KT_HELPER_WHY_UNCONFIRMED ) ;
+		sfree( full ) ;
 		SetLastError( ERROR_ACCESS_DENIED ) ;
 		return FALSE ;
 	}
@@ -660,7 +683,7 @@ static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags
 	else
 		ok = CreateProcessA( full, cmdline, NULL, NULL, inherit, flags, NULL,
 		                     ( workdir && workdir[0] ) ? workdir : NULL, si, pi ) ;
-	{ DWORD e = GetLastError() ; CloseHandle( held ) ; SetLastError( e ) ; }
+	{ DWORD e = GetLastError() ; CloseHandle( held ) ; sfree( full ) ; SetLastError( e ) ; }
 	return ok ;
 }
 
@@ -695,15 +718,16 @@ static int kitty_helper_run( HWND hwnd, const char *path, char *cmdline ) {
 	else { while( *args && *args != ' ' ) args++ ; }
 	while( *args == ' ' ) args++ ;
 	{
-		char full[MAX_PATH*4], signer[256], hex[65] ;
+		char *full, signer[256], hex[65] ;
 		HANDLE held ;
 		int j ;
-		if( !kh_full_path( path, full, sizeof(full) ) ) return 0 ;
+		if( ( full = kh_full_path_dup( path ) ) == NULL ) return 0 ;
 		held = kh_hold( full ) ;
 		j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
 		if( j == KHJ_RUN )
 			ShellExecuteA( hwnd, "open", full, args, NULL, SW_SHOWNORMAL ) ;
 		if( held != INVALID_HANDLE_VALUE ) CloseHandle( held ) ;
+		sfree( full ) ;
 		return j == KHJ_RUN ;
 	}
 }
@@ -970,7 +994,8 @@ struct ktx_win {
 	kx_rerun_t rerun ;             /* how to start it again without -share */
 	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
-	char curline[2048] ;   /* current uncommitted line */
+	char *curline ;        /* current uncommitted line (grows as it needs) */
+	size_t cursize ;       /* bytes allocated for curline */
 	int  curcol ;          /* write cursor within curline (\r resets to 0) */
 	int  curlen ;          /* length of curline */
 	int  committed ;       /* edit-control char index where curline begins */
@@ -978,7 +1003,9 @@ struct ktx_win {
 
 /* Make the edit-control tail (from w->committed to end) equal curline[0..curlen]. */
 static void ktx_set_curline( struct ktx_win *w ) {
-	char save = w->curline[w->curlen] ; w->curline[w->curlen] = 0 ;
+	char save ;
+	sgrowarray( w->curline, w->cursize, (size_t)w->curlen ) ;
+	save = w->curline[w->curlen] ; w->curline[w->curlen] = 0 ;
 	SendMessageA( w->edit, EM_SETSEL, w->committed, -1 ) ;
 	SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)w->curline ) ;
 	w->curline[w->curlen] = save ;
@@ -1005,16 +1032,14 @@ static void ktx_feed( struct ktx_win *w, const char *s, int len ) {
 			if( w->curcol>0 ) w->curcol-- ;
 		} else if( c=='\t' ) {
 			do {
-				if( w->curcol < (int)sizeof(w->curline)-1 ) {
-					w->curline[w->curcol++] = ' ' ;
-					if( w->curcol > w->curlen ) w->curlen = w->curcol ;
-				}
-			} while( (w->curcol % 8) && w->curcol < (int)sizeof(w->curline)-1 ) ;
-		} else if( (unsigned char)c >= 0x20 ) {
-			if( w->curcol < (int)sizeof(w->curline)-1 ) {
-				w->curline[w->curcol++] = c ;
+				sgrowarray( w->curline, w->cursize, (size_t)w->curcol ) ;
+				w->curline[w->curcol++] = ' ' ;
 				if( w->curcol > w->curlen ) w->curlen = w->curcol ;
-			}
+			} while( w->curcol % 8 ) ;
+		} else if( (unsigned char)c >= 0x20 ) {
+			sgrowarray( w->curline, w->cursize, (size_t)w->curcol ) ;
+			w->curline[w->curcol++] = c ;
+			if( w->curcol > w->curlen ) w->curlen = w->curcol ;
 		}
 	}
 	ktx_set_curline( w ) ;
@@ -1070,37 +1095,43 @@ static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
  * out, a clash renamed, and the folder removed. Stale staging folders (a crash
  * left one) are swept when their .lock can be taken. */
 
-/* out = "<dir>\<stem> (n)<ext>" for the first n>=1 whose file does not exist.
- * ext is the last '.' of the base name (none -> whole name is the stem). */
-static void kitty_xfer_free_name( const char *dir, const char *base, char *out, size_t outsz ) {
-	char stem[512], ext[256] ;
+/* "<dir>\<stem> (n)<ext>" for the first n>=1 whose file does not exist, in
+ * full (sfree it). ext is the last '.' of the base name (none -> whole name
+ * is the stem). */
+static char *kitty_xfer_free_name_dup( const char *dir, const char *base ) {
 	const char *dot = strrchr( base, '.' ) ;
-	if( dot && dot != base ) { snprintf( stem, sizeof(stem), "%.*s", (int)(dot-base), base ) ; snprintf( ext, sizeof(ext), "%s", dot ) ; }
-	else { snprintf( stem, sizeof(stem), "%s", base ) ; ext[0] = '\0' ; }
+	int stemlen = ( dot && dot != base ) ? (int)( dot - base ) : (int)strlen( base ) ;
+	const char *ext = ( dot && dot != base ) ? dot : "" ;
+	char *out ;
 	int n ;
-	for( n = 1 ; n < 100000 ; n++ ) {
-		snprintf( out, outsz, "%s\\%s (%d)%s", dir, stem, n, ext ) ;
-		if( !existfile( out ) && !existdirectory( out ) ) return ;
+	for( n = 1 ; ; n++ ) {
+		out = dupprintf( "%s\\%.*s (%d)%s", dir, stemlen, base, n, ext ) ;
+		if( n >= 100000 ) return out ;   /* astronomically unreachable */
+		if( !existfile( out ) && !existdirectory( out ) ) return out ;
+		sfree( out ) ;
 	}
-	snprintf( out, outsz, "%s\\%s (%d)%s", dir, stem, n, ext ) ;   /* astronomically unreachable */
 }
 
 /* Create the staging folder inside `dir` ("KiTTY++ download in progress", then
- * "(2)","(3)"...) and hold its .lock open. Returns the folder path in stage and
- * the lock handle, or 0 on failure. */
-static int kitty_xfer_make_stage( const char *dir, char *stage, size_t ssz, HANDLE *lock ) {
+ * "(2)","(3)"...) and hold its .lock open. Returns the folder path in full
+ * (sfree it) and the lock handle, or NULL on failure. */
+static char *kitty_xfer_make_stage_dup( const char *dir, HANDLE *lock ) {
+	char *stage = NULL, *lp ;
 	int n ;
 	for( n = 1 ; n < 100000 ; n++ ) {
-		if( n == 1 ) snprintf( stage, ssz, "%s\\%s", dir, KT_XFER_STAGING_DIR ) ;
-		else { char nm[128] ; snprintf( nm, sizeof(nm), KT_XFER_STAGING_DIR_N, n ) ; snprintf( stage, ssz, "%s\\%s", dir, nm ) ; }
+		if( n == 1 ) stage = dupprintf( "%s\\%s", dir, KT_XFER_STAGING_DIR ) ;
+		else { char *nm = dupprintf( KT_XFER_STAGING_DIR_N, n ) ; stage = dupprintf( "%s\\%s", dir, nm ) ; sfree( nm ) ; }
 		if( CreateDirectoryA( stage, NULL ) ) break ;
-		if( GetLastError() != ERROR_ALREADY_EXISTS ) return 0 ;
+		if( GetLastError() != ERROR_ALREADY_EXISTS ) { sfree( stage ) ; return NULL ; }
+		sfree( stage ) ; stage = NULL ;
 	}
-	char lp[4096] ; snprintf( lp, sizeof(lp), "%s\\%s", stage, KT_XFER_STAGING_LOCK ) ;
+	if( stage == NULL ) return NULL ;
+	lp = dupprintf( "%s\\%s", stage, KT_XFER_STAGING_LOCK ) ;
 	*lock = CreateFileA( lp, GENERIC_WRITE, 0 /* no share: the sweep's open fails while we hold it */,
 	                     NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_HIDDEN|FILE_FLAG_DELETE_ON_CLOSE, NULL ) ;
-	if( *lock == INVALID_HANDLE_VALUE ) { RemoveDirectoryA( stage ) ; return 0 ; }
-	return 1 ;
+	sfree( lp ) ;
+	if( *lock == INVALID_HANDLE_VALUE ) { RemoveDirectoryA( stage ) ; sfree( stage ) ; return NULL ; }
+	return stage ;
 }
 
 /* Move everything from w->stage_dir into w->final_dir, renaming a name that is
@@ -1109,26 +1140,28 @@ static int kitty_xfer_make_stage( const char *dir, char *stage, size_t ssz, HAND
  * the window thread AFTER kscp has exited. */
 static void kitty_xfer_finish_stage( struct ktx_win *w ) {
 	if( !w->stage_dir || !w->final_dir ) return ;
-	char pat[4096] ; snprintf( pat, sizeof(pat), "%s\\*", w->stage_dir ) ;
+	char *pat = dupprintf( "%s\\*", w->stage_dir ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	sfree( pat ) ;
 	if( h != INVALID_HANDLE_VALUE ) {
 		do {
 			if( !strcmp( fd.cFileName, "." ) || !strcmp( fd.cFileName, ".." ) ) continue ;
 			if( !strcmp( fd.cFileName, KT_XFER_STAGING_LOCK ) ) continue ;   /* our marker */
-			char src[4096], dst[4096] ;
-			snprintf( src, sizeof(src), "%s\\%s", w->stage_dir, fd.cFileName ) ;
-			snprintf( dst, sizeof(dst), "%s\\%s", w->final_dir, fd.cFileName ) ;
+			char *src = dupprintf( "%s\\%s", w->stage_dir, fd.cFileName ) ;
+			char *dst = dupprintf( "%s\\%s", w->final_dir, fd.cFileName ) ;
 			if( existfile( dst ) || existdirectory( dst ) ) {
-				char freed[4096] ; kitty_xfer_free_name( w->final_dir, fd.cFileName, freed, sizeof(freed) ) ;
+				char *freed = kitty_xfer_free_name_dup( w->final_dir, fd.cFileName ) ;
 				if( MoveFileExA( src, freed, MOVEFILE_COPY_ALLOWED ) ) {
 					const char *fb = strrchr( freed, '\\' ) ; fb = fb ? fb+1 : freed ;
 					char *ln = dupprintf( KT_XFER_RENAMED_LINE, fd.cFileName, fb ) ;
 					ktx_feed( w, ln, (int)strlen(ln) ) ; sfree( ln ) ;
 					w->renamed++ ;
 				}
+				sfree( freed ) ;
 			} else {
 				MoveFileExA( src, dst, MOVEFILE_COPY_ALLOWED ) ;
 			}
+			sfree( src ) ; sfree( dst ) ;
 		} while( FindNextFileA( h, &fd ) ) ;
 		FindClose( h ) ;
 	}
@@ -1146,44 +1179,55 @@ static void kitty_xfer_finish_stage( struct ktx_win *w ) {
  * download into a folder. */
 static void kitty_xfer_sweep_dir( const char *dir ) {
 	if( !dir || !dir[0] || !existdirectory( dir ) ) return ;
-	char pat[4096] ; snprintf( pat, sizeof(pat), "%s\\%s*", dir, KT_XFER_STAGING_DIR ) ;
+	char *pat = dupprintf( "%s\\%s*", dir, KT_XFER_STAGING_DIR ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	sfree( pat ) ;
 	if( h == INVALID_HANDLE_VALUE ) return ;
 	do {
 		if( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) continue ;
-		char sd[4096], lp[4096] ; snprintf( sd, sizeof(sd), "%s\\%s", dir, fd.cFileName ) ;
-		snprintf( lp, sizeof(lp), "%s\\%s", sd, KT_XFER_STAGING_LOCK ) ;
+		char *sd = dupprintf( "%s\\%s", dir, fd.cFileName ) ;
+		char *lp = dupprintf( "%s\\%s", sd, KT_XFER_STAGING_LOCK ) ;
+		int live = 0 ;
 		if( existfile( lp ) ) {
 			/* try to take the marker: a running download holds it (no share) */
 			HANDLE t = CreateFileA( lp, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_DELETE_ON_CLOSE, NULL ) ;
-			if( t == INVALID_HANDLE_VALUE ) continue ;   /* still live: leave it */
-			CloseHandle( t ) ;   /* deletes the marker */
+			if( t == INVALID_HANDLE_VALUE ) live = 1 ;   /* still live: leave it */
+			else CloseHandle( t ) ;   /* deletes the marker */
 		}
-		/* remove the folder tree (any leftover files too) */
-		{ char op[4097] ; SHFILEOPSTRUCTA fo ; memset( &fo, 0, sizeof(fo) ) ;
-		  memset( op, 0, sizeof(op) ) ; snprintf( op, sizeof(op)-1, "%s", sd ) ;
-		  fo.wFunc = FO_DELETE ; fo.pFrom = op ;
-		  fo.fFlags = FOF_NO_UI | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT ;
-		  SHFileOperationA( &fo ) ; }
+		if( !live ) {
+			/* remove the folder tree (any leftover files too); pFrom ends
+			 * with two NULs */
+			size_t sl = strlen( sd ) ;
+			char *op = snewn( sl + 2, char ) ;
+			SHFILEOPSTRUCTA fo ; memset( &fo, 0, sizeof(fo) ) ;
+			memcpy( op, sd, sl ) ; op[sl] = op[sl+1] = '\0' ;
+			fo.wFunc = FO_DELETE ; fo.pFrom = op ;
+			fo.fFlags = FOF_NO_UI | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT ;
+			SHFileOperationA( &fo ) ;
+			sfree( op ) ;
+		}
+		sfree( sd ) ; sfree( lp ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
 }
 
 /* Startup sweep: the global download folder and the user's Downloads. */
 void kitty_xfer_sweep_downloads( void ) {
-	char dir[4096] ;
-	/* At startup `conf` is still NULL; kitty_xfer_download_dir() then skips
+	char *dir ;
+	/* At startup `conf` is still NULL; kitty_xfer_download_dir_dup() then skips
 	 * the session folder and answers the GLOBAL download folder (Transfers &
 	 * Tools), else Downloads - which is exactly the startup sweep the design
 	 * requires. The folder a download is aimed at is swept again when a
 	 * wildcard download starts into it. */
-	kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
+	dir = kitty_xfer_download_dir_dup( conf ) ;
 	kitty_xfer_sweep_dir( dir ) ;
 	{ const char *dl = getenv( "USERPROFILE" ) ;
 	  if( dl && dl[0] ) {
-	      char dd[4096] ; snprintf( dd, sizeof(dd), "%s\\Downloads", dl ) ;
-	      if( _stricmp( dd, dir ) != 0 ) kitty_xfer_sweep_dir( dd ) ; }
+	      char *dd = dupprintf( "%s\\Downloads", dl ) ;
+	      if( _stricmp( dd, dir ) != 0 ) kitty_xfer_sweep_dir( dd ) ;
+	      sfree( dd ) ; }
 	}
+	sfree( dir ) ;
 }
 
 /* Esc closes (or cancels) the transfer window. Key events go to the focused
@@ -1402,6 +1446,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			sfree( w->open_file ) ; sfree( w->open_dir ) ;
 			if( w->lock && w->lock != INVALID_HANDLE_VALUE ) CloseHandle( w->lock ) ;
 			sfree( w->stage_dir ) ; sfree( w->final_dir ) ;
+			sfree( w->curline ) ;
 			kx_rerun_free( &w->rerun ) ;
 			free( w ) ;
 			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
@@ -1504,41 +1549,37 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	return 0 ;
 }
 
-/* Bounded string append: never writes past dst[cap-1], always NUL-terminates,
- * silently truncates rather than overflowing. Replaces the unbounded strcat()s
- * in the kscp/klink command builders. */
-static void bcat( char *dst, size_t cap, const char *s ) {
-	if( !s || cap==0 ) return ;
-	size_t dl = strlen(dst) ;
-	if( dl >= cap-1 ) return ;
-	size_t room = cap-1-dl, sl = strlen(s) ;
-	if( sl > room ) sl = room ;
-	memcpy( dst+dl, s, sl ) ; dst[dl+sl] = '\0' ;
+/* Append to a command line held in a strbuf: it grows as it needs, so
+ * nothing is cut. A line longer than Windows takes (32767 characters) makes
+ * the start fail, and the starter reports that as before. Replaces the
+ * bounded appends into fixed buffers, which cut the line - the last argument
+ * first - without a word. */
+static void bcat( strbuf *dst, const char *s ) {
+	if( s ) put_dataz( dst, s ) ;
 }
 
 /* Append ONE argument, wrapped in double-quotes and escaped per Windows
  * CommandLineToArgvW rules, so a value containing a quote or space cannot inject
- * extra command-line arguments/switches. Bounded via bcat. Use for single-value
- * fields (password, key/file path, source path, the user@host:dir target); do NOT
- * use for fields that are intentionally raw option strings (pscpoptions etc.). */
-static void qcat( char *dst, size_t cap, const char *s ) {
-	char one[2] = {0,0} ;
-	bcat( dst, cap, "\"" ) ;
+ * extra command-line arguments/switches. Use for single-value fields (password,
+ * key/file path, source path, the user@host:dir target); do NOT use for fields
+ * that are intentionally raw option strings (pscpoptions etc.). */
+static void qcat( strbuf *dst, const char *s ) {
+	put_byte( dst, '"' ) ;
 	if( s ) {
 		size_t nbs = 0 ;   /* run of pending backslashes */
 		for( const char *p = s ; *p ; p++ ) {
 			if( *p == '\\' ) { nbs++ ; }
 			else if( *p == '"' ) {
-				for( size_t k=0 ; k<2*nbs+1 ; k++ ) bcat(dst,cap,"\\") ;
-				bcat( dst, cap, "\"" ) ; nbs = 0 ;
+				for( size_t k=0 ; k<2*nbs+1 ; k++ ) put_byte( dst, '\\' ) ;
+				put_byte( dst, '"' ) ; nbs = 0 ;
 			} else {
-				for( size_t k=0 ; k<nbs ; k++ ) bcat(dst,cap,"\\") ;
-				nbs = 0 ; one[0]=*p ; bcat( dst, cap, one ) ;
+				for( size_t k=0 ; k<nbs ; k++ ) put_byte( dst, '\\' ) ;
+				nbs = 0 ; put_byte( dst, *p ) ;
 			}
 		}
-		for( size_t k=0 ; k<2*nbs ; k++ ) bcat(dst,cap,"\\") ;   /* trailing backslashes before closing quote */
+		for( size_t k=0 ; k<2*nbs ; k++ ) put_byte( dst, '\\' ) ;   /* trailing backslashes before closing quote */
 	}
-	bcat( dst, cap, "\"" ) ;
+	put_byte( dst, '"' ) ;
 }
 
 /* Append a WinSCP /rawsettings VALUE, quoted and escaped.
@@ -1554,14 +1595,13 @@ static void qcat( char *dst, size_t cap, const char *s ) {
  * Shell). Do NOT use for CONF_winscpoptions / CONF_winscprawsettings: those are
  * documented raw passthrough, where the user is writing command line on purpose.
  */
-static void rawcat( char *dst, size_t cap, const char *s ) {
-	char one[2] = {0,0} ;
-	bcat( dst, cap, "\"" ) ;
+static void rawcat( strbuf *dst, const char *s ) {
+	put_byte( dst, '"' ) ;
 	if( s ) for( const char *p = s ; *p ; p++ ) {
-		if( *p == '"' ) bcat( dst, cap, "\"\"" ) ;
-		else { one[0] = *p ; bcat( dst, cap, one ) ; }
+		if( *p == '"' ) put_dataz( dst, "\"\"" ) ;
+		else put_byte( dst, *p ) ;
 	}
-	bcat( dst, cap, "\"" ) ;
+	put_byte( dst, '"' ) ;
 }
 
 /* #535: percent-encode and append, for the userinfo (user/password) of a
@@ -1569,20 +1609,18 @@ static void rawcat( char *dst, size_t cap, const char *s ) {
  * '?' in the password or username is parsed as URL grammar by WinSCP -- e.g. a
  * password "x@evil.host/" redirects the connection to an attacker-chosen host.
  * Everything outside the RFC 3986 "unreserved" set is escaped as %XX. Bounded
- * via bcat. (qcat is Win32 argv quoting -- a different layer -- so it does NOT
+ * the same way. (qcat is Win32 argv quoting -- a different layer -- so it does NOT
  * cover this URL-grammar injection.) */
-static void urlcat( char *dst, size_t cap, const char *s ) {
+static void urlcat( strbuf *dst, const char *s ) {
 	static const char hexd[] = "0123456789ABCDEF" ;
-	char esc[4] = {0,0,0,0} ;
 	if( !s ) return ;
 	for( const unsigned char *p = (const unsigned char *)s ; *p ; p++ ) {
 		unsigned char c = *p ;
 		if( (c>='A'&&c<='Z') || (c>='a'&&c<='z') || (c>='0'&&c<='9')
 		    || c=='-' || c=='.' || c=='_' || c=='~' ) {
-			esc[0]=(char)c ; esc[1]='\0' ; bcat( dst, cap, esc ) ;
+			put_byte( dst, (char)c ) ;
 		} else {
-			esc[0]='%' ; esc[1]=hexd[(c>>4)&0xF] ; esc[2]=hexd[c&0xF] ; esc[3]='\0' ;
-			bcat( dst, cap, esc ) ;
+			put_byte( dst, '%' ) ; put_byte( dst, hexd[(c>>4)&0xF] ) ; put_byte( dst, hexd[c&0xF] ) ;
 		}
 	}
 }
@@ -1600,21 +1638,28 @@ static void urlcat( char *dst, size_t cap, const char *s ) {
  * is swept at the next start). The files live in %TEMP%, which Windows keeps
  * private to the user - the same protection our own stores have. */
 #define KX_PWFILES_MAX 4
-struct kx_pwfiles { int n ; char path[KX_PWFILES_MAX][MAX_PATH] ; } ;
+/* The paths in full: a %TEMP% Windows cannot give whole (GetTempPath's
+ * answer longer than its buffer) is no folder for a password file - the file
+ * is then not made and the caller's fallback applies. */
+struct kx_pwfiles { int n ; char *path[KX_PWFILES_MAX] ; } ;
 static struct kx_pwfiles kx_pw = { 0 } ;
 
 static void kx_pwfiles_sweep( void ) {
-	char tmp[MAX_PATH], pat[MAX_PATH], full[MAX_PATH] ;
+	char *tmp, *pat, *full ;
 	WIN32_FIND_DATA fd ; HANDLE h ;
-	if( !GetTempPath( sizeof(tmp), tmp ) ) return ;
-	snprintf( pat, sizeof(pat), "%skitty_pw_*.tmp", tmp ) ;
-	if( (h = FindFirstFile( pat, &fd )) == INVALID_HANDLE_VALUE ) return ;
+	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return ;
+	pat = dupprintf( "%skitty_pw_*.tmp", tmp ) ;
+	h = FindFirstFile( pat, &fd ) ;
+	sfree( pat ) ;
+	if( h == INVALID_HANDLE_VALUE ) { sfree( tmp ) ; return ; }
 	do {
-		snprintf( full, sizeof(full), "%s%s", tmp, fd.cFileName ) ;
+		full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
 		SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ;
 		DeleteFile( full ) ;
+		sfree( full ) ;
 	} while( FindNextFile( h, &fd ) ) ;
 	FindClose( h ) ;
+	sfree( tmp ) ;
 }
 
 /* How the password reached the helper, for the line the transfer window shows.
@@ -1715,46 +1760,63 @@ static int kx_helper_reads_protected( const char *path ) {
  * valid until the release) or NULL when no file could be made - the caller
  * then falls back to the plain value, so a transfer never fails for this. */
 static const char *kx_password_file( const char *secret ) {
-	char tmp[MAX_PATH] ; HANDLE h ; DWORD written ; int i ;
+	char *tmp ; HANDLE h = INVALID_HANDLE_VALUE ; DWORD written ; int i ;
 	static unsigned serial = 0 ;
 	if( kx_pw.n >= KX_PWFILES_MAX ) return NULL ;
-	if( !GetTempPath( sizeof(tmp), tmp ) ) return NULL ;
+	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return NULL ;
 	for( i = 0 ; i < 16 ; i++ ) {
-		snprintf( kx_pw.path[kx_pw.n], MAX_PATH, "%skitty_pw_%08lx_%u.tmp", tmp,
-		          (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
-		h = CreateFile( kx_pw.path[kx_pw.n], GENERIC_WRITE, 0, NULL, CREATE_NEW,
+		char *p = dupprintf( "%skitty_pw_%08lx_%u.tmp", tmp,
+		                     (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
+		h = CreateFile( p, GENERIC_WRITE, 0, NULL, CREATE_NEW,
 		                FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
-		if( h != INVALID_HANDLE_VALUE ) break ;
+		if( h != INVALID_HANDLE_VALUE ) { kx_pw.path[kx_pw.n] = p ; break ; }
+		sfree( p ) ;
 	}
+	sfree( tmp ) ;
 	if( h == INVALID_HANDLE_VALUE ) return NULL ;
 	if( !WriteFile( h, secret, (DWORD)strlen(secret), &written, NULL ) || written != strlen(secret) ) {
-		CloseHandle( h ) ; DeleteFile( kx_pw.path[kx_pw.n] ) ; return NULL ;
+		CloseHandle( h ) ; DeleteFile( kx_pw.path[kx_pw.n] ) ;
+		sfree( kx_pw.path[kx_pw.n] ) ; kx_pw.path[kx_pw.n] = NULL ;
+		return NULL ;
 	}
 	CloseHandle( h ) ;
 	return kx_pw.path[kx_pw.n++] ;
 }
 
+static void kx_pwfiles_delete( struct kx_pwfiles *f ) {
+	int i ;
+	for( i = 0 ; i < f->n ; i++ ) {
+		SetFileAttributes( f->path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( f->path[i] ) ;
+		sfree( f->path[i] ) ; f->path[i] = NULL ;
+	}
+	f->n = 0 ;
+}
+
 static DWORD WINAPI kx_pwfiles_delete_thread( LPVOID p ) {
-	struct kx_pwfiles *f = (struct kx_pwfiles *)p ; int i ;
+	struct kx_pwfiles *f = (struct kx_pwfiles *)p ;
 	Sleep( 60000 ) ;
-	for( i = 0 ; i < f->n ; i++ ) { SetFileAttributes( f->path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( f->path[i] ) ; }
+	kx_pwfiles_delete( f ) ;
 	free( f ) ;
 	return 0 ;
 }
 
 /* After the start: delete the files in a minute (WinSCP reads them at
- * startup). `now` deletes at once - the start was cancelled. */
+ * startup). `now` deletes at once - the start was cancelled. The delayed
+ * delete owns the paths from here on. */
 static void kx_pwfiles_release( int now ) {
-	struct kx_pwfiles *copy ; HANDLE t ; int i ;
+	struct kx_pwfiles *copy ; HANDLE t ;
 	if( kx_pw.n == 0 ) return ;
 	if( now ) {
-		for( i = 0 ; i < kx_pw.n ; i++ ) { SetFileAttributes( kx_pw.path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( kx_pw.path[i] ) ; }
+		kx_pwfiles_delete( &kx_pw ) ;
 	} else if( (copy = (struct kx_pwfiles *)malloc( sizeof(*copy) )) != NULL ) {
 		*copy = kx_pw ;
+		memset( &kx_pw, 0, sizeof(kx_pw) ) ;
 		t = CreateThread( NULL, 0, kx_pwfiles_delete_thread, copy, 0, NULL ) ;
 		if( t ) CloseHandle( t ) ; else { kx_pwfiles_delete_thread( copy ) ; }
+	} else {
+		kx_pwfiles_delete( &kx_pw ) ;
 	}
-	kx_pw.n = 0 ;
+	memset( &kx_pw, 0, sizeof(kx_pw) ) ;
 }
 
 /* The proxy of the CONNECTION, for a kscp the terminal starts. Send File and
@@ -1774,7 +1836,7 @@ static void kx_pwfiles_release( int now ) {
  * does; a helper that reads the protected form gets it protected.
  * Appends to `buffer`; the password's span is noted for the redacted log. */
 static int kx_helper_has_flag( const char *path, const char *flag ) ;
-static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
+static void kx_proxy_args( strbuf *buffer, int *pwfiles,
                            size_t *px_at, size_t *px_len ) {
 	const struct kitty_proxy_snapshot *px = kitty_proxy_connection() ;
 	int          px_type = px ? px->type           : conf_get_int(conf,CONF_proxy_type) ;
@@ -1783,7 +1845,7 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 	const char * px_user = px ? px->username       : conf_get_str(conf,CONF_proxy_username) ;
 	const char * px_tcmd = px ? px->telnet_command : conf_get_str(conf,CONF_proxy_telnet_command) ;
 	const char * tname = NULL ;
-	char px_pass[KITTY_PW_MAX+1] ; char b1[64] ;
+	char px_pass[KITTY_PW_MAX+1] ;
 
 	*px_at = *px_len = 0 ;
 	if( px_type == PROXY_NONE ) return ;
@@ -1802,16 +1864,16 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 		case PROXY_SSH_SUBSYSTEM: tname = "sshsubsys" ; break ;
 		default: return ;
 	}
-	bcat( buffer, BC, "-proxytype " ) ; bcat( buffer, BC, tname ) ; bcat( buffer, BC, " " ) ;
+	bcat( buffer, "-proxytype " ) ; bcat( buffer, tname ) ; bcat( buffer, " " ) ;
 	if( px_type == PROXY_CMD ) {
 		/* the local command IS the proxy; -proxycmd carries it (and sets the type) */
-		if( px_tcmd && px_tcmd[0] ) { bcat( buffer, BC, "-proxycmd " ) ; qcat( buffer, BC, px_tcmd ) ; bcat( buffer, BC, " " ) ; }
+		if( px_tcmd && px_tcmd[0] ) { bcat( buffer, "-proxycmd " ) ; qcat( buffer, px_tcmd ) ; bcat( buffer, " " ) ; }
 	} else {
-		if( px_host && px_host[0] ) { bcat( buffer, BC, "-proxyhost " ) ; qcat( buffer, BC, px_host ) ; bcat( buffer, BC, " " ) ; }
-		if( px_port > 0 ) { snprintf( b1, sizeof(b1), "-proxyport %d ", px_port ) ; bcat( buffer, BC, b1 ) ; }
+		if( px_host && px_host[0] ) { bcat( buffer, "-proxyhost " ) ; qcat( buffer, px_host ) ; bcat( buffer, " " ) ; }
+		if( px_port > 0 ) put_fmt( buffer, "-proxyport %d ", px_port ) ;
 	}
-	if( conf_get_bool(conf, CONF_even_proxy_localhost) ) bcat( buffer, BC, "-proxylocalhost " ) ;
-	if( px_user && px_user[0] ) { bcat( buffer, BC, "-proxyuser " ) ; qcat( buffer, BC, px_user ) ; bcat( buffer, BC, " " ) ; }
+	if( conf_get_bool(conf, CONF_even_proxy_localhost) ) bcat( buffer, "-proxylocalhost " ) ;
+	if( px_user && px_user[0] ) { bcat( buffer, "-proxyuser " ) ; qcat( buffer, px_user ) ; bcat( buffer, " " ) ; }
 
 	/* Both sources hold the password WRAPPED (kitty_pwmem.c); unwrapped once
 	 * here, the buffer burned before this returns. Into a private file, the
@@ -1826,11 +1888,11 @@ static void kx_proxy_args( char *buffer, size_t BC, int *pwfiles,
 		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( px_pass ) ;
 		pf = kx_password_file( line ? line : px_pass ) ;
 		if( pf ) {
-			bcat( buffer, BC, "-proxypwfile " ) ;
-			*px_at = strlen( buffer ) ;
-			qcat( buffer, BC, pf ) ;
-			*px_len = strlen( buffer ) - *px_at ;
-			bcat( buffer, BC, " " ) ;
+			bcat( buffer, "-proxypwfile " ) ;
+			*px_at = buffer->len ;
+			qcat( buffer, pf ) ;
+			*px_len = buffer->len - *px_at ;
+			bcat( buffer, " " ) ;
 			(*pwfiles)++ ;
 		}
 		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
@@ -1879,9 +1941,39 @@ typedef struct {
 	int shared ;               /* -share went on the line */
 } kx_kscp_line_t ;
 
-/* Starts `buffer` (BC bytes); 0 when there is no helper to start. */
-static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
-	char pscppath[4096]="", pscpport[4096]="22", b1[256] ;
+/* GetShortPathName in full (sfree it); NULL when Windows cannot give it. */
+static char *kx_short_path_dup( const char *path ) {
+	DWORD n = GetShortPathNameA( path, NULL, 0 ), got ;
+	int tries ;
+	for( tries = 0 ; n > 0 && tries < 4 ; tries++ ) {
+		char *s = snewn( n, char ) ;
+		got = GetShortPathNameA( path, s, n ) ;
+		if( got > 0 && got < n ) return s ;
+		sfree( s ) ;
+		if( got == 0 ) return NULL ;
+		n = got ;                  /* it grew meanwhile: the size it needs now */
+	}
+	return NULL ;
+}
+
+/* SearchPath for a program on the PATH, in full (sfree it); NULL = none. */
+static char *kx_search_path_dup( const char *name ) {
+	DWORD n = SearchPathA( NULL, name, NULL, 0, NULL, NULL ), got ;
+	int tries ;
+	for( tries = 0 ; n > 0 && tries < 4 ; tries++ ) {
+		char *s = snewn( n, char ) ;
+		got = SearchPathA( NULL, name, NULL, n, s, NULL ) ;
+		if( got > 0 && got < n ) return s ;
+		sfree( s ) ;
+		if( got == 0 ) return NULL ;
+		n = got ;
+	}
+	return NULL ;
+}
+
+/* Starts the line in `buffer`; 0 when there is no helper to start. */
+static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k ) {
+	char *pscppath, *pscpport ;
 	int p ;
 
 	memset( k, 0, sizeof(*k) ) ;
@@ -1894,44 +1986,44 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		if( IniFileFlag == SAVEMODE_REG ) return 0 ;
 		else if( !SearchPSCP() ) return 0 ;
 	}
-	if( !GetShortPathName( PSCPPath, pscppath, 4095 ) ) return 0 ;
+	if( ( pscppath = kx_short_path_dup( PSCPPath ) ) == NULL ) return 0 ;
 
-	buffer[0] = '\0' ;
-	bcat( buffer, BC, pscppath ) ; bcat( buffer, BC, " " ) ;   /* exe: 8.3 path, no spaces/quotes */
+	strbuf_clear( buffer ) ;
+	bcat( buffer, pscppath ) ; bcat( buffer, " " ) ;   /* exe: 8.3 path, no spaces/quotes */
+	sfree( pscppath ) ;
 
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
-		bcat( buffer, BC, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, BC, " " ) ;
+		bcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, " " ) ;
 	}
-	bcat( buffer, BC, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
+	bcat( buffer, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
 	/* The session shares its connection (Connection > SSH > "Share SSH
 	 * connections if possible"): kscp rides on the terminal's connection
 	 * and does not log in again - no second password, no second 2FA. Only
 	 * then: switching sharing on for a session that has it off is not
 	 * kscp's to decide. */
 	if( conf_get_bool(conf, CONF_ssh_connection_sharing) && !kx_noshare ) {
-		bcat( buffer, BC, "-share " ) ;
+		bcat( buffer, "-share " ) ;
 		k->shared = 1 ;
 	}
 
 	/* The session's own kscp port first; an empty field falls through to the
 	 * global kscp port and then to the session's port (kitty_xfer_default_port). */
+	pscpport = ReadParameterDup( INIT_SECTION, KI_PSCPPORT ) ;
 	if( (p = kitty_xfer_port_field( conf_get_str(conf, CONF_kscp_port) )) > 0 ) {
-		snprintf( b1, sizeof(b1), "-P %d ", p ) ;
-		bcat( buffer, BC, b1 ) ;
-	} else if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
-		pscpport[17]='\0';
-		if( !strcmp( pscpport,"*" ) ) snprintf( pscpport, sizeof(pscpport), "%d", conf_get_int(conf, CONF_port) ) ;
-		bcat( buffer, BC, "-P " ) ; bcat( buffer, BC, pscpport ) ; bcat( buffer, BC, " " ) ;
+		put_fmt( buffer, "-P %d ", p ) ;
+	} else if( pscpport[0] ) {
+		if( !strcmp( pscpport,"*" ) ) put_fmt( buffer, "-P %d ", conf_get_int(conf, CONF_port) ) ;
+		else { bcat( buffer, "-P " ) ; bcat( buffer, pscpport ) ; bcat( buffer, " " ) ; }
 	} else {
 		if( (p = kx_override_port( conf_get_str(conf, CONF_sftpconnect) )) > 0 ) {
-			snprintf( b1, sizeof(b1), "-P %d ", p ) ;
+			put_fmt( buffer, "-P %d ", p ) ;
 		} else {
-			snprintf( b1, sizeof(b1), "-P %d ", conf_get_int(conf, CONF_port) ) ;
+			put_fmt( buffer, "-P %d ", conf_get_int(conf, CONF_port) ) ;
 		}
-		bcat( buffer, BC, b1 ) ;
 	}
+	sfree( pscpport ) ;
 
-	if( conf_get_int(conf, CONF_sshprot) == 3 ) { bcat( buffer, BC, "-2 " ) ; }   // SSH-2 Only
+	if( conf_get_int(conf, CONF_sshprot) == 3 ) { bcat( buffer, "-2 " ) ; }   // SSH-2 Only
 
 	if( !kitty_pw_empty(conf,CONF_password) ) {
 		/* The password goes over in a PRIVATE FILE, not on the command line,
@@ -1962,21 +2054,21 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 		if( kx_helper_has_flag( PSCPPath, "KiTTYPasswordHandle" )
 		    && ( k->pwmap = kitty_pwhandle_make( pw, tok, sizeof(tok) ) ) != NULL ) {
-			bcat( buffer, BC, "-pwhandle " ) ;
-			k->pw_at = strlen( buffer ) ;
-			bcat( buffer, BC, tok ) ;
-			k->pw_len = strlen( buffer ) - k->pw_at ;
-			bcat( buffer, BC, " " ) ;
+			bcat( buffer, "-pwhandle " ) ;
+			k->pw_at = buffer->len ;
+			bcat( buffer, tok ) ;
+			k->pw_len = buffer->len - k->pw_at ;
+			bcat( buffer, " " ) ;
 			k->pw_mode = KX_PW_HANDLE ;
 		} else {
 			if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
 			enc = kitty_pwfile_line_is_protected( line ) ;
 			pf = kx_password_file( line ? line : pw ) ;
-			bcat( buffer, BC, pf ? "-pwfile " : "-pw " ) ;
-			k->pw_at = strlen( buffer ) ;
-			qcat( buffer, BC, pf ? pf : ( enc ? line : pw ) ) ;
-			k->pw_len = strlen( buffer ) - k->pw_at ;   /* the span covers whatever was written */
-			bcat( buffer, BC, " " ) ;
+			bcat( buffer, pf ? "-pwfile " : "-pw " ) ;
+			k->pw_at = buffer->len ;
+			qcat( buffer, pf ? pf : ( enc ? line : pw ) ) ;
+			k->pw_len = buffer->len - k->pw_at ;   /* the span covers whatever was written */
+			bcat( buffer, " " ) ;
 			if( pf ) k->pwfiles++ ;
 			k->pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
 			                : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
@@ -1985,69 +2077,74 @@ static int kx_kscp_line( char *buffer, size_t BC, kx_kscp_line_t *k ) {
 		smemclr( pw, sizeof(pw) ) ;
 	}
 	if( strlen( conf_get_str(conf,CONF_portknockingoptions)) > 0 ) {
-		bcat( buffer, BC, "-knock " ) ; qcat( buffer, BC, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, BC, " " ) ;
+		bcat( buffer, "-knock " ) ; qcat( buffer, conf_get_str(conf,CONF_portknockingoptions) ) ; bcat( buffer, " " ) ;
 	}
 	{ const char *kf = kx_helper_keyfile(conf) ;
-	  if( kf != NULL ) { bcat( buffer, BC, "-i " ) ; qcat( buffer, BC, kf ) ; bcat( buffer, BC, " " ) ; }
+	  if( kf != NULL ) { bcat( buffer, "-i " ) ; qcat( buffer, kf ) ; bcat( buffer, " " ) ; }
 	}
-	kx_proxy_args( buffer, BC, &k->pwfiles, &k->px_at, &k->px_len ) ;   /* the connection's proxy, if any */
+	kx_proxy_args( buffer, &k->pwfiles, &k->px_at, &k->px_len ) ;   /* the connection's proxy, if any */
 	return 1 ;
 }
 
 /* The remote end of the line, up to and including the ':' before the path:
  * user@host (user@[addr] for an IPv6 address), or the user@host part of an
- * explicit -sftpconnect target. */
-static void kx_kscp_remote( char *out, size_t n ) {
-	char b1[256] ; int p ;
-	out[0] = '\0' ;
-	if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-		snprintf( b1, sizeof(b1), "%s", conf_get_str(conf, CONF_sftpconnect) ) ;
-		if( (p=poss(":",b1)) > 0 ) { b1[p-1]='\0'; }
-		bcat( out, n, b1 ) ;
+ * explicit -sftpconnect target. Appended to `out`. */
+static void kx_kscp_remote( strbuf *out ) {
+	const char *o = conf_get_str(conf, CONF_sftpconnect) ;
+	int p ;
+	if( strlen( o ) > 0 ) {
+		if( (p=poss(":",o)) > 0 ) put_data( out, o, (size_t)( p - 1 ) ) ;
+		else bcat( out, o ) ;
 	} else {
-		bcat( out, n, conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( out, n, "@" ) ;
-		if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(out,n,"[") ; bcat(out,n,conf_get_str(conf,CONF_host)) ; bcat(out,n,"]") ; }
-		else { bcat( out, n, conf_get_str(conf,CONF_host) ) ; }
+		bcat( out, conf_get_str_ambi(conf,CONF_username,NULL) ) ; bcat( out, "@" ) ;
+		if( poss( ":", conf_get_str(conf,CONF_host))>0 ) { bcat(out,"[") ; bcat(out,conf_get_str(conf,CONF_host)) ; bcat(out,"]") ; }
+		else { bcat( out, conf_get_str(conf,CONF_host) ) ; }
 	}
-	bcat( out, n, ":" ) ;
+	bcat( out, ":" ) ;
 }
 
 /* The host and account Get File fetches from, as kx_kscp_remote: the target
  * override's ([user@]host[:port], the port dropped) when set, else the
- * session's. An override without a user leaves user empty. */
-static void kx_gf_target( char *host, size_t hn, char *user, size_t un ) {
+ * session's. An override without a user leaves user empty. Both in full
+ * (sfree them). */
+static void kx_gf_target( char **host, char **user ) {
 	const char *o = conf_get_str( conf, CONF_sftpconnect ), *at ;
-	user[0] = host[0] = '\0' ;
 	if( o && o[0] ) {
-		char *c ;
+		char *c, *h ;
 		at = strchr( o, '@' ) ;
-		if( at ) snprintf( user, un, "%.*s", (int)( at - o ), o ) ;
-		snprintf( host, hn, "%s", at ? at + 1 : o ) ;
-		if( host[0] == '[' ) {                 /* [v6]:port */
-			if( ( c = strchr( host, ']' ) ) != NULL ) *c = '\0' ;
-			memmove( host, host + 1, strlen( host ) ) ;
-		} else if( ( c = strchr( host, ':' ) ) != NULL && !strchr( c + 1, ':' ) )
+		*user = at ? dupprintf( "%.*s", (int)( at - o ), o ) : dupstr( "" ) ;
+		h = dupstr( at ? at + 1 : o ) ;
+		if( h[0] == '[' ) {                    /* [v6]:port */
+			if( ( c = strchr( h, ']' ) ) != NULL ) *c = '\0' ;
+			memmove( h, h + 1, strlen( h ) ) ;
+		} else if( ( c = strchr( h, ':' ) ) != NULL && !strchr( c + 1, ':' ) )
 			*c = '\0' ;                           /* host:port */
+		*host = h ;
 	} else {
-		snprintf( user, un, "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
-		snprintf( host, hn, "%s", conf_get_str( conf, CONF_host ) ) ;
+		*user = dupstr( conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+		*host = dupstr( conf_get_str( conf, CONF_host ) ) ;
 	}
 }
 
 /* The reason for a clipboard text that cannot be a path on the target: the
  * class's text, NULL for the classes that go on. text: the trimmed text. */
 static char *kx_gf_why_not_path( int cls, const char *text, const char *th, const char *tu ) {
-	char su[256], sh[256], whom[600], there[600] ;
-	const char *rest ;
 	switch( cls ) {
 	  case GF_URL:     return dupstr( KT_GETFILE_WHY_URL ) ;
 	  case GF_CONTROL: return dupstr( KT_GETFILE_WHY_CONTROL ) ;
 	  case GF_TOOLONG: return dupstr( KT_GETFILE_WHY_TOOLONG ) ;
-	  case GF_ELSEWHERE:
-		if( !gf_scp_form( text, su, sizeof(su), sh, sizeof(sh), &rest ) ) su[0] = sh[0] = '\0' ;
-		snprintf( whom, sizeof(whom), "%s%s%s", su, su[0] ? "@" : "", sh ) ;
-		snprintf( there, sizeof(there), "%s%s%s", tu, tu[0] ? "@" : "", th ) ;
-		return dupprintf( KT_GETFILE_WHY_ELSEWHERE, whom, there ) ;
+	  case GF_ELSEWHERE: {
+		/* user and host are parts of the text, so its length holds them */
+		size_t n = strlen( text ) + 1 ;
+		char *su = snewn( n, char ), *sh = snewn( n, char ), *whom, *there, *why ;
+		const char *rest ;
+		if( !gf_scp_form( text, su, n, sh, n, &rest ) ) su[0] = sh[0] = '\0' ;
+		whom = dupprintf( "%s%s%s", su, su[0] ? "@" : "", sh ) ;
+		there = dupprintf( "%s%s%s", tu, tu[0] ? "@" : "", th ) ;
+		why = dupprintf( KT_GETFILE_WHY_ELSEWHERE, whom, there ) ;
+		sfree( su ) ; sfree( sh ) ; sfree( whom ) ; sfree( there ) ;
+		return why ;
+	  }
 	  default:         return NULL ;
 	}
 }
@@ -2060,7 +2157,8 @@ void SendOneFile( HWND hwnd, char * directory, char * filename, char * distantdi
  * remote path is noted here, and the run is settled whatever happens. */
 static void kx_send_one( HWND hwnd, char * directory, char * filename, char * distantdir,
                          kx_drop_t *drop, int drop_idx ) {
-	char buffer[4096], remotedir[4096]=".", tgt[4096] ;
+	char *remotedir ;
+	strbuf *buffer, *tgt ;
 	kx_kscp_line_t k ;               /* KiTTY: what the shared builder handed over, and where */
 
 	if( distantdir == NULL ) { distantdir = kitty_current_dir() ; }
@@ -2070,7 +2168,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	 * arrives here already chosen, as directory + filename. */
 
 	if( (distantdir != NULL ) && ( strlen(distantdir)>0 ) ) {
-		strcpy( remotedir, distantdir ) ;
+		remotedir = dupstr( distantdir ) ;
 	} else if( strlen(conf_get_str(conf,CONF_pscpremotedir))>0 ) {
 		/* fixed remote dir sanity check: qcat below already quotes/escapes the
 		 * whole user@host:dir argument (and kscp runs via CreateProcess, no
@@ -2078,48 +2176,56 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 		 * quoted argument can't sensibly carry, falling back to the remote home. */
 		const char * rd = conf_get_str(conf,CONF_pscpremotedir) ; const char * q ; int ok = 1 ;
 		for( q = rd ; *q ; q++ ) if( (unsigned char)*q < 0x20 ) { ok = 0 ; break ; }
-		strcpy( remotedir, ok ? rd : "." ) ;
-	} else { strcpy( remotedir, "." ) ;
+		remotedir = dupstr( ok ? rd : "." ) ;
+	} else { remotedir = dupstr( "." ) ;
 	}
-	if( strlen( remotedir ) == 0 ) strcpy( remotedir, "." ) ;
+	if( strlen( remotedir ) == 0 ) { sfree( remotedir ) ; remotedir = dupstr( "." ) ; }
 
-	const size_t BC = sizeof(buffer) ;
-	if( !kx_kscp_line( buffer, BC, &k ) ) { kx_drop_settle( drop, drop_idx, 0 ) ; return ; }
+	/* The whole line in a strbuf: the remote target dir is its LAST argument,
+	 * and a fixed buffer cut exactly that first. strbuf_new_nm: the line can
+	 * carry a password, and its memory is cleared when it grows or goes. */
+	buffer = strbuf_new_nm() ;
+	if( !kx_kscp_line( buffer, &k ) ) {
+		strbuf_free( buffer ) ; sfree( remotedir ) ;
+		kx_drop_settle( drop, drop_idx, 0 ) ; return ;
+	}
 	/* kscp runs without a console anybody sees: a question (a one-time
 	 * code) would wait there unseen. -batch ends the run with the reason,
 	 * and the window shows the cure (KT_XFER_HINT_PROMPT). */
-	bcat( buffer, BC, "-batch " ) ;
+	bcat( buffer, "-batch " ) ;
 
 	/* source path (single quoted argument) */
 	{
-		char src[4096] ; src[0]='\0' ;
+		char *src ;
 		if( (strlen(directory)>0) && (strlen(filename)>0) ) {
-			bcat(src,sizeof(src),directory) ; bcat(src,sizeof(src),"\\") ; bcat(src,sizeof(src),filename) ;
+			src = dupprintf( "%s\\%s", directory, filename ) ;
 		} else if( (directory!=NULL)&&(strlen(directory)>0) ) {
-			bcat(src,sizeof(src),directory) ;
+			src = dupstr( directory ) ;
 		} else {
-			bcat(src,sizeof(src),filename) ;
+			src = dupstr( filename ) ;
 		}
-		qcat( buffer, BC, src ) ; bcat( buffer, BC, " " ) ;
+		qcat( buffer, src ) ; bcat( buffer, " " ) ;
 		/* KiTTY: where it lands, as kscp resolves remotedir ("." = home,
 		 * a relative dir = under home): typed if the upload succeeds. */
 		if( drop && drop_idx >= 0 && drop_idx < drop->n && !drop->remote[drop_idx] )
 			drop->remote[drop_idx] = kitty_droppath_remote( remotedir, src ) ;
+		sfree( src ) ;
 	}
 
 	/* destination user@host:remotedir (single quoted argument) */
-	kx_kscp_remote( tgt, sizeof(tgt) ) ;
-	bcat( tgt, sizeof(tgt), remotedir ) ;
-	qcat( buffer, BC, tgt ) ;
+	tgt = strbuf_new() ;
+	kx_kscp_remote( tgt ) ;
+	bcat( tgt, remotedir ) ;
+	qcat( buffer, tgt->s ) ;
 
 	chdir( InitialDirectory ) ;
-	debug_logevent_redacted2( "Run", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
+	debug_logevent_redacted2( "Run", buffer->s, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
 	/* Capture output + show it on failure, instead of flashing a console shut
 	 * (so e.g. a server's exit-127 "Cannot initialize SFTP" is readable). */
-	{ char whatbuf[600], updir[4096] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
+	{ char *whatbuf = dupprintf( KT_XFER_UPLOAD_OF, filename ? filename : KT_XFER_FILE ), *updir ;
 	  char *note = kx_hello_agent_note( conf ) ;
 	  char *intro = dupprintf( KT_XFER_UPLOADING,
-	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt ) ;
+	                           note ? note : "", filename ? filename : KT_XFER_FILE, tgt->s ) ;
 	  /* One line on how the password travelled, from what the builder
 	   * above actually did. Nothing when the login uses a key or the agent. */
 	  { const char *hand = kx_pw_handover_line( k.pw_mode ) ;
@@ -2128,7 +2234,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 		sfree( intro ) ; intro = t ;
 	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
-	  kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	  updir = kitty_xfer_upload_dir_dup( conf ) ;
 	  if( k.shared ) {              /* a refused channel: again on its own login */
 		kx_rerun_next.kind = 1 ;
 		kx_rerun_next.dir = dupstr( directory ) ;
@@ -2137,20 +2243,20 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 		kx_rerun_next.drop = drop ;
 		kx_rerun_next.drop_idx = drop_idx ;
 	  }
-	  if( kitty_run_xfer( hwnd, buffer, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
+	  if( kitty_run_xfer( hwnd, buffer->s, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
 	                      drop, drop_idx, k.pwmap ) != 0 )
 		kx_drop_settle( drop, drop_idx, 0 ) ;   /* not started: the window never took it */
-	  sfree( intro ) ; sfree( note ) ; }
+	  sfree( intro ) ; sfree( note ) ; sfree( whatbuf ) ; sfree( updir ) ; }
 
-	//debug_log("%s\n",buffer);MessageBox( NULL, buffer, "Info",MB_OK );
-
-	memset(buffer,0,strlen(buffer));
+	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
+	strbuf_free( tgt ) ;
+	sfree( remotedir ) ;
 	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 	if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
 	}
 
 void SendFileList( HWND hwnd, char * filelist ) {
-	char *pname=NULL,dir[4096] ;
+	char *pname=NULL, *dir ;
 	int i;
 
 	if( filelist==NULL ) return ;
@@ -2163,19 +2269,19 @@ void SendFileList( HWND hwnd, char * filelist ) {
 			if( (filelist[i]=='/')||(filelist[i]=='\\') ) { filelist[i]='\0' ; break ; }
 			}
 		}
-	snprintf( dir, sizeof(dir), "%s", filelist ) ;
+	dir = dupstr( filelist ) ;
 
 	pname=filelist+strlen(filelist)+1;
-	
+
 	i = 0 ;
 	while( pname[i] != '\0' ){
-			
+
 		while( (pname[i] != '\0') && (pname[i] != '\n') && (pname[i] != '\r') ) { i++ ; }
 		pname[i]='\0';
 		SendOneFile( hwnd, dir, pname, NULL ) ;
 		pname=pname+i+1 ; i=0;
 		}
-
+	sfree( dir ) ;
 	}
 
 /* Send File's picker runs beside the session (kitty_pick_async): the
@@ -2198,12 +2304,7 @@ static void kx_send_picked( void * ctx, const char * path ) {
 	}
 
 void SendFile( HWND hwnd ) {
-	/* KiTTY: zeroed whole. The picker is single-select and ends the path with
-	 * ONE NUL; SendFileList reads the byte after it to
-	 * separate "dir\0file\0\0" from one full path, and a stray stack byte
-	 * there was taken as a file name - kscp got "<path>\<garbage>" and the
-	 * upload failed. */
-	char filename[32768] = "" ;
+	char *updir, *picked ;
 
 	if( conf_get_int(conf,CONF_protocol) != PROT_SSH ) {
 		kx_report( KT_CAP_XFER, KT_MSG_SSH_ONLY ) ;
@@ -2224,16 +2325,16 @@ void SendFile( HWND hwnd ) {
 
 	/* The picker opens in the upload folder (Connection > File-Transfer-Settings, else
 	 * the global one, else Documents). */
-	char updir[4096] ;
-	kitty_xfer_upload_dir( conf, updir, sizeof(updir) ) ;
+	updir = kitty_xfer_upload_dir_dup( conf ) ;
 	kx_send_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, updir, KT_CAP_SEND_FILE,
 	                                 "All files (*.*)|*.*|", kx_send_picked, (void *)hwnd ) ;
-	if( kx_send_pick != NULL ) return ;
-	/* no thread for the picker: on this one, as before */
-	if( OpenFileNameFrom( hwnd, filename, KT_CAP_SEND_FILE, "All files (*.*)|*.*|", updir ) )
-		if( strlen( filename ) > 0 ) {
-			SendFileList( hwnd, filename ) ;
-		}
+	if( kx_send_pick != NULL ) { sfree( updir ) ; return ; }
+	/* no thread for the picker: on this one, as before; the path in full,
+	 * handed over as the threaded picker hands it */
+	picked = kitty_pick_open_dup( hwnd, KT_CAP_SEND_FILE, "All files (*.*)|*.*|", updir ) ;
+	sfree( updir ) ;
+	if( picked != NULL && picked[0] ) kx_send_picked( (void *)hwnd, picked ) ;
+	sfree( picked ) ;
 	}
 
 
@@ -2265,43 +2366,47 @@ void GetOneFileToPath( HWND hwnd, char * directory, const char * filename, const
  * localdir is the staging folder kscp writes into, final_dir the folder the
  * files are moved to on success, lock the held-open marker. */
 void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const char * localdir, const char * localfile, const char * final_dir, HANDLE lock ) {
-    char buffer[4096], dir[4096]="." ;
+    char *dir ;
+    strbuf *buffer ;
     kx_kscp_line_t k ;   /* what the shared builder handed over, and where */
 
-    if( localdir != NULL && localdir[0] && existdirectory( localdir ) ) snprintf( dir, sizeof(dir), "%s", localdir ) ;
-    else kitty_xfer_download_dir( conf, dir, sizeof(dir) ) ;
+    if( localdir != NULL && localdir[0] && existdirectory( localdir ) ) dir = dupstr( localdir ) ;
+    else dir = kitty_xfer_download_dir_dup( conf ) ;
 
-    const size_t BC = sizeof(buffer) ;
-    if( !kx_kscp_line( buffer, BC, &k ) ) return ;
-    bcat( buffer, BC, "-batch " ) ;    /* no unseen questions: see kx_send_one */
+    /* In a strbuf: the LOCAL destination is the last argument, and a long
+     * remote source pushed it off the end of a fixed buffer - kscp then wrote
+     * to a cut path. */
+    buffer = strbuf_new_nm() ;
+    if( !kx_kscp_line( buffer, &k ) ) { strbuf_free( buffer ) ; sfree( dir ) ; return ; }
+    bcat( buffer, "-batch " ) ;    /* no unseen questions: see kx_send_one */
 
     /* remote source user@host:path (single quoted argument) */
     {
-        char src[4096] ;
-        kx_kscp_remote( src, sizeof(src) ) ;
+        strbuf *src = strbuf_new() ;
+        kx_kscp_remote( src ) ;
         if( filename[0]=='/' ) {
-            bcat( src, sizeof(src), filename ) ;
+            bcat( src, filename ) ;
         } else if( (directory!=NULL) && (strlen(directory)>0) && (strlen(filename)>0) ) {
-            bcat(src,sizeof(src),directory) ; bcat(src,sizeof(src),"/") ; bcat(src,sizeof(src),filename) ;
+            bcat( src, directory ) ; bcat( src, "/" ) ; bcat( src, filename ) ;
         } else if( (directory!=NULL) && (strlen(directory)>0) ) {
-            bcat(src,sizeof(src),directory) ; bcat(src,sizeof(src),"/*") ;
+            bcat( src, directory ) ; bcat( src, "/*" ) ;
         } else {
-            bcat(src,sizeof(src),filename) ;
+            bcat( src, filename ) ;
         }
-        qcat( buffer, BC, src ) ; bcat( buffer, BC, " " ) ;
+        qcat( buffer, src->s ) ; bcat( buffer, " " ) ;
+        strbuf_free( src ) ;
     }
     /* Local destination: an exact file path (Save-As, single named file) when
      * given, else the folder. Both single-quoted so a space cannot split it. */
-    qcat( buffer, BC, ( localfile && localfile[0] ) ? localfile : dir ) ;
-    //strcat( buffer, " > kitty.log 2>&1" ) ; //if( !system( buffer ) ) unlink( "kitty.log" ) ;
+    qcat( buffer, ( localfile && localfile[0] ) ? localfile : dir ) ;
 
     chdir( InitialDirectory ) ;
 
     /* KiTTY: the password's span blanked, as Send File always did - the plain
      * line put it in the debug log on the no-file fallback (-pw) */
-    debug_logevent_redacted2( "Get on file", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
+    debug_logevent_redacted2( "Get on file", buffer->s, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
     /* Capture output + show on failure (no vanishing console). */
-    { char whatbuf[600] ; snprintf( whatbuf, sizeof(whatbuf), KT_XFER_DOWNLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
+    { char *whatbuf = dupprintf( KT_XFER_DOWNLOAD_OF, filename ? filename : KT_XFER_FILE ) ;
       char *note = kx_hello_agent_note( conf ) ;
       /* The balloon's click: the file it will have produced (dir + the remote
        * name's last component) when that exists once kscp is done, else the
@@ -2329,14 +2434,13 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
           kx_rerun_next.final = dupstr( final_dir ) ;
           kx_rerun_next.lock = lock ;
       }
-      kitty_run_xfer( hwnd, buffer, whatbuf, intro ? intro : note, 1, one,
+      kitty_run_xfer( hwnd, buffer->s, whatbuf, intro ? intro : note, 1, one,
                       final_dir ? final_dir : dir,
                       final_dir ? dir : NULL, final_dir, lock, NULL, 0, k.pwmap ) ;
-      sfree( intro ) ; sfree( one ) ; sfree( note ) ; }
+      sfree( intro ) ; sfree( one ) ; sfree( note ) ; sfree( whatbuf ) ; }
 
-    //debug_log("%s\n",buffer);//MessageBox( NULL, buffer, "Info",MB_OK );
-
-    memset(buffer,0,strlen(buffer));
+    strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
+    sfree( dir ) ;
     if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
     if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
 }
@@ -2346,35 +2450,46 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
  * session: the session's local download folder (Connection > File-Transfer-Settings), else
  * the global Download folder (Transfers & Tools), else the user's Downloads
  * folder, else the folder KiTTY started in. A configured folder that does not
- * exist is skipped, not created. Returns the buffer. */
-char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
-    const char * s ;
-    out[0] = '\0' ;
-    if( cf != NULL ) {
-        s = conf_get_str( cf, CONF_zdownloaddir ) ;
-        if( s && s[0] ) {
-            /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - the stored
-             * CONF_zdownloaddir stays literal; only this local copy, tested
-             * and returned, is expanded. */
-            char *expanded = kitty_expand_env_dup( s ) ;
-            if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
-            free( expanded ) ;
-        }
-    }
-    if( ReadParameterN( INIT_SECTION, KI_DOWNLOADDIR, out, outlen ) && out[0] ) {
-        char *expanded = kitty_expand_env_dup( out ) ;
-        if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
-        free( expanded ) ;
-    }
-    {
-        const char * prof = getenv( "USERPROFILE" ) ;
-        if( prof && prof[0] ) {
-            snprintf( out, outlen, "%s\\Downloads", prof ) ;
-            if( existdirectory( out ) ) return out ;
-        }
-    }
-    snprintf( out, outlen, "%s", InitialDirectory ) ;
+ * exist is skipped, not created. In full (sfree it), never NULL. */
+
+/* `stored` %VAR%-expanded (cyd01/KiTTY#472) - the stored value stays
+ * literal; only this copy, tested and returned, is expanded - when that is an
+ * existing folder, in memory of its own (sfree it); else NULL. */
+static char *kx_existing_dir_dup( const char *stored ) {
+    char *expanded, *out = NULL ;
+    if( stored == NULL || !stored[0] ) return NULL ;
+    expanded = kitty_expand_env_dup( stored ) ;
+    if( expanded != NULL && existdirectory( expanded ) ) out = dupstr( expanded ) ;
+    free( expanded ) ;
     return out ;
+}
+
+/* <USERPROFILE>\<sub> when that folder exists (sfree it); else NULL. */
+static char *kx_profile_dir_dup( const char *sub ) {
+    const char * prof = getenv( "USERPROFILE" ) ;
+    char *out ;
+    if( prof == NULL || !prof[0] ) return NULL ;
+    out = dupprintf( "%s\\%s", prof, sub ) ;
+    if( existdirectory( out ) ) return out ;
+    sfree( out ) ;
+    return NULL ;
+}
+
+/* The two folder answers below: the session's field, the [KiTTY] key,
+ * <USERPROFILE>\<sub>, else the folder KiTTY started in. */
+static char *kx_xfer_dir_dup( Conf * cf, int field, const char * key, const char * sub ) {
+    char *out = NULL, *v ;
+    if( cf != NULL && ( out = kx_existing_dir_dup( conf_get_str( cf, field ) ) ) != NULL ) return out ;
+    v = ReadParameterDup( INIT_SECTION, key ) ;
+    out = kx_existing_dir_dup( v ) ;
+    sfree( v ) ;
+    if( out != NULL ) return out ;
+    if( ( out = kx_profile_dir_dup( sub ) ) != NULL ) return out ;
+    return dupstr( InitialDirectory ) ;
+}
+
+char * kitty_xfer_download_dir_dup( Conf * cf ) {
+    return kx_xfer_dir_dup( cf, CONF_zdownloaddir, KI_DOWNLOADDIR, "Downloads" ) ;
 }
 
 /* The mirror of kitty_xfer_download_dir for files LEAVING this PC: the
@@ -2382,34 +2497,10 @@ char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) {
  * Upload Folder (Transfers & Tools, [KiTTY] uploaddir), else the user's
  * Documents folder, else the folder KiTTY started in. Where the Send File
  * picker opens, and where a plain name the far end requests to read (kitten
- * transfer) is looked up. Never the remote target of an upload. */
-char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) {
-    const char * s ;
-    out[0] = '\0' ;
-    if( cf != NULL ) {
-        s = conf_get_str( cf, CONF_zuploaddir ) ;
-        if( s && s[0] ) {
-            /* KiTTY: %VAR% expansion (cyd01/KiTTY#472) - see
-             * kitty_xfer_download_dir() above. */
-            char *expanded = kitty_expand_env_dup( s ) ;
-            if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
-            free( expanded ) ;
-        }
-    }
-    if( ReadParameterN( INIT_SECTION, KI_UPLOADDIR, out, outlen ) && out[0] ) {
-        char *expanded = kitty_expand_env_dup( out ) ;
-        if( existdirectory( expanded ) ) { snprintf( out, outlen, "%s", expanded ) ; free( expanded ) ; return out ; }
-        free( expanded ) ;
-    }
-    {
-        const char * prof = getenv( "USERPROFILE" ) ;
-        if( prof && prof[0] ) {
-            snprintf( out, outlen, "%s\\Documents", prof ) ;
-            if( existdirectory( out ) ) return out ;
-        }
-    }
-    snprintf( out, outlen, "%s", InitialDirectory ) ;
-    return out ;
+ * transfer) is looked up. Never the remote target of an upload. In full
+ * (sfree it), never NULL. */
+char * kitty_xfer_upload_dir_dup( Conf * cf ) {
+    return kx_xfer_dir_dup( cf, CONF_zuploaddir, KI_UPLOADDIR, "Documents" ) ;
 }
 
 /* [KiTTY] transfernotification (default yes): the tray balloon after a
@@ -2434,8 +2525,7 @@ void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const ch
     if( !kitty_xfer_notify_enabled() ) return ;
     done = dupprintf( KT_XFER_COMPLETE, what ? what : KT_XFER_TRANSFER ) ;
     if( arriving && path && path[0] ) {
-        char folder[4096] ;
-        snprintf( folder, sizeof(folder), "%s", path ) ;
+        char *folder = dupstr( path ) ;
         if( !existdirectory( folder ) ) {          /* a file: its folder */
             char * bs = strrchr( folder, '\\' ) ;
             if( bs && bs > folder ) *bs = '\0' ;
@@ -2443,6 +2533,7 @@ void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const ch
         if( nfiles == 1 ) m = dupprintf( "%s\r\n" KT_XFER_SAVED_ONE, done, folder ) ;
         else if( nfiles > 1 ) m = dupprintf( "%s\r\n" KT_XFER_SAVED_MANY, done, nfiles, folder ) ;
         else m = dupprintf( "%s\r\n" KT_XFER_SAVED_TO, done, folder ) ;
+        sfree( folder ) ;
     } else {
         m = dupstr( done ) ;
     }
@@ -2527,15 +2618,14 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
     if( cf == NULL ) return 22 ;
 
     if( tool == 0 ) {                     /* kscp: the global port comes first */
-        char pscpport[64] ;
-        if( ReadParameterN( INIT_SECTION, KI_PSCPPORT, pscpport, sizeof(pscpport) ) ) {
-            pscpport[17] = '\0' ;
-            if( strcmp( pscpport, "*" ) != 0 ) {
-                int gp = kitty_xfer_port_field( pscpport ) ;
-                if( gp > 0 ) return gp ;
-            }
+        char *pscpport = ReadParameterDup( INIT_SECTION, KI_PSCPPORT ) ;
+        if( pscpport[0] ) {
+            int gp = strcmp( pscpport, "*" ) != 0 ? kitty_xfer_port_field( pscpport ) : 0 ;
+            sfree( pscpport ) ;
+            if( gp > 0 ) return gp ;
             return conf_get_int( cf, CONF_port ) ;   /* "*" = the session's port */
         }
+        sfree( pscpport ) ;
         if( (p = kx_override_port( conf_get_str( cf, CONF_sftpconnect ) )) > 0 )
             return p ;
         return conf_get_int( cf, CONF_port ) ;
@@ -2588,9 +2678,9 @@ int kitty_xfer_default_port( Conf * cf, int tool, int protocol ) {
 typedef struct {
     HWND hwnd ;
     char * clip ;             /* the paths, one per line (freed with this) */
-    char defdir[4096] ;       /* the download folder the pickers open on */
-    char save[4096] ;         /* Save-As: the remote name in, the chosen path out */
-    char dir[4096] ;          /* the folder picked */
+    char * defdir ;           /* the download folder the pickers open on */
+    char * save ;             /* Save-As: the remote name in, the chosen path out */
+    char * dir ;              /* the folder picked */
     int ok ;                  /* Save-As: a file was chosen */
     int keepboth ;
 } kx_getgo_t ;
@@ -2600,7 +2690,16 @@ static HWND kx_getgo_box = NULL ;           /* its "already exist" question */
 static void kx_getgo_free( kx_getgo_t * g ) {
     if( kx_getgo_cur == g ) kx_getgo_cur = NULL ;
     sfree( g->clip ) ;
+    sfree( g->defdir ) ; sfree( g->save ) ; sfree( g->dir ) ;
     sfree( g ) ;
+}
+
+/* The remote path of one line: as it is (absolute, ~, or no OSC 7
+ * directory known), else joined to the tracked directory - in full (sfree
+ * it). A fixed buffer cut it, and a different file was fetched. */
+static char *kx_getgo_remote( const char * line ) {
+    if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL ) return dupstr( line ) ;
+    return dupprintf( "%s/%s", kitty_current_dir(), line ) ;
 }
 
 /* The transfers: every line of g->clip into g->dir. */
@@ -2608,7 +2707,7 @@ static void kx_getgo_run( kx_getgo_t * g ) {
     HWND hwnd = g->hwnd ;
     char * line = g->clip, * next ;
     char * dir = g->dir ;
-    char remote[4096] ;
+    char * remote ;
     int keepboth = g->keepboth ;
 
     for( ; line != NULL && *line ; line = next ) {
@@ -2617,52 +2716,51 @@ static void kx_getgo_run( kx_getgo_t * g ) {
         str_rtrim( line, " \t" ) ;
         while( *line == ' ' || *line == '\t' ) line++ ;
         if( *line == '\0' ) continue ;
-        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL ) {
-            snprintf( remote, sizeof(remote), "%s", line ) ;
-        } else {
-            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
-        }
+        remote = kx_getgo_remote( line ) ;
         int is_glob = ( strpbrk( line, "*?" ) || line[strlen(line)-1]=='/' ) ;
         if( is_glob ) {
             /* CASE 3: into a staging folder, moved out (with rename) on success. */
-            char stage[4096] ; HANDLE lock = INVALID_HANDLE_VALUE ;
+            char *stage ; HANDLE lock = INVALID_HANDLE_VALUE ;
             kitty_xfer_sweep_dir( dir ) ;   /* clear any stale staging first */
-            if( kitty_xfer_make_stage( dir, stage, sizeof(stage), &lock ) )
+            if( ( stage = kitty_xfer_make_stage_dup( dir, &lock ) ) != NULL )
                 GetOneFileStaged( hwnd, NULL, remote, stage, NULL, dir, lock ) ;
             else
                 GetOneFileTo( hwnd, NULL, remote, dir ) ;   /* fallback: straight in */
+            sfree( stage ) ;
         } else if( keepboth ) {
             /* Keep both: a colliding name is saved as "name (1)". */
             const char *base = strrchr( remote, '/' ) ; base = base ? base+1 : remote ;
-            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
+            char *cand = dupprintf( "%s\\%s", dir, base ) ;
             if( existfile( cand ) ) {
-                char freed[4096] ; kitty_xfer_free_name( dir, base, freed, sizeof(freed) ) ;
+                char *freed = kitty_xfer_free_name_dup( dir, base ) ;
                 GetOneFileToPath( hwnd, NULL, remote, dir, freed ) ;
+                sfree( freed ) ;
             } else GetOneFileTo( hwnd, NULL, remote, dir ) ;
+            sfree( cand ) ;
         } else {
             GetOneFileTo( hwnd, NULL, remote, dir ) ;   /* Overwrite / no clash */
         }
+        sfree( remote ) ;
     }
     kx_getgo_free( g ) ;
 }
 
-/* ONE named file: the Save-As, on the worker thread (kitty_call_async). */
+/* ONE named file: the Save-As, on the worker thread (kitty_call_async). The
+ * answer in full replaces the prefilled name; a cancel leaves that. */
 static void kx_getgo_saveas_run( void * v ) {
     kx_getgo_t * g = (kx_getgo_t *)v ;
-    g->ok = SaveFileNameFrom( g->hwnd, g->save, KT_XFER_SAVE_AS_TITLE, "All files (*.*)|*.*|", g->defdir ) ;
+    char *picked = kitty_pick_save_dup( g->hwnd, KT_XFER_SAVE_AS_TITLE, "All files (*.*)|*.*|", g->save, g->defdir ) ;
+    g->ok = picked != NULL ;
+    if( picked != NULL ) { sfree( g->save ) ; g->save = picked ; }
 }
 
 /* ...and its answer, back on the terminal's thread: kscp writes to that path. */
 static void kx_getgo_saved( void * v ) {
     kx_getgo_t * g = (kx_getgo_t *)v ;
-    const char * line = g->clip ;
-    char remote[4096] ;
     if( g->ok && IsWindow( g->hwnd ) ) {
-        if( line[0] == '/' || line[0] == '~' || kitty_current_dir() == NULL )
-            snprintf( remote, sizeof(remote), "%s", line ) ;
-        else
-            snprintf( remote, sizeof(remote), "%s/%s", kitty_current_dir(), line ) ;
+        char *remote = kx_getgo_remote( g->clip ) ;
         GetOneFileToPath( g->hwnd, NULL, remote, NULL, g->save ) ;
+        sfree( remote ) ;
     }
     kx_getgo_free( g ) ;
 }
@@ -2685,9 +2783,10 @@ static void kx_getgo_exist_done( int answer, void * v ) {
 static void kx_getgo_folder( void * v, const char * path ) {
     kx_getgo_t * g = (kx_getgo_t *)v ;
     const char * line = g->clip ;
-    char * dir = g->dir ;
-    if( path != dir ) snprintf( dir, sizeof(g->dir), "%s", path ? path : "" ) ;
-    if( !dir[0] || !existdirectory( dir ) || !IsWindow( g->hwnd ) ) {
+    char * dir ;
+    if( path != g->dir ) { char *d = dupstr( path ? path : "" ) ; sfree( g->dir ) ; g->dir = d ; }
+    dir = g->dir ;
+    if( dir == NULL || !dir[0] || !existdirectory( dir ) || !IsWindow( g->hwnd ) ) {
         kx_getgo_free( g ) ; return ;
     }
 
@@ -2705,21 +2804,22 @@ static void kx_getgo_folder( void * v, const char * path ) {
      * once - Overwrite / Keep both / Cancel (the shared themed 3-way box,
      * modeless; the transfers follow its answer, kx_getgo_exist_done). */
     if( !any_glob ) {
-        char existing[2048] ; existing[0] = '\0' ; int nexist = 0 ;
+        strbuf *existing = strbuf_new() ; int nexist = 0 ;   /* every name, in full */
         char *scan = dupstr( line ) ; char *l = scan, *nx ;
         for( ; l && *l ; l = nx ) { nx = strpbrk( l, "\r\n" ) ; if( nx ){ *nx='\0'; nx++; while(*nx=='\r'||*nx=='\n') nx++; }
             str_rtrim( l, " \t" ) ; while( *l==' '||*l=='\t' ) l++ ; if( !*l ) continue ;
             const char *base = strrchr( l, '/' ) ; base = base ? base+1 : l ;
-            char cand[4096] ; snprintf( cand, sizeof(cand), "%s\\%s", dir, base ) ;
+            char *cand = dupprintf( "%s\\%s", dir, base ) ;
             if( existfile( cand ) ) {
-                size_t el = strlen( existing ) ;
-                if( el < sizeof(existing)-260 ) snprintf( existing+el, sizeof(existing)-el, "%s\r\n", base ) ;
+                put_fmt( existing, "%s\r\n", base ) ;
                 nexist++ ;
-            } }
+            }
+            sfree( cand ) ; }
         sfree( scan ) ;
         if( nexist > 0 ) {
-            char *body = dupprintf( KT_XFER_FILES_EXIST_TEXT, dir, existing ) ;
+            char *body = dupprintf( KT_XFER_FILES_EXIST_TEXT, dir, existing->s ) ;
             int ch ;
+            strbuf_free( existing ) ; existing = NULL ;
             kx_getgo_box = kitty_confirm_modeless3( g->hwnd, KT_CAP_XFER_FILES_EXIST, body, NULL,
                         KT_XFER_BTN_OVERWRITE, KT_XFER_BTN_KEEPBOTH, KT_XFER_BTN_CANCEL_PLAIN,
                         kx_getgo_exist_done, g ) ;
@@ -2731,6 +2831,7 @@ static void kx_getgo_folder( void * v, const char * path ) {
             if( ch == 0 ) { kx_getgo_free( g ) ; return ; }   /* Cancel: nothing */
             g->keepboth = ( ch == 2 ) ;
         }
+        if( existing ) strbuf_free( existing ) ;
     }
     kx_getgo_run( g ) ;
 }
@@ -2748,7 +2849,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
     memset( g, 0, sizeof(*g) ) ;
     g->hwnd = hwnd ;
     g->clip = clip ;
-    kitty_xfer_download_dir( conf, g->defdir, sizeof(g->defdir) ) ;
+    g->defdir = kitty_xfer_download_dir_dup( conf ) ;
     kx_getgo_cur = g ;
 
     /* ONE named file (no interior newline, no wildcard, not a trailing-slash
@@ -2757,7 +2858,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
      * Several files, wildcards and folders keep the folder picker below. */
     if( !strpbrk( line, "\r\n" ) && !strpbrk( line, "*?" ) && line[0] && line[strlen(line)-1] != '/' ) {
         const char *base = strrchr( line, '/' ) ; base = base ? base + 1 : line ;
-        snprintf( g->save, sizeof(g->save), "%s\\%s", g->defdir, base ) ;
+        g->save = dupprintf( "%s\\%s", g->defdir, base ) ;
         if( kitty_call_async( kx_getgo_saveas_run, kx_getgo_saved, g ) ) return ;
         kx_getgo_saveas_run( g ) ;    /* no thread for it: here, as before */
         kx_getgo_saved( g ) ;
@@ -2768,7 +2869,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
                           kx_getgo_folder, g ) != NULL )
         return ;
     /* no thread for the picker: on this one, as before */
-    if( !OpenDirNameFrom( hwnd, g->dir, g->defdir, KT_XFER_GETFILE_PICK_TITLE ) ) g->dir[0] = '\0' ;
+    g->dir = kitty_pick_dir_dup( hwnd, g->defdir, KT_XFER_GETFILE_PICK_TITLE ) ;
     kx_getgo_folder( g, g->dir ) ;
 }
 
@@ -2802,11 +2903,11 @@ typedef struct {
 	HWND owner ;                  /* the terminal window that requested it */
 	char *text ;                  /* the clipboard path, trimmed */
 	char *remote ;                /* the same, joined to the OSC 7 directory */
-	char host[256] ;              /* the connection's host, for the texts */
+	char *host ;                  /* the connection's host, for the texts */
 	HANDLE proc, rd_out, rd_err ;
 	int result ;                  /* GFS_*, or -1 = no answer in time */
 	unsigned long long size ;
-	char err[512] ;
+	char *err ;                   /* kscp's reason, NULL = none */
 	int shared, retried ;         /* ran with -share; already ran again without */
 } kx_gf_check_t ;
 
@@ -2841,46 +2942,42 @@ static void kx_gf_check_free( kx_gf_check_t *c ) {
 	if( c->rd_out ) CloseHandle( c->rd_out ) ;
 	if( c->rd_err ) CloseHandle( c->rd_err ) ;
 	sfree( c->text ) ; sfree( c->remote ) ;
+	sfree( c->host ) ; sfree( c->err ) ;
 	sfree( c ) ;
 }
 
-/* Whatever the pipe holds now, appended to buf (cap bytes, NUL-terminated);
- * past cap it is read and dropped, so kscp never blocks on a full pipe. */
-static void kx_gf_drain( HANDLE rd, char *buf, size_t cap, size_t *len ) {
+/* Whatever the pipe holds now, appended to buf, so kscp never blocks on a
+ * full pipe. The reply is a line or two: past KX_GF_KEEP bytes the rest is
+ * read and dropped, a bound on memory against a flood. */
+#define KX_GF_KEEP ( 64 * 1024 )
+static void kx_gf_drain( HANDLE rd, strbuf *buf ) {
 	DWORD avail = 0, got = 0 ;
 	char tmp[1024] ;
 	while( PeekNamedPipe( rd, NULL, 0, NULL, &avail, NULL ) && avail > 0 ) {
 		if( !ReadFile( rd, tmp, avail < sizeof(tmp) ? avail : (DWORD)sizeof(tmp), &got, NULL ) || got == 0 )
 			break ;
-		if( *len < cap - 1 ) {
-			size_t take = got ;
-			if( take > cap - 1 - *len ) take = cap - 1 - *len ;
-			memcpy( buf + *len, tmp, take ) ;
-			*len += take ;
-			buf[*len] = '\0' ;
-		}
+		if( buf->len < KX_GF_KEEP ) put_data( buf, tmp, got ) ;
 	}
 }
 
-/* The last line with text in it (kscp's reason on stderr), into out. */
-static void kx_gf_last_line( const char *s, char *out, size_t n ) {
+/* The last line with text in it (kscp's reason on stderr), in full (sfree
+ * it); NULL when there is none. */
+static char *kx_gf_last_line_dup( const char *s ) {
 	const char *e = s + strlen( s ), *b ;
-	out[0] = '\0' ;
 	while( e > s && ( e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ' ) ) e-- ;
 	b = e ;
 	while( b > s && b[-1] != '\n' && b[-1] != '\r' ) b-- ;
-	if( e > b ) snprintf( out, n, "%.*s", (int)( e - b ), b ) ;
+	return e > b ? dupprintf( "%.*s", (int)( e - b ), b ) : NULL ;
 }
 
 static DWORD WINAPI kx_gf_thread( LPVOID p ) {
 	kx_gf_check_t *c = (kx_gf_check_t *)p ;
-	char out[4096] = "", err[4096] = "" ;
-	size_t lo = 0, le = 0 ;
+	strbuf *out = strbuf_new(), *err = strbuf_new() ;
 	DWORD start = GetTickCount() ;
 	for( ;; ) {
 		DWORD w ;
-		kx_gf_drain( c->rd_out, out, sizeof(out), &lo ) ;
-		kx_gf_drain( c->rd_err, err, sizeof(err), &le ) ;
+		kx_gf_drain( c->rd_out, out ) ;
+		kx_gf_drain( c->rd_err, err ) ;
 		if( GetTickCount() - start >= KX_GF_TIMEOUT_MS ) {
 			TerminateProcess( c->proc, 1 ) ;
 			c->result = -1 ;
@@ -2888,14 +2985,19 @@ static DWORD WINAPI kx_gf_thread( LPVOID p ) {
 		}
 		w = WaitForSingleObject( c->proc, 50 ) ;
 		if( w == WAIT_OBJECT_0 ) {
-			kx_gf_drain( c->rd_out, out, sizeof(out), &lo ) ;
-			kx_gf_drain( c->rd_err, err, sizeof(err), &le ) ;
-			c->result = gf_parse_stat( out, &c->size, c->err, sizeof(c->err) ) ;
-			if( c->result == GFS_NONE ) kx_gf_last_line( err, c->err, sizeof(c->err) ) ;
+			kx_gf_drain( c->rd_out, out ) ;
+			kx_gf_drain( c->rd_err, err ) ;
+			/* the reason is part of the reply, so the reply's length holds it */
+			sfree( c->err ) ;
+			c->err = snewn( out->len + 1, char ) ;
+			c->result = gf_parse_stat( out->s, &c->size, c->err, out->len + 1 ) ;
+			if( !c->err[0] ) { sfree( c->err ) ; c->err = NULL ; }
+			if( c->result == GFS_NONE ) { sfree( c->err ) ; c->err = kx_gf_last_line_dup( err->s ) ; }
 			break ;
 		}
 		if( w == WAIT_FAILED ) { c->result = GFS_NONE ; break ; }
 	}
+	strbuf_free( out ) ; strbuf_free( err ) ;
 	if( !kx_gf_msgwin || !PostMessage( kx_gf_msgwin, KX_GF_WM_DONE, 0, (LPARAM)c ) ) {
 		kx_gf_checking = 0 ;
 		kx_gf_check_free( c ) ;
@@ -2924,26 +3026,29 @@ static int kx_gf_silent_login( void ) {
 /* Start kscp -stat for c->remote; 1 = running (the worker owns c), 0 = not
  * started (c->err gives the reason when there is one). */
 static int kx_gf_start_check( kx_gf_check_t *c ) {
-	char buffer[8192], tgt[4096], path[4096] ;
+	strbuf *buffer, *tgt ;
 	kx_kscp_line_t k ;
 	SECURITY_ATTRIBUTES sa ;
 	HANDLE wr_out = NULL, wr_err = NULL, hs[3], t ;
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
 	int nh = 0, ok ;
 
-	if( !kx_kscp_line( buffer, sizeof(buffer), &k ) ) return 0 ;
-	bcat( buffer, sizeof(buffer), "-batch -stat " ) ;
-	kx_kscp_remote( tgt, sizeof(tgt) ) ;
-	gf_stat_path( c->remote, path, sizeof(path) ) ;
-	bcat( tgt, sizeof(tgt), path ) ;
-	qcat( buffer, sizeof(buffer), tgt ) ;
-	debug_logevent_redacted2( "Run", buffer, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
+	buffer = strbuf_new_nm() ;
+	if( !kx_kscp_line( buffer, &k ) ) { strbuf_free( buffer ) ; return 0 ; }
+	bcat( buffer, "-batch -stat " ) ;
+	tgt = strbuf_new() ;
+	kx_kscp_remote( tgt ) ;
+	bcat( tgt, gf_stat_path_of( c->remote ) ) ;
+	qcat( buffer, tgt->s ) ;
+	strbuf_free( tgt ) ;
+	debug_logevent_redacted2( "Run", buffer->s, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
 
 	memset( &sa, 0, sizeof(sa) ) ; sa.nLength = sizeof(sa) ; sa.bInheritHandle = TRUE ;
 	if( !CreatePipe( &c->rd_out, &wr_out, &sa, 0 ) || !CreatePipe( &c->rd_err, &wr_err, &sa, 0 ) ) {
 		if( wr_out ) CloseHandle( wr_out ) ;
 		if( k.pwmap ) CloseHandle( k.pwmap ) ;
 		if( k.pwfiles ) kx_pwfiles_release( 1 ) ;
+		strbuf_free( buffer ) ;
 		return 0 ;
 	}
 	SetHandleInformation( c->rd_out, HANDLE_FLAG_INHERIT, 0 ) ;
@@ -2955,8 +3060,8 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	hs[nh++] = wr_out ; hs[nh++] = wr_err ;
 	if( k.pwmap ) hs[nh++] = k.pwmap ;
 	chdir( InitialDirectory ) ;
-	ok = kitty_helper_start_handles( PSCPPath, buffer, CREATE_NO_WINDOW, NULL, &si, &pi, hs, nh ) ;
-	smemclr( buffer, sizeof(buffer) ) ;
+	ok = kitty_helper_start_handles( PSCPPath, buffer->s, CREATE_NO_WINDOW, NULL, &si, &pi, hs, nh ) ;
+	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
 	CloseHandle( wr_out ) ; CloseHandle( wr_err ) ;
 	if( k.pwmap ) CloseHandle( k.pwmap ) ;
 	if( k.pwfiles ) kx_pwfiles_release( ok ? 0 : 1 ) ;   /* once kscp has had it */
@@ -3051,12 +3156,14 @@ static INT_PTR CALLBACK kx_gf_box_proc( HWND h, UINT msg, WPARAM wp, LPARAM lp )
 			int n = GetWindowTextLengthA( e ) ;
 			char *t = snewn( n + 1, char ), *trim = snewn( n + 1, char ) ;
 			int cls ;
-			char th[256], tu[256], *nw ;
+			char *th, *tu, *nw ;
 			GetWindowTextA( e, t, n + 1 ) ;
-			kx_gf_target( th, sizeof(th), tu, sizeof(tu) ) ;
+			kx_gf_target( &th, &tu ) ;
 			cls = gf_classify_at( t, trim, n + 1, th, tu ) ;
 			sfree( t ) ;
-			if( ( nw = kx_gf_why_not_path( cls, trim, th, tu ) ) != NULL ) {
+			nw = kx_gf_why_not_path( cls, trim, th, tu ) ;
+			sfree( th ) ; sfree( tu ) ;
+			if( nw != NULL ) {
 				/* not a path on the target: the reason, the box stays */
 				kx_gf_set_why( h, nw ) ;
 				sfree( nw ) ; sfree( trim ) ;
@@ -3117,14 +3224,14 @@ static void kx_gf_checked( kx_gf_check_t *c ) {
 	char size[32] ;
 	/* the shared connection refused the check another channel: once more on
 	 * kscp's own login, where it needs nobody to answer anything */
-	if( c->shared && !c->retried && c->result == GFS_NONE && strstr( c->err, KX_REFUSED_CHANNEL )
+	if( c->shared && !c->retried && c->result == GFS_NONE && c->err && strstr( c->err, KX_REFUSED_CHANNEL )
 	    && kx_gf_own_login() && IsWindow( c->owner ) ) {
 		int ok ;
 		c->retried = 1 ;
 		if( c->proc ) { CloseHandle( c->proc ) ; c->proc = NULL ; }
 		if( c->rd_out ) { CloseHandle( c->rd_out ) ; c->rd_out = NULL ; }
 		if( c->rd_err ) { CloseHandle( c->rd_err ) ; c->rd_err = NULL ; }
-		c->result = GFS_NONE ; c->size = 0 ; c->err[0] = '\0' ;
+		c->result = GFS_NONE ; c->size = 0 ; sfree( c->err ) ; c->err = NULL ;
 		kx_noshare = 1 ;
 		ok = kx_gf_start_check( c ) ;
 		kx_noshare = 0 ;
@@ -3158,7 +3265,7 @@ static void kx_gf_checked( kx_gf_check_t *c ) {
 		why = dupprintf( KT_GETFILE_WHY_TIMEOUT, c->host ) ;
 		break ;
 	  default:   /* GFS_ERROR, GFS_NONE */
-		why = dupprintf( KT_GETFILE_WHY_ERROR, c->err[0] ? c->err : KT_GETFILE_NO_ANSWER ) ;
+		why = dupprintf( KT_GETFILE_WHY_ERROR, ( c->err && c->err[0] ) ? c->err : KT_GETFILE_NO_ANSWER ) ;
 		break ;
 	}
 	kx_gf_open_box( c->owner, why, dupstr( c->text ) ) ;
@@ -3216,10 +3323,11 @@ void GetFile( HWND hwnd ) {
 	}
 	if( clip == NULL ) clip = dupstr( "" ) ;
 	text = snewn( strlen( clip ) + 1, char ) ;
-	{	char th[256], tu[256] ;
-		kx_gf_target( th, sizeof(th), tu, sizeof(tu) ) ;
+	{	char *th, *tu ;
+		kx_gf_target( &th, &tu ) ;
 		cls = gf_classify_at( clip, text, strlen( clip ) + 1, th, tu ) ;
 		why = kx_gf_why_not_path( cls, text, th, tu ) ;
+		sfree( th ) ; sfree( tu ) ;
 	}
 	sfree( clip ) ;
 
@@ -3254,7 +3362,7 @@ void GetFile( HWND hwnd ) {
 			c->text = text ;
 			c->remote = ( text[0] == '/' || text[0] == '~' || cwd == NULL )
 			            ? dupstr( text ) : dupprintf( "%s/%s", cwd, text ) ;
-			snprintf( c->host, sizeof(c->host), "%s", host ) ;
+			c->host = dupstr( host ) ;
 			kx_gf_checking = 1 ;
 			char * msg = dupprintf( KT_GETFILE_CHECKING, host, c->remote ) ;   /* before c is the worker's */
 			if( kx_gf_start_check( c ) ) {          /* the worker takes it from here */
@@ -3267,7 +3375,7 @@ void GetFile( HWND hwnd ) {
 			}
 			sfree( msg ) ;
 			kx_gf_checking = 0 ;
-			why = dupprintf( KT_GETFILE_WHY_ERROR, c->err[0] ? c->err : KT_GETFILE_NO_ANSWER ) ;
+			why = dupprintf( KT_GETFILE_WHY_ERROR, ( c->err && c->err[0] ) ? c->err : KT_GETFILE_NO_ANSWER ) ;
 			c->text = NULL ;               /* still ours, for the box */
 			kx_gf_check_free( c ) ;
 		} else {
@@ -3286,7 +3394,7 @@ void GetFile( HWND hwnd ) {
  * by default and each toggled in the config dialog (Window/Copy & Paste): a
  * confirmation prompt (CONF_runcmdconfirm) and a post-launch tray balloon
  * (CONF_runcmdnotify, mirroring kageant's key-use balloon). */
-typedef struct { HWND hwnd ; char cmd[4096] ; } kx_runcmd_t ;
+typedef struct { HWND hwnd ; char *cmd ; } kx_runcmd_t ;   /* the command in full */
 static HWND kx_runcmd_box = NULL ;   /* one confirmation at a time */
 
 /* Run the confirmed (or unconfirmed) clipboard command. */
@@ -3302,52 +3410,58 @@ static void kx_runcmd_go( HWND hwnd, char *cmd ) {
     } else
         ShellExecute( hwnd, "open", cmd, 0, 0, SW_SHOWDEFAULT ) ;
     if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
-        char note[4096+64] ;
-        snprintf( note, sizeof(note), KT_XFER_RAN_CLIP, cmd ) ;
+        char *note = dupprintf( KT_XFER_RAN_CLIP, cmd ) ;
         kitty_tray_balloon_async( KT_CAP_KITTY, note, NULL ) ;
+        sfree( note ) ;
     }
 }
 static void kx_runcmd_answer( int yes, void *vp ) {
     kx_runcmd_t *r = (kx_runcmd_t *)vp ;
     kx_runcmd_box = NULL ;
     if( yes ) kx_runcmd_go( r->hwnd, r->cmd ) ;
-    smemclr( r->cmd, sizeof(r->cmd) ) ;
+    smemclr( r->cmd, strlen( r->cmd ) ) ;
+    sfree( r->cmd ) ;
     sfree( r ) ;
 }
 
+/* The clipboard text is taken in full: a cut copy ran a different command
+ * than the one on the clipboard. One longer than Windows starts fails to
+ * start. */
 void RunCmd( HWND hwnd ) {
-    char buffer[4096]="", * pst = NULL ;
+    char *buffer = NULL, * pst = NULL ;
     if (!IsClipboardFormatAvailable(CF_TEXT)) return ;
     if( OpenClipboard(NULL) ) {
         HGLOBAL hglb ;
 
         if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
             if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-                snprintf( buffer, sizeof(buffer), "%s", pst ) ;
+                buffer = dupstr( pst ) ;
                 GlobalUnlock( hglb ) ;
             }
         }
         CloseClipboard();
     }
-    if( strlen( buffer ) > 0 ) {
+    if( buffer != NULL && strlen( buffer ) > 0 ) {
         if( conf_get_bool( conf, CONF_runcmdconfirm ) ) {
             /* modeless: the terminal's output keeps arriving while it waits;
              * the command is in the read-only field, the run in the answer */
             kx_runcmd_t *r ;
             if( kx_runcmd_box && IsWindow( kx_runcmd_box ) ) {
                 SetForegroundWindow( kx_runcmd_box ) ;
+                smemclr( buffer, strlen( buffer ) ) ; sfree( buffer ) ;
                 return ;
             }
             r = snew( kx_runcmd_t ) ;
             r->hwnd = hwnd ;
-            snprintf( r->cmd, sizeof(r->cmd), "%s", buffer ) ;
+            r->cmd = buffer ;                  /* the box's from here on */
             kx_runcmd_box = kitty_confirm_modeless( hwnd, KT_CAP_RUN_CLIP_CMD,
-                KT_XFER_RUN_CLIP_PROMPT, buffer, NULL, kx_runcmd_answer, r ) ;
-            if( !kx_runcmd_box ) { smemclr( r->cmd, sizeof(r->cmd) ) ; sfree( r ) ; }   /* not made: a No */
+                KT_XFER_RUN_CLIP_PROMPT, r->cmd, NULL, kx_runcmd_answer, r ) ;
+            if( !kx_runcmd_box ) { smemclr( r->cmd, strlen( r->cmd ) ) ; sfree( r->cmd ) ; sfree( r ) ; }   /* not made: a No */
             return ;
         }
         kx_runcmd_go( hwnd, buffer ) ;
     }
+    if( buffer != NULL ) { smemclr( buffer, strlen( buffer ) ) ; sfree( buffer ) ; }
 }
 
 /* Execute a local command
@@ -3449,42 +3563,67 @@ static int set_winscp_path_if_exists(const char *path)
 	return 0 ;
 }
 
-static int probe_winscp_env_dir(const char *envname, const char *subpath, char *buffer, size_t buflen)
+static int probe_winscp_env_dir(const char *envname, const char *subpath)
 {
 	const char *base = getenv(envname) ;
+	char *path ;
+	int found ;
 	if( base == NULL || base[0] == '\0' ) return 0 ;
-	snprintf( buffer, buflen, "%s\\%s", base, subpath ) ;
-	return set_winscp_path_if_exists(buffer) ;
+	path = dupprintf( "%s\\%s", base, subpath ) ;
+	found = set_winscp_path_if_exists( path ) ;
+	sfree( path ) ;
+	return found ;
+}
+
+/* A stored tool setting tried with `try` (1 = found and adopted): the
+ * value as it is, or with `name` appended when it is a folder. In full. */
+static int kx_try_stored( const char *key, const char *name, int (*try)( const char *path ) ) {
+	char *v = ReadParameterDup( INIT_SECTION, key ), *path ;
+	int found = 0 ;
+	if( v[0] ) {
+		path = name ? dupprintf( "%s\\%s", v, name ) : dupstr( v ) ;
+		found = try( path ) ;
+		sfree( path ) ;
+	}
+	sfree( v ) ;
+	return found ;
+}
+
+/* <folder>\<name> tried with `try`. */
+static int kx_try_in( const char *folder, const char *name, int (*try)( const char *path ) ) {
+	char *path = dupprintf( "%s\\%s", folder, name ) ;
+	int found = try( path ) ;
+	sfree( path ) ;
+	return found ;
+}
+
+static int kx_adopt_winscp( const char *path ) {
+	return adopt_tool_path_if_exists( &WinSCPPath, path, NULL, NULL ) ;
 }
 
 // Look for the path to the WinSCP program
 int SearchWinSCP( void ) {
-	char buffer[4096] ;
+	char *found ;
 	if( WinSCPPath!=NULL) { free(WinSCPPath) ; WinSCPPath = NULL ; }
 	/* A stored path whose file is missing stays stored (here and for FileZilla
 	 * and kscp): the drive may only be unmounted today, and the setting is
 	 * the user's - the search below covers this run only. */
-	if( ReadParameterN( INIT_SECTION, KI_WINSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
-		if( adopt_tool_path_if_exists( &WinSCPPath, buffer, NULL, NULL ) ) return 1 ;
-	}
+	if( kx_try_stored( KI_WINSCPPATH, NULL, kx_adopt_winscp ) ) return 1 ;
 	/* ProgramW6432 as well: a 32-bit process gets ProgramFiles = the x86
 	 * folder, and a 64-bit WinSCP is under ProgramW6432 (in a 64-bit process
 	 * Windows sets ProgramFiles from it, so the probe repeats harmlessly). */
-	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
-	if( probe_winscp_env_dir("ProgramW6432", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
-	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
-	if( probe_winscp_env_dir("LOCALAPPDATA", "Programs\\WinSCP\\WinSCP.exe", buffer, sizeof(buffer)) ) return 1 ;
-	if( probe_winscp_env_dir("ProgramFiles", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
-	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP3\\WinSCP3.exe", buffer, sizeof(buffer)) ) return 1 ;
-	snprintf( buffer, sizeof(buffer), "%s\\WinSCP.exe", InitialDirectory ) ;
-	if( set_winscp_path_if_exists(buffer) ) return 1 ;
-	if( ReadParameterN( INIT_SECTION, KI_WINSCPDIR, buffer, sizeof(buffer) ) ) {
-		buffer[4076]='\0';
-		strcat( buffer, "\\" ) ; strcat( buffer, "WinSCP.exe" ) ;
-		if( set_winscp_path_if_exists(buffer) ) return 1 ;
-	}
-	if( SearchPathA(NULL, "WinSCP.exe", NULL, sizeof(buffer), buffer, NULL) > 0 ) {
-		if( set_winscp_path_if_exists(buffer) ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles", "WinSCP\\WinSCP.exe") ) return 1 ;
+	if( probe_winscp_env_dir("ProgramW6432", "WinSCP\\WinSCP.exe") ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP\\WinSCP.exe") ) return 1 ;
+	if( probe_winscp_env_dir("LOCALAPPDATA", "Programs\\WinSCP\\WinSCP.exe") ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles", "WinSCP3\\WinSCP3.exe") ) return 1 ;
+	if( probe_winscp_env_dir("ProgramFiles(x86)", "WinSCP3\\WinSCP3.exe") ) return 1 ;
+	if( kx_try_in( InitialDirectory, "WinSCP.exe", set_winscp_path_if_exists ) ) return 1 ;
+	if( kx_try_stored( KI_WINSCPDIR, "WinSCP.exe", set_winscp_path_if_exists ) ) return 1 ;
+	if( ( found = kx_search_path_dup( "WinSCP.exe" ) ) != NULL ) {
+		int ok = set_winscp_path_if_exists( found ) ;
+		sfree( found ) ;
+		if( ok ) return 1 ;
 	}
 	return 0 ;
 }
@@ -3566,7 +3705,12 @@ start "C:\Program Files\WinSCP\WinSCP.exe" "%1" "%2" "%3" "%4" "%5" "%6" "%7" "%
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	size_t pw_at = 0, pw_len = 0 ;   /* KiTTY: where the password lands in cmd */
 	size_t proxy_pw_at = 0, proxy_pw_len = 0 ;  /* ... and the proxy/tunnel one */
-	char cmd[4096], shortpath[1024], buffer[4096], proto[10], winscpport[16] ;
+	/* The line in a strbuf: a fixed buffer cut it, and what came after the
+	 * cut - the proxy's /rawsettings, /passwordsfromfiles - was lost. */
+	strbuf *cmd ;
+	char *shortpath ;
+	const char *proto ;
+	int winscpport ;
 	int raw = 0;
 	int pwfiles = 0 ;                /* passwords handed over as files (/passwordsfromfiles) */
 	const char *pf ;
@@ -3599,16 +3743,16 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	  if( !kx_anyway( hwnd, KT_XFER_START_WINSCP_ANYWAY, kx_anyway_winscp_done, g ) ) return ;
 	}
 
-	if( !GetShortPathName( WinSCPPath, shortpath, 4095 ) ) return ;
+	if( ( shortpath = kx_short_path_dup( WinSCPPath ) ) == NULL ) return ;
 
 	switch( conf_get_int(conf, CONF_winscpprot) ) {
-		case 0: strcpy( proto, "scp" ) ; break ;
-		case 2: strcpy( proto, "ftp" ) ; break ;
-		case 3: strcpy( proto, "ftps" ) ; break ;
-		case 4: strcpy( proto, "ftpes" ) ; break ;
-		case 5: strcpy( proto, "http" ) ; break ;
-		case 6: strcpy( proto, "https" ) ; break ;
-		default: strcpy( proto, "sftp" ) ;
+		case 0: proto = "scp" ; break ;
+		case 2: proto = "ftp" ; break ;
+		case 3: proto = "ftps" ; break ;
+		case 4: proto = "ftpes" ; break ;
+		case 5: proto = "http" ; break ;
+		case 6: proto = "https" ; break ;
+		default: proto = "sftp" ;
 	}
 
 	/* A port written into the target override wins; then the WinSCP panel's own
@@ -3618,21 +3762,22 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	{ int wport = kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) ;
 	  if( wport <= 0 ) wport = kitty_xfer_port_field( conf_get_str(conf, CONF_winscp_port) ) ;
 	  if( wport <= 0 ) wport = kitty_xfer_default_port( conf, 1, conf_get_int(conf, CONF_winscpprot) ) ;
-	  snprintf( winscpport, sizeof(winscpport), "%d", wport ) ;
+	  winscpport = wport ;
 	}
 
+	cmd = strbuf_new_nm() ;                /* cleared when it goes: it may hold a password */
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
-		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
-			
+		put_fmt( cmd, "\"%s\" %s://", shortpath, proto ) ;
+
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
-			bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_sftpconnect) ) ;
+			bcat( cmd, conf_get_str(conf, CONF_sftpconnect) ) ;
 			/* The override gives user and host; when it gives no port, the
 			 * Port field (or the standard port) supplies one. */
 			if( kx_override_port( conf_get_str(conf, CONF_sftpconnect) ) <= 0 ) {
-				bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
+				put_fmt( cmd, ":%d", winscpport ) ;
 			}
 		} else {
-			urlcat( cmd, sizeof(cmd), user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
+			urlcat( cmd, user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( !kitty_pw_empty(conf,CONF_password) ) {
 				/* The URL's password field carries the PATH of a private temp
 				 * file holding the password (/passwordsfromfiles, see above);
@@ -3643,58 +3788,61 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 				char pw[KITTY_PW_MAX+1] ;
 				kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 				pf = kx_password_file( pw ) ;
-				bcat( cmd, sizeof(cmd), ":" ) ;
-				pw_at = strlen( cmd ) ;
-				if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-				else urlcat( cmd, sizeof(cmd), pw ) ;
-				pw_len = strlen( cmd ) - pw_at ;
+				bcat( cmd, ":" ) ;
+				pw_at = cmd->len ;
+				if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
+				else urlcat( cmd, pw ) ;
+				pw_len = cmd->len - pw_at ;
 				smemclr( pw, sizeof(pw) ) ;
 			}
-			bcat( cmd, sizeof(cmd), "@" ) ;
-			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,sizeof(cmd),"[") ; bcat(cmd,sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,sizeof(cmd),"]") ; }
-			else { bcat( cmd, sizeof(cmd), host!=NULL ? host : conf_get_str(conf,CONF_host) ) ; }
-			bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
+			bcat( cmd, "@" ) ;
+			if( poss( ":", host!=NULL ? host : conf_get_str(conf,CONF_host) )>0 ) { bcat(cmd,"[") ; bcat(cmd, host!=NULL ? host : conf_get_str(conf,CONF_host)) ; bcat(cmd,"]") ; }
+			else { bcat( cmd, host!=NULL ? host : conf_get_str(conf,CONF_host) ) ; }
+			put_fmt( cmd, ":%d", winscpport ) ;
 		}
 
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			bcat( cmd, sizeof(cmd), directory ) ;
-			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
+			bcat( cmd, directory ) ;
+			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, "/" ) ;
 		}
 		{ const char *kf = kx_helper_keyfile(conf) ;
 		  if( kf != NULL ) {
-			if( GetShortPathName( kf, shortpath, 4095 ) ) {
-				bcat( cmd, sizeof(cmd), " \"/privatekey=" ) ;
-				bcat( cmd, sizeof(cmd), shortpath ) ;
-				bcat( cmd, sizeof(cmd), "\"" ) ;
+			char *kshort = kx_short_path_dup( kf ) ;
+			if( kshort != NULL ) {
+				bcat( cmd, " \"/privatekey=" ) ;
+				bcat( cmd, kshort ) ;
+				bcat( cmd, "\"" ) ;
+				sfree( kshort ) ;
 			}
 		  }
 		}
 	} else {
-		snprintf( cmd, sizeof(cmd), "\"%s\" %s://", shortpath, proto ) ;
-		urlcat( cmd, sizeof(cmd), conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
+		put_fmt( cmd, "\"%s\" %s://", shortpath, proto ) ;
+		urlcat( cmd, conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
 		if( !kitty_pw_empty(conf,CONF_password) ) {
 			char pw[KITTY_PW_MAX+1] ;
 			kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
-			bcat( cmd, sizeof(cmd), ":" ) ;
-			pw_at = strlen( cmd ) ;
+			bcat( cmd, ":" ) ;
+			pw_at = cmd->len ;
 			pf = kx_password_file( pw ) ;   /* a file, see above */
-			if( pf ) { urlcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-			else urlcat( cmd, sizeof(cmd), pw ) ;
-			pw_len = strlen( cmd ) - pw_at ;
+			if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
+			else urlcat( cmd, pw ) ;
+			pw_len = cmd->len - pw_at ;
 			smemclr( pw, sizeof(pw) ) ;
 		}
-		bcat( cmd, sizeof(cmd), "@" ) ;
-		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
-		else { bcat( cmd, sizeof(cmd), conf_get_str(conf,CONF_host) ) ; }
-		bcat( cmd, sizeof(cmd), ":" ) ; bcat( cmd, sizeof(cmd), winscpport ) ;
+		bcat( cmd, "@" ) ;
+		if( poss( ":", conf_get_str(conf,CONF_host) )>0 ) { bcat( cmd, "[" ) ; bcat( cmd, conf_get_str(conf,CONF_host) ) ; bcat( cmd, "]" ) ; }
+		else { bcat( cmd, conf_get_str(conf,CONF_host) ) ; }
+		put_fmt( cmd, ":%d", winscpport ) ;
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			bcat( cmd, sizeof(cmd), directory ) ;
-			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, sizeof(cmd), "/" ) ;
+			bcat( cmd, directory ) ;
+			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, "/" ) ;
 		}
 	}
-	
+	sfree( shortpath ) ;
+
 	if( strlen(conf_get_str(conf, CONF_winscpoptions))>0 ) {
-		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_winscpoptions) ) ;
+		bcat( cmd, " " ) ; bcat( cmd, conf_get_str(conf, CONF_winscpoptions) ) ;
 	}
 
 	/* Proxy -> WinSCP.  Two different WinSCP features hide behind PuTTY's one
@@ -3755,36 +3903,36 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		}
 
 		if( tunnel ) {
-			if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-			bcat( cmd, sizeof(cmd), " Tunnel=1" ) ;
-			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " TunnelHostName=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
-			snprintf( buffer, sizeof(buffer), " TunnelPortNumber=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
-			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " TunnelUserName=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
+			if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+			bcat( cmd, " Tunnel=1" ) ;
+			if( px_host && strlen(px_host)>0 ) { bcat( cmd, " TunnelHostName=" ) ; rawcat( cmd, px_host ) ; }
+			put_fmt( cmd, " TunnelPortNumber=%d", px_port ) ;
+			if( px_user && strlen(px_user)>0 ) { bcat( cmd, " TunnelUserName=" ) ; rawcat( cmd, px_user ) ; }
 			if( px_pass[0] ) {
 				/* TunnelPassword expects WinSCP's own encrypted form;
 				 * TunnelPasswordPlain is the cleartext one. The span covers
 				 * the quotes rawcat adds, so the Event Log blanks the whole
 				 * value however it was escaped. */
-				bcat( cmd, sizeof(cmd), " TunnelPasswordPlain=" ) ;
-				proxy_pw_at = strlen( cmd ) ;
+				bcat( cmd, " TunnelPasswordPlain=" ) ;
+				proxy_pw_at = cmd->len ;
 				pf = kx_password_file( px_pass ) ;      /* a file - /passwordsfromfiles covers rawsettings too */
-				if( pf ) { rawcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-				else rawcat( cmd, sizeof(cmd), px_pass ) ;
-				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
+				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
+				else rawcat( cmd, px_pass ) ;
+				proxy_pw_len = cmd->len - proxy_pw_at ;
 			}
 		} else if( method > 0 ) {
-			if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-			snprintf( buffer, sizeof(buffer), " ProxyMethod=%d", method ) ; bcat( cmd, sizeof(cmd), buffer ) ;
-			if( px_host && strlen(px_host)>0 ) { bcat( cmd, sizeof(cmd), " ProxyHost=" ) ; rawcat( cmd, sizeof(cmd), px_host ) ; }
-			snprintf( buffer, sizeof(buffer), " ProxyPort=%d", px_port ) ; bcat( cmd, sizeof(cmd), buffer ) ;
-			if( px_user && strlen(px_user)>0 ) { bcat( cmd, sizeof(cmd), " ProxyUsername=" ) ; rawcat( cmd, sizeof(cmd), px_user ) ; }
+			if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+			put_fmt( cmd, " ProxyMethod=%d", method ) ;
+			if( px_host && strlen(px_host)>0 ) { bcat( cmd, " ProxyHost=" ) ; rawcat( cmd, px_host ) ; }
+			put_fmt( cmd, " ProxyPort=%d", px_port ) ;
+			if( px_user && strlen(px_user)>0 ) { bcat( cmd, " ProxyUsername=" ) ; rawcat( cmd, px_user ) ; }
 			if( px_pass[0] ) {
-				bcat( cmd, sizeof(cmd), " ProxyPassword=" ) ;
-				proxy_pw_at = strlen( cmd ) ;
+				bcat( cmd, " ProxyPassword=" ) ;
+				proxy_pw_at = cmd->len ;
 				pf = kx_password_file( px_pass ) ;      /* a file, see above */
-				if( pf ) { rawcat( cmd, sizeof(cmd), pf ) ; pwfiles++ ; }
-				else rawcat( cmd, sizeof(cmd), px_pass ) ;
-				proxy_pw_len = strlen( cmd ) - proxy_pw_at ;
+				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
+				else rawcat( cmd, px_pass ) ;
+				proxy_pw_len = cmd->len - proxy_pw_at ;
 			}
 			/* One PuTTY field, two WinSCP ones: CONF_proxy_telnet_command holds
 			 * the Telnet negotiation string for PROXY_TELNET and the local
@@ -3792,8 +3940,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			 * a local command as ProxyTelnetCommand left WinSCP with nothing to
 			 * run for method 5. */
 			if( px_tcmd && strlen(px_tcmd)>0 ) {
-				bcat( cmd, sizeof(cmd), method==5 ? " ProxyLocalCommand=" : " ProxyTelnetCommand=" ) ;
-				rawcat( cmd, sizeof(cmd), px_tcmd ) ;
+				bcat( cmd, method==5 ? " ProxyLocalCommand=" : " ProxyTelnetCommand=" ) ;
+				rawcat( cmd, px_tcmd ) ;
 			}
 		}
 	}
@@ -3801,36 +3949,36 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	}
 
 	if( conf_get_bool(conf,CONF_compression) ) {
-		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		bcat( cmd, sizeof(cmd), " Compression=1" ) ;
+		if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, " Compression=1" ) ;
 	}
 
 	if( conf_get_bool(conf, CONF_agentfwd) ) {
-		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		bcat( cmd, sizeof(cmd), " AgentFwd=1" ) ;
+		if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, " AgentFwd=1" ) ;
 	}
 
 	if( strlen(conf_get_str(conf, CONF_winscprawsettings))>0 ) {
-		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_winscprawsettings) ) ;
+		if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, " " ) ; bcat( cmd, conf_get_str(conf, CONF_winscprawsettings) ) ;
 	}
 
 	if( !strcmp(proto,"scp") && (strlen(conf_get_str(conf, CONF_pscpshell))>0) ) {
-		if( raw == 0 ) { bcat( cmd, sizeof(cmd), " /rawsettings" ) ; raw++ ; }
-		bcat( cmd, sizeof(cmd), " Shell=" ) ; rawcat( cmd, sizeof(cmd), conf_get_str(conf, CONF_pscpshell) ) ;
+		if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
+		bcat( cmd, " Shell=" ) ; rawcat( cmd, conf_get_str(conf, CONF_pscpshell) ) ;
 	}
 
 	/* Every password above went into a file: add the WinSCP switch. Without a
 	 * password there is no switch and the command line is what it always was
 	 * (key files and the agent are untouched by this). */
-	if( pwfiles ) bcat( cmd, sizeof(cmd), " /passwordsfromfiles" ) ;
-	debug_logevent_redacted2( "Start WinSCP", cmd, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
+	if( pwfiles ) bcat( cmd, " /passwordsfromfiles" ) ;
+	debug_logevent_redacted2( "Start WinSCP", cmd->s, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
-	kitty_helper_run( hwnd, WinSCPPath, cmd ) ;
+	kitty_helper_run( hwnd, WinSCPPath, cmd->s ) ;
 #else
-	RunCommand( hwnd, cmd ) ;          /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+	RunCommand( hwnd, cmd->s ) ;       /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
 #endif
-	memset(cmd,0,strlen(cmd));
+	strbuf_free( cmd ) ;
 	kx_pwfiles_release( 0 ) ;
 }
 
@@ -3888,72 +4036,69 @@ static int set_filezilla_path_if_exists( const char *path ) {
 	return 0 ;
 }
 
-static int probe_filezilla_env_dir( const char *envname, const char *subpath, char *buffer, size_t buflen ) {
+static int probe_filezilla_env_dir( const char *envname, const char *subpath ) {
 	const char *base = getenv( envname ) ;
+	char *path ;
+	int found ;
 	if( base == NULL || base[0] == '\0' ) return 0 ;
-	snprintf( buffer, buflen, "%s\\%s", base, subpath ) ;
-	return set_filezilla_path_if_exists( buffer ) ;
+	path = dupprintf( "%s\\%s", base, subpath ) ;
+	found = set_filezilla_path_if_exists( path ) ;
+	sfree( path ) ;
+	return found ;
 }
 
 /* [KiTTY] FileZillaPath first, then the installer's default locations. A stored
  * path that no longer exists is dropped, as SearchWinSCP does. */
 int SearchFileZilla( void ) {
-	char buffer[4096] ;
 	if( FileZillaPath != NULL ) { free( FileZillaPath ) ; FileZillaPath = NULL ; }
-	if( ReadParameterN( INIT_SECTION, KI_FILEZILLAPATH, buffer, sizeof(buffer) ) != 0 ) {
-		if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
-	}
-	if( probe_filezilla_env_dir( "ProgramFiles", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
+	if( kx_try_stored( KI_FILEZILLAPATH, NULL, set_filezilla_path_if_exists ) ) return 1 ;
+	if( probe_filezilla_env_dir( "ProgramFiles", "FileZilla FTP Client\\filezilla.exe" ) ) return 1 ;
 	/* a 64-bit FileZilla seen from a 32-bit process: see SearchWinSCP */
-	if( probe_filezilla_env_dir( "ProgramW6432", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
-	if( probe_filezilla_env_dir( "ProgramFiles(x86)", "FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
-	if( probe_filezilla_env_dir( "LOCALAPPDATA", "Programs\\FileZilla FTP Client\\filezilla.exe", buffer, sizeof(buffer) ) ) return 1 ;
-	snprintf( buffer, sizeof(buffer), "%s\\filezilla.exe", InitialDirectory ) ;
-	if( set_filezilla_path_if_exists( buffer ) ) return 1 ;
+	if( probe_filezilla_env_dir( "ProgramW6432", "FileZilla FTP Client\\filezilla.exe" ) ) return 1 ;
+	if( probe_filezilla_env_dir( "ProgramFiles(x86)", "FileZilla FTP Client\\filezilla.exe" ) ) return 1 ;
+	if( probe_filezilla_env_dir( "LOCALAPPDATA", "Programs\\FileZilla FTP Client\\filezilla.exe" ) ) return 1 ;
+	if( kx_try_in( InitialDirectory, "filezilla.exe", set_filezilla_path_if_exists ) ) return 1 ;
 	return 0 ;
 }
 
 /* XML text: the five characters that break an element or an attribute. */
-static void xmlcat( char *dst, size_t cap, const char *s ) {
-	char one[2] = { 0, 0 } ;
+static void xmlcat( strbuf *dst, const char *s ) {
 	if( !s ) return ;
 	for( ; *s ; s++ ) {
 		switch( *s ) {
-			case '&':  bcat( dst, cap, "&amp;" ) ; break ;
-			case '<':  bcat( dst, cap, "&lt;" ) ; break ;
-			case '>':  bcat( dst, cap, "&gt;" ) ; break ;
-			case '"':  bcat( dst, cap, "&quot;" ) ; break ;
-			case '\'': bcat( dst, cap, "&apos;" ) ; break ;
-			default:   one[0] = *s ; bcat( dst, cap, one ) ;
+			case '&':  bcat( dst, "&amp;" ) ; break ;
+			case '<':  bcat( dst, "&lt;" ) ; break ;
+			case '>':  bcat( dst, "&gt;" ) ; break ;
+			case '"':  bcat( dst, "&quot;" ) ; break ;
+			case '\'': bcat( dst, "&apos;" ) ; break ;
+			default:   put_byte( dst, *s ) ;
 		}
 	}
 }
 
-static void b64cat( char *dst, size_t cap, const char *s ) {
+static void b64cat( strbuf *dst, const char *s ) {
 	char atom[5] = { 0, 0, 0, 0, 0 } ;
 	size_t n = strlen( s ), i ;
 	for( i = 0 ; i < n ; i += 3 ) {
 		base64_encode_atom( (const unsigned char *)s + i, (int)( n - i >= 3 ? 3 : n - i ), atom ) ;
-		bcat( dst, cap, atom ) ;
+		bcat( dst, atom ) ;
 	}
 }
 
 /* The temporary data directory of mode 1: made just before the start, removed
- * a minute later (FileZilla reads fzdefaults.xml at startup). */
-static char kx_fzdir[MAX_PATH] = "" ;
+ * a minute later (FileZilla reads fzdefaults.xml at startup). In full; NULL
+ * = none. */
+static char *kx_fzdir = NULL ;
 
 static void kx_fzdir_remove( const char *dir ) {
-	char full[MAX_PATH] ;
-	snprintf( full, sizeof(full), "%s\\fzdefaults.xml", dir ) ;
-	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
-	snprintf( full, sizeof(full), "%s\\sitemanager.xml", dir ) ;
-	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
-	snprintf( full, sizeof(full), "%s\\filezilla.xml", dir ) ;
-	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
-	snprintf( full, sizeof(full), "%s\\recentservers.xml", dir ) ;
-	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
-	snprintf( full, sizeof(full), "%s\\lockfile", dir ) ;
-	SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+	static const char *const names[] = { "fzdefaults.xml", "sitemanager.xml", "filezilla.xml",
+	                                     "recentservers.xml", "lockfile" } ;
+	size_t i ;
+	for( i = 0 ; i < sizeof(names)/sizeof(names[0]) ; i++ ) {
+		char *full = dupprintf( "%s\\%s", dir, names[i] ) ;
+		SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( full ) ;
+		sfree( full ) ;
+	}
 	RemoveDirectory( dir ) ;
 }
 
@@ -3961,83 +4106,98 @@ static DWORD WINAPI kx_fzdir_delete_thread( LPVOID p ) {
 	char *dir = (char *)p ;
 	Sleep( 60000 ) ;
 	kx_fzdir_remove( dir ) ;
-	free( dir ) ;
+	sfree( dir ) ;
 	return 0 ;
 }
 
 static void kx_fzdir_sweep( void ) {
-	char tmp[MAX_PATH], pat[MAX_PATH], full[MAX_PATH] ;
+	char *tmp, *pat, *full ;
 	WIN32_FIND_DATA fd ; HANDLE h ;
-	if( !GetTempPath( sizeof(tmp), tmp ) ) return ;
-	snprintf( pat, sizeof(pat), "%skitty_fz_*", tmp ) ;
-	if( (h = FindFirstFile( pat, &fd )) == INVALID_HANDLE_VALUE ) return ;
+	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return ;
+	pat = dupprintf( "%skitty_fz_*", tmp ) ;
+	h = FindFirstFile( pat, &fd ) ;
+	sfree( pat ) ;
+	if( h == INVALID_HANDLE_VALUE ) { sfree( tmp ) ; return ; }
 	do {
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
-			snprintf( full, sizeof(full), "%s%s", tmp, fd.cFileName ) ;
+			full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
 			kx_fzdir_remove( full ) ;
+			sfree( full ) ;
 		}
 	} while( FindNextFile( h, &fd ) ) ;
 	FindClose( h ) ;
+	sfree( tmp ) ;
 }
 
-/* Write the Site Manager entry; returns the directory (static) or NULL. */
+/* Write the Site Manager entry; returns the directory (kx_fzdir, until the
+ * release) or NULL. */
 static const char *kx_fzdir_make( const char *host, int port, int fzproto,
                                   const char *user, const char *password ) {
-	char tmp[MAX_PATH], file[MAX_PATH], xml[8192], num[160] ;
+	char *tmp, *file ;
+	strbuf *xml ;
 	HANDLE h ; DWORD written ; int i ;
 	static unsigned serial = 0 ;
-	if( !GetTempPath( sizeof(tmp), tmp ) ) return NULL ;
+	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return NULL ;
 	for( i = 0 ; i < 16 ; i++ ) {
-		snprintf( kx_fzdir, sizeof(kx_fzdir), "%skitty_fz_%08lx_%u", tmp,
-		          (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
+		kx_fzdir = dupprintf( "%skitty_fz_%08lx_%u", tmp,
+		                      (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
 		if( CreateDirectory( kx_fzdir, NULL ) ) break ;
+		sfree( kx_fzdir ) ; kx_fzdir = NULL ;
 	}
-	if( i == 16 ) { kx_fzdir[0] = '\0' ; return NULL ; }
-	xml[0] = '\0' ;
-	bcat( xml, sizeof(xml), "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-	                        "<FileZilla3>\n"
-	                        "\t<Servers>\n\t\t<Server>\n\t\t\t<Host>" ) ;
-	xmlcat( xml, sizeof(xml), host ) ;
-	snprintf( num, sizeof(num), "</Host>\n\t\t\t<Port>%d</Port>\n\t\t\t<Protocol>%d</Protocol>\n", port, fzproto ) ;
-	bcat( xml, sizeof(xml), num ) ;
-	bcat( xml, sizeof(xml), "\t\t\t<Type>0</Type>\n\t\t\t<User>" ) ;
-	xmlcat( xml, sizeof(xml), user ) ;
-	bcat( xml, sizeof(xml), "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
-	b64cat( xml, sizeof(xml), password ) ;
-	bcat( xml, sizeof(xml), "</Pass>\n\t\t\t<Logontype>1</Logontype>\n"
-	                        "\t\t\t<EncodingType>Auto</EncodingType>\n"
-	                        "\t\t\t<BypassProxy>0</BypassProxy>\n\t\t\t<Name>" ) ;
-	xmlcat( xml, sizeof(xml), KT_FZ_SITE_NAME ) ;
-	bcat( xml, sizeof(xml), "</Name>\n\t\t\t<SyncBrowsing>0</SyncBrowsing>\n"
-	                        "\t\t\t<DirectoryComparison>0</DirectoryComparison>\n"
-	                        "\t\t</Server>\n\t</Servers>\n</FileZilla3>\n" ) ;
-	snprintf( file, sizeof(file), "%s\\fzdefaults.xml", kx_fzdir ) ;
+	sfree( tmp ) ;
+	if( i == 16 ) return NULL ;
+	xml = strbuf_new_nm() ;                /* it holds the password: cleared when it goes */
+	bcat( xml, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+	           "<FileZilla3>\n"
+	           "\t<Servers>\n\t\t<Server>\n\t\t\t<Host>" ) ;
+	xmlcat( xml, host ) ;
+	put_fmt( xml, "</Host>\n\t\t\t<Port>%d</Port>\n\t\t\t<Protocol>%d</Protocol>\n", port, fzproto ) ;
+	bcat( xml, "\t\t\t<Type>0</Type>\n\t\t\t<User>" ) ;
+	xmlcat( xml, user ) ;
+	bcat( xml, "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
+	b64cat( xml, password ) ;
+	bcat( xml, "</Pass>\n\t\t\t<Logontype>1</Logontype>\n"
+	           "\t\t\t<EncodingType>Auto</EncodingType>\n"
+	           "\t\t\t<BypassProxy>0</BypassProxy>\n\t\t\t<Name>" ) ;
+	xmlcat( xml, KT_FZ_SITE_NAME ) ;
+	bcat( xml, "</Name>\n\t\t\t<SyncBrowsing>0</SyncBrowsing>\n"
+	           "\t\t\t<DirectoryComparison>0</DirectoryComparison>\n"
+	           "\t\t</Server>\n\t</Servers>\n</FileZilla3>\n" ) ;
+	file = dupprintf( "%s\\fzdefaults.xml", kx_fzdir ) ;
 	h = CreateFile( file, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_HIDDEN, NULL ) ;
-	if( h == INVALID_HANDLE_VALUE ) { RemoveDirectory( kx_fzdir ) ; kx_fzdir[0] = '\0' ; return NULL ; }
-	if( !WriteFile( h, xml, (DWORD)strlen(xml), &written, NULL ) || written != strlen(xml) ) {
-		CloseHandle( h ) ; kx_fzdir_remove( kx_fzdir ) ; kx_fzdir[0] = '\0' ; return NULL ;
+	sfree( file ) ;
+	if( h == INVALID_HANDLE_VALUE ) {
+		RemoveDirectory( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
+		strbuf_free( xml ) ; return NULL ;
+	}
+	if( !WriteFile( h, xml->s, (DWORD)xml->len, &written, NULL ) || written != xml->len ) {
+		CloseHandle( h ) ; kx_fzdir_remove( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
+		strbuf_free( xml ) ; return NULL ;
 	}
 	CloseHandle( h ) ;
-	memset( xml, 0, sizeof(xml) ) ;
+	strbuf_free( xml ) ;
 	return kx_fzdir ;
 }
 
+/* The delayed delete owns the directory's name from here on. */
 static void kx_fzdir_release( int now ) {
-	char *copy ; HANDLE t ;
-	if( kx_fzdir[0] == '\0' ) return ;
+	HANDLE t ;
+	char *dir = kx_fzdir ;
+	if( dir == NULL ) return ;
+	kx_fzdir = NULL ;
 	if( now ) {
-		kx_fzdir_remove( kx_fzdir ) ;
-	} else if( (copy = (char *)malloc( strlen(kx_fzdir) + 1 )) != NULL ) {
-		strcpy( copy, kx_fzdir ) ;
-		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, copy, 0, NULL ) ;
-		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( copy ) ;
+		kx_fzdir_remove( dir ) ;
+		sfree( dir ) ;
+	} else {
+		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, dir, 0, NULL ) ;
+		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( dir ) ;
 	}
-	kx_fzdir[0] = '\0' ;
 }
 
 /* Tools > Start FileZilla. */
 void StartFileZilla( HWND hwnd ) {
-	char cmd[4096], user[512], host[1024], num[32] ;
+	strbuf *cmd ;
+	char *user, *host ;
 	const char *proto ; int fzproto, fzprot, port, p ;
 	size_t pw_at = 0, pw_len = 0 ;
 	int mode = conf_get_int( conf, CONF_filezilla_pwmode ) ;
@@ -4095,12 +4255,10 @@ void StartFileZilla( HWND hwnd ) {
 	if( port <= 0 ) port = kitty_xfer_default_port( conf, 2, fzprot ) ;
 
 	/* target: the override (Connection > File-Transfer-Settings), else the session */
-	user[0] = '\0' ; host[0] = '\0' ;
 	if( strlen( conf_get_str( conf, CONF_sftpconnect ) ) > 0 ) {
-		char b1[1024] ;
-		snprintf( b1, sizeof(b1), "%s", conf_get_str( conf, CONF_sftpconnect ) ) ;
-		if( (p = poss( "@", b1 )) > 0 ) { b1[p-1] = '\0' ; snprintf( user, sizeof(user), "%s", b1 ) ; snprintf( host, sizeof(host), "%s", b1 + p ) ; }
-		else snprintf( host, sizeof(host), "%s", b1 ) ;
+		const char *b1 = conf_get_str( conf, CONF_sftpconnect ) ;
+		if( (p = poss( "@", b1 )) > 0 ) { user = dupprintf( "%.*s", p - 1, b1 ) ; host = dupstr( b1 + p ) ; }
+		else { user = dupstr( "" ) ; host = dupstr( b1 ) ; }
 		/* A port in the override wins over the Port field; without one the
 		 * override gives user and host only. A bare IPv6 address keeps its
 		 * colons (kx_override_port answers 0 for it, and the host stands). */
@@ -4111,53 +4269,55 @@ void StartFileZilla( HWND hwnd ) {
 			port = ovp ;
 		  }
 		}
-		if( user[0] == '\0' ) snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+		if( user[0] == '\0' ) { sfree( user ) ; user = dupstr( conf_get_str_ambi( conf, CONF_username, NULL ) ) ; }
 	} else {
-		snprintf( user, sizeof(user), "%s", conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
-		snprintf( host, sizeof(host), "%s", conf_get_str( conf, CONF_host ) ) ;
+		user = dupstr( conf_get_str_ambi( conf, CONF_username, NULL ) ) ;
+		host = dupstr( conf_get_str( conf, CONF_host ) ) ;
 	}
 
-	snprintf( cmd, sizeof(cmd), "\"%s\"", FileZillaPath ) ;
+	cmd = strbuf_new_nm() ;                /* cleared when it goes: mode 2 puts the password in */
+	put_fmt( cmd, "\"%s\"", FileZillaPath ) ;
 	if( havepw && mode == 1 ) {
 		fzdir = kx_fzdir_make( host, port, fzproto, user, pw ) ;
 		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to mode 0, never to the command line */
 	}
 	if( fzdir != NULL ) {
-		bcat( cmd, sizeof(cmd), " --site=\"1/" ) ; bcat( cmd, sizeof(cmd), KT_FZ_SITE_NAME ) ; bcat( cmd, sizeof(cmd), "\"" ) ;
+		bcat( cmd, " --site=\"1/" ) ; bcat( cmd, KT_FZ_SITE_NAME ) ; bcat( cmd, "\"" ) ;
 	} else {
-		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), proto ) ; bcat( cmd, sizeof(cmd), "://" ) ;
-		urlcat( cmd, sizeof(cmd), user ) ;
+		bcat( cmd, " " ) ; bcat( cmd, proto ) ; bcat( cmd, "://" ) ;
+		urlcat( cmd, user ) ;
 		if( havepw && mode == 2 ) {
-			bcat( cmd, sizeof(cmd), ":" ) ;
-			pw_at = strlen( cmd ) ;
-			urlcat( cmd, sizeof(cmd), pw ) ;
-			pw_len = strlen( cmd ) - pw_at ;
+			bcat( cmd, ":" ) ;
+			pw_at = cmd->len ;
+			urlcat( cmd, pw ) ;
+			pw_len = cmd->len - pw_at ;
 		}
-		bcat( cmd, sizeof(cmd), "@" ) ;
-		if( poss( ":", host ) > 0 ) { bcat( cmd, sizeof(cmd), "[" ) ; bcat( cmd, sizeof(cmd), host ) ; bcat( cmd, sizeof(cmd), "]" ) ; }
-		else bcat( cmd, sizeof(cmd), host ) ;
-		snprintf( num, sizeof(num), ":%d", port ) ; bcat( cmd, sizeof(cmd), num ) ;
+		bcat( cmd, "@" ) ;
+		if( poss( ":", host ) > 0 ) { bcat( cmd, "[" ) ; bcat( cmd, host ) ; bcat( cmd, "]" ) ; }
+		else bcat( cmd, host ) ;
+		put_fmt( cmd, ":%d", port ) ;
 		/* With a password: FileZilla prompts for it before connecting (ask).
 		 * Without one: interactive - FileZilla connects at once, its SFTP
 		 * engine tries the agent's keys, and a password is requested only if
 		 * the server still wants one. A bare user@host URL would instead
 		 * stop at an "Enter password" box BEFORE connecting, agent or not. */
-		if( havepw && mode == 0 ) bcat( cmd, sizeof(cmd), " --logontype=ask" ) ;
-		else if( !havepw ) bcat( cmd, sizeof(cmd), " --logontype=interactive" ) ;
+		if( havepw && mode == 0 ) bcat( cmd, " --logontype=ask" ) ;
+		else if( !havepw ) bcat( cmd, " --logontype=interactive" ) ;
 	}
 	if( strlen( conf_get_str( conf, CONF_filezilla_options ) ) > 0 ) {
-		bcat( cmd, sizeof(cmd), " " ) ; bcat( cmd, sizeof(cmd), conf_get_str( conf, CONF_filezilla_options ) ) ;
+		bcat( cmd, " " ) ; bcat( cmd, conf_get_str( conf, CONF_filezilla_options ) ) ;
 	}
 
-	debug_logevent_redacted( "Start FileZilla", cmd, pw_at, pw_len ) ;
+	debug_logevent_redacted( "Start FileZilla", cmd->s, pw_at, pw_len ) ;
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", fzdir ) ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
-	kitty_helper_run( hwnd, FileZillaPath, cmd ) ;
+	kitty_helper_run( hwnd, FileZillaPath, cmd->s ) ;
 #else
-	RunCommand( hwnd, cmd ) ;          /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+	RunCommand( hwnd, cmd->s ) ;       /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
 #endif
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", NULL ) ;
-	memset( cmd, 0, strlen(cmd) ) ;
+	strbuf_free( cmd ) ;
+	sfree( user ) ; sfree( host ) ;
 	smemclr( pw, sizeof(pw) ) ;
 	kx_fzdir_release( 0 ) ;
 }
@@ -4166,37 +4326,34 @@ void StartFileZilla( HWND hwnd ) {
 /* Find the file-copy helper: kscp.exe, else PuTTY's pscp.exe - the PSCPPath
  * key, the pscpdir folder (kscp.exe then pscp.exe), kscp.exe beside kitty.exe,
  * pscp.exe in PuTTY's folder, pscp.exe beside kitty.exe. */
+static int kx_adopt_pscp( const char *path ) {
+	return adopt_tool_path_if_exists( &PSCPPath, path, NULL, NULL ) ;
+}
+
 int SearchPSCP( void ) {
-	char buffer[4096], ki[10]="kscp.exe", pu[10]="pscp.exe" ;
+	static const char ki[] = "kscp.exe", pu[] = "pscp.exe" ;
 
 	if( PSCPPath!=NULL ) { free(PSCPPath) ; PSCPPath = NULL ; }
 	// In the registry
-	if( ReadParameterN( INIT_SECTION, KI_PSCPPATH, buffer, sizeof(buffer) ) != 0 ) {
-		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-	}
+	if( kx_try_stored( KI_PSCPPATH, NULL, kx_adopt_pscp ) ) return 1 ;
 
-	// In the ini file
-	if( ReadParameterN( INIT_SECTION, KI_PSCPDIR, buffer, sizeof(buffer) ) ) {
-		buffer[4076]='\0';
-		strcat( buffer, "\\" ) ; strcat( buffer, ki ) ;
-		if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		else {
-			ReadParameterN( INIT_SECTION, KI_PSCPDIR, buffer, sizeof(buffer) ) ;
-			buffer[4076]='\0';
-			strcat( buffer, "\\" ) ; strcat( buffer, pu ) ;
-			if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
-		}
-	}
+	// In the ini file: the folder, kscp.exe then pscp.exe in it
+	if( kx_try_stored( KI_PSCPDIR, ki, kx_adopt_pscp ) ) return 1 ;
+	if( kx_try_stored( KI_PSCPDIR, pu, kx_adopt_pscp ) ) return 1 ;
 	/* kscp.exe beside kitty.exe - the usual answer */
-	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, ki ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
+	if( kx_try_in( InitialDirectory, ki, kx_adopt_pscp ) ) return 1 ;
 	/* PuTTY's pscp.exe in PuTTY's usual folder */
-	snprintf( buffer, sizeof(buffer), "%s\\PuTTY\\%s", getenv("ProgramFiles"), pu ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
+	{ const char *pf = getenv( "ProgramFiles" ) ;
+	  if( pf != NULL && pf[0] ) {
+		char *dir = dupprintf( "%s\\PuTTY", pf ) ;
+		int found = kx_try_in( dir, pu, kx_adopt_pscp ) ;
+		sfree( dir ) ;
+		if( found ) return 1 ;
+	  }
+	}
 
 	/* PuTTY's pscp.exe beside kitty.exe */
-	snprintf( buffer, sizeof(buffer), "%s\\%s", InitialDirectory, pu ) ;
-	if( adopt_tool_path_if_exists( &PSCPPath, buffer, NULL, NULL ) ) return 1 ;
+	if( kx_try_in( InitialDirectory, pu, kx_adopt_pscp ) ) return 1 ;
 
 	return 0 ;
 }
@@ -4237,12 +4394,13 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop, int typepath ) {
 		if( !fic ) continue ;
                 { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching kscp ("...pdf\0") */
 		if( strlen(fic) >= 10 && !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // load the config file in the internal editor
-			char buffer[1024]="", shortname[1024]="" ;
-			if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) 
-				if( GetShortPathName( buffer, shortname, 1023 ) ) {
-					snprintf( buffer, sizeof(buffer), "\"%s\" -ed %s", shortname, fic ) ;
-					RunCommand( hwnd, buffer ) ;
-				}
+			char *self = kitty_module_path_dup( NULL ), *shortname = self ? kx_short_path_dup( self ) : NULL ;
+			if( shortname != NULL ) {
+				char *line = dupprintf( "\"%s\" -ed %s", shortname, fic ) ;
+				RunCommand( hwnd, line ) ;
+				sfree( line ) ;
+			}
+			sfree( self ) ; sfree( shortname ) ;
 		} else if( upload ) {
 			/* NULL target dir either way: the RemotePath store the auto-pwd
 			 * branch used to pass was never written on the 0.84 core (the

@@ -12,6 +12,7 @@
 #include <psapi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "kitty_perf.h"   /* repo root */
 
 static long long kp_total[KP_NBUCKETS];
@@ -46,19 +47,39 @@ long long kp_cpu(void)
     return (long long)(ku.QuadPart + uu.QuadPart);   /* 100ns units */
 }
 
+/* %TEMP%\kitty_perf.txt in full (free it); NULL = %TEMP% not read. The
+ * buffer grows to the size GetTempPath asks for; a path too long for
+ * Windows then makes fopen fail. */
+static char *kp_dump_path(void)
+{
+    static const char name[] = "kitty_perf.txt";
+    DWORD size = GetTempPathA(0, NULL), n;
+    while (size) {
+        char *p = malloc(size + sizeof(name));
+        if (!p)
+            return NULL;
+        n = GetTempPathA(size, p);
+        if (n && n < size) {
+            memcpy(p + n, name, sizeof(name));
+            return p;
+        }
+        free(p);
+        size = n ? n + 1 : 0;
+    }
+    return NULL;
+}
+
 static void kp_dump(void)
 {
-    char path[MAX_PATH];
-    DWORD n;
+    char *path;
     FILE *fp;
     int i;
     long long wall = kp_now() - kp_start_qpc;
 
-    n = GetTempPathA(sizeof(path) - 32, path);
-    if (n == 0 || n > sizeof(path) - 32)
+    if ((path = kp_dump_path()) == NULL)
         return;
-    strcat(path, "kitty_perf.txt");
     fp = fopen(path, "a");
+    free(path);
     if (!fp)
         return;
     fprintf(fp, "=== kitty perf (pid %lu) ===\n", (unsigned long)GetCurrentProcessId());

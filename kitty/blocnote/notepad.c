@@ -8,6 +8,8 @@
  * notepad_putty.c adds the ini/sav entries and the send-to-session commands.
  */
 #include <stdio.h>
+#include <stdarg.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <winsock2.h>   /* before notepad.h's windows.h: putty.h pulls it in further down */
 #include "notepad.h"
@@ -22,11 +24,12 @@ int Notepad_open( HWND hwnd, HWND hEdit ) ;
 int Notepad_saveas( HWND hwnd, HWND hEdit ) ;
 int Notepad_load( char * szFile, HWND hEdit ) ;
 int Notepad_save( char * szFile, HWND hEdit ) ;
-void Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo, char * filename ) ;
+char * Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo ) ;
 
 static HINSTANCE notepad_hinst;
 static char * Notepad_szprogname = "mNotepad" ;
-static char Notepad_filename[4096] = "Untitled" ;
+/* The current file in full (malloc); NULL = "Untitled". */
+static char * Notepad_filename = NULL ;
 static int Notepad_modified = 0 ;
 
 static const char Notepad_szFilenameFilter[] = "Text files, (*.txt, *.log, *.ini)\0*.txt;*.log;*.ini\0C/C++ files, (*.c, *.cpp, *.h, *.rc)\0*.c;*.cpp;*.h;*.rc\0Script files, (*.ksh, *.sh)\0*.ksh;*.sh\0SQL files, (*.sql)\0*.sql\0All files, (*.*)\0*.*\0" ;
@@ -62,10 +65,42 @@ static BOOL FileExists(LPCTSTR szPath) {
          !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
+/* printf into memory of its own (free it); NULL = out of memory */
+static char * Notepad_strf( const char * fmt, ... ) {
+	size_t size = 256 ;
+	char * s = NULL ;
+	int n ;
+	va_list ap ;
+	for( ;; ) {
+		char * t = (char *)realloc( s, size ) ;
+		if( t == NULL ) { free( s ) ; return NULL ; }
+		s = t ;
+		va_start( ap, fmt ) ;
+		n = vsnprintf( s, size, fmt, ap ) ;
+		va_end( ap ) ;
+		if( n >= 0 && (size_t)n < size ) return s ;
+		size = n >= 0 ? (size_t)n + 1 : size * 2 ;
+		}
+	}
+
+static const char * Notepad_name( void ) {
+	return Notepad_filename ? Notepad_filename : "Untitled" ;
+	}
+
+/* The current file's name, held in full; NULL = "Untitled". The copy is made
+ * before the old name goes: `name` may be that name itself. */
+static void Notepad_setname( const char * name ) {
+	char * n = name ? Notepad_strf( "%s", name ) : NULL ;
+	free( Notepad_filename ) ;
+	Notepad_filename = n ;
+	}
+
 static void Notepad_settitle( HWND hwnd ) {
-	char buffer[4096] ;
-	sprintf( buffer, "%s - %s", Notepad_filename, Notepad_szprogname ) ;
-	SetWindowText( hwnd, buffer ) ;
+	char * buffer = Notepad_strf( "%s - %s", Notepad_name(), Notepad_szprogname ) ;
+	if( buffer != NULL ) {
+		SetWindowText( hwnd, buffer ) ;
+		free( buffer ) ;
+		}
 	}
 
 static char * Notepad_LoadString( DWORD idstr ) {
@@ -253,7 +288,7 @@ int WINAPI WinMain(HINSTANCE hinstance, HINSTANCE hPrevInstance,LPSTR lpCmdLine,
 LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static HWND hEdit;
 	static LOGFONT lf;
-	static HFONT hFont;char buffer[4096] ;
+	static HFONT hFont;
 
 	switch (uMsg) {
 		case WM_CREATE: {
@@ -363,7 +398,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 						}
 					SetWindowText( hEdit, "" ) ;
 					Notepad_SetNoModify( hEdit ) ;
-					strcpy( Notepad_filename, "Untitled" ) ;
+					Notepad_setname( NULL ) ;
 					Notepad_settitle( hwnd ) ;
 					EnableMenuItem( GetMenu(hwnd), NOTEPAD_IDM_SAVE, MF_DISABLED|MF_GRAYED|MF_BYCOMMAND ) ;
 					break ;
@@ -379,7 +414,7 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				// SAVE command
 				case NOTEPAD_IDM_SAVE:
 					if( readonly ) break ; // read-only mode: no write, no box (Ctrl+S stays mapped)
-					if( Notepad_save( Notepad_filename, hEdit ) )
+					if( Notepad_save( (char *)Notepad_name(), hEdit ) )
 						Notepad_SetNoModify( hEdit ) ;
 					break ;
 
@@ -546,10 +581,14 @@ LRESULT CALLBACK Notepad_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPa
 				} // end of the menu commands
 			break ;
 
-		case WM_DROPFILES:
-			Notepad_OnDropFiles( hwnd, (HDROP) wParam, buffer ) ;
-			SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)buffer ) ;
+		case WM_DROPFILES: {
+			char * dropped = Notepad_OnDropFiles( hwnd, (HDROP) wParam ) ;
+			if( dropped != NULL ) {
+				SendMessage( hwnd, WM_COMMAND, NOTEPAD_IDM_LOAD, (LPARAM)dropped ) ;
+				free( dropped ) ;
+				}
 			break ;
+			}
 				
 		default: // default message handling
 			return DefWindowProc(hwnd, uMsg, wParam, lParam ) ;
@@ -562,7 +601,7 @@ int Notepad_load( char * szFile, HWND hEdit ) {
 	HANDLE fo ;
 	int i,j ;
 	if( (fo = CreateFile(szFile, GENERIC_READ, 0,NULL,OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL)) != INVALID_HANDLE_VALUE ) {
-		strcpy( Notepad_filename, szFile ) ;
+		Notepad_setname( szFile ) ;
 
 		lenbloc = GetFileSize(fo, NULL);
 		tampon = (PCHAR)LocalAlloc(LMEM_FIXED, 2*lenbloc+1);
@@ -593,13 +632,14 @@ int Notepad_load( char * szFile, HWND hEdit ) {
 	
 int Notepad_open( HWND hwnd, HWND hEdit ) {
 	OPENFILENAME ofn;
-	CHAR szFile[MAX_PATH]={0};
+	CHAR *szFile = (CHAR *)calloc( 32768, 1 ) ;   /* the answer in full */
 
+	if( szFile == NULL ) return 1 ;
 	ZeroMemory(&ofn, sizeof(OPENFILENAME));
 	ofn.lStructSize = sizeof(OPENFILENAME);
 	ofn.hwndOwner = hwnd;
 	ofn.lpstrFile = szFile;
-	ofn.nMaxFile = MAX_PATH;
+	ofn.nMaxFile = 32768;
 	ofn.lpstrFilter = Notepad_szFilenameFilter ;
 	ofn.nFilterIndex = 1;
 	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
@@ -607,6 +647,7 @@ int Notepad_open( HWND hwnd, HWND hEdit ) {
 	if (GetOpenFileName(&ofn)==TRUE) {
 		Notepad_load( szFile, hEdit ) ;
 		}
+	free( szFile ) ;
 
 	return 1 ;
 	}
@@ -617,14 +658,16 @@ int Notepad_open( HWND hwnd, HWND hEdit ) {
  * the file without a report. A failure now leaves the file as it was and the
  * text still in the editor, with the reason shown. */
 int Notepad_save( char * szFile, HWND hEdit ) {
-	char tmp[MAX_PATH + 32], reason[256], msg[MAX_PATH + 512] ;
+	char * tmp, reason[256], * msg ;
 	LPSTR tampon ;
 	int lenbloc, ok = 0 ;
 	DWORD s = 0, err = 0 ;
 	HANDLE fp ;
 
-	if( snprintf( tmp, sizeof(tmp), "%s.%lu.tmp", szFile, (unsigned long)GetCurrentProcessId() ) >= (int)sizeof(tmp) )
-		err = ERROR_FILENAME_EXCED_RANGE ;
+	/* the temporary name in full: one too long for Windows fails in
+	 * CreateFile with Windows' own reason */
+	if( ( tmp = Notepad_strf( "%s.%lu.tmp", szFile, (unsigned long)GetCurrentProcessId() ) ) == NULL )
+		err = ERROR_NOT_ENOUGH_MEMORY ;
 	else if( ( fp = CreateFile( tmp, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_FLAG_SEQUENTIAL_SCAN, NULL ) ) == INVALID_HANDLE_VALUE )
 		err = GetLastError() ;
 	else {
@@ -647,28 +690,31 @@ int Notepad_save( char * szFile, HWND hEdit ) {
 		}
 		if( !ok ) DeleteFileA( tmp ) ;
 	}
+	free( tmp ) ;
 	if( !ok ) {
 		if( !FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
 		                     err ? err : ERROR_WRITE_FAULT, 0, reason, sizeof(reason), NULL ) )
 			snprintf( reason, sizeof(reason), "error %lu", (unsigned long)err ) ;
 		{ size_t l = strlen( reason ) ; while( l && ( reason[l-1] == '\n' || reason[l-1] == '\r' || reason[l-1] == '.' ) ) reason[--l] = '\0' ; }
-		snprintf( msg, sizeof(msg), KT_NOTEPAD_SAVE_FAILED_FMT, szFile, reason ) ;
-		MessageBox( GetParent( hEdit ), msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+		msg = Notepad_strf( KT_NOTEPAD_SAVE_FAILED_FMT, szFile, reason ) ;
+		MessageBox( GetParent( hEdit ), msg ? msg : reason, KT_CAP_ERROR, MB_OK | MB_ICONERROR ) ;
+		free( msg ) ;
 		return 0 ;
 	}
-	strcpy( Notepad_filename, szFile ) ;
+	Notepad_setname( szFile ) ;
 	return 1 ;
 	}
 	
 int Notepad_saveas( HWND hwnd, HWND hEdit ) {
 	OPENFILENAME opn;
-        CHAR szFile[MAX_PATH]={0};
+        CHAR *szFile = (CHAR *)calloc( 32768, 1 ) ;   /* the answer in full */
 
+        if( szFile == NULL ) return 1 ;
         ZeroMemory(&opn, sizeof(OPENFILENAME));
         opn.lStructSize = sizeof(OPENFILENAME);
         opn.hwndOwner = hwnd;
         opn.lpstrFile = szFile;
-        opn.nMaxFile = MAX_PATH;
+        opn.nMaxFile = 32768;
         opn.lpstrFilter = Notepad_szFilenameFilter ;
         opn.nFilterIndex = 1;
         opn.Flags = OFN_PATHMUSTEXIST | OFN_EXPLORER;
@@ -676,16 +722,26 @@ int Notepad_saveas( HWND hwnd, HWND hEdit ) {
 	if( GetSaveFileName(&opn) == TRUE ) {
 		Notepad_save( szFile, hEdit ) ;
 		}
+	free( szFile ) ;
 
 	return 1 ;
 	}
 
-void Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo, char * filename ) {
-	int nb, taille ;
+/* The first dropped file in full, in memory of its own (free it); NULL =
+ * none, or it could not be read. */
+char * Notepad_OnDropFiles(HWND hwnd, HDROP hDropInfo ) {
+	UINT nb, taille ;
+	char * filename = NULL ;
+	(void)hwnd ;
 	nb=DragQueryFile(hDropInfo, 0xFFFFFFFF, NULL, 0 );
 	if( nb> 0 ) {
 		taille=DragQueryFile(hDropInfo, 0, NULL, 0 )+1;
-		DragQueryFile(hDropInfo, 0, filename, taille );
+		if( taille > 1 && ( filename = (char *)malloc( taille ) ) != NULL
+		    && DragQueryFile(hDropInfo, 0, filename, taille ) + 1 != taille ) {
+			free( filename ) ;
+			filename = NULL ;
+			}
 		}
 	DragFinish(hDropInfo);
+	return filename ;
 	}

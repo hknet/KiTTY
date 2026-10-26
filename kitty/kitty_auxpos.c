@@ -7,6 +7,7 @@
  */
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "kitty_auxpos.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
@@ -15,36 +16,65 @@
 #define KITTY_AUXPOS_SECTION "AuxWinPos"   /* the file store's section */
 
 static int kitty_auxpos_persist = 1;       /* 0 => place only, nothing stored */
-static char kitty_auxpos_file[MAX_PATH];   /* set => this file, not the registry */
-static char kitty_auxpos_regkey[MAX_PATH] = KITTY_AUXPOS_REGKEY;
+/* Both held in full (malloc): the file beside the exe, set => this file,
+ * not the registry; the registry key, NULL = KITTY_AUXPOS_REGKEY. */
+static char *kitty_auxpos_file = NULL;
+static char *kitty_auxpos_regkey_set = NULL;
+#define kitty_auxpos_regkey \
+    (kitty_auxpos_regkey_set ? kitty_auxpos_regkey_set : KITTY_AUXPOS_REGKEY)
 void kitty_auxpos_set_persist(int on) { kitty_auxpos_persist = on ? 1 : 0; }
+
+/* a, b and c joined, in memory of its own (free it); NULL = no memory */
+static char *kitty_auxpos_join3(const char *a, const char *b, const char *c)
+{
+    size_t la = strlen(a), lb = strlen(b), lc = strlen(c);
+    char *s = malloc(la + lb + lc + 1);
+    if (!s) return NULL;
+    memcpy(s, a, la);
+    memcpy(s + la, b, lb);
+    memcpy(s + la + lb, c, lc + 1);
+    return s;
+}
 
 /* The hive in use (kitty.exe's KiClassName=PuTTY moves it): AuxWinPos under
  * it, so nothing is written to a hive this copy does not use. */
 void kitty_auxpos_set_regbase(const char *base)
 {
+    char *k;
     if (base && base[0] &&
-        strlen(base) + sizeof("\\" KITTY_AUXPOS_SECTION) <= sizeof(kitty_auxpos_regkey))
-        snprintf(kitty_auxpos_regkey, sizeof(kitty_auxpos_regkey), "%s\\%s",
-                 base, KITTY_AUXPOS_SECTION);
+        (k = kitty_auxpos_join3(base, "\\", KITTY_AUXPOS_SECTION)) != NULL) {
+        free(kitty_auxpos_regkey_set);
+        kitty_auxpos_regkey_set = k;
+    }
 }
 
+/* The exe's path in full: the buffer grows until GetModuleFileName's answer
+ * fits. A path too long for Windows' file calls then makes the profile
+ * reads and writes fail - never a file under a shorter name. */
 void kitty_auxpos_set_file_beside_exe(void)
 {
-    char *slash;
-    DWORD n = GetModuleFileNameA(NULL, kitty_auxpos_file, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH || !(slash = strrchr(kitty_auxpos_file, '\\'))) {
-        kitty_auxpos_file[0] = '\0';
+    DWORD size = MAX_PATH, n;
+    char *exe = NULL, *slash;
+    free(kitty_auxpos_file);
+    kitty_auxpos_file = NULL;
+    for (;;) {
+        char *t = realloc(exe, size);
+        if (!t) { n = 0; break; }
+        exe = t;
+        n = GetModuleFileNameA(NULL, exe, size);
+        if (n == 0 || n < size) break;
+        if (size >= 32768) { n = 0; break; }
+        size *= 2;
+    }
+    if (n == 0 || !exe || !(slash = strrchr(exe, '\\'))) {
+        free(exe);
         kitty_auxpos_persist = 0;          /* nowhere to keep it: place only */
         return;
     }
-    if ((size_t)(slash + 1 - kitty_auxpos_file) + strlen(KITTY_AUXPOS_FILE) + 1 > MAX_PATH) {
-        kitty_auxpos_file[0] = '\0';
-        kitty_auxpos_persist = 0;
-        return;
-    }
-    strcpy(slash + 1, KITTY_AUXPOS_FILE);
-    kitty_auxpos_persist = 1;
+    slash[1] = '\0';
+    kitty_auxpos_file = kitty_auxpos_join3(exe, KITTY_AUXPOS_FILE, "");
+    free(exe);
+    kitty_auxpos_persist = kitty_auxpos_file != NULL;
 }
 
 /* Order-independent FNV-1a over each monitor's rcMonitor, summed - so a docked
@@ -97,7 +127,7 @@ static int kitty_auxpos_read(const char *key, int *x, int *y, int *w, int *h)
     *w = *h = 0;
     if (!kitty_auxpos_persist) return 0;
     kitty_auxpos_valname(vn, sizeof(vn), key);
-    if (kitty_auxpos_file[0]) {
+    if (kitty_auxpos_file) {
         GetPrivateProfileStringA(KITTY_AUXPOS_SECTION, vn, "", buf, sizeof(buf),
                                  kitty_auxpos_file);
     } else {
@@ -141,7 +171,7 @@ static void kitty_auxpos_write(const char *key, int x, int y, int w, int h)
     kitty_auxpos_valname(vn, sizeof(vn), key);
     if (w > 0 && h > 0) snprintf(val, sizeof(val), "%d,%d,%d,%d", x, y, w, h);
     else snprintf(val, sizeof(val), "%d,%d", x, y);
-    if (kitty_auxpos_file[0]) {
+    if (kitty_auxpos_file) {
         WritePrivateProfileStringA(KITTY_AUXPOS_SECTION, vn, val, kitty_auxpos_file);
     } else {
         HKEY hk;

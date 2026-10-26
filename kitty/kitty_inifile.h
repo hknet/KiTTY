@@ -16,6 +16,7 @@ int kitty_inifile_registry_authoritative(void);
 char *kitty_inifile_state_file_dup(void);  /* <store root>\KiTTYState; NULL = none; free() it */
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);
+char *kitty_inifile_read_dup(const char *section, const char *key); /* NULL = absent or empty; free() it */
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value);   /* readonly=yes: skipped, 1 */
 int kitty_inifile_readonly(void);   /* [KiTTY] readonly=yes in the resolved ini */
@@ -46,17 +47,20 @@ int kitty_inifile_write_blocked(const char *path);
  * are. Read fresh at every call (a running kageant sees an edited kitty.ini).
  * The console tools set their store from it (kitty_console_store.c), kageant
  * its session menu. */
-#define KITTY_INIFILE_PATHLEN (4 * 260 + 8)
+/* Each string in full, never NULL after kitty_inifile_startup() ("" when
+ * not set); kitty_inifile_startup_free() releases them. kitty_inifile_startup
+ * does not free what the record held before: free a filled record first. */
 struct kitty_ini_startup {
     int registry_authoritative;      /* kitty_inifile_registry_authoritative() */
     int folder_store;                /* the sessions are in the folder store */
     /* the rest is filled only for the folder store */
-    char session_dir[KITTY_INIFILE_PATHLEN];
-    char session_suffix[80];         /* empty = none */
-    char hostkey_dir[KITTY_INIFILE_PATHLEN];  /* empty = the store's own SshHostKeys */
-    char hostkey_suffix[80];
-    char portable_password_protection[32];    /* empty = not set */
+    char *session_dir;
+    char *session_suffix;            /* empty = none */
+    char *hostkey_dir;               /* empty = the store's own SshHostKeys */
+    char *hostkey_suffix;
+    char *portable_password_protection;   /* empty = not set */
 };
 void kitty_inifile_startup(struct kitty_ini_startup *s);
+void kitty_inifile_startup_free(struct kitty_ini_startup *s);
 
 #endif

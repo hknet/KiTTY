@@ -67,6 +67,7 @@
 #include "kitty_text.h"     /* KT_CAP_KITTYPP: the notice's title */
 #include "kitty.h"
 #include "kitty_params.h"
+#include "kitty_oldwin.h"   /* kitty_module_dir_dup: the exe's folder in full */
 
 /* kitty.c: the suite's global-parameter store (registry, or kitty.ini in
  * portable mode). Declared rather than included so this file keeps its short
@@ -75,8 +76,8 @@
 #define INIT_SECTION KI_SECTION_KITTY
 #endif
 
-/* ReadParameterN answers into a 4096-byte buffer of its own, so that is the
- * ceiling on the STORED (escaped) note however long the field is. */
+/* The ceiling on the STORED (escaped) note however long the field is: the
+ * encoder ends the note on a whole escape there. */
 #define NOTES_STORED_MAX 4096
 /* Escapes expand to at most one character each, so the decoded form never
  * needs more room than the stored one - except for the CR this adds to every
@@ -216,7 +217,7 @@ void kitty_notes_decode(const char *stored, char *out, size_t outsize)
 
 int kitty_notes_get(char *buf, size_t size)
 {
-    char stored[NOTES_STORED_MAX];
+    char *stored;
     if (!buf || size == 0)
         return 0;
     buf[0] = '\0';
@@ -224,10 +225,11 @@ int kitty_notes_get(char *buf, size_t size)
         snprintf(buf, size, "%s", notes_running);
         return buf[0] ? 1 : 0;
     }
-    stored[0] = '\0';
-    if (!ReadParameterN(INIT_SECTION, KI_NOTES, stored, sizeof(stored)) || !stored[0])
-        return 0;
-    kitty_notes_decode(stored, buf, size);
+    /* the stored note in full; the decoder keeps its own ceiling */
+    stored = ReadParameterDup(INIT_SECTION, KI_NOTES);
+    if (stored[0])
+        kitty_notes_decode(stored, buf, size);
+    sfree(stored);
     return buf[0] ? 1 : 0;
 }
 
@@ -261,25 +263,16 @@ static unsigned int notes_hash(const char *text)
     return h;
 }
 
-/* Directory of the running EXE, lowercased, without a trailing slash: what
- * makes the "seen" broadcast reach only launchers of THIS install. */
-static int notes_exedir(char *out, int len)
+/* Directory of the running EXE in full, lowercased, without a trailing
+ * slash (sfree it; "" when it cannot be read): what makes the "seen"
+ * broadcast reach only launchers of THIS install. */
+static char *notes_exedir_dup(void)
 {
-    char path[MAX_PATH + 1];
-    DWORD n = GetModuleFileNameA(NULL, path, MAX_PATH);
-    char *slash;
-    if (n == 0 || n >= MAX_PATH)
-        return 0;
-    path[n] = '\0';
-    slash = strrchr(path, '\\');
-    if (!slash)
-        return 0;
-    *slash = '\0';
-    if ((int)strlen(path) >= len)
-        return 0;
-    strcpy(out, path);
-    CharLowerA(out);
-    return 1;
+    char *dir = kitty_module_dir_dup(NULL);
+    if (!dir)
+        return dupstr("");
+    CharLowerA(dir);
+    return dir;
 }
 
 /* Install-keyed, the same rule the workplace broadcast follows:
@@ -289,11 +282,11 @@ unsigned int kitty_notes_seen_message(void)
 {
     static UINT msg = 0;
     if (!msg) {
-        char dir[MAX_PATH + 1], name[96];
-        if (!notes_exedir(dir, sizeof(dir)))
-            dir[0] = '\0';
-        snprintf(name, sizeof(name), "KiTTYNotesSeen.%08x", notes_hash(dir));
+        char *dir = notes_exedir_dup();
+        char *name = dupprintf("KiTTYNotesSeen.%08x", notes_hash(dir));
+        sfree(dir);
         msg = RegisterWindowMessageA(name);
+        sfree(name);
     }
     return msg;
 }

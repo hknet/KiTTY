@@ -76,11 +76,14 @@ static inline int gf_same_host( const char *a, const char *b ) {
  * has. host / user: the session's; with them the scp form "[user@]host:path"
  * of this host and account is taken as its path (out holds the path), of
  * another as GF_ELSEWHERE. NULL: no scp form. */
+static inline int gf_classify_first( char *first, size_t fsize, char *out, size_t n,
+                                     const char *host, const char *user ) ;
 static inline int gf_classify_at( const char *text, char *out, size_t n,
                                   const char *host, const char *user ) {
-    const char *b = text ? text : "", *e, *nl, *p, *rest ;
-    size_t len, fl, part ;
-    char first[4096], su[256], sh[256] ;
+    const char *b = text ? text : "", *e, *nl ;
+    size_t len, fl ;
+    char *first ;
+    int cls ;
     while( *b && gf_is_blank( *b ) ) b++ ;
     e = b + strlen( b ) ;
     while( e > b && gf_is_blank( e[-1] ) ) e-- ;
@@ -94,20 +97,46 @@ static inline int gf_classify_at( const char *text, char *out, size_t n,
     while( nl < e && *nl != '\r' && *nl != '\n' ) nl++ ;
     fl = (size_t)( nl - b ) ;
     if( fl > GF_PATH_MAX ) return GF_TOOLONG ;
+    /* the first line in memory of its own: room for "~/" when the scp form
+     * leaves nothing */
+    if( ( first = (char *)malloc( fl + 3 ) ) == NULL ) return GF_TOOLONG ;
     memcpy( first, b, fl ) ; first[fl] = '\0' ;
-    if( gf_is_windows_path( first ) ) return GF_WINPATH ;
-    if( nl < e ) return GF_SEVERAL ;
+    if( gf_is_windows_path( first ) ) cls = GF_WINPATH ;
+    else if( nl < e ) cls = GF_SEVERAL ;
+    else cls = gf_classify_first( first, fl + 3, out, n, host, user ) ;
+    free( first ) ;
+    return cls ;
+}
+
+/* gf_classify_at's checks on its one line `first` (fsize bytes, changed in
+ * place): user and host of the scp form are parts of it, so its size holds
+ * them. */
+static inline int gf_classify_first( char *first, size_t fsize, char *out, size_t n,
+                                     const char *host, const char *user ) {
+    const char *p, *rest ;
+    size_t part ;
+    char *su, *sh ;
     for( p = first ; *p ; p++ )
         if( (unsigned char)*p < 0x20 || *p == 0x7F ) return GF_CONTROL ;
     for( p = first ; *p && ( isalpha( (unsigned char)*p ) ||
                             ( p > first && ( isdigit( (unsigned char)*p ) || strchr( "+.-", *p ) ) ) ) ; p++ ) ;
     if( p > first && !strncmp( p, "://", 3 ) ) return GF_URL ;
-    if( host && gf_scp_form( first, su, sizeof(su), sh, sizeof(sh), &rest ) ) {
-        if( !gf_same_host( sh, host ) || ( su[0] && user && user[0] && strcmp( su, user ) ) )
-            return GF_ELSEWHERE ;      /* out keeps the text, to correct */
-        memmove( first, rest, strlen( rest ) + 1 ) ;   /* this host: its path */
-        if( !first[0] ) snprintf( first, sizeof(first), "~/" ) ;   /* "host:" = the login dir */
-        if( n ) snprintf( out, n, "%s", first ) ;
+    if( host ) {
+        int scp, other = 0 ;
+        su = (char *)malloc( fsize ) ; sh = (char *)malloc( fsize ) ;
+        if( su == NULL || sh == NULL ) { free( su ) ; free( sh ) ; return GF_TOOLONG ; }
+        scp = gf_scp_form( first, su, fsize, sh, fsize, &rest ) ;
+        if( scp ) {
+            if( !gf_same_host( sh, host ) || ( su[0] && user && user[0] && strcmp( su, user ) ) )
+                other = 1 ;            /* out keeps the text, to correct */
+            else {
+                memmove( first, rest, strlen( rest ) + 1 ) ;   /* this host: its path */
+                if( !first[0] ) snprintf( first, fsize, "~/" ) ;   /* "host:" = the login dir */
+                if( n ) snprintf( out, n, "%s", first ) ;
+            }
+        }
+        free( su ) ; free( sh ) ;
+        if( other ) return GF_ELSEWHERE ;
     }
     for( p = first, part = 0 ; *p ; p++ ) {
         part = ( *p == '/' ) ? 0 : part + 1 ;
@@ -126,12 +155,15 @@ static inline int gf_classify( const char *text, char *out, size_t n ) {
 /* The path as SFTP takes it: SFTP knows no "~", and its relative paths are
  * relative to the login directory already. "~" -> ".", "~/x" -> "x";
  * "~user/x" and everything else unchanged. */
-static inline void gf_stat_path( const char *remote, char *out, size_t n ) {
+static inline const char *gf_stat_path_of( const char *remote ) {
     const char *p = remote ;
-    if( !n ) return ;
     if( p[0] == '~' && p[1] == '\0' ) p = "." ;
     else if( p[0] == '~' && p[1] == '/' ) { p += 2 ; if( !*p ) p = "." ; }
-    snprintf( out, n, "%s", p ) ;
+    return p ;                 /* a part of remote, or a constant */
+}
+static inline void gf_stat_path( const char *remote, char *out, size_t n ) {
+    if( !n ) return ;
+    snprintf( out, n, "%s", gf_stat_path_of( remote ) ) ;
 }
 
 /* kscp -stat's reply: the first line that starts with one of its words.

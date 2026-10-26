@@ -302,11 +302,8 @@ static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
 {
     LONG lRes;
     HKEY kDesktop;
-    DWORD pathLen = MAX_PATH;
-    DWORD numBufLen = 10;
-    char wpPath[MAX_PATH];
-    char wpStyleBuf[10];
-    char wpTileBuf[10];
+    DWORD type = 0, len = 0;
+    unsigned char *wpPath, *v;
 
     int wpStyle = -1;
     int wpTile = -1;
@@ -326,25 +323,31 @@ static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
         HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, KEY_READ, &kDesktop
     );
     if(lRes != ERROR_SUCCESS)
+        return FALSE; // TODO: Should the error be reported to the user here?
+
+    /* The values in full and terminated: a stored value need not carry its
+     * NUL, and the path is not limited to MAX_PATH in the registry. */
+    wpPath = kitty_reg_query_dup(kDesktop, "Wallpaper", &type, &len);
+    if(wpPath == NULL || (type != REG_SZ && type != REG_EXPAND_SZ))
     {
+        sfree(wpPath);
         RegCloseKey(kDesktop);
         return FALSE; // TODO: Should the error be reported to the user here?
     }
 
-    lRes = RegQueryValueEx(kDesktop, "Wallpaper", NULL, NULL, (LPBYTE)wpPath, &pathLen);
-    if(lRes != ERROR_SUCCESS)
+    if((v = kitty_reg_query_dup(kDesktop, "WallpaperStyle", &type, &len)) != NULL)
     {
-        RegCloseKey(kDesktop);
-        return FALSE; // TODO: Should the error be reported to the user here?
+        if(type == REG_SZ || type == REG_EXPAND_SZ)
+            wpStyle = atoi((char *)v);
+        sfree(v);
     }
 
-    lRes = RegQueryValueEx( kDesktop, "WallpaperStyle", NULL, NULL, (LPBYTE)wpStyleBuf, &numBufLen );
-    if(lRes == ERROR_SUCCESS)
-        wpStyle = atoi(wpStyleBuf);
-
-    lRes = RegQueryValueEx( kDesktop, "TileWallpaper", NULL, NULL, (LPBYTE)wpTileBuf, &numBufLen );
-    if(lRes == ERROR_SUCCESS)
-        wpTile = atoi(wpTileBuf);
+    if((v = kitty_reg_query_dup(kDesktop, "TileWallpaper", &type, &len)) != NULL)
+    {
+        if(type == REG_SZ || type == REG_EXPAND_SZ)
+            wpTile = atoi((char *)v);
+        sfree(v);
+    }
 
     if(wpStyle < 0 && wpStyle > 3)
         wpStyle = 0;  // Default to tile.
@@ -360,8 +363,9 @@ static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
  
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
     *rawImage = LoadImage(
-        NULL, wpPath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
+        NULL, (char *)wpPath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
     );
+    sfree(wpPath);
     if(*rawImage == 0)
         return FALSE; // TODO: Should the error be reported to the user here?
 
@@ -544,10 +548,11 @@ static void color_opacity_gradient( HDC destDc, int x, int y, int width, int hei
         static unsigned char * pRGB;
 	int OpacityMin = 0, OpacityMax = 100 ;
 	
-	char buf[256] = "" ;
-	if( GetSessionField( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "BgOpacityRange", buf ) ) { 
-		sscanf( buf, "%d-%d", &OpacityMin, &OpacityMax ) ; 
+	char *range = GetSessionFieldDup( conf_get_str(conf,CONF_sessionname), conf_get_str(conf,CONF_folder), "BgOpacityRange" ) ;
+	if( range != NULL ) {   /* in full: a long value overran a 256-byte buffer */
+		sscanf( range, "%d-%d", &OpacityMin, &OpacityMax ) ;
 		if( OpacityMin == OpacityMax ) { OpacityMin = 0 ; OpacityMax = 100 ; }
+		sfree( range ) ;
 		}
         
         if(fmap_size < width * height * 4) {

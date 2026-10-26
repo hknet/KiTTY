@@ -258,7 +258,7 @@ int ShortcutKeySyntax( int key, char * buf, size_t size ) ;
 int ShortcutKeyUserCommand( int key ) ;
 int ShortcutKeyReserved( int key ) ;
 // Get one entry of a session (returns 1 if it exists)
-int GetSessionField( const char * session_in, const char * folder_in, const char * field, char * result ) ;
+char * GetSessionFieldDup( const char * session_in, const char * folder_in, const char * field ) ;   /* in full (sfree it); NULL = not there */
 // Save the window coordinates
 // Count the windows of the same class as KiTTY
 HWND InfoBox( HINSTANCE hInstance, HWND hwnd ) ;
@@ -283,9 +283,9 @@ void ManageVisible( HWND hwnd, TermWin *tw ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
 void OpenAndSendScriptFile( HWND hwnd ) ;
-int SaveCurrentSetting( HWND hwnd, char * out, size_t outlen ) ;   /* 1 saved, 0 cancelled, -1 not (out: file + reason) */
-void SaveCurrentSettingFilter( char * buffer, size_t size ) ;        /* the Save-As filter for a .ktx */
-int SaveCurrentSettingTo( const char * filename, char * out, size_t outlen ) ;   /* 1 saved, -1 not */
+int SaveCurrentSetting( HWND hwnd, char ** out ) ;   /* 1 saved, 0 cancelled, -1 not (*out: file + reason, sfree it) */
+char * SaveCurrentSettingFilterDup( void ) ;        /* the Save-As filter for a .ktx (sfree it) */
+int SaveCurrentSettingTo( const char * filename, char ** out ) ;   /* 1 saved, -1 not (*out sfree it) */
 void SendFile( HWND hwnd ) ;
 void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) ;
 
@@ -319,12 +319,13 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
 void kitty_xfer_sweep_downloads( void ) ;   /* remove stale staging folders at startup */
 void GetFile( HWND hwnd ) ;
 /* The session's download folder, resolved (Connection > File-Transfer-Settings, else the
- * global one, else Downloads). kitty_xfer.c */
-char * kitty_xfer_download_dir( Conf * cf, char * out, size_t outlen ) ;
+ * global one, else Downloads), in full (sfree it, never NULL). kitty_xfer.c */
+char * kitty_xfer_download_dir_dup( Conf * cf ) ;
 /* The session's upload folder, resolved (Connection > File-Transfer-Settings, else the
  * global Default Upload Folder, else Documents): where Send File opens and
- * where a plain name the far end requests is looked up. kitty_xfer.c */
-char * kitty_xfer_upload_dir( Conf * cf, char * out, size_t outlen ) ;
+ * where a plain name the far end requests is looked up. In full (sfree it,
+ * never NULL). kitty_xfer.c */
+char * kitty_xfer_upload_dir_dup( Conf * cf ) ;
 /* The tray balloon after a finished transfer, gated by [KiTTY]
  * transfernotification; `what` fills KT_XFER_COMPLETE. A click on the
  * balloon opens `path` (a file: selected in Explorer; a folder: opened):

@@ -5335,7 +5335,7 @@ static char *kageant_menu_label(const char *s)
  * or changed since the last walk. */
 static void update_sessions(void)
 {
-    static struct kitty_ini_startup ini;   /* static: two paths' worth */
+    static struct kitty_ini_startup ini;   /* its strings freed on the next call */
     char **ids = NULL, **folders = NULL;
     int n, ne, i, toppos = 0, depth = 0;
     struct ksm_entry *e;
@@ -5355,6 +5355,7 @@ static void update_sessions(void)
     kageant_sess_ids = NULL;
     kageant_sess_nids = 0;
 
+    kitty_inifile_startup_free(&ini);
     kitty_inifile_startup(&ini);
     if (ini.folder_store)
         n = ksm_folder_store_rows(ini.session_dir, ini.session_suffix,

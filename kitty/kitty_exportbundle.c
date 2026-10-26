@@ -303,29 +303,32 @@ static INT_PTR CALLBACK exportdone_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARA
 }
 
 void kitty_export_all_sessions(HWND hwnd) {
-    char dir[4096];
+    char *dir;                       /* the picked folder, in full */
     int n, fail = 0;
-    char msg[4400];
+    char *msg;
     char *bundlepw = NULL, *skips;
     int dpapi = 0;
-    if (!OpenDirName(hwnd, dir)) return;
+    if ((dir = kitty_pick_dir_dup(hwnd, NULL, NULL)) == NULL) return;
     /* Export writes one file per session (plus a Proxies\ subfolder). Warn when
      * the chosen folder already holds exported files, so old and new sessions
      * don't get mixed - the picker's "New Folder" button makes a clean one. */
     {
-        char pat[4200]; WIN32_FIND_DATAA fd; HANDLE h;
-        snprintf(pat, sizeof(pat), "%s\\*%s", dir, ktx_ext());
+        char *pat = dupprintf("%s\\*%s", dir, ktx_ext());
+        WIN32_FIND_DATAA fd; HANDLE h;
         h = FindFirstFileA(pat, &fd);
+        sfree(pat);
         if (h != INVALID_HANDLE_VALUE) {
             FindClose(h);
             if (MessageBoxA(hwnd,
                     KT_BRIDGE_EXPORT_FOLDER_USED,
-                    KT_CAP_SESSION_EXPORT, MB_YESNO | MB_ICONWARNING) != IDYES)
+                    KT_CAP_SESSION_EXPORT, MB_YESNO | MB_ICONWARNING) != IDYES) {
+                sfree(dir);
                 return;
+            }
         }
     }
     /* Prompt BEFORE exporting: cancel here must leave nothing behind. */
-    if (!kitty_ask_export_password(hwnd, &bundlepw, &dpapi)) return;
+    if (!kitty_ask_export_password(hwnd, &bundlepw, &dpapi)) { sfree(dir); return; }
 
     if (dpapi) kitty_set_bundle_dpapi_only(1);
     else       kitty_set_bundle_passphrase(bundlepw);
@@ -337,23 +340,26 @@ void kitty_export_all_sessions(HWND hwnd) {
     skips = kitty_bundle_wrap_report();
     kitty_clear_bundle_context();
 
-    snprintf(msg, sizeof(msg),
-             KT_BRIDGE_EXPORTED,
-             n, n == 1 ? "" : "s", fail, dir,
-             dpapi
-               ? KT_BRIDGE_EXPORTED_DPAPI
-               : KT_BRIDGE_EXPORTED_PW);
+    /* the report in full, the folder's path included */
+    msg = dupprintf(KT_BRIDGE_EXPORTED,
+                    n, n == 1 ? "" : "s", fail, dir,
+                    dpapi
+                      ? KT_BRIDGE_EXPORTED_DPAPI
+                      : KT_BRIDGE_EXPORTED_PW);
     if (skips) {
-        size_t l = strlen(msg);
-        snprintf(msg + l, sizeof(msg) - l, "%s", skips);
+        char *full = dupcat(msg, skips);
+        sfree(msg);
+        msg = full;
         sfree(skips);
     }
+    sfree(dir);
     g_expd_text = msg;
     g_expd_pw = bundlepw;
     DialogBoxA(GetModuleHandle(NULL), MAKEINTRESOURCEA(IDD_EXPORTDONE),
                hwnd, exportdone_dlgproc);
     g_expd_text = NULL;
     g_expd_pw = NULL;
+    sfree(msg);
 
     if (bundlepw) { SecureZeroMemory(bundlepw, strlen(bundlepw)); free(bundlepw); }
 }
@@ -734,25 +740,26 @@ int kitty_unlock_import_bundle(HWND hwnd, const char *dir, char **pwOut)
 
 
 void kitty_import_sessions(HWND hwnd) {
-    char dir[4096];
+    char *dir;                       /* the picked folder, in full */
     int n, fail = 0, prox = 0, skipped = 0, overwrite = 1;
-    char msg[700], counts[320];
+    char *msg, counts[320];
     char *bundlepw = NULL;
     /* Folder-based, to match Export all (both pick a folder): imports every .ktx
      * in the chosen folder plus its Proxies\ subfolder. */
-    if (!OpenDirName(hwnd, dir)) return;
+    if ((dir = kitty_pick_dir_dup(hwnd, NULL, NULL)) == NULL) return;
     /* Settle the bundle's protection first: a wrong password, or a "this PC
      * only" bundle from elsewhere, must abandon the import before anything is
      * written or any other question is shown. */
-    if (!kitty_unlock_import_bundle(hwnd, dir, &bundlepw)) return;
+    if (!kitty_unlock_import_bundle(hwnd, dir, &bundlepw)) { sfree(dir); return; }
     /* Import overwrites a saved session/proxy of the same name. Count the
      * collisions across BOTH and let the user choose once: overwrite all, import
      * only new, or cancel. */
     {
         int collide = 0;
-        char pat[4200]; WIN32_FIND_DATAA fd; HANDLE h;
-        snprintf(pat, sizeof(pat), "%s\\*%s", dir, ktx_ext());
+        char *pat = dupprintf("%s\\*%s", dir, ktx_ext());
+        WIN32_FIND_DATAA fd; HANDLE h;
         h = FindFirstFileA(pat, &fd);
+        sfree(pat);
         if (h != INVALID_HANDLE_VALUE) {
             do {
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
@@ -770,7 +777,7 @@ void kitty_import_sessions(HWND hwnd) {
                 collide);
             int r = MessageBoxA(hwnd, q, KT_CAP_SESSION_IMPORT,
                                 MB_YESNOCANCEL | MB_ICONQUESTION);
-            if (r == IDCANCEL) { imp_wipe(&bundlepw); return; }
+            if (r == IDCANCEL) { imp_wipe(&bundlepw); sfree(dir); return; }
             overwrite = (r == IDYES) ? 1 : 0;
         }
     }
@@ -787,11 +794,11 @@ void kitty_import_sessions(HWND hwnd) {
              n, n == 1 ? "" : "s", prox, prox == 1 ? "y" : "ies");
     if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), KT_BRIDGE_IMPORTED_KEPT, skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
     if (fail > 0)    { char t[48]; snprintf(t, sizeof(t), KT_BRIDGE_IMPORTED_FAILED, fail); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
-    snprintf(msg, sizeof(msg),
-             KT_BRIDGE_IMPORTED_FROM,
-             counts, dir);
+    msg = dupprintf(KT_BRIDGE_IMPORTED_FROM, counts, dir);   /* the path in full */
+    sfree(dir);
     MessageBoxA(hwnd, msg, KT_CAP_SESSION_IMPORT,
                 MB_OK | (fail ? MB_ICONWARNING : MB_ICONINFORMATION));
+    sfree(msg);
     /* Imported sessions bring their hotkeys along, and nothing above checked
      * those against the store: report NOW if the store ended up with a hotkey
      * held twice, or with more enabled hotkeys than the launcher has slots -

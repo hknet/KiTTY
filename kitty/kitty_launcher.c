@@ -260,8 +260,8 @@ struct LauncherHotkey {
 	int id ;
 	UINT modifiers ;
 	UINT vk ;
-	char folder[1024] ;
-	char session[1024] ;
+	char * folder ;    /* in full (sfree), while registered */
+	char * session ;
 } ;
 static struct LauncherHotkey LauncherHotkeys[LAUNCHER_HOTKEY_MAX] ;
 static int LauncherHotkeyCount = 0 ;
@@ -670,20 +670,55 @@ static int launcher_shortcut_points_here( int common, const char *exe ) {
 	return 0 ;
 }
 
+/* This program's path in its short (8.3) form, in full (sfree it); NULL with
+ * Windows' reason in GetLastError() when it cannot be read. It begins every
+ * command line the launcher starts. */
+static char * launcher_short_exe_dup( void ) {
+	char * exe = kitty_module_path_dup( NULL ), * sp ;
+	DWORD n, got ;
+	if( exe == NULL ) return NULL ;
+	n = GetShortPathNameA( exe, NULL, 0 ) ;
+	for( ;; ) {
+		if( n == 0 ) {
+			DWORD e = GetLastError() ;
+			sfree( exe ) ;
+			SetLastError( e ) ;
+			return NULL ;
+		}
+		sp = snewn( n + 1, char ) ;
+		got = GetShortPathNameA( exe, sp, n + 1 ) ;
+		if( got != 0 && got <= n ) { sfree( exe ) ; return sp ; }
+		sfree( sp ) ;
+		n = got ;   /* 0: failed; else the size it needs now */
+	}
+}
+
+/* The text of a menu item (by position) in full (sfree it); "" when it has
+ * none. */
+static char * launcher_menu_text_dup( HMENU m, int pos ) {
+	int n = GetMenuStringA( m, pos, NULL, 0, MF_BYPOSITION ) ;
+	char * t ;
+	if( n <= 0 ) return dupstr( "" ) ;
+	t = snewn( n + 1, char ) ;
+	t[0] = '\0' ;
+	GetMenuStringA( m, pos, t, n + 1, MF_BYPOSITION ) ;
+	return t ;
+}
+
 int kitty_launcher_autostart_on( void ) {
-	char mx[MAX_PATH] ;
-	DWORD mn = GetModuleFileNameA( NULL, mx, sizeof(mx) ) ;
-	return mn && mn < sizeof(mx) &&
+	char * mx = kitty_module_path_dup( NULL ) ;
+	int on = mx != NULL &&
 	       ( launcher_shortcut_points_here( 0, mx ) || launcher_shortcut_points_here( 1, mx ) ) ;
+	sfree( mx ) ;
+	return on ;
 }
 
 /* Toggles it; the explanations go to `owner`. Returns the state afterwards
  * (unchanged when a refusal was explained). */
 int kitty_launcher_autostart_toggle( HWND owner ) {
-	char exe[MAX_PATH], dir[MAX_PATH], *slash ;
+	char * exe = kitty_module_path_dup( NULL ), * dir, * slash ;
 	size_t i ;
-	DWORD n = GetModuleFileNameA( NULL, exe, sizeof(exe) ) ;
-	if( n && n < sizeof(exe) ) {
+	if( exe != NULL ) {
 		if( launcher_shortcut_points_here( 0, exe ) ) {
 			/* whichever name points here - never another KiTTY++'s */
 			for( i = 0 ; i < lenof(launcher_shortcut_names) ; i++ )
@@ -697,10 +732,12 @@ int kitty_launcher_autostart_toggle( HWND owner ) {
 			MessageBox( owner, KT_LAUNCHER_STARTUP_OTHER_KITTY,
 			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
 		} else {
-			snprintf( dir, sizeof(dir), "%s", exe ) ;
+			dir = dupstr( exe ) ;
 			slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
 			kitty_startup_shortcut_set( LAUNCHER_SHORTCUT_NEW, exe, "-launcher", dir, exe, 1 ) ;
+			sfree( dir ) ;
 		}
+		sfree( exe ) ;
 	}
 	return kitty_launcher_autostart_on() ;
 }
@@ -751,7 +788,6 @@ static void ilr_ro_add( const char * folder, const char * session ) {
 static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
 	menu = CreatePopupMenu() ;
-	char KeyName[1024] ;
 	int nbitem = 0 ;
 
 	/* The ids of the menu still on the screen are renumbered from here on:
@@ -762,8 +798,9 @@ static HMENU InitLauncherMenu( char * Key ) {
 		/* readonly=yes: from the entries the last rebuild kept */
 		ReadLauncherEntries( menu, ilr_ro, ilr_ro_n, "", &nbitem ) ;
 	} else if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		snprintf( KeyName, sizeof(KeyName), "%s\\%s", kitty_registry_base(), Key ) ;
+		char * KeyName = dupprintf( "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
+		sfree( KeyName ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		ReadSpecialMenu( menu, Key, &nbitem, 0 ) ;
 	}
@@ -900,16 +937,17 @@ static double LauncherTimingNow( void ) {
 	return 1000.0 * (double)c.QuadPart / (double)f.QuadPart ;
 }
 static void LauncherDebugLine( const char * line ) {
-	char path[MAX_PATH], * slash ;
+	char * dir, * path ;
 	FILE * fp ;
 	if( getenv( "KITTY_LAUNCHER_TIMING" ) == NULL ) return ;
-	if( !GetModuleFileNameA( NULL, path, sizeof(path) - 32 ) ) return ;
-	if( (slash = strrchr( path, '\\' )) == NULL ) return ;
-	strcpy( slash + 1, "launcher_timing.log" ) ;
+	if( (dir = kitty_module_dir_dup( NULL )) == NULL ) return ;
+	path = dupprintf( "%s\\launcher_timing.log", dir ) ;
+	sfree( dir ) ;
 	if( (fp = fopen( path, "a" )) != NULL ) {
 		fprintf( fp, "%s\n", line ) ;
 		fclose( fp ) ;
 	}
+	sfree( path ) ;
 }
 static void LauncherTimingLog( const char * what, double started ) {
 	char line[128] ;
@@ -957,10 +995,11 @@ void DelDir( const char * directory ) {
 /* KiTTY: the session folder in use - kitty.ini sessions= may put it away
  * from ConfigDirectory\Sessions, which is only the default. */
 static const char * kitty_launcher_sessions_root( void ) {
-	static char root[MAX_VALUE_NAME] ;
+	static char * root = NULL ;   /* in full, kept until the next call */
 	const char * d = kitty_session_dir() ;
-	if( d != NULL && d[0] ) snprintf( root, sizeof(root), "%s", d ) ;
-	else snprintf( root, sizeof(root), "%s\\Sessions", ConfigDirectory ) ;
+	sfree( root ) ;
+	if( d != NULL && d[0] ) root = dupstr( d ) ;
+	else root = dupprintf( "%s\\Sessions", ConfigDirectory ) ;
 	return root ;
 	}
 
@@ -992,7 +1031,7 @@ static void ilr_write_file( const char * path, const char * text ) {
 // (/commands in a live session) only the caller's report.
 int InitLauncherRegistry( int * failed, DWORD * err ) {
 	HKEY hKey ;
-	char buffer[MAX_VALUE_NAME] ;
+	char * buffer ;
 	int i;
 	/* readonly=yes: the Launcher key / folder is neither deleted nor
 	 * rebuilt; the entries the copy would hold are kept in memory (ilr_ro)
@@ -1005,70 +1044,76 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		}
 
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		TCHAR folder[MAX_VALUE_NAME], achClass[MAX_PATH] = TEXT("");
+		TCHAR achClass[MAX_PATH] = TEXT("");
 		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
+		LONG r ;
 
-		snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
+		buffer = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
 		if( !ro ) {
 			RegDelTree (HKEY_CURRENT_USER, buffer ) ;
 			RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
 			}
-		snprintf( buffer, sizeof(buffer), "%s\\Sessions", kitty_registry_base() ) ;
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) goto done ;
+		sfree( buffer ) ;
+		buffer = dupprintf( "%s\\Sessions", kitty_registry_base() ) ;
+		r = RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) ;
+		sfree( buffer ) ;
+		if( r != ERROR_SUCCESS ) goto done ;
 
-		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
+		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS )
+			cSubKeys = 0 ;
 
 		if( cSubKeys>0 )
 			for (i=0; i<cSubKeys; i++) {
-				DWORD cchValue = MAX_VALUE_NAME;
-				char lpData[4096] ;
+				/* a key name is at most 255 characters */
+				char lpData[MAX_KEY_LENGTH + 1] ;
+				DWORD cchValue = sizeof(lpData) ;
 				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
+					char * sess, * folder, * pf ;
 					/* KiTTY: skip sessions marked LauncherHide (excluded from the launcher). */
 					{
 						DWORD hide = 0, hsz = sizeof(hide) ;
-						char skey[4096] ;
-						snprintf( skey, sizeof(skey), "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-						if( RegGetValueA( HKEY_CURRENT_USER, skey, KR_LAUNCHERHIDE, RRF_RT_REG_DWORD, NULL, &hide, &hsz ) == ERROR_SUCCESS && hide )
+						char * skey = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+						LONG hr = RegGetValueA( HKEY_CURRENT_USER, skey, KR_LAUNCHERHIDE, RRF_RT_REG_DWORD, NULL, &hide, &hsz ) ;
+						sfree( skey ) ;
+						if( hr == ERROR_SUCCESS && hide )
 							continue ;
 					}
 					/* Default Settings is the template, not a session to start.
 					 * Skipped HERE, where the copy is written: the menu reader
 					 * dropped it only at the top level, so one saved with a
 					 * Folder value came back inside that folder's submenu. */
-					strcpy( folder, "" ) ;
-					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
-					if( !strcmp( folder, KITTY_DEFAULT_SESSION ) ) continue ;
-					snprintf( buffer, sizeof(buffer),"%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+					sess = unmungestr_dup( lpData ) ;
+					if( !strcmp( sess, KITTY_DEFAULT_SESSION ) ) { sfree( sess ) ; continue ; }
 					/* KiTTY (hknet/KiTTY#55): a session stored under a folder
 					 * path is in that folder, regardless of its Folder value. */
-					{
-						char * pf = ksp_folder_of( folder ) ;
-						if( pf != NULL ) {
-							snprintf( folder, MAX_VALUE_NAME, "%s", pf ) ;
-							sfree( pf ) ;
-							}
-						else if( !GetValueDataN(HKEY_CURRENT_USER, buffer, KR_FOLDER, folder, sizeof(folder) ) )
-							{ strcpy( folder, "Default" ) ; }
-					}
+					if( ( pf = ksp_folder_of( sess ) ) != NULL )
+						folder = pf ;
+					else {
+						buffer = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+						folder = GetValueDataDup( HKEY_CURRENT_USER, buffer, KR_FOLDER ) ;
+						sfree( buffer ) ;
+						if( folder == NULL ) folder = dupstr( "Default" ) ;
+						}
 					CleanFolderName( folder ) ;
 					if( ro ) {	/* in memory, nothing written */
-						char sess[MAX_VALUE_NAME] = "" ;
-						unmungestr( lpData, sess, MAX_VALUE_NAME ) ;
 						ilr_ro_add( folder, sess ) ;
+						sfree( folder ) ;
+						sfree( sess ) ;
 						continue ;
 						}
 					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
-						snprintf( buffer, sizeof(buffer), "%s\\Launcher", kitty_registry_base() ) ;
+						buffer = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
 					else
-						snprintf( buffer, sizeof(buffer), "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
-					strcpy( folder, "" ) ;
-					unmungestr( lpData, folder, MAX_VALUE_NAME ) ;
+						buffer = dupprintf( "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
 					/* The entry is labelled with the session's own name; the
 					 * data is the full path that -load takes. */
-					if( strlen(folder) > 0 )
-						ilr_note( RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( folder ), folder ) ) ;
+					if( strlen(sess) > 0 )
+						ilr_note( RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( sess ), sess ) ) ;
+					sfree( buffer ) ;
+					sfree( folder ) ;
+					sfree( sess ) ;
 				}
 			}
 		RegCloseKey( hKey ) ;
@@ -1077,69 +1122,77 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		 * store's own enumeration (nested folders, dot-files and non-session
 		 * files left out). One file per entry, "label\session\": the label is
 		 * the session's own name - the menu reader splits at the FIRST '\',
-		 * so it must hold none - and the session is the full path. */
-		char fullpath[MAX_VALUE_NAME], folder[MAX_VALUE_NAME], ldir[MAX_VALUE_NAME] ;
+		 * so it must hold none - and the session is the full path. Every
+		 * path is held in full: one too long for Windows fails to be
+		 * written, and is counted as such. */
+		char * ldir = portable_config_subdir( "Launcher" ) ;
 		int nn = 0, k ;
 		char ** names ;
-		portable_config_path( ldir, sizeof(ldir), "Launcher" ) ;
-		snprintf( fullpath, sizeof(fullpath), "%s", ldir ) ;
-		if( !ro ) DelDir( fullpath ) ;
-		if( !ro && !MakeDir( fullpath ) ) {
-			/* MakeDir's own last error is its final existence check; one
-			 * more plain attempt gives Windows' reason (a FILE of that
-			 * name: "already exists"). Nothing below can be written. */
-			if( !CreateDirectoryA( fullpath, NULL ) ) {
-				ilr_err = GetLastError() ;
-				if( failed == NULL ) MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR);
-				if( failed ) *failed = 0 ;
-				if( err ) *err = ilr_err ;
-				return -1 ;
+		if( !ro ) {
+			if( ldir != NULL ) DelDir( ldir ) ;
+			if( ldir == NULL || !MakeDir( ldir ) ) {
+				/* MakeDir's own last error is its final existence check; one
+				 * more plain attempt gives Windows' reason (a FILE of that
+				 * name: "already exists"). Nothing below can be written. */
+				if( ldir == NULL || !CreateDirectoryA( ldir, NULL ) ) {
+					ilr_err = ldir == NULL ? ERROR_PATH_NOT_FOUND : GetLastError() ;
+					sfree( ldir ) ;
+					if( failed == NULL ) MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR);
+					if( failed ) *failed = 0 ;
+					if( err ) *err = ilr_err ;
+					return -1 ;
+					}
 				}
 			}
 		names = kitty_session_names( &nn ) ;
 		for( k = 0 ; k < nn ; k++ ) {
 			const char * leaf = ksp_leaf( names[k] ) ;
-			char * fld ;
-			char mleaf[MAX_VALUE_NAME] ;
+			char * fld, * folder, * mleaf, * fullpath ;
 			if( !strcmp( names[k], KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it gives */
-			if( strlen( names[k] ) * 3 + 1 >= MAX_VALUE_NAME ) continue ;
 			fld = kitty_read_session_folder( names[k] ) ;
-			snprintf( folder, sizeof(folder), "%s", fld ? fld : "" ) ;
+			folder = dupstr( fld ? fld : "" ) ;
 			sfree( fld ) ;
 			CleanFolderName( folder ) ;
 			if( ro ) {	/* in memory, nothing written */
 				ilr_ro_add( folder, names[k] ) ;
+				sfree( folder ) ;
 				continue ;
 				}
-			mungestr( leaf, mleaf ) ;
+			mleaf = mungestr_dup( leaf ) ;
 			if( strlen(folder) > 0 && strcmp(folder,"Default") ) {
 				/* each folder component on its own, as the reader unmunges it */
-				char mfold[MAX_VALUE_NAME] = "", comp[MAX_VALUE_NAME], mcomp[MAX_VALUE_NAME] ;
+				strbuf * mfold = strbuf_new() ;
 				const char * q = folder ;
 				while( *q ) {
 					const char * e = strchr( q, '\\' ) ;
 					size_t n = e ? (size_t)(e - q) : strlen( q ) ;
-					if( n >= sizeof(comp) / 3 ) break ;
-					memcpy( comp, q, n ) ; comp[n] = '\0' ;
-					mungestr( comp, mcomp ) ;
-					if( strlen(mfold) + strlen(mcomp) + 2 >= sizeof(mfold) ) break ;
-					if( mfold[0] ) strcat( mfold, "\\" ) ;
-					strcat( mfold, mcomp ) ;
+					char * comp = dupprintf( "%.*s", (int)n, q ) ;
+					char * mcomp = mungestr_dup( comp ) ;
+					if( mfold->len ) put_byte( mfold, '\\' ) ;
+					put_dataz( mfold, mcomp ) ;
+					sfree( mcomp ) ;
+					sfree( comp ) ;
 					q += n ; if( *q == '\\' ) q++ ;
 					}
-				snprintf( fullpath, sizeof(fullpath), "%s\\%s", ldir, mfold ) ;
+				fullpath = dupprintf( "%s\\%s", ldir, mfold->s ) ;
 				MakeDir( fullpath ) ;
-				snprintf( fullpath, sizeof(fullpath), "%s\\%s\\%s", ldir, mfold, mleaf ) ;
+				sfree( fullpath ) ;
+				fullpath = dupprintf( "%s\\%s\\%s", ldir, mfold->s, mleaf ) ;
+				strbuf_free( mfold ) ;
 				}
 			else
-				snprintf( fullpath, sizeof(fullpath), "%s\\%s", ldir, mleaf ) ;
+				fullpath = dupprintf( "%s\\%s", ldir, mleaf ) ;
 			{
 				char * text = dupprintf( "%s\\%s\\", leaf, names[k] ) ;
 				ilr_write_file( fullpath, text ) ;
 				sfree( text ) ;
 			}
+			sfree( fullpath ) ;
+			sfree( mleaf ) ;
+			sfree( folder ) ;
 			}
 		kitty_session_names_free( names, nn ) ;
+		sfree( ldir ) ;
 	}
 done:
 	if( ro ) {
@@ -1392,11 +1445,23 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 #define LAUNCHER_OPENFOLDER_GAP_MS	300	/* between two session starts */
 #define LAUNCHER_OPENFOLDER_ASK_ABOVE	8	/* more sessions than this: confirm */
 
-struct LauncherFolderItem { char payload[1024] ; char label[1024] ; } ;
+struct LauncherFolderItem { char * payload ; char * label ; } ;   /* in full (sfree) */
 static struct LauncherFolderItem * LauncherFolderItems = NULL ;
 static int LauncherFolderCount = 0 ;
 static int LauncherFolderNext = 0 ;
-static char LauncherFolderName[256] = "" ;
+static char * LauncherFolderName = NULL ;   /* in full (sfree) */
+
+/* The pending folder's list, and the memory of its entries, dropped. */
+static void LauncherFolderItemsFree( void ) {
+	int i ;
+	if( LauncherFolderItems != NULL )
+		for( i = 0 ; i < LauncherFolderCount ; i++ ) {
+			sfree( LauncherFolderItems[i].payload ) ;
+			sfree( LauncherFolderItems[i].label ) ;
+		}
+	free( LauncherFolderItems ) ;
+	LauncherFolderItems = NULL ;
+}
 
 /* The sessions directly in a folder's submenu: the items whose id is a
  * session's. 0 for a submenu that is not a session folder (Open Sessions,
@@ -1410,9 +1475,8 @@ static int LauncherFolderSessions( HMENU sub, struct LauncherFolderItem * out, i
 			continue ;
 		if( out != NULL && n < max ) {
 			char * tab ;
-			snprintf( out[n].payload, sizeof(out[n].payload), "%s", kitty_menuslots_get( nb ) ) ;
-			out[n].label[0] = '\0' ;
-			GetMenuString( sub, i, out[n].label, sizeof(out[n].label), MF_BYPOSITION ) ;
+			out[n].payload = dupstr( kitty_menuslots_get( nb ) ) ;
+			out[n].label = launcher_menu_text_dup( sub, i ) ;
 			/* the "\tCtrl+Shift+A" accelerator text is not part of the name */
 			if( (tab = strchr( out[n].label, '\t' )) != NULL ) *tab = '\0' ;
 		}
@@ -1456,7 +1520,7 @@ static void LauncherWinContextMenu( HWND hwnd, int idx ) {
 /* WM_MENURBUTTONUP: item `pos` of `parent` was right-clicked. */
 static void LauncherFolderContextMenu( HWND hwnd, HMENU parent, int pos ) {
 	HMENU sub = GetSubMenu( parent, pos ), ctx ;
-	char name[256] = "", item[512] ;
+	char * name, * item ;
 	POINT pt ;
 	int n ;
 
@@ -1474,38 +1538,46 @@ static void LauncherFolderContextMenu( HWND hwnd, HMENU parent, int pos ) {
 	n = LauncherFolderSessions( sub, NULL, 0 ) ;
 	if( n < 2 )
 		return ;                 /* one session is what a left click is for */
-	GetMenuString( parent, pos, name, sizeof(name), MF_BYPOSITION ) ;
-	snprintf( item, sizeof(item), KT_MENU_OPEN_FOLDER_ALL, n, name ) ;
-	if( (ctx = CreatePopupMenu()) == NULL )
+	name = launcher_menu_text_dup( parent, pos ) ;
+	if( (ctx = CreatePopupMenu()) == NULL ) {
+		sfree( name ) ;
 		return ;
+	}
+	item = dupprintf( KT_MENU_OPEN_FOLDER_ALL, n, name ) ;
 	AppendMenu( ctx, MF_ENABLED, 1, item ) ;
+	sfree( item ) ;
 	GetCursorPos( &pt ) ;
 	/* TPM_RECURSE: this popup is raised while the tray menu is still open. */
 	if( TrackPopupMenuEx( ctx, TPM_RECURSE | TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN,
 	                      pt.x, pt.y, hwnd, NULL ) == 1 ) {
-		free( LauncherFolderItems ) ;
+		LauncherFolderItemsFree() ;
 		LauncherFolderItems = (struct LauncherFolderItem *)calloc( n, sizeof(struct LauncherFolderItem) ) ;
 		LauncherFolderCount = LauncherFolderItems ? LauncherFolderSessions( sub, LauncherFolderItems, n ) : 0 ;
+		if( LauncherFolderCount > n ) LauncherFolderCount = n ;   /* only the entries filled in */
 		LauncherFolderNext = 0 ;
-		snprintf( LauncherFolderName, sizeof(LauncherFolderName), "%s", name ) ;
+		sfree( LauncherFolderName ) ;
+		LauncherFolderName = name ;
+		name = NULL ;
 		EndMenu() ;              /* the tray menu: its job is done */
 		if( LauncherFolderCount > 0 )
 			PostMessage( hwnd, KLWM_OPENFOLDER, 0, 0 ) ;
 	}
+	sfree( name ) ;
 	DestroyMenu( ctx ) ;
 }
 
 /* One session of the pending folder; the timer brings the next. */
 static void LauncherFolderOpenNext( HWND hwnd ) {
 	if( LauncherFolderItems != NULL && LauncherFolderNext < LauncherFolderCount ) {
-		struct LauncherFolderItem * it = &LauncherFolderItems[LauncherFolderNext++] ;
+		/* a copy: starting the session may run messages that drop the list */
+		char * payload = dupstr( LauncherFolderItems[LauncherFolderNext++].payload ) ;
 		/* The same two forms the menu's own click uses. */
-		RunSession( hwnd, it->payload, it->payload ) ;
+		RunSession( hwnd, payload, payload ) ;
+		sfree( payload ) ;
 	}
 	if( LauncherFolderItems == NULL || LauncherFolderNext >= LauncherFolderCount ) {
 		KillTimer( hwnd, LAUNCHER_OPENFOLDER_TIMER ) ;
-		free( LauncherFolderItems ) ;
-		LauncherFolderItems = NULL ;
+		LauncherFolderItemsFree() ;
 		LauncherFolderCount = LauncherFolderNext = 0 ;
 	}
 }
@@ -1664,10 +1736,11 @@ static int LauncherMenuSameTopLevel( HMENU a, HMENU b ) {
 	int i, n = GetMenuItemCount( a ) ;
 	if( n < 0 || n != GetMenuItemCount( b ) ) return 0 ;
 	for( i = 0 ; i < n ; i++ ) {
-		char ta[1024] = "", tb[1024] = "" ;
-		GetMenuStringA( a, i, ta, sizeof(ta), MF_BYPOSITION ) ;
-		GetMenuStringA( b, i, tb, sizeof(tb), MF_BYPOSITION ) ;
-		if( strcmp( ta, tb ) ) return 0 ;
+		char * ta = launcher_menu_text_dup( a, i ), * tb = launcher_menu_text_dup( b, i ) ;
+		int same = !strcmp( ta, tb ) ;
+		sfree( ta ) ;
+		sfree( tb ) ;
+		if( !same ) return 0 ;
 		if( ( GetSubMenu( a, i ) != NULL ) != ( GetSubMenu( b, i ) != NULL ) ) return 0 ;
 	}
 	return 1 ;
@@ -1873,16 +1946,17 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
 static DWORD LauncherDblActionTick = 0 ;
 static void LauncherTrayTrace( const char * what ) {
 #ifdef KITTY_TEST_BUILD_LABEL
-	char path[MAX_PATH], *slash ;
+	char * dir, * path ;
 	FILE * f ;
 	if( getenv( "KITTY_LAUNCHER_TRACE" ) == NULL ) return ;
-	if( !GetModuleFileNameA( NULL, path, sizeof(path) ) ) return ;
-	if( ( slash = strrchr( path, '\\' ) ) == NULL ) return ;
-	strcpy( slash + 1, "launcher_tray.log" ) ;
+	if( ( dir = kitty_module_dir_dup( NULL ) ) == NULL ) return ;
+	path = dupprintf( "%s\\launcher_tray.log", dir ) ;
+	sfree( dir ) ;
 	if( ( f = fopen( path, "a" ) ) != NULL ) {
 		fprintf( f, "%lu %s\n", (unsigned long)GetTickCount(), what ) ;
 		fclose( f ) ;
 	}
+	sfree( path ) ;
 #else
 	(void)what ;
 #endif
@@ -2274,8 +2348,12 @@ static int LauncherHeldIsNew( const char * held ) {
 
 static void LauncherUnregisterHotkeys( HWND hwnd ) {
 	int i ;
-	for( i=0 ; i<LauncherHotkeyCount ; i++ )
+	for( i=0 ; i<LauncherHotkeyCount ; i++ ) {
 		UnregisterHotKey( hwnd, LauncherHotkeys[i].id ) ;
+		sfree( LauncherHotkeys[i].folder ) ;
+		sfree( LauncherHotkeys[i].session ) ;
+		LauncherHotkeys[i].folder = LauncherHotkeys[i].session = NULL ;
+	}
 	LauncherHotkeyCount = 0 ;
 	if( LauncherGlobalHotkeyOn ) {
 		UnregisterHotKey( hwnd, LAUNCHER_HOTKEY_GLOBAL_ID ) ;
@@ -2369,14 +2447,15 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 				LauncherHotkeys[LauncherHotkeyCount].id = LAUNCHER_HOTKEY_BASE + LauncherHotkeyCount ;
 				LauncherHotkeys[LauncherHotkeyCount].modifiers = mods | MOD_NOREPEAT ;
 				LauncherHotkeys[LauncherHotkeyCount].vk = vk ;
-				strncpy( LauncherHotkeys[LauncherHotkeyCount].folder, sess, sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1 ) ;
-				LauncherHotkeys[LauncherHotkeyCount].folder[sizeof(LauncherHotkeys[LauncherHotkeyCount].folder)-1] = '\0' ;
-				strncpy( LauncherHotkeys[LauncherHotkeyCount].session, sess, sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1 ) ;
-				LauncherHotkeys[LauncherHotkeyCount].session[sizeof(LauncherHotkeys[LauncherHotkeyCount].session)-1] = '\0' ;
+				LauncherHotkeys[LauncherHotkeyCount].folder = dupstr( sess ) ;
+				LauncherHotkeys[LauncherHotkeyCount].session = dupstr( sess ) ;
 				if( RegisterHotKey( hwnd, LauncherHotkeys[LauncherHotkeyCount].id,
 					LauncherHotkeys[LauncherHotkeyCount].modifiers, LauncherHotkeys[LauncherHotkeyCount].vk ) )
 					LauncherHotkeyCount++ ;
 				else {
+					sfree( LauncherHotkeys[LauncherHotkeyCount].folder ) ;
+					sfree( LauncherHotkeys[LauncherHotkeyCount].session ) ;
+					LauncherHotkeys[LauncherHotkeyCount].folder = LauncherHotkeys[LauncherHotkeyCount].session = NULL ;
 					char line[240] ;
 					snprintf( line, sizeof(line),
 					          LauncherOtherHolds( hwnd, mods, vk ) ? KT_LAUNCHER_HOTKEY_HELD_LAUNCHER
@@ -2495,12 +2574,13 @@ static unsigned int LauncherRememberedWorkplaceMinutes( void ) {
 }
 
 static int LauncherRememberedWorkplaceProxy( char *out, int len ) {
-	char buffer[512] = "" ;
+	/* read in full; a name that does not fit `out` is not taken, never cut */
+	char * buffer = ReadParameterDup( INIT_SECTION, KI_WORKPLACEPROXY ) ;
+	int ok = buffer[0] && (int)strlen(buffer) < len ;
 	out[0] = '\0' ;
-	if( !ReadParameterN( INIT_SECTION, KI_WORKPLACEPROXY, buffer, sizeof(buffer) ) ) return 0 ;
-	if( !buffer[0] || (int)strlen(buffer) >= len ) return 0 ;
-	strcpy( out, buffer ) ;
-	return 1 ;
+	if( ok ) strcpy( out, buffer ) ;
+	sfree( buffer ) ;
+	return ok ;
 }
 
 /* How long the workplace notice stays up: [Launcher] noticeseconds, default 15.
@@ -3020,11 +3100,12 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		case KLWM_OPENFOLDER:
 			/* The folder entry was chosen and the menu loop has ended. */
 			if( LauncherFolderCount > LAUNCHER_OPENFOLDER_ASK_ABOVE ) {
-				char q[512] ;
-				snprintf( q, sizeof(q), KT_LAUNCHER_OPEN_FOLDER_CONFIRM,
-				          LauncherFolderCount, LauncherFolderName ) ;
-				if( MessageBox( hwnd, q, KT_CAP_LAUNCHER,
-				                MB_YESNO | MB_ICONQUESTION ) != IDYES ) {
+				char * q = dupprintf( KT_LAUNCHER_OPEN_FOLDER_CONFIRM,
+				          LauncherFolderCount, LauncherFolderName ? LauncherFolderName : "" ) ;
+				int yes = MessageBox( hwnd, q, KT_CAP_LAUNCHER,
+				                      MB_YESNO | MB_ICONQUESTION ) == IDYES ;
+				sfree( q ) ;
+				if( !yes ) {
 					LauncherFolderNext = LauncherFolderCount ;   /* drop the list */
 					LauncherFolderOpenNext( hwnd ) ;
 					break ;
@@ -3047,7 +3128,11 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 				}
 				for( i=0 ; i<LauncherHotkeyCount ; i++ )
 					if( (int)wParam == LauncherHotkeys[i].id ) {
-						RunSession( hwnd, LauncherHotkeys[i].folder, LauncherHotkeys[i].session ) ;
+						/* copies: a refresh while the session starts frees the table's */
+						char * f = dupstr( LauncherHotkeys[i].folder ), * s = dupstr( LauncherHotkeys[i].session ) ;
+						RunSession( hwnd, f, s ) ;
+						sfree( f ) ;
+						sfree( s ) ;
 						break ;
 					}
 			}
@@ -3246,14 +3331,20 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 	hinst = inst ;
 	WNDCLASS wndclass ;
 	MSG msg;
-	char buffer[4096] ;
-	char className[1024] = "KiTTYLauncher" ;
-	
-	if( strcmp(KiTTYClassName,appname) ) { strcpy(className,KiTTYClassName) ; }
-	else if( strcmp(KiTTYClassName,"KiTTY") ) { strcpy(className,KiTTYClassName) ; }
-	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME, buffer, sizeof(buffer) ) ) {
-		buffer[1023]='\0' ;
-		if( strlen(buffer)>0 ) { strcpy(className,buffer) ; }
+	char buffer[64] ;
+	/* in full, for the life of the process (the window class) */
+	static char * className = NULL ;
+
+	{
+		char * cn = ReadParameterDup( KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME ) ;
+		sfree( className ) ;
+		if( cn[0] ) className = cn ;
+		else {
+			sfree( cn ) ;
+			if( strcmp(KiTTYClassName,appname) ) className = dupstr( KiTTYClassName ) ;
+			else if( strcmp(KiTTYClassName,"KiTTY") ) className = dupstr( KiTTYClassName ) ;
+			else className = dupstr( "KiTTYLauncher" ) ;
+		}
 	}
 	
 	/* KiTTY: -workplace <named proxy> switches workplace proxy mode ON and
@@ -3384,7 +3475,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 
 #endif
 void RunConfig( Conf * conf ) {
-	char b[2048];
+	char *b;
 	//char c[180];
 	//int freecl = FALSE;
 	char *cl;
@@ -3460,7 +3551,7 @@ void RunConfig( Conf * conf ) {
 	cl = dupprintf("putty %s%s&%p:%u", argprefix, mpwtok,
 		filemap, (unsigned)size);
 
-	GetModuleFileName(NULL, b, sizeof(b) - 1);
+	b = kitty_module_path_dup(NULL);   /* in full; NULL: nothing is started */
 	si.cb = sizeof(si);
 	si.lpReserved = NULL;
 	si.lpDesktop = NULL;
@@ -3470,7 +3561,7 @@ void RunConfig( Conf * conf ) {
 	si.lpReserved2 = NULL;
 	(void)inherit_handles;
 	HANDLE give[2] = { filemap, mpwmap } ;
-	if( kitty_create_process_with_handles( b, cl, NORMAL_PRIORITY_CLASS, NULL, &si, &pi, give, 2 ) ) {
+	if( b && kitty_create_process_with_handles( b, cl, NORMAL_PRIORITY_CLASS, NULL, &si, &pi, give, 2 ) ) {
 		/* let the spawned KiTTY window come to the foreground (see RunCommand) */
 		AllowSetForegroundWindow( pi.dwProcessId ) ;
 		CloseHandle(pi.hProcess);
@@ -3482,20 +3573,21 @@ void RunConfig( Conf * conf ) {
 	if (mpwmap)
 		CloseHandle(mpwmap);
 	sfree(cl);
+	sfree(b);
 }
 
 static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) ;
 
 void RunKiTTYpp( HWND hwnd, char * param ) {
-	char buffer[4096]="",shortname[1024]="" ; ;
-	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
-		if( GetShortPathName( buffer, shortname, 1023 ) ) {
+	char * shortname = launcher_short_exe_dup(), * buffer ;
+	if( shortname != NULL ) {
 			if( !strcmp( param, "-ed" ) ) {
 				/* The built-in editor: a prefix-dispatched mode, where an
 				 * "-mpwkey" in front would break its command-line detection -
 				 * and it reads no stored password. */
-				snprintf( buffer, sizeof(buffer), "%s %s", shortname, param ) ;
+				buffer = dupprintf( "%s %s", shortname, param ) ;
 				RunCommand( hwnd, buffer ) ;
+				sfree( buffer ) ;
 			} else if( strlen(param) > 0 ) {
 				/* -quickconnect, -manage: they open saved sessions, so the
 				 * master password is passed on - Quick Connect used to
@@ -3506,8 +3598,9 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
 				const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
 				kitty_mpw_startup_unlock() ;
 				mpwmap = kitty_mpw_export_inherit_blob( " -mpwkey ", mpwtok, sizeof(mpwtok) ) ;
-				snprintf( buffer, sizeof(buffer), "%s%s%s %s", shortname, aclprefix, mpwtok, param ) ;
+				buffer = dupprintf( "%s%s%s %s", shortname, aclprefix, mpwtok, param ) ;
 				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+				sfree( buffer ) ;
 				if( mpwmap ) CloseHandle( mpwmap ) ;
 			} else {
 				/* New configuration box: share the master-password unlock so the
@@ -3529,11 +3622,13 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
 				{ extern int kitty_mpw_startup_unlock(void);
 				  kitty_mpw_startup_unlock();
 				  mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok)); }
-				snprintf( buffer, sizeof(buffer), "%s%s%s", shortname, aclprefix, mpwtok ) ;
+				buffer = dupprintf( "%s%s%s", shortname, aclprefix, mpwtok ) ;
 				launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+				sfree( buffer ) ;
 				if( mpwmap ) CloseHandle( mpwmap ) ;
 			}
-		}
+		sfree( shortname ) ;
+	}
 }
 
 /* Open a new configuration box exactly like RunKiTTYpp(hwnd,"") - same restricted
@@ -3543,9 +3638,8 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
  * controls are. Quote the path if it contains spaces (window.c's -cfgpanel
  * scan understands quotes). */
 static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
-	char buffer[4096]="",shortname[1024]="" ;
-	if( GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) )
-		if( GetShortPathName( buffer, shortname, 1023 ) ) {
+	char * shortname = launcher_short_exe_dup(), * buffer ;
+	if( shortname != NULL ) {
 			HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
 			const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
 			{ extern int kitty_mpw_startup_unlock(void);
@@ -3555,11 +3649,13 @@ static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) 
 			 * as the last one, so the box treats the restore as a
 			 * deliberate load and Save does not raise the overwrite
 			 * warning about it. */
-			snprintf( buffer, sizeof(buffer), "%s%s%s -cfgpanel %s%s", shortname, aclprefix, mpwtok, panel,
+			buffer = dupprintf( "%s%s%s -cfgpanel %s%s", shortname, aclprefix, mpwtok, panel,
 			          mark_loaded ? " -cfgloaded" : "" ) ;
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+			sfree( buffer ) ;
 			if( mpwmap ) CloseHandle( mpwmap ) ;
-		}
+		sfree( shortname ) ;
+	}
 }
 
 /* Spawn a launcher session command line. When `inheritmap` is non-NULL the child
@@ -3580,17 +3676,32 @@ static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap )
 	}
 }
 
+/* "<exe><switches> -load "<session>"[ -send-to-tray]" in full (sfree it): a
+ * session name ending in '&' is started in the tray. */
+static char * launcher_load_cmd( const char * exe, const char * session_in ) {
+	char * session = dupstr( session_in ), * cmd ;
+	int tray = 0 ;
+	if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
+		session[strlen(session)-1]='\0' ;
+		str_rtrim( session, " \t" ) ;
+		tray = 1 ;
+	}
+	cmd = dupprintf( "%s -load \"%s\"%s", exe, session, tray ? " -send-to-tray" : "" ) ;
+	sfree( session ) ;
+	return cmd ;
+}
+
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
-	char buffer[4096]="", shortname[1024]="" ;
-	char *session=NULL ;
+	char * shortname, * exe, * buffer ;
 	int return_code=0 ;
 	HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
 
 	if( session_in==NULL ) return 0 ;
 	if( strlen(session_in) <= 0 ) return 0 ;
 
-	if( !GetModuleFileName( NULL, (LPTSTR)buffer, 1023 ) ) return 0 ;
-	if( !GetShortPathName( buffer, shortname, 1023 ) ) return 0 ;
+	/* every part of the command line held in full: a line Windows cannot
+	 * take makes the start fail, and RunCommand reports it */
+	if( ( shortname = launcher_short_exe_dup() ) == NULL ) return 0 ;
 
 	/* KiTTY: unlock the portable master password once for this launcher run and
 	 * hand it to the spawned session (inherited handle + "-mpwkey" argument,
@@ -3606,52 +3717,39 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	 * the ACL while the launcher itself had it - silently, which is the whole
 	 * problem this marker work exists to solve. The switch rather than the "&R"
 	 * prefix, because what follows here is " -mpwkey ..." / " -load ..." and &R
-	 * is only recognised before end-of-line, "@" or "&". Appended to shortname,
+	 * is only recognised before end-of-line, "@" or "&". Appended to the exe,
 	 * so both the registry/file and the savemode=dir branches below inherit it. */
-	if( restricted_acl() ) { size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, " -restrict-acl" ) ; }
-	if( mpwtok[0] ) { size_t _sl=strlen(shortname); snprintf( shortname+_sl, sizeof(shortname)-_sl, "%s", mpwtok ) ; }
+	exe = dupprintf( "%s%s%s", shortname, restricted_acl() ? " -restrict-acl" : "", mpwtok ) ;
+	sfree( shortname ) ;
 
-	session = (char*)malloc(strlen(session_in)+100) ;
-	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
 		/* KiTTY (hknet/KiTTY#55): the key is PuTTY's escape of the name -
 		 * the folder path's '\' included - which is what the store wrote. */
+		char * key ;
 		{
 			strbuf * sb = strbuf_new() ;
 			escape_registry_key( session_in, sb ) ;
-			snprintf( buffer, sizeof(buffer), "%s\\Sessions\\%s", kitty_registry_base(), sb->s ) ;
+			key = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), sb->s ) ;
 			strbuf_free( sb ) ;
 		}
-		if( RegTestKey(HKEY_CURRENT_USER, buffer) ) {
-			strcpy( session, session_in ) ;
-			if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
-				session[strlen(session)-1]='\0' ;
-				str_rtrim( session, " \t" ) ;
-				sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
-			} else {
-				sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
-			}
+		if( RegTestKey(HKEY_CURRENT_USER, key) ) {
+			buffer = launcher_load_cmd( exe, session_in ) ;
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+			sfree( buffer ) ;
 			return_code = 1 ;
 		} else {
 			RunCommand( hwnd, session_in ) ;
 		}
+		sfree( key ) ;
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
-		strcpy( session, session_in ) ;
-		if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
-			session[strlen(session)-1]='\0' ;
-			str_rtrim( session, " \t" ) ;
-			sprintf( buffer, "%s -load \"%s\" -send-to-tray", shortname, session ) ;
-		} else {
-			sprintf( buffer, "%s -load \"%s\"", shortname, session ) ;
-			//else sprintf( buffer, "%s @%s", shortname, session ) ;
-		}
-//MessageBox( hwnd, buffer, "Info", MB_OK ) ;
+		buffer = launcher_load_cmd( exe, session_in ) ;
 		launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
+		sfree( buffer ) ;
 		return_code = 1 ;
 	}
 
 	if( mpwmap ) CloseHandle( mpwmap ) ;
-	free( session ) ;
+	smemclr( exe, strlen( exe ) ) ;   /* it carries the master-password token */
+	sfree( exe ) ;
 	return return_code ;
 }

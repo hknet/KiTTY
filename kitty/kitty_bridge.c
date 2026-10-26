@@ -363,16 +363,17 @@ void kitty_launcher_watch_arm(HWND hwnd, HWND launcher);   /* windows/window.c *
  * "KiTTYLauncher". Matching the title too matters: with a KiClassName of
  * its own the launcher's class IS the terminal class. */
 HWND kitty_launcher_window(void) {
-    char cls[1024] = "KiTTYLauncher", buf[1024] = "";
-    if (strcmp(KiTTYClassName, "KiTTY") && KiTTYClassName[0]) {
-        strncpy(cls, KiTTYClassName, sizeof(cls) - 1);
-        cls[sizeof(cls) - 1] = '\0';
-    }
-    if (ReadParameterN(KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME, buf, sizeof(buf))) {
-        buf[sizeof(buf) - 1] = '\0';
-        if (buf[0]) strcpy(cls, buf);
-    }
-    return FindWindowA(cls, "KiTTYLauncher");
+    /* the stored class name in full: a cut one finds no window, or another */
+    char *buf = ReadParameterDup(KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME);
+    const char *cls = "KiTTYLauncher";
+    HWND w;
+    if (strcmp(KiTTYClassName, "KiTTY") && KiTTYClassName[0])
+        cls = KiTTYClassName;
+    if (buf[0])
+        cls = buf;
+    w = FindWindowA(cls, "KiTTYLauncher");
+    sfree(buf);
+    return w;
 }
 
 /* Starts a launcher the way a user does - this kitty.exe with -launcher, in
@@ -384,32 +385,36 @@ HWND kitty_launcher_window(void) {
  * configuration box prompted for the master password again. No prompt here
  * when nothing is unlocked - sending a window to the tray must not prompt. */
 BOOL kitty_launcher_spawn(void) {
-    char exe[MAX_PATH + 1], dir[MAX_PATH + 1], cmd[MAX_PATH + 160];
+    char *exe, *dir, *cmd;
     char mpwtok[80] = "";
     HANDLE mpwmap;
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
-    DWORD n;
     BOOL ok;
     char *slash;
-    n = GetModuleFileNameA(NULL, exe, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH)
+    /* the exe, its folder and the command line in full: a path too long for
+     * Windows makes CreateProcess fail with its own reason */
+    if ((exe = kitty_module_path_dup(NULL)) == NULL)
         return FALSE;
-    exe[n] = '\0';
-    strcpy(dir, exe);
+    dir = dupstr(exe);
     slash = strrchr(dir, '\\');
     if (slash) *slash = '\0'; else dir[0] = '\0';
     mpwmap = kitty_mpw_export_inherit_blob(" -mpwkey ", mpwtok, sizeof(mpwtok));
-    snprintf(cmd, sizeof(cmd), "\"%s\"%s%s -launcher", exe,
-             restricted_acl() ? " -restrict-acl" : "", mpwtok);
+    cmd = dupprintf("\"%s\"%s%s -launcher", exe,
+                    restricted_acl() ? " -restrict-acl" : "", mpwtok);
     memset(&si, 0, sizeof(si));
     si.cb = sizeof(si);
     memset(&pi, 0, sizeof(pi));
     ok = kitty_create_process_with_handles(NULL, cmd, 0, dir[0] ? dir : NULL,
                                            &si, &pi, &mpwmap, 1);
-    if (mpwmap) {
+    {
         DWORD err = GetLastError();
-        CloseHandle(mpwmap);
+        if (mpwmap)
+            CloseHandle(mpwmap);
+        smemclr(cmd, strlen(cmd));   /* it carries the master-key token */
+        sfree(cmd);
+        sfree(dir);
+        sfree(exe);
         SetLastError(err);
     }
     if (!ok)
@@ -905,30 +910,31 @@ static void export_picked(void *ctx, const char *path) {
 }
 
 void kitty_export_settings(HWND hwnd, Conf *conf) {
-    char filename[4096], buffer[4096];
+    char *filename, *buffer;
     export_pick_t *e;
     if (export_pick)
         return;                  /* its Save-As is open already */
-    if (strlen(FileExtension) > 0) {
-        strcpy(buffer, "Connection files (*");
-        strcat(buffer, FileExtension); strcat(buffer, ")|*");
-        strcat(buffer, FileExtension); strcat(buffer, "|");
-    } else {
-        strcpy(buffer, "Connection files (*.ktx)|*.ktx|");
-    }
-    strcat(buffer, "All files (*.*)|*.*|");
-    if (buffer[strlen(buffer)-1] != '|') strcat(buffer, "|");
+    if (strlen(FileExtension) > 0)
+        buffer = dupprintf("Connection files (*%s)|*%s|All files (*.*)|*.*|",
+                           FileExtension, FileExtension);
+    else
+        buffer = dupstr("Connection files (*.ktx)|*.ktx|All files (*.*)|*.*|");
     e = snew(export_pick_t);
     e->hwnd = hwnd;
     e->conf = conf;
     export_pick = kitty_pick_async(hwnd, KITTY_PICK_SAVE, NULL, KT_CAP_SAVE_FILE,
                                    buffer, export_picked, e);
-    if (export_pick)
+    if (export_pick) {
+        sfree(buffer);
         return;
+    }
     sfree(e);
-    /* no thread for the Save-As: on this one, as before */
-    if (SaveFileName(hwnd, filename, KT_CAP_SAVE_FILE, buffer))
+    /* no thread for the Save-As: on this one, as before; the name in full */
+    filename = kitty_pick_save_dup(hwnd, KT_CAP_SAVE_FILE, buffer, NULL, NULL);
+    sfree(buffer);
+    if (filename && filename[0])
         export_settings_to(hwnd, conf, filename);
+    sfree(filename);
 }
 
 /* ---------------------------------------------------------------------------

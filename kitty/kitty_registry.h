@@ -24,10 +24,8 @@
  * at least cstMaxRegLength+2 bytes -- a bare [cstMaxRegLength] is one short. */
 #define cstMaxRegLength 1024
 
-char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize) ;
 /* The value whole (sfree it); NULL = the key or the value is not there. */
 char * GetValueDataDup(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName) ;
-char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue) ; /* compat: rValue >= cstMaxRegLength+2 bytes; prefer GetValueDataN */
 
 // Extension for session files in portable mode (may be ktx)
 extern char FileExtension[15] ;

@@ -967,14 +967,29 @@ const struct kset_key *kset_find(const char *key)
     return NULL;
 }
 
-static int kset_read(const struct kset_key *k, char *buf, size_t size)
+/* The stored value in full (sfree it); "" when it is not set. */
+static char *kset_read_dup(const struct kset_key *k)
 {
-    buf[0] = '\0';
     if (k->file_only) {
         const char *ini = GetKittyIniFile();
-        return ini && ini[0] && readINI(ini, k->section, k->key, buf, size) && buf[0];
+        char *v = (ini && ini[0]) ? kitty_read_ini_dup(ini, k->section, k->key) : NULL;
+        return v ? v : dupstr("");
     }
-    return ReadParameterN(k->section, k->key, buf, size) != 0;
+    return ReadParameterDup(k->section, k->key);
+}
+
+/* Into a caller's buffer, for the short values (numbers, keywords): 1 when
+ * it is set and fits in full; one that does not fit counts as not set,
+ * never as a cut value. */
+static int kset_read(const struct kset_key *k, char *buf, size_t size)
+{
+    char *v = kset_read_dup(k);
+    int ok = v[0] && strlen(v) < size;
+    buf[0] = '\0';
+    if (ok)
+        strcpy(buf, v);
+    sfree(v);
+    return ok;
 }
 
 /* A failed write used to go unnoticed: the panel showed the new value, the
@@ -1042,15 +1057,18 @@ int kset_write(const struct kset_key *k, const char *text)
  * panel flushes before anything else can.
  */
 static const struct kset_key *kset_deferred_key = NULL;
-static char kset_deferred_text[4096];
+static char *kset_deferred_text = NULL;    /* in full; set with the key */
 static int kset_deferred_quiet = 0;    /* ticks since the last keystroke */
 
 void kset_defer_write(const struct kset_key *k, const char *text)
 {
+    /* copied first: `text` may be the held text itself */
+    char *t = dupstr(text ? text : "");
     if (kset_deferred_key && kset_deferred_key != k)
         kset_write(kset_deferred_key, kset_deferred_text);
     kset_deferred_key = k;
-    snprintf(kset_deferred_text, sizeof(kset_deferred_text), "%s", text);
+    sfree(kset_deferred_text);
+    kset_deferred_text = t;
     kset_deferred_quiet = 0;
 }
 
@@ -1062,6 +1080,8 @@ void kitty_cfgbox_flush_pending(void)
         return;
     kset_write(kset_deferred_key, kset_deferred_text);
     kset_deferred_key = NULL;
+    sfree(kset_deferred_text);
+    kset_deferred_text = NULL;
     kset_deferred_quiet = 0;
 }
 
@@ -1106,7 +1126,7 @@ static void kset_set_int(const struct kset_key *k, int v)
 void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 {
     const struct kset_key *k = (const struct kset_key *)ctrl->context.p;
-    char buf[4096];
+    char buf[64];     /* numbers and keywords; text values are held in full */
 
     if (!k)
         return;
@@ -1124,37 +1144,37 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
             sprintf(buf, "%g", kset_get_int(k) / 1000.0);
             dlg_editbox_set(ctrl, dlg, buf);
             break;
-          case KSET_TEXT:
-            if (k->get_str && k->get_str())
-                snprintf(buf, sizeof(buf), "%s", k->get_str());
-            else
-                kset_read(k, buf, sizeof(buf));
-            dlg_editbox_set(ctrl, dlg, buf);
+          case KSET_TEXT: {
+            char *v = (k->get_str && k->get_str()) ? dupstr(k->get_str())
+                                                  : kset_read_dup(k);
+            dlg_editbox_set(ctrl, dlg, v);
+            sfree(v);
             if (!strcmp(k->key, KI_SSHVERSION))
                 kset_show_banner(dlg);
             break;
+          }
           case KSET_MULTITEXT: {
-            /* The store holds one escaped line; the box shows the lines. */
-            char stored[4096];
-            stored[0] = '\0';
-            /* A write this field is still holding back is the newer text:
-             * a refresh that landed inside that second would otherwise put
+            /* The store holds one escaped line; the box shows the lines. A
+             * write this field is still holding back is the newer text: a
+             * refresh that landed inside that second would otherwise put
              * the stale stored value back over what is being typed. */
-            if (kset_deferred_key == k)
-                snprintf(stored, sizeof(stored), "%s", kset_deferred_text);
-            else
-                kset_read(k, stored, sizeof(stored));
-            kitty_notes_decode(stored, buf, sizeof(buf));
-            dlg_editbox_set(ctrl, dlg, buf);
+            char *stored = (kset_deferred_key == k && kset_deferred_text) ?
+                dupstr(kset_deferred_text) : kset_read_dup(k);
+            /* decoded, every line end may become CR LF: twice the room */
+            size_t dn = strlen(stored) * 2 + 1;
+            char *text = snewn(dn, char);
+            kitty_notes_decode(stored, text, dn);
+            dlg_editbox_set(ctrl, dlg, text);
+            sfree(text);
+            sfree(stored);
             break;
           }
           case KSET_FILE: {
             Filename *fn;
-            if (k->get_str && k->get_str())
-                snprintf(buf, sizeof(buf), "%s", k->get_str());
-            else
-                kset_read(k, buf, sizeof(buf));
-            fn = filename_from_str(buf);
+            char *v = (k->get_str && k->get_str()) ? dupstr(k->get_str())
+                                                  : kset_read_dup(k);
+            fn = filename_from_str(v);
+            sfree(v);
             dlg_filesel_set(ctrl, dlg, fn);
             filename_free(fn);
             break;
@@ -1273,21 +1293,26 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
              * below: a second of quiet, a panel switch, or the box closing).
              */
             char *s = dlg_editbox_get(ctrl, dlg);
-            kitty_notes_encode(s, buf, sizeof(buf));
-            kset_defer_write(k, buf);
+            /* escaped, a character takes at most two, plus the quote wrap */
+            size_t en = strlen(s) * 2 + 3;
+            char *enc = snewn(en, char);
+            kitty_notes_encode(s, enc, en);
+            kset_defer_write(k, enc);
+            sfree(enc);
             if (k->set_str) k->set_str(s);
             sfree(s);
             break;
           }
           case KSET_FILE: {
             Filename *fn = dlg_filesel_get(ctrl, dlg);
-            snprintf(buf, sizeof(buf), "%s", filename_to_str(fn));
+            char *v = dupstr(filename_to_str(fn));   /* in full */
             filename_free(fn);
-            if (kset_write(k, buf)) {
-                if (k->set_str) k->set_str(buf);
+            if (kset_write(k, v)) {
+                if (k->set_str) k->set_str(v);
             } else {
                 dlg_refresh(ctrl, dlg);
             }
+            sfree(v);
             break;
           }
           case KSET_CHOICE:

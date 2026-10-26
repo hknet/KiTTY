@@ -151,12 +151,11 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /* the wrap was refused (the master password locked, DPAPI
              * failing): the stored script stays. Reported once per
              * session - this runs at every key typed */
-            static char told[256];
-            static int told_set;
+            static char *told = NULL;    /* the session name, in full */
             const char *name = conf_get_str(conf, CONF_sessionname);
-            if (!told_set || strcmp(told, name)) {
-                told_set = 1;
-                snprintf(told, sizeof(told), "%s", name);
+            if (!told || strcmp(told, name)) {
+                sfree(told);
+                told = dupstr(name);
                 ksec_report_locked_save(KSEC_KEPT_SCRIPT, name);
             }
         } else
@@ -181,6 +180,27 @@ static void kitty_loginscript_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * saving. Setting the box fires the normal VALCHANGE, so the value is protected
  * and stored by the ordinary path.
  */
+/* One line of fp in full, its line end off (sfree it); NULL at the end of
+ * the file. A line is never split, whatever its length. */
+static char *kcs_read_line_dup(FILE *fp)
+{
+    strbuf *sb = strbuf_new_nm();
+    int c, any = 0;
+    while ((c = fgetc(fp)) != EOF) {
+        any = 1;
+        if (c == '\n')
+            break;
+        put_byte(sb, (unsigned char)c);
+    }
+    if (!any) {
+        strbuf_free(sb);
+        return NULL;
+    }
+    while (sb->len && (sb->s[sb->len-1] == '\r' || sb->s[sb->len-1] == '\n'))
+        strbuf_shrink_to(sb, sb->len - 1);
+    return strbuf_to_str(sb);
+}
+
 static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                            void *data, int event)
 {
@@ -191,35 +211,35 @@ static void kitty_loginscript_load_handler(dlgcontrol *ctrl, dlgparam *dlg,
         return;
     }
     {
-        char path[4096];
-        path[0] = '\0';
-        if (!OpenFileName(GetActiveWindow(), path,
+        char *path = kitty_pick_open_dup(GetActiveWindow(),
                           KT_CFG_LOGINSCRIPT_SELECT,
-                          "Script files (*.txt;*.ksc)|*.txt;*.ksc|All files (*.*)|*.*|"))
+                          "Script files (*.txt;*.ksc)|*.txt;*.ksc|All files (*.*)|*.*|",
+                          NULL);
+        if (!path)
             return;                       /* cancelled */
         {
             FILE *fp = fopen(path, "rb");
             strbuf *sb;
-            char line[4096];
+            char *line;
+            sfree(path);
             if (!fp) {
                 dlg_error_msg(dlg, KT_CFG_LOGINSCRIPT_OPEN_FAILED);
                 return;
             }
             sb = strbuf_new_nm();
-            while (fgets(line, sizeof(line), fp)) {
+            while ((line = kcs_read_line_dup(fp)) != NULL) {
                 size_t n = strlen(line);
-                while (n > 0 && (line[n-1] == '\n' || line[n-1] == '\r'))
-                    line[--n] = '\0';
                 /* Blank lines are dropped here as well as on the way to storage:
                  * an empty wait-for entry matches ANY output and would fire the
                  * next send immediately. Better to never show one. */
-                if (n == 0)
-                    continue;
-                if (sb->len)
-                    put_dataz(sb, "\r\n");
-                put_dataz(sb, line);
+                if (n > 0) {
+                    if (sb->len)
+                        put_dataz(sb, "\r\n");
+                    put_dataz(sb, line);
+                }
+                smemclr(line, n);
+                sfree(line);
             }
-            smemclr(line, sizeof(line));
             fclose(fp);
             {
                 char *txt = strbuf_to_str(sb);
@@ -1108,7 +1128,7 @@ bool kitty_config_select_root_folder(dlgparam *dp)
             dlg_refresh(ssd->listbox, dp);
         return false;                    /* already at the top; nothing moved */
     }
-    strcpy(CurrentFolder, "Default");
+    kitty_set_current_folder("Default");
     kitty_set_last_folder(CurrentFolder);
     /* dlg_refresh rebuilds the combo and re-selects the row matching
      * CurrentFolder, suppressing the re-entrant VALCHANGE itself.
@@ -1316,8 +1336,7 @@ void kitty_config_session_folder_moved(const char *from, const char *to,
         ksp_folder_within(CurrentFolder, from)) {
         char *np = deleted ? ksp_folder_parent(from)
                            : ksp_folder_moved_path(CurrentFolder, from, to);
-        strncpy(CurrentFolder, np, 1023);
-        CurrentFolder[1023] = '\0';
+        kitty_set_current_folder(np);
         sfree(np);
         kitty_set_last_folder(CurrentFolder);
     }
@@ -1968,10 +1987,10 @@ static void sessionsaver_add_nav_rows(dlgcontrol *ctrl, dlgparam *dlg,
     if (!kitty_at_root_level())
         dlg_listbox_addwithid(ctrl, dlg, "..", KITTY_ROW_PARENT);
     for (i = 0; i < ssd->nfolderrows; i++) {
-        char disp[700];
         /* The row shows the folder's own name; it stands for the full path. */
-        snprintf(disp, sizeof(disp), "%s/", ksp_leaf(ssd->folderrows[i]));
+        char *disp = dupprintf("%s/", ksp_leaf(ssd->folderrows[i]));
         dlg_listbox_addwithid(ctrl, dlg, disp, KITTY_ROW_FOLDER_BASE - i);
+        sfree(disp);
     }
 }
 
@@ -1982,12 +2001,11 @@ static const char *kitty_folder_for_row_id(struct sessionsaver_data *ssd, int id
 {
     int idx;
     if (id == KITTY_ROW_PARENT) {
-        /* Folders nest (hknet/KiTTY#55): ".." is the folder above this one. */
-        static char parent[1024];
-        char *p = kitty_folder_parent(CurrentFolder);
-        strncpy(parent, p, sizeof(parent) - 1);
-        parent[sizeof(parent) - 1] = '\0';
-        sfree(p);
+        /* Folders nest (hknet/KiTTY#55): ".." is the folder above this one,
+         * in full; good until the next call. */
+        static char *parent = NULL;
+        sfree(parent);
+        parent = kitty_folder_parent(CurrentFolder);
         return parent;
     }
     if (id > KITTY_ROW_FOLDER_BASE)
@@ -2002,7 +2020,7 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
                                           struct sessionsaver_data *ssd,
                                           int session_index, bool searching)
 {
-    char disp[700];
+    char *disp;
     /* KiTTY (hknet/KiTTY#55): a session stored under a folder path shows its
      * own name; where it lives is the level (or the bracket) that shows it. */
     const char *sessionname = ksp_leaf(ssd->sesslist.sessions[session_index]);
@@ -2031,21 +2049,23 @@ static void sessionsaver_add_session_row(dlgcontrol *ctrl, dlgparam *dlg,
     if (annotate_folders && (searching || filed)) {
         const char *folder = filed ? fld : "root";
         if (og == 0)
-            snprintf(disp, sizeof(disp), "%s [%s]", sessionname, folder);
+            disp = dupprintf("%s [%s]", sessionname, folder);
         else
-            snprintf(disp, sizeof(disp), "%s [%s]   (%s)", sessionname,
-                     folder, og == 2 ? "PuTTY" : "old KiTTY");
+            disp = dupprintf("%s [%s]   (%s)", sessionname,
+                             folder, og == 2 ? "PuTTY" : "old KiTTY");
         sfree(fld);
         dlg_listbox_addwithid(ctrl, dlg, disp, session_index);
+        sfree(disp);
         return;
     }
     sfree(fld);
     if (og == 0) {
         dlg_listbox_addwithid(ctrl, dlg, sessionname, session_index);
     } else {
-        snprintf(disp, sizeof(disp), "%s   (%s)", sessionname,
-                 og == 2 ? "PuTTY" : "old KiTTY");
+        disp = dupprintf("%s   (%s)", sessionname,
+                         og == 2 ? "PuTTY" : "old KiTTY");
         dlg_listbox_addwithid(ctrl, dlg, disp, session_index);
+        sfree(disp);
     }
 }
 
@@ -2084,26 +2104,28 @@ static void kitty_root_folder_cannot_delete(dlgparam *dlg)
 #define KITTY_FOLDER_ACTION_RELABEL 1   /* set the root list's display label */
 #define KITTY_FOLDER_ACTION_RENAME  2   /* rename the selected folder */
 
-static void kitty_get_root_folder_label(char *buf, size_t len)
+/* The root list's label in full (sfree it). */
+static char *kitty_root_folder_label_dup(void)
 {
-    buf[0] = '\0';
-    if (ReadParameterN(INIT_SECTION, KI_ROOTFOLDERLABEL, buf, len) == 0 ||
-        !buf[0]) {
-        strncpy(buf, KITTY_ROOT_FOLDER_LABEL_DEFAULT, len - 1);
-        buf[len - 1] = '\0';
+    char *v = ReadParameterDup(INIT_SECTION, KI_ROOTFOLDERLABEL);
+    if (!v[0]) {
+        sfree(v);
+        v = dupstr(KITTY_ROOT_FOLDER_LABEL_DEFAULT);
     }
+    return v;
 }
 
 /* Names that may not become a folder, nor the root label: they either ARE the
  * root list under one of its spellings, or they are the synthetic create row. */
 static bool kitty_folder_name_reserved(const char *name)
 {
-    char rootlabel[256];
-    kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
-    return !stricmp(name, "Default") || !stricmp(name, "All sessions") ||
+    char *rootlabel = kitty_root_folder_label_dup();
+    bool r = !stricmp(name, "Default") || !stricmp(name, "All sessions") ||
         !stricmp(name, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
         !stricmp(name, "root") || !stricmp(name, rootlabel) ||
         !stricmp(name, KITTY_NEW_FOLDER_ITEM);
+    sfree(rootlabel);
+    return r;
 }
 
 /* How many saved sessions sit in a folder. Entry 0, the "Default Settings"
@@ -2202,12 +2224,12 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
             int r = kitty_session_rekey_many(kf, kt, nk, rw, cl, &err);
             int k;
             if (r == KITTY_REKEY_CLASH) {
-                char rootlabel[256], *msg;
-                kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+                char *rootlabel = kitty_root_folder_label_dup(), *msg;
                 msg = dupprintf(KT_SP_MOVE_CLASH,
                                 kitty_folder_is_root(to) ? rootlabel : to, cl->s);
                 kcs_tell(msg);
                 sfree(msg);
+                sfree(rootlabel);
             } else if (r == KITTY_REKEY_FAILED) {
                 kcs_tell(err ? err : KT_MSG_UNKNOWN_ERROR);
             } else if (rw->len) {
@@ -2258,13 +2280,12 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
          * earlier versions, which silently kept renamed/deleted folders alive. */
         w = open_settings_w(sess, &errmsg);
         if (!w) {
-            char msg[512];
-            snprintf(msg, sizeof(msg),
-                     KT_CFG_SESSION_UPDATE_FAILED, sess,
-                     errmsg ? errmsg : KT_MSG_UNKNOWN_ERROR);
+            char *msg = dupprintf(KT_CFG_SESSION_UPDATE_FAILED, sess,
+                                  errmsg ? errmsg : KT_MSG_UNKNOWN_ERROR);
             sfree(errmsg);
             sfree(destbuf);
             kcs_tell(msg);
+            sfree(msg);
             return -1;
         }
         write_setting_s(w, "Folder", dest);
@@ -2357,17 +2378,20 @@ static void sessionsaver_recompute_folder_action(struct sessionsaver_data *ssd)
  *
  * Returns true if the folder was renamed. Reports its own errors.
  */
+static bool sessionsaver_rename_folder_to(struct sessionsaver_data *ssd,
+                                          dlgparam *dlg, Conf *conf,
+                                          const char *old, const char *folder);
 static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
                                        dlgparam *dlg, Conf *conf,
                                        const char *oldname, const char *wanted)
 {
-    char folder[1024], old[1024];
+    /* both in full, and copies: `oldname` may be CurrentFolder, which the
+     * rename moves */
+    char *folder = dupstr(wanted ? wanted : "");
+    char *old = dupstr(oldname ? oldname : "");
+    bool r;
 
-    strncpy(folder, wanted ? wanted : "", sizeof(folder)-1);
-    folder[sizeof(folder)-1] = '\0';
     CleanFolderName(folder);
-    strncpy(old, oldname ? oldname : "", sizeof(old)-1);
-    old[sizeof(old)-1] = '\0';
     /* KiTTY (hknet/KiTTY#55): a plain name renames a nested folder where it
      * is - "test" typed over "network\test" means "network\prod", not a move
      * to the top level. A path typed in full is taken as it is. */
@@ -2375,13 +2399,21 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
         char *parent = ksp_folder_of(old);
         if (parent) {
             char *full = dupprintf("%s\\%s", parent, folder);
-            strncpy(folder, full, sizeof(folder)-1);
-            folder[sizeof(folder)-1] = '\0';
-            sfree(full);
+            sfree(folder);
+            folder = full;
             sfree(parent);
         }
     }
+    r = sessionsaver_rename_folder_to(ssd, dlg, conf, old, folder);
+    sfree(folder);
+    sfree(old);
+    return r;
+}
 
+static bool sessionsaver_rename_folder_to(struct sessionsaver_data *ssd,
+                                          dlgparam *dlg, Conf *conf,
+                                          const char *old, const char *folder)
+{
     if (!folder[0] || !old[0]) {
         dlg_beep(dlg);
         return false;
@@ -2406,8 +2438,7 @@ static bool sessionsaver_rename_folder(struct sessionsaver_data *ssd,
     if (kitty_folder_within(CurrentFolder, old) &&
         !kitty_folder_is_root(CurrentFolder)) {
         char *np = kitty_folder_moved_path(CurrentFolder, old, folder);
-        strncpy(CurrentFolder, np, 1023);
-        CurrentFolder[1023] = '\0';
+        kitty_set_current_folder(np);
         sfree(np);
         kitty_set_last_folder(CurrentFolder);
     }
@@ -2468,33 +2499,34 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
     extern int writeINI(const char *filename, const char *section,
                         const char *key, const char *value);
     const char *ini = GetKittyIniFile();
-    char msg[1400];
+    char *msg;
+    int yes;
 
     /* conf=no (no configuration file at all) or readonly=yes: the setting
      * cannot be persisted, so do not offer a choice we can't honour. */
     if (GetNoKittyFileFlag() || !ini || !ini[0] || GetReadOnlyFlag()) {
-        snprintf(msg, sizeof(msg),
-                 KT_CFG_DEFAULT_CANT_DELETE_NOSAVE,
-                 KITTY_DEFAULT_SESSION,
-                 GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY
-                                   : KT_CFG_DEFAULT_NO_CONF);
+        msg = dupprintf(KT_CFG_DEFAULT_CANT_DELETE_NOSAVE,
+                        KITTY_DEFAULT_SESSION,
+                        GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY
+                                          : KT_CFG_DEFAULT_NO_CONF);
         MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY, MB_OK | MB_ICONINFORMATION);
+        sfree(msg);
         return;
     }
 
-    snprintf(msg, sizeof(msg),
-             KT_CFG_DEFAULT_HIDE_Q,
-             KITTY_DEFAULT_SESSION, ini);
-
-    if (MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
-                    MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES)
+    /* the kitty.ini path in full */
+    msg = dupprintf(KT_CFG_DEFAULT_HIDE_Q, KITTY_DEFAULT_SESSION, ini);
+    yes = MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
+                      MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES;
+    sfree(msg);
+    if (!yes)
         return;                          /* No = keep showing it */
 
     CreateDefaultIniFile();              /* no-op when it already exists */
     if (!writeINI(ini, KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, "no")) {
-        snprintf(msg, sizeof(msg),
-                 KT_CFG_DEFAULT_WRITE_FAILED, ini, KITTY_DEFAULT_SESSION);
+        msg = dupprintf(KT_CFG_DEFAULT_WRITE_FAILED, ini, KITTY_DEFAULT_SESSION);
         MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY, MB_OK | MB_ICONERROR);
+        sfree(msg);
         return;
     }
 
@@ -2576,11 +2608,11 @@ static void sessionsaver_update_folder_button(struct sessionsaver_data *ssd,
  * again" made the default the one name you could never type. */
 static int sessionsaver_folder_index_for_text(const char *text, bool root_alias)
 {
-    int i;
-    char rootlabel[256];
+    int i, found = -1;
+    char *rootlabel;
     if (!text || !*text)
         return -1;
-    kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+    rootlabel = kitty_root_folder_label_dup();
     for (i = 0; FolderList && FolderList[i] != NULL; i++) {
         bool is_root;
         if (!FolderList[i][0])
@@ -2590,10 +2622,13 @@ static int sessionsaver_folder_index_for_text(const char *text, bool root_alias)
             (is_root && root_alias && !stricmp(text, rootlabel)) ||
             (is_root && root_alias &&
              (!stricmp(text, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
-              !stricmp(text, "root") || !stricmp(text, "All sessions"))))
-            return i;
+              !stricmp(text, "root") || !stricmp(text, "All sessions")))) {
+            found = i;
+            break;
+        }
     }
-    return -1;
+    sfree(rootlabel);
+    return found;
 }
 
 static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
@@ -2604,8 +2639,7 @@ static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
     /* Stepping into or out of a folder is a statement about WHERE you want to
      * look, so it ends the search that spanned everywhere. */
     ssd->search_all = 0;
-    strncpy(CurrentFolder, folder, 1023);
-    CurrentFolder[1023] = '\0';
+    kitty_set_current_folder(folder);
     kitty_set_last_folder(CurrentFolder);
     sfree(ssd->searchfilter);
     ssd->searchfilter = dupstr("");
@@ -2628,35 +2662,38 @@ static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
 static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
                                              dlgparam *dlg)
 {
-    char folder[1024];
+    char *folder;
     /* KiTTY (hknet/KiTTY#55): a folder made while standing in "network" is
-     * "network\test" - it is created where you are, like Explorer's. */
+     * "network\test" - it is created where you are, like Explorer's. The
+     * name in full. */
     if (!kitty_at_root_level() && ssd->savedsession && ssd->savedsession[0])
-        snprintf(folder, sizeof(folder), "%s\\%s", CurrentFolder,
-                 ssd->savedsession);
-    else {
-        strncpy(folder, ssd->savedsession ? ssd->savedsession : "", sizeof(folder)-1);
-        folder[sizeof(folder)-1] = '\0';
-    }
+        folder = dupprintf("%s\\%s", CurrentFolder, ssd->savedsession);
+    else
+        folder = dupstr(ssd->savedsession ? ssd->savedsession : "");
     CleanFolderName(folder);
     if (!folder[0]) {
         /* Nothing typed: put the caret where the name goes rather than just
          * beeping, so the press shows what is missing, not only a refusal. */
         dlg_set_focus(ssd->editbox, dlg);
+        sfree(folder);
         return;
     }
     if (kitty_folder_name_reserved(folder)) {
         dlg_error_msg(dlg, KT_CFG_FOLDER_NAME_RESERVED_ROOT);
+        sfree(folder);
         return;
     }
     if (sessionsaver_folder_exists(folder)) {
         dlg_error_msg(dlg, KT_CFG_FOLDER_EXISTS);
+        sfree(folder);
         return;
     }
     /* KiTTY (hknet/KiTTY#55): without a suffix the root session "Linux" is
      * the file Sessions\Linux, and a folder "Linux" could never hold one. */
-    if (kcs_folder_blocked(folder))
+    if (kcs_folder_blocked(folder)) {
+        sfree(folder);
         return;
+    }
     InitFolderList();
     StringList_Add(&FolderList, folder);
     SaveFolderList();
@@ -2670,6 +2707,7 @@ static void sessionsaver_create_named_folder(struct sessionsaver_data *ssd,
      * CurrentFolder, so a folder created while already inside another one is
      * still a real change. */
     sessionsaver_switch_folder(ssd, dlg, folder);
+    sfree(folder);
     kitty_notify_launcher_sessions_changed();
 }
 
@@ -2837,7 +2875,7 @@ static wchar_t *kcs_acp_to_w(const char *s)
 static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
 {
     struct kcs_badren *r = (struct kcs_badren *)ctx;
-    char name[512];
+    char *name;
     BOOL used = FALSE;
     int utf8 = (GetACP() == CP_UTF8), n;
     char *comp, *file;
@@ -2849,15 +2887,24 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
         sfree(r);
         return 1;
     }
+    /* the typed name in full: the size first, then the text */
     n = WideCharToMultiByte(CP_ACP, utf8 ? 0 : WC_NO_BEST_FIT_CHARS, text, -1,
-                            name, sizeof(name), utf8 ? NULL : "?",
-                            utf8 ? NULL : &used);
+                            NULL, 0, utf8 ? NULL : "?", utf8 ? NULL : &used);
     if (n <= 0 || used) {
         MessageBeep(MB_ICONWARNING);    /* still not ANSI: the box stays */
         return 0;
     }
+    name = snewn(n, char);
+    if (WideCharToMultiByte(CP_ACP, utf8 ? 0 : WC_NO_BEST_FIT_CHARS, text, -1,
+                            name, n, utf8 ? NULL : "?",
+                            utf8 ? NULL : &used) != n || used) {
+        sfree(name);
+        MessageBeep(MB_ICONWARNING);
+        return 0;
+    }
     str_rtrim(name, " \t");
     if (!name[0] || strchr(name, '\\') || !strcmp(name, KITTY_DEFAULT_SESSION)) {
+        sfree(name);
         MessageBeep(MB_ICONWARNING);
         return 0;
     }
@@ -2872,11 +2919,13 @@ static int kcs_bad_rename_done(const wchar_t *text, void *ctx)
             sfree(msg);
             sfree(held);
             sfree(id);
+            sfree(name);
             return 0;
         }
         sfree(id);
     }
     comp = ksp_component_munge(name);
+    sfree(name);
     file = dupcat(comp, r->isdir ? "" : kitty_session_suffix());
     wfile = kcs_acp_to_w(file);
     slash = wcsrchr(r->wpath, L'\\');
@@ -3360,8 +3409,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 char *fld = (sn && *sn) ? kitty_read_session_folder(sn) : NULL;
                 const char *lvl = (fld && *fld) ? fld :
                                   ((cf && *cf) ? cf : "Default");
-                strncpy(CurrentFolder, lvl, 1023);
-                CurrentFolder[1023] = '\0';
+                kitty_set_current_folder(lvl);
                 sfree(fld);
                 ssd->midsession_level_set = 1;
             }
@@ -3369,10 +3417,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 dlg_editbox_set_updown_target(ssd->editbox, ctrl, dlg);
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
-            char lastsess[512];
+            /* the last session in full (NULL = none) */
+            char *lastsess = kitty_get_last_session_dup();
             const char *filter = ssd->searchfilter ? ssd->searchfilter : "";
             bool searching = (filter[0] != '\0');
-            int havelast = kitty_get_last_session(lastsess, sizeof(lastsess));
+            int havelast = lastsess != NULL;
             int selpos = -1, lbpos = 0;
             /* Folder navigation: the rows of the current level go in first, and
              * the sessions follow. They are ordinary rows - selectable, reached
@@ -3431,6 +3480,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 break;
             }
             sfree(roworder);
+            sfree(lastsess);
             /* the session files no session name can reach, last and in red
              * (looked for again on each refresh; not while searching) */
             if (!searching && !ssd->midsession) {
@@ -3470,8 +3520,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
             /* Row 0 is the synthetic create row (id -1, never looked up); the
              * real folders follow, so a folder's row is its position + 1. */
             int i, sel = -1, pos = 1;
-            char rootlabel[256];
-            kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+            char *rootlabel = kitty_root_folder_label_dup();
             dlg_update_start(ctrl, dlg);
             dlg_listbox_clear(ctrl, dlg);
             if (ssd->createbutton)      /* creating needs the button to exist */
@@ -3487,6 +3536,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     pos++;
                 }
             dlg_update_done(ctrl, dlg);
+            sfree(rootlabel);
             /* Selecting a row writes it into the edit half, which fires a
              * re-entrant VALCHANGE; suppress it so a refresh never looks like
              * the user typing.
@@ -3614,13 +3664,13 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  */
                 bool root_sel = (!CurrentFolder[0] ||
                                  !strcmp(CurrentFolder, "Default"));
-                char rootlabel[256];
+                char *rootlabel = kitty_root_folder_label_dup();
                 const char *curdisp;
                 int idx;
-                kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
                 curdisp = root_sel ? rootlabel : CurrentFolder;
                 idx = strcmp(text, curdisp) ?
                     sessionsaver_folder_index_for_text(text, !root_sel) : -2;
+                sfree(rootlabel);
                 if (idx >= 0 && !strcmp(FolderList[idx], CurrentFolder))
                     idx = -1;    /* a different spelling of what is selected is
                                   * a rename of it, not a re-selection of it */
@@ -3890,14 +3940,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                         }
                         r = kitty_session_rekey(move_from, target, rw, cl, &err);
                         if (r != KITTY_REKEY_OK) {
-                            char rootlabel[256], *msg, *fld = ksp_folder_of(target);
-                            kitty_get_root_folder_label(rootlabel, sizeof(rootlabel));
+                            char *rootlabel = kitty_root_folder_label_dup(), *msg,
+                                 *fld = ksp_folder_of(target);
                             msg = (r == KITTY_REKEY_CLASH) ?
                                 dupprintf(KT_SP_MOVE_CLASH, fld ? fld : rootlabel,
                                           cl->s) :
                                 dupstr(err ? err : KT_MSG_UNKNOWN_ERROR);
                             kcs_tell(msg);
                             sfree(msg);
+                            sfree(rootlabel);
                             sfree(fld);
                             sfree(err);
                             strbuf_free(rw);
@@ -4204,9 +4255,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * folder key stays "Default", so nothing that filters on it
                  * changes. Not run through CleanFolderName - it is never used
                  * as a folder name, let alone a directory name. */
-                char label[256];
-                strncpy(label, ssd->newfolder, sizeof(label)-1);
-                label[sizeof(label)-1] = '\0';
+                char *label = dupstr(ssd->newfolder);   /* in full */
                 if (!stricmp(label, KITTY_ROOT_FOLDER_LABEL_DEFAULT) ||
                     !stricmp(label, "All sessions") ||
                     !stricmp(label, "root")) {
@@ -4233,15 +4282,15 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     ssd->newfolder = dupstr("");
                     dlg_refresh(ssd->folderlist, dlg);
                 }
+                sfree(label);
             } else if (ssd->folder_action == KITTY_FOLDER_ACTION_RENAME) {
                 /* The combo renames the folder currently being browsed. */
                 (void)sessionsaver_rename_folder(ssd, dlg, conf, CurrentFolder,
                                                  ssd->newfolder);
             } else {
-                /* Create. StringList_Add dedupes internally. */
-                char folder[1024];
-                strncpy(folder, ssd->newfolder, sizeof(folder)-1);
-                folder[sizeof(folder)-1] = '\0';
+                /* Create. StringList_Add dedupes internally. The name in
+                 * full. */
+                char *folder = dupstr(ssd->newfolder);
                 CleanFolderName(folder);
                 if (!folder[0]) {
                     dlg_beep(dlg);
@@ -4254,8 +4303,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     InitFolderList();
                     StringList_Add(&FolderList, folder);
                     SaveFolderList();
-                    strncpy(CurrentFolder, folder, 1023);
-                    CurrentFolder[1023] = '\0';
+                    kitty_set_current_folder(folder);
                     kitty_set_last_folder(CurrentFolder);
                     /* The new folder is now the SELECTION, not a pending
                      * create: clear the pending name so the refresh below
@@ -4308,8 +4356,7 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 char *up = kitty_folder_parent(CurrentFolder);
                 kitty_folderlist_move_subtree(CurrentFolder, NULL);
                 InitFolderList();
-                strncpy(CurrentFolder, up, 1023);
-                CurrentFolder[1023] = '\0';
+                kitty_set_current_folder(up);
                 sfree(up);
                 kitty_set_last_folder(CurrentFolder);
                 sfree(ssd->savedsession);
@@ -5041,10 +5088,11 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     memset(ssd, 0, sizeof(*ssd));
     ssd->savedsession = dupstr("");
     ssd->newfolder = dupstr("");
-    char lastfolder[1024];
-    if (kitty_get_last_folder(lastfolder, sizeof(lastfolder))) {
-        strncpy(CurrentFolder, lastfolder, 1023);
-        CurrentFolder[1023] = '\0';
+    {
+        char *lastfolder = kitty_get_last_folder_dup();   /* in full */
+        if (lastfolder)
+            kitty_set_current_folder(lastfolder);
+        sfree(lastfolder);
     }
     ssd->midsession = midsession;
 
@@ -8844,22 +8892,23 @@ static dlgcontrol *g_xfer_global_upload_ctrl = NULL;  /* upload */
 
 /* ==== Connection > File-Transfer-Settings: the installation-wide lines =============== */
 
-static void xfer_global_line(char *buf, size_t len)
+/* The line in full (sfree it). */
+static char *xfer_global_line(void)
 {
-    char gdir[4096];
-    gdir[0] = '\0';
-    ReadParameterN(INIT_SECTION, KI_DOWNLOADDIR, gdir, sizeof(gdir));
-    snprintf(buf, len, KT_TRANSFERS_GLOBAL_IS,
-             gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UNSET);
+    char *gdir = ReadParameterDup(INIT_SECTION, KI_DOWNLOADDIR);
+    char *line = dupprintf(KT_TRANSFERS_GLOBAL_IS,
+                           gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UNSET);
+    sfree(gdir);
+    return line;
 }
 
-static void xfer_global_upload_line(char *buf, size_t len)
+static char *xfer_global_upload_line(void)
 {
-    char gdir[4096];
-    gdir[0] = '\0';
-    ReadParameterN(INIT_SECTION, KI_UPLOADDIR, gdir, sizeof(gdir));
-    snprintf(buf, len, KT_TRANSFERS_GLOBAL_IS,
-             gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UPLOAD_UNSET);
+    char *gdir = ReadParameterDup(INIT_SECTION, KI_UPLOADDIR);
+    char *line = dupprintf(KT_TRANSFERS_GLOBAL_IS,
+                           gdir[0] ? gdir : KT_TRANSFERS_GLOBAL_UPLOAD_UNSET);
+    sfree(gdir);
+    return line;
 }
 
 static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
@@ -8871,9 +8920,9 @@ static void xfer_downloaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_filesel_set(ctrl, dlg, fn);
         filename_free(fn);
         if (g_xfer_global_ctrl) {
-            char line[4200];
-            xfer_global_line(line, sizeof(line));
+            char *line = xfer_global_line();
             dlg_label_change(g_xfer_global_ctrl, dlg, line);
+            sfree(line);
         }
     } else if (event == EVENT_VALCHANGE) {
         Filename *fn = dlg_filesel_get(ctrl, dlg);
@@ -8892,9 +8941,9 @@ static void xfer_uploaddir_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_filesel_set(ctrl, dlg, fn);
         filename_free(fn);
         if (g_xfer_global_upload_ctrl) {
-            char line[4200];
-            xfer_global_upload_line(line, sizeof(line));
+            char *line = xfer_global_upload_line();
             dlg_label_change(g_xfer_global_upload_ctrl, dlg, line);
+            sfree(line);
         }
     } else if (event == EVENT_VALCHANGE) {
         Filename *fn = dlg_filesel_get(ctrl, dlg);
@@ -8982,7 +9031,7 @@ static void xfer_fullpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 void scb_panel_transfers(struct controlbox *b)
 {
     struct controlset *s;
-    char line[4200];
+    char *line, mbline[128];
 
     ctrl_settitle(b, "Connection/File-Transfer-Settings", KT_TRANSFERS_TITLE);
 
@@ -9000,7 +9049,7 @@ void scb_panel_transfers(struct controlbox *b)
               HELPCTX(kitty_transfers))->text.lines = 2;
 
     s = ctrl_getset(b, "Connection/File-Transfer-Settings", "received", KT_TRANSFERS_RECEIVED);
-    kitty_controls_set_dir_picker(OpenDirNameFrom);   /* the rows' Locate... */
+    kitty_controls_set_dir_picker(kitty_pick_dir_dup);   /* the rows' Locate... */
     ctrl_filesel(s, KT_TRANSFERS_LOCAL_DOWNLOAD_FOLDER, NO_SHORTCUT,
                  FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
                  xfer_downloaddir_handler, P(NULL));
@@ -9010,16 +9059,18 @@ void scb_panel_transfers(struct controlbox *b)
      * panel is shown again. Two lines reserved: the folder set later may be
      * longer than the one the line was built with, and the static wraps
      * only into the height it has. */
-    xfer_global_line(line, sizeof(line));
+    line = xfer_global_line();
     g_xfer_global_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
+    sfree(line);
     g_xfer_global_ctrl->text.lines = 2;
     /* The upload folder: where Send File opens and where a name the far end
      * requests to read is looked up. Same shape, same refresh. */
     ctrl_filesel(s, KT_TRANSFERS_UPLOAD_FOLDER, NO_SHORTCUT,
                  FILTER_FOLDERS, false, NULL, HELPCTX(kitty_transfers_folders),
                  xfer_uploaddir_handler, P(NULL));
-    xfer_global_upload_line(line, sizeof(line));
+    line = xfer_global_upload_line();
     g_xfer_global_upload_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_folders));
+    sfree(line);
     g_xfer_global_upload_ctrl->text.lines = 2;
 
     /* Moved from the KSCP panel: the two are mutually exclusive, the
@@ -9058,8 +9109,8 @@ void scb_panel_transfers(struct controlbox *b)
                  xfer_maxmb_handler, P(NULL), P(NULL));
     /* The global value, read at build time and at every EVENT_REFRESH of
      * the field above, like the folder rows' lines. */
-    xfer_global_maxmb_line(line, sizeof(line));
-    g_xfer_global_maxmb_ctrl = ctrl_text(s, line, HELPCTX(kitty_transfers_kitten));
+    xfer_global_maxmb_line(mbline, sizeof(mbline));
+    g_xfer_global_maxmb_ctrl = ctrl_text(s, mbline, HELPCTX(kitty_transfers_kitten));
     ctrl_text(s, KT_TRANSFERS_MAX_MB_NOTE, HELPCTX(kitty_transfers_kitten));
     ctrl_checkbox(s, KT_TRANSFERS_FULL_PATH, NO_SHORTCUT,
                   HELPCTX(kitty_transfers_kitten),

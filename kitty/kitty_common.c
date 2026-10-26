@@ -142,14 +142,14 @@ void CleanFolderName( char * folder ) {
 #include <sys/types.h>
 #include <dirent.h>
 #define MAX_VALUE_NAME 16383
-/* a\b into out (n wide characters); 0 when it does not fit */
-static int kitty_wjoin( wchar_t * out, size_t n, const wchar_t * a, const wchar_t * b ) {
+/* a\b in memory of its own (sfree it) */
+static wchar_t * kitty_wjoin_dup( const wchar_t * a, const wchar_t * b ) {
 	size_t la = wcslen( a ), lb = wcslen( b ) ;
-	if( la + 1 + lb + 1 > n ) return 0 ;
+	wchar_t * out = snewn( la + 1 + lb + 1, wchar_t ) ;
 	wcscpy( out, a ) ;
 	out[la] = L'\\' ;
 	wcscpy( out + la + 1, b ) ;
-	return 1 ;
+	return out ;
 	}
 
 /* The tree walk in wide characters: the ANSI walk (opendir) handed back '?'
@@ -158,31 +158,35 @@ static int kitty_wjoin( wchar_t * out, size_t n, const wchar_t * a, const wchar_
  * and every folder above it stayed behind. A junction or symbolic link to a
  * folder is removed as the link; what it points to is not emptied. */
 static void kitty_deldir_w( const wchar_t * dir ) {
-	wchar_t pattern[4096], full[4096] ;
+	wchar_t * pattern = kitty_wjoin_dup( dir, L"*" ), * full ;
 	WIN32_FIND_DATAW fd ;
 	HANDLE h ;
-	if( kitty_wjoin( pattern, 4096, dir, L"*" ) &&
-	    ( h = FindFirstFileW( pattern, &fd ) ) != INVALID_HANDLE_VALUE ) {
+	if( ( h = FindFirstFileW( pattern, &fd ) ) != INVALID_HANDLE_VALUE ) {
 		do {
 			if( !wcscmp( fd.cFileName, L"." ) || !wcscmp( fd.cFileName, L".." ) ) continue ;
-			if( !kitty_wjoin( full, 4096, dir, fd.cFileName ) ) continue ;
+			full = kitty_wjoin_dup( dir, fd.cFileName ) ;
 			if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
 				if( fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT ) RemoveDirectoryW( full ) ;
 				else kitty_deldir_w( full ) ;
 				}
 			else DeleteFileW( full ) ;
+			sfree( full ) ;
 			} while( FindNextFileW( h, &fd ) ) ;
 		FindClose( h ) ;
 		}
+	sfree( pattern ) ;
 	RemoveDirectoryW( dir ) ;
 	}
 
 // Delete a directory tree
 void DelDir( const char * directory ) {
-	wchar_t w[4096] ;
+	wchar_t * w ;
+	int n ;
 	if( directory == NULL || !directory[0] ) return ;
-	if( !MultiByteToWideChar( CP_ACP, 0, directory, -1, w, 4096 ) ) return ;
-	kitty_deldir_w( w ) ;
+	if( ( n = MultiByteToWideChar( CP_ACP, 0, directory, -1, NULL, 0 ) ) <= 0 ) return ;
+	w = snewn( n, wchar_t ) ;
+	if( MultiByteToWideChar( CP_ACP, 0, directory, -1, w, n ) == n ) kitty_deldir_w( w ) ;
+	sfree( w ) ;
 	}
 
 // Read a parameter either from the configuration file or from the registry
@@ -234,24 +238,40 @@ static int unmunge_hex( char c ) {
 }
 /* %XX in either case. A % not followed by two hex digits stays as it is,
    as in ksf_unmunge. The old arithmetic took any two characters and turned
-   lower-case hex into a wrong byte. */
+   lower-case hex into a wrong byte. The answer is always terminated within
+   outlen bytes; unmungestr_dup holds it in full. */
 void unmungestr( const char *in, char *out, int outlen ) {
-	while (*in) {
+	if( outlen <= 0 ) return ;
+	while( *in && outlen > 1 ) {
 		int i, j ;
 		if( *in == '%' && in[1] && in[2] &&
 		    (i = unmunge_hex( in[1] )) >= 0 && (j = unmunge_hex( in[2] )) >= 0 ) {
 			*out++ = (char)((i << 4) + j) ;
-			if( !--outlen )
-				return ;
 			in += 3	;
 		} else {
 			*out++ = *in++ ;
-			if( !--outlen )
-				return;
 		}
+		outlen-- ;
 	}
 	*out = '\0' ;
 	return ;
+}
+
+/* mungestr's answer in memory of its own (sfree it): at most three bytes
+ * per input byte. */
+char * mungestr_dup( const char *in ) {
+	char * out = snewn( strlen( in ) * 3 + 1, char ) ;
+	mungestr( in, out ) ;
+	return out ;
+}
+
+/* unmungestr's answer in full, in memory of its own (sfree it): it is never
+ * longer than the input. */
+char * unmungestr_dup( const char *in ) {
+	size_t n = strlen( in ) ;
+	char * out = snewn( n + 1, char ) ;
+	unmungestr( in, out, (int)n + 1 ) ;
+	return out ;
 }
 
 /* The session password, out of the running configuration.
@@ -277,7 +297,16 @@ int IsPasswordInConf(void) {
 /* Session-file extension in portable mode (a .ktx among them) */
 char FileExtension[15] = "" ;
 
-// Current folder for portable mode
-char CurrentFolder[1024] = "Default" ;
+// Current folder for portable mode, held in full: "Default" until the first
+// kitty_set_current_folder(), then memory of its own. Read it, never write
+// into it; a pointer to it is good until the next kitty_set_current_folder().
+static char CurrentFolderDefault[] = "Default" ;
+char * CurrentFolder = CurrentFolderDefault ;
+void kitty_set_current_folder( const char * folder ) {
+	/* copied first: `folder` may be CurrentFolder itself */
+	char * n = dupstr( folder ? folder : "" ) ;
+	if( CurrentFolder != CurrentFolderDefault ) sfree( CurrentFolder ) ;
+	CurrentFolder = n ;
+	}
 
 #endif

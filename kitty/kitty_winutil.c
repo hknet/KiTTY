@@ -111,10 +111,6 @@ BOOL IsWow64(void) {
     return bIsWow64 ;
 }
 
-int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
-	return OpenFileNameFrom( hFrame, filename, Title, Filter, NULL ) ;
-}
-
 /* The pickers' own work; the public names below run them through
  * kitty_sync_pick (see there). Each answer is held whole (sfree it); NULL =
  * cancelled, or the answer could not be read whole. */
@@ -178,41 +174,6 @@ char *kitty_pick_save_dup( HWND hFrame, const char *title, const char *filter,
 }
 char *kitty_pick_dir_dup( HWND hFrame, const char *initial, const char *title ) {
 	return kitty_sync_pick( KITTY_SYNC_DIR, hFrame, NULL, title, NULL, initial ) ;
-}
-
-/* The answer into a caller's buffer of KITTY_PICK_BUF bytes (the old
- * contract of the names below). An answer that does not fit is refused - 0,
- * ERROR_FILENAME_EXCED_RANGE - never cut. */
-static int kitty_pick_into( char *buf, char *res ) {
-	if( !res ) return 0 ;
-	if( strlen( res ) >= KITTY_PICK_BUF ) {
-		sfree( res ) ;
-		SetLastError( ERROR_FILENAME_EXCED_RANGE ) ;
-		return 0 ;
-	}
-	strcpy( buf, res ) ;
-	sfree( res ) ;
-	return 1 ;
-}
-
-int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	filename[0] = '\0' ;
-	return kitty_pick_into( filename, kitty_sync_pick( KITTY_SYNC_OPEN, hFrame, NULL, Title, Filter, initialdir ) ) ;
-}
-int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) {
-	filename[0] = '\0' ;
-	return kitty_pick_into( filename, kitty_sync_pick( KITTY_SYNC_SAVE, hFrame, NULL, Title, Filter, NULL ) ) ;
-}
-int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) {
-	/* the prefilled name stays in `filename` on a cancel, as before */
-	char *prefill = dupstr( filename ) ;
-	char *res = kitty_sync_pick( KITTY_SYNC_SAVE_FROM, hFrame, prefill, Title, Filter, initialdir ) ;
-	sfree( prefill ) ;
-	return kitty_pick_into( filename, res ) ;
-}
-int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) {
-	dirname[0] = '\0' ;
-	return kitty_pick_into( dirname, kitty_sync_pick( KITTY_SYNC_DIR, hFrame, NULL, title, NULL, initial ) ) ;
 }
 
 /* "Name|pattern|Name|pattern|" as the classic dialogs take it: every '|' a
@@ -382,10 +343,6 @@ static int CALLBACK browse_start_folder( HWND hwnd, UINT msg, LPARAM lParam, LPA
 	if( msg == BFFM_INITIALIZED && data )
 		SendMessage( hwnd, BFFM_SETSELECTIONA, TRUE, data ) ;
 	return 0 ;
-}
-
-int OpenDirName( HWND hFrame, char * dirname ) {
-	return OpenDirNameFrom( hFrame, dirname, NULL, NULL ) ;
 }
 
 /*

@@ -321,19 +321,47 @@ void mini_clean_value( char * value ) {
 	}
 }
 
+/* One line of fp in full, without its line end (free it); NULL at the end of
+ * the file or when memory runs out (*oom set). A long line is never split:
+ * the pieces fgets made of it were read as lines of their own. */
+static char * mini_read_line( FILE * fp, int * oom ) {
+	size_t len = 0, cap = 256 ;
+	char * line = (char*) malloc( cap ), * grown ;
+	int c, any = 0 ;
+	*oom = 0 ;
+	if( line == NULL ) { *oom = 1 ; return NULL ; }
+	while( ( c = fgetc( fp ) ) != EOF ) {
+		any = 1 ;
+		if( c == '\n' ) break ;
+		if( len + 1 >= cap ) {
+			if( ( grown = (char*) realloc( line, cap * 2 ) ) == NULL ) { free( line ) ; *oom = 1 ; return NULL ; }
+			line = grown ; cap *= 2 ;
+		}
+		line[len++] = (char) c ;
+	}
+	if( !any ) { free( line ) ; return NULL ; }
+	line[len] = '\0' ;
+	return line ;
+}
+
 int loadINI( SINI * Ini, const char * filename ) {
 	FILE * fp ;
 	SSECTION * Section, * Last = NULL ;
 	SKEY * Key ;
-	char buffer[SINI_MAX_SIZE], name[SINI_MAX_SIZE], value[SINI_MAX_SIZE] ;
+	char * buffer, * name, * value ;
 	unsigned int i, p ;
+	int oom = 0 ;
 	if( Ini == NULL ) return 0 ;
 	if( filename==NULL ) return 0 ;
 	if( strlen(filename)<=0 ) return 0 ;
 	freeSECTION( &(Ini->first) ) ;
 	if( ( fp = fopen( filename, "r" ) ) == NULL ) { return 0 ; }
-	while( fgets( buffer, SINI_MAX_SIZE, fp ) != NULL ) {
-		buffer[SINI_MAX_SIZE-1]='\0';
+	while( ( buffer = mini_read_line( fp, &oom ) ) != NULL ) {
+		/* name and value never longer than the line */
+		size_t blen = strlen( buffer ) ;
+		name = (char*) malloc( blen + 1 ) ;
+		value = (char*) malloc( blen + 1 ) ;
+		if( name == NULL || value == NULL ) { free( name ) ; free( value ) ; free( buffer ) ; oom = 1 ; break ; }
 		{ size_t _l; while( (_l=strlen(buffer))>0 && (buffer[_l-1]=='\n'||buffer[_l-1]=='\r') ) buffer[_l-1]='\0' ; }
 		while( (buffer[0]==' ')||(buffer[0]=='\t') ) 
 			for( i=0; i<strlen(buffer); i++ )
@@ -371,9 +399,13 @@ int loadINI( SINI * Ini, const char * filename ) {
 				addKEY( Last, Key ) ;
 				}
 			}
+		free( name ) ;
+		free( value ) ;
+		free( buffer ) ;
 		}
 	/* a read that stopped early is a failure: what was loaded is only part of
 	 * the file and writeINI would store that part over the whole */
+	if( oom ) { fclose( fp ) ; SetLastError( ERROR_NOT_ENOUGH_MEMORY ) ; return 0 ; }
 	if( ferror( fp ) ) { fclose( fp ) ; SetLastError( ERROR_READ_FAULT ) ; return 0 ; }
 	fclose( fp ) ;
 	return 1 ;
@@ -404,26 +436,30 @@ int storeSECTION( SSECTION * Section, FILE * fp ) {
  * file's rights and attributes; a file that is not there yet is moved in. */
 int storeINI( SINI * Ini, const char * filename ) {
 	FILE * fp ;
-	char tmp[4096] ;
+	char * tmp ;
+	size_t tn ;
 	DWORD err = 0 ;
 	int ok, tries ;
 	if( filename==NULL ) return 0 ;
 	if( strlen(filename)<=0 ) return 0 ;
 	if( kitty_inifile_write_blocked( filename ) ) return KITTY_RO_REFUSED ;
-	if( snprintf( tmp, sizeof(tmp), "%s.%lu.tmp", filename, (unsigned long)GetCurrentProcessId() ) >= (int)sizeof(tmp) ) {
-		SetLastError( ERROR_FILENAME_EXCED_RANGE ) ; return 0 ; }
-	if( ( fp = fopen( tmp, "w" ) ) == NULL ) return 0 ;
+	/* the temporary name in full: "<file>.<pid>.tmp" */
+	tn = strlen( filename ) + 32 ;
+	if( ( tmp = (char*) malloc( tn ) ) == NULL ) { SetLastError( ERROR_NOT_ENOUGH_MEMORY ) ; return 0 ; }
+	snprintf( tmp, tn, "%s.%lu.tmp", filename, (unsigned long)GetCurrentProcessId() ) ;
+	if( ( fp = fopen( tmp, "w" ) ) == NULL ) { err = GetLastError() ; free( tmp ) ; SetLastError( err ) ; return 0 ; }
 
 	storeSECTION( getINI( Ini ), fp ) ;
 	ok = !ferror( fp ) && fflush( fp ) == 0 ;
 	if( fclose( fp ) != 0 ) ok = 0 ;
-	if( !ok ) { err = GetLastError() ; DeleteFileA( tmp ) ; SetLastError( err ? err : ERROR_WRITE_FAULT ) ; return 0 ; }
+	if( !ok ) { err = GetLastError() ; DeleteFileA( tmp ) ; free( tmp ) ; SetLastError( err ? err : ERROR_WRITE_FAULT ) ; return 0 ; }
 
 	/* another process may have the file open for a moment (a reader) */
 	for( tries = 0 ; tries < 10 ; tries++ ) {
 		if( GetFileAttributesA( filename ) == INVALID_FILE_ATTRIBUTES ) {
-			if( MoveFileExA( tmp, filename, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) ) return 1 ;
+			if( MoveFileExA( tmp, filename, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH ) ) { free( tmp ) ; return 1 ; }
 		} else if( ReplaceFileA( filename, tmp, NULL, REPLACEFILE_IGNORE_MERGE_ERRORS, NULL, NULL ) ) {
+			free( tmp ) ;
 			return 1 ;
 		}
 		err = GetLastError() ;
@@ -431,6 +467,7 @@ int storeINI( SINI * Ini, const char * filename ) {
 		Sleep( 50 ) ;
 	}
 	DeleteFileA( tmp ) ;
+	free( tmp ) ;
 	SetLastError( err ) ;
 	return 0 ;
 	}

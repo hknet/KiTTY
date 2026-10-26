@@ -23,18 +23,6 @@ char *kitty_pick_open_dup( HWND hFrame, const char *title, const char *filter, c
 char *kitty_pick_save_dup( HWND hFrame, const char *title, const char *filter,
                            const char *prefill, const char *initialdir ) ;
 char *kitty_pick_dir_dup( HWND hFrame, const char *initial, const char *title ) ;
-/* The names below write the answer into the caller's buffer of
- * KITTY_PICK_BUF bytes; an answer that does not fit is refused (0,
- * ERROR_FILENAME_EXCED_RANGE), never cut. */
-#define KITTY_PICK_BUF 4096
-int OpenFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
-/* The same picker opened in a given folder (NULL or empty = wherever
- * Windows would open it). */
-int OpenFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
-int OpenDirName( HWND hFrame, char * dirname ) ;
-/* Same picker, opened on `initial` (when that folder exists) with `title`
- * (NULL = the default caption). */
-int OpenDirNameFrom( HWND hFrame, char * dirname, const char * initial, const char * title ) ;
 /* The folder picker (folder = KITTY_PICK_FOLDER), the open-file picker
  * (KITTY_PICK_OPEN) or the Save-As picker (KITTY_PICK_SAVE: `initial` a
  * folder, or NULL for the classic box with its .ktx default extension) on a
@@ -52,8 +40,6 @@ void kitty_pick_cancel( void *token ) ;
  * calling thread. 1 = started (done always runs); 0 = not started (make the
  * call here instead). Call from the terminal's thread. */
 int kitty_call_async( void (*fn)( void *ctx ), void (*done)( void *ctx ), void *ctx ) ;
-int SaveFileName( HWND hFrame, char * filename, char * Title, char * Filter ) ;
-int SaveFileNameFrom( HWND hFrame, char * filename, char * Title, char * Filter, const char * initialdir ) ;
 
 // Send to the printer
 int PrintText( const char * Text ) ;

@@ -409,6 +409,26 @@ int kitty_inifile_read(const char *section, const char *key,
     return value[0] != '\0';
 }
 
+/* The same in full (free it); NULL when the key is absent or empty. */
+char *kitty_inifile_read_dup(const char *section, const char *key)
+{
+    const char *f = kitty_inifile_file();
+    const struct inifile_ro_value *ro;
+    char *v;
+    if (!f)
+        return NULL;
+    if (inifile_ro_values && (ro = inifile_ro_find(section, key)) != NULL &&
+        kitty_inifile_readonly())
+        v = _strdup(ro->value ? ro->value : "");
+    else
+        v = inifile_get_dup(section, key, f);
+    if (v && !v[0]) {
+        free(v);
+        v = NULL;
+    }
+    return v;
+}
+
 /* [KiTTY] readonly=yes in the resolved kitty.ini, matched as kitty.exe
  * matches it (kitty_params.c load_ini_params: the value "yes", case aside).
  * Read again whenever the file changed (its size or last write), so a
@@ -620,16 +640,37 @@ static char *inifile_resolve_path(const char *exedir, const char *v)
     return path;
 }
 
-/* The folder store's session folder whole (*dirp, free it) and its suffix;
- * see inifile_folder_store. */
-static int inifile_folder_store_dup(char **dirp, char *suffix, int suflen)
+/* An ending setting in full (free it; "" = none, NULL only when out of
+ * memory): `key`, else the older `oldkey` when it is empty, trailing blanks
+ * off and a dot put in front if missing, as kitty_ext_dot does. */
+static char *inifile_suffix_dup(const char *key, const char *oldkey)
 {
-    char mode[32], v[80], *sv, *exedir, *path = NULL;
+    char *v = inifile_get_dup(KI_SECTION_KITTY, key, inifile_path), *r;
+    if (v)
+        inifile_rtrim(v, " \n\r\t");
+    if (v && !v[0]) {
+        free(v);
+        if ((v = inifile_get_dup(KI_SECTION_KITTY, oldkey, inifile_path)) != NULL)
+            inifile_rtrim(v, " \n\r\t");
+    }
+    if (v && v[0] && v[0] != '.') {
+        r = inifile_cat(".", v, NULL);
+        free(v);
+        v = r;
+    }
+    return v;
+}
+
+/* The folder store's session folder in full (*dirp, free it) and its suffix
+ * (*sufp, free it; "" = none). 1 when the sessions are in the folder store
+ * of the resolved kitty.ini, else 0 with both NULL. */
+static int inifile_folder_store_dup(char **dirp, char **sufp)
+{
+    char mode[32], *v, *sv, *exedir, *path = NULL;
     const char *p;
 
     *dirp = NULL;
-    if (suflen > 0)
-        suffix[0] = '\0';
+    *sufp = NULL;
     if (!kitty_inifile_file())
         return 0;
     GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",
@@ -681,91 +722,65 @@ static int inifile_folder_store_dup(char **dirp, char *suffix, int suflen)
     free(exedir);
     if (!path)
         return 0;
-    *dirp = path;
 
-    /* kitty.exe keeps at most 63 characters and refuses a suffix with a
-     * character its escape would rewrite (kitty_set_session_suffix). */
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_FILEEXTENSION, "",
-                             v, sizeof(v), inifile_path);
-    inifile_rtrim(v, " \n\r\t");
-    if (!v[0])
-        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SESSIONSUFFIX, "",
-                                 v, sizeof(v), inifile_path);
-    kitty_ext_dot(v, sizeof(v));
+    /* kitty.exe keeps at most 63 characters (kitty_store_ini_takeover reads
+     * the ending into 64 bytes) and refuses a suffix with a character its
+     * escape would rewrite (kitty_set_session_suffix): the same answer here,
+     * so a console tool and kageant see the store kitty.exe uses. */
+    if ((v = inifile_suffix_dup(KI_FILEEXTENSION, KI_SESSIONSUFFIX)) == NULL) {
+        free(path);
+        return 0;
+    }
     for (p = v; *p; p++)
-        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p))
-            return 1;
+        if ((unsigned char)*p < 0x20 || strchr("\\/:*?\"<>|", *p)) {
+            v[0] = '\0';
+            break;
+        }
     if (strlen(v) > 63)
         v[63] = '\0';
-    if ((int)strlen(v) < suflen)
-        strcpy(suffix, v);
+    *dirp = path;
+    *sufp = v;
     return 1;
-}
-
-/* Into a caller's buffer: the folder only when it fits whole - a path that
- * does not is no folder store this program can take (0), never a cut one. */
-static int inifile_folder_store(char *dir, int dirlen, char *suffix, int suflen)
-{
-    char *d;
-    int ok;
-    if (dirlen > 0)
-        dir[0] = '\0';
-    ok = inifile_folder_store_dup(&d, suffix, suflen);
-    if (ok && (int)strlen(d) >= dirlen)
-        ok = 0;
-    if (ok)
-        strcpy(dir, d);
-    else if (suflen > 0)
-        suffix[0] = '\0';
-    free(d);
-    return ok;
 }
 
 /* The folder store's host keys, as kitty.exe sets them up
  * (kitty_store_ini_takeover): sshhostkeys= resolved like sessions= above
- * (empty = the store's own SshHostKeys folder, which the storage layer
- * finds by itself), and hostkeyextension= - else 0.85.1.13's keysuffix= -
- * with a dot put in front. Meaningful only after inifile_folder_store()
- * returned 1; returns 0 when no ini was resolved. */
-static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen)
+ * (*dirp, free it; "" = the store's own SshHostKeys folder, which the
+ * storage layer finds by itself), and hostkeyextension= - else
+ * 0.85.1.13's keysuffix= - with a dot put in front (*sufp, free it; "" =
+ * none). Meaningful only after inifile_folder_store_dup() returned 1;
+ * returns 0 with both NULL when no ini was resolved or memory ran out. */
+static int inifile_hostkey_store_dup(char **dirp, char **sufp)
 {
-    char v[80], *hv, *exedir;
+    char *hv, *exedir, *dir = NULL;
 
-    if (dirlen > 0)
-        dir[0] = '\0';
-    if (suflen > 0)
-        suffix[0] = '\0';
+    *dirp = NULL;
+    *sufp = NULL;
     if (!kitty_inifile_file())
         return 0;
 
-    /* the value and its expansion whole: an expansion past 519 bytes used
+    /* the value and its expansion in full: an expansion past 519 bytes used
      * to fall back to the unexpanded "%VAR%\..." folder - the host keys,
      * the trust store, read and written there. Now only a failed expansion
-     * does, as in kitty.exe. Into the caller's buffer only whole, as before. */
+     * does, as in kitty.exe. */
     hv = inifile_get_dup(KI_SECTION_KITTY, KI_SSHHOSTKEYS, inifile_path);
     if (hv)
         inifile_rtrim(hv, " \n\r\t");
     if (hv && hv[0] && (exedir = inifile_exedir_dup()) != NULL) {
-        char *path = inifile_resolve_path(exedir, hv);
+        dir = inifile_resolve_path(exedir, hv);
         free(exedir);
-        if (path) {
-            inifile_rtrim(path, " \n\r\t\\");
-            if ((int)strlen(path) < dirlen)
-                strcpy(dir, path);
-            free(path);
-        }
+        if (dir)
+            inifile_rtrim(dir, " \n\r\t\\");
     }
     free(hv);
-
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_HOSTKEYEXTENSION, "",
-                             v, sizeof(v), inifile_path);
-    inifile_rtrim(v, " \n\r\t");
-    if (!v[0])
-        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_KEYSUFFIX, "",
-                                 v, sizeof(v), inifile_path);
-    kitty_ext_dot(v, sizeof(v));
-    if ((int)strlen(v) < suflen)
-        strcpy(suffix, v);     /* kitty_set_hostkey_suffix refuses a bad one */
+    if (!dir && (dir = _strdup("")) == NULL)
+        return 0;
+    /* kitty_set_hostkey_suffix refuses a bad one */
+    if ((*sufp = inifile_suffix_dup(KI_HOSTKEYEXTENSION, KI_KEYSUFFIX)) == NULL) {
+        free(dir);
+        return 0;
+    }
+    *dirp = dir;
     return 1;
 }
 
@@ -776,9 +791,10 @@ static int inifile_hostkey_store(char *dir, int dirlen, char *suffix, int suflen
  * state values are in the registry. */
 char *kitty_inifile_state_file_dup(void)
 {
-    char *dir, suffix[80], *bs, *out;
-    if (!inifile_folder_store_dup(&dir, suffix, sizeof(suffix)))
+    char *dir, *suffix, *bs, *out;
+    if (!inifile_folder_store_dup(&dir, &suffix))
         return NULL;
+    free(suffix);
     bs = strrchr(dir, '\\');
     if (bs && !stricmp(bs + 1, "Sessions"))
         *bs = '\0';
@@ -787,18 +803,42 @@ char *kitty_inifile_state_file_dup(void)
     return out;
 }
 
+/* The fields of a start-up record: "" (inifile_none) or memory of their
+ * own. */
+static char inifile_none[1] = "";
+static char *inifile_keep(char *p) { return p ? p : inifile_none; }
+
 void kitty_inifile_startup(struct kitty_ini_startup *s)
 {
+    char *d, *x;
     memset(s, 0, sizeof(*s));
+    s->session_dir = s->session_suffix = s->hostkey_dir = s->hostkey_suffix =
+        s->portable_password_protection = inifile_none;
     s->registry_authoritative = kitty_inifile_registry_authoritative();
-    s->folder_store = inifile_folder_store(s->session_dir, sizeof(s->session_dir),
-                                           s->session_suffix,
-                                           sizeof(s->session_suffix));
+    s->folder_store = inifile_folder_store_dup(&d, &x);
     if (!s->folder_store)
         return;
-    inifile_hostkey_store(s->hostkey_dir, sizeof(s->hostkey_dir),
-                          s->hostkey_suffix, sizeof(s->hostkey_suffix));
-    kitty_inifile_read(KI_SECTION_KITTY, KI_PORTABLEPASSWORDPROTECTION,
-                       s->portable_password_protection,
-                       sizeof(s->portable_password_protection));
+    s->session_dir = d;
+    s->session_suffix = x;
+    if (inifile_hostkey_store_dup(&d, &x)) {
+        s->hostkey_dir = d;
+        s->hostkey_suffix = x;
+    }
+    s->portable_password_protection =
+        inifile_keep(kitty_inifile_read_dup(KI_SECTION_KITTY,
+                                            KI_PORTABLEPASSWORDPROTECTION));
+}
+
+void kitty_inifile_startup_free(struct kitty_ini_startup *s)
+{
+    char **f[5];
+    int i;
+    f[0] = &s->session_dir; f[1] = &s->session_suffix;
+    f[2] = &s->hostkey_dir; f[3] = &s->hostkey_suffix;
+    f[4] = &s->portable_password_protection;
+    for (i = 0; i < 5; i++) {
+        if (*f[i] && *f[i] != inifile_none)
+            free(*f[i]);
+        *f[i] = inifile_none;
+    }
 }

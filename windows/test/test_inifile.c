@@ -118,10 +118,9 @@ static char *tf_long_value(size_t n)
 }
 
 /* The folder store's paths through a %VAR% whose expansion is long:
- * sessions= and sshhostkeys= must come back expanded and whole (they fell
+ * sessions= and sshhostkeys= must come back expanded and in full (they fell
  * back to the unexpanded "%VAR%\..." below the program folder past 519
- * bytes), and one too long for the caller's buffer must be refused, never
- * cut. */
+ * bytes), also past the 1048 bytes the start-up record once held. */
 static void test_long_expansion(const char *root)
 {
     struct kitty_ini_startup s;
@@ -130,6 +129,8 @@ static void test_long_expansion(const char *root)
     char *want_sess = tf_path("%s\\sess", val);
     char *want_keys = tf_path("%s\\keys", val);
     char *want_state = tf_path("%s\\sess\\KiTTYState", val);
+    char *huge_sess = tf_path("%s\\sess", huge);
+    char *huge_keys = tf_path("%s\\keys", huge);
     char *state;
 
     put_file(fs,
@@ -148,20 +149,25 @@ static void test_long_expansion(const char *root)
     state = kitty_inifile_state_file_dup();
     check(state && !strcmp(state, want_state), "long: KiTTYState's path whole");
     free(state);
+    kitty_inifile_startup_free(&s);
 
-    /* an expansion longer than the start-up record holds: refused whole */
+    /* an expansion past the 1048 bytes the record once held: in full */
     check(SetEnvironmentVariableA("KQA_LONGVAR", huge), "long: the variable is set (1203 characters)");
     kitty_inifile_startup(&s);
-    check(!s.folder_store && !s.session_dir[0],
-          "long: a session folder too long for the record is refused, not cut");
+    check(s.folder_store && !strcmp(s.session_dir, huge_sess),
+          "long: a session folder of 1208 characters in full, not cut or refused");
+    check(!strcmp(s.hostkey_dir, huge_keys),
+          "long: a host-key folder of 1208 characters in full");
     state = kitty_inifile_state_file_dup();
     check(state && strlen(state) == strlen(huge) + strlen("\\sess\\KiTTYState"),
           "long: KiTTYState's path whole past the record's size");
     free(state);
+    kitty_inifile_startup_free(&s);
 
     SetEnvironmentVariableA("KQA_LONGVAR", NULL);
     DeleteFileA(fs);
     free(fs); free(val); free(huge); free(want_sess); free(want_keys); free(want_state);
+    free(huge_sess); free(huge_keys);
 }
 
 int main(void)

@@ -32,8 +32,40 @@ enum winfb_log_level {
 
 static int  g_log_level = WINFB_LOG_OFF;
 static FILE *g_log_fp   = NULL;
-static char g_log_path[MAX_PATH] = {0};
+static char *g_log_path = NULL;   /* in full (malloc) */
 static int  g_log_lines = 0;
+
+/* a followed by b, in memory of its own (free it); NULL = out of memory */
+static char *winfb_concat_dup(const char *a, const char *b)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    char *s = malloc(la + lb + 1);
+    if (!s) return NULL;
+    memcpy(s, a, la);
+    memcpy(s + la, b, lb + 1);
+    return s;
+}
+
+/* this exe's folder with its trailing backslash, in full (free it); NULL =
+ * not read: the buffer grows until GetModuleFileName's answer fits */
+static char *winfb_exe_dir_dup(void)
+{
+    DWORD size = MAX_PATH, n;
+    char *p = NULL, *slash;
+    for (;;) {
+        char *t = realloc(p, size);
+        if (!t) { free(p); return NULL; }
+        p = t;
+        n = GetModuleFileNameA(NULL, p, size);
+        if (n == 0) { free(p); return NULL; }
+        if (n < size) break;
+        if (size >= 32768) { free(p); return NULL; }
+        size *= 2;
+    }
+    slash = strrchr(p, '\\');
+    if (slash) slash[1] = '\0'; else p[0] = '\0';
+    return p;
+}
 
 #define WINFB_LOG_MAX_LINES  100000   /* ~10 MB */
 #define WINFB_LOG_FLUSH_EVERY 64
@@ -56,11 +88,14 @@ static void log_rollover(void)
     fclose(g_log_fp);
     g_log_fp = NULL;
     g_log_lines = 0;
+    if (!g_log_path) return;
     /* single-generation rollover: .log -> .log.1 */
-    char bak[MAX_PATH];
-    snprintf(bak, MAX_PATH, "%s.1", g_log_path);
+    char *bak = winfb_concat_dup(g_log_path, ".1");
     /* ignore failure -- best effort */
-    MoveFileExA(g_log_path, bak, MOVEFILE_REPLACE_EXISTING);
+    if (bak) {
+        MoveFileExA(g_log_path, bak, MOVEFILE_REPLACE_EXISTING);
+        free(bak);
+    }
     g_log_fp = fopen(g_log_path, "a");
     if (g_log_fp) {
         setvbuf(g_log_fp, NULL, _IOFBF, 8192);
@@ -70,19 +105,23 @@ static void log_rollover(void)
 static void winfb_log_init(int level, const char *path)
 {
     g_log_level = level;
+    free(g_log_path);
+    g_log_path = NULL;
     if (level <= WINFB_LOG_OFF) return;
 
+    /* the path in full: a path too long for Windows makes fopen fail, and
+     * no log is written - never one under a shorter name */
     if (path && path[0]) {
-        strncpy(g_log_path, path, MAX_PATH - 1);
-        g_log_path[MAX_PATH - 1] = '\0';
+        g_log_path = winfb_concat_dup(path, "");
     } else {
-        /* default: beside the .exe */
-        GetModuleFileNameA(NULL, g_log_path, MAX_PATH);
-        char *slash = strrchr(g_log_path, '\\');
-        if (slash) slash[1] = '\0'; else g_log_path[0] = '\0';
-        strncat(g_log_path, "fontfallback.log",
-                MAX_PATH - strlen(g_log_path) - 1);
+        /* default: beside the .exe; its path not read = no log */
+        char *dir = winfb_exe_dir_dup();
+        if (dir) {
+            g_log_path = winfb_concat_dup(dir, "fontfallback.log");
+            free(dir);
+        }
     }
+    if (!g_log_path) return;
 
     g_log_fp = fopen(g_log_path, "a");
     if (g_log_fp) {
@@ -169,8 +208,8 @@ static int g_n_ovr;
  * =================================================================== */
 
 static int  g_active_flag = 1;              /* active= (default yes) */
-static char g_cfg_fallback[1024];           /* fallback= CSV */
-static char g_cfg_overrides[2048];          /* override= ';'-separated */
+static char *g_cfg_fallback = NULL;        /* fallback= CSV, in full (malloc) */
+static char *g_cfg_overrides = NULL;       /* override= ';'-separated, in full */
 
 void SetFontFallbackFlag(int flag) { g_active_flag = flag ? 1 : 0; }
 int  GetFontFallbackFlag(void)     { return g_active_flag; }
@@ -178,16 +217,10 @@ int  GetFontFallbackFlag(void)     { return g_active_flag; }
 void winfb_config_set(const char *fallback_csv, const char *overrides,
                       const char *log_level, const char *log_file)
 {
-    g_cfg_fallback[0] = '\0';
-    if (fallback_csv) {
-        strncpy(g_cfg_fallback, fallback_csv, sizeof(g_cfg_fallback) - 1);
-        g_cfg_fallback[sizeof(g_cfg_fallback) - 1] = '\0';
-    }
-    g_cfg_overrides[0] = '\0';
-    if (overrides) {
-        strncpy(g_cfg_overrides, overrides, sizeof(g_cfg_overrides) - 1);
-        g_cfg_overrides[sizeof(g_cfg_overrides) - 1] = '\0';
-    }
+    free(g_cfg_fallback);
+    g_cfg_fallback = winfb_concat_dup(fallback_csv ? fallback_csv : "", "");
+    free(g_cfg_overrides);
+    g_cfg_overrides = winfb_concat_dup(overrides ? overrides : "", "");
 
     int level = WINFB_LOG_OFF;
     if (log_level && log_level[0]) {
@@ -621,10 +654,9 @@ void winfb_reinit_from_config(HDC hdc, const LOGFONT *primary,
     /* split the stored override= value on ';' into line pointers */
     const char *ovr_lines[WINFB_OVR_CAP];
     int n_ovr = 0;
-    char ovr_buf[sizeof(g_cfg_overrides)];
-    memcpy(ovr_buf, g_cfg_overrides, sizeof(ovr_buf));
+    char *ovr_buf = winfb_concat_dup(g_cfg_overrides ? g_cfg_overrides : "", "");
     char *p = ovr_buf;
-    while (*p && n_ovr < WINFB_OVR_CAP) {
+    while (p && *p && n_ovr < WINFB_OVR_CAP) {
         while (*p == ' ' || *p == '\t') p++;
         if (!*p) break;
         ovr_lines[n_ovr++] = p;
@@ -635,8 +667,9 @@ void winfb_reinit_from_config(HDC hdc, const LOGFONT *primary,
     }
 
     winfb_init(hdc, primary, cell_w, cell_h,
-               g_cfg_fallback[0] ? g_cfg_fallback : NULL,
+               g_cfg_fallback && g_cfg_fallback[0] ? g_cfg_fallback : NULL,
                n_ovr > 0 ? ovr_lines : NULL, n_ovr);
+    free(ovr_buf);
 }
 
 void winfb_cleanup(void)

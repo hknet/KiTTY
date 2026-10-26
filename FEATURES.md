@@ -657,6 +657,8 @@ A key that was not there at startup stays on the list and is loaded when its fil
 
 kageant offers its loaded keys to a server in list order, and the server tries them in turn — so the order matters when you hold several keys (offering the wrong ones first can even hit a server's "too many authentication failures" limit before the right key is reached). The key-list window has **Move Up** / **Move Down** buttons to set that offer order, e.g. to put your most-used key first. The chosen order is saved by key fingerprint and restored on the next start, including when *Load remembered keys at startup* is enabled. Reordering works independently of whether a key is still encrypted/deferred, already protected in memory, or temporarily unprotected for a signing operation.
 
+To have a session use one key only, set that key's file in the session's **Connection > SSH > Auth > Credentials** box **Private key file for authentication**: its `.ppk`, or a `.pub` file with only the public key. With the agent running, KiTTY++ then asks the agent for that key alone and ignores the others.
+
 **How to enable:** in the kageant key-list window, select a key and use the **Move Up** / **Move Down** buttons.
 
 (no screenshot)

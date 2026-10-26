@@ -7196,7 +7196,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
             break;
           case IDM_SCRIPTSEND: {
-            char fn[4096];
+            char *fn;
             if (!kitty_script_enabled()) {
                 /* a report: modeless, the session goes on */
                 if (!kitty_info_modeless(wgs->term_hwnd, KT_CAP_KITTY,
@@ -7215,12 +7215,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (kitty_script_pick)
                 break;
             /* no thread for the picker: on this one, as before */
-            if (OpenFileName(wgs->term_hwnd, fn, KT_TWIN_SCRIPT_FILE_TITLE,
-                    KT_TWIN_SCRIPT_FILE_FILTER)) {
+            fn = kitty_pick_open_dup(wgs->term_hwnd, KT_TWIN_SCRIPT_FILE_TITLE,
+                                     KT_TWIN_SCRIPT_FILE_FILTER, NULL);
+            if (fn && fn[0]) {
                 Filename *sf = filename_from_str(fn);
                 kitty_script_send_file(wgs->conf, wgs->backend, sf);
                 filename_free(sf);
             }
+            sfree(fn);
             break;
           }
           case IDM_SCRIPTHALT:

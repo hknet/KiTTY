@@ -78,17 +78,19 @@
  * /save calls and save-on-exit land there. Mirrors the config-box Save button
  * (folder default + launcher refresh broadcast, cf. kitty_config.c). The
  * classic /save (.ktx file exporter, SaveCurrentSetting) lives on as /savektx.
- * The outcome goes to out, for the command box's result line: no box, which
- * would stop the session while it is open. 1 = saved. */
-static int kitty_save_current_session( const char * newname, char * out, size_t outsize ) {
+ * The outcome goes to *out (in full, sfree it; NULL = nothing to report),
+ * for the command box's result line: no box, which would stop the session
+ * while it is open. 1 = saved. */
+static int kitty_save_current_session( const char * newname, char ** out ) {
 	char * errmsg ;
+	*out = NULL ;
 	if( newname != NULL ) {
 		while( newname[0]==' ' ) newname++ ;
-		if( newname[0]=='\0' ) { out[0] = '\0' ; return 0 ; }
+		if( newname[0]=='\0' ) return 0 ;
 	}
 	/* readonly=yes: nothing is saved, and the window keeps its session name */
 	if( GetReadOnlyFlag() ) {
-		snprintf( out, outsize, KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+		*out = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
 		return 0 ;
 	}
 	if( newname != NULL ) conf_set_str( conf, CONF_sessionname, newname ) ;
@@ -97,7 +99,7 @@ static int kitty_save_current_session( const char * newname, char * out, size_t 
 	errmsg = save_settings( conf_get_str(conf,CONF_sessionname), conf ) ;
 	kitty_mpw_user_action_end() ;
 	if( errmsg != NULL ) {
-		snprintf( out, outsize, KT_CMD_RES_NOT_SAVED, errmsg ) ;
+		*out = dupprintf( KT_CMD_RES_NOT_SAVED, errmsg ) ;
 		sfree( errmsg ) ;
 		return 0 ;
 	}
@@ -106,7 +108,7 @@ static int kitty_save_current_session( const char * newname, char * out, size_t 
 		UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
 		if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
 	}
-	snprintf( out, outsize, KT_CMD_RES_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
+	*out = dupprintf( KT_CMD_RES_SESSION_SAVED, conf_get_str(conf,CONF_sessionname) ) ;
 	return 1 ;
 }
 
@@ -156,20 +158,28 @@ typedef int (*IntCmdHandler)( HWND hwnd, char * arg ) ;
  * command does - a modal box stops the session
  * while it is open; a result that comes later (an answered question, a
  * picked file) goes to the box through kitty_inputbox_result. */
-static char cmd_result[8192] ;
+static char * cmd_result = NULL ;   /* in full: a long path is never cut */
 
 static void cmd_say( const char * fmt, ... ) {
+	char * s ;
 	va_list ap ;
 	va_start( ap, fmt ) ;
-	vsnprintf( cmd_result, sizeof(cmd_result), fmt, ap ) ;
+	s = dupvprintf( fmt, ap ) ;   /* before the old one goes: it may be an argument */
 	va_end( ap ) ;
+	sfree( cmd_result ) ;
+	cmd_result = s ;
+}
+
+static void cmd_say_clear( void ) {
+	sfree( cmd_result ) ;
+	cmd_result = NULL ;
 }
 
 static void cmd_say_toggle( const char * what, int on ) {
 	cmd_say( KT_CMD_RES_TOGGLE, what, on ? KT_CMD_RES_ON : KT_CMD_RES_OFF ) ;
 }
 
-const char * kitty_cmd_result( void ) { return cmd_result ; }
+const char * kitty_cmd_result( void ) { return cmd_result ? cmd_result : "" ; }
 
 /* ---- Window & title ---- */
 
@@ -334,11 +344,12 @@ static int cmd_store_refused( void ) {
 }
 
 static int cmd_save( HWND hwnd, char * arg ) {
-	char out[1200] ;
+	char * out ;
 	(void)hwnd ; (void)arg ;
 	if( strlen( conf_get_str(conf,CONF_sessionname) ) > 0 ) {
-		kitty_save_current_session( NULL, out, sizeof(out) ) ;
-		cmd_say( "%s", out ) ;
+		kitty_save_current_session( NULL, &out ) ;
+		cmd_say( "%s", out ? out : "" ) ;
+		sfree( out ) ;
 	} else {
 		cmd_say( "%s", KT_CMD_RES_SAVE_NO_SESSION ) ;
 	}
@@ -346,10 +357,11 @@ static int cmd_save( HWND hwnd, char * arg ) {
 }
 
 static int cmd_savenew( HWND hwnd, char * arg ) {
-	char out[1200] ;
+	char * out ;
 	(void)hwnd ;
-	kitty_save_current_session( arg, out, sizeof(out) ) ;
-	if( out[0] ) cmd_say( "%s", out ) ;
+	kitty_save_current_session( arg, &out ) ;
+	if( out != NULL && out[0] ) cmd_say( "%s", out ) ;
+	sfree( out ) ;
 	return 1 ;
 }
 
@@ -361,38 +373,41 @@ static int cmd_savenew( HWND hwnd, char * arg ) {
 static void * savektx_pick = NULL ;
 
 static void savektx_picked( void * ctx, const char * path ) {
-	char out[4400] ;
+	char * out = NULL ;
 	(void)ctx ;
 	savektx_pick = NULL ;
 	if( path == NULL )
 		cmd_say( "%s", KT_CMD_RES_CANCELLED ) ;
-	else if( SaveCurrentSettingTo( path, out, sizeof(out) ) == 1 )
+	else if( SaveCurrentSettingTo( path, &out ) == 1 )
 		cmd_say( KT_CMD_RES_SAVED, out ) ;
 	else
 		cmd_say( KT_CMD_RES_NOT_SAVED, out ) ;
-	kitty_inputbox_result( cmd_result ) ;
+	sfree( out ) ;
+	kitty_inputbox_result( kitty_cmd_result() ) ;
 }
 
 static int cmd_savektx( HWND hwnd, char * arg ) {
-	char out[4400], filter[512] ;
+	char * out = NULL, * filter ;
 	(void)arg ;
 	if( savektx_pick != NULL ) {
 		cmd_say( "%s", KT_CMD_RES_SAVEKTX_OPEN ) ;
 		return 1 ;
 	}
-	SaveCurrentSettingFilter( filter, sizeof(filter) ) ;
+	filter = SaveCurrentSettingFilterDup() ;
 	savektx_pick = kitty_pick_async( hwnd, KITTY_PICK_SAVE, NULL, KT_CAP_SAVE_FILE, filter,
 	                                 savektx_picked, NULL ) ;
+	sfree( filter ) ;   /* the picker keeps a copy of its own */
 	if( savektx_pick != NULL ) {
 		cmd_say( "%s", KT_CMD_RES_SAVEKTX_PENDING ) ;
 		return 1 ;
 	}
 	/* no thread for the picker: on this one, as before */
-	switch( SaveCurrentSetting( hwnd, out, sizeof(out) ) ) {
+	switch( SaveCurrentSetting( hwnd, &out ) ) {
 	  case 1:  cmd_say( KT_CMD_RES_SAVED, out ) ; break ;
 	  case 0:  cmd_say( "%s", KT_CMD_RES_CANCELLED ) ; break ;
 	  default: cmd_say( KT_CMD_RES_NOT_SAVED, out ) ; break ;
 	}
+	sfree( out ) ;
 	return 1 ;
 }
 
@@ -431,16 +446,18 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
  * used to go through the routine snapshot, which writes only when the store
  * changed since the last one - so the command often did nothing, silently. */
 static int cmd_savereg( HWND hwnd, char * arg ) {
-	char path[4096] ;
+	char * path = NULL ;   /* the backup file in full */
 	(void)hwnd ; (void)arg ;
 	if( cmd_store_refused() ) return 1 ;   /* no backup under readonly=yes */
-	switch( kitty_sav_backup_report( path, sizeof(path) ) ) {
-	  case 1:  cmd_say( KT_CMD_RES_SAVED, path ) ; break ;
+	switch( kitty_sav_backup_report_dup( &path ) ) {
+	  case 1:  cmd_say( KT_CMD_RES_SAVED, path ? path : "" ) ; break ;
 	  case -1: cmd_say( "%s", IniFileFlag == SAVEMODE_DIR ? KT_CMD_RES_BACKUP_OFF_DIR
 	                                                      : KT_CMD_RES_BACKUP_OFF ) ; break ;
 	  case -2: cmd_say( "%s", KT_CMD_RES_BACKUP_NONE ) ; break ;
-	  default: cmd_say( KT_CMD_RES_NOT_SAVED, kitty_sav_save_reason()[0] ? kitty_sav_save_reason() : path ) ; break ;
+	  default: cmd_say( KT_CMD_RES_NOT_SAVED, kitty_sav_save_reason()[0] ? kitty_sav_save_reason()
+	                                                                     : ( path ? path : "" ) ) ; break ;
 	}
+	sfree( path ) ;
 	return 1 ;
 }
 
@@ -449,13 +466,14 @@ static int cmd_savereg( HWND hwnd, char * arg ) {
  * kittynew.sav, which nothing writes any more (backups are dated), and so
  * loaded an old kitty.sav or nothing, without a word either way. */
 static int cmd_loadreg( HWND hwnd, char * arg ) {
-	char found[4096], dir[4096] ;
+	char * found = NULL, * dir ;   /* both in full */
 	(void)hwnd ; (void)arg ;
 	if( cmd_store_refused() ) return 1 ;   /* nothing loaded into the store */
 	if( (KittySavFile == NULL) || !KittySavFile[0] ||
-	    !sav_find_for_restore( KittySavFile, found, sizeof(found) ) ) {
-		kitty_sav_dir( dir, sizeof(dir) ) ;
-		cmd_say( KT_CMD_RES_NOTHING_TO_LOAD, dir ) ;
+	    ( found = sav_find_for_restore_dup( KittySavFile ) ) == NULL ) {
+		dir = kitty_sav_dir_dup() ;
+		cmd_say( KT_CMD_RES_NOTHING_TO_LOAD, dir ? dir : "" ) ;
+		sfree( dir ) ;
 		return 1 ;
 	}
 	{	char * saved = KittySavFile ;
@@ -464,9 +482,10 @@ static int cmd_loadreg( HWND hwnd, char * arg ) {
 		loaded = LoadRegistryKeyLive() ;   /* never ends the session */
 		KittySavFile = saved ;
 		/* "Loaded:" only when the import did: reg.exe's result was thrown away */
-		if( !loaded ) { cmd_say( KT_CMD_RES_NOT_LOADED, kitty_sav_load_reason() ) ; return 1 ; }
+		if( !loaded ) { cmd_say( KT_CMD_RES_NOT_LOADED, kitty_sav_load_reason() ) ; sfree( found ) ; return 1 ; }
 	}
 	cmd_say( KT_CMD_RES_LOADED, found ) ;
+	sfree( found ) ;
 	return 1 ;
 }
 
@@ -485,7 +504,7 @@ static void delreg_answered( int yes, void * ctx ) {
 		cmd_say( KT_CMD_RES_DELETED, kitty_registry_base() ) ;
 	else
 		cmd_say( KT_CMD_RES_NOT_DELETED, kitty_registry_base(), kitty_win_reason( GetLastError() ) ) ;
-	kitty_inputbox_result( cmd_result ) ;
+	kitty_inputbox_result( kitty_cmd_result() ) ;
 }
 
 static int cmd_delreg( HWND hwnd, char * arg ) {
@@ -531,12 +550,11 @@ static int cmd_delreg( HWND hwnd, char * arg ) {
  * used to go to the program folder (a relative name after chdir there), which
  * an installed copy cannot write to - so no file, and no word about it. */
 static int cmd_savesessions( HWND hwnd, char * arg ) {
-	char buffer[4096], dir[4096], file[4200] ;
+	/* the folder and the file in full: one too long for Windows makes the
+	 * export fail with its reason, never a file under a shorter name */
+	const char * buffer = kitty_reg_sessions() ;
+	char * dir, * file ;
 	(void)hwnd ; (void)arg ;
-	kitty_sav_dir( dir, sizeof(dir) ) ;
-	CreateDirectoryA( dir, NULL ) ;
-	snprintf( file, sizeof(file), "%s\\kitty.ses", dir ) ;
-	snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
 	{	/* no Sessions key: reg.exe has nothing to export - report why, rather
 		 * than a bare "not saved" */
 		HKEY k ;
@@ -546,15 +564,21 @@ static int cmd_savesessions( HWND hwnd, char * arg ) {
 		}
 		RegCloseKey( k ) ;
 	}
+	dir = kitty_sav_dir_dup() ;
+	if( dir == NULL ) dir = dupstr( "" ) ;
+	CreateDirectoryA( dir, NULL ) ;
+	file = dupprintf( "%s\\kitty.ses", dir ) ;
+	sfree( dir ) ;
 	if( SaveRegistryKeyEx( HKEY_CURRENT_USER, buffer, file ) )
 		cmd_say( KT_CMD_RES_SAVED, file ) ;
 	else
 		cmd_say( KT_CMD_RES_NOT_SAVED, kitty_sav_save_reason() ) ;
+	sfree( file ) ;
 	return 1 ;
 }
 
 static int cmd_copytoputty( HWND hwnd, char * arg ) {
-	char buffer[4096] ;
+	const char * buffer ;   /* the hive's key names, as kitty_storage.c holds them */
 	(void)hwnd ; (void)arg ;
 	/* REFUSE when our own hive IS PuTTY's (kitty.ini KiClassName=PuTTY).
 	 * This deletes PuTTY\Sessions before copying into it, so in that mode it
@@ -572,7 +596,7 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 		static const char *dest = "Software\\SimonTatham\\PuTTY\\Sessions" ;
 		DWORD n = 0 ;
 		HKEY k ;
-		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_sessions() ) ;
+		buffer = kitty_reg_sessions() ;
 		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) {
 			cmd_say( KT_CMD_RES_NO_SESSIONS, buffer ) ;
 			return 1 ;
@@ -593,7 +617,7 @@ static int cmd_copytoputty( HWND hwnd, char * arg ) {
 			RegQueryInfoKeyA( k, NULL, NULL, NULL, &n, NULL, NULL, NULL, NULL, NULL, NULL, NULL ) ;
 			RegCloseKey( k ) ;
 		}
-		snprintf( buffer, sizeof(buffer), "%s", kitty_reg_hostkeys() ) ;
+		buffer = kitty_reg_hostkeys() ;
 		if( RegTestKey( HKEY_CURRENT_USER, buffer ) &&
 		    !kitty_RegCopyTree( HKEY_CURRENT_USER, buffer, "Software\\SimonTatham\\PuTTY\\SshHostKeys" ) ) {
 			DWORD err = GetLastError() ;
@@ -789,27 +813,33 @@ static int cmd_passwd( HWND hwnd, char * arg ) {
  * keeps its own folder, which is writable by being portable.
  * The result line shows the file with its full path, or why it is not there. */
 static int cmd_screenshot( HWND hwnd, char * arg ) {
-	char dir[MAX_PATH], file[MAX_PATH + 64] ;
+	/* the folder and the file in full: one too long for Windows fails in
+	 * CreateDirectory / CreateFile with its own reason, never a folder or a
+	 * file under a shorter name */
+	char * dir, * file ;
 	time_t now = time( 0 ) ;
 	struct tm * t = localtime( &now ) ;
 	HANDLE h ;
 	(void)arg ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
-		snprintf( dir, sizeof(dir), "%s", InitialDirectory ) ;
+		dir = dupstr( InitialDirectory ) ;
 	} else {
-		char pics[MAX_PATH] ;
+		char pics[MAX_PATH] ;   /* SHGetFolderPath's own size */
 		if( SHGetFolderPathA( NULL, CSIDL_MYPICTURES | CSIDL_FLAG_CREATE, NULL,
-		                      SHGFP_TYPE_CURRENT, pics ) != S_OK )
-			snprintf( pics, sizeof(pics), "%s", InitialDirectory ) ;
-		snprintf( dir, sizeof(dir), "%s\\KiTTY++", pics ) ;
+		                      SHGFP_TYPE_CURRENT, pics ) == S_OK )
+			dir = dupprintf( "%s\\KiTTY++", pics ) ;
+		else
+			dir = dupprintf( "%s\\KiTTY++", InitialDirectory ) ;
 		if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
 			cmd_say( KT_CMD_RES_SHOT_NO_DIR, dir ) ;
+			sfree( dir ) ;
 			return 1 ;
 		}
 	}
-	snprintf( file, sizeof(file), "%s\\screenshot-%04d%02d%02d-%02d%02d%02d.png", dir,
+	file = dupprintf( "%s\\screenshot-%04d%02d%02d-%02d%02d%02d.png", dir,
 	          t ? t->tm_year + 1900 : 0, t ? t->tm_mon + 1 : 0, t ? t->tm_mday : 0,
 	          t ? t->tm_hour : 0, t ? t->tm_min : 0, t ? t->tm_sec : 0 ) ;
+	sfree( dir ) ;
 	/* Can it be written? Tried first, so the line can give the reason. */
 	h = CreateFileA( file, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
 	                 FILE_ATTRIBUTE_NORMAL, NULL ) ;
@@ -822,6 +852,7 @@ static int cmd_screenshot( HWND hwnd, char * arg ) {
 			why[--n] = '\0' ;
 		if( !n ) snprintf( why, sizeof(why), "error %lu", (unsigned long)e ) ;
 		cmd_say( KT_CMD_RES_SHOT_FAILED, file, why ) ;
+		sfree( file ) ;
 		return 1 ;
 	}
 	CloseHandle( h ) ;
@@ -831,6 +862,7 @@ static int cmd_screenshot( HWND hwnd, char * arg ) {
 		DeleteFileA( file ) ;              /* not the empty file the test left */
 		cmd_say( KT_CMD_RES_SHOT_FAILED, file, KT_CMD_RES_SHOT_NO_PICTURE ) ;
 	}
+	sfree( file ) ;
 	return 1 ;
 }
 
@@ -1021,7 +1053,7 @@ int kitty_cli_help_box( const char * caption, const char * text ) {
 }
 
 static int cmd_help( HWND hwnd, char * arg ) {
-	char buffer[8192] ;
+	strbuf * buffer ;   /* the list in full: it outgrew a fixed 8 KB */
 	const char * cat = NULL ;
 	size_t i ;
 	(void)hwnd ; (void)arg ;
@@ -1029,8 +1061,8 @@ static int cmd_help( HWND hwnd, char * arg ) {
 		SetForegroundWindow( kitty_help_dlg ) ;
 		return 1 ;
 	}
-	buffer[0] = '\0' ;
-#define HCAT(s) strncat( buffer, s, sizeof(buffer)-strlen(buffer)-1 )
+	buffer = strbuf_new() ;
+#define HCAT(s) put_dataz( buffer, s )
 	for( i = 0 ; i < lenof(internal_commands) ; i++ ) {
 		const struct InternalCmdDef * c = &internal_commands[i] ;
 		if( (cat == NULL) || strcmp( cat, c->category ) ) {
@@ -1044,9 +1076,9 @@ static int cmd_help( HWND hwnd, char * arg ) {
 		if( c->argname != NULL ) { HCAT( " " ) ; HCAT( c->argname ) ; }
 		HCAT( " - " ) ;
 		if( c->handler == cmd_fileassoc ) {
-			char h[256] ;
-			snprintf( h, sizeof(h), c->help, FileExtension[0] ? FileExtension : ".ktx" ) ;
+			char * h = dupprintf( c->help, FileExtension[0] ? FileExtension : ".ktx" ) ;
 			HCAT( h ) ;
+			sfree( h ) ;
 		} else
 			HCAT( c->help ) ;
 		HCAT( "\r\n" ) ;
@@ -1054,11 +1086,12 @@ static int cmd_help( HWND hwnd, char * arg ) {
 #undef HCAT
 	kitty_help_dlg = CreateDialog( hinst, MAKEINTRESOURCE(IDD_HELPBOX), MainHwnd, HelpBoxProc ) ;
 	if( kitty_help_dlg ) {
-		SetDlgItemText( kitty_help_dlg, IDC_HELPTEXT, buffer ) ;
+		SetDlgItemText( kitty_help_dlg, IDC_HELPTEXT, buffer->s ) ;
 		ShinyAddAuxDialog( kitty_help_dlg ) ;
 		ShowWindow( kitty_help_dlg, SW_SHOW ) ;
 		SetForegroundWindow( kitty_help_dlg ) ;
 	}
+	strbuf_free( buffer ) ;
 	return 1 ;
 }
 
@@ -1069,14 +1102,14 @@ int InternalCommand( HWND hwnd, char * st ) {
 		size_t l = strlen( c->name ) ;
 		int r ;
 		if( (c->arg != IC_ARG_REQUIRED) && !strcmp( st, c->name ) ) {
-			cmd_result[0] = '\0' ;
+			cmd_say_clear() ;
 			r = c->handler( hwnd, NULL ) ;
 		} else if( (c->arg != IC_ARG_NONE) && !strncmp( st, c->name, l ) && (st[l] == ' ') ) {
-			cmd_result[0] = '\0' ;
+			cmd_say_clear() ;
 			r = c->handler( hwnd, st+l+1 ) ;
 		} else
 			continue ;
-		if( r && !cmd_result[0] )
+		if( r && !kitty_cmd_result()[0] )
 			cmd_say( KT_CMD_RES_DONE, c->name ) ;
 		return r ;
 	}

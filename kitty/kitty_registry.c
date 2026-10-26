@@ -76,21 +76,6 @@ char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpVal
 // read whole by GetValueDataDup, then cut to that size. For short values
 // (flags, numbers, markers); anything that can be long is read with
 // GetValueDataDup.
-char * GetValueDataN(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue, size_t rsize){
-	char * v ;
-	if( rValue == NULL || rsize == 0 ) { return NULL ; }
-	rValue[0] = '\0' ;
-	if( ( v = GetValueDataDup( hkTopKey, lpSubKey, lpValueName ) ) == NULL ) return NULL ;
-	snprintf( rValue, rsize, "%s", v ) ;
-	sfree( v ) ;
-	return rValue ;
-}
-
-/* Compat: the old unbounded signature -- the destination buffer MUST be at
- * least cstMaxRegLength+2 bytes. Prefer GetValueDataN( ..., sizeof(buf) ). */
-char * GetValueData(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName, char * rValue){
-    return GetValueDataN( hkTopKey, lpSubKey, lpValueName, rValue, cstMaxRegLength+2 ) ;
-}
 
 // Test whether a key exists
 int RegTestKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
@@ -407,8 +392,8 @@ static int kitty_repairs_own_hive( void ) {
  * runtime-flippable base), and this file intentionally includes only kitty_registry.h. */
 void RepairSharrowDefaults( void ) {
 	HKEY hSess ;
-	char cur[cstMaxRegLength+2], old[cstMaxRegLength+2] ;
-	char name[MAX_KEY_LENGTH+1], kpath[512], oldsess[512] ;
+	char *cur, *old ;
+	char name[MAX_KEY_LENGTH+1], *kpath, *oldsess ;
 	DWORD idx, len ;
 	int failed = 0 ;
 
@@ -418,24 +403,33 @@ void RepairSharrowDefaults( void ) {
 	if( !kitty_repairs_own_hive() ) return ;
 
 	/* one-time guard: skip if we've already run */
-	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, cur, sizeof(cur) ) != NULL )
+	if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE ) ) != NULL ) {
+		sfree( cur ) ;
 		return ;
+	}
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
 		for( idx = 0 ; ; idx++ ) {
+			int zero ;
 			len = sizeof(name) ;
 			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
-			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
 			/* only sessions with an explicit APPLICATION(0) are candidates */
-			if( GetValueDataN( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys", cur, sizeof(cur) ) == NULL ) continue ;
-			if( strcmp( cur, "0" ) != 0 ) continue ;
-			snprintf( oldsess, sizeof(oldsess), "Software\\9bis.com\\KiTTY\\Sessions\\%s", name ) ;
-			/* repair only if the 9bis original exists and had NO explicit value:
-			 * that proves the 0 is our persisted default, not the user's choice. */
-			if( RegTestKey( HKEY_CURRENT_USER, oldsess )
-			    && GetValueDataN( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys", old, sizeof(old) ) == NULL ) {
-				if( !RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ) failed = 1 ;
+			kpath = dupprintf( "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
+			cur = GetValueDataDup( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ;
+			zero = cur != NULL && strcmp( cur, "0" ) == 0 ;
+			sfree( cur ) ;
+			if( zero ) {
+				oldsess = dupprintf( "Software\\9bis.com\\KiTTY\\Sessions\\%s", name ) ;
+				/* repair only if the 9bis original exists and had NO explicit value:
+				 * that proves the 0 is our persisted default, not the user's choice. */
+				if( RegTestKey( HKEY_CURRENT_USER, oldsess ) ) {
+					if( ( old = GetValueDataDup( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys" ) ) == NULL ) {
+						if( !RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ) failed = 1 ;
+					} else sfree( old ) ;
+				}
+				sfree( oldsess ) ;
 			}
+			sfree( kpath ) ;
 		}
 		RegCloseKey( hSess ) ;
 	}
@@ -459,8 +453,8 @@ void RepairSharrowDefaults( void ) {
 void MigrateScpAutoPwd( void ) {
 	HKEY hSess ;
 	int failed = 0 ;
-	char cur[cstMaxRegLength+2] ;
-	char name[MAX_KEY_LENGTH+1], kpath[512] ;
+	char *cur ;
+	char name[MAX_KEY_LENGTH+1], *kpath ;
 	DWORD idx, len ;
 
 	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
@@ -469,25 +463,29 @@ void MigrateScpAutoPwd( void ) {
 	if( !kitty_repairs_own_hive() ) return ;
 
 	/* one-time guard: skip if we've already run */
-	if( GetValueDataN( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, cur, sizeof(cur) ) != NULL )
+	if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED ) ) != NULL ) {
+		sfree( cur ) ;
 		return ;
+	}
 
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
 		for( idx = 0 ; ; idx++ ) {
 			len = sizeof(name) ;
 			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
-			snprintf( kpath, sizeof(kpath), "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
-			if( GetValueDataN( HKEY_CURRENT_USER, kpath, "SCPAutoPwd", cur, sizeof(cur) ) == NULL ) continue ;
+			kpath = dupprintf( "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
+			if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ) == NULL ) { sfree( kpath ) ; continue ; }
 			/* the old option was on -> turn on its safe replacement */
 			if( strcmp( cur, "1" ) == 0
 			    && !RegTestOrCreateDWORD( HKEY_CURRENT_USER, kpath, "OSC7CwdTracking", 1 ) ) {
 				/* the replacement is not stored: keep the old value, the
 				 * next start tries again - deleting it lost the setting */
 				failed = 1 ;
+				sfree( cur ) ; sfree( kpath ) ;
 				continue ;
 			}
 			/* drop the retired key regardless of its value */
 			if( !RegDelValue( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ) failed = 1 ;
+			sfree( cur ) ; sfree( kpath ) ;
 		}
 		RegCloseKey( hSess ) ;
 	}

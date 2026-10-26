@@ -44,6 +44,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   the agent log path) are no longer cut or overflow memory.
 - Settings storage: long folder names, kitty.ini and registry values no
   longer overflow memory or get cut, also when a store is moved or backed up.
+- File transfer, ZModem, launcher and proxy settings: long remote paths,
+  file lists and session values no longer overflow memory or get cut.
 
 ## 0.85.1.18-beta — 2026-10-23
 

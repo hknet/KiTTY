@@ -20,6 +20,7 @@
 #include "kitty_migrate.h"
 #include "kitty_common.h"
 #include "kitty_text.h"
+#include "kitty_tools.h"
 
 bool kitty_session_exists_own(const char *name)
 {
@@ -63,10 +64,8 @@ static char *rk_move_one(const char *from, const char *to)
          * elsewhere a renamed session lost its commands.) */
         if (!err) {
             char *base = portable_config_subdir("Sessions_Commands");
-            char *mf = snewn(strlen(from) * 3 + 1, char);
-            char *mt = snewn(strlen(to) * 3 + 1, char);
-            mungestr(from, mf);
-            mungestr(to, mt);
+            char *mf = mungestr_dup(from);
+            char *mt = mungestr_dup(to);
             if (base && strcmp(mf, mt)) {
                 char *a = dupprintf("%s\\%s", base, mf);
                 char *b = dupprintf("%s\\%s", base, mt);
@@ -151,6 +150,41 @@ static const char *rk_launcher_label(const char *name)
     return strchr(name, '\\') ? ksp_leaf(name) : name;
 }
 
+/* One value of an open key, its name and data in full (sfree both; the data
+ * is followed by two NULs). The answer is RegEnumValueA's; anything but
+ * ERROR_SUCCESS leaves both NULL. */
+static LONG rk_enum_value(HKEY k, DWORD i, char **name, char **data,
+                          DWORD *type)
+{
+    DWORD dcap = 4096;
+    *name = NULL;
+    *data = NULL;
+    for (;;) {
+        /* a value name is at most 16383 characters */
+        DWORD nl = MAX_VALUE_NAME + 1, dl = dcap;
+        LONG rc;
+        *name = snewn(MAX_VALUE_NAME + 1, char);
+        *data = snewn(dcap + 2, char);
+        rc = RegEnumValueA(k, i, *name, &nl, NULL, type, (BYTE *)*data, &dl);
+        if (rc == ERROR_SUCCESS && dl <= dcap) {
+            (*data)[dl] = (*data)[dl + 1] = '\0';
+            return rc;
+        }
+        sfree(*name);
+        sfree(*data);
+        *name = NULL;
+        *data = NULL;
+        if (rc != ERROR_SUCCESS && rc != ERROR_MORE_DATA)
+            return rc;
+        /* the data is longer: dl holds the size it needs */
+        if (dl <= dcap)
+            dl = dcap * 2;
+        if (dl > 64 * 1024 * 1024)
+            return ERROR_MORE_DATA;
+        dcap = dl;
+    }
+}
+
 /* The launcher's copy of the session list in the registry: values whose
  * data identifies the session. */
 static void rk_launcher_reg_walk(const char *keypath, const char *from,
@@ -164,7 +198,8 @@ static void rk_launcher_reg_walk(const char *keypath, const char *from,
                       KEY_READ | KEY_SET_VALUE, &k) != ERROR_SUCCESS)
         return;
     for (i = 0;; i++) {
-        char name[1024];
+        /* a key name is at most 255 characters */
+        char name[MAX_KEY_LENGTH + 1];
         DWORD nl = sizeof(name);
         if (RegEnumKeyExA(k, i, name, &nl, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
             break;
@@ -178,19 +213,19 @@ static void rk_launcher_reg_walk(const char *keypath, const char *from,
         char **hits = NULL;
         int nh = 0, h;
         for (i = 0;; i++) {
-            char name[1024];
-            BYTE data[4096];
-            DWORD nl = sizeof(name), dl = sizeof(data) - 1, type = 0;
-            LONG rc = RegEnumValueA(k, i, name, &nl, NULL, &type, data, &dl);
+            char *name, *data;
+            DWORD type = 0;
+            LONG rc = rk_enum_value(k, i, &name, &data, &type);
             if (rc == ERROR_MORE_DATA)
-                continue;      /* longer than any session name: not ours */
+                continue;      /* past any sane size: not ours */
             if (rc != ERROR_SUCCESS)
                 break;
-            data[dl] = '\0';
-            if (type == REG_SZ && !stricmp((char *)data, from)) {
+            if (type == REG_SZ && !stricmp(data, from)) {
                 hits = sresize(hits, nh + 1, char *);
                 hits[nh++] = dupstr(name);
             }
+            sfree(name);
+            sfree(data);
         }
         for (h = 0; h < nh; h++) {
             RegDeleteValueA(k, hits[h]);
@@ -227,10 +262,11 @@ static void rk_launcher_dir_walk(const char *dir, const char *from,
             rk_launcher_dir_walk(full, from, to);
         } else {
             FILE *fp = fopen(full, "rb");
-            char line[4096];
+            char *line;
             bool hit = false;
             if (fp) {
-                if (fgets(line, sizeof(line), fp)) {
+                /* the entry line in full: a long one was not recognised */
+                if ((line = fgetline(fp)) != NULL) {
                     char *bs, *e;
                     size_t n = strlen(line);
                     while (n && (line[n-1] == '\n' || line[n-1] == '\r'))
@@ -240,6 +276,7 @@ static void rk_launcher_dir_walk(const char *dir, const char *from,
                     bs = strchr(line, '\\');
                     e = bs ? bs + 1 : NULL;
                     hit = e && !stricmp(e, from);
+                    sfree(line);
                 }
                 fclose(fp);
             }
@@ -351,7 +388,7 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
     int i, j, npre = 0;
     bool clash = false;
     char **pre = NULL;
-    char last[1024];
+    char *last;
 
     if (errmsg)
         *errmsg = NULL;
@@ -438,8 +475,7 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
     }
 
     pre = kitty_session_names(&npre);
-    if (!kitty_get_last_session(last, sizeof(last)))
-        last[0] = '\0';
+    last = kitty_get_last_session_dup();   /* in full; NULL = not set */
 
     for (i = 0; i < n; i++) {
         char *err;
@@ -471,9 +507,10 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
         rk_write_folder(to[i]);
         rk_jumplist(from[i], to[i]);
         rk_launcher(from[i], to[i]);
-        if (last[0] && !stricmp(last, from[i]))
+        if (last && last[0] && !stricmp(last, from[i]))
             kitty_set_last_session(to[i]);
     }
+    sfree(last);
     kitty_store_mark_dirty();
     kitty_session_folder_cache_clear();
 

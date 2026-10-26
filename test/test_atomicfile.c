@@ -8,6 +8,7 @@
  * KITTY_TEST_FAT_DIR naming a folder on a FAT volume the writes are checked
  * there too. Exit 0 = all passed.
  */
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,47 @@
 #include "kitty_atomicfile.h"
 
 static int fails = 0;
+
+/* printf into memory of its own (free it): the paths are held in full */
+static char *strf(const char *fmt, ...)
+{
+    size_t size = 256;
+    char *s = NULL;
+    int n;
+    va_list ap;
+    for (;;) {
+        char *t = realloc(s, size);
+        if (!t) {
+            free(s);
+            printf("FAIL  out of memory\n");
+            exit(1);
+        }
+        s = t;
+        va_start(ap, fmt);
+        n = vsnprintf(s, size, fmt, ap);
+        va_end(ap);
+        if (n >= 0 && (size_t)n < size)
+            return s;
+        size = n >= 0 ? (size_t)n + 1 : size * 2;
+    }
+}
+
+/* %TEMP% with its trailing backslash, in full (free it); NULL = not read */
+static char *temp_dir(void)
+{
+    DWORD n = GetTempPathA(0, NULL), got;
+    while (n) {
+        char *s = malloc(n);
+        if (!s)
+            return NULL;
+        got = GetTempPathA(n, s);
+        if (got && got < n)
+            return s;
+        free(s);
+        n = got ? got + 1 : 0;
+    }
+    return NULL;
+}
 
 static void check(int ok, const char *what)
 {
@@ -81,11 +123,11 @@ static int content_is(const char *path, const char *text)
 
 static int no_temp_left(const char *dir)
 {
-    char pat[MAX_PATH];
+    char *pat = strf("%s\\kft*.tmp", dir);
     WIN32_FIND_DATAA fd;
     HANDLE h;
-    snprintf(pat, sizeof(pat), "%s\\kft*.tmp", dir);
     h = FindFirstFileA(pat, &fd);
+    free(pat);
     if (h == INVALID_HANDLE_VALUE) return 1;
     FindClose(h);
     return 0;
@@ -93,7 +135,7 @@ static int no_temp_left(const char *dir)
 
 int main(void)
 {
-    char tmp[MAX_PATH], dir[MAX_PATH], f[MAX_PATH], sddl[512];
+    char *tmp, *dir, *f = NULL, sddl[512];
     char *sid, *before, *after;
     int pb = 0, pa = 0;
     PSECURITY_DESCRIPTOR sd = NULL;
@@ -101,12 +143,13 @@ int main(void)
     BOOL present = FALSE, defaulted = FALSE;
     const char *body = "Host example\r\n  User someone\r\n";
 
-    GetTempPathA(sizeof(tmp), tmp);
-    snprintf(dir, sizeof(dir), "%stest_atomicfile_%lu", tmp, GetCurrentProcessId());
+    if ((tmp = temp_dir()) == NULL) { printf("FAIL  %%TEMP%% not read (%lu)\n", GetLastError()); return 1; }
+    dir = strf("%stest_atomicfile_%lu", tmp, GetCurrentProcessId());
+    free(tmp);
     if (!CreateDirectoryA(dir, NULL)) { printf("FAIL  cannot create %s\n", dir); return 1; }
 
     /* 1. a new file: written, nothing left over */
-    snprintf(f, sizeof(f), "%s\\new.txt", dir);
+    f = strf("%s\\new.txt", dir);
     check(kitty_write_file_whole(f, body, strlen(body)), "a new file is written");
     check(content_is(f, body), "  with the content given");
     check(no_temp_left(dir), "  and no temporary file is left");
@@ -114,7 +157,7 @@ int main(void)
     /* 2. inheritance off, only SYSTEM and this user: kept exactly */
     sid = my_sid();
     check(sid != NULL, "this user's SID is read");
-    snprintf(f, sizeof(f), "%s\\config", dir);
+    free(f); f = strf("%s\\config", dir);
     check(put(f, "old\r\n"), "a file to replace is there");
     snprintf(sddl, sizeof(sddl), "D:P(A;;FA;;;SY)(A;;FA;;;%s)", sid ? sid : "OW");
     if (ConvertStringSecurityDescriptorToSecurityDescriptorA(sddl, SDDL_REVISION_1, &sd, NULL) &&
@@ -137,7 +180,7 @@ int main(void)
     check(no_temp_left(dir), "  and no temporary file is left");
 
     /* 3. a file that inherits from the folder: still inherits */
-    snprintf(f, sizeof(f), "%s\\inherits.txt", dir);
+    free(f); f = strf("%s\\inherits.txt", dir);
     check(put(f, "old\r\n"), "a file that inherits is there");
     before = dacl_text(f, &pb);
     check(kitty_write_file_whole(f, body, strlen(body)), "the inheriting file is replaced");
@@ -147,7 +190,7 @@ int main(void)
     LocalFree(before); LocalFree(after);
 
     /* 4. a hidden file stays hidden */
-    snprintf(f, sizeof(f), "%s\\hidden.txt", dir);
+    free(f); f = strf("%s\\hidden.txt", dir);
     check(put(f, "old\r\n") && SetFileAttributesA(f, FILE_ATTRIBUTE_HIDDEN), "a hidden file is there");
     check(kitty_write_file_whole(f, body, strlen(body)), "the hidden file is replaced");
     check((GetFileAttributesA(f) & FILE_ATTRIBUTE_HIDDEN) != 0, "  it is still hidden");
@@ -159,11 +202,10 @@ int main(void)
      * the writes must work as everywhere else */
     {
         const char *fat = getenv("KITTY_TEST_FAT_DIR");
-        char fd[MAX_PATH], ff[MAX_PATH];
         if (fat && *fat) {
-            snprintf(fd, sizeof(fd), "%s\\test_atomicfile_%lu", fat, GetCurrentProcessId());
+            char *fd = strf("%s\\test_atomicfile_%lu", fat, GetCurrentProcessId());
+            char *ff = strf("%s\\config", fd);
             check(CreateDirectoryA(fd, NULL), "FAT: a folder on the volume is made");
-            snprintf(ff, sizeof(ff), "%s\\config", fd);
             check(kitty_write_file_whole(ff, "old\r\n", 5), "FAT: a new file is written");
             check(kitty_write_file_whole(ff, body, strlen(body)), "FAT: an existing file is replaced");
             check(content_is(ff, body), "FAT:   with the new content");
@@ -175,17 +217,21 @@ int main(void)
             SetFileAttributesA(ff, FILE_ATTRIBUTE_NORMAL);
             DeleteFileA(ff);
             RemoveDirectoryA(fd);
+            free(ff);
+            free(fd);
         } else {
             printf("NOTE  no KITTY_TEST_FAT_DIR - the FAT case is not run here\n");
         }
     }
 
     /* clean up */
-    snprintf(f, sizeof(f), "%s\\new.txt", dir); DeleteFileA(f);
-    snprintf(f, sizeof(f), "%s\\config", dir); DeleteFileA(f);
-    snprintf(f, sizeof(f), "%s\\inherits.txt", dir); DeleteFileA(f);
-    snprintf(f, sizeof(f), "%s\\hidden.txt", dir); DeleteFileA(f);
+    free(f); f = strf("%s\\new.txt", dir); DeleteFileA(f);
+    free(f); f = strf("%s\\config", dir); DeleteFileA(f);
+    free(f); f = strf("%s\\inherits.txt", dir); DeleteFileA(f);
+    free(f); f = strf("%s\\hidden.txt", dir); DeleteFileA(f);
+    free(f);
     RemoveDirectoryA(dir);
+    free(dir);
     if (sid) LocalFree(sid);
 
     printf("%s - %d failed\n", fails ? "FAIL" : "PASS", fails);

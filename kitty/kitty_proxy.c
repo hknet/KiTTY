@@ -96,7 +96,6 @@ void kitty_proxy_resolve_selection( Conf *conf ) {
 void InitProxyList(void) {
 	HKEY hKey ;
 	int i,j;
-	char buffer[MAX_VALUE_NAME] ;
 	for( i=0; i<lenof(proxies); i++) {
 		if( proxies[i].name != NULL ) { free( proxies[i].name ) ; }   /* re-callable, no leak */
 		proxies[i].name = NULL;
@@ -113,89 +112,115 @@ void InitProxyList(void) {
 		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
 		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
-		snprintf( buffer, sizeof(buffer), "%s\\Proxies", kitty_registry_base() ) ;
-		RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
-		RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime);
+		char *key = dupprintf( "%s\\Proxies", kitty_registry_base() ) ;
+		LONG r ;
+		RegTestOrCreate( HKEY_CURRENT_USER, key, NULL, NULL ) ;
+		r = RegOpenKeyEx( HKEY_CURRENT_USER, key, 0, KEY_READ, &hKey) ;
+		sfree( key ) ;
+		if( r != ERROR_SUCCESS ) return ;
+		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS )
+			cSubKeys = 0 ;
 		if( cSubKeys>0 )
 			for (i=0; i<cSubKeys; i++) {
-				DWORD cchValue = MAX_VALUE_NAME;
-				char lpData[4096] ;
+				/* a key name is at most 255 characters */
+				char lpData[MAX_KEY_LENGTH + 1] ;
+				DWORD cchValue = sizeof(lpData) ;
 				if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
 				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
 					if( strcmp(lpData,"None") && strcmp(lpData,"Default") ) {
+						/* unescaping never makes a name longer */
 						proxies[j].name=(char*)malloc(strlen(lpData)+1);
-						unmungestr( lpData, proxies[j].name, MAX_VALUE_NAME ) ;
+						unmungestr( lpData, proxies[j].name, (int)strlen(lpData)+1 ) ;
 						j++;
 					}
 				}
 			}
 		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		char fullpath[MAX_VALUE_NAME], pdir[MAX_VALUE_NAME];
+		char *pdir = portable_config_subdir( "Proxies" ) ;
 		DIR * dir ;
 		struct dirent * de ;
-		portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
 		/* Reading only: this runs at every connect. No Proxies folder = no
 		 * named proxies; the folder is made by the first save (SaveProxyInfo).
 		 * It used to be made here, with a box when that failed - at every
 		 * connect from a write-protected store. */
-		if( pdir[0] && (dir=opendir(pdir)) != NULL ) {
+		if( pdir && pdir[0] && (dir=opendir(pdir)) != NULL ) {
 			while( (de=readdir(dir)) != NULL )
 			if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
 			else if( de->d_name[0] != '.' )	{	/* ., .., .gitkeep */
 				DWORD a ;
-				snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, de->d_name ) ;
+				char *fullpath = dupprintf( "%s\\%s", pdir, de->d_name ) ;
 				/* Files only. The test was !(attributes & NORMAL): it skipped a
 				 * file whose only attribute is NORMAL and listed folders. */
 				a = GetFileAttributes( fullpath ) ;
+				sfree( fullpath ) ;
 				if( a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY) ) {
 					if( strcmp(de->d_name,"None") && strcmp(de->d_name,"Default") ) {
 						proxies[j].name=(char*)malloc(strlen(de->d_name)+1);
-						unmungestr( de->d_name, proxies[j].name, MAX_VALUE_NAME ) ;
+						unmungestr( de->d_name, proxies[j].name, (int)strlen(de->d_name)+1 ) ;
 						j++;
 					}
 				}
 			}
 			closedir(dir) ;
 		}
+		sfree( pdir ) ;
 	}
 }
 
+/* The definition's file in the folder store: <configdir>\Proxies\<escaped
+ * name> in full (sfree it); NULL when there is no configuration folder. */
+static char *proxy_file_path( const char *name ) {
+	char *pdir = portable_config_subdir( "Proxies" ), *fn, *path ;
+	if( pdir == NULL ) return NULL ;
+	fn = mungestr_dup( name ) ;
+	path = dupprintf( "%s\\%s", pdir, fn ) ;
+	sfree( fn ) ;
+	sfree( pdir ) ;
+	return path ;
+}
+
+/* The definition's registry key below the hive in use, in full (sfree it). */
+static char *proxy_reg_key( const char *name ) {
+	char *m = mungestr_dup( name ) ;
+	char *key = dupprintf( "%s\\Proxies\\%s", kitty_registry_base(), m ) ;
+	sfree( m ) ;
+	return key ;
+}
+
 int LoadProxyInfo( Conf * conf, const char * name ) {
-	char buffer[MAX_VALUE_NAME] ;
 	if( !strcmp(name,KITTY_PROXY_SESSION) ) { return 0 ; }
-	if( !strcmp(name,KITTY_PROXY_NONE) ) { 
+	if( !strcmp(name,KITTY_PROXY_NONE) ) {
 		debug_logevent( "Remove proxy definition" ) ;
-		conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ; 
+		conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
 		return 1 ;
 	}
 	debug_logevent( "Load proxy \"%s\" definition", name ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		HKEY hKey ;
-		snprintf( buffer, sizeof(buffer), "%s\\Proxies\\", kitty_registry_base() ) ;
-		char *b = (char*)malloc(4*strlen(name)+1);
-		mungestr(name,b);
-		{ size_t _bl=strlen(buffer); snprintf( buffer+_bl, sizeof(buffer)-_bl, "%s", b ) ; }
-		free(b);
+		char *buffer = proxy_reg_key( name ) ;
+		char *lpData ;
 		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) {
 			debug_logevent( "Unable to load proxy definition" ) ;
+			sfree( buffer ) ;
 			return 0;
 		}
-		char lpData[4096] ;
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyExcludeList", lpData, sizeof(lpData) ) ) { 
-			conf_set_str( conf, CONF_proxy_exclude_list, lpData ) ; 
+		/* each value read in full (GetValueDataDup); NULL = not there */
+		#define PXV(N) ( lpData = GetValueDataDup( HKEY_CURRENT_USER, buffer, (N) ) )
+		if( PXV( "ProxyExcludeList" ) ) {
+			conf_set_str( conf, CONF_proxy_exclude_list, lpData ) ;
+			sfree( lpData ) ;
 		}
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyDNS", lpData, sizeof(lpData) ) ) {
+		if( PXV( "ProxyDNS" ) ) {
 			int i=atoi(lpData);
 			conf_set_int(conf, CONF_proxy_dns, (i+1)%3);
+			sfree( lpData ) ;
 		}
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLocalhost", lpData, sizeof(lpData) ) ) { 
-			if( atoi(lpData) == 0 ) { conf_set_bool( conf, CONF_even_proxy_localhost, false ) ; 
-			} else { conf_set_bool( conf, CONF_even_proxy_localhost, true ) ;
-			}			
+		if( PXV( "ProxyLocalhost" ) ) {
+			conf_set_bool( conf, CONF_even_proxy_localhost, atoi(lpData) != 0 ) ;
+			sfree( lpData ) ;
 		}
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyMethod", lpData, sizeof(lpData) ) ) {
+		if( PXV( "ProxyMethod" ) ) {
 			int i = atoi(lpData) ;
 			if (i == 0) conf_set_int(conf, CONF_proxy_type, PROXY_NONE);
 			else if (i == 1) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS4) ;
@@ -207,38 +232,42 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
 			else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
 			else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
+			sfree( lpData ) ;
 		}
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyHost", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_host, lpData ) ; }
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyPort", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_port, atoi(lpData) ) ; }
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyUsername", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_username, lpData ) ; }
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyPassword", lpData, sizeof(lpData) ) ) {
+		if( PXV( "ProxyHost" ) ) { conf_set_str( conf, CONF_proxy_host, lpData ) ; sfree( lpData ) ; }
+		if( PXV( "ProxyPort" ) ) { conf_set_int( conf, CONF_proxy_port, atoi(lpData) ) ; sfree( lpData ) ; }
+		if( PXV( "ProxyUsername" ) ) { conf_set_str( conf, CONF_proxy_username, lpData ) ; sfree( lpData ) ; }
+		if( PXV( "ProxyPassword" ) ) {
 			char *pt = NULL ; kitty_secret_unwrap( lpData, &pt ) ;   /* DPAPI/MPW/plain */
 			/* Wrapped again for memory, not left in the clear in the Conf. */
 			kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
 			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
+			smemclr( lpData, strlen(lpData) ) ;
+			sfree( lpData ) ;
 		}
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyTelnetCommand", lpData, sizeof(lpData) ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; }
-		if( GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyLogToTerm", lpData, sizeof(lpData) ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; }
+		if( PXV( "ProxyTelnetCommand" ) ) { conf_set_str( conf, CONF_proxy_telnet_command, lpData ) ; sfree( lpData ) ; }
+		if( PXV( "ProxyLogToTerm" ) ) { conf_set_int( conf, CONF_proxy_log_to_term, atoi(lpData) ) ; sfree( lpData ) ; }
 		/* Absent means the proxy sets nothing, so this is not read with a 0
 		 * default: 0 is an answer here. */
-		conf_set_int( conf, CONF_proxy_host_kind,
-			GetValueDataN(HKEY_CURRENT_USER, buffer, "ProxyHostIs", lpData, sizeof(lpData) )
-				? (atoi(lpData) ? 1 : 0) : -1 ) ;
+		if( PXV( "ProxyHostIs" ) ) {
+			conf_set_int( conf, CONF_proxy_host_kind, atoi(lpData) ? 1 : 0 ) ;
+			sfree( lpData ) ;
+		} else
+			conf_set_int( conf, CONF_proxy_host_kind, -1 ) ;
+		#undef PXV
 		RegCloseKey( hKey ) ;
+		sfree( buffer ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		char fullpath[MAX_VALUE_NAME] ;
-		char *filename = (char*) malloc( 4*strlen(name)+1 ) ;
+		char *fullpath = proxy_file_path( name ) ;
 		struct ksf_item *items ;
 		const char *v ;
-		mungestr( name, filename ) ;
-		{ char pdir[MAX_VALUE_NAME] ; portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
-		  snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, filename ) ; }
-		free( filename ) ;
 		/* Read with the session-file reader (ksf_load): it takes both line
 		 * forms, Key=value and old KiTTY's Key\value\, and hex escapes in
 		 * either case. The line reader used before knew only Key\value\, so
 		 * a definition written as Key=value loaded empty (no host, port 0). */
-		if( (items = ksf_load( fullpath )) == NULL ) return 1 ;
+		items = fullpath ? ksf_load( fullpath ) : NULL ;
+		sfree( fullpath ) ;
+		if( items == NULL ) return 1 ;
 		if( (v = ksf_list_get( items, "ProxyExcludeList" )) != NULL ) conf_set_str( conf, CONF_proxy_exclude_list, v ) ;
 		if( (v = ksf_list_get( items, "ProxyDNS" )) != NULL ) conf_set_int( conf, CONF_proxy_dns, (atoi(v)+1)%3 ) ;
 		if( (v = ksf_list_get( items, "ProxyLocalhost" )) != NULL ) conf_set_bool( conf, CONF_even_proxy_localhost, atoi(v) != 0 ) ;
@@ -323,10 +352,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 	DWORD saverr = 0 ;
 	char *pwblob = kitty_secret_wrap_current_backend_kept( pxpw, &pwlocked ) ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
-		char sub[2048] ;
-		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
-		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ;
-		free( m ) ;
+		char *sub = proxy_reg_key( name ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, NULL, NULL ) ;
 		RegTestOrCreate( HKEY_CURRENT_USER, sub, "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
 		RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyDNS", dns ) ;
@@ -343,6 +369,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 			RegDelValue( HKEY_CURRENT_USER, sub, "ProxyHostIs" ) ;   /* sets nothing */
 		else
 			RegTestOrCreateDWORD( HKEY_CURRENT_USER, sub, "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
+		sfree( sub ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* Read first and saved through the folder store's line list
 		 * (kitty_storage.c ksf_*), as a session file is: the lines keep their
@@ -353,15 +380,19 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		 * (ReadPortableValue). The file used to be written afresh in a fixed
 		 * order, so every save was a diff of the whole file.
 		 * The Proxies folder is made here, by the first save, and nowhere else. */
-		char dir[2048], fullpath[2048], num[16] ;
+		char *dir = portable_config_subdir( "Proxies" ), *fullpath = NULL, num[16] ;
 		struct ksf_item *items ;
-		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
-		portable_config_path( dir, sizeof(dir), "Proxies" ) ;
-		snprintf( fullpath, sizeof(fullpath), "%s\\%s", dir, fn ) ;
-		free( fn ) ;
-		if( !MakeDir( dir ) ) {
-			saverr = GetLastError() ;
+		if( dir == NULL ) {
+			saverr = ERROR_PATH_NOT_FOUND ;   /* no configuration folder */
 			saved = 0 ;
+		} else {
+			char *fn = mungestr_dup( name ) ;
+			fullpath = dupprintf( "%s\\%s", dir, fn ) ;
+			sfree( fn ) ;
+			if( !MakeDir( dir ) ) {
+				saverr = GetLastError() ;
+				saved = 0 ;
+			}
 		}
 		items = saved ? ksf_load( fullpath ) : NULL ;
 		#define SPS(K,V) ksf_list_set( &items, (K), (V) )
@@ -390,6 +421,8 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 			saved = 0 ;
 		}
 		ksf_list_free( items ) ;
+		sfree( fullpath ) ;
+		sfree( dir ) ;
 	}
 	smemclr( pxpw, sizeof(pxpw) ) ;
 	if( pwblob ) { memset( pwblob, 0, strlen(pwblob) ) ; free( pwblob ) ; }
@@ -404,18 +437,13 @@ int DeleteProxyInfo( const char *name ) {
 	if( kitty_store_readonly() ) return KITTY_RO_REFUSED ;
 	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
-		char sub[2048] ;
-		char *m = (char*)malloc(4*strlen(name)+1) ; mungestr( name, m ) ;
-		snprintf( sub, sizeof(sub), "%s\\Proxies\\%s", kitty_registry_base(), m ) ;
-		free( m ) ;
+		char *sub = proxy_reg_key( name ) ;
 		RegDeleteKey( HKEY_CURRENT_USER, sub ) ;
+		sfree( sub ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
-		char fullpath[2048] ;
-		char *fn = (char*)malloc(4*strlen(name)+1) ; mungestr( name, fn ) ;
-		{ char pdir[2048] ; portable_config_path( pdir, sizeof(pdir), "Proxies" ) ;
-		  snprintf( fullpath, sizeof(fullpath), "%s\\%s", pdir, fn ) ; }
-		free( fn ) ;
-		remove( fullpath ) ;
+		char *fullpath = proxy_file_path( name ) ;
+		if( fullpath ) remove( fullpath ) ;
+		sfree( fullpath ) ;
 	}
 	return 1 ;
 }
@@ -444,9 +472,8 @@ static int kitty_proxies_migrated( void ) {
 }
 
 static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name ) {
-	char raw[4096] = "" ;
-	if( GetValueData( HKEY_CURRENT_USER, (char*)dstpath, "ProxyPassword", raw )
-	    && raw[0] && !kitty_secret_is_marked( raw ) ) {
+	char *raw = GetValueDataDup( HKEY_CURRENT_USER, dstpath, "ProxyPassword" ) ;
+	if( raw && raw[0] && !kitty_secret_is_marked( raw ) ) {
 		/* strip_plain: a PLAIN:-marked value is cleartext with a marker, so
 		 * protect the password and not the marker along with it. A refused
 		 * wrap (DPAPI failing) leaves the value as it is, and is reported. */
@@ -458,7 +485,7 @@ static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name 
 		} else if( kept )
 			ksec_report_locked_save( KSEC_KEPT_PROXY, name ) ;
 	}
-	memset( raw, 0, sizeof(raw) ) ;
+	if( raw ) { smemclr( raw, strlen(raw) ) ; sfree( raw ) ; }
 }
 
 void kitty_migrate_old_proxies( void ) {
@@ -469,15 +496,17 @@ void kitty_migrate_old_proxies( void ) {
 	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY\\Proxies", 0, KEY_READ, &hSrc ) == ERROR_SUCCESS ) {
 		DWORD idx ; FILETIME ft ;
 		for( idx = 0 ; ; idx++ ) {
-			char sub[MAX_KEY_LENGTH] ; DWORD subsz = sizeof(sub) ;
+			/* a key name is at most 255 characters, plus its NUL */
+			char sub[MAX_KEY_LENGTH + 1] ; DWORD subsz = sizeof(sub) ;
 			if( RegEnumKeyEx( hSrc, idx, sub, &subsz, NULL, NULL, NULL, &ft ) != ERROR_SUCCESS ) break ;
 			if( !strcmp(sub,"None") || !strcmp(sub,"Default") ) continue ;
-			char srcpath[2048], dstpath[2048] ;
-			snprintf( srcpath, sizeof(srcpath), "Software\\9bis.com\\KiTTY\\Proxies\\%s", sub ) ;
-			snprintf( dstpath, sizeof(dstpath), "%s\\Proxies\\%s", kitty_registry_base(), sub ) ;
+			char *srcpath = dupprintf( "Software\\9bis.com\\KiTTY\\Proxies\\%s", sub ) ;
+			char *dstpath = dupprintf( "%s\\Proxies\\%s", kitty_registry_base(), sub ) ;
 			if( !RegTestKey( HKEY_CURRENT_USER, dstpath ) )
 				kitty_RegCopyTree( HKEY_CURRENT_USER, srcpath, dstpath ) ;  /* all fields (pw plaintext) */
 			kitty_proxy_encrypt_in_place( dstpath, sub ) ;                  /* protect if still plaintext */
+			sfree( srcpath ) ;
+			sfree( dstpath ) ;
 		}
 		RegCloseKey( hSrc ) ;
 	}
@@ -492,16 +521,16 @@ void kitty_migrate_old_proxies( void ) {
  * by name to match session import (hknet/KiTTY#11). */
 
 int kitty_export_proxies_to_dir( const char *dir ) {
-	char pdir[2048] ; int count = 0 ;
+	char *pdir ; int count = 0 ;
 	InitProxyList() ;
 	if( !proxies[2].name ) return 0 ;   /* no named proxies -> don't create an empty Proxies\ folder */
-	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
+	pdir = dupprintf( "%s\\Proxies", dir ) ;
 	MakeDir( pdir ) ;
 	for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ ) {
 		Conf *conf = conf_new() ; do_defaults( NULL, conf ) ;
 		LoadProxyInfo( conf, proxies[i].name ) ;         /* decrypts pw into CONF_proxy_password */
-		char *fn = (char*)malloc(4*strlen(proxies[i].name)+1) ; mungestr( proxies[i].name, fn ) ;
-		char path[2048] ; snprintf( path, sizeof(path), "%s\\%s", pdir, fn ) ; free( fn ) ;
+		char *fn = mungestr_dup( proxies[i].name ) ;
+		char *path = dupprintf( "%s\\%s", pdir, fn ) ; sfree( fn ) ;
 		char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */
 		kitty_pw_get( conf, CONF_proxy_password, pxpw, sizeof(pxpw) ) ;
 		/* MPW2 (or DPAPI1 for "this PC only"); a failed wrap writes no
@@ -513,10 +542,10 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 		smemclr( pxpw, sizeof(pxpw) ) ;
 		FILE *fp = fopen( path, "w" ) ;
 		if( fp ) {
-			char mv[4096] ;
 			int dns = (conf_get_int(conf, CONF_proxy_dns) + 2) % 3 ;
 			int local = conf_get_bool(conf, CONF_even_proxy_localhost) ? 1 : 0 ;
-			#define WPS(K,V) do { mungestr((V), mv) ; fprintf(fp, "%s\\%s\\\n", (K), mv) ; } while(0)
+			/* each value escaped in full (up to three bytes per character) */
+			#define WPS(K,V) do { char *mv = mungestr_dup( (V) ) ; fprintf(fp, "%s\\%s\\\n", (K), mv) ; smemclr( mv, strlen(mv) ) ; sfree( mv ) ; } while(0)
 			#define WPD(K,D) fprintf(fp, "%s\\%d\\\n", (K), (D))
 			WPS( "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
 			WPD( "ProxyDNS", dns ) ;
@@ -537,8 +566,10 @@ int kitty_export_proxies_to_dir( const char *dir ) {
 		}
 		if( pwblob ) { memset(pwblob,0,strlen(pwblob)) ; free(pwblob) ; }
 		if( pwlocked ) ksec_report_locked_save( KSEC_KEPT_EXPORT, path ) ;
+		sfree( path ) ;
 		conf_free( conf ) ;
 	}
+	sfree( pdir ) ;
 	return count ;
 }
 
@@ -553,17 +584,16 @@ int kitty_proxy_name_exists( const char *name ) {
 /* How many proxy definitions in dir\Proxies already exist in the active store
  * (used to warn about overwrites before an import). */
 int kitty_proxies_dir_collisions( const char *dir ) {
-	char pdir[2048], pat[2048] ; int c = 0 ;
-	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
-	snprintf( pat, sizeof(pat), "%s\\*", pdir ) ;
+	char *pat ; int c = 0 ;
+	pat = dupprintf( "%s\\Proxies\\*", dir ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
+	sfree( pat ) ;
 	if( h == INVALID_HANDLE_VALUE ) return 0 ;
 	do {
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
-		char *name = (char*)malloc( strlen(fd.cFileName)*4 + 1 ) ;
-		unmungestr( fd.cFileName, name, MAX_VALUE_NAME ) ;
+		char *name = unmungestr_dup( fd.cFileName ) ;
 		if( name[0] && kitty_proxy_name_exists( name ) ) c++ ;
-		free( name ) ;
+		sfree( name ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
 	return c ;
@@ -572,26 +602,32 @@ int kitty_proxies_dir_collisions( const char *dir ) {
 /* overwrite==0: keep existing proxies of the same name, import only new ones.
  * Returns the number imported; *skippedOut (optional) gets the number kept. */
 int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedOut ) {
-	char pdir[2048], pat[2048] ; int count = 0, skipped = 0 ;
-	snprintf( pdir, sizeof(pdir), "%s\\Proxies", dir ) ;
-	snprintf( pat, sizeof(pat), "%s\\*", pdir ) ;
+	char *pdir, *pat ; int count = 0, skipped = 0 ;
+	pdir = dupprintf( "%s\\Proxies", dir ) ;
+	pat = dupprintf( "%s\\*", pdir ) ;
 	WIN32_FIND_DATAA fd ; HANDLE h = FindFirstFileA( pat, &fd ) ;
-	if( h == INVALID_HANDLE_VALUE ) return 0 ;
+	sfree( pat ) ;
+	if( h == INVALID_HANDLE_VALUE ) { sfree( pdir ) ; return 0 ; }
 	do {
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) continue ;
-		char path[2048] ; snprintf( path, sizeof(path), "%s\\%s", pdir, fd.cFileName ) ;
+		char *path = dupprintf( "%s\\%s", pdir, fd.cFileName ) ;
 		FILE *fp = fopen( path, "r" ) ;
+		sfree( path ) ;
 		if( !fp ) continue ;
 		Conf *conf = conf_new() ; do_defaults( NULL, conf ) ;
-		char buffer[MAX_VALUE_NAME], buf2[MAX_VALUE_NAME]="" ;
-		while( fgets(buffer,MAX_VALUE_NAME,fp)!=NULL ) {
-			if( ReadPortableValue(buffer, "ProxyExcludeList", buf2, MAX_VALUE_NAME) ) {
+		char *buffer ;
+		/* each line in full; its value is never longer than the line */
+		while( (buffer = kitty_fgetline( fp )) != NULL ) {
+			int maxlen = (int)strlen( buffer ) + 1 ;
+			char *buf2 = snewn( maxlen, char ) ;
+			buf2[0] = '\0' ;
+			if( ReadPortableValue(buffer, "ProxyExcludeList", buf2, maxlen) ) {
 				conf_set_str( conf, CONF_proxy_exclude_list, buf2 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyDNS", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyDNS", buf2, maxlen) ) {
 				conf_set_int( conf, CONF_proxy_dns, (atoi(buf2)+1)%3 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyLocalhost", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyLocalhost", buf2, maxlen) ) {
 				conf_set_bool( conf, CONF_even_proxy_localhost, atoi(buf2)!=0 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyMethod", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyMethod", buf2, maxlen) ) {
 				int i = atoi(buf2) ;
 				if (i == 1) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS4) ;
 				else if (i == 2) conf_set_int(conf, CONF_proxy_type, PROXY_SOCKS5) ;
@@ -602,37 +638,41 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 				else if (i == 7) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_EXEC) ;
 				else if (i == 8) conf_set_int(conf, CONF_proxy_type, PROXY_SSH_SUBSYSTEM) ;
 				else conf_set_int(conf, CONF_proxy_type, PROXY_NONE) ;
-			} else if( ReadPortableValue(buffer, "ProxyHost", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyHost", buf2, maxlen) ) {
 				conf_set_str( conf, CONF_proxy_host, buf2 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyPort", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyPort", buf2, maxlen) ) {
 				conf_set_int( conf, CONF_proxy_port, atoi(buf2) ) ;
-			} else if( ReadPortableValue(buffer, "ProxyUsername", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyUsername", buf2, maxlen) ) {
 				conf_set_str( conf, CONF_proxy_username, buf2 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyPassword", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyPassword", buf2, maxlen) ) {
 				char *pt = NULL ; kitty_secret_unwrap( buf2, &pt ) ;   /* MPW2/legacy -> plain */
 				/* Wrapped again for memory (kitty_pwmem.c). */
 				kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
 				if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
-			} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, maxlen) ) {
 				conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ;
-			} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, MAX_VALUE_NAME) ) {
+			} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, maxlen) ) {
 				conf_set_int( conf, CONF_proxy_log_to_term, atoi(buf2) ) ;
-			} else if( ReadPortableValue(buffer, "ProxyHostIs", buf2, MAX_VALUE_NAME) ) {
-						conf_set_int( conf, CONF_proxy_host_kind, atoi(buf2) ? 1 : 0 ) ;
-					}
+			} else if( ReadPortableValue(buffer, "ProxyHostIs", buf2, maxlen) ) {
+				conf_set_int( conf, CONF_proxy_host_kind, atoi(buf2) ? 1 : 0 ) ;
+			}
+			smemclr( buf2, maxlen ) ;
+			sfree( buf2 ) ;
+			memset( buffer, 0, strlen(buffer) ) ;
+			free( buffer ) ;
 		}
 		fclose( fp ) ;
-		char *name = (char*)malloc( strlen(fd.cFileName)*4 + 1 ) ;
-		unmungestr( fd.cFileName, name, MAX_VALUE_NAME ) ;
+		char *name = unmungestr_dup( fd.cFileName ) ;
 		if( name[0] ) {
 			if( overwrite || !kitty_proxy_name_exists(name) ) {
 				if( SaveProxyInfo( conf, name ) ) count++ ;   /* re-wraps per dest backend */
 			} else skipped++ ;                            /* keep the existing proxy */
 		}
-		free( name ) ;
+		sfree( name ) ;
 		conf_free( conf ) ;
 	} while( FindNextFileA( h, &fd ) ) ;
 	FindClose( h ) ;
+	sfree( pdir ) ;
 	if( skippedOut ) *skippedOut = skipped ;
 	return count ;
 }

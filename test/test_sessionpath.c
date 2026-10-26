@@ -59,6 +59,10 @@ void mungestr(const char *in, char *out)
     strcpy(out, m);
     sfree(m);
 }
+char *mungestr_dup(const char *in)
+{
+    return ksf_munge(in);
+}
 bool kitty_own_session_exists(const char *name)
 {
     char *p = (name && *name) ? ksf_session_find(name) : NULL;

@@ -2928,23 +2928,27 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         ListView_SetExtendedListViewStyle(st->taglist, LVS_EX_FULLROWSELECT);
         SendMessageA(st->taglist, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
         {
-            char t[256];
-            st->tag = dupstr(kitty_state_get_string(KR_MANAGE_TAG, t, sizeof(t)) ? t : "");
+            char *t = kitty_state_get_dup(KR_MANAGE_TAG);
+            st->tag = t ? t : dupstr("");
             SetWindowTextA(st->tagcombo, st->tag);
         }
 
-        /* the folder and the session it was left on (a folder gone since
-         * falls back to the root in so_reload) */
+        /* the folder and the session it was left on, each in full (a folder
+         * gone since falls back to the root in so_reload) */
         {
-            char f[1024];
-            st->cur = dupstr(kitty_state_get_string(KR_MANAGE_FOLDER, f, sizeof(f)) &&
-                             !ksp_folder_is_root(f) ? f : "");
+            char *f = kitty_state_get_dup(KR_MANAGE_FOLDER);
+            if (f && ksp_folder_is_root(f)) {
+                sfree(f);
+                f = NULL;
+            }
+            st->cur = f ? f : dupstr("");
         }
         so_reload(st);
         {
-            char sn[1024];
-            if (kitty_state_get_string(KR_MANAGE_SESSION, sn, sizeof(sn)))
+            char *sn = kitty_state_get_dup(KR_MANAGE_SESSION);
+            if (sn)
                 so_select_session(st, sn);
+            sfree(sn);
         }
 
         {

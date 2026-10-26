@@ -165,7 +165,6 @@ void ksf_list_free(struct ksf_item *h);
 void kitty_set_config_dir(const char *dir);
 char *portable_proxies_dir(void);   /* <configdir>\Proxies, snewn'd or NULL */
 char *portable_config_subdir(const char *subdir);  /* <configdir>\subdir: Proxies, Launcher */
-int portable_config_path(char *out, size_t n, const char *subdir);  /* the same into a buffer */
 char *ksf_session_path(const char *sessionname);  /* snewn'd or NULL */
 /* Session names as folder paths and the session file suffix (hknet/KiTTY#55,
  * #56); see kitty_storage.c. The suffix is set once at startup from kitty.ini
@@ -242,9 +241,10 @@ int kitty_showforeign_may_persist(void);
 /* ---- exported from kitty/kitty_storage.c ---- */
 /* a remembered string (portable state file or the hive in use); "" removes */
 void kitty_state_set_string(const char *key, const char *value);
-int kitty_state_get_string(const char *key, char *buf, int buflen);
-int kitty_get_last_folder(char *buf, int buflen);
-int kitty_get_last_session(char *buf, int buflen);
+/* In full (sfree it; NULL = not set). */
+char *kitty_state_get_dup(const char *key);
+char *kitty_get_last_folder_dup(void);
+char *kitty_get_last_session_dup(void);
 int kitty_has_foreign_sessions(void);
 int kitty_portable_load_state_dword(const char *key, DWORD *value);
 int kitty_portable_load_state_string(const char *key, char *buf, int buflen);
