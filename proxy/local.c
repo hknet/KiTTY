@@ -113,7 +113,7 @@ static void local_proxy_wev_used(Conf *conf, unsigned flags,
 {
     const char *cmd = conf_get_str(conf, CONF_proxy_telnet_command);
     const char *p, *end, *base;
-    char prog[260];
+    char *prog;
     size_t n;
 
     while (*cmd == ' ' || *cmd == '\t')
@@ -130,8 +130,7 @@ static void local_proxy_wev_used(Conf *conf, unsigned flags,
         if (*p == '\\' || *p == '/')
             base = p + 1;
     n = (size_t)(end - base);
-    if (n >= sizeof(prog))
-        n = sizeof(prog) - 1;
+    prog = snewn(n + 1, char);         /* the program's name in full */
     memcpy(prog, base, n);
     prog[n] = '\0';
     kitty_wev_proxy_used(
@@ -140,6 +139,7 @@ static void local_proxy_wev_used(Conf *conf, unsigned flags,
         conf_get_str(conf, CONF_proxy_username) : "",
         (flags & (TELNET_CMD_HAS_USERNAME | TELNET_CMD_HAS_PASSWORD)) != 0,
         purpose);
+    sfree(prog);
 }
 
 static void local_proxy_opener_coroutine(void *vctx)

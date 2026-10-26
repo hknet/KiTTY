@@ -245,28 +245,22 @@ static unsigned long ksm_nreads;
 char *ksm_file_folder(const char *path)
 {
     FILE *fp;
-    char line[1024];
+    char *line;
     char *found = NULL;
-    int at_line_start = 1;
     if (!path || !(fp = fopen(path, "rb")))
         return NULL;
     ksm_nreads++;
-    while (fgets(line, sizeof(line), fp)) {
-        size_t n = strlen(line);
-        int whole = (n > 0 && line[n - 1] == '\n');
-        if (at_line_start) {
-            char *f;
-            size_t m = n;
-            while (m && (line[m - 1] == '\n' || line[m - 1] == '\r'))
-                m--;
-            /* A Folder line longer than the buffer is not a folder anyone
-             * typed; only a whole line is read. */
-            if (whole && (f = ksm_line_folder(line, m)) != NULL) {
-                sfree(found);
-                found = f;
-            }
+    /* Each line in full, however long: the Folder value is a path. */
+    while ((line = fgetline(fp)) != NULL) {
+        char *f;
+        size_t m = strlen(line);
+        while (m && (line[m - 1] == '\n' || line[m - 1] == '\r'))
+            m--;
+        if ((f = ksm_line_folder(line, m)) != NULL) {
+            sfree(found);
+            found = f;
         }
-        at_line_start = whole;
+        sfree(line);
     }
     fclose(fp);
     return found;

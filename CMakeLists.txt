@@ -653,6 +653,30 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking docs/SESSION-FILES.md against the session keys in the source")
   add_custom_target(check_session_files_doc ALL
                     DEPENDS ${KITTY_SESSION_DOC_STAMP})
+
+  # Fixed character arrays of 256 bytes or more, or sized with MAX_PATH: a
+  # path or a value from outside longer than the array is cut or overflows
+  # it, silently. Each one must go (memory sized to the value) or be listed
+  # with the reason its size is safe in tools/fixed-arrays.allow; a listed
+  # array that no longer exists fails too. Every .c and .h of the tree is
+  # read (the same glob as the Conf check). The self-test runs first, on
+  # planted sources. utils depends on it, so every program - the release
+  # builds' explicit target lists included - runs the check.
+  set(KITTY_FIXARR_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_fixarr_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_FIXARR_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-fixed-arrays.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-fixed-arrays.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_FIXARR_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-fixed-arrays.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/fixed-arrays.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking fixed character arrays against tools/fixed-arrays.allow")
+  add_custom_target(check_fixed_arrays ALL DEPENDS ${KITTY_FIXARR_CHECK_STAMP})
+  add_dependencies(utils check_fixed_arrays)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

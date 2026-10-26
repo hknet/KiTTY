@@ -183,30 +183,32 @@ static void part_folder_value(void)
     expect_folder("Folder=\n", "", "an empty Folder value");
 }
 
-static char g_dir[1024];
+static char *g_dir;               /* the test's folder store, in full */
 
 static void put_file(const char *rel, const char *text)
 {
-    char path[1400];
-    FILE *fp;
-    snprintf(path, sizeof(path), "%s\\%s", g_dir, rel);
-    fp = fopen(path, "wb");
+    char *path = dupprintf("%s\\%s", g_dir, rel);
+    FILE *fp = fopen(path, "wb");
     if (fp) {
         fputs(text, fp);
         fclose(fp);
+    } else {
+        ok(false, "a fixture file can be written");
+        printf("      %s\n", path);
     }
+    sfree(path);
 }
 
 /* Back-date a file by an hour (its size stays what it is). */
 static void age_file(const char *rel)
 {
-    char path[1400];
+    char *path = dupprintf("%s\\%s", g_dir, rel);
     HANDLE h;
     FILETIME ft;
     ULARGE_INTEGER u;
-    snprintf(path, sizeof(path), "%s\\%s", g_dir, rel);
     h = CreateFileA(path, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ, NULL,
                     OPEN_EXISTING, 0, NULL);
+    sfree(path);
     if (h == INVALID_HANDLE_VALUE)
         return;
     GetSystemTimeAsFileTime(&ft);
@@ -221,9 +223,12 @@ static void age_file(const char *rel)
 
 static void mkdir_rel(const char *rel)
 {
-    char path[1400];
-    snprintf(path, sizeof(path), "%s\\%s", g_dir, rel);
-    CreateDirectoryA(path, NULL);
+    char *path = dupprintf("%s\\%s", g_dir, rel);
+    if (!CreateDirectoryA(path, NULL)) {
+        ok(false, "a fixture folder can be created");
+        printf("      %s\n", path);
+    }
+    sfree(path);
 }
 
 static void part_store(void)
@@ -292,25 +297,65 @@ static void part_store(void)
         printf("      got:  %s\n", menu);
     sfree(menu);
     ksm_rows_free(ids, folders, n);
+
+    /* A Folder line of any length is read in full: ten nested folders of
+     * 100 characters make a line of over 1024 bytes, and the session is
+     * filed in the deepest one. */
+    {
+        strbuf *line = strbuf_new(), *want = strbuf_new();
+        char comp[101];
+        int k;
+        put_dataz(line, "HostName=l\nFolder=Deep");
+        put_dataz(want, "[Deep");
+        for (k = 0; k < 10; k++) {
+            memset(comp, 'a' + k, 100);
+            comp[100] = '\0';
+            put_dataz(line, "%5C");
+            put_dataz(line, comp);
+            put_dataz(want, " [");
+            put_dataz(want, comp);
+        }
+        put_dataz(line, "\n");
+        put_dataz(want, " long=long");
+        for (k = 0; k < 11; k++)
+            put_dataz(want, " ]");
+        ok(line->len > 1024, "the fixture's Folder line is over 1024 bytes");
+        put_file("long.ktx", line->s);
+        n = ksm_folder_store_rows(g_dir, ".ktx", &ids, &folders);
+        menu = menu_text(ids, folders, n, true);
+        ok(strstr(menu, want->s) != NULL,
+           "a Folder line over 1024 bytes files its session in its folder");
+        if (!strstr(menu, want->s))
+            printf("      want: ...%s...\n      got:  %s\n", want->s, menu);
+        sfree(menu);
+        ksm_rows_free(ids, folders, n);
+        strbuf_free(line);
+        strbuf_free(want);
+    }
 }
 
 int main(int argc, char **argv)
 {
     const char *tmp = getenv("TEMP");
-    char cmd[1200];
+    char *cmd;
     if (!tmp || !*tmp) tmp = getenv("TMP");
     if (!tmp || !*tmp) tmp = ".";
-    snprintf(g_dir, sizeof(g_dir), "%s\\kitty_test_sessmenu", tmp);
+    g_dir = dupprintf("%s\\kitty_test_sessmenu", tmp);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
 
     part_build();
     part_folder_value();
 
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
-    CreateDirectoryA(g_dir, NULL);
-    part_store();
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    if (CreateDirectoryA(g_dir, NULL))
+        part_store();
+    else {
+        ok(false, "the test folder store can be created");
+        printf("      %s\n", g_dir);
+    }
     system(cmd);
+    sfree(cmd);
+    sfree(g_dir);
 
     printf("\n%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

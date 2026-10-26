@@ -139,27 +139,28 @@ static int index_of(struct sesslist *sl, const char *name)
 
 int main(int argc, char **argv)
 {
-    char dir[1024];
+    char *dir;
     const char *tmp = getenv("TEMP");
     if (!tmp || !*tmp) tmp = getenv("TMP");
     if (!tmp || !*tmp) tmp = ".";
-    snprintf(dir, sizeof(dir), "%s\\kitty_test_sessionlist", tmp);
+    dir = dupprintf("%s\\kitty_test_sessionlist", tmp);
     /* no kitty.ini in charge (a name nothing creates): the machine's own,
      * readonly=yes in it included, stays out of the test */
     {
-        char noini[1100];
-        snprintf(noini, sizeof(noini), "%s\\none\\kitty.ini", dir);
-        kitty_inifile_pin(noini);
+        char *noini = dupprintf("%s\\none\\kitty.ini", dir);
+        kitty_inifile_pin(noini);          /* it keeps a copy */
+        sfree(noini);
     }
 
     /* A fresh directory every run: a leftover session from a previous run would
      * quietly change the expected order. */
     {
-        char cmd[1100];
-        snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", dir);
+        char *cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", dir);
         system(cmd);
-        snprintf(cmd, sizeof(cmd), "mkdir \"%s\" 2>nul", dir);
+        sfree(cmd);
+        cmd = dupprintf("mkdir \"%s\" 2>nul", dir);
         system(cmd);
+        sfree(cmd);
     }
 
     kitty_set_storage_mode(1);
@@ -340,10 +341,11 @@ int main(int argc, char **argv)
     }
 
     {
-        char cmd[1100];
-        snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", dir);
+        char *cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", dir);
         system(cmd);
+        sfree(cmd);
     }
+    sfree(dir);
 
     printf("\n%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;

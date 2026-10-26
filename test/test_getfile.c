@@ -5,6 +5,7 @@
  * non-zero on any failure.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../kitty/kitty_getfile_parse.h"
@@ -89,16 +90,20 @@ int main( void ) {
 	cls( "x\x01y",                     GF_CONTROL, NULL ) ;
 	cls( "/var/log/app.log",           GF_ONE,     NULL ) ;   /* not a URL: no "://" */
 	cls( "3dfiles://x",                GF_ONE,     NULL ) ;   /* a scheme starts with a letter */
-	{	char name[300], path[4200] ;
+	{	char name[300] ;
+		const size_t plen = 4200 ;
+		char *path = malloc( plen ) ;
 		memset( name, 'n', 256 ) ; name[256] = '\0' ;
 		cls( name, GF_TOOLONG, NULL ) ;                     /* a part over 255 bytes */
 		name[255] = '\0' ;
 		cls( name, GF_ONE, NULL ) ;                         /* 255 is still a name */
-		memset( path, 'p', sizeof(path) - 1 ) ; path[sizeof(path) - 1] = '\0' ;
-		for( int i = 100 ; i < (int)sizeof(path) - 1 ; i += 100 ) path[i] = '/' ;
+		if( !path ) { printf( "FAIL  no memory for the 4199-byte path\n" ) ; return 1 ; }
+		memset( path, 'p', plen - 1 ) ; path[plen - 1] = '\0' ;
+		for( int i = 100 ; i < (int)plen - 1 ; i += 100 ) path[i] = '/' ;
 		cls( path, GF_TOOLONG, NULL ) ;                     /* over 4095 in all */
 		path[4095] = '\0' ;
 		cls( path, GF_ONE, NULL ) ;                         /* 4095 is still a path */
+		free( path ) ;
 	}
 
 	/* the scp form: this host's path is taken, another host is not */

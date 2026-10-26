@@ -49,6 +49,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Saving a session whose character classes (Window > Copy & Paste) hold
   very large numbers no longer overflows memory, nor does a stored
   session with very large colour values.
+- kscp's Event Log transfer records, the local proxy's Event Log entries
+  and kageant's Saved Sessions menu keep long paths and folder names in
+  full.
 
 ## 0.85.1.18-beta — 2026-10-23
 

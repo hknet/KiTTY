@@ -360,7 +360,7 @@ static void part_pure(void)
 
 /* ------------------------------------------------------------------ */
 
-static char g_dir[1024];
+static char *g_dir;               /* the current fixture store, in full */
 
 static void make_session(const char *name, const char *host, const char *folder)
 {
@@ -844,7 +844,7 @@ static void part_registry(const char *tmp)
 {
     RegLoadAppKeyA_t load = (RegLoadAppKeyA_t)(void *)GetProcAddress(
         GetModuleHandleA("advapi32.dll"), "RegLoadAppKeyA");
-    char hive[1200], cmd[1300];
+    char *hive, *cmd;
     HKEY root;
     int i;
     enum { BIG = 70000 };
@@ -856,12 +856,12 @@ static void part_registry(const char *tmp)
         sfree(big); sfree(back);
         return;
     }
-    snprintf(hive, sizeof(hive), "%s\\kitty_test_sessionpath.hiv", tmp);
-    snprintf(cmd, sizeof(cmd), "del /q \"%s*\" 2>nul", hive);
+    hive = dupprintf("%s\\kitty_test_sessionpath.hiv", tmp);
+    cmd = dupprintf("del /q \"%s*\" 2>nul", hive);
     system(cmd);
     if (load(hive, &root, KEY_ALL_ACCESS, 0, 0) != ERROR_SUCCESS) {
         ok(false, "a private hive file can be loaded");
-        sfree(big); sfree(back);
+        sfree(big); sfree(back); sfree(hive); sfree(cmd);
         return;
     }
     for (i = 0; i < BIG - 1; i++)
@@ -942,6 +942,8 @@ static void part_registry(const char *tmp)
     system(cmd);
     sfree(big);
     sfree(back);
+    sfree(hive);
+    sfree(cmd);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1016,16 +1018,27 @@ static void part_store_blockers(void)
  * folder here (the session folder is not called Sessions). */
 static void part_commands_rename(const char *tmp)
 {
-    char cfg[1200], cmd[1300], *src, *dst;
+    char *cfg, *cmd, *src, *dst;
     head("a rename carries Sessions_Commands in the configuration directory");
-    snprintf(cfg, sizeof(cfg), "%s\\kitty_test_sp_cfg", tmp);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", cfg);
+    cfg = dupprintf("%s\\kitty_test_sp_cfg", tmp);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", cfg);
     system(cmd);
     src = dupprintf("%s\\Sessions_Commands\\cmdsrc\\1", cfg);
-    ksf_make_parent_dirs(src);
+    /* The configuration directory is outside the session store, where
+     * ksf_make_parent_dirs makes nothing: its folders are made here. */
     {
-        FILE *fp = fopen(src, "wb");
+        char *d1 = dupprintf("%s\\Sessions_Commands", cfg);
+        char *d2 = dupprintf("%s\\cmdsrc", d1);
+        FILE *fp;
+        CreateDirectoryA(cfg, NULL);
+        CreateDirectoryA(d1, NULL);
+        CreateDirectoryA(d2, NULL);
+        fp = fopen(src, "wb");
         if (fp) { fputs("echo hello\\\n", fp); fclose(fp); }
+        ok(GetFileAttributesA(src) != INVALID_FILE_ATTRIBUTES,
+           "fixture: Sessions_Commands\\cmdsrc\\1 in the configuration directory");
+        sfree(d1);
+        sfree(d2);
     }
     kitty_set_config_dir(cfg);
     make_session("cmdsrc", "cmd.example", NULL);
@@ -1038,6 +1051,13 @@ static void part_commands_rename(const char *tmp)
         ok(r == KITTY_REKEY_OK && GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES &&
            GetFileAttributesA(src) == INVALID_FILE_ATTRIBUTES,
            "the commands moved to Sessions_Commands\\cmddst with the session");
+        if (r != KITTY_REKEY_OK || GetFileAttributesA(dst) == INVALID_FILE_ATTRIBUTES ||
+            GetFileAttributesA(src) != INVALID_FILE_ATTRIBUTES)
+            printf("      rekey %d (%s), commands at the old name %s, at the new %s,"
+                   " session cmddst %s\n", r, err ? err : "no message",
+                   GetFileAttributesA(src) != INVALID_FILE_ATTRIBUTES ? "yes" : "no",
+                   GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES ? "yes" : "no",
+                   kitty_session_exists_own("cmddst") ? "exists" : "missing");
         sfree(err);
         sfree(dst);
     }
@@ -1045,6 +1065,8 @@ static void part_commands_rename(const char *tmp)
     del_settings("cmddst");
     kitty_set_config_dir("");
     system(cmd);
+    sfree(cfg);
+    sfree(cmd);
 }
 
 /* Set a file's last-write time to `seconds_ago` before now: the verdict
@@ -1088,14 +1110,13 @@ static unsigned long list_reads(int *n)
 
 static void part_verdict_cache(const char *tmp)
 {
-    char save_dir[1024], cmd[1300];
+    char *save_dir = g_dir, *cmd;
     int n;
     unsigned long r;
 
     head("verdict cache: a listing reads only new and changed files");
-    strcpy(save_dir, g_dir);
-    snprintf(g_dir, sizeof(g_dir), "%s\\kitty_test_sessionpath_cache", tmp);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    g_dir = dupprintf("%s\\kitty_test_sessionpath_cache", tmp);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
     CreateDirectoryA(g_dir, NULL);
     kitty_set_session_dir(g_dir);
@@ -1191,7 +1212,9 @@ static void part_verdict_cache(const char *tmp)
 
     kitty_set_session_suffix("");
     system(cmd);
-    strcpy(g_dir, save_dir);
+    sfree(cmd);
+    sfree(g_dir);
+    g_dir = save_dir;
     kitty_set_session_dir(g_dir);
 }
 
@@ -1248,14 +1271,14 @@ static void perf_cached(const char *what)
 
 static void part_perf(const char *tmp)
 {
-    char dir[1100], cmd[1300];
+    char *dir, *cmd;
     int n;
     double t0, t1;
     char **names;
 
     head("listing 500 session files of 15 KB (a measurement, not a verdict)");
-    snprintf(dir, sizeof(dir), "%s\\kitty_test_sessionpath_perf", tmp);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", dir);
+    dir = dupprintf("%s\\kitty_test_sessionpath_perf", tmp);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", dir);
     system(cmd);
     kitty_set_session_dir(dir);
     CreateDirectoryA(dir, NULL);
@@ -1313,24 +1336,33 @@ static void part_perf(const char *tmp)
 
     system(cmd);
     kitty_set_session_dir(g_dir);
+    sfree(dir);
+    sfree(cmd);
 }
 
 /* A fresh store of its own in g_dir (the caller keeps the old g_dir). */
 static void fresh_store(const char *tmp, const char *name)
 {
-    char cmd[1300];
-    snprintf(g_dir, sizeof(g_dir), "%s\\%s", tmp, name);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    char *cmd;
+    g_dir = dupprintf("%s\\%s", tmp, name);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
-    CreateDirectoryA(g_dir, NULL);
+    sfree(cmd);
+    if (!CreateDirectoryA(g_dir, NULL)) {
+        ok(false, "a fixture store folder can be created");
+        printf("      %s\n", g_dir);
+    }
     kitty_set_session_dir(g_dir);
 }
-static void drop_store(const char *save_dir)
+/* Remove the store fresh_store made and go back to save_dir (the g_dir
+ * the caller held before). */
+static void drop_store(char *save_dir)
 {
-    char cmd[1300];
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    char *cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
-    strcpy(g_dir, save_dir);
+    sfree(cmd);
+    sfree(g_dir);
+    g_dir = save_dir;
     kitty_set_session_dir(g_dir);
 }
 
@@ -1403,11 +1435,15 @@ static bool twin_row(const char *rel, const char *folder, const char *shown)
     char *want = dupprintf("%s\\%s", g_dir, rel);
     struct ksp_bad_file *v = ksf_enum_twins(&n);
     for (i = 0; i < n; i++) {
-        char path[1200];
-        WideCharToMultiByte(CP_ACP, 0, v[i].wpath, -1, path, sizeof(path), NULL, NULL);
-        if (!stricmp(path, want) && !strcmp(v[i].folder, folder) &&
+        int need = WideCharToMultiByte(CP_ACP, 0, v[i].wpath, -1, NULL, 0,
+                                       NULL, NULL);
+        char *path = need > 0 ? snewn(need, char) : NULL;
+        if (path && WideCharToMultiByte(CP_ACP, 0, v[i].wpath, -1, path,
+                                        need, NULL, NULL) > 0 &&
+            !stricmp(path, want) && !strcmp(v[i].folder, folder) &&
             !strcmp(v[i].shown, shown) && v[i].twin && !v[i].isdir)
             yes = true;
+        sfree(path);
     }
     ksp_bad_free(v, n);
     sfree(want);
@@ -1451,10 +1487,9 @@ static char *others_of(const char *name)
  * a red row under its real file name. */
 static void part_store_twins(const char *tmp)
 {
-    char save_dir[1024];
+    char *save_dir = g_dir;
 
     head("two files, one name: one reached, the other a red row");
-    strcpy(save_dir, g_dir);
     fresh_store(tmp, "kitty_test_sessionpath_twins");
     kitty_set_session_suffix(".ktx");
 
@@ -1594,12 +1629,11 @@ static bool miss(const char *name)
 
 static void part_store_alts(const char *tmp)
 {
-    char save_dir[1024];
+    char *save_dir = g_dir;
     unsigned long w;
     int i, misses;
 
     head("a miss looks in the table of old-escape files, not the folders");
-    strcpy(save_dir, g_dir);
     fresh_store(tmp, "kitty_test_sessionpath_alts");
     kitty_set_session_suffix(".ktx");
     write_file("t1\\a.ktx", "HostName=a.example\n");
@@ -1737,13 +1771,13 @@ static void miss_time(const char *what, bool oldesc)
 
 static void part_miss_perf(const char *tmp)
 {
-    char dir[1100], cmd[1300];
+    char *dir, *cmd;
     int n, pass;
     char **names;
 
     head("1000 misses in 2000 sessions / 300 folders (a measurement, not a verdict)");
-    snprintf(dir, sizeof(dir), "%s\\kitty_test_sessionpath_miss", tmp);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", dir);
+    dir = dupprintf("%s\\kitty_test_sessionpath_miss", tmp);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", dir);
     kitty_set_session_suffix(".ktx");
     for (pass = 0; pass < 2; pass++) {
         system(cmd);
@@ -1783,28 +1817,33 @@ static void part_miss_perf(const char *tmp)
     kitty_set_session_suffix("");
     system(cmd);
     kitty_set_session_dir(g_dir);
+    sfree(dir);
+    sfree(cmd);
 }
 
 int main(int argc, char **argv)
 {
     const char *tmp = getenv("TEMP");
-    char cmd[1200];
+    char *cmd;
     if (!tmp || !*tmp) tmp = getenv("TMP");
     if (!tmp || !*tmp) tmp = ".";
-    snprintf(g_dir, sizeof(g_dir), "%s\\kitty_test_sessionpath", tmp);
+    g_dir = dupprintf("%s\\kitty_test_sessionpath", tmp);
     /* no kitty.ini in charge (a name nothing creates): the machine's own,
      * readonly=yes in it included, stays out of the test */
-    snprintf(cmd, sizeof(cmd), "%s\\none\\kitty.ini", g_dir);
-    kitty_inifile_pin(cmd);
+    cmd = dupprintf("%s\\none\\kitty.ini", g_dir);
+    kitty_inifile_pin(cmd);              /* it keeps a copy */
+    sfree(cmd);
 
     part_pure();
     part_plan();
     part_registry(tmp);
 
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
-    snprintf(cmd, sizeof(cmd), "mkdir \"%s\" 2>nul", g_dir);
+    sfree(cmd);
+    cmd = dupprintf("mkdir \"%s\" 2>nul", g_dir);
     system(cmd);
+    sfree(cmd);
     kitty_set_storage_mode(1);
     kitty_set_session_dir(g_dir);
     if (store_is_file()) {
@@ -1820,8 +1859,10 @@ int main(int argc, char **argv)
     } else
         ok(false, "storage is in file mode against the fixture");
     kitty_set_storage_mode(0);
-    snprintf(cmd, sizeof(cmd), "rmdir /s /q \"%s\" 2>nul", g_dir);
+    cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
     system(cmd);
+    sfree(cmd);
+    sfree(g_dir);
 
     printf("\n%d checks, %d failed\n", checks, failures);
     return failures ? 1 : 0;
