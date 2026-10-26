@@ -695,6 +695,81 @@ void test_font_simple(int confid, const char *saveid)
     conf_free(conf);
 }
 
+/*
+ * The Wordness and Colour lines carry whatever int the Conf holds: a typed
+ * character class or a value from a stored session is not range-checked.
+ * 32 values of -1000000000 make a 383-character Wordness line and three a
+ * 35-character Colour line; both must be saved in full and load back as
+ * the same values.
+ */
+static void test_long_int_lists(void)
+{
+    Conf *conf = conf_new();
+    char wantw[400];
+    const char *wantc = "-1000000000,-1000000000,-1000000000";
+
+    do_defaults(NULL, conf);
+    wantw[0] = '\0';
+    for (int j = 0; j < 32; j++) {
+        conf_set_int_int(conf, CONF_wordness, j, -1000000000);
+        if (j)
+            strcat(wantw, ",");
+        strcat(wantw, "-1000000000");
+    }
+    for (int j = 0; j < 3; j++)
+        conf_set_int_int(conf, CONF_colours, j, -1000000000);
+
+    settings_w sw = {
+        .n = 2,
+        .si[0].key = "Wordness0",
+        .si[0].type = SAVE_UNSET,
+        .si[1].key = "Colour0",
+        .si[1].type = SAVE_UNSET,
+    };
+    save_open_settings(&sw, conf);
+    if (sw.si[0].type != SAVE_S || 0 != strcmp(sw.si[0].sval, wantw)) {
+        printf("fail test_long_int_lists: saved Wordness0 = '%s' (%d chars),"
+               " expected %d chars\n", sw.si[0].type == SAVE_S ?
+               sw.si[0].sval : "", sw.si[0].type == SAVE_S ?
+               (int)strlen(sw.si[0].sval) : -1, (int)strlen(wantw));
+        nfails++;
+    }
+    if (sw.si[1].type != SAVE_S || 0 != strcmp(sw.si[1].sval, wantc)) {
+        printf("fail test_long_int_lists: saved Colour0 = '%s',"
+               " expected '%s'\n", sw.si[1].type == SAVE_S ?
+               sw.si[1].sval : "", wantc);
+        nfails++;
+    }
+
+    conf_clear(conf);
+    settings_r sr = {
+        .n = 2,
+        .si[0].key = "Wordness0",
+        .si[0].type = SAVE_S,
+        .si[1].key = "Colour0",
+        .si[1].type = SAVE_S,
+    };
+    snprintf(sr.si[0].sval, sizeof(sr.si[0].sval), "%s", wantw);
+    snprintf(sr.si[1].sval, sizeof(sr.si[1].sval), "%s", wantc);
+    load_open_settings(&sr, conf);
+    for (int j = 0; j < 32; j++) {
+        if (conf_get_int_int(conf, CONF_wordness, j) != -1000000000) {
+            printf("fail test_long_int_lists: loaded wordness[%d] = %d\n",
+                   j, conf_get_int_int(conf, CONF_wordness, j));
+            nfails++;
+        }
+    }
+    for (int j = 0; j < 3; j++) {
+        if (conf_get_int_int(conf, CONF_colours, j) != -1000000000) {
+            printf("fail test_long_int_lists: loaded colours[%d] = %d\n",
+                   j, conf_get_int_int(conf, CONF_colours, j));
+            nfails++;
+        }
+    }
+
+    conf_free(conf);
+}
+
 static void load_prepare_socks4(settings_r *sr)
 {
     size_t pos = sr->n++;
@@ -1109,5 +1184,6 @@ int main(void)
 {
     test_conf_key_info();
     test_simple();
+    test_long_int_lists();
     return nfails != 0;
 }

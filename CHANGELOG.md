@@ -46,6 +46,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   longer overflow memory or get cut, also when a store is moved or backed up.
 - File transfer, ZModem, launcher and proxy settings: long remote paths,
   file lists and session values no longer overflow memory or get cut.
+- Saving a session whose character classes (Window > Copy & Paste) hold
+  very large numbers no longer overflows memory, nor does a stored
+  session with very large colour values.
 
 ## 0.85.1.18-beta — 2026-10-23
 

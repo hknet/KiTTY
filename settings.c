@@ -685,25 +685,27 @@ void save_open_settings(settings_w *sesskey, Conf *conf)
                     );
 
     for (i = 0; i < CONF_NCOLOURS; i++) {
-        char buf[20], buf2[30];
+        char buf[20];
+        strbuf *sb = strbuf_new();
         sprintf(buf, "Colour%d", i);
-        sprintf(buf2, "%d,%d,%d",
+        put_fmt(sb, "%d,%d,%d",
                 conf_get_int_int(conf, CONF_colours, i*3+0),
                 conf_get_int_int(conf, CONF_colours, i*3+1),
                 conf_get_int_int(conf, CONF_colours, i*3+2));
-        write_setting_s(sesskey, buf, buf2);
+        write_setting_s(sesskey, buf, sb->s);
+        strbuf_free(sb);
     }
     for (i = 0; i < 256; i += 32) {
-        char buf[20], buf2[256];
+        char buf[20];
+        strbuf *sb = strbuf_new();
         int j;
         sprintf(buf, "Wordness%d", i);
-        *buf2 = '\0';
         for (j = i; j < i + 32; j++) {
-            sprintf(buf2 + strlen(buf2), "%s%d",
-                    (*buf2 ? "," : ""),
+            put_fmt(sb, "%s%d", (sb->len ? "," : ""),
                     conf_get_int_int(conf, CONF_wordness, j));
         }
-        write_setting_s(sesskey, buf, buf2);
+        write_setting_s(sesskey, buf, sb->s);
+        strbuf_free(sb);
     }
     write_clip_setting(sesskey, "MousePaste", conf,
                        CONF_mousepaste, CONF_mousepaste_custom);
