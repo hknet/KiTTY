@@ -151,7 +151,6 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_UPLOADDIR                        "uploaddir"
 #define KI_USERPASSSSHNOSAVE                "userpasssshnosave"
 #define KI_VERIFYAGENT                      "verifyagent"
-#define KI_WARNLEGACYPASSWORDUPGRADE        "WarnLegacyPasswordUpgrade"
 #define KI_WARNMISSINGFEATURES              "warnmissingfeatures"
 #define KI_WINROLL                          "winroll"
 #define KI_WINSCPDIR                        "winscpdir"

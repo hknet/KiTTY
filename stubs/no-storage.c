@@ -12,6 +12,8 @@ char *kitty_session_locked_msg(const char *sessionname)
 { return NULL; }
 void kitty_settings_w_save_rules(settings_w *handle, const char *section)
 { }
+void kitty_settings_w_whole(settings_w *handle)
+{ }
 void write_setting_s(settings_w *handle, const char *key, const char *value)
 { unreachable("where did you get a settings_w from?"); }
 void write_setting_i(settings_w *handle, const char *key, int value)

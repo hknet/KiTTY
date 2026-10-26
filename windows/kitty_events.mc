@@ -11,7 +11,8 @@
 ;   300-399  klink, kscp, ksftp (source "KiTTY++_cli")
 ;   400-499  kittygen, kittygen-cli (source "KiTTY++_kittygen")
 ;   900-999  the suite (source "KiTTY++"): refused program files, log
-;            retention, missing Windows features - always written
+;            retention, missing Windows features, failed session saves -
+;            always written
 ;   other    reserved, not used yet
 MessageIdTypedef=DWORD
 LanguageNames=(English=0x409:MSG00409)
@@ -326,4 +327,10 @@ MessageId=902
 SymbolicName=KITTY_SUITE_MISSING_FEATURES
 Language=English
 %1%nfeatures: %2%nmissing: %3%0
+.
+
+MessageId=903
+SymbolicName=KITTY_SUITE_SESSION_SAVE_FAILED
+Language=English
+%1%nsession: %2%npath: %3%nreason: %4%0
 .

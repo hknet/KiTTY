@@ -829,12 +829,6 @@
 ;               read the files gets the passwords.
 ;PortablePasswordProtection=master
 
-; WarnLegacyPasswordUpgrade: in portable mode, warn before a save re-encrypts a
-;    password stored in the old unprotected format into the new protected format
-;    (old KiTTY releases cannot read the new format). Set to no to skip the
-;    warning and re-encrypt silently; the warning dialog can also set this.
-;WarnLegacyPasswordUpgrade=yes
-
 ; scriptfilefilter: file-dialog filter for local script files.
 ;    Default:
 ;    (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|

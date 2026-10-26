@@ -563,93 +563,6 @@ char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt)
     return d.result;
 }
 
-/* ---- legacy->protected migration consent (portable saves) ----------------
- * The storage layer calls back here before it rewrites a password that is
- * stored in the old unprotected form into a protected one (one way: an old
- * KiTTY 0.76 cannot read it afterwards, so the question comes first). Returns 1 =
- * re-encrypt, 0 = keep the stored value as-is. Default is to prompt; kitty.ini
- * [KiTTY] WarnLegacyPasswordUpgrade=no (also settable via the dialog's
- * checkbox, persisted only with Yes) skips the dialog and migrates silently.
- * CLI tools never register this callback, so batch saves keep the old form.
- * Where it runs: as the master password prompt (gui_master_pw_prompt). */
-
-typedef struct {
-    mpw_live live;
-    int noask;
-} mig_dlg_t;
-static int g_mig_open;          /* one at a time: a second save keeps */
-
-static INT_PTR CALLBACK migwarn_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
-{
-    mig_dlg_t *m = (mig_dlg_t *)GetWindowLongPtr(hdlg, DWLP_USER);
-    switch (msg) {
-      case WM_INITDIALOG:
-        m = (mig_dlg_t *)lp;
-        SetWindowLongPtr(hdlg, DWLP_USER, (LONG_PTR)m);
-        if (m)
-            m->live.hdlg = hdlg;
-        if (m && m->live.worker)
-            kitty_theme_apply_hooked(hdlg);       /* no dialog hook there */
-        SetForegroundWindow(hdlg);
-        return TRUE;
-      case WM_COMMAND:
-        switch (LOWORD(wp)) {
-          case IDOK:
-            if (m)
-                m->noask =
-                    (IsDlgButtonChecked(hdlg, IDC_MIG_NOASK) == BST_CHECKED);
-            mpw_live_finish(hdlg, m ? &m->live : NULL, IDOK);
-            return TRUE;
-          case IDCANCEL:
-            mpw_live_finish(hdlg, m ? &m->live : NULL, IDCANCEL);
-            return TRUE;
-        }
-        break;
-      case WM_CLOSE:
-        mpw_live_finish(hdlg, m ? &m->live : NULL, IDCANCEL);
-        return TRUE;
-    }
-    return FALSE;
-}
-
-static int gui_legacy_migrate_warn(void)
-{
-    char buf[16] = "";
-    char *ini = get_param_str("INI");
-    mig_dlg_t m;
-    HWND live;
-    INT_PTR r;
-    if (ini && readINI(ini, KI_SECTION_KITTY, KI_WARNLEGACYPASSWORDUPGRADE,
-                       buf, sizeof(buf)) &&
-        (!_stricmp(buf, "no") || !_stricmp(buf, "0")))
-        return 1;                       /* warning opted out: migrate silently */
-    if (g_mig_open)
-        return 0;
-    memset(&m, 0, sizeof(m));
-    m.live.tmpl = IDD_MIGRATEWARN;
-    m.live.proc = migwarn_dlgproc;
-    g_mig_open = 1;
-    /* beside a running session: on a worker (mpw_live_run); inside Change
-     * Settings: kitty_dialog_box keeps the session running; else modal */
-    live = ShinyPumpActive() ? NULL : mpw_live_owner();
-    if (live && mpw_live_run(&m.live, live))
-        r = m.live.result;
-    else {
-        HWND owner = GetActiveWindow();
-        if (!owner)
-            owner = GetForegroundWindow();
-        m.live.wake = GetCurrentThreadId();
-        r = mpw_pumped_box(&m.live, owner, (LPARAM)&m);
-    }
-    g_mig_open = 0;
-    if (r == IDOK) {
-        if (m.noask && ini && !kitty_inifile_write_blocked(ini))
-            writeINI(ini, KI_SECTION_KITTY, KI_WARNLEGACYPASSWORDUPGRADE, "no");
-        return 1;
-    }
-    return 0;
-}
-
 /* The master password's salt or verifier could not be stored (a save had just
  * set it up): the save keeps what was stored - report that. Beside a running
  * session or the configuration window, a modeless box (a modal one would stop
@@ -711,7 +624,6 @@ static void gui_master_pw_locked_save(const char *cap, const char *text)
 static void __attribute__((constructor)) kitty_mpw_gui_autoreg(void)
 {
     kitty_set_master_pw_prompt(gui_master_pw_prompt);
-    kitty_set_legacy_migrate_warn(gui_legacy_migrate_warn);
     kitty_set_master_pw_store_failed(gui_master_pw_store_failed);
     kitty_set_master_pw_locked_save(gui_master_pw_locked_save);
 }

@@ -34,6 +34,7 @@
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
 #include "kitty_win.h"     /* kitty_theme_app_dark */
 #include "kitty_inifile.h" /* kitty_store_readonly: readonly=yes */
+#include "kitty_storage.h" /* kitty_session_write_value: the answer alone */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -971,11 +972,10 @@ void kitty_osc52_write_confirm_end(Terminal *term)
  * a hidden host list, because an invisible permission record is exactly what this
  * whole design exists to avoid.
  *
- * This goes through save_settings(), the same path Change Settings and
- * save-on-exit use, so it honours the ini/registry backend instead of assuming
- * the registry. It does save the window's other live settings along with it -
- * they ARE this session's settings, and the alternative is a bespoke
- * single-value writer that would have to know about both backends.
+ * Only the answer is written (kitty_session_write_value, either store): it
+ * is a write of one value, not a save of the session's settings, so the
+ * stored passwords and login script stay as they are and no master password
+ * is needed beside the running session.
  */
 bool kitty_osc52_store_readonly(void)
 {
@@ -985,7 +985,6 @@ bool kitty_osc52_store_readonly(void)
 bool kitty_osc52_save_deny_for_host(Terminal *term)
 {
     const char *name;
-    char *err;
 
     if (!term || !term->conf)
         return false;
@@ -1002,12 +1001,8 @@ bool kitty_osc52_save_deny_for_host(Terminal *term)
         return false;
     }
     conf_set_int(term->conf, CONF_osc52_clipboard_read, OSC52_READ_DENY);
-    err = save_settings(name, term->conf);
-    if (err) {
-        sfree(err);
-        return false;
-    }
-    return true;
+    return kitty_session_write_value(name, "OSC52ClipboardRead", NULL,
+                                     OSC52_READ_DENY) != 0;
 }
 
 /* ------------------------------------------------------------------------

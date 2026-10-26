@@ -1252,7 +1252,6 @@
 #define KT_KSET_STORAGE_PWPROT_DPAPI                 "this Windows account (DPAPI)"
 #define KT_KSET_STORAGE_PWPROT_LEGACY                "nothing (unprotected)"
 #define KT_KSET_STORAGE_PWPROT_NOTE                  "Passwords already stored are not re-encrypted by this change."
-#define KT_KSET_STORAGE_WARNLEGACY                   "Warn before re-encrypting an old-format password"
 
 /* Application/KiTTY++ Settings/Terminal windows (+ Shortcuts) */
 #define KT_KSET_TW_TITLE                             "Keys and mouse"
@@ -1977,6 +1976,12 @@
         "    %s\n" \
         "(%s). The change is not saved. Another program may have the file open.\n\n" \
         "This is reported once."
+/* windows/storage.c: a session save to the folder store that failed after
+ * its retries (kitty_params.c shows it); the Event Log record (903) has the
+ * same words on one line */
+#define KT_SESSION_SAVE_FAILED_FMT                   "KiTTY++ could not save the session \"%s\" to\n" \
+        "    %s\n" \
+        "(%s). The change is not saved. Another program may have the file open."
 /* kitty_startup.c: putty.ini is retired; its settings move to kitty.ini once */
 #define KT_MAIN_PUTTYINI_COPIED_FMT                  "KiTTY++ no longer reads putty.ini. Its settings were copied to\n" \
         "    %s\n" \
@@ -4381,12 +4386,6 @@
 #define KT_RC_MASTERPW_CAPTION                       "KiTTY++ master password"
 #define KT_RC_MASTERPW_LABEL                         "Master password:"
 #define KT_RC_MASTERPW_CONFIRM_LABEL                 "Confirm master password:"
-
-/* kitty.rc: IDD_MIGRATEWARN */
-#define KT_RC_MIGRATEWARN_CAPTION                    "KiTTY++ password protection"
-#define KT_RC_MIGRATEWARN_TEXT                       "This session file contains a password stored in the old unprotected format. Saving will re-encrypt it in the new protected format, which old KiTTY releases (0.76 and earlier) cannot read. Do not copy the file back to an old release afterwards."
-#define KT_RC_MIGRATEWARN_QUESTION                   "Re-encrypt the stored password now? (No keeps it in the old form.)"
-#define KT_RC_MIGRATEWARN_NOASK                      "Don't show this warning again"
 
 /* kitty.rc: IDD_EXPORTPW (MODEDPAPI is IDD_STOREMOVEPW's too) */
 #define KT_RC_EXPORTPW_CAPTION                       "Export sessions"

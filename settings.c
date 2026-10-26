@@ -13,6 +13,8 @@
 char *kitty_session_locked_msg(const char *sessionname);
 /* KiTTY: save only non-default settings, windows/storage.c */
 void kitty_settings_w_save_rules(settings_w *handle, const char *section);
+/* KiTTY: a save of the session's settings as a whole, windows/storage.c */
+void kitty_settings_w_whole(settings_w *handle);
 #ifndef NO_GSSAPI
 #include "ssh/gssc.h"
 #include "ssh/gss.h"
@@ -549,6 +551,7 @@ char *save_settings(const char *section, Conf *conf)
         return errmsg;
     /* KiTTY: "Save only non-default settings" (windows/storage.c) */
     kitty_settings_w_save_rules(sesskey, section);
+    kitty_settings_w_whole(sesskey);
     save_open_settings(sesskey, conf);
     close_settings_w(sesskey);
     return NULL;

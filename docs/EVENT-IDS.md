@@ -13,7 +13,7 @@ The blocks, their sources and logs:
 - `400-499` kittygen, kittygen-cli (KiTTY++_kittygen, log KiTTY++_Session)
 - `900-999` the suite (KiTTY++, Application log, always written)
 
-Each record carries its kind as insertion string `%1` and its fields as `%2` onwards, in the order listed below; the message shows each field as a `name: value` line, an absent field as an empty string. Where kitty.exe is not registered as the message file of `KiTTY++` (no system-wide installation), 900-902 are written as event ID 0 with one readable line instead.
+Each record carries its kind as insertion string `%1` and its fields as `%2` onwards, in the order listed below; the message shows each field as a `name: value` line, an absent field as an empty string. Where kitty.exe is not registered as the message file of `KiTTY++` (no system-wide installation), 900-903 are written as event ID 0 with one readable line instead.
 
 ## Event IDs
 
@@ -67,6 +67,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `900` | `KiTTY++` | `program-refused` | Error | `check`, `found`, `program` |
 | `901` | `KiTTY++` | `log-retention` | Information | `files`, `kb`, `days`, `mb`, `pattern` |
 | `902` | `KiTTY++` | `missing-features` | Information | `features`, `missing` |
+| `903` | `KiTTY++` | `session-save-failed` | Warning | `session`, `path`, `reason` |
 
 ## Fields
 
@@ -102,7 +103,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `method` - 220, 221, 320, 321: the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident; 240, 241: zmodem or kitten-osc5113.
 - `methods` - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 - `missing` - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
-- `path` - 100-170: the key file; 401-403: the file written.
+- `path` - 100-170: the key file; 401-403: the file written; 903: the session file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 - `port` - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
@@ -110,7 +111,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `protection` - 401, 403: none, passphrase or hello.
 - `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
 - `proxy` - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
-- `reason` - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402: the reason as text.
+- `reason` - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text.
 - `refused` - 113: startup keys refused.
 - `remote` - 240, 241, 330, 331: the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name).
 - `req` - 100-170: the file name of the program that asked the agent.

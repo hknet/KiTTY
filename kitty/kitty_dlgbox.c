@@ -1033,7 +1033,6 @@ void kitty_demo_templates( void ) {
 		{ "IDD_EXPORTDONE",                 IDD_EXPORTDONE },
 		{ "IDD_IMPORTPW",                   IDD_IMPORTPW },
 		{ "IDD_MPWMOVED",                   IDD_MPWMOVED },
-		{ "IDD_MIGRATEWARN",                IDD_MIGRATEWARN },
 		{ "IDD_OSC52READ",                  IDD_OSC52READ },
 		{ "IDD_HELPBOX",                    IDD_HELPBOX },
 		{ "IDD_GETFILEBOX",                 IDD_GETFILEBOX },

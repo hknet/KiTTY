@@ -55,7 +55,6 @@ const char *ksec_orig_get(int slot);     /* never-wipe original blob or NULL */
 int ksec_stored_is_legacy(const char *stored);
 /* 1 = keep `stored` on a save of `plaintext` (same password, current form) */
 int ksec_stored_keeps(const char *stored, const char *plaintext, int portable);
-int ksec_migrate_warn_ask(void);         /* legacy->protected save consent */
 int kitty_portable_password_legacy(void);
 /* kitty.ini PortablePasswordProtection=dpapi: portable secrets are protected
  * with DPAPI and no master password is created or prompted for. Mutually
@@ -141,7 +140,6 @@ char *kitty_secret_wrap_current_backend_kept(const char *plaintext, int *locked)
 char *kitty_session_fname_munge(const char *name);
 char *kitty_session_fname_unmunge(const char *name);
 void kitty_set_defer_mpw_prompt(int on);
-void kitty_set_legacy_migrate_warn(int (*fn)(void));
 void kitty_set_master_passphrase(const char *pass);
 void kitty_set_master_pw_prompt(char *(*fn)(int creating));
 void kitty_set_master_pw_wrong(void (*fn)(int supplied));

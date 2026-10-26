@@ -113,21 +113,6 @@ BEGIN
     PUSHBUTTON      KT_KITTY_CANCEL, IDCANCEL, 173, 162, 50, 14
 END
 
-/* Legacy->protected password migration consent (portable saves): a warning
- * on by default, off with kitty.ini WarnLegacyPasswordUpgrade=no.
- * Handled by gui_legacy_migrate_warn() in kitty/kitty_mpw_gui.c. */
-IDD_MIGRATEWARN DIALOGEX DISCARDABLE 0, 0, 260, 102
-STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION KT_RC_MIGRATEWARN_CAPTION
-FONT 9, "Segoe UI", 400, 0, 0x1
-BEGIN
-    LTEXT           KT_RC_MIGRATEWARN_TEXT, -1, 7, 7, 246, 34
-    LTEXT           KT_RC_MIGRATEWARN_QUESTION, -1, 7, 45, 246, 10
-    AUTOCHECKBOX    KT_RC_MIGRATEWARN_NOASK, IDC_MIG_NOASK, 7, 61, 246, 10
-    DEFPUSHBUTTON   "&Yes", IDOK, 146, 81, 50, 14
-    PUSHBUTTON      "&No", IDCANCEL, 203, 81, 50, 14
-END
-
 /* Session export: the bundle's own password.
  * Handled by kitty/kitty_bridge.c. Exporting used to CREATE a master password
  * as a side effect; instead the bundle is a transport artifact with its own

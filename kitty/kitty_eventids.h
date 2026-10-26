@@ -73,6 +73,7 @@
 #define KITTY_EV_PROGRAM_REFUSED    900
 #define KITTY_EV_LOG_RETENTION      901
 #define KITTY_EV_MISSING_FEATURES   902
+#define KITTY_EV_SESSION_SAVE_FAILED 903
 
 struct kitty_eventid {
     unsigned id;
@@ -236,6 +237,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 902, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "missing-features",
       "features missing",
       "Information" },
+    { 903, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "session-save-failed",
+      "session path reason",
+      "Warning" },
 };
 #endif /* KITTY_EVENTIDS_TABLE */
 
@@ -354,7 +358,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "902: each missing entry point with its DLL and the feature "
       "it powers, separated by semicolons" },
     { "path",
-      "100-170: the key file; 401-403: the file written" },
+      "100-170: the key file; 401-403: the file written; 903: the "
+      "session file" },
     { "pattern",
       "901: the folder and the log file name pattern searched" },
     { "pid",
@@ -383,8 +388,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "301: the fatal error's text; 221, 321: access denied, public-key "
       "signature refused, no supported authentication methods available, "
       "the server's message when it ended the connection instead of "
-      "answering, or a proxy's refusal as text; 230, 241, 331, 401, 402: "
-      "the reason as text" },
+      "answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, "
+      "903: the reason as text" },
     { "refused",
       "113: startup keys refused" },
     { "remote",

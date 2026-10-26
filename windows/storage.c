@@ -17,6 +17,9 @@
 #include "../kitty/kitty_pwmem.h"    /* passwords wrapped in memory: unwrap before protecting at rest */
 #include "../kitty/kitty_text.h"     /* KT_SP_SAVE_CLASH: the folder store's save clash */
 #include "../kitty/kitty_inifile.h"  /* kitty_store_readonly: readonly=yes */
+#include "../kitty/kitty_winerr.h"   /* kitty_win_reason: a failed session save */
+#include "../kitty/kitty_winevent.h" /* kitty_wev_suite: its Event Log record */
+#include "../kitty/kitty_b64.h"      /* ksec_b64_encode: the login script's protected form */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -54,7 +57,8 @@ struct settings_w {
     int is_file;
     char *fpath;
     struct ksf_item *items;
-    int mig_answer;   /* legacy->protected consent for THIS save: -1 unasked */
+    int secret_done;  /* KiTTY: bit per secret slot this save wrote itself */
+    int whole;        /* KiTTY: a settings save of the session as a whole */
     char *legacy;     /* KiTTY: older file of this session, removed once saved */
     int raw_secrets;  /* KiTTY: .ktx export - passwords are the caller's (no protection here) */
     /* KiTTY: save only non-default settings - Default Settings' stored
@@ -84,7 +88,8 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
         handle->sesskey = NULL;
         handle->is_file = 1;
         handle->items = NULL;
-        handle->mig_answer = -1;
+        handle->secret_done = 0;
+        handle->whole = 0;
         handle->nd = 0;
         handle->defs = NULL;
         handle->defkey = NULL;
@@ -108,6 +113,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
                     sfree(handle->fpath);
                     handle->fpath = inplace;
                     handle->items = ksf_load(handle->fpath);
+                    handle->sessname = dupstr(sessionname);
                     return handle;
                 }
             }
@@ -144,6 +150,7 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
          * drops keys it didn't rewrite (matches the registry open-then-overwrite
          * semantics; the full conf is normally rewritten on each save anyway). */
         handle->items = ksf_load(handle->legacy ? handle->legacy : handle->fpath);
+        handle->sessname = dupstr(sessionname);
         return handle;
     }
 
@@ -165,7 +172,8 @@ settings_w *open_settings_w(const char *sessionname, char **errmsg)
     handle->is_file = 0;
     handle->fpath = NULL;
     handle->items = NULL;
-    handle->mig_answer = -1;
+    handle->secret_done = 0;
+    handle->whole = 0;
     handle->legacy = NULL;
     handle->nd = 0;
     handle->defs = NULL;
@@ -188,11 +196,14 @@ static void ksf_or_reg_put(settings_w *handle, const char *key, const char *valu
 
 /* KiTTY: save only non-default settings. Folder and SessionLockdown belong
  * to the session, not to its settings; HostName and Protocol mark a file
- * as a session (ksp_file_is_session): written as always. */
+ * as a session (ksp_file_is_session): written as always. So is the login
+ * script, held in its stored form: a save stores it protected
+ * (kitty_protect_stored_secrets), never as a default left out. */
 static int kitty_nd_exempt(const char *key)
 {
     return !strcmp(key, "Folder") || !strcmp(key, "SessionLockdown") ||
-        !strcmp(key, "HostName") || !strcmp(key, "Protocol");
+        !strcmp(key, "HostName") || !strcmp(key, "Protocol") ||
+        !strcmp(key, "ScriptfileContent");
 }
 
 /* The write of key under handle->nd: 1 done here, 0 written as always. The
@@ -240,6 +251,20 @@ static int kitty_nd_put(settings_w *handle, const char *key, const char *value,
     return 1;
 }
 
+/* The session a refused protection is reported for: its file, relative to
+ * the session folder, or its name in the registry. */
+static const char *kitty_save_where(settings_w *handle)
+{
+    const char *rel = handle->fpath ? handle->fpath
+                    : handle->sessname ? handle->sessname : "";
+    size_t dl = strlen(g_sess_dir);
+    if (dl && !_strnicmp(rel, g_sess_dir, dl))
+        rel += dl;
+    while (*rel == '\\')
+        rel++;
+    return rel;
+}
+
 void write_setting_s(settings_w *handle, const char *key, const char *value)
 {
     if (!handle)
@@ -248,6 +273,7 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
     if (slot >= 0 && handle->raw_secrets)
         return;                        /* the .ktx writer sets them itself */
     if (slot >= 0) {
+        handle->secret_done |= 1 << slot;   /* close_settings_w leaves it */
         /* KiTTY: what the caller hands over is the wrapped in-memory form
          * (kitty_pwmem.c). Unwrap it here - this is the one place every writer
          * to the store passes through - so the at-rest protection below sees
@@ -276,19 +302,6 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
                 smemclr(plain, sizeof(plain));
                 return;
             }
-            /* Portable saves need consent before converting an old-format
-             * (unmarked) stored password to a protected one; declining keeps
-             * the pre-loaded stored value in handle->items untouched. */
-            if (handle->is_file && value && value[0] &&
-                !kitty_portable_password_legacy() &&
-                ksec_stored_is_legacy(ksf_list_get(handle->items, key))) {
-                if (handle->mig_answer < 0)
-                    handle->mig_answer = ksec_migrate_warn_ask();
-                if (handle->mig_answer == 0) {
-                    smemclr(plain, sizeof(plain));
-                    return;
-                }
-            }
             /* The same password as the one stored, in the form this save
              * would write: the stored value stays as it is. Wrapping it again
              * draws a fresh salt, and the line would change on every save. */
@@ -314,15 +327,11 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
                  * locked (cancelled, wrong, not set up) or DPAPI failed:
                  * what is stored stays - the pre-loaded line or registry
                  * value, or nothing for a key that had none - never DPAPI
-                 * or the plaintext in its place, and the user learns it */
-                const char *rel = handle->fpath ? handle->fpath
-                                : handle->sessname ? handle->sessname : "";
-                size_t dl = strlen(g_sess_dir);
-                if (!_strnicmp(rel, g_sess_dir, dl))
-                    rel += dl;
-                while (*rel == '\\')
-                    rel++;
-                ksec_report_locked_save(KSEC_KEPT_SESSION, rel);
+                 * or the plaintext in its place, and the user learns it.
+                 * A classic file's password keeps its line as read
+                 * (ksf_convert_legacy_password), never the decoded one. */
+                ksec_report_locked_save(KSEC_KEPT_SESSION,
+                                        kitty_save_where(handle));
                 smemclr(plain, sizeof(plain));
                 return;
             }
@@ -441,19 +450,258 @@ static void kitty_retire_renamed_keys(settings_w *handle)
     }
 }
 
+/*
+ * KiTTY: a settings save of a session as a whole (save_settings: the box's
+ * Save, save on exit, /save, the imports - kitty_settings_w_whole) stores
+ * its three at-rest-protected settings - Password, ProxyPassword and the
+ * login script (ScriptfileContent) - in KiTTY++'s protected form, also
+ * those it did not change: a session from classic KiTTY keeps no classic
+ * form past its first such save (the password bcrypt-encoded, the proxy
+ * password in clear, the login script scrambled with the built-in key),
+ * with "save only non-default settings" on as well. A write of a few values
+ * only (a folder move, the Session Lockdown switch, window positions, tags)
+ * leaves them as stored: no master password is needed for it. A refused
+ * protection (the master password locked, DPAPI failing) keeps the stored
+ * value and is reported (ksec_report_locked_save).
+ *
+ * PortablePasswordProtection=legacy is clear text on purpose: there such a
+ * save writes the classic obfuscated forms in clear instead - the Password
+ * decoded on load as plain text, the login script as this mode stores a
+ * script (PLAIN: and base64, its lines being NUL-separated). The
+ * ProxyPassword is clear already.
+ *
+ * The login script's classic form needs the built-in key and the store's
+ * cryptsalt, which kitty.exe holds: it hands over the decoder
+ * (kitty_set_script_classic_decoder). Without one (the console tools) a
+ * classic script stays as stored.
+ */
+static unsigned char *(*g_script_classic)(const char *stored, int *len) = NULL;
+void kitty_set_script_classic_decoder(
+    unsigned char *(*fn)(const char *stored, int *len))
+{
+    g_script_classic = fn;
+}
+
+/* The stored value of key in this save, as it would be written (sfree it);
+ * NULL = none. */
+static char *kitty_stored_dup(settings_w *handle, const char *key)
+{
+    if (handle->is_file) {
+        const char *v = ksf_list_get(handle->items, key);
+        return v ? dupstr(v) : NULL;
+    }
+    return handle->sesskey ? get_reg_sz(handle->sesskey, key) : NULL;
+}
+
+void kitty_settings_w_whole(settings_w *handle)
+{
+    if (handle)
+        handle->whole = 1;
+}
+
+/* A login script in classic KiTTY's form (not a path), as base64 of its
+ * NUL-separated lines (sfree it); NULL = not that form, or no decoder. */
+static char *kitty_script_classic_b64(const char *stored)
+{
+    char *b64 = NULL;
+    int n = 0;
+    unsigned char *raw;
+    if (!stored || !stored[0] || !ksec_stored_is_legacy(stored) ||
+        !strncmp(stored, KITTY_SECRET_PLAIN_MARK,
+                 strlen(KITTY_SECRET_PLAIN_MARK)) ||
+        !g_script_classic ||
+        GetFileAttributesA(stored) != INVALID_FILE_ATTRIBUTES)
+        return NULL;
+    raw = g_script_classic(stored, &n);
+    if (raw && n > 0) {
+        char *e = ksec_b64_encode(raw, n);
+        if (e) {
+            b64 = dupstr(e);
+            smemclr(e, strlen(e));
+            free(e);
+        }
+    }
+    if (raw) { smemclr(raw, n > 0 ? (size_t)n : 0); sfree(raw); }
+    return b64;
+}
+
+/* PortablePasswordProtection=legacy: the classic obfuscated forms in clear */
+static void kitty_clear_stored_secrets(settings_w *handle)
+{
+    char *stored, *b64;
+    ksf_list_rewrite_decoded(handle->items, "Password");
+    stored = kitty_stored_dup(handle, "ScriptfileContent");
+    b64 = kitty_script_classic_b64(stored);
+    if (b64) {
+        char *plain = dupcat(KITTY_SECRET_PLAIN_MARK, b64);
+        ksf_or_reg_put(handle, "ScriptfileContent", plain);
+        smemclr(plain, strlen(plain));
+        sfree(plain);
+        smemclr(b64, strlen(b64));
+        sfree(b64);
+    }
+    if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
+}
+
+static void kitty_protect_stored_secrets(settings_w *handle)
+{
+    static const char *const keys[2] = { "Password", "ProxyPassword" };
+    char *stored;
+    int slot;
+    if (handle->raw_secrets || !handle->whole)
+        return;
+    if (handle->is_file && kitty_portable_password_legacy()) {
+        kitty_clear_stored_secrets(handle);
+        return;
+    }
+    for (slot = 0; slot < 2; slot++) {
+        char *pt = NULL, *blob;
+        int locked = 0;
+        if (handle->secret_done & (1 << slot))
+            continue;
+        stored = kitty_stored_dup(handle, keys[slot]);
+        if (stored && stored[0] && ksec_stored_is_legacy(stored)) {
+            /* the registry: classic KiTTY's form of a Password (a classic
+             * file's is decoded on load, ksf_load) */
+            if (!handle->is_file && slot == 0 && !kitty_root_is_putty())
+                pt = ksec_legacy_decrypt(stored, handle->sesskey);
+            if (!pt) {
+                const char *v = kitty_secret_strip_plain(stored);
+                size_t n = strlen(v) + 1;
+                if ((pt = malloc(n)) != NULL)
+                    memcpy(pt, v, n);
+            }
+            if (slot == 0)
+                pt = ksec_to_utf8(pt);   /* as the read hands it on */
+            blob = !pt ? NULL : handle->is_file
+                ? ksec_protect_portable_kept(pt, &locked)
+                : ksec_protect_registry_kept(pt, &locked);
+            if (locked)
+                ksec_report_locked_save(KSEC_KEPT_SESSION,
+                                        kitty_save_where(handle));
+            else if (blob && blob[0])
+                ksf_or_reg_put(handle, keys[slot], blob);
+            if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+            if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+        }
+        if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
+    }
+
+    stored = kitty_stored_dup(handle, "ScriptfileContent");
+    if (stored && stored[0]) {
+        size_t pl = strlen(KITTY_SECRET_PLAIN_MARK);
+        char *b64 = NULL;
+        if (!strncmp(stored, KITTY_SECRET_PLAIN_MARK, pl))
+            b64 = dupstr(stored + pl);           /* stored as it is, base64 */
+        else
+            b64 = kitty_script_classic_b64(stored);   /* the built-in key's */
+        if (b64) {
+            int locked = 0;
+            char *wrapped = kitty_secret_wrap_current_backend_kept(b64, &locked);
+            if (locked)
+                ksec_report_locked_save(KSEC_KEPT_SCRIPT,
+                                        handle->sessname ? handle->sessname : "");
+            else if (wrapped && wrapped[0] && kitty_secret_is_marked(wrapped))
+                ksf_or_reg_put(handle, "ScriptfileContent", wrapped);
+            if (wrapped) { smemclr(wrapped, strlen(wrapped)); free(wrapped); }
+            smemclr(b64, strlen(b64));
+            sfree(b64);
+        }
+    }
+    if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
+}
+
+/*
+ * KiTTY: a session save to the folder store that fails is reported, never
+ * lost without a word. A file another program holds - an editor, a virus
+ * scanner, a sync client - refuses the write for a moment, so a sharing,
+ * lock or mapped-file refusal is tried again every 100 ms for about a
+ * second. A save that still fails, or fails for another reason, goes to the
+ * front end's report (kitty.exe: a box, or the prompt of a scripted run -
+ * kitty_set_session_save_failed_report; none in the console tools) and to
+ * the Event Log (903, always written).
+ */
+static void (*g_save_failed_report)(const char *msg) = NULL;
+void kitty_set_session_save_failed_report(void (*fn)(const char *msg))
+{
+    g_save_failed_report = fn;
+}
+
+#define KSF_SAVE_RETRY_MS   1000
+#define KSF_SAVE_RETRY_STEP 100
+
+static bool ksf_save_transient(DWORD err)
+{
+    return err == ERROR_SHARING_VIOLATION || err == ERROR_LOCK_VIOLATION ||
+        err == ERROR_USER_MAPPED_FILE;
+}
+
+static void kitty_session_save_failed(const char *sess, const char *path,
+                                      DWORD err)
+{
+    char *why = dupstr(kitty_win_reason(err));
+    char *msg = dupprintf(KT_SESSION_SAVE_FAILED_FMT, sess, path, why);
+    char *line = dupstr(msg), *s, *d;
+    const char *vals[3];
+    /* the record: the same words on one line */
+    for (s = d = line; *s;) {
+        if (*s == '\n') {
+            while (*s == '\n' || *s == ' ')
+                s++;
+            if (d > line && d[-1] != ' ')
+                *d++ = ' ';
+        } else {
+            *d++ = *s++;
+        }
+    }
+    *d = '\0';
+    vals[0] = sess;
+    vals[1] = path;
+    vals[2] = why;
+    kitty_wev_suite(KITTY_EV_SESSION_SAVE_FAILED, EVENTLOG_WARNING_TYPE,
+                    vals, 3, line);
+    if (g_save_failed_report)
+        g_save_failed_report(msg);
+    sfree(line);
+    sfree(msg);
+    sfree(why);
+}
+
+/* The session file written, retried and reported as above. true = written
+ * whole. */
+static bool kitty_session_file_save(settings_w *handle)
+{
+    DWORD start = GetTickCount(), err;
+    for (;;) {
+        if (ksf_save(handle->fpath, handle->items))
+            return true;
+        err = GetLastError();
+        if (kitty_store_readonly())
+            return false;               /* refused on purpose: no report */
+        if (!ksf_save_transient(err) ||
+            GetTickCount() - start >= KSF_SAVE_RETRY_MS)
+            break;
+        Sleep(KSF_SAVE_RETRY_STEP);
+    }
+    kitty_session_save_failed(handle->sessname ? handle->sessname : "",
+                              handle->fpath, err);
+    return false;
+}
+
 void close_settings_w(settings_w *handle)
 {
     if (!handle)
         return;
     /* A session was written - the store differs from the last backup. */
     kitty_store_mark_dirty();
+    kitty_protect_stored_secrets(handle);
     kitty_retire_renamed_keys(handle);
     if (handle->is_file) {
         if (handle->fpath) {
             bool saved;
             DWORD a;
             ksf_make_parent_dirs(handle->fpath);   /* KiTTY: the folder path */
-            saved = ksf_save(handle->fpath, handle->items);
+            saved = kitty_session_file_save(handle);
             /* KiTTY: the session now lives at its path with the suffix; the
              * older file goes, and so does its folder if that left it empty -
              * but only once the new file is written whole and is a file. */
@@ -544,6 +792,35 @@ int kitty_session_set_lockdown(const char *sessionname, int on)
         return 0;
     }
     write_setting_i(w, "SessionLockdown", on ? 1 : 0);
+    close_settings_w(w);
+    return 1;
+}
+
+/* One value of a stored session written, the rest left as stored: the
+ * "always" answers of a running window (OSC 52 "Always deny for this host",
+ * far2l "Always allow") are writes of one value, never a settings save of
+ * the session as a whole - its protected settings stay as stored and need
+ * no master password. A locked session (Session Lockdown) is refused, as
+ * save_settings refuses it; so is Default Settings. sval NULL: ival is
+ * written as a number. 1 written. */
+int kitty_session_write_value(const char *sessionname, const char *key,
+                              const char *sval, int ival)
+{
+    char *errmsg = NULL;
+    settings_w *w;
+    if (!sessionname || !*sessionname || !key ||
+        !strcmp(sessionname, KITTY_DEFAULT_SESSION) ||
+        kitty_session_locked(sessionname))
+        return 0;
+    w = open_settings_w(sessionname, &errmsg);
+    if (!w) {
+        sfree(errmsg);
+        return 0;
+    }
+    if (sval)
+        write_setting_s(w, key, sval);
+    else
+        write_setting_i(w, key, ival);
     close_settings_w(w);
     return 1;
 }
@@ -894,7 +1171,8 @@ settings_w *kitty_open_settings_w_items(void)
     handle->is_file = 1;
     handle->fpath = NULL;
     handle->items = NULL;
-    handle->mig_answer = 1;
+    handle->secret_done = 0;
+    handle->whole = 0;
     handle->legacy = NULL;
     handle->raw_secrets = 1;
     handle->nd = 0;
@@ -955,6 +1233,16 @@ char *read_setting_s(settings_r *handle, const char *key)
         if (handle->src_hive == KSEC_HIVE_OLDKITTY && slot == 0 &&
             strncmp(raw, KITTY_SECRET_DPAPI_MARK, strlen(KITTY_SECRET_DPAPI_MARK)) != 0)
             pt = ksec_legacy_decrypt(raw, handle->sesskey);   /* malloc or NULL */
+        /* Our own hive: a Password classic KiTTY stored, copied in with every
+         * other value of its hive at the first start (MigrateOldKittyHive).
+         * An unmarked value in the classic form - its five-character header
+         * (ksec_has_legacy_header) and a clean decode - is decoded; any other
+         * value passes through below. The next save stores it DPAPI1-wrapped.
+         * Not under KiClassName=PuTTY: nothing is copied into PuTTY's hive. */
+        else if (handle->src_hive == KSEC_HIVE_PRIMARY && !handle->is_file &&
+                 slot == 0 && !kitty_root_is_putty() &&
+                 ksec_stored_is_legacy(raw))
+            pt = ksec_legacy_decrypt(raw, handle->sesskey);
         int rv_dbg = -99;                     /* -99 = the decrypt path never ran */
         if (!pt) {
             /* DPAPI blob -> plaintext; unmarked value passes through. Record an

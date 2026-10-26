@@ -41,6 +41,7 @@
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_inifile.h"   /* readonly=yes: the pin and the gate */
 #include "../kitty/kitty_oldwin.h"    /* kitty_temp_path_dup: %TEMP% whole */
+#include "../kitty/kitty_crypt.h"     /* cryptpassword: classic KiTTY's stored form */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 
@@ -1872,6 +1873,584 @@ static void test_mpw_locked_refuses(void)
     ro_rmtree(root);
 }
 
+/* ---------- classic KiTTY's stored forms, protected by every save ----------
+ *
+ * A session classic KiTTY wrote keeps its three at-rest-protected settings in
+ * classic forms: the Password bcrypt-encoded (keyed on the host name, the
+ * terminal type and "KiTTY"), the ProxyPassword in clear, the login script
+ * (ScriptfileContent) scrambled with the built-in key. Every save stores
+ * them protected, also when it does not change them and with "save only
+ * non-default settings" on; PortablePasswordProtection=legacy writes the
+ * obfuscated ones in clear; a refused protection keeps the stored value and
+ * reports it; a write of a few values (a folder move, the Session Lockdown
+ * switch) leaves all three as stored. The folder store (a classic
+ * "Key\value\" file) and the registry store (classic KiTTY's hive copied
+ * value for value into ours) alike.
+ */
+#define CHOST     "classic.example"
+#define CSECRET   "Classic-pw-2026"
+#define CPROXY    "Classic-proxy-2026"
+#define CSCRIPT   "login: send-this-2026"
+
+/* A password in classic KiTTY's stored form, kept until the run ends.
+ * Encoded in place: room for bcrypt's base64 form, under 4n + 64. */
+static char *classic_form(const char *pw, const char *host)
+{
+    char *enc = st_keep(snewn(4 * strlen(pw) + 64, char));
+    strcpy(enc, pw);
+    cryptpassword(0, enc, host, "xterm");
+    return enc;
+}
+/* A login script in classic KiTTY's stored form (the built-in key). */
+static char *classic_script_form(const char *text)
+{
+    char *enc = st_keep(snewn(4 * strlen(text) + 64, char));
+    strcpy(enc, text);
+    cryptstring(0, enc, MASTER_PASSWORD);
+    return enc;
+}
+/* kitty.exe's decoder of that form, as it hands it to the store */
+static unsigned char *classic_script_decode(const char *stored, int *len)
+{
+    char *buf = dupstr(stored);
+    int l = decryptstring(0, buf, MASTER_PASSWORD);
+    if (l <= 0) {
+        sfree(buf);
+        return NULL;
+    }
+    *len = l;
+    return (unsigned char *)buf;
+}
+
+/* The value of "<key>=" in a session file's text, malloc'd; NULL = none. */
+static char *file_value(const char *buf, const char *key)
+{
+    size_t kl = strlen(key);
+    const char *p = buf;
+    while (p && *p) {
+        if (!strncmp(p, key, kl) && p[kl] == '=') {
+            /* unmunged: the file escapes ':' and others as %HH */
+            size_t n = strcspn(p + kl + 1, "\r\n"), i, o = 0;
+            const char *s = p + kl + 1;
+            char *v = malloc(n + 1);
+            if (!v)
+                return NULL;
+            for (i = 0; i < n; i++) {
+                unsigned hv;
+                if (s[i] == '%' && i + 2 < n && sscanf(s + i + 1, "%2x", &hv) == 1) {
+                    v[o++] = (char)hv;
+                    i += 2;
+                } else {
+                    v[o++] = s[i];
+                }
+            }
+            v[o] = '\0';
+            return v;
+        }
+        p = strchr(p, '\n');
+        if (p) p++;
+    }
+    return NULL;
+}
+
+/* The login script a stored value holds: protected, opened, the text. */
+static int script_reads_back(const char *stored)
+{
+    char *b64 = NULL;
+    unsigned char *raw = NULL;
+    int n = 0, ok;
+    if (!stored || !kitty_secret_is_marked(stored) ||
+        strncmp(stored, "PLAIN:", 6) == 0)
+        return 0;
+    if (kitty_secret_unwrap(stored, &b64) != 1 || !b64)
+        return 0;
+    raw = ksec_b64_decode(b64, &n);
+    ok = raw && n == (int)strlen(CSCRIPT) && !memcmp(raw, CSCRIPT, n);
+    free(raw);
+    free(b64);
+    return ok;
+}
+
+static int classic_reports = 0;
+static void classic_kept(const char *cap, const char *msg)
+{
+    classic_reports++;
+}
+
+#define CW_PW 1
+#define CW_PX 2
+#define CW_SC 4
+
+/* A session file as classic KiTTY writes it, with the settings in `what`;
+ * the forms written are kept in cl_pw / cl_sc. */
+static const char *cl_pw = "", *cl_sc = "";
+static int classic_file(const char *path, int what)
+{
+    FILE *fp = fopen(path, "wb");
+    if (!fp)
+        return 0;
+    cl_pw = classic_form(CSECRET, CHOST);
+    cl_sc = classic_script_form(CSCRIPT);
+    fprintf(fp, "HostName\\%s\\\nTerminalType\\xterm\\\nProtocol\\ssh\\\n", CHOST);
+    if (what & CW_PW)
+        fprintf(fp, "Password\\%s\\\n", cl_pw);
+    if (what & CW_PX)
+        fprintf(fp, "ProxyPassword\\%s\\\n", CPROXY);
+    if (what & CW_SC)
+        fprintf(fp, "ScriptfileContent\\%s\\\n", cl_sc);
+    return fclose(fp) == 0;
+}
+/* The classic lines of the three, as written by classic_file, all there. */
+static int classic_lines_kept(const char *buf, int what)
+{
+    char *l;
+    int ok = buf != NULL;
+    if (ok && (what & CW_PW)) {
+        l = dupprintf("Password\\%s\\", cl_pw);
+        ok = strstr(buf, l) != NULL;
+        sfree(l);
+    }
+    if (ok && (what & CW_PX))
+        ok = strstr(buf, "ProxyPassword\\" CPROXY "\\") != NULL;
+    if (ok && (what & CW_SC)) {
+        l = dupprintf("ScriptfileContent\\%s\\", cl_sc);
+        ok = strstr(buf, l) != NULL;
+        sfree(l);
+    }
+    return ok;
+}
+
+/* A real save that changes nothing: the session loaded and saved as a
+ * whole (load_settings, save_settings - what Save in the box does). nd:
+ * "save only non-default settings", with Inherit Default Settings. */
+static void real_save(const char *sess, int nd)
+{
+    Conf *c = conf_new();
+    char *err;
+    if (nd) {
+        kitty_set_inherit_default_settings(1);
+        kitty_set_save_only_nondefault(1);
+    }
+    load_settings(sess, c);
+    err = save_settings(sess, c);
+    if (err) {
+        printf("  save_settings(%s): %s\n", sess, err);
+        sfree(err);
+    }
+    conf_free(c);
+    if (nd) {
+        kitty_set_inherit_default_settings(0);
+        kitty_set_save_only_nondefault(0);
+    }
+}
+
+/* A write of one value only, as a folder move writes Folder. */
+static void folder_write(const char *sess, const char *folder)
+{
+    char *err = NULL;
+    settings_w *w = open_settings_w(sess, &err);
+    if (!w)
+        return;
+    write_setting_s(w, "Folder", folder);
+    close_settings_w(w);
+}
+
+static int classic_prompts = 0;
+static char *classic_prompt(int creating)
+{
+    classic_prompts++;
+    return NULL;                        /* cancelled */
+}
+
+/* The settings in `what` are stored protected (DPAPI1) and read back. */
+static void check_protected_file(const char *label, const char *sess,
+                                 const char *fpath, int what)
+{
+    char *fbuf = read_whole_file(fpath), *v;
+    settings_r *r;
+    char msg[160];
+    if (what & CW_PW) {
+        v = fbuf ? file_value(fbuf, "Password") : NULL;
+        snprintf(msg, sizeof(msg), "%s: Password stored DPAPI1 (got %.12s)",
+                 label, v ? v : "(none)");
+        check(v && !strncmp(v, "DPAPI1:", 7), msg);
+        free(v);
+    }
+    if (what & CW_PX) {
+        v = fbuf ? file_value(fbuf, "ProxyPassword") : NULL;
+        snprintf(msg, sizeof(msg), "%s: ProxyPassword stored DPAPI1 (got %.12s)",
+                 label, v ? v : "(none)");
+        check(v && !strncmp(v, "DPAPI1:", 7), msg);
+        free(v);
+    }
+    if (what & CW_SC) {
+        v = fbuf ? file_value(fbuf, "ScriptfileContent") : NULL;
+        snprintf(msg, sizeof(msg), "%s: login script stored protected and reads back (got %.12s)",
+                 label, v ? v : "(none)");
+        check(script_reads_back(v), msg);
+        free(v);
+    }
+    snprintf(msg, sizeof(msg), "%s: no classic form, no clear text left", label);
+    check(fbuf && !strstr(fbuf, "Password\\") && !strstr(fbuf, CSECRET) &&
+          !strstr(fbuf, CPROXY) && !strstr(fbuf, "ScriptfileContent\\"), msg);
+    if (fbuf) free(fbuf);
+    r = open_settings_r(sess);
+    if (what & CW_PW) {
+        char *pw = r ? read_setting_s(r, "Password") : NULL;
+        snprintf(msg, sizeof(msg), "%s: Password reads back", label);
+        check(pw && !strcmp(pw, CSECRET), msg);
+        if (pw) sfree(pw);
+    }
+    if (what & CW_PX) {
+        char *px = r ? read_setting_s(r, "ProxyPassword") : NULL;
+        snprintf(msg, sizeof(msg), "%s: ProxyPassword reads back", label);
+        check(px && !strcmp(px, CPROXY), msg);
+        if (px) sfree(px);
+    }
+    if (r) close_settings_r(r);
+}
+
+static void test_classic_forms_folder(void)
+{
+    static const struct { const char *name; int what; int nd; } cases[] = {
+        { "zz-cl-pw", CW_PW, 0 },
+        { "zz-cl-px", CW_PX, 0 },
+        { "zz-cl-sc", CW_SC, 0 },
+        { "zz-cl-all", CW_PW | CW_PX | CW_SC, 0 },
+        { "zz-cl-all-nd", CW_PW | CW_PX | CW_SC, 1 },
+    };
+    char *tmp, *root, *sess, *dpath, *fpath;
+    size_t i;
+    FILE *fp;
+
+    tmp = st_temp();
+    root = st_path("%skitty-selftest-classic-%lu",
+                   tmp, (unsigned long)GetCurrentProcessId());
+    sess = st_path("%s\\Sessions", root);
+    CreateDirectoryA(root, NULL);
+    CreateDirectoryA(sess, NULL);
+    /* Default Settings holding the same three, for the nd case */
+    dpath = st_path("%s\\Default Settings", sess);
+    fp = fopen(dpath, "wb");
+    if (fp) {
+        fprintf(fp, "HostName=%s\nPassword=%s\nProxyPassword=%s\nScriptfileContent=%s\n",
+                CHOST, CSECRET, CPROXY, classic_script_form(CSCRIPT));
+        fclose(fp);
+    }
+
+    kitty_set_session_dir(sess);
+    kitty_set_storage_mode(1);
+    kitty_set_portable_password_protection("dpapi");
+    kitty_set_script_classic_decoder(classic_script_decode);
+
+    for (i = 0; i < lenof(cases); i++) {
+        char label[64];
+        fpath = st_path("%s\\%s", sess, cases[i].name);
+        snprintf(label, sizeof(label), "classic file %s", cases[i].name);
+        if (!classic_file(fpath, cases[i].what)) {
+            check(0, "classic file: could not write the session file (skipped)");
+            continue;
+        }
+        real_save(cases[i].name, cases[i].nd);
+        check_protected_file(label, cases[i].name, fpath, cases[i].what);
+        DeleteFileA(fpath);
+    }
+
+    /* legacy: clear text on purpose - the obfuscated forms written in clear */
+    kitty_set_portable_password_protection("legacy");
+    fpath = st_path("%s\\zz-cl-legacy", sess);
+    if (classic_file(fpath, CW_PW | CW_PX | CW_SC)) {
+        char *after, *pw, *px, *sc;
+        settings_r *r;
+        real_save("zz-cl-legacy", 0);
+        after = read_whole_file(fpath);
+        pw = after ? file_value(after, "Password") : NULL;
+        px = after ? file_value(after, "ProxyPassword") : NULL;
+        sc = after ? file_value(after, "ScriptfileContent") : NULL;
+        check(pw && !strcmp(pw, CSECRET),
+              "classic file, legacy: the Password stored in clear");
+        /* clear already: its line stays as read (classic syntax) */
+        check((px && !strcmp(px, CPROXY)) || classic_lines_kept(after, CW_PX),
+              "classic file, legacy: the ProxyPassword stays in clear");
+        check(sc && !strncmp(sc, "PLAIN:", 6) && script_reads_back(sc) == 0,
+              "classic file, legacy: the login script stored as legacy stores it (PLAIN:)");
+        {
+            int n = 0;
+            unsigned char *raw = sc ? ksec_b64_decode(sc + 6, &n) : NULL;
+            check(raw && n == (int)strlen(CSCRIPT) && !memcmp(raw, CSCRIPT, n),
+                  "classic file, legacy: ...holding the script's text");
+            free(raw);
+        }
+        check(after && !classic_lines_kept(after, CW_PW) &&
+              !classic_lines_kept(after, CW_SC),
+              "classic file, legacy: no classic form left");
+        r = open_settings_r("zz-cl-legacy");
+        {
+            char *rp = r ? read_setting_s(r, "Password") : NULL;
+            check(rp && !strcmp(rp, CSECRET), "classic file, legacy: Password reads back");
+            if (rp) sfree(rp);
+        }
+        if (r) close_settings_r(r);
+        free(pw);
+        free(px);
+        free(sc);
+        free(after);
+        DeleteFileA(fpath);
+    }
+
+    /* refused: DPAPI failing - every stored value kept, the refusal reported */
+    kitty_set_portable_password_protection("dpapi");
+    kitty_set_master_pw_locked_save(classic_kept);
+    kitty_selftest_dpapi_fail(ERROR_ACCESS_DENIED);
+    fpath = st_path("%s\\zz-cl-refused", sess);
+    if (classic_file(fpath, CW_PW | CW_PX | CW_SC)) {
+        char *after;
+        classic_reports = 0;
+        real_save("zz-cl-refused", 0);
+        after = read_whole_file(fpath);
+        check(classic_lines_kept(after, CW_PW | CW_PX | CW_SC) &&
+              !strstr(after, "Password=" CSECRET) && !strstr(after, "DPAPI1"),
+              "classic file, the protection refused: every stored value kept");
+        check(classic_reports > 0, "classic file, the protection refused: reported");
+        free(after);
+        DeleteFileA(fpath);
+    }
+    kitty_selftest_dpapi_fail(0);
+    kitty_set_master_pw_locked_save(NULL);
+
+    /* a write of a few values - a folder move, the Session Lockdown switch -
+     * leaves the three as stored, under the master-password policy with no
+     * master password unlocked: no prompt; the next real save protects them */
+    kitty_set_portable_password_protection("");
+    kitty_set_master_passphrase(NULL);
+    kitty_set_master_pw_prompt(classic_prompt);
+    fpath = st_path("%s\\zz-cl-partial", sess);
+    if (classic_file(fpath, CW_PW | CW_PX | CW_SC)) {
+        char *after;
+        classic_prompts = 0;
+        folder_write("zz-cl-partial", "Moved");
+        kitty_session_set_lockdown("zz-cl-partial", 1);
+        kitty_session_set_lockdown("zz-cl-partial", 0);
+        after = read_whole_file(fpath);
+        check(classic_prompts == 0, "classic file, a folder move and the Lockdown switch: no master-password prompt");
+        check(classic_lines_kept(after, CW_PW | CW_PX | CW_SC),
+              "classic file, a folder move and the Lockdown switch: the three stored as they were");
+        check(after && strstr(after, "Folder=Moved") != NULL,
+              "classic file, the folder move: Folder written");
+        free(after);
+
+        /* the "always" answers of a running window: one value each */
+        classic_prompts = 0;
+        check(kitty_session_write_value("zz-cl-partial", "OSC52ClipboardRead", NULL, 2) &&
+              kitty_session_write_value("zz-cl-partial", "Far2lClientIds", "qa-far2l-id", 0),
+              "classic file, the OSC 52 and far2l \"always\" answers: written");
+        after = read_whole_file(fpath);
+        check(classic_prompts == 0, "classic file, the \"always\" answers: no master-password prompt");
+        check(classic_lines_kept(after, CW_PW | CW_PX | CW_SC),
+              "classic file, the \"always\" answers: the three stored as they were");
+        check(after && strstr(after, "OSC52ClipboardRead=2") &&
+              strstr(after, "Far2lClientIds=qa-far2l-id"),
+              "classic file, the \"always\" answers: each answer in the file");
+        free(after);
+        kitty_set_master_pw_prompt(NULL);
+        kitty_set_portable_password_protection("dpapi");
+        real_save("zz-cl-partial", 0);
+        check_protected_file("classic file, the next real save", "zz-cl-partial",
+                             fpath, CW_PW | CW_PX | CW_SC);
+        DeleteFileA(fpath);
+    }
+    kitty_set_master_pw_prompt(NULL);
+
+    kitty_set_script_classic_decoder(NULL);
+    kitty_set_portable_password_protection("");
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+    DeleteFileA(dpath);
+    RemoveDirectoryA(sess);
+    RemoveDirectoryA(root);
+}
+
+/* The registry: classic KiTTY's hive copied value for value into ours (the
+ * first start, MigrateOldKittyHive). The old hive and ours are throwaway
+ * keys here. */
+static void classic_reg_copy(const char *old, const char *dst, int what)
+{
+    HKEY src = NULL, to = NULL;
+    DWORD i, maxname = 0, maxdata = 0;
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, old, 0, NULL, 0,
+                        KEY_SET_VALUE | KEY_QUERY_VALUE, NULL, &src,
+                        NULL) != ERROR_SUCCESS)
+        return;
+    RegSetValueExA(src, "HostName", 0, REG_SZ, (const BYTE *)CHOST, sizeof(CHOST));
+    RegSetValueExA(src, "TerminalType", 0, REG_SZ, (const BYTE *)"xterm", 6);
+    if (what & CW_PW) {
+        const char *enc = classic_form(CSECRET, CHOST);
+        RegSetValueExA(src, "Password", 0, REG_SZ, (const BYTE *)enc,
+                       (DWORD)strlen(enc) + 1);
+    }
+    if (what & CW_PX)
+        RegSetValueExA(src, "ProxyPassword", 0, REG_SZ, (const BYTE *)CPROXY,
+                       sizeof(CPROXY));
+    if (what & CW_SC) {
+        const char *enc = classic_script_form(CSCRIPT);
+        RegSetValueExA(src, "ScriptfileContent", 0, REG_SZ, (const BYTE *)enc,
+                       (DWORD)strlen(enc) + 1);
+    }
+    RegQueryInfoKeyA(src, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                     &maxname, &maxdata, NULL, NULL);
+    if (RegCreateKeyExA(HKEY_CURRENT_USER, dst, 0, NULL, 0, KEY_SET_VALUE,
+                        NULL, &to, NULL) == ERROR_SUCCESS) {
+        char *name = snewn(maxname + 1, char);
+        BYTE *data = snewn(maxdata + 1, BYTE);
+        for (i = 0;; i++) {
+            DWORD nl = maxname + 1, dl = maxdata + 1, type;
+            if (RegEnumValueA(src, i, name, &nl, NULL, &type, data, &dl) !=
+                ERROR_SUCCESS)
+                break;
+            RegSetValueExA(to, name, 0, type, data, dl);
+        }
+        sfree(name);
+        sfree(data);
+        RegCloseKey(to);
+    }
+    RegCloseKey(src);
+}
+
+static void test_classic_forms_registry(void)
+{
+    static const struct { const char *name; int what; int nd; } cases[] = {
+        { "zz-rg-pw", CW_PW, 0 },
+        { "zz-rg-px", CW_PX, 0 },
+        { "zz-rg-sc", CW_SC, 0 },
+        { "zz-rg-all", CW_PW | CW_PX | CW_SC, 0 },
+        { "zz-rg-all-nd", CW_PW | CW_PX | CW_SC, 1 },
+    };
+    char *base, *oldbase;
+    size_t i;
+
+    base = st_path("Software\\KiTTYpp-selftest-mig-%lu",
+                   (unsigned long)GetCurrentProcessId());
+    oldbase = st_path("%s-old", base);
+    kitty_set_registry_base(base);
+    kitty_set_storage_mode(0);
+    kitty_set_script_classic_decoder(classic_script_decode);
+    /* Default Settings holding the same three, for the nd case */
+    {
+        char *dk = st_path("%s\\Default%%20Settings", kitty_reg_sessions());
+        HKEY k;
+        if (RegCreateKeyExA(HKEY_CURRENT_USER, dk, 0, NULL, 0, KEY_SET_VALUE,
+                            NULL, &k, NULL) == ERROR_SUCCESS) {
+            const char *sc = classic_script_form(CSCRIPT);
+            RegSetValueExA(k, "Password", 0, REG_SZ, (const BYTE *)CSECRET, sizeof(CSECRET));
+            RegSetValueExA(k, "ProxyPassword", 0, REG_SZ, (const BYTE *)CPROXY, sizeof(CPROXY));
+            RegSetValueExA(k, "ScriptfileContent", 0, REG_SZ, (const BYTE *)sc,
+                           (DWORD)strlen(sc) + 1);
+            RegCloseKey(k);
+        }
+    }
+
+    for (i = 0; i < lenof(cases); i++) {
+        char *old = st_path("%s\\Sessions\\%s", oldbase, cases[i].name);
+        char *dst = st_path("%s\\%s", kitty_reg_sessions(), cases[i].name);
+        char *raw;
+        char msg[160];
+        settings_r *r;
+        classic_reg_copy(old, dst, cases[i].what);
+
+        r = open_settings_r(cases[i].name);
+        if (cases[i].what & CW_PW) {
+            char *pw = r ? read_setting_s(r, "Password") : NULL;
+            snprintf(msg, sizeof(msg), "registry %s: the copied classic password loads decoded",
+                     cases[i].name);
+            check(pw && !strcmp(pw, CSECRET), msg);
+            if (pw) sfree(pw);
+        }
+        if (r) close_settings_r(r);
+
+        /* the Lockdown switch writes one value: the three stay as stored */
+        kitty_session_set_lockdown(cases[i].name, 1);
+        kitty_session_set_lockdown(cases[i].name, 0);
+        {
+            char *p1 = reg_raw(cases[i].name, "Password");
+            char *p2 = reg_raw(cases[i].name, "ProxyPassword");
+            char *p3 = reg_raw(cases[i].name, "ScriptfileContent");
+            snprintf(msg, sizeof(msg), "registry %s: the Lockdown switch leaves the three as stored",
+                     cases[i].name);
+            check((!(cases[i].what & CW_PW) || (p1 && !kitty_secret_is_marked(p1))) &&
+                  (!(cases[i].what & CW_PX) || (p2 && !strcmp(p2, CPROXY))) &&
+                  (!(cases[i].what & CW_SC) || (p3 && !kitty_secret_is_marked(p3))), msg);
+            free(p1);
+            free(p2);
+            free(p3);
+        }
+        real_save(cases[i].name, cases[i].nd);
+
+        if (cases[i].what & CW_PW) {
+            raw = reg_raw(cases[i].name, "Password");
+            snprintf(msg, sizeof(msg), "registry %s: Password stored DPAPI1", cases[i].name);
+            check(raw && !strncmp(raw, "DPAPI1:", 7), msg);
+            free(raw);
+        }
+        if (cases[i].what & CW_PX) {
+            raw = reg_raw(cases[i].name, "ProxyPassword");
+            snprintf(msg, sizeof(msg), "registry %s: ProxyPassword stored DPAPI1", cases[i].name);
+            check(raw && !strncmp(raw, "DPAPI1:", 7), msg);
+            free(raw);
+        }
+        if (cases[i].what & CW_SC) {
+            raw = reg_raw(cases[i].name, "ScriptfileContent");
+            snprintf(msg, sizeof(msg), "registry %s: login script stored protected and reads back",
+                     cases[i].name);
+            check(script_reads_back(raw), msg);
+            free(raw);
+        }
+        r = open_settings_r(cases[i].name);
+        if (cases[i].what & CW_PW) {
+            char *pw = r ? read_setting_s(r, "Password") : NULL;
+            snprintf(msg, sizeof(msg), "registry %s: Password reads back", cases[i].name);
+            check(pw && !strcmp(pw, CSECRET), msg);
+            if (pw) sfree(pw);
+        }
+        if (cases[i].what & CW_PX) {
+            char *px = r ? read_setting_s(r, "ProxyPassword") : NULL;
+            snprintf(msg, sizeof(msg), "registry %s: ProxyPassword reads back", cases[i].name);
+            check(px && !strcmp(px, CPROXY), msg);
+            if (px) sfree(px);
+        }
+        if (r) close_settings_r(r);
+    }
+
+    /* refused: DPAPI failing - the stored values kept, the refusal reported */
+    {
+        char *old = st_path("%s\\Sessions\\zz-rg-refused", oldbase);
+        char *dst = st_path("%s\\zz-rg-refused", kitty_reg_sessions());
+        char *pw, *px, *sc;
+        classic_reg_copy(old, dst, CW_PW | CW_PX | CW_SC);
+        kitty_set_master_pw_locked_save(classic_kept);
+        kitty_selftest_dpapi_fail(ERROR_ACCESS_DENIED);
+        classic_reports = 0;
+        real_save("zz-rg-refused", 0);
+        kitty_selftest_dpapi_fail(0);
+        kitty_set_master_pw_locked_save(NULL);
+        pw = reg_raw("zz-rg-refused", "Password");
+        px = reg_raw("zz-rg-refused", "ProxyPassword");
+        sc = reg_raw("zz-rg-refused", "ScriptfileContent");
+        check(pw && pw[0] && !kitty_secret_is_marked(pw) &&
+              px && !strcmp(px, CPROXY) &&
+              sc && sc[0] && !kitty_secret_is_marked(sc),
+              "registry, the protection refused: every stored value kept");
+        check(classic_reports > 0, "registry, the protection refused: reported");
+        free(pw);
+        free(px);
+        free(sc);
+    }
+
+    kitty_set_script_classic_decoder(NULL);
+    RegDeleteTreeA(HKEY_CURRENT_USER, base);
+    RegDeleteTreeA(HKEY_CURRENT_USER, oldbase);
+    kitty_set_registry_root(0);
+}
+
 int main(int argc, char **argv)
 {
     char *rotmp, *rodir, *roini, *noini;
@@ -1913,6 +2492,9 @@ int main(int argc, char **argv)
     test_renamed_key();
     printf("== old 9bis KiTTY hive is still read (design doc 8.10) ==\n");
     test_old_kitty_hive();
+    printf("== classic KiTTY's stored forms: protected by every save ==\n");
+    test_classic_forms_folder();
+    test_classic_forms_registry();
     printf("== old .ktx export is still read (design doc 8.17) ==\n");
     test_old_ktx();
     printf("== login script protected like a password ==\n");

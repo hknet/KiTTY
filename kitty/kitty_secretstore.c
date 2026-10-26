@@ -2207,13 +2207,6 @@ void ksec_after_load(int slot, const char *stored, int rv)
     if (rv < 0 && stored && stored[0]) g_ksec_orig[slot] = ksec_dup(stored);
 }
 
-/* Legacy->protected migration consent (portable files only). Before a
- * portable save rewrites a password stored in the old unprotected
- * (unmarked) form into a protected one, the GUI-registered warner puts up
- * one question per save: 1 = re-encrypt, 0 = keep the stored value verbatim.
- * CLI tools never register a warner, so batch saves keep the old form. */
-static int (*g_ksec_migrate_warn)(void) = NULL;
-void kitty_set_legacy_migrate_warn(int (*fn)(void)) { g_ksec_migrate_warn = fn; }
 int ksec_stored_is_legacy(const char *stored)
 {
     return stored && stored[0] &&
@@ -2222,14 +2215,17 @@ int ksec_stored_is_legacy(const char *stored)
         strncmp(stored, KSEC_MPW_MARK, strlen(KSEC_MPW_MARK)) != 0 &&
         strncmp(stored, KSEC_MPW2_MARK, strlen(KSEC_MPW2_MARK)) != 0;
 }
-/* ---- legacy (<=0.76 old-KiTTY) password decrypt. Applied ONLY where a value
- * is guaranteed to be old-KiTTY-written: the old 9bis hive (read_setting_s)
- * and cyd01-syntax portable session files (ksf_load format conversion). Old
- * KiTTY stored "Password" as bcrypt_base64(plaintext) - plus a MASKPASS XOR
- * layer in some configurations - keyed on host+termtype+"KiTTY" (dopasskey
- * mode 0) or the fixed key "KiTTY" (mode >0). bcrypt is unauthenticated so we
- * must NOT apply this anywhere we might have written cleartext (our own hive,
- * our own ksf files, or the PuTTY hive via KiClassName=PuTTY). ---- */
+/* ---- legacy (<=0.76 old-KiTTY) password decrypt. Applied where a value is
+ * old-KiTTY-written: the old 9bis hive (read_setting_s), cyd01-syntax
+ * portable session files (ksf_load format conversion), and our own hive's
+ * unmarked values (read_setting_s), into which the first start copies the
+ * 9bis hive as it is (MigrateOldKittyHive). Old KiTTY stored "Password" as
+ * bcrypt_base64(plaintext) - plus a MASKPASS XOR layer in some
+ * configurations - keyed on host+termtype+"KiTTY" (dopasskey mode 0) or the
+ * fixed key "KiTTY" (mode >0). bcrypt is unauthenticated: the header test
+ * and a clean decode gate it, which takes about 2 in 500,000 plain passwords
+ * for the classic form. Never our own ksf files' key=value lines, nor the
+ * PuTTY hive via KiClassName=PuTTY. ---- */
 #include "../kitty/bcrypt/nbcrypt.h"   /* buncrypt_string_base64, bcrypt_init (relative: storage.c is built standalone in some targets) */
 /* exact bytes of kitty_crypt.c's MASKKEY ("\xc2\xa4..\xc2\xbe", UTF-8, 16 bytes) */
 static const unsigned char ksec_maskkey[16] = {
@@ -2456,11 +2452,4 @@ char *ksec_to_utf8(char *s)
 const char *ksec_orig_get(int slot)
 {
     return (slot >= 0 && slot <= 1) ? g_ksec_orig[slot] : NULL;
-}
-
-/* legacy->protected migration consent (0 = keep stored form; CLI tools
- * never register a warner, so batch saves keep the old form). */
-int ksec_migrate_warn_ask(void)
-{
-    return g_ksec_migrate_warn ? g_ksec_migrate_warn() : 0;
 }

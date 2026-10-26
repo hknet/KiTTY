@@ -970,6 +970,43 @@ void ksf_list_set(struct ksf_item **h, const char *key, const char *val)
     it->next = NULL;
     *pp = it;
 }
+/* The line of key holds, as read, another value than the list has now: the
+ * value was decoded on load (ksf_convert_legacy_password). The line's text
+ * goes, so a save writes key=value with the value. 1 = it went. */
+int ksf_list_rewrite_decoded(struct ksf_item *h, const char *key)
+{
+    for (; h; h = h->next) {
+        char *line, *eq, *bs, *v = NULL;
+        int differs;
+        if (!h->key || strcmp(h->key, key))
+            continue;
+        if (!h->raw || !h->val)
+            return 0;
+        line = dupstr(h->raw);
+        eq = strchr(line, '=');
+        bs = strchr(line, '\\');
+        if (eq && (!bs || eq < bs)) {
+            v = ksf_unmunge(eq + 1);
+        } else if (bs) {
+            char *r = bs + 1;
+            size_t rl = strlen(r);
+            if (rl && r[rl - 1] == '\\')
+                r[rl - 1] = '\0';
+            v = ksf_unmunge(r);
+        }
+        differs = v && strcmp(v, h->val) != 0;
+        if (v) { smemclr(v, strlen(v)); sfree(v); }
+        smemclr(line, strlen(line));
+        sfree(line);
+        if (!differs)
+            return 0;
+        smemclr(h->raw, strlen(h->raw));
+        sfree(h->raw);
+        h->raw = NULL;
+        return 1;
+    }
+    return 0;
+}
 /* KiTTY: drop a key from a loaded session list. Used to retire a renamed
  * setting when the session is next saved - open_settings_w pre-loads the file,
  * so a key nobody writes any more would otherwise be carried forever. */
@@ -2169,19 +2206,28 @@ int kitty_session_suffix_rename(const char *oldsuf, const char *newsuf,
 /* A cyd01-syntax file was written by old (<=0.76) KiTTY, whose portable saves
  * stored "Password" bcrypt-encrypted, same scheme as its old registry hive
  * (old KiTTY never encrypted ProxyPassword). Decode it as part of the format
- * conversion, so everything downstream - reads, the migration-consent gate,
- * the next save - sees the plaintext-unmarked semantics of our own format. If
- * it does not decode, the stored bytes stay untouched (never-lose); crucially,
+ * conversion, so every reader and the migration-consent gate see the
+ * plaintext-unmarked semantics of our own format. The line keeps its text as
+ * read (it->raw): a save that writes no new value for it - the protection
+ * declined, the password unchanged - writes the stored bytes back, never the
+ * decoded password; a new value replaces the line (ksf_list_set). If it does
+ * not decode, the stored bytes stay untouched (never-lose); crucially,
  * decoding must happen HERE because once the file is rewritten in our syntax
  * the "this value is legacy-encrypted" context is gone for good. */
 static void ksf_convert_legacy_password(struct ksf_item **head)
 {
-    const char *pw = ksf_list_get(*head, KR_PASSWORD);
-    if (!pw || !pw[0]) return;
-    char *pt = ksec_legacy_decrypt_hostterm(pw,
+    struct ksf_item *it;
+    char *pt;
+    for (it = *head; it; it = it->next)
+        if (it->key && !strcmp(it->key, KR_PASSWORD))
+            break;
+    if (!it || !it->val || !it->val[0]) return;
+    pt = ksec_legacy_decrypt_hostterm(it->val,
         ksf_list_get(*head, "HostName"), ksf_list_get(*head, "TerminalType"));
     if (pt) {
-        ksf_list_set(head, KR_PASSWORD, pt);
+        memset(it->val, 0, strlen(it->val));
+        sfree(it->val);
+        it->val = dupstr(pt);
         memset(pt, 0, strlen(pt));
         free(pt);
     }
@@ -2323,8 +2369,17 @@ static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
     if (kitty_store_readonly())
         return false;
     CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
+    _doserrno = 0;
     fp = fopen(path, "wb");
-    if (!fp) return false;
+    if (!fp) {
+        /* Windows' reason for the caller (GetLastError): a file another
+         * program holds refuses with a sharing violation, which a session
+         * save tries again (windows/storage.c close_settings_w) */
+        DWORD err = (DWORD)_doserrno;
+        SetLastError(err ? err : ERROR_WRITE_FAULT);
+        return false;
+    }
+    _doserrno = 0;
     for (; h; h = h->next) {
         const char *eol = h->crlf ? "\r\n" : "\n";   /* the line's own */
         char *mv;
@@ -2343,6 +2398,10 @@ static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
     if (fclose(fp) != 0)
         ok = false;
     ksp_verdict_forget(path);   /* judged afresh at the next listing */
+    if (!ok) {
+        DWORD err = (DWORD)_doserrno;
+        SetLastError(err ? err : ERROR_WRITE_FAULT);
+    }
     return ok;
 }
 bool ksf_save(const char *path, struct ksf_item *h)

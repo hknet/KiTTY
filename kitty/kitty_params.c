@@ -53,6 +53,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
+#include "kitty_storage.h"   /* kitty_set_session_save_failed_report */
 #include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_termenv.h"   /* the sendtermenv switch, read by the backends */
@@ -483,6 +484,30 @@ static void ini_write_failed_once( DWORD err ) {
 		break ;
 	}
 	sfree( msg ) ;
+}
+
+/* A session save to the folder store that failed after its retries
+ * (windows/storage.c, which writes the Event Log record): reported where a
+ * failed kitty.ini write is, each time - a box on the desktop, a modeless one
+ * beside a live session, the prompt of a scripted run, nothing where nobody
+ * can see it. */
+static void session_save_failed_report( const char *msg ) {
+	switch( kitty_reach() ) {
+	  case KITTY_REACH_DESKTOP:
+		kitty_info_box( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL ) ;   /* themed, as every KiTTY++ box */
+		break ;
+	  case KITTY_REACH_SESSION:
+		kitty_info_modeless( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL, NULL ) ;
+		break ;
+	  case KITTY_REACH_SHELL:
+		KittyCliPrint( msg ) ;
+		break ;
+	  default:
+		break ;
+	}
+}
+static void __attribute__((constructor)) kitty_params_autoreg( void ) {
+	kitty_set_session_save_failed_report( session_save_failed_report ) ;
 }
 
 // Write a parameter either to the registry or to the configuration file.

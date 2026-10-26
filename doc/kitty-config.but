@@ -2978,8 +2978,7 @@ unreadable.
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{savemode} and
 \c{KiClassName} (shown), \c{savbackupcount}, \c{portablebackupcount},
 \c{sav}, \c{fileextension}, \c{cryptsalt}, \c{restrictacl} (shown), and
-in a folder store \c{PortablePasswordProtection} and
-\c{WarnLegacyPasswordUpgrade}.
+in a folder store \c{PortablePasswordProtection}.
 
 \S{kitty-cfg-ini-view} The KiTTY.ini leaf (under Storage & Backup)
 

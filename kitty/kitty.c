@@ -1353,6 +1353,24 @@ char *kitty_loginscript_from_text( const char *text, int *locked )
 	return wrapped ? wrapped : dupstr( "" ) ;
 }
 
+/* A login script stored in classic KiTTY's form: scrambled with the built-in
+ * key, as the store's cryptsalt sets (ReadInitScript reads it the same way).
+ * For a save that stores it protected (windows/storage.c). */
+static unsigned char *kitty_script_classic_decode( const char *stored, int *len ) {
+	char *buf = dupstr( stored ) ;
+	int l = decryptstring( GetCryptSaltFlag(), buf, MASTER_PASSWORD ) ;
+	if( l <= 0 ) {
+		smemclr( buf, strlen( stored ) + 1 ) ;
+		sfree( buf ) ;
+		return NULL ;
+	}
+	*len = l ;
+	return (unsigned char *)buf ;
+}
+static void __attribute__((constructor)) kitty_script_decoder_autoreg( void ) {
+	kitty_set_script_classic_decoder( kitty_script_classic_decode ) ;
+}
+
 void ReadInitScript( const char * filename ) {
 	char * pst, *buffer=NULL, *name=NULL, *fileraw=NULL ;
 	FILE *fp ;

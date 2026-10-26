@@ -109,10 +109,17 @@ void kitty_set_save_only_nondefault(int on);
 int kitty_save_only_nondefault(void);
 void kitty_settings_w_nondefault(settings_w *handle, const char *defsession);
 void kitty_settings_w_save_rules(settings_w *handle, const char *section);
+/* windows/storage.c: the save writes the session's settings as a whole
+ * (save_settings): its close stores the protected settings protected */
+void kitty_settings_w_whole(settings_w *handle);
 int kitty_store_comment_out_defaults(const char *defsession, int *nfailed);
 /* Session Lockdown: the session's own switch, and writing it alone. */
 int kitty_session_locked(const char *sessionname);
 int kitty_session_set_lockdown(const char *sessionname, int on);
+/* One value written into a stored session, the rest as stored (the
+ * "always" answers); sval NULL = ival as a number. 1 written. */
+int kitty_session_write_value(const char *sessionname, const char *key,
+                              const char *sval, int ival);
 char *kitty_session_locked_msg(const char *sessionname);   /* NULL = not locked */
 settings_w *kitty_open_settings_w_items(void);
 struct ksf_item *kitty_settings_w_take_items(settings_w *handle);
@@ -211,6 +218,7 @@ void kitty_set_hostkey_suffix(const char *suffix);
 const char *kitty_hostkey_suffix(void);
 struct ksf_item *ksf_load(const char *path);      /* parsed list (may be NULL) */
 bool ksf_save(const char *path, struct ksf_item *h);   /* true = all written */
+int ksf_list_rewrite_decoded(struct ksf_item *h, const char *key);
 /* The same; a changed or new line as "key\value\" (the named-proxy files) */
 bool ksf_save_classic(const char *path, struct ksf_item *h);
 char *portable_root_dir(void);                    /* snewn'd or NULL */
@@ -260,6 +268,15 @@ void kitty_set_registry_root(int use_putty);
 void kitty_set_registry_base(const char *base);   /* any hive; tests */
 void kitty_set_session_dir(const char *dir);
 void kitty_set_storage_mode(int mode);
+/* windows/storage.c: where a session save to the folder store that failed
+ * after its retries is reported (msg: KT_SESSION_SAVE_FAILED_FMT, filled in);
+ * the Event Log record is written there whatever is set. NULL = no report. */
+void kitty_set_session_save_failed_report(void (*fn)(const char *msg));
+/* windows/storage.c: the login script's classic form (scrambled with the
+ * built-in key) decoded for a save that protects it; snewn'd blob of *len
+ * bytes, NULL = not decoded. NULL = none: such a script stays as stored. */
+void kitty_set_script_classic_decoder(
+    unsigned char *(*fn)(const char *stored, int *len));
 int kitty_storage_is_portable(void);
 
 #endif /* KITTY_STORAGE_H */

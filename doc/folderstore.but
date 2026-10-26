@@ -207,9 +207,6 @@ text. Reading goes by marker. A save keeps the stored line when the
 password is unchanged and already in the target form, when the value
 cannot be opened here, when the master password is locked, or when
 Windows cannot encrypt it (DPAPI) - each reported.
-Replacing an unmarked or \c{PLAIN:} value prompts first;
-\c{WarnLegacyPasswordUpgrade=no} skips the prompt. klink, kscp and
-ksftp keep the line.
 
 \H{folderstore-security} Security
 
@@ -341,7 +338,8 @@ connects, \c{Security} when a process first needs the master password,
 \c{kitty.ini} at start.
 KiTTY++ writes session files, \c{KiTTYState} and proxy files over in
 place from what it read a moment before: an edit made in between is
-lost.
+lost, also one from another user or computer on a shared folder. The
+last save wins.
 
 \H{folderstore-ktx} .ktx export files
 

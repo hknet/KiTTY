@@ -944,7 +944,6 @@ static const struct kset_key kset_keys[] = {
     /* Storage & Backup: the folder-store password policy, read at save time */
     { INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION, KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_pwprot_choices, lenof(kset_pwprot_choices) },
-    { INIT_SECTION, KI_WARNLEGACYPASSWORDUPGRADE, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
 };
 
 /* The banner preview under the client-version field (Connections leaf). */

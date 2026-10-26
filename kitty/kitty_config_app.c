@@ -5089,7 +5089,6 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
         if (!locked) {
             KSET_DROPLIST(s, KT_KSET_STORAGE_PWPROT, KI_PORTABLEPASSWORDPROTECTION, kitty_storage);
             ctrl_text(s, KT_KSET_STORAGE_PWPROT_NOTE, HELPCTX(kitty_storage));
-            KSET_CHECKBOX(s, KT_KSET_STORAGE_WARNLEGACY, KI_WARNLEGACYPASSWORDUPGRADE, kitty_storage);
         }
     }
 

@@ -52,6 +52,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - kscp's Event Log transfer records, the local proxy's Event Log entries
   and kageant's Saved Sessions menu keep long paths and folder names in
   full.
+- Saving a session from classic KiTTY now always stores its password,
+  proxy password and login script in the protected form. The question
+  before that save is gone.
+- Passwords of sessions taken over from classic KiTTY's 9bis.com registry
+  key are read correctly. Before, the old format was used as the password.
+- A session save to the folder store that fails is retried for a second,
+  then reported in a box and in the Event Log. Before, it was lost without
+  a word.
 
 ## 0.85.1.18-beta — 2026-10-23
 

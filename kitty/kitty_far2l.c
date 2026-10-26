@@ -25,6 +25,7 @@
 #include "kitty_text.h"     /* the box's words */
 #include "kitty_dlgbox.h"   /* kitty_confirm_modeless_check: the shared box */
 #include "kitty_inifile.h"  /* kitty_store_readonly: readonly=yes */
+#include "kitty_storage.h"  /* kitty_session_write_value: the IDs alone */
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
 
@@ -344,16 +345,16 @@ void kitty_far2l_confirm_end(Terminal *term)
  * ------------------------------------------------------------------------ */
 
 /*
- * Into the saved session, through save_settings() like "always deny for this
- * host" of OSC 52: it honours the ini/registry backend, and it writes the
- * window's other live settings along with it - they are this session's. An
- * unnamed session or Default Settings has nothing to write into; the ID then
- * stays in this window's settings only.
+ * Into the saved session, like "always deny for this host" of OSC 52: the
+ * client IDs alone (kitty_session_write_value, either store) - a write of
+ * one value, not a save of the session's settings, so the stored passwords
+ * and login script stay as they are. An unnamed session or Default Settings
+ * has nothing to write into; the ID then stays in this window's settings
+ * only.
  */
 bool kitty_far2l_save_client_ids(Terminal *term)
 {
     const char *name;
-    char *err;
 
     if (!term || !term->conf)
         return false;
@@ -368,10 +369,6 @@ bool kitty_far2l_save_client_ids(Terminal *term)
         sfree(msg);
         return false;
     }
-    err = save_settings(name, term->conf);
-    if (err) {
-        sfree(err);
-        return false;
-    }
-    return true;
+    return kitty_session_write_value(name, "Far2lClientIds",
+        conf_get_str(term->conf, CONF_far2l_client_ids), 0) != 0;
 }

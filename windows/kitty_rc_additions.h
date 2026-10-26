@@ -62,13 +62,6 @@
 #ifndef IDC_MPW_EDIT_LBL
 #define IDC_MPW_EDIT_LBL 1105
 #endif
-/* Legacy->protected password migration consent dialog (portable saves). */
-#ifndef IDD_MIGRATEWARN
-#define IDD_MIGRATEWARN 132
-#endif
-#ifndef IDC_MIG_NOASK
-#define IDC_MIG_NOASK 1104
-#endif
 /* Named-proxy editor dialog (cyd01/KiTTY#11) + its controls. */
 /* What this proxy says its Host field IS: follow the global setting, a hostname,
  * or possibly the title of a saved session. Stored per definition as

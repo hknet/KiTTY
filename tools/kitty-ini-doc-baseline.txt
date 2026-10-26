@@ -32,7 +32,6 @@ row KiTTY KiClassName
 row KiTTY PSCPPath
 row KiTTY ReconnectDelay
 row KiTTY RootFolderLabel
-row KiTTY WarnLegacyPasswordUpgrade
 row KiTTY WinSCPPath
 row KiTTY WorkplaceMinutes
 row KiTTY WorkplaceProxy
@@ -148,7 +147,6 @@ text ConfigBox categoryexpand
 text ConfigBox windowheight
 text KiTTY PSCPPath
 text KiTTY ReconnectDelay
-text KiTTY WarnLegacyPasswordUpgrade
 text KiTTY WinSCPPath
 text KiTTY WorkplaceMinutes
 text KiTTY WorkplaceProxy
