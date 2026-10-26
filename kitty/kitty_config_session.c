@@ -30,7 +30,7 @@
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
 #include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
-#include "kitty_sessionrekey.h"  /* moving a session with what hangs off its name */
+#include "kitty_sessionrename.h"  /* moving a session with what hangs off its name */
 #include "kitty_sessorg.h"       /* Organize sessions, Arrange, the folder-delete box */
 #include "kitty_tags.h"          /* Session > Startup, "Session Tags" (hknet/KiTTY#60) */
 #include "kitty_dlgbox.h"        /* the modeless info box */
@@ -2194,7 +2194,7 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
     int i, moved = 0;
     /*
      * KiTTY (hknet/KiTTY#55): sessions stored under a folder PATH are moved
-     * by re-keying them - key or file, Folder value, jump list, launcher and
+     * by renaming them - key or file, Folder value, jump list, launcher and
      * every jump-host reference to them - and that is all or nothing: a name
      * already taken at the destination stops the whole move before anything
      * changes, and the message lists the clashes. The bare-name sessions
@@ -2221,16 +2221,16 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
         if (nk) {
             strbuf *rw = strbuf_new(), *cl = strbuf_new();
             char *err = NULL;
-            int r = kitty_session_rekey_many(kf, kt, nk, rw, cl, &err);
+            int r = kitty_session_rename_many(kf, kt, nk, rw, cl, &err);
             int k;
-            if (r == KITTY_REKEY_CLASH) {
+            if (r == KITTY_SESSRENAME_CLASH) {
                 char *rootlabel = kitty_root_folder_label_dup(), *msg;
                 msg = dupprintf(KT_SP_MOVE_CLASH,
                                 kitty_folder_is_root(to) ? rootlabel : to, cl->s);
                 kcs_tell(msg);
                 sfree(msg);
                 sfree(rootlabel);
-            } else if (r == KITTY_REKEY_FAILED) {
+            } else if (r == KITTY_SESSRENAME_FAILED) {
                 kcs_tell(err ? err : KT_MSG_UNKNOWN_ERROR);
             } else if (rw->len) {
                 char *msg = dupprintf(KT_SP_JUMP_REWRITTEN, rw->s);
@@ -2247,7 +2247,7 @@ static int sessionsaver_move_folder_sessions(struct sessionsaver_data *ssd,
             sfree(kf);
             sfree(kt);
             kitty_session_folder_cache_clear();
-            if (r != KITTY_REKEY_OK)
+            if (r != KITTY_SESSRENAME_OK)
                 return -1;
             moved += nk;
             /* The list the loop below walks still holds the old names. */
@@ -3235,7 +3235,7 @@ static bool kcs_row_key(dlgcontrol *ctrl, int vk)
  *
  * A session loaded from one folder and saved while standing in another is
  * MOVED there, as Save has always re-filed it; under the path model that is a
- * re-key (*move_from is set to the loaded name, the return is where it goes).
+ * rename (*move_from is set to the loaded name, the return is where it goes).
  */
 static char *sessionsaver_save_target(struct sessionsaver_data *ssd,
                                       bool isdef, char **move_from)
@@ -3938,11 +3938,11 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                             sfree(target);
                             return;
                         }
-                        r = kitty_session_rekey(move_from, target, rw, cl, &err);
-                        if (r != KITTY_REKEY_OK) {
+                        r = kitty_session_rename(move_from, target, rw, cl, &err);
+                        if (r != KITTY_SESSRENAME_OK) {
                             char *rootlabel = kitty_root_folder_label_dup(), *msg,
                                  *fld = ksp_folder_of(target);
-                            msg = (r == KITTY_REKEY_CLASH) ?
+                            msg = (r == KITTY_SESSRENAME_CLASH) ?
                                 dupprintf(KT_SP_MOVE_CLASH, fld ? fld : rootlabel,
                                           cl->s) :
                                 dupstr(err ? err : KT_MSG_UNKNOWN_ERROR);

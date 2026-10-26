@@ -393,7 +393,7 @@ target_link_libraries(test_sessionlist
 # directory. Hermetic like test_sessionlist.
 add_executable(test_sessionpath
   test/test_sessionpath.c
-  kitty/kitty_sessionrekey.c   # the re-key, against the fixture store
+  kitty/kitty_sessionrename.c   # the rename, against the fixture store
   stubs/no-agent.c
   stubs/no-callback.c
   stubs/no-gss.c

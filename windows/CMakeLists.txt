@@ -862,7 +862,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_logkeep.c   # KiTTY: log retention, called from logging.c (listed per terminal target below)
   ${KITTY_DIR}/kitty_reconnect.c   # KiTTY: reconnect by failure condition (hknet/KiTTY#66)
   ${KITTY_DIR}/kitty_migrate.c
-  ${KITTY_DIR}/kitty_sessionrekey.c   # KiTTY: move/rename a session and what hangs off its name (#55)
+  ${KITTY_DIR}/kitty_sessionrename.c   # KiTTY: move/rename a session and what hangs off its name (#55)
   ${KITTY_DIR}/kitty_sessorg.c   # KiTTY: Organize sessions, Arrange, the folder-delete box (#55)
   ${KITTY_DIR}/kitty_urlsession.c   # KiTTY: a link opens a matching saved session (cyd01/KiTTY#540)
   ${KITTY_DIR}/kitty_tags.c   # KiTTY: session tags - Session > Startup, Manage Sessions' tag pane (#60)

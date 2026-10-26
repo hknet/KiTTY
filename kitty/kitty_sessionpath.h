@@ -228,7 +228,7 @@ char **kitty_session_names(int *n);
 void kitty_session_names_free(char **names, int n);
 
 /* ---- planning a move (no store touched: the unit test drives these) ----
- * A plan is the re-keys a move needs (from[i] -> to[i], identities), the
+ * A plan is the renames a move needs (from[i] -> to[i], identities), the
  * Folder values to rewrite for sessions stored by their bare name
  * (fname[i] gets Folder=fvalue[i], "Default" = the root), and the targets
  * that are taken (clash[]: an identity another session already has, or one
@@ -258,7 +258,7 @@ void ksp_plan_arrange(char *const *names, char *const *folders, int n,
  * their Folder value with a free path are left to Arrange on demand. */
 int ksp_plan_arrange_offer_due(const struct ksp_plan *p);
 /* A folder and everything below it moves from `from` to `to` (a rename, or
- * the delete of `from` into `to`): path sessions are re-keyed keeping their
+ * the delete of `from` into `to`): path sessions are renamed keeping their
  * shape below it, bare sessions filed there get their Folder value moved. */
 void ksp_plan_folder_move(char *const *names, char *const *folders, int n,
                           const char *from, const char *to,

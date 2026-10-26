@@ -5,7 +5,7 @@
  * Every window here is modeless and owned by the configuration window: it
  * never holds that window up, and an action that puts up a question
  * continues from the box's answer. The moves themselves are
- * kitty_sessionrekey.h's re-key.
+ * kitty_sessionrename.h's rename.
  */
 #ifndef KITTY_SESSORG_H
 #define KITTY_SESSORG_H
@@ -48,7 +48,7 @@ void kitty_sessorg_delete_any_folder(HWND owner, const char *folder,
 void kitty_sessorg_rename(HWND owner, int folder, const char *target);
 
 /* Move the folder `from`, with everything below it, to `to` (a rename, or
- * the delete of `from` into an existing folder): path sessions re-keyed,
+ * the delete of `from` into an existing folder): path sessions renamed,
  * bare sessions filed there get their Folder value moved, the stored folder
  * list follows. All or nothing. Returns 1 done; 0 with *msg (snewn'd) stating
  * why: `clash_fmt` (a format taking the destination and the list, the

@@ -1,7 +1,7 @@
 /*
- * kitty_sessionrekey.c - move or rename saved sessions together with what
+ * kitty_sessionrename.c - move or rename saved sessions together with what
  * hangs off their names (hknet/KiTTY#55). The contract is in
- * kitty_sessionrekey.h.
+ * kitty_sessionrename.h.
  */
 
 #include <stdio.h>
@@ -14,7 +14,7 @@
 #include "kitty_defs.h"
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
-#include "kitty_sessionrekey.h"
+#include "kitty_sessionrename.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_registry.h"
 #include "kitty_migrate.h"
@@ -97,14 +97,14 @@ static char *rk_move_one(const char *from, const char *to)
                                               KEY_READ, &k) == ERROR_SUCCESS;
                 if (src_there)
                     RegCloseKey(k);
-                char *why = dupprintf(src_there ? KT_SP_REKEY_LEFTOVER
-                                                : KT_SP_REKEY_NOT_WRITTEN_BACK,
+                char *why = dupprintf(src_there ? KT_SESSRENAME_LEFTOVER
+                                                : KT_SESSRENAME_NOT_WRITTEN_BACK,
                                       leftover);
                 err = dupprintf(KT_CFG_SESSION_UPDATE_FAILED, from, why);
                 sfree(why);
             } else {
                 err = dupprintf(KT_CFG_SESSION_UPDATE_FAILED, from,
-                                KT_SP_REKEY_COPY_FAILED);
+                                KT_SESSRENAME_COPY_FAILED);
             }
         }
         sfree(leftover);
@@ -381,7 +381,7 @@ static void rk_note(strbuf *sb, const char *name)
     put_dataz(sb, name);
 }
 
-int kitty_session_rekey_many(char *const *from, char *const *to, int n,
+int kitty_session_rename_many(char *const *from, char *const *to, int n,
                              strbuf *rewritten, strbuf *clashes,
                              char **errmsg)
 {
@@ -393,10 +393,10 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
     if (errmsg)
         *errmsg = NULL;
     if (n <= 0)
-        return KITTY_REKEY_OK;
+        return KITTY_SESSRENAME_OK;
     /* readonly=yes: nothing is moved or rewritten, no message */
     if (kitty_store_readonly())
-        return KITTY_REKEY_READONLY;
+        return KITTY_SESSRENAME_READONLY;
 
     /* Everything is checked before anything moves. */
     for (i = 0; i < n; i++) {
@@ -422,7 +422,7 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
             }
     }
     if (clash)
-        return KITTY_REKEY_CLASH;
+        return KITTY_SESSRENAME_CLASH;
 
     /* Folder store: what the moves would run into on disk is checked before
      * the first one, so a batch is refused whole rather than stopped
@@ -467,9 +467,9 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
         }
         if (why->len) {
             if (errmsg)
-                *errmsg = dupprintf(KT_SP_REKEY_REFUSED, why->s);
+                *errmsg = dupprintf(KT_SESSRENAME_REFUSED, why->s);
             strbuf_free(why);
-            return KITTY_REKEY_FAILED;
+            return KITTY_SESSRENAME_FAILED;
         }
         strbuf_free(why);
     }
@@ -483,17 +483,17 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
             continue;
         err = rk_move_one(from[i], to[i]);
         if (err) {
-            /* Name what did move before the failure: those are re-keyed and
+            /* Name what did move before the failure: those are renamed and
              * stay where they went. */
             strbuf *done = strbuf_new();
             for (j = 0; j < i; j++)
                 if (strcmp(from[j], to[j])) {
                     if (done->len)
                         put_byte(done, '\n');
-                    put_fmt(done, KT_SP_REKEY_MOVED_PAIR, from[j], to[j]);
+                    put_fmt(done, KT_SESSRENAME_MOVED_PAIR, from[j], to[j]);
                 }
             if (done->len) {
-                char *more = dupprintf("%s\n\n" KT_SP_REKEY_PARTIAL, err, done->s);
+                char *more = dupprintf("%s\n\n" KT_SESSRENAME_PARTIAL, err, done->s);
                 sfree(err);
                 err = more;
             }
@@ -516,12 +516,12 @@ int kitty_session_rekey_many(char *const *from, char *const *to, int n,
 
     rk_jump_refs(from, to, i, pre, npre, rewritten);
     kitty_session_names_free(pre, npre);
-    return i < n ? KITTY_REKEY_FAILED : KITTY_REKEY_OK;
+    return i < n ? KITTY_SESSRENAME_FAILED : KITTY_SESSRENAME_OK;
 }
 
-int kitty_session_rekey(const char *from, const char *to,
+int kitty_session_rename(const char *from, const char *to,
                         strbuf *rewritten, strbuf *clashes, char **errmsg)
 {
     char *f = (char *)from, *t = (char *)to;
-    return kitty_session_rekey_many(&f, &t, 1, rewritten, clashes, errmsg);
+    return kitty_session_rename_many(&f, &t, 1, rewritten, clashes, errmsg);
 }

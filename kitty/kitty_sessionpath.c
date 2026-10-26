@@ -1335,7 +1335,7 @@ static int ksp_reg_restore(HKEY root, const char *from, const char *to)
  * escape_registry_key never produces ('%' is always followed by two
  * upper-case hex digits there, and the registry ignores case), so no
  * session's key can be taken for it. */
-#define KSP_REKEY_TMP_SUFFIX "%rekey"
+#define KSP_RENAME_TMP_SUFFIX "%rename"
 
 int ksp_reg_move_tree(HKEY root, const char *src, const char *dst,
                       char **leftover)
@@ -1369,7 +1369,7 @@ int ksp_reg_move_tree(HKEY root, const char *src, const char *dst,
      * would land on the source itself. Go through a temporary key, proving
      * each copy before anything is deleted. */
     {
-        char *tmp = dupcat(src, KSP_REKEY_TMP_SUFFIX);
+        char *tmp = dupcat(src, KSP_RENAME_TMP_SUFFIX);
         int ok = 0;
         ksp_reg_delete_tree(root, tmp);   /* a leftover of an earlier failure */
         if (ksp_reg_copy_verified(root, src, tmp)) {

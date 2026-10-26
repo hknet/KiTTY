@@ -369,7 +369,7 @@ kitty/kitty_selfcheck_stamp.c | (file) | kt_stamp_block | KT_STAMP_SIZE | integr
 kitty/kitty_sessionpath.c | ksp_fp_is_session() | line | 512 | session-file line, read only to see whether it starts with a session key; a longer line arrives in pieces, no value is taken
 kitty/kitty_sessionpath.c | ksp_reg_delete_tree() | sub | 512 | subkey name from RegEnumKeyExA (key names at most 255) of a key tree being deleted; the child path is built with dupprintf
 
-kitty/kitty_sessionrekey.c | rk_launcher_reg_walk() | name | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
+kitty/kitty_sessionrename.c | rk_launcher_reg_walk() | name | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 
 kitty/kitty_sessorg.c | so_tag_combo_fill() | typed | 256 | tag name typed in the tag combo, GetWindowTextA(sizeof)
 kitty/kitty_sessorg.c | so_command() | typed | 256 | tag name typed in the tag combo, GetWindowTextA(sizeof)

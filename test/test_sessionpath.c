@@ -27,7 +27,7 @@
 #include "storage.h"
 #include "kitty/kitty_storage.h"
 #include "kitty/kitty_sessionpath.h"
-#include "kitty/kitty_sessionrekey.h"
+#include "kitty/kitty_sessionrename.h"
 #include "kitty/kitty_inifile.h"   /* the kitty.ini in charge: none */
 
 void modalfatalbox(const char *p, ...)
@@ -50,7 +50,7 @@ void nonfatal(const char *p, ...)
     fputc('\n', stderr);
 }
 
-/* kitty_sessionrekey.c's GUI-side neighbours, for the fixture store only:
+/* kitty_sessionrename.c's GUI-side neighbours, for the fixture store only:
  * the per-session commands' file name (the folder store's escape is enough
  * here) and "does this session exist" (kitty_migrate.c's rule: a FILE). */
 void mungestr(const char *in, char *out)
@@ -898,8 +898,8 @@ static void part_registry(const char *tmp)
         bool upper = false;
         ok(reg_get(root, "S\\LINUX%5Csrv01", "Commands", back, &len) && len == BIG,
            "the long value survives the case change");
-        ok(!reg_exists(root, "S\\Linux%5Csrv01%rekey") &&
-           !reg_exists(root, "S\\LINUX%5Csrv01%rekey"),
+        ok(!reg_exists(root, "S\\Linux%5Csrv01%rename") &&
+           !reg_exists(root, "S\\LINUX%5Csrv01%rename"),
            "no temporary key is left behind");
         if (RegOpenKeyExA(root, "S", 0, KEY_READ, &k) == ERROR_SUCCESS) {
             if (RegEnumKeyExA(k, 0, name, &nl, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
@@ -910,25 +910,25 @@ static void part_registry(const char *tmp)
     }
 
     /* The temporary key of a change of case is no session's key: the
-     * session `srv02~rekey` (escaped srv02%7Erekey) survives the change of
+     * session `srv02~rename` (escaped srv02%7Erename) survives the change of
      * case of `srv02`, while a leftover temporary key is cleared. */
     reg_put(root, "S\\srv02", "HostName", "a", 2, REG_SZ);
-    reg_put(root, "S\\srv02%7Erekey", "HostName", "b", 2, REG_SZ);
-    reg_put(root, "S\\srv02%rekey", "Stale", "x", 2, REG_SZ);
+    reg_put(root, "S\\srv02%7Erename", "HostName", "b", 2, REG_SZ);
+    reg_put(root, "S\\srv02%rename", "Stale", "x", 2, REG_SZ);
     ok(ksp_reg_move_tree(root, "S\\srv02", "S\\SRV02", NULL),
-       "a change of case beside a session named ~rekey");
+       "a change of case beside a session named ~rename");
     {
         char v[8];
         DWORD len = sizeof(v);
-        ok(reg_get(root, "S\\srv02%7Erekey", "HostName", v, &len) &&
-           !strcmp(v, "b"), "the session srv02~rekey is untouched");
+        ok(reg_get(root, "S\\srv02%7Erename", "HostName", v, &len) &&
+           !strcmp(v, "b"), "the session srv02~rename is untouched");
         len = sizeof(v);
         ok(reg_get(root, "S\\SRV02", "HostName", v, &len) && !strcmp(v, "a"),
            "the renamed session keeps its settings");
         len = sizeof(v);
         ok(!reg_get(root, "S\\SRV02", "Stale", v, &len),
            "nothing of the old temporary key gets into it");
-        ok(!reg_exists(root, "S\\srv02%rekey"), "the stale temporary key is gone");
+        ok(!reg_exists(root, "S\\srv02%rename"), "the stale temporary key is gone");
     }
 
     reg_put(root, "S\\taken", "HostName", "t", 2, REG_SZ);
@@ -988,8 +988,8 @@ static void part_store_blockers(void)
         char *from[] = { "mv\\a", "mv\\b" };
         char *to[] = { "dest\\a", "Box\\x\\b" };   /* the second is blocked */
         char *err = NULL;
-        int r = kitty_session_rekey_many(from, to, 2, NULL, NULL, &err);
-        ok(r == KITTY_REKEY_FAILED && err && strstr(err, "Nothing was moved"),
+        int r = kitty_session_rename_many(from, to, 2, NULL, NULL, &err);
+        ok(r == KITTY_SESSRENAME_FAILED && err && strstr(err, "Nothing was moved"),
            "refused before the first move, saying so");
         ok(file_exists("mv\\a") && file_exists("mv\\b") && !file_exists("dest"),
            "both sessions are where they were");
@@ -1000,8 +1000,8 @@ static void part_store_blockers(void)
         char *to[] = { "dest\\a", "dest\\b" };
         strbuf *rw = strbuf_new(), *cl = strbuf_new();
         char *err = NULL;
-        int r = kitty_session_rekey_many(from, to, 2, rw, cl, &err);
-        ok(r == KITTY_REKEY_OK && file_exists("dest\\a") && file_exists("dest\\b") &&
+        int r = kitty_session_rename_many(from, to, 2, rw, cl, &err);
+        ok(r == KITTY_SESSRENAME_OK && file_exists("dest\\a") && file_exists("dest\\b") &&
            !file_exists("mv"), "a clean batch moves, and the emptied folder goes");
         sfree(err);
         strbuf_free(rw);
@@ -1046,14 +1046,14 @@ static void part_commands_rename(const char *tmp)
         char *from[] = { "cmdsrc" };
         char *to[] = { "cmddst" };
         char *err = NULL;
-        int r = kitty_session_rekey_many(from, to, 1, NULL, NULL, &err);
+        int r = kitty_session_rename_many(from, to, 1, NULL, NULL, &err);
         dst = dupprintf("%s\\Sessions_Commands\\cmddst\\1", cfg);
-        ok(r == KITTY_REKEY_OK && GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES &&
+        ok(r == KITTY_SESSRENAME_OK && GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES &&
            GetFileAttributesA(src) == INVALID_FILE_ATTRIBUTES,
            "the commands moved to Sessions_Commands\\cmddst with the session");
-        if (r != KITTY_REKEY_OK || GetFileAttributesA(dst) == INVALID_FILE_ATTRIBUTES ||
+        if (r != KITTY_SESSRENAME_OK || GetFileAttributesA(dst) == INVALID_FILE_ATTRIBUTES ||
             GetFileAttributesA(src) != INVALID_FILE_ATTRIBUTES)
-            printf("      rekey %d (%s), commands at the old name %s, at the new %s,"
+            printf("      rename %d (%s), commands at the old name %s, at the new %s,"
                    " session cmddst %s\n", r, err ? err : "no message",
                    GetFileAttributesA(src) != INVALID_FILE_ATTRIBUTES ? "yes" : "no",
                    GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES ? "yes" : "no",

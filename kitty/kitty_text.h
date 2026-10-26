@@ -4260,15 +4260,15 @@
 #define KT_SP_MENU_DELETE                            "Delete"
 #define KT_SP_MENU_EXPLORER                          "Show in Explorer"
 
-/* Moving sessions safely (kitty_sessionrekey.c, windows/storage.c). */
+/* Moving sessions safely (kitty_sessionrename.c, windows/storage.c). */
 #define KT_SP_PATH_BLOCKED                           "A session and a folder would both be \"%s\" in the session folder.\n\n" \
         "Choose another name, or set a session file suffix."
-#define KT_SP_REKEY_COPY_FAILED                      "the copy of its registry key did not match the original; nothing was changed"
-#define KT_SP_REKEY_LEFTOVER                         "the old registry key could not be removed completely; the session's settings are kept under the key %s"
-#define KT_SP_REKEY_NOT_WRITTEN_BACK                 "the session could not be written back under its name; its settings are kept under the key %s"
-#define KT_SP_REKEY_REFUSED                          "Nothing was moved:\n%s"
-#define KT_SP_REKEY_PARTIAL                          "Moved before the failure:\n%s"
-#define KT_SP_REKEY_MOVED_PAIR                       "%s -> %s"
+#define KT_SESSRENAME_COPY_FAILED                    "the copy of its registry key did not match the original; nothing was changed"
+#define KT_SESSRENAME_LEFTOVER                       "the old registry key could not be removed completely; the session's settings are kept under the key %s"
+#define KT_SESSRENAME_NOT_WRITTEN_BACK               "the session could not be written back under its name; its settings are kept under the key %s"
+#define KT_SESSRENAME_REFUSED                        "Nothing was moved:\n%s"
+#define KT_SESSRENAME_PARTIAL                        "Moved before the failure:\n%s"
+#define KT_SESSRENAME_MOVED_PAIR                     "%s -> %s"
 
 /* Manage Sessions (kitty_sessorg.c), Arrange and the folder-delete box. */
 #define KT_SP_ORG_BUTTON                             "Manage..."

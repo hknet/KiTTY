@@ -4,7 +4,7 @@
  * kitty_sessorg.h.
  *
  * A session's identity is its folder path plus its name (kitty_sessionpath.h)
- * and moving it is a re-key (kitty_sessionrekey.h): key or file, Folder
+ * and moving it is a rename (kitty_sessionrename.h): key or file, Folder
  * value, jump list, launcher, last session and the jump-host references to
  * it, in one step. What to move is PLANNED first (ksp_plan_*, unit-tested):
  * a plan with a clash is not carried out at all.
@@ -36,7 +36,7 @@
 #include "kitty_tools.h"         /* StringList_Add / _Del */
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
-#include "kitty_sessionrekey.h"
+#include "kitty_sessionrename.h"
 #include "kitty_regbackup.h"     /* SaveRegistryKeyNow: the regbackup before a registry move */
 #include "kitty_dlgbox.h"        /* the shared confirm / info boxes, kitty_fit_text */
 #include "kitty_theme.h"         /* button widths, ink marks, the row aligner */
@@ -259,14 +259,14 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
     }
     rw = strbuf_new();
     cl = strbuf_new();
-    r = kitty_session_rekey_many(p.from, p.to, p.n, rw, cl, &err);
-    if (r == KITTY_REKEY_OK) {
+    r = kitty_session_rename_many(p.from, p.to, p.n, rw, cl, &err);
+    if (r == KITTY_SESSRENAME_OK) {
         for (i = 0; i < p.nfolder; i++)
             so_write_folder(p.fname[i], p.fvalue[i]);
         so_folderlist_move(from, to);
         if (rewritten && rw->len)
             *rewritten = dupstr(rw->s);
-    } else if (r == KITTY_REKEY_CLASH) {
+    } else if (r == KITTY_SESSRENAME_CLASH) {
         char *capped = so_cap_list(cl->s);
         *msg = dupprintf(clash_fmt, so_folder_label(to), capped);
         sfree(capped);
@@ -279,7 +279,7 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
     strbuf_free(cl);
     ksp_plan_free(&p);
     so_names_free(&s);
-    return r == KITTY_REKEY_OK;
+    return r == KITTY_SESSRENAME_OK;
 }
 
 /* Move sessions into a folder under their own names. Returns 1 done, 0 with
@@ -313,7 +313,7 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
         so_names_free(&s);
         return 0;
     }
-    /* A re-key for every session whose identity changes. One that keeps it
+    /* A rename for every session whose identity changes. One that keeps it
      * (a session filed by its Folder value only, moved to the root) has only
      * that value to change. */
     for (i = 0; i < p.n; i++)
@@ -334,13 +334,13 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
     }
     rw = strbuf_new();
     cl = strbuf_new();
-    r = kitty_session_rekey_many(mf, mt, nm, rw, cl, &err);
-    if (r == KITTY_REKEY_OK) {
+    r = kitty_session_rename_many(mf, mt, nm, rw, cl, &err);
+    if (r == KITTY_SESSRENAME_OK) {
         for (i = 0; i < p.n; i++)
             if (!strcmp(p.from[i], p.to[i]))
                 so_write_folder(p.to[i], dest);
         so_report_rewritten(owner, rw->s);
-    } else if (r == KITTY_REKEY_CLASH) {
+    } else if (r == KITTY_SESSRENAME_CLASH) {
         char *capped = so_cap_list(cl->s);
         *msg = dupprintf(KT_SP_MOVE_CLASH, so_folder_label(dest), capped);
         sfree(capped);
@@ -356,7 +356,7 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
     ksp_plan_free(&p);
     so_names_free(&s);
     kitty_config_session_store_changed();
-    return r == KITTY_REKEY_OK;
+    return r == KITTY_SESSRENAME_OK;
 }
 
 /* ---- Clone and Copy to... -----------------------------------------------
@@ -1436,14 +1436,14 @@ static char *so_name_apply(HWND h, struct so_name *nm, const char *v)
             !kitty_backup_before(nm->st ? nm->st->h : GetParent(h), 1))
             err = kitty_backup_not_done();
         if (!err) {
-            r = kitty_session_rekey(nm->target, to, rw, cl, &err);
-            if (r == KITTY_REKEY_OK) {
+            r = kitty_session_rename(nm->target, to, rw, cl, &err);
+            if (r == KITTY_SESSRENAME_OK) {
                 /* A session filed by its Folder value only keeps it: a
                  * rename is not an Arrange. */
                 if (!fld && !ksp_folder_is_root(nm->folder_value))
                     so_write_folder(to, nm->folder_value);
                 so_report_rewritten(nm->st ? nm->st->h : GetParent(h), rw->s);
-            } else if (r == KITTY_REKEY_CLASH) {
+            } else if (r == KITTY_SESSRENAME_CLASH) {
                 sfree(err);
                 err = dupprintf(KT_SP_MOVE_CLASH, so_folder_label(fld), cl->s);
             } else if (!err) {
@@ -1748,7 +1748,7 @@ static INT_PTR CALLBACK so_del_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 
 /* The Organize window's rename prompt, opened from the session list (its
  * right-click menu and F2): `target` is a session identity, or a folder path
- * when `folder` is set. The same checks and the same re-keying as there; the
+ * when `folder` is set. The same checks and the same renaming as there; the
  * open configuration box follows through kitty_config_session_store_changed. */
 void kitty_sessorg_rename(HWND owner, int folder, const char *target)
 {
@@ -1871,8 +1871,8 @@ static void so_arrange_run(HWND owner)
     }
     rw = strbuf_new();
     cl = strbuf_new();
-    r = kitty_session_rekey_many(p.from, p.to, p.n, rw, cl, &err);
-    if (r == KITTY_REKEY_OK) {
+    r = kitty_session_rename_many(p.from, p.to, p.n, rw, cl, &err);
+    if (r == KITTY_SESSRENAME_OK) {
         strbuf *sb = strbuf_new();
         if (n == 1)
             put_dataz(sb, KT_SP_ARRANGE_DONE_ONE);
@@ -1892,7 +1892,7 @@ static void so_arrange_run(HWND owner)
         }
         kitty_info_modeless(owner, KT_CAP_KITTYPP, sb->s, NULL, NULL);
         strbuf_free(sb);
-    } else if (r == KITTY_REKEY_CLASH) {
+    } else if (r == KITTY_SESSRENAME_CLASH) {
         char *capped = so_cap_list(cl->s);
         msg = dupprintf(KT_SP_ARRANGE_CLASH, capped);
         kitty_info_modeless(owner, KT_CAP_KITTYPP, msg, NULL, NULL);
