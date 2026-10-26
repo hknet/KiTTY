@@ -2597,7 +2597,7 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->utf8linedraw = conf_get_bool(term->conf, CONF_utf8linedraw);
     term->rect_select = conf_get_bool(term->conf, CONF_rect_select);
     term->remote_qtitle_action = conf_get_int(term->conf, CONF_remote_qtitle_action);
-    term->rxvt_homeend = conf_get_bool(term->conf, CONF_rxvt_homeend);
+    term->rxvt_homeend = conf_get_int(term->conf, CONF_rxvt_homeend);
     term->scroll_on_disp = conf_get_bool(term->conf, CONF_scroll_on_disp);
 #ifdef MOD_PERSO
     kitty_search_reconfig(term);       /* KiTTY: pinned while searching */
@@ -12001,8 +12001,19 @@ int format_small_keypad_key(char *buf, Terminal *term, SmallKeypadKey key,
         } else {
             p += sprintf(p, "\x1B[%c", codes[code-1]);
         }
-    } else if ((code == 1 || code == 4) && term->rxvt_homeend) {
-        p += sprintf(p, code == 1 ? "\x1B[H" : "\x1BOw");
+    } else if ((code == 1 || code == 4) &&
+               term->rxvt_homeend != HOMEEND_STANDARD) {
+        /* KiTTY: classic KiTTY's Home and End codes (HOMEEND_*) */
+        static const char *const he[][2] = {
+            [HOMEEND_RXVT]    = { "\x1B[H",  "\x1BOw"  },
+            [HOMEEND_URXVT]   = { "\x1B[7~", "\x1B[8~" },
+            [HOMEEND_XTERM]   = { "\x1BOH",  "\x1BOF"  },
+            [HOMEEND_FREEBSD] = { "\x1B[H",  "\x1B[F"  },
+        };
+        int t = term->rxvt_homeend;
+        if (t < HOMEEND_RXVT || t > HOMEEND_FREEBSD)
+            t = HOMEEND_RXVT;
+        p += sprintf(p, "%s", he[t][code == 1 ? 0 : 1]);
     } else {
         if (term->vt52_mode) {
 	    p += sprintf(p, "\x1B[%d~", code);

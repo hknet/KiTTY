@@ -1029,6 +1029,16 @@ void load_open_settings(settings_r *sesskey, Conf *conf)
     }
     gprefs(sesskey, "HostKey", "ed25519,ecdsa,rsa,dsa,WARN",
            hknames, HK_MAX, conf, CONF_ssh_hklist);
+    {
+        /* KiTTY: Home and End keys, classic KiTTY's values (HOMEEND_*);
+         * its FreeBSD2 (5) is xterm's codes, anything else Standard */
+        int he = gppi_raw(sesskey, "RXVTHomeEnd", HOMEEND_STANDARD);
+        if (he == 5)
+            he = HOMEEND_XTERM;
+        if (he < HOMEEND_STANDARD || he > HOMEEND_FREEBSD)
+            he = HOMEEND_STANDARD;
+        conf_set_int(conf, CONF_rxvt_homeend, he);
+    }
 #ifndef NO_GSSAPI
     gppi(sesskey, "GssapiRekey", GSS_DEF_REKEY_MINS, conf, CONF_gssapirekey);
     gppb(sesskey, "AuthGSSAPI", true, conf, CONF_try_gssapi_auth);

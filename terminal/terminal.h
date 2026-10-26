@@ -881,7 +881,7 @@ struct terminal_tag {
     bool utf8linedraw;
     bool rect_select;
     int remote_qtitle_action;
-    bool rxvt_homeend;
+    int rxvt_homeend;               /* HOMEEND_* */
     bool scroll_on_disp;
 #ifdef MOD_PERSO
     /* Grace period after a resize: while it runs, display activity does

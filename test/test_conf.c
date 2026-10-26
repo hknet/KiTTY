@@ -409,6 +409,57 @@ void test_str_ambi_simple(int confid, const char *saveid,
     conf_free(conf);
 }
 
+/* KiTTY: RXVTHomeEnd holds classic KiTTY's five choices (HOMEEND_*);
+ * its FreeBSD2 (5) loads as xterm, an unknown value as Standard. */
+static void test_homeend(void)
+{
+    static const struct { int stored, loaded; } cases[] = {
+        {0, HOMEEND_STANDARD}, {1, HOMEEND_RXVT}, {2, HOMEEND_URXVT},
+        {3, HOMEEND_XTERM}, {4, HOMEEND_FREEBSD}, {5, HOMEEND_XTERM},
+        {9, HOMEEND_STANDARD}, {-1, HOMEEND_STANDARD},
+    };
+    Conf *conf = conf_new();
+    size_t i;
+
+    do_defaults(NULL, conf);
+    if (conf_get_int(conf, CONF_rxvt_homeend) != HOMEEND_STANDARD) {
+        printf("fail test_homeend: default = %d, expected %d\n",
+               conf_get_int(conf, CONF_rxvt_homeend), HOMEEND_STANDARD);
+        nfails++;
+    }
+    for (i = 0; i < lenof(cases); i++) {
+        settings_r sr = {
+            .n = 1,
+            .si[0].key = "RXVTHomeEnd",
+            .si[0].type = SAVE_I,
+            .si[0].ival = cases[i].stored,
+        };
+        conf_clear(conf);
+        load_open_settings(&sr, conf);
+        if (conf_get_int(conf, CONF_rxvt_homeend) != cases[i].loaded) {
+            printf("fail test_homeend: stored %d loads as %d, expected %d\n",
+                   cases[i].stored, conf_get_int(conf, CONF_rxvt_homeend),
+                   cases[i].loaded);
+            nfails++;
+        }
+    }
+    for (i = HOMEEND_STANDARD; i <= HOMEEND_FREEBSD; i++) {
+        settings_w sw = {
+            .n = 1,
+            .si[0].key = "RXVTHomeEnd",
+            .si[0].type = SAVE_UNSET,
+        };
+        conf_set_int(conf, CONF_rxvt_homeend, (int)i);
+        save_open_settings(&sw, conf);
+        if (sw.si[0].type != SAVE_I || sw.si[0].ival != (int)i) {
+            printf("fail test_homeend: %d saved as type %d value %d\n",
+                   (int)i, sw.si[0].type, sw.si[0].ival);
+            nfails++;
+        }
+    }
+    conf_free(conf);
+}
+
 void test_int_simple(int confid, const char *saveid, int defexp)
 {
     Conf *conf = conf_new();
@@ -851,7 +902,7 @@ void test_simple(void)
     test_bool_simple(CONF_supdup_more, "SUPDUPMoreProcessing", false);
     test_bool_simple(CONF_supdup_scroll, "SUPDUPScrolling", false);
     test_bool_simple(CONF_bksp_is_delete, "BackspaceIsDelete", true);
-    test_bool_simple(CONF_rxvt_homeend, "RXVTHomeEnd", false);
+    test_homeend();
     test_int_translated(CONF_funky_type, "LinuxFunctionKeys", FUNKY_TILDE,
                         FUNKY_TILDE, 0, FUNKY_LINUX, 1, FUNKY_XTERM, 2,
                         FUNKY_VT400, 3, FUNKY_VT100P, 4, FUNKY_SCO, 5,

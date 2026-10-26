@@ -62,9 +62,10 @@ Known limitations of this release:
   deleted, renamed and moved. The lock blocks saving its settings only.
 - **Host-key files are renamed when `hostkeyextension` is set or changed.**
   An older KiTTY on the same folder prompts once for each host key.
-- **A folder store is not shared with a classic KiTTY that writes to it.**
-  KiTTY++ reads a classic store, but a classic KiTTY that saves a session
-  KiTTY++ wrote loses its password and every setting it does not know.
+- **A folder store is not shared with a classic KiTTY.** KiTTY++ reads a
+  classic store, but a classic KiTTY cannot read the sessions KiTTY++
+  writes. One that saves such a session loses its password and every
+  setting it does not know.
 - **Session list limits:** the launcher lists up to 4096 sessions, kageant's
   Saved Sessions menu up to 3584.
 - **OSC 8 links to a file on another computer are not opened**, nor web

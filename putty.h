@@ -498,6 +498,16 @@ enum {
     MOUSE_WINDOWS /* Windows-style: RB brings up menu. MB still extends. */
 };
 
+/* KiTTY: Home and End key codes (CONF_rxvt_homeend), the stored values of
+ * classic KiTTY; its FreeBSD2 (5) sent xterm's Home and is read as xterm */
+enum {
+    HOMEEND_STANDARD = 0,   /* ESC [1~  ESC [4~ */
+    HOMEEND_RXVT = 1,       /* ESC [H   ESC Ow  */
+    HOMEEND_URXVT = 2,      /* ESC [7~  ESC [8~ */
+    HOMEEND_XTERM = 3,      /* ESC OH   ESC OF  */
+    HOMEEND_FREEBSD = 4,    /* ESC [H   ESC [F  */
+};
+
 enum {
     /* Function key types (CONF_funky_type) */
     FUNKY_TILDE,

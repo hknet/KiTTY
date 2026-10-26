@@ -684,9 +684,10 @@ CONF_OPTION(bksp_is_delete,
     SAVE_KEYWORD("BackspaceIsDelete"),
 )
 CONF_OPTION(rxvt_homeend,
-    VALUE_TYPE(BOOL),
-    DEFAULT_BOOL(false),
+    VALUE_TYPE(INT),  /* KiTTY: HOMEEND_* (putty.h), classic KiTTY's choices */
+    DEFAULT_INT(0),
     SAVE_KEYWORD("RXVTHomeEnd"),
+    LOAD_CUSTOM,      /* classic KiTTY's FreeBSD2 (5) reads as xterm */
 )
 CONF_OPTION(funky_type,
     VALUE_TYPE(INT),

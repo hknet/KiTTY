@@ -11,6 +11,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Window > Title & Icon > Combine Host-Title and Window-Title: both in one
   title, Configured first or Host first. A separate Icon-Title for minimised
   windows. (hknet/KiTTY#80)
+- Terminal > Keyboard > The Home and End keys: urxvt, xterm and FreeBSD
+  besides Standard and rxvt, as in classic KiTTY. Classic sessions keep
+  their choice.
 
 ### Changed
 

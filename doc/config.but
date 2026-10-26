@@ -673,16 +673,29 @@ isn't configured here as the default.)
 
 \S{config-homeend} Changing the action of the \i{Home and End keys}
 
-The Unix terminal emulator \i\c{rxvt} disagrees with the rest of the
-world about what character sequences should be sent to the server by
-the Home and End keys.
+Terminals disagree on the codes the Home and End keys send. Pick the
+one the server expects. It follows from the terminal type the session
+sends (\k{config-termtype}).
 
-\i\c{xterm}, and other terminals, send \c{ESC [1~} for the Home key,
-and \c{ESC [4~} for the End key. \c{rxvt} sends \c{ESC [H} for the
-Home key and \c{ESC [Ow} for the End key.
+\b \e{Standard} (the default): \c{ESC [1~} and \c{ESC [4~}, as PuTTY
+sends them. The Linux console, tmux and screen expect these, as does
+bash with the \c{/etc/inputrc} most distributions ship.
 
-If you find an application on which the Home and End keys aren't
-working, you could try switching this option to see if it helps.
+\b \e{rxvt}: \c{ESC [H} and \c{ESC Ow}, for servers set up for the old
+\i\c{rxvt} terminal.
+
+\b \e{urxvt}: \c{ESC [7~} and \c{ESC [8~}, for \c{TERM=rxvt-unicode}.
+
+\b \e{xterm}: \c{ESC OH} and \c{ESC OF}, for \c{TERM=xterm} or
+\c{xterm-256color} when programs that read the keys from terminfo
+(vim, mc, htop) do not react to Standard.
+
+\b \e{FreeBSD}: \c{ESC [H} and \c{ESC [F}, for the FreeBSD console
+(\c{TERM=cons25}).
+
+Sessions of classic KiTTY keep their choice. Its FreeBSD2 is read as
+xterm, which sends the same codes. A KiTTY++ before this version reads
+urxvt, xterm and FreeBSD as rxvt.
 
 \S{config-funkeys} Changing the action of the \i{function keys} and
 \i{keypad}

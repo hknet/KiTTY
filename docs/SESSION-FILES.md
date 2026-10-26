@@ -16,6 +16,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | added | `WinIconTitle` | - | text |
 | added | `WinTitleCombine` | - | enum 0/1/2 |
 | type changed | `RemoteQTitleAction` | enum 0/1/2 | enum 0/1/2/3 |
+| type changed | `RXVTHomeEnd` | bool | enum 0/1/2/3/4 |
 
 ## Keys
 
@@ -274,7 +275,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `RFCEnviron` | `0` / `1` | `0` | Connection/Telnet | The original Telnet mechanism for passing environment variables was badly specified. |
 | `RunCmdConfirm` | `0` / `1` | `1` | Window/Copy & Paste | `1` shows the clipboard text and waits for confirmation before it runs as a command. |
 | `RunCmdNotify` | `0` / `1` | `1` | Window/Copy & Paste | `1` raises a tray notification after the clipboard ran as a command. |
-| `RXVTHomeEnd` | `0` / `1` | `0` | Terminal/Keyboard | The Unix terminal emulator `rxvt` disagrees with the rest of the world about what character sequences should be sent to the server by the Home and End keys. |
+| `RXVTHomeEnd` | `0` Standard; `1` rxvt; `2` urxvt; `3` xterm; `4` FreeBSD | `0` | Terminal/Keyboard | Terminals disagree on the codes the Home and End keys send. |
 | `rzCommand` | path | - | - | Retired: the path of `rz` is `[KiTTY] rzcommand` in kitty.ini; nothing reads this key. |
 | `rzOptions` | text | `-e -v` | Connection/ZModem | Options handed to `rz` for ZModem receives. |
 | `SaveOnExit` | `0` / `1` | `0` | Window/Behaviour | Writes this session back to the store when its window closes, so a change made through "Change Settings" during the session is kept without saving by hand. |

@@ -2123,11 +2123,13 @@ void setup_config_box(struct controlbox *b, bool midsession,
                       conf_radiobutton_bool_handler,
                       I(CONF_bksp_is_delete),
                       "Control-H", I(0), "Control-? (127)", I(1));
-    ctrl_radiobuttons(s, "The Home and End keys", 'e', 2,
+    ctrl_radiobuttons(s, "The Home and End keys", 'e', 3,
                       HELPCTX(keyboard_homeend),
-                      conf_radiobutton_bool_handler,
+                      conf_radiobutton_handler,
                       I(CONF_rxvt_homeend),
-                      "Standard", I(false), "rxvt", I(true));
+                      "Standard", I(HOMEEND_STANDARD), "rxvt", I(HOMEEND_RXVT),
+                      "urxvt", I(HOMEEND_URXVT), "xterm", I(HOMEEND_XTERM),
+                      "FreeBSD", I(HOMEEND_FREEBSD));
     ctrl_radiobuttons(s, "The Function keys and keypad", 'f', 4,
                       HELPCTX(keyboard_funkeys),
                       conf_radiobutton_handler,

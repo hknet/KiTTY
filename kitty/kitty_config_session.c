@@ -6131,11 +6131,15 @@ void scb_panel_terminal(struct controlbox *b)
                       conf_radiobutton_bool_handler,
                       I(CONF_bksp_is_delete),
                       KT_KEYBOARD_CONTROL_H, I(0), KT_KEYBOARD_CONTROL_127, I(1));
-    ctrl_radiobuttons(s, KT_KEYBOARD_THE_HOME_AND_END_KEYS, 'e', 2,
+    ctrl_radiobuttons(s, KT_KEYBOARD_THE_HOME_AND_END_KEYS, 'e', 3,
                       HELPCTX(keyboard_homeend),
-                      conf_radiobutton_bool_handler,
+                      conf_radiobutton_handler,
                       I(CONF_rxvt_homeend),
-                      KT_KEYBOARD_STANDARD, I(false), KT_KEYBOARD_RXVT, I(true));
+                      KT_KEYBOARD_STANDARD, I(HOMEEND_STANDARD),
+                      KT_KEYBOARD_RXVT, I(HOMEEND_RXVT),
+                      KT_KEYBOARD_URXVT, I(HOMEEND_URXVT),
+                      KT_KEYBOARD_HOMEEND_XTERM, I(HOMEEND_XTERM),
+                      KT_KEYBOARD_FREEBSD, I(HOMEEND_FREEBSD));
     ctrl_radiobuttons(s, KT_KEYBOARD_THE_FUNCTION_KEYS_AND_KEYPAD, 'f', 4,
                       HELPCTX(keyboard_funkeys),
                       conf_radiobutton_handler,
