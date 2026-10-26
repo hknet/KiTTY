@@ -3075,7 +3075,8 @@ static void kcs_delete_session(struct sessionsaver_data *ssd, dlgparam *dlg,
         kcs_delete_session_answer(1, name);
         return;
     }
-    q = dupprintf(KT_SP_DEL_SESSION_Q, name);
+    q = dupprintf(kitty_delete_reaches_old_copy(name) ? KT_SP_DEL_SESSION_OLD_Q
+                                                      : KT_SP_DEL_SESSION_Q, name);
     if (!kitty_confirm_modeless_words(kitty_cfg_modal_owner(), KT_CAP_KITTYPP,
                                       q, NULL, KT_SP_MENU_DELETE,
                                       KT_SP_DEL_SESSION_CANCEL,

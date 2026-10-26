@@ -30,6 +30,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Session > Connection > SSH > Auth > Credentials: the key file label now
   points out that a public key file selects the agent's key. Its Browse
   dialog lists *.pub files.
+- Deleting a session that also exists in the old KiTTY or PuTTY settings
+  (with Show old sessions on): the question now states that this copy is
+  deleted too. Manage Sessions marks such sessions "(old KiTTY)" or
+  "(PuTTY)", as the session list does. Move and Rename are greyed for
+  them: Copy and Clone take them over into this store.
 
 ### Fixed
 

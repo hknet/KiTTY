@@ -800,11 +800,17 @@ static void so_fill_list(struct so_state *st)
     memset(&it, 0, sizeof(it));
     it.mask = LVIF_TEXT | LVIF_PARAM;
     for (k = 0; k < nrows; k++) {
+        /* an old session shows where it comes from, as in the
+         * configuration box's list */
+        int og = kitty_session_origin(rows[k].id);
+        char *disp = og ? dupprintf("%s   (%s)", ksp_leaf(rows[k].id),
+                                    og == 2 ? "PuTTY" : "old KiTTY") : NULL;
         it.iItem = shown;
-        it.pszText = (char *)ksp_leaf(rows[k].id);
+        it.pszText = disp ? disp : (char *)ksp_leaf(rows[k].id);
         it.lParam = rows[k].idx;
         if (SendMessageA(st->list, LVM_INSERTITEMA, 0, (LPARAM)&it) >= 0)
             shown++;
+        sfree(disp);
     }
     sfree(rows);
     ListView_SetColumnWidth(st->list, 0, LVSCW_AUTOSIZE_USEHEADER);
@@ -2138,8 +2144,15 @@ static void so_delete_sessions(struct so_state *st)
     d->names = snewn(nsel, char *);
     for (i = 0; i < nsel; i++)
         d->names[i] = dupstr(sel[i]);
-    q = nsel == 1 ? dupprintf(KT_SP_DEL_SESSION_Q, ksp_leaf(sel[0]))
-                  : dupprintf(KT_SP_ORG_DEL_Q, nsel);
+    {
+        bool old = false;
+        for (i = 0; i < nsel && !old; i++)
+            old = kitty_delete_reaches_old_copy(sel[i]);
+        q = nsel == 1 ? dupprintf(old ? KT_SP_DEL_SESSION_OLD_Q
+                                      : KT_SP_DEL_SESSION_Q, ksp_leaf(sel[0]))
+                      : dupprintf(old ? KT_SP_ORG_DEL_OLD_Q : KT_SP_ORG_DEL_Q,
+                                  nsel);
+    }
     if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
                                       KT_SP_ORG_M_DELETE, KT_SP_ORG_CANCEL,
                                       so_delete_sessions_answer, d)) {
@@ -2499,11 +2512,34 @@ static void so_menu_add(HMENU m, UINT id, const char *text, int enabled)
 
 static void so_command(struct so_state *st, int id);
 
+/* An old KiTTY or PuTTY session among the selected ones: it cannot be moved
+ * or renamed (kitty_session_rename_many takes only the store's own sessions);
+ * Copy and Clone take it over into the store, Delete removes it. */
+static bool so_sel_has_old(struct so_state *st)
+{
+    int n, i;
+    bool old = false;
+    char **sel = so_selected(st, &n);
+    for (i = 0; i < n && !old; i++)
+        old = kitty_session_origin(sel[i]) != 0;
+    sfree(sel);
+    return old;
+}
+/* Move and Rename act on the list's sessions while the list is the pane in
+ * use: greyed then for a selection with an old session. */
+static void so_update_session_btns(struct so_state *st)
+{
+    BOOL on = !(st->pane == 1 && so_sel_has_old(st));
+    EnableWindow(GetDlgItem(st->h, IDC_SO_MOVE), on);
+    EnableWindow(GetDlgItem(st->h, IDC_SO_RENAME), on);
+}
+
 static void so_list_menu(struct so_state *st, int x, int y)
 {
     HMENU m = CreatePopupMenu();
     int nsel = ListView_GetSelectedCount(st->list), cmd;
     int rw = !GetReadOnlyFlag();
+    int own = !so_sel_has_old(st);
     if (!m)
         return;
     if (x == -1 && y == -1) {           /* the menu key: at the focused row */
@@ -2520,9 +2556,9 @@ static void so_list_menu(struct so_state *st, int x, int y)
     }
     so_menu_add(m, SO_CMD_START, KT_SP_ORG_M_START, nsel > 0);
     AppendMenuA(m, MF_SEPARATOR, 0, NULL);
-    so_menu_add(m, IDC_SO_MOVE, KT_SP_ORG_M_MOVE, nsel > 0 && rw);
+    so_menu_add(m, IDC_SO_MOVE, KT_SP_ORG_M_MOVE, nsel > 0 && rw && own);
     so_menu_add(m, SO_CMD_COPY, KT_SP_ORG_M_COPY, nsel > 0 && rw);
-    so_menu_add(m, SO_CMD_RENAME_SESS, KT_SP_ORG_M_RENAME, nsel == 1 && rw);
+    so_menu_add(m, SO_CMD_RENAME_SESS, KT_SP_ORG_M_RENAME, nsel == 1 && rw && own);
     so_menu_add(m, SO_CMD_CLONE, KT_SP_ORG_M_CLONE, nsel > 0 && rw);
     so_menu_add(m, SO_CMD_DELSESS, KT_SP_ORG_M_DELETE, nsel > 0 && rw);
     AppendMenuA(m, MF_SEPARATOR, 0, NULL);
@@ -2694,8 +2730,13 @@ static void so_command(struct so_state *st, int id)
       case IDC_SO_MOVE:
       case SO_CMD_COPY: {
         int nsel, i;
-        char **sel = so_selected(st, &nsel);
+        char **sel;
         struct so_move *m;
+        if (id == IDC_SO_MOVE && st->pane == 1 && so_sel_has_old(st)) {
+            MessageBeep(MB_ICONWARNING);    /* an old session: Copy takes it over */
+            return;
+        }
+        sel = so_selected(st, &nsel);
         if (!nsel) {
             MessageBeep(MB_ICONWARNING);
             sfree(sel);
@@ -2718,7 +2759,12 @@ static void so_command(struct so_state *st, int id)
       }
       case IDC_SO_RENAME:
       case IDC_SO_NEWFOLDER: {
-        struct so_name *nm = snew(struct so_name);
+        struct so_name *nm;
+        if (id == IDC_SO_RENAME && st->pane == 1 && so_sel_has_old(st)) {
+            MessageBeep(MB_ICONWARNING);
+            return;
+        }
+        nm = snew(struct so_name);
         memset(nm, 0, sizeof(*nm));
         nm->st = st;
         if (id == IDC_SO_NEWFOLDER) {
@@ -3007,6 +3053,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 }
             } else if (nm->code == NM_SETFOCUS) {
                 st->pane = 0;
+                so_update_session_btns(st);
             } else if ((nm->code == TVN_BEGINDRAGA || nm->code == TVN_BEGINDRAGW) &&
                        !GetReadOnlyFlag()) {
                 /* Drag a folder into another one (not the root row). */
@@ -3026,6 +3073,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                  * left Edit and the menus with nothing to act on */
                 st->pane = 1;
                 so_list_take_focus(st, 0);
+                so_update_session_btns(st);
                 InvalidateRect(st->list, NULL, TRUE);
             } else if (nm->code == NM_KILLFOCUS) {
                 if (ListView_GetItemCount(st->list) == 0)
@@ -3049,11 +3097,18 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                     char *one = st->s.names[it.lParam];
                     so_start_named(&one, 1);
                 }
+            } else if (nm->code == LVN_ITEMCHANGED) {
+                NMLISTVIEW *lv = (NMLISTVIEW *)lp;
+                if ((lv->uChanged & LVIF_STATE) &&
+                    ((lv->uOldState ^ lv->uNewState) & LVIS_SELECTED))
+                    so_update_session_btns(st);
             } else if (nm->code == LVN_KEYDOWN) {
                 NMLVKEYDOWN *kd = (NMLVKEYDOWN *)lp;
                 if (kd->wVKey == 'A' && (GetKeyState(VK_CONTROL) & 0x8000))
                     ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
-            } else if (nm->code == LVN_BEGINDRAG && !GetReadOnlyFlag()) {
+            } else if (nm->code == LVN_BEGINDRAG && !GetReadOnlyFlag() &&
+                       !so_sel_has_old(st)) {
+                /* (an old session is not dragged: that would be a move) */
                 /* Drag sessions onto a folder of the tree: the pointer
                  * carries the session's name, or "N sessions". */
                 int nsel = ListView_GetSelectedCount(st->list);

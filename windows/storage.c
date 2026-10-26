@@ -1412,6 +1412,36 @@ int kitty_settings_r_is_own(settings_r *handle)
     return handle && handle->src_hive == KSEC_HIVE_PRIMARY;
 }
 
+/* KiTTY: whether a delete also reaches the old KiTTY and PuTTY hives - the
+ * registry store with the old sessions shown. del_settings and the question
+ * before it (kitty_delete_reaches_old_copy) both go by this. */
+static bool kitty_delete_reaches_old_hives(void)
+{
+    return !store_is_file() && !kitty_root_is_putty() &&
+           kitty_get_show_foreign_sessions();
+}
+
+/* KiTTY: true when deleting this session also deletes a copy of it under
+ * OLD_KITTY_HIVE_SESSIONS or PUTTY_HIVE_SESSIONS. */
+bool kitty_delete_reaches_old_copy(const char *sessionname)
+{
+    static const char *const hives[] = {
+        OLD_KITTY_HIVE_SESSIONS, PUTTY_HIVE_SESSIONS
+    };
+    bool found = false;
+    size_t i;
+    if (!sessionname || !kitty_delete_reaches_old_hives())
+        return false;
+    strbuf *sb = strbuf_new();
+    escape_registry_key(sessionname, sb);
+    for (i = 0; i < lenof(hives) && !found; i++) {
+        HKEY k = open_regkey_ro(HKEY_CURRENT_USER, hives[i], sb->s);
+        if (k) { found = true; close_regkey(k); }
+    }
+    strbuf_free(sb);
+    return found;
+}
+
 void del_settings(const char *sessionname)
 {
     if (kitty_store_readonly())
@@ -1439,7 +1469,7 @@ void del_settings(const char *sessionname)
     if (rkey) { del_regkey(rkey, sb->s); close_regkey(rkey); }
     /* Only reach the fallback hives when the user has opted to show them (so a
      * stock-PuTTY session is never deleted unless it's deliberately visible). */
-    if (!kitty_root_is_putty() && kitty_get_show_foreign_sessions()) {
+    if (kitty_delete_reaches_old_hives()) {
         HKEY ok = open_regkey_rw(HKEY_CURRENT_USER, OLD_KITTY_HIVE_SESSIONS);
         if (ok) { del_regkey(ok, sb->s); close_regkey(ok); }
         HKEY pk = open_regkey_rw(HKEY_CURRENT_USER, PUTTY_HIVE_SESSIONS);

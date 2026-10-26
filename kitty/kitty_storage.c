@@ -826,6 +826,7 @@ int kitty_session_origin(const char *sessionname)
 {
     if (!sessionname || !*sessionname) return 0;
     if (!strcmp(sessionname, KITTY_DEFAULT_SESSION)) return 0;   /* never tag the default */
+    if (store_is_file()) return 0;   /* the folder store lists no old hive */
     strbuf *sb = strbuf_new();
     escape_registry_key(sessionname, sb);
     int origin = 0;

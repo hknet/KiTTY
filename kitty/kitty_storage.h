@@ -52,6 +52,8 @@ struct ksf_item;
 /* ---- runtime registry root + derived key names ---- */
 int kitty_root_is_putty(void);
 int kitty_get_show_foreign_sessions(void);  /* fallback hives visible? */
+/* deleting this session also deletes its copy in the old KiTTY or PuTTY hive */
+bool kitty_delete_reaches_old_copy(const char *sessionname);
 void kitty_set_show_foreign_sessions(int on);
 
 /*
