@@ -660,8 +660,7 @@ if(KITTY_INI_CHECK_PYTHON)
   # with the reason its size is safe in tools/fixed-arrays.allow; a listed
   # array that no longer exists fails too. Every .c and .h of the tree is
   # read (the same glob as the Conf check). The self-test runs first, on
-  # planted sources. utils depends on it, so every program - the release
-  # builds' explicit target lists included - runs the check.
+  # planted sources.
   set(KITTY_FIXARR_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_fixarr_check.stamp)
   add_custom_command(
     OUTPUT ${KITTY_FIXARR_CHECK_STAMP}
@@ -676,7 +675,13 @@ if(KITTY_INI_CHECK_PYTHON)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking fixed character arrays against tools/fixed-arrays.allow")
   add_custom_target(check_fixed_arrays ALL DEPENDS ${KITTY_FIXARR_CHECK_STAMP})
-  add_dependencies(utils check_fixed_arrays)
+  # Every tools/check-*.py above is a dependency of utils, so every program -
+  # the release builds' explicit target lists included - runs them all, and a
+  # failing check stops the build. Each keeps its stamp: unchanged inputs do
+  # not run it again.
+  add_dependencies(utils
+    check_kitty_ini check_features_toc check_menu_ids check_kitty_events
+    check_conf_types check_dialog_accelerators check_fixed_arrays)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)
