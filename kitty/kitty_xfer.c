@@ -1001,13 +1001,26 @@ struct ktx_win {
 	int  committed ;       /* edit-control char index where curline begins */
 } ;
 
+/* The user's selection outlives the live updates below, which write
+ * through EM_SETSEL/EM_REPLACESEL: a marked line stayed marked only until
+ * the next progress tick. */
+static void ktx_sel_get( struct ktx_win *w, DWORD *a, DWORD *b ) {
+	SendMessageA( w->edit, EM_GETSEL, (WPARAM)a, (LPARAM)b ) ;
+}
+static void ktx_sel_put( struct ktx_win *w, DWORD a, DWORD b ) {
+	if( a != b ) SendMessageA( w->edit, EM_SETSEL, a, b ) ;
+}
+
 /* Make the edit-control tail (from w->committed to end) equal curline[0..curlen]. */
 static void ktx_set_curline( struct ktx_win *w ) {
 	char save ;
+	DWORD a, b ;
 	sgrowarray( w->curline, w->cursize, (size_t)w->curlen ) ;
 	save = w->curline[w->curlen] ; w->curline[w->curlen] = 0 ;
+	ktx_sel_get( w, &a, &b ) ;
 	SendMessageA( w->edit, EM_SETSEL, w->committed, -1 ) ;
 	SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)w->curline ) ;
+	ktx_sel_put( w, a, b ) ;
 	w->curline[w->curlen] = save ;
 }
 
@@ -1022,10 +1035,13 @@ static void ktx_feed( struct ktx_win *w, const char *s, int len ) {
 		if( c=='\r' ) {
 			w->curcol = 0 ;
 		} else if( c=='\n' ) {
+			DWORD a, b ;
 			ktx_set_curline( w ) ;
 			int n = GetWindowTextLength( w->edit ) ;
+			ktx_sel_get( w, &a, &b ) ;
 			SendMessageA( w->edit, EM_SETSEL, n, n ) ;
 			SendMessageA( w->edit, EM_REPLACESEL, FALSE, (LPARAM)"\r\n" ) ;
+			ktx_sel_put( w, a, b ) ;
 			w->committed = n + 2 ;
 			w->curcol = 0 ; w->curlen = 0 ; w->curline[0] = 0 ;
 		} else if( c=='\b' ) {
@@ -1243,6 +1259,13 @@ static LRESULT CALLBACK ktx_child_subclass( HWND h, UINT msg, WPARAM wp, LPARAM 
 	if( msg == WM_KEYDOWN && wp == VK_ESCAPE ) {
 		SendMessage( GetParent(h), WM_CLOSE, 0, 0 ) ;
 		return 0 ;
+	}
+	/* Ctrl+C / Ctrl+Insert copy, Ctrl+A marks everything. The edit control
+	 * does these on WM_CHAR, which never comes: the terminal's message loop
+	 * (window.c) runs no TranslateMessage for this window. */
+	if( msg == WM_KEYDOWN && GetDlgCtrlID( h ) == KTX_ID_EDIT && GetKeyState( VK_CONTROL ) < 0 ) {
+		if( wp == 'C' || wp == VK_INSERT ) { SendMessage( h, WM_COPY, 0, 0 ) ; return 0 ; }
+		if( wp == 'A' ) { SendMessage( h, EM_SETSEL, 0, -1 ) ; return 0 ; }
 	}
 	if( msg == WM_NCDESTROY ) {
 		LRESULT r = old ? CallWindowProc( old, h, msg, wp, lp ) : DefWindowProc( h, msg, wp, lp ) ;
