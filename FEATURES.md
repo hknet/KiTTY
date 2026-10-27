@@ -534,9 +534,11 @@ During an already-authenticated session (a rekey) the running program owns the t
 
 ### Accept new host keys
 
-An unknown host key can be stored without the question, as OpenSSH's `StrictHostKeyChecking=accept-new`: trust on first use, recorded in the Event Log (klink, kscp and ksftp: on standard error, `Host key stored (accept-new): ...`). A changed key is never accepted this way: the usual changed-key question follows, and under `-batch` the connection ends with exit code 1.
+Unknown Host-Keys can be stored on first contact without confirmation, as OpenSSH's `StrictHostKeyChecking=accept-new`: trust on first use, recorded in the Event Log (klink, kscp and ksftp: on standard error, `Host key stored (accept-new): ...`). A changed key is never accepted this way: the usual changed-key question follows, and under `-batch` the connection ends with exit code 1.
 
-**How to enable:** per session, Configuration > **Connection > SSH > Host keys** > **Accept new host keys** (`AcceptNewHostKeys`, off by default); for one run, `-accept-new` (kitty.exe, klink, kscp, ksftp); for every session, `kitty.ini [KiTTY] autostoresshkey=yes`.
+**Only for a server with no stored key.** Host keys are stored per type (ssh-rsa, ssh-ed25519 and others). When the host and port already have a key of another type, the new key requires the usual confirmation with one more line listing the stored types. Under `-batch` the connection ends with exit code 1. The reason: KiTTY++ requests the key types it knows first, so a changed key of a known type is caught. Someone posing as the server can offer only a type with no stored key and so skip that comparison. A server that really switched its key type gets the question once.
+
+**How to enable:** per session, Configuration > **Connection > SSH > Host keys** > **Accept new host keys** (`AcceptNewHostKeys`, off by default); for one run, `-accept-new` (kitty.exe, klink, kscp, ksftp); for every session, `kitty.ini [KiTTY] autostoresshkey=yes`. The global setting only switches it on: `autostoresshkey=yes` applies to every session, whatever the session's own setting. With `autostoresshkey=no` (the default) each session's setting decides.
 
 ### Automatic password
 

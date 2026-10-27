@@ -33,14 +33,23 @@ static void capture(const char *line)
 int main(void)
 {
     /* the decision: enabled x storage status x certificate */
-    expect("on, unknown key: stored", kitty_hostkey_accept_new_applies(true, 1, false), true);
-    expect("on, stored key: nothing to do", kitty_hostkey_accept_new_applies(true, 0, false), false);
-    expect("on, CHANGED key: never", kitty_hostkey_accept_new_applies(true, 2, false), false);
-    expect("on, unknown certificate: never", kitty_hostkey_accept_new_applies(true, 1, true), false);
-    expect("on, changed certificate: never", kitty_hostkey_accept_new_applies(true, 2, true), false);
-    expect("off, unknown key: the question", kitty_hostkey_accept_new_applies(false, 1, false), false);
-    expect("off, changed key: the question", kitty_hostkey_accept_new_applies(false, 2, false), false);
-    expect("off, stored key", kitty_hostkey_accept_new_applies(false, 0, false), false);
+    expect("on, unknown key: stored", kitty_hostkey_accept_new_applies(true, 1, false, false), true);
+    expect("on, stored key: nothing to do", kitty_hostkey_accept_new_applies(true, 0, false, false), false);
+    expect("on, CHANGED key: never", kitty_hostkey_accept_new_applies(true, 2, false, false), false);
+    expect("on, unknown certificate: never", kitty_hostkey_accept_new_applies(true, 1, true, false), false);
+    expect("on, changed certificate: never", kitty_hostkey_accept_new_applies(true, 2, true, false), false);
+    expect("off, unknown key: the question", kitty_hostkey_accept_new_applies(false, 1, false, false), false);
+    expect("off, changed key: the question", kitty_hostkey_accept_new_applies(false, 2, false, false), false);
+    expect("off, stored key", kitty_hostkey_accept_new_applies(false, 0, false, false), false);
+    /* a key of another type stored: a new type is never stored silently */
+    expect("on, unknown type, other type stored: the question",
+           kitty_hostkey_accept_new_applies(true, 1, false, true), false);
+    expect("on, CHANGED key, other type stored: never",
+           kitty_hostkey_accept_new_applies(true, 2, false, true), false);
+    expect("on, stored key, other type stored: nothing to do",
+           kitty_hostkey_accept_new_applies(true, 0, false, true), false);
+    expect("off, unknown type, other type stored",
+           kitty_hostkey_accept_new_applies(false, 1, false, true), false);
 
     /* the kitty.ini switch: off until set, any non-zero is on */
     expect("autostoresshkey off by default", kitty_hostkey_accept_new_all(), false);
@@ -66,6 +75,17 @@ int main(void)
                "srv.example port 2222")) {
         printf("FAIL [record text]: <%s>\n", reported);
         failures++;
+    }
+    {
+        char line[512];
+        snprintf(line, sizeof(line), KT_HOSTKEY_ACCEPTNEW_OTHER,
+                 "ssh-rsa, ecdsa-sha2-nistp256", "srv.example", 22);
+        if (strcmp(line, "Host key not stored (accept-new): a key of another "
+                   "type (ssh-rsa, ecdsa-sha2-nistp256) is stored for "
+                   "srv.example port 22")) {
+            printf("FAIL [other-type record text]: <%s>\n", line);
+            failures++;
+        }
     }
     kitty_hostkey_accept_new_set_report(NULL);
     kitty_hostkey_accept_new_report("unseen");

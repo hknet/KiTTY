@@ -22,10 +22,11 @@ bool kitty_hostkey_accept_new_all(void)
 }
 
 bool kitty_hostkey_accept_new_applies(bool enabled, int storage_status,
-                                      bool certificate)
+                                      bool certificate, bool other_type_stored)
 {
-    /* unknown only: 0 needs nothing, 2 (changed) always gets the question */
-    return enabled && storage_status == 1 && !certificate;
+    /* unknown only, and no key of any other type stored: 0 needs nothing,
+     * 2 (changed) always gets the question */
+    return enabled && storage_status == 1 && !certificate && !other_type_stored;
 }
 
 void kitty_hostkey_accept_new_set_report(kitty_hostkey_accept_new_report_fn fn)

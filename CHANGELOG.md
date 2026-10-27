@@ -49,6 +49,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - kscp with Protocol SCP switches to SFTP when the remote folder holds a
   character other than letters, digits and / . _ - ~ %. SCP would hand
   such a folder to the server's shell.
+- Accept new host keys (session, `-accept-new`, `autostoresshkey`): a new key
+  is not stored without confirmation when the host already has a key of
+  another type. The question then lists the stored types.
 
 ### Fixed
 

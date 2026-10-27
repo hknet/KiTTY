@@ -968,6 +968,33 @@ SeatPromptResult verify_ssh_host_key(
      * Next, check the host key cache.
      */
     int storage_status = check_stored_host_key(host, port, keytype, keystr);
+    /* KiTTY: the other key types stored for this host and port, by their SSH
+     * names, comma-separated; NULL = none. Keys are stored per type, so an
+     * unknown key of a new type says nothing about the known ones: accept-new
+     * leaves it to the question, and the question shows them. */
+    char *kitty_other_types = NULL;
+    if (storage_status == 1) {
+        strbuf *ot = strbuf_new();
+        for (size_t ai = 0; ai < n_keyalgs; ai++) {
+            const ssh_keyalg *alg = all_keyalgs[ai];
+            bool seen = false;
+            if (alg->is_certificate || !strcmp(alg->cache_id, keytype))
+                continue;
+            for (size_t aj = 0; aj < ai; aj++)    /* rsa: three names, one key */
+                if (!all_keyalgs[aj]->is_certificate &&
+                    !strcmp(all_keyalgs[aj]->cache_id, alg->cache_id))
+                    seen = true;
+            if (seen || !have_ssh_host_key(host, port, alg->cache_id))
+                continue;
+            if (ot->len)
+                put_datapl(ot, PTRLEN_LITERAL(", "));
+            put_dataz(ot, alg->ssh_id);
+        }
+        if (ot->len)
+            kitty_other_types = strbuf_to_str(ot);
+        else
+            strbuf_free(ot);
+    }
     if (storage_status == 0) { /* matching key was found in the cache */
         if (kwev)
             kitty_wev_hostkey(KITTY_EVO_HOSTKEY_KNOWN, host, port, keytype,
@@ -980,10 +1007,20 @@ SeatPromptResult verify_ssh_host_key(
      * stored without a question and recorded; a changed key, and a
      * certificate no trusted CA signed, go on to the question as always.
      */
-    if (kitty_hostkey_accept_new_applies(
-            kitty_hostkey_accept_new_all() ||
-            conf_get_bool(conf, CONF_ssh_accept_new_hostkeys),
-            storage_status, key && ssh_key_alg(key)->is_certificate)) {
+    bool kitty_accept_new = kitty_hostkey_accept_new_all() ||
+        conf_get_bool(conf, CONF_ssh_accept_new_hostkeys);
+    bool kitty_cert = key && ssh_key_alg(key)->is_certificate;
+    if (kitty_accept_new && storage_status == 1 && !kitty_cert &&
+        kitty_other_types) {
+        char *line = dupprintf(KT_HOSTKEY_ACCEPTNEW_OTHER, kitty_other_types,
+                               host, port);
+        logevent(logctx, line);
+        kitty_hostkey_accept_new_report(line);
+        sfree(line);
+    }
+    if (kitty_hostkey_accept_new_applies(kitty_accept_new, storage_status,
+                                         kitty_cert, kitty_other_types != NULL)) {
+        sfree(kitty_other_types);
         store_host_key(iseat.seat, host, port, keytype, keystr);
         /* readonly=yes: store_host_key stored nothing - the key holds for
          * this connection, and the record does not claim storage */
@@ -1070,6 +1107,10 @@ SeatPromptResult verify_ssh_host_key(
         seat_dialog_text_append(
             text, SDT_PARA, "You have no guarantee that the server is the "
             "computer you think it is.");
+        if (kitty_other_types)              /* KiTTY: see above */
+            seat_dialog_text_append(
+                text, SDT_PARA, KT_HOSTKEY_OTHER_TYPES_STORED,
+                kitty_other_types);
         seat_dialog_text_append(
             text, SDT_PARA, "The server's %s key fingerprint is:", keytype);
         seat_dialog_text_append(
@@ -1093,6 +1134,7 @@ SeatPromptResult verify_ssh_host_key(
             text, SDT_DISPLAY, "%s", fingerprints[fptype_default]);
         helpctx = HELPCTX(errors_hostkey_changed);
     }
+    sfree(kitty_other_types);
 
     /* The above text is printed even in batch mode. Here's where we stop if
      * we can't present interactive prompts. */

@@ -575,6 +575,7 @@ test/sclog/sclog.c | instr_format_location() | file | MAXIMUM_PATH | upstream: s
 
 test/test_acceptnew.c | (file) | reported | 512 | test code: expected/actual text, size passed
 test/test_acceptnew.c | main() | line | 512 | test code: expected/actual text, size passed
+test/test_acceptnew.c | main() | line | 512 | test code: expected/actual text, size passed
 
 test/test_atomicfile.c | my_sid() | buf | 256 | test code: fixture / input data, sizes checked by the test
 test/test_atomicfile.c | content_is() | buf | 256 | test code: fixture / input data, sizes checked by the test

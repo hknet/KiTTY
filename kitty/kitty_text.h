@@ -3554,6 +3554,11 @@
  * writes it to the Event Log, klink/kscp/ksftp to standard error too */
 #define KT_CLI_USAGE_ACCEPTNEW                       "  -accept-new\n            store an unknown host key without a prompt\n"
 #define KT_HOSTKEY_ACCEPTNEW_STORED                  "Host key stored (accept-new): %s, %s port %d"
+/* accept-new stores nothing: the host and port have a key of another type
+ * (the types, comma-separated); the question follows */
+#define KT_HOSTKEY_ACCEPTNEW_OTHER                   "Host key not stored (accept-new): a key of another type (%s) is stored for %s port %d"
+/* the unknown-key question: the types already stored for this host and port */
+#define KT_HOSTKEY_OTHER_TYPES_STORED                "A key of another type is stored for this server: %s."
 /* readonly=yes: accept-new uses the key for this connection only */
 #define KT_HOSTKEY_ACCEPTNEW_RO                      "Host key not stored (readonly=yes): %s, %s port %d"
 /* readonly=yes: the host-key question (the box, the terminal's and the
