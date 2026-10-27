@@ -44,6 +44,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `210` | `KiTTY++_kitty` | `hostkey-known` | Information | `host`, `port`, `keytype`, `fp`, `basis`, `pid`, `proxy` |
 | `211` | `KiTTY++_kitty` | `hostkey-new` | Information; Warning when refused | `host`, `port`, `keytype`, `fp`, `result`, `pid`, `proxy` |
 | `212` | `KiTTY++_kitty` | `hostkey-mismatch` | Warning | `host`, `port`, `keytype`, `fp`, `result`, `pid`, `proxy` |
+| `213` | `KiTTY++_kitty` | `hostkey-update` | Information; Warning when proof-failed or refused | `host`, `port`, `keytype`, `fp`, `result`, `oldfp`, `pid`, `proxy` |
 | `220` | `KiTTY++_kitty` | `auth-ok` | Information | `host`, `port`, `user`, `method`, `fp`, `pid`, `proxy`, `for` |
 | `221` | `KiTTY++_kitty` | `auth-failed` | Warning | `host`, `port`, `user`, `method`, `reason`, `methods`, `pid`, `proxy`, `for` |
 | `225` | `KiTTY++_kitty` | `proxy-used` | Information | `proxy`, `host`, `port`, `user`, `credentials`, `pid`, `for` |
@@ -55,6 +56,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `310` | `KiTTY++_cli` | `hostkey-known` | Information | `host`, `port`, `keytype`, `fp`, `basis`, `pid`, `proxy` |
 | `311` | `KiTTY++_cli` | `hostkey-new` | Information; Warning when refused | `host`, `port`, `keytype`, `fp`, `result`, `pid`, `proxy` |
 | `312` | `KiTTY++_cli` | `hostkey-mismatch` | Warning | `host`, `port`, `keytype`, `fp`, `result`, `pid`, `proxy` |
+| `313` | `KiTTY++_cli` | `hostkey-update` | Information; Warning when proof-failed or refused | `host`, `port`, `keytype`, `fp`, `result`, `oldfp`, `pid`, `proxy` |
 | `320` | `KiTTY++_cli` | `auth-ok` | Information | `host`, `port`, `user`, `method`, `fp`, `pid`, `proxy`, `for` |
 | `321` | `KiTTY++_cli` | `auth-failed` | Warning | `host`, `port`, `user`, `method`, `reason`, `methods`, `pid`, `proxy`, `for` |
 | `325` | `KiTTY++_cli` | `proxy-used` | Information | `proxy`, `host`, `port`, `user`, `credentials`, `pid`, `for` |
@@ -96,13 +98,14 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `from` - 200, 300: the local end of the connection, address and port.
 - `host` - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 - `kb` - 901: the kilobytes freed.
-- `keytype` - 210-212, 310-312: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key; 400: the key's SSH type.
+- `keytype` - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
 - `loaded` - 113: startup keys loaded.
 - `local` - 240, 241, 330, 331: the file's full local path; a 331 for a run that failed before any file: the local path as given.
 - `mb` - 901: LogKeepMB as set, 0 = off.
 - `method` - 220, 221, 320, 321: the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident; 240, 241: zmodem or kitten-osc5113.
 - `methods` - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 - `missing` - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
+- `oldfp` - 213, 313: the hash of the stored key a replaced key took the place of (SHA256:...), empty for every other result.
 - `path` - 100-170: the key file; 401-403: the file written; 903: the session file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
@@ -117,7 +120,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `req` - 100-170: the file name of the program that asked the agent.
 - `reqpath` - 100-170: that program's full path.
 - `request` - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
-- `result` - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 401, 402: saved, failed.
+- `result` - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed.
 - `session` - the saved session's name, empty when none was loaded.
 - `tool` - 400-403: kittygen or kittygen-cli.
 - `trigger` - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).

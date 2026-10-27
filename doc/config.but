@@ -3206,9 +3206,48 @@ recorded in the Event Log: trust on first use, as OpenSSH's
 \c{accept-new}. A changed key is never accepted this way: the usual
 warning follows, and under \c{-batch} the connection ends. For one run:
 \c{-accept-new} (\k{using-cmdline-accept-new}); for every session:
-\c{autostoresshkey=yes} in \c{[KiTTY]} of \c{kitty.ini}. With
+\q{Store an unknown host key without confirmation (every session)} on
+\k{kitty-cfg-host-keys} (\c{autostoresshkey=yes} in \c{[KiTTY]}). With
 \c{readonly=yes} the key is used for this connection only and not
 stored; the Event Log line records that.
+
+\S{config-ssh-kitty-update-hostkeys} Host key update (KiTTY++)
+
+After the login an OpenSSH server lists all its host keys (OpenSSH's
+\c{UpdateHostKeys}). KiTTY++ asks the server to prove each key the store
+does not hold: the server signs it for this connection. A proven key of a
+type with nothing stored is stored. A proven key of a type stored with
+another value replaces it. A stored type the server no longer offers is
+removed. A failed proof leaves the store unchanged for that connection.
+The type of the key this
+connection verified is never changed. Each change is a line in the Event
+Log.
+
+The update runs only when the connection's key matched the store or was
+stored by this connection. It does not run for Connect Once, for a key
+from the manual host keys (\k{config-ssh-kex-manual-hostkeys}), for a
+certificate, or with \c{readonly=yes}. To switch it off: \q{Update host
+keys the server proves (hostkeys-00)} on \k{kitty-cfg-host-keys}
+(\c{updatehostkeys=no} in \c{[KiTTY]}). With the
+Windows Event Log records on, each change is also event 213 (kitty.exe)
+or 313 (klink, kscp, ksftp).
+
+Rotating a host key on the server: generate the new key. Add it as an
+additional \c{HostKey} line in \c{sshd_config} beside the old one.
+Reload sshd. Clients learn the new key at their next login, proven by
+the server. Give the clients time to connect, some weeks. Then remove
+the old \c{HostKey} line. Clients remove the old key at their next
+login. KiTTY++ stores one key per type: the new key must be of a type
+the server does not offer yet (for example ed25519 beside rsa). A
+second key of a type already offered makes the clients ignore the
+server's list.
+
+Retiring a key type: remove its \c{HostKey} line and reload sshd.
+Clients drop that type at their next login.
+
+A client that does not connect in between gets the changed-key warning
+once the old key is gone. So does a client with \c{updatehostkeys=no}
+or \c{readonly=yes}.
 
 \H{config-ssh-encryption} The Cipher panel
 

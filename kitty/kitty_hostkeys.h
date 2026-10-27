@@ -59,4 +59,9 @@ char *kitty_hostkey_now_iso(void);
 #define KITTY_HOSTKEY_STAMP_FIRST ":first"
 #define KITTY_HOSTKEY_STAMP_WHEN  ":when"
 
+/* The store as the host key update reads and changes it
+ * (kitty_hostkeys00.h): set by kitty.exe and the console tools. */
+struct kitty_hk00_store;
+extern const struct kitty_hk00_store kitty_hostkeys_hk00_store;
+
 #endif /* KITTY_HOSTKEYS_H */

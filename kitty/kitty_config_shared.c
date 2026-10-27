@@ -49,6 +49,8 @@
 #include <commctrl.h>       /* SetWindowSubclass: the shortcut editor's key-capture field */
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
+#include "kitty_hostkey_acceptnew.h"   /* autostoresshkey */
+#include "kitty_hostkeys00.h"          /* updatehostkeys */
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
 
 /* Declarations from other KiTTY modules that this file does not reach
@@ -686,6 +688,10 @@ int kset_write(const struct kset_key *k, const char *text);
  * box (the button's context) refreshed. */
 static void kset_set_debug(int v) { debug_flag = v; }
 static int  kset_get_debug(void) { return debug_flag; }
+/* Security > Host keys: the running values, so a change holds in this
+ * process at once (the switches themselves keep int setters) */
+static int  kset_get_acceptnew(void) { return kitty_hostkey_accept_new_all(); }
+static int  kset_get_hk00(void) { return kitty_hk00_enabled(); }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
@@ -812,6 +818,10 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_SESSIONEVENTLOG,  KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_CLIEVENTLOG,      KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_KITTYGENEVENTLOG, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
+    /* Security > Host keys: accept-new for every session, and the host key
+     * update (kitty_hostkey_acceptnew.h, kitty_hostkeys00.h) */
+    { INIT_SECTION, KI_AUTOSTORESSHKEY,  KSET_BOOL, false, kset_get_acceptnew, kitty_hostkey_accept_new_set_all, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_UPDATEHOSTKEYS,   KSET_BOOL, false, kset_get_hk00, kitty_hk00_set_enabled, NULL, 0, 0, 1 },
     /* Automation */
     { INIT_SECTION, KI_INITDELAY,      KSET_SECS, false, NULL, NULL, &init_delay, 0, 0, 2000 },
     { INIT_SECTION, KI_BCDELAY,        KSET_INT, false, NULL, NULL, &between_char_delay, 0, 10000, 0 },

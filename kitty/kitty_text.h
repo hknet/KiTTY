@@ -1385,6 +1385,10 @@
 #define KT_HK_TITLE                                  "Host keys"
 #define KT_HK_GROUP                                  "Host keys this KiTTY++ has accepted"
 #define KT_HK_INTRO                                  "A host key is stored per host and port, for every session that connects there."
+/* the two switches above the list: [KiTTY] autostoresshkey, updatehostkeys */
+#define KT_HK_SWITCHES_GROUP                         "Host keys of every session"
+#define KT_HK_ACCEPTNEW_ALL                          "Store an unknown host key without confirmation (every session)"
+#define KT_HK_UPDATE_ALL                             "Update host keys the server proves (hostkeys-00)"
 #define KT_HK_COL_HEAD                               "Host\tType\tSHA256\tFirst seen\tLast written\tVerified"
 #define KT_HK_DETAIL_NONE                            "Select a key to see its fingerprints in full."
 #define KT_HK_DETAIL                                 "%s:%d  %s  %d bits\r\n%s\r\nMD5:%s\r\nFirst seen %s\r\nLast written %s"
@@ -3638,6 +3642,14 @@
  * console's) offers this connection only */
 #define KT_HOSTKEY_RO_NOT_STORED                     "The host key store is read-only (readonly=yes): the key is not stored."
 #define KT_HOSTKEY_RO_CONNECT_ONCE_Q                 "Connect once? (y/n, Return cancels)"
+/* the host key update (kitty_hostkeys00_ssh.c, OpenSSH's hostkeys-00): one
+ * Event Log line per outcome; klink, kscp and ksftp write it to standard
+ * error too. %s = type and fingerprint as accept-new's record shows them */
+#define KT_HOSTKEY_UPDATE_STORED                     "Host key stored (proven by the server): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_REPLACED                   "Host key replaced (proven by the server): %s, was %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_REMOVED                    "Host key removed (no longer offered by the server): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_FAILED                     "Host key not stored (the server's proof failed): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_REFUSED                    "Host keys not updated (the server refused the proof request): %s port %d"
 
 /* cmdline.c: -masterpwfile */
 #define KT_CLI_MPWFILE_CONFLICT                      "-masterpwfile conflicts with PortablePasswordProtection=dpapi" \

@@ -15,6 +15,7 @@
 #include "kitty_storage.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_hostkeys.h"
+#include "kitty_hostkeys00.h"
 #include "kitty_tools.h"
 
 
@@ -421,3 +422,44 @@ bool kitty_hostkey_delete(const char *host, int port, const char *keytype)
     strbuf_free(name);
     return done;
 }
+
+/* ---- the host key update (kitty_hostkeys00.h) ------------------------------ */
+
+static bool hk00_readonly(void)
+{
+    return kitty_store_readonly() != 0;
+}
+
+/* The stored key's fingerprint, "ssh-ed25519 255 SHA256:..." as
+ * ssh2_fingerprint gives it; NULL when nothing is stored or the text does
+ * not parse. */
+static char *hk00_stored_fingerprint(const char *host, int port, const char *keytype)
+{
+    strbuf *name = strbuf_new();
+    char *text = NULL, *fp = NULL;
+    put_fmt(name, "%s@%d:", keytype, port);
+    escape_registry_key(host, name);
+    if (store_is_file()) {
+        text = portable_read_text_file("SshHostKeys", name->s);
+    } else {
+        HKEY key = open_regkey_ro(HKEY_CURRENT_USER, kitty_reg_hostkeys());
+        if (key) {
+            text = get_reg_sz(key, name->s);
+            close_regkey(key);
+        }
+    }
+    strbuf_free(name);
+    if (text) {
+        strbuf *blob = kitty_hostkey_blob_from_text(keytype, text);
+        if (blob) {
+            fp = ssh2_fingerprint_blob(ptrlen_from_strbuf(blob), SSH_FPTYPE_DEFAULT);
+            strbuf_free(blob);
+        }
+        sfree(text);
+    }
+    return fp;
+}
+
+const struct kitty_hk00_store kitty_hostkeys_hk00_store = {
+    hk00_readonly, hk00_stored_fingerprint, kitty_hostkey_delete,
+};

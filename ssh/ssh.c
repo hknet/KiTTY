@@ -312,6 +312,10 @@ static void ssh_got_ssh_version(struct ssh_version_receiver *rcv,
             if (userauth_layer)
                 ssh2_userauth_set_transport_layer(userauth_layer,
                                                   ssh->base_layer);
+            /* KiTTY: the host key update needs the session id and how the
+             * host key was accepted (kitty/kitty_hostkeys00.h) */
+            ssh2_connection_kitty_set_transport(connection_layer,
+                                                ssh->base_layer);
 
         } else {
 

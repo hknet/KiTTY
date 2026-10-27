@@ -61,7 +61,7 @@ The fields, by name:
 
 \b \c{kb} - 901: the kilobytes freed.
 
-\b \c{keytype} - 210-212, 310-312: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key; 400: the key's SSH type.
+\b \c{keytype} - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
 
 \b \c{loaded} - 113: startup keys loaded.
 
@@ -74,6 +74,8 @@ The fields, by name:
 \b \c{methods} - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 
 \b \c{missing} - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
+
+\b \c{oldfp} - 213, 313: the hash of the stored key a replaced key took the place of (SHA256:...), empty for every other result.
 
 \b \c{path} - 100-170: the key file; 401-403: the file written; 903: the session file.
 
@@ -103,7 +105,7 @@ The fields, by name:
 
 \b \c{request} - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
 
-\b \c{result} - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 401, 402: saved, failed.
+\b \c{result} - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed.
 
 \b \c{session} - the saved session's name, empty when none was loaded.
 
@@ -171,6 +173,8 @@ The event IDs:
 
 \b \c{212} \c{KiTTY++_kitty} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
+\b \c{213} \c{KiTTY++_kitty} (Information; Warning when proof-failed or refused): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
+
 \b \c{220} \c{KiTTY++_kitty} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 
 \b \c{221} \c{KiTTY++_kitty} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}, \c{proxy}, \c{for}.
@@ -192,6 +196,8 @@ The event IDs:
 \b \c{311} \c{KiTTY++_cli} (Information; Warning when refused): \c{hostkey-new}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
 \b \c{312} \c{KiTTY++_cli} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
+
+\b \c{313} \c{KiTTY++_cli} (Information; Warning when proof-failed or refused): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
 
 \b \c{320} \c{KiTTY++_cli} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 

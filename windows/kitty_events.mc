@@ -180,6 +180,12 @@ Language=English
 %1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
 .
 
+MessageId=213
+SymbolicName=KITTY_SESSION_HOSTKEY_UPDATE
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%noldfp: %7%npid: %8%nproxy: %9%0
+.
+
 MessageId=220
 SymbolicName=KITTY_SESSION_AUTH_OK
 Language=English
@@ -248,6 +254,12 @@ MessageId=312
 SymbolicName=KITTY_CLI_HOSTKEY_MISMATCH
 Language=English
 %1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%npid: %7%nproxy: %8%0
+.
+
+MessageId=313
+SymbolicName=KITTY_CLI_HOSTKEY_UPDATE
+Language=English
+%1%nhost: %2%nport: %3%nkeytype: %4%nfp: %5%nresult: %6%noldfp: %7%npid: %8%nproxy: %9%0
 .
 
 MessageId=320

@@ -984,6 +984,14 @@ static void scb_panel_hostkeys(struct controlbox *b)
     kitty_hk_active = hk;
     kitty_cfg_box_closing_hook = hk_box_closing;
     ctrl_settitle(b, path, KT_HK_TITLE);
+    /* The two switches for every session, stored as the other KiTTY++
+     * Settings (kset_keys: kitty.ini or the registry, by the store in use).
+     * Declared with the panel, so the theme pass reaches them. */
+    s = ctrl_getset(b, path, "switches", KT_HK_SWITCHES_GROUP);
+    ctrl_checkbox(s, KT_HK_ACCEPTNEW_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                  kitty_kset_handler, P((void *)kset_find(KI_AUTOSTORESSHKEY)));
+    ctrl_checkbox(s, KT_HK_UPDATE_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                  kitty_kset_handler, P((void *)kset_find(KI_UPDATEHOSTKEYS)));
     s = ctrl_getset(b, path, "keys", KT_HK_GROUP);
     ctrl_text(s, KT_HK_INTRO, HELPCTX(kitty_host_keys));
     hk->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_host_keys),

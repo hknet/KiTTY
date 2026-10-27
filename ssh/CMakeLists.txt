@@ -20,6 +20,7 @@ add_library(sshcommon OBJECT
   transport2.c
   ../kitty/kitty_hostkey_scan_hook.c
   ../kitty/kitty_hostkey_acceptnew.c
+  ../kitty/kitty_hostkeys00.c
   verstring.c
   x11fwd.c
   zlib.c)
@@ -35,6 +36,7 @@ add_library(sshclient STATIC
   sharing.c
   ssh.c
   userauth2-client.c
+  ../kitty/kitty_hostkeys00_ssh.c
   $<TARGET_OBJECTS:sshcommon>
   $<TARGET_OBJECTS:all-backends>
   $<TARGET_OBJECTS:logging>)

@@ -52,6 +52,7 @@
 #define KITTY_EVO_HOSTKEY_KNOWN     10
 #define KITTY_EVO_HOSTKEY_NEW       11
 #define KITTY_EVO_HOSTKEY_MISMATCH  12
+#define KITTY_EVO_HOSTKEY_UPDATE    13   /* the host key update (hostkeys-00) */
 #define KITTY_EVO_AUTH_OK           20
 #define KITTY_EVO_AUTH_FAILED       21
 #define KITTY_EVO_PROXY_USED        25
@@ -161,6 +162,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 212, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-mismatch",
       "host port keytype fp result pid proxy",
       "Warning" },
+    { 213, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-update",
+      "host port keytype fp result oldfp pid proxy",
+      "Information; Warning when proof-failed or refused" },
     { 220, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "auth-ok",
       "host port user method fp pid proxy for",
       "Information" },
@@ -197,6 +201,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 312, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-mismatch",
       "host port keytype fp result pid proxy",
       "Warning" },
+    { 313, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-update",
+      "host port keytype fp result oldfp pid proxy",
+      "Information; Warning when proof-failed or refused" },
     { 320, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "auth-ok",
       "host port user method fp pid proxy for",
       "Information" },
@@ -333,9 +340,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "kb",
       "901: the kilobytes freed" },
     { "keytype",
-      "210-212, 310-312: the host key's type as its fingerprint "
-      "names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key; "
-      "400: the key's SSH type" },
+      "210-213, 310-313: the host key's type as its fingerprint "
+      "names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, "
+      "empty in a 213, 313 refused; 400: the key's SSH type" },
     { "loaded",
       "113: startup keys loaded" },
     { "local",
@@ -357,6 +364,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "missing",
       "902: each missing entry point with its DLL and the feature "
       "it powers, separated by semicolons" },
+    { "oldfp",
+      "213, 313: the hash of the stored key a replaced key took the "
+      "place of (SHA256:...), empty for every other result" },
     { "path",
       "100-170: the key file; 401-403: the file written; 903: the "
       "session file" },
@@ -414,7 +424,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "150, 151: done, failed; 152: done, failed (a wrong passphrase), "
       "cancelled; 160: start, stop; 170: failed; 201, 301: closed, "
       "remote-closed, fatal, user; 211, 212, 311, 312: accept-new, "
-      "accepted, refused; 401, 402: saved, failed" },
+      "accepted, refused; 213, 313: stored, replaced, removed, "
+      "proof-failed, refused (the server refused the proof request); "
+      "401, 402: saved, failed" },
     { "session",
       "the saved session's name, empty when none was loaded" },
     { "tool",

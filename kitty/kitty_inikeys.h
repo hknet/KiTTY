@@ -148,6 +148,8 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 /* Where a window sent to the tray goes: auto | own | launcher
  * (kitty_bridge.c kitty_send_to_tray, read at every send). */
 #define KI_TRAYMODE                         "traymode"
+/* the host key update for every SSH program (kitty_hostkeys00.h) */
+#define KI_UPDATEHOSTKEYS                   "updatehostkeys"
 #define KI_UPLOADDIR                        "uploaddir"
 #define KI_USERPASSSSHNOSAVE                "userpasssshnosave"
 #define KI_VERIFYAGENT                      "verifyagent"

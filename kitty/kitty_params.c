@@ -66,6 +66,8 @@
 #include "mini/mini.h"
 #include "kitty_params.h"
 #include "kitty_hostkey_acceptnew.h"   /* autostoresshkey */
+#include "kitty_hostkeys00.h"   /* updatehostkeys */
+#include "kitty_hostkeys.h"     /* the store the host key update uses */
 
 
 
@@ -711,10 +713,13 @@ static const IniParam ini_params[] = {
 	 * neighbours - see the comment on SetRestrictAclFlag. */
 	INIP_KW( INIT_SECTION, 1, KI_RESTRICTACL,	1, IGN, IGN,	NULL, SetRestrictAclFlag ),
 	/* autostoresshkey=yes: accept-new for every session - a NEW host key is
-	 * stored without a question, a changed one never. kitty.ini ONLY, as
-	 * restrictacl: nothing writes it to the registry, and a value found there
-	 * would switch the question off unseen. */
-	INIP_KW( INIT_SECTION, 1, KI_AUTOSTORESSHKEY,	1, 0, IGN,	NULL, kitty_hostkey_accept_new_set_all ),
+	 * stored without a question, a changed one never. Read where Security >
+	 * Host keys writes it (ReadParameterN: the registry in registry mode,
+	 * kitty.ini otherwise and as its fallback). */
+	INIP_KW( INIT_SECTION, 0, KI_AUTOSTORESSHKEY,	1, 0, IGN,	NULL, kitty_hostkey_accept_new_set_all ),
+	/* updatehostkeys=no: no host key update (OpenSSH's hostkeys-00); on
+	 * when absent. The same checkbox panel, read the same way. */
+	INIP_KW( INIT_SECTION, 0, KI_UPDATEHOSTKEYS,	1, 0, IGN,	NULL, kitty_hk00_set_enabled ),
 	INIP_KW( INIT_SECTION, 0, KI_SHORTCUTS,		1, 0, IGN,	&ShortcutsFlag, NULL ),
 	INIP_KW( INIT_SECTION, 0, KI_SIZE,		1, 0, IGN,	&SizeFlag, NULL ),      /* symmetrical: a checkbox */
 	INIP_NUM( INIT_SECTION, 0, KI_SLIDEDELAY,	IGN,		&ImageSlideDelay, NULL ),
@@ -839,6 +844,8 @@ void LoadParameters( void ) {
 	 * whether a refused default is still news for that host. */
 	kitty_termenv_switch_hook = GetSendTermEnvFlag ;
 	kitty_termenv_hint_hook = kitty_termenv_hint_first ;
+	/* The host key update reads and changes the store through this. */
+	kitty_hk00_set_store( &kitty_hostkeys_hk00_store ) ;
 
 	/* The remaining keys have richer semantics and stay hand-written. */
 	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLE, buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }

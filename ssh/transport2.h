@@ -205,6 +205,10 @@ struct ssh2_transport_state {
     bool need_gss_transient_hostkey;
     bool warned_about_no_gss_transient_hostkey;
     bool got_session_id;
+    /* KiTTY: the host key update (kitty/kitty_hostkeys00.h) - how the first
+     * key exchange's host key was accepted (KHK00_BY_*) and its store type */
+    int kitty_hk00_how;
+    const char *kitty_hk00_type;
     bool can_send_ext_info, post_newkeys_ext_info;
     bool strict_kex, enabled_outgoing_crypto, enabled_incoming_crypto;
     bool seen_non_kexinit;

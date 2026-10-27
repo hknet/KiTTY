@@ -3270,6 +3270,16 @@ is also written to the Application event log, once per start.
 
 \S{kitty-cfg-host-keys} The Host keys panel
 
+Above the list, two switches for every session.
+\q{Store an unknown host key without confirmation (every session)} is
+accept-new for every session (\k{config-ssh-kitty-accept-new}), off by
+default. \q{Update host keys the server proves (hostkeys-00)} is the host
+key update (\k{config-ssh-kitty-update-hostkeys}), on by default. Both
+are stored like the other KiTTY++ settings: in the registry or in
+\c{kitty.ini}, by the store in use (\c{autostoresshkey},
+\c{updatehostkeys} in \c{[KiTTY]}). kitty.exe, klink, kscp and ksftp
+read them when they start.
+
 Every SSH host key this KiTTY++ has accepted, one row per host, port and
 key type: the type and key size, the start of the SHA256 fingerprint,
 when the key was first seen and last written, and what the last

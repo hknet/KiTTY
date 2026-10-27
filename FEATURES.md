@@ -24,6 +24,7 @@ one is available.
 - **SSH and network**
   - [In-terminal (inline) security confirmations](#in-terminal-inline-security-confirmations)
   - [Accept new host keys](#accept-new-host-keys)
+  - [Host key update](#host-key-update)
   - [Automatic password](#automatic-password)
   - [Passwords in memory](#passwords-in-memory)
   - [Key-file fingerprint pin](#key-file-fingerprint-pin)
@@ -540,7 +541,23 @@ Unknown Host-Keys can be stored on first contact without confirmation, as OpenSS
 
 **Only for a server with no stored key.** Host keys are stored per type (ssh-rsa, ssh-ed25519 and others). When the host and port already have a key of another type, the new key requires the usual confirmation with one more line listing the stored types. Under `-batch` the connection ends with exit code 1. The reason: KiTTY++ requests the key types it knows first, so a changed key of a known type is caught. Someone posing as the server can offer only a type with no stored key and so skip that comparison. A server that really switched its key type gets the question once.
 
-**How to enable:** per session, Configuration > **Connection > SSH > Host keys** > **Accept new host keys** (`AcceptNewHostKeys`, off by default); for one run, `-accept-new` (kitty.exe, klink, kscp, ksftp); for every session, `kitty.ini [KiTTY] autostoresshkey=yes`. The global setting only switches it on: `autostoresshkey=yes` applies to every session, whatever the session's own setting. With `autostoresshkey=no` (the default) each session's setting decides.
+**How to enable:** per session, Configuration > **Connection > SSH > Host keys** > **Accept new host keys** (`AcceptNewHostKeys`, off by default); for one run, `-accept-new` (kitty.exe, klink, kscp, ksftp); for every session, Configuration > **Application > Security > Host keys** > **Store an unknown host key without confirmation (every session)** (`[KiTTY] autostoresshkey=yes`). The global setting only switches it on: `autostoresshkey=yes` applies to every session, whatever the session's own setting. With `autostoresshkey=no` (the default) each session's setting decides.
+
+### Host key update
+
+After the login an OpenSSH server lists all its host keys (OpenSSH's `UpdateHostKeys`, the `hostkeys-00@openssh.com` extension). KiTTY++ asks the server to prove each key the store does not hold: the server signs it for this connection. A proven key of a type with nothing stored is stored. A proven key of a type stored with another value replaces it (a rotated key). A stored type the server no longer offers is removed, its time stamps with it. A failed or missing proof leaves the store unchanged for that connection: only that key's line is written. The type of the key this connection verified is never changed. Each change is a line in the Event Log (klink, kscp and ksftp: on standard error too), for example `Host key stored (proven by the server): ...`. With the Windows Event Log records on (see Windows Event Log), each change is also event 213 (kitty.exe) or 313 (klink, kscp, ksftp), result stored, replaced, removed, proof-failed or refused.
+
+**Only on a verified connection.** The update runs when the server's key matched the stored one, or was stored by this connection (Accept, accept-new). It does not run for Connect Once, for a key from the session's manual host keys, for a certificate, or with `readonly=yes`.
+
+**Why:** a server that later switches its key type is then compared like any known key. Without the update the new type gets the unknown-key question, accept-new included: a key of another type is stored.
+
+**How to switch it off:** Configuration > **Application > Security > Host keys** > **Update host keys the server proves (hostkeys-00)** (`[KiTTY] updatehostkeys`, default `yes`), for kitty.exe, klink, kscp and ksftp.
+
+**Rotating a host key on the server.** Generate the new key. Add it as an additional `HostKey` line in `sshd_config` beside the old one. Reload sshd. Clients learn the new key at their next login, proven by the server. Give the clients time to connect, some weeks. Then remove the old `HostKey` line. Clients remove the old key at their next login. KiTTY++ stores one key per type: the new key must be of a type the server does not offer yet (for example ed25519 beside rsa). A second key of a type already offered makes the clients ignore the server's list.
+
+**Retiring a key type.** Remove its `HostKey` line and reload sshd. Clients drop that type at their next login.
+
+A client that does not connect in between gets the changed-key warning once the old key is gone. So does a client with `updatehostkeys=no` or `readonly=yes`.
 
 ### Automatic password
 

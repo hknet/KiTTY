@@ -50,6 +50,14 @@ struct ssh2_connection_state {
      */
     struct outstanding_global_request *globreq_head, *globreq_tail;
 
+    /* KiTTY: the host key update (kitty/kitty_hostkeys00.h): the transport
+     * layer (NULL in bare mode), the server's list seen once, the proof
+     * request in flight and how to free it */
+    PacketProtocolLayer *kitty_transport;
+    bool kitty_hk00_seen;
+    void *kitty_hk00_pending;
+    void (*kitty_hk00_free)(void *);
+
     ConnectionLayer cl;
     PacketProtocolLayer ppl;
 };
@@ -58,6 +66,9 @@ typedef void (*gr_handler_fn_t)(struct ssh2_connection_state *s,
                                 PktIn *pktin, void *ctx);
 void ssh2_queue_global_request_handler(
     struct ssh2_connection_state *s, gr_handler_fn_t handler, void *ctx);
+
+/* KiTTY: "hostkeys-00@openssh.com" (kitty/kitty_hostkeys00_ssh.c) */
+void kitty_hk00_received(struct ssh2_connection_state *s, PktIn *pktin);
 
 struct ssh2_channel {
     struct ssh2_connection_state *connlayer;

@@ -205,6 +205,13 @@
 ;    Default no.
 ;autostoresshkey=no
 
+; updatehostkeys: OpenSSH's host key update (UpdateHostKeys), in every SSH
+;    program. After the login a server whose key matched the store lists all
+;    its host keys. A key it proves is stored, or replaces the stored key of
+;    its type. A stored type it no longer offers is removed. Each change is
+;    an Event Log line. Default yes.
+;updatehostkeys=yes
+
 ; bgimage: enable/disable the background image feature. (The description
 ;    here used to call it backgroundimage, which is not a key KiTTY++ reads.)
 ;bgimage=no

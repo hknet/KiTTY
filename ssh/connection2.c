@@ -316,6 +316,10 @@ static void ssh2_connection_free(PacketProtocolLayer *ppl)
     }
     portfwdmgr_free(s->portfwdmgr);
 
+    /* KiTTY: a host key proof request still unanswered */
+    if (s->kitty_hk00_pending && s->kitty_hk00_free)
+        s->kitty_hk00_free(s->kitty_hk00_pending);
+
     if (s->antispoof_prompt)
         free_prompts(s->antispoof_prompt);
 

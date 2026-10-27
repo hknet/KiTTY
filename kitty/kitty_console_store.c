@@ -30,7 +30,35 @@
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
 #include "kitty_hostkey_acceptnew.h"
+#include "kitty_hostkeys00.h"
+#include "kitty_hostkeys.h"
 #include "kitty_winevent.h"
+
+/* A [KiTTY] switch read where kitty.exe's configuration box writes it
+ * (WriteParameter): the hive in use first in registry mode, kitty.ini
+ * otherwise and as the registry's fallback (ReadParameterN). v[0] = '\0'
+ * when neither has it. */
+static void console_read_switch(bool registry_authoritative, const char *key,
+                                char *v, DWORD vsize)
+{
+    v[0] = '\0';
+    if (registry_authoritative) {
+        HKEY k;
+        extern const char *kitty_registry_base(void);
+        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
+                          KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
+            DWORD type = 0, n = vsize - 1;
+            if (RegQueryValueExA(k, key, NULL, &type, (LPBYTE)v, &n) !=
+                ERROR_SUCCESS || type != REG_SZ)
+                v[0] = '\0';
+            else
+                v[n < vsize ? n : vsize - 1] = '\0';
+            RegCloseKey(k);
+        }
+    }
+    if (!v[0])
+        kitty_inifile_read(KI_SECTION_KITTY, key, v, vsize);
+}
 
 /* accept-new's record on standard error. Under -v the Event Log line is
  * printed there already (console_eventlog). */
@@ -97,14 +125,26 @@ void kitty_console_store_init(void)
      * the log default stays beside it, as in kitty.exe */
     kitty_set_log_default_beside_program(!ini.registry_authoritative);
 
-    /* [KiTTY] autostoresshkey=yes: accept-new for every session. kitty.ini
-     * only, as kitty.exe reads it (kitty_params.c). */
+    /* [KiTTY] autostoresshkey=yes: accept-new for every session, read as
+     * kitty.exe reads it (kitty_params.c, Security > Host keys). */
     {
         char v[16] = "";
-        kitty_inifile_read(KI_SECTION_KITTY, KI_AUTOSTORESSHKEY, v, sizeof(v));
+        console_read_switch(ini.registry_authoritative, KI_AUTOSTORESSHKEY,
+                            v, sizeof(v));
         kitty_hostkey_accept_new_set_all(!stricmp(v, "yes"));
     }
     kitty_hostkey_accept_new_set_report(console_accept_new_report);
+
+    /* [KiTTY] updatehostkeys=no: no host key update (hostkeys-00), read as
+     * kitty.exe reads it; absent or any other value: on. Its record goes
+     * where accept-new's goes. */
+    {
+        char v[16] = "";
+        console_read_switch(ini.registry_authoritative, KI_UPDATEHOSTKEYS,
+                            v, sizeof(v));
+        kitty_hk00_set_enabled(stricmp(v, "no") != 0);
+    }
+    kitty_hk00_set_store(&kitty_hostkeys_hk00_store);
 
     /* -masterpwfile before ANY argument is processed (cmdline.c). After the
      * store setup above: the PortablePasswordProtection conflict needs it. */

@@ -208,6 +208,13 @@ char default_init_file_content[] =
 ;    Default no.\n\
 ;autostoresshkey=no\n\
 \n\
+; updatehostkeys: OpenSSH's host key update (UpdateHostKeys), in every SSH\n\
+;    program. After the login a server whose key matched the store lists all\n\
+;    its host keys. A key it proves is stored, or replaces the stored key of\n\
+;    its type. A stored type it no longer offers is removed. Each change is\n\
+;    an Event Log line. Default yes.\n\
+;updatehostkeys=yes\n\
+\n\
 ; bgimage: enable/disable the background image feature. (The description\n\
 ;    here used to call it backgroundimage, which is not a key KiTTY++ reads.)\n\
 ;bgimage=no\n\

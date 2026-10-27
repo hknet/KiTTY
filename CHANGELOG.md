@@ -27,6 +27,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   The file goes through Windows' Attachment Services (zone mark, antivirus
   scan). A folder opens in WinSCP or FileZilla.
   A link to another host shows Open, Copy path and Close.
+- Host key update (OpenSSH's UpdateHostKeys): after the login an OpenSSH
+  server lists its host keys. A key it proves is stored, or replaces a
+  rotated key of its type. A type it no longer offers is removed. A failed
+  proof leaves the store unchanged. Only on a connection whose key was
+  verified against the store. `updatehostkeys=no`
+  in kitty.ini switches it off.
 
 ### Changed
 

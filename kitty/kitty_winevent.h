@@ -58,6 +58,13 @@ void kitty_wev_hostkey_pending(unsigned offset, const char *host, int port,
                                const char *keytype, const char *fp,
                                const char *proxy);
 void kitty_wev_hostkey_answer(int accepted);
+/* 213/313, the host key update (kitty_hostkeys00.h): result stored /
+ * replaced / removed / proof-failed / refused (Warning for the last two).
+ * fp and oldfp as PuTTY prints them (NULL or "" = empty); keytype is used
+ * when fp names no type. */
+void kitty_wev_hostkey_update(const char *host, int port, const char *keytype,
+                              const char *fp, const char *result,
+                              const char *oldfp, const char *proxy);
 
 /* 220/320, and 221/321 for each attempt the server refused and once when
  * no method was left. fp = the key used, or NULL. methods = what the

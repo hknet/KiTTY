@@ -1858,6 +1858,15 @@ static LRESULT CALLBACK kt_gb_subclass(HWND btn, UINT msg, WPARAM wParam,
             EndPaint(btn, &ps);
             return 0;
         }
+        /* The configuration box presents a new panel as one picture made
+         * with PrintWindow (windows/dialog.c, kitty_cfg_host_present), then
+         * validates it: no WM_PAINT follows. The button's own WM_PRINTCLIENT
+         * drew the light frame, invisible on the dark panel, until a hover
+         * repainted it - so the print draws the dark frame too. */
+        if (msg == WM_PRINTCLIENT) {
+            kt_paint_groupbox(btn, (HDC)wParam);
+            return 0;
+        }
     }
     if (msg == WM_NCDESTROY)
         RemoveWindowSubclass(btn, kt_gb_subclass, 4);

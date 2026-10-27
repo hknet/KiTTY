@@ -2368,6 +2368,27 @@ ptrlen ssh2_transport_get_session_id(PacketProtocolLayer *ppl)
     return make_ptrlen(s->session_id, s->session_id_len);
 }
 
+/* KiTTY: what the host key update (kitty/kitty_hostkeys00.h) needs from the
+ * first key exchange: how its host key was accepted (the return value,
+ * KHK00_BY_*), its store type, the host and port it is stored under, and
+ * the session id. */
+int ssh2_transport_kitty_hk00(PacketProtocolLayer *ppl, const char **type,
+                              const char **host, int *port,
+                              ptrlen *session_id)
+{
+    struct ssh2_transport_state *s;
+
+    assert(ppl->vt == &ssh2_transport_vtable);
+    s = container_of(ppl, struct ssh2_transport_state, ppl);
+
+    *type = s->kitty_hk00_type;
+    *host = s->savedhost;
+    *port = s->savedport;
+    *session_id = s->got_session_id ?
+        make_ptrlen(s->session_id, s->session_id_len) : make_ptrlen("", 0);
+    return s->got_session_id ? s->kitty_hk00_how : 0;
+}
+
 void ssh2_transport_notify_auth_done(PacketProtocolLayer *ppl)
 {
     struct ssh2_transport_state *s;

@@ -268,6 +268,14 @@ add_executable(test_acceptnew
   test/test_acceptnew.c
   kitty/kitty_hostkey_acceptnew.c)
 
+# KiTTY: unit test for the host key update (kitty/kitty_hostkeys00.c, in
+# sshcommon for kitty/kitty_hostkeys00_ssh.c): which connections may update
+# the store, the data a proof signs, what each key of the server's list
+# leads to, and the record texts.
+add_executable(test_hostkeys00
+  test/test_hostkeys00.c
+  kitty/kitty_hostkeys00.c)
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -450,7 +458,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew
+    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_hostkeys00
     test_auditparse test_eventids)
   kitty_add_test(${t})
 endforeach()

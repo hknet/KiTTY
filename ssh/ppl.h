@@ -150,6 +150,15 @@ void ssh_ppl_user_output_string_and_free(PacketProtocolLayer *ppl, char *text);
 ptrlen ssh2_transport_get_session_id(PacketProtocolLayer *ssh2_transport_ptr);
 void ssh2_transport_notify_auth_done(PacketProtocolLayer *ssh2_transport_ptr);
 
+/* KiTTY: the host key update (kitty/kitty_hostkeys00.h). The connection
+ * layer is given the transport layer as userauth is; the transport layer
+ * answers how its host key was accepted (KHK00_BY_*). */
+int ssh2_transport_kitty_hk00(PacketProtocolLayer *ssh2_transport_ptr,
+                              const char **type, const char **host, int *port,
+                              ptrlen *session_id);
+void ssh2_connection_kitty_set_transport(PacketProtocolLayer *connection,
+                                         PacketProtocolLayer *transport);
+
 /* Shared method between ssh2 layers (defined in transport2.c) to
  * handle the common packets between login and connection: DISCONNECT,
  * DEBUG and IGNORE. Those messages are handled by the ssh2transport

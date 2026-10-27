@@ -149,11 +149,27 @@ ChanopenResult ssh2_connection_parse_channel_open(
 bool ssh2_connection_parse_global_request(
     struct ssh2_connection_state *s, ptrlen type, PktIn *pktin)
 {
+    /* KiTTY: OpenSSH's host key update (kitty/kitty_hostkeys00.h). The
+     * server sends it without wanting a reply. */
+    if (ptrlen_eq_string(type, "hostkeys-00@openssh.com")) {
+        kitty_hk00_received(s, pktin);
+        return false;
+    }
+
     /*
      * We don't know of any global requests that an SSH client needs
      * to honour.
      */
     return false;
+}
+
+/* KiTTY: the transport layer, for the host key update */
+void ssh2_connection_kitty_set_transport(PacketProtocolLayer *ppl,
+                                         PacketProtocolLayer *transport)
+{
+    struct ssh2_connection_state *s =
+        container_of(ppl, struct ssh2_connection_state, ppl);
+    s->kitty_transport = transport;
 }
 
 PktOut *ssh2_portfwd_chanopen(

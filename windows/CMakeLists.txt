@@ -328,6 +328,7 @@ kitty_selfcheck_target(plink)
 
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_hostkeys.c        # KiTTY: the store for the host key update
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
@@ -342,6 +343,7 @@ kitty_selfcheck_target(pscp)
 
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_crashlog.c
+  ../kitty/kitty_hostkeys.c        # KiTTY: the store for the host key update
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills

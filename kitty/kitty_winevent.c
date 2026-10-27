@@ -394,6 +394,35 @@ void kitty_wev_hostkey_answer(int accepted)
                       accepted ? "accepted" : "refused", g_pend.proxy);
 }
 
+void kitty_wev_hostkey_update(const char *host, int port, const char *keytype,
+                              const char *fp, const char *result,
+                              const char *oldfp, const char *proxy)
+{
+    char p[16], kt[64];
+    const char *v[7], *sp;
+    int warn;
+    if (!wev_session_block())
+        return;
+    warn = result && (!strcmp(result, "proof-failed") ||
+                      !strcmp(result, "refused"));
+    wev_port(p, sizeof(p), port);
+    /* the type as the fingerprint names it (ssh-rsa, not the store's rsa2) */
+    sp = fp ? strchr(fp, ' ') : NULL;
+    if (sp && (size_t)(sp - fp) < sizeof(kt)) {
+        memcpy(kt, fp, (size_t)(sp - fp));
+        kt[sp - fp] = '\0';
+    } else {
+        wev_copy(kt, sizeof(kt), keytype);
+    }
+    v[0] = host; v[1] = p; v[2] = kt;
+    v[3] = (fp && *fp) ? kitty_wev_fp_hash(fp) : "";
+    v[4] = result;
+    v[5] = (oldfp && *oldfp) ? kitty_wev_fp_hash(oldfp) : "";
+    v[6] = proxy;
+    wev_write(g_block + KITTY_EVO_HOSTKEY_UPDATE,
+              warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE, v, 7);
+}
+
 /* The `for` field of a login record that is not a proxy's own: empty for
  * the connection's own login, session for a jump host's (a hop only ever
  * carries the session; its forwardings are cleared). */

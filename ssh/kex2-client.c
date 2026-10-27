@@ -15,6 +15,7 @@
 #include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "kitty/kitty_text.h"      /* KiTTY: KT_STORE_RO_NOT_SAVED */
 #include "kitty/kitty_winevent.h"  /* KiTTY: host keys in the Windows Event Log */
+#include "kitty/kitty_hostkeys00.h" /* KiTTY: the host key update */
 
 /*
  * Another copy of the symbol defined in mpunsafe.c. See the comment
@@ -1017,6 +1018,18 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
             }
 
           host_key_ok:
+            /* KiTTY: may this connection update the stored host keys
+             * (kitty/kitty_hostkeys00.h)? Only with its key in the store
+             * now - verified there, or stored by this connection - and not
+             * by a certificate or the session's manual host keys. */
+            s->kitty_hk00_type = ssh_key_cache_id(s->hkey);
+            s->kitty_hk00_how = kitty_hk00_how(
+                ssh_key_alg(s->hkey)->is_certificate,
+                conf_get_str_nthstrkey(s->conf, CONF_ssh_manual_hostkeys, 0)
+                != NULL,
+                ssh_key_alg(s->hkey)->is_certificate ? 1 :
+                check_stored_host_key(s->savedhost, s->savedport,
+                                      s->kitty_hk00_type, s->keystr));
 
             /*
              * Save this host key, to check against the one presented in
