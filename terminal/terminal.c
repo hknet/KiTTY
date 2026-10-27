@@ -9016,6 +9016,7 @@ static void term_out(Terminal *term, bool called_from_term_data)
                                   term->esc_args[0] == 5522 ||
                                   term->esc_args[0] == 5113 ||
                                   term->esc_args[0] == 7501 ||
+                                  term->esc_args[0] == 7 ||
                                   term->esc_args[0] == 99 ? OSC_STR_MAX_5522 :
                                   OSC_STR_MAX);
 #else

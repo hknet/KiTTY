@@ -135,6 +135,10 @@ Event Log into your bug report.
 (The Event Log is not the same as the facility to create a log file
 of your session; that's described in \k{using-logging}.)
 
+This window is not the Windows Event Log, and its lines are gone when
+the window closes. What KiTTY++ writes to the Windows Event Log is in
+\k{kitty-cfg-windows-eventlog}.
+
 \S2{using-specials} \ii{Special commands}
 
 Depending on the protocol used for the current session, there may be

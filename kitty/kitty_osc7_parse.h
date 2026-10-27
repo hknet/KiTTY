@@ -39,21 +39,31 @@ static int osc7_urldecode( char * s ) {
 	*w = '\0' ;
 	return ok ;
 }
-/* Whitelist: a path we are willing to splice into the kscp/WinSCP command
- * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
- * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
- * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we
- * simply fall back to today's behaviour (upload to the remote HOME). */
-static int osc7_path_ok( const char * p ) {
-	if( p[0] != '/' ) return 0 ;
+/* The longest folder taken, after %-decoding: Linux PATH_MAX (4096) less its
+ * NUL. The terminal receives OSC 7 in a 16 KB buffer, so even a folder of this
+ * length with every byte %-encoded arrives whole. */
+#define OSC7_PATH_MAX 4095
+
+/* The first byte of p the whitelist below refuses, or -1 when every byte
+ * passes ('/' itself when the path is not absolute). */
+static int osc7_path_bad_char( const char * p ) {
+	if( p[0] != '/' ) return (unsigned char)p[0] ;
 	for( ; *p ; p++ ) {
 		unsigned char c = (unsigned char)*p ;
 		if( c >= 0x80 ) continue ;
 		if( (c>='0'&&c<='9') || (c>='a'&&c<='z') || (c>='A'&&c<='Z') ) continue ;
 		if( c=='/' || c=='.' || c=='-' || c=='_' || c=='~' ) continue ;
-		return 0 ;
+		return c ;
 	}
-	return 1 ;
+	return -1 ;
+}
+/* Whitelist: a path we are willing to splice into the kscp/WinSCP command
+ * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
+ * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
+ * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we
+ * simply fall back to today's behaviour (upload to the remote HOME). */
+static inline int osc7_path_ok( const char * p ) {   /* inline: kitty.c uses the char form */
+	return osc7_path_bad_char( p ) < 0 ;
 }
 
 #endif /* KITTY_OSC7_PARSE_H */

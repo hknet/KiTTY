@@ -10,6 +10,7 @@
  * absolute path is accepted. Returns non-zero on any failure.
  */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../kitty/kitty_osc7_parse.h"
@@ -19,10 +20,21 @@ static int failures = 0 ;
 /* A path is "accepted" iff urldecode reports no embedded NUL AND the whitelist
  * passes - exactly mirroring kitty_set_remote_cwd() in kitty.c. */
 static int osc7_accepts( const char * raw ) {
-	char buf[2048] ;
+	static char buf[16384] ;   /* the terminal's OSC 7 buffer */
 	strncpy( buf, raw, sizeof(buf)-1 ) ; buf[sizeof(buf)-1] = '\0' ;
 	if( !osc7_urldecode( buf ) ) return 0 ;   /* embedded %00 -> reject */
+	if( strlen( buf ) > OSC7_PATH_MAX ) return 0 ;   /* decoded length */
 	return osc7_path_ok( buf ) ;
+}
+
+/* "/" + n copies of unit: a folder of a given length, plain or %-encoded */
+static char * longpath( int n, const char * unit ) {
+	size_t u = strlen( unit ) ;
+	char * s = malloc( 2 + (size_t)n * u ), * p = s ;
+	*p++ = '/' ;
+	for( int i = 0 ; i < n ; i++ ) { memcpy( p, unit, u ) ; p += u ; }
+	*p = '\0' ;
+	return s ;
 }
 
 static void expect( const char * raw, int want, const char * why ) {
@@ -45,6 +57,16 @@ static void expect_decode( const char * raw, const char * want ) {
 }
 
 int main( void ) {
+	/* --- the Linux limit: 4095 bytes after decoding --- */
+	{ char * a = longpath( OSC7_PATH_MAX - 1, "a" ) ;     /* 4095 */
+	  char * b = longpath( OSC7_PATH_MAX, "a" ) ;         /* 4096 */
+	  char * c = longpath( OSC7_PATH_MAX - 1, "%61" ) ;   /* 4095 decoded, 12 KB sent */
+	  char * d = longpath( OSC7_PATH_MAX, "%61" ) ;       /* 4096 decoded */
+	  expect( a, 1, "4095 bytes: the Linux maximum" ) ;
+	  expect( b, 0, "4096 bytes: one over" ) ;
+	  expect( c, 1, "4095 bytes %-encoded: the decoded length counts" ) ;
+	  expect( d, 0, "4096 bytes %-encoded: one over" ) ;
+	  free( a ) ; free( b ) ; free( c ) ; free( d ) ; }
 	/* --- accepted: legitimate absolute paths --- */
 	expect( "/home/user",            1, "simple" ) ;
 	expect( "/tmp",                  1, "short" ) ;

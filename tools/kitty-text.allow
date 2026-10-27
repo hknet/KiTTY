@@ -1,0 +1,367 @@
+# tools/kitty-text.allow - the findings of tools/check-kitty-text.py that stay.
+#
+# tools/check-kitty-text.py, run by the build, checks kitty/kitty_text.h (the
+# UI texts) and kitty/*.c: a KT_ define used nowhere, two KT_ defines with the
+# same text, a text with say/ask/tell/names as a verb, a bare "KiTTY" that is
+# not KiTTY++, a string literal handed directly to MessageBox*,
+# SetWindowText*, SetDlgItemText*, AppendMenu*, InsertMenu* or a ctrl_*
+# control constructor. Every finding needs a line here with a reason, and
+# every line here must match a finding, or the build fails.
+#
+# A text change needs the user's OK on the exact wording first: rows marked
+# wording debt are reworded when their code is next changed, not as a sweep.
+#
+# One line per finding:  category | subject | detail | reason
+#   unused    | KT_NAME            | -        | reason
+#   duplicate | KT_A = KT_B        | -        | reason
+#   word      | KT_NAME            | the word | reason
+#   product   | KT_NAME            | KiTTY    | reason
+#   hardcoded | kitty/file.c       | Call "literal as written" | reason
+# A "|" inside a field is written "\|". Matched by the first three fields,
+# never by line number; the same hard-coded text twice in one file with the
+# same call needs two lines.
+
+# ---- KT_ defines used nowhere
+
+
+# ---- KT_ defines with the same text
+
+
+# ---- say / ask / tell / names in a text
+
+word | KT_INIMIG_OUT_INTRO | named | "named proxy" is the feature's name, not the verb
+word | KT_INIMIG_IN_INTRO | named | "named proxy" is the feature's name, not the verb
+word | KT_MIGF_ST_MPW | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_LOGGING_ASK_THE_USER_EVERY_TIME | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_REMOTE_CLIPBOARD_ASK | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_REMOTE_CLIPBOARD_READS_HOST_ASKS_FOR_YOUR | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_PROXY_NAMED_PROXIES_PROXY_TEMPLATES | named | "named proxy" is the feature's name, not the verb
+word | KT_PROXY_EDIT_NAMED_PROXIES | named | "named proxy" is the feature's name, not the verb
+word | KT_PROXY_NAMED_PROXY_PRE_SETS | named | "named proxy" is the feature's name, not the verb
+word | KT_WORKPLACE_PROXY_NEEDS_NAMED | named | "named proxy" is the feature's name, not the verb
+word | KT_SSH_REMOTE_COMMAND_IS_SUBSYSTEM | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_BUGS_OLD_RSA_SHA2_CERT_ALGORITHM | naming | noun, not the verb
+word | KT_TRANSFERS_PERM_ALWAYS | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_TRANSFERS_PERM_FIRST | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_TRANSFERS_PERM_NEVER | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_FZ_PW_ASK | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_OFFER_NEVER | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_SYSTEM_NOTE | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_SYSTEM_TAKEOVER_Q | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_HK_CONFIRM_DELETE | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_HK_CONFIRM_DELETE_N | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_HKS_CONFIRM_DELETE_N | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_KSET_WD_FONTFB_LIST_NOTE | names | noun, not the verb
+word | KT_PXFWD_NOTE | named | "named proxy" is the feature's name, not the verb
+word | KT_KSET_CN_SSHVERSION | told | wording debt: reword with the user's OK when its code is next changed
+word | KT_KSET_CN_SSHVERSION_PREVIEW | told | wording debt: reword with the user's OK when its code is next changed
+word | KT_KSET_TT_UPLOADDIR_NOTE | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_NAMED_PROXIES_HOSTFIELD_GROUP | named | "named proxy" is the feature's name, not the verb
+word | KT_SESSION_PARAMETER_NEVER_ALSO_HIDES_THE_EDIT | named | "named proxy" is the feature's name, not the verb
+word | KT_MENU_WORKPLACE_NEEDS_PROXY | named | "named proxy" is the feature's name, not the verb
+word | KT_MAIN_RESTORE_QUESTION | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_CMD_DELREG_QUESTION | named | "named proxy" is the feature's name, not the verb
+word | KT_REG_URL_KEPT_NOTE | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_REG_ASSOC_LEFT_ALONE | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_OSC52_NO_CLAIM | say | wording debt: reword with the user's OK when its code is next changed
+word | KT_OSC52_SESSION_CONFIRM | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_PROXYDEF_SAVE_FAILED_FMT | named | "named proxy" is the feature's name, not the verb
+word | KT_WINFEAT_TCP_PORT_OWNER | naming | wording debt: reword with the user's OK when its code is next changed
+word | KT_WINFEAT_PROCESS_NAME | naming | wording debt: reword with the user's OK when its code is next changed
+word | KT_WINFEAT_PROCESS_NAME_OLD | naming | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_REENCRYPTED_LEFT_FMT | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_MENU_CONFIRM | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_CLI_HELP | named | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_CLI_HELP | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_HELLO_NOT_ADDED_UNPROTECTED_FMT | asked | the person acts, not the program
+word | KT_KA_OPENSSH_NO_PIPE | named | "named pipe" is the Windows term, not the verb
+word | KT_KA_AUTOSTART_PORTABLE_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_AUTOSTART_REGISTRY_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KAKEYS_DETAIL_ENCRYPTED | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KAKEYS_CONFIRM_ASK | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_KAKEYS_CONFIRM_ASK_HELLO | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_KAKEYS_STARTUP_REPLACED | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_KAKEYS_FORGET_Q_FMT | naming | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_HELD_BACK_ONE_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_HELD_BACK_MANY_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_HELD_BACK_UNVERIFIED_ONE_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_HELD_BACK_UNVERIFIED_MANY_FMT | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_KA_CONFIRM_USE_FMT | asking | wording debt: reword with the user's OK when its code is next changed
+word | KT_KGEN_CONFIRMATION_TIP | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_KGEN_STILL_PROTECTED_FMT | asking | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLI_EXPORT_NEEDS_PROTECTION | say | wording debt: reword with the user's OK when its code is next changed
+word | KT_BUNDLE_SKIPPED_PROXY_FMT | named | "named proxy" is the feature's name, not the verb
+word | KT_CLI_PORTABLECOPY_NEEDS_PROTECTION | say | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_NOTICE_READ_REFUSED | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_LOG_PASTE_TOKENS_EXPIRED | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_WHY_PROGRAM_TOO_SOON | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_WHY_TOO_SOON | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_WHY_ASKING_REPEATEDLY | asking | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_WHY_UNAVAILABLE | asking | wording debt: reword with the user's OK when its code is next changed
+word | KT_CLIP_WHY_USER_NO | said | the person acts, not the program
+word | KT_DLG_KEY_KEPT_ONCE | asked | wording debt: reword with the user's OK when its code is next changed
+word | KT_CAP_LOAD_NAMED_PROXY | named | "named proxy" is the feature's name, not the verb
+word | KT_CFG_PXLOAD_Q | named | "named proxy" is the feature's name, not the verb
+word | KT_CFG_PROXYCHOOSER_ONCE_DEFINED | named | "named proxy" is the feature's name, not the verb
+word | KT_CAP_NAMED_PROXY | named | "named proxy" is the feature's name, not the verb
+word | KT_PROXYGUI_DELETE_Q | named | "named proxy" is the feature's name, not the verb
+word | KT_PROXYGUI_LAST_REMOVED | named | "named proxy" is the feature's name, not the verb
+word | KT_PROXYGUI_UNSAVED_Q | named | "named proxy" is the feature's name, not the verb
+word | KT_MPW_LOCKED_PROXY_FMT | named | "named proxy" is the feature's name, not the verb
+word | KT_MPW_NOSETUP_PROXY_FMT | named | "named proxy" is the feature's name, not the verb
+word | KT_DPAPI_KEPT_PROXY_FMT | named | "named proxy" is the feature's name, not the verb
+word | KT_STOREMOVE_TAKE_Q | named | "named proxy" is the feature's name, not the verb
+word | KT_SP_INHERIT_Q_FMT | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_SP_INHERIT_Q_NOEXT | names | wording debt: reword with the user's OK when its code is next changed
+word | KT_MIGF_SUFFIX | names | noun, not the verb
+word | KT_RC_STOREMOVEPW_MODEPW | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_RC_KEYSETTINGS_HELLOTTL_HINT | asks | wording debt: reword with the user's OK when its code is next changed
+word | KT_RC_KGHELLODOORS_NOTE1 | asks | wording debt: reword with the user's OK when its code is next changed
+
+# ---- bare KiTTY in a text
+
+product | KT_MIG_TITLE | KiTTY | means classic KiTTY
+product | KT_MIG_OLD_INTRO | KiTTY | means classic KiTTY
+product | KT_MIG_SHOW_BOX | KiTTY | means classic KiTTY
+product | KT_MIG_IMP_INTRO | KiTTY | means classic KiTTY
+product | KT_MIGF_TITLE | KiTTY | means classic KiTTY
+product | KT_SESSION_THIS_LIST_ALSO_HOLDS_SESSIONS | KiTTY | means classic KiTTY
+product | KT_SYSTEM_SC_MSI | KiTTY | Start menu folder as the installer creates it: check with the user when its code is next changed
+product | KT_SYSTEM_UNREGISTER_LINE | KiTTY | means classic KiTTY
+product | KT_SYSTEM_UNREGISTER_Q | KiTTY | means classic KiTTY
+product | KT_CMD_CAT_WINDOW | KiTTY | the kitty.ini section [KiTTY], not the product
+product | KT_LAUNCHER_ABOUT_BODY | KiTTY | means classic KiTTY
+product | KT_LAUNCHER_STARTUP_OTHER_KITTY | KiTTY | means classic KiTTY
+product | KT_REG_URL_REMOVING | KiTTY | means classic KiTTY
+product | KT_REG_URL_NOTHING_REGISTERED | KiTTY | means classic KiTTY
+product | KT_REG_ASSOC_REMOVING | KiTTY | means classic KiTTY
+product | KT_REG_ASSOC_NOTHING | KiTTY | means classic KiTTY
+product | KT_REG_STATE_OTHER_KITTY | KiTTY | means classic KiTTY
+product | KT_TWIN_OLDSESS_TEXT | KiTTY | means classic KiTTY
+product | KT_TWIN_SCRIPT_DISABLED | KiTTY | the kitty.ini section [KiTTY], not the product
+product | KT_TWIN_LOG_BC_REFUSED_DISABLED | KiTTY | the kitty.ini section [KiTTY], not the product
+product | KT_DLG_ABOUT_PORT | KiTTY | the repository URL github.com/hknet/KiTTY, not the product
+product | KT_DLG_ABOUT_KITTY | KiTTY | means classic KiTTY
+product | KT_CFG_HIDE_FOREIGN_OLDKITTY | KiTTY | means classic KiTTY
+product | KT_STOREMOVE_ALREADY_STORE_Q | KiTTY | means classic KiTTY
+product | KT_STOREMOVE_NO_STORE_PREFIX | KiTTY | means classic KiTTY
+product | KT_SETTINGS_KTX_ENCRYPTED_DEPRECATED | KiTTY | means classic KiTTY
+product | KT_SP_DEL_SESSION_OLD_Q | KiTTY | means classic KiTTY
+product | KT_SP_ORG_DEL_OLD_Q | KiTTY | means classic KiTTY
+product | KT_RC_KITTYABOUT_BLURB | KiTTY | means classic KiTTY
+product | KT_RC_KITTYABOUT_WEBPAGE | KiTTY | the repository URL github.com/hknet/KiTTY, not the product
+
+# ---- UI text hard-coded in kitty/*.c
+
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Certificate Authorities" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Certificate Authorities" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Interactive Login" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Interactive Login" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Client Identity" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Client Identity" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Clipboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Clipboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Application Notification" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Application Notification" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Named Proxies/Proxy-Forwards" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Named Proxies/Proxy-Forwards" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/KiTTY++ Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/KiTTY++ Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Config Window/Session Panel" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window/Session Panel" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window/Session Panel" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window/Session Panel" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Migration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Migration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Migration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Migration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Migration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Updates" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Updates" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Main" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Logging" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Logging" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Logging" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Scripting" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Scripting" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Broadcast" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Broadcast" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Startup" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Startup" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Startup" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Startup" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Keyboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Keyboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Keyboard/App Keypad & Cursor" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Keyboard/App Keypad & Cursor" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Bell" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Bell" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Bell" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Features" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Features" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Shell Integration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Shell Integration" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Notifications" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Notifications" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Terminal/Image Protocols" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Terminal/Image Protocols" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Appearance" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Appearance/Position" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Appearance/Colours" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Appearance/Colours/Precise colours" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Appearance/Background" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Copy & Paste/Character classes" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Copy & Paste/Remote clipboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Copy & Paste/Remote clipboard/Limits" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Copy & Paste/Remote clipboard/Notifications" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Hyperlinks" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Charset translation" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window/Title & Icon" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Title & Icon" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Behaviour" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Background" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Hyperlinks" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Position" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Title & Icon" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Background" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Background" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Background" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Charset translation" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Charset translation" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Charset translation" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Remote clipboard" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Remote clipboard/Limits" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Remote clipboard/Limits" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Remote clipboard/Notifications" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Remote clipboard/Notifications" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Copy & Paste/Character classes" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Colours" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Window/Appearance/Colours/Precise colours" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Login" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Login" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Login/Terminal details" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Login/Terminal details" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Login/Environment" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Login/Environment" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Login/Environment" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Proxy" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Proxy" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Proxy" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Proxy" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Auth" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Auth/Credentials" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth/Credentials" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth/Credentials" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Auth/GSSAPI" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Auth/GSSAPI" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Kex" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Kex" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Kex" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Host keys" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Cipher" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Cipher" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/TTY" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/TTY" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/TTY" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/X11" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/X11" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Tunnels" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Tunnels" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/Bugs" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Bugs" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Bugs" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/Bugs" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/KSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/KSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/KSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/WinSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/WinSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/WinSCP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SSH/FileZilla" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/FileZilla" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/FileZilla" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SSH/FileZilla" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Serial" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Serial" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Serial" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/SUPDUP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SUPDUP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/SUPDUP" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Rlogin" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Rlogin" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/Telnet" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/Telnet" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/File-Transfer-Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/File-Transfer-Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/File-Transfer-Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/File-Transfer-Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/File-Transfer-Settings" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Connection/ZModem" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/ZModem" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/ZModem" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/ZModem" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Connection/ZModem" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Comment & Lock" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Comment & Lock" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Comment & Lock" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_launcher.c | MessageBoxW "About KiTTY++ Launcher" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_proxy_gui.c | ctrl_settitle "Application/Named Proxies" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_proxy_gui.c | ctrl_getset "Application/Named Proxies" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_proxy_gui.c | ctrl_getset "Application/Named Proxies" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_proxy_gui.c | ctrl_settitle "Application/Named Proxies/Defaults" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_proxy_gui.c | ctrl_getset "Application/Named Proxies/Defaults" | hard-coded before the check, move to kitty_text.h when the code is next changed

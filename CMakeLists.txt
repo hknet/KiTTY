@@ -675,13 +675,41 @@ if(KITTY_INI_CHECK_PYTHON)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking fixed character arrays against tools/fixed-arrays.allow")
   add_custom_target(check_fixed_arrays ALL DEPENDS ${KITTY_FIXARR_CHECK_STAMP})
+
+  # The UI texts: a KT_ define of kitty/kitty_text.h used nowhere, two KT_
+  # defines with the same text, a text with say/ask/tell/names as a verb, a
+  # bare "KiTTY" that is not KiTTY++, and a string literal handed directly
+  # to MessageBox*, SetWindowText*, SetDlgItemText*, AppendMenu*,
+  # InsertMenu* or a ctrl_* constructor in kitty/*.c. Each finding must be
+  # listed with a reason in tools/kitty-text.allow; a listed line that
+  # matches nothing fails too. Uses are counted in every .c, .h and .rc of
+  # the tree. The self-test runs first, on planted sources.
+  file(GLOB_RECURSE KITTY_KTEXT_CHECK_RC CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/kitty/*.rc
+    ${CMAKE_CURRENT_SOURCE_DIR}/windows/*.rc)
+  set(KITTY_KTEXT_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_ktext_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_KTEXT_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-text.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-text.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_KTEXT_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-text.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/kitty-text.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+            ${KITTY_KTEXT_CHECK_RC}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking UI texts against tools/kitty-text.allow")
+  add_custom_target(check_kitty_text ALL DEPENDS ${KITTY_KTEXT_CHECK_STAMP})
   # Every tools/check-*.py above is a dependency of utils, so every program -
   # the release builds' explicit target lists included - runs them all, and a
   # failing check stops the build. Each keeps its stamp: unchanged inputs do
   # not run it again.
   add_dependencies(utils
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
-    check_conf_types check_dialog_accelerators check_fixed_arrays)
+    check_conf_types check_dialog_accelerators check_fixed_arrays
+    check_kitty_text)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

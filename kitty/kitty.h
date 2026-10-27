@@ -665,7 +665,7 @@ void kitty_fontfallback_apply_list( const char * list );
 char *kitty_loginscript_from_text( const char *text, int *locked );
 char *kitty_loginscript_to_text( const char *stored );
 void kitty_netdbg_ts( const char *msg );
-void kitty_set_remote_cwd( const char * osc7 );
+char *kitty_set_remote_cwd( const char * osc7, int cut );   /* NULL or why refused, snewn'd */
 /* The host an OSC 7 reports when it is not the session's (the first OSC 7's)
  * one; NULL when it is, or nothing reports one. */
 const char * kitty_remote_cwd_moved_host( void );

@@ -190,7 +190,8 @@ char * get_param_str( const char * val ) {
  * (CONF_osc7_cwd_tracking, default off).  NOTHING is ever executed - this is
  * the safe replacement for the removed __pw/__ws title-scan dispatcher
  * (CVE-2024-23749 RCE), which stays dead. */
-static char RemoteCwd[2048] = "" ;     /* validated path portion; "" = none  */
+#include "kitty_osc7_parse.h"   /* OSC7_PATH_MAX; the validators below */
+static char RemoteCwd[OSC7_PATH_MAX + 1] = "" ;   /* validated path portion; "" = none */
 static char RemoteCwdHost[256] = "" ;  /* host portion of the latest one */
 /* The host of the FIRST OSC 7 with a host: the session's machine, as it
  * identifies itself. A later host that differs means the shell moved on
@@ -203,25 +204,33 @@ static char RemoteCwdHostFirst[256] = "" ;
 #include "kitty_osc7_parse.h"
 #include "kitty_getfile_parse.h"   /* gf_osc7_moved */
 
-void kitty_set_remote_cwd( const char * osc7 ) {
-	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return ;
-	if( osc7 == NULL ) return ;
-	if( strncmp( osc7, "file://", 7 ) != 0 ) return ;
+/* Returns NULL when the folder is taken or tracking is off, else why it was
+ * refused (snewn'd): the caller writes it to the window's Event Log. cut: the
+ * terminal's buffer overflowed, so the text is not whole - refused, never
+ * used cut. */
+char * kitty_set_remote_cwd( const char * osc7, int cut ) {
+	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return NULL ;
+	if( osc7 == NULL ) return NULL ;
+	if( cut ) return dupstr( KT_OSC7_WHY_TOO_LONG ) ;
+	if( strncmp( osc7, "file://", 7 ) != 0 ) return dupstr( KT_OSC7_WHY_NOT_FILE ) ;
 	const char * host = osc7 + 7 ;
 	const char * slash = strchr( host, '/' ) ;   /* first '/' ends the host */
-	if( slash == NULL ) return ;
+	if( slash == NULL ) return dupstr( KT_OSC7_WHY_NO_PATH ) ;
 	size_t hostlen = (size_t)( slash - host ) ;
-	if( hostlen >= sizeof(RemoteCwdHost) ) return ;
-	if( strlen(slash) >= sizeof(RemoteCwd) ) return ;   /* too long: drop, no truncation */
-	char path[ sizeof(RemoteCwd) ] ;
-	strcpy( path, slash ) ;
-	if( !osc7_urldecode( path ) ) return ;    /* embedded NUL -> reject */
-	if( !osc7_path_ok( path ) ) return ;
+	if( hostlen >= sizeof(RemoteCwdHost) ) return dupstr( KT_OSC7_WHY_HOST_LONG ) ;
+	/* decoded first: the limit is the folder's, not its %-encoded form's */
+	char * path = dupstr( slash ) ;
+	if( !osc7_urldecode( path ) ) { sfree( path ) ; return dupstr( KT_OSC7_WHY_NUL ) ; }   /* embedded NUL -> reject */
+	if( strlen( path ) > OSC7_PATH_MAX ) { sfree( path ) ; return dupstr( KT_OSC7_WHY_PATH_LONG ) ; }   /* drop, no truncation */
+	int bad = osc7_path_bad_char( path ) ;
+	if( bad >= 0 ) { sfree( path ) ; return dupprintf( KT_OSC7_WHY_CHAR_FMT, bad ) ; }
 	/* commit only once fully validated */
 	memcpy( RemoteCwdHost, host, hostlen ) ; RemoteCwdHost[hostlen] = '\0' ;
 	osc7_urldecode( RemoteCwdHost ) ;         /* an embedded NUL only shortens it */
 	if( !RemoteCwdHostFirst[0] ) strcpy( RemoteCwdHostFirst, RemoteCwdHost ) ;
 	strcpy( RemoteCwd, path ) ;
+	sfree( path ) ;
+	return NULL ;
 }
 
 /* The host the shell reports when it is not the one the first OSC 7 gave

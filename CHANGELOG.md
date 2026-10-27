@@ -14,6 +14,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Terminal > Keyboard > The Home and End keys: urxvt, xterm and FreeBSD
   besides Standard and rxvt, as in classic KiTTY. Classic sessions keep
   their choice.
+- OSC 7: a refused folder writes one line with the reason to the terminal
+  window's Event Log.
 
 ### Changed
 
@@ -70,6 +72,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   a word.
 - Folder store: a session, KiTTYState or Jumplist file is replaced whole on
   save. A crash or a full disk while saving no longer leaves a cut file.
+- OSC 7: a folder longer than 2047 bytes was cut and the cut folder became
+  the upload folder. Folders up to the Linux maximum of 4095 bytes are now
+  taken whole. A longer one is refused.
+- Colour queries (OSC 4, 10, 11, 12) and prompt marks (OSC 133) longer than
+  2048 bytes are refused whole. Before, a cut query got a wrong answer.
 
 ## 0.85.1.18-beta — 2026-10-23
 

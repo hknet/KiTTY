@@ -726,6 +726,8 @@ bool kitty_osc_dispatch(Terminal *term)
       case 10:
       case 11:
       case 12: {
+        if (term->osc_str_overflow)
+            break;                     /* cut short: never answered in part */
         /*
          * xterm colour queries. OSC 4;n;? asks for palette entry n,
          * OSC 10;? / 11;? / 12;? for the default foreground, the default
@@ -775,7 +777,14 @@ bool kitty_osc_dispatch(Terminal *term)
          * pscp/WinSCP transfers.  Nothing is ever executed; this is
          * the safe replacement for the removed __pw/__ws title-scan
          * dispatcher (CVE-2024-23749), which stays dead. */
-        kitty_set_remote_cwd(term->osc_string);
+        {
+            char *why = kitty_set_remote_cwd(term->osc_string,
+                                             term->osc_str_overflow);
+            if (why) {   /* a refused folder: the window's Event Log */
+                logeventf(term->logctx, KT_OSC7_REFUSED_FMT, why);
+                sfree(why);
+            }
+        }
         break;
       case 8:
         /* OSC 8: a hyperlink the host sends (kitty_osc8). */
@@ -825,7 +834,8 @@ bool kitty_osc_dispatch(Terminal *term)
       case 133:
         /* The prompt marks on the lines (term_osc133), then the
          * program status they end (kitty_hostnotify.c). */
-        term_osc133(term);
+        if (!term->osc_str_overflow)   /* cut short: no mark from part of it */
+            term_osc133(term);
         /* fall through */
       case 9:
       case 777:

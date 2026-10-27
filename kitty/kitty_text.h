@@ -184,7 +184,6 @@
 #define KT_SCRIPTING_OFF                             "Off"
 #define KT_SCRIPTING_EXCEPT_FOR_FIRST_COMMAND        "Except for first command"
 #define KT_SCRIPTING_USE_CONDITIONS_FROM_FILE        "Use conditions from file"
-#define KT_SCRIPTING_TEXT                            " "
 
 /* Session/Broadcast */
 #define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY++ windows"
@@ -430,7 +429,6 @@
 #define KT_BEHAVIOUR_MAXIMIZE_ON_STARTUP             "Maximize on startup"
 #define KT_BEHAVIOUR_FULL_SCREEN_ON_STARTUP          "Full screen on startup"
 #define KT_BEHAVIOUR_SWITCH_KITTY_WINDOWS_WITH_CTRL  "Switch Terminal Windows using Ctrl+TAB"
-#define KT_BEHAVIOUR_REMEMBER_WINDOW_POSITION_PER_MONITOR "Remember window position (per monitor layout)"
 #define KT_BEHAVIOUR_WINDOW_BUTTONS_FOR_KIOSK        "Window buttons (for kiosk or embedded use)"
 #define KT_BEHAVIOUR_SYSTEM_MENU_OFF_HIDES_ALL       "System menu"
 #define KT_BEHAVIOUR_ALLOW_CLOSING_ALSO_DISABLES     "Allow closing (also disables the X and Alt+F4)"
@@ -887,6 +885,15 @@
 #define KT_KSCP_SEND_FILE_LINE                       "Send File (kscp): Tools menu, Ctrl+F3. Sends a local file to the remote directory below."
 #define KT_KSCP_GET_FILE_LINE                        "Get File (kscp): Tools menu, Ctrl+F4. Fetches a remote file into the download folder; a path on the clipboard is checked and filled in."
 #define KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7         "Track remote directory (OSC 7 shell integration)"
+/* A refused OSC 7 folder, in the window's Event Log (kitty_set_remote_cwd) */
+#define KT_OSC7_REFUSED_FMT                          "OSC 7 folder refused: %s. The previous folder stays (home when there was none)."
+#define KT_OSC7_WHY_NOT_FILE                         "not a file:// URL"
+#define KT_OSC7_WHY_NO_PATH                          "no folder after the host"
+#define KT_OSC7_WHY_HOST_LONG                        "host longer than 255 bytes"
+#define KT_OSC7_WHY_PATH_LONG                        "folder longer than 4095 bytes"
+#define KT_OSC7_WHY_TOO_LONG                         "folder longer than 4095 bytes or host longer than 255 bytes"
+#define KT_OSC7_WHY_NUL                              "a NUL byte (%00) in the folder"
+#define KT_OSC7_WHY_CHAR_FMT                         "character 0x%02X in the folder (allowed: letters, digits, / . _ - ~)"
 #define KT_KSCP_OSC7_NEEDS_SHELL                     "OSC 7 needs serverside shell support - see help for more details"
 #define KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP        "Uploads go to the shell's current directory (OSC 7), " \
         "not your home."
@@ -1379,13 +1386,10 @@
 #define KT_HKS_NOTHING_TO_ACCEPT                     "The host presented no key of this type."
 #define KT_HKS_ALREADY_STORED                        "This key is already stored."
 #define KT_HKS_CONFIRM_REPLACE                       "Replace the stored key for %s:%d (%s)?\n\nStored:    %s\nPresented: %s\n\nDo this only if you know the server's key was changed on purpose. If not, somebody may sit between you and the server."
-#define KT_HKS_CONFIRM_DELETE                        "Delete the stored key for %s:%d (%s)?\n\nThe next connection to it will ask the first-contact question again."
 #define KT_HKS_CONFIRM_DELETE_N                      "Delete the stored key%s (%s) for %s:%d?\n\nThe next connection will ask the first-contact question again."
 #define KT_HKS_NONE_STORED                           "None of the selected rows has a stored key."
-#define KT_HKS_STORED                                "Stored the %s key."
 #define KT_HKS_STORED_N                              "Stored %d key%s."
 #define KT_HKS_STORED_LEFT                           "Stored %d key%s; %d left as it is."
-#define KT_HKS_DELETED                               "Deleted the stored key."
 #define KT_HKS_DELETED_N                             "Deleted %d stored key%s."
 #define KT_HKS_PIN                                   "Pin"
 #define KT_HKS_PINNED                                "Pinned %d fingerprint%s to this session's manual host keys (%d already listed)."
@@ -1628,7 +1632,6 @@
 #define KT_RC_SESS_LOGIN                             "Retries after a failed login:"
 #define KT_RC_SESS_ASSETTINGS                        "as in KiTTY++ Settings"
 #define KT_RC_SESS_NEVER                             "never"
-#define KT_KSET_CN_LIMITS                            "Limits"
 #define KT_KSET_CN_CHAINMAX                          "Longest allowed chain of jump hosts:"
 #define KT_KSET_CN_NOSAVE                            "Do not keep a typed login name and password in the session"
 #define KT_PASSWORDS_TITLE                           "Interactive Login"
@@ -1668,7 +1671,6 @@
 #define KT_KSET_TT_NOTIFY                            "System notification on finished up-/download"
 
 /* Application/KiTTY++ Settings/Transfers & Tools/OSC 5113 (kitten) */
-#define KT_KSET_KITTEN_LEAF                          "OSC 5113 (kitten)"
 #define KT_KSET_KITTEN_TITLE                         "Transfers over the session (kitten transfer): global defaults"
 #define KT_KSET_KITTEN_DEFAULTS                      "Defaults for every session"
 #define KT_KSET_KITTEN_MAX_NOTE                      "Per arriving file; 0 = no limit."
@@ -1779,8 +1781,6 @@
 #define KT_NAMED_PROXIES_EXCLUDE_HOSTS_IPS_SEPARATE  "Exclude Hosts/IPs (separate with commas or spaces):"
 #define KT_NAMED_PROXIES_DNS_LOOKUP_AT_PROXY         "DNS lookup"
 #define KT_NAMED_PROXIES_PRINT_DIAGNOSTICS           "Diagnostics"
-#define KT_NAMED_PROXIES_NOTHING_IS_STORED_UNTIL_SAVE "Nothing is stored until Save. Leaving this " \
-        "panel discards an unsaved edit."
 
 /* ---- Shared captions and wordings (every binary) ---- */
 
@@ -1873,7 +1873,6 @@
 #define KT_BELL_WAV_FAILED_FMT                       "Unable to play sound file\n%s\nUsing default sound instead"
 #define KT_CAP_XFER                                  "KiTTY++ transfer"
 #define KT_CAP_XFER_CANCELLED                        "KiTTY++ transfer - cancelled"
-#define KT_CAP_TRANSFER_PROBLEM                      "Transfer problem"
 #define KT_CAP_RUN_CLIP_CMD                          "KiTTY++ - run clipboard command"
 #define KT_CAP_KEY_NOT_IN_AGENT                      "KiTTY++ - the key is not in the agent"
 #define KT_CAP_OSC52_SESSION                         "KiTTY++ - allow for the whole session?"
@@ -3906,7 +3905,6 @@
 /* ... and where the launcher's own global hotkey (Application > KiTTY++
  * Settings > Launcher) is involved; the last line is added to either Check
  * for a combination with a single modifier */
-#define KT_CFG_HOTKEY_HELD_BY_LAUNCHER               "This hotkey is held by the KiTTY++ launcher (this setting)."
 #define KT_CFG_HOTKEY_GLOBAL_ALSO_SAVED              "\n\nAlso assigned to the saved session%s: %s. " \
         "The launcher gives it to the global hotkey, not to the session%s."
 #define KT_CFG_HOTKEY_FREE_BUT_GLOBAL                "This hotkey is currently available system-wide, but it is " \
@@ -4195,7 +4193,6 @@
 #define KT_STORE_MKDIR_FAILED_BANG                   "Unable to create directory !"
 #define KT_STORE_SESSDIR_FAILED                      "Unable to create sessions directory !"
 #define KT_STORE_EXPAND_ENV_FAILED                   "Unable to ExpandEnvironmentStrings for session path"
-#define KT_STORE_EXPAND_ENV_USER_FAILED              "Unable to ExpandEnvironmentStringsForUser for session path"
 #define KT_STORE_CONF_READ_FAILED                    "Unable to read configuration file, falling back to defaults"
 
 /* Session folders as a path (hknet/KiTTY#55) and the session file suffix
@@ -4370,7 +4367,6 @@
 #define KT_SP_ORG_LAUNCH_BTN                         "Start"
 #define KT_SP_ORG_TAG_EMPTY                          "No session carries this tag"
 #define KT_SP_ORG_TAG_NONE                           "Pick a tag, or drag sessions here to tag them"
-#define KT_SP_ORG_TAG_BAD                            "A tag cannot be empty, contain a comma or be longer than 64 characters."
 /* Application > Migration > (old) KiTTY Folders: the suffix of the old store. */
 #define KT_MIGF_SUFFIX                               "Suffix to remove from file names"
 

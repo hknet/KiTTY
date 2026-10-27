@@ -8,6 +8,11 @@ record has its own event ID, and each field is its own insertion string in
 the event data, so Event Viewer filters, scripts and forwarding can select on
 single fields.
 
+The terminal window's Event Log (system menu > Event Log) stays in the
+window and is gone when the window closes. No setting copies it to the
+Windows Event Log. The setting sessioneventlog writes separate records
+there (200-241).
+
 The records carry host names, user names, file paths and key fingerprints,
 and the Windows account (SID) of the program that wrote them - the Event
 Viewer's *User* column.

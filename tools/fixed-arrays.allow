@@ -67,10 +67,9 @@ kitty/blocnote/notepad_putty.c | ResizeAllWindowsProc() | buffer | 256 | window 
 kitty/blocnote/notepad_putty.c | CascadeAllWindowsProc() | buffer | 256 | window class name from GetClassName (class names are at most 256 characters)
 
 kitty/kitty.c | (file) | BuildVersionTime | 256 | sprintf of the compile-time BUILD_VERSION and BUILD_TIME constants and a fixed suffix
-kitty/kitty.c | (file) | RemoteCwd | 2048 | REMOTE working directory from OSC 7; a longer one is dropped, never cut (strlen >= sizeof refused)
+kitty/kitty.c | (file) | RemoteCwd | OSC7_PATH_MAX + 1 | REMOTE working directory from OSC 7, 4096 bytes = Linux PATH_MAX; a longer decoded folder is refused, never cut
 kitty/kitty.c | (file) | RemoteCwdHost | 256 | host part of OSC 7 (refused when >= 256)
 kitty/kitty.c | (file) | RemoteCwdHostFirst | 256 | first OSC 7 host, same size as RemoteCwdHost
-kitty/kitty.c | kitty_set_remote_cwd() | path | sizeof(RemoteCwd) | OSC 7 path being validated, sizeof(RemoteCwd) = 2048; a longer path is refused before the strcpy
 kitty/kitty.c | InitFolderList() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty.c | GetSessionFolderName() | buffer | 1024 | registry key path, not a file path: <sessions>\<munged name>, name refused at 341+; a cut leaves a last name over 255 characters, which opens no key
 kitty/kitty.c | GetSessionFolderName() | session | 1024 | munged session name (input refused at >= 1024/3)
@@ -496,12 +495,6 @@ kitty/url/urlhack.c | urlhack_launch_url() | msg | 2600 | URL-open-failed text w
 
 kitty/winfont_fallback.c | (file) | g_bmp_map | 0x10000 | per-code-point cache of the Basic Multilingual Plane (int8_t, 65536 entries)
 
-kitty/zmodem/winpzmodem.c | xyz_Check() | buf | 1024 | pipe read chunk (file not built)
-kitty/zmodem/winpzmodem.c | xyz_ReceiveInit() | b | 512 | message with the rz program path, unbounded sprintf; the file is not built (must be rewritten before it is)
-kitty/zmodem/winpzmodem.c | xyz_StartSending() | filenames | 32000 | picked file names for sz, file dialog nMaxFile = sizeof; the file is not built
-kitty/zmodem/winpzmodem.c | xyz_StartSending() | sz_full_params | 32767 | sz command line with the picked names, unbounded sprintf; the file is not built (must be rewritten before it is)
-kitty/zmodem/winpzmodem.c | xyz_StartSending() | b | 512 | message with the sz program path, unbounded sprintf; the file is not built (must be rewritten before it is)
-kitty/zmodem/winpzmodem.c | xyz_SpawnProcess() | params | 1204 | helper command line "<prog> <params>", unbounded sprintf; the file is not built (must be rewritten before it is)
 
 logging.c | kitty_log_timestamp_text() | expanded | 512 | log timestamp pattern with %f expanded; the copy loop stops 4 bytes before the end
 logging.c | logfopen_callback() | buf | 256 | upstream: strftime of a 24-byte date for the log header
@@ -631,7 +624,7 @@ test/test_osc52.c | chafa_replay() | chunk | 4200 | test code: fixture / input d
 test/test_osc52.c | iterm_send() | seq | 512 | test code: fixture / input data, sizes checked by the test
 test/test_osc52.c | cap_hex() | buf | 256 | test code: fixture / input data, sizes checked by the test
 
-test/test_osc7.c | osc7_accepts() | buf | 2048 | test code: OSC 7 input copy, strncpy sizeof-1
+test/test_osc7.c | osc7_accepts() | buf | 16384 | test code: OSC 7 input copy the size of the terminal's OSC 7 buffer, strncpy sizeof-1
 test/test_osc7.c | expect_decode() | buf | 2048 | test code: OSC 7 input copy, strncpy sizeof-1
 
 test/test_oscnotify.c | test_osc99() | big | 5000 | test code: fixture / input data, sizes checked by the test

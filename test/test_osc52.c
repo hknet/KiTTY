@@ -66,7 +66,7 @@ const struct BackendVtable *const backends[] = { NULL };
 /* The two KiTTY entry points terminal.c calls when built with MOD_PERSO. */
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
 { return dupstr(title ? title : ""); }
-void kitty_set_remote_cwd(const char *osc7) { }
+char *kitty_set_remote_cwd(const char *osc7, int cut) { return NULL; }
 
 /*
  * The OSC 52 clipboard-READ seams. The real ones live in kitty/kitty_osc52.c and

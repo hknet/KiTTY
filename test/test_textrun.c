@@ -66,7 +66,7 @@ const struct BackendVtable *const backends[] = { NULL };
  * nothing (test_osc52.c has recording versions for the clipboard tests). */
 char *kitty_expand_wintitle(const char *title, const char *hostname, Conf *conf)
 { return dupstr(title ? title : ""); }
-void kitty_set_remote_cwd(const char *osc7) { }
+char *kitty_set_remote_cwd(const char *osc7, int cut) { return NULL; }
 void kitty_osc52_send_raw(Terminal *term, const char *data, size_t len) { }
 void kitty_term_send_reply(Terminal *term, const char *data, size_t len) { }
 wchar_t *kitty_osc52_get_clipboard_ex(int *len, bool *unavailable)
