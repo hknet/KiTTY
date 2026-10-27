@@ -1180,7 +1180,7 @@
 /* System > Shortcuts: the installer's entry points for a copy from the ZIP */
 #define KT_SYSTEM_SC_GROUP                           "Shortcuts"
 #define KT_SYSTEM_SC_LINE                            "For a copy from the ZIP: KiTTY++, Quick-Connect, Sessions and Launcher shortcuts to this folder."
-#define KT_SYSTEM_SC_MSI                             "Installed with the KiTTY++ installer: its shortcuts are in Start menu > KiTTY."
+#define KT_SYSTEM_SC_MSI                             "Installed with the KiTTY++ installer: its shortcuts are in Start menu > KiTTY++."
 #define KT_SYSTEM_SC_STARTMENU                       "Create in Start menu"
 #define KT_SYSTEM_SC_DESKTOP                         "Create on Desktop"
 #define KT_SYSTEM_SC_FOLDER                          "KiTTY++ (portable)"

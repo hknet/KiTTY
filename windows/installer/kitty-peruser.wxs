@@ -83,8 +83,17 @@
         <Directory Id="INSTALLFOLDER" Name="KiTTY" />
       </Directory>
     </StandardDirectory>
+    <!-- The Start menu folder is "KiTTY++" ("KiTTY" up to 0.85.1.18).
+         RemoveExistingProducts runs right after InstallValidate (the
+         MajorUpgrade default), so an upgrade first removes the old product
+         whole: its own RemoveFolder deletes the emptied "KiTTY" folder.
+         OldShortcutDir is that old folder, for rm_OldShortcutDir in
+         c_shortcuts only: it removes an empty "KiTTY" folder still there
+         after that (Windows Installer never removes a folder that holds
+         other files). No component installs into it. -->
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ShortcutDir" Name="KiTTY" />
+      <Directory Id="ShortcutDir" Name="KiTTY++" />
+      <Directory Id="OldShortcutDir" Name="KiTTY" />
     </StandardDirectory>
 
     <!-- Payload: the executables -->
@@ -132,6 +141,7 @@
         <Shortcut Id="sc_quickconnect" Name="KiTTY++ Quick-Connect" Target="[INSTALLFOLDER]kitty.exe" Arguments="-quickconnect" Icon="kquick.ico" WorkingDirectory="INSTALLFOLDER" />
         <Shortcut Id="sc_manage" Name="KiTTY++ Sessions" Target="[INSTALLFOLDER]kitty.exe" Arguments="-manage" Icon="kmanage.ico" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
+        <RemoveFolder Id="rm_OldShortcutDir" Directory="OldShortcutDir" On="install" />
         <!-- Shortcut bookkeeping under Software\kapper.net\KiTTY-installer, a
              SIBLING of the application's hive, never inside it: these HKCU
              values are written at INSTALL time, and creating the app hive

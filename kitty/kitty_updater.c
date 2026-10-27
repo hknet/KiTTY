@@ -98,7 +98,9 @@ static void kitty_cut_to_dir( char *p ) {
  * packages set ARPINSTALLLOCATION); a package from before that records none,
  * and then the target of the installer's own Start menu entry shows where it
  * put kitty.exe (common = the all-users Start menu, the system package): its
- * "KiTTY++.lnk", or "KiTTY.lnk" as written up to 0.85.1.17. */
+ * "KiTTY++.lnk", or "KiTTY.lnk" as written up to 0.85.1.17. Both in the
+ * folder "KiTTY": every package that records no InstallLocation put them
+ * there (the "KiTTY++" folder came later, with InstallLocation). */
 /* The product's InstallLocation whole (sfree it); NULL = none recorded. */
 static char *kitty_msi_install_location( const char *prod ) {
 	DWORD n = 0 ;

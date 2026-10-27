@@ -126,7 +126,6 @@ product | KT_MIG_SHOW_BOX | KiTTY | means classic KiTTY
 product | KT_MIG_IMP_INTRO | KiTTY | means classic KiTTY
 product | KT_MIGF_TITLE | KiTTY | means classic KiTTY
 product | KT_SESSION_THIS_LIST_ALSO_HOLDS_SESSIONS | KiTTY | means classic KiTTY
-product | KT_SYSTEM_SC_MSI | KiTTY | Start menu folder as the installer creates it: check with the user when its code is next changed
 product | KT_SYSTEM_UNREGISTER_LINE | KiTTY | means classic KiTTY
 product | KT_SYSTEM_UNREGISTER_Q | KiTTY | means classic KiTTY
 product | KT_CMD_CAT_WINDOW | KiTTY | the kitty.ini section [KiTTY], not the product

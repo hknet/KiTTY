@@ -139,8 +139,17 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="KiTTY" />
     </StandardDirectory>
+    <!-- The Start menu folder is "KiTTY++" ("KiTTY" up to 0.85.1.18).
+         RemoveExistingProducts runs right after InstallValidate (the
+         MajorUpgrade default), so an upgrade first removes the old product
+         whole: its own RemoveFolder deletes the emptied "KiTTY" folder.
+         OldShortcutDir is that old folder, for rm_OldShortcutDir in
+         c_shortcuts only: it removes an empty "KiTTY" folder still there
+         after that (Windows Installer never removes a folder that holds
+         other files). No component installs into it. -->
     <StandardDirectory Id="ProgramMenuFolder">
-      <Directory Id="ShortcutDir" Name="KiTTY" />
+      <Directory Id="ShortcutDir" Name="KiTTY++" />
+      <Directory Id="OldShortcutDir" Name="KiTTY" />
     </StandardDirectory>
 
     <ComponentGroup Id="Binaries" Directory="INSTALLFOLDER">
@@ -238,15 +247,15 @@
              under an .ico name in the Installer cache), not at the installed
              exe. No AppUserModel.ID of their own: both are kitty.exe
              windows like "KiTTY++". -->
-        <!-- The entries are named KiTTY++ (0.85.1.18 on); the Start menu
-             FOLDER stays "KiTTY" (System > Shortcuts points at it). Ids,
-             component GUIDs and AppUserModel.IDs are unchanged: a major
-             upgrade removes the old product's "KiTTY.lnk", "KiTTY pterm.lnk",
-             "KiTTY Telnet.lnk" and the Desktop "KiTTY.lnk" with it and writes
-             the new names. -->
+        <!-- The entries are named KiTTY++ (0.85.1.18 on), their Start menu
+             folder too (after 0.85.1.18, see ShortcutDir). Ids, component
+             GUIDs and AppUserModel.IDs are unchanged: a major upgrade removes
+             the old product's entries and folder "KiTTY" (and its Desktop
+             "KiTTY.lnk") with it and writes the new names in "KiTTY++". -->
         <Shortcut Id="sc_quickconnect" Name="KiTTY++ Quick-Connect" Target="[INSTALLFOLDER]kitty.exe" Arguments="-quickconnect" Icon="kquick.ico" WorkingDirectory="INSTALLFOLDER" />
         <Shortcut Id="sc_manage" Name="KiTTY++ Sessions" Target="[INSTALLFOLDER]kitty.exe" Arguments="-manage" Icon="kmanage.ico" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="rm_ShortcutDir" Directory="ShortcutDir" On="uninstall" />
+        <RemoveFolder Id="rm_OldShortcutDir" Directory="OldShortcutDir" On="install" />
         <!-- Shortcut bookkeeping lives under Software\kapper.net\KiTTY-installer,
              a SIBLING of the application's own hive, never inside it: the
              per-user MSI writes its KeyPaths at INSTALL time, and creating the

@@ -14,6 +14,9 @@ Both add Start-Menu shortcuts and an Add/Remove-Programs entry, and
 remove everything cleanly on uninstall. They use **distinct UpgradeCodes**, so
 they are independent products and can even coexist.
 
+The Start menu folder is `KiTTY++` (`KiTTY` up to 0.85.1.18). A major upgrade
+removes the old product first. Its folder goes with it.
+
 The Desktop shortcut is opt-in: `msiexec /i <msi> DESKTOPSHORTCUT=1`. An
 upgrade keeps it if the Desktop still has the one an earlier package wrote
 (`KiTTY.lnk` up to 0.85.1.17, `KiTTY++.lnk` since).

@@ -40,6 +40,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   deleted too. Manage Sessions marks such sessions "(old KiTTY)" or
   "(PuTTY)", as the session list does. Move and Rename are greyed for
   them: Copy and Clone take them over into this store.
+- The installers' Start menu folder is now KiTTY++. An upgrade removes the
+  old KiTTY folder. A Start menu pin to an old entry has to be pinned again.
 
 ### Fixed
 
