@@ -53,6 +53,11 @@ HWND kitty_confirm_modeless_check( HWND owner, const char *caption, const char *
 HWND kitty_confirm_modeless3( HWND owner, const char *caption, const char *text,
                               const char *detail, const char *b_yes, const char *b_third,
                               const char *b_no, void (*done)( int answer, void *ctx ), void *ctx );
+/* The same with a red line under the detail (warn_red, NULL = none). */
+HWND kitty_confirm_modeless3_warn( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *warn_red,
+                                   const char *b_yes, const char *b_third, const char *b_no,
+                                   void (*done)( int answer, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 /* kitty_info_box, modeless (detail as above); NULL = not made. */
 HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,

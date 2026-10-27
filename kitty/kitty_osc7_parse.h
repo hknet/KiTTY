@@ -13,10 +13,13 @@
 #ifndef KITTY_OSC7_PARSE_H
 #define KITTY_OSC7_PARSE_H
 
-static int osc7_ishex( char c ) {
+/* static inline throughout: kitty_hostmatch.h includes this header into
+ * files that use only some of these, and an unused plain static function
+ * is a compiler warning there */
+static inline int osc7_ishex( char c ) {
 	return (c>='0'&&c<='9') || (c>='a'&&c<='f') || (c>='A'&&c<='F') ;
 }
-static int osc7_hexval( char c ) {
+static inline int osc7_hexval( char c ) {
 	if( c>='0'&&c<='9' ) return c-'0' ;
 	if( c>='a'&&c<='f' ) return c-'a'+10 ;
 	return c-'A'+10 ;
@@ -26,7 +29,7 @@ static int osc7_hexval( char c ) {
  * terminate the C string before osc7_path_ok() could judge the rest, silently
  * truncating the path, so the caller must reject such a payload outright.
  * (Every other control char survives as a byte and is caught by the check.) */
-static int osc7_urldecode( char * s ) {
+static inline int osc7_urldecode( char * s ) {
 	char * r = s, * w = s ;
 	int ok = 1 ;
 	while( *r ) {
@@ -46,7 +49,7 @@ static int osc7_urldecode( char * s ) {
 
 /* The first byte of p the check below refuses, or -1 when every byte
  * passes ('/' itself when the path is not absolute). */
-static int osc7_path_bad_char( const char * p ) {
+static inline int osc7_path_bad_char( const char * p ) {
 	if( p[0] != '/' ) return (unsigned char)p[0] ;
 	for( ; *p ; p++ ) {
 		unsigned char c = (unsigned char)*p ;

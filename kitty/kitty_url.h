@@ -34,5 +34,11 @@ void kitty_url_hover_leave(void);
 void kitty_url_dirty_clear(void);
 /* Is a cell drawn underlined, for CONF_url_underline = mode? */
 int kitty_url_cell_underlined(int col, int row, int mode);
+/* The OSC 8 window of a file://host/path link that is not downloaded: the
+ * host line and the link, the text that the host is not matched to the
+ * session, a red line on SMB; Open (the link to Windows), Copy path (path,
+ * decoded), Close. copyonly: a path outside ASCII - Copy path and Close. */
+void kitty_url_file_box(HWND hwnd, const char *uri, const char *host,
+                        const char *path, int copyonly);
 
 #endif /* KITTY_URL_H */

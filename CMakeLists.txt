@@ -195,6 +195,12 @@ add_executable(test_osc7
 add_executable(test_getfile
   test/test_getfile.c)
 
+# KiTTY: unit test for the host matching of OSC 8 file:// links
+# (self-contained; the code lives in kitty/kitty_hostmatch.h, shared with
+# kitty/kitty_url.c, kitty/kitty_xfer.c and terminal/kitty_osc.c).
+add_executable(test_hostmatch
+  test/test_hostmatch.c)
+
 # KiTTY: unit test for the scrollback search's matcher (self-contained; the
 # code lives in kitty/kitty_search_match.h, shared with
 # terminal/kitty_search.c).
@@ -444,7 +450,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_search test_acceptnew
+    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew
     test_auditparse test_eventids)
   kitty_add_test(${t})
 endforeach()

@@ -440,6 +440,7 @@ kitty/kitty_updater.c | CheckVersionFromWebSite() | note | 256 | up-to-date text
 kitty/kitty_url.c | struct kitty_url_hostinfo | host | 256 | host of a URL (DNS name <= 255; copies length-checked)
 kitty/kitty_url.c | kitty_url_open_osc8() | texthost | 256 | host named in the link text, size passed
 kitty/kitty_url.c | kitty_url_open_osc8() | redirhost | 256 | redirect target host, size passed
+kitty/kitty_url.c | kitty_url_file_remote() | host | HM_HOST_MAX + 1 | host of a file:// link (DNS name <= 255; hm_file_link refuses a longer one), size passed
 
 kitty/kitty_winerr.h | kitty_win_reason() | buf | 512 | Windows error reason text, snprintf to sizeof
 kitty/kitty_winerr.h | kitty_win_reason() | msg | 400 | FormatMessage text, size passed
@@ -479,7 +480,10 @@ kitty/kitty_xfer.c | kx_gf_drain() | tmp | 1024 | pipe drain chunk, ReadFile bou
 kitty/kitty_xfer.c | StartWinSCP() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 kitty/kitty_xfer.c | StartWinSCP() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 kitty/kitty_xfer.c | StartWinSCP() | px_pass | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
-kitty/kitty_xfer.c | StartFileZilla() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
+kitty/kitty_xfer.c | StartFileZillaDir() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
+kitty/kitty_xfer.c | (file) | kx_probe_short | HM_HOST_MAX + 1 | host name klink's "hostname" printed (DNS name <= 255; hm_probe_names takes no longer one), size passed
+kitty/kitty_xfer.c | (file) | kx_probe_fqdn | HM_HOST_MAX + 1 | host name klink's "hostname -f" printed (DNS name <= 255; hm_probe_names takes no longer one), size passed
+kitty/kitty_xfer.c | kx_fl_probe_start() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 
 kitty/kitty_zmodem.c | zm_stderr_gotdata() | screen | 512 | helper stderr text shown on the terminal, flushed when full
 
@@ -562,7 +566,14 @@ terminal/kitty_clipboard.c | osc5522_write_alias() | mimeb64 | 512 | OSC 5522 ba
 
 terminal/terminal.c | far2l_overflow_answer() | dec | sizeof(tail) | far2l reply tail, base64-decoded into sizeof(tail)
 
+terminal/kitty_osc.c | term_hostsig_title() | host | HM_HOST_MAX + 1 | host name from a window title (DNS name <= 255; hm_title_host takes no longer one), size passed
+terminal/kitty_osc.c | kitty_osc_dispatch() | host | HM_HOST_MAX + 1 | host name from OSC 1337 RemoteHost= (DNS name <= 255; hm_remotehost takes no longer one), size passed
+
 terminal/terminal.h | struct terminal_tag | id_string | 1024 | upstream: DA1 reply text: the default or at most ARGS_MAX (32) decimal parameters of up to 11 characters each (under 400 bytes)
+terminal/terminal.h | struct terminal_tag | hs_title_first | 256 | host name from a window title (DNS name <= 255; hm_title_host takes no longer one), size passed
+terminal/terminal.h | struct terminal_tag | hs_title_now | 256 | host name from a window title (DNS name <= 255; hm_title_host takes no longer one), size passed
+terminal/terminal.h | struct terminal_tag | hs_rh_first | 256 | host name from OSC 1337 RemoteHost= (DNS name <= 255; hm_remotehost takes no longer one), size passed
+terminal/terminal.h | struct terminal_tag | hs_rh_now | 256 | host name from OSC 1337 RemoteHost= (DNS name <= 255; hm_remotehost takes no longer one), size passed
 
 test/bench_term.c | main() | blk | 4096 | benchmark input chunk (test code)
 
@@ -603,6 +614,13 @@ test/test_getfile.c | cls() | out | 256 | test code: expected/actual text, size 
 test/test_getfile.c | cat() | out | 8192 | test code: fixture / input data, sizes checked by the test
 test/test_getfile.c | sp() | out | 256 | test code: expected/actual text, size passed
 test/test_getfile.c | main() | name | 300 | test code: fixture / input data, sizes checked by the test
+
+test/test_hostmatch.c | title() | out | HM_HOST_MAX + 1 | test code: expected/actual text, size passed
+test/test_hostmatch.c | rhost() | out | HM_HOST_MAX + 1 | test code: expected/actual text, size passed
+test/test_hostmatch.c | flink() | host | HM_HOST_MAX + 1 | test code: expected/actual text, size passed
+test/test_hostmatch.c | main() | first | HM_HOST_MAX + 1 | test code: expected/actual text, size passed
+test/test_hostmatch.c | main() | now | HM_HOST_MAX + 1 | test code: expected/actual text, size passed
+test/test_hostmatch.c | main() | big | 5000 | test code: fixture / input data, sizes checked by the test
 
 test/test_gfx.c | send() | buf | 1 << 17 | test code: fixture / input data, sizes checked by the test
 test/test_gfx.c | send_raw() | buf | 1 << 17 | test code: fixture / input data, sizes checked by the test

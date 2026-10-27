@@ -241,6 +241,11 @@ const char * kitty_remote_cwd_moved_host( void ) {
 	return gf_osc7_moved( RemoteCwdHostFirst, RemoteCwdHost ) ? RemoteCwdHost : NULL ;
 }
 
+const char * kitty_remote_cwd_first_host( void ) {
+	if( conf == NULL || !conf_get_bool( conf, CONF_osc7_cwd_tracking ) ) return NULL ;
+	return RemoteCwdHostFirst[0] ? RemoteCwdHostFirst : NULL ;
+}
+
 char * kitty_current_dir(void) {
 	/* Respect the CURRENT setting, not just what it was when the cwd was stored:
 	 * if the user turns OSC 7 tracking off at runtime (Change Settings), stop

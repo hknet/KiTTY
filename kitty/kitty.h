@@ -376,7 +376,17 @@ void kitty_xfer_migrate_protocol( Conf * cf, int oldprot ) ;
 extern char * FileZillaPath ;
 int SearchFileZilla( void ) ;
 void StartFileZilla( HWND hwnd ) ;
+/* The same at the remote folder dir (NULL = the shell's folder, OSC 7). */
+void StartFileZillaDir( HWND hwnd, const char * dir ) ;
 void RunCmd( HWND hwnd ) ;
+/* An OSC 8 file://host/path link whose host is not this PC (kitty_url.c):
+ * by = the signal that matched the host to the session's server, NULL =
+ * none yet (DNS and the klink probe follow); then the download, the
+ * folder, or the OSC 8 window (kitty_xfer.c). path: decoded, ASCII. */
+void kitty_xfer_file_link( HWND hwnd, const char * uri, const char * lhost,
+                           const char * path, const char * by ) ;
+/* path (UTF-8) to the clipboard, the outcome in a notice. */
+void kitty_xfer_copy_path( HWND hwnd, const char * path ) ;
 int SearchWinSCP( void ) ;
 int SearchPSCP( void ) ;
 /* Helper programs (kitty_xfer.c): the signature check and the one start.
@@ -669,6 +679,9 @@ char *kitty_set_remote_cwd( const char * osc7, int cut );   /* NULL or why refus
 /* The host an OSC 7 reports when it is not the session's (the first OSC 7's)
  * one; NULL when it is, or nothing reports one. */
 const char * kitty_remote_cwd_moved_host( void );
+/* The host of the first OSC 7: the session's machine as its shell names
+ * itself; NULL with tracking off or no OSC 7 seen. */
+const char * kitty_remote_cwd_first_host( void );
 /* The shell in that terminal window is on another machine than the
  * connection's (OSC 3008, then OSC 7): 1, *where = its name or NULL
  * (window.c). */

@@ -32,6 +32,9 @@
 #include "kitty_dlgbox.h"
 #include "kitty_theme.h"               /* kitty_theme_tooltip */
 #include "kitty_win.h"                 /* kitty_theme_app_dark */
+#include "kitty.h"                     /* kitty_shell_moved, kitty_xfer_file_link */
+#include "kitty_ctx3008.h"             /* ctx_server_host */
+#include "kitty_hostmatch.h"           /* file:// links: host, path, same machine */
 
 /* HyperlinkUnderline (CONF_url_underline), as stored: the checkbox it used
  * to be wrote 1 / 0, so those keep their meaning and On hover is the new 2.
@@ -1128,6 +1131,168 @@ static void kitty_url_ask(HWND hwnd, const char *uri, const char *browser,
     sfree(detail);
 }
 
+/*
+ * OSC 8 file://host/path links whose host is not this PC: GNU ls
+ * --hyperlink writes one for every name it lists, with the server's own
+ * host name. kitty_url_file_remote matches that host against the session's
+ * server by what it can read at once; kitty_xfer.c (kitty_xfer_file_link)
+ * goes on with DNS and the klink probe and downloads a match. A host it
+ * cannot match, a file missing on the server and a path outside ASCII
+ * (the Unicode work is not done) end here: the window below.
+ */
+typedef struct kitty_url_filebox {
+    HWND hwnd;
+    char *uri, *path;
+} kitty_url_filebox;
+
+static void kitty_url_filebox_free(kitty_url_filebox *b)
+{
+    sfree(b->uri);
+    sfree(b->path);
+    sfree(b);
+}
+
+/* 1 Open, 2 Copy path; Close, Escape or the window going: nothing */
+static void kitty_url_file_answer(int answer, void *ctx)
+{
+    kitty_url_filebox *b = (kitty_url_filebox *)ctx;
+    kitty_url_box = NULL;
+    if (answer == 1)
+        urlhack_launch_url(NULL, b->uri);
+    else if (answer == 2 && IsWindow(b->hwnd))
+        kitty_xfer_copy_path(b->hwnd, b->path);
+    kitty_url_filebox_free(b);
+}
+
+/* the window with Copy path and Close only: yes = Copy path */
+static void kitty_url_file_copy_answer(int yes, void *ctx)
+{
+    kitty_url_file_answer(yes ? 2 : 0, ctx);
+}
+
+void kitty_url_file_box(HWND hwnd, const char *uri, const char *host,
+                        const char *path, int copyonly)
+{
+    char *hostline, *detail, *text, *warn = NULL;
+    kitty_url_filebox *b;
+    if (kitty_url_box && IsWindow(kitty_url_box)) {
+        SetForegroundWindow(kitty_url_box);
+        return;
+    }
+    hostline = dupprintf(KT_OSC8_HOST_LINE, host);
+    detail = dupprintf("%s\r\n%s", hostline, uri);
+    sfree(hostline);
+    b = snew(kitty_url_filebox);
+    b->hwnd = hwnd;
+    b->uri = dupstr(uri);
+    b->path = dupstr(path);
+    ReleaseCapture();                  /* the click held the mouse */
+    if (copyonly) {
+        text = dupstr(KT_OSC8_FILE_NONASCII);
+        kitty_url_box = kitty_confirm_modeless_words(hwnd, KT_OSC8_CONFIRM_CAPTION,
+            text, detail, KT_OSC8_FILE_BTN_COPY, KT_OSC8_FILE_BTN_CLOSE,
+            kitty_url_file_copy_answer, b);
+    } else {
+        text = dupprintf(KT_OSC8_FILE_NOMATCH, host);
+        warn = dupprintf(KT_OSC8_FILE_WARN_SMB, host);
+        kitty_url_box = kitty_confirm_modeless3_warn(hwnd, KT_OSC8_CONFIRM_CAPTION,
+            text, detail, warn, KT_OSC8_FILE_BTN_OPEN, KT_OSC8_FILE_BTN_COPY,
+            KT_OSC8_FILE_BTN_CLOSE, kitty_url_file_answer, b);
+    }
+    if (!kitty_url_box)                /* not made: nothing done */
+        kitty_url_filebox_free(b);
+    sfree(text);
+    sfree(warn);
+    sfree(detail);
+}
+
+/* Event Log line, when the window has one. */
+static void kitty_url_file_log(LogContext *logctx, char *m)
+{
+    if (logctx)
+        logevent(logctx, m);
+    sfree(m);
+}
+
+/*
+ * A file://host/path link, host not this PC. 0 = not a link this takes (no
+ * host name, a path with %00 or a control character): refused as a
+ * malformed target. 1 = taken.
+ *
+ * The host is the session's server when the first of these names it
+ * (case-insensitive, a short name = the first label of a full one): OSC
+ * 3008 hostname=, the OSC 7 baseline, OSC 1337 RemoteHost=, a window title
+ * user@host, the session's Host Name; DNS and the klink probe follow in
+ * kitty_xfer.c. A signal that the shell went on to another machine (OSC
+ * 3008, OSC 7, RemoteHost, the title) means the link was written there:
+ * no match. Only SSH sessions download.
+ */
+static int kitty_url_file_remote(Terminal *term, Conf *conf, HWND hwnd,
+                                 LogContext *logctx, const char *uri)
+{
+    char host[HM_HOST_MAX + 1], *path;
+    const char *where = NULL, *first, *now, *server, *by = NULL;
+    const struct CtxStack *cs;
+    size_t n = strlen(uri) + 1;
+    int moved;
+
+    path = snewn(n, char);
+    if (hm_file_link(uri, host, sizeof(host), path, n) != HM_LINK_OK) {
+        sfree(path);
+        return 0;
+    }
+    if (!hm_ascii(path)) {
+        kitty_url_file_box(hwnd, uri, host, path, 1);
+        sfree(path);
+        return 1;
+    }
+    moved = kitty_shell_moved(hwnd, &where);
+    if (!moved) {
+        term_hostsig(term, TERM_HS_REMOTEHOST, &first, &now);
+        if ((moved = hm_moved(first, now)) != 0)
+            where = now;
+    }
+    if (!moved) {
+        term_hostsig(term, TERM_HS_TITLE, &first, &now);
+        if ((moved = hm_moved(first, now)) != 0)
+            where = now;
+    }
+    if (moved) {
+        kitty_url_file_log(logctx, where ? dupprintf(KT_OSC8_FILE_LOG_MOVED, where)
+                                         : dupstr(KT_OSC8_FILE_LOG_MOVED_UNNAMED));
+        kitty_url_file_box(hwnd, uri, host, path, 0);
+        sfree(path);
+        return 1;
+    }
+    if (conf_get_int(conf, CONF_protocol) != PROT_SSH) {
+        kitty_url_file_log(logctx, dupprintf(KT_OSC8_FILE_LOG_NOMATCH, host));
+        kitty_url_file_box(hwnd, uri, host, path, 0);
+        sfree(path);
+        return 1;
+    }
+    cs = term_ctx3008(term);
+    if (cs && (server = ctx_server_host(cs)) != NULL && hm_host_same(host, server))
+        by = KT_OSC8_FILE_BY_CTX3008;
+    else if ((server = kitty_remote_cwd_first_host()) != NULL &&
+             hm_host_same(host, server))
+        by = KT_OSC8_FILE_BY_OSC7;
+    if (!by) {
+        term_hostsig(term, TERM_HS_REMOTEHOST, &first, &now);
+        if (hm_host_same(host, first))
+            by = KT_OSC8_FILE_BY_REMOTEHOST;
+    }
+    if (!by) {
+        term_hostsig(term, TERM_HS_TITLE, &first, &now);
+        if (hm_host_same(host, first))
+            by = KT_OSC8_FILE_BY_TITLE;
+    }
+    if (!by && hm_host_same(host, conf_get_str(conf, CONF_host)))
+        by = KT_OSC8_FILE_BY_HOSTNAME;
+    kitty_xfer_file_link(hwnd, uri, host, path, by);
+    sfree(path);
+    return 1;
+}
+
 /* Add one red line to the confirmation's warning (lines joined by \n). */
 static void kitty_url_warn_add(char **warn, char *line)
 {
@@ -1145,9 +1310,11 @@ static void kitty_url_warn_add(char **warn, char *line)
  * previewed: the link whose target the preview showed for at least
  * KITTY_URL_TIP_READ_MS before this click, else 0 (kitty_url_click).
  *
- * Refused (event log, no box): no valid scheme, a double quote, file: on
- * another computer. For http, https and ftp also: a user name before the host
- * or a host written as a number or encoded.
+ * Refused (event log, no box): no valid scheme, a double quote, a file: link
+ * to another computer with no host name or a control character in its path.
+ * For http, https and ftp also: a user name before the host or a host
+ * written as a number or encoded.
+ * A file: link to another computer otherwise: kitty_url_file_remote.
  * Opened at once: http, https, ftp or mailto with no red flag below, when either
  * the text IS the target, or the preview showed this target whole (at most
  * KITTY_URL_TIP_LINE characters, one line of the tip) before the click.
@@ -1175,8 +1342,12 @@ static void kitty_url_open_osc8(Terminal *term, Conf *conf, HWND hwnd,
     kitty_url_hostinfo_of(uri, &hi);
     if (!kitty_url_scheme(uri, scheme, sizeof(scheme)) || strchr(uri, '"'))
         why = KT_OSC8_REFUSED_MALFORMED;
-    else if (!strcmp(scheme, "file") && !kitty_url_file_is_local(uri))
-        why = KT_OSC8_REFUSED_FILEHOST;
+    else if (!strcmp(scheme, "file") && !kitty_url_file_is_local(uri)) {
+        /* a file on another computer: the session's server, or the window */
+        if (kitty_url_file_remote(term, conf, hwnd, logctx, uri))
+            return;
+        why = KT_OSC8_REFUSED_MALFORMED;
+    }
     web = !why && (!strcmp(scheme, "http") || !strcmp(scheme, "https") ||
                    !strcmp(scheme, "ftp"));
     if (!why && web && (hi.numeric || hi.encoded))

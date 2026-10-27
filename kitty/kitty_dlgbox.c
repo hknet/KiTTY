@@ -679,11 +679,23 @@ HWND kitty_confirm_modeless_words( HWND owner, const char *caption, const char *
 HWND kitty_confirm_modeless3( HWND owner, const char *caption, const char *text,
                               const char *detail, const char *b_yes, const char *b_third,
                               const char *b_no, void (*done)( int answer, void *ctx ), void *ctx ) {
+	return kitty_confirm_modeless3_warn( owner, caption, text, detail, NULL,
+	                                     b_yes, b_third, b_no, done, ctx ) ;
+}
+
+/* kitty_confirm_modeless3 with the red line of kitty_confirm_modeless
+ * (warn_red, NULL = none) between the detail and the buttons: the OSC 8
+ * window of a file:// link (Open / Copy path / Close). */
+HWND kitty_confirm_modeless3_warn( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *warn_red,
+                                   const char *b_yes, const char *b_third, const char *b_no,
+                                   void (*done)( int answer, void *ctx ), void *ctx ) {
 	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
 	if( !cf ) return NULL ;
 	cf->caption = _strdup( caption ? caption : "" ) ;
 	cf->text = _strdup( text ? text : "" ) ;
 	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->warn = warn_red ? _strdup( warn_red ) : NULL ;
 	/* box3's three words are borrowed pointers; here they live in b_yes /
 	 * b_no / check, which WM_DESTROY frees */
 	cf->b_yes = _strdup( b_yes ? b_yes : "" ) ;

@@ -68,8 +68,10 @@ Known limitations of this release:
   setting it does not know.
 - **Session list limits:** the launcher lists up to 4096 sessions, kageant's
   Saved Sessions menu up to 3584.
-- **OSC 8 links to a file on another computer are not opened**, nor web
-  addresses with a numeric or encoded host.
+- **OSC 8 `file://` links to a host other than the session's server are not
+  downloaded.** They show Open, Copy path and Close. A path outside ASCII
+  can only be copied. Web addresses with a numeric or encoded host are not
+  opened.
 - **kscp and ksftp do not expand `~` over SFTP.** `host:~/file` fails. Use
   `host:file` for the home folder instead. Folders that KiTTY++ hands to kscp
   itself are absolute and not affected.

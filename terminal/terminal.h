@@ -713,6 +713,15 @@ struct terminal_tag {
      * leave it alone; a new connection clears it (term_ctx3008_reset).
      * Unconditional storage, same ODR reason as everything above. */
     struct CtxStack *ctx3008;
+    /* KiTTY: the host names two signals of the shell carried
+     * (kitty_osc.c term_hostsig_*), for OSC 8 file:// links (kitty_xfer.c):
+     * the window titles of the form user@host (OSC 0, 2, 21 - read whether
+     * or not remote titles are shown) and OSC 1337 RemoteHost=. The first
+     * one after the connection began and the latest; "" = none yet. A new
+     * connection clears them (term_hostsig_reset). Unconditional storage,
+     * same ODR reason as above. */
+    char hs_title_first[256], hs_title_now[256];
+    char hs_rh_first[256], hs_rh_now[256];
     /* KiTTY: the scrollback search (terminal/kitty_search.c); NULL when
      * nobody searches. Unconditional storage, same ODR reason as above. */
     struct kitty_search *search;
@@ -1213,6 +1222,18 @@ void term_ctx3008_reset(Terminal *term);
  * the breadcrumb hides while a full-screen program has it */
 void term_ctx3008_screen_swapped(Terminal *term);
 bool term_alt_screen_shown(Terminal *term);
+
+/* KiTTY: the host names of the shell's signals (Terminal hs_*): which =
+ * TERM_HS_TITLE (window titles user@host) or TERM_HS_REMOTEHOST (OSC 1337
+ * RemoteHost=), the first after the connection began and the latest ("" =
+ * none). term_hostsig_title: a title from the host (do_osc), whether or not
+ * it is shown. term_hostsig_reset: a new connection (window.c
+ * start_backend). */
+enum { TERM_HS_TITLE, TERM_HS_REMOTEHOST };
+void term_hostsig(Terminal *term, int which, const char **first,
+                  const char **now);
+void term_hostsig_title(Terminal *term, const char *title);
+void term_hostsig_reset(Terminal *term);
 
 /* KiTTY: search the scrollback (Ctrl+Shift+F, terminal/kitty_search.c).
  * The find bar opens / closes the search, hands over the text (UTF-16) on

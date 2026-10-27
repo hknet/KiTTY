@@ -125,6 +125,10 @@ CtxAs ctx_switch_notice(const CtxStack *s, bool frame, bool tint, int secs,
  * host name, NULL when the context sends none. Get File checks this before
  * it checks a path on the connection's host. */
 bool ctx_moved_machine(const CtxStack *s, const char **where);
+/* The session's server as it names itself: the hostname= of the outermost
+ * context that carries one; NULL when none does. An OSC 8 file:// link
+ * whose host is this name is on the session's server (kitty_xfer.c). */
+const char *ctx_server_host(const CtxStack *s);
 
 const char *ctx_type_name(int type);         /* "" for CTX_TYPE_NONE */
 const char *ctx_field_name(int field);

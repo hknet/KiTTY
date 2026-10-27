@@ -502,9 +502,51 @@
 /* why a target was refused, for the event log line below */
 #define KT_OSC8_REFUSED_MALFORMED                    "malformed target"
 #define KT_OSC8_REFUSED_NUMERIC                      "a host written as a number or encoded"
-#define KT_OSC8_REFUSED_FILEHOST                     "a file on another computer"
 /* event log, the first refused target of a window only */
 #define KT_OSC8_LOG_REFUSED                          "OSC 8 link not opened: %s"
+/* An OSC 8 file://host/path link whose host is not this PC (GNU ls
+ * --hyperlink): kitty_url.c kitty_url_file_box, kitty_xfer.c
+ * kitty_xfer_file_link. The window: caption KT_OSC8_CONFIRM_CAPTION, the
+ * host line and the link in the field. %s = the link's host */
+#define KT_OSC8_FILE_NOMATCH                         "The host %s of this file:// link cannot be matched to the current session."
+/* red, under the field; %s = the link's host */
+#define KT_OSC8_FILE_WARN_SMB                        "Opening sends your Windows login to %s (SMB)."
+/* a path with characters outside ASCII: Copy path and Close only */
+#define KT_OSC8_FILE_NONASCII                        "The path has characters outside ASCII: it can be copied, not downloaded yet."
+#define KT_OSC8_FILE_BTN_OPEN                        "Open"
+#define KT_OSC8_FILE_BTN_COPY                        "Copy path"
+#define KT_OSC8_FILE_BTN_CLOSE                       "Close"
+/* notices; %s = the remote path, or Windows' reason */
+#define KT_OSC8_FILE_COPIED                          "Copied to the clipboard: %s"
+#define KT_OSC8_FILE_COPY_FAILED                     "The path could not be copied to the clipboard: %s"
+/* a folder on the server, neither WinSCP nor FileZilla found: the listing
+ * (kscp -ls) follows in the transfer window */
+#define KT_OSC8_FILE_NO_FOLDER_PROGRAM               "No program for folders is installed (WinSCP or FileZilla). The path is on the clipboard."
+/* event log: what the click found. %s = the link's host, %s = the signal
+ * that matched it (one of KT_OSC8_FILE_BY_*) */
+#define KT_OSC8_FILE_LOG_MATCH                       "OSC 8 file link: %s is the session's server (%s)."
+#define KT_OSC8_FILE_LOG_NOMATCH                     "OSC 8 file link: %s is not matched to the session's server."
+/* %s = the host the shell is on now */
+#define KT_OSC8_FILE_LOG_MOVED                       "OSC 8 file link: the shell is on another host (%s)."
+#define KT_OSC8_FILE_LOG_MOVED_UNNAMED               "OSC 8 file link: the shell is on another host."
+/* the probe starts (once a session) */
+#define KT_OSC8_FILE_LOG_PROBE_RUN                   "OSC 8 file link: klink runs hostname on the server."
+/* %s = why klink gave no host name (KT_OSC8_FILE_PROBE_*, or klink's last line) */
+#define KT_OSC8_FILE_LOG_PROBE_FAIL                  "OSC 8 file link: no host name from klink: %s"
+#define KT_OSC8_FILE_BY_CTX3008                      "OSC 3008 hostname"
+#define KT_OSC8_FILE_BY_OSC7                         "OSC 7"
+#define KT_OSC8_FILE_BY_REMOTEHOST                   "OSC 1337 RemoteHost"
+#define KT_OSC8_FILE_BY_TITLE                        "window title"
+#define KT_OSC8_FILE_BY_HOSTNAME                     "Host Name"
+#define KT_OSC8_FILE_BY_DNS                          "DNS"
+#define KT_OSC8_FILE_BY_PROBE                        "klink hostname"
+#define KT_OSC8_FILE_PROBE_NOLOGIN                   "no login without a prompt"
+#define KT_OSC8_FILE_PROBE_TIMEOUT                   "no answer within 3 seconds"
+#define KT_OSC8_FILE_PROBE_EMPTY                     "no output"
+/* %s = the path of klink.exe beside kitty.exe */
+#define KT_OSC8_FILE_PROBE_NOKLINK                   "not found: %s"
+/* %s = Windows' reason */
+#define KT_OSC8_FILE_PROBE_NOSTART                   "klink.exe did not start: %s"
 
 /* Window/Appearance */
 #define KT_APPEARANCE_WHERE_THE_WINDOW_OPENS         "Where the window opens"
@@ -999,7 +1041,9 @@
 #define KT_GETFILE_WHY_WINPATH                       "The clipboard holds a local path, not a remote one."
 #define KT_GETFILE_WHY_MOVED                         "The shell is on another host (%s); Get File fetches from %s."
 #define KT_GETFILE_WHY_MOVED_UNNAMED                 "The shell is on another host; Get File fetches from %s."
-#define KT_GETFILE_WHY_NOLOGIN                       "Not checked: the session cannot log in again without a prompt."
+/* no login without a prompt (kx_gf_silent_login), or kscp -stat stopped at
+ * a prompt in batch mode: Get File and an OSC 8 file:// link alike */
+#define KT_GETFILE_WHY_NOLOGIN                       "Cannot download: the login needs a passphrase or a password. Turn on Share SSH connections if possible (Connection > SSH) or load the key in kageant."
 #define KT_GETFILE_WHY_TIMEOUT                       "Not checked: no answer from %s within 3 seconds."
 #define KT_GETFILE_WHY_ERROR                         "Not checked: %s"
 #define KT_GETFILE_WHY_OLDKSCP                       "Not checked: this kscp cannot check a remote path."
@@ -2495,6 +2539,35 @@
 #define KT_XFER_UPLOAD_OF                            "Upload of \"%s\""
 #define KT_XFER_UPLOADING                            "%sUploading  %s  ->  %s\r\n\r\n"
 #define KT_XFER_DOWNLOAD_OF                          "Download of \"%s\""
+/* A download from an OSC 8 file:// link: the transfer window stays open
+ * with these two buttons (kitty_xfer.c ktx_link_done) */
+#define KT_XFER_BTN_OPEN_FILE                        "Open"
+#define KT_XFER_BTN_SHOW_FOLDER                      "Open File Location (Folder)"
+#define KT_XFER_LINK_NOT_PROGRAM                     "Programs and Scripts do not open directly from a Link."
+/* %s = Windows' reason; Open is then not offered */
+#define KT_XFER_MOTW_FAILED                          "Mark of the Web not written (Zone.Identifier): %s"
+/* %s = the local file, %s = Windows' reason */
+#define KT_XFER_OPEN_FAILED                          "Not opened: %s (%s)"
+#define KT_XFER_SHOW_FAILED                          "Not shown in its folder: %s (%s)"
+/* Windows' Attachment Services on the downloaded file; %s = Windows' reason
+ * (Open is then not offered) */
+#define KT_XFER_ATT_BLOCKED                          "Blocked by Windows policy: %s"
+#define KT_XFER_ATT_FAILED                           "Windows' check of the download failed: %s"
+/* %s = the local file */
+#define KT_XFER_ATT_GONE                             "The file is gone after Windows' check: %s"
+/* transfer window and event log while the check runs, its dots on the line under it */
+#define KT_XFER_ATT_CHECKING                         "Windows checks the file for safety (Attachment Services, antivirus). Open is enabled when the check is done."
+/* the line under it - the cycling dots - once the check passed */
+#define KT_XFER_ATT_DONE                             "done."
+/* no answer from the check in time: Open is not offered (yet); %d = seconds */
+#define KT_XFER_ATT_TIMEOUT                          "Windows' check of the download gave no answer within %d seconds."
+/* event log; %s = the local file */
+#define KT_XFER_LOG_ATT_API                          "OSC 8 file link: %s checked by Windows Attachment Services."
+#define KT_XFER_LOG_ATT_FALLBACK                     "OSC 8 file link: %s marked by KiTTY++ (Zone.Identifier), no Attachment Services."
+#define KT_XFER_LOG_TYPE_API                         "OSC 8 file link: %s judged by AssocIsDangerous."
+#define KT_XFER_LOG_TYPE_LIST                        "OSC 8 file link: %s judged by the program list."
+/* the transfer window of a folder's listing (kscp -ls); %s = the remote folder */
+#define KT_XFER_LISTING_OF                           "Listing of \"%s\""
 /* Get File overwrite protection. Single file: the
  * Save-As dialog title (the folder picker KT_XFER_GETFILE_PICK_TITLE stays for
  * several files). Several named files that already exist: the themed 3-button

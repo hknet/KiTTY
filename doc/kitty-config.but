@@ -712,12 +712,31 @@ at a time.
 In every mode some targets are never opened. The first one of a window
 is noted in the Event Log: a target with no valid scheme (a drive letter
 such as \c{c:\\...} is none), a target with a double quote in it, a
-\c{file} link pointing to another computer and a web address with a host
-written as a number (\c{3232235777}, \c{0x7f.1}, \c{127.1}) or
-percent-encoded. The last one applies to links the regular expression
-finds as well. A link found by the regular expression with a user name
-before the host shows the confirmation with its red line, except under
-\q{Only for non-web links}.
+\c{file} link to another computer with a control character in its path
+and a web address with a host written as a number (\c{3232235777},
+\c{0x7f.1}, \c{127.1}) or percent-encoded. The last one applies to links
+the regular expression finds as well. A link found by the regular
+expression with a user name before the host shows the confirmation with
+its red line, except under \q{Only for non-web links}.
+
+A \c{file} link to another computer (GNU \c{ls --hyperlink} writes one
+for every name) is fetched when its host is the session's server. A file
+goes through Get File: the Save-As opens with the name filled in. The
+transfer window then stays open with \q{Open} and \q{Open File Location
+(Folder)}. The file goes through Windows' Attachment Services (the zone
+mark by policy, the antivirus scan). A
+program or a script (by its last extension) gets \q{Open File Location
+(Folder)} only. A folder opens in WinSCP, else in FileZilla. With neither installed, the
+path goes to the clipboard and the folder's listing to the transfer
+window. The host counts as the server when one of these reports it: OSC
+3008 \c{hostname=}, the first OSC 7 host, OSC 1337 \c{RemoteHost=}, the
+first window title \c{user@host}, the session's Host Name, a shared DNS
+address, or \c{hostname} run once on the server by klink. Once the
+shell has moved on to another host, no link is matched. A host that is
+not matched, or a file missing on the server, shows the link with
+\q{Open}, \q{Copy path} and \q{Close}. \q{Open} hands the link to
+Windows, which sends the Windows login to that host over SMB. A path
+outside ASCII can only be copied for now.
 
 \b \q{Require Ctrl key to click hyperlinks} keeps ordinary clicking as
 selection, which is what you want if you select text with the mouse

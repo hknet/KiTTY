@@ -21,6 +21,8 @@
 
 #include <windows.h>
 #include <shellapi.h>        /* SHFileOperation: remove a leftover staging tree */
+#include <ws2tcpip.h>        /* struct addrinfo: the DNS step of OSC 8 file:// links */
+#include <objbase.h>         /* COM: Attachment Services for a link's download */
 
 #include "kitty.h"
 #include "kitty_params.h"
@@ -40,6 +42,11 @@
 #include "kitty_getfile_parse.h" /* Get File's check: the clipboard text, kscp's reply */
 #include "kitty_notice.h"   /* Get File's "found" notice */
 #include "kitty_buildlabel.h" /* KITTY_TEST_BUILD_LABEL: the notice trace below */
+#include "kitty_url.h"      /* kitty_url_file_box: the OSC 8 window of a file:// link */
+#include "kitty_hostmatch.h" /* file:// links: the same machine, klink's answer */
+#include "kitty_hostkey_verify.h" /* kitty_hkv_klink_path: klink beside kitty.exe */
+#include "kitty_winerr.h"   /* kitty_win_reason */
+
 
 /* A user action that cannot go on (no SSH, a tool not found, kscp not
  * started) is reported in the notice window near the clock, which never takes
@@ -836,15 +843,47 @@ struct ktx_balloon { char *title ; char *msg ; char *path ; int done ; } ;
 
 /* What a click opens: the file selected in its folder, or the folder itself.
  * A path that is gone by the time of the click opens nothing. */
-static void ktx_balloon_open( const char *path ) {
-	if( !path || !path[0] ) return ;
-	if( existdirectory( path ) ) {
-		ShellExecuteA( NULL, "open", path, NULL, NULL, SW_SHOWNORMAL ) ;
-	} else if( existfile( path ) ) {
-		char *args = dupprintf( "/select,\"%s\"", path ) ;
-		ShellExecuteA( NULL, "open", "explorer.exe", args, NULL, SW_SHOWNORMAL ) ;
-		sfree( args ) ;
+/* A folder in Explorer, or a file selected in its folder (explorer
+ * /select), through the wide API. Explorer's window belongs to the
+ * explorer.exe already running, which has no right to come to the front:
+ * the right our process has from the user's click is handed on first, or
+ * the window opens behind. 1 = started; 0 = not, *err = Windows' reason.
+ * The balloon's click and a link download's Open File Location (Folder). */
+static int kx_show_in_folder( HWND owner, const char *path, DWORD *err ) {
+	SHELLEXECUTEINFOW sei ;
+	wchar_t *wp, *args = NULL ;
+	int n = MultiByteToWideChar( CP_ACP, 0, path, -1, NULL, 0 ), ok, dir = existdirectory( path ) ;
+	*err = 0 ;
+	if( n <= 0 ) { *err = GetLastError() ; return 0 ; }
+	wp = snewn( n, wchar_t ) ;
+	MultiByteToWideChar( CP_ACP, 0, path, -1, wp, n ) ;
+	AllowSetForegroundWindow( ASFW_ANY ) ;
+	memset( &sei, 0, sizeof(sei) ) ;
+	sei.cbSize = sizeof(sei) ;
+	sei.fMask = SEE_MASK_FLAG_NO_UI ;
+	sei.hwnd = owner ;
+	sei.nShow = SW_SHOWNORMAL ;
+	sei.lpVerb = L"open" ;
+	if( dir ) {
+		sei.lpFile = wp ;
+	} else {
+		args = snewn( wcslen( wp ) + 16, wchar_t ) ;
+		wcscpy( args, L"/select,\"" ) ; wcscat( args, wp ) ; wcscat( args, L"\"" ) ;
+		sei.lpFile = L"explorer.exe" ;
+		sei.lpParameters = args ;
 	}
+	ok = ShellExecuteExW( &sei ) ;
+	if( !ok ) *err = GetLastError() ;
+	if( ok && sei.hProcess ) CloseHandle( sei.hProcess ) ;
+	sfree( args ) ;
+	sfree( wp ) ;
+	return ok ;
+}
+
+static void ktx_balloon_open( const char *path ) {
+	DWORD err ;
+	if( !path || !path[0] ) return ;
+	if( existdirectory( path ) || existfile( path ) ) kx_show_in_folder( NULL, path, &err ) ;
 }
 
 static LRESULT CALLBACK ktx_balloon_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
@@ -946,6 +985,8 @@ static void kitty_tray_balloon_async( const char *title, const char *msg, const 
 #define KTX_WM_DONE   (WM_APP+12)
 #define KTX_ID_EDIT   2001
 #define KTX_ID_CLOSE  2002
+#define KTX_ID_OPEN   2003   /* a download from an OSC 8 file:// link: Open */
+#define KTX_ID_SHOW   2004   /* ... and Open File Location (Folder) */
 /* KiTTY: a run on the session's shared connection (-share) for which the
  * server refused another channel (OpenSSH MaxSessions, "Server refused to
  * open main channel") is started once more on kscp's own login. The starter
@@ -965,6 +1006,8 @@ typedef struct {
 } kx_rerun_t ;
 static kx_rerun_t kx_rerun_next ;      /* for the next kitty_run_xfer */
 static int kx_noshare ;
+static int kx_listing_next ;           /* the next kitty_run_xfer is a listing */
+static const char *kx_link_next ;      /* the next kitty_run_xfer downloads this file:// link */
 static void kx_rerun_free( kx_rerun_t *r ) {
 	sfree( r->dir ) ; sfree( r->file ) ; sfree( r->dist ) ;
 	sfree( r->localdir ) ; sfree( r->localfile ) ; sfree( r->final ) ;
@@ -992,6 +1035,13 @@ struct ktx_win {
 	kx_drop_t *drop ;              /* the drop whose paths are typed, NULL = none */
 	int drop_idx ;                 /* this run's file in it */
 	kx_rerun_t rerun ;             /* how to start it again without -share */
+	int listing ;                  /* a folder's listing (kscp -ls): stays open, no balloon */
+	char *link ;                   /* the OSC 8 file:// link this download came from, NULL = none */
+	HWND openbtn, showbtn ;        /* its Open / Open File Location (Folder), once checked */
+	int att ;                      /* Attachment Services checked it: Open through it */
+	int checked ;                  /* the check's answer came */
+	char *attline ;                /* the check's status line, without its dots */
+	int attdots ;                  /* 1..3 dots shown */
 	/* mini line-discipline so kscp's \r progress meter overwrites the current
 	 * line in place (terminal-style) instead of stacking new lines: */
 	char *curline ;        /* current uncommitted line (grows as it needs) */
@@ -1098,6 +1148,8 @@ static void ktx_apply_fonts( struct ktx_win *w, int dpi ) {
 	SendMessage( w->edit, WM_SETFONT,
 		(WPARAM)( w->font ? w->font : GetStockObject(ANSI_FIXED_FONT) ), TRUE ) ;
 	if( w->uifont ) SendMessage( w->closebtn, WM_SETFONT, (WPARAM)w->uifont, TRUE ) ;
+	if( w->uifont && w->openbtn ) SendMessage( w->openbtn, WM_SETFONT, (WPARAM)w->uifont, TRUE ) ;
+	if( w->uifont && w->showbtn ) SendMessage( w->showbtn, WM_SETFONT, (WPARAM)w->uifont, TRUE ) ;
 	if( of ) DeleteObject( of ) ;
 	if( ou ) DeleteObject( ou ) ;
 }
@@ -1297,6 +1349,369 @@ static void ktx_drop_done( struct ktx_win *w, int ok ) {
 	kx_drop_settle( d, w->drop_idx, ok ) ;
 }
 
+/* ---- a download from an OSC 8 file:// link: Open / Open File Location ------
+ * The file came from a server through a link the server wrote, so it is
+ * handed to Windows as a browser hands a download over: Attachment
+ * Services (IAttachmentExecute) with our client GUID, the file and the link
+ * as its source - CheckPolicy (an administrator's block), then Save, which
+ * writes the zone mark by policy and runs the antivirus scan. That runs on
+ * a worker thread (the scan may take a while) and posts KTX_WM_ATT back.
+ * A program or a script (AssocIsDangerous on the LAST extension:
+ * report.pdf.exe is a program) is never opened from here. Open is
+ * IAttachmentExecute::Execute, with Windows' own prompts; Open File
+ * Location (Folder) is explorer /select. KiTTY++ itself never reads the
+ * file. Without Attachment Services (Windows XP before SP2, a failed
+ * CoCreateInstance) the Mark of the Web is written by hand
+ * (Zone.Identifier, ZoneId=3) and opened with ShellExecuteExW; without
+ * AssocIsDangerous the extension list below decides. */
+#define KTX_WM_ATT (WM_APP+14)
+/* An answer that does not come (a scanner that waits for a message loop
+ * the worker does not run, say): after this the window offers the folder
+ * and says so; a later answer still adds Open. */
+#define KTX_ATT_TIMER    3
+#define KTX_ATT_TIMEOUT_S 30
+#define KTX_DOTS_TIMER   4   /* the status line's dots while the check runs */
+
+/* Attachment Services, declared here: the MinGW headers hide it from a
+ * build for Windows XP, which this file is also built for. The order of
+ * the methods is the interface's (shobjidl.idl). */
+typedef struct kx_ae kx_ae ;
+typedef struct {
+	HRESULT ( STDMETHODCALLTYPE *QueryInterface )( kx_ae *, REFIID, void ** ) ;
+	ULONG ( STDMETHODCALLTYPE *AddRef )( kx_ae * ) ;
+	ULONG ( STDMETHODCALLTYPE *Release )( kx_ae * ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetClientTitle )( kx_ae *, LPCWSTR ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetClientGuid )( kx_ae *, REFGUID ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetLocalPath )( kx_ae *, LPCWSTR ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetFileName )( kx_ae *, LPCWSTR ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetSource )( kx_ae *, LPCWSTR ) ;
+	HRESULT ( STDMETHODCALLTYPE *SetReferrer )( kx_ae *, LPCWSTR ) ;
+	HRESULT ( STDMETHODCALLTYPE *CheckPolicy )( kx_ae * ) ;
+	HRESULT ( STDMETHODCALLTYPE *Prompt )( kx_ae *, HWND, int, int * ) ;
+	HRESULT ( STDMETHODCALLTYPE *Save )( kx_ae * ) ;
+	HRESULT ( STDMETHODCALLTYPE *Execute )( kx_ae *, HWND, LPCWSTR, HANDLE * ) ;
+	HRESULT ( STDMETHODCALLTYPE *SaveWithUI )( kx_ae *, HWND ) ;
+	HRESULT ( STDMETHODCALLTYPE *ClearClientState )( kx_ae * ) ;
+} kx_ae_vtbl ;
+struct kx_ae { const kx_ae_vtbl *lpVtbl ; } ;
+static const CLSID kx_clsid_attsvc = { 0x4125dd96, 0xe03a, 0x4103, { 0x8f, 0x70, 0xe0, 0x59, 0x7d, 0x80, 0x3b, 0x9c } } ;
+static const IID kx_iid_attexec   = { 0x73db1241, 0x1e85, 0x4581, { 0x8e, 0x4f, 0xa8, 0x1e, 0x1d, 0x0f, 0x8c, 0x57 } } ;
+/* KiTTY++ as Attachment Services' client, {97ed80d5-297a-4ff7-afe8-c2f4f9c97262}:
+ * Windows keeps the user's prompt choices under it. It must NEVER change
+ * between releases. */
+static const GUID kx_att_client = { 0x97ed80d5, 0x297a, 0x4ff7, { 0xaf, 0xe8, 0xc2, 0xf4, 0xf9, 0xc9, 0x72, 0x62 } } ;
+
+/* text (CP_ACP, or CP_UTF8 for the link) as UTF-16; sfree it */
+static wchar_t *ktx_wide_dup( const char *s, UINT cp ) {
+	int n = MultiByteToWideChar( cp, 0, s, -1, NULL, 0 ) ;
+	wchar_t *w ;
+	if( n <= 0 ) return NULL ;
+	w = snewn( n, wchar_t ) ;
+	MultiByteToWideChar( cp, 0, s, -1, w, n ) ;
+	return w ;
+}
+
+/* The Attachment Services object for one file, its client, file and
+ * source set; NULL = not there (CoCreateInstance failed). COM is the
+ * caller's. */
+static kx_ae *ktx_att_new( const char *path, const char *link ) {
+	kx_ae *ae = NULL ;
+	wchar_t *wp, *wl ;
+	const wchar_t *base ;
+	if( FAILED( CoCreateInstance( &kx_clsid_attsvc, NULL, CLSCTX_INPROC_SERVER,
+	                              &kx_iid_attexec, (void **)&ae ) ) || !ae ) return NULL ;
+	wp = ktx_wide_dup( path, CP_ACP ) ;
+	wl = ktx_wide_dup( link, CP_UTF8 ) ;
+	if( !wp || !wl ) { sfree( wp ) ; sfree( wl ) ; ae->lpVtbl->Release( ae ) ; return NULL ; }
+	base = wcsrchr( wp, L'\\' ) ; base = base ? base + 1 : wp ;
+	ae->lpVtbl->SetClientGuid( ae, &kx_att_client ) ;
+	ae->lpVtbl->SetLocalPath( ae, wp ) ;
+	ae->lpVtbl->SetFileName( ae, base ) ;
+	ae->lpVtbl->SetSource( ae, wl ) ;
+	sfree( wp ) ; sfree( wl ) ;
+	return ae ;
+}
+
+/* The fallback list: the PATHEXT list and these, the LAST extension. */
+static int ktx_is_program_list( const char *ext ) {
+	static const char *const fixed[] = { ".exe", ".com", ".bat", ".cmd", ".ps1", ".vbs",
+		".vbe", ".js", ".jse", ".wsf", ".wsh", ".msi", ".msp", ".lnk", ".scr", ".hta",
+		".url", ".reg", ".cpl", ".pif", ".appref-ms" } ;
+	const char *pe ;
+	size_t i, n = strlen( ext ) ;
+	for( i = 0 ; i < sizeof(fixed) / sizeof(fixed[0]) ; i++ )
+		if( !stricmp( ext, fixed[i] ) ) return 1 ;
+	for( pe = getenv( "PATHEXT" ) ; pe && *pe ; ) {
+		size_t l = strcspn( pe, ";" ) ;
+		if( l == n && !strnicmp( pe, ext, n ) ) return 1 ;
+		pe += l ;
+		if( *pe == ';' ) pe++ ;
+	}
+	return 0 ;
+}
+
+/* A program or a script? AssocIsDangerous (shlwapi, taken by name: not in
+ * every shlwapi this build runs on), else the list. *api: which one said. */
+typedef BOOL ( WINAPI *kx_assoc_dangerous_fn )( LPCWSTR ) ;
+static int ktx_is_program( const char *path, int *api ) {
+	const char *base = strrchr( path, '\\' ), *ext ;
+	HMODULE sh ;
+	kx_assoc_dangerous_fn fn = NULL ;
+	*api = 0 ;
+	base = base ? base + 1 : path ;
+	if( ( ext = strrchr( base, '.' ) ) == NULL ) return 0 ;
+	if( ( sh = load_system32_dll( "shlwapi.dll" ) ) != NULL )
+		fn = (kx_assoc_dangerous_fn)(void (*)(void))GetProcAddress( sh, "AssocIsDangerous" ) ;
+	if( fn ) {
+		wchar_t *we = ktx_wide_dup( ext, CP_ACP ) ;
+		int r = we ? ( fn( we ) != FALSE ) : 1 ;
+		sfree( we ) ;
+		*api = 1 ;
+		return r ;
+	}
+	return ktx_is_program_list( ext ) ;
+}
+
+/* The fallback's Mark of the Web; 0 = not written, *err = Windows' error. */
+static int ktx_mark_of_web( const char *path, const char *link, DWORD *err ) {
+	wchar_t *wp = ktx_wide_dup( path, CP_ACP ), *ads ;
+	char *body ;
+	HANDLE h ;
+	DWORD written = 0 ;
+	int ok ;
+	*err = 0 ;
+	if( !wp ) { *err = GetLastError() ; return 0 ; }
+	ads = snewn( wcslen( wp ) + 20, wchar_t ) ;
+	wcscpy( ads, wp ) ; wcscat( ads, L":Zone.Identifier" ) ;
+	sfree( wp ) ;
+	h = CreateFileW( ads, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+	sfree( ads ) ;
+	if( h == INVALID_HANDLE_VALUE ) { *err = GetLastError() ; return 0 ; }
+	body = dupprintf( "[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=%s\r\n", link ) ;
+	ok = WriteFile( h, body, (DWORD)strlen( body ), &written, NULL ) && written == strlen( body ) ;
+	if( !ok ) *err = GetLastError() ;
+	sfree( body ) ;
+	if( !CloseHandle( h ) && ok ) { ok = 0 ; *err = GetLastError() ; }
+	return ok ;
+}
+
+/* What the worker found, posted to the transfer window. */
+typedef struct {
+	char *path, *link ;
+	int att ;          /* Attachment Services did it (else the fallback) */
+	int typeapi ;      /* AssocIsDangerous decided (else the list) */
+	int program ;      /* a program or a script: no Open */
+	int blocked ;      /* CheckPolicy said no */
+	int failed ;       /* Save (or the fallback's mark) failed */
+	int gone ;         /* the file is not there after the check */
+	DWORD err ;        /* Windows' reason for blocked / failed */
+} ktx_att_t ;
+
+static void ktx_att_free( ktx_att_t *a ) {
+	sfree( a->path ) ; sfree( a->link ) ; sfree( a ) ;
+}
+
+/* what the worker gets: the window to answer and the file */
+typedef struct { HWND hwnd ; ktx_att_t *a ; } ktx_att_job_t ;
+
+/* The worker: COM apartment-threaded on this thread only. */
+static DWORD WINAPI ktx_att_thread( LPVOID v ) {
+	ktx_att_job_t *p = (ktx_att_job_t *)v ;
+	ktx_att_t *a = p->a ;
+	HWND hwnd = p->hwnd ;
+	HRESULT hi = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED ) ;
+	kx_ae *ae = SUCCEEDED( hi ) ? ktx_att_new( a->path, a->link ) : NULL ;
+	sfree( p ) ;
+	a->program = ktx_is_program( a->path, &a->typeapi ) ;
+	if( ae ) {
+		HRESULT hr ;
+		a->att = 1 ;
+		if( FAILED( hr = ae->lpVtbl->CheckPolicy( ae ) ) ) {
+			a->blocked = 1 ; a->err = (DWORD)hr ;
+		} else if( FAILED( hr = ae->lpVtbl->Save( ae ) ) ) {
+			a->failed = 1 ; a->err = (DWORD)hr ;
+		}
+		ae->lpVtbl->Release( ae ) ;
+	} else if( !ktx_mark_of_web( a->path, a->link, &a->err ) ) {
+		a->failed = 1 ;
+	}
+	if( !existfile( a->path ) ) a->gone = 1 ;
+	if( SUCCEEDED( hi ) ) CoUninitialize() ;
+	if( !IsWindow( hwnd ) || !PostMessage( hwnd, KTX_WM_ATT, 0, (LPARAM)a ) ) ktx_att_free( a ) ;
+	return 0 ;
+}
+
+/* A button's width for its caption in its own font: the text, an average
+ * character's width of air on each side (so it scales with the font and
+ * the DPI), the frame; at least min_w. The shared measure takes its air
+ * from the button's height, which a button laid out by WM_SIZE does not
+ * have yet when it is measured. */
+static int ktx_btn_width( HWND b, int min_w ) {
+	HDC dc ;
+	HFONT f, of ;
+	TEXTMETRICA tm ;
+	SIZE sz ;
+	char text[128] ;
+	int w ;
+	if( !b || ( dc = GetDC( b ) ) == NULL ) return min_w ;
+	f = (HFONT)SendMessage( b, WM_GETFONT, 0, 0 ) ;
+	of = f ? (HFONT)SelectObject( dc, f ) : NULL ;
+	GetWindowTextA( b, text, sizeof(text) ) ;
+	if( !GetTextMetricsA( dc, &tm ) ) tm.tmAveCharWidth = 8 ;
+	if( !GetTextExtentPoint32A( dc, text, (int)strlen( text ), &sz ) ) sz.cx = 0 ;
+	if( of ) SelectObject( dc, of ) ;
+	ReleaseDC( b, dc ) ;
+	w = sz.cx + 2 * tm.tmAveCharWidth + 2 * GetSystemMetrics( SM_CXEDGE ) + 4 ;
+	return w > min_w ? w : min_w ;
+}
+
+/* A line of ours into the window's text. */
+static void ktx_line( struct ktx_win *w, char *line ) {
+	ktx_feed( w, line, (int)strlen( line ) ) ;
+	sfree( line ) ;
+}
+
+static void ktx_att_done( struct ktx_win *w, ktx_att_t *a ) ;
+
+/* The link's download is done: the check, off this thread. */
+/* The status line of the check, in place on the window's last line (as
+ * kscp's progress meter): the text, then tail - the cycling dots while it
+ * runs, the outcome and the line's end when it is over. ktx_feed keeps the
+ * user's selection. */
+static void ktx_att_status( struct ktx_win *w, const char *tail ) {
+	char *s ;
+	if( !w->attline ) return ;
+	s = dupprintf( "\r%s", tail ) ;   /* only the short line under the text: no flicker */
+	ktx_feed( w, s, (int)strlen( s ) ) ;
+	sfree( s ) ;
+}
+
+static void ktx_link_done( struct ktx_win *w ) {
+	ktx_att_job_t *p ;
+	ktx_att_t *a = snew( ktx_att_t ) ;
+	HANDLE t ;
+	memset( a, 0, sizeof(*a) ) ;
+	a->path = dupstr( w->open_file ) ;
+	a->link = dupstr( w->link ) ;
+	p = snew( ktx_att_job_t ) ;
+	p->hwnd = w->hwnd ; p->a = a ;
+	sfree( w->attline ) ;
+	w->attline = dupstr( KT_XFER_ATT_CHECKING ) ;
+	debug_logevent( "%s", w->attline ) ;
+	ktx_line( w, dupprintf( "%s\r\n", w->attline ) ) ;   /* written once, never redrawn */
+	w->attdots = 1 ;
+	ktx_att_status( w, ".  " ) ;
+	if( ( t = CreateThread( NULL, 0, ktx_att_thread, p, 0, NULL ) ) != NULL ) {
+		CloseHandle( t ) ;
+		SetTimer( w->hwnd, KTX_ATT_TIMER, KTX_ATT_TIMEOUT_S * 1000, NULL ) ;
+		SetTimer( w->hwnd, KTX_DOTS_TIMER, 400, NULL ) ;
+		return ;
+	}
+	/* no thread: no check, so no Open - only the folder */
+	a->att = 1 ; a->failed = 1 ; a->err = GetLastError() ;
+	sfree( p ) ;
+	ktx_att_done( w, a ) ;
+}
+
+/* The check is over (or gave no answer, timedout): the dots stop, the
+ * status line ends with outcome. */
+static void ktx_att_stop( struct ktx_win *w, const char *outcome ) {
+	char *t ;
+	KillTimer( w->hwnd, KTX_DOTS_TIMER ) ;
+	KillTimer( w->hwnd, KTX_ATT_TIMER ) ;
+	t = dupprintf( "%s\n", outcome ) ;
+	ktx_att_status( w, t ) ;
+	sfree( t ) ;
+}
+
+/* The check's answer: the status line's outcome, its lines, then the
+ * buttons made in WM_CREATE enabled - Open only when allowed. */
+static void ktx_att_done( struct ktx_win *w, ktx_att_t *a ) {
+	int open = 1 ;
+	char *why = NULL ;
+	if( !w || w->checked ) { ktx_att_free( a ) ; return ; }
+	w->checked = 1 ;
+	debug_logevent( a->att ? KT_XFER_LOG_ATT_API : KT_XFER_LOG_ATT_FALLBACK, a->path ) ;
+	debug_logevent( a->typeapi ? KT_XFER_LOG_TYPE_API : KT_XFER_LOG_TYPE_LIST, a->path ) ;
+	if( a->blocked ) {
+		why = dupprintf( KT_XFER_ATT_BLOCKED, kitty_win_reason( a->err ) ) ;
+	} else if( a->failed ) {
+		why = a->att ? dupprintf( KT_XFER_ATT_FAILED, kitty_win_reason( a->err ) )
+		             : dupprintf( KT_XFER_MOTW_FAILED, kitty_win_reason( a->err ) ) ;
+	} else if( a->gone ) {
+		why = dupprintf( KT_XFER_ATT_GONE, a->path ) ;
+	}
+	if( why ) {
+		debug_logevent( "%s", why ) ;
+		open = 0 ;
+	}
+	ktx_att_stop( w, why ? why : KT_XFER_ATT_DONE ) ;
+	sfree( why ) ;
+	if( a->program ) {
+		ktx_line( w, dupprintf( "%s\r\n", KT_XFER_LINK_NOT_PROGRAM ) ) ;
+		open = 0 ;
+	}
+	if( a->gone ) open = 0 ;
+	w->att = a->att ;
+	if( w->openbtn ) EnableWindow( w->openbtn, open ) ;
+	if( w->showbtn ) EnableWindow( w->showbtn, !a->gone && existfile( a->path ) ) ;
+	ktx_att_free( a ) ;
+}
+
+/* Open (Attachment Services' Execute, or ShellExecuteExW "open") or Open
+ * File Location (explorer /select, wide). A failure: Windows' reason in
+ * the window. */
+static void ktx_link_run( struct ktx_win *w, int show ) {
+	DWORD err = 0 ;
+	int ok = 0 ;
+	if( show ) {
+		ok = kx_show_in_folder( w->hwnd, w->open_file, &err ) ;
+		if( !ok && err == ERROR_CANCELLED ) return ;
+	} else if( w->att ) {
+		HRESULT hi = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED ) ;
+		kx_ae *ae = ktx_att_new( w->open_file, w->link ) ;
+		if( ae ) {
+			HANDLE proc = NULL ;
+			HRESULT hr = ae->lpVtbl->Execute( ae, w->hwnd, NULL, &proc ) ;
+			ok = SUCCEEDED( hr ) ;
+			if( !ok ) err = (DWORD)hr ;
+			if( proc ) CloseHandle( proc ) ;
+			ae->lpVtbl->Release( ae ) ;
+		} else err = ERROR_NOT_SUPPORTED ;
+		if( SUCCEEDED( hi ) ) CoUninitialize() ;
+		if( !ok && HRESULT_CODE( err ) == ERROR_CANCELLED ) return ;   /* the user said no in Windows' prompt */
+	} else {
+		SHELLEXECUTEINFOW sei ;
+		wchar_t *wp = ktx_wide_dup( w->open_file, CP_ACP ), *args = NULL ;
+		if( !wp ) return ;
+		memset( &sei, 0, sizeof(sei) ) ;
+		sei.cbSize = sizeof(sei) ;
+		sei.fMask = SEE_MASK_FLAG_NO_UI ;
+		sei.hwnd = w->hwnd ;
+		sei.nShow = SW_SHOWNORMAL ;
+		sei.lpVerb = L"open" ;
+		if( show ) {
+			args = snewn( wcslen( wp ) + 16, wchar_t ) ;
+			wcscpy( args, L"/select,\"" ) ; wcscat( args, wp ) ; wcscat( args, L"\"" ) ;
+			sei.lpFile = L"explorer.exe" ;
+			sei.lpParameters = args ;
+		} else {
+			sei.lpFile = wp ;
+		}
+		ok = ShellExecuteExW( &sei ) ;
+		if( !ok ) err = GetLastError() ;
+		sfree( args ) ;
+		sfree( wp ) ;
+		if( !ok && err == ERROR_CANCELLED ) return ;
+	}
+	if( !ok ) {
+		char *m = dupprintf( show ? KT_XFER_SHOW_FAILED : KT_XFER_OPEN_FAILED,
+		                     w->open_file, kitty_win_reason( err ) ) ;
+		ktx_line( w, dupprintf( "\r\n%s\r\n", m ) ) ;
+		sfree( m ) ;
+	}
+}
+
 static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
 	struct ktx_win *w = (struct ktx_win *)GetWindowLongPtr( hwnd, GWLP_USERDATA ) ;
 	switch( msg ) {
@@ -1313,6 +1728,18 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		w->closebtn = CreateWindow( "BUTTON", KT_XFER_BTN_CANCEL,
 			WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
 			0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_CLOSE, GetModuleHandle(NULL), NULL ) ;
+		/* A download from an OSC 8 file:// link: Open and Open File
+		 * Location (Folder) from the start, disabled until Windows' check
+		 * of the file is done (ktx_att_done) - made with Close, so the
+		 * window's theme pass takes them, and seen to be coming. */
+		if( w->link ) {
+			w->openbtn = CreateWindow( "BUTTON", KT_XFER_BTN_OPEN_FILE, WS_CHILD|WS_VISIBLE|WS_DISABLED|BS_PUSHBUTTON,
+				0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_OPEN, GetModuleHandle(NULL), NULL ) ;
+			w->showbtn = CreateWindow( "BUTTON", KT_XFER_BTN_SHOW_FOLDER, WS_CHILD|WS_VISIBLE|WS_DISABLED|BS_PUSHBUTTON,
+				0,0,0,0, hwnd, (HMENU)(UINT_PTR)KTX_ID_SHOW, GetModuleHandle(NULL), NULL ) ;
+			if( w->openbtn ) ktx_subclass_child( w->openbtn ) ;
+			if( w->showbtn ) ktx_subclass_child( w->showbtn ) ;
+		}
 			{ HDC hdc = GetDC( hwnd ) ; int dpi = GetDeviceCaps( hdc, LOGPIXELSX ) ;
 			  ReleaseDC( hwnd, hdc ) ; ktx_apply_fonts( w, dpi ) ; }
 			ktx_subclass_child( w->edit ) ; ktx_subclass_child( w->closebtn ) ;
@@ -1325,6 +1752,17 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			  pad=MulDiv(8,dpi,96) ; bh=MulDiv(26,dpi,96) ; bw=MulDiv(90,dpi,96) ; }
 		MoveWindow( w->edit, pad, pad, rc.right-2*pad, rc.bottom-bh-3*pad, TRUE ) ;
 		MoveWindow( w->closebtn, rc.right-bw-pad, rc.bottom-bh-pad, bw, bh, TRUE ) ;
+		{ int x = rc.right - bw - pad ;   /* a link's download: left of Close */
+		  if( w->showbtn ) {
+			int sw = ktx_btn_width( w->showbtn, bw ) ;
+			x -= pad + sw ;
+			MoveWindow( w->showbtn, x, rc.bottom-bh-pad, sw, bh, TRUE ) ;
+		  }
+		  if( w->openbtn ) {
+			int ow = ktx_btn_width( w->openbtn, bw ) ;
+			x -= pad + ow ;
+			MoveWindow( w->openbtn, x, rc.bottom-bh-pad, ow, bh, TRUE ) ;
+		  } }
 		return 0 ;
 	  }
 	  case WM_DPICHANGED: {
@@ -1356,11 +1794,14 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			 * landed; the paths are typed when the drop's last run is over. */
 			ktx_drop_done( w, 1 ) ;
 			/* [KiTTY] transfernotification: a Get File that produced the one
-			 * file opens that file, anything else opens its folder */
-			if( w->open_file && existfile( w->open_file ) )
-				kitty_xfer_notify_ex( what, 1, 1, w->open_file, w->renamed ) ;
-			else
-				kitty_xfer_notify_ex( what, w->arriving, 0, w->open_dir, w->renamed ) ;
+			 * file opens that file, anything else opens its folder; a
+			 * listing has nothing to open and is read in the window */
+			if( !w->listing ) {
+				if( w->open_file && existfile( w->open_file ) )
+					kitty_xfer_notify_ex( what, 1, 1, w->open_file, w->renamed ) ;
+				else
+					kitty_xfer_notify_ex( what, w->arriving, 0, w->open_dir, w->renamed ) ;
+			}
 			if( w->renamed > 0 ) {          /* report it in the window, which then stays open */
 				char *t = dupprintf( "\r\n" KT_XFER_RENAMED_NOTE "\r\n", w->renamed ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
@@ -1368,10 +1809,14 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			/* Auto-close ONLY when everything went as planned: keep it open
 			 * (Close focused) on the keep-window setting, on ANY rename, and
 			 * when the staging folder could not be removed. */
+			/* a download from an OSC 8 file:// link stays open with its
+			 * Open / Open File Location (Folder) (ktx_link_done) */
 			if( ( conf && conf_get_bool( conf, CONF_pscp_keep_window ) )
-			    || w->renamed > 0 || w->cleanup_failed ) {
+			    || w->renamed > 0 || w->cleanup_failed || w->listing
+			    || ( w->link && w->open_file && existfile( w->open_file ) ) ) {
 				char *t = dupprintf( KT_XFER_COMPLETE_LINE, what ) ;
 				ktx_feed( w, t, (int)strlen(t) ) ; sfree( t ) ;
+				if( w->link && w->open_file && existfile( w->open_file ) ) ktx_link_done( w ) ;
 				SetWindowTextA( w->closebtn, KT_XFER_BTN_CLOSE ) ;
 				EnableWindow( w->closebtn, TRUE ) ;
 				SetForegroundWindow( hwnd ) ; SetFocus( w->closebtn ) ;
@@ -1392,8 +1837,10 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 					sfree( w->stage_dir ) ; w->stage_dir = NULL ;
 				}
 				kx_noshare = 1 ;
+				kx_link_next = w->link ;   /* a link's download stays one */
 				if( r.kind == 1 ) kx_send_one( w->parent, r.dir, r.file, r.dist, r.drop, r.drop_idx ) ;
 				else GetOneFileStaged( w->parent, r.dir, r.file, r.localdir, r.localfile, r.final, r.lock ) ;
+				kx_link_next = NULL ;
 				kx_noshare = 0 ;
 				kx_rerun_free( &r ) ;
 				DestroyWindow( hwnd ) ;
@@ -1427,7 +1874,31 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		}
 		return 0 ;
 	  }
+	  case WM_TIMER:                           /* the download's check: the dots, no answer in time */
+		if( wp == KTX_DOTS_TIMER && w ) {
+			static const char *const dots[] = { ".  ", ".. ", "..." } ;
+			w->attdots = w->attdots % 3 + 1 ;
+			ktx_att_status( w, dots[w->attdots - 1] ) ;
+			return 0 ;
+		}
+		if( wp == KTX_ATT_TIMER && w ) {
+			char *m = dupprintf( KT_XFER_ATT_TIMEOUT, KTX_ATT_TIMEOUT_S ) ;
+			debug_logevent( "%s", m ) ;
+			ktx_att_stop( w, m ) ;          /* an answer that comes later enables Open */
+			sfree( m ) ;
+			if( w->showbtn && w->open_file ) EnableWindow( w->showbtn, existfile( w->open_file ) ) ;
+			return 0 ;
+		}
+		break ;
+	  case KTX_WM_ATT:                         /* the download's check is done */
+		if( w ) ktx_att_done( w, (ktx_att_t *)lp ) ;
+		else ktx_att_free( (ktx_att_t *)lp ) ;
+		return 0 ;
 	  case WM_COMMAND:
+		if( ( LOWORD(wp)==KTX_ID_OPEN || LOWORD(wp)==KTX_ID_SHOW ) && w && w->done && w->open_file ) {
+			ktx_link_run( w, LOWORD(wp)==KTX_ID_SHOW ) ;
+			return 0 ;
+		}
 		if( LOWORD(wp)==KTX_ID_CLOSE && w ) {
 			if( w->done ) {
 				DestroyWindow( hwnd ) ;          /* finished -> button is "Close" */
@@ -1470,6 +1941,8 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			if( w->lock && w->lock != INVALID_HANDLE_VALUE ) CloseHandle( w->lock ) ;
 			sfree( w->stage_dir ) ; sfree( w->final_dir ) ;
 			sfree( w->curline ) ;
+			sfree( w->link ) ;
+			sfree( w->attline ) ;
 			kx_rerun_free( &w->rerun ) ;
 			free( w ) ;
 			SetWindowLongPtr( hwnd, GWLP_USERDATA, 0 ) ;
@@ -1539,6 +2012,8 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	w->final_dir = ( final_dir && final_dir[0] ) ? dupstr( final_dir ) : NULL ;
 	w->lock = lock ;
 	w->arriving = arriving ;
+	w->listing = kx_listing_next ;
+	w->link = kx_link_next ? dupstr( kx_link_next ) : NULL ;
 	char *title = dupprintf( KT_XFER_WINDOW_TITLE, w->what ) ;
 	int dpi0 = 96 ;
 	{ HDC pdc = GetDC( parent ) ; if( pdc ) { dpi0 = GetDeviceCaps( pdc, LOGPIXELSX ) ; ReleaseDC( parent, pdc ) ; } }
@@ -2760,6 +3235,7 @@ typedef struct {
     char * dir ;              /* the folder picked */
     int ok ;                  /* Save-As: a file was chosen */
     int keepboth ;
+    char * link ;             /* the OSC 8 file:// link it came from, NULL = the clipboard */
 } kx_getgo_t ;
 static kx_getgo_t * kx_getgo_cur = NULL ;   /* a Get File waits for the user */
 static HWND kx_getgo_box = NULL ;           /* its "already exist" question */
@@ -2768,6 +3244,7 @@ static void kx_getgo_free( kx_getgo_t * g ) {
     if( kx_getgo_cur == g ) kx_getgo_cur = NULL ;
     sfree( g->clip ) ;
     sfree( g->defdir ) ; sfree( g->save ) ; sfree( g->dir ) ;
+    sfree( g->link ) ;
     sfree( g ) ;
 }
 
@@ -2836,7 +3313,9 @@ static void kx_getgo_saved( void * v ) {
     kx_getgo_t * g = (kx_getgo_t *)v ;
     if( g->ok && IsWindow( g->hwnd ) ) {
         char *remote = kx_getgo_remote( g->clip ) ;
+        kx_link_next = g->link ;       /* a link's download: Open / Open File Location */
         GetOneFileToPath( g->hwnd, NULL, remote, NULL, g->save ) ;
+        kx_link_next = NULL ;
         sfree( remote ) ;
     }
     kx_getgo_free( g ) ;
@@ -2913,7 +3392,13 @@ static void kx_getgo_folder( void * v, const char * path ) {
     kx_getgo_run( g ) ;
 }
 
+static void kx_getfile_go_link( HWND hwnd, char * clip, const char * link ) ;
 static void kx_getfile_go( HWND hwnd, char * clip ) {
+    kx_getfile_go_link( hwnd, clip, NULL ) ;
+}
+
+/* link: the OSC 8 file:// link the one path came from (NULL = none). */
+static void kx_getfile_go_link( HWND hwnd, char * clip, const char * link ) {
     const char * line = clip ;
     kx_getgo_t * g ;
 
@@ -2926,6 +3411,7 @@ static void kx_getfile_go( HWND hwnd, char * clip ) {
     memset( g, 0, sizeof(*g) ) ;
     g->hwnd = hwnd ;
     g->clip = clip ;
+    g->link = link ? dupstr( link ) : NULL ;
     g->defdir = kitty_xfer_download_dir_dup( conf ) ;
     kx_getgo_cur = g ;
 
@@ -2986,6 +3472,10 @@ typedef struct {
 	unsigned long long size ;
 	char *err ;                   /* kscp's reason, NULL = none */
 	int shared, retried ;         /* ran with -share; already ran again without */
+	/* an OSC 8 file:// link matched to the server (kx_fl_stat), not the
+	 * clipboard: a folder and a missing file go their own way */
+	int link ;
+	char *uri, *lhost ;           /* the link and its host */
 } kx_gf_check_t ;
 
 static HWND kx_gf_msgwin = NULL ;     /* takes the worker's result */
@@ -3020,6 +3510,7 @@ static void kx_gf_check_free( kx_gf_check_t *c ) {
 	if( c->rd_err ) CloseHandle( c->rd_err ) ;
 	sfree( c->text ) ; sfree( c->remote ) ;
 	sfree( c->host ) ; sfree( c->err ) ;
+	sfree( c->uri ) ; sfree( c->lhost ) ;
 	sfree( c ) ;
 }
 
@@ -3082,11 +3573,27 @@ static DWORD WINAPI kx_gf_thread( LPVOID p ) {
 	return 0 ;
 }
 
+/* A key file kscp can use without a prompt: one with no passphrase. A
+ * key file that has one (or that cannot be read as a PuTTY key) needs the
+ * passphrase typed - kscp -batch stops there - unless an agent may hold it:
+ * kscp tries the agent first. */
+static int kx_keyfile_silent( const char *kf ) {
+	Filename *pf = filename_from_str( kf ) ;
+	char *cmt = NULL ;
+	int kt = key_type( pf ), enc = 1 ;
+	if( kt == SSH_KEYTYPE_SSH2 ) enc = ppk_encrypted_f( pf, &cmt ) ;
+	else if( kt == SSH_KEYTYPE_SSH1 ) enc = rsa1_encrypted_f( pf, &cmt ) ;
+	sfree( cmt ) ;
+	filename_free( pf ) ;
+	return !enc ;
+}
+
 /* Can kscp log in on its own without a prompt: a password, a key file
- * or an agent? */
+ * without a passphrase, or an agent? */
 static int kx_gf_own_login( void ) {
+	const char *kf ;
 	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
-	if( kx_helper_keyfile( conf ) != NULL ) return 1 ;
+	if( ( kf = kx_helper_keyfile( conf ) ) != NULL && kx_keyfile_silent( kf ) ) return 1 ;
 	if( conf_get_bool( conf, CONF_tryagent ) && agent_exists() ) return 1 ;
 	return 0 ;
 }
@@ -3094,10 +3601,7 @@ static int kx_gf_own_login( void ) {
 /* Can kscp log in without prompting anybody? See the head comment. */
 static int kx_gf_silent_login( void ) {
 	if( conf_get_bool( conf, CONF_ssh_connection_sharing ) ) return 1 ;
-	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
-	if( kx_helper_keyfile( conf ) != NULL ) return 1 ;
-	if( conf_get_bool( conf, CONF_tryagent ) && agent_exists() ) return 1 ;
-	return 0 ;
+	return kx_gf_own_login() ;
 }
 
 /* Start kscp -stat for c->remote; 1 = running (the worker owns c), 0 = not
@@ -3298,6 +3802,8 @@ static void kx_gf_open_box( HWND owner, char *why, char *text ) {
 	SetForegroundWindow( h ) ;
 }
 
+static void kx_fl_folder( HWND hwnd, const char *path ) ;
+
 /* The worker's result, on the window's thread. */
 static void kx_gf_checked( kx_gf_check_t *c ) {
 	char *why = NULL, *msg ;
@@ -3327,13 +3833,24 @@ static void kx_gf_checked( kx_gf_check_t *c ) {
 		kitty_notice_show( KT_GETFILE_FOUND_CAP, msg, KX_GF_ACCENT, 0, NULL, 0 ) ;
 		kx_gf_trace_notice( msg ) ;
 		sfree( msg ) ;
-		kx_getfile_go( c->owner, dupstr( c->text ) ) ;
+		kx_getfile_go_link( c->owner, dupstr( c->text ), c->link ? c->uri : NULL ) ;
 		kx_gf_check_free( c ) ;
 		return ;
 	  case GFS_DIR:
+		if( c->link ) {                /* a link: the folder in a program */
+			kx_fl_folder( c->owner, c->remote ) ;
+			kx_gf_check_free( c ) ;
+			return ;
+		}
 		why = dupprintf( KT_GETFILE_WHY_FOLDER, c->remote ) ;
 		break ;
 	  case GFS_MISSING:
+		if( c->link ) {                /* not on the server: as no match */
+			debug_logevent( KT_OSC8_FILE_LOG_NOMATCH, c->lhost ) ;
+			kitty_url_file_box( c->owner, c->uri, c->lhost, c->remote, 0 ) ;
+			kx_gf_check_free( c ) ;
+			return ;
+		}
 		why = dupprintf( KT_GETFILE_WHY_MISSING, c->host, c->remote ) ;
 		break ;
 	  case GFS_OTHER:
@@ -3345,15 +3862,29 @@ static void kx_gf_checked( kx_gf_check_t *c ) {
 		why = dupprintf( KT_GETFILE_WHY_TIMEOUT, c->host ) ;
 		break ;
 	  default:   /* GFS_ERROR, GFS_NONE */
-		why = dupprintf( KT_GETFILE_WHY_ERROR, ( c->err && c->err[0] ) ? c->err : KT_GETFILE_NO_ANSWER ) ;
+		/* kscp -batch stopped at a passphrase or password prompt: the
+		 * remedy, not kscp's words */
+		if( c->err && strstr( c->err, KX_BATCH_PROMPT ) ) why = dupstr( KT_GETFILE_WHY_NOLOGIN ) ;
+		else why = dupprintf( KT_GETFILE_WHY_ERROR, ( c->err && c->err[0] ) ? c->err : KT_GETFILE_NO_ANSWER ) ;
 		break ;
 	}
 	kx_gf_open_box( c->owner, why, dupstr( c->text ) ) ;
 	kx_gf_check_free( c ) ;
 }
 
+/* the OSC 8 file:// link's two steps off this thread (below GetFile) */
+#define KX_FL_WM_DNS     ( WM_APP + 2 )
+#define KX_FL_WM_PROBE   ( WM_APP + 3 )
+#define KX_FL_TIMER      1
+static void kx_fl_dns_done( void *d ) ;
+static void kx_fl_dns_timeout( void ) ;
+static void kx_fl_probe_done( void *p ) ;
+
 static LRESULT CALLBACK kx_gf_wndproc( HWND h, UINT msg, WPARAM wp, LPARAM lp ) {
 	if( msg == KX_GF_WM_DONE ) { kx_gf_checked( (kx_gf_check_t *)lp ) ; return 0 ; }
+	if( msg == KX_FL_WM_DNS ) { kx_fl_dns_done( (void *)lp ) ; return 0 ; }
+	if( msg == KX_FL_WM_PROBE ) { kx_fl_probe_done( (void *)lp ) ; return 0 ; }
+	if( msg == WM_TIMER && wp == KX_FL_TIMER ) { kx_fl_dns_timeout() ; return 0 ; }
 	return DefWindowProc( h, msg, wp, lp ) ;
 }
 
@@ -3465,6 +3996,468 @@ void GetFile( HWND hwnd ) {
 	  }
 	}
 	kx_gf_open_box( hwnd, why, text ) ;
+}
+
+/* ---- OSC 8 file://host/path links: the session's server? -------------------
+ *
+ * kitty_url.c (kitty_url_file_remote) hands over a file:// link whose host is
+ * not this PC, after what it can check at once: a signal that the shell went
+ * on to another machine (then it shows its window itself), and the names the
+ * shell's signals and the session give the server - OSC 3008 hostname=, the
+ * OSC 7 baseline, OSC 1337 RemoteHost=, a window title user@host, the
+ * session's Host Name. `by` is the one that matched, or NULL; then two more,
+ * off the terminal's thread, the first hit winning:
+ *   6. DNS: the link's host and the session's Host Name resolve to a shared
+ *      address (a worker thread; KX_GF_TIMEOUT_MS at most, then no hit),
+ *   7. klink -batch "hostname; hostname -f" on the session's server, once a
+ *      session (the answer is kept), only over a shared connection or a login
+ *      without a prompt (kx_gf_silent_login); a failure is no hit.
+ * Matched: kscp -stat, as Get File checks a path (kx_fl_stat). A file goes
+ * the Get File route (the notice, the Save-As with its name filled in, kscp
+ * with -share), a folder opens in WinSCP, else FileZilla, else the path goes
+ * to the clipboard and the folder's listing (kscp -ls) to the transfer window
+ * (kx_fl_folder). Missing on the server, or no match: the OSC 8 window of
+ * kitty_url.c. A check that cannot run (an old kscp, no login without a
+ * prompt, no answer) opens the Get File box with the reason and the path.
+ * One link at a time: a click while DNS or the probe runs is passed over.
+ */
+typedef struct {
+	HWND owner ;
+	char *uri, *lhost, *path ;     /* the link, its host, its decoded path */
+} kx_fl_t ;
+static kx_fl_t *kx_fl_cur = NULL ;  /* the link DNS or the probe works for */
+
+typedef struct { kx_fl_t *f ; char *a, *b ; int hit ; } kx_fl_dns_t ;
+static kx_fl_dns_t *kx_fl_dns_cur = NULL ;   /* the lookup the timer waits for */
+
+typedef struct { kx_fl_t *f ; HANDLE proc, rd ; int timedout ; char *out ; } kx_fl_probe_t ;
+static int kx_probe_done = 0 ;      /* the probe ran this session */
+static char kx_probe_short[HM_HOST_MAX + 1], kx_probe_fqdn[HM_HOST_MAX + 1] ;
+
+static void kx_fl_free( kx_fl_t *f ) {
+	if( !f ) return ;
+	if( kx_fl_cur == f ) kx_fl_cur = NULL ;
+	sfree( f->uri ) ; sfree( f->lhost ) ; sfree( f->path ) ;
+	sfree( f ) ;
+}
+
+/* path (UTF-8) as the clipboard's text; 0 = not, *err = Windows' error. */
+static int kx_clip_put( HWND hwnd, const char *path, DWORD *err ) {
+	int n = MultiByteToWideChar( CP_UTF8, 0, path, -1, NULL, 0 ), tries ;
+	HGLOBAL h ;
+	wchar_t *w ;
+	*err = 0 ;
+	if( n <= 0 ) { *err = GetLastError() ; return 0 ; }
+	if( ( h = GlobalAlloc( GMEM_MOVEABLE, (SIZE_T)n * sizeof(wchar_t) ) ) == NULL ) { *err = GetLastError() ; return 0 ; }
+	w = (wchar_t *)GlobalLock( h ) ;
+	MultiByteToWideChar( CP_UTF8, 0, path, -1, w, n ) ;
+	GlobalUnlock( h ) ;
+	/* another program may hold the clipboard for a moment */
+	for( tries = 0 ; !OpenClipboard( hwnd ) ; tries++ ) {
+		if( tries >= 10 ) { *err = GetLastError() ; GlobalFree( h ) ; return 0 ; }
+		Sleep( 20 ) ;
+	}
+	EmptyClipboard() ;
+	if( !SetClipboardData( CF_UNICODETEXT, h ) ) {
+		*err = GetLastError() ;
+		CloseClipboard() ;
+		GlobalFree( h ) ;
+		return 0 ;
+	}
+	CloseClipboard() ;                 /* the clipboard owns h now */
+	return 1 ;
+}
+
+void kitty_xfer_copy_path( HWND hwnd, const char * path ) {
+	DWORD err ;
+	char *m ;
+	if( kx_clip_put( hwnd, path, &err ) ) {
+		m = dupprintf( KT_OSC8_FILE_COPIED, path ) ;
+		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, KX_GF_ACCENT, 0, NULL, 0 ) ;
+	} else {
+		m = dupprintf( KT_OSC8_FILE_COPY_FAILED, kitty_win_reason( err ) ) ;
+		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, RGB( 190, 110, 0 ), 0, NULL, 0 ) ;
+	}
+	kx_gf_trace_notice( m ) ;
+	sfree( m ) ;
+}
+
+/* The folder's listing in the transfer window: kscp -ls, as Get File runs
+ * kscp. The window stays open (kx_listing_next). */
+static void kx_fl_list( HWND hwnd, const char *folder ) {
+	strbuf *buffer = strbuf_new_nm(), *src ;
+	kx_kscp_line_t k ;
+	char *what ;
+	if( !kx_kscp_line( buffer, &k, folder ) ) {
+		strbuf_free( buffer ) ;
+		kx_report( KT_GETFILE_BOX_CAP, KT_XFER_KSCP_NOT_FOUND ) ;
+		return ;
+	}
+	bcat( buffer, "-batch -ls " ) ;
+	src = strbuf_new() ;
+	kx_kscp_remote( src ) ;
+	bcat( src, folder ) ;
+	qcat( buffer, src->s ) ;
+	strbuf_free( src ) ;
+	chdir( InitialDirectory ) ;
+	debug_logevent_redacted2( "List", buffer->s, k.pw_at, k.pw_len, k.px_at, k.px_len ) ;
+	what = dupprintf( KT_XFER_LISTING_OF, folder ) ;
+	kx_listing_next = 1 ;
+	kitty_run_xfer( hwnd, buffer->s, what, NULL, 0, NULL, NULL, NULL, NULL,
+	                INVALID_HANDLE_VALUE, NULL, 0, k.pwmap ) ;
+	kx_listing_next = 0 ;
+	sfree( what ) ;
+	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
+	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;
+	if( k.pwmap ) CloseHandle( k.pwmap ) ;
+}
+
+/* A folder on the server: WinSCP there, else FileZilla there, else the path
+ * to the clipboard and the listing. */
+static void kx_fl_folder( HWND hwnd, const char *path ) {
+	DWORD err ;
+	char *m ;
+	if( !IsWindow( hwnd ) ) return ;
+	if( kitty_xfer_tool_ready( 1 ) ) {
+		char *dir = dupstr( path ) ;
+		StartWinSCP( hwnd, dir, NULL, NULL ) ;
+		sfree( dir ) ;
+		return ;
+	}
+	if( kitty_xfer_tool_ready( 2 ) ) {
+		StartFileZillaDir( hwnd, path ) ;
+		return ;
+	}
+	if( kx_clip_put( hwnd, path, &err ) ) {
+		m = dupstr( KT_OSC8_FILE_NO_FOLDER_PROGRAM ) ;
+		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, KX_GF_ACCENT, 0, NULL, 0 ) ;
+	} else {
+		m = dupprintf( KT_OSC8_FILE_COPY_FAILED, kitty_win_reason( err ) ) ;
+		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, RGB( 190, 110, 0 ), 0, NULL, 0 ) ;
+	}
+	kx_gf_trace_notice( m ) ;
+	sfree( m ) ;
+	kx_fl_list( hwnd, path ) ;
+}
+
+/* Matched: the path checked with kscp -stat, as Get File checks one. */
+static void kx_again_filelink( void *v ) ;
+static void kx_fl_stat( HWND hwnd, const char *uri, const char *lhost, const char *path ) {
+	const char *host = conf_get_str( conf, CONF_host ) ;
+	char *why = NULL ;
+	if( !kitty_xfer_tool_ready( 0 ) ) {
+		kx_report( KT_GETFILE_BOX_CAP, KT_XFER_KSCP_NOT_FOUND ) ;
+		debug_logevent( "%s", KT_XFER_KSCP_NOT_FOUND ) ;
+		return ;
+	}
+	{	kx_again_t *g = kx_again( hwnd ) ;      /* kscp allowed on a question: again */
+		g->a = dupstr( uri ) ; g->b = dupstr( lhost ) ; g->c = dupstr( path ) ;
+		if( !kitty_helper_ready( hwnd, PSCPPath, 1, 0, kx_again_filelink, g, kx_again_free ) )
+			return ;
+	}
+	if( kx_gf_checking ) return ;            /* a check runs: one at a time */
+	if( !kx_helper_has_flag( PSCPPath, "KiTTYStat" ) ) {
+		why = dupstr( KT_GETFILE_WHY_OLDKSCP ) ;
+	} else if( !kx_gf_silent_login() ) {
+		why = dupstr( KT_GETFILE_WHY_NOLOGIN ) ;
+	} else if( kx_gf_window() ) {
+		kx_gf_check_t *c = snew( kx_gf_check_t ) ;
+		char *msg ;
+		memset( c, 0, sizeof(*c) ) ;
+		c->owner = hwnd ;
+		c->text = dupstr( path ) ;
+		c->remote = dupstr( path ) ;
+		c->host = dupstr( host ) ;
+		c->link = 1 ;
+		c->uri = dupstr( uri ) ;
+		c->lhost = dupstr( lhost ) ;
+		kx_gf_checking = 1 ;
+		msg = dupprintf( KT_GETFILE_CHECKING, host, c->remote ) ;
+		if( kx_gf_start_check( c ) ) {
+			kitty_notice_show_ex( KT_GETFILE_FOUND_CAP, msg, KX_GF_ACCENT,
+			                      ( KX_GF_TIMEOUT_MS / 1000 ) + 2, NULL, 0,
+			                      kx_gf_checking_closed, &kx_gf_checking_token ) ;
+			kx_gf_trace_notice( msg ) ;
+			sfree( msg ) ;
+			return ;
+		}
+		sfree( msg ) ;
+		kx_gf_checking = 0 ;
+		why = dupprintf( KT_GETFILE_WHY_ERROR, ( c->err && c->err[0] ) ? c->err : KT_GETFILE_NO_ANSWER ) ;
+		kx_gf_check_free( c ) ;
+	} else {
+		why = dupprintf( KT_GETFILE_WHY_ERROR, KT_GETFILE_NO_ANSWER ) ;
+	}
+	kx_gf_open_box( hwnd, why, dupstr( path ) ) ;
+}
+static void kx_again_filelink( void *v ) {
+	kx_again_t *g = (kx_again_t *)v ;
+	if( IsWindow( g->hwnd ) ) kx_fl_stat( g->hwnd, g->a, g->b, g->c ) ;
+}
+
+static void kx_fl_hit( kx_fl_t *f, const char *by ) {
+	debug_logevent( KT_OSC8_FILE_LOG_MATCH, f->lhost, by ) ;
+	if( IsWindow( f->owner ) ) kx_fl_stat( f->owner, f->uri, f->lhost, f->path ) ;
+	kx_fl_free( f ) ;
+}
+
+static void kx_fl_nomatch( kx_fl_t *f ) {
+	debug_logevent( KT_OSC8_FILE_LOG_NOMATCH, f->lhost ) ;
+	if( IsWindow( f->owner ) ) kitty_url_file_box( f->owner, f->uri, f->lhost, f->path, 0 ) ;
+	kx_fl_free( f ) ;
+}
+
+/* ---- 6. DNS ---- */
+typedef int ( WSAAPI *kx_gai_fn )( const char *, const char *, const struct addrinfo *, struct addrinfo ** ) ;
+typedef void ( WSAAPI *kx_fai_fn )( struct addrinfo * ) ;
+
+static int kx_addr_same( const struct addrinfo *x, const struct addrinfo *y ) {
+	if( x->ai_family != y->ai_family || !x->ai_addr || !y->ai_addr ) return 0 ;
+	if( x->ai_family == AF_INET )
+		return !memcmp( &((const struct sockaddr_in *)x->ai_addr)->sin_addr,
+		                &((const struct sockaddr_in *)y->ai_addr)->sin_addr, sizeof(struct in_addr) ) ;
+	if( x->ai_family == AF_INET6 )
+		return !memcmp( &((const struct sockaddr_in6 *)x->ai_addr)->sin6_addr,
+		                &((const struct sockaddr_in6 *)y->ai_addr)->sin6_addr, sizeof(struct in6_addr) ) ;
+	return 0 ;
+}
+
+/* Both names looked up; d->hit = they share an address. getaddrinfo is
+ * taken from the ws2_32.dll the network code loaded (it has no time limit
+ * of its own: the terminal's thread waits for this one only up to its
+ * timer). */
+static DWORD WINAPI kx_fl_dns_thread( LPVOID v ) {
+	kx_fl_dns_t *d = (kx_fl_dns_t *)v ;
+	HMODULE ws = GetModuleHandleA( "ws2_32.dll" ) ;
+	kx_gai_fn gai = ws ? (kx_gai_fn)(void (*)(void))GetProcAddress( ws, "getaddrinfo" ) : NULL ;
+	kx_fai_fn fai = ws ? (kx_fai_fn)(void (*)(void))GetProcAddress( ws, "freeaddrinfo" ) : NULL ;
+	if( gai && fai ) {
+		struct addrinfo hints, *ra = NULL, *rb = NULL, *x, *y ;
+		memset( &hints, 0, sizeof(hints) ) ;
+		hints.ai_family = AF_UNSPEC ;
+		hints.ai_socktype = SOCK_STREAM ;
+		if( gai( d->a, NULL, &hints, &ra ) == 0 && gai( d->b, NULL, &hints, &rb ) == 0 )
+			for( x = ra ; x && !d->hit ; x = x->ai_next )
+				for( y = rb ; y && !d->hit ; y = y->ai_next )
+					if( kx_addr_same( x, y ) ) d->hit = 1 ;
+		if( ra ) fai( ra ) ;
+		if( rb ) fai( rb ) ;
+	}
+	if( !kx_gf_msgwin || !PostMessage( kx_gf_msgwin, KX_FL_WM_DNS, 0, (LPARAM)d ) ) {
+		sfree( d->a ) ; sfree( d->b ) ; sfree( d ) ;
+	}
+	return 0 ;
+}
+
+static int kx_fl_dns_start( kx_fl_t *f ) {
+	const char *sh = conf_get_str( conf, CONF_host ) ;
+	kx_fl_dns_t *d ;
+	HANDLE t ;
+	if( !sh || !sh[0] || !kx_gf_window() ) return 0 ;
+	d = snew( kx_fl_dns_t ) ;
+	d->f = f ; d->a = dupstr( f->lhost ) ; d->b = dupstr( sh ) ; d->hit = 0 ;
+	if( ( t = CreateThread( NULL, 0, kx_fl_dns_thread, d, 0, NULL ) ) == NULL ) {
+		sfree( d->a ) ; sfree( d->b ) ; sfree( d ) ;
+		return 0 ;
+	}
+	CloseHandle( t ) ;
+	kx_fl_dns_cur = d ;
+	SetTimer( kx_gf_msgwin, KX_FL_TIMER, KX_GF_TIMEOUT_MS, NULL ) ;
+	return 1 ;
+}
+
+/* ---- 7. the klink probe ---- */
+static int kx_fl_probe_same( const char *lhost ) {
+	return hm_host_same( lhost, kx_probe_short ) || hm_host_same( lhost, kx_probe_fqdn ) ;
+}
+
+static DWORD WINAPI kx_fl_probe_thread( LPVOID v ) {
+	kx_fl_probe_t *p = (kx_fl_probe_t *)v ;
+	strbuf *out = strbuf_new() ;
+	DWORD start = GetTickCount() ;
+	for( ;; ) {
+		DWORD w ;
+		kx_gf_drain( p->rd, out ) ;
+		if( GetTickCount() - start >= KX_GF_TIMEOUT_MS ) {
+			TerminateProcess( p->proc, 1 ) ;
+			p->timedout = 1 ;
+			break ;
+		}
+		w = WaitForSingleObject( p->proc, 50 ) ;
+		if( w == WAIT_OBJECT_0 ) { kx_gf_drain( p->rd, out ) ; break ; }
+		if( w == WAIT_FAILED ) break ;
+	}
+	p->out = strbuf_to_str( out ) ;
+	if( !kx_gf_msgwin || !PostMessage( kx_gf_msgwin, KX_FL_WM_PROBE, 0, (LPARAM)p ) ) {
+		CloseHandle( p->proc ) ; CloseHandle( p->rd ) ;
+		sfree( p->out ) ; sfree( p ) ;
+	}
+	return 0 ;
+}
+
+/* klink beside kitty.exe, hidden, on the session's server: -share when the
+ * session shares its connection, else its own login with the session's
+ * password (never on the command line), key file or agent. 1 = running (the
+ * worker has p); 0 = not, *why the reason (sfree it). */
+static int kx_fl_probe_start( kx_fl_probe_t *p, char **why ) {
+	char *klink = kitty_hkv_klink_path() ;
+	const char *user = conf_get_str_ambi( conf, CONF_username, NULL ) ;
+	strbuf *cmd, *tgt ;
+	SECURITY_ATTRIBUTES sa ;
+	HANDLE wr = NULL, hs[2], t, pwmap = NULL ;
+	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
+	int nh = 0, ok, pwfiles = 0 ;
+	*why = NULL ;
+	if( !klink[0] || !existfile( klink ) ) {
+		*why = dupprintf( KT_OSC8_FILE_PROBE_NOKLINK, klink ) ;
+		sfree( klink ) ;
+		return 0 ;
+	}
+	cmd = strbuf_new_nm() ;
+	put_fmt( cmd, "\"%s\" -ssh -batch ", klink ) ;
+	if( conf_get_bool( conf, CONF_ssh_connection_sharing ) ) bcat( cmd, "-share " ) ;
+	put_fmt( cmd, "-P %d ", conf_get_int( conf, CONF_port ) ) ;
+	if( !kitty_pw_empty( conf, CONF_password ) ) {
+		char pw[KITTY_PW_MAX+1], tok[64] ;
+		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
+		if( kx_helper_has_flag( klink, "KiTTYPasswordHandle" )
+		    && ( pwmap = kitty_pwhandle_make( pw, tok, sizeof(tok) ) ) != NULL ) {
+			bcat( cmd, "-pwhandle " ) ; bcat( cmd, tok ) ; bcat( cmd, " " ) ;
+		} else {
+			char *line = kx_helper_reads_protected( klink ) ? kitty_pwfile_line( pw ) : NULL ;
+			const char *pf = kx_password_file( line ? line : pw ) ;
+			if( pf ) { bcat( cmd, "-pwfile " ) ; qcat( cmd, pf ) ; bcat( cmd, " " ) ; pwfiles++ ; }
+			if( line ) { smemclr( line, strlen( line ) ) ; sfree( line ) ; }
+		}
+		smemclr( pw, sizeof(pw) ) ;
+	}
+	{ const char *kf = kx_helper_keyfile( conf ) ;
+	  if( kf != NULL ) { bcat( cmd, "-i " ) ; qcat( cmd, kf ) ; bcat( cmd, " " ) ; } }
+	tgt = strbuf_new() ;
+	if( user && user[0] ) { bcat( tgt, user ) ; bcat( tgt, "@" ) ; }
+	bcat( tgt, conf_get_str( conf, CONF_host ) ) ;
+	qcat( cmd, tgt->s ) ; bcat( cmd, " " ) ;
+	strbuf_free( tgt ) ;
+	qcat( cmd, "hostname; hostname -f" ) ;
+
+	memset( &sa, 0, sizeof(sa) ) ; sa.nLength = sizeof(sa) ; sa.bInheritHandle = TRUE ;
+	if( !CreatePipe( &p->rd, &wr, &sa, 0 ) ) {
+		*why = dupprintf( KT_OSC8_FILE_PROBE_NOSTART, kitty_win_reason( GetLastError() ) ) ;
+		if( pwmap ) CloseHandle( pwmap ) ;
+		if( pwfiles ) kx_pwfiles_release( 1 ) ;
+		strbuf_free( cmd ) ; sfree( klink ) ;
+		return 0 ;
+	}
+	SetHandleInformation( p->rd, HANDLE_FLAG_INHERIT, 0 ) ;
+	memset( &si, 0, sizeof(si) ) ; si.cb = sizeof(si) ;
+	si.dwFlags = STARTF_USESTDHANDLES ;
+	si.hStdOutput = wr ; si.hStdError = wr ; si.hStdInput = NULL ;
+	memset( &pi, 0, sizeof(pi) ) ;
+	hs[nh++] = wr ;
+	if( pwmap ) hs[nh++] = pwmap ;
+	chdir( InitialDirectory ) ;
+	ok = kitty_helper_start_handles( klink, cmd->s, CREATE_NO_WINDOW, NULL, &si, &pi, hs, nh ) ;
+	if( !ok ) *why = dupprintf( KT_OSC8_FILE_PROBE_NOSTART, kitty_win_reason( GetLastError() ) ) ;
+	strbuf_free( cmd ) ;                        /* cleared: it may hold a password file's path */
+	sfree( klink ) ;
+	CloseHandle( wr ) ;
+	if( pwmap ) CloseHandle( pwmap ) ;
+	if( pwfiles ) kx_pwfiles_release( ok ? 0 : 1 ) ;
+	if( !ok ) { CloseHandle( p->rd ) ; p->rd = NULL ; return 0 ; }
+	CloseHandle( pi.hThread ) ;
+	p->proc = pi.hProcess ;
+	if( ( t = CreateThread( NULL, 0, kx_fl_probe_thread, p, 0, NULL ) ) == NULL ) {
+		*why = dupprintf( KT_OSC8_FILE_PROBE_NOSTART, kitty_win_reason( GetLastError() ) ) ;
+		TerminateProcess( p->proc, 1 ) ;
+		CloseHandle( p->proc ) ; p->proc = NULL ;
+		CloseHandle( p->rd ) ; p->rd = NULL ;
+		return 0 ;
+	}
+	CloseHandle( t ) ;
+	return 1 ;
+}
+
+/* DNS found nothing: the probe's answer (kept, or asked for now). */
+static void kx_fl_after_dns( kx_fl_t *f, int hit ) {
+	kx_fl_probe_t *p ;
+	char *why = NULL ;
+	if( hit ) { kx_fl_hit( f, KT_OSC8_FILE_BY_DNS ) ; return ; }
+	if( kx_probe_done ) {
+		if( kx_fl_probe_same( f->lhost ) ) kx_fl_hit( f, KT_OSC8_FILE_BY_PROBE ) ;
+		else kx_fl_nomatch( f ) ;
+		return ;
+	}
+	if( !kx_gf_silent_login() ) {
+		debug_logevent( KT_OSC8_FILE_LOG_PROBE_FAIL, KT_OSC8_FILE_PROBE_NOLOGIN ) ;
+		kx_fl_nomatch( f ) ;
+		return ;
+	}
+	p = snew( kx_fl_probe_t ) ;
+	memset( p, 0, sizeof(*p) ) ;
+	p->f = f ;
+	debug_logevent( "%s", KT_OSC8_FILE_LOG_PROBE_RUN ) ;
+	if( !kx_gf_window() || !kx_fl_probe_start( p, &why ) ) {
+		debug_logevent( KT_OSC8_FILE_LOG_PROBE_FAIL, why ? why : KT_OSC8_FILE_PROBE_EMPTY ) ;
+		sfree( why ) ; sfree( p ) ;
+		kx_probe_done = 1 ;            /* once a session: not again */
+		kx_fl_nomatch( f ) ;
+	}
+}
+
+static void kx_fl_dns_done( void *v ) {
+	kx_fl_dns_t *d = (kx_fl_dns_t *)v ;
+	kx_fl_t *f = d->f ;
+	int hit = d->hit, current = ( d == kx_fl_dns_cur ) ;
+	sfree( d->a ) ; sfree( d->b ) ; sfree( d ) ;
+	if( !current ) return ;            /* too late: the timer went on without it */
+	KillTimer( kx_gf_msgwin, KX_FL_TIMER ) ;
+	kx_fl_dns_cur = NULL ;
+	kx_fl_after_dns( f, hit ) ;
+}
+
+static void kx_fl_dns_timeout( void ) {
+	kx_fl_dns_t *d = kx_fl_dns_cur ;
+	KillTimer( kx_gf_msgwin, KX_FL_TIMER ) ;
+	if( !d ) return ;
+	kx_fl_dns_cur = NULL ;             /* d is freed when its answer comes */
+	kx_fl_after_dns( d->f, 0 ) ;
+}
+
+static void kx_fl_probe_done( void *v ) {
+	kx_fl_probe_t *p = (kx_fl_probe_t *)v ;
+	kx_fl_t *f = p->f ;
+	const char *out = p->out ? p->out : "" ;
+	if( p->proc ) CloseHandle( p->proc ) ;
+	if( p->rd ) CloseHandle( p->rd ) ;
+	kx_probe_done = 1 ;
+	if( p->timedout ) {
+		debug_logevent( KT_OSC8_FILE_LOG_PROBE_FAIL, KT_OSC8_FILE_PROBE_TIMEOUT ) ;
+	} else if( hm_probe_names( out, kx_probe_short, sizeof(kx_probe_short),
+	                           kx_probe_fqdn, sizeof(kx_probe_fqdn) ) == 0 ) {
+		char *last = kx_gf_last_line_dup( out ) ;
+		debug_logevent( KT_OSC8_FILE_LOG_PROBE_FAIL, strstr( out, KX_BATCH_PROMPT ) ? KT_GETFILE_WHY_NOLOGIN
+		                                             : last ? last : KT_OSC8_FILE_PROBE_EMPTY ) ;
+		sfree( last ) ;
+	}
+	sfree( p->out ) ; sfree( p ) ;
+	if( kx_fl_probe_same( f->lhost ) ) kx_fl_hit( f, KT_OSC8_FILE_BY_PROBE ) ;
+	else kx_fl_nomatch( f ) ;
+}
+
+void kitty_xfer_file_link( HWND hwnd, const char * uri, const char * lhost,
+                           const char * path, const char * by ) {
+	kx_fl_t *f ;
+	if( by ) {
+		debug_logevent( KT_OSC8_FILE_LOG_MATCH, lhost, by ) ;
+		kx_fl_stat( hwnd, uri, lhost, path ) ;
+		return ;
+	}
+	if( kx_fl_cur ) return ;           /* one link at a time */
+	f = snew( kx_fl_t ) ;
+	f->owner = hwnd ;
+	f->uri = dupstr( uri ) ; f->lhost = dupstr( lhost ) ; f->path = dupstr( path ) ;
+	kx_fl_cur = f ;
+	if( !kx_fl_dns_start( f ) ) kx_fl_after_dns( f, 0 ) ;
 }
 
 // Start a local command (Internet Explorer for example)
@@ -3760,7 +4753,7 @@ static void kx_anyway_filezilla_done( int yes, void *v ) {
 	kx_anyway_box = NULL ;
 	if( yes && IsWindow( g->hwnd ) ) {
 		kx_anyway_yes = 1 ;
-		StartFileZilla( g->hwnd ) ;
+		StartFileZillaDir( g->hwnd, g->a ) ;
 		kx_anyway_yes = 0 ;
 	}
 	kx_again_free( g ) ;
@@ -4278,6 +5271,12 @@ static void kx_fzdir_release( int now ) {
 
 /* Tools > Start FileZilla. */
 void StartFileZilla( HWND hwnd ) {
+	StartFileZillaDir( hwnd, NULL ) ;
+}
+
+/* FileZilla at the remote folder dir; NULL = the shell's folder (OSC 7
+ * tracking on), as Tools > Start FileZilla. */
+void StartFileZillaDir( HWND hwnd, const char * dir ) {
 	strbuf *cmd ;
 	char *user, *host ;
 	const char *proto ; int fzproto, fzprot, port, p ;
@@ -4308,9 +5307,12 @@ void StartFileZilla( HWND hwnd ) {
 	/* A Hello-protected key the agent is not holding: FileZilla has no way to
 	 * take a key file from us, so it can only fail - "Start FileZilla
 	 * anyway?" first, as for WinSCP. */
-	if( !kx_anyway( hwnd, KT_XFER_START_FILEZILLA_ANYWAY, kx_anyway_filezilla_done, kx_again( hwnd ) ) ) {
+	{ kx_again_t *g = kx_again( hwnd ) ;
+	  g->a = dir ? dupstr( dir ) : NULL ;     /* a Yes starts it at the same folder */
+	  if( !kx_anyway( hwnd, KT_XFER_START_FILEZILLA_ANYWAY, kx_anyway_filezilla_done, g ) ) {
 		smemclr( pw, sizeof(pw) ) ;
 		return ;
+	  }
 	}
 	/* The REAL path, quoted - not GetShortPathName(): started through its 8.3
 	 * name (C:\PROGRA~1\FILEZI~1\FILEZI~1.EXE) FileZilla exits at once, before
@@ -4384,10 +5386,11 @@ void StartFileZilla( HWND hwnd ) {
 		if( poss( ":", host ) > 0 ) { bcat( url, "[" ) ; bcat( url, host ) ; bcat( url, "]" ) ; }
 		else bcat( url, host ) ;
 		put_fmt( url, ":%d", port ) ;
-		/* The shell's folder (OSC 7 tracking on), as StartWinSCP hands it
-		 * over: FileZilla opens there. Tracking off or no folder: none, as
-		 * before. The Site Manager entry of mode 1 carries no folder. */
-		{ const char *fdir = kitty_current_dir() ;
+		/* The folder asked for, else the shell's folder (OSC 7 tracking
+		 * on), as StartWinSCP hands it over: FileZilla opens there.
+		 * Tracking off or no folder: none, as before. The Site Manager
+		 * entry of mode 1 carries no folder. */
+		{ const char *fdir = dir ? dir : kitty_current_dir() ;
 		  if( fdir != NULL && fdir[0] ) {
 			bcat( url, fdir ) ;
 			if( fdir[strlen(fdir)-1] != '/' ) bcat( url, "/" ) ;

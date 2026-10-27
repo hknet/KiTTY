@@ -890,6 +890,25 @@ static void test_moved_machine(void)
     ctx_clear(&s);
 }
 
+static void test_server_host(void)
+{
+    CtxStack s;
+    const char *h;
+    ctx_init(&s);
+
+    CHECK(ctx_server_host(&s) == NULL, "server: nothing open");
+    st(&s, "start=a;type=shell;user=carol");
+    CHECK(ctx_server_host(&s) == NULL, "server: no hostname sent");
+    st(&s, "start=b;type=shell;hostname=server01;machineid=" MID_A);
+    h = ctx_server_host(&s);
+    CHECK(h && !strcmp(h, "server01"), "server: the first hostname");
+    st(&s, "start=c;type=remote;targethost=db02");
+    st(&s, "start=d;type=shell;hostname=db02;machineid=" MID_B);
+    h = ctx_server_host(&s);
+    CHECK(h && !strcmp(h, "server01"), "server: the outermost, not the far shell");
+    ctx_clear(&s);
+}
+
 static void test_effective_user(void)
 {
     CtxStack s;
@@ -1175,6 +1194,7 @@ int main(void)
     test_effective_user();
     test_runs_as();
     test_moved_machine();
+    test_server_host();
     test_seq_max();
     test_names();
 

@@ -6378,6 +6378,11 @@ static void do_osc(Terminal *term)
             /* fall through: parameter 0 means set both */
           case 2:
           case 21:
+#ifdef MOD_PERSO
+            /* KiTTY: a title "user@host: ~/dir" names the shell's host,
+             * shown or not (term_hostsig_title) */
+            term_hostsig_title(term, term->osc_string);
+#endif
             if (!term->no_remote_wintitle) {
 #ifdef MOD_PERSO
                 /* KiTTY: the host's title; the shown one is computed */

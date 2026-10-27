@@ -9,8 +9,8 @@ in KiTTY++ and what the host needs.
 
 | Feature | Sequence | KiTTY++ setting | On the host |
 |---|---|---|---|
-| Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish) |
-| Prompt marks | OSC 133 | **Terminal > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish) |
+| Current directory for uploads | OSC 7 | **Connection > File-Transfer-Settings > Track remote directory (OSC 7 shell integration)**, off by default | The [shell snippet](#shell-integration-bash-zsh-fish-ksh-tcsh) |
+| Prompt marks | OSC 133 | **Terminal > Shell Integration > Mark failed commands (OSC 133)**, on; the jump and select keys are actions on **Application > KiTTY++ Settings > Keys & Mouse > Shortcuts** | The [shell snippet](#shell-integration-bash-zsh-fish-ksh-tcsh) |
 | Contexts: failed commands, root, switched user | OSC 3008 | **Terminal > Notifications > Notice for failed commands (OSC 3008)**, off by default; **Terminal > Shell Integration > Red frame while the host reports root (OSC 3008)** and **Tinted background as root or as a switched user (OSC 3008)**, on by default | systemd 257 or later: `run0`, `systemd-nspawn`, `systemd-vmspawn` ([below](#contexts-osc-3008)) |
 | Program status | OSC 7501 | **Terminal > Notifications** and the **Title bar & Notifications** group of **Application > KiTTY++ Settings > Terminal** | A program that reports its status ([below](#program-status-osc-7501)) |
 | Desktop notifications | OSC 9, 777, 99 | **Terminal > Notifications > Desktop notifications (OSC 9, 777, 99, 7501, 3008)** | A program that sends them: `printf`, `kitten notify` |
@@ -119,9 +119,10 @@ and timg do when they see tmux); tmux does not keep them on its redraws.
 Sixel inside tmux needs a tmux built with Sixel support (3.4 and later).
 Not measured here.
 
-## Shell integration (bash, zsh, fish)
+## Shell integration (bash, zsh, fish, ksh, tcsh)
 
-One snippet per shell sends two things before every prompt:
+One snippet per shell sends two things before every prompt (ksh and tcsh
+send only the first):
 
 - **OSC 7**, the current directory. Drag-and-drop uploads, *Send File*,
   *Start WinSCP* and *Start FileZilla* use it when tracking is on.
@@ -270,6 +271,43 @@ end
 ```
 
 Reconnect, or source the file, to start.
+
+### ksh (ksh93 and mksh): end of `~/.kshrc` or `~/.mkshrc`
+
+The directory only (OSC 7). ksh has no hook around a command, so it gets no
+prompt marks. The sequence goes from `PS1` straight to the terminal, so the
+prompt keeps its width.
+
+```ksh
+# KiTTY++ shell integration: current directory (OSC 7).
+__kpp_h=$(hostname)
+__kpp_osc7() {
+    if [ -n "$TMUX" ]; then printf '\033Ptmux;\033\033]7;file://%s%s\007\033\\' "$__kpp_h" "$PWD"
+    elif [ -n "$STY" ]; then printf '\033P\033]7;file://%s%s\007\033\\' "$__kpp_h" "$PWD"
+    else printf '\033]7;file://%s%s\007' "$__kpp_h" "$PWD"; fi
+}
+case "$PS1" in
+  *__kpp_osc7*) ;;
+  *) PS1='$(__kpp_osc7 >/dev/tty)'"${PS1:-\$ }" ;;
+esac
+```
+
+### tcsh: end of `~/.tcshrc`
+
+The directory only (OSC 7). The snippet defines the `precmd` alias. An
+existing `precmd` alias has to take the `printf` line into its own.
+
+```tcsh
+# KiTTY++ shell integration: current directory (OSC 7).
+set __kpp_h = `hostname`
+if ($?TMUX) then
+    alias precmd 'printf "\033Ptmux;\033\033]7;file://%s%s\007\033\\" "$__kpp_h" "$cwd"'
+else if ($?STY) then
+    alias precmd 'printf "\033P\033]7;file://%s%s\007\033\\" "$__kpp_h" "$cwd"'
+else
+    alias precmd 'printf "\033]7;file://%s%s\007" "$__kpp_h" "$cwd"'
+endif
+```
 
 ### Notes
 

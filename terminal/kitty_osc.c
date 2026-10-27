@@ -33,6 +33,7 @@
 #include "windows/kitty_gui.h"
 #include "kitty_term_int.h"
 #include "../kitty/kitty_ctx3008.h"
+#include "../kitty/kitty_hostmatch.h"   /* term_hostsig_*: the host of a title, of RemoteHost= */
 #ifdef MOD_FAR2L
 #include "../kitty/kitty_far2l_image_term.h"
 #endif
@@ -704,6 +705,36 @@ bool term_alt_screen_shown(Terminal *term)
     return term->alt_which != 0;
 }
 
+/*
+ * The host names the shell's own signals carry, for OSC 8 file:// links
+ * (kitty_xfer.c kitty_xfer_file_link): a window title that starts with
+ * user@host (bash, zsh and their frameworks set one at every prompt), and
+ * iTerm2's shell integration report OSC 1337 ; RemoteHost=user@host. The
+ * first after the connection began is the session's server, a later one
+ * naming another host means the shell went on to it. Information only:
+ * nothing is run or opened from it.
+ */
+void term_hostsig(Terminal *term, int which, const char **first,
+                  const char **now)
+{
+    *first = which == TERM_HS_TITLE ? term->hs_title_first : term->hs_rh_first;
+    *now = which == TERM_HS_TITLE ? term->hs_title_now : term->hs_rh_now;
+}
+
+void term_hostsig_title(Terminal *term, const char *title)
+{
+    char host[HM_HOST_MAX + 1];
+    if (!term->osc_str_overflow && hm_title_host(title, host, sizeof(host)))
+        hm_track(term->hs_title_first, term->hs_title_now,
+                 sizeof(term->hs_title_first), host);
+}
+
+void term_hostsig_reset(Terminal *term)
+{
+    term->hs_title_first[0] = term->hs_title_now[0] = '\0';
+    term->hs_rh_first[0] = term->hs_rh_now[0] = '\0';
+}
+
 void kitty_ctx3008_free(Terminal *term)
 {
     if (term->ctx3008) {
@@ -816,6 +847,16 @@ bool kitty_osc_dispatch(Terminal *term)
         if (!term->osc_str_overflow &&
             !strcmp(term->osc_string, "ReportCellSize")) {
             term_report_cell_size(term);
+            break;
+        }
+        /* KiTTY: iTerm2's shell integration names the shell's host
+         * (term_hostsig_*) */
+        if (!term->osc_str_overflow &&
+            !strncmp(term->osc_string, "RemoteHost=", 11)) {
+            char host[HM_HOST_MAX + 1];
+            if (hm_remotehost(term->osc_string, host, sizeof(host)))
+                hm_track(term->hs_rh_first, term->hs_rh_now,
+                         sizeof(term->hs_rh_first), host);
             break;
         }
         if (conf_get_bool(term->conf, CONF_iterm_images)) {

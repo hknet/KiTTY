@@ -467,6 +467,16 @@ bool ctx_moved_machine(const CtxStack *s, const char **where)
     return true;
 }
 
+const char *ctx_server_host(const CtxStack *s)
+{
+    int i;
+
+    for (i = 0; i < s->depth; i++)
+        if (s->ctx[i].field[CTX_F_HOSTNAME])
+            return s->ctx[i].field[CTX_F_HOSTNAME];
+    return NULL;
+}
+
 CtxAs ctx_runs_as(const CtxStack *s)
 {
     const char *u = NULL;

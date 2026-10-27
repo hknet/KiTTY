@@ -18,6 +18,15 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - OSC 7: a refused folder writes one line with the reason to the terminal
   window's Event Log.
 - OSC 7: Start FileZilla opens the tracked folder too.
+- Get File: a key file with a passphrase counts as a login without a prompt
+  only while an agent may hold the key. Otherwise Get File reports what to
+  change instead of kscp's batch-mode error.
+- OSC 8 `file://` links from the session's server (`ls --hyperlink`): a
+  click downloads the file through Get File. The transfer window then offers
+  Open and Open File Location (Folder), Open not for programs and scripts.
+  The file goes through Windows' Attachment Services (zone mark, antivirus
+  scan). A folder opens in WinSCP or FileZilla.
+  A link to another host shows Open, Copy path and Close.
 
 ### Changed
 
@@ -55,6 +64,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ### Fixed
 
+- A click on the transfer balloon brings the Explorer window to the front.
 - Save settings on exit, Save in Change Settings, /save and the clipboard
   "always" answers no longer store the Host-Title or the expanded
   placeholders as the session's Window-Title.
