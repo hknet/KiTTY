@@ -316,6 +316,15 @@ void kageant_audit_decrypt(const char *fp, const char *comment,
     sfree(reqpath);
 }
 
+/* A refused request (kageant_refused_hook): ev "request", result
+ * "refused", the agent core's reason as written. The Event Log sink has no
+ * ID of its own for it and reports the whole record as message 0. Under
+ * the same switch as every other line (kitty_audit_enabled). */
+void kageant_audit_refused(const char *reason, unsigned long pid)
+{
+    kageant_audit_use("request", NULL, NULL, "refused", reason, pid);
+}
+
 /* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
 void kageant_audit_use(const char *ev, const char *fp,
                               const char *comment, const char *result,

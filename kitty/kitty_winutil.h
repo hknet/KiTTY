@@ -62,6 +62,9 @@ BOOL kitty_create_process_with_handles( const char * app, char * cmdline, DWORD 
 
 // Start the built-in editor
 void RunPuttyEd( HWND hwnd, char * filename ) ;
+/* kitty.exe -edit <file>: the same; a failed start is a modal box and a
+ * line in Windows' Application log */
+void kitty_edit_file_cli( char * filename ) ;
 
 // Display a message in the event log
 void debug_logevent( const char *fmt, ... ) ;

@@ -26,6 +26,8 @@ void kitty_demo_templates(void);
 #include "../kitty/kitty_win.h"
 #include "../kitty/kitty_winutil.h"
 #include "../kitty/kitty_dlgbox.h"
+#include "../kitty/kitty_winevent.h"   /* event 902 at the start of a mode without terminal */
+#include "../kitty/kitty_proxy.h"      /* the export's named proxies left out */
 #include "../kitty/kitty_tools.h"
 #include "../kitty/kitty_registry.h"
 #include "../kitty/kitty_storage.h"
@@ -243,6 +245,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
 
     if (handle_special_sessionname_cmdline(p, conf)) {
         if (!conf_launchable(conf) && !do_config(conf)) {
+#ifdef MOD_PERSO
+            kitty_wev_missing_features();   /* no terminal: event 902 here */
+#endif
             cleanup_exit(0);
         }
         special_launchable_argument = true;
@@ -616,8 +621,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 char *ef = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
+                kitty_wev_missing_features();   /* event 902 at every start */
                 if (existfile(ef))
-                    RunPuttyEd(NULL, ef);
+                    kitty_edit_file_cli(ef);   /* a failed start: box + event log */
                 else
                     MessageBox(NULL, KT_CLI_EDIT_FILE_NOT_FOUND,
                                KT_CAP_ERROR, MB_OK | MB_ICONERROR);
@@ -828,6 +834,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             msg = all;
             sfree(skips);
         }
+        /* the named proxies not loadable, counted in fail */
+        if ((skips = kitty_export_proxies_skipped_report()) != NULL) {
+            char *all = dupcat(msg, skips);
+            sfree(msg);
+            msg = all;
+            sfree(skips);
+        }
         kitty_cli_result(KT_CAP_SESSION_EXPORT, msg, (fail || wrapfailed));
         sfree(msg);
         cleanup_exit((fail || wrapfailed) ? 1 : 0);
@@ -1030,8 +1043,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             RegisterApplicationRestart(L"", 0);
 #endif
             NETDBG_TS("cmdline: before do_config (config box)");
-            if (!do_config(conf))
+            if (!do_config(conf)) {
+#ifdef MOD_PERSO
+                kitty_wev_missing_features();   /* no terminal: event 902 here */
+#endif
                 cleanup_exit(0);
+            }
 #ifdef MOD_PERSO
             /* KiTTY: back up the config store when the startup config box is
              * committed (Open) - portable: a dated Backups\ folder; registry:

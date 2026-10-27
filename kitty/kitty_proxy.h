@@ -27,7 +27,12 @@ void kitty_proxy_resolve_selection( Conf *conf ) ;
 int SaveProxyInfo( Conf *conf, const char *name ) ;
 int DeleteProxyInfo( const char *name ) ;
 void kitty_migrate_old_proxies( void ) ;
-int kitty_export_proxies_to_dir( const char *dir ) ;   /* Piece 7 */
+int kitty_export_proxies_to_dir( const char *dir, int *failOut ) ;   /* Piece 7 */
+/* The last export's definitions left out (not loadable), as report lines
+ * (sfree it); NULL when none was. */
+char *kitty_export_proxies_skipped_report( void ) ;
+/* Why the last LoadProxyInfo returned 0 for a definition. */
+const char *kitty_proxy_load_reason( void ) ;
 int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedOut ) ;
 int kitty_proxy_name_exists( const char *name ) ;
 int kitty_proxies_dir_collisions( const char *dir ) ;
@@ -47,5 +52,8 @@ int LoadProxyInfo( Conf * conf, const char * name ) ;
 
 /* ---- exported from kitty/kitty_proxy_gui.c ---- */
 bool kitty_proxy_panel_dirty(void);
+/* A definition LoadProxyInfo could not load: the notice with its name and
+ * kitty_proxy_load_reason(). */
+void kitty_proxy_load_failed_notice(const char *name);
 
 #endif

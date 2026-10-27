@@ -198,6 +198,12 @@ enrol, 131 Hello protect, 132 Hello unlock, 140 key file warning, 150
 re-encrypt all, 160 agent start/stop, 170 log rotation. Refusals,
 failures and key file warnings are warnings, the rest information. The
 fields of each ID, in order, are listed in \k{kitty-eventids}.
+
+Every refused request is a record too: kind \c{request}, result
+\c{refused}, the agent's reason (\q{key not found}, \q{unrecognised
+message}, \q{key usage not confirmed by user}) and the program that
+sent it. It has no event ID of its own: the Event Log gets the whole
+record as one line, event ID 0.
 }
 
 Press F1 on any page for this section; on the idle row it opens the

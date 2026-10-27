@@ -687,6 +687,14 @@ void console_eventlog(LogPolicy *lp, const char *string)
         console_logging_error(lp, string);
 }
 
+/* KiTTY: the lines that go to stderr also without -v (logevent_always);
+ * with -v console_eventlog has printed it already. */
+void console_eventlog_always(LogPolicy *lp, const char *string)
+{
+    if (!lp_verbose(lp))
+        console_logging_error(lp, string);
+}
+
 StripCtrlChars *console_stripctrl_new(
     Seat *seat, BinarySink *bs_out, SeatInteractionContext sic)
 {

@@ -929,6 +929,11 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
         put_dataz(msg, skips);
         sfree(skips);
     }
+    /* the named proxies not loadable, counted in r->fail */
+    if ((skips = kitty_export_proxies_skipped_report()) != NULL) {
+        put_dataz(msg, skips);
+        sfree(skips);
+    }
     sfree(sessdir);
     sfree(ini);
     *msgp = strbuf_to_str(msg);

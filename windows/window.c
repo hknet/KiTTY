@@ -1919,8 +1919,10 @@ static void start_backend(WinGuiSeat *wgs)
                 wgs->script_deferred = true;
                 wgs->script_defer_ticks = 0;
                 SetTimer(wgs->term_hwnd, TIMER_SCRIPT, 1500, NULL);
-            } else if (kitty_script_enabled()) {
-                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+            } else {
+                /* scriptmode=no: refused with an Event Log line there */
+                kitty_script_send_file(wgs->conf, wgs->backend, sf,
+                                       wgs->logctx, wgs->term_hwnd);
             }
         }
     }
@@ -2584,8 +2586,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         char *cl = cmdline ? cmdline : (char *)"";
         while (*cl == ' ') cl++;
         if (!strncmp(cl, "-ed ", 4) || !strcmp(cl, "-ed") ||
-            !strncmp(cl, "-edb ", 5) || !strcmp(cl, "-edb"))
+            !strncmp(cl, "-edb ", 5) || !strcmp(cl, "-edb")) {
+            kitty_wev_missing_features();   /* event 902 at every start */
             return Notepad_WinMain(inst, prev, cl, show);
+        }
 #ifdef MOD_LAUNCHER
         /* KiTTY session launcher: "kitty.exe -launcher" opens the launcher
          * window (a quick-launch list of saved sessions) instead of a session.
@@ -2660,6 +2664,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                                            L"-launcher", 0);
                 /* the master key of the window that started it */
                 kitty_mpw_consume_cmdline_switch(lcl);
+                kitty_wev_missing_features();   /* event 902 at every start */
                 return Launcher_WinMain(inst, prev, lcl, show);
             }
             /* KiTTY: "kitty.exe -manage" opens Manage Sessions alone, with
@@ -2672,6 +2677,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                     kitty_cmdline_has_token(lcl, "-restrictacl"))
                     restrict_process_acl();
                 kitty_mpw_consume_cmdline_switch(lcl);
+                kitty_wev_missing_features();   /* event 902 at every start */
                 return kitty_manage_WinMain();
             }
         }
@@ -5744,9 +5750,11 @@ static void kitty_script_picked(void *ctx, const char *path)
 {
     WinGuiSeat *wgs = kitty_wgs_of((HWND)ctx);
     kitty_script_pick = NULL;
-    if (path && wgs && wgs->backend && !kitty_script_active()) {
+    if (path && wgs && wgs->backend) {
+        /* a script started meanwhile: refused with an Event Log line */
         Filename *sf = filename_from_str(path);
-        kitty_script_send_file(wgs->conf, wgs->backend, sf);
+        kitty_script_send_file(wgs->conf, wgs->backend, sf,
+                               wgs->logctx, wgs->term_hwnd);
         filename_free(sf);
     }
 }
@@ -6024,9 +6032,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * win_seat_output gets there first and this timer is disarmed);
              * either way the hook must not fire again afterwards. */
             wgs->script_deferred = false;
-            if (wgs->backend && kitty_script_enabled()) {
+            if (wgs->backend) {
                 Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
-                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+                kitty_script_send_file(wgs->conf, wgs->backend, sf,
+                                       wgs->logctx, wgs->term_hwnd);
             }
             return 0;
         }
@@ -7207,7 +7216,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                    KT_TWIN_SCRIPT_DISABLED, NULL);
                 break;
             }
-            if (!wgs->backend || kitty_script_active() || kitty_script_pick)
+            if (wgs->backend && kitty_script_active()) {
+                logevent(wgs->logctx, KT_RUTTY_REFUSED_BUSY);
+                break;
+            }
+            if (!wgs->backend || kitty_script_pick)
                 break;
             /* the picker beside the session (kitty_script_picked) */
             kitty_script_pick = kitty_pick_async(wgs->term_hwnd,
@@ -7221,7 +7234,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                      KT_TWIN_SCRIPT_FILE_FILTER, NULL);
             if (fn && fn[0]) {
                 Filename *sf = filename_from_str(fn);
-                kitty_script_send_file(wgs->conf, wgs->backend, sf);
+                kitty_script_send_file(wgs->conf, wgs->backend, sf,
+                                       wgs->logctx, wgs->term_hwnd);
                 filename_free(sf);
             }
             sfree(fn);
@@ -13122,11 +13136,11 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
             !(ScriptFileContent != NULL && ScriptFileContent[0])) {
             wgs->script_deferred = false;
             KillTimer(wgs->term_hwnd, TIMER_SCRIPT);
-            if (kitty_script_enabled() &&
-                conf_get_int(wgs->conf, CONF_script_mode) == 1) {
+            if (conf_get_int(wgs->conf, CONF_script_mode) == 1) {
                 Filename *sf = conf_get_filename(wgs->conf, CONF_scriptfile);
                 if (sf && filename_to_str(sf)[0])
-                    kitty_script_send_file(wgs->conf, wgs->backend, sf);
+                    kitty_script_send_file(wgs->conf, wgs->backend, sf,
+                                           wgs->logctx, wgs->term_hwnd);
             }
         }
 #endif

@@ -3739,6 +3739,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     random_setup_special();
+    /* KiTTY: event 902, what this Windows lacks - at every start */
+    kitty_wev_missing_features();
     ret = DialogBoxParam(hinst, MAKEINTRESOURCE(201), NULL, MainDlgProc,
                          (LPARAM)params) != IDOK;
 

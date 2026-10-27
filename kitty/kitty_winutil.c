@@ -28,6 +28,7 @@
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_params.h"   /* GetNoticeSeconds: RunCommand's start-failure notice */
 #include <shellapi.h>       /* ShellExecuteExA: RunCommand's fallback */
+#include "kitty_renameguard.h"   /* kitty_eventlog_line: -edit's start failure */
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
 /* MOD_PERSO event-log wrapper, defined in windows/window.c */
@@ -786,7 +787,9 @@ int SetTextToClipboard( const char * buf ) {
  * the user. It closed the ADDRESSES of its two structs (leaking both handles of
  * every program it started) and never looked at the fallback's result, so
  * WinSCP, FileZilla, the ini editor and the launcher's starts failed silently. */
-int RunCommand( HWND hwnd, const char * cmd ) {
+/* report 0: nothing shown or logged on a failure, Windows' reason left in
+ * GetLastError() for the caller (kitty_edit_file_cli). */
+static int run_command_ex( HWND hwnd, const char * cmd, int report ) {
 	PROCESS_INFORMATION ProcessInformation ;
 	ZeroMemory( &ProcessInformation, sizeof(ProcessInformation) );
 	
@@ -835,15 +838,18 @@ int RunCommand( HWND hwnd, const char * cmd ) {
 		if( !ShellExecuteExA( &sei ) ) {
 			DWORD e2 = GetLastError() ;
 			SetErrorMode( olderr ) ;
-			/* Reported in the notice window (it never takes the focus) and
-			 * the Event Log: a modal box here stood in front of the live
-			 * session and stopped it until it was answered. */
-			const char *why = kitty_win_reason( err ? err : e2 ) ;
-			char *msg = dupprintf( KT_START_FAILED_FMT, cmd, why ) ;
-			debug_logevent( KT_START_FAILED_EVENT_FMT, cmd, why ) ;
-			kitty_notice_show( KT_CAP_START_FAILED, msg, RGB( 190, 110, 0 ),
-			                   GetNoticeSeconds(), NULL, 0 ) ;
-			sfree( msg ) ;
+			if( report ) {
+				/* Reported in the notice window (it never takes the focus) and
+				 * the Event Log: a modal box here stood in front of the live
+				 * session and stopped it until it was answered. */
+				const char *why = kitty_win_reason( err ? err : e2 ) ;
+				char *msg = dupprintf( KT_START_FAILED_FMT, cmd, why ) ;
+				debug_logevent( KT_START_FAILED_EVENT_FMT, cmd, why ) ;
+				kitty_notice_show( KT_CAP_START_FAILED, msg, RGB( 190, 110, 0 ),
+				                   GetNoticeSeconds(), NULL, 0 ) ;
+				sfree( msg ) ;
+			}
+			SetLastError( err ? err : e2 ) ;
 			return 0 ;
 		}
 	}
@@ -932,6 +938,40 @@ BOOL kitty_create_process_with_handles( const char * app, char * cmdline, DWORD 
 	for( i = 0 ; i < n ; i++ ) SetHandleInformation( list[i], HANDLE_FLAG_INHERIT, 0 ) ;
 	SetLastError( err ) ;
 	return ok ;
+}
+
+int RunCommand( HWND hwnd, const char * cmd ) {
+	return run_command_ex( hwnd, cmd, 1 ) ;
+}
+
+/* kitty.exe -edit <file>: the editor started on the file, in a process of
+ * its own. This process has no window and ends right after, so a failed
+ * start is a modal box (it ends only after OK) and a line in Windows'
+ * Application log, source KiTTY++, written whatever happens to the box -
+ * as the startup guards write theirs (kitty_eventlog_line). */
+void kitty_edit_file_cli( char * filename ) {
+	char *module = kitty_module_path_dup( NULL ), *cmd = NULL ;
+	char *msg, *line ;
+	const char *why ;
+	DWORD err ;
+	if( module ) {
+		cmd = dupprintf( "\"%s\" -edb %s", module, filename ) ;
+		if( run_command_ex( NULL, cmd, 0 ) ) {
+			sfree( cmd ) ;
+			sfree( module ) ;
+			return ;
+		}
+	}
+	err = GetLastError() ;
+	why = kitty_win_reason( err ) ;
+	msg = dupprintf( KT_START_FAILED_FMT, cmd ? cmd : filename, why ) ;
+	line = dupprintf( KT_START_FAILED_EVENT_FMT, cmd ? cmd : filename, why ) ;
+	kitty_eventlog_line( EVENTLOG_ERROR_TYPE, line ) ;
+	kitty_info_box( NULL, KT_CAP_START_FAILED, msg, NULL ) ;
+	sfree( line ) ;
+	sfree( msg ) ;
+	sfree( cmd ) ;
+	sfree( module ) ;
 }
 
 void RunPuttyEd( HWND hwnd, char * filename ) {

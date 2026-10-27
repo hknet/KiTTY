@@ -139,6 +139,9 @@ void ssh2_userauth_set_transport_layer(PacketProtocolLayer *userauth,
  * scope. */
 #define ppl_logevent(...) ( \
         logevent_and_free((ppl)->logctx, dupprintf(__VA_ARGS__)))
+/* KiTTY: the same, and on a console tool's stderr also without -v. */
+#define ppl_logevent_always(...) ( \
+        logevent_always_and_free((ppl)->logctx, dupprintf(__VA_ARGS__)))
 
 /* Convenience macro for protocol layers to send formatted strings to
  * the terminal. Also expects 'ppl' to be in scope. */

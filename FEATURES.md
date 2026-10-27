@@ -111,7 +111,7 @@ one is available.
   - [Menu key shortcuts definition](#menu-key-shortcuts-definition)
   - [PuTTY masquerade mode (KiClassName)](#putty-masquerade-mode-kiclassname)
   - [New command-line options](#new-command-line-options)
-  - [When this Windows is too old for something](#when-this-windows-is-too-old-for-something)
+  - [When this Windows Version is too old for something](#when-this-windows-version-is-too-old-for-something)
   - [A crash leaves a note worth attaching to a bug report](#a-crash-leaves-a-note-worth-attaching-to-a-bug-report)
   - [A 32-bit build](#a-32-bit-build)
   - [The programs refuse to start under a foreign name](#the-programs-refuse-to-start-under-a-foreign-name)
@@ -1739,13 +1739,15 @@ KiTTY++ extends PuTTY's command line with a long list of extra switches, letting
 
 ---
 
-### When this Windows is too old for something
+### When this Windows Version is too old for something
 
 KiTTY++ runs on old Windows on purpose, and the features that need a modern one — dark mode, Windows Hello, per-monitor DPI, encrypted memory for secrets — are looked up while it starts rather than demanded of the loader. A Windows that does not have them still runs KiTTY++; those features simply do not happen.
 
 The failure mode that creates is a bad one: a feature that quietly never works looks exactly like a setting that will not stick. So KiTTY++ reports which ones they are — **one line in the terminal when a session opens**, listing what is unavailable, and the **full list in the Event Log**, with the API and DLL behind each, for whoever is diagnosing.
 
 The line is worth reading once and not thereafter, since the answer is a property of the machine. `warnmissingfeatures=no` under `[KiTTY]` in `kitty.ini` — or the checkbox on **Application > Security** — stops it. The Event Log entry is written either way.
+
+Windows' Application log gets the list as event 902 at the start of every program of the suite: kitty.exe in every mode, kageant, kittygen, kittygen-cli, klink, kscp and ksftp. It lists what the program looked up by then.
 
 **How to enable:** on by default. **Application > Security**, *"Report missing Windows features in terminal"*.
 

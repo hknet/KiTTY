@@ -284,6 +284,8 @@ int  kageant_winlock_mode_set(int mode);
 /* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
 void kageant_audit_use(const char *ev, const char *fp, const char *comment,
                        const char *result, const char *reason, unsigned long pid);
+/* kageant_refused_hook (pageant.h): a refused request in the audit log */
+void kageant_audit_refused(const char *reason, unsigned long pid);
 /* the agent lock's frontend half (kitty_pageant.c) */
 int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);

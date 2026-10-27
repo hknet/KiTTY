@@ -789,7 +789,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 get_string(s->asrc);   /* blob */
                 get_string(s->asrc);   /* comment */
                 if (get_err(s->asrc)) {
-                    ppl_logevent(KT_AGENT_LOG_TRUNCATED);
+                    ppl_logevent_always(KT_AGENT_LOG_TRUNCATED);
                     goto done_agent_query;
                 }
             }
@@ -833,7 +833,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                     s->agent_key_index = i;
                     s->agent_key_limit = i+1;
                 } else {
-                    ppl_logevent(KT_AGENT_LOG_KEYFILE_MISSING);
+                    ppl_logevent_always(KT_AGENT_LOG_KEYFILE_MISSING);
                     s->agent_key_index = 0;
                     s->agent_key_limit = 0;
                 }
@@ -845,7 +845,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 s->agent_key_limit = nkeys;
             }
         } else {
-            ppl_logevent(KT_AGENT_LOG_NO_REPLY);
+            ppl_logevent_always(KT_AGENT_LOG_NO_REPLY);
         }
       done_agent_query:;
     }
@@ -1344,13 +1344,13 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                             kitty_wev_sent(s);
                             s->is_trivial_auth = false;
                         } else {
-                            ppl_logevent(KT_AGENT_LOG_REFUSED);
+                            ppl_logevent_always(KT_AGENT_LOG_REFUSED);
                             ppl_printf(KT_AGENT_MSG_NO_SIGNATURE);
                             s->suppress_wait_for_response_packet = true;
                             ssh_free_pktout(s->pktout);
                         }
                     } else {
-                        ppl_logevent(KT_AGENT_LOG_NO_SIGN_REPLY);
+                        ppl_logevent_always(KT_AGENT_LOG_NO_SIGN_REPLY);
                         ppl_printf(KT_AGENT_MSG_NO_SIGN_REPLY);
                         s->suppress_wait_for_response_packet = true;
                         ssh_free_pktout(s->pktout);

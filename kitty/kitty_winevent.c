@@ -19,6 +19,7 @@
 
 #define KITTY_EVENTIDS_TABLE
 #include "kitty_winevent.h"
+#include "kitty_oldwin.h"   /* kitty_oldwin_degraded: event 902 */
 
 #define WEV_MAX_FIELDS 16
 #define WEV_NSRC 5
@@ -624,6 +625,59 @@ int kitty_wev_suite_registered(void)
         }
     }
     return registered;
+}
+
+/* The missing-features text's entry lines as ONE line, "; " between
+ * them, for event 902's missing field: a record field is one line (the
+ * writer turns control bytes into ?), and the heading is the event's own. */
+static char *wev_missing_one_line(const char *full)
+{
+    char *out = snewn(strlen(full) + 1, char), *o = out;
+    const char *p = strstr(full, "\r\n");
+    while (p) {
+        const char *s = p + 2, *e;
+        size_t n;
+        while (*s == ' ')
+            s++;
+        e = strstr(s, "\r\n");
+        n = e ? (size_t)(e - s) : strlen(s);
+        if (n) {
+            if (o != out) {
+                *o++ = ';';
+                *o++ = ' ';
+            }
+            memcpy(o, s, n);
+            o += n;
+        }
+        p = e;
+    }
+    *o = '\0';
+    return out;
+}
+
+void kitty_wev_missing_features(void)
+{
+    static int done = 0;
+    char *full, *brief, *line;
+    const char *v[2];
+
+    if (done)
+        return;
+    done = 1;
+    full = kitty_oldwin_degraded();
+    if (!full)
+        return;                        /* this Windows has everything */
+    brief = kitty_oldwin_degraded_brief();
+    line = wev_missing_one_line(full);
+    v[0] = brief ? brief : "";
+    v[1] = line;
+    /* the features by name and the entry points behind them; the whole
+     * text as event ID 0 where the message file is not registered */
+    kitty_wev_suite(KITTY_EV_MISSING_FEATURES, EVENTLOG_INFORMATION_TYPE,
+                    v, 2, full);
+    sfree(line);
+    sfree(brief);
+    sfree(full);
 }
 
 void kitty_wev_suite(unsigned id, unsigned type,

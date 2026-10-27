@@ -889,12 +889,16 @@ static PRINTF_LIKE(5, 6) void failure(
 {
     strbuf_clear(sb);
     put_byte(sb, type);
-    if (!pc->suppress_logging) {
+    if (!pc->suppress_logging || kageant_refused_hook) {
         va_list ap;
         va_start(ap, fmt);
         char *msg = dupvprintf(fmt, ap);
         va_end(ap);
-        pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s)", msg);
+        if (kageant_refused_hook)       /* KiTTY: the audit log */
+            kageant_refused_hook(msg, pageant_external_pid);
+        if (!pc->suppress_logging)
+            pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s)",
+                               msg);
         sfree(msg);
     }
 }
@@ -968,6 +972,9 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
 int (*kageant_confirm_hook)(const char *comment, int key_confirm,
                            const char *fp) = NULL;
+
+/* KiTTY: every refused request, for the audit log (pageant.h). */
+void (*kageant_refused_hook)(const char *reason, unsigned long pid) = NULL;
 
 /* KiTTY: which key is a deferred-decryption prompt about? The frontend gets
  * only the dialog id and a comment; Hello-protected keys need the public
@@ -2971,6 +2978,12 @@ static void pageant_conn_receive(
             pageant_client_log(&pc->pc, &pc->response_queue.prev->reqid,
                                "early reply: SSH_AGENT_FAILURE "
                                "(overlong message, length %u)", pc->len);
+            if (kageant_refused_hook) {     /* KiTTY: the audit log */
+                char *why = dupprintf("overlong message, length %u",
+                                      pc->len);
+                kageant_refused_hook(why, pc->client_pid);
+                sfree(why);
+            }
             static const unsigned char failure[] = { SSH_AGENT_FAILURE };
             pageant_conn_got_response(&pc->pc, &pc->response_queue.prev->reqid,
                                       make_ptrlen(failure, lenof(failure)));

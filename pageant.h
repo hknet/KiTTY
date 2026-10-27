@@ -167,6 +167,11 @@ extern void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
 bool pageant_key_decrypted_by_blob(ptrlen blob);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
+/* KiTTY: every refused request - the reason of its SSH_AGENT_FAILURE
+ * reply as the core words it - for the agent's audit log, whether or not
+ * the client logs; pid = the requester, 0 when not known (a reply after a
+ * prompt). NULL everywhere but kageant. */
+extern void (*kageant_refused_hook)(const char *reason, unsigned long pid);
 
 /* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
  * its keys but answers an empty key list and refuses every other request but

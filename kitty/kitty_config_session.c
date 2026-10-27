@@ -839,7 +839,11 @@ static void kitty_pxload_apply(dlgparam *dlg, Conf *conf, const char *picked)
         if (!go)
             return;                     /* nothing touched at all */
 
-        LoadProxyInfo(conf, picked);
+        if (LoadProxyInfo(conf, picked) != 1) {
+            /* not loadable: the fields untouched, the notice says why */
+            kitty_proxy_load_failed_notice(picked);
+            return;
+        }
         /* The fields ARE the preset now, so a remembered override pointing at it
          * (or at something else) would only be able to disagree. Clear it back to
          * "use the session's own proxy". */

@@ -2616,6 +2616,14 @@
 #define KT_RUTTY_READ_FAILED                         "script file read failed"
 #define KT_RUTTY_SENDING                             "sending script to host ..."
 #define KT_RUTTY_HALTED                              "script halted"
+#define KT_RUTTY_FINISHED                            "finished sending script"
+#define KT_RUTTY_REFUSED_OFF                         "script not sent: scriptmode=no in kitty.ini"
+#define KT_RUTTY_REFUSED_BUSY                        "script not sent: another script is running"
+/* kitty_rutty.c: the modeless notices of a failed script (the file, and
+ * for the timeout its seconds) */
+#define KT_RUTTY_NOTICE_NOT_FOUND                    "Script not sent, file not found:\n%s"
+#define KT_RUTTY_NOTICE_READ_FAILED                  "Script not sent, file not read:\n%s"
+#define KT_RUTTY_NOTICE_TIMEOUT                      "Script stopped: no expected prompt within %d s.\n%s"
 
 /* kitty_osc52.c: the clipboard-read permission dialog */
 #define KT_OSC52_SUMMARY                             "It would send %d character%s on %d line%s, starting \"%s\"..."
@@ -3580,6 +3588,9 @@
 #define KT_BUNDLE_SKIPPED_PXPW_FMT                   "\nProxy password of session '%s' not exported: %s"
 #define KT_BUNDLE_SKIPPED_PROXY_FMT                  "\nPassword of named proxy '%s' not exported: %s"
 #define KT_BUNDLE_SKIPPED_MORE_FMT                   "\n... and %d more"
+/* kitty_proxy.c: the export's proxy definitions not loadable, not written */
+#define KT_BUNDLE_PROXY_SKIPPED_HEAD_FMT             "\n\n%d proxy definition(s) not exported:"
+#define KT_BUNDLE_PROXY_SKIPPED_FMT                  "\nProxy definition '%s' not loaded: %s"
 #define KT_BUNDLE_WRAP_NOCRYPTO                      "this program has no master-password encryption"
 #define KT_BUNDLE_WRAP_FAILED                        "the encryption failed"
 #define KT_BUNDLE_WRAP_DPAPI_FMT                     "DPAPI failed: %s"
@@ -4144,6 +4155,10 @@
 
 /* kitty_proxy_gui.c: Application/Named Proxies */
 #define KT_CAP_NAMED_PROXY                           "KiTTY++ named proxy"
+/* kitty_proxy_gui.c: a proxy definition LoadProxyInfo could not load (the
+ * name, the reason); kitty_proxy.c: the reason for a file without one */
+#define KT_PROXY_LOAD_FAILED_FMT                     "Proxy definition '%s' not loaded, fields unchanged:\n%s"
+#define KT_PROXY_LOAD_EMPTY                          "the definition file holds no proxy"
 #define KT_PROXYGUI_TYPE_HTTP                        "HTTP"
 #define KT_PROXYGUI_TYPE_TELNET                      "Telnet"
 #define KT_PROXYGUI_TYPE_LOCAL                       "Local (command)"

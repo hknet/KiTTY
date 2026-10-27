@@ -2287,6 +2287,14 @@ struct LogPolicyVtable {
      * Ask whether extra verbose log messages are required.
      */
     bool (*verbose)(LogPolicy *lp);
+
+    /*
+     * KiTTY: an Event Log line a console tool shows also without -v
+     * (logevent_always). Called after eventlog() with the same line; NULL
+     * where eventlog() already shows every line, as the GUI's Event Log
+     * does.
+     */
+    void (*eventlog_always)(LogPolicy *lp, const char *event);
 };
 struct LogPolicy {
     const LogPolicyVtable *vt;
@@ -2310,6 +2318,7 @@ int console_askappend(LogPolicy *lp, Filename *filename,
                       void (*callback)(void *ctx, int result), void *ctx);
 void console_logging_error(LogPolicy *lp, const char *string);
 void console_eventlog(LogPolicy *lp, const char *string);
+void console_eventlog_always(LogPolicy *lp, const char *string);
 bool null_lp_verbose_yes(LogPolicy *lp);
 bool null_lp_verbose_no(LogPolicy *lp);
 bool cmdline_lp_verbose(LogPolicy *lp);
@@ -2349,6 +2358,9 @@ void logeventvf(LogContext *logctx, const char *fmt, va_list ap);
  * value of dupprintf straight to this.
  */
 void logevent_and_free(LogContext *logctx, char *event);
+/* KiTTY: logevent, and on a console tool's stderr also without -v. */
+void logevent_always(LogContext *logctx, const char *event);
+void logevent_always_and_free(LogContext *logctx, char *event);
 enum { PKT_INCOMING, PKT_OUTGOING };
 enum { PKTLOG_EMIT, PKTLOG_BLANK, PKTLOG_OMIT };
 struct logblank_t {

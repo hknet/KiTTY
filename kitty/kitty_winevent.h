@@ -158,6 +158,12 @@ void kitty_wev_suite(unsigned id, unsigned type,
                      const char *const *vals, int n, const char *text);
 /* 1 when the source KiTTY++ has an EventMessageFile; looked up once. */
 int kitty_wev_suite_registered(void);
+/* 902: what this Windows lacks (kitty_oldwin_degraded: the lookups made so
+ * far), once per process; nothing when nothing is missing. Every program
+ * of the suite calls it at its start; kitty.exe with a terminal when the
+ * terminal opens (kitty_report_missing_features), where the terminal's
+ * lookups are made. */
+void kitty_wev_missing_features(void);
 
 /* The fingerprint's hash: what follows the last space ("ssh-ed25519 255
  * SHA256:abc" -> "SHA256:abc"). */

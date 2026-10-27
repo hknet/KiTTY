@@ -30,6 +30,7 @@
 #include "kitty_win.h"
 #include "kitty_winutil.h"
 #include "kitty_store_acl.h"   /* the Proxies folder: owner-only rights */
+#include "kitty_winerr.h"   /* kitty_win_reason: why a definition was not loaded */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
@@ -189,7 +190,24 @@ static char *proxy_reg_key( const char *name ) {
 	return key ;
 }
 
+/* Why the last LoadProxyInfo returned 0 for a definition: Windows' reason,
+ * or KT_PROXY_LOAD_EMPTY. */
+static char *g_proxy_load_reason = NULL ;   /* whole, on the heap */
+const char *kitty_proxy_load_reason( void ) { return g_proxy_load_reason ? g_proxy_load_reason : "" ; }
+static int proxy_load_failed( const char *why ) {
+	sfree( g_proxy_load_reason ) ;
+	g_proxy_load_reason = dupstr( why ? why : "" ) ;
+	debug_logevent( "Unable to load proxy definition" ) ;
+	return 0 ;
+}
+
+/* 1 loaded (or "None" applied); 0 the session's own proxy (nothing to
+ * load), or the definition could not be read - kitty_proxy_load_reason()
+ * then has why. A failure sets no field of conf: it is found before the
+ * first one is written. */
 int LoadProxyInfo( Conf * conf, const char * name ) {
+	sfree( g_proxy_load_reason ) ;
+	g_proxy_load_reason = NULL ;
 	if( !strcmp(name,KITTY_PROXY_SESSION) ) { return 0 ; }
 	if( !strcmp(name,KITTY_PROXY_NONE) ) {
 		debug_logevent( "Remove proxy definition" ) ;
@@ -201,10 +219,10 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		HKEY hKey ;
 		char *buffer = proxy_reg_key( name ) ;
 		char *lpData ;
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) {
-			debug_logevent( "Unable to load proxy definition" ) ;
+		LONG ropen = RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) ;
+		if( ropen != ERROR_SUCCESS ) {
 			sfree( buffer ) ;
-			return 0;
+			return proxy_load_failed( kitty_win_reason( (DWORD)ropen ) ) ;
 		}
 		/* each value read in full (GetValueDataDup); NULL = not there */
 		#define PXV(N) ( lpData = GetValueDataDup( HKEY_CURRENT_USER, buffer, (N) ) )
@@ -266,9 +284,28 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		 * forms, Key=value and old KiTTY's Key\value\, and hex escapes in
 		 * either case. The line reader used before knew only Key\value\, so
 		 * a definition written as Key=value loaded empty (no host, port 0). */
-		items = fullpath ? ksf_load( fullpath ) : NULL ;
+		HANDLE probe ;
+		/* A definition that cannot be read, or holds nothing, is not loaded:
+		 * it used to load as "nothing set" - the fields' defaults and an
+		 * empty password - and count as loaded. */
+		if( fullpath == NULL )
+			return proxy_load_failed( kitty_win_reason( ERROR_PATH_NOT_FOUND ) ) ;
+		probe = CreateFileA( fullpath, GENERIC_READ,
+		                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		                     NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL ) ;
+		if( probe == INVALID_HANDLE_VALUE ) {
+			DWORD perr = GetLastError() ;
+			sfree( fullpath ) ;
+			return proxy_load_failed( kitty_win_reason( perr ) ) ;
+		}
+		CloseHandle( probe ) ;
+		items = ksf_load( fullpath ) ;
 		sfree( fullpath ) ;
-		if( items == NULL ) return 1 ;
+		if( items == NULL || ( ksf_list_get( items, "ProxyMethod" ) == NULL &&
+		                       ksf_list_get( items, "ProxyHost" ) == NULL ) ) {
+			ksf_list_free( items ) ;
+			return proxy_load_failed( KT_PROXY_LOAD_EMPTY ) ;
+		}
 		if( (v = ksf_list_get( items, "ProxyExcludeList" )) != NULL ) conf_set_str( conf, CONF_proxy_exclude_list, v ) ;
 		if( (v = ksf_list_get( items, "ProxyDNS" )) != NULL ) conf_set_int( conf, CONF_proxy_dns, (atoi(v)+1)%3 ) ;
 		if( (v = ksf_list_get( items, "ProxyLocalhost" )) != NULL ) conf_set_bool( conf, CONF_even_proxy_localhost, atoi(v) != 0 ) ;
@@ -522,15 +559,46 @@ void kitty_migrate_old_proxies( void ) {
  * backend via SaveProxyInfo (registry -> DPAPI1, portable -> MPW2), overwriting
  * by name to match session import (hknet/KiTTY#11). */
 
-int kitty_export_proxies_to_dir( const char *dir ) {
+/* The definitions the last export left out because they could not be
+ * loaded, for its result report (kitty_export_proxies_skipped_report). */
+static int g_px_skipped = 0 ;
+static strbuf *g_px_skip_lines = NULL ;
+static void proxy_skips_clear( void ) {
+	g_px_skipped = 0 ;
+	if( g_px_skip_lines ) { strbuf_free( g_px_skip_lines ) ; g_px_skip_lines = NULL ; }
+}
+char *kitty_export_proxies_skipped_report( void ) {
+	strbuf *sb ;
+	if( !g_px_skipped ) return NULL ;
+	sb = strbuf_new() ;
+	put_fmt( sb, KT_BUNDLE_PROXY_SKIPPED_HEAD_FMT, g_px_skipped ) ;
+	if( g_px_skip_lines ) put_datapl( sb, ptrlen_from_strbuf( g_px_skip_lines ) ) ;
+	return strbuf_to_str( sb ) ;
+}
+
+/* The count written; *failOut (optional) gets the definitions not written
+ * because they could not be loaded - none of those is written at all, and
+ * the report lists each (kitty_export_proxies_skipped_report). */
+int kitty_export_proxies_to_dir( const char *dir, int *failOut ) {
 	char *pdir ; int count = 0 ;
+	proxy_skips_clear() ;
+	if( failOut ) *failOut = 0 ;
 	InitProxyList() ;
 	if( !proxies[2].name ) return 0 ;   /* no named proxies -> don't create an empty Proxies\ folder */
 	pdir = dupprintf( "%s\\Proxies", dir ) ;
 	MakeDir( pdir ) ;
 	for( int i = 2 ; i < MAX_PROXY && proxies[i].name ; i++ ) {
 		Conf *conf = conf_new() ; do_defaults( NULL, conf ) ;
-		LoadProxyInfo( conf, proxies[i].name ) ;         /* decrypts pw into CONF_proxy_password */
+		/* decrypts pw into CONF_proxy_password */
+		if( LoadProxyInfo( conf, proxies[i].name ) != 1 ) {
+			g_px_skipped++ ;
+			if( failOut ) (*failOut)++ ;
+			if( !g_px_skip_lines ) g_px_skip_lines = strbuf_new() ;
+			put_fmt( g_px_skip_lines, KT_BUNDLE_PROXY_SKIPPED_FMT,
+			         proxies[i].name, kitty_proxy_load_reason() ) ;
+			conf_free( conf ) ;
+			continue ;
+		}
 		char *fn = mungestr_dup( proxies[i].name ) ;
 		char *path = dupprintf( "%s\\%s", pdir, fn ) ; sfree( fn ) ;
 		char pxpw[KITTY_PW_MAX + 1] ;   /* the Conf holds it wrapped for memory */

@@ -85,7 +85,13 @@ int kitty_export_all_to_dir(const char *dir, int *failOut) {
     /* Carry the named-proxy definitions alongside the sessions (Piece 7): the
      * whole-store move should bring proxies too, passwords wrapped MPW2 so they
      * work on the destination machine. */
-    kitty_export_proxies_to_dir(dir);
+    {
+        /* a definition that cannot be loaded is not written, and counts as
+         * failed (kitty_export_proxies_skipped_report names it) */
+        int pxfail = 0;
+        kitty_export_proxies_to_dir(dir, &pxfail);
+        fail += pxfail;
+    }
     if (failOut) *failOut = fail;
     return n;
 }
@@ -348,6 +354,12 @@ void kitty_export_all_sessions(HWND hwnd) {
                       : KT_BRIDGE_EXPORTED_PW);
     if (skips) {
         char *full = dupcat(msg, skips);
+        sfree(msg);
+        msg = full;
+        sfree(skips);
+    }
+    if ((skips = kitty_export_proxies_skipped_report()) != NULL) {
+        char *full = dupcat(msg, skips);   /* the definitions left out */
         sfree(msg);
         msg = full;
         sfree(skips);

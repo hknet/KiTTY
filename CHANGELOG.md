@@ -112,6 +112,21 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   taken whole. A longer one is refused.
 - Colour queries (OSC 4, 10, 11, 12) and prompt marks (OSC 133) longer than
   2048 bytes are refused whole. Before, a cut query got a wrong answer.
+- Session > Scripting: the script's start, end, halt and timeout lines reach
+  the window's Event Log. A missing or unreadable script file and a timeout
+  also show a notice beside the session. A refused start (scriptmode=no,
+  another script running) writes an Event Log line.
+- `kitty.exe -edit <file>`: an editor that does not start shows a box and
+  writes a line to the Windows Application log. Before, the process ended
+  without a word.
+- A named proxy that cannot be loaded shows a notice with its name and the
+  reason in the configuration box. The fields stay as they were. The export
+  leaves it out, counts it as failed and lists it in the result.
+- Event 902 (Windows features missing) is written at the start of every
+  program of the suite. Before, only when a terminal opened.
+- klink, kscp and ksftp show kageant's refusals and failures and "host key
+  not stored" (readonly=yes) on stderr also without -v.
+- kageant writes every refused request with its reason to the agent log.
 
 ## 0.85.1.18-beta — 2026-10-23
 

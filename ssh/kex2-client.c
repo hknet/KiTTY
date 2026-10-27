@@ -1044,7 +1044,7 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
             if (kitty_store_readonly()) {
                 /* KiTTY: readonly=yes - the additional key is used for
                  * this connection and not stored */
-                ppl_logevent(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+                ppl_logevent_always(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
             } else {
                 char *fingerprint = ssh2_double_fingerprint(
                     s->hkey, SSH_FPTYPE_DEFAULT);

@@ -19,7 +19,8 @@
  *
  * Public API (called from window.c):
  *   int  kitty_script_active(void);
- *   int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn);
+ *   int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn,
+ *                               LogContext *logctx, HWND owner);
  *   void kitty_script_remote(const void *data, size_t len);  // observe-only
  *   void kitty_script_stop(void);
  */
@@ -30,6 +31,7 @@
 
 #include "putty.h"
 #include "kitty_text.h"     /* the Event Log wordings */
+#include "kitty_dlgbox.h"   /* kitty_info_modeless: a failed script's notice */
 #include "kitty_rutty.h"
 
 #define script_line_size 4096
@@ -69,6 +71,10 @@ typedef struct {
     int remotedata_c;
 
     Backend *backend;          /* no-global: send target */
+    LogContext *logctx;        /* the window's Event Log (lives as long as
+                                * the process) */
+    HWND owner;                /* the terminal window, for the notices */
+    char *path;                /* the script file, for the notices */
 } ScriptData;
 
 static ScriptData the_script;
@@ -80,6 +86,16 @@ static void script_sendchar(void *ctx, unsigned long now);
 static void script_timeout(void *ctx, unsigned long now);
 static int  script_chkline(ScriptData *s);
 static void script_getline(ScriptData *s);
+
+/* A failed script is reported where the user looks: the window's Event Log
+ * has the line, a notice beside the session the reason with the file.
+ * Modeless only - the session goes on behind it; without a notice window
+ * the Event Log line stands alone. */
+static void script_notice(ScriptData *s, const char *text)
+{
+    if (s->owner)
+        kitty_info_modeless(s->owner, KT_CAP_KITTY, text, NULL, NULL);
+}
 
 /* ---- minimal send helper (backend, not ldisc) ---- */
 static void script_emit(ScriptData *s, const char *buf, int len)
@@ -243,7 +259,7 @@ static void script_setsend(ScriptData *s)
     s->latest = 0;
     if (s->nextline_c == 0) {
         script_stop_internal(s);
-        logevent(NULL, "... finished sending script");
+        logevent(s->logctx, KT_RUTTY_FINISHED);
         return;
     }
     if (script_chkline(s)) {               /* new condition - restart timeout */
@@ -262,7 +278,7 @@ static void script_sendline(void *ctx, unsigned long now)
         return;
     if (s->nextline_c == 0) {
         script_stop_internal(s);
-        logevent(NULL, " ...finished sending script");
+        logevent(s->logctx, KT_RUTTY_FINISHED);
         return;
     }
     if (s->char_delay > 1) {
@@ -293,7 +309,7 @@ static void script_sendchar(void *ctx, unsigned long now)
         return;
     if (s->nextline_c == 0) {
         script_stop_internal(s);
-        logevent(NULL, "....finished sending script");
+        logevent(s->logctx, KT_RUTTY_FINISHED);
         return;
     }
     if (s->nextline_cc < s->nextline_c)
@@ -316,8 +332,14 @@ static void script_timeout(void *ctx, unsigned long now)
 {
     ScriptData *s = (ScriptData *)ctx;
     if (labs((long)(now - s->latest)) < 50) {
+        char *msg;
         script_stop_internal(s);
-        logevent(NULL, KT_RUTTY_TIMEOUT);
+        logevent(s->logctx, KT_RUTTY_TIMEOUT);
+        msg = dupprintf(KT_RUTTY_NOTICE_TIMEOUT,
+                        (int)(s->timeout / TICKSPERSEC),
+                        s->path ? s->path : "");
+        script_notice(s, msg);
+        sfree(msg);
     }
 }
 
@@ -333,7 +355,8 @@ static int script_enabled = 1;
 int kitty_script_enabled(void) { return script_enabled; }
 void kitty_script_set_enabled(int on) { script_enabled = on; }
 
-int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
+int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
+                           LogContext *logctx, HWND owner)
 {
     ScriptData *s = &the_script;
     FILE *fp;
@@ -341,14 +364,23 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     const char *cc;
     int script_timeout_seconds;
 
-    if (!script_enabled)
-        return false;                      /* scriptmode=no in kitty.ini */
-    if (script_inited && s->runs)
-        return false;                      /* a script is already running */
+    /* The two refusals: one Event Log line each, no box. */
+    if (!script_enabled) {
+        logevent(logctx, KT_RUTTY_REFUSED_OFF);   /* scriptmode=no in kitty.ini */
+        return false;
+    }
+    if (script_inited && s->runs) {
+        logevent(logctx, KT_RUTTY_REFUSED_BUSY);  /* a script is already running */
+        return false;
+    }
 
+    sfree(s->path);                        /* the previous script's */
     memset(s, 0, sizeof(*s));
     script_inited = 1;
     s->backend = backend;
+    s->logctx = logctx;
+    s->owner = owner;
+    s->path = dupstr(filename_to_str(scriptfile));
 
     /* script_init: settings from conf */
     s->line_delay = conf_get_int(conf, CONF_script_line_delay);
@@ -381,7 +413,10 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     /* script_sendfile: read whole file */
     fp = f_open(scriptfile, "rb", false);
     if (fp == NULL) {
-        logevent(NULL, KT_RUTTY_FILE_NOT_FOUND);
+        char *msg = dupprintf(KT_RUTTY_NOTICE_NOT_FOUND, s->path);
+        logevent(logctx, KT_RUTTY_FILE_NOT_FOUND);
+        script_notice(s, msg);
+        sfree(msg);
         return false;
     }
     s->runs = true;
@@ -394,13 +429,16 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile)
     s->nextnextline = s->filebuffer = snewn(fsize + 1, char);
     s->filebuffer_end = &s->filebuffer[fsize];
     if (fread(s->filebuffer, sizeof(char), fsize, fp) != (size_t)fsize) {
-        logevent(NULL, KT_RUTTY_READ_FAILED);
+        char *msg = dupprintf(KT_RUTTY_NOTICE_READ_FAILED, s->path);
+        logevent(logctx, KT_RUTTY_READ_FAILED);
         fclose(fp);
         script_stop_internal(s);
+        script_notice(s, msg);
+        sfree(msg);
         return false;
     }
     fclose(fp);
-    logevent(NULL, KT_RUTTY_SENDING);
+    logevent(logctx, KT_RUTTY_SENDING);
 
     script_getline(s);
     script_chkline(s);
@@ -445,7 +483,7 @@ void kitty_script_remote(const void *vdata, size_t len)
                 script_cond_chk(s->halton, s->halton_c,
                                 s->remotedata, s->remotedata_c)) {
                 script_stop_internal(s);
-                logevent(NULL, KT_RUTTY_HALTED);
+                logevent(s->logctx, KT_RUTTY_HALTED);
                 return;
             }
             /* waitfor (prompt to send the next line) */

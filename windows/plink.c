@@ -380,6 +380,8 @@ int main(int argc, char **argv)
      * integrity stamp? Compiled to nothing in a dev or test build. */
     if (kitty_selfcheck_guard(0))
         return 1;
+    /* KiTTY: event 902, what this Windows lacks - at every start */
+    kitty_wev_missing_features();
     /* KiTTY: the refused-variables NOTE, yellow on a console */
     kitty_termenv_note_hook = kitty_termenv_console_note;
     /* KiTTY: the store kitty.exe uses (a folder store from kitty.ini), and

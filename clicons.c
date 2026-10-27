@@ -10,5 +10,6 @@ static const LogPolicyVtable console_cli_logpolicy_vt = {
     .askappend = console_askappend,
     .logging_error = console_logging_error,
     .verbose = cmdline_lp_verbose,
+    .eventlog_always = console_eventlog_always,   /* KiTTY */
 };
 LogPolicy console_cli_logpolicy[1] = {{ &console_cli_logpolicy_vt }};

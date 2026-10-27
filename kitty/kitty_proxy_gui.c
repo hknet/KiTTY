@@ -174,15 +174,35 @@ static void pxp_say(dlgparam *dlg, const char *what)
         dlg_label_change(g_pxp->banner, dlg, what);
 }
 
+/* A definition that could not be loaded (LoadProxyInfo 0): a notice with
+ * its name and why. The caller leaves the fields as they were. */
+void kitty_proxy_load_failed_notice(const char *name)
+{
+    HWND owner = kitty_cfg_modal_owner();
+    char *msg = dupprintf(KT_PROXY_LOAD_FAILED_FMT, name ? name : "",
+                          kitty_proxy_load_reason());
+    if (!kitty_info_modeless(owner, KT_CAP_NAMED_PROXY, msg, NULL, NULL))
+        kitty_info_box(owner, KT_CAP_NAMED_PROXY, msg, NULL);
+    sfree(msg);
+}
+
 static void pxp_reload(dlgparam *dlg)
 {
+    Conf *loaded;
     if (!g_pxp)
         return;
+    /* Loaded into a copy of its own first: a definition that cannot be
+     * loaded leaves the fields as they are, with the notice. */
+    loaded = pxe_new_conf();
+    if (g_pxp->name && g_pxp->name[0] &&
+        LoadProxyInfo(loaded, g_pxp->name) != 1) {
+        conf_free(loaded);
+        kitty_proxy_load_failed_notice(g_pxp->name);
+        return;
+    }
     if (g_pxp->conf)
         conf_free(g_pxp->conf);
-    g_pxp->conf = pxe_new_conf();
-    if (g_pxp->name && g_pxp->name[0])
-        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+    g_pxp->conf = loaded;
     g_pxp->port_typed = false;     /* a freshly loaded port is not typed */
     g_pxp->dirty = false;
     g_pxp->refreshing = true;
@@ -473,12 +493,18 @@ void kitty_proxy_panel_preselect(const char *name)
     sfree(g_pxp_want);
     g_pxp_want = (name && name[0]) ? dupstr(name) : NULL;
     if (g_pxp && g_pxp_want) {
+        Conf *loaded = pxe_new_conf();
+        if (LoadProxyInfo(loaded, g_pxp_want) != 1) {
+            /* the panel stays on what it shows, with the notice */
+            conf_free(loaded);
+            kitty_proxy_load_failed_notice(g_pxp_want);
+            return;
+        }
         sfree(g_pxp->name);
         g_pxp->name = dupstr(g_pxp_want);
         if (g_pxp->conf)
             conf_free(g_pxp->conf);
-        g_pxp->conf = pxe_new_conf();
-        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+        g_pxp->conf = loaded;
     }
 }
 
@@ -523,11 +549,20 @@ static bool pxp_may_leave(void)
      * switch raised the same question, because the guard is registered for the
      * box rather than for whichever panel is showing.
      */
-    if (g_pxp->conf)
-        conf_free(g_pxp->conf);
-    g_pxp->conf = pxe_new_conf();
-    if (g_pxp->name && g_pxp->name[0])
-        LoadProxyInfo(g_pxp->conf, g_pxp->name);
+    {
+        Conf *loaded = pxe_new_conf();
+        if (g_pxp->name && g_pxp->name[0] &&
+            LoadProxyInfo(loaded, g_pxp->name) != 1) {
+            /* the stored definition cannot be taken back: the fields
+             * stay as they are, with the notice; the panel is left */
+            conf_free(loaded);
+            kitty_proxy_load_failed_notice(g_pxp->name);
+        } else {
+            if (g_pxp->conf)
+                conf_free(g_pxp->conf);
+            g_pxp->conf = loaded;
+        }
+    }
     g_pxp->dirty = false;
     g_pxp->port_typed = false;
     return true;

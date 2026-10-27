@@ -584,7 +584,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     get_rsa_ssh1_pub(s->asrc, NULL, RSA_SSH1_EXPONENT_FIRST);
                     get_string(s->asrc); /* comment */
                     if (get_err(s->asrc)) {
-                        ppl_logevent(KT_AGENT_LOG_TRUNCATED);
+                        ppl_logevent_always(KT_AGENT_LOG_TRUNCATED);
                         goto parsed_agent_query;
                     }
                 }
@@ -633,7 +633,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                         s->agent_key_index = i;
                         s->agent_key_limit = i+1;
                     } else {
-                        ppl_logevent(KT_AGENT_LOG_KEYFILE_MISSING);
+                        ppl_logevent_always(KT_AGENT_LOG_KEYFILE_MISSING);
                         s->agent_key_index = 0;
                         s->agent_key_limit = 0;
                     }
@@ -645,7 +645,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                     s->agent_key_limit = nkeys;
                 }
             } else {
-                ppl_logevent(KT_AGENT_LOG_NO_REPLY);
+                ppl_logevent_always(KT_AGENT_LOG_NO_REPLY);
             }
           parsed_agent_query:;
 
@@ -725,7 +725,7 @@ static void ssh1_login_process_queue(PacketProtocolLayer *ppl)
                                 }
                                 s->authed = true;
                             } else
-                                ppl_logevent(KT_AGENT_LOG_NOT_ACCEPTED);
+                                ppl_logevent_always(KT_AGENT_LOG_NOT_ACCEPTED);
                         } else {
                             ppl_logevent(KT_AGENT_LOG_NO_CHALLENGE_ANSWER);
                             sfree((char *)ret);

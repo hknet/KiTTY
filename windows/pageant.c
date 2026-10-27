@@ -25,6 +25,7 @@
 #include "licence.h"
 #include "pageant-rc.h"
 #include "../kitty/kitty_pageant.h"  /* KiTTY: the kageant additions (split out of this file) */
+#include "../kitty/kitty_winevent.h"  /* KiTTY: event 902 at the start */
 #include "../kitty/kitty_kageant_openssh.h"   /* KiTTY: the Windows OpenSSH client integration */
 #include "../kitty/kitty_authenticode.h"  /* KiTTY: shared verify for New key */
 #include "../kitty/kitty_foreground.h"  /* KiTTY: one place for the foreground dance */
@@ -7085,10 +7086,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * keys, so the very first loads are already on the record. */
         kageant_audit_setup();
         kitty_audit("agent", "result", "start", (const char *)NULL);
+        kitty_wev_missing_features();   /* KiTTY: event 902 at every start */
 
         kageant_random_hook = kageant_hello_random;   /* KiTTY: the OS CSPRNG, for writing protected PPKs */
         kitty_hello_cache_ttl_set(kageant_hello_ttl());  /* KiTTY: KEK cache */
         kageant_confirm_hook = kageant_do_confirm;
+        kageant_refused_hook = kageant_audit_refused;   /* KiTTY: refusals in the audit log */
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
