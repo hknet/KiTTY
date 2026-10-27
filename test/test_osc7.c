@@ -75,6 +75,12 @@ int main( void ) {
 	expect( "/opt/my-app_v2.1",      1, "dash underscore dot" ) ;
 	expect( "/~backups",             1, "tilde" ) ;
 	expect( "/srv/data/%C3%A9t%C3%A9", 1, "%-encoded UTF-8 (accented)" ) ;
+	expect( "/tmp/a b",              1, "space" ) ;
+	expect( "/tmp/a%20b",            1, "%20 space decodes and is accepted" ) ;
+	expect( "/tmp/a%25b",            1, "%25 decodes to a % and is accepted" ) ;
+	expect( "/tmp/%",                1, "a folder named %" ) ;
+	expect( "/tmp/%25%25",           1, "a folder named %%" ) ;
+	expect( "/home/u/My Documents/x y", 1, "several spaces" ) ;
 	expect( "/",                     1, "root" ) ;
 
 	/* --- rejected: not an absolute path --- */
@@ -82,26 +88,43 @@ int main( void ) {
 	expect( "",                      0, "empty" ) ;
 	expect( "file:relative",         0, "no leading slash" ) ;
 
-	/* --- rejected: shell metacharacters (the injection guard) --- */
-	expect( "/tmp;rm -rf ~",         0, "semicolon + space" ) ;
-	expect( "/tmp;id",               0, "semicolon" ) ;
-	expect( "/tmp&whoami",           0, "ampersand" ) ;
-	expect( "/tmp|cat",              0, "pipe" ) ;
-	expect( "/tmp`id`",              0, "backtick" ) ;
-	expect( "/tmp$(id)",             0, "dollar-paren" ) ;
-	expect( "/tmp/${HOME}",          0, "dollar-brace" ) ;
-	expect( "/a<b",                  0, "redirect <" ) ;
-	expect( "/a>b",                  0, "redirect >" ) ;
-	expect( "/a*b",                  0, "glob *" ) ;
-	expect( "/a?b",                  0, "glob ?" ) ;
-	expect( "/a'b",                  0, "single quote" ) ;
-	expect( "/a\"b",                 0, "double quote" ) ;
-	expect( "/a b",                  0, "space" ) ;
-	expect( "/tab\tb",               0, "tab (control char)" ) ;
+	/* --- accepted: every printable byte is a legal Linux folder name; the
+	 * consumers keep it data (qcat, pathcat, kitty_droppath_quote) --- */
+	expect( "/tmp;rm -rf ~",         1, "semicolon + space" ) ;
+	expect( "/tmp;id",               1, "semicolon" ) ;
+	expect( "/tmp&whoami",           1, "ampersand" ) ;
+	expect( "/tmp|cat",              1, "pipe" ) ;
+	expect( "/tmp`id`",              1, "backtick" ) ;
+	expect( "/tmp$(id)",             1, "dollar-paren" ) ;
+	expect( "/tmp/${HOME}",          1, "dollar-brace" ) ;
+	expect( "/a<b",                  1, "redirect <" ) ;
+	expect( "/a>b",                  1, "redirect >" ) ;
+	expect( "/a*b",                  1, "glob *" ) ;
+	expect( "/a?b",                  1, "glob ?" ) ;
+	expect( "/a'b",                  1, "single quote" ) ;
+	expect( "/a\"b",                 1, "double quote" ) ;
+	expect( "/a\\b",                1, "backslash" ) ;
+	expect( "/backup (1)",           1, "brackets" ) ;
+	expect( "/a@b+c,d=e!f#g:h^i",    1, "punctuation" ) ;
+	expect( "/a[b]{c}",              1, "square and curly brackets" ) ;
 
-	/* --- %-encoded metacharacters must ALSO be rejected (decode, then check) --- */
-	expect( "/tmp%20x",              0, "%20 space decodes then rejected" ) ;
-	expect( "/tmp%3Bid",             0, "%3B semicolon decodes then rejected" ) ;
+	/* --- rejected: control characters --- */
+	expect( "/tab\tb",               0, "tab (control char)" ) ;
+	expect( "/a\nb",                 0, "newline (control char)" ) ;
+	expect( "/a\rb",                 0, "carriage return (control char)" ) ;
+	expect( "/a\x7f" "b",             0, "DEL (control char)" ) ;
+	expect( "/a\x1b" "b",             0, "ESC (control char)" ) ;
+
+	/* --- %-encoded control characters are rejected too (decode, then check) --- */
+	expect( "/tmp/a%09b",            0, "%09 tab decodes then rejected" ) ;
+	expect( "/tmp/a%0Ab",            0, "%0A newline decodes then rejected" ) ;
+	expect( "/tmp/a%7Fb",            0, "%7F DEL decodes then rejected" ) ;
+	expect( "/tmp/a%01b",            0, "%01 decodes then rejected" ) ;
+	expect( "/tmp/a%1Bb",            0, "%1B ESC decodes then rejected" ) ;
+	expect( "/tmp/a b;id",           1, "space then semicolon: taken, data only" ) ;
+	expect( "/tmp/a%20b%27c",        1, "%27 single quote decodes and is taken" ) ;
+	expect( "/tmp%3Bid",             1, "%3B semicolon decodes and is taken" ) ;
+	expect( "/tmp/%22q%22",          1, "%22 double quotes decode and are taken" ) ;
 	expect( "/tmp%2Fok",             1, "%2F decodes to a legitimate slash" ) ;
 
 	/* --- embedded NUL (%00) must reject outright (truncation guard) --- */

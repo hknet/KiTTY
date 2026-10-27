@@ -1248,14 +1248,14 @@ Both folders can use Windows environment variables, such as
 
 \S2{kitty-cfg-transfers-remote} Remote directory for uploads
 
-Drag-and-drop uploads, and the \q{Start WinSCP} menu item, need to know
-\e{where} on the far end to put a file.
+Drag-and-drop uploads, and the \q{Start WinSCP} and \q{Start FileZilla}
+menu items, need to know \e{where} on the far end to put a file.
 
 \b \q{Track remote directory (OSC 7 shell integration)} sends them to
 the shell's current directory instead of your home directory. KiTTY++
 reads that directory from the standard \i{OSC 7} sequence your shell
 emits at every prompt (\c{ESC ] 7 ; file://host/path BEL}), validated
-strictly as data: an absolute path, a whitelisted character set, never
+strictly as data: an absolute path without control characters, never
 executed. The shell on the host has to emit the sequence; the line
 beneath the checkbox reminds you of that. Stored as \c{OSC7CwdTracking}.
 

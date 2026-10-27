@@ -123,8 +123,8 @@ Not measured here.
 
 One snippet per shell sends two things before every prompt:
 
-- **OSC 7**, the current directory. Drag-and-drop uploads, *Send File* and
-  *Start WinSCP* use it when tracking is on.
+- **OSC 7**, the current directory. Drag-and-drop uploads, *Send File*,
+  *Start WinSCP* and *Start FileZilla* use it when tracking is on.
 - **OSC 133**, the prompt marks: `A` (a prompt starts), `C` (a command's
   output starts) and `D;<exit code>` (the command finished; not after an empty
   Enter). A prompt ends a program's *working* or *blocked* status (OSC 7501).
@@ -274,9 +274,11 @@ Reconnect, or source the file, to start.
 ### Notes
 
 - **Directories KiTTY++ refuses.** A reported directory is used only when it
-  is absolute and holds letters, digits, `/ . _ - ~` and UTF-8 characters. A
-  path with a space, a quote or a shell metacharacter is refused and uploads
-  go to the home directory. Nothing reported is ever run.
+  is absolute and holds no control character (a tab, a newline, ESC and the
+  like). Quotes and shell characters are taken as data, never run. A refused
+  path leaves the previous directory (the home directory when there was
+  none), and the terminal window's Event Log gets one line with the
+  reason.
 - **Older snippets.** The OSC 7 snippet KiTTY++ published before
   (`__osc7_cwd`) keeps working; it can stay or be replaced by the one above.
 - **bash older than 4.4** has no `PS0`: no output mark, and every prompt

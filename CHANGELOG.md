@@ -16,6 +16,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   their choice.
 - OSC 7: a refused folder writes one line with the reason to the terminal
   window's Event Log.
+- OSC 7: Start FileZilla opens the tracked folder too.
 
 ### Changed
 
@@ -42,6 +43,11 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   them: Copy and Clone take them over into this store.
 - The installers' Start menu folder is now KiTTY++. An upgrade removes the
   old KiTTY folder. A Start menu pin to an old entry has to be pinned again.
+- OSC 7 takes every folder name without control characters, spaces,
+  quotes and shell characters included. They stay data and are never run.
+- kscp with Protocol SCP switches to SFTP when the remote folder holds a
+  character other than letters, digits and / . _ - ~ %. SCP would hand
+  such a folder to the server's shell.
 
 ### Fixed
 

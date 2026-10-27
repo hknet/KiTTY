@@ -226,10 +226,10 @@ static const char *kx_helper_keyfile(Conf *c)
  * below are what keeps each value one argument: bcat appends to a strbuf
  * that grows (nothing cut, no overflow), qcat applies Win32 argv quoting to each single
  * value (no injected extra arguments), rawcat applies WinSCP's rawsettings
- * rule and urlcat percent-encodes URL userinfo. What is still appended RAW is
- * deliberate and documented at each site: pscpoptions, winscpoptions and
- * winscprawsettings are the user writing command line on purpose, and
- * quoting them would break the feature. */
+ * rule, urlcat percent-encodes URL userinfo and pathcat a URL's folder. What
+ * is still appended RAW is deliberate and documented at each site:
+ * pscpoptions, winscpoptions and winscprawsettings are the user writing
+ * command line on purpose, and quoting them would break the feature. */
 
 /*
  * HELPER PROGRAMS: the one place a helper is started, and the signature check
@@ -1625,6 +1625,27 @@ static void urlcat( strbuf *dst, const char *s ) {
 	}
 }
 
+/* Append a folder for the PATH part of a WinSCP URL
+ * (proto://user@host:port/path/) for WinSCP. '/' stays as it is - urlcat would make it
+ * %2F, one segment. A space is %20, so the URL stays one argument on the
+ * command line, a '%' is %25. Every ASCII byte but letters, digits and
+ * / . _ - ~ is %-encoded, so no folder (kitty_osc7_parse.h takes every
+ * printable byte) breaks the URL. Bytes from 0x80 on (UTF-8) go as they are, as
+ * they always did. */
+static void pathcat( strbuf *dst, const char *s ) {
+	static const char hexd[] = "0123456789ABCDEF" ;
+	if( !s ) return ;
+	for( const unsigned char *p = (const unsigned char *)s ; *p ; p++ ) {
+		unsigned char c = *p ;
+		if( c >= 0x80 || (c>='A'&&c<='Z') || (c>='a'&&c<='z') || (c>='0'&&c<='9')
+		    || c=='/' || c=='-' || c=='.' || c=='_' || c=='~' ) {
+			put_byte( dst, (char)c ) ;
+		} else {
+			put_byte( dst, '%' ) ; put_byte( dst, hexd[(c>>4)&0xF] ) ; put_byte( dst, hexd[c&0xF] ) ;
+		}
+	}
+}
+
 /* ---- passwords for WinSCP travel in FILES, never on its command line -------
  *
  * A child's command line is readable by every process of the same user for as
@@ -1971,8 +1992,33 @@ static char *kx_search_path_dup( const char *name ) {
 	return NULL ;
 }
 
-/* Starts the line in `buffer`; 0 when there is no helper to start. */
-static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k ) {
+/* A remote folder the SCP protocol cannot carry: SCP hands it to the
+ * server's shell unquoted (scp -t / scp -f), where anything but letters,
+ * digits, UTF-8 and / . _ - ~ % could split it or run as a command. SFTP
+ * takes it as data. */
+static int kx_folder_needs_sftp( const char *f ) {
+	if( f == NULL ) return 0 ;
+	for( const unsigned char *p = (const unsigned char *)f ; *p ; p++ ) {
+		unsigned char c = *p ;
+		if( c >= 0x80 || (c>='A'&&c<='Z') || (c>='a'&&c<='z') || (c>='0'&&c<='9')
+		    || c=='/' || c=='.' || c=='_' || c=='-' || c=='~' || c=='%' ) continue ;
+		return 1 ;
+	}
+	return 0 ;
+}
+
+/* The folder of a remote path (everything before its last '/'), in full
+ * (sfree it); "" when it has none. */
+static char *kx_folder_of( const char *path ) {
+	char *f = dupstr( path ? path : "" ), *sl = strrchr( f, '/' ) ;
+	if( sl ) *sl = '\0' ; else f[0] = '\0' ;
+	return f ;
+}
+
+/* Starts the line in `buffer`; 0 when there is no helper to start. folder:
+ * the remote folder this run aims at (NULL = none known); one SCP cannot
+ * carry runs kscp in SFTP mode whatever the Protocol setting. */
+static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *folder ) {
 	char *pscppath, *pscpport ;
 	int p ;
 
@@ -1995,7 +2041,8 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k ) {
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
 		bcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, " " ) ;
 	}
-	bcat( buffer, conf_get_int(conf, CONF_kscp_protocol)==0 ? "-scp " : "-sftp " ) ;
+	bcat( buffer, ( conf_get_int(conf, CONF_kscp_protocol)==0 && !kx_folder_needs_sftp( folder ) )
+	              ? "-scp " : "-sftp " ) ;
 	/* The session shares its connection (Connection > SSH > "Share SSH
 	 * connections if possible"): kscp rides on the terminal's connection
 	 * and does not log in again - no second password, no second 2FA. Only
@@ -2185,7 +2232,7 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	 * and a fixed buffer cut exactly that first. strbuf_new_nm: the line can
 	 * carry a password, and its memory is cleared when it grows or goes. */
 	buffer = strbuf_new_nm() ;
-	if( !kx_kscp_line( buffer, &k ) ) {
+	if( !kx_kscp_line( buffer, &k, remotedir ) ) {
 		strbuf_free( buffer ) ; sfree( remotedir ) ;
 		kx_drop_settle( drop, drop_idx, 0 ) ; return ;
 	}
@@ -2377,7 +2424,14 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
      * remote source pushed it off the end of a fixed buffer - kscp then wrote
      * to a cut path. */
     buffer = strbuf_new_nm() ;
-    if( !kx_kscp_line( buffer, &k ) ) { strbuf_free( buffer ) ; sfree( dir ) ; return ; }
+    {   /* the remote file's folder decides SCP or SFTP (kx_folder_needs_sftp) */
+        char *rpath = ( filename[0]=='/' || directory==NULL || !directory[0] )
+                      ? dupstr( filename ) : dupprintf( "%s/%s", directory, filename ) ;
+        char *rfolder = kx_folder_of( rpath ) ;
+        int ok = kx_kscp_line( buffer, &k, rfolder ) ;
+        sfree( rfolder ) ; sfree( rpath ) ;
+        if( !ok ) { strbuf_free( buffer ) ; sfree( dir ) ; return ; }
+    }
     bcat( buffer, "-batch " ) ;    /* no unseen questions: see kx_send_one */
 
     /* remote source user@host:path (single quoted argument) */
@@ -3034,7 +3088,10 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	int nh = 0, ok ;
 
 	buffer = strbuf_new_nm() ;
-	if( !kx_kscp_line( buffer, &k ) ) { strbuf_free( buffer ) ; return 0 ; }
+	{ char *rfolder = kx_folder_of( c->remote ) ;
+	  int ok = kx_kscp_line( buffer, &k, rfolder ) ;
+	  sfree( rfolder ) ;
+	  if( !ok ) { strbuf_free( buffer ) ; return 0 ; } }
 	bcat( buffer, "-batch -stat " ) ;
 	tgt = strbuf_new() ;
 	kx_kscp_remote( tgt ) ;
@@ -3802,7 +3859,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		}
 
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			bcat( cmd, directory ) ;
+			pathcat( cmd, directory ) ;   /* a space as %20: one argument */
 			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, "/" ) ;
 		}
 		{ const char *kf = kx_helper_keyfile(conf) ;
@@ -3835,7 +3892,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		else { bcat( cmd, conf_get_str(conf,CONF_host) ) ; }
 		put_fmt( cmd, ":%d", winscpport ) ;
 		if( directory!=NULL ) if( strlen(directory)>0 ) {
-			bcat( cmd, directory ) ;
+			pathcat( cmd, directory ) ;   /* a space as %20: one argument */
 			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, "/" ) ;
 		}
 	}
@@ -3988,8 +4045,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
  *
  * The same hand-off as WinSCP's, for FileZilla (the request behind it is
  * cyd01/KiTTY#501). FileZilla takes a URL on its command line -
- * [proto://][user[:password]@]host[:port] - plus --logontype=ask (it prompts for
- * the password itself) and --site=<path> (a Site Manager entry). It has no
+ * [proto://][user[:password]@]host[:port][/path/] (the path: the shell's
+ * folder from OSC 7 when tracking is on, as for WinSCP) - plus
+ * --logontype=ask (it prompts for the password itself) and --site=<path> (a
+ * Site Manager entry). It has no
  * /passwordsfromfiles, so the password question is the user's explicit choice
  * (CONF_filezilla_pwmode), each option with its consequence stated on the panel:
  *
@@ -4284,18 +4343,38 @@ void StartFileZilla( HWND hwnd ) {
 	if( fzdir != NULL ) {
 		bcat( cmd, " --site=\"1/" ) ; bcat( cmd, KT_FZ_SITE_NAME ) ; bcat( cmd, "\"" ) ;
 	} else {
-		bcat( cmd, " " ) ; bcat( cmd, proto ) ; bcat( cmd, "://" ) ;
-		urlcat( cmd, user ) ;
+		/* The URL as ONE quoted argument (qcat): FileZilla takes the folder
+		 * as written - a %20 stays "%20" there, WinSCP decodes it - so the
+		 * folder goes as it is, a '"' in it as \". The password is urlcat'ed:
+		 * qcat leaves it as it is, so its place moves by the opening quote. */
+		strbuf *url = strbuf_new_nm() ;
+		size_t at ;
+		bcat( url, proto ) ; bcat( url, "://" ) ;
+		urlcat( url, user ) ;
 		if( havepw && mode == 2 ) {
-			bcat( cmd, ":" ) ;
-			pw_at = cmd->len ;
-			urlcat( cmd, pw ) ;
-			pw_len = cmd->len - pw_at ;
+			bcat( url, ":" ) ;
+			pw_at = url->len ;
+			urlcat( url, pw ) ;
+			pw_len = url->len - pw_at ;
 		}
-		bcat( cmd, "@" ) ;
-		if( poss( ":", host ) > 0 ) { bcat( cmd, "[" ) ; bcat( cmd, host ) ; bcat( cmd, "]" ) ; }
-		else bcat( cmd, host ) ;
-		put_fmt( cmd, ":%d", port ) ;
+		bcat( url, "@" ) ;
+		if( poss( ":", host ) > 0 ) { bcat( url, "[" ) ; bcat( url, host ) ; bcat( url, "]" ) ; }
+		else bcat( url, host ) ;
+		put_fmt( url, ":%d", port ) ;
+		/* The shell's folder (OSC 7 tracking on), as StartWinSCP hands it
+		 * over: FileZilla opens there. Tracking off or no folder: none, as
+		 * before. The Site Manager entry of mode 1 carries no folder. */
+		{ const char *fdir = kitty_current_dir() ;
+		  if( fdir != NULL && fdir[0] ) {
+			bcat( url, fdir ) ;
+			if( fdir[strlen(fdir)-1] != '/' ) bcat( url, "/" ) ;
+		  }
+		}
+		bcat( cmd, " " ) ;
+		at = cmd->len + 1 ;                 /* past qcat's opening quote */
+		qcat( cmd, url->s ) ;
+		if( pw_len ) pw_at += at ;
+		strbuf_free( url ) ;                /* cleared: it may hold the password */
 		/* With a password: FileZilla prompts for it before connecting (ask).
 		 * Without one: interactive - FileZilla connects at once, its SFTP
 		 * engine tries the agent's keys, and a password is requested only if

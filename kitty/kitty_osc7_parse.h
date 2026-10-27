@@ -4,11 +4,11 @@
  *
  * This is the data-plane-only guard that makes OSC 7 cwd tracking a SAFE
  * replacement for the removed __pw/__ws title-scan dispatcher (CVE-2024-23749):
- * a shell-reported path is %-decoded and whitelist-checked before it may be
- * spliced into a kscp/WinSCP command line - NOTHING is ever executed. Kept in
+ * a shell-reported path is %-decoded and checked before it is handed, as
+ * data, to kscp, WinSCP or FileZilla - NOTHING is ever executed. Kept in
  * this dependency-free header (only these static functions, no includes needed)
  * so kitty.c and the regression test test/test_osc7.c compile the EXACT same
- * code. If you change the whitelist or the decoder, update test/test_osc7.c.
+ * code. If you change the check or the decoder, update test/test_osc7.c.
  */
 #ifndef KITTY_OSC7_PARSE_H
 #define KITTY_OSC7_PARSE_H
@@ -25,7 +25,7 @@ static int osc7_hexval( char c ) {
  * left literal.  Returns 0 if a %00 was decoded: an embedded NUL would
  * terminate the C string before osc7_path_ok() could judge the rest, silently
  * truncating the path, so the caller must reject such a payload outright.
- * (Every other control char survives as a byte and is caught by the whitelist.) */
+ * (Every other control char survives as a byte and is caught by the check.) */
 static int osc7_urldecode( char * s ) {
 	char * r = s, * w = s ;
 	int ok = 1 ;
@@ -44,24 +44,25 @@ static int osc7_urldecode( char * s ) {
  * length with every byte %-encoded arrives whole. */
 #define OSC7_PATH_MAX 4095
 
-/* The first byte of p the whitelist below refuses, or -1 when every byte
+/* The first byte of p the check below refuses, or -1 when every byte
  * passes ('/' itself when the path is not absolute). */
 static int osc7_path_bad_char( const char * p ) {
 	if( p[0] != '/' ) return (unsigned char)p[0] ;
 	for( ; *p ; p++ ) {
 		unsigned char c = (unsigned char)*p ;
-		if( c >= 0x80 ) continue ;
-		if( (c>='0'&&c<='9') || (c>='a'&&c<='z') || (c>='A'&&c<='Z') ) continue ;
-		if( c=='/' || c=='.' || c=='-' || c=='_' || c=='~' ) continue ;
-		return c ;
+		if( c < 0x20 || c == 0x7F ) return c ;
 	}
 	return -1 ;
 }
-/* Whitelist: a path we are willing to splice into the kscp/WinSCP command
- * lines.  Must be absolute; ASCII limited to alphanumerics and /._-~ ; raw
- * UTF-8 bytes (>=0x80, never a shell metacharacter) allowed.  Anything else -
- * space, quotes, ;|&$`<>*?()[]{} , controls - rejects the whole path, so we
- * simply fall back to today's behaviour (upload to the remote HOME). */
+/* A path we are willing to hand to kscp, WinSCP and FileZilla: absolute,
+ * every printable byte allowed (a Linux folder name may hold any of them),
+ * UTF-8 bytes (>=0x80) too; a control byte (below 0x20, or DEL) rejects the
+ * whole path and the previous folder stays.  Each consumer keeps the folder
+ * ONE argument and data only: Win32 argv quoting (qcat) for kscp and the
+ * FileZilla URL (a '"' as \"), every byte but letters, digits and /._-~
+ * %-encoded in the WinSCP URL (pathcat), single quotes in the typed path
+ * (kitty_droppath_quote, a ' as '\'').  FileZilla does not decode its URL's
+ * folder, so it gets the bytes as they are. */
 static inline int osc7_path_ok( const char * p ) {   /* inline: kitty.c uses the char form */
 	return osc7_path_bad_char( p ) < 0 ;
 }

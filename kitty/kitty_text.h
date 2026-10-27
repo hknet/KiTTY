@@ -893,7 +893,7 @@
 #define KT_OSC7_WHY_PATH_LONG                        "folder longer than 4095 bytes"
 #define KT_OSC7_WHY_TOO_LONG                         "folder longer than 4095 bytes or host longer than 255 bytes"
 #define KT_OSC7_WHY_NUL                              "a NUL byte (%00) in the folder"
-#define KT_OSC7_WHY_CHAR_FMT                         "character 0x%02X in the folder (allowed: letters, digits, / . _ - ~)"
+#define KT_OSC7_WHY_CHAR_FMT                         "character 0x%02X in the folder (control characters are refused)"
 #define KT_KSCP_OSC7_NEEDS_SHELL                     "OSC 7 needs serverside shell support - see help for more details"
 #define KT_KSCP_DRAG_DROP_UPLOADS_AND_WINSCP        "Uploads go to the shell's current directory (OSC 7), " \
         "not your home."

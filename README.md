@@ -120,7 +120,7 @@ verified — reports welcome.
 
 
 > 📂 **Put your files where your `cwd` is.** Turn on **OSC 7 directory tracking** and
-> drag-and-drop uploads — and *Start WinSCP* — land in your shell's **current remote
+> drag-and-drop uploads — and *Start WinSCP* / *Start FileZilla* — land in your shell's **current remote
 > directory** instead of always dropping into `$HOME`. It's the safe, **data-only**
 > rework of the old KiTTY's "send file to the current directory" trick, which was retired
 > after that mechanism turned out to be a remote-code-execution hole

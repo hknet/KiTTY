@@ -186,10 +186,10 @@ char * get_param_str( const char * val ) {
  * A shell with directory reporting emits ESC ] 7 ; file://host/path BEL on
  * every prompt.  do_osc() (terminal.c) hands us the payload; we validate and
  * store the path so kitty_current_dir() can offer it as the default remote
- * target for drag-drop kscp uploads and StartWinSCP.  Opt-in per session
- * (CONF_osc7_cwd_tracking, default off).  NOTHING is ever executed - this is
- * the safe replacement for the removed __pw/__ws title-scan dispatcher
- * (CVE-2024-23749 RCE), which stays dead. */
+ * target for drag-drop kscp uploads, StartWinSCP and StartFileZilla.
+ * Opt-in per session (CONF_osc7_cwd_tracking, default off).  NOTHING is
+ * ever executed - this is the safe replacement for the removed __pw/__ws
+ * title-scan dispatcher (CVE-2024-23749 RCE), which stays dead. */
 #include "kitty_osc7_parse.h"   /* OSC7_PATH_MAX; the validators below */
 static char RemoteCwd[OSC7_PATH_MAX + 1] = "" ;   /* validated path portion; "" = none */
 static char RemoteCwdHost[256] = "" ;  /* host portion of the latest one */
