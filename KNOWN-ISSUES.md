@@ -70,6 +70,9 @@ Known limitations of this release:
   Saved Sessions menu up to 3584.
 - **OSC 8 links to a file on another computer are not opened**, nor web
   addresses with a numeric or encoded host.
+- **kscp and ksftp do not expand `~` over SFTP.** `host:~/file` fails. Use
+  `host:file` for the home folder instead. Folders that KiTTY++ hands to kscp
+  itself are absolute and not affected.
 - **The mid-session Change Settings list does not navigate folders.**
 - **Inline SSH security prompts are not available during a rekey**: the
   connection is closed instead.

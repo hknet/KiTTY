@@ -13,7 +13,8 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   windows. (hknet/KiTTY#80)
 - Terminal > Keyboard > The Home and End keys: urxvt, xterm and FreeBSD
   besides Standard and rxvt, as in classic KiTTY. Classic sessions keep
-  their choice.
+  their choice. FreeBSD's End sends ESC [F, where classic KiTTY sent Home's
+  code.
 - OSC 7: a refused folder writes one line with the reason to the terminal
   window's Event Log.
 - OSC 7: Start FileZilla opens the tracked folder too.
@@ -80,8 +81,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - A session save to the folder store that fails is retried for a second,
   then reported in a box and in the Event Log. Before, it was lost without
   a word.
-- Folder store: a session, KiTTYState or Jumplist file is replaced whole on
-  save. A crash or a full disk while saving no longer leaves a cut file.
+- Folder store: a session, KiTTYState, named proxy, CA or Jumplist file is
+  replaced whole on save. A crash or a full disk while saving no longer leaves
+  a cut file.
 - OSC 7: a folder longer than 2047 bytes was cut and the cut folder became
   the upload folder. Folders up to the Linux maximum of 4095 bytes are now
   taken whole. A longer one is refused.
