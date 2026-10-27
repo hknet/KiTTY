@@ -29,6 +29,7 @@
 #include "kitty_secretstore.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
+#include "kitty_store_acl.h"   /* the Proxies folder: owner-only rights */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
@@ -389,6 +390,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 			char *fn = mungestr_dup( name ) ;
 			fullpath = dupprintf( "%s\\%s", dir, fn ) ;
 			sfree( fn ) ;
+			kitty_store_acl_mkdir( dir ) ;   /* the folder above missing: MakeDir makes both */
 			if( !MakeDir( dir ) ) {
 				saverr = GetLastError() ;
 				saved = 0 ;

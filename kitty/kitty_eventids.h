@@ -75,6 +75,7 @@
 #define KITTY_EV_LOG_RETENTION      901
 #define KITTY_EV_MISSING_FEATURES   902
 #define KITTY_EV_SESSION_SAVE_FAILED 903
+#define KITTY_EV_STORE_ACL_NOT_SET  904
 
 struct kitty_eventid {
     unsigned id;
@@ -247,6 +248,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 903, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "session-save-failed",
       "session path reason",
       "Warning" },
+    { 904, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "store-rights-not-set",
+      "path reason",
+      "Warning" },
 };
 #endif /* KITTY_EVENTIDS_TABLE */
 
@@ -369,7 +373,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "place of (SHA256:...), empty for every other result" },
     { "path",
       "100-170: the key file; 401-403: the file written; 903: the "
-      "session file" },
+      "session file; 904: the folder or file created without the "
+      "access rights" },
     { "pattern",
       "901: the folder and the log file name pattern searched" },
     { "pid",
@@ -399,7 +404,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "signature refused, no supported authentication methods available, "
       "the server's message when it ended the connection instead of "
       "answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, "
-      "903: the reason as text" },
+      "903: the reason as text; 904: share (a network share without "
+      "access lists), fat (a "
+      "volume without access lists) or the reason setting them failed, "
+      "as text" },
     { "refused",
       "113: startup keys refused" },
     { "remote",

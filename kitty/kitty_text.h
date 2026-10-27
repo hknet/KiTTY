@@ -2032,6 +2032,14 @@
 #define KT_SESSION_SAVE_FAILED_FMT                   "KiTTY++ could not save the session \"%s\" to\n" \
         "    %s\n" \
         "(%s). The change is not saved. Another program may have the file open."
+/* kitty_store_acl.c: a folder or file created in the folder store without
+ * the owner-only access rights (%s: the store root, or the path outside
+ * it), once per store; the Event Log record (904) has the same words */
+#define KT_STORE_ACL_NOT_SET_FMT                     "Access rights not set for %s: the drive or network share keeps none (FAT, exFAT, a NAS without them). " \
+        "Anyone with access to it can change the stored host keys and sessions."
+/* the same when setting them failed (second %s: Windows' reason) */
+#define KT_STORE_ACL_FAILED_FMT                      "Access rights not set for %s (%s). " \
+        "Anyone with access to it can change the stored host keys and sessions."
 /* kitty_startup.c: putty.ini is retired; its settings move to kitty.ini once */
 #define KT_MAIN_PUTTYINI_COPIED_FMT                  "KiTTY++ no longer reads putty.ini. Its settings were copied to\n" \
         "    %s\n" \

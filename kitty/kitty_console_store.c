@@ -33,6 +33,7 @@
 #include "kitty_hostkeys00.h"
 #include "kitty_hostkeys.h"
 #include "kitty_winevent.h"
+#include "kitty_store_acl.h"   /* kitty_set_store_acl_report */
 
 /* A [KiTTY] switch read where kitty.exe's configuration box writes it
  * (WriteParameter): the hive in use first in registry mode, kitty.ini
@@ -70,12 +71,22 @@ static void console_accept_new_report(const char *line)
     fflush(stderr);
 }
 
+/* Access rights not set in the folder store (kitty_store_acl.c, which writes
+ * the Event Log record): one line on standard error, once per store. */
+static int console_store_acl_report(const char *msg)
+{
+    fprintf(stderr, "%s\n", msg);
+    fflush(stderr);
+    return 1;
+}
+
 void kitty_console_store_init(void)
 {
     static struct kitty_ini_startup ini;   /* its strings freed on the next call */
 
     kitty_publish_kittypp_dir();
     kitty_console_mpw_init();
+    kitty_set_store_acl_report(console_store_acl_report);
 
     kitty_inifile_startup_free(&ini);
     kitty_inifile_startup(&ini);

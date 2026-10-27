@@ -4,7 +4,7 @@ Each record carries its kind as insertion string \c{%1} and its fields
 as \c{%2} onwards, in the order listed below; the message shows each
 field as a \c{name: value} line, an absent field as an empty string.
 Where kitty.exe is not registered as the message file of \c{KiTTY++}
-(no system-wide installation), 900-903 are written as event ID 0 with
+(no system-wide installation), 900-904 are written as event ID 0 with
 one readable line instead. The level of each ID is given in brackets.
 
 The fields, by name:
@@ -77,7 +77,7 @@ The fields, by name:
 
 \b \c{oldfp} - 213, 313: the hash of the stored key a replaced key took the place of (SHA256:...), empty for every other result.
 
-\b \c{path} - 100-170: the key file; 401-403: the file written; 903: the session file.
+\b \c{path} - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights.
 
 \b \c{pattern} - 901: the folder and the log file name pattern searched.
 
@@ -93,7 +93,7 @@ The fields, by name:
 
 \b \c{proxy} - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
 
-\b \c{reason} - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text.
+\b \c{reason} - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text; 904: share (a network share without access lists), fat (a volume without access lists) or the reason setting them failed, as text.
 
 \b \c{refused} - 113: startup keys refused.
 
@@ -224,5 +224,7 @@ The event IDs:
 \b \c{902} \c{KiTTY++} (Information): \c{missing-features}, then \c{features}, \c{missing}.
 
 \b \c{903} \c{KiTTY++} (Warning): \c{session-save-failed}, then \c{session}, \c{path}, \c{reason}.
+
+\b \c{904} \c{KiTTY++} (Warning): \c{store-rights-not-set}, then \c{path}, \c{reason}.
 
 \# END generated rows

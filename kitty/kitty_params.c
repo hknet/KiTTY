@@ -54,6 +54,7 @@
 #include "kitty_text.h"   /* shared captions and wordings */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_storage.h"   /* kitty_set_session_save_failed_report */
+#include "kitty_store_acl.h" /* kitty_set_store_acl_report */
 #include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_termenv.h"   /* the sendtermenv switch, read by the backends */
@@ -508,8 +509,27 @@ static void session_save_failed_report( const char *msg ) {
 		break ;
 	}
 }
+/* Access rights not set in the folder store (kitty_store_acl.c, which writes
+ * the Event Log record): where a failed session save is reported, once per
+ * store. 1 = shown, and the store remembers it; nothing where nobody can see
+ * it, so the next start tries again. */
+static int store_acl_report( const char *msg ) {
+	switch( kitty_reach() ) {
+	  case KITTY_REACH_DESKTOP:
+		kitty_info_box( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL ) ;
+		return 1 ;
+	  case KITTY_REACH_SESSION:
+		return kitty_info_modeless( GetActiveWindow(), KT_CAP_KITTYPP, msg, NULL, NULL ) != NULL ;
+	  case KITTY_REACH_SHELL:
+		KittyCliPrint( msg ) ;
+		return 1 ;
+	  default:
+		return 0 ;
+	}
+}
 static void __attribute__((constructor)) kitty_params_autoreg( void ) {
 	kitty_set_session_save_failed_report( session_save_failed_report ) ;
+	kitty_set_store_acl_report( store_acl_report ) ;
 }
 
 // Write a parameter either to the registry or to the configuration file.

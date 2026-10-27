@@ -40,6 +40,7 @@
 #include "kitty_storage_int.h"
 #include "kitty_sessionpath.h" /* session names as folder paths */
 #include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
+#include "kitty_store_acl.h"   /* owner-only rights for what the store creates */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -1938,7 +1939,7 @@ void ksf_make_parent_dirs(const char *path)
     if (kitty_store_readonly())
         return;                         /* readonly=yes: no folder made */
     p = dupstr(path);
-    CreateDirectoryA(g_sess_dir, NULL);
+    kitty_store_acl_mkdir(g_sess_dir);  /* the folders below inherit */
     if (strnicmp(p, g_sess_dir, base) || p[base] != '\\') {
         sfree(p);
         return;
@@ -2371,7 +2372,7 @@ static bool ksf_save_x(const char *path, struct ksf_item *h, int classic)
      * first, this is the floor under them */
     if (kitty_store_readonly())
         return false;
-    CreateDirectoryA(g_sess_dir, NULL);   /* harmless if it already exists */
+    kitty_store_acl_mkdir(g_sess_dir);   /* harmless if it already exists */
     sb = strbuf_new_nm();                 /* it holds the stored passwords */
     for (; h; h = h->next) {
         const char *eol = h->crlf ? "\r\n" : "\n";   /* the line's own */
@@ -2491,7 +2492,7 @@ int portable_write_text_file(const char *subdir, const char *name,
         return KITTY_RO_REFUSED;
     }
     if (!dir || !path) goto out;
-    if (!CreateDirectoryA(dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+    if (!kitty_store_acl_mkdir(dir) && GetLastError() != ERROR_ALREADY_EXISTS) {
         err = GetLastError(); goto out;
     }
     text = dupprintf("%s\n", value ? value : "");
@@ -2560,6 +2561,7 @@ int kitty_portable_store_state_string(const char *key, const char *value)
     if (kitty_store_readonly()) return KITTY_RO_REFUSED;
     path = portable_state_path();
     if (!path) return 0;
+    kitty_store_acl_new_file(path);   /* a new KiTTYState: the store's rights */
     items = ksf_load(path);
     ksf_list_set(&items, key, value ? value : "");
     ksf_save(path, items);

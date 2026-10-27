@@ -21,6 +21,7 @@
 #include "../kitty/kitty_winevent.h" /* kitty_wev_suite: its Event Log record */
 #include "../kitty/kitty_b64.h"      /* ksec_b64_encode: the login script's protected form */
 #include "../kitty/kitty_atomicfile.h"  /* kitty_write_file_whole: the Jumplist */
+#include "../kitty/kitty_store_acl.h"   /* owner-only rights for what the store creates */
 
 #include <shlobj.h>
 #ifndef CSIDL_APPDATA
@@ -1906,7 +1907,7 @@ char *host_ca_save(host_ca *hca)
         struct ksf_item *items = NULL;
         char tmp[32];
         if (!dir || !path) { sfree(dir); sfree(path); return dupstr("Unable to build portable host CA path"); }
-        CreateDirectoryA(dir, NULL);
+        kitty_store_acl_mkdir(dir);
         strbuf *base64_pubkey = base64_encode_sb(ptrlen_from_strbuf(hca->ca_public_key), 0);
         ksf_list_set(&items, "PublicKey", base64_pubkey->s);
         strbuf_free(base64_pubkey);
@@ -2020,6 +2021,9 @@ static HANDLE access_random_seed(int action)
             if (!kitty_store_readonly())
                 CreateDirectoryA(root, NULL);
             sfree(root);
+            /* KiTTY: a new seed file gets the store's rights */
+            if (action == OPEN_W && !kitty_store_readonly())
+                kitty_store_acl_new_file(path);
             if (try_random_seed_and_free(path, action, &rethandle))
                 return rethandle;
             if (action != DEL)
@@ -2223,6 +2227,7 @@ static int transform_jumplist_registry(
                 strbuf *out = strbuf_new();
                 BinarySource outsrc[1];
                 CreateDirectoryA(root, NULL);
+                kitty_store_acl_new_file(path);   /* a new Jumplist: the store's rights */
                 BinarySource_BARE_INIT_PL(outsrc, ptrlen_from_strbuf(newlist));
                 while (true) {
                     const char *item = get_asciz(outsrc);

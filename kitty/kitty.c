@@ -644,9 +644,11 @@ char * GetHelpMessage(void) {
 
 // If kitty.ini does not exist, create the default file
 #include "kitty_ini.h"
+#include "kitty_store_acl.h"   /* a new kitty.ini of the folder store: owner-only rights */
 void CreateIniFile( const char * filename ) {
 	FILE *fp;
 	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: the store is not written */
+	if( IniFileFlag == SAVEMODE_DIR ) kitty_store_acl_new_file( filename ) ;
 	if( (fp=fopen(filename,"w")) != NULL ) {
 		if( IniFileFlag == SAVEMODE_DIR ) {
 			int p = poss( ";savemode=registry", default_init_file_content );

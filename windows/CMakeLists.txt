@@ -195,6 +195,7 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
 # targets fail to link.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)   # KiTTY: a file written whole or not at all (kitty_storage.c)
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c)   # KiTTY: owner-only rights for what the folder store creates
 # KiTTY: a session name as a folder path, the name resolver and the session
 # file check (hknet/KiTTY#55, #56). Listed beside kitty_storage.c everywhere.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
@@ -437,6 +438,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   help.c
@@ -475,6 +477,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c   # base64 codec used by storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c   # fork half of storage.c (split out of it)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c   # kitty.ini resolver: readonly=yes for the store
@@ -545,6 +548,7 @@ add_executable(test_storage_roundtrip
   ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
@@ -699,6 +703,16 @@ add_executable(test_atomicfile
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)
 target_include_directories(test_atomicfile PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
 target_link_libraries(test_atomicfile ${platform_libraries})
+
+# The folder store's owner-only rights (test/test_storeacl.c): the decision
+# (exists, profile, share, FAT), the notice once per store with its record,
+# and the access list a folder is made with.
+add_executable(test_storeacl
+  ${CMAKE_SOURCE_DIR}/test/test_storeacl.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)
+target_include_directories(test_storeacl PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
+target_link_libraries(test_storeacl ${platform_libraries})
 
 # The plain-text fast path in term_out() against the ordinary path, cell for
 # cell (test/test_textrun.c). Same build of terminal.c as test_osc52 and the

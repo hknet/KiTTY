@@ -60,6 +60,7 @@
 #include "kitty_regbackup.h"
 #include "kitty_int.h"   /* the paths and flags kitty.c owns */
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_store_acl.h"   /* the Backups folder: owner-only rights */
 
 /* Run Windows' own registry tool, hidden, and report whether it succeeded.
  * `hive` is NULL for verbs that take only a file (import). */
@@ -492,7 +493,7 @@ static int SavePortableDirBackupEx( char **out ) {
 		SetLastError( ERROR_PATH_NOT_FOUND ) ;
 		return 0 ;
 		}
-	if( !CreateDirectoryA( root, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
+	if( !kitty_store_acl_mkdir( root ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
 		DWORD err = GetLastError() ;
 		if( out ) *out = root ; else sfree( root ) ;
 		SetLastError( err ) ;

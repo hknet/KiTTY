@@ -33,6 +33,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   proof leaves the store unchanged. Only on a connection whose key was
   verified against the store. `updatehostkeys=no`
   in kitty.ini switches it off.
+- Folder store: a folder or file KiTTY++ creates there gets owner-only
+  access rights (the user, SYSTEM, Administrators). Existing stores keep
+  theirs. On FAT or a network share without access rights a notice and
+  event 904 report that the rights are not set.
 
 ### Changed
 

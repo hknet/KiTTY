@@ -271,6 +271,13 @@ copied into kitty.ini once (as `sessions`, `fileextension`, `sshhostkeys` and
 as it is. 0.85.1.13 stored the endings as `sessionsuffix` / `keysuffix` in
 kitty.ini: they are copied over the same way and removed.
 
+**Folder store: owner-only access rights.** A folder or file KiTTY++
+creates in a folder store outside the user profile gets access for the user,
+SYSTEM and Administrators only. A share on a Windows server's NTFS takes them
+too. On FAT or a share without access rights a notice and event 904 report
+that the rights are not set. On an NTFS USB stick they only keep out other
+users of the same PC, not someone who holds the stick.
+
 **Manage Sessions.** *Manage...* (under *Del folder*, beside the comment
 field; at the list's foot when the list is tall enough) and Application >
 Migration > *Manage Sessions...* open a window of its own: the folder tree on

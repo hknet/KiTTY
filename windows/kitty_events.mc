@@ -11,8 +11,8 @@
 ;   300-399  klink, kscp, ksftp (source "KiTTY++_cli")
 ;   400-499  kittygen, kittygen-cli (source "KiTTY++_kittygen")
 ;   900-999  the suite (source "KiTTY++"): refused program files, log
-;            retention, missing Windows features, failed session saves -
-;            always written
+;            retention, missing Windows features, failed session saves,
+;            store access rights not set - always written
 ;   other    reserved, not used yet
 MessageIdTypedef=DWORD
 LanguageNames=(English=0x409:MSG00409)
@@ -321,7 +321,8 @@ Language=English
 
 ; The suite, source "KiTTY++", always written, in the Application log: a
 ; program file refused at start (rename, signature, integrity), log
-; retention, missing Windows features.
+; retention, missing Windows features, failed session saves, folder-store
+; access rights not set.
 
 MessageId=900
 SymbolicName=KITTY_SUITE_PROGRAM_REFUSED
@@ -345,4 +346,10 @@ MessageId=903
 SymbolicName=KITTY_SUITE_SESSION_SAVE_FAILED
 Language=English
 %1%nsession: %2%npath: %3%nreason: %4%0
+.
+
+MessageId=904
+SymbolicName=KITTY_SUITE_STORE_ACL_NOT_SET
+Language=English
+%1%npath: %2%nreason: %3%0
 .

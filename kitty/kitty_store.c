@@ -20,6 +20,7 @@
 #include "kitty_registry.h"
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_params.h"    /* kitty_read_ini_dup */
+#include "kitty_store_acl.h" /* the session folder: owner-only rights */
 
 
 #ifndef snewn
@@ -353,7 +354,7 @@ int loadPath(void) {
 	/* Test Sessions directory (readonly=yes: not created) */
 	if(get_param("INIFILE")==SAVEMODE_DIR && !GetReadOnlyFlag())
 	if( !existdirectory(sesspath) ) {
-		if( !MakeDir(sesspath) ) {
+		if( !kitty_store_acl_mkdir(sesspath) && !MakeDir(sesspath) ) {
 			MessageBox( NULL, KT_STORE_SESSDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		}
 	}
@@ -576,7 +577,7 @@ int kitty_store_ini_takeover(void) {
 		kstore_set( &initialsesspath, dupstr( sesspath ) ) ;
 	}
 	if( !GetReadOnlyFlag() && sesspath && sesspath[0] && !existdirectory( sesspath ) )
-		MakeDir( sesspath ) ;
+		if( !kitty_store_acl_mkdir( sesspath ) ) MakeDir( sesspath ) ;
 
 	/* the endings read as old KiTTY read them: a dot in front if missing.
 	 * Where kitty.ini could not be written, a 0.85.1.13 name still counts. */

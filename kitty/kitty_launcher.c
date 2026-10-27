@@ -154,6 +154,7 @@ static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) 
 #include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
 #include "kitty_workplace.h"          /* KiTTY: workplace proxy mode arming */
 #include "kitty_notice.h"           /* KiTTY: our own arm/disarm notice window */
+#include "kitty_store_acl.h"        /* KiTTY: the Launcher folder: owner-only rights */
 
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
@@ -1129,7 +1130,11 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		int nn = 0, k ;
 		char ** names ;
 		if( !ro ) {
+			/* a new Launcher folder gets the owner-only rights; one that was
+			 * there is made again as before */
+			int lnew = ldir != NULL && GetFileAttributesA( ldir ) == INVALID_FILE_ATTRIBUTES ;
 			if( ldir != NULL ) DelDir( ldir ) ;
+			if( lnew ) kitty_store_acl_mkdir( ldir ) ;
 			if( ldir == NULL || !MakeDir( ldir ) ) {
 				/* MakeDir's own last error is its final existence check; one
 				 * more plain attempt gives Windows' reason (a FILE of that

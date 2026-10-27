@@ -50,6 +50,7 @@
 #include "kitty_migrate.h"       /* kitty_store_suffix_of */
 #include "kitty_tools.h"         /* str_rtrim */
 #include "kitty_oldwin.h"        /* paths and values read whole */
+#include "kitty_store_acl.h"     /* the new store's folders: owner-only rights */
 
 #define KSM_INI       "kitty.ini"
 /* the bundle extension follows the store's fileextension setting */
@@ -244,7 +245,7 @@ static int ksm_hostkeys_to_dir(const char *dst, int *fail)
     if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_reg_hostkeys(), 0,
                       KEY_READ, &k) == ERROR_SUCCESS) {
         DWORD i = 0;
-        CreateDirectoryA(dir, NULL);
+        kitty_store_acl_mkdir(dir);
         for (;;) {
             char name[16384];
             DWORD nlen = sizeof(name), type, vlen = 0;
@@ -651,7 +652,7 @@ static void ksm_bundle_to_store_layout(const char *dir, int *fail)
         struct ksm_move_ctx mc;
         mc.to = to;
         mc.fail = fail;
-        CreateDirectoryA(to, NULL);
+        kitty_store_acl_mkdir(to);
         ksm_each_file(from, ksm_move_file_cb, &mc);
         RemoveDirectoryA(from);
     }
@@ -794,7 +795,7 @@ static int ksm_mint_master_state(const char *dir, const char *pass)
     char *sec = dupprintf("%s\\Security", dir);
     char *sb, *vb;
     int ok = 0;
-    CreateDirectoryA(sec, NULL);
+    kitty_store_acl_mkdir(sec);
     kitty_mpw_random_salt(salt, sizeof(salt));
     kitty_mpw_derive(pass, salt, sizeof(salt), key);
     sb = ksec_b64_encode(salt, sizeof(salt));
@@ -845,7 +846,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     }
 
     /* sessions + named proxies, re-protected for the copy */
-    CreateDirectoryA(sessdir, NULL);
+    kitty_store_acl_mkdir(sessdir);
     if (dpapi) kitty_set_bundle_dpapi_only(1);
     else kitty_set_bundle_passphrase(pw);
     kitty_set_bundle_store_form(1);   /* the copy's own store lines */
@@ -884,6 +885,8 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
             char *from = kitty_hostkey_dir()[0] ? dupstr(kitty_hostkey_dir())
                                                 : dupprintf("%s\\SshHostKeys", root);
             char *to = dupprintf("%s\\SshHostKeys", dir);
+            if (ksm_dir_exists(from))
+                kitty_store_acl_mkdir(to);   /* the copy's own folder */
             r->hostkeys = ksm_copy_dir_files(from, to, &r->fail);
             sfree(to);
             sfree(from);
@@ -895,6 +898,7 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     if (!dpapi && !ksm_mint_master_state(dir, pw)) r->fail++;
 
     /* kitty.ini: every global, then the layout of the copy */
+    kitty_store_acl_new_file(ini);   /* a new kitty.ini: the store's rights */
     r->settings = ksm_globals_to_ini(ini, &r->fail);
     ksm_own_kscp_path(ini);
     /* without savemode=dir the copy is not a folder store: counted, so

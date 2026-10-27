@@ -77,6 +77,34 @@ With \c{readonly=yes} the store is not written at all: no session,
 host-key, state or backup file, no \c{kitty.ini} change, and a missing
 session folder is not created (\k{kitty-cfg-storage}).
 
+\H{folderstore-rights} Access rights
+
+A folder or file that KiTTY++ creates in the store gets owner-only
+access rights: the user, \c{SYSTEM} and the local Administrators group
+have full control. Nothing is inherited from the folder above. The
+contents of such a folder inherit the same rights. This covers the
+folders of the layout above, a folder set with \c{sessions} or
+\c{sshhostkeys}, \c{KiTTYState}, \c{Jumplist}, \c{PUTTY.RND} and a
+generated \c{kitty.ini}. The store root itself is left as it is.
+
+The rights are set when the folder or file is created. A store that
+exists keeps its rights. Below \c{%USERPROFILE%} nothing is set: only
+the user has access there already.
+
+A network share is treated as a local drive. A share on a Windows
+server's NTFS takes the rights: the user, SYSTEM and Administrators of
+the server. A drive or share without access rights (FAT, exFAT, a NAS
+without them) cannot take them. KiTTY++ then shows one notice per store
+and writes event 904 to the Windows Event Log (\k{kitty-eventids}). A
+failure to set them, such as a share that refuses changes to its
+rights, is reported the same way, with the reason. The folder or file
+is created in either case.
+
+On an NTFS USB stick the rights only keep out other users of the same
+Windows PC. They do not protect against someone who holds the stick.
+An administrator of another PC can take ownership. Other systems ignore
+the rights.
+
 \H{folderstore-sessions} Session files and folders
 
 \b One file per session: \c{Linux\\web\\srv01} is the file
