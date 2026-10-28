@@ -29,6 +29,7 @@
 #include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
 #include "kitty_hello_keys.h"  /* Hello-protected keys: the sidecar test */
 #include "kitty_auditlog.h" /* the audit log's file sink */
+#include "kitty_kageant_dest.h" /* a session-bind destination as the log writes it */
 #include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
 
@@ -317,12 +318,42 @@ void kageant_audit_decrypt(const char *fp, const char *comment,
 }
 
 /* A refused request (kageant_refused_hook): ev "request", result
- * "refused", the agent core's reason as written. The Event Log sink has no
- * ID of its own for it and reports the whole record as message 0. Under
- * the same switch as every other line (kitty_audit_enabled). */
-void kageant_audit_refused(const char *reason, unsigned long pid)
+ * "refused", the agent core's reason as written, and on a connection that
+ * sent a session-bind its destination. The Event Log sink has no ID of
+ * its own for it and reports the whole record as message 0. Under the same
+ * switch as every other line (kitty_audit_enabled). */
+void kageant_audit_refused(const char *reason, unsigned long pid,
+                           const struct kageant_dest *d)
 {
-    kageant_audit_use("request", NULL, NULL, "refused", reason, pid);
+    char *dest = NULL, *fwd = NULL;
+    if (kitty_audit_enabled())
+        kageant_dest_fields(d, &dest, &fwd);
+    kageant_audit_use_dest("request", NULL, NULL, "refused", reason, pid,
+                           dest, fwd);
+    sfree(dest);
+    sfree(fwd);
+}
+
+/* A session-bind verified and recorded (kageant_bind_hook): ev
+ * "session-bind", result "accepted", dest the host key it binds (with a
+ * host name when one is found), forwarding yes when the client bound it
+ * for agent forwarding. A refused one is a refused request
+ * (kageant_audit_refused). Event ID 102. */
+void kageant_audit_bind(ptrlen hostkey, bool forwarding, unsigned long pid)
+{
+    char *req, *reqpath, *dest, pidbuf[16];
+    if (!kitty_audit_enabled())
+        return;                 /* the host name lookup only for a record */
+    dest = kageant_dest_hostkey_text(hostkey);
+    kageant_req_name(pid, &req, &reqpath);
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit("session-bind", "result", "accepted", "dest", dest,
+                "forwarding", forwarding ? "yes" : "no",
+                "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, (const char *)NULL);
+    sfree(dest);
+    sfree(req);
+    sfree(reqpath);
 }
 
 /* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
@@ -330,12 +361,24 @@ void kageant_audit_use(const char *ev, const char *fp,
                               const char *comment, const char *result,
                               const char *reason, unsigned long pid)
 {
+    kageant_audit_use_dest(ev, fp, comment, result, reason, pid, NULL, NULL);
+}
+
+/* The same with a session-bind's destination (kageant_dest_fields): dest
+ * the server the login is for, fwd the agent forwarding hops; NULL leaves
+ * the field out. */
+void kageant_audit_use_dest(const char *ev, const char *fp,
+                            const char *comment, const char *result,
+                            const char *reason, unsigned long pid,
+                            const char *dest, const char *fwd)
+{
     char *req, *reqpath, pidbuf[16];
     kageant_req_name(pid, &req, &reqpath);
     snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
     kitty_audit(ev, "fp", fp, "comment", comment, "result", result,
                 "reason", reason, "req", req, "reqpath", reqpath,
-                "pid", pid ? pidbuf : NULL, (const char *)NULL);
+                "pid", pid ? pidbuf : NULL, "dest", dest, "fwd", fwd,
+                (const char *)NULL);
     sfree(req);
     sfree(reqpath);
 }

@@ -167,11 +167,32 @@ extern void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
 bool pageant_key_decrypted_by_blob(ptrlen blob);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
+/*
+ * KiTTY: the verified session-bind@openssh.com bindings of the connection
+ * a request came on (OpenSSH's PROTOCOL.agent), in the order they were
+ * bound: the server's host key blob and whether the client bound it for
+ * agent forwarding (a hop) rather than for its own login. The hooks below
+ * get NULL for a connection that sent none. Borrowed for the call.
+ * At most KAGEANT_MAX_BINDINGS per connection, OpenSSH's limit.
+ */
+#define KAGEANT_MAX_BINDINGS 16
+struct kageant_dest {
+    size_t n;
+    ptrlen hostkey[KAGEANT_MAX_BINDINGS];
+    bool forwarding[KAGEANT_MAX_BINDINGS];
+};
 /* KiTTY: every refused request - the reason of its SSH_AGENT_FAILURE
  * reply as the core words it - for the agent's audit log, whether or not
  * the client logs; pid = the requester, 0 when not known (a reply after a
- * prompt). NULL everywhere but kageant. */
-extern void (*kageant_refused_hook)(const char *reason, unsigned long pid);
+ * prompt); dest = the connection's bindings. NULL everywhere but
+ * kageant. */
+extern void (*kageant_refused_hook)(const char *reason, unsigned long pid,
+                                    const struct kageant_dest *dest);
+/* KiTTY: a session-bind was verified and recorded for the connection:
+ * the host key it binds, its forwarding flag, the requester. NULL
+ * everywhere but kageant. */
+extern void (*kageant_bind_hook)(ptrlen hostkey, bool forwarding,
+                                 unsigned long pid);
 
 /* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
  * its keys but answers an empty key list and refuses every other request but
@@ -341,6 +362,7 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
     X(EXT_REENCRYPT, PUTTYEXT("reencrypt"))             \
     X(EXT_REENCRYPT_ALL, PUTTYEXT("reencrypt-all"))     \
     X(EXT_LIST_EXTENDED, PUTTYEXT("list-extended"))     \
+    X(EXT_SESSION_BIND, "session-bind@openssh.com")     \
     /* end of list */
 
 #define LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE    1

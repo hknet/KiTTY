@@ -156,7 +156,7 @@ are in the Application log, whose size and retention are Windows' own settings.
 | Range | Source | Records |
 |---|---|---|
 | 0 | `KiTTY++` | text only: the one string is the message |
-| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170) |
+| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170) |
 | 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
 | 300-399 | `KiTTY++_cli` | 300-325 as 200-225; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
@@ -179,6 +179,10 @@ Warning, 900 is Error, the rest are classified as Information.
   through; `forward` for a port forwarding's connection, `x11` for an X11
   forwarding's.
 - **SSH-1:** `keytype` `rsa1`; `fp` the MD5 hash (`aa:bb:...`).
+- **Destination (kageant):** 100 and 101 carry `dest`, the server of the
+  client's verified session-bind (`SHA256:...`, then a host name when one is
+  found), and `fwd`, the agent forwarding hops. Both are empty without a
+  session-bind. The session-bind itself is event ID 102, kind `session-bind`.
 - **Serial lines:** `proto` `serial`, `host` the line (`COM3`), `port` the
   speed.
 

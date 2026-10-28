@@ -6,6 +6,20 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 ## 0.85.1.20-beta — 2026-10-28
 
+### New
+
+- kageant: OpenSSH's session-bind (the Windows `ssh.exe` and every OpenSSH
+  client from 8.9 on). kageant verifies the server's signature and shows the
+  server a key is used for: in the key-use confirmation (Destination,
+  Forwarded via) and in the agent log (`dest=`, `fwd=`, a `session-bind`
+  record). Events 100 and 101 end with the fields dest and fwd. Event 102
+  records the session-bind. Nothing is refused because of the destination.
+- Links in a session comment open with a click: the box under the session
+  list underlines web addresses, `file://` links and UNC paths and opens them
+  in the program Windows has registered for them. A path with blanks goes in
+  double quotes or angle brackets. Enter opens the first link. The right-click
+  menu copies a link or the comment in full. A long comment scrolls.
+
 ### Changed
 
 - Application > Security: "Extra tracing in the Event Log" is now "Extra

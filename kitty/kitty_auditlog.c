@@ -224,6 +224,15 @@ static void audit_write_file(const char *ev, const char *const *keys,
 static const char *const af_use[] = {
     "fp", "comment", "result", "reason", "req", "reqpath", "pid", NULL
 };
+/* sign and confirm: also the server of a verified session-bind */
+static const char *const af_sign[] = {
+    "fp", "comment", "result", "reason", "req", "reqpath", "pid",
+    "dest", "fwd", NULL
+};
+/* a verified session-bind: the server bound to */
+static const char *const af_bind[] = {
+    "result", "dest", "forwarding", "req", "reqpath", "pid", NULL
+};
 static const char *const af_add[] = {
     "fp", "comment", "result", "reason", "req", "reqpath", "pid", "path", NULL
 };
@@ -247,8 +256,9 @@ static const struct audit_kind {
     WORD id;
     const char *const *fields;
 } audit_kinds[] = {
-    { "sign",            100, af_use },
-    { "confirm",         101, af_use },
+    { "sign",            100, af_sign },
+    { "confirm",         101, af_sign },
+    { "session-bind",    102, af_bind },
     { "add",             110, af_add },
     { "loadkey",         111, af_load },
     { "forget-path",     112, af_forget },

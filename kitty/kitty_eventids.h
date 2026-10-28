@@ -94,11 +94,14 @@ static const struct kitty_eventid kitty_eventids[] = {
 
     /* kageant: kitty/kitty_auditlog.c, audit_kinds */
     { 100, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "sign",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid dest fwd",
       "Information; Warning for a refusal or failure" },
     { 101, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "confirm",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid dest fwd",
       "Information; Warning for a refusal or failure" },
+    { 102, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "session-bind",
+      "result dest forwarding req reqpath pid",
+      "Information" },
     { 110, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "add",
       "fp comment result reason req reqpath pid path",
       "Information; Warning for a refusal or failure" },
@@ -296,7 +299,11 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "days",
       "901: LogKeepDays as set, 0 = off" },
     { "dest",
-      "131: the protected copy written" },
+      "100, 101: the server the key is used for, from the client's "
+      "verified session-bind: the hash of its host key (SHA256:...), then "
+      "a host name when one is found; empty without a session-bind; 102: "
+      "the server the client bound to, written the same way; 131: the "
+      "protected copy written" },
     { "detail",
       "130, 132: the detail Windows Hello reported; 230: the "
       "refusals the rate limit merged into this record (a number), "
@@ -325,6 +332,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "format",
       "401: ppk3, ppk2, openssh, ssh.com or ssh1; 402: rfc4716, "
       "openssh or ssh1" },
+    { "forwarding",
+      "102: yes when the client bound the connection for agent "
+      "forwarding, else no" },
     { "found",
       "900: what the check found; rename: the program's file name; "
       "signature: bad digest, not signed, or signer: followed by "
@@ -337,6 +347,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "key's MD5 hash, aa:bb:...), empty for a proxy's login" },
     { "from",
       "200, 300: the local end of the connection, address and port" },
+    { "fwd",
+      "100, 101: the agent forwarding hops of the client's verified "
+      "session-binds, in the order bound, each as in dest, separated by a "
+      "comma; empty when there is none" },
     { "host",
       "the host name as given for the connection; a serial line's name "
       "(COM3); with proxy set and in 225, 325: the proxy's; 225, 325 "
@@ -423,7 +437,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "230: what the far end asked for; values: osc52-read, "
       "osc5522-read, far2l-clipboard, file-read, file-write" },
     { "result",
-      "the outcome; 100, 101: allowed, denied; 110, 114, 115: done, "
+      "the outcome; 100, 101: allowed, denied; 102: accepted; 110, 114, "
+      "115: done, "
       "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "
       "forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, "
       "blocked; 130: added, denied, failed; 131: protected, denied, "

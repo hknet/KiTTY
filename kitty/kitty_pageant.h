@@ -266,7 +266,9 @@ void kageant_apply_saved_order(void);
 int kageant_nloaded(void);             /* key paths tracked this session */
 
 /* ---- key-use confirm/notify (installed as agent-core hook pointers) ---- */
-int kageant_do_confirm(const char *comment, int key_confirm, const char *fp);
+struct kageant_dest;   /* pageant.h: a connection's session-binds */
+int kageant_do_confirm(const char *comment, int key_confirm, const char *fp,
+                       const struct kageant_dest *dest);
 void kageant_do_mutation_notice(int op, const char *comment, const char *fp);
 int  kageant_ipc_blocked(int op, const char *fp);   /* IPC access-control policy */
 void kageant_confirm_resume(void);  /* lift the confirm-suppress latch */
@@ -284,8 +286,17 @@ int  kageant_winlock_mode_set(int mode);
 /* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
 void kageant_audit_use(const char *ev, const char *fp, const char *comment,
                        const char *result, const char *reason, unsigned long pid);
+/* the same with a session-bind's destination: dest and fwd as
+ * kageant_dest_fields (kitty_kageant_dest.h) makes them, NULL = absent */
+void kageant_audit_use_dest(const char *ev, const char *fp,
+                            const char *comment, const char *result,
+                            const char *reason, unsigned long pid,
+                            const char *dest, const char *fwd);
 /* kageant_refused_hook (pageant.h): a refused request in the audit log */
-void kageant_audit_refused(const char *reason, unsigned long pid);
+void kageant_audit_refused(const char *reason, unsigned long pid,
+                           const struct kageant_dest *dest);
+/* kageant_bind_hook (pageant.h): a session-bind accepted */
+void kageant_audit_bind(ptrlen hostkey, bool forwarding, unsigned long pid);
 /* the agent lock's frontend half (kitty_pageant.c) */
 int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);
@@ -296,7 +307,8 @@ int kageant_comment_wants_confirm(const char *comment);
 void kageant_do_notify(const char *comment, const char *fingerprint);
 /* the hook pointers themselves live in the agent core (../pageant.c) */
 extern int (*kageant_confirm_hook)(const char *comment, int key_confirm,
-                                  const char *fp);
+                                  const char *fp,
+                                  const struct kageant_dest *dest);
 extern void (*kageant_random_hook)(void *buf, size_t size);
 /* the public blob behind a deferred-decryption prompt (agent core) */
 struct PageantClientDialogId;
@@ -307,7 +319,8 @@ extern void (*kageant_notify_hook)(const char *comment,
 /* KiTTY: outcome of a signing request, for the key list's tint. */
 extern void (*kageant_keyuse_hook)(const char *fingerprint,
                                    const char *comment, int allowed,
-                                   unsigned long req_pid);
+                                   unsigned long req_pid,
+                                   const struct kageant_dest *dest);
 /* KiTTY: an external client requested the identity list. Used to speak up about
  * keys being held back, at the moment their absence costs something. */
 extern void (*kageant_identities_asked_hook)(unsigned long pid);
@@ -336,7 +349,8 @@ void kageant_refresh_tray_tip(void);
 int kageant_flash_get(const char *fingerprint, int *allowed);
 int kageant_flash_any(void);
 void kageant_note_keyuse(const char *fingerprint, const char *comment,
-                         int allowed, unsigned long req_pid);
+                         int allowed, unsigned long req_pid,
+                         const struct kageant_dest *dest);
 void kageant_keylist_flash_changed(void);
 
 #endif /* KITTY_PAGEANT_H */

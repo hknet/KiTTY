@@ -7092,6 +7092,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kitty_hello_cache_ttl_set(kageant_hello_ttl());  /* KiTTY: KEK cache */
         kageant_confirm_hook = kageant_do_confirm;
         kageant_refused_hook = kageant_audit_refused;   /* KiTTY: refusals in the audit log */
+        kageant_bind_hook = kageant_audit_bind;         /* KiTTY: session-binds in the audit log */
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
         kageant_ipc_blocked_hook = kageant_ipc_blocked;

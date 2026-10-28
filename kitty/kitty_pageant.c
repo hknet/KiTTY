@@ -31,6 +31,7 @@
 #include "kitty_hello.h"    /* Windows Hello presence check (confirm gating) */
 #include "kitty_hello_keys.h"  /* Hello-protected keys: the sidecar test */
 #include "kitty_auditlog.h" /* the audit log's file sink */
+#include "kitty_kageant_dest.h" /* a session-bind destination, for the box and the log */
 #include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
 
@@ -3273,7 +3274,8 @@ void kageant_apply_saved_order(void)
  * is on, or when the key's comment requests confirmation for just that
  * key. Returns 0 to refuse, nonzero to allow. */
 extern int (*kageant_confirm_hook)(const char *comment, int key_confirm,
-                                  const char *fp);
+                                  const char *fp,
+                                  const struct kageant_dest *dest);
 
 int kageant_ipc_blocked(int op, const char *fp)
 {
@@ -3516,7 +3518,12 @@ int kageant_confirm_suppressed(void)
     return g_confirm_suppress;
 }
 
-int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
+static int kageant_confirm_ask(const char *comment, int key_confirm,
+                               const char *fp, const char *box,
+                               const char *dest, const char *fwd);
+
+int kageant_do_confirm(const char *comment, int key_confirm, const char *fp,
+                       const struct kageant_dest *d)
 {
     int mode = kageant_confirm_mode();
     /* Every use -> always; By comment -> only if this key's own flag is set
@@ -3524,14 +3531,32 @@ int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
      * "No" set in Key details wins); Never -> never, even a flagged key. */
     int needs = (mode == KAGEANT_CONFIRM_YES) ||
                 (mode == KAGEANT_CONFIRM_AUTO && key_confirm);
-    (void)comment;
+    char *box, *dest, *fwd;
+    int allowed;
     if (!needs)
         return 1;   /* this key does not require usage confirmation */
 
+    /* The server the key is for, when the client sent a verified
+     * session-bind: lines for the box, fields for the log. */
+    box = kageant_dest_box_text(d);
+    kageant_dest_fields(d, &dest, &fwd);
+    allowed = kageant_confirm_ask(comment, key_confirm, fp, box, dest, fwd);
+    sfree(box);
+    sfree(dest);
+    sfree(fwd);
+    return allowed;
+}
+
+/* The confirmation itself: box = the destination's lines (NULL: no
+ * session-bind), dest and fwd = its agent log fields. */
+static int kageant_confirm_ask(const char *comment, int key_confirm,
+                               const char *fp, const char *box,
+                               const char *dest, const char *fwd)
+{
     /* The user hit "deny & stop asking" during a storm: keep denying, no box. */
     if (g_confirm_suppress) {
-        kageant_audit_use("confirm", fp, comment, "denied",
-                          "suppress-latch", 0);
+        kageant_audit_use_dest("confirm", fp, comment, "denied",
+                               "suppress-latch", 0, dest, fwd);
         return 0;
     }
 
@@ -3540,7 +3565,8 @@ int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
      * and stack another box on top. Deny the pile-up rather than let a bad
      * client fill the screen while the user is trying to say no. */
     if (g_confirm_active) {
-        kageant_audit_use("confirm", fp, comment, "denied", "pileup", 0);
+        kageant_audit_use_dest("confirm", fp, comment, "denied", "pileup", 0,
+                               dest, fwd);
         return 0;
     }
 
@@ -3559,19 +3585,23 @@ int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
         int hr, allowed;
 
         g_confirm_active = 1;
-        msg = dupprintf(KT_KA_HELLO_ALLOW_USE_FMT,
-                        comment && *comment ? comment : KT_KA_UNNAMED_KEY);
+        msg = box ?
+            dupprintf(KT_KA_HELLO_ALLOW_USE_DEST_FMT,
+                      comment && *comment ? comment : KT_KA_UNNAMED_KEY, box) :
+            dupprintf(KT_KA_HELLO_ALLOW_USE_FMT,
+                      comment && *comment ? comment : KT_KA_UNNAMED_KEY);
         hr = kitty_hello_verify(traywindow, msg);
         sfree(msg);
         g_confirm_active = 0;
 
         allowed = (hr == KITTY_HELLO_VERIFIED);
-        kageant_audit_use("confirm", fp, comment,
-                          allowed ? "allowed" : "denied",
-                          hr == KITTY_HELLO_VERIFIED    ? "hello-verified" :
-                          hr == KITTY_HELLO_DENIED      ? "hello-denied" :
-                          hr == KITTY_HELLO_UNAVAILABLE ? "hello-unavailable" :
-                                                          "hello-error", 0);
+        kageant_audit_use_dest("confirm", fp, comment,
+                               allowed ? "allowed" : "denied",
+                               hr == KITTY_HELLO_VERIFIED    ? "hello-verified" :
+                               hr == KITTY_HELLO_DENIED      ? "hello-denied" :
+                               hr == KITTY_HELLO_UNAVAILABLE ? "hello-unavailable" :
+                                                               "hello-error", 0,
+                               dest, fwd);
         if (!allowed && hr != KITTY_HELLO_DENIED && traywindow)
             kitty_notice_show(
                 KT_KA_NOTICE_USE_DENIED,
@@ -3585,20 +3615,24 @@ int kageant_do_confirm(const char *comment, int key_confirm, const char *fp)
 
     g_confirm_active = 1;
     {
-        char *msg = dupprintf(
-            KT_KA_CONFIRM_USE_FMT,
-            comment && *comment ? comment : KT_KA_UNNAMED_KEY);
-        int r = MessageBox(NULL, msg, KT_CAP_KA_CONFIRM_KEY_USAGE,
-                           MB_ICONQUESTION | MB_YESNOCANCEL | MB_SYSTEMMODAL |
-                           MB_DEFBUTTON2);   /* default No */
+        const char *keyname = comment && *comment ? comment : KT_KA_UNNAMED_KEY;
+        /* the destination's lines go under the key, a blank line between */
+        char *keytext = box ? dupprintf("%s\n\n%s", keyname, box) :
+                              dupstr(keyname);
+        char *msg = dupprintf(KT_KA_CONFIRM_USE_FMT, keytext);
+        int r;
+        sfree(keytext);
+        r = MessageBox(NULL, msg, KT_CAP_KA_CONFIRM_KEY_USAGE,
+                       MB_ICONQUESTION | MB_YESNOCANCEL | MB_SYSTEMMODAL |
+                       MB_DEFBUTTON2);   /* default No */
         sfree(msg);
         g_confirm_active = 0;
 
-        kageant_audit_use("confirm", fp, comment,
-                          r == IDYES ? "allowed" : "denied",
-                          r == IDYES    ? "click-allow" :
-                          r == IDCANCEL ? "click-cancel-latch" : "click-deny",
-                          0);
+        kageant_audit_use_dest("confirm", fp, comment,
+                               r == IDYES ? "allowed" : "denied",
+                               r == IDYES    ? "click-allow" :
+                               r == IDCANCEL ? "click-cancel-latch" : "click-deny",
+                               0, dest, fwd);
         if (r == IDCANCEL) {
             g_confirm_suppress = 1;
             if (kageant_notify_get() && traywindow)
@@ -3662,17 +3696,26 @@ int kageant_flash_any(void)
 }
 
 void kageant_note_keyuse(const char *fingerprint, const char *comment,
-                         int allowed, unsigned long req_pid)
+                         int allowed, unsigned long req_pid,
+                         const struct kageant_dest *d)
 {
     DWORD now = GetTickCount();
     int i, use = -1;
+    char *dest = NULL, *fwd = NULL;
     if (!fingerprint || !*fingerprint)
         return;
     /* THE audit line of the whole feature: what signed (or was refused),
      * and by which process. The COMMENT rides along because that is the
-     * name users know a key by - nobody deals in SHA256 strings. */
-    kageant_audit_use("sign", fingerprint, comment,
-                      allowed ? "allowed" : "denied", NULL, req_pid);
+     * name users know a key by - nobody deals in SHA256 strings. The
+     * server it signed for rides along when the client sent a verified
+     * session-bind (dest, and fwd for agent forwarding hops). */
+    if (kitty_audit_enabled())
+        kageant_dest_fields(d, &dest, &fwd);
+    kageant_audit_use_dest("sign", fingerprint, comment,
+                           allowed ? "allowed" : "denied", NULL, req_pid,
+                           dest, fwd);
+    sfree(dest);
+    sfree(fwd);
     for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)            /* same key again? */
         if (g_flash[i].fp && !strcmp(g_flash[i].fp, fingerprint)) {
             use = i;

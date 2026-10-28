@@ -204,6 +204,11 @@ Every refused request is a record too: kind \c{request}, result
 message}, \q{key usage not confirmed by user}) and the program that
 sent it. It has no event ID of its own: the Event Log gets the whole
 record as one line, event ID 0.
+
+On a connection whose client sent a verified session-bind, signatures,
+confirmations and refused requests carry its destination (\c{dest},
+\c{fwd}; see \k{pageant-destination}). The session-bind itself is a
+record of kind \c{session-bind}, event ID 102.
 }
 
 Press F1 on any page for this section; on the idle row it opens the
@@ -412,6 +417,42 @@ you can send it all the way back to kageant using the local
 
 and then it's available to every machine that has agent forwarding
 available (not just the ones downstream of the place you added it).
+
+\H{pageant-destination} The \i{destination} of a key use
+
+An OpenSSH client from version 8.9 on - the Windows \c{ssh.exe}
+included - binds its agent connection to the server it connects to
+(\c{session-bind@openssh.com}): after the key exchange it sends the
+server's host key, the session identifier and the server's signature
+over that identifier. kageant verifies the signature and keeps the
+binding for the connection. On a bound connection:
+
+\b The key-use confirmation shows \q{Destination:} - the host name and
+the SHA256 fingerprint of the server's host key - and one \q{Forwarded
+via:} line per agent forwarding hop.
+
+\b The agent log writes \c{dest} (the server the login is for) and
+\c{fwd} (the forwarding hops, in the order bound) on every signature,
+confirmation and refused request. Events 100 and 101 carry both as
+their last two fields.
+
+\b Each binding is a record of its own: kind \c{session-bind}, result
+\c{accepted}, \c{dest} and \c{forwarding} (\c{yes} or \c{no}).
+
+The fingerprint is the verified part. The host name is looked up in the
+KiTTY++ host-key store and in \c{%USERPROFILE%\\.ssh\\known_hosts}
+(plain entries: a hashed entry holds no name) and is shown for
+orientation only. With more names for one key the first is shown,
+followed by \c{+N}. Without a name the fingerprint stands alone.
+
+A binding whose signature does not verify is refused and logged as a
+refused request with the reason. The login goes on. A connection takes
+up to 16 bindings, a session identifier once, and none after a binding
+for a login.
+
+kageant refuses nothing because of the destination: a key behaves as
+before. A connection without a binding - PuTTY, KiTTY++ and older
+clients - gets the confirmation as before.
 
 \H{pageant-deferred-decryption} Loading keys without decrypting them
 

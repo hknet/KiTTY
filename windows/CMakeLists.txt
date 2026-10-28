@@ -272,6 +272,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_openssh.c   # KiTTY: the Windows OpenSSH client integration
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_audit.c   # KiTTY: the agent audit log
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_dest.c    # KiTTY: a session-bind destination as the log and the box show it
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_settings.c   # KiTTY: the agent settings facade
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)

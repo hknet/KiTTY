@@ -34,13 +34,19 @@ Language=English
 MessageId=100
 SymbolicName=KITTY_AGENT_SIGN
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%0
 .
 
 MessageId=101
 SymbolicName=KITTY_AGENT_CONFIRM
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%0
+.
+
+MessageId=102
+SymbolicName=KITTY_AGENT_BIND
+Language=English
+%1%nresult: %2%ndest: %3%nforwarding: %4%nreq: %5%nreqpath: %6%npid: %7%0
 .
 
 MessageId=110

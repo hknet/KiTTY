@@ -85,9 +85,19 @@ struct PageantKeyRequestNode {
     PageantKeyRequestNode *prev, *next;
 };
 
+/* KiTTY: one verified session-bind@openssh.com on a connection */
+typedef struct PageantBinding {
+    strbuf *hostkey;            /* the server's host key blob */
+    strbuf *sid;                /* the session id the server signed */
+    bool forwarding;            /* bound for agent forwarding, not a login */
+} PageantBinding;
+
 struct PageantClientInfo {
     PageantClient *pc; /* goes to NULL when client is unregistered */
     PageantClientRequestNode head;
+    /* KiTTY: the connection's session-binds, in the order bound */
+    size_t nbindings;
+    PageantBinding bindings[KAGEANT_MAX_BINDINGS];
 };
 
 struct PageantAsyncOp {
@@ -286,6 +296,9 @@ struct PageantSignOp {
                                      * the idle re-encrypt bookkeeping */
     bool signed_ok;                 /* KiTTY: did it actually sign? (coroutine
                                      * state: a local would not survive a yield) */
+    size_t nbind;                   /* KiTTY: the connection's session-binds */
+    strbuf *bind_hostkey[KAGEANT_MAX_BINDINGS]; /* when the request came */
+    bool bind_fwd[KAGEANT_MAX_BINDINGS];
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -866,6 +879,7 @@ void pageant_register_client(PageantClient *pc)
     pc->info = snew(PageantClientInfo);
     pc->info->pc = pc;
     pc->info->head.prev = pc->info->head.next = &pc->info->head;
+    pc->info->nbindings = 0;
 }
 
 void pageant_unregister_client(PageantClient *pc)
@@ -880,7 +894,27 @@ void pageant_unregister_client(PageantClient *pc)
         pageant_async_op_unlink_and_free(pao);
     }
 
+    /* KiTTY: the connection's session-binds end with it */
+    for (size_t i = 0; i < info->nbindings; i++) {
+        strbuf_free(info->bindings[i].hostkey);
+        strbuf_free(info->bindings[i].sid);
+    }
     sfree(pc->info);
+}
+
+/* KiTTY: a connection's session-binds as the hooks take them; NULL when
+ * it sent none. */
+static const struct kageant_dest *info_dest(PageantClientInfo *info,
+                                            struct kageant_dest *d)
+{
+    if (!info || !info->nbindings)
+        return NULL;
+    d->n = info->nbindings;
+    for (size_t i = 0; i < info->nbindings; i++) {
+        d->hostkey[i] = ptrlen_from_strbuf(info->bindings[i].hostkey);
+        d->forwarding[i] = info->bindings[i].forwarding;
+    }
+    return d;
 }
 
 static PRINTF_LIKE(5, 6) void failure(
@@ -894,8 +928,11 @@ static PRINTF_LIKE(5, 6) void failure(
         va_start(ap, fmt);
         char *msg = dupvprintf(fmt, ap);
         va_end(ap);
-        if (kageant_refused_hook)       /* KiTTY: the audit log */
-            kageant_refused_hook(msg, pageant_external_pid);
+        if (kageant_refused_hook) {     /* KiTTY: the audit log */
+            struct kageant_dest d;
+            kageant_refused_hook(msg, pageant_external_pid,
+                                 info_dest(pc->info, &d));
+        }
         if (!pc->suppress_logging)
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s)",
                                msg);
@@ -937,10 +974,27 @@ static void signop_unlink(PageantSignOp *so)
     }
 }
 
+/* KiTTY: the session-binds the request came with, as the hooks take
+ * them; NULL when there were none. */
+static const struct kageant_dest *signop_dest(PageantSignOp *so,
+                                              struct kageant_dest *d)
+{
+    if (!so->nbind)
+        return NULL;
+    d->n = so->nbind;
+    for (size_t i = 0; i < so->nbind; i++) {
+        d->hostkey[i] = ptrlen_from_strbuf(so->bind_hostkey[i]);
+        d->forwarding[i] = so->bind_fwd[i];
+    }
+    return d;
+}
+
 static void signop_free(PageantAsyncOp *pao)
 {
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
     signop_unlink(so);
+    for (size_t i = 0; i < so->nbind; i++)
+        strbuf_free(so->bind_hostkey[i]);
     strbuf_free(so->data_to_sign);
     sfree(so->keyfp);
     if (so->pubblob) strbuf_free(so->pubblob);
@@ -971,10 +1025,15 @@ static bool request_passphrase(PageantClient *pc, PageantPrivateKey *priv)
  * unaffected; the Windows Pageant GUI installs it at startup. The hook is
  * passed the key comment and returns 0 to REFUSE signing, nonzero to allow. */
 int (*kageant_confirm_hook)(const char *comment, int key_confirm,
-                           const char *fp) = NULL;
+                           const char *fp,
+                           const struct kageant_dest *dest) = NULL;
 
 /* KiTTY: every refused request, for the audit log (pageant.h). */
-void (*kageant_refused_hook)(const char *reason, unsigned long pid) = NULL;
+void (*kageant_refused_hook)(const char *reason, unsigned long pid,
+                             const struct kageant_dest *dest) = NULL;
+/* KiTTY: a session-bind recorded (pageant.h). */
+void (*kageant_bind_hook)(ptrlen hostkey, bool forwarding,
+                          unsigned long pid) = NULL;
 
 /* KiTTY: which key is a deferred-decryption prompt about? The frontend gets
  * only the dialog id and a comment; Hello-protected keys need the public
@@ -1010,7 +1069,8 @@ static bool priv_reserved_for_other(PageantPrivateKey *priv, unsigned long pid)
     return pid != priv->reserved_pid;
 }
 void (*kageant_keyuse_hook)(const char *fingerprint, const char *comment,
-                            int allowed, unsigned long req_pid) = NULL;
+                            int allowed, unsigned long req_pid,
+                            const struct kageant_dest *dest) = NULL;
 
 /* KiTTY: does this comment carry the per-key confirmation convention?
  * Consulted once at ADD time, turning the convention into a real, sticky
@@ -1363,8 +1423,9 @@ static void signop_coroutine(PageantAsyncOp *pao)
         idsort.ssh_version = so->priv->sort.ssh_version;
         idsort.base_pub = ptrlen_from_strbuf(idblob);
 
+        struct kageant_dest cd;
         bool allowed = kageant_confirm_hook(so->comment, so->confirm,
-                                            so->keyfp);
+                                            so->keyfp, signop_dest(so, &cd));
 
         /* Pointer comparison ONLY: so->priv may be dangling by now and must
          * not be dereferenced. */
@@ -1418,9 +1479,11 @@ static void signop_coroutine(PageantAsyncOp *pao)
     /* KiTTY: tell the GUI what happened to this key, whichever way we got
      * here - every failure path lands on this label, and a refusal the user
      * can see is the whole point of the key list's tint. */
-    if (kageant_keyuse_hook && so->keyfp)
+    if (kageant_keyuse_hook && so->keyfp) {
+        struct kageant_dest ud;
         kageant_keyuse_hook(so->keyfp, so->comment, so->signed_ok,
-                            so->req_pid);
+                            so->req_pid, signop_dest(so, &ud));
+    }
     if (temp_skey)
         ssh_key_free(temp_skey);
     pageant_client_got_response(so->pao.info->pc, so->pao.reqid,
@@ -1644,6 +1707,64 @@ static bool reencrypt_key(PageantPublicKey *pub)
 
 #define DECL_EXT_ENUM(id, name) id,
 enum Extension { KNOWN_EXTENSIONS(DECL_EXT_ENUM) EXT_UNKNOWN };
+
+/*
+ * KiTTY: does the server's signature over the session id verify with its
+ * host key? NULL when it does, else why not (the refusal's reason). As
+ * OpenSSH's agent checks a session-bind: an RSA host key's signature may be
+ * ssh-rsa (SHA-1), rsa-sha2-256 or rsa-sha2-512. A certified host key
+ * verifies with its key.
+ */
+static const char *session_bind_verify(ptrlen hostkey, ptrlen sid,
+                                       ptrlen sig)
+{
+    BinarySource src[1];
+    const ssh_keyalg *alg = NULL, *valg;
+    ssh_key *key, *base, *rsakey = NULL;
+    const char *why = NULL;
+
+    BinarySource_BARE_INIT_PL(src, hostkey);
+    ptrlen keytype = get_string(src);
+    if (!get_err(src))
+        alg = find_pubkey_alg_len(keytype);
+    if (!alg)
+        return "host key of an unknown type";
+    key = ssh_key_new_pub(alg, hostkey);
+    if (!key)
+        return "host key does not decode";
+    base = ssh_key_base_key(key);
+    if (ssh_key_alg(base) == &ssh_rsa) {
+        BinarySource_BARE_INIT_PL(src, sig);
+        ptrlen sigtype = get_string(src);
+        if (get_err(src)) {
+            why = "signature does not decode";
+            goto out;
+        }
+        valg = ptrlen_eq_string(sigtype, "rsa-sha2-512") ? &ssh_rsa_sha512 :
+               ptrlen_eq_string(sigtype, "rsa-sha2-256") ? &ssh_rsa_sha256 :
+               ptrlen_eq_string(sigtype, "ssh-rsa")      ? &ssh_rsa :
+               NULL;
+        if (!valg) {
+            why = "RSA signature of an unknown type";
+            goto out;
+        }
+        strbuf *bb = strbuf_new();
+        ssh_key_public_blob(base, BinarySink_UPCAST(bb));
+        rsakey = ssh_key_new_pub(valg, ptrlen_from_strbuf(bb));
+        strbuf_free(bb);
+        if (!rsakey) {
+            why = "host key does not decode";
+            goto out;
+        }
+    }
+    if (!ssh_key_verify(rsakey ? rsakey : key, sig, sid))
+        why = "host key signature over the session id does not verify";
+  out:
+    if (rsakey)
+        ssh_key_free(rsakey);
+    ssh_key_free(key);
+    return why;
+}
 #define DEF_EXT_NAMES(id, name) PTRLEN_DECL_LITERAL(name),
 static const ptrlen extension_names[] = { KNOWN_EXTENSIONS(DEF_EXT_NAMES) };
 
@@ -1800,8 +1921,9 @@ static PageantAsyncOp *pageant_make_op(
          * every use" mode; the per-key flag never attaches to an SSH-1 key. */
         if (kageant_confirm_hook) {
             char *cfp = kitty_rsa1_record_fp(priv->rkey);
+            struct kageant_dest cd;
             bool confirmed = kageant_confirm_hook(pub->comment, pub->confirm,
-                                                  cfp);
+                                                  cfp, info_dest(pc->info, &cd));
             sfree(cfp);
             if (!confirmed) {
                 fail("key usage not confirmed by user");
@@ -1839,9 +1961,12 @@ static PageantAsyncOp *pageant_make_op(
             char *fp = kitty_rsa1_record_fp(priv->rkey);
             if (kageant_notify_hook)
                 kageant_notify_hook(pub->comment, fp);
-            if (kageant_keyuse_hook && fp)
+            if (kageant_keyuse_hook && fp) {
+                struct kageant_dest ud;
                 kageant_keyuse_hook(fp, pub->comment, true,
-                                    pageant_external_pid);
+                                    pageant_external_pid,
+                                    info_dest(pc->info, &ud));
+            }
             sfree(fp);
         }
 
@@ -1922,6 +2047,13 @@ static PageantAsyncOp *pageant_make_op(
         so->pubblob = strbuf_dup(pub->sort.full_pub);
         so->req_pid = pageant_external_pid;   /* valid NOW, 0 later */
         so->signed_ok = false;
+        /* KiTTY: the connection's session-binds as they stand now */
+        so->nbind = pc->info->nbindings;
+        for (size_t bi = 0; bi < so->nbind; bi++) {
+            so->bind_hostkey[bi] =
+                strbuf_dup(ptrlen_from_strbuf(pc->info->bindings[bi].hostkey));
+            so->bind_fwd[bi] = pc->info->bindings[bi].forwarding;
+        }
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
         so->flags = flags;
@@ -2556,6 +2688,70 @@ static PageantAsyncOp *pageant_make_op(
             break;
           }
 
+          case EXT_SESSION_BIND: {
+            /*
+             * KiTTY: session-bind@openssh.com (OpenSSH's PROTOCOL.agent):
+             * the client names the server it completed key exchange with
+             * - its host key, the session id, the server's signature over
+             * that id - and whether it binds this connection for agent
+             * forwarding. The signature is verified and the binding kept
+             * with the connection, as OpenSSH's agent does: a session id
+             * once per connection, nothing after a binding for a login,
+             * at most KAGEANT_MAX_BINDINGS. kageant shows and logs the
+             * destination; no request is refused because of it.
+             */
+            ptrlen hostkey = get_string(msg);
+            ptrlen sid = get_string(msg);
+            ptrlen sig = get_string(msg);
+            bool forwarding = get_bool(msg);
+            PageantClientInfo *info = pc->info;
+            const char *why;
+
+            if (get_err(msg)) {
+                fail("session-bind: unable to decode request");
+                goto responded;
+            }
+            if (get_avail(msg)) {
+                fail("session-bind: trailing data after the request");
+                goto responded;
+            }
+            if ((why = session_bind_verify(hostkey, sid, sig)) != NULL) {
+                fail("session-bind: %s", why);
+                goto responded;
+            }
+            if (info->nbindings &&
+                !info->bindings[info->nbindings - 1].forwarding) {
+                fail("session-bind: the connection is already bound "
+                     "for a login");
+                goto responded;
+            }
+            for (size_t i = 0; i < info->nbindings; i++)
+                if (ptrlen_eq_ptrlen(
+                        sid, ptrlen_from_strbuf(info->bindings[i].sid))) {
+                    fail("session-bind: session id already bound on "
+                         "this connection");
+                    goto responded;
+                }
+            if (info->nbindings >= KAGEANT_MAX_BINDINGS) {
+                fail("session-bind: more than %d bindings on one "
+                     "connection", KAGEANT_MAX_BINDINGS);
+                goto responded;
+            }
+
+            PageantBinding *b = &info->bindings[info->nbindings++];
+            b->hostkey = strbuf_dup(hostkey);
+            b->sid = strbuf_dup(sid);
+            b->forwarding = forwarding;
+            if (kageant_bind_hook)
+                kageant_bind_hook(hostkey, forwarding, pageant_external_pid);
+
+            put_byte(sb, SSH_AGENT_SUCCESS);
+            pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
+                               "(session bound%s)",
+                               forwarding ? " for forwarding" : "");
+            break;
+          }
+
           case EXT_LIST_EXTENDED: {
             /*
              * Return a key list like SSH2_AGENTC_REQUEST_IDENTITIES,
@@ -2981,7 +3177,9 @@ static void pageant_conn_receive(
             if (kageant_refused_hook) {     /* KiTTY: the audit log */
                 char *why = dupprintf("overlong message, length %u",
                                       pc->len);
-                kageant_refused_hook(why, pc->client_pid);
+                struct kageant_dest d;
+                kageant_refused_hook(why, pc->client_pid,
+                                     info_dest(pc->pc.info, &d));
                 sfree(why);
             }
             static const unsigned char failure[] = { SSH_AGENT_FAILURE };

@@ -21,6 +21,10 @@ int kageant_int_setting(const char *inikey, const char *regname, int def, int lo
 /* The audit sink, called from the mutating agent paths in kitty_pageant.c. */
 void kageant_audit_use(const char *ev, const char *fp, const char *comment,
                        const char *result, const char *reason, unsigned long pid);
+void kageant_audit_use_dest(const char *ev, const char *fp,
+                            const char *comment, const char *result,
+                            const char *reason, unsigned long pid,
+                            const char *dest, const char *fwd);
 
 int kageant_autoenc_clamp(int v);
 const char *kageant_confirm_token(int mode);

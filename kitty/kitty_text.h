@@ -3210,6 +3210,8 @@
 #define KT_KA_NO_COMMENT                             "(no comment)"
 #define KT_KA_UNNAMED_KEY                            "(unnamed key)"
 #define KT_KA_HELLO_ALLOW_USE_FMT                    "Allow this use of the SSH key \"%s\"?"
+/* the same with the destination lines below it (KT_KA_DEST_*) */
+#define KT_KA_HELLO_ALLOW_USE_DEST_FMT               "Allow this use of the SSH key \"%s\"?\n%s"
 #define KT_KA_USE_DENIED_UNAVAILABLE                 "A key use was denied: it requires a Windows Hello check, " \
         "and Hello is not available in this session (no Hello " \
         "credential, policy, or a remote desktop). The request was " \
@@ -3222,6 +3224,11 @@
         "No - deny this one use.\n" \
         "Cancel - deny this AND stop asking: all further requests are " \
         "denied silently until you open the kageant key list."
+/* kageant's confirmation: the server a key is used for, from the client's
+ * verified session-bind; %s = "web01 (SHA256:...)", or the fingerprint
+ * alone when no host name is found. Under the key in the box. */
+#define KT_KA_DEST_LINE_FMT                          "Destination: %s"
+#define KT_KA_DEST_VIA_FMT                           "Forwarded via: %s"
 #define KT_KA_CONFIRM_BLOCKED_TEXT                   "Key-use confirmations are now being denied silently. " \
         "Click this notice, the tray \"Resume\" item, or the " \
         "key list's Resume button to allow them again."

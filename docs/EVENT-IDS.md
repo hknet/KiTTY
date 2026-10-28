@@ -20,8 +20,9 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | ID | Source | Kind | Level | Fields |
 |---:|---|---|---|---|
 | `0` | `KiTTY++` | - | the line's own level | the whole text as `%1` |
-| `100` | `KiTTY++_agent` | `sign` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `101` | `KiTTY++_agent` | `confirm` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
+| `100` | `KiTTY++_agent` | `sign` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
+| `101` | `KiTTY++_agent` | `confirm` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
+| `102` | `KiTTY++_agent` | `session-bind` | Information | `result`, `dest`, `forwarding`, `req`, `reqpath`, `pid` |
 | `110` | `KiTTY++_agent` | `add` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `path` |
 | `111` | `KiTTY++_agent` | `loadkey` | Information; Warning for a refusal or failure | `path`, `result`, `enc` |
 | `112` | `KiTTY++_agent` | `forget-path` | Information; Warning for a refusal or failure | `path`, `result` |
@@ -84,7 +85,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `comment` - 100-170: the comment of the key concerned; 400, 401: of the key generated or saved.
 - `credentials` - 225, 325: yes when a user name or password went to the proxy, else no.
 - `days` - 901: LogKeepDays as set, 0 = off.
-- `dest` - 131: the protected copy written.
+- `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then a host name when one is found; empty without a session-bind; 102: the server the client bound to, written the same way; 131: the protected copy written.
 - `detail` - 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name.
 - `direction` - 240, 241, 330, 331: put (upload, to the server) or get (download, from it).
 - `enc` - 111: whether the key file has a passphrase; values: password, blank.
@@ -94,9 +95,11 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `files` - 901: the log files deleted.
 - `for` - 220, 221, 225, 320, 321, 325: what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's.
 - `format` - 401: ppk3, ppk2, openssh, ssh.com or ssh1; 402: rfc4716, openssh or ssh1.
+- `forwarding` - 102: yes when the client bound the connection for agent forwarding, else no.
 - `found` - 900: what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check.
 - `fp` - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login.
 - `from` - 200, 300: the local end of the connection, address and port.
+- `fwd` - 100, 101: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
 - `host` - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 - `kb` - 901: the kilobytes freed.
 - `keytype` - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
@@ -121,7 +124,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `req` - 100-170: the file name of the program that asked the agent.
 - `reqpath` - 100-170: that program's full path.
 - `request` - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
-- `result` - the outcome; 100, 101: allowed, denied; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed.
+- `result` - the outcome; 100, 101: allowed, denied; 102: accepted; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed.
 - `session` - the saved session's name, empty when none was loaded.
 - `tool` - 400-403: kittygen or kittygen-cli.
 - `trigger` - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).

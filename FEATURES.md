@@ -35,6 +35,7 @@ one is available.
   - [kageant — load keys on startup](#kageant--load-keys-on-startup)
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [kageant — lock the agent](#kageant--lock-the-agent)
+  - [kageant — destination of a key use](#kageant--destination-of-a-key-use)
   - [Dark mode](#dark-mode)
   - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
@@ -699,6 +700,18 @@ The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses
 `ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice shows the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
 
 **How to enable:** right-click the kageant tray icon → **Lock agent**; Settings > Security for the rest. From **kitty.ini**: `[Agent] lockwithwindows=keep|lock|reencrypt` and `allowipclock=yes`.
+
+(no screenshot)
+
+### kageant — destination of a key use
+
+An OpenSSH client from 8.9 on - the Windows `ssh.exe` included - binds its agent connection to the server it connects to (`session-bind@openssh.com`): after the key exchange it sends the server's host key, the session id and the server's signature over that id. kageant verifies the signature and keeps the binding for the connection. On a bound connection the key-use confirmation shows **Destination:** (the host name and the SHA256 fingerprint of the server's host key) and one **Forwarded via:** line per agent forwarding hop. The agent log writes `dest=` and `fwd=` on every signature, confirmation and refused request of a bound connection. Each binding is a record of its own: `ev="session-bind" result="accepted"`, `dest=`, `forwarding="yes"` or `"no"`. In the Windows Event Log it is event ID 102.
+
+The fingerprint is the verified part. The host name comes from the KiTTY++ host-key store or from `%USERPROFILE%\.ssh\known_hosts` (plain entries: a hashed entry holds no name). It is shown for orientation only. More names for one key show as the first and `+N`. Without a name the fingerprint stands alone.
+
+A binding whose signature does not verify is refused and logged as a refused request with the reason. The login goes on. Nothing is refused because of the destination: a key behaves as before. A connection without a binding (PuTTY, KiTTY++, older clients) gets the confirmation as before.
+
+**How to enable:** always on, nothing to configure.
 
 (no screenshot)
 
