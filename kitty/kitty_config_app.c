@@ -1037,9 +1037,9 @@ static void scb_panel_hostkey_settings(struct controlbox *b)
     ctrl_settitle(b, KCFG_PATH_HOSTKEY_SETTINGS, KT_HK_SETTINGS_TITLE);
     s = ctrl_getset(b, KCFG_PATH_HOSTKEY_SETTINGS, "switches",
                     KT_HK_SWITCHES_GROUP);
-    ctrl_checkbox(s, KT_HK_ACCEPTNEW_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    ctrl_checkbox(s, KT_HK_ACCEPTNEW_ALL, NO_SHORTCUT, HELPCTX(kitty_host_key_settings),
                   kitty_kset_handler, P((void *)kset_find(KI_AUTOSTORESSHKEY)));
-    ctrl_checkbox(s, KT_HK_UPDATE_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+    ctrl_checkbox(s, KT_HK_UPDATE_ALL, NO_SHORTCUT, HELPCTX(kitty_host_key_settings),
                   kitty_kset_handler, P((void *)kset_find(KI_UPDATEHOSTKEYS)));
 }
 

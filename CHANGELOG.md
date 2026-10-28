@@ -10,6 +10,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - Application > Security: "Extra tracing in the Event Log" is now "Extra
   tracing in the Terminal Window's Event Log", the Event Log it writes to.
+- Help: Security > Host Keys > Settings has a page of its own.
 
 ## 0.85.1.19-beta — 2026-10-28
 
