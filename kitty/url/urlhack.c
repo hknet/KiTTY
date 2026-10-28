@@ -2,6 +2,8 @@
  * HACK: PuttyTray / Nutty
  * Hyperlink stuff: CORE FILE! Don't forget to COPY IT TO THE NEXT VERSION
  */
+/* first: it pulls in putty.h, whose winsock2.h must precede windows.h */
+#include "kitty_gui.h"   /* do_eventlog: a custom pattern that does not compile, in the terminal window's Event Log */
 #include <windows.h>
 #include <string.h>
 #include "urlhack.h"
@@ -14,7 +16,6 @@
 #include "../kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "../kitty_notice.h"   /* kitty_notice_show: a custom regex that does not compile */
 #include "../kitty_params.h"   /* GetNoticeSeconds */
-#include "../kitty_renameguard.h"   /* kitty_eventlog_line */
 
 int urlhack_mouse_old_x = -1, urlhack_mouse_old_y = -1, urlhack_current_region = -1;
 
@@ -340,8 +341,9 @@ const char *kitty_urlregex_error(const char *pattern)
 
 /* A custom expression that does not compile: the session goes on with the
  * default pattern, and the reason goes to a notice (somebody at the window)
- * and to the Event Log (nobody there, or the notice already gone). Neither
- * waits for anyone. */
+ * and to the window's own Event Log (the notice already gone): a matter of
+ * this session's settings, not of the Windows Event Log. Neither waits for
+ * anyone. */
 static void urlhack_report_fallback(const char *pattern, const char *error)
 {
     char *text = dupprintf(KT_URL_REGEX_FALLBACK_FMT, error);
@@ -349,7 +351,7 @@ static void urlhack_report_fallback(const char *pattern, const char *error)
                            pattern ? pattern : "");
     kitty_notice_show(KT_CAP_URL_REGEX, text, RGB(190, 110, 0),
                       GetNoticeSeconds(), NULL, 0);
-    kitty_eventlog_line(EVENTLOG_WARNING_TYPE, line);
+    do_eventlog(line);
     sfree(line);
     sfree(text);
 }

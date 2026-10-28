@@ -1,7 +1,8 @@
 /*
  * test_eventids - checks the suite's event ID table (kitty/kitty_eventids.h):
  * every ID inside its block and listed once, in order; each block's own
- * source; every record but ID 0 with a kind and fields; and the 2xx/3xx
+ * source; every record but ID 0 (no longer written, kept for the records
+ * of earlier versions) with a kind and fields; and the 2xx/3xx
  * pairing - an offset below KITTY_EVO_SHARED_END is the same kind with the
  * same fields in both blocks, and exists in both. (From 30 on the blocks
  * differ: 230 is kitty.exe's alone, 330/331 the command-line tools'.)
@@ -160,6 +161,11 @@ int main(void)
             KITTY_EV_PROGRAM_REFUSED,
             KITTY_EV_LOG_RETENTION,
             KITTY_EV_MISSING_FEATURES,
+            KITTY_EV_SESSION_SAVE_FAILED,
+            KITTY_EV_STORE_ACL_NOT_SET,
+            KITTY_EV_APP_FILE_WARNING,
+            KITTY_EV_HELPER_PROGRAM,
+            KITTY_EV_SESSION_LOG_NOT_WRITTEN,
         };
         for (i = 0; i < sizeof(named) / sizeof(named[0]); i++)
             if (!find(named[i]))

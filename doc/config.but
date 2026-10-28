@@ -353,8 +353,8 @@ comes up.
 The question is a box beside the session, which keeps running while
 it is open. Where there is no desktop to show it (a service, or a
 scheduled task that runs whether a user is logged on or not), KiTTY++
-does not log this session and writes the reason to the Windows
-Application event log (source KiTTY++). Choose \q{Always overwrite it}
+does not log this session and writes event 907 with the log file to the
+Windows Application event log (source KiTTY++). Choose \q{Always overwrite it}
 or \q{Always append to the end of it}, or start with \c{\-logoverwrite}
 or \c{\-logappend} (see \k{using-cmdline-logfileexists}), for a log in
 that case.

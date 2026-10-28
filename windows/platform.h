@@ -709,6 +709,8 @@ void force_normal(HWND hwnd);
 void modal_about_box(HWND hwnd);
 void show_help(HWND hwnd);
 HWND event_log_window(void);
+/* KiTTY: the terminal window's title for the Event Log's title bar */
+void kitty_logbox_retitle(const wchar_t *term_title);
 
 /*
  * Exports from utils.

@@ -2765,6 +2765,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             resize_forbidden = true;
         wchar_t *uappname = dup_mb_to_wc(DEFAULT_CODEPAGE, appname);
         wgs->window_name = dup_mb_to_wc(DEFAULT_CODEPAGE, appname);
+        kitty_logbox_retitle(wgs->window_name);
         wgs->icon_name = dup_mb_to_wc(DEFAULT_CODEPAGE, appname);
         if (!conf_get_bool(wgs->conf, CONF_scrollbar))
             winmode &= ~(WS_VSCROLL);
@@ -3041,9 +3042,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Skipped when embedded (#554): a child window in the tray is nonsense. */
     if (conf_get_int(wgs->conf, CONF_sendtotray) && !KITTY_EMBEDDED())
         SetAutoSendToTray(1);
-    /* KiTTY feature: URL hyperlinks - init urlhack + compile regex */
-    kitty_url_init();
-    kitty_url_config(wgs->conf);
     /* KiTTY feature: auto-command sent automatically after login.
      * First fire is delayed to let the connection establish ([KiTTY]
      * initdelay, seconds); subsequent lines re-arm at autocommand_delay
@@ -3083,6 +3081,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
     term_provide_logctx(wgs->term, wgs->logctx);
 #ifdef MOD_PERSO
+    /* KiTTY feature: URL hyperlinks - init urlhack + compile regex. After
+     * log_init: a custom pattern that does not compile is reported in this
+     * terminal window's Event Log (urlhack_report_fallback), which needs logctx. */
+    kitty_url_init();
+    kitty_url_config(wgs->conf);
     {
         /* KiTTY: arm log rotation. Repeating timer - SetTimer keeps firing
          * until it is killed, which is what "every N seconds" wants. */
@@ -6776,7 +6779,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 /* KiTTY: a start that failed (kitty.exe renamed or moved
                  * while this window runs) did nothing visible at all: the
                  * menu item seemed dead. The notice window and this
-                 * window's Event Log, as for the other programs started
+                 * terminal window's Event Log, as for the other programs started
                  * from a session (RunCommand, kitty_winutil.c). */
                 const char *why = kitty_win_reason(GetLastError());
                 char *msg = dupprintf(KT_START_FAILED_FMT, b, why);
@@ -11666,6 +11669,7 @@ static void wintw_set_title(TermWin *tw, const char *title, int codepage)
     }
     sfree(wgs->window_name);
     wgs->window_name = new_window_name;
+    kitty_logbox_retitle(wgs->window_name);   /* KiTTY: the Event Log's title */
     if (conf_get_bool(wgs->conf, CONF_win_name_always) ||
         !IsIconic(wgs->term_hwnd))
         sw_SetWindowText(wgs->term_hwnd, wgs->window_name);
@@ -12936,6 +12940,7 @@ static void far2l_title_refresh(WinGuiSeat *wgs)
     t = dupwcs(now);
     sfree(wgs->window_name);
     wgs->window_name = t;
+    kitty_logbox_retitle(wgs->window_name);
     sw_SetWindowText(wgs->term_hwnd, wgs->window_name);
 }
 

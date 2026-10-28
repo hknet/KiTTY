@@ -67,73 +67,21 @@ static int kg_interactive(void)
     return (uof.dwFlags & WSF_VISIBLE) != 0;
 }
 
-/*
- * One line into the Application event log, under our own source name, as
- * event ID 0: the line is the one insertion string.
- *
- * The system MSI registers kitty.exe's message table for "KiTTY++"
- * (windows/kitty_events.mc), where message 0 shows the line as written.
- * Without it - a portable copy that was never installed - the Event Viewer
- * wraps the text in its "The description for Event ID ... cannot be found"
- * sentence and prints our string as the inserted parameter, which still
- * reads as it is. The suite's records with IDs of their own (900-902, the
- * guard's refusal among them) go through kitty_winevent.c, and only where
- * that message table is registered; without it they are written as such a
- * line too.
- *
- * Best effort throughout - a refusal must not become a second failure because
- * the log was unavailable.
- *
- * Exported with the entry type as a parameter so other KiTTY code that has to
- * leave a trace nobody may be watching for (log retention, kitty_logkeep.c)
- * writes the same kind of line under the same source.
- */
-void kitty_eventlog_line(unsigned type, const char *msg)
-{
-    HANDLE h = RegisterEventSourceA(NULL, KT_RENAME_GUARD_TITLE);
-    const char *strings[1];
-
-    if (!h)
-        return;
-    strings[0] = msg;
-    ReportEventA(h, (WORD)type, 0, 0, kitty_wev_user_sid(), 1, 0, strings,
-                 NULL);
-    DeregisterEventSource(h);
-}
-
-/* A line of text with this program's path under it, as event ID 0. */
-void kitty_guard_eventlog_text(const char *msg)
-{
-    char *path = kitty_module_path_dup(NULL);
-
-    if (path) {
-        char *line = dupprintf(KT_GUARD_EVENT_FMT, msg, path);
-        kitty_eventlog_line(EVENTLOG_ERROR_TYPE, line);
-        sfree(line);
-        sfree(path);
-    } else
-        kitty_eventlog_line(EVENTLOG_ERROR_TYPE, msg);
-}
-
 /* The refusal as event 900 (kitty_eventids.h): which check, what it found,
  * and the refused file's path - an installed program and a test copy
- * refused on purpose otherwise read alike in the log. Without the message
- * file (a portable copy) the message with "Program: <path>" under it, as
- * event ID 0 (kitty_wev_suite). */
-static void kg_eventlog(const char *msg, const char *check, const char *found)
+ * refused on purpose otherwise read alike in the log. The same record on a
+ * portable copy, where the source has no message file (kitty_wev_suite).
+ * Best effort - a refusal must not become a second failure because the log
+ * was unavailable. */
+static void kg_eventlog(const char *check, const char *found)
 {
-    char *path = kitty_module_path_dup(NULL), *line;
+    char *path = kitty_module_path_dup(NULL);
     const char *v[3];
 
-    if (!path)
-        line = dupstr(msg);
-    else
-        line = dupprintf(KT_GUARD_EVENT_FMT, msg, path);
     v[0] = check;
     v[1] = found;
     v[2] = path ? path : "";
-    kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE, v, 3, line);
-    sfree(line);
+    kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE, v, 3);
     sfree(path);
 }
 
@@ -164,7 +112,7 @@ static void kg_report(const char *msg, const char *check, const char *found,
     /* In EVERY case one Application event-log record - the admin's trace,
      * whether or not the user also saw the box or the stderr line.
      * Applies to all three guards that share this. */
-    kg_eventlog(msg, check, found);
+    kg_eventlog(check, found);
 }
 
 /*
@@ -187,7 +135,7 @@ void kitty_guard_report(const char *check, const char *found, int gui,
              KT_SELFCHECK_GUARD_MSG, found);
     if (!allow_box && gui) {
         /* A windowed program that must not put up a box: the log only. */
-        kg_eventlog(msg, check, found);
+        kg_eventlog(check, found);
         return;
     }
     kg_report(msg, check, found, gui);

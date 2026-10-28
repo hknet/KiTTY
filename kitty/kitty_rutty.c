@@ -71,7 +71,7 @@ typedef struct {
     int remotedata_c;
 
     Backend *backend;          /* no-global: send target */
-    LogContext *logctx;        /* the window's Event Log (lives as long as
+    LogContext *logctx;        /* the terminal window's Event Log (lives as long as
                                 * the process) */
     HWND owner;                /* the terminal window, for the notices */
     char *path;                /* the script file, for the notices */
@@ -87,7 +87,7 @@ static void script_timeout(void *ctx, unsigned long now);
 static int  script_chkline(ScriptData *s);
 static void script_getline(ScriptData *s);
 
-/* A failed script is reported where the user looks: the window's Event Log
+/* A failed script is reported where the user looks: the terminal window's Event Log
  * has the line, a notice beside the session the reason with the file.
  * Modeless only - the session goes on behind it; without a notice window
  * the Event Log line stands alone. */

@@ -764,8 +764,8 @@ what a URL looks like. Clear it to supply your own in \q{Custom regex}
 a red line under the field shows the error
 (\c{Invalid regex: unmatched ()}); the text stays as typed, and an empty field is allowed (it matches
 nothing). A session started with a pattern that does not compile uses
-the default pattern instead: a notice and a warning in the Windows
-Application event log (source \c{KiTTY++}) report the error.
+the default pattern instead: a notice and a line in the terminal window's Event
+Log report the error.
 
 The pattern decides what KiTTY++ treats as a link, and therefore what it
 will hand to the browser. A pattern that matches more than URLs is a
@@ -3089,8 +3089,10 @@ Stored per installation, as \c{warnmissingfeatures} in \c{kitty.ini}.
 
 Opens the Windows Application log filtered to KiTTY++ entries, with the
 log \c{KiTTY++_Session} when it exists (Windows XP: unfiltered). With the
-system MSI installed, ID 0 entries show their text only, the others their
-fields one per line (\k{kitty-cfg-windows-eventlog}).
+system MSI installed every entry shows its fields one per line. Without
+it the Event Viewer shows the same values after its sentence \q{The
+description for Event ID ... cannot be found}
+(\k{kitty-cfg-windows-eventlog}).
 
 \S{kitty-cfg-windows-eventlog} \q{Windows Event Log}
 
@@ -3108,15 +3110,16 @@ attempt the server refuses. Every event ID with its fields in order is
 listed in
 \k{kitty-eventids}.
 
-\b 0 - text only (source \c{KiTTY++}).
+\b 0 - text only (source \c{KiTTY++}): no longer written, listed for the
+records of earlier versions.
 
 \b 100-199 - kageant's agent log (source \c{KiTTY++_agent}, log
 \c{KiTTY++_Agent}; see \k{pageant-mainwin-settings}).
 
 \b 200-299 - kitty.exe and kitty_tel.exe (source \c{KiTTY++_kitty}):
 200 session opened, 201 closed, 210 host key known, 211 new host key,
-212 host key mismatch (also a jump host's, marked in \c{proxy}), 220
-login succeeded, 221 login failed (also a jump host's or a proxy's,
+212 host key mismatch (also a jump host's, marked in \c{proxy}), 213
+host key update, 220 login succeeded, 221 login failed (also a jump host's or a proxy's,
 marked in \c{proxy}), 225 proxy used, 230 far-end request refused,
 240 file transferred, 241 file transfer failed (ZModem, kitten
 transfer; one record per file).
@@ -3131,7 +3134,10 @@ passphrase changed.
 
 \b 900-999 - the suite (source \c{KiTTY++}, Application log, always
 written): 900 program file refused, 901 log retention, 902 missing
-Windows features.
+Windows features, 903 session not saved, 904 store access rights not
+set, 905 program file marked red on the Applications panel, 906 helper
+program refused, allowed or declined, 907 session log not written (no
+desktop).
 
 Refusals, failures and mismatches are warnings, 900 is an error, the
 rest information.
@@ -3277,7 +3283,8 @@ are not KiTTY++'s are counted, listed in the detail box when the header row
 is selected, and not judged. A click on a row shows the file's path, size,
 version, signer, hash and the reason for its verdict; \q{Copy} puts the
 table on the clipboard; \q{Verify again} repeats the check. Every red row
-is also written to the Application event log, once per start.
+is also written to the Application event log as event 905, once per
+start.
 
 \S{kitty-cfg-host-keys} The Host Keys panel
 

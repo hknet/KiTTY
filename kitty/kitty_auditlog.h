@@ -58,7 +58,8 @@ int kitty_audit_is_warning(const char *ev, const char *result);
  * NULL key; a NULL or empty value drops that pair, so optional fields can
  * be passed unconditionally. The timestamp and quoting are handled here.
  * A field the Event Log sink is to carry must be listed for its kind in
- * kitty_auditlog.c (audit_kinds) and in windows/kitty_events.mc. */
+ * kitty_auditlog.c (audit_kinds) and in windows/kitty_events.mc; a kind
+ * not listed there goes to the file only (the build check refuses one). */
 void kitty_audit(const char *ev, ...);
 
 #endif /* KITTY_AUDITLOG_H */

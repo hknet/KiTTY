@@ -37,6 +37,16 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Remote clipboard > Limits: the read-grant numbers are greyed while
   clipboard reads are Deny. Remote clipboard > Notifications: the marker
   seconds are greyed while the marker is off.
+- Windows Event Log: every record has an event ID of its own with its
+  fields, also without the system MSI. New: 103 a request kageant refused,
+  905 a program file marked red on the Applications panel, 906 a helper
+  program refused, allowed or declined, 907 a session log not written
+  without a desktop. Event ID 0 (one line of text) is no longer written. A
+  custom URL regex that does not compile and the Direct2D fallback to WARP
+  go to the terminal window's Event Log. A failed `kitty.exe -edit` shows
+  its box only.
+- The terminal window's Event Log shows that window's title in its own
+  title bar: "KiTTY++ terminal Event Log: <window title>".
 
 ### Fixed
 

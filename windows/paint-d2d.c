@@ -39,7 +39,7 @@
  * to a device and are kept. Three failures in a row - a loss, or a
  * re-creation that fails, each within D2D_LOSS_RUN_MS of the one before -
  * and this window's device is made on WARP, the software rasteriser, for
- * the rest of its life, with one line in the event log. Not GDI: after the
+ * the rest of its life, with one line in its Event Log. Not GDI: after the
  * first Present1 of a flip-model swap chain, GDI's output never reaches
  * that window again, even once the chain is gone (Microsoft, "DXGI flip
  * model"; seen: GDI drew, the window kept the last Direct2D frame). WARP
@@ -72,12 +72,12 @@
 #include "../kitty/kitty_oldwin.h"   /* kitty_module_path_dup: the trace file */
 #include "paint-widthcache.h"
 #include "../kitty/kitty_text.h"    /* KiTTY: the renderer badge's word */
-#include "../kitty/kitty_renameguard.h"   /* kitty_eventlog_line */
 #include "kitty_buildlabel.h"       /* the test build's label, if this is one */
 
 /* The frame pacing's display signal (windows/kitty_pace_frame.c): it must
  * never hold a handle this file has closed. */
 void kitty_pace_set_frame_signal(HANDLE h);
+#include "kitty_gui.h"   /* do_eventlog: the WARP fallback's line in the terminal window's Event Log */
 
 /* Device loss: how close together failures must come to count as a run,
  * how many make the window give up on the graphics card (and then on
@@ -1913,10 +1913,12 @@ static void CALLBACK retry_tick(HWND hwnd, UINT msg, UINT_PTR id, DWORD now)
 }
 
 /* D2D_LOSS_MAX failures in a row on the graphics card: WARP for the rest
- * of the window's life, and one line in the event log for whoever wonders
- * why. The device is already released (device_lost, or the re-creation
- * that failed); the next frame makes it again, on WARP, with its own swap
- * chain on the same window - the flip model stays, so does the pacing. */
+ * of the window's life, and one line in the window's own Event Log (system
+ * menu > Event Log) for whoever wonders why: a matter of this window, not
+ * of the Windows Event Log. The device is already released (device_lost,
+ * or the re-creation that failed); the next frame makes it again, on WARP,
+ * with its own swap chain on the same window - the flip model stays, so
+ * does the pacing. */
 static void fall_back_to_warp(D2DPainter *d)
 {
     char *msg;
@@ -1926,7 +1928,7 @@ static void fall_back_to_warp(D2DPainter *d)
     D2D_TRACE("fallback to WARP after %d failures", D2D_LOSS_MAX);
     msg = dupprintf(KT_D2D_FALLBACK_EVENT, D2D_LOSS_MAX,
                     (unsigned long)(DWORD)d->last_hr);
-    kitty_eventlog_line(EVENTLOG_WARNING_TYPE, msg);
+    do_eventlog(msg);
     sfree(msg);
 }
 

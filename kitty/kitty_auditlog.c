@@ -250,6 +250,11 @@ static const char *const af_decrypt[] = {
     "fp", "comment", "result", "trigger", "req", "reqpath", "pid", NULL
 };
 static const char *const af_result[] = { "result", NULL };
+/* a refused request (kageant_audit_refused): the agent's reason, the
+ * requester, and the server of a verified session-bind */
+static const char *const af_request[] = {
+    "result", "reason", "req", "reqpath", "pid", "dest", "fwd", NULL
+};
 
 static const struct audit_kind {
     const char *ev;
@@ -259,6 +264,7 @@ static const struct audit_kind {
     { "sign",            100, af_sign },
     { "confirm",         101, af_sign },
     { "session-bind",    102, af_bind },
+    { "request",         103, af_request },
     { "add",             110, af_add },
     { "loadkey",         111, af_load },
     { "forget-path",     112, af_forget },
@@ -291,46 +297,45 @@ static char *audit_event_string(const char *v)
 
 /* Every insertion string is whole. A record longer than the Event Log
  * takes is refused by ReportEvent itself; that refusal is not reported,
- * as no other failure of this best-effort sink is. */
+ * as no other failure of this best-effort sink is.
+ *
+ * A kind the table does not list is not written to the Event Log at all
+ * (the file still has it): every Event Log record carries an ID of its own
+ * with its fields, which is what filters, forwarding and a SIEM select on.
+ * tools/check-kitty-events.py fails the build on a kitty_audit kind that is
+ * missing from audit_kinds, so this only guards a kind built at run time. */
 static void audit_write_event(const char *ev, const char *const *keys,
                               const char *const *vals, int n)
 {
     char *strings[1 + AUDIT_MAX_FIELDS];
     const char *result = "";
     const struct audit_kind *kind = NULL;
-    WORD ns = 0, id = 0;
+    WORD ns = 0;
     HANDLE h;
     size_t k;
     int i, j;
 
-    for (i = 0; i < n; i++)
-        if (!strcmp(keys[i], "result"))
-            result = vals[i];
     for (k = 0; k < sizeof(audit_kinds) / sizeof(audit_kinds[0]); k++)
         if (!strcmp(audit_kinds[k].ev, ev)) {
             kind = &audit_kinds[k];
             break;
         }
+    if (!kind)
+        return;
 
-    if (kind) {
-        id = kind->id;
-        strings[ns++] = audit_event_string(ev);
-        for (j = 0; kind->fields[j] &&
-                    ns < (WORD)(sizeof(strings) / sizeof(strings[0])); j++) {
-            const char *v = "";
-            for (i = 0; i < n; i++)
-                if (!strcmp(keys[i], kind->fields[j])) {
-                    v = vals[i];
-                    break;
-                }
-            strings[ns++] = audit_event_string(v);
-        }
-    } else {
-        /* A kind the table does not list: the whole record, as the file
-         * has it, in the one string of message 0 - never dropped. */
-        strbuf *sb = strbuf_new();
-        audit_put_record(sb, ev, keys, vals, n);
-        strings[ns++] = strbuf_to_str(sb);
+    for (i = 0; i < n; i++)
+        if (!strcmp(keys[i], "result"))
+            result = vals[i];
+    strings[ns++] = audit_event_string(ev);
+    for (j = 0; kind->fields[j] &&
+                ns < (WORD)(sizeof(strings) / sizeof(strings[0])); j++) {
+        const char *v = "";
+        for (i = 0; i < n; i++)
+            if (!strcmp(keys[i], kind->fields[j])) {
+                v = vals[i];
+                break;
+            }
+        strings[ns++] = audit_event_string(v);
     }
 
     h = RegisterEventSourceA(NULL, KITTY_AUDIT_EVENT_SOURCE);
@@ -338,7 +343,7 @@ static void audit_write_event(const char *ev, const char *const *keys,
         ReportEventA(h, (WORD)(kitty_audit_is_warning(ev, result) ?
                                EVENTLOG_WARNING_TYPE :
                                EVENTLOG_INFORMATION_TYPE),
-                     0, id, kitty_wev_user_sid(), ns, 0,
+                     0, kind->id, kitty_wev_user_sid(), ns, 0,
                      (const char **)strings, NULL);
         DeregisterEventSource(h);
     }

@@ -26,7 +26,8 @@
  * The check runs one file per tick of a zero-delay timer on the panel's first
  * refresh, so the rows appear as they are judged and the box never freezes
  * (hashing ten files takes seconds on old hardware). Every WARNING row is
- * also one Application event-log line, once per process per file.
+ * also one Application event-log record (event 905), once per process per
+ * file.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +38,8 @@
 #include "kitty_config_int.h"
 #include "kitty_text.h"          /* KT_APPS_* */
 #include "kitty_oldwin.h"        /* kitty_module_path_dup */
-#include "kitty_renameguard.h"   /* kitty_signature_reading, kitty_file_has_cert_table, kitty_guard_eventlog_text */
+#include "kitty_renameguard.h"   /* kitty_signature_reading, kitty_file_has_cert_table */
+#include "kitty_winevent.h"      /* kitty_wev_suite: event 905 per red row */
 #include "kitty_selfcheck.h"     /* kitty_selfcheck_file */
 #include "kitty_authenticode.h"  /* kitty_file_version */
 #include "kitty_winutil.h"       /* SetTextToClipboard */
@@ -258,17 +260,19 @@ static void apps_judge(struct apps_data *a, struct apps_row *r)
     else snprintf(r->basis, sizeof(r->basis), "%s", KT_APPS_WHY_UNVERIFIED);
 }
 
-/* One Application event-log line per WARNING file, once per process. */
+/* Event 905 (app-file-warning) per WARNING file, once per process: the
+ * file's path and the reason for the verdict. Not a refusal: no 900. */
 static void apps_log_warning(const struct apps_row *r)
 {
     static char *seen[64];
     static int nseen;
     int i;
-    char msg[600];
+    const char *v[2];
     for (i = 0; i < nseen; i++) if (!strcmp(seen[i], r->path)) return;
     if (nseen < (int)lenof(seen)) seen[nseen++] = dupstr(r->path);
-    snprintf(msg, sizeof(msg), KT_APPS_EVENTLOG, r->name, r->basis);
-    kitty_guard_eventlog_text(msg);   /* ID 0, text only: not a refusal */
+    v[0] = r->path;
+    v[1] = r->basis;
+    kitty_wev_suite(KITTY_EV_APP_FILE_WARNING, EVENTLOG_WARNING_TYPE, v, 2);
 }
 
 /* ---- the list ---------------------------------------------------------------- */

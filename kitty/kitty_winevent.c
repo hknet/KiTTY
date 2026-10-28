@@ -607,26 +607,6 @@ void kitty_wev_report(unsigned offset, int warning,
               vals, n);
 }
 
-#define WEV_SUITE_KEY \
-    "SYSTEM\\CurrentControlSet\\Services\\EventLog\\Application\\" \
-    KITTY_EVSRC_SUITE
-
-int kitty_wev_suite_registered(void)
-{
-    static int registered = -1;
-    if (registered < 0) {
-        HKEY k;
-        registered = 0;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, WEV_SUITE_KEY, 0,
-                          KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
-            registered = RegQueryValueExA(k, "EventMessageFile", NULL, NULL,
-                                          NULL, NULL) == ERROR_SUCCESS;
-            RegCloseKey(k);
-        }
-    }
-    return registered;
-}
-
 /* The missing-features text's entry lines as ONE line, "; " between
  * them, for event 902's missing field: a record field is one line (the
  * writer turns control bytes into ?), and the heading is the event's own. */
@@ -671,30 +651,22 @@ void kitty_wev_missing_features(void)
     line = wev_missing_one_line(full);
     v[0] = brief ? brief : "";
     v[1] = line;
-    /* the features by name and the entry points behind them; the whole
-     * text as event ID 0 where the message file is not registered */
+    /* the features by name and the entry points behind them */
     kitty_wev_suite(KITTY_EV_MISSING_FEATURES, EVENTLOG_INFORMATION_TYPE,
-                    v, 2, full);
+                    v, 2);
     sfree(line);
     sfree(brief);
     sfree(full);
 }
 
+/* Always the record's own ID with its fields, registered source or not:
+ * without the message file the Event Viewer shows its "The description
+ * for Event ID ... cannot be found" sentence and the strings, which still
+ * read in the table's order (doc/eventids.but). */
 void kitty_wev_suite(unsigned id, unsigned type,
-                     const char *const *vals, int n, const char *text)
+                     const char *const *vals, int n)
 {
     if (id < KITTY_EVB_SUITE || id > KITTY_EVB_SUITE + 99)
         return;
-    if (!kitty_wev_suite_registered() && text) {
-        /* a portable copy: the line as it reads, event ID 0 */
-        HANDLE h = wev_source(KITTY_EVSRC_SUITE);
-        const char *strings[1];
-        if (!h)
-            return;
-        strings[0] = text;
-        ReportEventA(h, (WORD)type, 0, 0, kitty_wev_user_sid(), 1, 0,
-                     strings, NULL);
-        return;
-    }
     wev_write(id, (WORD)type, vals, n);
 }

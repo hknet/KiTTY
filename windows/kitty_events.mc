@@ -1,18 +1,19 @@
-; KiTTY++ event log messages (kitty.exe resource). kitty_eventlog_line writes
-; event ID 0 with the text as its one insertion string: message 0 shows it
-; as written once the system MSI registers kitty.exe as the EventMessageFile
-; of the "KiTTY++" source.
+; KiTTY++ event log messages (kitty.exe resource). The system MSI registers
+; kitty.exe as the EventMessageFile of every KiTTY++ source.
 ;
 ; Event ID blocks (kitty/kitty_eventids.h is the table of every ID; extend
 ; both when a block is taken):
-;   0        plain text: the one insertion string is the whole message
+;   0        plain text: the one insertion string is the whole message. No
+;            longer written. Kept so the records of earlier versions still
+;            show their text
 ;   100-199  kageant's agent log (source "KiTTY++_agent")
 ;   200-299  kitty.exe's sessions (source "KiTTY++_kitty")
 ;   300-399  klink, kscp, ksftp (source "KiTTY++_cli")
 ;   400-499  kittygen, kittygen-cli (source "KiTTY++_kittygen")
 ;   900-999  the suite (source "KiTTY++"): refused program files, log
 ;            retention, missing Windows features, failed session saves,
-;            store access rights not set - always written
+;            store access rights not set, program files marked red,
+;            helper programs, session logs not written - always written
 ;   other    reserved, not used yet
 MessageIdTypedef=DWORD
 LanguageNames=(English=0x409:MSG00409)
@@ -28,8 +29,8 @@ Language=English
 ; value of the file log), %2 onwards the fields in the fixed order of that
 ; table, an absent field as an empty string. The lists below name them in
 ; that order; keep the two in step. No Severity= line: the IDs are the
-; plain numbers ReportEvent is given. A kind the table does not list is
-; reported as message 0 with the whole record as its text.
+; plain numbers ReportEvent is given. A kind the table does not list goes
+; to the file only (tools/check-kitty-events.py fails the build on one).
 
 MessageId=100
 SymbolicName=KITTY_AGENT_SIGN
@@ -47,6 +48,12 @@ MessageId=102
 SymbolicName=KITTY_AGENT_BIND
 Language=English
 %1%nresult: %2%ndest: %3%nforwarding: %4%nreq: %5%nreqpath: %6%npid: %7%0
+.
+
+MessageId=103
+SymbolicName=KITTY_AGENT_REQUEST
+Language=English
+%1%nresult: %2%nreason: %3%nreq: %4%nreqpath: %5%npid: %6%ndest: %7%nfwd: %8%0
 .
 
 MessageId=110
@@ -328,7 +335,9 @@ Language=English
 ; The suite, source "KiTTY++", always written, in the Application log: a
 ; program file refused at start (rename, signature, integrity), log
 ; retention, missing Windows features, failed session saves, folder-store
-; access rights not set.
+; access rights not set, a program file the Applications panel marks red,
+; a helper program refused, allowed or declined, a session log not written
+; for want of a desktop.
 
 MessageId=900
 SymbolicName=KITTY_SUITE_PROGRAM_REFUSED
@@ -358,4 +367,22 @@ MessageId=904
 SymbolicName=KITTY_SUITE_STORE_ACL_NOT_SET
 Language=English
 %1%npath: %2%nreason: %3%0
+.
+
+MessageId=905
+SymbolicName=KITTY_SUITE_APP_FILE_WARNING
+Language=English
+%1%npath: %2%nreason: %3%0
+.
+
+MessageId=906
+SymbolicName=KITTY_SUITE_HELPER_PROGRAM
+Language=English
+%1%nresult: %2%npath: %3%nreason: %4%0
+.
+
+MessageId=907
+SymbolicName=KITTY_SUITE_SESSION_LOG_NOT_WRITTEN
+Language=English
+%1%npath: %2%0
 .

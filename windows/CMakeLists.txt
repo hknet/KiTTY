@@ -946,10 +946,11 @@ endforeach()
 if(KITTY_CORE_BAD)
   message(FATAL_ERROR "MOD_PORTABLE is tested by files that are compiled once for both terminals: ${KITTY_CORE_BAD}. Move them out of KITTY_CORE_SOURCES in windows/CMakeLists.txt.")
 endif()
-# KiTTY: kitty.exe's event log message table (kitty_events.mc, message 0 =
-# "%1"). The system MSI registers kitty.exe as the "KiTTY++" source's
-# EventMessageFile, so the Event Viewer shows kitty_eventlog_line's text
-# as written. windmc sits beside the toolchain's windres.
+# KiTTY: kitty.exe's event log message table (kitty_events.mc, one message
+# per event ID of kitty/kitty_eventids.h). The system MSI registers kitty.exe
+# as the EventMessageFile of every KiTTY++ source, so the Event Viewer shows
+# each record's fields one per line. windmc sits beside the toolchain's
+# windres.
 string(REPLACE "windres" "windmc" KITTY_WINDMC "${CMAKE_RC_COMPILER}")
 add_custom_command(
   OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/kitty_events.rc ${CMAKE_CURRENT_BINARY_DIR}/MSG00409.bin

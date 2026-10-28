@@ -6,23 +6,24 @@ Every Windows Event Log event ID of the KiTTY++ suite, with its source, its kind
 
 The blocks, their sources and logs:
 
-- `0` text only (source KiTTY++): the one string is the message
+- `0` text only (source KiTTY++): no longer written, kept for the records of earlier versions
 - `100-199` kageant's agent log (KiTTY++_agent, log KiTTY++_Agent)
 - `200-299` kitty.exe sessions (KiTTY++_kitty, log KiTTY++_Session)
 - `300-399` klink, kscp, ksftp (KiTTY++_cli, log KiTTY++_Session)
 - `400-499` kittygen, kittygen-cli (KiTTY++_kittygen, log KiTTY++_Session)
 - `900-999` the suite (KiTTY++, Application log, always written)
 
-Each record carries its kind as insertion string `%1` and its fields as `%2` onwards, in the order listed below; the message shows each field as a `name: value` line, an absent field as an empty string. Where kitty.exe is not registered as the message file of `KiTTY++` (no system-wide installation), 900-904 are written as event ID 0 with one readable line instead.
+Each record carries its kind as insertion string `%1` and its fields as `%2` onwards, in the order listed below; the message shows each field as a `name: value` line, an absent field as an empty string. Without the system-wide installation the records keep their IDs and fields: the Event Viewer then shows "The description for Event ID ... cannot be found" with the strings in this order. ID 0 is no longer written. It is listed for the records of earlier versions.
 
 ## Event IDs
 
 | ID | Source | Kind | Level | Fields |
 |---:|---|---|---|---|
-| `0` | `KiTTY++` | - | the line's own level | the whole text as `%1` |
+| `0` | `KiTTY++` | - | no longer written (records of earlier versions) | `%1` holds the text in full |
 | `100` | `KiTTY++_agent` | `sign` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
 | `101` | `KiTTY++_agent` | `confirm` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
 | `102` | `KiTTY++_agent` | `session-bind` | Information | `result`, `dest`, `forwarding`, `req`, `reqpath`, `pid` |
+| `103` | `KiTTY++_agent` | `request` | Warning | `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
 | `110` | `KiTTY++_agent` | `add` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `path` |
 | `111` | `KiTTY++_agent` | `loadkey` | Information; Warning for a refusal or failure | `path`, `result`, `enc` |
 | `112` | `KiTTY++_agent` | `forget-path` | Information; Warning for a refusal or failure | `path`, `result` |
@@ -72,6 +73,9 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `902` | `KiTTY++` | `missing-features` | Information | `features`, `missing` |
 | `903` | `KiTTY++` | `session-save-failed` | Warning | `session`, `path`, `reason` |
 | `904` | `KiTTY++` | `store-rights-not-set` | Warning | `path`, `reason` |
+| `905` | `KiTTY++` | `app-file-warning` | Warning | `path`, `reason` |
+| `906` | `KiTTY++` | `helper-program` | Information; Warning when refused or declined | `result`, `path`, `reason` |
+| `907` | `KiTTY++` | `session-log-not-written` | Warning | `path` |
 
 ## Fields
 
@@ -85,7 +89,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `comment` - 100-170: the comment of the key concerned; 400, 401: of the key generated or saved.
 - `credentials` - 225, 325: yes when a user name or password went to the proxy, else no.
 - `days` - 901: LogKeepDays as set, 0 = off.
-- `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then a host name when one is found; empty without a session-bind; 102: the server the client bound to, written the same way; 131: the protected copy written.
+- `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then a host name when one is found; empty without a session-bind; 102: the server the client bound to, written the same way; 103: the server of the connection's verified session-bind, written the same way, empty without one; 131: the protected copy written.
 - `detail` - 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name.
 - `direction` - 240, 241, 330, 331: put (upload, to the server) or get (download, from it).
 - `enc` - 111: whether the key file has a passphrase; values: password, blank.
@@ -99,7 +103,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `found` - 900: what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check.
 - `fp` - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login.
 - `from` - 200, 300: the local end of the connection, address and port.
-- `fwd` - 100, 101: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
+- `fwd` - 100, 101, 103: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
 - `host` - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 - `kb` - 901: the kilobytes freed.
 - `keytype` - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
@@ -110,7 +114,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `methods` - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 - `missing` - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
 - `oldfp` - 213, 313: the hash of the stored key a replaced key took the place of (SHA256:...), empty for every other result.
-- `path` - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights.
+- `path` - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 - `port` - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
@@ -118,13 +122,13 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `protection` - 401, 403: none, passphrase or hello.
 - `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
 - `proxy` - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
-- `reason` - 100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text; 904: share (a network share without access lists), fat (a volume without access lists) or the reason setting them failed, as text.
+- `reason` - 100-170 except 103: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error; 103: the agent's reason as text (key not found, unrecognised message, key usage not confirmed by user, ...); 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text; 904: share (a network share without access lists), fat (a volume without access lists) or the reason setting them failed, as text; 905: the reason for the red verdict, as the panel shows it; 906: why the file was not started (refused), or the signature line the question showed (allowed, declined).
 - `refused` - 113: startup keys refused.
 - `remote` - 240, 241, 330, 331: the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name).
 - `req` - 100-170: the file name of the program that asked the agent.
 - `reqpath` - 100-170: that program's full path.
 - `request` - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
-- `result` - the outcome; 100, 101: allowed, denied; 102: accepted; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed.
+- `result` - the outcome; 100, 101: allowed, denied; 102: accepted; 103: refused; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed; 906: refused (not started), allowed (Yes in the question), declined (No, or the question closed).
 - `session` - the saved session's name, empty when none was loaded.
 - `tool` - 400-403: kittygen or kittygen-cli.
 - `trigger` - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).

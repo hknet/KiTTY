@@ -10,14 +10,21 @@
  * same check (--write-appendix rewrites it).
  *
  * The blocks:
- *   0        text only (source KiTTY++): the one string is the message
+ *   0        text only (source KiTTY++): no longer written, kept for the records of earlier versions
  *   100-199  kageant's agent log (KiTTY++_agent, log KiTTY++_Agent)
  *   200-299  kitty.exe sessions (KiTTY++_kitty, log KiTTY++_Session)
  *   300-399  klink, kscp, ksftp (KiTTY++_cli, log KiTTY++_Session)
  *   400-499  kittygen, kittygen-cli (KiTTY++_kittygen, log KiTTY++_Session)
  *   900-999  the suite (KiTTY++, Application log, always written)
  * Without the system-wide installation a source is unknown to Windows and
- * its events land in the Application log, with the same event data.
+ * its events land in the Application log, with the same event ID and the
+ * same event data.
+ *
+ * Every record written has an ID of its own with its fields: nothing
+ * writes ID 0 any more. tools/check-kitty-events.py fails the build on a
+ * ReportEvent call with the literal ID 0, on an agent log kind that has no
+ * ID (kitty_auditlog.c, audit_kinds) and on a kitty_wev_suite ID that has
+ * no row here.
  *
  * In 2xx and 3xx the same offset is the same kind with the same fields:
  * kitty.exe and the command-line tools share the SSH code that reports
@@ -76,6 +83,9 @@
 #define KITTY_EV_MISSING_FEATURES   902
 #define KITTY_EV_SESSION_SAVE_FAILED 903
 #define KITTY_EV_STORE_ACL_NOT_SET  904
+#define KITTY_EV_APP_FILE_WARNING   905
+#define KITTY_EV_HELPER_PROGRAM     906
+#define KITTY_EV_SESSION_LOG_NOT_WRITTEN 907
 
 struct kitty_eventid {
     unsigned id;
@@ -89,8 +99,10 @@ struct kitty_eventid {
 
 #ifdef KITTY_EVENTIDS_TABLE
 static const struct kitty_eventid kitty_eventids[] = {
+    /* no longer written: kept so the records of earlier versions still
+     * show their text */
     {   0, KITTY_EVB_TEXT,  KITTY_EVSRC_SUITE, NULL, "",
-      "the line's own level" },
+      "no longer written (records of earlier versions)" },
 
     /* kageant: kitty/kitty_auditlog.c, audit_kinds */
     { 100, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "sign",
@@ -102,6 +114,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 102, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "session-bind",
       "result dest forwarding req reqpath pid",
       "Information" },
+    { 103, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "request",
+      "result reason req reqpath pid dest fwd",
+      "Warning" },
     { 110, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "add",
       "fp comment result reason req reqpath pid path",
       "Information; Warning for a refusal or failure" },
@@ -254,6 +269,15 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 904, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "store-rights-not-set",
       "path reason",
       "Warning" },
+    { 905, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "app-file-warning",
+      "path reason",
+      "Warning" },
+    { 906, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "helper-program",
+      "result path reason",
+      "Information; Warning when refused or declined" },
+    { 907, KITTY_EVB_SUITE, KITTY_EVSRC_SUITE, "session-log-not-written",
+      "path",
+      "Warning" },
 };
 #endif /* KITTY_EVENTIDS_TABLE */
 
@@ -302,8 +326,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "100, 101: the server the key is used for, from the client's "
       "verified session-bind: the hash of its host key (SHA256:...), then "
       "a host name when one is found; empty without a session-bind; 102: "
-      "the server the client bound to, written the same way; 131: the "
-      "protected copy written" },
+      "the server the client bound to, written the same way; 103: the "
+      "server of the connection's verified session-bind, written the same "
+      "way, empty without one; 131: the protected copy written" },
     { "detail",
       "130, 132: the detail Windows Hello reported; 230: the "
       "refusals the rate limit merged into this record (a number), "
@@ -348,7 +373,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "from",
       "200, 300: the local end of the connection, address and port" },
     { "fwd",
-      "100, 101: the agent forwarding hops of the client's verified "
+      "100, 101, 103: the agent forwarding hops of the client's verified "
       "session-binds, in the order bound, each as in dest, separated by a "
       "comma; empty when there is none" },
     { "host",
@@ -388,7 +413,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "path",
       "100-170: the key file; 401-403: the file written; 903: the "
       "session file; 904: the folder or file created without the "
-      "access rights" },
+      "access rights; 905: the program file the Applications panel "
+      "marked red; 906: the helper program's file; 907: the session log "
+      "file" },
     { "pattern",
       "901: the folder and the log file name pattern searched" },
     { "pid",
@@ -410,10 +437,12 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "socks4; 225, 325: the proxy's type: http, socks4, socks5, "
       "telnet, local-command" },
     { "reason",
-      "100-170: a token - gui, cmdline, ipc, ipc-policy, tray, lifetime, "
-      "device-removal, idle, windows-lock, windows-unlock, click-allow, "
-      "click-deny, click-cancel-latch, pileup, suppress-latch, "
-      "hello-verified, hello-denied, hello-unavailable, hello-error; 201, "
+      "100-170 except 103: a token - gui, cmdline, ipc, ipc-policy, tray, "
+      "lifetime, device-removal, idle, windows-lock, windows-unlock, "
+      "click-allow, click-deny, click-cancel-latch, pileup, "
+      "suppress-latch, hello-verified, hello-denied, hello-unavailable, "
+      "hello-error; 103: the agent's reason as text (key not found, "
+      "unrecognised message, key usage not confirmed by user, ...); 201, "
       "301: the fatal error's text; 221, 321: access denied, public-key "
       "signature refused, no supported authentication methods available, "
       "the server's message when it ended the connection instead of "
@@ -421,7 +450,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "903: the reason as text; 904: share (a network share without "
       "access lists), fat (a "
       "volume without access lists) or the reason setting them failed, "
-      "as text" },
+      "as text; 905: the reason for the red verdict, as the panel shows "
+      "it; 906: why the file was not started (refused), or the signature "
+      "line the question showed (allowed, declined)" },
     { "refused",
       "113: startup keys refused" },
     { "remote",
@@ -437,7 +468,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "230: what the far end asked for; values: osc52-read, "
       "osc5522-read, far2l-clipboard, file-read, file-write" },
     { "result",
-      "the outcome; 100, 101: allowed, denied; 102: accepted; 110, 114, "
+      "the outcome; 100, 101: allowed, denied; 102: accepted; 103: "
+      "refused; 110, 114, "
       "115: done, "
       "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "
       "forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, "
@@ -449,7 +481,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "remote-closed, fatal, user; 211, 212, 311, 312: accept-new, "
       "accepted, refused; 213, 313: stored, replaced, removed, "
       "proof-failed, refused (the server refused the proof request); "
-      "401, 402: saved, failed" },
+      "401, 402: saved, failed; 906: refused (not started), allowed "
+      "(Yes in the question), declined (No, or the question closed)" },
     { "session",
       "the saved session's name, empty when none was loaded" },
     { "tool",

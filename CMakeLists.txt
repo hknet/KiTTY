@@ -567,32 +567,8 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking menu command ids for duplicates and 0x10 spacing")
   add_custom_target(check_menu_ids ALL DEPENDS ${KITTY_MENUID_CHECK_STAMP})
 
-  # The event message table, the manual's appendix (doc/eventids.but) and
-  # its Markdown copy (docs/EVENT-IDS.md) against the event ID table: an ID
-  # reported with no message, or a message or an appendix row whose fields
-  # are in another order than the event data, builds and shows a wrong or
-  # missing description in the Event Viewer, or sends a SIEM rule to the
-  # wrong position.
-  set(KITTY_EVENTS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_events_check.stamp)
-  add_custom_command(
-    OUTPUT ${KITTY_EVENTS_CHECK_STAMP}
-    COMMAND ${KITTY_INI_CHECK_PYTHON}
-            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
-    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_EVENTS_CHECK_STAMP}
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_eventids.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_events.mc
-            ${CMAKE_CURRENT_SOURCE_DIR}/doc/eventids.but
-            ${CMAKE_CURRENT_SOURCE_DIR}/docs/EVENT-IDS.md
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking the event messages, the manual's appendix and docs/EVENT-IDS.md against the event ID table")
-  add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
-
-  # Conf accessors against their keys' types (conf.h): a conf_get_str on an
-  # STR_AMBI key such as CONF_username, or any accessor of another type,
-  # compiles without a warning and ends the program with utils/conf.c's
-  # assertion when the call runs. The check reads every .c and .h of the
-  # source tree, so it depends on all of them: the top level and each source
+  # Every .c and .h of the source tree, for the two checks below that read
+  # them all and so depend on all of them: the top level and each source
   # folder, globbed again at every build (CONFIGURE_DEPENDS) so a new file
   # is covered without a manual re-run of cmake. Build folders are not
   # globbed.
@@ -605,6 +581,35 @@ if(KITTY_INI_CHECK_PYTHON)
       ${CMAKE_CURRENT_SOURCE_DIR}/${kitty_conf_dir}/*.h)
     list(APPEND KITTY_CONF_CHECK_SOURCES ${kitty_conf_dir_sources})
   endforeach()
+
+  # The event message table, the manual's appendix (doc/eventids.but) and
+  # its Markdown copy (docs/EVENT-IDS.md) against the event ID table: an ID
+  # reported with no message, or a message or an appendix row whose fields
+  # are in another order than the event data, builds and shows a wrong or
+  # missing description in the Event Viewer, or sends a SIEM rule to the
+  # wrong position. And the sources against it: no record with the event
+  # ID 0, no agent log kind without an ID, no suite ID without a row.
+  set(KITTY_EVENTS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_events_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_EVENTS_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_EVENTS_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-kitty-events.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_eventids.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_events.mc
+            ${CMAKE_CURRENT_SOURCE_DIR}/doc/eventids.but
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/EVENT-IDS.md
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking the event messages, the manual's appendix and docs/EVENT-IDS.md against the event ID table, and the sources' Event Log calls")
+  add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
+
+  # Conf accessors against their keys' types (conf.h): a conf_get_str on an
+  # STR_AMBI key such as CONF_username, or any accessor of another type,
+  # compiles without a warning and ends the program with utils/conf.c's
+  # assertion when the call runs. The check reads every .c and .h of the
+  # source tree (KITTY_CONF_CHECK_SOURCES above).
   set(KITTY_CONF_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_conf_check.stamp)
   add_custom_command(
     OUTPUT ${KITTY_CONF_CHECK_STAMP}

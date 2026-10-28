@@ -647,28 +647,14 @@ static void kitty_session_save_failed(const char *sess, const char *path,
 {
     char *why = dupstr(kitty_win_reason(err));
     char *msg = dupprintf(KT_SESSION_SAVE_FAILED_FMT, sess, path, why);
-    char *line = dupstr(msg), *s, *d;
     const char *vals[3];
-    /* the record: the same words on one line */
-    for (s = d = line; *s;) {
-        if (*s == '\n') {
-            while (*s == '\n' || *s == ' ')
-                s++;
-            if (d > line && d[-1] != ' ')
-                *d++ = ' ';
-        } else {
-            *d++ = *s++;
-        }
-    }
-    *d = '\0';
     vals[0] = sess;
     vals[1] = path;
     vals[2] = why;
     kitty_wev_suite(KITTY_EV_SESSION_SAVE_FAILED, EVENTLOG_WARNING_TYPE,
-                    vals, 3, line);
+                    vals, 3);
     if (g_save_failed_report)
         g_save_failed_report(msg);
-    sfree(line);
     sfree(msg);
     sfree(why);
 }

@@ -265,7 +265,8 @@ static const char *kx_helper_keyfile(Conf *c)
  * until the process has started, so what was checked is what runs.
  */
 #include "kitty_authenticode.h"   /* kitty_verify_sibling, kitty_authenticode_verify */
-#include "kitty_renameguard.h"    /* kitty_signature_reading, kitty_eventlog_line */
+#include "kitty_renameguard.h"    /* kitty_signature_reading */
+#include "kitty_winevent.h"       /* kitty_wev_suite: event 906 per helper decision */
 #include "mini/mini.h"            /* readINI / writeINI: portable mode's store */
 #include "kitty_storage.h"        /* kitty_registry_base: the registry store */
 
@@ -533,10 +534,13 @@ static const char *kh_base( const char *full ) {
 	return b ? b + 1 : full ;
 }
 
-static void kh_log( unsigned type, const char *fmt, const char *full, const char *why ) {
-	char *m = dupprintf( fmt, full, why ) ;
-	kitty_eventlog_line( type, m ) ;
-	sfree( m ) ;
+/* Event 906 (helper-program), one per decision: result refused / allowed /
+ * declined, the file, and why (refused) or the signature line the question
+ * showed (allowed, declined). */
+static void kh_log( unsigned type, const char *result, const char *full, const char *why ) {
+	const char *v[3] ;
+	v[0] = result ; v[1] = full ; v[2] = why ;
+	kitty_wev_suite( KITTY_EV_HELPER_PROGRAM, type, v, 3 ) ;
 }
 
 /* One open box per file; every action that wanted the file while it was open
@@ -552,7 +556,7 @@ static void kh_answer( int yes, void *vp ) {
 	for( pp = &kh_pendings ; *pp ; pp = &(*pp)->next )
 		if( *pp == p ) { *pp = p->next ; break ; }
 	kh_log( yes ? EVENTLOG_INFORMATION_TYPE : EVENTLOG_WARNING_TYPE,
-	        yes ? KT_HELPER_LOG_ALLOWED : KT_HELPER_LOG_DECLINED, p->full, p->why ) ;
+	        yes ? "allowed" : "declined", p->full, p->why ) ;
 	if( yes ) { kh_store_put( p->full, p->hex ) ; kh_ours_add( p->full, p->hex ) ; }
 	for( r = p->retries ; r ; r = rn ) {
 		rn = r->next ;
@@ -599,7 +603,7 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 		text = dupprintf( j == KHJ_REFUSE_SIBLING ? KT_HELPER_REFUSE_SIBLING : KT_HELPER_REFUSE_BROKEN, kh_base( full ) ) ;
 		kitty_info_modeless( owner, KT_HELPER_CAPTION, text, full,
 		                     j == KHJ_REFUSE_SIBLING ? KT_HELPER_REFUSE_SIBLING_WARN : KT_HELPER_REFUSE_BROKEN_WARN ) ;
-		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
+		kh_log( EVENTLOG_WARNING_TYPE, "refused", full,
 		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING : KT_HELPER_WHY_BROKEN ) ;
 		sfree( text ) ;
 		sfree( full ) ;
@@ -644,7 +648,7 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
  * rule 2 above - no box here: allowing is kitty_helper_ready's) and started
  * as lpApplicationName, so exactly the checked file runs. The other
  * arguments are CreateProcessA's. FALSE with ERROR_ACCESS_DENIED when the
- * check failed (one event-log line).
+ * check failed (one event 906, refused).
  */
 static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags,
                       const char *workdir, STARTUPINFOA *si, PROCESS_INFORMATION *pi,
@@ -676,7 +680,7 @@ static BOOL kh_start( const char *path, char *cmdline, BOOL inherit, DWORD flags
 	j = kh_judge( full, held, signer, sizeof(signer), hex ) ;
 	if( j != KHJ_RUN ) {
 		CloseHandle( held ) ;
-		kh_log( EVENTLOG_WARNING_TYPE, KT_HELPER_LOG_REFUSED, full,
+		kh_log( EVENTLOG_WARNING_TYPE, "refused", full,
 		        j == KHJ_REFUSE_SIBLING ? KT_HELPER_WHY_SIBLING :
 		        j == KHJ_REFUSE_BROKEN ? KT_HELPER_WHY_BROKEN : KT_HELPER_WHY_UNCONFIRMED ) ;
 		sfree( full ) ;

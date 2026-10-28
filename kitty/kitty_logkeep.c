@@ -344,8 +344,7 @@ char *kitty_logkeep_run(const Filename *configured, const Filename *active,
                         kb > ULONG_MAX ? ULONG_MAX : (unsigned long)kb,
                         rules, disp);
         /* Event 901 (kitty_eventids.h), always: files, KB, the two rules as
-         * set (0 = off) and the pattern - each its own field; without the
-         * message file the line itself, as event ID 0. */
+         * set (0 = off) and the pattern - each its own field. */
         {
             char nfiles_s[16], kb_s[16], days_s[16], mb_s[16];
             const char *v[5];
@@ -357,7 +356,7 @@ char *kitty_logkeep_run(const Filename *configured, const Filename *active,
             v[0] = nfiles_s; v[1] = kb_s; v[2] = days_s; v[3] = mb_s;
             v[4] = disp;
             kitty_wev_suite(KITTY_EV_LOG_RETENTION, EVENTLOG_INFORMATION_TYPE,
-                            v, 5, ret);   /* ret: the line without a message file */
+                            v, 5);
         }
         sfree(rd);
         sfree(rm);

@@ -927,7 +927,7 @@
 #define KT_KSCP_SEND_FILE_LINE                       "Send File (kscp): Tools menu, Ctrl+F3. Sends a local file to the remote directory below."
 #define KT_KSCP_GET_FILE_LINE                        "Get File (kscp): Tools menu, Ctrl+F4. Fetches a remote file into the download folder; a path on the clipboard is checked and filled in."
 #define KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7         "Track remote directory (OSC 7 shell integration)"
-/* A refused OSC 7 folder, in the window's Event Log (kitty_set_remote_cwd) */
+/* A refused OSC 7 folder, in the terminal window's Event Log (kitty_set_remote_cwd) */
 #define KT_OSC7_REFUSED_FMT                          "OSC 7 folder refused: %s. The previous folder stays (home when there was none)."
 #define KT_OSC7_WHY_NOT_FILE                         "not a file:// URL"
 #define KT_OSC7_WHY_NO_PATH                          "no folder after the host"
@@ -1379,7 +1379,6 @@
 #define KT_APPS_REQ_SIG                              "signature"
 #define KT_APPS_REQ_STAMP                            "stamp"
 #define KT_APPS_REQ_NONE                             "no check required by this build"
-#define KT_APPS_EVENTLOG                             "KiTTY++ Applications: %s - %s"
 
 /* Application/Security/Host Keys (kitty_hostkeys.c) */
 #define KT_HK_TITLE                                  "Host Keys"
@@ -1606,7 +1605,7 @@
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \
-        "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* event log, paint-d2d.c */
+        "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* the terminal window's Event Log, paint-d2d.c */
 #define KT_KSET_WD_FRAMEPACE                         "Frame pacing:"
 #define KT_KSET_WD_FP_AUTO                           "Follow the display (auto)"
 #define KT_KSET_WD_FP_30                             "30fps"
@@ -1851,8 +1850,9 @@
 #define KT_URL_OPEN_FAILED_FMT                       "The link could not be opened:\n%s\n\n%s"
 #define KT_URL_OPEN_FAILED_APP_FMT                   "The link could not be opened:\n%s\n\nwith the browser set for links:\n%s\n\n%s"
 /* A session whose custom URL regex does not compile (kitty/url/urlhack.c):
- * the notice (title KT_CAP_URL_REGEX) and the Event Log line. %s = the
- * engine's error; the Event Log line also carries the pattern. */
+ * the notice (title KT_CAP_URL_REGEX) and the line in the window's Event
+ * Log. %s = the engine's error; the Event Log line also carries the
+ * pattern. */
 #define KT_URL_REGEX_FALLBACK_FMT                    "The custom URL regex is invalid: %s\n" \
         "Links use the default pattern."
 #define KT_URL_REGEX_FALLBACK_EVENT_FMT              "The custom URL regex is invalid: %s. " \
@@ -2541,10 +2541,7 @@
 #define KT_HELPER_REFUSE_SIBLING_WARN                "Its signature or version differs from kitty.exe."
 #define KT_HELPER_REFUSE_BROKEN                      "%s was not started: its signature is broken."
 #define KT_HELPER_REFUSE_BROKEN_WARN                 "The file was changed after it was signed."
-/* Application event log, one line per decision: %s = path, %s = reason */
-#define KT_HELPER_LOG_REFUSED                        "KiTTY++ did not start the helper program %s: %s"
-#define KT_HELPER_LOG_ALLOWED                        "KiTTY++ helper program allowed by the user: %s (%s)"
-#define KT_HELPER_LOG_DECLINED                       "KiTTY++ helper program not allowed by the user: %s (%s)"
+/* event 906's reason when the file was refused (kitty_xfer.c kh_log) */
 #define KT_HELPER_WHY_SIBLING                        "signature or version differs from kitty.exe"
 #define KT_HELPER_WHY_BROKEN                         "broken signature"
 #define KT_HELPER_WHY_UNCONFIRMED                    "not confirmed, or changed since it was confirmed"
@@ -3419,6 +3416,9 @@
 #define KT_TWIN_LOG_SUSPEND_DISCONNECT               "Suspend detected, disconnecting cleanly..."
 #define KT_TWIN_LOG_KEY_RECONNECT                    "No connection on key pressed, trying to reconnect..."
 #define KT_TWIN_LOG_SESSION_RESTARTED                "----- Session restarted -----"
+/* The Event Log window's title; ": " and the terminal window's title follow
+ * when it has one (windows/dialog.c, logbox_set_title). %s = the product */
+#define KT_LOGBOX_TITLE_FMT                          "%s terminal Event Log"
 #define KT_TWIN_LOG_ENDED_LOG_OPEN                   "Session ended; window kept open while " \
         "the Event Log is open (it closes when you close the " \
         "log)"
@@ -3885,11 +3885,6 @@
 #define KT_DLG_PEER_CLOSED_MSG                       "Server closed the connection before the question was " \
         "answered: nothing was stored"
 #define KT_DLG_PEER_CLOSED                           "\r\n" KT_DLG_PEER_CLOSED_MSG ".\r\n"
-/* the log file exists and there is no desktop for its question (dialog.c
- * win_gui_askappend): the Event Log line, the session goes on without a log */
-#define KT_DLG_LOG_NOBODY_FMT                        "Session log not written: %s already exists and there is no " \
-        "desktop to choose overwrite or append. Session > Logging > \"What to do if the " \
-        "log file already exists\", -logoverwrite or -logappend set it beforehand."
 #define KT_DLG_KEY_REPLACED                          "\r\nStored host key replaced. Continuing.\r\n"
 #define KT_DLG_KEY_KEPT_ONCE                         "\nKeeping the previously stored key; continuing this once " \
         "(you will be asked again next time).\n"
@@ -4709,7 +4704,6 @@
 /* A release file no longer matches what was released (kitty/kitty_selfcheck.c).
  * %s is the short technical reason - "modified", "bad stamp", "no stamp",
  * "truncated", "cannot check". */
-#define KT_GUARD_EVENT_FMT                           "%s\r\nProgram: %s"   /* the refusal, then the refused file */
 #define KT_SELFCHECK_GUARD_MSG                       "Integrity check failed: this program file was changed after its release. Found: %s"
 
 #endif /* KITTY_TEXT_H */

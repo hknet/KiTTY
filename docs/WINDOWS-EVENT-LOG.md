@@ -25,7 +25,7 @@ Viewer's *User* column.
 | kitty.exe, kitty_tel sessions | `KiTTY++_kitty` | 200-299 | `KiTTY++_Session` | off |
 | klink, kscp, ksftp | `KiTTY++_cli` | 300-399 | `KiTTY++_Session` | off |
 | kittygen, kittygen-cli | `KiTTY++_kittygen` | 400-499 | `KiTTY++_Session` | off |
-| the suite | `KiTTY++` | 0, 900-999 | `Application` | always written |
+| the suite | `KiTTY++` | 900-999 | `Application` | always written |
 
 Both logs are in *Applications and Services Logs* in Event Viewer.
 
@@ -42,9 +42,12 @@ the Application log. Restarting only the Event Log service is no substitute:
 on Windows 11 it left the service taking no records at all until a restart of
 Windows.
 
-The suite's own records (source `KiTTY++`) differ: where kitty.exe is not
-registered as the message file of `KiTTY++`, events 900-902 are written as
-event ID 0 with one readable line of text instead of fields.
+The suite's own records (source `KiTTY++`) are no exception: 900-907 keep
+their event IDs and fields without the system MSI too. There the Event Viewer
+shows "The description for Event ID ... cannot be found" with the field values
+in the order of [EVENT-IDS.md](EVENT-IDS.md). Event ID 0 (one line of text) is
+no longer written. Records of earlier versions still show their text where the
+system MSI is installed.
 
 kageant decides its default once, when it starts: with the log `KiTTY++_Agent`
 present it writes the agent log to the file **and** the Event Log, otherwise to
@@ -151,16 +154,16 @@ are in the Application log, whose size and retention are Windows' own settings.
 
 ## 4. Event IDs
 
-48 IDs:
+The IDs:
 
 | Range | Source | Records |
 |---|---|---|
-| 0 | `KiTTY++` | text only: the one string is the message |
-| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170) |
-| 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
+| 0 | `KiTTY++` | text only, no longer written: listed for the records of earlier versions |
+| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170) |
+| 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
 | 300-399 | `KiTTY++_cli` | 300-325 as 200-225; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
-| 900-999 | `KiTTY++` | program file refused (900), log retention (901), missing Windows features (902) |
+| 900-999 | `KiTTY++` | program file refused (900), log retention (901), missing Windows features (902), session not saved (903), store access rights not set (904), program file marked red on the Applications panel (905), helper program refused, allowed or declined (906), session log not written without a desktop (907) |
 
 In every record `%1` is the kind (`session-open`, `auth-failed`, ...) and `%2`
 onwards are the fields in a fixed order. Refusals, failures and mismatches are
@@ -179,7 +182,7 @@ Warning, 900 is Error, the rest are classified as Information.
   through; `forward` for a port forwarding's connection, `x11` for an X11
   forwarding's.
 - **SSH-1:** `keytype` `rsa1`; `fp` the MD5 hash (`aa:bb:...`).
-- **Destination (kageant):** 100 and 101 carry `dest`, the server of the
+- **Destination (kageant):** 100, 101 and 103 carry `dest`, the server of the
   client's verified session-bind (`SHA256:...`, then a host name when one is
   found), and `fwd`, the agent forwarding hops. Both are empty without a
   session-bind. The session-bind itself is event ID 102, kind `session-bind`.

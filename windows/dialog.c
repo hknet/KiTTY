@@ -19,7 +19,8 @@
 #include "../kitty/kitty_theme.h"   /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_anchor.h"  /* KiTTY: the resizable configuration box */
 #include "../kitty/kitty_text.h"    /* KiTTY: the words the dialogs show */
-#include "../kitty/kitty_renameguard.h"   /* KiTTY: kitty_guard_interactive, kitty_eventlog_line */
+#include "../kitty/kitty_renameguard.h"   /* KiTTY: kitty_guard_interactive */
+#include "../kitty/kitty_winevent.h"      /* KiTTY: kitty_wev_suite, event 907 */
 
 #include <commctrl.h>
 #include <commdlg.h>
@@ -563,6 +564,32 @@ static void logbox_layout(HWND hwnd)
     MoveWindow(btnclear, left + 2*(bw + gap), btop, bw, bh, true);
 }
 
+/* KiTTY: the Event Log's title carries the terminal window's title, so it
+ * is clear which window the log belongs to. window.c hands every new
+ * window title over (kitty_logbox_retitle); the log keeps a copy for when
+ * it is opened. */
+static wchar_t *logbox_term_title;
+
+static void logbox_set_title(HWND dlg)
+{
+    char *head = dupprintf(KT_LOGBOX_TITLE_FMT, about_product_name());
+    wchar_t *whead = dup_mb_to_wc(CP_ACP, head);
+    wchar_t *full = logbox_term_title && *logbox_term_title ?
+        dupwcscat(whead, L": ", logbox_term_title) : dupwcs(whead);
+    SetWindowTextW(dlg, full);
+    sfree(full);
+    sfree(whead);
+    sfree(head);
+}
+
+void kitty_logbox_retitle(const wchar_t *term_title)
+{
+    sfree(logbox_term_title);
+    logbox_term_title = term_title ? dupwcs(term_title) : NULL;
+    if (logbox)
+        logbox_set_title(logbox);
+}
+
 static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -570,9 +597,7 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
 
     switch (msg) {
       case WM_INITDIALOG: {
-        char *str = dupprintf("%s Event Log", about_product_name());
-        SetWindowText(hwnd, str);
-        sfree(str);
+        logbox_set_title(hwnd);           /* KiTTY: with the window's title */
 
         static int tabs[4] = { 78, 108 };
         SendDlgItemMessage(hwnd, IDN_LIST, LB_SETTABSTOPS, 2,
@@ -6102,14 +6127,16 @@ static int win_gui_askappend(LogPolicy *lp, Filename *filename,
      * KiTTY: no desktop (a service, a scheduled task that runs whether a
      * user is logged on or not): a box there is never seen and the log
      * would hold the session's output for good. The safe answer, no log,
-     * and the reason in the Application event log; LogFileClash or
-     * -logoverwrite / -logappend settle the choice beforehand, and then
-     * this function is never reached.
+     * and event 907 (session-log-not-written) with the log file in the
+     * Application event log; LogFileClash or -logoverwrite / -logappend
+     * settle the choice beforehand, and then this function is never
+     * reached.
      */
     if (!kitty_guard_interactive()) {
-        char *line = dupprintf(KT_DLG_LOG_NOBODY_FMT, filename->utf8path);
-        kitty_eventlog_line(EVENTLOG_WARNING_TYPE, line);
-        sfree(line);
+        const char *v[1];
+        v[0] = filename->utf8path;
+        kitty_wev_suite(KITTY_EV_SESSION_LOG_NOT_WRITTEN,
+                        EVENTLOG_WARNING_TYPE, v, 1);
         return 0;
     }
 

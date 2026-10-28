@@ -319,8 +319,7 @@ void kageant_audit_decrypt(const char *fp, const char *comment,
 
 /* A refused request (kageant_refused_hook): ev "request", result
  * "refused", the agent core's reason as written, and on a connection that
- * sent a session-bind its destination. The Event Log sink has no ID of
- * its own for it and reports the whole record as message 0. Under the same
+ * sent a session-bind its destination. Event ID 103. Under the same
  * switch as every other line (kitty_audit_enabled). */
 void kageant_audit_refused(const char *reason, unsigned long pid,
                            const struct kageant_dest *d)

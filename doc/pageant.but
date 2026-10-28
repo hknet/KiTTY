@@ -192,18 +192,19 @@ overwritten. To change that, for example to 50 MB:
 the records go to the Application log, whose size and retention are
 Windows' own settings.
 
-100 sign, 101 confirm, 110 add, 111 load at startup, 112 forget a path,
-113 retry, 114 remove, 115 remove all, 120 lock, 121 unlock, 130 Hello
-enrol, 131 Hello protect, 132 Hello unlock, 140 key file warning, 150
-re-encrypt all, 160 agent start/stop, 170 log rotation. Refusals,
+100 sign, 101 confirm, 102 session-bind, 103 refused request, 110 add,
+111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
+remove all, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
+132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
+re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 170 log
+rotation. Refusals,
 failures and key file warnings are warnings, the rest information. The
 fields of each ID, in order, are listed in \k{kitty-eventids}.
 
 Every refused request is a record too: kind \c{request}, result
 \c{refused}, the agent's reason (\q{key not found}, \q{unrecognised
 message}, \q{key usage not confirmed by user}) and the program that
-sent it. It has no event ID of its own: the Event Log gets the whole
-record as one line, event ID 0.
+sent it: event ID 103, a warning.
 
 On a connection whose client sent a verified session-bind, signatures,
 confirmations and refused requests carry its destination (\c{dest},
@@ -433,8 +434,8 @@ via:} line per agent forwarding hop.
 
 \b The agent log writes \c{dest} (the server the login is for) and
 \c{fwd} (the forwarding hops, in the order bound) on every signature,
-confirmation and refused request. Events 100 and 101 carry both as
-their last two fields.
+confirmation and refused request. Events 100, 101 and 103 carry both
+as their last two fields.
 
 \b Each binding is a record of its own: kind \c{session-bind}, result
 \c{accepted}, \c{dest} and \c{forwarding} (\c{yes} or \c{no}).

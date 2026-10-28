@@ -55,13 +55,13 @@ static char *strf(const char *fmt, ...)
 static int nevents = 0;
 static char *lastevent, *lastpath;
 void kitty_wev_suite(unsigned id, unsigned type, const char *const *vals,
-                     int n, const char *text)
+                     int n)
 {
     (void)type;
     nevents++;
     free(lastevent);
     free(lastpath);
-    lastevent = strf("%u|%s", id, text ? text : "");
+    lastevent = strf("%u|%s", id, n > 1 && vals[1] ? vals[1] : "");
     lastpath = strf("%s", n > 0 && vals[0] ? vals[0] : "");
 }
 
@@ -259,12 +259,11 @@ int main(void)
     expect("FAT: the marker written", markerwrites, 1);
     expect("FAT: one record", nevents, 1);
     {
-        char *want = strf("904|" KT_STORE_ACL_NOT_SET_FMT, "X:\\store");
-        expect("FAT: the record's text, the store root in it",
-               strcmp(lastevent, want) == 0, 1);
+        char *want;
+        expect("FAT: the record's ID and reason, 904 fat",
+               strcmp(lastevent, "904|fat") == 0, 1);
         expect("FAT: the record's path, the folder made",
                strcmp(lastpath, "X:\\store\\Sessions") == 0, 1);
-        free(want);
         want = strf(KT_STORE_ACL_NOT_SET_FMT, "X:\\store");
         expect("FAT: the notice's text", strcmp(lastnotice, want) == 0, 1);
         free(want);

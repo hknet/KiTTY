@@ -42,8 +42,9 @@
  * no console to print to, not that a box will certainly appear: a windowed
  * program gets the message box only on an interactive desktop, and a
  * scheduled task or service - where a modal would simply hang - gets one
- * Application event-log line instead. A console caller keeps stderr and gets
- * the log line too, because an unattended job has nobody reading its output.
+ * Application event-log record (event 900) instead. A console caller keeps
+ * stderr and gets the record too, because an unattended job has nobody
+ * reading its output.
  *
  * The caller must then end the process immediately: ExitProcess(1) from a
  * WinMain, exit status 1 from a main(). Call it FIRST, before any window, ini
@@ -115,18 +116,5 @@ int kitty_file_has_cert_table(const char *path);
 int kitty_guard_interactive(void);
 void kitty_guard_report(const char *check, const char *found, int gui,
                         int allow_box);
-/*
- * A line of text as event ID 0 with this program's path under it (the
- * Applications leaf's warnings). Not a refusal: no 900 record.
- */
-void kitty_guard_eventlog_text(const char *msg);
-
-/*
- * One line into the Application event log under the KiTTY++ source, the line
- * the guards write. `type` is an EVENTLOG_*_TYPE value (windows.h is not
- * included here, hence the plain unsigned). Best effort: nothing is reported
- * if the log cannot be opened.
- */
-void kitty_eventlog_line(unsigned type, const char *msg);
 
 #endif /* KITTY_RENAMEGUARD_H */

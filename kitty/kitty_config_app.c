@@ -1301,8 +1301,8 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * Event Log entry is written whatever this is set to - the checkbox governs
  * the interruption, not the record. */
 /* Application > Security > KiTTY++ Event Viewer: a custom view of the
- * suite's records - the source kitty_eventlog_line and the 9xx records
- * write under (KiTTY++), and the sources of the session, console-tool and
+ * suite's records - the source the 9xx records are written under
+ * (KiTTY++), and the sources of the session, console-tool and
  * kittygen records (kitty_eventids.h), in the Application log, where those
  * land without the system-wide installation, and in the log KiTTY++_Session
  * when that installation made it (a query naming a missing log fails the

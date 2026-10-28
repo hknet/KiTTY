@@ -134,7 +134,6 @@ kitty/kitty_config_app.c | scb_panel_kitty_settings() | buf | 4096 | kitty.ini v
 kitty/kitty_config_app.c | scb_panel_kitty_settings() | line | 1400 | Storage panel line naming the store folder / kitty.ini / backup paths, snprintf to sizeof: a path over ~1300 characters shows cut (display only)
 
 kitty/kitty_config_apps.c | struct apps_row | signer | 256 | signer CN of a suite program, kitty_signature_reading(sizeof)
-kitty/kitty_config_apps.c | apps_log_warning() | msg | 600 | Event Log warning text, snprintf to sizeof
 
 kitty/kitty_config_session.c | kitty_autopw_handler() | pw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 kitty/kitty_config_session.c | kitty_proxypw_handler() | pw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)

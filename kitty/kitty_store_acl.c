@@ -382,7 +382,7 @@ void kitty_store_acl_report(int verdict, const char *path, DWORD err)
         vals[0] = path;
         vals[1] = why;
         kitty_wev_suite(KITTY_EV_STORE_ACL_NOT_SET, EVENTLOG_WARNING_TYPE,
-                        vals, 2, msg);
+                        vals, 2);
     }
     /* the notice: once per store (its KiTTYState remembers it), only where
      * the store is known and a front end shows it. Under readonly=yes the

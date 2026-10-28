@@ -119,8 +119,8 @@ void kitty_wev_auth_settled(void);
 /* The account this process runs as (a SID) for each record's user, so the
  * Event Viewer shows it and forwarding carries it: read from the process
  * token once and kept; NULL when it cannot be read, and the records go out
- * without one. Shared by every writer (kitty_auditlog.c,
- * kitty_renameguard.c). */
+ * without one. Shared by every writer (kitty_auditlog.c and this file's
+ * own). */
 void *kitty_wev_user_sid(void);
 
 /* 230, kitty.exe: the far end asked for something it refused. request =
@@ -150,14 +150,12 @@ void kitty_wev_report(unsigned offset, int warning,
                       const char *const *vals, int n);
 
 /* 9xx: always written, source KiTTY++, the Application log. type is an
- * EVENTLOG_*_TYPE value. "pid" is not among their fields. Only where the
- * source has a message file (the system MSI registers kitty.exe for it):
- * without one the Event Viewer shows no description, so `text` - the same
- * record as one readable line - goes out as event ID 0 instead. */
+ * EVENTLOG_*_TYPE value. "pid" is not among their fields. The record's own
+ * ID with its fields whether or not the source has a message file (the
+ * system MSI registers kitty.exe for it); id must have a row in
+ * kitty_eventids.h (tools/check-kitty-events.py checks every call). */
 void kitty_wev_suite(unsigned id, unsigned type,
-                     const char *const *vals, int n, const char *text);
-/* 1 when the source KiTTY++ has an EventMessageFile; looked up once. */
-int kitty_wev_suite_registered(void);
+                     const char *const *vals, int n);
 /* 902: what this Windows lacks (kitty_oldwin_degraded: the lookups made so
  * far), once per process; nothing when nothing is missing. Every program
  * of the suite calls it at its start; kitty.exe with a terminal when the
