@@ -4,7 +4,7 @@ KiTTY++ is the old KiTTY plus serious (speed) enhancements and more features ont
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.19-beta — 2026-10-24
+## 0.85.1.19-beta — 2026-10-28
 
 ### New
 
