@@ -1382,8 +1382,14 @@
  },
  "RXVTHomeEnd": {
   "default": "0",
-  "kind": "bool",
-  "values": null
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
  },
  "RawCNP": {
   "default": "0",
@@ -1436,7 +1442,8 @@
   "values": [
    0,
    1,
-   2
+   2,
+   3
   ]
  },
  "ReportVT220": {
@@ -1973,6 +1980,11 @@
   "kind": "bool",
   "values": null
  },
+ "WinIconTitle": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
  "WinNameAlways": {
   "default": "1",
   "kind": "bool",
@@ -2002,6 +2014,15 @@
   "default": "",
   "kind": "text",
   "values": null
+ },
+ "WinTitleCombine": {
+  "default": "0",
+  "kind": "enum",
+  "values": [
+   0,
+   1,
+   2
+  ]
  },
  "WindowBorder": {
   "default": "1",

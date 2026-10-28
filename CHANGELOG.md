@@ -57,7 +57,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   points out that a public key file selects the agent's key. Its Browse
   dialog lists *.pub files.
 - Deleting a session that also exists in the old KiTTY or PuTTY settings
-  (with Show old sessions on): the question now states that this copy is
+  (with Show old sessions on): the confirmation now states that this copy is
   deleted too. Manage Sessions marks such sessions "(old KiTTY)" or
   "(PuTTY)", as the session list does. Move and Rename are greyed for
   them: Copy and Clone take them over into this store.
@@ -70,7 +70,7 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   such a folder to the server's shell.
 - Accept new host keys (session, `-accept-new`, `autostoresshkey`): a new key
   is not stored without confirmation when the host already has a key of
-  another type. The question then lists the stored types.
+  another type. The confirmation then lists the stored types.
 
 ### Fixed
 

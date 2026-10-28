@@ -9,14 +9,9 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 - **Default** applies when the key is missing (`-`: computed at load, e.g. `PortNumber` from `Protocol`, fonts from the system). With `[KiTTY] inheritdefaultsettings=yes` a missing key comes from `Default Settings` instead.
 - **What it does** is the line for the key in `tools/session-key-descriptions.txt` where it has one, else the first sentence of the help topic of the key's control; `-` where neither exists.
 
-## Changed since 0.85.1.18
+## Changed since 0.85.1.19
 
-| Change | Key | Was | Now |
-|---|---|---|---|
-| added | `WinIconTitle` | - | text |
-| added | `WinTitleCombine` | - | enum 0/1/2 |
-| type changed | `RemoteQTitleAction` | enum 0/1/2 | enum 0/1/2/3 |
-| type changed | `RXVTHomeEnd` | bool | enum 0/1/2/3/4 |
+No key added, removed or changed.
 
 ## Keys
 
