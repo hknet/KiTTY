@@ -1584,6 +1584,8 @@ KiTTY++ lets you transfer files without opening a separate program, reusing the 
 ### Binary compression
 
 To keep the files small, KiTTY++'s executables are compressed with UPX, the Ultimate Packer for eXecutables. This shrinks the binary file size without changing how the program runs, so you get the same KiTTY++ in a more compact file. The compression is transparent in everyday use.
+**`~` over SFTP.** kscp and ksftp take a remote path that starts with `~` or `~user` as that home folder, as OpenSSH's scp and sftp do (`expand-path@openssh.com`, OpenSSH 8.7 and later). On a server without it, `~/x` is `x` in the login folder.
+
 
 **How to enable:** No action needed: the shipped kitty.exe and kitty_portable.exe are UPX-compressed for a smaller download; identical uncompressed `*_nocompress.exe` variants are provided in the ZIP as a fallback.
 

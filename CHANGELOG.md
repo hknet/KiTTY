@@ -17,6 +17,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   kscp in SFTP mode also when the remote file name holds a character other
   than letters, digits and / . _ - ~ % * ?. Before, only the folder was
   checked.
+- kscp and ksftp over SFTP: a remote path that starts with `~` or `~user`
+  is that home folder, as with OpenSSH's scp and sftp
+  (`expand-path@openssh.com`). Before, `host:~/x` failed.
 
 ### Fixed
 

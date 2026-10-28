@@ -772,6 +772,8 @@ void scp_sftp_listdir(const char *dirname)
         errs++;
         return;
     }
+    char *expanded = fxp_expand_tilde(dirname);   /* KiTTY: ~ as a shell reads it */
+    dirname = expanded;
 
     printf("Listing directory %s\n", dirname);
 
@@ -815,6 +817,7 @@ void scp_sftp_listdir(const char *dirname)
         list_directory_from_sftp_finish(ctx);
         list_directory_from_sftp_free(ctx);
     }
+    sfree(expanded);
 }
 
 /* ----------------------------------------------------------------------
@@ -857,6 +860,8 @@ int scp_source_setup(const char *target, bool shouldbedir)
             errs++;
             return 1;
         }
+        char *expanded = fxp_expand_tilde(target);   /* KiTTY: ~ as a shell reads it */
+        target = expanded;
 
         req = fxp_stat_send(target);
         pktin = sftp_wait_for_reply(req);
@@ -872,6 +877,7 @@ int scp_source_setup(const char *target, bool shouldbedir)
         }
 
         scp_sftp_remotepath = dupstr(target);
+        sfree(expanded);
 
         scp_has_times = false;
     } else {
@@ -1172,6 +1178,8 @@ int scp_sink_setup(const char *source, bool preserve, bool recursive)
             errs++;
             return 1;
         }
+        char *expanded = fxp_expand_tilde(source);   /* KiTTY: ~ as a shell reads it */
+        source = expanded;
         /*
          * It's possible that the source string we've been given
          * contains a wildcard. If so, we must split the directory
@@ -1223,6 +1231,7 @@ int scp_sink_setup(const char *source, bool preserve, bool recursive)
                 sfree(dirpart);
                 sfree(wildcard);
                 sfree(dupsource);
+                sfree(expanded);
                 return 1;
             }
 
@@ -1242,6 +1251,7 @@ int scp_sink_setup(const char *source, bool preserve, bool recursive)
         scp_sftp_recursive = recursive;
         scp_sftp_donethistarget = false;
         scp_sftp_dirstack_head = NULL;
+        sfree(expanded);
     }
     return 0;
 }
@@ -2398,7 +2408,9 @@ static void get_stat(CmdlineArg **args)
         printf("error %s\n", fxp_error());
         errs++;
     } else {
-        req = fxp_stat_send(src);
+        char *expanded = fxp_expand_tilde(src);   /* KiTTY: ~ as a shell reads it */
+        req = fxp_stat_send(expanded);
+        sfree(expanded);
         pktin = sftp_wait_for_reply(req);
         ret = fxp_stat_recv(pktin, req, &attrs);
         if (!ret) {

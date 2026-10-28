@@ -254,6 +254,10 @@ int fxp_error_type(void)
     return fxp_errtype;
 }
 
+/* KiTTY: the server answers expand-path@openssh.com (its FXP_VERSION
+ * lists the extension; OpenSSH 8.7 and later). */
+static bool fxp_has_expand_path = false;
+
 /*
  * Perform exchange of init/version packets. Return 0 on failure.
  */
@@ -288,14 +292,68 @@ bool fxp_init(void)
         return false;
     }
     /*
-     * In principle, this packet might also contain extension-
-     * string pairs. We should work through them and look for any
-     * we recognise. In practice we don't currently do so because
-     * we know we don't recognise _any_.
+     * KiTTY: the extension-name/data pairs that follow; the one used is
+     * expand-path@openssh.com (fxp_expand_tilde).
      */
+    fxp_has_expand_path = false;
+    while (get_avail(pktin)) {
+        ptrlen extname = get_string(pktin);
+        get_string(pktin);                 /* its data */
+        if (get_err(pktin))
+            break;
+        if (ptrlen_eq_string(extname, "expand-path@openssh.com"))
+            fxp_has_expand_path = true;
+    }
     sftp_pkt_free(pktin);
 
     return true;
+}
+
+/*
+ * KiTTY: a remote path that starts with ~ the way a shell reads it. SFTP
+ * has no ~: OpenSSH's sftp-server takes "~/x" as a folder named "~".
+ * With expand-path@openssh.com the server expands the ~ or ~user part;
+ * without it, "~" and "~/rest" become paths relative to the login folder
+ * ("." and "rest"), which is the home folder on OpenSSH. Only the part
+ * before the first '/' goes to the server, so a wildcard or a file that
+ * does not exist yet behind it is no obstacle. Any other path comes back
+ * unchanged. Always a new string (sfree it). Call after fxp_init().
+ */
+char *fxp_expand_tilde(const char *path)
+{
+    const char *slash;
+    size_t headlen;
+
+    if (!path || path[0] != '~')
+        return dupstr(path ? path : "");
+    slash = strchr(path, '/');
+    headlen = slash ? (size_t)(slash - path) : strlen(path);
+
+    if (fxp_has_expand_path) {
+        struct sftp_request *req = sftp_alloc_request();
+        struct sftp_packet *pktout, *pktin;
+        char *head = dupprintf("%.*s", (int)headlen, path);
+
+        pktout = sftp_pkt_init(SSH_FXP_EXTENDED);
+        put_uint32(pktout, req->id);
+        put_stringz(pktout, "expand-path@openssh.com");
+        put_stringz(pktout, head);
+        sftp_send(pktout);
+        sfree(head);
+        pktin = sftp_wait_for_reply(req);
+        /* the reply is an FXP_NAME of one entry, as for REALPATH */
+        {
+            char *expanded = fxp_realpath_recv(pktin, req);
+            if (expanded) {
+                char *full = slash ? dupcat(expanded, slash) : dupstr(expanded);
+                sfree(expanded);
+                return full;
+            }
+        }
+    }
+    if (headlen == 1)                      /* "~" or "~/rest" */
+        return dupstr(slash && slash[1] ? slash + 1 : ".");
+    return dupstr(path);                   /* ~user without the extension */
 }
 
 /*

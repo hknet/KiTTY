@@ -127,7 +127,21 @@ char *canonify(const char *name)
     struct sftp_packet *pktin;
     struct sftp_request *req;
 
-    if (name[0] == '/') {
+    char *tilde = NULL;                /* KiTTY: ~ and ~user as a shell reads them */
+    if (name[0] == '~') {
+        tilde = fxp_expand_tilde(name);
+        if (tilde[0] == '~') {
+            sfree(tilde);              /* ~user without the server's help: as typed */
+            tilde = NULL;
+        } else if (tilde[0] != '/') {  /* relative to the login folder, not the pwd */
+            char *athome = dupcat(homedir, "/", tilde);
+            sfree(tilde);
+            tilde = athome;
+        }
+    }
+    if (tilde) {
+        fullname = tilde;
+    } else if (name[0] == '/') {
         fullname = dupstr(name);
     } else {
         const char *slash;

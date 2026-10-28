@@ -174,6 +174,10 @@ bool fxp_init(void);
  */
 struct sftp_request *fxp_realpath_send(const char *path);
 char *fxp_realpath_recv(struct sftp_packet *pktin, struct sftp_request *req);
+char *fxp_expand_tilde(const char *path);   /* KiTTY: ~ and ~user (sftp.c) */
+/* KiTTY: each program that links sftpclient (pscp.c, psftp.c) has one;
+ * fxp_expand_tilde waits for its reply with it. */
+struct sftp_packet *sftp_wait_for_reply(struct sftp_request *req);
 
 /*
  * Open a file. 'attrs' contains attributes to be applied to the file
