@@ -2163,8 +2163,8 @@ set: scripts (\c{*.ksh}, \c{*.sh}), SQL files and all files.
 
 The broadcast switch, the group key and the send console are on the
 Broadcast leaf beneath this panel (\k{kitty-cfg-kset-broadcast}); the
-tracing switch \q{Extra tracing in the Event Log} is on the Security
-panel (\k{kitty-cfg-security}).
+tracing switch \q{Extra tracing in the Terminal Window's Event Log} is on
+the Security panel (\k{kitty-cfg-security}).
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{initdelay},
 \c{bcdelay}, \c{internaldelay}, \c{commanddelay}, \c{scriptmode} and
@@ -3040,10 +3040,11 @@ verified. It is stored per installation, as \c{verifyagent} in
 \c{kitty.ini}.
 
 \q{Diagnostics}, at the bottom of the panel: \q{Extra tracing in the
-Event Log} logs session lookups, the automatic command, key remappings
-and the helper command lines - it traces more than the automation,
-which is why it is here and not on the Automation panel. The password
-in those lines is blanked; host, user and paths are not. It is
+Terminal Window's Event Log} logs session lookups, the automatic
+command, key remappings and the helper command lines - it traces more
+than the automation, which is why it is here and not on the Automation
+panel. The password in those lines is blanked; host, user and paths are
+not. It is
 \c{debug} under \c{[KiTTY]} in \c{kitty.ini}.
 
 \S{kitty-cfg-missing-features} \q{Report missing Windows features in terminal}

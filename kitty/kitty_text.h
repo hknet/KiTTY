@@ -1445,7 +1445,7 @@
 #define KT_HKS_PIN_NONE                              "Nothing to pin: no key was presented."
 #define KT_HKS_LEFT                                  "Left as it is."
 #define KT_HOST_KEYS_CAS_JUMP                        "Certificate Authorities are configured for the whole installation: Application > Security."
-#define KT_KSET_TW_DEBUG                             "Extra tracing in the Event Log"
+#define KT_KSET_TW_DEBUG                             "Extra tracing in the Terminal Window's Event Log"
 #define KT_KSET_SC_TITLE                             "Keyboard Shortcuts"
 #define KT_KSET_SC_ENABLE                            "Keyboard shortcuts in the terminal window"
 /* The shortcut editor: the actions list, the AutoText list, their fields
