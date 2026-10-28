@@ -77,7 +77,7 @@
 /* The frame pacing's display signal (windows/kitty_pace_frame.c): it must
  * never hold a handle this file has closed. */
 void kitty_pace_set_frame_signal(HANDLE h);
-#include "kitty_gui.h"   /* do_eventlog: the WARP fallback's line in the terminal window's Event Log */
+#include "kitty_gui.h"   /* do_eventlog: the WARP fallback's line in the Terminal Window's Event Log */
 
 /* Device loss: how close together failures must come to count as a run,
  * how many make the window give up on the graphics card (and then on

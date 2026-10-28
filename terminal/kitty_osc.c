@@ -811,7 +811,7 @@ bool kitty_osc_dispatch(Terminal *term)
         {
             char *why = kitty_set_remote_cwd(term->osc_string,
                                              term->osc_str_overflow);
-            if (why) {   /* a refused folder: the terminal window's Event Log */
+            if (why) {   /* a refused folder: the Terminal Window's Event Log */
                 logeventf(term->logctx, KT_OSC7_REFUSED_FMT, why);
                 sfree(why);
             }

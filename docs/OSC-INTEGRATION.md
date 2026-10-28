@@ -54,7 +54,7 @@ their own `sshd_config` already accepts `COLORTERM`, so a file without the
 ending shows as `TERM_PROGRAM` alone missing. `sshd -T | grep -i acceptenv`
 shows what sshd really reads. Then reload sshd (`systemctl reload ssh` or
 `sshd`). Check from a new session: `env | grep -E 'COLORTERM|TERM_PROGRAM'`.
-The Event Log lists each variable the server refused. Without access to `sshd_config`, set
+The Terminal Window's Event Log lists each variable the server refused. Without access to `sshd_config`, set
 `COLORTERM=truecolor` in the shell's startup file instead.
 
 ## What KiTTY++ reports about itself
@@ -315,7 +315,7 @@ endif
   is absolute and holds no control character (a tab, a newline, ESC and the
   like). Quotes and shell characters are taken as data, never run. A refused
   path leaves the previous directory (the home directory when there was
-  none), and the terminal window's Event Log gets one line with the
+  none), and the Terminal Window's Event Log gets one line with the
   reason.
 - **Older snippets.** The OSC 7 snippet KiTTY++ published before
   (`__osc7_cwd`) keeps working; it can stay or be replaced by the one above.
@@ -357,7 +357,7 @@ for a window in the background, Always in front as well, Off never. One every
 (Application > KiTTY++ Settings > Terminal, 15 by default). While the
 title bar shows no status, the first such notice also offers **Show it in the
 title**, once per installation. Each of these changes is also a line in the
-Event Log.
+Terminal Window's Event Log.
 
 **Overlay:** while two or more jobs report, a panel at the top right of the
 terminal lists them, under **Show the program status overlay** (same panel, on

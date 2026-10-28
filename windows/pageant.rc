@@ -407,10 +407,11 @@ BEGIN
     /* Destination: the file, the Windows Event Log, or both, and the
      * button that opens Event Viewer on the agent's events. The label has
      * no accelerator: every letter of the word is taken on this dialog
-     * (Alt+D is "Notice display" on the first page). */
+     * (Alt+D is "Notice display" on the first page). The combo runs to
+     * 8 DLU before the button: "file and Windows Event Log" fits. */
     LTEXT KT_RC_KEYSETTINGS_LOGSINK_LABEL, IDC_SET_L_LOGSINK,
         16, 102, 44, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_AGENTLOGSINK, 64, 102, 96, 60,
+    COMBOBOX IDC_SET_AGENTLOGSINK, 64, 102, 150, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON KT_RC_KEYSETTINGS_EVENTVIEWER, IDC_SET_EVENTVIEWER,
         222, 102, 62, 14

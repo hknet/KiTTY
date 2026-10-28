@@ -268,8 +268,9 @@ what went wrong.
 
 \b \I{SSH packet log}\q{SSH packets}. In this mode (which is only used
 by SSH connections), the SSH message packets sent over the encrypted
-connection are written to the log file (as well as \i{Event Log}
-entries). You might need this to debug a network-level problem, or
+connection are written to the log file, as are the lines of the
+Terminal Window's \i{Event Log}. You might need this to debug a
+network-level problem, or
 more likely to send to the KiTTY++ authors as part of a bug report.
 \e{BE WARNED} that if you log in using a password, the password can
 appear in the log file; see \k{config-logssh} for options that may
@@ -334,7 +335,8 @@ program (a folder store, \c{savemode=file}, the portable build) it is
 \c{%KITTYPP_DIR%\\logs\\&H\\&Y-&M-&D.log} instead: \c{KITTYPP_DIR} is the
 program's own folder, set fresh at every start, so the logs stay beside it
 on a USB stick whatever its drive letter. Folders of the path that do not exist
-yet are created when the log is first opened, and the Event Log records it.
+yet are created when the log is first opened. The Terminal Window's Event Log
+records it.
 A variable this machine does not have (the \c{%OneDrive%} above without
 OneDrive) creates nothing; the log then fails to open, and the error
 shows the path with the variable's name in it.
@@ -352,9 +354,9 @@ comes up.
 
 The question is a box beside the session, which keeps running while
 it is open. Where there is no desktop to show it (a service, or a
-scheduled task that runs whether a user is logged on or not), KiTTY++
-does not log this session and writes event 907 with the log file to the
-Windows Application event log (source KiTTY++). Choose \q{Always overwrite it}
+scheduled task that runs whether a user is logged on or not), KiTTY++ does not
+log this session. It writes event 907 with the log file to the Windows Event
+Log (Application log, source KiTTY++). Choose \q{Always overwrite it}
 or \q{Always append to the end of it}, or start with \c{\-logoverwrite}
 or \c{\-logappend} (see \k{using-cmdline-logfileexists}), for a log in
 that case.
@@ -2121,9 +2123,9 @@ or a port-knocking sequence aimed at the session's own host:
 command line is visible to every process on the machine, so
 credentials must never travel in one.)
 
-The results of running the program will be logged in KiTTY++'s Event
-Log. So if it terminates with an error message, the Event Log will
-show the message.
+The results of running the program are logged in the Terminal
+Window's Event Log. So if it terminates with an error message, the
+Terminal Window's Event Log shows the message.
 
 \H{config-data} The Data panel
 
@@ -2557,13 +2559,14 @@ The setting \q{Print proxy diagnostics in the terminal window} lets
 you control how much of the proxy's diagnostics are printed to the main
 terminal window, along with output from your main session.
 
-By default (\q{No}), proxy diagnostics are only sent to the Event Log;
-with \q{Yes} they are also printed to the terminal, where they may get
-mixed up with your main session. \q{Only until session starts} is a
-compromise; proxy messages will go to the terminal window until the main
-session is deemed to have started (in a protocol-dependent way), which
-is when they're most likely to be interesting; any further proxy-related
-messages during the session will only go to the Event Log.
+By default (\q{No}), proxy diagnostics are only sent to the Terminal
+Window's Event Log. With \q{Yes} they are also printed to the terminal,
+where they may get mixed up with your main session. \q{Only until
+session starts} is a compromise. Proxy messages are printed in the
+terminal until the main session is deemed to have started (in a
+protocol-dependent way), which is when they are most likely to be of
+interest. Any further proxy-related messages during the session only go
+to the Terminal Window's Event Log.
 
 \H{config-ssh} The SSH panel
 
@@ -2839,9 +2842,9 @@ exchange should take place every so often; this can be initiated by
 either the client or the server.
 
 While this renegotiation is taking place, no data can pass through
-the SSH connection, so it may appear to \q{freeze}. (The occurrence of
-repeat key exchange is noted in the Event Log; see
-\k{using-eventlog}.) Usually the same algorithm is used as at the
+the SSH connection, so it may appear to \q{freeze}. (A repeat key
+exchange is noted in the Terminal Window's Event Log (see
+\k{using-eventlog}).) Usually the same algorithm is used as at the
 start of the connection, with a similar overhead.
 
 These options control how often KiTTY++ will initiate a repeat key
@@ -3009,7 +3012,7 @@ You can remove keys again with the \q{Remove} button.
 The text describing a host key can be in one of the following formats:
 
 \b An \I{SHA256 fingerprint}SHA-256-based host key fingerprint of the
-form displayed in KiTTY++'s Event Log and host key dialog boxes,
+form displayed in the Terminal Window's Event Log and in the host key dialog boxes,
 i.e. \cq{SHA256:} followed by 43 case-sensitive characters.
 
 \b An \I{MD5 fingerprint}MD5-based host key fingerprint, i.e. sixteen
@@ -3099,8 +3102,9 @@ button.
 
 The identifying name can be anything you like. It's there so that if
 you store multiple certificates you can tell which is which later when
-you want to edit or delete them. It also appears in the KiTTY++ Event
-Log when a server presents a certificate signed by that CA.
+you want to edit or delete them. It also appears in the Terminal
+Window's Event Log when a server presents a certificate signed by
+that CA.
 
 To reload an existing CA configuration, select it in the list box and
 press \q{Load}. Then you can make changes, and save it again.
@@ -3202,14 +3206,15 @@ same check for every stored key, is on \k{kitty-cfg-host-keys}.
 \S{config-ssh-kitty-accept-new} \q{Accept new host keys} (KiTTY++)
 
 A host key not in the store yet is stored without the question and
-recorded in the Event Log: trust on first use, as OpenSSH's
+recorded in the Terminal Window's Event Log: trust on first use,
+as OpenSSH's
 \c{accept-new}. A changed key is never accepted this way: the usual
 warning follows, and under \c{-batch} the connection ends. For one run:
 \c{-accept-new} (\k{using-cmdline-accept-new}); for every session:
 \q{Store an unknown host key without confirmation (every session)} on
 \k{kitty-cfg-host-key-settings} (\c{autostoresshkey=yes} in \c{[KiTTY]}). With
 \c{readonly=yes} the key is used for this connection only and not
-stored; the Event Log line records that.
+stored. The line in the Terminal Window's Event Log records that.
 
 \S{config-ssh-kitty-update-hostkeys} Host key update (KiTTY++)
 
@@ -3220,8 +3225,8 @@ type with nothing stored is stored. A proven key of a type stored with
 another value replaces it. A stored type the server no longer offers is
 removed. A failed proof leaves the store unchanged for that connection.
 The type of the key this
-connection verified is never changed. Each change is a line in the Event
-Log.
+connection verified is never changed. Each change is a line in the
+Terminal Window's Event Log.
 
 The update runs only when the connection's key matched the store or was
 stored by this connection. It does not run for Connect Once, for a key
@@ -3229,8 +3234,9 @@ from the manual host keys (\k{config-ssh-kex-manual-hostkeys}), for a
 certificate, or with \c{readonly=yes}. To switch it off: \q{Update host
 keys the server proves (hostkeys-00)} on
 \k{kitty-cfg-host-key-settings} (\c{updatehostkeys=no} in \c{[KiTTY]}). With the
-Windows Event Log records on, each change is also event 213 (kitty.exe)
-or 313 (klink, kscp, ksftp).
+Windows Event Log records on (KiTTY++_Session or Application log), each change
+is also event 213 (kitty.exe, source KiTTY++_kitty) or 313 (klink, kscp, ksftp,
+source KiTTY++_cli).
 
 Rotating a host key on the server: generate the new key. Add it as an
 additional \c{HostKey} line in \c{sshd_config} beside the old one.
@@ -3504,10 +3510,11 @@ Optionally, a session can record its key file's SHA256 fingerprint:
 press \q{Record fingerprint of the key file} (this reads only the
 key's public half - no passphrase is involved) and save the session.
 From then on every connection checks the file against the record
-\e{before} offering the key or prompting for its passphrase, and refuses
-a file whose fingerprint no longer matches - pointed at the wrong
-key, replaced, or tampered with - showing both fingerprints in the
-terminal and the Event Log. Clear the field to switch the check off
+\e{before} offering the key or prompting for its passphrase. It refuses
+a file whose fingerprint no longer matches - pointed at the wrong key,
+replaced, or tampered with - showing both fingerprints in the terminal
+and in the Terminal Window's Event Log. Clear the field to switch the
+check off
 (empty, the default, means no check). The pin is always over the key
 itself, never over a detached certificate (\k{config-ssh-cert}), so
 certificate renewals do not disturb it. The command-line tools honour the
@@ -4217,8 +4224,9 @@ This is an SSH-2-specific bug.
 Versions below 2.3 of \i{OpenSSH} require SSH-2 \i{public-key authentication}
 to be done slightly differently: the data to be signed by the client
 contains the session ID formatted in a different way. If public-key
-authentication mysteriously does not work but the Event Log (see
-\k{using-eventlog}) thinks it has successfully sent a signature, it
+authentication mysteriously does not work but the Terminal Window's
+Event Log (see \k{using-eventlog}) shows that a signature was sent,
+it
 might be worth enabling the workaround for this bug to see if it
 helps.
 

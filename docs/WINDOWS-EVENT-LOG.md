@@ -8,7 +8,7 @@ record has its own event ID, and each field is its own insertion string in
 the event data, so Event Viewer filters, scripts and forwarding can select on
 single fields.
 
-The terminal window's Event Log (system menu > Event Log) stays in the
+The Terminal Window's Event Log (system menu > Event Log) stays in the
 window and is gone when the window closes. No setting copies it to the
 Windows Event Log. The setting sessioneventlog writes separate records
 there (200-241).
@@ -21,7 +21,7 @@ Viewer's *User* column.
 
 | Program | Source | Event IDs | Log (system MSI installed) | Default |
 |---|---|---|---|---|
-| kageant (agent log) | `KiTTY++_agent` | 100-199 | `KiTTY++_Agent` | on when the log `KiTTY++_Agent` exists (file and Event Log); otherwise file only |
+| kageant (agent log) | `KiTTY++_agent` | 100-199 | `KiTTY++_Agent` | on when the log `KiTTY++_Agent` exists (file and Windows Event Log), otherwise file only |
 | kitty.exe, kitty_tel sessions | `KiTTY++_kitty` | 200-299 | `KiTTY++_Session` | off |
 | klink, kscp, ksftp | `KiTTY++_cli` | 300-399 | `KiTTY++_Session` | off |
 | kittygen, kittygen-cli | `KiTTY++_kittygen` | 400-499 | `KiTTY++_Session` | off |
@@ -50,9 +50,10 @@ no longer written. Records of earlier versions still show their text where the
 system MSI is installed.
 
 kageant decides its default once, when it starts: with the log `KiTTY++_Agent`
-present it writes the agent log to the file **and** the Event Log, otherwise to
-the file only. An explicit setting (section 2) always wins; `Event Log` or
-`file and Event Log` without the system MSI writes to the Application log.
+present it writes the agent log to the file **and** the Windows Event Log,
+otherwise to the file only. An explicit setting (section 2) always wins.
+`Windows Event Log` or `file and Windows Event Log` without the system MSI
+writes to the Application log.
 
 ## 2. Turning it on
 
@@ -95,7 +96,7 @@ Key list window: **Settings...** (or the tray menu's **Settings...**), page
 **Log**:
 
 - **Write the agent log** - the agent log as a whole (`agentlog`, default `yes`).
-- **Destination:** - `file`, `Event Log` or `file and Event Log`.
+- **Destination:** - `file`, `Windows Event Log` or `file and Windows Event Log`.
 - **Event Viewer** - Event Viewer on the source `KiTTY++_agent`, in the log
   `KiTTY++_Agent` when it exists and in the Application log. The agent log
   window (tray: **Agent log...**) has the same button.
@@ -231,7 +232,7 @@ PowerShell) adds the collecting account to Event Log Readers.
 ## 6. Forwarding
 
 The records are standard Windows Event Log records, so Windows Event Forwarding
-or a log shipper that reads the Event Log can move them off the machine.
+or a log shipper that reads the Windows Event Log can move them off the machine.
 KiTTY++ sends no syslog itself.
 
 Two machines take part: the **source** (where KiTTY++ runs and writes the
@@ -451,7 +452,7 @@ Management Users is not needed.
 
 #### Step 5 - source: KiTTY++'s event logging on
 
-Why: KiTTY++ writes to the Event Log only where it is switched on (section 2).
+Why: KiTTY++ writes to the Windows Event Log only where it is switched on (section 2).
 Off, there is nothing to forward. On the source, in `kitty.ini` (or with the
 checkboxes of section 2):
 

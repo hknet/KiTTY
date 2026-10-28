@@ -52,8 +52,13 @@ ID cannot go without its mention and a count cannot drift:
     manual); the ID list of doc/pageant.but covers every ID of 100-199. A
     number covers its ID, a range a-b every table ID in it, "X as Y" counts
     X only. A number those lists give that is not in the table fails too.
+11. A span a-b in the docs (doc/*.but, docs/*.md, FEATURES.md, README.md,
+    the two generated appendices left out) that starts a block (a = 100,
+    200, ...) and ends inside it (b not x99) gives exactly the block's first
+    and last table ID, so "IDs 200-230" fails once the block ends at 241.
+    "X as Y" counts neither side.
 
-A self-test plants a violation of each of 7-10 in text held in memory, and
+A self-test plants a violation of each of 7-11 in text held in memory, and
 a clean twin of each, before the tree is checked; a rule that no longer
 fires fails the run.
 
@@ -533,6 +538,36 @@ def check_lists(lists, table, bad):
                        "in the table" % (where, n))
 
 
+def check_spans(docs, table, bad):
+    """Rule 11 on (where, text) pairs: a span that starts an ID block and
+    ends inside it gives that block's first and last table ID."""
+    for where, text in docs:
+        text = re.sub(r"\b\d{3}-\d{3}\s+as\s+\d{3}-\d{3}\b", "", text)
+        for m in re.finditer(r"\b(\d00)-(\d{3})\b", text):
+            lo, hi = int(m.group(1)), int(m.group(2))
+            if hi // 100 != lo // 100 or hi % 100 == 99:
+                continue
+            block = sorted(e for e in table if lo <= e <= lo + 99)
+            if not block:
+                continue
+            if (lo, hi) != (block[0], block[-1]):
+                line = text.count("\n", 0, m.start()) + 1
+                bad.append("%s:%d: the span %d-%d does not match the table, "
+                           "whose block runs %d-%d" % (where, line, lo, hi,
+                                                      block[0], block[-1]))
+
+
+def span_docs():
+    """Rule 11: the docs a span is read in."""
+    paths = sorted((ROOT / "doc").glob("*.but")) + sorted((ROOT / "docs").glob("*.md"))
+    paths += [ROOT / "FEATURES.md", ROOT / "README.md"]
+    for path in paths:
+        if path.name in ("eventids.but", "EVENT-IDS.md") or not path.exists():
+            continue
+        yield (str(path.relative_to(ROOT)),
+               path.read_text(encoding="utf-8", errors="replace").replace("\r\n", "\n"))
+
+
 def hand_lists(table):
     """Rule 10: the three hand-written ID lists, each with what it must cover."""
     ids = set(table) - {0}
@@ -627,6 +662,19 @@ def self_test():
         if len(found) != n:
             wrong.append("%s: %d finding(s), want %d%s" % (
                 what, len(found), n, "".join("\n      " + f for f in found)))
+    spans11 = [
+        ("a span that drifted", "IDs 200-210", 1),
+        ("the block's span", "IDs 200-213 and 300-313", 0),
+        ("a span over a full block", "200-299, serial 100-199", 0),
+        ("X as Y", "300-310 as 200-210", 0),
+        ("a span not starting a block", "port 210-213", 0),
+    ]
+    for what, text, n in spans11:
+        found = []
+        check_spans([("planted", text)], t10, found)
+        if len(found) != n:
+            wrong.append("%s: %d finding(s), want %d%s" % (
+                what, len(found), n, "".join("\n      " + f for f in found)))
     return wrong
 
 
@@ -635,7 +683,7 @@ def main():
     if wrong:
         for w in wrong:
             print("check-kitty-events: self-test: " + w)
-        print("check-kitty-events: the self-test failed - rules 7-10 cannot be trusted")
+        print("check-kitty-events: the self-test failed - rules 7-11 cannot be trusted")
         return 1
     if "--self-test" in sys.argv[1:]:
         print("check-kitty-events: self-test passed (rules 7-10)")
@@ -703,6 +751,8 @@ def main():
     sources = list(source_files())
     check_sources(sources, table, header_defines(), kinds, bad)
     check_lists(hand_lists(table), table, bad)
+    docs = list(span_docs())
+    check_spans(docs, table, bad)
     if bad:
         for b in bad:
             print("check-kitty-events: " + b)
@@ -711,7 +761,8 @@ def main():
           "rows match the table; %d source files: no event ID 0, every agent "
           "log kind and suite ID in the table; the hand-written ID lists of "
           "docs/WINDOWS-EVENT-LOG.md, doc/kitty-config.but and doc/pageant.but "
-          "cover the table" % (len(table), len(sources)))
+          "cover the table; the ID spans of %d docs match it"
+          % (len(table), len(sources), len(docs)))
     return 0
 
 

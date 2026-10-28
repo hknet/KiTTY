@@ -43,10 +43,13 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   program refused, allowed or declined, 907 a session log not written
   without a desktop. Event ID 0 (one line of text) is no longer written. A
   custom URL regex that does not compile and the Direct2D fallback to WARP
-  go to the terminal window's Event Log. A failed `kitty.exe -edit` shows
+  go to the Terminal Window's Event Log. A failed `kitty.exe -edit` shows
   its box only.
-- The terminal window's Event Log shows that window's title in its own
+- The Terminal Window's Event Log shows that window's title in its own
   title bar: "KiTTY++ terminal Event Log: <window title>".
+- kageant Settings > Log > Destination: "Windows Event Log" and "file and
+  Windows Event Log". Shortcuts: "Event Log" is now "Show the Terminal
+  Window's Event Log".
 
 ### Fixed
 

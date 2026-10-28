@@ -927,7 +927,7 @@
 #define KT_KSCP_SEND_FILE_LINE                       "Send File (kscp): Tools menu, Ctrl+F3. Sends a local file to the remote directory below."
 #define KT_KSCP_GET_FILE_LINE                        "Get File (kscp): Tools menu, Ctrl+F4. Fetches a remote file into the download folder; a path on the clipboard is checked and filled in."
 #define KT_KSCP_TRACK_REMOTE_DIRECTORY_OSC_7         "Track remote directory (OSC 7 shell integration)"
-/* A refused OSC 7 folder, in the terminal window's Event Log (kitty_set_remote_cwd) */
+/* A refused OSC 7 folder, in the Terminal Window's Event Log (kitty_set_remote_cwd) */
 #define KT_OSC7_REFUSED_FMT                          "OSC 7 folder refused: %s. The previous folder stays (home when there was none)."
 #define KT_OSC7_WHY_NOT_FILE                         "not a file:// URL"
 #define KT_OSC7_WHY_NO_PATH                          "no folder after the host"
@@ -1121,7 +1121,7 @@
 #define KT_SECURITY_LIMIT_MEMENC                     "  -  secrets encrypted in memory"
 #define KT_SECURITY_LIMIT_SSO                        "  -  GSSAPI/Kerberos single sign-on"
 #define KT_SECURITY_LIMIT_IPV6                       "  -  IPv6 name resolution"
-#define KT_SECURITY_EVENTLOG_ALWAYS                  "Session and Windows Event Logs always report missing Windows library features."
+#define KT_SECURITY_EVENTLOG_ALWAYS                  "The Terminal Window's Event Log and the Windows Event Log (Application log, source KiTTY++) always list missing Windows library features."
 #define KT_SECURITY_EVENT_VIEWER                     KT_CAP_KITTYPP " Event Viewer"
 /* The tracing switch ([KiTTY] debug) traces many things, not only the
  * automation, so its group is on the Security panel. */
@@ -1486,7 +1486,7 @@
 #define KT_SC_ACT_DUPLICATE                          "Duplicate the session"
 #define KT_SC_ACT_EDITOR                             "Open the editor"
 #define KT_SC_ACT_EDITORCLIPBOARD                    "Open the editor with the clipboard"
-#define KT_SC_ACT_EVENTLOG                           "Event Log"
+#define KT_SC_ACT_EVENTLOG                           "Show the Terminal Window's Event Log"
 #define KT_SC_ACT_FILEZILLA                          "Start FileZilla"
 #define KT_SC_ACT_FONTBLACKANDWHITE                  "Font: black and white"
 #define KT_SC_ACT_FONTDOWN                           "Font size: smaller"
@@ -1605,7 +1605,7 @@
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \
-        "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* the terminal window's Event Log, paint-d2d.c */
+        "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* the Terminal Window's Event Log, paint-d2d.c */
 #define KT_KSET_WD_FRAMEPACE                         "Frame pacing:"
 #define KT_KSET_WD_FP_AUTO                           "Follow the display (auto)"
 #define KT_KSET_WD_FP_30                             "30fps"
@@ -3764,7 +3764,7 @@
 /* balloon notices */
 #define KT_CLIP_NOTICE_TOO_MUCH                      "Too much data arrived for the clipboard in one go, so it " \
         "was not copied. Nothing was pasted in part.\n" \
-        "Click here for the Event Log, which lists every one of " \
+        "Click here for the Terminal Window's Event Log, which lists every one of " \
         "these (this notice is rate-limited)."
 #define KT_CLIP_NOTICE_READ_NOTITLE                  "A server has read your clipboard.\n" \
         "Shown here because this window has no title bar to mark."
@@ -3776,7 +3776,7 @@
 #define KT_CLIP_NOTICE_READ_EXPIRED                  "Permission to read the clipboard has expired."
 #define KT_CLIP_NOTICE_READ_REFUSED                  "A server asked to read your clipboard. " \
         "It was refused.\n" \
-        "Click here for the Event Log (this notice is " \
+        "Click here for the Terminal Window's Event Log (this notice is " \
         "rate-limited)."
 #define KT_CLIP_NOTICE_READ_GRANTED                  "This server may now read your clipboard. " \
         "The title bar shows it while that lasts."
@@ -3861,7 +3861,7 @@
  * define, used only under #ifdef KITTY_TEST_BUILD_LABEL) and KT_DLG_ABOUT_PUTTY
  * expands SHORT_COPYRIGHT_DETAILS (version.h): both are resolved where the
  * macro is used, not here. */
-#define KT_DLG_ABOUT_NETDEBUG                        "\r\n*** NETDEBUG BUILD - event log is teed to " \
+#define KT_DLG_ABOUT_NETDEBUG                        "\r\n*** NETDEBUG BUILD - the Terminal Window's Event Log is teed to " \
         "%USERPROFILE%\\kitty_netdebug.log ***"
 #define KT_DLG_ABOUT_TESTBUILD                       "\r\n*** TEST BUILD: " KITTY_TEST_BUILD_LABEL " ***"
 #define KT_DLG_ABOUT_RESTRICTED                      "\r\n\r\nRunning with a restricted process ACL: other programs " \
@@ -4631,9 +4631,9 @@
 #define KT_RC_KEYSETTINGS_LOGNOTE                    "The log is evidence, not proof - see the manual."
 #define KT_RC_KEYSETTINGS_LOGSINK_LABEL              "Destination:"
 #define KT_RC_KEYSETTINGS_LOGSINK_FILE               "file"
-#define KT_RC_KEYSETTINGS_LOGSINK_EVENTLOG           "Event Log"
-#define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "file and Event Log"
-#define KT_RC_KEYSETTINGS_LOGSINK_HINT               "Event Log: Applications and Services Logs > KiTTY++_Agent when installed for all users, else the Application log, source KiTTY++_agent."
+#define KT_RC_KEYSETTINGS_LOGSINK_EVENTLOG           "Windows Event Log"
+#define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "file and Windows Event Log"
+#define KT_RC_KEYSETTINGS_LOGSINK_HINT               "Windows Event Log: Applications and Services Logs > KiTTY++_Agent when installed for all users, else the Application log. Source KiTTY++_agent."
 #define KT_RC_KEYSETTINGS_EVENTVIEWER                "Event &Viewer"
 
 /* pageant.rc: IDD_AUDITVIEW (caption = KT_CAP_KA_AGENT_LOG), IDD_AUDITDETAIL */

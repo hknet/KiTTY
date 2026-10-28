@@ -155,9 +155,10 @@ from the error message box.
 \H{errors-cant-load-key} \q{Unable to use key file},
 \q{Couldn't load private key}, \q{Couldn't load this key}
 
-Various forms of this error are printed in the KiTTY++ window, or
-written to the KiTTY++ Event Log (see \k{using-eventlog}) when trying
-public-key authentication, or given by kageant when trying to load a
+Various forms of this error are printed in the KiTTY++ terminal
+window, or written to the Terminal Window's Event Log (see
+\k{using-eventlog}) when trying public-key authentication, or shown
+by kageant when trying to load a
 private key.
 
 If you see one of these messages, it often indicates that you've tried
@@ -177,9 +178,9 @@ for a SSH-2 connection (or vice versa).
 \H{errors-refused} \q{Server refused our key},
 \q{Server refused our public key}, \q{Key refused}
 
-Various forms of this error are printed in the KiTTY++ window, or
-written to the KiTTY++ Event Log (see \k{using-eventlog}) when trying
-public-key authentication.
+Various forms of this error are printed in the KiTTY++ terminal
+window, or written to the Terminal Window's Event Log (see
+\k{using-eventlog}) when trying public-key authentication.
 
 If you see one of these messages, it means that KiTTY++ has sent a
 public key to the server and offered to authenticate with it, and
@@ -191,8 +192,9 @@ This is almost certainly not a problem with KiTTY++. If you see this
 type of message, the first thing you should do is check your
 \e{server} configuration carefully. Common errors include having
 the wrong permissions or ownership set on the public key or the
-user's home directory on the server. Also, read the KiTTY++ Event Log;
-the server may have sent diagnostic messages explaining exactly what
+user's home directory on the server. Also, read the Terminal Window's
+Event Log. The server may have sent diagnostic messages explaining
+exactly what
 problem it had with your setup.
 
 \K{pubkey-gettingready} has some hints on server-side public key
@@ -200,15 +202,15 @@ setup.
 
 \H{errors-access-denied} \q{Access denied}, \q{Authentication refused}
 
-Various forms of this error are printed in the KiTTY++ window, or
-written to the KiTTY++ Event Log (see \k{using-eventlog}) during
-authentication.
+Various forms of this error are printed in the KiTTY++ terminal
+window, or written to the Terminal Window's Event Log (see
+\k{using-eventlog}) during authentication.
 
 If you see one of these messages, it means that the server has refused
 all the forms of authentication KiTTY++ has tried and it has no further
 ideas.
 
-It may be worth checking the Event Log for diagnostic messages from
+It may be worth checking the Terminal Window's Event Log for diagnostic messages from
 the server giving more detail.
 
 This error can be caused by buggy SSH-1 servers that fail to cope with

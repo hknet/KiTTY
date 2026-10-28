@@ -3,7 +3,7 @@
  * Hyperlink stuff: CORE FILE! Don't forget to COPY IT TO THE NEXT VERSION
  */
 /* first: it pulls in putty.h, whose winsock2.h must precede windows.h */
-#include "kitty_gui.h"   /* do_eventlog: a custom pattern that does not compile, in the terminal window's Event Log */
+#include "kitty_gui.h"   /* do_eventlog: a custom pattern that does not compile, in the Terminal Window's Event Log */
 #include <windows.h>
 #include <string.h>
 #include "urlhack.h"

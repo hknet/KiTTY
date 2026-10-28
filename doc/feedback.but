@@ -45,14 +45,15 @@ KiTTY++} in the System menu).
 
 \b What happened and what you expected to happen instead.
 
-\b The Event Log lines around the problem. Choose \q{Event Log} from
+\b The lines of the Terminal Window's Event Log around the problem. Choose \q{Event Log} from
 the System menu, select the lines and click Copy (see
 \k{using-eventlog}).
 
 \b For a connection problem: the server software and its version.
 
-Never put passwords, passphrases or private keys in a report. Event
-Log lines can contain host names, user names and IP addresses. Mask
+Never put passwords, passphrases or private keys in a report. Lines
+of the Terminal Window's Event Log can contain host names, user
+names and IP addresses. Mask
 them if needed.
 
 \H{feedback-vulns} Reporting security vulnerabilities

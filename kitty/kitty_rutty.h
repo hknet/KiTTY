@@ -10,7 +10,7 @@
 int kitty_script_active(void);
 int kitty_script_enabled(void);
 void kitty_script_remote(const void *vdata, size_t len);
-/* logctx: the terminal window's Event Log, which gets the start, end, halt, timeout
+/* logctx: the Terminal Window's Event Log, which gets the start, end, halt, timeout
  * and refusal lines; owner: the terminal window, which gets a modeless
  * notice when the file is not found or not read, or the script times out. */
 int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,

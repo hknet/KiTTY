@@ -119,7 +119,7 @@ are set on the Shortcuts panel (\k{kitty-cfg-kset-shortcuts}).
 by holding Ctrl and clicking with the right mouse button anywhere
 in the \I{KiTTY window}KiTTY++ window.)
 
-\S2{using-eventlog} The KiTTY++ \i{Event Log}
+\S2{using-eventlog} The Terminal Window's \i{Event Log}
 
 If you choose \q{Event Log} from the system menu, a small window
 will pop up in which KiTTY++ logs significant events during the
@@ -391,7 +391,7 @@ installed. If that needs changing, then change it.
 
 Now you should be able to log in to the SSH server as normal. To
 check that X forwarding has been successfully negotiated during
-connection startup, you can check the KiTTY++ Event Log (see
+connection startup, you can check the Terminal Window's Event Log (see
 \k{using-eventlog}). It should show something like this:
 
 \c 2001-12-05 17:22:01 Requesting X11 forwarding
@@ -440,7 +440,7 @@ Now start your session and log in. (Port forwarding will not be
 enabled until after you have logged in; otherwise it would be easy
 to perform completely anonymous network attacks, and gain access to
 anyone's virtual private network.) To check that KiTTY++ has set up
-the port forwarding correctly, you can look at the KiTTY++ Event Log
+the port forwarding correctly, you can look at the Terminal Window's Event Log
 (see \k{using-eventlog}). It should show something like this:
 
 \c 2001-12-05 17:22:10 Local port 3110 forwarding to
@@ -1183,8 +1183,9 @@ more than one key to be accepted.
 \S2{using-cmdline-accept-new} \i\c{\-accept-new}: store a new host
 key without a prompt
 
-An unknown SSH host key is stored without the question and recorded:
-in the Event Log, and on standard error in klink, kscp and ksftp. A
+An unknown SSH host key is stored without the question. kitty.exe
+records it in the Terminal Window's Event Log. klink, kscp and ksftp
+write it to standard error. A
 changed key is never accepted this way. With \c{readonly=yes} the key
 is used for this connection only and not stored. See
 \k{config-ssh-kitty-accept-new}.

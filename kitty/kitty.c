@@ -205,7 +205,7 @@ static char RemoteCwdHostFirst[256] = "" ;
 #include "kitty_getfile_parse.h"   /* gf_osc7_moved */
 
 /* Returns NULL when the folder is taken or tracking is off, else why it was
- * refused (snewn'd): the caller writes it to the terminal window's Event Log. cut: the
+ * refused (snewn'd): the caller writes it to the Terminal Window's Event Log. cut: the
  * terminal's buffer overflowed, so the text is not whole - refused, never
  * used cut. */
 char * kitty_set_remote_cwd( const char * osc7, int cut ) {

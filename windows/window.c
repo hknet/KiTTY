@@ -3083,7 +3083,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
     /* KiTTY feature: URL hyperlinks - init urlhack + compile regex. After
      * log_init: a custom pattern that does not compile is reported in this
-     * terminal window's Event Log (urlhack_report_fallback), which needs logctx. */
+     * Terminal Window's Event Log (urlhack_report_fallback), which needs logctx. */
     kitty_url_init();
     kitty_url_config(wgs->conf);
     {
@@ -6779,7 +6779,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 /* KiTTY: a start that failed (kitty.exe renamed or moved
                  * while this window runs) did nothing visible at all: the
                  * menu item seemed dead. The notice window and this
-                 * terminal window's Event Log, as for the other programs started
+                 * Terminal Window's Event Log, as for the other programs started
                  * from a session (RunCommand, kitty_winutil.c). */
                 const char *why = kitty_win_reason(GetLastError());
                 char *msg = dupprintf(KT_START_FAILED_FMT, b, why);

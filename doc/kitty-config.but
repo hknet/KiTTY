@@ -207,7 +207,8 @@ without limit. \c{0} switches it off.
 in it, as in \c{kitty_&H_&T.log}.
 
 \b If the name has no time-varying code, KiTTY++ \e{declines} to rotate
-and reports so in the Event Log, because reopening the same name would
+and reports so in the Terminal Window's Event Log, because reopening
+the same name would
 overwrite the log rather than rotate it.
 
 The log file name's own substitutions are \c{&H} host name, \c{&P}
@@ -225,9 +226,11 @@ and time codes as digits and \c{&H} and \c{&P} as any text, in the log's
 own folder and no subfolder - so a name without \c{&Y}, \c{&M}, \c{&D}
 or \c{&T} deletes nothing. The log being written and any file another
 program has open are never deleted. It runs before the session's log
-opens and after it closes, never while the session runs; deletion is
-permanent, and each run that deleted anything leaves one line in the
-Windows Application event log.
+opens and after it closes, never while the session runs. Deletion is
+permanent. Each run that deleted anything is event 901 in the
+Windows Event Log (Application log, source KiTTY++). While the
+session is there, a line with the same counts goes to the Terminal
+Window's Event Log.
 
 \H{kitty-cfg-scripting} The Scripting panel
 
@@ -243,8 +246,8 @@ A script \e{starts} in one of two ways: automatically when the session
 connects, if \q{Run the script on connect} is ticked and \q{Script
 file} gives the file; or on demand in a live session from the system
 menu, \q{Tools > Send recorded script}, which opens a file picker. Only
-one script runs at a time, and every start, stop and timeout is
-reported in the Event Log.
+one script runs at a time. Every start, stop and timeout is reported in
+the Terminal Window's Event Log.
 
 The simplest possible script is just the commands, one per line:
 
@@ -270,14 +273,16 @@ the host greets you with something that is not your prompt - a menu, a
 
 \b \q{Halt-on text}: if the host's output ever contains this text
 while the script runs, the script \e{stops at once} and reports so in the
-Event Log. It is the emergency brake - set it to the failure word your
+Terminal Window's Event Log. It is the emergency brake - set it to the
+failure word your
 commands produce, e.g. \c{denied} or \c{No such file}, and a script
 cannot keep typing into a session where step three already failed.
 Leave it empty and nothing stops the script early.
 
 \b \q{Timeout} bounds every wait: if the wait-for text has not arrived
 after this many seconds, the script gives up entirely (\q{script
-timeout !} in the Event Log) rather than hang for ever. \q{Line delay}
+timeout !} in the Terminal Window's Event Log) rather than hang for
+ever. \q{Line delay}
 and \q{Character delay} pace the typing itself, for hosts that drop
 input sent faster than a human types.
 
@@ -710,7 +715,8 @@ target in a field that scrolls when the target is long. It opens only on
 at a time.
 
 In every mode some targets are never opened. The first one of a window
-is noted in the Event Log: a target with no valid scheme (a drive letter
+is noted in the Terminal Window's Event Log: a target with no valid
+scheme (a drive letter
 such as \c{c:\\...} is none), a target with a double quote in it, a
 \c{file} link to another computer with a control character in its path
 and a web address with a host written as a number (\c{3232235777},
@@ -764,7 +770,7 @@ what a URL looks like. Clear it to supply your own in \q{Custom regex}
 a red line under the field shows the error
 (\c{Invalid regex: unmatched ()}); the text stays as typed, and an empty field is allowed (it matches
 nothing). A session started with a pattern that does not compile uses
-the default pattern instead: a notice and a line in the terminal window's Event
+the default pattern instead: a notice and a line in the Terminal Window's Event
 Log report the error.
 
 The pattern decides what KiTTY++ treats as a link, and therefore what it
@@ -932,8 +938,8 @@ over; the dialog appears.
 \b 12:20 - the application requests to read the clipboard on its own,
 without a paste. The dialog appears; the mode grants nothing here.
 
-\b 12:30 - the clock runs out. The diamond turns hollow, a line in the
-Event Log; the mode stays set.
+\b 12:30 - the clock runs out. The diamond turns hollow, with a line
+in the Terminal Window's Event Log. The mode stays set.
 
 \b 12:31 - you press Paste with a PNG on the clipboard. The type list
 goes out without a token. The application reads image/png; the
@@ -953,8 +959,8 @@ application sends it back in its read request, under the name
 seconds and the disarm clock are KiTTY++'s own bounds on top of it.
 
 Paste events are only sent while reads are set to \e{Ask}. Under
-\e{Deny} a paste pastes text, whatever the application has set, and
-the Event Log records that it did.
+\e{Deny} a paste pastes text, whatever the application has set. The
+Terminal Window's Event Log records that it did.
 
 \S{kitty-cfg-osc52-constants} What is fixed, and why
 
@@ -1586,7 +1592,7 @@ is refused. Leave the option off.
 files over 4 KB by default). Files leaving are sent uncompressed inside
 the compressed framing the host requested.
 
-The Event Log records every transfer: the request, each file with its
+The Terminal Window's Event Log records every transfer: the request, each file with its
 final path and size, and the end or cancellation.
 
 \S{kitty-cfg-zmodem-session} The ZModem panel
@@ -2022,8 +2028,6 @@ again.
 \b \q{Duplicate the session} - a second window with these settings;
 Ctrl+Alt+T.
 
-\b \q{Event Log} - show the connection's event log.
-
 \b \q{Font: black and white} - the terminal in black on white.
 
 \b \q{Font: negative} - the terminal colours inverted.
@@ -2101,6 +2105,9 @@ Ctrl+F6.
 
 \b \q{Show port forwardings} - list the forwardings of this session;
 Shift+F6.
+
+\b \q{Show the Terminal Window's Event Log} - the same as \q{Event Log} in the System
+menu.
 
 \b \q{Start FileZilla} - FileZilla on this host, while the Tools menu
 offers it; Shift+F4.
@@ -2425,9 +2432,9 @@ The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{autoreconnect},
 
 \S{kitty-cfg-reconnect-rules} When reconnecting fails
 
-A reconnect attempt that fails is classified by how far it got; the
+A reconnect attempt that fails is classified by how far it got. The
 condition's setting decides what follows. Every decision is in the
-Event Log with the error text.
+Terminal Window's Event Log with the error text.
 
 \b \q{Name does not resolve} - DNS. Default: keep retrying.
 \c{reconnectdns}
@@ -2461,11 +2468,12 @@ LDAP timeout, sshd restart). Default: retry once. \c{reconnectloginclosed}
 
 \b \q{Login refused} - all methods rejected. Each retry is a failed
 login in the server's log (fail2ban). With \q{Too many authentication
-failures} the Event Log also mentions the server's \c{MaxAuthTries}: the
+failures} the Terminal Window's Event Log also mentions the server's \c{MaxAuthTries}: the
 agent offers too many keys. Default: stop. \c{reconnectrefused}
 
-\b \q{Not recognised} - none of the above; the Event Log requests a
-report. Default: retry once. \c{reconnectother}
+\b \q{Not recognised} - none of the above. The Terminal Window's
+Event Log requests a report. Default: retry once.
+\c{reconnectother}
 
 The values:
 
@@ -3073,8 +3081,9 @@ unavailable. This checkbox is what turns that line off, and it is worth
 turning off once you have read it - the answer is a property of the machine
 and will not change.
 
-\b The full list in the session's \i{Event Log} and in the Windows Event
-Log (event 902): each missing entry point and the DLL it was expected in,
+\b The full list in the Terminal Window's \i{Event Log} and in the
+Windows Event Log (Application log, source KiTTY++, event 902): each
+missing entry point and the DLL it was expected in,
 beside the feature it powers. This is written whether the
 checkbox is set or not. The checkbox governs the interruption, not the record.
 
@@ -3283,8 +3292,8 @@ are not KiTTY++'s are counted, listed in the detail box when the header row
 is selected, and not judged. A click on a row shows the file's path, size,
 version, signer, hash and the reason for its verdict; \q{Copy} puts the
 table on the clipboard; \q{Verify again} repeats the check. Every red row
-is also written to the Application event log as event 905, once per
-start.
+is also written to the Windows Event Log (Application log, source
+KiTTY++) as event 905, once per start.
 
 \S{kitty-cfg-host-keys} The Host Keys panel
 
@@ -3640,7 +3649,7 @@ the session (\c{ReconnectLogin}).
 
 Shows the local ports of dynamic (SOCKS) forwardings in the window
 title, so a session set up as a tunnel shows which port it is listening
-on without looking it up in the Event Log.
+on without looking it up in the Terminal Window's Event Log.
 
 \H{kitty-cfg-more-terminal} Further terminal and window settings
 
@@ -3771,8 +3780,9 @@ seconds} (\k{kitty-cfg-kset-window}).
 The default is \q{When not focused}. The program's own title is the
 first line of the notice, its text follows. Titles are cut at 256 bytes
 and texts at 2048; control characters are removed. At most one notice
-every 2 seconds per window: a newer one replaces the one waiting, and
-the Event Log counts the ones dropped. A click on the notice brings this
+every 2 seconds per window: a newer one replaces the one waiting. The
+Terminal Window's Event Log counts the ones dropped. A click on the
+notice brings this
 window forward. Stored with the session (\c{HostNotify}: 0 off, 1 when
 not focused, 2 always).
 

@@ -60,8 +60,9 @@ XP, offline Windows 7). Nothing is fetched from the network.
 \b Its release stamp, an Ed25519 signature over the file's SHA-256
 by a key made for that release only, needing no Windows cryptography:
 \q{\cw{Integrity check failed}} with \c{modified}, \c{truncated},
-\c{bad stamp} or \c{no stamp}, also in the Application event log
-(source \c{KiTTY++}). A hidden program that cannot read its own file
+\c{bad stamp} or \c{no stamp}, also in the Windows Event Log
+(Application log, source \c{KiTTY++}). A hidden program that cannot
+read its own file
 refuses with \c{cannot check}; a visible one starts.
 
 \c{kitty_pterm.exe} and \c{kitty_tel.exe} are stamped but do not check

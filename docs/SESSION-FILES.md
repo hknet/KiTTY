@@ -18,7 +18,7 @@ No key added, removed or changed.
 | Key | Format | Default | Panel | What it does |
 |---|---|---|---|---|
 | `AcceptBroadcast` | `0` / `1` | `0` | Session/Broadcast | One KiTTY++ can type a line into another's session, as if it had been typed at the keyboard - and a trailing Return means the far end runs it. |
-| `AcceptNewHostKeys` | `0` / `1` | `0` | Connection/SSH/Host keys | A host key not in the store yet is stored without the question and recorded in the Event Log: trust on first use, as OpenSSH's `accept-new`. |
+| `AcceptNewHostKeys` | `0` / `1` | `0` | Connection/SSH/Host keys | A host key not in the store yet is stored without the question and recorded in the Terminal Window's Event Log: trust on first use, as OpenSSH's `accept-new`. |
 | `AddressFamily` | `0` Auto; `1` IPv4; `2` IPv6 | `0` | Connection | This option allows the user to select between the old and new Internet protocols and addressing schemes (IPv4 and IPv6). |
 | `AgentFwd` | `0` / `1` | `0` | Connection/SSH/Auth | This option allows the SSH server to open forwarded connections back to your local copy of kageant. |
 | `AltF4` | `0` / `1` | `1` | Window/Behaviour | By default, pressing ALT-F4 causes the window to close (or a warning box to appear; see "Warn before closing window"). |
@@ -319,7 +319,7 @@ No key added, removed or changed.
 | `SshNoShell` | `0` / `1` | `0` | Connection/SSH | If you tick this box, KiTTY++ will not attempt to run a shell or command after connecting to the remote server. |
 | `SshNoTrivialAuth` | `0` / `1` | `0` | Connection/SSH/Auth | This option causes KiTTY++ to abandon an SSH session and disconnect from the server, if the server accepted authentication without ever having requested any kind of password or signature or token. |
 | `SshProt` | `0` 1 (INSECURE); `3` 2 | `3` | Connection/SSH | This allows you to select whether to use SSH protocol version 2 or the older version 1. |
-| `SSHTunnelInTitle` | `0` / `1` | `0` | Connection/SSH/Tunnels | Shows the local ports of dynamic (SOCKS) forwardings in the window title, so a session set up as a tunnel shows which port it is listening on without looking it up in the Event Log. |
+| `SSHTunnelInTitle` | `0` / `1` | `0` | Connection/SSH/Tunnels | Shows the local ports of dynamic (SOCKS) forwardings in the window title, so a session set up as a tunnel shows which port it is listening on without looking it up in the Terminal Window's Event Log. |
 | `SshWarnPreQuantum` | `0` / `1` | `1` | Connection/SSH/Kex | `1` warns when the negotiated key exchange is not post-quantum secure. |
 | `StampUtmp` | `0` / `1` | `1` | - | Unix pterm only: records the session in utmp; not used on Windows. |
 | `SunkenEdge` | `0` / `1` | `0` | Window/Appearance | `1` draws a sunken, slightly thicker window border. |
