@@ -6985,6 +6985,43 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 void scb_panel_selection(struct controlbox *b)
 {
     struct charclass_data *ccd;
+/* KiTTY: fields that do nothing in the state the panel shows are greyed;
+ * greying never changes a value. The read-grant numbers (Remote clipboard >
+ * Limits) do nothing while clipboard reads are Deny. The read radios sit on
+ * another leaf, so each field greys itself when it is refreshed - a panel
+ * is refreshed every time it is shown (the panel cache, windows/dialog.c).
+ * The radios keep conf_radiobutton_handler, which kitty_conf_validate and
+ * the session-key table recognise. The seconds the activity marker stays
+ * up do nothing while the marker is off. */
+static dlgcontrol *clipmark_secs;
+
+static void clipread_field_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                   void *data, int event)
+{
+    conf_editbox_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH)
+        kitty_dlg_enable(ctrl, dlg, conf_get_int((Conf *)data,
+                         CONF_osc52_clipboard_read) != OSC52_READ_DENY);
+}
+
+static void clipmark_check_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                   void *data, int event)
+{
+    conf_checkbox_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH || event == EVENT_VALCHANGE)
+        kitty_dlg_enable(clipmark_secs, dlg,
+                         conf_get_bool((Conf *)data, CONF_clipboard_activity_mark));
+}
+
+static void clipmark_secs_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    conf_editbox_handler(ctrl, dlg, data, event);
+    if (event == EVENT_REFRESH)
+        kitty_dlg_enable(ctrl, dlg,
+                         conf_get_bool((Conf *)data, CONF_clipboard_activity_mark));
+}
+
     struct colour_data *cd;
     struct controlset *s;
     dlgcontrol *c;
@@ -7166,25 +7203,25 @@ void scb_panel_selection(struct controlbox *b)
     s = ctrl_getset(b, "Window/Copy & Paste/Remote clipboard/Limits", "read",
                     KT_LIMITS_A_GRANTED_CLIPBOARD_READ);
     ctrl_editbox(s, KT_LIMITS_GRANT_OFFERED_IN_MINUTES, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_minutes), ED_INT);
     ctrl_editbox(s, KT_LIMITS_GRANT_OFFERED_IN_REQUESTS, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_requests), ED_INT);
     ctrl_editbox(s, KT_LIMITS_SHORTEST_GAP_BETWEEN_READS,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_interval), ED_INT);
     ctrl_editbox(s, KT_LIMITS_MOST_READS_PER_WINDOW_0,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_max), ED_INT);
     /* "in seconds" has to survive: without a unit the number is meaningless, and
      * it was the unit that fell off the edge. The "(0 = never)" the longer wording
      * carried is the natural reading of a zero timeout anyway. */
     ctrl_editbox(s, KT_LIMITS_UNANSWERED_PROMPT_EXPIRES_IN_SECONDS,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_timeout), ED_INT);
     ctrl_editbox(s, KT_LIMITS_MOST_PROMPTS_PER_TEN_SECONDS, NO_SHORTCUT, 18,
-                 HELPCTX(kitty_osc52_limits), conf_editbox_handler,
+                 HELPCTX(kitty_osc52_limits), clipread_field_handler,
                  I(CONF_osc52_read_dialogs), ED_INT);
     /* OSC 5522 paste events: a privilege an application arms with one mode
      * switch and a keypress then exercises without a dialog, so it gets a
@@ -7214,9 +7251,9 @@ void scb_panel_selection(struct controlbox *b)
                   conf_checkbox_handler, I(CONF_clipboard_mark_always));
     ctrl_checkbox(s, KT_NOTICES_MARK_WHEN_THE_HOST_ACTUALLY,
                   NO_SHORTCUT, HELPCTX(kitty_osc52_notices),
-                  conf_checkbox_handler, I(CONF_clipboard_activity_mark));
-    ctrl_editbox(s, KT_NOTICES_THAT_MARKER_STAYS_UP,
-                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_notices), conf_editbox_handler,
+                  clipmark_check_handler, I(CONF_clipboard_activity_mark));
+    clipmark_secs = ctrl_editbox(s, KT_NOTICES_THAT_MARKER_STAYS_UP,
+                 NO_SHORTCUT, 18, HELPCTX(kitty_osc52_notices), clipmark_secs_handler,
                  I(CONF_clipboard_activity_secs), ED_INT);
     /* Windows 11 build 22000+ only; silently does nothing on Windows 10, which
      * is why the title marker above has to carry the meaning by itself. */

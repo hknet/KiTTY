@@ -20,6 +20,9 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - kscp and ksftp over SFTP: a remote path that starts with `~` or `~user`
   is that home folder, as with OpenSSH's scp and sftp
   (`expand-path@openssh.com`). Before, `host:~/x` failed.
+- Remote clipboard > Limits: the read-grant numbers are greyed while
+  clipboard reads are Deny. Remote clipboard > Notifications: the marker
+  seconds are greyed while the marker is off.
 
 ### Fixed
 
