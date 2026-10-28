@@ -723,7 +723,7 @@ A \c{file} link to another computer (GNU \c{ls --hyperlink} writes one
 for every name) is fetched when its host is the session's server. A file
 goes through Get File: the Save-As opens with the name filled in. The
 transfer window then stays open with \q{Open} and \q{Open File Location
-(Folder)}. The file goes through Windows' Attachment Services (the zone
+(Folder)}. A click on either closes it. The file goes through Windows' Attachment Services (the zone
 mark by policy, the antivirus scan). A
 program or a script (by its last extension) gets \q{Open File Location
 (Folder)} only. A folder opens in WinSCP, else in FileZilla. With neither installed, the

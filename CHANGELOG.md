@@ -10,7 +10,14 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - Application > Security: "Extra tracing in the Event Log" is now "Extra
   tracing in the Terminal Window's Event Log", the Event Log it writes to.
+- Transfer window of an OSC 8 `file://` download: Open and Open File
+  Location (Folder) close it.
 - Help: Security > Host Keys > Settings has a page of its own.
+
+### Fixed
+
+- Closing a transfer window no longer leaves the terminal behind another
+  program: the terminal that started the transfer comes to the front.
 
 ## 0.85.1.19-beta — 2026-10-28
 

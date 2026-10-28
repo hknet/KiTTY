@@ -1661,12 +1661,13 @@ static void ktx_att_done( struct ktx_win *w, ktx_att_t *a ) {
 /* Open (Attachment Services' Execute, or ShellExecuteExW "open") or Open
  * File Location (explorer /select, wide). A failure: Windows' reason in
  * the window. */
-static void ktx_link_run( struct ktx_win *w, int show ) {
+/* 1 when the program or Explorer was started. */
+static int ktx_link_run( struct ktx_win *w, int show ) {
 	DWORD err = 0 ;
 	int ok = 0 ;
 	if( show ) {
 		ok = kx_show_in_folder( w->hwnd, w->open_file, &err ) ;
-		if( !ok && err == ERROR_CANCELLED ) return ;
+		if( !ok && err == ERROR_CANCELLED ) return 0 ;
 	} else if( w->att ) {
 		HRESULT hi = CoInitializeEx( NULL, COINIT_APARTMENTTHREADED ) ;
 		kx_ae *ae = ktx_att_new( w->open_file, w->link ) ;
@@ -1679,11 +1680,11 @@ static void ktx_link_run( struct ktx_win *w, int show ) {
 			ae->lpVtbl->Release( ae ) ;
 		} else err = ERROR_NOT_SUPPORTED ;
 		if( SUCCEEDED( hi ) ) CoUninitialize() ;
-		if( !ok && HRESULT_CODE( err ) == ERROR_CANCELLED ) return ;   /* the user said no in Windows' prompt */
+		if( !ok && HRESULT_CODE( err ) == ERROR_CANCELLED ) return 0 ;   /* the user said no in Windows' prompt */
 	} else {
 		SHELLEXECUTEINFOW sei ;
 		wchar_t *wp = ktx_wide_dup( w->open_file, CP_ACP ), *args = NULL ;
-		if( !wp ) return ;
+		if( !wp ) return 0 ;
 		memset( &sei, 0, sizeof(sei) ) ;
 		sei.cbSize = sizeof(sei) ;
 		sei.fMask = SEE_MASK_FLAG_NO_UI ;
@@ -1702,7 +1703,7 @@ static void ktx_link_run( struct ktx_win *w, int show ) {
 		if( !ok ) err = GetLastError() ;
 		sfree( args ) ;
 		sfree( wp ) ;
-		if( !ok && err == ERROR_CANCELLED ) return ;
+		if( !ok && err == ERROR_CANCELLED ) return 0 ;
 	}
 	if( !ok ) {
 		char *m = dupprintf( show ? KT_XFER_SHOW_FAILED : KT_XFER_OPEN_FAILED,
@@ -1710,6 +1711,18 @@ static void ktx_link_run( struct ktx_win *w, int show ) {
 		ktx_line( w, dupprintf( "\r\n%s\r\n", m ) ) ;
 		sfree( m ) ;
 	}
+	return ok ;
+}
+
+/* Close the transfer window. When it is the foreground window, Windows
+ * would activate the next window in Z order - often the program the user
+ * came from - and leave the terminal behind it: hand the activation back
+ * to the terminal that started the transfer (handback). Not after Open /
+ * Open File Location, where the started program takes the front. */
+static void ktx_close( HWND hwnd, struct ktx_win *w, int handback ) {
+	if( handback && w && w->parent && IsWindow( w->parent ) && GetForegroundWindow() == hwnd )
+		SetForegroundWindow( w->parent ) ;
+	DestroyWindow( hwnd ) ;
 }
 
 static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp ) {
@@ -1821,7 +1834,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 				EnableWindow( w->closebtn, TRUE ) ;
 				SetForegroundWindow( hwnd ) ; SetFocus( w->closebtn ) ;
 			} else {
-				DestroyWindow( hwnd ) ;   /* default: auto-close, balloon confirms */
+				ktx_close( hwnd, w, 1 ) ;   /* default: auto-close, balloon confirms */
 			}
 		} else {
 			char *m ;
@@ -1896,12 +1909,13 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 		return 0 ;
 	  case WM_COMMAND:
 		if( ( LOWORD(wp)==KTX_ID_OPEN || LOWORD(wp)==KTX_ID_SHOW ) && w && w->done && w->open_file ) {
-			ktx_link_run( w, LOWORD(wp)==KTX_ID_SHOW ) ;
+			if( ktx_link_run( w, LOWORD(wp)==KTX_ID_SHOW ) )
+				ktx_close( hwnd, w, 0 ) ;      /* the link's task ends with the program started */
 			return 0 ;
 		}
 		if( LOWORD(wp)==KTX_ID_CLOSE && w ) {
 			if( w->done ) {
-				DestroyWindow( hwnd ) ;          /* finished -> button is "Close" */
+				ktx_close( hwnd, w, 1 ) ;        /* finished -> button is "Close" */
 			} else if( !w->cancelled ) {
 				w->cancelled = 1 ;               /* running -> button is "Cancel": kill kscp */
 				if( w->proc ) TerminateProcess( w->proc, 2 ) ;
@@ -1927,7 +1941,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 			}
 			return 0 ;
 		}
-		DestroyWindow( hwnd ) ;
+		ktx_close( hwnd, w, 1 ) ;
 		return 0 ;
 	  case WM_DESTROY:
 		if( w ) {
@@ -3615,10 +3629,7 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	int nh = 0, ok ;
 
 	buffer = strbuf_new_nm() ;
-	{ char *rfolder = kx_folder_of( c->remote ) ;
-	  int ok = kx_kscp_line( buffer, &k, rfolder ) ;
-	  sfree( rfolder ) ;
-	  if( !ok ) { strbuf_free( buffer ) ; return 0 ; } }
+	if( !kx_kscp_line( buffer, &k, c->remote ) ) { strbuf_free( buffer ) ; return 0 ; }
 	bcat( buffer, "-batch -stat " ) ;
 	tgt = strbuf_new() ;
 	kx_kscp_remote( tgt ) ;
