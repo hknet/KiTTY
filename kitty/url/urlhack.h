@@ -41,6 +41,9 @@ text_region urlhack_get_link_bounds(int x, int y);
 void urlhack_add_link_region(int x0, int y0, int x1, int y1);
 
 void urlhack_launch_url(const char* app, const char *url);
+/* The same start without the report: 0 started, else Windows' error
+ * (a DWORD; ERROR_CANCELLED when the user cancelled). */
+unsigned long urlhack_open_url(const char* app, const char *url);
 
 int urlhack_is_ctrl_pressed(void);
 //void urlhack_set_regular_expression(const char* expression);

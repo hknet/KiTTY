@@ -3942,6 +3942,11 @@
 #define KT_CFG_RENAME                                "Rename"
 #define KT_CFG_COMMENT_SELECT                        "Select a session to see its comment"
 #define KT_CFG_COMMENT_NONE                          "(no comment stored for this session)"
+/* kitty_commentview.c: the comment box's right-click menu; a failed open
+ * reuses KT_URL_OPEN_FAILED_FMT */
+#define KT_CFG_COMMENT_M_COPY_LINK                   "Copy link"
+#define KT_CFG_COMMENT_M_COPY_ALL                    "Copy comment"
+#define KT_CFG_COMMENT_COPY_FAILED                   "The text could not be copied to the clipboard: %s"
 #define KT_CFG_ROOT_FOLDER_CANT_DELETE               "root folder can't be deleted"
 #define KT_CFG_SESSION_UPDATE_FAILED                 "Could not update session \"%s\":\n%s"
 #define KT_CFG_FOLDER_NAME_RESERVED_ROOT             "That name is reserved for the root session list."

@@ -1169,7 +1169,8 @@ void bigeditctrlbutton(struct ctlpos *cp, const char *stext,
  * bigeditctrl so its other (raw-dialog) callers are unaffected.
  */
 static void multiline_editbox(struct ctlpos *cp, const char *stext,
-                              int sid, int eid, int lines, bool readonly)
+                              int sid, int eid, int lines, bool readonly,
+                              bool linkview)
 {
     RECT r;
     int style;
@@ -1188,6 +1189,19 @@ static void multiline_editbox(struct ctlpos *cp, const char *stext,
     r.right = cp->width;
     r.bottom = EDITHEIGHT + (lines - 1) * STATICHEIGHT;
     cp->ypos += r.bottom + GAPBETWEEN;
+    /*
+     * KiTTY: the session comment box is drawn by the program - wrapped
+     * text with clickable links, its own border and scroll bar
+     * (kitty/kitty_commentview.c registers the class before the panel is
+     * built). Same place, same id, so every dlg_* call reaches it as it
+     * reached the EDIT. A process that never registered the class gets the
+     * plain read-only box below.
+     */
+    if (linkview && (!cp->hwnd ||
+                     doctl(cp, r, "KiTTYCommentView",
+                           WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
+                           WS_BORDER, 0, "", eid)))
+        return;
     style = WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL |
             ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL;
     if (readonly)
@@ -2714,7 +2728,8 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             shortcuts[nshortcuts++] = ctrl->editbox.shortcut;
             if (ctrl->editbox.multiline) {
                 multiline_editbox(&pos, escaped, base_id, base_id+1,
-                                  ctrl->editbox.lines, ctrl->editbox.readonly);
+                                  ctrl->editbox.lines, ctrl->editbox.readonly,
+                                  ctrl->editbox.linkview);
             } else if (ctrl->editbox.percentwidth == 100) {
                 if (ctrl->editbox.has_list)
                     combobox(&pos, escaped,

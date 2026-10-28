@@ -897,6 +897,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_config_upstream.c
   ${KITTY_DIR}/kitty_config_shared.c
   ${KITTY_DIR}/kitty_config_session.c
+  ${KITTY_DIR}/kitty_commentview.c    # KiTTY: the Session panel's comment box - wrapped, links that open
+  ${KITTY_DIR}/kitty_commentlinks.c   # KiTTY: its links and wrapping, no window (test_commentlinks)
   ${KITTY_DIR}/kitty_config_app.c
   ${KITTY_DIR}/kitty_config_apps.c   # KiTTY: Security > Applications (the program files beside this one, checked)
   ${KITTY_DIR}/kitty_colours.c

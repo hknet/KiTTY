@@ -1657,9 +1657,19 @@ A free-text note stored with the saved session: what the machine is
 for, who owns it, the change that had you connect to it.
 
 It travels with the session through \q{Export all} / \q{Import all} and
-survives a rename. It is never sent to the host, and KiTTY++ shows it
-only on this panel - it is a note for you, not a label the session list
-displays.
+survives a rename. It is never sent to the host.
+
+The Session panel shows the selected session's comment in the box
+under the session list, read-only - the comment is edited on this panel.
+Links in it are underlined and open with a click, in the program Windows
+has registered for them, with no question first: web addresses
+(\c{http://}, \c{https://}, \c{ftp://}, \c{www.}), \c{file://} links and
+UNC paths (\c{\\\\server\\share\\...}). A link ends at a blank. A path
+with blanks goes in double quotes or in angle brackets:
+\c{"\\\\srv\\docs\\my runbook.pdf"}. A full stop, comma, semicolon, colon
+or closing bracket after a link is not part of it. Enter opens the first
+link. The right-click menu copies a link or the comment in full (Ctrl+C
+copies the comment in full too). A comment longer than the box scrolls.
 
 \q{Notify the user at login} (on by default) prints the note into the
 terminal, framed as a KiTTY++ session note, once - before the
@@ -3317,16 +3327,6 @@ The \q{Configure host CAs} button on a session's Host keys panel now
 brings you to \k{kitty-cfg-host-cas} here: certificate authorities, like
 host keys, belong to the installation.
 
-\S{kitty-cfg-workplace} The Workplace Proxy panel
-
-One switch that sends \e{every} connection through a chosen proxy,
-whatever each session stores - for the laptop that is behind a
-corporate proxy at the office and directly on the network at home.
-
-\b \q{Proxy for everything} sets the definition to use
-(\k{kitty-cfg-named-proxies}).
-
-\b \q{Switch off after} disarms it again by itself, so an evening at
 The two switches for every session are on the leaf \q{Settings}
 (\k{kitty-cfg-host-key-settings}).
 
@@ -3347,6 +3347,16 @@ Both are stored like the other KiTTY++ settings: in the registry or in
 \c{kitty.ini}, by the store in use. kitty.exe, klink, kscp and ksftp
 read them when they start.
 
+\S{kitty-cfg-workplace} The Workplace Proxy panel
+
+One switch that sends \e{every} connection through a chosen proxy,
+whatever each session stores - for the laptop that is behind a
+corporate proxy at the office and directly on the network at home.
+
+\b \q{Proxy for everything} sets the definition to use
+(\k{kitty-cfg-named-proxies}).
+
+\b \q{Switch off after} disarms it again by itself, so an evening at
 home does not start with twenty sessions failing through a proxy that
 is not there.
 

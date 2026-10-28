@@ -526,10 +526,18 @@ COLORREF kitty_theme_ink(bool dark, kitty_ink which)
         return dark ? RGB(0x6c, 0xb6, 0xff) : RGB(0x00, 0x4c, 0xa0);
       case KITTY_INK_HINT:
         return dark ? RGB(0xa0, 0xa0, 0xa0) : GetSysColor(COLOR_GRAYTEXT);
+      case KITTY_INK_LINK:
+        /* light: the system's own link colour, as the hint takes its grey */
+        return dark ? RGB(0x8a, 0xb4, 0xf8) : GetSysColor(COLOR_HOTLIGHT);
       case KITTY_INK_NORMAL:
       default:
         return dark ? KT_DARK_TEXT : GetSysColor(COLOR_WINDOWTEXT);
     }
+}
+
+COLORREF kitty_theme_line_colour(bool dark)
+{
+    return dark ? KT_DARK_LINE : GetSysColor(COLOR_BTNSHADOW);
 }
 
 /*

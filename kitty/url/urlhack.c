@@ -168,6 +168,28 @@ static void urlhack_foreground_launched_process(HANDLE hProcess)
 
 void urlhack_launch_url(const char* app, const char *url)
 {
+    DWORD err = urlhack_open_url(app, url);
+    if (err != 0 && err != ERROR_CANCELLED) {
+        /* a click that did nothing used to report nothing: no program for the
+         * link, a configured browser that is not there (a cancel by the user
+         * is no failure) */
+        char msg[2600];
+        if (app)
+            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_APP_FMT, url, app, kitty_win_reason(err));
+        else
+            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_FMT, url, kitty_win_reason(err));
+        /* in the notice window, not a modal box: the click comes from a
+         * terminal with a live session, which a box would stop */
+        kitty_notice_show(KT_CAP_ERROR, msg, RGB(190, 110, 0),
+                          GetNoticeSeconds(), NULL, 0);
+    }
+}
+
+/* The start itself, reporting nothing: 0 when it started, else Windows'
+ * error (ERROR_CANCELLED: the user cancelled, no failure). The caller
+ * reports where its user is looking. */
+DWORD urlhack_open_url(const char* app, const char *url)
+{
     SHELLEXECUTEINFO sei;
 
     ZeroMemory(&sei, sizeof(sei));
@@ -194,20 +216,11 @@ void urlhack_launch_url(const char* app, const char *url)
         urlhack_foreground_launched_process(sei.hProcess);
         if (sei.hProcess != NULL)
             CloseHandle(sei.hProcess);
-    } else if (GetLastError() != ERROR_CANCELLED) {
-        /* a click that did nothing used to report nothing: no program for the
-         * link, a configured browser that is not there (a cancel by the user
-         * is no failure) */
-        char msg[2600];
+        return 0;
+    }
+    {
         DWORD err = GetLastError();
-        if (app)
-            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_APP_FMT, url, app, kitty_win_reason(err));
-        else
-            snprintf(msg, sizeof(msg), KT_URL_OPEN_FAILED_FMT, url, kitty_win_reason(err));
-        /* in the notice window, not a modal box: the click comes from a
-         * terminal with a live session, which a box would stop */
-        kitty_notice_show(KT_CAP_ERROR, msg, RGB(190, 110, 0),
-                          GetNoticeSeconds(), NULL, 0);
+        return err ? err : ERROR_GEN_FAILURE;
     }
 }
 

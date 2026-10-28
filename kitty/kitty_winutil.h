@@ -49,6 +49,8 @@ void ManagePrint( HWND hwnd ) ;
 
 // Put a text into the clipboard
 int SetTextToClipboard( const char * buf ) ;
+/* UTF-16 text (CF_UNICODETEXT); 0 = not copied, Windows' reason in GetLastError() */
+int SetTextToClipboardW( const wchar_t * buf ) ;
 
 // Run a command
 int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */

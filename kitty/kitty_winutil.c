@@ -782,6 +782,40 @@ int SetTextToClipboard( const char * buf ) {
 	return 1 ;
 }
 
+/* The same for UTF-16 text (CF_UNICODETEXT): 1 copied; 0 not, with
+ * Windows' reason in GetLastError(). Same retry as above. */
+int SetTextToClipboardW( const wchar_t * buf ) {
+	HGLOBAL h ;
+	wchar_t * p ;
+	size_t bytes = ( wcslen( buf ) + 1 ) * sizeof( wchar_t ) ;
+	DWORD err ;
+	int attempt ;
+	for( attempt = 0 ; attempt < 10 ; attempt++ ) {
+		if( OpenClipboard(NULL) ) break ;
+		Sleep( 20 ) ;
+	}
+	if( attempt >= 10 ) return 0 ;
+	EmptyClipboard() ;
+	if( ( h = GlobalAlloc( GMEM_MOVEABLE, bytes ) ) == NULL ) {
+		err = GetLastError() ;
+		CloseClipboard() ;
+		SetLastError( err ) ;
+		return 0 ;
+	}
+	p = GlobalLock( h ) ;
+	memcpy( p, buf, bytes ) ;
+	GlobalUnlock( h ) ;
+	if( SetClipboardData( CF_UNICODETEXT, h ) == NULL ) {
+		err = GetLastError() ;
+		GlobalFree( h ) ;
+		CloseClipboard() ;
+		SetLastError( err ) ;
+		return 0 ;
+	}
+	CloseClipboard() ;
+	return 1 ;
+}
+
 /* Run a command: 1 started; 0 neither CreateProcess nor the ShellExecute
  * fallback could start it, with the command and Windows' reason shown to
  * the user. It closed the ADDRESSES of its two structs (leaking both handles of

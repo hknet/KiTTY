@@ -222,6 +222,12 @@ struct dlgcontrol {
             bool multiline;
             int lines;
             bool readonly;
+            /* KiTTY: a read-only multiline box drawn by the program
+             * (kitty/kitty_commentview.c): the text wrapped, its links
+             * clickable. Set by the caller after ctrl_editbox_multiline;
+             * front ends without it show the plain box. Unconditional for
+             * the same reason as above. */
+            bool linkview;
             /* KiTTY: a combo box's list is about to open (CBN_DROPDOWN), so
              * a list that is costly to build is filled only then. NULL =
              * nothing. Unconditional for the same reason as above. */

@@ -207,6 +207,14 @@ add_executable(test_hostmatch
 add_executable(test_search
   test/test_search.c)
 
+# KiTTY: unit test for the links in a session comment and its wrapping
+# (kitty/kitty_commentlinks.c, which the Session panel's comment box draws
+# from), with the terminal's own expression engine.
+add_executable(test_commentlinks
+  test/test_commentlinks.c
+  kitty/kitty_commentlinks.c
+  kitty/url/re_lib/regexp.c)
+
 # KiTTY: unit test for the OSC 5113 file-transfer command parser and the
 # file-name rules (self-contained; the code lives in kitty/kitty_transfer.h,
 # shared with kitty/kitty_transfer.c).
@@ -459,7 +467,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_hostkeys00
-    test_auditparse test_eventids)
+    test_auditparse test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

@@ -167,9 +167,15 @@ typedef enum {
     KITTY_INK_WARN,     /* unavailable, rotated, degraded */
     KITTY_INK_BAD,      /* denied, blocked, failed */
     KITTY_INK_INFO,     /* agent lifecycle, retries */
-    KITTY_INK_HINT      /* a quiet hint beside the controls (the find bar's keys) */
+    KITTY_INK_HINT,     /* a quiet hint beside the controls (the find bar's keys) */
+    KITTY_INK_LINK      /* a link that opens on a click (the session comment box) */
 } kitty_ink;
 COLORREF kitty_theme_ink(bool dark, kitty_ink which);
+
+/* The colour of a field's edge, for a control that draws its own border
+ * (the session comment box): the dark theme's line, the system's shadow
+ * while light. */
+COLORREF kitty_theme_line_colour(bool dark);
 
 /*
  * Mark one STATIC control as carrying a meaning, so its text is drawn in the

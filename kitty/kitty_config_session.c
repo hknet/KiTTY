@@ -58,6 +58,7 @@
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
 #include "kitty_logkeep.h"      /* the Logging panel greys on its time-code test */
 #include "kitty_url_regex.h"    /* kitty_urlregex_error: the custom-regex field's red line */
+#include "kitty_commentview.h"  /* the comment box under the list: links that open */
 
 #define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
 #define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
@@ -5438,6 +5439,10 @@ void scb_panel_session(struct controlbox *b, bool midsession)
     ssd->commentbox = ctrl_editbox_multiline(
         s, NULL, NO_SHORTCUT, 2, true,
         HELPCTX(session_saved), sessionsaver_handler, P(ssd), P(NULL));
+    /* Drawn by kitty_commentview.c: wrapped, links clickable, the same
+     * WM_SETTEXT/WM_GETTEXT as the EDIT it replaces. Its class exists
+     * before the panel's windows are made. */
+    ssd->commentbox->editbox.linkview = kitty_commentview_register();
     if (!midsession) {
         ssd->commentbox->column = 0;
         ssd->organizebutton = ctrl_pushbutton(s, KT_SP_ORG_BUTTON, NO_SHORTCUT,
@@ -6980,11 +6985,6 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
 #endif
 }
 
-/* The Window/Charset translation, Window/Copy & Paste (with its Character
- * classes and Remote clipboard leaves) and Colours panels. */
-void scb_panel_selection(struct controlbox *b)
-{
-    struct charclass_data *ccd;
 /* KiTTY: fields that do nothing in the state the panel shows are greyed;
  * greying never changes a value. The read-grant numbers (Remote clipboard >
  * Limits) do nothing while clipboard reads are Deny. The read radios sit on
@@ -7022,6 +7022,11 @@ static void clipmark_secs_handler(dlgcontrol *ctrl, dlgparam *dlg,
                          conf_get_bool((Conf *)data, CONF_clipboard_activity_mark));
 }
 
+/* The Window/Charset translation, Window/Copy & Paste (with its Character
+ * classes and Remote clipboard leaves) and Colours panels. */
+void scb_panel_selection(struct controlbox *b)
+{
+    struct charclass_data *ccd;
     struct colour_data *cd;
     struct controlset *s;
     dlgcontrol *c;
