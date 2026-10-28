@@ -205,14 +205,16 @@ char default_init_file_content[] =
 \n\
 ; autostoresshkey: store an unknown SSH host key without a question, for every\n\
 ;    session (OpenSSH's accept-new); a changed key is never accepted.\n\
-;    Default no.\n\
+;    Default no. In the configuration window: Application > Security >\n\
+;    Host Keys > Settings.\n\
 ;autostoresshkey=no\n\
 \n\
 ; updatehostkeys: OpenSSH's host key update (UpdateHostKeys), in every SSH\n\
 ;    program. After the login a server whose key matched the store lists all\n\
 ;    its host keys. A key it proves is stored, or replaces the stored key of\n\
 ;    its type. A stored type it no longer offers is removed. Each change is\n\
-;    an Event Log line. Default yes.\n\
+;    an Event Log line. Default yes. In the configuration window:\n\
+;    Application > Security > Host Keys > Settings.\n\
 ;updatehostkeys=yes\n\
 \n\
 ; bgimage: enable/disable the background image feature. (The description\n\

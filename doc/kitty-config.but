@@ -3268,9 +3268,9 @@ version, signer, hash and the reason for its verdict; \q{Copy} puts the
 table on the clipboard; \q{Verify again} repeats the check. Every red row
 is also written to the Application event log, once per start.
 
-\S{kitty-cfg-host-keys} The Host keys panel
+\S{kitty-cfg-host-keys} The Host Keys panel
 
-Above the list, two switches for every session.
+Its leaf \q{Settings} holds two switches for every session.
 \q{Store an unknown host key without confirmation (every session)} is
 accept-new for every session (\k{config-ssh-kitty-accept-new}), off by
 default. \q{Update host keys the server proves (hostkeys-00)} is the host

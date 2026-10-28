@@ -984,14 +984,6 @@ static void scb_panel_hostkeys(struct controlbox *b)
     kitty_hk_active = hk;
     kitty_cfg_box_closing_hook = hk_box_closing;
     ctrl_settitle(b, path, KT_HK_TITLE);
-    /* The two switches for every session, stored as the other KiTTY++
-     * Settings (kset_keys: kitty.ini or the registry, by the store in use).
-     * Declared with the panel, so the theme pass reaches them. */
-    s = ctrl_getset(b, path, "switches", KT_HK_SWITCHES_GROUP);
-    ctrl_checkbox(s, KT_HK_ACCEPTNEW_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
-                  kitty_kset_handler, P((void *)kset_find(KI_AUTOSTORESSHKEY)));
-    ctrl_checkbox(s, KT_HK_UPDATE_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
-                  kitty_kset_handler, P((void *)kset_find(KI_UPDATEHOSTKEYS)));
     s = ctrl_getset(b, path, "keys", KT_HK_GROUP);
     ctrl_text(s, KT_HK_INTRO, HELPCTX(kitty_host_keys));
     hk->listbox = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
@@ -1031,6 +1023,24 @@ static void scb_panel_hostkeys(struct controlbox *b)
     c->context2 = I(4); c->column = 2;
     hk->verify = c;
     ctrl_columns(s, 1, 100);
+}
+
+/* Security > Host keys > Settings: the two switches for every session,
+ * stored as the other KiTTY++ Settings (kset_keys: kitty.ini or the
+ * registry, by the store in use). A leaf of their own: on the list's panel
+ * they took the rows the list needs (at 200% the list kept a header and
+ * three rows). */
+static void scb_panel_hostkey_settings(struct controlbox *b)
+{
+    struct controlset *s;
+
+    ctrl_settitle(b, KCFG_PATH_HOSTKEY_SETTINGS, KT_HK_SETTINGS_TITLE);
+    s = ctrl_getset(b, KCFG_PATH_HOSTKEY_SETTINGS, "switches",
+                    KT_HK_SWITCHES_GROUP);
+    ctrl_checkbox(s, KT_HK_ACCEPTNEW_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                  kitty_kset_handler, P((void *)kset_find(KI_AUTOSTORESSHKEY)));
+    ctrl_checkbox(s, KT_HK_UPDATE_ALL, NO_SHORTCUT, HELPCTX(kitty_host_keys),
+                  kitty_kset_handler, P((void *)kset_find(KI_UPDATEHOSTKEYS)));
 }
 
 /* ---- the splitter between the list and the detail box ---------------------- */
@@ -2039,6 +2049,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
 
     /* Security > Host keys: the trust store, listed (kitty_hostkeys.c). */
     scb_panel_hostkeys(b);
+    scb_panel_hostkey_settings(b);   /* its leaf: the switches */
     /* Security > Applications: the program files beside this one and
      * whether they check out (kitty_config_apps.c). */
     scb_panel_applications(b);

@@ -3207,7 +3207,7 @@ recorded in the Event Log: trust on first use, as OpenSSH's
 warning follows, and under \c{-batch} the connection ends. For one run:
 \c{-accept-new} (\k{using-cmdline-accept-new}); for every session:
 \q{Store an unknown host key without confirmation (every session)} on
-\k{kitty-cfg-host-keys} (\c{autostoresshkey=yes} in \c{[KiTTY]}). With
+\k{kitty-cfg-host-keys} > \q{Settings} (\c{autostoresshkey=yes} in \c{[KiTTY]}). With
 \c{readonly=yes} the key is used for this connection only and not
 stored; the Event Log line records that.
 
@@ -3227,8 +3227,8 @@ The update runs only when the connection's key matched the store or was
 stored by this connection. It does not run for Connect Once, for a key
 from the manual host keys (\k{config-ssh-kex-manual-hostkeys}), for a
 certificate, or with \c{readonly=yes}. To switch it off: \q{Update host
-keys the server proves (hostkeys-00)} on \k{kitty-cfg-host-keys}
-(\c{updatehostkeys=no} in \c{[KiTTY]}). With the
+keys the server proves (hostkeys-00)} on \k{kitty-cfg-host-keys} >
+\q{Settings} (\c{updatehostkeys=no} in \c{[KiTTY]}). With the
 Windows Event Log records on, each change is also event 213 (kitty.exe)
 or 313 (klink, kscp, ksftp).
 

@@ -1381,11 +1381,12 @@
 #define KT_APPS_REQ_NONE                             "no check required by this build"
 #define KT_APPS_EVENTLOG                             "KiTTY++ Applications: %s - %s"
 
-/* Application/Security/Host keys (kitty_hostkeys.c) */
-#define KT_HK_TITLE                                  "Host keys"
+/* Application/Security/Host Keys (kitty_hostkeys.c) */
+#define KT_HK_TITLE                                  "Host Keys"
 #define KT_HK_GROUP                                  "Host keys this KiTTY++ has accepted"
 #define KT_HK_INTRO                                  "A host key is stored per host and port, for every session that connects there."
-/* the two switches above the list: [KiTTY] autostoresshkey, updatehostkeys */
+/* Host keys > Settings: [KiTTY] autostoresshkey, updatehostkeys */
+#define KT_HK_SETTINGS_TITLE                         "Host Key Settings"
 #define KT_HK_SWITCHES_GROUP                         "Host keys of every session"
 #define KT_HK_ACCEPTNEW_ALL                          "Store an unknown host key without confirmation (every session)"
 #define KT_HK_UPDATE_ALL                             "Update host keys the server proves (hostkeys-00)"
