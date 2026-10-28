@@ -13,6 +13,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 - Transfer window of an OSC 8 `file://` download: Open and Open File
   Location (Folder) close it.
 - Help: Security > Host Keys > Settings has a page of its own.
+- Get File with Protocol SCP (Connection > SSH > KSCP): kitty.exe starts
+  kscp in SFTP mode also when the remote file name holds a character other
+  than letters, digits and / . _ - ~ % * ?. Before, only the folder was
+  checked.
 
 ### Fixed
 

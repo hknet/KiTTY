@@ -2504,33 +2504,29 @@ static char *kx_search_path_dup( const char *name ) {
 	return NULL ;
 }
 
-/* A remote folder the SCP protocol cannot carry: SCP hands it to the
+/* A remote path the SCP protocol cannot carry: SCP hands it to the
  * server's shell unquoted (scp -t / scp -f), where anything but letters,
  * digits, UTF-8 and / . _ - ~ % could split it or run as a command. SFTP
- * takes it as data. */
-static int kx_folder_needs_sftp( const char *f ) {
+ * takes it as data. * and ? stay SCP: a wildcard Get wants the shell's
+ * expansion. The path is the remote folder of an upload (the file names
+ * travel inside the SCP protocol) and the full remote path of a download. */
+static int kx_path_needs_sftp( const char *f ) {
 	if( f == NULL ) return 0 ;
 	for( const unsigned char *p = (const unsigned char *)f ; *p ; p++ ) {
 		unsigned char c = *p ;
 		if( c >= 0x80 || (c>='A'&&c<='Z') || (c>='a'&&c<='z') || (c>='0'&&c<='9')
-		    || c=='/' || c=='.' || c=='_' || c=='-' || c=='~' || c=='%' ) continue ;
+		    || c=='/' || c=='.' || c=='_' || c=='-' || c=='~' || c=='%'
+		    || c=='*' || c=='?' ) continue ;
 		return 1 ;
 	}
 	return 0 ;
 }
 
-/* The folder of a remote path (everything before its last '/'), in full
- * (sfree it); "" when it has none. */
-static char *kx_folder_of( const char *path ) {
-	char *f = dupstr( path ? path : "" ), *sl = strrchr( f, '/' ) ;
-	if( sl ) *sl = '\0' ; else f[0] = '\0' ;
-	return f ;
-}
-
-/* Starts the line in `buffer`; 0 when there is no helper to start. folder:
- * the remote folder this run aims at (NULL = none known); one SCP cannot
- * carry runs kscp in SFTP mode whatever the Protocol setting. */
-static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *folder ) {
+/* Starts the line in `buffer`; 0 when there is no helper to start. rpath:
+ * the remote path this run hands to the server (NULL = none known; see
+ * kx_path_needs_sftp); one SCP cannot carry runs kscp in SFTP mode whatever
+ * the Protocol setting. */
+static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) {
 	char *pscppath, *pscpport ;
 	int p ;
 
@@ -2553,7 +2549,7 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *folder )
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
 		bcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, " " ) ;
 	}
-	bcat( buffer, ( conf_get_int(conf, CONF_kscp_protocol)==0 && !kx_folder_needs_sftp( folder ) )
+	bcat( buffer, ( conf_get_int(conf, CONF_kscp_protocol)==0 && !kx_path_needs_sftp( rpath ) )
 	              ? "-scp " : "-sftp " ) ;
 	/* The session shares its connection (Connection > SSH > "Share SSH
 	 * connections if possible"): kscp rides on the terminal's connection
@@ -2936,12 +2932,11 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
      * remote source pushed it off the end of a fixed buffer - kscp then wrote
      * to a cut path. */
     buffer = strbuf_new_nm() ;
-    {   /* the remote file's folder decides SCP or SFTP (kx_folder_needs_sftp) */
+    {   /* the full remote path decides SCP or SFTP (kx_path_needs_sftp) */
         char *rpath = ( filename[0]=='/' || directory==NULL || !directory[0] )
                       ? dupstr( filename ) : dupprintf( "%s/%s", directory, filename ) ;
-        char *rfolder = kx_folder_of( rpath ) ;
-        int ok = kx_kscp_line( buffer, &k, rfolder ) ;
-        sfree( rfolder ) ; sfree( rpath ) ;
+        int ok = kx_kscp_line( buffer, &k, rpath ) ;
+        sfree( rpath ) ;
         if( !ok ) { strbuf_free( buffer ) ; sfree( dir ) ; return ; }
     }
     bcat( buffer, "-batch " ) ;    /* no unseen questions: see kx_send_one */
