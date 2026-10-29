@@ -142,6 +142,11 @@ typedef struct KittyPainterVtable {
      * goes to this frame's overlay call, which keeps or frees the copy. */
     void (*under)(KittyPainter *p, const KittyOverlayItem *it,
                   const RECT *part, COLORREF bg);
+    /* KiTTY: true when a run drawn on its own can lack the antialiasing
+     * fringe that a neighbour's glyph puts into it in a complete repaint
+     * (GDI). window.c then draws that glyph again into the run
+     * (wintw_draw_fringe). Direct2D: false, nothing is drawn again. */
+    bool (*cuts_fringes)(KittyPainter *p);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -185,5 +190,6 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_scroll_rows(p, band, dy)      ((p)->vt->scroll_rows((p), (band), (dy)))
 #define kp_overlay(p, it, n, clip, bg)   ((p)->vt->overlay((p), (it), (n), (clip), (bg)))
 #define kp_under(p, it, part, bg)        ((p)->vt->under((p), (it), (part), (bg)))
+#define kp_cuts_fringes(p)               ((p)->vt->cuts_fringes(p))
 
 #endif /* PUTTY_WINDOWS_PAINT_H */

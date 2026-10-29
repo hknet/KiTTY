@@ -1717,6 +1717,13 @@ struct TermWinVtable {
      * PuTTY itself rather than the far end (defence against end-of-
      * authentication spoofing) */
     void (*draw_trust_sigil)(TermWin *, int x, int y);
+    /* KiTTY: draw the run of cells clip_x0 .. clip_x1-1 once more, its
+     * text starting at cell x with the neighbours' glyphs around it, in one
+     * call clipped to the run, after the run was drawn on its own
+     * (terminal.c, kitty_fringe_text). NULL: nothing to do. */
+    void (*draw_fringe)(TermWin *, int x, int y, wchar_t *text, int len,
+                        unsigned long attrs, int line_attrs, truecolour tc,
+                        int clip_x0, int clip_x1);
     int (*char_width)(TermWin *, int uc);
     void (*free_draw_ctx)(TermWin *);
 
@@ -1801,6 +1808,15 @@ static inline void win_draw_cursor(
 { win->vt->draw_cursor(win, x, y, text, len, attrs, line_attrs, tc); }
 static inline void win_draw_trust_sigil(TermWin *win, int x, int y)
 { win->vt->draw_trust_sigil(win, x, y); }
+/* KiTTY: a front end without draw_fringe draws nothing */
+static inline void win_draw_fringe(
+    TermWin *win, int x, int y, wchar_t *text, int len,
+    unsigned long attrs, int line_attrs, truecolour tc, int cx0, int cx1)
+{
+    if (win->vt->draw_fringe)
+        win->vt->draw_fringe(win, x, y, text, len, attrs, line_attrs, tc,
+                             cx0, cx1);
+}
 static inline int win_char_width(TermWin *win, int uc)
 { return win->vt->char_width(win, uc); }
 static inline void win_free_draw_ctx(TermWin *win)

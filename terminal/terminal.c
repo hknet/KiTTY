@@ -18,6 +18,7 @@
 #include "../kitty/kitty_termenv.h" /* KiTTY: XTGETTCAP TN = the type sent */
 #include "unicode/version.h"       /* KiTTY: Uw of OSC 1337 Capabilities */
 #include "kitty_term_int.h"        /* KiTTY: shared with kitty_osc.c, kitty_clipboard.c */
+#include "kitty_buildlabel.h"      /* KiTTY: KITTY_TEST_BUILD_LABEL, the redraw trace */
 
 /* KiTTY OSC 5113 file transfer (kitty/kitty_transfer.c); test builds of this
  * file stub the two entry points (test/test_osc52.c). */
@@ -9821,10 +9822,36 @@ int term_kitty_placeholders(Terminal *term, KittyPhCell *out, int max)
 }
 #endif
 
+#if defined(MOD_PERSO) && defined(KITTY_TEST_BUILD_LABEL)
+/* KITTY_REDRAW_TRACE=<file>: what do_paint draws, appended - a "frame" line
+ * per call, a "cols" line per row with the columns walked, a "draw" line per
+ * run (row, first column, cells). Test builds only; without the variable
+ * nothing is written. For the GDI fringe fault (TODO "GDI partial redraw
+ * cuts a glyph's ClearType fringe"): the runs of a partial redraw against
+ * those of a complete repaint. */
+static FILE *kd_trace_fp(void)
+{
+    static bool tried = false;
+    static FILE *fp = NULL;
+    if (!tried) {
+        const char *f = getenv("KITTY_REDRAW_TRACE");
+        tried = true;
+        if (f && *f)
+            fp = fopen(f, "a");
+    }
+    return fp;
+}
+#define KD_TRACE(...) do { FILE *kd_f = kd_trace_fp(); \
+        if (kd_f) { fprintf(kd_f, __VA_ARGS__); fflush(kd_f); } } while (0)
+#else
+#define KD_TRACE(...) ((void)0)
+#endif
+
 static void do_paint_draw(Terminal *term, termline *ldata, int x, int y,
                           wchar_t *ch, int ccount,
                           unsigned long attr, truecolour tc)
 {
+    KD_TRACE("draw row %d col %d cells %d attr %08lx\n", y, x, ccount, attr);
     if (ch[0] == TRUST_SIGIL_CHAR) {
         assert(ldata->trusted);
         assert(ccount == 1);
@@ -9846,6 +9873,114 @@ static void do_paint_draw(Terminal *term, termline *ldata, int x, int y,
     }
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: GDI clips each run to its rectangle, so a run drawn on its own
+ * lacks the antialiasing fringe that the glyph in the cell beside it puts
+ * into it when a complete repaint draws both cells as one run. After the
+ * run x0 .. x1-1 of row y is drawn, it is drawn once more together with the
+ * glyphs of the cells x0-1 and x1, in one call clipped to the run
+ * (win_draw_fringe), where a complete repaint would not break the run
+ * between those cells. One call blends the glyphs as the complete repaint
+ * does: a glyph drawn again over the run blends twice and rounds off.
+ * Wide, combining and special cells, the cursor and underlined or
+ * struck-through text are left alone. newline[] holds this frame's cells
+ * below n1. kitty_fringe_text() copies the run's text before the run is
+ * drawn: the front end may change the text while drawing it.
+ */
+static bool kitty_fringe_cell(termline *ldata, termchar *lchars,
+                              int *backward, termchar *newline, int x)
+{
+    unsigned long c = newline[x].chr;
+    /* with bidi on (the default) every row comes through the bidi copy:
+     * only a cell that stays in its place, unshaped and left to right */
+    if (backward && (backward[x] != x || lchars[x].chr != ldata->chars[x].chr ||
+                     is_rtl((int)c)))
+        return false;
+    return !lchars[x].cc_next &&
+        lchars[x].chr != UCSWIDE &&
+        lchars[x].chr != TRUST_SIGIL_CHAR &&
+        lchars[x].chr != GFX_PLACEHOLDER &&
+        !IS_REGIONAL_INDICATOR_LETTER(lchars[x].chr) &&
+        !IS_REGIONAL_INDICATOR_LETTER(c) &&
+        !(c >= 0x23BA && c <= 0x23BD) &&      /* USES_VTLINE_HACK */
+        !(newline[x].attr & (ATTR_WIDE | ATTR_NARROW | ATTR_ACTCURS |
+                             ATTR_PASCURS | ATTR_RIGHTCURS |
+                             ATTR_UNDER | ATTR_STRIKE));
+}
+
+/* the neighbour n of the run's cell r: true where a complete repaint
+ * draws both in one run */
+static bool kitty_fringe_joins(Terminal *term, termline *ldata,
+                               termchar *lchars, int *backward,
+                               termchar *newline, int n1, int n, int r)
+{
+    unsigned long c;
+
+    if (n < 0 || n >= n1)
+        return false;
+    c = newline[n].chr;
+    return c != ' ' &&
+        kitty_fringe_cell(ldata, lchars, backward, newline, n) &&
+        kitty_fringe_cell(ldata, lchars, backward, newline, r) &&
+        !((newline[n].attr ^ newline[r].attr) & term->attr_mask) &&
+        truecolour_equal(newline[n].truecolour, newline[r].truecolour) &&
+        CSET_OF(c) == CSET_OF(newline[r].chr) &&
+        newline[n].link == newline[r].link;
+}
+
+static int kitty_fringe_put(wchar_t *out, unsigned long c)
+{
+#ifdef PLATFORM_IS_UTF16
+    if (c > 0x10000 && c < 0x110000) {
+        out[0] = (wchar_t) HIGH_SURROGATE_OF(c);
+        out[1] = (wchar_t) LOW_SURROGATE_OF(c);
+        return 2;
+    }
+#endif
+    out[0] = (wchar_t) c;
+    return 1;
+}
+
+/* The text for win_draw_fringe: the run's ccount characters with the
+ * glyphs of the joining neighbours around them, starting at column *xs.
+ * NULL when no neighbour joins. The caller frees it. */
+static wchar_t *kitty_fringe_text(Terminal *term, termline *ldata,
+                                  termchar *lchars, int *backward,
+                                  termchar *newline, int n1, int y,
+                                  int x0, int x1, unsigned long attr,
+                                  const wchar_t *ch, int ccount,
+                                  int *len, int *xs)
+{
+    bool left, right;
+    wchar_t *text;
+    int k = 0;
+
+    if ((attr & (ATTR_WIDE | TATTR_COMBINING)) || x1 <= x0 || ccount <= 0)
+        return NULL;
+    left = kitty_fringe_joins(term, ldata, lchars, backward, newline, n1,
+                              x0 - 1, x0);
+    right = kitty_fringe_joins(term, ldata, lchars, backward, newline, n1,
+                               x1, x1 - 1);
+    if (!left && !right)
+        return NULL;
+    text = snewn(ccount + 4, wchar_t);
+    if (left) {
+        KD_TRACE("fringe row %d col %d\n", y, x0 - 1);
+        k += kitty_fringe_put(text + k, newline[x0 - 1].chr);
+    }
+    memcpy(text + k, ch, ccount * sizeof(wchar_t));
+    k += ccount;
+    if (right) {
+        KD_TRACE("fringe row %d col %d\n", y, x1);
+        k += kitty_fringe_put(text + k, newline[x1].chr);
+    }
+    *len = k;
+    *xs = left ? x0 - 1 : x0;
+    return text;
+}
+#endif
+
 /*
  * Update the window.
  */
@@ -9860,6 +9995,7 @@ static void do_paint(Terminal *term)
 
 #ifdef MOD_PERSO
     term->kd_quiet++;                  /* KiTTY: painting reads, marks nothing */
+    KD_TRACE("frame\n");
 #endif
     chlen = 1024;
     ch = snewn(chlen, wchar_t);
@@ -9941,6 +10077,8 @@ static void do_paint(Terminal *term)
         int preedit_start = 0, preedit_end = 0;
 #ifdef MOD_PERSO
         int kx0, kx1;                  /* KiTTY: the columns walked */
+        int kn1;                       /* KiTTY: newline[] filled below it */
+        bool kfr;                      /* KiTTY: kitty_fringe_text on */
         if (!kitty_kd_due(term, i, &kx0, &kx1))
             continue;                  /* nothing marked it: unchanged */
 #endif
@@ -10002,6 +10140,13 @@ static void do_paint(Terminal *term)
                     kx1++;
             }
         }
+        KD_TRACE("cols row %d %d-%d\n", i, kx0, kx1);
+        /* KiTTY: the glyph fringes (kitty_fringe_text) need the cell after
+         * the walked ones; bidi is checked per cell there */
+        kn1 = kx1 < term->cols ? kx1 + 1 : kx1;
+        kfr = preedit_end <= preedit_start &&
+              !term->ucsdata->dbcs_screenfont &&
+              (ldata->lattr & LATTR_MODE) == LATTR_NORM;
 #endif
 
         /*
@@ -10010,8 +10155,9 @@ static void do_paint(Terminal *term)
          */
 #ifdef MOD_PERSO
         /* from one cell before the walked columns: the third loop looks at
-         * the cell to the left (USES_VTLINE_HACK) */
-        for (j = kx0 > 0 ? kx0 - 1 : 0; j < kx1; j++) {
+         * the cell to the left (USES_VTLINE_HACK); to one cell after them:
+         * the glyph fringes (kitty_fringe_text) */
+        for (j = kx0 > 0 ? kx0 - 1 : 0; j < kn1; j++) {
 #else
         for (j = 0; j < term->cols; j++) {
 #endif
@@ -10299,8 +10445,23 @@ static void do_paint(Terminal *term)
             }
 
             if (break_run) {
-                if ((dirty_run || last_run_dirty) && ccount > 0)
+                if ((dirty_run || last_run_dirty) && ccount > 0) {
+#ifdef MOD_PERSO
+                    /* KiTTY: the neighbours' fringes (kitty_fringe_text) */
+                    int kfn = 0, kfs = 0;
+                    wchar_t *kft = !kfr ? NULL : kitty_fringe_text(
+                        term, ldata, lchars, backward, newline, kn1, i,
+                        start, j, attr, ch, ccount, &kfn, &kfs);
+#endif
                     do_paint_draw(term, ldata, start, i, ch, ccount, attr, tc);
+#ifdef MOD_PERSO
+                    if (kft) {
+                        win_draw_fringe(term->win, kfs, i, kft, kfn, attr,
+                                        ldata->lattr, tc, start, j);
+                        sfree(kft);
+                    }
+#endif
+                }
                 start = j;
                 ccount = 0;
                 attr = tattr;
@@ -10430,8 +10591,23 @@ static void do_paint(Terminal *term)
                     term->disptext[i]->chars[j-1].attr & ~DATTR_STARTRUN;
             }
         }
-        if (dirty_run && ccount > 0)
+        if (dirty_run && ccount > 0) {
+#ifdef MOD_PERSO
+            /* KiTTY: the neighbours' fringes (kitty_fringe_text) */
+            int kfn = 0, kfs = 0;
+            wchar_t *kft = !kfr ? NULL : kitty_fringe_text(
+                term, ldata, lchars, backward, newline, kn1, i,
+                start, j, attr, ch, ccount, &kfn, &kfs);
+#endif
             do_paint_draw(term, ldata, start, i, ch, ccount, attr, tc);
+#ifdef MOD_PERSO
+            if (kft) {
+                win_draw_fringe(term->win, kfs, i, kft, kfn, attr,
+                                ldata->lattr, tc, start, j);
+                sfree(kft);
+            }
+#endif
+        }
 
         unlineptr(ldata);
     }

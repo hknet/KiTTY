@@ -1692,6 +1692,12 @@ static HANDLE d2d_frame_signal(KittyPainter *p)
     return ((D2DPainter *)p)->frame_ready;
 }
 
+static bool d2d_cuts_fringes(KittyPainter *p)
+{
+    (void)p;
+    return false;                      /* no glyph is drawn again */
+}
+
 static const KittyPainterVtable d2d_vt = {
     .begin = d2d_begin,
     .end = d2d_end,
@@ -1716,6 +1722,7 @@ static const KittyPainterVtable d2d_vt = {
     .scroll_rows = d2d_scroll_rows,
     .overlay = d2d_overlay,
     .under = d2d_under,
+    .cuts_fringes = d2d_cuts_fringes,
 };
 
 /* ---- the device ---------------------------------------------------- */

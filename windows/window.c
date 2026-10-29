@@ -1161,6 +1161,11 @@ static void wintw_draw_text(TermWin *, int x, int y, wchar_t *text, int len,
 static void wintw_draw_cursor(TermWin *, int x, int y, wchar_t *text, int len,
                               unsigned long attrs, int lattrs, truecolour tc);
 static void wintw_draw_trust_sigil(TermWin *, int x, int y);
+#ifdef MOD_PERSO
+static void wintw_draw_fringe(TermWin *, int x, int y, wchar_t *text, int len,
+                              unsigned long attrs, int lattrs, truecolour tc,
+                              int clip_x0, int clip_x1);
+#endif
 static int wintw_char_width(TermWin *, int uc);
 static void wintw_free_draw_ctx(TermWin *);
 static void wintw_set_cursor_pos(TermWin *, int x, int y);
@@ -1202,6 +1207,9 @@ static const TermWinVtable windows_termwin_vt = {
     .draw_text = wintw_draw_text,
     .draw_cursor = wintw_draw_cursor,
     .draw_trust_sigil = wintw_draw_trust_sigil,
+#ifdef MOD_PERSO
+    .draw_fringe = wintw_draw_fringe,
+#endif
     .char_width = wintw_char_width,
     .free_draw_ctx = wintw_free_draw_ctx,
     .set_cursor_pos = wintw_set_cursor_pos,
@@ -9106,6 +9114,12 @@ static void draw_underline_styled(
     }
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: set while do_text_internal draws a run again with its neighbours'
+ * glyphs (wintw_draw_fringe): the rectangle of that run. */
+static const RECT *kitty_fringe_clip = NULL;
+#endif
+
 /*
  * Draw a line of text in the window, at given character
  * coordinates, in given attributes.
@@ -9349,6 +9363,14 @@ static void do_text_internal(
     if (line_box.right > col_to_px(wgs, wgs->term->cols, wgs->font_width))
         line_box.right = col_to_px(wgs, wgs->term->cols, wgs->font_width);
 
+#ifdef MOD_PERSO
+    /* KiTTY: a fringe draw: the text starts at the neighbour's cell, the
+     * run's rectangle is the clip */
+    bool fringe = kitty_fringe_clip != NULL;
+    if (fringe)
+        line_box = *kitty_fringe_clip;
+#endif
+
     if (wgs->font_varpitch) {
         /*
          * If we're using a variable-pitch font, we unconditionally
@@ -9389,7 +9411,7 @@ static void do_text_internal(
      */
     {
         extern HDC backgrounddc;       /* kitty_image.c, NULL until loaded */
-        if (backgrounddc && bg == wgs->colours[258] &&
+        if (opaque && backgrounddc && bg == wgs->colours[258] &&
             line_box.right > line_box.left) {
             POINT bgloc;
             extern int kitty_bg_origin_x, kitty_bg_origin_y;
@@ -9582,6 +9604,11 @@ static void do_text_internal(
         opaque = false;
     }
 
+#ifdef MOD_PERSO
+    if (fringe)
+        goto out;                      /* KiTTY: the run has no lines */
+#endif
+
     if (lattr != LATTR_TOP &&
         (force_manual_underline || (wgs->und_mode == UND_LINE &&
                                     (attr & ATTR_UNDER)))) {
@@ -9691,6 +9718,50 @@ static void wintw_draw_text(
         do_text_internal(wgs, x, y, text, len, attr, lattr, truecolour);
     KP_T1(KP_PAINT);
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the run of cells clip_x0 .. clip_x1-1 drawn once more, its text
+ * starting at cell x with the neighbours' glyphs around it, in one call
+ * clipped to the run (terminal.c, kitty_fringe_text). GDI clips each run to
+ * its rectangle, so a run drawn on its own lacks the antialiasing fringe
+ * that the neighbour's glyph puts into it when both are drawn as one run. A
+ * painter without that loss (Direct2D) draws nothing here.
+ */
+static void wintw_draw_fringe(
+    TermWin *tw, int x, int y, wchar_t *text, int len,
+    unsigned long attr, int lattr, truecolour truecolour,
+    int clip_x0, int clip_x1)
+{
+    WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+    RECT clip;
+
+    if (!kp_cuts_fringes(wgs->painter) ||
+        (lattr & LATTR_MODE) != LATTR_NORM || clip_x0 >= clip_x1)
+        return;
+    /* Lines drawn over the run after its glyphs (a failed prompt's mark, a
+     * detected URL's underline) would lie under this glyph: no fringe. */
+    if ((lattr & LATTR_FAILED) && conf_get_bool(wgs->conf, CONF_failed_marks))
+        return;
+    if (GetHyperlinkFlag()) {
+        int mode = conf_get_int(wgs->conf, CONF_url_underline);
+        int k;
+        for (k = clip_x0; mode && k < clip_x1; k++)
+            if (kitty_url_cell_underlined(k, y, mode))
+                return;
+    }
+
+    KP_T0;
+    clip.left = col_to_px(wgs, clip_x0, wgs->font_width);
+    clip.right = col_to_px(wgs, clip_x1, wgs->font_width);
+    clip.top = row_to_px(wgs, y);
+    clip.bottom = clip.top + wgs->font_height;
+    kitty_fringe_clip = &clip;
+    do_text_internal(wgs, x, y, text, len, attr, lattr, truecolour);
+    kitty_fringe_clip = NULL;
+    KP_T1(KP_PAINT);
+}
+#endif
 
 static void wintw_draw_cursor(
     TermWin *tw, int x, int y, wchar_t *text, int len,

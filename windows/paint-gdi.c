@@ -416,6 +416,12 @@ static HANDLE gdi_frame_signal(KittyPainter *p)
     return NULL;                       /* GDI has no display signal */
 }
 
+static bool gdi_cuts_fringes(KittyPainter *p)
+{
+    (void)p;
+    return true;                       /* ExtTextOut stops at the clip */
+}
+
 static void gdi_fonts_changed(KittyPainter *p)
 {
     /* GDI draws with the HFONTs as they are; only the measured widths can
@@ -766,6 +772,7 @@ static const KittyPainterVtable gdi_vt = {
     .scroll_rows = gdi_scroll_rows,
     .overlay = gdi_overlay,
     .under = gdi_under,
+    .cuts_fringes = gdi_cuts_fringes,
 };
 
 KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal)

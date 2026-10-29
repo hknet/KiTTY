@@ -1128,7 +1128,8 @@ configure_file(${CMAKE_SOURCE_DIR}/cmake/kitty_buildlabel.h.in
                ${GENERATED_SOURCES_DIR}/kitty_buildlabel.h)
 # ...and a file that uses the label without including that header would show
 # nothing, silently. The configure step refuses it.
-file(GLOB_RECURSE KITTY_LABEL_SCAN ${KITTY_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.c)
+file(GLOB_RECURSE KITTY_LABEL_SCAN ${KITTY_DIR}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/*.c
+     ${CMAKE_SOURCE_DIR}/terminal/*.c)
 set(KITTY_LABEL_MISSING "")
 foreach(f ${KITTY_LABEL_SCAN})
   file(READ ${f} _contents)

@@ -564,6 +564,7 @@ static void term_osc133(Terminal *term)
  * down must not hide what is above it. A new connection clears it
  * (term_ctx3008_reset), since the far end's hangup never reaches us.
  */
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the trace below */
 #ifdef KITTY_TEST_BUILD_LABEL
 /* KITTY_CTX3008_TRACE=<file>: one line per sequence that changed the stack,
  * appended. Test builds only; without the variable nothing is written. */
