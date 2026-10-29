@@ -196,7 +196,8 @@ static void pfd_receive(Plug *plug, int urgent, const char *data, size_t len)
         return;
 
     if (pf->kitty_bindskip) {
-        /* KiTTY: the agent's answer to the session-bind is not relayed */
+        /* KiTTY: the agent's answers to the session-bind (and to the
+         * session-bind-host-v00 after it) are not relayed */
         size_t used = kitty_agentbind_skip(pf->kitty_bindskip, data, len);
         bool bad = pf->kitty_bindskip->bad;
         if (bad || pf->kitty_bindskip->done) {
@@ -528,10 +529,10 @@ void portfwd_raw_setup(Channel *pfchan, Socket *s, SshChannel *sc)
     pf->c = sc;
 }
 
-/* KiTTY: skip the first framed agent message on this channel's socket:
- * the answer to a session-bind written ahead of a forwarded agent stream
- * (ssh/connection2-client.c) */
-void portfwd_raw_kitty_bindskip(Channel *pfchan)
+/* KiTTY: skip the first nmsg framed agent messages on this channel's
+ * socket: the answers to a session-bind and the session-bind-host-v00
+ * written ahead of a forwarded agent stream (ssh/connection2-client.c) */
+void portfwd_raw_kitty_bindskip(Channel *pfchan, unsigned nmsg)
 {
     struct PortForwarding *pf;
     assert(pfchan->vt == &PortForwarding_channelvt);
@@ -540,6 +541,7 @@ void portfwd_raw_kitty_bindskip(Channel *pfchan)
     if (!pf->kitty_bindskip)
         pf->kitty_bindskip = snew(struct kitty_agentbind_skip);
     memset(pf->kitty_bindskip, 0, sizeof(*pf->kitty_bindskip));
+    pf->kitty_bindskip->more = nmsg > 1 ? nmsg - 1 : 0;
 }
 
 /*

@@ -23,6 +23,28 @@
 
 #define KAR_EXT_NAME "restrict-destination-v00@openssh.com"
 
+/*
+ * kageant's own two agent extensions (docs/PROTOCOL-AGENT-KAPPER.md; their
+ * names are in pageant.h KNOWN_EXTENSIONS too, so the "query" answer lists
+ * them):
+ *
+ * withheld-keys-v00@kapper.net - no data. On a connection whose bindings
+ * are all for a login, SSH_AGENT_SUCCESS and a uint32: how many keys the
+ * key list of this connection leaves out because of their destination
+ * rules. SSH_AGENT_FAILURE without a binding or with a binding for
+ * forwarding: a remote server never learns of keys for other servers.
+ *
+ * session-bind-host-v00@kapper.net - string host, uint32 port: the name the
+ * client connected to, sent right after its session-bind. Kept with the
+ * last binding as the client's word, shown beside the host key's
+ * fingerprint, never used for a decision.
+ */
+#define KAR_EXT_WITHHELD    "withheld-keys-v00@kapper.net"
+#define KAR_EXT_BIND_HOST   "session-bind-host-v00@kapper.net"
+#define KAR_MAX_BIND_HOST   255     /* bytes of the host name */
+/* The names shown for one host key before "+N" (the client's included). */
+#define KAR_DEST_MAX_NAMES  5
+
 /* OpenSSH's limits (ssh-agent.c): destinations per key, the user name's
  * length. The host name and the host keys of one hop are bounded too, so a
  * crafted constraint cannot make the store grow without end. */
@@ -38,13 +60,40 @@ typedef struct kar_hostkey {
     bool is_ca;
 } kar_hostkey;
 
+/*
+ * How a hop's host name is matched. ssh-add -h always gives KAR_MATCH_EXACT:
+ * OpenSSH's rules, unchanged. The other three are the rule editor's choice
+ * for a destination whose host name is a pattern (* and ?, kar_wildcard):
+ *
+ * KAR_MATCH_EXACT - the hop's host keys: a plain key by equality, a host
+ *   certificate signed by a CA key of the hop and valid for the host name
+ *   as written.
+ * KAR_MATCH_CA_PATTERN ("Host CA only") - a host certificate signed by a CA
+ *   key of the hop, valid now, with a principal the pattern matches. A plain
+ *   key never passes.
+ * KAR_MATCH_STORED_NOW ("Servers whose host key is stored now") - the host
+ *   keys collected for the pattern when the rule was made, matched as
+ *   KAR_MATCH_EXACT.
+ * KAR_MATCH_STORED_LATER ("Also servers stored later") - the hop's host
+ *   keys, or a bound host key stored (KiTTY++ host-key store, known_hosts)
+ *   under a name the pattern matches when the request comes
+ *   (kar_hostkey_names). Never the name a client sends.
+ */
+#define KAR_MATCH_EXACT        0
+#define KAR_MATCH_CA_PATTERN   1
+#define KAR_MATCH_STORED_NOW   2
+#define KAR_MATCH_STORED_LATER 3
+#define KAR_MATCH_MAX          3
+
 /* One hop: user (the "to" hop only; NULL = any user), host name (NULL in a
- * "from" hop = the computer the agent runs on) and its host keys. */
+ * "from" hop = the computer the agent runs on), its host keys and how the
+ * host name is matched (KAR_MATCH_*). */
 typedef struct kar_hop {
     char *user;
     char *host;
     size_t nkeys, keysize;
     kar_hostkey *keys;
+    unsigned match;
 } kar_hop;
 
 /* One destination: OpenSSH's dest_constraint. from.host NULL = the first
@@ -72,6 +121,16 @@ void kar_hop_add_key(kar_hop *h, ptrlen blob, bool is_ca);
 
 /* Does this blob decode as a public key of a type we know? */
 bool kar_blob_valid(ptrlen blob);
+
+/* Is this host name a pattern (holds * or ?)? */
+bool kar_host_is_pattern(const char *host);
+
+/* The names a host key is stored under (the KiTTY++ host-key store and
+ * known_hosts, "host" or "host:port"), for KAR_MATCH_STORED_LATER: *names a
+ * new array of new strings (kar_names_free), the count returned. NULL
+ * (kageant sets it) = no names, so such a rule matches its host keys only. */
+extern size_t (*kar_hostkey_names)(ptrlen hostkey, char ***names);
+void kar_names_free(char **names, size_t n);
 
 /*
  * The constraint's data as ssh-add -h sends it, after the extension name:
@@ -138,6 +197,24 @@ bool kar_sign_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
                         bool bind_attempted, ptrlen keyblob, ptrlen data,
                         const char **why);
 
+/*
+ * The key list's order on a connection bound for a login: keys whose rules
+ * permit this server by host keys alone (KAR_MATCH_EXACT, a CA certificate
+ * for the name as written included) first, then keys permitted only by a
+ * pattern rule (the other KAR_MATCH_*), then the unrestricted keys.
+ * kar_list_group answers for a restricted key: KAR_GROUP_EXACT,
+ * KAR_GROUP_PATTERN, or KAR_GROUP_NONE (not permitted, or the last binding
+ * is not for a login).
+ */
+#define KAR_GROUP_NONE         0
+#define KAR_GROUP_EXACT        1
+#define KAR_GROUP_PATTERN      2
+#define KAR_GROUP_UNRESTRICTED 3
+int kar_list_group(const kar_rules *r, const kar_bind *b, size_t nb);
+/* order[] = the indexes 0..n-1 sorted by group[] (1, 2, 3), each group in
+ * the order given (stable). */
+void kar_list_order(const int *group, size_t n, size_t *order);
+
 /* The data of a userauth signature: session id, 50, user, "ssh-connection",
  * "publickey" or "publickey-hostbound-v00@openssh.com", TRUE, algorithm, the
  * key (equal to keyblob), for the hostbound method the server's host key,
@@ -157,6 +234,20 @@ char *kar_hostkey_text(const kar_hostkey *k);
 char *kar_rule_text(const kar_rule *r);
 /* Every rule, ", " between them; "" for none. sfree it. */
 char *kar_rules_text(const kar_rules *r);
+
+/* The data of a session-bind-host-v00@kapper.net request after its name:
+ * string host, uint32 port, nothing after. The host must be 1 to
+ * KAR_MAX_BIND_HOST bytes without a control character, the port 1 to
+ * 65535. *out = the name as shown: "host", "host:port" for another port
+ * than 22 (sfree it). False with *why (static text) when it is refused. */
+bool kar_parse_bind_host(BinarySource *src, char **out, const char **why);
+
+/* The host names of one host key as the agent log and the confirmation
+ * show them: the client's name first, marked " (client)", then the names
+ * of the lookup (names[]) that differ from it, ignoring case, at most
+ * KAR_DEST_MAX_NAMES names in all, then " +N" for the rest. client NULL:
+ * the lookup's names alone. NULL when there is no name at all. sfree it. */
+char *kar_dest_names_text(const char *client, char *const *names, size_t n);
 
 /* ---- the store --------------------------------------------------------- */
 
@@ -211,6 +302,12 @@ bool kar_store_restricted(const kar_store *s, const char *fp);
  * key's other destinations reached from this computer. NULL when the key
  * has no link. kar_rules_free it. */
 kar_rules *kar_store_rules(const kar_store *s, const char *fp);
+/* Key details' list of a key's destinations as the store holds them (not
+ * as kar_store_rules compiles them): one line per link, "web01  user
+ * deploy  via jump01  forwarding", "\r\n" between the lines. *count = the
+ * number of lines. NULL (and 0) when the key has no link. sfree it. */
+char *kar_store_dest_lines(const kar_store *s, const char *fp,
+                           size_t *count);
 kar_dest *kar_store_dest_by_id(const kar_store *s, unsigned id);
 kar_skey *kar_store_key(const kar_store *s, const char *fp);
 /* Add or update a key's row (comment, blob when given). */
@@ -235,5 +332,10 @@ void kar_store_tidy(kar_store *s);
  * every check passes; *err (static text) otherwise. */
 void kar_store_encode(const kar_store *s, strbuf *out);
 bool kar_store_decode(kar_store *s, ptrlen in, const char **err);
+/* The bytes in a given format: 2 (what kar_store_encode writes: each
+ * destination ends in its KAR_MATCH_* value) or 1 (the first format, no
+ * match value: every destination KAR_MATCH_EXACT). kar_store_decode reads
+ * both. Format 1 is written by the tests only. */
+void kar_store_encode_format(const kar_store *s, strbuf *out, int format);
 
 #endif /* KITTY_AGENTRESTRICT_H */

@@ -7,7 +7,14 @@
  * check's userauth data, the rule store (ssh-add -h replacing a key's
  * links, forwarding allowed, tidying) and its bytes: a round trip, and a
  * file cut short, changed or of another kind refused as damaged with the
- * store left as it was.
+ * store left as it was. kageant's own extensions
+ * (docs/PROTOCOL-AGENT-KAPPER.md): both in KNOWN_EXTENSIONS (the "query"
+ * answer), session-bind-host-v00's data checked, the names of a host key
+ * as shown (the client's first, five in all, "+N"), and Key details' lines
+ * of a key's destinations. Pattern destinations (the rule editor's three
+ * choices: Host CA only, stored now, also stored later), the key list's
+ * groups and order, the rule file's format 2 and the format 1 it still
+ * reads.
  *
  * The keys are fixed ed25519 public keys and one host certificate (key
  * web02, principal web03, signed by the key "ca"), made once with
@@ -23,6 +30,7 @@
 
 #include "putty.h"
 #include "ssh.h"
+#include "pageant.h"                    /* KNOWN_EXTENSIONS */
 #include "kitty/kitty_agentrestrict.h"
 
 const char *appname = "test_agentrestrict";
@@ -613,7 +621,7 @@ static void test_store(strbuf *user, strbuf *web01, strbuf *web02,
         strbuf *body = strbuf_new(), *file = strbuf_new();
         unsigned char hash[32];
         ssh_hash *h;
-        put_stringz(body, "kageant-rules-2");
+        put_stringz(body, "kageant-rules-9");
         put_uint32(body, 1);
         put_uint32(body, 0);
         put_uint32(body, 0);
@@ -623,7 +631,7 @@ static void test_store(strbuf *user, strbuf *web01, strbuf *web02,
         ssh_hash_final(h, hash);
         put_datapl(file, ptrlen_from_strbuf(body));
         put_string(file, hash, sizeof(hash));
-        expect("decode: another version is damaged",
+        expect("decode: an unknown version (format 9) is damaged",
                kar_store_decode(t, ptrlen_from_strbuf(file), &err), false);
         strbuf_free(body);
         strbuf_free(file);
@@ -674,6 +682,374 @@ static void test_texts(strbuf *web01, strbuf *jump01)
     expect("wildcard: b* refuses alice", kar_wildcard("alice", "b*"), false);
 }
 
+/* session-bind-host-v00's data: string host, uint32 port */
+static bool bind_host(const char *host, size_t hlen, unsigned long port,
+                      bool trailing, bool cut, char **out, const char **why)
+{
+    strbuf *sb = strbuf_new();
+    BinarySource src[1];
+    bool ok;
+    put_stringpl(sb, make_ptrlen(host, hlen));
+    put_uint32(sb, port);
+    if (trailing)
+        put_byte(sb, 0);
+    BinarySource_BARE_INIT_PL(src, make_ptrlen(sb->s, sb->len - (cut ? 1 : 0)));
+    ok = kar_parse_bind_host(src, out, why);
+    strbuf_free(sb);
+    return ok;
+}
+
+static void test_ext(strbuf *user, strbuf *web01, strbuf *web02,
+                     strbuf *jump01)
+{
+#define TEST_EXT_NAME(id, name) name,
+    static const char *const known[] = { KNOWN_EXTENSIONS(TEST_EXT_NAME) };
+#undef TEST_EXT_NAME
+    bool wk = false, bh = false;
+    char *out = NULL, *t;
+    const char *why = NULL;
+    char *longhost = snewn(256, char);
+
+    /* the "query" answer lists every name of KNOWN_EXTENSIONS */
+    for (size_t i = 0; i < lenof(known); i++) {
+        if (!strcmp(known[i], KAR_EXT_WITHHELD))
+            wk = true;
+        if (!strcmp(known[i], KAR_EXT_BIND_HOST))
+            bh = true;
+    }
+    expect("query lists withheld-keys-v00@kapper.net", wk, true);
+    expect("query lists session-bind-host-v00@kapper.net", bh, true);
+    expect("the names carry their version",
+           !strcmp(KAR_EXT_WITHHELD, "withheld-keys-v00@kapper.net") &&
+           !strcmp(KAR_EXT_BIND_HOST, "session-bind-host-v00@kapper.net"),
+           true);
+
+    /* session-bind-host-v00's data */
+    expect("bind-host: web01 port 22",
+           bind_host("web01", 5, 22, false, false, &out, &why) &&
+           !strcmp(out, "web01"), true);
+    sfree(out);
+    out = NULL;
+    expect("bind-host: web01 port 2222 is web01:2222",
+           bind_host("web01", 5, 2222, false, false, &out, &why) &&
+           !strcmp(out, "web01:2222"), true);
+    sfree(out);
+    out = NULL;
+    expect("bind-host: an ESC in the name is refused",
+           bind_host("web\x1b" "01", 6, 22, false, false, &out, &why), false);
+    expect("bind-host: no host on a refusal", out == NULL, true);
+    expect_why("bind-host: why for a control character", why,
+               "a control character in the host name");
+    expect("bind-host: a newline is refused",
+           bind_host("web01\n", 6, 22, false, false, &out, &why), false);
+    expect("bind-host: DEL is refused",
+           bind_host("web\x7f", 4, 22, false, false, &out, &why), false);
+    expect("bind-host: an empty name is refused",
+           bind_host("", 0, 22, false, false, &out, &why), false);
+    memset(longhost, 'a', 256);
+    expect("bind-host: 255 bytes are taken",
+           bind_host(longhost, 255, 22, false, false, &out, &why) &&
+           strlen(out) == 255, true);
+    sfree(out);
+    out = NULL;
+    expect("bind-host: 256 bytes are refused",
+           bind_host(longhost, 256, 22, false, false, &out, &why), false);
+    sfree(longhost);
+    expect("bind-host: port 0 is refused",
+           bind_host("web01", 5, 0, false, false, &out, &why), false);
+    expect("bind-host: port 65536 is refused",
+           bind_host("web01", 5, 65536, false, false, &out, &why), false);
+    expect("bind-host: a trailing byte is refused",
+           bind_host("web01", 5, 22, true, false, &out, &why), false);
+    expect_why("bind-host: why for a trailing byte", why,
+               "trailing data after the request");
+    expect("bind-host: a short message is refused",
+           bind_host("web01", 5, 22, false, true, &out, &why), false);
+
+    /* the names of a host key as shown */
+    {
+        static const char *const five_src[] = {
+            "10.0.0.1", "WEB01", "b.example", "c.example", "d.example",
+            "e.example", "f.example" };
+        char *five[lenof(five_src)], *one[1];
+        for (size_t i = 0; i < lenof(five_src); i++)
+            five[i] = dupstr(five_src[i]);
+        one[0] = dupstr("web01");
+        t = kar_dest_names_text("web01", five, lenof(five));
+        expect("names: the client's first, the same name once, five in all",
+               t && !strcmp(t, "web01 (client) 10.0.0.1 b.example c.example "
+                            "d.example +2"), true);
+        sfree(t);
+        t = kar_dest_names_text(NULL, five, lenof(five));
+        expect("names: without the client, five names then +2",
+               t && !strcmp(t, "10.0.0.1 WEB01 b.example c.example "
+                            "d.example +2"), true);
+        sfree(t);
+        t = kar_dest_names_text("web01", NULL, 0);
+        expect("names: the client's alone", t && !strcmp(t, "web01 (client)"),
+               true);
+        sfree(t);
+        t = kar_dest_names_text("web01", one, 1);
+        expect("names: a lookup name equal to the client's is not repeated",
+               t && !strcmp(t, "web01 (client)"), true);
+        sfree(t);
+        t = kar_dest_names_text(NULL, one, 1);
+        expect("names: one lookup name, no +N", t && !strcmp(t, "web01"),
+               true);
+        sfree(t);
+        expect("names: none at all is NULL",
+               kar_dest_names_text(NULL, NULL, 0) == NULL, true);
+        for (size_t i = 0; i < lenof(five); i++)
+            sfree(five[i]);
+        sfree(one[0]);
+    }
+
+    /* Key details' lines */
+    {
+        kar_store *s = kar_store_new();
+        char *fp = kar_key_fp(ptrlen_from_strbuf(user));
+        size_t n = 99;
+        kar_rule d;
+        unsigned id;
+
+        expect("lines: a key without links has none",
+               kar_store_dest_lines(s, fp, &n) == NULL && n == 0, true);
+        memset(&d, 0, sizeof(d));
+        d.to.host = dupstr("web01.example.com");
+        d.to.user = dupstr("deploy");
+        d.from.host = dupstr("jump.example.com");
+        kar_hop_add_key(&d.from, ptrlen_from_strbuf(jump01), false);
+        kar_hop_add_key(&d.to, ptrlen_from_strbuf(web01), false);
+        id = kar_store_dest_for(s, &d);
+        kar_hop_free(&d.from);
+        kar_hop_free(&d.to);
+        kar_store_link(s, fp, id, KAR_LINK_FORWARD);
+        memset(&d, 0, sizeof(d));
+        d.to.host = dupstr("web02");
+        kar_hop_add_key(&d.to, ptrlen_from_strbuf(web02), false);
+        id = kar_store_dest_for(s, &d);
+        kar_hop_free(&d.to);
+        kar_store_link(s, fp, id, 0);
+        t = kar_store_dest_lines(s, fp, &n);
+        expect("lines: two destinations", n == 2, true);
+        expect("lines: host, user, via, forwarding; then the plain one",
+               t && !strcmp(t, "web01.example.com  user deploy  via "
+                            "jump.example.com  forwarding\r\nweb02"), true);
+        sfree(t);
+        sfree(fp);
+        kar_store_free(s);
+    }
+}
+
+/* kar_hostkey_names for the tests: the names "stored" for one host key */
+static ptrlen fake_key;
+static const char *fake_name = NULL;
+static size_t fake_names(ptrlen hostkey, char ***names)
+{
+    *names = NULL;
+    if (!fake_name || !ptrlen_eq_ptrlen(hostkey, fake_key))
+        return 0;
+    *names = snewn(2, char *);
+    (*names)[0] = dupstr("10.0.0.7");
+    (*names)[1] = dupstr(fake_name);
+    return 2;
+}
+
+/* One destination from this computer: host, how it is matched, one key
+ * (NULL for none). */
+static kar_rules *one_rule(const char *host, unsigned match, strbuf *key,
+                           bool is_ca)
+{
+    kar_rules *r = kar_rules_new();
+    kar_rule d;
+    memset(&d, 0, sizeof(d));
+    d.to.host = dupstr(host);
+    d.to.match = match;
+    if (key)
+        kar_hop_add_key(&d.to, ptrlen_from_strbuf(key), is_ca);
+    kar_rules_add(r, &d);
+    kar_hop_free(&d.to);
+    return r;
+}
+
+static bool permitted_on(const kar_rules *r, strbuf *hostkey, bool fwd)
+{
+    kar_bind b;
+    const char *why;
+    b.hostkey = ptrlen_from_strbuf(hostkey);
+    b.sid = PTRLEN_LITERAL("sid");
+    b.forwarding = fwd;
+    return kar_permitted(r, &b, 1, true, NULL, &why);
+}
+
+static int group_on(const kar_rules *r, strbuf *hostkey, bool fwd)
+{
+    kar_bind b;
+    b.hostkey = ptrlen_from_strbuf(hostkey);
+    b.sid = PTRLEN_LITERAL("sid");
+    b.forwarding = fwd;
+    return kar_list_group(r, &b, 1);
+}
+
+static void test_patterns(strbuf *user, strbuf *web01, strbuf *web02,
+                          strbuf *ca, strbuf *cert)
+{
+    kar_rules *r;
+
+    kar_hostkey_names = fake_names;
+    fake_key = ptrlen_from_strbuf(web01);
+
+    /* 3: also servers stored later - the names stored for the bound key */
+    r = one_rule("*.customer.com", KAR_MATCH_STORED_LATER, NULL, false);
+    fake_name = "WEB07.Customer.com:2222";
+    expect("later: a key stored under a matching name (case, port ignored)",
+           permitted_on(r, web01, false), true);
+    expect("later: its group is the pattern group",
+           group_on(r, web01, false) == KAR_GROUP_PATTERN, true);
+    fake_name = "web07.customer.com.evil.net";
+    expect("later: a name the pattern does not cover is refused",
+           permitted_on(r, web01, false), false);
+    fake_name = "a.b.customer.com";
+    expect("later: * covers dots too", permitted_on(r, web01, false), true);
+    expect("later: another key, no name stored for it, is refused",
+           permitted_on(r, web02, false), false);
+    kar_hostkey_names = NULL;
+    expect("later: without the names lookup nothing matches",
+           permitted_on(r, web01, false), false);
+    kar_hostkey_names = fake_names;
+    kar_rules_free(r);
+
+    /* 2: stored now - the snapshot only, never the names */
+    r = one_rule("*.customer.com", KAR_MATCH_STORED_NOW, web02, false);
+    fake_name = "web08.customer.com";
+    expect("now: a key stored later under a matching name is refused",
+           permitted_on(r, web01, false), false);
+    expect("now: the key of the snapshot is permitted",
+           permitted_on(r, web02, false), true);
+    expect("now: its group is the pattern group",
+           group_on(r, web02, false) == KAR_GROUP_PATTERN, true);
+    kar_rules_free(r);
+
+    /* 1: Host CA only - a certificate whose principal the pattern covers */
+    r = one_rule("WEB0?", KAR_MATCH_CA_PATTERN, ca, true);
+    expect("CA: a certificate for web03 from the CA matches web0?",
+           permitted_on(r, cert, false), true);
+    expect("CA: its group is the pattern group",
+           group_on(r, cert, false) == KAR_GROUP_PATTERN, true);
+    expect("CA: the plain key of that certificate is refused",
+           permitted_on(r, web02, false), false);
+    kar_rules_free(r);
+    r = one_rule("db*", KAR_MATCH_CA_PATTERN, ca, true);
+    expect("CA: a principal the pattern does not cover is refused",
+           permitted_on(r, cert, false), false);
+    kar_rules_free(r);
+    r = one_rule("*", KAR_MATCH_CA_PATTERN, web01, true);
+    expect("CA: a certificate from another CA is refused",
+           permitted_on(r, cert, false), false);
+    kar_rules_free(r);
+    r = one_rule("*", KAR_MATCH_CA_PATTERN, web02, false);
+    expect("CA: a plain key in the rule never matches",
+           permitted_on(r, web02, false), false);
+    kar_rules_free(r);
+
+    /* OpenSSH's own (ssh-add -h): the exact group */
+    r = one_rule("web03", KAR_MATCH_EXACT, ca, true);
+    expect("exact: a CA certificate for the name as written",
+           group_on(r, cert, false) == KAR_GROUP_EXACT, true);
+    kar_rules_free(r);
+    r = one_rule("web01", KAR_MATCH_EXACT, web01, false);
+    expect("exact: a plain key", group_on(r, web01, false) ==
+           KAR_GROUP_EXACT, true);
+    expect("group: a binding for forwarding has no group",
+           group_on(r, web01, true) == KAR_GROUP_NONE, true);
+    expect("group: another server has no group",
+           group_on(r, web02, false) == KAR_GROUP_NONE, true);
+    {
+        /* an exact rule and a pattern rule for the same server: exact */
+        kar_rules *p = one_rule("*.customer.com", KAR_MATCH_STORED_LATER,
+                                NULL, false);
+        kar_rules_add(r, &p->v[0]);
+        fake_name = "web07.customer.com";
+        expect("group: exact wins over a pattern for the same server",
+               group_on(r, web01, false) == KAR_GROUP_EXACT, true);
+        kar_rules_free(p);
+    }
+    kar_rules_free(r);
+
+    /* the order of the list */
+    {
+        static const int g[] = { 3, 1, 2, 1, 3, 2 };
+        static const size_t want[] = { 1, 3, 2, 5, 0, 4 };
+        size_t o[6];
+        kar_list_order(g, 6, o);
+        expect("order: exact, pattern, unrestricted, each as given",
+               !memcmp(o, want, sizeof(o)), true);
+    }
+
+    /* the file: format 2 keeps the choice, format 1 still loads */
+    {
+        kar_store *s = kar_store_new(), *t = kar_store_new();
+        char *fp = kar_key_fp(ptrlen_from_strbuf(user));
+        const char *err = NULL;
+        strbuf *bytes = strbuf_new();
+        size_t n;
+        char *lines;
+        unsigned id;
+
+        r = one_rule("*.customer.com", KAR_MATCH_STORED_LATER, NULL, false);
+        id = kar_store_dest_for(s, &r->v[0]);
+        kar_store_note_key(s, fp, "user key", ptrlen_from_strbuf(user));
+        kar_store_link(s, fp, id, 0);
+        kar_rules_free(r);
+        kar_store_encode(s, bytes);
+        expect("format 2: a pattern destination without keys loads",
+               kar_store_decode(t, ptrlen_from_strbuf(bytes), &err), true);
+        expect("format 2: its choice is kept",
+               t->ndest == 1 && t->dest[0].rule.to.match ==
+               KAR_MATCH_STORED_LATER, true);
+        lines = kar_store_dest_lines(t, fp, &n);
+        expect("lines: the choice is shown",
+               lines && !strcmp(lines, "*.customer.com  also stored later"),
+               true);
+        sfree(lines);
+        strbuf_clear(bytes);
+        kar_store_encode_format(s, bytes, 1);
+        expect("format 1: a destination without keys is damaged there",
+               kar_store_decode(t, ptrlen_from_strbuf(bytes), &err), false);
+        kar_store_free(s);
+        s = kar_store_new();
+        r = one_rule("web01", KAR_MATCH_EXACT, web01, false);
+        id = kar_store_dest_for(s, &r->v[0]);
+        kar_store_note_key(s, fp, "user key", ptrlen_from_strbuf(user));
+        kar_store_link(s, fp, id, 0);
+        kar_rules_free(r);
+        strbuf_clear(bytes);
+        kar_store_encode_format(s, bytes, 1);
+        expect("format 1: an older file still loads",
+               kar_store_decode(t, ptrlen_from_strbuf(bytes), &err), true);
+        expect("format 1: its destinations are exact",
+               t->ndest == 1 && t->dest[0].rule.to.match == KAR_MATCH_EXACT,
+               true);
+        r = one_rule("web01", KAR_MATCH_EXACT, NULL, false);
+        kar_store_free(s);
+        s = kar_store_new();
+        id = kar_store_dest_for(s, &r->v[0]);
+        kar_store_note_key(s, fp, "user key", ptrlen_from_strbuf(user));
+        kar_store_link(s, fp, id, 0);
+        kar_rules_free(r);
+        strbuf_clear(bytes);
+        kar_store_encode(s, bytes);
+        expect("format 2: an exact destination without keys is damaged",
+               kar_store_decode(t, ptrlen_from_strbuf(bytes), &err), false);
+        strbuf_free(bytes);
+        sfree(fp);
+        kar_store_free(s);
+        kar_store_free(t);
+    }
+    kar_hostkey_names = NULL;
+    fake_name = NULL;
+}
+
 int main(void)
 {
     strbuf *user, *web01, *web02, *jump01, *ca, *cert;
@@ -703,6 +1079,10 @@ int main(void)
     test_store(user, web01, web02, jump01);
     printf("texts\n");
     test_texts(web01, jump01);
+    printf("kapper.net extensions\n");
+    test_ext(user, web01, web02, jump01);
+    printf("patterns and order\n");
+    test_patterns(user, web01, web02, ca, cert);
 
     strbuf_free(user);
     strbuf_free(web01);

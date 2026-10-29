@@ -5,8 +5,10 @@
  * fingerprint. A host name is added when the key is found in the KiTTY++
  * host-key store in use - the registry, or the folder store of a portable
  * or savemode=dir install, as kitty.ini sets it up - or in the user's
- * OpenSSH known_hosts (plain entries: a hashed one holds no name). The name
- * is for the reader only: nothing is decided by it.
+ * OpenSSH known_hosts (plain entries: a hashed one holds no name). A
+ * client that sent session-bind-host-v00@kapper.net after the binding has
+ * its name shown first, marked "(client)". Up to five names, then "+N".
+ * The names are for the reader only: nothing is decided by them.
  *
  * With savemode=file the host keys are in the registry only while a
  * kitty.exe runs; otherwise no name is found there.
@@ -354,9 +356,10 @@ static char *dest_fp(ptrlen hostkey)
     return out;
 }
 
-/* The first name found for a host key, with "+N" for the others; NULL
- * when none is found. sfree it. */
-static char *dest_name(ptrlen hostkey)
+/* The names of a host key: the client's (client, may be NULL) first, then
+ * the ones found, five in all, "+N" for the others (kar_dest_names_text);
+ * NULL when there is none. sfree it. */
+static char *dest_name(ptrlen hostkey, const char *client)
 {
     struct dest_names nm;
     struct kitty_ini_startup ini;
@@ -364,7 +367,7 @@ static char *dest_name(ptrlen hostkey)
     char *out = NULL;
 
     if (!dest_key_init(&k, hostkey))
-        return NULL;
+        return client ? kar_dest_names_text(client, NULL, 0) : NULL;
     memset(&nm, 0, sizeof(nm));
     memset(&ini, 0, sizeof(ini));
     kitty_inifile_startup(&ini);
@@ -374,22 +377,47 @@ static char *dest_name(ptrlen hostkey)
         names_from_registry(&k, &nm);
     kitty_inifile_startup_free(&ini);
     names_from_known_hosts(&k, &nm);
-    if (nm.n == 1)
-        out = dupstr(nm.v[0]);
-    else if (nm.n > 1)
-        out = dupprintf("%s +%d", nm.v[0], (int)(nm.n - 1));
+    out = kar_dest_names_text(client, nm.v, nm.n);
     names_free(&nm);
     dest_key_free(&k);
     return out;
 }
 
-char *kageant_dest_hostkey_text(ptrlen hostkey)
+size_t kageant_dest_names(ptrlen hostkey, char ***out)
 {
-    char *fp = dest_fp(hostkey), *name = dest_name(hostkey), *out;
+    struct dest_names nm;
+    struct kitty_ini_startup ini;
+    struct dest_key k;
+
+    *out = NULL;
+    if (!dest_key_init(&k, hostkey))
+        return 0;
+    memset(&nm, 0, sizeof(nm));
+    memset(&ini, 0, sizeof(ini));
+    kitty_inifile_startup(&ini);
+    if (ini.folder_store)
+        names_from_folder_store(&k, &ini, &nm);
+    else
+        names_from_registry(&k, &nm);
+    kitty_inifile_startup_free(&ini);
+    names_from_known_hosts(&k, &nm);
+    dest_key_free(&k);
+    *out = nm.v;
+    return nm.n;
+}
+
+char *kageant_dest_hostkey_text_for(ptrlen hostkey, const char *client)
+{
+    char *fp = dest_fp(hostkey), *name = dest_name(hostkey, client), *out;
     out = name ? dupprintf("%s %s", fp, name) : dupstr(fp);
     sfree(fp);
     sfree(name);
     return out;
+}
+
+char *kageant_dest_hostkey_text(ptrlen hostkey)
+{
+    return kageant_dest_hostkey_text_for(hostkey, NULL);
 }
 
 void kageant_dest_fields(const struct kageant_dest *d, char **dest,
@@ -402,7 +430,8 @@ void kageant_dest_fields(const struct kageant_dest *d, char **dest,
         return;
     for (size_t i = 0; i < d->n; i++) {
         if (d->forwarding[i]) {
-            char *t = kageant_dest_hostkey_text(d->hostkey[i]);
+            char *t = kageant_dest_hostkey_text_for(d->hostkey[i],
+                                                    d->host[i]);
             if (!hops)
                 hops = strbuf_new();
             else
@@ -411,18 +440,18 @@ void kageant_dest_fields(const struct kageant_dest *d, char **dest,
             sfree(t);
         } else if (i == d->n - 1) {
             /* the core keeps no binding after one for a login */
-            *dest = kageant_dest_hostkey_text(d->hostkey[i]);
+            *dest = kageant_dest_hostkey_text_for(d->hostkey[i], d->host[i]);
         }
     }
     if (hops)
         *fwd = strbuf_to_str(hops);
 }
 
-/* One host key in the box: "web01 (SHA256:...)", the fingerprint alone
- * when no name is found. sfree it. */
-static char *box_host(ptrlen hostkey)
+/* One host key in the box: "web01 (client) web-01 (SHA256:...)", the
+ * fingerprint alone when there is no name. sfree it. */
+static char *box_host(ptrlen hostkey, const char *client)
 {
-    char *fp = dest_fp(hostkey), *name = dest_name(hostkey), *out;
+    char *fp = dest_fp(hostkey), *name = dest_name(hostkey, client), *out;
     out = name ? dupprintf("%s (%s)", name, fp) : dupstr(fp);
     sfree(fp);
     sfree(name);
@@ -438,7 +467,7 @@ char *kageant_dest_box_text(const struct kageant_dest *d)
         return NULL;
     sb = strbuf_new();
     if (!d->forwarding[d->n - 1]) {
-        h = box_host(d->hostkey[d->n - 1]);
+        h = box_host(d->hostkey[d->n - 1], d->host[d->n - 1]);
         put_fmt(sb, KT_KA_DEST_LINE_FMT, h);
         sfree(h);
     }
@@ -447,7 +476,7 @@ char *kageant_dest_box_text(const struct kageant_dest *d)
             continue;
         if (sb->len)
             put_byte(sb, '\n');
-        h = box_host(d->hostkey[i]);
+        h = box_host(d->hostkey[i], d->host[i]);
         put_fmt(sb, KT_KA_DEST_VIA_FMT, h);
         sfree(h);
     }
@@ -488,9 +517,28 @@ static void found_add(struct kageant_dest_found **v, size_t *n,
 struct lookup {
     const char *host;
     int port;
+    bool pattern;           /* host is a pattern: every stored name it
+                             * matches (kageant_dest_lookup_pattern) */
     struct kageant_dest_found *v;
     size_t n, size;
 };
+
+/* A stored host name against the lookup's pattern, case ignored. */
+static bool lookup_pattern_takes(const struct lookup *lk, const char *name)
+{
+    char *n = dupstr(name), *p = dupstr(lk->host);
+    bool ok;
+    for (char *q = n; *q; q++)
+        if (*q >= 'A' && *q <= 'Z')
+            *q += 'a' - 'A';
+    for (char *q = p; *q; q++)
+        if (*q >= 'A' && *q <= 'Z')
+            *q += 'a' - 'A';
+    ok = kar_wildcard(n, p);
+    sfree(n);
+    sfree(p);
+    return ok;
+}
 
 /* A store entry's name "<type>[#n]@<port>:<escaped host>" of this host and
  * port -> its type (sfree it); NULL for another host or a time stamp. */
@@ -510,7 +558,8 @@ static char *store_name_type(const char *name, const struct lookup *lk)
         return NULL;
     sb = strbuf_new();
     unescape_registry_key(colon + 1, sb);
-    if (!stricmp(sb->s, lk->host)) {
+    if (lk->pattern ? lookup_pattern_takes(lk, sb->s)
+                    : !stricmp(sb->s, lk->host)) {
         hash = memchr(name, '#', (size_t)(at - name));
         tl = (size_t)((hash ? hash : at) - name);
         type = snewn(tl + 1, char);
@@ -705,6 +754,36 @@ static bool kh_hosts_match(const char *field, const char *target)
     return matched;
 }
 
+/* A pattern lookup: does a plain name of a known_hosts host field ("name"
+ * or "[name]:port"; a hashed entry, a negation or a pattern is no name)
+ * on the lookup's port match the pattern? */
+static bool kh_names_take(const struct lookup *lk, const char *field)
+{
+    char *copy, *tok, *next;
+    bool ok = false;
+
+    if (!strncmp(field, "|1|", 3))
+        return false;
+    copy = dupstr(field);
+    for (tok = copy; tok && !ok; tok = next) {
+        char *rb;
+        int port = 22;
+        next = strchr(tok, ',');
+        if (next)
+            *next++ = '\0';
+        if (!*tok || *tok == '!' || strpbrk(tok, "*?"))
+            continue;
+        if (*tok == '[' && (rb = strstr(tok, "]:")) != NULL) {
+            *rb = '\0';
+            port = atoi(rb + 2);
+            tok++;
+        }
+        ok = port == lk->port && lookup_pattern_takes(lk, tok);
+    }
+    sfree(copy);
+    return ok;
+}
+
 /* One known_hosts line for the target: "[@cert-authority] hosts keytype
  * base64 [comment]". A @revoked line and a comment give nothing. */
 static void kh_line(struct lookup *lk, char *line, const char *target)
@@ -717,6 +796,8 @@ static void kh_line(struct lookup *lk, char *line, const char *target)
         p++;
     if (!*p || *p == '#')
         return;
+    if (*p == '@' && lk->pattern)
+        return;                 /* a pattern takes plain entries only */
     if (*p == '@') {
         if (strncmp(p, "@cert-authority", 15) ||
             (p[15] != ' ' && p[15] != '\t'))
@@ -743,7 +824,7 @@ static void kh_line(struct lookup *lk, char *line, const char *target)
         p++;
     *p = '\0';
     if (!*b64 || !base64_valid(ptrlen_from_asciz(b64)) ||
-        !kh_hosts_match(hosts, target))
+        !(lk->pattern ? kh_names_take(lk, hosts) : kh_hosts_match(hosts, target)))
         return;
     blob = base64_decode_sb(ptrlen_from_asciz(b64));
     found_add(&lk->v, &lk->n, &lk->size, ptrlen_from_strbuf(blob), is_ca,
@@ -969,6 +1050,31 @@ size_t kageant_dest_lookup(const char *host, int port,
         lookup_registry_keys(&lk);
         lookup_registry_cas(&lk);
     }
+    kitty_inifile_startup_free(&ini);
+    lookup_known_hosts(&lk);
+    *out = lk.v;
+    return lk.n;
+}
+
+size_t kageant_dest_lookup_pattern(const char *pattern, int port,
+                                   struct kageant_dest_found **out)
+{
+    struct lookup lk;
+    struct kitty_ini_startup ini;
+
+    memset(&lk, 0, sizeof(lk));
+    lk.host = pattern;
+    lk.port = port > 0 ? port : 22;
+    lk.pattern = true;
+    *out = NULL;
+    if (!pattern || !*pattern)
+        return 0;
+    memset(&ini, 0, sizeof(ini));
+    kitty_inifile_startup(&ini);
+    if (ini.folder_store)
+        lookup_folder_keys(&lk, &ini);
+    else
+        lookup_registry_keys(&lk);
     kitty_inifile_startup_free(&ini);
     lookup_known_hosts(&lk);
     *out = lk.v;

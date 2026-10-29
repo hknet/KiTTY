@@ -182,6 +182,10 @@ struct kageant_dest {
     size_t n;
     ptrlen hostkey[KAGEANT_MAX_BINDINGS];
     bool forwarding[KAGEANT_MAX_BINDINGS];
+    /* the name the client connected to, as it sent it after the binding
+     * (session-bind-host-v00@kapper.net): "host" or "host:port"; NULL when
+     * it sent none. The client's word: shown, never used for a decision. */
+    const char *host[KAGEANT_MAX_BINDINGS];
 };
 /* KiTTY: every refused request - the reason of its SSH_AGENT_FAILURE
  * reply as the core words it - for the agent's audit log, whether or not
@@ -379,6 +383,9 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
     X(EXT_REENCRYPT_ALL, PUTTYEXT("reencrypt-all"))     \
     X(EXT_LIST_EXTENDED, PUTTYEXT("list-extended"))     \
     X(EXT_SESSION_BIND, "session-bind@openssh.com")     \
+    /* KiTTY: kageant's own (docs/PROTOCOL-AGENT-KAPPER.md) */   \
+    X(EXT_WITHHELD_KEYS, "withheld-keys-v00@kapper.net")         \
+    X(EXT_SESSION_BIND_HOST, "session-bind-host-v00@kapper.net") \
     /* end of list */
 
 #define LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE    1

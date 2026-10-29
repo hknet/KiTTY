@@ -1351,8 +1351,10 @@ nothing to run. The AI agent logs in with klink, kscp, ksftp, kitty.exe or Windo
 
 **expect:** a restricted key signs a login to a server of its rules. On a
 connection bound to another server kageant leaves the key out of the key
-list: the login tries the next key or method. `ssh-add -l` (no login, no
-binding) lists every key.
+list: the login tries the next key or method. klink, kscp, ksftp and
+kitty.exe then show `kageant: 1 key restricted to other servers was not
+offered.` (`N keys ... were not offered.`) before the next method.
+`ssh-add -l` (no login, no binding) lists every key.
 
 **failure:** `Server refused our key` or `Permission denied (publickey)`
 where the restricted key was meant: the server is not in the key's rules, or
@@ -2053,6 +2055,7 @@ kageant pipe, is tested.
 # one of these forms: in kageant's window
 In kageant's key list: double-click the key, Restrict..., Add destination, Host: <host>, Look up host keys, OK.
 For a jump host: one destination for <jump>, one for <host> with Via host: <jump> (the key then works through an agent forwarded to <jump>).
+For a group of servers: Host: *.<domain>, then Pattern: Host CA only (a host CA signs their keys), Servers whose host key is stored now, or Also servers stored later (the human decides: it trusts the host-key store and known_hosts).
 ```
 
 ```powershell
@@ -2065,8 +2068,10 @@ C:\Windows\System32\OpenSSH\ssh-add.exe -h <host> <keyfile>
 C:\Windows\System32\OpenSSH\ssh-add.exe -h <jump> -h "<jump>><host>" <keyfile>
 ```
 
-**expect:** key details shows `Destinations:` with the host and the SHA256
-hash of its host key. The key list's State column ends in `, restricted`.
+**expect:** key details lists under `Destinations:` the count on the first
+line, then one line per destination: the host, then `user`, `via` and
+`forwarding` where the destination has them. The key list draws the key's
+row in blue. Its State column ends in `, restricted`.
 The rules are kept in `kageant-rules.dat` (`%APPDATA%\KiTTY`, or beside
 kitty.ini in a portable copy), encrypted for the Windows account, and apply
 again after a restart, whichever way the key comes back. Event 110 `add`

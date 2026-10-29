@@ -328,8 +328,11 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "dest",
       "100, 101: the server the key is used for, from the client's "
       "verified session-bind: the hash of its host key (SHA256:...), then "
-      "a host name when one is found; empty without a session-bind; 102: "
-      "the server the client bound to, written the same way; 103, 104: "
+      "its host names - the one the client sent after the binding first, "
+      "marked (client), then the ones found in the host-key store and "
+      "known_hosts, five in all, +N for more; empty without a session-bind; "
+      "102: the server the client bound to, written the same way without "
+      "the client's name; 103, 104: "
       "the server of the connection's verified session-bind, written the "
       "same way, empty without one; 131: the protected copy written" },
     { "detail",

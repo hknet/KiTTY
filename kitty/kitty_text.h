@@ -3038,8 +3038,18 @@
 /* after the state of a key with destination rules (and of every key while
  * the rule file is damaged) */
 #define KT_KAKEYS_STATE_RESTRICTED_SUFFIX            ", restricted"
-/* Key details' "Destinations:" line */
-#define KT_KAKEYS_DEST_ANY                           "any"
+/* Key details' "Destinations:" list: the first line (the count), then one
+ * line per destination (kar_store_dest_lines: the host, then these parts) */
+#define KT_KAKEYS_DEST_ANY                           "any - the key is not restricted"
+#define KT_KAKEYS_DEST_COUNT1                        "1 destination - the key signs a login to this server only"
+#define KT_KAKEYS_DEST_COUNT_FMT                     "%d destinations - the key signs a login to these servers only"
+#define KT_KAKEYS_DEST_USER_FMT                      "  user %s"
+#define KT_KAKEYS_DEST_VIA_FMT                       "  via %s"
+#define KT_KAKEYS_DEST_FORWARDING                    "  forwarding"
+/* a destination whose host name is a pattern: how it is matched */
+#define KT_KAKEYS_DEST_MATCH_CA                      "  host CA only"
+#define KT_KAKEYS_DEST_MATCH_NOW                     "  stored now"
+#define KT_KAKEYS_DEST_MATCH_LATER                   "  also stored later"
 #define KT_KAKEYS_DEST_DAMAGED                       "unknown: the rule file is damaged"
 #define KT_KAKEYS_ALG_NOT_LOADED                     "(not loaded)"
 #define KT_KAKEYS_LIFETIME_UNLIMITED                 "unlimited"
@@ -3257,6 +3267,10 @@
  * alone when no host name is found. Under the key in the box. */
 #define KT_KA_DEST_LINE_FMT                          "Destination: %s"
 #define KT_KA_DEST_VIA_FMT                           "Forwarded via: %s"
+/* after the host name a client sent (session-bind-host-v00@kapper.net), in
+ * the agent log's dest= / fwd= and on the lines above: the client's word,
+ * not verified */
+#define KT_KA_DEST_CLIENT_MARK                       " (client)"
 
 /* kageant's destination rules (kitty_kageant_rules.c, the rule editor in
  * windows/pageant.c, the host lookup in kitty_kageant_dest.c) */
@@ -3289,6 +3303,15 @@
 #define KT_KARULES_ATTR_USER_FMT                     "User: %s"
 #define KT_KARULES_ATTR_VIA_FMT                      "Via: %s"
 #define KT_KARULES_ATTR_FORWARD                      "Forwarding: allowed"
+/* the tree row and the droplist of a destination whose host is a pattern */
+#define KT_KARULES_ATTR_MATCH_FMT                    "Pattern: %s"
+#define KT_KARULES_MATCH_CA                          "Host CA only"
+#define KT_KARULES_MATCH_NOW                         "Servers whose host key is stored now"
+#define KT_KARULES_MATCH_LATER                       "Also servers stored later"
+#define KT_KARULES_MATCH_WARN                        "A program running as this Windows user that writes the host-key store or known_hosts can widen this rule."
+#define KT_KARULES_KEYS_LATER                        "Matched at login: a server passes when its host key is stored under a name the pattern covers."
+#define KT_KARULES_NO_CA_FMT                         "No CA key for %s in known_hosts (@cert-authority) or the CA store."
+#define KT_KARULES_LATER_NONE_FMT                    "No host key stored for %s yet. Servers stored later are matched at login."
 #define KT_KARULES_ATTR_KEYS_FMT                     "Host keys: %d"
 #define KT_KARULES_ATTR_KEYS_NONE                    "Host keys: not looked up"
 /* the editor's right-hand side */
@@ -3747,6 +3770,13 @@
 #define KT_AGENT_LOG_BIND_NO_REPLY                   "Agent connection not bound: no answer to session-bind@openssh.com. The login goes on unbound."
 #define KT_AGENT_LOG_BIND_FWD                        "Forwarded agent connection: session-bind@openssh.com sent for host key %s"
 #define KT_AGENT_FWD_BIND_BAD                        "the agent's answer to session-bind@openssh.com is malformed"
+/* ssh/userauth2-client.c: kageant left keys out of the list of a bound
+ * login because of their destination rules (withheld-keys-v00@kapper.net).
+ * In the terminal / on stderr before the next authentication method, and
+ * the same line (without the line end) in the Terminal Window's Event Log
+ * (kitty_agentbind_withheld_text). */
+#define KT_AGENT_MSG_WITHHELD1                       "kageant: 1 key restricted to other servers was not offered."
+#define KT_AGENT_MSG_WITHHELD_FMT                    "kageant: %lu keys restricted to other servers were not offered."
 /* windows/plink.c, pscp.c, psftp.c: the -agent / -noagent help lines */
 #define KT_CLI_USAGE_NOAGENT                         "  -noagent  disable use of kageant\n"
 #define KT_CLI_USAGE_AGENT                           "  -agent    enable use of kageant\n"
@@ -4809,6 +4839,7 @@
 #define KT_RC_KEYRULES_ADD                           "&Add destination"
 #define KT_RC_KEYRULES_REMOVE                        "Re&move"
 #define KT_RC_KEYRULES_HOST                          "&Host:"
+#define KT_RC_KEYRULES_MATCH                         "&Pattern:"
 #define KT_RC_KEYRULES_USER                          "&User:"
 #define KT_RC_KEYRULES_VIA                           "&Via host:"
 #define KT_RC_KEYRULES_FORWARD                       "Allow agent &forwarding to the other destinations"

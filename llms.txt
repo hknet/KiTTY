@@ -16,4 +16,5 @@ AI agents start with docs/AGENTS-GUIDE.md: one self-contained block per task, wi
 ## Optional
 
 - [SSH certificates](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md): user and host certificates, KiTTY++ and OpenSSH side
+- [kageant protocol extensions](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md): withheld-keys-v00@kapper.net and session-bind-host-v00@kapper.net, their wire format and security notes
 - [Changelog](https://github.com/hknet/KiTTY/blob/kitty-0.85/CHANGELOG.md): changes per release

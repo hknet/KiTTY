@@ -18,6 +18,7 @@
 #include "ssh.h"
 
 #include "kitty_agentrestrict.h"
+#include "kitty_text.h"     /* KT_KA_DEST_CLIENT_MARK, KT_KAKEYS_DEST_* */
 
 /* ---- rules, hops, keys ---------------------------------------------------- */
 
@@ -67,6 +68,7 @@ void kar_hop_copy(kar_hop *dst, const kar_hop *src)
     memset(dst, 0, sizeof(*dst));
     dst->user = src->user ? dupstr(src->user) : NULL;
     dst->host = src->host ? dupstr(src->host) : NULL;
+    dst->match = src->match;
     for (size_t i = 0; i < src->nkeys; i++)
         kar_hop_add_key(dst, ptrlen_from_strbuf(src->keys[i].blob),
                         src->keys[i].is_ca);
@@ -103,7 +105,7 @@ static bool host_equal(const char *a, const char *b)
 static bool hop_equal(const kar_hop *a, const kar_hop *b)
 {
     if (!str_equal(a->user, b->user) || !host_equal(a->host, b->host) ||
-        a->nkeys != b->nkeys)
+        a->nkeys != b->nkeys || a->match != b->match)
         return false;
     for (size_t i = 0; i < a->nkeys; i++)
         if (a->keys[i].is_ca != b->keys[i].is_ca ||
@@ -125,6 +127,20 @@ bool kar_rules_add(kar_rules *rs, const kar_rule *r)
     sgrowarray(rs->v, rs->size, rs->n);
     kar_rule_copy(&rs->v[rs->n++], r);
     return true;
+}
+
+bool kar_host_is_pattern(const char *host)
+{
+    return host && strpbrk(host, "*?") != NULL;
+}
+
+size_t (*kar_hostkey_names)(ptrlen hostkey, char ***names) = NULL;
+
+void kar_names_free(char **names, size_t n)
+{
+    for (size_t i = 0; i < n; i++)
+        sfree(names[i]);
+    sfree(names);
 }
 
 bool kar_blob_valid(ptrlen blob)
@@ -325,6 +341,9 @@ typedef struct kar_boundkey {
     ptrlen blob;
     ssh_key *key;               /* NULL when it does not decode */
     strbuf *ca;                 /* a certificate's CA blob, else NULL */
+    char **names;               /* KAR_MATCH_STORED_LATER: the names it is */
+    size_t nnames;              /* stored under, read once when needed */
+    bool names_read;
 } kar_boundkey;
 
 static void boundkey_init(kar_boundkey *k, ptrlen blob)
@@ -352,12 +371,102 @@ static void boundkey_free(kar_boundkey *k)
         ssh_key_free(k->key);
     if (k->ca)
         strbuf_free(k->ca);
+    kar_names_free(k->names, k->nnames);
+}
+
+/* A copy of s in lower case (host names). sfree it. */
+static char *lower_dup(const char *s, size_t len)
+{
+    char *t = snewn(len + 1, char);
+    for (size_t i = 0; i < len; i++)
+        t[i] = (s[i] >= 'A' && s[i] <= 'Z') ? s[i] + ('a' - 'A') : s[i];
+    t[len] = '\0';
+    return t;
+}
+
+/* KAR_MATCH_CA_PATTERN: a host certificate signed by a CA key of the hop,
+ * valid now, with a principal the hop's pattern matches (the pattern is
+ * the rule's host name, the principal the subject). */
+static bool hop_matches_ca_pattern(const kar_hop *h, const kar_boundkey *k)
+{
+    bool ca_ok = false, ok = false;
+    key_components *kc;
+    char *pat;
+
+    if (!k->ca || !k->key || !h->host)
+        return false;
+    for (size_t i = 0; i < h->nkeys && !ca_ok; i++)
+        ca_ok = h->keys[i].is_ca &&
+            ptrlen_eq_ptrlen(ptrlen_from_strbuf(h->keys[i].blob),
+                             ptrlen_from_strbuf(k->ca));
+    if (!ca_ok)
+        return false;
+    pat = lower_dup(h->host, strlen(h->host));
+    kc = ssh_key_components(k->key);
+    for (size_t i = 0; kc && i < kc->ncomponents && !ok; i++) {
+        const key_component *c = &kc->components[i];
+        char *p;
+        if (c->type != KCT_TEXT ||
+            strncmp(c->name, "cert_valid_principal_", 21))
+            continue;
+        p = lower_dup(c->str->s, c->str->len);
+        if (kar_wildcard(p, pat)) {
+            /* the CA signature algorithms OpenSSH's agent accepts: not
+             * RSA with SHA-1; the certificate's own check of type, time
+             * and signature, for this principal */
+            ca_options opts;
+            strbuf *error = strbuf_new();
+            opts.permit_rsa_sha1 = false;
+            opts.permit_rsa_sha256 = true;
+            opts.permit_rsa_sha512 = true;
+            ok = ssh_key_check_cert(k->key, true,
+                                    ptrlen_from_strbuf(c->str),
+                                    (uint64_t)time(NULL), &opts,
+                                    BinarySink_UPCAST(error));
+            strbuf_free(error);
+        }
+        sfree(p);
+    }
+    if (kc)
+        key_components_free(kc);
+    sfree(pat);
+    return ok;
+}
+
+/* KAR_MATCH_STORED_LATER: is the bound host key stored under a name the
+ * hop's pattern matches? A name's ":port" is left out of the match. */
+static bool hop_matches_names(const kar_hop *h, kar_boundkey *k)
+{
+    bool ok = false;
+    char *pat;
+
+    if (!h->host)
+        return false;
+    if (!k->names_read) {
+        k->names_read = true;
+        if (kar_hostkey_names)
+            k->nnames = kar_hostkey_names(k->blob, &k->names);
+    }
+    pat = lower_dup(h->host, strlen(h->host));
+    for (size_t i = 0; i < k->nnames && !ok; i++) {
+        const char *n = k->names[i], *colon = strchr(n, ':');
+        size_t len = strlen(n);
+        char *t;
+        /* "host:port" from the stores; an IPv6 address has more colons */
+        if (colon && !strchr(colon + 1, ':'))
+            len = (size_t)(colon - n);
+        t = lower_dup(n, len);
+        ok = kar_wildcard(t, pat);
+        sfree(t);
+    }
+    sfree(pat);
+    return ok;
 }
 
 /* OpenSSH's match_key_hop: a plain key equals a plain entry; a
  * certificate is signed by a CA entry and valid as a host certificate for
  * the hop's host name now. */
-static bool hop_matches(const kar_hop *h, const kar_boundkey *k)
+static bool hop_matches_keys(const kar_hop *h, const kar_boundkey *k)
 {
     for (size_t i = 0; i < h->nkeys; i++) {
         const kar_hostkey *hk = &h->keys[i];
@@ -391,11 +500,21 @@ static bool hop_matches(const kar_hop *h, const kar_boundkey *k)
     return false;
 }
 
+/* A hop against a bound host key, by the hop's KAR_MATCH_* value. */
+static bool hop_matches(const kar_hop *h, kar_boundkey *k)
+{
+    if (h->match == KAR_MATCH_CA_PATTERN)
+        return hop_matches_ca_pattern(h, k);
+    if (hop_matches_keys(h, k))
+        return true;
+    return h->match == KAR_MATCH_STORED_LATER && hop_matches_names(h, k);
+}
+
 /* OpenSSH's permitted_by_dest_constraints: a rule whose "from" hop matches
  * the previous bind (none = this computer), whose "to" hop matches this one
  * (to NULL = any), and whose user pattern matches (when both are given). */
-static bool by_rules(const kar_rules *r, const kar_boundkey *from,
-                     const kar_boundkey *to, const char *user)
+static bool by_rules(const kar_rules *r, kar_boundkey *from,
+                     kar_boundkey *to, const char *user)
 {
     for (size_t i = 0; i < r->n; i++) {
         const kar_rule *d = &r->v[i];
@@ -534,6 +653,38 @@ bool kar_sign_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
     return true;
 }
 
+int kar_list_group(const kar_rules *r, const kar_bind *b, size_t nb)
+{
+    kar_rules *ex;
+    const char *why;
+    bool exact;
+
+    if (!r || !nb || b[nb - 1].forwarding ||
+        !kar_permitted(r, b, nb, true, NULL, &why))
+        return KAR_GROUP_NONE;
+    ex = kar_rules_new();
+    for (size_t i = 0; i < r->n; i++)
+        if (r->v[i].to.match == KAR_MATCH_EXACT &&
+            r->v[i].from.match == KAR_MATCH_EXACT)
+            kar_rules_add(ex, &r->v[i]);
+    exact = ex->n && kar_permitted(ex, b, nb, true, NULL, &why);
+    kar_rules_free(ex);
+    return exact ? KAR_GROUP_EXACT : KAR_GROUP_PATTERN;
+}
+
+void kar_list_order(const int *group, size_t n, size_t *order)
+{
+    size_t at = 0;
+    for (int g = KAR_GROUP_EXACT; g <= KAR_GROUP_UNRESTRICTED; g++)
+        for (size_t i = 0; i < n; i++)
+            if (group[i] == g)
+                order[at++] = i;
+    /* a group outside 1..3 keeps its place at the end */
+    for (size_t i = 0; i < n; i++)
+        if (group[i] < KAR_GROUP_EXACT || group[i] > KAR_GROUP_UNRESTRICTED)
+            order[at++] = i;
+}
+
 /* ---- texts ---------------------------------------------------------------- */
 
 char *kar_hostkey_text(const kar_hostkey *k)
@@ -575,6 +726,86 @@ char *kar_rules_text(const kar_rules *r)
         put_dataz(sb, t);
         sfree(t);
     }
+    return strbuf_to_str(sb);
+}
+
+bool kar_parse_bind_host(BinarySource *src, char **out, const char **why)
+{
+    ptrlen host = get_string(src);
+    unsigned long port = get_uint32(src);
+
+    *out = NULL;
+    if (get_err(src)) {
+        *why = "unable to decode request";
+        return false;
+    }
+    if (get_avail(src)) {
+        *why = "trailing data after the request";
+        return false;
+    }
+    if (!host.len || host.len > KAR_MAX_BIND_HOST) {
+        *why = "the host name is empty or longer than 255 bytes";
+        return false;
+    }
+    for (size_t i = 0; i < host.len; i++) {
+        unsigned char c = ((const unsigned char *)host.ptr)[i];
+        if (c < 0x20 || c == 0x7f) {
+            *why = "a control character in the host name";
+            return false;
+        }
+    }
+    if (port < 1 || port > 65535) {
+        *why = "the port is not 1 to 65535";
+        return false;
+    }
+    *out = (port == 22) ? mkstr(host) :
+        dupprintf("%.*s:%lu", PTRLEN_PRINTF(host), port);
+    return true;
+}
+
+/* ASCII case ignored: host names */
+static bool kar_same_name(const char *a, const char *b)
+{
+    for (;; a++, b++) {
+        int ca = (unsigned char)*a, cb = (unsigned char)*b;
+        if (ca >= 'A' && ca <= 'Z')
+            ca += 'a' - 'A';
+        if (cb >= 'A' && cb <= 'Z')
+            cb += 'a' - 'A';
+        if (ca != cb)
+            return false;
+        if (!ca)
+            return true;
+    }
+}
+
+char *kar_dest_names_text(const char *client, char *const *names, size_t n)
+{
+    strbuf *sb;
+    size_t shown = 0, rest = 0;
+
+    if ((!client || !*client) && !n)
+        return NULL;
+    sb = strbuf_new();
+    if (client && *client) {
+        put_dataz(sb, client);
+        put_dataz(sb, KT_KA_DEST_CLIENT_MARK);
+        shown++;
+    }
+    for (size_t i = 0; i < n; i++) {
+        if (client && *client && kar_same_name(names[i], client))
+            continue;
+        if (shown >= KAR_DEST_MAX_NAMES) {
+            rest++;
+            continue;
+        }
+        if (sb->len)
+            put_byte(sb, ' ');
+        put_dataz(sb, names[i]);
+        shown++;
+    }
+    if (rest)
+        put_fmt(sb, " +%d", (int)rest);
     return strbuf_to_str(sb);
 }
 
@@ -707,6 +938,39 @@ kar_rules *kar_store_rules(const kar_store *s, const char *fp)
     return r;
 }
 
+char *kar_store_dest_lines(const kar_store *s, const char *fp,
+                           size_t *count)
+{
+    strbuf *sb = NULL;
+
+    *count = 0;
+    for (size_t i = 0; i < s->nlinks; i++) {
+        const kar_link *l = &s->links[i];
+        const kar_dest *d;
+        if (strcmp(l->fp, fp) || (d = kar_store_dest_by_id(s, l->dest)) == NULL)
+            continue;
+        if (!sb)
+            sb = strbuf_new();
+        else
+            put_datapl(sb, PTRLEN_LITERAL("\r\n"));
+        put_dataz(sb, d->rule.to.host ? d->rule.to.host : "");
+        if (d->rule.to.user)
+            put_fmt(sb, KT_KAKEYS_DEST_USER_FMT, d->rule.to.user);
+        if (d->rule.from.host)
+            put_fmt(sb, KT_KAKEYS_DEST_VIA_FMT, d->rule.from.host);
+        if (l->flags & KAR_LINK_FORWARD)
+            put_dataz(sb, KT_KAKEYS_DEST_FORWARDING);
+        if (d->rule.to.match == KAR_MATCH_CA_PATTERN)
+            put_dataz(sb, KT_KAKEYS_DEST_MATCH_CA);
+        else if (d->rule.to.match == KAR_MATCH_STORED_NOW)
+            put_dataz(sb, KT_KAKEYS_DEST_MATCH_NOW);
+        else if (d->rule.to.match == KAR_MATCH_STORED_LATER)
+            put_dataz(sb, KT_KAKEYS_DEST_MATCH_LATER);
+        (*count)++;
+    }
+    return sb ? strbuf_to_str(sb) : NULL;
+}
+
 kar_skey *kar_store_note_key(kar_store *s, const char *fp,
                              const char *comment, ptrlen blob)
 {
@@ -815,7 +1079,11 @@ void kar_store_tidy(kar_store *s)
 
 /* ---- the store's bytes ---------------------------------------------------- */
 
-#define KAR_STORE_MAGIC "kageant-rules-1"
+/* Format 1: the three tables. Format 2 (KiTTY++ 0.85.1.20 on): the same,
+ * each destination followed by its "to" hop's KAR_MATCH_* value as a
+ * uint32. Format 1 still loads, every destination KAR_MATCH_EXACT. */
+#define KAR_STORE_MAGIC_1 "kageant-rules-1"
+#define KAR_STORE_MAGIC_2 "kageant-rules-2"
 
 static void store_hop_put(strbuf *sb, const kar_hop *h)
 {
@@ -830,17 +1098,24 @@ static void store_hop_put(strbuf *sb, const kar_hop *h)
 
 void kar_store_encode(const kar_store *s, strbuf *out)
 {
+    kar_store_encode_format(s, out, 2);
+}
+
+void kar_store_encode_format(const kar_store *s, strbuf *out, int format)
+{
     strbuf *sb = strbuf_new();
     unsigned char hash[32];
     ssh_hash *h;
 
-    put_stringz(sb, KAR_STORE_MAGIC);
+    put_stringz(sb, format == 1 ? KAR_STORE_MAGIC_1 : KAR_STORE_MAGIC_2);
     put_uint32(sb, s->next_id);
     put_uint32(sb, (unsigned long)s->ndest);
     for (size_t i = 0; i < s->ndest; i++) {
         put_uint32(sb, s->dest[i].id);
         store_hop_put(sb, &s->dest[i].rule.from);
         store_hop_put(sb, &s->dest[i].rule.to);
+        if (format != 1)
+            put_uint32(sb, s->dest[i].rule.to.match);
     }
     put_uint32(sb, (unsigned long)s->nkeys);
     for (size_t i = 0; i < s->nkeys; i++) {
@@ -904,6 +1179,7 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
     unsigned long n;
     ssh_hash *h;
     ptrlen body;
+    int format;
 
     *err = NULL;
     /* the hash at the end first: a file cut short or changed is damaged
@@ -932,9 +1208,16 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
     }
 
     BinarySource_BARE_INIT_PL(src, body);
-    if (!ptrlen_eq_string(get_string(src), KAR_STORE_MAGIC)) {
-        *err = "not a rule file of this version";
-        goto damaged;
+    {
+        ptrlen magic = get_string(src);
+        if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_2)) {
+            format = 2;
+        } else if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_1)) {
+            format = 1;
+        } else {
+            *err = "not a rule file of this version";
+            goto damaged;
+        }
     }
     t->next_id = get_uint32(src);
     n = get_uint32(src);
@@ -954,9 +1237,24 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
         memset(d, 0, sizeof(*d));
         d->id = id;
         if (!store_hop_get(src, &d->rule.from) ||
-            !store_hop_get(src, &d->rule.to) ||
-            (d->rule.from.host == NULL) != (d->rule.from.nkeys == 0) ||
-            d->rule.from.user || !d->rule.to.host || !d->rule.to.nkeys) {
+            !store_hop_get(src, &d->rule.to)) {
+            *err = "destination table";
+            goto damaged;
+        }
+        if (format == 2) {
+            unsigned long m = get_uint32(src);
+            if (get_err(src) || m > KAR_MATCH_MAX) {
+                *err = "destination table";
+                goto damaged;
+            }
+            d->rule.to.match = (unsigned)m;
+        }
+        /* a destination needs a host key, except one matched by the names
+         * stored later (KAR_MATCH_STORED_LATER) */
+        if ((d->rule.from.host == NULL) != (d->rule.from.nkeys == 0) ||
+            d->rule.from.user || !d->rule.to.host ||
+            (!d->rule.to.nkeys &&
+             d->rule.to.match != KAR_MATCH_STORED_LATER)) {
             *err = "destination table";
             goto damaged;
         }

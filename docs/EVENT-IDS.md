@@ -90,7 +90,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `comment` - 100-170: the comment of the key concerned; 400, 401: of the key generated or saved.
 - `credentials` - 225, 325: yes when a user name or password went to the proxy, else no.
 - `days` - 901: LogKeepDays as set, 0 = off.
-- `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then a host name when one is found; empty without a session-bind; 102: the server the client bound to, written the same way; 103, 104: the server of the connection's verified session-bind, written the same way, empty without one; 131: the protected copy written.
+- `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then its host names - the one the client sent after the binding first, marked (client), then the ones found in the host-key store and known_hosts, five in all, +N for more; empty without a session-bind; 102: the server the client bound to, written the same way without the client's name; 103, 104: the server of the connection's verified session-bind, written the same way, empty without one; 131: the protected copy written.
 - `detail` - 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name.
 - `direction` - 240, 241, 330, 331: put (upload, to the server) or get (download, from it).
 - `enc` - 111: whether the key file has a passphrase; values: password, blank.

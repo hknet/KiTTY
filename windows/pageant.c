@@ -812,6 +812,8 @@ struct keylist_display_data {
     int pending;      /* KiTTY: a not-loaded startup entry, not an agent key */
     char *pendpath;   /* KiTTY: its stored file path (pending rows only) */
     int ssh_version;  /* KiTTY: 1 or 2; SSH-1 keys cannot be re-encrypted */
+    int restricted;   /* KiTTY: the key has destination rules (every key
+                       * while the rule file is damaged): info ink */
 };
 
 static void keylist_update_callback(
@@ -841,6 +843,7 @@ static void keylist_update_callback(
     disp->pending = 0;
     disp->pendpath = NULL;
     disp->ssh_version = key->ssh_version;
+    disp->restricted = 0;
 
     /* There is at least one key, so the controls for removing keys
      * should be enabled */
@@ -918,8 +921,10 @@ static void keylist_update_callback(
     /* KiTTY: a key with destination rules (every key while the rule file
      * is damaged) is marked in the same column */
     if (key->ssh_version == 2 &&
-        kageant_rules_key_restricted(ptrlen_from_strbuf(key->blob)))
+        kageant_rules_key_restricted(ptrlen_from_strbuf(key->blob))) {
         put_dataz(disp->info, KT_KAKEYS_STATE_RESTRICTED_SUFFIX);
+        disp->restricted = 1;
+    }
 
     /* KiTTY: the Lifetime column - a countdown for an ssh-add -t key,
      * "unlimited" for everything else. */
@@ -1326,6 +1331,7 @@ void keylist_update(void)
                 disp->fp_full[t] = NULL;
             disp->confirm = 0;
             disp->pending = 1;
+            disp->restricted = 0;
             disp->pendpath = dupstr(path);
             disp->ssh_version = 0;
 
@@ -1906,20 +1912,21 @@ static void keylist_relayout(HWND hwnd)
 }
 
 /* KiTTY: the details dialog resizes too (long fingerprints, long paths).
- * Fields stretch with the right edge; the paths box gets the extra height.
- * Only one details dialog exists at a time (it is modal), so statics. */
+ * Fields stretch with the right edge; the Destinations list gets the extra
+ * height (Loaded from keeps its three lines). The labels without an id sit
+ * at the top and stay where the template puts them. Only one details
+ * dialog exists at a time (it is modal), so statics. */
 static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_KEY,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_STATE,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_FPS,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_COMMENT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
-    {IDC_KEYDETAIL_PATHS,
-     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_PATHS,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_LOCATE,  KL_ANCH_RIGHT | KL_ANCH_TOP},
-    {IDC_KEYDETAIL_DEST_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_DEST_LBL, KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_KEYDETAIL_DEST,
-     KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
-    {IDC_KEYDETAIL_RESTRICT, KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_RESTRICT, KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_KEYDETAIL_LIFETIME_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_LIFETIME,
      KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
@@ -1929,6 +1936,9 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_AUTOENC_LBL, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_AUTOENC, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KEYDETAIL_AUTOENC_NOTE, KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_ACCEPT,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_PROTECT, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
+    {IDC_KEYDETAIL_FORGET,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDOK,                  KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT keydetail_baserects[lenof(keydetail_anchors)];
@@ -2397,6 +2407,8 @@ struct kr_dest {
     char *user;             /* "" = any user */
     char *via;              /* "" = from this computer */
     bool forward;           /* KAR_LINK_FORWARD */
+    unsigned match;         /* KAR_MATCH_*: EXACT for a plain host name,
+                             * the choice for a pattern */
     kar_hop to, from;       /* the keys found (host/user filled at OK) */
     bool looked_up;         /* to/from match host and via as typed */
     HTREEITEM item;
@@ -2423,6 +2435,8 @@ static const struct kl_anchor keyrules_anchors[] = {
     {IDC_KR_REMOVE,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KR_HEAD,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_HOST,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KR_MATCH,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KR_MATCH_WARN, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_USER,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_VIA,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_FORWARD, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
@@ -2529,6 +2543,7 @@ static struct kr_state *kr_state_new(const struct kr_open *op)
         d->user = dupstr(sd->rule.to.user ? sd->rule.to.user : "");
         d->via = dupstr(sd->rule.from.host ? sd->rule.from.host : "");
         d->forward = (s->links[i].flags & KAR_LINK_FORWARD) != 0;
+        d->match = sd->rule.to.match;
         kar_hop_copy(&d->to, &sd->rule.to);
         kar_hop_copy(&d->from, &sd->rule.from);
         d->looked_up = true;
@@ -2626,6 +2641,14 @@ static void kr_tree_attrs(HWND tree, struct kr_dest *d, int ki, int di)
     if (d->forward)
         kr_tree_add(tree, d->item, KT_KARULES_ATTR_FORWARD,
                     KR_LPARAM(ki, di));
+    if (d->match != KAR_MATCH_EXACT) {
+        t = dupprintf(KT_KARULES_ATTR_MATCH_FMT,
+                      d->match == KAR_MATCH_CA_PATTERN ? KT_KARULES_MATCH_CA :
+                      d->match == KAR_MATCH_STORED_NOW ? KT_KARULES_MATCH_NOW :
+                                                         KT_KARULES_MATCH_LATER);
+        kr_tree_add(tree, d->item, t, KR_LPARAM(ki, di));
+        sfree(t);
+    }
     if (d->looked_up)
         t = dupprintf(KT_KARULES_ATTR_KEYS_FMT, (int)d->to.nkeys);
     else
@@ -2698,6 +2721,30 @@ static void kr_status(HWND hwnd, const char *text, bool bad)
     InvalidateRect(st, NULL, TRUE);
 }
 
+/* The pattern choice of a destination: enabled for a host name that is a
+ * pattern, the warning line under it for "Also servers stored later". */
+static void kr_match_ui(HWND hwnd, const struct kr_dest *d)
+{
+    bool pat = d && kar_host_is_pattern(d->host);
+    SendDlgItemMessage(hwnd, IDC_KR_MATCH, CB_SETCURSEL,
+                       pat && d->match >= KAR_MATCH_CA_PATTERN ?
+                       (WPARAM)(d->match - 1) : (WPARAM)-1, 0);
+    EnableWindow(GetDlgItem(hwnd, IDC_KR_MATCH), pat);
+    EnableWindow(GetDlgItem(hwnd, IDC_KR_MATCH_LBL), pat);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_MATCH_WARN),
+               pat && d->match == KAR_MATCH_STORED_LATER ? SW_SHOW : SW_HIDE);
+}
+
+/* A destination's host name was changed: a pattern takes a choice ("Host
+ * CA only" first), a plain name the exact match. */
+static void kr_match_follow_host(struct kr_dest *d)
+{
+    if (!kar_host_is_pattern(d->host))
+        d->match = KAR_MATCH_EXACT;
+    else if (d->match == KAR_MATCH_EXACT)
+        d->match = KAR_MATCH_CA_PATTERN;
+}
+
 /* The right-hand panel for the selection. */
 static void kr_show(HWND hwnd, struct kr_state *st)
 {
@@ -2719,10 +2766,13 @@ static void kr_show(HWND hwnd, struct kr_state *st)
     SetDlgItemText(hwnd, IDC_KR_VIA, d ? d->via : "");
     CheckDlgButton(hwnd, IDC_KR_FORWARD,
                    d && d->forward ? BST_CHECKED : BST_UNCHECKED);
+    kr_match_ui(hwnd, d);
     if (d) {
         SetDlgItemText(hwnd, IDC_KR_HEAD, KT_KARULES_HEAD_DEST);
         if (!d->looked_up) {
             put_dataz(sb, KT_KARULES_KEYS_NOT_LOOKED_UP);
+        } else if (!d->to.nkeys) {
+            put_dataz(sb, KT_KARULES_KEYS_LATER);
         } else {
             kr_keys_text(sb, &d->to, NULL, 0);
             if (d->from.nkeys) {
@@ -2783,8 +2833,37 @@ static void kr_lookup(HWND hwnd, struct kr_state *st)
         SetFocus(GetDlgItem(hwnd, IDC_KR_HOST));
         return;
     }
-    nt = kageant_dest_lookup(host, port, &ft);
-    if (!nt) {
+    kr_match_follow_host(d);
+    if (d->match == KAR_MATCH_STORED_NOW ||
+        d->match == KAR_MATCH_STORED_LATER) {
+        /* every key stored now under a name the pattern matches; for
+         * "Also servers stored later" a snapshot that may be empty */
+        nt = kageant_dest_lookup_pattern(host, port, &ft);
+    } else {
+        nt = kageant_dest_lookup(host, port, &ft);
+        if (d->match == KAR_MATCH_CA_PATTERN) {
+            /* "Host CA only": the CA keys of what was found */
+            size_t j = 0;
+            for (size_t i = 0; i < nt; i++) {
+                if (ft[i].is_ca) {
+                    struct kageant_dest_found tmp = ft[j];
+                    ft[j] = ft[i];
+                    ft[i] = tmp;
+                    j++;
+                }
+            }
+            for (size_t i = j; i < nt; i++) {
+                strbuf_free(ft[i].blob);
+                sfree(ft[i].source);
+            }
+            nt = j;
+            if (!nt) {
+                msg = dupprintf(KT_KARULES_NO_CA_FMT, d->host);
+                goto out;
+            }
+        }
+    }
+    if (!nt && d->match != KAR_MATCH_STORED_LATER) {
         msg = dupprintf(KT_KARULES_NO_KEYS_FMT, d->host);
         goto out;
     }
@@ -2819,9 +2898,12 @@ static void kr_lookup(HWND hwnd, struct kr_state *st)
             strbuf_free(vb);
         }
     }
+    if (!nt)
+        put_dataz(sb, KT_KARULES_KEYS_LATER);
     SetDlgItemText(hwnd, IDC_KR_KEYS, sb->s);
     strbuf_free(sb);
-    msg = dupprintf(KT_KARULES_FOUND_FMT, (int)nt, d->host);
+    msg = nt ? dupprintf(KT_KARULES_FOUND_FMT, (int)nt, d->host)
+             : dupprintf(KT_KARULES_LATER_NONE_FMT, d->host);
     kr_status(hwnd, msg, false);
     sfree(msg);
     msg = NULL;
@@ -2851,7 +2933,9 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
             int port;
             kar_rule r;
             unsigned id;
-            if (!d->looked_up || !d->to.nkeys ||
+            kr_match_follow_host(d);
+            if (!d->looked_up ||
+                (!d->to.nkeys && d->match != KAR_MATCH_STORED_LATER) ||
                 !kr_split_host(d->host, &host, &port) ||
                 (*d->via && !d->from.nkeys)) {
                 sfree(host);
@@ -2866,6 +2950,7 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
             r.to.host = host;
             sfree(r.to.user);
             r.to.user = *d->user ? dupstr(d->user) : NULL;
+            r.to.match = d->match;
             sfree(r.from.user);
             r.from.user = NULL;
             sfree(r.from.host);
@@ -2903,8 +2988,12 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_INITDIALOG: {
         static const struct kitty_theme_row rows[] = {
             {IDC_KR_HOST, {IDC_KR_HOST_LBL, 0}},
+            {IDC_KR_MATCH, {IDC_KR_MATCH_LBL, 0}},
             {IDC_KR_USER, {IDC_KR_USER_LBL, 0}},
             {IDC_KR_VIA,  {IDC_KR_VIA_LBL, 0}},
+        };
+        static const char *const matches[] = {   /* KAR_MATCH_* - 1 */
+            KT_KARULES_MATCH_CA, KT_KARULES_MATCH_NOW, KT_KARULES_MATCH_LATER,
         };
         const char *damage = kageant_rules_damage_text();
         char *t;
@@ -2919,6 +3008,12 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
         SendDlgItemMessage(hwnd, IDC_KR_USER, EM_LIMITTEXT, KAR_MAX_USER, 0);
         SendDlgItemMessage(hwnd, IDC_KR_HOST, EM_LIMITTEXT, KAR_MAX_HOST, 0);
         SendDlgItemMessage(hwnd, IDC_KR_VIA, EM_LIMITTEXT, KAR_MAX_HOST, 0);
+        for (size_t i = 0; i < lenof(matches); i++)
+            SendDlgItemMessage(hwnd, IDC_KR_MATCH, CB_ADDSTRING, 0,
+                               (LPARAM)matches[i]);
+        SetDlgItemText(hwnd, IDC_KR_MATCH_WARN, KT_KARULES_MATCH_WARN);
+        kitty_theme_mark_ink(GetDlgItem(hwnd, IDC_KR_MATCH_WARN),
+                             KITTY_INK_WARN);
         kitty_theme_align_rows(hwnd, rows, lenof(rows));
         kr_tree_build(hwnd, st);
         kr_show(hwnd, st);
@@ -2950,6 +3045,10 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
             mmi->ptMinTrackSize.y = keyrules_minsize.cy;
         }
         return 0;
+      case WM_HELP:
+        /* KiTTY: F1 - the manual's section on restricting a key */
+        launch_help(hwnd, WINHELP_CTX_pageant_restrict);
+        return 1;
       case WM_NOTIFY: {
         LPNMHDR nh = (LPNMHDR)lParam;
         if (!st || nh->idFrom != IDC_KR_TREE)
@@ -2989,6 +3088,10 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 char *label;
                 sfree(*field);
                 *field = kr_field(hwnd, LOWORD(wParam));
+                if (LOWORD(wParam) == IDC_KR_HOST) {
+                    kr_match_follow_host(d);
+                    kr_match_ui(hwnd, d);
+                }
                 if (LOWORD(wParam) != IDC_KR_USER && d->looked_up) {
                     /* the keys were found for the old name */
                     d->looked_up = false;
@@ -3023,6 +3126,30 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
                               st->cd);
                 st->loading = false;
+            }
+            return 0;
+          case IDC_KR_MATCH:
+            if (HIWORD(wParam) == CBN_SELCHANGE && !st->loading &&
+                st->ck >= 0 && st->cd >= 0) {
+                struct kr_dest *d = &st->k[st->ck].d[st->cd];
+                LRESULT sel = SendDlgItemMessage(hwnd, IDC_KR_MATCH,
+                                                 CB_GETCURSEL, 0, 0);
+                if (sel >= 0 && sel < KAR_MATCH_MAX &&
+                    d->match != (unsigned)sel + 1) {
+                    d->match = (unsigned)sel + 1;
+                    /* the keys depend on the choice: look them up again */
+                    if (d->looked_up) {
+                        d->looked_up = false;
+                        kar_hop_free(&d->to);
+                        SetDlgItemText(hwnd, IDC_KR_KEYS,
+                                       KT_KARULES_KEYS_NOT_LOOKED_UP);
+                    }
+                    kr_match_ui(hwnd, d);
+                    st->loading = true;
+                    kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
+                                  st->cd);
+                    st->loading = false;
+                }
             }
             return 0;
           case IDC_KR_LOOKUP:
@@ -3134,11 +3261,13 @@ static bool keyrules_open(HWND owner, ptrlen blob, const char *comment)
                           KeyRulesProc, (LPARAM)&op) == 1;
 }
 
-/* The key details' "Destinations:" line: "any", the rules, or the damaged
+/* The key details' "Destinations:" list: "any - ...", the count and one
+ * line per destination as the rule store holds them, or the damaged
  * file's note. */
 static void keydetail_show_dest(HWND hwnd, ptrlen blob, int ssh_version)
 {
-    char *fp, *t = NULL;
+    char *fp, *lines, *head, *t;
+    size_t n = 0;
     if (!blob.len || ssh_version != 2) {
         SetDlgItemText(hwnd, IDC_KEYDETAIL_DEST, KT_KAKEYS_DEST_ANY);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYDETAIL_RESTRICT), FALSE);
@@ -3149,10 +3278,19 @@ static void keydetail_show_dest(HWND hwnd, ptrlen blob, int ssh_version)
         return;
     }
     fp = kar_key_fp(blob);
-    t = kageant_rules_text_for_fp(fp);
+    lines = kar_store_dest_lines(kar_store_get(), fp, &n);
     sfree(fp);
-    SetDlgItemText(hwnd, IDC_KEYDETAIL_DEST, t ? t : KT_KAKEYS_DEST_ANY);
+    if (!lines) {
+        SetDlgItemText(hwnd, IDC_KEYDETAIL_DEST, KT_KAKEYS_DEST_ANY);
+        return;
+    }
+    head = (n == 1) ? dupstr(KT_KAKEYS_DEST_COUNT1)
+                    : dupprintf(KT_KAKEYS_DEST_COUNT_FMT, (int)n);
+    t = dupprintf("%s\r\n%s", head, lines);
+    SetDlgItemText(hwnd, IDC_KEYDETAIL_DEST, t);
     sfree(t);
+    sfree(head);
+    sfree(lines);
 }
 
 static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
@@ -3405,6 +3543,17 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         if (wParam == TID_KEYDETAIL_LIFETIME)
             keydetail_show_lifetime(hwnd);
         return 0;
+      case WM_HELP: {
+        /* KiTTY: F1 - the Destinations part opens the restriction
+         * section, the rest the key list's */
+        int id = ((LPHELPINFO)lParam)->iCtrlId;
+        launch_help(hwnd, (id == IDC_KEYDETAIL_DEST ||
+                           id == IDC_KEYDETAIL_DEST_LBL ||
+                           id == IDC_KEYDETAIL_RESTRICT) ?
+                    WINHELP_CTX_pageant_restrict :
+                    WINHELP_CTX_pageant_keydetails);
+        return 1;
+      }
       case WM_DESTROY:
         KillTimer(hwnd, TID_KEYDETAIL_LIFETIME);
         if (keydetail_blob) {
@@ -5445,6 +5594,15 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         if (disp->fp_full[t] &&
                             kageant_flash_get(disp->fp_full[t], &allowed))
                             hit = 1;
+                    if (!hit && !disp->pending && disp->restricted) {
+                        /* KiTTY: a key with destination rules: its text in
+                         * the theme's info ink. Grey (not loaded) and the
+                         * key-use tint come first. A selected row keeps the
+                         * system's selection colours. */
+                        cd->clrText = kitty_theme_ink(
+                            kitty_theme_window_dark(hwnd), KITTY_INK_INFO);
+                        res = CDRF_NEWFONT;
+                    }
                     if (hit) {
                         cd->clrTextBk = allowed ? KAGEANT_NOTICE_INFO
                                                 : KAGEANT_NOTICE_WARN;
@@ -7931,6 +8089,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * first request on. A damaged file refuses every key and says so. */
         kageant_restricted_hook = kageant_audit_restricted;
         kageant_rules_changed_hook = kageant_rules_changed;
+        /* the names of a bound host key, for a pattern rule's "Also
+         * servers stored later" */
+        kar_hostkey_names = kageant_dest_names;
         if (!kageant_rules_load()) {
             char *t = dupprintf(KT_KARULES_DAMAGED_NOTICE_FMT,
                                 kageant_rules_damage_text());

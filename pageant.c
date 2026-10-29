@@ -93,6 +93,9 @@ typedef struct PageantBinding {
     strbuf *hostkey;            /* the server's host key blob */
     strbuf *sid;                /* the session id the server signed */
     bool forwarding;            /* bound for agent forwarding, not a login */
+    char *host;                 /* the client's name for the server
+                                 * (session-bind-host-v00@kapper.net), NULL
+                                 * when it sent none; display only */
 } PageantBinding;
 
 struct PageantClientInfo {
@@ -306,6 +309,7 @@ struct PageantSignOp {
     size_t nbind;                   /* KiTTY: the connection's session-binds */
     strbuf *bind_hostkey[KAGEANT_MAX_BINDINGS]; /* when the request came */
     bool bind_fwd[KAGEANT_MAX_BINDINGS];
+    char *bind_host[KAGEANT_MAX_BINDINGS];
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -847,15 +851,82 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
     }
 }
 
+/* Does the list for this connection leave the key out? info NULL (the
+ * agent's own window) lists every key. The list and the count of
+ * withheld-keys-v00@kapper.net both use this. */
+static bool list_leaves_out(PageantClientInfo *info, PageantPublicKey *pub,
+                            int ssh_version)
+{
+    const char *why;
+    return info && ssh_version == 2 &&
+        !restrict_allows(info, pub->sort.full_pub, NULL, NULL, &why, NULL);
+}
+
+/* KiTTY: how many SSH-2 keys the key list of this connection leaves out
+ * because of their destination rules */
+static unsigned long withheld_count(PageantClientInfo *info)
+{
+    unsigned long n = 0;
+    for (size_t oi = 0; oi < puborder_n; oi++)
+        if (puborder[oi]->sort.priv.ssh_version == 2 &&
+            list_leaves_out(info, puborder[oi], 2))
+            n++;
+    return n;
+}
+
+/* KiTTY: the group of a listed key on a connection bound for a login
+ * (kar_list_group): its rules permit this server by host keys alone, only
+ * by a pattern, or it is not restricted. */
+static int list_group(PageantClientInfo *info, PageantPublicKey *pub)
+{
+    kar_store *st = kar_store_get();
+    kar_bind b[KAGEANT_MAX_BINDINGS];
+    kar_rules *r;
+    char *fp;
+    int g;
+
+    if (!st->damaged && !st->nlinks)
+        return KAR_GROUP_UNRESTRICTED;
+    if (st->damaged)
+        return KAR_GROUP_NONE;
+    fp = kar_key_fp(pub->sort.full_pub);
+    r = kar_store_restricted(st, fp) ? kar_store_rules(st, fp) : NULL;
+    sfree(fp);
+    if (!r)
+        return KAR_GROUP_UNRESTRICTED;
+    g = kar_list_group(r, b, info_binds(info, b));
+    kar_rules_free(r);
+    return g;
+}
+
 /* info non-NULL: the list an external client gets, without the
  * restricted keys this connection may not use (decision D9, as OpenSSH:
- * a server never learns of a key that may not go to it). */
+ * a server never learns of a key that may not go to it). On a connection
+ * bound for a login the keys come in three groups, each in the offer
+ * order: restricted to this server by its host keys, restricted to it by
+ * a pattern only, not restricted. */
 static void list_keys_for(BinarySink *bs, int ssh_version, bool extended,
                           PageantClientInfo *info)
 {
     PageantPublicKey *pub;
     strbuf *entries = strbuf_new();
     unsigned long n = 0;
+    bool grouped = info && ssh_version == 2 && info->nbindings &&
+        !info->bindings[info->nbindings - 1].forwarding;
+    int *group = NULL;
+    size_t *order = NULL;
+
+    if (grouped && puborder_n) {
+        group = snewn(puborder_n, int);
+        order = snewn(puborder_n, size_t);
+        for (size_t oi = 0; oi < puborder_n; oi++) {
+            pub = puborder[oi];
+            group[oi] = (pub->sort.priv.ssh_version != ssh_version ||
+                         list_leaves_out(info, pub, ssh_version)) ?
+                KAR_GROUP_NONE : list_group(info, pub);
+        }
+        kar_list_order(group, puborder_n, order);
+    }
 
     /*
      * KiTTY: emit keys in the user-defined OFFER order (puborder), filtered to
@@ -865,18 +936,23 @@ static void list_keys_for(BinarySink *bs, int ssh_version, bool extended,
      * so the entries are built before it.
      */
     for (size_t oi = 0; oi < puborder_n; oi++) {
-        const char *why;
-        pub = puborder[oi];
-        if (pub->sort.priv.ssh_version != ssh_version)
-            continue;
-        if (info && ssh_version == 2 &&
-            !restrict_allows(info, pub->sort.full_pub, NULL, NULL, &why,
-                             NULL))
-            continue;
+        if (group) {
+            if (group[order[oi]] == KAR_GROUP_NONE)
+                continue;
+            pub = puborder[order[oi]];
+        } else {
+            pub = puborder[oi];
+            if (pub->sort.priv.ssh_version != ssh_version)
+                continue;
+            if (list_leaves_out(info, pub, ssh_version))
+                continue;
+        }
         list_key_emit(BinarySink_UPCAST(entries), pub, ssh_version,
                       extended);
         n++;
     }
+    sfree(group);
+    sfree(order);
     put_uint32(bs, n);
     put_datapl(bs, ptrlen_from_strbuf(entries));
     strbuf_free(entries);
@@ -993,6 +1069,7 @@ void pageant_unregister_client(PageantClient *pc)
     for (size_t i = 0; i < info->nbindings; i++) {
         strbuf_free(info->bindings[i].hostkey);
         strbuf_free(info->bindings[i].sid);
+        sfree(info->bindings[i].host);
     }
     sfree(pc->info);
 }
@@ -1008,6 +1085,7 @@ static const struct kageant_dest *info_dest(PageantClientInfo *info,
     for (size_t i = 0; i < info->nbindings; i++) {
         d->hostkey[i] = ptrlen_from_strbuf(info->bindings[i].hostkey);
         d->forwarding[i] = info->bindings[i].forwarding;
+        d->host[i] = info->bindings[i].host;
     }
     return d;
 }
@@ -1108,6 +1186,7 @@ static const struct kageant_dest *signop_dest(PageantSignOp *so,
     for (size_t i = 0; i < so->nbind; i++) {
         d->hostkey[i] = ptrlen_from_strbuf(so->bind_hostkey[i]);
         d->forwarding[i] = so->bind_fwd[i];
+        d->host[i] = so->bind_host[i];
     }
     return d;
 }
@@ -1116,8 +1195,10 @@ static void signop_free(PageantAsyncOp *pao)
 {
     PageantSignOp *so = container_of(pao, PageantSignOp, pao);
     signop_unlink(so);
-    for (size_t i = 0; i < so->nbind; i++)
+    for (size_t i = 0; i < so->nbind; i++) {
         strbuf_free(so->bind_hostkey[i]);
+        sfree(so->bind_host[i]);
+    }
     strbuf_free(so->data_to_sign);
     sfree(so->keyfp);
     if (so->pubblob) strbuf_free(so->pubblob);
@@ -2211,6 +2292,8 @@ static PageantAsyncOp *pageant_make_op(
             so->bind_hostkey[bi] =
                 strbuf_dup(ptrlen_from_strbuf(pc->info->bindings[bi].hostkey));
             so->bind_fwd[bi] = pc->info->bindings[bi].forwarding;
+            so->bind_host[bi] = pc->info->bindings[bi].host ?
+                dupstr(pc->info->bindings[bi].host) : NULL;
         }
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
@@ -2968,6 +3051,7 @@ static PageantAsyncOp *pageant_make_op(
             b->hostkey = strbuf_dup(hostkey);
             b->sid = strbuf_dup(sid);
             b->forwarding = forwarding;
+            b->host = NULL;
             if (kageant_bind_hook)
                 kageant_bind_hook(hostkey, forwarding, pageant_external_pid);
 
@@ -2975,6 +3059,76 @@ static PageantAsyncOp *pageant_make_op(
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
                                "(session bound%s)",
                                forwarding ? " for forwarding" : "");
+            break;
+          }
+
+          case EXT_WITHHELD_KEYS: {
+            /*
+             * KiTTY: withheld-keys-v00@kapper.net
+             * (docs/PROTOCOL-AGENT-KAPPER.md): how many keys the key list
+             * of this connection leaves out because of their destination
+             * rules, for the client's note to the user. Only on a
+             * connection bound for a login and for nothing else: a binding
+             * for forwarding means the asker sits on a remote server,
+             * which must not learn of keys for other servers. That answer
+             * is plain SSH_AGENT_FAILURE, the one an agent without the
+             * extension gives. It writes no refusal record: no key use was
+             * refused.
+             */
+            PageantClientInfo *info = pc->info;
+            bool fwd = false;
+            for (size_t i = 0; i < info->nbindings; i++)
+                if (info->bindings[i].forwarding)
+                    fwd = true;
+            if (get_avail(msg) || !info->nbindings || fwd) {
+                strbuf_clear(sb);
+                put_byte(sb, SSH_AGENT_FAILURE);
+                pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE "
+                                   "(withheld-keys: %s)",
+                                   get_avail(msg) ? "trailing data" :
+                                   fwd ? "bound for forwarding" :
+                                   "not bound");
+                goto responded;
+            }
+            unsigned long nw = withheld_count(info);
+            put_byte(sb, SSH_AGENT_SUCCESS);
+            put_uint32(sb, nw);
+            pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
+                               "(%lu keys withheld)", nw);
+            break;
+          }
+
+          case EXT_SESSION_BIND_HOST: {
+            /*
+             * KiTTY: session-bind-host-v00@kapper.net
+             * (docs/PROTOCOL-AGENT-KAPPER.md): the name the client
+             * connected to, sent right after its session-bind. Kept with
+             * the last binding as the client's word, shown beside the
+             * verified fingerprint, never used for a decision. One name
+             * per binding.
+             */
+            PageantClientInfo *info = pc->info;
+            const char *why;
+            char *host;
+            if (!kar_parse_bind_host(msg, &host, &why)) {
+                fail("session-bind-host: %s", why);
+                goto responded;
+            }
+            if (!info->nbindings) {
+                sfree(host);
+                fail("session-bind-host: the connection is not bound");
+                goto responded;
+            }
+            if (info->bindings[info->nbindings - 1].host) {
+                sfree(host);
+                fail("session-bind-host: the binding has a host name "
+                     "already");
+                goto responded;
+            }
+            info->bindings[info->nbindings - 1].host = host;
+            put_byte(sb, SSH_AGENT_SUCCESS);
+            pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
+                               "(host name kept with the binding)");
             break;
           }
 

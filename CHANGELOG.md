@@ -22,13 +22,22 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   agent forwarding each forwarded agent connection is bound for
   forwarding. An agent without session-bind answers a failure. The login
   then goes on unbound. The Terminal Window's Event Log shows the outcome.
+  They also send the name they connected to (session-bind-host-v00@kapper.net):
+  kageant shows it first in `dest=`, `fwd=` and the confirmation, marked
+  "(client)", with up to five names before "+N".
 - kageant: keys restricted to destinations - OpenSSH's `ssh-add -h`
   (restrict-destination-v00@openssh.com) and a rule editor in Key details
   (Restrict...). A restricted key signs a login only on a connection bound
   to one of its servers. A connection bound elsewhere does not see it. The
   rules follow the key by fingerprint in one DPAPI-encrypted file,
   kageant-rules.dat. A refusal is event 104. Event 110 carries a key's
-  rules.
+  rules. When kageant held keys back for a server
+  (withheld-keys-v00@kapper.net), klink, kscp, ksftp and kitty.exe show
+  "kageant: 1 key restricted to other servers was not offered." before the
+  next authentication method. In the rule editor a host may be a pattern
+  (`*.customer.com`): matched by a host CA, by the keys stored now or also
+  by servers stored later. On a bound connection the keys restricted to
+  that server come first in the key list.
 - Links in a session comment open with a click: the box under the session
   list underlines web addresses, `file://` links and UNC paths and opens them
   in the program Windows has registered for them. A path with blanks goes in

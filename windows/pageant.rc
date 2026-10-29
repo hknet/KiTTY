@@ -208,19 +208,23 @@ BEGIN
     EDITTEXT IDC_KEYDETAIL_COMMENT, 72, 92, 338, 26,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
     LTEXT KT_RC_KEYDETAILS_LOADED_FROM, -1, 10, 122, 58, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_PATHS, 72, 122, 278, 56,
+    /* three lines high, a scroll bar for more: the window's extra height
+     * goes to Destinations below (keydetail_anchors) */
+    EDITTEXT IDC_KEYDETAIL_PATHS, 72, 122, 278, 32,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
     /* KiTTY: re-point a not-loaded entry whose file is absent or will not
      * parse. Never shown on a mismatch - Accept below owns that case. */
     PUSHBUTTON KT_RC_KEYDETAILS_LOCATE, IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
     /* KiTTY: the key's destination rules (ssh-add -h, the rule editor
-     * Restrict... opens), "any" without */
-    LTEXT KT_RC_KEYDETAILS_DEST, IDC_KEYDETAIL_DEST_LBL, 10, 182, 58, 11,
+     * Restrict... opens): the count on the first line, one line per
+     * destination below it, "any" without. Takes the height the window
+     * grows by; Restrict... beside it at its top. */
+    LTEXT KT_RC_KEYDETAILS_DEST, IDC_KEYDETAIL_DEST_LBL, 10, 158, 58, 11,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_DEST, 72, 182, 278, 11,
-        ES_READONLY | ES_AUTOHSCROLL
+    EDITTEXT IDC_KEYDETAIL_DEST, 72, 158, 278, 36,
+        ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
     PUSHBUTTON KT_RC_KEYDETAILS_RESTRICT, IDC_KEYDETAIL_RESTRICT,
-        356, 181, 54, 14
+        356, 158, 54, 14
     LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 198, 58, 11,
         SS_CENTERIMAGE
     EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 198, 338, 11,
@@ -277,9 +281,12 @@ END
 
 /* KiTTY: the destination rule editor (Key details > Restrict...). Left: the
  * tree - each key with rules at the root, its destinations below, their
- * attributes below those. Right: the selected destination - host, user,
- * via host, forwarding, the host keys found. Resizable: the tree grows in
- * height, the right side in both directions (keyrules_anchors). */
+ * attributes below those. Right: the selected destination - host, how a
+ * pattern in it is matched (enabled for a pattern only, a warning line
+ * under it for "Also servers stored later"), user, via host, forwarding,
+ * the host keys found. Resizable: the tree grows in height, the right
+ * side in both directions (keyrules_anchors). The combo box lands on 14
+ * units at this font, its label takes the same. */
 IDD_KEYRULES DIALOGEX DISCARDABLE 0, 0, 470, 262
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_KEY_RULES
@@ -295,15 +302,20 @@ BEGIN
     LTEXT "", IDC_KR_HEAD, 222, 8, 238, 11, SS_CENTERIMAGE | SS_ENDELLIPSIS
     LTEXT KT_RC_KEYRULES_HOST, IDC_KR_HOST_LBL, 222, 24, 50, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KR_HOST, 276, 24, 184, 11, ES_AUTOHSCROLL
-    LTEXT KT_RC_KEYRULES_USER, IDC_KR_USER_LBL, 222, 40, 50, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_KR_USER, 276, 40, 184, 11, ES_AUTOHSCROLL
-    LTEXT KT_RC_KEYRULES_VIA, IDC_KR_VIA_LBL, 222, 56, 50, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_KR_VIA, 276, 56, 184, 11, ES_AUTOHSCROLL
-    AUTOCHECKBOX KT_RC_KEYRULES_FORWARD, IDC_KR_FORWARD, 222, 72, 238, 12
-    PUSHBUTTON KT_RC_KEYRULES_LOOKUP, IDC_KR_LOOKUP, 222, 89, 90, 15
-    LTEXT KT_RC_KEYRULES_KEYS, IDC_KR_KEYS_LBL, 222, 109, 238, 11,
+    LTEXT KT_RC_KEYRULES_MATCH, IDC_KR_MATCH_LBL, 222, 40, 50, 14,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KR_KEYS, 222, 122, 238, 89,
+    COMBOBOX IDC_KR_MATCH, 276, 40, 184, 60,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT "", IDC_KR_MATCH_WARN, 222, 57, 238, 20
+    LTEXT KT_RC_KEYRULES_USER, IDC_KR_USER_LBL, 222, 80, 50, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KR_USER, 276, 80, 184, 11, ES_AUTOHSCROLL
+    LTEXT KT_RC_KEYRULES_VIA, IDC_KR_VIA_LBL, 222, 96, 50, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KR_VIA, 276, 96, 184, 11, ES_AUTOHSCROLL
+    AUTOCHECKBOX KT_RC_KEYRULES_FORWARD, IDC_KR_FORWARD, 222, 112, 238, 12
+    PUSHBUTTON KT_RC_KEYRULES_LOOKUP, IDC_KR_LOOKUP, 222, 128, 90, 15
+    LTEXT KT_RC_KEYRULES_KEYS, IDC_KR_KEYS_LBL, 222, 148, 238, 11,
+        SS_CENTERIMAGE
+    EDITTEXT IDC_KR_KEYS, 222, 161, 238, 50,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL
     LTEXT "", IDC_KR_STATUS, 10, 236, 330, 22
     DEFPUSHBUTTON KT_WIN_OK, IDOK, 350, 240, 52, 15

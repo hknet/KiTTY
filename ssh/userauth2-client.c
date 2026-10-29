@@ -147,6 +147,14 @@ struct ssh2_userauth_state {
     /* KiTTY: the agent connection this login holds, bound to the server
      * (session-bind@openssh.com). NULL = one-off agent_query() calls. */
     agent_connection *kitty_agent_conn;
+    /* KiTTY: whether the held connection was bound, whether
+     * session-bind-host-v00@kapper.net went out on it, the number of keys
+     * kageant left out of its list because of their destination rules
+     * (withheld-keys-v00@kapper.net) and whether the line about them was
+     * shown */
+    bool kitty_agent_bound, kitty_host_sent;
+    unsigned long kitty_withheld;
+    bool kitty_withheld_shown;
     bufchain banner;
     bufchain_sink banner_bs;
     StripCtrlChars *banner_scc;
@@ -795,6 +803,7 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                 char *kfp = kitty_agentbind_hostkey_fp(s->transport_layer);
                 ppl_logevent(KT_AGENT_LOG_BOUND, kfp);
                 sfree(kfp);
+                s->kitty_agent_bound = true;
             } else if (s->agent_response.ptr) {
                 ppl_logevent(KT_AGENT_LOG_BIND_REFUSED,
                              kitty_agentbind_reply_type(
@@ -802,6 +811,39 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
                                  s->agent_response.len));
             } else {
                 ppl_logevent(KT_AGENT_LOG_BIND_NO_REPLY);
+            }
+        }
+
+        /*
+         * KiTTY: on a bound connection, kageant's two extensions
+         * (docs/PROTOCOL-AGENT-KAPPER.md): the name this login connected
+         * to, kept with the binding for display, and how many keys its
+         * destination rules leave out of the list. A failure answer (an
+         * agent without them) changes nothing and is not shown.
+         */
+        if (s->kitty_agent_bound) {
+            strbuf *hq = kitty_agentbind_host_query(s->transport_layer);
+            s->kitty_host_sent = (hq != NULL);
+            if (hq) {
+                ssh2_userauth_agent_query(s, hq);
+                strbuf_free(hq);
+            }
+        }
+        if (s->kitty_host_sent)
+            crWaitUntilV(!s->auth_agent_query);
+        if (s->kitty_agent_bound) {
+            strbuf *wq = kitty_agentbind_withheld_query();
+            ssh2_userauth_agent_query(s, wq);
+            strbuf_free(wq);
+        }
+        if (s->kitty_agent_bound) {
+            crWaitUntilV(!s->auth_agent_query);
+            {
+                uint32_t nw;
+                if (kitty_agentbind_withheld_reply(s->agent_response.ptr,
+                                                   s->agent_response.len,
+                                                   &nw))
+                    s->kitty_withheld = nw;
             }
         }
 
@@ -1249,6 +1291,21 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
             }
 
             s->ppl.bpp->pls->actx = SSH2_PKTCTX_NOAUTH;
+
+            /* KiTTY: kageant held keys back for this server
+             * (withheld-keys-v00@kapper.net): once the agent's keys are
+             * used up, before the next method, the user learns why the
+             * key expected is not among them. */
+            if (s->kitty_withheld && !s->kitty_withheld_shown &&
+                !(s->can_pubkey && !s->done_agent &&
+                  s->agent_key_index < s->agent_key_limit)) {
+                char wt[96];
+                kitty_agentbind_withheld_text(wt, sizeof(wt),
+                                              s->kitty_withheld);
+                ppl_printf("%s\r\n", wt);
+                ppl_logevent("%s", wt);
+                s->kitty_withheld_shown = true;
+            }
 
 #ifndef NO_GSSAPI
             if (s->can_gssapi_keyex_auth && !s->tried_gssapi_keyex_auth) {

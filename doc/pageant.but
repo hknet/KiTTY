@@ -442,11 +442,19 @@ as their last two fields.
 \b Each binding is a record of its own: kind \c{session-bind}, result
 \c{accepted}, \c{dest} and \c{forwarding} (\c{yes} or \c{no}).
 
-The fingerprint is the verified part. The host name is looked up in the
-KiTTY++ host-key store and in \c{%USERPROFILE%\\.ssh\\known_hosts}
-(plain entries: a hashed entry holds no name) and is shown for
-orientation only. With more names for one key the first is shown,
-followed by \c{+N}. Without a name the fingerprint stands alone.
+The fingerprint is the verified part. The host names are looked up in
+the KiTTY++ host-key store and in \c{%USERPROFILE%\\.ssh\\known_hosts}
+(plain entries: a hashed entry holds no name) and are shown for
+orientation only. klink, kscp, ksftp and kitty.exe also send the name
+they connected to, right after the binding
+(\c{session-bind-host-v00@kapper.net}). That name comes first, marked
+\c{(client)}: it is the client's word, never verified and never used
+for a decision. The names the lookup finds follow when they differ from
+it, at most 5 names in all, then \c{+N} for the rest:
+\c{SHA256:WCvM... monitor.example.net (client) 192.0.2.21 +1}. An
+OpenSSH client sends no name: the lookup's names stand alone. Without a
+name the fingerprint stands alone. The binding's own record is written
+before the client's name arrives and carries the lookup's names only.
 
 A binding whose signature does not verify is refused and logged as a
 refused request with the reason. The login goes on. A connection takes
@@ -463,6 +471,10 @@ Event Log shows the outcome: \q{Agent connection bound to host key
 without \c{session-bind@openssh.com} (PuTTY's Pageant, an older
 kageant) answers a failure. The login then goes on unbound. A GSSAPI
 key exchange has no host key signature: such a login is not bound.
+On a forwarded agent connection the name sent after the binding is the
+name of the server whose connection it is. kageant's own extensions
+are described in full in
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
 
 A key without destination rules behaves as before: kageant refuses
 nothing because of the destination. A connection without a binding -
@@ -502,6 +514,41 @@ keeps them: rules are lifted in the rule editor (\q{Remove}), not by a
 program that holds the private key. The limits are OpenSSH's: 1024
 destinations per key, a user name of 256 bytes.
 
+In the rule editor a host name may be a pattern: \c{*} and \c{?}, where
+\c{*} also covers dots (\c{*.customer.com} takes
+\c{a.b.customer.com}). \q{Pattern:} under \q{Host:} then decides how a
+server is matched:
+
+\b \q{Host CA only} (the default): the destination's host keys are CA
+keys, from the CA store and the \c{@cert-authority} lines that cover the
+pattern. A server passes with a host certificate from that CA, valid
+now, with a principal the pattern matches. A plain host key never
+passes.
+
+\b \q{Servers whose host key is stored now}: \q{Look up host keys} takes
+every key stored under a name the pattern matches, in the KiTTY++
+host-key store and in \c{known_hosts} (plain entries), as a snapshot. A
+server added later needs another look-up.
+
+\b \q{Also servers stored later}: at each login kageant matches the
+pattern against the names the host-key store and \c{known_hosts} hold for
+the server's host key. A new server works after its first host key
+prompt. The editor shows the trade-off under the choice: a program
+running as this Windows user that writes the host-key store or
+\c{known_hosts} can widen the rule. The name a client sends
+(\c{session-bind-host-v00@kapper.net}) is never used for it.
+
+\c{ssh-add -h} stays as in OpenSSH: there a pattern finds
+\c{@cert-authority} lines only. Key details and the editor's tree show
+the choice. The rule file keeps it in its second format. A file of the
+first format still loads, its destinations matched as before.
+
+On a connection bound for a login kageant lists the keys in three
+groups, each in the offer order: keys whose rules match this server by
+its host keys (a CA certificate for the host name as written included),
+then keys whose rules match it by a pattern only, then the keys without
+rules. A connection without a binding keeps the offer order.
+
 The rules follow the key by its fingerprint, however the key reaches
 kageant: from the startup list, the key list or a program. They are
 kept in one file, \c{kageant-rules.dat}: in \c{%APPDATA%\\KiTTY}, or
@@ -511,8 +558,16 @@ full through a temporary file. With \c{readonly=yes} in kitty.ini the
 rules apply until kageant stops. Rules stay when their key is removed:
 the rule editor lists such a key as \q{not loaded}.
 
-Key details shows the rules on the \q{Destinations:} line (\q{any}
-without). The key list adds \q{restricted} to the key's state.
+Key details lists the rules under \q{Destinations:}: the count on the
+first line (\q{2 destinations - the key signs a login to these servers
+only}), then one line per destination - the host, then \q{user},
+\q{via} and \q{forwarding} where the destination has them
+(\c{web01.example.com  user deploy  via jump.example.com  forwarding}).
+A key without rules shows \q{any - the key is not restricted}. The list
+takes the height the window grows by. The key list adds \q{restricted}
+to the key's state and draws the row in the theme's info colour (blue).
+A key not loaded stays grey. The flash of a key use comes first. A
+high-contrast theme keeps the system colours.
 
 On a connection, a restricted key is checked as OpenSSH's agent checks
 it:
@@ -535,6 +590,21 @@ certificate is valid for the rule's host name.
 
 \b A program may not remove a restricted key through a connection the
 key may not be used on.
+
+A client that sees fewer keys moves on to the next method. Nothing in
+the list explains why. So klink, kscp, ksftp and kitty.exe query kageant
+after the binding for the number of keys it held back on this connection
+(\c{withheld-keys-v00@kapper.net}). When that count is not 0, they show
+before the next authentication method, in the terminal or on stderr and
+in the Terminal Window's Event Log:
+
+\c kageant: 1 key restricted to other servers was not offered.
+
+kageant gives the count only on a connection bound for a login, never on
+one bound for agent forwarding: a remote server must not learn that keys
+for other servers exist. PuTTY's Pageant and OpenSSH's agent answer the
+query with a failure: nothing is shown. The wire format is in
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
 
 Each refusal is a record of its own: kind \c{restricted}, result
 \c{sign-refused} or \c{remove-refused}, the reason as a token

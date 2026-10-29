@@ -412,9 +412,10 @@ bool portfwdmgr_unlisten(PortFwdManager *mgr, const char *host, int port);
 Channel *portfwd_raw_new(ConnectionLayer *cl, Plug **plug, bool start_ready);
 void portfwd_raw_free(Channel *pfchan);
 void portfwd_raw_setup(Channel *pfchan, Socket *s, SshChannel *sc);
-/* KiTTY: skip the agent's answer to a session-bind written ahead of a
- * forwarded agent stream (kitty/kitty_agentbind.h) */
-void portfwd_raw_kitty_bindskip(Channel *pfchan);
+/* KiTTY: skip the agent's nmsg answers (the session-bind's, and the
+ * session-bind-host-v00@kapper.net's when that was sent too) written ahead
+ * of a forwarded agent stream (kitty/kitty_agentbind.h) */
+void portfwd_raw_kitty_bindskip(Channel *pfchan, unsigned nmsg);
 
 Socket *platform_make_agent_socket(Plug *plug, const char *dirprefix,
                                    char **error, char **name);

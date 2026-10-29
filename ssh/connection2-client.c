@@ -112,13 +112,22 @@ static ChanopenResult chan_open_auth_agent(
         /* KiTTY: the new agent connection is bound to this server for
          * agent forwarding (session-bind@openssh.com, is_forwarding 1),
          * as OpenSSH's client does. The bind goes ahead of the forwarded
-         * stream. The agent's answer to it is skipped, never relayed. */
+         * stream, then kageant's session-bind-host-v00@kapper.net with the
+         * name of this server (docs/PROTOCOL-AGENT-KAPPER.md). The agent's
+         * answers to both are skipped, never relayed: a failure (an agent
+         * without them) changes nothing. withheld-keys-v00 is never sent
+         * here: kageant answers it only for a login. */
         strbuf *kab = kitty_agentbind_query(s->kitty_transport, true);
         if (kab) {
             PacketProtocolLayer *ppl = &s->ppl; /* for ppl_logevent */
             char *kfp = kitty_agentbind_hostkey_fp(s->kitty_transport);
-            portfwd_raw_kitty_bindskip(ch);
+            strbuf *khq = kitty_agentbind_host_query(s->kitty_transport);
+            portfwd_raw_kitty_bindskip(ch, khq ? 2 : 1);
             sk_write(skt, kab->s, kab->len);
+            if (khq) {
+                sk_write(skt, khq->s, khq->len);
+                strbuf_free(khq);
+            }
             ppl_logevent(KT_AGENT_LOG_BIND_FWD, kfp);
             sfree(kfp);
             strbuf_free(kab);

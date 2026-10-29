@@ -125,6 +125,9 @@
 #define IDC_KR_KEYS_LBL 513
 #define IDC_KR_KEYS 514
 #define IDC_KR_STATUS 515
+#define IDC_KR_MATCH_LBL 516
+#define IDC_KR_MATCH 517
+#define IDC_KR_MATCH_WARN 518
 
 /* KiTTY: the Hello-protect dialog */
 #define IDC_HP_SRC 100

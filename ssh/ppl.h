@@ -171,6 +171,11 @@ bool ssh2_transport_kitty_bind_data(PacketProtocolLayer *ssh2_transport_ptr,
 strbuf *kitty_agentbind_query(PacketProtocolLayer *ssh2_transport_ptr,
                               bool is_forwarding);
 char *kitty_agentbind_hostkey_fp(PacketProtocolLayer *ssh2_transport_ptr);
+/* KiTTY: kageant's extensions after a bind (kitty/kitty_agentbind.h): the
+ * name the transport connected to (NULL when none can be sent), and the
+ * count query of withheld keys. */
+strbuf *kitty_agentbind_host_query(PacketProtocolLayer *ssh2_transport_ptr);
+strbuf *kitty_agentbind_withheld_query(void);
 void ssh2_connection_kitty_set_transport(PacketProtocolLayer *connection,
                                          PacketProtocolLayer *transport);
 

@@ -10,9 +10,13 @@
 struct kageant_dest;
 
 /* One host key as the agent log writes it: "SHA256:<hash>", then a space
- * and the host name when one is found ("web01", "web01 +2" with two more
- * names). sfree it. */
+ * and the host names found ("web01", "web01 web-01 10.0.0.5", up to five
+ * names, then "+N"). sfree it. */
 char *kageant_dest_hostkey_text(ptrlen hostkey);
+/* The same with the name the client sent for it
+ * (session-bind-host-v00@kapper.net; NULL for none) first:
+ * "SHA256:<hash> web01 (client) 10.0.0.5". sfree it. */
+char *kageant_dest_hostkey_text_for(ptrlen hostkey, const char *client);
 
 /* The agent log's dest= and fwd= values of a connection's bindings: dest
  * the server the login is for (the last binding, unless that one is for
@@ -41,5 +45,17 @@ struct kageant_dest_found {
 size_t kageant_dest_lookup(const char *host, int port,
                            struct kageant_dest_found **out);
 void kageant_dest_found_free(struct kageant_dest_found *v, size_t n);
+
+/* The rule editor's "Servers whose host key is stored now": every plain
+ * host key stored under a name the pattern matches (* and ?, case
+ * ignored) on that port - the KiTTY++ host-key store and known_hosts
+ * (plain entries; hashed and @cert-authority lines give nothing). */
+size_t kageant_dest_lookup_pattern(const char *pattern, int port,
+                                   struct kageant_dest_found **out);
+
+/* The names a host key is stored under (the host-key store and
+ * known_hosts, "host" or "host:port" for another port than 22), for
+ * kar_hostkey_names. *out a new array (kar_names_free). */
+size_t kageant_dest_names(ptrlen hostkey, char ***out);
 
 #endif /* KITTY_KAGEANT_DEST_H */

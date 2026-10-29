@@ -5,7 +5,10 @@
  * (SUCCESS binds, FAILURE, EXTENSION_FAILURE, a short or inconsistent
  * answer and none do not), and the skipping of that answer in front of a
  * forwarded agent stream (in one piece, byte by byte, with the stream's
- * own data behind it, a bad length).
+ * own data behind it, a bad length, two answers in a row). kageant's own
+ * extensions (docs/PROTOCOL-AGENT-KAPPER.md): session-bind-host-v00 and
+ * withheld-keys-v00 byte for byte, the count read from the answer only
+ * when it is SUCCESS + one uint32, and the line shown for it.
  *
  * Returns non-zero on any failure.
  */
@@ -167,6 +170,110 @@ int main(void)
             expect_size("bad: nothing more is taken",
                         kitty_agentbind_skip(&st, huge, sizeof(huge)), 0);
         }
+    }
+
+    /* two answers in a row (the bind's and session-bind-host-v00's) */
+    {
+        static const unsigned char two[] = { 0, 0, 0, 1, 6, 0, 0, 0, 1, 28,
+                                             0, 0, 0, 1, 12 };
+        struct kitty_agentbind_skip st;
+        size_t used, i, total;
+
+        memset(&st, 0, sizeof(st));
+        st.more = 1;
+        used = kitty_agentbind_skip(&st, two, sizeof(two));
+        expect_size("two answers: their 10 bytes are taken", used, 10);
+        expect("two answers: done", st.done, true);
+
+        memset(&st, 0, sizeof(st));
+        st.more = 1;
+        total = 0;
+        for (i = 0; i < 10; i++) {
+            total += kitty_agentbind_skip(&st, two + i, 1);
+            expect("two answers byte by byte: done only at the last byte",
+                   st.done, i == 9);
+        }
+        expect_size("two answers byte by byte: 10 bytes taken", total, 10);
+    }
+
+    /* session-bind-host-v00@kapper.net */
+    {
+        /* 27, "session-bind-host-v00@kapper.net", "web01", uint32 2222 */
+        static const unsigned char want_host[] = {
+            27,
+            0, 0, 0, 32, 's', 'e', 's', 's', 'i', 'o', 'n', '-', 'b', 'i',
+            'n', 'd', '-', 'h', 'o', 's', 't', '-', 'v', '0', '0', '@', 'k',
+            'a', 'p', 'p', 'e', 'r', '.', 'n', 'e', 't',
+            0, 0, 0, 5, 'w', 'e', 'b', '0', '1',
+            0, 0, 0x08, 0xae };
+        n = kitty_agentbind_host_encode(NULL, 0, "web01", 5, 2222);
+        expect_size("host: sizing call", n, sizeof(want_host));
+        memset(buf, 0xee, sizeof(buf));
+        n = kitty_agentbind_host_encode(buf, 8, "web01", 5, 2222);
+        expect("host: buffer too small, nothing written", buf[0] == 0xee,
+               true);
+        n = kitty_agentbind_host_encode(buf, sizeof(buf), "web01", 5, 2222);
+        expect_size("host: its length", n, sizeof(want_host));
+        expect_bytes("host: byte for byte", buf, want_host, sizeof(want_host));
+    }
+
+    /* withheld-keys-v00@kapper.net */
+    {
+        static const unsigned char want_wk[] = {
+            27,
+            0, 0, 0, 28, 'w', 'i', 't', 'h', 'h', 'e', 'l', 'd', '-', 'k',
+            'e', 'y', 's', '-', 'v', '0', '0', '@', 'k', 'a', 'p', 'p', 'e',
+            'r', '.', 'n', 'e', 't' };
+        static const unsigned char ok3[] = { 0, 0, 0, 5, 6, 0, 0, 0, 3 };
+        static const unsigned char ok0[] = { 0, 0, 0, 5, 6, 0, 0, 0, 0 };
+        static const unsigned char nocount[] = { 0, 0, 0, 1, 6 };
+        static const unsigned char longer[] = { 0, 0, 0, 6, 6, 0, 0, 0, 3, 0 };
+        static const unsigned char fail[] = { 0, 0, 0, 1, 5 };
+        static const unsigned char extfail[] = { 0, 0, 0, 1, 28 };
+        static const unsigned char wrongtype[] = { 0, 0, 0, 5, 12, 0, 0, 0, 3 };
+        uint32_t c = 77;
+        char line[128];
+
+        n = kitty_agentbind_withheld_encode(NULL, 0);
+        expect_size("withheld: sizing call", n, sizeof(want_wk));
+        n = kitty_agentbind_withheld_encode(buf, sizeof(buf));
+        expect_size("withheld: its length", n, sizeof(want_wk));
+        expect_bytes("withheld: byte for byte", buf, want_wk, sizeof(want_wk));
+
+        expect("withheld: SUCCESS + 3 is read",
+               kitty_agentbind_withheld_reply(ok3, sizeof(ok3), &c) && c == 3,
+               true);
+        expect("withheld: SUCCESS + 0 is read",
+               kitty_agentbind_withheld_reply(ok0, sizeof(ok0), &c) && c == 0,
+               true);
+        c = 77;
+        expect("withheld: SUCCESS without a count is no answer",
+               kitty_agentbind_withheld_reply(nocount, sizeof(nocount), &c),
+               false);
+        expect("withheld: SUCCESS with bytes after the count is no answer",
+               kitty_agentbind_withheld_reply(longer, sizeof(longer), &c),
+               false);
+        expect("withheld: FAILURE (an agent without it) is no answer",
+               kitty_agentbind_withheld_reply(fail, sizeof(fail), &c), false);
+        expect("withheld: EXTENSION_FAILURE is no answer",
+               kitty_agentbind_withheld_reply(extfail, sizeof(extfail), &c),
+               false);
+        expect("withheld: another type is no answer",
+               kitty_agentbind_withheld_reply(wrongtype, sizeof(wrongtype),
+                                              &c), false);
+        expect("withheld: no reply is no answer",
+               kitty_agentbind_withheld_reply(NULL, 0, &c), false);
+        expect("withheld: the count is untouched without an answer", c == 77,
+               true);
+
+        kitty_agentbind_withheld_text(line, sizeof(line), 1);
+        expect("withheld: the line for one key",
+               !strcmp(line, "kageant: 1 key restricted to other servers "
+                       "was not offered."), true);
+        kitty_agentbind_withheld_text(line, sizeof(line), 3);
+        expect("withheld: the line for three keys",
+               !strcmp(line, "kageant: 3 keys restricted to other servers "
+                       "were not offered."), true);
     }
 
     if (failures) {
