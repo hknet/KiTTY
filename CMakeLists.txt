@@ -276,6 +276,14 @@ add_executable(test_acceptnew
   test/test_acceptnew.c
   kitty/kitty_hostkey_acceptnew.c)
 
+# KiTTY: unit test for the command line's jump host (kitty/kitty_jumphost.c,
+# in utils for cmdline.c and proxy/sshproxy.c): the -J parser, the jump
+# host's key settings copied into the first link only, and the proxy
+# settings klink -scan carries. Linked with utils only.
+add_executable(test_jumphost
+  test/test_jumphost.c)
+target_link_libraries(test_jumphost utils ${platform_libraries})
+
 # KiTTY: unit test for the host key update (kitty/kitty_hostkeys00.c, in
 # sshcommon for kitty/kitty_hostkeys00_ssh.c): which connections may update
 # the store, the data a proof signs, what each key of the server's list
@@ -466,7 +474,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_hostkeys00
+    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
     test_auditparse test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()

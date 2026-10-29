@@ -22,6 +22,7 @@
  * secret store and the permission check it calls. */
 #include "kitty/kitty_text.h"   /* KiTTY: the -masterpwfile diagnostics */
 #include "kitty/kitty_winevent.h"   /* KiTTY: the session's name for the Event Log records */
+#include "kitty/kitty_jumphost.h"   /* KiTTY: -J, -proxyhostkey, -proxy-accept-new (utils) */
 #ifdef MOD_PERSO
 #include "kitty/kitty_storage.h"
 #endif
@@ -806,6 +807,30 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         SAVEABLE(0);
         conf_set_bool(conf, CONF_ssh_accept_new_hostkeys, true);
     }
+    /* KiTTY: the jump host's key check (kitty/kitty_jumphost.h): the first
+     * link of an SSH proxy chain takes these as -hostkey and -accept-new
+     * act on the host itself (proxy/sshproxy.c). A changed key stays a
+     * stop: the manual list refuses it, accept-new never takes it. */
+    if (!strcmp(p, "-proxyhostkey")) {
+        char *dup;
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        dup = dupstr(value);
+        if (!validate_manual_hostkey(dup)) {
+            cmdline_error(KT_CLI_PROXYHOSTKEY_BAD, value);
+            sfree(dup);
+            return ret;
+        }
+        conf_set_str_str(conf, CONF_proxy_manual_hostkeys, dup, "");
+        sfree(dup);
+    }
+    if (!strcmp(p, "-proxy-accept-new")) {
+        RETURN(1);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        conf_set_bool(conf, CONF_proxy_accept_new_hostkeys, true);
+    }
     if ((!strcmp(p, "-L") || !strcmp(p, "-R") || !strcmp(p, "-D"))) {
         char type, *q, *qq, *key, *val;
         RETURN(2);
@@ -1080,6 +1105,34 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
         SAVEABLE(0);
         conf_set_int(conf, CONF_proxy_port, atoi(value));
+    }
+    /* KiTTY: -J [user@]host[:port], OpenSSH's form of -proxytype ssh
+     * -proxyhost -proxyport -proxyuser for ONE jump host
+     * (kitty/kitty_jumphost.h). A chain is refused: a Conf holds one
+     * proxy, a longer chain goes through saved sessions. The port is set
+     * in any case: the Conf's own default is 80, an HTTP proxy's. */
+    if (!strcmp(p, "-J")) {
+        char *juser, *jhost;
+        int jport, jr;
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(0);
+        jr = kitty_jump_parse(value, &juser, &jhost, &jport);
+        if (jr == KITTY_JUMP_CHAIN) {
+            cmdline_error(KT_CLI_JUMP_CHAIN, value);
+            return ret;
+        }
+        if (jr != KITTY_JUMP_OK) {
+            cmdline_error(KT_CLI_JUMP_BAD, value);
+            return ret;
+        }
+        conf_set_int(conf, CONF_proxy_type, PROXY_SSH_TCPIP);
+        conf_set_str(conf, CONF_proxy_host, jhost);
+        conf_set_int(conf, CONF_proxy_port, jport);
+        if (juser)
+            conf_set_str(conf, CONF_proxy_username, juser);
+        sfree(juser);
+        sfree(jhost);
     }
     if (!strcmp(p, "-proxylocalhost")) {
         RETURN(1);

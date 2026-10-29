@@ -2465,6 +2465,7 @@ static void usage(void)
     printf("            connect through this proxy or SSH jump host\n");
     printf("  -proxyuser user  -proxypwfile file\n");
     printf("            its user and password (read from file)\n");
+    printf(KT_CLI_USAGE_JUMP);
     printf("  -1 -2     force use of particular SSH protocol version\n");
     printf("  -ssh -ssh-connection\n");
     printf("            force use of particular SSH protocol variant\n");
@@ -2478,6 +2479,8 @@ static void usage(void)
     printf("  -hostkey keyid\n");
     printf("            manually specify a host key (may be repeated)\n");
     printf(KT_CLI_USAGE_ACCEPTNEW);
+    printf(KT_CLI_USAGE_PROXYHOSTKEY);
+    printf(KT_CLI_USAGE_PROXYACCEPTNEW);
     printf("  -batch    disable all interactive prompts\n");
     printf("  -no-sanitise-stderr  don't strip control chars from"
            " standard error\n");

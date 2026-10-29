@@ -1190,6 +1190,36 @@ changed key is never accepted this way. With \c{readonly=yes} the key
 is used for this connection only and not stored. See
 \k{config-ssh-kitty-accept-new}.
 
+\S2{using-cmdline-jump} \i\c{\-J}, \i\c{\-proxyhostkey},
+\i\c{\-proxy-accept-new}: an SSH jump host and its host key
+
+\c{\-J [user@]host[:port]} is the short form of \c{\-proxytype ssh},
+\c{\-proxyhost}, \c{\-proxyport} and \c{\-proxyuser}
+(\k{using-cmdline-proxypw}) for one jump host. Without a port it is 22.
+An IPv6 address with a port goes in square brackets. A chain of jump
+hosts (\c{a,b}) is refused. A chain goes through saved sessions: each
+one has the next jump host as its proxy. The host may be the name of a
+saved session, as for \c{\-proxyhost}.
+
+\c{\-hostkey} and \c{\-accept-new} apply to the host itself only. The
+jump host's key has two options of its own:
+
+\b \c{\-proxyhostkey} gives an expected host key of the jump host, in
+the forms \c{\-hostkey} takes (\k{using-cmdline-hostkey}). It may be
+repeated. Any other key ends the connection. The store is not
+consulted. A saved jump session's own manual host keys count too.
+
+\b \c{\-proxy-accept-new} stores an unknown key of the jump host without
+the question, as \c{\-accept-new} does for the host itself
+(\k{using-cmdline-accept-new}). A changed key is never accepted this
+way.
+
+Both reach the first jump host only. A refusal on the jump host reads
+\c{jump host <host> port <port>:} with the reason after it. The host key
+records of the jump host carry \c{proxy: ssh}. \c{klink \-scan} with
+\c{\-J} reaches the host through the jump host and reports the keys of
+the host only (\k{plink-option-scan}).
+
 \S2{using-cmdline-pgpfp} \i\c{\-pgpfp}: display \i{PGP key fingerprint}s
 
 This option causes the KiTTY++ tools not to run as normal, but instead

@@ -3683,6 +3683,19 @@
  * writes it to the Event Log, klink/kscp/ksftp to standard error too */
 #define KT_CLI_USAGE_ACCEPTNEW                       "  -accept-new\n            store an unknown host key without a prompt\n"
 #define KT_HOSTKEY_ACCEPTNEW_STORED                  "Host key stored (accept-new): %s, %s port %d"
+/* the jump host switches (cmdline.c, kitty/kitty_jumphost.h): the help
+ * lines after -accept-new, and the -J and -proxyhostkey refusals */
+#define KT_CLI_USAGE_JUMP                            "  -J [user@]host[:port]\n            SSH jump host, one host (-proxytype ssh)\n"
+#define KT_CLI_USAGE_PROXYHOSTKEY                    "  -proxyhostkey keyid\n            the jump host's host key (may be repeated)\n"
+#define KT_CLI_USAGE_PROXYACCEPTNEW                  "  -proxy-accept-new\n            store the jump host's unknown key without a prompt\n"
+#define KT_CLI_JUMP_CHAIN                            "-J '%s': one jump host only. A chain (a,b) is not supported."
+#define KT_CLI_JUMP_BAD                              "-J '%s': not [user@]host[:port]"
+#define KT_CLI_PROXYHOSTKEY_BAD                      "'%s' is not a valid format for a jump host key"
+/* klink -scan's help: with a jump host the scan reports the target */
+#define KT_CLI_USAGE_SCAN_JUMP                       "            -J or -proxy*: through the jump host, the target's keys\n"
+/* proxy/sshproxy.c: a fatal error of the jump host's connection carries
+ * its host and port, so a refusal shows which -proxyhostkey it needs */
+#define KT_PROXY_HOP_FATAL                           "jump host %s port %d: %s"
 /* accept-new stores nothing: the host and port have a key of another type
  * (the types, comma-separated); the question follows */
 #define KT_HOSTKEY_ACCEPTNEW_OTHER                   "Host key not stored (accept-new): a key of another type (%s) is stored for %s port %d"

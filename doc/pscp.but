@@ -68,6 +68,12 @@ use kscp:
 \c             manually specify a host key (may be repeated)
 \c   -accept-new
 \c             store an unknown host key without a prompt
+\c   -J [user@]host[:port]
+\c             SSH jump host, one host (-proxytype ssh)
+\c   -proxyhostkey keyid
+\c             the jump host's host key (may be repeated)
+\c   -proxy-accept-new
+\c             store the jump host's unknown key without a prompt
 \c   -batch    disable all interactive prompts
 \c   -no-sanitise-stderr
 \c             don't strip control chars from standard error

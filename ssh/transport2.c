@@ -514,6 +514,11 @@ static void ssh2_write_kexinit_lists(
 {
     int i, j, k;
     bool warn;
+    /* KiTTY: klink -scan -t restricts the host key types of the SCANNED
+     * host only. A jump host's link (chain depth > 0) offers every type
+     * and verifies as for a login. */
+    const char *kitty_scan_only =
+        conf_get_int(conf, CONF_proxy_chain_depth) ? NULL : kitty_hostkey_scan_only;
 
     int n_preferred_kex;
     const ssh_kexes *preferred_kex[KEX_MAX + 3]; /* +3 for GSSAPI */
@@ -755,8 +760,8 @@ static void ssh2_write_kexinit_lists(
                         continue;
                     if (a->id != preferred_hk[i])
                         continue;
-                    if (kitty_hostkey_scan_only &&
-                        strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                    if (kitty_scan_only &&
+                        strcmp(a->alg->cache_id, kitty_scan_only))
                         continue;      /* KiTTY: klink -scan -t, one type */
                     alg = ssh2_kexinit_addalg(&kexlists[KEXLIST_HOSTKEY],
                                               a->alg->ssh_id);
@@ -779,8 +784,8 @@ static void ssh2_write_kexinit_lists(
                     continue;          /* already added this one */
                 if (a->id != preferred_hk[i])
                     continue;
-                if (kitty_hostkey_scan_only &&
-                    strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                if (kitty_scan_only &&
+                    strcmp(a->alg->cache_id, kitty_scan_only))
                     continue;          /* KiTTY: klink -scan -t, one type */
                 if (conf_get_bool(conf, CONF_ssh_prefer_known_hostkeys) &&
                     have_ssh_host_key(hk_host, hk_port,
@@ -805,8 +810,8 @@ static void ssh2_write_kexinit_lists(
                     continue;
                 if (a->id != preferred_hk[i])
                     continue;
-                if (kitty_hostkey_scan_only &&
-                    strcmp(a->alg->cache_id, kitty_hostkey_scan_only))
+                if (kitty_scan_only &&
+                    strcmp(a->alg->cache_id, kitty_scan_only))
                     continue;          /* KiTTY: klink -scan -t, one type */
                 alg = ssh2_kexinit_addalg(&kexlists[KEXLIST_HOSTKEY],
                                           a->alg->ssh_id);

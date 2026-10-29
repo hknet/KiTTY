@@ -34,6 +34,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   stores. Unknown key, changed key and the changes offered share one host
   key box, with the fingerprints and First seen in its detail field. The
   Host Keys leaf has a Filter and follows the store by itself.
+- klink, kscp, ksftp and kitty.exe: the jump host's host key from the
+  command line. `-proxyhostkey <fp>` pins it. `-proxy-accept-new` stores
+  an unknown one. A changed key always ends the connection. `-J
+  [user@]host[:port]` gives one jump host. `klink -scan` goes through it
+  and reports the keys of the host behind it. A refusal on the jump host
+  shows its host and port.
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
   key file to FileZilla, through a temporary site entry deleted after a
   minute. FileZilla asks for the key's passphrase itself.

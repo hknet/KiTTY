@@ -59,6 +59,10 @@ Logging and passwords\r\n\
     jump host for this run (klink, kscp and ksftp take them too)\r\n\
 * -proxyuser <user> / -proxypwfile <file>: its user and password, the\r\n\
     password read from a file\r\n\
+* -J [user@]host[:port]: an SSH jump host, the short form of -proxytype\r\n\
+    ssh -proxyhost -proxyport -proxyuser (one host)\r\n\
+* -proxyhostkey <keyid> / -proxy-accept-new: the jump host's host key, as\r\n\
+    -hostkey / -accept-new for the host itself\r\n\
 * -codepage <name>: select the remote character set\r\n\
 \r\n\
 Sessions in and out of this machine (see docs/KITTY-PORTABLE.md)\r\n\

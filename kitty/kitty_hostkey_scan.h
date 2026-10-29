@@ -41,8 +41,13 @@ bool kitty_hostkey_scan_capture(const char *host, int port, const char *keytype,
  * list (rsa, dsa, ecdsa, ed25519, ed448, or SSH names) or NULL for every
  * type. Prints the rows; returns the process exit code: 0 all keys seen and
  * none differ, 2 at least one MISMATCH, 1 nothing reachable or bad usage.
- * The network must be up (sk_init, winselcli_setup) before this is called. */
-int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json);
+ * The network must be up (sk_init, winselcli_setup) before this is called.
+ * `base`: klink's Conf, its proxy settings (-J, -proxy*, -proxyhostkey)
+ * carried into each scan connection; a jump host's own key is verified
+ * as for a login and never reported. NULL = Default Settings only. */
+struct conf_tag;
+int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json,
+                            struct conf_tag *base);
 
 /* klink -knownhosts [host[:port]] [-json]: the store, no connection made.
  * Returns 0 with rows, 1 with none. */

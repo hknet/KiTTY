@@ -899,7 +899,11 @@ SeatPromptResult verify_ssh_host_key(
      * connection - before the store is consulted, before anyone is asked,
      * before authentication. Inert unless a scan armed it.
      */
-    if (kitty_hostkey_scan_capture(host, port, keytype, keystr, fingerprints))
+    /* A jump host's link (chain depth > 0) is not captured: a scan through
+     * a jump host (-J) reports the target only, and the jump host verifies
+     * as for a login. */
+    if (conf_get_int(conf, CONF_proxy_chain_depth) == 0 &&
+        kitty_hostkey_scan_capture(host, port, keytype, keystr, fingerprints))
         return SPR_USER_ABORT;
 
     /*

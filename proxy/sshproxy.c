@@ -14,6 +14,8 @@
 #include "proxy.h"
 #include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
 #include "kitty/kitty_sessionpath.h"   /* a jump host named by a session path */
+#include "kitty/kitty_jumphost.h"   /* -proxyhostkey, -proxy-accept-new */
+#include "kitty/kitty_text.h"       /* the jump host in a fatal error */
 
 const bool ssh_proxy_supported = true;
 
@@ -407,8 +409,12 @@ static void sshproxy_connection_fatal(Seat *seat, const char *message)
 {
     SshProxy *sp = container_of(seat, SshProxy, seat);
     if (!sp->errmsg) {
+        /* KiTTY: with the jump host's host and port, so a refused key
+         * shows which -proxyhostkey the run needs */
         sp->errmsg = dupprintf(
-            "fatal error in proxy SSH connection: %s", message);
+            "fatal error in proxy SSH connection: " KT_PROXY_HOP_FATAL,
+            conf_get_str(sp->conf, CONF_host),
+            conf_get_int(sp->conf, CONF_port), message);
         queue_toplevel_callback(sshproxy_connection_fatal_callback, sp);
     }
 }
@@ -884,6 +890,12 @@ Socket *sshproxy_new_connection(SockAddr *addr, const char *hostname,
     conf_set_int(sp->conf, CONF_proxy_chain_depth, sp->chain_depth);
     conf_set_int(sp->conf, CONF_proxy_chain_max,
                  conf_get_int(clientconf, CONF_proxy_chain_max));
+    /* KiTTY: the jump host's key check from the command line
+     * (-proxyhostkey, -proxy-accept-new; kitty/kitty_jumphost.h), into
+     * the first link only - after do_defaults() for the reason given
+     * above. A manual list refuses every other key, accept-new never
+     * takes a changed one. */
+    kitty_jump_hostkeys_to_hop(clientconf, sp->conf, sp->chain_depth);
 
     sp->logctx = log_init(&sp->logpolicy, sp->conf);
 

@@ -206,6 +206,7 @@ static void usage(void)
     printf("            connect through this proxy or SSH jump host\n");
     printf("  -proxyuser user  -proxypwfile file\n");
     printf("            its user and password (read from file)\n");
+    printf(KT_CLI_USAGE_JUMP);
     printf("  -D [listen-IP:]listen-port\n");
     printf("            Dynamic SOCKS-based port forwarding\n");
     printf("  -L [listen-IP:]listen-port:host:port\n");
@@ -228,17 +229,20 @@ static void usage(void)
     printf("  -hostkey keyid\n");
     printf("            manually specify a host key (may be repeated)\n");
     printf(KT_CLI_USAGE_ACCEPTNEW);
+    printf(KT_CLI_USAGE_PROXYHOSTKEY);
+    printf(KT_CLI_USAGE_PROXYACCEPTNEW);
     printf("  -sanitise-stderr, -sanitise-stdout, "
            "-no-sanitise-stderr, -no-sanitise-stdout\n");
     printf("            do/don't strip control chars from standard "
            "output/error\n");
     printf("  -no-antispoof   omit anti-spoofing prompt after "
            "authentication\n");
-    printf("Host keys (KiTTY++; no login, the store is never written):\n");
+    printf("Host keys (KiTTY++; no login, the host's key is never stored):\n");
     printf("  -scan [-t type,..] host[:port]\n");
     printf("            fetch the host's keys (rsa,dsa,ecdsa,ed25519,ed448;\n");
     printf("            all without -t) and compare with the store:\n");
     printf("            stored / new / MISMATCH; exit 2 on any MISMATCH\n");
+    printf(KT_CLI_USAGE_SCAN_JUMP);
     printf("  -knownhosts [host[:port]]\n");
     printf("            list the stored host keys (all without a host)\n");
     printf("  -json     -scan/-knownhosts output as one JSON array\n");
@@ -523,11 +527,13 @@ int main(int argc, char **argv)
         return kitty_hostkey_knownhosts_main(kitty_hostspec, kitty_json);
     if (kitty_scan) {
         char *spec = NULL;
+        /* -P, -J, -proxy* and -proxyhostkey are applied late by design:
+         * apply them now, so the scan reaches the host as a login would,
+         * through a jump host as well */
+        cmdline_run_saved(conf);
         if (!kitty_hostspec) {
-            /* the host may have come as an ordinary argument before -scan;
-             * -P is applied late by design, so apply it now */
+            /* the host may have come as an ordinary argument before -scan */
             const char *h;
-            cmdline_run_saved(conf);
             h = conf_get_str(conf, CONF_host);
             if (!*h) {
                 fprintf(stderr, "klink -scan: no host given\n");
@@ -543,7 +549,8 @@ int main(int argc, char **argv)
         }
         winselcli_setup();
         {
-            int rc = kitty_hostkey_scan_main(kitty_hostspec, kitty_types, kitty_json);
+            int rc = kitty_hostkey_scan_main(kitty_hostspec, kitty_types, kitty_json,
+                                             conf);
             sfree(spec);
             return rc;
         }

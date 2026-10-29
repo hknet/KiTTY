@@ -92,6 +92,12 @@ add_sources_from_current_dir(utils
   # inert until a KiTTY++ terminal sets kitty_termenv_switch_hook.
   ../kitty/kitty_termenv.c
   ../kitty/kitty_termenv_conf.c
+  # KiTTY: the command line's jump host (-J, -proxyhostkey,
+  # -proxy-accept-new): read by cmdline.c, copied into the first link's
+  # Conf by proxy/sshproxy.c and carried by klink -scan. Here because
+  # sshproxy.c is compiled without MOD_PERSO into a library every program
+  # links.
+  ../kitty/kitty_jumphost.c
   # KiTTY: how far a connection attempt got (TCP up, login started, an agent
   # signature outstanding) - reported by utils/backend_socket_log.c and
   # ssh/userauth2-client.c, read by the terminal's reconnect decision

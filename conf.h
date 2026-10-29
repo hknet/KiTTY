@@ -263,6 +263,25 @@ CONF_OPTION(proxy_host_kind,
     NOT_SAVED,
 )
 /*
+ * KiTTY: the jump host's host key check from the command line
+ * (-proxyhostkey, -proxy-accept-new; kitty/kitty_jumphost.h). Set in the
+ * session's Conf, they reach the FIRST link of an SSH proxy chain only:
+ * proxy/sshproxy.c copies them into that link's CONF_ssh_manual_hostkeys
+ * and CONF_ssh_accept_new_hostkeys. NOT_SAVED: a run's own setting, as
+ * -hostkey and -accept-new are for the host itself.
+ */
+CONF_OPTION(proxy_manual_hostkeys,
+    /* a set, as CONF_ssh_manual_hostkeys: every value is "" */
+    SUBKEY_TYPE(STR),
+    VALUE_TYPE(STR),
+    NOT_SAVED,
+)
+CONF_OPTION(proxy_accept_new_hostkeys,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(false),
+    NOT_SAVED,
+)
+/*
  * KiTTY: line spacing as a PERCENTAGE of the font's own line height. 100 is the
  * font's metrics untouched, and is the default; 120 makes each cell a fifth
  * taller with the glyph centred in it.

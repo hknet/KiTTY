@@ -20,6 +20,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_scan.h"
 #include "kitty_text.h"   /* KT_HK_V_STANDBY: "not signing" */
+#include "kitty_jumphost.h"   /* -J / -proxy*: the scan goes the login's way */
 
 /* The key types a scan without -t tries: kitty_hostkey_scan_types(). */
 
@@ -210,7 +211,7 @@ static void scan_timeout(void *ctx, unsigned long now)
 
 /* One connection: the key of one type, or the reason there is none. */
 static void scan_one(const char *host, int port, const char *cache_id,
-                     struct scan_state *st)
+                     struct scan_state *st, Conf *base)
 {
     Conf *conf = conf_new();
     LogContext *logctx;
@@ -225,6 +226,11 @@ static void scan_one(const char *host, int port, const char *cache_id,
     conf_set_bool(conf, CONF_ssh_prefer_known_hostkeys, false);
     conf_set_bool(conf, CONF_tryagent, false);
     conf_set_bool(conf, CONF_ssh_simple, true);
+    /* the command line's proxy (-J, -proxy*, -proxyhostkey): a jump host
+     * verifies its own key as for a login, the capture takes the
+     * target's only (ssh/common.c) */
+    if (base)
+        kitty_jump_copy_proxy(base, conf);
 
     cur = st;
     kitty_hostkey_scan_only = cache_id;
@@ -278,7 +284,8 @@ static const struct kitty_hostkey_entry *stored_match(
     return stored_entry(l, host, port, cache_id, 1);
 }
 
-int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
+int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json,
+                            Conf *base)
 {
     const char *want[16];
     int nwant = 0;
@@ -323,7 +330,7 @@ int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
         const char *status, *error = NULL;
 
         memset(&e, 0, sizeof(e));
-        scan_one(host, port, want[i], &st);
+        scan_one(host, port, want[i], &st, base);
         if (st.keytype) {
             int cmp = check_stored_host_key(host, port, st.keytype, st.keystr);
             kitty_hostkey_describe_text(st.keytype, st.keystr, &e);

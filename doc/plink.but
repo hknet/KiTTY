@@ -87,12 +87,19 @@ use klink:
 \c             manually specify a host key (may be repeated)
 \c   -accept-new
 \c             store an unknown host key without a prompt
+\c   -J [user@]host[:port]
+\c             SSH jump host, one host (-proxytype ssh)
+\c   -proxyhostkey keyid
+\c             the jump host's host key (may be repeated)
+\c   -proxy-accept-new
+\c             store the jump host's unknown key without a prompt
 \c   -sanitise-stderr, -sanitise-stdout,
 \c   -no-sanitise-stderr, -no-sanitise-stdout
 \c             do/don't strip control chars from stdout/stderr
 \c   -no-antispoof   omit anti-spoofing prompt after authentication
 \c   -scan [-t type,..] host[:port]
 \c             fetch the host's keys (no login), compare with store
+\c             -J or -proxy*: through the jump host, the target's keys
 \c   -knownhosts [host[:port]]
 \c             list the stored host keys
 \c   -json     -scan/-knownhosts output as one JSON array
@@ -351,8 +358,15 @@ have reads \c{not offered}; a host that does not answer,
 \c{ecdsa}, \c{ed25519}, \c{ed448} or the SSH names such as
 \c{ssh-ed25519}; without it every type KiTTY++ knows is tried. The exit
 code is 2 when any key reports MISMATCH, 1 when no key was obtained at all
-or the arguments were wrong, 0 otherwise. A scan never writes the store:
-accepting a key is what a connection does.
+or the arguments were wrong, 0 otherwise. A scan never stores the host's
+key: accepting a key is what a connection does.
+
+With \c{\-J} or the \c{\-proxy} options (\k{using-cmdline-jump}) the
+scan goes through the jump host, as a login would. The jump host's own
+key is checked as for a login: stored, given with \c{\-proxyhostkey} or
+stored by \c{\-proxy-accept-new}. Else the scan stops at the jump host.
+The rows show the keys of the host behind it only. \c{\-proxy-accept-new}
+is the one way a scan writes the store: it stores the jump host's key.
 
 \c{klink \-knownhosts} lists what the store holds - for one host (with
 a port, that port only; without, every port stored for that host) or the
