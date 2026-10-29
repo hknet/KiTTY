@@ -81,7 +81,7 @@ The fields, by name:
 
 \b \c{missing} - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
 
-\b \c{oldfp} - 213, 313: the hash of the stored key a replaced key took the place of (SHA256:...), empty for every other result.
+\b \c{oldfp} - 213, 313: the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result.
 
 \b \c{path} - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 
@@ -111,7 +111,7 @@ The fields, by name:
 
 \b \c{request} - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
 
-\b \c{result} - the outcome; 100, 101: allowed, denied; 102: accepted; 103: refused; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, replaced, removed, proof-failed, refused (the server refused the proof request); 401, 402: saved, failed; 906: refused (not started), allowed (Yes in the question), declined (No, or the question closed).
+\b \c{result} - the outcome; 100, 101: allowed, denied; 102: accepted; 103: refused; 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask); 401, 402: saved, failed; 906: refused (not started), allowed (Yes in the question), declined (No, or the question closed).
 
 \b \c{session} - the saved session's name, empty when none was loaded.
 
@@ -183,7 +183,7 @@ The event IDs:
 
 \b \c{212} \c{KiTTY++_kitty} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{213} \c{KiTTY++_kitty} (Information; Warning when proof-failed or refused): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
+\b \c{213} \c{KiTTY++_kitty} (Information; Warning when proof-failed, refused or over-limit): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
 
 \b \c{220} \c{KiTTY++_kitty} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 
@@ -207,7 +207,7 @@ The event IDs:
 
 \b \c{312} \c{KiTTY++_cli} (Warning): \c{hostkey-mismatch}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{pid}, \c{proxy}.
 
-\b \c{313} \c{KiTTY++_cli} (Information; Warning when proof-failed or refused): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
+\b \c{313} \c{KiTTY++_cli} (Information; Warning when proof-failed, refused or over-limit): \c{hostkey-update}, then \c{host}, \c{port}, \c{keytype}, \c{fp}, \c{result}, \c{oldfp}, \c{pid}, \c{proxy}.
 
 \b \c{320} \c{KiTTY++_cli} (Information): \c{auth-ok}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{fp}, \c{pid}, \c{proxy}, \c{for}.
 

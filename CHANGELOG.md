@@ -24,6 +24,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Launcher: a right-click on a saved session offers Open in WinSCP and Open
   in FileZilla, each when it is installed. The same from the command line:
   `kitty.exe -load <session> -winscp` or `-filezilla`. (cyd01/KiTTY#501)
+- Host keys: a server can rotate its key. Up to "Keys per type and host"
+  keys of one type are stored per host and port (Application > Security >
+  Host Keys > Settings, `hostkeyspertype`, 1 to 32, default 2). The host key
+  update stores a proven new key beside the old one. When the server no
+  longer offers the old key, it is removed. "Keys the server proves
+  (hostkeys-00)" has a third choice, "Confirm each change"
+  (`updatehostkeys=ask`). kitty.exe shows a notice for each key the update
+  stores. Unknown key, changed key and the changes offered share one host
+  key box, with the fingerprints and First seen in its detail field. The
+  Host Keys leaf has a Filter and follows the store by itself.
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
   key file to FileZilla, through a temporary site entry deleted after a
   minute. FileZilla asks for the key's passphrase itself.

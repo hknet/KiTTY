@@ -5173,6 +5173,12 @@ static char *kitty_wrap_dup(const char *s)
     return strbuf_to_str(sb);
 }
 
+/* The same wrapping for the host key update's lines (kitty/kitty_hk00_ui.c). */
+char *kitty_dlg_wrap_dup(const char *s)
+{
+    return kitty_wrap_dup(s);
+}
+
 /* Wrap s and write it straight to the terminal (intro / warning prose). */
 static void kitty_term_wrapped(Terminal *term, const char *s)
 {
@@ -5849,12 +5855,20 @@ static SeatPromptResult kitty_weak_confirm(
  * the server's close is already ending, whose answer may still be on its
  * way (an error the SSH layer reads itself shuts it down meanwhile). True
  * when a question was open. */
+/* KiTTY: the questions of the host key update made outside this file
+ * (kitty/kitty_hk00_ui.c) end with the others. They come after the login,
+ * so they do not count as "a question was open". NULL: none here. Not
+ * fenced: this file is in the shared GUI library. */
+void (*kitty_hk00_seat_end_hook)(Seat *seat, bool peer, bool gone) = NULL;
+
 static bool kitty_seat_questions_end(Seat *seat, bool peer, bool gone)
 {
     struct kitty_inline_confirm_ctx *c;
     struct kitty_hk_async *a;
     struct kitty_weak_async *w;
     bool any = false;
+    if (kitty_hk00_seat_end_hook)
+        kitty_hk00_seat_end_hook(seat, peer, gone);
     for (c = kitty_inline_open; c; c = c->next) {
         if (c->seat != seat)
             continue;
@@ -5923,6 +5937,206 @@ void kitty_seat_questions_drop(Seat *seat)
     kitty_seat_questions_end(seat, false, true);
 }
 
+/*
+ * KiTTY: the host key box on the shared template (kitty_dlgbox.c), one shape
+ * for an unknown key, a changed key and a certificate no trusted authority
+ * signed. Its text and its detail field are built from the facts of the
+ * question - the presented key from the "More info" items, the stored keys
+ * from ssh/common.c's SDT_KITTY_FACT items - with short texts of its own
+ * (KT_HKD_*). klink and the terminal keep the prose. The answer that stores
+ * nothing (Cancel) is the default and has the focus. The storing button
+ * carries no accelerator. A changed key keeps its red line. NULL when the
+ * box could not be made (the stock variants have no such template): the
+ * caller falls back to IDD_HOSTKEY.
+ */
+extern HWND kitty_confirm_modeless3_help(
+    HWND owner, const char *caption, const char *text, const char *detail,
+    const char *warn_red, const char *b_yes, const char *b_third,
+    const char *b_no, const char *help,
+    void (*done)(int answer, void *ctx), void *ctx);
+extern HWND kitty_confirm_modeless_words_help(
+    HWND owner, const char *caption, const char *text, const char *detail,
+    const char *warn_red, const char *b_yes, const char *b_no,
+    const char *help, void (*done)(int yes, void *ctx), void *ctx);
+
+/* The fields of a fingerprint "type bits hash": word n (0, 1, 2), fresh. */
+static char *kitty_hkd_word(const char *fp, int n)
+{
+    const char *p = fp ? fp : "";
+    for (int i = 0; i < n && p; i++) {
+        p = strchr(p, ' ');
+        if (p)
+            p++;
+    }
+    if (!p)
+        return dupstr("");
+    return dupprintf("%.*s", (int)strcspn(p, " "), p);
+}
+
+/* "type bits": the first two words of a fingerprint, fresh. */
+static char *kitty_hkd_type_bits(const char *fp)
+{
+    char *t = kitty_hkd_word(fp, 0), *b = kitty_hkd_word(fp, 1);
+    char *r = *b ? dupprintf("%s %s", t, b) : dupstr(t);
+    sfree(t); sfree(b);
+    return r;
+}
+
+/* The answer of the box: kitty_hk_box_done's result codes */
+static void kitty_hk_shared_done3(int answer, void *vctx)
+{
+    struct kitty_hk_async *a = (struct kitty_hk_async *)vctx;
+    /* enabled again BEFORE the box goes, or Windows activates some other
+     * program's window */
+    if (a->wgs->term_hwnd)
+        EnableWindow(a->wgs->term_hwnd, TRUE);
+    kitty_hk_box_done(a, answer == 1 ? IDC_HK_ONCE :
+                      answer == 2 ? IDC_HK_ACCEPT : IDCANCEL);
+}
+
+static void kitty_hk_shared_done2(int yes, void *vctx)
+{
+    kitty_hk_shared_done3(yes ? 1 : 0, vctx);
+}
+
+static HWND kitty_hk_shared_box(WinGuiSeat *wgs, struct kitty_hk_async *a,
+                                const char *host, int port,
+                                SeatDialogText *text, HelpCtx helpctx)
+{
+    const char *blob = NULL, *sha = NULL, *md5 = NULL, *last_key = NULL;
+    bool changed = helpctx && !strcmp(helpctx, HELPCTX(errors_hostkey_changed));
+    bool cert = helpctx && !strcmp(helpctx, HELPCTX(errors_cert_mismatch));
+    bool ro = a->dctx.ro;
+    int nstored = 0;
+    strbuf *msg = strbuf_new(), *det = strbuf_new(), *others = strbuf_new();
+    char *type, *bits, *hash, *md5hash, *full_label;
+    const char *caption;
+    HWND h;
+
+    for (size_t i = 0; i < text->nitems; i++) {
+        const SeatDialogTextItem *it = &text->items[i];
+        if (it->type == SDT_MORE_INFO_KEY)
+            last_key = it->text;
+        else if (it->type == SDT_MORE_INFO_VALUE_BLOB)
+            blob = it->text;
+        else if (it->type == SDT_MORE_INFO_VALUE_SHORT && last_key) {
+            if (strstr(last_key, "SHA256"))
+                sha = it->text;
+            else if (strstr(last_key, "MD5"))
+                md5 = it->text;
+        } else if (it->type == SDT_KITTY_FACT && !strncmp(it->text, "stored\t", 7))
+            nstored++;
+    }
+    type = kitty_hkd_word(sha, 0);
+    bits = kitty_hkd_word(sha, 1);
+    hash = kitty_hkd_word(sha, 2);
+    md5hash = kitty_hkd_word(md5, 2);
+
+    /* the text: one or two short lines */
+    if (cert) {
+        caption = KT_HKD_CHANGED_CAP;
+        put_fmt(msg, KT_HKD_CERT_TEXT, host, port);
+    } else if (changed) {
+        caption = KT_HKD_CHANGED_CAP;
+        if (nstored >= 2)
+            put_fmt(msg, KT_HKD_CHANGED_TEXT_N, host, port, nstored, type);
+        else
+            put_fmt(msg, KT_HKD_CHANGED_TEXT, host, port);
+    } else {
+        caption = KT_HKD_UNKNOWN_CAP;
+        put_fmt(msg, KT_HKD_UNKNOWN_TEXT, host, port);
+    }
+
+    /* the detail: label TAB value */
+    put_fmt(det, "%s\t%s\r\n%s\t%d\r\n", KT_HKD_L_HOST, host, KT_HKD_L_PORT, port);
+    if (*bits) {
+        put_fmt(det, "%s\t", KT_HKD_L_TYPE);
+        put_fmt(det, KT_HKD_V_TYPE, type, atoi(bits));
+        put_dataz(det, "\r\n");
+    } else
+        put_fmt(det, "%s\t%s\r\n", KT_HKD_L_TYPE, type);
+    if (changed || cert) {
+        put_fmt(det, "%s\t%s\r\n\t", KT_HKD_L_PRESENTED, hash);
+        put_fmt(det, KT_HKD_V_MD5, md5hash);
+        put_dataz(det, "\r\n");
+    } else {
+        put_fmt(det, "%s\t%s\r\n%s\t%s\r\n", KT_HKD_L_SHA256, hash,
+                KT_HKD_L_MD5, md5hash);
+    }
+    for (size_t i = 0; i < text->nitems; i++) {
+        const SeatDialogTextItem *it = &text->items[i];
+        char *f[5];
+        int nf = 0;
+        char *copy, *p, *tab;
+        if (it->type != SDT_KITTY_FACT)
+            continue;
+        copy = dupstr(it->text);
+        for (p = copy; nf < 5; p = tab + 1) {
+            f[nf++] = p;
+            tab = strchr(p, '\t');
+            if (!tab)
+                break;
+            *tab = '\0';
+        }
+        if (!strcmp(f[0], "stored") && nf >= 5) {
+            char *h2 = kitty_hkd_word(f[2], 2);
+            if (nstored >= 2) {
+                char *label = dupprintf(KT_HKD_L_STOREDN, atoi(f[1]));
+                put_fmt(det, "%s\t%s\r\n%s\t%s\r\n", label, h2,
+                        KT_HKD_L_FIRSTSEEN_SUB, f[3]);
+                sfree(label);
+            } else {
+                put_fmt(det, "%s\t%s\r\n%s\t%s\r\n%s\t%s\r\n", KT_HKD_L_STORED,
+                        h2, KT_HKD_L_FIRSTSEEN, f[3], KT_HKD_L_LASTWRITTEN, f[4]);
+            }
+            sfree(h2);
+        } else if (!strcmp(f[0], "other") && nf >= 3) {
+            /* a key of another type: "Stored" on the first such row */
+            char *tb = kitty_hkd_type_bits(f[1]), *t1 = kitty_hkd_word(f[1], 0);
+            put_fmt(det, "%s\t", others->len ? "" : KT_HKD_L_STORED);
+            put_fmt(det, KT_HKD_V_STORED_OTHER, tb, f[2]);
+            put_dataz(det, "\r\n");
+            if (!strstr(others->s, t1)) {
+                if (others->len)
+                    put_dataz(others, ", ");
+                put_dataz(others, t1);
+            }
+            sfree(tb); sfree(t1);
+        }
+        sfree(copy);
+    }
+    full_label = dupstr(changed || cert ? KT_HKD_L_FULLKEY_P : KT_HKD_L_FULLKEY);
+    put_fmt(det, "\r\n%s\r\n%s", full_label, blob ? blob : "");
+
+    /* an unknown key of a new type: the types already stored */
+    if (!changed && !cert && others->len) {
+        put_dataz(msg, " ");
+        put_fmt(msg, KT_HOSTKEY_OTHER_TYPES_STORED, others->s);
+    }
+    if (ro) {                          /* readonly=yes: this connection only */
+        put_dataz(msg, " ");
+        put_dataz(msg, KT_HOSTKEY_RO_NOT_STORED);
+    }
+
+    if (ro)
+        h = kitty_confirm_modeless_words_help(
+            wgs->term_hwnd, caption, msg->s, det->s,
+            (changed || cert) ? KT_HKD_CHANGED_WARN : NULL,
+            KT_HKD_ONCE, KT_HKD_CANCEL, helpctx, kitty_hk_shared_done2, a);
+    else
+        h = kitty_confirm_modeless3_help(
+            wgs->term_hwnd, caption, msg->s, det->s,
+            (changed || cert) ? KT_HKD_CHANGED_WARN : NULL,
+            KT_HKD_ONCE, (changed || cert) ? KT_HKD_REPLACE : KT_HKD_STORE,
+            KT_HKD_CANCEL, helpctx, kitty_hk_shared_done3, a);
+
+    sfree(type); sfree(bits); sfree(hash); sfree(md5hash); sfree(full_label);
+    strbuf_free(msg);
+    strbuf_free(det);
+    strbuf_free(others);
+    return h;
+}
+
 SeatPromptResult win_seat_confirm_ssh_host_key(
     Seat *seat, const char *host, int port, const char *keytype,
     char *keystr, SeatDialogText *text, HelpCtx helpctx,
@@ -5987,9 +6201,12 @@ SeatPromptResult win_seat_confirm_ssh_host_key(
     a->cbctx = cbctx;
     a->next = kitty_hk_open;
     kitty_hk_open = a;
-    a->hwnd = ShinyDialogBoxModeless(
-        hinst, MAKEINTRESOURCE(IDD_HOSTKEY), "PuTTYHostKeyDialog",
-        wgs->term_hwnd, HostKeyDialogProc, &a->dctx, kitty_hk_box_done, a);
+    /* the shared box. Where none can be made, the classic one. */
+    a->hwnd = kitty_hk_shared_box(wgs, a, host, port, text, helpctx);
+    if (!a->hwnd)
+        a->hwnd = ShinyDialogBoxModeless(
+            hinst, MAKEINTRESOURCE(IDD_HOSTKEY), "PuTTYHostKeyDialog",
+            wgs->term_hwnd, HostKeyDialogProc, &a->dctx, kitty_hk_box_done, a);
     if (!a->hwnd) {
         /* no box, no answer: as Cancel */
         kitty_hk_open = a->next;

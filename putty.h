@@ -1137,7 +1137,11 @@ typedef enum SeatOutputType {
 typedef enum SeatDialogTextType {
     SDT_PARA, SDT_DISPLAY, SDT_SCARY_HEADING,
     SDT_TITLE, SDT_PROMPT, SDT_BATCH_ABORT,
-    SDT_MORE_INFO_KEY, SDT_MORE_INFO_VALUE_SHORT, SDT_MORE_INFO_VALUE_BLOB
+    SDT_MORE_INFO_KEY, SDT_MORE_INFO_VALUE_SHORT, SDT_MORE_INFO_VALUE_BLOB,
+    /* KiTTY: a fact for a host-key box that lays out its own text
+     * (windows/dialog.c): TAB-separated fields, the first one the fact's name.
+     * Every other reader of the text passes over it. */
+    SDT_KITTY_FACT
 } SeatDialogTextType;
 struct SeatDialogTextItem {
     SeatDialogTextType type;

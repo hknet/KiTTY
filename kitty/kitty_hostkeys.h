@@ -5,8 +5,9 @@
  * host:port". This module enumerates what is stored, turns each stored text
  * back into the public-key blob it came from - so its fingerprints and bit
  * length can be shown - and reads the two stamps the store keeps beside a
- * key since 0.85.1.8. Windows-only; include after
- * putty.h and ssh.h.
+ * key since 0.85.1.8. A host and port can have more than one key of a type
+ * (hostkeyspertype, kitty_storage.h): each is an entry of its own, with its
+ * number. Windows-only. Include after putty.h and ssh.h.
  */
 #ifndef KITTY_HOSTKEYS_H
 #define KITTY_HOSTKEYS_H
@@ -20,6 +21,9 @@ struct kitty_hostkey_entry {
     char *sha256, *md5;    /* "SHA256:..." / "MD5:..." or "" when the text could not be parsed */
     char *first_seen;      /* ISO local time or "" */
     char *last_written;    /* ISO local time or "" */
+    int nth;               /* key nth of its type for host and port (1 = the
+                            * primary, the one older readers see) */
+    int of;                /* how many keys of its type host and port have */
 };
 
 struct kitty_hostkey_list {
@@ -33,8 +37,13 @@ struct kitty_hostkey_list {
 struct kitty_hostkey_list *kitty_hostkeys_enumerate(void);
 void kitty_hostkeys_free(struct kitty_hostkey_list *l);
 
-/* Remove one key and its stamps. true if something was removed. */
+/* Remove every key of the type and their stamps. true if something was
+ * removed. */
 bool kitty_hostkey_delete(const char *host, int port, const char *keytype);
+/* Remove key nth of the type and its stamps. The keys after it move up one
+ * number. true if it was removed. */
+bool kitty_hostkey_delete_nth(const char *host, int port, const char *keytype,
+                              int nth);
 
 /* The store's text of a key -> the SSH public-key blob (caller frees), or
  * NULL when the type is unknown or the text does not parse. */

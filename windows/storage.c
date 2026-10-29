@@ -1557,6 +1557,222 @@ static void hostkey_regname(strbuf *sb, const char *hostname,
     escape_registry_key(hostname, sb);
 }
 
+/*
+ * KiTTY: more than one key of a type per host and port (kitty_storage.h,
+ * "host keys: more than one key of a type"). Key 1 keeps upstream's name, so
+ * older readers see it and nothing else. Key n from 2 on carries "#n" after
+ * the type. The numbers have no gaps (deleting moves the later keys up), so a
+ * reader stops at the first number that is absent.
+ */
+void kitty_hostkey_slot_name(strbuf *sb, const char *host, int port,
+                             const char *keytype, int n)
+{
+    if (n <= 1)
+        put_fmt(sb, "%s@%d:", keytype, port);
+    else
+        put_fmt(sb, "%s#%d@%d:", keytype, n, port);
+    escape_registry_key(host, sb);
+}
+
+/* One value of the host key store by its full name, NULL when absent. */
+static char *hostkey_value_read(HKEY rkey, const char *name)
+{
+    if (store_is_file())
+        return portable_read_text_file("SshHostKeys", name);
+    return rkey ? get_reg_sz(rkey, name) : NULL;
+}
+
+static void hostkey_value_write(HKEY rkey, const char *name, const char *v)
+{
+    if (store_is_file())
+        portable_write_text_file("SshHostKeys", name, v);
+    else if (rkey)
+        put_reg_sz(rkey, name, v);
+}
+
+static bool hostkey_value_delete(HKEY rkey, const char *name)
+{
+    if (store_is_file()) {
+        char *path = portable_item_path("SshHostKeys", name);
+        bool done = path && DeleteFileA(path);
+        sfree(path);
+        return done;
+    }
+    return rkey && RegDeleteValueA(rkey, name) == ERROR_SUCCESS;
+}
+
+/* The store's key for writing (NULL in a folder store, or when it cannot be
+ * opened - the writers above then do nothing in registry mode). */
+static HKEY hostkey_open_rw(void)
+{
+    return store_is_file() ? NULL : create_regkey(HKEY_CURRENT_USER,
+                                                   reg_hostkeys_buf);
+}
+
+char *kitty_hostkey_slot_read(const char *host, int port, const char *keytype,
+                              int n, const char *suffix)
+{
+    strbuf *name = strbuf_new();
+    HKEY rkey = NULL;
+    char *v;
+    kitty_hostkey_slot_name(name, host, port, keytype, n);
+    put_dataz(name, suffix ? suffix : "");
+    if (!store_is_file())
+        rkey = open_regkey_ro(HKEY_CURRENT_USER, reg_hostkeys_buf);
+    v = hostkey_value_read(rkey, name->s);
+    if (rkey)
+        close_regkey(rkey);
+    strbuf_free(name);
+    return v;
+}
+
+int kitty_hostkey_slot_count(const char *host, int port, const char *keytype)
+{
+    HKEY rkey = NULL;
+    int n = 0;
+    if (!store_is_file()) {
+        rkey = open_regkey_ro(HKEY_CURRENT_USER, reg_hostkeys_buf);
+        if (!rkey)
+            return 0;
+    }
+    while (n < KITTY_HOSTKEY_SLOTS) {
+        strbuf *name = strbuf_new();
+        char *v;
+        kitty_hostkey_slot_name(name, host, port, keytype, n + 1);
+        v = hostkey_value_read(rkey, name->s);
+        strbuf_free(name);
+        if (!v)
+            break;
+        sfree(v);
+        n++;
+    }
+    if (rkey)
+        close_regkey(rkey);
+    return n;
+}
+
+/* The local time as the stamps hold it. */
+static void hostkey_stamp_now(char *stamp, size_t size)
+{
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    snprintf(stamp, size, "%04d-%02d-%02dT%02d:%02d:%02d",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+}
+
+/* Write key n and its stamps through an open key (registry) or the folder
+ * store. */
+static void hostkey_slot_put(HKEY rkey, const char *host, int port,
+                             const char *keytype, int n, const char *key)
+{
+    strbuf *name = strbuf_new();
+    char stamp[32], *nfirst, *nwhen, *had;
+    hostkey_stamp_now(stamp, sizeof(stamp));
+    kitty_hostkey_slot_name(name, host, port, keytype, n);
+    nfirst = dupcat(name->s, ":first");
+    nwhen = dupcat(name->s, ":when");
+    hostkey_value_write(rkey, name->s, key);
+    had = hostkey_value_read(rkey, nfirst);
+    if (!had)
+        hostkey_value_write(rkey, nfirst, stamp);
+    sfree(had);
+    hostkey_value_write(rkey, nwhen, stamp);
+    sfree(nfirst); sfree(nwhen);
+    strbuf_free(name);
+}
+
+void kitty_hostkey_slot_write(const char *host, int port, const char *keytype,
+                              int n, const char *key)
+{
+    HKEY rkey;
+    if (kitty_store_readonly() || n < 1 || n > KITTY_HOSTKEY_SLOTS)
+        return;
+    kitty_store_mark_dirty();
+    rkey = hostkey_open_rw();
+    if (!store_is_file() && !rkey)
+        return;
+    hostkey_slot_put(rkey, host, port, keytype, n, key);
+    if (rkey)
+        close_regkey(rkey);
+}
+
+/* Key n and its two stamps: delete them (to == 0), or move them to key
+ * `to`. Returns whether the key itself was there. */
+static bool hostkey_slot_take(HKEY rkey, const char *host, int port,
+                              const char *keytype, int n, int to)
+{
+    static const char *const suffix[] = { "", ":first", ":when" };
+    bool had_key = false;
+    for (size_t i = 0; i < lenof(suffix); i++) {
+        strbuf *from = strbuf_new();
+        char *v;
+        kitty_hostkey_slot_name(from, host, port, keytype, n);
+        put_dataz(from, suffix[i]);
+        v = to ? hostkey_value_read(rkey, from->s) : NULL;
+        if (v) {
+            strbuf *dst = strbuf_new();
+            kitty_hostkey_slot_name(dst, host, port, keytype, to);
+            put_dataz(dst, suffix[i]);
+            hostkey_value_write(rkey, dst->s, v);
+            strbuf_free(dst);
+            sfree(v);
+        } else if (to) {
+            /* nothing to move: the target must not keep an old stamp */
+            strbuf *dst = strbuf_new();
+            kitty_hostkey_slot_name(dst, host, port, keytype, to);
+            put_dataz(dst, suffix[i]);
+            hostkey_value_delete(rkey, dst->s);
+            strbuf_free(dst);
+        }
+        if (hostkey_value_delete(rkey, from->s) && i == 0)
+            had_key = true;
+        strbuf_free(from);
+    }
+    return had_key;
+}
+
+bool kitty_hostkey_slot_delete(const char *host, int port, const char *keytype,
+                               int n)
+{
+    HKEY rkey;
+    int count;
+    bool done;
+    if (kitty_store_readonly() || n < 1)
+        return false;
+    count = kitty_hostkey_slot_count(host, port, keytype);
+    if (n > count)
+        return false;
+    kitty_store_mark_dirty();
+    rkey = hostkey_open_rw();
+    if (!store_is_file() && !rkey)
+        return false;
+    done = hostkey_slot_take(rkey, host, port, keytype, n, 0);
+    for (int k = n + 1; k <= count; k++)          /* close the gap */
+        hostkey_slot_take(rkey, host, port, keytype, k, k - 1);
+    if (rkey)
+        close_regkey(rkey);
+    return done;
+}
+
+bool kitty_hostkey_type_delete(const char *host, int port, const char *keytype)
+{
+    HKEY rkey;
+    bool done = false;
+    if (kitty_store_readonly())
+        return false;
+    kitty_store_mark_dirty();
+    rkey = hostkey_open_rw();
+    if (!store_is_file() && !rkey)
+        return false;
+    /* every number, not only up to the first gap: nothing of the type stays */
+    for (int k = 1; k <= KITTY_HOSTKEY_SLOTS; k++)
+        if (hostkey_slot_take(rkey, host, port, keytype, k, 0))
+            done = true;
+    if (rkey)
+        close_regkey(rkey);
+    return done;
+}
+
 int check_stored_host_key(const char *hostname, int port,
                           const char *keytype, const char *key)
 {
@@ -1572,6 +1788,15 @@ int check_stored_host_key(const char *hostname, int port,
         int compare = exists ? strcmp(otherstr, key) : -1;
         sfree(otherstr);
         strbuf_free(regname);
+        /* KiTTY: keys 2.. of the type (hostkeyspertype) */
+        for (int n = 2; compare && n <= KITTY_HOSTKEY_SLOTS; n++) {
+            char *nth = kitty_hostkey_slot_read(hostname, port, keytype, n, "");
+            if (!nth)
+                break;
+            exists = 1;
+            compare = strcmp(nth, key);
+            sfree(nth);
+        }
         if (!exists)
             return 1;                  /* key does not exist in portable store */
         else if (compare)
@@ -1649,10 +1874,25 @@ int check_stored_host_key(const char *hostname, int port,
         sfree(oldstyle);
     }
 
-    close_regkey(rkey);
-
     int exists = (otherstr != NULL);
     int compare = exists ? strcmp(otherstr, key) : -1;
+
+    /* KiTTY: keys 2.. of the type (hostkeyspertype). The old-format trick
+     * above is for key 1 alone. */
+    for (int n = 2; compare && n <= KITTY_HOSTKEY_SLOTS; n++) {
+        strbuf *nthname = strbuf_new();
+        char *nth;
+        kitty_hostkey_slot_name(nthname, hostname, port, keytype, n);
+        nth = get_reg_sz(rkey, nthname->s);
+        strbuf_free(nthname);
+        if (!nth)
+            break;
+        exists = 1;
+        compare = strcmp(nth, key);
+        sfree(nth);
+    }
+
+    close_regkey(rkey);
 
     sfree(otherstr);
     strbuf_free(regname);
@@ -1684,51 +1924,22 @@ void store_host_key(Seat *seat, const char *hostname, int port,
         return;
     /* The trust store changed - worth a backup. */
     kitty_store_mark_dirty();
-    strbuf *regname = strbuf_new();
-    hostkey_regname(regname, hostname, port, keytype);
 
     /* KiTTY: two stamps beside the key, for the Host keys leaf and klink:
      * "<name>:first" written once, "<name>:when" on every write - so a row
      * reads "known since X, key last written Y". Information for the human;
-     * nothing decides on them. ISO local time. */
-    char stamp[32];
-    {
-        SYSTEMTIME st;
-        GetLocalTime(&st);
-        snprintf(stamp, sizeof(stamp), "%04d-%02d-%02dT%02d:%02d:%02d",
-                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-    }
-    char *name_first = dupcat(regname->s, ":first");
-    char *name_when = dupcat(regname->s, ":when");
-
-    if (store_is_file()) {
-        char *had;
-        portable_write_text_file("SshHostKeys", regname->s, key);
-        had = portable_read_text_file("SshHostKeys", name_first);
-        if (!had)
-            portable_write_text_file("SshHostKeys", name_first, stamp);
-        sfree(had);
-        portable_write_text_file("SshHostKeys", name_when, stamp);
-        sfree(name_first); sfree(name_when);
-        strbuf_free(regname);
-        return;
-    }
-
-    HKEY rkey = create_regkey(HKEY_CURRENT_USER,
-                              reg_hostkeys_buf);
-    if (rkey) {
-        char *had;
-        put_reg_sz(rkey, regname->s, key);
-        had = get_reg_sz(rkey, name_first);
-        if (!had)
-            put_reg_sz(rkey, name_first, stamp);
-        sfree(had);
-        put_reg_sz(rkey, name_when, stamp);
+     * nothing decides on them. ISO local time. The key is key 1 of its type
+     * (the value upstream reads). Keys 2.. of the type (hostkeyspertype) are
+     * deleted with their stamps: accepting a key - a new one, or a changed
+     * one that matched none of them - replaces every stored key of its type. */
+    HKEY rkey = hostkey_open_rw();
+    if (!store_is_file() && !rkey)
+        return;                        /* key does not exist in registry */
+    hostkey_slot_put(rkey, hostname, port, keytype, 1, key);
+    for (int n = 2; n <= KITTY_HOSTKEY_SLOTS; n++)
+        hostkey_slot_take(rkey, hostname, port, keytype, n, 0);
+    if (rkey)
         close_regkey(rkey);
-    } /* else key does not exist in registry */
-
-    sfree(name_first); sfree(name_when);
-    strbuf_free(regname);
 }
 
 struct host_ca_enum {

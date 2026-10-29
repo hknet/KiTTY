@@ -4648,11 +4648,26 @@ static void hks_show_detail(struct hks_data *d, dlgparam *dlg, int idx)
         put_dataz(sb, KT_HKS_DETAIL_NONE);
     else {
         const struct hks_row *r = &d->rows[idx];
+        bool stored = !strcmp(r->status, "stored");
+        struct kitty_hostkey_list *l = kitty_hostkeys_enumerate();
         put_fmt(sb, "%s  %s", r->type_display, r->status);
         if (r->sha256 && r->sha256[0])
             put_fmt(sb, "\r\n" KT_HKS_DETAIL_PRESENTED, r->sha256, r->md5);
-        if (r->stored_sha256 && r->stored_sha256[0] && strcmp(r->status, "stored"))
-            put_fmt(sb, "\r\n" KT_HKS_DETAIL_STORED, r->stored_sha256);
+        /* every stored key of the type (hostkeyspertype): with the key
+         * presented among them, the others read "not signing" */
+        for (int i = 0; i < l->n; i++) {
+            const struct kitty_hostkey_entry *e = &l->items[i];
+            if (e->port != d->port || strcmp(e->keytype, r->keytype) ||
+                strcmp(e->host, d->host))
+                continue;
+            if (!stored)
+                put_fmt(sb, "\r\n" KT_HKS_DETAIL_STORED, e->sha256);
+            else if (r->sha256 && strcmp(e->sha256, r->sha256)) {
+                put_fmt(sb, "\r\n" KT_HKS_DETAIL_STORED, e->sha256);
+                put_fmt(sb, "  %s", KT_HK_V_STANDBY);
+            }
+        }
+        kitty_hostkeys_free(l);
         if (r->error && r->error[0])
             put_fmt(sb, "\r\n%s", r->error);
     }
@@ -4667,7 +4682,8 @@ static char *hks_stored_sha256(const struct hks_data *d, const char *keytype)
     char *out = dupstr("");
     for (int i = 0; i < l->n; i++) {
         const struct kitty_hostkey_entry *e = &l->items[i];
-        if (e->port == d->port && !strcmp(e->keytype, keytype) && !strcmp(e->host, d->host)) {
+        if (e->port == d->port && e->nth == 1 && !strcmp(e->keytype, keytype) &&
+            !strcmp(e->host, d->host)) {
             sfree(out); out = dupstr(e->sha256); break;
         }
     }
@@ -5043,8 +5059,12 @@ static void hkscan_refresh_line(dlgparam *dlg, Conf *conf)
         for (int i = 0; i < l->n; i++) {
             const struct kitty_hostkey_entry *e = &l->items[i];
             if (e->port == port && !strcmp(e->host, host)) {
-                if (n++) put_dataz(types, ", ");
-                put_dataz(types, e->type_display);
+                /* every key counts. A type with two keys is listed once. */
+                if (e->nth <= 1) {
+                    if (types->len) put_dataz(types, ", ");
+                    put_dataz(types, e->type_display);
+                }
+                n++;
             }
         }
         line = n ? dupprintf(KT_HKSCAN_STORED, host, port, n)

@@ -262,6 +262,7 @@ void kitty_cfgbox_workplace_poll(dlgparam *dlg)
     int now, have;
     struct wpmode_data *wd = kitty_wpmode_active;
     kitty_iniview_poll(dlg);           /* the kitty.ini view follows its file */
+    kitty_hk_poll(dlg);                /* the Host Keys leaf follows its store */
     /* A field that writes only once the typing has stopped (the Application
      * Notification) is written from here: this tick is the box's clock. */
     kset_deferred_tick();
@@ -691,10 +692,16 @@ static int  kset_get_debug(void) { return debug_flag; }
 /* Security > Host keys: the running values, so a change holds in this
  * process at once (the switches themselves keep int setters) */
 static int  kset_get_acceptnew(void) { return kitty_hostkey_accept_new_all(); }
-static int  kset_get_hk00(void) { return kitty_hk00_enabled(); }
+static int  kset_get_hk00(void) { return kitty_hk00_mode(); }
+static int  kset_get_hk00_pertype(void) { return kitty_hk00_pertype(); }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
+/* Host keys > Settings: updatehostkeys (kitty_hostkeys00.h KHK00_MODE_*) */
+static const struct kset_choice kset_hk00_choices[] = {
+    { KT_HK_UPD_CH_YES, "yes", KHK00_MODE_YES },
+    { KT_HK_UPD_CH_ASK, "ask", KHK00_MODE_ASK },
+    { KT_HK_UPD_CH_NO,  "no",  KHK00_MODE_NO } };
 
 /* Reconnect by failure condition (kitty/kitty_reconnect.c): the stored words
  * are what kitty_reconnect.c reads; the values are its KRA_* codes. Every
@@ -821,7 +828,10 @@ static const struct kset_key kset_keys[] = {
     /* Security > Host keys: accept-new for every session, and the host key
      * update (kitty_hostkey_acceptnew.h, kitty_hostkeys00.h) */
     { INIT_SECTION, KI_AUTOSTORESSHKEY,  KSET_BOOL, false, kset_get_acceptnew, kitty_hostkey_accept_new_set_all, NULL, 0, 0, 0 },
-    { INIT_SECTION, KI_UPDATEHOSTKEYS,   KSET_BOOL, false, kset_get_hk00, kitty_hk00_set_enabled, NULL, 0, 0, 1 },
+    { INIT_SECTION, KI_UPDATEHOSTKEYS,   KSET_CHOICE, false, kset_get_hk00, kitty_hk00_set_mode, NULL, 0, 0, KHK00_MODE_YES,
+      NULL, NULL, kset_hk00_choices, lenof(kset_hk00_choices) },
+    { INIT_SECTION, KI_HOSTKEYSPERTYPE,  KSET_INT, false, kset_get_hk00_pertype, kitty_hk00_set_pertype, NULL,
+      1, KHK00_PERTYPE_MAX, KHK00_PERTYPE_DEFAULT },
     /* Automation */
     { INIT_SECTION, KI_INITDELAY,      KSET_SECS, false, NULL, NULL, &init_delay, 0, 0, 2000 },
     { INIT_SECTION, KI_BCDELAY,        KSET_INT, false, NULL, NULL, &between_char_delay, 0, 10000, 0 },

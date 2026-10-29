@@ -1383,12 +1383,29 @@
 /* Application/Security/Host Keys (kitty_hostkeys.c) */
 #define KT_HK_TITLE                                  "Host Keys"
 #define KT_HK_GROUP                                  "Host keys this KiTTY++ has accepted"
-#define KT_HK_INTRO                                  "A host key is stored per host and port, for every session that connects there."
-/* Host keys > Settings: [KiTTY] autostoresshkey, updatehostkeys */
+/* the search box: the first row of the group, its cue banner and the count
+ * line while it holds a text */
+#define KT_HK_FILTER                                 "Filter:"
+#define KT_HK_FILTER_CUE                             "Host, port, type or fingerprint"
+#define KT_HK_COUNT_FILTERED                         "%d of %d host keys match."
+#define KT_HK_FILTER_NONE                            "No host key matches \"%s\"."
+/* two or more keys of one type for a host and port: the mark in front of the
+ * Type column. The detail box's line after the stamps. */
+#define KT_HK_KEY_N                                  "(%d of %d) "
+#define KT_HK_DETAIL_NTH                             "Key %d of %d of its type. Key 1 is the primary."
+/* Verify: a stored key of the type while the server signs with another
+ * stored key of that type (the leaf, the session's Scan/Edit box, klink) */
+#define KT_HK_V_STANDBY                              "not signing"
+/* Host keys > Settings: [KiTTY] autostoresshkey, updatehostkeys,
+ * hostkeyspertype */
 #define KT_HK_SETTINGS_TITLE                         "Host Key Settings"
 #define KT_HK_SWITCHES_GROUP                         "Host keys of every session"
 #define KT_HK_ACCEPTNEW_ALL                          "Store an unknown host key without confirmation (every session)"
-#define KT_HK_UPDATE_ALL                             "Update host keys the server proves (hostkeys-00)"
+#define KT_HK_UPDATE_ALL                             "Keys the server proves (hostkeys-00):"
+#define KT_HK_UPD_CH_YES                             "Store and notify"
+#define KT_HK_UPD_CH_ASK                             "Confirm each change"
+#define KT_HK_UPD_CH_NO                              "Ignore"
+#define KT_HK_PERTYPE                                "Keys per type and host:"
 #define KT_HK_COL_HEAD                               "Host\tType\tSHA256\tFirst seen\tLast written\tVerified"
 #define KT_HK_DETAIL_NONE                            "Select a key to see its fingerprints in full."
 #define KT_HK_DETAIL                                 "%s:%d  %s  %d bits\r\n%s\r\nMD5:%s\r\nFirst seen %s\r\nLast written %s"
@@ -1404,13 +1421,15 @@
 #define KT_HK_VERIFY_BUSY                            "A verification is still running."
 #define KT_HK_VERIFY_NOTHREAD                        "The verification could not be started."
 #define KT_HK_VERIFY_EMPTY                           "No host keys to verify."
-#define KT_HK_VERIFIED_SUMMARY                       "Verified %d key%s: %d OK, %d MISMATCH, %d not answered."
+#define KT_HK_VERIFIED_SUMMARY                       "Verified %d key%s: %d OK, %d not signing, %d MISMATCH, %d not answered."
 #define KT_HK_NOSEL                                  "Nothing was selected."
 #define KT_HK_COPIED                                 "Copied %d key%s to the clipboard."
 #define KT_HK_DELETED                                "Deleted %d key%s."
 #define KT_HK_COUNT                                  "%d host key%s stored."
-#define KT_HK_CONFIRM_DELETE                         "Delete the stored host key for %s?\n\nThe next connection to it will ask the first-contact question again."
-#define KT_HK_CONFIRM_DELETE_N                       "Delete %d stored host keys?\n\nThe next connection to each of those hosts will ask the first-contact question again."
+#define KT_HK_CONFIRM_DELETE                         "Delete the stored host key for %s?\n\nThe next connection to it shows the unknown-key question again."
+#define KT_HK_CONFIRM_DELETE_N                       "Delete %d stored host keys?\n\nThe next connection to each of those hosts shows the unknown-key question again."
+/* one of two or more keys of a type selected: the others stay */
+#define KT_HK_CONFIRM_DELETE_KEEP                    "Delete key %d of %d (%s) for %s?\n\nThe other key of this type stays stored."
 /* Connection/SSH/Host keys: "Scan this host" and its box */
 #define KT_HKSCAN_GROUP                              "This host's keys"
 #define KT_HKSCAN_BUTTON                             "Scan/Edit"
@@ -1419,7 +1438,7 @@
 #define KT_HKSCAN_TYPES_WORST                        "ssh-ed25519, ecdsa-sha2-nistp256, ecdsa-sha2-nistp384, ecdsa-sha2-nistp521, ssh-rsa, ssh-ed448, ssh-dss"
 #define KT_HKSCAN_NO_HOST                            "No host name in this session yet."
 #define KT_HKS_CAPTION                               "Host keys of %s:%d"
-#define KT_HKS_INTRO                                 "What %s:%d presents now, against the store. Accept stores a key; Decline leaves the store as it is."
+#define KT_HKS_INTRO                                 "What %s:%d presents now, against the store. Accept stores a key. Delete stored removes it."
 #define KT_HKS_COL_HEAD                              "Type\tBits\tSHA256\tStatus"
 #define KT_HKS_STATUS_SCANNING                       "scanning"
 #define KT_HKS_SCANNING                              "Scanning: %d of %d key types answered ..."
@@ -1434,7 +1453,7 @@
 #define KT_HKS_NOTHING_TO_ACCEPT                     "The host presented no key of this type."
 #define KT_HKS_ALREADY_STORED                        "This key is already stored."
 #define KT_HKS_CONFIRM_REPLACE                       "Replace the stored key for %s:%d (%s)?\n\nStored:    %s\nPresented: %s\n\nDo this only if you know the server's key was changed on purpose. If not, somebody may sit between you and the server."
-#define KT_HKS_CONFIRM_DELETE_N                      "Delete the stored key%s (%s) for %s:%d?\n\nThe next connection will ask the first-contact question again."
+#define KT_HKS_CONFIRM_DELETE_N                      "Delete the stored key%s (%s) for %s:%d?\n\nThe next connection shows the unknown-key question again."
 #define KT_HKS_NONE_STORED                           "None of the selected rows has a stored key."
 #define KT_HKS_STORED_N                              "Stored %d key%s."
 #define KT_HKS_STORED_LEFT                           "Stored %d key%s; %d left as it is."
@@ -1949,6 +1968,10 @@
 /* The launcher's folder context menu (right click on a session folder) */
 #define KT_MENU_OPEN_FOLDER_ALL                      "Open all %d sessions in \"%.200s\""
 #define KT_LAUNCHER_OPEN_FOLDER_CONFIRM              "Open all %d sessions in \"%.200s\"?"
+/* The launcher's session context menu (right click on a saved session): each
+ * entry only when that tool is installed (cyd01/KiTTY#501). */
+#define KT_MENU_OPEN_IN_WINSCP                       "Open in Win&SCP"
+#define KT_MENU_OPEN_IN_FILEZILLA                    "Open in File&Zilla"
 #define KT_MENU_REFRESH                              "&Refresh"
 #define KT_MENU_CONFIGURATION                        "&Configuration"
 #define KT_MENU_TTYED                                "&TTY-ed"
@@ -1968,10 +1991,6 @@
 #define KT_MAIN_INFO_CLEANING_BACKUP                 "Cleaning backup registry"
 #define KT_MAIN_INFO_SAVING_REGISTRY                 "Saving registry"
 #define KT_MAIN_INFO_PREPARING_REGISTRY              "Preparing local registry"
-/* The launcher's session context menu (right click on a saved session): each
- * entry only when that tool is installed (cyd01/KiTTY#501). */
-#define KT_MENU_OPEN_IN_WINSCP                       "Open in Win&SCP"
-#define KT_MENU_OPEN_IN_FILEZILLA                    "Open in File&Zilla"
 #define KT_MAIN_INI_CREATE_FAILED                    "Unable to create configuration file !"
 #define KT_MAIN_INFO_LOADING_SESSIONS                "Loading saved sessions."
 #define KT_MAIN_INFO_LOADING_FROM_FILE               "Loading saved sessions from file."
@@ -3576,6 +3595,8 @@
 #define KT_CLI_BUNDLEPW_OPEN_FAILED                  "unable to open bundle-password file '%s'"
 #define KT_CLI_BUNDLEPW_READ_FAILED                  "unable to read a password from file '%s'"
 #define KT_CLI_EDIT_FILE_NOT_FOUND                   "Unable to find requested file"
+/* kitty.exe -winscp / -filezilla without a session to open (%s: the switch) */
+#define KT_CLI_XFER_NEEDS_SESSION                    "option \"%s\" requires a saved session with a host name: -load <session>"
 #define KT_CAP_CLI                                   "KiTTY++ command line"
 #define KT_CAP_CLI_HELP                              "KiTTY++ command line options"
 #define KT_CLI_HELP_FMT                              "%s %s\r\n" \
@@ -3595,8 +3616,6 @@
         "account on this PC."
 /* kitty_secretstore.c: a password whose export wrap failed is left out of the
  * bundle (never DPAPI in its place); the export's summary lists it */
-/* kitty.exe -winscp / -filezilla without a session to open (%s: the switch) */
-#define KT_CLI_XFER_NEEDS_SESSION                    "option \"%s\" requires a saved session with a host name: -load <session>"
 #define KT_BUNDLE_SKIPPED_HEAD_FMT                   "\n\n%d password(s) left out:"
 #define KT_BUNDLE_SKIPPED_PW_FMT                     "\nPassword of session '%s' not exported: %s"
 #define KT_BUNDLE_SKIPPED_PXPW_FMT                   "\nProxy password of session '%s' not exported: %s"
@@ -3683,6 +3702,99 @@
 #define KT_HOSTKEY_UPDATE_REMOVED                    "Host key removed (no longer offered by the server): %s, %s port %d"
 #define KT_HOSTKEY_UPDATE_FAILED                     "Host key not stored (the server's proof failed): %s, %s port %d"
 #define KT_HOSTKEY_UPDATE_REFUSED                    "Host keys not updated (the server refused the proof request): %s port %d"
+/* hostkeyspertype 2 or more: a proven key stored beside the stored key(s) of
+ * its type (the key number, the new key, key 1 of its type). Key 2 moved to
+ * key 1's value once key 1 was removed. */
+#define KT_HOSTKEY_UPDATE_ADDED                      "Host key stored as key %d of its type (proven by the server): %s, beside %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_PRIMARY                    "Host key made primary (the old key is no longer offered): %s, %s port %d"
+/* the limit hostkeyspertype blocks a change of one type: the server lists
+ * more keys of the type than it allows, or the key that verified the
+ * connection takes the place a new key needs. The host, the port, the
+ * limit, the type. Then one line per stored key and per offered key of the
+ * type (a fingerprint each). */
+#define KT_HOSTKEY_UPDATE_OVERLIMIT                  "Host keys not updated for %s port %d: the limit \"Keys per type and host\" (%d) blocks the change of the %s keys."
+#define KT_HOSTKEY_UPDATE_OVERLIMIT_STORED           "  Stored: %s"
+#define KT_HOSTKEY_UPDATE_OVERLIMIT_OFFERED          "  Offered: %s"
+/* updatehostkeys=ask: no answer (a key to store, a key to remove), or the
+ * answer "Change nothing" */
+#define KT_HOSTKEY_UPDATE_UNANSWERED                 "Host key not stored (updatehostkeys=ask, not answered): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_KEPT_UNANSWERED            "Host key kept (updatehostkeys=ask, not answered): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_DECLINED                   "Host key not stored (declined): %s, %s port %d"
+#define KT_HOSTKEY_UPDATE_KEPT                       "Host key kept (declined): %s, %s port %d"
+/* updatehostkeys=yes, kitty.exe: the notice for every key the update stores
+ * (a key beside a stored key of its type, or the first key of a type) */
+#define KT_HK00_NOTICE_TITLE                         "New host key stored"
+#define KT_HK00_NOTICE_TEXT                          "%s port %d\nNew:    %s\nBeside: %s"
+#define KT_HK00_NOTICE_TEXT_TYPE                     "%s port %d\nNew: %s"
+/* hostkeyspertype=1: the new key replaced the stored one */
+#define KT_HK00_NOTICE_TEXT_REPLACED                 "%s port %d\nNew: %s\nReplaced: %s\n\"Keys per type and host\" is 1: the new key replaces the stored one."
+/* updatehostkeys=ask: the facts, one line per change - klink's console and
+ * kitty.exe's terminal ("Prompt in the terminal") */
+#define KT_HK00_Q_HEAD                               "The server %s port %d offers changes to its host keys:"
+#define KT_HK00_Q_NEW                                "  New key (proven by the server): %s"
+#define KT_HK00_Q_BESIDE                             "  Stored key of this type:        %s"
+#define KT_HK00_Q_GONE                               "  No longer offered, to remove:   %s"
+/* ... the console's question and the terminal's hint to the notice */
+#define KT_HK00_Q_CONSOLE                            "Apply these changes? (y/n, Return changes nothing) "
+#define KT_HK00_T_HINT                               "Apply or change nothing on the notice near the clock."
+/* ... and that notice (kitty.exe) */
+#define KT_HK00_ASK_TITLE                            "Host key changes offered"
+#define KT_HK00_ASK_HEAD                             "%s port %d"
+#define KT_HK00_ASK_NEW                              "New:    %s"
+#define KT_HK00_ASK_BESIDE                           "Beside: %s"
+#define KT_HK00_ASK_GONE                             "Remove: %s"
+#define KT_HK00_ASK_APPLY                            "Apply"
+#define KT_HK00_ASK_NOTHING                          "Change nothing"
+/* ssh/common.c: a changed key with two or more stored keys of its type (the
+ * count, the type, the product name). One line per stored key. The line
+ * before the batch-mode stop, so the terminal shows it too. */
+#define KT_HOSTKEY_MISMATCH_N                        "The host key does not match any of the %d %s keys %s has stored for this server:"
+#define KT_HOSTKEY_MISMATCH_N_KEY                    "Stored key %d: %s, first seen %s"
+#define KT_HOSTKEY_REPLACES_ALL                      "Accepting the new key replaces all %d stored %s keys."
+/* windows/dialog.c: the host key box - an unknown key, a changed key, a
+ * certificate no trusted authority signed, the changes of
+ * updatehostkeys=ask. The detail field is label TAB value. */
+#define KT_HKD_UNKNOWN_CAP                           "Unknown host key"
+#define KT_HKD_UNKNOWN_TEXT                          "The key %s port %d presents is not stored. Check its fingerprint before you store it."
+#define KT_HKD_CHANGED_CAP                           "Host key CHANGED"
+#define KT_HKD_CHANGED_TEXT                          "The key of %s port %d differs from the stored key."
+#define KT_HKD_CHANGED_TEXT_N                        "The key of %s port %d matches none of the %d stored %s keys. Replace key replaces them all."
+#define KT_HKD_CHANGED_WARN                          "Someone may be intercepting this connection. Cancel is the only safe choice."
+#define KT_HKD_CERT_TEXT                             "The certified key of %s port %d is not signed by a trusted authority."
+#define KT_HKD_NEW_CAP                               "Host key changes offered"
+#define KT_HKD_NEW_TEXT                              "%s port %d offers changes to its host keys. The server proved each new key."
+#define KT_HKD_L_HOST                                "Host"
+#define KT_HKD_L_PORT                                "Port"
+#define KT_HKD_L_TYPE                                "Key type"
+#define KT_HKD_L_SHA256                              "SHA256"
+#define KT_HKD_L_MD5                                 "MD5"
+#define KT_HKD_L_STORED                              "Stored"
+#define KT_HKD_L_FULLKEY                             "Full key"
+#define KT_HKD_L_PRESENTED                           "Presented"
+#define KT_HKD_L_STOREDN                             "Stored key %d"
+#define KT_HKD_L_FIRSTSEEN                           "First seen"
+#define KT_HKD_L_LASTWRITTEN                         "Last written"
+#define KT_HKD_L_FULLKEY_P                           "Full key (presented)"
+#define KT_HKD_L_NEWKEY                              "New key"
+#define KT_HKD_L_STOREDTYPE                          "Stored key, type"
+#define KT_HKD_L_AFTER                               "After this"
+#define KT_HKD_L_AFTER_FMT                           "%d keys of type %s"
+#define KT_HKD_L_REMOVE                              "To remove"
+#define KT_HKD_L_FULLKEY_N                           "Full key (new)"
+/* values and sub-labels of the detail field, as the approved mock-ups show
+ * them: the type and its bits, an MD5 under a SHA256, a stored key of
+ * another type, the first seen of one of two stored keys */
+#define KT_HKD_V_TYPE                                "%s, %d bits"
+#define KT_HKD_V_MD5                                 "MD5 %s"
+#define KT_HKD_V_STORED_OTHER                        "%s, first seen %s"
+#define KT_HKD_L_FIRSTSEEN_SUB                       "  first seen"
+#define KT_HKD_HELP                                  "Help"
+#define KT_HKD_ONCE                                  "Connect once"
+#define KT_HKD_STORE                                 "Store key"
+#define KT_HKD_REPLACE                               "Replace key"
+#define KT_HKD_CANCEL                                "Cancel"
+#define KT_HKD_APPLY                                 "Apply"
+#define KT_HKD_NOTHING                               "Change nothing"
 
 /* cmdline.c: -masterpwfile */
 #define KT_CLI_MPWFILE_CONFLICT                      "-masterpwfile conflicts with PortablePasswordProtection=dpapi" \

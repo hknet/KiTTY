@@ -225,11 +225,14 @@ char *kitty_hostkey_now_iso(void)
 
 /* ---- enumeration ----------------------------------------------------------- */
 
-/* "<keytype>@<port>:<escaped host>" -> the pieces; false for anything else
- * (an old-style name without '@', or a stamp). */
-static bool parse_store_name(const char *name, char **keytype, int *port, char **host)
+/* "<keytype>@<port>:<escaped host>" (key 1) or "<keytype>#<n>@<port>:<escaped
+ * host>" (key n of the type, kitty_storage.h) -> the pieces. false for
+ * anything else (an old-style name without '@', or a stamp). */
+static bool parse_store_name(const char *name, char **keytype, int *nth,
+                             int *port, char **host)
 {
-    const char *at = strchr(name, '@'), *colon;
+    const char *at = strchr(name, '@'), *colon, *hash;
+    size_t tlen;
     strbuf *sb;
     if (!at) return false;
     colon = strchr(at + 1, ':');
@@ -241,9 +244,17 @@ static bool parse_store_name(const char *name, char **keytype, int *port, char *
             (len > 5 && !strcmp(name + len - 5, KITTY_HOSTKEY_STAMP_WHEN)))
             return false;
     }
-    *keytype = snewn((size_t)(at - name) + 1, char);
-    memcpy(*keytype, name, at - name);
-    (*keytype)[at - name] = '\0';
+    hash = memchr(name, '#', (size_t)(at - name));
+    *nth = 1;
+    if (hash) {
+        *nth = atoi(hash + 1);
+        if (*nth < 2 || *nth > KITTY_HOSTKEY_SLOTS)
+            return false;               /* not a name this store writes */
+    }
+    tlen = hash ? (size_t)(hash - name) : (size_t)(at - name);
+    *keytype = snewn(tlen + 1, char);
+    memcpy(*keytype, name, tlen);
+    (*keytype)[tlen] = '\0';
     *port = atoi(at + 1);
     sb = strbuf_new();
     unescape_registry_key(colon + 1, sb);
@@ -260,7 +271,31 @@ static struct kitty_hostkey_entry *list_add(struct kitty_hostkey_list *l)
     return e;
 }
 
+/* Each entry's "of": the keys of its type for its host and port. */
+static void count_of_type(struct kitty_hostkey_list *l)
+{
+    for (int i = 0; i < l->n; i++) {
+        struct kitty_hostkey_entry *e = &l->items[i];
+        e->of = 0;
+        for (int j = 0; j < l->n; j++) {
+            const struct kitty_hostkey_entry *f = &l->items[j];
+            if (f->port == e->port && !strcmp(f->keytype, e->keytype) &&
+                !strcmp(f->host, e->host))
+                e->of++;
+        }
+    }
+}
+
+static struct kitty_hostkey_list *hostkeys_enumerate(void);
+
 struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
+{
+    struct kitty_hostkey_list *l = hostkeys_enumerate();
+    count_of_type(l);
+    return l;
+}
+
+static struct kitty_hostkey_list *hostkeys_enumerate(void)
 {
     struct kitty_hostkey_list *l = snew(struct kitty_hostkey_list);
     memset(l, 0, sizeof(*l));
@@ -277,7 +312,7 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
         if (h != INVALID_HANDLE_VALUE) {
             do {
                 char *keytype, *host, *text, *stamp, *raw;
-                int port;
+                int port, nth;
                 if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
                 /* KiTTY (hknet/KiTTY#56): with [KiTTY] hostkeyextension
                  * every host-key file - stamps included - ends in it, and
@@ -302,13 +337,14 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
                 /* File names are the store names MUNGED (ksf_munge); the
                  * readers munge again, so they take the raw name. */
                 raw = ksf_unmunge(fd.cFileName);
-                if (!parse_store_name(raw, &keytype, &port, &host)) { sfree(raw); continue; }
+                if (!parse_store_name(raw, &keytype, &nth, &port, &host)) { sfree(raw); continue; }
                 text = portable_read_text_file("SshHostKeys", raw);
                 if (text) {
                     struct kitty_hostkey_entry *e = list_add(l);
                     char *n1 = dupcat(raw, KITTY_HOSTKEY_STAMP_FIRST);
                     char *n2 = dupcat(raw, KITTY_HOSTKEY_STAMP_WHEN);
                     e->host = host; e->port = port; e->keytype = keytype;
+                    e->nth = nth;
                     describe_into(e, text);
                     stamp = portable_read_text_file("SshHostKeys", n1);
                     e->first_seen = stamp ? stamp : dupstr("");
@@ -342,12 +378,12 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
         if (!key) return l;
         while (1) {
             char *keytype, *host, *text;
-            int port;
+            int port, nth;
             len = lenof(name);
             if (RegEnumValueA(key, idx, name, &len, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
                 break;
             idx++;
-            if (!parse_store_name(name, &keytype, &port, &host)) continue;
+            if (!parse_store_name(name, &keytype, &nth, &port, &host)) continue;
             text = get_reg_sz(key, name);
             if (text) {
                 struct kitty_hostkey_entry *e = list_add(l);
@@ -355,6 +391,7 @@ struct kitty_hostkey_list *kitty_hostkeys_enumerate(void)
                 char *n2 = dupcat(name, KITTY_HOSTKEY_STAMP_WHEN);
                 char *stamp;
                 e->host = host; e->port = port; e->keytype = keytype;
+                e->nth = nth;
                 describe_into(e, text);
                 stamp = get_reg_sz(key, n1);
                 e->first_seen = stamp ? stamp : dupstr("");
@@ -387,40 +424,14 @@ void kitty_hostkeys_free(struct kitty_hostkey_list *l)
 
 bool kitty_hostkey_delete(const char *host, int port, const char *keytype)
 {
-    strbuf *name;
-    bool done = false;
-    if (kitty_store_readonly())
-        return false;                   /* readonly=yes: the key stays */
-    name = strbuf_new();
-    put_fmt(name, "%s@%d:", keytype, port);
-    escape_registry_key(host, name);
-    kitty_store_mark_dirty();
+    /* readonly=yes: the keys stay (kitty_hostkey_type_delete) */
+    return kitty_hostkey_type_delete(host, port, keytype);
+}
 
-    if (store_is_file()) {
-        const char *suffix[] = { "", KITTY_HOSTKEY_STAMP_FIRST, KITTY_HOSTKEY_STAMP_WHEN };
-        for (size_t i = 0; i < lenof(suffix); i++) {
-            char *n = dupcat(name->s, suffix[i]);
-            char *path = portable_item_path("SshHostKeys", n);
-            if (path) {
-                if (DeleteFileA(path) && i == 0) done = true;
-                sfree(path);
-            }
-            sfree(n);
-        }
-    } else {
-        HKEY key = open_regkey_rw(HKEY_CURRENT_USER, kitty_reg_hostkeys());
-        if (key) {
-            char *n1 = dupcat(name->s, KITTY_HOSTKEY_STAMP_FIRST);
-            char *n2 = dupcat(name->s, KITTY_HOSTKEY_STAMP_WHEN);
-            done = (RegDeleteValueA(key, name->s) == ERROR_SUCCESS);
-            RegDeleteValueA(key, n1);
-            RegDeleteValueA(key, n2);
-            sfree(n1); sfree(n2);
-            close_regkey(key);
-        }
-    }
-    strbuf_free(name);
-    return done;
+bool kitty_hostkey_delete_nth(const char *host, int port, const char *keytype,
+                              int nth)
+{
+    return kitty_hostkey_slot_delete(host, port, keytype, nth);
 }
 
 /* ---- the host key update (kitty_hostkeys00.h) ------------------------------ */
@@ -430,25 +441,22 @@ static bool hk00_readonly(void)
     return kitty_store_readonly() != 0;
 }
 
-/* The stored key's fingerprint, "ssh-ed25519 255 SHA256:..." as
- * ssh2_fingerprint gives it; NULL when nothing is stored or the text does
- * not parse. */
-static char *hk00_stored_fingerprint(const char *host, int port, const char *keytype)
+static int hk00_count(const char *host, int port, const char *keytype)
 {
-    strbuf *name = strbuf_new();
-    char *text = NULL, *fp = NULL;
-    put_fmt(name, "%s@%d:", keytype, port);
-    escape_registry_key(host, name);
-    if (store_is_file()) {
-        text = portable_read_text_file("SshHostKeys", name->s);
-    } else {
-        HKEY key = open_regkey_ro(HKEY_CURRENT_USER, kitty_reg_hostkeys());
-        if (key) {
-            text = get_reg_sz(key, name->s);
-            close_regkey(key);
-        }
-    }
-    strbuf_free(name);
+    return kitty_hostkey_slot_count(host, port, keytype);
+}
+
+static char *hk00_text(const char *host, int port, const char *keytype, int n)
+{
+    return kitty_hostkey_slot_read(host, port, keytype, n, "");
+}
+
+/* Key n's fingerprint, "ssh-ed25519 255 SHA256:..." as ssh2_fingerprint
+ * gives it. NULL when nothing is stored or the text does not parse. */
+static char *hk00_fingerprint(const char *host, int port, const char *keytype,
+                              int n)
+{
+    char *text = kitty_hostkey_slot_read(host, port, keytype, n, ""), *fp = NULL;
     if (text) {
         strbuf *blob = kitty_hostkey_blob_from_text(keytype, text);
         if (blob) {
@@ -460,6 +468,27 @@ static char *hk00_stored_fingerprint(const char *host, int port, const char *key
     return fp;
 }
 
+static char *hk00_first_seen(const char *host, int port, const char *keytype,
+                             int n)
+{
+    return kitty_hostkey_slot_read(host, port, keytype, n,
+                                   KITTY_HOSTKEY_STAMP_FIRST);
+}
+
+static char *hk00_last_written(const char *host, int port, const char *keytype,
+                               int n)
+{
+    return kitty_hostkey_slot_read(host, port, keytype, n,
+                                   KITTY_HOSTKEY_STAMP_WHEN);
+}
+
+static void hk00_store(const char *host, int port, const char *keytype, int n,
+                       const char *key)
+{
+    kitty_hostkey_slot_write(host, port, keytype, n, key);
+}
+
 const struct kitty_hk00_store kitty_hostkeys_hk00_store = {
-    hk00_readonly, hk00_stored_fingerprint, kitty_hostkey_delete,
+    hk00_readonly, hk00_count, hk00_text, hk00_fingerprint, hk00_first_seen,
+    hk00_last_written, hk00_store, kitty_hostkey_delete_nth,
 };

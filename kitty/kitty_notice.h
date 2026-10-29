@@ -90,6 +90,11 @@ void kitty_notice_close_ctx(void *ctx);
  * to the terminal window with the program's file name in lParam (a dupstr,
  * the receiver frees it), and window.c shows the notice from the UI thread. */
 #define WM_KITTY_AGENT_CHECKED (WM_APP + 75)
+
+/* Clicking the "New host key stored" notice (kitty_hk00_ui.c) posts this.
+ * window.c answers with a configuration window on Application/Security/Host
+ * Keys, filtered to that host with the new key selected. */
+#define WM_KITTY_HOSTKEY_STORED (WM_APP + 76)
 void kitty_agent_unverified_notice(char *name);   /* kitty/kitty_win.c */
 
 #endif

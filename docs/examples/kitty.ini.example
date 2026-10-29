@@ -208,11 +208,21 @@
 
 ; updatehostkeys: OpenSSH's host key update (UpdateHostKeys), in every SSH
 ;    program. After the login a server whose key matched the store lists all
-;    its host keys. A key it proves is stored, or replaces the stored key of
-;    its type. A stored type it no longer offers is removed. Each change is
-;    an Event Log line. Default yes. In the configuration window:
-;    Application > Security > Host Keys > Settings.
+;    its host keys. A key it proves is stored, beside a stored key of its
+;    type up to hostkeyspertype. A stored key it no longer offers is
+;    removed. Each change is a line in the Terminal Window's Event Log.
+;    yes (default): store and show a notice (kitty.exe). ask: confirm
+;    all changes of a connection first. With no answer nothing changes.
+;    no: off. In the configuration window: Application > Security >
+;    Host Keys > Settings.
 ;updatehostkeys=yes
+
+; hostkeyspertype: keys of one type stored per host and port, 1-32,
+;    default 2. 2 lets a server rotate its key. 1 = one key per type (a
+;    rotation ends at the changed-key warning). A server list with more
+;    keys of one type is not used. In the configuration window:
+;    Application > Security > Host Keys > Settings.
+;hostkeyspertype=2
 
 ; bgimage: enable/disable the background image feature. (The description
 ;    here used to call it backgroundimage, which is not a key KiTTY++ reads.)

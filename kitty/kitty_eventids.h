@@ -183,7 +183,7 @@ static const struct kitty_eventid kitty_eventids[] = {
       "Warning" },
     { 213, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "hostkey-update",
       "host port keytype fp result oldfp pid proxy",
-      "Information; Warning when proof-failed or refused" },
+      "Information; Warning when proof-failed, refused or over-limit" },
     { 220, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "auth-ok",
       "host port user method fp pid proxy for",
       "Information" },
@@ -222,7 +222,7 @@ static const struct kitty_eventid kitty_eventids[] = {
       "Warning" },
     { 313, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "hostkey-update",
       "host port keytype fp result oldfp pid proxy",
-      "Information; Warning when proof-failed or refused" },
+      "Information; Warning when proof-failed, refused or over-limit" },
     { 320, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "auth-ok",
       "host port user method fp pid proxy for",
       "Information" },
@@ -409,7 +409,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "it powers, separated by semicolons" },
     { "oldfp",
       "213, 313: the hash of the stored key a replaced key took the "
-      "place of (SHA256:...), empty for every other result" },
+      "place of, for added the hash of key 1 of its type (SHA256:...), "
+      "empty for every other result" },
     { "path",
       "100-170: the key file; 401-403: the file written; 903: the "
       "session file; 904: the folder or file created without the "
@@ -479,8 +480,12 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "150, 151: done, failed; 152: done, failed (a wrong passphrase), "
       "cancelled; 160: start, stop; 170: failed; 201, 301: closed, "
       "remote-closed, fatal, user; 211, 212, 311, 312: accept-new, "
-      "accepted, refused; 213, 313: stored, replaced, removed, "
-      "proof-failed, refused (the server refused the proof request); "
+      "accepted, refused; 213, 313: stored, added (beside a stored key "
+      "of its type), replaced, made-primary, removed, proof-failed, "
+      "refused (the server refused the proof request), over-limit (more "
+      "keys of one type than hostkeyspertype), declined (Change nothing, "
+      "or no, with updatehostkeys=ask), unanswered (no answer with "
+      "updatehostkeys=ask); "
       "401, 402: saved, failed; 906: refused (not started), allowed "
       "(Yes in the question), declined (No, or the question closed)" },
     { "session",

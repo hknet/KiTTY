@@ -150,6 +150,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_TRAYMODE                         "traymode"
 /* the host key update for every SSH program (kitty_hostkeys00.h) */
 #define KI_UPDATEHOSTKEYS                   "updatehostkeys"
+#define KI_HOSTKEYSPERTYPE                  "hostkeyspertype"
 #define KI_UPLOADDIR                        "uploaddir"
 #define KI_USERPASSSSHNOSAVE                "userpasssshnosave"
 #define KI_VERIFYAGENT                      "verifyagent"

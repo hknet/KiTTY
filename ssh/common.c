@@ -13,6 +13,7 @@
 #include "kitty/kitty_text.h"   /* KiTTY: accept-new's record */
 #include "kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "kitty/kitty_winevent.h"  /* KiTTY: host keys in the Windows Event Log */
+#include "kitty/kitty_hostkeys00.h"  /* KiTTY: the stored keys of a type */
 #include "mpint.h"
 #include "ssh.h"
 #include "storage.h"
@@ -871,6 +872,21 @@ static const char *seat_product_name(void)
     return strcmp(appname, "KiTTY") ? appname : "KiTTY++";
 }
 
+/* KiTTY: an ISO stamp "YYYY-MM-DDThh:mm:ss" as the host-key texts show it,
+ * "YYYY-MM-DD hh:mm". "-" for none. Caller frees. */
+static char *kitty_hk_stamp_text(const char *iso)
+{
+    char *t;
+    if (!iso || !*iso)
+        return dupstr("-");
+    t = dupstr(iso);
+    if (strlen(t) > 10 && t[10] == 'T')
+        t[10] = ' ';
+    if (strlen(t) > 16)
+        t[16] = '\0';
+    return t;
+}
+
 SeatPromptResult verify_ssh_host_key(
     InteractionReadySeat iseat, Conf *conf, LogContext *logctx,
     const char *host, int port,
@@ -1045,6 +1061,12 @@ SeatPromptResult verify_ssh_host_key(
     SeatDialogText *text = seat_dialog_text_new();
     const SeatDialogPromptDescriptions *pds =
         seat_prompt_descriptions(iseat.seat);
+    /* KiTTY: how many keys of this type are stored (hostkeyspertype), read
+     * through the update's store hook - set by the programs with a store */
+    const struct kitty_hk00_store *kitty_hk00_st = kitty_hk00_get_store();
+    int kitty_nstored = kitty_hk00_st ?
+        kitty_hk00_st->count(host, port, keytype) : 0;
+    const char *kitty_type_name = key ? ssh_key_alg(key)->ssh_id : keytype;
 
     FingerprintType fptype_default =
         ssh2_pick_default_fingerprint(fingerprints);
@@ -1119,11 +1141,30 @@ SeatPromptResult verify_ssh_host_key(
     } else {
         seat_dialog_text_append(
             text, SDT_SCARY_HEADING, "WARNING - POTENTIAL SECURITY BREACH!");
-        seat_dialog_text_append(
-            text, SDT_PARA, "The host key does not match the one %s has "
-            "cached for this server:", seat_product_name());
-        seat_dialog_text_append(
-            text, SDT_DISPLAY, "%s (port %d)", host, port);
+        if (kitty_nstored >= 2) {
+            /* KiTTY: two or more stored keys of the type (hostkeyspertype):
+             * the key matches none of them, each listed */
+            seat_dialog_text_append(
+                text, SDT_PARA, KT_HOSTKEY_MISMATCH_N, kitty_nstored,
+                kitty_type_name, seat_product_name());
+            seat_dialog_text_append(
+                text, SDT_DISPLAY, "%s (port %d)", host, port);
+            for (int k = 1; k <= kitty_nstored; k++) {
+                char *fp = kitty_hk00_st->fingerprint(host, port, keytype, k);
+                char *first = kitty_hk00_st->first_seen(host, port, keytype, k);
+                char *when = kitty_hk_stamp_text(first);
+                seat_dialog_text_append(
+                    text, SDT_DISPLAY, KT_HOSTKEY_MISMATCH_N_KEY, k,
+                    fp ? fp : kitty_type_name, when);
+                sfree(fp); sfree(first); sfree(when);
+            }
+        } else {
+            seat_dialog_text_append(
+                text, SDT_PARA, "The host key does not match the one %s has "
+                "cached for this server:", seat_product_name());
+            seat_dialog_text_append(
+                text, SDT_DISPLAY, "%s (port %d)", host, port);
+        }
         seat_dialog_text_append(
             text, SDT_PARA, "This means that either the server administrator "
             "has changed the host key, or you have actually connected to "
@@ -1135,6 +1176,51 @@ SeatPromptResult verify_ssh_host_key(
         helpctx = HELPCTX(errors_hostkey_changed);
     }
     sfree(kitty_other_types);
+    /* KiTTY: accepting replaces every stored key of the type (store_host_key).
+     * Before the batch-mode stop, so the terminal's question shows it too. */
+    if (storage_status == 2 && kitty_nstored >= 2)
+        seat_dialog_text_append(
+            text, SDT_PARA, KT_HOSTKEY_REPLACES_ALL, kitty_nstored,
+            kitty_type_name);
+
+    /* KiTTY: the stored keys as facts for the host-key box, which builds its
+     * own text from them (windows/dialog.c): "stored", n, fingerprint, first
+     * seen, last written for each key of this type. "other", fingerprint,
+     * first seen for each key of another type. */
+    if (kitty_hk00_st) {
+        for (size_t ai = 0; ai < n_keyalgs; ai++) {
+            const ssh_keyalg *alg = all_keyalgs[ai];
+            bool seen = false, same;
+            int count;
+            if (alg->is_certificate)
+                continue;
+            for (size_t aj = 0; aj < ai; aj++)    /* rsa: three names, one key */
+                if (!all_keyalgs[aj]->is_certificate &&
+                    !strcmp(all_keyalgs[aj]->cache_id, alg->cache_id))
+                    seen = true;
+            if (seen)
+                continue;
+            same = !strcmp(alg->cache_id, keytype);
+            count = kitty_hk00_st->count(host, port, alg->cache_id);
+            for (int k = 1; k <= count; k++) {
+                char *fp = kitty_hk00_st->fingerprint(host, port, alg->cache_id, k);
+                char *first = kitty_hk00_st->first_seen(host, port, alg->cache_id, k);
+                char *f1 = kitty_hk_stamp_text(first);
+                if (same) {
+                    char *last = kitty_hk00_st->last_written(host, port, alg->cache_id, k);
+                    char *f2 = kitty_hk_stamp_text(last);
+                    seat_dialog_text_append(
+                        text, SDT_KITTY_FACT, "stored\t%d\t%s\t%s\t%s", k,
+                        fp ? fp : alg->ssh_id, f1, f2);
+                    sfree(last); sfree(f2);
+                } else
+                    seat_dialog_text_append(
+                        text, SDT_KITTY_FACT, "other\t%s\t%s",
+                        fp ? fp : alg->ssh_id, f1);
+                sfree(fp); sfree(first); sfree(f1);
+            }
+        }
+    }
 
     /* The above text is printed even in batch mode. Here's where we stop if
      * we can't present interactive prompts. */

@@ -194,6 +194,7 @@ static void ssh2_transport_free(PacketProtocolLayer *ppl)
     sfree(s->client_greeting);
     sfree(s->server_greeting);
     sfree(s->keystr);
+    sfree(s->kitty_hk00_keystr);
     strbuf_free(s->hostkeyblob);
     {
         host_ca *hca;
@@ -2370,11 +2371,11 @@ ptrlen ssh2_transport_get_session_id(PacketProtocolLayer *ppl)
 
 /* KiTTY: what the host key update (kitty/kitty_hostkeys00.h) needs from the
  * first key exchange: how its host key was accepted (the return value,
- * KHK00_BY_*), its store type, the host and port it is stored under, and
- * the session id. */
+ * KHK00_BY_*), its store type and text, the host and port it is stored
+ * under, and the session id. */
 int ssh2_transport_kitty_hk00(PacketProtocolLayer *ppl, const char **type,
-                              const char **host, int *port,
-                              ptrlen *session_id)
+                              const char **keystr, const char **host,
+                              int *port, ptrlen *session_id)
 {
     struct ssh2_transport_state *s;
 
@@ -2382,6 +2383,7 @@ int ssh2_transport_kitty_hk00(PacketProtocolLayer *ppl, const char **type,
     s = container_of(ppl, struct ssh2_transport_state, ppl);
 
     *type = s->kitty_hk00_type;
+    *keystr = s->kitty_hk00_keystr;
     *host = s->savedhost;
     *port = s->savedport;
     *session_id = s->got_session_id ?

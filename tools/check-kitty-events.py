@@ -118,7 +118,9 @@ def read_table():
     for m in re.finditer(r"\{([^{}]*)\}", body):
         # adjacent string literals ("a " "b") are one string
         raw = re.sub(r'"\s+"', "", m.group(1))
-        parts = [p.strip() for p in re.findall(r'"[^"]*"|[^,]+', raw)]
+        # a quoted cell may hold a comma: whitespace before a cell is skipped
+        # so that its opening quote starts the quoted alternative
+        parts = [p.strip() for p in re.findall(r'\s*("[^"]*"|[^,]+)', raw)]
         parts = [p for p in parts if p]
         if len(parts) != 6:
             sys.exit("check-kitty-events: cannot read table row {%s}" % m.group(1))

@@ -3315,6 +3315,12 @@ The list is sorted by host, then port, then type. A click on the header
 row sorts by that column; a second click on the same column turns the
 order around.
 
+\q{Filter} shows the rows whose host, port, key type or fingerprint
+contains the text typed. A host with two keys of one type has a row
+per key, marked (1 of 2) and (2 of 2). Key 1 is the primary. Older
+KiTTY and PuTTY read only that one. The list follows the store by
+itself, the filter and the selection stay.
+
 The box under the list shows the selected key in full: both
 fingerprints, both stamps with their time of day, the \c{klink} command
 that repeats the check from a shell (\k{plink-option-scan}), and the
@@ -3327,6 +3333,8 @@ selected - for the key of the stored type, right now, and compares:
 \q{OK} when the host presents the stored key, \q{MISMATCH}, in red,
 when it presents a different one, \q{not offered} when the host no
 longer has a key of that type, \q{unreachable} when it did not answer.
+\q{not signing} when the host has two keys of the type and signs with
+the other one.
 The connection stops before any login: nothing is sent but the key
 exchange, and a verification never changes the store. It runs in the
 background, one host after the other, through \c{klink.exe} beside
@@ -3337,8 +3345,9 @@ connect. When the change is expected, \q{Delete} the stored key and let
 the next connection put up the question afresh.
 
 \q{Copy} puts the selected rows on the clipboard, one line per key.
-\q{Delete} removes the selected keys after a confirmation; the next
-connection to such a host puts up the first-contact question again.
+\q{Delete} removes the selected keys after a
+confirmation. With no key of that type left, the next connection
+shows the unknown-key question again.
 
 Taking a NEW key in - or replacing one after a reinstall - is done from
 the session's side: \q{Scan/Edit} on Connection > SSH > Host keys
@@ -3348,23 +3357,34 @@ The \q{Configure host CAs} button on a session's Host keys panel now
 brings you to \k{kitty-cfg-host-cas} here: certificate authorities, like
 host keys, belong to the installation.
 
-The two switches for every session are on the leaf \q{Settings}
+The three settings for every session are on the leaf \q{Settings}
 (\k{kitty-cfg-host-key-settings}).
 
 \S{kitty-cfg-host-key-settings} The Host Key Settings panel
 
-Two switches for every session, on the leaf \q{Settings} under
+Three settings for every session, on the leaf \q{Settings} under
 \q{Host Keys}.
 
 \b \q{Store an unknown host key without confirmation (every session)}:
 accept-new for every session (\k{config-ssh-kitty-accept-new}). Off by
 default. \c{autostoresshkey} in \c{[KiTTY]}.
 
-\b \q{Update host keys the server proves (hostkeys-00)}: the host key
-update (\k{config-ssh-kitty-update-hostkeys}). On by default.
-\c{updatehostkeys} in \c{[KiTTY]}.
+\b \q{Keys the server proves (hostkeys-00)}: the host key update
+(\k{config-ssh-kitty-update-hostkeys}). \q{Store and notify} stores
+each proven key and shows a notice. \q{Confirm each change} puts all
+changes of a connection to you first, in the form set for
+\q{Unknown host key}: lines in the terminal with the answer on a
+notice, or a box. With no answer nothing changes. \q{Ignore}
+switches the update off. \c{updatehostkeys} in \c{[KiTTY]}:
+\c{yes} (default), \c{ask}, \c{no}.
 
-Both are stored like the other KiTTY++ settings: in the registry or in
+\b \q{Keys per type and host}: keys of one type stored per host and
+port, 1 to 32, default 2. With 2 a server can rotate its key. The new
+key is stored beside the old one. With 1 a rotation ends at the
+changed-key warning. A server list with more keys of one type than
+this is not used. \c{hostkeyspertype} in \c{[KiTTY]}.
+
+All three are stored like the other KiTTY++ settings: in the registry or in
 \c{kitty.ini}, by the store in use. kitty.exe, klink, kscp and ksftp
 read them when they start.
 

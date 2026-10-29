@@ -195,15 +195,23 @@ typedef struct {
 	int pumped ;
 	volatile LONG pumped_end ;
 	int pumped_result ;
+	/* The _help variants: the help topic of the Help button (NULL = no
+	 * Help), the box's own copy. Its detail field shows more lines and
+	 * lines the values up at one tab stop. */
+	const char *help ;
 } kitty_confirm_t ;
 
 #define KITTY_CONFIRM_DETAIL_LINES 6
+#define KITTY_CONFIRM_DETAIL_LINES_HELP 14
+/* the detail field's tab stop with Help, dialog units: past the longest
+ * label of the host key box ("Stored key, type") */
+#define KITTY_CONFIRM_DETAIL_TAB 72
 
 /* Show and place the detail field right under the question (whose bottom is
  * `top`, client pixels), as tall as its text needs up to the line limit,
  * with a scroll bar past it. Returns the height it takes, gap included, for
  * the caller to move what is below. */
-static int kitty_confirm_detail( HWND h, const char *detail, int top ) {
+static int kitty_confirm_detail( HWND h, const char *detail, int top, int maxlines, int tabs ) {
 	HWND e = GetDlgItem( h, IDC_CONFIRM_DETAIL ), t = GetDlgItem( h, IDC_CONFIRM_TEXT ) ;
 	HFONT f = (HFONT)SendMessage( h, WM_GETFONT, 0, 0 ) ;
 	RECT tr ;
@@ -211,6 +219,11 @@ static int kitty_confirm_detail( HWND h, const char *detail, int top ) {
 	HDC dc ;
 	int lineh, lines, height, gap ;
 	if( !e || !t || !detail ) return 0 ;
+	if( tabs ) {
+		/* one tab stop: "label TAB value" reads as two columns */
+		int stop = KITTY_CONFIRM_DETAIL_TAB ;
+		SendMessage( e, EM_SETTABSTOPS, 1, (LPARAM)&stop ) ;
+	}
 	GetWindowRect( t, &tr ) ; MapWindowPoints( NULL, h, (POINT*)&tr, 2 ) ;
 	dc = GetDC( h ) ;
 	if( f ) SelectObject( dc, f ) ;
@@ -223,10 +236,10 @@ static int kitty_confirm_detail( HWND h, const char *detail, int top ) {
 	SetWindowTextA( e, detail ) ;
 	lines = (int)SendMessage( e, EM_GETLINECOUNT, 0, 0 ) ;
 	if( lines < 1 ) lines = 1 ;
-	if( lines > KITTY_CONFIRM_DETAIL_LINES ) {
+	if( lines > maxlines ) {
 		/* the scroll bar only when there is something to scroll to */
 		SetWindowLongPtr( e, GWL_STYLE, GetWindowLongPtr( e, GWL_STYLE ) | WS_VSCROLL ) ;
-		lines = KITTY_CONFIRM_DETAIL_LINES ;
+		lines = maxlines ;
 	}
 	height = lines * lineh + 2 * GetSystemMetrics( SM_CYEDGE ) + 4 ;
 	SetWindowPos( e, NULL, tr.left, top + gap, tr.right - tr.left, height,
@@ -334,6 +347,30 @@ void kitty_centre_on_owner( HWND dlg ) {
 	SetWindowPos( dlg, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE ) ;
 }
 
+/* The Help button of the _help variants: shown at the left end of the
+ * button row (the row's top is that of `ref`, margin from the left edge).
+ * Returns its width, gap included, for the caller's room check. 0 when the
+ * box has no Help. */
+static int kitty_confirm_help_width( HWND h, const kitty_confirm_t *cf ) {
+	HWND hb = GetDlgItem( h, IDHELP ) ;
+	RECT r ;
+	if( !cf || !cf->help || !hb ) return 0 ;
+	GetWindowRect( hb, &r ) ;
+	return kitty_theme_button_width( hb, r.right - r.left ) + 6 ;
+}
+
+static void kitty_confirm_place_help( HWND h, const kitty_confirm_t *cf, HWND ref, int margin ) {
+	HWND hb = GetDlgItem( h, IDHELP ) ;
+	RECT rr, hr ;
+	int w ;
+	if( !cf || !cf->help || !hb || !ref ) return ;
+	GetWindowRect( ref, &rr ) ; MapWindowPoints( NULL, h, (POINT*)&rr, 2 ) ;
+	GetWindowRect( hb, &hr ) ;
+	w = kitty_theme_button_width( hb, hr.right - hr.left ) ;
+	MoveWindow( hb, margin, rr.top, w, rr.bottom - rr.top, TRUE ) ;
+	ShowWindow( hb, SW_SHOW ) ;
+}
+
 /* The box's answer: a modal box ends its dialog loop with it, a modeless one
  * hands it to its callback and goes. */
 static void kitty_confirm_end( HWND h, kitty_confirm_t *cf, int r ) {
@@ -393,7 +430,9 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			RECT qr ;
 			GetWindowRect( GetDlgItem( h, IDC_CONFIRM_TEXT ), &qr ) ;
 			MapWindowPoints( NULL, h, (POINT*)&qr, 2 ) ;
-			d1 += kitty_confirm_detail( h, cf->detail, qr.bottom ) ;
+			d1 += kitty_confirm_detail( h, cf->detail, qr.bottom,
+				cf->help ? KITTY_CONFIRM_DETAIL_LINES_HELP : KITTY_CONFIRM_DETAIL_LINES,
+				cf->help != NULL ) ;
 		}
 		d2 = kitty_fit_text( h, IDC_CONFIRM_WARN, cf ? cf->warn : NULL, d1 ) ;
 		dh = d1 + d2 ;
@@ -460,7 +499,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			margin = rc.right - rn.right ; if( margin < 4 ) margin = 4 ;
 			wy = kitty_theme_button_width( by, ry.right - ry.left ) ;
 			wn = kitty_theme_button_width( bn, rn.right - rn.left ) ;
-			need = wy + gap + wn + 2 * margin ;
+			need = wy + gap + wn + 2 * margin + kitty_confirm_help_width( h, cf ) ;
 			cw = rc.right - rc.left ;
 			if( need > cw ) {
 				RECT wr ; GetWindowRect( h, &wr ) ;
@@ -470,6 +509,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			}
 			MoveWindow( bn, rc.right - margin - wn, rn.top, wn, rn.bottom-rn.top, TRUE ) ;
 			MoveWindow( by, rc.right - margin - wn - gap - wy, ry.top, wy, ry.bottom-ry.top, TRUE ) ;
+			kitty_confirm_place_help( h, cf, bn, margin ) ;
 		}
 		if( cf && cf->three ) {
 			/* Size each button to its text (the shared helper) and lay the
@@ -485,7 +525,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			int wk = kitty_theme_button_width( bk, 50 ) ;
 			int wc = kitty_theme_button_width( bc, 50 ) ;
 			int gap = 6, margin = 10 ;
-			int total = wo + wk + wc + 2*gap + 2*margin ;
+			int total = wo + wk + wc + 2*gap + 2*margin + kitty_confirm_help_width( h, cf ) ;
 			int cw = rc.right - rc.left ;
 			if( total > cw ) {
 				RECT wr ; GetWindowRect( h, &wr ) ;
@@ -497,6 +537,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			MoveWindow( bc, xC, by, wc, bh, TRUE ) ;
 			MoveWindow( bk, xK, by, wk, bh, TRUE ) ;
 			MoveWindow( bo, xO, by, wo, bh, TRUE ) ;
+			kitty_confirm_place_help( h, cf, bc, margin ) ;
 			if( cf->defno ) {
 				SendMessage( h, DM_SETDEFID, IDNO, 0 ) ;
 				SendDlgItemMessage( h, IDYES, BM_SETSTYLE, BS_PUSHBUTTON, TRUE ) ;
@@ -551,6 +592,10 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			/* kitty_confirm_modeless3: No PRESSED (3) is not Escape or a close (0) */
 			kitty_confirm_end( h, cf, ( cf && cf->defno ) ? 3 : 0 ) ; return TRUE ;
 		  case IDCANCEL: kitty_confirm_end( h, cf, 0 ) ; return TRUE ;
+		  case IDHELP:
+			/* the _help variants: the topic opens, the question stays */
+			if( cf && cf->help ) launch_help( h, cf->help ) ;
+			return TRUE ;
 		}
 		return FALSE ;
 	  case WM_CLOSE: kitty_confirm_end( h, cf, 0 ) ; return TRUE ;   /* closing means No */
@@ -564,6 +609,7 @@ static INT_PTR CALLBACK kitty_confirm_dlgproc( HWND h, UINT msg, WPARAM wp, LPAR
 			free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
 			free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
 			if( cf->three ) free( (char *)cf->b_keep ) ;   /* kitty_confirm_modeless3's copy */
+			free( (char *)cf->help ) ;
 			free( cf ) ;
 		}
 		return FALSE ;
@@ -629,6 +675,7 @@ static HWND kitty_confirm_modeless_open( HWND owner, kitty_confirm_t *cf ) {
 		free( (char *)cf->warn ) ; free( (char *)cf->detail ) ;
 		free( (char *)cf->b_yes ) ; free( (char *)cf->b_no ) ; free( (char *)cf->check ) ;
 		if( cf->three ) free( (char *)cf->b_keep ) ;
+		free( (char *)cf->help ) ;
 		free( cf ) ;
 		return NULL ;
 	}
@@ -704,6 +751,51 @@ HWND kitty_confirm_modeless3_warn( HWND owner, const char *caption, const char *
 	cf->b_over = cf->b_yes ; cf->b_cancel = cf->b_no ;
 	cf->b_keep = _strdup( b_third ? b_third : "" ) ;
 	cf->three = 1 ; cf->defno = 1 ;
+	cf->done = done ; cf->ctx = ctx ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
+}
+
+/* kitty_confirm_modeless3_warn with a Help button (see kitty_dlgbox.h): the
+ * host key box - an unknown or a changed key. b_no is the default. The
+ * accepting button carries no accelerator of the box's making. */
+HWND kitty_confirm_modeless3_help( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *warn_red,
+                                   const char *b_yes, const char *b_third, const char *b_no,
+                                   const char *help,
+                                   void (*done)( int answer, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->warn = warn_red ? _strdup( warn_red ) : NULL ;
+	cf->b_yes = _strdup( b_yes ? b_yes : "" ) ;
+	cf->b_no = _strdup( b_no ? b_no : "" ) ;
+	cf->b_over = cf->b_yes ; cf->b_cancel = cf->b_no ;
+	cf->b_keep = _strdup( b_third ? b_third : "" ) ;
+	cf->help = help ? _strdup( help ) : NULL ;
+	cf->three = 1 ; cf->defno = 1 ;
+	cf->done = done ; cf->ctx = ctx ;
+	return kitty_confirm_modeless_open( owner, cf ) ;
+}
+
+/* kitty_confirm_modeless_words with the red line and a Help button (see
+ * kitty_dlgbox.h): the host key box without a storing button (readonly=yes)
+ * and the changes of updatehostkeys=ask. b_no is the default. */
+HWND kitty_confirm_modeless_words_help( HWND owner, const char *caption, const char *text,
+                                        const char *detail, const char *warn_red,
+                                        const char *b_yes, const char *b_no,
+                                        const char *help,
+                                        void (*done)( int yes, void *ctx ), void *ctx ) {
+	kitty_confirm_t *cf = calloc( 1, sizeof(*cf) ) ;
+	if( !cf ) return NULL ;
+	cf->caption = _strdup( caption ? caption : "" ) ;
+	cf->text = _strdup( text ? text : "" ) ;
+	cf->detail = detail ? _strdup( detail ) : NULL ;
+	cf->warn = warn_red ? _strdup( warn_red ) : NULL ;
+	cf->b_yes = b_yes ? _strdup( b_yes ) : NULL ;
+	cf->b_no = b_no ? _strdup( b_no ) : NULL ;
+	cf->help = help ? _strdup( help ) : NULL ;
 	cf->done = done ; cf->ctx = ctx ;
 	return kitty_confirm_modeless_open( owner, cf ) ;
 }

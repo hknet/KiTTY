@@ -29,6 +29,8 @@
 
 # ---- say / ask / tell / names in a text
 
+word | KT_HOSTKEY_UPDATE_UNANSWERED | ask | the kitty.ini value updatehostkeys=ask, not the verb
+word | KT_HOSTKEY_UPDATE_KEPT_UNANSWERED | ask | the kitty.ini value updatehostkeys=ask, not the verb
 word | KT_INIMIG_OUT_INTRO | named | "named proxy" is the feature's name, not the verb
 word | KT_INIMIG_IN_INTRO | named | "named proxy" is the feature's name, not the verb
 word | KT_MIGF_ST_MPW | asked | wording debt: reword with the user's OK when its code is next changed
@@ -48,9 +50,6 @@ word | KT_FZ_PW_ASK | ask | wording debt: reword with the user's OK when its cod
 word | KT_OFFER_NEVER | ask | wording debt: reword with the user's OK when its code is next changed
 word | KT_SYSTEM_NOTE | asks | wording debt: reword with the user's OK when its code is next changed
 word | KT_SYSTEM_TAKEOVER_Q | names | wording debt: reword with the user's OK when its code is next changed
-word | KT_HK_CONFIRM_DELETE | ask | wording debt: reword with the user's OK when its code is next changed
-word | KT_HK_CONFIRM_DELETE_N | ask | wording debt: reword with the user's OK when its code is next changed
-word | KT_HKS_CONFIRM_DELETE_N | ask | wording debt: reword with the user's OK when its code is next changed
 word | KT_KSET_WD_FONTFB_LIST_NOTE | names | noun, not the verb
 word | KT_PXFWD_NOTE | named | "named proxy" is the feature's name, not the verb
 word | KT_KSET_CN_SSHVERSION | told | wording debt: reword with the user's OK when its code is next changed

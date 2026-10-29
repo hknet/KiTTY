@@ -1023,6 +1023,8 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
              * now - verified there, or stored by this connection - and not
              * by a certificate or the session's manual host keys. */
             s->kitty_hk00_type = ssh_key_cache_id(s->hkey);
+            sfree(s->kitty_hk00_keystr);
+            s->kitty_hk00_keystr = dupstr(s->keystr);
             s->kitty_hk00_how = kitty_hk00_how(
                 ssh_key_alg(s->hkey)->is_certificate,
                 conf_get_str_nthstrkey(s->conf, CONF_ssh_manual_hostkeys, 0)

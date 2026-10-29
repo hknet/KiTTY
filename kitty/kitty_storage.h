@@ -75,6 +75,37 @@ const char *kitty_reg_jumplist(void);    /* <base>\Jumplist */
 const char *kitty_reg_hostcas(void);     /* <base>\SshHostCAs */
 const char *kitty_reg_hostkeys(void);    /* <base>\SshHostKeys */
 
+/* ---- host keys: more than one key of a type (windows/storage.c) ----
+ * Up to KITTY_HOSTKEY_SLOTS keys of one type are stored per host and port
+ * ([KiTTY] hostkeyspertype, the host key update). Key 1 is the value of old,
+ * "<type>@<port>:<host>" - the only one older KiTTY and PuTTY read. Key n
+ * from 2 on is "<type>#n@<port>:<host>". Each key has its two stamps beside
+ * it (":first", ":when"). The keys of a type are numbered without gaps:
+ * deleting one moves the keys after it up one number, stamps included.
+ * check_stored_host_key matches any of them. store_host_key writes key 1 and
+ * deletes the others (accepting a changed key replaces every stored key of
+ * its type). The writers do nothing under readonly=yes. */
+#define KITTY_HOSTKEY_SLOTS 32
+/* The store name of key n (put_fmt into sb). */
+void kitty_hostkey_slot_name(strbuf *sb, const char *host, int port,
+                             const char *keytype, int n);
+/* Key n's text (suffix "") or one of its stamps (":first", ":when"). NULL
+ * when absent. Caller frees. */
+char *kitty_hostkey_slot_read(const char *host, int port, const char *keytype,
+                              int n, const char *suffix);
+/* How many keys of the type are stored (0 = none). */
+int kitty_hostkey_slot_count(const char *host, int port, const char *keytype);
+/* Write key n with its stamps: ":first" only when the key is new there,
+ * ":when" always. */
+void kitty_hostkey_slot_write(const char *host, int port, const char *keytype,
+                              int n, const char *key);
+/* Delete key n and its stamps. The keys after it move up one number. true
+ * when key n was there and is gone. */
+bool kitty_hostkey_slot_delete(const char *host, int port, const char *keytype,
+                               int n);
+/* Delete every key of the type and their stamps. true when one was there. */
+bool kitty_hostkey_type_delete(const char *host, int port, const char *keytype);
+
 /* ---- the read watch (session importer) ----
  * While a callback is set, every setting name read from a session is passed to
  * it. Set it around one load and clear it again; it is not re-entrant and is

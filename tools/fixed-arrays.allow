@@ -198,7 +198,7 @@ kitty/kitty_hello_ui.c | struct hui_tpl | buf | 2048 | in-memory dialog template
 
 kitty/kitty_hostkey_verify.c | run_hidden() | buf | 4096 | pipe read chunk of klink output
 
-kitty/kitty_hostkeys.c | kitty_hostkeys_enumerate() | name | 16384 | registry value name (16383-character limit)
+kitty/kitty_hostkeys.c | hostkeys_enumerate() | name | 16384 | registry value name (16383-character limit)
 
 kitty/kitty_hostnotify.c | hn_on_close() | buf | ON_REPLY_MAX | OSC 99 reply, ON_REPLY_MAX
 kitty/kitty_hostnotify.c | hn_show() | body | ON_BODY_MAX + 1 | notification body, ON_BODY_MAX
@@ -787,8 +787,7 @@ windows/utils/request_file.c | request_multi_file() | namebuf | MAX_PATH * MULTI
 
 windows/utils/win_strerror.c | win_strerror() | msgtext | 65536 | upstream: FormatMessage text; 64 KB is its documented maximum
 
-windows/window.c | kitty_open_cfgpanel_window() | cmd | MAX_PATH + 128 | command line "<exe>" -cfgpanel "<panel>"; exe checked, panel an internal constant
-windows/window.c | kitty_open_cfgpanel_window() | exe | MAX_PATH | own exe path for "-cfgpanel"; GetModuleFileNameA result checked
+windows/window.c | kitty_open_cfgpanel_window_args() | exe | MAX_PATH | own exe path for "-cfgpanel"; GetModuleFileNameA result checked
 windows/window.c | far2l_key_message() | kb | 256 | GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
 windows/window.c | win_seat_notify_session_started() | nb | 512 | update notice text from kitty_update_notice, size passed
 windows/window.c | win_seat_notify_session_started() | wnb | 512 | wide copy of the update notice, MultiByteToWideChar(lenof); on failure the narrow text is used

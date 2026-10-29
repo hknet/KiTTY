@@ -157,6 +157,39 @@ HWND kitty_confirm_modeless(HWND owner, const char *caption, const char *text,
     return NULL;
 }
 
+/* The host key box on the shared template (windows/dialog.c): none here,
+ * so dialog.c shows the classic IDD_HOSTKEY box, as before. */
+HWND kitty_confirm_modeless3_help(HWND owner, const char *caption, const char *text,
+                                  const char *detail, const char *warn_red,
+                                  const char *b_yes, const char *b_third, const char *b_no,
+                                  const char *help,
+                                  void (*done)(int answer, void *ctx), void *ctx);
+HWND kitty_confirm_modeless3_help(HWND owner, const char *caption, const char *text,
+                                  const char *detail, const char *warn_red,
+                                  const char *b_yes, const char *b_third, const char *b_no,
+                                  const char *help,
+                                  void (*done)(int answer, void *ctx), void *ctx)
+{
+    (void)owner; (void)caption; (void)text; (void)detail; (void)warn_red;
+    (void)b_yes; (void)b_third; (void)b_no; (void)help; (void)done; (void)ctx;
+    return NULL;
+}
+HWND kitty_confirm_modeless_words_help(HWND owner, const char *caption, const char *text,
+                                       const char *detail, const char *warn_red,
+                                       const char *b_yes, const char *b_no,
+                                       const char *help,
+                                       void (*done)(int yes, void *ctx), void *ctx);
+HWND kitty_confirm_modeless_words_help(HWND owner, const char *caption, const char *text,
+                                       const char *detail, const char *warn_red,
+                                       const char *b_yes, const char *b_no,
+                                       const char *help,
+                                       void (*done)(int yes, void *ctx), void *ctx)
+{
+    (void)owner; (void)caption; (void)text; (void)detail; (void)warn_red;
+    (void)b_yes; (void)b_no; (void)help; (void)done; (void)ctx;
+    return NULL;
+}
+
 /* The stock variants have no themed boxes at all, so the routed MessageBox
  * calls in shared files (windows/controls.c) stay real MessageBoxes here. */
 int kitty_message_box(HWND owner, const char *text, const char *caption,

@@ -183,13 +183,25 @@ static void show_mouseptr(WinGuiSeat *wgs, bool show);
 #include "../kitty/kitty_notice.h"  /* kitty_notice_show + the notice click
                                      * messages (WM_KITTY_AGENT_UNVERIFIED) */
 #ifdef MOD_PERSO
+#include "../kitty/kitty_hk00_ui.h" /* the notice of a host key stored */
+#endif
+#ifdef MOD_PERSO
 /* KiTTY: a notice was clicked - put the user in front of the setting, in a
  * NEW window on that configuration panel (the Application tab and the
  * SSH/Auth panel are not built mid-session). A start that fails is
  * reported, the click would otherwise do nothing at all. */
+static void kitty_open_cfgpanel_window_args(HWND hwnd, const char *panel,
+                                            const char *extra);
 static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
 {
-    char exe[MAX_PATH], cmd[MAX_PATH + 128];
+    kitty_open_cfgpanel_window_args(hwnd, panel, NULL);
+}
+
+/* The same with more switches after the panel (extra, or NULL). */
+static void kitty_open_cfgpanel_window_args(HWND hwnd, const char *panel,
+                                            const char *extra)
+{
+    char exe[MAX_PATH], *cmd;
     STARTUPINFOA si;
     PROCESS_INFORMATION pi;
     DWORD n = GetModuleFileNameA(NULL, exe, sizeof(exe));
@@ -197,7 +209,9 @@ static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
         return;
     memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
     memset(&pi, 0, sizeof(pi));
-    snprintf(cmd, sizeof(cmd), "\"%s\" -cfgpanel \"%s\"", exe, panel);
+    /* in full: the switches after the panel carry a host name */
+    cmd = dupprintf("\"%s\" -cfgpanel \"%s\"%s%s", exe, panel,
+                    extra ? " " : "", extra ? extra : "");
     if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
         CloseHandle(pi.hThread);
         CloseHandle(pi.hProcess);
@@ -212,6 +226,7 @@ static void kitty_open_cfgpanel_window(HWND hwnd, const char *panel)
                           GetNoticeSeconds(), NULL, 0);
         sfree(msg);
     }
+    sfree(cmd);
 }
 #endif
 
@@ -2636,6 +2651,36 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 /* blank the option out so the ordinary parser never sees it */
                 while (p < q) *p++ = ' ';
             }
+        }
+        /* KiTTY: "-hkfilter <host>" and "-hkselect <hash>": the Host Keys
+         * leaf opens with its filter set and that key selected (the notice
+         * of a key the host key update stored). Stripped like -cfgpanel. */
+        {
+            static const char *const sw[] = { "-hkfilter", "-hkselect" };
+            char *vals[2] = { NULL, NULL };
+            for (int k = 0; k < 2; k++) {
+                char *p = strstr(cl, sw[k]);
+                if (p) {
+                    char *q = p + strlen(sw[k]);
+                    const char *v;
+                    while (*q == ' ' || *q == '\t') q++;
+                    if (*q == '"') {
+                        v = ++q;
+                        while (*q && *q != '"') q++;
+                        vals[k] = dupprintf("%.*s", (int)(q - v), v);
+                        if (*q == '"') q++;
+                    } else {
+                        v = q;
+                        while (*q && *q != ' ' && *q != '\t') q++;
+                        vals[k] = dupprintf("%.*s", (int)(q - v), v);
+                    }
+                    while (p < q) *p++ = ' ';
+                }
+            }
+            if (vals[0] || vals[1])
+                kitty_cfgbox_hk_filter(vals[0] ? vals[0] : "", vals[1] ? vals[1] : "");
+            sfree(vals[0]);
+            sfree(vals[1]);
         }
         /* KiTTY: "-cfgloaded" marks the session this box restores at startup
          * as deliberately loaded - the launcher's hotkey-conflict balloon
@@ -8717,6 +8762,27 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          */
         kitty_open_cfgpanel_window(hwnd, "Application/Migration");
         return 0;
+      case WM_KITTY_HOSTKEY_STORED: {
+        /*
+         * The "New host key stored" notice (kitty_hk00_ui.c) was clicked:
+         * the Host Keys leaf in a NEW window, filtered to that host with the
+         * new key selected - the Application tab is not built mid-session.
+         * A quote in a host name cannot end the switch's value: it goes.
+         */
+        const char *host, *hash;
+        if (kitty_hk00_ui_last_stored(&host, &hash)) {
+            strbuf *sb = strbuf_new();
+            put_dataz(sb, "-hkfilter \"");
+            for (const char *p = host; *p; p++)
+                if (*p != '"')
+                    put_byte(sb, *p);
+            put_fmt(sb, "\" -hkselect \"%s\"", hash);
+            kitty_open_cfgpanel_window_args(hwnd, "Application/Security/Host Keys",
+                                            sb->s);
+            strbuf_free(sb);
+        }
+        return 0;
+      }
       case WM_KITTY_AGENT_CHECKED:
         /* The agent check's worker thread (kitty_win.c) found that the
          * program serving the agent pipe is not ours: show the notice from
@@ -13393,6 +13459,26 @@ static void kitty_userauth_done(Seat *seat, const char *username)
                         NULL, 0, kitty_offer_closed, (void *)wgs->term_hwnd, &x);
     sfree(text);
     sfree(where);
+}
+
+/* KiTTY: the terminal window a Seat belongs to, for the host key update's
+ * question and notice (kitty/kitty_hk00_ui.c): its own, or - for a jump
+ * host's connection, which runs on a Seat of its own - the window of this
+ * process. A TempSeat (the host-key phase) stands for the real one. */
+bool kitty_hk00_window(Seat *seat, HWND *hwnd, Terminal **term,
+                       LogContext **logctx)
+{
+    WinGuiSeat *wgs = kitty_active_wgs;
+    if (seat && is_tempseat(seat))
+        seat = tempseat_get_real(seat);
+    if (seat && seat->vt == &win_seat_vt)
+        wgs = container_of(seat, WinGuiSeat, seat);
+    if (!wgs || !wgs->term_hwnd || !wgs->term)
+        return false;
+    *hwnd = wgs->term_hwnd;
+    *term = wgs->term;
+    *logctx = wgs->logctx;
+    return true;
 }
 
 void kitty_set_active_seat(WinGuiSeat *wgs) {

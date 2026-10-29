@@ -68,7 +68,7 @@ extern struct migf_data *kitty_migf_active;   /* kitty_config.c */
  * type. `status` is a column word: OK, MISMATCH, not offered, unreachable,
  * no klink, klink failed, not stored. */
 struct hk_verdict {
-    char *host; int port; char *keytype;
+    char *host; int port; char *keytype; int nth;
     char *status, *sha256, *md5, *error, *when;
 };
 struct hk_data {
@@ -87,8 +87,26 @@ struct hk_data {
     struct hk_verdict *verdicts;
     int nverdicts;
     size_t verdicts_alloc;
+    int *vrows;                         /* the rows the run verifies (hk->keys) */
+    int nvrows;
+    /* the search box: the text as typed (in full), the key to select once
+     * (opened from the notice of a key stored), dlg_editbox_set's echo */
+    dlgcontrol *filter;
+    char *filtertext;
+    char *select_hash;
+    bool filter_refreshing;
+    /* the store watched: 1 the registry key (event + key), 2 the folder */
+    int watch_kind;
+    HANDLE watch;
+    HKEY watch_key;
+    bool reload_pending;
 };
 extern struct hk_data *kitty_hk_active;   /* kitty_config.c */
+/* Opened from the notice of a key stored (-hkfilter, -hkselect): the Host
+ * Keys leaf's filter and the key to select, taken by the leaf (kitty_config.c) */
+extern char *kitty_cfgbox_hk_filter_text, *kitty_cfgbox_hk_select_hash;
+void hk_set_cue(struct hk_data *hk);   /* kitty_config_app.c */
+void kitty_hk_poll(dlgparam *dlg);     /* kitty_config_app.c: the box's tick */
 extern int kitty_cfgbox_loaded_deliberate;   /* kitty_config.c */
 extern char *kitty_cfgbox_prefill_name;      /* kitty_config.c */
 #define HOST_BOX_TITLE "Host Name (or IP address)"

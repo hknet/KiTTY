@@ -405,7 +405,8 @@ void kitty_wev_hostkey_update(const char *host, int port, const char *keytype,
     if (!wev_session_block())
         return;
     warn = result && (!strcmp(result, "proof-failed") ||
-                      !strcmp(result, "refused"));
+                      !strcmp(result, "refused") ||
+                      !strcmp(result, "over-limit"));
     wev_port(p, sizeof(p), port);
     /* the type as the fingerprint names it (ssh-rsa, not the store's rsa2) */
     sp = fp ? strchr(fp, ' ') : NULL;

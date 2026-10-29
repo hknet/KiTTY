@@ -19,6 +19,7 @@
 #include "storage.h"
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_scan.h"
+#include "kitty_text.h"   /* KT_HK_V_STANDBY: "not signing" */
 
 /* The key types a scan without -t tries: kitty_hostkey_scan_types(). */
 
@@ -248,16 +249,33 @@ static void scan_one(const char *host, int port, const char *cache_id,
     conf_free(conf);
 }
 
-/* The store's entry for host:port of this type, or NULL. */
+/* The store's key nth of this type for host:port, or NULL. A host can
+ * have more than one key of a type (hostkeyspertype). nth 1 is the primary. */
 static const struct kitty_hostkey_entry *stored_entry(
     const struct kitty_hostkey_list *l, const char *host, int port,
-    const char *cache_id)
+    const char *cache_id, int nth)
 {
     for (int i = 0; i < l->n; i++)
-        if (l->items[i].port == port && !strcmp(l->items[i].keytype, cache_id) &&
+        if (l->items[i].port == port && l->items[i].nth == nth &&
+            !strcmp(l->items[i].keytype, cache_id) &&
             !strcmp(l->items[i].host, host))
             return &l->items[i];
     return NULL;
+}
+
+/* The stored key of this type equal to the presented one (by its SHA256),
+ * else key 1 of the type, else NULL. */
+static const struct kitty_hostkey_entry *stored_match(
+    const struct kitty_hostkey_list *l, const char *host, int port,
+    const char *cache_id, const char *sha256)
+{
+    for (int i = 0; i < l->n; i++)
+        if (l->items[i].port == port && sha256 && *sha256 &&
+            !strcmp(l->items[i].sha256, sha256) &&
+            !strcmp(l->items[i].keytype, cache_id) &&
+            !strcmp(l->items[i].host, host))
+            return &l->items[i];
+    return stored_entry(l, host, port, cache_id, 1);
 }
 
 int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
@@ -301,7 +319,7 @@ int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
     for (int i = 0; i < nwant; i++) {
         struct scan_state st;
         struct kitty_hostkey_entry e;
-        const struct kitty_hostkey_entry *have = stored_entry(stored, host, port, want[i]);
+        const struct kitty_hostkey_entry *have = stored_entry(stored, host, port, want[i], 1);
         const char *status, *error = NULL;
 
         memset(&e, 0, sizeof(e));
@@ -309,6 +327,7 @@ int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
         if (st.keytype) {
             int cmp = check_stored_host_key(host, port, st.keytype, st.keystr);
             kitty_hostkey_describe_text(st.keytype, st.keystr, &e);
+            have = stored_match(stored, host, port, want[i], e.sha256);
             status = cmp == 0 ? "stored" : cmp == 1 ? "new" : "MISMATCH";
             any_key = true;
             if (cmp == 2) any_mismatch = true;
@@ -353,12 +372,49 @@ int kitty_hostkey_scan_main(const char *hostspec, const char *types, bool json)
                        have->first_seen[0] ? have->first_seen : "-",
                        have->last_written[0] ? have->last_written : "-");
             if (have && !strcmp(status, "MISMATCH"))
-                printf("    stored: %s  MD5:%s  (first seen %s, last written %s)\n",
-                       have->sha256, have->md5,
-                       have->first_seen[0] ? have->first_seen : "-",
-                       have->last_written[0] ? have->last_written : "-");
+                for (int k = 1; (have = stored_entry(stored, host, port, want[i], k)); k++)
+                    printf("    stored: %s  MD5:%s  (first seen %s, last written %s)\n",
+                           have->sha256, have->md5,
+                           have->first_seen[0] ? have->first_seen : "-",
+                           have->last_written[0] ? have->last_written : "-");
             if (error)
                 printf("    %s\n", error);
+        }
+        /* the other stored keys of the type while the server signs with one
+         * of them: one row each, "not signing" (after the key presented, so
+         * the first object of -json stays the presented key) */
+        if (!strcmp(status, "stored")) {
+            const struct kitty_hostkey_entry *o;
+            for (int k = 1; (o = stored_entry(stored, host, port, want[i], k)); k++) {
+                char bits[16];
+                if (!strcmp(o->sha256, e.sha256))
+                    continue;
+                if (json) {
+                    printf(", {");
+                    json_field("host", host, true);
+                    json_int("port", port);
+                    json_field("type", o->type_display, false);
+                    json_int("bits", o->bits);
+                    json_field("sha256", o->sha256, false);
+                    json_field("md5", o->md5, false);
+                    json_field("key", NULL, false);
+                    json_field("status", KT_HK_V_STANDBY, false);
+                    json_field("first_seen", o->first_seen, false);
+                    json_field("last_written", o->last_written, false);
+                    json_field("stored_sha256", "-", false);
+                    json_field("stored_md5", "-", false);
+                    json_field("error", NULL, false);
+                    printf("}");
+                } else {
+                    if (o->bits) sprintf(bits, "%d", o->bits); else strcpy(bits, "-");
+                    printf("%s:%d  %s  %s  %s\n", host, port, o->type_display, bits,
+                           KT_HK_V_STANDBY);
+                    printf("    %s  MD5:%s\n", o->sha256, o->md5);
+                    printf("    first seen %s, last written %s\n",
+                           o->first_seen[0] ? o->first_seen : "-",
+                           o->last_written[0] ? o->last_written : "-");
+                }
+            }
         }
         fflush(stdout);
         sfree(e.type_display); sfree(e.sha256); sfree(e.md5); sfree(e.keytype);

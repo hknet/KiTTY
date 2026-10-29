@@ -13,6 +13,7 @@
 #include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly */
 #include "../kitty/kitty_text.h"      /* KiTTY: the readonly host-key texts */
 #include "../kitty/kitty_winevent.h"  /* KiTTY: event 301 at the end */
+#include "../kitty/kitty_hostkeys00.h" /* KiTTY: updatehostkeys=ask */
 
 void cleanup_exit(int code)
 {
@@ -465,6 +466,51 @@ SeatPromptResult console_confirm_ssh_host_key(
   out:
     conio_free(conio);
     return result;
+}
+
+/*
+ * KiTTY: updatehostkeys=ask (kitty/kitty_hostkeys00.h) - the changes the
+ * server's host key list brings, one line each on the console, then one
+ * question for all of them. y applies them. n, Return or anything else
+ * changes nothing. -batch, or no console to answer on: not answered,
+ * nothing changes. Installed by kitty_console_store.c.
+ */
+int console_hk00_confirm(struct Seat *seat, const struct kitty_hk00_question *q,
+                         void (*done)(void *ctx, int answer), void *ctx,
+                         void **handle)
+{
+    ConsoleIO *conio;
+    char *line;
+    int answer;
+
+    (void)seat; (void)done; (void)ctx; (void)handle;   /* answered here */
+    if (console_batch_mode)
+        return KHK00_ANS_UNANSWERED;
+    conio = conio_setup(false, STD_ERROR_HANDLE);
+    if (!conio->hin_is_console) {
+        conio_free(conio);
+        return KHK00_ANS_UNANSWERED;
+    }
+    put_fmt(conio, KT_HK00_Q_HEAD "\n", q->host, q->port);
+    for (size_t i = 0; i < q->n; i++) {
+        const struct kitty_hk00_change *c = &q->ch[i];
+        if (c->kind == KHK00_CH_NEW) {
+            put_fmt(conio, KT_HK00_Q_NEW "\n", c->fp);
+            if (c->beside)
+                put_fmt(conio, KT_HK00_Q_BESIDE "\n", c->beside);
+        } else
+            put_fmt(conio, KT_HK00_Q_GONE "\n", c->fp);
+    }
+    put_dataz(conio, KT_HK00_Q_CONSOLE);
+    line = console_read_line(conio, true);
+    if (!line)
+        answer = KHK00_ANS_UNANSWERED;   /* the input ended */
+    else
+        answer = (line[0] == 'y' || line[0] == 'Y') ?
+            KHK00_ANS_APPLY : KHK00_ANS_DECLINED;
+    burnstr(line);
+    conio_free(conio);
+    return answer;
 }
 
 SeatPromptResult console_confirm_weak_crypto_primitive(

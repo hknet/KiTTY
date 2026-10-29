@@ -58,6 +58,21 @@ HWND kitty_confirm_modeless3_warn( HWND owner, const char *caption, const char *
                                    const char *detail, const char *warn_red,
                                    const char *b_yes, const char *b_third, const char *b_no,
                                    void (*done)( int answer, void *ctx ), void *ctx );
+/* The Help variants: the same boxes with a Help button at the left of the
+ * button row, which opens `help` (a help topic, HELPCTX's string) and
+ * answers nothing. The detail field shows more lines before it scrolls, and
+ * a TAB in it lines the values up after their labels. b_no stays the
+ * default. done() works as for the box without Help. NULL = not made. */
+HWND kitty_confirm_modeless3_help( HWND owner, const char *caption, const char *text,
+                                   const char *detail, const char *warn_red,
+                                   const char *b_yes, const char *b_third, const char *b_no,
+                                   const char *help,
+                                   void (*done)( int answer, void *ctx ), void *ctx );
+HWND kitty_confirm_modeless_words_help( HWND owner, const char *caption, const char *text,
+                                        const char *detail, const char *warn_red,
+                                        const char *b_yes, const char *b_no,
+                                        const char *help,
+                                        void (*done)( int yes, void *ctx ), void *ctx );
 void kitty_info_box( HWND owner, const char *caption, const char *text, const char *warn_red );
 /* kitty_info_box, modeless (detail as above); NULL = not made. */
 HWND kitty_info_modeless( HWND owner, const char *caption, const char *text,

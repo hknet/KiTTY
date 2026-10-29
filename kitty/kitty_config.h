@@ -17,6 +17,9 @@ bool kitty_bold_caption(const char *text);
 void kitty_cfgbox_flush_pending(void);
 void kitty_cfgbox_open_loaded(void);
 void kitty_cfgbox_open_on_panel(const char *path);
+/* The Host Keys leaf opens filtered to `host` with the key `hash`
+ * (SHA256:...) selected. Either may be empty. */
+void kitty_cfgbox_hk_filter(const char *host, const char *hash);
 int kitty_cfgbox_size_locked(void);
 void kitty_cfgbox_store_size(int w, int h);
 const char *kitty_cfgbox_wanted_panel(void);

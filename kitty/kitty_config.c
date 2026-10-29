@@ -65,6 +65,19 @@ struct kitty_hkv_run;
 struct hk_verdict;
 struct hk_data *kitty_hk_active = NULL;
 
+/* "-hkfilter <host>" / "-hkselect <hash>" (windows/window.c): the notice of
+ * a key the host key update stored opens the leaf filtered to its host, the
+ * key selected. Taken by the leaf when it is built. */
+char *kitty_cfgbox_hk_filter_text = NULL, *kitty_cfgbox_hk_select_hash = NULL;
+
+void kitty_cfgbox_hk_filter(const char *host, const char *hash)
+{
+    sfree(kitty_cfgbox_hk_filter_text);
+    sfree(kitty_cfgbox_hk_select_hash);
+    kitty_cfgbox_hk_filter_text = (host && *host) ? dupstr(host) : NULL;
+    kitty_cfgbox_hk_select_hash = (hash && *hash) ? dupstr(hash) : NULL;
+}
+
 /*
  * Which panel the config box should open on, instead of Session.
  *
@@ -165,7 +178,11 @@ static dlgcontrol *hook_hk_fill(void)
     return (kitty_hk_active && kitty_hk_active->listbox) ?
         kitty_hk_active->listbox : NULL;
 }
-static void hook_hk_placed(void) { hk_place_splitter(kitty_hk_active); }
+static void hook_hk_placed(void)
+{
+    hk_place_splitter(kitty_hk_active);
+    hk_set_cue(kitty_hk_active);          /* the filter's cue: needs the window */
+}
 static void hook_hk_shown(bool show)
 {
     if (!hk_splitter || !IsWindow(hk_splitter))

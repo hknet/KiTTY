@@ -35,6 +35,11 @@
 #include "kitty_winevent.h"
 #include "kitty_store_acl.h"   /* kitty_set_store_acl_report */
 
+/* windows/console.c: the question of updatehostkeys=ask on the console */
+int console_hk00_confirm(struct Seat *seat, const struct kitty_hk00_question *q,
+                         void (*done)(void *ctx, int answer), void *ctx,
+                         void **handle);
+
 /* A [KiTTY] switch read where kitty.exe's configuration box writes it
  * (WriteParameter): the hive in use first in registry mode, kitty.ini
  * otherwise and as the registry's fallback (ReadParameterN). v[0] = '\0'
@@ -146,16 +151,27 @@ void kitty_console_store_init(void)
     }
     kitty_hostkey_accept_new_set_report(console_accept_new_report);
 
-    /* [KiTTY] updatehostkeys=no: no host key update (hostkeys-00), read as
-     * kitty.exe reads it; absent or any other value: on. Its record goes
-     * where accept-new's goes. */
+    /* [KiTTY] updatehostkeys: the host key update (hostkeys-00), read as
+     * kitty.exe reads it - no: off, ask: the changes put on the console
+     * first, absent or any other value: on. [KiTTY] hostkeyspertype: keys of
+     * one type per host and port (1-32, default 2). Its record goes where
+     * accept-new's goes. */
     {
         char v[16] = "";
         console_read_switch(ini.registry_authoritative, KI_UPDATEHOSTKEYS,
                             v, sizeof(v));
-        kitty_hk00_set_enabled(stricmp(v, "no") != 0);
+        kitty_hk00_set_mode(kitty_hk00_mode_from_word(v));
+        console_read_switch(ini.registry_authoritative, KI_HOSTKEYSPERTYPE,
+                            v, sizeof(v));
+        if (v[0])
+            kitty_hk00_set_pertype(atoi(v));
     }
     kitty_hk00_set_store(&kitty_hostkeys_hk00_store);
+    {
+        static const struct kitty_hk00_ui console_hk00_ui = {
+            console_hk00_confirm, NULL, NULL };
+        kitty_hk00_set_ui(&console_hk00_ui);
+    }
 
     /* -masterpwfile before ANY argument is processed (cmdline.c). After the
      * store setup above: the PortablePasswordProtection conflict needs it. */

@@ -157,7 +157,8 @@ void ssh2_transport_notify_auth_done(PacketProtocolLayer *ssh2_transport_ptr);
  * layer is given the transport layer as userauth is; the transport layer
  * answers how its host key was accepted (KHK00_BY_*). */
 int ssh2_transport_kitty_hk00(PacketProtocolLayer *ssh2_transport_ptr,
-                              const char **type, const char **host, int *port,
+                              const char **type, const char **keystr,
+                              const char **host, int *port,
                               ptrlen *session_id);
 void ssh2_connection_kitty_set_transport(PacketProtocolLayer *connection,
                                          PacketProtocolLayer *transport);

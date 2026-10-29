@@ -53,6 +53,8 @@ You should contact your server's administrator and see whether they
 expect the host key to have changed. If so, verify the new host key
 in the same way as you would if it was new.
 
+With two stored keys of the type, accepting the new key replaces both.
+
 See \k{gs-hostkey} for more information on host keys.
 
 \H{errors-cert-mismatch} \q{This server presented a certified host key

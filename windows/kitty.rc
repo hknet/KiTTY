@@ -357,6 +357,11 @@ BEGIN
      * clipboard box): hidden unless a box carries one; the dlgproc puts it
      * where the buttons were and moves them down. */
     AUTOCHECKBOX    "", IDC_CONFIRM_CHECK, 10, 89, 260, 10, NOT WS_VISIBLE | WS_TABSTOP
+    /* The optional Help button (the _help variants of kitty_confirm_modeless*,
+     * the host key box): hidden unless a box carries a help topic; the dlgproc
+     * puts it at the left end of the button row. Made with the window, so the
+     * theme's first pass reaches it. */
+    PUSHBUTTON      KT_HKD_HELP, IDHELP, 10, 89, 50, 14, NOT WS_VISIBLE | WS_TABSTOP
 END
 
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
