@@ -9,6 +9,9 @@ original [KiTTY website](https://github.com/cyd01/KiTTY/) by Cyril Dupont.
 Each entry includes a short description, how to turn it on, and a screenshot where
 one is available.
 
+AI agents that run klink, kscp and ksftp with the keys in kageant:
+[docs/AGENTS-GUIDE.md](docs/AGENTS-GUIDE.md), with a part on a safe workspace for them.
+
 **Table of contents**
 
 - **Most requested features**
