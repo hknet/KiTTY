@@ -526,6 +526,14 @@ static EdwardsPoint *eddsa_decode(ptrlen encoded, const struct ec_curve *curve)
 {
     assert(curve->type == EC_EDWARDS);
 
+    /* KiTTY: an encoding of another length is no point. mp_from_bytes_le
+     * sizes y to the bytes given, and the mp_set_bit below on bit
+     * fieldBytes*8-1 of a shorter y was an assertion failure - a crash of
+     * any program decoding a public key from outside (a host key, a
+     * session-bind, ssh-add -h's host keys in the agent). */
+    if (encoded.len != curve->fieldBytes)
+        return NULL;
+
     mp_int *y = mp_from_bytes_le(encoded);
 
     /* The topmost bit of the encoding isn't part of y, so it stores

@@ -1,8 +1,10 @@
 # KiTTY changelog
 
-KiTTY++ is the old KiTTY plus serious (speed) enhancements and more features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is the old KiTTY plus serious (speed) enhancements
+and more features onto a modern, security-patched **PuTTY 0.85** core.
 Versions below are this port's own `0.85.1.x` line.
-For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the full feature list see [FEATURES.md](FEATURES.md).
+For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
+for the full feature list see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.20-beta — 2026-10-28
 
@@ -61,6 +63,10 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
 
 - Closing a transfer window no longer leaves the terminal behind another
   program: the terminal that started the transfer comes to the front.
+- An ed25519 public key of the wrong length ended the program that
+  decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
+  session-bind or an `ssh-add -h` host key in kageant. Such a key is now
+  refused.
 
 ## 0.85.1.19-beta — 2026-10-28
 
