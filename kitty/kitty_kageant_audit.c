@@ -30,6 +30,7 @@
 #include "kitty_hello_keys.h"  /* Hello-protected keys: the sidecar test */
 #include "kitty_auditlog.h" /* the audit log's file sink */
 #include "kitty_kageant_dest.h" /* a session-bind destination as the log writes it */
+#include "kitty_kageant_rules.h" /* a key's destination rules for event 110 */
 #include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
 
@@ -351,6 +352,51 @@ void kageant_audit_bind(ptrlen hostkey, bool forwarding, unsigned long pid)
                 "req", req, "reqpath", reqpath,
                 "pid", pid ? pidbuf : NULL, (const char *)NULL);
     sfree(dest);
+    sfree(req);
+    sfree(reqpath);
+}
+
+/* Event 104: a request refused because of the key's destination rules
+ * (kageant_restricted_hook): result sign-refused or remove-refused, reason
+ * the token, the connection's session-binds as dest and fwd, rule the
+ * key's rules as text. */
+void kageant_audit_restricted(const char *fp, const char *comment,
+                              const char *result, const char *reason,
+                              unsigned long pid, const struct kageant_dest *d,
+                              const char *rule)
+{
+    char *req, *reqpath, *dest = NULL, *fwd = NULL, pidbuf[16];
+    if (!kitty_audit_enabled())
+        return;                 /* the host name lookup only for a record */
+    kageant_dest_fields(d, &dest, &fwd);
+    kageant_req_name(pid, &req, &reqpath);
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit("restricted", "fp", fp, "comment", comment, "result", result,
+                "reason", reason, "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, "dest", dest, "fwd", fwd,
+                "rule", rule, (const char *)NULL);
+    sfree(dest);
+    sfree(fwd);
+    sfree(req);
+    sfree(reqpath);
+}
+
+/* Event 110: a key added - by the window (reason gui), the command line
+ * (cmdline) or a program (ipc, pid its process) - with the key's
+ * destination rules when it has any (restrict). */
+void kageant_audit_add(const char *fp, const char *comment,
+                       const char *reason, unsigned long pid,
+                       const char *path)
+{
+    char *req, *reqpath, *rules, pidbuf[16];
+    rules = kageant_rules_text_for_fp(fp);
+    kageant_req_name(pid, &req, &reqpath);
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit("add", "fp", fp, "comment", comment, "result", "done",
+                "reason", reason, "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, "path", path, "restrict", rules,
+                (const char *)NULL);
+    sfree(rules);
     sfree(req);
     sfree(reqpath);
 }

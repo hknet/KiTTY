@@ -66,6 +66,7 @@ int kitty_audit_result_is_warning(const char *result)
     static const char *const bad[] = {
         "denied", "refused", "blocked", "failed", "fp-refused", "cancelled",
         "not-verified", "waiting", "shut", "unlock-shut", "no-door-here",
+        "sign-refused", "remove-refused", "store-damaged",
     };
     size_t i;
     if (!result || !*result)
@@ -234,7 +235,14 @@ static const char *const af_bind[] = {
     "result", "dest", "forwarding", "req", "reqpath", "pid", NULL
 };
 static const char *const af_add[] = {
-    "fp", "comment", "result", "reason", "req", "reqpath", "pid", "path", NULL
+    "fp", "comment", "result", "reason", "req", "reqpath", "pid", "path",
+    "restrict", NULL
+};
+/* a request refused because of the key's destination rules (ssh-add -h,
+ * the rule editor), or the rule file found damaged at the start */
+static const char *const af_restricted[] = {
+    "fp", "comment", "result", "reason", "req", "reqpath", "pid",
+    "dest", "fwd", "rule", NULL
 };
 static const char *const af_load[] = { "path", "result", "enc", NULL };
 static const char *const af_forget[] = { "path", "result", NULL };
@@ -265,6 +273,7 @@ static const struct audit_kind {
     { "confirm",         101, af_sign },
     { "session-bind",    102, af_bind },
     { "request",         103, af_request },
+    { "restricted",      104, af_restricted },
     { "add",             110, af_add },
     { "loadkey",         111, af_load },
     { "forget-path",     112, af_forget },

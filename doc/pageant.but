@@ -192,7 +192,8 @@ overwritten. To change that, for example to 50 MB:
 the records go to the Application log, whose size and retention are
 Windows' own settings.
 
-100 sign, 101 confirm, 102 session-bind, 103 refused request, 110 add,
+100 sign, 101 confirm, 102 session-bind, 103 refused request, 104
+refused by a key's destination rules, 110 add,
 111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
 remove all, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
@@ -463,9 +464,93 @@ without \c{session-bind@openssh.com} (PuTTY's Pageant, an older
 kageant) answers a failure. The login then goes on unbound. A GSSAPI
 key exchange has no host key signature: such a login is not bound.
 
-kageant refuses nothing because of the destination: a key behaves as
-before. A connection without a binding - PuTTY, older KiTTY++ versions
-and OpenSSH clients before 8.9 - gets the confirmation as before.
+A key without destination rules behaves as before: kageant refuses
+nothing because of the destination. A connection without a binding -
+PuTTY, older KiTTY++ versions and OpenSSH clients before 8.9 - gets the
+confirmation as before. A key restricted to destinations is used only
+where its rules permit (\k{pageant-restrict}).
+
+\H{pageant-restrict} Restricting a key to \i{destinations}
+
+A key can be restricted to the servers it may log in to. kageant then
+signs a login with that key only on a connection bound to one of those
+servers (\k{pageant-destination}). It is OpenSSH's destination
+constraint, with the same rules: what \c{ssh-add -h} sets in OpenSSH's
+agent, kageant honours too.
+
+\b \e{From the key list}: double-click the key, then \q{Restrict...}
+beside \q{Destinations:}. The rule editor shows every key with rules,
+each with its destinations below it and their attributes below those.
+\q{Add destination} adds one: the host name (\c{host:port} for another
+port than 22), a user (optional: the key then logs in as that user only,
+\c{*} and \c{?} as wildcards), a via host (optional: the key is used
+through an agent forwarded to that host, towards this one) and
+\q{Allow agent forwarding to the other destinations}. \q{Look up host
+keys} finds the host's keys in the KiTTY++ host-key store, in
+\c{%USERPROFILE%\\.ssh\\known_hosts} (hashed and
+\c{@cert-authority} entries included) and in the CA store, and lists
+them with where each was found. A host without a stored key cannot be
+added: log in to it once first. OK saves the rules and puts them in
+force at once.
+
+\b \e{With OpenSSH's ssh-add}: \c{ssh-add -h web01 key}, or
+\c{ssh-add -h jump01 -h "jump01>web01" key} for a jump host. ssh-add
+looks the host keys up in \c{known_hosts} itself.
+
+A re-add with \c{-h} replaces the key's rules. A re-add without \c{-h}
+keeps them: rules are lifted in the rule editor (\q{Remove}), not by a
+program that holds the private key. The limits are OpenSSH's: 1024
+destinations per key, a user name of 256 bytes.
+
+The rules follow the key by its fingerprint, however the key reaches
+kageant: from the startup list, the key list or a program. They are
+kept in one file, \c{kageant-rules.dat}: in \c{%APPDATA%\\KiTTY}, or
+beside kitty.ini in a portable copy, encrypted with DPAPI for the
+Windows account. kageant reads it in full at the start and writes it in
+full through a temporary file. With \c{readonly=yes} in kitty.ini the
+rules apply until kageant stops. Rules stay when their key is removed:
+the rule editor lists such a key as \q{not loaded}.
+
+Key details shows the rules on the \q{Destinations:} line (\q{any}
+without). The key list adds \q{restricted} to the key's state.
+
+On a connection, a restricted key is checked as OpenSSH's agent checks
+it:
+
+\b Without a binding the key is listed (local use) and every signature
+is refused. A connection whose binding was refused gets neither.
+
+\b On a bound connection the key is listed only when the rules permit
+the servers bound - each hop from the one before it, the first from
+this computer. A server never learns of a key that may not go to it.
+
+\b A signature needs the data of a login (a \q{publickey} request)
+for the session last bound, as the user of the rule. A key may not sign
+on a connection bound for agent forwarding. With more than one binding
+the client must name the server's host key in the request (OpenSSH
+does).
+
+\b A host certificate is accepted for a CA key of the rule when the
+certificate is valid for the rule's host name.
+
+\b A program may not remove a restricted key through a connection the
+key may not be used on.
+
+Each refusal is a record of its own: kind \c{restricted}, result
+\c{sign-refused} or \c{remove-refused}, the reason as a token
+(\c{unbound}, \c{bind-failed}, \c{not-userauth}, \c{destination},
+\c{forwarding-hop}, \c{session-id}, \c{hostkey}), the binding's
+\c{dest} and \c{fwd} and the key's rules in \c{rule}: event ID 104, a
+warning. A key added with rules carries them in event 110's
+\c{restrict} field.
+
+A rule file that cannot be read, decrypted or checked is never taken as
+\q{no rules}: every key is refused for signing over the pipe (reason
+\c{store-damaged}). A notice shows it. Event 104 records the file and
+why. \c{ssh-add -h} does not write over that file. Saving rules in
+the rule editor keeps the old file as
+\c{kageant-rules.dat.damaged-}\e{date}\c{-}\e{time} and writes the
+rules shown.
 
 \H{pageant-deferred-decryption} Loading keys without decrypting them
 

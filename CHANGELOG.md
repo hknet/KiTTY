@@ -15,13 +15,20 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   server a key is used for: in the key-use confirmation (Destination,
   Forwarded via) and in the agent log (`dest=`, `fwd=`, a `session-bind`
   record). Events 100 and 101 end with the fields dest and fwd. Event 102
-  records the session-bind. Nothing is refused because of the destination.
+  records the session-bind.
 - klink, kscp, ksftp and kitty.exe send OpenSSH's session-bind: kageant
   shows and records the destination of their logins too. A login holds one
   agent connection for the binding, the key list and the signatures. With
   agent forwarding each forwarded agent connection is bound for
   forwarding. An agent without session-bind answers a failure. The login
   then goes on unbound. The Terminal Window's Event Log shows the outcome.
+- kageant: keys restricted to destinations - OpenSSH's `ssh-add -h`
+  (restrict-destination-v00@openssh.com) and a rule editor in Key details
+  (Restrict...). A restricted key signs a login only on a connection bound
+  to one of its servers. A connection bound elsewhere does not see it. The
+  rules follow the key by fingerprint in one DPAPI-encrypted file,
+  kageant-rules.dat. A refusal is event 104. Event 110 carries a key's
+  rules.
 - Links in a session comment open with a click: the box under the session
   list underlines web addresses, `file://` links and UNC paths and opens them
   in the program Windows has registered for them. A path with blanks goes in

@@ -10,6 +10,11 @@
  *
  * With savemode=file the host keys are in the registry only while a
  * kitty.exe runs; otherwise no name is found there.
+ *
+ * The other way round, for the rule editor of destination-restricted keys:
+ * a host name to every host key stored for it - the same host-key store,
+ * known_hosts (plain, hashed and @cert-authority entries) and the CA store
+ * (kageant_dest_lookup). The keys found are what a rule holds.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +28,9 @@
 #include "kitty_inifile.h"      /* the store in charge (kitty.ini) */
 #include "kitty_inikeys.h"      /* KI_SECTION_KITTY, KI_KICLASSNAME */
 #include "kitty_sessionpath.h"  /* ksp_component_unmunge */
-#include "kitty_text.h"         /* KT_KA_DEST_* */
+#include "kitty_text.h"         /* KT_KA_DEST_*, KT_KARULES_SRC_* */
+#include "kitty_agentrestrict.h" /* kar_blob_valid, kar_wildcard */
+#include "kitty_hostkey_blob.h"  /* the store's text -> the blob */
 
 /* The key behind a host key blob as the stores hold it: a certificate's
  * own key, its blob, the store's type name and the store's text of it. */
@@ -445,4 +452,534 @@ char *kageant_dest_box_text(const struct kageant_dest *d)
         sfree(h);
     }
     return strbuf_to_str(sb);
+}
+
+/* ---- a host name -> its host keys (the rule editor) ----------------------- */
+
+/* "host" for port 22, else "[host]:port", lower case: the name a
+ * known_hosts entry is written with. sfree it. */
+static char *kh_target(const char *host, int port)
+{
+    char *t = (port > 0 && port != 22) ? dupprintf("[%s]:%d", host, port)
+                                       : dupstr(host);
+    for (char *p = t; *p; p++)
+        if (*p >= 'A' && *p <= 'Z')
+            *p += 'a' - 'A';
+    return t;
+}
+
+static void found_add(struct kageant_dest_found **v, size_t *n,
+                      size_t *size, ptrlen blob, bool is_ca,
+                      const char *source)
+{
+    for (size_t i = 0; i < *n; i++)
+        if ((*v)[i].is_ca == is_ca &&
+            ptrlen_eq_ptrlen(ptrlen_from_strbuf((*v)[i].blob), blob))
+            return;
+    if (!kar_blob_valid(blob))
+        return;
+    sgrowarray(*v, *size, *n);
+    (*v)[*n].blob = strbuf_dup(blob);
+    (*v)[*n].is_ca = is_ca;
+    (*v)[*n].source = dupstr(source);
+    (*n)++;
+}
+
+struct lookup {
+    const char *host;
+    int port;
+    struct kageant_dest_found *v;
+    size_t n, size;
+};
+
+/* A store entry's name "<type>[#n]@<port>:<escaped host>" of this host and
+ * port -> its type (sfree it); NULL for another host or a time stamp. */
+static char *store_name_type(const char *name, const struct lookup *lk)
+{
+    const char *at = strchr(name, '@'), *colon, *hash;
+    size_t len = strlen(name), tl;
+    strbuf *sb;
+    char *type = NULL;
+
+    if (!at || (colon = strchr(at + 1, ':')) == NULL)
+        return NULL;
+    if ((len > 6 && !strcmp(name + len - 6, ":first")) ||
+        (len > 5 && !strcmp(name + len - 5, ":when")))
+        return NULL;
+    if (atoi(at + 1) != lk->port)
+        return NULL;
+    sb = strbuf_new();
+    unescape_registry_key(colon + 1, sb);
+    if (!stricmp(sb->s, lk->host)) {
+        hash = memchr(name, '#', (size_t)(at - name));
+        tl = (size_t)((hash ? hash : at) - name);
+        type = snewn(tl + 1, char);
+        memcpy(type, name, tl);
+        type[tl] = '\0';
+    }
+    strbuf_free(sb);
+    return type;
+}
+
+static void store_entry(struct lookup *lk, const char *name, const char *text)
+{
+    char *type = store_name_type(name, lk);
+    strbuf *blob;
+    if (!type)
+        return;
+    while (*text == ' ' || *text == '\t')
+        text++;
+    blob = kitty_hostkey_blob_from_text(type, text);
+    if (blob) {
+        found_add(&lk->v, &lk->n, &lk->size, ptrlen_from_strbuf(blob), false,
+                  KT_KARULES_SRC_STORE);
+        strbuf_free(blob);
+    }
+    sfree(type);
+}
+
+/* The registry's SshHostKeys or SshHostCAs of the store in charge: kitty.exe's
+ * hive, or PuTTY's with KiClassName=PuTTY in kitty.ini. */
+static const char *reg_base(void)
+{
+    char cls[64];
+    cls[0] = '\0';
+    if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls,
+                           sizeof(cls)) && !stricmp(cls, "PuTTY"))
+        return "Software\\SimonTatham\\PuTTY";
+    return "Software\\kapper.net\\KiTTY";
+}
+
+static void lookup_registry_keys(struct lookup *lk)
+{
+    char *path = dupprintf("%s\\SshHostKeys", reg_base());
+    DWORD nvals = 0, maxname = 0, maxdata = 0;
+    char *name, *data;
+    HKEY key;
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_QUERY_VALUE, &key) !=
+        ERROR_SUCCESS) {
+        sfree(path);
+        return;
+    }
+    sfree(path);
+    if (RegQueryInfoKeyA(key, NULL, NULL, NULL, NULL, NULL, NULL, &nvals,
+                         &maxname, &maxdata, NULL, NULL) != ERROR_SUCCESS) {
+        RegCloseKey(key);
+        return;
+    }
+    name = snewn(maxname + 1, char);
+    data = snewn(maxdata + 1, char);
+    for (DWORD idx = 0; idx < nvals; idx++) {
+        DWORD nlen = maxname + 1, dlen = maxdata, type = 0;
+        if (RegEnumValueA(key, idx, name, &nlen, NULL, &type, (LPBYTE)data,
+                          &dlen) != ERROR_SUCCESS || type != REG_SZ)
+            continue;
+        data[dlen <= maxdata ? dlen : maxdata] = '\0';
+        store_entry(lk, name, data);
+    }
+    sfree(name);
+    sfree(data);
+    RegCloseKey(key);
+}
+
+/* The folder store's root: the folder above Sessions (kitty_storage.c
+ * portable_root_dir), as names_from_folder_store finds it. sfree it. */
+static char *folder_root(const struct kitty_ini_startup *ini)
+{
+    char *root = dupstr(ini->session_dir), *bs;
+    size_t rl = strlen(root);
+    while (rl > 0 && root[rl - 1] == '\\')
+        root[--rl] = '\0';
+    bs = strrchr(root, '\\');
+    if (bs && !stricmp(bs + 1, "Sessions"))
+        *bs = '\0';
+    return root;
+}
+
+static void lookup_folder_keys(struct lookup *lk,
+                               const struct kitty_ini_startup *ini)
+{
+    size_t sl = strlen(ini->hostkey_suffix), dl;
+    WIN32_FIND_DATAA fd;
+    char *dir, *pattern;
+    HANDLE h;
+
+    if (ini->hostkey_dir[0]) {
+        dir = dupstr(ini->hostkey_dir);
+    } else {
+        char *root = folder_root(ini);
+        dir = dupprintf("%s\\SshHostKeys", root);
+        sfree(root);
+    }
+    dl = strlen(dir);
+    while (dl > 0 && dir[dl - 1] == '\\')
+        dir[--dl] = '\0';
+    pattern = dupprintf("%s\\*", dir);
+    h = FindFirstFileA(pattern, &fd);
+    sfree(pattern);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            char *fname, *raw;
+            size_t fl;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                continue;
+            fname = dupstr(fd.cFileName);
+            fl = strlen(fname);
+            if (sl && fl > sl && !stricmp(fname + fl - sl, ini->hostkey_suffix))
+                fname[fl - sl] = '\0';
+            raw = ksp_component_unmunge(fname);
+            if (raw) {
+                char *path = dupprintf("%s\\%s", dir, fd.cFileName);
+                char *text = read_small_file(path);
+                if (text) {
+                    size_t tl = strlen(text);
+                    while (tl > 0 && strchr(" \t\r\n", text[tl - 1]))
+                        text[--tl] = '\0';
+                    store_entry(lk, raw, text);
+                }
+                sfree(text);
+                sfree(path);
+            }
+            sfree(raw);
+            sfree(fname);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    sfree(dir);
+}
+
+/* Does a known_hosts host field (comma list of names or patterns, ! for a
+ * negation, or one hashed |1|salt|hash entry) take this target? */
+static bool kh_hosts_match(const char *field, const char *target)
+{
+    bool matched = false;
+    char *copy, *tok, *next;
+
+    if (!strncmp(field, "|1|", 3)) {
+        const char *salt64 = field + 3, *bar = strchr(salt64, '|');
+        strbuf *salt, *want;
+        unsigned char got[20];
+        ssh2_mac *mac;
+        bool ok;
+        if (!bar)
+            return false;
+        if (!base64_valid(make_ptrlen(salt64, bar - salt64)) ||
+            !base64_valid(ptrlen_from_asciz(bar + 1)))
+            return false;
+        salt = base64_decode_sb(make_ptrlen(salt64, bar - salt64));
+        want = base64_decode_sb(ptrlen_from_asciz(bar + 1));
+        mac = ssh2_mac_new(&ssh_hmac_sha1, NULL);
+        ssh2_mac_setkey(mac, ptrlen_from_strbuf(salt));
+        ssh2_mac_start(mac);
+        put_dataz(mac, target);
+        ssh2_mac_genresult(mac, got);
+        ssh2_mac_free(mac);
+        ok = want->len == sizeof(got) && smemeq(want->u, got, sizeof(got));
+        strbuf_free(salt);
+        strbuf_free(want);
+        return ok;
+    }
+    copy = dupstr(field);
+    for (char *p = copy; *p; p++)
+        if (*p >= 'A' && *p <= 'Z')
+            *p += 'a' - 'A';
+    for (tok = copy; tok; tok = next) {
+        bool neg = false;
+        next = strchr(tok, ',');
+        if (next)
+            *next++ = '\0';
+        if (*tok == '!') {
+            neg = true;
+            tok++;
+        }
+        if (*tok && kar_wildcard(target, tok)) {
+            if (neg) {
+                matched = false;
+                break;              /* a negated match excludes the host */
+            }
+            matched = true;
+        }
+    }
+    sfree(copy);
+    return matched;
+}
+
+/* One known_hosts line for the target: "[@cert-authority] hosts keytype
+ * base64 [comment]". A @revoked line and a comment give nothing. */
+static void kh_line(struct lookup *lk, char *line, const char *target)
+{
+    char *p = line, *hosts, *b64;
+    bool is_ca = false;
+    strbuf *blob;
+
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (!*p || *p == '#')
+        return;
+    if (*p == '@') {
+        if (strncmp(p, "@cert-authority", 15) ||
+            (p[15] != ' ' && p[15] != '\t'))
+            return;
+        is_ca = true;
+        p += 15;
+        while (*p == ' ' || *p == '\t')
+            p++;
+    }
+    hosts = p;
+    while (*p && *p != ' ' && *p != '\t')
+        p++;
+    if (!*p)
+        return;
+    *p++ = '\0';
+    while (*p == ' ' || *p == '\t')
+        p++;
+    while (*p && *p != ' ' && *p != '\t')      /* the key type */
+        p++;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    b64 = p;
+    while (*p && !strchr(" \t\r\n", *p))
+        p++;
+    *p = '\0';
+    if (!*b64 || !base64_valid(ptrlen_from_asciz(b64)) ||
+        !kh_hosts_match(hosts, target))
+        return;
+    blob = base64_decode_sb(ptrlen_from_asciz(b64));
+    found_add(&lk->v, &lk->n, &lk->size, ptrlen_from_strbuf(blob), is_ca,
+              is_ca ? KT_KARULES_SRC_KNOWN_HOSTS_CA : KT_KARULES_SRC_KNOWN_HOSTS);
+    strbuf_free(blob);
+}
+
+static void lookup_known_hosts(struct lookup *lk)
+{
+    const char *prof = getenv("USERPROFILE");
+    char *path, *line, *target;
+    FILE *fp;
+
+    if (!prof || !*prof)
+        return;
+    path = dupprintf("%s\\.ssh\\known_hosts", prof);
+    fp = fopen(path, "r");
+    sfree(path);
+    if (!fp)
+        return;
+    target = kh_target(lk->host, lk->port);
+    while ((line = fgetline(fp)) != NULL) {
+        kh_line(lk, line, target);
+        sfree(line);
+    }
+    sfree(target);
+    fclose(fp);
+}
+
+/* One CA of the CA store: its public key, the host expression (Validity,
+ * percent-encoded; an old MatchHosts list of wildcards instead). */
+static void ca_entry(struct lookup *lk, const char *name, const char *pubkey,
+                     const char *validity, const char *const *matchhosts)
+{
+    char *expr = NULL, *src;
+    strbuf *blob;
+
+    if (!pubkey || !base64_valid(ptrlen_from_asciz(pubkey)))
+        return;
+    if (validity && *validity) {
+        expr = strbuf_to_str(percent_decode_sb(ptrlen_from_asciz(validity)));
+    } else if (matchhosts) {
+        CertExprBuilder *eb = cert_expr_builder_new();
+        for (size_t i = 0; matchhosts[i]; i++)
+            cert_expr_builder_add(eb, matchhosts[i]);
+        expr = cert_expr_expression(eb);
+        cert_expr_builder_free(eb);
+    }
+    if (!expr || !cert_expr_match_str(expr, lk->host, (unsigned)lk->port)) {
+        sfree(expr);
+        return;
+    }
+    sfree(expr);
+    blob = base64_decode_sb(ptrlen_from_asciz(pubkey));
+    src = dupprintf(KT_KARULES_SRC_CA_FMT, name);
+    found_add(&lk->v, &lk->n, &lk->size, ptrlen_from_strbuf(blob), true, src);
+    sfree(src);
+    strbuf_free(blob);
+}
+
+/* A REG_SZ value whole, NULL when absent. sfree it. */
+static char *reg_sz_dup(HKEY key, const char *value)
+{
+    DWORD type = 0, size = 0;
+    char *buf;
+    if (RegQueryValueExA(key, value, NULL, &type, NULL, &size) !=
+        ERROR_SUCCESS || type != REG_SZ)
+        return NULL;
+    buf = snewn(size + 1, char);
+    if (RegQueryValueExA(key, value, NULL, &type, (LPBYTE)buf, &size) !=
+        ERROR_SUCCESS) {
+        sfree(buf);
+        return NULL;
+    }
+    buf[size] = '\0';
+    return buf;
+}
+
+static void lookup_registry_cas(struct lookup *lk)
+{
+    char *path = dupprintf("%s\\SshHostCAs", reg_base());
+    DWORD nsub = 0, maxsub = 0;
+    char *sub;
+    HKEY key;
+
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0,
+                      KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, &key) !=
+        ERROR_SUCCESS) {
+        sfree(path);
+        return;
+    }
+    sfree(path);
+    if (RegQueryInfoKeyA(key, NULL, NULL, NULL, &nsub, &maxsub, NULL, NULL,
+                         NULL, NULL, NULL, NULL) != ERROR_SUCCESS) {
+        RegCloseKey(key);
+        return;
+    }
+    sub = snewn(maxsub + 1, char);
+    for (DWORD idx = 0; idx < nsub; idx++) {
+        DWORD slen = maxsub + 1, type = 0, size = 0;
+        HKEY ca;
+        char *pubkey, *validity, *multi = NULL;
+        const char **hosts = NULL;
+        strbuf *name;
+        if (RegEnumKeyExA(key, idx, sub, &slen, NULL, NULL, NULL, NULL) !=
+            ERROR_SUCCESS)
+            continue;
+        if (RegOpenKeyExA(key, sub, 0, KEY_QUERY_VALUE, &ca) != ERROR_SUCCESS)
+            continue;
+        pubkey = reg_sz_dup(ca, "PublicKey");
+        validity = reg_sz_dup(ca, "Validity");
+        if (!validity &&
+            RegQueryValueExA(ca, "MatchHosts", NULL, &type, NULL, &size) ==
+            ERROR_SUCCESS && type == REG_MULTI_SZ) {
+            size_t nh = 0;
+            multi = snewn(size + 2, char);
+            if (RegQueryValueExA(ca, "MatchHosts", NULL, &type,
+                                 (LPBYTE)multi, &size) == ERROR_SUCCESS) {
+                multi[size] = multi[size + 1] = '\0';
+                for (char *q = multi; *q; q += strlen(q) + 1)
+                    nh++;
+                hosts = snewn(nh + 1, const char *);
+                nh = 0;
+                for (char *q = multi; *q; q += strlen(q) + 1)
+                    hosts[nh++] = q;
+                hosts[nh] = NULL;
+            }
+        }
+        RegCloseKey(ca);
+        name = strbuf_new();
+        unescape_registry_key(sub, name);
+        ca_entry(lk, name->s, pubkey, validity, hosts);
+        strbuf_free(name);
+        sfree(pubkey);
+        sfree(validity);
+        sfree(hosts);
+        sfree(multi);
+    }
+    sfree(sub);
+    RegCloseKey(key);
+}
+
+/* A folder store file's value: "Key=value" (or the old "Key\value\"),
+ * %HH-escaped (ksf_munge). sfree it. */
+static char *folder_value(const char *text, const char *want)
+{
+    const char *p = text;
+    size_t wl = strlen(want);
+    while (*p) {
+        const char *eol = strpbrk(p, "\r\n");
+        size_t len = eol ? (size_t)(eol - p) : strlen(p);
+        if (len > wl && !strncmp(p, want, wl) &&
+            (p[wl] == '=' || p[wl] == '\\')) {
+            char *raw = dupprintf("%.*s", (int)(len - wl - 1), p + wl + 1), *v;
+            size_t rl = strlen(raw);
+            if (p[wl] == '\\' && rl && raw[rl - 1] == '\\')
+                raw[rl - 1] = '\0';
+            v = ksp_component_unmunge(raw);
+            sfree(raw);
+            return v;
+        }
+        p += len;
+        while (*p == '\r' || *p == '\n')
+            p++;
+    }
+    return NULL;
+}
+
+static void lookup_folder_cas(struct lookup *lk,
+                              const struct kitty_ini_startup *ini)
+{
+    char *root = folder_root(ini), *dir, *pattern;
+    WIN32_FIND_DATAA fd;
+    HANDLE h;
+
+    dir = dupprintf("%s\\SshHostCAs", root);
+    sfree(root);
+    pattern = dupprintf("%s\\*", dir);
+    h = FindFirstFileA(pattern, &fd);
+    sfree(pattern);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            char *path, *text, *name, *pubkey, *validity;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                continue;
+            path = dupprintf("%s\\%s", dir, fd.cFileName);
+            text = read_small_file(path);
+            sfree(path);
+            if (!text)
+                continue;
+            name = ksp_component_unmunge(fd.cFileName);
+            pubkey = folder_value(text, "PublicKey");
+            validity = folder_value(text, "Validity");
+            ca_entry(lk, name ? name : fd.cFileName, pubkey, validity, NULL);
+            sfree(name);
+            sfree(pubkey);
+            sfree(validity);
+            sfree(text);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+    sfree(dir);
+}
+
+size_t kageant_dest_lookup(const char *host, int port,
+                           struct kageant_dest_found **out)
+{
+    struct lookup lk;
+    struct kitty_ini_startup ini;
+
+    memset(&lk, 0, sizeof(lk));
+    lk.host = host;
+    lk.port = port > 0 ? port : 22;
+    *out = NULL;
+    if (!host || !*host)
+        return 0;
+    memset(&ini, 0, sizeof(ini));
+    kitty_inifile_startup(&ini);
+    if (ini.folder_store) {
+        lookup_folder_keys(&lk, &ini);
+        lookup_folder_cas(&lk, &ini);
+    } else {
+        lookup_registry_keys(&lk);
+        lookup_registry_cas(&lk);
+    }
+    kitty_inifile_startup_free(&ini);
+    lookup_known_hosts(&lk);
+    *out = lk.v;
+    return lk.n;
+}
+
+void kageant_dest_found_free(struct kageant_dest_found *v, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        strbuf_free(v[i].blob);
+        sfree(v[i].source);
+    }
+    sfree(v);
 }

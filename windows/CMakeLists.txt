@@ -273,6 +273,8 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_audit.c   # KiTTY: the agent audit log
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_dest.c    # KiTTY: a session-bind destination as the log and the box show it
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_hostkey_blob.c    # KiTTY: a stored host key's text -> its blob (the destination lookup)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_rules.c   # KiTTY: the destination rule file (DPAPI) and its editor's data
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_settings.c   # KiTTY: the agent settings facade
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
@@ -318,6 +320,7 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
+  ../kitty/kitty_hostkey_blob.c    # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c)
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
@@ -331,6 +334,7 @@ kitty_selfcheck_target(plink)
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_crashlog.c
   ../kitty/kitty_hostkeys.c        # KiTTY: the store for the host key update
+  ../kitty/kitty_hostkey_blob.c    # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c)
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
@@ -346,6 +350,7 @@ kitty_selfcheck_target(pscp)
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_crashlog.c
   ../kitty/kitty_hostkeys.c        # KiTTY: the store for the host key update
+  ../kitty/kitty_hostkey_blob.c    # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c)
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
@@ -885,6 +890,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_urlsession.c   # KiTTY: a link opens a matching saved session (cyd01/KiTTY#540)
   ${KITTY_DIR}/kitty_tags.c   # KiTTY: session tags - Session > Startup, Manage Sessions' tag pane (#60)
   ${KITTY_DIR}/kitty_hostkeys.c
+  ${KITTY_DIR}/kitty_hostkey_blob.c   # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c, kageant)
   ${KITTY_DIR}/kitty_hostkey_verify.c
   ${KITTY_DIR}/kitty_selfcheck.c   # KiTTY: the integrity stamp check; per target, needs crypto (see KITTY_SELFCHECK above)
   ${KITTY_DIR}/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills

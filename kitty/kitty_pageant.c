@@ -3326,9 +3326,11 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
 
     /* Audited BEFORE the notify gate: turning notices off must never turn
      * the audit trail off with it. */
-    kageant_audit_use(op == KAGEANT_MUT_ADD    ? "add" :
-                      op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
-                      fp, comment, "done", "ipc", pageant_external_pid);
+    if (op == KAGEANT_MUT_ADD)          /* with the key's rules (ssh-add -h) */
+        kageant_audit_add(fp, comment, "ipc", pageant_external_pid, NULL);
+    else
+        kageant_audit_use(op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
+                          fp, comment, "done", "ipc", pageant_external_pid);
 
     if (!kageant_notify_get() || !traywindow)
         return;

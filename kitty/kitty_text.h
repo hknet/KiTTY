@@ -2725,6 +2725,8 @@
 #define KT_CAP_KA_CMDLINE                            "kageant command line"
 #define KT_CAP_KA_KEY_LIST                           "kageant Key List"
 #define KT_CAP_KA_KEY_DETAILS                        "kageant - key details"
+#define KT_CAP_KA_KEY_RULES                          "kageant - key destinations"
+#define KT_CAP_KA_RULES_NOT_SAVED                    "kageant - rules not saved"
 #define KT_CAP_KA_AGENT_LOG                          "kageant - agent log"
 #define KT_CAP_KA_SETTINGS                           "kageant - settings"
 #define KT_CAP_KA_LAUNCH_BLOCKED                     "kageant - session launch blocked"
@@ -3033,6 +3035,12 @@
 #define KT_KAKEYS_STATE_UNVERIFIED                   "unverified"
 #define KT_KAKEYS_STATE_FAILED                       "failed"
 #define KT_KAKEYS_STATE_MISSING                      "missing"
+/* after the state of a key with destination rules (and of every key while
+ * the rule file is damaged) */
+#define KT_KAKEYS_STATE_RESTRICTED_SUFFIX            ", restricted"
+/* Key details' "Destinations:" line */
+#define KT_KAKEYS_DEST_ANY                           "any"
+#define KT_KAKEYS_DEST_DAMAGED                       "unknown: the rule file is damaged"
 #define KT_KAKEYS_ALG_NOT_LOADED                     "(not loaded)"
 #define KT_KAKEYS_LIFETIME_UNLIMITED                 "unlimited"
 #define KT_KAKEYS_CONFIRM_HELLO                      "Hello"
@@ -3249,6 +3257,59 @@
  * alone when no host name is found. Under the key in the box. */
 #define KT_KA_DEST_LINE_FMT                          "Destination: %s"
 #define KT_KA_DEST_VIA_FMT                           "Forwarded via: %s"
+
+/* kageant's destination rules (kitty_kageant_rules.c, the rule editor in
+ * windows/pageant.c, the host lookup in kitty_kageant_dest.c) */
+#define KT_KARULES_SRC_STORE                         "KiTTY++ host-key store"
+#define KT_KARULES_SRC_KNOWN_HOSTS                   "known_hosts"
+#define KT_KARULES_SRC_KNOWN_HOSTS_CA                "known_hosts, @cert-authority"
+#define KT_KARULES_SRC_CA_FMT                        "CA store: %s"
+/* why the rule file is damaged: %s = its path first */
+#define KT_KARULES_DMG_READ_FMT                      "%s cannot be read: %s"
+#define KT_KARULES_DMG_FORMAT_FMT                    "%s is not a kageant rule file"
+#define KT_KARULES_DMG_DECRYPT_FMT                   "%s cannot be decrypted for this Windows account: %s"
+#define KT_KARULES_DMG_CONTENT_FMT                   "%s is damaged (%s)"
+#define KT_KARULES_ERR_READONLY                      "Not saved: readonly=yes in kitty.ini. " \
+        "The rules apply until kageant stops."
+#define KT_KARULES_ERR_NOPLACE                       "Not saved: no folder for the rule file (APPDATA not set)."
+#define KT_KARULES_ERR_DPAPI_FMT                     "Not saved: the rules cannot be encrypted for this Windows account: %s"
+#define KT_KARULES_ERR_WRITE_FMT                     "Not saved: %s: %s"
+#define KT_KARULES_ERR_ASIDE_FMT                     "Not saved: the damaged rule file %s cannot be moved to %s: %s"
+#define KT_KARULES_ERR_DAMAGED                       "Not saved: the rule file is damaged. " \
+        "New rules are saved in Key details, Restrict..."
+#define KT_KARULES_NOTICE_NOT_SAVED                  "kageant: destination rules not saved"
+#define KT_KARULES_NOTICE_DAMAGED                    "kageant: rule file damaged"
+#define KT_KARULES_DAMAGED_NOTICE_FMT                "%s\nNo key signs for a program until new rules are saved " \
+        "in Key details, Restrict..."
+/* the editor's tree: a key ("comment  SHA256:...", the third %s the
+ * not-loaded mark), a destination, a destination's attributes */
+#define KT_KARULES_TREE_KEY_FMT                      "%s  %s%s"
+#define KT_KARULES_TREE_NOT_LOADED                   "  (not loaded)"
+#define KT_KARULES_TREE_NEW_DEST                     "(new destination)"
+#define KT_KARULES_ATTR_USER_FMT                     "User: %s"
+#define KT_KARULES_ATTR_VIA_FMT                      "Via: %s"
+#define KT_KARULES_ATTR_FORWARD                      "Forwarding: allowed"
+#define KT_KARULES_ATTR_KEYS_FMT                     "Host keys: %d"
+#define KT_KARULES_ATTR_KEYS_NONE                    "Host keys: not looked up"
+/* the editor's right-hand side */
+#define KT_KARULES_HEAD_DEST                         "Destination"
+#define KT_KARULES_KEY_CA                            "CA "
+#define KT_KARULES_KEYS_NOT_LOOKED_UP                "Host keys not looked up yet."
+#define KT_KARULES_KEYS_VIA_FMT                      "Host keys of %s:"
+#define KT_KARULES_KEY_UNRESTRICTED                  "No destination: the key is not restricted."
+#define KT_KARULES_KEY_DESTS_FMT                     "Destinations: %d. The key signs a login to these servers only."
+/* the editor's status line */
+#define KT_KARULES_EDITOR_HINT                       "A key with destinations signs a login to those servers only. " \
+        "A key without destinations is not restricted."
+#define KT_KARULES_EDITOR_DAMAGED_FMT                "The rule file is damaged: %s\n" \
+        "OK keeps that file aside and saves the rules shown here."
+#define KT_KARULES_HOST_EMPTY                        "Host name missing."
+#define KT_KARULES_NO_KEYS_FMT                       "No host key of %s in the KiTTY++ host-key store, " \
+        "known_hosts or the CA store."
+#define KT_KARULES_FOUND_FMT                         "%d host key(s) found for %s."
+#define KT_KARULES_TOO_MANY                          "1024 destinations per key at most."
+#define KT_KARULES_NOT_LOOKED_UP_FMT                 "%s: host keys not looked up."
+#define KT_KARULES_KEPT_ASIDE_FMT                    "The damaged rule file is kept as:\n%s"
 #define KT_KA_CONFIRM_BLOCKED_TEXT                   "Key-use confirmations are now being denied silently. " \
         "Click this notice, the tray \"Resume\" item, or the " \
         "key list's Resume button to allow them again."
@@ -4741,6 +4802,18 @@
 #define KT_RC_KEYDETAILS_ACCEPT                      "&Accept this key"
 #define KT_RC_KEYDETAILS_PROTECT                     "&Protect with Windows Hello..."
 #define KT_RC_KEYDETAILS_FORGET                      "For&get a path..."
+#define KT_RC_KEYDETAILS_DEST                        "Destinations:"
+#define KT_RC_KEYDETAILS_RESTRICT                    "&Restrict..."
+/* pageant.rc: IDD_KEYRULES (caption = KT_CAP_KA_KEY_RULES) */
+#define KT_RC_KEYRULES_TREE                          "Keys and destinations:"
+#define KT_RC_KEYRULES_ADD                           "&Add destination"
+#define KT_RC_KEYRULES_REMOVE                        "Re&move"
+#define KT_RC_KEYRULES_HOST                          "&Host:"
+#define KT_RC_KEYRULES_USER                          "&User:"
+#define KT_RC_KEYRULES_VIA                           "&Via host:"
+#define KT_RC_KEYRULES_FORWARD                       "Allow agent &forwarding to the other destinations"
+#define KT_RC_KEYRULES_LOOKUP                        "&Look up host keys"
+#define KT_RC_KEYRULES_KEYS                          "Host keys:"
 
 /* pageant.rc: IDD_KEYSETTINGS (caption = KT_CAP_KA_SETTINGS) */
 #define KT_RC_KEYSETTINGS_NOTICE_LABEL               "Notice &display (seconds):"

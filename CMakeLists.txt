@@ -102,7 +102,8 @@ add_library(keygen STATIC
 add_subdirectory(keygen)
 
 add_library(agent STATIC
-  sshpubk.c pageant.c aqsync.c)
+  sshpubk.c pageant.c aqsync.c
+  kitty/kitty_agentrestrict.c) # KiTTY: ssh-add -h, the rules pageant.c checks
 
 add_library(guiterminal STATIC
   terminal/terminal.c terminal/bidi.c
@@ -300,6 +301,17 @@ add_executable(test_agentbind
   test/test_agentbind.c
   kitty/kitty_agentbind.c)
 
+# KiTTY: unit test for destination-restricted keys (kitty/kitty_agentrestrict.c,
+# in the agent library for pageant.c): ssh-add -h's constraint and OpenSSH's
+# checks on it, the walk of a connection's session-binds, the sign check's
+# userauth data, the rule store and its file bytes, damaged ones included.
+# sshpubk.c and crypto for the key types.
+add_executable(test_agentrestrict
+  test/test_agentrestrict.c
+  kitty/kitty_agentrestrict.c
+  sshpubk.c)
+target_link_libraries(test_agentrestrict crypto utils ${platform_libraries})
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -484,7 +496,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
-    test_agentbind
+    test_agentbind test_agentrestrict
     test_auditparse test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()

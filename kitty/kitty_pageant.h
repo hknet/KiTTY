@@ -297,6 +297,15 @@ void kageant_audit_refused(const char *reason, unsigned long pid,
                            const struct kageant_dest *dest);
 /* kageant_bind_hook (pageant.h): a session-bind accepted */
 void kageant_audit_bind(ptrlen hostkey, bool forwarding, unsigned long pid);
+/* kageant_restricted_hook (pageant.h): event 104 */
+void kageant_audit_restricted(const char *fp, const char *comment,
+                              const char *result, const char *reason,
+                              unsigned long pid, const struct kageant_dest *d,
+                              const char *rule);
+/* event 110, a key added, with the key's destination rules */
+void kageant_audit_add(const char *fp, const char *comment,
+                       const char *reason, unsigned long pid,
+                       const char *path);
 /* the agent lock's frontend half (kitty_pageant.c) */
 int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);

@@ -15,6 +15,7 @@
 #define IDD_AUDITVIEW 217      /* KiTTY: the audit-log viewer */
 #define IDD_AUDITDETAIL 218    /* KiTTY: one audit record, field per line */
 #define IDD_HELLOPROTECT 219   /* KiTTY: protect a key with Windows Hello */
+#define IDD_KEYRULES 220       /* KiTTY: the destination rule editor */
 
 /* KiTTY: the audit-log viewer's controls */
 #define IDC_AUDIT_FILTER 400
@@ -103,6 +104,27 @@
 #define IDC_KEYDETAIL_AUTOENC 115   /* re-encrypt after idle: this key's own value */
 #define IDC_KEYDETAIL_AUTOENC_LBL 116
 #define IDC_KEYDETAIL_AUTOENC_NOTE 117 /* agent default / enforced line */
+#define IDC_KEYDETAIL_DEST_LBL 118  /* the key's destination rules */
+#define IDC_KEYDETAIL_DEST 119
+#define IDC_KEYDETAIL_RESTRICT 120  /* opens the rule editor */
+
+/* KiTTY: the destination rule editor */
+#define IDC_KR_TREE_LBL 500
+#define IDC_KR_TREE 501
+#define IDC_KR_ADD 502
+#define IDC_KR_REMOVE 503
+#define IDC_KR_HEAD 504
+#define IDC_KR_HOST_LBL 505
+#define IDC_KR_HOST 506
+#define IDC_KR_USER_LBL 507
+#define IDC_KR_USER 508
+#define IDC_KR_VIA_LBL 509
+#define IDC_KR_VIA 510
+#define IDC_KR_FORWARD 511
+#define IDC_KR_LOOKUP 512
+#define IDC_KR_KEYS_LBL 513
+#define IDC_KR_KEYS 514
+#define IDC_KR_STATUS 515
 
 /* KiTTY: the Hello-protect dialog */
 #define IDC_HP_SRC 100

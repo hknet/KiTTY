@@ -340,6 +340,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_DLGPOS_KA_ABOUT                  "kageantAbout"
 #define KR_DLGPOS_KA_HELLOPROTECT           "kageantHelloProtect"
 #define KR_DLGPOS_KA_KEYDETAILS             "kageantKeyDetails"
+#define KR_DLGPOS_KA_KEYRULES               "kageantKeyRules"
 #define KR_DLGPOS_KA_AGENTLOG               "kageantAuditView"
 #define KR_DLGPOS_KA_SETTINGS               "kageantSettings"
 #define KR_DLGPOS_KA_KEYLIST                "kageantKeyList"

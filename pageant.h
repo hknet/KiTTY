@@ -165,6 +165,8 @@ extern void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
                                           unsigned long pid);
 /* KiTTY: is this SSH-2 key held decrypted right now? */
 bool pageant_key_decrypted_by_blob(ptrlen blob);
+/* KiTTY: is this SSH-2 key in the agent at all? */
+bool pageant_key_present_by_blob(ptrlen blob);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
 /*
@@ -193,6 +195,20 @@ extern void (*kageant_refused_hook)(const char *reason, unsigned long pid,
  * everywhere but kageant. */
 extern void (*kageant_bind_hook)(ptrlen hostkey, bool forwarding,
                                  unsigned long pid);
+/* KiTTY: destination-restricted keys (kitty/kitty_agentrestrict.h). A
+ * request refused because of a key's rules: fp as the agent shows it,
+ * comment, result sign-refused or remove-refused, reason a KAR_WHY_* token,
+ * the requester, the connection's bindings and the key's rules as text
+ * (NULL when the rule file could not be read). NULL everywhere but kageant,
+ * which writes event 104. */
+extern void (*kageant_restricted_hook)(const char *fp, const char *comment,
+                                       const char *result, const char *reason,
+                                       unsigned long pid,
+                                       const struct kageant_dest *dest,
+                                       const char *rule);
+/* KiTTY: ssh-add -h changed the rule store (kar_store_get()); kageant
+ * writes its rule file. */
+extern void (*kageant_rules_changed_hook)(void);
 
 /* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
  * its keys but answers an empty key list and refuses every other request but

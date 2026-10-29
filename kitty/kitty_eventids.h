@@ -117,8 +117,11 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 103, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "request",
       "result reason req reqpath pid dest fwd",
       "Warning" },
+    { 104, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "restricted",
+      "fp comment result reason req reqpath pid dest fwd rule",
+      "Warning" },
     { 110, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "add",
-      "fp comment result reason req reqpath pid path",
+      "fp comment result reason req reqpath pid path restrict",
       "Information; Warning for a refusal or failure" },
     { 111, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "loadkey", "path result enc",
       "Information; Warning for a refusal or failure" },
@@ -326,9 +329,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "100, 101: the server the key is used for, from the client's "
       "verified session-bind: the hash of its host key (SHA256:...), then "
       "a host name when one is found; empty without a session-bind; 102: "
-      "the server the client bound to, written the same way; 103: the "
-      "server of the connection's verified session-bind, written the same "
-      "way, empty without one; 131: the protected copy written" },
+      "the server the client bound to, written the same way; 103, 104: "
+      "the server of the connection's verified session-bind, written the "
+      "same way, empty without one; 131: the protected copy written" },
     { "detail",
       "130, 132: the detail Windows Hello reported; 230: the "
       "refusals the rate limit merged into this record (a number), "
@@ -373,7 +376,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "from",
       "200, 300: the local end of the connection, address and port" },
     { "fwd",
-      "100, 101, 103: the agent forwarding hops of the client's verified "
+      "100, 101, 103, 104: the agent forwarding hops of the client's verified "
       "session-binds, in the order bound, each as in dest, separated by a "
       "comma; empty when there is none" },
     { "host",
@@ -438,11 +441,17 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "socks4; 225, 325: the proxy's type: http, socks4, socks5, "
       "telnet, local-command" },
     { "reason",
-      "100-170 except 103: a token - gui, cmdline, ipc, ipc-policy, tray, "
+      "100-170 except 103 and 104: a token - gui, cmdline, ipc, "
+      "ipc-policy, tray, "
       "lifetime, device-removal, idle, windows-lock, windows-unlock, "
       "click-allow, click-deny, click-cancel-latch, pileup, "
       "suppress-latch, hello-verified, hello-denied, hello-unavailable, "
-      "hello-error; 103: the agent's reason as text (key not found, "
+      "hello-error; 104: a token - unbound (no session-bind), "
+      "bind-failed, not-userauth (the data to sign is no login for the "
+      "key), destination (no rule permits the server), forwarding-hop, "
+      "session-id, hostkey, store-damaged; for result store-damaged the "
+      "file and why it cannot be read, as text; 103: the agent's reason "
+      "as text (key not found, "
       "unrecognised message, key usage not confirmed by user, ...); 201, "
       "301: the fatal error's text; 221, 321: access denied, public-key "
       "signature refused, no supported authentication methods available, "
@@ -468,9 +477,14 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "request",
       "230: what the far end asked for; values: osc52-read, "
       "osc5522-read, far2l-clipboard, file-read, file-write" },
+    { "restrict",
+      "110: the key's destination rules, written as in rule; empty for "
+      "a key without rules" },
     { "result",
       "the outcome; 100, 101: allowed, denied; 102: accepted; 103: "
-      "refused; 110, 114, "
+      "refused; 104: sign-refused, remove-refused, store-damaged (the "
+      "rule file cannot be read: every key is refused over the pipe); "
+      "110, 114, "
       "115: done, "
       "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "
       "forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, "
@@ -488,6 +502,12 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "updatehostkeys=ask); "
       "401, 402: saved, failed; 906: refused (not started), allowed "
       "(Yes in the question), declined (No, or the question closed)" },
+    { "rule",
+      "104: the key's destination rules: each as host name, then the hash "
+      "of its first host key (SHA256:..., CA SHA256:... for a CA key) and "
+      "+N for more keys, user@ in front for a user, from-host > in front "
+      "for use through a forwarded agent, separated by a comma; empty when "
+      "the rule file cannot be read" },
     { "session",
       "the saved session's name, empty when none was loaded" },
     { "tool",

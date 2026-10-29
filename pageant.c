@@ -21,6 +21,9 @@
 /* KiTTY: the shared CryptProtectMemory key-blob wrapper - one copy for the
  * agent core, kageant's satellites, kittygen and kittygen-cli alike. */
 #include "kitty/kitty_protkey.h"
+/* KiTTY: destination-restricted keys (ssh-add -h) - the constraint, the
+ * check and the rule store, kitty/kitty_agentrestrict.c */
+#include "kitty/kitty_agentrestrict.h"
 #ifndef CRYPTPROTECTMEMORY_SAME_PROCESS
 #define CRYPTPROTECTMEMORY_SAME_PROCESS 0x00
 #endif
@@ -98,6 +101,10 @@ struct PageantClientInfo {
     /* KiTTY: the connection's session-binds, in the order bound */
     size_t nbindings;
     PageantBinding bindings[KAGEANT_MAX_BINDINGS];
+    /* KiTTY: a session-bind was sent on this connection, accepted or not.
+     * A restricted key is refused on a connection whose bind failed
+     * (OpenSSH's session_bind_attempted). */
+    bool bind_attempted;
 };
 
 struct PageantAsyncOp {
@@ -732,6 +739,71 @@ static void remove_all_keys(int ssh_version)
     }
 }
 
+/*
+ * KiTTY: destination-restricted keys (kitty/kitty_agentrestrict.h). A key
+ * with links in the rule store is used only where its rules permit, judged
+ * from the session-binds of the connection the request came on. The
+ * connection's binds as the check takes them:
+ */
+static size_t info_binds(PageantClientInfo *info, kar_bind *b)
+{
+    size_t n = 0;
+    for (; info && n < info->nbindings; n++) {
+        b[n].hostkey = ptrlen_from_strbuf(info->bindings[n].hostkey);
+        b[n].sid = ptrlen_from_strbuf(info->bindings[n].sid);
+        b[n].forwarding = info->bindings[n].forwarding;
+    }
+    return n;
+}
+
+/* May this request go ahead for this key? sigdata NULL = listing it or
+ * removing it, else the data a SIGN_REQUEST wants signed with keyblob.
+ * False with *why (a KAR_WHY_* token) and, when ruletext is given, the
+ * key's rules as text (sfree it). A damaged rule file makes every key
+ * restricted with no rule: listed on an unbound connection only, never
+ * signing. */
+static bool restrict_allows(PageantClientInfo *info, ptrlen full_pub,
+                            const ptrlen *keyblob, const ptrlen *sigdata,
+                            const char **why, char **ruletext)
+{
+    kar_store *st = kar_store_get();
+    kar_bind b[KAGEANT_MAX_BINDINGS];
+    kar_rules *r = NULL;
+    bool attempted = info && info->bind_attempted;
+    size_t nb;
+    bool ok;
+
+    *why = NULL;
+    if (ruletext)
+        *ruletext = NULL;
+    if (!st->damaged && !st->nlinks)
+        return true;                    /* nothing is restricted */
+    if (!st->damaged) {
+        char *fp = kar_key_fp(full_pub);
+        bool restricted = kar_store_restricted(st, fp);
+        if (restricted)
+            r = kar_store_rules(st, fp);
+        sfree(fp);
+        if (!restricted)
+            return true;
+    }
+    if (!r)
+        r = kar_rules_new();
+    nb = info_binds(info, b);
+    if (sigdata && st->damaged) {
+        ok = false;
+        *why = KAR_WHY_STORE_DAMAGED;
+    } else if (sigdata) {
+        ok = kar_sign_permitted(r, b, nb, attempted, *keyblob, *sigdata, why);
+    } else {
+        ok = kar_permitted(r, b, nb, attempted, NULL, why);
+    }
+    if (!ok && ruletext)
+        *ruletext = kar_rules_text(r);
+    kar_rules_free(r);
+    return ok;
+}
+
 static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
                           int ssh_version, bool extended)
 {
@@ -775,22 +847,44 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
     }
 }
 
-static void list_keys(BinarySink *bs, int ssh_version, bool extended)
+/* info non-NULL: the list an external client gets, without the
+ * restricted keys this connection may not use (decision D9, as OpenSSH:
+ * a server never learns of a key that may not go to it). */
+static void list_keys_for(BinarySink *bs, int ssh_version, bool extended,
+                          PageantClientInfo *info)
 {
     PageantPublicKey *pub;
+    strbuf *entries = strbuf_new();
+    unsigned long n = 0;
 
-    put_uint32(bs, count_keys(ssh_version));
     /*
      * KiTTY: emit keys in the user-defined OFFER order (puborder), filtered to
-     * this SSH version. The count above is order-independent. puborder holds
-     * every key in pubkeytree (kept in sync at add/remove), so this is complete.
-     * (Upstream walked pubkeytree in content-sorted order via index234.)
+     * this SSH version. puborder holds every key in pubkeytree (kept in sync
+     * at add/remove), so this is complete. (Upstream walked pubkeytree in
+     * content-sorted order via index234.) The count goes first on the wire,
+     * so the entries are built before it.
      */
     for (size_t oi = 0; oi < puborder_n; oi++) {
+        const char *why;
         pub = puborder[oi];
-        if (pub->sort.priv.ssh_version == ssh_version)
-            list_key_emit(bs, pub, ssh_version, extended);
+        if (pub->sort.priv.ssh_version != ssh_version)
+            continue;
+        if (info && ssh_version == 2 &&
+            !restrict_allows(info, pub->sort.full_pub, NULL, NULL, &why,
+                             NULL))
+            continue;
+        list_key_emit(BinarySink_UPCAST(entries), pub, ssh_version,
+                      extended);
+        n++;
     }
+    put_uint32(bs, n);
+    put_datapl(bs, ptrlen_from_strbuf(entries));
+    strbuf_free(entries);
+}
+
+static void list_keys(BinarySink *bs, int ssh_version, bool extended)
+{
+    list_keys_for(bs, ssh_version, extended, NULL);
 }
 
 /*
@@ -880,6 +974,7 @@ void pageant_register_client(PageantClient *pc)
     pc->info->pc = pc;
     pc->info->head.prev = pc->info->head.next = &pc->info->head;
     pc->info->nbindings = 0;
+    pc->info->bind_attempted = false;
 }
 
 void pageant_unregister_client(PageantClient *pc)
@@ -937,6 +1032,34 @@ static PRINTF_LIKE(5, 6) void failure(
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s)",
                                msg);
         sfree(msg);
+    }
+}
+
+/* KiTTY: a request refused because of a key's destination rules - the
+ * failure reply and its own record (event 104, kageant_restricted_hook),
+ * not the generic refusal's. */
+void (*kageant_restricted_hook)(const char *fp, const char *comment,
+                                const char *result, const char *reason,
+                                unsigned long pid,
+                                const struct kageant_dest *dest,
+                                const char *rule) = NULL;
+void (*kageant_rules_changed_hook)(void) = NULL;
+
+static void restricted_refusal(PageantClient *pc,
+                               PageantClientRequestId *reqid, strbuf *sb,
+                               unsigned char type, const char *fp,
+                               const char *comment, const char *result,
+                               const char *why, const char *rule)
+{
+    strbuf_clear(sb);
+    put_byte(sb, type);
+    pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s: the key's "
+                       "destination rules, %s)", result, why);
+    if (kageant_restricted_hook) {
+        struct kageant_dest d;
+        kageant_restricted_hook(fp, comment, result, why,
+                                pageant_external_pid,
+                                info_dest(pc->info, &d), rule);
     }
 }
 
@@ -1846,7 +1969,10 @@ static PageantAsyncOp *pageant_make_op(
                            "request: SSH2_AGENTC_REQUEST_IDENTITIES");
 
         put_byte(sb, SSH2_AGENT_IDENTITIES_ANSWER);
-        pageant_make_keylist2(BinarySink_UPCAST(sb));
+        /* KiTTY: an external client's list leaves out the restricted keys
+         * its connection may not use; the agent's own window lists all */
+        list_keys_for(BinarySink_UPCAST(sb), 2, false,
+                      pageant_external_request ? pc->info : NULL);
 
         /* KiTTY: tell the frontend somebody wanted our keys, so it can point
          * out any it is holding back. External requests only - the agent's own
@@ -1915,6 +2041,19 @@ static PageantAsyncOp *pageant_make_op(
             goto challenge1_cleanup;
         }
         priv = pub_to_priv(pub);
+
+        /* KiTTY: while the rule file cannot be read nothing is known about
+         * any key's destinations - every key is refused over the pipe,
+         * never used unrestricted (kitty/kitty_agentrestrict.h). An SSH-1
+         * key has no rules of its own. */
+        if (pageant_external_request && kar_store_get()->damaged) {
+            char *dfp = kitty_rsa1_record_fp(priv->rkey);
+            restricted_refusal(pc, reqid, sb, SSH_AGENT_FAILURE, dfp,
+                               pub->comment, "sign-refused",
+                               KAR_WHY_STORE_DAMAGED, NULL);
+            sfree(dfp);
+            goto challenge1_cleanup;
+        }
 
         /* KiTTY: SSH-1 key use honours the same usage-confirmation as SSH-2
          * signing (see signop_coroutine). Reachable via the global "confirm
@@ -2019,6 +2158,25 @@ static PageantAsyncOp *pageant_make_op(
         if ((pub = findpubkey2(keyblob)) == NULL) {
             fail("key not found");
             goto responded;
+        }
+
+        /* KiTTY: a destination-restricted key (ssh-add -h, kageant's rule
+         * editor) signs only a login its rules permit on this connection:
+         * bound, the data a userauth request for the bound session, the
+         * hops matched by its rules (kitty/kitty_agentrestrict.c). */
+        {
+            const char *rwhy;
+            char *rrule;
+            if (!restrict_allows(pc->info, pub->sort.full_pub, &keyblob,
+                                 &sigdata, &rwhy, &rrule)) {
+                char *rfp = kar_key_fp(pub->sort.full_pub);
+                restricted_refusal(pc, reqid, sb, failure_type, rfp,
+                                   pub->comment, "sign-refused", rwhy,
+                                   rrule);
+                sfree(rfp);
+                sfree(rrule);
+                goto responded;
+            }
         }
 
         if (have_flags)
@@ -2133,6 +2291,7 @@ static PageantAsyncOp *pageant_make_op(
         ssh2_userkey *key = NULL;
         ptrlen algpl;
         const ssh_keyalg *alg;
+        kar_rules *key_dest = NULL;    /* KiTTY: ssh-add -h */
 
         pageant_client_log(pc, reqid, "request: SSH2_AGENTC_ADD_IDENTITY");
 
@@ -2168,9 +2327,9 @@ static PageantAsyncOp *pageant_make_op(
 
         /* KiTTY: any bytes after the comment are per-key constraints. Parse
          * them - do not leave them unread (that is the accept-and-ignore bug).
-         * Lifetime and confirm are captured here and applied after the
-         * key is added; destination and unknown constraints stay refused
-         * rather than pretended. */
+         * Lifetime, confirm and destinations are captured here and applied
+         * after the key is added; unknown constraints stay refused rather
+         * than pretended. */
         unsigned key_lifetime = 0;
         bool key_confirm = false;
         while (get_avail(msg) > 0) {
@@ -2179,6 +2338,27 @@ static PageantAsyncOp *pageant_make_op(
                 key_lifetime = get_uint32(msg);
             } else if (ctype == SSH_AGENT_CONSTRAIN_CONFIRM) {
                 key_confirm = true;   /* ssh-add -c */
+            } else if (ctype == SSH_AGENT_CONSTRAIN_EXTENSION) {
+                /* KiTTY: restrict-destination-v00@openssh.com (ssh-add -h),
+                 * checked as OpenSSH checks it; every other extension
+                 * stays refused. */
+                ptrlen ctname = get_string(msg);
+                const char *derr = "";
+                if (get_err(msg))
+                    break;            /* reported below */
+                if (!ptrlen_eq_string(ctname, KAR_EXT_NAME)) {
+                    fail("this key constraint is not supported by kageant");
+                    goto add2_cleanup;
+                }
+                if (key_dest) {
+                    fail("restrict-destination given twice");
+                    goto add2_cleanup;
+                }
+                key_dest = kar_parse_constraint(msg, &derr);
+                if (!key_dest) {
+                    fail("restrict-destination refused: %s", derr);
+                    goto add2_cleanup;
+                }
             } else {
                 fail("this key constraint is not supported by kageant");
                 goto add2_cleanup;
@@ -2186,6 +2366,12 @@ static PageantAsyncOp *pageant_make_op(
         }
         if (get_err(msg)) {
             fail("unable to decode key constraints");
+            goto add2_cleanup;
+        }
+        /* KiTTY: a damaged rule file is never written over from here - the
+         * user replaces it in kageant's rule editor */
+        if (key_dest && kar_store_get()->damaged) {
+            fail("restrict-destination refused: the rule file is damaged");
             goto add2_cleanup;
         }
 
@@ -2207,7 +2393,7 @@ static PageantAsyncOp *pageant_make_op(
          * constraint-free duplicate keeps the old failure reply. */
         bool k_added = pageant_add_ssh2_key(key);
         bool k_present = k_added;
-        if (!k_added && (key_lifetime || key_confirm)) {
+        if (!k_added && (key_lifetime || key_confirm || key_dest)) {
             strbuf *chk = makeblob2full(key->key);
             k_present = findpubkey2(ptrlen_from_strbuf(chk)) != NULL;
             strbuf_free(chk);
@@ -2225,6 +2411,24 @@ static PageantAsyncOp *pageant_make_op(
             if (kageant_key_lifetime_hook)
                 kageant_key_lifetime_hook(ptrlen_from_strbuf(pb),
                                           key_lifetime);
+            /* KiTTY: ssh-add -h - the key's links in the rule store are
+             * replaced by these destinations; a re-add without -h keeps
+             * them (decision D8). Filed by fingerprint, so the rules follow
+             * the key however it is added later. Before the notice below,
+             * whose record carries them. */
+            if (key_dest) {
+                PageantPublicKey *rpub = findpubkey2(ptrlen_from_strbuf(pb));
+                ptrlen rblob = rpub ? rpub->sort.full_pub
+                                    : ptrlen_from_strbuf(pb);
+                char *rfp = kar_key_fp(rblob);
+                kar_store_set_key_rules(
+                    kar_store_get(), rfp,
+                    rpub && rpub->comment ? rpub->comment : key->comment,
+                    rblob, key_dest);
+                sfree(rfp);
+                if (kageant_rules_changed_hook)
+                    kageant_rules_changed_hook();
+            }
             /* Confirm-on-use (ssh-add -c), or the comment convention -
              * either sets the real per-key flag. Sticky: a plain re-add
              * does not clear a flag the user set. */
@@ -2259,6 +2463,8 @@ static PageantAsyncOp *pageant_make_op(
         }
 
       add2_cleanup:
+        if (key_dest)
+            kar_rules_free(key_dest);
         if (key) {
             if (key->key)
                 ssh_key_free(key->key);
@@ -2376,6 +2582,23 @@ static PageantAsyncOp *pageant_make_op(
         if (!pub) {
             fail("key not found");
             goto responded;
+        }
+
+        /* KiTTY: a restricted key this connection may not use is not
+         * removed through it either (OpenSSH's identity_permitted) */
+        if (pageant_external_request) {
+            const char *rwhy;
+            char *rrule;
+            if (!restrict_allows(pc->info, pub->sort.full_pub, NULL, NULL,
+                                 &rwhy, &rrule)) {
+                char *rfp = kar_key_fp(pub->sort.full_pub);
+                restricted_refusal(pc, reqid, sb, failure_type, rfp,
+                                   pub->comment, "remove-refused", rwhy,
+                                   rrule);
+                sfree(rfp);
+                sfree(rrule);
+                goto responded;
+            }
         }
 
         pageant_client_log(pc, reqid, "found with comment: %s", pub->comment);
@@ -2707,6 +2930,9 @@ static PageantAsyncOp *pageant_make_op(
             PageantClientInfo *info = pc->info;
             const char *why;
 
+            /* KiTTY: attempted, whatever comes of it - a restricted key is
+             * refused on a connection whose bind failed */
+            info->bind_attempted = true;
             if (get_err(msg)) {
                 fail("session-bind: unable to decode request");
                 goto responded;
@@ -2764,7 +2990,9 @@ static PageantAsyncOp *pageant_make_op(
              * for a reply message with an incompatible format.
              */
             put_byte(sb, SSH_AGENT_SUCCESS);
-            pageant_make_keylist_extended(BinarySink_UPCAST(sb));
+            /* KiTTY: filtered as REQUEST_IDENTITIES is */
+            list_keys_for(BinarySink_UPCAST(sb), 2, true,
+                          pageant_external_request ? pc->info : NULL);
 
             pageant_client_log(pc, reqid,
                                "reply: SSH2_AGENT_SUCCESS + key list");
@@ -2909,6 +3137,13 @@ char *pageant_key_comment_by_blob(ptrlen blob)
         freersakey(&rkey);
     }
     return (pub && pub->comment) ? dupstr(pub->comment) : NULL;
+}
+
+/* KiTTY: is this SSH-2 key in the agent (the rule editor marks the keys
+ * it lists that are not)? */
+bool pageant_key_present_by_blob(ptrlen blob)
+{
+    return findpubkey2(blob) != NULL;
 }
 
 /* KiTTY: the per-key confirm-on-use flag (ssh-add -c / details checkbox /

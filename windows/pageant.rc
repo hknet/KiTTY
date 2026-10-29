@@ -191,7 +191,7 @@ END
  *    use:" both fitted 52 and 62 units in Tahoma 8 and do not in Segoe UI 9,
  *    so the label column moved out and the edit column moved with it.
  */
-IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 270
+IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 286
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_KEY_DETAILS
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -213,39 +213,101 @@ BEGIN
     /* KiTTY: re-point a not-loaded entry whose file is absent or will not
      * parse. Never shown on a mismatch - Accept below owns that case. */
     PUSHBUTTON KT_RC_KEYDETAILS_LOCATE, IDC_KEYDETAIL_LOCATE, 356, 122, 54, 14
-    LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 182, 58, 11,
+    /* KiTTY: the key's destination rules (ssh-add -h, the rule editor
+     * Restrict... opens), "any" without */
+    LTEXT KT_RC_KEYDETAILS_DEST, IDC_KEYDETAIL_DEST_LBL, 10, 182, 58, 11,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 182, 338, 11,
+    EDITTEXT IDC_KEYDETAIL_DEST, 72, 182, 278, 11,
+        ES_READONLY | ES_AUTOHSCROLL
+    PUSHBUTTON KT_RC_KEYDETAILS_RESTRICT, IDC_KEYDETAIL_RESTRICT,
+        356, 181, 54, 14
+    LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 198, 58, 11,
+        SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 198, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
     AUTOCHECKBOX KT_RC_KEYDETAILS_DEFER,
-        IDC_KEYDETAIL_DEFER, 10, 200, 300, 12
+        IDC_KEYDETAIL_DEFER, 10, 216, 300, 12
     /* KiTTY: three-valued (none / ask / ask with Windows Hello), so a
      * droplist, not a checkbox. The label keeps the COMBO's height, not the
      * edits' - a combo box sizes its closed height from the font and lands
      * on 14 here, ignoring whatever the template says. */
-    LTEXT KT_RC_KEYDETAILS_CONFIRM_LABEL, IDC_KEYDETAIL_CONFIRM_LBL, 10, 216, 68, 14,
+    LTEXT KT_RC_KEYDETAILS_CONFIRM_LABEL, IDC_KEYDETAIL_CONFIRM_LBL, 10, 232, 68, 14,
         SS_CENTERIMAGE
-    COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 216, 164, 48,
+    COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 232, 164, 48,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
     /* KiTTY: this key's own idle re-encrypt time; blank = the agent's
      * default; greyed while the agent setting is enforced. */
-    LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 232, 78, 11,
+    LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 248, 78, 11,
         SS_CENTERIMAGE
     /* an editable combo box: the usual values listed, any other typed */
-    COMBOBOX IDC_KEYDETAIL_AUTOENC, 92, 232, 70, 60,
+    COMBOBOX IDC_KEYDETAIL_AUTOENC, 92, 248, 70, 60,
         CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
-    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 168, 232, 242, 11, SS_CENTERIMAGE
-    PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 250, 90, 15
+    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 168, 248, 242, 11, SS_CENTERIMAGE
+    PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 266, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
      * the startup list (a deleted plaintext original, a retired stick). */
     PUSHBUTTON KT_RC_KEYDETAILS_PROTECT, IDC_KEYDETAIL_PROTECT,
-        104, 250, 120, 15
-    PUSHBUTTON KT_RC_KEYDETAILS_FORGET, IDC_KEYDETAIL_FORGET, 228, 250, 70, 15
-    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 358, 250, 52, 15
+        104, 266, 120, 15
+    PUSHBUTTON KT_RC_KEYDETAILS_FORGET, IDC_KEYDETAIL_FORGET, 228, 266, 70, 15
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 358, 266, 52, 15
+END
+
+/* KiTTY: tree view styles for the rule editor, as the ListView ones above:
+ * the winres headers do not reliably define them for the resource
+ * compiler. */
+#ifndef TVS_HASBUTTONS
+#define TVS_HASBUTTONS 0x0001
+#endif
+#ifndef TVS_HASLINES
+#define TVS_HASLINES 0x0002
+#endif
+#ifndef TVS_LINESATROOT
+#define TVS_LINESATROOT 0x0004
+#endif
+#ifndef TVS_DISABLEDRAGDROP
+#define TVS_DISABLEDRAGDROP 0x0010
+#endif
+#ifndef TVS_SHOWSELALWAYS
+#define TVS_SHOWSELALWAYS 0x0020
+#endif
+
+/* KiTTY: the destination rule editor (Key details > Restrict...). Left: the
+ * tree - each key with rules at the root, its destinations below, their
+ * attributes below those. Right: the selected destination - host, user,
+ * via host, forwarding, the host keys found. Resizable: the tree grows in
+ * height, the right side in both directions (keyrules_anchors). */
+IDD_KEYRULES DIALOGEX DISCARDABLE 0, 0, 470, 262
+STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
+CAPTION KT_CAP_KA_KEY_RULES
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT KT_RC_KEYRULES_TREE, IDC_KR_TREE_LBL, 10, 8, 200, 11, SS_CENTERIMAGE
+    CONTROL "", IDC_KR_TREE, "SysTreeView32",
+        TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT | TVS_SHOWSELALWAYS |
+        TVS_DISABLEDRAGDROP | WS_BORDER | WS_TABSTOP,
+        10, 21, 200, 190
+    PUSHBUTTON KT_RC_KEYRULES_ADD, IDC_KR_ADD, 10, 216, 98, 15
+    PUSHBUTTON KT_RC_KEYRULES_REMOVE, IDC_KR_REMOVE, 112, 216, 98, 15
+    LTEXT "", IDC_KR_HEAD, 222, 8, 238, 11, SS_CENTERIMAGE | SS_ENDELLIPSIS
+    LTEXT KT_RC_KEYRULES_HOST, IDC_KR_HOST_LBL, 222, 24, 50, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KR_HOST, 276, 24, 184, 11, ES_AUTOHSCROLL
+    LTEXT KT_RC_KEYRULES_USER, IDC_KR_USER_LBL, 222, 40, 50, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KR_USER, 276, 40, 184, 11, ES_AUTOHSCROLL
+    LTEXT KT_RC_KEYRULES_VIA, IDC_KR_VIA_LBL, 222, 56, 50, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KR_VIA, 276, 56, 184, 11, ES_AUTOHSCROLL
+    AUTOCHECKBOX KT_RC_KEYRULES_FORWARD, IDC_KR_FORWARD, 222, 72, 238, 12
+    PUSHBUTTON KT_RC_KEYRULES_LOOKUP, IDC_KR_LOOKUP, 222, 89, 90, 15
+    LTEXT KT_RC_KEYRULES_KEYS, IDC_KR_KEYS_LBL, 222, 109, 238, 11,
+        SS_CENTERIMAGE
+    EDITTEXT IDC_KR_KEYS, 222, 122, 238, 89,
+        ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL | WS_HSCROLL
+    LTEXT "", IDC_KR_STATUS, 10, 236, 330, 22
+    DEFPUSHBUTTON KT_WIN_OK, IDOK, 350, 240, 52, 15
+    PUSHBUTTON KT_XFER_BTN_CANCEL, IDCANCEL, 408, 240, 52, 15
 END
 
 /* KiTTY: the [Agent] settings dialog, reached from the key list window's

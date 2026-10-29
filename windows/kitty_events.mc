@@ -56,10 +56,16 @@ Language=English
 %1%nresult: %2%nreason: %3%nreq: %4%nreqpath: %5%npid: %6%ndest: %7%nfwd: %8%0
 .
 
+MessageId=104
+SymbolicName=KITTY_AGENT_RESTRICTED
+Language=English
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%nrule: %11%0
+.
+
 MessageId=110
 SymbolicName=KITTY_AGENT_ADD
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%npath: %9%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%npath: %9%nrestrict: %10%0
 .
 
 MessageId=111
