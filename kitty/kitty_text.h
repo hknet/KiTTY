@@ -1968,6 +1968,10 @@
 #define KT_MAIN_INFO_CLEANING_BACKUP                 "Cleaning backup registry"
 #define KT_MAIN_INFO_SAVING_REGISTRY                 "Saving registry"
 #define KT_MAIN_INFO_PREPARING_REGISTRY              "Preparing local registry"
+/* The launcher's session context menu (right click on a saved session): each
+ * entry only when that tool is installed (cyd01/KiTTY#501). */
+#define KT_MENU_OPEN_IN_WINSCP                       "Open in Win&SCP"
+#define KT_MENU_OPEN_IN_FILEZILLA                    "Open in File&Zilla"
 #define KT_MAIN_INI_CREATE_FAILED                    "Unable to create configuration file !"
 #define KT_MAIN_INFO_LOADING_SESSIONS                "Loading saved sessions."
 #define KT_MAIN_INFO_LOADING_FROM_FILE               "Loading saved sessions from file."
@@ -3591,6 +3595,8 @@
         "account on this PC."
 /* kitty_secretstore.c: a password whose export wrap failed is left out of the
  * bundle (never DPAPI in its place); the export's summary lists it */
+/* kitty.exe -winscp / -filezilla without a session to open (%s: the switch) */
+#define KT_CLI_XFER_NEEDS_SESSION                    "option \"%s\" requires a saved session with a host name: -load <session>"
 #define KT_BUNDLE_SKIPPED_HEAD_FMT                   "\n\n%d password(s) left out:"
 #define KT_BUNDLE_SKIPPED_PW_FMT                     "\nPassword of session '%s' not exported: %s"
 #define KT_BUNDLE_SKIPPED_PXPW_FMT                   "\nProxy password of session '%s' not exported: %s"

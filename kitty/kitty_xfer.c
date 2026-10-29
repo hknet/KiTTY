@@ -46,6 +46,7 @@
 #include "kitty_hostmatch.h" /* file:// links: the same machine, klink's answer */
 #include "kitty_hostkey_verify.h" /* kitty_hkv_klink_path: klink beside kitty.exe */
 #include "kitty_winerr.h"   /* kitty_win_reason */
+#include "kitty_bridge.h"   /* kitty_proxy_select: the launcher's -winscp */
 
 
 /* A user action that cannot go on (no SSH, a tool not found, kscp not
@@ -2180,6 +2181,10 @@ static void pathcat( strbuf *dst, const char *s ) {
  * is then not made and the caller's fallback applies. */
 struct kx_pwfiles { int n ; char *path[KX_PWFILES_MAX] ; } ;
 static struct kx_pwfiles kx_pw = { 0 } ;
+/* The delayed deletes not yet done: the password files here, FileZilla's
+ * temporary directory below. A process with no terminal window waits for
+ * them before it ends (kitty_xfer_cli_open). */
+static volatile LONG kx_deletes_pending = 0 ;
 
 static void kx_pwfiles_sweep( void ) {
 	char *tmp, *pat, *full ;
@@ -2334,6 +2339,7 @@ static DWORD WINAPI kx_pwfiles_delete_thread( LPVOID p ) {
 	Sleep( 60000 ) ;
 	kx_pwfiles_delete( f ) ;
 	free( f ) ;
+	InterlockedDecrement( &kx_deletes_pending ) ;
 	return 0 ;
 }
 
@@ -2348,6 +2354,7 @@ static void kx_pwfiles_release( int now ) {
 	} else if( (copy = (struct kx_pwfiles *)malloc( sizeof(*copy) )) != NULL ) {
 		*copy = kx_pw ;
 		memset( &kx_pw, 0, sizeof(kx_pw) ) ;
+		InterlockedIncrement( &kx_deletes_pending ) ;   /* the thread takes it off */
 		t = CreateThread( NULL, 0, kx_pwfiles_delete_thread, copy, 0, NULL ) ;
 		if( t ) CloseHandle( t ) ; else { kx_pwfiles_delete_thread( copy ) ; }
 	} else {
@@ -5192,6 +5199,7 @@ static DWORD WINAPI kx_fzdir_delete_thread( LPVOID p ) {
 	Sleep( 60000 ) ;
 	kx_fzdir_remove( dir ) ;
 	sfree( dir ) ;
+	InterlockedDecrement( &kx_deletes_pending ) ;
 	return 0 ;
 }
 
@@ -5215,9 +5223,13 @@ static void kx_fzdir_sweep( void ) {
 }
 
 /* Write the Site Manager entry; returns the directory (kx_fzdir, until the
- * release) or NULL. */
+ * release) or NULL. keyfile non-NULL: the logon type "Key file" with that
+ * path, no password - FileZilla has no command-line form for a key file, so
+ * a key session reaches it only this way (it asks for the passphrase
+ * itself). */
 static const char *kx_fzdir_make( const char *host, int port, int fzproto,
-                                  const char *user, const char *password ) {
+                                  const char *user, const char *password,
+                                  const char *keyfile ) {
 	char *tmp, *file ;
 	strbuf *xml ;
 	HANDLE h ; DWORD written ; int i ;
@@ -5239,10 +5251,17 @@ static const char *kx_fzdir_make( const char *host, int port, int fzproto,
 	put_fmt( xml, "</Host>\n\t\t\t<Port>%d</Port>\n\t\t\t<Protocol>%d</Protocol>\n", port, fzproto ) ;
 	bcat( xml, "\t\t\t<Type>0</Type>\n\t\t\t<User>" ) ;
 	xmlcat( xml, user ) ;
-	bcat( xml, "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
-	b64cat( xml, password ) ;
-	bcat( xml, "</Pass>\n\t\t\t<Logontype>1</Logontype>\n"
-	           "\t\t\t<EncodingType>Auto</EncodingType>\n"
+	if( keyfile != NULL ) {
+		/* FileZilla's logon type 5 = key file */
+		bcat( xml, "</User>\n\t\t\t<Keyfile>" ) ;
+		xmlcat( xml, keyfile ) ;
+		bcat( xml, "</Keyfile>\n\t\t\t<Logontype>5</Logontype>\n" ) ;
+	} else {
+		bcat( xml, "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
+		b64cat( xml, password ) ;
+		bcat( xml, "</Pass>\n\t\t\t<Logontype>1</Logontype>\n" ) ;
+	}
+	bcat( xml, "\t\t\t<EncodingType>Auto</EncodingType>\n"
 	           "\t\t\t<BypassProxy>0</BypassProxy>\n\t\t\t<Name>" ) ;
 	xmlcat( xml, KT_FZ_SITE_NAME ) ;
 	bcat( xml, "</Name>\n\t\t\t<SyncBrowsing>0</SyncBrowsing>\n"
@@ -5274,6 +5293,7 @@ static void kx_fzdir_release( int now ) {
 		kx_fzdir_remove( dir ) ;
 		sfree( dir ) ;
 	} else {
+		InterlockedIncrement( &kx_deletes_pending ) ;   /* the thread takes it off */
 		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, dir, 0, NULL ) ;
 		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( dir ) ;
 	}
@@ -5371,9 +5391,16 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 
 	cmd = strbuf_new_nm() ;                /* cleared when it goes: mode 2 puts the password in */
 	put_fmt( cmd, "\"%s\"", FileZillaPath ) ;
-	if( havepw && mode == 1 ) {
-		fzdir = kx_fzdir_make( host, port, fzproto, user, pw ) ;
+	/* An SFTP session with a key file: the key goes in the site entry (the
+	 * path is no secret, so whatever the password mode). A Hello-protected
+	 * key stays with the agent (kx_helper_keyfile answers NULL). */
+	{ const char *kf = fzproto == 1 ? kx_helper_keyfile( conf ) : NULL ;
+	  if( kf != NULL )
+		fzdir = kx_fzdir_make( host, port, fzproto, user, NULL, kf ) ;
+	  else if( havepw && mode == 1 ) {
+		fzdir = kx_fzdir_make( host, port, fzproto, user, pw, NULL ) ;
 		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to mode 0, never to the command line */
+	  }
 	}
 	if( fzdir != NULL ) {
 		bcat( cmd, " --site=\"1/" ) ; bcat( cmd, KT_FZ_SITE_NAME ) ; bcat( cmd, "\"" ) ;
@@ -5435,6 +5462,109 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 	sfree( user ) ; sfree( host ) ;
 	smemclr( pw, sizeof(pw) ) ;
 	kx_fzdir_release( 0 ) ;
+}
+
+/* ---- kitty.exe -load <session> -winscp / -filezilla ------------------------
+ *
+ * The launcher's "Open in WinSCP" and "Open in FileZilla" (cyd01/KiTTY#501):
+ * the session's tool, started by a process with no terminal window. The start
+ * is the one of Tools > Start WinSCP (StartWinSCP, StartFileZillaDir), with
+ * the loaded session as `conf`. Two parts of it outlive the call:
+ *
+ *  - a question before the start (the key the agent does not hold) and a
+ *    report (the tool not found, the start failed) are modeless windows of
+ *    this thread. They need its message loop and a window that owns them.
+ *  - a password file, or FileZilla's temporary directory, is deleted a
+ *    minute after the start by a thread of this process. The process must
+ *    not end before that.
+ *
+ * So the loop runs until no window of this thread is visible and no delayed
+ * delete is pending. It pumps messages all the time: the launcher waits for
+ * this process to be idle (WaitForInputIdle). A plain wait here would stop
+ * the launcher for that minute. */
+static BOOL CALLBACK kx_cli_shown( HWND h, LPARAM lp ) {
+	if( !IsWindowVisible( h ) ) return TRUE ;
+	*(int *)lp = 1 ;
+	return FALSE ;
+}
+
+/* The tool's main window: visible, top level, not owned, of process `pid`. */
+struct kx_cli_find { DWORD pid ; HWND found ; } ;
+static BOOL CALLBACK kx_cli_find_main( HWND h, LPARAM lp ) {
+	struct kx_cli_find *f = (struct kx_cli_find *)lp ;
+	DWORD pid = 0 ;
+	GetWindowThreadProcessId( h, &pid ) ;
+	if( pid == f->pid && IsWindowVisible( h ) && GetWindow( h, GW_OWNER ) == NULL ) {
+		f->found = h ;
+		return FALSE ;
+	}
+	return TRUE ;
+}
+
+void kitty_xfer_cli_open( Conf * cf, int tool ) {
+	const char *rd = conf_get_str( cf, CONF_pscpremotedir ), *q ;
+	char *dir = dupstr( rd ) ;
+	HWND owner ;
+	MSG msg ;
+	DWORD before, focus_pid, focus_until ;
+	int focus_done = 0 ;
+
+	conf = cf ;
+	/* The proxy a connection of this session would take: workplace proxy
+	 * mode, a named proxy, else the session's own fields - as Tools > Start
+	 * WinSCP gets them from a connected terminal. This Conf is never saved.
+	 * FileZilla takes no proxy per connection. */
+	if( tool == 1 ) kitty_proxy_select( conf ) ;
+	/* The fixed remote upload directory, else none: the home folder. Never
+	 * the OSC 7 folder, there is no shell here. "" and not NULL: with NULL
+	 * both starters fall back to kitty_current_dir(). A control character
+	 * in it: none, as for Send File. */
+	for( q = rd ; *q ; q++ ) if( (unsigned char)*q < 0x20 ) { dir[0] = '\0' ; break ; }
+	/* never shown: the owner of the question boxes */
+	owner = CreateWindowExA( WS_EX_TOOLWINDOW, "STATIC", "", WS_POPUP, 0, 0, 0, 0,
+	                         NULL, NULL, GetModuleHandle( NULL ), NULL ) ;
+	/* the launcher handed this process the foreground: passed on to the tool */
+	AllowSetForegroundWindow( ASFW_ANY ) ;
+	before = kitty_last_started_pid() ;
+	if( tool == 1 ) StartWinSCP( owner, dir, NULL, NULL ) ;
+	else StartFileZillaDir( owner, dir ) ;
+	sfree( dir ) ;
+	/* The tool's window comes up behind: Windows gives the foreground to a
+	 * new process only when its starter holds it, and this process has no
+	 * window. The launcher handed this process the right, so its window is
+	 * brought to the front from here, once it shows (up to 20 s). A start
+	 * that waits behind a question gets the same once it is made. */
+	focus_pid = kitty_last_started_pid() ;
+	focus_until = GetTickCount() + 20000 ;
+	for( ;; ) {
+		int shown = 0 ;
+		/* once only: a second call took the focus from the tool's own
+		 * question (FileZilla's passphrase box) every 250 ms */
+		if( !focus_done && focus_pid == before ) focus_pid = kitty_last_started_pid() ;
+		if( !focus_done && focus_pid != 0 && focus_pid != before ) {
+			struct kx_cli_find f = { focus_pid, NULL } ;
+			EnumWindows( kx_cli_find_main, (LPARAM)&f ) ;
+			if( f.found != NULL ) {
+				SetForegroundWindow( f.found ) ;
+				focus_done = 1 ;              /* done: never again */
+				focus_until = 0 ;
+			}
+		}
+		if( focus_until != 0 && (LONG)( GetTickCount() - focus_until ) >= 0 ) {
+			focus_until = 0 ;
+			focus_done = 1 ;              /* no window in time: give up */
+		}
+		while( PeekMessage( &msg, NULL, 0, 0, PM_REMOVE ) ) {
+			if( !ShinyAuxDialogMessage( &msg ) ) {
+				TranslateMessage( &msg ) ;
+				DispatchMessage( &msg ) ;
+			}
+		}
+		EnumThreadWindows( GetCurrentThreadId(), kx_cli_shown, (LPARAM)&shown ) ;
+		if( !shown && kx_deletes_pending == 0 && focus_until == 0 ) break ;
+		MsgWaitForMultipleObjects( 0, NULL, FALSE, 250, QS_ALLINPUT ) ;
+	}
+	if( owner ) DestroyWindow( owner ) ;
 }
 
 

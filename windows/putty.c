@@ -56,6 +56,11 @@ static int kitty_cli_backupnow = 0;
  * starts - the agent holds the keys and has no network code of its own. */
 static int kitty_cli_update = 0;
 void kitty_update_run_standalone(void);      /* kitty/kitty_updater.c */
+/* -winscp / -filezilla: the loaded session opened in WinSCP (1) or
+ * FileZilla (2) with no terminal window, then exit - the launcher's "Open in
+ * WinSCP". Acted on after the command line in full, so the switch works
+ * before -load as well as after it. */
+static int kitty_cli_xfer = 0;
 /* Bundle transport protection for the do-and-exit paths above. The password is
  * taken from a FILE, never from argv: a command-line password is visible in the
  * process list, in Task Manager and in shell history. (A password sitting in a
@@ -331,6 +336,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 kitty_start_at_config_box = true;
             } else if (!strcmp(p, "-quickconnect")) {
                 kitty_start_quick_connect = true;
+            } else if (!strcmp(p, "-winscp")) {
+                kitty_cli_xfer = 1;
+            } else if (!strcmp(p, "-filezilla")) {
+                kitty_cli_xfer = 2;
             } else if (!strcmp(p, "-fullscreen")) {
                 conf_set_int(conf, CONF_fullscreen, 1);
             } else if (!strcmp(p, "-send-to-tray")) {
@@ -894,6 +903,18 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
      * comes from -bundlepwfile, or -bundlethispc chooses DPAPI. */
     if (kitty_cli_update) {
         kitty_update_run_standalone();
+        cleanup_exit(0);
+    }
+    if (kitty_cli_xfer) {
+        /* The session's password was decrypted as -load read it, with the
+         * master password unlocked there when it needed it. No session, or
+         * one without a host: nothing to open. */
+        kitty_wev_missing_features();   /* no terminal: event 902 here */
+        if (!*conf_get_str(conf, CONF_host) &&
+            !*conf_get_str(conf, CONF_sftpconnect))
+            cmdline_error(KT_CLI_XFER_NEEDS_SESSION,
+                          kitty_cli_xfer == 1 ? "-winscp" : "-filezilla");
+        kitty_xfer_cli_open(conf, kitty_cli_xfer);
         cleanup_exit(0);
     }
     if (kitty_cli_backupnow) {

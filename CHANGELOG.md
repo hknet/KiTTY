@@ -19,6 +19,12 @@ For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md); for the fu
   in the program Windows has registered for them. A path with blanks goes in
   double quotes or angle brackets. Enter opens the first link. The right-click
   menu copies a link or the comment in full. A long comment scrolls.
+- Launcher: a right-click on a saved session offers Open in WinSCP and Open
+  in FileZilla, each when it is installed. The same from the command line:
+  `kitty.exe -load <session> -winscp` or `-filezilla`. (cyd01/KiTTY#501)
+- Start FileZilla and the launcher's Open in FileZilla hand the session's
+  key file to FileZilla, through a temporary site entry deleted after a
+  minute. FileZilla asks for the key's passphrase itself.
 
 ### Changed
 

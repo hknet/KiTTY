@@ -108,6 +108,9 @@
 /* Posted from WM_CREATE right after the tray icon is added, folder store only:
  * the first copy of the store into Launcher\ (see LauncherStoreCopyPending). */
 #define KLWM_STORECOPY		(WM_USER+19)
+/* "Open in WinSCP" / "Open in FileZilla" was chosen in a saved session's
+ * context menu. Posted: it runs after the menu loop (LauncherSessionContextMenu). */
+#define KLWM_OPENXFER		(WM_USER+20)
 /* The spinner beside "Refresh", and the end of its minimum showing time. */
 #define LAUNCHER_REFRESHSPIN_TIMER	104
 #define LAUNCHER_REFRESHSPIN_STEP_MS	80
@@ -142,6 +145,8 @@
 #define MOD_NOREPEAT 0x4000
 #endif
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) ;
+static int launcher_run_session( HWND hwnd, const char * session_in, const char * xfer ) ;
+static int launcher_is_saved_session( const char * session ) ;
 static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) ;
 
 /* KiTTY: runtime registry base (windows/storage.c). The launcher must read
@@ -1585,6 +1590,51 @@ static void LauncherFolderOpenNext( HWND hwnd ) {
 		LauncherFolderItemsFree() ;
 		LauncherFolderCount = LauncherFolderNext = 0 ;
 	}
+}
+
+/*
+ * KiTTY: a right click on a SAVED SESSION in the open tray menu offers to
+ * open it in WinSCP or in FileZilla (cyd01/KiTTY#501), each entry only when
+ * that tool is installed. With neither, the right click does nothing, as
+ * before. A kitty.exe of its own does the work (-winscp / -filezilla): it
+ * loads the session and its password as a left click's window would. It
+ * opens no terminal window. The session is copied out of the menu and the
+ * start is posted, as for a folder: the start can raise the master-password
+ * box, which must not come up under an open menu.
+ */
+static char * LauncherXferSession = NULL ;   /* in full (sfree) */
+static int LauncherXferTool = 0 ;            /* 1 WinSCP, 2 FileZilla */
+
+static void LauncherSessionContextMenu( HWND hwnd, int nb ) {
+	const char * payload = kitty_menuslots_get( nb ) ;
+	char * sess ;
+	HMENU ctx ;
+	POINT pt ;
+	int winscp, filezilla, cmd ;
+	if( payload == NULL || !launcher_is_saved_session( payload ) )
+		return ;
+	winscp = kitty_xfer_tool_ready( 1 ) ;
+	filezilla = kitty_xfer_tool_ready( 2 ) ;
+	if( ( !winscp && !filezilla ) || (ctx = CreatePopupMenu()) == NULL )
+		return ;
+	if( winscp ) AppendMenu( ctx, MF_ENABLED, 1, KT_MENU_OPEN_IN_WINSCP ) ;
+	if( filezilla ) AppendMenu( ctx, MF_ENABLED, 2, KT_MENU_OPEN_IN_FILEZILLA ) ;
+	/* a copy: a menu rebuild while the popup is open frees the entry's payload */
+	sess = dupstr( payload ) ;
+	GetCursorPos( &pt ) ;
+	/* TPM_RECURSE: raised while the tray menu is still open. */
+	cmd = (int)TrackPopupMenuEx( ctx, TPM_RECURSE | TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN,
+	                             pt.x, pt.y, hwnd, NULL ) ;
+	DestroyMenu( ctx ) ;
+	if( cmd == 1 || cmd == 2 ) {
+		sfree( LauncherXferSession ) ;
+		LauncherXferSession = sess ;
+		sess = NULL ;
+		LauncherXferTool = cmd ;
+		EndMenu() ;              /* the tray menu: its job is done */
+		PostMessage( hwnd, KLWM_OPENXFER, 0, 0 ) ;
+	}
+	sfree( sess ) ;
 }
 
 /*
@@ -3090,14 +3140,27 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			break ;
 		case WM_MENURBUTTONUP: {
 			/* A right click inside the open tray menu: on a window's entry in
-			 * Open Sessions it offers "Terminal Name...", on a session folder
-			 * to open the folder's sessions, anywhere else it is nothing. */
+			 * Open Sessions it offers "Terminal Name...", on a saved session
+			 * to open it in WinSCP or FileZilla, on a session folder to open
+			 * the folder's sessions, anywhere else it is nothing. */
 			UINT id = GetMenuItemID( (HMENU)lParam, (int)wParam ) ;
 			if( id != (UINT)-1 && id >= IDM_GOHIDE && id < IDM_GOHIDE + (UINT)NbWin )
 				LauncherWinContextMenu( hwnd, (int)(id - IDM_GOHIDE) ) ;
+			else if( id != (UINT)-1 && id >= IDM_USERCMD && id < IDM_USERCMD + (UINT)NB_MENU_MAX )
+				LauncherSessionContextMenu( hwnd, (int)(id - IDM_USERCMD) ) ;
 			else
 				LauncherFolderContextMenu( hwnd, (HMENU)lParam, (int)wParam ) ;
 			break ; }
+		case KLWM_OPENXFER:
+			/* The session's tool was chosen and the menu loop has ended. */
+			if( LauncherXferSession != NULL ) {
+				char * sess = LauncherXferSession ;
+				LauncherXferSession = NULL ;
+				launcher_run_session( hwnd, sess,
+				                      LauncherXferTool == 1 ? " -winscp" : " -filezilla" ) ;
+				sfree( sess ) ;
+			}
+			break ;
 		case KLWM_REFRESHINPLACE:
 			/* Refresh was chosen in the open tray menu; the menu is still up. */
 			LauncherRefreshInPlace( hwnd ) ;
@@ -3682,8 +3745,9 @@ static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap )
 }
 
 /* "<exe><switches> -load "<session>"[ -send-to-tray]" in full (sfree it): a
- * session name ending in '&' is started in the tray. */
-static char * launcher_load_cmd( const char * exe, const char * session_in ) {
+ * session name ending in '&' is started in the tray. `xfer` (" -winscp",
+ * " -filezilla", NULL = none) goes at the end instead: no window, no tray. */
+static char * launcher_load_cmd( const char * exe, const char * session_in, const char * xfer ) {
 	char * session = dupstr( session_in ), * cmd ;
 	int tray = 0 ;
 	if( strlen(session)>0 && session[strlen(session)-1] == '&' ) {
@@ -3691,12 +3755,42 @@ static char * launcher_load_cmd( const char * exe, const char * session_in ) {
 		str_rtrim( session, " \t" ) ;
 		tray = 1 ;
 	}
-	cmd = dupprintf( "%s -load \"%s\"%s", exe, session, tray ? " -send-to-tray" : "" ) ;
+	cmd = dupprintf( "%s -load \"%s\"%s", exe, session,
+	                 xfer ? xfer : tray ? " -send-to-tray" : "" ) ;
 	sfree( session ) ;
 	return cmd ;
 }
 
+/* Is the menu entry `session` a saved session? The test a left click has
+ * always made: in the registry (and the file mode's copy there) its key must
+ * exist. KiTTY (hknet/KiTTY#55): the key is PuTTY's escape of the name - the
+ * folder path's '\' included - which is what the store wrote. Every entry
+ * of the folder store is a session. */
+static int launcher_is_saved_session( const char * session ) {
+	int found = 0 ;
+	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
+		strbuf * sb = strbuf_new() ;
+		char * key ;
+		escape_registry_key( session, sb ) ;
+		key = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), sb->s ) ;
+		strbuf_free( sb ) ;
+		found = RegTestKey( HKEY_CURRENT_USER, key ) ? 1 : 0 ;
+		sfree( key ) ;
+	} else if( IniFileFlag==SAVEMODE_DIR ) {
+		found = 1 ;
+	}
+	return found ;
+}
+
 int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
+	(void)folder_in ;
+	return launcher_run_session( hwnd, session_in, NULL ) ;
+}
+
+/* A launcher entry started: a saved session in a terminal window, or with
+ * `xfer` (" -winscp", " -filezilla") in that tool with no terminal window.
+ * An entry that is no saved session is run as a command, never with xfer. */
+static int launcher_run_session( HWND hwnd, const char * session_in, const char * xfer ) {
 	char * shortname, * exe, * buffer ;
 	int return_code=0 ;
 	HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
@@ -3728,26 +3822,16 @@ int RunSession( HWND hwnd, const char * folder_in, char * session_in ) {
 	sfree( shortname ) ;
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
-		/* KiTTY (hknet/KiTTY#55): the key is PuTTY's escape of the name -
-		 * the folder path's '\' included - which is what the store wrote. */
-		char * key ;
-		{
-			strbuf * sb = strbuf_new() ;
-			escape_registry_key( session_in, sb ) ;
-			key = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), sb->s ) ;
-			strbuf_free( sb ) ;
-		}
-		if( RegTestKey(HKEY_CURRENT_USER, key) ) {
-			buffer = launcher_load_cmd( exe, session_in ) ;
+		if( launcher_is_saved_session( session_in ) ) {
+			buffer = launcher_load_cmd( exe, session_in, xfer ) ;
 			launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 			sfree( buffer ) ;
 			return_code = 1 ;
-		} else {
+		} else if( xfer == NULL ) {
 			RunCommand( hwnd, session_in ) ;
 		}
-		sfree( key ) ;
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
-		buffer = launcher_load_cmd( exe, session_in ) ;
+		buffer = launcher_load_cmd( exe, session_in, xfer ) ;
 		launcher_run_session_cmd( hwnd, buffer, mpwmap ) ;
 		sfree( buffer ) ;
 		return_code = 1 ;

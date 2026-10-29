@@ -339,6 +339,11 @@ void kitty_xfer_notify_ex( const char * what, int arriving, int nfiles, const ch
 int kitty_xfer_notify_enabled( void ) ;
 /* Is the helper there? 0 = kscp, 1 = WinSCP, 2 = FileZilla. kitty_xfer.c */
 int kitty_xfer_tool_ready( int which ) ;
+/* kitty.exe -load <session> -winscp / -filezilla: tool 1 = WinSCP, 2 =
+ * FileZilla, started for the session in cf with no terminal window. Returns
+ * once its questions and reports are closed and its password file is
+ * deleted. kitty_xfer.c */
+void kitty_xfer_cli_open( Conf * cf, int tool ) ;
 /* Does the session show the Tools menu entry? 0 = Send File, 1 = WinSCP,
  * 2 = FileZilla, 3 = Get File (Connection > File-Transfer-Settings). kitty_xfer.c */
 int kitty_xfer_tool_shown( Conf * cf, int which ) ;

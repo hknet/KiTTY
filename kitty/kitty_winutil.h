@@ -54,6 +54,7 @@ int SetTextToClipboardW( const wchar_t * buf ) ;
 
 // Run a command
 int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */
+DWORD kitty_last_started_pid( void ) ;           /* the process the last RunCommand made, 0 = none */
 
 /* Start a process that inherits exactly h[0..nh-1] (hand-over mappings) and no
  * other handle; CreateProcessA's result and GetLastError(). */

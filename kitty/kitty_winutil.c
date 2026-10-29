@@ -822,6 +822,15 @@ int SetTextToClipboardW( const wchar_t * buf ) {
  * WinSCP, FileZilla, the ini editor and the launcher's starts failed silently. */
 /* report 0: nothing shown or logged on a failure, Windows' reason left in
  * GetLastError() for the caller (kitty_edit_file_cli). */
+/* The process the last CreateProcess start of run_command_ex made, 0 = none
+ * (a ShellExecute start gives no id here). For kitty.exe -winscp/-filezilla,
+ * which has no window of its own and hands the tool the foreground itself. */
+static DWORD kitty_last_started = 0 ;
+
+DWORD kitty_last_started_pid( void ) {
+	return kitty_last_started ;
+}
+
 static int run_command_ex( HWND hwnd, const char * cmd, int report ) {
 	PROCESS_INFORMATION ProcessInformation ;
 	ZeroMemory( &ProcessInformation, sizeof(ProcessInformation) );
@@ -897,6 +906,7 @@ static int run_command_ex( HWND hwnd, const char * cmd, int report ) {
 		 * here uses the program's window. The right granted above does not
 		 * depend on the wait. */
 		AllowSetForegroundWindow( ProcessInformation.dwProcessId ) ;
+		kitty_last_started = ProcessInformation.dwProcessId ;
 		CloseHandle( ProcessInformation.hThread );
 		CloseHandle( ProcessInformation.hProcess );
 	}
