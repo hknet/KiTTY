@@ -73,6 +73,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 - Closing a transfer window no longer leaves the terminal behind another
   program: the terminal that started the transfer comes to the front.
+- docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never
+  read. Windows Hello for every confirmation is `helloconfirm=yes`.
 - An ed25519 public key of the wrong length ended the program that
   decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
   session-bind or an `ssh-add -h` host key in kageant. Such a key is now
