@@ -2565,6 +2565,25 @@ bool agent_exists(void);
 Socket *agent_connect(Plug *plug);
 
 /*
+ * KiTTY: one agent connection held for several queries, so that a
+ * session-bind@openssh.com sent first covers the key list and the
+ * signatures after it (ssh/userauth2-client.c). agent_conn_open()
+ * returns NULL when no named-pipe agent answers. agent_conn_query() has
+ * agent_query()'s conventions, but asynchronous only (a callback is
+ * required) and one query at a time. Its pending query is cancelled
+ * with agent_cancel_query() and goes with the connection.
+ * agent_conn_alive() is false once the agent closed the connection or
+ * a query on it was cancelled.
+ */
+typedef struct agent_connection agent_connection;
+agent_connection *agent_conn_open(void);
+agent_pending_query *agent_conn_query(
+    agent_connection *conn, strbuf *in, void **out, int *outlen,
+    void (*callback)(void *, void *, int), void *callback_ctx);
+bool agent_conn_alive(agent_connection *conn);
+void agent_conn_close(agent_connection *conn);
+
+/*
  * Exports from wildcard.c
  */
 const char *wc_error(int value);

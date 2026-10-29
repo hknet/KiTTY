@@ -21,6 +21,8 @@ add_library(sshcommon OBJECT
   ../kitty/kitty_hostkey_scan_hook.c
   ../kitty/kitty_hostkey_acceptnew.c
   ../kitty/kitty_hostkeys00.c
+  ../kitty/kitty_agentbind.c
+  ../kitty/kitty_agentbind_ssh.c
   verstring.c
   x11fwd.c
   zlib.c)

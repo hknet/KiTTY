@@ -160,6 +160,17 @@ int ssh2_transport_kitty_hk00(PacketProtocolLayer *ssh2_transport_ptr,
                               const char **type, const char **keystr,
                               const char **host, int *port,
                               ptrlen *session_id);
+/* KiTTY: session-bind@openssh.com (kitty/kitty_agentbind.h): the first
+ * key exchange's host key, session id and server signature (false
+ * without a signature, after a GSSAPI key exchange), the agent query
+ * built from them (kitty/kitty_agentbind_ssh.c, NULL when no bind is
+ * sent) and the host key's SHA256 fingerprint for the Event Log. */
+bool ssh2_transport_kitty_bind_data(PacketProtocolLayer *ssh2_transport_ptr,
+                                    ptrlen *hostkey, ptrlen *sid,
+                                    ptrlen *sig);
+strbuf *kitty_agentbind_query(PacketProtocolLayer *ssh2_transport_ptr,
+                              bool is_forwarding);
+char *kitty_agentbind_hostkey_fp(PacketProtocolLayer *ssh2_transport_ptr);
 void ssh2_connection_kitty_set_transport(PacketProtocolLayer *connection,
                                          PacketProtocolLayer *transport);
 

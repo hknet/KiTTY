@@ -3676,6 +3676,16 @@
 #define KT_AGENT_LOG_NOT_ACCEPTED                    "kageant's response not accepted"
 #define KT_AGENT_LOG_NO_CHALLENGE_ANSWER             "kageant failed to answer challenge"
 #define KT_AGENT_LOG_NO_REPLY_RECEIVED               "No reply received from kageant"
+/* ssh/userauth2-client.c, ssh/connection2-client.c, ssh/portfwd.c:
+ * session-bind@openssh.com (kitty/kitty_agentbind.h). The Terminal
+ * Window's Event Log and -v lines: %s = the server's host key (type,
+ * bits, SHA256), %d = the type of the agent's answer. The last one ends
+ * a forwarded agent channel. */
+#define KT_AGENT_LOG_BOUND                           "Agent connection bound to host key %s"
+#define KT_AGENT_LOG_BIND_REFUSED                    "Agent connection not bound: the agent answered session-bind@openssh.com with message type %d. The login goes on unbound."
+#define KT_AGENT_LOG_BIND_NO_REPLY                   "Agent connection not bound: no answer to session-bind@openssh.com. The login goes on unbound."
+#define KT_AGENT_LOG_BIND_FWD                        "Forwarded agent connection: session-bind@openssh.com sent for host key %s"
+#define KT_AGENT_FWD_BIND_BAD                        "the agent's answer to session-bind@openssh.com is malformed"
 /* windows/plink.c, pscp.c, psftp.c: the -agent / -noagent help lines */
 #define KT_CLI_USAGE_NOAGENT                         "  -noagent  disable use of kageant\n"
 #define KT_CLI_USAGE_AGENT                           "  -agent    enable use of kageant\n"

@@ -64,6 +64,7 @@ void ssh_userauth_set_done_hook(void (*fn)(Seat *seat, const char *username))
 #include "kitty/kitty_connstage.h"   /* KiTTY: how far a connection got */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 #include "kitty/kitty_winevent.h"   /* KiTTY: logins in the Windows Event Log */
+#include "kitty/kitty_agentbind.h"   /* KiTTY: session-bind@openssh.com */
 
 #ifndef NO_GSSAPI
 #include "gssc.h"
@@ -143,6 +144,9 @@ struct ssh2_userauth_state {
     strbuf *kitty_wev_blob;
 
     agent_pending_query *auth_agent_query;
+    /* KiTTY: the agent connection this login holds, bound to the server
+     * (session-bind@openssh.com). NULL = one-off agent_query() calls. */
+    agent_connection *kitty_agent_conn;
     bufchain banner;
     bufchain_sink banner_bs;
     StripCtrlChars *banner_scc;
@@ -371,6 +375,8 @@ static void ssh2_userauth_free(PacketProtocolLayer *ppl)
     sfree(s->agent_response_to_free);
     if (s->auth_agent_query)
         agent_cancel_query(s->auth_agent_query);
+    if (s->kitty_agent_conn)
+        agent_conn_close(s->kitty_agent_conn);   /* KiTTY */
     filename_free(s->keyfile);
     filename_free(s->detached_cert_file);
     sfree(s->default_username);
@@ -766,6 +772,38 @@ static void ssh2_userauth_process_queue(PacketProtocolLayer *ppl)
      */
     if (s->tryagent && agent_exists()) {
         ppl_logevent(KT_AGENT_LOG_RUNNING);
+
+        /*
+         * KiTTY: one agent connection for this login, as OpenSSH's client
+         * holds one. It is bound to this server first
+         * (session-bind@openssh.com, is_forwarding 0). The key list and
+         * every signature then go over it. Any answer but SUCCESS leaves
+         * it unbound: the login goes on. Without a named-pipe agent the
+         * queries are one-off and unbound, as before.
+         */
+        {
+            strbuf *bind = kitty_agentbind_query(s->transport_layer, false);
+            if (bind && (s->kitty_agent_conn = agent_conn_open()) != NULL)
+                ssh2_userauth_agent_query(s, bind);
+            if (bind)
+                strbuf_free(bind);
+        }
+        if (s->kitty_agent_conn) {
+            crWaitUntilV(!s->auth_agent_query);
+            if (kitty_agentbind_reply_bound(s->agent_response.ptr,
+                                            s->agent_response.len)) {
+                char *kfp = kitty_agentbind_hostkey_fp(s->transport_layer);
+                ppl_logevent(KT_AGENT_LOG_BOUND, kfp);
+                sfree(kfp);
+            } else if (s->agent_response.ptr) {
+                ppl_logevent(KT_AGENT_LOG_BIND_REFUSED,
+                             kitty_agentbind_reply_type(
+                                 s->agent_response.ptr,
+                                 s->agent_response.len));
+            } else {
+                ppl_logevent(KT_AGENT_LOG_BIND_NO_REPLY);
+            }
+        }
 
         /* Request the keys held by the agent. */
         {
@@ -2630,8 +2668,19 @@ static void ssh2_userauth_agent_query(
     sfree(s->agent_response_to_free);
     s->agent_response_to_free = NULL;
 
-    s->auth_agent_query = agent_query(req, &response, &response_len,
-                                      ssh2_userauth_agent_callback, s);
+    /* KiTTY: the login's held agent connection while the agent keeps it
+     * open. Once it is gone: one-off queries, unbound. */
+    if (s->kitty_agent_conn && !agent_conn_alive(s->kitty_agent_conn)) {
+        agent_conn_close(s->kitty_agent_conn);
+        s->kitty_agent_conn = NULL;
+    }
+    if (s->kitty_agent_conn)
+        s->auth_agent_query = agent_conn_query(
+            s->kitty_agent_conn, req, &response, &response_len,
+            ssh2_userauth_agent_callback, s);
+    else
+        s->auth_agent_query = agent_query(req, &response, &response_len,
+                                          ssh2_userauth_agent_callback, s);
     if (!s->auth_agent_query)
         ssh2_userauth_agent_callback(s, response, response_len);
 }

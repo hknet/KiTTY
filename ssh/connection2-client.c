@@ -12,6 +12,7 @@
 #include "sshcr.h"
 #include "connection2.h"
 #include "kitty/kitty_termenv.h"   /* KiTTY: the terminal type sent */
+#include "kitty/kitty_text.h"      /* KiTTY: KT_AGENT_LOG_BIND_FWD */
 
 static ChanopenResult chan_open_x11(
     struct ssh2_connection_state *s, SshChannel *sc,
@@ -108,6 +109,20 @@ static ChanopenResult chan_open_auth_agent(
 
     if (!sk_socket_error(skt)) {
         portfwd_raw_setup(ch, skt, sc);
+        /* KiTTY: the new agent connection is bound to this server for
+         * agent forwarding (session-bind@openssh.com, is_forwarding 1),
+         * as OpenSSH's client does. The bind goes ahead of the forwarded
+         * stream. The agent's answer to it is skipped, never relayed. */
+        strbuf *kab = kitty_agentbind_query(s->kitty_transport, true);
+        if (kab) {
+            PacketProtocolLayer *ppl = &s->ppl; /* for ppl_logevent */
+            char *kfp = kitty_agentbind_hostkey_fp(s->kitty_transport);
+            portfwd_raw_kitty_bindskip(ch);
+            sk_write(skt, kab->s, kab->len);
+            ppl_logevent(KT_AGENT_LOG_BIND_FWD, kfp);
+            sfree(kfp);
+            strbuf_free(kab);
+        }
         CHANOPEN_RETURN_SUCCESS(ch);
     } else {
         portfwd_raw_free(ch);

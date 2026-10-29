@@ -421,12 +421,13 @@ available (not just the ones downstream of the place you added it).
 
 \H{pageant-destination} The \i{destination} of a key use
 
-An OpenSSH client from version 8.9 on - the Windows \c{ssh.exe}
-included - binds its agent connection to the server it connects to
-(\c{session-bind@openssh.com}): after the key exchange it sends the
-server's host key, the session identifier and the server's signature
-over that identifier. kageant verifies the signature and keeps the
-binding for the connection. On a bound connection:
+klink, kscp, ksftp and kitty.exe bind their agent connection to the
+server they connect to (\c{session-bind@openssh.com}). An OpenSSH
+client from version 8.9 on - the Windows \c{ssh.exe} included - does
+the same. After the key exchange the client sends the server's host
+key, the session identifier and the server's signature over that
+identifier. kageant verifies the signature and keeps the binding for
+the connection. On a bound connection:
 
 \b The key-use confirmation shows \q{Destination:} - the host name and
 the SHA256 fingerprint of the server's host key - and one \q{Forwarded
@@ -451,9 +452,20 @@ refused request with the reason. The login goes on. A connection takes
 up to 16 bindings, a session identifier once, and none after a binding
 for a login.
 
+A KiTTY++ login holds one agent connection: the binding first, then
+the key list and every signature. With agent forwarding, kitty.exe and
+klink bind each forwarded agent connection for forwarding
+(\c{forwarding} \c{yes}) before they relay it. A jump host's login
+binds a connection of its own to the jump host. The Terminal Window's
+Event Log shows the outcome: \q{Agent connection bound to host key
+...}, or \q{Agent connection not bound} with the reason. An agent
+without \c{session-bind@openssh.com} (PuTTY's Pageant, an older
+kageant) answers a failure. The login then goes on unbound. A GSSAPI
+key exchange has no host key signature: such a login is not bound.
+
 kageant refuses nothing because of the destination: a key behaves as
-before. A connection without a binding - PuTTY, KiTTY++ and older
-clients - gets the confirmation as before.
+before. A connection without a binding - PuTTY, older KiTTY++ versions
+and OpenSSH clients before 8.9 - gets the confirmation as before.
 
 \H{pageant-deferred-decryption} Loading keys without decrypting them
 

@@ -130,6 +130,16 @@ static const char *agent_socket_path(void)
     return getenv("SSH_AUTH_SOCK");
 }
 
+/* KiTTY: the held agent connection (putty.h) is a Windows named-pipe
+ * feature. Here there is none: the callers use agent_query(). */
+agent_connection *agent_conn_open(void) { return NULL; }
+agent_pending_query *agent_conn_query(
+    agent_connection *conn, strbuf *query, void **out, int *outlen,
+    void (*callback)(void *, void *, int), void *callback_ctx)
+{ *out = NULL; *outlen = 0; return NULL; }
+bool agent_conn_alive(agent_connection *conn) { return false; }
+void agent_conn_close(agent_connection *conn) {}
+
 Socket *agent_connect(Plug *plug)
 {
     const char *path = agent_socket_path();

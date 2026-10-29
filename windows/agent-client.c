@@ -171,7 +171,30 @@ struct agent_pending_query {
     strbuf *response;
     void (*callback)(void *, void *, int);
     void *callback_ctx;
+    agent_connection *conn;   /* KiTTY: a query on a held connection */
 };
+
+/* KiTTY: the held agent connection (putty.h) */
+struct agent_connection {
+    Socket *s;
+    Plug plug;
+    strbuf *in;                  /* bytes of the answer being read */
+    agent_pending_query *pq;     /* the query waiting for it */
+    bool dead;
+};
+
+/* KiTTY: which process is serving this pipe? Observational only. */
+static void agent_serving_check_pipe(HANDLE pipehandle)
+{
+    if (agent_serving_check_hook && !agent_serving_checked) {
+        ULONG spid = 0;
+        if (GetNamedPipeServerProcessId(pipehandle, &spid)) {
+            agent_serving_checked = true;
+            agent_serving_check_hook((unsigned long)spid,
+                                     KITTY_AGENT_TRANSPORT_PIPE);
+        }
+    }
+}
 
 static int named_pipe_agent_accumulate_response(
     strbuf *sb, const void *data, size_t len)
@@ -228,15 +251,7 @@ static agent_pending_query *named_pipe_agent_query(
     if (pipehandle == INVALID_HANDLE_VALUE)
         goto failure;
 
-    /* KiTTY: which process is serving this pipe? Observational only. */
-    if (agent_serving_check_hook && !agent_serving_checked) {
-        ULONG spid = 0;
-        if (GetNamedPipeServerProcessId(pipehandle, &spid)) {
-            agent_serving_checked = true;
-            agent_serving_check_hook((unsigned long)spid,
-                                     KITTY_AGENT_TRANSPORT_PIPE);
-        }
-    }
+    agent_serving_check_pipe(pipehandle);   /* KiTTY */
 
     strbuf_finalise_agent_query(query);
 
@@ -280,6 +295,7 @@ static agent_pending_query *named_pipe_agent_query(
     pq->response = strbuf_new_nm();
     pq->callback = callback;
     pq->callback_ctx = callback_ctx;
+    pq->conn = NULL;
     goto out;
 
   failure:
@@ -299,11 +315,158 @@ static agent_pending_query *named_pipe_agent_query(
 
 void agent_cancel_query(agent_pending_query *pq)
 {
+    if (pq->conn) {
+        /* KiTTY: a query on a held connection. Its answer may still
+         * come and would then meet the next query: the connection is
+         * no longer used. */
+        pq->conn->pq = NULL;
+        pq->conn->dead = true;
+        sfree(pq);
+        return;
+    }
     handle_free(pq->handle);
     CloseHandle(pq->os_handle);
     if (pq->response)
         strbuf_free(pq->response);
     sfree(pq);
+}
+
+/*
+ * KiTTY: the held agent connection (putty.h). A Socket over the agent's
+ * named pipe, as agent_connect() makes for agent forwarding, read through
+ * a Plug that cuts the stream into the agent's framed answers and hands
+ * each to the query waiting for it (agent_conn_receive below).
+ */
+
+static void agent_conn_answer(agent_connection *c, void *reply, int len)
+{
+    agent_pending_query *pq = c->pq;
+    void (*callback)(void *, void *, int);
+    void *callback_ctx;
+
+    if (!pq) {
+        sfree(reply);
+        return;
+    }
+    c->pq = NULL;
+    callback = pq->callback;
+    callback_ctx = pq->callback_ctx;
+    sfree(pq);
+    callback(callback_ctx, reply, len);
+}
+
+static void agent_conn_receive(Plug *plug, int urgent, const char *data,
+                               size_t len)
+{
+    agent_connection *c = container_of(plug, agent_connection, plug);
+    uint32_t length_field;
+    unsigned char *reply;
+    strbuf *rest;
+
+    if (c->dead)
+        return;
+    put_data(c->in, data, len);
+    if (c->in->len < 4)
+        return;
+    length_field = GET_32BIT_MSB_FIRST(c->in->u);
+    if (length_field > AGENT_MAX_MSGLEN || !c->pq) {
+        /* a bad length, or an answer nobody asked for */
+        c->dead = true;
+        agent_conn_answer(c, NULL, 0);
+        return;
+    }
+    if (c->in->len < (size_t)length_field + 4)
+        return;
+    reply = snewn(length_field + 4, unsigned char);
+    memcpy(reply, c->in->u, length_field + 4);
+    rest = strbuf_new_nm();
+    put_data(rest, c->in->u + length_field + 4,
+             c->in->len - (length_field + 4));
+    strbuf_free(c->in);
+    c->in = rest;
+    agent_conn_answer(c, reply, length_field + 4);
+}
+
+static void agent_conn_closing(Plug *plug, PlugCloseType type,
+                               const char *error_msg)
+{
+    agent_connection *c = container_of(plug, agent_connection, plug);
+    c->dead = true;
+    agent_conn_answer(c, NULL, 0);
+}
+
+static const PlugVtable agent_conn_plugvt = {
+    .log = nullplug_log,
+    .closing = agent_conn_closing,
+    .receive = agent_conn_receive,
+    .sent = nullplug_sent,
+};
+
+agent_connection *agent_conn_open(void)
+{
+    char *err = NULL;
+    char *pipename = agent_named_pipe_name();
+    HANDLE pipehandle = connect_to_named_pipe(pipename, &err);
+    agent_connection *c;
+
+    sfree(pipename);
+    sfree(err);
+    if (pipehandle == INVALID_HANDLE_VALUE)
+        return NULL;
+    agent_serving_check_pipe(pipehandle);
+
+    c = snew(agent_connection);
+    memset(c, 0, sizeof(*c));
+    c->plug.vt = &agent_conn_plugvt;
+    c->in = strbuf_new_nm();
+    c->s = make_handle_socket(pipehandle, pipehandle, NULL, NULL, 0,
+                              &c->plug, true);
+    if (sk_socket_error(c->s)) {
+        sk_close(c->s);
+        strbuf_free(c->in);
+        sfree(c);
+        return NULL;
+    }
+    return c;
+}
+
+agent_pending_query *agent_conn_query(
+    agent_connection *c, strbuf *query, void **out, int *outlen,
+    void (*callback)(void *, void *, int), void *callback_ctx)
+{
+    agent_pending_query *pq;
+
+    *out = NULL;
+    *outlen = 0;
+    if (!c || c->dead || c->pq || !callback ||
+        query->len > AGENT_MAX_MSGLEN)
+        return NULL;
+
+    strbuf_finalise_agent_query(query);
+    pq = snew(agent_pending_query);
+    memset(pq, 0, sizeof(*pq));
+    pq->callback = callback;
+    pq->callback_ctx = callback_ctx;
+    pq->conn = c;
+    c->pq = pq;
+    sk_write(c->s, query->s, query->len);
+    return pq;
+}
+
+bool agent_conn_alive(agent_connection *c)
+{
+    return c && !c->dead;
+}
+
+void agent_conn_close(agent_connection *c)
+{
+    if (!c)
+        return;
+    if (c->pq)
+        sfree(c->pq);   /* its owner has let it go with the connection */
+    sk_close(c->s);
+    strbuf_free(c->in);
+    sfree(c);
 }
 
 agent_pending_query *agent_query(

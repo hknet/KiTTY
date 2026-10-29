@@ -292,6 +292,14 @@ add_executable(test_hostkeys00
   test/test_hostkeys00.c
   kitty/kitty_hostkeys00.c)
 
+# KiTTY: unit test for session-bind@openssh.com (kitty/kitty_agentbind.c,
+# in sshcommon for ssh/userauth2-client.c and ssh/portfwd.c): the message
+# byte for byte, the agent's answer, and skipping that answer in front
+# of a forwarded agent stream.
+add_executable(test_agentbind
+  test/test_agentbind.c
+  kitty/kitty_agentbind.c)
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -382,7 +390,8 @@ add_executable(psocks
   stubs/no-rand.c
   proxy/nocproxy.c
   proxy/nosshproxy.c
-  ssh/portfwd.c)
+  ssh/portfwd.c
+  kitty/kitty_agentbind.c) # ssh/portfwd.c skips the session-bind answer
 target_link_libraries(psocks
   eventloop console network utils
   ${platform_libraries})
@@ -475,6 +484,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
+    test_agentbind
     test_auditparse test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()

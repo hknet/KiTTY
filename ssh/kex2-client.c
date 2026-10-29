@@ -761,6 +761,17 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
             return;
 #endif
         }
+
+        /* KiTTY: session-bind@openssh.com (kitty/kitty_agentbind.h)
+         * binds agent connections with the first key exchange's host
+         * key and this signature over the session id */
+        if (!s->got_session_id) {
+            strbuf_clear(s->kitty_bind_hostkey);
+            ssh_key_public_blob(s->hkey,
+                                BinarySink_UPCAST(s->kitty_bind_hostkey));
+            strbuf_clear(s->kitty_bind_sig);
+            put_datapl(s->kitty_bind_sig, s->sigdata);
+        }
     }
 
     s->keystr = s->hkey ? ssh_key_cache_str(s->hkey) : NULL;

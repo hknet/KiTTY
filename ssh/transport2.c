@@ -117,6 +117,8 @@ PacketProtocolLayer *ssh2_transport_new(
     s->server_greeting = dupstr(server_greeting);
     s->stats = stats;
     s->hostkeyblob = strbuf_new();
+    s->kitty_bind_hostkey = strbuf_new();   /* KiTTY: session-bind */
+    s->kitty_bind_sig = strbuf_new();
     s->host_cas = newtree234(ca_blob_compare);
 
     pq_in_init(&s->pq_in_higher);
@@ -196,6 +198,8 @@ static void ssh2_transport_free(PacketProtocolLayer *ppl)
     sfree(s->keystr);
     sfree(s->kitty_hk00_keystr);
     strbuf_free(s->hostkeyblob);
+    strbuf_free(s->kitty_bind_hostkey);   /* KiTTY */
+    strbuf_free(s->kitty_bind_sig);
     {
         host_ca *hca;
         while ( (hca = delpos234(s->host_cas, 0)) )
@@ -2394,6 +2398,28 @@ int ssh2_transport_kitty_hk00(PacketProtocolLayer *ppl, const char **type,
     *session_id = s->got_session_id ?
         make_ptrlen(s->session_id, s->session_id_len) : make_ptrlen("", 0);
     return s->got_session_id ? s->kitty_hk00_how : 0;
+}
+
+/* KiTTY: session-bind@openssh.com (kitty/kitty_agentbind_ssh.c): the
+ * first key exchange's host key, the session id and the server's
+ * signature over it. False before the first key exchange and after a
+ * GSSAPI one. */
+bool ssh2_transport_kitty_bind_data(PacketProtocolLayer *ppl,
+                                    ptrlen *hostkey, ptrlen *sid,
+                                    ptrlen *sig)
+{
+    struct ssh2_transport_state *s;
+
+    assert(ppl->vt == &ssh2_transport_vtable);
+    s = container_of(ppl, struct ssh2_transport_state, ppl);
+
+    if (!s->got_session_id || !s->kitty_bind_hostkey->len ||
+        !s->kitty_bind_sig->len)
+        return false;
+    *hostkey = ptrlen_from_strbuf(s->kitty_bind_hostkey);
+    *sid = make_ptrlen(s->session_id, s->session_id_len);
+    *sig = ptrlen_from_strbuf(s->kitty_bind_sig);
+    return true;
 }
 
 void ssh2_transport_notify_auth_done(PacketProtocolLayer *ppl)

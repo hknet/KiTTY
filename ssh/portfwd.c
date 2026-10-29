@@ -9,6 +9,8 @@
 #include "putty.h"
 #include "ssh.h"
 #include "kitty/kitty_winevent.h"   /* KiTTY: kitty_wev_next_conn_for */
+#include "kitty/kitty_agentbind.h"  /* KiTTY: session-bind answer skipped */
+#include "kitty/kitty_text.h"
 #include "channel.h"
 #include "proxy/socks.h"
 
@@ -45,6 +47,9 @@ typedef struct PortForwarding {
      */
     strbuf *socksbuf;
     size_t socksbuf_consumed;
+    /* KiTTY: the agent's answer to a session-bind written ahead of a
+     * forwarded agent stream (ssh/connection2-client.c), skipped */
+    struct kitty_agentbind_skip *kitty_bindskip;
 
     Plug plug;
     Channel chan;
@@ -69,6 +74,7 @@ static struct PortForwarding *new_portfwd_state(void)
     struct PortForwarding *pf = snew(struct PortForwarding);
     pf->hostname = NULL;
     pf->socksbuf = NULL;
+    pf->kitty_bindskip = NULL;   /* KiTTY */
     return pf;
 }
 
@@ -79,6 +85,7 @@ static void free_portfwd_state(struct PortForwarding *pf)
     sfree(pf->hostname);
     if (pf->socksbuf)
         strbuf_free(pf->socksbuf);
+    sfree(pf->kitty_bindskip);   /* KiTTY */
     sfree(pf);
 }
 
@@ -187,6 +194,25 @@ static void pfd_receive(Plug *plug, int urgent, const char *data, size_t len)
 
     if (len == 0)
         return;
+
+    if (pf->kitty_bindskip) {
+        /* KiTTY: the agent's answer to the session-bind is not relayed */
+        size_t used = kitty_agentbind_skip(pf->kitty_bindskip, data, len);
+        bool bad = pf->kitty_bindskip->bad;
+        if (bad || pf->kitty_bindskip->done) {
+            sfree(pf->kitty_bindskip);
+            pf->kitty_bindskip = NULL;
+        }
+        if (bad) {
+            if (pf->c)
+                sshfwd_initiate_close(pf->c, KT_AGENT_FWD_BIND_BAD);
+            return;
+        }
+        data += used;
+        len -= used;
+        if (len == 0)
+            return;
+    }
 
     if (pf->socks_state != SOCKS_NONE) {
         BinarySource src[1];
@@ -500,6 +526,20 @@ void portfwd_raw_setup(Channel *pfchan, Socket *s, SshChannel *sc)
 
     pf->s = s;
     pf->c = sc;
+}
+
+/* KiTTY: skip the first framed agent message on this channel's socket:
+ * the answer to a session-bind written ahead of a forwarded agent stream
+ * (ssh/connection2-client.c) */
+void portfwd_raw_kitty_bindskip(Channel *pfchan)
+{
+    struct PortForwarding *pf;
+    assert(pfchan->vt == &PortForwarding_channelvt);
+    pf = container_of(pfchan, struct PortForwarding, chan);
+
+    if (!pf->kitty_bindskip)
+        pf->kitty_bindskip = snew(struct kitty_agentbind_skip);
+    memset(pf->kitty_bindskip, 0, sizeof(*pf->kitty_bindskip));
 }
 
 /*

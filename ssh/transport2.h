@@ -211,6 +211,11 @@ struct ssh2_transport_state {
     int kitty_hk00_how;
     const char *kitty_hk00_type;
     char *kitty_hk00_keystr;
+    /* KiTTY: session-bind@openssh.com (kitty/kitty_agentbind.h) - the
+     * first key exchange's host key and the server's signature over the
+     * session id, for the agent connections bound to this session.
+     * Empty after a GSSAPI key exchange (no host key signature). */
+    strbuf *kitty_bind_hostkey, *kitty_bind_sig;
     bool can_send_ext_info, post_newkeys_ext_info;
     bool strict_kex, enabled_outgoing_crypto, enabled_incoming_crypto;
     bool seen_non_kexinit;

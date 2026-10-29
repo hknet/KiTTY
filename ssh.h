@@ -412,6 +412,9 @@ bool portfwdmgr_unlisten(PortFwdManager *mgr, const char *host, int port);
 Channel *portfwd_raw_new(ConnectionLayer *cl, Plug **plug, bool start_ready);
 void portfwd_raw_free(Channel *pfchan);
 void portfwd_raw_setup(Channel *pfchan, Socket *s, SshChannel *sc);
+/* KiTTY: skip the agent's answer to a session-bind written ahead of a
+ * forwarded agent stream (kitty/kitty_agentbind.h) */
+void portfwd_raw_kitty_bindskip(Channel *pfchan);
 
 Socket *platform_make_agent_socket(Plug *plug, const char *dirprefix,
                                    char **error, char **name);

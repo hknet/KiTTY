@@ -16,6 +16,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   Forwarded via) and in the agent log (`dest=`, `fwd=`, a `session-bind`
   record). Events 100 and 101 end with the fields dest and fwd. Event 102
   records the session-bind. Nothing is refused because of the destination.
+- klink, kscp, ksftp and kitty.exe send OpenSSH's session-bind: kageant
+  shows and records the destination of their logins too. A login holds one
+  agent connection for the binding, the key list and the signatures. With
+  agent forwarding each forwarded agent connection is bound for
+  forwarding. An agent without session-bind answers a failure. The login
+  then goes on unbound. The Terminal Window's Event Log shows the outcome.
 - Links in a session comment open with a click: the box under the session
   list underlines web addresses, `file://` links and UNC paths and opens them
   in the program Windows has registered for them. A path with blanks goes in
