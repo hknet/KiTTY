@@ -85,6 +85,8 @@
 #define IDC_SET_L_LOGSINKHINT 354
 #define IDC_SET_EVENTVIEWER 355   /* Event Viewer on the agent's events */
 #define IDC_SET_KNOWNHOSTS 356    /* OpenSSH's known_hosts read (D8) */
+#define IDC_SET_BLOCKFWD 357      /* key changes refused over a forwarded agent */
+#define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100

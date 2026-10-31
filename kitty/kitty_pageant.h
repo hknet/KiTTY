@@ -283,6 +283,37 @@ int  kageant_allowipclock_get(void);    /* ssh-add -x / -X allowed (default no) 
 int  kageant_allowipclock_set(int on);
 int  kageant_readknownhosts_get(void);  /* OpenSSH's known_hosts read (default no) */
 int  kageant_readknownhosts_set(int on);
+/* key changes and the lock refused over a forwarded agent (default yes) */
+int  kageant_blockforwarded_get(void);
+int  kageant_blockforwarded_set(int on);
+/* Destination rules kept or applied - the hints of the add and removal
+ * notices (kitty_pageant.c). The key named by its comment, else its
+ * fingerprint; each NULL when the key has no rules in the rule store.
+ *   _apply_hint: "Destination rules stored for <key> apply: <the first 3
+ *     destinations, +N>."
+ *   _kept_hint: "The destination rules of <key> stay stored ..."
+ *   _kept_add / _held: count keys with rules about to be removed (one key;
+ *     every key the agent holds), _kept_take: the text for them ("<n>
+ *     removed keys keep ..." for several), the count reset.
+ *   _hint_notice: a notice of its own (the Key List's Add Key, Remove,
+ *     Remove All), under "Notify when a key is used". */
+char *kageant_rules_apply_hint(const char *fp, const char *comment);
+char *kageant_rules_kept_hint(const char *fp, const char *comment);
+void kageant_rules_kept_add(const char *fp, const char *comment);
+void kageant_rules_kept_held(void);
+char *kageant_rules_kept_take(void);
+void kageant_rules_hint_notice(const char *title, const char *text);
+/* kageant_fwd_blocked_hook (pageant.h): the setting, and the record */
+int  kageant_fwd_blocked(int op, const char *fp);
+/* requests by window messages (WM_COPYDATA) accepted (default yes) */
+int  kageant_allowwmcopydata_get(void);
+int  kageant_allowwmcopydata_set(int on);
+/* A WM_COPYDATA request from pid: 1 serve it, 0 refuse it (the setting
+ * is off: a refused-request record, reason window-messages). A notice once
+ * per program per run, under the key-use notice setting; its click opens
+ * the settings on the Security page (KAGEANT_WM_NOTICE_SECURITY). */
+int  kageant_wmcopydata_request(unsigned long pid);
+#define KAGEANT_WM_NOTICE_SECURITY (WM_APP + 15)
 /* the full path of the program behind a request (pid), NULL when not
  * known; sfree it (kitty_kageant_audit.c, kageant_req_path_hook) */
 char *kageant_req_path_dup(unsigned long pid);
@@ -311,6 +342,15 @@ void kageant_audit_restricted(const char *fp, const char *comment,
 void kageant_audit_add(const char *fp, const char *comment,
                        const char *reason, unsigned long pid,
                        const char *path);
+/* event 116: the rule editor's OK changed this key's rules (the store in
+ * force is the new one) */
+void kageant_audit_rules(const char *fp, const char *comment);
+void kageant_audit_rules_ex(const char *fp, const char *comment,
+                            const char *result, const char *reason,
+                            unsigned long pid, const char *rules_now);
+/* kageant_rules_remove_hook (pageant.h): kageant -R's confirmation */
+int kageant_rules_remove_confirm(const char *fp, const char *comment,
+                                 const char *rules, unsigned long pid);
 /* the agent lock's frontend half (kitty_pageant.c) */
 int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);

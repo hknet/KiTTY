@@ -244,6 +244,11 @@ static const char *const af_restricted[] = {
     "fp", "comment", "result", "reason", "req", "reqpath", "pid",
     "dest", "fwd", "rule", NULL
 };
+/* the rule editor's OK changed a key's destination rules */
+static const char *const af_rules[] = {
+    "fp", "comment", "result", "reason", "req", "reqpath", "pid", "restrict",
+    NULL
+};
 static const char *const af_load[] = { "path", "result", "enc", NULL };
 static const char *const af_forget[] = { "path", "result", NULL };
 static const char *const af_retry[] = {
@@ -280,6 +285,7 @@ static const struct audit_kind {
     { "retry",           113, af_retry },
     { "remove",          114, af_use },
     { "remove-all",      115, af_use },
+    { "rules",           116, af_rules },
     { "lock",            120, af_use },
     { "unlock",          121, af_use },
     { "hello-enrol",     130, af_hello },

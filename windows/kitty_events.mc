@@ -98,6 +98,12 @@ Language=English
 %1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
 .
 
+MessageId=116
+SymbolicName=KITTY_AGENT_RULES
+Language=English
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nrestrict: %9%0
+.
+
 MessageId=120
 SymbolicName=KITTY_AGENT_LOCK
 Language=English

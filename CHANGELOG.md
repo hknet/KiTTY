@@ -31,9 +31,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   agent forwarding each forwarded agent connection is bound for
   forwarding. An agent without session-bind answers a failure. The login
   then goes on unbound. The Terminal Window's Event Log shows the outcome.
-  They also send the name they connected to (session-bind-host-v00@kapper.net):
-  kageant shows it first in `dest=`, `fwd=` and the confirmation, marked
-  "(client)", with up to five names before "+N".
+  They also send the name they connected to
+  (session-bind-host-v00@kapper.net): kageant shows it first in `dest=`,
+  `fwd=` and the confirmation, marked "(client)", with up to five names
+  before "+N".
 - kageant: keys restricted to destinations - OpenSSH's `ssh-add -h`
   (restrict-destination-v00@openssh.com) and a rule editor in Key details
   (Restrict...). A restricted key signs a login only on a connection bound
@@ -44,13 +45,14 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   (withheld-keys-v00@kapper.net), klink, kscp, ksftp and kitty.exe show
   "kageant: 1 key restricted to other servers was not offered." before the
   next authentication method. In the rule editor a host may be a pattern
-  (`*.customer.com`): matched by a fixed list of the host keys known now, or checked at each
-  login against every known host key. "Add destination" also offers "All servers of a host CA":
-  a CA of the CA store, read with its Valid hosts at each login. A port
-  condition in Valid hosts is checked against the port a KiTTY++ client
-  sends or, with "Ignore the port for clients that send none", dropped for
-  OpenSSH's ssh.exe. Each rule
-  shows its origin: the program that set it and when, or the rule editor.
+  (`*.customer.com`): matched by a fixed list of the host keys known now,
+  or checked at each login against every known host key. "Add
+  destination" also offers "All servers of a host CA": a CA of the CA
+  store, read with its Valid hosts at each login. A port condition in
+  Valid hosts is checked against the port a KiTTY++ client sends or, with
+  "Ignore the port for clients that send none", dropped for OpenSSH's
+  ssh.exe. Each rule shows its origin: the program that set it and when,
+  or the rule editor.
   kageant reads OpenSSH's known_hosts only with "Use OpenSSH's known_hosts
   as a host-key source" on (Settings > Agent, `readknownhosts`, default
   off). Turning it on checks the file at once, counts its hashed entries
@@ -62,10 +64,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   the reason, once per agent connection. Event 104 records it (result
   `no-key-offered`).
 - Links in a session comment open with a click: the box under the session
-  list underlines web addresses, `file://` links and UNC paths and opens them
-  in the program Windows has registered for them. A path with blanks goes in
-  double quotes or angle brackets. Enter opens the first link. The right-click
-  menu copies a link or the comment in full. A long comment scrolls.
+  list underlines web addresses, `file://` links and UNC paths and opens
+  them in the program Windows has registered for them. A path with blanks
+  goes in double quotes or angle brackets. Enter opens the first link. The
+  right-click menu copies a link or the comment in full. A long comment
+  scrolls.
 - Launcher: a right-click on a saved session offers Open in WinSCP and Open
   in FileZilla, each when it is installed. The same from the command line:
   `kitty.exe -load <session> -winscp` or `-filezilla`. (cyd01/KiTTY#501)
@@ -124,12 +127,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   seconds are greyed while the marker is off.
 - Windows Event Log: every record has an event ID of its own with its
   fields, also without the system MSI. New: 103 a request kageant refused,
-  905 a program file marked red on the Applications panel, 906 a helper
-  program refused, allowed or declined, 907 a session log not written
-  without a desktop. Event ID 0 (one line of text) is no longer written. A
-  custom URL regex that does not compile and the Direct2D fallback to WARP
-  go to the Terminal Window's Event Log. A failed `kitty.exe -edit` shows
-  its box only.
+  905 a KiTTY++ program file that failed its integrity check (a red row on
+  the Applications panel), 906 a helper program refused, allowed or
+  declined, 907 a session log not written without a desktop. Event ID 0
+  (one line of text) is no longer written. A custom URL regex that does
+  not compile and the Direct2D fallback to WARP go to the Terminal
+  Window's Event Log. A failed `kitty.exe -edit` shows its box only.
 - The Terminal Window's Event Log shows that window's title in its own
   title bar: "KiTTY++ terminal Event Log: <window title>".
 - kageant Settings > Log > Destination: "Windows Event Log" and "file and
@@ -147,6 +150,21 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   with the password is written. An older WinSCP, or a start while a WinSCP
   is already running, still gets the temporary file. `kitty.exe -winscp`
   ends once WinSCP has read the password. Refs cyd01/KiTTY#419.
+- kageant command line as ssh-add: `-h <destination>` restricts the key
+  files of the call (host, user@host, via>host, host:port, a pattern), the
+  host keys looked up as the rule editor does. A host without one adds
+  nothing. A running kageant gets them as `ssh-add -h` sends them. `-d`
+  removes a key (file or SHA256 fingerprint), `-D` every key. Reports go
+  to the console, with an exit code. `-h` is no longer short for `-help`.
+  `-l` lists every key with its destination rules. `-R` removes a key's
+  rules after a confirmation at the desktop. Each key the command line
+  adds is reported with its stored rules. The notices of adds and removals
+  show the rules that apply or stay stored. The rule editor keeps a typed
+  port. Each change of a key's rules is recorded (event 116). Settings >
+  Security: "Refuse key changes from a forwarded agent" (default on: add,
+  remove, lock refused, reason `forwarded`) and "Accept requests by window
+  messages" (PuTTY before 0.75, default on). A program using window
+  messages gets a notice once.
 
 ### Fixed
 

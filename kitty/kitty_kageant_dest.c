@@ -928,6 +928,83 @@ size_t kageant_dest_lookup_pattern(const char *pattern, int port,
     return lk.n;
 }
 
+/* One hop's keys: host (as written, with a port) looked up; false when
+ * none is found. */
+static bool dest_hop_keys(kar_hop *h, const char *host, bool pattern_ok)
+{
+    char *name = NULL;
+    int port = 22;
+    struct kageant_dest_found *f = NULL;
+    size_t nf = 0;
+    bool pat;
+    if (!kar_split_host_port(host, &name, &port))
+        return false;
+    pat = pattern_ok && kar_host_is_pattern(name);
+    nf = pat ? kageant_dest_lookup_pattern(name, port, &f)
+             : kageant_dest_lookup(name, port, &f);
+    for (size_t j = 0; j < nf; j++)
+        kar_hop_add_key(h, ptrlen_from_strbuf(f[j].blob), f[j].is_ca);
+    h->match = pat ? KAR_MATCH_STORED_NOW : KAR_MATCH_EXACT;
+    kageant_dest_found_free(f, nf);
+    sfree(name);
+    return nf > 0;
+}
+
+kar_rules *kageant_dest_rules_from_list(const char *list, char **err)
+{
+    char **items = NULL, *bad = NULL;
+    size_t n = 0;
+    const char *why = "";
+    kar_rules *r;
+
+    *err = NULL;
+    if (!kar_dest_list_parse(list, &items, &n, &bad, &why)) {
+        *err = dupprintf(KT_KA_DEST_REFUSED_FMT, bad ? bad : "", why);
+        sfree(bad);
+        return NULL;
+    }
+    r = kar_rules_new();
+    for (size_t i = 0; i < n; i++) {
+        char *via = NULL, *user = NULL, *host = NULL;
+        const char *nokey = NULL;
+        kar_rule d;
+        memset(&d, 0, sizeof(d));
+        if (!kar_dest_spec_parse(items[i], &via, &user, &host, &why)) {
+            *err = dupprintf(KT_KA_DEST_REFUSED_FMT, items[i], why);
+        } else if (!dest_hop_keys(&d.to, host, true)) {
+            nokey = host;
+        } else if (via && !dest_hop_keys(&d.from, via, false)) {
+            nokey = via;
+        }
+        if (nokey)
+            *err = dupprintf(kageant_readknownhosts_get() ?
+                             KT_KA_DEST_NO_KEY_KH_FMT : KT_KA_DEST_NO_KEY_FMT,
+                             nokey);
+        if (!*err) {
+            d.to.host = host;
+            d.to.user = user;
+            d.from.host = via;
+            d.from.match = KAR_MATCH_EXACT;
+            host = user = via = NULL;
+            if (!kar_rules_add(r, &d))
+                *err = dupprintf(KT_KA_DEST_REFUSED_FMT, items[i],
+                                 "more than 1024 destinations");
+        }
+        kar_hop_free(&d.from);
+        kar_hop_free(&d.to);
+        sfree(via);
+        sfree(user);
+        sfree(host);
+        if (*err) {
+            kar_names_free(items, n);
+            kar_rules_free(r);
+            return NULL;
+        }
+    }
+    kar_names_free(items, n);
+    return r;
+}
+
 void kageant_dest_found_free(struct kageant_dest_found *v, size_t n)
 {
     for (size_t i = 0; i < n; i++) {

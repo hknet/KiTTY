@@ -1500,12 +1500,30 @@ char default_init_file_content[] =
 ; / -X). Off by default; the tray menu's Lock agent / Unlock agent always\n\
 ; works, and its Unlock also clears a program's lock.\n\
 ;allowipclock=no\n\
+; blockforwardedchanges: refuse key changes from a forwarded agent - an add\n\
+; (also an encrypted PPK), a removal, a lock and an unlock from a program on\n\
+; a server the agent is forwarded to. Listing and signing stay. Default yes.\n\
+; Only a connection bound for forwarding is known as one: the forwarding\n\
+; client sends session-bind@openssh.com marked for forwarding (KiTTY++'s\n\
+; kitty.exe and klink, OpenSSH's ssh from 8.9).\n\
+;blockforwardedchanges=yes\n\
+; allowwmcopydata: accept requests by window messages (WM_COPYDATA), the\n\
+; agent connection of programs built on PuTTY before 0.75. KiTTY++'s own\n\
+; programs use it only when the named pipe cannot be opened. Each program\n\
+; using it raises a notice once per run. Default yes. no: they are refused,\n\
+; the agent log records it (reason window-messages).\n\
+;allowwmcopydata=yes\n\
 ; readknownhosts: use OpenSSH's %USERPROFILE%\\.ssh\\known_hosts as a\n\
 ; host-key source (Settings, Agent page). Off by default: kageant then\n\
 ; never opens the file. On: host names of a host key for the agent log's\n\
 ; dest= / fwd= and the confirmation (marked \"(known_hosts)\"), \"Look up host\n\
 ; keys\" in the rule editor (plain, hashed and @cert-authority entries), and\n\
 ; \"Checked at each login\" destinations. KiTTY++ never writes the file.\n\
+; Hashed entries (|1|..., written while OpenSSH's HashKnownHosts is yes)\n\
+; cannot be decoded: they give no host name to the agent log, the\n\
+; confirmation or \"Checked at each login\" destinations. The rule editor's\n\
+; look-up by a host name still finds them. Turned on here instead of in\n\
+; Settings, the file gets no check and no warning about hashed entries.\n\
 ;readknownhosts=no\n\
 \n\
 ; --- The agent log: what the agent did with keys - what signed or was\n\

@@ -33,6 +33,11 @@
  * reencrypt-all kept from programs (kar_ext_local_only, add-ppk and query
  * not), and the reason of an empty key list (kar_nokey_reason: none
  * unbound, bind-failed, destination, forwarding-hop, store-damaged).
+ * kageant's -h destinations (kar_dest_spec_parse, kar_dest_list_parse,
+ * with the refusals), the startup entry's tokens (kar_entry_parse: the
+ * forms as before, a dest= token left with the path as before) and a host
+ * kept with its port (the rule editor): the store round trip, the port
+ * split off for the look-up, the name match and a certificate.
  *
  * The keys are fixed ed25519 public keys and host certificates made once
  * with ssh-keygen: key web02 with principal web03 signed by the key "ca";
@@ -840,6 +845,18 @@ static void test_ext(strbuf *user, strbuf *web01, strbuf *web02,
     expect("query lists withheld-keys-v00@kapper.net", wk, true);
     expect("query lists session-bind-host-v00@kapper.net", bh, true);
     expect("query lists key-state-v00@kapper.net", ks, true);
+    {
+        /* kageant -l and -R: rules-list-v00 / rules-remove-v00 */
+        bool rl = false, rr = false;
+        for (size_t i = 0; i < lenof(known); i++) {
+            if (!strcmp(known[i], "rules-list-v00@kapper.net"))
+                rl = true;
+            if (!strcmp(known[i], "rules-remove-v00@kapper.net"))
+                rr = true;
+        }
+        expect("query lists rules-list-v00@kapper.net", rl, true);
+        expect("query lists rules-remove-v00@kapper.net", rr, true);
+    }
     expect("the names carry their version",
            !strcmp(KAR_EXT_WITHHELD, "withheld-keys-v00@kapper.net") &&
            !strcmp(KAR_EXT_BIND_HOST, "session-bind-host-v00@kapper.net") &&
@@ -2000,6 +2017,257 @@ static void test_hop_merge(strbuf *web01, strbuf *web02, strbuf *ca2)
     kar_hop_free(&h);
 }
 
+/* kageant -h: one destination */
+static void spec_case(const char *spec, bool ok, const char *via,
+                      const char *user, const char *host)
+{
+    char *v = NULL, *u = NULL, *h = NULL;
+    const char *err = NULL;
+    char what[160];
+    bool got = kar_dest_spec_parse(spec, &v, &u, &h, &err);
+    snprintf(what, sizeof(what), "dest spec '%s'", spec);
+    expect(what, got, ok);
+    if (got && ok) {
+        bool same = ((!via && !v) || (via && v && !strcmp(via, v))) &&
+            ((!user && !u) || (user && u && !strcmp(user, u))) &&
+            h && !strcmp(host, h);
+        if (!same) {
+            printf("FAIL [%s]: via %s user %s host %s\n", what,
+                   v ? v : "(none)", u ? u : "(none)", h ? h : "(none)");
+            failures++;
+        }
+    }
+    if (!got && !ok && (!err || !*err)) {
+        printf("FAIL [%s]: refused without a reason\n", what);
+        failures++;
+    }
+    sfree(v);
+    sfree(u);
+    sfree(h);
+}
+
+static void test_dest_specs(void)
+{
+    char **items;
+    size_t n;
+    char *bad = NULL, *j;
+    const char *err = NULL;
+    int port;
+    char *name;
+
+    spec_case("web01", true, NULL, NULL, "web01");
+    spec_case("  alice@web01 ", true, NULL, "alice", "web01");
+    spec_case("jump01>web01", true, "jump01", NULL, "web01");
+    spec_case("jump01>alice@web01", true, "jump01", "alice", "web01");
+    spec_case("web01:2222", true, NULL, NULL, "web01:2222");
+    spec_case("[web01]:2222", true, NULL, NULL, "[web01]:2222");
+    spec_case("jump01:2200>web01", true, "jump01:2200", NULL, "web01");
+    spec_case("*.customer.com", true, NULL, NULL, "*.customer.com");
+    spec_case("deploy@*.customer.com", true, NULL, "deploy", "*.customer.com");
+    spec_case("", false, NULL, NULL, NULL);
+    spec_case("   ", false, NULL, NULL, NULL);
+    spec_case("a>b>c", false, NULL, NULL, NULL);
+    spec_case("bob@jump01>web01", false, NULL, NULL, NULL);
+    spec_case("@web01", false, NULL, NULL, NULL);
+    spec_case("alice@", false, NULL, NULL, NULL);
+    spec_case("a@b@web01", false, NULL, NULL, NULL);
+    spec_case("*.jump.com>web01", false, NULL, NULL, NULL);
+    spec_case("*", false, NULL, NULL, NULL);
+    spec_case("*.com", false, NULL, NULL, NULL);
+    spec_case("web*.customer.com", true, NULL, NULL, "web*.customer.com");
+    spec_case("customer.*", false, NULL, NULL, NULL);
+    spec_case("web01:0", false, NULL, NULL, NULL);
+    spec_case("web01:70000", false, NULL, NULL, NULL);
+    spec_case("web01:22x", false, NULL, NULL, NULL);
+    spec_case("[web01]x", false, NULL, NULL, NULL);
+    spec_case("web 01", false, NULL, NULL, NULL);
+    spec_case(">web01", false, NULL, NULL, NULL);
+    spec_case("jump01>", false, NULL, NULL, NULL);
+
+    expect("list: three destinations",
+           kar_dest_list_parse(" web01, alice@web02 ,jump01>web03", &items,
+                               &n, &bad, &err) && n == 3, true);
+    if (bad) { sfree(bad); bad = NULL; }
+    if (n == 3) {
+        expect("list: the second without blanks",
+               !strcmp(items[1], "alice@web02"), true);
+        j = kar_dest_list_join(items, n);
+        expect("list: joined with \", \"",
+               !strcmp(j, "web01, alice@web02, jump01>web03"), true);
+        sfree(j);
+        kar_names_free(items, n);
+    }
+    expect("list: empty is no destination",
+           kar_dest_list_parse("  ", &items, &n, &bad, &err) && n == 0, true);
+    expect("list: an empty item between commas is refused",
+           kar_dest_list_parse("web01,,web02", &items, &n, &bad, &err), false);
+    sfree(bad); bad = NULL;
+    expect("list: a refused item is returned",
+           !kar_dest_list_parse("web01, *.com", &items, &n, &bad, &err) &&
+           bad && !strcmp(bad, "*.com"), true);
+    sfree(bad); bad = NULL;
+
+    /* the port split for the look-up */
+    expect("split: host:2222",
+           kar_split_host_port("web01:2222", &name, &port) &&
+           !strcmp(name, "web01") && port == 2222, true);
+    sfree(name);
+    expect("split: [host]:2200",
+           kar_split_host_port("[qa-kh-two]:2200", &name, &port) &&
+           !strcmp(name, "qa-kh-two") && port == 2200, true);
+    sfree(name);
+    expect("split: no port is 22",
+           kar_split_host_port("web01", &name, &port) && port == 22, true);
+    sfree(name);
+    expect("split: an IPv6 address is all name",
+           kar_split_host_port("fe80::1", &name, &port) &&
+           !strcmp(name, "fe80::1") && port == 22, true);
+    sfree(name);
+    {
+        ptrlen p = kar_host_name_part("web01:2222");
+        expect("name part: host:port", ptrlen_eq_string(p, "web01"), true);
+        p = kar_host_name_part("[web01]:2222");
+        expect("name part: [host]:port", ptrlen_eq_string(p, "web01"), true);
+        p = kar_host_name_part("web01");
+        expect("name part: plain", ptrlen_eq_string(p, "web01"), true);
+    }
+}
+
+/* The startup entry's tokens: the forms the inline parsers took, and a
+ * token it does not know (dest=, written by no release) left with the path */
+static void test_entry_tokens(void)
+{
+    kar_entry_tokens t;
+    char *e;
+
+    e = dupstr("C:\\keys\\a.ppk,encrypted,confirm,autoencrypt=600,"
+               "SHA256:abc");
+    kar_entry_parse(e, &t);
+    expect("old entry: path", !strcmp(e, "C:\\keys\\a.ppk"), true);
+    expect("old entry: encrypted", t.enc == 1, true);
+    expect("old entry: confirm", t.confirm == 1, true);
+    expect("old entry: autoencrypt", t.autoenc && !strcmp(t.autoenc, "600"),
+           true);
+    expect("old entry: fingerprint", !strcmp(t.fp, "SHA256:abc"), true);
+    sfree(e);
+
+    e = dupstr("keys\\b.ppk,plain,helloconfirm,ssh-ed25519 255 SHA256:x");
+    kar_entry_parse(e, &t);
+    expect("older fingerprint form", !strcmp(t.fp, "SHA256:x") &&
+           t.enc == 0 && t.confirm == 2, true);
+    sfree(e);
+
+    e = dupstr("D:\\odd,name.ppk");
+    kar_entry_parse(e, &t);
+    expect("a comma in the path stays", !strcmp(e, "D:\\odd,name.ppk") &&
+           t.enc == -1, true);
+    sfree(e);
+
+    e = dupstr("C:\\k.ppk,dest=web01,plain,SHA256:abc");
+    kar_entry_parse(e, &t);
+    expect("an unknown token stops the parse: it stays with the path",
+           !strcmp(e, "C:\\k.ppk,dest=web01") && t.enc == 0 &&
+           !strcmp(t.fp, "SHA256:abc"), true);
+    sfree(e);
+
+    e = dupstr("C:\\k.ppk,ENCRYPTED,HelloConfirm,AUTOENCRYPT=off");
+    kar_entry_parse(e, &t);
+    expect("tokens without regard to case", !strcmp(e, "C:\\k.ppk") &&
+           t.enc == 1 && t.confirm == 2 && t.autoenc &&
+           !strcmp(t.autoenc, "off"), true);
+    sfree(e);
+}
+
+/* A host kept with its port (the rule editor): through the store's bytes,
+ * the name match without the port, a certificate for the name */
+static void test_host_port(strbuf *user, strbuf *web01, strbuf *ca,
+                           strbuf *cert)
+{
+    kar_store *s = kar_store_new(), *t = kar_store_new();
+    kar_rules *r = kar_rules_new(), *back;
+    kar_rule d;
+    strbuf *bytes = strbuf_new();
+    const char *err = NULL;
+    char *fp = kar_key_fp(ptrlen_from_strbuf(user));
+
+    memset(&d, 0, sizeof(d));
+    d.to.host = dupstr("web01:2222");
+    kar_hop_add_key(&d.to, ptrlen_from_strbuf(web01), false);
+    d.from.host = dupstr("[jump01]:2200");
+    kar_hop_add_key(&d.from, ptrlen_from_strbuf(web01), false);
+    kar_rules_add(r, &d);
+    kar_hop_free(&d.from);
+    kar_hop_free(&d.to);
+    kar_store_set_key_rules(s, fp, "c", ptrlen_from_strbuf(user), r, NULL);
+    kar_store_encode(s, bytes);
+    expect("port: the store decodes",
+           kar_store_decode(t, ptrlen_from_strbuf(bytes), &err), true);
+    back = kar_store_rules(t, fp);
+    expect("port: the host keeps its port", back && back->n == 1 &&
+           !strcmp(back->v[0].to.host, "web01:2222") &&
+           !strcmp(back->v[0].from.host, "[jump01]:2200"), true);
+    if (back && back->n == 1) {
+        char *name;
+        int port;
+        expect("port: the look-up gets port 2222",
+               kar_split_host_port(back->v[0].to.host, &name, &port) &&
+               port == 2222 && !strcmp(name, "web01"), true);
+        sfree(name);
+    }
+    kar_rules_free(back);
+    kar_rules_free(r);
+    {
+        /* the hints' short text: destination lines only, the first 3 */
+        char *sum = kar_store_dest_summary(t, fp, 3);
+        expect("summary: the host with its port, no origin line",
+               sum && !strcmp(sum, "web01:2222  via [jump01]:2200"), true);
+        if (sum && strcmp(sum, "web01:2222  via [jump01]:2200"))
+            printf("    summary: %s\n", sum);
+        sfree(sum);
+        expect("summary: a key without rules has none",
+               kar_store_dest_summary(t, "SHA256:nothing", 3) == NULL, true);
+    }
+    {
+        /* five destinations: three shown, then +2 */
+        kar_store *m = kar_store_new();
+        kar_rules *five = kar_rules_new();
+        char *sum;
+        static const char *const hosts[] = { "a1", "a2", "a3", "a4", "a5" };
+        for (size_t hi = 0; hi < 5; hi++)
+            add_rule(five, NULL, NULL, NULL, hosts[hi], web01, false);
+        kar_store_set_key_rules(m, fp, "c", ptrlen_from_strbuf(user), five,
+                                NULL);
+        sum = kar_store_dest_summary(m, fp, 3);
+        expect("summary: the first three, then +2",
+               sum && !strcmp(sum, "a1, a2, a3 +2"), true);
+        if (sum && strcmp(sum, "a1, a2, a3 +2"))
+            printf("    summary: %s\n", sum);
+        sfree(sum);
+        kar_rules_free(five);
+        kar_store_free(m);
+    }
+    strbuf_free(bytes);
+    kar_store_free(s);
+    kar_store_free(t);
+    sfree(fp);
+
+    /* checked at each login: the names match without the rule's port */
+    kar_hostkey_names = fake_names;
+    fake_key = ptrlen_from_strbuf(web01);
+    fake_name = "web07.customer.com:2222";
+    r = one_rule("*.customer.com:2222", KAR_MATCH_STORED_LATER, NULL, false);
+    expect("port: a pattern with a port matches the stored name",
+           permitted_on(r, web01, false), true);
+    kar_rules_free(r);
+    kar_hostkey_names = NULL;
+
+    /* a host certificate is checked for the name without the port */
+    r = one_rule("web03:2222", KAR_MATCH_EXACT, ca, true);
+    expect("port: a CA certificate for the name, the rule with a port",
+           permitted_on(r, cert, false), true);
+    kar_rules_free(r);
+}
+
 int main(void)
 {
     strbuf *user, *web01, *web02, *jump01, *ca, *cert;
@@ -2054,6 +2322,10 @@ int main(void)
     printf("known_hosts entries counted, stored-now keys merged\n");
     test_kh_count(web01, web02, ca2);
     test_hop_merge(web01, web02, ca2);
+    printf("-h destinations, startup entry tokens, hosts with a port\n");
+    test_dest_specs();
+    test_entry_tokens();
+    test_host_port(user, web01, ca, cert);
 
     strbuf_free(ca2);
     strbuf_free(web04);

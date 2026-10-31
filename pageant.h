@@ -140,6 +140,32 @@ bool pageant_set_key_confirm(ptrlen blob, int mode);
  * core mutation handlers fire the hook only while it is up, so the
  * agent's own UI (which uses the same handlers) stays silent. */
 enum { KAGEANT_MUT_ADD, KAGEANT_MUT_REMOVE, KAGEANT_MUT_REMOVE_ALL };
+/* KiTTY: a key change or a lock over a connection bound for agent
+ * forwarding (a session-bind with is_forwarding set): refused while
+ * kageant's "Refuse key changes from a forwarded agent" is on. op is a
+ * KAGEANT_MUT_* value or one of these two; fp as for kageant_ipc_blocked_hook.
+ * The hook writes the record (reason forwarded) and answers nonzero to
+ * refuse. NULL outside kageant (nothing refused). */
+enum { KAGEANT_MUT_LOCK = 10, KAGEANT_MUT_UNLOCK = 11 };
+extern int (*kageant_fwd_blocked_hook)(int op, const char *fp);
+/* KiTTY: an external SSH2_AGENTC_REMOVE_ALL_IDENTITIES is about to remove
+ * every key: kageant notes the keys with destination rules for the
+ * removal's notice. NULL outside kageant. */
+extern void (*kageant_before_remove_all_hook)(void);
+/* KiTTY: rules-remove-v00@kapper.net - may every destination rule of this
+ * key go? fp as the rule store files it, the comment, its rules as Key
+ * details lists them, the requester. kageant puts up a confirmation for
+ * the person at the desktop and records the outcome (event 116). Nonzero
+ * = remove. NULL
+ * (outside kageant) = never. */
+extern int (*kageant_rules_remove_hook)(const char *fp, const char *comment,
+                                        const char *rules, unsigned long pid);
+/* KiTTY: a kapper.net extension as a client (kageant -l / -R): the
+ * request's data after the name, the reply's data after its name when the
+ * agent answers SSH_AGENT_EXTENSION_RESPONSE with that name; NULL
+ * otherwise (*reply_type the reply's type). strbuf_free it. */
+strbuf *pageant_kapper_ext_query(const char *name, ptrlen data,
+                                 unsigned *reply_type);
 /* KiTTY: IPC access control - is this mutation blocked for an external
  * request? op is one of the KAGEANT_MUT_* values. NULL outside the GUI
  * agent (so a non-GUI build blocks nothing). */
@@ -229,6 +255,14 @@ extern void (*kageant_rules_changed_hook)(void);
  * rule set over the pipe keeps; NULL when not known. sfree it. NULL
  * everywhere but kageant. */
 extern char *(*kageant_req_path_hook)(unsigned long pid);
+/* KiTTY: kageant -h on a second instance: the destinations the next SSH-2
+ * key files added through pageant_add_keyfile carry to the running agent,
+ * as restrict-destination-v00@openssh.com (what ssh-add -h sends). NULL
+ * clears them. A key already in the agent is sent again (its rules
+ * replaced); adding one encrypted (add-ppk has no constraint) or an SSH-1
+ * key fails while they are set. */
+struct kar_rules;
+void pageant_set_add_dest(const struct kar_rules *r);
 
 /* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
  * its keys but answers an empty key list and refuses every other request but
@@ -403,6 +437,8 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
     X(EXT_WITHHELD_KEYS, "withheld-keys-v00@kapper.net")         \
     X(EXT_SESSION_BIND_HOST, "session-bind-host-v00@kapper.net") \
     X(EXT_KEY_STATE, "key-state-v00@kapper.net")                 \
+    X(EXT_RULES_LIST, "rules-list-v00@kapper.net")               \
+    X(EXT_RULES_REMOVE, "rules-remove-v00@kapper.net")           \
     /* end of list */
 
 /* The flags of list-extended (in-process only, kar_ext_local_only) and of

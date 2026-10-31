@@ -211,6 +211,302 @@ bool kar_pattern_narrow_enough(const char *host)
     return true;
 }
 
+bool kar_split_host_port(const char *text, char **name, int *port)
+{
+    const char *p = text, *colon;
+    size_t len;
+    *name = NULL;
+    *port = 22;
+    if (!p)
+        return false;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    len = strlen(p);
+    while (len && (p[len - 1] == ' ' || p[len - 1] == '\t'))
+        len--;
+    if (!len)
+        return false;
+    if (*p == '[') {
+        const char *rb = memchr(p, ']', len);
+        if (!rb || rb == p + 1)
+            return false;
+        if (rb + 1 < p + len) {
+            const char *q = rb + 2;
+            long v = 0;
+            if (rb[1] != ':' || q >= p + len)
+                return false;
+            for (; q < p + len; q++) {
+                if (*q < '0' || *q > '9' || v > 65535)
+                    return false;
+                v = v * 10 + (*q - '0');
+            }
+            if (v < 1 || v > 65535)
+                return false;
+            *port = (int)v;
+        }
+        *name = dupprintf("%.*s", (int)(rb - p - 1), p + 1);
+        return true;
+    }
+    colon = memchr(p, ':', len);
+    if (colon && !memchr(colon + 1, ':', len - (size_t)(colon + 1 - p))) {
+        const char *q = colon + 1;
+        long v = 0;
+        if (colon == p || q >= p + len)
+            return false;
+        for (; q < p + len; q++) {
+            if (*q < '0' || *q > '9' || v > 65535)
+                return false;
+            v = v * 10 + (*q - '0');
+        }
+        if (v < 1 || v > 65535)
+            return false;
+        *port = (int)v;
+        *name = dupprintf("%.*s", (int)(colon - p), p);
+        return true;
+    }
+    *name = dupprintf("%.*s", (int)len, p);
+    return true;
+}
+
+ptrlen kar_host_name_part(const char *host)
+{
+    const char *colon;
+    if (!host)
+        return make_ptrlen("", 0);
+    if (*host == '[') {
+        const char *rb = strchr(host, ']');
+        if (rb)
+            return make_ptrlen(host + 1, (size_t)(rb - host - 1));
+        return ptrlen_from_asciz(host);
+    }
+    colon = strchr(host, ':');
+    if (colon && !strchr(colon + 1, ':'))
+        return make_ptrlen(host, (size_t)(colon - host));
+    return ptrlen_from_asciz(host);
+}
+
+/* A host as -h takes it: a name, a port that kar_split_host_port takes, no
+ * blank or control character, at most KAR_MAX_HOST bytes. */
+static bool dest_host_ok(const char *h, const char **err)
+{
+    char *name = NULL;
+    int port;
+    const unsigned char *q;
+    if (!*h) {
+        *err = "the host name is empty";
+        return false;
+    }
+    if (strlen(h) > KAR_MAX_HOST) {
+        *err = "the host name is too long";
+        return false;
+    }
+    for (q = (const unsigned char *)h; *q; q++)
+        if (*q <= ' ' || *q == 0x7f) {
+            *err = "the host name holds a blank or a control character";
+            return false;
+        }
+    if (!kar_split_host_port(h, &name, &port)) {
+        *err = "the port must be a number from 1 to 65535";
+        return false;
+    }
+    sfree(name);
+    return true;
+}
+
+bool kar_dest_spec_parse(const char *spec, char **via, char **user,
+                         char **host, const char **err)
+{
+    const char *p, *gt, *to, *at;
+    size_t len;
+    char *v = NULL, *u = NULL, *h = NULL;
+
+    *via = *user = *host = NULL;
+    p = spec ? spec : "";
+    while (*p == ' ' || *p == '\t')
+        p++;
+    len = strlen(p);
+    while (len && (p[len - 1] == ' ' || p[len - 1] == '\t'))
+        len--;
+    if (!len) {
+        *err = "the destination is empty";
+        return false;
+    }
+    gt = memchr(p, '>', len);
+    if (gt && memchr(gt + 1, '>', len - (size_t)(gt + 1 - p))) {
+        *err = "more than one '>': one via host at most";
+        return false;
+    }
+    to = p;
+    if (gt) {
+        v = dupprintf("%.*s", (int)(gt - p), p);
+        to = gt + 1;
+        if (strchr(v, '@')) {
+            *err = "a user name is not allowed on the via host";
+            goto refused;
+        }
+        if (kar_host_is_pattern(v)) {
+            *err = "a pattern is not allowed in the via host";
+            goto refused;
+        }
+        if (!dest_host_ok(v, err))
+            goto refused;
+    }
+    {
+        size_t tlen = len - (size_t)(to - p);
+        at = memchr(to, '@', tlen);
+        if (at && memchr(at + 1, '@', tlen - (size_t)(at + 1 - to))) {
+            *err = "more than one '@'";
+            goto refused;
+        }
+        if (at) {
+            if (at == to) {
+                *err = "the user name is empty";
+                goto refused;
+            }
+            if ((size_t)(at - to) > KAR_MAX_USER) {
+                *err = "the user name is too long";
+                goto refused;
+            }
+            u = dupprintf("%.*s", (int)(at - to), to);
+            h = dupprintf("%.*s", (int)(tlen - (size_t)(at + 1 - to)), at + 1);
+        } else {
+            h = dupprintf("%.*s", (int)tlen, to);
+        }
+    }
+    if (u) {
+        for (const unsigned char *q = (const unsigned char *)u; *q; q++)
+            if (*q <= ' ' || *q == 0x7f) {
+                *err = "the user name holds a blank or a control character";
+                goto refused;
+            }
+    }
+    if (!dest_host_ok(h, err))
+        goto refused;
+    if (!kar_pattern_narrow_enough(h)) {
+        *err = "the pattern is too broad: it must end in two labels "
+            "without a wildcard (*.example.com)";
+        goto refused;
+    }
+    *via = v;
+    *user = u;
+    *host = h;
+    return true;
+
+  refused:
+    sfree(v);
+    sfree(u);
+    sfree(h);
+    return false;
+}
+
+bool kar_dest_list_parse(const char *list, char ***items, size_t *n,
+                         char **bad, const char **err)
+{
+    const char *p = list ? list : "";
+    char **v = NULL;
+    size_t nv = 0, size = 0;
+
+    *items = NULL;
+    *n = 0;
+    *bad = NULL;
+    for (;;) {
+        const char *comma = strchr(p, ',');
+        size_t len = comma ? (size_t)(comma - p) : strlen(p);
+        char *one, *via, *user, *host;
+        const char *s = p;
+        while (len && (*s == ' ' || *s == '\t'))
+            s++, len--;
+        while (len && (s[len - 1] == ' ' || s[len - 1] == '\t'))
+            len--;
+        if (len || comma) {
+            one = dupprintf("%.*s", (int)len, s);
+            if (!kar_dest_spec_parse(one, &via, &user, &host, err)) {
+                *bad = one;
+                kar_names_free(v, nv);
+                return false;
+            }
+            sfree(via);
+            sfree(user);
+            sfree(host);
+            if (nv >= KAR_MAX_RULES) {
+                *err = "more than 1024 destinations";
+                *bad = one;
+                kar_names_free(v, nv);
+                return false;
+            }
+            sgrowarray(v, size, nv);
+            v[nv++] = one;
+        }
+        if (!comma)
+            break;
+        p = comma + 1;
+    }
+    *items = v;
+    *n = nv;
+    return true;
+}
+
+char *kar_dest_list_join(char *const *items, size_t n)
+{
+    strbuf *sb = strbuf_new();
+    for (size_t i = 0; i < n; i++) {
+        if (i)
+            put_dataz(sb, ", ");
+        put_dataz(sb, items[i]);
+    }
+    return strbuf_to_str(sb);
+}
+
+static bool entry_word(const char *tok, const char *word)
+{
+    for (; *tok && *word; tok++, word++) {
+        char c = *tok;
+        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        if (c != *word)
+            return false;
+    }
+    return !*tok && !*word;
+}
+
+static bool entry_prefix(const char *tok, const char *pre)
+{
+    for (; *tok && *pre; tok++, pre++) {
+        char c = *tok;
+        if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+        if (c != *pre)
+            return false;
+    }
+    return !*pre;
+}
+
+void kar_entry_parse(char *entry, kar_entry_tokens *t)
+{
+    t->enc = -1;
+    t->confirm = 0;
+    t->autoenc = NULL;
+    t->fp = "";
+    for (;;) {
+        char *c = strrchr(entry, ',');
+        const char *tok;
+        if (!c)
+            break;
+        tok = c + 1;
+        if (entry_word(tok, "encrypted")) t->enc = 1;
+        else if (entry_word(tok, "plain")) t->enc = 0;
+        else if (entry_word(tok, "confirm")) t->confirm = 1;
+        else if (entry_word(tok, "helloconfirm")) t->confirm = 2;
+        else if (entry_prefix(tok, "autoencrypt=")) t->autoenc = tok + 12;
+        else if (strstr(tok, "SHA256:")) {
+            /* bare "SHA256:..." as written now, and the longer
+             * "alg bits SHA256:..." a build in between wrote */
+            t->fp = strstr(tok, "SHA256:");
+        } else {
+            break;              /* part of the path: left alone */
+        }
+        *c = '\0';
+    }
+}
+
 size_t (*kar_hostkey_names)(ptrlen hostkey, char ***names, bool **kh) = NULL;
 bool (*kar_ca_lookup)(const char *name, strbuf *pubkey, char **expr,
                       bool *nameless) = NULL;
@@ -556,7 +852,12 @@ static int hop_matches_names(const kar_hop *h, kar_boundkey *k)
         if (kar_hostkey_names)
             k->nnames = kar_hostkey_names(k->blob, &k->names, &k->kh);
     }
-    pat = lower_dup(h->host, strlen(h->host));
+    {
+        /* a host stored with its port (the rule editor keeps it): the
+         * names are matched without theirs, so the pattern is too */
+        ptrlen np = kar_host_name_part(h->host);
+        pat = lower_dup((const char *)np.ptr, np.len);
+    }
     for (size_t i = 0; i < k->nnames && ret != 1; i++) {
         const char *n = k->names[i], *colon = strchr(n, ':');
         size_t len = strlen(n);
@@ -601,8 +902,9 @@ static bool hop_matches_keys(const kar_hop *h, const kar_boundkey *k)
             opts.permit_rsa_sha256 = true;
             opts.permit_rsa_sha512 = true;
             opts.permit_nameless = false;
+            /* the host's name without a port the rule editor kept */
             ok = ssh_key_check_cert(
-                k->key, true, ptrlen_from_asciz(h->host ? h->host : ""),
+                k->key, true, kar_host_name_part(h->host),
                 (uint64_t)time(NULL), &opts, BinarySink_UPCAST(error));
             strbuf_free(error);
             if (ok)
@@ -1201,6 +1503,36 @@ char *kar_store_dest_lines(const kar_store *s, const char *fp,
         (*count)++;
     }
     return sb ? strbuf_to_str(sb) : NULL;
+}
+
+char *kar_store_dest_summary(const kar_store *s, const char *fp, size_t max)
+{
+    size_t n = 0, shown = 0;
+    char *lines = kar_store_dest_lines(s, fp, &n);
+    const char *p;
+    strbuf *sb;
+    if (!lines)
+        return NULL;
+    sb = strbuf_new();
+    for (p = lines; *p;) {
+        const char *e = strstr(p, "\r\n");
+        size_t len = e ? (size_t)(e - p) : strlen(p);
+        if (len && p[0] != ' ') {           /* an origin line is indented */
+            if (shown < max) {
+                if (shown)
+                    put_dataz(sb, ", ");
+                put_data(sb, p, len);
+            }
+            shown++;
+        }
+        if (!e)
+            break;
+        p = e + 2;
+    }
+    if (shown > max)
+        put_fmt(sb, " +%d", (int)(shown - max));
+    sfree(lines);
+    return strbuf_to_str(sb);
 }
 
 kar_skey *kar_store_note_key(kar_store *s, const char *fp,

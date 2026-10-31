@@ -1440,6 +1440,30 @@ static void kageant_keyfile_format_report(const Filename *filename)
     sfree(text);
 }
 
+/* KiTTY: the last win_add_keyfile ended in its error report (the command
+ * line's -h and exit code read it) */
+static bool kageant_cli_add_failed = false;
+
+/* KiTTY: the user's own add (Add Key, drag and drop: hello_add_offer_armed)
+ * loaded a key with destination rules in the rule store - a notice with
+ * them. Not for startup keys, the command line or Accept: the Key List
+ * marks such a key "restricted", and the command line reports them. */
+static void kageant_gui_add_hint(const Filename *fn)
+{
+    strbuf *blob = strbuf_new();
+    char *comment = NULL, *fp, *hint;
+    const char *error = NULL;
+    if (ppk_loadpub_f(fn, NULL, BinarySink_UPCAST(blob), &comment, &error)) {
+        fp = kar_key_fp(ptrlen_from_strbuf(blob));
+        hint = kageant_rules_apply_hint(fp, comment);
+        kageant_rules_hint_notice(KT_KA_NOTICE_RULES_APPLY, hint);
+        sfree(hint);
+        sfree(fp);
+    }
+    sfree(comment);
+    strbuf_free(blob);
+}
+
 void win_add_keyfile(Filename *filename, bool encrypted)
 {
     char *err;
@@ -1500,6 +1524,8 @@ void win_add_keyfile(Filename *filename, bool encrypted)
     if (ret == PAGEANT_ACTION_OK) {
         kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
         kageant_keyfile_format_report(filename);
+        if (hello_add_offer_armed)
+            kageant_gui_add_hint(filename);
         goto done;
     } else if (ret == PAGEANT_ACTION_FAILURE) {
         goto error;
@@ -1535,6 +1561,8 @@ void win_add_keyfile(Filename *filename, bool encrypted)
                 if (ret == PAGEANT_ACTION_OK) {
                     kageant_track_keypath(hp, encrypted);
                     kageant_keyfile_format_report(filename);
+                    if (hello_add_offer_armed)
+                        kageant_gui_add_hint(filename);
                     goto done;
                 } else if (ret == PAGEANT_ACTION_FAILURE) {
                     goto error;
@@ -1605,6 +1633,8 @@ void win_add_keyfile(Filename *filename, bool encrypted)
         if (ret == PAGEANT_ACTION_OK) {
             kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
             kageant_keyfile_format_report(filename);
+            if (hello_add_offer_armed)
+                kageant_gui_add_hint(filename);
             goto done;
         } else if (ret == PAGEANT_ACTION_FAILURE) {
             goto error;
@@ -1612,6 +1642,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
     }
 
   error:
+    kageant_cli_add_failed = true;
     /*
      * KiTTY: say WHICH file. Upstream's message is the reason alone -
      * "Couldn't load this key (unable to open file)" - which is no help at all
@@ -2616,6 +2647,20 @@ static bool kr_split_host(const char *text, char **host, int *port)
     return true;
 }
 
+/* A host field as the store keeps it: as typed, the port with it
+ * ("web01:2222", "[web01]:2222"), blanks around it dropped. sfree it. */
+static char *kr_host_as_typed(const char *text)
+{
+    const char *p = text;
+    size_t len;
+    while (*p == ' ' || *p == '\t')
+        p++;
+    len = strlen(p);
+    while (len && (p[len - 1] == ' ' || p[len - 1] == '\t'))
+        len--;
+    return dupprintf("%.*s", (int)len, p);
+}
+
 static char *kr_dest_label(const struct kr_dest *d)
 {
     char *ca, *out;
@@ -3174,7 +3219,11 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
                 kar_hop_copy(&r.to, &d->to);
             kar_hop_copy(&r.from, &d->from);
             sfree(r.to.host);
-            r.to.host = ca ? dupstr(d->host) : host;
+            /* the host as typed, its port kept: the tree, Key details and a
+             * later look-up (the editor's, "Look up again") use the port;
+             * the login decision stays on the host keys */
+            r.to.host = ca ? dupstr(d->host) : kr_host_as_typed(d->host);
+            sfree(host);
             sfree(r.to.user);
             r.to.user = *d->user ? dupstr(d->user) : NULL;
             r.to.match = d->match;
@@ -3187,7 +3236,8 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
                 char *vh = NULL;
                 int vp;
                 if (kr_split_host(d->via, &vh, &vp))
-                    r.from.host = vh;
+                    r.from.host = kr_host_as_typed(d->via);
+                sfree(vh);
             }
             if (!r.from.host) {
                 kar_hop_free(&r.from);
@@ -3205,6 +3255,43 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
                                ptrlen_from_strbuf(k->blob));
     }
     return true;
+}
+
+/* Are two keys' compiled rules the same (NULL = no rule)? */
+static bool kr_rules_same(const kar_rules *a, const kar_rules *b)
+{
+    size_t na = a ? a->n : 0, nb = b ? b->n : 0;
+    if (na != nb)
+        return false;
+    for (size_t i = 0; i < na; i++)
+        if (!kar_rule_equal(&a->v[i], &b->v[i]))
+            return false;
+    return true;
+}
+
+/* One record (event 116) per key whose rules OK changed: the keys of the
+ * store after OK, then the keys only the one before held (all their rules
+ * removed). An unchanged key gets none. */
+static void kr_audit_one(const kar_store *before, const kar_store *after,
+                         const char *fp, const char *comment)
+{
+    kar_rules *a = kar_store_rules(before, fp);
+    kar_rules *b = kar_store_rules(after, fp);
+    if (!kr_rules_same(a, b))
+        kageant_audit_rules(fp, comment);
+    kar_rules_free(a);
+    kar_rules_free(b);
+}
+
+static void kr_audit_changes(const kar_store *before, const kar_store *after)
+{
+    for (size_t i = 0; i < after->nkeys; i++)
+        kr_audit_one(before, after, after->keys[i].fp,
+                     after->keys[i].comment);
+    for (size_t i = 0; i < before->nkeys; i++)
+        if (!kar_store_key(after, before->keys[i].fp))
+            kr_audit_one(before, after, before->keys[i].fp,
+                         before->keys[i].comment);
 }
 
 /* "Add destination": a new destination of either kind on the selected
@@ -3577,8 +3664,15 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 sfree(t);
                 return 0;
             }
+            /* KiTTY: the store before OK, for the records of the keys whose
+             * rules this OK changes (event 116) */
+            kar_store *before = kar_store_new();
+            kar_store_copy(before, kar_store_get());
             err = kageant_rules_replace(ns, &aside, &applied);
             kar_store_free(ns);
+            if (applied)
+                kr_audit_changes(before, kar_store_get());
+            kar_store_free(before);
             if (aside) {
                 char *t = dupprintf(KT_KARULES_KEPT_ASIDE_FMT, aside);
                 MessageBox(hwnd, t, KT_CAP_KA_KEY_RULES,
@@ -5058,6 +5152,10 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
  * never hidden, so the tables are the definition of the layout, not a
  * shortcut - adding a control means adding it here in the same edit.
  */
+/* KiTTY: the page the next opening of the settings shows instead of the
+ * one it was left on (-1: that one) - set by a notice's click */
+static int keysettings_open_page = -1;
+
 static const int keysettings_page_agent[] = {
     IDC_SET_OPENSSH, IDC_SET_KNOWNHOSTS, IDC_SET_STARTUP, IDC_SET_LOADKEYS,
     IDC_SET_NOTIFY,
@@ -5066,7 +5164,7 @@ static const int keysettings_page_agent[] = {
 };
 static const int keysettings_page_security[] = {
     IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_ALLOWIPCLOCK,
-    IDC_SET_HELLO,
+    IDC_SET_BLOCKFWD, IDC_SET_ALLOWWMCD, IDC_SET_HELLO,
     IDC_SET_L_TTL, IDC_SET_TTL, IDC_SET_L_TTLHINT,
     IDC_SET_L_HELLOTTL, IDC_SET_HELLOTTL, IDC_SET_L_HELLOTTLHINT,
     IDC_SET_L_AUTOENC, IDC_SET_AUTOENCMODE, IDC_SET_AUTOENC, IDC_SET_L_AUTOENCHINT,
@@ -5540,6 +5638,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_blockremove_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_ALLOWIPCLOCK,
             kageant_allowipclock_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_BLOCKFWD,
+            kageant_blockforwarded_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_ALLOWWMCD,
+            kageant_allowwmcopydata_get() ? BST_CHECKED : BST_UNCHECKED);
         /* KiTTY: When Windows locks - the list index is the stored value */
         {
             static const char *const wl[] = {
@@ -5617,6 +5719,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             /* Reopen on the page it was left on. Out-of-range (the page count
              * changed since it was stored) falls back to the first. */
             int page = kageant_settings_tab_get();
+            /* KiTTY: a notice's click asks for a page (the Security page
+             * for the window-messages notice) */
+            if (keysettings_open_page >= 0) {
+                page = keysettings_open_page;
+                keysettings_open_page = -1;
+            }
             if (page < 0 || page >= (int)lenof(keysettings_pages))
                 page = 0;
             SendDlgItemMessage(hwnd, IDC_SET_TABS, TCM_SETCURSEL,
@@ -5768,6 +5876,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
             kageant_allowipclock_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_ALLOWIPCLOCK) == BST_CHECKED);
+            kageant_blockforwarded_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKFWD) == BST_CHECKED);
+            kageant_allowwmcopydata_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_ALLOWWMCD) == BST_CHECKED);
             /* off before, on now: the file is checked once OK has stored
              * everything (keysettings_knownhosts_on below) - a plain OK
              * with the box already ticked does not repeat it */
@@ -6487,7 +6599,18 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                     if (removed)
                         kageant_audit_use("remove", rfp, disp->comment->s,
                                           "done", "gui", 0);
+                    /* KiTTY: its rules stay in the rule store - the hint */
+                    if (removed && disp->blob->len) {
+                        char *kfp = kar_key_fp(blob);
+                        kageant_rules_kept_add(kfp, disp->comment->s);
+                        sfree(kfp);
+                    }
                     sfree(rfp);
+                }
+                {
+                    char *kept = kageant_rules_kept_take();
+                    kageant_rules_hint_notice(KT_KA_NOTICE_RULES_KEPT, kept);
+                    sfree(kept);
                 }
                 keylist_update();
             }
@@ -7011,8 +7134,20 @@ struct WmCopydataTransaction {
 
 static struct PageantClient wmcpc;
 
+static void wm_copydata_got_response(
+    PageantClient *pc, PageantClientRequestId *reqid, ptrlen response);
+
 static void wm_copydata_got_msg(void *vctx)
 {
+    /* KiTTY: requests by window messages (PuTTY before 0.75): a notice once
+     * per program, and refused - SSH_AGENT_FAILURE, a record with reason
+     * window-messages - while kageant's setting is off */
+    if (!kageant_wmcopydata_request(wmct.sender_pid)) {
+        static const unsigned char refused[] = { SSH_AGENT_FAILURE };
+        wm_copydata_got_response(&wmcpc, NULL,
+                                 make_ptrlen(refused, lenof(refused)));
+        return;
+    }
     /* KiTTY: WM_COPYDATA is an external transport - see the pipe path. */
     pageant_external_request = true;
     pageant_external_pid = wmct.sender_pid;
@@ -7756,6 +7891,12 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         sfree(owners);
         break;
       }
+      case KAGEANT_WM_NOTICE_SECURITY:
+        /* KiTTY: the window-messages notice - the settings on the
+         * Security page, where its checkbox is */
+        keysettings_open_page = 1;
+        PostMessage(hwnd, WM_COMMAND, IDM_SETTINGS, 0);
+        break;
       case KAGEANT_WM_NOTICE_CLICK:
         /* KiTTY: a kageant notice window was clicked - open View Keys, the
          * window that answers "which keys?" for both the key-used and the
@@ -7942,8 +8083,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             prompt_add_keyfile(command == IDM_ADDKEY_ENCRYPTED);
             break;
           case IDM_REMOVE_ALL:
+            kageant_rules_kept_held();     /* KiTTY: the hint, counted first */
             pageant_delete_all();
             kageant_audit_use("remove-all", NULL, NULL, "done", "gui", 0);
+            {
+                char *kept = kageant_rules_kept_take();
+                kageant_rules_hint_notice(KT_KA_NOTICE_RULES_KEPT, kept);
+                sfree(kept);
+            }
             keylist_update();
             break;
           case IDM_REENCRYPT_ALL:
@@ -8293,29 +8440,18 @@ static struct winpgnt_client wpc[1];
 
 HINSTANCE hinst;
 
-static NORETURN void opt_error(const char *fmt, ...)
+/* KiTTY: a command-line report (the help, an error, the result of -d, -D
+ * or -h). If the caller has a console (cmd, PowerShell) or a redirected
+ * stdout, the text goes there - a GUI-subsystem exe is not attached to a
+ * console by default, so it attaches explicitly. Started with no console
+ * (the Run box, a shortcut): a message box with caption and icon, or
+ * nothing when icon is 0 (a result nobody waits for). true when the text
+ * went to the console or the file. */
+static bool kageant_cli_report(const char *text, const char *caption,
+                               UINT icon)
 {
-    va_list ap;
-    va_start(ap, fmt);
-    char *msg = dupvprintf(fmt, ap);
-    va_end(ap);
-
-    MessageBox(NULL, msg, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR | MB_OK);
-
-    exit(1);
-}
-
-/* KiTTY: -h / -help / --help. If the caller has a console (cmd,
- * PowerShell), print the summary inline there - a GUI-subsystem exe is
- * not attached to it by default, so attach explicitly. Started with no
- * console (the Run box, a shortcut), fall back to a message box, the
- * same way the command-line errors do. */
-static void show_cmdline_help(void)
-{
-    static const char help[] = KT_KA_CLI_HELP;
-
-    /* A redirected stdout (`kageant -h > file`, a pipe) is inherited even
-     * by a GUI-subsystem exe - and it must be looked at BEFORE any
+    /* A redirected stdout (`kageant -help > file`, a pipe) is inherited
+     * even by a GUI-subsystem exe - and it must be looked at BEFORE any
      * AttachConsole, which would replace the std handles with the
      * console's and send the text to the screen instead of the file. */
     HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -8331,20 +8467,379 @@ static void show_cmdline_help(void)
     }
     if (h != NULL && h != INVALID_HANDLE_VALUE) {
         DWORD written;
+        size_t len = strlen(text);
         if (attached)   /* the shell's prompt is already mid-line */
             WriteFile(h, "\r\n", 2, &written, NULL);
-        WriteFile(h, help, (DWORD)strlen(help), &written, NULL);
+        WriteFile(h, text, (DWORD)len, &written, NULL);
+        if (len && text[len - 1] != '\n')
+            WriteFile(h, "\r\n", 2, &written, NULL);
         if (opened)
             CloseHandle(h);
         if (attached)
             FreeConsole();
-        return;
+        return true;
     }
     if (attached)
         FreeConsole();
 
-    MessageBox(NULL, help, KT_CAP_KA_CMDLINE,
-               MB_ICONINFORMATION | MB_OK);
+    if (icon)
+        MessageBox(NULL, text, caption, icon | MB_OK);
+    return false;
+}
+
+static NORETURN void opt_error(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    char *msg = dupvprintf(fmt, ap);
+    va_end(ap);
+
+    kageant_cli_report(msg, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR);
+
+    exit(1);
+}
+
+/* KiTTY: -help / --help, on the console or in a message box. */
+static void show_cmdline_help(void)
+{
+    kageant_cli_report(KT_KA_CLI_HELP, KT_CAP_KA_CMDLINE, MB_ICONINFORMATION);
+}
+
+/* KiTTY: a key -d names - a key file (its public part, no passphrase:
+ * PPK, SSH-1, a public key file) or a SHA256 fingerprint as the key list
+ * shows it - found among the keys of the running agent. 1 found (*out
+ * filled), 0 not held, -1 neither a key file nor a fingerprint (*err set,
+ * a new string). */
+struct kageant_cli_find {
+    const char *fp;                 /* "SHA256:..." looked for, or NULL */
+    ptrlen blob;                    /* the file's public blob, or empty */
+    struct pageant_pubkey *found;
+};
+
+static void kageant_cli_find_cb(void *vctx, char **fingerprints,
+                                const char *comment, uint32_t ext_flags,
+                                struct pageant_pubkey *key)
+{
+    struct kageant_cli_find *ctx = (struct kageant_cli_find *)vctx;
+    (void)comment;
+    (void)ext_flags;
+    if (ctx->found)
+        return;
+    if (ctx->fp) {
+        const char *f = fingerprints[SSH_FPTYPE_SHA256];
+        const char *s = f ? strstr(f, "SHA256:") : NULL;
+        if (!s || strcmp(s, ctx->fp))
+            return;
+    } else if (!ptrlen_eq_ptrlen(ptrlen_from_strbuf(key->blob), ctx->blob)) {
+        return;
+    }
+    ctx->found = pageant_pubkey_copy(key);
+}
+
+static int kageant_cli_find_key(const char *arg, struct pageant_pubkey **out,
+                                char **err)
+{
+    struct kageant_cli_find ctx;
+    strbuf *blob = NULL;
+    char *retstr = NULL;
+    int type;
+
+    *out = NULL;
+    *err = NULL;
+    memset(&ctx, 0, sizeof(ctx));
+    if (!strncmp(arg, "SHA256:", 7)) {
+        ctx.fp = arg;
+    } else {
+        Filename *fn = filename_from_str(arg);
+        const char *error = NULL;
+        bool ok = false;
+        blob = strbuf_new();
+        type = key_type(fn);
+        if (type == SSH_KEYTYPE_SSH1 || type == SSH_KEYTYPE_SSH1_PUBLIC)
+            ok = rsa1_loadpub_f(fn, BinarySink_UPCAST(blob), NULL, &error);
+        else if (type == SSH_KEYTYPE_SSH2 ||
+                 type == SSH_KEYTYPE_SSH2_PUBLIC_RFC4716 ||
+                 type == SSH_KEYTYPE_SSH2_PUBLIC_OPENSSH)
+            ok = ppk_loadpub_f(fn, NULL, BinarySink_UPCAST(blob), NULL,
+                               &error);
+        else
+            error = key_type_to_str(type);
+        filename_free(fn);
+        if (!ok) {
+            *err = dupprintf(KT_KA_CLI_D_UNREADABLE_FMT, arg,
+                             error ? error : "");
+            strbuf_free(blob);
+            return -1;
+        }
+        ctx.blob = ptrlen_from_strbuf(blob);
+    }
+    if (pageant_enum_keys(kageant_cli_find_cb, &ctx, &retstr) !=
+        PAGEANT_ACTION_OK) {
+        *err = dupprintf(KT_KA_CLI_LIST_FAILED_FMT,
+                         retstr ? retstr : "");
+        sfree(retstr);
+        if (blob)
+            strbuf_free(blob);
+        return -1;
+    }
+    sfree(retstr);
+    if (blob)
+        strbuf_free(blob);
+    *out = ctx.found;
+    return ctx.found ? 1 : 0;
+}
+
+/* KiTTY: -h on the agent this process IS (the first instance): the key
+ * just added gets the destinations straight in the rule store, as the
+ * rule editor puts them there - "Fixed list" for a pattern, the host kept
+ * with its port - with this program as the origin. false when the key is
+ * not in the agent (its add failed or was cancelled). */
+static bool kageant_cli_apply_rules(const char *path, const kar_rules *r)
+{
+    Filename *fn = filename_from_str(path);
+    strbuf *blob = strbuf_new();
+    char *comment = NULL, *fp;
+    const char *error = NULL;
+    kar_origin origin;
+    bool ok = ppk_loadpub_f(fn, NULL, BinarySink_UPCAST(blob), &comment,
+                            &error) &&
+        pageant_key_present_by_blob(ptrlen_from_strbuf(blob));
+    filename_free(fn);
+    if (ok) {
+        fp = kar_key_fp(ptrlen_from_strbuf(blob));
+        memset(&origin, 0, sizeof(origin));
+        origin.kind = KAR_ORIGIN_PROGRAM;
+        origin.program = kageant_req_path_dup(GetCurrentProcessId());
+        origin.when = (uint64_t)time(NULL);
+        kar_store_set_key_rules(kar_store_get(), fp, comment,
+                                ptrlen_from_strbuf(blob), r, &origin);
+        kar_origin_free(&origin);
+        sfree(fp);
+        kageant_rules_changed();
+    }
+    sfree(comment);
+    strbuf_free(blob);
+    return ok;
+}
+
+/* KiTTY: one key of rules-list-v00@kapper.net's answer (or of the rule
+ * file read directly): its fingerprint as the rule store files it, its
+ * comment, loaded or not, its rules as Key details lists them ("" = none). */
+struct kageant_cli_rk {
+    char *fp, *comment, *rules;
+    bool loaded;
+};
+static void kageant_cli_rk_free(struct kageant_cli_rk *v, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        sfree(v[i].fp);
+        sfree(v[i].comment);
+        sfree(v[i].rules);
+    }
+    sfree(v);
+}
+
+/* The running agent's answer (this agent's own, in process, when it is
+ * the first instance). false when it refused or did not understand. */
+static bool kageant_cli_rules_query(struct kageant_cli_rk **out, size_t *n)
+{
+    unsigned rt;
+    strbuf *rep = pageant_kapper_ext_query("rules-list-v00@kapper.net",
+                                           make_ptrlen("", 0), &rt);
+    BinarySource src[1];
+    unsigned long cnt;
+    struct kageant_cli_rk *v = NULL;
+    size_t nv = 0, size = 0;
+    *out = NULL;
+    *n = 0;
+    if (!rep)
+        return false;
+    BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(rep));
+    cnt = get_uint32(src);
+    for (unsigned long i = 0; i < cnt && !get_err(src); i++) {
+        ptrlen f = get_string(src), c = get_string(src);
+        unsigned char ld = get_byte(src);
+        ptrlen r = get_string(src);
+        if (get_err(src))
+            break;
+        sgrowarray(v, size, nv);
+        v[nv].fp = mkstr(f);
+        v[nv].comment = mkstr(c);
+        v[nv].loaded = ld != 0;
+        v[nv].rules = mkstr(r);
+        nv++;
+    }
+    strbuf_free(rep);
+    *out = v;
+    *n = nv;
+    return true;
+}
+
+/* The same from the rule file itself, no kageant running (kageant -l):
+ * every key with rules, none of them loaded. false when the file is
+ * damaged. */
+static bool kageant_cli_rules_file(struct kageant_cli_rk **out, size_t *n)
+{
+    kar_store *st = kar_store_get();
+    struct kageant_cli_rk *v = NULL;
+    size_t nv = 0, size = 0;
+    *out = NULL;
+    *n = 0;
+    if (!kageant_rules_load() || st->damaged)
+        return false;
+    for (size_t i = 0; i < st->nkeys; i++) {
+        size_t cnt = 0;
+        char *lines = kar_store_dest_lines(st, st->keys[i].fp, &cnt);
+        if (!lines)
+            continue;
+        sgrowarray(v, size, nv);
+        v[nv].fp = dupstr(st->keys[i].fp);
+        v[nv].comment = dupstr(st->keys[i].comment ? st->keys[i].comment : "");
+        v[nv].loaded = false;
+        v[nv].rules = lines;
+        nv++;
+    }
+    *out = v;
+    *n = nv;
+    return true;
+}
+
+/* kageant -l: one block per key - comment and fingerprint, loaded or not,
+ * its rules with their origin lines (or "any - ..."), a blank line between */
+static void kageant_cli_print_rules(const struct kageant_cli_rk *v, size_t n)
+{
+    strbuf *sb = strbuf_new();
+    if (!n)
+        put_dataz(sb, KT_KA_CLI_L_NONE);
+    for (size_t i = 0; i < n; i++) {
+        const char *sha = strstr(v[i].fp, "SHA256:");
+        if (i)
+            put_dataz(sb, "\r\n");
+        put_fmt(sb, KT_KA_CLI_L_KEY_FMT,
+                *v[i].comment ? v[i].comment : KT_KA_NO_COMMENT,
+                sha ? sha : v[i].fp,
+                v[i].loaded ? KT_KA_CLI_L_LOADED : KT_KA_CLI_L_NOT_LOADED);
+        put_dataz(sb, "\r\n");
+        if (!*v[i].rules) {
+            put_fmt(sb, "  %s\r\n", KT_KAKEYS_DEST_ANY);
+        } else {
+            const char *p = v[i].rules;
+            while (*p) {
+                const char *e = strstr(p, "\r\n");
+                size_t len = e ? (size_t)(e - p) : strlen(p);
+                put_fmt(sb, "  %.*s\r\n", (int)len, p);
+                if (!e)
+                    break;
+                p = e + 2;
+            }
+        }
+    }
+    kageant_cli_report(sb->s, KT_CAP_KA_CMDLINE, MB_ICONINFORMATION);
+    strbuf_free(sb);
+}
+
+/* The keys the command line added: for each the destination rules the
+ * rule store now holds for it (read through the agent), one report each
+ * (nothing for a key without rules). nh: -h's destination count, for the
+ * report when the rules cannot be read back. */
+static void kageant_cli_report_rules(char *const *paths, size_t np, int nh)
+{
+    struct kageant_cli_rk *v = NULL;
+    size_t nv = 0;
+    bool have = kageant_cli_rules_query(&v, &nv);
+    for (size_t i = 0; i < np; i++) {
+        Filename *fn = filename_from_str(paths[i]);
+        strbuf *blob = strbuf_new();
+        char *comment = NULL, *fp = NULL;
+        const char *error = NULL, *rules = NULL;
+        if (ppk_loadpub_f(fn, NULL, BinarySink_UPCAST(blob), &comment,
+                          &error)) {
+            fp = kar_key_fp(ptrlen_from_strbuf(blob));
+            for (size_t j = 0; have && j < nv && !rules; j++)
+                if (!strcmp(v[j].fp, fp) && *v[j].rules)
+                    rules = v[j].rules;
+        }
+        if (rules) {
+            const char *base = strrchr(paths[i], '\\');
+            char *m = dupprintf(KT_KA_CLI_RULES_FMT,
+                                comment && *comment ? comment :
+                                (base ? base + 1 : paths[i]), rules);
+            kageant_cli_report(m, KT_CAP_KA_CMDLINE, 0);
+            sfree(m);
+        } else if (nh) {
+            char *m = dupprintf(KT_KA_CLI_H_ADDED_FMT, nh, paths[i]);
+            kageant_cli_report(m, KT_CAP_KA_CMDLINE, 0);
+            sfree(m);
+        }
+        sfree(fp);
+        sfree(comment);
+        strbuf_free(blob);
+        filename_free(fn);
+    }
+    kageant_cli_rk_free(v, nv);
+}
+
+/* kageant -R <key file | SHA256:...>: rules-remove-v00@kapper.net to the
+ * running agent (this one, in process, as the first instance), which puts
+ * up its confirmation. Its answer reported; false when the rules stay
+ * because of a refusal or no confirmation. */
+static bool kageant_cli_remove_rules(const char *arg)
+{
+    strbuf *data = strbuf_new(), *rep;
+    unsigned rt;
+    char *m = NULL;
+    bool ok = false;
+    if (!strncmp(arg, "SHA256:", 7)) {
+        put_stringz(data, arg);
+    } else {
+        Filename *fn = filename_from_str(arg);
+        strbuf *blob = strbuf_new();
+        const char *error = NULL;
+        int type = key_type(fn);
+        bool got = (type == SSH_KEYTYPE_SSH2 ||
+                    type == SSH_KEYTYPE_SSH2_PUBLIC_RFC4716 ||
+                    type == SSH_KEYTYPE_SSH2_PUBLIC_OPENSSH) &&
+            ppk_loadpub_f(fn, NULL, BinarySink_UPCAST(blob), NULL, &error);
+        filename_free(fn);
+        if (!got) {
+            m = dupprintf(KT_KA_CLI_R_UNREADABLE_FMT, arg,
+                          error ? error : key_type_to_str(type));
+            kageant_cli_report(m, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR);
+            sfree(m);
+            strbuf_free(blob);
+            strbuf_free(data);
+            return false;
+        }
+        put_stringsb(data, blob);
+    }
+    rep = pageant_kapper_ext_query("rules-remove-v00@kapper.net",
+                                   ptrlen_from_strbuf(data), &rt);
+    strbuf_free(data);
+    if (!rep || rep->len < 4) {
+        kageant_cli_report(KT_KA_CLI_R_REFUSED, KT_CAP_KA_CMDLINE_ERROR,
+                           MB_ICONERROR);
+    } else {
+        unsigned long res = GET_32BIT_MSB_FIRST(rep->u);
+        if (res == 0) {
+            m = dupprintf(KT_KA_CLI_R_REMOVED_FMT, arg);
+            ok = true;
+        } else if (res == 2) {
+            m = dupprintf(KT_KA_CLI_R_NONE_FMT, arg);
+            ok = true;
+        } else if (res == 3) {
+            m = dupprintf(KT_KA_CLI_R_UNKNOWN_FMT, arg);
+        } else if (res == 4) {
+            m = dupstr(KT_KA_CLI_R_NODESK);
+        } else {
+            m = dupstr(KT_KA_CLI_R_KEPT);
+        }
+        kageant_cli_report(m, ok ? KT_CAP_KA_CMDLINE : KT_CAP_KA_CMDLINE_ERROR,
+                           ok ? 0 : MB_ICONERROR);
+        sfree(m);
+    }
+    if (rep)
+        strbuf_free(rep);
+    return ok;
 }
 
 #ifdef LEGACY_WINDOWS
@@ -8379,6 +8874,22 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     CommandLineKey *clkeys = NULL;
     size_t nclkeys = 0, clkeysize = 0;
+    /* KiTTY: -h (destinations for every key file of the call, as ssh-add
+     * -h), -d (keys to remove from the running agent), -D (all of them) */
+    strbuf *cli_dests = NULL;
+    char **cli_del = NULL;
+    size_t ncli_del = 0, cli_delsize = 0;
+    bool cli_del_all = false;
+    kar_rules *cli_rules = NULL;
+    int cli_exit = 0;
+    /* KiTTY: -R (a key's destination rules removed, on a person's word at
+     * the desktop) and -l (every key with its rules) */
+    char **cli_rmrules = NULL;
+    size_t ncli_rmrules = 0, cli_rmrulessize = 0;
+    bool cli_list = false;
+    /* the keys the command line added, for the report of their rules */
+    char **cli_added = NULL;
+    size_t ncli_added = 0, cli_addedsize = 0;
 
     dll_hijacking_protection();
     enable_dit();
@@ -8513,6 +9024,22 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         #define match_optval(...) aux_match_opt( \
             &amo, &valarg, __VA_ARGS__, (const char *)NULL)
 
+        /* KiTTY: -h and -d without their value (the end of the line, or
+         * another option where the value belongs): their own text, not the
+         * matcher's */
+        if (amo.doing_opts) {
+            const char *cur =
+                cmdline_arg_to_utf8(amo.arglist->args[amo.index]);
+            CmdlineArg *nx = amo.arglist->args[amo.index + 1];
+            const char *nxs = nx ? cmdline_arg_to_utf8(nx) : NULL;
+            if (cur && (!strcmp(cur, "-h") || !strcmp(cur, "-d") ||
+                        !strcmp(cur, "-R")) &&
+                (!nxs || nxs[0] == '-'))
+                opt_error(!strcmp(cur, "-h") ? KT_KA_CLI_H_NEEDS_DEST :
+                          !strcmp(cur, "-d") ? KT_KA_CLI_D_NEEDS_KEY :
+                                               KT_KA_CLI_R_NEEDS_KEY);
+        }
+
         if (aux_match_arg(&amo, &valarg)) {
             /*
              * Non-option arguments are expected to be key files, and
@@ -8525,11 +9052,34 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         } else if (match_opt("-pgpfp")) {
             pgp_fingerprints_msgbox(NULL);
             return 0;
-        } else if (match_opt("-h", "-help")) {
+        } else if (match_opt("-help")) {
             /* --help arrives here too: the matcher folds a GNU-style
-             * double dash onto the single-dash form. */
+             * double dash onto the single-dash form. -h is not help any
+             * more: it is ssh-add's -h, below. */
             show_cmdline_help();
             return 0;
+        } else if (match_optval("-h")) {
+            /* KiTTY: a destination, as ssh-add -h (one per -h; commas
+             * separate several in one) */
+            if (!cli_dests)
+                cli_dests = strbuf_new();
+            if (cli_dests->len)
+                put_dataz(cli_dests, ", ");
+            put_dataz(cli_dests, cmdline_arg_to_utf8(valarg));
+        } else if (match_optval("-d")) {
+            /* KiTTY: a key to remove from the running agent */
+            sgrowarray(cli_del, cli_delsize, ncli_del);
+            cli_del[ncli_del++] = dupstr(cmdline_arg_to_utf8(valarg));
+        } else if (match_opt("-D")) {
+            /* KiTTY: every key removed from the running agent */
+            cli_del_all = true;
+        } else if (match_optval("-R")) {
+            /* KiTTY: every destination rule of a key removed */
+            sgrowarray(cli_rmrules, cli_rmrulessize, ncli_rmrules);
+            cli_rmrules[ncli_rmrules++] = dupstr(cmdline_arg_to_utf8(valarg));
+        } else if (match_opt("-l")) {
+            /* KiTTY: every key with its destination rules */
+            cli_list = true;
         } else if (match_opt("-restrict-acl", "-restrict_acl",
                              "-restrictacl")) {
             restrict_process_acl();
@@ -8572,6 +9122,29 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
 
     /*
+     * KiTTY: -h's destinations looked up NOW, before anything is added or
+     * started: a destination refused, or a host without a host key, adds
+     * nothing and ends with exit code 1.
+     */
+    if (cli_dests) {
+        char *err = NULL;
+        if (!nclkeys)
+            opt_error(KT_KA_CLI_H_NO_KEYS);
+        /* destinations are SSH-2's: an SSH-1 key, or a file that is no
+         * key, would be added without them */
+        for (size_t i = 0; i < nclkeys; i++)
+            if (key_type(clkeys[i].fn) != SSH_KEYTYPE_SSH2)
+                opt_error(KT_KA_CLI_H_SSH2_ONLY_FMT,
+                          filename_to_str(clkeys[i].fn));
+        cli_rules = kageant_dest_rules_from_list(cli_dests->s, &err);
+        if (!cli_rules) {
+            char *m = dupprintf(KT_KA_CLI_H_FAILED_FMT, err ? err : "");
+            sfree(err);
+            opt_error("%s", m);
+        }
+    }
+
+    /*
      * Create and lock an interprocess mutex while we figure out
      * whether we're going to be the Pageant server or a client. That
      * way, two Pageant processes started up simultaneously will be
@@ -8594,6 +9167,40 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Find out if Pageant is already running.
      */
     already_running = agent_exists();
+
+    /* KiTTY: -d and -D act on a running agent only; -h with -encrypted
+     * cannot reach one (add-ppk carries no destinations) */
+    if (!already_running && (ncli_del || cli_del_all)) {
+        unlock_interprocess_mutex(mutex);
+        opt_error(KT_KA_CLI_NOT_RUNNING_FMT, cli_del_all ? "-D" : "-d");
+    }
+    if (already_running && cli_rules) {
+        for (size_t i = 0; i < nclkeys; i++)
+            if (clkeys[i].add_encrypted) {
+                unlock_interprocess_mutex(mutex);
+                opt_error(KT_KA_CLI_H_ENCRYPTED);
+            }
+    }
+    /* KiTTY: the texts of the rules name CA destinations and compare a
+     * program's rule with known_hosts: the same look-ups as the agent's */
+    kar_ca_lookup = kageant_ca_by_name;
+    kkh_path_hook = kageant_known_hosts_path;
+    /* KiTTY: -l alone, no kageant running: the rule file read directly,
+     * no agent started */
+    if (!already_running && cli_list && !nclkeys && !ncli_rmrules &&
+        !command) {
+        struct kageant_cli_rk *lv = NULL;
+        size_t ln = 0;
+        unlock_interprocess_mutex(mutex);
+        if (!kageant_cli_rules_file(&lv, &ln)) {
+            kageant_cli_report(KT_KA_CLI_L_FAILED, KT_CAP_KA_CMDLINE_ERROR,
+                               MB_ICONERROR);
+            return 1;
+        }
+        kageant_cli_print_rules(lv, ln);
+        kageant_cli_rk_free(lv, ln);
+        return 0;
+    }
 
     /*
      * If it isn't, we're going to be the primary Pageant that stays
@@ -8651,6 +9258,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
+        kageant_fwd_blocked_hook = kageant_fwd_blocked;   /* forwarded agents */
+        /* the keys with rules a program's remove-all takes out (the hint) */
+        kageant_before_remove_all_hook = kageant_rules_kept_held;
+        /* kageant -R: a person's word before a key's rules go */
+        kageant_rules_remove_hook = kageant_rules_remove_confirm;
         kageant_reencrypt_audit_hook = kageant_do_reencrypt_audit;
         kageant_decrypt_audit_hook = kageant_do_decrypt_audit;
         kageant_notify_hook = kageant_do_notify;
@@ -8808,12 +9420,96 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     unlock_interprocess_mutex(mutex);
 
     /*
+     * KiTTY: -d and -D on the running agent, before any key of the call is
+     * added. Over the pipe as REMOVE_IDENTITY / REMOVE_ALL_IDENTITIES, so
+     * its policy (blockipcremove, lockdown, the agent lock, a forwarded
+     * connection) decides as for any program. Each result on the console.
+     */
+    if (already_running) {
+        for (size_t i = 0; i < ncli_del; i++) {
+            struct pageant_pubkey *key = NULL;
+            char *err = NULL, *retstr = NULL, *m;
+            int r = kageant_cli_find_key(cli_del[i], &key, &err);
+            if (r < 0) {
+                kageant_cli_report(err, KT_CAP_KA_CMDLINE_ERROR,
+                                   MB_ICONERROR);
+                cli_exit = 1;
+            } else if (r == 0) {
+                m = dupprintf(KT_KA_CLI_D_NOT_HELD_FMT, cli_del[i]);
+                kageant_cli_report(m, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR);
+                sfree(m);
+                cli_exit = 1;
+            } else if (pageant_delete_key(key, &retstr) !=
+                       PAGEANT_ACTION_OK) {
+                m = dupprintf(KT_KA_CLI_D_REFUSED_FMT, cli_del[i]);
+                kageant_cli_report(m, KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR);
+                sfree(m);
+                cli_exit = 1;
+            } else {
+                m = dupprintf(KT_KA_CLI_D_REMOVED_FMT, cli_del[i],
+                              key->comment && *key->comment ?
+                              key->comment : KT_KA_NO_COMMENT);
+                kageant_cli_report(m, KT_CAP_KA_CMDLINE, 0);
+                sfree(m);
+            }
+            sfree(err);
+            sfree(retstr);
+            if (key)
+                pageant_pubkey_free(key);
+        }
+        if (cli_del_all) {
+            char *retstr = NULL;
+            if (pageant_delete_all_keys(&retstr) != PAGEANT_ACTION_OK) {
+                kageant_cli_report(KT_KA_CLI_DD_REFUSED,
+                                   KT_CAP_KA_CMDLINE_ERROR, MB_ICONERROR);
+                cli_exit = 1;
+            } else {
+                kageant_cli_report(KT_KA_CLI_DD_REMOVED, KT_CAP_KA_CMDLINE, 0);
+            }
+            sfree(retstr);
+        }
+    }
+    for (size_t i = 0; i < ncli_del; i++)
+        sfree(cli_del[i]);
+    sfree(cli_del);
+
+    /* KiTTY: -h on this agent itself needs its rule file readable: a
+     * damaged one is replaced in the rule editor, never written over */
+    if (cli_rules && !already_running && kar_store_get()->damaged) {
+        kageant_cli_report(KT_KA_CLI_H_DAMAGED, KT_CAP_KA_CMDLINE_ERROR,
+                           MB_ICONERROR);
+        return 1;
+    }
+    /* KiTTY: -h on a running agent: the destinations go with each add
+     * (restrict-destination-v00@openssh.com), as ssh-add -h sends them */
+    if (cli_rules && already_running)
+        pageant_set_add_dest(cli_rules);
+
+    /*
      * Add any keys provided on the command line.
      */
     kageant_cmdline_loading = true;
     for (size_t i = 0; i < nclkeys; i++) {
         CommandLineKey *clkey = &clkeys[i];
+        kageant_cli_add_failed = false;
         win_add_keyfile(clkey->fn, clkey->add_encrypted);
+        /* KiTTY: -h - this agent: the rules straight in its store, before
+         * the add's record below, which carries them. A running agent: the
+         * add above carried them. Each key added is reported with the
+         * rules the rule store holds for it, after the loop. */
+        {
+            bool added = !kageant_cli_add_failed;
+            if (added && cli_rules && !already_running)
+                added = kageant_cli_apply_rules(filename_to_str(clkey->fn),
+                                                cli_rules);
+            if (added) {
+                sgrowarray(cli_added, cli_addedsize, ncli_added);
+                cli_added[ncli_added++] =
+                    dupstr(filename_to_str(clkey->fn));
+            } else {
+                cli_exit = 1;
+            }
+        }
         /* KiTTY: its audit line (this agent's own add, not over IPC) */
         {
             char *afp = kageant_record_fp_of_file(filename_to_str(clkey->fn));
@@ -8825,6 +9521,41 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     }
     kageant_cmdline_loading = false;
     sfree(clkeys);
+    pageant_set_add_dest(NULL);
+    /* KiTTY: the destination rules the added keys carry now (stored rules
+     * apply to a plain add too), then -R and -l */
+    if (ncli_added)
+        kageant_cli_report_rules(cli_added, ncli_added,
+                                 cli_rules ? (int)cli_rules->n : 0);
+    for (size_t i = 0; i < ncli_added; i++)
+        sfree(cli_added[i]);
+    sfree(cli_added);
+    for (size_t i = 0; i < ncli_rmrules; i++) {
+        if (!kageant_cli_remove_rules(cli_rmrules[i]))
+            cli_exit = 1;
+        sfree(cli_rmrules[i]);
+    }
+    sfree(cli_rmrules);
+    if (cli_list) {
+        struct kageant_cli_rk *lv = NULL;
+        size_t ln = 0;
+        if (kageant_cli_rules_query(&lv, &ln)) {
+            kageant_cli_print_rules(lv, ln);
+        } else {
+            kageant_cli_report(KT_KA_CLI_L_FAILED, KT_CAP_KA_CMDLINE_ERROR,
+                               MB_ICONERROR);
+            cli_exit = 1;
+        }
+        kageant_cli_rk_free(lv, ln);
+    }
+    if (cli_rules) {
+        kar_rules_free(cli_rules);
+        cli_rules = NULL;
+    }
+    if (cli_dests) {
+        strbuf_free(cli_dests);
+        cli_dests = NULL;
+    }
     /* And forget any passphrases we stashed during that loop. */
     pageant_forget_passphrases();
 
@@ -8888,8 +9619,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * command on the line were always handed to the running agent and
          * exited quietly (that is the path above); the bare start now gets
          * the same quiet exit - the tray icon of the running agent is the
-         * answer to "did it start?". */
-        return 0;
+         * answer to "did it start?". KiTTY: 1 when an -h add, a -d or a
+         * -D of the call failed. */
+        return cli_exit;
     }
 
     /* Set up a system tray icon */

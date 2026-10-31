@@ -254,7 +254,9 @@ startup, and shows a notice when a key is used; the notice display time;
 the colour theme.
 
 \b \q{Security}: the IPC policy (refuse all key adds and removes over
-the pipe, or only adds, or only removes), whether confirmations demand
+the pipe, or only adds, or only removes), \q{Allow locking the agent
+over IPC}, \q{Refuse key changes from a forwarded agent (add, remove,
+lock)} (on by default, \k{pageant-forward-changes}), whether confirmations demand
 a Windows Hello gesture, how long a typed passphrase and a Windows
 Hello unlock are kept for a batch of keys, and \q{Re-encrypt keys
 after idle} - the mode and the time after which an unused key goes
@@ -284,7 +286,7 @@ Windows' own settings.
 100 sign, 101 confirm, 102 session-bind, 103 refused request, 104
 refused by a key's destination rules or a key list they left empty, 110 add,
 111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
-remove all, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
+remove all, 116 rules changed in the rule editor, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
 re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 170 log
 rotation. Refusals,
@@ -300,6 +302,15 @@ On a connection whose client sent a verified session-bind, signatures,
 confirmations and refused requests carry its destination (\c{dest},
 \c{fwd}; see \k{pageant-destination}). The session-bind itself is a
 record of kind \c{session-bind}, event ID 102.
+
+OK in the rule editor writes one record of kind \c{rules} for each key
+whose rules it changed: result \c{changed}, reason \c{gui}, kageant
+itself as the program, and the key's rules now in \c{restrict} (empty
+when every rule was removed): event ID 116. \c{kageant -R} writes the
+same kind: result \c{removed} or \c{refused}, reason \c{cli}. A key whose rules stayed
+the same gets none. Cancel writes none. A rule set with \c{ssh-add
+-h} or kageant's \c{-h} is in the \c{restrict} field of the add record
+(110).
 }
 
 Press F1 on any page for this section; on the idle row it opens the
@@ -334,6 +345,109 @@ existing kageant.
 
 You can specify the \c{\-\-encrypted} option to defer decryption of
 these keys; see \k{pageant-deferred-decryption}.
+
+\S{pageant-cmdline-restrict} Restricting the keys of the command line:
+\c{-h}
+
+\I{-h-kageant}\c{-h} restricts every key file of the command line to a
+destination, as OpenSSH's \c{ssh-add -h} does (\k{pageant-restrict}):
+
+\c C:\KiTTY\kageant.exe -h web01 -h "jump01>deploy@web02" d:\main.ppk
+
+The values are OpenSSH's: \c{host}, \c{user@host}, \c{via>host} or
+\c{via>user@host}, a host also as \c{host:port} or \c{[host]:port}.
+The last host may be a pattern within the rule editor's limit
+(\c{*.customer.com}). \c{-h} is repeatable. Commas separate several
+destinations in one \c{-h}. Unlike \c{ssh-add}, kageant looks up the
+host keys itself, as the rule editor does: in the KiTTY++ host-key store
+and, while kageant reads it (\k{pageant-knownhosts}), in OpenSSH's
+\c{known_hosts}. A pattern gets \q{Fixed list: host keys known now}.
+A destination refused, or a host without a host key, adds no key: the
+reason is shown and kageant ends with exit code 1. \c{-h} applies to
+SSH-2 key files (PPK) only.
+
+If kageant is already running, the keys go to it with the destinations
+as \c{ssh-add -h} sends them (\c{restrict-destination-v00@openssh.com}).
+The running kageant keeps the rules with this kageant.exe as their
+origin. A key it holds already is sent again: its rules are replaced. Its
+policy applies as to any program (\q{Block adding keys over IPC}). The
+destination constraint carries no pattern choice: there a pattern rule
+is OpenSSH's, matched by the host keys sent. \c{-encrypted} cannot be
+used with \c{-h} here: the destinations reach a running kageant with
+the decrypted key only.
+
+If kageant starts with \c{-h}, it puts the rules in force itself, in
+its rule file: they apply each time the key is loaded, from the startup
+list too, until the rule editor or \c{-R} removes them.
+
+For every key the command line adds - with \c{-h} or without - kageant
+reports the destination rules the rule file holds for it, as Key details
+lists them: \q{main: kageant applies the destination rules stored for
+this key:} and the rules on the lines below. A key without rules gets no
+such line.
+
+\c{-h} is no longer the short form of \c{-help}: \c{-help} and
+\c{\-\-help} show the summary of the options.
+
+\S{pageant-cmdline-remove} Removing keys from a running kageant: \c{-d},
+\c{-D}
+
+\I{-d-kageant}\c{-d} removes one key from the running kageant, given
+as a key file (its public part is read, no passphrase: a PPK, an SSH-1
+key or a public key file) or as its SHA256 fingerprint as the key list
+shows it:
+
+\c C:\KiTTY\kageant.exe -d d:\main.ppk -d SHA256:WCvM...
+
+\c{-d} is repeatable. \c{-D} removes every key. Both go to the running
+kageant as the requests \c{ssh-add -d} and \c{ssh-add -D} send, so its
+policy decides as for any program: \q{Block removing keys over IPC},
+the lockdown, the agent lock and the key's destination rules. Without a
+running kageant they end with an error. They act before keys on the same
+command line are added.
+
+\S{pageant-cmdline-rules} Listing and removing destination rules:
+\c{-l}, \c{-R}
+
+\I{-l-kageant}\c{-l} lists every key of the running kageant and of its
+rule file, one block per key: the comment, the SHA256 fingerprint,
+\q{loaded} or \q{not loaded}, then its destination rules with the origin
+of each, as Key details lists them - or \q{any - the key is not
+restricted}. Without a running kageant, \c{-l} reads the rule file itself
+and starts no agent.
+
+\I{-R-kageant}\c{-R} removes every destination rule of one key from the
+rule file, loaded or not, given as a key file or as its SHA256
+fingerprint:
+
+\c C:\KiTTY\kageant.exe -R d:\main.ppk
+
+Only a person at the desktop can allow it. kageant shows \q{kageant:
+remove destination rules?} with the program behind the request, the key
+and its rules, \q{No} the default - or a Windows Hello check instead,
+while \q{Confirmations require Windows Hello} is on. Yes removes the
+rules: \q{-R: removed the destination rules of d:\\main.ppk.}, exit code
+0. No, a refused Windows Hello check, another confirmation already up or
+a locked desktop keeps them: \q{-R: not confirmed: the rules stay.}, exit
+code 1. A key without rules: \q{-R: d:\\main.ppk has no destination
+rules.}, exit code 0. The agent log records the outcome: event 116,
+result \c{removed} or \c{refused}, reason \c{cli}. The request reaches
+the running kageant as \c{rules-remove-v00@kapper.net} (and \c{-l} as
+\c{rules-list-v00@kapper.net}). kageant refuses both on a connection
+bound for agent forwarding. Without a running kageant, \c{-R} starts one
+and puts up the confirmation itself.
+
+\S{pageant-cmdline-report} Reports and exit codes
+
+From a command prompt or PowerShell, kageant writes its reports to that
+window: the results of \c{-h}, \c{-d}, \c{-D}, \c{-R} and \c{-l},
+the destination rules of the keys it added, its errors, and \c{-help}.
+Its output can be redirected to a file. Started without a console (a
+shortcut, the Run box), an error shows a message box. A result shows
+nothing then (\c{-l} a message box). The exit code is 1 when an option
+is wrong, a \c{-h} destination is refused or a key of it is not added, a
+key of \c{-d} or \c{-D} is not removed, or \c{-R} does not remove the
+rules. It is 0 otherwise.
 
 \S{pageant-cmdline-command} Making kageant run another program
 
@@ -554,6 +668,31 @@ you can send it all the way back to kageant using the local
 
 and then it's available to every machine that has agent forwarding
 available (not just the ones downstream of the place you added it).
+This takes \q{Refuse key changes from a forwarded agent} turned off
+(\k{pageant-forward-changes}).
+
+\S{pageant-forward-changes} Key changes from a forwarded agent
+
+By default kageant refuses key changes from a forwarded agent: an add
+(\c{ssh-add}, also of an encrypted PPK), a removal (\c{ssh-add -d},
+\c{-D}), a lock and an unlock (\c{ssh-add -x}, \c{-X}). A program on
+the remote server may still list the keys and log in with them. The
+setting is \q{Refuse key changes from a forwarded agent (add, remove,
+lock)} on the Security page of the settings, \c{blockforwardedchanges}
+in the \c{[Agent]} section of kitty.ini (default \c{yes}).
+
+A refused request answers \c{SSH_AGENT_FAILURE}, for an encrypted PPK
+(\c{add-ppk@putty.projects.tartarus.org}) \c{SSH_AGENT_EXTENSION_FAILURE}.
+The agent log records it twice: the operation's record (110, 114, 115,
+120 or 121) with result \c{blocked} and reason \c{forwarded}, and the
+refused request (103) with its reason.
+
+kageant recognises a forwarded agent only by the binding the forwarding
+client sends: \c{session-bind@openssh.com} with \c{is_forwarding} set.
+KiTTY++'s kitty.exe and klink send it, as OpenSSH's \c{ssh} does from
+version 8.9. A forwarding client that sends no binding (an older
+\c{ssh}, PuTTY) looks to kageant like a program on this computer, and
+its changes are not refused.
 
 \H{pageant-destination} The \i{destination} of a key use
 
@@ -659,6 +798,11 @@ the key again.
 
 OpenSSH cannot turn a hashed line back into a name.
 
+The check and its warning come only from OK in Settings. With
+\c{readknownhosts=yes} written into kitty.ini directly, kageant reads
+the file without either: hashed entries then give no name without
+notice.
+
 With destinations \q{Fixed list: host keys known now} in the rule
 store, the same box offers to look their host keys up again,
 \c{known_hosts} included. Yes adds the keys found to each such
@@ -708,6 +852,31 @@ a server. OK saves the rules and puts them in force at once.
 \c{ssh-add -h jump01 -h "jump01>web01" key} for a jump host. ssh-add
 looks the host keys up in OpenSSH's \c{known_hosts} itself. Set
 \cw{SSH_AUTH_SOCK} first (\k{pageant-cmdline-openssh}).
+
+\b \e{With kageant's own -h}: \c{kageant -h web01 key.ppk}, the same
+values, the host keys looked up as the rule editor looks them up
+(\k{pageant-cmdline-restrict}).
+
+The rules of a key stay in the rule file when the key is removed, and
+apply again when it is loaded. kageant shows it: the notice of a key added
+by a program (\c{ssh-add}, kageant's command line, an encrypted PPK) or
+through Add Key or drag and drop ends in \q{Destination rules stored for
+main apply: web01, jump01 > web02.} (the first three destinations, then
+\c{+N}). The notice of a removal by a program, and a notice of its own
+for Remove and Remove All in the key list, read \q{The destination rules
+of main stay stored and apply again when it is loaded. The rule editor
+(Key details > Restrict...) removes them.} - for several keys \q{3
+removed keys keep their destination rules: ...}. Both follow \q{Notify
+when a key is used}. A key loaded from the startup list at kageant's
+start gets no such notice (it would show at every Windows start): the key
+list marks it \q{restricted}. The rule editor, or \c{kageant -R}
+(\k{pageant-cmdline-rules}), removes the rules.
+
+A host typed with a port (\c{web01:2222}, \c{[web01]:2222}) keeps it:
+the tree and Key details show it. A later look-up (\q{Look up host
+keys}, the offer to look up again) searches that port. The login is
+decided by the host keys alone, as before. A rule from \c{ssh-add -h}
+holds no port.
 
 A re-add with \c{-h} replaces the key's rules. A re-add without \c{-h}
 keeps them: rules are lifted in the rule editor (\q{Remove}), not by a
@@ -1097,7 +1266,9 @@ from, and the others prompt on first use. In \c{kitty.ini} this is
 
 \c{ssh-add -x} and \c{ssh-add -X} lock and unlock the agent with a
 passphrase of the program's choosing - but only with \q{Allow locking
-the agent over IPC} ticked on the Security page (\c{allowipclock=yes});
+the agent over IPC} ticked on the Security page (\c{allowipclock=yes})
+and, over a forwarded agent, \q{Refuse key changes from a forwarded
+agent} turned off (\k{pageant-forward-changes});
 otherwise they are refused and the agent log notes it. A program's lock
 raises a notice identifying the program, and the tray menu's \q{Unlock agent}
 clears it without the passphrase. After each wrong passphrase the next

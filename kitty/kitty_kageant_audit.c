@@ -411,6 +411,34 @@ void kageant_audit_add(const char *fp, const char *comment,
     sfree(reqpath);
 }
 
+/* Event 116: a key's destination rules changed or left alone - the rule
+ * editor's OK (result changed, reason gui, the program kageant itself), or
+ * kageant -R (rules-remove-v00: result removed or refused, reason cli, the
+ * program behind the request). restrict = the key's rules now: rules_now,
+ * or NULL for what the rule store holds (empty when it holds none). */
+void kageant_audit_rules_ex(const char *fp, const char *comment,
+                            const char *result, const char *reason,
+                            unsigned long pid, const char *rules_now)
+{
+    char *req, *reqpath, *rules, pidbuf[16];
+    rules = rules_now ? dupstr(rules_now) : kageant_rules_text_for_fp(fp);
+    kageant_req_name(pid, &req, &reqpath);
+    snprintf(pidbuf, sizeof(pidbuf), "%lu", pid);
+    kitty_audit("rules", "fp", fp, "comment", comment, "result", result,
+                "reason", reason, "req", req, "reqpath", reqpath,
+                "pid", pid ? pidbuf : NULL, "restrict", rules ? rules : "",
+                (const char *)NULL);
+    sfree(rules);
+    sfree(req);
+    sfree(reqpath);
+}
+
+void kageant_audit_rules(const char *fp, const char *comment)
+{
+    kageant_audit_rules_ex(fp, comment, "changed", "gui",
+                           GetCurrentProcessId(), NULL);
+}
+
 /* One sign/confirm-shaped audit line; pid 0 drops the requester fields. */
 void kageant_audit_use(const char *ev, const char *fp,
                               const char *comment, const char *result,

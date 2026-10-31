@@ -49,6 +49,8 @@ word | KT_WORKPLACE_PROXY_NEEDS_NAMED | named | "named proxy" is the feature's n
 word | KT_XFER_WINSCP_PW_PIPE | named | "named pipe" is the Windows object, not the verb
 word | KT_XFER_WINSCP_PW_FILE_NOPIPE | named | "named pipe" is the Windows object, not the verb
 word | KT_WINFEAT_WINSCP_PIPE | named | "named pipe" is the Windows object, not the verb
+word | KT_KA_WMCD_OWN_FMT | named | "named pipe" is the Windows object, not the verb
+word | KT_KA_WMCD_OWN_REFUSED_FMT | named | "named pipe" is the Windows object, not the verb
 word | KT_SSH_REMOTE_COMMAND_IS_SUBSYSTEM | names | wording debt: reword with the user's OK when its code is next changed
 word | KT_BUGS_OLD_RSA_SHA2_CERT_ALGORITHM | naming | noun, not the verb
 word | KT_TRANSFERS_PERM_ALWAYS | ask | wording debt: reword with the user's OK when its code is next changed

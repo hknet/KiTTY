@@ -2752,6 +2752,12 @@
 #define KT_CAP_KA_AUTOSTART_CONFLICT                 "kageant - autostart conflict"
 #define KT_CAP_KA_ADD_KEY_TO_STARTUP                 "kageant - add key to startup"
 #define KT_CAP_KA_CONFIRM_KEY_USAGE                  "Confirm SSH key usage"
+#define KT_CAP_KA_RULES_REMOVE                       "kageant: remove destination rules?"
+/* kageant -R's confirmation (kitty_pageant.c): the program, the key, its
+ * fingerprint, its rules as Key details lists them */
+#define KT_KA_RULES_RM_Q_FMT                         "%s requests to remove every destination rule of %s (%s):\n\n%s\n\n" \
+        "The key then signs a login to any server.\n\nYes removes the rules. No keeps them."
+#define KT_KA_RULES_RM_SELF                          "kageant's command line"
 
 /* kageant: notice-window titles (kitty_notice_show) */
 #define KT_KA_NOTICE_OLD_FORMAT                      "kageant: a remembered key uses the old file format"
@@ -2772,6 +2778,25 @@
 #define KT_KA_NOTICE_UNPROTECTED                     "kageant: keys are NOT memory-protected"
 #define KT_KA_NOTICE_KEY_USED                        "kageant: SSH key used"
 #define KT_KA_NOTICE_NO_KEY                          "kageant: no key offered"
+#define KT_KA_NOTICE_WMCOPYDATA                      "kageant: outdated agent connection"
+#define KT_KA_NOTICE_RULES_APPLY                     "kageant: destination rules apply"
+#define KT_KA_NOTICE_RULES_KEPT                      "kageant: destination rules kept"
+/* the hints of the add and removal notices (kitty_pageant.c) */
+#define KT_KA_RULES_APPLY_FMT                        "Destination rules stored for %s apply: %s."
+#define KT_KA_RULES_KEPT_ONE_FMT                     "The destination rules of %s stay stored and apply again when it is loaded. " \
+        "The rule editor (Key details > Restrict...) removes them."
+#define KT_KA_RULES_KEPT_MANY_FMT                    "%d removed keys keep their destination rules: they apply again when the keys are loaded. " \
+        "The rule editor (Key details > Restrict...) removes them."
+/* a request by window messages (WM_COPYDATA, kitty_pageant.c) */
+#define KT_KA_WMCD_PROGRAM_PID_FMT                   "A program (pid %lu)"
+#define KT_KA_WMCD_FMT                               "%s reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
+        "Update it to a current version. Click here for kageant's security settings."
+#define KT_KA_WMCD_REFUSED_FMT                       "%s was refused: it reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
+        "Update the program, or turn on \"Accept requests by window messages\" in kageant's security settings (click here)."
+#define KT_KA_WMCD_OWN_FMT                           "%s reached kageant through window messages: kageant's named pipe could not be opened. " \
+        "Click here for kageant's security settings."
+#define KT_KA_WMCD_OWN_REFUSED_FMT                   "%s was refused: it reached kageant through window messages because kageant's named pipe could not be opened. " \
+        "\"Accept requests by window messages\" in kageant's security settings allows it (click here)."
 
 /* kageant: tray menu items */
 #define KT_KA_MENU_QUICK_CONNECT                     "&Quick Connect"
@@ -2819,6 +2844,25 @@
         "-encrypted, -no-decrypt\n" \
         "        load the key files that follow deferred: the\n" \
         "        passphrase is asked at first use\n" \
+        "-h destination\n" \
+        "        restrict every key file of the command line to this\n" \
+        "        destination, as OpenSSH's ssh-add -h: host, user@host,\n" \
+        "        via>host, via>user@host, host:port, [host]:port or a\n" \
+        "        pattern such as *.example.com. Repeatable. Commas\n" \
+        "        separate several in one -h. The host keys come from the\n" \
+        "        KiTTY++ host-key store (and OpenSSH's known_hosts while\n" \
+        "        kageant reads it). A host without one adds no key\n" \
+        "-d keyfile|SHA256:fingerprint\n" \
+        "        remove that key from the running kageant (repeatable)\n" \
+        "-D\n" \
+        "        remove every key from the running kageant\n" \
+        "-R keyfile|SHA256:fingerprint\n" \
+        "        remove every destination rule of that key from the rule\n" \
+        "        file, loaded or not: kageant puts up a confirmation on\n" \
+        "        the desktop first (repeatable)\n" \
+        "-l\n" \
+        "        list every key of kageant and of its rule file with its\n" \
+        "        destination rules\n" \
         "-keylist\n" \
         "        open the key list window at startup\n" \
         "-noload\n" \
@@ -2841,8 +2885,44 @@
         "-pgpfp\n" \
         "        show the PGP fingerprints of the PuTTY release keys\n" \
         "        (deprecated)\n" \
-        "-h, -help, --help\n" \
+        "-help, --help\n" \
         "        this summary\n"
+/* kageant: the command line's -h, -d and -D (windows/pageant.c) */
+#define KT_KA_CLI_H_NEEDS_DEST                       "-h needs a destination: host, user@host or via>host.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_D_NEEDS_KEY                        "-d needs a key file or a SHA256 fingerprint.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_H_NO_KEYS                          "-h restricts the key files of the command line: none given.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_H_SSH2_ONLY_FMT                    "-h: %s is no SSH-2 key file (PPK). Destinations apply to SSH-2 keys only: no key was added."
+#define KT_KA_CLI_H_FAILED_FMT                       "-h: %s\n\nNo key was added."
+#define KT_KA_CLI_H_ENCRYPTED                        "-h with -encrypted: a running kageant receives destinations with a decrypted key only. " \
+        "No key was added: leave out -encrypted, or start kageant itself with both."
+#define KT_KA_CLI_H_DAMAGED                          "-h: kageant's rule file is damaged. No key was added: replace the file in the rule editor (Key details > Restrict...)."
+#define KT_KA_CLI_H_ADDED_FMT                        "Added with %d destination(s): %s"
+#define KT_KA_CLI_RULES_FMT                          "%s: kageant applies the destination rules stored for this key:\n%s"
+#define KT_KA_CLI_R_NEEDS_KEY                        "-R needs a key file or a SHA256 fingerprint.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_R_UNREADABLE_FMT                   "-R %s: no SSH-2 key file kageant reads and no SHA256 fingerprint (%s)."
+#define KT_KA_CLI_R_REFUSED                          "-R: kageant refused the request (a damaged rule file, or an older kageant)."
+#define KT_KA_CLI_R_REMOVED_FMT                      "-R: removed the destination rules of %s."
+#define KT_KA_CLI_R_KEPT                             "-R: not confirmed: the rules stay."
+#define KT_KA_CLI_R_NODESK                           "-R: no interactive desktop for the confirmation (Windows locked or no user session): the rules stay."
+#define KT_KA_CLI_R_NONE_FMT                         "-R: %s has no destination rules."
+#define KT_KA_CLI_R_UNKNOWN_FMT                      "-R: %s: kageant knows no such key."
+#define KT_KA_CLI_L_KEY_FMT                          "%s  %s  %s"
+#define KT_KA_CLI_L_LOADED                           "loaded"
+#define KT_KA_CLI_L_NOT_LOADED                       "not loaded"
+#define KT_KA_CLI_L_NONE                             "kageant holds no key and no destination rule."
+#define KT_KA_CLI_L_FAILED                           "-l: the destination rules could not be read (a damaged rule file, or an older kageant)."
+#define KT_KA_CLI_NOT_RUNNING_FMT                    "%s acts on a running kageant: none is running."
+#define KT_KA_CLI_D_UNREADABLE_FMT                   "-d %s: no key file kageant reads and no SHA256 fingerprint (%s)."
+#define KT_KA_CLI_LIST_FAILED_FMT                    "The key list of the running kageant could not be read: %s"
+#define KT_KA_CLI_D_NOT_HELD_FMT                     "-d %s: the running kageant holds no such key."
+#define KT_KA_CLI_D_REFUSED_FMT                      "-d %s: kageant refused to remove the key (its policy, the agent lock or the key's destination rules)."
+#define KT_KA_CLI_D_REMOVED_FMT                      "Removed: %s (%s)"
+#define KT_KA_CLI_DD_REFUSED                         "-D: kageant refused to remove the keys (its policy or the agent lock)."
+#define KT_KA_CLI_DD_REMOVED                         "Removed every key."
 
 /* kageant: message boxes and notices (windows/pageant.c) */
 #define KT_KA_RANDOM_FAILED                          "The system random number generator failed"
@@ -4751,6 +4831,13 @@
 #define KT_SP_ORG_M_DELETE                           "Delete"
 #define KT_SP_ORG_M_SELALL                           "Select All"
 #define KT_SP_ORG_M_NEWFOLDER                        "New folder..."
+/* the manual order (a drop between rows): the folder menu's entry, and the
+ * status line after a drop or a reset */
+#define KT_SP_ORG_M_RESET_ORDER                      "Reset Order"
+#define KT_SP_ORG_ORDER_STORED                       "Order stored: %s after %s"
+#define KT_SP_ORG_ORDER_STORED_TOP                   "Order stored: %s at the top"
+#define KT_SP_ORG_ORDER_RESET                        "Order reset: %s"
+#define KT_SP_ORG_ORDER_NOT_STORED                   "Order not stored: %s"
 #define KT_SP_ORG_COPY_Q                             "Copy %d sessions to:"
 #define KT_SP_ORG_COPY_ONE_Q                         "Copy one session to:"
 #define KT_SP_ORG_COPY_BTN                           "Copy"
@@ -4844,13 +4931,6 @@
 #define KT_RC_KITTYABOUT_BLURB                       "KiTTY++ is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
 #define KT_RC_KITTYABOUT_WEBPAGE                     "Visit github.com/hknet/KiTTY"
 
-/* the manual order (a drop between rows): the folder menu's entry, and the
- * status line after a drop or a reset */
-#define KT_SP_ORG_M_RESET_ORDER                      "Reset Order"
-#define KT_SP_ORG_ORDER_STORED                       "Order stored: %s after %s"
-#define KT_SP_ORG_ORDER_STORED_TOP                   "Order stored: %s at the top"
-#define KT_SP_ORG_ORDER_RESET                        "Order reset: %s"
-#define KT_SP_ORG_ORDER_NOT_STORED                   "Order not stored: %s"
 /* kitty.rc: IDD_MASTERPW (the caption is IDD_MPWMOVED's too) */
 #define KT_RC_MASTERPW_CAPTION                       "KiTTY++ master password"
 #define KT_RC_MASTERPW_LABEL                         "Master password:"
@@ -4978,6 +5058,12 @@
 /* the Agent page, under "Register as Windows OpenSSH agent": [Agent]
  * readknownhosts. KiTTY++ never writes the file. */
 #define KT_RC_KEYSETTINGS_KNOWNHOSTS                 "Use OpenSSH's known_hosts as a host-key source"
+#define KT_RC_KEYSETTINGS_BLOCKFWD                   "Refuse key changes from a forwarded agent (add, remove, lock)"
+#define KT_RC_KEYSETTINGS_ALLOWWMCD                  "Accept requests by window messages (PuTTY before 0.75)"
+/* kageant -h and a startup entry's destinations (kitty_kageant_dest.c) */
+#define KT_KA_DEST_REFUSED_FMT                       "Destination '%s': %s."
+#define KT_KA_DEST_NO_KEY_FMT                        "No host key found for %s in the KiTTY++ host-key store."
+#define KT_KA_DEST_NO_KEY_KH_FMT                     "No host key found for %s in the KiTTY++ host-key store or in OpenSSH's known_hosts."
 #define KT_RC_KEYSETTINGS_WINLOCK_LABEL              "When Windows locks:"
 #define KT_RC_KEYSETTINGS_HELLO                      "Confirmations require Windows &Hello"
 #define KT_RC_KEYSETTINGS_TTL_LABEL                  "&Passphrase cache (seconds):"

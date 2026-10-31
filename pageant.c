@@ -1337,6 +1337,35 @@ static void kageant_arm_comment_confirm(ptrlen full_pub)
 void (*kageant_mutation_notice_hook)(int op, const char *comment,
                                      const char *fp) = NULL;
 int (*kageant_ipc_blocked_hook)(int op, const char *fp) = NULL;
+int (*kageant_fwd_blocked_hook)(int op, const char *fp) = NULL;
+void (*kageant_before_remove_all_hook)(void) = NULL;
+int (*kageant_rules_remove_hook)(const char *fp, const char *comment,
+                                 const char *rules, unsigned long pid) = NULL;
+
+/* KiTTY: is a connection bound for agent forwarding (any binding)? The
+ * rule extensions answer only a program of this computer. */
+static bool conn_bound_forwarding(PageantClient *pc)
+{
+    PageantClientInfo *info = pc ? pc->info : NULL;
+    if (!info)
+        return false;
+    for (size_t i = 0; i < info->nbindings; i++)
+        if (info->bindings[i].forwarding)
+            return true;
+    return false;
+}
+
+/* KiTTY: does the rule store's fingerprint fp ("<type> <bits> SHA256:...")
+ * end in want ("SHA256:...")? */
+static bool fp_has_hash(const char *fp, ptrlen want)
+{
+    size_t n = strlen(fp);
+    if (!want.len || n < want.len)
+        return false;
+    if (memcmp(fp + n - want.len, want.ptr, want.len))
+        return false;
+    return n == want.len || fp[n - want.len - 1] == ' ';
+}
 void (*kageant_reencrypt_audit_hook)(int all, const char *fp,
                                      const char *comment, bool ok) = NULL;
 void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
@@ -1380,6 +1409,26 @@ static bool kageant_mutation_blocked(int op, const char *fp)
     return pageant_external_request && kageant_ipc_blocked_hook &&
         kageant_ipc_blocked_hook(op, fp);
 }
+
+/* KiTTY: is this key change or lock refused because the connection is
+ * bound for agent forwarding (any of its session-binds with is_forwarding
+ * set) and kageant refuses such changes? The program behind a forwarded
+ * agent sits on a remote server: it may list and sign, not change the key
+ * set or lock the agent. The hook writes the record. */
+static bool kageant_fwd_change_refused(PageantClient *pc, int op,
+                                       const char *fp)
+{
+    PageantClientInfo *info = pc ? pc->info : NULL;
+    bool fwd = false;
+    if (!pageant_external_request || !info || !kageant_fwd_blocked_hook)
+        return false;
+    for (size_t i = 0; i < info->nbindings; i++)
+        if (info->bindings[i].forwarding)
+            fwd = true;
+    return fwd && kageant_fwd_blocked_hook(op, fp);
+}
+#define KAGEANT_FWD_REFUSED_TEXT \
+    "forwarded: key changes over a forwarded agent are refused by kageant policy"
 
 /*
  * KiTTY: the agent lock - see pageant.h for the three flags and who clears
@@ -2058,6 +2107,55 @@ static PageantAsyncOp *pageant_make_op(
     if (get_err(msg)) {
         fail("message contained no type code");
         goto responded;
+    }
+
+    /* KiTTY: a key change or a lock over a connection bound for agent
+     * forwarding, refused before anything else looks at it (the lock
+     * included) while kageant's setting is on; add-ppk is checked where its
+     * extension name is read. */
+    {
+        int fop = -1;
+        char *ffp = NULL;
+        switch (type) {
+          case SSH1_AGENTC_ADD_RSA_IDENTITY:
+          case SSH2_AGENTC_ADD_IDENTITY:
+          case SSH2_AGENTC_ADD_ID_CONSTRAINED:
+            fop = KAGEANT_MUT_ADD;
+            break;
+          case SSH1_AGENTC_REMOVE_RSA_IDENTITY:
+            fop = KAGEANT_MUT_REMOVE;
+            break;
+          case SSH2_AGENTC_REMOVE_IDENTITY: {
+            /* the key named, for the record (the request is read again
+             * below if it goes through) */
+            BinarySource peek[1];
+            ptrlen pb;
+            BinarySource_BARE_INIT_PL(peek, make_ptrlen(
+                (const char *)msg->data + msg->pos, msg->len - msg->pos));
+            pb = get_string(peek);
+            if (!get_err(peek))
+                ffp = ssh2_fingerprint_blob(pb, SSH_FPTYPE_SHA256);
+            fop = KAGEANT_MUT_REMOVE;
+            break;
+          }
+          case SSH1_AGENTC_REMOVE_ALL_RSA_IDENTITIES:
+          case SSH2_AGENTC_REMOVE_ALL_IDENTITIES:
+            fop = KAGEANT_MUT_REMOVE_ALL;
+            break;
+          case SSH_AGENTC_LOCK:
+            fop = KAGEANT_MUT_LOCK;
+            break;
+          case SSH_AGENTC_UNLOCK:
+            fop = KAGEANT_MUT_UNLOCK;
+            break;
+        }
+        if (fop >= 0 && kageant_fwd_change_refused(pc, fop, ffp)) {
+            sfree(ffp);
+            pageant_client_log(pc, reqid, "request: type %d (forwarded)", type);
+            fail(KAGEANT_FWD_REFUSED_TEXT);
+            goto responded;
+        }
+        sfree(ffp);
     }
 
     /* KiTTY: the agent lock (pageant.h). LOCK/UNLOCK are answered whatever
@@ -2822,6 +2920,8 @@ static PageantAsyncOp *pageant_make_op(
             goto responded;
         }
 
+        if (pageant_external_request && kageant_before_remove_all_hook)
+            kageant_before_remove_all_hook();   /* KiTTY: the notice's hint */
         remove_all_keys(2);
         if (kageant_key_lifetime_hook)   /* KiTTY: drop every pending -t */
             kageant_key_lifetime_hook(make_ptrlen(NULL, 0), 0);
@@ -2890,6 +2990,13 @@ static PageantAsyncOp *pageant_make_op(
 
             if (get_err(msg)) {
                 fail("unable to decode request");
+                goto responded;
+            }
+
+            /* KiTTY: a forwarded agent adds no key (SSH_AGENT_EXTENSION_
+             * FAILURE: the name is known) */
+            if (kageant_fwd_change_refused(pc, KAGEANT_MUT_ADD, NULL)) {
+                fail(KAGEANT_FWD_REFUSED_TEXT);
                 goto responded;
             }
 
@@ -3271,6 +3378,151 @@ static PageantAsyncOp *pageant_make_op(
             pageant_client_log(pc, reqid, "reply: "
                                "SSH_AGENT_EXTENSION_RESPONSE (%lu keys)",
                                nk);
+            break;
+          }
+
+          case EXT_RULES_LIST: {
+            /*
+             * KiTTY: rules-list-v00@kapper.net (docs/PROTOCOL-AGENT-
+             * KAPPER.md, kageant -l): every key of the rule store with its
+             * rules as Key details lists them, then every SSH-2 key the
+             * agent holds without rules. Refused on a connection bound for
+             * forwarding: the rules name the user's servers.
+             */
+            kar_store *rst = kar_store_get();
+            strbuf *rents;
+            unsigned long rn = 0;
+            if (get_avail(msg)) {
+                fail("rules-list: trailing data after the request");
+                goto responded;
+            }
+            if (conn_bound_forwarding(pc)) {
+                fail("rules-list: refused on a connection bound for "
+                     "forwarding");
+                goto responded;
+            }
+            if (rst->damaged) {
+                fail("rules-list: the rule file is damaged");
+                goto responded;
+            }
+            rents = strbuf_new();
+            for (size_t ri = 0; ri < rst->nkeys; ri++) {
+                kar_skey *rk = &rst->keys[ri];
+                size_t rcnt = 0;
+                char *rlines = kar_store_dest_lines(rst, rk->fp, &rcnt);
+                if (!rlines)
+                    continue;
+                put_stringz(rents, rk->fp);
+                put_stringz(rents, rk->comment ? rk->comment : "");
+                put_byte(rents, rk->blob && rk->blob->len &&
+                         pageant_key_present_by_blob(
+                             ptrlen_from_strbuf(rk->blob)) ? 1 : 0);
+                put_stringz(rents, rlines);
+                sfree(rlines);
+                rn++;
+            }
+            for (size_t oi = 0; oi < puborder_n; oi++) {
+                PageantPublicKey *rp = puborder[oi];
+                char *rfp2;
+                if (rp->sort.priv.ssh_version != 2)
+                    continue;
+                rfp2 = kar_key_fp(rp->sort.full_pub);
+                if (!kar_store_restricted(rst, rfp2)) {
+                    put_stringz(rents, rfp2);
+                    put_stringz(rents, rp->comment ? rp->comment : "");
+                    put_byte(rents, 1);
+                    put_stringz(rents, "");
+                    rn++;
+                }
+                sfree(rfp2);
+            }
+            put_byte(sb, SSH_AGENT_EXTENSION_RESPONSE);
+            put_stringpl(sb, extension_names[EXT_RULES_LIST]);
+            put_uint32(sb, rn);
+            put_datapl(sb, ptrlen_from_strbuf(rents));
+            strbuf_free(rents);
+            pageant_client_log(pc, reqid, "reply: "
+                               "SSH_AGENT_EXTENSION_RESPONSE (%lu keys)", rn);
+            break;
+          }
+
+          case EXT_RULES_REMOVE: {
+            /*
+             * KiTTY: rules-remove-v00@kapper.net (kageant -R): every
+             * destination rule of one key - given as its public blob or as
+             * "SHA256:..." - removed from the rule store, loaded or not,
+             * once the person at the desktop confirms it
+             * (kageant_rules_remove_hook). The answer: 0 removed, 1 not
+             * confirmed, 2 the key has no rules, 3 no such key. Refused on
+             * a connection bound for forwarding.
+             */
+            kar_store *rst = kar_store_get();
+            ptrlen kid = get_string(msg);
+            char *rfp = NULL, *rcomment = NULL, *rlines;
+            size_t rcnt = 0;
+            unsigned rres;
+            if (get_err(msg) || get_avail(msg)) {
+                fail("rules-remove: the request does not decode");
+                goto responded;
+            }
+            if (conn_bound_forwarding(pc)) {
+                fail("rules-remove: refused on a connection bound for "
+                     "forwarding");
+                goto responded;
+            }
+            if (rst->damaged) {
+                fail("rules-remove: the rule file is damaged");
+                goto responded;
+            }
+            if (ptrlen_startswith(kid, PTRLEN_LITERAL("SHA256:"), NULL)) {
+                for (size_t ri = 0; ri < rst->nkeys && !rfp; ri++)
+                    if (fp_has_hash(rst->keys[ri].fp, kid))
+                        rfp = dupstr(rst->keys[ri].fp);
+                for (size_t oi = 0; oi < puborder_n && !rfp; oi++) {
+                    PageantPublicKey *rp = puborder[oi];
+                    char *f2;
+                    if (rp->sort.priv.ssh_version != 2)
+                        continue;
+                    f2 = kar_key_fp(rp->sort.full_pub);
+                    if (fp_has_hash(f2, kid))
+                        rfp = f2;
+                    else
+                        sfree(f2);
+                }
+            } else if (kar_blob_valid(kid)) {
+                rfp = kar_key_fp(kid);
+            }
+            if (!rfp) {
+                rres = 3;
+            } else if ((rlines = kar_store_dest_lines(rst, rfp, &rcnt))
+                       == NULL) {
+                rres = 2;
+            } else {
+                kar_skey *rk = kar_store_key(rst, rfp);
+                unsigned long rpid = pageant_external_pid;
+                rcomment = dupstr(rk && rk->comment ? rk->comment : "");
+                int rok = kageant_rules_remove_hook ?
+                    kageant_rules_remove_hook(rfp, rcomment, rlines, rpid) : 0;
+                if (rok == 1) {
+                    kar_store_unlink_key(rst, rfp);
+                    kar_store_tidy(rst);
+                    if (kageant_rules_changed_hook)
+                        kageant_rules_changed_hook();
+                    keylist_update();
+                    rres = 0;
+                } else {
+                    rres = rok == 2 ? 4 : 1;   /* 4: no interactive desktop */
+                }
+                sfree(rlines);
+            }
+            put_byte(sb, SSH_AGENT_EXTENSION_RESPONSE);
+            put_stringpl(sb, extension_names[EXT_RULES_REMOVE]);
+            put_uint32(sb, rres);
+            pageant_client_log(pc, reqid, "reply: "
+                               "SSH_AGENT_EXTENSION_RESPONSE (rules-remove %u)",
+                               rres);
+            sfree(rfp);
+            sfree(rcomment);
             break;
           }
 
@@ -4153,6 +4405,24 @@ static KeyList *pageant_get_keylist(unsigned ssh_version)
     return kl;
 }
 
+/* KiTTY: kageant -h on a second instance (pageant.h pageant_set_add_dest):
+ * the constraint bytes appended to the next SSH-2 adds, NULL for none. */
+static strbuf *pageant_add_dest = NULL;
+
+void pageant_set_add_dest(const struct kar_rules *r)
+{
+    if (pageant_add_dest) {
+        strbuf_free(pageant_add_dest);
+        pageant_add_dest = NULL;
+    }
+    if (r) {
+        pageant_add_dest = strbuf_new();
+        put_byte(pageant_add_dest, SSH_AGENT_CONSTRAIN_EXTENSION);
+        put_stringz(pageant_add_dest, KAR_EXT_NAME);
+        kar_encode_constraint(BinarySink_UPCAST(pageant_add_dest), r);
+    }
+}
+
 int pageant_add_keyfile(Filename *filename, const char *passphrase,
                         char **retstr, bool add_encrypted)
 {
@@ -4186,11 +4456,24 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
         return PAGEANT_ACTION_FAILURE;
     }
 
+    /* KiTTY: destinations travel with the decrypted SSH-2 key only */
+    if (pageant_add_dest && type == SSH_KEYTYPE_SSH1) {
+        *retstr = dupstr("Destinations (-h) apply to SSH-2 keys only");
+        return PAGEANT_ACTION_FAILURE;
+    }
+    if (pageant_add_dest && add_encrypted) {
+        *retstr = dupstr("Destinations (-h) cannot be sent with a key added "
+                         "encrypted (-encrypted) to a running kageant");
+        return PAGEANT_ACTION_FAILURE;
+    }
+
     /*
      * See if the key is already loaded (in the primary Pageant,
      * which may or may not be us).
+     * KiTTY: not with destinations to send: the add again replaces the
+     * key's rules, as ssh-add -h does.
      */
-    {
+    if (!pageant_add_dest) {
         strbuf *blob = strbuf_new();
         KeyList *kl;
 
@@ -4452,10 +4735,14 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
         }
     } else {
         PageantClientOp *pco = pageant_client_op_new();
-        put_byte(pco, SSH2_AGENTC_ADD_IDENTITY);
+        /* KiTTY: with -h's destinations the constrained form, as ssh-add -h */
+        put_byte(pco, pageant_add_dest ? SSH2_AGENTC_ADD_ID_CONSTRAINED
+                                       : SSH2_AGENTC_ADD_IDENTITY);
         put_stringz(pco, ssh_key_ssh_id(skey->key));
         ssh_key_openssh_blob(skey->key, BinarySink_UPCAST(pco));
         put_stringz(pco, skey->comment);
+        if (pageant_add_dest)
+            put_datapl(pco, ptrlen_from_strbuf(pageant_add_dest));
         unsigned reply = pageant_client_op_query(pco);
         pageant_client_op_free(pco);
 
@@ -4547,6 +4834,29 @@ int pageant_enum_keys(pageant_key_enum_fn_t callback, void *callback_ctx,
     if (kl2)
         keylist_free(kl2);
     return toret;
+}
+
+strbuf *pageant_kapper_ext_query(const char *name, ptrlen data,
+                                 unsigned *reply_type)
+{
+    PageantClientOp *pco = pageant_client_op_new();
+    strbuf *out = NULL;
+    unsigned reply;
+    put_byte(pco, SSH2_AGENTC_EXTENSION);
+    put_stringz(pco, name);
+    put_datapl(pco, data);
+    reply = pageant_client_op_query(pco);
+    *reply_type = reply;
+    if (reply == SSH_AGENT_EXTENSION_RESPONSE) {
+        ptrlen rname = get_string(pco);
+        if (!get_err(pco) && ptrlen_eq_string(rname, name)) {
+            ptrlen rest = get_data(pco, get_avail(pco));
+            out = strbuf_new();
+            put_datapl(out, rest);
+        }
+    }
+    pageant_client_op_free(pco);
+    return out;
 }
 
 int pageant_delete_key(struct pageant_pubkey *key, char **retstr)

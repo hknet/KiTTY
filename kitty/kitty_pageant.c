@@ -2928,31 +2928,22 @@ void kageant_load_startup_keys(void)
          * after a run of empty slots (matching the save-side clear scan). */
         for (i = 1, gap = 0; gap < 8; i++) {
             int enc = 0, conf = 0, ae = -1;
-            char *c;
             const char *fp = "";        /* points into val */
+            kar_entry_tokens tk;
             snprintf(key, sizeof(key), "startupkey%d", i);
             sfree(val);                 /* the previous entry */
             val = kageant_ini_read_dup(key);
             if (!val) { gap++; continue; }
             gap = 0;
             /* Trailing tokens, in any order and any of them absent:
-             * ",encrypted"/",plain" and ",SHA256:..." (the fingerprint). */
-            for (;;) {
-                c = strrchr(val, ',');
-                if (!c) break;
-                if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
-                else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
-                else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
-                else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
-                else if (!strnicmp(c + 1, "autoencrypt=", 12)) { ae = kageant_autoenc_parse(c + 13); *c = '\0'; }
-                else if (strstr(c + 1, "SHA256:")) {
-                    /* Bare "SHA256:..." as written now, and the longer
-                     * "alg bits SHA256:..." that a build in between wrote -
-                     * take the hash out of either. */
-                    fp = strstr(c + 1, "SHA256:");
-                    *c = '\0';
-                } else break;           /* part of the path: leave it alone */
-            }
+             * ",encrypted"/",plain", ",confirm"/",helloconfirm",
+             * ",autoencrypt=" and ",SHA256:..." (the fingerprint):
+             * kar_entry_parse */
+            kar_entry_parse(val, &tk);
+            if (tk.enc >= 0) enc = tk.enc;
+            conf = tk.confirm;
+            if (tk.autoenc) ae = kageant_autoenc_parse(tk.autoenc);
+            fp = tk.fp;
             sfree(abspath);             /* the previous entry's */
             abspath = kageant_resolve_form(val);
             if (GetFileAttributesA(abspath) == INVALID_FILE_ATTRIBUTES) {
@@ -3041,7 +3032,7 @@ void kageant_load_startup_keys(void)
                     int conf = 0, ae = -1;
 
                     const char *fp = "";    /* points into entry */
-                    char *c;
+                    kar_entry_tokens tk;
                     /* Parse a COPY: stripping the trailing tokens in place
                      * would shorten *p, and the walk's `p += strlen(p) + 1`
                      * would then re-enter the middle of this same record and
@@ -3051,21 +3042,13 @@ void kageant_load_startup_keys(void)
                      * two phantom missing keys). */
                     sfree(entry);       /* the previous record */
                     entry = dupstr(p);
-                    /* Same trailing tokens as the ini form: ",encrypted" /
-                     * ",plain" and ",SHA256:..." - see the ini branch above. */
-                    for (;;) {
-                        c = strrchr(entry, ',');
-                        if (!c) break;
-                        if (!stricmp(c + 1, "encrypted")) { enc = 1; *c = '\0'; }
-                        else if (!stricmp(c + 1, "plain")) { enc = 0; *c = '\0'; }
-                        else if (!stricmp(c + 1, "confirm")) { conf = 1; *c = '\0'; }
-                        else if (!stricmp(c + 1, "helloconfirm")) { conf = 2; *c = '\0'; }
-                        else if (!strnicmp(c + 1, "autoencrypt=", 12)) { ae = kageant_autoenc_parse(c + 13); *c = '\0'; }
-                        else if (strstr(c + 1, "SHA256:")) {
-                            fp = strstr(c + 1, "SHA256:");
-                            *c = '\0';
-                        } else break;
-                    }
+                    /* Same trailing tokens as the ini form - see the ini
+                     * branch above (kar_entry_parse). */
+                    kar_entry_parse(entry, &tk);
+                    if (tk.enc >= 0) enc = tk.enc;
+                    conf = tk.confirm;
+                    if (tk.autoenc) ae = kageant_autoenc_parse(tk.autoenc);
+                    fp = tk.fp;
                     if (GetFileAttributesA(entry) == INVALID_FILE_ATTRIBUTES) {
                         if (kageant_entry_is_phantom(entry)) {
                             /* a .71 parser phantom - see the helper above */
@@ -3296,6 +3279,110 @@ int kageant_ipc_blocked(int op, const char *fp)
     return blocked;
 }
 
+/* kageant_fwd_blocked_hook (pageant.h): a key change or a lock on a
+ * connection bound for agent forwarding. Refused while "Refuse key changes
+ * from a forwarded agent" is on (the default), with the operation's record
+ * (result blocked, reason forwarded) as the IPC policy writes it. */
+int kageant_fwd_blocked(int op, const char *fp)
+{
+    if (!kageant_blockforwarded_get())
+        return 0;
+    kageant_audit_use(op == KAGEANT_MUT_ADD        ? "add" :
+                      op == KAGEANT_MUT_REMOVE     ? "remove" :
+                      op == KAGEANT_MUT_REMOVE_ALL ? "remove-all" :
+                      op == KAGEANT_MUT_LOCK       ? "lock" : "unlock",
+                      fp, NULL, "blocked", "forwarded", pageant_external_pid);
+    return 1;
+}
+
+static void kageant_trace_notice(const char *title, const char *text);
+
+/* The name of a key in the hints: its comment, else its fingerprint. */
+static char *kageant_hint_name(const char *fp, const char *comment)
+{
+    return dupstr(comment && *comment ? comment : (fp ? fp : ""));
+}
+
+char *kageant_rules_apply_hint(const char *fp, const char *comment)
+{
+    char *sum, *name, *out;
+    if (!fp || !*fp)
+        return NULL;
+    sum = kar_store_dest_summary(kar_store_get(), fp, 3);
+    if (!sum)
+        return NULL;
+    name = kageant_hint_name(fp, comment);
+    out = dupprintf(KT_KA_RULES_APPLY_FMT, name, sum);
+    sfree(name);
+    sfree(sum);
+    return out;
+}
+
+char *kageant_rules_kept_hint(const char *fp, const char *comment)
+{
+    char *sum, *name, *out;
+    if (!fp || !*fp)
+        return NULL;
+    sum = kar_store_dest_summary(kar_store_get(), fp, 3);
+    if (!sum)
+        return NULL;
+    sfree(sum);
+    name = kageant_hint_name(fp, comment);
+    out = dupprintf(KT_KA_RULES_KEPT_ONE_FMT, name);
+    sfree(name);
+    return out;
+}
+
+/* The keys with rules a removal took out, for one hint after it. */
+static int g_kept_n = 0;
+static char *g_kept_name = NULL;
+
+void kageant_rules_kept_add(const char *fp, const char *comment)
+{
+    char *sum;
+    if (!fp || !*fp)
+        return;
+    sum = kar_store_dest_summary(kar_store_get(), fp, 3);
+    if (!sum)
+        return;
+    sfree(sum);
+    if (!g_kept_n++)
+        g_kept_name = kageant_hint_name(fp, comment);
+}
+
+/* every key with rules the agent holds now - before a Remove All */
+void kageant_rules_kept_held(void)
+{
+    kar_store *st = kar_store_get();
+    for (size_t i = 0; i < st->nkeys; i++)
+        if (st->keys[i].blob && st->keys[i].blob->len &&
+            pageant_key_present_by_blob(ptrlen_from_strbuf(st->keys[i].blob)))
+            kageant_rules_kept_add(st->keys[i].fp, st->keys[i].comment);
+}
+
+char *kageant_rules_kept_take(void)
+{
+    char *out = NULL;
+    if (g_kept_n == 1)
+        out = dupprintf(KT_KA_RULES_KEPT_ONE_FMT, g_kept_name);
+    else if (g_kept_n > 1)
+        out = dupprintf(KT_KA_RULES_KEPT_MANY_FMT, g_kept_n);
+    g_kept_n = 0;
+    sfree(g_kept_name);
+    g_kept_name = NULL;
+    return out;
+}
+
+void kageant_rules_hint_notice(const char *title, const char *text)
+{
+    if (!text || !kageant_notify_get() || !traywindow)
+        return;
+    kageant_trace_notice(title, text);
+    kitty_notice_show(title, text, KAGEANT_NOTICE_INFO,
+                      kageant_notice_seconds(10), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
+}
+
 /* " by ssh-add.exe (PID 1234)" for the requesting process of an external
  * request, "" when it is not known (sfree it). */
 static char *kageant_requester_text(void)
@@ -3324,7 +3411,7 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
 {
     char *proc;
     const char *title;
-    char *text;
+    char *text, *hint;
 
     /* Audited BEFORE the notify gate: turning notices off must never turn
      * the audit trail off with it. */
@@ -3334,8 +3421,15 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
         kageant_audit_use(op == KAGEANT_MUT_REMOVE ? "remove" : "remove-all",
                           fp, comment, "done", "ipc", pageant_external_pid);
 
-    if (!kageant_notify_get() || !traywindow)
+    /* KiTTY: the key's destination rules - in force for an added key,
+     * kept for a removed one (the remove-all count taken either way) */
+    hint = op == KAGEANT_MUT_ADD    ? kageant_rules_apply_hint(fp, comment) :
+           op == KAGEANT_MUT_REMOVE ? kageant_rules_kept_hint(fp, comment) :
+                                      kageant_rules_kept_take();
+    if (!kageant_notify_get() || !traywindow) {
+        sfree(hint);
         return;
+    }
 
     proc = kageant_requester_text();
 
@@ -3350,6 +3444,13 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
                              ? KT_KA_KEY_ADDED_TEXT
                              : KT_KA_KEY_REMOVED_TEXT,
                          proc, comment && *comment ? comment : KT_KA_NO_COMMENT);
+    if (hint) {
+        char *t2 = dupprintf("%s\n\n%s", text, hint);
+        sfree(text);
+        text = t2;
+        sfree(hint);
+    }
+    kageant_trace_notice(title, text);
     kitty_notice_show(title, text,
                       op == KAGEANT_MUT_ADD ? KAGEANT_NOTICE_INFO
                                             : KAGEANT_NOTICE_WARN,
@@ -3382,6 +3483,65 @@ static void kageant_trace_notice(const char *title, const char *text)
     (void)title;
     (void)text;
 #endif
+}
+
+/* A request by window messages (WM_COPYDATA, the IPC of PuTTY before
+ * 0.75; KiTTY++'s own programs use it only when the named pipe cannot be
+ * opened). The programs already noticed this run, by path ("pid N" when
+ * the path is not known). */
+static char **g_wmcd_seen = NULL;
+static size_t g_nwmcd_seen = 0, g_wmcd_seensize = 0;
+
+/* One of KiTTY++'s own programs, by file name? */
+static bool kageant_wmcd_own(const char *base)
+{
+    static const char *const own[] = {
+        "kitty.exe", "kitty_portable.exe", "klink.exe", "kscp.exe",
+        "ksftp.exe", "kageant.exe",
+    };
+    for (size_t i = 0; i < lenof(own); i++)
+        if (!stricmp(base, own[i]))
+            return true;
+    return false;
+}
+
+int kageant_wmcopydata_request(unsigned long pid)
+{
+    int allow = kageant_allowwmcopydata_get();
+    char *path = pid ? kageant_req_path_dup(pid) : NULL;
+    char *key = path ? dupstr(path) : dupprintf("pid %lu", pid);
+    bool seen = false;
+
+    if (!allow)
+        kageant_audit_refused("window-messages", pid, NULL);   /* 103 */
+    for (size_t i = 0; i < g_nwmcd_seen; i++)
+        if (!stricmp(g_wmcd_seen[i], key)) {
+            seen = true;
+            break;
+        }
+    if (!seen) {
+        sgrowarray(g_wmcd_seen, g_wmcd_seensize, g_nwmcd_seen);
+        g_wmcd_seen[g_nwmcd_seen++] = key;
+        key = NULL;
+    }
+    sfree(key);
+    if (!seen && kageant_notify_get() && traywindow) {
+        const char *base = path ? strrchr(path, '\\') : NULL;
+        char *who = path ? dupstr(base ? base + 1 : path)
+                         : dupprintf(KT_KA_WMCD_PROGRAM_PID_FMT, pid);
+        char *text = kageant_wmcd_own(who) ?
+            dupprintf(allow ? KT_KA_WMCD_OWN_FMT : KT_KA_WMCD_OWN_REFUSED_FMT,
+                      who) :
+            dupprintf(allow ? KT_KA_WMCD_FMT : KT_KA_WMCD_REFUSED_FMT, who);
+        kageant_trace_notice(KT_KA_NOTICE_WMCOPYDATA, text);
+        kitty_notice_show(KT_KA_NOTICE_WMCOPYDATA, text, KAGEANT_NOTICE_WARN,
+                          kageant_notice_seconds(15), traywindow,
+                          KAGEANT_WM_NOTICE_SECURITY);
+        sfree(text);
+        sfree(who);
+    }
+    sfree(path);
+    return allow;
 }
 
 /* kageant_nokey_hook (pageant.h): the SSH-2 key list a program received
@@ -3719,6 +3879,67 @@ static int kageant_confirm_ask(const char *comment, int key_confirm,
         }
         return (r == IDYES);
     }
+}
+
+/* kageant_rules_remove_hook (pageant.h, kageant -R): every destination rule
+ * of a key to go - only on a person's word at the desktop. The box is the
+ * kind the confirmation of a key use is (system-modal, No the default), a
+ * Windows Hello check instead while [Agent] helloconfirm is on (fail
+ * closed). No, Hello refused, another confirmation already up, or no
+ * interactive desktop (locked, a service session): the rules stay. Event
+ * 116 records it: result removed (restrict empty) or refused, reason cli. */
+static int kageant_desktop_interactive(void)
+{
+    HDESK d = OpenInputDesktop(0, FALSE, DESKTOP_READOBJECTS);
+    if (!d)
+        return 0;
+    CloseDesktop(d);
+    return 1;
+}
+
+int kageant_rules_remove_confirm(const char *fp, const char *comment,
+                                 const char *rules, unsigned long pid)
+{
+    char *path = pid ? kageant_req_path_dup(pid) : NULL;
+    char *who, *text;
+    const char *sha = fp ? strstr(fp, "SHA256:") : NULL;
+    int ok = 0, nodesk = 0;
+
+    if (path) {
+        const char *base = strrchr(path, '\\');
+        who = dupprintf("%s (%s)", base ? base + 1 : path, path);
+    } else if (pid) {
+        who = dupprintf(KT_KA_WMCD_PROGRAM_PID_FMT, pid);
+    } else {
+        who = dupstr(KT_KA_RULES_RM_SELF);
+    }
+    text = dupprintf(KT_KA_RULES_RM_Q_FMT, who,
+                     comment && *comment ? comment : KT_KA_UNNAMED_KEY,
+                     sha ? sha : (fp ? fp : ""), rules ? rules : "");
+    if (!kageant_desktop_interactive()) {
+        ok = 0;
+        nodesk = 1;
+    } else if (g_confirm_active) {
+        ok = 0;
+    } else if (kageant_hello_get()) {
+        g_confirm_active = 1;
+        ok = kitty_hello_verify(traywindow, text) == KITTY_HELLO_VERIFIED;
+        g_confirm_active = 0;
+    } else {
+        int r;
+        g_confirm_active = 1;
+        r = MessageBox(NULL, text, KT_CAP_KA_RULES_REMOVE,
+                       MB_ICONWARNING | MB_YESNO | MB_SYSTEMMODAL |
+                       MB_DEFBUTTON2);   /* default No: the rules stay */
+        g_confirm_active = 0;
+        ok = (r == IDYES);
+    }
+    kageant_audit_rules_ex(fp, comment, ok ? "removed" : "refused", "cli",
+                           pid, ok ? "" : NULL);
+    sfree(text);
+    sfree(who);
+    sfree(path);
+    return ok ? 1 : (nodesk ? 2 : 0);
 }
 
 /* KiTTY: show a short tray balloon when a key is used to authenticate. Installed

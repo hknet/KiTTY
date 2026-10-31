@@ -61,6 +61,16 @@ void kageant_dest_found_free(struct kageant_dest_found *v, size_t n);
 size_t kageant_dest_lookup_pattern(const char *pattern, int port,
                                    struct kageant_dest_found **out);
 
+/* kageant -h's destinations (kar_dest_list_parse's forms, separated by
+ * commas) as rules: each host's keys looked up as the
+ * rule editor looks them up - kageant_dest_lookup, a pattern with
+ * kageant_dest_lookup_pattern and KAR_MATCH_STORED_NOW ("Fixed list: host
+ * keys known now"), the via host's too. The hosts are kept as written,
+ * the port with them. NULL with *err (a new string) when a destination is
+ * refused or a host has no host key; an empty list gives an empty set. */
+struct kar_rules;
+struct kar_rules *kageant_dest_rules_from_list(const char *list, char **err);
+
 /* The names a host key is stored under (the host-key store, and
  * known_hosts while kageant reads it; "host" or "host:port" for another
  * port than 22), for kar_hostkey_names. *out a new array

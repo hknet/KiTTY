@@ -136,6 +136,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 115, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "remove-all",
       "fp comment result reason req reqpath pid",
       "Information; Warning for a refusal or failure" },
+    { 116, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "rules",
+      "fp comment result reason req reqpath pid restrict",
+      "Information; Warning for a refusal or failure" },
     { 120, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "lock",
       "fp comment result reason req reqpath pid",
       "Information; Warning for a refusal or failure" },
@@ -445,7 +448,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "telnet, local-command" },
     { "reason",
       "100-170 except 103 and 104: a token - gui, cmdline, ipc, "
-      "ipc-policy, tray, "
+      "ipc-policy, forwarded (a key change or a lock over a connection "
+      "bound for agent forwarding, refused by blockforwardedchanges), tray, "
+      "cli (116: kageant -R), "
       "lifetime, device-removal, idle, windows-lock, windows-unlock, "
       "click-allow, click-deny, click-cancel-latch, pileup, "
       "suppress-latch, hello-verified, hello-denied, hello-unavailable, "
@@ -462,6 +467,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "bind-failed, store-damaged; for result store-damaged the "
       "file and why it cannot be read, as text; 103: the agent's reason "
       "as text (key not found, "
+      "window-messages - a request by window messages refused by "
+      "allowwmcopydata, "
       "unrecognised message, key usage not confirmed by user, ...); 201, "
       "301: the fatal error's text; 221, 321: access denied, public-key "
       "signature refused, no supported authentication methods available, "
@@ -488,8 +495,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "230: what the far end asked for; values: osc52-read, "
       "osc5522-read, far2l-clipboard, file-read, file-write" },
     { "restrict",
-      "110: the key's destination rules, written as in rule; empty for "
-      "a key without rules" },
+      "110, 116: the key's destination rules, written as in rule; empty "
+      "for a key without rules (116: every rule of the key removed)" },
     { "result",
       "the outcome; 100, 101: allowed, denied; 102: accepted; 103: "
       "refused; 104: sign-refused, remove-refused, store-damaged (the "
@@ -501,7 +508,11 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "without fp, comment and rule); "
       "110, 114, "
       "115: done, "
-      "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "
+      "blocked; 111: loaded, failed, fp-refused, not-verified; 116: changed "
+      "(the rule editor's OK changed the key's destination rules), removed, "
+      "refused (kageant -R: every rule of the key removed after the "
+      "confirmation, or kept - No, Windows Hello refused, no interactive "
+      "desktop); 112: "
       "forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, "
       "blocked; 130: added, denied, failed; 131: protected, denied, "
       "failed, startup-entry-replaced; 132: hello, hello-cached, "

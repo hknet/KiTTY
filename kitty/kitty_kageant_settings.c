@@ -897,7 +897,10 @@ int kageant_autoenc_seconds_set(int seconds)
  * both add and remove; blockipcadd / blockipcremove block one direction.
  * Read from the ini where authoritative, else the registry, same shape as
  * the other kageant settings. Enforced only for EXTERNAL requests. */
-static int kageant_policy_read(const char *inikey, const char *regname)
+/* def: the value when neither store holds one (0 for every policy but
+ * blockforwardedchanges, whose default is yes). */
+static int kageant_policy_read(const char *inikey, const char *regname,
+                               int def)
 {
     char buf[32];
     int ini_val = -1, reg_val;
@@ -907,20 +910,28 @@ static int kageant_policy_read(const char *inikey, const char *regname)
     }
     if (kitty_inifile_registry_authoritative())
         return kageant_reg_read(regname, &reg_val) ? reg_val :
-               (ini_val >= 0 ? ini_val : 0);
+               (ini_val >= 0 ? ini_val : def);
     if (ini_val >= 0)
         return ini_val;
-    return kageant_reg_read(regname, &reg_val) ? reg_val : 0;
+    return kageant_reg_read(regname, &reg_val) ? reg_val : def;
 }
 
 /* Remembered for two seconds per policy, like the confirm mode: these are
  * queried on every external add/remove (and lock) request. One slot per
  * policy - a sixth policy needs a sixth slot, or it is re-read every time.
  * A write through kageant_policy_set forgets them all at once. */
-#define KAGEANT_POLICY_SLOTS 5
+#define KAGEANT_POLICY_SLOTS 7
 static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[KAGEANT_POLICY_SLOTS];
 
+static int kageant_policy_get_def(const char *inikey, const char *regname,
+                                  int def);
 int kageant_policy_get(const char *inikey, const char *regname)
+{
+    return kageant_policy_get_def(inikey, regname, 0);
+}
+
+static int kageant_policy_get_def(const char *inikey, const char *regname,
+                                  int def)
 {
     DWORD now = GetTickCount();
     int i, slot = -1;
@@ -936,7 +947,7 @@ int kageant_policy_get(const char *inikey, const char *regname)
             slot = i;
     }
     {
-        int v = kageant_policy_read(inikey, regname);
+        int v = kageant_policy_read(inikey, regname, def);
         if (slot >= 0) {
             kageant_policy_cache[slot].inikey = inikey;
             kageant_policy_cache[slot].value = v;
@@ -1001,6 +1012,34 @@ int  kageant_readknownhosts_get(void)
 int kageant_readknownhosts_set(int on)
 {
     return kageant_policy_set(KI_AGENT_READKNOWNHOSTS, "ReadKnownHosts", on);
+}
+/* "Refuse key changes from a forwarded agent (add, remove, lock)" - default
+ * ON: the program behind a forwarded agent sits on a remote server, which
+ * may use the keys it is offered but has no business changing the key set
+ * or locking the agent. Asked on every external add/remove/lock request on
+ * a connection bound for forwarding, hence the cache. */
+int  kageant_blockforwarded_get(void)
+{
+    return kageant_policy_get_def(KI_AGENT_BLOCKFORWARDEDCHANGES,
+                                  "BlockForwardedChanges", 1);
+}
+int kageant_blockforwarded_set(int on)
+{
+    return kageant_policy_set(KI_AGENT_BLOCKFORWARDEDCHANGES,
+                              "BlockForwardedChanges", on);
+}
+/* "Accept requests by window messages (PuTTY before 0.75)" - default ON:
+ * refusing them would break the programs that still use them. Asked on
+ * every WM_COPYDATA request, hence the cache. */
+int  kageant_allowwmcopydata_get(void)
+{
+    return kageant_policy_get_def(KI_AGENT_ALLOWWMCOPYDATA,
+                                  "AllowWmCopyData", 1);
+}
+int kageant_allowwmcopydata_set(int on)
+{
+    return kageant_policy_set(KI_AGENT_ALLOWWMCOPYDATA, "AllowWmCopyData",
+                              on);
 }
 
 /* "When Windows locks": 0 keep the agent working (default), 1 lock the

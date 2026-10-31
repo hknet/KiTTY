@@ -92,6 +92,9 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "blockipcremove"),
     ("Agent", "allowipclock"),
     ("Agent", "readknownhosts"),
+    #   kageant_policy_get_def(KI_AGENT_BLOCKFORWARDEDCHANGES, ...)  kitty/kitty_kageant_settings.c
+    ("Agent", "blockforwardedchanges"),
+    ("Agent", "allowwmcopydata"),
     ("Agent", "keylistgeometry"),
     ("Agent", "keylistcolumns"),
     ("Agent", "agentloggeometry"),

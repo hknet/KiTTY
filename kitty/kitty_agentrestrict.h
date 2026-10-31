@@ -168,6 +168,54 @@ bool kar_host_is_pattern(const char *host);
  * OpenSSH's semantics. */
 bool kar_pattern_narrow_enough(const char *host);
 
+/* "name", "name:port" or "[name]:port" -> the name (a new string) and the
+ * port (22 when none is given). false for an empty name, a port that is
+ * not 1 to 65535 or anything after "]" but ":port". */
+bool kar_split_host_port(const char *text, char **name, int *port);
+/* The name part of a hop's host as stored ("name", "name:port",
+ * "[name]:port"): its start and length, without the port. A host with
+ * more than one colon and no brackets (an IPv6 address) is all name. */
+ptrlen kar_host_name_part(const char *host);
+
+/*
+ * kageant's -h: one destination as
+ * OpenSSH's ssh-add -h takes it - "host", "user@host", "via>host",
+ * "via>user@host" - where a host may carry ":port" or be "[name]:port".
+ * The last host may be a pattern within kar_pattern_narrow_enough; the via
+ * host is a plain name without a user. *via (NULL = from this computer),
+ * *user (NULL = any user) and *host are new strings, the hosts as written
+ * (the port kept). false with *err (static text) when it is refused.
+ */
+bool kar_dest_spec_parse(const char *spec, char **via, char **user,
+                         char **host, const char **err);
+/* A list of destinations separated by commas, blanks around each one
+ * ignored: *items a new array of new strings (kar_names_free), *n their
+ * number (0 for an empty list). false with *err (static text) and *bad (a
+ * new string: the destination refused) when one is refused. */
+bool kar_dest_list_parse(const char *list, char ***items, size_t *n,
+                         char **bad, const char **err);
+/* The items again as one list, ", " between them. sfree it. */
+char *kar_dest_list_join(char *const *items, size_t n);
+
+/*
+ * A startup-key entry (kageant's [Agent] startupkeyN, or a line of the
+ * registry's StartupKeys): the key file's path, then tokens, each after a
+ * comma, in any order: "encrypted" / "plain", "confirm" / "helloconfirm",
+ * "autoencrypt=<value>" and the fingerprint "SHA256:..." (also the longer
+ * "alg bits SHA256:..." an earlier build wrote). The tokens are taken from
+ * the right, one at a time; the first unknown one belongs to the path.
+ * kar_entry_parse cuts them off entry in place: entry is the path
+ * afterwards. enc -1 = no load mode given (the caller's default); autoenc
+ * and fp point into entry (NULL / "" when not given).
+ */
+typedef struct kar_entry_tokens {
+    int enc;
+    int confirm;
+    const char *autoenc;
+    const char *fp;
+} kar_entry_tokens;
+void kar_entry_parse(char *entry, kar_entry_tokens *t);
+
 /* The names a host key is stored under (the KiTTY++ host-key store, and
  * known_hosts while kageant reads it; "host" or "host:port"), for
  * KAR_MATCH_STORED_LATER: *names a new array of new strings
@@ -432,6 +480,10 @@ kar_rules *kar_store_rules(const kar_store *s, const char *fp);
  * when the key has no link. sfree it. */
 char *kar_store_dest_lines(const kar_store *s, const char *fp,
                            size_t *count);
+/* The same lines without their origin lines, the first max joined by
+ * ", ", then " +N" for the rest: kageant's notices and hints. NULL when
+ * the key has no link. sfree it. */
+char *kar_store_dest_summary(const kar_store *s, const char *fp, size_t max);
 /* A link's origin as the tree and Key details show it: "Set by <path>,
  * <date time> (host keys looked up by that program)", "Set in the rule
  * editor" or "Origin not recorded". For a program's rule, while known_hosts

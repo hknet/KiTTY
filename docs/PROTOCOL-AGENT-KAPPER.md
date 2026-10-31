@@ -1,8 +1,8 @@
 # kageant's agent protocol extensions
 
-This file describes the three extensions of the SSH agent protocol that
+This file describes the five extensions of the SSH agent protocol that
 kageant (the KiTTY++ agent) adds to OpenSSH's protocol (`PROTOCOL.agent`,
-draft-miller-ssh-agent). All three are sent with `SSH_AGENTC_EXTENSION` (27).
+draft-miller-ssh-agent). All five are sent with `SSH_AGENTC_EXTENSION` (27).
 Their names follow the `name@domain` rule of RFC 4251 section 6:
 `kapper.net` is the KiTTY++ domain. Each name carries a version, as
 OpenSSH's `restrict-destination-v00@openssh.com` does. A changed format
@@ -17,12 +17,14 @@ keeps the bindings per connection. The destination rules of keys
 them. `key-state-v00` follows the same rules: a connection learns the
 state of the keys its key list shows, of no other key.
 
-The last section describes how kageant answers PuTTY's extensions.
+Two more serve kageant's own command line (`kageant -l`, `kageant -R`):
+`rules-list-v00` and `rules-remove-v00`. The last section describes how
+kageant answers PuTTY's extensions.
 
 ## Discovery
 
 kageant answers the standard `query` extension with every extension it
-supports, these three included:
+supports, these five included:
 
     byte        SSH_AGENTC_EXTENSION (27)
     string      "query"
@@ -203,6 +205,63 @@ the keys the connection may see. It shows whether a key is still
 encrypted and whether its use is confirmed. A remote host behind a
 forwarded agent learns that much about the keys it is offered.
 
+## rules-list-v00@kapper.net
+
+Every key of the rule file with its destination rules, then every SSH-2
+key the agent holds without rules (`kageant -l`).
+
+    byte        SSH_AGENTC_EXTENSION (27)
+    string      "rules-list-v00@kapper.net"
+
+    byte        SSH_AGENT_EXTENSION_RESPONSE (29)
+    string      "rules-list-v00@kapper.net"
+    uint32      count
+    count times:
+        string  fingerprint ("ssh-ed25519 255 SHA256:...")
+        string  comment
+        byte    1 = the agent holds the key, 0 = not loaded
+        string  the rules as Key details lists them: one line per
+                destination, its origin on an indented line below,
+                CR LF between the lines; empty for a key without rules
+
+Answer on a connection with a binding for forwarding, with data after
+the name, or while the rule file is damaged:
+
+    byte        SSH_AGENT_EXTENSION_FAILURE (28)
+
+with a refused request in the agent log (event 103, reason
+`rules-list: ...`).
+
+## rules-remove-v00@kapper.net
+
+Every destination rule of one key removed from the rule file, loaded or
+not (`kageant -R`), once the person at the desktop confirms it.
+
+    byte        SSH_AGENTC_EXTENSION (27)
+    string      "rules-remove-v00@kapper.net"
+    string      the key: its public key blob, or the text "SHA256:..."
+
+    byte        SSH_AGENT_EXTENSION_RESPONSE (29)
+    string      "rules-remove-v00@kapper.net"
+    uint32      0 removed, 1 not confirmed (the rules stay), 2 the key has
+                no rules, 3 no such key (neither in the rule file nor held),
+                4 no interactive desktop for the confirmation (the rules
+                stay)
+
+kageant puts up a confirmation on the desktop (system-modal, No the
+default), or a Windows Hello check while its setting "Confirmations
+require Windows Hello" is on. No, a refused Hello check, another
+confirmation already up or no interactive desktop (locked, a service
+session) is answer 1. The agent log records 1 and 0 as event 116, result
+`refused` or `removed`, reason `cli`. Refused like `rules-list-v00` on a
+connection with a binding for forwarding, for data that does not decode
+or while the rule file is damaged.
+
+**Security.** The rules name the user's servers: a program behind a
+forwarded agent gets neither extension. A program on this computer reads
+the list as it reads the key list. A removal takes the person at the
+desktop: a program alone cannot lift a key's rules.
+
 ## PuTTY's extensions
 
 kageant answers PuTTY's `add-ppk@putty.projects.tartarus.org` from every
@@ -226,6 +285,13 @@ extension request. `key-state-v00` carries the same flags in that format.
 `reencrypt` and `reencrypt-all` are refused because a remote host behind a
 forwarded agent must not re-encrypt the user's keys: every key would then
 require its passphrase again, at that host's will.
+
+On a connection bound for agent forwarding (a binding with
+`is_forwarding` set) kageant refuses `add-ppk` with
+`SSH_AGENT_EXTENSION_FAILURE` while its setting `blockforwardedchanges`
+is on (the default), as it refuses the standard adds, removals, the lock
+and the unlock there with `SSH_AGENT_FAILURE`. The agent log records the
+refusal with reason `forwarded`.
 
 PuTTY's Unix `pageant` client against kageant: `pageant -l` lists the keys
 without " (encrypted)". `pageant -d` removes a key as before (the standard
