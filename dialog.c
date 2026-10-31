@@ -402,6 +402,7 @@ dlgcontrol *ctrl_listbox(struct controlset *s, const char *label,
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
+    c->listbox.viewonly = false;
     c->listbox.hscroll = true;
     return c;
 }
@@ -424,6 +425,7 @@ dlgcontrol *ctrl_droplist(struct controlset *s, const char *label,
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
+    c->listbox.viewonly = false;
     c->listbox.hscroll = false;
     return c;
 }
@@ -446,6 +448,7 @@ dlgcontrol *ctrl_draglist(struct controlset *s, const char *label,
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
+    c->listbox.viewonly = false;
     c->listbox.hscroll = false;
     return c;
 }

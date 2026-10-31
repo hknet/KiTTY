@@ -380,6 +380,9 @@ struct dlgcontrol {
             /* KiTTY: a right click (or the menu key) on a row: its index in
              * the list, its id, x, y in screen pixels. NULL = no menu. */
             void (*rowmenu)(dlgcontrol *ctrl, int row, int id, int x, int y);
+            /* KiTTY: a list to look at only - no row can be selected
+             * (Windows: LBS_NOSEL); scrolling and the row tips stay. */
+            bool viewonly;
             /* KiTTY: a key pressed in the list (a virtual-key code); return
              * true when it was handled and the list must not see it. */
             bool (*rowkey)(dlgcontrol *ctrl, int vk);

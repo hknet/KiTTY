@@ -1238,7 +1238,8 @@ void listbox(struct ctlpos *cp, const char *stext,
            * row they land on (with LBS_MULTIPLESEL every row had
            * to be toggled with the space bar to be seen in the detail box),
            * Shift and Ctrl extend as everywhere in Windows. */
-          (multi == 2 ? LBS_EXTENDEDSEL : multi ? LBS_MULTIPLESEL : 0) |
+          (multi == 2 ? LBS_EXTENDEDSEL : multi > 0 ? LBS_MULTIPLESEL : 0) |
+          (multi < 0 ? LBS_NOSEL : 0) |   /* KiTTY: a view-only list */
           (ownerdraw ? LBS_OWNERDRAWFIXED : 0),
           WS_EX_CLIENTEDGE, "", lid);
     if (ownerdraw) {
@@ -1793,6 +1794,22 @@ static LRESULT CALLBACK kt_hl_proc(HWND hwnd, UINT msg, WPARAM wParam,
         if (st->ctrl->listbox.rowkey &&
             st->ctrl->listbox.rowkey(st->ctrl, (int)wParam))
             return 0;
+        /* KiTTY: in a view-only list the arrow and page keys scroll */
+        if (st->ctrl->listbox.viewonly) {
+            int sb = -1;
+            switch (wParam) {
+              case VK_UP:    sb = SB_LINEUP;   break;
+              case VK_DOWN:  sb = SB_LINEDOWN; break;
+              case VK_PRIOR: sb = SB_PAGEUP;   break;
+              case VK_NEXT:  sb = SB_PAGEDOWN; break;
+              case VK_HOME:  sb = SB_TOP;      break;
+              case VK_END:   sb = SB_BOTTOM;   break;
+            }
+            if (sb >= 0) {
+                SendMessage(hwnd, WM_VSCROLL, MAKEWPARAM(sb, 0), 0);
+                return 0;
+            }
+        }
         break;
       case WM_CONTEXTMENU:
         /* KiTTY: the row under the mouse - or, from the keyboard (-1,-1),
@@ -1831,9 +1848,18 @@ static LRESULT CALLBACK kt_hl_proc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
         break;
+      case WM_LBUTTONDOWN:
+      case WM_LBUTTONDBLCLK:
+        kt_hl_tip_hide(st);
+        /* KiTTY: a view-only list takes the focus, never a selection
+         * (LBS_NOSEL alone still let a click select the row) */
+        if (st->ctrl->listbox.viewonly) {
+            SetFocus(hwnd);
+            return 0;
+        }
+        break;
       case WM_VSCROLL:
       case WM_MOUSEWHEEL:
-      case WM_LBUTTONDOWN:
       case WM_KILLFOCUS:
         kt_hl_tip_hide(st);
         break;
@@ -2842,7 +2868,8 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                 /* Ordinary list. */
                 /* KiTTY: owner-drawn for a header row, and for a per-row ink */
                 listbox(&pos, escaped, base_id, base_id+1,
-                        ctrl->listbox.height, ctrl->listbox.multisel,
+                        ctrl->listbox.height,
+                        ctrl->listbox.viewonly ? -1 : ctrl->listbox.multisel,
                         ctrl->listbox.headerrow || ctrl->listbox.rowink);
                 kt_hl_attach(GetDlgItem(cp->hwnd, base_id+1), ctrl);
             }

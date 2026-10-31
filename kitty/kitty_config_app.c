@@ -3267,8 +3267,7 @@ static void kbc_fill(dlgparam *dlg)
         row++;
     }
     dlg_update_done(kbc.list, dlg);
-    if (pick > 0)
-        dlg_listbox_select(kbc.list, dlg, pick);
+    (void)pick;    /* the list is a view: no row is selected again */
 
     /* The keys to send to. */
     dlg_update_start(kbc.groups, dlg);
@@ -3545,8 +3544,11 @@ static void kbc_leaf(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Automation/Broadcast"), "send", KT_KSET_BC_SEND);
     kbc.show = ctrl_droplist(s, KT_KSET_BC_SHOW, NO_SHORTCUT, 60,
                              HELPCTX(kitty_kset_broadcast), kbc_show_handler, P(NULL));
-    kbc.list = ctrl_listbox(s, NULL, NO_SHORTCUT, HELPCTX(kitty_kset_broadcast),
+    kbc.list = ctrl_listbox(s, KT_KSET_BC_LIST_LABEL, NO_SHORTCUT,
+                            HELPCTX(kitty_kset_broadcast),
                             kbc_noop_handler, P(NULL));
+    /* a view: Send goes to the selected groups, never to a row here */
+    kbc.list->listbox.viewonly = true;
     kbc.list->listbox.height = 5;
     kbc.list->listbox.headerrow = true;
     kbc.list->listbox.ncols = 2;

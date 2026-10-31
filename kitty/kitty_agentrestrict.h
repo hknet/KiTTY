@@ -514,7 +514,7 @@ void kar_store_link_origin(kar_store *s, const char *fp, unsigned dest,
                            unsigned flags, const kar_origin *o);
 void kar_store_unlink_key(kar_store *s, const char *fp);
 /* ssh-add -h on a key: its links are replaced by the given rules (a re-add
- * without -h leaves them, decision D8), each with origin o (NULL = not
+ * without -h leaves them), each with origin o (NULL = not
  * recorded). */
 void kar_store_set_key_rules(kar_store *s, const char *fp,
                              const char *comment, ptrlen blob,

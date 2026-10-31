@@ -84,7 +84,7 @@
 #define IDC_SET_L_LOGSINK 353
 #define IDC_SET_L_LOGSINKHINT 354
 #define IDC_SET_EVENTVIEWER 355   /* Event Viewer on the agent's events */
-#define IDC_SET_KNOWNHOSTS 356    /* OpenSSH's known_hosts read (D8) */
+#define IDC_SET_KNOWNHOSTS 356    /* OpenSSH's known_hosts read (opt-in) */
 #define IDC_SET_BLOCKFWD 357      /* key changes refused over a forwarded agent */
 #define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
 
@@ -131,7 +131,7 @@
 #define IDC_KR_MATCH_LBL 516
 #define IDC_KR_MATCH 517
 #define IDC_KR_MATCH_WARN 518
-#define IDC_KR_CA_LBL 519         /* a CA destination: its CA (D10) */
+#define IDC_KR_CA_LBL 519         /* a CA destination: its CA */
 #define IDC_KR_CA 520
 #define IDC_KR_ADD_HOST 521       /* "Add destination"'s two kinds: menu */
 #define IDC_KR_ADD_CA 522         /* commands, also taken as messages */

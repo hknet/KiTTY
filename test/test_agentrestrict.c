@@ -23,9 +23,9 @@
  * reason no-port when only the port was missing, the flag in the rule
  * file of format 4 and not in format 3), a certificate without names
  * refused unless the CA allows it (as in an ssh-add -h rule, OpenSSH
- * 10.3). A rule's origin (D9): stored, the old
+ * 10.3). A rule's origin: stored, the old
  * formats without it, the texts, the comparison with known_hosts. OpenSSH's
- * known_hosts read only while kageant's setting is on (D8,
+ * known_hosts read only while kageant's setting is on (
  * kitty_knownhosts.c): nothing opened with it off, names, look-ups, the
  * "(known_hosts)" mark and a match through such a name reported.
  * key-state-v00@kapper.net's data (every key, one blob, refused when cut
@@ -101,7 +101,7 @@ static const char *const B64_CERT_WEB03 =
     "qWxImjxsSufce7bDr+P9IP0aILxuAAAAUwAAAAtzc2gtZWQyNTUxOQAAAEDoPDJ4IUDE"
     "QNtlyA9VXjibmOF1q2Y23hr5pncLlW3+uQTCBVsiTML3PSotVwGMqBNP4vZm2eTiVrnY"
     "ZOihv7QL";
-/* D10/D12: the CA "ca2", the host key web04, its certificate without names
+/* host CA destinations, certificates without names: the CA "ca2", the host key web04, its certificate without names
  * and the one for web05.example.com and web06.example.org */
 static const char *const B64_CA2 =
     "AAAAC3NzaC1lZDI1NTE5AAAAIAySji2Ngt1Z0yGgoMSl/lW6MATXjGUx4N8E0qpJG1M5";
@@ -586,7 +586,7 @@ static void test_store(strbuf *user, strbuf *web01, strbuf *web02,
     kar_rules_free(got);
     expect("-h: the key's row", kar_store_key(s, fp) != NULL, true);
 
-    /* a re-add with -h replaces the links (decision D8) */
+    /* a re-add with -h replaces the links */
     kar_rules_free(r);
     r = kar_rules_new();
     add_rule(r, NULL, NULL, NULL, "web01", web01, false);
@@ -1447,7 +1447,7 @@ static void test_ca_ports(strbuf *user, strbuf *ca2, strbuf *named)
     kar_ca_lookup = NULL;
 }
 
-/* D10: "All servers of a host CA", D12: certificates without names */
+/* "All servers of a host CA", and certificates without names */
 static void test_ca_store(strbuf *user, strbuf *ca, strbuf *ca2,
                           strbuf *web04, strbuf *noname, strbuf *named)
 {
@@ -1506,7 +1506,7 @@ static void test_ca_store(strbuf *user, strbuf *ca, strbuf *ca2,
     kar_ca_lookup = fake_ca_lookup;
     kar_rules_free(r);
 
-    /* D12 in an ssh-add -h rule: a CA entry and the name as written */
+    /* certificates without names in an ssh-add -h rule: a CA entry and the name as written */
     r = one_rule("web05.example.com", KAR_MATCH_EXACT, ca2, true);
     expect("-h: a certificate with the name, from the CA",
            permitted_on(r, named, false), true);
@@ -1587,7 +1587,7 @@ static void test_ca_store(strbuf *user, strbuf *ca, strbuf *ca2,
     kar_ca_lookup = NULL;
 }
 
-/* The temporary known_hosts of the D8 tests */
+/* The temporary known_hosts of the known_hosts tests */
 static char *kh_path = NULL;
 static bool kh_on = false;
 static char *kh_hook(void)
@@ -1615,7 +1615,7 @@ static char *kh_fp(strbuf *blob, bool is_ca)
     return out;
 }
 
-/* D8: known_hosts read only with the setting on; D9: the origin texts */
+/* known_hosts read only with the setting on, and the origin texts */
 static void test_known_hosts(strbuf *user, strbuf *web01, strbuf *web02,
                              strbuf *ca2)
 {
@@ -1670,46 +1670,46 @@ static void test_known_hosts(strbuf *user, strbuf *web01, strbuf *web02,
     opened = kkh_opened;
     kkh_names(ptrlen_from_strbuf(web01), kh_name_add, got);
     kkh_lookup("kh-web.example.com", 22, false, kh_key_add, got);
-    expect("D8 off (no hook): no name, no key", got->len == 0, true);
-    expect("D8 off (no hook): the file is not opened", kkh_opened == opened,
+    expect("known_hosts off (no hook): no name, no key", got->len == 0, true);
+    expect("known_hosts off (no hook): the file is not opened", kkh_opened == opened,
            true);
     kkh_path_hook = kh_hook;
     kh_on = false;
     kkh_names(ptrlen_from_strbuf(web01), kh_name_add, got);
     kkh_lookup("kh-web.example.com", 22, false, kh_key_add, got);
     kkh_lookup("*.example.com", 22, true, kh_key_add, got);
-    expect("D8 off (setting): no name, no key", got->len == 0, true);
-    expect("D8 off (setting): the file is not opened", kkh_opened == opened,
+    expect("known_hosts off (setting): no name, no key", got->len == 0, true);
+    expect("known_hosts off (setting): the file is not opened", kkh_opened == opened,
            true);
 
     /* the setting on */
     kh_on = true;
     kkh_names(ptrlen_from_strbuf(web01), kh_name_add, got);
-    expect("D8 on: the names of web01 (a [name]:port as name:port)",
+    expect("known_hosts on: the names of web01 (a [name]:port as name:port)",
            !strcmp(got->s, "kh-web.example.com;10.9.9.9;"
                    "kh-two.example.com:2200;"), true);
-    expect("D8 on: the file was opened", kkh_opened == opened + 1, true);
+    expect("known_hosts on: the file was opened", kkh_opened == opened + 1, true);
     strbuf_clear(got);
     kkh_names(ptrlen_from_strbuf(web02), kh_name_add, got);
-    expect("D8 on: hashed, wildcard and negated entries give no name",
+    expect("known_hosts on: hashed, wildcard and negated entries give no name",
            got->len == 0, true);
     {
         /* the @cert-authority line for *.example.com takes these too */
         char *a = kh_fp(web01, false), *c = kh_fp(ca2, true);
         want = dupprintf("%s%s", a, c);
         kkh_lookup("KH-WEB.example.com", 22, false, kh_key_add, got);
-        expect("D8 on: look-up of a plain name (case ignored), the CA line",
+        expect("known_hosts on: look-up of a plain name (case ignored), the CA line",
                !strcmp(got->s, want), true);
         sfree(want);
         strbuf_clear(got);
         kkh_lookup("kh-two.example.com", 2200, false, kh_key_add, got);
-        expect("D8 on: look-up of [name]:port", !strcmp(got->s, a), true);
+        expect("known_hosts on: look-up of [name]:port", !strcmp(got->s, a), true);
         strbuf_clear(got);
         sfree(a);
         a = kh_fp(web02, false);
         want = dupprintf("%s%s", a, c);
         kkh_lookup("hashed.example.com", 22, false, kh_key_add, got);
-        expect("D8 on: look-up through a hashed entry",
+        expect("known_hosts on: look-up through a hashed entry",
                !strcmp(got->s, want), true);
         sfree(want);
         sfree(a);
@@ -1718,13 +1718,13 @@ static void test_known_hosts(strbuf *user, strbuf *web01, strbuf *web02,
     strbuf_clear(got);
     kkh_lookup("neg.example.com", 22, false, kh_key_add, got);
     want = kh_fp(ca2, true);
-    expect("D8 on: a negated name refused, the CA line kept",
+    expect("known_hosts on: a negated name refused, the CA line kept",
            !strcmp(got->s, want), true);
     sfree(want);
     strbuf_clear(got);
     kkh_lookup("*.example.com", 22, true, kh_key_add, got);
     want = kh_fp(web01, false);
-    expect("D8 on: a pattern takes plain names on its port only",
+    expect("known_hosts on: a pattern takes plain names on its port only",
            !strcmp(got->s, want), true);
     sfree(want);
     strbuf_clear(got);
@@ -1783,7 +1783,7 @@ static void test_known_hosts(strbuf *user, strbuf *web01, strbuf *web02,
         kar_rules_free(r);
     }
 
-    /* D9: the origin texts, a program's rule against known_hosts */
+    /* the origin texts, a program's rule against known_hosts */
     {
         kar_origin o;
         kar_rules *r = one_rule("kh-web.example.com", KAR_MATCH_EXACT, web01,
@@ -1830,7 +1830,7 @@ static void test_known_hosts(strbuf *user, strbuf *web01, strbuf *web02,
         kar_rules_free(r);
     }
 
-    /* D9: the origin in the file - format 3 keeps it, format 2 has none */
+    /* the origin in the file - format 3 keeps it, format 2 has none */
     {
         kar_store *s = kar_store_new(), *u = kar_store_new();
         char *fp = kar_key_fp(ptrlen_from_strbuf(user)), *lines;

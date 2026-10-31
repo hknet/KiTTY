@@ -182,8 +182,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   certificates. It read "signed by a different certification
   authority" before.
 - The broadcast console (KiTTY++ Settings > Automation > Broadcast) keeps
-  the selected groups and session row after Send, so the next commands go
-  to the same groups. A window closed in the meantime drops out.
+  the selected groups after Send, so the next commands go to the same
+  groups. A window closed in the meantime drops out. Its sessions list is
+  a view only: no row can be selected there, Send goes to the groups.
 
 ## 0.85.1.19-beta — 2026-10-28
 

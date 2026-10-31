@@ -61,7 +61,7 @@
 #include "../kitty/kitty_agentrestrict.h"  /* KiTTY: destination-restricted keys */
 #include "../kitty/kitty_kageant_rules.h"  /* KiTTY: their rule file */
 #include "../kitty/kitty_kageant_dest.h"   /* KiTTY: host name -> host keys */
-#include "../kitty/kitty_knownhosts.h"    /* KiTTY: known_hosts on opt-in (D8) */
+#include "../kitty/kitty_knownhosts.h"    /* KiTTY: known_hosts on opt-in */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
@@ -2449,7 +2449,7 @@ struct kr_dest {
                              * server of a CA of the CA store */
     kar_hop to, from;       /* the keys found (host/user filled at OK) */
     bool looked_up;         /* to/from match host and via as typed */
-    kar_origin origin;      /* where the stored link came from (D9) */
+    kar_origin origin;      /* where the stored link came from */
     bool edited;            /* new or changed here: "Set in the rule editor"
                              * at OK */
     bool ignore_port;       /* KAR_HOP_IGNORE_PORT (a CA destination) */
@@ -9287,9 +9287,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* the names of a bound host key, for a pattern rule's "Checked
          * at each login" */
         kar_hostkey_names = kageant_dest_names;
-        kar_ca_lookup = kageant_ca_by_name;           /* D10: CA destinations */
-        kkh_path_hook = kageant_known_hosts_path;     /* D8: known_hosts opt-in */
-        kageant_req_path_hook = kageant_req_path_dup; /* D9: a rule's origin */
+        kar_ca_lookup = kageant_ca_by_name;           /* CA destinations */
+        kkh_path_hook = kageant_known_hosts_path;     /* known_hosts opt-in */
+        kageant_req_path_hook = kageant_req_path_dup; /* a rule's origin */
         if (!kageant_rules_load()) {
             char *t = dupprintf(KT_KARULES_DAMAGED_NOTICE_FMT,
                                 kageant_rules_damage_text());

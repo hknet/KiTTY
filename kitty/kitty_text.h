@@ -1592,6 +1592,8 @@
 /* The list's header row: the two column titles, tab-separated. */
 #define KT_KSET_BC_COL_HEAD                          "Session\tKey"
 #define KT_KSET_BC_GROUPS                            "Send to these groups:"
+/* the sessions list above the groups: a view, Send uses the groups only */
+#define KT_KSET_BC_LIST_LABEL                        "Sessions (view only, Send goes to the groups below):"
 #define KT_KSET_BC_COMMANDS                          "Commands, one per line:"
 #define KT_KSET_BC_LOAD                              "Load Command-File..."
 #define KT_KSET_BC_SEND_BTN                          "Send Commands"
@@ -4045,8 +4047,6 @@
 #define KT_CERT_NO_HOST_NAMES_REFUSED                "Certificate holds no host names: KiTTY++, like OpenSSH 10.3, " \
         "accepts it for no host (\"Accept certificates without names\" is off for its CA)"
 #define KT_CERT_INFO_WARNING_KEY                     "Warning"
-#define KT_CERT_INFO_NO_HOST_NAMES                   "No host names: KiTTY++, like OpenSSH 10.3, accepts this certificate " \
-        "for no host. A stolen copy would let a server pose as any host."
 /* ssh/common.c, the host key prompt: a host certificate from a TRUSTED CA
  * refused only because it holds no server name (PuTTY's text for this case
  * reads "signed by a different certification authority") */
@@ -4058,6 +4058,8 @@
 #define KT_CERT_PROMPT_NAMELESS_MEANS                "This means that either the server's administrator " \
         "issued a certificate without the server's name, or you have actually connected to " \
         "another computer pretending to be the server."
+#define KT_CERT_INFO_NO_HOST_NAMES                   "No host names: KiTTY++, like OpenSSH 10.3, accepts this certificate " \
+        "for no host. A stolen copy would let a server pose as any host."
 #define KT_CERT_INFO_NO_USER_NAMES                   "No user names: OpenSSH 10.3 accepts this certificate for no user."
 /* ssh/ca-config.c: a CA record's exception, off by default, the warning
  * line under it */

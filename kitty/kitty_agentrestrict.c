@@ -18,7 +18,7 @@
 #include "ssh.h"
 
 #include "kitty_agentrestrict.h"
-#include "kitty_knownhosts.h"   /* the D9 comparison of a program's rule */
+#include "kitty_knownhosts.h"   /* a program's rule compared with known_hosts */
 #include "kitty_text.h"     /* KT_KA_DEST_CLIENT_MARK, KT_KAKEYS_DEST_* */
 
 /* ---- rules, hops, keys ---------------------------------------------------- */

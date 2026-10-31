@@ -930,7 +930,7 @@ static int list_group(PageantClientInfo *info, PageantPublicKey *pub)
 }
 
 /* info non-NULL: the list an external client gets, without the
- * restricted keys this connection may not use (decision D9, as OpenSSH:
+ * restricted keys this connection may not use (as OpenSSH:
  * a server never learns of a key that may not go to it). On a connection
  * bound for a login the keys come in three groups, each in the offer
  * order: restricted to this server by its host keys, restricted to it by
@@ -2669,7 +2669,7 @@ static PageantAsyncOp *pageant_make_op(
                                           key_lifetime);
             /* KiTTY: ssh-add -h - the key's links in the rule store are
              * replaced by these destinations; a re-add without -h keeps
-             * them (decision D8). Filed by fingerprint, so the rules follow
+             * them. Filed by fingerprint, so the rules follow
              * the key however it is added later. Before the notice below,
              * whose record carries them. */
             if (key_dest) {
@@ -2677,7 +2677,7 @@ static PageantAsyncOp *pageant_make_op(
                 ptrlen rblob = rpub ? rpub->sort.full_pub
                                     : ptrlen_from_strbuf(pb);
                 char *rfp = kar_key_fp(rblob);
-                /* D9: the rule keeps where it came from - the program
+                /* the rule keeps where it came from - the program
                  * behind the request and the time; its host keys are the
                  * ones that program looked up */
                 kar_origin origin;
