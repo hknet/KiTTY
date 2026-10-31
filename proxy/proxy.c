@@ -216,7 +216,7 @@ static void plug_proxy_closing(Plug *p, PlugCloseType type,
 
 static void proxy_wev_used(ProxySocket *ps);   /* KiTTY */
 
-static void proxy_negotiate(ProxySocket *ps)
+void proxy_negotiate(ProxySocket *ps)
 {
     assert(ps->pn);
     proxy_negotiator_process_queue(ps->pn);
