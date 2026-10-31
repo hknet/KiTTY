@@ -47,6 +47,8 @@
 #include "kitty_hostkey_verify.h" /* kitty_hkv_klink_path: klink beside kitty.exe */
 #include "kitty_winerr.h"   /* kitty_win_reason */
 #include "kitty_bridge.h"   /* kitty_proxy_select: the launcher's -winscp */
+#include "security-api.h"  /* make_private_security_descriptor: the WinSCP password pipe */
+#include <tlhelp32.h>       /* a WinSCP already running */
 
 
 /* A user action that cannot go on (no SSH, a tool not found, kscp not
@@ -2174,16 +2176,18 @@ static void pathcat( strbuf *dst, const char *s ) {
  * paths to files this process writes just before the start and deletes again
  * after WinSCP has had time to read them (a minute; a stale file from a crash
  * is swept at the next start). The files live in %TEMP%, which Windows keeps
- * private to the user - the same protection our own stores have. */
+ * private to the user - the same protection our own stores have. WinSCP 6.0
+ * and later get a named pipe instead of the file (kx_password_pipe below). */
 #define KX_PWFILES_MAX 4
 /* The paths in full: a %TEMP% Windows cannot give whole (GetTempPath's
  * answer longer than its buffer) is no folder for a password file - the file
  * is then not made and the caller's fallback applies. */
 struct kx_pwfiles { int n ; char *path[KX_PWFILES_MAX] ; } ;
 static struct kx_pwfiles kx_pw = { 0 } ;
-/* The delayed deletes not yet done: the password files here, FileZilla's
- * temporary directory below. A process with no terminal window waits for
- * them before it ends (kitty_xfer_cli_open). */
+/* The delayed deletes not yet done (the password files here, FileZilla's
+ * temporary directory below) and the WinSCP password pipes still served. A
+ * process with no terminal window waits for them before it ends
+ * (kitty_xfer_cli_open). */
 static volatile LONG kx_deletes_pending = 0 ;
 
 static void kx_pwfiles_sweep( void ) {
@@ -2361,6 +2365,370 @@ static void kx_pwfiles_release( int now ) {
 		kx_pwfiles_delete( &kx_pw ) ;
 	}
 	memset( &kx_pw, 0, sizeof(kx_pw) ) ;
+}
+
+/* ---- WinSCP 6.0 and later: the password through a NAMED PIPE ---------------
+ *
+ * WinSCP 6.0 reads a /passwordsfromfiles path as a stream, so the path may be
+ * a pipe, \\.\pipe\kitty_pw_<random>. No file with the password is then
+ * written to the disk. One pipe instance per password: a random name, created
+ * as the first and only instance (FILE_FLAG_FIRST_PIPE_INSTANCE, one instance
+ * at most), local clients only (PIPE_REJECT_REMOTE_CLIENTS) and a DACL that
+ * grants this user alone (make_private_security_descriptor, as kageant's
+ * pipe). A thread serves it once WinSCP is started: it waits for a client,
+ * checks that the client is the process just started
+ * (GetNamedPipeClientProcessId), writes the password, waits until the client
+ * has read it (FlushFileBuffers) and closes the pipe - the end of the stream
+ * for WinSCP. A client of another process is disconnected and the thread
+ * waits on. After a minute, or once the started WinSCP has ended, the pipe is
+ * closed whatever happened. The copy of the password is wiped.
+ *
+ * The temporary file stays for:
+ *   - a WinSCP before 6.0, or a file without a version resource (a .bat in
+ *     WinSCPPath). Read by its file version, as the kscp check above.
+ *   - a WinSCP already running. WinSCP may hand a session started from the
+ *     command line to the running instance (WinSCP tracker 2265), which is
+ *     another process and would be refused. The file keeps that login
+ *     working.
+ *   - a Windows without GetNamedPipeClientProcessId or without
+ *     PIPE_REJECT_REMOTE_CLIENTS (XP): the reader cannot be checked.
+ *   - a pipe that cannot be created.
+ */
+#ifndef PIPE_REJECT_REMOTE_CLIENTS
+#define PIPE_REJECT_REMOTE_CLIENTS 0x00000008
+#endif
+#define KX_PIPE_TIMEOUT_MS  60000
+#define KX_WINSCP_PIPES_MS  (6UL << 16)          /* WinSCP 6.0 */
+
+#define KX_PIPE_YES      0
+#define KX_PIPE_OLD      1   /* not WinSCP 6.0 or later by its file version */
+#define KX_PIPE_RUNNING  2   /* a WinSCP is running: tracker 2265 */
+#define KX_PIPE_NONE     3   /* no check of the reader on this Windows */
+
+BOOLEAN NTAPI SystemFunction036( PVOID, ULONG ) ;   /* RtlGenRandom, advapi32 */
+
+typedef BOOL (WINAPI *kx_pipe_pid_fn)( HANDLE, PULONG ) ;
+typedef BOOL (WINAPI *kx_cancel_ioex_fn)( HANDLE, LPOVERLAPPED ) ;
+static kx_pipe_pid_fn kx_pipe_client_pid = NULL ;
+static kx_cancel_ioex_fn kx_cancel_ioex = NULL ;
+
+struct kx_pwpipes ;
+struct kx_pwpipe {
+	HANDLE h ;                /* the pipe instance, NULL once closed */
+	char *name ;              /* \\.\pipe\kitty_pw_<hex> */
+	char *secret ;            /* the password, wiped when the pipe closes */
+	size_t len ;
+	HANDLE thread ;
+	CRITICAL_SECTION cs ;     /* h, against the watchdog's disconnect */
+	struct kx_pwpipes *set ;
+} ;
+struct kx_pwpipes {
+	int n ;
+	struct kx_pwpipe p[KX_PWFILES_MAX] ;
+	DWORD pid ;               /* the WinSCP started: the only reader */
+	HANDLE proc ;             /* that process, to end the pipes when it ends */
+	HANDLE stop ;             /* set by the watchdog at the time-out */
+} ;
+static struct kx_pwpipes kx_pp ;
+static int kx_pw_pipes_on = 0 ;   /* this start of WinSCP hands passwords over by pipe */
+
+/* WinSCP 6.0 or later, by the file version of the program started. A .bat,
+ * WinSCP.com (a console front end that starts WinSCP.exe as another process)
+ * or anything without a version resource: no. */
+static int kx_winscp_reads_pipes( const char *path ) {
+	DWORD dummy, sz ;
+	void *buf ;
+	VS_FIXEDFILEINFO *ffi = NULL ;
+	UINT flen = 0 ;
+	size_t n ;
+	int ok = 0 ;
+	if( path == NULL || ( n = strlen( path ) ) < 4 || stricmp( path + n - 4, ".exe" ) ) return 0 ;
+	if( ( sz = GetFileVersionInfoSizeA( path, &dummy ) ) == 0 ) return 0 ;
+	if( ( buf = malloc( sz ) ) == NULL ) return 0 ;
+	if( GetFileVersionInfoA( path, 0, sz, buf )
+	    && VerQueryValueA( buf, "\\", (void **)&ffi, &flen )
+	    && ffi != NULL && flen >= sizeof(*ffi)
+	    && ffi->dwFileVersionMS >= KX_WINSCP_PIPES_MS )
+		ok = 1 ;
+	free( buf ) ;
+	return ok ;
+}
+
+/* A process with the program's file name is running (any user, any path):
+ * then WinSCP may pass the session to it. Unknown counts as running. */
+static int kx_winscp_running( const char *path ) {
+	const char *base = path, *s ;
+	HANDLE snap ;
+	PROCESSENTRY32 pe ;
+	int found = 0 ;
+	for( s = path ; *s ; s++ ) if( *s == '\\' || *s == '/' ) base = s + 1 ;
+	if( !*base ) return 1 ;
+	if( ( snap = CreateToolhelp32Snapshot( TH32CS_SNAPPROCESS, 0 ) ) == INVALID_HANDLE_VALUE ) return 1 ;
+	memset( &pe, 0, sizeof(pe) ) ;
+	pe.dwSize = sizeof(pe) ;
+	if( Process32First( snap, &pe ) ) {
+		do {
+			if( !stricmp( pe.szExeFile, base ) ) { found = 1 ; break ; }
+		} while( Process32Next( snap, &pe ) ) ;
+	}
+	CloseHandle( snap ) ;
+	return found ;
+}
+
+/* Pipe or file for this start of WinSCP (KX_PIPE_*). */
+static int kx_pipes_decide( const char *path ) {
+#if KX_CHECK_SELF_UPDATING_TOOLS
+	(void)path ;
+	return KX_PIPE_NONE ;    /* kitty_helper_run gives no process id to check */
+#else
+	if( !kx_winscp_reads_pipes( path ) ) return KX_PIPE_OLD ;
+	if( kx_pipe_client_pid == NULL )
+		kx_pipe_client_pid = (kx_pipe_pid_fn)kitty_api( "kernel32.dll", "GetNamedPipeClientProcessId",
+		                                                KITTY_API_OPTIONAL, KT_WINFEAT_WINSCP_PIPE ) ;
+	if( kx_pipe_client_pid == NULL ) return KX_PIPE_NONE ;
+	if( kx_cancel_ioex == NULL )
+		kx_cancel_ioex = (kx_cancel_ioex_fn)kitty_api( "kernel32.dll", "CancelIoEx",
+		                                               KITTY_API_OPTIONAL, KT_WINFEAT_WINSCP_PIPE ) ;
+	if( kx_winscp_running( path ) ) return KX_PIPE_RUNNING ;
+	return KX_PIPE_YES ;
+#endif
+}
+
+/* A pipe holding `secret`, for the WinSCP about to start. Its path (valid
+ * until the release) or NULL - then the caller makes the file instead. */
+static const char *kx_password_pipe( const char *secret ) {
+	static const char hexd[] = "0123456789abcdef" ;
+	unsigned char rnd[16] ;
+	char hex[33] ;                  /* rnd in hex, NUL-terminated */
+	SECURITY_ATTRIBUTES sa ;
+	PSECURITY_DESCRIPTOR psd = NULL ;
+	PACL acl = NULL ;
+	char *err = NULL, *name ;
+	struct kx_pwpipe *pp ;
+	size_t len = strlen( secret ) ;
+	DWORD bufsz = len < 4096 ? 4096 : (DWORD)len + 1 ;
+	HANDLE h ;
+	int i ;
+
+	if( kx_pp.n >= KX_PWFILES_MAX ) return NULL ;
+	if( !SystemFunction036( rnd, sizeof(rnd) ) ) return NULL ;
+	for( i = 0 ; i < (int)sizeof(rnd) ; i++ ) {
+		hex[2 * i] = hexd[rnd[i] >> 4] ;
+		hex[2 * i + 1] = hexd[rnd[i] & 0xF] ;
+	}
+	hex[2 * sizeof(rnd)] = '\0' ;
+	smemclr( rnd, sizeof(rnd) ) ;
+	if( !make_private_security_descriptor( GENERIC_READ | GENERIC_WRITE, &psd, &acl, &err ) ) {
+		sfree( err ) ;
+		return NULL ;
+	}
+	memset( &sa, 0, sizeof(sa) ) ;
+	sa.nLength = sizeof(sa) ;
+	sa.lpSecurityDescriptor = psd ;
+	sa.bInheritHandle = FALSE ;
+	name = dupprintf( "\\\\.\\pipe\\kitty_pw_%s", hex ) ;
+	smemclr( hex, sizeof(hex) ) ;
+	/* Duplex: whatever access WinSCP opens it with. No retry without
+	 * PIPE_REJECT_REMOTE_CLIENTS (XP refuses the flag with error 87): the
+	 * file is used there instead. */
+	h = CreateNamedPipeA( name,
+	                      PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+	                      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+	                      1, bufsz, bufsz, 0, &sa ) ;
+	LocalFree( psd ) ;
+	LocalFree( acl ) ;
+	if( h == INVALID_HANDLE_VALUE ) { sfree( name ) ; return NULL ; }
+	pp = &kx_pp.p[kx_pp.n++] ;
+	memset( pp, 0, sizeof(*pp) ) ;
+	pp->h = h ;
+	pp->name = name ;
+	pp->secret = snewn( len + 1, char ) ;
+	memcpy( pp->secret, secret, len + 1 ) ;
+	pp->len = len ;
+	return name ;
+}
+
+/* A password of WinSCP's: the pipe when this start uses pipes, else (or when
+ * no pipe can be made) the file. */
+static const char *kx_winscp_password( const char *secret ) {
+	const char *p = kx_pw_pipes_on ? kx_password_pipe( secret ) : NULL ;
+	return p ? p : kx_password_file( secret ) ;
+}
+
+/* Wait for the I/O on `ov`, the stop event or the end of WinSCP. 1 = the I/O
+ * completed (its result read), 0 = stopped (the I/O cancelled and waited
+ * for). */
+static int kx_pipe_wait( HANDLE h, OVERLAPPED *ov, struct kx_pwpipes *set, DWORD *got ) {
+	HANDLE w[3] ;
+	DWORD n = 0 ;
+	w[n++] = ov->hEvent ;
+	w[n++] = set->stop ;
+	if( set->proc ) w[n++] = set->proc ;
+	if( WaitForMultipleObjects( n, w, FALSE, INFINITE ) != WAIT_OBJECT_0 ) {
+		CancelIo( h ) ;
+		GetOverlappedResult( h, ov, got, TRUE ) ;
+		return 0 ;
+	}
+	return 1 ;
+}
+
+static DWORD WINAPI kx_pipe_serve_thread( LPVOID v ) {
+	struct kx_pwpipe *pp = (struct kx_pwpipe *)v ;
+	struct kx_pwpipes *set = pp->set ;
+	OVERLAPPED ov ;
+	HANDLE ev = CreateEvent( NULL, TRUE, FALSE, NULL ) ;
+	DWORD got ;
+	ULONG cpid ;
+	BOOL ok ;
+
+	while( ev != NULL && WaitForSingleObject( set->stop, 0 ) != WAIT_OBJECT_0 ) {
+		memset( &ov, 0, sizeof(ov) ) ;
+		ResetEvent( ev ) ;
+		ov.hEvent = ev ;
+		ok = ConnectNamedPipe( pp->h, &ov ) ;
+		if( !ok ) {
+			DWORD e = GetLastError() ;
+			if( e == ERROR_PIPE_CONNECTED ) ok = TRUE ;          /* came before the call */
+			else if( e == ERROR_NO_DATA ) {                       /* came and went */
+				DisconnectNamedPipe( pp->h ) ;
+				continue ;
+			} else if( e == ERROR_IO_PENDING ) {
+				if( !kx_pipe_wait( pp->h, &ov, set, &got ) ) break ;
+				ok = GetOverlappedResult( pp->h, &ov, &got, FALSE ) ;
+				if( !ok ) { DisconnectNamedPipe( pp->h ) ; continue ; }
+			} else break ;
+		}
+		/* the process started, nobody else */
+		cpid = 0 ;
+		if( !kx_pipe_client_pid( pp->h, &cpid ) || cpid != set->pid ) {
+			DisconnectNamedPipe( pp->h ) ;
+			continue ;
+		}
+		memset( &ov, 0, sizeof(ov) ) ;
+		ResetEvent( ev ) ;
+		ov.hEvent = ev ;
+		got = 0 ;
+		ok = WriteFile( pp->h, pp->secret, (DWORD)pp->len, NULL, &ov ) ;
+		if( !ok && GetLastError() == ERROR_IO_PENDING ) {
+			if( !kx_pipe_wait( pp->h, &ov, set, &got ) ) break ;
+			ok = TRUE ;
+		}
+		if( ok ) ok = GetOverlappedResult( pp->h, &ov, &got, FALSE ) && got == (DWORD)pp->len ;
+		/* Until the client has read it all. It fails when the client closed
+		 * without reading (a probe of the path): then the next connection. A
+		 * client that neither reads nor closes is disconnected by the
+		 * watchdog at the time-out. */
+		if( ok && FlushFileBuffers( pp->h ) ) break ;
+		DisconnectNamedPipe( pp->h ) ;
+	}
+	/* Closed here and now, not at the time-out: the client reads the end of
+	 * the stream and goes on to the next password. */
+	EnterCriticalSection( &pp->cs ) ;
+	CloseHandle( pp->h ) ;
+	pp->h = NULL ;
+	LeaveCriticalSection( &pp->cs ) ;
+	smemclr( pp->secret, pp->len ) ;
+	if( ev != NULL ) CloseHandle( ev ) ;
+	return 0 ;
+}
+
+/* Every pipe of a start, closed and wiped. For a set whose threads have
+ * ended (or never started). */
+static void kx_pipes_close( struct kx_pwpipes *set ) {
+	int i ;
+	for( i = 0 ; i < set->n ; i++ ) {
+		struct kx_pwpipe *pp = &set->p[i] ;
+		if( pp->h ) { CloseHandle( pp->h ) ; pp->h = NULL ; }
+		if( pp->secret ) { smemclr( pp->secret, pp->len ) ; sfree( pp->secret ) ; pp->secret = NULL ; }
+		sfree( pp->name ) ; pp->name = NULL ;
+	}
+	set->n = 0 ;
+}
+
+/* The pipes' watchdog: the time-out, then the cleanup. */
+static DWORD WINAPI kx_pipes_watch_thread( LPVOID v ) {
+	struct kx_pwpipes *set = (struct kx_pwpipes *)v ;
+	HANDLE th[KX_PWFILES_MAX] ;
+	int i, nt = 0, tries, done = 1 ;
+	for( i = 0 ; i < set->n ; i++ ) if( set->p[i].thread ) th[nt++] = set->p[i].thread ;
+	/* stop already set: the release could start no watchdog thread */
+	if( nt && ( WaitForSingleObject( set->stop, 0 ) == WAIT_OBJECT_0
+	            || WaitForMultipleObjects( (DWORD)nt, th, TRUE, KX_PIPE_TIMEOUT_MS ) == WAIT_TIMEOUT ) ) {
+		SetEvent( set->stop ) ;
+		/* A client that connected and reads nothing holds FlushFileBuffers:
+		 * a disconnect ends it. */
+		done = 0 ;
+		for( tries = 0 ; tries < 50 && !done ; tries++ ) {
+			for( i = 0 ; i < set->n ; i++ ) {
+				struct kx_pwpipe *pp = &set->p[i] ;
+				if( !pp->thread ) continue ;
+				EnterCriticalSection( &pp->cs ) ;
+				if( pp->h ) {
+					if( kx_cancel_ioex ) kx_cancel_ioex( pp->h, NULL ) ;
+					DisconnectNamedPipe( pp->h ) ;
+				}
+				LeaveCriticalSection( &pp->cs ) ;
+			}
+			done = WaitForMultipleObjects( (DWORD)nt, th, TRUE, 100 ) != WAIT_TIMEOUT ;
+		}
+	}
+	if( done ) {
+		/* (a thread still running after five seconds owns its pipe: then
+		 * the set is left as it is) */
+		for( i = 0 ; i < set->n ; i++ ) {
+			if( set->p[i].thread ) CloseHandle( set->p[i].thread ) ;
+			DeleteCriticalSection( &set->p[i].cs ) ;
+		}
+		kx_pipes_close( set ) ;
+		if( set->proc ) CloseHandle( set->proc ) ;
+		CloseHandle( set->stop ) ;
+		free( set ) ;
+	}
+	InterlockedDecrement( &kx_deletes_pending ) ;
+	return 0 ;
+}
+
+/* After the start: serve the pipes to process `pid`, the WinSCP just
+ * started. 0 = not started, or started without a process id (the
+ * ShellExecute fallback): the pipes close at once, nobody can be checked,
+ * and WinSCP prompts for the password. */
+static void kx_pipes_release( DWORD pid ) {
+	struct kx_pwpipes *set ;
+	HANDLE t ;
+	int i ;
+	kx_pw_pipes_on = 0 ;
+	if( kx_pp.n == 0 ) return ;
+	if( pid == 0 || kx_pipe_client_pid == NULL
+	    || ( set = (struct kx_pwpipes *)malloc( sizeof(*set) ) ) == NULL ) {
+		kx_pipes_close( &kx_pp ) ;
+		memset( &kx_pp, 0, sizeof(kx_pp) ) ;
+		return ;
+	}
+	*set = kx_pp ;
+	memset( &kx_pp, 0, sizeof(kx_pp) ) ;
+	set->pid = pid ;
+	set->proc = OpenProcess( SYNCHRONIZE, FALSE, pid ) ;
+	if( ( set->stop = CreateEvent( NULL, TRUE, FALSE, NULL ) ) == NULL ) {
+		if( set->proc ) CloseHandle( set->proc ) ;
+		kx_pipes_close( set ) ;
+		free( set ) ;
+		return ;
+	}
+	for( i = 0 ; i < set->n ; i++ ) {
+		InitializeCriticalSection( &set->p[i].cs ) ;
+		set->p[i].set = set ;
+		set->p[i].thread = NULL ;
+	}
+	InterlockedIncrement( &kx_deletes_pending ) ;   /* the watchdog takes it off */
+	for( i = 0 ; i < set->n ; i++ )
+		set->p[i].thread = CreateThread( NULL, 0, kx_pipe_serve_thread, &set->p[i], 0, NULL ) ;
+	t = CreateThread( NULL, 0, kx_pipes_watch_thread, set, 0, NULL ) ;
+	if( t ) CloseHandle( t ) ;
+	else {
+		/* no watchdog: stop the pipes now rather than serve them unwatched */
+		SetEvent( set->stop ) ;
+		kx_pipes_watch_thread( set ) ;
+	}
 }
 
 /* The proxy of the CONNECTION, for a kscp the terminal starts. Send File and
@@ -4802,7 +5170,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	const char *proto ;
 	int winscpport ;
 	int raw = 0;
-	int pwfiles = 0 ;                /* passwords handed over as files (/passwordsfromfiles) */
+	int pwfiles = 0 ;                /* passwords handed over as files or pipes (/passwordsfromfiles) */
+	int pipes_why ;                  /* KX_PIPE_*: pipe or file for this start */
 	const char *pf ;
 
 	kx_pwfiles_sweep() ;             /* anything an earlier start left behind */
@@ -4855,6 +5224,10 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	  winscpport = wport ;
 	}
 
+	/* WinSCP 6.0 and later: the passwords below through named pipes */
+	pipes_why = kx_pipes_decide( WinSCPPath ) ;
+	kx_pw_pipes_on = ( pipes_why == KX_PIPE_YES ) ;
+
 	cmd = strbuf_new_nm() ;                /* cleared when it goes: it may hold a password */
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
 		put_fmt( cmd, "\"%s\" %s://", shortpath, proto ) ;
@@ -4869,15 +5242,16 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		} else {
 			urlcat( cmd, user!=NULL ? user : conf_get_str_ambi(conf,CONF_username,NULL) ) ;
 			if( !kitty_pw_empty(conf,CONF_password) ) {
-				/* The URL's password field carries the PATH of a private temp
-				 * file holding the password (/passwordsfromfiles, see above);
-				 * only if no file could be made does the value itself go
+				/* The URL's password field carries the PATH of a named pipe
+				 * (WinSCP 6.0 and later) or of a private temp file holding the
+				 * password (/passwordsfromfiles, see above); only if neither
+				 * could be made does the value itself go
 				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host).
 				 * WinSCP's file format is its own - a plain password - so this
 				 * one is NOT the protected form the kscp file uses. */
 				char pw[KITTY_PW_MAX+1] ;
 				kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
-				pf = kx_password_file( pw ) ;
+				pf = kx_winscp_password( pw ) ;
 				bcat( cmd, ":" ) ;
 				pw_at = cmd->len ;
 				if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
@@ -4914,7 +5288,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 			bcat( cmd, ":" ) ;
 			pw_at = cmd->len ;
-			pf = kx_password_file( pw ) ;   /* a file, see above */
+			pf = kx_winscp_password( pw ) ;   /* a pipe or a file, see above */
 			if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
 			else urlcat( cmd, pw ) ;
 			pw_len = cmd->len - pw_at ;
@@ -5005,7 +5379,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 				 * value however it was escaped. */
 				bcat( cmd, " TunnelPasswordPlain=" ) ;
 				proxy_pw_at = cmd->len ;
-				pf = kx_password_file( px_pass ) ;      /* a file - /passwordsfromfiles covers rawsettings too */
+				pf = kx_winscp_password( px_pass ) ;    /* /passwordsfromfiles covers rawsettings too */
 				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
 				else rawcat( cmd, px_pass ) ;
 				proxy_pw_len = cmd->len - proxy_pw_at ;
@@ -5019,7 +5393,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( px_pass[0] ) {
 				bcat( cmd, " ProxyPassword=" ) ;
 				proxy_pw_at = cmd->len ;
-				pf = kx_password_file( px_pass ) ;      /* a file, see above */
+				pf = kx_winscp_password( px_pass ) ;    /* a pipe or a file, see above */
 				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
 				else rawcat( cmd, px_pass ) ;
 				proxy_pw_len = cmd->len - proxy_pw_at ;
@@ -5058,17 +5432,31 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		bcat( cmd, " Shell=" ) ; rawcat( cmd, conf_get_str(conf, CONF_pscpshell) ) ;
 	}
 
-	/* Every password above went into a file: add the WinSCP switch. Without a
-	 * password there is no switch and the command line is what it always was
-	 * (key files and the agent are untouched by this). */
+	/* Every password above went into a file or a pipe: add the WinSCP switch.
+	 * Without a password there is no switch and the command line is what it
+	 * always was (key files and the agent are untouched by this). */
 	if( pwfiles ) bcat( cmd, " /passwordsfromfiles" ) ;
 	debug_logevent_redacted2( "Start WinSCP", cmd->s, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
+	if( kx_pp.n ) debug_logevent( "%s", KT_XFER_WINSCP_PW_PIPE ) ;
+	if( kx_pw.n ) debug_logevent( "%s", pipes_why == KX_PIPE_OLD ? KT_XFER_WINSCP_PW_FILE_OLD
+	                                  : pipes_why == KX_PIPE_RUNNING ? KT_XFER_WINSCP_PW_FILE_RUNNING
+	                                  : KT_XFER_WINSCP_PW_FILE_NOPIPE ) ;
+	{
+		/* The process of this start is the only reader of the pipes. A
+		 * start without a new process id (the ShellExecute fallback): the
+		 * pipes close at once. */
+		DWORD before = kitty_last_started_pid(), pid = 0 ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
-	kitty_helper_run( hwnd, WinSCPPath, cmd->s ) ;
+		(void)before ;
+		kitty_helper_run( hwnd, WinSCPPath, cmd->s ) ;
 #else
-	RunCommand( hwnd, cmd->s ) ;       /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+		if( RunCommand( hwnd, cmd->s )      /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+		    && kitty_last_started_pid() != before )
+			pid = kitty_last_started_pid() ;
 #endif
-	strbuf_free( cmd ) ;
+		strbuf_free( cmd ) ;
+		kx_pipes_release( pid ) ;
+	}
 	kx_pwfiles_release( 0 ) ;
 }
 
@@ -5475,8 +5863,9 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
  *    report (the tool not found, the start failed) are modeless windows of
  *    this thread. They need its message loop and a window that owns them.
  *  - a password file, or FileZilla's temporary directory, is deleted a
- *    minute after the start by a thread of this process. The process must
- *    not end before that.
+ *    minute after the start by a thread of this process. A password pipe
+ *    (WinSCP 6.0 and later) is served until WinSCP has read it, a minute
+ *    at most. The process must not end before that.
  *
  * So the loop runs until no window of this thread is visible and no delayed
  * delete is pending. It pumps messages all the time: the launcher waits for

@@ -1171,6 +1171,11 @@
         "Connection > SSH > FileZilla. The Tools menu offers FileZilla only while this file exists."
 #define KT_XFER_FILEZILLA_NOT_FOUND                  "FileZilla was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools > FileZilla."
 #define KT_XFER_WINSCP_NOT_FOUND                     "WinSCP was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools > WinSCP."
+/* The Terminal Window's Event Log at Start WinSCP: how the passwords went over */
+#define KT_XFER_WINSCP_PW_PIPE                       "WinSCP: password handed over through a named pipe only the started WinSCP can read"
+#define KT_XFER_WINSCP_PW_FILE_OLD                   "WinSCP: password handed over through a temporary file (not WinSCP 6.0 or later by its file version)"
+#define KT_XFER_WINSCP_PW_FILE_RUNNING               "WinSCP: password handed over through a temporary file (a WinSCP is already running and can take over the session)"
+#define KT_XFER_WINSCP_PW_FILE_NOPIPE                "WinSCP: password handed over through a temporary file (no named pipe available)"
 #define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
 #define KT_FZ_SITE_NAME                              "KiTTY++ session"
 /* Session > Connection > SSH > KSCP: the same pointer for the file-copy helper */
@@ -2711,6 +2716,7 @@
 #define KT_WINFEAT_ULWINDIRECT                       "redrawing only the moving parts of the program status overlay"
 #define KT_WINFEAT_PASSWORD_IN_MEMORY                "keeping passwords encrypted in memory"
 #define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
+#define KT_WINFEAT_WINSCP_PIPE                       "handing WinSCP the password through a named pipe"
 #define KT_WINFEAT_TASKBAR_PROGRESS                  "progress on the taskbar button"
 
 /* ---- kageant (agent) and kittygen (key generator), Windows Hello ---- */

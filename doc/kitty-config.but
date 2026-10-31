@@ -1145,10 +1145,15 @@ mechanism, for settings it has no command-line switch for.
 \b \q{Shell} sets the remote shell to use, in SCP mode only.
 
 The session's password, and a proxy or tunnel password, are never put on
-WinSCP's command line: each is written to a private temporary file that
-WinSCP reads (its \c{/passwordsfromfiles} switch) and that KiTTY++ deletes
-a minute after the start. A session that authenticates with a key file or
-the agent hands over no password at all.
+WinSCP's command line. WinSCP reads each from a path (its
+\c{/passwordsfromfiles} switch). WinSCP 6.0 and later get a named pipe
+that only the WinSCP just started can open. It holds the password once
+and closes after WinSCP has read it, or after a minute. No file is
+written. An older WinSCP, or a start while a WinSCP is already running
+(it can take over the session), gets a private temporary file that
+KiTTY++ deletes a minute after the start. The Terminal Window's Event
+Log shows which of the two was used. A session that authenticates with
+a key file or the agent hands over no password at all.
 
 Where WinSCP is \e{installed} is not here: that is a property of the PC
 and lives on \k{kitty-cfg-external-tools} (the WinSCP leaf below it,

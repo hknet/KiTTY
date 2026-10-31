@@ -132,6 +132,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   forwarded agent can no longer re-encrypt the keys. Programs read a key's
   state with key-state-v00@kapper.net. kitty.exe's reconnect wait uses it
   (list-extended with an older kageant).
+- Start WinSCP and the launcher's Open in WinSCP: WinSCP 6.0 and later get
+  the session, proxy and tunnel passwords through a named pipe instead of
+  a temporary file. Only the WinSCP just started can read it, once. No file
+  with the password is written. An older WinSCP, or a start while a WinSCP
+  is already running, still gets the temporary file. `kitty.exe -winscp`
+  ends once WinSCP has read the password. Refs cyd01/KiTTY#419.
 
 ### Fixed
 
