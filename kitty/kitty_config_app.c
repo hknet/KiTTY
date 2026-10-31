@@ -2884,6 +2884,7 @@ void kitty_cfgbox_launcher_changed(dlgparam *dlg)
 struct kbc_entry {
     char *name;
     char *key;
+    HWND win;                      /* the live view: the terminal that answered; NULL in the saved view */
 };
 
 /* The leaf's state. File-scope, not ctrl_alloc'd: the send runs on a timer
@@ -2900,6 +2901,7 @@ static struct kbc_state {
     dlgcontrol *load, *send, *status, *note;
     int live;                      /* 1 = open terminals, 0 = saved sessions */
     char **keys; int nkeys;        /* distinct keys of the current view */
+    struct kbc_entry *shown; int nshown;   /* the rows of the last fill: the list ids index it */
     /* the send in progress */
     char **lines; int nlines, at;
     char **sendkeys; int nsendkeys;
@@ -2986,7 +2988,7 @@ static void kbc_entries_free(struct kbc_entry *e, int n)
 }
 
 static void kbc_entries_add(struct kbc_entry **e, int *n, int *cap,
-                            const char *name, const char *key)
+                            const char *name, const char *key, HWND win)
 {
     if (*n == *cap) {
         *cap = *cap ? *cap * 2 : 16;
@@ -2994,6 +2996,7 @@ static void kbc_entries_add(struct kbc_entry **e, int *n, int *cap,
     }
     (*e)[*n].name = dupstr(name ? name : "");
     (*e)[*n].key = dupstr(key && *key ? key : kitty_broadcast_group());
+    (*e)[*n].win = win;
     (*n)++;
 }
 
@@ -3013,7 +3016,7 @@ static int kbc_scan_saved(struct kbc_entry **out)
         if (h) {
             if (read_setting_i(h, "AcceptBroadcast", 0)) {
                 char *k = read_setting_s(h, "BroadcastKey");
-                kbc_entries_add(&e, &n, &cap, name->s, k);
+                kbc_entries_add(&e, &n, &cap, name->s, k, NULL);
                 sfree(k);
             }
             close_settings_r(h);
@@ -3058,9 +3061,9 @@ static LRESULT CALLBACK kbc_probe_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
                 title[0] = '\0';
                 if (w && IsWindow((HWND)w))
                     GetWindowTextA((HWND)w, title, sizeof(title));
-                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, title, buf);
+                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, title, buf, (HWND)w);
             } else {
-                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, name, buf);
+                kbc_entries_add(&kbc_probe.e, &kbc_probe.n, &kbc_probe.cap, name, buf, (HWND)w);
             }
             sfree(buf);
             return 1;
@@ -3127,19 +3130,114 @@ static void kbc_keys_free(void)
     for (i = 0; i < kbc.nkeys; i++) sfree(kbc.keys[i]);
     sfree(kbc.keys);
     kbc.keys = NULL; kbc.nkeys = 0;
+    kbc_entries_free(kbc.shown, kbc.nshown);
+    kbc.shown = NULL; kbc.nshown = 0;
+}
+
+/* The selection of both lists, held by identity across a refill. The end of
+ * a Send refills them (the count line, the windows that still listen). The
+ * same groups and the same session row stay selected, so one command after
+ * another goes to the same targets. A window that closed meanwhile has no
+ * row any more and drops out of the selection. */
+struct kbc_sel {
+    char **keys; int nkeys;        /* the groups selected */
+    char *heading;                 /* a key's heading row selected in the list */
+    struct kbc_entry row;          /* or a session row (name NULL = none) */
+};
+
+/* The LISTBOX window of a list control. kitty_cfg_ctrl_hwnd returns the
+ * control's first window, which for a list with a label (the groups) is the
+ * label: the list box has the next id. */
+static HWND kbc_listbox_hwnd(dlgcontrol *ctrl)
+{
+    HWND h = kitty_cfg_ctrl_hwnd(ctrl);
+    char cls[16];
+    int i;
+    for (i = 0; h && i < 3; i++) {
+        if (GetClassNameA(h, cls, sizeof(cls)) && !lstrcmpiA(cls, "LISTBOX"))
+            return h;
+        h = GetDlgItem(GetParent(h), GetDlgCtrlID(h) + 1);
+    }
+    return NULL;
+}
+
+static void kbc_sel_take(struct kbc_sel *s)
+{
+    HWND h;
+    int i, n, r, id;
+    memset(s, 0, sizeof(*s));
+    if ((h = kbc_listbox_hwnd(kbc.groups)) != NULL) {
+        n = (int)SendMessage(h, LB_GETCOUNT, 0, 0);
+        for (i = 0; i < n && i < kbc.nkeys; i++)
+            if ((int)SendMessage(h, LB_GETSEL, i, 0) > 0) {
+                s->keys = sresize(s->keys, s->nkeys + 1, char *);
+                s->keys[s->nkeys++] = dupstr(kbc.keys[i]);
+            }
+    }
+    if ((h = kbc_listbox_hwnd(kbc.list)) == NULL)
+        return;
+    r = (int)SendMessage(h, LB_GETCURSEL, 0, 0);
+    if (r <= 0)
+        return;                    /* nothing, or the column header */
+    id = (int)SendMessage(h, LB_GETITEMDATA, r, 0);
+    if (id >= 0 && id < kbc.nshown) {
+        s->row.name = dupstr(kbc.shown[id].name);
+        s->row.key = dupstr(kbc.shown[id].key);
+        s->row.win = kbc.shown[id].win;
+    } else if (id == -1) {
+        /* a heading: the headings come in the order of kbc.keys */
+        int k = -1;
+        for (i = 1; i <= r; i++)
+            if ((int)SendMessage(h, LB_GETITEMDATA, i, 0) == -1)
+                k++;
+        if (k >= 0 && k < kbc.nkeys)
+            s->heading = dupstr(kbc.keys[k]);
+    }
+}
+
+static bool kbc_sel_has_row(const struct kbc_sel *s, const struct kbc_entry *e)
+{
+    if (!s->row.name)
+        return false;
+    if (s->row.win || e->win)
+        return s->row.win == e->win;           /* a terminal: the same window */
+    return !strcmp(s->row.name, e->name) && !strcmp(s->row.key, e->key);
+}
+
+static bool kbc_sel_has_key(const struct kbc_sel *s, const char *key)
+{
+    int i;
+    for (i = 0; i < s->nkeys; i++)
+        if (!strcmp(s->keys[i], key))
+            return true;
+    return false;
+}
+
+static void kbc_sel_free(struct kbc_sel *s)
+{
+    int i;
+    for (i = 0; i < s->nkeys; i++) sfree(s->keys[i]);
+    sfree(s->keys);
+    sfree(s->heading);
+    sfree(s->row.name);
+    sfree(s->row.key);
+    memset(s, 0, sizeof(*s));
 }
 
 /* Rebuild both lists and the status line from the current view. */
 static void kbc_fill(dlgparam *dlg)
 {
     struct kbc_entry *e = NULL;
-    int n, i;
+    struct kbc_sel sel;
+    int n, i, row, pick = -1;
     char *line;
+    HWND h;
 
     if (!kbc.list || !kbc.groups) return;
     n = kbc.live ? kbc_scan_live(&e) : kbc_scan_saved(&e);
     if (n > 1) qsort(e, n, sizeof(*e), kbc_entry_cmp);
 
+    kbc_sel_take(&sel);                /* read through the old rows */
     kbc_keys_free();
     for (i = 0; i < n; i++) {
         if (i == 0 || strcmp(e[i].key, e[i - 1].key) != 0) {
@@ -3153,14 +3251,24 @@ static void kbc_fill(dlgparam *dlg)
     dlg_update_start(kbc.list, dlg);
     dlg_listbox_clear(kbc.list, dlg);
     dlg_listbox_addwithid(kbc.list, dlg, KT_KSET_BC_COL_HEAD, -1);
+    row = 1;
     for (i = 0; i < n; i++) {
-        if (i == 0 || strcmp(e[i].key, e[i - 1].key) != 0)
+        if (i == 0 || strcmp(e[i].key, e[i - 1].key) != 0) {
             dlg_listbox_addwithid(kbc.list, dlg, e[i].key, -1);
+            if (pick < 0 && sel.heading && !strcmp(sel.heading, e[i].key))
+                pick = row;
+            row++;
+        }
         line = dupprintf("    %s\t%s", e[i].name, e[i].key);
         dlg_listbox_addwithid(kbc.list, dlg, line, i);
         sfree(line);
+        if (pick < 0 && kbc_sel_has_row(&sel, &e[i]))
+            pick = row;
+        row++;
     }
     dlg_update_done(kbc.list, dlg);
+    if (pick > 0)
+        dlg_listbox_select(kbc.list, dlg, pick);
 
     /* The keys to send to. */
     dlg_update_start(kbc.groups, dlg);
@@ -3168,6 +3276,11 @@ static void kbc_fill(dlgparam *dlg)
     for (i = 0; i < kbc.nkeys; i++)
         dlg_listbox_addwithid(kbc.groups, dlg, kbc.keys[i], i);
     dlg_update_done(kbc.groups, dlg);
+    if (sel.nkeys && (h = kbc_listbox_hwnd(kbc.groups)) != NULL)
+        for (i = 0; i < kbc.nkeys; i++)
+            if (kbc_sel_has_key(&sel, kbc.keys[i]))
+                SendMessage(h, LB_SETSEL, TRUE, i);
+    kbc_sel_free(&sel);
 
     if (!kbc.timer) {
         line = dupprintf(kbc.live ? KT_KSET_BC_STATUS_LIVE : KT_KSET_BC_STATUS_SAVED,
@@ -3180,7 +3293,9 @@ static void kbc_fill(dlgparam *dlg)
     dlg_label_change(kbc.note, dlg, kbc.live ? " " : KT_KSET_BC_SWITCH_NOTE);
     kitty_dlg_enable_button(kbc.send, dlg, kbc.live && !kbc.timer);
 
-    kbc_entries_free(e, n);
+    /* The rows stay: the next fill reads the selection through them. */
+    kbc.shown = e;
+    kbc.nshown = n;
 }
 
 static void kbc_show_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)

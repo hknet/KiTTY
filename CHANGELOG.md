@@ -143,6 +143,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
   session-bind or an `ssh-add -h` host key in kageant. Such a key is now
   refused.
+- The broadcast console (KiTTY++ Settings > Automation > Broadcast) keeps
+  the selected groups and session row after Send, so the next commands go
+  to the same groups. A window closed in the meantime drops out.
 
 ## 0.85.1.19-beta — 2026-10-28
 
