@@ -176,6 +176,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
   session-bind or an `ssh-add -h` host key in kageant. Such a key is now
   refused.
+- The host key prompt for a host certificate without a server name from
+  a trusted certification authority names that authority and the
+  missing name, with the CA store's checkbox that allows such
+  certificates. It read "signed by a different certification
+  authority" before.
 - The broadcast console (KiTTY++ Settings > Automation > Broadcast) keeps
   the selected groups and session row after Send, so the next commands go
   to the same groups. A window closed in the meantime drops out.

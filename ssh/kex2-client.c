@@ -16,6 +16,9 @@
 #include "kitty/kitty_text.h"      /* KiTTY: KT_STORE_RO_NOT_SAVED */
 #include "kitty/kitty_winevent.h"  /* KiTTY: host keys in the Windows Event Log */
 #include "kitty/kitty_hostkeys00.h" /* KiTTY: the host key update */
+/* KiTTY: ssh/common.c, verify_ssh_host_key's text for a nameless
+ * certificate of a trusted CA (the CA's name, NULL otherwise) */
+extern char *kitty_cert_nameless_ca;
 
 /*
  * Another copy of the symbol defined in mpunsafe.c. See the comment
@@ -969,6 +972,13 @@ void ssh2kex_coroutine(struct ssh2_transport_state *s, bool *aborted)
                         &hca_found->opts,
                         BinarySink_UPCAST(error));
                 }
+                /* KiTTY: a trusted CA's certificate refused only for its
+                 * missing server name gets its own text in the prompt */
+                sfree(kitty_cert_nameless_ca);
+                kitty_cert_nameless_ca = NULL;
+                if (!cert_ok && hca_found &&
+                    strstr(error->s, KT_CERT_NO_HOST_NAMES_REFUSED))
+                    kitty_cert_nameless_ca = dupstr(hca_found->name);
                 if (cert_ok) {
                     strbuf_free(error);
                     /* KiTTY: event 210/310, known by its CA */

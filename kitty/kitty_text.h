@@ -4047,6 +4047,17 @@
 #define KT_CERT_INFO_WARNING_KEY                     "Warning"
 #define KT_CERT_INFO_NO_HOST_NAMES                   "No host names: KiTTY++, like OpenSSH 10.3, accepts this certificate " \
         "for no host. A stolen copy would let a server pose as any host."
+/* ssh/common.c, the host key prompt: a host certificate from a TRUSTED CA
+ * refused only because it holds no server name (PuTTY's text for this case
+ * reads "signed by a different certification authority") */
+#define KT_CERT_PROMPT_NAMELESS_FMT                  "which was signed by \"%s\", a certification authority %s " \
+        "trusts for this server, but holds no server name. %s refuses such certificates, as " \
+        "OpenSSH 10.3 does, unless the authority's entry allows them: Application > Security > " \
+        "Certificate Authorities, \"Accept certificates without names (valid for every host in " \
+        "Valid hosts)\"."
+#define KT_CERT_PROMPT_NAMELESS_MEANS                "This means that either the server's administrator " \
+        "issued a certificate without the server's name, or you have actually connected to " \
+        "another computer pretending to be the server."
 #define KT_CERT_INFO_NO_USER_NAMES                   "No user names: OpenSSH 10.3 accepts this certificate for no user."
 /* ssh/ca-config.c: a CA record's exception, off by default, the warning
  * line under it */

@@ -887,6 +887,11 @@ static char *kitty_hk_stamp_text(const char *iso)
     return t;
 }
 
+/* KiTTY: set by ssh/kex2-client.c just before verify_ssh_host_key when a
+ * certificate of a TRUSTED CA was refused only because it holds no server
+ * name: that CA's name, for the prompt's own text. NULL otherwise. */
+char *kitty_cert_nameless_ca = NULL;
+
 SeatPromptResult verify_ssh_host_key(
     InteractionReadySeat iseat, Conf *conf, LogContext *logctx,
     const char *host, int port,
@@ -1087,7 +1092,19 @@ SeatPromptResult verify_ssh_host_key(
             text, SDT_PARA, "This server presented a certified host key:");
         seat_dialog_text_append(
             text, SDT_DISPLAY, "%s (port %d)", host, port);
-        if (ca_count) {
+        if (ca_count && kitty_cert_nameless_ca) {
+            /* KiTTY: the CA is trusted, the certificate holds no name */
+            seat_dialog_text_append(
+                text, SDT_PARA, KT_CERT_PROMPT_NAMELESS_FMT,
+                kitty_cert_nameless_ca, seat_product_name(),
+                seat_product_name());
+            if (storage_status == 2)
+                seat_dialog_text_append(
+                    text, SDT_PARA, "ALSO, that key does not match the key "
+                    "%s had previously cached for this server.", seat_product_name());
+            seat_dialog_text_append(text, SDT_PARA, "%s",
+                                    KT_CERT_PROMPT_NAMELESS_MEANS);
+        } else if (ca_count) {
             seat_dialog_text_append(
                 text, SDT_PARA, "which was signed by a different "
                 "certification authority from the %s %s is configured to "
