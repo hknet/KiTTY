@@ -1512,6 +1512,20 @@ static void kt_hl_tip_hide(struct kt_hl *st)
     st->tip_row = st->tip_col = -1;
 }
 
+/* KiTTY: the cut cell's tip lies over the cell. It lets the mouse through:
+ * a click selects the row below it, the wheel scrolls the list (both went
+ * to the tip before, so the row was reachable only beside the tip). */
+static LRESULT CALLBACK kt_hl_tip_proc(HWND hwnd, UINT msg, WPARAM wParam,
+                                       LPARAM lParam, UINT_PTR id,
+                                       DWORD_PTR data)
+{
+    (void)id;
+    (void)data;
+    if (msg == WM_NCHITTEST)
+        return HTTRANSPARENT;
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
 /* The mouse is at (x,y) in the list: show the cell's text if it is cut. */
 static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
 {
@@ -1601,6 +1615,7 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
             sfree(text);
             return;
         }
+        SetWindowSubclass(st->tip, kt_hl_tip_proc, 1, 0);
     }
     sfree(st->tip_text);
     st->tip_text = dupstr(p);
