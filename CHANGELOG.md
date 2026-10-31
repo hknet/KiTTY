@@ -10,6 +10,15 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- Manage Sessions: folders and sessions get a place of their own by drag
+  and drop between rows. A pin marks a row with a stored place. Reset Order
+  in a folder's menu forgets the places of that level. The configuration
+  box, the terminal's Saved Sessions menu, the launcher and kageant show
+  the same order. The folder store keeps it in a `.kittyorder` file per
+  folder, a documented text format a tool can write. Manage Sessions edits
+  such a file in place. The registry keeps it below `SessionOrder`.
+  Migration's "Take a folder store" and the portable copy carry it.
+- Folders whose names differ only in case are one folder in every list.
 - kageant: OpenSSH's session-bind (the Windows `ssh.exe` and every OpenSSH
   client from 8.9 on). kageant verifies the server's signature and shows the
   server a key is used for: in the key-use confirmation (Destination,

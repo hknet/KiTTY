@@ -261,6 +261,23 @@ int ksp_natcasecmp(const char *a, const char *b)
     return 0;
 }
 
+int ksp_name_cmp(const char *a, const char *b)
+{
+    int c = ksp_natcasecmp(a, b);
+    if (!c)
+        c = stricmp(a, b);
+    if (!c)
+        c = strcmp(a, b);
+    return c;
+}
+
+/* Folders: one folder whatever the case of its spelling. */
+static int ksp_folder_cmp_ci(const char *a, const char *b)
+{
+    int c = ksp_natcasecmp(a, b);
+    return c ? c : stricmp(a, b);
+}
+
 static const char *ksp_shown_folder(const struct ksp_shown_row *r)
 {
     return ksp_folder_is_root(r->folder) ? "" : r->folder;
@@ -276,11 +293,11 @@ static int ksp_shown_cmp_rows(const struct ksp_shown_row *a,
     if (da || db)
         return db - da;
     if (folder_first &&
-        (c = ksp_natcasecmp(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
+        (c = ksp_folder_cmp_ci(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
         return c;
-    if ((c = ksp_natcasecmp(ksp_leaf(a->id), ksp_leaf(b->id))) != 0)
+    if ((c = ksp_name_cmp(ksp_leaf(a->id), ksp_leaf(b->id))) != 0)
         return c;
-    if ((c = ksp_natcasecmp(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
+    if ((c = ksp_folder_cmp_ci(ksp_shown_folder(a), ksp_shown_folder(b))) != 0)
         return c;
     return strcmp(a->id, b->id);
 }

@@ -328,6 +328,8 @@ window reopens on the last tag.
 
 <img src="docs/features/img/manage_sessions.png" width="728" height="536" alt="Manage Sessions">
 
+**A manual order.** A folder or a session dragged between two rows keeps that place: the line between the rows shows where it lands, a pin marks every row with a place of its own, and *Reset Order* in a folder's right-click menu forgets the places of that level. The configuration window, the terminal's Saved Sessions menu, the launcher and kageant show the same order. The folder store keeps it in a `.kittyorder` file per folder, a text format a tool can write: [docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md).
+
 **Arrange.** Sessions saved by an older version are filed by their `Folder=`
 value and keyed by their bare name. *Arrange...* moves each of them to its
 folder path (`srv01` with `Folder=Linux\web` becomes `Linux\web\srv01`), with

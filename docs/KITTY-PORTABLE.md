@@ -29,6 +29,8 @@ its name, `Linux\web\srv01`, kept as the file `Sessions\Linux\web\srv01` (a
 session folder that can live in Git). The same name can exist in two folders.
 Sessions filed by their Folder value only keep working by their bare name;
 Manage Sessions > Arrange... moves them to their folder path.
+A folder's manual order is the file `.kittyorder` in its directory:
+[SESSION-FOLDERS.md](SESSION-FOLDERS.md).
 
 **Only session files are listed, and session files can carry a suffix.** The
 folder store lists a file only when it holds a `HostName` or `Protocol`

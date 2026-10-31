@@ -14,6 +14,7 @@
 #include "kitty_defs.h"
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
+#include "kitty_sessorder.h"     /* the manual order follows a rename */
 #include "kitty_sessionrename.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_registry.h"
@@ -372,6 +373,61 @@ static void rk_jump_refs(char *const *from, char *const *to, int n,
     kitty_session_names_free(now, nnow);
 }
 
+/* ---- the manual order ---- */
+static int rk_order_held = 0;
+void kitty_session_rename_order_hold(int on)
+{
+    rk_order_held += on ? 1 : -1;
+    if (rk_order_held < 0)
+        rk_order_held = 0;
+}
+
+void kitty_session_order_forget(const char *name)
+{
+    struct ksp_order_store st;
+    char *f;
+    if (!name || !*name || !strcmp(name, KITTY_DEFAULT_SESSION) ||
+        kitty_store_readonly())
+        return;
+    f = kitty_read_session_folder(name);
+    ksp_order_store_current(&st);
+    ksp_order_forget(&st, f, KSP_ORDER_SESSION, ksp_leaf(name));
+    ksp_order_store_free(&st);
+    sfree(f);
+}
+
+/* After `n` sessions moved from[i] -> to[i] (oldf[i] the folder each was
+ * shown in before): renamed in place keeps the place, moved away loses it.
+ * A bare name renamed to a bare name stays in its Folder value's folder
+ * (the caller keeps that value). */
+static void rk_order_follow(char *const *from, char *const *to, char **oldf,
+                            int n)
+{
+    struct ksp_order_store st;
+    int i;
+    ksp_order_store_current(&st);
+    for (i = 0; i < n; i++) {
+        char *newf;
+        if (!strcmp(from[i], to[i]))
+            continue;
+        if (strchr(to[i], '\\'))
+            newf = ksp_folder_of(to[i]);
+        else if (strchr(from[i], '\\'))
+            newf = NULL;
+        else
+            newf = oldf[i] ? dupstr(oldf[i]) : NULL;
+        if (ksp_folder_same(oldf[i], newf)) {
+            if (strcmp(ksp_leaf(from[i]), ksp_leaf(to[i])))
+                ksp_order_rename(&st, oldf[i], KSP_ORDER_SESSION,
+                                 ksp_leaf(from[i]), ksp_leaf(to[i]));
+        } else {
+            ksp_order_forget(&st, oldf[i], KSP_ORDER_SESSION, ksp_leaf(from[i]));
+        }
+        sfree(newf);
+    }
+    ksp_order_store_free(&st);
+}
+
 static void rk_note(strbuf *sb, const char *name)
 {
     if (!sb)
@@ -387,7 +443,7 @@ int kitty_session_rename_many(char *const *from, char *const *to, int n,
 {
     int i, j, npre = 0;
     bool clash = false;
-    char **pre = NULL;
+    char **pre = NULL, **oldf = NULL;
     char *last;
 
     if (errmsg)
@@ -476,6 +532,12 @@ int kitty_session_rename_many(char *const *from, char *const *to, int n,
 
     pre = kitty_session_names(&npre);
     last = kitty_get_last_session_dup();   /* in full; NULL = not set */
+    /* the folder each one is shown in now, for the manual order */
+    if (!rk_order_held) {
+        oldf = snewn(n, char *);
+        for (i = 0; i < n; i++)
+            oldf[i] = kitty_read_session_folder(from[i]);
+    }
 
     for (i = 0; i < n; i++) {
         char *err;
@@ -511,6 +573,12 @@ int kitty_session_rename_many(char *const *from, char *const *to, int n,
             kitty_set_last_session(to[i]);
     }
     sfree(last);
+    if (oldf) {
+        rk_order_follow(from, to, oldf, i);
+        for (j = 0; j < n; j++)
+            sfree(oldf[j]);
+        sfree(oldf);
+    }
     kitty_store_mark_dirty();
     kitty_session_folder_cache_clear();
 

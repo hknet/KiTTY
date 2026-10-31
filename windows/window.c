@@ -70,6 +70,7 @@
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #include "../kitty/kitty_sessionpath.h"   /* KiTTY: @name as a folder path */
+#include "../kitty/kitty_sessorder.h"    /* KiTTY: the manual order of the Saved Sessions menu */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_params.h"
@@ -3936,9 +3937,16 @@ static int kitty_menu_folder_slot(struct kitty_menu_folders *f, const char *path
     const char *sep;
     int j, parent = -1;
 
+    /* one folder whatever the case of its spelling: the spelling that
+     * sorts first by byte is shown */
     for (j = 0; j < f->n; j++)
-        if (!strcmp(f->path[j], path))
+        if (!stricmp(f->path[j], path)) {
+            if (strcmp(path, f->path[j]) < 0) {
+                sfree(f->path[j]);
+                f->path[j] = dupstr(path);
+            }
             return j;
+        }
     sep = strrchr(path, '\\');
     if (sep && sep != path) {
         char *up = dupprintf("%.*s", (int)(sep - path), path);
@@ -4011,6 +4019,13 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
             nrows++;
         }
         ksp_sort_shown_by_folder(rows, nrows);
+        /* each folder's sessions in the order stored for it */
+        {
+            struct ksp_order_store ost;
+            ksp_order_store_current(&ost);
+            ksp_order_shown_rows(&ost, rows, nrows, NULL);
+            ksp_order_store_free(&ost);
+        }
         for (k = 0; k < nrows; k++) {
             const char *fld = rows[k].folder;
             bool filed;
@@ -4041,18 +4056,45 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
          * component - subfolders first, then sessions, as the launcher has it.
          * Parents come before their children in the table, so a parent's menu
          * exists (and is itself placed) by the time a child is inserted. */
-        for (j = 0; j < f.n; j++) {
-            const char *sep = strrchr(f.path[j], '\\');
-            const char *label = (f.parent[j] >= 0 && sep) ? sep + 1 : f.path[j];
-            if (f.parent[j] < 0) {
-                AppendMenu(wgs->savedsess_menu, MF_POPUP | MF_ENABLED,
-                           (UINT_PTR)f.menu[j], label);
-                nfolders++;
-            } else {
-                InsertMenu(f.menu[f.parent[j]], f.nsub[f.parent[j]]++,
-                           MF_BYPOSITION | MF_POPUP | MF_ENABLED,
-                           (UINT_PTR)f.menu[j], label);
+        /* each level of folders in the order stored for it */
+        {
+            struct ksp_order_store ost;
+            int p, k2, nk;
+            int *kids = snewn(f.n > 0 ? f.n : 1, int);
+            int *perm = snewn(f.n > 0 ? f.n : 1, int);
+            char **nm = snewn(f.n > 0 ? f.n : 1, char *);
+            ksp_order_store_current(&ost);
+            for (p = -1; p < f.n; p++) {
+                nk = 0;
+                for (j = 0; j < f.n; j++)
+                    if (f.parent[j] == p)
+                        kids[nk++] = j;
+                if (!nk)
+                    continue;
+                for (k2 = 0; k2 < nk; k2++) {
+                    const char *sep = strrchr(f.path[kids[k2]], '\\');
+                    nm[k2] = (char *)((p >= 0 && sep) ? sep + 1 : f.path[kids[k2]]);
+                }
+                ksp_order_sort_level(&ost, p < 0 ? NULL : f.path[p],
+                                     KSP_ORDER_FOLDER, nm, nk, perm, NULL);
+                for (k2 = 0; k2 < nk; k2++) {
+                    const char *label = nm[perm[k2]];
+                    j = kids[perm[k2]];
+                    if (p < 0) {
+                        AppendMenu(wgs->savedsess_menu, MF_POPUP | MF_ENABLED,
+                                   (UINT_PTR)f.menu[j], label);
+                        nfolders++;
+                    } else {
+                        InsertMenu(f.menu[p], f.nsub[p]++,
+                                   MF_BYPOSITION | MF_POPUP | MF_ENABLED,
+                                   (UINT_PTR)f.menu[j], label);
+                    }
+                }
             }
+            ksp_order_store_free(&ost);
+            sfree(nm);
+            sfree(perm);
+            sfree(kids);
         }
         for (j = 0; j < f.n; j++)
             sfree(f.path[j]);

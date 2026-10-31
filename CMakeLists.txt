@@ -466,8 +466,23 @@ add_executable(test_sessmenu
   test/test_sessmenu.c
   kitty/kitty_sessmenu.c
   kitty/kitty_sessionpath.c
+  kitty/kitty_sessorder.c      # the manual order of the menu
+  kitty/kitty_atomicfile.c
   kitty/kitty_inifile.c)   # kitty_sessionpath.c's registry writers check readonly=yes
 target_link_libraries(test_sessmenu utils ${platform_libraries})
+
+# KiTTY: the manual order of folders and sessions (Manage Sessions' drag and
+# drop): the resolver, the planner, the .kittyorder parser and its in-place
+# edit against golden before/after texts, a folder store under %TEMP% and a
+# registry key below HKCU that the test creates and removes. Linked as
+# kageant links the order (no settings library).
+add_executable(test_sessorder
+  test/test_sessorder.c
+  kitty/kitty_sessorder.c
+  kitty/kitty_sessionpath.c
+  kitty/kitty_atomicfile.c
+  kitty/kitty_inifile.c)
+target_link_libraries(test_sessorder utils ${platform_libraries})
 
 # KiTTY: the payload table behind the launcher's session menu and the User
 # Command menu (IDM_USERCMD + n): growth, ceiling, the count of the entries
@@ -494,7 +509,7 @@ foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
-    test_sessionpath test_sessmenu test_menuslots
+    test_sessionpath test_sessmenu test_menuslots test_sessorder
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00

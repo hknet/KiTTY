@@ -4844,6 +4844,13 @@
 #define KT_RC_KITTYABOUT_BLURB                       "KiTTY++ is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
 #define KT_RC_KITTYABOUT_WEBPAGE                     "Visit github.com/hknet/KiTTY"
 
+/* the manual order (a drop between rows): the folder menu's entry, and the
+ * status line after a drop or a reset */
+#define KT_SP_ORG_M_RESET_ORDER                      "Reset Order"
+#define KT_SP_ORG_ORDER_STORED                       "Order stored: %s after %s"
+#define KT_SP_ORG_ORDER_STORED_TOP                   "Order stored: %s at the top"
+#define KT_SP_ORG_ORDER_RESET                        "Order reset: %s"
+#define KT_SP_ORG_ORDER_NOT_STORED                   "Order not stored: %s"
 /* kitty.rc: IDD_MASTERPW (the caption is IDD_MPWMOVED's too) */
 #define KT_RC_MASTERPW_CAPTION                       "KiTTY++ master password"
 #define KT_RC_MASTERPW_LABEL                         "Master password:"

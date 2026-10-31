@@ -68,4 +68,14 @@ int kitty_session_rename(const char *from, const char *to,
 /* Does this identity exist in this KiTTY's own store (not a fallback hive)? */
 bool kitty_session_exists_own(const char *name);
 
+/* The manual order (kitty_sessorder.h) follows a rename: a session renamed
+ * in its folder keeps its place under the new name, one moved to another
+ * folder loses it there. A folder move holds this (on = 1 ... on = 0): the
+ * places of a moved folder move whole with ksp_order_folder_moved. */
+void kitty_session_rename_order_hold(int on);
+
+/* A session about to be deleted: its place in the manual order goes, the
+ * sessions anchored to it take its anchor. */
+void kitty_session_order_forget(const char *name);
+
 #endif /* KITTY_SESSIONRENAME_H */

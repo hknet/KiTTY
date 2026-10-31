@@ -12,6 +12,9 @@
 #include "putty.h"
 #include "kitty_storage.h"      /* ksf_unmunge */
 #include "kitty_sessionpath.h"
+#include "kitty_sessorder.h"    /* the manual order of each level */
+#include "kitty_inifile.h"      /* which store kitty.exe uses */
+#include "kitty_inikeys.h"      /* KI_KICLASSNAME */
 #include "kitty_sessmenu.h"
 
 /* ---- the tree ---- */
@@ -67,14 +70,63 @@ static struct ksm_node *ksm_child(struct ksm_node *nd, const char *name,
     return k;
 }
 
+/* The comparator of every list (it began here). */
 static int ksm_name_cmp(const char *a, const char *b)
 {
-    int c = ksp_natcasecmp(a, b);
-    if (!c)
-        c = stricmp(a, b);
-    if (!c)
-        c = strcmp(a, b);
-    return c;
+    return ksp_name_cmp(a, b);
+}
+
+/* ---- the store of the manual order ---- */
+static int ksm_order_mode;              /* 0 = found, 1 = given, 2 = none */
+static struct ksp_order_store ksm_order_given;
+
+void ksm_set_order_store(const struct ksp_order_store *st)
+{
+    ksp_order_store_free(&ksm_order_given);
+    if (!st) {
+        ksm_order_mode = 2;
+        return;
+    }
+    ksm_order_given.folder_store = st->folder_store;
+    ksm_order_given.dir = st->dir ? dupstr(st->dir) : NULL;
+    ksm_order_given.regbase = st->regbase ? dupstr(st->regbase) : NULL;
+    ksm_order_given.regroot = st->regroot;
+    ksm_order_mode = 1;
+}
+
+/* The store as kitty.exe uses it: the folder store of kitty.ini, else the
+ * hive kageant lists the sessions of (KiClassName=PuTTY: PuTTY's). 0 = no
+ * order to follow. */
+static int ksm_order_store_get(struct ksp_order_store *out)
+{
+    memset(out, 0, sizeof(*out));
+    if (ksm_order_mode == 2)
+        return 0;
+    if (ksm_order_mode == 1) {
+        out->folder_store = ksm_order_given.folder_store;
+        out->dir = ksm_order_given.dir ? dupstr(ksm_order_given.dir) : NULL;
+        out->regbase = ksm_order_given.regbase ? dupstr(ksm_order_given.regbase) : NULL;
+        out->regroot = ksm_order_given.regroot;
+        return 1;
+    }
+    {
+        struct kitty_ini_startup ini;
+        char cls[64];
+        kitty_inifile_startup(&ini);
+        if (ini.folder_store && ini.session_dir && *ini.session_dir) {
+            out->folder_store = 1;
+            out->dir = dupstr(ini.session_dir);
+        } else {
+            cls[0] = '\0';
+            if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls,
+                                   sizeof(cls)) && !stricmp(cls, "PuTTY"))
+                out->regbase = dupstr("Software\\SimonTatham\\PuTTY");
+            else
+                out->regbase = dupstr(PUTTY_REG_POS);
+        }
+        kitty_inifile_startup_free(&ini);
+    }
+    return 1;
 }
 
 static int ksm_kid_qcmp(const void *av, const void *bv)
@@ -110,17 +162,51 @@ static void ksm_emit(struct ksm_out *o, int kind, const char *label, int idx)
     o->n++;
 }
 
-static void ksm_walk(struct ksm_node *nd, struct ksm_out *o)
+/* `path` is the folder of `nd` (NULL = the top); `st` the manual order's
+ * store (NULL = none). */
+static void ksm_walk(struct ksm_node *nd, const char *path,
+                     const struct ksp_order_store *st, struct ksm_out *o)
 {
     int i;
     if (nd->nkids > 1)
         qsort(nd->kids, nd->nkids, sizeof(*nd->kids), ksm_kid_qcmp);
     if (nd->nsess > 1)
         qsort(nd->sess, nd->nsess, sizeof(*nd->sess), ksm_sess_qcmp);
+    if (st && nd->nkids > 1) {
+        char **nm = snewn(nd->nkids, char *);
+        int *perm = snewn(nd->nkids, int);
+        struct ksm_node **copy = snewn(nd->nkids, struct ksm_node *);
+        for (i = 0; i < nd->nkids; i++)
+            nm[i] = nd->kids[i]->name;
+        ksp_order_sort_level(st, path, KSP_ORDER_FOLDER, nm, nd->nkids, perm, NULL);
+        for (i = 0; i < nd->nkids; i++)
+            copy[i] = nd->kids[perm[i]];
+        memcpy(nd->kids, copy, nd->nkids * sizeof(*copy));
+        sfree(copy);
+        sfree(perm);
+        sfree(nm);
+    }
+    if (st && nd->nsess > 1) {
+        char **nm = snewn(nd->nsess, char *);
+        int *perm = snewn(nd->nsess, int);
+        struct ksm_sess *copy = snewn(nd->nsess, struct ksm_sess);
+        for (i = 0; i < nd->nsess; i++)
+            nm[i] = (char *)nd->sess[i].leaf;
+        ksp_order_sort_level(st, path, KSP_ORDER_SESSION, nm, nd->nsess, perm, NULL);
+        for (i = 0; i < nd->nsess; i++)
+            copy[i] = nd->sess[perm[i]];
+        memcpy(nd->sess, copy, nd->nsess * sizeof(*copy));
+        sfree(copy);
+        sfree(perm);
+        sfree(nm);
+    }
     for (i = 0; i < nd->nkids; i++) {
+        char *sub = path ? dupprintf("%s\\%s", path, nd->kids[i]->name)
+                         : dupstr(nd->kids[i]->name);
         ksm_emit(o, KSM_FOLDER_OPEN, nd->kids[i]->name, -1);
-        ksm_walk(nd->kids[i], o);
+        ksm_walk(nd->kids[i], sub, st, o);
         ksm_emit(o, KSM_FOLDER_CLOSE, NULL, -1);
+        sfree(sub);
     }
     for (i = 0; i < nd->nsess; i++)
         ksm_emit(o, KSM_SESSION, nd->sess[i].leaf, nd->sess[i].idx);
@@ -167,7 +253,12 @@ struct ksm_entry *ksm_build(char *const *ids, char *const *folders, int n,
         nd->sess[nd->nsess].idx = i;
         nd->nsess++;
     }
-    ksm_walk(root, &o);
+    {
+        struct ksp_order_store st;
+        int have = ksm_order_store_get(&st);
+        ksm_walk(root, NULL, have ? &st : NULL, &o);
+        ksp_order_store_free(&st);
+    }
     ksm_node_free(root);
     *nentries = o.n;
     return o.e;

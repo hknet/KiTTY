@@ -41,6 +41,7 @@
 #include "kitty_sessionpath.h" /* session names as folder paths */
 #include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
 #include "kitty_store_acl.h"   /* owner-only rights for what the store creates */
+#include "kitty_sessorder.h"   /* ksp_order_store_current */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -2629,3 +2630,17 @@ const char *kitty_reg_hostcas(void)  { return reg_hostca_buf; }
 const char *kitty_reg_hostkeys(void) { return reg_hostkeys_buf; }
 const char *kitty_session_dir(void)  { return g_sess_dir; }
 int kitty_storage_mode(void)         { return g_store_mode; }
+
+/* The manual order's store (kitty_sessorder.h): the store the sessions are
+ * in, its folders made with the store's rights. */
+void ksp_order_store_current(struct ksp_order_store *st)
+{
+    memset(st, 0, sizeof(*st));
+    st->folder_store = store_is_file();
+    if (st->folder_store) {
+        st->dir = dupstr(g_sess_dir);
+        st->make_dirs = ksf_make_parent_dirs;
+    } else {
+        st->regbase = dupstr(kitty_registry_base());
+    }
+}

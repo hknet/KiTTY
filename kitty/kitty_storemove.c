@@ -47,6 +47,7 @@
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
 #include "kitty_sessionpath.h"   /* session paths and file names (hknet/KiTTY#55) */
+#include "kitty_sessorder.h"   /* the manual order travels with the sessions */
 #include "kitty_migrate.h"       /* kitty_store_suffix_of */
 #include "kitty_tools.h"         /* str_rtrim */
 #include "kitty_oldwin.h"        /* paths and values read whole */
@@ -857,6 +858,17 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     skips = kitty_bundle_wrap_report();
     kitty_clear_bundle_context();
     ksm_bundle_to_store_layout(dir, &r->fail);
+    /* the manual order of every folder, as .kittyorder files of the copy */
+    {
+        struct ksp_order_store from, to;
+        ksp_order_store_current(&from);
+        memset(&to, 0, sizeof(to));
+        to.folder_store = 1;
+        to.dir = dupstr(sessdir);
+        r->fail += ksp_order_copy_all(&from, &to);
+        ksp_order_store_free(&to);
+        ksp_order_store_free(&from);
+    }
     {
         char *prox = dupprintf("%s\\Proxies", dir);
         struct { int n; } c = { 0 };
@@ -982,6 +994,19 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
                                    &r->skipped, overwrite);
     kitty_clear_bundle_context();
     ksm_unstage(stage);
+    /* the manual order of that store, merged: a place already stored here
+     * is never overwritten */
+    {
+        struct ksp_order_store from, to;
+        memset(&from, 0, sizeof(from));
+        from.folder_store = 1;
+        from.dir = ksm_source_path(dir, KI_SESSIONS, "Sessions", "Sessions");
+        ksp_order_store_current(&to);
+        if (from.dir && ksm_dir_exists(from.dir))
+            r->fail += ksp_order_copy_all(&from, &to);
+        ksp_order_store_free(&to);
+        ksp_order_store_free(&from);
+    }
     /* a session file left out because another file gives the same session
      * is not taken: it counts as such and is reported below */
     r->fail += ndup + nstagefail;

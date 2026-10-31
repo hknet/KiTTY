@@ -13,7 +13,9 @@
  * name is in its Folder value's folder ("Default" or empty = the top). Every
  * folder above a session is a submenu of its own, nested as the tree is.
  * Folders and sessions sort by the name they show, case-insensitively and
- * numbers by value (ksp_natcasecmp); "Default Settings" is left out.
+ * numbers by value (ksp_name_cmp, the comparator of every list), then take
+ * the manual order stored for their folder (kitty_sessorder.h); "Default
+ * Settings" is left out.
  */
 #ifndef KITTY_SESSMENU_H
 #define KITTY_SESSMENU_H
@@ -35,6 +37,14 @@ struct ksm_entry {
 struct ksm_entry *ksm_build(char *const *ids, char *const *folders, int n,
                             int *nentries);
 void ksm_free(struct ksm_entry *e, int n);
+
+/* The manual order (kitty_sessorder.h): every level of the menu shows the
+ * order stored for its folder. Without a call ksm_build finds the store
+ * kitty.exe uses (kitty.ini: the folder store, else the registry kageant
+ * reads its sessions from); st NULL = the automatic order only. The unit
+ * test points it at a store of its own. */
+struct ksp_order_store;
+void ksm_set_order_store(const struct ksp_order_store *st);
 
 /* The Folder value of a session file of the folder store, either on-disk form
  * ("Folder=value" or classic "Folder\value\"), unescaped; NULL when the file

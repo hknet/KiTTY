@@ -83,12 +83,17 @@ char *ksp_folder_moved_path(const char *path, const char *from, const char *to);
  * a '\' below every character so a folder's subfolders follow it. 0 when the
  * two differ only in case or zero padding. */
 int ksp_natcasecmp(const char *a, const char *b);
+/* THE comparator of every list (Manage Sessions, the configuration box, the
+ * terminal's and the launcher's menus, kageant): ksp_natcasecmp, then
+ * without case, then byte by byte - a total order, the same everywhere. */
+int ksp_name_cmp(const char *a, const char *b);
 struct ksp_shown_row {
     const char *id;         /* the stored identity */
     const char *folder;     /* its folder; NULL, "" or "Default" = root */
     int idx;                /* the caller's own index, carried along */
 };
-/* "Default Settings" first, then by shown name, then folder, then identity. */
+/* "Default Settings" first, then by shown name (ksp_name_cmp), then folder
+ * (without case: folders that differ only in case are one), then identity. */
 void ksp_sort_shown(struct ksp_shown_row *rows, int n);
 /* The same, folder first: for a list grouped by folder (a menu). */
 void ksp_sort_shown_by_folder(struct ksp_shown_row *rows, int n);

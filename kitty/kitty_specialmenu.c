@@ -27,6 +27,7 @@
 #include "kitty_text.h"      /* the menu wording */
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h" /* ksp_natcasecmp: the launcher's order */
+#include "kitty_sessorder.h"   /* the manual order of each level */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 
@@ -60,9 +61,52 @@ static void sm_items_add( struct sm_item **v, int *n, const char *label, const c
 }
 static int sm_item_cmp( const void *a, const void *b ) {
 	const struct sm_item *x = a, *y = b ;
-	int c = ksp_natcasecmp( x->label, y->label ) ;
+	int c = ksp_name_cmp( x->label, y->label ) ;
 	return c ? c : strcmp( x->data, y->data ) ;
 }
+
+/* KiTTY: the folder a level of the launcher's copy stands for ("" = the
+ * top): its key's path below Launcher, each component unescaped. */
+static char * sm_launcher_folder( const char * rest ) {
+	strbuf * sb = strbuf_new() ;
+	while( *rest == '\\' ) rest++ ;
+	while( *rest ) {
+		const char * e = strchr( rest, '\\' ) ;
+		size_t n = e ? (size_t)( e - rest ) : strlen( rest ) ;
+		char * comp = dupprintf( "%.*s", (int)n, rest ) ;
+		char * plain = unmungestr_dup( comp ) ;
+		if( sb->len ) put_byte( sb, '\\' ) ;
+		put_dataz( sb, plain ) ;
+		sfree( plain ) ;
+		sfree( comp ) ;
+		rest += n ;
+		while( *rest == '\\' ) rest++ ;
+		}
+	return strbuf_to_str( sb ) ;
+	}
+
+/* KiTTY: the entries of one level after the sort, in the manual order stored
+ * for `folder` (Manage Sessions' drag and drop): kind 'f' the folders, 's'
+ * the sessions, by the name each entry shows. */
+static void sm_items_order( struct sm_item *v, int n, const char * folder, char kind ) {
+	struct ksp_order_store ost ;
+	char ** nm ;
+	int * perm, k ;
+	struct sm_item * copy ;
+	if( n < 2 || !folder ) return ;
+	nm = snewn( n, char * ) ;
+	perm = snewn( n, int ) ;
+	copy = snewn( n, struct sm_item ) ;
+	for( k = 0 ; k < n ; k++ ) nm[k] = v[k].label ;
+	ksp_order_store_current( &ost ) ;
+	ksp_order_sort_level( &ost, folder, kind, nm, n, perm, NULL ) ;
+	ksp_order_store_free( &ost ) ;
+	for( k = 0 ; k < n ; k++ ) copy[k] = v[perm[k]] ;
+	memcpy( v, copy, n * sizeof(*v) ) ;
+	sfree( copy ) ;
+	sfree( perm ) ;
+	sfree( nm ) ;
+	}
 static void sm_items_sort( struct sm_item *v, int n ) {
 	if( n > 1 ) qsort( v, n, sizeof(*v), sm_item_cmp ) ;
 }
@@ -153,11 +197,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		DWORD  cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass,cValues=0,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
 		FILETIME ftLastWriteTime;
 
-		char * launcherkey ;
+		char * launcherkey, * lfolder ;
 		struct sm_item *items = NULL ;
 		int nitems = 0, k, is_launcher ;
 		launcherkey = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
 		is_launcher = !strncmp( KeyName, launcherkey, strlen(launcherkey) ) ;
+		lfolder = is_launcher ? sm_launcher_folder( KeyName + strlen(launcherkey) ) : NULL ;
 		sfree( launcherkey ) ;
 
 		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS ) {
@@ -178,6 +223,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			}
 		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
+		sm_items_order( items, nitems, lfolder, KSP_ORDER_FOLDER ) ;
 		for( k = 0 ; k < nitems ; k++ ) {
 			SubMenu = CreateMenu() ;
 			buffer = dupprintf( "%s\\%s", KeyName, items[k].data ) ;
@@ -204,10 +250,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			}
     		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
+		sm_items_order( items, nitems, lfolder, KSP_ORDER_SESSION ) ;
 		local_nb += sm_append_entries( menu, items, nitems, ShortcutsFlag ) ;
 		sm_items_free( &items, &nitems ) ;
 
 		(*nbitem)=kitty_menuslots_count() ;
+		sfree( lfolder ) ;
 
 		RegCloseKey( hKey ) ;
 		}
@@ -220,6 +268,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		if( fullpath != NULL && ( dir = opendir( fullpath ) ) != NULL ) {
 			struct sm_item *items = NULL ;
 			int nitems = 0, k, is_launcher = !strncmp(KeyName,"Launcher",8) ;
+			char * lfolder = is_launcher ? sm_launcher_folder( KeyName + 8 ) : NULL ;
 			if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
 			while( ( de = readdir(dir) ) != NULL ) { // look for subkeys (directories)
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
@@ -235,6 +284,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
+			sm_items_order( items, nitems, lfolder, KSP_ORDER_FOLDER ) ;
 			for( k = 0 ; k < nitems ; k++ ) {
 				SubMenu = CreateMenu() ;
 				buffer = dupprintf( "%s\\%s", KeyName, items[k].data ) ;
@@ -279,10 +329,12 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 					}
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
+			sm_items_order( items, nitems, lfolder, KSP_ORDER_SESSION ) ;
 			local_nb += sm_append_entries( menu, items, nitems, 0 ) ;
 			sm_items_free( &items, &nitems ) ;
 			(*nbitem)=kitty_menuslots_count() ;
 			closedir( dir ) ;
+			sfree( lfolder ) ;
 			}
 		sfree( fullpath ) ;
 		}
@@ -317,9 +369,15 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 		comp[cl] = '\0' ;
 		for( k = 0 ; k < nitems && stricmp( items[k].label, comp ) ; k++ ) ;
 		if( k == nitems ) sm_items_add( &items, &nitems, comp, comp ) ;
+		else if( strcmp( comp, items[k].label ) < 0 ) {
+			/* one folder whatever the case: the spelling first by byte */
+			sfree( items[k].label ) ; sfree( items[k].data ) ;
+			items[k].label = dupstr( comp ) ; items[k].data = dupstr( comp ) ;
+			}
 		sfree( comp ) ;
 		}
 	sm_items_sort( items, nitems ) ;
+	sm_items_order( items, nitems, prefix, KSP_ORDER_FOLDER ) ;
 	for( k = 0 ; k < nitems ; k++ ) {
 		HMENU sub = CreateMenu() ;
 		int cut = kitty_menuslots_cut() ;
@@ -333,6 +391,7 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 		if( !stricmp( e[i].folder, prefix ) )
 			sm_items_add( &items, &nitems, ksp_leaf( e[i].session ), e[i].session ) ;
 	sm_items_sort( items, nitems ) ;
+	sm_items_order( items, nitems, prefix, KSP_ORDER_SESSION ) ;
 	local_nb = sm_append_entries( menu, items, nitems,
 	                              IniFileFlag != SAVEMODE_DIR && ShortcutsFlag ) ;
 	sm_items_free( &items, &nitems ) ;

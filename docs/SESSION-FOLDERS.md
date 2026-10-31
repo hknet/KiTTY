@@ -127,6 +127,51 @@ Settings") from the session `Default Settings` - the file
 `Default Settings<suffix>`, with a real space. A generated session then holds
 only what differs per host.
 
+## The order of a folder (`.kittyorder`)
+
+Every list sorts by the name shown (numbers by value, without case). A
+folder can carry its own order in the file `.kittyorder` in its directory
+(`Sessions\.kittyorder` for the top level). Manage Sessions writes it when
+a folder or a session is dragged between two rows. A tool can write it too.
+
+```
+# sessions of this folder, in this order
+s	web01
+s	web02
+f	databases
+```
+
+- Text, UTF-8 (a BOM is accepted), LF or CRLF line ends. Empty lines and
+  lines starting with `#` are comments.
+- One item per line: `s` (a session) or `f` (a folder), a TAB, the name as
+  the list shows it: the session file name without the escaping and without
+  the `sessionsuffix`, the folder's directory name unescaped. Names match
+  without case.
+- An optional third field, a TAB and the anchor: the name of the item (same
+  kind) it comes after. Without it the item comes after the item of the line
+  before of the same kind. The first such line puts its item first. A list
+  of names in the wanted order is therefore a complete order.
+- Items without a line keep their automatic place. An item comes directly
+  after its anchor. An anchor that does not exist, a cycle or a line that
+  cannot be read leaves the item in its automatic place. No message.
+- A name that matches no item stays in the file: a session generated later
+  finds its place.
+- Dot-files are never sessions: `.kittyorder` is not listed.
+
+What Manage Sessions changes. A drop, a rename, a delete and Reset Order
+(the folder's right-click menu) EDIT the file: only the lines whose meaning
+changes are touched. Comments, empty lines, the line ends, the BOM and the
+lines of names not in the folder stay byte for byte. A moved item's line
+moves right after its anchor's line. A line that would now follow another
+item gets its anchor written out. No change in meaning, no write. The file
+is written whole or not at all. Reset Order deletes the item lines of that
+folder and deletes the file when nothing else is left in it. The next run of
+a tool that owns the file replaces what Manage Sessions stored.
+
+A row with a stored place carries a pin in Manage Sessions. The
+configuration window, the terminal's Saved Sessions menu, the launcher and
+kageant show the same order.
+
 ## When KiTTY++ sees the changes
 
 - Nothing watches the folder. `kitty.exe -load Linux\web01` always reads the
@@ -155,6 +200,18 @@ Windows Registry Editor Version 5.00
   non-ASCII bytes and a leading dot (`Default%20Settings`). `/ : " < > |` stay.
 - Text is `REG_SZ`, numbers and switches `REG_DWORD`. A value of the wrong
   type is ignored and the default used.
+
+The order of a folder is the key `SessionOrder` beside `Sessions`, one key per
+folder (escaped as `Sessions` escapes a name, the top level as `%5C`), one
+`REG_SZ` value per item: `s:<name>` or `f:<name>`, the data is the anchor,
+empty = first:
+
+```
+[HKEY_CURRENT_USER\Software\kapper.net\KiTTY\SessionOrder\Linux]
+"s:web01"=""
+"s:web02"="web01"
+"f:databases"=""
+```
 
 ---
 *See also [KITTY-PORTABLE.md](KITTY-PORTABLE.md) (the folder store as a

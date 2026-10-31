@@ -31,6 +31,7 @@
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
 #include "kitty_sessionpath.h"   /* session names as folder paths (hknet/KiTTY#55) */
 #include "kitty_sessionrename.h"  /* moving a session with what hangs off its name */
+#include "kitty_sessorder.h"      /* the manual order of the rows */
 #include "kitty_sessorg.h"       /* Organize sessions, Arrange, the folder-delete box */
 #include "kitty_tags.h"          /* Session > Startup, "Session Tags" (hknet/KiTTY#60) */
 #include "kitty_dlgbox.h"        /* the modeless info box */
@@ -1588,6 +1589,14 @@ static int *kitty_session_row_order(struct sessionsaver_data *ssd)
         rows[i].idx = i;
     }
     ksp_sort_shown(rows, n);
+    /* each folder's sessions in its stored order, among the rows they
+     * hold (the classic list mixes folders: only their own rows move) */
+    {
+        struct ksp_order_store ost;
+        ksp_order_store_current(&ost);
+        ksp_order_shown_rows(&ost, rows, n, NULL);
+        ksp_order_store_free(&ost);
+    }
     for (i = 0; i < n; i++) {
         order[i] = rows[i].idx;
         sfree(flds[i]);
@@ -1905,8 +1914,28 @@ static bool kitty_folder_row_visible(const char *name, const char *filter)
 static int kitty_folder_row_cmp(const void *av, const void *bv)
 {
     const char *a = *(const char *const *)av, *b = *(const char *const *)bv;
-    int c = ksp_natcasecmp(ksp_leaf(a), ksp_leaf(b));
+    int c = ksp_name_cmp(ksp_leaf(a), ksp_leaf(b));
     return c ? c : strcmp(a, b);
+}
+
+/* One row per folder, whatever the case of its spelling: the spelling that
+ * sorts first by byte is shown. Takes `row` (freed when not kept). */
+static void kitty_folder_row_add(struct sessionsaver_data *ssd, size_t *cap,
+                                 int *n, char *row)
+{
+    int j;
+    for (j = 0; j < *n; j++)
+        if (!stricmp(ssd->folderrows[j], row)) {
+            if (strcmp(row, ssd->folderrows[j]) < 0) {
+                sfree(ssd->folderrows[j]);
+                ssd->folderrows[j] = row;
+            } else {
+                sfree(row);
+            }
+            return;
+        }
+    sgrowarray(ssd->folderrows, *cap, *n);
+    ssd->folderrows[(*n)++] = row;
 }
 
 static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
@@ -1929,14 +1958,8 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
     for (i = 0; FolderList && FolderList[i] != NULL; i++) {
         char *row = kitty_folder_child_row(CurrentFolder, FolderList[i]);
         if (row && kitty_folder_row_visible(row, filter)) {
-            int j, seen = 0;
-            for (j = 0; j < n; j++)
-                if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
-            if (!seen) {
-                sgrowarray(ssd->folderrows, cap, n);
-                ssd->folderrows[n++] = row;
-                row = NULL;
-            }
+            kitty_folder_row_add(ssd, &cap, &n, row);
+            row = NULL;
         }
         sfree(row);
     }
@@ -1945,24 +1968,34 @@ static void kitty_rebuild_folder_rows(struct sessionsaver_data *ssd,
         char *fld = kitty_read_session_folder_cached(ssd->sesslist.sessions[i]);
         char *row = kitty_folder_child_row(CurrentFolder, fld);
         if (row && kitty_folder_row_visible(row, filter)) {
-            int j, seen = 0;
-            for (j = 0; j < n; j++)
-                if (!stricmp(ssd->folderrows[j], row)) { seen = 1; break; }
-            if (!seen) {
-                sgrowarray(ssd->folderrows, cap, n);
-                ssd->folderrows[n++] = row;
-                row = NULL;
-            }
+            kitty_folder_row_add(ssd, &cap, &n, row);
+            row = NULL;
         }
         sfree(row);
         sfree(fld);
     }
     ssd->nfolderrows = n;
     /* Gathered from two sources in their own orders; drawn by the name each
-     * row shows, like the session rows below them. Row ids are assigned from
-     * this order afterwards (sessionsaver_add_nav_rows). */
-    if (n > 1)
+     * row shows, like the session rows below them, then in the order stored
+     * for the level (Manage Sessions' drag and drop). Row ids are assigned
+     * from this order afterwards (sessionsaver_add_nav_rows). */
+    if (n > 1) {
+        struct ksp_order_store ost;
+        char **nm = snewn(n, char *), **copy = snewn(n, char *);
+        int *perm = snewn(n, int), k;
         qsort(ssd->folderrows, n, sizeof(char *), kitty_folder_row_cmp);
+        for (k = 0; k < n; k++)
+            nm[k] = (char *)ksp_leaf(ssd->folderrows[k]);
+        ksp_order_store_current(&ost);
+        ksp_order_sort_level(&ost, CurrentFolder, KSP_ORDER_FOLDER, nm, n, perm, NULL);
+        ksp_order_store_free(&ost);
+        for (k = 0; k < n; k++)
+            copy[k] = ssd->folderrows[perm[k]];
+        memcpy(ssd->folderrows, copy, n * sizeof(char *));
+        sfree(perm);
+        sfree(copy);
+        sfree(nm);
+    }
 }
 
 static int kitty_nav_row_count(struct sessionsaver_data *ssd)
@@ -3037,6 +3070,7 @@ static void kcs_delete_session_answer(int yes, void *ctx)
     /* the backup, before the delete - or no delete */
     if (yes && ssd && kcs_dlg && ssd->listbox &&
         kitty_backup_before(kitty_cfg_modal_owner(), 0)) {
+        kitty_session_order_forget(name);   /* its place in the manual order */
         del_settings(name);
         get_sesslist(&ssd->sesslist, false);
         get_sesslist(&ssd->sesslist, true);

@@ -199,6 +199,9 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c)   #
 # KiTTY: a session name as a folder path, the name resolver and the session
 # file check (hknet/KiTTY#55, #56). Listed beside kitty_storage.c everywhere.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c)
+# KiTTY: the manual order of folders and sessions (Manage Sessions' drag and
+# drop), read by every list. Listed beside kitty_sessionpath.c everywhere.
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c)
 # KiTTY: is a secret file readable by anyone but its user (-masterpwfile, cmdline.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_fileperm.c)
@@ -285,6 +288,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c  # KiTTY: session paths + the folder-store walk (no settings library needed)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c    # KiTTY: the manual order of the Saved Sessions menu
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessmenu.c     # KiTTY: the Saved Sessions menu as the folder tree
   ${CMAKE_SOURCE_DIR}/kitty/kitty_startup_shortcut.c  # KiTTY: Startup-folder shortcut (portable autostart)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: THE CryptProtectMemory key-blob wrapper - the agent core (pageant.c) uses this shared copy too now (a unix agent build would need this file added beside it)
@@ -446,6 +450,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c     # the manual order (beside kitty_sessionpath.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   help.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
@@ -485,6 +490,7 @@ add_executable(kittygen_cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c     # the manual order (beside kitty_sessionpath.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c   # kitty.ini resolver: readonly=yes for the store
   ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c   # KiTTY: [KiTTY] kittygeneventlog
@@ -556,6 +562,7 @@ add_executable(test_storage_roundtrip
   ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c   # KiTTY: a file written whole or not at all
   ${CMAKE_SOURCE_DIR}/kitty/kitty_store_acl.c   # KiTTY: owner-only rights for what the store creates
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_mpw.c
   # the .ktx reader, so the old-export test drives the real parser rather than a

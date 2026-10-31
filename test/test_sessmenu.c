@@ -21,6 +21,7 @@
 
 #include "putty.h"
 #include "kitty/kitty_sessionpath.h"
+#include "kitty/kitty_sessorder.h"
 #include "kitty/kitty_sessmenu.h"
 
 void modalfatalbox(const char *p, ...)
@@ -332,6 +333,34 @@ static void part_store(void)
         strbuf_free(line);
         strbuf_free(want);
     }
+
+    /* The manual order: a .kittyorder in a folder (written as a tool
+     * would) puts that level in its order; the other levels keep theirs. */
+    {
+        struct ksp_order_store st;
+        memset(&st, 0, sizeof(st));
+        st.folder_store = 1;
+        st.dir = g_dir;
+        put_file("Linux\\web\\.kittyorder", "# by hand\ns\tunarranged\ns\tsrv2\n");
+        put_file(".kittyorder", "f\tWin\n");
+        ksm_set_order_store(&st);
+        n = ksm_folder_store_rows(g_dir, ".ktx", &ids, &folders);
+        menu = menu_text(ids, folders, n, false);
+        ok(strstr(menu, "[web unarranged srv2 srv01 ]") != NULL,
+           "manual order: the sessions of a folder in the stored order");
+        ok(!strncmp(menu, "[Win ", 5), "manual order: a folder put first at the top");
+        if (!strstr(menu, "[web unarranged srv2 srv01 ]") || strncmp(menu, "[Win ", 5))
+            printf("      got:  %s\n", menu);
+        sfree(menu);
+        ksm_rows_free(ids, folders, n);
+        ksm_set_order_store(NULL);
+        n = ksm_folder_store_rows(g_dir, ".ktx", &ids, &folders);
+        menu = menu_text(ids, folders, n, false);
+        ok(strstr(menu, "[web srv01 srv2 unarranged ]") != NULL,
+           "no order store: the automatic order");
+        sfree(menu);
+        ksm_rows_free(ids, folders, n);
+    }
 }
 
 int main(int argc, char **argv)
@@ -342,6 +371,8 @@ int main(int argc, char **argv)
     if (!tmp || !*tmp) tmp = ".";
     g_dir = dupprintf("%s\\kitty_test_sessmenu", tmp);
     cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", g_dir);
+    /* no manual order unless a part sets one: never the machine's own */
+    ksm_set_order_store(NULL);
 
     part_build();
     part_folder_value();

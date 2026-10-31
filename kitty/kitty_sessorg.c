@@ -37,6 +37,7 @@
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
 #include "kitty_sessionrename.h"
+#include "kitty_sessorder.h"     /* the manual order: drag between rows, the nail */
 #include "kitty_regbackup.h"     /* SaveRegistryKeyNow: the regbackup before a registry move */
 #include "kitty_dlgbox.h"        /* the shared confirm / info boxes, kitty_fit_text */
 #include "kitty_theme.h"         /* button widths, ink marks, the row aligner */
@@ -218,7 +219,7 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
     struct ksp_plan p;
     strbuf *rw, *cl;
     char *err = NULL;
-    int i, r;
+    int i, r, merged;
 
     *msg = NULL;
     if (rewritten)
@@ -257,13 +258,32 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
         so_names_free(&s);
         return 0;
     }
+    /* `to` already a folder: what moves is merged into it (a folder deleted
+     * with its sessions moved elsewhere, or renamed onto another one) */
+    merged = ksp_folder_is_root(to);
+    for (i = 0; i < s.n && !merged; i++) {
+        char *f = so_effective_folder(s.names[i], s.folders[i]);
+        merged = *f && ksp_folder_within(f, to) && !ksp_folder_within(f, from);
+        sfree(f);
+    }
+    InitFolderList();
+    for (i = 0; FolderList && FolderList[i] != NULL && !merged; i++)
+        merged = FolderList[i][0] && ksp_folder_within(FolderList[i], to) &&
+                 !ksp_folder_within(FolderList[i], from);
     rw = strbuf_new();
     cl = strbuf_new();
+    kitty_session_rename_order_hold(1);
     r = kitty_session_rename_many(p.from, p.to, p.n, rw, cl, &err);
+    kitty_session_rename_order_hold(0);
     if (r == KITTY_SESSRENAME_OK) {
+        struct ksp_order_store ost;
         for (i = 0; i < p.nfolder; i++)
             so_write_folder(p.fname[i], p.fvalue[i]);
         so_folderlist_move(from, to);
+        /* the manual order of it and below it follows the path */
+        ksp_order_store_current(&ost);
+        ksp_order_folder_moved(&ost, from, to, merged);
+        ksp_order_store_free(&ost);
         if (rewritten && rw->len)
             *rewritten = dupstr(rw->s);
     } else if (r == KITTY_SESSRENAME_CLASH) {
@@ -336,9 +356,19 @@ static int so_move_sessions(HWND owner, char **sel, int nsel, const char *dest,
     cl = strbuf_new();
     r = kitty_session_rename_many(mf, mt, nm, rw, cl, &err);
     if (r == KITTY_SESSRENAME_OK) {
+        struct ksp_order_store ost;
+        ksp_order_store_current(&ost);
         for (i = 0; i < p.n; i++)
-            if (!strcmp(p.from[i], p.to[i]))
+            if (!strcmp(p.from[i], p.to[i])) {
+                /* filed by its Folder value only: the place it had in that
+                 * folder goes (a rename carries its own, see above) */
+                char *was = kitty_read_session_folder(p.to[i]);
                 so_write_folder(p.to[i], dest);
+                if (!ksp_folder_same(was, dest))
+                    ksp_order_forget(&ost, was, KSP_ORDER_SESSION, ksp_leaf(p.to[i]));
+                sfree(was);
+            }
+        ksp_order_store_free(&ost);
         so_report_rewritten(owner, rw->s);
     } else if (r == KITTY_SESSRENAME_CLASH) {
         char *capped = so_cap_list(cl->s);
@@ -568,7 +598,14 @@ static void so_folders_add(struct so_folders *fs, const char *f)
     }
     for (i = 0; i < fs->n; i++)
         if (!stricmp(fs->f[i], norm)) {
-            sfree(norm);
+            /* one folder whatever the case: the spelling that sorts first
+             * by byte is shown, whatever order the store lists them in */
+            if (strcmp(norm, fs->f[i]) < 0) {
+                sfree(fs->f[i]);
+                fs->f[i] = norm;
+            } else {
+                sfree(norm);
+            }
             return;
         }
     fs->f = sresize(fs->f, fs->n + 1, char *);
@@ -587,8 +624,7 @@ static void so_folders_add(struct so_folders *fs, const char *f)
 static int so_folders_cmp(const void *a, const void *b)
 {
     const char *x = *(char *const *)a, *y = *(char *const *)b;
-    int c = ksp_natcasecmp(x, y);
-    return c ? c : strcmp(x, y);
+    return ksp_name_cmp(x, y);
 }
 static void so_folders_load(struct so_folders *fs, const struct so_names *s)
 {
@@ -672,28 +708,79 @@ static void so_fill_tree_open(HWND tree, const struct so_folders *fs,
     ins.item.lParam = -1;
     root = (HTREEITEM)SendMessageA(tree, TVM_INSERTITEMA, 0, (LPARAM)&ins);
     want = root;
-    for (i = 0; i < fs->n; i++) {
-        char *parent = ksp_folder_of(fs->f[i]);
-        HTREEITEM ph = root;
-        if (parent)
-            for (j = 0; j < i; j++)
-                if (!stricmp(fs->f[j], parent)) {
-                    ph = items[j];
-                    break;
-                }
-        sfree(parent);
-        ins.hParent = ph;
-        ins.item.pszText = (char *)ksp_leaf(fs->f[i]);
-        ins.item.lParam = i;
-        items[i] = (HTREEITEM)SendMessageA(tree, TVM_INSERTITEMA, 0, (LPARAM)&ins);
-        if (select && *select && !stricmp(fs->f[i], select))
-            want = items[i];
+    /* Each level in its stored order (kitty_sessorder.h), a folder with a
+     * place of its own marked with the nail (item image 1, 0 is blank). fs lists a
+     * parent before its children, so a parent row exists when its level
+     * is inserted. */
+    {
+        int *par = snewn(fs->n + 1, int), *cnt = snewn(fs->n + 2, int);
+        int *start = snewn(fs->n + 2, int), *kids = snewn(fs->n + 1, int);
+        int *perm = snewn(fs->n + 1, int), p, k;
+        char **nm = snewn(fs->n + 1, char *);
+        unsigned char *pin = snewn(fs->n + 1, unsigned char);
+        struct ksp_order_store ost;
+        ksp_order_store_current(&ost);
+        for (i = 0; i < fs->n; i++) {
+            char *parent = ksp_folder_of(fs->f[i]);
+            items[i] = NULL;
+            par[i] = -1;
+            if (parent)
+                for (j = 0; j < i; j++)
+                    if (!stricmp(fs->f[j], parent)) {
+                        par[i] = j;
+                        break;
+                    }
+            sfree(parent);
+        }
+        /* the children of each row together (slot 0 = the root's) */
+        for (p = 0; p <= fs->n; p++)
+            cnt[p] = 0;
+        for (i = 0; i < fs->n; i++)
+            cnt[par[i] + 1]++;
+        start[0] = 0;
+        for (p = 0; p <= fs->n; p++)
+            start[p + 1] = start[p] + cnt[p];
+        for (p = 0; p <= fs->n; p++)
+            cnt[p] = 0;
+        for (i = 0; i < fs->n; i++)
+            kids[start[par[i] + 1] + cnt[par[i] + 1]++] = i;
+        for (p = -1; p < fs->n; p++) {
+            int b = start[p + 1], nk = start[p + 2] - b;
+            if (nk <= 0 || (p >= 0 && !items[p]))
+                continue;
+            for (k = 0; k < nk; k++)
+                nm[k] = (char *)ksp_leaf(fs->f[kids[b + k]]);
+            ksp_order_sort_level(&ost, p < 0 ? NULL : fs->f[p], KSP_ORDER_FOLDER,
+                                 nm, nk, perm, pin);
+            for (k = 0; k < nk; k++) {
+                int c = kids[b + perm[k]];
+                ins.hParent = p < 0 ? root : items[p];
+                ins.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_IMAGE |
+                                TVIF_SELECTEDIMAGE;
+                ins.item.iImage = ins.item.iSelectedImage = pin[perm[k]] ? 1 : 0;
+                ins.item.pszText = (char *)ksp_leaf(fs->f[c]);
+                ins.item.lParam = c;
+                items[c] = (HTREEITEM)SendMessageA(tree, TVM_INSERTITEMA, 0,
+                                                   (LPARAM)&ins);
+                if (select && *select && !stricmp(fs->f[c], select))
+                    want = items[c];
+            }
+        }
+        ksp_order_store_free(&ost);
+        sfree(pin);
+        sfree(nm);
+        sfree(perm);
+        sfree(kids);
+        sfree(start);
+        sfree(cnt);
+        sfree(par);
     }
     TreeView_Expand(tree, root, TVE_EXPAND);
     for (j = 0; j < nopen; j++)
         for (i = 0; i < fs->n; i++)
             if (!stricmp(fs->f[i], open[j])) {
-                TreeView_Expand(tree, items[i], TVE_EXPAND);
+                if (items[i])
+                    TreeView_Expand(tree, items[i], TVE_EXPAND);
                 break;
             }
     TreeView_SelectItem(tree, want);
@@ -743,8 +830,17 @@ struct so_state {
     char *cur;                      /* the folder shown, "" = root */
     HWND sub;                       /* the Move / name / delete box, if open */
     int pane;                       /* 0 tree, 1 list: what Rename acts on */
+    int nail_dark;                  /* the theme the nails were drawn for */
     int dragging;                   /* SO_DRAG_SESSIONS / SO_DRAG_FOLDER, 0 = none */
     char *dragfolder;               /* the folder being dragged */
+    /* where a drop lands (SO_DROP_*): into a folder of the tree, between
+     * two folders (gap_item, gap_after), between two sessions of the list
+     * (lv_gap: the row it goes in front of, the count = at the end) */
+    int drop;
+    HTREEITEM gap_item;
+    int gap_after;
+    int lv_gap;
+    HIMAGELIST nail_tree, nail_list; /* the nail, item image 1 of a row with a place */
     HIMAGELIST dragimg;             /* what the pointer carries */
     HTREEITEM hover;                /* the folder under the pointer, and since when */
     DWORD hover_since;
@@ -775,6 +871,7 @@ static void so_fill_list(struct so_state *st)
     LVITEMA it;
     int i, k, nrows = 0, shown = 0;
     char *count;
+    unsigned char *pin;
     /* The folder's sessions, in the order of the name each row shows: a
      * session stored by its bare name and one stored as "folder\name" sit
      * side by side here, and their identities do not sort together. The
@@ -795,10 +892,35 @@ static void so_fill_list(struct so_state *st)
         sfree(f);
     }
     ksp_sort_shown(rows, nrows);
+    /* then the folder's stored order (kitty_sessorder.h) */
+    pin = snewn(nrows > 0 ? nrows : 1, unsigned char);
+    {
+        struct ksp_order_store ost;
+        char **nm = snewn(nrows > 0 ? nrows : 1, char *);
+        int *perm = snewn(nrows > 0 ? nrows : 1, int);
+        unsigned char *pinr = snewn(nrows > 0 ? nrows : 1, unsigned char);
+        struct ksp_shown_row *copy = snewn(nrows > 0 ? nrows : 1,
+                                           struct ksp_shown_row);
+        ksp_order_store_current(&ost);
+        for (k = 0; k < nrows; k++)
+            nm[k] = (char *)ksp_leaf(rows[k].id);
+        ksp_order_sort_level(&ost, st->cur, KSP_ORDER_SESSION, nm, nrows, perm, pinr);
+        for (k = 0; k < nrows; k++) {
+            copy[k] = rows[perm[k]];
+            pin[k] = pinr[perm[k]];
+        }
+        if (nrows)
+            memcpy(rows, copy, nrows * sizeof(*rows));
+        ksp_order_store_free(&ost);
+        sfree(copy);
+        sfree(pinr);
+        sfree(perm);
+        sfree(nm);
+    }
     SendMessage(st->list, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(st->list);
     memset(&it, 0, sizeof(it));
-    it.mask = LVIF_TEXT | LVIF_PARAM;
+    it.mask = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
     for (k = 0; k < nrows; k++) {
         /* an old session shows where it comes from, as in the
          * configuration box's list */
@@ -808,10 +930,12 @@ static void so_fill_list(struct so_state *st)
         it.iItem = shown;
         it.pszText = disp ? disp : (char *)ksp_leaf(rows[k].id);
         it.lParam = rows[k].idx;
+        it.iImage = pin[k] ? 1 : 0;     /* the nail, or the blank image */
         if (SendMessageA(st->list, LVM_INSERTITEMA, 0, (LPARAM)&it) >= 0)
             shown++;
         sfree(disp);
     }
+    sfree(pin);
     sfree(rows);
     ListView_SetColumnWidth(st->list, 0, LVSCW_AUTOSIZE_USEHEADER);
     SendMessage(st->list, WM_SETREDRAW, TRUE, 0);
@@ -1824,7 +1948,11 @@ void kitty_sessorg_delete_any_folder(HWND owner, const char *folder,
         kitty_sessorg_delete_folder(owner, folder, done, ctx);
     } else {
         char *gone = dupstr(folder);   /* `folder` may live in a list rebuilt below */
+        struct ksp_order_store ost;
         so_folderlist_move(gone, NULL);
+        ksp_order_store_current(&ost);
+        ksp_order_folder_moved(&ost, gone, NULL, 0);
+        ksp_order_store_free(&ost);
         kitty_config_session_folder_moved(gone, NULL, 1);
         sfree(gone);
         if (so_window)
@@ -2018,6 +2146,7 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
 #define SO_CMD_TAG_START    0x7108   /* the tag pane's menu */
 #define SO_CMD_TAG_REMOVE   0x7109
 #define SO_CMD_TAG_SELALL   0x710A
+#define SO_CMD_RESET_ORDER  0x710B   /* the folder menu: Reset Order */
 
 /* Sessions in their own terminals: kitty.exe -load "<name>" each - with the
  * master key ahead of -load, so the stored password opens without a prompt.
@@ -2118,8 +2247,10 @@ static void so_delete_sessions_answer(int yes, void *ctx)
     /* the backup, before the delete - or no delete */
     if (yes && !GetReadOnlyFlag() &&
         kitty_backup_before(so_window ? so_window->h : NULL, 0)) {
-        for (i = 0; i < d->n; i++)
+        for (i = 0; i < d->n; i++) {
+            kitty_session_order_forget(d->names[i]);
             del_settings(d->names[i]);
+        }
         kitty_store_mark_dirty();
         so_changed(so_window);
     }
@@ -2257,13 +2388,416 @@ static int so_drop_ok(struct so_state *st, HTREEITEM target)
     return ok;
 }
 
+/* ---- the manual order (kitty_sessorder.h) -------------------------------
+ * A drop BETWEEN rows stores a place: in the list (the folder shown, its
+ * sessions; never a move) and in the tree (a folder among its siblings;
+ * from another level it is moved there first, after the confirmation every
+ * folder move takes). The upper and lower third of a tree row are between,
+ * the middle is into; the upper and lower half of a list row. An insert
+ * line shows where. A row with a place carries the nail. */
+/* A folder drop waiting for its confirmation (so_folder_drop_answer). */
+struct so_folderdrop {
+    char *from, *to;
+    /* dropped between two folders of another level: its place there */
+    int place;
+    char *level, *anchor;           /* anchor NULL = at the top */
+};
+static void so_folder_drop_answer(int yes, void *ctx);
+
+#define SO_DROP_NONE      0
+#define SO_DROP_INTO      1     /* on a folder of the tree: filed into it */
+#define SO_DROP_TREE_GAP  2     /* between two folders of the tree */
+#define SO_DROP_LIST_GAP  3     /* between two sessions of the list */
+
+/* The items of a level in the automatic order, by the name each row shows
+ * (borrowed from st): kind 's' the sessions of `folder`, 'f' its
+ * subfolders. snewn'd array. */
+static char **so_level_names(struct so_state *st, const char *folder, char kind,
+                             int *n)
+{
+    char **out;
+    int i, k = 0;
+    if (kind == KSP_ORDER_SESSION) {
+        struct ksp_shown_row *rows = snewn(st->s.n > 0 ? st->s.n : 1,
+                                           struct ksp_shown_row);
+        for (i = 0; i < st->s.n; i++) {
+            char *f;
+            if (!strcmp(st->s.names[i], "Default Settings"))
+                continue;
+            f = so_effective_folder(st->s.names[i], st->s.folders[i]);
+            if (ksp_folder_same(f, folder)) {
+                rows[k].id = st->s.names[i];
+                rows[k].folder = NULL;
+                rows[k].idx = i;
+                k++;
+            }
+            sfree(f);
+        }
+        ksp_sort_shown(rows, k);
+        out = snewn(k > 0 ? k : 1, char *);
+        for (i = 0; i < k; i++)
+            out[i] = (char *)ksp_leaf(rows[i].id);
+        sfree(rows);
+    } else {
+        out = snewn(st->fs.n > 0 ? st->fs.n : 1, char *);
+        for (i = 0; i < st->fs.n; i++) {
+            char *up = ksp_folder_of(st->fs.f[i]);
+            if (ksp_folder_same(up, folder))
+                out[k++] = (char *)ksp_leaf(st->fs.f[i]);
+            sfree(up);
+        }
+    }
+    *n = k;
+    return out;
+}
+
+/* Store the place of a block dropped in the level of `folder` below
+ * `anchor` (NULL = at the top): block = the names as shown, in the order
+ * shown, the anchor not among them. The store is edited in place (a
+ * .kittyorder keeps every line whose meaning stays), the lists are read
+ * again, and the status line reports what was stored. */
+static void so_order_drop(struct so_state *st, const char *folder, char kind,
+                          char **block, int nblock, const char *anchor)
+{
+    struct ksp_order_store ost;
+    struct ksp_order_doc *d;
+    struct ksp_order_list cur;
+    struct ksp_order_changes ch;
+    char **autonames, **want, *status;
+    int nauto, i, j, k = 0, *perm, ok;
+    DWORD err;
+
+    if (!st || nblock <= 0 || GetReadOnlyFlag())
+        return;
+    autonames = so_level_names(st, folder, kind, &nauto);
+    ksp_order_store_current(&ost);
+    d = ksp_order_open(&ost, folder);
+    ksp_order_doc_entries(d, &cur);
+    /* the order shown now, one row per name, and the one the drop shows */
+    perm = snewn(nauto > 0 ? nauto : 1, int);
+    ksp_order_apply(&cur, kind, autonames, nauto, perm, NULL);
+    want = snewn(nauto + nblock + 1, char *);
+    if (!anchor)
+        for (j = 0; j < nblock; j++)
+            want[k++] = block[j];
+    for (i = 0; i < nauto; i++) {
+        char *nm = autonames[perm[i]];
+        int skip = 0;
+        for (j = 0; j < nblock && !skip; j++)
+            skip = !stricmp(nm, block[j]);
+        for (j = 0; j < k && !skip; j++)
+            skip = !stricmp(nm, want[j]);
+        if (skip)
+            continue;
+        want[k++] = nm;
+        if (anchor && !stricmp(nm, anchor))
+            for (j = 0; j < nblock; j++)
+                want[k++] = block[j];
+    }
+    ksp_order_plan(&cur, kind, autonames, nauto, want, k, block, nblock,
+                   NULL, 0, &ch);
+    ksp_order_doc_change(d, kind, autonames, nauto, &ch);
+    ok = ksp_order_commit(&ost, folder, d);
+    err = ok ? 0 : GetLastError();
+    if (!ok)
+        status = dupprintf(KT_SP_ORG_ORDER_NOT_STORED, win_strerror(err));
+    else if (anchor)
+        status = dupprintf(KT_SP_ORG_ORDER_STORED, block[0], anchor);
+    else
+        status = dupprintf(KT_SP_ORG_ORDER_STORED_TOP, block[0]);
+    ksp_order_changes_free(&ch);
+    ksp_order_list_free(&cur);
+    ksp_order_doc_free(d);
+    ksp_order_store_free(&ost);
+    sfree(want);
+    sfree(perm);
+    sfree(autonames);
+    /* every list follows: the configuration box, the launcher, this one */
+    kitty_store_mark_dirty();
+    so_changed(st);
+    SetDlgItemTextA(st->h, IDC_SO_COUNT, status);
+    sfree(status);
+}
+
+/* Reset Order: the folder shown forgets the places of its subfolders and
+ * its sessions. */
+static void so_reset_order(struct so_state *st)
+{
+    struct ksp_order_store ost;
+    char *status;
+    int ok;
+    DWORD err;
+    if (GetReadOnlyFlag()) {
+        MessageBeep(MB_ICONWARNING);
+        return;
+    }
+    ksp_order_store_current(&ost);
+    ok = ksp_order_reset(&ost, st->cur);
+    err = ok ? 0 : GetLastError();
+    ksp_order_store_free(&ost);
+    status = ok ? dupprintf(KT_SP_ORG_ORDER_RESET, so_folder_label(st->cur))
+                : dupprintf(KT_SP_ORG_ORDER_NOT_STORED, win_strerror(err));
+    kitty_store_mark_dirty();
+    so_changed(st);
+    SetDlgItemTextA(st->h, IDC_SO_COUNT, status);
+    sfree(status);
+}
+
+/* Where a drop at `lp` (list client) goes between the list's rows: the row
+ * it goes in front of, the count = after the last; -1 = nowhere. */
+static int so_list_gap(struct so_state *st, POINT lp)
+{
+    LVHITTESTINFO ht;
+    RECT r;
+    int n = ListView_GetItemCount(st->list), i;
+    if (n <= 0)
+        return -1;
+    memset(&ht, 0, sizeof(ht));
+    ht.pt = lp;
+    i = ListView_HitTest(st->list, &ht);
+    if (i >= 0 && ListView_GetItemRect(st->list, i, &r, LVIR_BOUNDS))
+        return lp.y < (r.top + r.bottom) / 2 ? i : i + 1;
+    if (ListView_GetItemRect(st->list, 0, &r, LVIR_BOUNDS) && lp.y < r.top)
+        return 0;
+    return n;
+}
+
+/* The list's insert line in front of row `gap` (the count = after the last
+ * row; -1 = none). */
+static void so_list_mark(struct so_state *st, int gap)
+{
+    LVINSERTMARK im;
+    int n = ListView_GetItemCount(st->list);
+    memset(&im, 0, sizeof(im));
+    im.cbSize = sizeof(im);
+    im.iItem = -1;
+    if (gap >= 0 && n > 0) {
+        if (gap < n) {
+            im.iItem = gap;
+        } else {
+            im.iItem = n - 1;
+            im.dwFlags = LVIM_AFTER;
+        }
+    }
+    ListView_SetInsertMark(st->list, &im);
+}
+
+/* May the dragged folder go between `item` and its neighbour? Not beside
+ * itself, not into a level below itself, never beside the root row. */
+static int so_tree_gap_ok(struct so_state *st, HTREEITEM item)
+{
+    HTREEITEM par = TreeView_GetParent(st->tree, item);
+    char *self, *level;
+    int ok;
+    if (!par || !st->dragfolder)
+        return 0;
+    self = so_tree_folder(st->tree, item, &st->fs);
+    level = so_tree_folder(st->tree, par, &st->fs);
+    ok = self && level && *self && stricmp(self, st->dragfolder) &&
+         !(*level && ksp_folder_within(level, st->dragfolder));
+    sfree(level);
+    sfree(self);
+    return ok;
+}
+
+/* The dragged folder dropped above (after = 0) or below `item`. */
+static void so_tree_gap_drop(struct so_state *st, HTREEITEM item, int after)
+{
+    HTREEITEM par = TreeView_GetParent(st->tree, item), sib;
+    char *level = so_tree_folder(st->tree, par, &st->fs);
+    char *self = so_tree_folder(st->tree, item, &st->fs);
+    char *dparent, *leaf, *anchor = NULL;
+    if (!level || !self || !st->dragfolder) {
+        sfree(level);
+        sfree(self);
+        return;
+    }
+    dparent = ksp_folder_parent(st->dragfolder);
+    leaf = dupstr(ksp_leaf(st->dragfolder));
+    if (after) {
+        anchor = dupstr(ksp_leaf(self));
+    } else {
+        /* the row above in the same level, the dragged one not counted */
+        for (sib = TreeView_GetPrevSibling(st->tree, item); sib;
+             sib = TreeView_GetPrevSibling(st->tree, sib)) {
+            char *f = so_tree_folder(st->tree, sib, &st->fs);
+            int same = !f || !stricmp(f, st->dragfolder);
+            if (!same)
+                anchor = dupstr(ksp_leaf(f));
+            sfree(f);
+            if (!same)
+                break;
+        }
+    }
+    if (ksp_folder_same(level, dparent)) {
+        so_order_drop(st, level, KSP_ORDER_FOLDER, &leaf, 1, anchor);
+    } else {
+        struct so_folderdrop *d = snew(struct so_folderdrop);
+        char *q;
+        memset(d, 0, sizeof(*d));
+        d->from = dupstr(st->dragfolder);
+        d->to = *level ? dupprintf("%s\\%s", level, leaf) : dupstr(leaf);
+        d->place = 1;
+        d->level = dupstr(level);
+        d->anchor = anchor ? dupstr(anchor) : NULL;
+        q = dupprintf(KT_SP_ORG_FOLDER_DROP_Q, st->dragfolder,
+                      so_folder_label(level));
+        if (!kitty_confirm_modeless_words(st->h, KT_CAP_KITTYPP, q, NULL,
+                                          KT_SP_ORG_FOLDER_DROP_BTN,
+                                          KT_SP_ORG_CANCEL,
+                                          so_folder_drop_answer, d)) {
+            sfree(d->from);
+            sfree(d->to);
+            sfree(d->level);
+            sfree(d->anchor);
+            sfree(d);
+        }
+        sfree(q);
+    }
+    sfree(anchor);
+    sfree(leaf);
+    sfree(dparent);
+    sfree(self);
+    sfree(level);
+}
+
+/* The selected sessions dropped in front of list row `gap`: a block in
+ * their shown order, the first after the row above. */
+static void so_list_gap_drop(struct so_state *st, int gap)
+{
+    int n, i, j, nb = 0, cnt = ListView_GetItemCount(st->list);
+    char **sel = so_selected(st, &n);
+    char **block = snewn(n > 0 ? n : 1, char *), *anchor = NULL;
+    for (i = 0; i < n; i++) {
+        char *lf = dupstr(ksp_leaf(sel[i]));
+        int dup = 0;
+        for (j = 0; j < nb && !dup; j++)
+            dup = !stricmp(block[j], lf);
+        if (dup)
+            sfree(lf);
+        else
+            block[nb++] = lf;
+    }
+    for (i = (gap > cnt ? cnt : gap) - 1; i >= 0 && !anchor; i--) {
+        LVITEMA it;
+        memset(&it, 0, sizeof(it));
+        it.mask = LVIF_PARAM;
+        it.iItem = i;
+        if (SendMessageA(st->list, LVM_GETITEMA, 0, (LPARAM)&it) &&
+            it.lParam >= 0 && it.lParam < st->s.n) {
+            const char *lf = ksp_leaf(st->s.names[it.lParam]);
+            int inblock = 0;
+            for (j = 0; j < nb && !inblock; j++)
+                inblock = !stricmp(block[j], lf);
+            if (!inblock)
+                anchor = dupstr(lf);
+        }
+    }
+    if (nb)
+        so_order_drop(st, st->cur, KSP_ORDER_SESSION, block, nb, anchor);
+    for (i = 0; i < nb; i++)
+        sfree(block[i]);
+    sfree(block);
+    sfree(anchor);
+    sfree(sel);
+}
+
+/* The nail: a pushpin drawn by us (no font glyph: Segoe MDL2 Assets is
+ * missing before Windows 10, and the 32-bit build runs on XP), s pixels
+ * square at x0, in the theme's colours. */
+static void so_draw_nail(HDC dc, int x0, int s, bool dark)
+{
+    COLORREF head = kitty_theme_ink(dark, KITTY_INK_BAD);
+    COLORREF ink = kitty_theme_text_colour(dark);
+    int w = s / 8 > 1 ? s / 8 : 1;
+    HPEN pen = CreatePen(PS_SOLID, w, ink), hp = CreatePen(PS_SOLID, 1, head);
+    HBRUSH br = CreateSolidBrush(head);
+    HGDIOBJ op = SelectObject(dc, pen), ob;
+    /* the pin, from under the head down to the lower left */
+    MoveToEx(dc, x0 + s * 5 / 8, s * 3 / 8, NULL);
+    LineTo(dc, x0 + s / 5, s - s / 6);
+    /* the round head at the upper right */
+    SelectObject(dc, hp);
+    ob = SelectObject(dc, br);
+    Ellipse(dc, x0 + s * 7 / 16, s / 8, x0 + s - s / 8, s * 9 / 16);
+    SelectObject(dc, ob);
+    SelectObject(dc, op);
+    DeleteObject(br);
+    DeleteObject(hp);
+    DeleteObject(pen);
+}
+
+/* An image list of the nail, s pixels square: with `blank_first` image 0
+ * is empty and the nail is image 1. The ITEM image (TVSIL_NORMAL,
+ * LVSIL_SMALL), not a state image: a state image's place at the row's left
+ * edge is a hit zone of its own, and a click there did not select the row. */
+static HIMAGELIST so_nail_images(HWND ctl, int s, bool dark, int blank_first)
+{
+    HDC sdc = GetDC(ctl), mdc;
+    HBITMAP bm;
+    HGDIOBJ obm;
+    HIMAGELIST il;
+    COLORREF key = RGB(255, 0, 255);
+    int n = blank_first ? 2 : 1;
+    RECT r;
+    if (!sdc)
+        return NULL;
+    if (s < 8)
+        s = 8;
+    mdc = CreateCompatibleDC(sdc);
+    bm = CreateCompatibleBitmap(sdc, s * n, s);
+    obm = SelectObject(mdc, bm);
+    r.left = r.top = 0;
+    r.right = s * n;
+    r.bottom = s;
+    {
+        HBRUSH b = CreateSolidBrush(key);
+        FillRect(mdc, &r, b);
+        DeleteObject(b);
+    }
+    so_draw_nail(mdc, (n - 1) * s, s, dark);
+    SelectObject(mdc, obm);
+    DeleteDC(mdc);
+    ReleaseDC(ctl, sdc);
+    il = ImageList_Create(s, s, ILC_COLOR24 | ILC_MASK, n, 0);
+    if (il)
+        ImageList_AddMasked(il, bm, key);
+    DeleteObject(bm);
+    return il;
+}
+
+/* The nails and the insert lines in the colours of the theme in force,
+ * as high as a row (so they follow the DPI). Made again when the theme
+ * or the DPI changes. */
+static void so_nails_make(struct so_state *st)
+{
+    bool dark = kitty_theme_window_dark(st->h);
+    int s = (int)TreeView_GetItemHeight(st->tree) - 2;
+    HIMAGELIST t = so_nail_images(st->tree, s, dark, 1);
+    HIMAGELIST l = so_nail_images(st->list, s, dark, 1);
+    COLORREF mark = kitty_theme_text_colour(dark);
+    TreeView_SetImageList(st->tree, t, TVSIL_NORMAL);
+    ListView_SetImageList(st->list, l, LVSIL_SMALL);
+    if (st->nail_tree)
+        ImageList_Destroy(st->nail_tree);
+    if (st->nail_list)
+        ImageList_Destroy(st->nail_list);
+    st->nail_tree = t;
+    st->nail_list = l;
+    st->nail_dark = dark ? 1 : 0;
+    TreeView_SetInsertMarkColor(st->tree, mark);
+    ListView_SetInsertMarkColor(st->list, mark);
+    InvalidateRect(st->tree, NULL, TRUE);
+    InvalidateRect(st->list, NULL, TRUE);
+}
+
 static void so_drag_track(struct so_state *st)
 {
     TVHITTESTINFO ht;
-    POINT pt, sp;
+    POINT pt, sp, lp;
     HTREEITEM over;
-    RECT tr;
-    int ok;
+    RECT tr, lr;
+    int ok, inlist;
     GetCursorPos(&sp);
     pt = sp;
     ScreenToClient(st->tree, &pt);
@@ -2283,19 +2817,67 @@ static void so_drag_track(struct so_state *st)
         ScreenToClient(st->taglist, &lp);
         st->tagdrop = PtInRect(&lr, lp) != 0;
     }
-    if (st->tagdrop)
+    st->drop = SO_DROP_NONE;
+    st->gap_item = NULL;
+    st->gap_after = 0;
+    st->lv_gap = -1;
+    lp = sp;
+    ScreenToClient(st->list, &lp);
+    GetClientRect(st->list, &lr);
+    inlist = PtInRect(&lr, lp) != 0;
+    if (st->tagdrop) {
         over = NULL;
-    ok = st->tagdrop || so_drop_ok(st, over);
+    } else if (st->dragging == SO_DRAG_SESSIONS && inlist) {
+        /* between two sessions of the list: their order, never a move */
+        st->lv_gap = so_list_gap(st, lp);
+        if (st->lv_gap >= 0)
+            st->drop = SO_DROP_LIST_GAP;
+        over = NULL;
+    } else if (over && st->dragging == SO_DRAG_FOLDER &&
+               TreeView_GetParent(st->tree, over)) {
+        /* the upper and lower third of a folder row: between two folders */
+        RECT ir;
+        if (TreeView_GetItemRect(st->tree, over, &ir, FALSE)) {
+            int third = (ir.bottom - ir.top) / 3;
+            if (pt.y < ir.top + third || pt.y >= ir.bottom - third) {
+                if (so_tree_gap_ok(st, over)) {
+                    st->drop = SO_DROP_TREE_GAP;
+                    st->gap_item = over;
+                    st->gap_after = pt.y >= ir.bottom - third;
+                }
+                over = NULL;
+            }
+        }
+    }
+    if (st->drop == SO_DROP_NONE && over && so_drop_ok(st, over))
+        st->drop = SO_DROP_INTO;
+    ok = st->tagdrop || st->drop != SO_DROP_NONE;
     if (over != st->hover) {
         st->hover = over;
         st->hover_since = GetTickCount();
     }
     ImageList_DragShowNolock(FALSE);
-    TreeView_SelectDropTarget(st->tree, ok ? over : NULL);
+    TreeView_SelectDropTarget(st->tree, st->drop == SO_DROP_INTO ? over : NULL);
+    TreeView_SetInsertMark(st->tree,
+                           st->drop == SO_DROP_TREE_GAP ? st->gap_item : NULL,
+                           st->gap_after);
+    so_list_mark(st, st->drop == SO_DROP_LIST_GAP ? st->lv_gap : -1);
     UpdateWindow(st->tree);
+    UpdateWindow(st->list);
     ImageList_DragShowNolock(TRUE);
     ImageList_DragMove(sp.x, sp.y);
     SetCursor(LoadCursor(NULL, ok ? IDC_ARROW : IDC_NO));
+    /* at the list's top or bottom edge it scrolls */
+    if (inlist && st->dragging == SO_DRAG_SESSIONS) {
+        int edge = GetSystemMetrics(SM_CYVSCROLL);
+        if (lp.y < lr.top + edge || lp.y >= lr.bottom - edge) {
+            ImageList_DragShowNolock(FALSE);
+            SendMessage(st->list, WM_VSCROLL,
+                        lp.y < lr.top + edge ? SB_LINEUP : SB_LINEDOWN, 0);
+            UpdateWindow(st->list);
+            ImageList_DragShowNolock(TRUE);
+        }
+    }
     /* at the tree's top or bottom edge it scrolls */
     GetClientRect(st->tree, &tr);
     if (PtInRect(&tr, pt) || (pt.x >= tr.left && pt.x < tr.right)) {
@@ -2311,18 +2893,18 @@ static void so_drag_track(struct so_state *st)
 }
 
 /* A dropped folder moves only after a confirmation (a drop is easily made by
- * accident); the answer does the move, from and to as they were then. */
-struct so_folderdrop {
-    char *from, *to;
-};
+ * accident); the answer does the move, from and to as they were then (the
+ * struct is above, with the manual order). */
 static void so_folder_drop_answer(int yes, void *ctx)
 {
     struct so_folderdrop *d = (struct so_folderdrop *)ctx;
     struct so_state *st = so_window;
     if (yes && !GetReadOnlyFlag()) {
         char *err = NULL, *rewritten = NULL;
+        int moved = 0;
         if (kitty_sessorg_folder_move(d->from, d->to, KT_SP_MOVE_CLASH,
                                       &err, &rewritten)) {
+            moved = 1;
             kitty_config_session_folder_moved(d->from, d->to, 0);
             if (st && ksp_folder_within(st->cur, d->from)) {
                 char *np = ksp_folder_moved_path(st->cur, d->from, d->to);
@@ -2335,19 +2917,34 @@ static void so_folder_drop_answer(int yes, void *ctx)
         }
         sfree(err);
         sfree(rewritten);
-        so_changed(st);
+        if (moved && d->place && st) {
+            /* moved: now its place in the level it was dropped in */
+            char *leaf = dupstr(ksp_leaf(d->to));
+            so_reload(st);
+            so_order_drop(st, d->level, KSP_ORDER_FOLDER, &leaf, 1, d->anchor);
+            sfree(leaf);
+        } else {
+            so_changed(st);
+        }
     }
     sfree(d->from);
     sfree(d->to);
+    sfree(d->level);
+    sfree(d->anchor);
     sfree(d);
 }
 
 static void so_drag_end(struct so_state *st, int drop)
 {
     HTREEITEM target = TreeView_GetDropHilight(st->tree);
-    int kind = st->dragging, tagdrop = st->tagdrop;
+    int kind = st->dragging, tagdrop = st->tagdrop, where = st->drop;
+    HTREEITEM gap_item = st->gap_item;
+    int gap_after = st->gap_after, lv_gap = st->lv_gap;
     st->dragging = 0;
     st->tagdrop = 0;
+    st->drop = SO_DROP_NONE;
+    st->gap_item = NULL;
+    st->lv_gap = -1;
     KillTimer(st->h, SO_TIMER_DRAG);
     if (st->dragimg) {
         ImageList_DragLeave(NULL);
@@ -2356,16 +2953,24 @@ static void so_drag_end(struct so_state *st, int drop)
         st->dragimg = NULL;
     }
     TreeView_SelectDropTarget(st->tree, NULL);
+    TreeView_SetInsertMark(st->tree, NULL, FALSE);
+    so_list_mark(st, -1);
     if (GetCapture() == st->h)
         ReleaseCapture();
     if (drop && tagdrop && kind == SO_DRAG_SESSIONS) {
         so_tag_drop(st);
-    } else if (drop && target) {
+    } else if (drop && where == SO_DROP_TREE_GAP && kind == SO_DRAG_FOLDER &&
+               gap_item) {
+        so_tree_gap_drop(st, gap_item, gap_after);
+    } else if (drop && where == SO_DROP_LIST_GAP && kind == SO_DRAG_SESSIONS) {
+        so_list_gap_drop(st, lv_gap);
+    } else if (drop && where == SO_DROP_INTO && target) {
         if (kind == SO_DRAG_FOLDER) {
             char *dest = so_tree_folder(st->tree, target, &st->fs);
             if (dest && st->dragfolder) {
                 struct so_folderdrop *d = snew(struct so_folderdrop);
                 char *q;
+                memset(d, 0, sizeof(*d));
                 d->from = dupstr(st->dragfolder);
                 d->to = *dest ? dupprintf("%s\\%s", dest, ksp_leaf(st->dragfolder))
                               : dupstr(ksp_leaf(st->dragfolder));
@@ -2632,6 +3237,17 @@ static void so_tree_menu(struct so_state *st, int x, int y)
     so_menu_add(m, IDC_SO_NEWFOLDER, KT_SP_ORG_M_NEWFOLDER, rw);
     so_menu_add(m, SO_CMD_RENAME_FOLD, KT_SP_ORG_M_RENAME, *st->cur && rw);
     so_menu_add(m, IDC_SO_DELFOLDER, KT_SP_ORG_M_DELETE, *st->cur && rw);
+    AppendMenuA(m, MF_SEPARATOR, 0, NULL);
+    {
+        /* greyed while the level holds no stored place */
+        struct ksp_order_store ost;
+        const struct ksp_order_list *ol;
+        ksp_order_store_current(&ost);
+        ol = ksp_order_load(&ost, st->cur);
+        so_menu_add(m, SO_CMD_RESET_ORDER, KT_SP_ORG_M_RESET_ORDER,
+                    rw && ol && ol->n > 0);
+        ksp_order_store_free(&ost);
+    }
     cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, x, y, 0, st->h, NULL);
     DestroyMenu(m);
     if (cmd)
@@ -2667,6 +3283,12 @@ static void so_tag_start(struct so_state *st)
 
 static void so_command(struct so_state *st, int id)
 {
+    /* Esc while a drag is on reaches the dialog as IDCANCEL (the aux
+     * dialog's Esc): it ends the drag, nothing dropped - never the window */
+    if (id == IDCANCEL && st->dragging) {
+        so_drag_end(st, 0);
+        return;
+    }
     switch (id) {                       /* the menu actions with no box */
       case IDOK:
         /* Enter (no button is the default: Close was, and Enter closed the
@@ -2702,6 +3324,9 @@ static void so_command(struct so_state *st, int id)
         return;
       case SO_CMD_SELALL:
         ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
+        return;
+      case SO_CMD_RESET_ORDER:
+        so_reset_order(st);
         return;
       case SO_CMD_RENAME_SESS:
         st->pane = 1;
@@ -2816,7 +3441,11 @@ static void so_command(struct so_state *st, int id)
             /* Empty (subfolders included): it simply goes, as the session
              * list's Del folder does it. */
             char *up = ksp_folder_parent(st->cur);
+            struct ksp_order_store ost;
             so_folderlist_move(st->cur, NULL);
+            ksp_order_store_current(&ost);
+            ksp_order_folder_moved(&ost, st->cur, NULL, 0);
+            ksp_order_store_free(&ost);
             kitty_config_session_folder_moved(st->cur, NULL, 1);
             sfree(st->cur);
             st->cur = ksp_folder_is_root(up) ? dupstr("") : dupstr(up);
@@ -2874,9 +3503,17 @@ static int so_draw_empty(HWND h, HWND lv, const char *text, LPARAM lp)
     return 0;
 }
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
 static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct so_state *st = (struct so_state *)GetWindowLongPtr(h, GWLP_USERDATA);
+    /* the nails follow the theme and the DPI (the message goes on) */
+    if (st && st->ready &&
+        (kitty_theme_is_change_message(msg) || msg == WM_THEMECHANGED ||
+         msg == WM_SYSCOLORCHANGE || msg == WM_DPICHANGED))
+        so_nails_make(st);
     switch (msg) {
       case WM_INITDIALOG: {
         static const int btns[] = { IDC_SO_MOVE, IDC_SO_RENAME, IDC_SO_NEWFOLDER,
@@ -2963,6 +3600,9 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         col.mask = LVCF_WIDTH;
         col.cx = 100;
         SendMessageA(st->list, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
+        st->lv_gap = -1;
+        st->nail_dark = -1;
+        so_nails_make(st);
 
         /* the tag pane, on the tag it was left on (its sessions are read
          * with the reload below - only when there is one) */
@@ -3031,6 +3671,11 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         }
         return TRUE;
       case WM_ACTIVATE:
+        /* the theme engine dresses the window on its activation: the nails
+         * follow when it came out dark (or light) */
+        if (st && st->ready && LOWORD(wp) != WA_INACTIVE &&
+            (kitty_theme_window_dark(h) ? 1 : 0) != st->nail_dark)
+            so_nails_make(st);
         /* Back from the configuration box (a save, a delete there): the
          * store may have changed under this window. */
         if (st && st->ready && LOWORD(wp) != WA_INACTIVE && !st->dragging &&
@@ -3250,6 +3895,14 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 kitty_state_set_string(KR_MANAGE_SESSION, sn);
                 kitty_state_set_string(KR_MANAGE_TAG, st->tag ? st->tag : "");
             }
+            /* the nails are ours: off the controls first (a list view
+             * destroys the images it holds) */
+            TreeView_SetImageList(st->tree, NULL, TVSIL_NORMAL);
+            ListView_SetImageList(st->list, NULL, LVSIL_SMALL);
+            if (st->nail_tree)
+                ImageList_Destroy(st->nail_tree);
+            if (st->nail_list)
+                ImageList_Destroy(st->nail_list);
             sfree(st->tag);
             sfree(st->dragfolder);
             so_folders_free(&st->fs);
