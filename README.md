@@ -166,9 +166,6 @@ or still want real-world testing. The full, per-release list is in
   password** in portable mode (travels between machines; it is never stored — if you forget
   it, the passwords it protected are unrecoverable). Neither defends against malware already
   running as your user; for the strongest security prefer SSH keys (kageant).
-- **Command-line tools use the registry session store** — `klink`/`kscp`/`ksftp` do not read
-  a portable (`savemode=dir`) store, so portable sessions and their master-password-protected
-  passwords are usable from the GUI only.
 - **Background image** — the thin margin outside the terminal cell grid is still solid-filled (cosmetic).
 
 Found something else? Please **[open an issue](https://github.com/hknet/KiTTY/issues)**.

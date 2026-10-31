@@ -2631,6 +2631,8 @@
 
 /* kitty_zmodem.c */
 #define KT_ZM_HELPER_LOG                             "ZModem helper: %s"
+/* the end of a failed transfer: exit code and the helper's last line */
+#define KT_ZM_HELPER_ERROR_LOG                       "ZModem helper error: %s"
 #define KT_ZM_UNSET                                  "(unset)"
 #define KT_ZM_RZ_NOT_FOUND                           "Unable to find ZModem receive program:\n%s"
 #define KT_ZM_RZ_START_FAILED                        "Unable to start ZModem receive."

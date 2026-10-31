@@ -461,6 +461,14 @@ static void zm_end(kitty_zmodem_state *zm, DWORD exitcode)
     else if (exitcode != 0)
         why = dupprintf("helper exit code %lu%s%s", (unsigned long)exitcode,
                         last[0] ? ": " : "", last);
+    /* The helper's stderr lines are logged as they come, progress and errors
+     * alike (nothing in a line tells them apart). The exit code does: a
+     * failed end gets a line of its own, with the helper's last line. */
+    if (why && zm->logctx) {
+        char *msg = dupprintf(KT_ZM_HELPER_ERROR_LOG, why);
+        logevent(zm->logctx, msg);
+        sfree(msg);
+    }
     zm_wev(zm, exitcode == 0, why ? why : "");
     sfree(why);
 }

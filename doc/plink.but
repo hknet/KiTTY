@@ -373,9 +373,10 @@ a port, that port only; without, every port stored for that host) or the
 whole store with no argument - with both fingerprints and the two
 stamps, when the key was first seen and last written. Every stored key
 reads \q{stored} there: \q{not signing} needs \c{\-scan}, a
-connection. Exit code 0 with rows, 1 with none. klink uses the registry store; a portable KiTTY++'s
-folder store is listed on its Host keys panel (\k{kitty-cfg-host-keys}),
-which can also verify the stored keys against the hosts.
+connection. Exit code 0 with rows, 1 with none. klink uses the store
+kitty.exe uses: the registry, or the folder store of a portable KiTTY++
+(\c{savemode=dir}). The Host keys panel (\k{kitty-cfg-host-keys}) lists
+the same store and can also verify the stored keys against the hosts.
 
 \c{\-json} makes either print one JSON array of objects instead of the
 readable lines, for scripts; PowerShell reads it with

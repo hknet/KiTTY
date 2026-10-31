@@ -706,8 +706,8 @@ call something like
 \c d:\path\to\kitty.exe -load "my session"
 
 A session in a folder is loaded by its folder path,
-\c{\-load Linux\\web\\srv01}. That works in both stores, and in klink,
-kscp and ksftp for the registry store; the same path works in an SSH
+\c{\-load Linux\\web\\srv01}. That works in both stores, in klink, kscp
+and ksftp too. The same path works in an SSH
 jump host field and in a \c{kitty://} link. A bare name loads the one
 session of that name. When several folders hold one, \c{\-load} ends
 with an error listing them (exit code 1); a jump host of that name fails

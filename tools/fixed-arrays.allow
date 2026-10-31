@@ -53,8 +53,6 @@ dialog.c | ctrl_getset() | pathbuf | 256 | configuration-tree panel path, not a 
 
 import.c | struct sshcom_key | comment | 256 | upstream: ssh.com key comment, strncpy to sizeof; a longer comment is cut (display text)
 
-kitty/adb/adb.c | adb_log() | addrbuf | 256 | address text from sk_getaddr(lenof) (file not built)
-kitty/adb/adb.c | adb_init() | sendbuf | 512 | adb wire command; the host is clamped to fit before the copy (file not built)
 
 kitty/blocnote/notepad.c | Notepad_LoadString() | Notepad_stringtable | 4096 | LoadString result, size passed
 kitty/blocnote/notepad.c | Notepad_WndProc() | about | 4096 | About text (test builds), snprintf to sizeof
